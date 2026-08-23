@@ -95,7 +95,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 **Last Updated:** 2026-08-24
 
-**Latest Commit:** `docs: design financial intelligence architecture` (updated after commit)
+**Latest Commit:** `docs: design financial intelligence architecture` (`7cf3187961bec7bf0cfadd0dd74a745366fae864`)
 
 ## RH-ENG-007 Status Synchronization
 
