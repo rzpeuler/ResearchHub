@@ -4,9 +4,8 @@ import * as SkillTool from '@deepseek-ai/dsh-tool-skill'
 import { CallId, LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import { EventAnalysisWorkflow, registerEventAnalysisTool } from '../../packages/skills/event-analysis/index.ts'
 import { MarketCapability } from '../../packages/capabilities/market/provider.ts'
-import { MockMarketProvider } from '../../packages/capabilities/providers/mock-market-provider.ts'
 import { NewsCapability } from '../../packages/capabilities/news/provider.ts'
-import { MockNewsProvider } from '../../packages/capabilities/providers/mock-news-provider.ts'
+import { createMockProviderComposition } from '../../packages/providers/index.ts'
 import { ResearchManager } from './packages/agents/research-manager/index.ts'
 
 export interface Config {
@@ -77,9 +76,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   })
   await ctx.plugin(SkillTool)
 
+  const providers = createMockProviderComposition()
   const workflow = new EventAnalysisWorkflow({
-    marketCapability: new MarketCapability(new MockMarketProvider()),
-    newsCapability: new NewsCapability(new MockNewsProvider()),
+    marketCapability: new MarketCapability(providers.registry, providers.market),
+    newsCapability: new NewsCapability(providers.registry, providers.news),
     artifactIdFactory: (type, ordinal) => `event-${type}-${ordinal}`,
   })
   registerEventAnalysisTool(ctx, workflow, () => config.createdAt ?? '2026-08-23T00:00:00.000Z')

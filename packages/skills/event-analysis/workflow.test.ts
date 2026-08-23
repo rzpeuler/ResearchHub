@@ -16,6 +16,9 @@ function makeWorkflow(calls: { market: string[]; news: string[] }): EventAnalysi
     change: 0,
     volume: 1000,
     source: 'mock',
+    timestamp: createdAt,
+    quality: 'high',
+    confidence: 0.95,
   }
   const newsResult: NewsSearchResult = {
     symbol: '600519',
@@ -27,6 +30,10 @@ function makeWorkflow(calls: { market: string[]; news: string[] }): EventAnalysi
       timestamp: createdAt,
       confidence: 0.7,
     }],
+    source: 'mock-news',
+    timestamp: createdAt,
+    quality: 'high',
+    confidence: 0.7,
   }
 
   return new EventAnalysisWorkflow({

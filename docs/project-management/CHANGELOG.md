@@ -2,6 +2,22 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v0.8.0
+
+**Date:** 2026-08-23
+
+**Changes:**
+
+- Added the Financial Data Provider Framework with `DataProvider`, `ProviderResult` and traceable `FinancialDataMetadata`.
+- Added the process-local `ProviderRegistry` and typed `ProviderHandle` lookup boundary.
+- Migrated deterministic Mock Market and Mock News adapters to `packages/providers/adapters/`.
+- Updated Market and News Capabilities to resolve providers through the Registry and project source metadata.
+- Added `docs/architecture/FINANCIAL_PROVIDER_DESIGN.md`.
+
+**Breaking Changes:**
+
+- None. Existing Harness capability names remain stable; no real data source, crawler, trading logic, external database or Harness Core change was introduced.
+
 ## Version: v0.7.0
 
 **Date:** 2026-08-23

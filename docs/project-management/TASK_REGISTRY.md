@@ -1,38 +1,48 @@
 # Task Registry
 
-This file is the lightweight task database for ResearchHub. Every independently executable, reviewable or acceptable engineering task receives one stable Task ID.
+ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收的工程任务都使用稳定的 Task ID。
 
-## Status Definitions
+## 状态定义
 
-- **Planned** — registered but not started
-- **In Progress** — actively being executed
-- **Review** — implementation complete and awaiting review or acceptance
-- **Completed** — implementation and required validation complete
-- **Blocked** — a concrete blocker prevents continuation
+- **Planned**：已登记，尚未开始。
+- **In Progress**：正在执行。
+- **Review**：实现完成，等待审查或验收。
+- **Completed**：实现和必要验证均完成。
+- **Blocked**：存在明确阻塞，无法继续。
 
-## Task List
+## 任务列表
 
 | Task ID | Task Name | Status | Priority | Created | Assignee | Commit Hash | Acceptance |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | RH-GOV-001 | Initialize project execution state management system | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-DOC-002 | Synchronize architecture baseline documentation | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
-| RH-ENG-001 | Validate minimum ResearchHub Harness integration | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — typecheck and integration test passed |
-| RH-ENG-002 | Add financial capability foundation and Market Capability MVP | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — capability, provider and integration tests passed |
-| RH-DESIGN-001 | Add Research Artifact Framework foundation | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — type, validation, serialization and relationship tests passed |
-| RH-ENG-003A | Add Event Analysis Skill Framework MVP | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — Skill, Capability, Artifact and Session integration tests passed |
-| RH-DESIGN-002 | Add Research Memory Framework MVP | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — Memory core, Local JSON provider, Artifact adapter and full tests passed |
-| RH-DESIGN-003 | Add Research Evaluation Framework MVP | Completed | P0 | 2026-08-23 | Luna | `febd88f` | Accepted — Review, Outcome, Evaluation Engine and Memory integration tests passed |
+| RH-ENG-001 | Validate minimum ResearchHub Harness integration | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — typecheck and integration test passed |
+| RH-ENG-002 | Add financial capability foundation and Market Capability MVP | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — capability, provider and integration tests passed |
+| RH-DESIGN-001 | Add Research Artifact Framework foundation | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — type, validation, serialization and relationship tests passed |
+| RH-ENG-003A | Add Event Analysis Skill Framework MVP | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — Skill, Capability, Artifact and Session integration tests passed |
+| RH-DESIGN-002 | Add Research Memory Framework MVP | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — Memory core, Local JSON provider, adapter and full tests passed |
+| RH-DESIGN-003 | Add Research Evaluation Framework MVP | Completed | P0 | 2026-08-23 | Luna | `febd88f88150bba025b6f3c1dd59f7bd73dfd8db` | Accepted — Review, Outcome, Evaluation Engine and Memory tests passed |
+| RH-DESIGN-004 | Add financial data provider framework | Review | P0 | 2026-08-23 | Luna | Pending commit | Pending — Provider, Registry, Capability bridge and full tests passed |
 
-## RH-ENG-001 Acceptance Scope
+## RH-DESIGN-004 Acceptance Scope
 
-- DeepSeek Harness `0.1.1-rc.2` dependency versions are pinned.
-- `tests/integration/` contains validation-only code, not production implementation.
-- The live validation path covers Runtime → Extension → Agent → Skill → Capability → Session persistence.
-- No financial business capability, crawler, API, data model or Harness core modification was introduced.
+- `DataProvider`、`ProviderResult` 和 `FinancialDataMetadata` 已定义并进行运行时校验。
+- `ProviderRegistry` 支持注册、类型化 Handle 查询、重复/未知 Provider 错误。
+- Mock Market/News Provider 位于 `packages/providers/adapters/`，未接入真实 API 或爬虫。
+- Market/News Capability 通过 Registry 获取 Provider，不直接导入或实例化具体 Provider。
+- Capability 输出保留 source、timestamp、quality、confidence 元数据。
+- TypeScript、Provider、Capability、Artifact、Memory、Evaluation、Skill 和 Harness integration 测试通过。
 
-## Registration Rules
+## 历史 RH-ENG-001 约束
 
-- Task IDs are stable, unique and searchable.
-- New tasks record name, status, priority, creation date and acceptance criteria.
-- Completed tasks record the completing agent, commit hash and acceptance status.
-- Blocked tasks record the blocker and the condition required to resume.
+- DeepSeek Harness `0.1.1-rc.2` 依赖版本已锁定。
+- `tests/integration/` 是验证代码隔离区，不是生产业务实现。
+- Runtime → Extension → Agent → Skill → Capability → Session 路径已验证。
+- 未修改 Harness Core、业务 API、生产配置或金融业务逻辑。
+
+## 登记规则
+
+- Task ID 必须稳定、唯一且可搜索。
+- 新任务记录名称、状态、优先级、创建时间和验收标准。
+- Completed 任务必须记录完成人、commit hash 和验收状态。
+- Blocked 任务必须记录阻塞原因和恢复条件。

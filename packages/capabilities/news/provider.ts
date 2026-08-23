@@ -1,9 +1,10 @@
+import { type ProviderRegistry } from '../../providers/registry/index.ts'
+import type { ProviderHandle } from '../../providers/core/index.ts'
 import {
   CapabilityExecutionError,
   defineCapability,
   type CapabilityInput,
   type CapabilityOutput,
-  type CapabilityProvider,
 } from '../core/index.ts'
 
 const newsSearchInputSchema = {
@@ -31,6 +32,10 @@ const newsSearchOutputSchema = {
         },
       },
     },
+    source: { type: 'string', required: true },
+    timestamp: { type: 'string', required: true },
+    quality: { type: 'string', required: true },
+    confidence: { type: 'number', required: true },
   },
 } as const
 
@@ -44,6 +49,22 @@ export const newsSearchDefinition = defineCapability({
 export type NewsSearchInput = CapabilityInput<typeof newsSearchDefinition>
 export type NewsSearchResult = CapabilityOutput<typeof newsSearchDefinition>
 export type NewsEvidence = NewsSearchResult['items'][number]
+
+export interface NewsProviderItem {
+  symbol: string
+  headline: string
+  content: string
+  source: string
+  timestamp: string
+  confidence: number
+}
+
+export interface NewsProviderData {
+  symbol: string
+  items: NewsProviderItem[]
+}
+
+export type NewsProviderHandle = ProviderHandle<NewsSearchInput, NewsProviderData>
 
 export function normalizeNewsSearchInput(input: NewsSearchInput): NewsSearchInput {
   if (input === null || typeof input !== 'object') {
@@ -65,18 +86,22 @@ export function normalizeNewsSearchInput(input: NewsSearchInput): NewsSearchInpu
 export class NewsCapability {
   readonly definition = newsSearchDefinition
 
-  constructor(private readonly provider: CapabilityProvider<NewsSearchInput, NewsSearchResult>) {}
+  constructor(
+    private readonly registry: ProviderRegistry,
+    private readonly providerHandle: NewsProviderHandle,
+  ) {}
 
   async search_company_news(input: NewsSearchInput): Promise<NewsSearchResult> {
     const normalizedInput = normalizeNewsSearchInput(input)
     try {
-      const result = await this.provider.execute(normalizedInput)
-      validateNewsSearchResult(result, normalizedInput.symbol)
-      return result
+      const provider = this.registry.get(this.providerHandle)
+      const result = await provider.fetch(normalizedInput)
+      validateNewsSearchResult(result.data, normalizedInput.symbol)
+      return { ...result.data, ...result.metadata }
     } catch (cause) {
       throw new CapabilityExecutionError({
         capabilityName: this.definition.name,
-        providerName: this.provider.name,
+        providerName: this.providerHandle.name,
         input: normalizedInput,
         cause,
       })
@@ -90,6 +115,7 @@ function validateNewsSearchResult(value: unknown, expectedSymbol: string): asser
   }
 
   const result = value as Record<string, unknown>
+  assertAllowedFields(result, new Set(['symbol', 'items']))
   if (result.symbol !== expectedSymbol) {
     throw new TypeError('search_company_news Provider result symbol must match the request')
   }
@@ -103,6 +129,7 @@ function validateNewsSearchResult(value: unknown, expectedSymbol: string): asser
     }
 
     const evidence = item as Record<string, unknown>
+    assertAllowedFields(evidence, new Set(['symbol', 'headline', 'content', 'source', 'timestamp', 'confidence']), index)
     assertNonEmptyString(evidence.symbol, `$.items[${index}].symbol`)
     if (evidence.symbol !== expectedSymbol) {
       throw new TypeError(`search_company_news Provider item ${index} symbol must match the request`)
@@ -118,6 +145,15 @@ function validateNewsSearchResult(value: unknown, expectedSymbol: string): asser
 function assertNonEmptyString(value: unknown, path: string): asserts value is string {
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new TypeError(`${path} must be a non-empty string`)
+  }
+}
+
+function assertAllowedFields(value: Record<string, unknown>, allowedFields: ReadonlySet<string>, index?: number): void {
+  for (const key of Object.keys(value)) {
+    if (!allowedFields.has(key)) {
+      const path = index === undefined ? `$.${key}` : `$.items[${index}].${key}`
+      throw new TypeError(`${path} is not allowed`)
+    }
   }
 }
 

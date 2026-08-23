@@ -1,74 +1,49 @@
 # Current Status
 
-> ResearchHub 高频工程状态入口。阶段、模块、阻塞、任务和交付发生变化时必须同步更新。
+ResearchHub 的高频工程状态入口。每次完成可验收交付后，必须同步本文件、任务登记表和变更记录。
 
 ## 当前版本
 
-`v0.7.0` — Research Evaluation Framework MVP
+`v0.8.0` — Financial Data Provider Framework MVP
 
 ## 当前阶段
 
-**Phase 6 — Research Evaluation and Review Foundation**
+**Phase 7 — Financial Data Provider Foundation**
 
-ResearchHub 已完成 Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework、Event Analysis Skill MVP、Research Memory Framework MVP，以及 Prediction → Outcome → Evaluation → Review → Memory 闭环验证。
+架构基线仍为 ResearchHub Architecture v0.2、Technical Design v0.1，Runtime 版本锁定为 DeepSeek Harness `0.1.1-rc.2`。
 
 ## 已完成模块
 
-- 项目治理文档体系 `docs/project-management/`
-- Architecture 文档体系 `docs/architecture/`
-- DeepSeek Harness `0.1.1-rc.2` integration validation
-- 通用 `CapabilityDefinition` 与 `CapabilityProvider` 接口
-- `MarketCapability` 与 `get_market_snapshot` Harness Tool
-- `NewsCapability` 与 `search_company_news` Harness Tool
-- `MockMarketProvider`、`MockNewsProvider`
-- Capability/Provider 边界测试和 Harness Session 集成测试
-- Artifact Core：`ArtifactBase`、JSON-safe 类型、运行时校验、序列化
-- `Evidence`、`Thesis`、`Prediction` Artifact 类型
-- Event Analysis `SKILL.md`
-- `EventAnalysisWorkflow` 与 `run_event_analysis` Harness Tool
-- Event Analysis Harness 端到端测试：Skill loading、Capability calling、Artifact creation、Session persistence
-- Memory Core：`MemoryEntry`、`MemoryProvider`、运行时校验和 JSON 序列化
-- `LocalJsonMemoryProvider`：本地 JSON 持久化、精确检索、更新、原子替换和同进程并发队列
-- `ArtifactMemoryAdapter`：Thesis/Prediction 到 Memory Entry 的确定性映射
-- Research Memory Framework 测试：保存、检索、更新、重载、Session 元数据和错误边界
-- Review Artifact：Prediction/Outcome/Evaluation 结构化复盘对象
-- Outcome Model：JSON-safe 实际结果模型
-- Evaluation Engine：同名指标比较、数值容差和四种客观评价状态
-- ReviewMemoryAdapter：Review 到 Research Memory 的确定性映射
-- Research Evaluation 集成测试：Prediction → Outcome → Evaluation → Review → Memory
+- 项目治理文档体系。
+- Harness Extension、Agent、Skill、Capability、Session 集成验证。
+- Capability Framework 与 Market Capability MVP。
+- Research Artifact Framework：Evidence、Thesis、Prediction、Review。
+- Event Analysis Skill MVP。
+- Research Memory Framework：Local JSON Memory Provider 与 Artifact Adapter。
+- Research Evaluation Framework：Prediction → Outcome → Evaluation → Review → Memory。
+- Financial Data Provider Core：`DataProvider`、`ProviderResult`、`FinancialDataMetadata`。
+- Process-local `ProviderRegistry` 与类型化 `ProviderHandle`。
+- `MockMarketProvider`、`MockNewsProvider` 已迁移到 `packages/providers/adapters/`。
+- Market/News Capability 已通过 Registry 获取 Provider，并投影来源、时间戳、质量和置信度。
+- Provider 单元测试、Capability 测试和 Harness 集成测试已覆盖 Registry 链路。
 
 ## 开发中模块
 
-- Review 调度和真实 Outcome Provider 尚未实现
-- Memory 检索与评估分析尚未实现
-- 真实 Market/News Provider 尚未接入
+- 真实金融数据 Provider 的接入前评估（尚未连接外部 API）。
+- Provider 健康检查、限流、凭证和数据新鲜度策略设计。
 
 ## 待开发模块
 
-- Memory 检索与索引演进
-- Review 调度、评估分析和真实 Outcome 来源
-- News、Financial、Institution 等后续真实 Capability
+- 经授权的真实 Market/News Provider。
+- Provider 质量监控、重试和故障切换。
+- Memory 检索与索引演进。
+- Review 调度与真实 Outcome 来源。
+- Financial、Institution 等后续 Capability。
 
 ## 当前阻塞问题
 
 - 无已知工程阻塞。
-- 真实数据源选择、授权、限流、数据质量和引用完整性属于后续任务风险。
-
-## 架构基线
-
-- 产品定位：AI A股个人投资研究员
-- Runtime：DeepSeek Harness `0.1.1-rc.2`
-- 架构模式：Harness Extension + Financial Intelligence Layer
-- 核心设计：Agent + Skill + Capability + Workflow + Memory
-- 研究资产：Evidence + Thesis + Prediction + Review
-- 权威架构文档：[ResearchHub Architecture v0.2](../architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
-- 工程设计文档：[ResearchHub Technical Design v0.1](../architecture/TECHNICAL_DESIGN_V0.1.md)
-- Harness 集成文档：[HARNESS_INTEGRATION.md](../architecture/HARNESS_INTEGRATION.md)
-- Capability 设计文档：[CAPABILITY_DESIGN.md](../architecture/CAPABILITY_DESIGN.md)
-- Artifact 设计文档：[RESEARCH_ARTIFACT_DESIGN.md](../architecture/RESEARCH_ARTIFACT_DESIGN.md)
-- Event Analysis 设计文档：[EVENT_ANALYSIS_SKILL_DESIGN.md](../architecture/EVENT_ANALYSIS_SKILL_DESIGN.md)
-- Research Memory 设计文档：[RESEARCH_MEMORY_DESIGN.md](../architecture/RESEARCH_MEMORY_DESIGN.md)
-- Research Evaluation 设计文档：[RESEARCH_EVALUATION_DESIGN.md](../architecture/RESEARCH_EVALUATION_DESIGN.md)
+- 真实数据源接入受授权、许可、字段语义、限流和数据质量评估约束，不能在本 MVP 中直接假设完成。
 
 ## 最近一次更新时间
 
@@ -76,4 +51,10 @@ ResearchHub 已完成 Harness Integration Validation、Financial Capability Foun
 
 ## 最近一次 commit
 
-`feat: add research evaluation framework`（`febd88f`）
+`feat: add financial provider framework`（当前处于提交前 Review）
+
+## 架构基线
+
+- [ResearchHub Architecture v0.2](../architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
+- [ResearchHub Technical Design v0.1](../architecture/TECHNICAL_DESIGN_V0.1.md)
+- [Financial Data Provider Design](../architecture/FINANCIAL_PROVIDER_DESIGN.md)

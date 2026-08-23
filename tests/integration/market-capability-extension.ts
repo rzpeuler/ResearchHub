@@ -3,7 +3,7 @@ import { CallId, LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, ty
 import { ResearchManager } from './packages/agents/research-manager/index.ts'
 import { registerMarketCapabilityTool } from '../../packages/capabilities/market/harness-tool.ts'
 import { MarketCapability } from '../../packages/capabilities/market/provider.ts'
-import { MockMarketProvider } from '../../packages/capabilities/providers/mock-market-provider.ts'
+import { createMockProviderComposition } from '../../packages/providers/index.ts'
 
 export const name = 'researchhub-market-capability-validation-extension'
 export const inject = ['llm', 'tools', 'agents']
@@ -56,7 +56,8 @@ class MarketCapabilityMockAdapter extends LlmAdapter {
 }
 
 export async function apply(ctx: Context): Promise<void> {
-  const capability = new MarketCapability(new MockMarketProvider())
+  const providers = createMockProviderComposition()
+  const capability = new MarketCapability(providers.registry, providers.market)
   registerMarketCapabilityTool(ctx, capability)
   new ResearchManager(ctx)
   ctx.llm.registerAdapter(['researchhub-market-validation'], new MarketCapabilityMockAdapter())

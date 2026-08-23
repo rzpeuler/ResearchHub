@@ -72,6 +72,9 @@ test('Market Capability Tool delegates to Mock Provider and persists its Session
       change: 12.5,
       volume: 100000,
       source: 'mock',
+      timestamp: '2026-08-23T09:00:00.000Z',
+      quality: 'low',
+      confidence: 0.95,
     })
     assert.ok(finalAssistant, 'Agent must produce a final response')
     assert.equal(turnEnd?.data.reason.kind, 'completed')

@@ -6,6 +6,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "test:providers": "tsx --test packages/providers/core/core.test.ts packages/providers/registry/registry.test.ts",
     "test:capabilities": "tsx --test packages/capabilities/providers/mock-market-provider.test.ts packages/capabilities/providers/mock-news-provider.test.ts",
     "test:artifacts": "tsx --test packages/artifacts/core/core.test.ts packages/artifacts/evidence/evidence.test.ts packages/artifacts/thesis/thesis.test.ts packages/artifacts/prediction/prediction.test.ts packages/artifacts/review/review.test.ts packages/artifacts/artifact-framework.test.ts",
     "test:evaluation": "tsx --test packages/evaluation/outcome/outcome.test.ts packages/evaluation/review/review.test.ts",
@@ -13,7 +14,7 @@
     "test:skills": "tsx --test packages/skills/event-analysis/workflow.test.ts",
     "test:integration": "tsx --test tests/integration/harness-integration.test.ts tests/integration/market-capability.test.ts tests/integration/event-analysis.test.ts",
     "typecheck:integration": "tsc --noEmit -p tsconfig.json",
-    "test": "npm run typecheck:integration && npm run test:capabilities && npm run test:artifacts && npm run test:evaluation && npm run test:memory && npm run test:skills && npm run test:integration"
+    "test": "npm run typecheck:integration && npm run test:providers && npm run test:capabilities && npm run test:artifacts && npm run test:evaluation && npm run test:memory && npm run test:skills && npm run test:integration"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",

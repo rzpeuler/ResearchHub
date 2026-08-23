@@ -1,54 +1,140 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { CapabilityExecutionError, type CapabilityProvider } from '../core/index.ts'
-import { NewsCapability, type NewsSearchInput, type NewsSearchResult } from '../news/provider.ts'
+import { CapabilityExecutionError } from '../core/index.ts'
+import { NewsCapability, type NewsProviderData, type NewsSearchInput } from '../news/provider.ts'
 import { MockNewsProvider } from './mock-news-provider.ts'
+import { ProviderRegistry, createMockProviderComposition, type DataProvider } from '../../providers/index.ts'
 
-test('NewsCapability normalizes symbol input before crossing the Provider boundary', async () => {
+const newsMetadata = {
+  source: 'fixture-news',
+  timestamp: '2026-08-23T09:00:00.000Z',
+  quality: 'high' as const,
+  confidence: 0.9,
+}
+
+const newsData = {
+  symbol: '600519',
+  items: [{
+    symbol: '600519',
+    headline: 'Company update',
+    content: 'A deterministic test news item.',
+    source: 'fixture-news',
+    timestamp: '2026-08-23T08:00:00.000Z',
+    confidence: 0.7,
+  }],
+}
+
+test('MockNewsProvider returns deterministic independent DataProvider results', async () => {
   const provider = new MockNewsProvider()
-  const capability = new NewsCapability(provider)
+
+  const first = await provider.fetch({ symbol: '600519' })
+  const second = await provider.fetch({ symbol: '600519' })
+
+  assert.deepEqual(second, first)
+  assert.notStrictEqual(second, first)
+  assert.notStrictEqual(second.data.items, first.data.items)
+  assert.equal(first.data.items.length, 2)
+  assert.equal(first.data.items[0]?.source, 'mock-news-provider')
+  assert.doesNotThrow(() => provider.validate(first.data))
+
+  const firstItem = first.data.items[0]
+  assert.ok(firstItem)
+  firstItem.headline = 'mutated test result'
+  const subsequent = await provider.fetch({ symbol: '600519' })
+  assert.equal(subsequent.data.items[0]?.headline, 'Mock company reports stable quarterly operations')
+})
+
+test('NewsCapability normalizes input and projects Provider metadata without Registry details', async () => {
+  const composition = createMockProviderComposition()
+  const capability = new NewsCapability(composition.registry, composition.news)
 
   const result = await capability.search_company_news({ symbol: ' 600519 ' })
 
   assert.equal(result.symbol, '600519')
   assert.equal(result.items[0]?.symbol, '600519')
-  await assert.rejects(
-    provider.execute({ symbol: ' 600519 ' }),
-    /mock news data is unavailable/,
-  )
+  assert.equal(result.source, 'mock-news-provider')
+  assert.equal(result.timestamp, '2026-08-23T09:00:00.000Z')
+  assert.equal(result.quality, 'low')
+  assert.equal(result.confidence, 0.95)
+  assert.equal('registry' in result, false)
 })
 
-test('NewsCapability rejects invalid input without calling its Provider', async () => {
-  class SpyProvider implements CapabilityProvider<NewsSearchInput, NewsSearchResult> {
-    readonly name = 'spy-news-provider'
-    calls = 0
-
-    async execute(_input: NewsSearchInput): Promise<NewsSearchResult> {
-      this.calls += 1
-      return { symbol: '600519', items: [] }
-    }
+test('NewsCapability routes through a typed registered handle', async () => {
+  let calls = 0
+  const provider: DataProvider<NewsSearchInput, NewsProviderData> = {
+    name: 'routed-news-provider',
+    async fetch() {
+      calls += 1
+      return { data: { ...newsData, items: newsData.items.map((item) => ({ ...item })) }, metadata: newsMetadata }
+    },
+    validate() {},
   }
+  const registry = new ProviderRegistry()
+  const capability = new NewsCapability(registry, registry.register(provider))
 
-  const provider = new SpyProvider()
-  const capability = new NewsCapability(provider)
+  const result = await capability.search_company_news({ symbol: '600519' })
+
+  assert.equal(calls, 1)
+  assert.equal(result.source, 'fixture-news')
+  assert.equal(result.items[0]?.headline, 'Company update')
+})
+
+test('NewsCapability receives isolated nested Provider results from the Registry', async () => {
+  const providerResult = {
+    data: newsData,
+    metadata: newsMetadata,
+  }
+  const provider: DataProvider<NewsSearchInput, NewsProviderData> = {
+    name: 'shared-result-news-provider',
+    async fetch() {
+      return providerResult
+    },
+    validate() {},
+  }
+  const registry = new ProviderRegistry()
+  const capability = new NewsCapability(registry, registry.register(provider))
+
+  const first = await capability.search_company_news({ symbol: '600519' })
+  first.items[0]!.headline = 'mutated capability result'
+
+  assert.equal(providerResult.data.items[0]?.headline, 'Company update')
+
+  const second = await capability.search_company_news({ symbol: '600519' })
+  assert.equal(second.items[0]?.headline, 'Company update')
+  assert.notStrictEqual(second.items, first.items)
+  assert.notStrictEqual(second.items[0], first.items[0])
+})
+
+test('NewsCapability rejects invalid input without calling its registered Provider', async () => {
+  let calls = 0
+  const provider: DataProvider<NewsSearchInput, NewsProviderData> = {
+    name: 'spy-news-provider',
+    async fetch() {
+      calls += 1
+      return { data: newsData, metadata: newsMetadata }
+    },
+    validate() {},
+  }
+  const registry = new ProviderRegistry()
+  const capability = new NewsCapability(registry, registry.register(provider))
 
   await assert.rejects(
     capability.search_company_news({ symbol: '   ' }),
     /symbol must not be empty/,
   )
-  assert.equal(provider.calls, 0)
+  assert.equal(calls, 0)
 })
 
-test('NewsCapability rejects malformed Provider output at the Capability boundary', async () => {
-  class MalformedProvider implements CapabilityProvider<NewsSearchInput, NewsSearchResult> {
-    readonly name = 'malformed-news-provider'
-
-    async execute(_input: NewsSearchInput): Promise<NewsSearchResult> {
-      return { symbol: '000001', items: [] }
-    }
+test('NewsCapability rejects malformed registered Provider output', async () => {
+  const provider: DataProvider<NewsSearchInput, NewsProviderData> = {
+    name: 'malformed-news-provider',
+    async fetch() {
+      return { data: { symbol: '000001', items: [] }, metadata: newsMetadata }
+    },
+    validate() {},
   }
-
-  const capability = new NewsCapability(new MalformedProvider())
+  const registry = new ProviderRegistry()
+  const capability = new NewsCapability(registry, registry.register(provider))
 
   await assert.rejects(
     capability.search_company_news({ symbol: '600519' }),
@@ -60,28 +146,9 @@ test('NewsCapability rejects malformed Provider output at the Capability boundar
   )
 })
 
-test('MockNewsProvider returns deterministic independent results', async () => {
-  const provider = new MockNewsProvider()
-
-  const first = await provider.execute({ symbol: '600519' })
-  const second = await provider.execute({ symbol: '600519' })
-
-  assert.deepEqual(second, first)
-  assert.notStrictEqual(second, first)
-  assert.notStrictEqual(second.items, first.items)
-  assert.equal(first.items.length, 2)
-  assert.equal(first.items[0]?.source, 'mock-news-provider')
-
-  const firstItem = first.items[0]
-  assert.ok(firstItem)
-  firstItem.headline = 'mutated test result'
-
-  const subsequent = await provider.execute({ symbol: '600519' })
-  assert.equal(subsequent.items[0]?.headline, 'Mock company reports stable quarterly operations')
-})
-
 test('NewsCapability wraps Provider failures with capability context', async () => {
-  const capability = new NewsCapability(new MockNewsProvider())
+  const composition = createMockProviderComposition()
+  const capability = new NewsCapability(composition.registry, composition.news)
 
   await assert.rejects(
     capability.search_company_news({ symbol: '999999' }),

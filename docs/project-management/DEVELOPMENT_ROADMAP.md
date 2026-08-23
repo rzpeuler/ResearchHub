@@ -1,129 +1,75 @@
 # Development Roadmap
 
-> 本路线图描述 ResearchHub 已确认的阶段性工程路径。未完成阶段是规划，不代表已有实现；具体任务以 TASK_REGISTRY.md 为准。
+本路线图描述已确认的工程阶段；实际完成情况以 [TASK_REGISTRY.md](TASK_REGISTRY.md) 和 [CURRENT_STATUS.md](CURRENT_STATUS.md) 为准。
 
 ## Phase 0 — Governance Bootstrap
 
-### 目标
+目标：建立项目治理、任务、决策、架构和 Agent 执行文档。
 
-建立项目级文档、任务、决策、架构和 Agent 执行规范。
-
-### 状态
-
-Completed。治理文档体系已在 `chore: initialize project execution state management system` 提交中建立。
+状态：Completed。
 
 ## Phase 1 — Architecture Design
 
-### 目标
+目标：完成 ResearchHub 定位、DeepSeek Harness 分析、Harness Extension + Financial Intelligence Layer 架构，以及 Agent、Skill、Capability、Workflow、Memory 模型定义。
 
-完成 ResearchHub 产品定位、DeepSeek Harness 运行时分析、Harness Extension + Financial Intelligence Layer 架构设计，以及 Agent、Skill、Capability、Workflow、Memory 核心模型定义。
+里程碑：Architecture v0.2、Technical Design v0.1、架构基线冻结。
 
-### 关键里程碑
-
-- DeepSeek Harness architecture analysis
-- ResearchHub Architecture v0.2
-- ResearchHub Technical Design v0.1
-- Architecture baseline freeze
-
-### 状态
-
-当前基线已完成，Architecture v0.2 是所有后续工程任务的约束。
+状态：Completed。
 
 ## Phase 2 — Harness Integration Validation
 
-### 目标
+目标：验证 Runtime、Extension、Agent、Skill、Capability 和 Session 的最小闭环，不 fork Harness Core。
 
-验证 ResearchHub 能够通过 DeepSeek Harness 原生扩展机制接入运行时，不 fork Harness Core，并确认工程骨架可承载 Agent、Skill、Capability、Session 和 Memory。
-
-### 关键验证项
-
-- Agent loading
-- Skill loading
-- Capability calling
-- Session persistence
-- Memory interface integration
-
-### 下一阶段入口
-
-- Phase 2 validation completed: Harness extension, Agent, Skill, Capability and Session path verified
-- Phase 3 — Financial Capability Layer
+状态：Completed。
 
 ## Phase 3 — Financial Capability Layer
 
-### 目标
+目标：建立 Capability 与数据来源解耦的金融能力基础。
 
-实现首批结构化金融能力，保持数据能力与推理能力分离，并为每个结果保留来源、时间戳和置信度元数据。
+里程碑：Market Capability MVP、Mock Market/News Capability。
 
-### 计划能力
-
-- Market Capability (MVP completed in RH-ENG-002)
-- News Capability
-- Financial Capability
-- Institution Capability
-- Community Capability
-- Knowledge Capability
+状态：Completed（业务能力仍使用 Mock 数据）。
 
 ## Phase 4 — Research Artifact and Event Analysis MVP
 
-### 目标
+目标：完成数据获取、Evidence、Thesis、Prediction、Event Analysis 和 Session 关联。
 
-完成第一个完整用户价值闭环：数据采集 → 证据整理 → 异动分析 → 研究产物 → 记忆更新。
-
-### 当前里程碑
-
-- Research Artifact Framework foundation completed in RH-DESIGN-001.
-- Evidence、Thesis、Prediction 已具备类型定义、运行时校验、JSON 序列化和 Session/ID 关联。
-- Event Analysis Skill Framework MVP completed in RH-ENG-003A.
-- Skill loading、Market/News Capability calling、Artifact generation 和 Session persistence 已通过 Harness integration test。
-- Research Memory Framework MVP completed in RH-DESIGN-002。
-- Thesis/Prediction Artifact → Memory Entry mapping、Local JSON persistence、retrieval and update validation completed。
-
-### 已完成扩展
-
-- Research Evaluation Framework MVP completed in RH-DESIGN-003。
-- Prediction → Outcome → Evaluation → Review → Memory 闭环已通过确定性测试。
-
-### 下一步
-
-- Review 调度与真实 Outcome Provider。
-- Memory retrieval and indexing evolution。
+状态：Completed。
 
 ## Phase 5 — Research Memory Foundation
 
-### 目标
+目标：将结构化 Research Artifact 沉淀到本地 Memory，并支持检索和更新。
 
-建设结构化研究记忆、Artifact 到 Memory 的持久化和检索基础。
-
-### 当前状态
-
-Research Memory Foundation 已完成；Review 和 Evaluation 已在 Phase 6 建立基础能力。
+状态：Completed。
 
 ## Phase 6 — Research Evaluation and Review Foundation
 
-### 目标
+目标：建立 Prediction → Outcome → Evaluation → Review → Memory 的客观复盘闭环。
 
-建立 Prediction → Outcome → Evaluation → Review → Memory 的客观复盘闭环。
+状态：Completed。
 
-### 当前里程碑
+## Phase 7 — Financial Data Provider Foundation
 
-- Review Artifact、Outcome Model 和 Evaluation Engine MVP 已完成。
-- ReviewMemoryAdapter 已接入 Local JSON Memory Provider。
-- 不包含真实行情回测、自动交易或策略自修改。
+目标：建立可替换、可追溯的金融数据 Provider 标准，使 Capability 不直接依赖外部数据源。
 
-### 下一步
+关键里程碑：
 
-- 真实 Outcome Provider。
-- Review 调度、评估分析和 Memory 检索演进。
+- `DataProvider` 与 `FinancialDataMetadata` 契约。
+- `ProviderRegistry` 与类型化 Provider Handle。
+- Mock Market/News Provider 通过 Registry 接入 Capability。
+- Capability 输出保留 source、timestamp、quality、confidence。
 
-## Phase 7 — Personal Investment Research Assistant
+状态：In Progress。Provider Framework MVP 已完成；真实数据源接入尚未开始。
 
-### 目标
+## Phase 8 — Personal Investment Research Assistant
 
-逐步扩展到每日情报、持续监控、研究机会发现和自动化复盘，形成个人 AI 投资研究平台。
+目标：在完成真实数据源治理、检索演进和复盘调度后，逐步扩展每日情报、持续监控、研究机会发现和自动化复盘。
 
-## 路线图维护规则
+状态：Planned。
 
-- 新阶段必须有目标、可验证里程碑和对应任务。
-- 规划变化记录在 [DECISION_LOG.md](DECISION_LOG.md) 或任务登记表中。
-- 架构方向变化必须新增 ADR、更新 Architecture 版本和 Technical Design。
-- 已完成事实同步到 [CURRENT_STATUS.md](CURRENT_STATUS.md) 和 [CHANGELOG.md](CHANGELOG.md)。
+## 技术演进约束
+
+- 新数据源必须实现统一 Provider 契约并通过 Registry 注册。
+- Capability 不得直接访问 HTTP、SDK、数据库或爬虫。
+- 真实 Provider 接入必须先完成授权、字段语义、质量、错误处理和测试方案。
+- 架构方向变化必须新增 ADR，并同步 CURRENT_STATUS、CHANGELOG 和本路线图。
