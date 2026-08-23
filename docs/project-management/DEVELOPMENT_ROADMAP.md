@@ -75,18 +75,24 @@ Completed。治理文档体系已在 `chore: initialize project execution state 
 - Evidence、Thesis、Prediction 已具备类型定义、运行时校验、JSON 序列化和 Session/ID 关联。
 - Event Analysis Skill Framework MVP completed in RH-ENG-003A.
 - Skill loading、Market/News Capability calling、Artifact generation 和 Session persistence 已通过 Harness integration test。
+- Research Memory Framework MVP completed in RH-DESIGN-002。
+- Thesis/Prediction Artifact → Memory Entry mapping、Local JSON persistence、retrieval and update validation completed。
 
 ### 下一步
 
 - Research Artifact Review 生命周期。
-- Research Memory Adapter 设计与验证。
 - Prediction Evaluation 和复盘闭环。
+- Memory retrieval and indexing evolution。
 
 ## Phase 5 — Company Research and Review System
 
 ### 目标
 
 建设公司研究、研究历史、投资决策记录、Prediction → Outcome → Evaluation → Memory Update 复盘闭环。
+
+### 当前状态
+
+Research Memory Foundation 已完成；Review Artifact、Evaluation 和真实数据源仍待开发。
 
 ## Phase 6 — Personal Investment Research Assistant
 

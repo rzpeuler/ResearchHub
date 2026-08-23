@@ -2,6 +2,22 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v0.6.0
+
+**Date:** 2026-08-23
+
+**Changes:**
+
+- Added the Memory Entry and Memory Provider contracts with runtime validation.
+- Added the Local JSON Memory Provider with save, retrieve, update, atomic persistence and same-process path coordination.
+- Added the Artifact Memory Adapter for Thesis and Prediction artifacts.
+- Added Memory tests for persistence, retrieval, updates, Session metadata, defensive copies and error boundaries.
+- Added `docs/architecture/RESEARCH_MEMORY_DESIGN.md`.
+
+**Breaking Changes:**
+
+- None. No Harness Core, frozen architecture document, real data source, trading logic or external database was changed.
+
 ## Version: v0.5.0
 
 **Date:** 2026-08-23

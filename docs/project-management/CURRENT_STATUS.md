@@ -4,13 +4,13 @@
 
 ## 当前版本
 
-`v0.5.0` — Event Analysis Skill Framework MVP
+`v0.6.0` — Research Memory Framework MVP
 
 ## 当前阶段
 
-**Phase 4 — Event Analysis Skill MVP**
+**Phase 5 — Research Memory Foundation**
 
-ResearchHub 已完成 Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework，以及第一个 Event Analysis Skill 的端到端验证。当前闭环为 Skill → Capability → Artifact → Session。
+ResearchHub 已完成 Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework、Event Analysis Skill MVP，以及 Artifact → Memory 的本地持久化验证。当前闭环为 Skill → Capability → Artifact → Memory → Session。
 
 ## 已完成模块
 
@@ -27,18 +27,22 @@ ResearchHub 已完成 Harness Integration Validation、Financial Capability Foun
 - Event Analysis `SKILL.md`
 - `EventAnalysisWorkflow` 与 `run_event_analysis` Harness Tool
 - Event Analysis Harness 端到端测试：Skill loading、Capability calling、Artifact creation、Session persistence
+- Memory Core：`MemoryEntry`、`MemoryProvider`、运行时校验和 JSON 序列化
+- `LocalJsonMemoryProvider`：本地 JSON 持久化、精确检索、更新、原子替换和同进程并发队列
+- `ArtifactMemoryAdapter`：Thesis/Prediction 到 Memory Entry 的确定性映射
+- Research Memory Framework 测试：保存、检索、更新、重载、Session 元数据和错误边界
 
 ## 开发中模块
 
 - Research Artifact Review 生命周期尚未实现
-- Research Memory Adapter 尚未实现
+- Research Memory Review/Evaluation 集成尚未实现
 - Prediction Evaluation 尚未实现
 - 真实 Market/News Provider 尚未接入
 
 ## 待开发模块
 
 - Review Artifact
-- Research Memory 持久化与检索适配器
+- Memory 检索与索引演进
 - Prediction → Outcome → Evaluation → Memory Update 复盘闭环
 - News、Financial、Institution 等后续真实 Capability
 
@@ -60,6 +64,7 @@ ResearchHub 已完成 Harness Integration Validation、Financial Capability Foun
 - Capability 设计文档：[CAPABILITY_DESIGN.md](../architecture/CAPABILITY_DESIGN.md)
 - Artifact 设计文档：[RESEARCH_ARTIFACT_DESIGN.md](../architecture/RESEARCH_ARTIFACT_DESIGN.md)
 - Event Analysis 设计文档：[EVENT_ANALYSIS_SKILL_DESIGN.md](../architecture/EVENT_ANALYSIS_SKILL_DESIGN.md)
+- Research Memory 设计文档：[RESEARCH_MEMORY_DESIGN.md](../architecture/RESEARCH_MEMORY_DESIGN.md)
 
 ## 最近一次更新时间
 
@@ -67,4 +72,4 @@ ResearchHub 已完成 Harness Integration Validation、Financial Capability Foun
 
 ## 最近一次 commit
 
-`feat: add event analysis skill framework`（最终 hash 以 Git 提交结果为准）
+`feat: add research memory foundation`（最终 hash 以 Git 提交结果为准）

@@ -34,9 +34,9 @@ Phase 1 的目标用户是中国 A股市场中具有基础投资经验的个人�
 
 ## 当前阶段
 
-**Phase 4 — Event Analysis Skill MVP**
+**Phase 5 — Research Memory Foundation**
 
-Architecture v0.2 和 Technical Design v0.1 已完成并冻结；Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework 和 Event Analysis Skill MVP 已完成。下一步进入 Review、Evaluation 和 Research Memory 设计。
+Architecture v0.2 和 Technical Design v0.1 已完成并冻结；Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework、Event Analysis Skill MVP 和 Research Memory Framework MVP 已完成。下一步进入 Review、Evaluation 和 Memory 检索演进。
 
 ## 核心技术方向
 
@@ -55,6 +55,7 @@ ResearchHub 复用 Harness 的 Agent、Plugin、Workflow、Session、Tool 和 Me
 - [ResearchHub Technical Design v0.1](../architecture/TECHNICAL_DESIGN_V0.1.md)
 - [Research Artifact Design](../architecture/RESEARCH_ARTIFACT_DESIGN.md)
 - [Event Analysis Skill Design](../architecture/EVENT_ANALYSIS_SKILL_DESIGN.md)
+- [Research Memory Design](../architecture/RESEARCH_MEMORY_DESIGN.md)
 
 ## 长期愿景
 
