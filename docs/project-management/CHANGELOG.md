@@ -2,6 +2,23 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v1.6.0
+
+**Date:** 2026-08-24
+
+**Changes:**
+
+- Added the Workflow Definition model and validated Workflow Registry.
+- Added Research Manager request validation, execution context, Artifact checks, and Report View aggregation.
+- Added Harness-facing Research Manager service and `run_research_workflow` tool.
+- Extended Event Analysis to run Market, Announcement, Media, and Financial Capability ports.
+- Added deterministic Harness Agent/Session end-to-end workflow integration test.
+- Added `docs/architecture/RESEARCH_WORKFLOW_IMPLEMENTATION.md`.
+
+**Breaking Changes:**
+
+- None. Existing Capability contracts, Artifact types, Memory/Evaluation boundaries, Harness Core, and Agent Loop remain unchanged.
+
 ## Version: v1.5.0
 
 **Date:** 2026-08-24

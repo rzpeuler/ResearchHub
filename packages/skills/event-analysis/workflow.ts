@@ -10,14 +10,19 @@ import {
 } from '../../artifacts/index.ts'
 import { type MarketCapability, type MarketSnapshot } from '../../capabilities/market/index.ts'
 import { type NewsCapability, type NewsEvidence } from '../../capabilities/news/index.ts'
+import { type FinancialCapability, createFinancialEvidence } from '../../capabilities/financial/index.ts'
 import type { ArtifactIdFactory, EventAnalysisInput, EventAnalysisResult } from './types.ts'
 
 type MarketCapabilityPort = Pick<MarketCapability, 'get_market_snapshot'>
 type NewsCapabilityPort = Pick<NewsCapability, 'search_company_news'>
+type FinancialCapabilityPort = Pick<FinancialCapability, 'get_financial_snapshot'>
 
 export interface EventAnalysisWorkflowOptions {
   marketCapability: MarketCapabilityPort
   newsCapability: NewsCapabilityPort
+  announcementCapability?: NewsCapabilityPort
+  mediaCapability?: NewsCapabilityPort
+  financialCapability?: FinancialCapabilityPort
   artifactIdFactory: ArtifactIdFactory
 }
 
@@ -28,21 +33,47 @@ export class EventAnalysisWorkflow {
   async run(input: EventAnalysisInput): Promise<EventAnalysisResult> {
     const normalized = validateInput(input)
     const marketSnapshot = await this.options.marketCapability.get_market_snapshot({ symbol: normalized.symbol })
-    const newsResult = await this.options.newsCapability.search_company_news({ symbol: normalized.symbol })
 
     let evidenceOrdinal = 0
-    const evidence: Evidence[] = [
-      createMarketEvidence(
-        this.options.artifactIdFactory('evidence', evidenceOrdinal++),
-        normalized,
-        marketSnapshot,
-      ),
-      ...newsResult.items.map((item) => createNewsEvidence(
+    const evidence: Evidence[] = [createMarketEvidence(
+      this.options.artifactIdFactory('evidence', evidenceOrdinal++),
+      normalized,
+      marketSnapshot,
+    )]
+
+    if (this.options.announcementCapability !== undefined
+      && this.options.mediaCapability !== undefined
+      && this.options.financialCapability !== undefined) {
+      const announcementResult = await this.options.announcementCapability.search_company_news({ symbol: normalized.symbol })
+      evidence.push(...announcementResult.items.map((item) => createNewsEvidence(
         this.options.artifactIdFactory('evidence', evidenceOrdinal++),
         normalized,
         item,
-      )),
-    ]
+      )))
+
+      const mediaResult = await this.options.mediaCapability.search_company_news({ symbol: normalized.symbol })
+      evidence.push(...mediaResult.items.map((item) => createNewsEvidence(
+        this.options.artifactIdFactory('evidence', evidenceOrdinal++),
+        normalized,
+        item,
+      )))
+
+      const financialSnapshot = await this.options.financialCapability.get_financial_snapshot({ symbol: normalized.symbol })
+      const financialEvidence = createFinancialEvidence(financialSnapshot, {
+        sessionId: normalized.sessionId,
+        createdAt: normalized.createdAt,
+        idFactory: (_kind, ordinal) => this.options.artifactIdFactory('evidence', evidenceOrdinal + ordinal),
+      })
+      evidence.push(...financialEvidence)
+      evidenceOrdinal += financialEvidence.length
+    } else {
+      const newsResult = await this.options.newsCapability.search_company_news({ symbol: normalized.symbol })
+      evidence.push(...newsResult.items.map((item) => createNewsEvidence(
+        this.options.artifactIdFactory('evidence', evidenceOrdinal++),
+        normalized,
+        item,
+      )))
+    }
 
     const thesis: Thesis = createThesis({
       id: this.options.artifactIdFactory('thesis', 0),

@@ -138,7 +138,21 @@
 
 状态：Completed。工程实现进入 RH-ENG-009。
 
-## Phase 14 — Personal Investment Research Assistant
+## Phase 14 — Research Workflow Framework MVP
+
+目标：实现第一个基于 Harness Agent/Session 的端到端 Research Workflow，连接 Workflow Registry、Research Manager、Capability Chain、Artifact 和 Research Report View。
+
+关键里程碑：
+
+- Workflow Definition 与 Registry。
+- Research Manager Coordinator 与 Harness Tool/Service。
+- `event-analysis`：Market → Announcement → Media → Financial → Artifact。
+- Report View 聚合 `evidenceIds`、`thesisIds`、`predictionIds`。
+- Harness Agent、Skill、Capability、Artifact、Report 和 Session 持久化集成测试。
+
+状态：Completed。生产调度、重试和更多 Workflow 仍待后续演进。
+
+## Phase 15 — Personal Investment Research Assistant
 
 目标：在完成真实数据源治理、检索演进和复盘调度后，逐步扩展每日情报、持续监控、研究机会发现和自动化复盘。
 

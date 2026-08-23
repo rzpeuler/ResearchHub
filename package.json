@@ -8,13 +8,14 @@
   "scripts": {
     "test:providers": "tsx --test packages/providers/core/core.test.ts packages/providers/registry/registry.test.ts packages/providers/config.test.ts packages/providers/transport/native-fetch.test.ts packages/providers/adapters/market-types.test.ts packages/providers/adapters/tushare/tushare-market-provider.test.ts packages/providers/adapters/akshare/akshare-market-provider.test.ts packages/providers/adapters/announcement/announcement-provider.test.ts packages/providers/adapters/media/media-provider.test.ts packages/providers/adapters/financial/financial-provider.test.ts packages/providers/market/composition.test.ts",
     "test:capabilities": "tsx --test packages/capabilities/providers/mock-market-provider.test.ts packages/capabilities/providers/mock-news-provider.test.ts packages/capabilities/financial/financial.test.ts",
+    "test:workflows": "tsx --test packages/workflows/workflows.test.ts packages/agents/research-manager/research-manager.test.ts",
     "test:artifacts": "tsx --test packages/artifacts/core/core.test.ts packages/artifacts/evidence/evidence.test.ts packages/artifacts/thesis/thesis.test.ts packages/artifacts/prediction/prediction.test.ts packages/artifacts/review/review.test.ts packages/artifacts/artifact-framework.test.ts",
     "test:evaluation": "tsx --test packages/evaluation/outcome/outcome.test.ts packages/evaluation/review/review.test.ts",
     "test:memory": "tsx --test packages/memory/core/core.test.ts packages/memory/providers/local-json-memory-provider.test.ts packages/memory/adapters/artifact-memory-adapter.test.ts packages/memory/adapters/review-memory-adapter.test.ts",
     "test:skills": "tsx --test packages/skills/event-analysis/workflow.test.ts",
-    "test:integration": "tsx --test tests/integration/harness-integration.test.ts tests/integration/market-capability.test.ts tests/integration/event-analysis.test.ts tests/integration/announcement-provider.test.ts tests/integration/media-provider.test.ts tests/integration/financial-capability.test.ts",
+    "test:integration": "tsx --test tests/integration/harness-integration.test.ts tests/integration/market-capability.test.ts tests/integration/event-analysis.test.ts tests/integration/announcement-provider.test.ts tests/integration/media-provider.test.ts tests/integration/financial-capability.test.ts tests/integration/research-workflow.test.ts",
     "typecheck:integration": "tsc --noEmit -p tsconfig.json",
-    "test": "npm run typecheck:integration && npm run test:providers && npm run test:capabilities && npm run test:artifacts && npm run test:evaluation && npm run test:memory && npm run test:skills && npm run test:integration"
+    "test": "npm run typecheck:integration && npm run test:providers && npm run test:capabilities && npm run test:workflows && npm run test:artifacts && npm run test:evaluation && npm run test:memory && npm run test:skills && npm run test:integration"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",

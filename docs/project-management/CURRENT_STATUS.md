@@ -4,11 +4,11 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 当前版本
 
-`v1.5.0` — Research Workflow Architecture Design
+`v1.6.0` — Research Workflow Framework MVP
 
 ## 当前阶段
 
-**Phase 13 — Research Workflow Architecture Design**
+**Phase 14 — Research Workflow Framework MVP**
 
 架构基线仍为 ResearchHub Architecture v0.2、Technical Design v0.1，Runtime 版本锁定为 DeepSeek Harness `0.1.1-rc.2`。
 
@@ -41,6 +41,12 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 - Research Workflow Architecture 已完成：Workflow Definition、Research Manager、Harness Runtime 边界和 Research Report 聚合视图。
 - 已明确 ResearchHub 不重建 Harness Workflow Engine、Agent Runtime 或 Plugin Runtime。
 - 已明确 Workflow 独立于 Skill，Skill 只描述研究方法，Plugin 只负责 Harness 扩展注册。
+- Workflow Definition、Workflow Registry 和 `event-analysis` 定义已实现。
+- Research Manager Coordinator 与 Harness Research Manager Service 已实现。
+- `run_research_workflow` Harness Tool 已注册并绑定 Agent Session。
+- Event Analysis 已支持 Market、Announcement、Media、Financial Capability 链路。
+- Research Report View 已实现为 Evidence、Thesis、Prediction ID 聚合对象。
+- Harness Agent、Skill、Capability、Artifact、Report、Session 持久化端到端测试已通过。
 
 ## 开发中模块
 
@@ -57,7 +63,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 - Review 调度与真实 Outcome 来源。
 - Financial、Institution 等后续 Capability。
 - 真实财务数据账号授权、bridge 部署与生产质量验收。
-- RH-ENG-009 Research Workflow Framework MVP 实现。
+- Research Workflow 生产调度、重试和多 Workflow 扩展。
 
 ## 当前阻塞问题
 
@@ -70,7 +76,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 最近一次 commit
 
-`docs: design research workflow architecture`（`77f0728ade15a1d38ee4050499da98241bcf7595`）
+待 RH-ENG-009 提交后回填。
 
 ## 架构基线
 
@@ -84,6 +90,34 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 - [Financial Intelligence Data Design](../architecture/FINANCIAL_DATA_DESIGN.md)
 - [Financial Statement Provider Design](../architecture/FINANCIAL_PROVIDER_DESIGN.md)
 - [Research Workflow Design](../architecture/RESEARCH_WORKFLOW_DESIGN.md)
+- [Research Workflow Implementation](../architecture/RESEARCH_WORKFLOW_IMPLEMENTATION.md)
+
+## RH-ENG-009 Status Synchronization
+
+**Current Stage:** Phase 14 — Research Workflow Framework MVP
+
+**Completed:**
+
+- Validated Workflow Definition and Workflow Registry.
+- Research Manager request validation, Workflow selection, execution context, and Artifact relationship checks.
+- Harness-facing Research Manager service and `run_research_workflow` tool.
+- Event Analysis workflow using Market, Announcement, Media, and Financial Capability ports.
+- Research Report View aggregation over Evidence, Thesis, and Prediction IDs.
+- Harness Agent/Session persistence end-to-end fixture without network dependency.
+
+**In Progress / Next:**
+
+- Add more approved Workflow Definitions.
+- Define production scheduling, cancellation, retry, and observability policy.
+- Evaluate Report indexing through existing Memory boundaries.
+
+**Blockers:**
+
+- No engineering blocker. Production scheduling and real data source readiness remain future work.
+
+**Last Updated:** 2026-08-24
+
+**Feature Commit:** To be filled after the implementation commit.
 
 ## RH-DESIGN-008 Status Synchronization
 

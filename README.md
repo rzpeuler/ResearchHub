@@ -1,6 +1,6 @@
 # ResearchHub
 
-ResearchHub 是构建在 DeepSeek Harness 之上的 AI A 股个人投资研究员。目前项目处于 **Phase 13 — Research Workflow Architecture Design**：已完成数据能力、研究资产、Memory、Evaluation 和 Financial Provider，并完成 Research Manager、Workflow、Skill、Capability、Artifact 边界设计。
+ResearchHub 是构建在 DeepSeek Harness 之上的 AI A 股个人投资研究员。目前项目处于 **Phase 14 — Research Workflow Framework MVP**：已完成数据能力、研究资产、Memory、Evaluation、Workflow Definition、Workflow Registry、Research Manager 和 Event Analysis 端到端工作流。
 
 ResearchHub 不执行交易，也不 fork Harness Core。本阶段已完成真实 Market Provider 的适配与测试；生产启用仍需完成账号授权、bridge 运维和数据质量验收。
 
@@ -35,14 +35,15 @@ ResearchHub 不执行交易，也不 fork Harness Core。本阶段已完成真�
 - [Research Memory Design](docs/architecture/RESEARCH_MEMORY_DESIGN.md)
 - [Research Evaluation Design](docs/architecture/RESEARCH_EVALUATION_DESIGN.md)
 - [Research Workflow Design](docs/architecture/RESEARCH_WORKFLOW_DESIGN.md)
+- [Research Workflow Implementation](docs/architecture/RESEARCH_WORKFLOW_IMPLEMENTATION.md)
 
 所有后续工程任务必须以 ResearchHub Architecture v0.2、Technical Design v0.1 和当前治理文档为约束。
 
 ## 当前阶段
 
-**Phase 13 — Research Workflow Architecture Design**
+**Phase 14 — Research Workflow Framework MVP**
 
-当前已完成 `Research Manager → Workflow Definition → Harness Workflow Runtime → Skill → Capability → Artifact` 的架构边界设计。ResearchHub 只定义 Workflow，不重建 Harness Workflow Engine、Agent Runtime 或 Plugin Runtime。Research Report 采用现有 Evidence、Thesis、Prediction 的聚合视图。
+当前已完成 `Research Manager → Workflow Registry → Harness Agent/Session → Skill → Capability → Artifact → Report View` 的最小端到端执行链路。ResearchHub 只定义 Workflow，不重建 Harness Workflow Engine、Agent Runtime 或 Plugin Runtime。Research Report 采用现有 Evidence、Thesis、Prediction 的聚合视图。
 
 ## 协作角色
 

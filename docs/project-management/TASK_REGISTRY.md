@@ -30,6 +30,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | RH-DESIGN-007 | Design Financial Intelligence Data Layer | Completed | P0 | 2026-08-24 | Luna | `7cf3187961bec7bf0cfadd0dd74a745366fae864` | Accepted — FinancialStatement, FinancialMetric, Provider, Capability, Evidence and Memory compatibility design completed |
 | RH-ENG-008 | Implement Financial Statement Provider MVP | Completed | P0 | 2026-08-24 | Luna | `05b216b0022618c55ae2fcddfe081f36f472a742` | Accepted — Tushare/AkShare adapters, normalization, Financial Capability, Evidence integration and full tests passed |
 | RH-DESIGN-008 | Design Research Workflow Architecture | Completed | P0 | 2026-08-24 | Luna | `77f0728ade15a1d38ee4050499da98241bcf7595` | Accepted — Workflow, Research Manager, Harness boundary, Report aggregation and compatibility design completed |
+| RH-ENG-009 | Implement Research Workflow Framework MVP | Completed | P0 | 2026-08-24 | Luna | To be filled after implementation commit | Accepted — Workflow Registry, Research Manager, Event Analysis chain, Report View, Harness integration and E2E tests passed |
 
 ## RH-DESIGN-004 Acceptance Scope
 
@@ -102,6 +103,16 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 - Research Report is an aggregate view over Evidence, Thesis, and Prediction Artifact IDs, not a new base Artifact type.
 - Artifact, Memory, Evaluation, Capability, Provider, Session, and Cordis Plugin boundaries remain compatible.
 - RH-ENG-009 is the next engineering implementation task; no production workflow code is included in this design task.
+
+## RH-ENG-009 Acceptance Scope
+
+- Workflow Definition and Registry validate and register the `event-analysis` workflow.
+- Research Manager validates Research Requests, resolves Workflows, creates execution context, invokes an injected executor, and aggregates Artifact IDs into a non-Artifact Report View.
+- Harness-facing Research Manager service and `run_research_workflow` tool reuse the existing Agent, Session, Skill, Tool, and JSONL persistence boundaries.
+- Event Analysis invokes Market, Announcement, Media, and Financial Capability ports; Announcement and Media reuse the existing News Capability contract through different Provider Handles.
+- Evidence, Thesis, and Prediction are created with the active Session ID and validated relationships.
+- TypeScript, workflow, Manager, existing capability/artifact/memory/evaluation/skill tests, and Harness end-to-end workflow test pass.
+- No Harness Core, Agent Loop, Workflow Engine, Plugin Runtime, trading logic, investment advice, or external network dependency was introduced.
 
 ## 历史 RH-ENG-001 约束
 
