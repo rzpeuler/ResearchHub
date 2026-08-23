@@ -93,4 +93,4 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 **Last Updated:** 2026-08-24
 
-**Latest Commit:** `feat: add announcement provider` (`efa053c036d0d7c13e82ff5d73ea5aac07c4cb4e`)
+**Latest Commit:** `feat: add announcement provider` (`e0e8e5b3d3320be2624c5583d2e590f8b63714ad`)

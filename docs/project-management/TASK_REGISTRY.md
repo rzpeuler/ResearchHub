@@ -25,7 +25,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | RH-DESIGN-004 | Add financial data provider framework | Completed | P0 | 2026-08-23 | Luna | `7dbbde94019f648219b3f4c137cc67b1ffaacb7e` | Accepted — Provider, Registry, Capability bridge and full tests passed |
 | RH-ENG-005 | Add real A-share market data providers | Completed | P0 | 2026-08-23 | Luna | `336213464b61d03fbed95738eff67bce46665461` | Accepted — Tushare, AkShare, normalization, fallback and full tests passed |
 | RH-DESIGN-006 | Design Information Provider architecture | Completed | P0 | 2026-08-24 | Luna | `7f7fb65db70827d02aaa40e8786ca18b9000faa1` | Accepted — NewsItem, Provider Interface, Source Hierarchy and compatibility design completed |
-| RH-ENG-006 | Implement Announcement Provider MVP | Completed | P0 | 2026-08-24 | Luna | `efa053c036d0d7c13e82ff5d73ea5aac07c4cb4e` | Accepted — CNINFO adapter, NewsItem normalization, symbol mapping, Registry, Capability and Event Analysis tests passed |
+| RH-ENG-006 | Implement Announcement Provider MVP | Completed | P0 | 2026-08-24 | Luna | `e0e8e5b3d3320be2624c5583d2e590f8b63714ad` | Accepted — CNINFO adapter, NewsItem normalization, symbol mapping, Registry, Capability and Event Analysis tests passed |
 
 ## RH-DESIGN-004 Acceptance Scope
 
