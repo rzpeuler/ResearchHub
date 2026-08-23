@@ -17,6 +17,14 @@ function hasUnsafeSerializationProperties(value: object): boolean {
     return true;
   }
 
+  let prototype = Object.getPrototypeOf(value);
+  while (prototype !== null) {
+    if (Object.prototype.hasOwnProperty.call(prototype, 'toJSON')) {
+      return true;
+    }
+    prototype = Object.getPrototypeOf(prototype);
+  }
+
   const descriptors = Object.getOwnPropertyDescriptors(value);
   for (const [key, descriptor] of Object.entries(descriptors)) {
     if (Array.isArray(value) && key === 'length') {

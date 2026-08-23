@@ -21,6 +21,7 @@ This file is the lightweight task database for ResearchHub. Every independently 
 | RH-DESIGN-001 | Add Research Artifact Framework foundation | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — type, validation, serialization and relationship tests passed |
 | RH-ENG-003A | Add Event Analysis Skill Framework MVP | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — Skill, Capability, Artifact and Session integration tests passed |
 | RH-DESIGN-002 | Add Research Memory Framework MVP | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — Memory core, Local JSON provider, Artifact adapter and full tests passed |
+| RH-DESIGN-003 | Add Research Evaluation Framework MVP | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — Review, Outcome, Evaluation Engine and Memory integration tests passed |
 
 ## RH-ENG-001 Acceptance Scope
 

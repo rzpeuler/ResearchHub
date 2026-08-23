@@ -78,23 +78,44 @@ Completed。治理文档体系已在 `chore: initialize project execution state 
 - Research Memory Framework MVP completed in RH-DESIGN-002。
 - Thesis/Prediction Artifact → Memory Entry mapping、Local JSON persistence、retrieval and update validation completed。
 
+### 已完成扩展
+
+- Research Evaluation Framework MVP completed in RH-DESIGN-003。
+- Prediction → Outcome → Evaluation → Review → Memory 闭环已通过确定性测试。
+
 ### 下一步
 
-- Research Artifact Review 生命周期。
-- Prediction Evaluation 和复盘闭环。
+- Review 调度与真实 Outcome Provider。
 - Memory retrieval and indexing evolution。
 
-## Phase 5 — Company Research and Review System
+## Phase 5 — Research Memory Foundation
 
 ### 目标
 
-建设公司研究、研究历史、投资决策记录、Prediction → Outcome → Evaluation → Memory Update 复盘闭环。
+建设结构化研究记忆、Artifact 到 Memory 的持久化和检索基础。
 
 ### 当前状态
 
-Research Memory Foundation 已完成；Review Artifact、Evaluation 和真实数据源仍待开发。
+Research Memory Foundation 已完成；Review 和 Evaluation 已在 Phase 6 建立基础能力。
 
-## Phase 6 — Personal Investment Research Assistant
+## Phase 6 — Research Evaluation and Review Foundation
+
+### 目标
+
+建立 Prediction → Outcome → Evaluation → Review → Memory 的客观复盘闭环。
+
+### 当前里程碑
+
+- Review Artifact、Outcome Model 和 Evaluation Engine MVP 已完成。
+- ReviewMemoryAdapter 已接入 Local JSON Memory Provider。
+- 不包含真实行情回测、自动交易或策略自修改。
+
+### 下一步
+
+- 真实 Outcome Provider。
+- Review 调度、评估分析和 Memory 检索演进。
+
+## Phase 7 — Personal Investment Research Assistant
 
 ### 目标
 

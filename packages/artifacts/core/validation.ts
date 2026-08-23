@@ -1,7 +1,7 @@
 import { ArtifactValidationError } from './errors.ts';
 import { ARTIFACT_TYPES, type ArtifactBase, type ArtifactType, type JsonObject, type JsonValue } from './types.ts';
 
-const ISO_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+const ISO_TIMESTAMP_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -23,11 +23,11 @@ function isJsonValueWithin(value: unknown, ancestors: WeakSet<object>): value is
   }
 
   if (typeof value === 'number') {
-    return Number.isFinite(value);
+    return Number.isFinite(value) && !Object.is(value, -0);
   }
 
   if (Array.isArray(value)) {
-    if (ancestors.has(value)) {
+    if (!hasSafeArrayProperties(value) || ancestors.has(value)) {
       return false;
     }
 
@@ -39,13 +39,18 @@ function isJsonValueWithin(value: unknown, ancestors: WeakSet<object>): value is
     }
   }
 
-  if (!isPlainObject(value) || ancestors.has(value)) {
+  if (!isPlainObject(value) || !hasSafeObjectProperties(value) || ancestors.has(value)) {
     return false;
   }
 
   ancestors.add(value);
   try {
-    return Object.values(value).every((item) => isJsonValueWithin(item, ancestors));
+    return Object.keys(value).every((key) => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      return descriptor !== undefined &&
+        'value' in descriptor &&
+        isJsonValueWithin(descriptor.value, ancestors);
+    });
   } finally {
     ancestors.delete(value);
   }
@@ -60,12 +65,41 @@ export function isJsonObject(value: unknown): value is JsonObject {
   return isJsonValue(value);
 }
 
+/** Rejects enumerable properties outside a structure's declared field set. */
+export function assertExactObjectKeys(
+  value: object,
+  allowedKeys: readonly string[],
+  path = '$',
+): void {
+  const allowed = new Set(allowedKeys);
+  const unexpectedKey = Object.keys(value).find((key) => !allowed.has(key));
+
+  if (unexpectedKey !== undefined) {
+    const propertyPath = path === '$' ? `$.${unexpectedKey}` : `${path}.${unexpectedKey}`;
+    throw new ArtifactValidationError('unexpected property', propertyPath);
+  }
+}
+
 export function isArtifactType(value: unknown): value is ArtifactType {
   return typeof value === 'string' && (ARTIFACT_TYPES as readonly string[]).includes(value);
 }
 
 export function isIsoTimestamp(value: unknown): value is string {
-  return typeof value === 'string' && ISO_TIMESTAMP_PATTERN.test(value) && !Number.isNaN(Date.parse(value));
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  const match = ISO_TIMESTAMP_PATTERN.exec(value);
+  if (match === null) {
+    return false;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const daysInMonth = getDaysInMonth(year, month);
+
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth && !Number.isNaN(Date.parse(value));
 }
 
 export function assertNonEmptyString(value: unknown, path: string): asserts value is string {
@@ -101,6 +135,10 @@ export function validateArtifactBase<TType extends ArtifactType = ArtifactType>(
     throw new ArtifactValidationError('expected a plain object');
   }
 
+  if (!isJsonObject(value)) {
+    throw new ArtifactValidationError('expected a plain JSON-safe object');
+  }
+
   assertNonEmptyString(value.id, '$.id');
 
   if (!isArtifactType(value.type)) {
@@ -117,4 +155,83 @@ export function validateArtifactBase<TType extends ArtifactType = ArtifactType>(
   if (!isJsonObject(value.metadata)) {
     throw new ArtifactValidationError('expected a JSON object', '$.metadata');
   }
+}
+
+function hasSafeObjectProperties(value: Record<string, unknown>): boolean {
+  if (hasInheritedToJson(value)) {
+    return false;
+  }
+
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key === 'symbol') {
+      return false;
+    }
+
+    if (key === 'toJSON') {
+      return false;
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !descriptor.enumerable || !('value' in descriptor)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function hasSafeArrayProperties(value: unknown[]): boolean {
+  if (hasInheritedToJson(value)) {
+    return false;
+  }
+
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key === 'symbol') {
+      return false;
+    }
+
+    if (key === 'length') {
+      continue;
+    }
+
+    const index = Number(key);
+    if (!Number.isInteger(index) || index < 0 || index >= value.length || String(index) !== key) {
+      return false;
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !descriptor.enumerable || !('value' in descriptor)) {
+      return false;
+    }
+  }
+
+  for (let index = 0; index < value.length; index += 1) {
+    if (!Object.prototype.hasOwnProperty.call(value, String(index))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function hasInheritedToJson(value: object): boolean {
+  let prototype = Object.getPrototypeOf(value);
+  while (prototype !== null) {
+    if (Object.prototype.hasOwnProperty.call(prototype, 'toJSON')) {
+      return true;
+    }
+
+    prototype = Object.getPrototypeOf(prototype);
+  }
+
+  return false;
+}
+
+function getDaysInMonth(year: number, month: number): number {
+  if (month === 2) {
+    const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    return isLeapYear ? 29 : 28;
+  }
+
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
 }

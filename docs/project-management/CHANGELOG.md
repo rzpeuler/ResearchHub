@@ -2,6 +2,21 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v0.7.0
+
+**Date:** 2026-08-23
+
+**Changes:**
+
+- Added the first-class Review Artifact and Outcome model.
+- Added the deterministic Evaluation Engine with metric comparison, numeric tolerance and objective status derivation.
+- Added Review Memory support and the Prediction → Outcome → Evaluation → Review → Memory integration test.
+- Added `docs/architecture/RESEARCH_EVALUATION_DESIGN.md`.
+
+**Breaking Changes:**
+
+- None. No Harness Core, trading logic, real data source, strategy mutation or external database was introduced.
+
 ## Version: v0.6.0
 
 **Date:** 2026-08-23

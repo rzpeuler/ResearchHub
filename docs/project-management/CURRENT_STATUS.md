@@ -4,13 +4,13 @@
 
 ## 当前版本
 
-`v0.6.0` — Research Memory Framework MVP
+`v0.7.0` — Research Evaluation Framework MVP
 
 ## 当前阶段
 
-**Phase 5 — Research Memory Foundation**
+**Phase 6 — Research Evaluation and Review Foundation**
 
-ResearchHub 已完成 Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework、Event Analysis Skill MVP，以及 Artifact → Memory 的本地持久化验证。当前闭环为 Skill → Capability → Artifact → Memory → Session。
+ResearchHub 已完成 Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework、Event Analysis Skill MVP、Research Memory Framework MVP，以及 Prediction → Outcome → Evaluation → Review → Memory 闭环验证。
 
 ## 已完成模块
 
@@ -31,19 +31,22 @@ ResearchHub 已完成 Harness Integration Validation、Financial Capability Foun
 - `LocalJsonMemoryProvider`：本地 JSON 持久化、精确检索、更新、原子替换和同进程并发队列
 - `ArtifactMemoryAdapter`：Thesis/Prediction 到 Memory Entry 的确定性映射
 - Research Memory Framework 测试：保存、检索、更新、重载、Session 元数据和错误边界
+- Review Artifact：Prediction/Outcome/Evaluation 结构化复盘对象
+- Outcome Model：JSON-safe 实际结果模型
+- Evaluation Engine：同名指标比较、数值容差和四种客观评价状态
+- ReviewMemoryAdapter：Review 到 Research Memory 的确定性映射
+- Research Evaluation 集成测试：Prediction → Outcome → Evaluation → Review → Memory
 
 ## 开发中模块
 
-- Research Artifact Review 生命周期尚未实现
-- Research Memory Review/Evaluation 集成尚未实现
-- Prediction Evaluation 尚未实现
+- Review 调度和真实 Outcome Provider 尚未实现
+- Memory 检索与评估分析尚未实现
 - 真实 Market/News Provider 尚未接入
 
 ## 待开发模块
 
-- Review Artifact
 - Memory 检索与索引演进
-- Prediction → Outcome → Evaluation → Memory Update 复盘闭环
+- Review 调度、评估分析和真实 Outcome 来源
 - News、Financial、Institution 等后续真实 Capability
 
 ## 当前阻塞问题
@@ -57,7 +60,7 @@ ResearchHub 已完成 Harness Integration Validation、Financial Capability Foun
 - Runtime：DeepSeek Harness `0.1.1-rc.2`
 - 架构模式：Harness Extension + Financial Intelligence Layer
 - 核心设计：Agent + Skill + Capability + Workflow + Memory
-- 研究资产：Evidence + Thesis + Prediction + Review（Review 预留）
+- 研究资产：Evidence + Thesis + Prediction + Review
 - 权威架构文档：[ResearchHub Architecture v0.2](../architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
 - 工程设计文档：[ResearchHub Technical Design v0.1](../architecture/TECHNICAL_DESIGN_V0.1.md)
 - Harness 集成文档：[HARNESS_INTEGRATION.md](../architecture/HARNESS_INTEGRATION.md)
@@ -65,6 +68,7 @@ ResearchHub 已完成 Harness Integration Validation、Financial Capability Foun
 - Artifact 设计文档：[RESEARCH_ARTIFACT_DESIGN.md](../architecture/RESEARCH_ARTIFACT_DESIGN.md)
 - Event Analysis 设计文档：[EVENT_ANALYSIS_SKILL_DESIGN.md](../architecture/EVENT_ANALYSIS_SKILL_DESIGN.md)
 - Research Memory 设计文档：[RESEARCH_MEMORY_DESIGN.md](../architecture/RESEARCH_MEMORY_DESIGN.md)
+- Research Evaluation 设计文档：[RESEARCH_EVALUATION_DESIGN.md](../architecture/RESEARCH_EVALUATION_DESIGN.md)
 
 ## 最近一次更新时间
 
@@ -72,4 +76,4 @@ ResearchHub 已完成 Harness Integration Validation、Financial Capability Foun
 
 ## 最近一次 commit
 
-`feat: add research memory foundation`（最终 hash 以 Git 提交结果为准）
+`feat: add research evaluation framework`（最终 hash 以 Git 提交结果为准）

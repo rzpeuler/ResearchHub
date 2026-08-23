@@ -7,6 +7,7 @@ export {
   isIsoTimestamp,
   isJsonObject,
   isJsonValue,
+  assertExactObjectKeys,
   assertConfidence,
   assertNonEmptyString,
   assertStringArray,

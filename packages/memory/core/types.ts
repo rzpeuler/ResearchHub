@@ -7,7 +7,7 @@ export type JsonObject = {
   [key: string]: JsonValue;
 };
 
-export const MEMORY_ENTRY_TYPES = ['thesis', 'prediction'] as const;
+export const MEMORY_ENTRY_TYPES = ['thesis', 'prediction', 'review'] as const;
 
 export type MemoryEntryType = (typeof MEMORY_ENTRY_TYPES)[number];
 

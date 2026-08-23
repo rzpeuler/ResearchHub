@@ -7,7 +7,7 @@ export type JsonObject = {
   [key: string]: JsonValue;
 };
 
-export const ARTIFACT_TYPES = ['evidence', 'thesis', 'prediction'] as const;
+export const ARTIFACT_TYPES = ['evidence', 'thesis', 'prediction', 'review'] as const;
 
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 
