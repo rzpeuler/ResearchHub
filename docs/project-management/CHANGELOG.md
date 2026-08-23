@@ -2,6 +2,21 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v1.0.0
+
+**Date:** 2026-08-24
+
+**Changes:**
+
+- Added the Information Data Layer architecture for news, announcements and policy information.
+- Defined the `NewsItem` model and strict `official` / `media` / `community` source hierarchy.
+- Reused the existing Provider Framework and documented ProviderResult/source metadata boundaries.
+- Added `docs/architecture/INFORMATION_PROVIDER_DESIGN.md`.
+
+**Breaking Changes:**
+
+- None. No News Capability, Harness Core, production code, external information API or crawler was changed.
+
 ## Version: v0.9.0
 
 **Date:** 2026-08-23

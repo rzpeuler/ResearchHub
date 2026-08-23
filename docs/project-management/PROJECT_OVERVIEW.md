@@ -34,9 +34,9 @@ Phase 1 的目标用户是中国 A股市场中具有基础投资经验的个人�
 
 ## 当前阶段
 
-**Phase 7 — Financial Data Provider Foundation**
+**Phase 8 — Information Data Layer Design**
 
-Architecture v0.2 和 Technical Design v0.1 已完成并冻结；Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework、Event Analysis Skill MVP、Research Memory Framework MVP、Research Evaluation Framework MVP 和真实 Market Provider MVP 已完成。当前已建立 `Capability → ProviderRegistry → DataProvider` 边界，并完成 Tushare/AkShare 的标准化接入与 primary/fallback 验证。
+Architecture v0.2 和 Technical Design v0.1 已完成并冻结；Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework、Event Analysis Skill MVP、Research Memory Framework MVP、Research Evaluation Framework MVP 和真实 Market Provider MVP 已完成。当前已完成 Information Data Layer 的 NewsItem、Source Hierarchy 和 Provider 兼容架构设计，但尚未接入真实新闻、公告或政策数据源。
 
 ## 核心技术方向
 
@@ -60,6 +60,7 @@ ResearchHub 复用 Harness 的 Agent、Plugin、Workflow、Session、Tool 和 Me
 - [Research Evaluation Design](../architecture/RESEARCH_EVALUATION_DESIGN.md)
 - [Financial Data Provider Design](../architecture/FINANCIAL_PROVIDER_DESIGN.md)
 - [Market Provider Design](../architecture/MARKET_PROVIDER_DESIGN.md)
+- [Information Provider Design](../architecture/INFORMATION_PROVIDER_DESIGN.md)
 
 ## 长期愿景
 

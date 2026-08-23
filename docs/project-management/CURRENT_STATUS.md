@@ -4,11 +4,11 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 当前版本
 
-`v0.9.0` — Real A-Share Market Data Provider MVP
+`v1.0.0` — Information Provider Architecture Design
 
 ## 当前阶段
 
-**Phase 7 — Financial Data Provider Foundation**
+**Phase 8 — Information Data Layer Design**
 
 架构基线仍为 ResearchHub Architecture v0.2、Technical Design v0.1，Runtime 版本锁定为 DeepSeek Harness `0.1.1-rc.2`。
 
@@ -29,6 +29,8 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 - `TushareMarketProvider` 与 `AkShareMarketProvider` 已实现，使用原生 `fetch` 和注入式 Fixture 测试。
 - Market Provider primary/fallback composition 已实现，双失败会保留两个 Provider 的错误上下文。
 - Tushare/AkShare 字段标准化、严格日期校验、endpoint 校验和凭证脱敏已完成。
+- Information Data Layer 架构设计已完成：`NewsItem`、Provider Interface 和 official/media/community Source Hierarchy。
+- Information Provider 与现有 Provider Framework、News Capability 的兼容边界已明确。
 
 ## 开发中模块
 
@@ -39,6 +41,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 ## 待开发模块
 
 - 经授权的真实 News、Financial、Institution Provider。
+- Information Provider 的真实新闻、公告和政策数据源。
 - Provider 质量监控、重试和故障切换。
 - Memory 检索与索引演进。
 - Review 调度与真实 Outcome 来源。
@@ -55,7 +58,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 最近一次 commit
 
-`feat: add real market data providers`（`336213464b61d03fbed95738eff67bce46665461`）
+`docs: design information provider architecture`（提交后回填实际 hash）
 
 ## 架构基线
 
@@ -63,3 +66,4 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 - [ResearchHub Technical Design v0.1](../architecture/TECHNICAL_DESIGN_V0.1.md)
 - [Financial Data Provider Design](../architecture/FINANCIAL_PROVIDER_DESIGN.md)
 - [Market Provider Design](../architecture/MARKET_PROVIDER_DESIGN.md)
+- [Information Provider Design](../architecture/INFORMATION_PROVIDER_DESIGN.md)

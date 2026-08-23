@@ -61,7 +61,20 @@
 
 状态：Completed（本任务完成 Tushare/AkShare Market Provider MVP 和 primary/fallback composition；其他真实金融数据源仍待后续接入）。
 
-## Phase 8 — Personal Investment Research Assistant
+## Phase 8 — Information Data Layer Design
+
+目标：定义新闻、公告、政策等信息数据的统一 Provider 架构、NewsItem 模型、来源层级和验证边界。
+
+关键里程碑：
+
+- `NewsItem` 结构化模型。
+- `official`、`media`、`community` Source Hierarchy。
+- Information Provider 与 ProviderRegistry、News Capability 的兼容设计。
+- 明确真实信息 API、爬虫、NLP 和情绪分析不属于本阶段。
+
+状态：Completed。真实信息源接入尚未开始。
+
+## Phase 9 — Personal Investment Research Assistant
 
 目标：在完成真实数据源治理、检索演进和复盘调度后，逐步扩展每日情报、持续监控、研究机会发现和自动化复盘。
 

@@ -26,6 +26,7 @@ ResearchHub 不执行交易，也不 fork Harness Core。本阶段已完成真�
 - [Capability Design](docs/architecture/CAPABILITY_DESIGN.md)
 - [Financial Data Provider Design](docs/architecture/FINANCIAL_PROVIDER_DESIGN.md)
 - [Market Provider Design](docs/architecture/MARKET_PROVIDER_DESIGN.md)
+- [Information Provider Design](docs/architecture/INFORMATION_PROVIDER_DESIGN.md)
 - [Research Artifact Design](docs/architecture/RESEARCH_ARTIFACT_DESIGN.md)
 - [Event Analysis Skill Design](docs/architecture/EVENT_ANALYSIS_SKILL_DESIGN.md)
 - [Research Memory Design](docs/architecture/RESEARCH_MEMORY_DESIGN.md)
@@ -35,9 +36,9 @@ ResearchHub 不执行交易，也不 fork Harness Core。本阶段已完成真�
 
 ## 当前阶段
 
-**Phase 7 — Financial Data Provider Foundation**
+**Phase 8 — Information Data Layer Design**
 
-当前已具备 `Capability → ProviderRegistry → DataProvider` 的标准边界。Market Capability 通过类型化 Provider Handle 使用 Tushare/AkShare primary/fallback composition；真实 ProviderResult 保留 provider、source、timestamp、quality 和 confidence 元数据，且不改变 Capability 接口。
+当前已完成 `Capability → ProviderRegistry → DataProvider` 的标准边界、Tushare/AkShare Market Provider MVP，以及新闻、公告、政策信息层的 Provider 架构设计。Information Layer 只定义数据模型、来源层级和验证边界，尚未接入真实信息源。
 
 ## 协作角色
 
