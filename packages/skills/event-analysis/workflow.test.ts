@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { MarketSnapshot } from '../../capabilities/market/index.ts'
-import type { NewsSearchResult } from '../../capabilities/news/index.ts'
+import type { MarketSnapshot } from '../../plugins/market/index.ts'
+import type { NewsSearchResult } from '../../plugins/news/index.ts'
 import { createEventAnalysisToolDefinition } from './harness-tool.ts'
 import type { EventAnalysisInput, EventAnalysisResult } from './types.ts'
 import { EventAnalysisWorkflow } from './workflow.ts'
@@ -37,13 +37,13 @@ function makeWorkflow(calls: { market: string[]; news: string[] }): EventAnalysi
   }
 
   return new EventAnalysisWorkflow({
-    marketCapability: {
+    marketPlugin: {
       async get_market_snapshot(input) {
         calls.market.push(input.symbol)
         return marketSnapshot
       },
     },
-    newsCapability: {
+    newsPlugin: {
       async search_company_news(input) {
         calls.news.push(input.symbol)
         return newsResult
@@ -57,7 +57,7 @@ function input(sessionId = 'session-event-001'): EventAnalysisInput {
   return { symbol: ' 600519 ', sessionId, createdAt, evaluationPeriod }
 }
 
-test('EventAnalysisWorkflow calls both capabilities and creates linked artifacts', async () => {
+test('EventAnalysisWorkflow calls both plugins and creates linked artifacts', async () => {
   const calls = { market: [] as string[], news: [] as string[] }
   const result = await makeWorkflow(calls).run(input())
 
@@ -65,7 +65,7 @@ test('EventAnalysisWorkflow calls both capabilities and creates linked artifacts
   assert.equal(result.status, 'success')
   assert.equal(result.artifacts.evidence.length, 2)
   assert.deepEqual(result.artifacts.evidence.map((item) => item.id), ['evidence-0', 'evidence-1'])
-  assert.equal(result.artifacts.evidence[0]?.source, 'market-capability')
+  assert.equal(result.artifacts.evidence[0]?.source, 'market-plugin')
   assert.equal(result.artifacts.evidence[1]?.source, 'mock-news')
   assert.deepEqual(result.artifacts.thesis.evidenceIds, ['evidence-0', 'evidence-1'])
   assert.equal(result.artifacts.prediction.thesisId, 'thesis-0')

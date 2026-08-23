@@ -17,20 +17,20 @@ The Skill answers:
 > are changing it, which companies are exposed to those forces, and which
 > assumptions should be reviewed later?
 
-It does not fetch data directly, execute a Workflow, select Providers, perform
+It does not fetch data directly, execute a Workflow, select Plugins, perform
 valuation, issue investment advice, or trade.
 
 ```text
 Research Manager
     -> Industry Research Workflow
         -> Industry Research Skill
-            -> Market / Information / Financial Capabilities
+            -> Market / Information / Financial Plugins
         -> Industry Evidence
         -> Industry Thesis
         -> Reviewable Industry Prediction
 ```
 
-Workflow owns lifecycle and ordering. Capability owns structured facts. The
+Workflow owns lifecycle and ordering. Plugin owns structured facts. The
 Skill owns the research method and Evidence standards. Existing Evidence,
 Thesis, Prediction, Memory, and Evaluation contracts remain authoritative.
 
@@ -48,8 +48,8 @@ packages/skills/industry-research/
 └── evaluation-rules.md
 ```
 
-The Skill should declare logical Market, Information, and Financial Capability
-dependencies, never concrete Provider names. This design does not create the
+The Skill should declare logical Market, Information, and Financial Plugin
+dependencies, never concrete Plugin names. This design does not create the
 package or implementation code.
 
 ## 3. Research Framework
@@ -196,7 +196,7 @@ Every module maps its claims to Evidence Artifacts. The minimum model is:
 
 Universal Evidence requirements:
 
-- Preserve `source`, `timestamp`, `provider`, `quality`, and `confidence`.
+- Preserve `source`, `timestamp`, `plugin`, `quality`, and `confidence`.
 - Preserve unit, currency, geography, period, and methodology for quantitative
   evidence.
 - Use multiple independent sources for material claims when available.
@@ -328,12 +328,12 @@ Event Analysis may reference Industry Research Evidence when interpreting an
 event's industry catalyst or competitive context. Event Analysis remains a
 shorter-horizon event methodology and does not become an industry survey.
 
-### Workflow and Capability
+### Workflow and Plugin
 
 A future `industry-research` Workflow may sequence the eight modules using the
 existing Harness execution boundary. It may call existing Market, Information,
-and Financial Capabilities, but this design does not implement that Workflow or
-add a Capability.
+and Financial Plugins, but this design does not implement that Workflow or
+add a Plugin.
 
 ## 9. Explicit exclusions
 
@@ -341,6 +341,6 @@ This architecture does not define:
 
 - valuation, price targets, stock ranking, or portfolio allocation;
 - a new Industry Artifact or Company Artifact type;
-- real data acquisition or Provider selection;
-- a custom Agent planner, Workflow Engine, or Plugin Runtime;
+- real data acquisition or Plugin selection;
+- a custom DSH planner, Harness Workflow Runtime, or Plugin Runtime;
 - automatic strategy changes after Evaluation.

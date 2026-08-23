@@ -8,7 +8,7 @@ Approved design for RH-DESIGN-003. This specification defines the minimum determ
 
 Add the missing `Prediction → Outcome → Evaluation → Review → Memory` loop. The Evaluation layer compares a previously created Prediction with caller-supplied actual observations and produces a structured Review Artifact.
 
-Evaluation is an objective comparison boundary. It does not rank stocks, execute trades, alter strategies, or evaluate whether an Agent is intelligent.
+Evaluation is an objective comparison boundary. It does not rank stocks, execute trades, alter strategies, or evaluate whether an DSH is intelligent.
 
 ## Chosen Approach
 
@@ -103,7 +103,7 @@ packages/memory/adapters/
 - Outcome owns observed-result validation.
 - Evaluation Engine owns comparison and status derivation.
 - Review assembly combines Prediction, Outcome and Evaluation into a Review Artifact.
-- Review Memory Adapter persists Review through the existing `MemoryProvider` interface.
+- Review Memory Adapter persists Review through the existing `MemoryPlugin` interface.
 
 No component accesses Harness Core or external data sources.
 
@@ -141,7 +141,7 @@ Tests must prove:
 - `met`, `partially_met`, `not_met` and `inconclusive` status derivation.
 - Numeric tolerance and deterministic deep equality.
 - Prediction → Outcome → Evaluation → Review object flow.
-- Review persistence and retrieval through a Local JSON Memory Provider.
+- Review persistence and retrieval through a Local JSON Memory Plugin.
 - Existing Artifact, Memory and Harness integration suites remain green.
 
 ## Explicit Non-Goals
@@ -149,6 +149,6 @@ Tests must prove:
 - Real market or financial data access.
 - Backtesting or trading execution.
 - Stock ranking or investment recommendation.
-- Agent self-modification or strategy optimization.
+- DSH self-modification or strategy optimization.
 - Vector search, graph storage, RAG or external databases.
 - Harness Core changes.

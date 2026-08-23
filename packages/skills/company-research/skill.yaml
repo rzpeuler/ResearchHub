@@ -3,7 +3,7 @@ version: 1.0.0
 type: research-skill
 description: Analyze the long-term business quality, competitive position, growth, financial quality, capital allocation, and risks of a listed company.
 status: active
-required_capabilities:
+required_plugins:
   - market
   - financial
   - information

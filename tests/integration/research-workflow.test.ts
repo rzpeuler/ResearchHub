@@ -22,7 +22,7 @@ async function filesUnder(root: string): Promise<string[]> {
   return files
 }
 
-test('Research Workflow runs through Harness Agent, Capabilities, Artifacts, Report View, and Session persistence', async () => {
+test('Research Workflow runs through Harness Agent, Plugins, Artifacts, Report View, and Session persistence', async () => {
   const ctx = new Context()
   const sessionRoot = await mkdtemp(join(tmpdir(), 'researchhub-research-workflow-session-'))
   const sessionId = 'researchhub-research-workflow-session'
@@ -36,7 +36,7 @@ test('Research Workflow runs through Harness Agent, Capabilities, Artifacts, Rep
       skillRoot: join(process.cwd(), 'packages/skills'),
       createdAt: '2026-08-24T00:00:00.000Z',
     })
-    const service = extensionFiber.ctx.reflect.get('researchHubResearchManager') as import('../../packages/agents/research-manager/index.ts').ResearchManagerService
+    const service = extensionFiber.ctx.reflect.get('researchHubResearchManager') as import('../../packages/dsh/research-manager/index.ts').ResearchManagerService
     const handle = await service.createAgent(sessionId, 'researchhub-research-workflow-validation', 'research-workflow-validation-model')
 
     await handle.agent.followup({

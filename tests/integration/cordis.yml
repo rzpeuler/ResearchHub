@@ -5,8 +5,8 @@
   name: './extension.ts'
   config:
     skillRoot: './packages/skills'
-- id: researchhub-market-capability-validation
-  name: './market-capability-extension.ts'
+- id: researchhub-market-plugin-validation
+  name: './market-plugin-extension.ts'
 - id: researchhub-event-analysis-validation
   name: './event-analysis-extension.ts'
   config:

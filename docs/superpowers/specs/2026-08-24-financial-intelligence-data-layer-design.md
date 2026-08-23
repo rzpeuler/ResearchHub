@@ -6,7 +6,7 @@ RH-DESIGN-007 — design the company financial research data architecture.
 
 ## Goal
 
-Define a historical financial-data layer that supports company research, earnings analysis, and future valuation work while remaining compatible with the existing Provider, Artifact, and Memory boundaries.
+Define a historical financial-data layer that supports company research, earnings analysis, and future valuation work while remaining compatible with the existing Plugin, Artifact, and Memory boundaries.
 
 This task defines architecture and contracts only. It does not connect a real API, implement financial forecasting, or produce valuation or investment conclusions.
 
@@ -14,17 +14,17 @@ This task defines architecture and contracts only. It does not connect a real AP
 
 - Model historical disclosed financial facts only.
 - Do not model forecasts, target prices, valuation conclusions, strategy signals, or investment advice.
-- Reuse the existing `DataProvider`, `ProviderResult`, `FinancialDataMetadata`, and `ProviderRegistry` contracts.
+- Reuse the existing `DataPlugin`, `PluginResult`, `FinancialDataMetadata`, and `PluginRegistry` contracts.
 - Do not add a real financial data source or external dependency.
 - Do not modify Harness Core, the frozen Architecture v0.2, or Technical Design v0.1.
-- Financial Capability must not bypass the Provider Registry or directly access a data source.
+- Financial Plugin must not bypass the Plugin Registry or directly access a data source.
 
 ## Architecture
 
 ```text
-Financial Capability
-        -> Provider Registry
-        -> Financial Provider
+Financial Plugin
+        -> Plugin Registry
+        -> Financial Plugin
         -> Financial Data Source
         -> FinancialStatement / FinancialMetric
         -> Evidence Artifact
@@ -32,7 +32,7 @@ Financial Capability
         -> Existing Memory
 ```
 
-The Financial Provider is responsible for acquisition, normalization, source metadata, and structural validation. Financial Capability exposes a research-facing boundary and does not own source-specific field mappings. An Evidence Adapter serializes structured financial facts into the existing `Evidence` Artifact contract.
+The Financial Plugin is responsible for acquisition, normalization, source metadata, and structural validation. Financial Plugin exposes a research-facing boundary and does not own source-specific field mappings. An Evidence Adapter serializes structured financial facts into the existing `Evidence` Artifact contract.
 
 Financial data is not written directly to Memory by this design. The existing Memory MVP stores Thesis, Prediction, and Review entries; financial facts become long-term research context when they support those artifacts.
 
@@ -89,7 +89,7 @@ interface FinancialMetric {
 
 ```ts
 interface FinancialSourceMetadata {
-  provider: string
+  plugin: string
   source: string
   publishedAt: string
   retrievedAt: string
@@ -98,11 +98,11 @@ interface FinancialSourceMetadata {
 }
 ```
 
-This domain metadata complements, rather than replaces, the existing `FinancialDataMetadata` attached to a `ProviderResult`. Provider metadata describes the fetch batch; statement and metric metadata describes the individual financial fact.
+This domain metadata complements, rather than replaces, the existing `FinancialDataMetadata` attached to a `PluginResult`. Plugin metadata describes the fetch batch; statement and metric metadata describes the individual financial fact.
 
-## Financial Provider Interface
+## Financial Plugin Interface
 
-Financial Providers reuse the generic Provider Framework:
+Financial Plugins reuse the generic Plugin Framework:
 
 ```ts
 interface FinancialDataRequest {
@@ -117,14 +117,14 @@ interface FinancialData {
   metrics: FinancialMetric[]
 }
 
-type FinancialProvider = DataProvider<FinancialDataRequest, FinancialData>
+type FinancialPlugin = DataPlugin<FinancialDataRequest, FinancialData>
 ```
 
-Registry validation must enforce JSON-safe output, stable provider names, complete batch metadata, valid dates, finite numeric values, supported statement types, and confidence bounds.
+Registry validation must enforce JSON-safe output, stable plugin names, complete batch metadata, valid dates, finite numeric values, supported statement types, and confidence bounds.
 
-## Financial Capability Boundary
+## Financial Plugin Boundary
 
-Financial Capability consumes a typed Provider handle and returns normalized financial data plus batch metadata. It does not call HTTP, an SDK, or a database directly.
+Financial Plugin consumes a typed Plugin handle and returns normalized financial data plus batch metadata. It does not call HTTP, an SDK, or a database directly.
 
 The Evidence Adapter creates `Evidence` records with:
 
@@ -132,7 +132,7 @@ The Evidence Adapter creates `Evidence` records with:
 - `content` as JSON-serialized statement or metric facts;
 - `timestamp` from the relevant report or publication date;
 - `confidence` from the fact-level confidence;
-- metadata containing symbol, period, statement type, provider, and source identifiers.
+- metadata containing symbol, period, statement type, plugin, and source identifiers.
 
 Evidence remains factual. Interpretation belongs to a later Skill or Workflow, and any resulting Thesis or Prediction follows the existing Artifact and Memory lifecycle.
 
@@ -148,9 +148,9 @@ Evidence remains factual. Interpretation belongs to a later Skill or Workflow, a
 
 Architecture validation must confirm:
 
-1. Financial data enters through Provider Registry.
+1. Financial data enters through Plugin Registry.
 2. Statement and metric records preserve period, unit, currency, source, and confidence.
-3. Financial Capability does not contain source-specific acquisition logic.
+3. Financial Plugin does not contain source-specific acquisition logic.
 4. Evidence serialization is compatible with current Artifact validation.
 5. Existing Memory remains unchanged and can receive downstream research artifacts.
 

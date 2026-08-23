@@ -17,18 +17,18 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | RH-GOV-001 | Initialize project execution state management system | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-DOC-002 | Synchronize architecture baseline documentation | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-ENG-001 | Validate minimum ResearchHub Harness integration | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — typecheck and integration test passed |
-| RH-ENG-002 | Add financial capability foundation and Market Capability MVP | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — capability, provider and integration tests passed |
+| RH-ENG-002 | Add financial plugin foundation and Market Plugin MVP | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — plugin, plugin and integration tests passed |
 | RH-DESIGN-001 | Add Research Artifact Framework foundation | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — type, validation, serialization and relationship tests passed |
-| RH-ENG-003A | Add Event Analysis Skill Framework MVP | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — Skill, Capability, Artifact and Session integration tests passed |
-| RH-DESIGN-002 | Add Research Memory Framework MVP | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — Memory core, Local JSON provider, adapter and full tests passed |
+| RH-ENG-003A | Add Event Analysis Skill Framework MVP | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — Skill, Plugin, Artifact and Session integration tests passed |
+| RH-DESIGN-002 | Add Research Memory Framework MVP | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — Memory core, Local JSON plugin, adapter and full tests passed |
 | RH-DESIGN-003 | Add Research Evaluation Framework MVP | Completed | P0 | 2026-08-23 | Luna | `febd88f88150bba025b6f3c1dd59f7bd73dfd8db` | Accepted — Review, Outcome, Evaluation Engine and Memory tests passed |
-| RH-DESIGN-004 | Add financial data provider framework | Completed | P0 | 2026-08-23 | Luna | `7dbbde94019f648219b3f4c137cc67b1ffaacb7e` | Accepted — Provider, Registry, Capability bridge and full tests passed |
-| RH-ENG-005 | Add real A-share market data providers | Completed | P0 | 2026-08-23 | Luna | `336213464b61d03fbed95738eff67bce46665461` | Accepted — Tushare, AkShare, normalization, fallback and full tests passed |
-| RH-DESIGN-006 | Design Information Provider architecture | Completed | P0 | 2026-08-24 | Luna | `7f7fb65db70827d02aaa40e8786ca18b9000faa1` | Accepted — NewsItem, Provider Interface, Source Hierarchy and compatibility design completed |
-| RH-ENG-006 | Implement Announcement Provider MVP | Completed | P0 | 2026-08-24 | Luna | `e0e8e5b3d3320be2624c5583d2e590f8b63714ad` | Accepted — CNINFO adapter, NewsItem normalization, symbol mapping, Registry, Capability and Event Analysis tests passed |
-| RH-ENG-007 | Implement Professional Media Provider MVP | Completed | P0 | 2026-08-24 | Luna | `6b162241c4e55492bf3b6a2b53d5aa1316cbcd34` | Accepted — media NewsItem, publisher/tier metadata, Registry, News Capability and Event Analysis tests passed |
-| RH-DESIGN-007 | Design Financial Intelligence Data Layer | Completed | P0 | 2026-08-24 | Luna | `7cf3187961bec7bf0cfadd0dd74a745366fae864` | Accepted — FinancialStatement, FinancialMetric, Provider, Capability, Evidence and Memory compatibility design completed |
-| RH-ENG-008 | Implement Financial Statement Provider MVP | Completed | P0 | 2026-08-24 | Luna | `05b216b0022618c55ae2fcddfe081f36f472a742` | Accepted — Tushare/AkShare adapters, normalization, Financial Capability, Evidence integration and full tests passed |
+| RH-DESIGN-004 | Add financial data plugin framework | Completed | P0 | 2026-08-23 | Luna | `7dbbde94019f648219b3f4c137cc67b1ffaacb7e` | Accepted — Plugin, Registry, Plugin bridge and full tests passed |
+| RH-ENG-005 | Add real A-share market data plugins | Completed | P0 | 2026-08-23 | Luna | `336213464b61d03fbed95738eff67bce46665461` | Accepted — Tushare, AkShare, normalization, fallback and full tests passed |
+| RH-DESIGN-006 | Design Information Plugin architecture | Completed | P0 | 2026-08-24 | Luna | `7f7fb65db70827d02aaa40e8786ca18b9000faa1` | Accepted — NewsItem, Plugin Interface, Source Hierarchy and compatibility design completed |
+| RH-ENG-006 | Implement Announcement Plugin MVP | Completed | P0 | 2026-08-24 | Luna | `e0e8e5b3d3320be2624c5583d2e590f8b63714ad` | Accepted — CNINFO adapter, NewsItem normalization, symbol mapping, Registry, Plugin and Event Analysis tests passed |
+| RH-ENG-007 | Implement Professional Media Plugin MVP | Completed | P0 | 2026-08-24 | Luna | `6b162241c4e55492bf3b6a2b53d5aa1316cbcd34` | Accepted — media NewsItem, publisher/tier metadata, Registry, News Plugin and Event Analysis tests passed |
+| RH-DESIGN-007 | Design Financial Intelligence Data Layer | Completed | P0 | 2026-08-24 | Luna | `7cf3187961bec7bf0cfadd0dd74a745366fae864` | Accepted — FinancialStatement, FinancialMetric, Plugin, Plugin, Evidence and Memory compatibility design completed |
+| RH-ENG-008 | Implement Financial Statement Plugin MVP | Completed | P0 | 2026-08-24 | Luna | `05b216b0022618c55ae2fcddfe081f36f472a742` | Accepted — Tushare/AkShare adapters, normalization, Financial Plugin, Evidence integration and full tests passed |
 | RH-DESIGN-008 | Design Research Workflow Architecture | Completed | P0 | 2026-08-24 | Luna | `77f0728ade15a1d38ee4050499da98241bcf7595` | Accepted — Workflow, Research Manager, Harness boundary, Report aggregation and compatibility design completed |
 | RH-ENG-009 | Implement Research Workflow Framework MVP | Completed | P0 | 2026-08-24 | Luna | `c809b19bb59ecc901536d840950440bcf810cb4e` | Accepted — Workflow Registry, Research Manager, Event Analysis chain, Report View, Harness integration and E2E tests passed |
 
@@ -38,19 +38,19 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 
 ## RH-DESIGN-004 Acceptance Scope
 
-- `DataProvider`、`ProviderResult` 和 `FinancialDataMetadata` 已定义并进行运行时校验。
-- `ProviderRegistry` 支持注册、类型化 Handle 查询、重复/未知 Provider 错误。
-- Mock Market/News Provider 位于 `packages/providers/adapters/`，未接入真实 API 或爬虫。
-- Market/News Capability 通过 Registry 获取 Provider，不直接导入或实例化具体 Provider。
-- Capability 输出保留 source、timestamp、quality、confidence 元数据。
-- TypeScript、Provider、Capability、Artifact、Memory、Evaluation、Skill 和 Harness integration 测试通过。
+- `DataPlugin`、`PluginResult` 和 `FinancialDataMetadata` 已定义并进行运行时校验。
+- `PluginRegistry` 支持注册、类型化 Handle 查询、重复/未知 Plugin 错误。
+- Mock Market/News Plugin 位于 `packages/plugins/adapters/`，未接入真实 API 或爬虫。
+- Market/News Plugin 通过 Registry 获取 Plugin，不直接导入或实例化具体 Plugin。
+- Plugin 输出保留 source、timestamp、quality、confidence 元数据。
+- TypeScript、Plugin、Plugin、Artifact、Memory、Evaluation、Skill 和 Harness integration 测试通过。
 
 ## RH-ENG-005 Acceptance Scope
 
-- `TushareMarketProvider` and `AkShareMarketProvider` implement the common `DataProvider` boundary without SDK dependencies.
+- `TushareMarketPlugin` and `AkShareMarketPlugin` implement the common `DataPlugin` boundary without SDK dependencies.
 - Tushare uses native HTTP with `TUSHARE_TOKEN`; AkShare uses an explicit `AKSHARE_ENDPOINT` bridge and never silently falls back to Mock.
-- ProviderResult metadata includes `provider`, `source`, `timestamp`, `quality` and `confidence`.
-- Market Capability method, input and business output contract remain unchanged.
+- PluginResult metadata includes `plugin`, `source`, `timestamp`, `quality` and `confidence`.
+- Market Plugin method, input and business output contract remain unchanged.
 - Registry composition supports configured primary/fallback, combined failure context and deterministic injected-transport tests.
 - No real network call is made by the default test suite; no Harness Core, trading logic or frozen architecture change was introduced.
 
@@ -58,71 +58,71 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 
 - `NewsItem` 定义了 title、content、publishedAt、source、sourceType、symbols 和 confidence。
 - `sourceType` 严格限制为 `official`、`media`、`community`。
-- Information Provider 复用 `DataProvider`、`ProviderResult` 和 `FinancialDataMetadata`。
-- Source Metadata、Provider Metadata 和 item-level confidence 的边界已明确。
+- Information Plugin 复用 `DataPlugin`、`PluginResult` 和 `FinancialDataMetadata`。
+- Source Metadata、Plugin Metadata 和 item-level confidence 的边界已明确。
 - 未接入真实新闻 API、公告源、政策源、爬虫、NLP 或情绪分析。
 
 ## RH-ENG-006 Acceptance Scope
 
-- `AnnouncementProvider` emits canonical official `NewsItem` values with source metadata.
+- `AnnouncementPlugin` emits canonical official `NewsItem` values with source metadata.
 - `CninfoAnnouncementSourceAdapter` isolates official-source protocol and uses injectable transport.
 - Security-code and explicit issuer-name mappings reject ambiguous or mismatched announcements.
-- Registry exposes `announcement-provider` through an unchanged News Capability contract.
-- Provider, Capability, and Event Analysis integration tests pass without network dependency.
-- No Harness Core, News Capability implementation, Event Analysis Skill, trading logic, NLP, crawler, or frozen architecture document was changed.
+- Registry exposes `announcement-plugin` through an unchanged News Plugin contract.
+- Plugin, Plugin, and Event Analysis integration tests pass without network dependency.
+- No Harness Core, News Plugin implementation, Event Analysis Skill, trading logic, NLP, crawler, or frozen architecture document was changed.
 
 ## RH-ENG-007 Acceptance Scope
 
-- `MediaProvider` emits `sourceType: 'media'` NewsItem-compatible records.
+- `MediaPlugin` emits `sourceType: 'media'` NewsItem-compatible records.
 - Media metadata includes `publisher`, strict `tier-1|tier-2|tier-3`, and confidence.
 - Fixture `ProfessionalMediaSourceAdapter` isolates source integration without network dependency.
-- Registry exposes `media-provider` through an unchanged News Capability contract.
-- Provider and Event Analysis integration tests pass.
-- No named media API, News Capability implementation, Event Analysis Skill, NLP, sentiment, community-opinion, trading, or frozen architecture document was changed.
+- Registry exposes `media-plugin` through an unchanged News Plugin contract.
+- Plugin and Event Analysis integration tests pass.
+- No named media API, News Plugin implementation, Event Analysis Skill, NLP, sentiment, community-opinion, trading, or frozen architecture document was changed.
 
 ## RH-DESIGN-007 Acceptance Scope
 
 - Historical `FinancialStatement` and `FinancialMetric` models preserve period, unit, currency, source, and confidence.
-- Financial Provider reuses `DataProvider`, `ProviderResult`, `FinancialDataMetadata`, and Provider Registry.
-- Financial Capability converts structured facts into existing Evidence Artifacts.
+- Financial Plugin reuses `DataPlugin`, `PluginResult`, `FinancialDataMetadata`, and Plugin Registry.
+- Financial Plugin converts structured facts into existing Evidence Artifacts.
 - Thesis, Prediction, Evaluation, and Memory compatibility is documented without adding raw financial Memory entries.
 - No real API, forecast model, valuation strategy, investment advice, trading logic, or frozen architecture document was changed.
 
 ## RH-ENG-008 Acceptance Scope
 
-- `TushareFinancialProvider` and `AkShareFinancialProvider` implement the common Financial Provider boundary without SDK dependencies in the TypeScript runtime.
-- Income, balance-sheet, and cash-flow fields are normalized to `FinancialStatement` and `FinancialMetric` with period, unit, provider, source, timestamp, quality, and confidence metadata.
-- Provider Registry composition supports configurable primary/fallback selection and fixture-only injection for tests.
-- Financial Capability exposes `get_financial_snapshot(symbol)` and does not contain vendor calls, credentials, forecasts, valuation logic, or investment advice.
+- `TushareFinancialPlugin` and `AkShareFinancialPlugin` implement the common Financial Plugin boundary without SDK dependencies in the TypeScript runtime.
+- Income, balance-sheet, and cash-flow fields are normalized to `FinancialStatement` and `FinancialMetric` with period, unit, plugin, source, timestamp, quality, and confidence metadata.
+- Plugin Registry composition supports configurable primary/fallback selection and fixture-only injection for tests.
+- Financial Plugin exposes `get_financial_snapshot(symbol)` and does not contain vendor calls, credentials, forecasts, valuation logic, or investment advice.
 - Financial Evidence Adapter creates session-linked Evidence artifacts from reported metrics.
-- TypeScript, Provider, Capability, Artifact, Memory, Evaluation, Skill, and Event Analysis integration tests remain green.
+- TypeScript, Plugin, Plugin, Artifact, Memory, Evaluation, Skill, and Event Analysis integration tests remain green.
 - No Harness Core, frozen architecture document, external production dependency, or real network call was introduced into the default test suite.
 
 ## RH-DESIGN-008 Acceptance Scope
 
 - Workflow Definition is independent from Skill and contains lifecycle metadata, steps, inputs, outputs, dependencies, and version.
 - Research Manager coordinates research intent, Workflow selection, Skill execution, Artifact collection, and Report assembly.
-- Harness Workflow Runtime / Agent Loop remains the execution boundary; ResearchHub does not build a parallel Workflow Engine, Agent Runtime, or Plugin Runtime.
+- Harness Workflow Runtime / Harness Runtime Loop remains the execution boundary; ResearchHub does not build a parallel Harness Workflow Runtime, Harness Runtime, or Plugin Runtime.
 - Skill remains reusable research methodology and does not contain cross-skill workflow graphs or direct data-source calls.
 - Research Report is an aggregate view over Evidence, Thesis, and Prediction Artifact IDs, not a new base Artifact type.
-- Artifact, Memory, Evaluation, Capability, Provider, Session, and Cordis Plugin boundaries remain compatible.
+- Artifact, Memory, Evaluation, Plugin, Plugin, Session, and Cordis Plugin boundaries remain compatible.
 - RH-ENG-009 is the next engineering implementation task; no production workflow code is included in this design task.
 
 ## RH-ENG-009 Acceptance Scope
 
 - Workflow Definition and Registry validate and register the `event-analysis` workflow.
 - Research Manager validates Research Requests, resolves Workflows, creates execution context, invokes an injected executor, and aggregates Artifact IDs into a non-Artifact Report View.
-- Harness-facing Research Manager service and `run_research_workflow` tool reuse the existing Agent, Session, Skill, Tool, and JSONL persistence boundaries.
-- Event Analysis invokes Market, Announcement, Media, and Financial Capability ports; Announcement and Media reuse the existing News Capability contract through different Provider Handles.
+- Harness-facing Research Manager service and `run_research_workflow` tool reuse the existing DSH, Session, Skill, Tool, and JSONL persistence boundaries.
+- Event Analysis invokes Market, Announcement, Media, and Financial Plugin ports; Announcement and Media reuse the existing News Plugin contract through different Plugin Handles.
 - Evidence, Thesis, and Prediction are created with the active Session ID and validated relationships.
-- TypeScript, workflow, Manager, existing capability/artifact/memory/evaluation/skill tests, and Harness end-to-end workflow test pass.
-- No Harness Core, Agent Loop, Workflow Engine, Plugin Runtime, trading logic, investment advice, or external network dependency was introduced.
+- TypeScript, workflow, Manager, existing plugin/artifact/memory/evaluation/skill tests, and Harness end-to-end workflow test pass.
+- No Harness Core, Harness Runtime Loop, Harness Workflow Runtime, Plugin Runtime, trading logic, investment advice, or external network dependency was introduced.
 
 ## 历史 RH-ENG-001 约束
 
 - DeepSeek Harness `0.1.1-rc.2` 依赖版本已锁定。
 - `tests/integration/` 是验证代码隔离区，不是生产业务实现。
-- Runtime → Extension → Agent → Skill → Capability → Session 路径已验证。
+- Runtime → Extension → DSH → Skill → Plugin → Session 路径已验证。
 - 未修改 Harness Core、业务 API、生产配置或金融业务逻辑。
 
 ## 登记规则

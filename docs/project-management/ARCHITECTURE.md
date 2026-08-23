@@ -1,62 +1,16 @@
-# Architecture
+# Project Architecture
 
-## 系统总体架构
+ResearchHub has one decision and coordination center: `ResearchManager` as
+the DSH. The application layers are:
 
-### 当前状态
+1. DSH — request understanding, Workflow selection, Skill/Plugin invocation,
+   and result integration.
+2. Workflow — standard process definitions, dependencies, schemas, and
+   verification nodes.
+3. Skill — professional research methods, analysis, and Artifact generation.
+4. Plugin — external resource connection, normalization, and validation.
 
-ResearchHub 当前是空仓库，尚未形成运行时系统。现阶段存在的工程架构是“项目治理层”：
+Workflow is not Planner. Skill is not Workflow. Plugin is not Skill.
 
-```text
-项目负责人 / Agent
-        ↓ 阅读与恢复状态
-project-management 文档
-        ↓ 任务执行
-代码、测试与配置（尚未建立）
-        ↓ 同步状态与版本
-文档更新 + Git commit
-```
-
-这不是未来业务系统的最终架构，而是当前工程执行和状态闭环的真实描述。
-
-## 模块边界
-
-### 已建立边界
-
-- `docs/project-management/`：只负责项目治理、工程状态、决策和 Agent 工作流。
-- `README.md`：负责项目入口和治理文档导航。
-
-### 尚未建立的边界
-
-业务域模块、应用层、接口层、数据访问层、基础设施层和部署单元尚未创建。任何未来模块边界必须在业务架构确定后补充，并避免让治理文档承担运行时代码职责。
-
-## 数据流
-
-当前已确定的数据流是工程状态流：
-
-1. Agent 阅读项目治理文档。
-2. Agent 从任务登记表获取任务和验收范围。
-3. Agent 修改代码或文档并执行测试。
-4. Agent 更新当前状态、任务登记和变更记录。
-5. Agent 创建 Git commit，形成可回溯版本。
-
-业务数据流、用户数据边界和持久化策略尚未决策。
-
-## 技术栈
-
-| 层级 | 当前状态 |
-| --- | --- |
-| 文档 | Markdown |
-| 版本管理 | Git |
-| 远程仓库 | GitHub：`rzpeuler/ResearchHub` |
-| 运行时语言 | 尚未确定 |
-| 应用框架 | 尚未确定 |
-| 数据库 | 尚未确定 |
-| 部署平台 | 尚未确定 |
-
-## 外部依赖
-
-当前没有运行时外部依赖。GitHub 是代码托管和协作依赖，不等同于业务运行时依赖。
-
-## 扩展方向
-
-未来可按实际需求逐步补充：产品模块、 API、数据存储、身份与权限、测试体系、可观测性、部署和安全控制。每项扩展都必须先明确边界、依赖、验证方式，并在 [DECISION_LOG.md](DECISION_LOG.md) 中记录影响较大的选择。
+The Harness owns its own runtime lifecycle. ResearchHub reuses that lifecycle
+and does not introduce a parallel engine. Artifact core models remain stable.

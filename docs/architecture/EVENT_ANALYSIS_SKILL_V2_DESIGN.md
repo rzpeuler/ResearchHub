@@ -49,16 +49,16 @@ distinguishes observed facts, interpretation, hypothesis, and realized Outcome.
 Research Manager
   -> Event Analysis Workflow
       -> Event Analysis Skill
-          -> Market Capability
-          -> Information Capability
-          -> Financial Capability
+          -> Market Plugin
+          -> Information Plugin
+          -> Financial Plugin
       -> Evidence / Thesis / Prediction Artifacts
       -> Research Report View
 ```
 
-The Workflow owns lifecycle and cross-capability ordering. The Skill owns the
+The Workflow owns lifecycle and cross-plugin ordering. The Skill owns the
 method, Evidence requirements, and output quality rules. The Skill does not
-call Providers, schedule steps, create an Agent Loop, or own Session
+call Plugins, schedule steps, create an Harness Runtime Loop, or own Session
 persistence.
 
 The approved `event-analysis@1.x` Workflow remains compatible with Skill v2:
@@ -68,7 +68,7 @@ Thesis IDs, and Prediction IDs.
 ## 4. Evidence Relationship
 
 An Event Analysis run should retain three evidence categories when their
-Capabilities are available:
+Plugins are available:
 
 - Market Evidence: establishes the observed movement or event context.
 - Information Evidence: records official announcement and professional-media
@@ -107,12 +107,12 @@ Skill's intelligence, modify its methodology, or create trading instructions.
 The Skill Package tests verify:
 
 - all six standard contract files exist and are non-empty;
-- `skill.yaml` declares required metadata, capabilities, Workflow compatibility,
+- `skill.yaml` declares required metadata, plugins, Workflow compatibility,
   and output types;
 - `SKILL.md` preserves Harness loading metadata and required method sections;
 - the approved Workflow references the Event Analysis Skill;
-- existing Capability, Artifact, Evaluation, Memory, Workflow, and Harness
+- existing Plugin, Artifact, Evaluation, Memory, Workflow, and Harness
   integration tests remain unchanged and compatible.
 
-No Harness Core, Architecture v0.2, Technical Design v0.1, Capability
+No Harness Core, Architecture v0.2, Technical Design v0.1, Plugin
 Framework, or Artifact type was modified.

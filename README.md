@@ -1,56 +1,49 @@
 # ResearchHub
 
-ResearchHub 是构建在 DeepSeek Harness 之上的 AI A 股个人投资研究员。目前项目处于 **Phase 14 — Research Workflow Framework MVP**：已完成数据能力、研究资产、Memory、Evaluation、Workflow Definition、Workflow Registry、Research Manager 和 Event Analysis 端到端工作流。
+ResearchHub is a research system built on DeepSeek Harness. Its application
+architecture is the Single DSH model:
 
-ResearchHub 不执行交易，也不 fork Harness Core。本阶段已完成真实 Market Provider 的适配与测试；生产启用仍需完成账号授权、bridge 运维和数据质量验收。
+```text
+ResearchManager (DSH)
+        -> Workflow
+             -> Skill
+                  -> Plugin
+```
 
-## 项目治理文档
+ResearchHub does not execute trades and does not rebuild the Harness runtime.
+The DSH is the only planning and coordination center; Workflows describe
+standard processes, Skills provide research methods, and Plugins connect
+external resources.
 
-新 Agent 开始工作前，请先阅读 [`docs/project-management/`](docs/project-management/)：
+## Project documents
 
-- [项目概览](docs/project-management/PROJECT_OVERVIEW.md)
-- [当前状态](docs/project-management/CURRENT_STATUS.md)
-- [开发路线图](docs/project-management/DEVELOPMENT_ROADMAP.md)
-- [任务登记表](docs/project-management/TASK_REGISTRY.md)
-- [技术决策记录](docs/project-management/DECISION_LOG.md)
-- [架构说明](docs/project-management/ARCHITECTURE.md)
-- [开发规范](docs/project-management/DEVELOPMENT_RULES.md)
-- [变更记录](docs/project-management/CHANGELOG.md)
-- [Agent 工作流](docs/project-management/AGENT_WORKFLOW.md)
+- [Project overview](docs/project-management/PROJECT_OVERVIEW.md)
+- [Current status](docs/project-management/CURRENT_STATUS.md)
+- [Architecture](docs/project-management/ARCHITECTURE.md)
+- [Decision log](docs/project-management/DECISION_LOG.md)
+- [Development roadmap](docs/project-management/DEVELOPMENT_ROADMAP.md)
+- [Development rules](docs/project-management/DEVELOPMENT_RULES.md)
+- [Change log](docs/project-management/CHANGELOG.md)
 
-## Architecture Documentation
+## Architecture documents
 
-- [ResearchHub Architecture v0.2](docs/architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
-- [ResearchHub Technical Design v0.1](docs/architecture/TECHNICAL_DESIGN_V0.1.md)
-- [Harness Integration Validation](docs/architecture/HARNESS_INTEGRATION.md)
-- [Capability Design](docs/architecture/CAPABILITY_DESIGN.md)
-- [Financial Data Provider Design](docs/architecture/FINANCIAL_PROVIDER_DESIGN.md)
-- [Market Provider Design](docs/architecture/MARKET_PROVIDER_DESIGN.md)
-- [Information Provider Design](docs/architecture/INFORMATION_PROVIDER_DESIGN.md)
-- [Announcement Provider Design](docs/architecture/ANNOUNCEMENT_PROVIDER_DESIGN.md)
-- [Professional Media Provider Design](docs/architecture/MEDIA_PROVIDER_DESIGN.md)
-- [Financial Intelligence Data Design](docs/architecture/FINANCIAL_DATA_DESIGN.md)
-- [Research Artifact Design](docs/architecture/RESEARCH_ARTIFACT_DESIGN.md)
-- [Event Analysis Skill Design](docs/architecture/EVENT_ANALYSIS_SKILL_DESIGN.md)
-- [Event Analysis Skill v2 Design](docs/architecture/EVENT_ANALYSIS_SKILL_V2_DESIGN.md)
-- [Research Skill Architecture](docs/architecture/RESEARCH_SKILL_DESIGN.md)
-- [Company Research Skill Design](docs/architecture/COMPANY_RESEARCH_SKILL_DESIGN.md)
-- [Company Research Skill Implementation](docs/architecture/COMPANY_RESEARCH_SKILL_IMPLEMENTATION.md)
-- [Industry Research Skill Design](docs/architecture/INDUSTRY_RESEARCH_SKILL_DESIGN.md)
-- [Research Memory Design](docs/architecture/RESEARCH_MEMORY_DESIGN.md)
-- [Research Evaluation Design](docs/architecture/RESEARCH_EVALUATION_DESIGN.md)
-- [Research Workflow Design](docs/architecture/RESEARCH_WORKFLOW_DESIGN.md)
-- [Research Workflow Implementation](docs/architecture/RESEARCH_WORKFLOW_IMPLEMENTATION.md)
+- [Architecture v0.2](docs/architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
+- [Technical design v0.1](docs/architecture/TECHNICAL_DESIGN_V0.1.md)
+- [Plugin operation design](docs/architecture/PLUGIN_OPERATION_DESIGN.md)
+- [Research Skill design](docs/architecture/RESEARCH_SKILL_DESIGN.md)
+- [Research Workflow design](docs/architecture/RESEARCH_WORKFLOW_DESIGN.md)
+- [Financial Plugin design](docs/architecture/FINANCIAL_PLUGIN_DESIGN.md)
+- [Market Plugin design](docs/architecture/MARKET_PLUGIN_DESIGN.md)
+- [Information Plugin design](docs/architecture/INFORMATION_PLUGIN_DESIGN.md)
+- [Announcement Plugin design](docs/architecture/ANNOUNCEMENT_PLUGIN_DESIGN.md)
+- [Media Plugin design](docs/architecture/MEDIA_PLUGIN_DESIGN.md)
+- [Single DSH ADR](docs/architecture/ADR-001-SINGLE-DSH-ARCHITECTURE.md)
 
-所有后续工程任务必须以 ResearchHub Architecture v0.2、Technical Design v0.1 和当前治理文档为约束。
+## Validation
 
-## 当前阶段
+```text
+npm test
+```
 
-**Phase 14 — Research Workflow Framework MVP**
-
-当前已完成 `Research Manager → Workflow Registry → Harness Agent/Session → Skill → Capability → Artifact → Report View` 的最小端到端执行链路。ResearchHub 只定义 Workflow，不重建 Harness Workflow Engine、Agent Runtime 或 Plugin Runtime。Research Report 采用现有 Evidence、Thesis、Prediction 的聚合视图。
-
-## 协作角色
-
-- **Sol**：负责顶层设计、架构决策、任务拆解和最终验收。
-- **Luna**：负责工程执行、代码修改、测试、Git 管理和状态同步。
+The command runs TypeScript compilation, Plugin tests, Workflow tests, Skill
+tests, Artifact tests, Memory/Evaluation tests, and Harness integration tests.

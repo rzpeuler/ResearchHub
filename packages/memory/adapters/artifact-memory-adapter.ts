@@ -8,17 +8,17 @@ import {
   type Prediction,
   type Thesis,
 } from '../../artifacts/index.ts'
-import type { MemoryEntry, MemoryProvider } from '../core/index.ts'
+import type { MemoryEntry, MemoryPlugin } from '../core/index.ts'
 
   /** Maps supported research artifacts to durable Memory Entries. */
 export class ArtifactMemoryAdapter {
-  constructor(private readonly provider: MemoryProvider) {}
+  constructor(private readonly plugin: MemoryPlugin) {}
 
   async saveThesis(thesis: Thesis): Promise<MemoryEntry> {
     const content = serializeThesis(thesis)
     deserializeThesis(content)
 
-    return this.provider.save({
+    return this.plugin.save({
       id: `memory:thesis:${thesis.id}`,
       type: 'thesis',
       content,
@@ -35,7 +35,7 @@ export class ArtifactMemoryAdapter {
     const content = serializePrediction(prediction)
     deserializePrediction(content)
 
-    return this.provider.save({
+    return this.plugin.save({
       id: `memory:prediction:${prediction.id}`,
       type: 'prediction',
       content,

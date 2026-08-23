@@ -3,8 +3,8 @@ import z from '@deepseek-ai/schemastery'
 import { CallId, LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import * as SkillFilesystem from '@deepseek-ai/dsh-skill-filesystem'
 import * as SkillTool from '@deepseek-ai/dsh-tool-skill'
-import { ResearchManager } from './packages/agents/research-manager/index.ts'
-import { registerValidationCapability, ValidationCapability } from './packages/capabilities/validation-capability/index.ts'
+import { ResearchManager } from './packages/dsh/research-manager/index.ts'
+import { registerValidationPlugin, ValidationPlugin } from './packages/plugins/validation-plugin/index.ts'
 
 export interface Config {
   skillRoot: string
@@ -40,7 +40,7 @@ export class ValidationMockAdapter extends LlmAdapter {
   readonly requests: GenerateOptions[] = []
   private readonly script = [
     toolCallResponse('skill', '{"name":"validation-skill"}', 'validation-skill-call'),
-    toolCallResponse('researchhub_validation_capability', '{"skillName":"validation-skill"}', 'validation-capability-call'),
+    toolCallResponse('researchhub_validation_plugin', '{"skillName":"validation-skill"}', 'validation-plugin-call'),
     textResponse('ResearchHub integration validation completed'),
   ]
 
@@ -74,7 +74,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     watch: false,
   })
   await ctx.plugin(SkillTool)
-  registerValidationCapability(ctx, new ValidationCapability(ctx))
+  registerValidationPlugin(ctx, new ValidationPlugin(ctx))
   new ResearchManager(ctx)
   ctx.llm.registerAdapter(['researchhub-validation'], new ValidationMockAdapter())
 }

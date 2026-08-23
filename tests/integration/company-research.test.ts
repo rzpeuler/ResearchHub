@@ -3,13 +3,13 @@ import { test } from 'node:test'
 import { evaluatePrediction } from '../../packages/evaluation/index.ts'
 import { CompanyResearchWorkflow } from '../../packages/skills/company-research/index.ts'
 import { CompanyResearchWorkflowExecutor, companyResearchWorkflowDefinition, WorkflowRegistry } from '../../packages/workflows/index.ts'
-import { ResearchManager } from '../../packages/agents/research-manager/index.ts'
+import { ResearchManager } from '../../packages/dsh/research-manager/index.ts'
 
 const createdAt = '2026-08-24T00:00:00.000Z'
 
-test('Company Research runs from Research Request through Manager, Workflow, Skill, Capabilities, Artifacts, and Evaluation', async () => {
+test('Company Research runs from Research Request through Manager, Workflow, Skill, Plugins, Artifacts, and Evaluation', async () => {
   const workflow = new CompanyResearchWorkflow({
-    marketCapability: {
+    marketPlugin: {
       async get_market_snapshot(input) {
         return {
           symbol: input.symbol,
@@ -23,7 +23,7 @@ test('Company Research runs from Research Request through Manager, Workflow, Ski
         }
       },
     },
-    informationCapability: {
+    informationPlugin: {
       async search_company_news(input) {
         return {
           symbol: input.symbol,
@@ -42,7 +42,7 @@ test('Company Research runs from Research Request through Manager, Workflow, Ski
         }
       },
     },
-    financialCapability: {
+    financialPlugin: {
       async get_financial_snapshot(input) {
         return {
           symbol: input.symbol,
@@ -56,7 +56,7 @@ test('Company Research runs from Research Request through Manager, Workflow, Ski
             confidence: 0.9,
             sourceStatementIds: ['statement-1'],
             source: {
-              provider: 'fixture-financial',
+              plugin: 'fixture-financial',
               source: 'fixture-financial',
               publishedAt: createdAt,
               retrievedAt: createdAt,
@@ -65,7 +65,7 @@ test('Company Research runs from Research Request through Manager, Workflow, Ski
               sourceStatementIds: ['statement-1'],
             },
           }],
-          provider: 'fixture-financial',
+          plugin: 'fixture-financial',
           source: 'fixture-financial',
           timestamp: createdAt,
           quality: 'high' as const,

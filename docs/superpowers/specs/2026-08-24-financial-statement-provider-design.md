@@ -1,19 +1,19 @@
-# ResearchHub Financial Statement Provider MVP Design
+# ResearchHub Financial Statement Plugin MVP Design
 
 ## Task
 
-RH-ENG-008 — implement the first Financial Statement Provider MVP.
+RH-ENG-008 — implement the first Financial Statement Plugin MVP.
 
 ## Goal
 
-Provide structured historical A-share financial facts to a Financial Capability while preserving the Financial Intelligence Data Layer boundary:
+Provide structured historical A-share financial facts to a Financial Plugin while preserving the Financial Intelligence Data Layer boundary:
 
 ```text
-Financial Capability
-        -> Provider Registry
-        -> Financial Provider Composition
+Financial Plugin
+        -> Plugin Registry
+        -> Financial Plugin Composition
        /                         \
-Tushare Financial Provider   AkShare Financial Provider
+Tushare Financial Plugin   AkShare Financial Plugin
        \                         /
         -> FinancialStatement / FinancialMetric
         -> Financial Evidence Adapter
@@ -27,16 +27,16 @@ The MVP supports income statement, balance sheet, and cash flow facts. It does n
 - Do not modify Harness Core.
 - Do not modify Architecture v0.2 or Technical Design v0.1.
 - Do not implement forecasts, valuation models, stock selection, investment advice, or trading logic.
-- Financial Capability must use Provider Registry and must not access Tushare, AkShare, HTTP, or SDKs directly.
+- Financial Plugin must use Plugin Registry and must not access Tushare, AkShare, HTTP, or SDKs directly.
 - Tushare and AkShare tests must use injected transports and fixture payloads; default tests must not require network access.
 - Do not introduce a Python or external financial SDK dependency.
 - Existing Market, News, Artifact, Memory, and Event Analysis behavior must remain compatible.
 
-## Provider Architecture
+## Plugin Architecture
 
-### Tushare Financial Provider
+### Tushare Financial Plugin
 
-`TushareFinancialProvider` uses the existing native HTTP transport and token configuration pattern. It calls the documented Tushare financial endpoints:
+`TushareFinancialPlugin` uses the existing native HTTP transport and token configuration pattern. It calls the documented Tushare financial endpoints:
 
 - `income` for income statements;
 - `balancesheet` for balance sheets;
@@ -55,13 +55,13 @@ The adapter converts Tushare names and report rows into the source-neutral Finan
 
 The Tushare token is read from environment/configuration and never hardcoded or exposed in errors.
 
-### AkShare Financial Provider
+### AkShare Financial Plugin
 
-`AkShareFinancialProvider` follows the existing AkShare HTTP bridge pattern. It accepts an injectable endpoint and transport, parses source-specific rows, and emits the same canonical statements and metrics as Tushare. No Python runtime or AkShare SDK is added to the ResearchHub TypeScript project.
+`AkShareFinancialPlugin` follows the existing AkShare HTTP bridge pattern. It accepts an injectable endpoint and transport, parses source-specific rows, and emits the same canonical statements and metrics as Tushare. No Python runtime or AkShare SDK is added to the ResearchHub TypeScript project.
 
-### Provider Composition
+### Plugin Composition
 
-`FinancialProviderComposition` registers Tushare and AkShare under stable names and exposes one Capability-facing handle. The primary provider is attempted first; the fallback provider is attempted only after a primary failure. If both fail, the composition error preserves both provider names and causes.
+`FinancialPluginComposition` registers Tushare and AkShare under stable names and exposes one Plugin-facing handle. The primary plugin is attempted first; the fallback plugin is attempted only after a primary failure. If both fail, the composition error preserves both plugin names and causes.
 
 ## Canonical Data Model
 
@@ -95,25 +95,25 @@ Each normalized metric contains:
 
 The MVP produces only reported metrics derived from source statement fields. It does not add derived valuation ratios or forecast metrics.
 
-## Financial Capability
+## Financial Plugin
 
-The new `FinancialCapability` exposes:
+The new `FinancialPlugin` exposes:
 
 ```text
 get_financial_snapshot(symbol)
 ```
 
-It normalizes the symbol, resolves the registered composition handle, invokes the Provider, validates the returned Financial Data, and projects Provider batch metadata into the Capability result. It does not know which Provider is primary and does not contain source-specific field aliases.
+It normalizes the symbol, resolves the registered composition handle, invokes the Plugin, validates the returned Financial Data, and projects Plugin batch metadata into the Plugin result. It does not know which Plugin is primary and does not contain source-specific field aliases.
 
 ## Evidence Integration
 
 `FinancialEvidenceAdapter` converts each normalized statement or metric into an existing `Evidence` Artifact:
 
-- `source`: Provider source identity;
+- `source`: Plugin source identity;
 - `content`: JSON-serialized financial fact;
 - `timestamp`: report date or disclosure date;
 - `confidence`: fact-level confidence;
-- metadata: symbol, period, statement type, metric, Provider, and source identifiers.
+- metadata: symbol, period, statement type, metric, Plugin, and source identifiers.
 
 Evidence remains descriptive. A later Skill or Workflow may reference Evidence IDs when producing Thesis or Prediction artifacts. Raw financial facts are not written directly to Memory.
 
@@ -124,21 +124,21 @@ The implementation extends configuration with financial-specific values without 
 - `TUSHARE_TOKEN` for Tushare access;
 - `TUSHARE_FINANCIAL_ENDPOINT` optional HTTP endpoint override;
 - `AKSHARE_FINANCIAL_ENDPOINT` for the AkShare-compatible bridge;
-- `FINANCIAL_PRIMARY_PROVIDER` with `tushare-financial` or `akshare-financial`;
-- `FINANCIAL_FALLBACK_PROVIDER` with an optional distinct provider;
-- `FINANCIAL_PROVIDER_MODE` with explicit `real` or `fixture` behavior.
+- `FINANCIAL_PRIMARY_PLUGIN` with `tushare-financial` or `akshare-financial`;
+- `FINANCIAL_FALLBACK_PLUGIN` with an optional distinct plugin;
+- `FINANCIAL_PLUGIN_MODE` with explicit `real` or `fixture` behavior.
 
 Fixture mode is used by tests. Real mode rejects mock selection and validates required credentials/endpoints.
 
 ## Error Handling and Validation
 
-- Invalid symbols, provider names, modes, endpoints, and limits fail before source access.
+- Invalid symbols, plugin names, modes, endpoints, and limits fail before source access.
 - Missing required credentials fail without making a network request.
-- HTTP, transport, invalid JSON, API error, empty response, and malformed row failures preserve Provider context.
+- HTTP, transport, invalid JSON, API error, empty response, and malformed row failures preserve Plugin context.
 - Numeric fields accept documented numeric strings only when finite after normalization.
 - Report periods, report dates, symbol associations, statement types, and confidence values are validated.
 - Required metrics missing from a source row are rejected rather than silently filled.
-- Provider metadata includes `provider`, `source`, `timestamp`, `quality`, and `confidence`.
+- Plugin metadata includes `plugin`, `source`, `timestamp`, `quality`, and `confidence`.
 
 ## Testing Strategy
 
@@ -147,7 +147,7 @@ Tests cover:
 1. Tushare field transformation for income, balance sheet, and cash flow fixtures.
 2. AkShare field transformation into the same canonical model.
 3. Symbol, period, metric, value, unit, and metadata normalization.
-4. Missing fields, malformed responses, Provider errors, and primary/fallback behavior.
+4. Missing fields, malformed responses, Plugin errors, and primary/fallback behavior.
 5. `get_financial_snapshot(symbol)` through the Registry.
 6. Financial data conversion into Evidence Artifacts.
 7. Existing Artifact tests and Event Analysis compatibility regression.
@@ -166,11 +166,11 @@ No default test makes a live network request.
 The implementation will add:
 
 ```text
-docs/architecture/FINANCIAL_PROVIDER_DESIGN.md
+docs/architecture/FINANCIAL_PLUGIN_DESIGN.md
 ```
 
 The implementation commit will use:
 
 ```text
-feat: add financial statement provider
+feat: add financial statement plugin
 ```

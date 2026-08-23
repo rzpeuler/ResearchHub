@@ -5,7 +5,7 @@
 ResearchHub has standardized Event Analysis as a versioned Skill Package with
 research framework, Evidence schema, output contract, and Evaluation rules.
 Company Research is the second core methodology and must reuse those contracts
-without introducing a new Artifact type, Capability, runtime, or Workflow
+without introducing a new Artifact type, Plugin, runtime, or Workflow
 Engine.
 
 ## Decision
@@ -23,12 +23,12 @@ modules:
 
 Each module maps facts to Evidence, bounded claims to existing Thesis Artifacts,
 and reviewable expectations to existing Prediction Artifacts. The Skill uses
-logical Market, Information, and Financial Capability operations and never
-depends on concrete Provider implementations.
+logical Market, Information, and Financial Plugin operations and never
+depends on concrete Plugin implementations.
 
 ## Evidence model
 
-Evidence is organized by module and retains source, timestamp, provider,
+Evidence is organized by module and retains source, timestamp, plugin,
 quality, confidence, reporting period, and unit metadata where applicable.
 Material claims require multiple independent sources or an explicit
 single-source limitation. Missing or conflicting facts become risks or
@@ -67,11 +67,11 @@ rules would be embedded in orchestration instead of reusable as a Skill.
 ### Standard Skill Package with existing Artifact contracts — selected
 
 This preserves the ResearchHub architecture: Workflow orchestrates, Skill
-defines method, Capability provides facts, Artifact stores structured results,
+defines method, Plugin provides facts, Artifact stores structured results,
 and Evaluation performs objective review.
 
 ## Scope
 
 This design adds only `docs/architecture/COMPANY_RESEARCH_SKILL_DESIGN.md`.
 Implementation of `packages/skills/company-research/`, a future
-`company-research` Workflow, and any additional Capability are separate tasks.
+`company-research` Workflow, and any additional Plugin are separate tasks.

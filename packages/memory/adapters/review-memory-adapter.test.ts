@@ -13,7 +13,7 @@ import { createOutcome } from '../../evaluation/outcome/index.ts'
 import { MemoryDuplicateError } from '../core/errors.ts'
 import type { MemoryEntry } from '../core/index.ts'
 import { MemoryValidationError } from '../core/errors.ts'
-import { LocalJsonMemoryProvider } from '../providers/local-json-memory-provider.ts'
+import { LocalJsonMemoryPlugin } from '../plugins/local-json-memory-plugin.ts'
 import { ReviewMemoryAdapter } from './review-memory-adapter.ts'
 
 const prediction = createPrediction({
@@ -54,19 +54,19 @@ function expectedEntry(): MemoryEntry {
   }
 }
 
-test('maps Evaluation Engine Review to LocalJsonMemoryProvider and retrieves it', async () => {
+test('maps Evaluation Engine Review to LocalJsonMemoryPlugin and retrieves it', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'researchhub-review-memory-'))
   const filePath = join(directory, 'memory.json')
 
   try {
-    const provider = new LocalJsonMemoryProvider(filePath)
-    const adapter = new ReviewMemoryAdapter(provider)
+    const plugin = new LocalJsonMemoryPlugin(filePath)
+    const adapter = new ReviewMemoryAdapter(plugin)
 
     const saved = await adapter.saveReview(review)
     assert.deepEqual(saved, expectedEntry())
     assert.deepEqual(deserializeReview(saved.content), review)
 
-    const restored = await new LocalJsonMemoryProvider(filePath).retrieve({
+    const restored = await new LocalJsonMemoryPlugin(filePath).retrieve({
       type: 'review',
       sessionId: review.sessionId,
     })
@@ -82,10 +82,10 @@ test('uses deterministic Review memory IDs across adapter instances', async () =
 
   try {
     const first = await new ReviewMemoryAdapter(
-      new LocalJsonMemoryProvider(join(firstDirectory, 'memory.json')),
+      new LocalJsonMemoryPlugin(join(firstDirectory, 'memory.json')),
     ).saveReview(review)
     const second = await new ReviewMemoryAdapter(
-      new LocalJsonMemoryProvider(join(secondDirectory, 'memory.json')),
+      new LocalJsonMemoryPlugin(join(secondDirectory, 'memory.json')),
     ).saveReview(review)
 
     assert.equal(first.id, 'memory:review:review-memory-001')
@@ -98,24 +98,24 @@ test('uses deterministic Review memory IDs across adapter instances', async () =
   }
 })
 
-test('leaves duplicate Review handling to the injected provider', async () => {
+test('leaves duplicate Review handling to the injected plugin', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'researchhub-review-memory-'))
-  const provider = new LocalJsonMemoryProvider(join(directory, 'memory.json'))
-  const adapter = new ReviewMemoryAdapter(provider)
+  const plugin = new LocalJsonMemoryPlugin(join(directory, 'memory.json'))
+  const adapter = new ReviewMemoryAdapter(plugin)
 
   try {
     await adapter.saveReview(review)
     await assert.rejects(() => adapter.saveReview(review), MemoryDuplicateError)
-    assert.deepEqual(await provider.retrieve(), [expectedEntry()])
+    assert.deepEqual(await plugin.retrieve(), [expectedEntry()])
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
 })
 
-test('rejects invalid and unsafe Reviews before invoking the provider', async () => {
+test('rejects invalid and unsafe Reviews before invoking the plugin', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'researchhub-review-memory-'))
-  const provider = new LocalJsonMemoryProvider(join(directory, 'memory.json'))
-  const adapter = new ReviewMemoryAdapter(provider)
+  const plugin = new LocalJsonMemoryPlugin(join(directory, 'memory.json'))
+  const adapter = new ReviewMemoryAdapter(plugin)
   const invalidReview = { ...review, id: '' } as never
   const unsafeReview = { ...review } as Review & { toJSON: () => unknown }
   Object.defineProperty(unsafeReview, 'toJSON', { value: () => ({ id: 'spoofed' }) })
@@ -123,7 +123,7 @@ test('rejects invalid and unsafe Reviews before invoking the provider', async ()
   try {
     await assert.rejects(() => adapter.saveReview(invalidReview))
     await assert.rejects(() => adapter.saveReview(unsafeReview))
-    assert.deepEqual(await provider.retrieve(), [])
+    assert.deepEqual(await plugin.retrieve(), [])
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -132,8 +132,8 @@ test('rejects invalid and unsafe Reviews before invoking the provider', async ()
 test('rejects Object.prototype.toJSON pollution for save, retrieve, and Review adapter flows', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'researchhub-review-memory-'))
   const filePath = join(directory, 'memory.json')
-  const provider = new LocalJsonMemoryProvider(filePath)
-  const adapter = new ReviewMemoryAdapter(provider)
+  const plugin = new LocalJsonMemoryPlugin(filePath)
+  const adapter = new ReviewMemoryAdapter(plugin)
   const originalDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, 'toJSON')
 
   try {
@@ -144,8 +144,8 @@ test('rejects Object.prototype.toJSON pollution for save, retrieve, and Review a
       writable: true,
     })
 
-    await assert.rejects(() => provider.save(expectedEntry()), MemoryValidationError)
-    await assert.rejects(() => provider.retrieve(), MemoryValidationError)
+    await assert.rejects(() => plugin.save(expectedEntry()), MemoryValidationError)
+    await assert.rejects(() => plugin.retrieve(), MemoryValidationError)
     await assert.rejects(() => adapter.saveReview(review))
   } finally {
     if (originalDescriptor === undefined) {

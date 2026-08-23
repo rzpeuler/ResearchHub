@@ -12,7 +12,7 @@ evidence_types:
       - confidence
     required_metadata:
       - symbol
-      - provider
+      - plugin
       - quality
     supports:
       - business-understanding
@@ -29,7 +29,7 @@ evidence_types:
       - confidence
     required_metadata:
       - symbol
-      - provider
+      - plugin
       - quality
     supports:
       - industry-position
@@ -46,7 +46,7 @@ evidence_types:
       - confidence
     required_metadata:
       - symbol
-      - provider
+      - plugin
       - quality
     supports:
       - competitive-advantage
@@ -63,7 +63,7 @@ evidence_types:
       - confidence
     required_metadata:
       - symbol
-      - provider
+      - plugin
       - quality
       - period
       - statement_type
@@ -83,7 +83,7 @@ evidence_types:
       - confidence
     required_metadata:
       - symbol
-      - provider
+      - plugin
       - quality
     supports:
       - risk-analysis
@@ -94,7 +94,7 @@ source_metadata:
   required:
     - source
     - timestamp
-    - provider
+    - plugin
     - quality
     - confidence
 

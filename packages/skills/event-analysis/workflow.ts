@@ -8,31 +8,31 @@ import {
   type Prediction,
   type Thesis,
 } from '../../artifacts/index.ts'
-import { type MarketCapability, type MarketSnapshot } from '../../capabilities/market/index.ts'
-import { type NewsCapability, type NewsEvidence } from '../../capabilities/news/index.ts'
-import { type FinancialCapability, createFinancialEvidence } from '../../capabilities/financial/index.ts'
+import { type MarketPlugin, type MarketSnapshot } from '../../plugins/market/index.ts'
+import { type NewsPlugin, type NewsEvidence } from '../../plugins/news/index.ts'
+import { type FinancialPlugin, createFinancialEvidence } from '../../plugins/financial/index.ts'
 import type { ArtifactIdFactory, EventAnalysisInput, EventAnalysisResult } from './types.ts'
 
-type MarketCapabilityPort = Pick<MarketCapability, 'get_market_snapshot'>
-type NewsCapabilityPort = Pick<NewsCapability, 'search_company_news'>
-type FinancialCapabilityPort = Pick<FinancialCapability, 'get_financial_snapshot'>
+type MarketPluginPort = Pick<MarketPlugin, 'get_market_snapshot'>
+type NewsPluginPort = Pick<NewsPlugin, 'search_company_news'>
+type FinancialPluginPort = Pick<FinancialPlugin, 'get_financial_snapshot'>
 
 export interface EventAnalysisWorkflowOptions {
-  marketCapability: MarketCapabilityPort
-  newsCapability: NewsCapabilityPort
-  announcementCapability?: NewsCapabilityPort
-  mediaCapability?: NewsCapabilityPort
-  financialCapability?: FinancialCapabilityPort
+  marketPlugin: MarketPluginPort
+  newsPlugin: NewsPluginPort
+  announcementPlugin?: NewsPluginPort
+  mediaPlugin?: NewsPluginPort
+  financialPlugin?: FinancialPluginPort
   artifactIdFactory: ArtifactIdFactory
 }
 
-/** Orchestrates capabilities into a neutral, structured research artifact bundle. */
+/** Orchestrates plugins into a neutral, structured research artifact bundle. */
 export class EventAnalysisWorkflow {
   constructor(private readonly options: EventAnalysisWorkflowOptions) {}
 
   async run(input: EventAnalysisInput): Promise<EventAnalysisResult> {
     const normalized = validateInput(input)
-    const marketSnapshot = await this.options.marketCapability.get_market_snapshot({ symbol: normalized.symbol })
+    const marketSnapshot = await this.options.marketPlugin.get_market_snapshot({ symbol: normalized.symbol })
 
     let evidenceOrdinal = 0
     const evidence: Evidence[] = [createMarketEvidence(
@@ -41,24 +41,24 @@ export class EventAnalysisWorkflow {
       marketSnapshot,
     )]
 
-    if (this.options.announcementCapability !== undefined
-      && this.options.mediaCapability !== undefined
-      && this.options.financialCapability !== undefined) {
-      const announcementResult = await this.options.announcementCapability.search_company_news({ symbol: normalized.symbol })
+    if (this.options.announcementPlugin !== undefined
+      && this.options.mediaPlugin !== undefined
+      && this.options.financialPlugin !== undefined) {
+      const announcementResult = await this.options.announcementPlugin.search_company_news({ symbol: normalized.symbol })
       evidence.push(...announcementResult.items.map((item) => createNewsEvidence(
         this.options.artifactIdFactory('evidence', evidenceOrdinal++),
         normalized,
         item,
       )))
 
-      const mediaResult = await this.options.mediaCapability.search_company_news({ symbol: normalized.symbol })
+      const mediaResult = await this.options.mediaPlugin.search_company_news({ symbol: normalized.symbol })
       evidence.push(...mediaResult.items.map((item) => createNewsEvidence(
         this.options.artifactIdFactory('evidence', evidenceOrdinal++),
         normalized,
         item,
       )))
 
-      const financialSnapshot = await this.options.financialCapability.get_financial_snapshot({ symbol: normalized.symbol })
+      const financialSnapshot = await this.options.financialPlugin.get_financial_snapshot({ symbol: normalized.symbol })
       const financialEvidence = createFinancialEvidence(financialSnapshot, {
         sessionId: normalized.sessionId,
         createdAt: normalized.createdAt,
@@ -67,7 +67,7 @@ export class EventAnalysisWorkflow {
       evidence.push(...financialEvidence)
       evidenceOrdinal += financialEvidence.length
     } else {
-      const newsResult = await this.options.newsCapability.search_company_news({ symbol: normalized.symbol })
+      const newsResult = await this.options.newsPlugin.search_company_news({ symbol: normalized.symbol })
       evidence.push(...newsResult.items.map((item) => createNewsEvidence(
         this.options.artifactIdFactory('evidence', evidenceOrdinal++),
         normalized,
@@ -140,8 +140,8 @@ function createMarketEvidence(id: string, input: EventAnalysisInput, snapshot: M
     id,
     createdAt: input.createdAt,
     sessionId: input.sessionId,
-    metadata: { symbol: input.symbol, capability: 'get_market_snapshot' },
-    source: 'market-capability',
+    metadata: { symbol: input.symbol, plugin: 'get_market_snapshot' },
+    source: 'market-plugin',
     content: JSON.stringify(snapshot),
     timestamp: input.createdAt,
     confidence: 0.5,
@@ -153,7 +153,7 @@ function createNewsEvidence(id: string, input: EventAnalysisInput, item: NewsEvi
     id,
     createdAt: input.createdAt,
     sessionId: input.sessionId,
-    metadata: { symbol: input.symbol, capability: 'search_company_news' },
+    metadata: { symbol: input.symbol, plugin: 'search_company_news' },
     source: item.source,
     content: `${item.headline}: ${item.content}`,
     timestamp: item.timestamp,

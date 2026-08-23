@@ -5,10 +5,10 @@ import { CompanyResearchWorkflow } from './index.ts'
 const createdAt = '2026-08-24T00:00:00.000Z'
 const evaluationPeriod = { start: createdAt, end: '2027-02-24T00:00:00.000Z' }
 
-test('CompanyResearchWorkflow calls injected Capabilities and creates linked Artifacts', async () => {
+test('CompanyResearchWorkflow calls injected Plugins and creates linked Artifacts', async () => {
   const calls = { market: 0, information: 0, financial: 0 }
   const workflow = new CompanyResearchWorkflow({
-    marketCapability: {
+    marketPlugin: {
       async get_market_snapshot(input) {
         calls.market += 1
         return {
@@ -23,7 +23,7 @@ test('CompanyResearchWorkflow calls injected Capabilities and creates linked Art
         }
       },
     },
-    informationCapability: {
+    informationPlugin: {
       async search_company_news(input) {
         calls.information += 1
         return {
@@ -43,7 +43,7 @@ test('CompanyResearchWorkflow calls injected Capabilities and creates linked Art
         }
       },
     },
-    financialCapability: {
+    financialPlugin: {
       async get_financial_snapshot(input) {
         calls.financial += 1
         return {
@@ -58,7 +58,7 @@ test('CompanyResearchWorkflow calls injected Capabilities and creates linked Art
             confidence: 0.9,
             sourceStatementIds: ['statement-1'],
             source: {
-              provider: 'fixture-financial',
+              plugin: 'fixture-financial',
               source: 'fixture-financial',
               publishedAt: createdAt,
               retrievedAt: createdAt,
@@ -67,7 +67,7 @@ test('CompanyResearchWorkflow calls injected Capabilities and creates linked Art
               sourceStatementIds: ['statement-1'],
             },
           }],
-          provider: 'fixture-financial',
+          plugin: 'fixture-financial',
           source: 'fixture-financial',
           timestamp: createdAt,
           quality: 'high' as const,
@@ -101,9 +101,9 @@ test('CompanyResearchWorkflow calls injected Capabilities and creates linked Art
 
 test('CompanyResearchWorkflow rejects invalid symbols and evaluation periods', async () => {
   const workflow = new CompanyResearchWorkflow({
-    marketCapability: { async get_market_snapshot() { throw new Error('not called') } },
-    informationCapability: { async search_company_news() { throw new Error('not called') } },
-    financialCapability: { async get_financial_snapshot() { throw new Error('not called') } },
+    marketPlugin: { async get_market_snapshot() { throw new Error('not called') } },
+    informationPlugin: { async search_company_news() { throw new Error('not called') } },
+    financialPlugin: { async get_financial_snapshot() { throw new Error('not called') } },
     artifactIdFactory: (type, ordinal) => `${type}-${ordinal}`,
   })
 

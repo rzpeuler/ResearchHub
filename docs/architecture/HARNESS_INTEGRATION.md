@@ -4,7 +4,7 @@
 
 This document records the minimum ResearchHub integration validation for Phase 2.
 
-The code under `tests/integration/` is **integration validation only**. It is not production implementation, not a financial capability, and not a replacement for the future ResearchHub runtime package layout.
+The code under `tests/integration/` is **integration validation only**. It is not production implementation, not a financial plugin, and not a replacement for the future ResearchHub runtime package layout.
 
 ## Locked Harness Version
 
@@ -21,9 +21,9 @@ The official source reviewed for this validation is `deepseek-ai/deepseek-harnes
 - Cordis tutorial: `docs/cordis-tutorial/01-first-plugin.md`
 - Configuration: `docs/cordis-tutorial/05-config.md`
 - Architecture: `docs/architecture.md`
-- Capability seams: `docs/capability-seams.md`
-- Agent API: `packages/core/agent/README.md`
-- Agent loop: `packages/core/agent-loop/README.md`
+- Plugin seams: `docs/plugin-seams.md`
+- DSH API: `packages/core/dsh/README.md`
+- DSH loop: `packages/core/dsh-loop/README.md`
 - Skill API: `packages/skill/skill/README.md`
 - Session API: `packages/core/session/README.md`
 - JSONL persistence: `packages/session/session-persistence-jsonl/README.md`
@@ -33,13 +33,13 @@ The official source reviewed for this validation is `deepseek-ai/deepseek-harnes
 | ResearchHub concept | Harness interface used | Validation implementation |
 | --- | --- | --- |
 | ResearchHub Extension | Cordis plugin `apply(ctx, config)` | `tests/integration/extension.ts` |
-| Research Manager Agent | `ctx.agents.create()` from `dsh-agent-loop` | `tests/integration/packages/agents/research-manager/` |
+| Research Manager DSH | `ctx.dsh.create()` from `dsh-dsh-loop` | `tests/integration/packages/dsh/research-manager/` |
 | Validation Skill | `ctx.skills` through `dsh-skill-filesystem` and model-facing `skill` tool | `tests/integration/packages/skills/validation-skill/SKILL.md` |
-| Validation Capability | ResearchHub Cordis service exposed through `ctx.tools.register()` | `tests/integration/packages/capabilities/validation-capability/` |
-| Workflow boundary | Agent follow-up and tool-call sequence | `tests/integration/harness-integration.test.ts` |
+| Validation Plugin | ResearchHub Cordis service exposed through `ctx.tools.register()` | `tests/integration/packages/plugins/validation-plugin/` |
+| Workflow boundary | DSH follow-up and tool-call sequence | `tests/integration/harness-integration.test.ts` |
 | Memory / persistence boundary | `ctx.sessions.flush()` and JSONL persistence plugin | Temporary session root created by the test |
 
-Harness does not expose a generic built-in `CapabilityRegistry`. The ResearchHub validation capability therefore remains a ResearchHub-owned service and uses the Harness tool registry as its Agent-facing boundary. It does not access a database or external financial provider.
+Harness does not expose a generic built-in `PluginRegistry`. The ResearchHub validation plugin therefore remains a ResearchHub-owned service and uses the Harness tool registry as its DSH-facing boundary. It does not access a database or external financial plugin.
 
 ## Verified Interfaces
 
@@ -48,39 +48,39 @@ The integration test verifies the following live chain:
 1. Cordis context and Harness prerequisite services start.
 2. ResearchHub Extension mounts its nested plugins.
 3. The extension registers a deterministic mock LLM adapter without an API key.
-4. `ctx.agents.create()` returns a real Harness `AgentHandle` from `dsh-agent-loop`.
-5. The Agent invokes the Harness `skill` tool and loads `validation-skill` from the configured custom skill root.
-6. The Agent invokes `researchhub_validation_capability`.
-7. The capability confirms the loaded skill and returns:
+4. `ctx.dsh.create()` returns a real Harness `DSHHandle` from `dsh-dsh-loop`.
+5. The DSH invokes the Harness `skill` tool and loads `validation-skill` from the configured custom skill root.
+6. The DSH invokes `researchhub_validation_plugin`.
+7. The plugin confirms the loaded skill and returns:
 
    ```json
    {
      "status": "success",
-     "message": "ResearchHub capability loaded"
+     "message": "ResearchHub plugin loaded"
    }
    ```
 
-8. The Agent emits a final response and reaches a completed `turn/end`.
+8. The DSH emits a final response and reaches a completed `turn/end`.
 9. `ctx.sessions.flush()` causes the JSONL persistence plugin to write the Session event log.
 
 ## Session Lifecycle
 
 The validation uses the Harness lifecycle rather than a custom session object:
 
-- Create: `ctx.agents.create()` creates the Agent and its same-identity Session through the AgentLoop factory.
-- Execute: `agent.followup()` wakes the Agent; `agent.whenIdle()` waits for the real loop to quiesce.
-- Record: Harness appends tool calls, tool results, assistant output and turn boundaries to `agent.session`.
-- Persist: `ctx.sessions.flush(agent.session)` is the durability barrier; JSONL persistence writes the event stream.
-- Dispose: `handle.dispose()` and Cordis fiber disposal release the Agent and Session resources.
+- Create: `ctx.dsh.create()` creates the DSH and its same-identity Session through the DSHLoop factory.
+- Execute: `dsh.followup()` wakes the DSH; `dsh.whenIdle()` waits for the real loop to quiesce.
+- Record: Harness appends tool calls, tool results, assistant output and turn boundaries to `dsh.session`.
+- Persist: `ctx.sessions.flush(dsh.session)` is the durability barrier; JSONL persistence writes the event stream.
+- Dispose: `handle.dispose()` and Cordis fiber disposal release the DSH and Session resources.
 
 ## Not Yet Confirmed
 
-- Production ResearchHub Agent preset composition and per-agent configuration are not frozen by this validation.
+- Production ResearchHub DSH preset composition and per-dsh configuration are not frozen by this validation.
 - A real DeepSeek model route is not exercised; the test uses a deterministic local adapter to avoid credentials and nondeterministic model output.
-- No production financial Capability, external data provider, database, vector store or graph store is implemented.
+- No production financial Plugin, external data plugin, database, vector store or graph store is implemented.
 - Harness Loader execution from an independently installed ResearchHub package is documented by `tests/integration/cordis.yml`, while the test mounts the same plugin composition programmatically so the deterministic adapter and live handles can be asserted directly.
 - Harness remains a developer-preview dependency; upgrading beyond `0.1.1-rc.2` requires rerunning and reviewing this validation.
 
 ## Validation Boundary
 
-Passing this test proves the architecture mapping is viable for the smallest real Runtime → Extension → Agent → Skill → Capability → Session path. It does not prove production readiness, model quality, financial data correctness, or the completeness of the future ResearchHub application.
+Passing this test proves the architecture mapping is viable for the smallest real Runtime → Extension → DSH → Skill → Plugin → Session path. It does not prove production readiness, model quality, financial data correctness, or the completeness of the future ResearchHub application.

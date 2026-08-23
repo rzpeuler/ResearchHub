@@ -25,7 +25,7 @@ quality requirements, reasoning mechanism, and review conditions.
 
 ## Evidence model
 
-Industry Evidence preserves source, timestamp, Provider, quality, confidence,
+Industry Evidence preserves source, timestamp, Plugin, quality, confidence,
 unit, geography, period, and methodology where applicable. Material claims use
 multiple independent sources when available. Estimates, conflicts, stale data,
 and incomparable periods are disclosed as uncertainty or risk.
@@ -45,7 +45,7 @@ and an invalidation condition.
 Industry Research is upstream context for Company Research and optional context
 for Event Analysis. Company Research remains responsible for company-specific
 business quality and exposure analysis. Event Analysis remains responsible for
-shorter-horizon event interpretation. Workflow still orchestrates, Capability
+shorter-horizon event interpretation. Workflow still orchestrates, Plugin
 still provides facts, Artifact still stores results, and Evaluation still
 compares Prediction with Outcome.
 
@@ -63,11 +63,11 @@ Rejected because it would fragment the existing Memory and Evaluation contract.
 ### Separate Industry Skill using existing Artifacts — selected
 
 This keeps methods reusable and composable while preserving the current
-Harness, Workflow, Capability, Artifact, and Evaluation boundaries.
+Harness, Workflow, Plugin, Artifact, and Evaluation boundaries.
 
 ## Scope
 
 This design adds only `docs/architecture/INDUSTRY_RESEARCH_SKILL_DESIGN.md`.
 Implementation of `packages/skills/industry-research/`, a future
-`industry-research` Workflow, and any additional data Capability are separate
+`industry-research` Workflow, and any additional data Plugin are separate
 engineering tasks.

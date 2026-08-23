@@ -1,18 +1,18 @@
-# ResearchHub Professional Media Provider MVP Design
+# ResearchHub Professional Media Plugin MVP Design
 
 ## Task
 
-RH-ENG-007 — implement a professional media Information Provider for market-explanation evidence.
+RH-ENG-007 — implement a professional media Information Plugin for market-explanation evidence.
 
 ## Goal
 
-Add a Media Provider that follows the existing Information Provider architecture and exposes professional media records to the unchanged News Capability boundary:
+Add a Media Plugin that follows the existing Information Plugin architecture and exposes professional media records to the unchanged News Plugin boundary:
 
 ```text
-News Capability
-    -> Provider Registry
-    -> media-provider
-    -> MediaProvider
+News Plugin
+    -> Plugin Registry
+    -> media-plugin
+    -> MediaPlugin
     -> ProfessionalMediaSourceAdapter
     -> Fixture / Future Professional Media Source
 ```
@@ -22,41 +22,41 @@ The MVP standardizes media records as NewsItem-compatible values, records publis
 ## Constraints
 
 - Do not modify Harness Core.
-- Do not modify the News Capability public contract.
+- Do not modify the News Plugin public contract.
 - Do not modify the Event Analysis Skill.
 - Do not add NLP, summarization, sentiment analysis, community-opinion analysis, investment judgment, trading, or crawler logic.
 - Do not add an external media SDK or dependency.
 - Tests must use injected fixture adapters and must not require external network access.
-- Keep the source protocol behind an adapter so future licensed or public professional-media sources can be added without changing Capability or Skill code.
+- Keep the source protocol behind an adapter so future licensed or public professional-media sources can be added without changing Plugin or Skill code.
 
 ## Architecture
 
-### MediaProvider
+### MediaPlugin
 
-`MediaProvider` implements the existing generic `DataProvider` interface. It owns:
+`MediaPlugin` implements the existing generic `DataPlugin` interface. It owns:
 
 - request normalization and symbol validation;
 - conversion from source records into media NewsItem values;
 - explicit source rating and confidence validation;
 - stock-symbol mapping;
-- ProviderResult metadata generation.
+- PluginResult metadata generation.
 
 It does not fetch an HTTP endpoint directly and does not interpret the meaning of an article.
 
 ### ProfessionalMediaSourceAdapter
 
-`ProfessionalMediaSourceAdapter` is a source-neutral boundary. It returns raw media records with source-specific details already normalized by the adapter. The MVP supplies a deterministic fixture implementation for tests and controlled validation. A future adapter can connect to a licensed professional media source without changing MediaProvider.
+`ProfessionalMediaSourceAdapter` is a source-neutral boundary. It returns raw media records with source-specific details already normalized by the adapter. The MVP supplies a deterministic fixture implementation for tests and controlled validation. A future adapter can connect to a licensed professional media source without changing MediaPlugin.
 
-### News Capability Compatibility
+### News Plugin Compatibility
 
-The existing News Capability contract uses `headline`, `timestamp`, and a single `symbol`. A Registry-boundary projection maps:
+The existing News Plugin contract uses `headline`, `timestamp`, and a single `symbol`. A Registry-boundary projection maps:
 
 - `title` to `headline`;
 - `publishedAt` to `timestamp`;
 - the requested symbol to `symbol`;
 - `content`, `source`, and item confidence without semantic transformation.
 
-The projection is the only legacy compatibility code. News Capability and Event Analysis remain unchanged.
+The projection is the only legacy compatibility code. News Plugin and Event Analysis remain unchanged.
 
 ## Data Model
 
@@ -86,13 +86,13 @@ interface MediaNewsItem {
 
 Neither confidence value is a sentiment score or an investment return probability.
 
-### Provider Metadata
+### Plugin Metadata
 
-The Provider continues to use the existing `FinancialDataMetadata` envelope with:
+The Plugin continues to use the existing `FinancialDataMetadata` envelope with:
 
 ```ts
 {
-  provider: 'media-provider'
+  plugin: 'media-plugin'
   source: 'professional-media'
   timestamp: string
   quality: 'high' | 'medium' | 'low'
@@ -120,12 +120,12 @@ Mapping is explicit and conservative:
 2. If only an issuer identity is available, use an injected issuer-to-symbol map.
 3. Reject records that cannot be mapped unambiguously or that map to a different requested symbol.
 
-The Provider never infers a symbol from free-form article content.
+The Plugin never infers a symbol from free-form article content.
 
 ## Error Handling
 
 - Invalid symbols, limits, tiers, timestamps, confidence values, or required text fail validation.
-- Source adapter failures are propagated with Provider context and without credential leakage.
+- Source adapter failures are propagated with Plugin context and without credential leakage.
 - Malformed source records are rejected; no partial NewsItem is emitted.
 - An empty successful result is allowed and retains valid batch metadata.
 
@@ -137,7 +137,7 @@ Tests cover:
 2. Publisher, tier, item confidence, and batch metadata validation.
 3. Security-code and issuer-to-symbol mapping.
 4. Source errors and malformed records.
-5. Registry registration as `media-provider` and invocation through unchanged News Capability.
+5. Registry registration as `media-plugin` and invocation through unchanged News Plugin.
 6. Event Analysis creation of Evidence, Thesis, and Prediction from media evidence.
 7. Full TypeScript and repository test suite compatibility.
 
@@ -147,12 +147,12 @@ No default test performs a network request.
 
 Implementation will add:
 
-- `docs/architecture/MEDIA_PROVIDER_DESIGN.md`
+- `docs/architecture/MEDIA_PLUGIN_DESIGN.md`
 
 It will update README navigation, project status, task registry, roadmap, and changelog. The implementation commit will use:
 
 ```text
-feat: add professional media provider
+feat: add professional media plugin
 ```
 
 and will be pushed to `main`.

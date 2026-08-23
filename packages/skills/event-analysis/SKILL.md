@@ -71,11 +71,11 @@ The Skill references logical Capability operations only:
 
 - `market.get_market_snapshot(symbol)`
 - `information.search_company_news(symbol)` through official announcement
-  and professional media Provider Handles
+  and professional media Plugin Handles
 - `financial.get_financial_snapshot(symbol)`
 
 The Skill never names or imports Tushare, AkShare, HTTP clients, crawlers, or
-Provider implementations.
+Plugin implementations.
 
 ## Evidence Requirements
 

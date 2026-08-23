@@ -16,7 +16,7 @@ listed company as a business. It separates business facts, industry context,
 competitive advantages, growth mechanisms, financial quality, capital use, and
 risks from investment decisions.
 
-It does not fetch data directly, call Providers, execute a Workflow, perform
+It does not fetch data directly, call Plugins, execute a Workflow, perform
 valuation, issue investment advice, or trade.
 
 ## Research Objective
@@ -85,7 +85,7 @@ should identify an affected assumption and an observable warning signal.
 
 The complete Evidence contract is defined in
 [`evidence-schema.yaml`](evidence-schema.yaml). Evidence must retain source,
-timestamp, Provider, quality, confidence, and reporting-period metadata where
+timestamp, Plugin, quality, confidence, and reporting-period metadata where
 applicable. Material claims require multiple independent sources or an explicit
 single-source limitation.
 
@@ -121,6 +121,6 @@ a Review. The Skill does not self-grade or change its methodology.
 ## Scope Boundary
 
 The Company Research Skill depends on logical Market, Information, and
-Financial Capability interfaces only. It does not access Provider
+Financial Capability interfaces only. It does not access Plugin
 implementations, schedule Workflow steps, own Session persistence, modify
 Memory, or replace the Harness Runtime.

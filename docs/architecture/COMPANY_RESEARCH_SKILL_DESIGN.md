@@ -18,20 +18,20 @@ The Skill answers:
 > the quality of its reported economics, and which risks or assumptions must be
 > reviewed over time?
 
-It does not fetch data directly, execute a Workflow, build an Agent Runtime,
+It does not fetch data directly, execute a Workflow, build an Harness Runtime,
 perform valuation, issue investment advice, or execute trades.
 
 ```text
 Research Manager
     -> Company Research Workflow
         -> Company Research Skill
-            -> Market / Information / Financial Capabilities
+            -> Market / Information / Financial Plugins
         -> Evidence Artifacts
         -> Company Research Thesis
         -> Reviewable Prediction
 ```
 
-Workflow owns lifecycle and ordering. Capability owns structured facts. The
+Workflow owns lifecycle and ordering. Plugin owns structured facts. The
 Skill owns the research method and evidence standards. Existing Evidence,
 Thesis, Prediction, Memory, and Evaluation contracts remain authoritative.
 
@@ -49,9 +49,9 @@ packages/skills/company-research/
 └── evaluation-rules.md
 ```
 
-The package should declare logical Capability operations, not Provider names.
-The initial design expects Market, Information, and Financial Capability
-interfaces. A future Institution or Governance Capability may add facts
+The package should declare logical Plugin operations, not Plugin names.
+The initial design expects Market, Information, and Financial Plugin
+interfaces. A future Institution or Governance Plugin may add facts
 without changing the Skill's boundary.
 
 ## 3. Research Framework
@@ -188,8 +188,8 @@ the minimum evidence model:
 
 Evidence quality rules:
 
-- Every Evidence item must preserve source, timestamp, provider, quality, and
-  confidence metadata where supplied by the Capability.
+- Every Evidence item must preserve source, timestamp, plugin, quality, and
+  confidence metadata where supplied by the Plugin.
 - Financial Evidence must retain statement type, reporting period, unit, and
   source context.
 - Material claims should use more than one independent source or explicitly
@@ -313,7 +313,7 @@ companies, optimize strategies, or allow the Skill to rewrite itself.
 
 The future `company-research` Workflow may call the Skill through the existing
 Harness execution boundary and organize its modules as steps. This design does
-not implement that Workflow, add Capabilities, or create a Workflow Engine.
+not implement that Workflow, add Plugins, or create a Harness Workflow Runtime.
 
 The design is compatible with:
 
@@ -321,8 +321,8 @@ The design is compatible with:
   evaluation contracts;
 - **Workflow:** Workflow selects and sequences the method without embedding
   the method's reasoning rules;
-- **Capability:** the Skill depends on logical Market, Information, and
-  Financial operations, never concrete Providers;
+- **Plugin:** the Skill depends on logical Market, Information, and
+  Financial operations, never concrete Plugins;
 - **Artifact:** existing Evidence, Thesis, and Prediction types remain the
   storage contract;
 - **Evaluation:** Prediction and Outcome remain the objective review input;
@@ -336,6 +336,6 @@ This architecture does not define:
 - valuation models, price targets, or portfolio allocation;
 - an investment recommendation field;
 - a new Company Artifact type;
-- real data acquisition or Provider selection;
-- an autonomous Agent planner or Workflow Engine;
+- real data acquisition or Plugin selection;
+- an autonomous DSH planner or Harness Workflow Runtime;
 - automatic strategy changes after Evaluation.

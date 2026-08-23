@@ -18,7 +18,7 @@ Thesis
 Prediction
 ```
 
-Artifact 只负责表达研究结果及其引用关系。Agent、Skill、Capability 和未来的 Memory Adapter 通过 Artifact 合同交换数据；Artifact 本身不访问 Harness、数据源或存储系统。
+Artifact 只负责表达研究结果及其引用关系。DSH、Skill、Plugin 和未来的 Memory Adapter 通过 Artifact 合同交换数据；Artifact 本身不访问 Harness、数据源或存储系统。
 
 ## Package Structure
 

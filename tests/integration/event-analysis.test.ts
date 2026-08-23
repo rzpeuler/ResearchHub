@@ -43,7 +43,7 @@ test('Event Analysis Skill loads, creates artifacts and persists the research Se
       skillRoot: join(process.cwd(), 'packages/skills'),
       createdAt: '2026-08-23T00:00:00.000Z',
     })
-    const manager = extensionFiber.ctx.reflect.get('researchHubResearchManager') as import('./packages/agents/research-manager/index.ts').ResearchManager
+    const manager = extensionFiber.ctx.reflect.get('researchHubResearchManager') as import('./packages/dsh/research-manager/index.ts').ResearchManager
     const handle = await manager.createValidationAgent(
       sessionId,
       'researchhub-event-analysis-validation',

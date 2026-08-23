@@ -3,17 +3,17 @@ import {
   serializeReview,
   type Review,
 } from '../../artifacts/review/index.ts'
-import type { MemoryEntry, MemoryProvider } from '../core/index.ts'
+import type { MemoryEntry, MemoryPlugin } from '../core/index.ts'
 
 /** Maps validated Review artifacts to durable Memory Entries. */
 export class ReviewMemoryAdapter {
-  constructor(private readonly provider: MemoryProvider) {}
+  constructor(private readonly plugin: MemoryPlugin) {}
 
   async saveReview(review: Review): Promise<MemoryEntry> {
     const content = serializeReview(review)
     deserializeReview(content)
 
-    return this.provider.save({
+    return this.plugin.save({
       id: `memory:review:${review.id}`,
       type: 'review',
       content,

@@ -2,7 +2,7 @@ name: event-analysis
 version: 2.0.0
 description: Analyze a stock event with traceable market, information, and financial evidence.
 status: active
-required_capabilities:
+required_plugins:
   - market.get_market_snapshot
   - information.search_company_news
   - financial.get_financial_snapshot

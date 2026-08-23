@@ -21,7 +21,7 @@ export interface MemoryEntry {
   metadata: JsonObject;
 }
 
-/** Exact-match filters supported by the MVP provider. */
+/** Exact-match filters supported by the MVP plugin. */
 export interface MemoryQuery {
   id?: string;
   type?: MemoryEntryType;
@@ -30,7 +30,7 @@ export interface MemoryQuery {
   sessionId?: string;
 }
 
-/** Mutable fields accepted by MemoryProvider.update(). */
+/** Mutable fields accepted by MemoryPlugin.update(). */
 export interface MemoryEntryPatch {
   content?: string;
   metadata?: JsonObject;

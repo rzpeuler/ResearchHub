@@ -13,8 +13,8 @@ import {
 } from '../../artifacts/index.ts'
 import { ArtifactValidationError } from '../../artifacts/core/errors.ts'
 import { MemoryDuplicateError } from '../core/errors.ts'
-import type { MemoryEntry, MemoryEntryPatch, MemoryProvider } from '../core/index.ts'
-import { LocalJsonMemoryProvider } from '../providers/local-json-memory-provider.ts'
+import type { MemoryEntry, MemoryEntryPatch, MemoryPlugin } from '../core/index.ts'
+import { LocalJsonMemoryPlugin } from '../plugins/local-json-memory-plugin.ts'
 import { ArtifactMemoryAdapter } from './artifact-memory-adapter.ts'
 
 const thesis = createThesis({
@@ -42,7 +42,7 @@ const prediction = createPrediction({
   metrics: { target: 1, unit: 'fixture' },
 })
 
-class InMemoryProvider implements MemoryProvider {
+class InMemoryPlugin implements MemoryPlugin {
   readonly entries: MemoryEntry[] = []
 
   async save(entry: MemoryEntry): Promise<MemoryEntry> {
@@ -92,31 +92,31 @@ function expectedPredictionEntry(): MemoryEntry {
 }
 
 test('maps Thesis to a deterministic Memory Entry with session metadata', async () => {
-  const provider = new InMemoryProvider()
-  const adapter = new ArtifactMemoryAdapter(provider)
+  const plugin = new InMemoryPlugin()
+  const adapter = new ArtifactMemoryAdapter(plugin)
 
   const saved = await adapter.saveThesis(thesis)
   assert.deepEqual(deserializeThesis(saved.content), thesis)
   assert.deepEqual(saved, expectedThesisEntry())
-  assert.deepEqual(await provider.retrieve(), [expectedThesisEntry()])
+  assert.deepEqual(await plugin.retrieve(), [expectedThesisEntry()])
 })
 
 test('maps Prediction and dispatches supported artifacts through saveArtifact', async () => {
-  const provider = new InMemoryProvider()
-  const adapter = new ArtifactMemoryAdapter(provider)
+  const plugin = new InMemoryPlugin()
+  const adapter = new ArtifactMemoryAdapter(plugin)
 
   const saved = await adapter.savePrediction(prediction)
   assert.deepEqual(deserializePrediction(saved.content), prediction)
   assert.deepEqual(saved, expectedPredictionEntry())
 
-  const dispatchProvider = new InMemoryProvider()
-  const dispatchAdapter = new ArtifactMemoryAdapter(dispatchProvider)
+  const dispatchPlugin = new InMemoryPlugin()
+  const dispatchAdapter = new ArtifactMemoryAdapter(dispatchPlugin)
   assert.deepEqual(await dispatchAdapter.saveArtifact(thesis), expectedThesisEntry())
   assert.deepEqual(await dispatchAdapter.saveArtifact(prediction), expectedPredictionEntry())
 })
 
 test('rejects unsupported artifact types', async () => {
-  const adapter = new ArtifactMemoryAdapter(new InMemoryProvider())
+  const adapter = new ArtifactMemoryAdapter(new InMemoryPlugin())
 
   await assert.rejects(
     () => adapter.saveArtifact({ type: 'evidence', id: 'evidence-001' } as never),
@@ -125,8 +125,8 @@ test('rejects unsupported artifact types', async () => {
 })
 
 test('rejects Thesis and Prediction values with malicious toJSON hooks before saving', async () => {
-  const provider = new InMemoryProvider()
-  const adapter = new ArtifactMemoryAdapter(provider)
+  const plugin = new InMemoryPlugin()
+  const adapter = new ArtifactMemoryAdapter(plugin)
   const maliciousThesis = {
     ...thesis,
     toJSON: () => ({ id: 'spoofed-thesis' }),
@@ -141,35 +141,35 @@ test('rejects Thesis and Prediction values with malicious toJSON hooks before sa
 
   await assert.rejects(() => adapter.saveThesis(maliciousThesis), ArtifactValidationError)
   await assert.rejects(() => adapter.savePrediction(maliciousPrediction), ArtifactValidationError)
-  assert.deepEqual(await provider.retrieve(), [])
+  assert.deepEqual(await plugin.retrieve(), [])
 })
 
-test('persists mapped artifacts and retrieves them after provider restart', async () => {
+test('persists mapped artifacts and retrieves them after plugin restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'researchhub-artifact-memory-'))
   const filePath = join(directory, 'memory.json')
 
   try {
-    const firstAdapter = new ArtifactMemoryAdapter(new LocalJsonMemoryProvider(filePath))
+    const firstAdapter = new ArtifactMemoryAdapter(new LocalJsonMemoryPlugin(filePath))
     await firstAdapter.saveArtifact(thesis)
     await firstAdapter.saveArtifact(prediction)
 
-    const secondProvider = new LocalJsonMemoryProvider(filePath)
-    assert.deepEqual(await secondProvider.retrieve({ sourceArtifactId: thesis.id }), [expectedThesisEntry()])
-    assert.deepEqual(await secondProvider.retrieve({ sessionId: prediction.sessionId, type: 'prediction' }), [expectedPredictionEntry()])
+    const secondPlugin = new LocalJsonMemoryPlugin(filePath)
+    assert.deepEqual(await secondPlugin.retrieve({ sourceArtifactId: thesis.id }), [expectedThesisEntry()])
+    assert.deepEqual(await secondPlugin.retrieve({ sessionId: prediction.sessionId, type: 'prediction' }), [expectedPredictionEntry()])
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
 })
 
-test('keeps deterministic duplicate IDs provider-owned and does not upsert', async () => {
+test('keeps deterministic duplicate IDs plugin-owned and does not upsert', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'researchhub-artifact-memory-'))
-  const provider = new LocalJsonMemoryProvider(join(directory, 'memory.json'))
-  const adapter = new ArtifactMemoryAdapter(provider)
+  const plugin = new LocalJsonMemoryPlugin(join(directory, 'memory.json'))
+  const adapter = new ArtifactMemoryAdapter(plugin)
 
   try {
     await adapter.saveThesis(thesis)
     await assert.rejects(() => adapter.saveThesis(thesis), MemoryDuplicateError)
-    assert.deepEqual(await provider.retrieve(), [expectedThesisEntry()])
+    assert.deepEqual(await plugin.retrieve(), [expectedThesisEntry()])
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

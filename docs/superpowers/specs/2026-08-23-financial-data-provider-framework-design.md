@@ -1,42 +1,42 @@
-# ResearchHub Financial Data Provider Framework MVP
+# ResearchHub Financial Data Plugin Framework MVP
 
 ## Status
 
-Approved design for RH-DESIGN-004. This specification establishes the standard Provider boundary without connecting a real financial API, crawler, commercial data source or Harness Core.
+Approved design for RH-DESIGN-004. This specification establishes the standard Plugin boundary without connecting a real financial API, crawler, commercial data source or Harness Core.
 
 ## Goal
 
-Replace the current direct Capability → Mock Provider relationship with a reusable:
+Replace the current direct Plugin → Mock Plugin relationship with a reusable:
 
 ```text
-Capability
+Plugin
     ↓
-Provider Registry
+Plugin Registry
     ↓
-Data Provider
+Data Plugin
     ↓
 External Source (future)
 ```
 
-The framework must preserve source metadata, allow multiple providers per capability, and keep Agent-facing Harness Tool contracts stable.
+The framework must preserve source metadata, allow multiple plugins per plugin, and keep DSH-facing Harness Tool contracts stable.
 
 ## Chosen Architecture
 
-Use one process-local typed Provider Registry and Capability-specific bridges:
+Use one process-local typed Plugin Registry and Plugin-specific bridges:
 
 ```text
-MarketCapability / NewsCapability
-            ↓ provider name
-      ProviderRegistry
+MarketPlugin / NewsPlugin
+            ↓ plugin name
+      PluginRegistry
             ↓
-    DataProvider<TRequest, TData>
+    DataPlugin<TRequest, TData>
             ↓
-    ProviderResult<TData>
+    PluginResult<TData>
 ```
 
-Capabilities do not import or instantiate a concrete Provider. They resolve a named Provider from the Registry, call its `fetch()` method, validate the returned data, and project Provider metadata into the existing domain output shape.
+Plugins do not import or instantiate a concrete Plugin. They resolve a named Plugin from the Registry, call its `fetch()` method, validate the returned data, and project Plugin metadata into the existing domain output shape.
 
-## DataProvider Contract
+## DataPlugin Contract
 
 ```ts
 type FinancialDataQuality = 'high' | 'medium' | 'low'
@@ -48,14 +48,14 @@ type FinancialDataMetadata = {
   confidence: number
 }
 
-type ProviderResult<TData> = {
+type PluginResult<TData> = {
   data: TData
   metadata: FinancialDataMetadata
 }
 
-interface DataProvider<TRequest, TData> {
+interface DataPlugin<TRequest, TData> {
   readonly name: string
-  fetch(request: TRequest): Promise<ProviderResult<TData>>
+  fetch(request: TRequest): Promise<PluginResult<TData>>
   validate(value: unknown): asserts value is TData
 }
 ```
@@ -64,71 +64,71 @@ Contract rules:
 
 - `name` is stable and unique within a Registry.
 - `fetch()` owns source access and source-specific error translation.
-- `validate()` rejects malformed provider data before it crosses the Capability boundary.
+- `validate()` rejects malformed plugin data before it crosses the Plugin boundary.
 - `metadata.source` identifies the data source or fixture.
-- `metadata.timestamp` is the observation or provider response timestamp.
+- `metadata.timestamp` is the observation or plugin response timestamp.
 - `metadata.quality` is a coarse source-quality classification.
 - `metadata.confidence` is a finite number in `[0, 1]` and describes data confidence, not investment confidence.
-- No Provider performs Agent orchestration, investment reasoning or trading.
+- No Plugin performs DSH orchestration, investment reasoning or trading.
 
-## Provider Registry
+## Plugin Registry
 
-`ProviderRegistry` is a small in-process lookup boundary:
+`PluginRegistry` is a small in-process lookup boundary:
 
-- `register(provider)` adds a Provider by its stable name.
-- `get<TRequest, TData>(name)` resolves a Provider for a Capability bridge.
+- `register(plugin)` adds a Plugin by its stable name.
+- `get<TRequest, TData>(name)` resolves a Plugin for a Plugin bridge.
 - `has(name)` checks availability.
-- `list()` returns registered Provider names.
+- `list()` returns registered Plugin names.
 
-The Registry rejects duplicate names and unknown lookups. It does not load modules dynamically, discover remote services, or manage external credentials. A future application composition root may register Tushare, Wind, JoinQuant, AkShare or Eastmoney adapters without changing Capability logic.
+The Registry rejects duplicate names and unknown lookups. It does not load modules dynamically, discover remote services, or manage external credentials. A future application composition root may register Tushare, Wind, JoinQuant, AkShare or Eastmoney adapters without changing Plugin logic.
 
-## Mock Provider Migration
+## Mock Plugin Migration
 
 New canonical locations:
 
 ```text
-packages/providers/
+packages/plugins/
 ├── core/
 ├── registry/
 └── adapters/
-    ├── mock-market-provider.ts
-    └── mock-news-provider.ts
+    ├── mock-market-plugin.ts
+    └── mock-news-plugin.ts
 ```
 
-The existing deterministic Mock fixtures move behind the DataProvider contract. Compatibility exports may remain at the old Capability paths so existing imports do not break, but the production Capability path resolves them through `ProviderRegistry`.
+The existing deterministic Mock fixtures move behind the DataPlugin contract. Compatibility exports may remain at the old Plugin paths so existing imports do not break, but the production Plugin path resolves them through `PluginRegistry`.
 
 No real data source is introduced in this task.
 
-## Capability Projection
+## Plugin Projection
 
 The existing Harness Tool names remain unchanged:
 
 - `get_market_snapshot(symbol)`
 - `search_company_news(symbol)`
 
-Capabilities continue to return domain-oriented objects rather than exposing a raw `{data, metadata}` envelope to Agents:
+Plugins continue to return domain-oriented objects rather than exposing a raw `{data, metadata}` envelope to DSH:
 
 - Market output keeps `symbol`, `price`, `change`, `volume` and `source`, and adds observation `timestamp`, `quality` and `confidence` fields.
-- News output keeps `symbol` and `items`; each item retains its source/timestamp/confidence, and the result exposes the Provider quality metadata without exposing Registry details.
+- News output keeps `symbol` and `items`; each item retains its source/timestamp/confidence, and the result exposes the Plugin quality metadata without exposing Registry details.
 
-This is a compatibility-preserving projection: the Agent sees the same operation names and core fields, while every response carries traceability information.
+This is a compatibility-preserving projection: the DSH sees the same operation names and core fields, while every response carries traceability information.
 
 ## Error Handling
 
-- Registry errors identify duplicate registration or unknown Provider names.
-- Provider errors preserve the Provider name and source context.
-- Capability errors continue to use `CapabilityExecutionError` with normalized input and Provider name.
-- Invalid Provider data or metadata is rejected before returning a Capability result.
-- A failing Provider is not silently replaced by another Provider.
+- Registry errors identify duplicate registration or unknown Plugin names.
+- Plugin errors preserve the Plugin name and source context.
+- Plugin errors continue to use `PluginExecutionError` with normalized input and Plugin name.
+- Invalid Plugin data or metadata is rejected before returning a Plugin result.
+- A failing Plugin is not silently replaced by another Plugin.
 
 ## Validation
 
 Tests must cover:
 
-- DataProvider metadata and output validation.
-- Registry registration, lookup, duplicate and unknown-provider errors.
-- Mock Market and News Provider migration.
-- Capability resolution through Registry rather than concrete Provider imports.
+- DataPlugin metadata and output validation.
+- Registry registration, lookup, duplicate and unknown-plugin errors.
+- Mock Market and News Plugin migration.
+- Plugin resolution through Registry rather than concrete Plugin imports.
 - Metadata projection into Market and News outputs.
 - Existing Skill, Artifact, Memory, Evaluation and Harness integration suites.
 
@@ -137,7 +137,7 @@ Tests must cover:
 - Real financial API access.
 - Web scraping or crawler implementation.
 - Data procurement, credentials or rate limiting.
-- Provider health monitoring or automatic failover.
+- Plugin health monitoring or automatic failover.
 - Backtesting, trading, stock ranking or investment decisions.
 - Harness Core changes.
 - Changes to Architecture v0.2 or Technical Design v0.1.

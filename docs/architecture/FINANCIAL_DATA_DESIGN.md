@@ -5,9 +5,9 @@
 The Financial Intelligence Data Layer provides structured historical company financial facts for company research, earnings analysis, and future valuation work. It does not produce investment advice, strategy signals, forecasts, target prices, or trading actions.
 
 ```text
-Financial Capability
-        -> Provider Registry
-        -> Financial Provider
+Financial Plugin
+        -> Plugin Registry
+        -> Financial Plugin
         -> Financial Data Source
         -> FinancialStatement / FinancialMetric
         -> Evidence Artifact
@@ -15,7 +15,7 @@ Financial Capability
         -> Existing Memory
 ```
 
-The design reuses the existing `DataProvider`, `ProviderResult`, `FinancialDataMetadata`, and `ProviderRegistry` contracts. No real source API is connected by this task.
+The design reuses the existing `DataPlugin`, `PluginResult`, `FinancialDataMetadata`, and `PluginRegistry` contracts. No real source API is connected by this task.
 
 ## 2. Financial Data Models
 
@@ -72,7 +72,7 @@ Reported metrics come directly from a source statement. Derived metrics must ide
 
 ```ts
 interface FinancialSourceMetadata {
-  provider: string
+  plugin: string
   source: string
   publishedAt: string
   retrievedAt: string
@@ -81,11 +81,11 @@ interface FinancialSourceMetadata {
 }
 ```
 
-Individual statement/metric metadata complements the existing ProviderResult metadata. Provider metadata describes the fetch batch; domain metadata describes the individual financial fact.
+Individual statement/metric metadata complements the existing PluginResult metadata. Plugin metadata describes the fetch batch; domain metadata describes the individual financial fact.
 
-## 4. Financial Provider Interface
+## 4. Financial Plugin Interface
 
-Financial Providers reuse the generic Provider Framework:
+Financial Plugins reuse the generic Plugin Framework:
 
 ```ts
 interface FinancialDataRequest {
@@ -100,20 +100,20 @@ interface FinancialData {
   metrics: FinancialMetric[]
 }
 
-type FinancialProvider = DataProvider<FinancialDataRequest, FinancialData>
+type FinancialPlugin = DataPlugin<FinancialDataRequest, FinancialData>
 ```
 
-The Provider is responsible for acquisition, normalization, source metadata, and structural validation. Financial Capability must obtain it through Provider Registry and must not access HTTP, SDKs, or databases directly.
+The Plugin is responsible for acquisition, normalization, source metadata, and structural validation. Financial Plugin must obtain it through Plugin Registry and must not access HTTP, SDKs, or databases directly.
 
-## 5. Financial Capability Boundary
+## 5. Financial Plugin Boundary
 
-Financial Capability returns normalized financial data and batch metadata. An Evidence Adapter converts structured facts into existing Evidence Artifacts:
+Financial Plugin returns normalized financial data and batch metadata. An Evidence Adapter converts structured facts into existing Evidence Artifacts:
 
 - `source` comes from financial source metadata;
 - `content` is JSON-serialized statement or metric data;
 - `timestamp` is the relevant report or publication date;
 - `confidence` is the fact-level confidence;
-- metadata records symbol, period, statement type, provider, and source identifiers.
+- metadata records symbol, period, statement type, plugin, and source identifiers.
 
 Evidence remains factual. Interpretation belongs to a later Skill or Workflow, which may create Thesis and Prediction artifacts through the existing research lifecycle.
 
@@ -129,7 +129,7 @@ Evidence remains factual. Interpretation belongs to a later Skill or Workflow, w
 
 Future implementations must validate:
 
-- JSON-safe Provider output and complete ProviderResult metadata;
+- JSON-safe Plugin output and complete PluginResult metadata;
 - six-digit symbol association;
 - supported statement types and period types;
 - ordered fiscal periods and valid report timestamps;

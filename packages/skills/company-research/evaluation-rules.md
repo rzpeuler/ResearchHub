@@ -5,7 +5,7 @@ rank companies, measure investment profitability, or modify a strategy.
 
 ## Evidence Quality
 
-- Confirm source reliability and preserve source, Provider, timestamp, quality,
+- Confirm source reliability and preserve source, Plugin, timestamp, quality,
   confidence, period, and unit metadata where applicable.
 - Confirm that Evidence covers the relevant research modules rather than only
   the easiest data source.

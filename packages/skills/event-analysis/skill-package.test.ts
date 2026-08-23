@@ -25,10 +25,10 @@ test('Event Analysis Skill Package contains the standard contract files', async 
   }))
 })
 
-test('skill.yaml declares metadata, capabilities, workflow and outputs', async () => {
+test('skill.yaml declares metadata, plugins, workflow and outputs', async () => {
   const metadata = await readSkillFile('skill.yaml')
 
-  for (const field of ['name:', 'version:', 'description:', 'required_capabilities:', 'compatible_workflows:', 'output_types:']) {
+  for (const field of ['name:', 'version:', 'description:', 'required_plugins:', 'compatible_workflows:', 'output_types:']) {
     assert.match(metadata, new RegExp(`^${field}`, 'm'))
   }
   assert.match(metadata, /- event-analysis@1\.x/)

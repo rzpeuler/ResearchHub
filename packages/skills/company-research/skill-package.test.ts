@@ -24,13 +24,13 @@ test('Company Research Skill Package contains the standard contract files', asyn
   }))
 })
 
-test('company-research skill.yaml declares required capabilities, workflow, and outputs', async () => {
+test('company-research skill.yaml declares required plugins, workflow, and outputs', async () => {
   const metadata = await readSkillFile('skill.yaml')
 
-  for (const field of ['name:', 'version:', 'type:', 'description:', 'required_capabilities:', 'compatible_workflows:', 'output_types:']) {
+  for (const field of ['name:', 'version:', 'type:', 'description:', 'required_plugins:', 'compatible_workflows:', 'output_types:']) {
     assert.match(metadata, new RegExp(`^${field}`, 'm'))
   }
-  for (const capability of ['market', 'financial', 'information']) assert.match(metadata, new RegExp(`^  - ${capability}$`, 'm'))
+  for (const plugin of ['market', 'financial', 'information']) assert.match(metadata, new RegExp(`^  - ${plugin}$`, 'm'))
   assert.match(metadata, /^  - company-research$/m)
   assert.match(metadata, /^  - thesis$/m)
   assert.match(metadata, /^  - prediction$/m)

@@ -36,7 +36,7 @@ export const companyResearchWorkflowDefinition: WorkflowDefinition = {
   name: 'Company Research Workflow',
   description: 'Analyze a listed company through business, industry, competitive, growth, financial, capital-allocation, and risk research.',
   version: '1.0.0',
-  purpose: 'Produce a traceable long-term company research Thesis and reviewable Prediction from structured Capability facts.',
+  purpose: 'Produce a traceable long-term company research Thesis and reviewable Prediction from structured Plugin facts.',
   inputSchema: researchInputSchema,
   outputSchema: researchOutputSchema,
   steps: [

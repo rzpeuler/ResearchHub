@@ -156,7 +156,7 @@ Tests will prove:
 3. Artifacts survive JSON serialization and validated deserialization.
 4. All artifacts carry the same `sessionId`.
 5. Thesis references Evidence IDs and Prediction references Thesis ID.
-6. Existing Harness integration and Market Capability tests remain unaffected.
+6. Existing Harness integration and Market Plugin tests remain unaffected.
 
 Tests use deterministic in-memory fixtures and do not call external services.
 

@@ -8,24 +8,24 @@ import {
   type Prediction,
   type Thesis,
 } from '../../artifacts/index.ts'
-import type { FinancialCapability } from '../../capabilities/financial/index.ts'
-import type { MarketCapability, MarketSnapshot } from '../../capabilities/market/index.ts'
-import type { NewsCapability, NewsEvidence } from '../../capabilities/news/index.ts'
-import { createFinancialEvidence } from '../../capabilities/financial/index.ts'
+import type { FinancialPlugin } from '../../plugins/financial/index.ts'
+import type { MarketPlugin, MarketSnapshot } from '../../plugins/market/index.ts'
+import type { NewsPlugin, NewsEvidence } from '../../plugins/news/index.ts'
+import { createFinancialEvidence } from '../../plugins/financial/index.ts'
 import type {
   CompanyResearchArtifactIdFactory,
   CompanyResearchInput,
   CompanyResearchResult,
 } from './types.ts'
 
-type MarketCapabilityPort = Pick<MarketCapability, 'get_market_snapshot'>
-type InformationCapabilityPort = Pick<NewsCapability, 'search_company_news'>
-type FinancialCapabilityPort = Pick<FinancialCapability, 'get_financial_snapshot'>
+type MarketPluginPort = Pick<MarketPlugin, 'get_market_snapshot'>
+type InformationPluginPort = Pick<NewsPlugin, 'search_company_news'>
+type FinancialPluginPort = Pick<FinancialPlugin, 'get_financial_snapshot'>
 
 export interface CompanyResearchWorkflowOptions {
-  marketCapability: MarketCapabilityPort
-  informationCapability: InformationCapabilityPort
-  financialCapability: FinancialCapabilityPort
+  marketPlugin: MarketPluginPort
+  informationPlugin: InformationPluginPort
+  financialPlugin: FinancialPluginPort
   artifactIdFactory: CompanyResearchArtifactIdFactory
 }
 
@@ -39,15 +39,15 @@ const researchModules = [
   'risk-analysis',
 ] as const
 
-/** Executes the Company Research methodology through injected Capabilities. */
+/** Executes the Company Research methodology through injected Plugins. */
 export class CompanyResearchWorkflow {
   constructor(private readonly options: CompanyResearchWorkflowOptions) {}
 
   async run(input: CompanyResearchInput): Promise<CompanyResearchResult> {
     const normalized = validateInput(input)
-    const marketSnapshot = await this.options.marketCapability.get_market_snapshot({ symbol: normalized.symbol })
-    const informationResult = await this.options.informationCapability.search_company_news({ symbol: normalized.symbol })
-    const financialSnapshot = await this.options.financialCapability.get_financial_snapshot({ symbol: normalized.symbol })
+    const marketSnapshot = await this.options.marketPlugin.get_market_snapshot({ symbol: normalized.symbol })
+    const informationResult = await this.options.informationPlugin.search_company_news({ symbol: normalized.symbol })
+    const financialSnapshot = await this.options.financialPlugin.get_financial_snapshot({ symbol: normalized.symbol })
 
     let evidenceOrdinal = 0
     const evidence: Evidence[] = [createMarketEvidence(
@@ -86,7 +86,7 @@ export class CompanyResearchWorkflow {
       evidenceIds: evidence.map((item) => item.id),
       confidence: 0.5,
       risks: [
-        'The MVP uses the available Market, Information, and Financial Capability evidence only.',
+        'The MVP uses the available Market, Information, and Financial Plugin evidence only.',
         'Long-term competitive advantage and growth assumptions require future period review.',
       ],
     })
@@ -155,10 +155,10 @@ function createMarketEvidence(id: string, input: CompanyResearchInput, snapshot:
     sessionId: input.sessionId,
     metadata: {
       symbol: input.symbol,
-      provider: snapshot.source,
+      plugin: snapshot.source,
       quality: snapshot.quality,
       confidence: snapshot.confidence,
-      capability: 'get_market_snapshot',
+      operation: 'get_market_snapshot',
       researchArea: 'industry-position',
     },
     source: snapshot.source,
@@ -175,10 +175,10 @@ function createInformationEvidence(id: string, input: CompanyResearchInput, item
     sessionId: input.sessionId,
     metadata: {
       symbol: input.symbol,
-      provider: item.source,
+      plugin: item.source,
       quality: 'medium',
       confidence: item.confidence,
-      capability: 'search_company_news',
+      operation: 'search_company_news',
       researchArea: 'business-understanding',
     },
     source: item.source,

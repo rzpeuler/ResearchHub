@@ -8,22 +8,22 @@
 
 ResearchHub will define a declarative Research Workflow model and a thin
 Research Manager coordination boundary. It will reuse the DeepSeek Harness
-Workflow Runtime and Agent Loop instead of implementing a new Workflow Engine,
-planner, Agent Runtime, or Plugin Runtime.
+Workflow Runtime and DSH Loop instead of implementing a new Workflow Engine,
+planner, DSH Runtime, or Plugin Runtime.
 
 Research Report is an aggregate research delivery view composed from existing
 Evidence, Thesis, and Prediction Artifacts. It is not a new base Artifact type.
 
 ## Responsibilities
 
-- Research Manager Agent understands the research question, selects or requests
+- Research Manager DSH understands the research question, selects or requests
   a Workflow, coordinates Skills, and assembles the output.
 - Workflow Definition describes steps, dependencies, inputs, outputs, and
   allowed Skill references.
-- Harness Runtime executes the Agent/session/tool lifecycle.
+- Harness Runtime executes the DSH/session/tool lifecycle.
 - Skill describes the methodology for one research operation.
-- Capability provides domain data or domain operations through the existing
-  Provider boundary.
+- Plugin provides domain data or domain operations through the existing
+  Plugin boundary.
 - Artifact stores validated research results and relationships.
 - Memory and Evaluation consume artifacts through their existing adapters.
 - Cordis Plugin remains the Harness extension and lifecycle registration
@@ -56,11 +56,11 @@ Harness-compatible runtime integration.
 
 ## Compatibility constraints
 
-- Agent → Skill → Capability → Data Source remains unchanged.
-- Provider and Capability boundaries remain unchanged.
+- DSH → Skill → Plugin → Data Source remains unchanged.
+- Plugin and Plugin boundaries remain unchanged.
 - Evidence → Thesis → Prediction relationships remain unchanged.
 - Review and Evaluation continue to consume Prediction and Outcome.
 - Memory continues to persist supported structured artifacts.
 - No business workflow is embedded in a Skill definition.
-- No Agent accesses a data source directly.
+- No DSH accesses a data source directly.
 - No ResearchHub package recreates Harness Workflow Runtime or Plugin Runtime.

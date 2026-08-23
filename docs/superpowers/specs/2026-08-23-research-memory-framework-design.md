@@ -14,8 +14,8 @@ Approved for implementation.
 
 In scope:
 
-- `packages/memory/core/` 通用 Memory 类型、查询类型和 Provider 接口。
-- `packages/memory/providers/` JSON 文件 Local Memory Provider。
+- `packages/memory/core/` 通用 Memory 类型、查询类型和 Plugin 接口。
+- `packages/memory/plugins/` JSON 文件 Local Memory Plugin。
 - `packages/memory/adapters/` Artifact 到 Memory 的转换适配器。
 - Thesis 和 Prediction 的 Memory 沉淀。
 - Save、retrieve、update 和本地持久化测试。
@@ -23,7 +23,7 @@ In scope:
 
 Out of scope:
 
-- 完整聊天记录、Prompt、Agent trace 或 Harness Session transcript 存储。
+- 完整聊天记录、Prompt、DSH trace 或 Harness Session transcript 存储。
 - Vector Database、Graph Database、SQLite、复杂 RAG 或语义检索。
 - Review、Evaluation、Outcome 或投资决策逻辑。
 - DeepSeek Harness Core 或冻结架构文档修改。
@@ -35,12 +35,12 @@ Thesis / Prediction Artifact
             ↓
 ArtifactMemoryAdapter
             ↓
-MemoryProvider
+MemoryPlugin
             ↓
 Local JSON File
 ```
 
-Artifact Adapter 负责领域映射；Memory Provider 负责 Entry 的存储、检索和更新。上层不依赖 JSON 文件格式，未来可替换为 Vector 或 Graph Provider。
+Artifact Adapter 负责领域映射；Memory Plugin 负责 Entry 的存储、检索和更新。上层不依赖 JSON 文件格式，未来可替换为 Vector 或 Graph Plugin。
 
 ## Memory Entry
 
@@ -68,10 +68,10 @@ memory:prediction:<artifact-id>
 
 ## Memory Interface
 
-Provider 使用异步接口：
+Plugin 使用异步接口：
 
 ```ts
-interface MemoryProvider {
+interface MemoryPlugin {
   save(entry: MemoryEntry): Promise<MemoryEntry>
   retrieve(query?: MemoryQuery): Promise<MemoryEntry[]>
   update(id: string, patch: MemoryEntryPatch): Promise<MemoryEntry>
@@ -87,17 +87,17 @@ interface MemoryProvider {
 
 `MemoryEntryPatch` 只允许更新 `content` 和 `metadata`。`id`、`type`、`sourceArtifactId` 和 `createdAt` 在 MVP 中保持稳定，避免破坏引用关系。
 
-Save 对重复 ID 失败，更新必须通过 `update()` 显式执行。Retrieve 返回新的数组和 Entry 对象，调用方修改结果不会改变 Provider 内部状态。
+Save 对重复 ID 失败，更新必须通过 `update()` 显式执行。Retrieve 返回新的数组和 Entry 对象，调用方修改结果不会改变 Plugin 内部状态。
 
-## Local JSON Provider
+## Local JSON Plugin
 
-`LocalJsonMemoryProvider` 接收调用方提供的 JSON 文件路径：
+`LocalJsonMemoryPlugin` 接收调用方提供的 JSON 文件路径：
 
 ```text
 <memory-file>.json
 ```
 
-存储格式为 JSON array of `MemoryEntry`。Provider 行为：
+存储格式为 JSON array of `MemoryEntry`。Plugin 行为：
 
 1. 首次访问时创建父目录和空 JSON 文件。
 2. 读取文件并验证 Entry 结构。
@@ -106,7 +106,7 @@ Save 对重复 ID 失败，更新必须通过 `update()` 显式执行。Retrieve
 5. `update()` 修改允许字段并持久化。
 6. 使用临时文件写入后替换目标文件，避免产生半写入 JSON。
 
-该 Provider 只使用 Node 内置文件 API，不引入外部数据库或新依赖。
+该 Plugin 只使用 Node 内置文件 API，不引入外部数据库或新依赖。
 
 ## Artifact Memory Adapter
 
@@ -131,7 +131,7 @@ Adapter 不保存 Evidence，因为 MVP 重点是可复用研究结论和待评�
 
 1. 创建 Thesis 或 Prediction Artifact。
 2. Adapter 转换为 Memory Entry 并调用 `save()`。
-3. Provider 将 Entry 写入 JSON 文件。
+3. Plugin 将 Entry 写入 JSON 文件。
 4. 使用 `sourceArtifactId` 或 `sessionId` 查询。
 5. 使用 `update()` 修改内容或 metadata。
 6. 再次读取确认更新结果持久化。
@@ -144,19 +144,19 @@ MVP 只提供精确字段过滤，不提供全文、向量或语义检索。
 
 - TypeScript strict typecheck。
 - Memory Entry Schema 校验。
-- Local JSON Provider 的 save/retrieve/update。
-- 重启新的 Provider 实例后数据仍可读取。
+- Local JSON Plugin 的 save/retrieve/update。
+- 重启新的 Plugin 实例后数据仍可读取。
 - Thesis 和 Prediction Adapter 映射正确。
 - `sourceArtifactId`、`sessionId` 和 Artifact JSON 内容保留。
 - 重复 ID、未知 ID 和无效 Entry 被拒绝。
-- 现有 Artifact、Skill、Capability 和 Harness Session 测试不受影响。
+- 现有 Artifact、Skill、Plugin 和 Harness Session 测试不受影响。
 
 ## Future Evolution
 
 未来可在不改变 Artifact Adapter 合同的前提下增加：
 
-- Vector Memory Provider。
-- Graph Memory Provider。
+- Vector Memory Plugin。
+- Graph Memory Plugin。
 - 全文和语义检索索引。
 - Review/Evaluation Entry 类型。
 - Prediction Outcome 与 Memory Update 闭环。
@@ -165,9 +165,9 @@ MVP 只提供精确字段过滤，不提供全文、向量或语义检索。
 
 ## Acceptance Criteria
 
-- `packages/memory/core`、`providers`、`adapters` 存在并有清晰边界。
+- `packages/memory/core`、`plugins`、`adapters` 存在并有清晰边界。
 - `save()`、`retrieve()`、`update()` 可用。
-- Local JSON Provider 可持久化。
+- Local JSON Plugin 可持久化。
 - Thesis/Prediction 可转换为 Memory Entry。
 - Retrieval test 可保存并查询对应研究记录。
 - `docs/architecture/RESEARCH_MEMORY_DESIGN.md` 与实现一致。

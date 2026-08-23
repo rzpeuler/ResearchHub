@@ -10,7 +10,7 @@ profitability and do not allow the Skill to change its own methodology.
 - Prefer official announcements for issuer facts.
 - Use professional media as contextual or explanatory evidence, not as proof
   of an issuer fact when an official source is required.
-- Preserve provider, source, timestamp, quality, and confidence metadata.
+- Preserve plugin, source, timestamp, quality, and confidence metadata.
 - Reject or qualify evidence with unmapped symbols, invalid timestamps, or
   missing source identity.
 

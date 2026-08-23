@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Research Evaluation closes the objective research loop by comparing a Prediction with a caller-supplied Outcome and storing the resulting Review Artifact. It records whether a prediction was met; it does not judge an Agent, change an investment strategy, rank stocks, execute trades, or fetch real market data.
+Research Evaluation closes the objective research loop by comparing a Prediction with a caller-supplied Outcome and storing the resulting Review Artifact. It records whether a prediction was met; it does not judge an DSH, change an investment strategy, rank stocks, execute trades, or fetch real market data.
 
 ## Architecture Position
 
@@ -37,7 +37,7 @@ The engine is pure with respect to external state. It receives validated objects
 | `source` | Caller-provided source reference. |
 | `metrics` | JSON object containing actual observed values. |
 
-The MVP does not connect to行情 APIs, backtest data, or external data providers. The caller is responsible for supplying the observation.
+The MVP does not connect to行情 APIs, backtest data, or external data plugins. The caller is responsible for supplying the observation.
 
 ## Evaluation Algorithm
 
@@ -76,7 +76,7 @@ It preserves the source Prediction ID, the observed Outcome, the objective Evalu
 
 ## Memory Relationship
 
-`ReviewMemoryAdapter` stores a validated Review through the existing `MemoryProvider`:
+`ReviewMemoryAdapter` stores a validated Review through the existing `MemoryPlugin`:
 
 - Memory ID: `memory:review:<review.id>`
 - Memory type: `review`
@@ -99,8 +99,8 @@ The MVP does not implement outcome collection, review scheduling, strategy optim
 
 ## Validation
 
-Tests cover all four evaluation statuses, numeric tolerance, deep equality, invalid inputs, null configuration boundaries, input immutability, Review serialization, Session linkage, deterministic Memory IDs, duplicate handling and Local JSON persistence. Existing Capability, Artifact, Skill, Harness and Memory tests remain part of the repository validation command.
+Tests cover all four evaluation statuses, numeric tolerance, deep equality, invalid inputs, null configuration boundaries, input immutability, Review serialization, Session linkage, deterministic Memory IDs, duplicate handling and Local JSON persistence. Existing Plugin, Artifact, Skill, Harness and Memory tests remain part of the repository validation command.
 
 ## Future Evolution
 
-Future work may add richer metric operators, explicit review scheduling, external Outcome providers, Review retrieval tools, evaluation analytics and Prediction → Outcome → Evaluation history views. Any change from objective comparison to strategy adaptation requires a separate architecture decision and ADR.
+Future work may add richer metric operators, explicit review scheduling, external Outcome plugins, Review retrieval tools, evaluation analytics and Prediction → Outcome → Evaluation history views. Any change from objective comparison to strategy adaptation requires a separate architecture decision and ADR.

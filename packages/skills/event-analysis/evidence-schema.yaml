@@ -12,7 +12,7 @@ evidence_types:
       - confidence
     required_metadata:
       - symbol
-      - capability
+      - plugin
     supports_thesis_types:
       - price_action
       - expectation
@@ -31,7 +31,7 @@ evidence_types:
       - confidence
     required_metadata:
       - symbol
-      - capability
+      - plugin
       - source_type
     supports_thesis_types:
       - catalyst
@@ -48,7 +48,7 @@ evidence_types:
       - confidence
     required_metadata:
       - symbol
-      - capability
+      - plugin
       - period
       - statement_type
     supports_thesis_types:
@@ -66,7 +66,7 @@ thesis_requirements:
 
 source_metadata:
   required:
-    - provider
+    - plugin
     - source
     - timestamp
     - quality

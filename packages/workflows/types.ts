@@ -1,4 +1,4 @@
-import type { JsonObject } from '../providers/core/index.ts'
+import type { JsonObject } from '../plugins/core/index.ts'
 
 export type WorkflowFieldType = 'string' | 'object' | 'array'
 

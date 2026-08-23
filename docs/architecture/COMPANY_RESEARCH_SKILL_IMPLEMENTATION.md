@@ -23,7 +23,7 @@ packages/skills/company-research/
 ```
 
 The six standard Skill contract files are present. `skill.yaml` declares the
-logical Market, Financial, and Information Capability dependencies and the
+logical Market, Financial, and Information Plugin dependencies and the
 compatible `company-research` Workflow. `SKILL.md` remains the Harness loading
 entry point; the other files provide the research method and contracts.
 
@@ -34,9 +34,9 @@ Research Request
     -> Research Manager
         -> company-research Workflow Definition
             -> Company Research Skill
-                -> Market Capability
-                -> Information Capability
-                -> Financial Capability
+                -> Market Plugin
+                -> Information Plugin
+                -> Financial Plugin
             -> Evidence
             -> Thesis
             -> Prediction
@@ -59,23 +59,23 @@ Business Understanding
   -> Prediction
 ```
 
-ResearchHub does not create a Workflow Engine. The thin Workflow Executor
+ResearchHub does not create a Harness Workflow Runtime. The thin Workflow Executor
 adapts the approved definition to the existing Company Research Skill
 implementation, while Research Manager remains responsible for request
 validation, Workflow selection, Artifact collection, and Report View
 aggregation.
 
-## 3. Capability dependencies
+## 3. Plugin dependencies
 
-The Skill receives three injected Capability interfaces:
+The Skill receives three injected Plugin interfaces:
 
-- Market Capability: observed market context.
-- Information Capability: company and industry information facts.
-- Financial Capability: reported statements and metrics.
+- Market Plugin: observed market context.
+- Information Plugin: company and industry information facts.
+- Financial Plugin: reported statements and metrics.
 
-The Company Research Skill never imports a Provider, calls HTTP, handles
-credentials, or selects a data source. Existing Provider Registry and
-Capability boundaries remain unchanged.
+The Company Research Skill never imports a Plugin, calls HTTP, handles
+credentials, or selects a data source. Existing Plugin Registry and
+Plugin boundaries remain unchanged.
 
 ## 4. Evidence flow
 
@@ -90,7 +90,7 @@ invent unsupported Evidence for a module; missing module-specific data is
 represented through Thesis risks and the documented Evidence requirements.
 
 All generated Evidence shares the active Session ID and preserves source,
-timestamp, quality, confidence, Provider, and period metadata where available.
+timestamp, quality, confidence, Plugin, and period metadata where available.
 
 ## 5. Artifact relationship
 
@@ -125,11 +125,11 @@ New tests cover:
 - Company Research Skill Package file structure and metadata.
 - Required research sections and output rules.
 - Company Research Workflow registration and step ordering.
-- Capability invocation through injected interfaces.
+- Plugin invocation through injected interfaces.
 - Evidence, Thesis, Prediction, and Report View relationships.
 - Prediction compatibility with the Evaluation Engine.
 
-Existing Provider, Capability, Workflow, Artifact, Memory, Evaluation, Skill,
+Existing Plugin, Plugin, Workflow, Artifact, Memory, Evaluation, Skill,
 and Harness integration tests remain part of the full validation command.
 
 ## 8. Explicit non-goals
@@ -138,7 +138,7 @@ This MVP does not implement:
 
 - valuation models or price targets;
 - investment recommendations or trading;
-- new Capabilities or Providers;
+- new Plugins or Plugins;
 - a new Artifact base type;
-- a custom Agent Loop, Plugin Runtime, or Workflow Engine;
+- a custom Harness Runtime Loop, Plugin Runtime, or Harness Workflow Runtime;
 - automatic strategy modification after Evaluation.

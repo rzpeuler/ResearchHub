@@ -42,7 +42,7 @@ test('ResearchHub integration validation runs through Harness and persists a Ses
     })
 
     const extensionContext = extensionFiber.ctx
-    const manager = extensionContext.reflect.get('researchHubResearchManager') as import('./packages/agents/research-manager/index.ts').ResearchManager
+    const manager = extensionContext.reflect.get('researchHubResearchManager') as import('./packages/dsh/research-manager/index.ts').ResearchManager
     const handle = await manager.createValidationAgent(
       'researchhub-validation-session',
       'researchhub-validation',
@@ -66,9 +66,9 @@ test('ResearchHub integration validation runs through Harness and persists a Ses
     const mock = ctx.llm.listProviders().some(provider => provider.id === 'researchhub-validation')
 
     assert.equal(mock, true, 'ResearchHub Extension must register the Harness LLM adapter')
-    const capability = extensionContext.reflect.get('researchHubValidationCapability') as import('./packages/capabilities/validation-capability/index.ts').ValidationCapability
-    assert.equal(capability.calls[0], 'validation-skill')
-    assert.deepEqual(toolCalls.map(event => event.data.name), ['skill', 'researchhub_validation_capability'])
+    const plugin = extensionContext.reflect.get('researchHubValidationPlugin') as import('./packages/plugins/validation-plugin/index.ts').ValidationPlugin
+    assert.equal(plugin.calls[0], 'validation-skill')
+    assert.deepEqual(toolCalls.map(event => event.data.name), ['skill', 'researchhub_validation_plugin'])
     assert.equal(toolResults.length, 2)
     assert.ok(finalAssistant, 'Agent must produce a final response')
     assert.equal(turnEnd?.data.reason.kind, 'completed')
@@ -76,7 +76,7 @@ test('ResearchHub integration validation runs through Harness and persists a Ses
     const persistedFiles = await filesUnder(sessionRoot)
     assert.ok(persistedFiles.some(file => file.endsWith('.jsonl')), 'Session persistence must write a JSONL file')
     const persisted = await readFile(persistedFiles.find(file => file.endsWith('.jsonl'))!, 'utf8')
-    assert.match(persisted, /researchhub_validation_capability/)
+    assert.match(persisted, /researchhub_validation_plugin/)
     assert.match(persisted, /ResearchHub integration validation completed/)
 
     await handle.dispose()
