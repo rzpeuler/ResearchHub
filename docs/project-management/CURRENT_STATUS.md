@@ -76,4 +76,4 @@ ResearchHub 已完成 Harness Integration Validation、Financial Capability Foun
 
 ## 最近一次 commit
 
-`feat: add research evaluation framework`（最终 hash 以 Git 提交结果为准）
+`feat: add research evaluation framework`（`febd88f`）
