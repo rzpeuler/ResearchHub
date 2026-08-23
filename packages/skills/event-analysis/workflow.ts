@@ -92,9 +92,9 @@ export class EventAnalysisWorkflow {
       sessionId: normalized.sessionId,
       metadata: { symbol: normalized.symbol, workflow: 'event-analysis' },
       thesisId: thesis.id,
-      expectation: 'The evidence set will be reviewed during the specified evaluation period; no directional outcome is asserted.',
+      expectation: 'Hypothesis: the collected evidence set remains the accepted explanation during the specified evaluation period; no directional outcome is asserted.',
       evaluationPeriod: normalized.evaluationPeriod,
-      metrics: { evidenceCount: evidence.length },
+      metrics: { validation_metric: 'evidence_review', evidenceCount: evidence.length },
     })
 
     return {

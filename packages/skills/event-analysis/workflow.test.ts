@@ -69,6 +69,7 @@ test('EventAnalysisWorkflow calls both capabilities and creates linked artifacts
   assert.equal(result.artifacts.evidence[1]?.source, 'mock-news')
   assert.deepEqual(result.artifacts.thesis.evidenceIds, ['evidence-0', 'evidence-1'])
   assert.equal(result.artifacts.prediction.thesisId, 'thesis-0')
+  assert.equal(result.artifacts.prediction.metrics.validation_metric, 'evidence_review')
 })
 
 test('EventAnalysisWorkflow shares sessionId and remains deterministic for injected IDs', async () => {

@@ -32,6 +32,8 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | RH-DESIGN-008 | Design Research Workflow Architecture | Completed | P0 | 2026-08-24 | Luna | `77f0728ade15a1d38ee4050499da98241bcf7595` | Accepted — Workflow, Research Manager, Harness boundary, Report aggregation and compatibility design completed |
 | RH-ENG-009 | Implement Research Workflow Framework MVP | Completed | P0 | 2026-08-24 | Luna | `c809b19bb59ecc901536d840950440bcf810cb4e` | Accepted — Workflow Registry, Research Manager, Event Analysis chain, Report View, Harness integration and E2E tests passed |
 
+| RH-ENG-010 | Upgrade Event Analysis Skill Architecture | In Progress | P0 | 2026-08-24 | Luna | Pending | Skill Package standardization, research method, Evidence/output schemas, Evaluation rules and regression tests |
+
 ## RH-DESIGN-004 Acceptance Scope
 
 - `DataProvider`、`ProviderResult` 和 `FinancialDataMetadata` 已定义并进行运行时校验。

@@ -2,6 +2,21 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v1.7.0
+
+**Date:** 2026-08-24
+
+**Changes:**
+
+- Upgraded Event Analysis to the standard Research Skill Package structure.
+- Added `skill.yaml`, research framework, Evidence schema, output schema, and Evaluation rules.
+- Added Skill Package contract tests without changing Workflow, Capability, Artifact, or Harness boundaries.
+- Added `docs/architecture/EVENT_ANALYSIS_SKILL_V2_DESIGN.md`.
+
+**Breaking Changes:**
+
+- None. Existing Harness loading, Workflow execution, Capability calls, Artifact relationships, and Evaluation interfaces remain compatible.
+
 ## Version: v1.6.0
 
 **Date:** 2026-08-24

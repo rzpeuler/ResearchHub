@@ -1,0 +1,35 @@
+version: 2.0.0
+skill: event-analysis
+
+outputs:
+  thesis:
+    artifact_type: Thesis
+    required_fields:
+      - statement
+      - evidenceIds
+      - confidence
+      - risks
+    evidence_relationship:
+      field: evidenceIds
+      minimum_items: 2
+
+  prediction:
+    artifact_type: Prediction
+    required_fields:
+      - hypothesis
+      - validation_metric
+      - evaluation_period
+    artifact_mapping:
+      hypothesis: expectation
+      validation_metric: metrics.validation_metric
+      evaluation_period: evaluationPeriod
+    relationships:
+      thesis: thesisId
+
+artifact_bundle:
+  required:
+    - evidence
+    - thesis
+    - prediction
+  session_rule: All artifacts must use the active Harness sessionId.
+  presentation_rule: A Research Report View may aggregate IDs but is not an Artifact.

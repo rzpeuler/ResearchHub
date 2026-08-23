@@ -1,0 +1,73 @@
+version: 2.0.0
+skill: event-analysis
+
+evidence_types:
+  market:
+    artifact_type: Evidence
+    label: Market Evidence
+    required_fields:
+      - source
+      - content
+      - timestamp
+      - confidence
+    required_metadata:
+      - symbol
+      - capability
+    supports_thesis_types:
+      - price_action
+      - expectation
+      - event_context
+
+  information:
+    artifact_type: Evidence
+    label: Information Evidence
+    source_types:
+      - official
+      - media
+    required_fields:
+      - source
+      - content
+      - timestamp
+      - confidence
+    required_metadata:
+      - symbol
+      - capability
+      - source_type
+    supports_thesis_types:
+      - catalyst
+      - expectation
+      - event_context
+
+  financial:
+    artifact_type: Evidence
+    label: Financial Evidence
+    required_fields:
+      - source
+      - content
+      - timestamp
+      - confidence
+    required_metadata:
+      - symbol
+      - capability
+      - period
+      - statement_type
+    supports_thesis_types:
+      - fundamental
+      - expectation
+      - risk
+
+thesis_requirements:
+  minimum_evidence_count: 2
+  minimum_source_categories: 2
+  required_relationship: Thesis.evidenceIds
+  prohibited:
+    - single-source-causal-attribution
+    - unsupported-directional-certainty
+
+source_metadata:
+  required:
+    - provider
+    - source
+    - timestamp
+    - quality
+    - confidence

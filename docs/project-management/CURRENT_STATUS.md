@@ -1,5 +1,22 @@
 # Current Status
 
+## RH-ENG-010 Status Synchronization
+
+**Current Stage:** Phase 15 — Event Analysis Skill Architecture v2
+
+**In Progress:**
+
+- Standard Event Analysis Skill Package implementation and contract tests.
+- Governance synchronization for Skill metadata, research method, Evidence, output, and Evaluation rules.
+
+**Scope Boundary:**
+
+- Harness Runtime, Workflow Framework, Capability Framework, Artifact Framework, and Evaluation Framework remain unchanged.
+
+**Last Updated:** 2026-08-24
+
+**Feature Commit:** Pending
+
 ResearchHub 的高频工程状态入口。每次完成可验收交付后，必须同步本文件、任务登记表和变更记录。
 
 ## 当前版本

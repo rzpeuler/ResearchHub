@@ -12,7 +12,7 @@
     "test:artifacts": "tsx --test packages/artifacts/core/core.test.ts packages/artifacts/evidence/evidence.test.ts packages/artifacts/thesis/thesis.test.ts packages/artifacts/prediction/prediction.test.ts packages/artifacts/review/review.test.ts packages/artifacts/artifact-framework.test.ts",
     "test:evaluation": "tsx --test packages/evaluation/outcome/outcome.test.ts packages/evaluation/review/review.test.ts",
     "test:memory": "tsx --test packages/memory/core/core.test.ts packages/memory/providers/local-json-memory-provider.test.ts packages/memory/adapters/artifact-memory-adapter.test.ts packages/memory/adapters/review-memory-adapter.test.ts",
-    "test:skills": "tsx --test packages/skills/event-analysis/workflow.test.ts",
+    "test:skills": "tsx --test packages/skills/event-analysis/workflow.test.ts packages/skills/event-analysis/skill-package.test.ts",
     "test:integration": "tsx --test tests/integration/harness-integration.test.ts tests/integration/market-capability.test.ts tests/integration/event-analysis.test.ts tests/integration/announcement-provider.test.ts tests/integration/media-provider.test.ts tests/integration/financial-capability.test.ts tests/integration/research-workflow.test.ts",
     "typecheck:integration": "tsc --noEmit -p tsconfig.json",
     "test": "npm run typecheck:integration && npm run test:providers && npm run test:capabilities && npm run test:workflows && npm run test:artifacts && npm run test:evaluation && npm run test:memory && npm run test:skills && npm run test:integration"
