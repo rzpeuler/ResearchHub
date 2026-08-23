@@ -104,7 +104,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 **Last Updated:** 2026-08-24
 
-**Feature Commit:** To be filled after the implementation commit.
+**Feature Commit:** `05b216b0022618c55ae2fcddfe081f36f472a742`
 
 ## RH-DESIGN-007 Status Synchronization
 

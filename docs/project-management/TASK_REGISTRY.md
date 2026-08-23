@@ -28,7 +28,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | RH-ENG-006 | Implement Announcement Provider MVP | Completed | P0 | 2026-08-24 | Luna | `e0e8e5b3d3320be2624c5583d2e590f8b63714ad` | Accepted — CNINFO adapter, NewsItem normalization, symbol mapping, Registry, Capability and Event Analysis tests passed |
 | RH-ENG-007 | Implement Professional Media Provider MVP | Completed | P0 | 2026-08-24 | Luna | `6b162241c4e55492bf3b6a2b53d5aa1316cbcd34` | Accepted — media NewsItem, publisher/tier metadata, Registry, News Capability and Event Analysis tests passed |
 | RH-DESIGN-007 | Design Financial Intelligence Data Layer | Completed | P0 | 2026-08-24 | Luna | `7cf3187961bec7bf0cfadd0dd74a745366fae864` | Accepted — FinancialStatement, FinancialMetric, Provider, Capability, Evidence and Memory compatibility design completed |
-| RH-ENG-008 | Implement Financial Statement Provider MVP | Completed | P0 | 2026-08-24 | Luna | To be filled after implementation commit | Accepted — Tushare/AkShare adapters, normalization, Financial Capability, Evidence integration and full tests passed |
+| RH-ENG-008 | Implement Financial Statement Provider MVP | Completed | P0 | 2026-08-24 | Luna | `05b216b0022618c55ae2fcddfe081f36f472a742` | Accepted — Tushare/AkShare adapters, normalization, Financial Capability, Evidence integration and full tests passed |
 
 ## RH-DESIGN-004 Acceptance Scope
 
