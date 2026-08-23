@@ -1,6 +1,6 @@
 # ResearchHub
 
-ResearchHub 是构建在 DeepSeek Harness 之上的 AI A 股个人投资研究员。目前项目处于 **Phase 12 — Financial Statement Provider MVP**：已完成 Harness 集成验证、Capability、研究资产、Memory、Evaluation、Provider Framework、Market Provider、Announcement Provider 和 Professional Media Provider，并完成 Financial Provider 的 Tushare/AkShare 双适配器与 Financial Capability MVP。
+ResearchHub 是构建在 DeepSeek Harness 之上的 AI A 股个人投资研究员。目前项目处于 **Phase 13 — Research Workflow Architecture Design**：已完成数据能力、研究资产、Memory、Evaluation 和 Financial Provider，并完成 Research Manager、Workflow、Skill、Capability、Artifact 边界设计。
 
 ResearchHub 不执行交易，也不 fork Harness Core。本阶段已完成真实 Market Provider 的适配与测试；生产启用仍需完成账号授权、bridge 运维和数据质量验收。
 
@@ -34,14 +34,15 @@ ResearchHub 不执行交易，也不 fork Harness Core。本阶段已完成真�
 - [Event Analysis Skill Design](docs/architecture/EVENT_ANALYSIS_SKILL_DESIGN.md)
 - [Research Memory Design](docs/architecture/RESEARCH_MEMORY_DESIGN.md)
 - [Research Evaluation Design](docs/architecture/RESEARCH_EVALUATION_DESIGN.md)
+- [Research Workflow Design](docs/architecture/RESEARCH_WORKFLOW_DESIGN.md)
 
 所有后续工程任务必须以 ResearchHub Architecture v0.2、Technical Design v0.1 和当前治理文档为约束。
 
 ## 当前阶段
 
-**Phase 12 — Financial Statement Provider MVP**
+**Phase 13 — Research Workflow Architecture Design**
 
-当前已完成 `Financial Capability → ProviderRegistry → Tushare/AkShare Financial Provider` 的结构化财务事实链路，并通过 Financial Evidence Adapter 关联现有 Evidence Artifact。默认测试无网络依赖；真实账号、bridge 部署、数据许可和质量验收仍待完成。
+当前已完成 `Research Manager → Workflow Definition → Harness Workflow Runtime → Skill → Capability → Artifact` 的架构边界设计。ResearchHub 只定义 Workflow，不重建 Harness Workflow Engine、Agent Runtime 或 Plugin Runtime。Research Report 采用现有 Evidence、Thesis、Prediction 的聚合视图。
 
 ## 协作角色
 

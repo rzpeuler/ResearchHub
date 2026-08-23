@@ -29,6 +29,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | RH-ENG-007 | Implement Professional Media Provider MVP | Completed | P0 | 2026-08-24 | Luna | `6b162241c4e55492bf3b6a2b53d5aa1316cbcd34` | Accepted — media NewsItem, publisher/tier metadata, Registry, News Capability and Event Analysis tests passed |
 | RH-DESIGN-007 | Design Financial Intelligence Data Layer | Completed | P0 | 2026-08-24 | Luna | `7cf3187961bec7bf0cfadd0dd74a745366fae864` | Accepted — FinancialStatement, FinancialMetric, Provider, Capability, Evidence and Memory compatibility design completed |
 | RH-ENG-008 | Implement Financial Statement Provider MVP | Completed | P0 | 2026-08-24 | Luna | `05b216b0022618c55ae2fcddfe081f36f472a742` | Accepted — Tushare/AkShare adapters, normalization, Financial Capability, Evidence integration and full tests passed |
+| RH-DESIGN-008 | Design Research Workflow Architecture | Completed | P0 | 2026-08-24 | Luna | To be filled after documentation commit | Accepted — Workflow, Research Manager, Harness boundary, Report aggregation and compatibility design completed |
 
 ## RH-DESIGN-004 Acceptance Scope
 
@@ -91,6 +92,16 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 - Financial Evidence Adapter creates session-linked Evidence artifacts from reported metrics.
 - TypeScript, Provider, Capability, Artifact, Memory, Evaluation, Skill, and Event Analysis integration tests remain green.
 - No Harness Core, frozen architecture document, external production dependency, or real network call was introduced into the default test suite.
+
+## RH-DESIGN-008 Acceptance Scope
+
+- Workflow Definition is independent from Skill and contains lifecycle metadata, steps, inputs, outputs, dependencies, and version.
+- Research Manager coordinates research intent, Workflow selection, Skill execution, Artifact collection, and Report assembly.
+- Harness Workflow Runtime / Agent Loop remains the execution boundary; ResearchHub does not build a parallel Workflow Engine, Agent Runtime, or Plugin Runtime.
+- Skill remains reusable research methodology and does not contain cross-skill workflow graphs or direct data-source calls.
+- Research Report is an aggregate view over Evidence, Thesis, and Prediction Artifact IDs, not a new base Artifact type.
+- Artifact, Memory, Evaluation, Capability, Provider, Session, and Cordis Plugin boundaries remain compatible.
+- RH-ENG-009 is the next engineering implementation task; no production workflow code is included in this design task.
 
 ## 历史 RH-ENG-001 约束
 

@@ -4,11 +4,11 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 当前版本
 
-`v1.4.0` — Financial Statement Provider MVP
+`v1.5.0` — Research Workflow Architecture Design
 
 ## 当前阶段
 
-**Phase 12 — Financial Statement Provider MVP**
+**Phase 13 — Research Workflow Architecture Design**
 
 架构基线仍为 ResearchHub Architecture v0.2、Technical Design v0.1，Runtime 版本锁定为 DeepSeek Harness `0.1.1-rc.2`。
 
@@ -38,6 +38,9 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 - `FinancialCapability.get_financial_snapshot(symbol)` 已通过 Registry 调用 Provider。
 - Financial Data → Evidence Artifact 适配器已实现，并保留 session、source、period 与 source statement IDs。
 - Provider、Capability、Artifact 和 integration fixture 测试已加入测试脚本。
+- Research Workflow Architecture 已完成：Workflow Definition、Research Manager、Harness Runtime 边界和 Research Report 聚合视图。
+- 已明确 ResearchHub 不重建 Harness Workflow Engine、Agent Runtime 或 Plugin Runtime。
+- 已明确 Workflow 独立于 Skill，Skill 只描述研究方法，Plugin 只负责 Harness 扩展注册。
 
 ## 开发中模块
 
@@ -54,6 +57,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 - Review 调度与真实 Outcome 来源。
 - Financial、Institution 等后续 Capability。
 - 真实财务数据账号授权、bridge 部署与生产质量验收。
+- RH-ENG-009 Research Workflow Framework MVP 实现。
 
 ## 当前阻塞问题
 
@@ -66,7 +70,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 最近一次 commit
 
-`docs: sync financial statement provider governance`（`6f45b47f5c2977c56307050ae342b44f8f120920`）
+待 RH-DESIGN-008 提交后回填。
 
 ## 架构基线
 
@@ -79,6 +83,32 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 - [Professional Media Provider Design](../architecture/MEDIA_PROVIDER_DESIGN.md)
 - [Financial Intelligence Data Design](../architecture/FINANCIAL_DATA_DESIGN.md)
 - [Financial Statement Provider Design](../architecture/FINANCIAL_PROVIDER_DESIGN.md)
+- [Research Workflow Design](../architecture/RESEARCH_WORKFLOW_DESIGN.md)
+
+## RH-DESIGN-008 Status Synchronization
+
+**Current Stage:** Phase 13 — Research Workflow Architecture Design
+
+**Completed:**
+
+- Declarative Research Workflow model with steps, inputs, outputs, dependencies, and version.
+- Research Manager Agent responsibilities and non-responsibilities.
+- Harness Workflow Runtime / Agent Loop reuse boundary.
+- Research Report aggregate view over Evidence, Thesis, and Prediction IDs.
+- Artifact, Memory, Evaluation, Skill, Capability, and Plugin compatibility constraints.
+
+**In Progress / Next:**
+
+- RH-ENG-009 Research Workflow Framework MVP.
+- Approved workflow definition registry and Harness-facing coordinator.
+
+**Blockers:**
+
+- No architecture blocker. Engineering implementation is intentionally deferred to RH-ENG-009.
+
+**Last Updated:** 2026-08-24
+
+**Design Commit:** To be filled after the documentation commit.
 
 ## RH-ENG-008 Status Synchronization
 

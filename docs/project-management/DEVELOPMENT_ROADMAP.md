@@ -124,7 +124,21 @@
 
 状态：Completed。真实账号授权、bridge 部署和生产质量验收仍待完成。
 
-## Phase 13 — Personal Investment Research Assistant
+## Phase 13 — Research Workflow Architecture Design
+
+目标：建立 AI 投资研究流程编排层，明确 Research Manager、Workflow Definition、Harness Workflow Runtime、Skill、Capability 和 Research Report 的职责边界。
+
+关键里程碑：
+
+- 声明式 Workflow 模型：id、version、steps、inputs、outputs、dependencies。
+- Research Manager 负责研究意图理解、Workflow/Skill 选择和结果协调。
+- ResearchHub 复用 Harness Workflow Runtime / Agent Loop，不重建 Workflow Engine。
+- Research Report 作为 Evidence、Thesis、Prediction 的聚合视图。
+- 明确 Artifact、Memory、Evaluation、Plugin 兼容边界。
+
+状态：Completed。工程实现进入 RH-ENG-009。
+
+## Phase 14 — Personal Investment Research Assistant
 
 目标：在完成真实数据源治理、检索演进和复盘调度后，逐步扩展每日情报、持续监控、研究机会发现和自动化复盘。
 

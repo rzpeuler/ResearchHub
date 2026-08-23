@@ -2,6 +2,24 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v1.5.0
+
+**Date:** 2026-08-24
+
+**Changes:**
+
+- Added the Research Workflow Architecture design.
+- Defined declarative Workflow Definitions with steps, inputs, outputs, dependencies, and versioning.
+- Defined Research Manager Agent coordination boundaries.
+- Explicitly reused Harness Workflow Runtime / Agent Loop and prohibited a parallel ResearchHub Workflow Engine.
+- Defined Research Report as an aggregate view over Evidence, Thesis, and Prediction Artifacts.
+- Documented compatibility with Artifact, Memory, Evaluation, Capability, Skill, Session, and Cordis Plugin boundaries.
+- Added `docs/architecture/RESEARCH_WORKFLOW_DESIGN.md`.
+
+**Breaking Changes:**
+
+- None. No production code, Harness Core, frozen architecture document, or new dependency was changed.
+
 ## Version: v1.4.0
 
 **Date:** 2026-08-24

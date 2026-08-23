@@ -66,3 +66,21 @@
 - Follow Harness architecture philosophy.
 
 **Status:** Accepted
+
+## ADR-009
+
+**Title:** ResearchHub Workflow Definition and Research Report Boundary
+
+**Decision:** ResearchHub defines declarative Workflow Definitions and a thin Research Manager coordination boundary, while reusing the DeepSeek Harness Workflow Runtime / Agent Loop. Research Report is an aggregate view over Evidence, Thesis, and Prediction Artifacts rather than a new base Artifact type.
+
+**Background:** ResearchHub has data Capabilities, Skills, Artifacts, Memory, and Evaluation, but needs a stable orchestration boundary without duplicating Harness runtime responsibilities.
+
+**Selected approach:** Keep Workflow independent from Skill; let Workflow reference Skills; let Skills call Capabilities; let the Research Manager coordinate through Harness Agent and Session boundaries; assemble Reports from existing Artifact IDs.
+
+**Rejected approaches:** Put the full workflow graph inside a Skill; build a ResearchHub-owned Workflow Engine or Agent loop; create a new base Report Artifact that duplicates Evidence, Thesis, and Prediction payloads.
+
+**Reason:** Preserves Architecture v0.2's Harness-first principle, keeps Skills reusable, avoids duplicated lifecycle runtimes, and maintains existing Artifact, Memory, and Evaluation contracts.
+
+**Impact:** RH-ENG-009 must implement only the validated Workflow model, registry, thin Harness-facing coordinator, and trace recording. It must not introduce a parallel runtime, direct data access, trading behavior, or autonomous investment decisions.
+
+**Status:** Accepted

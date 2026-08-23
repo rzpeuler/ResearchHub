@@ -34,9 +34,9 @@ Phase 1 的目标用户是中国 A股市场中具有基础投资经验的个人�
 
 ## 当前阶段
 
-**Phase 12 — Financial Statement Provider MVP**
+**Phase 13 — Research Workflow Architecture Design**
 
-Architecture v0.2 和 Technical Design v0.1 已完成并冻结；Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework、Event Analysis Skill MVP、Research Memory Framework MVP、Research Evaluation Framework MVP、真实 Market Provider MVP、CNINFO Announcement Provider MVP、Professional Media Provider MVP 和 Financial Statement Provider MVP 已完成。当前已完成 Tushare/AkShare 财务事实标准化、Provider Registry 主备切换、Financial Capability 与 Evidence 关联；真实账号、bridge 和生产数据质量仍待验收。
+Architecture v0.2 和 Technical Design v0.1 已完成并冻结；Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework、Event Analysis Skill MVP、Research Memory Framework MVP、Research Evaluation Framework MVP、真实 Market Provider MVP、CNINFO Announcement Provider MVP、Professional Media Provider MVP 和 Financial Statement Provider MVP 已完成。当前完成 Research Workflow Architecture Design，明确 Research Manager、Workflow Definition、Harness Workflow Runtime、Skill、Capability、Artifact 和 Research Report 的边界；工程实现安排在 RH-ENG-009。
 
 ## 核心技术方向
 
@@ -64,6 +64,7 @@ ResearchHub 复用 Harness 的 Agent、Plugin、Workflow、Session、Tool 和 Me
 - [Announcement Provider Design](../architecture/ANNOUNCEMENT_PROVIDER_DESIGN.md)
 - [Professional Media Provider Design](../architecture/MEDIA_PROVIDER_DESIGN.md)
 - [Financial Intelligence Data Design](../architecture/FINANCIAL_DATA_DESIGN.md)
+- [Research Workflow Design](../architecture/RESEARCH_WORKFLOW_DESIGN.md)
 
 ## 长期愿景
 
