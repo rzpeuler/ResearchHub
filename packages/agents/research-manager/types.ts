@@ -7,11 +7,15 @@ export interface ResearchRequest {
   question: string
   sessionId: string
   createdAt: string
+  evaluationPeriod?: Prediction['evaluationPeriod']
+}
+
+export type NormalizedResearchRequest = Omit<ResearchRequest, 'evaluationPeriod'> & {
   evaluationPeriod: Prediction['evaluationPeriod']
 }
 
 export interface ResearchExecutionContext {
-  request: ResearchRequest
+  request: NormalizedResearchRequest
   workflow: WorkflowDefinition
 }
 

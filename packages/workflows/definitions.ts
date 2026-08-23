@@ -5,7 +5,7 @@ const researchInputSchema = {
   question: { type: 'string', required: true, description: 'Research question.' },
   sessionId: { type: 'string', required: true, description: 'Harness Session identifier.' },
   createdAt: { type: 'string', required: true, description: 'Research creation timestamp.' },
-  evaluationPeriod: { type: 'object', required: true, description: 'Prediction evaluation period.' },
+  evaluationPeriod: { type: 'object', required: false, description: 'Optional prediction evaluation period; defaults to 30 days.' },
 } as const
 
 const researchOutputSchema = {
@@ -16,6 +16,8 @@ const researchOutputSchema = {
 
 export const eventAnalysisWorkflowDefinition: WorkflowDefinition = {
   id: 'event-analysis',
+  name: 'Event Analysis Workflow',
+  description: 'Collect and synthesize market, information, and financial evidence for a neutral event analysis.',
   version: '1.0.0',
   purpose: 'Collect market, official announcement, professional media, and financial evidence for neutral event research.',
   inputSchema: researchInputSchema,

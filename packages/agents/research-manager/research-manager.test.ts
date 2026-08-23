@@ -74,7 +74,6 @@ test('ResearchManager selects event-analysis and returns a Report View over gene
     question: 'What evidence explains the current event?',
     sessionId: 'workflow-session-001',
     createdAt,
-    evaluationPeriod: { start: createdAt, end: '2026-09-24T00:00:00.000Z' },
   })
 
   assert.equal(result.status, 'completed')
@@ -85,6 +84,10 @@ test('ResearchManager selects event-analysis and returns a Report View over gene
   assert.deepEqual(result.report.thesisIds, [result.artifacts.thesis.id])
   assert.deepEqual(result.report.predictionIds, [result.artifacts.prediction.id])
   assert.ok(result.artifacts.evidence.every(item => item.sessionId === 'workflow-session-001'))
+  assert.deepEqual(result.artifacts.prediction.evaluationPeriod, {
+    start: createdAt,
+    end: '2026-09-23T00:00:00.000Z',
+  })
 })
 
 test('ResearchManager rejects requests without a registered workflow executor', async () => {

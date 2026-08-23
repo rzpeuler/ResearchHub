@@ -48,7 +48,6 @@ export function createResearchManagerTool(
       question: { type: 'string', required: true, description: 'Research question.' },
       evaluationPeriod: {
         type: 'object',
-        required: true,
         additionalProperties: false,
         properties: {
           start: { type: 'string', required: true },
@@ -92,7 +91,7 @@ export function createResearchManagerTool(
 
 export async function executeResearchWorkflowTool(
   service: ResearchManagerService,
-  args: { workflowId: string; symbol: string; question: string; evaluationPeriod: { start: string; end: string } },
+  args: { workflowId: string; symbol: string; question: string; evaluationPeriod?: { start: string; end: string } },
   exec: ToolRunContext,
   clock: () => string,
 ) {

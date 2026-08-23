@@ -6,6 +6,7 @@ import type {
   ResearchExecutionResult,
   ResearchReportIdFactory,
   ResearchRequest,
+  NormalizedResearchRequest,
   ResearchWorkflowExecutor,
 } from './types.ts'
 import { ResearchManagerValidationError } from './errors.ts'
@@ -43,7 +44,7 @@ export class ResearchManager {
   }
 }
 
-function normalizeResearchRequest(value: ResearchRequest): ResearchRequest {
+function normalizeResearchRequest(value: ResearchRequest): NormalizedResearchRequest {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new ResearchManagerValidationError('research request must be an object')
   }
@@ -53,24 +54,34 @@ function normalizeResearchRequest(value: ResearchRequest): ResearchRequest {
   assertNonEmptyString(request.question, '$.question')
   assertNonEmptyString(request.sessionId, '$.sessionId')
   assertTimestamp(request.createdAt, '$.createdAt')
-  const evaluationPeriod = request.evaluationPeriod
-  if (evaluationPeriod === null || typeof evaluationPeriod !== 'object' || Array.isArray(evaluationPeriod)) {
-    throw new ResearchManagerValidationError('evaluationPeriod must be an object', '$.evaluationPeriod')
-  }
-  const period = evaluationPeriod as Record<string, unknown>
-  assertTimestamp(period.start, '$.evaluationPeriod.start')
-  assertTimestamp(period.end, '$.evaluationPeriod.end')
-  if (Date.parse(period.start) > Date.parse(period.end)) {
-    throw new ResearchManagerValidationError('evaluation period start must not be after end', '$.evaluationPeriod')
-  }
+  const evaluationPeriod = normalizeEvaluationPeriod(request.evaluationPeriod, request.createdAt)
   return {
     workflowId: request.workflowId.trim(),
     symbol: request.symbol.trim().toUpperCase(),
     question: request.question.trim(),
     sessionId: request.sessionId.trim(),
     createdAt: request.createdAt,
-    evaluationPeriod: { start: period.start, end: period.end },
+    evaluationPeriod,
   }
+}
+
+function normalizeEvaluationPeriod(value: unknown, createdAt: string): NormalizedResearchRequest['evaluationPeriod'] {
+  if (value === undefined) {
+    const start = new Date(createdAt)
+    const end = new Date(start)
+    end.setUTCDate(end.getUTCDate() + 30)
+    return { start: start.toISOString(), end: end.toISOString() }
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new ResearchManagerValidationError('evaluationPeriod must be an object', '$.evaluationPeriod')
+  }
+  const period = value as Record<string, unknown>
+  assertTimestamp(period.start, '$.evaluationPeriod.start')
+  assertTimestamp(period.end, '$.evaluationPeriod.end')
+  if (Date.parse(period.start) > Date.parse(period.end)) {
+    throw new ResearchManagerValidationError('evaluation period start must not be after end', '$.evaluationPeriod')
+  }
+  return { start: period.start, end: period.end }
 }
 
 function validateArtifactBundle(value: ResearchArtifactBundle, request: ResearchRequest): void {

@@ -20,6 +20,8 @@ export interface WorkflowStep {
 
 export interface WorkflowDefinition {
   id: string
+  name: string
+  description: string
   version: string
   purpose: string
   inputSchema: WorkflowSchema

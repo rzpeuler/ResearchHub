@@ -33,8 +33,8 @@ calls, Session events, and JSONL persistence.
 
 `packages/workflows/` provides:
 
-- `WorkflowDefinition`: identifier, version, purpose, input schema, output
-  schema, and steps.
+- `WorkflowDefinition`: identifier, name, description, version, purpose, input
+  schema, output schema, and steps.
 - `WorkflowStep`: stable ID, Skill reference, named inputs, named outputs, and
   dependency IDs.
 - `WorkflowRegistry`: validated registration, duplicate rejection, lookup, and
@@ -44,6 +44,10 @@ calls, Session events, and JSONL persistence.
 The Registry stores definitions only. It does not schedule tasks or run an
 Agent loop. The executor is injected into the Research Manager so execution
 remains a replaceable application boundary.
+
+The event-analysis request accepts an optional evaluation period. When it is
+omitted, the Research Manager normalizes it to a 30-day period beginning at
+the request creation time.
 
 ## 3. Research Manager
 

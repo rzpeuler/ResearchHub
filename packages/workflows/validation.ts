@@ -7,6 +7,8 @@ export function validateWorkflowDefinition(value: unknown): asserts value is Wor
   }
   const definition = value as Record<string, unknown>
   assertString(definition.id, '$.id')
+  assertString(definition.name, '$.name')
+  assertString(definition.description, '$.description')
   assertString(definition.version, '$.version')
   assertString(definition.purpose, '$.purpose')
   validateSchema(definition.inputSchema, '$.inputSchema')
