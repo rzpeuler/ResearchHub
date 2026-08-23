@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved design for implementation after user confirmation.
+Approved and implemented in RH-ENG-002.
 
 ## Objective
 

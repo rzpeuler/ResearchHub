@@ -6,8 +6,10 @@
     "node": ">=22"
   },
   "scripts": {
-    "test:integration": "tsx --test tests/integration/harness-integration.test.ts",
-    "typecheck:integration": "tsc --noEmit -p tsconfig.json"
+    "test:capabilities": "tsx --test packages/capabilities/providers/mock-market-provider.test.ts",
+    "test:integration": "tsx --test tests/integration/harness-integration.test.ts tests/integration/market-capability.test.ts",
+    "typecheck:integration": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run typecheck:integration && npm run test:capabilities && npm run test:integration"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",

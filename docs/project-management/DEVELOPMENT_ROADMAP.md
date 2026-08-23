@@ -56,7 +56,7 @@ Completed。治理文档体系已在 `chore: initialize project execution state 
 
 ### 计划能力
 
-- Market Capability
+- Market Capability (MVP completed in RH-ENG-002)
 - News Capability
 - Financial Capability
 - Institution Capability

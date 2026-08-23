@@ -27,6 +27,7 @@ ResearchHub 是一个刚启动的项目。目前仓库处于工程治理初始�
 - [ResearchHub Architecture v0.2](docs/architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
 - [ResearchHub Technical Design v0.1](docs/architecture/TECHNICAL_DESIGN_V0.1.md)
 - [Harness Integration Validation](docs/architecture/HARNESS_INTEGRATION.md)
+- [Capability Design](docs/architecture/CAPABILITY_DESIGN.md)
 
 所有后续工程任务必须以 ResearchHub Architecture v0.2 和对应 Technical Design 为约束。
 

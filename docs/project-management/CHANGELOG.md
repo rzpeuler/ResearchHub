@@ -2,6 +2,23 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v0.3.0
+
+**Date:** 2026-08-23
+
+**Changes:**
+
+- Added reusable `CapabilityDefinition` and `CapabilityProvider` contracts.
+- Added `MarketCapability` with `get_market_snapshot`.
+- Added deterministic `MockMarketProvider` without external data access.
+- Registered the Market Capability through the Harness Tool boundary.
+- Added Capability/Provider unit tests and Harness Session integration validation.
+- Added `docs/architecture/CAPABILITY_DESIGN.md`.
+
+**Breaking Changes:**
+
+- None. No Harness Core, frozen architecture document, production API or real data source was changed.
+
 ## Version: v0.2.1
 
 **Date:** 2026-08-23
