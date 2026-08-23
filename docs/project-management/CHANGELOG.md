@@ -2,6 +2,24 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v1.4.0
+
+**Date:** 2026-08-24
+
+**Changes:**
+
+- Added the Financial Statement Provider MVP with Tushare and AkShare adapters.
+- Added common FinancialStatement/FinancialMetric normalization for income, balance-sheet, and cash-flow facts.
+- Added configurable Provider Registry primary/fallback composition and fixture mode.
+- Added `get_financial_snapshot(symbol)` Financial Capability.
+- Added Financial Data → Evidence Artifact integration with source and session metadata.
+- Added network-free Provider, Capability, Artifact, and integration tests.
+- Added `docs/architecture/FINANCIAL_PROVIDER_DESIGN.md`.
+
+**Breaking Changes:**
+
+- None. Existing Market, News, Event Analysis, Artifact, Memory, Evaluation, Harness Core, and frozen architecture contracts remain unchanged.
+
 ## Version: v1.3.0
 
 **Date:** 2026-08-24

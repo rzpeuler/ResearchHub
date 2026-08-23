@@ -4,6 +4,7 @@ export * from './adapters/index.ts'
 export * from './config.ts'
 export * from './transport/index.ts'
 export * from './market/index.ts'
+export * from './financial/index.ts'
 
 import { ProviderRegistry } from './registry/index.ts'
 import type { ProviderHandle } from './core/index.ts'

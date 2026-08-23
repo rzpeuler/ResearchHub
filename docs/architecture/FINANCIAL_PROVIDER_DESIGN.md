@@ -1,109 +1,137 @@
-# Financial Data Provider Framework
+# Financial Statement Provider Design
 
-## 1. 定位
+**Status:** Implemented MVP
+**Scope:** reported A-share financial facts only
+**Related task:** RH-ENG-008
 
-Financial Data Provider Framework 是 ResearchHub 金融能力层的数据接入边界。它把领域 Capability 与具体数据来源隔离，使 Market、News、Financial、Institution 等能力可以复用同一套 Provider 契约，而不把某个外部数据源写死在 Capability 中。
+## 1. Position in the architecture
 
-本版本包含确定性的 Mock Provider 和真实 Market Provider MVP。真实 Provider 使用原生 HTTP transport；测试仍使用注入的 Fixture，不依赖凭证或网络。
-
-## 2. 架构
+ResearchHub keeps the Financial Capability independent from any data vendor:
 
 ```text
-Agent / Skill
-    ↓
-Capability
-    ↓ typed ProviderHandle
-ProviderRegistry
-    ↓
-DataProvider adapter
-    ↓
-Configured external data source / bridge
+Financial Capability
+        ↓
+Provider Registry
+        ↓
+Financial Provider Composition
+   ┌────┴────┐
+Tushare   AkShare
+Provider  Provider
+   └────┬────┘
+        ↓
+FinancialStatement / FinancialMetric
+        ↓
+Financial Evidence Adapter
+        ↓
+Evidence Artifact
 ```
 
-- Capability 定义领域操作和 Harness Tool 名称，例如 `get_market_snapshot(symbol)`、`search_company_news(symbol)`。
-- Provider 负责获取、标准化、验证领域数据，并返回来源元数据。
-- Registry 负责进程内 Provider 注册、命名查找和类型安全的 Handle 查找。
-- Capability 只持有 Registry 与类型化 Handle，不导入或实例化具体 Provider。
+The Capability exposes `get_financial_snapshot(symbol)`. It does not know vendor
+endpoints, credentials, response fields, or SDK details. Providers are responsible
+for retrieval, normalization, validation, and source metadata.
 
-## 3. DataProvider Interface
+## 2. Normalized data model
 
-`packages/providers/core/` 定义通用契约：
+`FinancialStatement` is the source-oriented record. It contains:
 
-```ts
-interface DataProvider<TRequest, TData> {
-  readonly name: string
-  fetch(request: TRequest): Promise<ProviderResult<TData>>
-  validate(value: unknown): asserts value is TData
-}
+- `symbol`, `statementType`, `fiscalPeriod`, `reportDate`
+- `currency`, `unit`, and normalized `lineItems`
+- `source` metadata: `provider`, `source`, `publishedAt`, `retrievedAt`, `quality`, `confidence`
+
+`FinancialMetric` is the stable research-facing value. The MVP supports:
+
+- Income: `revenue`, `operating_profit`, `net_profit`
+- Balance sheet: `total_assets`, `total_liabilities`
+- Cash flow: `operating_cash_flow`
+
+Each metric retains `sourceStatementIds` and `calculationBasis`. The current
+implementation only emits reported values; it does not forecast, rank stocks, or
+run valuation logic.
+
+## 3. Tushare provider
+
+`TushareFinancialProvider` calls the documented `income`, `balancesheet`, and
+`cashflow` interfaces through the native HTTP transport. The adapter converts
+Tushare fields such as `ts_code`, `total_revenue`, `operate_profit`, `n_income`,
+`total_assets`, `total_liab`, and `n_cashflow_act` into the common metric names.
+
+Configuration:
+
+- `TUSHARE_TOKEN` — required when Tushare is selected in real mode
+- `TUSHARE_FINANCIAL_ENDPOINT` — defaults to `https://api.tushare.pro`
+
+Tokens are never hard-coded and are redacted from provider errors.
+
+## 4. AkShare provider
+
+`AkShareFinancialProvider` uses an HTTP bridge rather than importing a Python SDK
+into the TypeScript runtime. The bridge returns statement groups or a normalized
+statement list. The adapter accepts common AkShare-style aliases, validates the
+requested symbol, and produces the same `FinancialStatement` / `FinancialMetric`
+schema as Tushare.
+
+Configuration:
+
+- `AKSHARE_FINANCIAL_ENDPOINT` — required when AkShare is selected in real mode
+
+The bridge boundary keeps the Provider architecture portable and makes fixture
+testing deterministic.
+
+## 5. Provider selection and fallback
+
+The composition registers both provider names:
+
+- `tushare-financial`
+- `akshare-financial`
+
+Selection is controlled by:
+
+- `FINANCIAL_PRIMARY_PROVIDER`
+- `FINANCIAL_FALLBACK_PROVIDER`
+- `FINANCIAL_PROVIDER_MODE=real|fixture`
+
+The primary provider is tried first. A configured fallback is tried only when the
+primary fails. Fixture mode requires injected adapters, preventing tests from
+silently making network calls.
+
+## 6. Evidence integration
+
+`createFinancialEvidence` converts each normalized reported metric to an Evidence
+Artifact. Evidence contains serialized metric content plus symbol, period, source
+statement IDs, provider, and session ID. This is an adapter boundary only:
+
+```text
+Financial Data → Financial Evidence Adapter → Evidence Artifact
 ```
 
-每个结果使用统一 envelope：
+It does not create Thesis or Prediction artifacts and does not write Memory
+directly. Existing Memory adapters can consume later research artifacts without
+coupling them to a vendor.
 
-```ts
-interface ProviderResult<TData> {
-  data: TData
-  metadata: {
-    provider: string
-    source: string
-    timestamp: string
-    quality: 'high' | 'medium' | 'low'
-    confidence: number
-  }
-}
-```
+## 7. Validation status
 
-Registry 在结果离开 Provider 边界前验证 envelope、时间戳、质量枚举、置信度范围以及 Provider 自身的数据 Schema。
+The MVP includes network-free fixtures for:
 
-## 4. Provider Registry
+- Tushare field transformation and API error handling
+- AkShare field transformation
+- primary/fallback behavior
+- Provider Registry JSON-safe validation
+- Financial Capability execution
+- Evidence creation and serialization
+- integration compatibility with the existing test suite
 
-`ProviderRegistry` 是当前 MVP 的进程内注册表：
+No real token or external endpoint is required to run the tests.
 
-- `register(provider)` 注册 Provider，并返回绑定其请求/数据类型的 `ProviderHandle`。
-- `get(handle)` 返回类型化 Provider；未知或伪造 Handle 会被拒绝。
-- `get(name)` 仅用于非类型化管理查找，返回 `unknown` 数据边界，不能绕过类型安全。
-- `has(name)`、`list()` 用于注册状态检查。
-- 重复名称和未知 Provider 都会产生明确错误。
+## 8. Future evolution
 
-动态加载、跨进程注册、健康检查、限流和生产级故障转移监控不属于当前 MVP；Market Provider 已实现显式 primary/fallback composition。
+Future providers can implement the same `FinancialProvider` contract without
+changing the Capability. Possible additions include more reporting periods,
+provider-specific quality policies, rate limiting, retry policy, and additional
+statement metrics. Forecasts, valuation models, and investment recommendations
+remain outside this Provider layer.
 
-## 5. 当前 Provider Adapters
+## References
 
-规范实现位于 `packages/providers/adapters/`：
-
-- `MockMarketProvider`：返回确定性的行情快照。
-- `MockNewsProvider`：返回确定性的公司新闻证据。
-- `TushareMarketProvider`：通过 Tushare `daily` HTTP API 获取行情。
-- `AkShareMarketProvider`：通过配置的 AkShare-compatible HTTP bridge 获取行情。
-
-`packages/capabilities/providers/` 保留兼容性 re-export，避免已有验证代码的导入路径突然失效；新的组合入口使用 `createMockProviderComposition()`，在应用边界创建 Registry 并注册两个 Mock Provider。
-
-## 6. Capability Bridge
-
-Market 与 News Capability 保持原有 Harness 名称和领域字段，同时投影 Provider 元数据：
-
-- Market 输出保留 `symbol`、`price`、`change`、`volume`、`source`，并要求 `timestamp`、`quality`、`confidence`。
-- News 输出保留 `symbol`、`items`，每条新闻保留来源、时间戳和置信度，并要求结果级 `source`、`timestamp`、`quality`、`confidence`。
-
-因此上层 Skill 继续面向领域 Capability，不感知 Registry 的内部结构，但每次数据使用都保留可追溯上下文。
-
-## 7. 验证范围
-
-已验证：
-
-- `DataProvider` 契约和 Financial Data Metadata 运行时校验。
-- Provider 注册、类型化 Handle 查询、重复/未知 Provider 错误。
-- Mock Market/News Provider 通过 Registry 被 Capability 调用。
-- Tushare/AkShare Market Provider 的字段标准化、元数据、错误和脱敏路径。
-- Primary/Fallback Market Provider composition 与双失败错误报告。
-- Capability 输出保留原有 Harness 工具名和业务字段；完整 `provider` 元数据保留在 ProviderResult 边界。
-- Event Analysis、Artifact、Memory、Evaluation 和 Harness Session 集成链路不被破坏。
-
-未验证：
-
-- Wind、聚宽、东方财富等其他真实数据源。
-- 真实账号权限、配额、生产限流、重试、数据新鲜度监控和跨 Provider 运营故障切换。
-- 真实行情的质量评估、复权处理和交易日历一致性。
-
-## 8. 后续演进
-
-后续新增数据源应实现同一 `DataProvider` 契约，通过 Registry 注册，并在 Capability 层保持稳定的领域输出。真实 Provider 接入前，必须单独验证授权、数据许可、字段语义、时间基准、错误处理和测试替身，不得把外部 SDK 直接引入 Capability。
+- [Tushare financial data catalogue](https://tushare.pro/document/1?doc_id=108)
+- [Tushare income interface](https://tushare.pro/document/2?doc_id=137)
+- [AkShare project guidance](https://github.com/akfamily/akshare/blob/main/llms.txt)

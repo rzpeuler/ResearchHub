@@ -1,6 +1,6 @@
 # ResearchHub
 
-ResearchHub 是构建在 DeepSeek Harness 之上的 AI A 股个人投资研究员。目前项目处于 **Phase 11 — Financial Intelligence Data Layer Design**：已完成 Harness 集成验证、Capability、研究资产、Memory、Evaluation、Provider Framework、Market Provider、Announcement Provider 和 Professional Media Provider。
+ResearchHub 是构建在 DeepSeek Harness 之上的 AI A 股个人投资研究员。目前项目处于 **Phase 12 — Financial Statement Provider MVP**：已完成 Harness 集成验证、Capability、研究资产、Memory、Evaluation、Provider Framework、Market Provider、Announcement Provider 和 Professional Media Provider，并完成 Financial Provider 的 Tushare/AkShare 双适配器与 Financial Capability MVP。
 
 ResearchHub 不执行交易，也不 fork Harness Core。本阶段已完成真实 Market Provider 的适配与测试；生产启用仍需完成账号授权、bridge 运维和数据质量验收。
 
@@ -39,9 +39,9 @@ ResearchHub 不执行交易，也不 fork Harness Core。本阶段已完成真�
 
 ## 当前阶段
 
-**Phase 8 — Information Data Layer Design**
+**Phase 12 — Financial Statement Provider MVP**
 
-当前已完成 `Capability → ProviderRegistry → DataProvider` 的标准边界、Tushare/AkShare Market Provider MVP，以及新闻、公告、政策信息层的 Provider 架构设计。Information Layer 只定义数据模型、来源层级和验证边界，尚未接入真实信息源。
+当前已完成 `Financial Capability → ProviderRegistry → Tushare/AkShare Financial Provider` 的结构化财务事实链路，并通过 Financial Evidence Adapter 关联现有 Evidence Artifact。默认测试无网络依赖；真实账号、bridge 部署、数据许可和质量验收仍待完成。
 
 ## 协作角色
 

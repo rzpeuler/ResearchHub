@@ -28,6 +28,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | RH-ENG-006 | Implement Announcement Provider MVP | Completed | P0 | 2026-08-24 | Luna | `e0e8e5b3d3320be2624c5583d2e590f8b63714ad` | Accepted — CNINFO adapter, NewsItem normalization, symbol mapping, Registry, Capability and Event Analysis tests passed |
 | RH-ENG-007 | Implement Professional Media Provider MVP | Completed | P0 | 2026-08-24 | Luna | `6b162241c4e55492bf3b6a2b53d5aa1316cbcd34` | Accepted — media NewsItem, publisher/tier metadata, Registry, News Capability and Event Analysis tests passed |
 | RH-DESIGN-007 | Design Financial Intelligence Data Layer | Completed | P0 | 2026-08-24 | Luna | `7cf3187961bec7bf0cfadd0dd74a745366fae864` | Accepted — FinancialStatement, FinancialMetric, Provider, Capability, Evidence and Memory compatibility design completed |
+| RH-ENG-008 | Implement Financial Statement Provider MVP | Completed | P0 | 2026-08-24 | Luna | To be filled after implementation commit | Accepted — Tushare/AkShare adapters, normalization, Financial Capability, Evidence integration and full tests passed |
 
 ## RH-DESIGN-004 Acceptance Scope
 
@@ -80,6 +81,16 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 - Financial Capability converts structured facts into existing Evidence Artifacts.
 - Thesis, Prediction, Evaluation, and Memory compatibility is documented without adding raw financial Memory entries.
 - No real API, forecast model, valuation strategy, investment advice, trading logic, or frozen architecture document was changed.
+
+## RH-ENG-008 Acceptance Scope
+
+- `TushareFinancialProvider` and `AkShareFinancialProvider` implement the common Financial Provider boundary without SDK dependencies in the TypeScript runtime.
+- Income, balance-sheet, and cash-flow fields are normalized to `FinancialStatement` and `FinancialMetric` with period, unit, provider, source, timestamp, quality, and confidence metadata.
+- Provider Registry composition supports configurable primary/fallback selection and fixture-only injection for tests.
+- Financial Capability exposes `get_financial_snapshot(symbol)` and does not contain vendor calls, credentials, forecasts, valuation logic, or investment advice.
+- Financial Evidence Adapter creates session-linked Evidence artifacts from reported metrics.
+- TypeScript, Provider, Capability, Artifact, Memory, Evaluation, Skill, and Event Analysis integration tests remain green.
+- No Harness Core, frozen architecture document, external production dependency, or real network call was introduced into the default test suite.
 
 ## 历史 RH-ENG-001 约束
 

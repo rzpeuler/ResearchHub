@@ -4,11 +4,11 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 当前版本
 
-`v1.3.0` — Financial Intelligence Data Layer Design
+`v1.4.0` — Financial Statement Provider MVP
 
 ## 当前阶段
 
-**Phase 11 — Financial Intelligence Data Layer Design**
+**Phase 12 — Financial Statement Provider MVP**
 
 架构基线仍为 ResearchHub Architecture v0.2、Technical Design v0.1，Runtime 版本锁定为 DeepSeek Harness `0.1.1-rc.2`。
 
@@ -31,6 +31,13 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 - Tushare/AkShare 字段标准化、严格日期校验、endpoint 校验和凭证脱敏已完成。
 - Information Data Layer 架构设计已完成：`NewsItem`、Provider Interface 和 official/media/community Source Hierarchy。
 - Information Provider 与现有 Provider Framework、News Capability 的兼容边界已明确。
+- `FinancialStatement`、`FinancialMetric` 统一财务事实模型与严格运行时校验已实现。
+- `TushareFinancialProvider` 已实现收入、营业利润、净利润、资产、负债和经营现金流映射。
+- `AkShareFinancialProvider` 已实现同构输出和 HTTP bridge 边界。
+- Financial Provider primary/fallback composition、环境配置和凭证脱敏已实现。
+- `FinancialCapability.get_financial_snapshot(symbol)` 已通过 Registry 调用 Provider。
+- Financial Data → Evidence Artifact 适配器已实现，并保留 session、source、period 与 source statement IDs。
+- Provider、Capability、Artifact 和 integration fixture 测试已加入测试脚本。
 
 ## 开发中模块
 
@@ -46,6 +53,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 - Memory 检索与索引演进。
 - Review 调度与真实 Outcome 来源。
 - Financial、Institution 等后续 Capability。
+- 真实财务数据账号授权、bridge 部署与生产质量验收。
 
 ## 当前阻塞问题
 
@@ -54,11 +62,11 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 最近一次更新时间
 
-2026-08-23
+2026-08-24
 
 ## 最近一次 commit
 
-`docs: design information provider architecture`（`7f7fb65db70827d02aaa40e8786ca18b9000faa1`）
+待 RH-ENG-008 功能提交后回填。
 
 ## 架构基线
 
@@ -70,6 +78,33 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 - [Announcement Provider Design](../architecture/ANNOUNCEMENT_PROVIDER_DESIGN.md)
 - [Professional Media Provider Design](../architecture/MEDIA_PROVIDER_DESIGN.md)
 - [Financial Intelligence Data Design](../architecture/FINANCIAL_DATA_DESIGN.md)
+- [Financial Statement Provider Design](../architecture/FINANCIAL_PROVIDER_DESIGN.md)
+
+## RH-ENG-008 Status Synchronization
+
+**Current Stage:** Phase 12 — Financial Statement Provider MVP
+
+**Completed:**
+
+- Tushare and AkShare Financial Provider adapters with common normalized output.
+- Financial Provider Registry composition with configurable primary/fallback selection.
+- Financial Capability `get_financial_snapshot(symbol)`.
+- Financial Data to Evidence Artifact adapter with source metadata and session linkage.
+- Network-free provider, capability, artifact, and integration tests.
+
+**In Progress / Next:**
+
+- Tushare account authorization and live endpoint verification.
+- AkShare-compatible bridge deployment and production data-quality verification.
+- Additional financial metrics and period-selection policy after source validation.
+
+**Blockers:**
+
+- No engineering blocker. Real source activation remains environment- and authorization-dependent.
+
+**Last Updated:** 2026-08-24
+
+**Feature Commit:** To be filled after the implementation commit.
 
 ## RH-DESIGN-007 Status Synchronization
 

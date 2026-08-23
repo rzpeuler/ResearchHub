@@ -110,7 +110,21 @@
 
 状态：Completed。真实财务数据源、预测和估值逻辑尚未开始。
 
-## Phase 12 — Personal Investment Research Assistant
+## Phase 12 — Financial Statement Provider MVP
+
+目标：在不改变 Capability 边界的前提下接入结构化 A 股财务事实，完成 Tushare/AkShare Provider、统一字段、主备切换、Financial Capability 和 Evidence 关联。
+
+关键里程碑：
+
+- `FinancialStatement` 与 `FinancialMetric` 运行时模型。
+- `TushareFinancialProvider` 与 `AkShareFinancialProvider`。
+- Financial Provider Registry primary/fallback composition。
+- `get_financial_snapshot(symbol)` 与 Financial Data → Evidence Artifact。
+- 无网络依赖的 Provider、Capability、Artifact 和 integration 测试。
+
+状态：Completed。真实账号授权、bridge 部署和生产质量验收仍待完成。
+
+## Phase 13 — Personal Investment Research Assistant
 
 目标：在完成真实数据源治理、检索演进和复盘调度后，逐步扩展每日情报、持续监控、研究机会发现和自动化复盘。
 
