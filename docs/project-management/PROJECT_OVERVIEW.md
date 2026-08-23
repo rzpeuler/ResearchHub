@@ -34,9 +34,9 @@ Phase 1 的目标用户是中国 A股市场中具有基础投资经验的个人�
 
 ## 当前阶段
 
-**Phase 8 — Information Data Layer Design**
+**Phase 9 — Announcement Provider MVP**
 
-Architecture v0.2 和 Technical Design v0.1 已完成并冻结；Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework、Event Analysis Skill MVP、Research Memory Framework MVP、Research Evaluation Framework MVP 和真实 Market Provider MVP 已完成。当前已完成 Information Data Layer 的 NewsItem、Source Hierarchy 和 Provider 兼容架构设计，但尚未接入真实新闻、公告或政策数据源。
+Architecture v0.2 和 Technical Design v0.1 已完成并冻结；Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework、Event Analysis Skill MVP、Research Memory Framework MVP、Research Evaluation Framework MVP、真实 Market Provider MVP 和 CNINFO Announcement Provider MVP 已完成。当前公告 Provider 已通过 fixture 验证并接入 News Capability 与 Event Analysis，真实外部源的可用性、限流和正文获取仍需部署验收。
 
 ## 核心技术方向
 

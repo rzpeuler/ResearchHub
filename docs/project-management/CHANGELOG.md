@@ -2,6 +2,23 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v1.1.0
+
+**Date:** 2026-08-24
+
+**Changes:**
+
+- Added the `AnnouncementProvider` canonical Information Provider.
+- Added the CNINFO official-source adapter with injectable transport and deterministic fixtures.
+- Added explicit stock-code and issuer-to-symbol mapping.
+- Registered `announcement-provider` through the existing Provider Registry and preserved the News Capability contract through a boundary projection.
+- Added Provider, News Capability, and Event Analysis integration tests.
+- Added `docs/architecture/ANNOUNCEMENT_PROVIDER_DESIGN.md`.
+
+**Breaking Changes:**
+
+- None. News Capability, Event Analysis Skill, Harness Core, frozen architecture documents, and production external dependencies were unchanged.
+
 ## Version: v1.0.0
 
 **Date:** 2026-08-24

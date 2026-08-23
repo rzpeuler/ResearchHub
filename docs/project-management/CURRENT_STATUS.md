@@ -4,11 +4,11 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 当前版本
 
-`v1.0.0` — Information Provider Architecture Design
+`v1.1.0` — Announcement Provider MVP
 
 ## 当前阶段
 
-**Phase 8 — Information Data Layer Design**
+**Phase 9 — Announcement Provider MVP**
 
 架构基线仍为 ResearchHub Architecture v0.2、Technical Design v0.1，Runtime 版本锁定为 DeepSeek Harness `0.1.1-rc.2`。
 
@@ -67,3 +67,30 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 - [Financial Data Provider Design](../architecture/FINANCIAL_PROVIDER_DESIGN.md)
 - [Market Provider Design](../architecture/MARKET_PROVIDER_DESIGN.md)
 - [Information Provider Design](../architecture/INFORMATION_PROVIDER_DESIGN.md)
+- [Announcement Provider Design](../architecture/ANNOUNCEMENT_PROVIDER_DESIGN.md)
+
+## RH-ENG-006 Status Synchronization
+
+**Current Stage:** Phase 9 — Announcement Provider MVP
+
+**Completed:**
+
+- `AnnouncementProvider` with canonical `NewsItem` output.
+- CNINFO official-source adapter with injectable native transport.
+- Explicit security-code and issuer-to-symbol mapping.
+- Registry registration as `announcement-provider` and compatibility projection for the unchanged News Capability.
+- Provider, source adapter, News Capability, and Event Analysis integration tests.
+
+**In Progress / Next:**
+
+- Live official-source availability, rate-limit, and document-content validation.
+- Additional official exchange adapters and licensed information sources.
+- Information deduplication and freshness policy.
+
+**Blockers:**
+
+- No code blocker. Direct external-source availability is intentionally excluded from the default test suite.
+
+**Last Updated:** 2026-08-24
+
+**Latest Commit:** `feat: add announcement provider` (`efa053c036d0d7c13e82ff5d73ea5aac07c4cb4e`)

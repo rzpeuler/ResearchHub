@@ -74,7 +74,19 @@
 
 状态：Completed。真实信息源接入尚未开始。
 
-## Phase 9 — Personal Investment Research Assistant
+## Phase 9 — Announcement Provider MVP
+
+目标：将官方上市公司公告接入 Information Layer，验证 NewsItem 标准化、股票映射、Provider Registry 和 Event Analysis 兼容链路。
+
+关键里程碑：
+
+- `AnnouncementProvider` 与 CNINFO Source Adapter。
+- `official` NewsItem、metadata 和显式股票映射。
+- 无网络依赖的 Provider、Capability 和 Event Analysis 集成测试。
+
+状态：Completed。真实外部源的可用性、限流和正文获取仍需部署验收。
+
+## Phase 10 — Personal Investment Research Assistant
 
 目标：在完成真实数据源治理、检索演进和复盘调度后，逐步扩展每日情报、持续监控、研究机会发现和自动化复盘。
 
