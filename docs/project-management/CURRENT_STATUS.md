@@ -4,13 +4,13 @@
 
 ## 当前版本
 
-`v0.4.0` — Research Artifact Framework foundation
+`v0.5.0` — Event Analysis Skill Framework MVP
 
 ## 当前阶段
 
-**Phase 4 — Research Artifact Foundation**
+**Phase 4 — Event Analysis Skill MVP**
 
-ResearchHub 已完成 Harness Integration Validation、Financial Capability Foundation 和 Market Capability MVP。当前建立可序列化、可验证、可关联 Session 的 Evidence、Thesis、Prediction 结构化研究资产模型，为后续 Event Analysis 和 Research Memory 提供基础合同。
+ResearchHub 已完成 Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework，以及第一个 Event Analysis Skill 的端到端验证。当前闭环为 Skill → Capability → Artifact → Session。
 
 ## 已完成模块
 
@@ -19,26 +19,28 @@ ResearchHub 已完成 Harness Integration Validation、Financial Capability Foun
 - DeepSeek Harness `0.1.1-rc.2` integration validation
 - 通用 `CapabilityDefinition` 与 `CapabilityProvider` 接口
 - `MarketCapability` 与 `get_market_snapshot` Harness Tool
-- `MockMarketProvider`
+- `NewsCapability` 与 `search_company_news` Harness Tool
+- `MockMarketProvider`、`MockNewsProvider`
 - Capability/Provider 边界测试和 Harness Session 集成测试
 - Artifact Core：`ArtifactBase`、JSON-safe 类型、运行时校验、序列化
 - `Evidence`、`Thesis`、`Prediction` Artifact 类型
-- Session、Evidence、Thesis、Prediction ID 关系验证
+- Event Analysis `SKILL.md`
+- `EventAnalysisWorkflow` 与 `run_event_analysis` Harness Tool
+- Event Analysis Harness 端到端测试：Skill loading、Capability calling、Artifact creation、Session persistence
 
 ## 开发中模块
 
-- Event Analysis Skill 尚未实现
+- Research Artifact Review 生命周期尚未实现
 - Research Memory Adapter 尚未实现
-- Review Artifact 尚未实现
-- 真实 Market Provider 尚未接入
+- Prediction Evaluation 尚未实现
+- 真实 Market/News Provider 尚未接入
 
 ## 待开发模块
 
-- Event Analysis MVP
-- Research Artifact Review 生命周期
-- Memory 持久化与检索适配器
-- Prediction 结果 Evaluation
-- News、Financial、Institution 等后续 Capability
+- Review Artifact
+- Research Memory 持久化与检索适配器
+- Prediction → Outcome → Evaluation → Memory Update 复盘闭环
+- News、Financial、Institution 等后续真实 Capability
 
 ## 当前阻塞问题
 
@@ -57,6 +59,7 @@ ResearchHub 已完成 Harness Integration Validation、Financial Capability Foun
 - Harness 集成文档：[HARNESS_INTEGRATION.md](../architecture/HARNESS_INTEGRATION.md)
 - Capability 设计文档：[CAPABILITY_DESIGN.md](../architecture/CAPABILITY_DESIGN.md)
 - Artifact 设计文档：[RESEARCH_ARTIFACT_DESIGN.md](../architecture/RESEARCH_ARTIFACT_DESIGN.md)
+- Event Analysis 设计文档：[EVENT_ANALYSIS_SKILL_DESIGN.md](../architecture/EVENT_ANALYSIS_SKILL_DESIGN.md)
 
 ## 最近一次更新时间
 
@@ -64,4 +67,4 @@ ResearchHub 已完成 Harness Integration Validation、Financial Capability Foun
 
 ## 最近一次 commit
 
-`feat: add research artifact framework`（最终 hash 以 Git 提交结果为准）
+`feat: add event analysis skill framework`（最终 hash 以 Git 提交结果为准）

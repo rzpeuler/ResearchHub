@@ -19,6 +19,7 @@ This file is the lightweight task database for ResearchHub. Every independently 
 | RH-ENG-001 | Validate minimum ResearchHub Harness integration | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — typecheck and integration test passed |
 | RH-ENG-002 | Add financial capability foundation and Market Capability MVP | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — capability, provider and integration tests passed |
 | RH-DESIGN-001 | Add Research Artifact Framework foundation | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — type, validation, serialization and relationship tests passed |
+| RH-ENG-003A | Add Event Analysis Skill Framework MVP | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — Skill, Capability, Artifact and Session integration tests passed |
 
 ## RH-ENG-001 Acceptance Scope
 

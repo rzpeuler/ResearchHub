@@ -2,6 +2,24 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v0.5.0
+
+**Date:** 2026-08-23
+
+**Changes:**
+
+- Added `NewsCapability` with `search_company_news(symbol)`.
+- Added deterministic `MockNewsProvider` without external data access.
+- Added the Harness-loadable Event Analysis Skill and typed `EventAnalysisWorkflow`.
+- Added deterministic Evidence, Thesis and Prediction generation from Market/News Capability results.
+- Added `run_event_analysis` Harness Tool with active Agent Session ID binding.
+- Added Event Analysis Harness integration validation and Session JSONL persistence assertions.
+- Added `docs/architecture/EVENT_ANALYSIS_SKILL_DESIGN.md`.
+
+**Breaking Changes:**
+
+- None. No Harness Core, frozen architecture document, real data source, trading logic or Memory implementation was changed.
+
 ## Version: v0.4.0
 
 **Date:** 2026-08-23

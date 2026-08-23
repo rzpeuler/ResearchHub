@@ -1,6 +1,6 @@
 # ResearchHub
 
-ResearchHub 当前处于 Phase 4 — Research Artifact Foundation。项目已完成 DeepSeek Harness 集成验证、Financial Capability Foundation、Market Capability MVP，以及 Evidence、Thesis、Prediction 结构化研究资产基础。
+ResearchHub 当前处于 Phase 4 — Event Analysis Skill MVP。项目已完成 DeepSeek Harness 集成验证、Financial Capability Foundation、Market Capability MVP、Research Artifact Framework，以及第一个 Event Analysis Skill 闭环。
 
 ## 项目治理文档
 
@@ -18,9 +18,9 @@ ResearchHub 当前处于 Phase 4 — Research Artifact Foundation。项目已完
 
 ## 当前阶段
 
-**Phase 4 — Research Artifact Foundation**
+**Phase 4 — Event Analysis Skill MVP**
 
-Harness 集成验证、Capability Framework 和 Market Capability MVP 已完成。本阶段建立 Evidence、Thesis、Prediction 结构化研究资产基础，下一步进入 Event Analysis MVP。
+Harness 集成验证、Capability Framework、Market Capability、Research Artifact Framework 和 Event Analysis Skill MVP 已完成。下一阶段进入 Review、Evaluation 与 Research Memory 设计。
 
 ## Architecture Documentation
 
@@ -29,6 +29,7 @@ Harness 集成验证、Capability Framework 和 Market Capability MVP 已完成�
 - [Harness Integration Validation](docs/architecture/HARNESS_INTEGRATION.md)
 - [Capability Design](docs/architecture/CAPABILITY_DESIGN.md)
 - [Research Artifact Design](docs/architecture/RESEARCH_ARTIFACT_DESIGN.md)
+- [Event Analysis Skill Design](docs/architecture/EVENT_ANALYSIS_SKILL_DESIGN.md)
 
 所有后续工程任务必须以 ResearchHub Architecture v0.2 和对应 Technical Design 为约束。
 

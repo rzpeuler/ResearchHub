@@ -73,12 +73,14 @@ Completed。治理文档体系已在 `chore: initialize project execution state 
 
 - Research Artifact Framework foundation completed in RH-DESIGN-001.
 - Evidence、Thesis、Prediction 已具备类型定义、运行时校验、JSON 序列化和 Session/ID 关联。
+- Event Analysis Skill Framework MVP completed in RH-ENG-003A.
+- Skill loading、Market/News Capability calling、Artifact generation 和 Session persistence 已通过 Harness integration test。
 
 ### 下一步
 
-- Event Analysis Skill MVP。
 - Research Artifact Review 生命周期。
 - Research Memory Adapter 设计与验证。
+- Prediction Evaluation 和复盘闭环。
 
 ## Phase 5 — Company Research and Review System
 
