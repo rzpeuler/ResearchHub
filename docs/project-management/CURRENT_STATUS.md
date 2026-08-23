@@ -4,7 +4,7 @@
 
 **Current Stage:** Phase 15 — Event Analysis Skill Architecture v2
 
-**In Progress:**
+**Completed:**
 
 - Standard Event Analysis Skill Package implementation and contract tests.
 - Governance synchronization for Skill metadata, research method, Evidence, output, and Evaluation rules.
@@ -15,7 +15,7 @@
 
 **Last Updated:** 2026-08-24
 
-**Feature Commit:** Pending
+**Feature Commit:** `229f523cb13ce9bf19a46063a4bd45397a81425b`
 
 ResearchHub 的高频工程状态入口。每次完成可验收交付后，必须同步本文件、任务登记表和变更记录。
 
