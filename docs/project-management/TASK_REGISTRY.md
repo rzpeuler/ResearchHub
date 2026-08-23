@@ -29,7 +29,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | RH-ENG-007 | Implement Professional Media Provider MVP | Completed | P0 | 2026-08-24 | Luna | `6b162241c4e55492bf3b6a2b53d5aa1316cbcd34` | Accepted — media NewsItem, publisher/tier metadata, Registry, News Capability and Event Analysis tests passed |
 | RH-DESIGN-007 | Design Financial Intelligence Data Layer | Completed | P0 | 2026-08-24 | Luna | `7cf3187961bec7bf0cfadd0dd74a745366fae864` | Accepted — FinancialStatement, FinancialMetric, Provider, Capability, Evidence and Memory compatibility design completed |
 | RH-ENG-008 | Implement Financial Statement Provider MVP | Completed | P0 | 2026-08-24 | Luna | `05b216b0022618c55ae2fcddfe081f36f472a742` | Accepted — Tushare/AkShare adapters, normalization, Financial Capability, Evidence integration and full tests passed |
-| RH-DESIGN-008 | Design Research Workflow Architecture | Completed | P0 | 2026-08-24 | Luna | To be filled after documentation commit | Accepted — Workflow, Research Manager, Harness boundary, Report aggregation and compatibility design completed |
+| RH-DESIGN-008 | Design Research Workflow Architecture | Completed | P0 | 2026-08-24 | Luna | `77f0728ade15a1d38ee4050499da98241bcf7595` | Accepted — Workflow, Research Manager, Harness boundary, Report aggregation and compatibility design completed |
 
 ## RH-DESIGN-004 Acceptance Scope
 

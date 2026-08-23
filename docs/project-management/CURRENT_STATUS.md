@@ -70,7 +70,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 最近一次 commit
 
-待 RH-DESIGN-008 提交后回填。
+`docs: design research workflow architecture`（`77f0728ade15a1d38ee4050499da98241bcf7595`）
 
 ## 架构基线
 
@@ -108,7 +108,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 **Last Updated:** 2026-08-24
 
-**Design Commit:** To be filled after the documentation commit.
+**Design Commit:** `77f0728ade15a1d38ee4050499da98241bcf7595`
 
 ## RH-ENG-008 Status Synchronization
 
