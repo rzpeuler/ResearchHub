@@ -4,7 +4,7 @@
 
 **Current Stage:** Phase 16 — Company Research Skill Package MVP
 
-**In Progress:**
+**Completed:**
 
 - Company Research Skill Package and company-research Workflow implementation.
 - End-to-end Capability, Artifact, Report View, and Evaluation validation.
@@ -15,7 +15,7 @@
 
 **Last Updated:** 2026-08-24
 
-**Feature Commit:** Pending
+**Feature Commit:** `1d342afd7f14bd8a7edf7633e8968484cc3860a9`
 
 ## RH-ENG-010 Status Synchronization
 
