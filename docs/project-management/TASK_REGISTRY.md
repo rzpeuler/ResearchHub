@@ -26,6 +26,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | RH-ENG-005 | Add real A-share market data providers | Completed | P0 | 2026-08-23 | Luna | `336213464b61d03fbed95738eff67bce46665461` | Accepted — Tushare, AkShare, normalization, fallback and full tests passed |
 | RH-DESIGN-006 | Design Information Provider architecture | Completed | P0 | 2026-08-24 | Luna | `7f7fb65db70827d02aaa40e8786ca18b9000faa1` | Accepted — NewsItem, Provider Interface, Source Hierarchy and compatibility design completed |
 | RH-ENG-006 | Implement Announcement Provider MVP | Completed | P0 | 2026-08-24 | Luna | `e0e8e5b3d3320be2624c5583d2e590f8b63714ad` | Accepted — CNINFO adapter, NewsItem normalization, symbol mapping, Registry, Capability and Event Analysis tests passed |
+| RH-ENG-007 | Implement Professional Media Provider MVP | Completed | P0 | 2026-08-24 | Luna | Updated after commit | Accepted — media NewsItem, publisher/tier metadata, Registry, News Capability and Event Analysis tests passed |
 
 ## RH-DESIGN-004 Acceptance Scope
 
@@ -61,6 +62,15 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 - Registry exposes `announcement-provider` through an unchanged News Capability contract.
 - Provider, Capability, and Event Analysis integration tests pass without network dependency.
 - No Harness Core, News Capability implementation, Event Analysis Skill, trading logic, NLP, crawler, or frozen architecture document was changed.
+
+## RH-ENG-007 Acceptance Scope
+
+- `MediaProvider` emits `sourceType: 'media'` NewsItem-compatible records.
+- Media metadata includes `publisher`, strict `tier-1|tier-2|tier-3`, and confidence.
+- Fixture `ProfessionalMediaSourceAdapter` isolates source integration without network dependency.
+- Registry exposes `media-provider` through an unchanged News Capability contract.
+- Provider and Event Analysis integration tests pass.
+- No named media API, News Capability implementation, Event Analysis Skill, NLP, sentiment, community-opinion, trading, or frozen architecture document was changed.
 
 ## 历史 RH-ENG-001 约束
 

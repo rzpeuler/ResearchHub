@@ -1,19 +1,12 @@
-import type { DataProvider } from '../../core/index.ts'
-
 export const ANNOUNCEMENT_SOURCE_TYPE = 'official' as const
 
 export type AnnouncementSourceType = typeof ANNOUNCEMENT_SOURCE_TYPE
 
+import type { DataProvider } from '../../core/index.ts'
+import type { NewsItem as InformationNewsItem } from '../information/index.ts'
+
 /** Canonical Information Layer record produced by an Announcement Provider. */
-export interface NewsItem {
-  title: string
-  content: string
-  publishedAt: string
-  source: string
-  sourceType: AnnouncementSourceType
-  symbols: string[]
-  confidence: number
-}
+export type NewsItem = InformationNewsItem & { sourceType: AnnouncementSourceType }
 
 export interface AnnouncementProviderRequest {
   symbol: string

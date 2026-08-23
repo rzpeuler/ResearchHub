@@ -2,6 +2,21 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v1.2.0
+
+**Date:** 2026-08-24
+
+**Changes:**
+
+- Added the Professional Media Provider MVP and `media-provider` Registry entry.
+- Added shared Information Layer NewsItem types with media publisher, tier, and confidence metadata.
+- Added deterministic fixture Source Adapter, Provider tests, News Capability integration, and Event Analysis integration.
+- Added `docs/architecture/MEDIA_PROVIDER_DESIGN.md`.
+
+**Breaking Changes:**
+
+- None. News Capability, Event Analysis Skill, Harness Core, frozen architecture documents, and external dependencies were unchanged.
+
 ## Version: v1.1.0
 
 **Date:** 2026-08-24

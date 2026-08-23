@@ -4,11 +4,11 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 当前版本
 
-`v1.1.0` — Announcement Provider MVP
+`v1.2.0` — Professional Media Provider MVP
 
 ## 当前阶段
 
-**Phase 9 — Announcement Provider MVP**
+**Phase 10 — Professional Media Provider MVP**
 
 架构基线仍为 ResearchHub Architecture v0.2、Technical Design v0.1，Runtime 版本锁定为 DeepSeek Harness `0.1.1-rc.2`。
 
@@ -68,6 +68,34 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 - [Market Provider Design](../architecture/MARKET_PROVIDER_DESIGN.md)
 - [Information Provider Design](../architecture/INFORMATION_PROVIDER_DESIGN.md)
 - [Announcement Provider Design](../architecture/ANNOUNCEMENT_PROVIDER_DESIGN.md)
+- [Professional Media Provider Design](../architecture/MEDIA_PROVIDER_DESIGN.md)
+
+## RH-ENG-007 Status Synchronization
+
+**Current Stage:** Phase 10 — Professional Media Provider MVP
+
+**Completed:**
+
+- Shared Information Layer `NewsItem` and media source metadata types.
+- `MediaProvider` with `sourceType: media` output.
+- `publisher`, `tier`, and confidence validation.
+- Fixture-based `ProfessionalMediaSourceAdapter`.
+- Registry registration as `media-provider` and unchanged News Capability compatibility projection.
+- Provider and Event Analysis integration tests.
+
+**In Progress / Next:**
+
+- Select and authorize a production professional-media source.
+- Add freshness, licensing, and source-quality monitoring.
+- Continue Information Layer source expansion.
+
+**Blockers:**
+
+- No code blocker. No named media API is bound in this MVP.
+
+**Last Updated:** 2026-08-24
+
+**Latest Commit:** `feat: add professional media provider` (updated after commit)
 
 ## RH-ENG-006 Status Synchronization
 

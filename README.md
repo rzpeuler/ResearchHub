@@ -28,6 +28,7 @@ ResearchHub 不执行交易，也不 fork Harness Core。本阶段已完成真�
 - [Market Provider Design](docs/architecture/MARKET_PROVIDER_DESIGN.md)
 - [Information Provider Design](docs/architecture/INFORMATION_PROVIDER_DESIGN.md)
 - [Announcement Provider Design](docs/architecture/ANNOUNCEMENT_PROVIDER_DESIGN.md)
+- [Professional Media Provider Design](docs/architecture/MEDIA_PROVIDER_DESIGN.md)
 - [Research Artifact Design](docs/architecture/RESEARCH_ARTIFACT_DESIGN.md)
 - [Event Analysis Skill Design](docs/architecture/EVENT_ANALYSIS_SKILL_DESIGN.md)
 - [Research Memory Design](docs/architecture/RESEARCH_MEMORY_DESIGN.md)
