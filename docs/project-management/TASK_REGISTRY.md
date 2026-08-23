@@ -1,31 +1,33 @@
 # Task Registry
 
-本文件是项目任务数据库的轻量版本。每个可独立执行、审查或验收的工作项都应有唯一 Task ID。
+This file is the lightweight task database for ResearchHub. Every independently executable, reviewable or acceptable engineering task receives one stable Task ID.
 
-## 状态定义
+## Status Definitions
 
-- **Planned**：已登记，尚未开始。
-- **In Progress**：正在执行。
-- **Review**：实现完成，等待审查或验收。
-- **Completed**：执行和必要验证已完成。
-- **Blocked**：存在明确阻塞，无法继续推进。
+- **Planned** — registered but not started
+- **In Progress** — actively being executed
+- **Review** — implementation complete and awaiting review or acceptance
+- **Completed** — implementation and required validation complete
+- **Blocked** — a concrete blocker prevents continuation
 
-## 任务列表
+## Task List
 
-| Task ID | Task 名称 | 状态 | 优先级 | 创建时间 | 完成人 | Commit hash | 验收状态 |
+| Task ID | Task Name | Status | Priority | Created | Assignee | Commit Hash | Acceptance |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| RH-GOV-001 | 初始化项目工程执行状态管理体系 | Completed | P0 | 2026-08-23 | Luna | 见本次初始化提交 | 待项目负责人最终确认 |
+| RH-GOV-001 | Initialize project execution state management system | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
+| RH-DOC-002 | Synchronize architecture baseline documentation | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
+| RH-ENG-001 | Validate minimum ResearchHub Harness integration | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — typecheck and integration test passed |
 
-## RH-GOV-001 验收范围
+## RH-ENG-001 Acceptance Scope
 
-- 创建 `docs/project-management/` 及 9 份治理文档。
-- README 增加治理文档导航。
-- 文档依据当前空仓库真实状态填写。
-- 完成 Git 初始化和明确 commit。
+- DeepSeek Harness `0.1.1-rc.2` dependency versions are pinned.
+- `tests/integration/` contains validation-only code, not production implementation.
+- The live validation path covers Runtime → Extension → Agent → Skill → Capability → Session persistence.
+- No financial business capability, crawler, API, data model or Harness core modification was introduced.
 
-## 新任务登记规则
+## Registration Rules
 
-- Task ID 使用稳定、唯一、可搜索的标识。
-- 创建任务时同时填写名称、状态、优先级、创建时间和验收目标。
-- 完成后补充完成人、commit hash 和验收状态。
-- 阻塞任务必须写明阻塞原因和解除条件。
+- Task IDs are stable, unique and searchable.
+- New tasks record name, status, priority, creation date and acceptance criteria.
+- Completed tasks record the completing agent, commit hash and acceptance status.
+- Blocked tasks record the blocker and the condition required to resume.

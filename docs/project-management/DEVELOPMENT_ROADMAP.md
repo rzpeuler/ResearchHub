@@ -45,8 +45,8 @@ Completed。治理文档体系已在 `chore: initialize project execution state 
 
 ### 下一阶段入口
 
-- Harness integration validation
-- MVP skeleton implementation
+- Phase 2 validation completed: Harness extension, Agent, Skill, Capability and Session path verified
+- Phase 3 — Financial Capability Layer
 
 ## Phase 3 — Financial Capability Layer
 

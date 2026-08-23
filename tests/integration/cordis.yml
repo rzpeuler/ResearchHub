@@ -1,0 +1,7 @@
+# Documentation fixture for the real Cordis composition used by the integration test.
+# The test mounts the same plugins programmatically so it can inject a deterministic
+# mock adapter and assert the live handles directly.
+- id: researchhub-integration-validation
+  name: './extension.ts'
+  config:
+    skillRoot: './packages/skills'
