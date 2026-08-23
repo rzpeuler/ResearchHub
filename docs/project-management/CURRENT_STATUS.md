@@ -76,7 +76,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 最近一次 commit
 
-待 RH-ENG-009 提交后回填。
+`feat: implement research workflow framework`（`c809b19bb59ecc901536d840950440bcf810cb4e`）
 
 ## 架构基线
 
@@ -117,7 +117,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 **Last Updated:** 2026-08-24
 
-**Feature Commit:** To be filled after the implementation commit.
+**Feature Commit:** `c809b19bb59ecc901536d840950440bcf810cb4e`
 
 ## RH-DESIGN-008 Status Synchronization
 
