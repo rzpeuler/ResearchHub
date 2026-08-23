@@ -55,7 +55,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 最近一次 commit
 
-`feat: add real market data providers`（提交后回填实际 hash）
+`feat: add real market data providers`（`336213464b61d03fbed95738eff67bce46665461`）
 
 ## 架构基线
 
