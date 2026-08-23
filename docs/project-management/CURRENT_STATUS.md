@@ -66,7 +66,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 最近一次 commit
 
-待 RH-ENG-008 功能提交后回填。
+`docs: sync financial statement provider governance`（`6f45b47f5c2977c56307050ae342b44f8f120920`）
 
 ## 架构基线
 
