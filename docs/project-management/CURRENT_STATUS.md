@@ -4,11 +4,11 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 当前版本
 
-`v1.2.0` — Professional Media Provider MVP
+`v1.3.0` — Financial Intelligence Data Layer Design
 
 ## 当前阶段
 
-**Phase 10 — Professional Media Provider MVP**
+**Phase 11 — Financial Intelligence Data Layer Design**
 
 架构基线仍为 ResearchHub Architecture v0.2、Technical Design v0.1，Runtime 版本锁定为 DeepSeek Harness `0.1.1-rc.2`。
 
@@ -69,6 +69,33 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 - [Information Provider Design](../architecture/INFORMATION_PROVIDER_DESIGN.md)
 - [Announcement Provider Design](../architecture/ANNOUNCEMENT_PROVIDER_DESIGN.md)
 - [Professional Media Provider Design](../architecture/MEDIA_PROVIDER_DESIGN.md)
+- [Financial Intelligence Data Design](../architecture/FINANCIAL_DATA_DESIGN.md)
+
+## RH-DESIGN-007 Status Synchronization
+
+**Current Stage:** Phase 11 — Financial Intelligence Data Layer Design
+
+**Completed:**
+
+- `FinancialStatement` and `FinancialMetric` historical fact models.
+- Financial Provider interface compatible with the existing Provider Framework.
+- Financial Capability → Evidence Artifact boundary.
+- Compatibility with existing Thesis, Prediction, Evaluation, and Memory flows.
+- Explicit exclusion of real APIs, forecasts, valuation strategies, and direct Memory schema changes.
+
+**In Progress / Next:**
+
+- Financial Capability implementation with fixture data.
+- Financial Evidence Adapter implementation.
+- Later selection and authorization of real financial data sources.
+
+**Blockers:**
+
+- No code blocker. Real financial source selection is intentionally deferred.
+
+**Last Updated:** 2026-08-24
+
+**Latest Commit:** `docs: design financial intelligence architecture` (updated after commit)
 
 ## RH-ENG-007 Status Synchronization
 

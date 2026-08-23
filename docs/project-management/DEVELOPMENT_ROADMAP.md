@@ -98,7 +98,19 @@
 
 状态：Completed。生产媒体源选择、授权和质量监控仍待后续验收。
 
-## Phase 11 — Personal Investment Research Assistant
+## Phase 11 — Financial Intelligence Data Layer Design
+
+目标：定义公司财务研究数据的 FinancialStatement、FinancialMetric、Provider、Capability 和 Evidence 边界。
+
+关键里程碑：
+
+- 历史财务事实与可追溯指标模型。
+- Financial Provider 与现有 Provider Framework 兼容。
+- Financial Capability → Evidence → Thesis/Prediction → Memory 闭环边界。
+
+状态：Completed。真实财务数据源、预测和估值逻辑尚未开始。
+
+## Phase 12 — Personal Investment Research Assistant
 
 目标：在完成真实数据源治理、检索演进和复盘调度后，逐步扩展每日情报、持续监控、研究机会发现和自动化复盘。
 

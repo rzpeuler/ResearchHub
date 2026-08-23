@@ -34,9 +34,9 @@ Phase 1 的目标用户是中国 A股市场中具有基础投资经验的个人�
 
 ## 当前阶段
 
-**Phase 10 — Professional Media Provider MVP**
+**Phase 11 — Financial Intelligence Data Layer Design**
 
-Architecture v0.2 和 Technical Design v0.1 已完成并冻结；Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework、Event Analysis Skill MVP、Research Memory Framework MVP、Research Evaluation Framework MVP、真实 Market Provider MVP、CNINFO Announcement Provider MVP 和 Professional Media Provider MVP 已完成。当前媒体 Provider 已通过 fixture 验证并接入 News Capability 与 Event Analysis，生产媒体源授权、许可和质量监控仍需部署验收。
+Architecture v0.2 和 Technical Design v0.1 已完成并冻结；Harness Integration Validation、Financial Capability Foundation、Market Capability、Research Artifact Framework、Event Analysis Skill MVP、Research Memory Framework MVP、Research Evaluation Framework MVP、真实 Market Provider MVP、CNINFO Announcement Provider MVP 和 Professional Media Provider MVP 已完成。当前已完成 Financial Intelligence Data Layer 的 FinancialStatement、FinancialMetric、Provider、Capability 和 Evidence 边界设计，尚未接入真实财务数据源。
 
 ## 核心技术方向
 
@@ -63,6 +63,7 @@ ResearchHub 复用 Harness 的 Agent、Plugin、Workflow、Session、Tool 和 Me
 - [Information Provider Design](../architecture/INFORMATION_PROVIDER_DESIGN.md)
 - [Announcement Provider Design](../architecture/ANNOUNCEMENT_PROVIDER_DESIGN.md)
 - [Professional Media Provider Design](../architecture/MEDIA_PROVIDER_DESIGN.md)
+- [Financial Intelligence Data Design](../architecture/FINANCIAL_DATA_DESIGN.md)
 
 ## 长期愿景
 

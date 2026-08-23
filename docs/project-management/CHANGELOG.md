@@ -2,6 +2,22 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v1.3.0
+
+**Date:** 2026-08-24
+
+**Changes:**
+
+- Added the Financial Intelligence Data Layer architecture.
+- Defined `FinancialStatement` and `FinancialMetric` historical fact models.
+- Defined Financial Provider and Financial Capability → Evidence boundaries.
+- Documented compatibility with existing Artifact, Evaluation, and Memory flows.
+- Added `docs/architecture/FINANCIAL_DATA_DESIGN.md`.
+
+**Breaking Changes:**
+
+- None. No real API, business code, Harness Core, frozen architecture document, or Memory schema was changed.
+
 ## Version: v1.2.0
 
 **Date:** 2026-08-24

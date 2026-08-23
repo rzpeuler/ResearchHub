@@ -1,6 +1,6 @@
 # ResearchHub
 
-ResearchHub 是构建在 DeepSeek Harness 之上的 AI A 股个人投资研究员。目前项目处于 **Phase 9 — Announcement Provider MVP**：已完成 Harness 集成验证、Capability、研究资产、Memory、Evaluation、Provider Framework、Tushare/AkShare Market Provider MVP，以及 CNINFO 公告 Provider MVP。
+ResearchHub 是构建在 DeepSeek Harness 之上的 AI A 股个人投资研究员。目前项目处于 **Phase 11 — Financial Intelligence Data Layer Design**：已完成 Harness 集成验证、Capability、研究资产、Memory、Evaluation、Provider Framework、Market Provider、Announcement Provider 和 Professional Media Provider。
 
 ResearchHub 不执行交易，也不 fork Harness Core。本阶段已完成真实 Market Provider 的适配与测试；生产启用仍需完成账号授权、bridge 运维和数据质量验收。
 
@@ -29,6 +29,7 @@ ResearchHub 不执行交易，也不 fork Harness Core。本阶段已完成真�
 - [Information Provider Design](docs/architecture/INFORMATION_PROVIDER_DESIGN.md)
 - [Announcement Provider Design](docs/architecture/ANNOUNCEMENT_PROVIDER_DESIGN.md)
 - [Professional Media Provider Design](docs/architecture/MEDIA_PROVIDER_DESIGN.md)
+- [Financial Intelligence Data Design](docs/architecture/FINANCIAL_DATA_DESIGN.md)
 - [Research Artifact Design](docs/architecture/RESEARCH_ARTIFACT_DESIGN.md)
 - [Event Analysis Skill Design](docs/architecture/EVENT_ANALYSIS_SKILL_DESIGN.md)
 - [Research Memory Design](docs/architecture/RESEARCH_MEMORY_DESIGN.md)
