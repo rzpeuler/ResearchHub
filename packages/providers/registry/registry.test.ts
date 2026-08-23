@@ -19,6 +19,7 @@ function createProvider<TRequest, TData>(name: string, data: TData): DataProvide
       return {
         data,
         metadata: {
+          provider: 'fixture-provider',
           source: 'fixture',
           timestamp: '2026-08-23T09:00:00.000Z',
           quality: 'medium',
@@ -99,6 +100,7 @@ test('ProviderRegistry validates metadata and calls the underlying data validato
       return {
         data: { price: 1680 },
         metadata: {
+          provider: 'fixture-provider',
           source: 'fixture',
           timestamp: '2026-08-23T09:00:00.000Z',
           quality: 'high',
@@ -130,6 +132,7 @@ test('ProviderRegistry rejects malformed metadata before calling provider.valida
       return {
         data: { price: 1680 },
         metadata: {
+          provider: 'fixture-provider',
           source: 'fixture',
           timestamp: 'not-a-timestamp',
           quality: 'high',
@@ -159,6 +162,7 @@ test('ProviderRegistry preserves malformed data validation errors and underlying
       return {
         data: { price: 'not-a-number' } as unknown as { price: number },
         metadata: {
+          provider: 'fixture-provider',
           source: 'fixture',
           timestamp: '2026-08-23T09:00:00.000Z',
           quality: 'high',
@@ -210,6 +214,7 @@ test('ProviderRegistry snapshots the Provider name at registration', () => {
       return {
         data: { ok: true },
         metadata: {
+          provider: 'fixture-provider',
           source: 'fixture',
           timestamp: '2026-08-23T09:00:00.000Z',
           quality: 'high',
@@ -268,6 +273,7 @@ test('ProviderRegistry rejects non-JSON-safe TData at the runtime boundary', asy
       return {
         data: new Date('2026-08-23T09:00:00.000Z'),
         metadata: {
+          provider: 'fixture-provider',
           source: 'fixture',
           timestamp: '2026-08-23T09:00:00.000Z',
           quality: 'low',

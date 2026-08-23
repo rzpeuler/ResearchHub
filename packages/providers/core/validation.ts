@@ -177,7 +177,10 @@ export function validateFinancialDataMetadata(value: unknown): asserts value is 
     throw new ProviderValidationError('expected a JSON-safe object')
   }
 
-  assertAllowedFields(value, new Set(['source', 'timestamp', 'quality', 'confidence']))
+  assertAllowedFields(value, new Set(['provider', 'source', 'timestamp', 'quality', 'confidence']))
+  if (!Object.prototype.hasOwnProperty.call(value, 'provider')) {
+    throw new ProviderValidationError('missing required field', '$.provider')
+  }
   if (!Object.prototype.hasOwnProperty.call(value, 'source')) {
     throw new ProviderValidationError('missing required field', '$.source')
   }
@@ -191,6 +194,7 @@ export function validateFinancialDataMetadata(value: unknown): asserts value is 
     throw new ProviderValidationError('missing required field', '$.confidence')
   }
 
+  assertNonEmptyString(value.provider, '$.provider')
   assertNonEmptyString(value.source, '$.source')
   assertTimestamp(value.timestamp, '$.timestamp')
   assertQuality(value.quality, '$.quality')

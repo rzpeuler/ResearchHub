@@ -50,6 +50,7 @@ const MOCK_NEWS: Readonly<Record<string, readonly MockNewsItem[]>> = {
 }
 
 const MOCK_NEWS_METADATA: FinancialDataMetadata = {
+  provider: 'mock-news-provider',
   source: 'mock-news-provider',
   timestamp: '2026-08-23T09:00:00.000Z',
   quality: 'low',

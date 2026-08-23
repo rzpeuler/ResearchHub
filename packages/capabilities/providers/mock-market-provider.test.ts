@@ -6,6 +6,7 @@ import { MockMarketProvider } from './mock-market-provider.ts'
 import { ProviderRegistry, createMockProviderComposition, type DataProvider } from '../../providers/index.ts'
 
 const marketMetadata = {
+  provider: 'fixture-market-provider',
   source: 'fixture',
   timestamp: '2026-08-23T09:00:00.000Z',
   quality: 'high' as const,
@@ -27,6 +28,7 @@ test('MockMarketProvider returns deterministic DataProvider results with metadat
       source: 'mock',
     },
     metadata: {
+      provider: 'mock-market-provider',
       source: 'mock',
       timestamp: '2026-08-23T09:00:00.000Z',
       quality: 'low',
@@ -38,7 +40,7 @@ test('MockMarketProvider returns deterministic DataProvider results with metadat
   assert.doesNotThrow(() => provider.validate(first.data))
 })
 
-test('MarketCapability normalizes input and projects registry Provider metadata', async () => {
+test('MarketCapability normalizes input and projects only the pre-RH-ENG-005 output fields', async () => {
   const composition = createMockProviderComposition()
   const capability = new MarketCapability(composition.registry, composition.market)
 
@@ -82,6 +84,7 @@ test('MarketCapability routes through the registered handle rather than a concre
   const result = await capability.get_market_snapshot({ symbol: '600519' })
 
   assert.equal(calls, 1)
+  assert.equal('provider' in result, false)
   assert.equal(result.source, 'fixture')
   assert.equal(result.timestamp, marketMetadata.timestamp)
 })

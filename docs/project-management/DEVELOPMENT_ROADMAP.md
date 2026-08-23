@@ -59,7 +59,7 @@
 - Mock Market/News Provider 通过 Registry 接入 Capability。
 - Capability 输出保留 source、timestamp、quality、confidence。
 
-状态：In Progress。Provider Framework MVP 已完成；真实数据源接入尚未开始。
+状态：Completed（本任务完成 Tushare/AkShare Market Provider MVP 和 primary/fallback composition；其他真实金融数据源仍待后续接入）。
 
 ## Phase 8 — Personal Investment Research Assistant
 

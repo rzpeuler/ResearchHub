@@ -6,7 +6,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "test:providers": "tsx --test packages/providers/core/core.test.ts packages/providers/registry/registry.test.ts",
+    "test:providers": "tsx --test packages/providers/core/core.test.ts packages/providers/registry/registry.test.ts packages/providers/config.test.ts packages/providers/transport/native-fetch.test.ts packages/providers/adapters/market-types.test.ts packages/providers/adapters/tushare/tushare-market-provider.test.ts packages/providers/adapters/akshare/akshare-market-provider.test.ts packages/providers/market/composition.test.ts",
     "test:capabilities": "tsx --test packages/capabilities/providers/mock-market-provider.test.ts packages/capabilities/providers/mock-news-provider.test.ts",
     "test:artifacts": "tsx --test packages/artifacts/core/core.test.ts packages/artifacts/evidence/evidence.test.ts packages/artifacts/thesis/thesis.test.ts packages/artifacts/prediction/prediction.test.ts packages/artifacts/review/review.test.ts packages/artifacts/artifact-framework.test.ts",
     "test:evaluation": "tsx --test packages/evaluation/outcome/outcome.test.ts packages/evaluation/review/review.test.ts",

@@ -23,6 +23,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | RH-DESIGN-002 | Add Research Memory Framework MVP | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — Memory core, Local JSON provider, adapter and full tests passed |
 | RH-DESIGN-003 | Add Research Evaluation Framework MVP | Completed | P0 | 2026-08-23 | Luna | `febd88f88150bba025b6f3c1dd59f7bd73dfd8db` | Accepted — Review, Outcome, Evaluation Engine and Memory tests passed |
 | RH-DESIGN-004 | Add financial data provider framework | Completed | P0 | 2026-08-23 | Luna | `7dbbde94019f648219b3f4c137cc67b1ffaacb7e` | Accepted — Provider, Registry, Capability bridge and full tests passed |
+| RH-ENG-005 | Add real A-share market data providers | Review | P0 | 2026-08-23 | Luna | Pending commit | Pending — Tushare, AkShare, normalization, fallback and full tests passed |
 
 ## RH-DESIGN-004 Acceptance Scope
 
@@ -32,6 +33,15 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 - Market/News Capability 通过 Registry 获取 Provider，不直接导入或实例化具体 Provider。
 - Capability 输出保留 source、timestamp、quality、confidence 元数据。
 - TypeScript、Provider、Capability、Artifact、Memory、Evaluation、Skill 和 Harness integration 测试通过。
+
+## RH-ENG-005 Acceptance Scope
+
+- `TushareMarketProvider` and `AkShareMarketProvider` implement the common `DataProvider` boundary without SDK dependencies.
+- Tushare uses native HTTP with `TUSHARE_TOKEN`; AkShare uses an explicit `AKSHARE_ENDPOINT` bridge and never silently falls back to Mock.
+- ProviderResult metadata includes `provider`, `source`, `timestamp`, `quality` and `confidence`.
+- Market Capability method, input and business output contract remain unchanged.
+- Registry composition supports configured primary/fallback, combined failure context and deterministic injected-transport tests.
+- No real network call is made by the default test suite; no Harness Core, trading logic or frozen architecture change was introduced.
 
 ## 历史 RH-ENG-001 约束
 

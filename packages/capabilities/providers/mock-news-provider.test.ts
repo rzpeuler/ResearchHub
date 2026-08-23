@@ -6,6 +6,7 @@ import { MockNewsProvider } from './mock-news-provider.ts'
 import { ProviderRegistry, createMockProviderComposition, type DataProvider } from '../../providers/index.ts'
 
 const newsMetadata = {
+  provider: 'fixture-news-provider',
   source: 'fixture-news',
   timestamp: '2026-08-23T09:00:00.000Z',
   quality: 'high' as const,
@@ -52,6 +53,7 @@ test('NewsCapability normalizes input and projects Provider metadata without Reg
 
   assert.equal(result.symbol, '600519')
   assert.equal(result.items[0]?.symbol, '600519')
+  assert.equal('provider' in result, false)
   assert.equal(result.source, 'mock-news-provider')
   assert.equal(result.timestamp, '2026-08-23T09:00:00.000Z')
   assert.equal(result.quality, 'low')
@@ -75,6 +77,7 @@ test('NewsCapability routes through a typed registered handle', async () => {
   const result = await capability.search_company_news({ symbol: '600519' })
 
   assert.equal(calls, 1)
+  assert.equal('provider' in result, false)
   assert.equal(result.source, 'fixture-news')
   assert.equal(result.items[0]?.headline, 'Company update')
 })

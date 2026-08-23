@@ -4,7 +4,7 @@
 
 Financial Data Provider Framework 是 ResearchHub 金融能力层的数据接入边界。它把领域 Capability 与具体数据来源隔离，使 Market、News、Financial、Institution 等能力可以复用同一套 Provider 契约，而不把某个外部数据源写死在 Capability 中。
 
-本版本是 MVP，只有确定性的 Mock Provider。它用于验证架构和数据追溯，不代表真实金融数据接入已经完成。
+本版本包含确定性的 Mock Provider 和真实 Market Provider MVP。真实 Provider 使用原生 HTTP transport；测试仍使用注入的 Fixture，不依赖凭证或网络。
 
 ## 2. 架构
 
@@ -17,7 +17,7 @@ ProviderRegistry
     ↓
 DataProvider adapter
     ↓
-External data source (future)
+Configured external data source / bridge
 ```
 
 - Capability 定义领域操作和 Harness Tool 名称，例如 `get_market_snapshot(symbol)`、`search_company_news(symbol)`。
@@ -43,6 +43,7 @@ interface DataProvider<TRequest, TData> {
 interface ProviderResult<TData> {
   data: TData
   metadata: {
+    provider: string
     source: string
     timestamp: string
     quality: 'high' | 'medium' | 'low'
@@ -63,7 +64,7 @@ Registry 在结果离开 Provider 边界前验证 envelope、时间戳、质量�
 - `has(name)`、`list()` 用于注册状态检查。
 - 重复名称和未知 Provider 都会产生明确错误。
 
-动态加载、跨进程注册、凭证管理、健康检查、限流和故障转移不属于本 MVP。
+动态加载、跨进程注册、健康检查、限流和生产级故障转移监控不属于当前 MVP；Market Provider 已实现显式 primary/fallback composition。
 
 ## 5. 当前 Provider Adapters
 
@@ -71,6 +72,8 @@ Registry 在结果离开 Provider 边界前验证 envelope、时间戳、质量�
 
 - `MockMarketProvider`：返回确定性的行情快照。
 - `MockNewsProvider`：返回确定性的公司新闻证据。
+- `TushareMarketProvider`：通过 Tushare `daily` HTTP API 获取行情。
+- `AkShareMarketProvider`：通过配置的 AkShare-compatible HTTP bridge 获取行情。
 
 `packages/capabilities/providers/` 保留兼容性 re-export，避免已有验证代码的导入路径突然失效；新的组合入口使用 `createMockProviderComposition()`，在应用边界创建 Registry 并注册两个 Mock Provider。
 
@@ -90,13 +93,15 @@ Market 与 News Capability 保持原有 Harness 名称和领域字段，同时�
 - `DataProvider` 契约和 Financial Data Metadata 运行时校验。
 - Provider 注册、类型化 Handle 查询、重复/未知 Provider 错误。
 - Mock Market/News Provider 通过 Registry 被 Capability 调用。
-- Capability 输出保留原有 Harness 工具名并包含来源元数据。
+- Tushare/AkShare Market Provider 的字段标准化、元数据、错误和脱敏路径。
+- Primary/Fallback Market Provider composition 与双失败错误报告。
+- Capability 输出保留原有 Harness 工具名和业务字段；完整 `provider` 元数据保留在 ProviderResult 边界。
 - Event Analysis、Artifact、Memory、Evaluation 和 Harness Session 集成链路不被破坏。
 
 未验证：
 
-- Tushare、Wind、聚宽、AkShare、东方财富等真实数据源。
-- API 凭证、配额、限流、重试、数据新鲜度监控和跨 Provider 故障切换。
+- Wind、聚宽、东方财富等其他真实数据源。
+- 真实账号权限、配额、生产限流、重试、数据新鲜度监控和跨 Provider 运营故障切换。
 - 真实行情的质量评估、复权处理和交易日历一致性。
 
 ## 8. 后续演进

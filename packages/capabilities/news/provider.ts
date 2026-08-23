@@ -97,7 +97,13 @@ export class NewsCapability {
       const provider = this.registry.get(this.providerHandle)
       const result = await provider.fetch(normalizedInput)
       validateNewsSearchResult(result.data, normalizedInput.symbol)
-      return { ...result.data, ...result.metadata }
+      return {
+        ...result.data,
+        source: result.metadata.source,
+        timestamp: result.metadata.timestamp,
+        quality: result.metadata.quality,
+        confidence: result.metadata.confidence,
+      }
     } catch (cause) {
       throw new CapabilityExecutionError({
         capabilityName: this.definition.name,

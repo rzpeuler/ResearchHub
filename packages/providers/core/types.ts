@@ -14,6 +14,7 @@ export type JsonObject = {
 
 /** Traceability metadata that accompanies every Provider result. */
 export interface FinancialDataMetadata {
+  provider: string
   source: string
   timestamp: string
   quality: FinancialDataQuality

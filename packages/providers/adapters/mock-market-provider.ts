@@ -30,6 +30,7 @@ const MOCK_MARKET_DATA: Readonly<Record<string, MockMarketData>> = {
 }
 
 const MOCK_MARKET_METADATA: FinancialDataMetadata = {
+  provider: 'mock-market-provider',
   source: 'mock',
   timestamp: '2026-08-23T09:00:00.000Z',
   quality: 'low',

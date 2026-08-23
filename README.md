@@ -1,8 +1,8 @@
 # ResearchHub
 
-ResearchHub 是构建在 DeepSeek Harness 之上的 AI A 股个人投资研究员。目前项目处于 **Phase 7 — Financial Data Provider Foundation**：已完成 Harness 集成验证、Capability、研究资产、Memory、Evaluation，以及 Mock-only 的 Provider Framework。
+ResearchHub 是构建在 DeepSeek Harness 之上的 AI A 股个人投资研究员。目前项目处于 **Phase 7 — Financial Data Provider Foundation**：已完成 Harness 集成验证、Capability、研究资产、Memory、Evaluation、Provider Framework，以及 Tushare/AkShare Market Provider MVP。
 
-ResearchHub 不执行交易、不接入真实金融数据源作为本阶段交付内容，也不 fork Harness Core。
+ResearchHub 不执行交易，也不 fork Harness Core。本阶段已完成真实 Market Provider 的适配与测试；生产启用仍需完成账号授权、bridge 运维和数据质量验收。
 
 ## 项目治理文档
 
@@ -25,6 +25,7 @@ ResearchHub 不执行交易、不接入真实金融数据源作为本阶段交�
 - [Harness Integration Validation](docs/architecture/HARNESS_INTEGRATION.md)
 - [Capability Design](docs/architecture/CAPABILITY_DESIGN.md)
 - [Financial Data Provider Design](docs/architecture/FINANCIAL_PROVIDER_DESIGN.md)
+- [Market Provider Design](docs/architecture/MARKET_PROVIDER_DESIGN.md)
 - [Research Artifact Design](docs/architecture/RESEARCH_ARTIFACT_DESIGN.md)
 - [Event Analysis Skill Design](docs/architecture/EVENT_ANALYSIS_SKILL_DESIGN.md)
 - [Research Memory Design](docs/architecture/RESEARCH_MEMORY_DESIGN.md)
@@ -36,7 +37,7 @@ ResearchHub 不执行交易、不接入真实金融数据源作为本阶段交�
 
 **Phase 7 — Financial Data Provider Foundation**
 
-当前已具备 `Capability → ProviderRegistry → DataProvider` 的标准边界。Market 与 News Capability 通过类型化 Provider Handle 获取确定性的 Mock 数据，并保留来源、时间戳、质量和置信度元数据。
+当前已具备 `Capability → ProviderRegistry → DataProvider` 的标准边界。Market Capability 通过类型化 Provider Handle 使用 Tushare/AkShare primary/fallback composition；真实 ProviderResult 保留 provider、source、timestamp、quality 和 confidence 元数据，且不改变 Capability 接口。
 
 ## 协作角色
 

@@ -10,6 +10,7 @@ import {
 } from './index.ts'
 
 const validMetadata: FinancialDataMetadata = {
+  provider: 'fixture-provider',
   source: 'fixture:market',
   timestamp: '2026-08-23T09:00:00.000Z',
   quality: 'high',
@@ -37,6 +38,19 @@ test('metadata validation rejects invalid quality, timestamps, and confidence', 
   ]) {
     assert.throws(() => validateFinancialDataMetadata(metadata), ProviderValidationError)
   }
+})
+
+test('metadata validation requires a non-empty provider name', () => {
+  assert.throws(
+    () => validateFinancialDataMetadata({ ...validMetadata, provider: '' }),
+    ProviderValidationError,
+  )
+  const metadataWithoutProvider = { ...validMetadata } as Record<string, unknown>
+  delete metadataWithoutProvider.provider
+  assert.throws(
+    () => validateFinancialDataMetadata(metadataWithoutProvider),
+    /\$\.provider: missing required field/,
+  )
 })
 
 test('metadata and result validation reject unknown fields and unsafe JSON values', () => {

@@ -4,7 +4,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 当前版本
 
-`v0.8.0` — Financial Data Provider Framework MVP
+`v0.9.0` — Real A-Share Market Data Provider MVP
 
 ## 当前阶段
 
@@ -26,15 +26,19 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 - `MockMarketProvider`、`MockNewsProvider` 已迁移到 `packages/providers/adapters/`。
 - Market/News Capability 已通过 Registry 获取 Provider，并投影来源、时间戳、质量和置信度。
 - Provider 单元测试、Capability 测试和 Harness 集成测试已覆盖 Registry 链路。
+- `TushareMarketProvider` 与 `AkShareMarketProvider` 已实现，使用原生 `fetch` 和注入式 Fixture 测试。
+- Market Provider primary/fallback composition 已实现，双失败会保留两个 Provider 的错误上下文。
+- Tushare/AkShare 字段标准化、严格日期校验、endpoint 校验和凭证脱敏已完成。
 
 ## 开发中模块
 
-- 真实金融数据 Provider 的接入前评估（尚未连接外部 API）。
+- Tushare 账号权限与真实环境连通性验证。
+- AkShare-compatible bridge 的部署、运维和数据质量验证。
 - Provider 健康检查、限流、凭证和数据新鲜度策略设计。
 
 ## 待开发模块
 
-- 经授权的真实 Market/News Provider。
+- 经授权的真实 News、Financial、Institution Provider。
 - Provider 质量监控、重试和故障切换。
 - Memory 检索与索引演进。
 - Review 调度与真实 Outcome 来源。
@@ -43,7 +47,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 ## 当前阻塞问题
 
 - 无已知工程阻塞。
-- 真实数据源接入受授权、许可、字段语义、限流和数据质量评估约束，不能在本 MVP 中直接假设完成。
+- 真实 Provider 的生产启用仍受账号授权、数据许可、字段语义、限流、bridge 可用性和数据质量评估约束。
 
 ## 最近一次更新时间
 
@@ -51,10 +55,11 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 最近一次 commit
 
-`feat: add financial provider framework`（`7dbbde94019f648219b3f4c137cc67b1ffaacb7e`）
+`feat: add real market data providers`（提交后回填实际 hash）
 
 ## 架构基线
 
 - [ResearchHub Architecture v0.2](../architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
 - [ResearchHub Technical Design v0.1](../architecture/TECHNICAL_DESIGN_V0.1.md)
 - [Financial Data Provider Design](../architecture/FINANCIAL_PROVIDER_DESIGN.md)
+- [Market Provider Design](../architecture/MARKET_PROVIDER_DESIGN.md)

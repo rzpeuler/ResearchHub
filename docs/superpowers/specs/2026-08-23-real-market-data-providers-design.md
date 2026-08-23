@@ -63,7 +63,7 @@ interface FinancialDataMetadata {
 }
 ```
 
-The existing core metadata contract is extended compatibly with the required `provider` field. The Market Capability continues to expose its existing fields and projects the provider metadata into its result. Provider-specific raw fields do not cross the adapter boundary.
+The existing core metadata contract is extended compatibly with the required `provider` field. Market Capability keeps its existing method, input, business fields and output contract; it does not expose the new `provider` field. The complete provenance remains available in the `ProviderResult` at the Provider/Registry boundary. Provider-specific raw fields do not cross the adapter boundary.
 
 ## Tushare adapter
 

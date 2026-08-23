@@ -2,6 +2,23 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v0.9.0
+
+**Date:** 2026-08-23
+
+**Changes:**
+
+- Added `TushareMarketProvider` using the native Tushare HTTP API transport.
+- Added `AkShareMarketProvider` using a configurable AkShare-compatible HTTP bridge.
+- Added common Market data normalization for provider-specific fields and strict timestamp validation.
+- Added environment configuration, primary/fallback composition, combined provider errors and secret redaction.
+- Added deterministic provider fixtures and tests without SDK dependencies or live network calls.
+- Added `docs/architecture/MARKET_PROVIDER_DESIGN.md`.
+
+**Breaking Changes:**
+
+- None. Market Capability, Event Analysis Skill, Harness Core and frozen architecture documents were not changed.
+
 ## Version: v0.8.0
 
 **Date:** 2026-08-23
