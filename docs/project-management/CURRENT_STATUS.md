@@ -58,7 +58,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 最近一次 commit
 
-`docs: design information provider architecture`（提交后回填实际 hash）
+`docs: design information provider architecture`（`7f7fb65db70827d02aaa40e8786ca18b9000faa1`）
 
 ## 架构基线
 

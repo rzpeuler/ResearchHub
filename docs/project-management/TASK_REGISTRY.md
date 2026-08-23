@@ -24,7 +24,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | RH-DESIGN-003 | Add Research Evaluation Framework MVP | Completed | P0 | 2026-08-23 | Luna | `febd88f88150bba025b6f3c1dd59f7bd73dfd8db` | Accepted — Review, Outcome, Evaluation Engine and Memory tests passed |
 | RH-DESIGN-004 | Add financial data provider framework | Completed | P0 | 2026-08-23 | Luna | `7dbbde94019f648219b3f4c137cc67b1ffaacb7e` | Accepted — Provider, Registry, Capability bridge and full tests passed |
 | RH-ENG-005 | Add real A-share market data providers | Completed | P0 | 2026-08-23 | Luna | `336213464b61d03fbed95738eff67bce46665461` | Accepted — Tushare, AkShare, normalization, fallback and full tests passed |
-| RH-DESIGN-006 | Design Information Provider architecture | Completed | P0 | 2026-08-24 | Luna | Pending commit | Pending — NewsItem, Provider Interface, Source Hierarchy and compatibility design completed |
+| RH-DESIGN-006 | Design Information Provider architecture | Completed | P0 | 2026-08-24 | Luna | `7f7fb65db70827d02aaa40e8786ca18b9000faa1` | Accepted — NewsItem, Provider Interface, Source Hierarchy and compatibility design completed |
 
 ## RH-DESIGN-004 Acceptance Scope
 
