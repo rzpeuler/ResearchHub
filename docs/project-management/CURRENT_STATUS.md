@@ -51,7 +51,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 最近一次 commit
 
-`feat: add financial provider framework`（当前处于提交前 Review）
+`feat: add financial provider framework`（`7dbbde94019f648219b3f4c137cc67b1ffaacb7e`）
 
 ## 架构基线
 
