@@ -95,7 +95,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 **Last Updated:** 2026-08-24
 
-**Latest Commit:** `feat: add professional media provider` (updated after commit)
+**Latest Commit:** `feat: add professional media provider` (`6b162241c4e55492bf3b6a2b53d5aa1316cbcd34`)
 
 ## RH-ENG-006 Status Synchronization
 
