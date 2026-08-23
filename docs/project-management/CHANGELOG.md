@@ -2,6 +2,23 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v0.4.0
+
+**Date:** 2026-08-23
+
+**Changes:**
+
+- Added the Research Artifact Core with `ArtifactBase`, JSON-safe types and runtime validation.
+- Added `Evidence`, `Thesis` and `Prediction` artifact models.
+- Added session and artifact relationship references through `sessionId`, `evidenceIds` and `thesisId`.
+- Added validated JSON serialization and deserialization helpers.
+- Added Artifact Framework unit and relationship tests.
+- Added `docs/architecture/RESEARCH_ARTIFACT_DESIGN.md`.
+
+**Breaking Changes:**
+
+- None. No Harness Core, frozen architecture document, external data source or Memory implementation was changed.
+
 ## Version: v0.3.0
 
 **Date:** 2026-08-23

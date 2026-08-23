@@ -74,9 +74,9 @@ The core package provides:
 - JSON-safe value types.
 - Base and type-specific validation helpers.
 - `ArtifactValidationError` with field-level context.
-- `serializeArtifact()` and `deserializeArtifact()`.
+- `serializeArtifact()` and `deserializeArtifact()` with an explicit validator.
 
-Factories return new plain objects and do not mutate their inputs. Serialization uses standard JSON and deserialization always validates the parsed value before returning it.
+Factories return new plain objects and do not mutate their inputs. Serialization uses standard JSON and deserialization invokes the caller-supplied validator before returning the parsed value.
 
 ## Artifact Types
 

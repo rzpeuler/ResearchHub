@@ -63,11 +63,22 @@ Completed。治理文档体系已在 `chore: initialize project execution state 
 - Community Capability
 - Knowledge Capability
 
-## Phase 4 — Event Analysis MVP
+## Phase 4 — Research Artifact and Event Analysis MVP
 
 ### 目标
 
 完成第一个完整用户价值闭环：数据采集 → 证据整理 → 异动分析 → 研究产物 → 记忆更新。
+
+### 当前里程碑
+
+- Research Artifact Framework foundation completed in RH-DESIGN-001.
+- Evidence、Thesis、Prediction 已具备类型定义、运行时校验、JSON 序列化和 Session/ID 关联。
+
+### 下一步
+
+- Event Analysis Skill MVP。
+- Research Artifact Review 生命周期。
+- Research Memory Adapter 设计与验证。
 
 ## Phase 5 — Company Research and Review System
 

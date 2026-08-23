@@ -7,9 +7,10 @@
   },
   "scripts": {
     "test:capabilities": "tsx --test packages/capabilities/providers/mock-market-provider.test.ts",
+    "test:artifacts": "tsx --test packages/artifacts/core/core.test.ts packages/artifacts/evidence/evidence.test.ts packages/artifacts/thesis/thesis.test.ts packages/artifacts/prediction/prediction.test.ts packages/artifacts/artifact-framework.test.ts",
     "test:integration": "tsx --test tests/integration/harness-integration.test.ts tests/integration/market-capability.test.ts",
     "typecheck:integration": "tsc --noEmit -p tsconfig.json",
-    "test": "npm run typecheck:integration && npm run test:capabilities && npm run test:integration"
+    "test": "npm run typecheck:integration && npm run test:capabilities && npm run test:artifacts && npm run test:integration"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",

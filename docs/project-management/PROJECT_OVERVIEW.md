@@ -34,9 +34,9 @@ Phase 1 的目标用户是中国 A股市场中具有基础投资经验的个人�
 
 ## 当前阶段
 
-**Phase 1 — Architecture Design**
+**Phase 4 — Research Artifact Foundation**
 
-Architecture v0.2 和 Technical Design v0.1 已完成并冻结。下一阶段为 Harness Integration Validation，随后进入 MVP skeleton implementation。
+Architecture v0.2 和 Technical Design v0.1 已完成并冻结；Harness Integration Validation、Financial Capability Foundation 和 Market Capability MVP 已完成。当前正在建立 Evidence、Thesis、Prediction 研究资产基础，为 Event Analysis 和 Research Memory 做准备。
 
 ## 核心技术方向
 
@@ -53,6 +53,7 @@ ResearchHub 复用 Harness 的 Agent、Plugin、Workflow、Session、Tool 和 Me
 
 - [ResearchHub Architecture v0.2](../architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
 - [ResearchHub Technical Design v0.1](../architecture/TECHNICAL_DESIGN_V0.1.md)
+- [Research Artifact Design](../architecture/RESEARCH_ARTIFACT_DESIGN.md)
 
 ## 长期愿景
 

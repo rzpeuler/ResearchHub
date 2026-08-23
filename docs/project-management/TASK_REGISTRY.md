@@ -18,6 +18,7 @@ This file is the lightweight task database for ResearchHub. Every independently 
 | RH-DOC-002 | Synchronize architecture baseline documentation | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-ENG-001 | Validate minimum ResearchHub Harness integration | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — typecheck and integration test passed |
 | RH-ENG-002 | Add financial capability foundation and Market Capability MVP | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — capability, provider and integration tests passed |
+| RH-DESIGN-001 | Add Research Artifact Framework foundation | Completed | P0 | 2026-08-23 | Luna | This task commit | Accepted — type, validation, serialization and relationship tests passed |
 
 ## RH-ENG-001 Acceptance Scope
 

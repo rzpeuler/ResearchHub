@@ -1,6 +1,6 @@
 # ResearchHub
 
-ResearchHub 是一个刚启动的项目。目前仓库处于工程治理初始化阶段，尚未建立业务代码、运行时架构、数据结构或 API。
+ResearchHub 当前处于 Phase 4 — Research Artifact Foundation。项目已完成 DeepSeek Harness 集成验证、Financial Capability Foundation、Market Capability MVP，以及 Evidence、Thesis、Prediction 结构化研究资产基础。
 
 ## 项目治理文档
 
@@ -18,9 +18,9 @@ ResearchHub 是一个刚启动的项目。目前仓库处于工程治理初始�
 
 ## 当前阶段
 
-**Phase 1 — Architecture Design**
+**Phase 4 — Research Artifact Foundation**
 
-本阶段已完成 ResearchHub Architecture v0.2 和 Technical Design v0.1 的基线冻结。下一阶段进入 DeepSeek Harness 集成验证。
+Harness 集成验证、Capability Framework 和 Market Capability MVP 已完成。本阶段建立 Evidence、Thesis、Prediction 结构化研究资产基础，下一步进入 Event Analysis MVP。
 
 ## Architecture Documentation
 
@@ -28,6 +28,7 @@ ResearchHub 是一个刚启动的项目。目前仓库处于工程治理初始�
 - [ResearchHub Technical Design v0.1](docs/architecture/TECHNICAL_DESIGN_V0.1.md)
 - [Harness Integration Validation](docs/architecture/HARNESS_INTEGRATION.md)
 - [Capability Design](docs/architecture/CAPABILITY_DESIGN.md)
+- [Research Artifact Design](docs/architecture/RESEARCH_ARTIFACT_DESIGN.md)
 
 所有后续工程任务必须以 ResearchHub Architecture v0.2 和对应 Technical Design 为约束。
 
