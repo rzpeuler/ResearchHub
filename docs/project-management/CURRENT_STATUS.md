@@ -76,7 +76,7 @@ ResearchHub 的高频工程状态入口。每次完成可验收交付后，必�
 
 ## 最近一次 commit
 
-`feat: implement research workflow framework`（`c809b19bb59ecc901536d840950440bcf810cb4e`）
+`docs: sync research workflow governance`（`8058c2d`）
 
 ## 架构基线
 
