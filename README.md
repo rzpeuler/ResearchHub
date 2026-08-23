@@ -36,6 +36,7 @@ ResearchHub 不执行交易，也不 fork Harness Core。本阶段已完成真�
 - [Research Skill Architecture](docs/architecture/RESEARCH_SKILL_DESIGN.md)
 - [Company Research Skill Design](docs/architecture/COMPANY_RESEARCH_SKILL_DESIGN.md)
 - [Company Research Skill Implementation](docs/architecture/COMPANY_RESEARCH_SKILL_IMPLEMENTATION.md)
+- [Industry Research Skill Design](docs/architecture/INDUSTRY_RESEARCH_SKILL_DESIGN.md)
 - [Research Memory Design](docs/architecture/RESEARCH_MEMORY_DESIGN.md)
 - [Research Evaluation Design](docs/architecture/RESEARCH_EVALUATION_DESIGN.md)
 - [Research Workflow Design](docs/architecture/RESEARCH_WORKFLOW_DESIGN.md)
