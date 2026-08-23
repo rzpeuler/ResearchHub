@@ -4,38 +4,48 @@
 
 ## 当前版本
 
-`v0.0.0` — 项目启动基线
+`v0.2.0` — Architecture baseline
 
 ## 当前阶段
 
-**Phase 0 — Governance Bootstrap**
+**Phase 1 — Architecture Design**
 
-目标：完成项目治理文档初始化，并建立后续 Agent 可重复执行的状态同步流程。
+ResearchHub 已完成第一阶段架构设计，并冻结 Architecture v0.2 与 Technical Design v0.1 作为当前工程基线。
 
 ## 已完成模块
 
-- 项目治理文档目录 `docs/project-management/`
-- 项目概览、当前状态、路线图、任务登记、决策记录、架构说明、开发规范、变更记录和 Agent 工作流
-- README 项目治理文档导航
-- `RH-GOV-001` 工程执行状态管理体系初始化
+- DeepSeek Harness architecture analysis
+- ResearchHub Architecture v0.2
+- ResearchHub Technical Design v0.1
+- Architecture baseline freeze
+- 项目治理文档体系 `docs/project-management/`
+- Architecture 文档目录 `docs/architecture/`
 
 ## 开发中模块
 
-- 无业务代码模块处于开发中。
-- 后续产品需求与运行时架构尚待定义。
+- 暂无业务代码模块处于开发中。
+- Harness integration validation 与 MVP skeleton implementation 为下一阶段任务。
 
-## 待开发模块
+## 下一阶段
 
-- 产品目标、终端用户和核心业务流程定义
-- 运行时技术栈与系统架构设计
-- 数据模型与 API 设计
-- MVP 业务功能实现
-- 自动化测试与部署方案
+- Harness integration validation
+- MVP skeleton implementation
 
 ## 当前阻塞问题
 
 - **无工程阻塞。**
-- 项目尚处于空仓库启动阶段；业务需求、技术栈和产品架构未决是规划输入缺失，不属于当前执行阻塞。
+- Harness 集成验证和 MVP 骨架实现尚未开始，属于下一阶段计划，不属于当前阻塞。
+
+## 架构基线
+
+- 产品定位：AI A股个人投资研究员
+- Runtime：DeepSeek Harness
+- 架构模式：Harness Extension + Financial Intelligence Layer
+- 核心设计：Agent + Skill + Capability + Workflow + Memory
+- 权威文档：[ResearchHub Architecture v0.2](../architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
+- 工程设计：[ResearchHub Technical Design v0.1](../architecture/TECHNICAL_DESIGN_V0.1.md)
+
+所有未来工程任务必须遵循 Architecture → Technical Design → Engineering Task → Implementation → Validation 链路。架构变更必须新增 ADR、升级架构版本并完成技术评审。
 
 ## 最近一次更新时间
 
@@ -43,8 +53,4 @@
 
 ## 最近一次 commit
 
-本次项目治理初始化提交：`chore: initialize project execution state management system`。精确 commit hash 以仓库 `HEAD` 及本次验收报告为准。
-
-## 状态恢复说明
-
-新 Agent 应先阅读本目录下的 [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)、本文件、[ARCHITECTURE.md](ARCHITECTURE.md) 和 [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md)，再通过 [TASK_REGISTRY.md](TASK_REGISTRY.md) 选择任务。
+本次架构基线同步提交：`docs: synchronize architecture baseline documentation`。精确 commit hash 以仓库 `HEAD` 及本次验收报告为准。

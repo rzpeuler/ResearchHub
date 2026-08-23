@@ -21,3 +21,48 @@
 - 记录会影响多个模块、后续实现方向或协作方式的决策。
 - 每条记录必须说明背景、选择、放弃方案、原因和影响范围。
 - 后续决策如改变既有方向，应明确引用被替代的决策并同步架构和状态文档。
+
+> Architecture v0.2 已包含 ADR-001 至 ADR-005。本文件从 ADR-006 起同步架构基线中的后续决策，Architecture v0.2 和 Technical Design v0.1 是本阶段的权威来源。
+
+## ADR-006
+
+**Title:** ResearchHub Capability Architecture
+
+**Decision:** ResearchHub adopts Capability-based financial extension architecture.
+
+**Reason:**
+
+- Decouple Agent and data source.
+- Support multiple financial providers.
+- Improve extensibility.
+
+**Status:** Accepted
+
+## ADR-007
+
+**Title:** ResearchHub Research Artifact Model
+
+**Decision:** Research outputs are stored as structured artifacts:
+
+- Evidence
+- Thesis
+- Prediction
+- Review
+
+**Reason:** Enable investment research review loop.
+
+**Status:** Accepted
+
+## ADR-008
+
+**Title:** ResearchHub Harness Extension Model
+
+**Decision:** ResearchHub extends DeepSeek Harness through native extension mechanisms and does not fork Harness core.
+
+**Reason:**
+
+- Maintain compatibility.
+- Reduce technical debt.
+- Follow Harness architecture philosophy.
+
+**Status:** Accepted

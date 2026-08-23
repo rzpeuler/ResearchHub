@@ -1,6 +1,6 @@
 # Development Roadmap
 
-> 本路线图描述已知的阶段性工程路径。未完成阶段是规划，不代表已有实现；具体任务以 TASK_REGISTRY.md 为准。
+> 本路线图描述 ResearchHub 已确认的阶段性工程路径。未完成阶段是规划，不代表已有实现；具体任务以 TASK_REGISTRY.md 为准。
 
 ## Phase 0 — Governance Bootstrap
 
@@ -8,67 +8,82 @@
 
 建立项目级文档、任务、决策、架构和 Agent 执行规范。
 
+### 状态
+
+Completed。治理文档体系已在 `chore: initialize project execution state management system` 提交中建立。
+
+## Phase 1 — Architecture Design
+
+### 目标
+
+完成 ResearchHub 产品定位、DeepSeek Harness 运行时分析、Harness Extension + Financial Intelligence Layer 架构设计，以及 Agent、Skill、Capability、Workflow、Memory 核心模型定义。
+
 ### 关键里程碑
 
-- 创建项目治理文档体系。
-- 建立 README 文档入口。
-- 完成首个治理初始化 commit。
+- DeepSeek Harness architecture analysis
+- ResearchHub Architecture v0.2
+- ResearchHub Technical Design v0.1
+- Architecture baseline freeze
 
 ### 状态
 
-当前阶段，目标随 `RH-GOV-001` 完成。
+当前基线已完成，Architecture v0.2 是所有后续工程任务的约束。
 
-## Phase 1 — Product and Architecture Definition
-
-### 目标
-
-明确终端用户、核心问题、业务流程、MVP 范围和可验收成功指标；确定运行时技术栈、模块边界、数据模型和 API 原则。
-
-### 关键里程碑
-
-- 产品需求与 MVP 范围获得确认。
-- 总体架构和关键技术决策完成记录。
-- 第一个可执行开发任务进入任务登记表。
-
-## Phase 2 — MVP Implementation
+## Phase 2 — Harness Integration Validation
 
 ### 目标
 
-按已批准架构实现最小可用业务闭环，并建立与功能相匹配的自动化测试。
+验证 ResearchHub 能够通过 DeepSeek Harness 原生扩展机制接入运行时，不 fork Harness Core，并确认工程骨架可承载 Agent、Skill、Capability、Session 和 Memory。
 
-### 关键里程碑
+### 关键验证项
 
-- 核心业务流程可运行。
-- 关键数据流和接口完成验证。
-- MVP 验收条件满足。
+- Agent loading
+- Skill loading
+- Capability calling
+- Session persistence
+- Memory interface integration
 
-## Phase 3 — Validation and Stabilization
+### 下一阶段入口
 
-### 目标
+- Harness integration validation
+- MVP skeleton implementation
 
-通过真实使用、测试和反馈验证产品假设，补齐可靠性、可观测性、安全性和部署能力。
-
-### 关键里程碑
-
-- 质量门禁明确并稳定执行。
-- 主要风险和性能瓶颈有处理方案。
-- 发布流程可重复执行。
-
-## Phase 4 — Evolution
+## Phase 3 — Financial Capability Layer
 
 ### 目标
 
-在验证后的业务方向上扩展能力，持续优化模块边界、数据治理和交付效率。
+实现首批结构化金融能力，保持数据能力与推理能力分离，并为每个结果保留来源、时间戳和置信度元数据。
 
-### 后续技术演进路线
+### 计划能力
 
-1. 从文档治理基线进入产品与架构定义。
-2. 从单一 MVP 闭环演进到模块化业务系统。
-3. 根据实际负载和风险补充持久化、可观测性、权限、安全和部署能力。
-4. 仅在现有边界和质量门禁无法满足需求时引入更复杂的基础设施。
+- Market Capability
+- News Capability
+- Financial Capability
+- Institution Capability
+- Community Capability
+- Knowledge Capability
+
+## Phase 4 — Event Analysis MVP
+
+### 目标
+
+完成第一个完整用户价值闭环：数据采集 → 证据整理 → 异动分析 → 研究产物 → 记忆更新。
+
+## Phase 5 — Company Research and Review System
+
+### 目标
+
+建设公司研究、研究历史、投资决策记录、Prediction → Outcome → Evaluation → Memory Update 复盘闭环。
+
+## Phase 6 — Personal Investment Research Assistant
+
+### 目标
+
+逐步扩展到每日情报、持续监控、研究机会发现和自动化复盘，形成个人 AI 投资研究平台。
 
 ## 路线图维护规则
 
 - 新阶段必须有目标、可验证里程碑和对应任务。
 - 规划变化记录在 [DECISION_LOG.md](DECISION_LOG.md) 或任务登记表中。
-- 已完成事实更新到 [CURRENT_STATUS.md](CURRENT_STATUS.md) 和 [CHANGELOG.md](CHANGELOG.md)。
+- 架构方向变化必须新增 ADR、更新 Architecture 版本和 Technical Design。
+- 已完成事实同步到 [CURRENT_STATUS.md](CURRENT_STATUS.md) 和 [CHANGELOG.md](CHANGELOG.md)。

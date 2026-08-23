@@ -18,9 +18,16 @@ ResearchHub 是一个刚启动的项目。目前仓库处于工程治理初始�
 
 ## 当前阶段
 
-**Phase 0 — Governance Bootstrap**
+**Phase 1 — Architecture Design**
 
-本阶段目标是建立可持续更新的项目状态管理文档体系，为后续架构设计、开发执行、测试和版本回溯提供统一入口。
+本阶段已完成 ResearchHub Architecture v0.2 和 Technical Design v0.1 的基线冻结。下一阶段进入 DeepSeek Harness 集成验证。
+
+## Architecture Documentation
+
+- [ResearchHub Architecture v0.2](docs/architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
+- [ResearchHub Technical Design v0.1](docs/architecture/TECHNICAL_DESIGN_V0.1.md)
+
+所有后续工程任务必须以 ResearchHub Architecture v0.2 和对应 Technical Design 为约束。
 
 ## 协作角色
 
