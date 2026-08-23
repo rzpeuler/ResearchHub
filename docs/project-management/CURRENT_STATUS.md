@@ -1,5 +1,22 @@
 # Current Status
 
+## RH-ENG-011 Status Synchronization
+
+**Current Stage:** Phase 16 — Company Research Skill Package MVP
+
+**In Progress:**
+
+- Company Research Skill Package and company-research Workflow implementation.
+- End-to-end Capability, Artifact, Report View, and Evaluation validation.
+
+**Scope Boundary:**
+
+- Harness Core, Agent Loop, Plugin Runtime, Artifact Base Model, Evaluation Engine, and Capability Framework remain unchanged.
+
+**Last Updated:** 2026-08-24
+
+**Feature Commit:** Pending
+
 ## RH-ENG-010 Status Synchronization
 
 **Current Stage:** Phase 15 — Event Analysis Skill Architecture v2

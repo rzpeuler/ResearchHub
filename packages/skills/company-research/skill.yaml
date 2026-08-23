@@ -1,0 +1,18 @@
+name: company-research
+version: 1.0.0
+type: research-skill
+description: Analyze the long-term business quality, competitive position, growth, financial quality, capital allocation, and risks of a listed company.
+status: active
+required_capabilities:
+  - market
+  - financial
+  - information
+compatible_workflows:
+  - company-research
+output_types:
+  - thesis
+  - prediction
+methodology: research-framework.md
+evidence_schema: evidence-schema.yaml
+output_schema: output-schema.yaml
+evaluation_rules: evaluation-rules.md

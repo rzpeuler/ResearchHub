@@ -1,0 +1,107 @@
+version: 1.0.0
+skill: company-research
+
+evidence_types:
+  business:
+    label: Business Evidence
+    artifact_type: Evidence
+    required_fields:
+      - source
+      - content
+      - timestamp
+      - confidence
+    required_metadata:
+      - symbol
+      - provider
+      - quality
+    supports:
+      - business-understanding
+      - growth-drivers
+      - competitive-advantage
+
+  industry:
+    label: Industry Evidence
+    artifact_type: Evidence
+    required_fields:
+      - source
+      - content
+      - timestamp
+      - confidence
+    required_metadata:
+      - symbol
+      - provider
+      - quality
+    supports:
+      - industry-position
+      - competitive-advantage
+      - growth-drivers
+
+  competitive:
+    label: Competitive Evidence
+    artifact_type: Evidence
+    required_fields:
+      - source
+      - content
+      - timestamp
+      - confidence
+    required_metadata:
+      - symbol
+      - provider
+      - quality
+    supports:
+      - competitive-advantage
+      - industry-position
+      - risk-analysis
+
+  financial:
+    label: Financial Evidence
+    artifact_type: Evidence
+    required_fields:
+      - source
+      - content
+      - timestamp
+      - confidence
+    required_metadata:
+      - symbol
+      - provider
+      - quality
+      - period
+      - statement_type
+    supports:
+      - financial-quality
+      - capital-allocation
+      - growth-drivers
+      - risk-analysis
+
+  risk:
+    label: Risk Evidence
+    artifact_type: Evidence
+    required_fields:
+      - source
+      - content
+      - timestamp
+      - confidence
+    required_metadata:
+      - symbol
+      - provider
+      - quality
+    supports:
+      - risk-analysis
+      - competitive-advantage
+      - financial-quality
+
+source_metadata:
+  required:
+    - source
+    - timestamp
+    - provider
+    - quality
+    - confidence
+
+thesis_requirements:
+  minimum_evidence_count: 2
+  minimum_source_categories: 2
+  relationship_field: Thesis.evidenceIds
+  prohibited:
+    - unsupported-business-quality-claim
+    - single-source-material-claim-without-qualification

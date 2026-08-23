@@ -1,0 +1,39 @@
+version: 1.0.0
+skill: company-research
+
+outputs:
+  thesis:
+    artifact_type: Thesis
+    required_fields:
+      - statement
+      - evidenceIds
+      - confidence
+      - risks
+    metadata:
+      required:
+        - skill
+        - symbol
+        - module
+
+  prediction:
+    artifact_type: Prediction
+    required_fields:
+      - expectation
+      - metrics
+      - evaluationPeriod
+      - thesisId
+    semantic_contract:
+      hypothesis: expectation
+      validation_metric: metrics.validation_metric
+      evaluation_period: evaluationPeriod
+    validation_metric:
+      required: true
+      must_be: observable-and-comparable-with-outcome
+
+artifact_bundle:
+  required:
+    - evidence
+    - thesis
+    - prediction
+  session_rule: All Artifacts must share the active Harness sessionId.
+  report_rule: A future Report View may aggregate IDs but is not a new Artifact type.

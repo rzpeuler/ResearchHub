@@ -2,6 +2,21 @@
 
 This file records recognizable project baseline and delivery changes.
 
+## Version: v1.8.0
+
+**Date:** 2026-08-24
+
+**Changes:**
+
+- Added the Company Research Skill Package MVP with seven long-term research modules.
+- Added the `company-research` Workflow Definition and Registry entry.
+- Added Company Research Capability, Evidence, Thesis, Prediction, Report View, and Evaluation integration tests.
+- Added `docs/architecture/COMPANY_RESEARCH_SKILL_IMPLEMENTATION.md`.
+
+**Breaking Changes:**
+
+- None. Existing Harness, Capability, Provider, Artifact, Memory, Evaluation, and Event Analysis contracts remain compatible.
+
 ## Version: v1.7.0
 
 **Date:** 2026-08-24

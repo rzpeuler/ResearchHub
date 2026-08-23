@@ -34,6 +34,8 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 
 | RH-ENG-010 | Upgrade Event Analysis Skill Architecture | Completed | P0 | 2026-08-24 | Luna | `229f523cb13ce9bf19a46063a4bd45397a81425b` | Accepted — Skill Package, research method, Evidence/output schemas, Evaluation rules and full regression tests passed |
 
+| RH-ENG-011 | Implement Company Research Skill Package MVP | In Progress | P0 | 2026-08-24 | Luna | Pending | Company Skill Package, company-research Workflow, Artifact chain, Evaluation compatibility, and E2E tests |
+
 ## RH-DESIGN-004 Acceptance Scope
 
 - `DataProvider`、`ProviderResult` 和 `FinancialDataMetadata` 已定义并进行运行时校验。

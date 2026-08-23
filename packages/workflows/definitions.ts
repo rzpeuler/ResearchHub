@@ -30,3 +30,24 @@ export const eventAnalysisWorkflowDefinition: WorkflowDefinition = {
     { id: 'generate-research-artifacts', skill: 'event-analysis', inputs: ['marketEvidence', 'announcementEvidence', 'mediaEvidence', 'financialEvidence'], outputs: ['evidenceIds', 'thesisIds', 'predictionIds'], dependsOn: ['collect-financial-evidence'] },
   ],
 }
+
+export const companyResearchWorkflowDefinition: WorkflowDefinition = {
+  id: 'company-research',
+  name: 'Company Research Workflow',
+  description: 'Analyze a listed company through business, industry, competitive, growth, financial, capital-allocation, and risk research.',
+  version: '1.0.0',
+  purpose: 'Produce a traceable long-term company research Thesis and reviewable Prediction from structured Capability facts.',
+  inputSchema: researchInputSchema,
+  outputSchema: researchOutputSchema,
+  steps: [
+    { id: 'business-understanding', skill: 'company-research', inputs: ['symbol'], outputs: ['businessEvidence'], dependsOn: [] },
+    { id: 'industry-position', skill: 'company-research', inputs: ['symbol', 'businessEvidence'], outputs: ['industryEvidence'], dependsOn: ['business-understanding'] },
+    { id: 'competitive-advantage', skill: 'company-research', inputs: ['industryEvidence'], outputs: ['competitiveEvidence'], dependsOn: ['industry-position'] },
+    { id: 'growth-drivers', skill: 'company-research', inputs: ['competitiveEvidence'], outputs: ['growthEvidence'], dependsOn: ['competitive-advantage'] },
+    { id: 'financial-quality', skill: 'company-research', inputs: ['symbol', 'growthEvidence'], outputs: ['financialEvidence'], dependsOn: ['growth-drivers'] },
+    { id: 'capital-allocation', skill: 'company-research', inputs: ['financialEvidence'], outputs: ['capitalAllocationEvidence'], dependsOn: ['financial-quality'] },
+    { id: 'risk-analysis', skill: 'company-research', inputs: ['businessEvidence', 'industryEvidence', 'competitiveEvidence', 'growthEvidence', 'financialEvidence', 'capitalAllocationEvidence'], outputs: ['riskEvidence'], dependsOn: ['capital-allocation'] },
+    { id: 'generate-company-thesis', skill: 'company-research', inputs: ['businessEvidence', 'industryEvidence', 'competitiveEvidence', 'growthEvidence', 'financialEvidence', 'capitalAllocationEvidence', 'riskEvidence'], outputs: ['thesisIds'], dependsOn: ['risk-analysis'] },
+    { id: 'generate-company-prediction', skill: 'company-research', inputs: ['thesisIds'], outputs: ['predictionIds'], dependsOn: ['generate-company-thesis'] },
+  ],
+}
