@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-24 - Real LLM Runtime Validation
+
+- Added a Harness `LlmRuntime`-backed Skill Adapter under `dsh/llm-runtime/`.
+- Added strict structured-response validation and mapping for the five Skills
+  used by the Equity Research Workflow.
+- Added an opt-in DeepSeek-compatible provider adapter and runtime test that
+  completed five real Skill calls through ResearchManager.
+- Verified Artifact serialization and Evaluation on the LLM-generated bundle;
+  default `npm test` remains network-free.
+
 ## 2026-08-24 — End-to-End Research Pipeline Validation
 
 - Added `PIPELINE-VALIDATION-001` integration coverage for the minimum Company

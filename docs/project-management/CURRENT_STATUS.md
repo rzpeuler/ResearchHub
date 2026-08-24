@@ -72,3 +72,14 @@ Research, Equity Research, Earnings Review, and Valuation through injected
 Skill Adapters, exposes six step states, and returns a linked Evidence,
 Thesis, Prediction, and ResearchReport bundle. The Workflow has no DSH or
 Plugin implementation dependency.
+
+Real LLM Runtime validation is complete for the Equity Research Workflow. The
+runtime-specific adapter under `dsh/llm-runtime/` loads Skill prompts, calls
+the Harness `LlmRuntime`, validates structured JSON responses, and maps them
+to the existing Skill output contracts without changing Skill definitions,
+Workflow structure, Plugin interfaces, or Artifact models. An opt-in test
+using the DeepSeek-compatible provider path completed five Skill calls and
+verified the final Artifact bundle, serialization round trips, and Evaluation
+Review. The default test suite remains network-free; run
+`RESEARCHHUB_RUN_REAL_LLM=1 npm run test:runtime` only when credentials and a
+billable provider call are intended.
