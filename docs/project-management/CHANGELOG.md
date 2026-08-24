@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-24 - NEWS-ACQUISITION-001
+
+- Added the runtime-neutral News Acquisition Layer:
+  `SearchProvider -> WebFetcher -> ArticleNormalizer -> EvidenceBuilder`.
+- Added GDELT and Mock Search Providers, Native and Mock Web Fetchers, HTML
+  normalization, and Evidence Artifact mapping with acquisition metadata.
+- Preserved the existing GDELT News Plugin and `search_company_news` contract.
+- Added deterministic acquisition integration coverage and an opt-in real
+  network test controlled by `RUN_REAL_NEWS_ACQUISITION=1`.
+
 ## 2026-08-24 - Real Equity Research Pipeline Validation
 
 - Added the strict opt-in

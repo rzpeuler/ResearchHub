@@ -122,3 +122,14 @@ Artifact relationships serialize correctly, and Evaluation returns a met
 Review. The test requires `RUN_REAL_EQUITY_PIPELINE=1`,
 `DEEPSEEK_API_KEY`, and `AKSHARE_FINANCIAL_ENDPOINT`; in the current
 environment it remains skipped until the AKShare Bridge endpoint is supplied.
+
+The News Acquisition Layer is now implemented as a runtime-neutral,
+provider-independent path:
+
+`SearchProvider -> WebFetcher -> ArticleNormalizer -> EvidenceBuilder`
+
+It includes GDELT and Mock Search Providers, Native and Mock Web Fetchers,
+HTML normalization, and serializable Evidence mapping. The existing GDELT News
+Plugin and `search_company_news` contract remain compatible. Deterministic
+acquisition tests are part of the default suite; real GDELT and web-fetch
+coverage requires `RUN_REAL_NEWS_ACQUISITION=1`.
