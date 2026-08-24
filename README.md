@@ -48,6 +48,20 @@ the DSH and can be used by another Runtime or external caller.
 - [Media Plugin design](docs/architecture/MEDIA_PLUGIN_DESIGN.md)
 - [Single DSH ADR](docs/architecture/ADR-001-SINGLE-DSH-ARCHITECTURE.md)
 - [ADR-010 Architecture Simplification](docs/architecture/ADR-010-ARCHITECTURE-SIMPLIFICATION.md)
+- [ADR-011 DSH Control Plane Location](docs/architecture/ADR-011-DSH-CONTROL-PLANE-LOCATION.md)
+- [ADR-012 Financial Research Skill Asset Migration](docs/architecture/ADR-012-FINANCIAL-RESEARCH-SKILL-ASSET-MIGRATION.md)
+
+## Financial research Skill assets
+
+The runtime-neutral financial Skill packages are:
+
+- `packages/skills/equity-research/` — coverage initiation and business analysis;
+- `packages/skills/industry-research/` — market, value-chain, competition, and sector context;
+- `packages/skills/earnings-review/` — actual-versus-consensus and guidance review;
+- `packages/skills/valuation/` — comparable-company statistics, DCF, and sensitivity analysis.
+
+Each package exposes a typed command and Plugin ports. It contains no DSH,
+ResearchManager, Claude, MCP, or slash-command runtime dependency.
 
 ## Validation
 

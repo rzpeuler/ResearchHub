@@ -1,0 +1,12 @@
+type: object
+required: [skillId, subject, asOf, template, sections, evidence, peerMetrics, keyRisks, openQuestions]
+properties:
+  skillId: { const: industry-research }
+  subject: { type: string }
+  asOf: { type: string, format: date-time }
+  template: { const: industry-landscape-report }
+  sections: { type: array }
+  evidence: { type: array }
+  peerMetrics: { type: array }
+  keyRisks: { type: array, items: { type: string } }
+  openQuestions: { type: array, items: { type: string } }

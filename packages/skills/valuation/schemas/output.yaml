@@ -1,0 +1,12 @@
+type: object
+required: [skillId, subject, asOf, template, sections, evidence, peers, statistics, dcf]
+properties:
+  skillId: { const: valuation }
+  subject: { type: string }
+  asOf: { type: string, format: date-time }
+  template: { const: valuation-analysis-report }
+  sections: { type: array }
+  evidence: { type: array }
+  peers: { type: array }
+  statistics: { type: array }
+  dcf: { type: object }

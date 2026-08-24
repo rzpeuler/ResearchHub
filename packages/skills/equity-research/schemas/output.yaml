@@ -1,0 +1,12 @@
+type: object
+required: [skillId, subject, asOf, template, sections, evidence, thesis, keyRisks, openQuestions]
+properties:
+  skillId: { const: equity-research }
+  subject: { type: string }
+  asOf: { type: string, format: date-time }
+  template: { const: equity-coverage-report }
+  sections: { type: array }
+  evidence: { type: array }
+  thesis: { type: object }
+  keyRisks: { type: array, items: { type: string } }
+  openQuestions: { type: array, items: { type: string } }

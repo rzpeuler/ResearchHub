@@ -47,3 +47,11 @@ another Runtime or external caller.
 Real external data activation still depends on credentials, source licensing,
 bridge availability, rate limits, and data-quality review. Fixture tests remain
 network-free and deterministic.
+
+The financial Skill Asset Layer now includes runtime-neutral Equity Research,
+Industry Research, Earnings Review, and Valuation packages. Each package has
+its own definition, command implementation, schemas, report template, and
+deterministic tests. The commands consume only injected Plugin ports, so they
+can be called by DSH or another Runtime.
+
+The root DSH financial-skill invocation smoke test also passes.

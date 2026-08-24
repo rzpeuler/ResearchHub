@@ -1,0 +1,7 @@
+type: object
+required: [symbol, companyName, asOf]
+properties:
+  symbol: { type: string, pattern: '^[0-9]{6}$' }
+  companyName: { type: string, minLength: 1 }
+  asOf: { type: string, format: date-time }
+  researchQuestion: { type: string }

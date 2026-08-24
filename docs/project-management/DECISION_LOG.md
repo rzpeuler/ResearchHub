@@ -79,3 +79,22 @@ The Workflow execution contract is defined under `packages/workflows/` rather
 than under `dsh/`. This keeps the shared contract runtime-neutral and removes
 the previous `packages/workflows` → `dsh` dependency. The allowed dependency
 direction is `dsh/` → `packages/`; the reverse direction is prohibited.
+
+## ADR-012 — Financial Research Skill Asset Migration
+
+**Status:** Accepted
+**Date:** 2026-08-24
+
+ResearchHub absorbs high-value financial research methods as four independent
+Skill assets: Equity Research, Industry Research, Earnings Review, and
+Valuation. The assets preserve analysis frameworks, evidence requirements,
+typed command behavior, schemas, and report templates.
+
+The migration is runtime-neutral. Skills receive external data through typed
+Plugin ports and do not import DSH, ResearchManager, Claude runtime packages,
+MCP runtime packages, or slash-command handlers. DSH remains the caller and
+coordination boundary; Skills remain professional research methods.
+
+Provider-specific orchestration, agent bindings, spreadsheet/document
+automation, and source-runtime assumptions are intentionally excluded. This
+keeps the Research Asset Layer reusable by DSH and other Runtime callers.

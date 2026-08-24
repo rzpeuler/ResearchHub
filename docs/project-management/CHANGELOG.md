@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-24 — Financial Research Skill Asset Migration
+
+- Added runtime-neutral `equity-research`, `industry-research`,
+  `earnings-review`, and `valuation` Skill packages.
+- Added typed Plugin ports, YAML definitions, input/output schemas, report
+  templates, command tests, and a root-DSH invocation smoke test.
+- Preserved financial research methodology while excluding Claude bindings,
+  slash commands, MCP runtime dependencies, and provider-specific orchestration.
+
 ## 2026-08-24 — Runtime and Research Asset Decoupling
 
 - Moved the shared Workflow execution contract to

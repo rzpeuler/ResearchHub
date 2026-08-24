@@ -1,0 +1,7 @@
+type: object
+required: [industry, geography, asOf]
+properties:
+  industry: { type: string, minLength: 1 }
+  geography: { type: string, minLength: 1 }
+  asOf: { type: string, format: date-time }
+  researchQuestion: { type: string }

@@ -240,3 +240,26 @@ The following remain out of scope:
 - adding a Workflow Engine or Composition Layer;
 - changing verified Skill business logic;
 - changing the Artifact core model.
+
+## 8. Financial Skill Asset Layer
+
+Financial research methods are packaged as independent, runtime-neutral Skill
+assets under `packages/skills/`. The first migrated assets are:
+
+| Skill | Research responsibility | Plugin boundary |
+| --- | --- | --- |
+| Equity Research | coverage initiation, business quality, competitive advantage, growth, and risk | market, financial, and information ports |
+| Industry Research | market sizing, value chain, industry structure, competition, and sector implications | research and peer-metrics ports |
+| Earnings Review | actual-versus-consensus, beat/miss, guidance, estimate changes, and thesis impact | earnings snapshot port |
+| Valuation | peer statistics, DCF, sensitivity, and valuation cross-checks | peer valuation and optional market-price ports |
+
+These Skills preserve research methodology and structured output without
+copying a provider-specific agent runtime. They do not own scheduling, source
+protocols, sessions, or LLM reasoning. External data is requested through
+typed Plugin ports supplied by the caller. DSH may invoke these commands, but
+no Skill imports DSH or ResearchManager.
+
+The migration absorbs method patterns from the public Anthropic financial
+research assets while intentionally excluding Claude bindings, slash commands,
+MCP runtime assumptions, spreadsheet/document automation, and provider-specific
+orchestration.

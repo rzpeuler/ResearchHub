@@ -1,0 +1,13 @@
+name: equity-research
+version: 1.0.0
+type: research-skill
+runtime: neutral
+description: Evidence-backed listed-company coverage and thesis formation.
+required_plugins:
+  - market
+  - financial
+  - information
+input_schema: schemas/input.yaml
+output_schema: schemas/output.yaml
+template: templates/report.md
+command: commands/run.ts

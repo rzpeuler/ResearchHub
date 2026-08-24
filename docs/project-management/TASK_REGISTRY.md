@@ -133,3 +133,14 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 - 新任务记录名称、状态、优先级、创建时间和验收标准。
 - Completed 任务必须记录完成人、commit hash 和验收状态。
 - Blocked 任务必须记录阻塞原因和恢复条件。
+
+## SKILL-MIGRATION-001 — Financial Research Skill Asset Migration
+
+**Status:** Completed
+**Priority:** P0
+**Created:** 2026-08-24
+**Commit:** Current task commit
+
+Acceptance scope: Equity Research, Industry Research, Earnings Review, and
+Valuation packages with Plugin ports, schemas, templates, deterministic tests,
+runtime-neutrality scan, and DSH invocation validation.
