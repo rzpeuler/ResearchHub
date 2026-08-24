@@ -32,6 +32,8 @@ ResearchHub adopts the architecture and governance defined in
   history.
 - Evaluation validates predictions and reviews research quality without
   automatically modifying strategies or Skills.
+- The ResearchManager DSH is located at the repository root in `dsh/`; the
+  `packages/` directory contains research capability modules only.
 
 Capability Layer, Provider Layer, Research Planner Layer, Workflow
 Composition Layer, and Multi-Agent architecture are deprecated as independent

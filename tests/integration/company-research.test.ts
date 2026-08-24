@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { evaluatePrediction } from '../../packages/evaluation/index.ts'
 import { CompanyResearchWorkflow } from '../../packages/skills/company-research/index.ts'
 import { CompanyResearchWorkflowExecutor, companyResearchWorkflowDefinition, WorkflowRegistry } from '../../packages/workflows/index.ts'
-import { ResearchManager } from '../../packages/dsh/research-manager/index.ts'
+import { ResearchManager } from '../../dsh/research-manager/index.ts'
 
 const createdAt = '2026-08-24T00:00:00.000Z'
 

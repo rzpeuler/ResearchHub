@@ -33,7 +33,7 @@ The official source reviewed for this validation is `deepseek-ai/deepseek-harnes
 | ResearchHub concept | Harness interface used | Validation implementation |
 | --- | --- | --- |
 | ResearchHub Extension | Cordis plugin `apply(ctx, config)` | `tests/integration/extension.ts` |
-| Research Manager DSH | `ctx.dsh.create()` from `dsh-dsh-loop` | `tests/integration/packages/dsh/research-manager/` |
+| Research Manager DSH | `ctx.dsh.create()` from `dsh-dsh-loop` | `dsh/research-manager/` and `tests/integration/` |
 | Validation Skill | `ctx.skills` through `dsh-skill-filesystem` and model-facing `skill` tool | `tests/integration/packages/skills/validation-skill/SKILL.md` |
 | Validation Plugin | ResearchHub Cordis service exposed through `ctx.tools.register()` | `tests/integration/packages/plugins/validation-plugin/` |
 | Workflow boundary | DSH follow-up and tool-call sequence | `tests/integration/harness-integration.test.ts` |

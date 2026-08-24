@@ -42,7 +42,7 @@ test('ResearchHub integration validation runs through Harness and persists a Ses
     })
 
     const extensionContext = extensionFiber.ctx
-    const manager = extensionContext.reflect.get('researchHubResearchManager') as import('./packages/dsh/research-manager/index.ts').ResearchManager
+    const manager = extensionContext.reflect.get('researchHubResearchManager') as import('./dsh/research-manager/index.ts').ResearchManager
     const handle = await manager.createValidationAgent(
       'researchhub-validation-session',
       'researchhub-validation',

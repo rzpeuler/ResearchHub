@@ -1,5 +1,5 @@
-import type { Evidence, Prediction, Thesis } from '../../artifacts/index.ts'
-import type { WorkflowDefinition } from '../../workflows/index.ts'
+import type { Evidence, Prediction, Thesis } from '../../packages/artifacts/index.ts'
+import type { WorkflowDefinition } from '../../packages/workflows/index.ts'
 
 export interface ResearchRequest {
   workflowId: string

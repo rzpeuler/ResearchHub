@@ -19,7 +19,7 @@ Plugin instances backed by the announcement and media Plugin Handles.
 
 - `packages/workflows/`: validated definitions, steps, Registry, and the
   `event-analysis` definition.
-- `packages/dsh/research-manager/`: Research Request, execution context,
+- `dsh/research-manager/`: Research Request, execution context,
   Report View, coordinator, and Harness service/tool adapter.
 - Existing `packages/skills/event-analysis/`: extended with optional
   announcement, media, and financial ports while preserving its current

@@ -8,13 +8,18 @@ The current architecture is:
 ```text
 Harness Runtime
 └── ResearchHub
-    ├── ResearchManager (DSH coordination)
-    ├── Workflow (research SOP)
-    ├── Skill (professional research method)
-    ├── Plugin (external resource extension)
-    ├── Memory (research history)
-    └── Evaluation (research quality review)
+    ├── dsh/                  system control plane
+    │   └── ResearchManager
+    └── packages/             composable research modules
+        ├── workflows/
+        ├── skills/
+        ├── plugins/
+        ├── artifacts/
+        ├── memory/
+        └── evaluation/
 ```
+
+DSH is the system control plane, not a package-level capability module.
 
 ## Boundaries
 
@@ -35,6 +40,9 @@ Harness Runtime
 - **Evaluation** validates predictions and reviews research quality. It does
   not automatically optimize strategies or modify Skills.
 
+The dependency direction is `dsh/` → Workflows, Skills, Plugins, Artifacts,
+Memory, and Evaluation. No module under `packages/` is a planning center.
+
 Artifact core models remain stable. Existing Event Analysis, Company Research,
 and Industry Research Skills and their Workflows remain within these
 boundaries.
@@ -47,4 +55,5 @@ ResearchHub layers. Harness Tools/Plugins and the existing ResearchManager
 plus Workflow definitions provide the required boundaries.
 
 See [Architecture v0.3](../architecture/RESEARCHHUB_ARCHITECTURE_V0.3.md) and
-[ADR-010](../architecture/ADR-010-ARCHITECTURE-SIMPLIFICATION.md).
+[ADR-010](../architecture/ADR-010-ARCHITECTURE-SIMPLIFICATION.md) and
+[ADR-011](../architecture/ADR-011-DSH-CONTROL-PLANE-LOCATION.md).

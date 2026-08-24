@@ -46,3 +46,25 @@ reasoning layer or an automatic Skill/strategy optimizer.
 Architecture v0.3 is the current governance reference. Architecture v0.2 is
 preserved as the historical baseline. See
 [ADR-010](../architecture/ADR-010-ARCHITECTURE-SIMPLIFICATION.md).
+
+## ADR-011 — DSH Control Plane Location
+
+**Status:** Accepted
+**Date:** 2026-08-24
+
+The ResearchManager DSH is the ResearchHub system control plane and therefore
+belongs at the repository root in `dsh/`. The `packages/` directory is
+reserved for composable Workflow, Skill, Plugin, Artifact, Memory, and
+Evaluation modules.
+
+The previous `packages/dsh` location incorrectly placed the control plane
+beside capability modules. The directory move changes architecture expression
+and import/configuration paths only. ResearchManager business logic and all
+research module behavior remain unchanged.
+
+The dependency direction is `dsh/` → `packages/workflows`, `packages/skills`,
+`packages/plugins`, `packages/artifacts`, `packages/memory`, and
+`packages/evaluation`. No additional DSH, agent layer, planner layer,
+Capability Layer, Provider Layer, or Workflow Engine may be added.
+
+See [ADR-011](../architecture/ADR-011-DSH-CONTROL-PLANE-LOCATION.md).

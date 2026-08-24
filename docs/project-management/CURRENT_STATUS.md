@@ -4,10 +4,13 @@
 
 The Single DSH migration is implemented and the architecture is now governed
 by Architecture v0.3. ResearchHub is a professional research asset layer on
-DeepSeek Harness, not an Agent Framework. `packages/dsh` contains the
-lightweight ResearchManager coordinator, `packages/workflows` contains
-research SOP templates, `packages/skills` contains research methods, and
-`packages/plugins` contains external-resource contracts and adapters.
+DeepSeek Harness, not an Agent Framework. The root-level `dsh/` directory
+contains the lightweight ResearchManager control plane. `packages/workflows`
+contains research SOP templates, `packages/skills` contains research methods,
+and `packages/plugins` contains external-resource contracts and adapters.
+
+The `packages/` directory contains only composable research modules;
+`packages/dsh` does not exist.
 
 The removed top-level directories are not retained. Artifact core models and
 verified Skill behavior were preserved through import and contract migration.
@@ -31,7 +34,8 @@ these assets without becoming an Agent Planner.
 - Workflow and ResearchManager tests pass.
 - Artifact, Memory, Evaluation, Skill, and Harness integration tests pass.
 - No source imports the removed package paths.
-- Architecture v0.3 and ADR-010 define the current governance boundaries.
+- Architecture v0.3, ADR-010, and ADR-011 define the current governance
+  boundaries.
 
 ## Known constraints
 

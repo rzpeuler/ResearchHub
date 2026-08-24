@@ -6,7 +6,7 @@ import { EventAnalysisWorkflow, registerEventAnalysisTool } from '../../packages
 import { MarketPlugin } from '../../packages/plugins/market/plugin.ts'
 import { NewsPlugin } from '../../packages/plugins/news/plugin.ts'
 import { createMockPluginComposition } from '../../packages/plugins/index.ts'
-import { ResearchManager } from './packages/dsh/research-manager/index.ts'
+import { ResearchManager } from './dsh/research-manager/index.ts'
 
 export interface Config {
   skillRoot: string

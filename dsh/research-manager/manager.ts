@@ -1,5 +1,5 @@
-import { isEvidence, isPrediction, isThesis } from '../../artifacts/index.ts'
-import type { WorkflowRegistry } from '../../workflows/index.ts'
+import { isEvidence, isPrediction, isThesis } from '../../packages/artifacts/index.ts'
+import type { WorkflowRegistry } from '../../packages/workflows/index.ts'
 import type {
   ResearchArtifactBundle,
   ResearchExecutionContext,

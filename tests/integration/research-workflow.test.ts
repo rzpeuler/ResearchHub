@@ -36,7 +36,7 @@ test('Research Workflow runs through Harness Agent, Plugins, Artifacts, Report V
       skillRoot: join(process.cwd(), 'packages/skills'),
       createdAt: '2026-08-24T00:00:00.000Z',
     })
-    const service = extensionFiber.ctx.reflect.get('researchHubResearchManager') as import('../../packages/dsh/research-manager/index.ts').ResearchManagerService
+    const service = extensionFiber.ctx.reflect.get('researchHubResearchManager') as import('../../dsh/research-manager/index.ts').ResearchManagerService
     const handle = await service.createAgent(sessionId, 'researchhub-research-workflow-validation', 'research-workflow-validation-model')
 
     await handle.agent.followup({

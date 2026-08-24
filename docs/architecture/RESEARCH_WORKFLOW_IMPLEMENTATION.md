@@ -51,7 +51,7 @@ the request creation time.
 
 ## 3. Research Manager
 
-`packages/dsh/research-manager/` contains a framework-agnostic coordinator
+`dsh/research-manager/` contains a framework-agnostic coordinator
 and a Harness adapter.
 
 The coordinator:

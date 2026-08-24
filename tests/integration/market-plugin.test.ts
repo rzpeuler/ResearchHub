@@ -38,7 +38,7 @@ test('Market Plugin Tool delegates to Mock Plugin and persists its Session resul
     })
     await ctx.plugin(AgentLoop, { agents: [] })
     const extensionFiber = await ctx.plugin(extension)
-    const manager = extensionFiber.ctx.reflect.get('researchHubResearchManager') as import('./packages/dsh/research-manager/index.ts').ResearchManager
+    const manager = extensionFiber.ctx.reflect.get('researchHubResearchManager') as import('./dsh/research-manager/index.ts').ResearchManager
     const handle = await manager.createValidationAgent(
       'researchhub-market-plugin-session',
       'researchhub-market-validation',

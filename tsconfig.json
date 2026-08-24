@@ -12,6 +12,7 @@
     "noEmit": true
   },
   "include": [
+    "dsh/**/*.ts",
     "packages/**/*.ts",
     "tests/integration/**/*.ts"
   ]

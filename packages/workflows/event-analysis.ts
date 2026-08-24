@@ -1,5 +1,5 @@
 import { EventAnalysisWorkflow } from '../skills/event-analysis/index.ts'
-import type { ResearchWorkflowExecutor } from '../dsh/research-manager/index.ts'
+import type { ResearchWorkflowExecutor } from '../../dsh/research-manager/index.ts'
 
 /** Thin adapter from the approved Workflow definition to the existing Event Analysis Skill implementation. */
 export class EventAnalysisWorkflowExecutor implements ResearchWorkflowExecutor {

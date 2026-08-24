@@ -5,14 +5,14 @@ import { CallId, LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, ty
 import { FinancialPlugin } from '../../packages/plugins/financial/index.ts'
 import { MarketPlugin } from '../../packages/plugins/market/index.ts'
 import { NewsPlugin } from '../../packages/plugins/news/index.ts'
-import { ResearchManager } from '../../packages/dsh/research-manager/index.ts'
+import { ResearchManager } from '../../dsh/research-manager/index.ts'
 import { EventAnalysisWorkflow } from '../../packages/skills/event-analysis/index.ts'
 import { createMockPluginComposition } from '../../packages/plugins/index.ts'
 import { registerAnnouncementPlugin, registerMediaPlugin } from '../../packages/plugins/adapters/index.ts'
 import { buildFinancialData, validateFinancialData, type NormalizedFinancialRow } from '../../packages/plugins/adapters/financial/normalization.ts'
 import type { FinancialData, FinancialDataPlugin } from '../../packages/plugins/adapters/financial/types.ts'
 import { eventAnalysisWorkflowDefinition, EventAnalysisWorkflowExecutor, WorkflowRegistry } from '../../packages/workflows/index.ts'
-import ResearchManagerExtension, { type ResearchManagerHarnessConfig } from '../../packages/dsh/research-manager/harness.ts'
+import ResearchManagerExtension, { type ResearchManagerHarnessConfig } from '../../dsh/research-manager/harness.ts'
 
 export interface Config {
   skillRoot: string

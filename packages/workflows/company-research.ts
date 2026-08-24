@@ -1,5 +1,5 @@
 import { CompanyResearchWorkflow } from '../skills/company-research/index.ts'
-import type { ResearchWorkflowExecutor } from '../dsh/research-manager/index.ts'
+import type { ResearchWorkflowExecutor } from '../../dsh/research-manager/index.ts'
 
 /** Thin adapter from the approved Company Research Workflow to the Skill implementation. */
 export class CompanyResearchWorkflowExecutor implements ResearchWorkflowExecutor {

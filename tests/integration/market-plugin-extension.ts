@@ -1,6 +1,6 @@
 import { type Context } from '@deepseek-ai/cordis'
 import { CallId, LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
-import { ResearchManager } from './packages/dsh/research-manager/index.ts'
+import { ResearchManager } from './dsh/research-manager/index.ts'
 import { registerMarketPluginTool } from '../../packages/plugins/market/harness-tool.ts'
 import { MarketPlugin } from '../../packages/plugins/market/plugin.ts'
 import { createMockPluginComposition } from '../../packages/plugins/index.ts'

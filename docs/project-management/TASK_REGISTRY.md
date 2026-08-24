@@ -36,6 +36,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 
 | RH-ENG-011 | Implement Company Research Skill Package MVP | Completed | P0 | 2026-08-24 | Luna | `1d342afd7f14bd8a7edf7633e8968484cc3860a9` | Accepted — Company Skill Package, company-research Workflow, Artifact chain, Evaluation compatibility, and E2E tests passed |
 | RH-DESIGN-012 | ResearchHub Architecture Simplification & Governance Update | Completed | P0 | 2026-08-24 | Luna | Current task commit | Accepted — Architecture v0.3, ADR-010, Harness boundary, and project governance synchronized |
+| ARCH-REFACTOR-002 | Move DSH to repository-level control plane | Completed | P0 | 2026-08-24 | Luna | Current task commit | Accepted — root dsh control plane, package boundaries, imports, tests, and governance synchronized |
 
 ## RH-DESIGN-004 Acceptance Scope
 

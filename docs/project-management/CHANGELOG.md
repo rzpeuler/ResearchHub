@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-24 — DSH Control Plane Relocation
+
+- Moved `ResearchManager` from `packages/dsh` to the repository root `dsh/`.
+- Reserved `packages/` for composable Workflow, Skill, Plugin, Artifact,
+  Memory, and Evaluation modules.
+- Updated TypeScript inclusion, test scripts, imports, integration paths, and
+  architecture governance references.
+- Added ADR-011 for the DSH Control Plane Location Decision.
+- Preserved ResearchManager, Workflow, Skill, Plugin, Artifact, Memory, and
+  Evaluation behavior.
+
 ## 2026-08-24 — Architecture Simplification & Governance Update
 
 - Adopted Architecture v0.3 as the current governance reference.
@@ -18,7 +29,7 @@
 ## 2026-08-24 — Single DSH Architecture
 
 - Adopted `ResearchManager` as the only DSH planning and coordination center.
-- Moved coordination code to `packages/dsh`.
+- Established the DSH coordination boundary for ResearchManager.
 - Moved external-resource contracts and adapters to `packages/plugins`.
 - Split former domain data operations into Market, News, Financial,
   Announcement, and Media Plugins.

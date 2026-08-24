@@ -22,7 +22,7 @@ Skill business behavior remain unchanged.
 
 ## Package migration
 
-- `packages/dsh/research-manager/` moves to `packages/dsh/`.
+- `dsh/research-manager/` is the repository-level DSH control plane.
   `ResearchManager` keeps its public class name and remains the DSH coordinator.
   Harness registration moves with it and is named using DSH terminology.
 - `packages/plugins/` moves to `packages/plugins/`. Plugin contracts,
@@ -30,7 +30,7 @@ Skill business behavior remain unchanged.
   equivalent Plugin terminology.
 - `packages/plugins/` is removed. Its reusable validation and external
   data delegation code is split into the matching Plugin packages; Harness
-  registration helpers that belong to coordination move under `packages/dsh/`.
+  registration helpers that belong to coordination move under `dsh/`.
 - `packages/workflows/`, `packages/skills/`, `packages/artifacts/`,
   `packages/memory/`, and `packages/evaluation/` remain as supporting modules,
   with imports updated to the new DSH/Plugin boundaries.
@@ -74,7 +74,7 @@ documentation in one repository migration. The following checks are required:
 
 1. TypeScript compilation succeeds.
 2. Full `npm test` succeeds, including Workflow and integration tests.
-3. No source import references the removed `packages/dsh`,
+3. No source import references the removed package-level DSH path,
    `packages/plugins`, or `packages/plugins` paths.
 4. Architecture documentation consistently describes DSH + Workflow + Skill +
    Plugin and does not present DSH, Plugin, or Plugin as a ResearchHub

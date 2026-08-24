@@ -163,24 +163,25 @@ The following distinctions are mandatory:
 ## 5. Package and documentation layout
 
 ```text
-harness/
-  DeepSeek Harness Runtime
-
-researchhub/
-  plugins/
-  skills/
-  workflows/
-  memory/
-  evaluation/
-
-docs/
+ResearchHub/
+├── dsh/
+│   └── ResearchManager control plane
+├── packages/
+│   ├── workflows/
+│   ├── skills/
+│   ├── plugins/
+│   ├── artifacts/
+│   ├── memory/
+│   └── evaluation/
+└── docs/
 ```
 
-In the current repository, the ResearchHub packages are under `packages/`:
+DeepSeek Harness is the external runtime below this repository boundary. The
+root-level `dsh/` directory contains the ResearchHub DSH control plane. The
+`packages/` directory contains composable research capability modules only:
 
 ```text
 packages/
-  dsh/
   plugins/
   skills/
   workflows/
@@ -190,8 +191,10 @@ packages/
 ```
 
 `dsh/` contains the ResearchManager Harness adapter and coordination service.
-The package layout is an implementation detail; the architecture boundary is
-defined by responsibility, not by adding more top-level layers.
+It is not a package-level capability module. The package layout is an
+implementation detail, but the control-plane boundary is intentional:
+`dsh/` coordinates the modules under `packages/`, while those modules do not
+become planning centers.
 
 ## 6. Deprecated architecture
 

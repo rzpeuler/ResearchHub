@@ -3,7 +3,7 @@ import z from '@deepseek-ai/schemastery'
 import { CallId, LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import * as SkillFilesystem from '@deepseek-ai/dsh-skill-filesystem'
 import * as SkillTool from '@deepseek-ai/dsh-tool-skill'
-import { ResearchManager } from './packages/dsh/research-manager/index.ts'
+import { ResearchManager } from './dsh/research-manager/index.ts'
 import { registerValidationPlugin, ValidationPlugin } from './packages/plugins/validation-plugin/index.ts'
 
 export interface Config {

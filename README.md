@@ -18,6 +18,10 @@ research SOPs, Skills provide professional research methods, Plugins connect
 external resources, Memory stores research history, and Evaluation supports
 quality review.
 
+The repository-level DSH control plane is `dsh/`. The `packages/` directory
+contains only composable research modules: Workflows, Skills, Plugins,
+Artifacts, Memory, and Evaluation.
+
 ## Project documents
 
 - [Project overview](docs/project-management/PROJECT_OVERVIEW.md)
