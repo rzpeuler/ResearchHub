@@ -5,9 +5,10 @@
 The Single DSH migration is implemented and the architecture is now governed
 by Architecture v0.3. ResearchHub is a professional research asset layer on
 DeepSeek Harness, not an Agent Framework. The root-level `dsh/` directory
-contains the lightweight ResearchManager control plane. `packages/workflows`
-contains research SOP templates, `packages/skills` contains research methods,
-and `packages/plugins` contains external-resource contracts and adapters.
+contains the lightweight ResearchManager Runtime Orchestrator. `packages/workflows`
+contains runtime-neutral research SOP templates, `packages/skills` contains
+research methods, and `packages/plugins` contains external-resource contracts
+and adapters.
 
 The `packages/` directory contains only composable research modules;
 `packages/dsh` does not exist.
@@ -26,6 +27,10 @@ validated foundation includes:
 
 Harness owns runtime execution and LLM reasoning. ResearchManager coordinates
 these assets without becoming an Agent Planner.
+
+The dependency direction is `dsh/` → `packages/`. Packages do not import DSH
+types or implementation details, so the research assets can be reused by
+another Runtime or external caller.
 
 ## Completed validation
 

@@ -32,8 +32,9 @@ ResearchHub/
     └── evaluation/
 ```
 
-The root-level `dsh/` directory is the ResearchHub system control plane. The
-`packages/` directory is reserved for composable research capability modules.
+The root-level `dsh/` directory is the ResearchHub default Runtime
+Orchestrator and system control plane. The `packages/` directory is reserved
+for reusable, runtime-neutral research asset modules.
 
 The dependency direction is:
 
@@ -47,6 +48,10 @@ dsh
  └── evaluation
 ```
 
+The dependency rule is one-way: `dsh/` may depend on `packages/`, while no
+module under `packages/` may import `dsh/`. This keeps Research Assets usable
+by another Runtime or an external caller.
+
 This is a location and architecture-expression decision. It does not change
 ResearchManager business logic, Workflow logic, Skill logic, Plugin logic,
 Artifact models, Memory models, or Evaluation behavior.
@@ -54,7 +59,7 @@ Artifact models, Memory models, or Evaluation behavior.
 ## Consequences
 
 - The repository structure directly expresses the Single DSH Architecture.
-- `packages/` contains only composable research modules.
+- `packages/` contains only composable, runtime-neutral research modules.
 - ResearchManager remains the only coordination center.
 - Imports, TypeScript inclusion, test scripts, and documentation must refer to
   root-level `dsh/`.
@@ -65,4 +70,4 @@ Artifact models, Memory models, or Evaluation behavior.
 Future changes must not add an agent layer, planner layer, Capability Layer,
 Provider Layer, Workflow Engine, or another DSH under `packages/`. New
 cross-module coordination belongs in the root `dsh/` control plane and must
-preserve the Harness runtime boundary.
+preserve the Harness runtime boundary. Packages must not import the DSH.

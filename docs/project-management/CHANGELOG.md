@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-24 — Runtime and Research Asset Decoupling
+
+- Moved the shared Workflow execution contract to
+  `packages/workflows/execution.ts`.
+- Removed the `packages/workflows` → `dsh` dependency.
+- Confirmed `dsh/` as the default Runtime Orchestrator and `packages/` as
+  reusable, runtime-neutral research assets.
+- Documented the one-way dependency rule: `dsh/` → `packages/`.
+
 ## 2026-08-24 — DSH Control Plane Relocation
 
 - Moved `ResearchManager` from `packages/dsh` to the repository root `dsh/`.

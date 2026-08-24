@@ -1,5 +1,14 @@
-import type { Evidence, Prediction, Thesis } from '../../packages/artifacts/index.ts'
-import type { WorkflowDefinition } from '../../packages/workflows/index.ts'
+import type { Prediction } from '../../packages/artifacts/index.ts'
+import type {
+  ResearchArtifactBundle,
+  ResearchWorkflowExecutionContext,
+} from '../../packages/workflows/execution.ts'
+
+export type {
+  ResearchArtifactBundle,
+  ResearchWorkflowExecutionContext,
+  ResearchWorkflowExecutor,
+} from '../../packages/workflows/execution.ts'
 
 export interface ResearchRequest {
   workflowId: string
@@ -14,16 +23,7 @@ export type NormalizedResearchRequest = Omit<ResearchRequest, 'evaluationPeriod'
   evaluationPeriod: Prediction['evaluationPeriod']
 }
 
-export interface ResearchExecutionContext {
-  request: NormalizedResearchRequest
-  workflow: WorkflowDefinition
-}
-
-export interface ResearchArtifactBundle {
-  evidence: Evidence[]
-  thesis: Thesis
-  prediction: Prediction
-}
+export type ResearchExecutionContext = ResearchWorkflowExecutionContext
 
 export interface ResearchReportView {
   id: string
@@ -43,10 +43,6 @@ export interface ResearchExecutionResult {
   sessionId: string
   artifacts: ResearchArtifactBundle
   report: ResearchReportView
-}
-
-export interface ResearchWorkflowExecutor {
-  execute(context: ResearchExecutionContext): Promise<ResearchArtifactBundle>
 }
 
 export type ResearchReportIdFactory = (context: ResearchExecutionContext) => string

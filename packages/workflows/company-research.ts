@@ -1,11 +1,11 @@
 import { CompanyResearchWorkflow } from '../skills/company-research/index.ts'
-import type { ResearchWorkflowExecutor } from '../../dsh/research-manager/index.ts'
+import type { ResearchWorkflowExecutionContext, ResearchWorkflowExecutor } from './execution.ts'
 
 /** Thin adapter from the approved Company Research Workflow to the Skill implementation. */
 export class CompanyResearchWorkflowExecutor implements ResearchWorkflowExecutor {
   constructor(private readonly workflow: CompanyResearchWorkflow) {}
 
-  async execute(context: Parameters<ResearchWorkflowExecutor['execute']>[0]) {
+  async execute(context: ResearchWorkflowExecutionContext) {
     const result = await this.workflow.run({
       symbol: context.request.symbol,
       sessionId: context.request.sessionId,

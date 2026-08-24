@@ -52,10 +52,10 @@ preserved as the historical baseline. See
 **Status:** Accepted
 **Date:** 2026-08-24
 
-The ResearchManager DSH is the ResearchHub system control plane and therefore
-belongs at the repository root in `dsh/`. The `packages/` directory is
-reserved for composable Workflow, Skill, Plugin, Artifact, Memory, and
-Evaluation modules.
+The ResearchManager DSH is the ResearchHub default Runtime Orchestrator and
+system control plane and therefore belongs at the repository root in `dsh/`.
+The `packages/` directory is reserved for reusable, runtime-neutral Workflow,
+Skill, Plugin, Artifact, Memory, and Evaluation modules.
 
 The previous `packages/dsh` location incorrectly placed the control plane
 beside capability modules. The directory move changes architecture expression
@@ -64,7 +64,18 @@ research module behavior remain unchanged.
 
 The dependency direction is `dsh/` → `packages/workflows`, `packages/skills`,
 `packages/plugins`, `packages/artifacts`, `packages/memory`, and
-`packages/evaluation`. No additional DSH, agent layer, planner layer,
-Capability Layer, Provider Layer, or Workflow Engine may be added.
+`packages/evaluation`. Packages must not import `dsh/`, so they remain usable
+by another Runtime or external caller. No additional DSH, agent layer, planner
+layer, Capability Layer, Provider Layer, or Workflow Engine may be added.
 
 See [ADR-011](../architecture/ADR-011-DSH-CONTROL-PLANE-LOCATION.md).
+
+## ARCH-REFACTOR-002 — Runtime and Asset Dependency Direction
+
+**Status:** Accepted
+**Date:** 2026-08-24
+
+The Workflow execution contract is defined under `packages/workflows/` rather
+than under `dsh/`. This keeps the shared contract runtime-neutral and removes
+the previous `packages/workflows` → `dsh` dependency. The allowed dependency
+direction is `dsh/` → `packages/`; the reverse direction is prohibited.

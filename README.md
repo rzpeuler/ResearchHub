@@ -18,9 +18,10 @@ research SOPs, Skills provide professional research methods, Plugins connect
 external resources, Memory stores research history, and Evaluation supports
 quality review.
 
-The repository-level DSH control plane is `dsh/`. The `packages/` directory
-contains only composable research modules: Workflows, Skills, Plugins,
-Artifacts, Memory, and Evaluation.
+The repository-level DSH Runtime Orchestrator is `dsh/`. The `packages/`
+directory contains reusable, runtime-neutral research assets: Workflows,
+Skills, Plugins, Artifacts, Memory, and Evaluation. Packages do not depend on
+the DSH and can be used by another Runtime or external caller.
 
 ## Project documents
 

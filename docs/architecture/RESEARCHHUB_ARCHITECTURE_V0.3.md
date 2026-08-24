@@ -20,9 +20,10 @@ DeepSeek Harness Runtime
 ```
 
 `ResearchManager` remains the only ResearchHub DSH and keeps its existing
-name. It coordinates the request, Workflow, Skill, Plugin, Artifact, Memory,
-and Evaluation boundaries. Reasoning and runtime execution remain Harness
-responsibilities.
+name. It is the default ResearchHub Runtime Orchestrator in `dsh/`: it
+coordinates the request, Workflow, Skill, Plugin, Artifact, Memory, and
+Evaluation boundaries. Reasoning and lower-level runtime execution remain
+Harness responsibilities.
 
 Architecture v0.2 remains preserved as a historical baseline. This v0.3
 document is the current governance reference for new design and development.
@@ -177,8 +178,8 @@ ResearchHub/
 ```
 
 DeepSeek Harness is the external runtime below this repository boundary. The
-root-level `dsh/` directory contains the ResearchHub DSH control plane. The
-`packages/` directory contains composable research capability modules only:
+root-level `dsh/` directory contains the ResearchHub DSH Runtime Orchestrator.
+The `packages/` directory contains reusable, runtime-neutral research assets:
 
 ```text
 packages/
@@ -192,9 +193,9 @@ packages/
 
 `dsh/` contains the ResearchManager Harness adapter and coordination service.
 It is not a package-level capability module. The package layout is an
-implementation detail, but the control-plane boundary is intentional:
-`dsh/` coordinates the modules under `packages/`, while those modules do not
-become planning centers.
+implementation detail, but the dependency boundary is intentional:
+`dsh/` coordinates the modules under `packages/`, while packages do not
+import `dsh/` and do not become planning centers.
 
 ## 6. Deprecated architecture
 
@@ -219,6 +220,17 @@ New capabilities must be classified as a Workflow, Skill, Plugin, Memory, or
 Evaluation change. Cross-cutting coordination changes are reviewed as
 ResearchManager changes. No new architecture layer may be introduced without
 an ADR that explicitly revises this decision.
+
+The dependency rule is one-way:
+
+```text
+dsh/ Runtime Orchestrator
+        ↓
+packages/ Reusable Research Assets
+```
+
+Research packages must remain usable by another Runtime or an external caller
+without importing the ResearchHub DSH.
 
 The following remain out of scope:
 

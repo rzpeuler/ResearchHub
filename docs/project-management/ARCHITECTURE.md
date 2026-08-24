@@ -19,7 +19,9 @@ Harness Runtime
         └── evaluation/
 ```
 
-DSH is the system control plane, not a package-level capability module.
+DSH is the default Runtime Orchestrator and system control plane, not a
+package-level capability module. Research packages are runtime-neutral and
+must not import `dsh/`.
 
 ## Boundaries
 
@@ -41,7 +43,8 @@ DSH is the system control plane, not a package-level capability module.
   not automatically optimize strategies or modify Skills.
 
 The dependency direction is `dsh/` → Workflows, Skills, Plugins, Artifacts,
-Memory, and Evaluation. No module under `packages/` is a planning center.
+Memory, and Evaluation. No module under `packages/` is a planning center, and
+no package imports the DSH.
 
 Artifact core models remain stable. Existing Event Analysis, Company Research,
 and Industry Research Skills and their Workflows remain within these
