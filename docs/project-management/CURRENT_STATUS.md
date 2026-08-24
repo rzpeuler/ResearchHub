@@ -120,8 +120,23 @@ six-step Equity Research Workflow. The test verifies real provider payloads
 reach all five LLM Skill calls, the Workflow completes, the ResearchReport and
 Artifact relationships serialize correctly, and Evaluation returns a met
 Review. The test requires `RUN_REAL_EQUITY_PIPELINE=1`,
-`DEEPSEEK_API_KEY`, and `AKSHARE_FINANCIAL_ENDPOINT`; in the current
-environment it remains skipped until the AKShare Bridge endpoint is supplied.
+`DEEPSEEK_API_KEY`, and `AKSHARE_FINANCIAL_ENDPOINT`; the earlier version
+remained skipped until the AKShare Bridge endpoint was supplied.
+
+`PIPELINE-REAL-DATA-002` now routes real news through the News Acquisition
+Layer (`gdelt-search -> native-web-fetcher -> HtmlArticleNormalizer ->
+NewsEvidenceBuilder`) instead of directly depending on `GdeltNewsPlugin`. The
+test records acquisition counts, Provider metadata, Skill output summaries,
+Workflow step states, Artifact relationships, and Evaluation status. The
+offline path passes and remains network-free by default.
+
+The first opt-in execution reached the Acquisition test boundary but was
+blocked before Search returned by the current environment's GDELT connectivity:
+Node initially reported `UND_ERR_CONNECT_TIMEOUT` on the GDELT host; enabling
+Node's environment proxy mode still timed out, and the subsequent PowerShell
+probe also timed out. No real Workflow, LLM, Artifact, or Evaluation result is
+claimed from that attempt. The remaining blocker is external GDELT/proxy
+availability, not the AKShare Bridge or the Acquisition Layer contract.
 
 The News Acquisition Layer is now implemented as a runtime-neutral,
 provider-independent path:

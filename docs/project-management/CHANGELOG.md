@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-24 - PIPELINE-REAL-DATA-002
+
+- Updated the opt-in real Equity Research Pipeline test to use
+  `GdeltSearchProvider -> NativeWebFetcher -> NewsAcquisitionLayer` instead of
+  directly instantiating `GdeltNewsPlugin`.
+- Added assertions and runtime summaries for Search, Fetch, Normalize,
+  Evidence, Provider metadata, five Skill outputs, six Workflow steps, final
+  Artifacts, and Evaluation.
+- Confirmed the default test remains network-free.
+- Attempted real execution, but GDELT/proxy connectivity timed out before
+  Search returned; no real Pipeline completion is claimed until that external
+  dependency is available.
+
 ## 2026-08-24 - NEWS-ACQUISITION-001
 
 - Added the runtime-neutral News Acquisition Layer:
