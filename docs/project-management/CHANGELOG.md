@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-24 - Real Financial Plugin Validation
+
+- Extended the existing Tushare Financial Provider Adapter with the
+  documented `fina_indicator` endpoint.
+- Normalized revenue, net profit, gross and net profit margins, EPS, current
+  and quick ratios, and debt-to-assets into the existing FinancialData schema.
+- Preserved the Plugin boundary and converted normalized facts into Evidence
+  without adding investment or valuation logic to the Plugin.
+- Added an opt-in integration test through Equity Research, Valuation,
+  Artifact serialization, and Evaluation.
+- Added `RUN_REAL_FINANCIAL_PLUGIN=1 TUSHARE_TOKEN=... npm run
+  test:financial-real`; default tests remain network-free.
+
 ## 2026-08-24 - Real News Plugin Validation
 
 - Added the GDELT DOC ArticleList News Provider Adapter.

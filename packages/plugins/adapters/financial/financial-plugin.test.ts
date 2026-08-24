@@ -21,6 +21,10 @@ function statementRows(): Record<string, unknown> {
   }
 }
 
+function indicatorRows(): Record<string, unknown>[] {
+  return [{ ts_code: '600519.SH', end_date: '20251231', ann_date: '20260301', gross_margin: 40, netprofit_margin: 25, eps: 2.5, current_ratio: 1.8, quick_ratio: 1.4, debt_to_assets: 30 }]
+}
+
 test('Tushare financial plugin maps income, balance sheet, and cash flow fields', async () => {
   const calls: string[] = []
   const plugin = new TushareFinancialPlugin({
@@ -31,21 +35,28 @@ test('Tushare financial plugin maps income, balance sheet, and cash flow fields'
         const body = JSON.parse(String(init?.body)) as { api_name: string }
         calls.push(body.api_name)
         const rows = statementRows()
-        const row = rows[body.api_name === 'balancesheet' ? 'balance-sheet' : body.api_name === 'cashflow' ? 'cash-flow' : 'income']
+        const row = body.api_name === 'fina_indicator'
+          ? indicatorRows()
+          : rows[body.api_name === 'balancesheet' ? 'balance-sheet' : body.api_name === 'cashflow' ? 'cash-flow' : 'income']
         return response({ code: 0, data: { items: row } })
       },
     },
   })
 
   const result = await plugin.fetch({ symbol: '600519' })
-  assert.deepEqual(calls, ['income', 'balancesheet', 'cashflow'])
+  assert.deepEqual(calls, ['income', 'balancesheet', 'cashflow', 'fina_indicator'])
   assert.equal(result.metadata.plugin, 'tushare-financial')
   assert.equal(result.metadata.source, 'tushare')
   assert.equal(result.data.symbol, '600519')
   assert.deepEqual(result.data.metrics.map(metric => metric.name), [
-    'revenue', 'operating_profit', 'net_profit', 'total_assets', 'total_liabilities', 'operating_cash_flow',
+    'revenue', 'operating_profit', 'net_profit', 'gross_margin', 'net_profit_margin', 'eps', 'current_ratio', 'quick_ratio', 'debt_to_assets',
+    'total_assets', 'total_liabilities', 'operating_cash_flow',
   ])
   assert.equal(result.data.metrics[0]?.value, 1000)
+  assert.equal(result.data.metrics.find(metric => metric.name === 'gross_margin')?.unit, 'percent')
+  assert.equal(result.data.metrics.find(metric => metric.name === 'eps')?.unit, 'CNY/share')
+  assert.equal(result.data.metrics.find(metric => metric.name === 'current_ratio')?.unit, 'ratio')
+  assert.equal(result.data.metrics.find(metric => metric.name === 'debt_to_assets')?.value, 30)
   assert.doesNotThrow(() => plugin.validate(result.data))
 })
 

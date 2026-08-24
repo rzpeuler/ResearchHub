@@ -33,10 +33,25 @@ export const METRIC_ALIASES: Readonly<Record<FinancialMetricName, readonly strin
   revenue: ['total_revenue', 'revenue', 'operate_income'],
   operating_profit: ['operate_profit', 'operating_profit'],
   net_profit: ['n_income', 'net_profit', 'net_income'],
+  gross_margin: ['gross_margin', 'grossprofit_margin'],
+  net_profit_margin: ['netprofit_margin', 'net_profit_margin'],
+  eps: ['eps', 'dt_eps'],
+  current_ratio: ['current_ratio'],
+  quick_ratio: ['quick_ratio'],
+  debt_to_assets: ['debt_to_assets', 'debt_to_asset'],
   total_assets: ['total_assets'],
   total_liabilities: ['total_liab', 'total_liabilities'],
   operating_cash_flow: ['n_cashflow_act', 'operating_cash_flow', 'net_operate_cash_flow'],
 }
+
+const INDICATOR_METRICS = new Set<FinancialMetricName>([
+  'gross_margin',
+  'net_profit_margin',
+  'eps',
+  'current_ratio',
+  'quick_ratio',
+  'debt_to_assets',
+])
 
 export function normalizeFinancialRequest(value: FinancialDataRequest): {
   symbol: string
@@ -73,7 +88,7 @@ export function normalizeFinancialRequest(value: FinancialDataRequest): {
 export function buildFinancialData(rows: readonly NormalizedFinancialRow[]): FinancialData {
   const statements: FinancialStatement[] = []
   const metrics: FinancialMetric[] = []
-  for (const row of rows) {
+  for (const row of mergeFinancialRows(rows)) {
     const statement = rowToStatement(row)
     statements.push(statement)
     metrics.push(...statementMetrics(statement, row))
@@ -158,7 +173,7 @@ function rowToStatement(row: NormalizedFinancialRow): FinancialStatement {
       if (raw === undefined) {
         return []
       }
-      return [{ name, value: readFiniteNumber(raw, name), unit: row.unit ?? row.currency ?? 'CNY' }]
+      return [{ name, value: readFiniteNumber(raw, name), unit: unitForMetric(name, row) }]
     })
   if (lineItems.length === 0) {
     throw new FinancialPluginError(`financial ${row.statementType} row contains no supported metrics`)
@@ -203,12 +218,44 @@ function sourceMetadata(row: NormalizedFinancialRow, publishedAt: string): Finan
 function metricNamesFor(statementType: FinancialStatementType): FinancialMetricName[] {
   switch (statementType) {
     case 'income':
-      return ['revenue', 'operating_profit', 'net_profit']
+      return ['revenue', 'operating_profit', 'net_profit', ...INDICATOR_METRICS]
     case 'balance-sheet':
       return ['total_assets', 'total_liabilities']
     case 'cash-flow':
       return ['operating_cash_flow']
   }
+}
+
+function mergeFinancialRows(rows: readonly NormalizedFinancialRow[]): NormalizedFinancialRow[] {
+  const merged = new Map<string, NormalizedFinancialRow>()
+  for (const row of rows) {
+    const period = normalizeFinancialDate(row.period, 'period')
+    const key = `${row.symbol}:${row.statementType}:${period}`
+    const previous = merged.get(key)
+    if (previous === undefined) {
+      merged.set(key, row)
+      continue
+    }
+    merged.set(key, {
+      ...previous,
+      reportDate: previous.reportDate ?? row.reportDate,
+      values: { ...previous.values, ...row.values },
+      quality: qualityRank(previous.quality) <= qualityRank(row.quality) ? previous.quality : row.quality,
+      confidence: Math.min(previous.confidence, row.confidence),
+    })
+  }
+  return [...merged.values()]
+}
+
+function unitForMetric(name: FinancialMetricName, row: NormalizedFinancialRow): string {
+  if (name === 'eps') return 'CNY/share'
+  if (name === 'gross_margin' || name === 'net_profit_margin' || name === 'debt_to_assets') return 'percent'
+  if (name === 'current_ratio' || name === 'quick_ratio') return 'ratio'
+  return row.unit ?? row.currency ?? 'CNY'
+}
+
+function qualityRank(value: NormalizedFinancialRow['quality']): number {
+  return value === 'high' ? 0 : value === 'medium' ? 1 : 2
 }
 
 function inferPeriodType(end: string): FinancialPeriodType {

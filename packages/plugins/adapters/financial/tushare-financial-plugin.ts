@@ -53,6 +53,15 @@ export class TushareFinancialPlugin implements FinancialDataPlugin {
       }
       rows.push(normalizeTushareRow(latestRow, normalized.symbol, statementType, this.clock))
     }
+    if (normalized.statementTypes.includes('income')) {
+      const response = await this.requestIndicator(normalized.symbol)
+      const sourceRows = readTushareRows(response, this.name, [this.token, this.endpoint])
+      const latestRow = sourceRows[0]
+      if (latestRow === undefined) {
+        throw new FinancialPluginError(`${this.name} response is empty for fina_indicator`)
+      }
+      rows.push(normalizeTushareRow(latestRow, normalized.symbol, 'income', this.clock))
+    }
     const data = buildFinancialData(rows)
     if (data.symbol !== normalized.symbol || data.statements.length !== normalized.statementTypes.length) {
       throw new FinancialPluginError('tushare-financial response did not contain the requested statements')
@@ -76,11 +85,19 @@ export class TushareFinancialPlugin implements FinancialDataPlugin {
   }
 
   private async requestStatement(symbol: string, statementType: FinancialStatementType): Promise<unknown> {
-    const body = {
-      api_name: apiNameFor(statementType),
-      token: this.token,
-      params: { ts_code: toTushareCode(symbol) },
-    }
+    return this.requestApi(apiNameFor(statementType), { ts_code: toTushareCode(symbol) })
+  }
+
+  private async requestIndicator(symbol: string): Promise<unknown> {
+    return this.requestApi(
+      'fina_indicator',
+      { ts_code: toTushareCode(symbol) },
+      'ts_code,ann_date,end_date,eps,dt_eps,gross_margin,grossprofit_margin,netprofit_margin,current_ratio,quick_ratio,debt_to_assets',
+    )
+  }
+
+  private async requestApi(apiName: string, params: Record<string, string>, fields?: string): Promise<unknown> {
+    const body = { api_name: apiName, token: this.token, params, ...(fields === undefined ? {} : { fields }) }
     try {
       const response = await this.transport.request(this.endpoint, {
         method: 'POST',

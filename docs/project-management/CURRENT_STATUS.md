@@ -91,3 +91,14 @@ the unchanged News Plugin interface. The explicit integration test maps the
 external records into Company Research Evidence, verifies Artifact
 serialization, and produces a successful Evaluation Review. The real test is
 opt-in with `RUN_REAL_NEWS_PLUGIN=1`; default tests remain network-free.
+
+Real Financial Plugin validation is implemented for the Tushare provider. The
+existing `TushareFinancialPlugin` now combines documented statement endpoints
+with `fina_indicator` and normalizes revenue, net profit, margins, EPS, and
+basic financial ratios into the unchanged FinancialData boundary. The
+Financial Plugin converts these reported facts into Evidence without making
+investment judgments. Integration coverage passes the snapshot through the
+Equity Research and Valuation Skill ports, serializes the resulting Artifacts,
+and evaluates a traceable Prediction. The real test is opt-in with
+`RUN_REAL_FINANCIAL_PLUGIN=1` and `TUSHARE_TOKEN`; the default suite remains
+network-free.
