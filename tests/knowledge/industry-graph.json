@@ -1,0 +1,225 @@
+{
+  "entities": [
+    {
+      "id": "industry:ai-hardware", "type": "industry", "name": "AI Hardware", "marketSize": 100, "marketSizeUnit": "mock-index",
+      "coreView": { "bullish": ["AI 算力需求仍由模型规模、推理渗透和数据中心扩容共同驱动。"], "bearish": ["供应链周期、出口限制和资本开支波动可能压制短期兑现。"], "contradictions": ["算力需求快速增长，但单卡利用率和客户投资回报仍存在分化。"], "logic": ["GPU/HBM 提供算力基础，服务器、液冷和数据中心把芯片需求转化为可交付的基础设施。"] },
+      "knowledge": {
+        "description": "AI Hardware 覆盖从 GPU、HBM、PCB、服务器到数据中心的算力基础设施产业链。",
+        "marketForecast": [
+          { "year": "2024", "value": 680, "unit": "USD mock-billion" },
+          { "year": "2025", "value": 910, "unit": "USD mock-billion" },
+          { "year": "2026", "value": 1220, "unit": "USD mock-billion" },
+          { "year": "2027E", "value": 1610, "unit": "USD mock-billion" },
+          { "year": "2028E", "value": 2080, "unit": "USD mock-billion" }
+        ],
+        "glossary": [
+          { "term": "GPU", "definition": "面向并行计算的处理器，承担 AI 训练和推理中的大规模矩阵运算。" },
+          { "term": "HBM", "definition": "通过多层堆叠提供高带宽、低功耗访问的高性能存储器。" },
+          { "term": "PUE", "definition": "数据中心总能耗与 IT 设备能耗之比，用于衡量基础设施能效。" }
+        ]
+      }
+    },
+    {
+      "id": "segment:gpu", "type": "segment", "name": "GPU", "marketSize": 80, "marketSizeUnit": "mock-index",
+      "coreView": { "bullish": ["训练和推理工作负载增长，推动 GPU 集群扩容与代际升级。"], "bearish": ["客户自研芯片、供给释放和软件生态迁移会压缩部分增量。"], "contradictions": ["更强算力提升单卡效率，但高功耗和高价格提高部署门槛。"], "logic": ["模型规模与推理吞吐决定算力需求，软件生态和互联能力决定 GPU 采购的黏性。"] },
+      "knowledge": {
+        "description": "GPU 是 AI 训练、推理和边缘算力中的核心并行计算产品。",
+        "productComparison": [
+          { "product": "训练型 GPU", "useCase": "大模型训练", "differentiator": "算力密度、显存容量与高速互联" },
+          { "product": "推理型 GPU", "useCase": "在线推理服务", "differentiator": "推理吞吐、功耗与部署成本" },
+          { "product": "边缘型 GPU", "useCase": "边缘推理与机器人", "differentiator": "尺寸、实时性与端侧能效" }
+        ],
+        "glossary": [
+          { "term": "训练型 GPU", "definition": "面向大规模模型训练，强调显存容量、互联带宽和集群扩展能力的 GPU。" },
+          { "term": "推理型 GPU", "definition": "面向模型线上运行，重点优化吞吐、时延和单位算力成本的 GPU。" }
+        ]
+      }
+    },
+    { "id": "segment:hbm", "type": "segment", "name": "HBM", "marketSize": 58, "marketSizeUnit": "mock-index" },
+    {
+      "id": "segment:pcb-material", "type": "segment", "name": "PCB Material", "marketSize": 42, "marketSizeUnit": "mock-index",
+      "knowledge": {
+        "description": "PCB 材料决定高速信号传输、散热和可靠性，是 AI 服务器主板的重要基础材料。",
+        "productComparison": [
+          { "product": "高速覆铜板", "useCase": "AI 服务器高速主板", "differentiator": "介电损耗、信号完整性与加工窗口" },
+          { "product": "高频覆铜板", "useCase": "高速网络与光模块", "differentiator": "高频稳定性、低损耗与阻抗控制" },
+          { "product": "封装载板材料", "useCase": "GPU 与交换芯片封装", "differentiator": "微细线路、热膨胀系数与封装协同" }
+        ]
+      }
+    },
+    { "id": "segment:pcb-manufacturing", "type": "segment", "name": "PCB Manufacturing", "marketSize": 55, "marketSizeUnit": "mock-index" },
+    { "id": "segment:optical-module", "type": "segment", "name": "Optical Module", "marketSize": 38, "marketSizeUnit": "mock-index" },
+    {
+      "id": "segment:server", "type": "segment", "name": "Server", "marketSize": 72, "marketSizeUnit": "mock-index",
+      "coreView": { "bullish": ["AI 服务器从单机交付走向整机柜和集群级交付，带来更高的系统价值量。"], "bearish": ["服务器整机竞争激烈，客户议价和供应链库存可能压低利润率。"], "contradictions": ["GPU 密度越高，服务器价值量越大，但液冷、供电和交付复杂度也同步上升。"], "logic": ["GPU/HBM 配置决定算力密度，液冷与机柜集成决定可部署性，云厂商资本开支决定订单节奏。"] },
+      "knowledge": {
+        "description": "AI 服务器是 GPU、HBM、液冷、机柜组装和网络电源协同交付的算力节点。",
+        "marketForecast": [
+          { "year": "2024", "value": 86, "unit": "USD mock-billion" },
+          { "year": "2025", "value": 118, "unit": "USD mock-billion" },
+          { "year": "2026", "value": 166, "unit": "USD mock-billion" },
+          { "year": "2027E", "value": 224, "unit": "USD mock-billion" }
+        ],
+        "productComparison": [
+          { "product": "GPU 服务器", "useCase": "大模型训练", "differentiator": "GPU 密度、互联带宽与液冷" },
+          { "product": "推理服务器", "useCase": "在线推理", "differentiator": "功耗、时延与部署密度" },
+          { "product": "整机柜服务器", "useCase": "规模化数据中心", "differentiator": "机柜级交付与运维标准化" }
+        ],
+        "glossary": [
+          { "term": "GPU 服务器", "definition": "以一个或多个 GPU 加速器为核心的服务器节点。" },
+          { "term": "整机柜", "definition": "将服务器、交换机、电源和散热系统作为一个整体交付的集成形态。" }
+        ]
+      }
+    },
+    {
+      "id": "segment:data-center", "type": "segment", "name": "Data Center", "marketSize": 100, "marketSizeUnit": "mock-index",
+      "coreView": { "bullish": ["AI 算力中心扩容带动供配电、制冷、网络和工程服务的长期需求。"], "bearish": ["电力指标、并网周期和建设资本开支可能成为项目落地瓶颈。"], "contradictions": ["高密度算力提高单机房产出，但也抬升能耗、制冷和运营复杂度。"], "logic": ["算力需求先形成服务器订单，再通过电力、制冷、网络和承建能力转化为数据中心投资。"] },
+      "knowledge": {
+        "description": "数据中心是承载 AI 算力的基础设施集合，包含承建、电力、网络、制冷和服务器等环节。",
+        "marketForecast": [
+          { "year": "2024", "value": 310, "unit": "USD mock-billion" },
+          { "year": "2025", "value": 385, "unit": "USD mock-billion" },
+          { "year": "2026", "value": 480, "unit": "USD mock-billion" },
+          { "year": "2027E", "value": 595, "unit": "USD mock-billion" }
+        ],
+        "productComparison": [
+          { "product": "超大规模数据中心", "useCase": "云厂商集中式算力", "differentiator": "规模化供电、制冷和运维效率" },
+          { "product": "AI 算力中心", "useCase": "高密度训练与推理", "differentiator": "GPU 密度、液冷和网络互联" },
+          { "product": "边缘数据中心", "useCase": "低时延区域算力", "differentiator": "模块化部署、可靠性与运维成本" }
+        ],
+        "glossary": [
+          { "term": "IDC", "definition": "为服务器和网络设备提供机房、电力、制冷及运维服务的基础设施。" },
+          { "term": "PUE", "definition": "衡量数据中心能源效率的指标，数值越接近 1 通常代表能效越高。" }
+        ]
+      }
+    },
+    { "id": "segment:data-center-construction", "type": "segment", "name": "Data Center Construction", "marketSize": 30, "marketSizeUnit": "mock-index" },
+    { "id": "segment:network-power", "type": "segment", "name": "Network & Power Infrastructure", "marketSize": 34, "marketSizeUnit": "mock-index" },
+    {
+      "id": "segment:liquid-cooling", "type": "segment", "name": "Liquid Cooling", "marketSize": 28, "marketSizeUnit": "mock-index",
+      "coreView": { "bullish": ["AI 芯片热流密度提升，推动冷板、CDU 和浸没式液冷渗透。"], "bearish": ["改造成本、运维标准和客户验证周期会限制液冷渗透速度。"], "contradictions": ["液冷能提升机柜功率密度，但也增加系统复杂度和对项目交付的依赖。"], "logic": ["GPU 功耗上升带来散热压力，服务器和数据中心为液冷方案提供安装、验证与规模化场景。"] },
+      "knowledge": {
+        "description": "液冷通过冷板、CDU 和冷却液循环降低 AI 芯片与整机柜的高热流密度散热压力。",
+        "marketForecast": [
+          { "year": "2024", "value": 3.8, "unit": "USD mock-billion" },
+          { "year": "2025", "value": 5.6, "unit": "USD mock-billion" },
+          { "year": "2026", "value": 8.4, "unit": "USD mock-billion" },
+          { "year": "2027E", "value": 12.7, "unit": "USD mock-billion" }
+        ],
+        "productComparison": [
+          { "product": "冷板式液冷", "useCase": "GPU 芯片散热", "differentiator": "热阻、可靠性与服务器适配" },
+          { "product": "CDU", "useCase": "液路换热与控制", "differentiator": "换热效率、冗余与控制系统" },
+          { "product": "浸没式液冷", "useCase": "高密度算力集群", "differentiator": "液体兼容性、维护和部署改造" }
+        ],
+        "glossary": [
+          { "term": "CDU", "definition": "Coolant Distribution Unit，负责液冷回路的换热、分配和监控。" },
+          { "term": "冷板式液冷", "definition": "通过贴合芯片的冷板将热量传递给循环冷却液的散热方式。" }
+        ]
+      }
+    },
+    { "id": "segment:rack-assembly", "type": "segment", "name": "Rack Assembly", "marketSize": 18, "marketSizeUnit": "mock-index" },
+    { "id": "segment:gpu-board", "type": "segment", "name": "GPU Board", "marketSize": 24, "marketSizeUnit": "mock-index" },
+    {
+      "id": "company:shengyi-tech", "type": "company", "name": "生益科技", "listingStatus": "listed", "ticker": "600183", "exchange": "SSE",
+      "financials": { "totalRevenue": 180, "currency": "CNY mock-billion", "period": "2026-Mock" },
+      "profile": { "productTypes": ["高速覆铜板", "PCB 材料"], "customerSegments": ["PCB 制造商", "服务器与通信设备"], "technologyMoats": ["高频高速材料配方", "规模化研发"], "customerCertifications": ["头部 PCB 厂商认证"] }
+    },
+    {
+      "id": "company:wus-pcb", "type": "company", "name": "沪电股份", "listingStatus": "listed", "ticker": "002463", "exchange": "SZSE",
+      "financials": { "totalRevenue": 165, "currency": "CNY mock-billion", "period": "2026-Mock" },
+      "profile": { "productTypes": ["高端 PCB", "高速通信板"], "customerSegments": ["AI 服务器", "交换机与通信设备"], "technologyMoats": ["高层数板制造", "高信号完整性工艺"], "customerCertifications": ["国际服务器客户认证"] }
+    },
+    {
+      "id": "company:scc-circuit", "type": "company", "name": "深南电路", "listingStatus": "listed", "ticker": "002916", "exchange": "SZSE",
+      "financials": { "totalRevenue": 150, "currency": "CNY mock-billion", "period": "2026-Mock" },
+      "profile": { "productTypes": ["封装基板", "高端 PCB"], "customerSegments": ["通信设备", "服务器与汽车电子"], "technologyMoats": ["PCB 与封装协同", "精密制造能力"], "customerCertifications": ["通信设备大客户认证"] }
+    },
+    {
+      "id": "company:nvidia", "type": "company", "name": "NVIDIA", "listingStatus": "listed", "ticker": "NVDA", "exchange": "NASDAQ",
+      "financials": { "totalRevenue": 1200, "currency": "USD mock-billion", "period": "2026-Mock" },
+      "profile": { "productTypes": ["AI GPU", "加速计算平台"], "customerSegments": ["云服务商", "AI 实验室", "企业数据中心"], "technologyMoats": ["CUDA 生态", "GPU 架构与软件协同"], "customerCertifications": ["头部云厂商平台认证"] },
+      "coreView": { "bullish": ["新平台发布和 AI 集群升级支撑高端 GPU 需求。"], "bearish": ["客户自研、竞争产品和供应限制可能带来份额波动。"], "contradictions": ["产品性能领先，但高投入和高能耗提高客户部署门槛。"], "logic": ["硬件性能通过软件生态和云厂商认证转化为客户采购与持续复购。"] }
+    },
+    {
+      "id": "company:amd", "type": "company", "name": "AMD", "listingStatus": "listed", "ticker": "AMD", "exchange": "NASDAQ",
+      "financials": { "totalRevenue": 420, "currency": "USD mock-billion", "period": "2026-Mock" },
+      "profile": { "productTypes": ["数据中心 GPU", "CPU 与加速器"], "customerSegments": ["云服务商", "服务器 OEM"], "technologyMoats": ["Chiplet 设计", "CPU/GPU 产品组合"], "customerCertifications": ["服务器 OEM 认证"] }
+    },
+    {
+      "id": "company:inspur", "type": "company", "name": "浪潮信息", "listingStatus": "listed", "ticker": "000977", "exchange": "SZSE",
+      "financials": { "totalRevenue": 780, "currency": "CNY mock-billion", "period": "2026-Mock" },
+      "profile": { "productTypes": ["AI 服务器", "冷板式液冷", "整机柜液冷"], "customerSegments": ["云服务商", "互联网数据中心", "企业级客户"], "technologyMoats": ["服务器系统集成", "机柜级交付", "软硬件协同"], "customerCertifications": ["头部云客户导入", "数据中心 PUE 认证"] },
+      "coreView": { "bullish": ["AI 服务器和液冷业务协同，受益于算力中心整机柜交付。"], "bearish": ["服务器价格竞争和客户集中度可能影响盈利稳定性。"], "contradictions": ["系统集成能力增强交付黏性，但项目定制也增加营运复杂度。"], "logic": ["云客户算力扩容带来服务器订单，液冷与整机柜能力提高单项目价值量。"] }
+    },
+    {
+      "id": "company:foxconn-industrial", "type": "company", "name": "工业富联", "listingStatus": "listed", "ticker": "601138", "exchange": "SSE",
+      "financials": { "totalRevenue": 600, "currency": "CNY mock-billion", "period": "2026-Mock" },
+      "profile": { "productTypes": ["服务器制造", "机柜组装"], "customerSegments": ["云服务商", "设备品牌商"], "technologyMoats": ["规模化制造", "全球供应链协同"], "customerCertifications": ["国际云客户认证"] }
+    },
+    { "id": "company:sk-hynix", "type": "company", "name": "SK Hynix", "listingStatus": "listed", "ticker": "000660", "exchange": "KRX", "financials": { "totalRevenue": 520, "currency": "USD mock-billion", "period": "2026-Mock" }, "profile": { "productTypes": ["HBM3E", "HBM4"], "customerSegments": ["GPU 厂商", "服务器 OEM"], "technologyMoats": ["高带宽存储堆叠", "先进封装协同"], "customerCertifications": ["GPU 平台认证"] } },
+    { "id": "company:samsung", "type": "company", "name": "Samsung", "listingStatus": "listed", "ticker": "005930", "exchange": "KRX", "financials": { "totalRevenue": 900, "currency": "USD mock-billion", "period": "2026-Mock" }, "profile": { "productTypes": ["HBM", "DRAM"], "customerSegments": ["GPU 厂商", "服务器与通信"], "technologyMoats": ["存储制造规模", "封装工艺"], "customerCertifications": ["国际芯片客户认证"] } },
+    { "id": "company:micron", "type": "company", "name": "Micron", "listingStatus": "listed", "ticker": "MU", "exchange": "NASDAQ", "financials": { "totalRevenue": 310, "currency": "USD mock-billion", "period": "2026-Mock" }, "profile": { "productTypes": ["HBM", "高性能 DRAM"], "customerSegments": ["GPU 厂商", "数据中心"], "technologyMoats": ["先进 DRAM 工艺", "高性能内存验证"], "customerCertifications": ["AI 加速器客户认证"] } },
+    { "id": "company:envicool", "type": "company", "name": "英维克", "listingStatus": "listed", "ticker": "002837", "exchange": "SZSE", "financials": { "totalRevenue": 95, "currency": "CNY mock-billion", "period": "2026-Mock" }, "profile": { "productTypes": ["CDU", "数据中心液冷系统"], "customerSegments": ["数据中心运营商", "服务器厂商"], "technologyMoats": ["热管理系统", "节能控制"], "customerCertifications": ["数据中心节能认证"] } },
+    { "id": "company:gaolan", "type": "company", "name": "高澜股份", "listingStatus": "listed", "ticker": "300499", "exchange": "SZSE", "financials": { "totalRevenue": 32, "currency": "CNY mock-billion", "period": "2026-Mock" }, "profile": { "productTypes": ["芯片级液冷", "热管理模块"], "customerSegments": ["AI 集群", "电力电子客户"], "technologyMoats": ["高热流密度散热", "定制化热管理"], "customerCertifications": ["AI 集群项目认证"] } },
+    { "id": "company:tongfei", "type": "company", "name": "同飞股份", "listingStatus": "listed", "ticker": "300990", "exchange": "SZSE", "financials": { "totalRevenue": 28, "currency": "CNY mock-billion", "period": "2026-Mock" }, "profile": { "productTypes": ["液冷温控", "工业制冷"], "customerSegments": ["服务器厂商", "工业设备客户"], "technologyMoats": ["温控系统集成"], "customerCertifications": ["服务器客户认证"] } },
+    { "id": "company:liquid-mock", "type": "company", "name": "液冷科技（Mock）", "listingStatus": "private", "financials": { "totalRevenue": 16, "currency": "CNY mock-billion", "period": "2026-Mock" }, "profile": { "productTypes": ["CDU", "液冷板"], "customerSegments": ["数据中心", "服务器 OEM"], "technologyMoats": ["定制化液冷设计"], "customerCertifications": ["项目级客户验证"] } },
+    { "id": "company:optical-mock", "type": "company", "name": "光模块科技（Mock）", "listingStatus": "private", "financials": { "totalRevenue": 40, "currency": "CNY mock-billion", "period": "2026-Mock" }, "profile": { "productTypes": ["800G 光模块"], "customerSegments": ["交换机厂商", "云服务商"], "technologyMoats": ["高速光电封装"], "customerCertifications": ["云数据中心项目认证"] } },
+    { "id": "company:listed-a", "type": "company", "name": "上市公司 A（Mock）", "listingStatus": "listed", "ticker": "600001", "exchange": "SSE", "financials": { "totalRevenue": 88, "currency": "CNY mock-billion", "period": "2026-Mock" }, "profile": { "productTypes": ["数据中心设备投资"], "customerSegments": ["数据中心项目"], "technologyMoats": ["项目投资与运营"], "customerCertifications": [] } },
+    { "id": "company:listed-b", "type": "company", "name": "上市公司 B（Mock）", "listingStatus": "listed", "ticker": "600002", "exchange": "SSE", "financials": { "totalRevenue": 96, "currency": "CNY mock-billion", "period": "2026-Mock" }, "profile": { "productTypes": ["数据中心工程服务"], "customerSegments": ["云厂商"], "technologyMoats": ["工程交付"], "customerCertifications": [] } },
+    { "id": "company:listed-c", "type": "company", "name": "上市公司 C（Mock）", "listingStatus": "listed", "ticker": "600003", "exchange": "SSE", "financials": { "totalRevenue": 120, "currency": "CNY mock-billion", "period": "2026-Mock" }, "profile": { "productTypes": ["算力中心项目投资"], "customerSegments": ["数据中心运营商"], "technologyMoats": ["产业投资"], "customerCertifications": [] } }
+  ],
+  "relations": [
+    { "id": "contains:industry-gpu", "fromEntityId": "industry:ai-hardware", "toEntityId": "segment:gpu", "type": "contains" },
+    { "id": "contains:industry-hbm", "fromEntityId": "industry:ai-hardware", "toEntityId": "segment:hbm", "type": "contains" },
+    { "id": "contains:industry-pcb-material", "fromEntityId": "industry:ai-hardware", "toEntityId": "segment:pcb-material", "type": "contains" },
+    { "id": "contains:industry-pcb-manufacturing", "fromEntityId": "industry:ai-hardware", "toEntityId": "segment:pcb-manufacturing", "type": "contains" },
+    { "id": "contains:industry-optical-module", "fromEntityId": "industry:ai-hardware", "toEntityId": "segment:optical-module", "type": "contains" },
+    { "id": "contains:industry-server", "fromEntityId": "industry:ai-hardware", "toEntityId": "segment:server", "type": "contains" },
+    { "id": "contains:industry-data-center", "fromEntityId": "industry:ai-hardware", "toEntityId": "segment:data-center", "type": "contains" },
+    { "id": "contains:data-center-construction", "fromEntityId": "segment:data-center", "toEntityId": "segment:data-center-construction", "type": "contains" },
+    { "id": "contains:data-center-server", "fromEntityId": "segment:data-center", "toEntityId": "segment:server", "type": "contains" },
+    { "id": "contains:data-center-network-power", "fromEntityId": "segment:data-center", "toEntityId": "segment:network-power", "type": "contains" },
+    { "id": "contains:server-gpu", "fromEntityId": "segment:server", "toEntityId": "segment:gpu", "type": "contains" },
+    { "id": "contains:server-liquid-cooling", "fromEntityId": "segment:server", "toEntityId": "segment:liquid-cooling", "type": "contains" },
+    { "id": "contains:server-rack-assembly", "fromEntityId": "segment:server", "toEntityId": "segment:rack-assembly", "type": "contains" },
+    { "id": "contains:gpu-board", "fromEntityId": "segment:gpu", "toEntityId": "segment:gpu-board", "type": "contains" },
+    { "id": "upstream:hbm-gpu", "fromEntityId": "segment:hbm", "toEntityId": "segment:gpu", "type": "upstream_of" },
+    { "id": "upstream:pcb-material-manufacturing", "fromEntityId": "segment:pcb-material", "toEntityId": "segment:pcb-manufacturing", "type": "upstream_of" },
+    { "id": "upstream:pcb-manufacturing-server", "fromEntityId": "segment:pcb-manufacturing", "toEntityId": "segment:server", "type": "upstream_of" },
+    { "id": "upstream:gpu-server", "fromEntityId": "segment:gpu", "toEntityId": "segment:server", "type": "upstream_of" },
+    { "id": "upstream:server-data-center", "fromEntityId": "segment:server", "toEntityId": "segment:data-center", "type": "upstream_of" },
+    { "id": "upstream:optical-data-center", "fromEntityId": "segment:optical-module", "toEntityId": "segment:data-center", "type": "upstream_of" },
+    { "id": "upstream:construction-data-center", "fromEntityId": "segment:data-center-construction", "toEntityId": "segment:data-center", "type": "upstream_of" },
+    { "id": "operates:shengyi-material", "fromEntityId": "company:shengyi-tech", "toEntityId": "segment:pcb-material", "type": "operates_in", "segmentRevenue": 92, "period": "2026-Mock" },
+    { "id": "operates:shengyi-pcb", "fromEntityId": "company:shengyi-tech", "toEntityId": "segment:pcb-manufacturing", "type": "operates_in", "segmentRevenue": 65, "period": "2026-Mock" },
+    { "id": "operates:wus-pcb", "fromEntityId": "company:wus-pcb", "toEntityId": "segment:pcb-manufacturing", "type": "operates_in", "segmentRevenue": 78, "period": "2026-Mock" },
+    { "id": "operates:scc-pcb", "fromEntityId": "company:scc-circuit", "toEntityId": "segment:pcb-manufacturing", "type": "operates_in", "segmentRevenue": 72, "period": "2026-Mock" },
+    { "id": "operates:nvidia-gpu", "fromEntityId": "company:nvidia", "toEntityId": "segment:gpu", "type": "operates_in", "segmentRevenue": 80, "period": "2026-Mock" },
+    { "id": "operates:amd-gpu", "fromEntityId": "company:amd", "toEntityId": "segment:gpu", "type": "operates_in", "segmentRevenue": 35, "period": "2026-Mock" },
+    { "id": "operates:inspur-server", "fromEntityId": "company:inspur", "toEntityId": "segment:server", "type": "operates_in", "segmentRevenue": 42, "period": "2026-Mock" },
+    { "id": "operates:foxconn-server", "fromEntityId": "company:foxconn-industrial", "toEntityId": "segment:server", "type": "operates_in", "segmentRevenue": 28, "period": "2026-Mock" },
+    { "id": "operates:sk-hbm", "fromEntityId": "company:sk-hynix", "toEntityId": "segment:hbm", "type": "operates_in", "segmentRevenue": 42, "period": "2026-Mock" },
+    { "id": "operates:samsung-hbm", "fromEntityId": "company:samsung", "toEntityId": "segment:hbm", "type": "operates_in", "segmentRevenue": 35, "period": "2026-Mock" },
+    { "id": "operates:micron-hbm", "fromEntityId": "company:micron", "toEntityId": "segment:hbm", "type": "operates_in", "segmentRevenue": 28, "period": "2026-Mock" },
+    { "id": "operates:optical-mock", "fromEntityId": "company:optical-mock", "toEntityId": "segment:optical-module", "type": "operates_in", "segmentRevenue": 26, "period": "2026-Mock" },
+    { "id": "operates:inspur-liquid", "fromEntityId": "company:inspur", "toEntityId": "segment:liquid-cooling", "type": "operates_in", "segmentRevenue": 42, "period": "2026-Mock" },
+    { "id": "operates:envicool-liquid", "fromEntityId": "company:envicool", "toEntityId": "segment:liquid-cooling", "type": "operates_in", "segmentRevenue": 29, "period": "2026-Mock" },
+    { "id": "operates:gaolan-liquid", "fromEntityId": "company:gaolan", "toEntityId": "segment:liquid-cooling", "type": "operates_in", "segmentRevenue": 18, "period": "2026-Mock" },
+    { "id": "operates:tongfei-liquid", "fromEntityId": "company:tongfei", "toEntityId": "segment:liquid-cooling", "type": "operates_in", "segmentRevenue": 11, "period": "2026-Mock" },
+    { "id": "operates:liquid-mock", "fromEntityId": "company:liquid-mock", "toEntityId": "segment:liquid-cooling", "type": "operates_in", "segmentRevenue": 9, "period": "2026-Mock" },
+    { "id": "operates:foxconn-rack", "fromEntityId": "company:foxconn-industrial", "toEntityId": "segment:rack-assembly", "type": "operates_in", "segmentRevenue": 16, "period": "2026-Mock" },
+    { "id": "operates:listed-b-construction", "fromEntityId": "company:listed-b", "toEntityId": "segment:data-center-construction", "type": "operates_in", "segmentRevenue": 20, "period": "2026-Mock" },
+    { "id": "owns:listed-a-liquid", "fromEntityId": "company:listed-a", "toEntityId": "company:liquid-mock", "type": "owns_stake_in", "ownershipPercent": 18, "segmentEntityId": "segment:liquid-cooling" },
+    { "id": "partner:listed-b-liquid", "fromEntityId": "company:listed-b", "toEntityId": "company:liquid-mock", "type": "project_partner_of", "projectName": "液冷数据中心一期", "segmentEntityId": "segment:liquid-cooling" },
+    { "id": "investor:listed-c-liquid", "fromEntityId": "company:listed-c", "toEntityId": "company:liquid-mock", "type": "project_investor_of", "projectName": "AI 算力中心建设项目", "segmentEntityId": "segment:liquid-cooling" }
+  ],
+  "events": [
+    { "id": "event:rubin-release", "title": "NVIDIA Rubin Release", "occurredAt": "2026-06-01", "startedAt": "2026-06-01", "endedAt": "2026-07-15", "summary": "新一代 GPU 平台发布，带动 GPU、HBM、服务器与液冷需求变化。", "affectedEntityIds": ["segment:gpu", "segment:hbm", "segment:server", "segment:liquid-cooling", "company:nvidia"], "impact": "positive" },
+    { "id": "event:server-architecture-upgrade", "title": "AI Server Architecture Upgrade", "occurredAt": "2025-10-15", "startedAt": "2025-10-15", "endedAt": "2026-01-15", "summary": "AI 服务器架构升级，推动 GPU、液冷、机柜组装和数据中心基础设施协同变化。", "affectedEntityIds": ["segment:data-center", "segment:server", "segment:gpu", "segment:liquid-cooling", "segment:rack-assembly", "company:inspur", "company:foxconn-industrial", "company:envicool", "company:gaolan", "company:tongfei", "company:liquid-mock"], "impact": "mixed" }
+  ],
+  "research": [
+    { "id": "research:ai-hardware-landscape", "title": "AI Hardware 产业链全景 Mock 研究", "type": "industry", "summary": "覆盖 GPU、HBM、PCB、服务器与数据中心的产业链结构。", "publishedAt": "2026-06-20", "entityIds": ["industry:ai-hardware", "segment:gpu", "segment:hbm", "segment:server", "segment:data-center"], "documentPath": "ai-hardware-landscape.md" },
+    { "id": "research:liquid-cooling-competition", "title": "AI 液冷产业链与竞争格局", "type": "technology", "summary": "比较液冷公司产品类型、客户群体、技术壁垒与上市关联。", "publishedAt": "2026-06-12", "entityIds": ["segment:liquid-cooling", "company:inspur", "company:envicool", "company:gaolan", "company:tongfei", "company:liquid-mock"], "documentPath": "liquid-cooling-competition.md" },
+    { "id": "research:server-architecture-mock", "title": "AI Server Architecture Upgrade 研究摘要", "type": "company", "summary": "跟踪服务器架构升级对 GPU、液冷、机柜和 PCB 供应链的影响。", "publishedAt": "2026-05-03", "entityIds": ["segment:server", "segment:gpu", "segment:liquid-cooling", "company:inspur", "company:foxconn-industrial"] }
+  ]
+}

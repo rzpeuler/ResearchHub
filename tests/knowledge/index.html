@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ResearchHub · AI Hardware Industry Graph</title>
+  <style>
+    :root { --ink:#172033; --muted:#6b7280; --line:#d7dee9; --canvas:#f4f7fb; --panel:#fff; --blue:#2563eb; --blue-soft:#eaf2ff; --green:#16834f; --amber:#a16207; --purple:#7e3f9b; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--canvas); font:14px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    button { font:inherit; }
+    .app { min-height:100vh; }
+    header { background:#101828; color:#fff; padding:18px 28px 16px; display:flex; justify-content:space-between; align-items:center; gap:18px; }
+    header h1 { margin:0; font-size:19px; letter-spacing:.01em; }
+    header p { margin:2px 0 0; color:#b8c4d4; font-size:12px; }
+    .badge { border:1px solid #52647d; color:#d5e1f0; padding:5px 9px; border-radius:999px; font-size:11px; white-space:nowrap; }
+    main { padding:22px 28px 34px; max-width:1500px; margin:0 auto; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:14px; }
+    .crumb { color:var(--muted); font-size:12px; }
+    .crumb button { border:0; background:transparent; color:var(--blue); padding:0; cursor:pointer; }
+    .toolbar .spacer { flex:1; }
+    .search-panel { display:flex; align-items:center; gap:4px; margin-left:auto; }
+    .search-input { width:210px; border:1px solid var(--line); border-radius:8px; padding:7px 9px; color:var(--ink); background:#fff; }
+    .search-input:focus { outline:2px solid #bfd5ff; border-color:var(--blue); }
+    .search-count { min-width:42px; color:var(--muted); font-size:11px; text-align:center; }
+    .search-button { width:28px; height:28px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); cursor:pointer; line-height:1; }
+    .search-button:hover { border-color:var(--blue); color:var(--blue); background:var(--blue-soft); }
+    .search-button:disabled { color:#a6b0bf; background:#f5f7fa; cursor:not-allowed; }
+    mark.search-hit { background:#ffe58a; color:inherit; border-radius:2px; padding:0 1px; }
+    mark.search-hit.current { background:#ff9f43; outline:2px solid #f97316; }
+    .button { border:1px solid var(--line); background:#fff; border-radius:8px; color:var(--ink); padding:7px 11px; cursor:pointer; }
+    .button:disabled { color:#9aa6b6; background:#f5f7fa; cursor:not-allowed; border-color:#e3e8ef; }
+    .button:disabled:hover { color:#9aa6b6; background:#f5f7fa; border-color:#e3e8ef; }
+    .icon-button { width:32px; height:32px; padding:0; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); cursor:pointer; font-size:18px; line-height:1; }
+    .icon-button:hover { border-color:var(--blue); color:var(--blue); background:var(--blue-soft); }
+    .icon-button:disabled { color:#9aa6b6; background:#f5f7fa; cursor:not-allowed; border-color:#e3e8ef; }
+    .icon-button:disabled:hover { color:#9aa6b6; background:#f5f7fa; border-color:#e3e8ef; }
+    .button:hover, .button.active { border-color:var(--blue); color:var(--blue); background:var(--blue-soft); }
+    .layout { display:grid; grid-template-columns:220px minmax(0, 1fr) 360px; gap:16px; align-items:start; }
+    .directory-panel { padding:14px 12px; position:sticky; top:14px; max-height:calc(100vh - 28px); overflow:auto; }
+    .directory-panel h2 { margin:0; font-size:15px; }
+    .directory-meta { margin:3px 0 12px; color:var(--muted); font-size:11px; }
+    .directory-list { display:grid; gap:3px; }
+    .directory-item, .directory-graph-item { width:100%; border:0; border-radius:7px; background:transparent; color:var(--ink); cursor:pointer; padding:7px 8px; text-align:left; font-size:12px; display:flex; align-items:center; justify-content:space-between; gap:6px; }
+    .directory-item:hover, .directory-item.active, .directory-graph-item:hover, .directory-graph-item.active { background:var(--blue-soft); color:var(--blue); }
+    .directory-item .directory-count { color:var(--muted); font-size:10px; }
+    .directory-children { margin:0 0 4px 10px; padding-left:8px; border-left:2px solid #dbe7f7; }
+    .directory-graph-item { padding:6px 8px; color:#315d98; font-size:11px; }
+    .center-column { display:flex; flex-direction:column; gap:16px; min-width:0; }
+    .right-column { display:flex; flex-direction:column; gap:16px; position:sticky; top:14px; max-height:calc(100vh - 28px); overflow:auto; min-width:0; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; box-shadow:0 5px 18px rgba(16,24,40,.04); }
+    .graph-panel { padding:18px; min-height:500px; }
+    .panel-title { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:15px; flex-wrap:wrap; }
+    .panel-title-left { display:flex; align-items:flex-start; gap:12px; min-width:0; }
+    .nav-actions { display:flex; align-items:center; gap:6px; }
+    .panel-title h2 { margin:0; font-size:16px; }
+    .panel-title span { color:var(--muted); font-size:12px; }
+    .graph { display:flex; flex-wrap:wrap; align-items:stretch; gap:12px; min-height:385px; padding:12px; border:1px dashed #bfccdd; border-radius:13px; background:linear-gradient(135deg,#f8fbff,#f5f8fc); }
+    .node { flex:var(--size) 1 145px; min-width:145px; min-height:142px; border:2px solid #9db6d6; border-radius:13px; background:#eef5ff; padding:13px; cursor:pointer; position:relative; overflow:hidden; transition:.15s ease; }
+    .node:hover, .node.selected { border-color:var(--blue); transform:translateY(-2px); box-shadow:0 7px 18px rgba(37,99,235,.13); }
+    .node.company { background:#fff; border-color:#d9dee7; min-height:110px; }
+    .node h3 { margin:0 0 4px; font-size:15px; }
+    .node small { color:var(--muted); }
+    .node .size { position:absolute; right:10px; top:10px; font-size:10px; color:#56708e; }
+    .node .children { display:flex; flex-wrap:wrap; gap:4px; margin-top:13px; }
+    .mini { background:#fff; border-radius:7px; padding:3px 6px; color:#48617d; font-size:10px; }
+    .details-panel { padding:18px; }
+    .details-panel h2 { margin:0; font-size:18px; }
+    .eyebrow { color:var(--muted); font-size:10px; letter-spacing:.08em; text-transform:uppercase; }
+    .details-panel section { border-top:1px solid var(--line); margin-top:15px; padding-top:14px; }
+    .details-panel section:first-of-type { border-top:0; margin-top:12px; padding-top:0; }
+    .details-panel h3 { margin:0 0 7px; font-size:12px; }
+    .meta { color:var(--muted); font-size:12px; }
+    .chips { display:flex; flex-wrap:wrap; gap:5px; }
+    .chip { background:#f0f4f9; color:#4e6179; border-radius:999px; padding:3px 7px; font-size:11px; }
+    .chip.private { background:#fff2d8; color:#9a6700; }
+    .row { padding:8px 0; border-bottom:1px solid #edf0f5; font-size:12px; }
+    .row:last-child { border-bottom:0; }
+    .row b { display:block; }
+    .link { color:var(--blue); text-decoration:none; }
+    .link:hover { text-decoration:underline; }
+    .stat { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+    .stat div { background:#f7f9fc; border-radius:8px; padding:8px; }
+    .stat strong { display:block; font-size:16px; }
+    .market-share { display:flex; flex-wrap:wrap; gap:7px; align-items:stretch; }
+    .share-card { min-height:130px; min-width:0; flex:var(--share) 1 110px; background:#dcecff; border-radius:10px; padding:9px; font-size:11px; border:1px solid rgba(37,99,235,.13); cursor:pointer; }
+    .share-card.selected { outline:2px solid var(--blue); outline-offset:1px; }
+    .share-card:nth-child(2n) { background:#dff5e8; }
+    .share-card:nth-child(3n) { background:#fff0d9; }
+    .share-card:nth-child(4n) { background:#f0e5fb; }
+    .share-card b { font-size:13px; }
+    .knowledge-intro { color:#40516a; margin:0; }
+    .forecast-chart { display:flex; align-items:flex-end; gap:9px; min-height:150px; padding:12px 8px 0; border:1px solid #e6ebf2; border-radius:10px; background:#fbfcfe; }
+    .forecast-item { display:flex; flex:1; flex-direction:column; align-items:center; justify-content:flex-end; gap:5px; min-width:42px; height:130px; }
+    .forecast-bar { width:100%; max-width:44px; min-height:8px; border-radius:7px 7px 2px 2px; background:linear-gradient(180deg,#4f8df7,#b9d3ff); }
+    .forecast-value, .forecast-label { color:var(--muted); font-size:10px; text-align:center; }
+    .data-table-wrap { overflow:auto; border:1px solid #e6ebf2; border-radius:10px; }
+    .data-table { width:100%; min-width:560px; border-collapse:collapse; font-size:11px; }
+    .data-table th, .data-table td { padding:8px 9px; border-bottom:1px solid #edf0f5; text-align:left; vertical-align:top; }
+    .data-table th { color:#52647d; background:#f7f9fc; font-weight:600; white-space:nowrap; }
+    .data-table tr:last-child td { border-bottom:0; }
+    .data-table tr.selected-row td { background:#eef5ff; }
+    .data-table tr[data-company] { cursor:pointer; }
+    .data-table tr[data-company]:hover td { background:#f3f7ff; }
+    .glossary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; }
+    .glossary-item { padding:9px; border-radius:9px; background:#f7f9fc; font-size:11px; }
+    .glossary-item b { display:block; margin-bottom:3px; }
+    .product-images { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; }
+    .product-images figure { margin:0; }
+    .product-images img { display:block; width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:9px; border:1px solid var(--line); }
+    .product-images figcaption { color:var(--muted); font-size:10px; margin-top:4px; }
+    .empty { color:var(--muted); padding:30px 12px; text-align:center; }
+    .core-view-panel, .timeline { margin:0; padding:16px 18px; position:static; max-height:none; overflow:visible; }
+    .core-view { padding:0; margin:0; }
+    .core-view h2 { margin:0 0 9px; font-size:15px; }
+    .core-view-target { color:var(--muted); font-size:11px; margin-bottom:9px; }
+    .core-view-grid { display:grid; gap:7px; }
+    .core-view-block { padding:8px 9px; border-radius:8px; background:#f7f9fc; border-left:3px solid #93a4ba; }
+    .core-view-block.bullish { border-left-color:#16834f; background:#f0faf4; }
+    .core-view-block.bearish { border-left-color:#c47b0a; background:#fff8e8; }
+    .core-view-block.contradictions { border-left-color:#7e3f9b; background:#faf5ff; }
+    .core-view-block.logic { border-left-color:#2563eb; background:#f2f6ff; }
+    .core-view-block h3 { margin:0 0 4px; font-size:11px; }
+    .core-view-block ul { margin:0; padding-left:16px; color:#40516a; font-size:11px; }
+    .core-view-block li + li { margin-top:3px; }
+    .timeline h2 { margin:0 0 12px; font-size:15px; }
+    .events { position:relative; }
+    .timeline-plot { position:relative; height:var(--plot-height); margin:12px 0 0; padding-left:52px; }
+    .timeline-rail { position:absolute; left:28px; top:0; bottom:0; width:3px; border-radius:999px; background:#c4d1e3; }
+    .timeline-scale { position:absolute; inset:0 auto 0 0; width:43px; color:var(--muted); font-size:10px; }
+    .timeline-scale span { position:absolute; left:0; transform:translateY(-50%); white-space:nowrap; }
+    .timeline-scale span::after { content:""; position:absolute; left:39px; top:50%; width:9px; height:1px; background:#a9bbd3; }
+    .timeline-event { position:absolute; left:52px; right:0; min-height:84px; padding:10px 11px 10px 15px; border:1px solid #e2e8f1; border-radius:9px; background:#f7f9fc; box-shadow:0 2px 8px rgba(16,24,40,.03); }
+    .event-point { position:absolute; left:-31px; top:14px; width:13px; height:13px; border:3px solid #2563eb; border-radius:50%; background:#fff; box-shadow:0 0 0 3px #eaf2ff; }
+    .event-point::after { content:""; position:absolute; left:10px; top:3px; width:17px; height:2px; background:#8fb8ff; }
+    .event-impact { display:inline-block; margin-left:5px; padding:2px 6px; border-radius:999px; background:#eaf2ff; color:#2563eb; font-size:10px; vertical-align:1px; }
+    .event-impact.positive { background:#eaf8ef; color:#16834f; }
+    .event-impact.negative { background:#fff0ed; color:#c2410c; }
+    .event-impact.mixed { background:#fff8e8; color:#a16207; }
+    .timeline-event time { color:var(--muted); font-size:11px; }
+    .timeline-event b { display:block; margin:3px 0; }
+    .timeline-event p { color:var(--muted); margin:0; font-size:12px; }
+    .note { margin-top:12px; color:var(--muted); font-size:11px; }
+    @media (max-width:1200px) { .layout { grid-template-columns:190px minmax(0, 1fr) 320px; } }
+    @media (max-width:1000px) { .layout { grid-template-columns:1fr; } .directory-panel, .right-column { position:static; max-height:none; overflow:visible; } }
+    @media (max-width:640px) { header, main { padding-left:14px; padding-right:14px; } .graph-panel { padding:12px; } .node { min-width:125px; } }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header><div><h1>ResearchHub Knowledge Layer · AI Hardware Industry Graph</h1><p>Prototype only · Entity / Relation / Event / Research</p></div><span class="badge">marketSize / revenue = mock-index</span></header>
+  <main>
+    <div class="toolbar"><div id="breadcrumbs" class="crumb"></div><div class="spacer"></div><div id="searchPanel" class="search-panel" role="search"><input id="pageSearch" class="search-input" type="search" placeholder="搜索页面内容…" aria-label="搜索页面内容" autocomplete="off"><span id="searchCount" class="search-count" aria-live="polite">—</span><button id="searchPrev" class="search-button" type="button" title="上一个匹配" aria-label="上一个匹配">↑</button><button id="searchNext" class="search-button" type="button" title="下一个匹配" aria-label="下一个匹配">↓</button><button id="searchClear" class="search-button" type="button" title="清除搜索" aria-label="清除搜索">×</button></div></div>
+    <div class="layout"><aside class="panel directory-panel"><h2>图谱目录</h2><p id="directoryMeta" class="directory-meta">申万一级行业</p><div id="industryDirectory" class="directory-list"></div></aside><div class="center-column"><section class="panel graph-panel"><div class="panel-title"><div class="panel-title-left"><div><h2 id="graphTitle"></h2><span id="graphSubtitle"></span></div></div><div class="nav-actions"><button id="homeButton" class="icon-button" type="button" title="返回产业全景" aria-label="返回产业全景">⌂</button><button id="backButton" class="icon-button" type="button" title="上一级" aria-label="上一级">↑</button><button id="enterButton" class="icon-button" type="button" title="进入下一级" aria-label="进入下一级">↓</button></div></div><div id="graph" class="graph"></div><p class="note">提示：点击节点查看详情；有子节点时可进入下一层。节点面积按 marketSize 相对值映射。</p></section><section id="details" class="panel details-panel"></section></div><aside class="right-column"><section class="panel core-view-panel"><div id="coreView" class="core-view"><h2 id="coreViewTitle">核心观点</h2><div id="coreViewContent"></div></div></section><section class="panel timeline"><h2 id="timelineTitle">事件时间轴</h2><p id="timelineSubtitle" class="meta">时间从上到下递增，事件点按发生日期定位。</p><div id="events" class="events"></div></section></aside></div>
+  </main>
+</div>
+<script>
+  const datasetUrl = './industry-graph.json';
+  const directoryUrl = './industry-directory.json';
+  const state = { dataset: null, directory: null, directoryIndustryId: 'sw:electronics', directoryGraphId: 'industry:ai-hardware', focusId: 'industry:ai-hardware', selectedId: 'industry:ai-hardware', selectedCompanyId: null, pathIds: ['industry:ai-hardware'], mode: 'overview', searchQuery: '', searchMatchIndex: 0, searchMatches: [] };
+  const $ = (selector) => document.querySelector(selector);
+  const entity = (id) => state.dataset.entities.find((item) => item.id === id);
+  const relationsFrom = (id, type) => state.dataset.relations.filter((item) => item.fromEntityId === id && (!type || item.type === type));
+  const relationsTo = (id, type) => state.dataset.relations.filter((item) => item.toEntityId === id && (!type || item.type === type));
+  const children = (id) => relationsFrom(id, 'contains').map((item) => entity(item.toEntityId)).filter(Boolean);
+  const researchFor = (id) => state.dataset.research.filter((item) => item.entityIds.includes(id));
+  const money = (value) => value === undefined ? '—' : String(value);
+  const hrefForResearch = (item) => item.url || (item.documentPath ? './' + item.documentPath : '');
+  const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' }[char]));
+
+  function clearSearchHighlights() {
+    document.querySelectorAll('mark.search-hit').forEach((mark) => {
+      const parent = mark.parentNode;
+      if (!parent) return;
+      parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+      parent.normalize();
+    });
+    state.searchMatches = [];
+  }
+
+  function updateSearchControls() {
+    const hasMatches = state.searchMatches.length > 0;
+    $('#searchCount').textContent = state.searchQuery.trim() ? `${hasMatches ? state.searchMatchIndex + 1 : 0}/${state.searchMatches.length}` : '—';
+    $('#searchPrev').disabled = !hasMatches;
+    $('#searchNext').disabled = !hasMatches;
+  }
+
+  function focusSearchMatch(index) {
+    const matches = state.searchMatches;
+    if (!matches.length) { updateSearchControls(); return; }
+    state.searchMatchIndex = (index + matches.length) % matches.length;
+    matches.forEach((match, matchIndex) => match.classList.toggle('current', matchIndex === state.searchMatchIndex));
+    matches[state.searchMatchIndex].scrollIntoView({ behavior:'smooth', block:'center' });
+    updateSearchControls();
+  }
+
+  function refreshSearchHighlights() {
+    clearSearchHighlights();
+    const query = state.searchQuery.trim();
+    if (!query) { updateSearchControls(); return; }
+    const root = document.body;
+    if (!root) return;
+    const queryLower = query.toLocaleLowerCase();
+    const walker = document.createTreeWalker(root, 4);
+    const textNodes = [];
+    let currentNode;
+    while ((currentNode = walker.nextNode())) {
+      if (currentNode.parentElement?.closest('#searchPanel,script,style')) continue;
+      textNodes.push(currentNode);
+    }
+    textNodes.forEach((textNode) => {
+      const value = textNode.nodeValue || '';
+      const valueLower = value.toLocaleLowerCase();
+      let cursor = 0;
+      let matchStart = valueLower.indexOf(queryLower, cursor);
+      if (matchStart < 0) return;
+      const fragment = document.createDocumentFragment();
+      while (matchStart >= 0) {
+        if (matchStart > cursor) fragment.appendChild(document.createTextNode(value.slice(cursor, matchStart)));
+        const mark = document.createElement('mark');
+        mark.className = 'search-hit';
+        mark.textContent = value.slice(matchStart, matchStart + query.length);
+        fragment.appendChild(mark);
+        state.searchMatches.push(mark);
+        cursor = matchStart + query.length;
+        matchStart = valueLower.indexOf(queryLower, cursor);
+      }
+      if (cursor < value.length) fragment.appendChild(document.createTextNode(value.slice(cursor)));
+      textNode.parentNode?.replaceChild(fragment, textNode);
+    });
+    state.searchMatchIndex = 0;
+    focusSearchMatch(0);
+  }
+
+  function openGraph(graphId) {
+    state.directoryGraphId = graphId;
+    state.focusId = graphId;
+    state.selectedId = graphId;
+    state.selectedCompanyId = null;
+    state.pathIds = [graphId];
+    delete state.selectedSegmentId;
+  }
+
+  function renderDirectory() {
+    if (!state.directory) return;
+    const industries = state.directory.industries || [];
+    $('#directoryMeta').textContent = `${state.directory.classification} · ${industries.length} 个行业`;
+    $('#industryDirectory').innerHTML = industries.map((industry) => {
+      const graphs = industry.graphs || [];
+      const active = industry.id === state.directoryIndustryId ? ' active' : '';
+      const graphCount = graphs.length ? `<span class="directory-count">${graphs.length} 个图谱</span>` : '';
+      const graphHtml = graphs.length ? `<div class="directory-children">${graphs.map((graph) => `<button class="directory-graph-item${state.directoryGraphId === graph.id ? ' active' : ''}" type="button" data-directory-graph="${graph.id}" data-directory-industry="${industry.id}"><span>${escapeHtml(graph.name)}</span><span class="directory-count">${escapeHtml(graph.status || 'mock')}</span></button>`).join('')}</div>` : '';
+      return `<div class="directory-group"><button class="directory-item${active}" type="button" data-directory-industry="${industry.id}"><span>${escapeHtml(industry.name)}</span>${graphCount}</button>${graphHtml}</div>`;
+    }).join('');
+    document.querySelectorAll('.directory-item[data-directory-industry]').forEach((button) => button.addEventListener('click', () => {
+      const industry = state.directory.industries.find((item) => item.id === button.dataset.directoryIndustry);
+      const graph = industry?.graphs?.[0];
+      state.directoryIndustryId = button.dataset.directoryIndustry;
+      if (graph) openGraph(graph.id);
+      else { state.directoryGraphId = null; state.focusId = null; state.selectedId = null; state.selectedCompanyId = null; state.pathIds = []; }
+      render();
+    }));
+    document.querySelectorAll('[data-directory-graph]').forEach((button) => button.addEventListener('click', () => {
+      state.directoryIndustryId = button.dataset.directoryIndustry;
+      openGraph(button.dataset.directoryGraph);
+      render();
+    }));
+  }
+
+  function renderBreadcrumbs() {
+    const path = state.pathIds.map((id) => entity(id)).filter(Boolean);
+    $('#breadcrumbs').innerHTML = path.map((item, index) => `<button data-focus="${item.id}">${escapeHtml(item.name)}</button>${index < path.length - 1 ? ' / ' : ''}`).join('');
+    document.querySelectorAll('[data-focus]').forEach((button) => button.addEventListener('click', () => { const index = state.pathIds.indexOf(button.dataset.focus); const focusEntity = entity(button.dataset.focus); state.pathIds = index >= 0 ? state.pathIds.slice(0, index + 1) : [button.dataset.focus]; state.focusId = button.dataset.focus; state.selectedId = button.dataset.focus; state.selectedCompanyId = null; state.selectedSegmentId = focusEntity?.type === 'segment' ? focusEntity.id : undefined; state.mode = 'overview'; render(); }));
+  }
+
+  function renderGraph() {
+    if (!state.directoryGraphId) {
+      const directoryIndustry = state.directory?.industries?.find((item) => item.id === state.directoryIndustryId);
+      $('#graphTitle').textContent = directoryIndustry?.name || '申万一级行业';
+      $('#graphSubtitle').textContent = '当前一级行业暂未接入 Mock 图谱';
+      $('#backButton').disabled = true;
+      $('#enterButton').disabled = true;
+      $('#graph').innerHTML = '<div class="empty">该一级行业暂未接入产业图谱。可从左侧目录切换到已接入的 AI Hardware 图谱。</div>';
+      return;
+    }
+    const focus = entity(state.focusId);
+    const items = children(state.focusId);
+    $('#graphTitle').textContent = focus ? focus.name : 'AI Hardware';
+    $('#graphSubtitle').textContent = items.length ? `${items.length} 个包含环节 · 面积映射 marketSize` : '当前节点暂无嵌套子节点';
+    const canEnter = state.selectedId !== state.focusId && children(state.selectedId).length > 0;
+    $('#backButton').disabled = state.pathIds.length <= 1;
+    $('#enterButton').disabled = !canEnter;
+    $('#graph').innerHTML = items.length ? items.map((item) => {
+      const itemChildren = children(item.id);
+      const selected = item.id === state.selectedId ? ' selected' : '';
+      const size = Math.max(1, item.marketSize || 1);
+      return `<article class="node${selected}" style="--size:${size}" data-node="${item.id}"><span class="size">${size}</span><h3>${escapeHtml(item.name)}</h3><small>${item.type === 'segment' ? '产业环节' : '节点'} · marketSize ${size}</small>${itemChildren.length ? `<div class="children">${itemChildren.slice(0,4).map((child) => `<span class="mini">${escapeHtml(child.name)}</span>`).join('')}${itemChildren.length > 4 ? '<span class="mini">…</span>' : ''}</div>` : ''}</article>`;
+    }).join('') : '<div class="empty">暂无可展示的子节点。可从面包屑返回上一级。</div>';
+    document.querySelectorAll('[data-node]').forEach((node) => node.addEventListener('click', () => { const selected = entity(node.dataset.node); state.selectedId = node.dataset.node; state.selectedCompanyId = null; if (selected?.type === 'segment') state.selectedSegmentId = selected.id; state.mode = 'overview'; render(); }));
+  }
+
+  function overviewHtml(selected, businessRelations) {
+    if (selected.type !== 'company') return '<section><p class="meta">当前节点用于展示产业层级、上下游与关联研究。</p></section>';
+    const financials = selected.financials || {};
+    const status = selected.listingStatus === 'listed' ? '上市' : '非上市';
+    const businessHtml = businessRelations.length ? `<div style="margin-top:12px"><h3>对应业务</h3>${businessRelations.map((relation) => `<div class="row">${escapeHtml(entity(relation.toEntityId)?.name || '')}<br>业务营收 ¥${money(relation.segmentRevenue)} · market share view</div>`).join('')}</div>` : '';
+    return `<section><div class="stat"><div><span class="meta">总营收</span><strong>¥${money(financials.totalRevenue)}</strong><span class="meta">${escapeHtml(financials.period || '')}</span></div><div><span class="meta">上市状态</span><strong>${status}</strong><span class="meta">${escapeHtml(selected.ticker || 'private')}</span></div></div><div style="margin-top:12px"><h3>公司画像</h3>${profileHtml(selected)}</div>${businessHtml}</section>`;
+  }
+
+  function researchRow(item) {
+    const href = hrefForResearch(item);
+    const link = href ? `<br><a class="link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">打开研报 ↗</a>` : '';
+    return `<div class="row"><b>${escapeHtml(item.title)}</b><span class="meta">${escapeHtml(item.publishedAt)} · ${escapeHtml(item.summary)}</span>${link}</div>`;
+  }
+
+  function profileHtml(company) {
+    const profile = company.profile || { productTypes:[], customerSegments:[], technologyMoats:[], customerCertifications:[] };
+    const groups = [['细分产品', profile.productTypes], ['客户群体', profile.customerSegments], ['技术壁垒', profile.technologyMoats], ['大客户认证', profile.customerCertifications]];
+    return groups.map(([label, values]) => `<div class="row"><b>${label}</b><div class="chips">${values.map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join('') || '<span class="meta">暂无 mock 记录</span>'}</div></div>`).join('');
+  }
+
+  function relationLabel(type) { return ({ owns_stake_in:'股权穿透', project_partner_of:'项目合作', project_investor_of:'项目投资' })[type] || type; }
+
+  function renderIndustryKnowledge(selected) {
+    const knowledge = selected.knowledge;
+    if (!knowledge) return '<section><h3>行业简介</h3><p class="knowledge-intro">当前节点暂无结构化行业资料。</p></section>';
+    const introHtml = knowledge.description ? `<section><h3>行业简介</h3><p class="knowledge-intro">${escapeHtml(knowledge.description)}</p></section>` : '';
+    const forecast = knowledge.marketForecast || [];
+    const maxForecast = Math.max(...forecast.map((point) => point.value), 1);
+    const forecastHtml = forecast.length ? `<section><h3>市场规模预测</h3><div class="forecast-chart">${forecast.map((point) => `<div class="forecast-item"><span class="forecast-value">${escapeHtml(point.value)}<br>${escapeHtml(point.unit)}</span><div class="forecast-bar" style="height:${Math.max((point.value / maxForecast) * 100, 8)}%" title="${escapeHtml(point.year)} · ${escapeHtml(point.value)} ${escapeHtml(point.unit)}"></div><span class="forecast-label">${escapeHtml(point.year)}</span></div>`).join('')}</div><p class="meta">Mock 预测口径，仅用于验证时间序列展示。</p></section>` : '';
+    const productComparison = selected.type === 'segment' ? (knowledge.productComparison || []) : [];
+    const productTableHtml = productComparison.length ? `<section><h3>细分产品对比</h3><div class="data-table-wrap"><table class="data-table"><thead><tr><th>产品</th><th>典型场景</th><th>差异化要素</th></tr></thead><tbody>${productComparison.map((row) => `<tr><td><b>${escapeHtml(row.product)}</b></td><td>${escapeHtml(row.useCase)}</td><td>${escapeHtml(row.differentiator)}</td></tr>`).join('')}</tbody></table></div></section>` : '';
+    const glossary = knowledge.glossary || [];
+    const glossaryHtml = glossary.length ? `<section><h3>行业名词科普</h3><div class="glossary-grid">${glossary.map((item) => `<div class="glossary-item"><b>${escapeHtml(item.term)}</b><span>${escapeHtml(item.definition)}</span></div>`).join('')}</div></section>` : '';
+    const images = knowledge.images || [];
+    const imagesHtml = images.length ? `<section><h3>行业产品图片</h3><div class="product-images">${images.map((image) => `<figure><img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.caption)}"><figcaption>${escapeHtml(image.caption)}${image.source ? ` · ${escapeHtml(image.source)}` : ''}</figcaption></figure>`).join('')}</div></section>` : '';
+    return [introHtml, forecastHtml, productTableHtml, glossaryHtml, imagesHtml].join('');
+  }
+
+  function renderMarketShareTable(entries, selectedId) {
+    return `<div class="data-table-wrap"><table class="data-table"><thead><tr><th>企业</th><th>上市状态</th><th>总营收</th><th>业务营收</th><th>市场份额</th><th>主要产品</th><th>客户群体</th></tr></thead><tbody>${entries.map(({ company, segmentRevenue, marketShare }) => `<tr data-company="${company.id}" class="${company.id === selectedId ? 'selected-row' : ''}"><td><b>${escapeHtml(company.name)}</b>${company.ticker ? `<br><span class="meta">${escapeHtml(company.ticker)}</span>` : ''}</td><td>${company.listingStatus === 'private' ? '<span class="chip private">非上市</span>' : '<span class="chip">上市</span>'}</td><td>${money(company.financials?.totalRevenue)}</td><td>${money(segmentRevenue)}</td><td>${(marketShare * 100).toFixed(0)}%</td><td>${escapeHtml((company.profile?.productTypes || []).slice(0, 2).join('、') || '—')}</td><td>${escapeHtml((company.profile?.customerSegments || []).slice(0, 2).join('、') || '—')}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  function renderPersistentMarketShare(segment, selectedId) {
+    const relations = relationsTo(segment.id, 'operates_in').filter((item) => item.segmentRevenue !== undefined);
+    if (!relations.length) return '<div class="empty">当前环节暂无公司业务营收 mock 数据，市场份额图表将在补充数据后显示。</div>';
+    const total = relations.reduce((sum, item) => sum + item.segmentRevenue, 0);
+    const entries = relations.map((relation) => { const company = entity(relation.fromEntityId); const marketShare = total ? relation.segmentRevenue / total : 0; return { company, segmentRevenue: relation.segmentRevenue, marketShare }; }).filter((entry) => entry.company).sort((left, right) => right.segmentRevenue - left.segmentRevenue);
+    return `<p class="meta">当前环节：${escapeHtml(segment.name)} · 业务营收合计 ${money(total)} · mock 口径</p><div class="market-share">${entries.map(({ company, segmentRevenue, marketShare }) => `<div class="share-card${company.id === selectedId ? ' selected' : ''}" data-company="${company.id}" style="--share:${Math.max(marketShare * 100, 10)}"><b>${escapeHtml(company.name)}</b><br>业务营收 ${money(segmentRevenue)}<br>市场份额 ${(marketShare * 100).toFixed(0)}%<br>总营收 ${money(company.financials?.totalRevenue)}<div class="chips" style="margin-top:7px">${company.listingStatus === 'private' ? '<span class="chip private">非上市公司</span>' : '<span class="chip">上市公司</span>'}${(company.profile?.productTypes || []).slice(0, 2).map((tag) => `<span class="chip">${escapeHtml(tag)}</span>`).join('')}</div></div>`).join('')}</div><h4>企业对比表</h4>${renderMarketShareTable(entries, selectedId)}`;
+  }
+
+  function renderCoreView(selected, selectedCompany) {
+    const target = selectedCompany || selected;
+    $('#coreViewTitle').textContent = target ? `核心观点 · ${target.name}` : '核心观点';
+    const view = target?.coreView;
+    if (!view) {
+      $('#coreViewContent').innerHTML = '<div class="empty">当前对象暂无核心观点 Mock 数据。</div>';
+      return;
+    }
+    const groups = [['bullish', '看多观点', 'bullish'], ['bearish', '看空观点', 'bearish'], ['contradictions', '核心矛盾', 'contradictions'], ['logic', '驱动逻辑', 'logic']];
+    const blocks = groups.map(([key, label, className]) => {
+      const values = Array.isArray(view[key]) ? view[key] : [];
+      return values.length ? `<div class="core-view-block ${className}"><h3>${label}</h3><ul>${values.map((value) => `<li>${escapeHtml(value)}</li>`).join('')}</ul></div>` : '';
+    }).join('');
+    $('#coreViewContent').innerHTML = blocks || '<div class="empty">当前对象暂无核心观点 Mock 数据。</div>';
+  }
+
+  function renderKnowledgeDetails() {
+    if (!state.directoryGraphId) {
+      const directoryIndustry = state.directory?.industries?.find((item) => item.id === state.directoryIndustryId);
+      $('#details').innerHTML = `<div class="empty"><h2>${escapeHtml(directoryIndustry?.name || '申万一级行业')}</h2><p>该一级行业暂未接入产业图谱 Mock 数据。</p></div>`;
+      return;
+    }
+    const selected = entity(state.selectedId);
+    if (!selected) return;
+    const contained = children(selected.id);
+    const industryResearch = ['industry', 'segment'].includes(selected.type) ? researchFor(selected.id) : [];
+    const activeSegment = entity(state.selectedSegmentId || (selected.type === 'segment' ? selected.id : ''));
+    const selectedCompany = state.selectedCompanyId ? entity(state.selectedCompanyId) : null;
+    const companyRelations = selectedCompany ? relationsFrom(selectedCompany.id, 'operates_in') : [];
+    const listedLinks = selectedCompany ? state.dataset.relations.filter((relation) => ['owns_stake_in','project_partner_of','project_investor_of'].includes(relation.type) && (relation.fromEntityId === selectedCompany.id || relation.toEntityId === selectedCompany.id) && (!activeSegment || relation.segmentEntityId === activeSegment.id)).map((relation) => ({ relation, company: entity(relation.fromEntityId === selectedCompany.id ? relation.toEntityId : relation.fromEntityId) })).filter((item) => item.company?.listingStatus === 'listed') : [];
+    const header = `<div class="eyebrow">Selected ${escapeHtml(selected.type)}</div><h2>${escapeHtml(selected.name)}</h2><div class="toolbar" style="margin:10px 0 0"><span class="meta">${selected.marketSize !== undefined ? `marketSize ${selected.marketSize} · ${selected.marketSizeUnit}` : ''}</span></div>`;
+    const primary = renderIndustryKnowledge(selected);
+    const containedHtml = contained.length ? `<section><h3>包含环节</h3><div class="chips">${contained.map((item) => `<span class="chip">${escapeHtml(item.name)}</span>`).join('')}</div></section>` : '';
+    const marketHtml = `<section><h3>市场份额</h3>${activeSegment?.type === 'segment' ? renderPersistentMarketShare(activeSegment, state.selectedCompanyId) : '<div class="empty">当前节点暂无直接企业市场份额数据。</div>'}</section>`;
+    const listedHtml = listedLinks.length ? `<section><h3>上市关联 · 当前业务</h3>${listedLinks.map(({ relation, company }) => `<div class="row"><b>${relationLabel(relation.type)}</b>${escapeHtml(company.name)}${relation.ownershipPercent ? ` · 持股 ${relation.ownershipPercent}%` : ''}${relation.projectName ? ` · ${escapeHtml(relation.projectName)}` : ''}</div>`).join('')}</section>` : '';
+    const industryResearchHtml = industryResearch.length ? `<section><h3>行业相关研报</h3>${industryResearch.map(researchRow).join('')}</section>` : '';
+    const companyResearch = selectedCompany ? researchFor(selectedCompany.id) : [];
+    const companyResearchHtml = companyResearch.length ? `<section><h3>公司相关研报</h3>${companyResearch.map(researchRow).join('')}</section>` : '';
+    const companyHtml = activeSegment?.type === 'segment' ? `<section><h3>公司详情</h3>${selectedCompany ? overviewHtml(selectedCompany, companyRelations) + listedHtml + companyResearchHtml : '<div class="empty">点击上方企业卡片或企业对比表中的一行查看公司详情。</div>'}</section>` : '';
+    $('#details').innerHTML = [header, primary, industryResearchHtml, containedHtml, marketHtml, companyHtml].join('');
+    document.querySelectorAll('[data-company]').forEach((card) => card.addEventListener('click', () => { state.selectedCompanyId = card.dataset.company; render(); }));
+  }
+
+  function renderEvents() {
+    if (!state.directoryGraphId) {
+      $('#timelineTitle').textContent = '事件时间轴';
+      $('#timelineSubtitle').textContent = '当前一级行业暂未接入图谱事件';
+      $('#events').innerHTML = '<div class="empty">当前目录暂无可展示的事件。</div>';
+      return;
+    }
+    const selected = entity(state.selectedId);
+    const selectedCompany = state.selectedCompanyId ? entity(state.selectedCompanyId) : null;
+    const target = selectedCompany || selected;
+    $('#timelineTitle').textContent = target?.type === 'industry' ? '事件时间轴' : `事件时间轴 · ${target?.name || '当前节点'}`;
+    const allEvents = state.dataset.events.slice();
+    const events = target?.type === 'industry' ? allEvents : allEvents.filter((event) => target && event.affectedEntityIds.includes(target.id));
+    $('#timelineSubtitle').textContent = target?.type === 'industry' ? `全产业事件 · 共 ${events.length} 项` : `当前对象：${target?.name || '当前节点'} · 直接影响事件 ${events.length} 项`;
+    const sortedEvents = events.sort((a,b) => a.occurredAt.localeCompare(b.occurredAt));
+    if (!sortedEvents.length) { $('#events').innerHTML = '<div class="empty">当前对象暂无直接关联事件。</div>'; return; }
+    const day = 24 * 60 * 60 * 1000;
+    const dateValue = (value) => Date.parse(`${value}T00:00:00Z`);
+    const eventDates = sortedEvents.map((event) => dateValue(event.occurredAt));
+    const rawMinDate = Math.min(...eventDates);
+    const rawMaxDate = Math.max(...eventDates);
+    const padding = rawMinDate === rawMaxDate ? 15 * day : 0;
+    const minDate = rawMinDate - padding;
+    const maxDate = rawMaxDate + padding;
+    const span = Math.max(maxDate - minDate, day);
+    const label = (value) => new Date(value).toISOString().slice(0, 10);
+    const dateSpanDays = span / day;
+    const minGap = 104;
+    const basePlotHeight = Math.min(680, Math.max(300, 180 + dateSpanDays * 1.15));
+    const plotHeight = Math.max(basePlotHeight, Math.max(0, sortedEvents.length - 1) * minGap + 60);
+    const rawPositions = eventDates.map((eventDate) => 30 + ((eventDate - minDate) / span) * (plotHeight - 60));
+    const positions = [];
+    rawPositions.forEach((position, index) => { positions.push(index === 0 ? position : Math.max(position, positions[index - 1] + minGap)); });
+    const scale = `<div class="timeline-plot" style="--plot-height:${plotHeight}px"><div class="timeline-rail"></div><div class="timeline-scale"><span style="top:0">${label(minDate)}</span><span style="top:50%">${label(minDate + span / 2)}</span><span style="top:100%">${label(maxDate)}</span></div>`;
+    const impactLabel = { positive:'利好', negative:'利空', mixed:'混合影响', neutral:'中性' };
+    const rows = sortedEvents.map((event, index) => {
+      const impact = impactLabel[event.impact] || '中性';
+      return `<article class="timeline-event" style="top:${positions[index]}px"><div class="event-point" title="${escapeHtml(event.occurredAt)}"></div><time>${escapeHtml(event.occurredAt)}</time><b>${escapeHtml(event.title)}<span class="event-impact ${escapeHtml(event.impact)}">${impact}</span></b><p>${escapeHtml(event.summary)}</p></article>`;
+    }).join('');
+    $('#events').innerHTML = scale + rows + '</div>';
+  }
+
+  function resetToHome() { state.directoryIndustryId = 'sw:electronics'; openGraph('industry:ai-hardware'); render(); }
+  function goBack() { if (!state.directoryGraphId || state.pathIds.length <= 1) return; state.pathIds = state.pathIds.slice(0, -1); state.focusId = state.pathIds[state.pathIds.length - 1]; state.selectedId = state.focusId; state.selectedCompanyId = null; state.selectedSegmentId = entity(state.focusId)?.type === 'segment' ? state.focusId : undefined; state.mode = 'overview'; render(); }
+  function enterSelected() { const selected = entity(state.selectedId); if (!state.directoryGraphId || !selected || state.selectedId === state.focusId || !children(selected.id).length) return; state.focusId = selected.id; state.pathIds = state.pathIds.includes(selected.id) ? state.pathIds.slice(0, state.pathIds.indexOf(selected.id) + 1) : [...state.pathIds, selected.id]; state.selectedCompanyId = null; state.selectedSegmentId = selected.type === 'segment' ? selected.id : state.selectedSegmentId; state.mode = 'overview'; render(); }
+  function render() { renderDirectory(); renderBreadcrumbs(); renderGraph(); renderKnowledgeDetails(); renderCoreView(entity(state.selectedId), state.selectedCompanyId ? entity(state.selectedCompanyId) : null); renderEvents(); refreshSearchHighlights(); }
+  $('#homeButton').addEventListener('click', resetToHome);
+  $('#backButton').addEventListener('click', goBack);
+  $('#enterButton').addEventListener('click', enterSelected);
+  $('#pageSearch').addEventListener('input', (event) => { state.searchQuery = event.target.value; state.searchMatchIndex = 0; refreshSearchHighlights(); });
+  $('#pageSearch').addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); focusSearchMatch(state.searchMatchIndex + (event.shiftKey ? -1 : 1)); } if (event.key === 'Escape') { event.target.value = ''; state.searchQuery = ''; state.searchMatchIndex = 0; refreshSearchHighlights(); } });
+  $('#searchPrev').addEventListener('click', () => focusSearchMatch(state.searchMatchIndex - 1));
+  $('#searchNext').addEventListener('click', () => focusSearchMatch(state.searchMatchIndex + 1));
+  $('#searchClear').addEventListener('click', () => { $('#pageSearch').value = ''; state.searchQuery = ''; state.searchMatchIndex = 0; refreshSearchHighlights(); $('#pageSearch').focus(); });
+  Promise.all([fetch(datasetUrl).then((response) => response.json()), fetch(directoryUrl).then((response) => response.json())]).then(([dataset, directory]) => { state.dataset = dataset; state.directory = directory; render(); }).catch((error) => { $('#graph').innerHTML = `<div class="empty">无法读取图谱数据：${escapeHtml(error.message)}</div>`; });
+</script>
+</body>
+</html>
