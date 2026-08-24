@@ -112,3 +112,13 @@ Plugin and Evidence mapping, and is covered by an opt-in Equity Research
 Workflow integration test. Tushare remains available as an explicit optional
 Provider. The AKShare test requires `RUN_REAL_AKSHARE_FINANCIAL=1` and
 `AKSHARE_FINANCIAL_ENDPOINT`; default tests remain network-free.
+
+The first real Equity Research Pipeline validation is now implemented as an
+opt-in integration test. It composes GDELT News, the default AKShare Financial
+Provider, the DeepSeek Harness LLM Runtime, ResearchManager, and the existing
+six-step Equity Research Workflow. The test verifies real provider payloads
+reach all five LLM Skill calls, the Workflow completes, the ResearchReport and
+Artifact relationships serialize correctly, and Evaluation returns a met
+Review. The test requires `RUN_REAL_EQUITY_PIPELINE=1`,
+`DEEPSEEK_API_KEY`, and `AKSHARE_FINANCIAL_ENDPOINT`; in the current
+environment it remains skipped until the AKShare Bridge endpoint is supplied.

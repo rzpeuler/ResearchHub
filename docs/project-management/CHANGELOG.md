@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-24 - Real Equity Research Pipeline Validation
+
+- Added the strict opt-in
+  `tests/integration/real-equity-research-pipeline.test.ts`.
+- Composed real GDELT News, AKShare Financial, DeepSeek Harness Runtime,
+  ResearchManager, and the existing six-step Equity Research Workflow.
+- Added assertions for real provider context propagation, five LLM Skill
+  calls, Workflow completion, ResearchReport and Artifact serialization, and
+  Evaluation.
+- Added `npm run test:real-equity-pipeline`; default tests remain network-free
+  and the real test does not fall back to Fixtures.
+
 ## 2026-08-24 - AKShare Financial Provider
 
 - Added the AKShare Financial Provider under
