@@ -119,7 +119,10 @@ test('PLUGIN-VALIDATION-003 runs real AKShare data through Financial Plugin and 
   assert.ok(result.stepStates.every(state => state.status === 'completed'))
   assert.ok(result.artifacts.evidence.length >= 5)
   const financialStage = result.stageOutputs['financial-analysis']
-  assert.deepEqual(financialStage.evidence.find(item => item.id === 'equity-financial-1')?.details, snapshot)
+  assert.deepEqual(
+    withoutVolatileTimestamps(financialStage.evidence.find(item => item.id === 'equity-financial-1')?.details),
+    withoutVolatileTimestamps(snapshot),
+  )
   assert.deepEqual(financialEvidence.map(item => deserializeEvidence(serializeEvidence(item))), financialEvidence)
   assert.deepEqual(deserializeThesis(serializeThesis(result.artifacts.thesis)), result.artifacts.thesis)
   assert.deepEqual(deserializePrediction(serializePrediction(result.artifacts.prediction)), result.artifacts.prediction)
@@ -132,3 +135,13 @@ test('PLUGIN-VALIDATION-003 runs real AKShare data through Financial Plugin and 
   }, { idFactory: () => 'real-akshare-financial-review-001', clock: () => '2027-02-25T00:00:00.000Z' })
   assert.equal(review.evaluation.status, 'met')
 })
+
+function withoutVolatileTimestamps(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutVolatileTimestamps)
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value)
+      .filter(([key]) => key !== 'timestamp' && key !== 'retrievedAt')
+      .map(([key, nested]) => [key, withoutVolatileTimestamps(nested)]))
+  }
+  return value
+}
