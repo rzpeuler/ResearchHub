@@ -1,16 +1,16 @@
 # Current Status
 
-## MEMORY-ARCHITECTURE-DESIGN-001
+## MEMORY-IMPLEMENTATION-001
 
-The Research Knowledge Memory Layer has been designed under
-`packages/memory/`. The design preserves the existing `MemoryEntry`,
-`MemoryPlugin`, and local JSON compatibility path while defining future
-`MemoryItem`, Artifact Trace references, Memory Formation lifecycle, and
-runtime-neutral Retrieval interfaces for Entity, Thesis, Prediction, Evidence,
-and Review knowledge.
+Research Knowledge Memory MVP is implemented under `packages/memory/`.
+`MemoryItem`, `ResearchMemory`, and `InMemoryResearchMemoryStore` support
+runtime-neutral storage and retrieval of Entity, Thesis, Prediction, Evidence,
+and Review knowledge with Artifact and Trace references.
 
-This task is design-only. No Memory runtime code, DSH, Agent Memory, Chat
-History, Prompt storage, or Knowledge Graph implementation was added.
+The existing `MemoryEntry`, `MemoryPlugin`, and local JSON compatibility path
+remain unchanged. Automatic Memory Formation, database persistence, DSH Memory,
+Agent Memory, Chat History, Prompt storage, and Knowledge Graph infrastructure
+remain out of scope.
 
 ## PIPELINE-TRACE-INTEGRATION-001
 

@@ -1,7 +1,7 @@
 # Research Knowledge Memory Retrieval Interface
 
 **Protocol:** Research Knowledge Memory v0.1
-**Status:** Design only
+**Status:** MVP implemented
 
 ## 1. Query Model
 
@@ -39,31 +39,22 @@ Artifact/Trace references.
 
 ```ts
 interface ResearchMemory {
-  getById(id: string): Promise<MemoryItem | undefined>
-  search(query: MemoryQuery): Promise<MemorySearchResult[]>
-  findByEntity(entityId: string): Promise<MemoryItem[]>
-  findByTopic(topic: string): Promise<MemoryItem[]>
-  findByIndustry(industry: string): Promise<MemoryItem[]>
-  findHistoricalTheses(query: {
-    entityId?: string
-    industry?: string
-    topic?: string
-    limit?: number
-  }): Promise<MemorySearchResult[]>
+  add(memoryItem: MemoryItem): MemoryItem
+  get(id: string): MemoryItem | undefined
+  search(query?: ResearchMemoryQuery): MemoryItem[]
+  remove(id: string): boolean
 }
 ```
 
-The interface is runtime-neutral and can be implemented by a local plugin,
-database adapter, or another Agent Runtime without importing DSH types.
+The MVP interface is runtime-neutral and is implemented by
+`InMemoryResearchMemoryStore`. A future local plugin or database adapter can
+implement the same contract without importing DSH types.
 
 ## 4. Retrieval Semantics
 
-- `findByEntity` returns historical knowledge associated with one entity.
-- `findByTopic` returns items tagged with a normalized topic.
-- `findByIndustry` returns items associated with an industry scope.
-- `findHistoricalTheses` returns Thesis Memory items and preserves source
-  Artifact and Trace references.
-- `search` combines supported structured filters and applies `limit`.
+- `search` supports entity, topic, industry, type, source Artifact ID,
+  confidence, minimum confidence, and limit filters.
+- Results preserve source Artifact and Trace references.
 - Empty filters are rejected or bounded by the implementation; an unbounded
   full-database scan is not part of this contract.
 
@@ -85,7 +76,7 @@ provenance governance.
 
 ## 6. Compatibility Adapter
 
-The current `MemoryPlugin.retrieve(query?: MemoryQuery)` can remain available for exact
-`MemoryEntry` queries. A future compatibility adapter may project those
-results into `MemorySearchResult` without changing the existing plugin
-contract.
+The current `MemoryPlugin.retrieve(query?: MemoryQuery)` remains available for
+exact `MemoryEntry` queries. A future compatibility adapter may project those
+results into the richer Research Knowledge contract without changing the
+existing plugin contract.

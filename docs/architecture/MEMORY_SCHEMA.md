@@ -1,7 +1,7 @@
 # Research Knowledge Memory Schema
 
 **Protocol:** Research Knowledge Memory v0.1
-**Status:** Design only
+**Status:** MVP implemented
 
 ## 1. Type Vocabulary
 
@@ -49,16 +49,18 @@ Artifact payload or duplicate Trace Events.
       "version": 1
     }
   ],
-  "traceReference": {
-    "rootArtifactId": "thesis-001",
-    "eventIds": ["trace-event-001", "trace-event-002"]
-  },
+  "traceReferences": [
+    {
+      "eventId": "trace-event-001",
+      "rootArtifactId": "thesis-001"
+    }
+  ],
+  "entity": "600519",
+  "topic": "profitability",
+  "industry": "beverages",
   "confidence": 0.82,
   "createdAt": "2026-08-24T00:00:00.000Z",
   "metadata": {
-    "entityIds": ["cn-a-share:600519"],
-    "topics": ["profitability"],
-    "industry": "beverages",
     "sessionId": "session-001"
   }
 }
@@ -71,7 +73,10 @@ id               stable Memory identity
 type             MemoryItemType
 content          JSON-safe structured knowledge payload
 sourceArtifacts  one or more Artifact References
-traceReference   source lineage pointer, not copied Trace data
+traceReferences  Trace event IDs or enriched references, not copied Trace data
+entity           optional normalized entity key
+topic            optional normalized topic key
+industry         optional industry key
 confidence       normalized 0..1 knowledge confidence
 createdAt        creation timestamp
 metadata         bounded retrieval and session metadata

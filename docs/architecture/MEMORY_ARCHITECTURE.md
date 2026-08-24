@@ -1,7 +1,7 @@
 # ResearchHub Memory Architecture
 
 **Task:** MEMORY-ARCHITECTURE-DESIGN-001
-**Status:** Design only
+**Status:** MVP implemented; persistence and automatic formation remain out of scope
 **Scope:** Research Knowledge Memory Layer
 
 ## 1. Positioning
@@ -35,7 +35,7 @@ The existing `MemoryEntry`, `MemoryPlugin`, local JSON plugin, and Artifact
 Memory Adapters remain supported. They are the compatibility foundation for
 the current Thesis, Prediction, and Review storage path.
 
-The future Research Knowledge model extends this foundation with `MemoryItem`,
+The MVP Research Knowledge model extends this foundation with `MemoryItem`,
 multiple source Artifact references, Trace references, lifecycle state, and
 structured retrieval metadata. It does not replace `MemoryEntry` in one step.
 
@@ -53,7 +53,8 @@ packages/memory/
 ```
 
 `plugins/` provide storage only. Research meaning, eligibility, and retrieval
-semantics belong to Memory contracts and lifecycle components.
+semantics belong to Memory contracts and lifecycle components. The MVP uses an
+in-memory Store and does not implement automatic Memory Formation.
 
 ## 4. Knowledge Categories
 

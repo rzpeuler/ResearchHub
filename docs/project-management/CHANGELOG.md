@@ -1,15 +1,15 @@
 # Changelog
 
-## 2026-08-24 - MEMORY-ARCHITECTURE-DESIGN-001
+## 2026-08-24 - MEMORY-IMPLEMENTATION-001
 
-- Added the Research Knowledge Memory Layer architecture design.
-- Defined compatible `MemoryItem` and Trace-aware source references for Entity,
-  Thesis, Prediction, Evidence, and Review knowledge.
-- Defined Artifact -> Evaluation -> Memory Formation lifecycle and structured
-  retrieval by entity, topic, industry, and historical thesis.
-- Added ADR clarifying that Memory is not DSH Memory, Agent Memory, Chat
-  History, Prompt storage, or a Knowledge Graph.
-- No runtime Memory implementation was changed.
+- Implemented `MemoryItem`, `ResearchMemory`, and
+  `InMemoryResearchMemoryStore` under `packages/memory/`.
+- Added filtering by entity, topic, industry, type, Artifact ID, confidence,
+  minimum confidence, and result limit.
+- Added validation that rejects Prompt, Token, Model Reasoning, and Runtime
+  payload fields.
+- Added Artifact -> Trace -> Memory Reference integration coverage.
+- Preserved the existing `MemoryEntry` and `MemoryPlugin` compatibility path.
 
 ## 2026-08-24 - PIPELINE-TRACE-INTEGRATION-001
 
