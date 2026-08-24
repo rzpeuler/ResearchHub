@@ -1,5 +1,17 @@
 # Current Status
 
+## MEMORY-ARCHITECTURE-DESIGN-001
+
+The Research Knowledge Memory Layer has been designed under
+`packages/memory/`. The design preserves the existing `MemoryEntry`,
+`MemoryPlugin`, and local JSON compatibility path while defining future
+`MemoryItem`, Artifact Trace references, Memory Formation lifecycle, and
+runtime-neutral Retrieval interfaces for Entity, Thesis, Prediction, Evidence,
+and Review knowledge.
+
+This task is design-only. No Memory runtime code, DSH, Agent Memory, Chat
+History, Prompt storage, or Knowledge Graph implementation was added.
+
 ## PIPELINE-TRACE-INTEGRATION-001
 
 Artifact Trace is now enabled by default for each `EquityResearchWorkflow`
