@@ -1,5 +1,18 @@
 # Current Status
 
+## ARTIFACT-TRACE-DESIGN-001
+
+Artifact Trace Governance has been designed but not implemented. The design
+defines an append-only, runtime-neutral protocol under `packages/artifacts/`
+for Artifact provenance, lineage, lifecycle, and validation. It includes
+Evidence, Thesis, Prediction, Review, and `research_report` references without
+changing the current Artifact Core union.
+
+The design explicitly excludes DSH/Harness tracing, Agent Runtime logs, LLM
+tokens, prompts, model reasoning, database storage, and automatic
+instrumentation. Future Workflow Executors, Skill Adapters, and Artifact
+Builders may emit Trace Events through a future `TraceStore` interface.
+
 ## PIPELINE-REAL-DATA-003
 
 The first real Equity Research Pipeline using CNINFO Official Announcements,

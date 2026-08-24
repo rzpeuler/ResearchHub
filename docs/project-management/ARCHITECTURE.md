@@ -60,3 +60,9 @@ plus Workflow definitions provide the required boundaries.
 See [Architecture v0.3](../architecture/RESEARCHHUB_ARCHITECTURE_V0.3.md) and
 [ADR-010](../architecture/ADR-010-ARCHITECTURE-SIMPLIFICATION.md) and
 [ADR-011](../architecture/ADR-011-DSH-CONTROL-PLANE-LOCATION.md).
+
+Artifact governance is documented separately in [Artifact Trace Architecture](../architecture/ARTIFACT_TRACE_ARCHITECTURE.md),
+[Artifact Trace Schema](../architecture/ARTIFACT_TRACE_SCHEMA.md), and
+[ADR-013](../architecture/ADR-013-ARTIFACT-TRACE-AS-GOVERNANCE-LAYER.md).
+Trace remains under `packages/artifacts/` and does not create a Runtime or
+Agent layer.

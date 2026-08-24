@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-24 - ARTIFACT-TRACE-DESIGN-001
+
+- Added the Artifact Trace Governance architecture design.
+- Defined Trace Event, Artifact Reference, Lineage Relation, Trace Metadata,
+  and TraceStore interface contracts.
+- Added ADR-013 confirming Trace belongs to Artifact Governance and is not a
+  DSH, Harness, Agent Runtime, LLM, or Memory tracing system.
+- No production code or Artifact Core model was changed.
+
 ## 2026-08-24 - PIPELINE-REAL-DATA-003
 
 - Updated the real Equity Research Pipeline to use CNINFO Official Announcement
