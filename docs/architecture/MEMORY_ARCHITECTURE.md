@@ -1,14 +1,18 @@
 # ResearchHub Memory Architecture
 
+> **Legacy compatibility design — superseded by ARCH-REFACTOR-003.** The
+> `packages/memory/` implementation remains for existing callers. New durable
+> research knowledge belongs to the repository-level `knowledge/` boundary.
+
 **Task:** MEMORY-ARCHITECTURE-DESIGN-001
 **Status:** MVP implemented; persistence and automatic formation remain out of scope
 **Scope:** Research Knowledge Memory Layer
 
 ## 1. Positioning
 
-Memory is the long-term Research Knowledge Layer under `packages/memory/`.
-It stores research assets that have durable value after Artifact creation and,
-where applicable, Evaluation.
+Memory was designed as a long-term Research Knowledge Layer under
+`packages/memory/`. It is now a compatibility API rather than an independent
+product architecture layer. New durable knowledge belongs under `knowledge/`.
 
 Memory is not:
 

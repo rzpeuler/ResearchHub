@@ -1,5 +1,25 @@
 # Current Status
 
+## ARCH-REFACTOR-003
+
+ResearchHub has migrated its current product architecture to **Research Output
+and Knowledge Infrastructure**. The DSH, Workflow, Skill, and Plugin runtime
+boundaries are unchanged. New output is organized as reports, machine-readable
+Research Objects, and Research Output Provenance; durable reusable knowledge
+has a repository-level `knowledge/` boundary.
+
+The public Research Object Envelope is available from
+`packages/schemas/research-object.ts`. New `research-output/`, `knowledge/`,
+`packages/schemas/`, and `packages/shared/` boundaries are intentionally
+minimal. They do not add a graph database, RAG, extraction pipeline, or
+automatic knowledge formation.
+
+`packages/artifacts/`, `packages/memory/`, and `packages/evaluation/` remain
+for compatibility and test coverage. Artifact Trace is now documented as
+Research Output Provenance. Memory and Evaluation are deprecated as
+independent product layers, and no DSH, Skill, Workflow, or Plugin logic was
+changed.
+
 ## MEMORY-IMPLEMENTATION-001
 
 Research Knowledge Memory MVP is implemented under `packages/memory/`.
@@ -93,13 +113,14 @@ symbol overrides.
 
 ## Architecture
 
-The Single DSH migration is implemented and the architecture is now governed
-by Architecture v0.3. ResearchHub is a professional research asset layer on
-DeepSeek Harness, not an Agent Framework. The root-level `dsh/` directory
-contains the lightweight ResearchManager Runtime Orchestrator. `packages/workflows`
-contains runtime-neutral research SOP templates, `packages/skills` contains
-research methods, and `packages/plugins` contains external-resource contracts
-and adapters.
+The Single DSH migration remains implemented, but current governance is now
+defined by Research Output and Knowledge architecture. ResearchHub is
+financial research knowledge infrastructure on DeepSeek Harness, not an Agent
+Framework. The root-level `dsh/` directory contains the lightweight
+ResearchManager Runtime Orchestrator. `packages/workflows` contains
+runtime-neutral research SOP templates, `packages/skills` contains research
+methods, and `packages/plugins` contains external-resource contracts and
+adapters.
 
 The `packages/` directory contains only composable research modules;
 `packages/dsh` does not exist.
@@ -107,14 +128,17 @@ The `packages/` directory contains only composable research modules;
 The removed top-level directories are not retained. Artifact core models and
 verified Skill behavior were preserved through import and contract migration.
 
-The current development phase is **Research Intelligence Layer**. The
+The current development phase is **Research Output & Knowledge
+Infrastructure**. The
 validated foundation includes:
 
 - Harness integration and runtime boundary validation;
 - Event Analysis, Company Research, and Industry Research Skills;
 - Workflow definitions and thin executors;
-- Memory persistence for structured research history;
-- Evaluation and research review support.
+- Artifact Trace as Research Output Provenance;
+- compatibility Memory and Evaluation APIs, retained without new product-layer
+  expansion;
+- Research Output and Knowledge Layer boundaries.
 
 Harness owns runtime execution and LLM reasoning. ResearchManager coordinates
 these assets without becoming an Agent Planner.
@@ -130,8 +154,9 @@ another Runtime or external caller.
 - Workflow and ResearchManager tests pass.
 - Artifact, Memory, Evaluation, Skill, and Harness integration tests pass.
 - No source imports the removed package paths.
-- Architecture v0.3, ADR-010, and ADR-011 define the current governance
-  boundaries.
+- Research Output Architecture, Knowledge Layer Architecture, and ADR-014
+  define the current governance boundaries. Architecture v0.3 and ADR-013
+  remain historical compatibility records.
 
 ## Known constraints
 

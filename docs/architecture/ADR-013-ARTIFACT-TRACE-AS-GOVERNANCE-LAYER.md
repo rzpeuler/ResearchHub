@@ -1,5 +1,9 @@
 # ADR-013: Artifact Trace as Governance Layer
 
+> **Superseded in terminology by ARCH-REFACTOR-003.** The protocol is
+> retained for compatibility and is now governed as Research Output
+> Provenance, not as a new Artifact business layer.
+
 ## Status
 
 Accepted — design only
@@ -17,8 +21,8 @@ also produced by the Workflow layer without being part of the current core
 
 ## Decision
 
-Define Execution Trace under `packages/artifacts/trace/` as an Artifact
-Governance layer. Use an append-only, runtime-neutral event protocol with:
+Define Execution Trace under `packages/artifacts/trace/` as a Research Output
+Provenance layer. Use an append-only, runtime-neutral event protocol with:
 
 - lifecycle events: Created, Updated, Derived, Linked, Validated;
 - explicit `ArtifactReference` values;

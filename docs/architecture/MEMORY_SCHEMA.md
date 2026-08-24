@@ -1,5 +1,9 @@
 # Research Knowledge Memory Schema
 
+> **Legacy compatibility schema — superseded by ARCH-REFACTOR-003.** Existing
+> MemoryItem records remain supported; future durable knowledge contracts
+> belong to the Knowledge Layer.
+
 **Protocol:** Research Knowledge Memory v0.1
 **Status:** MVP implemented
 

@@ -1,5 +1,10 @@
 # Research Evaluation Framework
 
+> **Legacy review compatibility design — superseded by ARCH-REFACTOR-003.**
+> Existing review behavior remains tested for compatibility. ResearchHub does
+> not expand this into an investment-prediction evaluation or autonomous
+> learning product layer.
+
 ## Purpose
 
 Research Evaluation closes the objective research loop by comparing a Prediction with a caller-supplied Outcome and storing the resulting Review Artifact. It records whether a prediction was met; it does not judge an DSH, change an investment strategy, rank stocks, execute trades, or fetch real market data.

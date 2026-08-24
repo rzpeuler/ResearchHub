@@ -1,5 +1,9 @@
 # ResearchHub Architecture v0.3 — Architecture Simplification & Governance
 
+> **Historical record — superseded by ARCH-REFACTOR-003.** Current
+> architecture is documented in [Research Output Architecture](RESEARCH_OUTPUT_ARCHITECTURE.md)
+> and [Knowledge Layer Architecture](KNOWLEDGE_LAYER_ARCHITECTURE.md).
+
 ## 1. Decision
 
 ResearchHub is a professional research asset layer that runs on top of the
@@ -26,7 +30,8 @@ Evaluation boundaries. Reasoning and lower-level runtime execution remain
 Harness responsibilities.
 
 Architecture v0.2 remains preserved as a historical baseline. This v0.3
-document is the current governance reference for new design and development.
+document is retained as a historical governance reference; it is not the
+current design authority for new development.
 
 ## 2. Runtime boundary: Harness
 

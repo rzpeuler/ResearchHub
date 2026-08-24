@@ -10,8 +10,9 @@ ResearchManager (DSH) + Workflow + Skill + Plugin
 
 ResearchHub does not execute trades, promise price forecasts, modify Harness
 Core, or replace the Harness runtime. Harness owns runtime execution and LLM
-reasoning. Artifact, Memory, and Evaluation remain supporting research
-modules.
+reasoning. Research Output and the Knowledge Layer are the product-facing
+boundaries. Existing Artifact, Memory, and Evaluation modules remain only as
+compatibility implementations.
 
 ## Current product boundary
 
@@ -19,18 +20,25 @@ modules.
 - DSH / ResearchManager: understands the application request and coordinates
   research execution.
 - Workflow: defines repeatable research SOPs, dependencies, and verification.
-- Skill: supplies professional research methodology and Artifact generation.
+- Skill: supplies professional research methodology and structured output
+  generation. Its payload remains Skill-owned.
 - Plugin: connects external data and persistence resources.
-- Memory: preserves Research Session, Evidence, Thesis, Prediction, and Review.
-- Evaluation: validates predictions and supports research quality review.
+- Research Output: publishes reports, Research Objects, and provenance.
+- Knowledge Layer: provides the future durable boundary for entities,
+  relations, events, and Research Document associations.
+- Memory / Evaluation: legacy compatibility paths; no new product layer or
+  autonomous prediction-evaluation loop is planned.
 
-The existing Event Analysis and Company Research flows validate the model from
-request through Workflow, Skill, Plugin, Artifact, Evaluation, and Session
-persistence.
+The existing Event Analysis, Company Research, and Equity Research flows
+validate the runtime path from request through Workflow, Skill, Plugin, and
+Research Output. Existing Artifact, Memory, and Evaluation tests remain as
+compatibility coverage.
 
 ## Primary references
 
-- [Architecture v0.3](../architecture/RESEARCHHUB_ARCHITECTURE_V0.3.md)
+- [Research Output architecture](../architecture/RESEARCH_OUTPUT_ARCHITECTURE.md)
+- [Knowledge Layer architecture](../architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md)
+- [Architecture v0.3 historical record](../architecture/RESEARCHHUB_ARCHITECTURE_V0.3.md)
 - [Architecture v0.2 historical baseline](../architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
 - [Technical design](../architecture/TECHNICAL_DESIGN_V0.1.md)
 - [Single DSH ADR](../architecture/ADR-001-SINGLE-DSH-ARCHITECTURE.md)

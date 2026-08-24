@@ -23,7 +23,7 @@ and test objectives remain stable.
 
 ## ADR-010 — Architecture Simplification
 
-**Status:** Accepted
+**Status:** Accepted; superseded in part by ADR-014
 **Date:** 2026-08-24
 
 ResearchHub is a professional research asset layer running on DeepSeek
@@ -38,13 +38,15 @@ responsibilities. Research Planner and Workflow Composition layers are also
 not introduced: LLM reasoning remains with Harness, and ResearchManager plus
 Workflow definitions provide the required coordination.
 
-Memory remains responsible for structured research history: Research Session,
-Evidence, Thesis, Prediction, and Review. Evaluation remains responsible for
-prediction validation and research quality review. Neither is an autonomous
-reasoning layer or an automatic Skill/strategy optimizer.
+At the time of this decision, Memory and Evaluation were retained as
+supporting modules for structured research history and review. ADR-014 now
+repositions them as compatibility implementations rather than current product
+architecture layers. Durable knowledge belongs to `knowledge/`, and Research
+Output Provenance replaces Artifact Governance as the preferred terminology.
 
-Architecture v0.3 is the current governance reference. Architecture v0.2 is
-preserved as the historical baseline. See
+Architecture v0.3 is preserved as a historical governance record. The current
+governance reference is Research Output and Knowledge Architecture;
+Architecture v0.2 remains the historical baseline. See
 [ADR-010](../architecture/ADR-010-ARCHITECTURE-SIMPLIFICATION.md).
 
 ## ADR-011 — DSH Control Plane Location
@@ -98,3 +100,24 @@ coordination boundary; Skills remain professional research methods.
 Provider-specific orchestration, agent bindings, spreadsheet/document
 automation, and source-runtime assumptions are intentionally excluded. This
 keeps the Research Asset Layer reusable by DSH and other Runtime callers.
+
+## ADR-014 — Research Output and Knowledge Architecture
+
+**Status:** Accepted
+**Date:** 2026-08-25
+
+ResearchHub now treats Research Output and Knowledge Infrastructure as its
+product-facing architecture. Existing DSH, Workflow, Skill, and Plugin
+boundaries remain unchanged. Reports, machine-readable Research Objects, and
+provenance are published under `research-output/`; durable reusable knowledge
+has the repository-level `knowledge/` boundary.
+
+Artifact is retained as a technical compatibility term and Artifact Trace is
+repositioned as Research Output Provenance. `packages/memory/` and
+`packages/evaluation/` remain for existing callers and tests but are deprecated
+as independent product layers. No graph database, RAG system, knowledge
+extraction pipeline, autonomous learning loop, or prediction Agent is added.
+
+See [ADR-014](../architecture/ADR-014-RESEARCH-OUTPUT-KNOWLEDGE-ARCHITECTURE.md),
+[Research Output Architecture](../architecture/RESEARCH_OUTPUT_ARCHITECTURE.md),
+and [Knowledge Layer Architecture](../architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md).

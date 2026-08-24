@@ -1,27 +1,37 @@
 # ResearchHub
 
-ResearchHub is a professional research asset layer built on DeepSeek Harness.
-It does not build a general-purpose Agent Framework. Its current architecture
-is the Single DSH model:
+ResearchHub is financial research knowledge infrastructure built on DeepSeek
+Harness. It does not build a general-purpose Agent Framework. Its runtime
+architecture remains the Single DSH model, while its product output is
+Research Output and durable Knowledge:
 
 ```text
 ResearchManager (DSH)
         -> Workflow
              -> Skill
                   -> Plugin
+                       -> Research Output
+                            -> Research Object
+                                 -> Knowledge Layer
 ```
 
 ResearchHub does not execute trades, modify Harness Core, or rebuild the
 Harness runtime. Harness owns runtime execution and LLM reasoning. The DSH is
 the only ResearchHub coordination center; Workflows describe standard
-research SOPs, Skills provide professional research methods, Plugins connect
-external resources, Memory stores research history, and Evaluation supports
-quality review.
+research SOPs, Skills provide professional research methods, and Plugins
+connect external resources. Reports, structured Research Objects, and
+provenance are Research Output. The `knowledge/` boundary is reserved for
+durable, reusable research knowledge.
 
 The repository-level DSH Runtime Orchestrator is `dsh/`. The `packages/`
 directory contains reusable, runtime-neutral research assets: Workflows,
-Skills, Plugins, Artifacts, Memory, and Evaluation. Packages do not depend on
-the DSH and can be used by another Runtime or external caller.
+Skills, Plugins, compatibility Artifact code, public Schemas, and shared
+utilities. Packages do not depend on the DSH and can be used by another
+Runtime or external caller. `packages/memory/` and `packages/evaluation/` are
+retained for compatibility; they are not current product architecture layers.
+
+The public Research Object envelope is defined in
+[`packages/schemas/research-object.ts`](packages/schemas/research-object.ts).
 
 ## Project documents
 
@@ -35,7 +45,9 @@ the DSH and can be used by another Runtime or external caller.
 
 ## Architecture documents
 
-- [Architecture v0.3](docs/architecture/RESEARCHHUB_ARCHITECTURE_V0.3.md)
+- [Research Output architecture](docs/architecture/RESEARCH_OUTPUT_ARCHITECTURE.md)
+- [Knowledge Layer architecture](docs/architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md)
+- [Architecture v0.3 historical record](docs/architecture/RESEARCHHUB_ARCHITECTURE_V0.3.md)
 - [Architecture v0.2 historical baseline](docs/architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
 - [Technical design v0.1](docs/architecture/TECHNICAL_DESIGN_V0.1.md)
 - [Plugin operation design](docs/architecture/PLUGIN_OPERATION_DESIGN.md)
@@ -50,6 +62,7 @@ the DSH and can be used by another Runtime or external caller.
 - [ADR-010 Architecture Simplification](docs/architecture/ADR-010-ARCHITECTURE-SIMPLIFICATION.md)
 - [ADR-011 DSH Control Plane Location](docs/architecture/ADR-011-DSH-CONTROL-PLANE-LOCATION.md)
 - [ADR-012 Financial Research Skill Asset Migration](docs/architecture/ADR-012-FINANCIAL-RESEARCH-SKILL-ASSET-MIGRATION.md)
+- [ADR-014 Research Output and Knowledge Architecture](docs/architecture/ADR-014-RESEARCH-OUTPUT-KNOWLEDGE-ARCHITECTURE.md)
 
 ## Financial research Skill assets
 
@@ -70,4 +83,6 @@ npm test
 ```
 
 The command runs TypeScript compilation, Plugin tests, Workflow tests, Skill
-tests, Artifact tests, Memory/Evaluation tests, and Harness integration tests.
+tests, compatibility Artifact/Memory/Evaluation tests, and Harness integration
+tests. The legacy test suites remain to protect existing callers while the
+current product direction moves to Research Output and Knowledge.

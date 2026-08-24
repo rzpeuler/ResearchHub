@@ -1,5 +1,10 @@
 # ADR-010: Architecture Simplification
 
+> **Historical decision — partially superseded by ARCH-REFACTOR-003.** The
+> Single DSH, Workflow, Skill, and Plugin decisions remain valid. Memory and
+> Evaluation are now compatibility implementations, while current product
+> architecture is Research Output plus Knowledge Infrastructure.
+
 ## Status
 
 Accepted — 2026-08-24
@@ -28,10 +33,10 @@ ResearchHub adopts the architecture and governance defined in
 - Workflow defines repeatable research SOPs and is not a Planner.
 - Skill defines professional research methods and is not a Workflow.
 - Plugin connects external resources and is not a Skill.
-- Memory stores Research Session, Evidence, Thesis, Prediction, and Review
-  history.
-- Evaluation validates predictions and reviews research quality without
-  automatically modifying strategies or Skills.
+- Existing Memory and Evaluation APIs remain available for compatibility; they
+  are not expanded as independent product layers.
+- Research Output publishes reports, Research Objects, and provenance, while
+  the Knowledge Layer owns the future durable knowledge boundary.
 - The ResearchManager DSH is located at the repository root in `dsh/`; the
   `packages/` directory contains research capability modules only.
 
@@ -47,13 +52,12 @@ also fully represented by Plugins. Keeping Capability or Provider as separate
 top-level layers would duplicate runtime responsibilities and create two
 competing classifications for new work.
 
-## Why Memory and Evaluation remain
+## Compatibility status of Memory and Evaluation
 
-Memory and Evaluation are not alternative planning or runtime layers. Memory
-preserves structured research history, while Evaluation provides review and
-prediction validation. They support the research lifecycle without competing
-with Harness runtime, Workflow process structure, Skill methodology, or Plugin
-external access.
+Memory and Evaluation remain available for existing integrations and tests.
+They do not become alternative planning or runtime layers. New durable
+knowledge belongs under `knowledge/`; ResearchHub does not expand prediction
+validation into an investment evaluation or autonomous learning product.
 
 ## Consequences
 
@@ -63,8 +67,8 @@ external access.
 - ResearchManager stays lightweight and does not replace LLM reasoning.
 - Harness Core and verified Skill, Workflow, Memory, Evaluation, and Artifact
   behavior remain unchanged by this documentation decision.
-- Historical Architecture v0.2 is preserved; v0.3 is the current governance
-  reference.
+- Historical Architecture v0.2 and v0.3 are preserved; current governance is
+  defined by Research Output Architecture and Knowledge Layer Architecture.
 
 ## Guardrails
 

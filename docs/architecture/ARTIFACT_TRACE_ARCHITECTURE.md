@@ -1,16 +1,18 @@
-# Artifact Trace Architecture
+# Research Output Provenance Architecture
 
 **Task:** ARTIFACT-TRACE-DESIGN-001  
 **Status:** MVP implemented; persistence and automatic instrumentation remain out of scope
-**Scope:** Artifact Governance, Provenance, Lineage, and Lifecycle
+**Scope:** Research Output Provenance, Lineage, and Lifecycle
 
 ## 1. Purpose
 
-ResearchHub produces linked research assets such as Evidence, Thesis,
-Prediction, and ResearchReport. Artifact Trace defines the governance protocol
-that explains how those assets were created, related, revised, and validated.
+ResearchHub produces linked research outputs such as Evidence, Thesis,
+Prediction, and ResearchReport. The retained Artifact Trace protocol defines
+the provenance relationships that explain how those outputs were created,
+related, revised, and validated.
 
-Trace belongs to the Artifact layer:
+Trace is now Research Output Provenance. Its compatibility implementation
+remains under `packages/artifacts/trace/`:
 
 ```text
 packages/artifacts/
@@ -26,14 +28,14 @@ logger, or automatic instrumentation.
 
 ## 2. Architectural Boundary
 
-Execution Trace is Research Artifact Provenance. It is not:
+Execution Trace is Research Output Provenance. It is not:
 
 - DSH Runtime tracing;
 - Harness Runtime tracing;
 - Agent Runtime tracing;
 - LLM token, prompt, model, or reasoning tracing;
 - a Workflow Engine or general execution log;
-- a Memory replacement.
+- a Memory or Knowledge Layer replacement.
 
 The dependency boundary is:
 

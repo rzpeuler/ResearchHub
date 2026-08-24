@@ -1,5 +1,9 @@
 # ADR: Memory as Research Knowledge Layer
 
+> **Superseded by ARCH-REFACTOR-003.** This decision is retained as the
+> historical compatibility rationale for `packages/memory/`; durable reusable
+> knowledge is now governed by the Knowledge Layer.
+
 **Status:** Accepted design
 **Date:** 2026-08-24
 **Task:** MEMORY-ARCHITECTURE-DESIGN-001
@@ -14,8 +18,9 @@ Artifact sources, and Artifact Trace references.
 
 ## Decision
 
-Memory is governed as `packages/memory/`, a runtime-neutral Research Knowledge
-Layer. It will evolve by compatibility extension:
+Memory remains available as `packages/memory/`, a runtime-neutral compatibility
+API. The current durable Knowledge Layer is the repository-level `knowledge/`
+boundary. Existing behavior evolves only by compatibility extension:
 
 1. Preserve `MemoryEntry`, `MemoryPlugin`, existing adapters, and local JSON
    behavior.

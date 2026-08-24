@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-25 - ARCH-REFACTOR-003
+
+- Migrated current architecture terminology to Research Output, Research
+  Object, and Knowledge Infrastructure.
+- Added `research-output/` and `knowledge/` boundaries, plus shared schema and
+  utility package placeholders.
+- Added the runtime-neutral Research Object Envelope with stable provenance
+  fields and Skill-owned payloads.
+- Repositioned Artifact Trace as Research Output Provenance.
+- Deprecated Memory and Evaluation as independent product layers while
+  retaining their implementations and tests for compatibility.
+- Added the Research Output and Knowledge architecture documents and ADR-014.
+
 ## 2026-08-24 - MEMORY-IMPLEMENTATION-001
 
 - Implemented `MemoryItem`, `ResearchMemory`, and

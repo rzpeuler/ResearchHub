@@ -1,5 +1,9 @@
 # Research Knowledge Memory Retrieval Interface
 
+> **Legacy compatibility interface — superseded by ARCH-REFACTOR-003.** This
+> interface remains available to existing callers while durable knowledge
+> retrieval is designed under `knowledge/`.
+
 **Protocol:** Research Knowledge Memory v0.1
 **Status:** MVP implemented
 
