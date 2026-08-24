@@ -1,5 +1,26 @@
 # Current Status
 
+## PIPELINE-REAL-DATA-003
+
+The first real Equity Research Pipeline using CNINFO Official Announcements,
+AKShare Financial, and the DeepSeek Runtime completed successfully for
+`600519`.
+
+Observed run:
+
+- CNINFO Acquisition: 3 SearchResults, 3 fetched documents, 3 normalized
+  articles, and 3 traceable Evidence records;
+- AKShare Financial: real financial facts reached the Workflow context;
+- DeepSeek Runtime: 5 Skill calls completed;
+- Equity Research Workflow: all 6 steps completed;
+- Artifacts: 9 Evidence records, linked Thesis and Prediction, and a
+  22-section ResearchReport;
+- Evaluation: `met`.
+
+The real test is opt-in through `RUN_REAL_EQUITY_PIPELINE=1`,
+`AKSHARE_FINANCIAL_ENDPOINT`, and `DEEPSEEK_API_KEY`. The default test suite
+remains network-free.
+
 ## CNINFO-PROVIDER-FIX-001
 
 CNINFO Official Announcement Provider has been fixed for real-data use. The

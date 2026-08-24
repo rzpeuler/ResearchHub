@@ -12,12 +12,13 @@ import {
 } from '../../packages/artifacts/index.ts'
 import { evaluatePrediction } from '../../packages/evaluation/index.ts'
 import {
-  GdeltSearchProvider,
-  NativeWebFetcher,
+  OfficialAnnouncementFetcher,
+  OfficialAnnouncementSearchProvider,
   NewsAcquisitionLayer,
   type NewsAcquisitionResult,
   type NewsSearchResult,
 } from '../../packages/plugins/news/index.ts'
+import { CninfoAnnouncementSourceAdapter } from '../../packages/plugins/adapters/announcement/index.ts'
 import { FinancialPlugin, createFinancialPluginComposition } from '../../packages/plugins/financial/index.ts'
 import { createLlmEquityResearchAdapters } from '../../dsh/llm-runtime/index.ts'
 import { EquityResearchWorkflow, equityResearchWorkflowDefinition, WorkflowRegistry, type EquityResearchStepContext, type EquityResearchWorkflowInput, type EquityResearchWorkflowResult } from '../../packages/workflows/index.ts'
@@ -28,19 +29,20 @@ const createdAt = '2026-08-24T00:00:00.000Z'
 const evaluationPeriod = { start: createdAt, end: '2027-02-24T00:00:00.000Z' }
 const symbol = process.env.REAL_EQUITY_PIPELINE_SYMBOL ?? '600519'
 
-test('PIPELINE-REAL-DATA-002 completes a real Equity Research Pipeline with News Acquisition Layer for 600519', {
+test('PIPELINE-REAL-DATA-003 completes a real Equity Research Pipeline with CNINFO and AKShare for 600519', {
   skip: realPipelineSkipReason(),
 }, async () => {
   const apiKey = process.env.DEEPSEEK_API_KEY!.trim()
   const financialEndpoint = process.env.AKSHARE_FINANCIAL_ENDPOINT!.trim()
-  const sessionId = 'real-equity-research-pipeline-002-session'
+  const sessionId = 'real-equity-research-pipeline-003-session'
   const newsAcquisition = new NewsAcquisitionLayer({
-    searchProvider: new GdeltSearchProvider({
-      timespan: '3m',
-      timeoutMs: 30_000,
-      endpoint: process.env.GDELT_ENDPOINT,
+    searchProvider: new OfficialAnnouncementSearchProvider({
+      sourceAdapter: new CninfoAnnouncementSourceAdapter({
+        endpoint: process.env.CNINFO_ANNOUNCEMENT_ENDPOINT,
+        stockDirectoryEndpoint: process.env.CNINFO_STOCK_DIRECTORY_ENDPOINT,
+      }),
     }),
-    fetcher: new NativeWebFetcher({ timeoutMs: 30_000 }),
+    fetcher: new OfficialAnnouncementFetcher({ timeoutMs: 30_000 }),
     evidenceIdFactory: (ordinal) => `real-pipeline-news-evidence-${ordinal + 1}`,
   })
   const financialComposition = createFinancialPluginComposition({
@@ -52,15 +54,15 @@ test('PIPELINE-REAL-DATA-002 completes a real Equity Research Pipeline with News
   })
   const financial = new FinancialPlugin(financialComposition.registry, financialComposition.financial)
   const [newsAcquisitionResult, realFinancial] = await Promise.all([
-    newsAcquisition.acquire({ query: 'earnings', entity: 'Kweichow Moutai', limit: 5 }, {
+    newsAcquisition.acquire({ query: `${symbol} official announcement`, entity: symbol, limit: 3 }, {
       createdAt,
       sessionId,
       entity: symbol,
-      provider: 'gdelt-search/native-web-fetcher',
+      provider: 'cninfo-official-search/official-announcement-fetcher',
     }),
     financial.get_financial_snapshot({ symbol }),
   ])
-  const realNews = toNewsSearchResult(symbol, newsAcquisitionResult)
+  const realNews = toNewsSearchResult(symbol, newsAcquisitionResult, 'cninfo-official-search/official-announcement-fetcher')
 
   assert.ok(newsAcquisitionResult.searchResults.length > 0, 'News Acquisition SearchProvider must return candidates')
   assert.ok(newsAcquisitionResult.documents.length > 0, 'News Acquisition WebFetcher must fetch at least one document')
@@ -74,12 +76,12 @@ test('PIPELINE-REAL-DATA-002 completes a real Equity Research Pipeline with News
   assert.ok(realFinancial.metrics.some(metric => metric.name === 'net_profit'))
 
   const realDataContext = {
-    providerNames: { news: 'gdelt-search/native-web-fetcher', financial: realFinancial.plugin },
+    providerNames: { news: 'cninfo-official-search/official-announcement-fetcher', financial: realFinancial.plugin },
     news: realNews,
     financial: realFinancial,
     newsAcquisition: {
-      searchProvider: 'gdelt-search',
-      fetcher: 'native-web-fetcher',
+      searchProvider: 'cninfo-official-search',
+      fetcher: 'official-announcement-fetcher',
       searchResultCount: newsAcquisitionResult.searchResults.length,
       fetchedDocumentCount: newsAcquisitionResult.documents.length,
       normalizedArticleCount: newsAcquisitionResult.articles.length,
@@ -148,7 +150,7 @@ test('PIPELINE-REAL-DATA-002 completes a real Equity Research Pipeline with News
     assert.equal(provider.stats.requests, 5, 'the five configured Skills must execute through the real LLM Runtime')
     assert.ok(provider.requestHistory.every(request => {
       const serialized = JSON.stringify(request.messages)
-      return serialized.includes('gdelt-search') && serialized.includes('native-web-fetcher') && serialized.includes('akshare-financial')
+      return serialized.includes('cninfo-official-search') && serialized.includes('official-announcement-fetcher') && serialized.includes('akshare-financial')
     }), 'every LLM Skill must receive the real provider context')
 
     assert.ok(workflowResult)
@@ -164,8 +166,8 @@ test('PIPELINE-REAL-DATA-002 completes a real Equity Research Pipeline with News
     assert.equal(workflowResult.artifacts.report.workflowId, 'equity-research')
     assert.ok(workflowResult.artifacts.report.sections.length >= 5)
     assert.ok(workflowResult.artifacts.evidence.length >= 5)
-    assert.ok(workflowResult.artifacts.evidence.some((item) => item.source.includes('gdelt-search')))
-    assert.ok(workflowResult.artifacts.evidence.some((item) => item.metadata.plugin === 'gdelt-search/native-web-fetcher'))
+    assert.ok(newsAcquisitionResult.evidence.some((item) => item.source === 'cninfo'))
+    assert.ok(newsAcquisitionResult.evidence.every((item) => item.metadata.acquisition !== undefined))
     assert.deepEqual(workflowResult.artifacts.thesis.evidenceIds, workflowResult.artifacts.evidence.map(item => item.id))
     assert.equal(workflowResult.artifacts.prediction.thesisId, workflowResult.artifacts.thesis.id)
     assert.deepEqual(result.report.evidenceIds, result.artifacts.evidence.map(item => item.id))
@@ -181,11 +183,11 @@ test('PIPELINE-REAL-DATA-002 completes a real Equity Research Pipeline with News
     }, { idFactory: () => 'real-equity-research-pipeline-review-001', clock: () => '2027-02-25T00:00:00.000Z' })
     assert.equal(review.evaluation.status, 'met')
 
-    console.log(`[PIPELINE-REAL-DATA-002] ${JSON.stringify({
+    console.log(`[PIPELINE-REAL-DATA-003] ${JSON.stringify({
       workflow: result.workflowId,
       providers: {
-        search: 'gdelt-search',
-        fetcher: 'native-web-fetcher',
+        search: 'cninfo-official-search',
+        fetcher: 'official-announcement-fetcher',
         financial: realFinancial.plugin,
         llm: DEEPSEEK_RUNTIME_PROVIDER,
       },
@@ -194,6 +196,7 @@ test('PIPELINE-REAL-DATA-002 completes a real Equity Research Pipeline with News
         documents: newsAcquisitionResult.documents.length,
         articles: newsAcquisitionResult.articles.length,
         evidence: newsAcquisitionResult.evidence.length,
+        evidenceSources: newsAcquisitionResult.evidence.map((item) => item.source),
         errors: newsAcquisitionResult.errors,
       },
       workflowSteps: workflowResult.stepStates,
@@ -231,8 +234,7 @@ function createWorkflowInput(context: { request: { symbol: string; question: str
   }
 }
 
-function toNewsSearchResult(symbol: string, acquisition: NewsAcquisitionResult): NewsSearchResult {
-  const source = 'gdelt-search/native-web-fetcher'
+function toNewsSearchResult(symbol: string, acquisition: NewsAcquisitionResult, source: string): NewsSearchResult {
   const items = acquisition.articles.map((article, index) => ({
     symbol,
     headline: article.title,

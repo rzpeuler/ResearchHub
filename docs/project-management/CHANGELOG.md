@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-24 - PIPELINE-REAL-DATA-003
+
+- Updated the real Equity Research Pipeline to use CNINFO Official Announcement
+  Provider instead of GDELT for the `600519` validation scenario.
+- Validated 3 CNINFO Evidence records, real AKShare financial context, five
+  DeepSeek Skill calls, all six Workflow steps, linked Thesis/Prediction,
+  ResearchReport generation, and Evaluation status `met`.
+- Kept the real execution opt-in and the default test suite network-free.
+
 ## 2026-08-24 - CNINFO-PROVIDER-FIX-001
 
 - Fixed CNINFO entity resolution by loading the official stock directory and
