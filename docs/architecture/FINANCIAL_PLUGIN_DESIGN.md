@@ -86,7 +86,8 @@ The composition registers both plugin names:
 
 Selection is controlled by:
 
-- `FINANCIAL_PRIMARY_PLUGIN`
+- `FINANCIAL_PRIMARY_PLUGIN` — defaults to `akshare-financial` in real mode;
+  `tushare-financial` remains available as an explicit alternative
 - `FINANCIAL_FALLBACK_PLUGIN`
 - `FINANCIAL_PLUGIN_MODE=real|fixture`
 

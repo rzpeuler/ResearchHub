@@ -8,4 +8,4 @@ export {
   type NormalizedFinancialRow,
 } from './normalization.ts'
 export * from './tushare-financial-plugin.ts'
-export * from './akshare-financial-plugin.ts'
+export * from './akshare/index.ts'

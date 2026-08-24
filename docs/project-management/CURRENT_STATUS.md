@@ -102,3 +102,13 @@ Equity Research and Valuation Skill ports, serializes the resulting Artifacts,
 and evaluates a traceable Prediction. The real test is opt-in with
 `RUN_REAL_FINANCIAL_PLUGIN=1` and `TUSHARE_TOKEN`; the default suite remains
 network-free.
+
+AKShare is now the default real Financial Provider. The runtime-neutral
+`AkShareFinancialPlugin` lives under `packages/plugins/adapters/financial/akshare/`
+and connects through the configured HTTP Bridge, while the previous import path
+remains a compatibility re-export. It normalizes the same revenue, profit,
+margin, EPS, and ratio metrics as Tushare, feeds the unchanged Financial
+Plugin and Evidence mapping, and is covered by an opt-in Equity Research
+Workflow integration test. Tushare remains available as an explicit optional
+Provider. The AKShare test requires `RUN_REAL_AKSHARE_FINANCIAL=1` and
+`AKSHARE_FINANCIAL_ENDPOINT`; default tests remain network-free.

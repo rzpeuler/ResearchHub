@@ -2,7 +2,7 @@ import { PluginRegistry } from '../registry/index.ts'
 import type { PluginHandle } from '../core/index.ts'
 import { PluginConfigurationError } from '../config.ts'
 import { createNativeFetchTransport, type NativeFetchTransport } from '../transport/index.ts'
-import { AkShareFinancialPlugin, type AkShareFinancialPluginOptions } from '../adapters/financial/akshare-financial-plugin.ts'
+import { AkShareFinancialPlugin, type AkShareFinancialPluginOptions } from '../adapters/financial/akshare/index.ts'
 import { TushareFinancialPlugin, type TushareFinancialPluginOptions } from '../adapters/financial/tushare-financial-plugin.ts'
 import { validateFinancialData } from '../adapters/financial/normalization.ts'
 import type { FinancialData, FinancialDataRequest, FinancialDataPlugin } from '../adapters/financial/types.ts'
@@ -55,7 +55,7 @@ export class FinancialPluginCompositionError extends Error {
 
 export function readFinancialPluginConfig(environment: FinancialPluginEnvironment = process.env): FinancialPluginConfig {
   const mode = readAllowed(environment.FINANCIAL_PLUGIN_MODE, FINANCIAL_PLUGIN_MODES, 'FINANCIAL_PLUGIN_MODE', 'real')
-  const primaryPlugin = readAllowed(environment.FINANCIAL_PRIMARY_PLUGIN, FINANCIAL_PLUGIN_NAMES, 'FINANCIAL_PRIMARY_PLUGIN', 'tushare-financial')
+  const primaryPlugin = readAllowed(environment.FINANCIAL_PRIMARY_PLUGIN, FINANCIAL_PLUGIN_NAMES, 'FINANCIAL_PRIMARY_PLUGIN', 'akshare-financial')
   const fallbackPlugin = readOptionalAllowed(environment.FINANCIAL_FALLBACK_PLUGIN, FINANCIAL_PLUGIN_NAMES, 'FINANCIAL_FALLBACK_PLUGIN')
   if (fallbackPlugin !== undefined && fallbackPlugin === primaryPlugin) {
     throw new PluginConfigurationError('FINANCIAL_FALLBACK_PLUGIN must differ from FINANCIAL_PRIMARY_PLUGIN')

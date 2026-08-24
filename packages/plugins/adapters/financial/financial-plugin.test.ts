@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { PluginRegistry } from '../../registry/index.ts'
 import { validateFinancialData, buildFinancialData, type NormalizedFinancialRow } from './normalization.ts'
-import { AkShareFinancialPlugin } from './akshare-financial-plugin.ts'
+import { AkShareFinancialPlugin } from './akshare/index.ts'
 import { TushareFinancialPlugin } from './tushare-financial-plugin.ts'
-import { createFinancialPluginComposition } from '../../financial/index.ts'
+import { createFinancialPluginComposition, readFinancialPluginConfig } from '../../financial/index.ts'
 import type { FinancialData, FinancialDataPlugin } from './types.ts'
 
 const clock = () => new Date('2026-08-24T00:00:00.000Z')
@@ -15,7 +15,7 @@ function response(value: unknown, status = 200): Response {
 
 function statementRows(): Record<string, unknown> {
   return {
-    income: [{ ts_code: '600519.SH', end_date: '20251231', ann_date: '20260301', total_revenue: 1000, operate_profit: 300, n_income: 250 }],
+    income: [{ ts_code: '600519.SH', end_date: '20251231', ann_date: '20260301', total_revenue: 1000, operate_profit: 300, n_income: 250, gross_margin: 40, netprofit_margin: 25, eps: 2.5, current_ratio: 1.8, quick_ratio: 1.4, debt_to_assets: 30 }],
     'balance-sheet': [{ symbol: '600519', period: '2025-12-31', total_assets: 5000, total_liab: 2000 }],
     'cash-flow': [{ code: '600519', end_date: '20251231', n_cashflow_act: 400 }],
   }
@@ -75,7 +75,21 @@ test('AkShare financial plugin normalizes the same statement schema without netw
   assert.equal(result.metadata.source, 'akshare')
   assert.equal(result.data.statements[1]?.statementType, 'balance-sheet')
   assert.equal(result.data.metrics.find(metric => metric.name === 'operating_cash_flow')?.value, 400)
+  assert.deepEqual(result.data.metrics.filter(metric => [
+    'revenue', 'net_profit', 'gross_margin', 'net_profit_margin', 'eps', 'current_ratio', 'quick_ratio', 'debt_to_assets',
+  ].includes(metric.name)).map(metric => metric.name), [
+    'revenue', 'net_profit', 'gross_margin', 'net_profit_margin', 'eps', 'current_ratio', 'quick_ratio', 'debt_to_assets',
+  ])
   assert.doesNotThrow(() => plugin.validate(result.data))
+})
+
+test('financial composition defaults to AKShare and requires its Bridge in real mode', () => {
+  const fixtureConfig = readFinancialPluginConfig({ FINANCIAL_PLUGIN_MODE: 'fixture' })
+  assert.equal(fixtureConfig.primaryPlugin, 'akshare-financial')
+  assert.throws(
+    () => readFinancialPluginConfig({ FINANCIAL_PLUGIN_MODE: 'real' }),
+    /AKSHARE_FINANCIAL_ENDPOINT is required when AkShare is selected/,
+  )
 })
 
 test('financial plugin composition falls back from the primary plugin', async () => {

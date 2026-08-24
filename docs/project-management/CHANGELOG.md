@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-24 - AKShare Financial Provider
+
+- Added the AKShare Financial Provider under
+  `packages/plugins/adapters/financial/akshare/`.
+- Made `akshare-financial` the default real Financial Provider while retaining
+  Tushare as an explicit optional Provider.
+- Preserved the existing Financial Plugin interface, normalized schema,
+  Evidence mapping, and old AKShare import path through a compatibility shim.
+- Added deterministic Provider coverage and an opt-in AKShare integration test
+  through Financial Plugin, Evidence, and Equity Research Workflow.
+- Added `RUN_REAL_AKSHARE_FINANCIAL=1` and
+  `AKSHARE_FINANCIAL_ENDPOINT` support for explicit real-data validation.
+
 ## 2026-08-24 - Real Financial Plugin Validation
 
 - Extended the existing Tushare Financial Provider Adapter with the
