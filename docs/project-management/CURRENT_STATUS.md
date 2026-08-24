@@ -1,17 +1,18 @@
 # Current Status
 
-## ARTIFACT-TRACE-DESIGN-001
+## ARTIFACT-TRACE-IMPLEMENTATION-001
 
-Artifact Trace Governance has been designed but not implemented. The design
-defines an append-only, runtime-neutral protocol under `packages/artifacts/`
-for Artifact provenance, lineage, lifecycle, and validation. It includes
-Evidence, Thesis, Prediction, Review, and `research_report` references without
-changing the current Artifact Core union.
+Artifact Trace Governance MVP is implemented under `packages/artifacts/trace/`.
+It provides an append-only `InMemoryTraceStore`, Trace Event factories for
+creation, update, derivation, linking, and validation, and bidirectional
+lineage queries for Evidence, Thesis, Prediction, Review, and
+`research_report` references without changing the current Artifact Core union.
 
-The design explicitly excludes DSH/Harness tracing, Agent Runtime logs, LLM
-tokens, prompts, model reasoning, database storage, and automatic
-instrumentation. Future Workflow Executors, Skill Adapters, and Artifact
-Builders may emit Trace Events through a future `TraceStore` interface.
+`TraceArtifactBuilder` is an opt-in integration boundary around the existing
+Evidence, Thesis, and Prediction builders, with a report-linking helper. The
+design explicitly excludes DSH/Harness tracing, Agent Runtime logs, LLM tokens,
+prompts, model reasoning, database storage, and automatic instrumentation. The
+existing pipeline remains unchanged unless it opts into the builder.
 
 ## PIPELINE-REAL-DATA-003
 

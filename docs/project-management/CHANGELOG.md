@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-24 - ARTIFACT-TRACE-IMPLEMENTATION-001
+
+- Implemented the Artifact Trace Governance MVP under
+  `packages/artifacts/trace/`.
+- Added immutable Trace Event factories for created, updated, derived, linked,
+  and validated lifecycle events, with explicit Artifact References and
+  Lineage Relations.
+- Added `InMemoryTraceStore` with `append`, `queryByArtifact`, `queryLineage`,
+  and `getHistory` support.
+- Added the opt-in `TraceArtifactBuilder` integration boundary without
+  changing Artifact Core models or existing Workflow, Skill, Plugin, or DSH
+  behavior.
+- Added tests covering Evidence creation, Thesis/Prediction derivation,
+  ResearchReport containment, complete lineage queries, duplicate events, and
+  prohibited runtime payloads.
+
 ## 2026-08-24 - ARTIFACT-TRACE-DESIGN-001
 
 - Added the Artifact Trace Governance architecture design.

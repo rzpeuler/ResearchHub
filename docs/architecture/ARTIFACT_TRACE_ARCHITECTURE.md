@@ -1,7 +1,7 @@
 # Artifact Trace Architecture
 
 **Task:** ARTIFACT-TRACE-DESIGN-001  
-**Status:** Design only  
+**Status:** MVP implemented; persistence and automatic instrumentation remain out of scope
 **Scope:** Artifact Governance, Provenance, Lineage, and Lifecycle
 
 ## 1. Purpose
@@ -20,8 +20,9 @@ packages/artifacts/
 └── trace/        Trace Event Schema, Trace Model, Trace Protocol
 ```
 
-This document defines a protocol only. It does not implement a TraceStore,
-database, runtime logger, or automatic instrumentation.
+The MVP implements the protocol with an in-memory `TraceStore` and an opt-in
+`TraceArtifactBuilder`. It does not implement database persistence, a runtime
+logger, or automatic instrumentation.
 
 ## 2. Architectural Boundary
 
@@ -79,15 +80,15 @@ Every event contains:
 - `protocolVersion`;
 - `eventId`;
 - `eventType`;
-- `occurredAt`;
-- `artifact`;
-- optional `sourceArtifacts`;
-- optional `relations`;
+- `timestamp`;
+- `artifactReference`;
+- `sourceArtifacts`;
+- `relations`;
 - `metadata`;
-- optional `runtime` metadata.
+- no runtime log payload.
 
-Runtime metadata is deliberately non-essential. A consumer must be able to
-reconstruct Artifact provenance when it is absent.
+The MVP has no runtime metadata field. A consumer must be able to reconstruct
+Artifact provenance without any Runtime information.
 
 ## 5. Lineage Relations
 
@@ -130,9 +131,9 @@ workflowId  : optional Workflow identifier
 version     : logical Artifact version
 ```
 
-Optional runtime context may be represented as a bounded object, for example
-`{ runtimeId, adapterId }`. It must never be required for lineage queries and
-must not contain prompts, token counts, hidden reasoning, or model transcripts.
+The MVP intentionally omits runtime context from the event shape. Runtime
+details are never required for lineage queries and must not contain prompts,
+token counts, hidden reasoning, or model transcripts.
 
 ## 7. Lifecycle and Revision
 
@@ -152,18 +153,20 @@ containment.
 
 ## 8. TraceStore Abstraction
 
-The design defines an interface, not an implementation:
+The protocol is implemented with the following synchronous interface for the
+MVP:
 
 ```text
 TraceStore
-├── append(event): Promise<void>
-├── queryLineage(artifactId, options?): Promise<TraceLineage>
-└── getArtifactHistory(artifactId): Promise<TraceEvent[]>
+├── append(event): void
+├── queryByArtifact(artifactId): TraceEvent[]
+├── queryLineage(artifactId): TraceLineage
+└── getHistory(artifactId): TraceEvent[]
 ```
 
-Implementations may use a local file, database, or remote service in a future
-task. Storage must preserve event order, event identity, and immutable event
-payloads.
+The MVP uses memory only. Future implementations may use a local file,
+database, or remote service while preserving event order, event identity, and
+immutable event payloads.
 
 ## 9. Integration Design
 

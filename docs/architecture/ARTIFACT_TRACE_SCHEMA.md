@@ -1,6 +1,6 @@
 # Artifact Trace Schema Design
 
-**Status:** Design only  
+**Status:** MVP implemented
 **Protocol:** Artifact Trace Protocol v0.1
 
 ## 1. Primitive Types
@@ -95,8 +95,8 @@ Plugin or another caller. `version` must match the primary Artifact reference.
   "protocolVersion": "0.1",
   "eventId": "trace-event-001",
   "eventType": "artifact_derived",
-  "occurredAt": "2026-08-24T00:00:00.000Z",
-  "artifact": {
+  "timestamp": "2026-08-24T00:00:00.000Z",
+  "artifactReference": {
     "artifactId": "thesis-001",
     "artifactType": "thesis",
     "version": 1
@@ -135,26 +135,20 @@ Plugin or another caller. `version` must match the primary Artifact reference.
     "workflowId": "equity-research",
     "version": 1
   },
-  "runtime": {
-    "runtimeId": "optional-runtime-id",
-    "adapterId": "optional-adapter-id"
-  }
 }
 ```
 
-`runtime` is optional and bounded. It is not a place for prompts, messages,
-tokens, chain-of-thought, or model execution logs.
+The MVP intentionally has no runtime field. Prompts, messages, tokens,
+chain-of-thought, and model execution logs are outside this protocol.
 
 ## 6. TraceStore Interface
 
 ```text
 interface TraceStore {
-  append(event: TraceEvent): Promise<void>
-  queryLineage(
-    artifactId: string,
-    options?: { direction?: "upstream" | "downstream" | "both" }
-  ): Promise<TraceLineage>
-  getArtifactHistory(artifactId: string): Promise<TraceEvent[]>
+  append(event: TraceEvent): void
+  queryByArtifact(artifactId: string): TraceEvent[]
+  queryLineage(artifactId: string): TraceLineage
+  getHistory(artifactId: string): TraceEvent[]
 }
 ```
 
