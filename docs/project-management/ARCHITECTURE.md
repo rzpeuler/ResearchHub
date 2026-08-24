@@ -1,16 +1,50 @@
 # Project Architecture
 
-ResearchHub has one decision and coordination center: `ResearchManager` as
-the DSH. The application layers are:
+ResearchHub is a professional research asset layer running on DeepSeek
+Harness. It does not build an Agent Framework or modify Harness Core.
 
-1. DSH — request understanding, Workflow selection, Skill/Plugin invocation,
-   and result integration.
-2. Workflow — standard process definitions, dependencies, schemas, and
-   verification nodes.
-3. Skill — professional research methods, analysis, and Artifact generation.
-4. Plugin — external resource connection, normalization, and validation.
+The current architecture is:
 
-Workflow is not Planner. Skill is not Workflow. Plugin is not Skill.
+```text
+Harness Runtime
+└── ResearchHub
+    ├── ResearchManager (DSH coordination)
+    ├── Workflow (research SOP)
+    ├── Skill (professional research method)
+    ├── Plugin (external resource extension)
+    ├── Memory (research history)
+    └── Evaluation (research quality review)
+```
 
-The Harness owns its own runtime lifecycle. ResearchHub reuses that lifecycle
-and does not introduce a parallel engine. Artifact core models remain stable.
+## Boundaries
+
+- **Harness** owns Agent Runtime, Tool Runtime, Session Runtime, Plugin
+  loading, Skill loading, and LLM reasoning execution.
+- **ResearchManager** is the only ResearchHub DSH. It coordinates requests,
+  Workflows, Skills, Plugins, Artifacts, Memory, and Evaluation. It remains a
+  lightweight coordinator, not an Agent Planner.
+- **Workflow** defines repeatable research SOP steps, dependencies, inputs,
+  outputs, Skill order, and verification nodes. Workflow is not a Planner.
+- **Skill** defines professional research objectives, analysis frameworks,
+  evidence requirements, output formats, evaluation criteria, and Artifact
+  generation. Skill is not a Workflow and does not own runtime or data access.
+- **Plugin** provides external connections, tools, data access, conversion,
+  and validation. Plugin is not a Skill and does not contain research methods.
+- **Memory** preserves Research Session, Evidence, Thesis, Prediction, and
+  Review history. It is not an autonomous memory agent.
+- **Evaluation** validates predictions and reviews research quality. It does
+  not automatically optimize strategies or modify Skills.
+
+Artifact core models remain stable. Existing Event Analysis, Company Research,
+and Industry Research Skills and their Workflows remain within these
+boundaries.
+
+## Deprecated architecture
+
+Capability Layer, Provider Layer, Research Planner Layer, Workflow Composition
+Layer, Workflow Engine, and Multi-Agent architecture are not independent
+ResearchHub layers. Harness Tools/Plugins and the existing ResearchManager
+plus Workflow definitions provide the required boundaries.
+
+See [Architecture v0.3](../architecture/RESEARCHHUB_ARCHITECTURE_V0.3.md) and
+[ADR-010](../architecture/ADR-010-ARCHITECTURE-SIMPLIFICATION.md).

@@ -20,3 +20,29 @@ workflow engine. None provides a clearer boundary than the selected model.
 Compatibility is behavioral rather than path-based: removed package paths are
 not retained, while Artifact schemas, Skill logic, Workflow IDs, tool behavior,
 and test objectives remain stable.
+
+## ADR-010 — Architecture Simplification
+
+**Status:** Accepted
+**Date:** 2026-08-24
+
+ResearchHub is a professional research asset layer running on DeepSeek
+Harness, not a general-purpose Agent Framework. Harness owns Agent, Tool,
+Session, loading, and LLM runtime services. ResearchManager remains the only
+ResearchHub DSH and is intentionally limited to lightweight coordination and
+result integration.
+
+Capability Layer and Provider Layer are deprecated as independent concepts
+because Harness Tools/Plugins and ResearchHub Plugins already cover their
+responsibilities. Research Planner and Workflow Composition layers are also
+not introduced: LLM reasoning remains with Harness, and ResearchManager plus
+Workflow definitions provide the required coordination.
+
+Memory remains responsible for structured research history: Research Session,
+Evidence, Thesis, Prediction, and Review. Evaluation remains responsible for
+prediction validation and research quality review. Neither is an autonomous
+reasoning layer or an automatic Skill/strategy optimizer.
+
+Architecture v0.3 is the current governance reference. Architecture v0.2 is
+preserved as the historical baseline. See
+[ADR-010](../architecture/ADR-010-ARCHITECTURE-SIMPLIFICATION.md).

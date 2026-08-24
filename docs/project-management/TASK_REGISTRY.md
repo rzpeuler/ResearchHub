@@ -35,6 +35,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | RH-ENG-010 | Upgrade Event Analysis Skill Architecture | Completed | P0 | 2026-08-24 | Luna | `229f523cb13ce9bf19a46063a4bd45397a81425b` | Accepted — Skill Package, research method, Evidence/output schemas, Evaluation rules and full regression tests passed |
 
 | RH-ENG-011 | Implement Company Research Skill Package MVP | Completed | P0 | 2026-08-24 | Luna | `1d342afd7f14bd8a7edf7633e8968484cc3860a9` | Accepted — Company Skill Package, company-research Workflow, Artifact chain, Evaluation compatibility, and E2E tests passed |
+| RH-DESIGN-012 | ResearchHub Architecture Simplification & Governance Update | Completed | P0 | 2026-08-24 | Luna | Current task commit | Accepted — Architecture v0.3, ADR-010, Harness boundary, and project governance synchronized |
 
 ## RH-DESIGN-004 Acceptance Scope
 

@@ -1,7 +1,8 @@
 # ResearchHub
 
-ResearchHub is a research system built on DeepSeek Harness. Its application
-architecture is the Single DSH model:
+ResearchHub is a professional research asset layer built on DeepSeek Harness.
+It does not build a general-purpose Agent Framework. Its current architecture
+is the Single DSH model:
 
 ```text
 ResearchManager (DSH)
@@ -10,10 +11,12 @@ ResearchManager (DSH)
                   -> Plugin
 ```
 
-ResearchHub does not execute trades and does not rebuild the Harness runtime.
-The DSH is the only planning and coordination center; Workflows describe
-standard processes, Skills provide research methods, and Plugins connect
-external resources.
+ResearchHub does not execute trades, modify Harness Core, or rebuild the
+Harness runtime. Harness owns runtime execution and LLM reasoning. The DSH is
+the only ResearchHub coordination center; Workflows describe standard
+research SOPs, Skills provide professional research methods, Plugins connect
+external resources, Memory stores research history, and Evaluation supports
+quality review.
 
 ## Project documents
 
@@ -27,7 +30,8 @@ external resources.
 
 ## Architecture documents
 
-- [Architecture v0.2](docs/architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
+- [Architecture v0.3](docs/architecture/RESEARCHHUB_ARCHITECTURE_V0.3.md)
+- [Architecture v0.2 historical baseline](docs/architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
 - [Technical design v0.1](docs/architecture/TECHNICAL_DESIGN_V0.1.md)
 - [Plugin operation design](docs/architecture/PLUGIN_OPERATION_DESIGN.md)
 - [Research Skill design](docs/architecture/RESEARCH_SKILL_DESIGN.md)
@@ -38,6 +42,7 @@ external resources.
 - [Announcement Plugin design](docs/architecture/ANNOUNCEMENT_PLUGIN_DESIGN.md)
 - [Media Plugin design](docs/architecture/MEDIA_PLUGIN_DESIGN.md)
 - [Single DSH ADR](docs/architecture/ADR-001-SINGLE-DSH-ARCHITECTURE.md)
+- [ADR-010 Architecture Simplification](docs/architecture/ADR-010-ARCHITECTURE-SIMPLIFICATION.md)
 
 ## Validation
 
