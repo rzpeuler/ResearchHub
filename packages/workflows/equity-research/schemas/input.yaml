@@ -1,0 +1,26 @@
+name: equity-research-workflow-input
+type: object
+required:
+  - symbol
+  - companyName
+  - industry
+  - geography
+  - question
+  - asOf
+  - sessionId
+  - createdAt
+  - evaluationPeriod
+  - earningsPeriod
+  - valuation
+properties:
+  symbol: { type: string, description: Six-digit listed-company symbol }
+  companyName: { type: string, description: Company name }
+  industry: { type: string, description: Industry scope }
+  geography: { type: string, description: Geographic scope }
+  question: { type: string, description: Natural-language research question }
+  asOf: { type: string, format: iso-timestamp, description: Evidence cut-off }
+  sessionId: { type: string, description: Research session identifier }
+  createdAt: { type: string, format: iso-timestamp, description: Creation timestamp }
+  evaluationPeriod: { type: object, description: Prediction evaluation period }
+  earningsPeriod: { type: string, description: Earnings period }
+  valuation: { type: object, description: Forecasts and valuation assumptions }

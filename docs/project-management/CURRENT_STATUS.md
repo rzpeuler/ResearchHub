@@ -65,3 +65,10 @@ The integration fixture uses a public-company A-share example (`600519`) and
 verifies Plugin call order, Workflow step dependencies, natural-language
 question propagation, Artifact serialization round trips, and a successful
 Evaluation result.
+
+The formal `Equity Research Workflow` is now implemented under
+`packages/workflows/equity-research/`. It composes Company Research, Industry
+Research, Equity Research, Earnings Review, and Valuation through injected
+Skill Adapters, exposes six step states, and returns a linked Evidence,
+Thesis, Prediction, and ResearchReport bundle. The Workflow has no DSH or
+Plugin implementation dependency.

@@ -1,4 +1,5 @@
 import type { WorkflowDefinition } from './types.ts'
+export { equityResearchWorkflowDefinition } from './equity-research/definition.ts'
 
 const researchInputSchema = {
   symbol: { type: 'string', required: true, description: 'Six-digit A-share symbol.' },

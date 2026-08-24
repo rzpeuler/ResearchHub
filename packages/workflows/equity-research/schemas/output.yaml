@@ -1,0 +1,14 @@
+name: equity-research-workflow-output
+type: object
+required:
+  - status
+  - workflowId
+  - symbol
+  - stepStates
+  - artifacts
+properties:
+  status: { type: string, enum: [success] }
+  workflowId: { type: string, enum: [equity-research] }
+  symbol: { type: string }
+  stepStates: { type: array, description: Ordered pending/running/completed/failed states }
+  artifacts: { type: object, description: Evidence, Thesis, Prediction, and ResearchReport bundle }

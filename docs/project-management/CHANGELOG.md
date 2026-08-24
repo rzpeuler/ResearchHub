@@ -10,6 +10,15 @@
   Evidence/Thesis/Prediction Artifacts, serialization round trips, and a
   successful Evaluation Review.
 
+## 2026-08-24 — Equity Research Workflow Composition
+
+- Added the formal `equity-research` Workflow definition and execution asset.
+- Composed Company Research, Industry Research, Equity Research, Earnings
+  Review, and Valuation through injected Skill Adapters.
+- Added ordered step states, fail-fast errors, linked Evidence/Thesis/Prediction
+  output, runtime-neutral ResearchReport output, Registry discovery coverage,
+  and DSH integration coverage.
+
 ## 2026-08-24 — Financial Research Skill Asset Migration
 
 - Added runtime-neutral `equity-research`, `industry-research`,
