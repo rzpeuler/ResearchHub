@@ -7,7 +7,11 @@ import {
   CninfoAnnouncementSourceAdapter,
   parseCninfoAnnouncementFixture,
 } from './cninfo-source-adapter.ts'
-import { CNINFO_ANNOUNCEMENT_RESPONSE_FIXTURE, CNINFO_ISSUER_ONLY_FIXTURE } from './fixtures.ts'
+import {
+  CNINFO_ANNOUNCEMENT_RESPONSE_FIXTURE,
+  CNINFO_ISSUER_ONLY_FIXTURE,
+  CNINFO_STOCK_DIRECTORY_RESPONSE_FIXTURE,
+} from './fixtures.ts'
 import { AnnouncementPluginError } from './errors.ts'
 import { registerAnnouncementPlugin } from './news-plugin-adapter.ts'
 
@@ -27,16 +31,24 @@ test('CNINFO source adapter builds an injectable official-source request and par
     endpoint: 'https://cninfo.example.test/announcements',
     transport: {
       async request(_input, init) {
+        if (init?.method === 'GET') return response(CNINFO_STOCK_DIRECTORY_RESPONSE_FIXTURE)
         requestBody = String(init?.body)
         return response(CNINFO_ANNOUNCEMENT_RESPONSE_FIXTURE)
       },
     },
   })
 
-  const records = await adapter.fetch({ symbol: '600519', limit: 10 })
+  const records = await adapter.fetch({
+    symbol: '600519',
+    limit: 10,
+    startTime: '2026-01-01T00:00:00.000Z',
+    endTime: '2026-08-24T00:00:00.000Z',
+  })
 
-  assert.match(requestBody, /stock=600519/)
+  assert.match(requestBody, /stock=600519%2Cgssh0600519/)
   assert.match(requestBody, /pageSize=10/)
+  assert.match(requestBody, /column=sse/)
+  assert.match(requestBody, /seDate=2026-01-01%7E2026-08-24/)
   assert.equal(records[0]?.title, '关于公司经营情况的公告')
   assert.equal(records[0]?.securityCode, '600519.SH')
   assert.equal(records[0]?.sourceUrl, 'https://static.cninfo.com.cn/finalpage/2026-08-21/1234567890.PDF')
@@ -54,9 +66,39 @@ test('CNINFO source adapter reports HTTP, JSON, and payload errors', async () =>
   await assert.rejects(invalidJson.fetch({ symbol: '600519', limit: 1 }), AnnouncementPluginError)
 
   const malformed = new CninfoAnnouncementSourceAdapter({
-    transport: { async request() { return response({ unexpected: [] }) } },
+    transport: {
+      async request(_input, init) {
+        return init?.method === 'GET'
+          ? response(CNINFO_STOCK_DIRECTORY_RESPONSE_FIXTURE)
+          : response({ unexpected: [] })
+      },
+    },
   })
   await assert.rejects(malformed.fetch({ symbol: '600519', limit: 1 }), /missing announcements/)
+})
+
+test('CNINFO source adapter accepts epoch timestamps and zero-result responses', async () => {
+  let query = false
+  const adapter = new CninfoAnnouncementSourceAdapter({
+    transport: {
+      async request(_input, init) {
+        if (init?.method === 'GET') return response(CNINFO_STOCK_DIRECTORY_RESPONSE_FIXTURE)
+        query = true
+        return response({ announcements: null, totalAnnouncement: 0 })
+      },
+    },
+  })
+
+  assert.deepEqual(await adapter.fetch({ symbol: '600519', limit: 1 }), [])
+  assert.equal(query, true)
+  const records = parseCninfoAnnouncementFixture([{
+    title: 'Epoch announcement',
+    content: 'Announcement content',
+    publishedAt: 1786723200000,
+    source: 'cninfo',
+    sourceUrl: 'https://static.cninfo.com.cn/finalpage/example.PDF',
+  }])
+  assert.equal(records[0]?.publishedAt, '2026-08-14T16:00:00.000Z')
 })
 
 test('AnnouncementPlugin normalizes official NewsItems and maps issuer-only records', async () => {

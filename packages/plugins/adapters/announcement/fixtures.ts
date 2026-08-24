@@ -12,6 +12,13 @@ export const CNINFO_ANNOUNCEMENT_RESPONSE_FIXTURE = {
   ],
 } as const
 
+export const CNINFO_STOCK_DIRECTORY_RESPONSE_FIXTURE = {
+  stockList: [
+    { code: '600519', orgId: 'gssh0600519', zwjc: '贵州茅台' },
+    { code: '000001', orgId: 'gssz0000001', zwjc: '平安银行' },
+  ],
+} as const
+
 export const CNINFO_ISSUER_ONLY_FIXTURE = [
   {
     title: '关于公司治理事项的公告',

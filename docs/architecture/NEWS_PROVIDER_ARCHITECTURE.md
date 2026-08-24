@@ -1,6 +1,6 @@
 # News Provider Architecture
 
-**Tasks:** NEWS-ACQUISITION-001, NEWS-PROVIDER-002
+**Tasks:** NEWS-ACQUISITION-001, NEWS-PROVIDER-002, CNINFO-PROVIDER-FIX-001
 **Status:** Implemented
 
 ResearchHub News Plugin uses a runtime-neutral acquisition flow:
@@ -27,6 +27,11 @@ requires a six-digit A-share symbol in `entity` or `query`, preserves official
 source metadata, and filters candidates to records with an official source URL.
 It does not interpret announcement impact.
 
+The CNINFO adapter resolves the required organization identifier from the
+official stock directory before querying announcements. For example,
+`600519` is sent as `600519,gssh0600519`. It also supports CNINFO `seDate`
+ranges and normalizes epoch-millisecond publication times.
+
 GDELT remains available for general news discovery. The News Acquisition Layer
 is not bound to GDELT and can select the official provider for company
 disclosures and A-share announcements.
@@ -40,7 +45,9 @@ types, and does not crawl linked pages. `MockWebFetcher` is used by network-free
 tests. `OfficialAnnouncementFetcher` materializes content already returned by
 the official announcement API, which allows CNINFO PDF-linked disclosures to
 enter the same normalization path without treating a PDF viewer page as article
-content.
+content. When inline content is absent, it fetches the PDF and extracts its
+embedded text with `pdfjs-dist`; image-only PDFs fail explicitly instead of
+creating unsupported Evidence.
 
 ## ArticleNormalizer
 

@@ -33,6 +33,8 @@ export interface RawAnnouncementRecord {
 export interface AnnouncementSourceRequest {
   symbol: string
   limit: number
+  startTime?: string
+  endTime?: string
 }
 
 export interface OfficialAnnouncementSourceAdapter {

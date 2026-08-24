@@ -39,6 +39,7 @@
     "@deepseek-ai/dsh-tools": "0.1.1-rc.2",
     "@deepseek-ai/schemastery": "3.18.1",
     "@types/node": "22.15.21",
+    "pdfjs-dist": "^6.2.108",
     "tsx": "4.19.2",
     "typescript": "5.8.3"
   }

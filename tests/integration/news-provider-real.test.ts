@@ -31,6 +31,12 @@ test('real CNINFO Official Announcement Provider feeds News Acquisition and Evid
 
   assert.ok(result.searchResults.length > 0, 'CNINFO returned no announcements')
   assert.ok(result.evidence.length > 0, 'CNINFO announcements produced no Evidence')
+  const resultItem = result.searchResults[0]
+  assert.ok(resultItem?.title, 'announcement title is missing')
+  assert.ok(resultItem?.source, 'announcement source is missing')
+  assert.ok(resultItem?.url, 'announcement URL is missing')
+  assert.ok(resultItem?.publishedAt, 'announcement publication time is missing')
+  assert.ok(result.articles[0]?.content, 'announcement content is missing')
   console.log(JSON.stringify({
     provider: provider.name,
     symbol,

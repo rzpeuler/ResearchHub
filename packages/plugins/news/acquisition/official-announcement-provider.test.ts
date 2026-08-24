@@ -62,3 +62,33 @@ test('official announcement search requires an A-share symbol', async () => {
   })
   await assert.rejects(provider.search({ query: '贵州茅台公告', limit: 1 }), /six-digit A-share symbol/)
 })
+
+test('OfficialAnnouncementFetcher extracts PDF content through the injected extractor', async () => {
+  let requestedUrl = ''
+  const fetcher = new OfficialAnnouncementFetcher({
+    clock: () => new Date('2026-08-24T00:00:00.000Z'),
+    pdfTextExtractor: { async extract(data) {
+      assert.deepEqual([...data], [37, 80, 68, 70])
+      return '贵州茅台公告正文'
+    } },
+    transport: {
+      async request(input, init) {
+        requestedUrl = String(input)
+        assert.equal(init?.method, 'GET')
+        return new Response(new Uint8Array([37, 80, 68, 70]), {
+          status: 200,
+          headers: { 'content-type': 'application/pdf' },
+        })
+      },
+    },
+  })
+
+  const document = await fetcher.fetch({
+    url: 'https://static.cninfo.com.cn/finalpage/example.PDF',
+    candidate: { title: '公告标题', url: 'https://static.cninfo.com.cn/finalpage/example.PDF', source: 'cninfo' },
+  })
+
+  assert.equal(requestedUrl, 'https://static.cninfo.com.cn/finalpage/example.PDF')
+  assert.match(document.html, /贵州茅台公告正文/)
+  assert.equal(document.contentType, 'text/html')
+})

@@ -44,7 +44,14 @@ export function readOptionalConfidence(value: Record<string, unknown>): number |
   return confidence
 }
 
-export function normalizePublishedAt(value: string): string {
+export function normalizePublishedAt(value: string | number): string {
+  if (typeof value === 'number') {
+    const parsedEpoch = new Date(value)
+    if (Number.isNaN(parsedEpoch.getTime())) {
+      throw new AnnouncementPluginError(`invalid announcement publication time: ${value}`)
+    }
+    return parsedEpoch.toISOString()
+  }
   const trimmed = value.trim()
   const localDate = /^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2}))?$/.exec(trimmed)
   const candidate = localDate === null
@@ -89,7 +96,7 @@ export function parseRawAnnouncement(value: unknown): RawAnnouncementRecord {
   return {
     title: readRequiredString(value, ['title', 'announcementTitle', 'announcement_title'], 'title'),
     content,
-    publishedAt: normalizePublishedAt(readRequiredString(
+    publishedAt: normalizePublishedAt(readRequiredValue(
       value,
       ['publishedAt', 'publishTime', 'announcementTime', 'announcement_time'],
       'publishedAt',
@@ -104,4 +111,17 @@ export function parseRawAnnouncement(value: unknown): RawAnnouncementRecord {
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function readRequiredValue(
+  value: Record<string, unknown>,
+  aliases: readonly string[],
+  field: string,
+): string | number {
+  for (const alias of aliases) {
+    const candidate = value[alias]
+    if (typeof candidate === 'string' && candidate.trim().length > 0) return candidate.trim()
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) return candidate
+  }
+  throw new AnnouncementPluginError(`announcement source response is missing ${field}`)
 }

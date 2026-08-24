@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-24 - CNINFO-PROVIDER-FIX-001
+
+- Fixed CNINFO entity resolution by loading the official stock directory and
+  querying with the required `code,orgId` format, including `600519` ->
+  `600519,gssh0600519`.
+- Added CNINFO request headers and optional `seDate` support; normalized epoch
+  millisecond announcement timestamps and empty zero-result responses.
+- Added PDF text extraction for announcements whose API record has no inline
+  content, preserving the existing News Acquisition and Evidence contracts.
+- Real validation for `600519` completed with 3 announcement records and 3
+  Evidence Artifacts; default tests remain network-free.
+
 ## 2026-08-24 - NEWS-PROVIDER-002
 
 - Added `OfficialAnnouncementSearchProvider` as a non-GDELT real-data Provider

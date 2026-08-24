@@ -1,5 +1,18 @@
 # Current Status
 
+## CNINFO-PROVIDER-FIX-001
+
+CNINFO Official Announcement Provider has been fixed for real-data use. The
+adapter now resolves `600519` through CNINFO's official stock directory to
+`600519,gssh0600519`, sends browser-compatible request headers, supports
+`seDate` ranges, accepts epoch-millisecond publication times, and treats a
+zero-count null announcement list as an empty result.
+
+CNINFO PDF announcements are fetched and text-extracted through `pdfjs-dist`
+when inline announcement content is unavailable. The opt-in real test now
+completes the full `CNINFO -> News Acquisition -> Evidence` path for `600519`.
+The default suite remains network-free.
+
 ## NEWS-PROVIDER-002
 
 The News Acquisition Layer now includes an alternative real-data path for
@@ -17,10 +30,6 @@ the network. Real CNINFO validation is explicitly opt-in with
 `CNINFO_ANNOUNCEMENT_ENDPOINT` plus `OFFICIAL_NEWS_SYMBOL` for endpoint and
 symbol overrides.
 
-The first opt-in CNINFO run reached the official endpoint successfully, but the
-response contained `announcements: null` and `totalAnnouncement: 0` for
-`600519`. It did not produce an Evidence Artifact, so no successful real-data
-run is claimed until the upstream query returns announcement records.
 
 ## Architecture
 

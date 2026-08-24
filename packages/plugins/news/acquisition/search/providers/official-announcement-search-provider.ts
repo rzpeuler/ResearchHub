@@ -22,7 +22,12 @@ export class OfficialAnnouncementSearchProvider implements SearchProvider {
   async search(input: SearchInput): Promise<readonly SearchResult[]> {
     const normalized = normalizeSearchInput(input)
     const symbol = resolveSymbol(normalized)
-    const records = await this.options.sourceAdapter.fetch({ symbol, limit: normalized.limit })
+    const records = await this.options.sourceAdapter.fetch({
+      symbol,
+      limit: normalized.limit,
+      ...(normalized.startTime === undefined ? {} : { startTime: normalized.startTime }),
+      ...(normalized.endTime === undefined ? {} : { endTime: normalized.endTime }),
+    })
 
     return records
       .filter((record) => isWithinRange(record, normalized.startTime, normalized.endTime))
@@ -33,8 +38,10 @@ export class OfficialAnnouncementSearchProvider implements SearchProvider {
 }
 
 function resolveSymbol(input: SearchInput): string {
-  const candidate = input.entity ?? input.query
-  const symbol = /\b\d{6}\b/.exec(candidate)?.[0]
+  const symbol = [input.entity, input.query]
+    .filter((value): value is string => value !== undefined)
+    .map((value) => /\b\d{6}\b/.exec(value)?.[0])
+    .find((value): value is string => value !== undefined)
   if (symbol === undefined) {
     throw new NewsAcquisitionError('search', 'official announcement search requires a six-digit A-share symbol in entity or query')
   }
