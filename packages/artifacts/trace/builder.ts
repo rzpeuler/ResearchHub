@@ -35,20 +35,25 @@ export class TraceArtifactBuilder {
     this.clock = options.clock ?? (() => new Date().toISOString())
   }
 
+  recordCreated(artifactReference: ArtifactReference, metadata: TraceMetadata): void {
+    this.options.store.append(
+      createArtifactCreatedEvent(artifactReference, metadata, this.eventIdFactory(), this.clock()),
+    )
+  }
+
   createEvidence(input: EvidenceInput, metadata: TraceMetadata): Evidence {
     const artifact = createEvidence(input)
-    this.options.store.append(
-      createArtifactCreatedEvent(toReference(artifact), metadata, this.eventIdFactory(), this.clock()),
-    )
+    this.recordCreated(toArtifactReference(artifact), metadata)
     return artifact
   }
 
   createThesis(input: ThesisInput, evidenceReferences: readonly ArtifactReference[], metadata: TraceMetadata): Thesis {
     const artifact = createThesis(input)
-    const artifactReference = toReference(artifact)
-    const relations = evidenceReferences.map((evidence) =>
+    const artifactReference = toArtifactReference(artifact)
+    const relations = evidenceReferences.flatMap((evidence) => [
       createLineageRelation('supports', evidence, artifactReference),
-    )
+      createLineageRelation('derived_from', evidence, artifactReference),
+    ])
     this.options.store.append(
       createArtifactDerivedEvent(
         artifactReference,
@@ -64,7 +69,7 @@ export class TraceArtifactBuilder {
 
   createPrediction(input: PredictionInput, thesisReference: ArtifactReference, metadata: TraceMetadata): Prediction {
     const artifact = createPrediction(input)
-    const artifactReference = toReference(artifact)
+    const artifactReference = toArtifactReference(artifact)
     const relation = createLineageRelation('derived_from', thesisReference, artifactReference)
     this.options.store.append(
       createArtifactDerivedEvent(
@@ -100,7 +105,7 @@ export class TraceArtifactBuilder {
   }
 }
 
-function toReference(artifact: { id: string; type: string; metadata: { version?: unknown } }): ArtifactReference {
+export function toArtifactReference(artifact: { id: string; type: string; metadata: { version?: unknown } }): ArtifactReference {
   const version = artifact.metadata.version
   return {
     artifactId: artifact.id,

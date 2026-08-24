@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-24 - PIPELINE-TRACE-INTEGRATION-001
+
+- Enabled Artifact Trace by default for each Equity Research Workflow
+  instance using an isolated `InMemoryTraceStore`.
+- Routed Workflow Evidence, Thesis, Prediction, and ResearchReport assembly
+  through `TraceArtifactBuilder`.
+- Added complete report lineage coverage for `contains`, `supports`, and
+  `derived_from` relations, including a deterministic `600519` Mock Pipeline
+  integration test.
+- Preserved existing Artifact Core, Skill, Plugin, DSH, and Workflow behavior.
+
 ## 2026-08-24 - ARTIFACT-TRACE-IMPLEMENTATION-001
 
 - Implemented the Artifact Trace Governance MVP under

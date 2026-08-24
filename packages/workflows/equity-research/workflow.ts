@@ -1,10 +1,12 @@
 import {
   assertNonEmptyString,
   assertTimestamp,
-  createEvidence,
-  createPrediction,
-  createThesis,
   type Evidence,
+  InMemoryTraceStore,
+  TraceArtifactBuilder,
+  type TraceMetadata,
+  type TraceStore,
+  toArtifactReference,
 } from '../../artifacts/index.ts'
 import { EquityResearchWorkflowError } from './errors.ts'
 import type {
@@ -37,10 +39,17 @@ const stepIds: EquityResearchStepId[] = [
 export interface EquityResearchWorkflowOptions {
   skills: EquityResearchSkillAdapters
   artifactIdFactory: EquityResearchArtifactIdFactory
+  traceStore?: TraceStore
 }
 
 export class EquityResearchWorkflow {
-  constructor(private readonly options: EquityResearchWorkflowOptions) {}
+  readonly traceStore: TraceStore
+  private readonly artifactBuilder: TraceArtifactBuilder
+
+  constructor(private readonly options: EquityResearchWorkflowOptions) {
+    this.traceStore = options.traceStore ?? new InMemoryTraceStore()
+    this.artifactBuilder = new TraceArtifactBuilder({ store: this.traceStore })
+  }
 
   async run(input: EquityResearchWorkflowInput): Promise<EquityResearchWorkflowResult> {
     const request = validateInput(input)
@@ -144,6 +153,10 @@ export class EquityResearchWorkflow {
     const reportSections: EquityResearchReportSection[] = [companySection(outputs['company-understanding'])]
     let evidenceOrdinal = evidence.length
 
+    for (const item of companyArtifacts.evidence) {
+      this.artifactBuilder.recordCreated(toArtifactReference(item), traceMetadata(request, 'company-research', item.metadata))
+    }
+
     for (const [stepId, output] of [
       ['industry-analysis', outputs['industry-analysis']],
       ['financial-analysis', outputs['financial-analysis']],
@@ -151,7 +164,7 @@ export class EquityResearchWorkflow {
       ['valuation-analysis', outputs['valuation-analysis']],
     ] as const) {
       const evidenceId = this.options.artifactIdFactory('evidence', evidenceOrdinal++)
-      evidence.push(createEvidence({
+      evidence.push(this.artifactBuilder.createEvidence({
         id: evidenceId,
         createdAt: request.createdAt,
         sessionId: request.sessionId,
@@ -160,7 +173,7 @@ export class EquityResearchWorkflow {
         content: JSON.stringify(output),
         timestamp: output.asOf,
         confidence: averageConfidence(output),
-      }))
+      }, traceMetadata(request, output.skillId, { skillId: output.skillId })))
       reportSections.push(...reportSectionsFor(stepId, output, [evidenceId]))
     }
 
@@ -173,7 +186,7 @@ export class EquityResearchWorkflow {
       ...outputs['company-understanding'].artifacts.thesis.risks,
       ...Object.values(outputs).flatMap((output) => 'keyRisks' in output ? output.keyRisks : []),
     ]
-    const thesis = createThesis({
+    const thesis = this.artifactBuilder.createThesis({
       id: this.options.artifactIdFactory('thesis', 0),
       createdAt: request.createdAt,
       sessionId: request.sessionId,
@@ -182,8 +195,8 @@ export class EquityResearchWorkflow {
       evidenceIds,
       confidence: 0.5,
       risks: [...new Set(risks)],
-    })
-    const prediction = createPrediction({
+    }, evidence.map(toArtifactReference), traceMetadata(request, 'equity-research', { skillId: 'equity-research' }))
+    const prediction = this.artifactBuilder.createPrediction({
       id: this.options.artifactIdFactory('prediction', 0),
       createdAt: request.createdAt,
       sessionId: request.sessionId,
@@ -192,7 +205,7 @@ export class EquityResearchWorkflow {
       expectation: 'Hypothesis: the synthesized equity research Thesis remains supported by reviewable evidence during the evaluation period; no investment recommendation is asserted.',
       evaluationPeriod: request.evaluationPeriod,
       metrics: { workflow: 'equity-research', completedStepCount: states.filter((state) => state.status === 'completed').length + 1, evidenceCount: evidence.length },
-    })
+    }, toArtifactReference(thesis), traceMetadata(request, 'equity-research', { skillId: 'equity-research' }))
     const report: EquityResearchReport = {
       skillId: 'equity-research',
       workflowId: 'equity-research',
@@ -208,7 +221,31 @@ export class EquityResearchWorkflow {
       thesisId: thesis.id,
       predictionId: prediction.id,
     }
+    this.artifactBuilder.linkResearchReport(
+      {
+        artifactId: `report:equity-research:${request.sessionId}`,
+        artifactType: 'research_report',
+        version: 1,
+      },
+      [toArtifactReference(thesis), toArtifactReference(prediction), ...evidence.map(toArtifactReference)],
+      traceMetadata(request, 'equity-research', { skillId: 'equity-research' }),
+    )
     return { evidence, thesis, prediction, report }
+  }
+}
+
+function traceMetadata(
+  request: EquityResearchWorkflowInput,
+  producerId: string,
+  artifactMetadata: Record<string, unknown>,
+): TraceMetadata {
+  const skillId = typeof artifactMetadata.skillId === 'string' ? artifactMetadata.skillId : producerId
+  return {
+    createdAt: request.createdAt,
+    createdBy: `skill:${producerId}`,
+    skillId,
+    workflowId: 'equity-research',
+    version: 1,
   }
 }
 

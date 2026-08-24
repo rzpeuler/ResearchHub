@@ -55,7 +55,7 @@ ResearchReport
 2. Workflow-created Evidence uses `TraceArtifactBuilder.createEvidence` and
    records `artifact_created` with provider/Skill metadata.
 3. The final Thesis uses `createThesis` and records `artifact_derived` with
-   explicit Evidence references and `supports` relations.
+   explicit Evidence references plus `supports` and `derived_from` relations.
 4. The final Prediction uses `createPrediction` and records
    `artifact_derived` with a `derived_from` Thesis relation.
 5. The plain Workflow ResearchReport is registered with

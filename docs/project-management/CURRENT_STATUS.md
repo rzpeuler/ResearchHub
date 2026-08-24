@@ -1,5 +1,18 @@
 # Current Status
 
+## PIPELINE-TRACE-INTEGRATION-001
+
+Artifact Trace is now enabled by default for each `EquityResearchWorkflow`
+instance. The Workflow owns an isolated `InMemoryTraceStore` and routes final
+Evidence, Thesis, Prediction, and ResearchReport assembly through the
+runtime-neutral `TraceArtifactBuilder`.
+
+The canonical report trace ID is
+`report:equity-research:<sessionId>`. A lineage query returns ResearchReport
+containment, Thesis support from Evidence, and Prediction derivation from
+Thesis. Existing Artifact Core payloads, Skill logic, Plugin interfaces, DSH,
+and Workflow definitions remain unchanged.
+
 ## ARTIFACT-TRACE-IMPLEMENTATION-001
 
 Artifact Trace Governance MVP is implemented under `packages/artifacts/trace/`.

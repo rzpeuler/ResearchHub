@@ -132,13 +132,15 @@ function cloneRelation(relation: LineageRelation): LineageRelation {
 }
 
 function referenceKey(reference: ArtifactReference): string {
-  return `${reference.artifactType}:${reference.artifactId}:v${reference.version}`
+  return JSON.stringify([reference.artifactType, reference.artifactId, reference.version])
 }
 
 function parseReferenceKey(key: string): ArtifactReference {
-  const match = /^(.*):(.*):v(\d+)$/.exec(key)
-  if (!match) throw new Error(`invalid reference key: ${key}`)
-  return { artifactType: match[1], artifactId: match[2], version: Number(match[3]) }
+  const value: unknown = JSON.parse(key)
+  if (!Array.isArray(value) || value.length !== 3 || typeof value[0] !== 'string' || typeof value[1] !== 'string' || typeof value[2] !== 'number') {
+    throw new Error(`invalid reference key: ${key}`)
+  }
+  return { artifactType: value[0], artifactId: value[1], version: value[2] }
 }
 
 function assertArtifactId(value: string): void {
