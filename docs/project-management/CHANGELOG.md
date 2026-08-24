@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-24 - Real News Plugin Validation
+
+- Added the GDELT DOC ArticleList News Provider Adapter.
+- Preserved the existing News Plugin interface and PluginRegistry boundary.
+- Added deterministic normalization/error tests and an opt-in real GDELT
+  integration test through Company Research, Evidence, Artifact serialization,
+  and Evaluation.
+- Added `RUN_REAL_NEWS_PLUGIN=1 npm run test:news-real` for explicit network
+  validation; default tests remain network-free.
+
 ## 2026-08-24 - Real LLM Runtime Validation
 
 - Added a Harness `LlmRuntime`-backed Skill Adapter under `dsh/llm-runtime/`.

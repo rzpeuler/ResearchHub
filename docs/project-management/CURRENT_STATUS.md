@@ -83,3 +83,11 @@ verified the final Artifact bundle, serialization round trips, and Evaluation
 Review. The default test suite remains network-free; run
 `RESEARCHHUB_RUN_REAL_LLM=1 npm run test:runtime` only when credentials and a
 billable provider call are intended.
+
+Real News Plugin validation is complete for the GDELT DOC provider. The
+runtime-neutral `GdeltNewsPlugin` adapter retrieves bounded ArticleList JSON,
+normalizes publication timestamps and source domains, and registers behind
+the unchanged News Plugin interface. The explicit integration test maps the
+external records into Company Research Evidence, verifies Artifact
+serialization, and produces a successful Evaluation Review. The real test is
+opt-in with `RUN_REAL_NEWS_PLUGIN=1`; default tests remain network-free.
