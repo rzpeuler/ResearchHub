@@ -1,5 +1,27 @@
 # Current Status
 
+## NEWS-PROVIDER-002
+
+The News Acquisition Layer now includes an alternative real-data path for
+official company announcements. `OfficialAnnouncementSearchProvider` reuses
+the existing CNINFO source adapter, maps official records to `SearchResult`,
+and preserves source URL, publication time, issuer, security code, confidence,
+and official-source metadata. `OfficialAnnouncementFetcher` carries the
+official API's returned announcement content through the existing
+Search -> Fetch -> Normalize -> Evidence path, including disclosures whose
+source URL points to a PDF.
+
+GDELT remains supported and unchanged. The default test suite does not access
+the network. Real CNINFO validation is explicitly opt-in with
+`RUN_REAL_OFFICIAL_NEWS=1 npm run test:official-news-real` and can use
+`CNINFO_ANNOUNCEMENT_ENDPOINT` plus `OFFICIAL_NEWS_SYMBOL` for endpoint and
+symbol overrides.
+
+The first opt-in CNINFO run reached the official endpoint successfully, but the
+response contained `announcements: null` and `totalAnnouncement: 0` for
+`600519`. It did not produce an Evidence Artifact, so no successful real-data
+run is claimed until the upstream query returns announcement records.
+
 ## Architecture
 
 The Single DSH migration is implemented and the architecture is now governed

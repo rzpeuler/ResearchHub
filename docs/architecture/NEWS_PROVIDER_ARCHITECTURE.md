@@ -1,6 +1,6 @@
 # News Provider Architecture
 
-**Task:** NEWS-ACQUISITION-001  
+**Tasks:** NEWS-ACQUISITION-001, NEWS-PROVIDER-002
 **Status:** Implemented
 
 ResearchHub News Plugin uses a runtime-neutral acquisition flow:
@@ -18,10 +18,18 @@ Workflow, Skill, or Harness runtime types.
 and limit. The first implementations are:
 
 - `GdeltSearchProvider` for the public GDELT DOC ArticleList API;
+- `OfficialAnnouncementSearchProvider` for official CNINFO company announcements;
 - `MockSearchProvider` for deterministic tests.
 
-Future RSS and Official providers can implement the same interface. A provider
-only discovers candidates; it does not interpret their investment impact.
+The official provider reuses the existing `CninfoAnnouncementSourceAdapter` and
+projects its normalized records into the same SearchProvider contract. It
+requires a six-digit A-share symbol in `entity` or `query`, preserves official
+source metadata, and filters candidates to records with an official source URL.
+It does not interpret announcement impact.
+
+GDELT remains available for general news discovery. The News Acquisition Layer
+is not bound to GDELT and can select the official provider for company
+disclosures and A-share announcements.
 
 ## WebFetcher
 
@@ -29,7 +37,10 @@ only discovers candidates; it does not interpret their investment impact.
 `NativeWebFetcher` uses the existing native HTTP transport, supports timeouts,
 validates HTTP(S) URLs, rejects non-success responses and unsupported content
 types, and does not crawl linked pages. `MockWebFetcher` is used by network-free
-tests.
+tests. `OfficialAnnouncementFetcher` materializes content already returned by
+the official announcement API, which allows CNINFO PDF-linked disclosures to
+enter the same normalization path without treating a PDF viewer page as article
+content.
 
 ## ArticleNormalizer
 
@@ -72,8 +83,8 @@ No external network request is made by default.
 The following are extension points, not current implementations:
 
 - RSS Provider;
-- Official Provider;
 - Crawler Provider.
 
-Adding one must preserve the SearchProvider/WebFetcher boundaries and must not
-introduce a Skill, Workflow Engine, Agent, Capability, or DSH dependency.
+RSS and Crawler providers remain future extension points. Any new provider must
+preserve the SearchProvider/WebFetcher boundaries and must not introduce a
+Skill, Workflow Engine, Agent, Capability, or DSH dependency.

@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-24 - NEWS-PROVIDER-002
+
+- Added `OfficialAnnouncementSearchProvider` as a non-GDELT real-data Provider
+  backed by the existing CNINFO official announcement adapter.
+- Added `OfficialAnnouncementFetcher` so official announcement content follows
+  the existing Search -> Fetch -> Normalize -> Evidence path, including
+  PDF-linked CNINFO disclosures whose content is returned by the official API.
+- Preserved the GDELT Provider, the existing Announcement Plugin contract, and
+  the runtime-neutral Plugin boundary.
+- Added deterministic coverage and an opt-in real integration test controlled
+  by `RUN_REAL_OFFICIAL_NEWS=1`; default tests remain network-free.
+- The first opt-in run reached CNINFO but returned an empty announcement set
+  for `600519`; the implementation does not claim a completed real-data run.
+
 ## 2026-08-24 - PIPELINE-REAL-DATA-002
 
 - Updated the opt-in real Equity Research Pipeline test to use
