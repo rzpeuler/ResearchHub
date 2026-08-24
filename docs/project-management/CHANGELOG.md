@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-24 — End-to-End Research Pipeline Validation
+
+- Added `PIPELINE-VALIDATION-001` integration coverage for the minimum Company
+  Equity Research demo.
+- Verified the complete DSH → Workflow → Skill → Plugin → Artifact → Evaluation
+  path with deterministic Market, News, and Financial Plugin fixtures.
+- Verified natural-language request propagation, Workflow dependencies, linked
+  Evidence/Thesis/Prediction Artifacts, serialization round trips, and a
+  successful Evaluation Review.
+
 ## 2026-08-24 — Financial Research Skill Asset Migration
 
 - Added runtime-neutral `equity-research`, `industry-research`,

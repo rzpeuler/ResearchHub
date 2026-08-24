@@ -55,3 +55,13 @@ deterministic tests. The commands consume only injected Plugin ports, so they
 can be called by DSH or another Runtime.
 
 The root DSH financial-skill invocation smoke test also passes.
+
+Pipeline validation is complete for the minimum Company Equity Research demo.
+The validated path is:
+
+`Research request → ResearchManager → Company Research Workflow → Company Research Skill → Market/News/Financial Plugins → Evidence/Thesis/Prediction Artifacts → Evaluation Review`
+
+The integration fixture uses a public-company A-share example (`600519`) and
+verifies Plugin call order, Workflow step dependencies, natural-language
+question propagation, Artifact serialization round trips, and a successful
+Evaluation result.
