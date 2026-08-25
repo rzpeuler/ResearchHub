@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { KnowledgeAccessSkill } from '../../../packages/skills/knowledge-access/index.ts'
 import { KnowledgeLoader } from '../../../packages/skills/knowledge-access/loader.ts'
 import { KnowledgeValidationSkill } from '../../../packages/skills/knowledge-validation/index.ts'
-import type { KnowledgeAccessSkill as AccessSkillType } from '../../../packages/skills/knowledge-access/index.ts'
+import { WorkflowRegistry } from '../../../packages/workflows/index.ts'
+import type { WorkflowContext, WorkflowDefinition } from '../../../packages/workflows/index.ts'
 
 const validRoot = fileURLToPath(new URL('../fixtures/valid/', import.meta.url))
 
@@ -17,7 +18,24 @@ interface KnowledgeWorkflowResult {
   sourceIds: string[]
 }
 
-function consumeKnowledge(skill: AccessSkillType): KnowledgeWorkflowResult {
+const knowledgeWorkflow: WorkflowDefinition = {
+  id: 'knowledge-fixture-consumer',
+  name: 'Knowledge Fixture Consumer',
+  description: 'Consumes the AI Hardware fixture through the standard Workflow registry contract.',
+  version: '0.1.0',
+  purpose: 'Verify Workflow -> Knowledge Access Skill -> Loader/Index behavior.',
+  inputSchema: {},
+  outputSchema: {},
+  steps: [{ id: 'consume-knowledge', skill: 'knowledge-access', inputs: [], outputs: ['result'], dependsOn: [] }],
+}
+
+async function executeKnowledgeWorkflow(workflow: WorkflowDefinition, context: WorkflowContext, loader: KnowledgeLoader): Promise<KnowledgeWorkflowResult> {
+  const registry = new WorkflowRegistry()
+  registry.register(workflow)
+  const definition = registry.get(String(context.workflowId))
+  const step = definition.steps[0]
+  if (!step || step.skill !== 'knowledge-access') throw new Error('Knowledge workflow step was not registered')
+  const skill = new KnowledgeAccessSkill({ index: await loader.load() })
   const industry = skill.getEntity('industry:ai-hardware')
   const forecast = skill.getIntelligence('segment:server', 'forecast')
   return {
@@ -35,7 +53,7 @@ test('fixture to loader to validation to access skill to workflow consumer close
   const report = await new KnowledgeValidationSkill(loader).validateKnowledge()
   assert.equal(report.status, 'passed')
 
-  const result = consumeKnowledge(new KnowledgeAccessSkill({ index: await loader.load() }))
+  const result = await executeKnowledgeWorkflow(knowledgeWorkflow, { workflowId: knowledgeWorkflow.id }, loader)
   assert.equal(result.industryName, 'AI Hardware')
   assert.ok(result.supplyChainIds.includes('segment:gpu'))
   assert.deepEqual(result.companyIds, ['company:amd', 'company:nvidia'])

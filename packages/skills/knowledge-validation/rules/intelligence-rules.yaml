@@ -1,0 +1,9 @@
+types:
+  - type: forecast
+    required: ["entityRefs", "metric", "period", "values", "sourceRefs"]
+  - type: viewpoint
+    required: ["entityRefs", "bullishPoints", "bearishPoints", "sourceRefs", "lifecycle"]
+  - type: trend
+    required: ["entityRefs", "direction", "description", "timeHorizon", "sourceRefs", "lifecycle"]
+  - type: risk
+    required: ["entityRefs", "description", "impact", "sourceRefs", "lifecycle"]

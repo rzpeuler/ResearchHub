@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -13,6 +13,28 @@ async function createFixtureRoot(): Promise<string> {
   await writeFile(join(root, 'relation.yaml'), 'id: relation:nvidia-operates-in-gpu\ntype: operates_in\nsource: company:nvidia\ntarget: segment:gpu\n')
   await writeFile(join(root, 'module.yaml'), 'id: module:gpu-products\ntype: comparison\nschemaId: product-comparison\ntargetEntity: segment:gpu\ncolumns:\n  - product\nrows: []\n')
   await writeFile(join(root, 'source.yaml'), 'id: source:fixture\ntype: research_report\ntitle: Fixture\npublisher: ResearchHub\npublishedAt: 2026-08-25\n')
+  await mkdir(join(root, 'registry'))
+  await writeFile(join(root, 'registry', 'index.yaml'), `assets:
+  - id: segment:gpu
+    type: entity
+    path: entity.yaml
+  - id: company:nvidia
+    type: entity
+    path: company.yaml
+  - id: relation:nvidia-operates-in-gpu
+    type: relation
+    path: relation.yaml
+  - id: module:gpu-products
+    type: module
+    path: module.yaml
+  - id: source:fixture
+    type: source
+    path: source.yaml
+`)
+  await writeFile(join(root, 'registry', 'modules.yaml'), `bindings:
+  - entityId: segment:gpu
+    moduleIds: ["module:gpu-products"]
+`)
   return root
 }
 

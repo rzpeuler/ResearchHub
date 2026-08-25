@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-25 - KNOWLEDGE-IMPLEMENTATION-PHASE-001-REWORK-001
+
+- Added `test:knowledge` to the main `npm test` chain.
+- Made Registry paths authoritative when a Registry is present, with discovery
+  fallback only when no Registry exists.
+- Added typed YAML relation, Intelligence, and Lifecycle rule configuration.
+- Corrected scoped Validation reference indexing and Intelligence required-field
+  checks.
+- Added canonical relation vocabulary, complete AI Hardware Registry entries,
+  and Entity-to-Module Registry bindings.
+- Added Registry, Module Registry, canonical relation, and Workflow-level
+  integration coverage.
+
 ## 2026-08-25 - KNOWLEDGE-IMPLEMENTATION-PHASE-001
 
 - Added the top-level Knowledge asset directories under `knowledge/`.

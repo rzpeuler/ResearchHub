@@ -12,7 +12,7 @@ import type {
 import type { KnowledgeAssetCollection } from './types.ts'
 
 const SUPPLY_CHAIN_RELATIONS = new Set(['contains', 'upstream_of', 'downstream_of', 'depends_on'])
-const COMPANY_RELATIONS = new Set(['operates_in', 'supplies', 'customer_of', 'partner_of'])
+const COMPANY_RELATIONS = new Set(['operates_in', 'supplier_of', 'customer_of', 'partner_of'])
 
 export class KnowledgeIndex {
   readonly entities = new Map<string, KnowledgeEntity>()
@@ -21,6 +21,7 @@ export class KnowledgeIndex {
   readonly modules = new Map<string, KnowledgeModule>()
   readonly sources = new Map<string, KnowledgeSource>()
   readonly registry = new Map<string, string>()
+  readonly moduleRegistry = new Map<string, string[]>()
   private readonly relationsByEntity = new Map<string, KnowledgeRelation[]>()
   private readonly intelligenceByEntity = new Map<string, KnowledgeIntelligence[]>()
 
@@ -32,6 +33,7 @@ export class KnowledgeIndex {
     for (const item of assets.modules) index.addUnique(index.modules, item.value.id, item.value, item.filePath)
     for (const item of assets.sources) index.addUnique(index.sources, item.value.id, item.value, item.filePath)
     for (const entry of assets.registry) index.registry.set(entry.id, entry.path)
+    for (const binding of assets.moduleRegistry) index.moduleRegistry.set(binding.entityId, [...binding.moduleIds])
 
     for (const relation of index.relations.values()) {
       index.addReverse(index.relationsByEntity, relation.source, relation)
@@ -101,8 +103,9 @@ export class KnowledgeIndex {
   }
 
   getComparison(entityId: string, comparisonType?: string): KnowledgeModule[] {
-    return [...this.modules.values()]
-      .filter((module) => module.type === 'comparison' && module.targetEntity === entityId)
+    return (this.moduleRegistry.get(entityId) ?? [])
+      .map((moduleId) => this.modules.get(moduleId))
+      .filter((module): module is KnowledgeModule => module !== undefined && module.type === 'comparison')
       .filter((module) => comparisonType === undefined || module.schemaId === comparisonType || module.id === comparisonType)
       .sort((left, right) => left.id.localeCompare(right.id))
   }
@@ -165,8 +168,9 @@ export class KnowledgeAccessSkill {
 
   getModules(entityId: string): KnowledgeModule[] {
     this.getEntity(entityId)
-    return [...this.options.index.modules.values()]
-      .filter((module) => module.targetEntity === entityId)
+    return (this.options.index.moduleRegistry.get(entityId) ?? [])
+      .map((moduleId) => this.options.index.modules.get(moduleId))
+      .filter((module): module is KnowledgeModule => module !== undefined)
       .sort((left, right) => left.id.localeCompare(right.id))
   }
 

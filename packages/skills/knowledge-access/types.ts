@@ -14,15 +14,17 @@ export const RELATION_TYPES = [
   'depends_on',
   'substitute_for',
   'operates_in',
-  'supplies',
+  'supplier_of',
   'customer_of',
   'competes_with',
   'partner_of',
   'owns_stake_in',
-  'investor_of',
-  'project_partner_of',
+  'invested_in',
 ] as const
 export type RelationType = (typeof RELATION_TYPES)[number]
+
+export const MODULE_TYPES = ['comparison', 'roadmap', 'market', 'competition', 'capacity', 'supply-chain'] as const
+export type ModuleType = (typeof MODULE_TYPES)[number]
 
 export type KnowledgeScalar = string | number | boolean | null
 export type KnowledgeValue = KnowledgeScalar | KnowledgeValue[] | { [key: string]: KnowledgeValue }
@@ -75,6 +77,11 @@ export interface KnowledgeModule {
   [key: string]: unknown
 }
 
+export interface ModuleRegistryBinding {
+  entityId: string
+  moduleIds: string[]
+}
+
 export interface KnowledgeSource {
   id: string
   type: string
@@ -101,12 +108,14 @@ export interface LoadedAsset<T extends object = Record<string, unknown>> {
 }
 
 export interface KnowledgeAssetCollection {
+  rootDir: string
   entities: LoadedAsset<KnowledgeEntity>[]
   relations: LoadedAsset<KnowledgeRelation>[]
   intelligence: LoadedAsset<KnowledgeIntelligence>[]
   modules: LoadedAsset<KnowledgeModule>[]
   sources: LoadedAsset<KnowledgeSource>[]
   registry: RegistryEntry[]
+  moduleRegistry: ModuleRegistryBinding[]
 }
 
 export interface KnowledgeLoaderOptions {

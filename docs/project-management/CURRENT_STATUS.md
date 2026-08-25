@@ -1,5 +1,15 @@
 # Current Status
 
+## Knowledge Layer Phase 1 Acceptance Closure
+
+Knowledge Layer v0.1 foundation acceptance gaps are closed. The top-level
+Knowledge asset boundary now has an authoritative Registry mode with scan
+fallback, a memory-backed Access Skill, typed YAML validation rules, scoped
+validation with complete reference lookups, and a lightweight Module Registry.
+The AI Hardware fixture is covered by a Workflow -> Access Skill -> Loader/Index
+integration test. No database, graph database, vector database, RAG, LLM
+extraction, Research Artifact Layer, or new architecture layer was introduced.
+
 ## ARCH-REFACTOR-003
 
 ResearchHub has migrated its current product architecture to **Research Output

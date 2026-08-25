@@ -1,0 +1,5 @@
+bindings:
+  - entityId: segment:gpu
+    moduleIds: ["module:gpu-products"]
+  - entityId: segment:server
+    moduleIds: ["module:server-products"]

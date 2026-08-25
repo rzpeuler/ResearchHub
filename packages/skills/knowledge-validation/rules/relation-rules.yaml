@@ -1,0 +1,37 @@
+relations:
+  - type: contains
+    sourceTypes: ["industry", "segment"]
+    targetTypes: ["segment", "product", "technology"]
+  - type: upstream_of
+    sourceTypes: ["industry", "segment", "company", "product"]
+    targetTypes: ["industry", "segment", "company", "product"]
+  - type: downstream_of
+    sourceTypes: ["industry", "segment", "company", "product"]
+    targetTypes: ["industry", "segment", "company", "product"]
+  - type: depends_on
+    sourceTypes: ["segment", "product", "technology"]
+    targetTypes: ["segment", "product", "technology"]
+  - type: substitute_for
+    sourceTypes: ["product", "technology"]
+    targetTypes: ["product", "technology"]
+  - type: operates_in
+    sourceTypes: ["company"]
+    targetTypes: ["industry", "segment"]
+  - type: supplier_of
+    sourceTypes: ["company", "product"]
+    targetTypes: ["company", "product", "segment"]
+  - type: customer_of
+    sourceTypes: ["company"]
+    targetTypes: ["company", "product"]
+  - type: partner_of
+    sourceTypes: ["company"]
+    targetTypes: ["company"]
+  - type: competes_with
+    sourceTypes: ["company", "product"]
+    targetTypes: ["company", "product"]
+  - type: owns_stake_in
+    sourceTypes: ["company"]
+    targetTypes: ["company"]
+  - type: invested_in
+    sourceTypes: ["company"]
+    targetTypes: ["company"]

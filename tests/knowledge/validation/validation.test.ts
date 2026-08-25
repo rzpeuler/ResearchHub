@@ -13,6 +13,14 @@ test('validation passes the valid AI Hardware fixture', async () => {
   assert.equal(report.errors.length, 0)
 })
 
+test('each validation scope passes independently while preserving reference lookups', async () => {
+  const skill = new KnowledgeValidationSkill(new KnowledgeLoader({ rootDir: validRoot }))
+  for (const scope of ['entity', 'relation', 'intelligence', 'module', 'source', 'all'] as const) {
+    const report = await skill.validateKnowledge(scope)
+    assert.equal(report.status, 'passed', `${scope} scope should pass`)
+  }
+})
+
 test('validation identifies missing references, invalid lifecycle, and unknown modules', async () => {
   const report = await new KnowledgeValidationSkill(new KnowledgeLoader({ rootDir: invalidRoot })).validateKnowledge()
   assert.equal(report.status, 'failed')
