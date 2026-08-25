@@ -3,6 +3,6 @@ type: segment
 name: Data Center
 description: Facilities and infrastructure containing power, cooling, networking, servers, storage, and operations required to run digital and AI workloads.
 taxonomyRefs:
-  - taxonomy:sw-electronics
+  - sw:electronics
 sourceRefs:
   - source:iea-energy-and-ai-2025

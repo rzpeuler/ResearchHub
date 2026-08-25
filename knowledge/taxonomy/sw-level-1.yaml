@@ -1,0 +1,99 @@
+id: taxonomy:sw-level-1
+type: sw-level-1
+name: 申万一级行业
+version: v0.1
+items:
+  - id: sw:agriculture
+    name: 农林牧渔
+    graphRefs: []
+  - id: sw:basic-chemicals
+    name: 基础化工
+    graphRefs: []
+  - id: sw:steel
+    name: 钢铁
+    graphRefs: []
+  - id: sw:nonferrous-metals
+    name: 有色金属
+    graphRefs: []
+  - id: sw:electronics
+    name: 电子
+    graphRefs:
+      - industry:ai-hardware
+  - id: sw:home-appliances
+    name: 家用电器
+    graphRefs: []
+  - id: sw:food-beverage
+    name: 食品饮料
+    graphRefs: []
+  - id: sw:textiles-apparel
+    name: 纺织服饰
+    graphRefs: []
+  - id: sw:light-manufacturing
+    name: 轻工制造
+    graphRefs: []
+  - id: sw:pharmaceuticals
+    name: 医药生物
+    graphRefs: []
+  - id: sw:utilities
+    name: 公用事业
+    graphRefs: []
+  - id: sw:transportation
+    name: 交通运输
+    graphRefs: []
+  - id: sw:real-estate
+    name: 房地产
+    graphRefs: []
+  - id: sw:retail
+    name: 商贸零售
+    graphRefs: []
+  - id: sw:social-services
+    name: 社会服务
+    graphRefs: []
+  - id: sw:conglomerates
+    name: 综合
+    graphRefs: []
+  - id: sw:building-materials
+    name: 建筑材料
+    graphRefs: []
+  - id: sw:building-decoration
+    name: 建筑装饰
+    graphRefs: []
+  - id: sw:power-equipment
+    name: 电力设备
+    graphRefs: []
+  - id: sw:defense
+    name: 国防军工
+    graphRefs: []
+  - id: sw:computers
+    name: 计算机
+    graphRefs: []
+  - id: sw:media
+    name: 传媒
+    graphRefs: []
+  - id: sw:telecom
+    name: 通信
+    graphRefs: []
+  - id: sw:banks
+    name: 银行
+    graphRefs: []
+  - id: sw:non-bank-finance
+    name: 非银行金融
+    graphRefs: []
+  - id: sw:automobiles
+    name: 汽车
+    graphRefs: []
+  - id: sw:machinery
+    name: 机械设备
+    graphRefs: []
+  - id: sw:coal
+    name: 煤炭
+    graphRefs: []
+  - id: sw:petrochemicals
+    name: 石油石化
+    graphRefs: []
+  - id: sw:environmental-protection
+    name: 环保
+    graphRefs: []
+  - id: sw:beauty-care
+    name: 美容护理
+    graphRefs: []

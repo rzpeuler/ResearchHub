@@ -3,7 +3,7 @@ type: industry
 name: AI Hardware
 description: AI computing infrastructure spanning accelerators, high-bandwidth memory, boards, servers, cooling, optical connectivity, and data centers.
 taxonomyRefs:
-  - taxonomy:sw-electronics
+  - sw:electronics
 sourceRefs:
   - source:iea-energy-and-ai-2025
   - source:nvidia-annual-report-2025

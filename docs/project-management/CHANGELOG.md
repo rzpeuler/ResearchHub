@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-25 - KNOWLEDGE-PRODUCTION-DATASET-V0.1-REWORK-001
+
+- Corrected NVIDIA and AMD Data Center revenue facts so financial reporting
+  segments are not treated as Knowledge GPU or Server revenue.
+- Added module-level source provenance validation and primary source references
+  to all production comparison Modules.
+- Replaced the single-node Electronics taxonomy placeholder with the complete
+  31-item SW Level-1 catalog using stable `sw:*` IDs.
+- Removed legacy `documents`, `graph`, `ingestion`, and `ontology` placeholders.
+
 ## 2026-08-25 - KNOWLEDGE-IMPLEMENTATION-PHASE-001-REWORK-001
 
 - Added `test:knowledge` to the main `npm test` chain.

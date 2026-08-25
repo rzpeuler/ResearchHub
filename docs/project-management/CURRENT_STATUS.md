@@ -72,8 +72,9 @@ LLM dependencies.
 
 Current limitation: the YAML reader intentionally supports the deterministic
 subset required by the fixture assets; advanced YAML features such as anchors,
-tags, and custom types are rejected. Production Knowledge assets are not yet
-populated under `knowledge/`.
+tags, and custom types are rejected. Production assets are source-traceable;
+unsupported financial segment mappings remain omitted, and SW Level-1
+taxonomy is a read-oriented auxiliary asset rather than a Loader runtime type.
 
 ## MEMORY-IMPLEMENTATION-001
 

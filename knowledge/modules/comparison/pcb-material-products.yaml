@@ -2,6 +2,8 @@ id: module:pcb-material-products
 type: comparison
 schemaId: pcb-material-comparison-v0.1
 targetEntity: segment:pcb-material
+sourceRefs:
+  - source:shengyi-annual-report-2024
 columns:
   - productCategory
   - electricalRequirement

@@ -3,7 +3,7 @@ type: segment
 name: Server
 description: AI server systems integrating processors, accelerators, memory, networking, storage, cooling, and rack-level delivery.
 taxonomyRefs:
-  - taxonomy:sw-electronics
+  - sw:electronics
 sourceRefs:
   - source:langchao-annual-report-2024
   - source:foxconn-industrial-internet-annual-report-2024

@@ -3,7 +3,7 @@ type: segment
 name: PCB Manufacturing
 description: Manufacturing of high-speed, high-layer-count, and other advanced printed circuit boards for communication, computing, and industrial equipment.
 taxonomyRefs:
-  - taxonomy:sw-electronics
+  - sw:electronics
 sourceRefs:
   - source:hudian-annual-report-2024
   - source:scc-annual-report-2024

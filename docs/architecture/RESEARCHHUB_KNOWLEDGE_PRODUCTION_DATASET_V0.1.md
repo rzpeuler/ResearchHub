@@ -24,11 +24,17 @@ knowledge assets -> Registry -> Loader / Runtime Index -> Access Skill
   Intelligence objects.
 - Company segment revenue belongs on the `operates_in` Relation when directly
   disclosed for that segment; otherwise the field is omitted.
+- A financial reporting segment is not assumed to equal a Knowledge industry
+  segment. Data Center revenue therefore remains a company-level Intelligence
+  fact unless a primary source directly discloses the Knowledge segment.
 - Research reports are Source objects and are linked through `sourceRefs`.
 - Unverified claims, guessed values, mock sources, and placeholder images are
   not production data.
 - Taxonomy and View files are read-oriented/auxiliary assets; core runtime
   assets remain Entity, Relation, Intelligence, Module, Source, and Registry.
+- The production Taxonomy contains all 31 SW Level-1 industry IDs in
+  `knowledge/taxonomy/sw-level-1.yaml`; `sw:electronics` links to
+  `industry:ai-hardware`.
 
 ## Initial coverage
 

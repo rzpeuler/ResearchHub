@@ -2,7 +2,6 @@ id: fact:amd-data-center-revenue-fy2025
 type: fact
 entityRefs:
   - company:amd
-  - segment:server
 metric: data-center-revenue
 period: FY2025
 value: 16.6

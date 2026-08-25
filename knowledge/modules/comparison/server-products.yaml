@@ -2,6 +2,9 @@ id: module:server-products
 type: comparison
 schemaId: server-product-comparison-v0.1
 targetEntity: segment:server
+sourceRefs:
+  - source:langchao-annual-report-2024
+  - source:foxconn-industrial-internet-annual-report-2024
 columns:
   - productCategory
   - acceleratorIntegration

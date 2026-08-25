@@ -2,6 +2,9 @@ id: module:pcb-manufacturing-products
 type: comparison
 schemaId: pcb-manufacturing-comparison-v0.1
 targetEntity: segment:pcb-manufacturing
+sourceRefs:
+  - source:hudian-annual-report-2024
+  - source:scc-annual-report-2024
 columns:
   - productCategory
   - complexity

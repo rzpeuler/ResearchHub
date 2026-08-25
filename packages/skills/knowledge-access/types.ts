@@ -71,6 +71,7 @@ export interface KnowledgeModule {
   id: string
   type: string
   targetEntity?: string
+  sourceRefs?: string[]
   schemaId?: string
   columns?: unknown[]
   rows?: unknown[]

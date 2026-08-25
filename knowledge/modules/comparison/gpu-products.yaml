@@ -2,6 +2,9 @@ id: module:gpu-products
 type: comparison
 schemaId: gpu-product-comparison-v0.1
 targetEntity: segment:gpu
+sourceRefs:
+  - source:nvidia-annual-report-2025
+  - source:amd-annual-report-2025
 columns:
   - product
   - vendor

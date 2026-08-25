@@ -82,7 +82,7 @@ export class KnowledgeValidationSkill {
         if (group === 'intelligence') this.validateIntelligence(diagnostics, item as LoadedAsset<KnowledgeIntelligence>, rules.intelligence, rules.lifecycleStatuses)
         if (group === 'module') this.validateModule(diagnostics, item as LoadedAsset<KnowledgeModule>, rules.lifecycleStatuses)
         if (group === 'source') this.validateSource(diagnostics, item as LoadedAsset<KnowledgeSource>, rules.lifecycleStatuses)
-        if (group === 'entity' || group === 'relation') this.validateSourceReferences(diagnostics, item, sources)
+        if (group === 'entity' || group === 'relation' || group === 'module') this.validateSourceReferences(diagnostics, item, sources)
       }
     }
 

@@ -3,7 +3,7 @@ type: segment
 name: GPU
 description: Parallel processors and accelerated-computing platforms used for AI training, inference, and other high-performance workloads.
 taxonomyRefs:
-  - taxonomy:sw-electronics
+  - sw:electronics
 sourceRefs:
   - source:nvidia-annual-report-2025
   - source:amd-annual-report-2025
