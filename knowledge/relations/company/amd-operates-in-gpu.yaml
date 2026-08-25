@@ -1,0 +1,7 @@
+id: relation:amd-operates-in-gpu
+type: operates_in
+source: company:amd
+target: segment:gpu
+confidence: 0.98
+sourceRefs:
+  - source:amd-annual-report-2025

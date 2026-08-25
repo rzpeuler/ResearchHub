@@ -1,0 +1,15 @@
+id: fact:amd-total-revenue-fy2025
+type: fact
+entityRefs:
+  - company:amd
+metric: total-revenue
+period: FY2025
+value: 34.6
+unit: USD billion
+statement: AMD reported 2025 net revenue of 34.6 billion US dollars.
+category: financial_metric
+sourceRefs:
+  - source:amd-annual-report-2025
+confidence: 0.99
+lifecycle:
+  status: active

@@ -1,0 +1,16 @@
+id: company:foxconn-industrial-internet
+type: company
+name: 工业富联
+listingStatus: listed
+ticker: '601138'
+exchange: SSE
+metadata:
+  productTypes:
+    - AI server
+    - cloud and networking hardware
+    - intelligent manufacturing services
+  customerSegments:
+    - cloud service providers
+    - global technology customers
+sourceRefs:
+  - source:foxconn-industrial-internet-annual-report-2024

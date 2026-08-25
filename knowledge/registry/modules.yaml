@@ -1,0 +1,13 @@
+bindings:
+  - entityId: segment:gpu
+    moduleIds:
+      - module:gpu-products
+  - entityId: segment:server
+    moduleIds:
+      - module:server-products
+  - entityId: segment:pcb-material
+    moduleIds:
+      - module:pcb-material-products
+  - entityId: segment:pcb-manufacturing
+    moduleIds:
+      - module:pcb-manufacturing-products

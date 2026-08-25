@@ -1,0 +1,7 @@
+id: relation:ai-hardware-contains-gpu
+type: contains
+source: industry:ai-hardware
+target: segment:gpu
+confidence: 0.99
+sourceRefs:
+  - source:nvidia-annual-report-2025

@@ -1,0 +1,7 @@
+id: relation:samsung-operates-in-hbm
+type: operates_in
+source: company:samsung
+target: segment:hbm
+confidence: 0.99
+sourceRefs:
+  - source:samsung-annual-report-2024

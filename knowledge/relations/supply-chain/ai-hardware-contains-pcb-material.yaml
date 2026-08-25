@@ -1,0 +1,7 @@
+id: relation:ai-hardware-contains-pcb-material
+type: contains
+source: industry:ai-hardware
+target: segment:pcb-material
+confidence: 0.97
+sourceRefs:
+  - source:shengyi-annual-report-2024

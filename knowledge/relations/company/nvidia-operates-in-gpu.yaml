@@ -1,0 +1,14 @@
+id: relation:nvidia-operates-in-gpu
+type: operates_in
+source: company:nvidia
+target: segment:gpu
+attributes:
+  segmentRevenue: 115.2
+  period: FY2025
+  currency: USD billion
+  revenueScope: Data Center
+confidence: 0.99
+sourceRefs:
+  - source:nvidia-annual-report-2025
+lifecycle:
+  status: active

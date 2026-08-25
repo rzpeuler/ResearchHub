@@ -1,0 +1,16 @@
+id: fact:shengyi-rigid-ccl-market-share-2023
+type: fact
+entityRefs:
+  - company:shengyi-technology
+  - segment:pcb-material
+metric: rigid-copper-clad-laminate-market-share
+period: 2023
+value: 14
+unit: percent
+statement: Shengyi Technology reported a 14 percent global market share for rigid copper-clad laminate in 2023 based on Prismark research.
+category: market_position
+sourceRefs:
+  - source:shengyi-annual-report-2024
+confidence: 0.9
+lifecycle:
+  status: active

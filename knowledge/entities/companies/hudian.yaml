@@ -1,0 +1,15 @@
+id: company:hudian
+type: company
+name: 沪电股份
+listingStatus: listed
+ticker: '002463'
+exchange: SZSE
+metadata:
+  productTypes:
+    - high-speed PCB
+    - high-layer-count PCB
+  customerSegments:
+    - communication equipment
+    - server and data-center equipment
+sourceRefs:
+  - source:hudian-annual-report-2024

@@ -1,0 +1,21 @@
+id: fact:nvidia-rubin-release-2026
+type: fact
+entityRefs:
+  - company:nvidia
+  - segment:gpu
+  - segment:server
+  - segment:data-center
+statement: NVIDIA announced the Rubin platform as a next-generation AI supercomputer platform spanning GPU, CPU, networking, storage, and rack-scale systems.
+category: event
+occurredAt: '2026-01-05'
+datePrecision: day
+impact: Extends the accelerated-computing platform from individual chips toward integrated rack-scale AI infrastructure.
+affectedEntityRefs:
+  - segment:gpu
+  - segment:server
+  - segment:data-center
+sourceRefs:
+  - source:nvidia-rubin-platform-2026
+confidence: 0.98
+lifecycle:
+  status: active

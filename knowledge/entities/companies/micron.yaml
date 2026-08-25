@@ -1,0 +1,16 @@
+id: company:micron
+type: company
+name: Micron Technology
+listingStatus: listed
+ticker: MU
+exchange: NASDAQ
+metadata:
+  productTypes:
+    - HBM
+    - DRAM
+    - NAND
+  customerSegments:
+    - AI accelerator ecosystem
+    - server and data-center memory
+sourceRefs:
+  - source:micron-annual-report-2025

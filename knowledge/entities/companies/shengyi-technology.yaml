@@ -1,0 +1,17 @@
+id: company:shengyi-technology
+type: company
+name: 生益科技
+listingStatus: listed
+ticker: '600183'
+exchange: SSE
+metadata:
+  productTypes:
+    - copper-clad laminate
+    - prepreg
+    - high-speed PCB material
+  customerSegments:
+    - PCB manufacturers
+    - communication equipment
+    - AI server supply chain
+sourceRefs:
+  - source:shengyi-annual-report-2024

@@ -1,0 +1,17 @@
+id: company:langchao
+type: company
+name: 浪潮信息
+listingStatus: listed
+ticker: '000977'
+exchange: SZSE
+metadata:
+  productTypes:
+    - AI server
+    - storage system
+    - AI infrastructure
+  customerSegments:
+    - cloud service providers
+    - enterprise data centers
+    - scientific and industrial computing
+sourceRefs:
+  - source:langchao-annual-report-2024

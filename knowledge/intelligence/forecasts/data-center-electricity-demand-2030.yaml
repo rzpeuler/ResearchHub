@@ -1,0 +1,19 @@
+id: forecast:data-center-electricity-demand-2030
+type: forecast
+entityRefs:
+  - segment:data-center
+  - segment:server
+metric: data-center-electricity-consumption
+period: 2024-2030
+values:
+  2024: 415
+  2030: 945
+unit: TWh
+assumptions:
+  - Base case in the IEA Energy and AI report.
+  - AI adoption and other digital services continue to increase data-center demand.
+sourceRefs:
+  - source:iea-energy-and-ai-2025
+confidence: 0.9
+lifecycle:
+  status: active

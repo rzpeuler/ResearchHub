@@ -1,0 +1,7 @@
+id: taxonomy:sw-electronics
+type: sw-level-1
+name: 电子
+nameEn: Electronics
+description: 申万一级行业电子分类，用于把 AI Hardware 主题挂接到行业目录。
+children:
+  - industry:ai-hardware

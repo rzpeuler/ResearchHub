@@ -1,0 +1,16 @@
+id: fact:amd-data-center-revenue-fy2025
+type: fact
+entityRefs:
+  - company:amd
+  - segment:server
+metric: data-center-revenue
+period: FY2025
+value: 16.6
+unit: USD billion
+statement: AMD reported 2025 Data Center net revenue of 16.6 billion US dollars.
+category: financial_metric
+sourceRefs:
+  - source:amd-annual-report-2025
+confidence: 0.99
+lifecycle:
+  status: active

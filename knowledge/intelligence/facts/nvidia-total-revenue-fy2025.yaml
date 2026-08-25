@@ -1,0 +1,15 @@
+id: fact:nvidia-total-revenue-fy2025
+type: fact
+entityRefs:
+  - company:nvidia
+metric: total-revenue
+period: FY2025
+value: 130.5
+unit: USD billion
+statement: NVIDIA reported fiscal 2025 revenue of 130.5 billion US dollars.
+category: financial_metric
+sourceRefs:
+  - source:nvidia-annual-report-2025
+confidence: 0.99
+lifecycle:
+  status: active

@@ -1,0 +1,17 @@
+id: trend:accelerated-server-electricity-growth
+type: trend
+entityRefs:
+  - segment:server
+  - segment:data-center
+direction: increasing
+description: Electricity consumption from accelerated servers is projected to grow faster than conventional server consumption as AI workloads expand.
+timeHorizon: 2024-2030
+drivers:
+  - AI training and inference adoption
+  - larger model and agentic workloads
+  - higher accelerator density
+sourceRefs:
+  - source:iea-energy-and-ai-2025
+confidence: 0.88
+lifecycle:
+  status: active

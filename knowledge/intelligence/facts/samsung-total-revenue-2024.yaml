@@ -1,0 +1,15 @@
+id: fact:samsung-total-revenue-2024
+type: fact
+entityRefs:
+  - company:samsung
+metric: total-revenue
+period: FY2024
+value: 300871
+unit: KRW billion
+statement: Samsung Electronics disclosed 2024 consolidated revenue of 300871 billion Korean won.
+category: financial_metric
+sourceRefs:
+  - source:samsung-annual-report-2024
+confidence: 0.99
+lifecycle:
+  status: active

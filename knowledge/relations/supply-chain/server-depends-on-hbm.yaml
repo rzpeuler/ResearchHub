@@ -1,0 +1,7 @@
+id: relation:server-depends-on-hbm
+type: depends_on
+source: segment:server
+target: segment:hbm
+confidence: 0.98
+sourceRefs:
+  - source:langchao-annual-report-2024

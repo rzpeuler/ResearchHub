@@ -1,0 +1,7 @@
+id: relation:ai-hardware-contains-hbm
+type: contains
+source: industry:ai-hardware
+target: segment:hbm
+confidence: 0.99
+sourceRefs:
+  - source:sk-hynix-annual-report-2025

@@ -1,0 +1,16 @@
+id: company:sk-hynix
+type: company
+name: SK hynix
+listingStatus: listed
+ticker: '000660'
+exchange: KRX
+metadata:
+  productTypes:
+    - HBM
+    - DRAM
+    - NAND flash
+  customerSegments:
+    - AI accelerator ecosystem
+    - server and data-center memory
+sourceRefs:
+  - source:sk-hynix-annual-report-2025

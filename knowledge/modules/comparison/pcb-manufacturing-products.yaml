@@ -1,0 +1,18 @@
+id: module:pcb-manufacturing-products
+type: comparison
+schemaId: pcb-manufacturing-comparison-v0.1
+targetEntity: segment:pcb-manufacturing
+columns:
+  - productCategory
+  - complexity
+  - application
+rows:
+  - productCategory: high-speed multilayer PCB
+    complexity: high layer count and signal integrity
+    application: AI servers and switches
+  - productCategory: high-density interconnect PCB
+    complexity: fine line and dense interconnect
+    application: advanced computing equipment
+  - productCategory: packaging substrate
+    complexity: package-level interconnect
+    application: semiconductor packaging

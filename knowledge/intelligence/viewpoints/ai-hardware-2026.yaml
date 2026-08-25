@@ -1,0 +1,24 @@
+id: viewpoint:ai-hardware-2026
+type: viewpoint
+entityRefs:
+  - industry:ai-hardware
+  - segment:gpu
+  - segment:server
+  - segment:data-center
+bullishPoints:
+  - Accelerated computing and AI infrastructure remain structural drivers of data-center hardware demand.
+  - Rack-scale integration and higher-density deployments expand the value pool beyond individual processors.
+bearishPoints:
+  - Power availability, grid connection, capital intensity, and supply-chain bottlenecks can delay deployments.
+  - Product transitions can create execution and inventory risks for suppliers.
+keyVariables:
+  - AI workload adoption
+  - accelerator utilization
+  - data-center power availability
+  - rack-level system efficiency
+sourceRefs:
+  - source:iea-energy-and-ai-2025
+  - source:nvidia-rubin-platform-2026
+confidence: 0.78
+lifecycle:
+  status: active

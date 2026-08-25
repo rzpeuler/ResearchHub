@@ -1,0 +1,7 @@
+id: relation:ai-hardware-contains-optical-module
+type: contains
+source: industry:ai-hardware
+target: segment:optical-module
+confidence: 0.9
+sourceRefs:
+  - source:nvidia-rubin-platform-2026

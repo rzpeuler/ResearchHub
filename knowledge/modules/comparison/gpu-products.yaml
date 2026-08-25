@@ -1,0 +1,26 @@
+id: module:gpu-products
+type: comparison
+schemaId: gpu-product-comparison-v0.1
+targetEntity: segment:gpu
+columns:
+  - product
+  - vendor
+  - workload
+  - architectureGeneration
+rows:
+  - product: Hopper
+    vendor: NVIDIA
+    workload: training and inference
+    architectureGeneration: production platform
+  - product: Blackwell
+    vendor: NVIDIA
+    workload: training and inference
+    architectureGeneration: production platform
+  - product: Instinct MI300
+    vendor: AMD
+    workload: training and inference
+    architectureGeneration: production platform
+  - product: Instinct MI350
+    vendor: AMD
+    workload: training and inference
+    architectureGeneration: 2025 platform

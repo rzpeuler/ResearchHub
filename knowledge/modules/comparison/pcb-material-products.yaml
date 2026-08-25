@@ -1,0 +1,18 @@
+id: module:pcb-material-products
+type: comparison
+schemaId: pcb-material-comparison-v0.1
+targetEntity: segment:pcb-material
+columns:
+  - productCategory
+  - electricalRequirement
+  - application
+rows:
+  - productCategory: high-speed copper-clad laminate
+    electricalRequirement: low-loss signal transmission
+    application: AI server and networking boards
+  - productCategory: high-frequency copper-clad laminate
+    electricalRequirement: high-frequency signal integrity
+    application: communication and radar equipment
+  - productCategory: prepreg
+    electricalRequirement: multilayer lamination and insulation
+    application: high-layer-count PCB

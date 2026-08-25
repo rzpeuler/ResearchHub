@@ -1,0 +1,22 @@
+id: module:server-products
+type: comparison
+schemaId: server-product-comparison-v0.1
+targetEntity: segment:server
+columns:
+  - productCategory
+  - acceleratorIntegration
+  - coolingMode
+  - deploymentScope
+rows:
+  - productCategory: GPU server
+    acceleratorIntegration: accelerator-dense system
+    coolingMode: air or liquid cooling
+    deploymentScope: AI training and inference
+  - productCategory: rack-scale AI system
+    acceleratorIntegration: multi-node integrated platform
+    coolingMode: liquid-cooling capable
+    deploymentScope: hyperscale and AI factory
+  - productCategory: general-purpose server
+    acceleratorIntegration: optional accelerator
+    coolingMode: air cooling
+    deploymentScope: enterprise and cloud workloads

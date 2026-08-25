@@ -1,0 +1,8 @@
+id: segment:optical-module
+type: segment
+name: Optical Module
+description: Optical transceiver and related high-speed connectivity products used to connect AI servers, switches, and data-center networks.
+taxonomyRefs:
+  - taxonomy:sw-electronics
+sourceRefs:
+  - source:nvidia-annual-report-2025

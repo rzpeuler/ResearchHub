@@ -1,0 +1,9 @@
+id: segment:liquid-cooling
+type: segment
+name: Liquid Cooling
+description: Direct-to-chip, cold-plate, immersion, and related cooling systems for high-density AI servers and data centers.
+taxonomyRefs:
+  - taxonomy:sw-electronics
+sourceRefs:
+  - source:langchao-annual-report-2024
+  - source:iea-energy-and-ai-2025

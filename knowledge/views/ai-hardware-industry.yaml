@@ -1,0 +1,16 @@
+id: view:ai-hardware-industry
+type: industry-view
+name: AI Hardware Industry View
+targetEntity: industry:ai-hardware
+sections:
+  - overview
+  - industry-graph
+  - market
+  - forecast
+  - comparison
+  - market-share
+  - companies
+  - viewpoint
+  - event-timeline
+  - sources
+description: Read-oriented frontend section order for the AI Hardware production dataset.

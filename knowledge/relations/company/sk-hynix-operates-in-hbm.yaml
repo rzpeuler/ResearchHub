@@ -1,0 +1,7 @@
+id: relation:sk-hynix-operates-in-hbm
+type: operates_in
+source: company:sk-hynix
+target: segment:hbm
+confidence: 0.99
+sourceRefs:
+  - source:sk-hynix-annual-report-2025

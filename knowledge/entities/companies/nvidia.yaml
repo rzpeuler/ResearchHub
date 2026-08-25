@@ -1,0 +1,17 @@
+id: company:nvidia
+type: company
+name: NVIDIA
+listingStatus: listed
+ticker: NVDA
+exchange: NASDAQ
+metadata:
+  productTypes:
+    - accelerated-computing GPU
+    - AI systems
+    - networking
+  customerSegments:
+    - cloud service providers
+    - AI laboratories
+    - enterprise and sovereign infrastructure
+sourceRefs:
+  - source:nvidia-annual-report-2025

@@ -82,6 +82,7 @@ export class KnowledgeValidationSkill {
         if (group === 'intelligence') this.validateIntelligence(diagnostics, item as LoadedAsset<KnowledgeIntelligence>, rules.intelligence, rules.lifecycleStatuses)
         if (group === 'module') this.validateModule(diagnostics, item as LoadedAsset<KnowledgeModule>, rules.lifecycleStatuses)
         if (group === 'source') this.validateSource(diagnostics, item as LoadedAsset<KnowledgeSource>, rules.lifecycleStatuses)
+        if (group === 'entity' || group === 'relation') this.validateSourceReferences(diagnostics, item, sources)
       }
     }
 
@@ -137,6 +138,16 @@ export class KnowledgeValidationSkill {
   private validateReferences(diagnostics: ValidationDiagnostic[], item: LoadedAsset<KnowledgeIntelligence>, entities: Map<string, KnowledgeEntity>, sources: Map<string, KnowledgeSource>): void {
     for (const entityId of item.value.entityRefs ?? []) if (!entities.has(entityId)) this.add(diagnostics, 'MISSING_REFERENCE', `Intelligence entity does not exist: ${entityId}`, item, 'error')
     for (const sourceId of item.value.sourceRefs ?? []) if (!sources.has(sourceId)) this.add(diagnostics, 'MISSING_REFERENCE', `Source does not exist: ${sourceId}`, item, 'error')
+  }
+
+  private validateSourceReferences(diagnostics: ValidationDiagnostic[], item: LoadedAsset, sources: Map<string, KnowledgeSource>): void {
+    const sourceRefs = item.value.sourceRefs
+    if (sourceRefs === undefined) return
+    if (!asStringArray(sourceRefs)) {
+      this.add(diagnostics, 'SOURCE_REFS_SCHEMA', 'sourceRefs must be a string array', item, 'error')
+      return
+    }
+    for (const sourceId of sourceRefs) if (!sources.has(sourceId)) this.add(diagnostics, 'MISSING_REFERENCE', `Source does not exist: ${sourceId}`, item, 'error')
   }
 
   private validateModule(diagnostics: ValidationDiagnostic[], item: LoadedAsset<KnowledgeModule>, lifecycleStatuses: string[]): void {

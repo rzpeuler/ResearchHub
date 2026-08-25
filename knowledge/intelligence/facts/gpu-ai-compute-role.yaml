@@ -1,0 +1,12 @@
+id: fact:gpu-ai-compute-role
+type: fact
+entityRefs:
+  - segment:gpu
+statement: GPUs are a core accelerated-computing component for AI training and inference workloads.
+category: industry-structure
+sourceRefs:
+  - source:nvidia-annual-report-2025
+  - source:amd-annual-report-2025
+confidence: 0.95
+lifecycle:
+  status: active

@@ -1,0 +1,16 @@
+id: company:scc
+type: company
+name: 深南电路
+listingStatus: listed
+ticker: '002916'
+exchange: SZSE
+metadata:
+  productTypes:
+    - advanced PCB
+    - packaging substrate
+    - high-speed communication board
+  customerSegments:
+    - communication equipment
+    - AI server manufacturers
+sourceRefs:
+  - source:scc-annual-report-2024

@@ -1,0 +1,21 @@
+id: fact:ai-server-architecture-upgrade-2024
+type: fact
+entityRefs:
+  - company:langchao
+  - segment:server
+  - segment:liquid-cooling
+  - segment:data-center
+statement: The 2024 server architecture upgrade included multi-chip open architecture, AI server product expansion, and liquid-cooling support for higher-density deployments.
+category: event
+occurredAt: '2024'
+datePrecision: year
+impact: Raises the importance of rack-level integration, liquid cooling, and system efficiency in AI server deployments.
+affectedEntityRefs:
+  - segment:server
+  - segment:liquid-cooling
+  - segment:data-center
+sourceRefs:
+  - source:langchao-annual-report-2024
+confidence: 0.9
+lifecycle:
+  status: active

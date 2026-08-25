@@ -1,0 +1,7 @@
+id: relation:langchao-operates-in-server
+type: operates_in
+source: company:langchao
+target: segment:server
+confidence: 0.99
+sourceRefs:
+  - source:langchao-annual-report-2024

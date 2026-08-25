@@ -1,0 +1,16 @@
+id: company:samsung
+type: company
+name: Samsung Electronics
+listingStatus: listed
+ticker: '005930'
+exchange: KRX
+metadata:
+  productTypes:
+    - HBM
+    - DRAM
+    - semiconductor solutions
+  customerSegments:
+    - AI accelerator ecosystem
+    - server and data-center memory
+sourceRefs:
+  - source:samsung-annual-report-2024

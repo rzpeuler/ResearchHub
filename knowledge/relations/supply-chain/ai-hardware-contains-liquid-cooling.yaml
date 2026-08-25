@@ -1,0 +1,7 @@
+id: relation:ai-hardware-contains-liquid-cooling
+type: contains
+source: industry:ai-hardware
+target: segment:liquid-cooling
+confidence: 0.95
+sourceRefs:
+  - source:langchao-annual-report-2024

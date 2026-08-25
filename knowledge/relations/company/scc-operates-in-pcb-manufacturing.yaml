@@ -1,0 +1,7 @@
+id: relation:scc-operates-in-pcb-manufacturing
+type: operates_in
+source: company:scc
+target: segment:pcb-manufacturing
+confidence: 0.99
+sourceRefs:
+  - source:scc-annual-report-2024

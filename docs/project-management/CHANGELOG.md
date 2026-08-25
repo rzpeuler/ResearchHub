@@ -13,6 +13,15 @@
 - Added Registry, Module Registry, canonical relation, and Workflow-level
   integration coverage.
 
+## 2026-08-25 - KNOWLEDGE-PRODUCTION-DATASET-V0.1
+
+- Added the source-traceable AI Hardware production dataset under `knowledge/`.
+- Migrated market, financial, event, forecast, viewpoint, trend, and risk data
+  into Intelligence objects instead of embedding dynamic claims in Entities.
+- Added production Taxonomy, View, comparison Modules, Module Registry, and a
+  complete runtime Registry.
+- Added production-loader, access-query, and non-placeholder-source tests.
+
 ## 2026-08-25 - KNOWLEDGE-IMPLEMENTATION-PHASE-001
 
 - Added the top-level Knowledge asset directories under `knowledge/`.

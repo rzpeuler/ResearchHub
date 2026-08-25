@@ -1,0 +1,7 @@
+id: relation:micron-operates-in-hbm
+type: operates_in
+source: company:micron
+target: segment:hbm
+confidence: 0.99
+sourceRefs:
+  - source:micron-annual-report-2025

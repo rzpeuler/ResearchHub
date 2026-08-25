@@ -1,0 +1,10 @@
+id: segment:hbm
+type: segment
+name: HBM
+description: High-bandwidth memory used with accelerated computing systems to provide high memory bandwidth in a compact package.
+taxonomyRefs:
+  - taxonomy:sw-electronics
+sourceRefs:
+  - source:sk-hynix-annual-report-2025
+  - source:samsung-annual-report-2024
+  - source:micron-annual-report-2025

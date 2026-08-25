@@ -17,7 +17,12 @@ views/
 registry/
 ```
 
-The first implementation loads validation fixtures from
-`tests/knowledge/fixtures/`; it does not populate production Knowledge here.
+The AI Hardware v0.1 production dataset is stored here and is loaded through
+the same Loader / Runtime Index / Access Skill path used by the validation
+fixtures. Prototype data under `tests/knowledge/` remains a legacy acceptance
+benchmark and is not copied into this directory.
+
+Production assets require source references for dynamic claims. Unsupported or
+unverified fields are omitted instead of being filled with mock values.
 Graph storage, vector storage, RAG, LLM extraction, and automatic Knowledge
 formation are not implemented.

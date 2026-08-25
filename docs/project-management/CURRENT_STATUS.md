@@ -10,6 +10,12 @@ The AI Hardware fixture is covered by a Workflow -> Access Skill -> Loader/Index
 integration test. No database, graph database, vector database, RAG, LLM
 extraction, Research Artifact Layer, or new architecture layer was introduced.
 
+The AI Hardware Production Dataset v0.1 is now populated under `knowledge/`
+with source-traceable Entity, Relation, Intelligence, Module, Taxonomy, View,
+Source, and Registry assets. The production Registry is complete for runtime
+assets; unsupported prototype fields remain omitted rather than represented by
+mock claims.
+
 ## ARCH-REFACTOR-003
 
 ResearchHub has migrated its current product architecture to **Research Output

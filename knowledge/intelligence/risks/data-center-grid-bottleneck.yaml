@@ -1,0 +1,14 @@
+id: risk:data-center-grid-bottleneck
+type: risk
+entityRefs:
+  - segment:data-center
+  - segment:server
+  - segment:liquid-cooling
+description: Grid connection queues, power availability, and local infrastructure constraints may delay data-center projects and change the pace of AI hardware deployment.
+impact: Delayed project commissioning, higher infrastructure costs, and demand timing volatility across servers, cooling, and networking.
+trigger: Grid connection or power procurement cannot keep pace with the project pipeline.
+sourceRefs:
+  - source:iea-energy-and-ai-2025
+confidence: 0.85
+lifecycle:
+  status: active

@@ -1,0 +1,7 @@
+id: relation:data-center-contains-server
+type: contains
+source: segment:data-center
+target: segment:server
+confidence: 0.99
+sourceRefs:
+  - source:iea-energy-and-ai-2025

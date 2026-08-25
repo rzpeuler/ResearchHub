@@ -1,0 +1,17 @@
+id: company:amd
+type: company
+name: AMD
+listingStatus: listed
+ticker: AMD
+exchange: NASDAQ
+metadata:
+  productTypes:
+    - AMD Instinct GPU
+    - EPYC server processor
+    - networking products
+  customerSegments:
+    - cloud service providers
+    - enterprise data centers
+    - OEM and ODM system manufacturers
+sourceRefs:
+  - source:amd-annual-report-2025
