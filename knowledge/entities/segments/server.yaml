@@ -1,6 +1,6 @@
 id: segment:server
 type: segment
-name: Server
+name: 服务器
 description: 集成处理器、加速器、内存、网络、存储与散热，并支持机架级交付的 AI 服务器系统。
 taxonomyRefs:
   - sw:electronics

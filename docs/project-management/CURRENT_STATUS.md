@@ -33,13 +33,13 @@ architecture layer was introduced.
 
 ## KNOWLEDGE-PHASE-2C-SEMANTICS-AND-LOCALIZATION-001
 
-The Knowledge frontend now uses `CompanyScaleProjection` for company-size
-visualization. `segmentRevenue` remains raw relation data and is mapped to CSS
-card area only when period, unit, and revenue scope are comparable; no market
-share denominator or percentage is produced. Production Knowledge research
-content and the frontend are Chinese-first, while stable machine contracts,
-professional abbreviations, brands, product names, and source provenance stay
-canonical.
+The Knowledge frontend now uses `CompanyScaleProjection` from company
+`total-revenue` Financial Facts. Card area is mapped only when Fact period and
+unit are comparable; `segmentRevenue` remains separate business-scale data and
+is not the default input. No market-share denominator or percentage is
+produced. Production Knowledge research content, Entity names, View names and
+the frontend are Chinese-first, while stable machine contracts, professional
+abbreviations, brands, product names, and source provenance stay canonical.
 
 ## ARCH-REFACTOR-003
 

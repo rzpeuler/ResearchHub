@@ -1,6 +1,6 @@
 id: view:ai-hardware-industry
 type: industry-view
-name: AI Hardware 产业视图
+name: AI 硬件产业视图
 targetEntity: industry:ai-hardware
 sections:
   - overview
@@ -13,4 +13,4 @@ sections:
   - viewpoint
   - event-timeline
   - sources
-description: AI Hardware 生产知识数据的前端只读展示顺序。
+description: AI 硬件生产知识数据的前端只读展示顺序。

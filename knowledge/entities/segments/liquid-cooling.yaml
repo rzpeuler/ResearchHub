@@ -1,6 +1,6 @@
 id: segment:liquid-cooling
 type: segment
-name: Liquid Cooling
+name: 液冷
 description: 面向高密度 AI 服务器与数据中心的芯片直冷、冷板、浸没式及相关散热系统。
 taxonomyRefs:
   - sw:electronics

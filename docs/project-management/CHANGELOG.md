@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-25 - KNOWLEDGE-PHASE-2C-FINAL-CLOSEOUT-001
+
+- Switched company-scale visualization from relation `segmentRevenue` to
+  company `total-revenue` Financial Facts.
+- Kept visual normalization in the frontend and downgraded mixed period/unit
+  inputs to equal-size cards without creating a market-share metric.
+- Localized remaining human-readable AI Hardware Entity and View names to
+  Chinese-first display names while preserving stable IDs and professional
+  terms.
+
 ## 2026-08-25 - KNOWLEDGE-PHASE-2C-SEMANTICS-AND-LOCALIZATION-001
 
 - Replaced frontend Market Share projection semantics with raw company-scale

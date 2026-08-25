@@ -1,6 +1,6 @@
 id: industry:ai-hardware
 type: industry
-name: AI Hardware
+name: AI 硬件
 description: 覆盖加速器、高带宽内存、PCB、服务器、散热、光连接与数据中心的 AI 计算基础设施产业。
 taxonomyRefs:
   - sw:electronics

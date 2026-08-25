@@ -64,14 +64,14 @@ export interface GraphProjection {
 
 export interface CompanyScaleEntry {
   company: KnowledgeEntity
-  segmentRevenue: number
+  revenue: number
   period: string
   unit: string
-  revenueScope: string
+  sourceRefs: string[]
 }
 
 export interface CompanyScaleProjection {
-  segmentId: string
+  entityId: string
   entries: CompanyScaleEntry[]
 }
 
@@ -118,26 +118,55 @@ function projectionNode(entity: KnowledgeEntity, hasChildren: boolean): Projecti
   return { id: entity.id, type: entity.type, name: entity.name, hasChildren }
 }
 
+function isActiveFact(item: KnowledgeIntelligence): boolean {
+  return asRecord(item.lifecycle).status === 'active'
+}
+
+function selectTotalRevenueFact(facts: KnowledgeIntelligence[]): KnowledgeIntelligence | undefined {
+  return facts
+    .filter((item) => {
+      const value = item.value
+      const period = item.period
+      const unit = item.unit
+      return item.type === 'fact'
+        && item.category === 'financial_metric'
+        && item.metric === 'total-revenue'
+        && isActiveFact(item)
+        && typeof value === 'number'
+        && Number.isFinite(value)
+        && value >= 0
+        && typeof period === 'string'
+        && period.trim().length > 0
+        && typeof unit === 'string'
+        && unit.trim().length > 0
+    })
+    .sort((left, right) => {
+      const leftConfidence = typeof left.confidence === 'number' ? left.confidence : -Infinity
+      const rightConfidence = typeof right.confidence === 'number' ? right.confidence : -Infinity
+      return rightConfidence - leftConfidence
+        || String(right.period).localeCompare(String(left.period))
+        || left.id.localeCompare(right.id)
+    })[0]
+}
+
 export function buildCompanyScaleProjection(
-  segmentId: string,
+  entityId: string,
   relatedCompanies: Array<{ company: KnowledgeEntity; relation: KnowledgeRelation }>,
+  getCompanyFacts: (companyId: string) => KnowledgeIntelligence[],
 ): CompanyScaleProjection | undefined {
   const entries = relatedCompanies.flatMap(({ company, relation }) => {
     if (relation.type !== 'operates_in') return []
-    const attributes = asRecord(relation.attributes)
-    const segmentRevenue = attributes.segmentRevenue
-    const period = attributes.period
-    const unit = attributes.unit ?? attributes.currency
-    const revenueScope = attributes.revenueScope
-    if (
-      typeof segmentRevenue !== 'number' || !Number.isFinite(segmentRevenue) || segmentRevenue < 0
-      || typeof period !== 'string' || !period.trim()
-      || typeof unit !== 'string' || !unit.trim()
-      || typeof revenueScope !== 'string' || !revenueScope.trim()
-    ) return []
-    return [{ company, segmentRevenue, period, unit, revenueScope }]
-  }).sort((left, right) => right.segmentRevenue - left.segmentRevenue || left.company.id.localeCompare(right.company.id))
-  return entries.length ? { segmentId, entries } : undefined
+    const fact = selectTotalRevenueFact(getCompanyFacts(company.id))
+    if (!fact) return []
+    return [{
+      company,
+      revenue: fact.value as number,
+      period: fact.period as string,
+      unit: fact.unit as string,
+      sourceRefs: asStringArray(fact.sourceRefs),
+    }]
+  }).sort((left, right) => right.revenue - left.revenue || left.company.id.localeCompare(right.company.id))
+  return entries.length ? { entityId, entries } : undefined
 }
 
 export class KnowledgeViewAdapter {
@@ -237,7 +266,7 @@ export class KnowledgeViewAdapter {
       modules,
       events,
       sources,
-      companyScale: buildCompanyScaleProjection(entityId, relatedCompanyResults),
+      companyScale: buildCompanyScaleProjection(entityId, relatedCompanyResults, (companyId) => this.access.getIntelligence(companyId)),
       viewSections: [...(this.view.sections ?? [])],
     }
   }

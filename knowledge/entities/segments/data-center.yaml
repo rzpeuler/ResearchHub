@@ -1,6 +1,6 @@
 id: segment:data-center
 type: segment
-name: Data Center
+name: 数据中心
 description: 承载数字化与 AI 工作负载所需的电力、散热、网络、服务器、存储及运营设施与基础设施。
 taxonomyRefs:
   - sw:electronics

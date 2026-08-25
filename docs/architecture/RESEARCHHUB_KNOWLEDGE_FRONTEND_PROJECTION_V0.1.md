@@ -44,18 +44,20 @@ acceptance benchmarks only and are not part of the page runtime.
 | `Event[]` | `fact` Intelligence with `category: event` |
 | `Research[]` | Entity/Intelligence/Module `sourceRefs` -> Source |
 | static comparison columns | Module `columns` and `rows` |
-| `MarketShareProjection` | `CompanyScaleProjection` from comparable `segmentRevenue` inputs |
+| `MarketShareProjection` | `CompanyScaleProjection` from company `total-revenue` Facts |
 
 Unsupported or unavailable data is omitted. The page does not infer market
-share, industry concentration, or financial segment revenue. A company-scale
-projection only exposes revenue fields already present on an `operates_in`
-relation; the browser uses them as CSS card-size inputs and never derives a
-percentage or denominator.
+share, industry concentration, or business-segment revenue. A company-scale
+projection only exposes company `total-revenue` Financial Facts already
+present in Intelligence; the browser uses them as CSS card-size inputs and
+never derives a percentage or denominator. `segmentRevenue` on an
+`operates_in` relation remains available for a future, separate business-scale
+view and is not the default company-scale input.
 
-Company cards can use different visual weights only when `period`, `unit` and
-`revenueScope` match. Otherwise the page renders equal-size cards. The user
-facing label is “公司规模” or, within a segment, “业务规模”; “市场份额” is
-not a frontend projection concept.
+Company cards can use different visual weights only when total-revenue Fact
+`period` and `unit` match. Otherwise the page renders equal-size cards. The
+user-facing label is “公司规模”; “市场份额” is not a frontend projection
+concept.
 
 ResearchHub human-readable Knowledge content is Chinese-first. Stable IDs,
 namespaces, YAML keys, TypeScript/API keys, enum values, relation types,

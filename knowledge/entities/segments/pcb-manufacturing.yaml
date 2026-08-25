@@ -1,6 +1,6 @@
 id: segment:pcb-manufacturing
 type: segment
-name: PCB Manufacturing
+name: PCB 制造
 description: 面向通信、计算与工业设备制造高速、高层数及其他高端印制电路板的 PCB 制造环节。
 taxonomyRefs:
   - sw:electronics
