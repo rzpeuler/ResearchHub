@@ -6,12 +6,12 @@ ticker: NVDA
 exchange: NASDAQ
 metadata:
   productTypes:
-    - accelerated-computing GPU
-    - AI systems
-    - networking
+    - 加速计算 GPU
+    - AI 系统
+    - 网络产品
   customerSegments:
-    - cloud service providers
-    - AI laboratories
-    - enterprise and sovereign infrastructure
+    - 云服务提供商
+    - AI 实验室
+    - 企业与主权级基础设施
 sourceRefs:
   - source:nvidia-annual-report-2025

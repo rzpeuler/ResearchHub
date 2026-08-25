@@ -5,16 +5,16 @@ targetEntity: segment:pcb-material
 sourceRefs:
   - source:shengyi-annual-report-2024
 columns:
-  - productCategory
-  - electricalRequirement
-  - application
+  - 产品类别
+  - 电气要求
+  - 应用场景
 rows:
-  - productCategory: high-speed copper-clad laminate
-    electricalRequirement: low-loss signal transmission
-    application: AI server and networking boards
-  - productCategory: high-frequency copper-clad laminate
-    electricalRequirement: high-frequency signal integrity
-    application: communication and radar equipment
-  - productCategory: prepreg
-    electricalRequirement: multilayer lamination and insulation
-    application: high-layer-count PCB
+  - 产品类别: 高速覆铜板
+    电气要求: 低损耗信号传输
+    应用场景: AI 服务器与网络板卡
+  - 产品类别: 高频覆铜板
+    电气要求: 高频信号完整性
+    应用场景: 通信与雷达设备
+  - 产品类别: 半固化片
+    电气要求: 多层压合与绝缘
+    应用场景: 高层数 PCB

@@ -10,7 +10,7 @@ metadata:
     - DRAM
     - NAND
   customerSegments:
-    - AI accelerator ecosystem
-    - server and data-center memory
+    - AI 加速器生态
+    - 服务器与数据中心存储
 sourceRefs:
   - source:micron-annual-report-2025

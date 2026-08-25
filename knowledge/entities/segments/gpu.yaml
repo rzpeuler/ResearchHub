@@ -1,7 +1,7 @@
 id: segment:gpu
 type: segment
 name: GPU
-description: Parallel processors and accelerated-computing platforms used for AI training, inference, and other high-performance workloads.
+description: 用于 AI 训练、推理及其他高性能工作负载的并行处理器与加速计算平台。
 taxonomyRefs:
   - sw:electronics
 sourceRefs:

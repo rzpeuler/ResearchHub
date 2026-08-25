@@ -62,16 +62,17 @@ export interface GraphProjection {
   relations: ProjectionRelation[]
 }
 
-export interface MarketShareEntry {
+export interface CompanyScaleEntry {
   company: KnowledgeEntity
   segmentRevenue: number
+  period: string
+  unit: string
   revenueScope: string
 }
 
-export interface MarketShareProjection {
+export interface CompanyScaleProjection {
   segmentId: string
-  entries: MarketShareEntry[]
-  totalRevenue: number
+  entries: CompanyScaleEntry[]
 }
 
 export interface EventProjection {
@@ -95,7 +96,7 @@ export interface EntityDetailProjection {
   modules: KnowledgeModule[]
   events: EventProjection[]
   sources: KnowledgeSource[]
-  marketShare?: MarketShareProjection
+  companyScale?: CompanyScaleProjection
   viewSections: string[]
 }
 
@@ -115,6 +116,28 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function projectionNode(entity: KnowledgeEntity, hasChildren: boolean): ProjectionNode {
   return { id: entity.id, type: entity.type, name: entity.name, hasChildren }
+}
+
+export function buildCompanyScaleProjection(
+  segmentId: string,
+  relatedCompanies: Array<{ company: KnowledgeEntity; relation: KnowledgeRelation }>,
+): CompanyScaleProjection | undefined {
+  const entries = relatedCompanies.flatMap(({ company, relation }) => {
+    if (relation.type !== 'operates_in') return []
+    const attributes = asRecord(relation.attributes)
+    const segmentRevenue = attributes.segmentRevenue
+    const period = attributes.period
+    const unit = attributes.unit ?? attributes.currency
+    const revenueScope = attributes.revenueScope
+    if (
+      typeof segmentRevenue !== 'number' || !Number.isFinite(segmentRevenue) || segmentRevenue < 0
+      || typeof period !== 'string' || !period.trim()
+      || typeof unit !== 'string' || !unit.trim()
+      || typeof revenueScope !== 'string' || !revenueScope.trim()
+    ) return []
+    return [{ company, segmentRevenue, period, unit, revenueScope }]
+  }).sort((left, right) => right.segmentRevenue - left.segmentRevenue || left.company.id.localeCompare(right.company.id))
+  return entries.length ? { segmentId, entries } : undefined
 }
 
 export class KnowledgeViewAdapter {
@@ -182,7 +205,8 @@ export class KnowledgeViewAdapter {
     const entity = this.access.getEntity(entityId)
     const intelligence = this.getRelevantIntelligence(entityId)
     const facts = intelligence.filter((item) => item.type === 'fact')
-    const relatedCompanies = this.access.getRelatedCompanies(entityId).map(({ company, relation }) => ({
+    const relatedCompanyResults = this.access.getRelatedCompanies(entityId)
+    const relatedCompanies = relatedCompanyResults.map(({ company, relation }) => ({
       company,
       relation: this.projectRelation(relation),
     }))
@@ -213,7 +237,7 @@ export class KnowledgeViewAdapter {
       modules,
       events,
       sources,
-      marketShare: this.getMarketShareProjection(entityId, relatedCompanies),
+      companyScale: buildCompanyScaleProjection(entityId, relatedCompanyResults),
       viewSections: [...(this.view.sections ?? [])],
     }
   }
@@ -242,17 +266,4 @@ export class KnowledgeViewAdapter {
     return [...sources.values()].sort((left, right) => left.id.localeCompare(right.id))
   }
 
-  private getMarketShareProjection(entityId: string, relatedCompanies: Array<{ company: KnowledgeEntity; relation: ProjectionRelation }>): MarketShareProjection | undefined {
-    const entries = relatedCompanies.flatMap(({ company, relation }) => {
-      if (relation.type !== 'operates_in') return []
-      const sourceRelation = this.access.getRelations(entityId, 'operates_in').find((candidate) => candidate.id === relation.id)
-      const attributes = asRecord(sourceRelation?.attributes)
-      const segmentRevenue = attributes.segmentRevenue
-      const revenueScope = attributes.revenueScope
-      if (typeof segmentRevenue !== 'number' || typeof revenueScope !== 'string' || !revenueScope.trim()) return []
-      return [{ company, segmentRevenue, revenueScope }]
-    }).sort((left, right) => right.segmentRevenue - left.segmentRevenue)
-    if (!entries.length) return undefined
-    return { segmentId: entityId, entries, totalRevenue: entries.reduce((sum, entry) => sum + entry.segmentRevenue, 0) }
-  }
 }

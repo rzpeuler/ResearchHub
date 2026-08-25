@@ -6,11 +6,11 @@ ticker: '601138'
 exchange: SSE
 metadata:
   productTypes:
-    - AI server
-    - cloud and networking hardware
-    - intelligent manufacturing services
+    - AI 服务器
+    - 云计算与网络硬件
+    - 智能制造服务
   customerSegments:
-    - cloud service providers
-    - global technology customers
+    - 云服务提供商
+    - 全球科技客户
 sourceRefs:
   - source:foxconn-industrial-internet-annual-report-2024

@@ -6,20 +6,20 @@ sourceRefs:
   - source:langchao-annual-report-2024
   - source:foxconn-industrial-internet-annual-report-2024
 columns:
-  - productCategory
-  - acceleratorIntegration
-  - coolingMode
-  - deploymentScope
+  - 产品类别
+  - 加速器集成
+  - 散热方式
+  - 部署范围
 rows:
-  - productCategory: GPU server
-    acceleratorIntegration: accelerator-dense system
-    coolingMode: air or liquid cooling
-    deploymentScope: AI training and inference
-  - productCategory: rack-scale AI system
-    acceleratorIntegration: multi-node integrated platform
-    coolingMode: liquid-cooling capable
-    deploymentScope: hyperscale and AI factory
-  - productCategory: general-purpose server
-    acceleratorIntegration: optional accelerator
-    coolingMode: air cooling
-    deploymentScope: enterprise and cloud workloads
+  - 产品类别: GPU 服务器
+    加速器集成: 高密度加速器系统
+    散热方式: 风冷或液冷
+    部署范围: AI 训练与推理
+  - 产品类别: 机架级 AI 系统
+    加速器集成: 多节点一体化平台
+    散热方式: 支持液冷
+    部署范围: 超大规模数据中心与 AI 工厂
+  - 产品类别: 通用服务器
+    加速器集成: 可选加速器
+    散热方式: 风冷
+    部署范围: 企业与云工作负载

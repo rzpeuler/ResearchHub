@@ -27,9 +27,19 @@ available for regression comparison.
 
 Directory, graph, Entity detail, dynamic comparison tables, Intelligence-based
 viewpoints and forecasts, event Facts, Source links, company financial Facts,
-and conditional market-share rendering are covered by focused adapter and HTTP
+and conditional company-scale rendering are covered by focused adapter and HTTP
 tests. No frontend package, persistent projection, database, LLM, or new
 architecture layer was introduced.
+
+## KNOWLEDGE-PHASE-2C-SEMANTICS-AND-LOCALIZATION-001
+
+The Knowledge frontend now uses `CompanyScaleProjection` for company-size
+visualization. `segmentRevenue` remains raw relation data and is mapped to CSS
+card area only when period, unit, and revenue scope are comparable; no market
+share denominator or percentage is produced. Production Knowledge research
+content and the frontend are Chinese-first, while stable machine contracts,
+professional abbreviations, brands, product names, and source provenance stay
+canonical.
 
 ## ARCH-REFACTOR-003
 

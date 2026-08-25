@@ -4,12 +4,12 @@ entityRefs:
   - segment:server
   - segment:data-center
 direction: increasing
-description: Electricity consumption from accelerated servers is projected to grow faster than conventional server consumption as AI workloads expand.
+description: 随着 AI 工作负载扩张，加速服务器的用电量预计将快于传统服务器用电量增长。
 timeHorizon: 2024-2030
 drivers:
-  - AI training and inference adoption
-  - larger model and agentic workloads
-  - higher accelerator density
+  - AI 训练与推理应用普及
+  - 更大模型与智能体工作负载
+  - 更高的加速器密度
 sourceRefs:
   - source:iea-energy-and-ai-2025
 confidence: 0.88

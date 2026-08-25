@@ -8,9 +8,9 @@ metadata:
   productTypes:
     - HBM
     - DRAM
-    - semiconductor solutions
+    - 半导体解决方案
   customerSegments:
-    - AI accelerator ecosystem
-    - server and data-center memory
+    - AI 加速器生态
+    - 服务器与数据中心存储
 sourceRefs:
   - source:samsung-annual-report-2024

@@ -6,24 +6,24 @@ sourceRefs:
   - source:nvidia-annual-report-2025
   - source:amd-annual-report-2025
 columns:
-  - product
-  - vendor
-  - workload
-  - architectureGeneration
+  - 产品
+  - 厂商
+  - 工作负载
+  - 架构代际
 rows:
-  - product: Hopper
-    vendor: NVIDIA
-    workload: training and inference
-    architectureGeneration: production platform
-  - product: Blackwell
-    vendor: NVIDIA
-    workload: training and inference
-    architectureGeneration: production platform
-  - product: Instinct MI300
-    vendor: AMD
-    workload: training and inference
-    architectureGeneration: production platform
-  - product: Instinct MI350
-    vendor: AMD
-    workload: training and inference
-    architectureGeneration: 2025 platform
+  - 产品: Hopper
+    厂商: NVIDIA
+    工作负载: 训练与推理
+    架构代际: 量产平台
+  - 产品: Blackwell
+    厂商: NVIDIA
+    工作负载: 训练与推理
+    架构代际: 量产平台
+  - 产品: Instinct MI300
+    厂商: AMD
+    工作负载: 训练与推理
+    架构代际: 量产平台
+  - 产品: Instinct MI350
+    厂商: AMD
+    工作负载: 训练与推理
+    架构代际: 2025 年平台

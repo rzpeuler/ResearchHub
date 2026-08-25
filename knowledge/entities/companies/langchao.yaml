@@ -6,12 +6,12 @@ ticker: '000977'
 exchange: SZSE
 metadata:
   productTypes:
-    - AI server
-    - storage system
-    - AI infrastructure
+    - AI 服务器
+    - 存储系统
+    - AI 基础设施
   customerSegments:
-    - cloud service providers
-    - enterprise data centers
-    - scientific and industrial computing
+    - 云服务提供商
+    - 企业数据中心
+    - 科研与工业计算
 sourceRefs:
   - source:langchao-annual-report-2024

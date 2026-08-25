@@ -1,7 +1,7 @@
 id: segment:optical-module
 type: segment
 name: Optical Module
-description: Optical transceiver and related high-speed connectivity products used to connect AI servers, switches, and data-center networks.
+description: 用于连接 AI 服务器、交换机与数据中心网络的光收发器及相关高速连接产品。
 taxonomyRefs:
   - sw:electronics
 sourceRefs:

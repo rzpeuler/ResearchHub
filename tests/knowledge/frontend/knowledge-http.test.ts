@@ -26,10 +26,12 @@ test('Knowledge HTTP endpoints return production projections', async () => {
 
     const entityResponse = await fetch(`${baseUrl}/api/knowledge/entity/${encodeURIComponent('segment:gpu')}`)
     assert.equal(entityResponse.status, 200)
-    const entity = await entityResponse.json() as { entity: { id: string }; modules: Array<{ columns: string[] }>; relatedCompanies: Array<{ company: { id: string } }> }
+    const entity = await entityResponse.json() as { entity: { id: string }; modules: Array<{ columns: string[] }>; relatedCompanies: Array<{ company: { id: string } }>; viewSections: string[] }
     assert.equal(entity.entity.id, 'segment:gpu')
-    assert.deepEqual(entity.modules[0]?.columns, ['product', 'vendor', 'workload', 'architectureGeneration'])
+    assert.deepEqual(entity.modules[0]?.columns, ['产品', '厂商', '工作负载', '架构代际'])
     assert.deepEqual(entity.relatedCompanies.map(({ company }) => company.id), ['company:amd', 'company:nvidia'])
+    assert.ok(entity.viewSections.includes('company-scale'))
+    assert.ok(!entity.viewSections.includes('market-share'))
 
     const missingResponse = await fetch(`${baseUrl}/api/knowledge/entity/${encodeURIComponent('segment:missing')}`)
     assert.equal(missingResponse.status, 404)
@@ -42,4 +44,9 @@ test('production page does not reference legacy JSON or mock presentation langua
   const html = await readFile(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8')
   assert.doesNotMatch(html, /industry-graph\.json|industry-directory\.json/i)
   assert.doesNotMatch(html, /prototype only|prototype|mock-index|mock data|mock forecast|暂无 mock/i)
+  assert.doesNotMatch(html, /marketShare|market-share|market share|市场份额|totalRevenue/i)
+  assert.match(html, /公司规模|业务营收|卡片面积按可比口径/)
+  assert.match(html, /entry\.period === first\.period && entry\.unit === first\.unit && entry\.revenueScope === first\.revenueScope/)
+  assert.match(html, /Math\.sqrt\(/)
+  assert.match(html, /当前数据口径不可直接比较，卡片按等权展示/)
 })

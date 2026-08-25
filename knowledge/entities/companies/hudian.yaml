@@ -6,10 +6,10 @@ ticker: '002463'
 exchange: SZSE
 metadata:
   productTypes:
-    - high-speed PCB
-    - high-layer-count PCB
+    - 高速 PCB
+    - 高层数 PCB
   customerSegments:
-    - communication equipment
-    - server and data-center equipment
+    - 通信设备
+    - 服务器与数据中心设备
 sourceRefs:
   - source:hudian-annual-report-2024

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-25 - KNOWLEDGE-PHASE-2C-SEMANTICS-AND-LOCALIZATION-001
+
+- Replaced frontend Market Share projection semantics with raw company-scale
+  revenue inputs and comparable-period/unit/scope visual sizing.
+- Removed market-share percentage presentation from the Knowledge page and
+  migrated the View section to `company-scale`.
+- Localized production Entity, Intelligence, Module, View, and frontend
+  research content to Chinese-first while preserving stable machine contracts
+  and source provenance.
+
 ## 2026-08-25 - KNOWLEDGE-PHASE-2C-FRONTEND-MIGRATION-001
 
 - Added a deterministic server-side Knowledge Frontend Projection Adapter.

@@ -10,8 +10,8 @@ values:
   2030: 945
 unit: TWh
 assumptions:
-  - Base case in the IEA Energy and AI report.
-  - AI adoption and other digital services continue to increase data-center demand.
+  - IEA《Energy and AI》报告中的基准情景。
+  - AI 应用与其他数字服务持续提升数据中心需求。
 sourceRefs:
   - source:iea-energy-and-ai-2025
 confidence: 0.9

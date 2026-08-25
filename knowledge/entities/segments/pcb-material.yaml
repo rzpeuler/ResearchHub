@@ -1,7 +1,7 @@
 id: segment:pcb-material
 type: segment
 name: PCB Material
-description: Copper-clad laminates, prepreg, and related high-speed or high-frequency materials used to manufacture advanced printed circuit boards.
+description: 用于制造高端印制电路板的覆铜板、半固化片及相关高速或高频材料。
 taxonomyRefs:
   - sw:electronics
 sourceRefs:

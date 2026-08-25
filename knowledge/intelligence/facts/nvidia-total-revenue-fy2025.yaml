@@ -6,7 +6,7 @@ metric: total-revenue
 period: FY2025
 value: 130.5
 unit: USD billion
-statement: NVIDIA reported fiscal 2025 revenue of 130.5 billion US dollars.
+statement: NVIDIA 披露 2025 财年营收为 1305 亿美元。
 category: financial_metric
 sourceRefs:
   - source:nvidia-annual-report-2025

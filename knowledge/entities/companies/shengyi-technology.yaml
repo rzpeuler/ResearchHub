@@ -6,12 +6,12 @@ ticker: '600183'
 exchange: SSE
 metadata:
   productTypes:
-    - copper-clad laminate
-    - prepreg
-    - high-speed PCB material
+    - 覆铜板
+    - 半固化片
+    - 高速 PCB 材料
   customerSegments:
-    - PCB manufacturers
-    - communication equipment
-    - AI server supply chain
+    - PCB 制造商
+    - 通信设备
+    - AI 服务器产业链
 sourceRefs:
   - source:shengyi-annual-report-2024

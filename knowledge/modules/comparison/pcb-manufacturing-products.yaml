@@ -6,16 +6,16 @@ sourceRefs:
   - source:hudian-annual-report-2024
   - source:scc-annual-report-2024
 columns:
-  - productCategory
-  - complexity
-  - application
+  - 产品类别
+  - 工艺复杂度
+  - 应用场景
 rows:
-  - productCategory: high-speed multilayer PCB
-    complexity: high layer count and signal integrity
-    application: AI servers and switches
-  - productCategory: high-density interconnect PCB
-    complexity: fine line and dense interconnect
-    application: advanced computing equipment
-  - productCategory: packaging substrate
-    complexity: package-level interconnect
-    application: semiconductor packaging
+  - 产品类别: 高速多层 PCB
+    工艺复杂度: 高层数与信号完整性要求
+    应用场景: AI 服务器与交换机
+  - 产品类别: 高密度互连 PCB
+    工艺复杂度: 细线路与高密度互连
+    应用场景: 高端计算设备
+  - 产品类别: 封装基板
+    工艺复杂度: 封装级互连
+    应用场景: 半导体封装

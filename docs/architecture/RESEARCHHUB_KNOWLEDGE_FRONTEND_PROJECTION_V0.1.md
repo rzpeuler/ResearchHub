@@ -44,9 +44,24 @@ acceptance benchmarks only and are not part of the page runtime.
 | `Event[]` | `fact` Intelligence with `category: event` |
 | `Research[]` | Entity/Intelligence/Module `sourceRefs` -> Source |
 | static comparison columns | Module `columns` and `rows` |
+| `MarketShareProjection` | `CompanyScaleProjection` from comparable `segmentRevenue` inputs |
 
 Unsupported or unavailable data is omitted. The page does not infer market
-size, financial segment revenue, company profiles, or research records.
+share, industry concentration, or financial segment revenue. A company-scale
+projection only exposes revenue fields already present on an `operates_in`
+relation; the browser uses them as CSS card-size inputs and never derives a
+percentage or denominator.
+
+Company cards can use different visual weights only when `period`, `unit` and
+`revenueScope` match. Otherwise the page renders equal-size cards. The user
+facing label is “公司规模” or, within a segment, “业务规模”; “市场份额” is
+not a frontend projection concept.
+
+ResearchHub human-readable Knowledge content is Chinese-first. Stable IDs,
+namespaces, YAML keys, TypeScript/API keys, enum values, relation types,
+module types and metric identifiers remain English. Industry-standard
+abbreviations, product names, brand names and original source titles may keep
+their canonical form.
 
 ## Retirement Condition
 

@@ -7,7 +7,7 @@ metric: ai-server-revenue-growth
 period: 2024
 value: 150
 unit: percent-plus
-statement: Foxconn Industrial Internet reported that AI server revenue grew by more than 150 percent in 2024.
+statement: 工业富联披露 2024 年 AI 服务器业务营收同比增长超过 150%。
 category: financial_metric
 sourceRefs:
   - source:foxconn-industrial-internet-annual-report-2024

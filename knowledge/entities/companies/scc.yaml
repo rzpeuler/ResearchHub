@@ -6,11 +6,11 @@ ticker: '002916'
 exchange: SZSE
 metadata:
   productTypes:
-    - advanced PCB
-    - packaging substrate
-    - high-speed communication board
+    - 高端 PCB
+    - 封装基板
+    - 高速通信板
   customerSegments:
-    - communication equipment
-    - AI server manufacturers
+    - 通信设备
+    - AI 服务器厂商
 sourceRefs:
   - source:scc-annual-report-2024

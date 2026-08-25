@@ -6,16 +6,16 @@ entityRefs:
   - segment:server
   - segment:data-center
 bullishPoints:
-  - Accelerated computing and AI infrastructure remain structural drivers of data-center hardware demand.
-  - Rack-scale integration and higher-density deployments expand the value pool beyond individual processors.
+  - 加速计算与 AI 基础设施仍是数据中心硬件需求的结构性驱动因素。
+  - 机架级集成与更高密度的部署，将价值空间从单颗处理器扩展到系统层面。
 bearishPoints:
-  - Power availability, grid connection, capital intensity, and supply-chain bottlenecks can delay deployments.
-  - Product transitions can create execution and inventory risks for suppliers.
+  - 电力可用性、并网、资本开支强度与供应链瓶颈可能延迟部署。
+  - 产品迭代可能给供应商带来执行与库存风险。
 keyVariables:
-  - AI workload adoption
-  - accelerator utilization
-  - data-center power availability
-  - rack-level system efficiency
+  - AI 工作负载渗透
+  - 加速器利用率
+  - 数据中心电力可用性
+  - 机架级系统效率
 sourceRefs:
   - source:iea-energy-and-ai-2025
   - source:nvidia-rubin-platform-2026

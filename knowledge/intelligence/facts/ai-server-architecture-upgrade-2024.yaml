@@ -5,11 +5,11 @@ entityRefs:
   - segment:server
   - segment:liquid-cooling
   - segment:data-center
-statement: The 2024 server architecture upgrade included multi-chip open architecture, AI server product expansion, and liquid-cooling support for higher-density deployments.
+statement: 2024 年服务器架构升级引入多芯片开放架构，扩展 AI 服务器产品，并支持液冷以满足更高密度部署。
 category: event
 occurredAt: '2024'
 datePrecision: year
-impact: Raises the importance of rack-level integration, liquid cooling, and system efficiency in AI server deployments.
+impact: 提升了机架级集成、液冷与系统效率在 AI 服务器部署中的重要性。
 affectedEntityRefs:
   - segment:server
   - segment:liquid-cooling

@@ -6,7 +6,7 @@ metric: data-center-revenue
 period: FY2025
 value: 115.2
 unit: USD billion
-statement: NVIDIA reported fiscal 2025 Data Center revenue of 115.2 billion US dollars.
+statement: NVIDIA 披露 2025 财年数据中心业务营收为 1152 亿美元。
 category: financial_metric
 sourceRefs:
   - source:nvidia-annual-report-2025

@@ -4,9 +4,9 @@ entityRefs:
   - segment:data-center
   - segment:server
   - segment:liquid-cooling
-description: Grid connection queues, power availability, and local infrastructure constraints may delay data-center projects and change the pace of AI hardware deployment.
-impact: Delayed project commissioning, higher infrastructure costs, and demand timing volatility across servers, cooling, and networking.
-trigger: Grid connection or power procurement cannot keep pace with the project pipeline.
+description: 并网排队、电力可用性与本地基础设施约束可能推迟数据中心项目，并改变 AI 硬件部署节奏。
+impact: 项目投产延后、基础设施成本上升，以及服务器、散热和网络需求时点出现波动。
+trigger: 并网或电力采购速度无法匹配项目储备的推进速度。
 sourceRefs:
   - source:iea-energy-and-ai-2025
 confidence: 0.85
