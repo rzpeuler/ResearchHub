@@ -10,9 +10,10 @@
 5. Keep Plugin logic focused on external connections, tools, conversion, and
    validation; Plugin is not a Skill or research method.
 6. Treat `research-output/` as the output boundary and `knowledge/` as the
-   future durable knowledge boundary. Retain `packages/memory/` and
-   `packages/evaluation/` only for compatibility; do not expand them as new
-   product layers.
+   top-level durable Knowledge boundary outside `packages/`. Workflow owns
+   Knowledge update lifecycle, and the Knowledge Skill provides its access
+   interface. Retain `packages/memory/` and `packages/evaluation/` only for
+   compatibility; do not expand them as new product layers.
 7. Do not add a Capability Layer, Provider Layer, Agent Planner, Workflow
    Composition Layer, Workflow Engine, Multi-Agent architecture, autonomous
    memory loop, prediction-evaluation product layer, or knowledge agent.

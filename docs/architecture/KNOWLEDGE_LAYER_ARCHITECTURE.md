@@ -1,49 +1,50 @@
 # Knowledge Layer Architecture
 
-**Status:** Current architecture direction (ARCH-REFACTOR-003)
+**Status:** Current architecture summary; normative freeze is
+[Knowledge Architecture v0.1](RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.1.md)
 
-The Knowledge Layer is the durable, reusable knowledge boundary for
-ResearchHub. It receives validated Research Output over time; it is not DSH
-state, Agent Memory, chat history, prompt memory, or runtime logging.
+The Knowledge Layer is the top-level durable, reusable knowledge boundary for
+ResearchHub. It receives reviewed Research Output through Workflow-controlled
+update processes; it is not DSH state, Agent Memory, chat history, prompt
+memory, runtime logging, or a package under `packages/`.
 
 ## Responsibilities
 
-Knowledge will eventually support:
+Knowledge Architecture v0.1 supports:
 
 - company, industry, and supply-chain graphs;
 - event timelines;
 - associations between Research Documents and entities;
 - reusable relations derived from Research Objects.
 
-The layer is intentionally infrastructure-oriented. It does not choose a
-Workflow, invoke a Skill, access a Plugin, or replace Harness reasoning.
+The layer is intentionally runtime-neutral. Workflow owns update orchestration
+and lifecycle management, while the Knowledge Skill provides the access
+interface. Knowledge does not choose a Workflow, coordinate execution, or
+replace Harness reasoning.
 
-## Structure
+## Boundary
 
-```text
-knowledge/
-├── ontology/      # entity, relation, and event type definitions
-├── graph/         # entities, relations, and event timelines
-├── documents/     # Research Document associations
-└── ingestion/     # future Research Output ingestion boundary
-```
+The canonical top-level boundary is `knowledge/`. The conceptual v0.1
+subdirectories are defined in
+[ResearchHub Knowledge Architecture v0.1](RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.1.md);
+this summary does not define a second storage layout.
 
 `research-output/` is the producer-side boundary. `knowledge/` is the
 consumer-side durable knowledge boundary:
 
 ```text
-Research Output -> Knowledge ingestion -> Ontology / Graph / Documents
+Research Output -> Workflow lifecycle/update -> Knowledge
 ```
 
 ## Current scope
 
-This migration creates stable directories and documents the interfaces to be
-implemented later. It does not add a graph database, knowledge extraction,
-RAG, automatic memory formation, or a knowledge-agent loop.
+This architecture documents the boundary and interfaces to be implemented
+later. It does not add a graph database, knowledge extraction, RAG, automatic
+memory formation, or a knowledge-agent loop.
 
 The existing `packages/memory/` MVP remains intact for compatibility. Its
-stored `MemoryItem` records are not reclassified as a new runtime layer; future
-durable knowledge implementations should target this Knowledge Layer.
+stored `MemoryItem` records are not reclassified as the current Knowledge
+Layer; new durable knowledge belongs under repository-level `knowledge/`.
 
 ## Provenance and trace
 
@@ -56,4 +57,5 @@ valid as compatibility provenance records.
 
 Knowledge interfaces must remain usable by the current DSH and by other
 runtime callers. They must not import `dsh/`, Harness runtime packages, Skill
-implementations, Workflow executors, or Plugin adapters.
+implementations, Workflow executors, or Plugin adapters. No database, graph
+engine, RAG, extraction pipeline, or automatic Knowledge formation is implied.

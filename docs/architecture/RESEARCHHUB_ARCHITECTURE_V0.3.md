@@ -2,7 +2,9 @@
 
 > **Historical record — superseded by ARCH-REFACTOR-003.** Current
 > architecture is documented in [Research Output Architecture](RESEARCH_OUTPUT_ARCHITECTURE.md)
-> and [Knowledge Layer Architecture](KNOWLEDGE_LAYER_ARCHITECTURE.md).
+> and [Knowledge Layer Architecture](KNOWLEDGE_LAYER_ARCHITECTURE.md), with the
+> frozen normative definition in
+> [Knowledge Architecture v0.1](RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.1.md).
 
 ## 1. Decision
 

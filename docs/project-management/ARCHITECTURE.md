@@ -21,11 +21,7 @@ Harness Runtime
     │   ├── reports/                 user-readable reports
     │   ├── objects/                 machine-readable Research Objects
     │   └── provenance/              output source relationships
-    └── knowledge/
-        ├── ontology/                entity/relation/event types
-        ├── graph/                   durable entities and relations
-        ├── documents/               Research Document associations
-        └── ingestion/               future output ingestion boundary
+    └── knowledge/                   top-level durable Knowledge asset boundary
 ```
 
 ## Responsibility boundaries
@@ -47,8 +43,9 @@ Harness Runtime
   provenance.
 - **Research Object** is the preferred business term for a machine-readable
   research result. Existing Artifact models remain as compatibility code.
-- **Knowledge Layer** is the future durable boundary for company, industry,
-  supply-chain, event, and document knowledge.
+- **Knowledge Layer** is the frozen top-level durable boundary for reusable
+  industry intelligence. It is not under `packages/`; Workflow owns its update
+  lifecycle and the Knowledge Skill provides its access interface.
 
 ## Research Object contract
 
@@ -95,6 +92,11 @@ dsh/ -> packages/ -> research-output/ / knowledge/ contracts
 Packages remain runtime-neutral and must not import `dsh/`. Research Output
 and Knowledge interfaces must also remain usable by other runtime callers.
 
+Knowledge content may represent facts, forecasts, viewpoints, trends, and
+risks; its concrete subdirectory layout is not frozen by v0.1. No Research
+Artifact Layer, Knowledge Database, Graph Database, RAG, LLM Extraction, or
+autonomous Knowledge update engine is part of v0.1.
+
 ## Deprecated architecture
 
 Capability Layer, Provider Layer, Agent Planner, Workflow Composition Layer,
@@ -105,4 +107,5 @@ as superseded where their terminology would otherwise be ambiguous.
 
 See [Research Output Architecture](../architecture/RESEARCH_OUTPUT_ARCHITECTURE.md),
 [Knowledge Layer Architecture](../architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md),
+[Knowledge Architecture v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.1.md),
 and [ADR-014](../architecture/ADR-014-RESEARCH-OUTPUT-KNOWLEDGE-ARCHITECTURE.md).

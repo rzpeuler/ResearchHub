@@ -20,9 +20,24 @@ Research Output Provenance. Memory and Evaluation are deprecated as
 independent product layers, and no DSH, Skill, Workflow, or Plugin logic was
 changed.
 
+## KNOWLEDGE-ARCHITECTURE-001
+
+Knowledge Layer v0.1 is frozen as the current Knowledge architecture. Knowledge
+is a top-level durable asset under `knowledge/`, not a package and not a
+runtime coordination layer. The frozen model supports dynamic industry
+knowledge in five categories: facts, forecasts, viewpoints, trends, and
+risks.
+
+Workflow owns Knowledge update orchestration and lifecycle management. The
+Knowledge Skill provides the access interface. No Research Artifact Layer,
+Knowledge Database, Graph Database, RAG, LLM Extraction, or autonomous update
+engine is introduced. `packages/memory/` and `packages/evaluation/` remain
+compatibility implementations only.
+
 ## MEMORY-IMPLEMENTATION-001
 
-Research Knowledge Memory MVP is implemented under `packages/memory/`.
+Compatibility note: the Research Knowledge Memory MVP is implemented under
+`packages/memory/`; it is not the current Knowledge Layer v0.1.
 `MemoryItem`, `ResearchMemory`, and `InMemoryResearchMemoryStore` support
 runtime-neutral storage and retrieval of Entity, Thesis, Prediction, Evidence,
 and Review knowledge with Artifact and Trace references.

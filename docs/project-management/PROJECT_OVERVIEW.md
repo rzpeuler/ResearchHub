@@ -24,8 +24,11 @@ compatibility implementations.
   generation. Its payload remains Skill-owned.
 - Plugin: connects external data and persistence resources.
 - Research Output: publishes reports, Research Objects, and provenance.
-- Knowledge Layer: provides the future durable boundary for entities,
-  relations, events, and Research Document associations.
+- Knowledge Layer: the frozen top-level durable asset boundary for reusable
+  industry intelligence. It is outside `packages/`, supports facts,
+  forecasts, viewpoints, trends, and risks, and is updated through Workflow
+  lifecycle processes via the Knowledge Skill access interface. It does not
+  introduce a Research Artifact Layer.
 - Memory / Evaluation: legacy compatibility paths; no new product layer or
   autonomous prediction-evaluation loop is planned.
 
@@ -38,6 +41,7 @@ compatibility coverage.
 
 - [Research Output architecture](../architecture/RESEARCH_OUTPUT_ARCHITECTURE.md)
 - [Knowledge Layer architecture](../architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md)
+- [Knowledge Architecture v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.1.md)
 - [Architecture v0.3 historical record](../architecture/RESEARCHHUB_ARCHITECTURE_V0.3.md)
 - [Architecture v0.2 historical baseline](../architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
 - [Technical design](../architecture/TECHNICAL_DESIGN_V0.1.md)

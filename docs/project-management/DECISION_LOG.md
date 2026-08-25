@@ -121,3 +121,33 @@ extraction pipeline, autonomous learning loop, or prediction Agent is added.
 See [ADR-014](../architecture/ADR-014-RESEARCH-OUTPUT-KNOWLEDGE-ARCHITECTURE.md),
 [Research Output Architecture](../architecture/RESEARCH_OUTPUT_ARCHITECTURE.md),
 and [Knowledge Layer Architecture](../architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md).
+
+## KNOWLEDGE-ARCH-CONSISTENCY-001 — Knowledge Architecture v0.1 Freeze
+
+**Status:** Accepted / Frozen
+**Date:** 2026-08-25
+
+Knowledge Architecture v0.1 is the normative architecture for the ResearchHub
+Knowledge Layer. Knowledge is a top-level durable asset under `knowledge/` and
+does not belong under `packages/`. It is not a runtime coordinator and does not
+introduce a new architecture layer.
+
+The frozen boundaries are:
+
+- `dsh` remains the sole runtime coordination center;
+- Workflow owns Knowledge update orchestration and lifecycle management;
+- Knowledge Skill provides the Knowledge access interface;
+- Plugin remains the external data and service extension boundary;
+- Knowledge supports dynamic industry cognition as facts, forecasts,
+  viewpoints, trends, and risks;
+- no Research Artifact Layer is introduced;
+- no Knowledge Database, Graph Database, RAG, LLM Extraction, or autonomous
+  Knowledge update engine is introduced.
+
+Existing Artifact, Memory, and Evaluation implementations remain only for
+compatibility. Historical architecture records may retain deprecated
+Capability Layer, Provider Layer, or Research Artifact terminology when those
+records are explicitly treated as historical; such terminology is not current
+ResearchHub architecture.
+
+See [Knowledge Architecture v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.1.md).

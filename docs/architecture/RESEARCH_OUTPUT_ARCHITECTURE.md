@@ -103,10 +103,6 @@ ResearchHub/
 │   ├── reports/
 │   ├── objects/
 │   └── provenance/
-├── knowledge/
-│   ├── ontology/
-│   ├── graph/
-│   ├── documents/
-│   └── ingestion/
+├── knowledge/                    # top-level durable Knowledge boundary
 └── docs/
 ```
