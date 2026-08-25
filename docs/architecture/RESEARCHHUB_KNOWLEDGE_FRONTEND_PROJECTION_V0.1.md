@@ -46,6 +46,34 @@ acceptance benchmarks only and are not part of the page runtime.
 | static comparison columns | Module `columns` and `rows` |
 | `MarketShareProjection` | `CompanyScaleProjection` from company `total-revenue` Facts |
 
+## Segment Scale Projection
+
+Graph children may expose an optional raw `scaleInput` from the selected active
+`fact` Intelligence with `metric: market-size`:
+
+```ts
+type SegmentScaleInput = {
+  value: number
+  period: string
+  unit: string
+  sourceRefs: string[]
+}
+```
+
+The adapter excludes Forecast objects and invalid, inactive, non-numeric, or
+incomplete Facts. Fact selection is deterministic: higher confidence first,
+then newer period, then stable Fact ID. The adapter returns only the source
+value and provenance; it does not calculate visual weights, percentages,
+market share, or maxima.
+
+The browser compares `period` and `unit` across same-level children. When at
+least one usable input exists and all usable inputs share the same period and
+unit, data-bearing nodes use relative square-root CSS flex weights and nodes
+without data use the baseline weight. If inputs are missing or not comparable,
+the entire level is rendered with equal weight. This is symmetric with
+`CompanyScaleProjection`, which continues to use company `total-revenue`
+Facts for company cards.
+
 Unsupported or unavailable data is omitted. The page does not infer market
 share, industry concentration, or business-segment revenue. A company-scale
 projection only exposes company `total-revenue` Financial Facts already

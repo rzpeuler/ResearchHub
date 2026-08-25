@@ -19,10 +19,11 @@ test('Knowledge HTTP endpoints return production projections', async () => {
 
     const graphResponse = await fetch(`${baseUrl}/api/knowledge/graph/${encodeURIComponent('industry:ai-hardware')}`)
     assert.equal(graphResponse.status, 200)
-    const graph = await graphResponse.json() as { root: { id: string; name: string }; children: Array<{ id: string; name: string }>; relations: Array<{ source: string; target: string }> }
+    const graph = await graphResponse.json() as { root: { id: string; name: string }; children: Array<{ id: string; name: string; scaleInput?: unknown }>; relations: Array<{ source: string; target: string }> }
     assert.equal(graph.root.id, 'industry:ai-hardware')
     assert.equal(graph.root.name, 'AI 硬件')
     assert.ok(graph.children.some((child) => child.id === 'segment:gpu'))
+    assert.ok(graph.children.every((child) => child.scaleInput === undefined))
     assert.ok(graph.relations.every((relation) => relation.source && relation.target))
 
     const entityResponse = await fetch(`${baseUrl}/api/knowledge/entity/${encodeURIComponent('segment:gpu')}`)
@@ -54,5 +55,12 @@ test('production page does not reference legacy JSON or mock presentation langua
   assert.match(html, /entry\.period === first\.period && entry\.unit === first\.unit/)
   assert.match(html, /Math\.sqrt\(/)
   assert.match(html, /当前总营收期间或单位不可直接比较，卡片按等权展示/)
+  assert.match(html, /scaleInput/)
+  assert.match(html, /node-scale/)
+  assert.match(html, /当前同层暂无可用市场规模数据，节点按等权展示/)
+  assert.match(html, /节点面积按同口径已披露市场规模相对缩放/)
+  assert.match(html, /当前同层市场规模期间或单位不可直接比较，节点按等权展示/)
+  assert.match(html, /input\.period === firstScaleInput\.period && input\.unit === firstScaleInput\.unit/)
+  assert.doesNotMatch(html, /marketShare|market-share|market share|市场份额|percentage|marketSharePercent/i)
   assert.match(html, /AI 硬件/)
 })

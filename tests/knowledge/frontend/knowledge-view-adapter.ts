@@ -31,6 +31,14 @@ export interface ProjectionNode {
   type: string
   name: string
   hasChildren: boolean
+  scaleInput?: SegmentScaleInput
+}
+
+export interface SegmentScaleInput {
+  value: number
+  period: string
+  unit: string
+  sourceRefs: string[]
 }
 
 export interface ProjectionRelation {
@@ -114,8 +122,8 @@ function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
-function projectionNode(entity: KnowledgeEntity, hasChildren: boolean): ProjectionNode {
-  return { id: entity.id, type: entity.type, name: entity.name, hasChildren }
+function projectionNode(entity: KnowledgeEntity, hasChildren: boolean, scaleInput?: SegmentScaleInput): ProjectionNode {
+  return { id: entity.id, type: entity.type, name: entity.name, hasChildren, ...(scaleInput ? { scaleInput } : {}) }
 }
 
 function isActiveFact(item: KnowledgeIntelligence): boolean {
@@ -147,6 +155,39 @@ function selectTotalRevenueFact(facts: KnowledgeIntelligence[]): KnowledgeIntell
         || String(right.period).localeCompare(String(left.period))
         || left.id.localeCompare(right.id)
     })[0]
+}
+
+export function buildSegmentScaleInput(facts: KnowledgeIntelligence[]): SegmentScaleInput | undefined {
+  const fact = facts
+    .filter((item) => {
+      const value = item.value
+      const period = item.period
+      const unit = item.unit
+      return item.type === 'fact'
+        && item.metric === 'market-size'
+        && isActiveFact(item)
+        && typeof value === 'number'
+        && Number.isFinite(value)
+        && value >= 0
+        && typeof period === 'string'
+        && period.trim().length > 0
+        && typeof unit === 'string'
+        && unit.trim().length > 0
+    })
+    .sort((left, right) => {
+      const leftConfidence = typeof left.confidence === 'number' ? left.confidence : -Infinity
+      const rightConfidence = typeof right.confidence === 'number' ? right.confidence : -Infinity
+      return rightConfidence - leftConfidence
+        || String(right.period).localeCompare(String(left.period))
+        || left.id.localeCompare(right.id)
+    })[0]
+  if (!fact) return undefined
+  return {
+    value: fact.value as number,
+    period: fact.period as string,
+    unit: fact.unit as string,
+    sourceRefs: asStringArray(fact.sourceRefs),
+  }
 }
 
 export function buildCompanyScaleProjection(
@@ -218,7 +259,8 @@ export class KnowledgeViewAdapter {
     const children = [...new Set(childIds)].flatMap((childId) => {
       try {
         const child = this.access.getEntity(childId)
-        return [projectionNode(child, this.access.getSupplyChain(child.id, 1).length > 0)]
+        const scaleInput = buildSegmentScaleInput(this.access.getIntelligence(child.id))
+        return [projectionNode(child, this.access.getSupplyChain(child.id, 1).length > 0, scaleInput)]
       } catch {
         return []
       }

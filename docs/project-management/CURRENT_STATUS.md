@@ -41,6 +41,15 @@ produced. Production Knowledge research content, Entity names, View names and
 the frontend are Chinese-first, while stable machine contracts, professional
 abbreviations, brands, product names, and source provenance stay canonical.
 
+## KNOWLEDGE-PHASE-2C-SEGMENT-SCALE-001
+
+Graph children now optionally expose raw same-level `market-size` Fact inputs
+for frontend area comparison. Forecasts, invalid/inactive Facts, and
+incomparable period/unit inputs are excluded from scaling; missing or
+non-comparable levels render equally. Visual weights remain a frontend CSS
+concern, and no market-share percentage or calculation engine was introduced.
+Company cards continue to use company `total-revenue` Facts.
+
 ## ARCH-REFACTOR-003
 
 ResearchHub has migrated its current product architecture to **Research Output

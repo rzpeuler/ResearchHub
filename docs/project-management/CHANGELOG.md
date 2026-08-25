@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-25 - KNOWLEDGE-PHASE-2C-SEGMENT-SCALE-001
+
+- Added optional raw `market-size` Fact inputs to GraphProjection child nodes.
+- Excluded Forecast and incomparable period/unit data from segment area scaling;
+  missing or incomparable levels remain equal-weighted in the frontend.
+- Preserved CompanyScale as the company `total-revenue` Fact projection and
+  introduced no market-share or backend calculation semantics.
+
 ## 2026-08-25 - KNOWLEDGE-PHASE-2C-FINAL-CLOSEOUT-001
 
 - Switched company-scale visualization from relation `segmentRevenue` to

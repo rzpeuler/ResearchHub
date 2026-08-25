@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { KnowledgeAccessSkill } from '../../../packages/skills/knowledge-access/index.ts'
 import { KnowledgeLoader } from '../../../packages/skills/knowledge-access/loader.ts'
-import { buildCompanyScaleProjection, KnowledgeViewAdapter } from './knowledge-view-adapter.ts'
+import { buildCompanyScaleProjection, buildSegmentScaleInput, KnowledgeViewAdapter } from './knowledge-view-adapter.ts'
 
 const knowledgeRoot = fileURLToPath(new URL('../../../knowledge/', import.meta.url))
 
@@ -32,7 +32,43 @@ test('graph projection uses production entities and relation contract', async ()
   const projection = (await createAdapter()).getGraphProjection('industry:ai-hardware')
   assert.deepEqual(projection.root, { id: 'industry:ai-hardware', type: 'industry', name: 'AI 硬件', hasChildren: true })
   assert.ok(projection.children.some((child) => child.id === 'segment:gpu'))
+  assert.ok(projection.children.every((child) => child.scaleInput === undefined))
   assert.ok(projection.relations.every((relation) => 'source' in relation && 'target' in relation && !('fromEntityId' in relation)))
+})
+
+test('segment scale projection reads active market-size Facts and excludes forecasts', () => {
+  const input = buildSegmentScaleInput([
+    { id: 'forecast:gpu-market-size-2030', type: 'forecast', entityRefs: ['segment:gpu'], metric: 'market-size', value: 500, period: '2030', unit: 'USD billion', lifecycle: { status: 'active' } },
+    { id: 'fact:inactive', type: 'fact', entityRefs: ['segment:gpu'], metric: 'market-size', value: 100, period: '2025', unit: 'USD billion', confidence: 1, lifecycle: { status: 'inactive' } },
+    { id: 'fact:market-size-low-confidence', type: 'fact', entityRefs: ['segment:gpu'], metric: 'market-size', value: 110, period: '2025', unit: 'USD billion', confidence: 0.8, lifecycle: { status: 'active' } },
+    { id: 'fact:market-size-high-confidence-old', type: 'fact', entityRefs: ['segment:gpu'], metric: 'market-size', value: 120, period: '2024', unit: 'USD billion', confidence: 0.99, lifecycle: { status: 'active' } },
+    { id: 'fact:market-size-high-confidence-new', type: 'fact', entityRefs: ['segment:gpu'], metric: 'market-size', value: 130, period: '2025', unit: 'USD billion', confidence: 0.99, sourceRefs: ['source:gpu-market'], lifecycle: { status: 'active' } },
+  ])
+  assert.deepEqual(input, { value: 130, period: '2025', unit: 'USD billion', sourceRefs: ['source:gpu-market'] })
+})
+
+test('GraphProjection attaches raw segment scale input without frontend calculations', async () => {
+  const access = new KnowledgeAccessSkill({ index: await new KnowledgeLoader({ rootDir: knowledgeRoot }).load() })
+  const originalGetIntelligence = access.getIntelligence.bind(access)
+  access.getIntelligence = (entityId: string) => entityId === 'segment:gpu' ? [{
+    id: 'fact:gpu-market-size-fy2025', type: 'fact', entityRefs: ['segment:gpu'], metric: 'market-size',
+    value: 250, period: 'FY2025', unit: 'USD billion', sourceRefs: ['source:gpu-market'], confidence: 0.95, lifecycle: { status: 'active' },
+  }] : originalGetIntelligence(entityId)
+  const adapter = await KnowledgeViewAdapter.create({
+    access,
+    taxonomyPath: fileURLToPath(new URL('../../../knowledge/taxonomy/sw-level-1.yaml', import.meta.url)),
+    viewPath: fileURLToPath(new URL('../../../knowledge/views/ai-hardware-industry.yaml', import.meta.url)),
+  })
+  const gpu = adapter.getGraphProjection('industry:ai-hardware').children.find((child) => child.id === 'segment:gpu')
+  assert.deepEqual(gpu?.scaleInput, { value: 250, period: 'FY2025', unit: 'USD billion', sourceRefs: ['source:gpu-market'] })
+  assert.ok(gpu?.scaleInput && !('visualWeight' in gpu.scaleInput) && !('marketShare' in gpu.scaleInput))
+})
+
+test('segment scale projection is undefined without a valid current market-size Fact', () => {
+  assert.equal(buildSegmentScaleInput([
+    { id: 'forecast:gpu-market-size-2030', type: 'forecast', entityRefs: ['segment:gpu'], metric: 'market-size', value: 500, period: '2030', unit: 'USD billion', lifecycle: { status: 'active' } },
+    { id: 'fact:missing-period', type: 'fact', entityRefs: ['segment:gpu'], metric: 'market-size', value: 100, period: '', unit: 'USD billion', lifecycle: { status: 'active' } },
+  ]), undefined)
 })
 
 test('entity detail uses company total-revenue Facts and no market share semantics', async () => {
