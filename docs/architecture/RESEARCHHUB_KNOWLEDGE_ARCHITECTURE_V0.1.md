@@ -70,8 +70,10 @@ prototype data contract, not a frozen database schema and not a new
 architecture layer.
 
 Knowledge records should preserve source references, confidence, validity
-period, and lifecycle state when those fields are applicable. The exact
-storage format is intentionally not frozen by this document.
+period, and lifecycle state when those fields are applicable. Schema fields
+and serialization formats are intentionally not frozen by this document; the
+repository asset layout is defined separately below and in the Storage Layout
+document.
 
 ## 3. Top-Level Asset Boundary
 
@@ -79,18 +81,10 @@ The repository-level `knowledge/` directory is the canonical Knowledge
 boundary. Knowledge must not be introduced as `packages/knowledge` or folded
 into `packages/memory/` or `packages/evaluation/`.
 
-The following are architectural concepts, not a requirement to create all
-directories in v0.1:
-
-```text
-knowledge/
-├── taxonomy/       industry and classification vocabularies
-├── entities/       durable entities
-├── relations/      durable relationships
-├── intelligence/   facts, forecasts, viewpoints, trends, and risks
-├── sources/        source references and metadata
-└── views/          read-oriented projections for consumers
-```
+The concrete v0.1 asset layout is frozen separately in
+[Knowledge Storage Layout v0.1](RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md).
+That document defines file organization only; it does not freeze Knowledge
+schema fields or introduce a runtime layer.
 
 `research-output/` remains the producer-side boundary. Research Output may
 provide source material for Knowledge, but there is no intermediate Research
@@ -156,6 +150,8 @@ or Evaluation terminology must not be interpreted as current architecture.
 
 - [Research Output Architecture](RESEARCH_OUTPUT_ARCHITECTURE.md)
 - [Knowledge Layer Architecture](KNOWLEDGE_LAYER_ARCHITECTURE.md)
+- [Knowledge Skill Interface v0.1](RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.1.md)
+- [Knowledge Storage Layout v0.1](RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md)
 - [ADR-014: Research Output and Knowledge Architecture](ADR-014-RESEARCH-OUTPUT-KNOWLEDGE-ARCHITECTURE.md)
 - [Current Status](../project-management/CURRENT_STATUS.md)
 - [Decision Log](../project-management/DECISION_LOG.md)

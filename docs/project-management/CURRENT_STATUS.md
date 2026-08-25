@@ -34,6 +34,12 @@ Knowledge Database, Graph Database, RAG, LLM Extraction, or autonomous update
 engine is introduced. `packages/memory/` and `packages/evaluation/` remain
 compatibility implementations only.
 
+The frozen v0.1 detail documents are [Knowledge Skill Interface
+v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.1.md) and
+[Knowledge Storage Layout v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md).
+The Skill interface is deterministic and read-only; the storage document
+defines asset organization without defining a database or runtime.
+
 ## MEMORY-IMPLEMENTATION-001
 
 Compatibility note: the Research Knowledge Memory MVP is implemented under

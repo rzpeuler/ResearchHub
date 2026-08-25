@@ -93,9 +93,12 @@ Packages remain runtime-neutral and must not import `dsh/`. Research Output
 and Knowledge interfaces must also remain usable by other runtime callers.
 
 Knowledge content may represent facts, forecasts, viewpoints, trends, and
-risks; its concrete subdirectory layout is not frozen by v0.1. No Research
-Artifact Layer, Knowledge Database, Graph Database, RAG, LLM Extraction, or
-autonomous Knowledge update engine is part of v0.1.
+risks. The concrete asset layout is frozen in [Knowledge Storage Layout
+v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md), while the
+read-only access contract is frozen in [Knowledge Skill Interface
+v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.1.md). No
+Research Artifact Layer, Knowledge Database, Graph Database, RAG, LLM
+Extraction, or autonomous Knowledge update engine is part of v0.1.
 
 ## Deprecated architecture
 
@@ -108,4 +111,6 @@ as superseded where their terminology would otherwise be ambiguous.
 See [Research Output Architecture](../architecture/RESEARCH_OUTPUT_ARCHITECTURE.md),
 [Knowledge Layer Architecture](../architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md),
 [Knowledge Architecture v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.1.md),
+[Knowledge Skill Interface v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.1.md),
+[Knowledge Storage Layout v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md),
 and [ADR-014](../architecture/ADR-014-RESEARCH-OUTPUT-KNOWLEDGE-ARCHITECTURE.md).

@@ -24,9 +24,9 @@ replace Harness reasoning.
 
 ## Boundary
 
-The canonical top-level boundary is `knowledge/`. The conceptual v0.1
-subdirectories are defined in
-[ResearchHub Knowledge Architecture v0.1](RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.1.md);
+The canonical top-level boundary is `knowledge/`. The concrete v0.1 asset
+layout is defined in
+[Knowledge Storage Layout v0.1](RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md);
 this summary does not define a second storage layout.
 
 `research-output/` is the producer-side boundary. `knowledge/` is the
@@ -59,3 +59,6 @@ Knowledge interfaces must remain usable by the current DSH and by other
 runtime callers. They must not import `dsh/`, Harness runtime packages, Skill
 implementations, Workflow executors, or Plugin adapters. No database, graph
 engine, RAG, extraction pipeline, or automatic Knowledge formation is implied.
+
+The read-only access contract is defined in
+[Knowledge Skill Interface v0.1](RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.1.md).

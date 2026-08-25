@@ -42,6 +42,8 @@ compatibility coverage.
 - [Research Output architecture](../architecture/RESEARCH_OUTPUT_ARCHITECTURE.md)
 - [Knowledge Layer architecture](../architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md)
 - [Knowledge Architecture v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.1.md)
+- [Knowledge Skill Interface v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.1.md)
+- [Knowledge Storage Layout v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md)
 - [Architecture v0.3 historical record](../architecture/RESEARCHHUB_ARCHITECTURE_V0.3.md)
 - [Architecture v0.2 historical baseline](../architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
 - [Technical design](../architecture/TECHNICAL_DESIGN_V0.1.md)
