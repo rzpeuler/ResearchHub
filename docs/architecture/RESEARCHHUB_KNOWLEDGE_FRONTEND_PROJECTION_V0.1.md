@@ -1,0 +1,56 @@
+# ResearchHub Knowledge Frontend Projection v0.1
+
+## Status
+
+Phase 2C implementation for the AI Hardware validation page.
+
+## Boundary
+
+The frontend projection is a server-side, deterministic read model. It is not
+a new architecture layer, does not persist data, and does not write to
+Knowledge assets.
+
+```text
+Production Knowledge
+  -> KnowledgeLoader / KnowledgeIndex
+  -> KnowledgeAccessSkill
+  -> tests/knowledge/frontend/KnowledgeViewAdapter
+  -> tests/knowledge/serve.ts read-only HTTP API
+  -> tests/knowledge/index.html
+```
+
+The browser never reads Knowledge YAML directly. Legacy JSON files remain as
+acceptance benchmarks only and are not part of the page runtime.
+
+## API Contract
+
+- `GET /api/knowledge/directory` returns the 31 SW Level-1 items and graph
+  references derived from `knowledge/taxonomy/sw-level-1.yaml`.
+- `GET /api/knowledge/graph/:entityId` returns a root node, direct supply-chain
+  children, and relations using `source` / `target` fields.
+- `GET /api/knowledge/entity/:entityId` returns Entity detail, children,
+  related companies, typed Intelligence, Modules, event Facts, deduplicated
+  Sources, and View section configuration.
+
+## Prototype-to-Production Mapping
+
+| Former page input | Production projection source |
+| --- | --- |
+| `industry-directory.json` | SW Taxonomy + Entity graph references |
+| `industry-graph.json` relations | Access Skill relations |
+| `financials` | `fact` Intelligence with `category: financial_metric` |
+| `knowledge.marketForecast` | `forecast` Intelligence |
+| `coreView` | `viewpoint` Intelligence |
+| `Event[]` | `fact` Intelligence with `category: event` |
+| `Research[]` | Entity/Intelligence/Module `sourceRefs` -> Source |
+| static comparison columns | Module `columns` and `rows` |
+
+Unsupported or unavailable data is omitted. The page does not infer market
+size, financial segment revenue, company profiles, or research records.
+
+## Retirement Condition
+
+The legacy JSON benchmark files can be retired only after the production
+projection contract is adopted by the intended frontend consumer. Phase 2C
+removes their runtime dependency but deliberately preserves the files and
+their tests for regression comparison.

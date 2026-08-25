@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-25 - KNOWLEDGE-PHASE-2C-FRONTEND-MIGRATION-001
+
+- Added a deterministic server-side Knowledge Frontend Projection Adapter.
+- Added read-only directory, graph, and Entity detail HTTP endpoints to the
+  existing Knowledge server.
+- Migrated the AI Hardware page from legacy JSON runtime inputs to Production
+  Knowledge projections, including dynamic Modules, Intelligence, event Facts,
+  and Source links.
+- Preserved legacy JSON files as benchmark assets while removing their page
+  runtime dependency.
+
 ## 2026-08-25 - KNOWLEDGE-PRODUCTION-DATASET-V0.1-REWORK-001
 
 - Corrected NVIDIA and AMD Data Center revenue facts so financial reporting

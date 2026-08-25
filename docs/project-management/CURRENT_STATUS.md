@@ -16,6 +16,21 @@ Source, and Registry assets. The production Registry is complete for runtime
 assets; unsupported prototype fields remain omitted rather than represented by
 mock claims.
 
+## KNOWLEDGE-PHASE-2C-FRONTEND-MIGRATION-001
+
+The AI Hardware validation page now reads Production Knowledge through a
+deterministic server-side Frontend Projection Adapter and three read-only HTTP
+endpoints. The runtime path is `KnowledgeLoader -> KnowledgeIndex -> Access
+Skill -> Projection -> HTTP -> index.html`. The page no longer fetches the
+legacy industry graph or directory JSON files. Legacy benchmark files remain
+available for regression comparison.
+
+Directory, graph, Entity detail, dynamic comparison tables, Intelligence-based
+viewpoints and forecasts, event Facts, Source links, company financial Facts,
+and conditional market-share rendering are covered by focused adapter and HTTP
+tests. No frontend package, persistent projection, database, LLM, or new
+architecture layer was introduced.
+
 ## ARCH-REFACTOR-003
 
 ResearchHub has migrated its current product architecture to **Research Output
