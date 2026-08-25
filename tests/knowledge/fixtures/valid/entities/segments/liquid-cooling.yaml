@@ -1,0 +1,4 @@
+id: segment:liquid-cooling
+type: segment
+name: Liquid Cooling
+description: Cooling systems for high density AI servers and data centers.

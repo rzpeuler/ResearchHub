@@ -1,0 +1,10 @@
+id: company:hudian
+type: company
+name: 沪电股份
+listingStatus: listed
+ticker: 002463
+profile:
+  productTypes:
+    - high speed PCB
+  customerSegments:
+    - AI server manufacturers

@@ -1,0 +1,15 @@
+id: module:server-products
+type: comparison
+schemaId: product-comparison
+targetEntity: segment:server
+columns:
+  - product
+  - useCase
+  - differentiator
+rows:
+  - product: GPU Server
+    useCase: model training
+    differentiator: accelerator density
+  - product: Rack Server
+    useCase: data center deployment
+    differentiator: rack-level integration

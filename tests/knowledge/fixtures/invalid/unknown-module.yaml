@@ -1,0 +1,7 @@
+id: module:unknown-target
+type: comparison
+schemaId: product-comparison
+targetEntity: segment:not-registered
+columns:
+  - product
+rows: []

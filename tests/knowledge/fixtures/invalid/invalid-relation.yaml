@@ -1,0 +1,4 @@
+id: relation:invalid-relation
+type: invented_relation
+source: segment:gpu
+target: segment:hbm

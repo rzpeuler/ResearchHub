@@ -1,0 +1,5 @@
+id: relation:ai-hardware-contains-optical-module
+type: contains
+source: industry:ai-hardware
+target: segment:optical-module
+confidence: 0.99

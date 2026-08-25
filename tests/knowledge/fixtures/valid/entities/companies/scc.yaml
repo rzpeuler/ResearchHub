@@ -1,0 +1,11 @@
+id: company:scc
+type: company
+name: 深南电路
+listingStatus: listed
+ticker: 002916
+profile:
+  productTypes:
+    - advanced PCB
+    - packaging substrate
+  customerSegments:
+    - AI server manufacturers

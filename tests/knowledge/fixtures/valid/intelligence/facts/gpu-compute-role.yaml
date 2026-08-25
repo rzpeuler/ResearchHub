@@ -1,0 +1,11 @@
+id: fact:gpu-ai-compute-role
+type: fact
+entityRefs:
+  - segment:gpu
+statement: GPU is a core parallel compute component for AI training and inference.
+category: industry-structure
+sourceRefs:
+  - source:fixture-market-outlook
+confidence: 0.95
+lifecycle:
+  status: active

@@ -1,0 +1,13 @@
+id: risk:ai-capex-slowdown
+type: risk
+entityRefs:
+  - industry:ai-hardware
+description: A slowdown in AI capital expenditure may reduce server and infrastructure orders.
+trigger: cloud provider capex guidance declines
+impact: lower near-term demand
+probability: medium
+sourceRefs:
+  - source:fixture-market-outlook
+confidence: 0.65
+lifecycle:
+  status: active

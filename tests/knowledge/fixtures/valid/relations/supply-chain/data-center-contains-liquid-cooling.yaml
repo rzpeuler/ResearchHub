@@ -1,0 +1,5 @@
+id: relation:data-center-contains-liquid-cooling
+type: contains
+source: segment:data-center
+target: segment:liquid-cooling
+confidence: 0.95

@@ -1,0 +1,4 @@
+id: segment:optical-module
+type: segment
+name: Optical Module
+description: High speed optical connectivity for AI clusters.

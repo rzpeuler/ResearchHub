@@ -1,0 +1,37 @@
+assets:
+  - id: industry:ai-hardware
+    type: entity
+    path: entities/industries/ai-hardware.yaml
+  - id: segment:gpu
+    type: entity
+    path: entities/segments/gpu.yaml
+  - id: segment:hbm
+    type: entity
+    path: entities/segments/hbm.yaml
+  - id: segment:server
+    type: entity
+    path: entities/segments/server.yaml
+  - id: segment:data-center
+    type: entity
+    path: entities/segments/data-center.yaml
+  - id: company:nvidia
+    type: entity
+    path: entities/companies/nvidia.yaml
+  - id: company:amd
+    type: entity
+    path: entities/companies/amd.yaml
+  - id: company:langchao
+    type: entity
+    path: entities/companies/langchao.yaml
+  - id: company:foxconn-industrial-internet
+    type: entity
+    path: entities/companies/foxconn-industrial-internet.yaml
+  - id: source:fixture-company-map
+    type: source
+    path: sources/fixture-company-map.yaml
+  - id: source:fixture-market-outlook
+    type: source
+    path: sources/fixture-market-outlook.yaml
+  - id: module:gpu-products
+    type: module
+    path: modules/comparison/gpu-products.yaml

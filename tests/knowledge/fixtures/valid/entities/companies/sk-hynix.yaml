@@ -1,0 +1,9 @@
+id: company:sk-hynix
+type: company
+name: SK Hynix
+listingStatus: listed
+profile:
+  productTypes:
+    - HBM
+  customerSegments:
+    - GPU manufacturers

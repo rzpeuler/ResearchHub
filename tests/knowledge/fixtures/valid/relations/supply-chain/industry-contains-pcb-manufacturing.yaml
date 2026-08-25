@@ -1,0 +1,5 @@
+id: relation:ai-hardware-contains-pcb-manufacturing
+type: contains
+source: industry:ai-hardware
+target: segment:pcb-manufacturing
+confidence: 0.99

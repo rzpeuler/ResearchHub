@@ -1,0 +1,4 @@
+id: segment:pcb-material
+type: segment
+name: PCB Material
+description: High speed and high frequency materials for AI server boards.

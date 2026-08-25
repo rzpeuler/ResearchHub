@@ -40,6 +40,25 @@ v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.1.md) and
 The Skill interface is deterministic and read-only; the storage document
 defines asset organization without defining a database or runtime.
 
+## KNOWLEDGE-IMPLEMENTATION-PHASE-001
+
+The first Knowledge engineering foundation is implemented. The repository now
+has the top-level Knowledge asset directories, a deterministic YAML/JSON
+Knowledge Loader with registry parsing and in-memory indexes, a read-only
+Knowledge Access Skill, and a deterministic Knowledge Validation Skill with
+structured reports.
+
+The AI Hardware fixture dataset under `tests/knowledge/fixtures/` covers valid
+entities, relations, intelligence, modules, sources, registry entries, and
+deliberately invalid assets. Loader, Access Skill, Validation Skill, and
+fixture-to-consumer integration tests pass without network, database, RAG, or
+LLM dependencies.
+
+Current limitation: the YAML reader intentionally supports the deterministic
+subset required by the fixture assets; advanced YAML features such as anchors,
+tags, and custom types are rejected. Production Knowledge assets are not yet
+populated under `knowledge/`.
+
 ## MEMORY-IMPLEMENTATION-001
 
 Compatibility note: the Research Knowledge Memory MVP is implemented under

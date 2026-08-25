@@ -1,0 +1,14 @@
+id: company:nvidia
+type: company
+name: NVIDIA
+listingStatus: listed
+ticker: NVDA
+profile:
+  productTypes:
+    - GPU
+  customerSegments:
+    - cloud service providers
+    - AI laboratories
+  technologyMoats:
+    - CUDA ecosystem
+    - accelerator architecture

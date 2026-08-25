@@ -1,0 +1,5 @@
+id: relation:server-depends-on-gpu
+type: depends_on
+source: segment:server
+target: segment:gpu
+confidence: 0.97

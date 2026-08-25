@@ -1,0 +1,15 @@
+id: trend:liquid-cooling-adoption
+type: trend
+entityRefs:
+  - segment:liquid-cooling
+direction: increasing
+description: Liquid cooling adoption is increasing as AI rack heat density rises.
+drivers:
+  - higher GPU power density
+  - rack-level delivery
+timeHorizon: 2026-2030
+sourceRefs:
+  - source:fixture-market-outlook
+confidence: 0.75
+lifecycle:
+  status: active

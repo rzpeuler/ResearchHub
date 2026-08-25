@@ -1,0 +1,7 @@
+id: relation:hudian-operates-in-pcb-manufacturing
+type: operates_in
+source: company:hudian
+target: segment:pcb-manufacturing
+confidence: 0.96
+sourceRefs:
+  - source:fixture-company-map

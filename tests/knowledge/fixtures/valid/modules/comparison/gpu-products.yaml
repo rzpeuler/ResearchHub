@@ -1,0 +1,15 @@
+id: module:gpu-products
+type: comparison
+schemaId: product-comparison
+targetEntity: segment:gpu
+columns:
+  - product
+  - useCase
+  - differentiator
+rows:
+  - product: Training GPU
+    useCase: large model training
+    differentiator: memory and interconnect bandwidth
+  - product: Inference GPU
+    useCase: online inference
+    differentiator: throughput and power efficiency

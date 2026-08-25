@@ -1,0 +1,7 @@
+id: relation:foxconn-industrial-internet-operates-in-server
+type: operates_in
+source: company:foxconn-industrial-internet
+target: segment:server
+confidence: 0.97
+sourceRefs:
+  - source:fixture-company-map

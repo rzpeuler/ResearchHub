@@ -1,0 +1,5 @@
+id: knowledge-access
+name: Knowledge Access Skill
+version: v0.1
+mode: deterministic-read-only
+entrypoint: index.ts

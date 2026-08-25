@@ -1,0 +1,11 @@
+id: company:langchao
+type: company
+name: 浪潮信息
+listingStatus: listed
+ticker: 000938
+profile:
+  productTypes:
+    - AI server
+  customerSegments:
+    - cloud service providers
+    - enterprise data centers

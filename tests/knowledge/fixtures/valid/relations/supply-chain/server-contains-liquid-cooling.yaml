@@ -1,0 +1,5 @@
+id: relation:server-contains-liquid-cooling
+type: contains
+source: segment:server
+target: segment:liquid-cooling
+confidence: 0.95

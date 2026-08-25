@@ -1,0 +1,10 @@
+id: company:shengyi-technology
+type: company
+name: 生益科技
+listingStatus: listed
+ticker: 600183
+profile:
+  productTypes:
+    - high speed PCB material
+  customerSegments:
+    - PCB manufacturers

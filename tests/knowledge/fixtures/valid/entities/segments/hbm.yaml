@@ -1,0 +1,4 @@
+id: segment:hbm
+type: segment
+name: HBM
+description: High bandwidth memory used alongside AI accelerators.

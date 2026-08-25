@@ -1,0 +1,7 @@
+id: fact:invalid-lifecycle
+type: fact
+entityRefs:
+  - segment:gpu
+statement: Invalid lifecycle fixture.
+lifecycle:
+  status: unknown

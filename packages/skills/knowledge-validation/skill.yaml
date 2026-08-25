@@ -1,0 +1,5 @@
+id: knowledge-validation
+name: Knowledge Validation Skill
+version: v0.1
+mode: deterministic-read-only
+entrypoint: index.ts

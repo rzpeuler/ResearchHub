@@ -1,0 +1,4 @@
+id: segment:server
+type: segment
+name: Server
+description: AI server systems integrating accelerators, memory, cooling, and racks.

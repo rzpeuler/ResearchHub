@@ -1,0 +1,7 @@
+id: relation:shengyi-technology-operates-in-pcb-material
+type: operates_in
+source: company:shengyi-technology
+target: segment:pcb-material
+confidence: 0.96
+sourceRefs:
+  - source:fixture-company-map

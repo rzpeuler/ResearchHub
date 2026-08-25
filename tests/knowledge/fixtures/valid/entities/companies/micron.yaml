@@ -1,0 +1,9 @@
+id: company:micron
+type: company
+name: Micron
+listingStatus: listed
+profile:
+  productTypes:
+    - HBM
+  customerSegments:
+    - GPU manufacturers

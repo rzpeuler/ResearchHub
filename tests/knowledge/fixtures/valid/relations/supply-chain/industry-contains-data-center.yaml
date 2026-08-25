@@ -1,0 +1,5 @@
+id: relation:ai-hardware-contains-data-center
+type: contains
+source: industry:ai-hardware
+target: segment:data-center
+confidence: 0.99

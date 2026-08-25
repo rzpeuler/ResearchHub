@@ -1,0 +1,7 @@
+id: relation:nvidia-operates-in-gpu
+type: operates_in
+source: company:nvidia
+target: segment:gpu
+confidence: 0.99
+sourceRefs:
+  - source:fixture-company-map

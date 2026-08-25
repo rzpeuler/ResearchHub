@@ -1,0 +1,4 @@
+id: segment:gpu
+type: segment
+name: GPU
+description: Parallel processors used for AI training and inference.

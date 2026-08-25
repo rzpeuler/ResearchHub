@@ -1,0 +1,9 @@
+id: company:samsung
+type: company
+name: Samsung
+listingStatus: listed
+profile:
+  productTypes:
+    - HBM
+  customerSegments:
+    - GPU manufacturers

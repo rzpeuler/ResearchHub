@@ -1,0 +1,11 @@
+id: company:foxconn-industrial-internet
+type: company
+name: 工业富联
+listingStatus: listed
+ticker: 601138
+profile:
+  productTypes:
+    - AI server
+    - rack integration
+  customerSegments:
+    - cloud service providers

@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-25 - KNOWLEDGE-IMPLEMENTATION-PHASE-001
+
+- Added the top-level Knowledge asset directories under `knowledge/`.
+- Implemented the deterministic Knowledge Loader with YAML/JSON parsing,
+  registry discovery, explicit reload, and in-memory indexes.
+- Added the read-only Knowledge Access Skill APIs for entities, relations,
+  supply chains, companies, intelligence, modules, comparisons, and sources.
+- Added the deterministic Knowledge Validation Skill and structured validation
+  reports for schema, IDs, references, relations, lifecycle, modules, and
+  source requirements.
+- Added AI Hardware valid/invalid fixtures and closed the loader → validation
+  → index → access Skill → consumer integration test path.
+- Kept the implementation network-free and did not add a database, RAG, LLM
+  extraction, Research Artifact, or Multi-Agent layer.
+
 ## 2026-08-25 - ARCH-REFACTOR-003
 
 - Migrated current architecture terminology to Research Output, Research

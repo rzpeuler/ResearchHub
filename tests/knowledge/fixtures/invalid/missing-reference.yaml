@@ -1,0 +1,4 @@
+id: relation:invalid-missing-entity
+type: depends_on
+source: segment:missing-source
+target: segment:gpu

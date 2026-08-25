@@ -1,0 +1,11 @@
+id: company:amd
+type: company
+name: AMD
+listingStatus: listed
+ticker: AMD
+profile:
+  productTypes:
+    - GPU
+  customerSegments:
+    - cloud service providers
+    - enterprise data centers

@@ -1,4 +1,4 @@
-# ResearchHub Knowledge Architecture v0.1
+# RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.1
 
 ## Document Information
 
@@ -6,152 +6,209 @@
 |---|---|
 | Document | ResearchHub Knowledge Architecture |
 | Version | v0.1 |
-| Status | Frozen |
+| Status | Architecture Freeze |
+| Scope | Knowledge Layer |
 | Date | 2026-08-25 |
-| Scope | Architecture governance and boundaries |
 
-This document is the normative definition of the Knowledge Layer v0.1. It
-freezes architecture boundaries only; it does not introduce an implementation
-database, graph engine, extraction pipeline, or production Knowledge Skill.
+## 1. Overview
 
-## 1. Architecture Position
+Knowledge Layer 是 ResearchHub 的长期知识资产层。
 
-ResearchHub remains a single-DSH architecture. Knowledge is a top-level,
-durable asset boundary for reusable industry intelligence; it is not a module
-under `packages/` and it is not a runtime coordination layer.
+它面向投资研究，保存可复用的结构化产业认知，包括：
 
-```text
-Harness Runtime
-      |
-      v
-dsh / ResearchManager        sole ResearchHub runtime coordinator
-      |
-      v
-Workflow                      business process and lifecycle owner
-      |
-      v
-Skill                         research method and Knowledge access interface
-      |\
-      | +--------------------> Plugin  external data and service extension
-      +----------------------> knowledge/  durable Knowledge asset boundary
-```
+- 行业结构
+- 产业链关系
+- 企业位置
+- 技术路线
+- 产品体系
+- 行业事件
+- 市场预测
+- 行业观点
+- 趋势与风险
+- 数据来源
 
-The arrows describe responsibility and access flow. They do not make
-Knowledge a child runtime of DSH, Workflow, or Skill. Knowledge remains
-runtime-neutral and can be read by more than one runtime caller through the
-Knowledge Skill interface.
+Knowledge 不仅保存静态事实，也允许保存带生命周期管理的研究型知识。
 
-### Responsibilities
+## 2. Architecture Position
 
-- **dsh / ResearchManager** is the only runtime coordination center.
-- **Workflow** owns Knowledge update orchestration, lifecycle transitions,
-  validation steps, and human-review triggers.
-- **Skill** owns research methods and provides the Knowledge access interface;
-  it is not a Knowledge database or a second runtime.
-- **Plugin** provides external data, source, and service connections.
-- **Knowledge** stores durable, reusable structured industry intelligence and
-  does not coordinate execution by itself.
+Knowledge 是现有 ResearchHub 仓库中的顶层长期资产，不属于 `packages/`。
 
-## 2. Knowledge Content Model
+Knowledge 不绑定：
 
-Knowledge v0.1 supports dynamic industry cognition in addition to stable
-facts. The normative content categories are:
+- DSH runtime
+- 某个 Workflow
+- 某个 Skill
 
-- `facts` — observed or verified industry and company facts;
-- `forecasts` — time-bounded estimates and assumptions;
-- `viewpoints` — structured analytical perspectives, including bullish and
-  bearish logic and key contradictions;
-- `trends` — directional changes and their drivers;
-- `risks` — triggers, impact, probability, and invalidation conditions.
-
-The prototype vocabulary may use `Entity`, `Relation`, `Event`, and
-`Research` objects to validate frontend requirements. Those objects are a
-prototype data contract, not a frozen database schema and not a new
-architecture layer.
-
-Knowledge records should preserve source references, confidence, validity
-period, and lifecycle state when those fields are applicable. Schema fields
-and serialization formats are intentionally not frozen by this document; the
-repository asset layout is defined separately below and in the Storage Layout
-document.
-
-## 3. Top-Level Asset Boundary
-
-The repository-level `knowledge/` directory is the canonical Knowledge
-boundary. Knowledge must not be introduced as `packages/knowledge` or folded
-into `packages/memory/` or `packages/evaluation/`.
-
-The concrete v0.1 asset layout is frozen separately in
-[Knowledge Storage Layout v0.1](RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md).
-That document defines file organization only; it does not freeze Knowledge
-schema fields or introduce a runtime layer.
-
-`research-output/` remains the producer-side boundary. Research Output may
-provide source material for Knowledge, but there is no intermediate Research
-Artifact Layer.
-
-## 4. Lifecycle and Update Ownership
-
-Knowledge is maintained through Workflow-controlled processes:
+访问关系：
 
 ```text
-Research Output / reviewed source
-              |
-              v
-Workflow validation and update orchestration
-              |
-              v
-Knowledge lifecycle state and revision
-              |
-              v
-Knowledge Skill access interface
+Workflow
+   ↓
+Knowledge Skill
+   ↓
+knowledge/
 ```
 
-Knowledge lifecycle states are conceptually `active`, `expired`,
-`superseded`, and `archived`. A concrete implementation may add metadata, but
-the lifecycle decision belongs to the Workflow rather than to an autonomous
-Knowledge engine.
+## 3. Design Principles
 
-The Knowledge Skill exposes read and access operations such as entity,
-relation, event, source, company, and supply-chain retrieval. It does not
-become an autonomous updater, investment decision engine, stock-ranking
-service, valuation service, or advice service.
+### 3.1 Structured Intelligence
 
-## 5. Explicitly Excluded Designs
+Knowledge 可以保存三类内容：
 
-Knowledge Architecture v0.1 does not introduce:
+1. Stable Knowledge
+   - 长期稳定事实
+2. Dynamic Knowledge
+   - 市场规模预测、技术路线等
+3. Analytical Knowledge
+   - 核心多空观点、趋势、风险
 
-- a Knowledge Database or Graph Database;
-- a Vector Database or RAG system;
-- LLM Extraction or an automatic knowledge-formation pipeline;
-- an autonomous Knowledge update loop;
-- a Research Artifact Layer or Research Artifact System;
-- a new Capability Layer, Provider Layer, Planner Layer, or Agent layer;
-- investment decisions, stock rankings, target prices, or trading signals.
+### 3.2 Lifecycle Required for Dynamic Knowledge
 
-Existing Artifact, Memory, and Evaluation implementations remain only where
-needed for compatibility with existing code and tests. They are not part of
-the current Knowledge architecture.
+Forecast、Viewpoint、Trend 等动态认知必须包含：
 
-## 6. Consistency Rules
+- source / provenance
+- confidence
+- lifecycle
+- validFrom / validUntil（适用时）
 
-When architecture documents use different terminology, the precedence is:
+### 3.3 Knowledge is not Investment Decision
 
-1. this frozen Knowledge Architecture v0.1;
-2. the current Research Output and Knowledge architecture summaries;
-3. accepted decision records;
-4. documents explicitly marked historical or superseded.
+Knowledge 不保存：
 
-`RESEARCHHUB_ARCHITECTURE_V0.3.md`, v0.2, and earlier design records are
-historical records. Their deprecated Capability, Provider, Artifact, Memory,
-or Evaluation terminology must not be interpreted as current architecture.
+- 个股买卖建议
+- 目标价
+- 短期交易信号
+- 某次具体研究任务的最终交易判断
 
-## 7. Related Governance Documents
+## 4. Core Structure
 
-- [Research Output Architecture](RESEARCH_OUTPUT_ARCHITECTURE.md)
-- [Knowledge Layer Architecture](KNOWLEDGE_LAYER_ARCHITECTURE.md)
-- [Knowledge Skill Interface v0.1](RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.1.md)
-- [Knowledge Storage Layout v0.1](RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md)
-- [ADR-014: Research Output and Knowledge Architecture](ADR-014-RESEARCH-OUTPUT-KNOWLEDGE-ARCHITECTURE.md)
-- [Current Status](../project-management/CURRENT_STATUS.md)
-- [Decision Log](../project-management/DECISION_LOG.md)
+```text
+knowledge/
+
+├── taxonomy/
+├── entities/
+├── relations/
+├── intelligence/
+├── modules/
+├── sources/
+├── views/
+└── registry/
+```
+
+## 5. Taxonomy
+
+支持多维分类体系，例如：
+
+- 申万行业
+- 中信行业
+- 主题
+- 技术
+- 产业链
+
+## 6. Entities
+
+v0.1 Entity Types：
+
+```text
+industry
+segment
+company
+product
+technology
+```
+
+Entity 保存对象身份与稳定属性。
+
+## 7. Relations
+
+关系包括：
+
+产业关系：
+- contains
+- upstream_of
+- downstream_of
+- depends_on
+- substitute_for
+
+企业关系：
+- supplier_of
+- customer_of
+- partner_of
+- competes_with
+
+资本关系：
+- owns_stake_in
+- invested_in
+
+Relation 支持：
+
+- attributes
+- confidence
+- sourceRefs
+- lifecycle
+
+## 8. Intelligence
+
+```text
+intelligence/
+
+├── facts/
+├── forecasts/
+├── viewpoints/
+├── trends/
+└── risks/
+```
+
+## 9. Modules
+
+Module 解决不同行业知识结构与展示需求差异。
+
+典型模块：
+
+- comparison
+- roadmap
+- market
+- competition
+- capacity
+- supply-chain
+
+禁止为所有行业设计固定、相同的字段集合。
+
+## 10. Sources
+
+Source 记录 Knowledge 的 provenance。
+
+## 11. Views
+
+View 只定义如何展示知识，不保存核心知识本身。
+
+## 12. Lifecycle
+
+状态：
+
+```text
+active
+expired
+superseded
+archived
+```
+
+更新采用逻辑覆盖，历史版本保留。
+
+新旧知识冲突由 Knowledge Update Workflow 中的 LLM / 人工治理流程判断 keep / replace / merge。
+
+生命周期到期由系统提示，人工触发后续 Knowledge Update Workflow。
+
+Knowledge Update Workflow 本身不属于本版本设计范围。
+
+## 13. Non Goals
+
+v0.1 不建设：
+
+- Graph Database
+- Vector Database
+- RAG
+- 自动知识抽取
+- 自动自更新知识引擎
+- Research Artifact Layer
+- Investment Scoring System

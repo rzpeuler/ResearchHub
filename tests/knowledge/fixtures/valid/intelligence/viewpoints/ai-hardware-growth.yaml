@@ -1,0 +1,16 @@
+id: viewpoint:ai-hardware-2026
+type: viewpoint
+entityRefs:
+  - industry:ai-hardware
+bullishPoints:
+  - AI inference and training demand support data center expansion.
+bearishPoints:
+  - Export controls and customer capex cycles may delay deployments.
+keyVariables:
+  - accelerator utilization
+  - data center power availability
+sourceRefs:
+  - source:fixture-market-outlook
+confidence: 0.7
+lifecycle:
+  status: active

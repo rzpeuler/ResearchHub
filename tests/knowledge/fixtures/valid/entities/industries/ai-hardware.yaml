@@ -1,0 +1,7 @@
+id: industry:ai-hardware
+type: industry
+name: AI Hardware
+description: AI computing infrastructure from accelerators and memory to servers and data centers.
+tags:
+  - ai
+  - infrastructure

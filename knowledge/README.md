@@ -1,8 +1,23 @@
-# Knowledge Layer
+# Knowledge Layer Asset Boundary
 
-The Knowledge Layer is the future home for durable, reusable research
-knowledge. It is separate from DSH runtime state, chat history, and prompt
-memory.
+This directory contains repository-level durable Knowledge assets. It is not a
+runtime package and must not contain DSH, Workflow, Skill, or Plugin
+implementation code.
 
-Current migration creates stable boundaries only. Graph storage, extraction,
-RAG, and automatic knowledge formation are not implemented.
+The v0.1 asset layout is:
+
+```text
+taxonomy/
+entities/
+relations/
+intelligence/
+modules/
+sources/
+views/
+registry/
+```
+
+The first implementation loads validation fixtures from
+`tests/knowledge/fixtures/`; it does not populate production Knowledge here.
+Graph storage, vector storage, RAG, LLM extraction, and automatic Knowledge
+formation are not implemented.

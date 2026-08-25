@@ -1,0 +1,19 @@
+id: forecast:ai-server-market-size-2026
+type: forecast
+entityRefs:
+  - segment:server
+metric: market-size
+period: 2026-2030
+values:
+  2026: 166
+  2027: 224
+  2028: 302
+assumptions:
+  - AI capital expenditure remains positive
+sourceRefs:
+  - source:fixture-market-outlook
+confidence: 0.72
+lifecycle:
+  status: active
+  validFrom: '2026-01-01'
+  validUntil: '2030-12-31'

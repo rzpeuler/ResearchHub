@@ -1,0 +1,5 @@
+id: relation:ai-hardware-contains-server
+type: contains
+source: industry:ai-hardware
+target: segment:server
+confidence: 0.99
