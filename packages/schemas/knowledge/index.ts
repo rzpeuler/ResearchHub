@@ -1,3 +1,6 @@
 export * from './domain.ts'
 export * from './manifest.ts'
 export * from './mutation.ts'
+export * from './schema-release.ts'
+export * from './migrations/types.ts'
+export * from './migrations/registry.ts'

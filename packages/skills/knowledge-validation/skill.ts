@@ -32,6 +32,7 @@ import type {
 import { hashKnowledgeObject } from '../../../packages/shared/knowledge-base/canonical-hash.ts'
 import { verifyRaw } from '../../../packages/shared/knowledge-base/raw-archive.ts'
 import { KnowledgeWriteInternalError } from '../../../packages/shared/knowledge-base/write/errors.ts'
+import type { KnowledgeMigrationStateValidator } from '../../../packages/shared/knowledge-base/migration/types.ts'
 
 const ID_PATTERN = /^(industry|segment|company|product|technology|relation|fact|forecast|viewpoint|trend|risk|source|module|view):[a-z0-9]+(?:-[a-z0-9]+)*$/
 const LOGICAL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
@@ -619,5 +620,22 @@ export function createKnowledgeStagedStateValidator(skill: KnowledgeValidationSk
     const handle = createKnowledgeBaseHandle(manifest, rootRef, 'compatible')
     const report = await skill.validateKnowledgeBase(handle, 'all')
     if (report.status === 'failed') throw new KnowledgeWriteInternalError('reference_integrity_error', `Staged Knowledge validation failed: ${report.errors.map((error) => error.code).join(',')}`)
+  }
+}
+
+export function createKnowledgeMigrationStateValidator(skill: KnowledgeValidationSkill): KnowledgeMigrationStateValidator {
+  const migrationErrors = (handle: KnowledgeBaseHandle, report: ValidationReport): ValidationDiagnostic[] => handle.status === 'readonly' ? report.errors.filter((error) => error.code !== 'MANIFEST_STATUS') : report.errors
+  return {
+    async validateSource(handle) {
+      const report = await skill.validateKnowledgeBase(handle, 'all')
+      const errors = migrationErrors(handle, report)
+      if (errors.length > 0) throw new Error(`Source Knowledge validation failed: ${errors.map((error) => error.code).join(',')}`)
+    },
+    async validateTarget(rootRef, manifest) {
+      const handle = createKnowledgeBaseHandle(manifest, rootRef, 'compatible')
+      const report = await skill.validateKnowledgeBase(handle, 'all')
+      const errors = migrationErrors(handle, report)
+      if (errors.length > 0) throw new Error(`Target Knowledge validation failed: ${errors.map((error) => error.code).join(',')}`)
+    },
   }
 }

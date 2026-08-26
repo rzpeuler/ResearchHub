@@ -5,6 +5,7 @@ import { KnowledgeError } from './errors.ts'
 import { KnowledgeBaseHandle } from './handle.ts'
 import { loadKnowledgeBaseManifest } from './manifest-loader.ts'
 import { withKnowledgeBaseMutationLock } from './mutation-lock.ts'
+import { recoverKnowledgeBaseRoot } from './root-transaction.ts'
 import { parseYaml } from './yaml.ts'
 import type { KnowledgeBaseManifest } from '../../schemas/knowledge/index.ts'
 import { deriveRawIdentity } from './raw-identity.ts'
@@ -223,7 +224,10 @@ export async function archiveRaw(handle: KnowledgeBaseHandle, input: RawArchiveI
   assertHandle(handle)
   assertArchiveInput(input)
   await assertMountedKnowledgeBase(handle, true)
-  return withKnowledgeBaseMutationLock(handle.rootRef, async () => archiveRawUnlocked(handle, input, options))
+  return withKnowledgeBaseMutationLock(handle.rootRef, async () => {
+    await recoverKnowledgeBaseRoot(handle.rootRef)
+    return archiveRawUnlocked(handle, input, options)
+  })
 }
 
 async function archiveRawUnlocked(handle: KnowledgeBaseHandle, input: RawArchiveInput, options: RawArchiveOptions): Promise<RawRecord> {

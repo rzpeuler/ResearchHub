@@ -15,8 +15,8 @@ separates ResearchHub Source from user-owned Knowledge Base Runtime Data:
   changes; schema migration is explicit and never implicit on mount or ingest.
 - Runtime Migration Phase A and Phase B are accepted after Sol verification,
   and Phase C is accepted after Sol verification. Phase D1 is accepted after
-  Sol verification. Phase D2 is implemented and review pending for Sol
-  verification. Overall Phase D is implemented and review pending. The AI
+  Sol verification. Phase D2 is accepted after Sol verification. Phase D is
+  accepted / complete. The AI
   Hardware dataset now lives as the
   Git-managed Example Knowledge Base at
   `examples/knowledge-bases/ai-hardware/`.
@@ -142,8 +142,8 @@ mutation, or real LLM wiring was added.
 
 ## KNOWLEDGE-INGESTION-D2-WORKFLOW-001
 
-Knowledge Ingestion Phase D2 is implemented and review pending for Sol
-verification. The runtime-neutral Research Report Knowledge Ingestion Workflow
+Knowledge Ingestion Phase D2 is accepted after Sol verification. The
+runtime-neutral Research Report Knowledge Ingestion Workflow
 composes explicit target resolution, Raw Archive, document normalization,
 Curation, Access, deterministic ID/ChangeSet planning, Validation, and Writer
 interfaces. It supports commit and network-free dry-run modes, deterministic
@@ -154,8 +154,8 @@ or Research Artifact conversion was introduced.
 
 ## KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R1
 
-The D2 workflow contract rework is implemented and review pending for Sol
-verification. ChangeSet Validation now supports non-mutating dry-run planning,
+The D2 workflow contract rework is accepted after Sol verification. ChangeSet
+Validation now supports non-mutating dry-run planning,
 virtual Raw provenance, readonly-compatible validation, operation-level
 diagnostics, and planned change summaries without producing Writer receipts.
 Document resolution keeps exact Raw bytes separate from normalized text and
@@ -175,8 +175,8 @@ introduced.
 
 ## KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R2
 
-The D2 ingestion audit and partial-continuation contract is implemented and
-review pending for Sol verification. The workflow keeps the full final
+The D2 ingestion audit and partial-continuation contract is accepted after Sol
+verification. The workflow keeps the full final
 CandidatePlan for ingestion audit while deriving a separate eligible operation
 plan for ChangeSet construction. Dry-run and commit share the same bounded
 candidate-level validation-pruning pass; systemic validation failures still
@@ -192,13 +192,35 @@ introduced.
 
 ## KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R3
 
-The D2 public-result completion semantics are implemented and review pending for
-Sol verification. A single completion-status derivation now drives dry-run
+The D2 public-result completion semantics are accepted after Sol verification.
+A single completion-status derivation now drives dry-run
 results, successful commit results, and `ingestionContext.workflowStatus`:
 normal completion is `completed`, while any user review or Schema Gap produces
 `completed_with_review`. Dry-run remains fully non-mutating. Governance records
 now use the actual D2 Parent, R1, and R2 commit hashes, with R3 recorded as
-completed pending review.
+completed and accepted with the D2 R4 governance correction.
+
+## KNOWLEDGE-RUNTIME-MIGRATION-E-001
+
+Knowledge Schema Migration Runtime Phase E is implemented and review pending
+for Sol verification. The runtime now has:
+
+- frozen Schema 0.1 / 0.2 release metadata and a deterministic migration
+  registry containing only the concrete 0.1 to 0.2 path;
+- an explicit Migration Runner with dry-run and commit modes, expected
+  revision and lifecycle guards, source/target validation, review-required
+  blocking, and refreshed `KnowledgeBaseHandle` state;
+- deterministic conversion of the legacy registry/module layout to canonical
+  `registry/assets.yaml`, preservation of Knowledge IDs and asset counts,
+  explicit module target resolution, and conservative Raw provenance handling;
+- one whole-Knowledge-Base staged transaction primitive shared with Writer,
+  recovery-marker coordination with Raw/semantic mutations, and migration logs
+  under `logs/migrations/` without full asset dumps.
+
+Schema 0.1 remains readable and is now reported as migration-available but
+read-only. Schema 0.2 / Storage 1 is the only writable contract. Migration is
+never performed implicitly by mount, load, Access, Validation, or ingestion.
+Phase E remains review pending and no later phase has started.
 
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure
 

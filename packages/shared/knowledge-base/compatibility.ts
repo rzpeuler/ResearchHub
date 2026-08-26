@@ -45,7 +45,7 @@ export class KnowledgeSchemaCompatibilityResolver {
 
   constructor(options: KnowledgeSchemaCompatibilityResolverOptions = {}) {
     this.supported = [...(options.supported ?? DEFAULT_SUPPORTED)]
-    this.migrationAvailable = options.migrationAvailable ?? false
+    this.migrationAvailable = options.migrationAvailable ?? (options.supported === undefined ? ((input) => input.schemaVersion === '0.1' && input.storageFormatVersion === '1') : false)
   }
 
   resolve(input: KnowledgeCompatibilityInput): KnowledgeCompatibilityResult {
@@ -79,19 +79,20 @@ export class KnowledgeSchemaCompatibilityResolver {
         reason: `Runtime cannot read schema ${input.schemaVersion} and storage ${input.storageFormatVersion}`,
       }
     }
+    const migrationAvailable = typeof this.migrationAvailable === 'function' ? this.migrationAvailable(input) : this.migrationAvailable
     const writable = support.writable === true && input.status === 'active'
     if (!writable) {
       return {
         status: 'read_only_compatible',
         readable: true,
         writable: false,
-        migrationAvailable: false,
+        migrationAvailable,
         reason: support.writable !== true
           ? 'Runtime write capability is not implemented or enabled'
           : `Knowledge Base status ${input.status} is read-only at runtime`,
       }
     }
-    return { status: 'compatible', readable: true, writable: true, migrationAvailable: false }
+    return { status: 'compatible', readable: true, writable: true, migrationAvailable }
   }
 
   check(input: KnowledgeCompatibilityInput): KnowledgeCompatibilityResult {

@@ -19,7 +19,7 @@ Storage Layout v0.2, Schema Versioning and Migration, Data Schema v0.2,
 Access/Validation/Curation contracts, Ingestion Workflow, Write Interface,
 Frontend Projection v0.2, Example KB Layout, and ADR-015 are design-complete
 and frozen. Runtime Migration Phase A is accepted after Sol verification, and
-Phase B is accepted after Sol verification, and Phase C is accepted after Sol verification. Phase D1 is accepted after Sol verification, while Phase D2 is implemented and review pending. Overall Phase D is implemented and review pending. This phase is an engineering migration, not a new
+Phase B is accepted after Sol verification, and Phase C is accepted after Sol verification. Phase D1 is accepted after Sol verification, and Phase D2 with its R1/R2/R3/R4 closure is accepted after Sol verification. Phase D is accepted / complete. Phase E is implemented and review pending for Sol verification. This phase is an engineering migration, not a new
 architecture design exercise. R2 closes the D2 ingestion audit and
 partial-planning contract: full CandidatePlan audit projection, shared
 dry-run/commit candidate pruning, candidate-level operation attribution, and
@@ -81,7 +81,7 @@ Phase B is accepted after Sol verification.
 D1 does not orchestrate Raw Archive, Access, Validation, Writer, Workflow, or
 durable persistence. Sol verified D1 acceptance.
 
-### Phase D2 — Research Report Knowledge Ingestion Workflow — Implemented / Review Pending
+### Phase D2 — Research Report Knowledge Ingestion Workflow — Accepted / Complete
 
 - Knowledge Curation Skill;
 - relevance and quality filtering;
@@ -91,20 +91,25 @@ durable persistence. Sol verified D1 acceptance.
 - commit/dry-run, deterministic identity, idempotency, partial continuation,
   structured audit logging, and DSH Curation adapter.
 
-D2 implementation is complete and remains pending Sol verification. Overall
-Phase D is implemented and review pending.
+D2 implementation and Sol verification are complete. Overall Phase D is
+accepted / complete.
 
-D2 R1 contract rework is complete and remains pending Sol verification. It
+D2 R1 contract rework is complete and accepted after Sol verification. It
 closes dry-run/readonly validation, Raw byte preservation, no-change handling,
 operation-level candidate rejection, bounded partial continuation, audit-log
 projection, and WorkflowStep ownership metadata gaps.
 
-### Phase E — Migration infrastructure
+### Phase E — Migration infrastructure — Implemented / Review Pending
 
 - Migration Registry;
 - Migration Runner;
-- dry-run, staging, and validation contracts;
-- first real migration only when a breaking Schema version requires it.
+- explicit Schema 0.1 / Storage 1 to Schema 0.2 / Storage 1 migration;
+- dry-run, whole-Knowledge-Base staging, source/target validation, review
+  blocking, recovery, and migration-log contracts;
+- default migration-availability reporting for readable legacy bases.
+
+Phase E implementation is complete and remains pending Sol verification. No
+Phase beyond E has started.
 
 Each not-yet-completed phase remains Planned or Pending Engineering until its implementation,
 focused tests, and default full validation are complete. Do not label the v0.2

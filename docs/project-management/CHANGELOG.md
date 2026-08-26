@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-E-001
+
+- Implemented the explicit Knowledge Schema Migration Runtime for the
+  deterministic Schema 0.1 / Storage 1 to Schema 0.2 / Storage 1 path.
+- Added release metadata, migration registry, dry-run/commit Runner, staged
+  whole-Knowledge-Base transaction and recovery coordination, source/target
+  validation, review blocking, canonical registry conversion, and migration
+  logs.
+- Added network-free migration fixtures and regression coverage for identity,
+  revision, module/Raw provenance, lifecycle, scan-only, validation failure,
+  and no-partial-commit behavior. Phase E remains review pending for Sol.
+
 ## 2026-08-26 - KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R3
 
 - Added one shared completion-status derivation for dry-run results, successful

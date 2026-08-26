@@ -48,7 +48,9 @@ Phase B, Phase C, and Phase D1 are accepted after Sol verification. Phase D2
 Research Report Knowledge Ingestion Workflow v0.1 and its R1/R2/R3 contract
 rework are implemented and review pending. Schema 0.2 / Storage 1 is
 the only writable contract, while Schema 0.1 and readonly/archived bases remain
-read-only. The Git-managed AI Hardware Example
+read-only. Runtime Migration Phase E is implemented and review pending for Sol
+verification; migration remains explicit and never occurs during mount, load,
+access, or ingestion. The Git-managed AI Hardware Example
 Knowledge Base is available at
 [`examples/knowledge-bases/ai-hardware/`](examples/knowledge-bases/ai-hardware/);
 real user Runtime Data remains configurable and independently scoped.

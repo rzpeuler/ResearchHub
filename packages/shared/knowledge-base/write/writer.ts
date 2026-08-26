@@ -1,5 +1,4 @@
-import { createHash } from 'node:crypto'
-import { access, cp, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { access, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { parseKnowledgeBaseManifest, type KnowledgeBaseManifest, type KnowledgeOperation, type KnowledgeSource, type KnowledgeSourceOperation, type KnowledgeWritableObject, type ValidatedKnowledgeChangeSet, type KnowledgeWriteErrorCode, type KnowledgeWriteOperationSummary, type KnowledgeWriteResult } from '../../../../packages/schemas/knowledge/index.ts'
 import { canonicalSerialize, hashKnowledgeObject } from '../canonical-hash.ts'
@@ -9,6 +8,7 @@ import { KnowledgeBaseRegistry } from '../registry.ts'
 import { loadKnowledgeBaseManifest } from '../manifest-loader.ts'
 import { parseYaml } from '../yaml.ts'
 import { KnowledgeMutationLockError, withKnowledgeBaseMutationLock } from '../mutation-lock.ts'
+import { recoverKnowledgeBaseRoot, runKnowledgeRootTransaction } from '../root-transaction.ts'
 import { KnowledgeWriteInternalError } from './errors.ts'
 import { allocateKnowledgeStorageRef, kindForWritableObject, resolveAllocatedPath } from './path-allocation.ts'
 
@@ -242,8 +242,6 @@ async function readLogs(rootPath: string): Promise<Record<string, unknown>[]> {
   return logs
 }
 
-async function writeJournal(path: string, journal: Journal): Promise<void> { await writeFile(path, jsonYaml(journal), 'utf8') }
-
 async function validateRecoveredRoot(rootPath: string, expectedRevision: number, expectedKnowledgeBaseId: string): Promise<void> {
   const manifest = await loadKnowledgeBaseManifest(rootPath)
   if (manifest.knowledgeBaseId !== expectedKnowledgeBaseId || manifest.schemaVersion !== '0.2' || manifest.storageFormatVersion !== '1' || manifest.status !== 'active') throw new Error('Recovery manifest identity or write compatibility is invalid')
@@ -311,7 +309,7 @@ export class KnowledgeWriter {
     try {
       return await withKnowledgeBaseMutationLock(resolve(handle.rootRef), async () => {
         try {
-          await recoverKnowledgeBaseWrite(resolve(handle.rootRef))
+          await recoverKnowledgeBaseRoot(resolve(handle.rootRef))
         } catch (error) {
           throw new KnowledgeWriteInternalError('recovery_required', error instanceof Error ? error.message : String(error))
         }
@@ -371,46 +369,39 @@ export class KnowledgeWriter {
     }
     const nextRevision = changed ? currentManifest.revision + 1 : currentManifest.revision
     state.manifest = { ...state.manifest, revision: nextRevision, updatedAt: changed ? this.clock() : currentManifest.updatedAt }
-    const transactionId = `${changeSet.workflowRunId}-${changeSet.changeSetId}`
-    const stagingPath = `${rootPath}.staging-${createHash('sha256').update(transactionId).digest('hex').slice(0, 16)}`
-    const backupPath = `${rootPath}.backup-${createHash('sha256').update(transactionId).digest('hex').slice(0, 16)}`
-    const markerPath = recoveryMarkerPath(rootPath)
     const logRef = `logs/ingestion/${safeLogName(changeSet.workflowRunId)}`
     const rawRefs = [...new Set(changeSet.sourceOperations.flatMap((operation) => operation.type === 'source_create' ? (operation.source.rawRefs ?? []) : (operation.addRawRefs ?? [])))].sort()
     const audit = projectIngestionContext(changeSet.ingestionContext)
     const rawAudit = isObject(audit?.rawArchive) ? audit.rawArchive : undefined
     const logValue = { workflowRunId: changeSet.workflowRunId, changeSetId: changeSet.changeSetId, changeSetHash: payloadHash, knowledgeBaseId: currentManifest.knowledgeBaseId, schemaVersionAtExecution: currentManifest.schemaVersion, startedAt: this.clock(), completedAt: this.clock(), rawArchive: rawAudit ?? { rawRefs, created: [], reused: [] }, changes: { ...summary, hashes }, status: audit?.workflowStatus === 'completed_with_review' ? 'completed_with_review' : 'completed', writeStatus: changed ? 'committed' : 'no_changes', committedRevision: nextRevision, ingestionLogRef: logRef, ingestionContext: audit, validationRejects: audit?.validationRejects, userReview: audit?.userReview, schemaGaps: audit?.schemaGaps, errors: [] }
+    const transactionId = `${changeSet.workflowRunId}-${changeSet.changeSetId}`
     try {
-      await rm(stagingPath, { recursive: true, force: true })
-      await cp(rootPath, stagingPath, { recursive: true, errorOnExist: true })
-      await writeStateFiles(stagingPath, state)
-      await writeJsonYaml(join(stagingPath, logRef), logValue)
+      await runKnowledgeRootTransaction({
+        rootRef: rootPath,
+        transactionId,
+        transactionKind: 'write',
+        knowledgeBaseId: currentManifest.knowledgeBaseId,
+        previousRevision: currentManifest.revision,
+        nextRevision,
+        targetSchemaVersion: '0.2',
+        targetStorageFormatVersion: '1',
+        targetStatus: 'active',
+        prepare: async (stagingPath) => { await writeStateFiles(stagingPath, state); await writeJsonYaml(join(stagingPath, logRef), logValue) },
+        validate: async (stagingPath) => {
+          try {
+            const stagedManifest = parseKnowledgeBaseManifest(await readJsonYaml(join(stagingPath, 'manifest.yaml')))
+            await stagedStateValidator(stagingPath, stagedManifest)
+          } catch (error) {
+            if (error instanceof KnowledgeWriteInternalError) throw error
+            throw new KnowledgeWriteInternalError('reference_integrity_error', error instanceof Error ? error.message : String(error))
+          }
+        },
+        failpoint: this.options.failpoint,
+      })
     } catch (error) {
-      await rm(stagingPath, { recursive: true, force: true }).catch(() => undefined)
+      if (error instanceof KnowledgeWriteInternalError) throw error
       throw new KnowledgeWriteInternalError('staging_failed', error instanceof Error ? error.message : String(error))
     }
-    try {
-      const stagedManifest = parseKnowledgeBaseManifest(await readJsonYaml(join(stagingPath, 'manifest.yaml')))
-      await stagedStateValidator(stagingPath, stagedManifest)
-    } catch (error) {
-      await rm(stagingPath, { recursive: true, force: true }).catch(() => undefined)
-      if (error instanceof KnowledgeWriteInternalError) throw error
-      throw new KnowledgeWriteInternalError('reference_integrity_error', error instanceof Error ? error.message : String(error))
-    }
-    const journal: Journal = { transactionId, knowledgeBaseId: currentManifest.knowledgeBaseId, previousRevision: currentManifest.revision, nextRevision, stagingPath, backupPath, rootPath, status: 'staged' }
-    await writeJournal(markerPath, journal)
-    await this.options.failpoint?.('before_switch')
-    await rm(backupPath, { recursive: true, force: true })
-    await rename(rootPath, backupPath)
-    journal.status = 'switching'
-    await writeJournal(markerPath, journal)
-    await this.options.failpoint?.('during_switch')
-    await rename(stagingPath, rootPath)
-    journal.status = 'committed'
-    await writeJournal(markerPath, journal)
-    await this.options.failpoint?.('after_switch')
-    await rm(backupPath, { recursive: true, force: true })
-    await rm(markerPath, { force: true })
     const committedHandle = await this.registry.refresh(rootPath)
     return { ...baseResult, status: changed ? 'committed' : 'no_changes', committedRevision: nextRevision, operations: summary, hashes, ingestionLogRef: logRef, committedHandle }
   }
