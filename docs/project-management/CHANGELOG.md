@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R3
+
+- Added one shared completion-status derivation for dry-run results, successful
+  commits, and ingestion audit workflow status.
+- Corrected dry-run results with user review or Schema Gaps to
+  `completed_with_review` while preserving normal dry-run `completed` status
+  and zero-mutation behavior.
+- Added end-to-end dry-run regressions for user review and Schema Gap outcomes;
+  updated governance records with the actual D2 Parent, R1, and R2 commits.
+- R3 remains review pending for Sol verification.
+
 ## 2026-08-26 - KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R2
 
 - Finalized ingestion audit projection from the full CandidatePlan while

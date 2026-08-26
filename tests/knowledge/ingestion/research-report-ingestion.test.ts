@@ -124,6 +124,55 @@ test('dry-run validates a readonly Knowledge Base and exposes planned changes wi
   } finally { await removeRuntimeKnowledgeBase(root) }
 })
 
+test('dry-run preserves completed_with_review for safe and user-review candidates', async () => {
+  const root = await createRuntimeKnowledgeBase({ status: 'readonly' })
+  try {
+    const before = JSON.stringify(await readdir(root, { recursive: true }))
+    const model = buildInvalidCandidateModel()
+      .set('extract_candidates', [candidateOutput(), duplicateEntityCandidateOutput()])
+      .set('map_candidates', [
+        { candidateId: 'candidate-run-ingest-0001', mappingStatus: 'mapped', proposedKnowledge: { object: { type: 'company', name: 'NVIDIA' } } },
+        { candidateId: 'candidate-run-ingest-0002', mappingStatus: 'mapped', proposedKnowledge: { object: { type: 'segment', name: 'GPU' } } },
+      ])
+      .queue('analyze_conflicts', [
+        { decisionId: 'entity-decision', knowledgeBaseId: 'kb-runtime-test', candidateId: 'candidate-run-ingest-0001', existingKnowledgeRefs: [], conflictType: 'none', resolution: 'create', comparison: { sameEntity: false, sameMetric: false, samePeriod: false, sameUnit: false, sameRegion: false, sameDefinition: false, sameMethodology: false }, reason: 'No existing company match.', decisionConfidence: 0.9, requiresUserReview: false },
+        { decisionId: 'review-decision', knowledgeBaseId: 'kb-runtime-test', candidateId: 'candidate-run-ingest-0002', existingKnowledgeRefs: ['segment:gpu'], conflictType: 'fact_conflict', resolution: 'user_review', comparison: { sameEntity: true, sameMetric: true, samePeriod: true, sameUnit: true, sameRegion: false, sameDefinition: true, sameMethodology: true }, reason: 'Conflicting fact requires review.', decisionConfidence: 0.8, requiresUserReview: true },
+      ])
+    let writes = 0
+    const workflow = new ResearchReportKnowledgeIngestionWorkflow({ targetResolver: { resolve: async () => setup(root) }, curation: new KnowledgeCurationSkill({ model }), writer: { write: async () => { writes += 1; throw new Error('Writer must not run during dry-run') } } })
+    const result = await workflow.execute(input('dry_run'))
+    assert.equal(result.status, 'completed_with_review', JSON.stringify(result))
+    assert.equal(result.userReview.length, 1)
+    assert.deepEqual(result.plannedChanges.knowledgeCreate, ['company:nvidia'])
+    assert.deepEqual(result.changes, { sourceCreated: 0, sourceMerged: 0, knowledgeCreated: 0, knowledgeUpdated: 0, knowledgeSuperseded: 0, knowledgeSourceMerged: 0 })
+    assert.equal(result.raw.persisted, false)
+    assert.equal(result.finalRevision, 0)
+    assert.equal(result.ingestionLogRef, undefined)
+    assert.equal(writes, 0)
+    assert.equal(JSON.stringify(await readdir(root, { recursive: true })), before)
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
+
+test('dry-run preserves completed_with_review when a Schema Gap is present', async () => {
+  const root = await createRuntimeKnowledgeBase({ status: 'readonly' })
+  try {
+    const before = JSON.stringify(await readdir(root, { recursive: true }))
+    const model = buildModel().set('detect_schema_gaps', [{ candidateRefs: ['candidate-run-ingest-0001'], gapType: 'schema_gap', observedInformation: { description: 'A product attribute is not modeled.', examples: ['memory bandwidth'] }, currentLimitation: { description: 'Current entity schema lacks the attribute.' }, suggestedDirection: { description: 'Review the product schema.' }, affectedKnowledgeTypes: ['entity'], affectedIndustries: ['AI Hardware'], generality: 'local', frequency: 'first_seen', recommendedAction: 'architecture_review' }])
+    let writes = 0
+    const workflow = new ResearchReportKnowledgeIngestionWorkflow({ targetResolver: { resolve: async () => setup(root) }, curation: new KnowledgeCurationSkill({ model }), writer: { write: async () => { writes += 1; throw new Error('Writer must not run during dry-run') } } })
+    const result = await workflow.execute(input('dry_run'))
+    assert.equal(result.status, 'completed_with_review', JSON.stringify(result))
+    assert.equal(result.schemaGaps.length, 1)
+    assert.deepEqual(result.plannedChanges.knowledgeCreate, ['company:nvidia'])
+    assert.deepEqual(result.changes, { sourceCreated: 0, sourceMerged: 0, knowledgeCreated: 0, knowledgeUpdated: 0, knowledgeSuperseded: 0, knowledgeSourceMerged: 0 })
+    assert.equal(result.raw.persisted, false)
+    assert.equal(result.finalRevision, 0)
+    assert.equal(result.ingestionLogRef, undefined)
+    assert.equal(writes, 0)
+    assert.equal(JSON.stringify(await readdir(root, { recursive: true })), before)
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
+
 test('external document resolution keeps exact raw bytes separate from normalized text', async () => {
   const root = await createRuntimeKnowledgeBase()
   try {

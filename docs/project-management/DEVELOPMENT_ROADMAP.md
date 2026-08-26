@@ -24,7 +24,9 @@ architecture design exercise. R2 closes the D2 ingestion audit and
 partial-planning contract: full CandidatePlan audit projection, shared
 dry-run/commit candidate pruning, candidate-level operation attribution, and
 no-fake-Source handling are implemented and review pending for Sol
-verification.
+verification. R3 closes public-result completion semantics for dry-run review
+and Schema Gap outcomes, with the same status derivation used by commit and
+ingestion audit output.
 
 The AI Hardware dataset is now a Git-managed Example Knowledge Base at
 `examples/knowledge-bases/ai-hardware/`. It is not user Runtime Data; real

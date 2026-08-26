@@ -190,6 +190,16 @@ operation attribution, and systemic validation blocking. No new architecture
 layer, database, RAG, automatic migration, or Research Artifact conversion was
 introduced.
 
+## KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R3
+
+The D2 public-result completion semantics are implemented and review pending for
+Sol verification. A single completion-status derivation now drives dry-run
+results, successful commit results, and `ingestionContext.workflowStatus`:
+normal completion is `completed`, while any user review or Schema Gap produces
+`completed_with_review`. Dry-run remains fully non-mutating. Governance records
+now use the actual D2 Parent, R1, and R2 commit hashes, with R3 recorded as
+completed pending review.
+
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure
 
 Knowledge Layer v0.1 foundation acceptance gaps are closed. The top-level
