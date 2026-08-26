@@ -67,7 +67,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R3 | Finalize ingestion workflow completion semantics | Completed | P0 | 2026-08-26 | Luna | `696fec71d7ec750fa9cc68c38759951e68c972ff` | Accepted — Sol verified |
 | KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R4 | Correct D2 R3 implementation commit traceability | Completed | P0 | 2026-08-26 | Luna | `6046c9eb29b4a29e2200d28917ee6faa98bf5a00` | Accepted — Sol verified |
 | KNOWLEDGE-RUNTIME-MIGRATION-E-001 | Implement Knowledge Schema Migration Runtime | Completed | P0 | 2026-08-26 | Luna | `8265eaf53c721e33c8038e114c6f243cb034ebbe` | Review Pending / Sol Verification |
-| KNOWLEDGE-RUNTIME-MIGRATION-E-001-R1 | Close migration runtime contract gaps | Completed | P0 | 2026-08-26 | Luna | `Current task commit` | Review Pending / Sol Verification |
+| KNOWLEDGE-RUNTIME-MIGRATION-E-001-R1 | Close migration runtime contract gaps | Completed | P0 | 2026-08-26 | Luna | `bf9f2a37fa51a2e14637e74d21d05df9a889f8ee` | Review Pending / Sol Verification |
 
 ## RH-DESIGN-004 Acceptance Scope
 
