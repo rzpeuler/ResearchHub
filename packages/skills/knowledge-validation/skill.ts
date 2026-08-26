@@ -30,6 +30,7 @@ import type {
 } from '../../../packages/schemas/knowledge/index.ts'
 import { hashKnowledgeObject } from '../../../packages/shared/knowledge-base/canonical-hash.ts'
 import { verifyRaw } from '../../../packages/shared/knowledge-base/raw-archive.ts'
+import { KnowledgeWriteInternalError } from '../../../packages/shared/knowledge-base/write/errors.ts'
 
 const ID_PATTERN = /^(industry|segment|company|product|technology|relation|fact|forecast|viewpoint|trend|risk|source|module|view):[a-z0-9]+(?:-[a-z0-9]+)*$/
 const LOGICAL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
@@ -609,6 +610,6 @@ export function createKnowledgeStagedStateValidator(skill: KnowledgeValidationSk
   return async (rootRef, manifest) => {
     const handle = createKnowledgeBaseHandle(manifest, rootRef, 'compatible')
     const report = await skill.validateKnowledgeBase(handle, 'all')
-    if (report.status === 'failed') throw new Error(`staged_validation_failed: ${report.errors.map((error) => error.code).join(',')}`)
+    if (report.status === 'failed') throw new KnowledgeWriteInternalError('reference_integrity_error', `Staged Knowledge validation failed: ${report.errors.map((error) => error.code).join(',')}`)
   }
 }

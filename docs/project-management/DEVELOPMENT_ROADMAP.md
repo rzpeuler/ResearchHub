@@ -49,6 +49,8 @@ index derivation, and strict Source enums. Sol verified Phase A.
 - preserve existing deterministic behavior and fixture coverage;
 - expose scoped HTTP response envelopes and safe KB-relative view resources.
 
+Phase B is accepted after Sol verification.
+
 ### Phase C — Knowledge mutation infrastructure — Implemented / Review Pending
 
 - Raw Archive;
@@ -57,8 +59,10 @@ index derivation, and strict Source enums. Sol verified Phase A.
   recovery, and idempotency;
 - ingestion logs and post-commit Handle refresh.
 - R1 closed Raw Manifest, KB-scoped Raw lifecycle, Source mutation, planned
-  state, and mandatory full staged-validation contract gaps. Phase C remains
-  review pending for Sol verification.
+  state, and mandatory full staged-validation contract gaps.
+- R2 finalized the shared same-KB mutation lock across Raw Archive and Writer,
+  the frozen Writer error taxonomy, and the Phase B governance acceptance
+  correction. Phase C remains review pending for Sol verification.
 
 ### Phase D — Research Report ingestion capability
 

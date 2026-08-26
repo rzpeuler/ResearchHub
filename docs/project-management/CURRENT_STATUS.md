@@ -35,7 +35,7 @@ accepted after Sol verification. The runtime-neutral foundation now includes:
 - thin compatibility exports preserving the existing Knowledge Loader, Index,
   YAML, and Access Skill behavior.
 
-Phase B is now implemented and review pending. It includes:
+Phase B is accepted after Sol verification. It includes:
 
 - explicit Knowledge Base scoping for Access Skill;
 - Knowledge Base scoping for Validation;
@@ -112,6 +112,17 @@ planned supersede state, and duplicate-target rejection. Knowledge Writer now
 requires full staged Knowledge validation before directory switch; Loader-only
 parsing is not commit-authorizing. The temporary Phase C design note was
 removed because frozen architecture and storage documents remain authoritative.
+Phase D has not started.
+
+## KNOWLEDGE-RUNTIME-MIGRATION-C-001-R2
+
+Phase C R2 finalizes the durable mutation boundary and remains review pending
+for Sol verification. Raw Archive and semantic Writer now use one shared,
+Knowledge-Base-scoped mutation lock, so Raw Registry updates and semantic
+directory switches cannot lose updates or overlap within the same KB. Writer
+failures now expose only the frozen Write Interface v0.1 error taxonomy,
+including validation, lifecycle, schema, lock, staging, recovery, conflict,
+and idempotency outcomes. Different Knowledge Bases remain independent, and
 Phase D has not started.
 
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure

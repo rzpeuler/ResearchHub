@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import test from 'node:test'
-import { archiveRaw, KnowledgeBaseLoader, KnowledgeBaseRegistry, KnowledgeWriter, hashKnowledgeObject } from '../../../packages/shared/knowledge-base/index.ts'
+import { archiveRaw, KnowledgeBaseLoader, KnowledgeBaseRegistry, KnowledgeWriter, hashKnowledgeObject, knowledgeBaseMutationLockPath, withKnowledgeBaseMutationLock } from '../../../packages/shared/knowledge-base/index.ts'
 import type { KnowledgeChangeSet, KnowledgeWritableObject, ValidatedKnowledgeChangeSet } from '../../../packages/schemas/knowledge/index.ts'
 import { createKnowledgeStagedStateValidator, KnowledgeValidationSkill } from '../../../packages/skills/knowledge-validation/index.ts'
 import { createRuntimeKnowledgeBase, removeRuntimeKnowledgeBase } from './helpers.ts'
@@ -109,7 +109,7 @@ test('stale target and receipt are rejected without changing the KB', async () =
     const forged = { ...receipt, changeSetHash: hashKnowledgeObject({ different: true }) } as ValidatedKnowledgeChangeSet
     const rejected = await writer.write(handle, forged)
     assert.equal(rejected.status, 'rejected')
-    assert.equal(rejected.error?.code, 'invalid_validation_receipt')
+    assert.equal(rejected.error?.code, 'validation_required')
     await writeFile(`${root}/manifest.yaml`, (await readFile(`${root}/manifest.yaml`, 'utf8')).replace('revision: 0', 'revision: 1'), 'utf8')
     const stale = await writer.write(handle, receipt)
     assert.equal(stale.status, 'rejected')
@@ -146,6 +146,7 @@ test('recovery completes staged switch after injected failure', async () => {
     const writer = new KnowledgeWriter({ loader, registry, stagedStateValidator: createKnowledgeStagedStateValidator(validation), failpoint: (point) => { if (point === 'during_switch') throw new Error('injected switch failure') } })
     const failed = await writer.write(handle, receipt)
     assert.equal(failed.status, 'failed')
+    assert.equal(failed.error?.code, 'recovery_required')
     const { recoverKnowledgeBaseWrite } = await import('../../../packages/shared/knowledge-base/index.ts')
     assert.equal(await recoverKnowledgeBaseWrite(root), 'recovered')
     const fresh = await registry.refresh(root)
@@ -189,7 +190,7 @@ test('Knowledge Writer rejects semantic commit without a staged validator before
     const writer = new KnowledgeWriter({ loader, registry } as never)
     const result = await writer.write(handle, receipt)
     assert.equal(result.status, 'rejected')
-    assert.equal(result.error?.code, 'staged_validator_required')
+    assert.equal(result.error?.code, 'validation_required')
     assert.equal(await readFile(`${root}/manifest.yaml`, 'utf8'), before)
     assert.equal((await loader.readAssets(handle)).entities.some((asset) => asset.value.id === object.id), false)
   } finally {
@@ -211,11 +212,77 @@ test('failed full staged validation leaves the active root unchanged and creates
     } })
     const result = await writer.write(handle, receipt)
     assert.equal(result.status, 'failed')
+    assert.equal(result.error?.code, 'reference_integrity_error')
     assert.equal((await readFile(`${root}/manifest.yaml`, 'utf8')), beforeManifest)
     assert.equal((await loader.readAssets(handle)).entities.some((asset) => asset.value.id === object.id), false)
     const stagingPath = `${root}.staging-${createHash('sha256').update('workflow-changeset-invalid-staged').digest('hex').slice(0, 16)}`
     await assert.rejects(() => readFile(`${stagingPath}/manifest.yaml`, 'utf8'))
     await assert.rejects(() => readFile(`${root}/logs/ingestion/workflow-changeset-invalid-staged.yaml`, 'utf8'))
+  } finally {
+    await removeRuntimeKnowledgeBase(root)
+  }
+})
+
+test('Raw Archive and semantic Writer share one same-KB mutation critical section', async () => {
+  const root = await createRuntimeKnowledgeBase()
+  try {
+    const { loader, registry, handle, validation } = await prepare(root)
+    const object = { id: 'product:shared-lock', type: 'product', name: 'Shared Lock' } as KnowledgeWritableObject
+    const receipt = await validate(validation, handle, changeSet(handle.knowledgeBaseId, 0, [{ operationId: 'create-shared-lock', type: 'create', object }], [], 'changeset-shared-lock'))
+    let releaseHold!: () => void
+    let holderEntered!: () => void
+    const holdEntered = new Promise<void>((resolve) => { holderEntered = resolve })
+    const hold = new Promise<void>((resolve) => { releaseHold = resolve })
+    const holder = withKnowledgeBaseMutationLock(root, async () => { holderEntered(); await hold })
+    await holdEntered
+    let rawEntered = false
+    let writerEntered = false
+    const writer = new KnowledgeWriter({ loader, registry, stagedStateValidator: createKnowledgeStagedStateValidator(validation), clock: () => { writerEntered = true; return '2026-08-26T01:00:00.000Z' } })
+    const rawPromise = archiveRaw(handle, { bytes: Buffer.from('shared-lock-raw'), originalFilename: 'raw.txt' }, { clock: () => { rawEntered = true; return '2026-08-26T01:00:00.000Z' } })
+    const writerPromise = writer.write(handle, receipt)
+    await Promise.resolve()
+    await Promise.resolve()
+    assert.equal(rawEntered, false)
+    assert.equal(writerEntered, false)
+    releaseHold()
+    const [rawResult, writerResult] = await Promise.all([rawPromise, writerPromise, holder]).then(([raw, written]) => [raw, written])
+    assert.equal(rawResult.reused, false)
+    assert.equal(writerResult.status, 'committed')
+    assert.equal(rawEntered, true)
+    assert.equal(writerEntered, true)
+  } finally {
+    await removeRuntimeKnowledgeBase(root)
+  }
+})
+
+test('Writer returns frozen error codes for validation, lifecycle, schema, lock, and ID failures', async () => {
+  const root = await createRuntimeKnowledgeBase()
+  try {
+    const { loader, registry, handle, validation } = await prepare(root)
+    const object = { id: 'product:error-matrix', type: 'product', name: 'Error Matrix' } as KnowledgeWritableObject
+    const receipt = await validate(validation, handle, changeSet(handle.knowledgeBaseId, 0, [{ operationId: 'create-error-matrix', type: 'create', object }], [], 'changeset-error-matrix'))
+    const noValidator = new KnowledgeWriter({ loader, registry } as never)
+    assert.equal((await noValidator.write(handle, receipt)).error?.code, 'validation_required')
+    const forged = { ...receipt, changeSetHash: hashKnowledgeObject({ forged: true }) } as ValidatedKnowledgeChangeSet
+    assert.equal((await prepare(root).then(({ writer }) => writer.write(handle, forged))).error?.code, 'validation_required')
+
+    await writeFile(`${root}/manifest.yaml`, (await readFile(`${root}/manifest.yaml`, 'utf8')).replace('status: active', 'status: readonly'), 'utf8')
+    const readonlyWriter = new KnowledgeWriter({ loader, registry, stagedStateValidator: async () => undefined })
+    assert.equal((await readonlyWriter.write(handle, receipt)).error?.code, 'knowledge_base_not_writable')
+    await writeFile(`${root}/manifest.yaml`, (await readFile(`${root}/manifest.yaml`, 'utf8')).replace('status: readonly', 'status: active'), 'utf8')
+
+    const lockPath = knowledgeBaseMutationLockPath(root)
+    await mkdir(lockPath)
+    try {
+      const lockWriter = new KnowledgeWriter({ loader, registry, stagedStateValidator: async () => undefined })
+      assert.equal((await lockWriter.write(handle, receipt)).error?.code, 'write_lock_failed')
+    } finally {
+      await rm(lockPath, { recursive: true, force: true })
+    }
+
+    const collision = { ...receipt, changeSet: changeSet(handle.knowledgeBaseId, 0, [{ operationId: 'create-existing', type: 'create', object: { id: 'segment:gpu', type: 'segment', name: 'GPU' } }], [], 'changeset-id-conflict'), changeSetId: 'changeset-id-conflict', changeSetHash: hashKnowledgeObject(changeSet(handle.knowledgeBaseId, 0, [{ operationId: 'create-existing', type: 'create', object: { id: 'segment:gpu', type: 'segment', name: 'GPU' } }], [], 'changeset-id-conflict')) } as ValidatedKnowledgeChangeSet
+    const collisionWriter = new KnowledgeWriter({ loader, registry, stagedStateValidator: async () => undefined })
+    assert.equal((await collisionWriter.write(handle, collision)).error?.code, 'id_conflict')
   } finally {
     await removeRuntimeKnowledgeBase(root)
   }

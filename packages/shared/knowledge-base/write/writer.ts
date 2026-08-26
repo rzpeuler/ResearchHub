@@ -1,13 +1,15 @@
 import { createHash } from 'node:crypto'
 import { access, cp, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
-import { parseKnowledgeBaseManifest, type KnowledgeBaseManifest, type KnowledgeOperation, type KnowledgeSource, type KnowledgeSourceOperation, type KnowledgeWritableObject, type ValidatedKnowledgeChangeSet, type KnowledgeWriteOperationSummary, type KnowledgeWriteResult } from '../../../../packages/schemas/knowledge/index.ts'
+import { parseKnowledgeBaseManifest, type KnowledgeBaseManifest, type KnowledgeOperation, type KnowledgeSource, type KnowledgeSourceOperation, type KnowledgeWritableObject, type ValidatedKnowledgeChangeSet, type KnowledgeWriteErrorCode, type KnowledgeWriteOperationSummary, type KnowledgeWriteResult } from '../../../../packages/schemas/knowledge/index.ts'
 import { canonicalSerialize, hashKnowledgeObject } from '../canonical-hash.ts'
 import { KnowledgeBaseHandle } from '../handle.ts'
 import { KnowledgeBaseLoader } from '../knowledge-base-loader.ts'
 import { KnowledgeBaseRegistry } from '../registry.ts'
 import { loadKnowledgeBaseManifest } from '../manifest-loader.ts'
 import { parseYaml } from '../yaml.ts'
+import { KnowledgeMutationLockError, withKnowledgeBaseMutationLock } from '../mutation-lock.ts'
+import { KnowledgeWriteInternalError } from './errors.ts'
 import { allocateKnowledgeStorageRef, kindForWritableObject, resolveAllocatedPath } from './path-allocation.ts'
 
 const LOGICAL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
@@ -45,8 +47,6 @@ interface Journal {
   rootPath: string
   status: 'staged' | 'switching' | 'committed'
 }
-
-const processLocks = new Map<string, Promise<void>>()
 
 function recoveryMarkerPath(rootPath: string): string {
   return `${rootPath}.recovery.json`
@@ -97,29 +97,10 @@ async function writeJsonYaml(path: string, value: unknown): Promise<void> {
   await writeFile(path, jsonYaml(value), 'utf8')
 }
 
-async function withProcessLock<T>(key: string, task: () => Promise<T>): Promise<T> {
-  const previous = processLocks.get(key) ?? Promise.resolve()
-  let release!: () => void
-  const current = new Promise<void>((resolveRelease) => { release = resolveRelease })
-  const chain = previous.then(() => current)
-  processLocks.set(key, chain)
-  await previous
-  try { return await task() } finally {
-    release()
-    if (processLocks.get(key) === chain) processLocks.delete(key)
-  }
-}
-
-async function acquireFilesystemLock(rootPath: string): Promise<() => Promise<void>> {
-  const lockPath = join(dirname(rootPath), `.${createHash('sha256').update(rootPath).digest('hex').slice(0, 24)}.knowledge-write-lock`)
-  try {
-    await mkdir(lockPath)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new Error('write_lock_failed: Knowledge Base lock already exists')
-    throw error
-  }
-  await writeFile(join(lockPath, 'owner.json'), jsonYaml({ rootPath, acquiredAt: new Date().toISOString() }), 'utf8')
-  return async () => { await rm(lockPath, { recursive: true, force: false }) }
+function writeFailureCode(error: unknown, fallback: KnowledgeWriteErrorCode): KnowledgeWriteErrorCode {
+  if (error instanceof KnowledgeWriteInternalError) return error.publicCode
+  if (error instanceof KnowledgeMutationLockError) return 'write_lock_failed'
+  return fallback
 }
 
 async function loadState(rootPath: string, loader: KnowledgeBaseLoader, handle: KnowledgeBaseHandle): Promise<MutableState> {
@@ -151,7 +132,7 @@ function applySourceOperation(state: MutableState, operation: KnowledgeSourceOpe
     const source = clone(operation.source as Record<string, unknown>)
     const id = objectId(source)
     const storageRef = allocateKnowledgeStorageRef(source as KnowledgeSource)
-    if (state.registry[id]) throw new Error(`create_collision: ${id}`)
+    if (state.registry[id]) throw new KnowledgeWriteInternalError('id_conflict', `Source already exists: ${id}`)
     state.registry[id] = { type: 'source', storageRef }
     state.objects.set(id, source)
     state.paths.set(id, storageRef)
@@ -161,7 +142,7 @@ function applySourceOperation(state: MutableState, operation: KnowledgeSourceOpe
   }
   const current = state.objects.get(operation.sourceId)
   const entry = state.registry[operation.sourceId]
-  if (!current || !entry) throw new Error(`missing_target: ${operation.sourceId}`)
+  if (!current || !entry) throw new KnowledgeWriteInternalError('missing_source_reference', `Source target does not exist: ${operation.sourceId}`)
   const beforeHash = hashKnowledgeObject(current)
   const next = clone(current)
   if (operation.addRawRefs) next.rawRefs = mergeRefs(next.rawRefs, operation.addRawRefs)
@@ -178,7 +159,7 @@ function applyKnowledgeOperation(state: MutableState, operation: KnowledgeOperat
   if (operation.type === 'create') {
     const object = clone(operation.object as Record<string, unknown>)
     const id = objectId(object)
-    if (state.registry[id]) throw new Error(`create_collision: ${id}`)
+    if (state.registry[id]) throw new KnowledgeWriteInternalError('id_conflict', `Knowledge object already exists: ${id}`)
     const storageRef = allocateKnowledgeStorageRef(object as KnowledgeWritableObject)
     state.registry[id] = { type: objectKind(object), storageRef }
     state.objects.set(id, object)
@@ -189,11 +170,11 @@ function applyKnowledgeOperation(state: MutableState, operation: KnowledgeOperat
   }
   const current = state.objects.get(operation.knowledgeId)
   const entry = state.registry[operation.knowledgeId]
-  if (!current || !entry) throw new Error(`missing_target: ${operation.knowledgeId}`)
+  if (!current || !entry) throw new KnowledgeWriteInternalError('reference_integrity_error', `Knowledge target does not exist: ${operation.knowledgeId}`)
   const beforeHash = hashKnowledgeObject(current)
   if (operation.type === 'update') {
     const next = clone(operation.object as Record<string, unknown>)
-    if (objectId(next) !== operation.knowledgeId || objectKind(next) !== entry.type) throw new Error(`update_identity: ${operation.knowledgeId}`)
+    if (objectId(next) !== operation.knowledgeId || objectKind(next) !== entry.type) throw new KnowledgeWriteInternalError('invalid_change_set', `Update identity is invalid: ${operation.knowledgeId}`)
     const afterHash = hashKnowledgeObject(next)
     if (afterHash === beforeHash) return false
     state.objects.set(operation.knowledgeId, next)
@@ -204,7 +185,7 @@ function applyKnowledgeOperation(state: MutableState, operation: KnowledgeOperat
   if (operation.type === 'supersede') {
     const replacement = clone(operation.replacement as Record<string, unknown>)
     const replacementId = objectId(replacement)
-    if (replacementId === operation.knowledgeId || state.registry[replacementId]) throw new Error(`supersede_identity: ${replacementId}`)
+    if (replacementId === operation.knowledgeId || state.registry[replacementId]) throw new KnowledgeWriteInternalError('id_conflict', `Supersede replacement conflicts: ${replacementId}`)
     const oldNext = clone(current)
     const lifecycle = isObject(oldNext.lifecycle) ? clone(oldNext.lifecycle) : { status: 'active' }
     lifecycle.status = 'superseded'
@@ -317,20 +298,21 @@ export class KnowledgeWriter {
     const changeSet = receipt.changeSet
     const baseResult = { knowledgeBaseId: handle.knowledgeBaseId, changeSetId: changeSet.changeSetId, baseRevision: handle.revision, committedRevision: handle.revision, operations: operationSummary(), hashes: [] as KnowledgeWriteResult['hashes'] }
     const stagedStateValidator = this.options.stagedStateValidator
-    if (!stagedStateValidator) return { ...baseResult, status: 'rejected', error: { code: 'staged_validator_required', message: 'KnowledgeWriter requires a full staged-state validator before semantic commit' } }
-    if (receipt.knowledgeBaseId !== handle.knowledgeBaseId || receipt.schemaVersion !== handle.schemaVersion || receipt.baseRevision !== changeSet.expectedBaseRevision || receipt.changeSetId !== changeSet.changeSetId || receipt.changeSetHash !== hashKnowledgeObject(changeSet)) return { ...baseResult, status: 'rejected', error: { code: 'invalid_validation_receipt', message: 'ValidatedChangeSet receipt does not match ChangeSet or Handle' } }
+    if (!stagedStateValidator) return { ...baseResult, status: 'rejected', error: { code: 'validation_required', message: 'KnowledgeWriter requires a full staged-state validator before semantic commit' } }
+    if (receipt.knowledgeBaseId !== handle.knowledgeBaseId || receipt.schemaVersion !== handle.schemaVersion || receipt.baseRevision !== changeSet.expectedBaseRevision || receipt.changeSetId !== changeSet.changeSetId || receipt.changeSetHash !== hashKnowledgeObject(changeSet)) return { ...baseResult, status: 'rejected', error: { code: 'validation_required', message: 'ValidatedChangeSet receipt does not match ChangeSet or Handle' } }
     try {
-      return await withProcessLock(resolve(handle.rootRef), async () => {
-        const releaseFilesystemLock = await acquireFilesystemLock(resolve(handle.rootRef))
+      return await withKnowledgeBaseMutationLock(resolve(handle.rootRef), async () => {
         try {
           await recoverKnowledgeBaseWrite(resolve(handle.rootRef))
-          return await this.writeLocked(handle, receipt, stagedStateValidator)
-        } finally {
-          await releaseFilesystemLock()
+        } catch (error) {
+          throw new KnowledgeWriteInternalError('recovery_required', error instanceof Error ? error.message : String(error))
         }
+        return await this.writeLocked(handle, receipt, stagedStateValidator)
       })
     } catch (error) {
-      return { ...baseResult, status: 'failed', error: { code: error instanceof Error && error.message.startsWith('write_lock_failed') ? 'write_lock_failed' : 'write_failed', message: error instanceof Error ? error.message : String(error) } }
+      const markerExists = await exists(recoveryMarkerPath(resolve(handle.rootRef)))
+      const code = markerExists ? 'recovery_required' : writeFailureCode(error, 'commit_failed')
+      return { ...baseResult, status: 'failed', error: { code, message: error instanceof Error ? error.message : String(error) } }
     }
   }
 
@@ -341,8 +323,9 @@ export class KnowledgeWriter {
     const changeSet = receipt.changeSet
     const currentManifest = await loadKnowledgeBaseManifest(rootPath)
     const baseResult = { knowledgeBaseId: currentManifest.knowledgeBaseId, changeSetId: changeSet.changeSetId, baseRevision: currentManifest.revision, committedRevision: currentManifest.revision, operations: operationSummary(), hashes: [] as KnowledgeWriteResult['hashes'] }
-    if (currentManifest.schemaVersion !== '0.2' || currentManifest.storageFormatVersion !== '1' || currentManifest.status !== 'active') return { ...baseResult, status: 'rejected', error: { code: 'write_not_supported', message: 'Only active Schema 0.2 / Storage 1 Knowledge Bases are writable' } }
-    if (changeSet.knowledgeBaseId !== currentManifest.knowledgeBaseId) return { ...baseResult, status: 'rejected', error: { code: 'knowledge_base_mismatch', message: 'ChangeSet Knowledge Base does not match manifest' } }
+    if (currentManifest.schemaVersion !== '0.2' || currentManifest.storageFormatVersion !== '1') return { ...baseResult, status: 'rejected', error: { code: 'schema_version_mismatch', message: 'Only Schema 0.2 / Storage 1 Knowledge Bases are writable' } }
+    if (currentManifest.status !== 'active' || !handle.writable) return { ...baseResult, status: 'rejected', error: { code: 'knowledge_base_not_writable', message: 'Knowledge Base is not active and writable' } }
+    if (changeSet.knowledgeBaseId !== currentManifest.knowledgeBaseId) return { ...baseResult, status: 'rejected', error: { code: 'invalid_change_set', message: 'ChangeSet Knowledge Base does not match manifest' } }
     const payloadHash = hashKnowledgeObject(changeSet)
     const existingLog = (await readLogs(rootPath)).find((log) => log.knowledgeBaseId === currentManifest.knowledgeBaseId && log.changeSetId === changeSet.changeSetId)
     if (existingLog) {
@@ -350,7 +333,12 @@ export class KnowledgeWriter {
       if (existingLog.status === 'completed' || existingLog.status === 'completed_with_review') return { ...baseResult, status: 'already_committed', committedRevision: Number(existingLog.committedRevision ?? currentManifest.revision), ingestionLogRef: typeof existingLog.ingestionLogRef === 'string' ? existingLog.ingestionLogRef : undefined }
     }
     if (currentManifest.revision !== changeSet.expectedBaseRevision || currentManifest.revision !== receipt.baseRevision) return { ...baseResult, status: 'rejected', error: { code: 'stale_base_revision', message: `Expected ${changeSet.expectedBaseRevision}, current ${currentManifest.revision}` } }
-    const state = await loadState(rootPath, this.loader, handle)
+    let state: MutableState
+    try {
+      state = await loadState(rootPath, this.loader, handle)
+    } catch (error) {
+      throw new KnowledgeWriteInternalError('registry_conflict', error instanceof Error ? error.message : String(error))
+    }
     for (const operation of changeSet.sourceOperations) {
       if (operation.type !== 'source_create') {
         const current = state.objects.get(operation.sourceId)
@@ -366,8 +354,13 @@ export class KnowledgeWriter {
     const summary = operationSummary()
     const hashes: KnowledgeWriteResult['hashes'] = []
     let changed = false
-    for (const operation of changeSet.sourceOperations) changed = applySourceOperation(state, operation, summary, hashes) || changed
-    for (const operation of changeSet.knowledgeOperations) changed = applyKnowledgeOperation(state, operation, summary, hashes) || changed
+    try {
+      for (const operation of changeSet.sourceOperations) changed = applySourceOperation(state, operation, summary, hashes) || changed
+      for (const operation of changeSet.knowledgeOperations) changed = applyKnowledgeOperation(state, operation, summary, hashes) || changed
+    } catch (error) {
+      if (error instanceof KnowledgeWriteInternalError) throw error
+      throw new KnowledgeWriteInternalError('invalid_change_set', error instanceof Error ? error.message : String(error))
+    }
     const nextRevision = changed ? currentManifest.revision + 1 : currentManifest.revision
     state.manifest = { ...state.manifest, revision: nextRevision, updatedAt: changed ? this.clock() : currentManifest.updatedAt }
     const transactionId = `${changeSet.workflowRunId}-${changeSet.changeSetId}`
@@ -377,16 +370,22 @@ export class KnowledgeWriter {
     const logRef = `logs/ingestion/${safeLogName(changeSet.workflowRunId)}`
     const rawRefs = [...new Set(changeSet.sourceOperations.flatMap((operation) => operation.type === 'source_create' ? (operation.source.rawRefs ?? []) : (operation.addRawRefs ?? [])))].sort()
     const logValue = { workflowRunId: changeSet.workflowRunId, changeSetId: changeSet.changeSetId, changeSetHash: payloadHash, knowledgeBaseId: currentManifest.knowledgeBaseId, schemaVersionAtExecution: currentManifest.schemaVersion, startedAt: this.clock(), completedAt: this.clock(), rawArchive: { rawRefs, created: [], reused: [] }, changes: { ...summary, hashes }, status: 'completed', writeStatus: changed ? 'committed' : 'no_changes', committedRevision: nextRevision, ingestionLogRef: logRef, userReview: undefined, schemaGaps: undefined, errors: [] }
-    await rm(stagingPath, { recursive: true, force: true })
     try {
+      await rm(stagingPath, { recursive: true, force: true })
       await cp(rootPath, stagingPath, { recursive: true, errorOnExist: true })
       await writeStateFiles(stagingPath, state)
       await writeJsonYaml(join(stagingPath, logRef), logValue)
+    } catch (error) {
+      await rm(stagingPath, { recursive: true, force: true }).catch(() => undefined)
+      throw new KnowledgeWriteInternalError('staging_failed', error instanceof Error ? error.message : String(error))
+    }
+    try {
       const stagedManifest = parseKnowledgeBaseManifest(await readJsonYaml(join(stagingPath, 'manifest.yaml')))
       await stagedStateValidator(stagingPath, stagedManifest)
     } catch (error) {
       await rm(stagingPath, { recursive: true, force: true }).catch(() => undefined)
-      throw error
+      if (error instanceof KnowledgeWriteInternalError) throw error
+      throw new KnowledgeWriteInternalError('reference_integrity_error', error instanceof Error ? error.message : String(error))
     }
     const journal: Journal = { transactionId, knowledgeBaseId: currentManifest.knowledgeBaseId, previousRevision: currentManifest.revision, nextRevision, stagingPath, backupPath, rootPath, status: 'staged' }
     await writeJournal(markerPath, journal)

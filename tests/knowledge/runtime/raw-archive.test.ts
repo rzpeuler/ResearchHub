@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { KnowledgeBaseLoader } from '../../../packages/shared/knowledge-base/knowledge-base-loader.ts'
+import { parseYaml } from '../../../packages/shared/knowledge-base/yaml.ts'
 import { KnowledgeBaseHandle } from '../../../packages/shared/knowledge-base/handle.ts'
 import { hashKnowledgeObject } from '../../../packages/shared/knowledge-base/canonical-hash.ts'
 import { KnowledgeError } from '../../../packages/shared/knowledge-base/errors.ts'
@@ -114,5 +115,59 @@ test('raw archive rejects a stale or wrong-identity handle before mutation', asy
     assert.equal(await readFile(join(root, 'registry', 'raw.yaml'), 'utf8'), '{}\n')
   } finally {
     await removeRuntimeKnowledgeBase(root)
+  }
+})
+
+test('concurrent different Raw archives in one KB preserve every Registry entry', async () => {
+  const root = await createRuntimeKnowledgeBase()
+  try {
+    const handle = await mount(root)
+    const [first, second] = await Promise.all([
+      archiveRaw(handle, { bytes: Buffer.from('raw-A'), originalFilename: 'a.txt' }),
+      archiveRaw(handle, { bytes: Buffer.from('raw-B'), originalFilename: 'b.txt' }),
+    ])
+    assert.equal((await verifyRaw(handle, first.manifest.rawRef)).valid, true)
+    assert.equal((await verifyRaw(handle, second.manifest.rawRef)).valid, true)
+    const registry = await readFile(join(root, 'registry', 'raw.yaml'), 'utf8')
+    assert.match(registry, new RegExp(first.manifest.rawRef))
+    assert.match(registry, new RegExp(second.manifest.rawRef))
+  } finally {
+    await removeRuntimeKnowledgeBase(root)
+  }
+})
+
+test('concurrent identical Raw archives share one immutable bundle and preserve first metadata', async () => {
+  const root = await createRuntimeKnowledgeBase()
+  try {
+    const handle = await mount(root)
+    const [first, second] = await Promise.all([
+      archiveRaw(handle, { bytes: Buffer.from('same-concurrent'), originalFilename: 'first.txt', mediaType: 'text/plain', suppliedMetadata: { title: 'First' } }, { clock: () => '2026-08-26T00:00:00.000Z' }),
+      archiveRaw(handle, { bytes: Buffer.from('same-concurrent'), originalFilename: 'second.pdf', mediaType: 'application/pdf', suppliedMetadata: { title: 'Second' } }, { clock: () => '2026-08-27T00:00:00.000Z' }),
+    ])
+    assert.equal(first.manifest.rawRef, second.manifest.rawRef)
+    assert.deepEqual(first.manifest, second.manifest)
+    assert.deepEqual([first.reused, second.reused].sort(), [false, true])
+    const registry = parseYaml(await readFile(join(root, 'registry', 'raw.yaml'), 'utf8'), join(root, 'registry', 'raw.yaml'))
+    assert.deepEqual(Object.keys(registry as Record<string, unknown>), [first.manifest.rawRef])
+  } finally {
+    await removeRuntimeKnowledgeBase(root)
+  }
+})
+
+test('Raw archives on different Knowledge Bases execute independently', async () => {
+  const rootA = await createRuntimeKnowledgeBase({ knowledgeBaseId: 'kb-runtime-a' })
+  const rootB = await createRuntimeKnowledgeBase({ knowledgeBaseId: 'kb-runtime-b' })
+  try {
+    const loader = new KnowledgeBaseLoader()
+    const [handleA, handleB] = await Promise.all([loader.mount(rootA), loader.mount(rootB)])
+    const [a, b] = await Promise.all([
+      archiveRaw(handleA, { bytes: Buffer.from('A'), originalFilename: 'a.txt' }),
+      archiveRaw(handleB, { bytes: Buffer.from('B'), originalFilename: 'b.txt' }),
+    ])
+    assert.equal((await verifyRaw(handleA, a.manifest.rawRef)).valid, true)
+    assert.equal((await verifyRaw(handleB, b.manifest.rawRef)).valid, true)
+  } finally {
+    await removeRuntimeKnowledgeBase(rootA)
+    await removeRuntimeKnowledgeBase(rootB)
   }
 })

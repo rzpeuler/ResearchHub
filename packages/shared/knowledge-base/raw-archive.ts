@@ -4,6 +4,7 @@ import { basename, extname, join, relative, resolve, sep } from 'node:path'
 import { KnowledgeError } from './errors.ts'
 import { KnowledgeBaseHandle } from './handle.ts'
 import { loadKnowledgeBaseManifest } from './manifest-loader.ts'
+import { withKnowledgeBaseMutationLock } from './mutation-lock.ts'
 import { parseYaml } from './yaml.ts'
 import type { KnowledgeBaseManifest } from '../../schemas/knowledge/index.ts'
 
@@ -218,7 +219,13 @@ async function updateRawRegistry(root: string, record: RawRecord): Promise<void>
 }
 
 export async function archiveRaw(handle: KnowledgeBaseHandle, input: RawArchiveInput, options: RawArchiveOptions = {}): Promise<RawRecord> {
+  assertHandle(handle)
   assertArchiveInput(input)
+  await assertMountedKnowledgeBase(handle, true)
+  return withKnowledgeBaseMutationLock(handle.rootRef, async () => archiveRawUnlocked(handle, input, options))
+}
+
+async function archiveRawUnlocked(handle: KnowledgeBaseHandle, input: RawArchiveInput, options: RawArchiveOptions): Promise<RawRecord> {
   await assertMountedKnowledgeBase(handle, true)
   const root = resolve(handle.rootRef)
   const digest = createHash('sha256').update(input.bytes).digest('hex')

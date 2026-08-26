@@ -34,6 +34,7 @@ export type {
   KnowledgeUpdateOperation,
   KnowledgeWritableObject,
   KnowledgeWriteOperationSummary,
+  KnowledgeWriteErrorCode,
   KnowledgeWriteResult,
   KnowledgeWriteStatus,
   ValidatedKnowledgeChangeSet,

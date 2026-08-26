@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-C-001-R2
+
+- Added one shared deterministic same-Knowledge-Base mutation lock for Raw
+  Archive and semantic Writer operations, with an owner marker and no stale
+  lock deletion. Different Knowledge Bases remain independently writable.
+- Moved the entire Raw Registry durable mutation into the shared lock and added
+  concurrency coverage for same-hash reuse, different-hash preservation, and
+  Raw/Writer critical-section serialization.
+- Aligned Writer public failures with the frozen Write Interface v0.1 error
+  taxonomy, using typed internal errors for validation, lifecycle, schema,
+  conflict, staging, recovery, lock, and idempotency outcomes.
+- Corrected Phase B governance to `Accepted — Sol verified`; Phase C remains
+  review pending and Phase D remains planned.
+
 ## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-C-001-R1
 
 - Aligned Raw Manifest persistence with Storage Layout v0.2 and made Raw Archive

@@ -66,6 +66,27 @@ export interface KnowledgeMergeSourceOperation {
 
 export type KnowledgeOperation = KnowledgeCreateOperation | KnowledgeUpdateOperation | KnowledgeSupersedeOperation | KnowledgeMergeSourceOperation
 
+export const KNOWLEDGE_WRITE_ERROR_CODES = [
+  'knowledge_base_not_writable',
+  'schema_version_mismatch',
+  'stale_base_revision',
+  'stale_target_state',
+  'invalid_change_set',
+  'validation_required',
+  'missing_raw_provenance',
+  'missing_source_reference',
+  'id_conflict',
+  'reference_integrity_error',
+  'registry_conflict',
+  'write_lock_failed',
+  'staging_failed',
+  'commit_failed',
+  'recovery_required',
+  'idempotency_conflict',
+] as const
+
+export type KnowledgeWriteErrorCode = (typeof KNOWLEDGE_WRITE_ERROR_CODES)[number]
+
 export interface KnowledgeIngestionContext {
   actor?: string
   reason?: string
@@ -116,5 +137,5 @@ export interface KnowledgeWriteResult {
   hashes: Array<{ knowledgeId: string; beforeHash?: string; afterHash?: string }>
   ingestionLogRef?: string
   committedHandle?: unknown
-  error?: { code: string; message: string }
+  error?: { code: KnowledgeWriteErrorCode; message: string }
 }
