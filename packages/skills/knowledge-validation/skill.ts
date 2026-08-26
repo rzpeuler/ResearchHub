@@ -293,11 +293,11 @@ export class KnowledgeValidationSkill {
     if (!target) diagnostics.push({ code: 'MISSING_TARGET', severity: 'error', message: `Knowledge target does not exist: ${knowledgeId}`, operationId })
     this.validateTargetHash(diagnostics, knowledgeId, expectedBeforeHash, existingById, operationId)
     if (mutationTargets) this.registerMutationTarget(diagnostics, mutationTargets, knowledgeId, operationId)
-    if (replacement && this.assetKind(replacement) === undefined) diagnostics.push({ code: 'UPDATE_KIND', severity: 'error', message: `Unsupported replacement Knowledge object: ${replacement.id}` })
+    if (replacement && this.assetKind(replacement) === undefined) diagnostics.push({ code: 'UPDATE_KIND', severity: 'error', message: `Unsupported replacement Knowledge object: ${replacement.id}`, operationId })
     if (replacement) this.validateWritableObjectSchema(diagnostics, replacement, operationId)
-    if (replacement && (typeof replacement.id !== 'string' || !ID_PATTERN.test(replacement.id) || replacement.id.startsWith('source:'))) diagnostics.push({ code: 'UPDATE_ID', severity: 'error', message: `Replacement object id is invalid: ${String(replacement?.id)}` })
-    if (replacement && requiresSameId && replacement.id !== knowledgeId) diagnostics.push({ code: 'UPDATE_ID', severity: 'error', message: 'Update object id must match knowledgeId' })
-    if (replacement && target && this.assetKind(replacement) !== target.type) diagnostics.push({ code: 'UPDATE_KIND', severity: 'error', message: `Replacement kind must match target: ${knowledgeId}` })
+    if (replacement && (typeof replacement.id !== 'string' || !ID_PATTERN.test(replacement.id) || replacement.id.startsWith('source:'))) diagnostics.push({ code: 'UPDATE_ID', severity: 'error', message: `Replacement object id is invalid: ${String(replacement?.id)}`, operationId })
+    if (replacement && requiresSameId && replacement.id !== knowledgeId) diagnostics.push({ code: 'UPDATE_ID', severity: 'error', message: 'Update object id must match knowledgeId', operationId })
+    if (replacement && target && this.assetKind(replacement) !== target.type) diagnostics.push({ code: 'UPDATE_KIND', severity: 'error', message: `Replacement kind must match target: ${knowledgeId}`, operationId })
   }
 
   private validateExpectedHash(diagnostics: ValidationDiagnostic[], hash: unknown, operationId?: string): void {

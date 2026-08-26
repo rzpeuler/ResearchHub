@@ -160,3 +160,23 @@ test('ChangeSet planned state exposes supersede replacements and rejects collisi
     await removeRuntimeKnowledgeBase(root)
   }
 })
+
+test('candidate update and replacement diagnostics always carry operationId', async () => {
+  const root = await createRuntimeKnowledgeBase()
+  try {
+    const registry = new KnowledgeBaseRegistry()
+    const loader = new KnowledgeBaseLoader({ registry })
+    const handle = await loader.mount(root)
+    const skill = new KnowledgeValidationSkill({ loader })
+    const request = baseChangeSet(handle.knowledgeBaseId, [
+      { operationId: 'safe-create', type: 'create', object: { id: 'product:safe', type: 'product', name: 'Safe' } },
+      { operationId: 'invalid-update', type: 'update', knowledgeId: 'segment:gpu', expectedBeforeHash: hashKnowledgeObject({ id: 'segment:gpu', type: 'segment', name: 'GPU' }), object: { id: 'invalid-id', type: 'depends_on', source: 'segment:gpu', target: 'segment:gpu' } },
+    ])
+    const result = await skill.validateChangeSet(handle, request)
+    assert.equal(result.report.status, 'failed')
+    assert.ok(result.report.errors.some((error) => error.code === 'UPDATE_ID' && error.operationId === 'invalid-update'))
+    assert.ok(result.report.errors.some((error) => error.code === 'UPDATE_KIND' && error.operationId === 'invalid-update'))
+  } finally {
+    await removeRuntimeKnowledgeBase(root)
+  }
+})

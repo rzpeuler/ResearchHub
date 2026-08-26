@@ -20,7 +20,11 @@ Access/Validation/Curation contracts, Ingestion Workflow, Write Interface,
 Frontend Projection v0.2, Example KB Layout, and ADR-015 are design-complete
 and frozen. Runtime Migration Phase A is accepted after Sol verification, and
 Phase B is accepted after Sol verification, and Phase C is accepted after Sol verification. Phase D1 is accepted after Sol verification, while Phase D2 is implemented and review pending. Overall Phase D is implemented and review pending. This phase is an engineering migration, not a new
-architecture design exercise.
+architecture design exercise. R2 closes the D2 ingestion audit and
+partial-planning contract: full CandidatePlan audit projection, shared
+dry-run/commit candidate pruning, candidate-level operation attribution, and
+no-fake-Source handling are implemented and review pending for Sol
+verification.
 
 The AI Hardware dataset is now a Git-managed Example Knowledge Base at
 `examples/knowledge-bases/ai-hardware/`. It is not user Runtime Data; real

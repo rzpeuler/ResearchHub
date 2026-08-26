@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R2
+
+- Finalized ingestion audit projection from the full CandidatePlan while
+  keeping eligible operation plans separate for ChangeSet construction.
+- Unified dry-run and commit candidate-level validation pruning, preserved
+  `operationId` on candidate-specific diagnostics, and counted validation
+  rejects by candidate rather than diagnostic.
+- Prevented no-change and Raw-only runs from recording a fabricated canonical
+  Source ID; added regressions for mixed continuation, review/duplicate/Schema
+  Gap audit logs, dry-run pruning, systemic failure, and update attribution.
+- R2 remains review pending for Sol verification.
+
 ## 2026-08-26 - KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R1
 
 - Closed the D2 ingestion contract gaps for non-mutating dry-run planning,

@@ -173,6 +173,23 @@ continuation after a candidate-specific validation failure. No new architecture
 layer, database, RAG, automatic migration, or Research Artifact conversion was
 introduced.
 
+## KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R2
+
+The D2 ingestion audit and partial-continuation contract is implemented and
+review pending for Sol verification. The workflow keeps the full final
+CandidatePlan for ingestion audit while deriving a separate eligible operation
+plan for ChangeSet construction. Dry-run and commit share the same bounded
+candidate-level validation-pruning pass; systemic validation failures still
+block the entire run. Candidate-specific validation diagnostics retain their
+`operationId`, validation rejection counts are candidate-based, and no-change
+or Raw-only runs do not record a fabricated canonical Source ID.
+
+R2 adds regression coverage for invalid-candidate dry-run pruning, mixed safe
+and review/duplicate/Schema Gap audit logs, all-irrelevant no-Source behavior,
+operation attribution, and systemic validation blocking. No new architecture
+layer, database, RAG, automatic migration, or Research Artifact conversion was
+introduced.
+
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure
 
 Knowledge Layer v0.1 foundation acceptance gaps are closed. The top-level
