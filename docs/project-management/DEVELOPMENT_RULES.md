@@ -40,3 +40,9 @@
     Output and Knowledge interfaces must remain usable by other runtimes.
 17. Every change must run relevant focused validation and the default full
     validation command before commit.
+18. Engineering Agent may mark an implementation task Status as Completed
+    after implementation, validation, commit, and push. Engineering Agent
+    must not self-mark Sol/CTO Acceptance as Accepted. Acceptance remains
+    Review Pending / Sol Verification until Sol independently reviews the
+    GitHub commit and explicitly passes the task. A later governance update may
+    record Accepted only after that Sol PASS.

@@ -259,9 +259,8 @@ The `packages/` directory contains only composable research modules;
 The removed top-level directories are not retained. Artifact core models and
 verified Skill behavior were preserved through import and contract migration.
 
-The current development phase is **Research Output & Knowledge
-Infrastructure**. The
-validated foundation includes:
+At that historical stage, the development phase was **Research Output &
+Knowledge Infrastructure**. The validated foundation at that stage included:
 
 - Harness integration and runtime boundary validation;
 - Event Analysis, Company Research, and Industry Research Skills;
@@ -285,8 +284,9 @@ another Runtime or external caller.
 - Workflow and ResearchManager tests pass.
 - Artifact, Memory, Evaluation, Skill, and Harness integration tests pass.
 - No source imports the removed package paths.
-- Research Output Architecture, Knowledge Layer Architecture, and ADR-014
-  define the current governance boundaries. Architecture v0.3 and ADR-013
+- At that stage, Research Output Architecture, Knowledge Layer Architecture,
+  and ADR-014 defined the governance boundaries. Current governance is defined
+  by Knowledge Architecture v0.2 and ADR-015. Architecture v0.3 and ADR-013
   remain historical compatibility records.
 
 ## Known constraints

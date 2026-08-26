@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-ARCHITECTURE-002-DOC-SYNC-001-R1
+
+- Clarified historical/current wording in CURRENT_STATUS.
+- Restored Sol/CTO acceptance authority in Task Registry.
+- Added Engineering Agent acceptance governance rule.
+- No architecture, runtime, data, or code changes.
+
 ## 2026-08-26 - KNOWLEDGE-ARCHITECTURE-002-DOC-SYNC-001
 
 - Imported the frozen Knowledge Architecture v0.2, Knowledge Base Instance,
