@@ -12,29 +12,63 @@
 - Architecture Simplification governance update and Architecture v0.3.
 - Research Output, Research Object, and Knowledge Layer architecture.
 
-## Current phase: Research Output & Knowledge Infrastructure
+## Current phase: Knowledge Base Instance Architecture Migration
 
-The current phase turns validated research execution into traceable reports,
-machine-readable Research Objects, and a durable Knowledge Layer boundary
-while preserving the Harness runtime boundary and existing asset behavior.
+Knowledge Architecture v0.2, Knowledge Base Instance Architecture v0.1,
+Storage Layout v0.2, Schema Versioning and Migration, Data Schema v0.2,
+Access/Validation/Curation contracts, Ingestion Workflow, Write Interface,
+Frontend Projection v0.2, Example KB Layout, and ADR-015 are design-complete
+and frozen. Runtime implementation is pending. This phase is an engineering
+migration, not a new architecture design exercise.
 
-Knowledge Architecture v0.1 is frozen. The Knowledge foundation, the AI
-Hardware Production Dataset, and the production-data frontend projection
-validation are implemented. Knowledge remains a top-level durable asset and
-its lifecycle is controlled by Workflow; the Access Skill remains deterministic
-and read-only.
+The repository AI Hardware dataset remains in its current location until the
+approved migration work is implemented. It is not reclassified as user Runtime
+Data by documentation alone.
 
-## Next increments
+## Migration roadmap
 
-1. Add authorized real data Plugins behind the existing typed boundary.
-2. Improve source quality, freshness, retry, and rate-limit observability.
-3. Add further research Skills and Workflow templates.
-4. Extend Knowledge assets, validation, and views within the frozen v0.1
-   boundary as needed by approved tasks. Automated ingestion, extraction,
-   database or graph storage, RAG, an ontology engine, or automatic Knowledge
-   formation requires a separate architecture decision.
+### Phase A — Source / Runtime ownership migration foundation
 
-Each new feature must be classified as Workflow, Skill, Plugin, Research
-Output, or Knowledge infrastructure. Planning and cross-layer coordination
-changes belong in the lightweight ResearchManager. No new Agent, Planner,
-Memory, Evaluation, or Workflow Engine layer may be introduced.
+- Knowledge Base Manifest
+- explicit KnowledgeBaseHandle
+- Runtime Data Root configuration
+- version-aware Loader
+- Schema Adapter
+- KB-scoped Registry
+
+### Phase B — Existing Knowledge implementation migration
+
+- migrate the repository AI Hardware dataset to an example KB layout;
+- add KB scoping to Access Skill, Validation, and Frontend Projection;
+- preserve existing deterministic behavior and fixture coverage.
+
+### Phase C — Knowledge mutation infrastructure
+
+- Raw Archive;
+- deterministic Write Interface;
+- revision, lock, staging, and idempotency;
+- ingestion logs.
+
+### Phase D — Research Report ingestion capability
+
+- Knowledge Curation Skill;
+- relevance and quality filtering;
+- Knowledge Admission;
+- conflict analysis and Schema Gap proposals;
+- Research Report Knowledge Ingestion Workflow.
+
+### Phase E — Migration infrastructure
+
+- Migration Registry;
+- Migration Runner;
+- dry-run, staging, and validation contracts;
+- first real migration only when a breaking Schema version requires it.
+
+Each phase remains Planned or Pending Engineering until its implementation,
+focused tests, and default full validation are complete. Do not label the v0.2
+Runtime capabilities as implemented based on frozen documentation alone.
+
+Every new feature must remain within the existing DSH, Workflow, Skill,
+Plugin, Research Output, or Knowledge Infrastructure boundaries. No new Agent,
+Planner, Memory, Evaluation, Workflow Engine, Knowledge Agent, Graph DB, Vector
+DB, RAG, or automatic Schema evolution layer may be introduced.

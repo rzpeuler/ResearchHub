@@ -15,7 +15,9 @@ ResearchManager (DSH)
 
 Durable Knowledge lifecycle:
 Workflow-controlled update decision
-        -> Knowledge Layer
+        -> Knowledge Infrastructure
+             -> explicit KnowledgeBaseHandle
+                  -> independent Knowledge Base Runtime Data
 ```
 
 ResearchHub does not execute trades, modify Harness Core, or rebuild the
@@ -23,10 +25,12 @@ Harness runtime. Harness owns runtime execution and LLM reasoning. The DSH is
 the only ResearchHub coordination center; Workflows describe standard
 research SOPs, Skills provide professional research methods, and Plugins
 connect external resources. Reports, structured Research Objects, and
-provenance are Research Output. The `knowledge/` boundary is a separate,
-top-level store for durable, reusable research knowledge. A Workflow may
-explicitly govern a reviewed Knowledge update; Research Output, including
-Research Objects, is not automatically converted into Knowledge.
+provenance are Research Output. ResearchHub Source owns Knowledge schemas,
+adapters, validation, migration, and write infrastructure. Actual user
+Knowledge Bases are independent, explicitly scoped Runtime Data instances;
+they are not the repository-root `knowledge/` directory by default. A
+Workflow may explicitly govern a reviewed Knowledge update; Research Output,
+including Research Objects, is not automatically converted into Knowledge.
 
 The repository-level DSH Runtime Orchestrator is `dsh/`. The `packages/`
 directory contains reusable, runtime-neutral research assets: Workflows,
@@ -37,6 +41,12 @@ retained for compatibility; they are not current product architecture layers.
 
 The public Research Object envelope is defined in
 [`packages/schemas/research-object.ts`](packages/schemas/research-object.ts).
+
+The current Knowledge architecture is frozen as Knowledge Architecture v0.2
+with an independent Knowledge Base Instance model. Runtime migration is
+pending; the existing repository `knowledge/` implementation and AI Hardware
+assets remain historical or example implementation state until a dedicated
+migration task moves them.
 
 ## Project documents
 
@@ -52,7 +62,21 @@ The public Research Object envelope is defined in
 ## Architecture documents
 
 - [Research Output architecture](docs/architecture/RESEARCH_OUTPUT_ARCHITECTURE.md)
-- [Knowledge Layer architecture](docs/architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md)
+- [Knowledge Layer current summary](docs/architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md)
+- [Knowledge Architecture v0.2](docs/architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.2.md)
+- [Knowledge Base Instance Architecture v0.1](docs/architecture/RESEARCHHUB_KNOWLEDGE_BASE_INSTANCE_ARCHITECTURE_V0.1.md)
+- [Knowledge Storage Layout v0.2](docs/architecture/RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.2.md)
+- [Schema Versioning and Migration v0.1](docs/architecture/RESEARCHHUB_KNOWLEDGE_SCHEMA_VERSIONING_MIGRATION_V0.1.md)
+- [Knowledge Data Schema v0.2](docs/architecture/RESEARCHHUB_KNOWLEDGE_DATA_SCHEMA_V0.2.md)
+- [Knowledge Access Skill v0.2](docs/architecture/RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.2.md)
+- [Knowledge Validation Skill v0.2](docs/architecture/RESEARCHHUB_KNOWLEDGE_VALIDATION_SKILL_INTERFACE_V0.2.md)
+- [Knowledge Curation Skill v0.1](docs/architecture/RESEARCHHUB_KNOWLEDGE_CURATION_SKILL_INTERFACE_V0.1.md)
+- [Research Report Ingestion Workflow v0.1](docs/architecture/RESEARCHHUB_RESEARCH_REPORT_KNOWLEDGE_INGESTION_WORKFLOW_V0.1.md)
+- [Knowledge Write Interface v0.1](docs/architecture/RESEARCHHUB_KNOWLEDGE_WRITE_INTERFACE_V0.1.md)
+- [Knowledge Frontend Projection v0.2](docs/architecture/RESEARCHHUB_KNOWLEDGE_FRONTEND_PROJECTION_V0.2.md)
+- [Knowledge Example Dataset Layout v0.2](docs/architecture/RESEARCHHUB_KNOWLEDGE_EXAMPLE_DATASET_LAYOUT_V0.2.md)
+- [ADR-015 Knowledge Base Instance and Runtime Data Separation](docs/architecture/ADR-015-KNOWLEDGE-BASE-INSTANCE-AND-RUNTIME-DATA-SEPARATION.md)
+- [Knowledge Architecture Freeze Index](docs/architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_FREEZE_INDEX_2026-08-26.md)
 - [Architecture v0.3 historical record](docs/architecture/RESEARCHHUB_ARCHITECTURE_V0.3.md)
 - [Architecture v0.2 historical baseline](docs/architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
 - [Technical design v0.1](docs/architecture/TECHNICAL_DESIGN_V0.1.md)
@@ -69,6 +93,8 @@ The public Research Object envelope is defined in
 - [ADR-011 DSH Control Plane Location](docs/architecture/ADR-011-DSH-CONTROL-PLANE-LOCATION.md)
 - [ADR-012 Financial Research Skill Asset Migration](docs/architecture/ADR-012-FINANCIAL-RESEARCH-SKILL-ASSET-MIGRATION.md)
 - [ADR-014 Research Output and Knowledge Architecture](docs/architecture/ADR-014-RESEARCH-OUTPUT-KNOWLEDGE-ARCHITECTURE.md)
+- Historical v0.1 Knowledge documents remain available in `docs/architecture/`
+  but are not the current normative ownership or runtime-data architecture.
 
 ## Financial research Skill assets
 

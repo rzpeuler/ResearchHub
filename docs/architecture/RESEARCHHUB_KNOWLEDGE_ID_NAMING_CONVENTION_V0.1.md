@@ -2,7 +2,7 @@
 
 ## Status
 
-Architecture Freeze
+**Architecture Freeze — Preserved Current Contract**
 
 ## Core Rule
 
@@ -10,16 +10,16 @@ Architecture Freeze
 {namespace}:{slug}
 ```
 
-ID 是稳定机器标识，不是展示名。
+ID is a stable machine identifier, not a display name.
 
 ## Slug Rules
 
 - lowercase
 - ASCII
 - kebab-case
-- 不使用中文
-- 不使用空格或下划线
-- ID 创建后不因 name 变化而修改
+- no Chinese characters
+- no spaces or underscores
+- ID does not change when display name changes
 
 ## Namespaces
 
@@ -40,39 +40,9 @@ module
 view
 ```
 
-## Examples
+## v0.2 Architecture Clarification
 
-```text
-industry:ai-hardware
-segment:liquid-cooling
-company:nvidia
-company:hudian
-product:h100
-technology:cpo
-fact:gpu-ai-compute-role
-forecast:ai-server-market-size-2026
-viewpoint:ai-hardware-2026h2
-trend:liquid-cooling-adoption
-risk:ai-capex-slowdown
-source:nvidia-rubin-roadmap-2026
-module:product-comparison
-view:industry-technology-driven
-```
-
-## Relation ID
-
-推荐：
-
-```text
-relation:{source-slug}-{relation-type}-{target-slug}
-```
-
-例如：
-
-```text
-relation:gpu-depends-on-hbm
-```
-
-## Reference
-
-所有引用必须使用完整 ID。
+- Knowledge IDs need only be unique inside one Knowledge Base.
+- Internal KB refs use full Knowledge IDs.
+- External refs use `knowledgeBaseId + knowledgeItemId`.
+- `rawRef` is not a Knowledge Object ID and is governed by Storage / Provenance rules.

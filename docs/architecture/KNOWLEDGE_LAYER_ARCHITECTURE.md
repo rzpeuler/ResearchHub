@@ -1,64 +1,115 @@
 # Knowledge Layer Architecture
 
-**Status:** Current architecture summary; normative freeze is
-[Knowledge Architecture v0.1](RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.1.md)
+**Status:** Current Architecture Summary  
+**Date:** 2026-08-26
 
-The Knowledge Layer is the top-level durable, reusable knowledge boundary for
-ResearchHub. It receives reviewed Research Output through Workflow-controlled
-update processes; it is not DSH state, Agent Memory, chat history, prompt
-memory, runtime logging, or a package under `packages/`.
+## Normative References
 
-## Responsibilities
+Current frozen architecture:
 
-Knowledge Architecture v0.1 supports:
+- `RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.2.md`
+- `RESEARCHHUB_KNOWLEDGE_BASE_INSTANCE_ARCHITECTURE_V0.1.md`
+- `RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.2.md`
+- `RESEARCHHUB_KNOWLEDGE_SCHEMA_VERSIONING_MIGRATION_V0.1.md`
+- `RESEARCHHUB_KNOWLEDGE_DATA_SCHEMA_V0.2.md`
+- `RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.2.md`
+- `RESEARCHHUB_KNOWLEDGE_VALIDATION_SKILL_INTERFACE_V0.2.md`
+- `RESEARCHHUB_KNOWLEDGE_CURATION_SKILL_INTERFACE_V0.1.md`
+- `RESEARCHHUB_RESEARCH_REPORT_KNOWLEDGE_INGESTION_WORKFLOW_V0.1.md`
+- `RESEARCHHUB_KNOWLEDGE_WRITE_INTERFACE_V0.1.md`
+- `ADR-015-KNOWLEDGE-BASE-INSTANCE-AND-RUNTIME-DATA-SEPARATION.md`
 
-- company, industry, and supply-chain graphs;
-- event timelines;
-- associations between Research Documents and entities;
-- reusable relations derived from Research Objects.
+## Architecture Definition
 
-The layer is intentionally runtime-neutral. Workflow owns update orchestration
-and lifecycle management, while the Knowledge Skill provides the access
-interface. Knowledge does not choose a Workflow, coordinate execution, or
-replace Harness reasoning.
+Knowledge Infrastructure is the set of ResearchHub capabilities for loading, accessing, curating, validating, writing, migrating, and governing independent Knowledge Base instances.
 
-## Boundary
+A Knowledge Base is Runtime Data—not DSH state, Agent Memory, chat history, a Skill package, or repository-root production Knowledge.
 
-The canonical top-level boundary is `knowledge/`. The concrete v0.1 asset
-layout is defined in
-[Knowledge Storage Layout v0.1](RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md);
-this summary does not define a second storage layout.
-
-`research-output/` is the producer-side boundary. `knowledge/` is the
-consumer-side durable knowledge boundary:
+## Architecture
 
 ```text
-Research Output -> Workflow lifecycle/update -> Knowledge
+Harness Runtime
+      ↓
+ResearchManager / DSH
+      ↓
+Workflow
+      ↓
+Knowledge Infrastructure
+├── Access Skill
+├── Curation Skill
+├── Validation Skill
+├── Write Interface
+├── Schema Adapter
+└── Migration Runner
+      ↓
+KnowledgeBaseHandle
+      ↓
+Knowledge Base Instance
 ```
 
-## Current scope
+## Source Boundary
 
-This architecture documents the boundary and interfaces to be implemented
-later. It does not add a graph database, knowledge extraction, RAG, automatic
-memory formation, or a knowledge-agent loop.
+ResearchHub Source contains DSH, packages, tests, examples, and docs.
 
-The existing `packages/memory/` MVP remains intact for compatibility. Its
-stored `MemoryItem` records are not reclassified as the current Knowledge
-Layer; new durable knowledge belongs under repository-level `knowledge/`.
+## Runtime Data Boundary
 
-## Provenance and trace
+```text
+<ResearchHub Data Root>/
+└── knowledge-bases/
+    ├── <kb-id>/
+    └── ...
+```
 
-Research Output Provenance remains attached to the output side. Knowledge
-records may reference output object IDs and provenance IDs, but the Knowledge
-Layer does not own runtime trace data. Existing Artifact Trace events remain
-valid as compatibility provenance records.
+## Knowledge Semantics
 
-## Runtime neutrality
+Knowledge continues to model Taxonomy, Entity, Relation, Fact, Forecast, Viewpoint, Trend, Risk, Module, Source, View, and Registry.
 
-Knowledge interfaces must remain usable by the current DSH and by other
-runtime callers. They must not import `dsh/`, Harness runtime packages, Skill
-implementations, Workflow executors, or Plugin adapters. No database, graph
-engine, RAG, extraction pipeline, or automatic Knowledge formation is implied.
+## Lifecycle
 
-The read-only access contract is defined in
-[Knowledge Skill Interface v0.1](RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.1.md).
+KB lifecycle includes create, mount, load, read, ingest, update, supersede, validate, migrate, archive, and inspect.
+
+A KB is not an Agent.
+
+## Ingestion
+
+```text
+Research Report
+→ Resolve target KB
+→ Archive Raw
+→ Source Assessment
+→ Relevance Filter
+→ Candidate Extraction
+→ Knowledge Admission
+→ Schema Mapping
+→ Existing Knowledge Retrieval
+→ Conflict Resolution
+→ Validation
+→ Atomic Write
+→ Updated KB + Ingestion Log
+```
+
+## Quality Objective
+
+Knowledge ingestion optimizes durable research signal-to-noise ratio, not maximum extraction count.
+
+## Provenance
+
+```text
+Knowledge
+→ Source
+→ Raw
+```
+
+## Schema Evolution
+
+Schema lives under `packages/schemas/knowledge/`. Each KB declares `schemaVersion`.
+
+Breaking changes require Migration design. Mount and ingestion never silently migrate user data.
+
+## Runtime Neutrality
+
+Knowledge interfaces remain reusable outside DSH. `packages/` does not depend on `dsh/`.
+
+## Non-Goals
+
+No Multi-Agent, Knowledge Agent, Planner, Workflow Engine, Graph DB, Vector DB, RAG, background ingestion, autonomous Schema evolution, or automatic semantic migration.

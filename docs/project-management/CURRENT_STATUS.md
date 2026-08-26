@@ -1,6 +1,25 @@
 # Current Status
 
-## Knowledge Layer Phase 1 Acceptance Closure
+## KNOWLEDGE-ARCHITECTURE-002
+
+Knowledge Architecture v0.2 and the independent Knowledge Base Instance
+architecture are frozen and accepted through ADR-015. The current architecture
+separates ResearchHub Source from user-owned Knowledge Base Runtime Data:
+
+- ResearchHub Source owns Knowledge schemas, adapters, validation, migration,
+  curation, write infrastructure, tests, examples, and governance.
+- Runtime Data contains independently scoped Knowledge Base instances addressed
+  through an explicit `KnowledgeBaseHandle`.
+- Workflow controls ingestion and update orchestration.
+- Access and Validation remain deterministic; Write accepts only validated
+  changes; schema migration is explicit and never implicit on mount or ingest.
+- The current AI Hardware repository dataset has not been migrated. Runtime
+  implementation is pending; this task is documentation/governance only.
+
+The implementation and dataset sections below are historical execution records
+and must not be read as evidence that the v0.2 runtime migration is complete.
+
+## Historical: Knowledge Layer Phase 1 Acceptance Closure
 
 Knowledge Layer v0.1 foundation acceptance gaps are closed. The top-level
 Knowledge asset boundary now has an authoritative Registry mode with scan
@@ -71,17 +90,19 @@ test suite is green and Python cache files are ignored by Git.
 
 ## ARCH-REFACTOR-003
 
-ResearchHub has migrated its current product architecture to **Research Output
-and Knowledge Infrastructure**. The DSH, Workflow, Skill, and Plugin runtime
-boundaries are unchanged. New output is organized as reports, machine-readable
-Research Objects, and Research Output Provenance; durable reusable knowledge
-has a repository-level `knowledge/` boundary.
+ResearchHub migrated its product architecture to **Research Output and
+Knowledge Infrastructure** in this historical task record. The DSH, Workflow,
+Skill, and Plugin runtime boundaries are unchanged. New output is organized as
+reports, machine-readable Research Objects, and Research Output Provenance.
+ADR-015 subsequently superseded the repository-level `knowledge/` ownership
+assumption with independent Knowledge Base Runtime Data.
 
 The public Research Object Envelope is available from
-`packages/schemas/research-object.ts`. New `research-output/`, `knowledge/`,
-`packages/schemas/`, and `packages/shared/` boundaries are intentionally
-minimal. They do not add a graph database, RAG, extraction pipeline, or
-automatic knowledge formation.
+`packages/schemas/research-object.ts`. The existing `research-output/`,
+`knowledge/`, `packages/schemas/`, and `packages/shared/` paths are preserved
+as implementation/history records; they do not define the user Runtime Data
+root. They do not add a graph database, RAG, extraction pipeline, or automatic
+Knowledge formation.
 
 `packages/artifacts/`, `packages/memory/`, and `packages/evaluation/` remain
 for compatibility and test coverage. Artifact Trace is now documented as
@@ -89,13 +110,13 @@ Research Output Provenance. Memory and Evaluation are deprecated as
 independent product layers, and no DSH, Skill, Workflow, or Plugin logic was
 changed.
 
-## KNOWLEDGE-ARCHITECTURE-001
+## Historical: KNOWLEDGE-ARCHITECTURE-001
 
-Knowledge Layer v0.1 is frozen as the current Knowledge architecture. Knowledge
-is a top-level durable asset under `knowledge/`, not a package and not a
-runtime coordination layer. The frozen model supports dynamic industry
-knowledge in five categories: facts, forecasts, viewpoints, trends, and
-risks.
+Knowledge Layer v0.1 was frozen as the Knowledge architecture at that point in
+project history. Its semantic model remains valid, but its repository-level
+`knowledge/` ownership and storage assumptions are superseded by Knowledge
+Architecture v0.2 and ADR-015. The model supports dynamic industry knowledge
+in five categories: facts, forecasts, viewpoints, trends, and risks.
 
 Workflow owns Knowledge update orchestration and lifecycle management. The
 Knowledge Skill provides the access interface. No Research Artifact Layer,

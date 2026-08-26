@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-ARCHITECTURE-002-DOC-SYNC-001
+
+- Imported the frozen Knowledge Architecture v0.2, Knowledge Base Instance,
+  Storage, Schema Migration, Data Schema, Skill, Ingestion, Write, Frontend,
+  Example KB, ADR-015, consistency, summary, naming, and freeze-index docs.
+- Separated ResearchHub Source Knowledge infrastructure from independently
+  scoped user Knowledge Base Runtime Data in current governance entry points.
+- Marked v0.1 ownership/storage wording and ADR-014 as historical or partially
+  superseded while preserving historical implementation records.
+- Recorded that runtime migration is pending; no runtime code, dataset, or
+  migration was changed.
+
 ## 2026-08-26 - RH-GOV-CONSISTENCY-002-R1
 
 - Corrected omitted AKShare `periodType` handling to select the latest valid

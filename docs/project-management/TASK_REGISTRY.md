@@ -51,6 +51,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | RH-TOOLS-001 | Add AKShare Financial Bridge tooling | Completed | P1 | 2026-08-25 | Luna | `820ba4d3443a6a695069f07a609882e775423827` | Accepted — lightweight Python bridge source committed and pushed |
 | RH-GOV-CONSISTENCY-002 | Close architecture, governance, and AKShare Bridge consistency gaps | Completed | P0 | 2026-08-26 | Luna | `c18878b551627c77a0396c1980436291622d7e10` | Accepted — Bridge period/date semantics, deterministic tests, documentation, and governance synchronized |
 | RH-GOV-CONSISTENCY-002-R1 | Close default-period and cross-period indicator regressions | Completed | P0 | 2026-08-26 | Luna | `9a9cd7d85bd4664c64b88c33f2c2d4a1a34dfb79` | Accepted — latest available default period, explicit period semantics, indicator alignment, and network-free validation passed |
+| KNOWLEDGE-ARCHITECTURE-002-DOC-SYNC-001 | Synchronize Knowledge Base Instance Architecture v0.2 governance | Completed | P0 | 2026-08-26 | Luna | Current task commit | Review Pending / Sol Verification — frozen documents imported, current governance synchronized, runtime migration pending |
 
 ## RH-DESIGN-004 Acceptance Scope
 

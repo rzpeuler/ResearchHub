@@ -41,8 +41,11 @@ Workflow definitions provide the required coordination.
 At the time of this decision, Memory and Evaluation were retained as
 supporting modules for structured research history and review. ADR-014 now
 repositions them as compatibility implementations rather than current product
-architecture layers. Durable knowledge belongs to `knowledge/`, and Research
-Output Provenance replaces Artifact Governance as the preferred terminology.
+architecture layers. At the time of ADR-010, durable knowledge was described
+through repository-level `knowledge/`; ADR-014 and ADR-015 subsequently
+separated Knowledge Infrastructure from user Knowledge Base Runtime Data.
+Research Output Provenance replaces Artifact Governance as the preferred
+terminology.
 
 Architecture v0.3 is preserved as a historical governance record. The current
 governance reference is Research Output and Knowledge Architecture;
@@ -103,14 +106,16 @@ keeps the Research Asset Layer reusable by DSH and other Runtime callers.
 
 ## ADR-014 — Research Output and Knowledge Architecture
 
-**Status:** Accepted
+**Status:** Accepted; partially superseded by ADR-015
 **Date:** 2026-08-25
 
-ResearchHub now treats Research Output and Knowledge Infrastructure as its
+ResearchHub treats Research Output and Knowledge Infrastructure as its
 product-facing architecture. Existing DSH, Workflow, Skill, and Plugin
 boundaries remain unchanged. Reports, machine-readable Research Objects, and
-provenance are published under `research-output/`; durable reusable knowledge
-has the repository-level `knowledge/` boundary.
+provenance are published under `research-output/`. ADR-015 subsequently
+separates Knowledge Infrastructure from independently owned Knowledge Base
+Runtime Data and supersedes the repository-level production `knowledge/`
+ownership assumption.
 
 Artifact is retained as a technical compatibility term and Artifact Trace is
 repositioned as Research Output Provenance. `packages/memory/` and
@@ -122,15 +127,51 @@ See [ADR-014](../architecture/ADR-014-RESEARCH-OUTPUT-KNOWLEDGE-ARCHITECTURE.md)
 [Research Output Architecture](../architecture/RESEARCH_OUTPUT_ARCHITECTURE.md),
 and [Knowledge Layer Architecture](../architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md).
 
+## ADR-015 — Knowledge Base Instance and Runtime Data Separation
+
+**Status:** Accepted / Architecture Freeze
+**Date:** 2026-08-26
+
+ResearchHub separates Knowledge capabilities and contracts from actual user
+Knowledge Base data. Source Git manages DSH, Workflows, Skills, Plugins,
+Knowledge Schemas, adapters, validation, migration code, write infrastructure,
+tests, examples, and governance. User Knowledge Bases are independent Runtime
+Data instances and are not repository-root source assets by default.
+
+The runtime resolves an explicit `KnowledgeBaseHandle`; there is no implicit
+global production Knowledge directory. Each KB owns its manifest, schema
+version, storage format version, revision, lifecycle status, raw source
+material, provenance, and migration history. Breaking Schema changes require
+explicit staged Migration; mount and ingestion never silently migrate data.
+
+The established Single DSH architecture and Workflow/Skill/Plugin boundaries
+remain unchanged. A Knowledge Base is not an Agent. No Knowledge Agent,
+Multi-Agent architecture, Planner, Workflow Engine, Graph DB, Vector DB, RAG,
+autonomous Schema evolution, or automatic semantic migration is introduced.
+
+See [ADR-015](../architecture/ADR-015-KNOWLEDGE-BASE-INSTANCE-AND-RUNTIME-DATA-SEPARATION.md).
+
+## KNOWLEDGE-ARCH-CONSISTENCY-001 — Supersession status
+
+**Status:** Historical semantic foundation; ownership and storage assumptions
+partially superseded by ADR-015
+
+The v0.1 semantic model remains valid for Taxonomy, Entity, Relation,
+Intelligence, Module, Source, View, and Registry. Its repository-level
+production `knowledge/` ownership and storage assumptions are no longer
+current. Historical implementation records remain preserved and are not
+rewritten.
+
 ## KNOWLEDGE-ARCH-CONSISTENCY-001 — Knowledge Architecture v0.1 Freeze
 
 **Status:** Accepted / Frozen
 **Date:** 2026-08-25
 
-Knowledge Architecture v0.1 is the normative architecture for the ResearchHub
-Knowledge Layer. Knowledge is a top-level durable asset under `knowledge/` and
-does not belong under `packages/`. It is not a runtime coordinator and does not
-introduce a new architecture layer.
+Knowledge Architecture v0.1 is the historical semantic and implementation
+foundation for the ResearchHub Knowledge Layer. Its repository-level
+production `knowledge/` ownership and storage assumptions are superseded by
+Knowledge Architecture v0.2 and ADR-015. It remains preserved as a historical
+record and does not define the current runtime-data boundary.
 
 The frozen boundaries are:
 

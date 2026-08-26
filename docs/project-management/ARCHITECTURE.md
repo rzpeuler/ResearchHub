@@ -2,50 +2,70 @@
 
 ResearchHub is financial research knowledge infrastructure running on DeepSeek
 Harness. It does not implement an Agent Framework. The runtime remains a
-Single DSH architecture and the product boundary is now Research Output plus
-Knowledge Infrastructure.
+Single DSH architecture, while Knowledge is split between source-owned
+infrastructure and independent Runtime Data.
+
+## Source repository
 
 ```text
-Harness Runtime
-└── ResearchHub
-    ├── dsh/                         system control plane
-    │   └── ResearchManager
-    ├── packages/                   reusable research assets
-    │   ├── workflows/               research SOPs
-    │   ├── skills/                  professional research methods
-    │   ├── plugins/                 external data and tools
-    │   ├── artifacts/               compatibility output/provenance code
-    │   ├── schemas/                 Research Object contracts
-    │   └── shared/                  runtime-neutral utilities
-    ├── research-output/
-    │   ├── reports/                 user-readable reports
-    │   ├── objects/                 machine-readable Research Objects
-    │   └── provenance/              output source relationships
-    └── knowledge/                   top-level durable Knowledge asset boundary
+ResearchHub/
+├── dsh/                         system control plane
+├── packages/                    reusable runtime-neutral research assets
+│   ├── workflows/               research SOPs
+│   ├── skills/                  professional research methods
+│   ├── plugins/                 external data and tools
+│   ├── artifacts/               compatibility output/provenance code
+│   ├── memory/                  compatibility API
+│   ├── evaluation/              compatibility review API
+│   ├── schemas/                 public contracts
+│   └── shared/                  runtime-neutral utilities
+├── research-output/             reports, objects, and provenance
+├── examples/
+│   └── knowledge-bases/         example Knowledge Base instances
+├── tests/
+└── docs/
 ```
+
+The tree above expresses source architecture. It does not create runtime data
+directories or imply that a user Knowledge Base belongs in the repository.
+
+## Runtime Data
+
+```text
+<ResearchHub Data Root>/
+└── knowledge-bases/
+    ├── <kb-id>/
+    └── ...
+```
+
+Each Knowledge Base is independently mutable, versioned, mountable, and
+scoped by an explicit `KnowledgeBaseHandle`. The repository-root `knowledge/`
+directory is not the current production user Knowledge boundary. Existing
+repository Knowledge assets remain historical or example implementation state
+until a later migration task reclassifies or moves them.
 
 ## Responsibility boundaries
 
-- **Harness** owns Agent Runtime, Tool Runtime, Session Runtime, plugin and
-  skill loading, and LLM reasoning execution. ResearchHub does not modify
-  Harness Core.
+- **Harness** owns Agent Runtime, Tool Runtime, Session Runtime, loading, and
+  LLM reasoning. ResearchHub does not modify Harness Core.
 - **DSH / ResearchManager** is the only ResearchHub coordination center. It
-  understands research requests, selects Workflows, invokes Skills and
-  Plugins, and integrates results. It is not an Agent Planner.
+  understands requests, selects Workflows, invokes Skills and Plugins, and
+  integrates results. It is not an Agent Planner.
 - **Workflow** defines repeatable research SOP steps, dependencies, inputs,
-  outputs, and verification nodes. Workflow is not a Planner or Workflow
-  Engine.
-- **Skill** defines professional research methods and Skill-owned output
-  payloads. Skill is not a Workflow, runtime, or data-access layer.
-- **Plugin** provides external connections, tools, data access, conversion,
-  and validation. Plugin is not a Skill and contains no research method.
+  outputs, verification, and Knowledge ingestion/update orchestration. It is
+  not a Planner or Workflow Engine.
+- **Skill** defines professional research methods and Skill-owned output. The
+  Knowledge Curation Skill may use explicitly invoked reasoning, but does not
+  persist Knowledge directly.
+- **Plugin** provides external connections, tools, conversion, and
+  validation. It is not a Skill or research method.
 - **Research Output** publishes reports, structured Research Objects, and
   provenance.
-- **Research Object** is the preferred business term for a machine-readable
-  research result. Existing Artifact models remain as compatibility code.
-- **Knowledge Layer** is the frozen top-level durable boundary for reusable
-  industry intelligence. It is not under `packages/`; Workflow owns its update
-  lifecycle and the Knowledge Skill provides its access interface.
+- **Knowledge Infrastructure** provides Knowledge schemas, loaders/adapters,
+  validation, curation, write interfaces, schema migration, and deterministic
+  access to independent Knowledge Bases.
+- **Knowledge Base Runtime Data** contains user-owned Knowledge, raw reports,
+  sources, revisions, and ingestion logs. A Knowledge Base is not an Agent.
 
 ## Research Object contract
 
@@ -64,53 +84,50 @@ interface ResearchObjectEnvelope<TPayload> {
 }
 ```
 
-Existing Skill output formats and Artifact core models are not modified by
-this migration.
+Existing Skill output formats and Artifact core models remain compatibility
+contracts.
 
 ## Compatibility modules
 
-`packages/artifacts/`, `packages/memory/`, and `packages/evaluation/` remain
-to preserve validated imports and tests. They are not new independent
-architecture layers:
-
-- Artifact is a technical compatibility term; its trace is now Research
-  Output Provenance.
-- Memory is a legacy compatibility API; new durable knowledge belongs under
-  `knowledge/`.
-- Evaluation is a legacy review compatibility API; ResearchHub does not build
-  an investment prediction evaluation or autonomous learning product.
-
-The compatibility modules must not introduce DSH dependencies or runtime
-state.
+`packages/artifacts/`, `packages/memory/`, and `packages/evaluation/` remain to
+preserve validated imports and tests. They are not new independent
+architecture layers. New durable Knowledge belongs to explicitly scoped
+Knowledge Base Runtime Data, not a compatibility Memory store.
 
 ## Dependency direction
 
 ```text
-dsh/ -> packages/ -> research-output/ / knowledge/ contracts
+Harness -> dsh/ -> packages/ -> Research Output contracts
+                         -> Knowledge interfaces
+                         -> KnowledgeBaseHandle -> Runtime Knowledge Base
 ```
 
-Packages remain runtime-neutral and must not import `dsh/`. Research Output
-and Knowledge interfaces must also remain usable by other runtime callers.
+Packages remain runtime-neutral and must not import `dsh/`. Knowledge
+interfaces remain usable by another runtime caller.
 
-Knowledge content may represent facts, forecasts, viewpoints, trends, and
-risks. The concrete asset layout is frozen in [Knowledge Storage Layout
-v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md), while the
-read-only access contract is frozen in [Knowledge Skill Interface
-v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.1.md). No
-Research Artifact Layer, Knowledge Database, Graph Database, RAG, LLM
-Extraction, or autonomous Knowledge update engine is part of v0.1.
+## Current Knowledge architecture
+
+The normative architecture is [Knowledge Architecture
+v0.2](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.2.md), supported by
+the [Knowledge Base Instance Architecture
+v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_BASE_INSTANCE_ARCHITECTURE_V0.1.md),
+Storage Layout v0.2, Schema Versioning and Migration, Data Schema v0.2,
+Access/Validation/Curation contracts, Ingestion Workflow, Write Interface,
+Frontend Projection v0.2, and [ADR-015](../architecture/ADR-015-KNOWLEDGE-BASE-INSTANCE-AND-RUNTIME-DATA-SEPARATION.md).
+
+The v0.1 Knowledge documents remain historical semantic and implementation
+records. No Research Artifact Layer, Knowledge Database, Graph Database, RAG,
+LLM Extraction, autonomous Knowledge update engine, Knowledge Agent, Planner,
+Workflow Engine, or automatic semantic migration is current architecture.
+
+See the [Knowledge Architecture Freeze
+Index](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_FREEZE_INDEX_2026-08-26.md)
+for the complete frozen document set.
 
 ## Deprecated architecture
 
 Capability Layer, Provider Layer, Agent Planner, Workflow Composition Layer,
 Workflow Engine, Multi-Agent architecture, standalone Memory Layer, and
 standalone Evaluation Layer are not current ResearchHub architecture layers.
-Historical documents remain in the repository only as records and are marked
-as superseded where their terminology would otherwise be ambiguous.
-
-See [Research Output Architecture](../architecture/RESEARCH_OUTPUT_ARCHITECTURE.md),
-[Knowledge Layer Architecture](../architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md),
-[Knowledge Architecture v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.1.md),
-[Knowledge Skill Interface v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.1.md),
-[Knowledge Storage Layout v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md),
-and [ADR-014](../architecture/ADR-014-RESEARCH-OUTPUT-KNOWLEDGE-ARCHITECTURE.md).
+Historical documents remain in the repository as records and are marked as
+historical or superseded where terminology would otherwise be ambiguous.

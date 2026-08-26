@@ -24,11 +24,16 @@ compatibility implementations.
   generation. Its payload remains Skill-owned.
 - Plugin: connects external data and persistence resources.
 - Research Output: publishes reports, Research Objects, and provenance.
-- Knowledge Layer: the frozen top-level durable asset boundary for reusable
-  industry intelligence. It is outside `packages/`, supports facts,
-  forecasts, viewpoints, trends, and risks, and is updated through Workflow
-  lifecycle processes via the Knowledge Skill access interface. It does not
-  introduce a Research Artifact Layer.
+- Knowledge Infrastructure: ResearchHub source capabilities for Knowledge
+  schemas, adapters, validation, migration, curation, write interfaces, and
+  deterministic access. It resolves an explicit `KnowledgeBaseHandle` to an
+  independent Knowledge Base Runtime Data instance.
+- Knowledge Base Runtime Data: user-owned, independently mutable and
+  versioned Knowledge Base instances. Multiple KBs are supported; a user KB is
+  not the repository-root `knowledge/` directory by default.
+- Knowledge lifecycle: Workflow controls ingestion and update orchestration;
+  Curation performs explicitly invoked research reasoning; Access and
+  Validation remain deterministic; Write accepts only validated changes.
 - Memory / Evaluation: legacy compatibility paths; no new product layer or
   autonomous prediction-evaluation loop is planned.
 
@@ -37,13 +42,44 @@ validate the runtime path from request through Workflow, Skill, Plugin, and
 Research Output. Existing Artifact, Memory, and Evaluation tests remain as
 compatibility coverage.
 
+## Knowledge Source / Runtime boundary
+
+```text
+ResearchHub Source
+  DSH / Workflow / Skill / Plugin
+  Knowledge Schema / Adapter / Validation / Migration / Write infrastructure
+  tests / examples / governance
+        -> explicit KnowledgeBaseHandle
+ResearchHub Runtime Data
+  knowledge-bases/<kb-id>/
+```
+
+The current architecture is Knowledge Architecture v0.2. Runtime migration
+is not implemented by this documentation task. The repository AI Hardware
+dataset remains historical or example implementation state until a later
+migration task.
+
 ## Primary references
 
 - [Research Output architecture](../architecture/RESEARCH_OUTPUT_ARCHITECTURE.md)
 - [Knowledge Layer architecture](../architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md)
-- [Knowledge Architecture v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.1.md)
-- [Knowledge Skill Interface v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.1.md)
-- [Knowledge Storage Layout v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md)
+- [Knowledge Architecture v0.2](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.2.md)
+- [Knowledge Base Instance Architecture v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_BASE_INSTANCE_ARCHITECTURE_V0.1.md)
+- [Knowledge Storage Layout v0.2](../architecture/RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.2.md)
+- [Schema Versioning and Migration v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_SCHEMA_VERSIONING_MIGRATION_V0.1.md)
+- [Knowledge Data Schema v0.2](../architecture/RESEARCHHUB_KNOWLEDGE_DATA_SCHEMA_V0.2.md)
+- [Knowledge Access Skill v0.2](../architecture/RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.2.md)
+- [Knowledge Validation Skill v0.2](../architecture/RESEARCHHUB_KNOWLEDGE_VALIDATION_SKILL_INTERFACE_V0.2.md)
+- [Knowledge Curation Skill v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_CURATION_SKILL_INTERFACE_V0.1.md)
+- [Research Report Ingestion Workflow v0.1](../architecture/RESEARCHHUB_RESEARCH_REPORT_KNOWLEDGE_INGESTION_WORKFLOW_V0.1.md)
+- [Knowledge Write Interface v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_WRITE_INTERFACE_V0.1.md)
+- [Knowledge Frontend Projection v0.2](../architecture/RESEARCHHUB_KNOWLEDGE_FRONTEND_PROJECTION_V0.2.md)
+- [Knowledge Example Dataset Layout v0.2](../architecture/RESEARCHHUB_KNOWLEDGE_EXAMPLE_DATASET_LAYOUT_V0.2.md)
+- [ADR-015 Knowledge Base Instance and Runtime Data Separation](../architecture/ADR-015-KNOWLEDGE-BASE-INSTANCE-AND-RUNTIME-DATA-SEPARATION.md)
+- [Knowledge Architecture Freeze Index](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_FREEZE_INDEX_2026-08-26.md)
+- Historical [Knowledge Architecture v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.1.md)
+- Historical [Knowledge Skill Interface v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.1.md)
+- Historical [Knowledge Storage Layout v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md)
 - [Architecture v0.3 historical record](../architecture/RESEARCHHUB_ARCHITECTURE_V0.3.md)
 - [Architecture v0.2 historical baseline](../architecture/RESEARCHHUB_ARCHITECTURE_V0.2.md)
 - [Technical design](../architecture/TECHNICAL_DESIGN_V0.1.md)
