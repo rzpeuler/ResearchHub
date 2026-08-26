@@ -624,7 +624,14 @@ export function createKnowledgeStagedStateValidator(skill: KnowledgeValidationSk
 }
 
 export function createKnowledgeMigrationStateValidator(skill: KnowledgeValidationSkill): KnowledgeMigrationStateValidator {
-  const migrationErrors = (handle: KnowledgeBaseHandle, report: ValidationReport): ValidationDiagnostic[] => handle.status === 'readonly' ? report.errors.filter((error) => error.code !== 'MANIFEST_STATUS') : report.errors
+  const migrationErrors = (handle: KnowledgeBaseHandle, report: ValidationReport): ValidationDiagnostic[] => {
+    const errors = handle.status === 'readonly' ? report.errors.filter((error) => error.code !== 'MANIFEST_STATUS') : report.errors
+    // A legacy v0.1 module may carry a targetEntity-like extension while the
+    // legacy Module Registry carries the authoritative binding. The migration
+    // transform must classify that conflict as review-required instead of
+    // letting the source adapter discard the finding before transformation.
+    return handle.schemaVersion === '0.1' ? errors.filter((error) => error.code !== 'MODULE_REGISTRY_TARGET_CONFLICT') : errors
+  }
   return {
     async validateSource(handle) {
       const report = await skill.validateKnowledgeBase(handle, 'all')

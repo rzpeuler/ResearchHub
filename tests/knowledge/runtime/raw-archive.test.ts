@@ -10,6 +10,7 @@ import { KnowledgeBaseHandle } from '../../../packages/shared/knowledge-base/han
 import { hashKnowledgeObject } from '../../../packages/shared/knowledge-base/canonical-hash.ts'
 import { KnowledgeError } from '../../../packages/shared/knowledge-base/errors.ts'
 import { archiveRaw, getRaw, readRaw, verifyRaw } from '../../../packages/shared/knowledge-base/raw-archive.ts'
+import { runKnowledgeRootTransaction } from '../../../packages/shared/knowledge-base/root-transaction.ts'
 import { createRuntimeKnowledgeBase, removeRuntimeKnowledgeBase } from './helpers.ts'
 
 async function mount(root: string) {
@@ -116,6 +117,44 @@ test('raw archive rejects a stale or wrong-identity handle before mutation', asy
   } finally {
     await removeRuntimeKnowledgeBase(root)
   }
+})
+
+test('Raw Archive recovers a pending root switch before checking durable-write eligibility', async () => {
+  const root = await createRuntimeKnowledgeBase()
+  try {
+    const handle = await mount(root)
+    let pending = false
+    try {
+      await runKnowledgeRootTransaction({
+        rootRef: root,
+        transactionId: 'raw-recovery-ordering',
+        transactionKind: 'write',
+        knowledgeBaseId: handle.knowledgeBaseId,
+        previousRevision: handle.revision,
+        nextRevision: handle.revision + 1,
+        targetSchemaVersion: '0.2',
+        targetStorageFormatVersion: '1',
+        targetStatus: 'active',
+        prepare: async (stagingPath) => {
+          const manifest = parseYaml(await readFile(join(stagingPath, 'manifest.yaml'), 'utf8'), join(stagingPath, 'manifest.yaml')) as Record<string, unknown>
+          manifest.revision = handle.revision + 1
+          await writeFile(join(stagingPath, 'manifest.yaml'), `${JSON.stringify(manifest)}\n`, 'utf8')
+        },
+        validate: async () => undefined,
+        failpoint: (point) => { if (point === 'during_switch') throw new Error('pending root switch') },
+      })
+    } catch (error) {
+      pending = true
+      assert.equal((error as Error).message, 'pending root switch')
+    }
+    assert.equal(pending, true)
+    await assert.rejects(readFile(join(root, 'manifest.yaml'), 'utf8'))
+    const record = await archiveRaw(handle, { bytes: Buffer.from('recovered-before-eligibility'), originalFilename: 'raw.txt' })
+    assert.equal(record.reused, false)
+    assert.match(await readFile(join(root, 'manifest.yaml'), 'utf8'), /"revision":1/)
+    await assert.rejects(readFile(`${root}.recovery.json`, 'utf8'))
+    assert.equal((await readdir(join(root, '..'))).some((name) => name.startsWith(`${root.split(/[\\/]/).pop()}.staging-`) || name.startsWith(`${root.split(/[\\/]/).pop()}.backup-`)), false)
+  } finally { await removeRuntimeKnowledgeBase(root); await rm(`${root}.recovery.json`, { force: true }) }
 })
 
 test('concurrent different Raw archives in one KB preserve every Registry entry', async () => {

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-E-001-R1
+
+- Preserved transformation `MigrationReviewItem` findings when target
+  validation fails, with review-required precedence and no root switch.
+- Added explicit equal-length migration path ambiguity errors, current
+  Manifest decisions after lock/recovery, commit-time transform drift guards,
+  and Raw Archive recovery-before-eligibility ordering.
+- Added regression coverage for semantic/Raw/module review matrices,
+  lifecycle, recovery failpoints, lock serialization, preservation, and
+  no-silent-ingestion behavior. R1 remains review pending for Sol.
+
 ## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-E-001
 
 - Implemented the explicit Knowledge Schema Migration Runtime for the

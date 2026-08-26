@@ -9,7 +9,7 @@ import type { KnowledgeValidationSkill } from '../../../packages/skills/knowledg
 import { DefaultResearchReportInputResolver } from '../../../packages/workflows/research-report-knowledge-ingestion/input-resolver.ts'
 import { ResearchReportKnowledgeIngestionWorkflow } from '../../../packages/workflows/research-report-knowledge-ingestion/index.ts'
 import { ScriptedKnowledgeCurationModel } from '../curation/scripted-model.ts'
-import { createRuntimeKnowledgeBase, removeRuntimeKnowledgeBase } from '../runtime/helpers.ts'
+import { createLegacyV01KnowledgeBase, createRuntimeKnowledgeBase, removeRuntimeKnowledgeBase } from '../runtime/helpers.ts'
 
 function sourceOutput() {
   return { rawRef: 'model-must-not-control-raw', sourceType: 'sell_side_research', publisher: 'Research House', institution: null, author: 'Analyst', publishedAt: '2026-08-26', primaryOrSecondary: 'secondary', sourceReliability: 'medium', sourceIdentityConfidence: 0.9, reasoning: ['Supplied fixture assessment.'] }
@@ -106,6 +106,21 @@ test('all-irrelevant reports persist only Raw and do not create a Source', async
     const log = JSON.parse(await readFile(join(root, 'logs', 'ingestion', 'run-ingest.yaml'), 'utf8')) as Record<string, unknown>
     assert.deepEqual((log.rawArchive as Record<string, unknown>).created, [result.raw.rawRef])
     assert.deepEqual((log.changes as Record<string, unknown>).sourceCreated, [])
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
+
+test('Research Report Ingestion refuses a v0.1 target without silently migrating it', async () => {
+  const root = await createLegacyV01KnowledgeBase()
+  try {
+    const beforeManifest = await readFile(join(root, 'manifest.yaml'), 'utf8')
+    const request = input('commit')
+    request.knowledgeBaseId = 'kb-legacy-test'
+    const workflow = new ResearchReportKnowledgeIngestionWorkflow({ targetResolver: { resolve: async () => setup(root) }, curation: new KnowledgeCurationSkill({ model: buildModel() }) })
+    const result = await workflow.execute(request)
+    assert.equal(result.status, 'blocked')
+    assert.equal(result.errors[0]?.code, 'unsupported_schema')
+    assert.equal(await readFile(join(root, 'manifest.yaml'), 'utf8'), beforeManifest)
+    await assert.rejects(readFile(join(root, 'logs/ingestion/run-ingest.yaml'), 'utf8'))
   } finally { await removeRuntimeKnowledgeBase(root) }
 })
 

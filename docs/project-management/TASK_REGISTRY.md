@@ -58,7 +58,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-RUNTIME-MIGRATION-A-001-R2 | Finalize Knowledge Base runtime foundation integrity | Completed | P0 | 2026-08-26 | Luna | `Current task commit` | Accepted — Sol verified |
 | KNOWLEDGE-RUNTIME-MIGRATION-B-001 | Migrate current read path to scoped Knowledge Base | Completed | P0 | 2026-08-26 | Luna | `Current task commit` | Accepted — Sol verified |
 | KNOWLEDGE-RUNTIME-MIGRATION-C-001 | Implement durable Knowledge Base mutation infrastructure | Completed | P0 | 2026-08-26 | Luna | `e8e775fa495cc7f0bf3214a6a4fff6e54203e041` | Accepted — Sol verified |
-| KNOWLEDGE-RUNTIME-MIGRATION-C-001-R1 | Close durable mutation contract gaps | Completed | P0 | 2026-08-26 | Luna | `Current task commit` | Accepted — Sol verified |
+| KNOWLEDGE-RUNTIME-MIGRATION-C-001-R1 | Close durable mutation contract gaps | Completed | P0 | 2026-08-26 | Luna | `56b4faae472e104398d4dd41eedf63014ecd3016` | Accepted — Sol verified |
 | KNOWLEDGE-RUNTIME-MIGRATION-C-001-R2 | Finalize durable mutation concurrency and errors | Completed | P0 | 2026-08-26 | Luna | `1f8c8a42d89690046da9f9ea7bb83090f273fd37` | Accepted — Sol verified |
 | KNOWLEDGE-INGESTION-D1-CURATION-001 | Implement Knowledge Curation Skill | Completed | P0 | 2026-08-26 | Luna | `5385c3b965a50e20558655bc45f9569de345b801` | Accepted — Sol verified |
 | KNOWLEDGE-INGESTION-D2-WORKFLOW-001 | Implement Research Report Knowledge Ingestion Workflow | Completed | P0 | 2026-08-26 | Luna | `f5c3033741efb7bf3767603ebea9cc47455fde29` | Accepted — Sol verified |
@@ -66,7 +66,8 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R2 | Finalize ingestion audit and partial planning | Completed | P0 | 2026-08-26 | Luna | `028d539cc95073ad964d7dc9a4e50a4b5868135c` | Accepted — Sol verified |
 | KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R3 | Finalize ingestion workflow completion semantics | Completed | P0 | 2026-08-26 | Luna | `696fec71d7ec750fa9cc68c38759951e68c972ff` | Accepted — Sol verified |
 | KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R4 | Correct D2 R3 implementation commit traceability | Completed | P0 | 2026-08-26 | Luna | `6046c9eb29b4a29e2200d28917ee6faa98bf5a00` | Accepted — Sol verified |
-| KNOWLEDGE-RUNTIME-MIGRATION-E-001 | Implement Knowledge Schema Migration Runtime | Completed | P0 | 2026-08-26 | Luna | `Current task commit` | Review Pending / Sol Verification |
+| KNOWLEDGE-RUNTIME-MIGRATION-E-001 | Implement Knowledge Schema Migration Runtime | Completed | P0 | 2026-08-26 | Luna | `8265eaf53c721e33c8038e114c6f243cb034ebbe` | Review Pending / Sol Verification |
+| KNOWLEDGE-RUNTIME-MIGRATION-E-001-R1 | Close migration runtime contract gaps | Completed | P0 | 2026-08-26 | Luna | `Current task commit` | Review Pending / Sol Verification |
 
 ## RH-DESIGN-004 Acceptance Scope
 

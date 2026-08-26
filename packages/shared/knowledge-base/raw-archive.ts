@@ -223,7 +223,6 @@ async function updateRawRegistry(root: string, record: RawRecord): Promise<void>
 export async function archiveRaw(handle: KnowledgeBaseHandle, input: RawArchiveInput, options: RawArchiveOptions = {}): Promise<RawRecord> {
   assertHandle(handle)
   assertArchiveInput(input)
-  await assertMountedKnowledgeBase(handle, true)
   return withKnowledgeBaseMutationLock(handle.rootRef, async () => {
     await recoverKnowledgeBaseRoot(handle.rootRef)
     return archiveRawUnlocked(handle, input, options)

@@ -1,5 +1,6 @@
 import type { KnowledgeSchemaVersionRef } from '../schema-release.ts'
 import type { KnowledgeMigrationDefinition } from './types.ts'
+import { KnowledgeMigrationPathError } from './errors.ts'
 
 function key(version: KnowledgeSchemaVersionRef): string { return `${version.schemaVersion}\u0000${version.storageFormatVersion}` }
 function sameVersion(left: KnowledgeSchemaVersionRef, right: KnowledgeSchemaVersionRef): boolean { return left.schemaVersion === right.schemaVersion && left.storageFormatVersion === right.storageFormatVersion }
@@ -25,17 +26,26 @@ export class KnowledgeMigrationRegistry {
   resolvePath(source: KnowledgeSchemaVersionRef, target: KnowledgeSchemaVersionRef): KnowledgeMigrationDefinition[] {
     if (sameVersion(source, target)) return []
     const queue: Array<{ version: KnowledgeSchemaVersionRef; path: KnowledgeMigrationDefinition[] }> = [{ version: source, path: [] }]
-    const visited = new Set<string>([key(source)])
+    let shortestLength: number | undefined
+    const shortestPaths: KnowledgeMigrationDefinition[][] = []
     while (queue.length > 0) {
       const current = queue.shift()!
+      if (shortestLength !== undefined && current.path.length >= shortestLength) continue
       const next = [...this.definitions.values()].filter((definition) => sameVersion(definition.source, current.version)).sort((left, right) => left.id.localeCompare(right.id))
       for (const definition of next) {
         const path = [...current.path, definition]
-        if (sameVersion(definition.target, target)) return path
-        const targetKey = key(definition.target)
-        if (!visited.has(targetKey)) { visited.add(targetKey); queue.push({ version: definition.target, path }) }
+        if (sameVersion(definition.target, target)) {
+          shortestLength ??= path.length
+          if (path.length === shortestLength) shortestPaths.push(path)
+          continue
+        }
+        if (shortestLength !== undefined && path.length >= shortestLength) continue
+        const repeated = current.path.some((item) => sameVersion(item.source, definition.target))
+        if (!repeated) queue.push({ version: definition.target, path })
       }
     }
+    if (shortestPaths.length > 1) throw new KnowledgeMigrationPathError(`Multiple equally short migration paths exist from ${source.schemaVersion}/${source.storageFormatVersion} to ${target.schemaVersion}/${target.storageFormatVersion}`, source, target, shortestPaths)
+    if (shortestPaths.length === 1) return shortestPaths[0]!
     return []
   }
 

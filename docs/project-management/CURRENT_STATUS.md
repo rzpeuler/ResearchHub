@@ -222,6 +222,19 @@ read-only. Schema 0.2 / Storage 1 is the only writable contract. Migration is
 never performed implicitly by mount, load, Access, Validation, or ingestion.
 Phase E remains review pending and no later phase has started.
 
+## KNOWLEDGE-RUNTIME-MIGRATION-E-001-R1
+
+Phase E R1 is implemented and review pending for Sol verification. The final
+contract gaps are closed: transformation review findings survive target
+validation failures; equal-length migration paths are explicitly ambiguous;
+current Manifest state is read only after lock and recovery; commit-time
+transformation drift is rejected; Raw Archive recovery precedes durable-write
+eligibility checks; and migration, Writer, and Raw operations share the same
+Knowledge Base mutation critical section. Regression coverage includes source
+and Raw ambiguity, module target matrices, lifecycle, recovery failpoints,
+preservation, no-silent-ingestion behavior, and cross-Knowledge-Base
+concurrency. Phase E R1 remains review pending and no later phase has started.
+
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure
 
 Knowledge Layer v0.1 foundation acceptance gaps are closed. The top-level
