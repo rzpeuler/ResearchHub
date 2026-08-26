@@ -49,6 +49,11 @@ Write is implemented, and aligns the canonical Source contract with Data
 Schema v0.2 nullable metadata and Raw provenance fields. Phase A remains
 review pending after this correction.
 
+Phase A R2 closes the remaining foundation integrity gaps: canonical Registry
+keys must match loaded asset IDs, canonical Modules derive their runtime
+entity index from `targetEntity`, and `SourceType` / `SourceReliability` are
+strict frozen enums. Phase B remains Planned / Pending.
+
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure
 
 Knowledge Layer v0.1 foundation acceptance gaps are closed. The top-level

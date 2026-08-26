@@ -55,6 +55,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-ARCHITECTURE-002-DOC-SYNC-001-R1 | Close Knowledge architecture governance acceptance gaps | Completed | P0 | 2026-08-26 | Luna | `Current task commit` | Accepted — Sol verified |
 | KNOWLEDGE-RUNTIME-MIGRATION-A-001 | Establish Knowledge Base runtime foundation | Completed | P0 | 2026-08-26 | Luna | `Current task commit` | Review Pending / Sol Verification |
 | KNOWLEDGE-RUNTIME-MIGRATION-A-001-R1 | Close Knowledge Base runtime foundation contract gaps | Completed | P0 | 2026-08-26 | Luna | `Current task commit` | Review Pending / Sol Verification |
+| KNOWLEDGE-RUNTIME-MIGRATION-A-001-R2 | Finalize Knowledge Base runtime foundation integrity | Completed | P0 | 2026-08-26 | Luna | `Current task commit` | Review Pending / Sol Verification |
 
 ## RH-DESIGN-004 Acceptance Scope
 

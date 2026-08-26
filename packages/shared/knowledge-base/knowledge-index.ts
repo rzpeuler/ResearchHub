@@ -31,7 +31,16 @@ export class KnowledgeIndex {
     for (const item of assets.modules) index.addUnique(index.modules, item.value.id, item.value, item.filePath)
     for (const item of assets.sources) index.addUnique(index.sources, item.value.id, item.value, item.filePath)
     for (const entry of assets.registry) index.registry.set(entry.id, entry.path)
-    for (const binding of assets.moduleRegistry) index.moduleRegistry.set(binding.entityId, [...binding.moduleIds])
+    for (const binding of assets.moduleRegistry) {
+      index.moduleRegistry.set(binding.entityId, [...new Set(binding.moduleIds)].sort((left, right) => left.localeCompare(right)))
+    }
+    for (const module of index.modules.values()) {
+      if (typeof module.targetEntity !== 'string' || module.targetEntity.trim() === '') continue
+      const moduleIds = index.moduleRegistry.get(module.targetEntity) ?? []
+      if (!moduleIds.includes(module.id)) moduleIds.push(module.id)
+      moduleIds.sort((left, right) => left.localeCompare(right))
+      index.moduleRegistry.set(module.targetEntity, moduleIds)
+    }
 
     for (const relation of index.relations.values()) {
       index.addReverse(index.relationsByEntity, relation.source, relation)

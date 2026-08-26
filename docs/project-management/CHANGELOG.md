@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-A-001-R2
+
+- Enforced canonical Registry key and loaded asset ID equality.
+- Derived canonical Module bindings from `targetEntity` and preserved legacy
+  module registry compatibility with deterministic deduplication.
+- Made `SourceType` and `SourceReliability` strict frozen enum contracts.
+- Added regression coverage for Registry integrity and canonical Module access.
+- No production Knowledge dataset, frontend semantics, Write, ingestion, or
+  Migration Runner was changed.
+
 ## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-A-001-R1
 
 - Separated canonical Schema 0.2 `registry/assets.yaml` / `storageRef`

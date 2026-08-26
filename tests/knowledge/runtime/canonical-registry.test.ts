@@ -56,6 +56,20 @@ test('Schema 0.2 Registry storageRef escape and missing asset fail explicitly', 
   }
 })
 
+test('Schema 0.2 Registry key must match loaded asset id and asset id is required', async () => {
+  const mismatchRoot = await createRuntimeKnowledgeBase()
+  const missingIdRoot = await createRuntimeKnowledgeBase({ knowledgeBaseId: 'kb-missing-id' })
+  try {
+    await writeFile(join(mismatchRoot, 'entities', 'gpu.yaml'), 'id: company:amd\ntype: company\nname: AMD\n')
+    await assert.rejects(() => new CanonicalV02KnowledgeLoader(mismatchRoot).load(), (error: unknown) => error instanceof KnowledgeError && error.code === 'RegistryError')
+    await writeFile(join(missingIdRoot, 'entities', 'gpu.yaml'), 'type: segment\nname: GPU\n')
+    await assert.rejects(() => new CanonicalV02KnowledgeLoader(missingIdRoot).load(), (error: unknown) => error instanceof KnowledgeError && error.code === 'RegistryError')
+  } finally {
+    await removeRuntimeKnowledgeBase(mismatchRoot)
+    await removeRuntimeKnowledgeBase(missingIdRoot)
+  }
+})
+
 test('Schema 0.1 legacy adapter and legacy Loader retain assets[] + path compatibility', async () => {
   const root = await createLegacyV01KnowledgeBase()
   try {

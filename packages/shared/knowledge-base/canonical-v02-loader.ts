@@ -99,6 +99,12 @@ export class CanonicalV02KnowledgeLoader {
         throw new KnowledgeError('StorageError', `Unable to read registry asset: ${entry.storageRef}`, assetPath)
       }
       if (!isRecord(assetValue)) throw new KnowledgeError('RegistryError', `Registry asset must be an object: ${id}`, assetPath)
+      if (typeof assetValue.id !== 'string' || assetValue.id.trim() === '') {
+        throw new KnowledgeError('RegistryError', `Registry asset is missing a valid id: ${id}`, assetPath)
+      }
+      if (assetValue.id !== id) {
+        throw new KnowledgeError('RegistryError', `Registry key does not match asset id: ${id} != ${assetValue.id}`, assetPath)
+      }
       const kind = classifyKnowledgeAsset(relative(rootDir, assetPath), assetValue)
       if (kind !== entry.type) throw new KnowledgeError('RegistryError', `Registry type does not match asset: ${id}`, assetPath)
       assets.registry.push({ id, type: entry.type, path: entry.storageRef, storageRef: entry.storageRef })

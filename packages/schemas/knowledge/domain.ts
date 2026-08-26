@@ -113,9 +113,9 @@ export interface KnowledgeSource {
   author?: string | null
   publishedAt: string | null
   url?: string | null
-  sourceType?: SourceType | string
+  sourceType?: SourceType
   quality?: string | number | Record<string, KnowledgeValue> | null
-  sourceReliability?: SourceReliability | string
+  sourceReliability?: SourceReliability
   rawRefs?: string[]
   metadata?: Record<string, KnowledgeValue> | null
   lifecycle?: Lifecycle | Record<string, KnowledgeValue> | null

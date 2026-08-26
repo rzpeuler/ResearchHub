@@ -12,6 +12,7 @@ export interface RuntimeManifestOverrides {
 export async function createRuntimeKnowledgeBase(overrides: RuntimeManifestOverrides = {}): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-runtime-kb-'))
   await mkdir(join(root, 'entities'), { recursive: true })
+  await mkdir(join(root, 'modules'), { recursive: true })
   await mkdir(join(root, 'registry'), { recursive: true })
   await writeFile(join(root, 'manifest.yaml'), `knowledgeBaseId: ${overrides.knowledgeBaseId ?? 'kb-runtime-test'}
 name: Runtime Test Knowledge Base
@@ -26,9 +27,20 @@ updatedAt: 2026-08-26T00:00:00.000Z
 type: segment
 name: GPU
 `)
+  await writeFile(join(root, 'modules', 'gpu-products.yaml'), `id: module:gpu-products
+type: comparison
+targetEntity: segment:gpu
+schemaId: product-comparison
+columns:
+  - product
+rows: []
+`)
   await writeFile(join(root, 'registry', 'assets.yaml'), `segment:gpu:
   type: entity
   storageRef: entities/gpu.yaml
+module:gpu-products:
+  type: module
+  storageRef: modules/gpu-products.yaml
 `)
   await writeFile(join(root, 'registry', 'raw.yaml'), '{}\n')
   return root
@@ -37,6 +49,7 @@ name: GPU
 export async function createLegacyV01KnowledgeBase(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-legacy-kb-'))
   await mkdir(join(root, 'entities'), { recursive: true })
+  await mkdir(join(root, 'modules'), { recursive: true })
   await mkdir(join(root, 'registry'), { recursive: true })
   await writeFile(join(root, 'manifest.yaml'), `knowledgeBaseId: kb-legacy-test
 name: Legacy Test Knowledge Base
@@ -51,10 +64,24 @@ updatedAt: 2026-08-26T00:00:00.000Z
 type: segment
 name: GPU
 `)
+  await writeFile(join(root, 'modules', 'gpu-products.yaml'), `id: module:gpu-products
+type: comparison
+schemaId: product-comparison
+columns:
+  - product
+rows: []
+`)
   await writeFile(join(root, 'registry', 'index.yaml'), `assets:
   - id: segment:gpu
     type: entity
     path: entities/gpu.yaml
+  - id: module:gpu-products
+    type: module
+    path: modules/gpu-products.yaml
+`)
+  await writeFile(join(root, 'registry', 'modules.yaml'), `bindings:
+  - entityId: segment:gpu
+    moduleIds: ["module:gpu-products", "module:gpu-products"]
 `)
   return root
 }
