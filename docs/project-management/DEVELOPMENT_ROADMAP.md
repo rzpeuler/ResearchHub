@@ -12,21 +12,18 @@
 - Architecture Simplification governance update and Architecture v0.3.
 - Research Output, Research Object, and Knowledge Layer architecture.
 
-## Current phase: Knowledge Base Instance Architecture Migration
+## Current phase: Knowledge Product Validation / Real Data Integration
 
 Knowledge Architecture v0.2, Knowledge Base Instance Architecture v0.1,
 Storage Layout v0.2, Schema Versioning and Migration, Data Schema v0.2,
 Access/Validation/Curation contracts, Ingestion Workflow, Write Interface,
 Frontend Projection v0.2, Example KB Layout, and ADR-015 are design-complete
-and frozen. Runtime Migration Phase A is accepted after Sol verification, and
-Phase B is accepted after Sol verification, and Phase C is accepted after Sol verification. Phase D1 is accepted after Sol verification, and Phase D2 with its R1/R2/R3/R4 closure is accepted after Sol verification. Phase D is accepted / complete. Phase E is implemented and review pending for Sol verification. This phase is an engineering migration, not a new
-architecture design exercise. R2 closes the D2 ingestion audit and
-partial-planning contract: full CandidatePlan audit projection, shared
-dry-run/commit candidate pruning, candidate-level operation attribution, and
-no-fake-Source handling are implemented and review pending for Sol
-verification. R3 closes public-result completion semantics for dry-run review
-and Schema Gap outcomes, with the same status derivation used by commit and
-ingestion audit output.
+and frozen. Knowledge Runtime Migration Phases A–E are accepted after Sol
+verification and Closed / Complete. This phase is an engineering migration,
+not a new
+architecture design exercise. The D2 R2 ingestion audit and partial-planning
+contract, together with the R3 public-result completion semantics, are
+accepted as part of the completed Phase D governance record.
 
 The AI Hardware dataset is now a Git-managed Example Knowledge Base at
 `examples/knowledge-bases/ai-hardware/`. It is not user Runtime Data; real
@@ -99,7 +96,7 @@ closes dry-run/readonly validation, Raw byte preservation, no-change handling,
 operation-level candidate rejection, bounded partial continuation, audit-log
 projection, and WorkflowStep ownership metadata gaps.
 
-### Phase E — Migration infrastructure — Implemented / Review Pending
+### Phase E — Migration infrastructure — Accepted / Complete
 
 - Migration Registry;
 - Migration Runner;
@@ -108,11 +105,12 @@ projection, and WorkflowStep ownership metadata gaps.
   blocking, recovery, and migration-log contracts;
 - default migration-availability reporting for readable legacy bases.
 
-Phase E implementation is complete and remains pending Sol verification. No
-Phase beyond E has started.
+Phase E implementation and Sol verification are complete. Knowledge Runtime
+Migration A–E is Closed / Complete. No Phase F is approved. The next direction
+is Knowledge Product Validation / Real Data Integration; implementation scope
+for that direction is not defined here.
 
-Each not-yet-completed phase remains Planned or Pending Engineering until its implementation,
-focused tests, and default full validation are complete. Do not label the v0.2
+Future work remains subject to separate approval. Do not label the v0.2
 Runtime capabilities as implemented based on frozen documentation alone.
 
 Every new feature must remain within the existing DSH, Workflow, Skill,

@@ -13,10 +13,8 @@ separates ResearchHub Source from user-owned Knowledge Base Runtime Data:
 - Workflow controls ingestion and update orchestration.
 - Access and Validation remain deterministic; Write accepts only validated
   changes; schema migration is explicit and never implicit on mount or ingest.
-- Runtime Migration Phase A and Phase B are accepted after Sol verification,
-  and Phase C is accepted after Sol verification. Phase D1 is accepted after
-  Sol verification. Phase D2 is accepted after Sol verification. Phase D is
-  accepted / complete. The AI
+- Knowledge Runtime Migration Phases A–E are accepted after Sol verification
+  and closed / complete. The AI
   Hardware dataset now lives as the
   Git-managed Example Knowledge Base at
   `examples/knowledge-bases/ai-hardware/`.
@@ -202,8 +200,8 @@ completed and accepted with the D2 R4 governance correction.
 
 ## KNOWLEDGE-RUNTIME-MIGRATION-E-001
 
-Knowledge Schema Migration Runtime Phase E is implemented and review pending
-for Sol verification. The runtime now has:
+Knowledge Schema Migration Runtime Phase E is accepted after Sol verification
+and closed / complete. The runtime now has:
 
 - frozen Schema 0.1 / 0.2 release metadata and a deterministic migration
   registry containing only the concrete 0.1 to 0.2 path;
@@ -220,11 +218,12 @@ for Sol verification. The runtime now has:
 Schema 0.1 remains readable and is now reported as migration-available but
 read-only. Schema 0.2 / Storage 1 is the only writable contract. Migration is
 never performed implicitly by mount, load, Access, Validation, or ingestion.
-Phase E remains review pending and no later phase has started.
+Phase E is frozen at the current architecture boundary. No Phase F is
+approved, and no later Knowledge infrastructure phase has started.
 
 ## KNOWLEDGE-RUNTIME-MIGRATION-E-001-R1
 
-Phase E R1 is implemented and review pending for Sol verification. The final
+Phase E R1 is accepted after Sol verification. The final
 contract gaps are closed: transformation review findings survive target
 validation failures; equal-length migration paths are explicitly ambiguous;
 current Manifest state is read only after lock and recovery; commit-time
@@ -233,7 +232,16 @@ eligibility checks; and migration, Writer, and Raw operations share the same
 Knowledge Base mutation critical section. Regression coverage includes source
 and Raw ambiguity, module target matrices, lifecycle, recovery failpoints,
 preservation, no-silent-ingestion behavior, and cross-Knowledge-Base
-concurrency. Phase E R1 remains review pending and no later phase has started.
+concurrency. Phase E R1 is closed as part of Knowledge Runtime Migration A–E.
+
+## KNOWLEDGE-RUNTIME-MIGRATION-E-001-CLOSURE
+
+Sol independently verified the Phase E parent and R1. Knowledge Runtime
+Migration A–E is now Closed / Complete. Knowledge infrastructure development
+is frozen at the current architecture; future direction is Knowledge Product
+Validation / Real Data Integration. No Phase F, Knowledge Manager, Migration
+Manager, RAG, Graph DB, Vector DB, new Planner, new Agent, or new architecture
+layer is approved.
 
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure
 

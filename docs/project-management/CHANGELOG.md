@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-E-001-CLOSURE
+
+- Recorded Sol's independent acceptance of the Phase E parent and R1.
+- Closed Knowledge Runtime Migration A–E and froze Knowledge infrastructure
+  development at the current architecture.
+- Recorded Knowledge Product Validation / Real Data Integration as the next
+  direction. No Phase F is approved.
+
 ## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-E-001-R1
 
 - Preserved transformation `MigrationReviewItem` findings when target
