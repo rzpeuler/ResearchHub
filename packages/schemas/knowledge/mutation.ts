@@ -4,6 +4,8 @@ import type {
   KnowledgeModule,
   KnowledgeRelation,
   KnowledgeSource,
+  SourceReliability,
+  SourceType,
 } from './domain.ts'
 
 export type KnowledgeWritableObject = KnowledgeEntity | KnowledgeRelation | KnowledgeIntelligence | KnowledgeModule
@@ -21,13 +23,12 @@ export interface KnowledgeSourceMergeOperation {
   expectedBeforeHash: string
   addRawRefs?: string[]
   metadataPatch?: {
-    title?: string
     institution?: string | null
     author?: string | null
     publishedAt?: string | null
     url?: string | null
-    sourceType?: string
-    sourceReliability?: string
+    sourceType?: SourceType
+    sourceReliability?: SourceReliability
   }
 }
 

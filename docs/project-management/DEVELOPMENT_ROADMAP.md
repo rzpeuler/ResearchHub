@@ -56,6 +56,9 @@ index derivation, and strict Source enums. Sol verified Phase A.
 - source/Knowledge mutations, revision guards, target hashes, lock, staging,
   recovery, and idempotency;
 - ingestion logs and post-commit Handle refresh.
+- R1 closed Raw Manifest, KB-scoped Raw lifecycle, Source mutation, planned
+  state, and mandatory full staged-validation contract gaps. Phase C remains
+  review pending for Sol verification.
 
 ### Phase D — Research Report ingestion capability
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-C-001-R1
+
+- Aligned Raw Manifest persistence with Storage Layout v0.2 and made Raw Archive
+  APIs explicitly Knowledge Base scoped, lifecycle-aware, and revision-neutral.
+- Hardened Source ChangeSet validation with strict enums, full planned merge
+  validation, expected target hashes, planned supersede references, and
+  duplicate mutation/collision checks.
+- Made full staged Knowledge validation mandatory before Writer switch and
+  cleaned failed staging without exposing completed idempotency logs.
+- Removed the temporary `KNOWLEDGE-RUNTIME-MIGRATION-C-001-DESIGN.md` note because
+  it duplicated frozen architecture and specified an incorrect Raw location.
+- Phase D remains planned and was not started.
+
 ## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-C-001
 
 - Implemented the runtime-neutral Schema 0.2 Knowledge Write foundation:

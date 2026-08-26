@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import test from 'node:test'
-import { KnowledgeBaseLoader, KnowledgeBaseRegistry, KnowledgeWriter, hashKnowledgeObject, putRaw } from '../../../packages/shared/knowledge-base/index.ts'
+import { archiveRaw, KnowledgeBaseLoader, KnowledgeBaseRegistry, KnowledgeWriter, hashKnowledgeObject } from '../../../packages/shared/knowledge-base/index.ts'
 import type { KnowledgeChangeSet, KnowledgeWritableObject, ValidatedKnowledgeChangeSet } from '../../../packages/schemas/knowledge/index.ts'
-import { KnowledgeValidationSkill } from '../../../packages/skills/knowledge-validation/index.ts'
+import { createKnowledgeStagedStateValidator, KnowledgeValidationSkill } from '../../../packages/skills/knowledge-validation/index.ts'
 import { createRuntimeKnowledgeBase, removeRuntimeKnowledgeBase } from './helpers.ts'
 
 function changeSet(handleId: string, revision: number, operations: KnowledgeChangeSet['knowledgeOperations'] = [], sourceOperations: KnowledgeChangeSet['sourceOperations'] = [], id = 'changeset-1'): KnowledgeChangeSet {
@@ -25,7 +26,7 @@ async function prepare(root: string) {
   const loader = new KnowledgeBaseLoader({ registry })
   const handle = await loader.mount(root)
   const validation = new KnowledgeValidationSkill({ loader })
-  const writer = new KnowledgeWriter({ loader, registry, clock: () => '2026-08-26T01:00:00.000Z' })
+  const writer = new KnowledgeWriter({ loader, registry, clock: () => '2026-08-26T01:00:00.000Z', stagedStateValidator: createKnowledgeStagedStateValidator(validation) })
   return { registry, loader, handle, validation, writer }
 }
 
@@ -67,7 +68,7 @@ test('Knowledge Writer applies update, supersede, merge_source, and source prove
   const root = await createRuntimeKnowledgeBase()
   try {
     const { loader, handle, validation, writer } = await prepare(root)
-    const raw = await putRaw({ rawRoot: root, bytes: Buffer.from('research'), originalFilename: 'research.pdf', contentType: 'application/pdf', capturedAt: '2026-08-26T00:00:00.000Z' })
+    const raw = await archiveRaw(handle, { bytes: Buffer.from('research'), originalFilename: 'research.pdf', mediaType: 'application/pdf' }, { clock: () => '2026-08-26T00:00:00.000Z' })
     const source: KnowledgeChangeSet['sourceOperations'][number] = { operationId: 'source-create', type: 'source_create', source: { id: 'source:research', type: 'report', title: 'Research', publisher: 'Test', publishedAt: '2026-08-26', rawRefs: [raw.manifest.rawRef] } }
     const createSource = changeSet(handle.knowledgeBaseId, 0, [], [source], 'changeset-source')
     createSource.requiresRawProvenance = true
@@ -118,6 +119,23 @@ test('stale target and receipt are rejected without changing the KB', async () =
   }
 })
 
+test('Knowledge Writer rechecks expected target hash under the filesystem lock', async () => {
+  const root = await createRuntimeKnowledgeBase()
+  try {
+    const { handle, validation, writer, loader } = await prepare(root)
+    const current = (await loader.readAssets(handle)).entities.find((asset) => asset.value.id === 'segment:gpu')
+    assert.ok(current)
+    const request = changeSet(handle.knowledgeBaseId, 0, [{ operationId: 'update-under-lock', type: 'update', knowledgeId: 'segment:gpu', expectedBeforeHash: hashKnowledgeObject(current.value), object: { ...current.value, description: 'planned' } }], [], 'changeset-under-lock')
+    const receipt = await validate(validation, handle, request)
+    await writeFile(`${root}/entities/gpu.yaml`, 'id: segment:gpu\ntype: segment\nname: GPU changed\n', 'utf8')
+    const result = await writer.write(handle, receipt)
+    assert.equal(result.status, 'rejected')
+    assert.equal(result.error?.code, 'stale_target_state')
+  } finally {
+    await removeRuntimeKnowledgeBase(root)
+  }
+})
+
 test('recovery completes staged switch after injected failure', async () => {
   const root = await createRuntimeKnowledgeBase()
   try {
@@ -125,7 +143,7 @@ test('recovery completes staged switch after injected failure', async () => {
     const object = { id: 'product:recovery', type: 'product', name: 'Recovery' } as KnowledgeWritableObject
     const request = changeSet(handle.knowledgeBaseId, 0, [{ operationId: 'create-recovery', type: 'create', object }], [], 'changeset-recovery')
     const receipt = await validate(validation, handle, request)
-    const writer = new KnowledgeWriter({ loader, registry, failpoint: (point) => { if (point === 'during_switch') throw new Error('injected switch failure') } })
+    const writer = new KnowledgeWriter({ loader, registry, stagedStateValidator: createKnowledgeStagedStateValidator(validation), failpoint: (point) => { if (point === 'during_switch') throw new Error('injected switch failure') } })
     const failed = await writer.write(handle, receipt)
     assert.equal(failed.status, 'failed')
     const { recoverKnowledgeBaseWrite } = await import('../../../packages/shared/knowledge-base/index.ts')
@@ -148,13 +166,56 @@ test('same Knowledge Base writers serialize and conflicting ChangeSet payloads a
     const secondObject = { id: 'product:concurrent-b', type: 'product', name: 'B' } as KnowledgeWritableObject
     const secondRequest = { ...firstRequest, knowledgeOperations: [{ operationId: 'create-concurrent-b', type: 'create', object: secondObject }] }
     const secondReceipt = await validate(validation, handle, secondRequest)
-    const writerA = new KnowledgeWriter({ loader, registry })
-    const writerB = new KnowledgeWriter({ loader, registry })
+    const stagedStateValidator = createKnowledgeStagedStateValidator(validation)
+    const writerA = new KnowledgeWriter({ loader, registry, stagedStateValidator })
+    const writerB = new KnowledgeWriter({ loader, registry, stagedStateValidator })
     const [first, second] = await Promise.all([writerA.write(handle, firstReceipt), writerB.write(handle, secondReceipt)])
     assert.equal(first.status, 'committed')
     assert.equal(second.status, 'rejected')
     assert.equal(second.error?.code, 'idempotency_conflict')
     assert.equal((await registry.refresh(root)).revision, 1)
+  } finally {
+    await removeRuntimeKnowledgeBase(root)
+  }
+})
+
+test('Knowledge Writer rejects semantic commit without a staged validator before filesystem mutation', async () => {
+  const root = await createRuntimeKnowledgeBase()
+  try {
+    const { handle, validation, loader, registry } = await prepare(root)
+    const object = { id: 'product:no-validator', type: 'product', name: 'No Validator' } as KnowledgeWritableObject
+    const receipt = await validate(validation, handle, changeSet(handle.knowledgeBaseId, 0, [{ operationId: 'create-no-validator', type: 'create', object }], [], 'changeset-no-validator'))
+    const before = await readFile(`${root}/manifest.yaml`, 'utf8')
+    const writer = new KnowledgeWriter({ loader, registry } as never)
+    const result = await writer.write(handle, receipt)
+    assert.equal(result.status, 'rejected')
+    assert.equal(result.error?.code, 'staged_validator_required')
+    assert.equal(await readFile(`${root}/manifest.yaml`, 'utf8'), before)
+    assert.equal((await loader.readAssets(handle)).entities.some((asset) => asset.value.id === object.id), false)
+  } finally {
+    await removeRuntimeKnowledgeBase(root)
+  }
+})
+
+test('failed full staged validation leaves the active root unchanged and creates no completed log', async () => {
+  const root = await createRuntimeKnowledgeBase()
+  try {
+    const { handle, validation, loader, registry } = await prepare(root)
+    const object = { id: 'product:invalid-staged', type: 'product', name: 'Invalid Staged' } as KnowledgeWritableObject
+    const receipt = await validate(validation, handle, changeSet(handle.knowledgeBaseId, 0, [{ operationId: 'create-invalid-staged', type: 'create', object }], [], 'changeset-invalid-staged'))
+    const beforeManifest = await readFile(`${root}/manifest.yaml`, 'utf8')
+    const fullStagedValidator = createKnowledgeStagedStateValidator(validation)
+    const writer = new KnowledgeWriter({ loader, registry, stagedStateValidator: async (stagingPath, manifest) => {
+      await writeFile(`${stagingPath}/entities/gpu.yaml`, 'id: segment:gpu\ntype: invalid\nname: GPU\n', 'utf8')
+      await fullStagedValidator(stagingPath, manifest)
+    } })
+    const result = await writer.write(handle, receipt)
+    assert.equal(result.status, 'failed')
+    assert.equal((await readFile(`${root}/manifest.yaml`, 'utf8')), beforeManifest)
+    assert.equal((await loader.readAssets(handle)).entities.some((asset) => asset.value.id === object.id), false)
+    const stagingPath = `${root}.staging-${createHash('sha256').update('workflow-changeset-invalid-staged').digest('hex').slice(0, 16)}`
+    await assert.rejects(() => readFile(`${stagingPath}/manifest.yaml`, 'utf8'))
+    await assert.rejects(() => readFile(`${root}/logs/ingestion/workflow-changeset-invalid-staged.yaml`, 'utf8'))
   } finally {
     await removeRuntimeKnowledgeBase(root)
   }

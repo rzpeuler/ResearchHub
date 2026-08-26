@@ -1,7 +1,8 @@
 import { relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { KnowledgeBaseLoader } from '../../../packages/shared/knowledge-base/knowledge-base-loader.ts'
-import type { KnowledgeBaseHandle } from '../../../packages/shared/knowledge-base/handle.ts'
+import { createKnowledgeBaseHandle, KnowledgeBaseHandle } from '../../../packages/shared/knowledge-base/handle.ts'
+import type { KnowledgeBaseManifest } from '../../../packages/schemas/knowledge/index.ts'
 import { readKnowledgeBaseYamlResource } from '../../../packages/shared/knowledge-base/resource-reader.ts'
 import { ENTITY_TYPES, INTELLIGENCE_TYPES, LIFECYCLE_STATUSES, MODULE_TYPES, RELATION_TYPES, SOURCE_RELIABILITIES, SOURCE_TYPES } from '../../../packages/schemas/knowledge/index.ts'
 import type {
@@ -149,12 +150,15 @@ export class KnowledgeValidationSkill {
     if (typeof changeSet.requiresRawProvenance !== 'boolean') diagnostics.push({ code: 'CHANGESET_PROVENANCE_POLICY', severity: 'error', message: 'requiresRawProvenance must be boolean' })
     if (!Array.isArray(changeSet.sourceOperations) || !Array.isArray(changeSet.knowledgeOperations)) diagnostics.push({ code: 'CHANGESET_OPERATIONS', severity: 'error', message: 'ChangeSet operation lists must be arrays' })
 
-    const existingById = new Map(assets.registry.map((entry) => [entry.id, entry]))
+    const existingById = new Map<string, { type: string; object: Record<string, unknown> }>()
+    for (const asset of [...assets.entities, ...assets.relations, ...assets.intelligence, ...assets.modules, ...assets.sources]) existingById.set(asset.value.id, { type: asset.kind, object: asset.value as Record<string, unknown> })
     const sources = new Set(assets.sources.map((asset) => asset.value.id))
     const entities = new Set(assets.entities.map((asset) => asset.value.id))
-    const allIds = new Set(existingById.keys())
     const sourceCreates = new Set<string>()
     const objectCreates = new Set<string>()
+    const supersedeReplacements = new Set<string>()
+    const mutationTargets = new Map<string, string>()
+    const plannedObjects: Record<string, unknown>[] = []
     const operationIds = new Set<string>()
     const rawRefs = await this.loadRawRefs(handle, diagnostics)
 
@@ -165,10 +169,9 @@ export class KnowledgeValidationSkill {
         this.validateSourceCreateOperation(diagnostics, source, existingById, sourceCreates, rawRefs, changeSet.requiresRawProvenance)
         if (typeof source?.id === 'string') {
           sources.add(source.id)
-          allIds.add(source.id)
         }
       } else if (operation.type === 'source_merge') {
-        this.validateSourceMergeOperation(diagnostics, operation, sources, rawRefs)
+        this.validateSourceMergeOperation(diagnostics, operation, existingById, sources, rawRefs, changeSet.requiresRawProvenance, mutationTargets)
       } else {
         diagnostics.push({ code: 'UNSUPPORTED_SOURCE_OPERATION', severity: 'error', message: `Unsupported source operation: ${String((operation as { type?: unknown }).type)}` })
       }
@@ -177,19 +180,25 @@ export class KnowledgeValidationSkill {
     for (const operation of changeSet.knowledgeOperations ?? []) {
       this.validateOperationId(diagnostics, operation, operationIds)
       if (operation.type === 'create') {
-        this.validateKnowledgeCreateOperation(diagnostics, operation.object, existingById, objectCreates)
+        this.validateKnowledgeCreateOperation(diagnostics, operation.object, existingById, objectCreates, supersedeReplacements)
         if (typeof operation.object?.id === 'string') {
-          allIds.add(operation.object.id)
           if (this.assetKind(operation.object) === 'entity') entities.add(operation.object.id)
+          plannedObjects.push(operation.object as Record<string, unknown>)
         }
       } else if (operation.type === 'update') {
-        this.validateTargetOperation(diagnostics, operation.knowledgeId, operation.expectedBeforeHash, existingById, operation.object, true)
+        this.validateTargetOperation(diagnostics, operation.knowledgeId, operation.expectedBeforeHash, existingById, operation.object, true, mutationTargets, operation.operationId)
+        plannedObjects.push(operation.object as Record<string, unknown>)
       } else if (operation.type === 'supersede') {
-        this.validateTargetOperation(diagnostics, operation.knowledgeId, operation.expectedBeforeHash, existingById, operation.replacement, false)
+        this.validateTargetOperation(diagnostics, operation.knowledgeId, operation.expectedBeforeHash, existingById, operation.replacement, false, mutationTargets, operation.operationId)
         if (operation.replacement?.id === operation.knowledgeId) diagnostics.push({ code: 'SUPERSEDE_SAME_ID', severity: 'error', message: 'Supersede replacement must have a different ID' })
-        if (typeof operation.replacement?.id === 'string' && (existingById.has(operation.replacement.id) || (changeSet.knowledgeOperations ?? []).some((candidate) => candidate.type === 'create' && candidate.object.id === operation.replacement.id))) diagnostics.push({ code: 'SUPERSEDE_COLLISION', severity: 'error', message: `Supersede replacement ID already exists: ${operation.replacement.id}` })
+        if (typeof operation.replacement?.id === 'string') {
+          if (existingById.has(operation.replacement.id) || sourceCreates.has(operation.replacement.id) || objectCreates.has(operation.replacement.id) || supersedeReplacements.has(operation.replacement.id)) diagnostics.push({ code: 'SUPERSEDE_COLLISION', severity: 'error', message: `Supersede replacement ID already exists: ${operation.replacement.id}` })
+          supersedeReplacements.add(operation.replacement.id)
+          if (this.assetKind(operation.replacement) === 'entity') entities.add(operation.replacement.id)
+          plannedObjects.push(operation.replacement as Record<string, unknown>)
+        }
       } else if (operation.type === 'merge_source') {
-        this.validateTargetOperation(diagnostics, operation.knowledgeId, operation.expectedBeforeHash, existingById)
+        this.validateTargetOperation(diagnostics, operation.knowledgeId, operation.expectedBeforeHash, existingById, undefined, false, mutationTargets, operation.operationId)
         if (!Array.isArray(operation.addSourceRefs) || operation.addSourceRefs.length === 0) diagnostics.push({ code: 'SOURCE_MERGE_REFS', severity: 'error', message: 'merge_source requires a non-empty addSourceRefs array' })
         for (const sourceId of operation.addSourceRefs ?? []) if (!sources.has(sourceId)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Source does not exist in current or same ChangeSet: ${sourceId}` })
       } else {
@@ -197,7 +206,7 @@ export class KnowledgeValidationSkill {
       }
     }
 
-    this.validatePlannedReferences(diagnostics, changeSet, entities, sources)
+    this.validatePlannedReferences(diagnostics, plannedObjects, entities, sources)
     const report = this.report('all', diagnostics)
     if (report.status === 'failed') return { report }
     const changeSetHash = hashKnowledgeObject(changeSet)
@@ -228,7 +237,7 @@ export class KnowledgeValidationSkill {
   private validateSourceCreateOperation(
     diagnostics: ValidationDiagnostic[],
     source: KnowledgeSource,
-    existingById: Map<string, { type: string; storageRef?: string }>,
+    existingById: Map<string, { type: string; object: Record<string, unknown> }>,
     sourceCreates: Set<string>,
     rawRefs: Set<string>,
     requiresRawProvenance: boolean,
@@ -242,38 +251,43 @@ export class KnowledgeValidationSkill {
       if (existingById.has(source.id) || sourceCreates.has(source.id)) diagnostics.push({ code: 'CREATE_COLLISION', severity: 'error', message: `Source already exists: ${source.id}` })
       sourceCreates.add(source.id)
     }
-    if (typeof source.title !== 'string' || source.title.trim() === '') diagnostics.push({ code: 'SOURCE_SCHEMA', severity: 'error', message: `Source title is required: ${source.id}` })
-    if (source.publisher !== null && source.publisher !== undefined && typeof source.publisher !== 'string') diagnostics.push({ code: 'SOURCE_SCHEMA', severity: 'error', message: `Source publisher must be string or null: ${source.id}` })
-    if (source.publishedAt !== null && typeof source.publishedAt !== 'string') diagnostics.push({ code: 'SOURCE_SCHEMA', severity: 'error', message: `Source publishedAt must be string or null: ${source.id}` })
-    if (source.lifecycle !== undefined && (!isRecord(source.lifecycle) || typeof source.lifecycle.status !== 'string' || !LIFECYCLE_STATUSES.includes(source.lifecycle.status as never))) diagnostics.push({ code: 'INVALID_LIFECYCLE', severity: 'error', message: `Source lifecycle is invalid: ${source.id}` })
-    this.validateSourceRawRefs(diagnostics, source.rawRefs, rawRefs, requiresRawProvenance, source.id)
+    this.validateSourceObject(diagnostics, source, rawRefs, requiresRawProvenance)
   }
 
-  private validateSourceMergeOperation(diagnostics: ValidationDiagnostic[], operation: Extract<KnowledgeSourceOperation, { type: 'source_merge' }>, sources: Set<string>, rawRefs: Set<string>): void {
+  private validateSourceMergeOperation(diagnostics: ValidationDiagnostic[], operation: Extract<KnowledgeSourceOperation, { type: 'source_merge' }>, existingById: Map<string, { type: string; object: Record<string, unknown> }>, sources: Set<string>, rawRefs: Set<string>, requiresRawProvenance: boolean, mutationTargets: Map<string, string>): void {
     if (!sources.has(operation.sourceId)) diagnostics.push({ code: 'MISSING_TARGET', severity: 'error', message: `Source does not exist: ${operation.sourceId}` })
-    this.validateExpectedHash(diagnostics, operation.expectedBeforeHash)
+    this.validateTargetHash(diagnostics, operation.sourceId, operation.expectedBeforeHash, existingById)
     this.validateRawRefs(diagnostics, operation.addRawRefs, rawRefs)
+    this.registerMutationTarget(diagnostics, mutationTargets, operation.sourceId, operation.operationId)
+    if (operation.metadataPatch !== undefined && !isRecord(operation.metadataPatch)) diagnostics.push({ code: 'SOURCE_MERGE_SCHEMA', severity: 'error', message: 'Source merge metadataPatch must be an object' })
+    const patch = isRecord(operation.metadataPatch) ? operation.metadataPatch : {}
     const allowed = new Set(['institution', 'author', 'publishedAt', 'url', 'sourceType', 'sourceReliability'])
-    for (const key of Object.keys(operation.metadataPatch ?? {})) if (!allowed.has(key)) diagnostics.push({ code: 'SOURCE_MERGE_FIELD', severity: 'error', message: `Source merge cannot patch field: ${key}` })
+    for (const key of Object.keys(patch)) if (!allowed.has(key)) diagnostics.push({ code: 'SOURCE_MERGE_FIELD', severity: 'error', message: `Source merge cannot patch field: ${key}` })
+    const current = existingById.get(operation.sourceId)?.object
+    if (current) {
+      const merged = { ...current, ...patch, rawRefs: [...new Set([...(Array.isArray(current.rawRefs) ? current.rawRefs : []), ...(Array.isArray(operation.addRawRefs) ? operation.addRawRefs : [])])] }
+      this.validateSourceObject(diagnostics, merged, rawRefs, requiresRawProvenance)
+    }
   }
 
-  private validateKnowledgeCreateOperation(diagnostics: ValidationDiagnostic[], object: KnowledgeWritableObject, existingById: Map<string, { type: string; storageRef?: string }>, objectCreates: Set<string>): void {
+  private validateKnowledgeCreateOperation(diagnostics: ValidationDiagnostic[], object: KnowledgeWritableObject, existingById: Map<string, { type: string; object: Record<string, unknown> }>, objectCreates: Set<string>, supersedeReplacements: Set<string>): void {
     if (!object || typeof object !== 'object') {
       diagnostics.push({ code: 'CREATE_SCHEMA', severity: 'error', message: 'create requires a Knowledge object' })
       return
     }
     if (typeof object.id !== 'string' || !ID_PATTERN.test(object.id) || object.id.startsWith('source:')) diagnostics.push({ code: 'CREATE_ID', severity: 'error', message: `Invalid create Knowledge ID: ${String(object.id)}` })
     if (typeof object.id === 'string') {
-      if (existingById.has(object.id) || objectCreates.has(object.id)) diagnostics.push({ code: 'CREATE_COLLISION', severity: 'error', message: `Knowledge object already exists: ${object.id}` })
+      if (existingById.has(object.id) || objectCreates.has(object.id) || supersedeReplacements.has(object.id)) diagnostics.push({ code: 'CREATE_COLLISION', severity: 'error', message: `Knowledge object already exists: ${object.id}` })
       objectCreates.add(object.id)
     }
     this.validateWritableObjectSchema(diagnostics, object)
   }
 
-  private validateTargetOperation(diagnostics: ValidationDiagnostic[], knowledgeId: string, expectedBeforeHash: string, existingById: Map<string, { type: string; storageRef?: string }>, replacement?: KnowledgeWritableObject, requiresSameId = false): void {
+  private validateTargetOperation(diagnostics: ValidationDiagnostic[], knowledgeId: string, expectedBeforeHash: string, existingById: Map<string, { type: string; object: Record<string, unknown> }>, replacement?: KnowledgeWritableObject, requiresSameId = false, mutationTargets?: Map<string, string>, operationId = knowledgeId): void {
     const target = existingById.get(knowledgeId)
     if (!target) diagnostics.push({ code: 'MISSING_TARGET', severity: 'error', message: `Knowledge target does not exist: ${knowledgeId}` })
-    this.validateExpectedHash(diagnostics, expectedBeforeHash)
+    this.validateTargetHash(diagnostics, knowledgeId, expectedBeforeHash, existingById)
+    if (mutationTargets) this.registerMutationTarget(diagnostics, mutationTargets, knowledgeId, operationId)
     if (replacement && this.assetKind(replacement) === undefined) diagnostics.push({ code: 'UPDATE_KIND', severity: 'error', message: `Unsupported replacement Knowledge object: ${replacement.id}` })
     if (replacement) this.validateWritableObjectSchema(diagnostics, replacement)
     if (replacement && (typeof replacement.id !== 'string' || !ID_PATTERN.test(replacement.id) || replacement.id.startsWith('source:'))) diagnostics.push({ code: 'UPDATE_ID', severity: 'error', message: `Replacement object id is invalid: ${String(replacement?.id)}` })
@@ -283,6 +297,18 @@ export class KnowledgeValidationSkill {
 
   private validateExpectedHash(diagnostics: ValidationDiagnostic[], hash: unknown): void {
     if (typeof hash !== 'string' || !HASH_PATTERN.test(hash)) diagnostics.push({ code: 'EXPECTED_HASH', severity: 'error', message: 'expectedBeforeHash must be sha256:<64 lowercase hex>' })
+  }
+
+  private validateTargetHash(diagnostics: ValidationDiagnostic[], targetId: string, expectedBeforeHash: unknown, existingById: Map<string, { type: string; object: Record<string, unknown> }>): void {
+    this.validateExpectedHash(diagnostics, expectedBeforeHash)
+    const target = existingById.get(targetId)
+    if (target && typeof expectedBeforeHash === 'string' && HASH_PATTERN.test(expectedBeforeHash) && hashKnowledgeObject(target.object) !== expectedBeforeHash) diagnostics.push({ code: 'STALE_TARGET_HASH', severity: 'error', message: `expectedBeforeHash does not match current target: ${targetId}` })
+  }
+
+  private registerMutationTarget(diagnostics: ValidationDiagnostic[], targets: Map<string, string>, targetId: string, operationId: string): void {
+    const previous = targets.get(targetId)
+    if (previous) diagnostics.push({ code: 'DUPLICATE_TARGET_MUTATION', severity: 'error', message: `Target receives multiple mutation operations: ${targetId} (${previous}, ${operationId})` })
+    else targets.set(targetId, operationId)
   }
 
   private validateSourceRawRefs(diagnostics: ValidationDiagnostic[], value: unknown, rawRefs: Set<string>, required: boolean, sourceId?: string): void {
@@ -328,7 +354,7 @@ export class KnowledgeValidationSkill {
       const refs = new Set(Object.keys(value))
       for (const rawRef of refs) {
         try {
-          const verified = await verifyRaw(handle.rootRef, rawRef)
+          const verified = await verifyRaw(handle, rawRef)
           const entry = value[rawRef]
           if (!isRecord(entry) || entry.contentHash !== verified.contentHash || entry.storageRef !== relative(resolve(handle.rootRef), resolve(verified.originalPath)).replaceAll('\\', '/')) diagnostics.push({ code: 'RAW_REGISTRY_INVALID', severity: 'error', message: `Raw registry entry does not match Raw bundle: ${rawRef}` })
         } catch (error) {
@@ -342,10 +368,8 @@ export class KnowledgeValidationSkill {
     }
   }
 
-  private validatePlannedReferences(diagnostics: ValidationDiagnostic[], changeSet: KnowledgeChangeSet, entities: Set<string>, sources: Set<string>): void {
-    for (const operation of changeSet.knowledgeOperations ?? []) {
-      const object = operation.type === 'create' ? operation.object : operation.type === 'update' ? operation.object : operation.type === 'supersede' ? operation.replacement : undefined
-      if (!object) continue
+  private validatePlannedReferences(diagnostics: ValidationDiagnostic[], plannedObjects: Record<string, unknown>[], entities: Set<string>, sources: Set<string>): void {
+    for (const object of plannedObjects) {
       const record = object as Record<string, unknown>
       if (typeof record.source === 'string' && typeof record.target === 'string') {
         if (!entities.has(record.source)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Relation source does not exist: ${record.source}` })
@@ -355,6 +379,21 @@ export class KnowledgeValidationSkill {
       if (Array.isArray(record.sourceRefs)) for (const ref of record.sourceRefs) if (typeof ref === 'string' && !sources.has(ref)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Source does not exist: ${ref}` })
       if (typeof record.targetEntity === 'string' && !entities.has(record.targetEntity)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Module target does not exist: ${record.targetEntity}` })
     }
+  }
+
+  private validateSourceObject(diagnostics: ValidationDiagnostic[], source: unknown, rawRefs: Set<string> | undefined, requiresRawProvenance: boolean): void {
+    if (!isRecord(source)) {
+      diagnostics.push({ code: 'SOURCE_SCHEMA', severity: 'error', message: 'Source must be an object' })
+      return
+    }
+    if (typeof source.type !== 'string' || source.type.trim() === '') diagnostics.push({ code: 'SOURCE_SCHEMA', severity: 'error', message: 'Source type is required' })
+    if (typeof source.title !== 'string' || source.title.trim() === '') diagnostics.push({ code: 'SOURCE_SCHEMA', severity: 'error', message: `Source title is required: ${String(source.id)}` })
+    for (const field of ['publisher', 'institution', 'author', 'publishedAt', 'url'] as const) if (source[field] !== undefined && source[field] !== null && typeof source[field] !== 'string') diagnostics.push({ code: 'SOURCE_SCHEMA', severity: 'error', message: `Source ${field} must be string or null: ${String(source.id)}` })
+    if (source.sourceType !== undefined && !SOURCE_TYPES.includes(source.sourceType as never)) diagnostics.push({ code: 'SOURCE_SCHEMA', severity: 'error', message: `Unsupported sourceType: ${String(source.sourceType)}` })
+    if (source.sourceReliability !== undefined && !SOURCE_RELIABILITIES.includes(source.sourceReliability as never)) diagnostics.push({ code: 'SOURCE_SCHEMA', severity: 'error', message: `Unsupported sourceReliability: ${String(source.sourceReliability)}` })
+    if (source.lifecycle !== undefined && (!isRecord(source.lifecycle) || typeof source.lifecycle.status !== 'string' || !LIFECYCLE_STATUSES.includes(source.lifecycle.status as never))) diagnostics.push({ code: 'INVALID_LIFECYCLE', severity: 'error', message: `Source lifecycle is invalid: ${String(source.id)}` })
+    if (rawRefs) this.validateSourceRawRefs(diagnostics, source.rawRefs, rawRefs, requiresRawProvenance, typeof source.id === 'string' ? source.id : undefined)
+    else if (source.rawRefs !== undefined && !asStringArray(source.rawRefs)) diagnostics.push({ code: 'SOURCE_RAW_REFS_SCHEMA', severity: 'error', message: `Source rawRefs must be a string array: ${String(source.id)}` })
   }
 
   private assetKind(object: KnowledgeWritableObject): 'entity' | 'relation' | 'intelligence' | 'module' | undefined {
@@ -445,15 +484,12 @@ export class KnowledgeValidationSkill {
 
   private validateSource(diagnostics: ValidationDiagnostic[], item: LoadedAsset<KnowledgeSource>, lifecycleStatuses: string[], schemaVersion: string): void {
     if (schemaVersion === '0.2') {
-      if (typeof item.value.title !== 'string' || item.value.title.trim() === '') this.add(diagnostics, 'SOURCE_SCHEMA', 'Source title is required', item, 'error')
-      if (item.value.publisher !== null && item.value.publisher !== undefined && typeof item.value.publisher !== 'string') this.add(diagnostics, 'SOURCE_SCHEMA', 'Source publisher must be string or null', item, 'error')
-      if (item.value.institution !== null && item.value.institution !== undefined && typeof item.value.institution !== 'string') this.add(diagnostics, 'SOURCE_SCHEMA', 'Source institution must be string or null', item, 'error')
-      if (item.value.author !== null && item.value.author !== undefined && typeof item.value.author !== 'string') this.add(diagnostics, 'SOURCE_SCHEMA', 'Source author must be string or null', item, 'error')
-      if (item.value.publishedAt !== null && typeof item.value.publishedAt !== 'string') this.add(diagnostics, 'SOURCE_SCHEMA', 'Source publishedAt must be string or null', item, 'error')
-      if (item.value.url !== null && item.value.url !== undefined && typeof item.value.url !== 'string') this.add(diagnostics, 'SOURCE_SCHEMA', 'Source url must be string or null', item, 'error')
-      if (item.value.sourceType !== undefined && !SOURCE_TYPES.includes(item.value.sourceType as never)) this.add(diagnostics, 'SOURCE_SCHEMA', `Unsupported sourceType: ${String(item.value.sourceType)}`, item, 'error')
-      if (item.value.sourceReliability !== undefined && !SOURCE_RELIABILITIES.includes(item.value.sourceReliability as never)) this.add(diagnostics, 'SOURCE_SCHEMA', `Unsupported sourceReliability: ${String(item.value.sourceReliability)}`, item, 'error')
-      if (item.value.rawRefs !== undefined && !asStringArray(item.value.rawRefs)) this.add(diagnostics, 'SOURCE_RAW_REFS_SCHEMA', 'rawRefs must be a string array', item, 'error')
+      const start = diagnostics.length
+      this.validateSourceObject(diagnostics, item.value, undefined, false)
+      for (const diagnostic of diagnostics.slice(start)) {
+        diagnostic.assetId = item.value.id
+        diagnostic.filePath = item.filePath
+      }
     } else {
       for (const field of ['title', 'publisher', 'publishedAt']) if (typeof item.value[field] !== 'string' || !item.value[field]) this.add(diagnostics, 'SOURCE_SCHEMA', `Source ${field} is required`, item, 'error')
     }
@@ -541,7 +577,7 @@ export class KnowledgeValidationSkill {
       if (relativePath === '..' || relativePath.startsWith('../') || /^[A-Za-z]:[\\/]/.test(storageRef)) diagnostics.push({ code: 'RAW_REGISTRY_UNSAFE_PATH', severity: 'error', message: `Raw registry path escapes Knowledge root: ${storageRef}`, filePath: rawPath })
       if (typeof entry.contentHash !== 'string' || !HASH_PATTERN.test(entry.contentHash)) diagnostics.push({ code: 'RAW_REGISTRY_HASH', severity: 'error', message: `Raw registry contentHash is invalid: ${rawId}`, filePath: rawPath })
       try {
-        const verified = await verifyRaw(handle.rootRef, rawId)
+        const verified = await verifyRaw(handle, rawId)
         if (verified.manifest.contentHash !== entry.contentHash) diagnostics.push({ code: 'RAW_REGISTRY_HASH_MISMATCH', severity: 'error', message: `Raw registry hash does not match manifest: ${rawId}`, filePath: rawPath })
         if (relative(resolve(handle.rootRef), resolve(verified.originalPath)).replaceAll('\\', '/') !== storageRef) diagnostics.push({ code: 'RAW_REGISTRY_STORAGE_MISMATCH', severity: 'error', message: `Raw registry storageRef does not match bundle: ${rawId}`, filePath: rawPath })
       } catch (error) {
@@ -566,5 +602,13 @@ export class KnowledgeValidationSkill {
 
   private report(scope: ValidationScope, diagnostics: ValidationDiagnostic[]): ValidationReport {
     return { status: diagnostics.some((diagnostic) => diagnostic.severity === 'error') ? 'failed' : 'passed', errors: diagnostics.filter((diagnostic) => diagnostic.severity === 'error'), warnings: diagnostics.filter((diagnostic) => diagnostic.severity === 'warning'), info: diagnostics.filter((diagnostic) => diagnostic.severity === 'info'), timestamp: new Date().toISOString(), scope }
+  }
+}
+
+export function createKnowledgeStagedStateValidator(skill: KnowledgeValidationSkill): (rootRef: string, manifest: KnowledgeBaseManifest) => Promise<void> {
+  return async (rootRef, manifest) => {
+    const handle = createKnowledgeBaseHandle(manifest, rootRef, 'compatible')
+    const report = await skill.validateKnowledgeBase(handle, 'all')
+    if (report.status === 'failed') throw new Error(`staged_validation_failed: ${report.errors.map((error) => error.code).join(',')}`)
   }
 }

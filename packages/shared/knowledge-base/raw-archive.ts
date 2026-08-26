@@ -2,27 +2,31 @@ import { createHash } from 'node:crypto'
 import { lstat, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { basename, extname, join, relative, resolve, sep } from 'node:path'
 import { KnowledgeError } from './errors.ts'
+import { KnowledgeBaseHandle } from './handle.ts'
+import { loadKnowledgeBaseManifest } from './manifest-loader.ts'
 import { parseYaml } from './yaml.ts'
+import type { KnowledgeBaseManifest } from '../../schemas/knowledge/index.ts'
 
 const RAW_REF_PATTERN = /^raw-sha256-([0-9a-f]{64})$/
 const CONTENT_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/
 const SAFE_EXTENSION_PATTERN = /^[a-z0-9]+$/
 
-export type RawMetadataScalar = string | number | boolean | null
-export type RawSourceMetadata = Record<string, RawMetadataScalar>
+export interface RawSuppliedMetadata {
+  title: string | null
+  institution: string | null
+  author: string | null
+  publishedAt: string | null
+  sourceUrl: string | null
+}
 
 export interface RawManifest {
-  schemaVersion: '0.1'
   rawRef: string
+  originalFilename: string | null
+  mediaType: string
   contentHash: string
-  originalFilename: string
-  safeExtension: string
-  contentType: string
-  byteLength: number
-  sourceMetadata: RawSourceMetadata
+  sizeBytes: number
   receivedAt: string
-  capturedAt: string
-  createdAt: string
+  suppliedMetadata: RawSuppliedMetadata
 }
 
 export interface RawRecord {
@@ -33,161 +37,151 @@ export interface RawRecord {
   reused?: boolean
 }
 
-export interface PutRawInput {
-  rawRoot: string
+export interface RawArchiveInput {
   bytes: Uint8Array
-  originalFilename: string
-  contentType?: string
-  sourceMetadata?: RawSourceMetadata
-  capturedAt?: string
-  createdAt?: string
+  originalFilename?: string | null
+  mediaType?: string
+  suppliedMetadata?: Partial<RawSuppliedMetadata>
+}
+
+export interface RawArchiveOptions {
+  clock?: () => string
 }
 
 export interface RawVerification {
   valid: true
   rawRef: string
   contentHash: string
-  byteLength: number
+  sizeBytes: number
 }
 
-function assertRawRoot(rawRoot: string): string {
-  if (typeof rawRoot !== 'string' || rawRoot.trim() === '') {
-    throw new KnowledgeError('RawArchiveError', 'Raw archive root must be a non-empty path')
+function assertHandle(handle: KnowledgeBaseHandle): void {
+  if (!(handle instanceof KnowledgeBaseHandle)) throw new KnowledgeError('RawArchiveError', 'Raw API requires a KnowledgeBaseHandle')
+  if (typeof handle.rootRef !== 'string' || handle.rootRef.trim() === '') throw new KnowledgeError('RawArchiveError', 'Knowledge Base handle rootRef must be non-empty')
+}
+
+async function assertMountedKnowledgeBase(handle: KnowledgeBaseHandle, forWrite: boolean): Promise<KnowledgeBaseManifest> {
+  assertHandle(handle)
+  const root = resolve(handle.rootRef)
+  let manifest
+  try {
+    manifest = await loadKnowledgeBaseManifest(root)
+  } catch (error) {
+    if (error instanceof KnowledgeError) throw error
+    throw new KnowledgeError('RawArchiveError', String(error), root)
   }
-  return resolve(rawRoot)
+  if (manifest.knowledgeBaseId !== handle.knowledgeBaseId) throw new KnowledgeError('RawArchiveError', 'Knowledge Base handle identity does not match mounted manifest', root)
+  if (manifest.schemaVersion !== handle.schemaVersion || manifest.storageFormatVersion !== handle.storageFormatVersion) throw new KnowledgeError('RawArchiveError', 'Knowledge Base handle compatibility does not match mounted manifest', root)
+  if (forWrite && (manifest.schemaVersion !== '0.2' || manifest.storageFormatVersion !== '1' || manifest.status !== 'active' || !handle.writable)) {
+    throw new KnowledgeError('RawArchiveError', 'Raw archive requires an active writable Schema 0.2 / Storage 1 Knowledge Base', root)
+  }
+  return manifest
 }
 
 function assertRawRef(rawRef: string): string {
-  if (typeof rawRef !== 'string' || !RAW_REF_PATTERN.test(rawRef)) {
-    throw new KnowledgeError('RawArchiveError', `Invalid rawRef: ${String(rawRef)}`)
-  }
+  if (typeof rawRef !== 'string' || !RAW_REF_PATTERN.test(rawRef)) throw new KnowledgeError('RawArchiveError', `Invalid rawRef: ${String(rawRef)}`)
   return rawRef
 }
 
 function assertContained(root: string, candidate: string, description: string): void {
   const escape = relative(root, candidate)
-  if (escape === '..' || escape.startsWith(`..${sep}`) || escape.includes(`${sep}..${sep}`)) {
-    throw new KnowledgeError('RawArchiveError', `${description} escapes raw archive root: ${candidate}`)
-  }
+  if (escape === '..' || escape.startsWith(`..${sep}`) || escape.includes(`${sep}..${sep}`)) throw new KnowledgeError('RawArchiveError', `${description} escapes Knowledge Base root: ${candidate}`)
 }
 
-function rawPaths(rawRoot: string, rawRef: string): Pick<RawRecord, 'bundlePath' | 'manifestPath'> {
-  const root = assertRawRoot(rawRoot)
-  const checkedRawRef = assertRawRef(rawRef)
+function rawPaths(rootRef: string, rawRef: string): Pick<RawRecord, 'bundlePath' | 'manifestPath'> {
+  const root = resolve(rootRef)
+  const checkedRef = assertRawRef(rawRef)
   const rawDirectory = resolve(root, 'raw')
-  const bundlePath = resolve(rawDirectory, checkedRawRef)
+  const bundlePath = resolve(rawDirectory, checkedRef)
   assertContained(root, bundlePath, 'Raw bundle path')
   assertContained(rawDirectory, bundlePath, 'Raw bundle path')
-  return {
-    bundlePath,
-    manifestPath: resolve(bundlePath, 'manifest.yaml'),
-  }
+  return { bundlePath, manifestPath: resolve(bundlePath, 'manifest.yaml') }
 }
 
-function safeExtension(originalFilename: string): string {
+function safeExtension(originalFilename: string | null | undefined): string {
+  if (!originalFilename) return 'bin'
   const extension = extname(basename(originalFilename)).slice(1).toLowerCase()
   return SAFE_EXTENSION_PATTERN.test(extension) ? extension : 'bin'
 }
 
-function assertPutInput(input: PutRawInput): void {
+function assertArchiveInput(input: RawArchiveInput): void {
   if (!(input.bytes instanceof Uint8Array)) throw new KnowledgeError('RawArchiveError', 'Raw bytes must be a Uint8Array')
-  if (typeof input.originalFilename !== 'string' || input.originalFilename.trim() === '' || input.originalFilename.includes('\0')) {
-    throw new KnowledgeError('RawArchiveError', 'originalFilename must be a non-empty string without null bytes')
-  }
-  if (input.contentType !== undefined && (typeof input.contentType !== 'string' || input.contentType.trim() === '')) {
-    throw new KnowledgeError('RawArchiveError', 'contentType must be a non-empty string when provided')
-  }
-  for (const [name, timestamp] of [['capturedAt', input.capturedAt] as const, ['createdAt', input.createdAt] as const]) {
-    if (timestamp !== undefined && (typeof timestamp !== 'string' || timestamp.trim() === '')) {
-      throw new KnowledgeError('RawArchiveError', `${name} must be a non-empty string when provided`)
-    }
+  if (input.originalFilename !== undefined && input.originalFilename !== null && (typeof input.originalFilename !== 'string' || input.originalFilename.includes('\0'))) throw new KnowledgeError('RawArchiveError', 'originalFilename must be a string, null, or omitted without null bytes')
+  if (input.mediaType !== undefined && (typeof input.mediaType !== 'string' || input.mediaType.trim() === '')) throw new KnowledgeError('RawArchiveError', 'mediaType must be a non-empty string when provided')
+  if (input.suppliedMetadata !== undefined && (typeof input.suppliedMetadata !== 'object' || input.suppliedMetadata === null || Array.isArray(input.suppliedMetadata))) throw new KnowledgeError('RawArchiveError', 'suppliedMetadata must be an object')
+  for (const field of ['title', 'institution', 'author', 'publishedAt', 'sourceUrl'] as const) {
+    const value = input.suppliedMetadata?.[field]
+    if (value !== undefined && value !== null && typeof value !== 'string') throw new KnowledgeError('RawArchiveError', `suppliedMetadata.${field} must be a string or null`)
   }
 }
 
 function assertManifest(value: unknown, expectedRawRef: string): RawManifest {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new KnowledgeError('RawArchiveError', 'Raw manifest must be an object')
-  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new KnowledgeError('RawArchiveError', 'Raw manifest must be an object')
   const manifest = value as Partial<RawManifest>
-  if (manifest.schemaVersion !== '0.1') throw new KnowledgeError('RawArchiveError', 'Raw manifest schemaVersion must be 0.1')
-  if (manifest.rawRef !== expectedRawRef || typeof manifest.rawRef !== 'string' || !RAW_REF_PATTERN.test(manifest.rawRef)) {
-    throw new KnowledgeError('RawArchiveError', 'Raw manifest rawRef does not match the requested rawRef')
-  }
-  if (typeof manifest.contentHash !== 'string' || !CONTENT_HASH_PATTERN.test(manifest.contentHash) || manifest.contentHash !== `sha256:${expectedRawRef.slice('raw-sha256-'.length)}`) {
-    throw new KnowledgeError('RawArchiveError', 'Raw manifest contentHash is invalid or does not match rawRef')
-  }
-  if (typeof manifest.originalFilename !== 'string' || manifest.originalFilename.trim() === '') {
-    throw new KnowledgeError('RawArchiveError', 'Raw manifest originalFilename must be a non-empty string')
-  }
-  if (typeof manifest.safeExtension !== 'string' || !SAFE_EXTENSION_PATTERN.test(manifest.safeExtension)) {
-    throw new KnowledgeError('RawArchiveError', 'Raw manifest safeExtension is invalid')
-  }
-  if (typeof manifest.contentType !== 'string' || manifest.contentType.trim() === '') {
-    throw new KnowledgeError('RawArchiveError', 'Raw manifest contentType must be a non-empty string')
-  }
-  if (!Number.isInteger(manifest.byteLength) || (manifest.byteLength as number) < 0) {
-    throw new KnowledgeError('RawArchiveError', 'Raw manifest byteLength must be a non-negative integer')
-  }
-  if (!manifest.sourceMetadata || typeof manifest.sourceMetadata !== 'object' || Array.isArray(manifest.sourceMetadata)) {
-    throw new KnowledgeError('RawArchiveError', 'Raw manifest sourceMetadata must be an object')
-  }
-  if (typeof manifest.receivedAt !== 'string' || manifest.receivedAt.trim() === '' || typeof manifest.capturedAt !== 'string' || manifest.capturedAt.trim() === '' || typeof manifest.createdAt !== 'string' || manifest.createdAt.trim() === '') {
-    throw new KnowledgeError('RawArchiveError', 'Raw manifest receivedAt, capturedAt, and createdAt must be non-empty strings')
+  if (manifest.rawRef !== expectedRawRef || typeof manifest.rawRef !== 'string' || !RAW_REF_PATTERN.test(manifest.rawRef)) throw new KnowledgeError('RawArchiveError', 'Raw manifest rawRef does not match requested rawRef')
+  if (typeof manifest.contentHash !== 'string' || !CONTENT_HASH_PATTERN.test(manifest.contentHash) || manifest.contentHash !== `sha256:${expectedRawRef.slice('raw-sha256-'.length)}`) throw new KnowledgeError('RawArchiveError', 'Raw manifest contentHash is invalid or does not match rawRef')
+  if (manifest.originalFilename !== null && typeof manifest.originalFilename !== 'string') throw new KnowledgeError('RawArchiveError', 'Raw manifest originalFilename must be a string or null')
+  if (typeof manifest.mediaType !== 'string' || manifest.mediaType.trim() === '') throw new KnowledgeError('RawArchiveError', 'Raw manifest mediaType must be a non-empty string')
+  if (!Number.isInteger(manifest.sizeBytes) || (manifest.sizeBytes as number) < 0) throw new KnowledgeError('RawArchiveError', 'Raw manifest sizeBytes must be a non-negative integer')
+  if (typeof manifest.receivedAt !== 'string' || manifest.receivedAt.trim() === '' || Number.isNaN(Date.parse(manifest.receivedAt))) throw new KnowledgeError('RawArchiveError', 'Raw manifest receivedAt must be a valid datetime')
+  const metadata = manifest.suppliedMetadata
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) throw new KnowledgeError('RawArchiveError', 'Raw manifest suppliedMetadata must be an object')
+  for (const field of ['title', 'institution', 'author', 'publishedAt', 'sourceUrl'] as const) {
+    const value = (metadata as unknown as Record<string, unknown>)[field]
+    if (value !== null && typeof value !== 'string') throw new KnowledgeError('RawArchiveError', `Raw manifest suppliedMetadata.${field} must be a string or null`)
   }
   return manifest as RawManifest
 }
 
-async function readManifest(rawRoot: string, rawRef: string): Promise<RawRecord> {
-  const root = assertRawRoot(rawRoot)
-  const paths = rawPaths(root, rawRef)
-  for (const path of [resolve(assertRawRoot(rawRoot), 'raw'), paths.bundlePath, paths.manifestPath]) {
-    try {
-      if ((await lstat(path)).isSymbolicLink()) throw new KnowledgeError('RawArchiveError', `Raw archive path cannot be a symlink: ${path}`, path)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    }
-  }
-  let text: string
+async function rejectSymlink(path: string, description: string): Promise<void> {
   try {
-    text = await readFile(paths.manifestPath, 'utf8')
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
-    if (code === 'ENOENT' || code === 'ENOTDIR') throw new KnowledgeError('NotFound', `Raw bundle not found: ${rawRef}`, paths.manifestPath)
-    throw new KnowledgeError('RawArchiveError', `Unable to read raw manifest: ${paths.manifestPath}`, paths.manifestPath)
-  }
-  let manifest: unknown
-  try {
-    manifest = parseYaml(text, paths.manifestPath)
-  } catch (error) {
-    if (error instanceof KnowledgeError) throw new KnowledgeError('RawArchiveError', error.message, paths.manifestPath)
-    throw new KnowledgeError('RawArchiveError', String(error), paths.manifestPath)
-  }
-  const checkedManifest = assertManifest(manifest, rawRef)
-  const originalPath = resolve(paths.bundlePath, `original.${checkedManifest.safeExtension}`)
-  try {
-    if ((await lstat(originalPath)).isSymbolicLink()) throw new KnowledgeError('RawArchiveError', `Raw archive file cannot be a symlink: ${originalPath}`, originalPath)
+    if ((await lstat(path)).isSymbolicLink()) throw new KnowledgeError('RawArchiveError', `${description} cannot be a symlink: ${path}`, path)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
+}
+
+async function readRegistryEntry(root: string, rawRef: string): Promise<{ contentHash: string; storageRef: string }> {
+  await rejectSymlink(join(root, 'registry'), 'Raw registry directory')
   const registryPath = join(root, 'registry', 'raw.yaml')
+  await rejectSymlink(registryPath, 'Raw registry')
   let registryValue: unknown
   try {
     registryValue = parseYaml(await readFile(registryPath, 'utf8'), registryPath)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new KnowledgeError('NotFound', `Raw registry entry not found: ${rawRef}`, registryPath)
-    throw error
+    throw new KnowledgeError('RawArchiveError', String(error), registryPath)
   }
-  const registryEntry = registryValue && typeof registryValue === 'object' && !Array.isArray(registryValue) ? (registryValue as Record<string, unknown>)[rawRef] : undefined
-  if (!registryEntry || typeof registryEntry !== 'object' || Array.isArray(registryEntry)) throw new KnowledgeError('NotFound', `Raw registry entry not found: ${rawRef}`, registryPath)
-  const entry = registryEntry as { contentHash?: unknown; storageRef?: unknown }
-  const expectedStorageRef = relative(root, originalPath).replaceAll('\\', '/')
-  if (entry.contentHash !== checkedManifest.contentHash || entry.storageRef !== expectedStorageRef) throw new KnowledgeError('RawArchiveError', `Raw registry entry does not match bundle: ${rawRef}`, registryPath)
-  return {
-    manifest: checkedManifest,
-    bundlePath: paths.bundlePath,
-    manifestPath: paths.manifestPath,
-    originalPath,
+  const entry = registryValue && typeof registryValue === 'object' && !Array.isArray(registryValue) ? (registryValue as Record<string, unknown>)[rawRef] : undefined
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new KnowledgeError('NotFound', `Raw registry entry not found: ${rawRef}`, registryPath)
+  const value = entry as { contentHash?: unknown; storageRef?: unknown }
+  if (typeof value.contentHash !== 'string' || typeof value.storageRef !== 'string') throw new KnowledgeError('RawArchiveError', `Raw registry entry is invalid: ${rawRef}`, registryPath)
+  return { contentHash: value.contentHash, storageRef: value.storageRef }
+}
+
+async function readManifest(handle: KnowledgeBaseHandle, rawRef: string): Promise<RawRecord> {
+  await assertMountedKnowledgeBase(handle, false)
+  const root = resolve(handle.rootRef)
+  const checkedRef = assertRawRef(rawRef)
+  const paths = rawPaths(root, checkedRef)
+  await rejectSymlink(resolve(root, 'raw'), 'Raw directory')
+  await rejectSymlink(paths.bundlePath, 'Raw bundle')
+  await rejectSymlink(paths.manifestPath, 'Raw manifest')
+  let parsed: unknown
+  try {
+    parsed = parseYaml(await readFile(paths.manifestPath, 'utf8'), paths.manifestPath)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR') throw new KnowledgeError('NotFound', `Raw bundle not found: ${checkedRef}`, paths.manifestPath)
+    throw new KnowledgeError('RawArchiveError', String(error), paths.manifestPath)
   }
+  const manifest = assertManifest(parsed, checkedRef)
+  const registryEntry = await readRegistryEntry(root, checkedRef)
+  const originalPath = resolve(root, registryEntry.storageRef)
+  assertContained(root, originalPath, 'Raw registry storageRef')
+  assertContained(paths.bundlePath, originalPath, 'Raw registry storageRef')
+  if (registryEntry.contentHash !== manifest.contentHash) throw new KnowledgeError('RawArchiveError', `Raw registry hash does not match manifest: ${checkedRef}`, join(root, 'registry', 'raw.yaml'))
+  await rejectSymlink(originalPath, 'Raw bytes')
+  return { manifest, bundlePath: paths.bundlePath, manifestPath: paths.manifestPath, originalPath }
 }
 
 async function bytesMatch(path: string, expected: Uint8Array): Promise<boolean> {
@@ -200,32 +194,22 @@ async function bytesMatch(path: string, expected: Uint8Array): Promise<boolean> 
   }
 }
 
-async function updateRawRegistry(rawRoot: string, record: RawRecord): Promise<void> {
-  const root = assertRawRoot(rawRoot)
+async function updateRawRegistry(root: string, record: RawRecord): Promise<void> {
   const registryDir = join(root, 'registry')
   const registryPath = join(registryDir, 'raw.yaml')
-  try {
-    if ((await lstat(registryDir)).isSymbolicLink()) throw new KnowledgeError('RawArchiveError', `Raw registry directory cannot be a symlink: ${registryDir}`, registryDir)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-  }
-  try {
-    if ((await lstat(registryPath)).isSymbolicLink()) throw new KnowledgeError('RawArchiveError', `Raw registry cannot be a symlink: ${registryPath}`, registryPath)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-  }
+  await rejectSymlink(registryDir, 'Raw registry directory')
+  await rejectSymlink(registryPath, 'Raw registry')
   let value: Record<string, unknown> = {}
   try {
     const parsed = parseYaml(await readFile(registryPath, 'utf8'), registryPath)
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) value = parsed as Record<string, unknown>
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new KnowledgeError('RawArchiveError', String(error), registryPath)
   }
   if (value[record.manifest.rawRef] !== undefined) return
   const storageRef = relative(root, record.originalPath).replaceAll('\\', '/')
   const resolved = resolve(root, storageRef)
-  const escaped = relative(root, resolved)
-  if (escaped === '..' || escaped.startsWith(`..${sep}`) || storageRef.startsWith('../') || /^[A-Za-z]:[\\/]/.test(storageRef)) throw new KnowledgeError('RawArchiveError', `Raw registry storageRef escapes Knowledge Base root: ${storageRef}`)
+  assertContained(root, resolved, 'Raw registry storageRef')
   value[record.manifest.rawRef] = { contentHash: record.manifest.contentHash, storageRef }
   await mkdir(registryDir, { recursive: true })
   const temporaryPath = `${registryPath}.tmp-${record.manifest.rawRef.slice(-16)}`
@@ -233,38 +217,33 @@ async function updateRawRegistry(rawRoot: string, record: RawRecord): Promise<vo
   await rename(temporaryPath, registryPath)
 }
 
-export async function putRaw(input: PutRawInput): Promise<RawRecord> {
-  assertPutInput(input)
-  const rawRoot = assertRawRoot(input.rawRoot)
+export async function archiveRaw(handle: KnowledgeBaseHandle, input: RawArchiveInput, options: RawArchiveOptions = {}): Promise<RawRecord> {
+  assertArchiveInput(input)
+  await assertMountedKnowledgeBase(handle, true)
+  const root = resolve(handle.rootRef)
   const digest = createHash('sha256').update(input.bytes).digest('hex')
   const rawRef = `raw-sha256-${digest}`
-  const paths = rawPaths(rawRoot, rawRef)
-
+  const paths = rawPaths(root, rawRef)
   try {
-    const existing = await getRaw(rawRoot, rawRef)
-    const verified = await verifyRaw(rawRoot, rawRef)
-    const result = { ...existing, manifest: verified.manifest, originalPath: verified.originalPath, reused: true }
-    await updateRawRegistry(rawRoot, result)
-    return result
+    const existing = await getRaw(handle, rawRef)
+    const verified = await verifyRaw(handle, rawRef)
+    return { ...existing, manifest: verified.manifest, originalPath: verified.originalPath, reused: true }
   } catch (error) {
     if (!(error instanceof KnowledgeError) || error.code !== 'NotFound') throw error
   }
 
   const extension = safeExtension(input.originalFilename)
   const originalPath = resolve(paths.bundlePath, `original.${extension}`)
-  const manifest: RawManifest = {
-    schemaVersion: '0.1',
-    rawRef,
-    contentHash: `sha256:${digest}`,
-    originalFilename: input.originalFilename,
-    safeExtension: extension,
-    contentType: input.contentType ?? 'application/octet-stream',
-    byteLength: input.bytes.byteLength,
-    sourceMetadata: input.sourceMetadata ?? {},
-    receivedAt: input.capturedAt ?? new Date().toISOString(),
-    capturedAt: input.capturedAt ?? new Date().toISOString(),
-    createdAt: input.createdAt ?? new Date().toISOString(),
+  const metadata: RawSuppliedMetadata = {
+    title: input.suppliedMetadata?.title ?? null,
+    institution: input.suppliedMetadata?.institution ?? null,
+    author: input.suppliedMetadata?.author ?? null,
+    publishedAt: input.suppliedMetadata?.publishedAt ?? null,
+    sourceUrl: input.suppliedMetadata?.sourceUrl ?? null,
   }
+  const receivedAt = options.clock?.() ?? new Date().toISOString()
+  if (typeof receivedAt !== 'string' || receivedAt.trim() === '') throw new KnowledgeError('RawArchiveError', 'Raw archive clock must return a non-empty string')
+  const manifest: RawManifest = { rawRef, originalFilename: input.originalFilename ?? null, mediaType: input.mediaType ?? 'application/octet-stream', contentHash: `sha256:${digest}`, sizeBytes: input.bytes.byteLength, receivedAt, suppliedMetadata: metadata }
 
   await mkdir(paths.bundlePath, { recursive: true })
   let createdOriginal = false
@@ -275,7 +254,6 @@ export async function putRaw(input: PutRawInput): Promise<RawRecord> {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw new KnowledgeError('RawArchiveError', `Unable to write raw bytes: ${originalPath}`, originalPath)
     if (!(await bytesMatch(originalPath, input.bytes))) throw new KnowledgeError('RawArchiveError', `Existing raw bytes do not match content hash: ${originalPath}`, originalPath)
   }
-
   try {
     await writeFile(paths.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' })
   } catch (error) {
@@ -284,51 +262,35 @@ export async function putRaw(input: PutRawInput): Promise<RawRecord> {
       throw new KnowledgeError('RawArchiveError', `Unable to write raw manifest: ${paths.manifestPath}`, paths.manifestPath)
     }
     if (createdOriginal) {
-      const existing = await getRaw(rawRoot, rawRef)
+      const existing = await getRaw(handle, rawRef)
       if (existing.originalPath !== originalPath) await unlink(originalPath).catch(() => undefined)
+      return { ...existing, reused: true }
     }
   }
-  const result = {
-    manifest,
-    bundlePath: paths.bundlePath,
-    manifestPath: paths.manifestPath,
-    originalPath,
-    reused: false,
-  }
-  await updateRawRegistry(rawRoot, result)
-  const verified = await verifyRaw(rawRoot, rawRef)
+  const result: RawRecord = { manifest, bundlePath: paths.bundlePath, manifestPath: paths.manifestPath, originalPath, reused: false }
+  await updateRawRegistry(root, result)
+  const verified = await verifyRaw(handle, rawRef)
   return { ...result, manifest: verified.manifest, originalPath: verified.originalPath }
 }
 
-export async function getRaw(rawRoot: string, rawRef: string): Promise<RawRecord> {
-  return readManifest(rawRoot, assertRawRef(rawRef))
+export async function getRaw(handle: KnowledgeBaseHandle, rawRef: string): Promise<RawRecord> {
+  return readManifest(handle, assertRawRef(rawRef))
 }
 
-export async function readRaw(rawRoot: string, rawRef: string): Promise<Buffer> {
-  const record = await getRaw(rawRoot, rawRef)
+export async function readRaw(handle: KnowledgeBaseHandle, rawRef: string): Promise<Buffer> {
+  const record = await getRaw(handle, rawRef)
   try {
     return await readFile(record.originalPath)
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR') {
-      throw new KnowledgeError('NotFound', `Raw bytes not found: ${rawRef}`, record.originalPath)
-    }
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR') throw new KnowledgeError('NotFound', `Raw bytes not found: ${rawRef}`, record.originalPath)
     throw new KnowledgeError('RawArchiveError', `Unable to read raw bytes: ${record.originalPath}`, record.originalPath)
   }
 }
 
-export async function verifyRaw(rawRoot: string, rawRef: string): Promise<RawVerification & { manifest: RawManifest; originalPath: string }> {
-  const record = await getRaw(rawRoot, rawRef)
-  const bytes = await readRaw(rawRoot, rawRef)
+export async function verifyRaw(handle: KnowledgeBaseHandle, rawRef: string): Promise<RawVerification & { manifest: RawManifest; originalPath: string }> {
+  const record = await getRaw(handle, rawRef)
+  const bytes = await readRaw(handle, rawRef)
   const digest = createHash('sha256').update(bytes).digest('hex')
-  if (bytes.byteLength !== record.manifest.byteLength || digest !== record.manifest.contentHash.slice('sha256:'.length)) {
-    throw new KnowledgeError('RawArchiveError', `Raw bytes failed integrity verification: ${rawRef}`, record.originalPath)
-  }
-  return {
-    valid: true,
-    rawRef,
-    contentHash: record.manifest.contentHash,
-    byteLength: bytes.byteLength,
-    manifest: record.manifest,
-    originalPath: record.originalPath,
-  }
+  if (bytes.byteLength !== record.manifest.sizeBytes || digest !== record.manifest.contentHash.slice('sha256:'.length)) throw new KnowledgeError('RawArchiveError', `Raw bytes failed integrity verification: ${rawRef}`, record.originalPath)
+  return { valid: true, rawRef, contentHash: record.manifest.contentHash, sizeBytes: bytes.byteLength, manifest: record.manifest, originalPath: record.originalPath }
 }

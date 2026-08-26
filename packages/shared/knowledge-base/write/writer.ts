@@ -19,7 +19,7 @@ export interface KnowledgeWriterOptions {
   loader?: KnowledgeBaseLoader
   registry?: KnowledgeBaseRegistry
   clock?: () => string
-  stagedStateValidator?: KnowledgeStagedStateValidator
+  stagedStateValidator: KnowledgeStagedStateValidator
   failpoint?: KnowledgeWriteFailpoint
 }
 
@@ -307,7 +307,7 @@ export class KnowledgeWriter {
   readonly registry: KnowledgeBaseRegistry
   private readonly clock: () => string
 
-  constructor(private readonly options: KnowledgeWriterOptions = {}) {
+  constructor(private readonly options: KnowledgeWriterOptions) {
     this.loader = options.loader ?? new KnowledgeBaseLoader()
     this.registry = options.registry ?? this.loader.registry
     this.clock = options.clock ?? (() => new Date().toISOString())
@@ -316,13 +316,15 @@ export class KnowledgeWriter {
   async write(handle: KnowledgeBaseHandle, receipt: ValidatedKnowledgeChangeSet): Promise<KnowledgeWriteResult> {
     const changeSet = receipt.changeSet
     const baseResult = { knowledgeBaseId: handle.knowledgeBaseId, changeSetId: changeSet.changeSetId, baseRevision: handle.revision, committedRevision: handle.revision, operations: operationSummary(), hashes: [] as KnowledgeWriteResult['hashes'] }
+    const stagedStateValidator = this.options.stagedStateValidator
+    if (!stagedStateValidator) return { ...baseResult, status: 'rejected', error: { code: 'staged_validator_required', message: 'KnowledgeWriter requires a full staged-state validator before semantic commit' } }
     if (receipt.knowledgeBaseId !== handle.knowledgeBaseId || receipt.schemaVersion !== handle.schemaVersion || receipt.baseRevision !== changeSet.expectedBaseRevision || receipt.changeSetId !== changeSet.changeSetId || receipt.changeSetHash !== hashKnowledgeObject(changeSet)) return { ...baseResult, status: 'rejected', error: { code: 'invalid_validation_receipt', message: 'ValidatedChangeSet receipt does not match ChangeSet or Handle' } }
     try {
       return await withProcessLock(resolve(handle.rootRef), async () => {
         const releaseFilesystemLock = await acquireFilesystemLock(resolve(handle.rootRef))
         try {
           await recoverKnowledgeBaseWrite(resolve(handle.rootRef))
-          return await this.writeLocked(handle, receipt)
+          return await this.writeLocked(handle, receipt, stagedStateValidator)
         } finally {
           await releaseFilesystemLock()
         }
@@ -334,7 +336,7 @@ export class KnowledgeWriter {
 
   apply(handle: KnowledgeBaseHandle, receipt: ValidatedKnowledgeChangeSet): Promise<KnowledgeWriteResult> { return this.write(handle, receipt) }
 
-  private async writeLocked(handle: KnowledgeBaseHandle, receipt: ValidatedKnowledgeChangeSet): Promise<KnowledgeWriteResult> {
+  private async writeLocked(handle: KnowledgeBaseHandle, receipt: ValidatedKnowledgeChangeSet, stagedStateValidator: KnowledgeStagedStateValidator): Promise<KnowledgeWriteResult> {
     const rootPath = resolve(handle.rootRef)
     const changeSet = receipt.changeSet
     const currentManifest = await loadKnowledgeBaseManifest(rootPath)
@@ -376,12 +378,16 @@ export class KnowledgeWriter {
     const rawRefs = [...new Set(changeSet.sourceOperations.flatMap((operation) => operation.type === 'source_create' ? (operation.source.rawRefs ?? []) : (operation.addRawRefs ?? [])))].sort()
     const logValue = { workflowRunId: changeSet.workflowRunId, changeSetId: changeSet.changeSetId, changeSetHash: payloadHash, knowledgeBaseId: currentManifest.knowledgeBaseId, schemaVersionAtExecution: currentManifest.schemaVersion, startedAt: this.clock(), completedAt: this.clock(), rawArchive: { rawRefs, created: [], reused: [] }, changes: { ...summary, hashes }, status: 'completed', writeStatus: changed ? 'committed' : 'no_changes', committedRevision: nextRevision, ingestionLogRef: logRef, userReview: undefined, schemaGaps: undefined, errors: [] }
     await rm(stagingPath, { recursive: true, force: true })
-    await cp(rootPath, stagingPath, { recursive: true, errorOnExist: true })
-    await writeStateFiles(stagingPath, state)
-    await writeJsonYaml(join(stagingPath, logRef), logValue)
-    const stagedManifest = parseKnowledgeBaseManifest(await readJsonYaml(join(stagingPath, 'manifest.yaml')))
-    if (this.options.stagedStateValidator) await this.options.stagedStateValidator(stagingPath, stagedManifest)
-    else await this.loader.readAssets(new KnowledgeBaseHandle({ knowledgeBaseId: stagedManifest.knowledgeBaseId, rootRef: stagingPath, schemaVersion: stagedManifest.schemaVersion, storageFormatVersion: stagedManifest.storageFormatVersion, revision: stagedManifest.revision, status: stagedManifest.status, compatibility: 'compatible' }))
+    try {
+      await cp(rootPath, stagingPath, { recursive: true, errorOnExist: true })
+      await writeStateFiles(stagingPath, state)
+      await writeJsonYaml(join(stagingPath, logRef), logValue)
+      const stagedManifest = parseKnowledgeBaseManifest(await readJsonYaml(join(stagingPath, 'manifest.yaml')))
+      await stagedStateValidator(stagingPath, stagedManifest)
+    } catch (error) {
+      await rm(stagingPath, { recursive: true, force: true }).catch(() => undefined)
+      throw error
+    }
     const journal: Journal = { transactionId, knowledgeBaseId: currentManifest.knowledgeBaseId, previousRevision: currentManifest.revision, nextRevision, stagingPath, backupPath, rootPath, status: 'staged' }
     await writeJournal(markerPath, journal)
     await this.options.failpoint?.('before_switch')

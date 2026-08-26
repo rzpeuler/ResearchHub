@@ -101,6 +101,19 @@ never change the Git-managed AI Hardware Example. Curation, Research Report
 Knowledge Ingestion, conflict reasoning, Schema Gap reasoning, and Migration
 Runner remain planned future phases.
 
+## KNOWLEDGE-RUNTIME-MIGRATION-C-001-R1
+
+Phase C durable mutation contract gaps are closed and remain review pending for
+Sol verification. Raw Manifest now matches Storage Layout v0.2, Raw Archive
+operations are explicitly Knowledge Base scoped and lifecycle-aware, and Raw
+archive-only writes do not change semantic revision or manifest timestamps.
+ChangeSet validation uses strict Source contracts, current expected-hash guards,
+planned supersede state, and duplicate-target rejection. Knowledge Writer now
+requires full staged Knowledge validation before directory switch; Loader-only
+parsing is not commit-authorizing. The temporary Phase C design note was
+removed because frozen architecture and storage documents remain authoritative.
+Phase D has not started.
+
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure
 
 Knowledge Layer v0.1 foundation acceptance gaps are closed. The top-level
