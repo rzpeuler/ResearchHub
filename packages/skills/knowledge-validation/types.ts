@@ -1,8 +1,8 @@
-import type { KnowledgeAssetCollection } from '../knowledge-access/types.ts'
+import type { KnowledgeAssetCollection } from '../../../packages/shared/knowledge-base/types.ts'
 
 export type ValidationStatus = 'passed' | 'failed'
 export type ValidationSeverity = 'error' | 'warning' | 'info'
-export type ValidationScope = 'all' | 'entity' | 'relation' | 'intelligence' | 'module' | 'source'
+export type ValidationScope = 'all' | 'manifest' | 'raw' | 'entity' | 'relation' | 'intelligence' | 'module' | 'source' | 'registry'
 
 export interface ValidationDiagnostic {
   code: string

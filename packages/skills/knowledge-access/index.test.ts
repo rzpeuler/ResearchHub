@@ -5,6 +5,9 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { KnowledgeAccessSkill } from './index.ts'
 import { KnowledgeLoader } from './loader.ts'
+import { createTestHandle } from '../../../tests/knowledge/test-handle.ts'
+import { createRuntimeKnowledgeBase, removeRuntimeKnowledgeBase } from '../../../tests/knowledge/runtime/helpers.ts'
+import { KnowledgeBaseLoader } from '../../../packages/shared/knowledge-base/knowledge-base-loader.ts'
 
 async function createFixtureRoot(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-knowledge-'))
@@ -56,7 +59,7 @@ test('access skill exposes deterministic entity, relation, comparison, and sourc
   const root = await createFixtureRoot()
   try {
     const index = await new KnowledgeLoader({ rootDir: root }).load()
-    const skill = new KnowledgeAccessSkill({ index })
+    const skill = new KnowledgeAccessSkill({ handle: createTestHandle(root), index })
     assert.equal(skill.getEntity('segment:gpu').name, 'GPU')
     assert.equal(skill.searchEntities('gpu')[0]?.id, 'segment:gpu')
     assert.equal(skill.getRelations('segment:gpu')[0]?.id, 'relation:nvidia-operates-in-gpu')
@@ -65,5 +68,26 @@ test('access skill exposes deterministic entity, relation, comparison, and sourc
     assert.throws(() => skill.getEntity('segment:missing'), /Entity not found/)
   } finally {
     await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('handle-bound access sessions isolate identical item IDs across Knowledge Bases', async () => {
+  const rootA = await createRuntimeKnowledgeBase({ knowledgeBaseId: 'kb-a', entityId: 'company:test', entityType: 'company', entityName: 'Company A' })
+  const rootB = await createRuntimeKnowledgeBase({ knowledgeBaseId: 'kb-b', entityId: 'company:test', entityType: 'company', entityName: 'Company B' })
+  try {
+    const loader = new KnowledgeBaseLoader()
+    const loadedA = await loader.mountAndLoad(rootA)
+    const loadedB = await loader.mountAndLoad(rootB)
+    const accessA = new KnowledgeAccessSkill(loadedA)
+    const accessB = new KnowledgeAccessSkill(loadedB)
+    assert.equal(accessA.knowledgeBaseId, 'kb-a')
+    assert.equal(accessB.knowledgeBaseId, 'kb-b')
+    assert.equal(accessA.getEntity('company:test').name, 'Company A')
+    assert.equal(accessB.getEntity('company:test').name, 'Company B')
+    assert.deepEqual(accessA.searchEntities('Company B'), [])
+    assert.deepEqual(accessB.searchEntities('Company A'), [])
+  } finally {
+    await removeRuntimeKnowledgeBase(rootA)
+    await removeRuntimeKnowledgeBase(rootB)
   }
 })

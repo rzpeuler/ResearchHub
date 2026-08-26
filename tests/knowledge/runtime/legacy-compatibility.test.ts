@@ -5,6 +5,7 @@ import { KnowledgeIndex } from '../../../packages/skills/knowledge-access/index.
 import { KnowledgeLoader } from '../../../packages/skills/knowledge-access/loader.ts'
 import { parseYaml } from '../../../packages/skills/knowledge-access/yaml.ts'
 import { createLegacyV01KnowledgeBase, removeRuntimeKnowledgeBase } from './helpers.ts'
+import { createTestHandle } from '../test-handle.ts'
 
 test('legacy KnowledgeLoader, KnowledgeIndex, and YAML imports remain compatible', async () => {
   const root = await createLegacyV01KnowledgeBase()
@@ -13,7 +14,7 @@ test('legacy KnowledgeLoader, KnowledgeIndex, and YAML imports remain compatible
     assert.ok(index instanceof KnowledgeIndex)
     assert.equal(index.entities.get('segment:gpu')?.name, 'GPU')
     assert.deepEqual(index.moduleRegistry.get('segment:gpu'), ['module:gpu-products'])
-    const access = new KnowledgeAccessSkill({ index })
+    const access = new KnowledgeAccessSkill({ handle: createTestHandle(root, 'kb-legacy-test'), index })
     assert.equal(access.getComparison('segment:gpu', 'product-comparison')[0]?.id, 'module:gpu-products')
     assert.equal((parseYaml('enabled: true') as { enabled: boolean }).enabled, true)
   } finally {

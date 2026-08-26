@@ -2,10 +2,12 @@ import { KnowledgeBaseHandle } from './handle.ts'
 import { KnowledgeLoader } from './loader.ts'
 import { CanonicalV02KnowledgeLoader } from './canonical-v02-loader.ts'
 import { KnowledgeIndex } from './knowledge-index.ts'
+import type { KnowledgeAssetCollection } from './types.ts'
 
 export interface KnowledgeSchemaAdapter {
   readonly schemaVersion: string
   readonly storageFormatVersion: string
+  readAssets(handle: KnowledgeBaseHandle): Promise<KnowledgeAssetCollection>
   load(handle: KnowledgeBaseHandle): Promise<KnowledgeIndex>
 }
 
@@ -35,10 +37,14 @@ export class FilesystemKnowledgeSchemaAdapter implements KnowledgeSchemaAdapter 
   ) {}
 
   async load(handle: KnowledgeBaseHandle): Promise<KnowledgeIndex> {
+    return KnowledgeIndex.fromAssets(await this.readAssets(handle))
+  }
+
+  async readAssets(handle: KnowledgeBaseHandle): Promise<KnowledgeAssetCollection> {
     if (this.schemaVersion === '0.2' && this.storageFormatVersion === '1') {
-      return new CanonicalV02KnowledgeLoader(handle.rootRef).load()
+      return new CanonicalV02KnowledgeLoader(handle.rootRef).readAssets()
     }
-    return new KnowledgeLoader({ rootDir: handle.rootRef }).load()
+    return new KnowledgeLoader({ rootDir: handle.rootRef }).readAssets()
   }
 }
 

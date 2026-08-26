@@ -105,8 +105,8 @@ export class CanonicalV02KnowledgeLoader {
       if (assetValue.id !== id) {
         throw new KnowledgeError('RegistryError', `Registry key does not match asset id: ${id} != ${assetValue.id}`, assetPath)
       }
-      const kind = classifyKnowledgeAsset(relative(rootDir, assetPath), assetValue)
-      if (kind !== entry.type) throw new KnowledgeError('RegistryError', `Registry type does not match asset: ${id}`, assetPath)
+      const detectedKind = classifyKnowledgeAsset(relative(rootDir, assetPath), assetValue)
+      if (detectedKind !== undefined && detectedKind !== 'registry' && detectedKind !== entry.type) throw new KnowledgeError('RegistryError', `Registry type does not match asset: ${id}`, assetPath)
       assets.registry.push({ id, type: entry.type, path: entry.storageRef, storageRef: entry.storageRef })
       addAsset(assets, entry.type, assetValue, assetPath)
     }

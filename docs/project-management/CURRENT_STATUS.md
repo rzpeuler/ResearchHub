@@ -13,8 +13,10 @@ separates ResearchHub Source from user-owned Knowledge Base Runtime Data:
 - Workflow controls ingestion and update orchestration.
 - Access and Validation remain deterministic; Write accepts only validated
   changes; schema migration is explicit and never implicit on mount or ingest.
-- Runtime Migration Phase A is implemented and review pending. The current AI
-  Hardware repository dataset has not been migrated; Phase B remains pending.
+- Runtime Migration Phase A is accepted after Sol verification, and Phase B is
+  implemented and review pending. The AI Hardware dataset now lives as the
+  Git-managed Example Knowledge Base at
+  `examples/knowledge-bases/ai-hardware/`.
 
 The older implementation and dataset sections below are historical execution
 records. The current Phase A status is recorded in the next section.
@@ -22,7 +24,7 @@ records. The current Phase A status is recorded in the next section.
 ## KNOWLEDGE-RUNTIME-MIGRATION-A-001
 
 Knowledge Base Runtime Architecture Migration Phase A is implemented and
-awaiting Sol verification. The runtime-neutral foundation now includes:
+accepted after Sol verification. The runtime-neutral foundation now includes:
 
 - canonical Knowledge manifest and durable domain contracts;
 - explicit `KnowledgeBaseHandle`, configured Runtime Data Root resolution, and
@@ -33,26 +35,56 @@ awaiting Sol verification. The runtime-neutral foundation now includes:
 - thin compatibility exports preserving the existing Knowledge Loader, Index,
   YAML, and Access Skill behavior.
 
-Phase B remains Planned / Pending and includes:
+Phase B is now implemented and review pending. It includes:
 
 - explicit Knowledge Base scoping for Access Skill;
 - Knowledge Base scoping for Validation;
 - Knowledge Base scoping for Frontend Projection;
-- migration of the AI Hardware dataset to an Example Knowledge Base layout.
+- migration of the AI Hardware dataset to an Example Knowledge Base layout;
+- canonical Schema 0.2 manifest, asset registry, and read-only raw registry;
+- handle-bound Access, schema-aware Validation, and explicitly scoped
+  Frontend Projection / HTTP.
 
-Phase A does not implement Write, Raw ingestion, Research Report ingestion, or
-a Migration Runner.
+Phase A and Phase B do not implement Write, Raw ingestion, Research Report
+ingestion, Curation, or a Migration Runner.
 
 Phase A R1 contract closure corrects the Schema 0.2 `registry/assets.yaml` /
 `storageRef` boundary, keeps both supported Schema versions read-only until
 Write is implemented, and aligns the canonical Source contract with Data
-Schema v0.2 nullable metadata and Raw provenance fields. Phase A remains
-review pending after this correction.
+Schema v0.2 nullable metadata and Raw provenance fields. Phase A is accepted
+after Sol verification; the correction remains part of the frozen read-only
+foundation.
 
 Phase A R2 closes the remaining foundation integrity gaps: canonical Registry
 keys must match loaded asset IDs, canonical Modules derive their runtime
 entity index from `targetEntity`, and `SourceType` / `SourceReliability` are
-strict frozen enums. Phase B remains Planned / Pending.
+strict frozen enums. Phase A is accepted after Sol verification.
+
+## KNOWLEDGE-RUNTIME-MIGRATION-B-001
+
+Knowledge Base Runtime Architecture Migration Phase B is implemented and
+review pending. The repository-root AI Hardware dataset was moved with Git
+history to `examples/knowledge-bases/ai-hardware/` and converted to Schema 0.2
+/ Storage Format 1 with `manifest.yaml`, canonical `registry/assets.yaml`,
+and empty `registry/raw.yaml`. Legacy `index.yaml` and `modules.yaml` are no
+longer part of the Example KB.
+
+The read path is now:
+
+```text
+KnowledgeBaseHandle
+  -> KnowledgeBaseLoader / Schema Adapter
+  -> KnowledgeIndex
+  -> handle-bound Access / Validation / Frontend Projection
+```
+
+Access sessions expose their handle metadata and isolate identical IDs across
+KBs. Validation supports explicit manifest, raw, registry, asset, and all
+scopes with Schema 0.1 compatibility and Schema 0.2 nullable Source/rawRef
+rules. The prototype HTTP API requires `knowledgeBaseId` and returns an
+explicit response envelope. Write, ingestion, curation, raw archive mutation,
+revision, locking, staging, and Migration Runner remain out of scope for
+Phase C and later.
 
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure
 
@@ -64,11 +96,11 @@ The AI Hardware fixture is covered by a Workflow -> Access Skill -> Loader/Index
 integration test. No database, graph database, vector database, RAG, LLM
 extraction, Research Artifact Layer, or new architecture layer was introduced.
 
-The AI Hardware Production Dataset v0.1 is now populated under `knowledge/`
-with source-traceable Entity, Relation, Intelligence, Module, Taxonomy, View,
-Source, and Registry assets. The production Registry is complete for runtime
-assets; unsupported prototype fields remain omitted rather than represented by
-mock claims.
+The AI Hardware Example Knowledge Base is populated under
+`examples/knowledge-bases/ai-hardware/` with source-traceable Entity, Relation,
+Intelligence, Module, Taxonomy, View, Source, and Registry assets. The
+canonical Example Registry is complete for runtime assets; unsupported fields
+remain omitted rather than represented by mock claims.
 
 ## KNOWLEDGE-PHASE-2C-FRONTEND-MIGRATION-001
 

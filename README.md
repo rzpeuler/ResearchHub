@@ -43,10 +43,11 @@ The public Research Object envelope is defined in
 [`packages/schemas/research-object.ts`](packages/schemas/research-object.ts).
 
 The current Knowledge architecture is frozen as Knowledge Architecture v0.2
-with an independent Knowledge Base Instance model. Runtime migration is
-pending; the existing repository `knowledge/` implementation and AI Hardware
-assets remain historical or example implementation state until a dedicated
-migration task moves them.
+with an independent Knowledge Base Instance model. Runtime Migration Phase B
+is implemented and review pending. The Git-managed AI Hardware Example
+Knowledge Base is available at
+[`examples/knowledge-bases/ai-hardware/`](examples/knowledge-bases/ai-hardware/);
+real user Runtime Data remains configurable and independently scoped.
 
 ## Project documents
 

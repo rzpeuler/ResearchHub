@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { parseYaml } from '../knowledge-access/yaml.ts'
-import type { IntelligenceType, LifecycleStatus } from '../knowledge-access/types.ts'
+import { parseYaml } from '../../../packages/shared/knowledge-base/yaml.ts'
+import type { IntelligenceType, LifecycleStatus } from '../../../packages/schemas/knowledge/index.ts'
 
 export interface RelationRule {
   type: string

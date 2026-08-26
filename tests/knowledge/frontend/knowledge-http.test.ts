@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { createKnowledgeServer } from '../serve.ts'
 
+const knowledgeBaseId = 'example-ai-hardware'
+
 test('Knowledge HTTP endpoints return production projections', async () => {
   const server = createKnowledgeServer()
   await new Promise<void>((resolve) => server.listen(0, resolve))
@@ -11,24 +13,30 @@ test('Knowledge HTTP endpoints return production projections', async () => {
   assert.ok(address && typeof address === 'object')
   const baseUrl = `http://127.0.0.1:${address.port}`
   try {
-    const directoryResponse = await fetch(`${baseUrl}/api/knowledge/directory`)
+    const directoryResponse = await fetch(`${baseUrl}/api/knowledge-bases/${knowledgeBaseId}/directory`)
     assert.equal(directoryResponse.status, 200)
-    const directory = await directoryResponse.json() as { industries: Array<{ id: string; graphs: Array<{ id: string }> }> }
+    const directoryEnvelope = await directoryResponse.json() as { knowledgeBaseId: string; revision: number; data: { industries: Array<{ id: string; graphs: Array<{ id: string }> }> } }
+    assert.equal(directoryEnvelope.knowledgeBaseId, knowledgeBaseId)
+    const directory = directoryEnvelope.data
     assert.equal(directory.industries.length, 31)
     assert.ok(directory.industries.find((industry) => industry.id === 'sw:electronics')?.graphs.some((graph) => graph.id === 'industry:ai-hardware'))
 
-    const graphResponse = await fetch(`${baseUrl}/api/knowledge/graph/${encodeURIComponent('industry:ai-hardware')}`)
+    const graphResponse = await fetch(`${baseUrl}/api/knowledge-bases/${knowledgeBaseId}/graph/${encodeURIComponent('industry:ai-hardware')}`)
     assert.equal(graphResponse.status, 200)
-    const graph = await graphResponse.json() as { root: { id: string; name: string }; children: Array<{ id: string; name: string; scaleInput?: unknown }>; relations: Array<{ source: string; target: string }> }
+    const graphEnvelope = await graphResponse.json() as { knowledgeBaseId: string; revision: number; data: { root: { id: string; name: string }; children: Array<{ id: string; name: string; scaleInput?: unknown }>; relations: Array<{ source: string; target: string }> } }
+    assert.equal(graphEnvelope.knowledgeBaseId, knowledgeBaseId)
+    const graph = graphEnvelope.data
     assert.equal(graph.root.id, 'industry:ai-hardware')
     assert.equal(graph.root.name, 'AI 硬件')
     assert.ok(graph.children.some((child) => child.id === 'segment:gpu'))
     assert.ok(graph.children.every((child) => child.scaleInput === undefined))
     assert.ok(graph.relations.every((relation) => relation.source && relation.target))
 
-    const entityResponse = await fetch(`${baseUrl}/api/knowledge/entity/${encodeURIComponent('segment:gpu')}`)
+    const entityResponse = await fetch(`${baseUrl}/api/knowledge-bases/${knowledgeBaseId}/entity/${encodeURIComponent('segment:gpu')}`)
     assert.equal(entityResponse.status, 200)
-    const entity = await entityResponse.json() as { entity: { id: string }; modules: Array<{ columns: string[] }>; relatedCompanies: Array<{ company: { id: string } }>; companyScale?: { entries: Array<{ company: { id: string }; revenue: number; period: string; unit: string; sourceRefs: string[] }> }; viewSections: string[] }
+    const entityEnvelope = await entityResponse.json() as { knowledgeBaseId: string; revision: number; data: { entity: { id: string }; modules: Array<{ columns: string[] }>; relatedCompanies: Array<{ company: { id: string } }>; companyScale?: { entries: Array<{ company: { id: string }; revenue: number; period: string; unit: string; sourceRefs: string[] }> }; viewSections: string[] } }
+    assert.equal(entityEnvelope.knowledgeBaseId, knowledgeBaseId)
+    const entity = entityEnvelope.data
     assert.equal(entity.entity.id, 'segment:gpu')
     assert.deepEqual(entity.modules[0]?.columns, ['产品', '厂商', '工作负载', '架构代际'])
     assert.deepEqual(entity.relatedCompanies.map(({ company }) => company.id), ['company:amd', 'company:nvidia'])
@@ -39,8 +47,10 @@ test('Knowledge HTTP endpoints return production projections', async () => {
     assert.ok(entity.viewSections.includes('company-scale'))
     assert.ok(!entity.viewSections.includes('market-share'))
 
-    const missingResponse = await fetch(`${baseUrl}/api/knowledge/entity/${encodeURIComponent('segment:missing')}`)
+    const missingResponse = await fetch(`${baseUrl}/api/knowledge-bases/${knowledgeBaseId}/entity/${encodeURIComponent('segment:missing')}`)
     assert.equal(missingResponse.status, 404)
+    const legacyResponse = await fetch(`${baseUrl}/api/knowledge/entity/${encodeURIComponent('segment:gpu')}`)
+    assert.equal(legacyResponse.status, 404)
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
   }

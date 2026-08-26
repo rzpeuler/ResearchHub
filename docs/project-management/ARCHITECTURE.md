@@ -40,9 +40,9 @@ directories or imply that a user Knowledge Base belongs in the repository.
 
 Each Knowledge Base is independently mutable, versioned, mountable, and
 scoped by an explicit `KnowledgeBaseHandle`. The repository-root `knowledge/`
-directory is not the current production user Knowledge boundary. Existing
-repository Knowledge assets remain historical or example implementation state
-until a later migration task reclassifies or moves them.
+directory is not the current production user Knowledge boundary and no longer
+exists as the current dataset. The Git-managed AI Hardware Example Knowledge
+Base is under `examples/knowledge-bases/ai-hardware/`.
 
 ## Responsibility boundaries
 

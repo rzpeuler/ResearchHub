@@ -1,5 +1,6 @@
 import { KnowledgeError } from './errors.ts'
 import { KnowledgeIndex } from '../../../packages/shared/knowledge-base/knowledge-index.ts'
+import type { KnowledgeBaseHandle } from '../../../packages/shared/knowledge-base/handle.ts'
 import type {
   EntitySearchResult,
   KnowledgeEntity,
@@ -14,11 +15,20 @@ import type {
 export { KnowledgeIndex } from '../../../packages/shared/knowledge-base/knowledge-index.ts'
 
 export interface KnowledgeAccessSkillOptions {
+  handle: KnowledgeBaseHandle
   index: KnowledgeIndex
 }
 
 export class KnowledgeAccessSkill {
   constructor(private readonly options: KnowledgeAccessSkillOptions) {}
+
+  get handle(): KnowledgeBaseHandle {
+    return this.options.handle
+  }
+
+  get knowledgeBaseId(): string {
+    return this.options.handle.knowledgeBaseId
+  }
 
   getEntity(entityId: string): KnowledgeEntity {
     const entity = this.options.index.entities.get(entityId)
@@ -78,4 +88,8 @@ export class KnowledgeAccessSkill {
     }
     return this.options.index.getSourcesFor(knowledgeItemId)
   }
+}
+
+export function createKnowledgeAccessSession(handle: KnowledgeBaseHandle, index: KnowledgeIndex): KnowledgeAccessSkill {
+  return new KnowledgeAccessSkill({ handle, index })
 }

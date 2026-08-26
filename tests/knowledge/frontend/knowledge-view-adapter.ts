@@ -1,5 +1,6 @@
-import { readFile } from 'node:fs/promises'
-import { parseYaml } from '../../../packages/skills/knowledge-access/yaml.ts'
+import { parseYaml } from '../../../packages/shared/knowledge-base/yaml.ts'
+import { readKnowledgeBaseTextResource } from '../../../packages/shared/knowledge-base/resource-reader.ts'
+import type { KnowledgeBaseHandle } from '../../../packages/shared/knowledge-base/handle.ts'
 import type {
   KnowledgeEntity,
   KnowledgeIntelligence,
@@ -109,9 +110,10 @@ export interface EntityDetailProjection {
 }
 
 export interface KnowledgeViewAdapterOptions {
+  handle: KnowledgeBaseHandle
   access: KnowledgeAccessSkill
-  taxonomyPath: string
-  viewPath: string
+  taxonomyRef: string
+  viewRef: string
 }
 
 function asStringArray(value: unknown): string[] {
@@ -219,11 +221,11 @@ export class KnowledgeViewAdapter {
 
   static async create(options: KnowledgeViewAdapterOptions): Promise<KnowledgeViewAdapter> {
     const [taxonomyText, viewText] = await Promise.all([
-      readFile(options.taxonomyPath, 'utf8'),
-      readFile(options.viewPath, 'utf8'),
+      readKnowledgeBaseTextResource(options.handle, options.taxonomyRef),
+      readKnowledgeBaseTextResource(options.handle, options.viewRef),
     ])
-    const taxonomy = parseYaml(taxonomyText, options.taxonomyPath)
-    const view = parseYaml(viewText, options.viewPath)
+    const taxonomy = parseYaml(taxonomyText, options.taxonomyRef)
+    const view = parseYaml(viewText, options.viewRef)
     return new KnowledgeViewAdapter(
       options.access,
       taxonomy && typeof taxonomy === 'object' ? taxonomy as TaxonomyAsset : {},

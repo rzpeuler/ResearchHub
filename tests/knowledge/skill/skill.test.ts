@@ -3,12 +3,13 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { KnowledgeAccessSkill } from '../../../packages/skills/knowledge-access/index.ts'
 import { KnowledgeLoader } from '../../../packages/skills/knowledge-access/loader.ts'
+import { createTestHandle } from '../test-handle.ts'
 
 const validRoot = fileURLToPath(new URL('../fixtures/valid/', import.meta.url))
 
 test('Knowledge Access Skill supports supply-chain and company queries', async () => {
   const index = await new KnowledgeLoader({ rootDir: validRoot }).load()
-  const skill = new KnowledgeAccessSkill({ index })
+  const skill = new KnowledgeAccessSkill({ handle: createTestHandle(validRoot), index })
 
   assert.equal(skill.getEntity('industry:ai-hardware').name, 'AI Hardware')
   assert.ok(skill.searchEntities('PCB').some((entity) => entity.id === 'segment:pcb-material'))

@@ -47,7 +47,7 @@ export function classifyKnowledgeAsset(relativePath: string, value: Record<strin
   if ((INTELLIGENCE_TYPES as readonly string[]).includes(type)) return 'intelligence'
   if ((MODULE_TYPES as readonly string[]).includes(type)) return 'module'
   if (typeof value.source === 'string' && typeof value.target === 'string') return 'relation'
-  if (typeof value.title === 'string' && typeof value.publisher === 'string') return 'source'
+  if (typeof value.title === 'string' && (typeof value.publisher === 'string' || value.publisher === null)) return 'source'
   return undefined
 }
 

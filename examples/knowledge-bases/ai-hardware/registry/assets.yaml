@@ -1,0 +1,216 @@
+company:amd:
+  type: entity
+  storageRef: entities/companies/amd.yaml
+company:foxconn-industrial-internet:
+  type: entity
+  storageRef: entities/companies/foxconn-industrial-internet.yaml
+company:hudian:
+  type: entity
+  storageRef: entities/companies/hudian.yaml
+company:langchao:
+  type: entity
+  storageRef: entities/companies/langchao.yaml
+company:micron:
+  type: entity
+  storageRef: entities/companies/micron.yaml
+company:nvidia:
+  type: entity
+  storageRef: entities/companies/nvidia.yaml
+company:samsung:
+  type: entity
+  storageRef: entities/companies/samsung.yaml
+company:scc:
+  type: entity
+  storageRef: entities/companies/scc.yaml
+company:shengyi-technology:
+  type: entity
+  storageRef: entities/companies/shengyi-technology.yaml
+company:sk-hynix:
+  type: entity
+  storageRef: entities/companies/sk-hynix.yaml
+fact:ai-server-architecture-upgrade-2024:
+  type: intelligence
+  storageRef: intelligence/facts/ai-server-architecture-upgrade-2024.yaml
+fact:amd-data-center-revenue-fy2025:
+  type: intelligence
+  storageRef: intelligence/facts/amd-data-center-revenue-fy2025.yaml
+fact:amd-total-revenue-fy2025:
+  type: intelligence
+  storageRef: intelligence/facts/amd-total-revenue-fy2025.yaml
+fact:foxconn-ai-server-growth-2024:
+  type: intelligence
+  storageRef: intelligence/facts/foxconn-ai-server-growth-2024.yaml
+fact:gpu-ai-compute-role:
+  type: intelligence
+  storageRef: intelligence/facts/gpu-ai-compute-role.yaml
+fact:nvidia-data-center-revenue-fy2025:
+  type: intelligence
+  storageRef: intelligence/facts/nvidia-data-center-revenue-fy2025.yaml
+fact:nvidia-rubin-release-2026:
+  type: intelligence
+  storageRef: intelligence/facts/nvidia-rubin-release-2026.yaml
+fact:nvidia-total-revenue-fy2025:
+  type: intelligence
+  storageRef: intelligence/facts/nvidia-total-revenue-fy2025.yaml
+fact:samsung-total-revenue-2024:
+  type: intelligence
+  storageRef: intelligence/facts/samsung-total-revenue-2024.yaml
+fact:shengyi-rigid-ccl-market-share-2023:
+  type: intelligence
+  storageRef: intelligence/facts/shengyi-rigid-ccl-market-share-2023.yaml
+forecast:data-center-electricity-demand-2030:
+  type: intelligence
+  storageRef: intelligence/forecasts/data-center-electricity-demand-2030.yaml
+industry:ai-hardware:
+  type: entity
+  storageRef: entities/industries/ai-hardware.yaml
+module:gpu-products:
+  type: module
+  storageRef: modules/comparison/gpu-products.yaml
+module:pcb-manufacturing-products:
+  type: module
+  storageRef: modules/comparison/pcb-manufacturing-products.yaml
+module:pcb-material-products:
+  type: module
+  storageRef: modules/comparison/pcb-material-products.yaml
+module:server-products:
+  type: module
+  storageRef: modules/comparison/server-products.yaml
+relation:ai-hardware-contains-data-center:
+  type: relation
+  storageRef: relations/supply-chain/ai-hardware-contains-data-center.yaml
+relation:ai-hardware-contains-gpu:
+  type: relation
+  storageRef: relations/supply-chain/ai-hardware-contains-gpu.yaml
+relation:ai-hardware-contains-hbm:
+  type: relation
+  storageRef: relations/supply-chain/ai-hardware-contains-hbm.yaml
+relation:ai-hardware-contains-liquid-cooling:
+  type: relation
+  storageRef: relations/supply-chain/ai-hardware-contains-liquid-cooling.yaml
+relation:ai-hardware-contains-optical-module:
+  type: relation
+  storageRef: relations/supply-chain/ai-hardware-contains-optical-module.yaml
+relation:ai-hardware-contains-pcb-manufacturing:
+  type: relation
+  storageRef: relations/supply-chain/ai-hardware-contains-pcb-manufacturing.yaml
+relation:ai-hardware-contains-pcb-material:
+  type: relation
+  storageRef: relations/supply-chain/ai-hardware-contains-pcb-material.yaml
+relation:ai-hardware-contains-server:
+  type: relation
+  storageRef: relations/supply-chain/ai-hardware-contains-server.yaml
+relation:amd-operates-in-gpu:
+  type: relation
+  storageRef: relations/company/amd-operates-in-gpu.yaml
+relation:data-center-contains-liquid-cooling:
+  type: relation
+  storageRef: relations/supply-chain/data-center-contains-liquid-cooling.yaml
+relation:data-center-contains-server:
+  type: relation
+  storageRef: relations/supply-chain/data-center-contains-server.yaml
+relation:foxconn-industrial-internet-operates-in-server:
+  type: relation
+  storageRef: relations/company/foxconn-industrial-internet-operates-in-server.yaml
+relation:hudian-operates-in-pcb-manufacturing:
+  type: relation
+  storageRef: relations/company/hudian-operates-in-pcb-manufacturing.yaml
+relation:langchao-operates-in-server:
+  type: relation
+  storageRef: relations/company/langchao-operates-in-server.yaml
+relation:micron-operates-in-hbm:
+  type: relation
+  storageRef: relations/company/micron-operates-in-hbm.yaml
+relation:nvidia-operates-in-gpu:
+  type: relation
+  storageRef: relations/company/nvidia-operates-in-gpu.yaml
+relation:samsung-operates-in-hbm:
+  type: relation
+  storageRef: relations/company/samsung-operates-in-hbm.yaml
+relation:scc-operates-in-pcb-manufacturing:
+  type: relation
+  storageRef: relations/company/scc-operates-in-pcb-manufacturing.yaml
+relation:server-contains-liquid-cooling:
+  type: relation
+  storageRef: relations/supply-chain/server-contains-liquid-cooling.yaml
+relation:server-depends-on-gpu:
+  type: relation
+  storageRef: relations/supply-chain/server-depends-on-gpu.yaml
+relation:server-depends-on-hbm:
+  type: relation
+  storageRef: relations/supply-chain/server-depends-on-hbm.yaml
+relation:shengyi-technology-operates-in-pcb-material:
+  type: relation
+  storageRef: relations/company/shengyi-technology-operates-in-pcb-material.yaml
+relation:sk-hynix-operates-in-hbm:
+  type: relation
+  storageRef: relations/company/sk-hynix-operates-in-hbm.yaml
+risk:data-center-grid-bottleneck:
+  type: intelligence
+  storageRef: intelligence/risks/data-center-grid-bottleneck.yaml
+segment:data-center:
+  type: entity
+  storageRef: entities/segments/data-center.yaml
+segment:gpu:
+  type: entity
+  storageRef: entities/segments/gpu.yaml
+segment:hbm:
+  type: entity
+  storageRef: entities/segments/hbm.yaml
+segment:liquid-cooling:
+  type: entity
+  storageRef: entities/segments/liquid-cooling.yaml
+segment:optical-module:
+  type: entity
+  storageRef: entities/segments/optical-module.yaml
+segment:pcb-manufacturing:
+  type: entity
+  storageRef: entities/segments/pcb-manufacturing.yaml
+segment:pcb-material:
+  type: entity
+  storageRef: entities/segments/pcb-material.yaml
+segment:server:
+  type: entity
+  storageRef: entities/segments/server.yaml
+source:amd-annual-report-2025:
+  type: source
+  storageRef: sources/amd-annual-report-2025.yaml
+source:foxconn-industrial-internet-annual-report-2024:
+  type: source
+  storageRef: sources/foxconn-industrial-internet-annual-report-2024.yaml
+source:hudian-annual-report-2024:
+  type: source
+  storageRef: sources/hudian-annual-report-2024.yaml
+source:iea-energy-and-ai-2025:
+  type: source
+  storageRef: sources/iea-energy-and-ai-2025.yaml
+source:langchao-annual-report-2024:
+  type: source
+  storageRef: sources/langchao-annual-report-2024.yaml
+source:micron-annual-report-2025:
+  type: source
+  storageRef: sources/micron-annual-report-2025.yaml
+source:nvidia-annual-report-2025:
+  type: source
+  storageRef: sources/nvidia-annual-report-2025.yaml
+source:nvidia-rubin-platform-2026:
+  type: source
+  storageRef: sources/nvidia-rubin-platform-2026.yaml
+source:samsung-annual-report-2024:
+  type: source
+  storageRef: sources/samsung-annual-report-2024.yaml
+source:scc-annual-report-2024:
+  type: source
+  storageRef: sources/scc-annual-report-2024.yaml
+source:shengyi-annual-report-2024:
+  type: source
+  storageRef: sources/shengyi-annual-report-2024.yaml
+source:sk-hynix-annual-report-2025:
+  type: source
+  storageRef: sources/sk-hynix-annual-report-2025.yaml
+trend:accelerated-server-electricity-growth:
+  type: intelligence
+  storageRef: intelligence/trends/accelerated-server-electricity-growth.yaml
+viewpoint:ai-hardware-2026:
+  type: intelligence
+  storageRef: intelligence/viewpoints/ai-hardware-2026.yaml

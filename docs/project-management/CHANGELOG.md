@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-B-001
+
+- Migrated the AI Hardware dataset to the Git-managed Example Knowledge Base
+  at `examples/knowledge-bases/ai-hardware/` with Schema 0.2 / Storage Format 1.
+- Converted the registry to canonical `assets.yaml`, removed legacy registry
+  files, and added the empty Raw registry without inventing raw assets.
+- Bound Access sessions to `KnowledgeBaseHandle`, added multi-KB isolation
+  coverage, and made Validation explicit, schema-aware, raw-ref-aware, and
+  independent of the Access Skill implementation.
+- Scoped Frontend Projection and HTTP by `knowledgeBaseId`, added safe
+  handle-relative resource reads, preserved projection parity, and rejected
+  legacy implicit endpoints.
+- No Write, ingestion, curation, raw archive mutation, or Migration Runner was
+  implemented.
+
 ## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-A-001-R2
 
 - Enforced canonical Registry key and loaded asset ID equality.

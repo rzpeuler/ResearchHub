@@ -18,17 +18,17 @@ Knowledge Architecture v0.2, Knowledge Base Instance Architecture v0.1,
 Storage Layout v0.2, Schema Versioning and Migration, Data Schema v0.2,
 Access/Validation/Curation contracts, Ingestion Workflow, Write Interface,
 Frontend Projection v0.2, Example KB Layout, and ADR-015 are design-complete
-and frozen. Runtime Migration Phase A is implemented and review pending. Phase
-B remains Planned / Pending. This phase is an engineering migration, not a new
+and frozen. Runtime Migration Phase A is accepted after Sol verification, and
+Phase B is implemented and review pending. This phase is an engineering migration, not a new
 architecture design exercise.
 
-The repository AI Hardware dataset remains in its current location until the
-approved migration work is implemented. It is not reclassified as user Runtime
-Data by documentation alone.
+The AI Hardware dataset is now a Git-managed Example Knowledge Base at
+`examples/knowledge-bases/ai-hardware/`. It is not user Runtime Data; real
+user KB roots remain configurable Runtime Data.
 
 ## Migration roadmap
 
-### Phase A — Source / Runtime ownership migration foundation — Implemented / Review Pending
+### Phase A — Source / Runtime ownership migration foundation — Accepted / Complete
 
 - Knowledge Base Manifest
 - explicit KnowledgeBaseHandle
@@ -39,15 +39,15 @@ Data by documentation alone.
 
 Phase A implementation and focused/default validation are complete. R1 closed
 the canonical Schema 0.2 Registry, read-only compatibility, and Source domain
-contract gaps. R2 closes Registry identity integrity, canonical Module runtime
-index derivation, and strict Source enums. Sol review is pending; no
-production dataset migration has been performed.
+contract gaps. R2 closed Registry identity integrity, canonical Module runtime
+index derivation, and strict Source enums. Sol verified Phase A.
 
-### Phase B — Existing Knowledge implementation migration — Planned / Pending
+### Phase B — Existing Knowledge implementation migration — Implemented / Review Pending
 
-- migrate the repository AI Hardware dataset to an example KB layout;
+- migrated the repository AI Hardware dataset to an example KB layout;
 - add KB scoping to Access Skill, Validation, and Frontend Projection;
-- preserve existing deterministic behavior and fixture coverage.
+- preserve existing deterministic behavior and fixture coverage;
+- expose scoped HTTP response envelopes and safe KB-relative view resources.
 
 ### Phase C — Knowledge mutation infrastructure
 
@@ -71,7 +71,7 @@ production dataset migration has been performed.
 - dry-run, staging, and validation contracts;
 - first real migration only when a breaking Schema version requires it.
 
-Each phase remains Planned or Pending Engineering until its implementation,
+Each not-yet-completed phase remains Planned or Pending Engineering until its implementation,
 focused tests, and default full validation are complete. Do not label the v0.2
 Runtime capabilities as implemented based on frozen documentation alone.
 

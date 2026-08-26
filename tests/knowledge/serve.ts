@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http'
 import { extname, join, normalize, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { KnowledgeAccessSkill } from '../../packages/skills/knowledge-access/index.ts'
-import { KnowledgeLoader } from '../../packages/skills/knowledge-access/loader.ts'
+import { KnowledgeBaseLoader } from '../../packages/shared/knowledge-base/knowledge-base-loader.ts'
 import { KnowledgeViewAdapter } from './frontend/knowledge-view-adapter.ts'
 
 const defaultRoot = resolve(process.cwd())
@@ -29,35 +29,41 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-export function createKnowledgeServer(root = defaultRoot): Server {
-  const productionRoot = resolve(root, 'knowledge')
-  const adapterPromise = new KnowledgeLoader({ rootDir: productionRoot }).load().then((index) => KnowledgeViewAdapter.create({
-    access: new KnowledgeAccessSkill({ index }),
-    taxonomyPath: resolve(productionRoot, 'taxonomy/sw-level-1.yaml'),
-    viewPath: resolve(productionRoot, 'views/ai-hardware-industry.yaml'),
-  }))
+export function createKnowledgeServer(root = defaultRoot, knowledgeBaseRoot = resolve(root, 'examples/knowledge-bases/ai-hardware')): Server {
+  const adapterPromise = new KnowledgeBaseLoader().mountAndLoad(knowledgeBaseRoot).then(({ handle, index }) => KnowledgeViewAdapter.create({
+    handle,
+    access: new KnowledgeAccessSkill({ handle, index }),
+    taxonomyRef: 'taxonomy/sw-level-1.yaml',
+    viewRef: 'views/ai-hardware-industry.yaml',
+  }).then((adapter) => ({ adapter, handle })))
 
   return createServer(async (request, response) => {
     const requestPath = decodeURIComponent((request.url || '/tests/knowledge/index.html').split('?')[0])
-    if (requestPath.startsWith('/api/knowledge/')) {
+    if (requestPath.startsWith('/api/knowledge-bases/')) {
       if (request.method !== 'GET') {
         writeJson(response, 405, { error: 'Method Not Allowed' })
         return
       }
       try {
-        const adapter = await adapterPromise
-        if (requestPath === '/api/knowledge/directory') {
-          writeJson(response, 200, adapter.getIndustryDirectoryProjection())
+        const match = requestPath.match(/^\/api\/knowledge-bases\/([^/]+)(?:\/(directory|graph|entity)(?:\/(.*))?)?$/)
+        const loaded = await adapterPromise
+        if (!match || decodeURIComponent(match[1]) !== loaded.handle.knowledgeBaseId) {
+          writeJson(response, 404, { error: 'Knowledge Base not found' })
           return
         }
-        const graphPrefix = '/api/knowledge/graph/'
-        if (requestPath.startsWith(graphPrefix)) {
-          writeJson(response, 200, adapter.getGraphProjection(requestPath.slice(graphPrefix.length)))
+        const kind = match[2]
+        const entityId = match[3]
+        const envelope = (data: unknown) => ({ knowledgeBaseId: loaded.handle.knowledgeBaseId, revision: loaded.handle.revision, data })
+        if (kind === 'directory') {
+          writeJson(response, 200, envelope(loaded.adapter.getIndustryDirectoryProjection()))
           return
         }
-        const entityPrefix = '/api/knowledge/entity/'
-        if (requestPath.startsWith(entityPrefix)) {
-          writeJson(response, 200, adapter.getEntityDetailProjection(requestPath.slice(entityPrefix.length)))
+        if (kind === 'graph' && entityId) {
+          writeJson(response, 200, envelope(loaded.adapter.getGraphProjection(entityId)))
+          return
+        }
+        if (kind === 'entity' && entityId) {
+          writeJson(response, 200, envelope(loaded.adapter.getEntityDetailProjection(entityId)))
           return
         }
         writeJson(response, 404, { error: 'Knowledge endpoint not found' })
@@ -65,6 +71,11 @@ export function createKnowledgeServer(root = defaultRoot): Server {
         const message = errorMessage(error)
         writeJson(response, message.includes('not found') || message.includes('Not found') ? 404 : 500, { error: message })
       }
+      return
+    }
+
+    if (requestPath.startsWith('/api/knowledge/')) {
+      writeJson(response, 404, { error: 'Legacy implicit Knowledge endpoint is not available' })
       return
     }
 

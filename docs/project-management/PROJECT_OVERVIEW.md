@@ -54,10 +54,11 @@ ResearchHub Runtime Data
   knowledge-bases/<kb-id>/
 ```
 
-The current architecture is Knowledge Architecture v0.2. Runtime migration
-is not implemented by this documentation task. The repository AI Hardware
-dataset remains historical or example implementation state until a later
-migration task.
+The current architecture is Knowledge Architecture v0.2. Runtime Migration
+Phase B is implemented and review pending. The AI Hardware Example Knowledge
+Base is stored at `examples/knowledge-bases/ai-hardware/`; it is Git-managed
+example data, not user Runtime Data. User KBs remain configurable under the
+Runtime Data Root.
 
 ## Primary references
 

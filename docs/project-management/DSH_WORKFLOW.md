@@ -7,7 +7,8 @@
 4. Keep runtime execution and LLM reasoning in DeepSeek Harness.
 5. Keep external access in Plugins and research methodology in Skills.
 6. Treat Memory and Evaluation as compatibility paths only. Keep new durable
-   knowledge under `knowledge/`, and new reports, objects, and provenance
-   under `research-output/`.
+   Knowledge in explicitly scoped Knowledge Base Runtime Data (the Git-managed
+   Example KB is under `examples/knowledge-bases/`), and keep new reports,
+   objects, and provenance under `research-output/`.
 7. Run TypeScript compilation, focused tests, and `npm test` for code changes.
 8. Update the decision log or ADR when a boundary changes.

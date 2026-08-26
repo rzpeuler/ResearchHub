@@ -13,7 +13,7 @@ test('manifest-first KnowledgeBaseLoader mounts and loads a minimal v0.2 KB', as
     assert.equal(handle.schemaVersion, '0.2')
     assert.equal(index.entities.get('segment:gpu')?.name, 'GPU')
     assert.equal(index.modules.has('module:gpu-products'), true)
-    const access = new KnowledgeAccessSkill({ index })
+    const access = new KnowledgeAccessSkill({ handle, index })
     assert.equal(access.getModules('segment:gpu')[0]?.id, 'module:gpu-products')
     assert.equal(access.getComparison('segment:gpu', 'product-comparison')[0]?.id, 'module:gpu-products')
   } finally {

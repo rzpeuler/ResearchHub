@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { KnowledgeLoader } from '../../../packages/skills/knowledge-access/loader.ts'
+import { KnowledgeBaseLoader } from '../../../packages/shared/knowledge-base/knowledge-base-loader.ts'
 import { RELATION_TYPES } from '../../../packages/skills/knowledge-access/types.ts'
 import { KnowledgeValidationSkill } from '../../../packages/skills/knowledge-validation/index.ts'
+import { createTestHandle } from '../test-handle.ts'
 
 async function makeRegistryRoot(registry: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-knowledge-registry-'))
@@ -53,7 +55,8 @@ test('registry validation reports missing, mismatch, duplicate, and unsafe entri
     path: ../outside.yaml
 `)
   try {
-    const report = await new KnowledgeValidationSkill(new KnowledgeLoader({ rootDir: root })).validateKnowledge()
+    const loader = new KnowledgeBaseLoader()
+    const report = await new KnowledgeValidationSkill({ loader }).validateKnowledgeBase(createTestHandle(root))
     assert.equal(report.status, 'failed')
     assert.ok(report.errors.some((error) => error.code === 'REGISTRY_DUPLICATE_ID'))
     assert.ok(report.errors.some((error) => error.code === 'REGISTRY_ID_MISMATCH'))
@@ -74,7 +77,8 @@ test('canonical relation vocabulary and intelligence field rules are enforced', 
   try {
     await writeFile(join(root, 'legacy-relation.yaml'), 'id: relation:legacy\ntype: supplies\nsource: company:a\ntarget: segment:gpu\n')
     await writeFile(join(root, 'incomplete-forecast.yaml'), 'id: forecast:incomplete\ntype: forecast\nentityRefs:\n  - segment:gpu\n')
-    const report = await new KnowledgeValidationSkill(new KnowledgeLoader({ rootDir: root })).validateKnowledge()
+    const loader = new KnowledgeBaseLoader()
+    const report = await new KnowledgeValidationSkill({ loader }).validateKnowledgeBase(createTestHandle(root))
     assert.ok(report.errors.some((error) => error.code === 'SCHEMA_RELATION_TYPE'))
     assert.ok(report.errors.some((error) => error.code === 'INTELLIGENCE_REQUIRED_FIELD'))
   } finally {
@@ -108,7 +112,8 @@ test('Module Registry validates entity/module references, duplicate bindings, an
   - entityId: segment:other
     moduleIds: ["module:gpu-products"]
 `)
-    const report = await new KnowledgeValidationSkill(new KnowledgeLoader({ rootDir: root })).validateKnowledge('module')
+    const loader = new KnowledgeBaseLoader()
+    const report = await new KnowledgeValidationSkill({ loader }).validateKnowledgeBase(createTestHandle(root), 'module')
     assert.equal(report.status, 'failed')
     assert.ok(report.errors.some((error) => error.code === 'MODULE_REGISTRY_DUPLICATE_BINDING'))
     assert.ok(report.errors.some((error) => error.code === 'MODULE_REGISTRY_UNKNOWN_ENTITY'))

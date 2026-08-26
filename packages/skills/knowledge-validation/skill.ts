@@ -1,7 +1,9 @@
 import { relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { KnowledgeLoader } from '../knowledge-access/loader.ts'
-import { ENTITY_TYPES, INTELLIGENCE_TYPES, LIFECYCLE_STATUSES, MODULE_TYPES, RELATION_TYPES } from '../knowledge-access/types.ts'
+import { KnowledgeBaseLoader } from '../../../packages/shared/knowledge-base/knowledge-base-loader.ts'
+import type { KnowledgeBaseHandle } from '../../../packages/shared/knowledge-base/handle.ts'
+import { readKnowledgeBaseYamlResource } from '../../../packages/shared/knowledge-base/resource-reader.ts'
+import { ENTITY_TYPES, INTELLIGENCE_TYPES, LIFECYCLE_STATUSES, MODULE_TYPES, RELATION_TYPES, SOURCE_RELIABILITIES, SOURCE_TYPES } from '../../../packages/schemas/knowledge/index.ts'
 import type {
   KnowledgeAssetCollection,
   KnowledgeEntity,
@@ -10,7 +12,7 @@ import type {
   KnowledgeRelation,
   KnowledgeSource,
   LoadedAsset,
-} from '../knowledge-access/types.ts'
+} from '../../../packages/shared/knowledge-base/types.ts'
 import { KnowledgeRuleConfigLoader } from './rules.ts'
 import type { RelationRule } from './rules.ts'
 import type { ValidationDiagnostic, ValidationReport, ValidationScope } from './types.ts'
@@ -35,16 +37,17 @@ function present(value: unknown): boolean {
 export class KnowledgeValidationSkill {
   private readonly ruleLoader: KnowledgeRuleConfigLoader
 
-  constructor(private readonly loader: KnowledgeLoader) {
+  constructor(private readonly options: { loader: KnowledgeBaseLoader }) {
     this.ruleLoader = new KnowledgeRuleConfigLoader(fileURLToPath(new URL('./rules', import.meta.url)))
   }
 
-  async validateKnowledge(scope: ValidationScope = 'all'): Promise<ValidationReport> {
+  async validateKnowledgeBase(handle: KnowledgeBaseHandle, scope: ValidationScope = 'all'): Promise<ValidationReport> {
     let assets: KnowledgeAssetCollection
     let rules
     try {
-      assets = await this.loader.readAssets()
       rules = await this.ruleLoader.load()
+      if (scope === 'manifest') return this.report(scope, await this.validateManifest(handle))
+      assets = await this.options.loader.readAssets(handle)
     } catch (error) {
       const diagnostic: ValidationDiagnostic = {
         code: 'PARSE_ERROR', severity: 'error', message: error instanceof Error ? error.message : String(error),
@@ -53,6 +56,7 @@ export class KnowledgeValidationSkill {
     }
 
     const diagnostics: ValidationDiagnostic[] = []
+    if (scope === 'all') diagnostics.push(...await this.validateManifest(handle))
     const allIds = new Map<string, LoadedAsset>()
     const entities = new Map<string, KnowledgeEntity>()
     const sources = new Map<string, KnowledgeSource>()
@@ -81,7 +85,7 @@ export class KnowledgeValidationSkill {
         if (group === 'relation') this.validateRelationSchema(diagnostics, item as LoadedAsset<KnowledgeRelation>, rules.lifecycleStatuses)
         if (group === 'intelligence') this.validateIntelligence(diagnostics, item as LoadedAsset<KnowledgeIntelligence>, rules.intelligence, rules.lifecycleStatuses)
         if (group === 'module') this.validateModule(diagnostics, item as LoadedAsset<KnowledgeModule>, rules.lifecycleStatuses)
-        if (group === 'source') this.validateSource(diagnostics, item as LoadedAsset<KnowledgeSource>, rules.lifecycleStatuses)
+        if (group === 'source') this.validateSource(diagnostics, item as LoadedAsset<KnowledgeSource>, rules.lifecycleStatuses, handle.schemaVersion)
         if (group === 'entity' || group === 'relation' || group === 'module') this.validateSourceReferences(diagnostics, item, sources)
       }
     }
@@ -95,7 +99,8 @@ export class KnowledgeValidationSkill {
       }
       this.validateModuleRegistry(diagnostics, assets, entities, modules)
     }
-    if (scope === 'all') this.validateRegistry(diagnostics, assets, allIds)
+    if (scope === 'all' || scope === 'registry') this.validateRegistry(diagnostics, assets, allIds)
+    if (scope === 'all' || scope === 'raw') diagnostics.push(...await this.validateRaw(handle, assets.sources))
     return this.report(scope, diagnostics)
   }
 
@@ -176,8 +181,20 @@ export class KnowledgeValidationSkill {
     }
   }
 
-  private validateSource(diagnostics: ValidationDiagnostic[], item: LoadedAsset<KnowledgeSource>, lifecycleStatuses: string[]): void {
-    for (const field of ['title', 'publisher', 'publishedAt']) if (typeof item.value[field] !== 'string' || !item.value[field]) this.add(diagnostics, 'SOURCE_SCHEMA', `Source ${field} is required`, item, 'error')
+  private validateSource(diagnostics: ValidationDiagnostic[], item: LoadedAsset<KnowledgeSource>, lifecycleStatuses: string[], schemaVersion: string): void {
+    if (schemaVersion === '0.2') {
+      if (typeof item.value.title !== 'string' || item.value.title.trim() === '') this.add(diagnostics, 'SOURCE_SCHEMA', 'Source title is required', item, 'error')
+      if (item.value.publisher !== null && item.value.publisher !== undefined && typeof item.value.publisher !== 'string') this.add(diagnostics, 'SOURCE_SCHEMA', 'Source publisher must be string or null', item, 'error')
+      if (item.value.institution !== null && item.value.institution !== undefined && typeof item.value.institution !== 'string') this.add(diagnostics, 'SOURCE_SCHEMA', 'Source institution must be string or null', item, 'error')
+      if (item.value.author !== null && item.value.author !== undefined && typeof item.value.author !== 'string') this.add(diagnostics, 'SOURCE_SCHEMA', 'Source author must be string or null', item, 'error')
+      if (item.value.publishedAt !== null && typeof item.value.publishedAt !== 'string') this.add(diagnostics, 'SOURCE_SCHEMA', 'Source publishedAt must be string or null', item, 'error')
+      if (item.value.url !== null && item.value.url !== undefined && typeof item.value.url !== 'string') this.add(diagnostics, 'SOURCE_SCHEMA', 'Source url must be string or null', item, 'error')
+      if (item.value.sourceType !== undefined && !SOURCE_TYPES.includes(item.value.sourceType as never)) this.add(diagnostics, 'SOURCE_SCHEMA', `Unsupported sourceType: ${String(item.value.sourceType)}`, item, 'error')
+      if (item.value.sourceReliability !== undefined && !SOURCE_RELIABILITIES.includes(item.value.sourceReliability as never)) this.add(diagnostics, 'SOURCE_SCHEMA', `Unsupported sourceReliability: ${String(item.value.sourceReliability)}`, item, 'error')
+      if (item.value.rawRefs !== undefined && !asStringArray(item.value.rawRefs)) this.add(diagnostics, 'SOURCE_RAW_REFS_SCHEMA', 'rawRefs must be a string array', item, 'error')
+    } else {
+      for (const field of ['title', 'publisher', 'publishedAt']) if (typeof item.value[field] !== 'string' || !item.value[field]) this.add(diagnostics, 'SOURCE_SCHEMA', `Source ${field} is required`, item, 'error')
+    }
     this.validateLifecycle(diagnostics, item, lifecycleStatuses)
   }
 
@@ -198,14 +215,15 @@ export class KnowledgeValidationSkill {
     for (const entry of assets.registry) {
       if (ids.has(entry.id)) diagnostics.push({ code: 'REGISTRY_DUPLICATE_ID', severity: 'error', message: `Duplicate Registry ID: ${entry.id}` })
       ids.add(entry.id)
-      const previousId = paths.get(entry.path)
-      if (previousId && previousId !== entry.id) diagnostics.push({ code: 'REGISTRY_CONFLICTING_PATH', severity: 'error', message: `Registry path is assigned to multiple IDs: ${entry.path}` })
-      paths.set(entry.path, entry.id)
-      const normalized = entry.path.replaceAll('\\', '/')
-      const resolvedPath = resolve(assets.rootDir, entry.path)
+      const storageRef = entry.storageRef ?? entry.path
+      const previousId = paths.get(storageRef)
+      if (previousId && previousId !== entry.id) diagnostics.push({ code: 'REGISTRY_CONFLICTING_PATH', severity: 'error', message: `Registry path is assigned to multiple IDs: ${storageRef}` })
+      paths.set(storageRef, entry.id)
+      const normalized = storageRef.replaceAll('\\', '/')
+      const resolvedPath = resolve(assets.rootDir, storageRef)
       const relativePath = relative(resolve(assets.rootDir), resolvedPath)
-      if (relativePath === '..' || relativePath.startsWith(`..${sep}`) || normalized.startsWith('../') || normalized.includes('/../')) {
-        diagnostics.push({ code: 'REGISTRY_UNSAFE_PATH', severity: 'error', message: `Registry path escapes Knowledge root: ${entry.path}` })
+      if (relativePath === '..' || relativePath.startsWith(`..${sep}`) || normalized.startsWith('../') || normalized.includes('/../') || /^[A-Za-z]:[\\/]/.test(storageRef)) {
+        diagnostics.push({ code: 'REGISTRY_UNSAFE_PATH', severity: 'error', message: `Registry path escapes Knowledge root: ${storageRef}` })
         continue
       }
       const loaded = loadedByPath.get(normalized)
@@ -217,6 +235,59 @@ export class KnowledgeValidationSkill {
       if (loaded.kind !== entry.type) diagnostics.push({ code: 'REGISTRY_TYPE_MISMATCH', severity: 'error', message: `Registry type does not match loaded asset: ${entry.id}` })
     }
     void allIds
+  }
+
+  private async validateManifest(handle: KnowledgeBaseHandle): Promise<ValidationDiagnostic[]> {
+    const manifestPath = resolve(handle.rootRef, 'manifest.yaml')
+    let value: unknown
+    try {
+      value = await readKnowledgeBaseYamlResource(handle, 'manifest.yaml')
+    } catch (error) {
+      if ((error as { code?: string }).code === 'StorageError' && handle.schemaVersion === '0.1') return []
+      return [{ code: 'MANIFEST_PARSE_ERROR', severity: 'error', message: error instanceof Error ? error.message : String(error), filePath: manifestPath }]
+    }
+    if (!isRecord(value)) return [{ code: 'MANIFEST_SCHEMA', severity: 'error', message: 'Manifest must be an object', filePath: manifestPath }]
+    const diagnostics: ValidationDiagnostic[] = []
+    if (value.knowledgeBaseId !== handle.knowledgeBaseId) diagnostics.push({ code: 'MANIFEST_ID_MISMATCH', severity: 'error', message: 'Manifest knowledgeBaseId does not match mounted handle', filePath: manifestPath })
+    if (value.schemaVersion !== handle.schemaVersion) diagnostics.push({ code: 'MANIFEST_SCHEMA_VERSION_MISMATCH', severity: 'error', message: 'Manifest schemaVersion does not match mounted handle', filePath: manifestPath })
+    if (value.storageFormatVersion !== handle.storageFormatVersion) diagnostics.push({ code: 'MANIFEST_STORAGE_VERSION_MISMATCH', severity: 'error', message: 'Manifest storageFormatVersion does not match mounted handle', filePath: manifestPath })
+    if (typeof value.revision !== 'number' || !Number.isInteger(value.revision) || value.revision < 0) diagnostics.push({ code: 'MANIFEST_REVISION', severity: 'error', message: 'Manifest revision must be a non-negative integer', filePath: manifestPath })
+    if (!['active', 'archived'].includes(String(value.status))) diagnostics.push({ code: 'MANIFEST_STATUS', severity: 'error', message: 'Manifest status is invalid', filePath: manifestPath })
+    for (const field of ['createdAt', 'updatedAt']) if (typeof value[field] !== 'string' || Number.isNaN(Date.parse(value[field]))) diagnostics.push({ code: 'MANIFEST_TIMESTAMP', severity: 'error', message: `Manifest ${field} must be a valid ISO datetime`, filePath: manifestPath })
+    return diagnostics
+  }
+
+  private async validateRaw(handle: KnowledgeBaseHandle, sources: LoadedAsset<KnowledgeSource>[]): Promise<ValidationDiagnostic[]> {
+    if (handle.schemaVersion !== '0.2') return []
+    const rawPath = resolve(handle.rootRef, 'registry/raw.yaml')
+    let value: unknown
+    try {
+      value = await readKnowledgeBaseYamlResource(handle, 'registry/raw.yaml')
+    } catch (error) {
+      return [{ code: 'RAW_REGISTRY_PARSE_ERROR', severity: 'error', message: error instanceof Error ? error.message : String(error), filePath: rawPath }]
+    }
+    if (!isRecord(value)) return [{ code: 'RAW_REGISTRY_SCHEMA', severity: 'error', message: 'Raw registry must be an object map', filePath: rawPath }]
+    const diagnostics: ValidationDiagnostic[] = []
+    for (const [rawId, entry] of Object.entries(value)) {
+      if (!isRecord(entry) || typeof entry.storageRef !== 'string' || entry.storageRef.trim() === '') {
+        diagnostics.push({ code: 'RAW_REGISTRY_SCHEMA', severity: 'error', message: `Raw registry entry must contain storageRef: ${rawId}`, filePath: rawPath })
+        continue
+      }
+      const storageRef = entry.storageRef
+      const resolvedPath = resolve(handle.rootRef, storageRef)
+      const relativePath = relative(resolve(handle.rootRef), resolvedPath).replaceAll('\\', '/')
+      if (relativePath === '..' || relativePath.startsWith('../') || /^[A-Za-z]:[\\/]/.test(storageRef)) diagnostics.push({ code: 'RAW_REGISTRY_UNSAFE_PATH', severity: 'error', message: `Raw registry path escapes Knowledge root: ${storageRef}`, filePath: rawPath })
+    }
+    const rawIds = new Set(Object.keys(value))
+    for (const source of sources) {
+      if (!source.value.rawRefs) continue
+      if (!asStringArray(source.value.rawRefs)) {
+        diagnostics.push({ code: 'SOURCE_RAW_REFS_SCHEMA', severity: 'error', message: 'rawRefs must be a string array', assetId: source.value.id, filePath: source.filePath })
+        continue
+      }
+      for (const rawRef of source.value.rawRefs) if (!rawIds.has(rawRef)) diagnostics.push({ code: 'RAW_REF_MISSING', severity: 'error', message: `Source rawRef does not exist: ${rawRef}`, assetId: source.value.id, filePath: source.filePath })
+    }
+    return diagnostics
   }
 
   private add(diagnostics: ValidationDiagnostic[], code: string, message: string, item: LoadedAsset, severity: 'error' | 'warning' | 'info'): void {

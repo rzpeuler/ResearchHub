@@ -2,17 +2,20 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { KnowledgeAccessSkill } from '../../../packages/skills/knowledge-access/index.ts'
-import { KnowledgeLoader } from '../../../packages/skills/knowledge-access/loader.ts'
+import { KnowledgeBaseLoader } from '../../../packages/shared/knowledge-base/knowledge-base-loader.ts'
+import { readKnowledgeBaseTextResource } from '../../../packages/shared/knowledge-base/resource-reader.ts'
 import { buildCompanyScaleProjection, buildSegmentScaleInput, KnowledgeViewAdapter } from './knowledge-view-adapter.ts'
 
-const knowledgeRoot = fileURLToPath(new URL('../../../knowledge/', import.meta.url))
+const knowledgeRoot = fileURLToPath(new URL('../../../examples/knowledge-bases/ai-hardware/', import.meta.url))
 
 async function createAdapter(): Promise<KnowledgeViewAdapter> {
-  const access = new KnowledgeAccessSkill({ index: await new KnowledgeLoader({ rootDir: knowledgeRoot }).load() })
+  const { handle, index } = await new KnowledgeBaseLoader().mountAndLoad(knowledgeRoot)
+  const access = new KnowledgeAccessSkill({ handle, index })
   return KnowledgeViewAdapter.create({
+    handle,
     access,
-    taxonomyPath: fileURLToPath(new URL('../../../knowledge/taxonomy/sw-level-1.yaml', import.meta.url)),
-    viewPath: fileURLToPath(new URL('../../../knowledge/views/ai-hardware-industry.yaml', import.meta.url)),
+    taxonomyRef: 'taxonomy/sw-level-1.yaml',
+    viewRef: 'views/ai-hardware-industry.yaml',
   })
 }
 
@@ -48,16 +51,18 @@ test('segment scale projection reads active market-size Facts and excludes forec
 })
 
 test('GraphProjection attaches raw segment scale input without frontend calculations', async () => {
-  const access = new KnowledgeAccessSkill({ index: await new KnowledgeLoader({ rootDir: knowledgeRoot }).load() })
+  const { handle, index } = await new KnowledgeBaseLoader().mountAndLoad(knowledgeRoot)
+  const access = new KnowledgeAccessSkill({ handle, index })
   const originalGetIntelligence = access.getIntelligence.bind(access)
   access.getIntelligence = (entityId: string) => entityId === 'segment:gpu' ? [{
     id: 'fact:gpu-market-size-fy2025', type: 'fact', entityRefs: ['segment:gpu'], metric: 'market-size',
     value: 250, period: 'FY2025', unit: 'USD billion', sourceRefs: ['source:gpu-market'], confidence: 0.95, lifecycle: { status: 'active' },
   }] : originalGetIntelligence(entityId)
   const adapter = await KnowledgeViewAdapter.create({
+    handle,
     access,
-    taxonomyPath: fileURLToPath(new URL('../../../knowledge/taxonomy/sw-level-1.yaml', import.meta.url)),
-    viewPath: fileURLToPath(new URL('../../../knowledge/views/ai-hardware-industry.yaml', import.meta.url)),
+    taxonomyRef: 'taxonomy/sw-level-1.yaml',
+    viewRef: 'views/ai-hardware-industry.yaml',
   })
   const gpu = adapter.getGraphProjection('industry:ai-hardware').children.find((child) => child.id === 'segment:gpu')
   assert.deepEqual(gpu?.scaleInput, { value: 250, period: 'FY2025', unit: 'USD billion', sourceRefs: ['source:gpu-market'] })
@@ -146,4 +151,10 @@ test('production human-readable names and research content are Chinese-first', a
   assert.match(industry.entity.description || '', /[\u4e00-\u9fff]/)
   assert.ok(viewpoint?.bullishPoints?.every((point) => /[\u4e00-\u9fff]/.test(String(point))))
   assert.ok(viewpoint?.bearishPoints?.every((point) => /[\u4e00-\u9fff]/.test(String(point))))
+})
+
+test('frontend resources are constrained to the mounted Knowledge Base root', async () => {
+  const { handle } = await new KnowledgeBaseLoader().mountAndLoad(knowledgeRoot)
+  await assert.rejects(() => readKnowledgeBaseTextResource(handle, '../outside.yaml'), /escapes Knowledge Base root/)
+  await assert.rejects(() => readKnowledgeBaseTextResource(handle, 'C:/outside.yaml'), /Absolute Knowledge resource is not allowed/)
 })

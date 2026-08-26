@@ -4,6 +4,9 @@ import { join } from 'node:path'
 
 export interface RuntimeManifestOverrides {
   knowledgeBaseId?: string
+  entityId?: string
+  entityType?: string
+  entityName?: string
   schemaVersion?: string
   storageFormatVersion?: string
   status?: string
@@ -23,9 +26,10 @@ status: ${overrides.status ?? 'active'}
 createdAt: 2026-08-26T00:00:00.000Z
 updatedAt: 2026-08-26T00:00:00.000Z
 `)
-  await writeFile(join(root, 'entities', 'gpu.yaml'), `id: segment:gpu
-type: segment
-name: GPU
+  const entityId = overrides.entityId ?? 'segment:gpu'
+  await writeFile(join(root, 'entities', 'gpu.yaml'), `id: ${entityId}
+type: ${overrides.entityType ?? 'segment'}
+name: ${overrides.entityName ?? 'GPU'}
 `)
   await writeFile(join(root, 'modules', 'gpu-products.yaml'), `id: module:gpu-products
 type: comparison
@@ -35,7 +39,7 @@ columns:
   - product
 rows: []
 `)
-  await writeFile(join(root, 'registry', 'assets.yaml'), `segment:gpu:
+  await writeFile(join(root, 'registry', 'assets.yaml'), `${entityId}:
   type: entity
   storageRef: entities/gpu.yaml
 module:gpu-products:
