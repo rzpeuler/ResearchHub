@@ -1,19 +1,2 @@
-export type KnowledgeErrorCode =
-  | 'NotFound'
-  | 'ParseError'
-  | 'SchemaError'
-  | 'InvalidReference'
-  | 'InvalidRelation'
-  | 'InvalidLifecycle'
-  | 'UnknownModule'
-
-export class KnowledgeError extends Error {
-  constructor(
-    public readonly code: KnowledgeErrorCode,
-    message: string,
-    public readonly filePath?: string,
-  ) {
-    super(message)
-    this.name = `Knowledge${code}Error`
-  }
-}
+export { KnowledgeError } from '../../../packages/shared/knowledge-base/errors.ts'
+export type { KnowledgeErrorCode } from '../../../packages/shared/knowledge-base/errors.ts'

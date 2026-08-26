@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-A-001
+
+- Established canonical Knowledge schema contracts for manifests and durable
+  domain types.
+- Added runtime-neutral Knowledge Base Handle, Data Root, mount registry,
+  compatibility resolver, Schema Adapter contract, and version-aware Loader.
+- Extracted YAML, asset Loader, Error, and KnowledgeIndex infrastructure from
+  the Access Skill while preserving legacy imports and behavior.
+- Added focused infrastructure tests to the default network-free test suite.
+- No production Knowledge dataset, frontend semantics, Write, ingestion, or
+  Migration Runner was changed.
+
 ## 2026-08-26 - KNOWLEDGE-ARCHITECTURE-002-DOC-SYNC-001-R1
 
 - Clarified historical/current wording in CURRENT_STATUS.

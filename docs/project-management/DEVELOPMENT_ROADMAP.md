@@ -18,8 +18,9 @@ Knowledge Architecture v0.2, Knowledge Base Instance Architecture v0.1,
 Storage Layout v0.2, Schema Versioning and Migration, Data Schema v0.2,
 Access/Validation/Curation contracts, Ingestion Workflow, Write Interface,
 Frontend Projection v0.2, Example KB Layout, and ADR-015 are design-complete
-and frozen. Runtime implementation is pending. This phase is an engineering
-migration, not a new architecture design exercise.
+and frozen. Runtime Migration Phase A is implemented and review pending. Phase
+B remains Planned / Pending. This phase is an engineering migration, not a new
+architecture design exercise.
 
 The repository AI Hardware dataset remains in its current location until the
 approved migration work is implemented. It is not reclassified as user Runtime
@@ -27,7 +28,7 @@ Data by documentation alone.
 
 ## Migration roadmap
 
-### Phase A — Source / Runtime ownership migration foundation
+### Phase A — Source / Runtime ownership migration foundation — Implemented / Review Pending
 
 - Knowledge Base Manifest
 - explicit KnowledgeBaseHandle
@@ -36,7 +37,10 @@ Data by documentation alone.
 - Schema Adapter
 - KB-scoped Registry
 
-### Phase B — Existing Knowledge implementation migration
+Phase A implementation and focused/default validation are complete. Sol review
+is pending; no production dataset migration has been performed.
+
+### Phase B — Existing Knowledge implementation migration — Planned / Pending
 
 - migrate the repository AI Hardware dataset to an example KB layout;
 - add KB scoping to Access Skill, Validation, and Frontend Projection;

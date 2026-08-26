@@ -13,11 +13,35 @@ separates ResearchHub Source from user-owned Knowledge Base Runtime Data:
 - Workflow controls ingestion and update orchestration.
 - Access and Validation remain deterministic; Write accepts only validated
   changes; schema migration is explicit and never implicit on mount or ingest.
-- The current AI Hardware repository dataset has not been migrated. Runtime
-  implementation is pending; this task is documentation/governance only.
+- Runtime Migration Phase A is implemented and review pending. The current AI
+  Hardware repository dataset has not been migrated; Phase B remains pending.
 
-The implementation and dataset sections below are historical execution records
-and must not be read as evidence that the v0.2 runtime migration is complete.
+The older implementation and dataset sections below are historical execution
+records. The current Phase A status is recorded in the next section.
+
+## KNOWLEDGE-RUNTIME-MIGRATION-A-001
+
+Knowledge Base Runtime Architecture Migration Phase A is implemented and
+awaiting Sol verification. The runtime-neutral foundation now includes:
+
+- canonical Knowledge manifest and durable domain contracts;
+- explicit `KnowledgeBaseHandle`, configured Runtime Data Root resolution, and
+  in-memory mount registry;
+- schema/storage compatibility resolution without automatic migration;
+- version-aware manifest-first loading through a Schema Adapter contract;
+- extracted shared YAML, asset Loader, Error, and `KnowledgeIndex` infrastructure;
+- thin compatibility exports preserving the existing Knowledge Loader, Index,
+  YAML, and Access Skill behavior.
+
+Phase B remains Planned / Pending and includes:
+
+- explicit Knowledge Base scoping for Access Skill;
+- Knowledge Base scoping for Validation;
+- Knowledge Base scoping for Frontend Projection;
+- migration of the AI Hardware dataset to an Example Knowledge Base layout.
+
+Phase A does not implement Write, Raw ingestion, Research Report ingestion, or
+a Migration Runner.
 
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure
 
