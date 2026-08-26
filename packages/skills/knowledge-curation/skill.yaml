@@ -1,0 +1,20 @@
+name: knowledge-curation
+version: 0.1.0
+type: research-skill
+description: Runtime-neutral LLM-assisted Knowledge curation with deterministic structured-output validation.
+status: active
+model_port: KnowledgeCurationModel
+operations:
+  - assess_source
+  - filter_relevance
+  - extract_candidates
+  - assess_admission
+  - map_candidates
+  - analyze_conflicts
+  - detect_schema_gaps
+non_goals:
+  - autonomous Knowledge maintenance
+  - background ingestion
+  - automatic schema evolution
+  - truth verification
+  - cross-KB reasoning

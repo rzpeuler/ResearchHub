@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-INGESTION-D1-CURATION-001
+
+- Added the runtime-neutral Knowledge Curation Skill with a narrow injected
+  `KnowledgeCurationModel` port and seven explicit curation operations.
+- Added deterministic validation for Source Assessment, relevance decisions,
+  atomic typed candidates, admission judgments, Schema Mapping, conflict
+  decisions, and Schema Gap proposals.
+- Bound trusted workflow scope, Raw provenance, chunk membership and locators,
+  intermediate IDs, and supplied Knowledge references outside model output;
+  durable Knowledge IDs are never model-controlled.
+- Added prompt-boundary hygiene, a deterministic Scripted test model, focused
+  network-free tests, and npm test integration. D1 does not implement Workflow,
+  persistence, schema mutation, or real LLM runtime wiring.
+
 ## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-C-001-R2
 
 - Added one shared deterministic same-Knowledge-Base mutation lock for Raw

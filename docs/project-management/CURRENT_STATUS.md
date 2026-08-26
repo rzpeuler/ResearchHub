@@ -14,7 +14,8 @@ separates ResearchHub Source from user-owned Knowledge Base Runtime Data:
 - Access and Validation remain deterministic; Write accepts only validated
   changes; schema migration is explicit and never implicit on mount or ingest.
 - Runtime Migration Phase A and Phase B are accepted after Sol verification,
-  and Phase C is implemented and review pending. The AI Hardware dataset now lives as the
+  and Phase C is accepted after Sol verification. Phase D1 is implemented and
+  review pending, while Phase D2 remains planned. The AI Hardware dataset now lives as the
   Git-managed Example Knowledge Base at
   `examples/knowledge-bases/ai-hardware/`.
 
@@ -62,8 +63,8 @@ strict frozen enums. Phase A is accepted after Sol verification.
 
 ## KNOWLEDGE-RUNTIME-MIGRATION-B-001
 
-Knowledge Base Runtime Architecture Migration Phase B is implemented and
-review pending. The repository-root AI Hardware dataset was moved with Git
+Knowledge Base Runtime Architecture Migration Phase B is accepted after Sol
+verification. The repository-root AI Hardware dataset was moved with Git
 history to `examples/knowledge-bases/ai-hardware/` and converted to Schema 0.2
 / Storage Format 1 with `manifest.yaml`, canonical `registry/assets.yaml`,
 and empty `registry/raw.yaml`. Legacy `index.yaml` and `modules.yaml` are no
@@ -87,8 +88,8 @@ rules. The prototype HTTP API requires `knowledgeBaseId` and returns an
 
 ## KNOWLEDGE-RUNTIME-MIGRATION-C-001
 
-Knowledge Base Runtime Architecture Migration Phase C is implemented and review
-pending. Schema 0.2 / Storage Format 1 is now the only writable contract. The
+Knowledge Base Runtime Architecture Migration Phase C is accepted after Sol
+verification. Schema 0.2 / Storage Format 1 is now the only writable contract. The
 runtime-neutral infrastructure provides immutable SHA-256 Raw Archive bundles,
 canonical `registry/raw.yaml`, deterministic semantic hashing, ChangeSet
 validation receipts, source and Knowledge mutation operations, revision and
@@ -103,8 +104,8 @@ Runner remain planned future phases.
 
 ## KNOWLEDGE-RUNTIME-MIGRATION-C-001-R1
 
-Phase C durable mutation contract gaps are closed and remain review pending for
-Sol verification. Raw Manifest now matches Storage Layout v0.2, Raw Archive
+Phase C durable mutation contract gaps are closed and accepted after Sol
+verification. Raw Manifest now matches Storage Layout v0.2, Raw Archive
 operations are explicitly Knowledge Base scoped and lifecycle-aware, and Raw
 archive-only writes do not change semantic revision or manifest timestamps.
 ChangeSet validation uses strict Source contracts, current expected-hash guards,
@@ -112,18 +113,29 @@ planned supersede state, and duplicate-target rejection. Knowledge Writer now
 requires full staged Knowledge validation before directory switch; Loader-only
 parsing is not commit-authorizing. The temporary Phase C design note was
 removed because frozen architecture and storage documents remain authoritative.
-Phase D has not started.
+Phase D1 is implemented and review pending; Phase D2 has not started.
 
 ## KNOWLEDGE-RUNTIME-MIGRATION-C-001-R2
 
-Phase C R2 finalizes the durable mutation boundary and remains review pending
-for Sol verification. Raw Archive and semantic Writer now use one shared,
+Phase C R2 finalizes the durable mutation boundary and is accepted after Sol
+verification. Raw Archive and semantic Writer now use one shared,
 Knowledge-Base-scoped mutation lock, so Raw Registry updates and semantic
 directory switches cannot lose updates or overlap within the same KB. Writer
 failures now expose only the frozen Write Interface v0.1 error taxonomy,
 including validation, lifecycle, schema, lock, staging, recovery, conflict,
-and idempotency outcomes. Different Knowledge Bases remain independent, and
-Phase D has not started.
+and idempotency outcomes. Different Knowledge Bases remain independent.
+
+## KNOWLEDGE-INGESTION-D1-CURATION-001
+
+Knowledge Ingestion Phase D1 is implemented and review pending for Sol
+verification. The runtime-neutral Knowledge Curation Skill provides an injected
+provider-neutral model port and deterministic structured-output validation for
+Source Assessment, relevance filtering, atomic candidate extraction, admission,
+Schema Mapping assistance, conflict analysis, and Schema Gap proposals.
+Trusted workflow scope, raw provenance, chunk locators, intermediate IDs, and
+existing Knowledge references are bound or checked by the Skill. No Workflow,
+Raw Archive orchestration, Access/Validation/Writer call, persistence, schema
+mutation, or real LLM wiring was added. Phase D2 remains planned.
 
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure
 

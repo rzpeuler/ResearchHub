@@ -19,7 +19,7 @@ Storage Layout v0.2, Schema Versioning and Migration, Data Schema v0.2,
 Access/Validation/Curation contracts, Ingestion Workflow, Write Interface,
 Frontend Projection v0.2, Example KB Layout, and ADR-015 are design-complete
 and frozen. Runtime Migration Phase A is accepted after Sol verification, and
-Phase B is accepted after Sol verification, and Phase C is implemented and review pending. This phase is an engineering migration, not a new
+Phase B is accepted after Sol verification, and Phase C is accepted after Sol verification. Phase D1 is implemented and review pending, while Phase D2 remains planned. This phase is an engineering migration, not a new
 architecture design exercise.
 
 The AI Hardware dataset is now a Git-managed Example Knowledge Base at
@@ -51,7 +51,7 @@ index derivation, and strict Source enums. Sol verified Phase A.
 
 Phase B is accepted after Sol verification.
 
-### Phase C — Knowledge mutation infrastructure — Implemented / Review Pending
+### Phase C — Knowledge mutation infrastructure — Accepted / Complete
 
 - Raw Archive;
 - deterministic Write Interface and ChangeSet validation receipts;
@@ -62,9 +62,20 @@ Phase B is accepted after Sol verification.
   state, and mandatory full staged-validation contract gaps.
 - R2 finalized the shared same-KB mutation lock across Raw Archive and Writer,
   the frozen Writer error taxonomy, and the Phase B governance acceptance
-  correction. Phase C remains review pending for Sol verification.
+  correction. Sol verified Phase C.
 
-### Phase D — Research Report ingestion capability
+### Phase D1 — Knowledge Curation Skill — Implemented / Review Pending
+
+- provider-neutral injected `KnowledgeCurationModel` port;
+- Source Assessment and document/chunk relevance filtering;
+- atomic candidate extraction, structured admission, and Schema Mapping;
+- conflict analysis and Schema Gap proposals;
+- deterministic output validation and trusted scope/provenance guards.
+
+D1 does not orchestrate Raw Archive, Access, Validation, Writer, Workflow, or
+durable persistence. It remains review pending for Sol verification.
+
+### Phase D2 — Research Report Knowledge Ingestion Workflow — Planned / Pending
 
 - Knowledge Curation Skill;
 - relevance and quality filtering;
