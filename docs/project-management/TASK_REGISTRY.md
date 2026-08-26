@@ -49,6 +49,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-PHASE-2C-FINAL-CLOSEOUT-001 | Close Knowledge frontend production validation | Completed | P0 | 2026-08-25 | Luna | `9af84922ca08c84bf19cfe26fa5e3bdafe2e07f2` | Accepted — company total-revenue scale and final frontend regression passed |
 | KNOWLEDGE-PHASE-2C-SEGMENT-SCALE-001 | Scale Knowledge graph nodes by market size | Completed | P1 | 2026-08-25 | Luna | `788792464a33b2a4c0d0e6d53f0aef0eb9a722d3` | Accepted — raw segment scale input, comparable-level frontend sizing, fallback, and regression tests passed |
 | RH-TOOLS-001 | Add AKShare Financial Bridge tooling | Completed | P1 | 2026-08-25 | Luna | `820ba4d3443a6a695069f07a609882e775423827` | Accepted — lightweight Python bridge source committed and pushed |
+| RH-GOV-CONSISTENCY-002 | Close architecture, governance, and AKShare Bridge consistency gaps | Completed | P0 | 2026-08-26 | Luna | `c18878b551627c77a0396c1980436291622d7e10` | Accepted — Bridge period/date semantics, deterministic tests, documentation, and governance synchronized |
 
 ## RH-DESIGN-004 Acceptance Scope
 
