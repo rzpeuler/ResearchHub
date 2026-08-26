@@ -15,7 +15,7 @@ export interface FinancialPeriod {
 export interface FinancialSourceMetadata {
   plugin: string
   source: string
-  publishedAt: string
+  publishedAt?: string
   retrievedAt: string
   quality: FinancialDataQuality
   confidence: number
@@ -32,7 +32,7 @@ export interface FinancialStatement {
   symbol: string
   statementType: FinancialStatementType
   fiscalPeriod: FinancialPeriod
-  reportDate: string
+  reportDate?: string
   currency: string
   unit: string
   lineItems: FinancialLineItem[]

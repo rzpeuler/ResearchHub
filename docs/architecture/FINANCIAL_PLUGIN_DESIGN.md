@@ -34,9 +34,9 @@ for retrieval, normalization, validation, and source metadata.
 
 `FinancialStatement` is the source-oriented record. It contains:
 
-- `symbol`, `statementType`, `fiscalPeriod`, `reportDate`
+- `symbol`, `statementType`, `fiscalPeriod`, and optional `reportDate`
 - `currency`, `unit`, and normalized `lineItems`
-- `source` metadata: `plugin`, `source`, `publishedAt`, `retrievedAt`, `quality`, `confidence`
+- `source` metadata: `plugin`, `source`, optional `publishedAt`, `retrievedAt`, `quality`, `confidence`
 
 `FinancialMetric` is the stable research-facing value. The MVP supports:
 
@@ -76,6 +76,12 @@ Configuration:
 
 The bridge boundary keeps the Plugin architecture portable and makes fixture
 testing deterministic.
+
+The bridge applies the requested `periodType` at the source-row selection
+boundary. Annual and quarterly requests do not silently substitute one another;
+TTM is explicitly rejected with HTTP 422 until a defined source contract exists.
+Missing source report/publication dates remain absent, while retrieval time is
+recorded separately.
 
 ## 5. Plugin selection and fallback
 

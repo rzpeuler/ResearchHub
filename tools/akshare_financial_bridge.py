@@ -13,7 +13,7 @@ import math
 import os
 import re
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
 import akshare as ak
 import pandas as pd
@@ -30,7 +30,15 @@ SYMBOL_RE = re.compile(r"^\d{6}$")
 class FinancialRequest(BaseModel):
     symbol: str
     statementTypes: list[str] = Field(default_factory=lambda: list(STATEMENT_TYPES))
-    periodType: str | None = None
+    periodType: Literal["annual", "quarterly", "ttm"] | None = None
+
+
+class RequiredPeriodError(ValueError):
+    """Raised when a source row has no usable required financial period."""
+
+
+class ProviderDataError(ValueError):
+    """Raised when the provider returns no usable rows."""
 
 
 @app.get("/health")
@@ -47,9 +55,17 @@ def financial(request: FinancialRequest) -> dict[str, Any]:
     requested = list(dict.fromkeys(request.statementTypes))
     if not requested or any(item not in STATEMENT_TYPES for item in requested):
         raise HTTPException(status_code=400, detail="unsupported statementTypes")
+    if request.periodType == "ttm":
+        raise HTTPException(status_code=422, detail="Unsupported periodType: ttm")
+    period_type = request.periodType or "annual"
 
     try:
-        statements = [_fetch_statement(symbol, statement_type) for statement_type in requested]
+        statements = [_fetch_statement(symbol, statement_type, period_type) for statement_type in requested]
+    except RequiredPeriodError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ProviderDataError as exc:
+        print(f"AKShare returned no usable data for {symbol}: {exc}")
+        raise HTTPException(status_code=502, detail="AKShare data request returned no usable data") from exc
     except Exception as exc:  # AKShare exceptions vary by endpoint and release.
         print(f"AKShare request failed for {symbol}: {type(exc).__name__}: {exc}")
         raise HTTPException(status_code=502, detail="AKShare data request failed") from exc
@@ -57,20 +73,21 @@ def financial(request: FinancialRequest) -> dict[str, Any]:
     return {"data": {"statements": statements}}
 
 
-def _fetch_statement(symbol: str, statement_type: str) -> dict[str, Any]:
+def _fetch_statement(symbol: str, statement_type: str, period_type: Literal["annual", "quarterly"]) -> dict[str, Any]:
     stock = ("sh" if symbol.startswith("6") else "bj" if symbol.startswith(("4", "8")) else "sz") + symbol
     start_year = os.getenv("AKSHARE_START_YEAR", "2020")
 
     if statement_type == "income":
-        report = _latest_row(ak.stock_financial_report_sina(stock=stock, symbol="利润表"), "报告日")
+        report = _latest_row(ak.stock_financial_report_sina(stock=stock, symbol="利润表"), "报告日", period_type)
         indicator = _latest_row(
             ak.stock_financial_analysis_indicator(symbol=symbol, start_year=start_year),
             "日期",
+            period_type,
         )
         values = _clean_row(report)
         values.update(_financial_indicator_values(indicator, report))
     elif statement_type == "balance-sheet":
-        report = _latest_row(ak.stock_financial_report_sina(stock=stock, symbol="资产负债表"), "报告日")
+        report = _latest_row(ak.stock_financial_report_sina(stock=stock, symbol="资产负债表"), "报告日", period_type)
         values = _clean_row(report)
         values.update(
             {
@@ -79,16 +96,17 @@ def _fetch_statement(symbol: str, statement_type: str) -> dict[str, Any]:
             }
         )
     else:
-        report = _latest_row(ak.stock_financial_report_sina(stock=stock, symbol="现金流量表"), "报告日")
+        report = _latest_row(ak.stock_financial_report_sina(stock=stock, symbol="现金流量表"), "报告日", period_type)
         values = _clean_row(report)
         values["n_cashflow_act"] = _first_value(report, "经营活动产生的现金流量净额")
 
-    period = _date_text(_first_value(report, "报告日") or _first_value(report, "日期"))
+    period = _date_text(_first_value(report, "报告日", "日期"), required=True)
+    report_date = _date_text(_first_value(report, "公告日期"), required=False)
     return {
         "statementType": statement_type,
         "symbol": symbol,
         "period": period,
-        "report_date": _date_text(_first_value(report, "公告日期")),
+        "report_date": report_date,
         **values,
     }
 
@@ -112,13 +130,27 @@ def _financial_indicator_values(indicator: dict[str, Any], report: dict[str, Any
     }
 
 
-def _latest_row(frame: pd.DataFrame, date_column: str) -> dict[str, Any]:
+def _latest_row(
+    frame: pd.DataFrame,
+    date_column: str,
+    period_type: Literal["annual", "quarterly"],
+) -> dict[str, Any]:
     if frame is None or frame.empty:
-        raise ValueError("AKShare returned no rows")
+        raise ProviderDataError("AKShare returned no rows")
     rows = frame.copy()
-    if date_column in rows.columns:
-        rows["__sort_date"] = pd.to_datetime(rows[date_column], errors="coerce")
-        rows = rows.sort_values("__sort_date", ascending=False, na_position="last")
+    period_values = rows.apply(
+        lambda row: _first_value(row.to_dict(), date_column, "报告日", "日期", "period", "end_date"),
+        axis=1,
+    )
+    rows["__period_date"] = pd.to_datetime(period_values, errors="coerce")
+    rows = rows.loc[rows["__period_date"].notna()].copy()
+    if rows.empty:
+        raise RequiredPeriodError("missing or invalid required financial period")
+    allowed_months = {12} if period_type == "annual" else {3, 6, 9}
+    rows = rows.loc[rows["__period_date"].dt.month.isin(allowed_months)].copy()
+    if rows.empty:
+        raise RequiredPeriodError(f"no {period_type} financial period available")
+    rows = rows.sort_values("__period_date", ascending=False, na_position="last")
     return rows.iloc[0].to_dict()
 
 
@@ -152,12 +184,16 @@ def _clean_value(value: Any) -> Any:
     return value
 
 
-def _date_text(value: Any) -> str:
+def _date_text(value: Any, *, required: bool) -> str | None:
     cleaned = _clean_value(value)
     if cleaned is None:
-        return datetime.utcnow().date().isoformat()
+        if required:
+            raise RequiredPeriodError("missing required financial period")
+        return None
     text = str(cleaned).strip()
     parsed = pd.to_datetime(text, errors="coerce")
     if pd.isna(parsed):
-        return text
+        if required:
+            raise RequiredPeriodError("invalid required financial period")
+        return None
     return parsed.date().isoformat()

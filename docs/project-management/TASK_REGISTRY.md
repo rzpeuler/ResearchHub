@@ -38,6 +38,18 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | RH-DESIGN-012 | ResearchHub Architecture Simplification & Governance Update | Completed | P0 | 2026-08-24 | Luna | Current task commit | Accepted — Architecture v0.3, ADR-010, Harness boundary, and project governance synchronized |
 | ARCH-REFACTOR-002 | Separate DSH Runtime from Research Assets | Completed | P0 | 2026-08-24 | Luna | Current task commit | Accepted — root dsh Runtime Orchestrator, package boundaries, one-way dependency, imports, tests, and governance synchronized |
 
+| ARCH-REFACTOR-003 | Migrate to Research Output and Knowledge architecture | Completed | P0 | 2026-08-25 | Luna | `eca21579a44287d8346090fd852dc076810c6acb` | Accepted — Research Output, Research Object, Knowledge boundary, and ADR-014 documented |
+| KNOWLEDGE-ARCHITECTURE-001 | Freeze Knowledge Architecture v0.1 | Completed | P0 | 2026-08-25 | Luna | `0208e4e65619002d6a40109c731bf9c39f3156a9` | Accepted — top-level Knowledge asset, Workflow lifecycle, and no automatic formation documented |
+| KNOWLEDGE-IMPLEMENTATION-PHASE-001 | Implement Knowledge Layer foundation | Completed | P0 | 2026-08-25 | Luna | `61e346ce7b3b3ffb35b90bb340b5b198f5bcf093` | Accepted — Loader, Access Skill, Validation Skill, fixtures, and integration tests passed |
+| KNOWLEDGE-IMPLEMENTATION-PHASE-001-REWORK-001 | Close Knowledge foundation acceptance gaps | Completed | P0 | 2026-08-25 | Luna | `babb3e275fb28a569e8aea4a354f1587933b5740` | Accepted — Registry, module, relation, lifecycle, and workflow integration gaps closed |
+| KNOWLEDGE-PRODUCTION-DATASET-V0.1 | Add AI Hardware Production Knowledge Dataset | Completed | P0 | 2026-08-25 | Luna | `c28272c2dd1041d3b96b1f16cfa9fb1cc1f4e843` | Accepted — source-traceable production assets and dataset validation passed |
+| KNOWLEDGE-PRODUCTION-DATASET-V0.1-REWORK-001 | Rework Production Knowledge Dataset semantics | Completed | P0 | 2026-08-25 | Luna | `6d3d12a00002141d95585361440e19dfe26326ac` | Accepted — financial segment mapping, provenance, taxonomy, and placeholder cleanup passed |
+| KNOWLEDGE-PHASE-2C-FRONTEND-MIGRATION-001 | Migrate Knowledge frontend to production projection | Completed | P0 | 2026-08-25 | Luna | `e4540f6a9e46f22b679b31485cb540142ab35030` | Accepted — read-only directory, graph, entity endpoints and frontend migration passed |
+| KNOWLEDGE-PHASE-2C-SEMANTICS-AND-LOCALIZATION-001 | Align Knowledge frontend semantics and localization | Completed | P0 | 2026-08-25 | Luna | `d80fe14a5f52f59bdf5998a9f5a080182fdd19ea` | Accepted — Chinese-first content and company-scale semantics passed |
+| KNOWLEDGE-PHASE-2C-FINAL-CLOSEOUT-001 | Close Knowledge frontend production validation | Completed | P0 | 2026-08-25 | Luna | `9af84922ca08c84bf19cfe26fa5e3bdafe2e07f2` | Accepted — company total-revenue scale and final frontend regression passed |
+| KNOWLEDGE-PHASE-2C-SEGMENT-SCALE-001 | Scale Knowledge graph nodes by market size | Completed | P1 | 2026-08-25 | Luna | `788792464a33b2a4c0d0e6d53f0aef0eb9a722d3` | Accepted — raw segment scale input, comparable-level frontend sizing, fallback, and regression tests passed |
+| RH-TOOLS-001 | Add AKShare Financial Bridge tooling | Completed | P1 | 2026-08-25 | Luna | `820ba4d3443a6a695069f07a609882e775423827` | Accepted — lightweight Python bridge source committed and pushed |
+
 ## RH-DESIGN-004 Acceptance Scope
 
 - `DataPlugin`、`PluginResult` 和 `FinancialDataMetadata` 已定义并进行运行时校验。

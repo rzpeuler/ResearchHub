@@ -2,17 +2,20 @@
 
 ResearchHub is financial research knowledge infrastructure built on DeepSeek
 Harness. It does not build a general-purpose Agent Framework. Its runtime
-architecture remains the Single DSH model, while its product output is
-Research Output and durable Knowledge:
+architecture remains the Single DSH model, while its product-facing boundaries
+are Research Output and durable Knowledge:
 
 ```text
+Execution path:
 ResearchManager (DSH)
         -> Workflow
              -> Skill
                   -> Plugin
                        -> Research Output
-                            -> Research Object
-                                 -> Knowledge Layer
+
+Durable Knowledge lifecycle:
+Workflow-controlled update decision
+        -> Knowledge Layer
 ```
 
 ResearchHub does not execute trades, modify Harness Core, or rebuild the
@@ -20,8 +23,10 @@ Harness runtime. Harness owns runtime execution and LLM reasoning. The DSH is
 the only ResearchHub coordination center; Workflows describe standard
 research SOPs, Skills provide professional research methods, and Plugins
 connect external resources. Reports, structured Research Objects, and
-provenance are Research Output. The `knowledge/` boundary is reserved for
-durable, reusable research knowledge.
+provenance are Research Output. The `knowledge/` boundary is a separate,
+top-level store for durable, reusable research knowledge. A Workflow may
+explicitly govern a reviewed Knowledge update; Research Output, including
+Research Objects, is not automatically converted into Knowledge.
 
 The repository-level DSH Runtime Orchestrator is `dsh/`. The `packages/`
 directory contains reusable, runtime-neutral research assets: Workflows,
@@ -42,6 +47,7 @@ The public Research Object envelope is defined in
 - [Development roadmap](docs/project-management/DEVELOPMENT_ROADMAP.md)
 - [Development rules](docs/project-management/DEVELOPMENT_RULES.md)
 - [Change log](docs/project-management/CHANGELOG.md)
+- [AKShare Financial Bridge operations](tools/README.md)
 
 ## Architecture documents
 

@@ -50,6 +50,16 @@ non-comparable levels render equally. Visual weights remain a frontend CSS
 concern, and no market-share percentage or calculation engine was introduced.
 Company cards continue to use company `total-revenue` Facts.
 
+## RH-GOV-CONSISTENCY-002
+
+The Architecture / Governance / AKShare consistency closure is complete for
+the current main branch. The external Python AKShare Bridge now applies
+annual/quarterly period semantics, rejects unsupported TTM with HTTP 422, and
+preserves missing source dates instead of fabricating them. Deterministic
+network-free Bridge tests, a pinned tool dependency manifest, and operating
+documentation are included. Research Output and Knowledge remain separate
+boundaries, with Knowledge lifecycle updates controlled by Workflow.
+
 ## ARCH-REFACTOR-003
 
 ResearchHub has migrated its current product architecture to **Research Output

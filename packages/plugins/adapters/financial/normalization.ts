@@ -166,7 +166,8 @@ function rowToStatement(row: NormalizedFinancialRow): FinancialStatement {
     end: periodEnd,
     periodType,
   }
-  const source = sourceMetadata(row, row.reportDate === undefined ? periodEnd : normalizeFinancialDate(row.reportDate, 'reportDate'))
+  const reportDate = row.reportDate === undefined ? undefined : normalizeFinancialDate(row.reportDate, 'reportDate')
+  const source = sourceMetadata(row, reportDate)
   const lineItems = metricNamesFor(row.statementType)
     .flatMap((name) => {
       const raw = readOptionalField(row.values, METRIC_ALIASES[name])
@@ -183,7 +184,7 @@ function rowToStatement(row: NormalizedFinancialRow): FinancialStatement {
     symbol: row.symbol,
     statementType: row.statementType,
     fiscalPeriod,
-    reportDate: source.publishedAt,
+    ...(reportDate === undefined ? {} : { reportDate }),
     currency: row.currency ?? 'CNY',
     unit: row.unit ?? 'CNY',
     lineItems,
@@ -204,14 +205,14 @@ function statementMetrics(statement: FinancialStatement, row: NormalizedFinancia
   }))
 }
 
-function sourceMetadata(row: NormalizedFinancialRow, publishedAt: string): FinancialSourceMetadata {
+function sourceMetadata(row: NormalizedFinancialRow, publishedAt: string | undefined): FinancialSourceMetadata {
   return {
     plugin: row.plugin,
     source: row.source,
-    publishedAt,
     retrievedAt: row.retrievedAt,
     quality: row.quality,
     confidence: row.confidence,
+    ...(publishedAt === undefined ? {} : { publishedAt }),
   }
 }
 
@@ -285,7 +286,7 @@ function validateStatement(value: unknown, index: number): void {
     throw new PluginValidationError('unsupported statement type', `$.statements[${index}].statementType`)
   }
   validatePeriod(statement.fiscalPeriod, `$.statements[${index}].fiscalPeriod`)
-  assertTimestamp(statement.reportDate, `$.statements[${index}].reportDate`)
+  if (statement.reportDate !== undefined) assertTimestamp(statement.reportDate, `$.statements[${index}].reportDate`)
   assertNonEmptyString(statement.currency, `$.statements[${index}].currency`)
   assertNonEmptyString(statement.unit, `$.statements[${index}].unit`)
   if (!Array.isArray(statement.lineItems) || statement.lineItems.length === 0) {
@@ -356,7 +357,7 @@ function validateSource(value: unknown, path: string): asserts value is Financia
   assertAllowedFields(source, new Set(['plugin', 'source', 'publishedAt', 'retrievedAt', 'quality', 'confidence']))
   assertNonEmptyString(source.plugin, `${path}.plugin`)
   assertNonEmptyString(source.source, `${path}.source`)
-  assertTimestamp(source.publishedAt, `${path}.publishedAt`)
+  if (source.publishedAt !== undefined) assertTimestamp(source.publishedAt, `${path}.publishedAt`)
   assertTimestamp(source.retrievedAt, `${path}.retrievedAt`)
   if (!['high', 'medium', 'low'].includes(String(source.quality))) {
     throw new PluginValidationError('invalid source quality', `${path}.quality`)

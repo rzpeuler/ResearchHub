@@ -118,7 +118,7 @@ export function createFinancialEvidence(snapshot: FinancialSnapshot | FinancialD
       period: metric.period,
       calculationBasis: metric.calculationBasis,
     }),
-    timestamp: metric.source.publishedAt,
+    timestamp: metric.source.publishedAt ?? metric.source.retrievedAt,
     confidence: metric.confidence,
   }))
 }

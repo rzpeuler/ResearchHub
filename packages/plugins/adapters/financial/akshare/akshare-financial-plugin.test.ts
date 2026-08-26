@@ -50,3 +50,33 @@ test('AKShare Financial Provider rejects a Bridge response with the wrong symbol
 
   await assert.rejects(() => plugin.fetch({ symbol: '600519' }), /response symbol does not match/)
 })
+
+test('AKShare Financial Provider forwards periodType and preserves missing source dates', async () => {
+  let requestBody: Record<string, unknown> | undefined
+  const plugin = new AkShareFinancialPlugin({
+    endpoint: 'https://akshare-bridge.example.test/financial',
+    clock,
+    transport: {
+      async request(_endpoint, init) {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return response({ data: { statements: [{ statementType: 'income', symbol: '600519', period: '2025-09-30', total_revenue: 900 }] } })
+      },
+    },
+  })
+
+  const result = await plugin.fetch({ symbol: '600519', statementTypes: ['income'], periodType: 'quarterly' })
+  assert.equal(requestBody?.periodType, 'quarterly')
+  assert.equal(result.data.statements[0]?.fiscalPeriod.periodType, 'quarterly')
+  assert.equal(result.data.statements[0]?.reportDate, undefined)
+  assert.equal(result.data.statements[0]?.source.publishedAt, undefined)
+  assert.equal(result.data.statements[0]?.source.retrievedAt, '2026-08-24T00:00:00.000Z')
+  assert.doesNotThrow(() => plugin.validate(result.data))
+})
+
+test('AKShare Financial Provider surfaces an explicit unsupported TTM bridge response', async () => {
+  const plugin = new AkShareFinancialPlugin({
+    endpoint: 'https://akshare-bridge.example.test/financial',
+    transport: { async request() { return response({ detail: 'Unsupported periodType: ttm' }, 422) } },
+  })
+  await assert.rejects(() => plugin.fetch({ symbol: '600519', periodType: 'ttm' }), /HTTP 422/)
+})

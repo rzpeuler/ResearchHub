@@ -56,6 +56,7 @@ test('financial data is converted into serializable Evidence artifacts', () => {
   assert.equal(evidence.length, 2)
   assert.equal(evidence[0]?.sessionId, 'session-financial-001')
   assert.equal(evidence[0]?.source, 'fixture')
+  assert.equal(evidence[0]?.timestamp, clock().toISOString())
   assert.match(evidence[0]?.content ?? '', /revenue/)
   evidence.forEach(item => {
     assert.doesNotThrow(() => validateEvidence(item))

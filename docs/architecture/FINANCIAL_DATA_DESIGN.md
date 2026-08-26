@@ -33,7 +33,7 @@ interface FinancialStatement {
     end: string
     periodType: 'annual' | 'quarterly' | 'ttm'
   }
-  reportDate: string
+  reportDate?: string
   currency: string
   unit: string
   lineItems: FinancialLineItem[]
@@ -74,7 +74,7 @@ Reported metrics come directly from a source statement. Derived metrics must ide
 interface FinancialSourceMetadata {
   plugin: string
   source: string
-  publishedAt: string
+  publishedAt?: string
   retrievedAt: string
   quality: 'high' | 'medium' | 'low'
   confidence: number
@@ -82,6 +82,11 @@ interface FinancialSourceMetadata {
 ```
 
 Individual statement/metric metadata complements the existing PluginResult metadata. Plugin metadata describes the fetch batch; domain metadata describes the individual financial fact.
+
+Source report/publication dates are optional because providers may omit them.
+Unknown source dates remain absent; they are never replaced with the current
+date or the financial period end. `retrievedAt` remains the actual acquisition
+timestamp and is kept semantically separate.
 
 ## 4. Financial Plugin Interface
 
@@ -111,7 +116,8 @@ Financial Plugin returns normalized financial data and batch metadata. An Eviden
 
 - `source` comes from financial source metadata;
 - `content` is JSON-serialized statement or metric data;
-- `timestamp` is the relevant report or publication date;
+- `timestamp` is the relevant report or publication date when available, and
+  the actual retrieval time when the source date is unavailable;
 - `confidence` is the fact-level confidence;
 - metadata records symbol, period, statement type, plugin, and source identifiers.
 

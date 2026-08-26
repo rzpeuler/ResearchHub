@@ -18,13 +18,21 @@ The current phase turns validated research execution into traceable reports,
 machine-readable Research Objects, and a durable Knowledge Layer boundary
 while preserving the Harness runtime boundary and existing asset behavior.
 
+Knowledge Architecture v0.1 is frozen. The Knowledge foundation, the AI
+Hardware Production Dataset, and the production-data frontend projection
+validation are implemented. Knowledge remains a top-level durable asset and
+its lifecycle is controlled by Workflow; the Access Skill remains deterministic
+and read-only.
+
 ## Next increments
 
 1. Add authorized real data Plugins behind the existing typed boundary.
 2. Improve source quality, freshness, retry, and rate-limit observability.
 3. Add further research Skills and Workflow templates.
-4. Define Knowledge ontology and ingestion contracts after a separate design
-   decision.
+4. Extend Knowledge assets, validation, and views within the frozen v0.1
+   boundary as needed by approved tasks. Automated ingestion, extraction,
+   database or graph storage, RAG, an ontology engine, or automatic Knowledge
+   formation requires a separate architecture decision.
 
 Each new feature must be classified as Workflow, Skill, Plugin, Research
 Output, or Knowledge infrastructure. Planning and cross-layer coordination

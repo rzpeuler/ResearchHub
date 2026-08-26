@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-26 - RH-GOV-CONSISTENCY-002
+
+- Enforced annual and quarterly period selection in the external AKShare
+  Financial Bridge and made unsupported TTM requests return HTTP 422.
+- Removed fabricated current-date and period-end fallbacks for missing source
+  dates; optional report/publication dates remain absent.
+- Added deterministic network-free Bridge tests, pinned tool dependencies, and
+  operating documentation.
+- Synchronized the README, Task Registry, Development Roadmap, and project
+  status with the separate Research Output and Workflow-controlled Knowledge
+  boundaries.
+
 ## 2026-08-25 - KNOWLEDGE-PHASE-2C-SEGMENT-SCALE-001
 
 - Added optional raw `market-size` Fact inputs to GraphProjection child nodes.
