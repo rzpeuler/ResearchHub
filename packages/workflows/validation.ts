@@ -59,7 +59,9 @@ function validateStep(value: unknown, index: number): asserts value is WorkflowS
   }
   const step = value as Record<string, unknown>
   assertString(step.id, `${path}.id`)
-  assertString(step.skill, `${path}.skill`)
+  if (step.kind !== undefined && step.kind !== 'skill' && step.kind !== 'infrastructure' && step.kind !== 'workflow') throw new WorkflowValidationError('workflow step kind is invalid', `${path}.kind`)
+  if (step.kind === 'infrastructure' || step.kind === 'workflow') assertString(step.component, `${path}.component`)
+  else assertString(step.skill, `${path}.skill`)
   assertStringArray(step.inputs, `${path}.inputs`)
   assertStringArray(step.outputs, `${path}.outputs`)
   assertStringArray(step.dependsOn, `${path}.dependsOn`)

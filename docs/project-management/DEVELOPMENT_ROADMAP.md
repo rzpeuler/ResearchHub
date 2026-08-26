@@ -88,6 +88,11 @@ durable persistence. Sol verified D1 acceptance.
 D2 implementation is complete and remains pending Sol verification. Overall
 Phase D is implemented and review pending.
 
+D2 R1 contract rework is complete and remains pending Sol verification. It
+closes dry-run/readonly validation, Raw byte preservation, no-change handling,
+operation-level candidate rejection, bounded partial continuation, audit-log
+projection, and WorkflowStep ownership metadata gaps.
+
 ### Phase E — Migration infrastructure
 
 - Migration Registry;

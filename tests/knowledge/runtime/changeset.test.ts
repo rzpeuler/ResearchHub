@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import test from 'node:test'
-import { hashKnowledgeObject, KnowledgeBaseLoader, KnowledgeBaseRegistry } from '../../../packages/shared/knowledge-base/index.ts'
+import { hashKnowledgeObject, KnowledgeBaseHandle, KnowledgeBaseLoader, KnowledgeBaseRegistry } from '../../../packages/shared/knowledge-base/index.ts'
 import type { KnowledgeChangeSet } from '../../../packages/schemas/knowledge/index.ts'
 import { KnowledgeValidationSkill } from '../../../packages/skills/knowledge-validation/index.ts'
 import { createRuntimeKnowledgeBase, removeRuntimeKnowledgeBase } from './helpers.ts'
@@ -25,6 +25,26 @@ test('ChangeSet validation returns an immutable receipt for valid same-ChangeSet
     assert.ok(result.validatedChangeSet)
     assert.equal(Object.isFrozen(result.validatedChangeSet), true)
     assert.equal(Object.isFrozen(result.validatedChangeSet?.changeSet), true)
+  } finally {
+    await removeRuntimeKnowledgeBase(root)
+  }
+})
+
+test('dry-run accepts virtual Raw provenance on a readonly handle and never creates a receipt', async () => {
+  const root = await createRuntimeKnowledgeBase({ status: 'readonly' })
+  try {
+    const registry = new KnowledgeBaseRegistry()
+    const loader = new KnowledgeBaseLoader({ registry })
+    const mounted = await loader.mount(root)
+    const readonlyHandle = new KnowledgeBaseHandle({ knowledgeBaseId: mounted.knowledgeBaseId, rootRef: mounted.rootRef, schemaVersion: mounted.schemaVersion, storageFormatVersion: mounted.storageFormatVersion, revision: mounted.revision, status: 'readonly' })
+    const skill = new KnowledgeValidationSkill({ loader })
+    const virtualRawRef = `raw-sha256-${'a'.repeat(64)}`
+    await unlink(join(root, 'registry', 'raw.yaml'))
+    const request = baseChangeSet(readonlyHandle.knowledgeBaseId, [{ operationId: 'create-product', type: 'create', object: { id: 'product:virtual', type: 'product', name: 'Virtual', rawRefs: [virtualRawRef] } }])
+    request.requiresRawProvenance = true
+    const result = await skill.validateChangeSet(readonlyHandle, request, { mode: 'dry_run', virtualRawRefs: [virtualRawRef] })
+    assert.equal(result.report.status, 'passed', JSON.stringify(result.report.errors))
+    assert.equal(result.validatedChangeSet, undefined)
   } finally {
     await removeRuntimeKnowledgeBase(root)
   }

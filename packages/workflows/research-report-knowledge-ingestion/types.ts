@@ -2,7 +2,7 @@ import type { KnowledgeBaseHandle, KnowledgeIndex } from '../../shared/knowledge
 import type { KnowledgeChangeSet, KnowledgeWriteResult } from '../../schemas/knowledge/index.ts'
 import type { KnowledgeAccessSkill } from '../../skills/knowledge-access/index.ts'
 import type { KnowledgeCurationSkill } from '../../skills/knowledge-curation/index.ts'
-import type { KnowledgeCandidate, KnowledgeMappingResult, KnowledgeScopeContext, NormalizedResearchDocument, SourceAssessment, ContentRelevanceDecision, KnowledgeAdmissionDecision, ConflictDecision, SchemaGapProposal } from '../../skills/knowledge-curation/index.ts'
+import type { KnowledgeCandidate, KnowledgeMappingResult, KnowledgeScopeContext, NormalizedResearchDocument, SourceAssessment, ContentRelevanceDecision, KnowledgeAdmissionDecision, ConflictDecision, SchemaGapProposal, ResearchDocumentChunk } from '../../skills/knowledge-curation/index.ts'
 import type { KnowledgeValidationSkill, ValidationReport } from '../../skills/knowledge-validation/index.ts'
 import type { ChangeSetValidationResult } from '../../skills/knowledge-validation/types.ts'
 
@@ -29,11 +29,11 @@ export interface ResearchReportKnowledgeIngestionInput {
 }
 
 export interface ResolvedResearchReportInput {
-  bytes: Uint8Array
+  rawBytes: Uint8Array
   originalFilename: string | null
   mediaType: string
   normalizedText: string
-  chunks: Array<{ chunkId: string; text: string; page?: string | number | null; section?: string | null; locator?: string | null }>
+  chunks: ResearchDocumentChunk[]
 }
 
 export interface ResearchReportInputResolver {
@@ -77,6 +77,7 @@ export interface ResearchReportKnowledgeIngestionResult {
   filtering: { total: number; relevant: number; contextual: number; irrelevant: number }
   candidates: { extracted: number; admitted: number; rejected: number; mapped: number; partiallyMapped: number; unmapped: number; duplicates: number; validationRejected: number }
   changes: { sourceCreated: number; sourceMerged: number; knowledgeCreated: number; knowledgeUpdated: number; knowledgeSuperseded: number; knowledgeSourceMerged: number }
+  plannedChanges: { sourceCreate: string[]; sourceMerge: string[]; knowledgeCreate: string[]; knowledgeUpdate: string[]; knowledgeSupersede: string[]; knowledgeSourceMerge: string[] }
   userReview: Array<Record<string, unknown>>
   schemaGaps: SchemaGapProposal[]
   validation: ValidationReport | ChangeSetValidationResult['report'] | null
@@ -105,6 +106,18 @@ export interface IngestionTrace {
   mappings: KnowledgeMappingResult[]
   conflicts: ConflictDecision[]
   schemaGaps: SchemaGapProposal[]
+  plans: ResolvedCandidatePlan[]
+}
+
+export interface ResolvedCandidatePlan {
+  candidate: KnowledgeCandidate
+  mapping: KnowledgeMappingResult
+  resolvedObject: Record<string, unknown> | null
+  resolvedRefs: string[]
+  conflict?: ConflictDecision
+  existingKnowledge: Array<{ knowledgeId: string; kind: 'entity' | 'relation' | 'intelligence' | 'module'; type: string; object: Record<string, unknown>; semanticHash: string }>
+  resolutionStatus: 'eligible' | 'rejected' | 'unmapped' | 'user_review' | 'planning_rejected' | 'validation_rejected'
+  reason?: string
 }
 
 export type { KnowledgeChangeSet, KnowledgeCandidate, KnowledgeMappingResult, KnowledgeScopeContext, NormalizedResearchDocument, SourceAssessment, ContentRelevanceDecision, KnowledgeAdmissionDecision, ConflictDecision, SchemaGapProposal }

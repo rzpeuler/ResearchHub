@@ -115,7 +115,8 @@ planned supersede state, and duplicate-target rejection. Knowledge Writer now
 requires full staged Knowledge validation before directory switch; Loader-only
 parsing is not commit-authorizing. The temporary Phase C design note was
 removed because frozen architecture and storage documents remain authoritative.
-Phase D1 is implemented and review pending; Phase D2 has not started.
+At the time of this Phase C checkpoint, Phase D1 was implemented and review
+pending; the current Phase D2 status is recorded below.
 
 ## KNOWLEDGE-RUNTIME-MIGRATION-C-001-R2
 
@@ -150,6 +151,27 @@ Raw/source/Knowledge identity, partial candidate continuation, idempotent
 successful retries, structured ingestion audit logs, and a DSH-only Curation
 model adapter. No new architecture layer, database, RAG, automatic migration,
 or Research Artifact conversion was introduced.
+
+## KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R1
+
+The D2 workflow contract rework is implemented and review pending for Sol
+verification. ChangeSet Validation now supports non-mutating dry-run planning,
+virtual Raw provenance, readonly-compatible validation, operation-level
+diagnostics, and planned change summaries without producing Writer receipts.
+Document resolution keeps exact Raw bytes separate from normalized text and
+chunks. The workflow now skips extraction and Source planning for wholly
+irrelevant reports, preserves immutable Mapping results, supports deterministic
+same-ChangeSet reference allocation, and performs one bounded candidate-level
+validation-pruning pass before commit. Ingestion logs report accurate Raw
+created/reused state and structured validation, review, Schema Gap, and status
+fields. Workflow step metadata distinguishes Skills, infrastructure, and
+Workflow-owned orchestration while retaining legacy definitions.
+
+Focused R1 tests cover dry-run on readonly bases, virtual Raw references,
+irrelevant-report no-change behavior, binary Raw preservation, and safe
+continuation after a candidate-specific validation failure. No new architecture
+layer, database, RAG, automatic migration, or Research Artifact conversion was
+introduced.
 
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure
 

@@ -377,7 +377,9 @@ export class KnowledgeWriter {
     const markerPath = recoveryMarkerPath(rootPath)
     const logRef = `logs/ingestion/${safeLogName(changeSet.workflowRunId)}`
     const rawRefs = [...new Set(changeSet.sourceOperations.flatMap((operation) => operation.type === 'source_create' ? (operation.source.rawRefs ?? []) : (operation.addRawRefs ?? [])))].sort()
-    const logValue = { workflowRunId: changeSet.workflowRunId, changeSetId: changeSet.changeSetId, changeSetHash: payloadHash, knowledgeBaseId: currentManifest.knowledgeBaseId, schemaVersionAtExecution: currentManifest.schemaVersion, startedAt: this.clock(), completedAt: this.clock(), rawArchive: { rawRefs, created: [], reused: [] }, changes: { ...summary, hashes }, status: changeSet.ingestionContext?.workflowStatus === 'completed_with_review' ? 'completed_with_review' : 'completed', writeStatus: changed ? 'committed' : 'no_changes', committedRevision: nextRevision, ingestionLogRef: logRef, ingestionContext: projectIngestionContext(changeSet.ingestionContext), userReview: undefined, schemaGaps: undefined, errors: [] }
+    const audit = projectIngestionContext(changeSet.ingestionContext)
+    const rawAudit = isObject(audit?.rawArchive) ? audit.rawArchive : undefined
+    const logValue = { workflowRunId: changeSet.workflowRunId, changeSetId: changeSet.changeSetId, changeSetHash: payloadHash, knowledgeBaseId: currentManifest.knowledgeBaseId, schemaVersionAtExecution: currentManifest.schemaVersion, startedAt: this.clock(), completedAt: this.clock(), rawArchive: rawAudit ?? { rawRefs, created: [], reused: [] }, changes: { ...summary, hashes }, status: audit?.workflowStatus === 'completed_with_review' ? 'completed_with_review' : 'completed', writeStatus: changed ? 'committed' : 'no_changes', committedRevision: nextRevision, ingestionLogRef: logRef, ingestionContext: audit, validationRejects: audit?.validationRejects, userReview: audit?.userReview, schemaGaps: audit?.schemaGaps, errors: [] }
     try {
       await rm(stagingPath, { recursive: true, force: true })
       await cp(rootPath, stagingPath, { recursive: true, errorOnExist: true })

@@ -10,6 +10,7 @@ export interface ValidationDiagnostic {
   severity: ValidationSeverity
   message: string
   assetId?: string
+  operationId?: string
   filePath?: string
 }
 export interface ValidationReport {
@@ -28,4 +29,9 @@ export interface ValidationInput {
 export interface ChangeSetValidationResult {
   report: ValidationReport
   validatedChangeSet?: ValidatedKnowledgeChangeSet
+}
+
+export interface ChangeSetValidationOptions {
+  mode?: 'commit' | 'dry_run'
+  virtualRawRefs?: readonly string[]
 }

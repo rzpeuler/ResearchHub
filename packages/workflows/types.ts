@@ -12,7 +12,11 @@ export type WorkflowSchema = Readonly<Record<string, WorkflowFieldSchema>>
 
 export interface WorkflowStep {
   id: string
-  skill: string
+  /** Legacy Skill field; required when kind is omitted or 'skill'. */
+  skill?: string
+  /** Runtime-neutral component name for infrastructure/workflow steps. */
+  component?: string
+  kind?: 'skill' | 'infrastructure' | 'workflow'
   inputs: string[]
   outputs: string[]
   dependsOn: string[]

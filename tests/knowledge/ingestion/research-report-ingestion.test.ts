@@ -5,6 +5,7 @@ import test from 'node:test'
 import { KnowledgeBaseLoader } from '../../../packages/shared/knowledge-base/knowledge-base-loader.ts'
 import { KnowledgeBaseRegistry } from '../../../packages/shared/knowledge-base/registry.ts'
 import { KnowledgeCurationSkill } from '../../../packages/skills/knowledge-curation/index.ts'
+import { DefaultResearchReportInputResolver } from '../../../packages/workflows/research-report-knowledge-ingestion/input-resolver.ts'
 import { ResearchReportKnowledgeIngestionWorkflow } from '../../../packages/workflows/research-report-knowledge-ingestion/index.ts'
 import { ScriptedKnowledgeCurationModel } from '../curation/scripted-model.ts'
 import { createRuntimeKnowledgeBase, removeRuntimeKnowledgeBase } from '../runtime/helpers.ts'
@@ -15,6 +16,10 @@ function sourceOutput() {
 
 function candidateOutput() {
   return { candidateId: 'model-id', workflowRunId: 'model-run', knowledgeBaseId: 'model-kb', candidateType: 'entity', intelligenceType: null, subjectRefs: [], claim: { normalizedStatement: 'NVIDIA is an AI compute company.', originalStatement: 'NVIDIA is an AI compute company.' }, temporal: { asOf: null, periodStart: null, periodEnd: null, forecastHorizon: null }, provenance: { rawRef: 'model-raw', sourceRef: 'model-source', page: null, section: null, locator: null, chunkId: 'chunk-0001' }, sourceAssessmentRef: 'model-assessment', confidence: { score: 0.8, factors: { sourceReliability: 'medium', directness: 0.8, corroboration: 0.4, freshness: 0.8, conflictStatus: 1 }, reasoning: ['Specific company mention.'] }, entityResolution: { mention: 'NVIDIA', suggestedEntityRef: null, confidence: 0.8 }, proposedKnowledge: { object: { id: 'attacker-id', type: 'company', name: 'NVIDIA', sourceRefs: ['attacker-source'] } }, mappingStatus: 'mapped', admission: 'pending', notes: [] }
+}
+
+function invalidRelationCandidateOutput() {
+  return { ...candidateOutput(), candidateType: 'relation', entityResolution: null, proposedKnowledge: { object: { id: 'attacker-relation', type: 'not-a-relation', source: 'candidate-run-ingest-0001', target: 'segment:gpu' } } }
 }
 
 function buildModel(): ScriptedKnowledgeCurationModel {
@@ -48,12 +53,94 @@ test('Research report ingestion commits Raw, Source, Entity and a structured log
     assert.equal(result.status, 'completed', JSON.stringify(result.errors))
     assert.equal(result.raw.persisted, true)
     assert.equal(result.changes.knowledgeCreated, 1)
+    assert.deepEqual(result.plannedChanges.knowledgeCreate, ['company:nvidia'])
     assert.equal(result.finalRevision, 1)
     const loaded = await setup(root)
     assert.ok(loaded.index.entities.has('company:nvidia'))
     const log = JSON.parse(await readFile(join(root, 'logs', 'ingestion', 'run-ingest.yaml'), 'utf8')) as Record<string, unknown>
     assert.equal((log.ingestionContext as Record<string, unknown>).workflowVersion, '0.1')
+    assert.deepEqual((log.rawArchive as Record<string, unknown>).created, [result.raw.rawRef])
     assert.doesNotMatch(JSON.stringify(log), /NVIDIA is an AI compute company/)
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
+
+test('all-irrelevant reports persist only Raw and do not create a Source', async () => {
+  const root = await createRuntimeKnowledgeBase()
+  try {
+    const model = new ScriptedKnowledgeCurationModel()
+      .set('assess_source', sourceOutput())
+      .set('filter_relevance', [{ chunkId: 'chunk-0001', decision: 'irrelevant', reason: 'unrelated_content' }])
+    const workflow = new ResearchReportKnowledgeIngestionWorkflow({ targetResolver: { resolve: async () => setup(root) }, curation: new KnowledgeCurationSkill({ model }) })
+    const result = await workflow.execute(input('commit'))
+    assert.equal(result.status, 'completed', JSON.stringify(result))
+    assert.equal(result.raw.persisted, true)
+    assert.equal(result.source.sourceId, null)
+    assert.equal(result.candidates.extracted, 0)
+    assert.deepEqual(result.changes, { sourceCreated: 0, sourceMerged: 0, knowledgeCreated: 0, knowledgeUpdated: 0, knowledgeSuperseded: 0, knowledgeSourceMerged: 0 })
+    assert.equal(result.finalRevision, 0)
+    const log = JSON.parse(await readFile(join(root, 'logs', 'ingestion', 'run-ingest.yaml'), 'utf8')) as Record<string, unknown>
+    assert.deepEqual((log.rawArchive as Record<string, unknown>).created, [result.raw.rawRef])
+    assert.deepEqual((log.changes as Record<string, unknown>).sourceCreated, [])
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
+
+test('dry-run validates a readonly Knowledge Base and exposes planned changes without writing', async () => {
+  const root = await createRuntimeKnowledgeBase({ status: 'readonly' })
+  try {
+    const before = JSON.stringify(await readdir(root, { recursive: true }))
+    const workflow = new ResearchReportKnowledgeIngestionWorkflow({ targetResolver: { resolve: async () => setup(root) }, curation: new KnowledgeCurationSkill({ model: buildModel() }) })
+    const result = await workflow.execute(input('dry_run'))
+    assert.equal(result.status, 'completed')
+    assert.equal(result.validation?.status, 'passed')
+    assert.equal(result.raw.persisted, false)
+    assert.deepEqual(result.plannedChanges.knowledgeCreate, ['company:nvidia'])
+    assert.deepEqual(result.changes, { sourceCreated: 0, sourceMerged: 0, knowledgeCreated: 0, knowledgeUpdated: 0, knowledgeSuperseded: 0, knowledgeSourceMerged: 0 })
+    assert.equal(JSON.stringify(await readdir(root, { recursive: true })), before)
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
+
+test('external document resolution keeps exact raw bytes separate from normalized text', async () => {
+  const root = await createRuntimeKnowledgeBase()
+  try {
+    const rawBytes = new Uint8Array([0, 255, 65, 0, 10])
+    const resolver = new DefaultResearchReportInputResolver(async () => ({ rawBytes, originalFilename: 'report.pdf', mediaType: 'application/pdf', normalizedText: 'NVIDIA is an AI compute company.', chunks: [{ chunkId: 'chunk-0001', text: 'NVIDIA is an AI compute company.', section: null, locator: 'page:1' }] }))
+    const workflow = new ResearchReportKnowledgeIngestionWorkflow({ targetResolver: { resolve: async () => setup(root) }, inputResolver: resolver, curation: new KnowledgeCurationSkill({ model: buildModel() }) })
+    const externalInput = { ...input('commit'), report: { ...input('commit').report, inputRef: { type: 'file' as const, reference: 'fixture-report.pdf' } } }
+    const result = await workflow.execute(externalInput)
+    assert.equal(result.status, 'completed')
+    const rawRegistry = JSON.parse(await readFile(join(root, 'registry', 'raw.yaml'), 'utf8')) as Record<string, { storageRef: string }>
+    const entry = rawRegistry[result.raw.rawRef]
+    assert.ok(entry)
+    assert.deepEqual([...await readFile(join(root, entry.storageRef))], [...rawBytes])
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
+
+test('candidate-specific validation rejects one invalid operation and commits safe candidates', async () => {
+  const root = await createRuntimeKnowledgeBase()
+  try {
+    const model = new ScriptedKnowledgeCurationModel()
+      .set('assess_source', sourceOutput())
+      .set('filter_relevance', [{ chunkId: 'chunk-0001', decision: 'relevant', reason: 'research_relevant' }])
+      .set('extract_candidates', [candidateOutput(), invalidRelationCandidateOutput()])
+      .queue('assess_admission', [
+        { candidateId: 'candidate-run-ingest-0001', decision: 'admit', reason: 'relevant_and_material', reasoning: ['Material entity.'], dimensions: { relevance: 'direct', specificity: 'high', informationGain: 'high', evidenceDensity: 'direct', temporalScopePrecision: 'not-applicable', researchUtility: 'high' } },
+        { candidateId: 'candidate-run-ingest-0002', decision: 'admit', reason: 'relevant_and_material', reasoning: ['Candidate relation.'], dimensions: { relevance: 'direct', specificity: 'high', informationGain: 'high', evidenceDensity: 'direct', temporalScopePrecision: 'not-applicable', researchUtility: 'high' } },
+      ])
+      .set('map_candidates', [
+        { candidateId: 'candidate-run-ingest-0001', mappingStatus: 'mapped', proposedKnowledge: { object: { type: 'company', name: 'NVIDIA' } } },
+        { candidateId: 'candidate-run-ingest-0002', mappingStatus: 'mapped', proposedKnowledge: { object: { type: 'not-a-relation', source: 'candidate-run-ingest-0001', target: 'segment:gpu' } } },
+      ])
+      .queue('analyze_conflicts', [
+        { decisionId: 'entity-decision', knowledgeBaseId: 'kb-runtime-test', candidateId: 'candidate-run-ingest-0001', existingKnowledgeRefs: [], conflictType: 'none', resolution: 'create', comparison: { sameEntity: false, sameMetric: false, samePeriod: false, sameUnit: false, sameRegion: false, sameDefinition: false, sameMethodology: false }, reason: 'No existing company match.', decisionConfidence: 0.9, requiresUserReview: false },
+        { decisionId: 'relation-decision', knowledgeBaseId: 'kb-runtime-test', candidateId: 'candidate-run-ingest-0002', existingKnowledgeRefs: [], conflictType: 'none', resolution: 'create', comparison: { sameEntity: false, sameMetric: false, samePeriod: false, sameUnit: false, sameRegion: false, sameDefinition: false, sameMethodology: false }, reason: 'No existing relation match.', decisionConfidence: 0.9, requiresUserReview: false },
+      ])
+      .set('detect_schema_gaps', [])
+    const workflow = new ResearchReportKnowledgeIngestionWorkflow({ targetResolver: { resolve: async () => setup(root) }, curation: new KnowledgeCurationSkill({ model }) })
+    const result = await workflow.execute(input('commit'))
+    assert.equal(result.status, 'completed', JSON.stringify(result))
+    assert.equal(result.changes.knowledgeCreated, 1)
+    assert.equal(result.candidates.validationRejected, 1)
+    assert.ok((await setup(root)).index.entities.has('company:nvidia'))
   } finally { await removeRuntimeKnowledgeBase(root) }
 })
 

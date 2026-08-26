@@ -18,6 +18,7 @@ import { KnowledgeRuleConfigLoader } from './rules.ts'
 import type { RelationRule } from './rules.ts'
 import type {
   ChangeSetValidationResult,
+  ChangeSetValidationOptions,
   ValidationDiagnostic,
   ValidationReport,
   ValidationScope,
@@ -129,8 +130,10 @@ export class KnowledgeValidationSkill {
     return this.report(scope, diagnostics)
   }
 
-  async validateChangeSet(handle: KnowledgeBaseHandle, changeSet: KnowledgeChangeSet): Promise<ChangeSetValidationResult> {
+  async validateChangeSet(handle: KnowledgeBaseHandle, changeSet: KnowledgeChangeSet, options: ChangeSetValidationOptions = {}): Promise<ChangeSetValidationResult> {
     const diagnostics: ValidationDiagnostic[] = []
+    const mode = options.mode ?? 'commit'
+    const dryRun = mode === 'dry_run'
     let assets: KnowledgeAssetCollection
     try {
       assets = await this.options.loader.readAssets(handle)
@@ -139,7 +142,7 @@ export class KnowledgeValidationSkill {
       return { report: this.report('all', diagnostics) }
     }
 
-    if (!handle.writable || handle.schemaVersion !== '0.2' || handle.storageFormatVersion !== '1') {
+    if (handle.schemaVersion !== '0.2' || handle.storageFormatVersion !== '1' || (!dryRun && !handle.writable)) {
       diagnostics.push({ code: 'WRITE_NOT_SUPPORTED', severity: 'error', message: `Knowledge Base is not writable: ${handle.schemaVersion}/${handle.storageFormatVersion}/${handle.status}` })
     }
     if (changeSet.knowledgeBaseId !== handle.knowledgeBaseId) diagnostics.push({ code: 'CHANGESET_KB_MISMATCH', severity: 'error', message: 'ChangeSet knowledgeBaseId does not match handle' })
@@ -159,9 +162,9 @@ export class KnowledgeValidationSkill {
     const objectCreates = new Set<string>()
     const supersedeReplacements = new Set<string>()
     const mutationTargets = new Map<string, string>()
-    const plannedObjects: Record<string, unknown>[] = []
+    const plannedObjects: Array<{ object: Record<string, unknown>; operationId: string }> = []
     const operationIds = new Set<string>()
-    const rawRefs = await this.loadRawRefs(handle, diagnostics)
+    const rawRefs = await this.loadRawRefs(handle, diagnostics, options.virtualRawRefs)
 
     for (const operation of changeSet.sourceOperations ?? []) {
       this.validateOperationId(diagnostics, operation, operationIds)
@@ -181,27 +184,27 @@ export class KnowledgeValidationSkill {
     for (const operation of changeSet.knowledgeOperations ?? []) {
       this.validateOperationId(diagnostics, operation, operationIds)
       if (operation.type === 'create') {
-        this.validateKnowledgeCreateOperation(diagnostics, operation.object, existingById, objectCreates, supersedeReplacements)
+        this.validateKnowledgeCreateOperation(diagnostics, operation.object, existingById, objectCreates, supersedeReplacements, operation.operationId)
         if (typeof operation.object?.id === 'string') {
           if (this.assetKind(operation.object) === 'entity') entities.add(operation.object.id)
-          plannedObjects.push(operation.object as Record<string, unknown>)
+          plannedObjects.push({ object: operation.object as Record<string, unknown>, operationId: operation.operationId })
         }
       } else if (operation.type === 'update') {
         this.validateTargetOperation(diagnostics, operation.knowledgeId, operation.expectedBeforeHash, existingById, operation.object, true, mutationTargets, operation.operationId)
-        plannedObjects.push(operation.object as Record<string, unknown>)
+        plannedObjects.push({ object: operation.object as Record<string, unknown>, operationId: operation.operationId })
       } else if (operation.type === 'supersede') {
         this.validateTargetOperation(diagnostics, operation.knowledgeId, operation.expectedBeforeHash, existingById, operation.replacement, false, mutationTargets, operation.operationId)
-        if (operation.replacement?.id === operation.knowledgeId) diagnostics.push({ code: 'SUPERSEDE_SAME_ID', severity: 'error', message: 'Supersede replacement must have a different ID' })
+        if (operation.replacement?.id === operation.knowledgeId) diagnostics.push({ code: 'SUPERSEDE_SAME_ID', severity: 'error', message: 'Supersede replacement must have a different ID', operationId: operation.operationId })
         if (typeof operation.replacement?.id === 'string') {
-          if (existingById.has(operation.replacement.id) || sourceCreates.has(operation.replacement.id) || objectCreates.has(operation.replacement.id) || supersedeReplacements.has(operation.replacement.id)) diagnostics.push({ code: 'SUPERSEDE_COLLISION', severity: 'error', message: `Supersede replacement ID already exists: ${operation.replacement.id}` })
+          if (existingById.has(operation.replacement.id) || sourceCreates.has(operation.replacement.id) || objectCreates.has(operation.replacement.id) || supersedeReplacements.has(operation.replacement.id)) diagnostics.push({ code: 'SUPERSEDE_COLLISION', severity: 'error', message: `Supersede replacement ID already exists: ${operation.replacement.id}`, operationId: operation.operationId })
           supersedeReplacements.add(operation.replacement.id)
           if (this.assetKind(operation.replacement) === 'entity') entities.add(operation.replacement.id)
-          plannedObjects.push(operation.replacement as Record<string, unknown>)
+          plannedObjects.push({ object: operation.replacement as Record<string, unknown>, operationId: operation.operationId })
         }
       } else if (operation.type === 'merge_source') {
         this.validateTargetOperation(diagnostics, operation.knowledgeId, operation.expectedBeforeHash, existingById, undefined, false, mutationTargets, operation.operationId)
-        if (!Array.isArray(operation.addSourceRefs) || operation.addSourceRefs.length === 0) diagnostics.push({ code: 'SOURCE_MERGE_REFS', severity: 'error', message: 'merge_source requires a non-empty addSourceRefs array' })
-        for (const sourceId of operation.addSourceRefs ?? []) if (!sources.has(sourceId)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Source does not exist in current or same ChangeSet: ${sourceId}` })
+        if (!Array.isArray(operation.addSourceRefs) || operation.addSourceRefs.length === 0) diagnostics.push({ code: 'SOURCE_MERGE_REFS', severity: 'error', message: 'merge_source requires a non-empty addSourceRefs array', operationId: operation.operationId })
+        for (const sourceId of operation.addSourceRefs ?? []) if (!sources.has(sourceId)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Source does not exist in current or same ChangeSet: ${sourceId}`, operationId: operation.operationId })
       } else {
         diagnostics.push({ code: 'UNSUPPORTED_KNOWLEDGE_OPERATION', severity: 'error', message: `Unsupported Knowledge operation: ${String((operation as { type?: unknown }).type)}` })
       }
@@ -210,6 +213,7 @@ export class KnowledgeValidationSkill {
     this.validatePlannedReferences(diagnostics, plannedObjects, entities, sources)
     const report = this.report('all', diagnostics)
     if (report.status === 'failed') return { report }
+    if (dryRun) return { report }
     const changeSetHash = hashKnowledgeObject(changeSet)
     const validatedChangeSet: ValidatedKnowledgeChangeSet = deepFreeze({
       changeSet: deepFreeze(structuredClone(changeSet)),
@@ -257,7 +261,7 @@ export class KnowledgeValidationSkill {
 
   private validateSourceMergeOperation(diagnostics: ValidationDiagnostic[], operation: Extract<KnowledgeSourceOperation, { type: 'source_merge' }>, existingById: Map<string, { type: string; object: Record<string, unknown> }>, sources: Set<string>, rawRefs: Set<string>, requiresRawProvenance: boolean, mutationTargets: Map<string, string>): void {
     if (!sources.has(operation.sourceId)) diagnostics.push({ code: 'MISSING_TARGET', severity: 'error', message: `Source does not exist: ${operation.sourceId}` })
-    this.validateTargetHash(diagnostics, operation.sourceId, operation.expectedBeforeHash, existingById)
+    this.validateTargetHash(diagnostics, operation.sourceId, operation.expectedBeforeHash, existingById, operation.operationId)
     this.validateRawRefs(diagnostics, operation.addRawRefs, rawRefs)
     this.registerMutationTarget(diagnostics, mutationTargets, operation.sourceId, operation.operationId)
     if (operation.metadataPatch !== undefined && !isRecord(operation.metadataPatch)) diagnostics.push({ code: 'SOURCE_MERGE_SCHEMA', severity: 'error', message: 'Source merge metadataPatch must be an object' })
@@ -271,44 +275,44 @@ export class KnowledgeValidationSkill {
     }
   }
 
-  private validateKnowledgeCreateOperation(diagnostics: ValidationDiagnostic[], object: KnowledgeWritableObject, existingById: Map<string, { type: string; object: Record<string, unknown> }>, objectCreates: Set<string>, supersedeReplacements: Set<string>): void {
+  private validateKnowledgeCreateOperation(diagnostics: ValidationDiagnostic[], object: KnowledgeWritableObject, existingById: Map<string, { type: string; object: Record<string, unknown> }>, objectCreates: Set<string>, supersedeReplacements: Set<string>, operationId: string): void {
     if (!object || typeof object !== 'object') {
-      diagnostics.push({ code: 'CREATE_SCHEMA', severity: 'error', message: 'create requires a Knowledge object' })
+      diagnostics.push({ code: 'CREATE_SCHEMA', severity: 'error', message: 'create requires a Knowledge object', operationId })
       return
     }
-    if (typeof object.id !== 'string' || !ID_PATTERN.test(object.id) || object.id.startsWith('source:')) diagnostics.push({ code: 'CREATE_ID', severity: 'error', message: `Invalid create Knowledge ID: ${String(object.id)}` })
+    if (typeof object.id !== 'string' || !ID_PATTERN.test(object.id) || object.id.startsWith('source:')) diagnostics.push({ code: 'CREATE_ID', severity: 'error', message: `Invalid create Knowledge ID: ${String(object.id)}`, operationId })
     if (typeof object.id === 'string') {
-      if (existingById.has(object.id) || objectCreates.has(object.id) || supersedeReplacements.has(object.id)) diagnostics.push({ code: 'CREATE_COLLISION', severity: 'error', message: `Knowledge object already exists: ${object.id}` })
+      if (existingById.has(object.id) || objectCreates.has(object.id) || supersedeReplacements.has(object.id)) diagnostics.push({ code: 'CREATE_COLLISION', severity: 'error', message: `Knowledge object already exists: ${object.id}`, operationId })
       objectCreates.add(object.id)
     }
-    this.validateWritableObjectSchema(diagnostics, object)
+    this.validateWritableObjectSchema(diagnostics, object, operationId)
   }
 
   private validateTargetOperation(diagnostics: ValidationDiagnostic[], knowledgeId: string, expectedBeforeHash: string, existingById: Map<string, { type: string; object: Record<string, unknown> }>, replacement?: KnowledgeWritableObject, requiresSameId = false, mutationTargets?: Map<string, string>, operationId = knowledgeId): void {
     const target = existingById.get(knowledgeId)
-    if (!target) diagnostics.push({ code: 'MISSING_TARGET', severity: 'error', message: `Knowledge target does not exist: ${knowledgeId}` })
-    this.validateTargetHash(diagnostics, knowledgeId, expectedBeforeHash, existingById)
+    if (!target) diagnostics.push({ code: 'MISSING_TARGET', severity: 'error', message: `Knowledge target does not exist: ${knowledgeId}`, operationId })
+    this.validateTargetHash(diagnostics, knowledgeId, expectedBeforeHash, existingById, operationId)
     if (mutationTargets) this.registerMutationTarget(diagnostics, mutationTargets, knowledgeId, operationId)
     if (replacement && this.assetKind(replacement) === undefined) diagnostics.push({ code: 'UPDATE_KIND', severity: 'error', message: `Unsupported replacement Knowledge object: ${replacement.id}` })
-    if (replacement) this.validateWritableObjectSchema(diagnostics, replacement)
+    if (replacement) this.validateWritableObjectSchema(diagnostics, replacement, operationId)
     if (replacement && (typeof replacement.id !== 'string' || !ID_PATTERN.test(replacement.id) || replacement.id.startsWith('source:'))) diagnostics.push({ code: 'UPDATE_ID', severity: 'error', message: `Replacement object id is invalid: ${String(replacement?.id)}` })
     if (replacement && requiresSameId && replacement.id !== knowledgeId) diagnostics.push({ code: 'UPDATE_ID', severity: 'error', message: 'Update object id must match knowledgeId' })
     if (replacement && target && this.assetKind(replacement) !== target.type) diagnostics.push({ code: 'UPDATE_KIND', severity: 'error', message: `Replacement kind must match target: ${knowledgeId}` })
   }
 
-  private validateExpectedHash(diagnostics: ValidationDiagnostic[], hash: unknown): void {
-    if (typeof hash !== 'string' || !HASH_PATTERN.test(hash)) diagnostics.push({ code: 'EXPECTED_HASH', severity: 'error', message: 'expectedBeforeHash must be sha256:<64 lowercase hex>' })
+  private validateExpectedHash(diagnostics: ValidationDiagnostic[], hash: unknown, operationId?: string): void {
+    if (typeof hash !== 'string' || !HASH_PATTERN.test(hash)) diagnostics.push({ code: 'EXPECTED_HASH', severity: 'error', message: 'expectedBeforeHash must be sha256:<64 lowercase hex>', operationId })
   }
 
-  private validateTargetHash(diagnostics: ValidationDiagnostic[], targetId: string, expectedBeforeHash: unknown, existingById: Map<string, { type: string; object: Record<string, unknown> }>): void {
-    this.validateExpectedHash(diagnostics, expectedBeforeHash)
+  private validateTargetHash(diagnostics: ValidationDiagnostic[], targetId: string, expectedBeforeHash: unknown, existingById: Map<string, { type: string; object: Record<string, unknown> }>, operationId?: string): void {
+    this.validateExpectedHash(diagnostics, expectedBeforeHash, operationId)
     const target = existingById.get(targetId)
-    if (target && typeof expectedBeforeHash === 'string' && HASH_PATTERN.test(expectedBeforeHash) && hashKnowledgeObject(target.object) !== expectedBeforeHash) diagnostics.push({ code: 'STALE_TARGET_HASH', severity: 'error', message: `expectedBeforeHash does not match current target: ${targetId}` })
+    if (target && typeof expectedBeforeHash === 'string' && HASH_PATTERN.test(expectedBeforeHash) && hashKnowledgeObject(target.object) !== expectedBeforeHash) diagnostics.push({ code: 'STALE_TARGET_HASH', severity: 'error', message: `expectedBeforeHash does not match current target: ${targetId}`, operationId })
   }
 
   private registerMutationTarget(diagnostics: ValidationDiagnostic[], targets: Map<string, string>, targetId: string, operationId: string): void {
     const previous = targets.get(targetId)
-    if (previous) diagnostics.push({ code: 'DUPLICATE_TARGET_MUTATION', severity: 'error', message: `Target receives multiple mutation operations: ${targetId} (${previous}, ${operationId})` })
+    if (previous) diagnostics.push({ code: 'DUPLICATE_TARGET_MUTATION', severity: 'error', message: `Target receives multiple mutation operations: ${targetId} (${previous}, ${operationId})`, operationId })
     else targets.set(targetId, operationId)
   }
 
@@ -326,34 +330,35 @@ export class KnowledgeValidationSkill {
     for (const ref of value) if (!rawRefs.has(ref)) diagnostics.push({ code: 'UNKNOWN_RAW_REF', severity: 'error', message: `Raw ref does not exist: ${ref}` })
   }
 
-  private validateWritableObjectSchema(diagnostics: ValidationDiagnostic[], object: KnowledgeWritableObject): void {
+  private validateWritableObjectSchema(diagnostics: ValidationDiagnostic[], object: KnowledgeWritableObject, operationId?: string): void {
     const record = object as Record<string, unknown>
     if (typeof record.source === 'string' || typeof record.target === 'string') {
-      if (typeof record.source !== 'string' || typeof record.target !== 'string') diagnostics.push({ code: 'RELATION_SCHEMA', severity: 'error', message: 'Relation source and target are required' })
-      if (typeof record.type !== 'string' || !RELATION_TYPES.includes(record.type as never)) diagnostics.push({ code: 'RELATION_SCHEMA', severity: 'error', message: `Unsupported relation type: ${String(record.type)}` })
+      if (typeof record.source !== 'string' || typeof record.target !== 'string') diagnostics.push({ code: 'RELATION_SCHEMA', severity: 'error', message: 'Relation source and target are required', operationId })
+      if (typeof record.type !== 'string' || !RELATION_TYPES.includes(record.type as never)) diagnostics.push({ code: 'RELATION_SCHEMA', severity: 'error', message: `Unsupported relation type: ${String(record.type)}`, operationId })
     } else if (Array.isArray(record.entityRefs)) {
-      if (typeof record.type !== 'string' || !INTELLIGENCE_TYPES.includes(record.type as never)) diagnostics.push({ code: 'INTELLIGENCE_SCHEMA', severity: 'error', message: `Unsupported intelligence type: ${String(record.type)}` })
-      if (record.entityRefs.length === 0 || record.entityRefs.some((ref) => typeof ref !== 'string')) diagnostics.push({ code: 'INTELLIGENCE_SCHEMA', severity: 'error', message: 'Intelligence entityRefs must be a non-empty string array' })
+      if (typeof record.type !== 'string' || !INTELLIGENCE_TYPES.includes(record.type as never)) diagnostics.push({ code: 'INTELLIGENCE_SCHEMA', severity: 'error', message: `Unsupported intelligence type: ${String(record.type)}`, operationId })
+      if (record.entityRefs.length === 0 || record.entityRefs.some((ref) => typeof ref !== 'string')) diagnostics.push({ code: 'INTELLIGENCE_SCHEMA', severity: 'error', message: 'Intelligence entityRefs must be a non-empty string array', operationId })
     } else if ('columns' in record || 'rows' in record || 'schemaId' in record) {
-      if (typeof record.type !== 'string' || !MODULE_TYPES.includes(record.type as never)) diagnostics.push({ code: 'MODULE_SCHEMA', severity: 'error', message: `Unsupported module type: ${String(record.type)}` })
-      if (record.type === 'comparison' && (!Array.isArray(record.columns) || !Array.isArray(record.rows))) diagnostics.push({ code: 'MODULE_SCHEMA', severity: 'error', message: 'Comparison module requires columns and rows arrays' })
+      if (typeof record.type !== 'string' || !MODULE_TYPES.includes(record.type as never)) diagnostics.push({ code: 'MODULE_SCHEMA', severity: 'error', message: `Unsupported module type: ${String(record.type)}`, operationId })
+      if (record.type === 'comparison' && (!Array.isArray(record.columns) || !Array.isArray(record.rows))) diagnostics.push({ code: 'MODULE_SCHEMA', severity: 'error', message: 'Comparison module requires columns and rows arrays', operationId })
     } else {
-      if (typeof record.type !== 'string' || !ENTITY_TYPES.includes(record.type as never)) diagnostics.push({ code: 'ENTITY_SCHEMA', severity: 'error', message: `Unsupported entity type: ${String(record.type)}` })
-      if (typeof record.name !== 'string' || record.name.trim() === '') diagnostics.push({ code: 'ENTITY_SCHEMA', severity: 'error', message: 'Entity name is required' })
+      if (typeof record.type !== 'string' || !ENTITY_TYPES.includes(record.type as never)) diagnostics.push({ code: 'ENTITY_SCHEMA', severity: 'error', message: `Unsupported entity type: ${String(record.type)}`, operationId })
+      if (typeof record.name !== 'string' || record.name.trim() === '') diagnostics.push({ code: 'ENTITY_SCHEMA', severity: 'error', message: 'Entity name is required', operationId })
     }
-    if (record.sourceRefs !== undefined && (!Array.isArray(record.sourceRefs) || record.sourceRefs.some((ref) => typeof ref !== 'string'))) diagnostics.push({ code: 'SOURCE_REFS_SCHEMA', severity: 'error', message: 'sourceRefs must be a string array' })
-    if (record.lifecycle !== undefined && (!isRecord(record.lifecycle) || typeof record.lifecycle.status !== 'string' || !LIFECYCLE_STATUSES.includes(record.lifecycle.status as never))) diagnostics.push({ code: 'INVALID_LIFECYCLE', severity: 'error', message: `Lifecycle is invalid: ${String(record.id)}` })
+    if (record.sourceRefs !== undefined && (!Array.isArray(record.sourceRefs) || record.sourceRefs.some((ref) => typeof ref !== 'string'))) diagnostics.push({ code: 'SOURCE_REFS_SCHEMA', severity: 'error', message: 'sourceRefs must be a string array', operationId })
+    if (record.lifecycle !== undefined && (!isRecord(record.lifecycle) || typeof record.lifecycle.status !== 'string' || !LIFECYCLE_STATUSES.includes(record.lifecycle.status as never))) diagnostics.push({ code: 'INVALID_LIFECYCLE', severity: 'error', message: `Lifecycle is invalid: ${String(record.id)}`, operationId })
   }
 
-  private async loadRawRefs(handle: KnowledgeBaseHandle, diagnostics: ValidationDiagnostic[]): Promise<Set<string>> {
+  private async loadRawRefs(handle: KnowledgeBaseHandle, diagnostics: ValidationDiagnostic[], virtualRawRefs: readonly string[] = []): Promise<Set<string>> {
     try {
       const value = await readKnowledgeBaseYamlResource(handle, 'registry/raw.yaml')
       if (!isRecord(value)) {
         diagnostics.push({ code: 'RAW_REGISTRY_SCHEMA', severity: 'error', message: 'Raw registry must be an object map' })
         return new Set()
       }
-      const refs = new Set(Object.keys(value))
+      const refs = new Set([...Object.keys(value), ...virtualRawRefs])
       for (const rawRef of refs) {
+        if (virtualRawRefs.includes(rawRef) && value[rawRef] === undefined) continue
         try {
           const verified = await verifyRaw(handle, rawRef)
           const entry = value[rawRef]
@@ -364,21 +369,24 @@ export class KnowledgeValidationSkill {
       }
       return refs
     } catch (error) {
+      if (virtualRawRefs.length > 0 && (error as { code?: string }).code === 'StorageError') return new Set(virtualRawRefs)
       diagnostics.push({ code: 'RAW_REGISTRY_READ_ERROR', severity: 'error', message: error instanceof Error ? error.message : String(error) })
       return new Set()
     }
   }
 
-  private validatePlannedReferences(diagnostics: ValidationDiagnostic[], plannedObjects: Record<string, unknown>[], entities: Set<string>, sources: Set<string>): void {
-    for (const object of plannedObjects) {
+  private validatePlannedReferences(diagnostics: ValidationDiagnostic[], plannedObjects: Array<{ object: Record<string, unknown>; operationId: string }>, entities: Set<string>, sources: Set<string>): void {
+    for (const planned of plannedObjects) {
+      const object = planned.object
+      const operationId = planned.operationId
       const record = object as Record<string, unknown>
       if (typeof record.source === 'string' && typeof record.target === 'string') {
-        if (!entities.has(record.source)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Relation source does not exist: ${record.source}` })
-        if (!entities.has(record.target)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Relation target does not exist: ${record.target}` })
+        if (!entities.has(record.source)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Relation source does not exist: ${record.source}`, operationId })
+        if (!entities.has(record.target)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Relation target does not exist: ${record.target}`, operationId })
       }
-      if (Array.isArray(record.entityRefs)) for (const ref of record.entityRefs) if (typeof ref === 'string' && !entities.has(ref)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Intelligence entity does not exist: ${ref}` })
-      if (Array.isArray(record.sourceRefs)) for (const ref of record.sourceRefs) if (typeof ref === 'string' && !sources.has(ref)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Source does not exist: ${ref}` })
-      if (typeof record.targetEntity === 'string' && !entities.has(record.targetEntity)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Module target does not exist: ${record.targetEntity}` })
+      if (Array.isArray(record.entityRefs)) for (const ref of record.entityRefs) if (typeof ref === 'string' && !entities.has(ref)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Intelligence entity does not exist: ${ref}`, operationId })
+      if (Array.isArray(record.sourceRefs)) for (const ref of record.sourceRefs) if (typeof ref === 'string' && !sources.has(ref)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Source does not exist: ${ref}`, operationId })
+      if (typeof record.targetEntity === 'string' && !entities.has(record.targetEntity)) diagnostics.push({ code: 'MISSING_REFERENCE', severity: 'error', message: `Module target does not exist: ${record.targetEntity}`, operationId })
     }
   }
 

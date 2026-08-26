@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R1
+
+- Closed the D2 ingestion contract gaps for non-mutating dry-run planning,
+  virtual Raw provenance, readonly validation, operation-level diagnostics, and
+  planned change reporting.
+- Separated exact external-document Raw bytes from normalized text/chunks,
+  skipped extraction and Source planning for wholly irrelevant reports, and
+  preserved immutable Mapping results with bounded candidate validation
+  continuation.
+- Corrected ingestion audit projection for Raw created/reused state and
+  structured validation, review, Schema Gap, and workflow status fields; added
+  WorkflowStep ownership metadata while preserving legacy definitions.
+- Added focused regression coverage for readonly dry-run, irrelevant reports,
+  binary Raw preservation, candidate-level validation rejection, and virtual Raw
+  references. R1 remains review pending for Sol verification.
+
 ## 2026-08-26 - KNOWLEDGE-INGESTION-D2-WORKFLOW-001
 
 - Implemented the runtime-neutral Research Report Knowledge Ingestion Workflow
