@@ -73,6 +73,14 @@ function operationSummary(): KnowledgeWriteOperationSummary {
   return { sourceCreated: [], sourceMerged: [], knowledgeCreated: [], knowledgeUpdated: [], knowledgeSuperseded: [], knowledgeSourceMerged: [] }
 }
 
+function projectIngestionContext(value: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!value) return undefined
+  const allowed = ['workflowVersion', 'ingestionIdentity', 'rawArchive', 'sourceSummary', 'filterSummary', 'candidateSummary', 'admissionSummary', 'duplicateSummary', 'validationRejects', 'userReview', 'schemaGaps', 'workflowStatus']
+  const result: Record<string, unknown> = {}
+  for (const key of allowed) if (value[key] !== undefined) result[key] = structuredClone(value[key])
+  return result
+}
+
 function objectKind(object: Record<string, unknown>): StoredRegistryEntry['type'] {
   return kindForWritableObject(object as KnowledgeWritableObject)
 }
@@ -369,7 +377,7 @@ export class KnowledgeWriter {
     const markerPath = recoveryMarkerPath(rootPath)
     const logRef = `logs/ingestion/${safeLogName(changeSet.workflowRunId)}`
     const rawRefs = [...new Set(changeSet.sourceOperations.flatMap((operation) => operation.type === 'source_create' ? (operation.source.rawRefs ?? []) : (operation.addRawRefs ?? [])))].sort()
-    const logValue = { workflowRunId: changeSet.workflowRunId, changeSetId: changeSet.changeSetId, changeSetHash: payloadHash, knowledgeBaseId: currentManifest.knowledgeBaseId, schemaVersionAtExecution: currentManifest.schemaVersion, startedAt: this.clock(), completedAt: this.clock(), rawArchive: { rawRefs, created: [], reused: [] }, changes: { ...summary, hashes }, status: 'completed', writeStatus: changed ? 'committed' : 'no_changes', committedRevision: nextRevision, ingestionLogRef: logRef, userReview: undefined, schemaGaps: undefined, errors: [] }
+    const logValue = { workflowRunId: changeSet.workflowRunId, changeSetId: changeSet.changeSetId, changeSetHash: payloadHash, knowledgeBaseId: currentManifest.knowledgeBaseId, schemaVersionAtExecution: currentManifest.schemaVersion, startedAt: this.clock(), completedAt: this.clock(), rawArchive: { rawRefs, created: [], reused: [] }, changes: { ...summary, hashes }, status: changeSet.ingestionContext?.workflowStatus === 'completed_with_review' ? 'completed_with_review' : 'completed', writeStatus: changed ? 'committed' : 'no_changes', committedRevision: nextRevision, ingestionLogRef: logRef, ingestionContext: projectIngestionContext(changeSet.ingestionContext), userReview: undefined, schemaGaps: undefined, errors: [] }
     try {
       await rm(stagingPath, { recursive: true, force: true })
       await cp(rootPath, stagingPath, { recursive: true, errorOnExist: true })

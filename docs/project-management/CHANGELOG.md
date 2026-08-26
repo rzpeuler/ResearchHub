@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-INGESTION-D2-WORKFLOW-001
+
+- Implemented the runtime-neutral Research Report Knowledge Ingestion Workflow
+  v0.1 across explicit target resolution, Raw Archive/document normalization,
+  Curation, Access, deterministic reference/ID planning, conflict handling,
+  Validation, Writer, and final audit output.
+- Added commit and dry-run execution, deterministic ingestion identity and
+  idempotent successful retry handling, partial candidate continuation,
+  blocked-after-Raw audit logs, and structured Writer ingestion context.
+- Added the DSH-only Knowledge Curation model adapter and network-free workflow
+  and adapter tests. D2 remains review pending for Sol verification.
+
 ## 2026-08-26 - KNOWLEDGE-INGESTION-D1-CURATION-001
 
 - Added the runtime-neutral Knowledge Curation Skill with a narrow injected

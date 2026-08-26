@@ -19,7 +19,7 @@ Storage Layout v0.2, Schema Versioning and Migration, Data Schema v0.2,
 Access/Validation/Curation contracts, Ingestion Workflow, Write Interface,
 Frontend Projection v0.2, Example KB Layout, and ADR-015 are design-complete
 and frozen. Runtime Migration Phase A is accepted after Sol verification, and
-Phase B is accepted after Sol verification, and Phase C is accepted after Sol verification. Phase D1 is implemented and review pending, while Phase D2 remains planned. This phase is an engineering migration, not a new
+Phase B is accepted after Sol verification, and Phase C is accepted after Sol verification. Phase D1 is accepted after Sol verification, while Phase D2 is implemented and review pending. Overall Phase D is implemented and review pending. This phase is an engineering migration, not a new
 architecture design exercise.
 
 The AI Hardware dataset is now a Git-managed Example Knowledge Base at
@@ -64,7 +64,7 @@ Phase B is accepted after Sol verification.
   the frozen Writer error taxonomy, and the Phase B governance acceptance
   correction. Sol verified Phase C.
 
-### Phase D1 — Knowledge Curation Skill — Implemented / Review Pending
+### Phase D1 — Knowledge Curation Skill — Accepted / Complete
 
 - provider-neutral injected `KnowledgeCurationModel` port;
 - Source Assessment and document/chunk relevance filtering;
@@ -73,15 +73,20 @@ Phase B is accepted after Sol verification.
 - deterministic output validation and trusted scope/provenance guards.
 
 D1 does not orchestrate Raw Archive, Access, Validation, Writer, Workflow, or
-durable persistence. It remains review pending for Sol verification.
+durable persistence. Sol verified D1 acceptance.
 
-### Phase D2 — Research Report Knowledge Ingestion Workflow — Planned / Pending
+### Phase D2 — Research Report Knowledge Ingestion Workflow — Implemented / Review Pending
 
 - Knowledge Curation Skill;
 - relevance and quality filtering;
 - Knowledge Admission;
 - conflict analysis and Schema Gap proposals;
-- Research Report Knowledge Ingestion Workflow.
+- Research Report Knowledge Ingestion Workflow;
+- commit/dry-run, deterministic identity, idempotency, partial continuation,
+  structured audit logging, and DSH Curation adapter.
+
+D2 implementation is complete and remains pending Sol verification. Overall
+Phase D is implemented and review pending.
 
 ### Phase E — Migration infrastructure
 

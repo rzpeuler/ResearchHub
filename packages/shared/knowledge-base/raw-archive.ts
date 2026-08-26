@@ -7,6 +7,7 @@ import { loadKnowledgeBaseManifest } from './manifest-loader.ts'
 import { withKnowledgeBaseMutationLock } from './mutation-lock.ts'
 import { parseYaml } from './yaml.ts'
 import type { KnowledgeBaseManifest } from '../../schemas/knowledge/index.ts'
+import { deriveRawIdentity } from './raw-identity.ts'
 
 const RAW_REF_PATTERN = /^raw-sha256-([0-9a-f]{64})$/
 const CONTENT_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/
@@ -228,8 +229,8 @@ export async function archiveRaw(handle: KnowledgeBaseHandle, input: RawArchiveI
 async function archiveRawUnlocked(handle: KnowledgeBaseHandle, input: RawArchiveInput, options: RawArchiveOptions): Promise<RawRecord> {
   await assertMountedKnowledgeBase(handle, true)
   const root = resolve(handle.rootRef)
-  const digest = createHash('sha256').update(input.bytes).digest('hex')
-  const rawRef = `raw-sha256-${digest}`
+  const identity = deriveRawIdentity(input.bytes)
+  const { rawRef, contentHash, sizeBytes } = identity
   const paths = rawPaths(root, rawRef)
   try {
     const existing = await getRaw(handle, rawRef)
@@ -250,7 +251,7 @@ async function archiveRawUnlocked(handle: KnowledgeBaseHandle, input: RawArchive
   }
   const receivedAt = options.clock?.() ?? new Date().toISOString()
   if (typeof receivedAt !== 'string' || receivedAt.trim() === '') throw new KnowledgeError('RawArchiveError', 'Raw archive clock must return a non-empty string')
-  const manifest: RawManifest = { rawRef, originalFilename: input.originalFilename ?? null, mediaType: input.mediaType ?? 'application/octet-stream', contentHash: `sha256:${digest}`, sizeBytes: input.bytes.byteLength, receivedAt, suppliedMetadata: metadata }
+  const manifest: RawManifest = { rawRef, originalFilename: input.originalFilename ?? null, mediaType: input.mediaType ?? 'application/octet-stream', contentHash, sizeBytes, receivedAt, suppliedMetadata: metadata }
 
   await mkdir(paths.bundlePath, { recursive: true })
   let createdOriginal = false

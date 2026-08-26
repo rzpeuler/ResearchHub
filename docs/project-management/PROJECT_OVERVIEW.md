@@ -55,7 +55,8 @@ ResearchHub Runtime Data
 ```
 
 The current architecture is Knowledge Architecture v0.2. Runtime Migration
-Phase B is implemented and review pending. The AI Hardware Example Knowledge
+Phases A, B, and C plus Knowledge Ingestion D1 are accepted after Sol
+verification. Knowledge Ingestion D2 is implemented and review pending. The AI Hardware Example Knowledge
 Base is stored at `examples/knowledge-bases/ai-hardware/`; it is Git-managed
 example data, not user Runtime Data. User KBs remain configurable under the
 Runtime Data Root.

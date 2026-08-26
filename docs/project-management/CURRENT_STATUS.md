@@ -14,8 +14,10 @@ separates ResearchHub Source from user-owned Knowledge Base Runtime Data:
 - Access and Validation remain deterministic; Write accepts only validated
   changes; schema migration is explicit and never implicit on mount or ingest.
 - Runtime Migration Phase A and Phase B are accepted after Sol verification,
-  and Phase C is accepted after Sol verification. Phase D1 is implemented and
-  review pending, while Phase D2 remains planned. The AI Hardware dataset now lives as the
+  and Phase C is accepted after Sol verification. Phase D1 is accepted after
+  Sol verification. Phase D2 is implemented and review pending for Sol
+  verification. Overall Phase D is implemented and review pending. The AI
+  Hardware dataset now lives as the
   Git-managed Example Knowledge Base at
   `examples/knowledge-bases/ai-hardware/`.
 
@@ -127,15 +129,27 @@ and idempotency outcomes. Different Knowledge Bases remain independent.
 
 ## KNOWLEDGE-INGESTION-D1-CURATION-001
 
-Knowledge Ingestion Phase D1 is implemented and review pending for Sol
-verification. The runtime-neutral Knowledge Curation Skill provides an injected
+Knowledge Ingestion Phase D1 is accepted after Sol verification. The
+runtime-neutral Knowledge Curation Skill provides an injected
 provider-neutral model port and deterministic structured-output validation for
 Source Assessment, relevance filtering, atomic candidate extraction, admission,
 Schema Mapping assistance, conflict analysis, and Schema Gap proposals.
 Trusted workflow scope, raw provenance, chunk locators, intermediate IDs, and
 existing Knowledge references are bound or checked by the Skill. No Workflow,
 Raw Archive orchestration, Access/Validation/Writer call, persistence, schema
-mutation, or real LLM wiring was added. Phase D2 remains planned.
+mutation, or real LLM wiring was added.
+
+## KNOWLEDGE-INGESTION-D2-WORKFLOW-001
+
+Knowledge Ingestion Phase D2 is implemented and review pending for Sol
+verification. The runtime-neutral Research Report Knowledge Ingestion Workflow
+composes explicit target resolution, Raw Archive, document normalization,
+Curation, Access, deterministic ID/ChangeSet planning, Validation, and Writer
+interfaces. It supports commit and network-free dry-run modes, deterministic
+Raw/source/Knowledge identity, partial candidate continuation, idempotent
+successful retries, structured ingestion audit logs, and a DSH-only Curation
+model adapter. No new architecture layer, database, RAG, automatic migration,
+or Research Artifact conversion was introduced.
 
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure
 

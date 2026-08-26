@@ -60,7 +60,8 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-RUNTIME-MIGRATION-C-001 | Implement durable Knowledge Base mutation infrastructure | Completed | P0 | 2026-08-26 | Luna | `e8e775fa495cc7f0bf3214a6a4fff6e54203e041` | Accepted — Sol verified |
 | KNOWLEDGE-RUNTIME-MIGRATION-C-001-R1 | Close durable mutation contract gaps | Completed | P0 | 2026-08-26 | Luna | `Current task commit` | Accepted — Sol verified |
 | KNOWLEDGE-RUNTIME-MIGRATION-C-001-R2 | Finalize durable mutation concurrency and errors | Completed | P0 | 2026-08-26 | Luna | `1f8c8a42d89690046da9f9ea7bb83090f273fd37` | Accepted — Sol verified |
-| KNOWLEDGE-INGESTION-D1-CURATION-001 | Implement Knowledge Curation Skill | Completed | P0 | 2026-08-26 | Luna | `Current task commit` | Review Pending / Sol Verification |
+| KNOWLEDGE-INGESTION-D1-CURATION-001 | Implement Knowledge Curation Skill | Completed | P0 | 2026-08-26 | Luna | `5385c3b965a50e20558655bc45f9569de345b801` | Accepted — Sol verified |
+| KNOWLEDGE-INGESTION-D2-WORKFLOW-001 | Implement Research Report Knowledge Ingestion Workflow | Completed | P0 | 2026-08-26 | Luna | `Current task commit` | Review Pending / Sol Verification |
 
 ## RH-DESIGN-004 Acceptance Scope
 
