@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-26 - RH-GOV-CONSISTENCY-002-R1
+
+- Corrected omitted AKShare `periodType` handling to select the latest valid
+  financial period across all available annual and quarterly rows.
+- Aligned income indicator values to the selected report period and prevented
+  cross-period fallback when an exact indicator row is unavailable.
+- Added regression coverage for latest-period selection, indicator alignment,
+  cache ignoring, and the default network-free validation path.
+
 ## 2026-08-26 - RH-GOV-CONSISTENCY-002
 
 - Enforced annual and quarterly period selection in the external AKShare

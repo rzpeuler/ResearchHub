@@ -76,6 +76,76 @@ class AkShareFinancialBridgeTests(unittest.TestCase):
             result = bridge.financial(bridge.FinancialRequest(symbol="600519", statementTypes=["income"], periodType="annual"))
         self.assertEqual(result["data"]["statements"][0]["period"], "2025-12-31")
 
+    def test_omitted_period_selects_latest_valid_period_without_filtering(self) -> None:
+        rows = frame(
+            {"period": "2025-12-31", "value": 1000},
+            {"period": "2026-03-31", "value": 1100},
+            {"period": "2026-06-30", "value": 1200},
+            {"period": "not-a-date", "value": 9999},
+        )
+
+        selected = bridge._latest_row(rows, "missing", None)
+
+        self.assertEqual(selected["period"], "2026-06-30")
+        self.assertEqual(selected["value"], 1200)
+
+    def test_financial_request_without_period_type_uses_latest_report(self) -> None:
+        reports = frame(
+            {"报告日": "2025-12-31", "营业收入": 1000},
+            {"报告日": "2026-03-31", "营业收入": 1100},
+            {"报告日": "2026-06-30", "营业收入": 1200},
+        )
+        indicators = frame(
+            {"日期": "2025-12-31", "销售毛利率(%)": 40},
+            {"日期": "2026-03-31", "销售毛利率(%)": 41},
+            {"日期": "2026-06-30", "销售毛利率(%)": 42},
+        )
+        with patch.object(bridge.ak, "stock_financial_report_sina", return_value=reports), patch.object(
+            bridge.ak, "stock_financial_analysis_indicator", return_value=indicators
+        ):
+            result = bridge.financial(bridge.FinancialRequest(symbol="600519", statementTypes=["income"]))
+
+        statement = result["data"]["statements"][0]
+        self.assertEqual(statement["period"], "2026-06-30")
+        self.assertEqual(statement["gross_margin"], 42)
+
+    def test_indicator_values_match_selected_report_period(self) -> None:
+        reports = frame(
+            {"报告日": "2025-12-31", "营业收入": 1000},
+            {"报告日": "2026-06-30", "营业收入": 1200},
+        )
+        indicators = frame(
+            {"日期": "2025-12-31", "销售净利率(%)": 10, "摊薄每股收益(元)": 1},
+            {"日期": "2026-06-30", "销售净利率(%)": 12, "摊薄每股收益(元)": 2},
+        )
+        with patch.object(bridge.ak, "stock_financial_report_sina", return_value=reports), patch.object(
+            bridge.ak, "stock_financial_analysis_indicator", return_value=indicators
+        ):
+            result = bridge.financial(bridge.FinancialRequest(symbol="600519", statementTypes=["income"]))
+
+        statement = result["data"]["statements"][0]
+        self.assertEqual(statement["period"], "2026-06-30")
+        self.assertEqual(statement["netprofit_margin"], 12)
+        self.assertEqual(statement["eps"], 2)
+
+    def test_missing_indicator_period_does_not_fallback_to_another_period(self) -> None:
+        reports = frame(
+            {"报告日": "2026-03-31", "营业收入": 1000, "营业成本": 800},
+            {"报告日": "2026-06-30", "营业收入": 1200, "营业成本": 900},
+        )
+        indicators = frame({"日期": "2026-03-31", "销售净利率(%)": 20})
+        with patch.object(bridge.ak, "stock_financial_report_sina", return_value=reports), patch.object(
+            bridge.ak, "stock_financial_analysis_indicator", return_value=indicators
+        ):
+            result = bridge.financial(
+                bridge.FinancialRequest(symbol="600519", statementTypes=["income"], periodType="quarterly")
+            )
+
+        statement = result["data"]["statements"][0]
+        self.assertEqual(statement["period"], "2026-06-30")
+        self.assertEqual(statement["gross_margin"], 25)
+        self.assertNotIn("netprofit_margin", statement)
+
     def test_quarterly_period_selection(self) -> None:
         reports = frame(
             {"报告日": "2025-12-31", "营业收入": 1000},

@@ -62,10 +62,13 @@ Supported `statementTypes` are `income`, `balance-sheet`, and `cash-flow`.
 - `ttm`: returns HTTP 422 with `Unsupported periodType: ttm` because the
   current source contract does not provide a defined TTM statement.
 
-When omitted, `periodType` defaults to `annual` for compatibility with the
-existing TypeScript call path. A missing or invalid financial period returns an
+When omitted, `periodType` selects the row with the latest valid financial
+period end date across all available reporting periods; it does not apply an
+annual/quarterly filter. A missing or invalid financial period returns an
 explicit 422 error. Missing source report/publication dates remain `null` and
-are never replaced with the current date.
+are never replaced with the current date. Income indicator fields are used
+only when an indicator row exists for the selected report period; they are not
+copied from another period.
 
 ## Configuration and operational notes
 

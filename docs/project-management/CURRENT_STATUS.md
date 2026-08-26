@@ -60,6 +60,15 @@ network-free Bridge tests, a pinned tool dependency manifest, and operating
 documentation are included. Research Output and Knowledge remain separate
 boundaries, with Knowledge lifecycle updates controlled by Workflow.
 
+## RH-GOV-CONSISTENCY-002-R1
+
+The AKShare Financial Bridge default-period regression is closed. An omitted
+`periodType` now selects the latest valid financial period across annual and
+quarterly rows, while explicit annual, quarterly, and TTM semantics remain
+unchanged. Income indicator fields are matched to the selected report period;
+missing matches do not fall back to another period. The default network-free
+test suite is green and Python cache files are ignored by Git.
+
 ## ARCH-REFACTOR-003
 
 ResearchHub has migrated its current product architecture to **Research Output

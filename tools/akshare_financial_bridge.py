@@ -57,7 +57,10 @@ def financial(request: FinancialRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="unsupported statementTypes")
     if request.periodType == "ttm":
         raise HTTPException(status_code=422, detail="Unsupported periodType: ttm")
-    period_type = request.periodType or "annual"
+    # Keep omission distinct from an explicit annual/quarterly request. The
+    # omitted form must use the newest available financial period, regardless
+    # of whether that period is annual or quarterly.
+    period_type = request.periodType
 
     try:
         statements = [_fetch_statement(symbol, statement_type, period_type) for statement_type in requested]
@@ -73,16 +76,21 @@ def financial(request: FinancialRequest) -> dict[str, Any]:
     return {"data": {"statements": statements}}
 
 
-def _fetch_statement(symbol: str, statement_type: str, period_type: Literal["annual", "quarterly"]) -> dict[str, Any]:
+def _fetch_statement(
+    symbol: str,
+    statement_type: str,
+    period_type: Literal["annual", "quarterly"] | None,
+) -> dict[str, Any]:
     stock = ("sh" if symbol.startswith("6") else "bj" if symbol.startswith(("4", "8")) else "sz") + symbol
     start_year = os.getenv("AKSHARE_START_YEAR", "2020")
 
     if statement_type == "income":
         report = _latest_row(ak.stock_financial_report_sina(stock=stock, symbol="利润表"), "报告日", period_type)
-        indicator = _latest_row(
+        report_period = _date_text(_first_value(report, "报告日", "日期"), required=True)
+        indicator = _row_for_period(
             ak.stock_financial_analysis_indicator(symbol=symbol, start_year=start_year),
             "日期",
-            period_type,
+            report_period,
         )
         values = _clean_row(report)
         values.update(_financial_indicator_values(indicator, report))
@@ -111,29 +119,54 @@ def _fetch_statement(symbol: str, statement_type: str, period_type: Literal["ann
     }
 
 
-def _financial_indicator_values(indicator: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+def _financial_indicator_values(indicator: dict[str, Any] | None, report: dict[str, Any]) -> dict[str, Any]:
     revenue = _first_value(report, "营业收入", "营业总收入")
     net_profit = _first_value(report, "归属于母公司所有者的净利润", "净利润")
-    gross_margin = _first_value(indicator, "销售毛利率(%)")
+    gross_margin = _first_value(indicator or {}, "销售毛利率(%)")
     if gross_margin is None and revenue and _first_value(report, "营业成本") is not None:
         gross_margin = (float(revenue) - float(_first_value(report, "营业成本"))) / float(revenue) * 100
 
-    return {
+    values: dict[str, Any] = {
         "total_revenue": revenue,
         "n_income": net_profit,
         "gross_margin": gross_margin,
-        "netprofit_margin": _first_value(indicator, "销售净利率(%)"),
-        "eps": _first_value(indicator, "摊薄每股收益(元)", "加权每股收益(元)", "基本每股收益"),
-        "current_ratio": _first_value(indicator, "流动比率"),
-        "quick_ratio": _first_value(indicator, "速动比率"),
-        "debt_to_assets": _first_value(indicator, "资产负债率(%)"),
     }
+    if indicator is not None:
+        values.update(
+            {
+                "netprofit_margin": _first_value(indicator, "销售净利率(%)"),
+                "eps": _first_value(indicator, "摊薄每股收益(元)", "加权每股收益(元)", "基本每股收益"),
+                "current_ratio": _first_value(indicator, "流动比率"),
+                "quick_ratio": _first_value(indicator, "速动比率"),
+                "debt_to_assets": _first_value(indicator, "资产负债率(%)"),
+            }
+        )
+    return {key: value for key, value in values.items() if value is not None}
+
+
+def _row_for_period(frame: pd.DataFrame, date_column: str, target_period: str) -> dict[str, Any] | None:
+    if frame is None or frame.empty:
+        return None
+    rows = frame.copy()
+    period_values = rows.apply(
+        lambda row: _first_value(row.to_dict(), date_column, "报告日", "日期", "period", "end_date"),
+        axis=1,
+    )
+    rows["__period_date"] = pd.to_datetime(period_values, errors="coerce")
+    rows = rows.loc[rows["__period_date"].notna()].copy()
+    target = pd.to_datetime(target_period, errors="coerce")
+    if rows.empty or pd.isna(target):
+        return None
+    rows = rows.loc[rows["__period_date"].dt.date.eq(target.date())].copy()
+    if rows.empty:
+        return None
+    return rows.sort_values("__period_date", ascending=False).iloc[0].to_dict()
 
 
 def _latest_row(
     frame: pd.DataFrame,
     date_column: str,
-    period_type: Literal["annual", "quarterly"],
+    period_type: Literal["annual", "quarterly"] | None,
 ) -> dict[str, Any]:
     if frame is None or frame.empty:
         raise ProviderDataError("AKShare returned no rows")
@@ -146,9 +179,13 @@ def _latest_row(
     rows = rows.loc[rows["__period_date"].notna()].copy()
     if rows.empty:
         raise RequiredPeriodError("missing or invalid required financial period")
-    allowed_months = {12} if period_type == "annual" else {3, 6, 9}
-    rows = rows.loc[rows["__period_date"].dt.month.isin(allowed_months)].copy()
+    if period_type == "annual":
+        rows = rows.loc[rows["__period_date"].dt.month.eq(12)].copy()
+    elif period_type == "quarterly":
+        rows = rows.loc[rows["__period_date"].dt.month.isin({3, 6, 9})].copy()
     if rows.empty:
+        if period_type is None:
+            raise RequiredPeriodError("no valid financial period available")
         raise RequiredPeriodError(f"no {period_type} financial period available")
     rows = rows.sort_values("__period_date", ascending=False, na_position="last")
     return rows.iloc[0].to_dict()
