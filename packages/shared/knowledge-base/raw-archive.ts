@@ -138,7 +138,8 @@ function assertManifest(value: unknown, expectedRawRef: string): RawManifest {
 }
 
 async function readManifest(rawRoot: string, rawRef: string): Promise<RawRecord> {
-  const paths = rawPaths(rawRoot, rawRef)
+  const root = assertRawRoot(rawRoot)
+  const paths = rawPaths(root, rawRef)
   for (const path of [resolve(assertRawRoot(rawRoot), 'raw'), paths.bundlePath, paths.manifestPath]) {
     try {
       if ((await lstat(path)).isSymbolicLink()) throw new KnowledgeError('RawArchiveError', `Raw archive path cannot be a symlink: ${path}`, path)
@@ -168,6 +169,19 @@ async function readManifest(rawRoot: string, rawRef: string): Promise<RawRecord>
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
+  const registryPath = join(root, 'registry', 'raw.yaml')
+  let registryValue: unknown
+  try {
+    registryValue = parseYaml(await readFile(registryPath, 'utf8'), registryPath)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new KnowledgeError('NotFound', `Raw registry entry not found: ${rawRef}`, registryPath)
+    throw error
+  }
+  const registryEntry = registryValue && typeof registryValue === 'object' && !Array.isArray(registryValue) ? (registryValue as Record<string, unknown>)[rawRef] : undefined
+  if (!registryEntry || typeof registryEntry !== 'object' || Array.isArray(registryEntry)) throw new KnowledgeError('NotFound', `Raw registry entry not found: ${rawRef}`, registryPath)
+  const entry = registryEntry as { contentHash?: unknown; storageRef?: unknown }
+  const expectedStorageRef = relative(root, originalPath).replaceAll('\\', '/')
+  if (entry.contentHash !== checkedManifest.contentHash || entry.storageRef !== expectedStorageRef) throw new KnowledgeError('RawArchiveError', `Raw registry entry does not match bundle: ${rawRef}`, registryPath)
   return {
     manifest: checkedManifest,
     bundlePath: paths.bundlePath,
@@ -274,16 +288,16 @@ export async function putRaw(input: PutRawInput): Promise<RawRecord> {
       if (existing.originalPath !== originalPath) await unlink(originalPath).catch(() => undefined)
     }
   }
-  const verified = await verifyRaw(rawRoot, rawRef)
   const result = {
-    manifest: verified.manifest,
+    manifest,
     bundlePath: paths.bundlePath,
     manifestPath: paths.manifestPath,
-    originalPath: verified.originalPath,
+    originalPath,
     reused: false,
   }
   await updateRawRegistry(rawRoot, result)
-  return result
+  const verified = await verifyRaw(rawRoot, rawRef)
+  return { ...result, manifest: verified.manifest, originalPath: verified.originalPath }
 }
 
 export async function getRaw(rawRoot: string, rawRef: string): Promise<RawRecord> {
