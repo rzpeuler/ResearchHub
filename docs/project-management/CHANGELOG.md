@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-C-001
+
+- Implemented the runtime-neutral Schema 0.2 Knowledge Write foundation:
+  immutable SHA-256 Raw Archive bundles, canonical Raw Registry, deterministic
+  serialization/hash, ChangeSet validation receipts, and source/Knowledge
+  create/update/supersede/source-merge operations.
+- Added revision and target-hash guards, per-Knowledge-Base locking, staged
+  coherent filesystem commits, recovery markers, ingestion logs, idempotent
+  retries, and explicit mounted Handle refresh without mutating old Access
+  snapshots.
+- Kept Schema 0.1 read-only and readonly/archived Schema 0.2 bases non-writable;
+  mutation tests use temporary Knowledge Bases and the default suite remains
+  network-free.
+- Curation, Research Report ingestion, conflict/Schema Gap reasoning, and
+  Migration Runner remain out of scope.
+
 ## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-B-001
 
 - Migrated the AI Hardware dataset to the Git-managed Example Knowledge Base

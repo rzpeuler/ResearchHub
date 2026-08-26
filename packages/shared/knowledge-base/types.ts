@@ -21,6 +21,23 @@ export type {
   KnowledgeModule,
   KnowledgeSource,
 } from '../../schemas/knowledge/index.ts'
+export type {
+  KnowledgeChangeSet,
+  KnowledgeCreateOperation,
+  KnowledgeIngestionContext,
+  KnowledgeMergeSourceOperation,
+  KnowledgeOperation,
+  KnowledgeSourceCreateOperation,
+  KnowledgeSourceMergeOperation,
+  KnowledgeSourceOperation,
+  KnowledgeSupersedeOperation,
+  KnowledgeUpdateOperation,
+  KnowledgeWritableObject,
+  KnowledgeWriteOperationSummary,
+  KnowledgeWriteResult,
+  KnowledgeWriteStatus,
+  ValidatedKnowledgeChangeSet,
+} from '../../schemas/knowledge/index.ts'
 
 export type KnowledgeAssetKind = 'entity' | 'relation' | 'intelligence' | 'module' | 'source'
 

@@ -36,7 +36,7 @@ export interface KnowledgeSchemaCompatibilityResolverOptions {
 
 const DEFAULT_SUPPORTED: KnowledgeSchemaSupport[] = [
   { schemaVersion: '0.1', storageFormatVersion: '1', writable: false },
-  { schemaVersion: '0.2', storageFormatVersion: '1', writable: false },
+  { schemaVersion: '0.2', storageFormatVersion: '1', writable: true },
 ]
 
 export class KnowledgeSchemaCompatibilityResolver {

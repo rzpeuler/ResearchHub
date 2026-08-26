@@ -14,6 +14,8 @@ export type KnowledgeErrorCode =
   | 'CompatibilityError'
   | 'RegistryError'
   | 'StorageError'
+  | 'RawArchiveError'
+  | 'CanonicalHashError'
 
 export class KnowledgeError extends Error {
   constructor(

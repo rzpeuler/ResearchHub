@@ -1,4 +1,5 @@
 import type { KnowledgeAssetCollection } from '../../../packages/shared/knowledge-base/types.ts'
+import type { ValidatedKnowledgeChangeSet } from '../../../packages/schemas/knowledge/index.ts'
 
 export type ValidationStatus = 'passed' | 'failed'
 export type ValidationSeverity = 'error' | 'warning' | 'info'
@@ -22,4 +23,9 @@ export interface ValidationReport {
 
 export interface ValidationInput {
   assets: KnowledgeAssetCollection
+}
+
+export interface ChangeSetValidationResult {
+  report: ValidationReport
+  validatedChangeSet?: ValidatedKnowledgeChangeSet
 }

@@ -46,6 +46,29 @@ export class KnowledgeBaseRegistry {
     return handle
   }
 
+  async refresh(rootRef: string): Promise<KnowledgeBaseHandle> {
+    const manifest = await loadKnowledgeBaseManifest(rootRef)
+    const compatibility = this.compatibilityResolver.resolve({
+      schemaVersion: manifest.schemaVersion,
+      storageFormatVersion: manifest.storageFormatVersion,
+      status: manifest.status,
+    })
+    if (compatibility.status === 'unsupported') {
+      throw new KnowledgeError('UnsupportedSchema', compatibility.reason ?? 'Knowledge Base schema is unsupported', rootRef)
+    }
+    const handle = createKnowledgeBaseHandle(manifest, resolve(rootRef), compatibility.status)
+    const existing = this.handles.get(handle.knowledgeBaseId)
+    if (existing && resolve(existing.rootRef) !== resolve(handle.rootRef)) {
+      throw new KnowledgeError('MountConflict', `Knowledge Base ID is already mounted from another root: ${handle.knowledgeBaseId}`)
+    }
+    this.handles.set(handle.knowledgeBaseId, handle)
+    return handle
+  }
+
+  replaceMountedHandle(rootRef: string): Promise<KnowledgeBaseHandle> {
+    return this.refresh(rootRef)
+  }
+
   unmount(knowledgeBaseId: string): boolean {
     return this.handles.delete(knowledgeBaseId)
   }

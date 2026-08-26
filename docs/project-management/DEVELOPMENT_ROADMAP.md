@@ -19,7 +19,7 @@ Storage Layout v0.2, Schema Versioning and Migration, Data Schema v0.2,
 Access/Validation/Curation contracts, Ingestion Workflow, Write Interface,
 Frontend Projection v0.2, Example KB Layout, and ADR-015 are design-complete
 and frozen. Runtime Migration Phase A is accepted after Sol verification, and
-Phase B is implemented and review pending. This phase is an engineering migration, not a new
+Phase B is accepted after Sol verification, and Phase C is implemented and review pending. This phase is an engineering migration, not a new
 architecture design exercise.
 
 The AI Hardware dataset is now a Git-managed Example Knowledge Base at
@@ -42,19 +42,20 @@ the canonical Schema 0.2 Registry, read-only compatibility, and Source domain
 contract gaps. R2 closed Registry identity integrity, canonical Module runtime
 index derivation, and strict Source enums. Sol verified Phase A.
 
-### Phase B — Existing Knowledge implementation migration — Implemented / Review Pending
+### Phase B — Existing Knowledge implementation migration — Accepted / Complete
 
 - migrated the repository AI Hardware dataset to an example KB layout;
 - add KB scoping to Access Skill, Validation, and Frontend Projection;
 - preserve existing deterministic behavior and fixture coverage;
 - expose scoped HTTP response envelopes and safe KB-relative view resources.
 
-### Phase C — Knowledge mutation infrastructure
+### Phase C — Knowledge mutation infrastructure — Implemented / Review Pending
 
 - Raw Archive;
-- deterministic Write Interface;
-- revision, lock, staging, and idempotency;
-- ingestion logs.
+- deterministic Write Interface and ChangeSet validation receipts;
+- source/Knowledge mutations, revision guards, target hashes, lock, staging,
+  recovery, and idempotency;
+- ingestion logs and post-commit Handle refresh.
 
 ### Phase D — Research Report ingestion capability
 

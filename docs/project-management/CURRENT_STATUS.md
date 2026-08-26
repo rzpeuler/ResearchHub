@@ -13,8 +13,8 @@ separates ResearchHub Source from user-owned Knowledge Base Runtime Data:
 - Workflow controls ingestion and update orchestration.
 - Access and Validation remain deterministic; Write accepts only validated
   changes; schema migration is explicit and never implicit on mount or ingest.
-- Runtime Migration Phase A is accepted after Sol verification, and Phase B is
-  implemented and review pending. The AI Hardware dataset now lives as the
+- Runtime Migration Phase A and Phase B are accepted after Sol verification,
+  and Phase C is implemented and review pending. The AI Hardware dataset now lives as the
   Git-managed Example Knowledge Base at
   `examples/knowledge-bases/ai-hardware/`.
 
@@ -41,11 +41,11 @@ Phase B is now implemented and review pending. It includes:
 - Knowledge Base scoping for Validation;
 - Knowledge Base scoping for Frontend Projection;
 - migration of the AI Hardware dataset to an Example Knowledge Base layout;
-- canonical Schema 0.2 manifest, asset registry, and read-only raw registry;
+- canonical Schema 0.2 manifest, asset registry, and empty canonical raw registry;
 - handle-bound Access, schema-aware Validation, and explicitly scoped
   Frontend Projection / HTTP.
 
-Phase A and Phase B do not implement Write, Raw ingestion, Research Report
+Phase A and Phase B did not implement Write, Raw ingestion, Research Report
 ingestion, Curation, or a Migration Runner.
 
 Phase A R1 contract closure corrects the Schema 0.2 `registry/assets.yaml` /
@@ -82,9 +82,24 @@ Access sessions expose their handle metadata and isolate identical IDs across
 KBs. Validation supports explicit manifest, raw, registry, asset, and all
 scopes with Schema 0.1 compatibility and Schema 0.2 nullable Source/rawRef
 rules. The prototype HTTP API requires `knowledgeBaseId` and returns an
-explicit response envelope. Write, ingestion, curation, raw archive mutation,
-revision, locking, staging, and Migration Runner remain out of scope for
-Phase C and later.
+  explicit response envelope. This describes the Phase B boundary; Phase C
+  subsequently adds the deterministic local mutation infrastructure.
+
+## KNOWLEDGE-RUNTIME-MIGRATION-C-001
+
+Knowledge Base Runtime Architecture Migration Phase C is implemented and review
+pending. Schema 0.2 / Storage Format 1 is now the only writable contract. The
+runtime-neutral infrastructure provides immutable SHA-256 Raw Archive bundles,
+canonical `registry/raw.yaml`, deterministic semantic hashing, ChangeSet
+validation receipts, source and Knowledge mutation operations, revision and
+target-hash guards, per-KB locking, staged coherent commits, recovery markers,
+ingestion logs, idempotent retries, and explicit Registry Handle refresh.
+
+Schema 0.1 remains readable but not writable; readonly and archived Schema 0.2
+instances remain non-writable. Mutation tests use temporary Knowledge Bases and
+never change the Git-managed AI Hardware Example. Curation, Research Report
+Knowledge Ingestion, conflict reasoning, Schema Gap reasoning, and Migration
+Runner remain planned future phases.
 
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure
 
