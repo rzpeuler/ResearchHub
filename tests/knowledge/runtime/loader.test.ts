@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { KnowledgeBaseLoader, KnowledgeBaseRegistry, KnowledgeError } from '../../../packages/shared/knowledge-base/index.ts'
-import { createRuntimeKnowledgeBase, removeRuntimeKnowledgeBase } from './helpers.ts'
+import { createLegacyV01KnowledgeBase, createRuntimeKnowledgeBase, removeRuntimeKnowledgeBase } from './helpers.ts'
 
 test('manifest-first KnowledgeBaseLoader mounts and loads a minimal v0.2 KB', async () => {
   const root = await createRuntimeKnowledgeBase()
@@ -17,7 +17,7 @@ test('manifest-first KnowledgeBaseLoader mounts and loads a minimal v0.2 KB', as
 })
 
 test('KnowledgeBaseLoader requires compatibility before loading and never auto-migrates', async () => {
-  const root = await createRuntimeKnowledgeBase({ schemaVersion: '0.1' })
+  const root = await createLegacyV01KnowledgeBase()
   try {
     const registry = new KnowledgeBaseRegistry({ compatibility: { supported: [], migrationAvailable: true } })
     const loader = new KnowledgeBaseLoader({ registry })

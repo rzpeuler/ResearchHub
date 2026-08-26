@@ -26,6 +26,31 @@ updatedAt: 2026-08-26T00:00:00.000Z
 type: segment
 name: GPU
 `)
+  await writeFile(join(root, 'registry', 'assets.yaml'), `segment:gpu:
+  type: entity
+  storageRef: entities/gpu.yaml
+`)
+  await writeFile(join(root, 'registry', 'raw.yaml'), '{}\n')
+  return root
+}
+
+export async function createLegacyV01KnowledgeBase(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-legacy-kb-'))
+  await mkdir(join(root, 'entities'), { recursive: true })
+  await mkdir(join(root, 'registry'), { recursive: true })
+  await writeFile(join(root, 'manifest.yaml'), `knowledgeBaseId: kb-legacy-test
+name: Legacy Test Knowledge Base
+schemaVersion: "0.1"
+storageFormatVersion: "1"
+revision: 0
+status: active
+createdAt: 2026-08-26T00:00:00.000Z
+updatedAt: 2026-08-26T00:00:00.000Z
+`)
+  await writeFile(join(root, 'entities', 'gpu.yaml'), `id: segment:gpu
+type: segment
+name: GPU
+`)
   await writeFile(join(root, 'registry', 'index.yaml'), `assets:
   - id: segment:gpu
     type: entity

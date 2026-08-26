@@ -8,6 +8,8 @@ test('mount registry mounts, lists, deduplicates, and unmounts a compatible KB',
   try {
     const registry = new KnowledgeBaseRegistry()
     const first = await registry.mount(root)
+    assert.equal(first.compatibility, 'read_only_compatible')
+    assert.equal(first.writable, false)
     const duplicate = await registry.mount(root)
     assert.strictEqual(duplicate, first)
     assert.equal(registry.list().length, 1)

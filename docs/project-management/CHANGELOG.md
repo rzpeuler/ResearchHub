@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-A-001-R1
+
+- Separated canonical Schema 0.2 `registry/assets.yaml` / `storageRef`
+  loading from the legacy Schema 0.1 `assets[]` / `path` Loader.
+- Corrected default runtime compatibility to read-only until Write capability
+  is implemented.
+- Aligned the canonical Source contract with Data Schema v0.2 enums, nullable
+  fields, metadata, and Raw provenance.
+- Added regression coverage for Registry authority, integrity errors, legacy
+  compatibility, and Source contracts.
+- No production Knowledge dataset, frontend semantics, Write, ingestion, or
+  Migration Runner was changed.
+
 ## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-A-001
 
 - Established canonical Knowledge schema contracts for manifests and durable

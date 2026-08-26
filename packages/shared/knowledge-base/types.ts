@@ -28,6 +28,12 @@ export interface RegistryEntry {
   id: string
   type: KnowledgeAssetKind
   path: string
+  storageRef?: string
+}
+
+export interface KnowledgeRegistryAssetEntry {
+  type: KnowledgeAssetKind
+  storageRef: string
 }
 
 export interface ModuleRegistryBinding {

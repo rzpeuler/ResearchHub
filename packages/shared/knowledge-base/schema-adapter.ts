@@ -1,5 +1,6 @@
 import { KnowledgeBaseHandle } from './handle.ts'
 import { KnowledgeLoader } from './loader.ts'
+import { CanonicalV02KnowledgeLoader } from './canonical-v02-loader.ts'
 import { KnowledgeIndex } from './knowledge-index.ts'
 
 export interface KnowledgeSchemaAdapter {
@@ -34,6 +35,9 @@ export class FilesystemKnowledgeSchemaAdapter implements KnowledgeSchemaAdapter 
   ) {}
 
   async load(handle: KnowledgeBaseHandle): Promise<KnowledgeIndex> {
+    if (this.schemaVersion === '0.2' && this.storageFormatVersion === '1') {
+      return new CanonicalV02KnowledgeLoader(handle.rootRef).load()
+    }
     return new KnowledgeLoader({ rootDir: handle.rootRef }).load()
   }
 }

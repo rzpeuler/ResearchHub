@@ -37,8 +37,10 @@ Data by documentation alone.
 - Schema Adapter
 - KB-scoped Registry
 
-Phase A implementation and focused/default validation are complete. Sol review
-is pending; no production dataset migration has been performed.
+Phase A implementation and focused/default validation are complete. R1 closes
+the canonical Schema 0.2 Registry, read-only compatibility, and Source domain
+contract gaps. Sol review is pending; no production dataset migration has been
+performed.
 
 ### Phase B — Existing Knowledge implementation migration — Planned / Pending
 

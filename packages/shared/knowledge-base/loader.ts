@@ -33,7 +33,7 @@ async function listFiles(rootDir: string): Promise<string[]> {
   return files.sort((left, right) => left.localeCompare(right))
 }
 
-function classify(relativePath: string, value: Record<string, unknown>): KnowledgeAssetKind | 'registry' | undefined {
+export function classifyKnowledgeAsset(relativePath: string, value: Record<string, unknown>): KnowledgeAssetKind | 'registry' | undefined {
   const normalized = relativePath.replaceAll('\\', '/').toLowerCase()
   if (normalized.startsWith('registry/')) return 'registry'
   if (normalized.startsWith('entities/')) return 'entity'
@@ -51,7 +51,7 @@ function classify(relativePath: string, value: Record<string, unknown>): Knowled
   return undefined
 }
 
-function loadedAsset<T extends object>(kind: KnowledgeAssetKind, value: Record<string, unknown>, filePath: string): LoadedAsset<T> {
+export function loadedAsset<T extends object>(kind: KnowledgeAssetKind, value: Record<string, unknown>, filePath: string): LoadedAsset<T> {
   return { kind, value: value as T, filePath }
 }
 
@@ -78,7 +78,7 @@ function parseModuleRegistry(value: unknown, filePath: string): ModuleRegistryBi
   })
 }
 
-function isWithinRoot(rootDir: string, candidate: string): boolean {
+export function isWithinRoot(rootDir: string, candidate: string): boolean {
   const root = resolve(rootDir)
   const resolved = resolve(rootDir, candidate)
   const rel = relative(root, resolved)
@@ -118,7 +118,7 @@ export class KnowledgeLoader {
             try {
               const assetValue = parseYaml(await readFile(assetPath, 'utf8'), assetPath)
               if (!isRecord(assetValue)) continue
-              const kind = classify(relative(rootDir, assetPath), assetValue)
+              const kind = classifyKnowledgeAsset(relative(rootDir, assetPath), assetValue)
               if (!kind || kind === 'registry') continue
               if (kind === 'entity') assets.entities.push(loadedAsset<KnowledgeEntity>(kind, assetValue, assetPath))
               if (kind === 'relation') assets.relations.push(loadedAsset<KnowledgeRelation>(kind, assetValue, assetPath))
@@ -140,7 +140,7 @@ export class KnowledgeLoader {
     for (const filePath of files) {
       const value = parseYaml(await readFile(filePath, 'utf8'), filePath)
       if (!isRecord(value)) throw new KnowledgeError('SchemaError', 'Knowledge asset must be an object', filePath)
-      const kind = classify(relative(rootDir, filePath), value)
+      const kind = classifyKnowledgeAsset(relative(rootDir, filePath), value)
       if (!kind || kind === 'registry') continue
       if (kind === 'entity') assets.entities.push(loadedAsset<KnowledgeEntity>(kind, value, filePath))
       if (kind === 'relation') assets.relations.push(loadedAsset<KnowledgeRelation>(kind, value, filePath))

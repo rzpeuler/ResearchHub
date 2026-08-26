@@ -25,6 +25,7 @@ export interface KnowledgeCompatibilityResult {
 export interface KnowledgeSchemaSupport {
   schemaVersion: string
   storageFormatVersion: string
+  readable?: boolean
   writable?: boolean
 }
 
@@ -35,7 +36,7 @@ export interface KnowledgeSchemaCompatibilityResolverOptions {
 
 const DEFAULT_SUPPORTED: KnowledgeSchemaSupport[] = [
   { schemaVersion: '0.1', storageFormatVersion: '1', writable: false },
-  { schemaVersion: '0.2', storageFormatVersion: '1' },
+  { schemaVersion: '0.2', storageFormatVersion: '1', writable: false },
 ]
 
 export class KnowledgeSchemaCompatibilityResolver {
@@ -69,14 +70,25 @@ export class KnowledgeSchemaCompatibilityResolver {
       }
     }
 
-    const writable = support.writable !== false && input.status === 'active'
+    if (support.readable === false) {
+      return {
+        status: 'unsupported',
+        readable: false,
+        writable: false,
+        migrationAvailable: false,
+        reason: `Runtime cannot read schema ${input.schemaVersion} and storage ${input.storageFormatVersion}`,
+      }
+    }
+    const writable = support.writable === true && input.status === 'active'
     if (!writable) {
       return {
         status: 'read_only_compatible',
         readable: true,
         writable: false,
         migrationAvailable: false,
-        reason: `Knowledge Base status ${input.status} is read-only at runtime`,
+        reason: support.writable !== true
+          ? 'Runtime write capability is not implemented or enabled'
+          : `Knowledge Base status ${input.status} is read-only at runtime`,
       }
     }
     return { status: 'compatible', readable: true, writable: true, migrationAvailable: false }

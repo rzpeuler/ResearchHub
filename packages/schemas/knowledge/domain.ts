@@ -26,6 +26,21 @@ export type RelationType = (typeof RELATION_TYPES)[number]
 export const MODULE_TYPES = ['comparison', 'roadmap', 'market', 'competition', 'capacity', 'supply-chain'] as const
 export type ModuleType = (typeof MODULE_TYPES)[number]
 
+export const SOURCE_TYPES = [
+  'official_disclosure',
+  'company_official',
+  'sell_side_research',
+  'industry_database',
+  'professional_media',
+  'general_media',
+  'community',
+  'unknown',
+] as const
+export type SourceType = (typeof SOURCE_TYPES)[number]
+
+export const SOURCE_RELIABILITIES = ['high', 'medium', 'low', 'unknown'] as const
+export type SourceReliability = (typeof SOURCE_RELIABILITIES)[number]
+
 export type KnowledgeScalar = string | number | boolean | null
 export type KnowledgeValue = KnowledgeScalar | KnowledgeValue[] | { [key: string]: KnowledgeValue }
 
@@ -33,6 +48,16 @@ export interface Lifecycle {
   status: LifecycleStatus | string
   validFrom?: string
   validUntil?: string
+}
+
+export interface KnowledgeCommonMetadata {
+  createdAt?: string
+  updatedAt?: string
+  sourceRefs?: string[]
+  confidence?: number | Record<string, KnowledgeValue> | null
+  lifecycle?: Lifecycle | Record<string, KnowledgeValue> | null
+  supersedes?: string[]
+  supersededBy?: string[]
 }
 
 export interface KnowledgeEntity {
@@ -83,14 +108,16 @@ export interface KnowledgeSource {
   id: string
   type: string
   title: string
-  publisher: string
-  publishedAt: string
-  url?: string
-  quality?: string
-  institution?: string
-  author?: string
-  sourceType?: string
-  sourceReliability?: string
+  publisher: string | null
+  institution?: string | null
+  author?: string | null
+  publishedAt: string | null
+  url?: string | null
+  sourceType?: SourceType | string
+  quality?: string | number | Record<string, KnowledgeValue> | null
+  sourceReliability?: SourceReliability | string
   rawRefs?: string[]
+  metadata?: Record<string, KnowledgeValue> | null
+  lifecycle?: Lifecycle | Record<string, KnowledgeValue> | null
   [key: string]: unknown
 }

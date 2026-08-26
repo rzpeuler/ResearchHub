@@ -12,6 +12,8 @@ export type KnowledgeErrorCode =
   | 'MountConflict'
   | 'UnsupportedSchema'
   | 'CompatibilityError'
+  | 'RegistryError'
+  | 'StorageError'
 
 export class KnowledgeError extends Error {
   constructor(

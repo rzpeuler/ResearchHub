@@ -2,11 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { KnowledgeSchemaCompatibilityResolver } from '../../../packages/shared/knowledge-base/index.ts'
 
-test('compatibility resolver distinguishes writable, readonly, and unsupported states', () => {
+test('compatibility resolver distinguishes read-only runtime, readonly KB, and unsupported states', () => {
   const resolver = new KnowledgeSchemaCompatibilityResolver({ supported: [{ schemaVersion: '0.2', storageFormatVersion: '1' }] })
-  assert.deepEqual(resolver.resolve({ schemaVersion: '0.2', storageFormatVersion: '1', status: 'active' }), {
-    status: 'compatible', readable: true, writable: true, migrationAvailable: false,
-  })
+  const active = resolver.resolve({ schemaVersion: '0.2', storageFormatVersion: '1', status: 'active' })
+  assert.equal(active.status, 'read_only_compatible')
+  assert.equal(active.readable, true)
+  assert.equal(active.writable, false)
+  assert.match(active.reason ?? '', /write capability is not implemented or enabled/)
   assert.equal(resolver.resolve({ schemaVersion: '0.2', storageFormatVersion: '1', status: 'readonly' }).status, 'read_only_compatible')
   assert.equal(resolver.resolve({ schemaVersion: '9.9', storageFormatVersion: '1', status: 'active' }).status, 'unsupported')
 })

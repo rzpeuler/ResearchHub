@@ -43,6 +43,12 @@ Phase B remains Planned / Pending and includes:
 Phase A does not implement Write, Raw ingestion, Research Report ingestion, or
 a Migration Runner.
 
+Phase A R1 contract closure corrects the Schema 0.2 `registry/assets.yaml` /
+`storageRef` boundary, keeps both supported Schema versions read-only until
+Write is implemented, and aligns the canonical Source contract with Data
+Schema v0.2 nullable metadata and Raw provenance fields. Phase A remains
+review pending after this correction.
+
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure
 
 Knowledge Layer v0.1 foundation acceptance gaps are closed. The top-level
