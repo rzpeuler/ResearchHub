@@ -13,6 +13,10 @@ test('Knowledge HTTP endpoints return production projections', async () => {
   assert.ok(address && typeof address === 'object')
   const baseUrl = `http://127.0.0.1:${address.port}`
   try {
+    const directoryPage = await fetch(`${baseUrl}/tests/knowledge/`)
+    assert.equal(directoryPage.status, 200)
+    assert.match(await directoryPage.text(), /<!doctype html>/i)
+
     const directoryResponse = await fetch(`${baseUrl}/api/knowledge-bases/${knowledgeBaseId}/directory`)
     assert.equal(directoryResponse.status, 200)
     const directoryEnvelope = await directoryResponse.json() as { knowledgeBaseId: string; revision: number; data: { industries: Array<{ id: string; graphs: Array<{ id: string }> }> } }

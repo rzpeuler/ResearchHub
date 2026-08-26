@@ -38,7 +38,8 @@ export function createKnowledgeServer(root = defaultRoot, knowledgeBaseRoot = re
   }).then((adapter) => ({ adapter, handle })))
 
   return createServer(async (request, response) => {
-    const requestPath = decodeURIComponent((request.url || '/tests/knowledge/index.html').split('?')[0])
+    let requestPath = decodeURIComponent((request.url || '/tests/knowledge/index.html').split('?')[0])
+    if (requestPath === '/tests/knowledge' || requestPath === '/tests/knowledge/') requestPath = '/tests/knowledge/index.html'
     if (requestPath.startsWith('/api/knowledge-bases/')) {
       if (request.method !== 'GET') {
         writeJson(response, 405, { error: 'Method Not Allowed' })
