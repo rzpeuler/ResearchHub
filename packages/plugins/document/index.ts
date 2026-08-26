@@ -1,2 +1,8 @@
+export { DoclingDocumentParser } from './docling-document-parser.ts'
+export { DocumentParserRegistry } from './parser-registry.ts'
 export { LocalResearchReportInputResolver, PdfJsResearchReportTextExtractor } from './research-report-input-resolver.ts'
+export { PdfJsDocumentParser } from './pdfjs-document-parser.ts'
+export type { DoclingDocumentParserOptions } from './docling-document-parser.ts'
 export type { LocalResearchReportInputResolverOptions, ResearchReportPdfTextExtractor } from './research-report-input-resolver.ts'
+export type { DocumentParseChunk, DocumentParseInput, DocumentParseQuality, DocumentParseResult, DocumentParser } from './types.ts'
+export { DocumentParserError } from './types.ts'

@@ -665,7 +665,28 @@ contains a key, but `RESEARCHHUB_REAL_LLM_ENABLED` is currently `false`, so
 the paid API guard correctly stopped the run before report copy, ingestion,
 or frontend startup. No Runtime KB or report file was changed.
 
-Status is `Completed / Product Validation Blocked`; acceptance remains
-`Review Pending / Sol Verification`. The only next input is to enable real
-execution in the existing ignored `.env`; no architecture or product code
-change is indicated by this blocked run.
+Status is `Paused / DOCUMENT_RESOLUTION`; acceptance remains `Review Pending /
+Sol Verification`. The run must resume only after Document Resolution is
+accepted; no real Knowledge ingestion is claimed.
+
+## KNOWLEDGE-DOCUMENT-RESOLUTION-001
+
+Document Resolution is implemented and pending Sol verification. The Document
+Plugin now owns canonical raw bytes separately from parser bytes, exposes a
+small runtime-neutral `DocumentParser` provider contract, selects providers
+deterministically, retains `pdfjs-text` as an explicit lightweight fallback,
+and adapts the local `docling-local` provider through a short-lived Python
+bridge. The Workflow public contract remains `ResearchReportInputResolver`;
+Workflow, Skill, Schema, and frozen architecture files were not changed.
+
+The specified West Securities AI Hardware report was validated offline with
+the PDF.js baseline: 103 pages, 103 page-aware chunks, 91,740 normalized
+characters, and exact raw-byte preservation at 3,209,114 bytes with SHA-256
+`998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63`. Docling
+dependencies are present in the ignored local parser environment, but its
+standard layout model cache is incomplete (`model.safetensors` is missing),
+so the real Docling comparison remains an explicit local-environment blocker;
+there was no silent PDF.js downgrade. DeepSeek and external document APIs were
+not called.
+
+Status is `Completed`; acceptance is `Review Pending / Sol Verification`.

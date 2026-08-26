@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { LocalResearchReportInputResolver } from '../../../packages/plugins/document/index.ts'
+import { DoclingDocumentParser, DocumentParserError, DocumentParserRegistry, LocalResearchReportInputResolver, PdfJsDocumentParser } from '../../../packages/plugins/document/index.ts'
 
 test('local resolver preserves bytes and creates paragraph chunks for text reports', async () => {
   const input = 'Title\r\n\r\nFirst paragraph.\r\n\r\nSecond paragraph.'
@@ -34,4 +36,45 @@ test('PDF resolver rejects documents with no extractable text', async () => {
   try {
     await assert.rejects(() => new LocalResearchReportInputResolver({ pdfTextExtractor: { extractPages: async () => ['', '  '] } }).resolve({ type: 'file', reference: path }), /document_text_extraction_insufficient/)
   } finally { await fs.rm(path, { force: true }) }
+})
+
+test('PDF resolver preserves canonical raw bytes when a parser mutates its input', async () => {
+  const fs = await import('node:fs/promises')
+  const path = `${process.cwd()}\\tests\\knowledge\\product-validation\\raw-ownership-fixture.pdf`
+  const source = new Uint8Array([37, 80, 68, 70, 10, 65, 73, 45, 72, 87])
+  const expectedHash = createHash('sha256').update(source).digest('hex')
+  await fs.writeFile(path, source)
+  try {
+    const resolver = new LocalResearchReportInputResolver({ pdfTextExtractor: { extractPages: async (parserBytes) => { parserBytes.fill(0); return ['Page one'] } } })
+    const result = await resolver.resolve({ type: 'file', reference: path })
+    assert.equal(result.rawBytes.byteLength, source.byteLength)
+    assert.equal(createHash('sha256').update(result.rawBytes).digest('hex'), expectedHash)
+    assert.deepEqual([...result.rawBytes], [...source])
+  } finally { await fs.rm(path, { force: true }) }
+})
+
+test('PDF parser keeps caller bytes unchanged when parsing fails after mutating its copy', async () => {
+  const source = new Uint8Array([1, 2, 3, 4])
+  const before = [...source]
+  const parser = new PdfJsDocumentParser({ extractPages: async (parserBytes) => { parserBytes.fill(0); throw new Error('fixture parser failure') } })
+  await assert.rejects(() => parser.parse({ bytes: source, filename: 'fixture.pdf', mediaType: 'application/pdf' }), (error: unknown) => error instanceof DocumentParserError && error.code === 'document_text_extraction_insufficient')
+  assert.deepEqual([...source], before)
+})
+
+test('document parser registry selects explicit providers deterministically', () => {
+  const pdfjs = new PdfJsDocumentParser({ extractPages: async () => ['text'] })
+  const registry = new DocumentParserRegistry([pdfjs])
+  assert.deepEqual(registry.providerIds, ['pdfjs-text'])
+  assert.equal(registry.select({ filename: 'report.pdf', mediaType: 'application/pdf' }, 'pdfjs-text'), pdfjs)
+  assert.throws(() => registry.select({ filename: 'report.pdf', mediaType: 'application/pdf' }, 'docling-local'), /document_parser_unavailable/)
+})
+
+test('Docling provider adapts a local structured bridge without exposing it to Workflow', async () => {
+  const bridgePath = fileURLToPath(new URL('./fixtures/docling-bridge-fixture.py', import.meta.url))
+  const parser = new DoclingDocumentParser({ bridgePath })
+  const result = await parser.parse({ bytes: new Uint8Array([37, 80, 68, 70]), filename: 'fixture.pdf', mediaType: 'application/pdf' })
+  assert.equal(result.parser.id, 'docling-local')
+  assert.equal(result.quality?.tableCount, 1)
+  assert.equal(result.chunks[1]?.section, 'AI Hardware')
+  assert.match(result.chunks[1]?.text ?? '', /\| Product \|/)
 })

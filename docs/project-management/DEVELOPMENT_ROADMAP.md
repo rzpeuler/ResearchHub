@@ -128,11 +128,22 @@ official provider composition is verified against a local deterministic HTTP
 server only. Real reports and API credentials remain required for the next
 validation run.
 
-The first real AI Hardware validation run is recorded as
-`Completed / Product Validation Blocked`: deterministic preflight found the
-project real-LLM flag disabled and therefore made no paid request. The next
-validation attempt must use the same single-report procedure after local
-execution is explicitly enabled; no architecture expansion is proposed.
+The first real AI Hardware validation run remains `Paused /
+DOCUMENT_RESOLUTION`: deterministic preflight found the document resolver
+ownership defect before any paid request. Document Resolution is now completed
+pending Sol verification, with the PDF.js raw-byte baseline passing. The real
+validation run may resume after that acceptance and after the local Docling
+model cache is completed; no architecture expansion is proposed.
+
+### Document Resolution — Completed / Review Pending
+
+The Document Plugin now provides canonical raw-byte ownership, deterministic
+parser provider selection, an explicit `pdfjs-text` fallback, and a local
+`docling-local` bridge with structured chunks and quality diagnostics. The
+Workflow continues to depend only on `ResearchReportInputResolver`. The real
+report's PDF.js baseline passed exact byte preservation; the Docling comparison
+is locally blocked by an incomplete layout-model cache. No DeepSeek or external
+document parsing call was made.
 
 Every new feature must remain within the existing DSH, Workflow, Skill,
 Plugin, Research Output, or Knowledge Infrastructure boundaries. No new Agent,

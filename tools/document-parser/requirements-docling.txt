@@ -1,0 +1,4 @@
+docling==2.116.0
+docling-ibm-models==3.13.3
+torch==2.6.0
+torchvision==0.21.0

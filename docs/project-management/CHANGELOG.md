@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-DOCUMENT-RESOLUTION-001
+
+- Hardened the Document Plugin with immutable Raw byte ownership, a
+  runtime-neutral parser provider seam, deterministic selection, PDF.js
+  fallback, and local Docling structured-output adaptation.
+- Added parser regression coverage and validated the specified report offline
+  with exact PDF.js raw-byte preservation. The real Docling comparison remains
+  blocked by an incomplete local layout-model cache; no DeepSeek or external
+  document API was called.
+- Kept `KNOWLEDGE-PRODUCT-VALIDATION-RUN-001` paused with blocker category
+  `DOCUMENT_RESOLUTION` pending Sol verification. No real Knowledge ingestion
+  is claimed.
+
 ## 2026-08-26 - KNOWLEDGE-PRODUCT-VALIDATION-RUN-001
 
 - Recorded the first real AI Hardware validation preflight as blocked because

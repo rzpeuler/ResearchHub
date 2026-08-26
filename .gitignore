@@ -4,6 +4,8 @@ npm-debug.log*
 .DS_Store
 __pycache__/
 *.py[cod]
+.researchhub-document-parser/
+tools/document-parser/.venv/
 .env
 .env.*
 !.env.example
