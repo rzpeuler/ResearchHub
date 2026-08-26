@@ -128,6 +128,12 @@ official provider composition is verified against a local deterministic HTTP
 server only. Real reports and API credentials remain required for the next
 validation run.
 
+The first real AI Hardware validation run is recorded as
+`Completed / Product Validation Blocked`: deterministic preflight found the
+project real-LLM flag disabled and therefore made no paid request. The next
+validation attempt must use the same single-report procedure after local
+execution is explicitly enabled; no architecture expansion is proposed.
+
 Every new feature must remain within the existing DSH, Workflow, Skill,
 Plugin, Research Output, or Knowledge Infrastructure boundaries. No new Agent,
 Planner, Memory, Evaluation, Workflow Engine, Knowledge Agent, Graph DB, Vector

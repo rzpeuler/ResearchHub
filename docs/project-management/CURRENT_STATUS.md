@@ -651,3 +651,21 @@ test verifies provider requests, fake test credentials, model selection, and
 Curation prompt delivery without internet access. The setup remains
 `Completed / Awaiting Local Inputs`; acceptance is `Review Pending / Sol
 Verification`.
+
+## KNOWLEDGE-PRODUCT-VALIDATION-RUN-001
+
+The first real AI Hardware Knowledge Product Validation was blocked during
+local preflight before any DeepSeek request. The specified source PDF exists,
+is readable, and has SHA-256
+`998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63` with
+size 3,209,114 bytes. The external `ai-hardware-real` Runtime KB remains at
+revision 0 with only its user-defined industry anchor, zero relations,
+intelligence, modules, and sources, and zero Raw bundles. The project `.env`
+contains a key, but `RESEARCHHUB_REAL_LLM_ENABLED` is currently `false`, so
+the paid API guard correctly stopped the run before report copy, ingestion,
+or frontend startup. No Runtime KB or report file was changed.
+
+Status is `Completed / Product Validation Blocked`; acceptance remains
+`Review Pending / Sol Verification`. The only next input is to enable real
+execution in the existing ignored `.env`; no architecture or product code
+change is indicated by this blocked run.

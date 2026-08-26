@@ -65,8 +65,9 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R1 | Close Research Report Ingestion Workflow contract gaps | Completed | P0 | 2026-08-26 | Luna | `d7694c19118b00611222f3e2c89b0ac9c44f1d0a` | Accepted — Sol verified |
 | KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R2 | Finalize ingestion audit and partial planning | Completed | P0 | 2026-08-26 | Luna | `028d539cc95073ad964d7dc9a4e50a4b5868135c` | Accepted — Sol verified |
 | KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R3 | Finalize ingestion workflow completion semantics | Completed | P0 | 2026-08-26 | Luna | `696fec71d7ec750fa9cc68c38759951e68c972ff` | Accepted — Sol verified |
-| KNOWLEDGE-PRODUCT-VALIDATION-SETUP-001 | Prepare real AI Hardware product validation runtime | Completed / Awaiting Local Inputs | P0 | 2026-08-26 | Luna | `Current task commit` | Review Pending / Sol Verification |
-| KNOWLEDGE-PRODUCT-VALIDATION-SETUP-001-R1 | Harden real DeepSeek validation runtime composition | Completed / Awaiting Local Inputs | P0 | 2026-08-26 | Luna | `Current task commit` | Review Pending / Sol Verification |
+| KNOWLEDGE-PRODUCT-VALIDATION-SETUP-001 | Prepare real AI Hardware product validation runtime | Completed / Awaiting Local Inputs | P0 | 2026-08-26 | Luna | `be31e87837f4f97a28cecb886c4b8a4b09cdbbae` | Accepted — Sol verified |
+| KNOWLEDGE-PRODUCT-VALIDATION-SETUP-001-R1 | Harden real DeepSeek validation runtime composition | Completed / Awaiting Local Inputs | P0 | 2026-08-26 | Luna | `404b03cebf7a201d03d5a6d064a487454266da17` | Accepted — Sol verified |
+| KNOWLEDGE-PRODUCT-VALIDATION-RUN-001 | Run first real AI Hardware Knowledge Product Validation | Completed / Product Validation Blocked | P0 | 2026-08-26 | Luna | `Current task commit` | Review Pending / Sol Verification |
 | KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R4 | Correct D2 R3 implementation commit traceability | Completed | P0 | 2026-08-26 | Luna | `6046c9eb29b4a29e2200d28917ee6faa98bf5a00` | Accepted — Sol verified |
 | KNOWLEDGE-RUNTIME-MIGRATION-E-001 | Implement Knowledge Schema Migration Runtime | Completed | P0 | 2026-08-26 | Luna | `8265eaf53c721e33c8038e114c6f243cb034ebbe` | Accepted — Sol verified |
 | KNOWLEDGE-RUNTIME-MIGRATION-E-001-R1 | Close migration runtime contract gaps | Completed | P0 | 2026-08-26 | Luna | `bf9f2a37fa51a2e14637e74d21d05df9a889f8ee` | Accepted — Sol verified |

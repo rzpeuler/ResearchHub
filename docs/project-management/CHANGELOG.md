@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-PRODUCT-VALIDATION-RUN-001
+
+- Recorded the first real AI Hardware validation preflight as blocked because
+  `RESEARCHHUB_REAL_LLM_ENABLED=false`.
+- No DeepSeek request, report copy, ingestion, Runtime KB mutation, or
+  frontend startup was performed.
+
 ## 2026-08-26 - KNOWLEDGE-PRODUCT-VALIDATION-SETUP-001-R1
 
 - Replaced AgentLoop TestKit setup with direct pinned DSH `LlmRuntime` plus
