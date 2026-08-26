@@ -640,3 +640,14 @@ for the existing read-only frontend.
 
 No real LLM call or real report ingestion is claimed until local inputs are
 present. Acceptance remains `Review Pending / Sol Verification`.
+
+## KNOWLEDGE-PRODUCT-VALIDATION-SETUP-001-R1
+
+R1 removes the AgentLoop TestKit from the real product-validation runtime.
+The production composition now mounts only the pinned DSH `LlmRuntime`,
+registers the official `deepseek-official` provider, and injects `ctx.llm`
+through the existing Knowledge Curation model adapter. A loopback Mock Server
+test verifies provider requests, fake test credentials, model selection, and
+Curation prompt delivery without internet access. The setup remains
+`Completed / Awaiting Local Inputs`; acceptance is `Review Pending / Sol
+Verification`.

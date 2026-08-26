@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-PRODUCT-VALIDATION-SETUP-001-R1
+
+- Replaced AgentLoop TestKit setup with direct pinned DSH `LlmRuntime` plus
+  the official DeepSeek provider.
+- Added a loopback provider composition test and dependency guard; no real
+  API call or Phase F was started.
+
 ## 2026-08-26 - KNOWLEDGE-PRODUCT-VALIDATION-SETUP-001
 
 - Prepared the external `ai-hardware-real` Runtime Knowledge Base setup,

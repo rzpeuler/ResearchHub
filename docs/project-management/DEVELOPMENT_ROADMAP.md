@@ -122,6 +122,12 @@ ingestion entrypoints, and explicit frontend Runtime KB selection. Real
 validation is intentionally pending the local API key and report files. No
 implementation scope for the next product phase is defined here.
 
+R1 closes the runtime dependency boundary: real product validation no longer
+uses AgentLoop TestKit, Agent, Session, Tools, or SystemPrompt services. The
+official provider composition is verified against a local deterministic HTTP
+server only. Real reports and API credentials remain required for the next
+validation run.
+
 Every new feature must remain within the existing DSH, Workflow, Skill,
 Plugin, Research Output, or Knowledge Infrastructure boundaries. No new Agent,
 Planner, Memory, Evaluation, Workflow Engine, Knowledge Agent, Graph DB, Vector
