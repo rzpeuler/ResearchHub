@@ -622,9 +622,9 @@ coverage requires `RUN_REAL_NEWS_ACQUISITION=1`.
 
 ## KNOWLEDGE-PRODUCT-VALIDATION-SETUP-001
 
-The local Knowledge Product Validation setup is implemented and remains
-`Completed / Awaiting Local Inputs` pending a real DeepSeek API key and local
-AI Hardware research reports. The setup uses the external Runtime Data Root
+The local Knowledge Product Validation setup is implemented. At its setup
+checkpoint it was `Completed / Awaiting Local Inputs`, pending a real DeepSeek
+API key and local AI Hardware research reports. The setup uses the external Runtime Data Root
 `../ResearchHubData/`, with a fresh `ai-hardware-real` Knowledge Base that
 contains only canonical runtime scaffolding and an explicit user-defined
 `industry:ai-hardware` domain anchor; it does not copy or alter the Git-managed
@@ -638,8 +638,10 @@ Knowledge Curation Skill and Research Report Knowledge Ingestion Workflow are
 composed unchanged. `knowledge:serve:real` selects the external KB explicitly
 for the existing read-only frontend.
 
-No real LLM call or real report ingestion is claimed until local inputs are
-present. Acceptance remains `Review Pending / Sol Verification`.
+The setup checkpoint made no real LLM call or report ingestion. Local inputs
+are now available and the execution result is recorded under
+`KNOWLEDGE-PRODUCT-VALIDATION-RUN-001-R1`. Acceptance is `Accepted — Sol
+verified`.
 
 ## KNOWLEDGE-PRODUCT-VALIDATION-SETUP-001-R1
 
@@ -654,8 +656,8 @@ Verification`.
 
 ## KNOWLEDGE-PRODUCT-VALIDATION-RUN-001
 
-The first real AI Hardware Knowledge Product Validation was blocked during
-local preflight before any DeepSeek request. The specified source PDF exists,
+The initial first real AI Hardware Knowledge Product Validation checkpoint was
+blocked during local preflight before any DeepSeek request. The specified source PDF exists,
 is readable, and has SHA-256
 `998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63` with
 size 3,209,114 bytes. The external `ai-hardware-real` Runtime KB remains at
@@ -665,13 +667,13 @@ contains a key, but `RESEARCHHUB_REAL_LLM_ENABLED` is currently `false`, so
 the paid API guard correctly stopped the run before report copy, ingestion,
 or frontend startup. No Runtime KB or report file was changed.
 
-Status is `Paused / DOCUMENT_RESOLUTION`; acceptance remains `Review Pending /
-Sol Verification`. The run must resume only after Document Resolution is
-accepted; no real Knowledge ingestion is claimed.
+This historical checkpoint remains `Paused / DOCUMENT_RESOLUTION` with
+acceptance `Review Pending / Sol Verification`; it was superseded by the R1
+resume recorded below.
 
 ## KNOWLEDGE-DOCUMENT-RESOLUTION-001
 
-Document Resolution is implemented and pending Sol verification. The Document
+Document Resolution is implemented and accepted — Sol verified. The Document
 Plugin now owns canonical raw bytes separately from parser bytes, exposes a
 small runtime-neutral `DocumentParser` provider contract, selects providers
 deterministically, retains `pdfjs-text` as an explicit lightweight fallback,
@@ -689,7 +691,7 @@ so the real Docling comparison remains an explicit local-environment blocker;
 there was no silent PDF.js downgrade. DeepSeek and external document APIs were
 not called.
 
-Status is `Completed`; acceptance is `Review Pending / Sol Verification`.
+Status is `Completed`; acceptance is `Accepted — Sol verified`.
 
 ## KNOWLEDGE-DOCUMENT-RESOLUTION-001-R1
 
@@ -712,6 +714,45 @@ idempotent (`modelDownload: SKIPPED` on the second run). No DeepSeek request,
 Knowledge ingestion, external document parsing API, Workflow, Skill, Schema,
 or architecture change occurred.
 
-Status is `Completed`; acceptance is `Review Pending / Sol Verification`.
-`KNOWLEDGE-PRODUCT-VALIDATION-RUN-001` remains paused with blocker category
-`DOCUMENT_RESOLUTION` until the Parent and R1 are accepted.
+Status is `Completed`; acceptance is `Accepted — Sol verified`.
+
+## KNOWLEDGE-PRODUCT-VALIDATION-RUN-001-R1
+
+The first real AI Hardware Product Validation resumed after Document
+Resolution Parent and R1 acceptance, using exactly one specified report:
+`20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf`. The source
+bytes are 3,209,114 bytes with SHA-256
+`998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63`. The
+local Docling parser completed offline with 103 pages, 1,523 structured
+chunks, 97,784 normalized characters, 158 headings, 45 tables, 178 image
+metadata items, 154 sections, and 103 page-provenance pages.
+
+One authorized real DeepSeek call was made with provider
+`deepseek-official`, model `deepseek-v4-pro`, and max tokens `65,536`. Curation
+blocked at Source Assessment because the model returned an unsupported
+`sourceType` value. No retry was made. Downstream curation operations were not
+run, so source assessment, candidates, semantic Knowledge objects, and schema
+gap proposals are unavailable or empty. The workflow run is
+`product-validation-1285f61f9d06ce6bfddb`, status `blocked`, failure stage
+`curation`, base/final revision `0`.
+
+The exact Raw PDF was durably archived in the external Runtime KB
+`ai-hardware-real`; no source, entity, relation, intelligence, module, or
+Manifest revision was committed. The post-run KB inventory is one industry
+anchor (`industry:ai-hardware`), zero relations, intelligence objects,
+modules, and sources. Full Knowledge Validation passed with zero errors and
+zero warnings. Raw provenance is verified for the archived PDF; no semantic
+provenance chain exists because no semantic object was admitted.
+
+The real frontend service is available at `http://localhost:4174/tests/knowledge/`
+because port 4173 was already occupied. Its real-KB directory, graph, anchor
+entity, and HTML endpoints returned HTTP 200; the empty graph is an honest
+projection of the unchanged Runtime KB. Product findings are categorized as
+`DOCUMENT_RESOLUTION: PASS`, `LLM_CURATION: BLOCKED`,
+`KNOWLEDGE_SCHEMA: N/A`, `REFERENCE_RESOLUTION: NOT_REACHED`,
+`INGESTION_WORKFLOW: BLOCKED_AT_CURATION`, `FRONTEND_PROJECTION: PASS`, and
+`PRODUCT_EXPECTATION: REVIEW_REQUIRED`. No manual repair or second report is
+authorized by this run.
+
+Status is `Product Validation Blocked`; acceptance is `Review Pending / Sol
+Verification`.

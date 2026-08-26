@@ -119,23 +119,24 @@ The local runtime setup for AI Hardware Product Validation is ready: an
 external `ai-hardware-real` Runtime KB, ignored secret configuration, the
 official DeepSeek provider composition, PDF/text report resolution, real
 ingestion entrypoints, and explicit frontend Runtime KB selection. Real
-validation is intentionally pending the local API key and report files. No
+validation was intentionally pending local inputs at that checkpoint. Those
+inputs are now configured; the first execution result is recorded below. No
 implementation scope for the next product phase is defined here.
 
 R1 closes the runtime dependency boundary: real product validation no longer
 uses AgentLoop TestKit, Agent, Session, Tools, or SystemPrompt services. The
 official provider composition is verified against a local deterministic HTTP
-server only. Real reports and API credentials remain required for the next
-validation run.
+server only. The setup record itself made no real report call; the resumed
+execution result is recorded below.
 
-The first real AI Hardware validation run remains `Paused /
-DOCUMENT_RESOLUTION`: deterministic preflight found the document resolver
-ownership defect before any paid request. Document Resolution is now completed
-pending Sol verification, with the PDF.js raw-byte baseline passing. The real
-validation run may resume after that acceptance and after the local Docling
-model cache is completed; no architecture expansion is proposed.
+The earlier `KNOWLEDGE-PRODUCT-VALIDATION-RUN-001` checkpoint remains recorded
+as `Paused / DOCUMENT_RESOLUTION`; it stopped before any paid request. The
+Document Resolution Parent and R1 are now accepted, and the local Docling
+model cache is ready. The resumed result is recorded under
+`KNOWLEDGE-PRODUCT-VALIDATION-RUN-001-R1` below; no architecture expansion is
+proposed.
 
-### Document Resolution — Completed / Review Pending
+### Document Resolution — Completed / Accepted
 
 The Document Plugin now provides canonical raw-byte ownership, deterministic
 parser provider selection, an explicit `pdfjs-text` fallback, and a local
@@ -145,8 +146,26 @@ managed Python environment, explicit local artifacts path, resumable model
 prefetch, doctor checks, and offline parsing validation. The real report's
 Docling parse passed with 1,523 structured chunks, 158 headings, 45 tables,
 178 image metadata items, and page provenance across 103 pages; its PDF.js
-baseline also passed exact byte preservation. No DeepSeek or external document
-parsing call was made.
+baseline also passed exact byte preservation. Document Resolution Parent and
+R1 are accepted — Sol verified.
+
+### First real AI Hardware validation run R1 — Product Validation Blocked
+
+The resumed run used exactly one specified West Securities PDF and one real
+DeepSeek V4 Pro call. Docling completed locally with 103 pages, 1,523 chunks,
+97,784 normalized characters, 158 headings, 45 tables, 178 image metadata
+items, 154 sections, and 103 page-provenance pages. The exact Raw PDF was
+archived in external Runtime KB `ai-hardware-real`, while its revision remained
+0 and no semantic Knowledge object was written.
+
+Curation blocked during Source Assessment because the model returned an
+unsupported `sourceType`; downstream curation and reference resolution did
+not run, and no retry was attempted. Knowledge Validation still passed on the
+unchanged base KB with zero errors and warnings. The real frontend projection
+is healthy at `http://localhost:4174/tests/knowledge/`, but displays only the
+pre-existing industry anchor because the ingestion produced no semantic
+changes. This run is `Product Validation Blocked` and remains
+`Review Pending / Sol Verification`.
 
 Every new feature must remain within the existing DSH, Workflow, Skill,
 Plugin, Research Output, or Knowledge Infrastructure boundaries. No new Agent,

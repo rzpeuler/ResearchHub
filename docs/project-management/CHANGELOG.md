@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-PRODUCT-VALIDATION-RUN-001-R1
+
+- Resumed the first real AI Hardware Product Validation with the specified
+  West Securities PDF after Document Resolution Parent and R1 acceptance.
+- Completed local Docling parsing and exact Raw archival, then made the single
+  authorized real DeepSeek V4 Pro call. Curation blocked at Source Assessment
+  because the model returned an unsupported `sourceType`; no retry was made.
+- No semantic Knowledge objects or Runtime KB revision were committed. The
+  unchanged external KB passes full Knowledge Validation, and the real
+  frontend projection is available on the separate local port 4174.
+- Recorded the run as `Product Validation Blocked` with acceptance
+  `Review Pending / Sol Verification`; no second report or implementation
+  repair was started.
+
 ## 2026-08-27 - KNOWLEDGE-DOCUMENT-RESOLUTION-001-R1
 
 - Added managed Docling setup/doctor commands, explicit local model artifacts,
