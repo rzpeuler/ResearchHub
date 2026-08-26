@@ -53,6 +53,10 @@ Knowledge Base is available at
 [`examples/knowledge-bases/ai-hardware/`](examples/knowledge-bases/ai-hardware/);
 real user Runtime Data remains configurable and independently scoped.
 
+The AI Hardware Product Validation setup is ready for local real-data input;
+real ingestion remains pending the ignored project `.env` API key and local
+reports under `../ResearchHubData/input/ai-hardware-reports/`.
+
 ## Project documents
 
 - [Project overview](docs/project-management/PROJECT_OVERVIEW.md)

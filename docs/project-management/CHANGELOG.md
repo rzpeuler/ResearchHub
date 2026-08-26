@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-26 - KNOWLEDGE-PRODUCT-VALIDATION-SETUP-001
+
+- Prepared the external `ai-hardware-real` Runtime Knowledge Base setup,
+  ignored local secret configuration, official DeepSeek composition, and
+  `pdfjs-dist`-based page-aware report resolver.
+- Added deterministic network-free coverage and real ingestion/frontend entry
+  points. Status is `Completed / Awaiting Local Inputs`; no real LLM call is
+  claimed and no Phase F is started.
+
 ## 2026-08-26 - KNOWLEDGE-RUNTIME-MIGRATION-E-001-CLOSURE
 
 - Recorded Sol's independent acceptance of the Phase E parent and R1.

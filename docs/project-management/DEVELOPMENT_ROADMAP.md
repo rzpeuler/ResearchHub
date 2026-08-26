@@ -113,6 +113,15 @@ for that direction is not defined here.
 Future work remains subject to separate approval. Do not label the v0.2
 Runtime capabilities as implemented based on frozen documentation alone.
 
+### Product validation setup — Completed / Awaiting Local Inputs
+
+The local runtime setup for AI Hardware Product Validation is ready: an
+external `ai-hardware-real` Runtime KB, ignored secret configuration, the
+official DeepSeek provider composition, PDF/text report resolution, real
+ingestion entrypoints, and explicit frontend Runtime KB selection. Real
+validation is intentionally pending the local API key and report files. No
+implementation scope for the next product phase is defined here.
+
 Every new feature must remain within the existing DSH, Workflow, Skill,
 Plugin, Research Output, or Knowledge Infrastructure boundaries. No new Agent,
 Planner, Memory, Evaluation, Workflow Engine, Knowledge Agent, Graph DB, Vector

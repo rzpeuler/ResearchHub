@@ -19,6 +19,10 @@
     "test:knowledge-ingestion": "tsx --test tests/knowledge/ingestion/research-report-ingestion.test.ts",
     "test:knowledge-infrastructure": "tsx --test tests/knowledge/runtime/data-root.test.ts tests/knowledge/runtime/compatibility.test.ts tests/knowledge/runtime/manifest-loader.test.ts tests/knowledge/runtime/canonical-registry.test.ts tests/knowledge/runtime/registry.test.ts tests/knowledge/runtime/loader.test.ts tests/knowledge/runtime/legacy-compatibility.test.ts tests/knowledge/runtime/raw-archive.test.ts tests/knowledge/runtime/changeset.test.ts tests/knowledge/runtime/writer.test.ts tests/knowledge/runtime/dependency-boundary.test.ts",
     "test:knowledge-migration": "tsx --test tests/knowledge/migration/migration.test.ts",
+    "test:knowledge-product-validation": "tsx --test tests/knowledge/product-validation/local-runtime-config.test.ts tests/knowledge/product-validation/research-report-input-resolver.test.ts tests/knowledge/product-validation/real-ingestion-composition.test.ts tests/knowledge/product-validation/runtime-frontend-selection.test.ts",
+    "knowledge:bootstrap:real": "node --env-file=.env --import tsx tools/knowledge-product-validation/bootstrap-real.ts",
+    "knowledge:ingest:real": "node --env-file=.env --import tsx tools/knowledge-product-validation/ingest-ai-hardware-reports.ts",
+    "knowledge:serve:real": "node --env-file=.env --import tsx tools/knowledge-product-validation/serve-real.ts",
     "test:akshare-bridge": "python -m unittest tools.test_akshare_financial_bridge -v",
     "test:integration": "tsx --test tests/integration/harness-integration.test.ts tests/integration/market-plugin.test.ts tests/integration/event-analysis.test.ts tests/integration/announcement-plugin.test.ts tests/integration/media-plugin.test.ts tests/integration/financial-plugin.test.ts tests/integration/research-workflow.test.ts tests/integration/company-research.test.ts tests/integration/pipeline-validation.test.ts tests/integration/pipeline-trace-integration.test.ts tests/integration/memory-research-knowledge.test.ts tests/integration/news-acquisition.test.ts tests/integration/news-provider-real.test.ts tests/integration/news-plugin-real.test.ts tests/integration/financial-plugin-real.test.ts tests/integration/akshare-financial-real.test.ts tests/integration/real-equity-research-pipeline.test.ts",
     "typecheck:integration": "tsc --noEmit -p tsconfig.json",
@@ -29,7 +33,7 @@
     "test:financial-real": "tsx --test tests/integration/financial-plugin-real.test.ts",
     "test:akshare-financial-real": "tsx --test tests/integration/akshare-financial-real.test.ts",
     "test:real-equity-pipeline": "tsx --test tests/integration/real-equity-research-pipeline.test.ts",
-    "test": "npm run typecheck:integration && npm run test:plugins && npm run test:plugin-operations && npm run test:workflows && npm run test:artifacts && npm run test:schemas && npm run test:evaluation && npm run test:memory && npm run test:skills && npm run test:knowledge && npm run test:knowledge-curation && npm run test:knowledge-ingestion && npm run test:knowledge-infrastructure && npm run test:knowledge-migration && npm run test:integration"
+    "test": "npm run typecheck:integration && npm run test:plugins && npm run test:plugin-operations && npm run test:workflows && npm run test:artifacts && npm run test:schemas && npm run test:evaluation && npm run test:memory && npm run test:skills && npm run test:knowledge && npm run test:knowledge-curation && npm run test:knowledge-ingestion && npm run test:knowledge-infrastructure && npm run test:knowledge-migration && npm run test:knowledge-product-validation && npm run test:integration"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
@@ -37,6 +41,7 @@
     "@deepseek-ai/dsh-agent-loop": "0.1.1-rc.2",
     "@deepseek-ai/dsh-agent-loop-testkit": "0.1.1-rc.2",
     "@deepseek-ai/dsh-llm": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-llm-deepseek": "0.1.1-rc.2",
     "@deepseek-ai/dsh-session": "0.1.1-rc.2",
     "@deepseek-ai/dsh-session-persistence-jsonl": "0.1.1-rc.2",
     "@deepseek-ai/dsh-skill": "0.1.1-rc.2",

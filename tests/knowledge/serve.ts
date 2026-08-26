@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs'
-import { stat } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import { extname, join, normalize, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -91,6 +91,14 @@ export function createKnowledgeServer(root = defaultRoot, knowledgeBaseRoot = re
     try {
       const file = await stat(filePath)
       if (!file.isFile()) throw new Error('Not a file')
+      if (relative(root, filePath).replaceAll('\\', '/') === 'tests/knowledge/index.html') {
+        const loaded = await adapterPromise
+        const html = await readFile(filePath, 'utf8')
+        const configuredHtml = html.replace(/(const KNOWLEDGE_BASE_ID\s*=\s*')[^']+(';)/, `$1${loaded.handle.knowledgeBaseId}$2`)
+        response.writeHead(200, { 'Content-Type': contentTypes[extname(filePath)] || 'application/octet-stream' })
+        response.end(configuredHtml)
+        return
+      }
       response.writeHead(200, { 'Content-Type': contentTypes[extname(filePath)] || 'application/octet-stream' })
       createReadStream(filePath).pipe(response)
     } catch {
@@ -100,8 +108,8 @@ export function createKnowledgeServer(root = defaultRoot, knowledgeBaseRoot = re
   })
 }
 
-export function startKnowledgeServer(root = defaultRoot, port = defaultPort): Server {
-  const server = createKnowledgeServer(root)
+export function startKnowledgeServer(root = defaultRoot, port = defaultPort, knowledgeBaseRoot = resolve(root, 'examples/knowledge-bases/ai-hardware')): Server {
+  const server = createKnowledgeServer(root, knowledgeBaseRoot)
   server.listen(port, () => {
     console.log(`Knowledge frontend: http://localhost:${port}/tests/knowledge/`)
   })

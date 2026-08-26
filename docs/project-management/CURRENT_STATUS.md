@@ -619,3 +619,24 @@ HTML normalization, and serializable Evidence mapping. The existing GDELT News
 Plugin and `search_company_news` contract remain compatible. Deterministic
 acquisition tests are part of the default suite; real GDELT and web-fetch
 coverage requires `RUN_REAL_NEWS_ACQUISITION=1`.
+
+## KNOWLEDGE-PRODUCT-VALIDATION-SETUP-001
+
+The local Knowledge Product Validation setup is implemented and remains
+`Completed / Awaiting Local Inputs` pending a real DeepSeek API key and local
+AI Hardware research reports. The setup uses the external Runtime Data Root
+`../ResearchHubData/`, with a fresh `ai-hardware-real` Knowledge Base that
+contains only canonical runtime scaffolding and an explicit user-defined
+`industry:ai-hardware` domain anchor; it does not copy or alter the Git-managed
+Example Knowledge Base.
+
+The project-local `.env` is ignored and controls the official
+`deepseek-official` provider, model, token budget, external report directory,
+and runtime KB ID. The PDF resolver preserves raw bytes, extracts normalized
+text with the existing `pdfjs-dist`, and emits page-aware chunks. The existing
+Knowledge Curation Skill and Research Report Knowledge Ingestion Workflow are
+composed unchanged. `knowledge:serve:real` selects the external KB explicitly
+for the existing read-only frontend.
+
+No real LLM call or real report ingestion is claimed until local inputs are
+present. Acceptance remains `Review Pending / Sol Verification`.
