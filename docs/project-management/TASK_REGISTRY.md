@@ -64,7 +64,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-INGESTION-D2-WORKFLOW-001 | Implement Research Report Knowledge Ingestion Workflow | Completed | P0 | 2026-08-26 | Luna | `f5c3033741efb7bf3767603ebea9cc47455fde29` | Review Pending / Sol Verification |
 | KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R1 | Close Research Report Ingestion Workflow contract gaps | Completed | P0 | 2026-08-26 | Luna | `d7694c19118b00611222f3e2c89b0ac9c44f1d0a` | Review Pending / Sol Verification |
 | KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R2 | Finalize ingestion audit and partial planning | Completed | P0 | 2026-08-26 | Luna | `028d539cc95073ad964d7dc9a4e50a4b5868135c` | Review Pending / Sol Verification |
-| KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R3 | Finalize ingestion workflow completion semantics | Completed | P0 | 2026-08-26 | Luna | `696fec7e4ba42be7e65b7ea034b0d3ed4769cfe3` | Review Pending / Sol Verification |
+| KNOWLEDGE-INGESTION-D2-WORKFLOW-001-R3 | Finalize ingestion workflow completion semantics | Completed | P0 | 2026-08-26 | Luna | `696fec71d7ec750fa9cc68c38759951e68c972ff` | Review Pending / Sol Verification |
 
 ## RH-DESIGN-004 Acceptance Scope
 
