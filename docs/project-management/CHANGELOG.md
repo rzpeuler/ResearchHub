@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-DOCUMENT-RESOLUTION-001-R1
+
+- Added managed Docling setup/doctor commands, explicit local model artifacts,
+  pinned runtime selection, offline readiness checks, and idempotent model
+  prefetch for `layout` and `tableformer`.
+- Validated the specified West Securities report offline with Docling 2.116.0
+  and preserved exact raw bytes; no DeepSeek call or Knowledge ingestion was
+  performed.
+- Kept `KNOWLEDGE-PRODUCT-VALIDATION-RUN-001` paused pending Sol verification
+  of Document Resolution.
+
 ## 2026-08-26 - KNOWLEDGE-DOCUMENT-RESOLUTION-001
 
 - Hardened the Document Plugin with immutable Raw byte ownership, a

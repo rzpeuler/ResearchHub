@@ -71,10 +71,18 @@ test('document parser registry selects explicit providers deterministically', ()
 
 test('Docling provider adapts a local structured bridge without exposing it to Workflow', async () => {
   const bridgePath = fileURLToPath(new URL('./fixtures/docling-bridge-fixture.py', import.meta.url))
-  const parser = new DoclingDocumentParser({ bridgePath })
+  const parser = new DoclingDocumentParser({ bridgePath, pythonExecutable: 'python', artifactsPath: 'C:\\researchhub-test-models' })
   const result = await parser.parse({ bytes: new Uint8Array([37, 80, 68, 70]), filename: 'fixture.pdf', mediaType: 'application/pdf' })
   assert.equal(result.parser.id, 'docling-local')
+  assert.equal(result.parser.version, 'fixture')
   assert.equal(result.quality?.tableCount, 1)
+  assert.equal(result.quality?.warnings[0], 'C:\\researchhub-test-models')
   assert.equal(result.chunks[1]?.section, 'AI Hardware')
   assert.match(result.chunks[1]?.text ?? '', /\| Product \|/)
+})
+
+test('Docling provider reports an explicit environment-not-ready error for missing artifacts', async () => {
+  const bridgePath = fileURLToPath(new URL('../../../tools/document-parser/docling_bridge.py', import.meta.url))
+  const parser = new DoclingDocumentParser({ bridgePath, pythonExecutable: 'python', artifactsPath: 'C:\\researchhub-missing-models' })
+  await assert.rejects(() => parser.parse({ bytes: new Uint8Array([37, 80, 68, 70]), filename: 'fixture.pdf', mediaType: 'application/pdf' }), (error: unknown) => error instanceof DocumentParserError && error.code === 'document_parser_environment_not_ready')
 })

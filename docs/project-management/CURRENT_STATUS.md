@@ -690,3 +690,28 @@ there was no silent PDF.js downgrade. DeepSeek and external document APIs were
 not called.
 
 Status is `Completed`; acceptance is `Review Pending / Sol Verification`.
+
+## KNOWLEDGE-DOCUMENT-RESOLUTION-001-R1
+
+Document Resolution R1 makes the Docling runtime deterministic. The setup
+command manages the ignored `.researchhub-document-parser/venv/` environment,
+installs the pinned Docling 2.116.0 dependency set, prefetches only the
+pipeline's `layout` and `tableformer` models, and records the explicit local
+artifacts path without exposing `.env` values. The doctor command performs no
+installation and reports READY only after Python, version, artifacts,
+model-initialization, fixture parsing, and table-pipeline checks pass.
+
+The specified West Securities report was parsed locally with
+`HF_HUB_OFFLINE=1` using `docling-local`: 103 pages, 1,523 structured chunks,
+97,784 normalized characters, 158 headings, 45 tables, 178 image metadata
+items, 154 sections, and 103 page-provenance pages. The returned raw bytes
+remain exactly 3,209,114 bytes with SHA-256
+`998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63`. The
+PDF.js baseline remains 103 pages, 103 chunks, and 91,740 characters. Setup is
+idempotent (`modelDownload: SKIPPED` on the second run). No DeepSeek request,
+Knowledge ingestion, external document parsing API, Workflow, Skill, Schema,
+or architecture change occurred.
+
+Status is `Completed`; acceptance is `Review Pending / Sol Verification`.
+`KNOWLEDGE-PRODUCT-VALIDATION-RUN-001` remains paused with blocker category
+`DOCUMENT_RESOLUTION` until the Parent and R1 are accepted.

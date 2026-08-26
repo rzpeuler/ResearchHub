@@ -7,16 +7,17 @@ text to logs. It is intentionally a short-lived process, not a service.
 from __future__ import annotations
 
 import json
+import importlib.metadata
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
-from docling.datamodel.base_models import InputFormat
-from docling.datamodel.pipeline_options import PdfPipelineOptions
-from docling.document_converter import DocumentConverter, PdfFormatOption
-
-
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
     if len(sys.argv) != 2:
         print("usage: docling_bridge.py <local-document-path>", file=sys.stderr)
         return 2
@@ -26,8 +27,23 @@ def main() -> int:
         print("document_parser_failed: source document does not exist", file=sys.stderr)
         return 2
 
+    artifacts_path = os.environ.get("RESEARCHHUB_DOCLING_ARTIFACTS_PATH", "").strip()
+    if not artifacts_path:
+        print("document_parser_environment_not_ready: RESEARCHHUB_DOCLING_ARTIFACTS_PATH is required", file=sys.stderr)
+        return 1
+    artifacts_root = Path(artifacts_path).expanduser().resolve()
+    if not artifacts_root.is_dir():
+        print("document_parser_environment_not_ready: configured Docling artifacts directory does not exist", file=sys.stderr)
+        return 1
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
     try:
+        from docling.datamodel.base_models import InputFormat
+        from docling.datamodel.pipeline_options import PdfPipelineOptions
+        from docling.document_converter import DocumentConverter, PdfFormatOption
+
         pipeline_options = PdfPipelineOptions(
+            artifacts_path=artifacts_root,
             do_ocr=False,
             do_picture_description=False,
             do_chart_extraction=False,
@@ -90,7 +106,7 @@ def adapt_document(document: Any) -> dict[str, Any]:
         warnings.append("Docling returned no extractable text.")
 
     return {
-        "parser": {"id": "docling-local", "version": "2.116.0"},
+        "parser": {"id": "docling-local", "version": importlib.metadata.version("docling")},
         "pageCount": page_count or None,
         "normalizedText": normalized_text,
         "chunks": chunks,

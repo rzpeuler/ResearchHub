@@ -140,10 +140,13 @@ model cache is completed; no architecture expansion is proposed.
 The Document Plugin now provides canonical raw-byte ownership, deterministic
 parser provider selection, an explicit `pdfjs-text` fallback, and a local
 `docling-local` bridge with structured chunks and quality diagnostics. The
-Workflow continues to depend only on `ResearchReportInputResolver`. The real
-report's PDF.js baseline passed exact byte preservation; the Docling comparison
-is locally blocked by an incomplete layout-model cache. No DeepSeek or external
-document parsing call was made.
+Workflow continues to depend only on `ResearchReportInputResolver`. R1 adds a
+managed Python environment, explicit local artifacts path, resumable model
+prefetch, doctor checks, and offline parsing validation. The real report's
+Docling parse passed with 1,523 structured chunks, 158 headings, 45 tables,
+178 image metadata items, and page provenance across 103 pages; its PDF.js
+baseline also passed exact byte preservation. No DeepSeek or external document
+parsing call was made.
 
 Every new feature must remain within the existing DSH, Workflow, Skill,
 Plugin, Research Output, or Knowledge Infrastructure boundaries. No new Agent,
