@@ -15,6 +15,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | Task ID | Task Name | Status | Priority | Created | Assignee | Commit Hash | Acceptance |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | KNOWLEDGE-V0.3-FREEZE-CORRECTION-001 | Correct Knowledge v0.3 Freeze Candidate architecture blockers | Completed / Sol Verification Pending | P0 | 2026-08-27 | Luna | Current task commit | Review Pending / Sol Verification |
+| KNOWLEDGE-V0.3-FREEZE-CORRECTION-001-R1 | Close Knowledge v0.3 Freeze Candidate residual consistency gaps | Completed / Sol Verification Pending | P0 | 2026-08-27 | Luna | Current task commit | Review Pending / Sol Verification |
 | RH-GOV-001 | Initialize project execution state management system | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-DOC-002 | Synchronize architecture baseline documentation | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-ENG-001 | Validate minimum ResearchHub Harness integration | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — typecheck and integration test passed |

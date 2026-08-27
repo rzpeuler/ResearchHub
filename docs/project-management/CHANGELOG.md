@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-FREEZE-CORRECTION-001-R1
+
+- Added Schema 0.3 durable identity policy to the v0.3 supersession scope
+  without broadening the v0.2 architecture supersession boundary.
+- Replaced the ambiguous `Module/View semantics` wording with an explicit
+  Projection Configuration Asset / canonical Module boundary and stated that
+  Legacy View is not a canonical object kind.
+- Kept the v0.3 Freeze Candidate status, v0.2 current normative architecture,
+  implementation HOLD, and `Review Pending / Sol Verification` acceptance.
+- Did not start Governance Integration or Knowledge v0.3 implementation.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-FREEZE-CORRECTION-001
 
 - Imported and corrected the six Knowledge v0.3 Freeze Candidate documents.

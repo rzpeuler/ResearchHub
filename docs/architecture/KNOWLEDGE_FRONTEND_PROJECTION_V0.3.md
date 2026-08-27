@@ -114,7 +114,7 @@ Company
 
 ## 7. Theme-specific Industry Grouping
 
-Theme-specific visual groups such as Compute/Memory/Interconnect/Power/Cooling/Materials are Projection configuration or Module/View semantics, NOT global Relation enums.
+Theme-specific visual groups such as Compute/Memory/Interconnect/Power/Cooling/Materials MAY be expressed through non-canonical Projection Configuration Assets or, where appropriate, canonical Module structures. They are NOT global Relation enums. Legacy View is not a canonical object kind.
 
 ## 8. Industry Chain
 

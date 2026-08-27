@@ -7,7 +7,7 @@
 - Knowledge Schema Version: `0.3`
 - Storage Format Version: `1`
 - v0.2 remains frozen legacy architecture and MUST NOT be rewritten.
-- v0.3 supersedes v0.2 only for Knowledge semantic model, relation vocabulary, curation architecture, and report-ingestion behavior.
+- v0.3 supersedes v0.2 only for Knowledge semantic model, relation vocabulary, Schema 0.3 durable identity policy, curation architecture, and report-ingestion behavior.
 - v0.2 decisions for KB instance isolation, runtime-data separation, Raw ownership, provenance, registry, compatibility, migration, validation/write atomicity, and Git/runtime-data boundary remain valid.
 - This candidate is submitted for independent Sol verification; Knowledge v0.3 implementation remains on HOLD.
 

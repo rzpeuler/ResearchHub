@@ -1,5 +1,25 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-FREEZE-CORRECTION-001-R1
+
+R1 closes the two residual terminology and normative-scope contradictions
+identified during independent Sol review of commit
+`5620302317cf13e2d4faa52be31ad033d3df8b4f`:
+
+- the v0.3 supersession list explicitly includes Schema 0.3 durable identity
+  policy;
+- Theme-specific visual groups now distinguish non-canonical Projection
+  Configuration Assets from canonical Module structures, and explicitly keep
+  Legacy View non-canonical.
+
+The canonical model, auxiliary asset boundaries, migration design, ID
+authority, v0.2 current normative status, and implementation HOLD are
+unchanged. Governance Integration and Knowledge v0.3 implementation have not
+started.
+
+Status is `Completed / Sol Verification Pending`; acceptance remains
+`Review Pending / Sol Verification`.
+
 ## KNOWLEDGE-V0.3-FREEZE-CORRECTION-001
 
 Knowledge v0.3 is a Freeze Candidate with status `Sol Verification Pending`.
