@@ -35,13 +35,18 @@ test('report_understanding is a minimal schema projection', () => {
   assert.deepEqual(schema.lifecycle, KNOWLEDGE_SCHEMA_V03.lifecycle)
   assert.deepEqual(schema.auxiliaryAssets.referenceTaxonomy, KNOWLEDGE_SCHEMA_V03.auxiliaryAssets.referenceTaxonomy)
   assert.deepEqual(schema.themeGroup, KNOWLEDGE_SCHEMA_V03.themeGroup)
+  assert.deepEqual(schema.entity.types, KNOWLEDGE_SCHEMA_V03.entity.types)
   assert.deepEqual(schema.entity.investmentTheme, KNOWLEDGE_SCHEMA_V03.entity.investmentTheme)
+  assert.deepEqual(schema.entity.typeDefinitions, KNOWLEDGE_SCHEMA_V03.entity.typeDefinitions)
   assert.deepEqual(schema.entity.taxonomyRefs, KNOWLEDGE_SCHEMA_V03.entity.taxonomyRefs)
   assert.deepEqual(schema.source, {
     fields: KNOWLEDGE_SCHEMA_V03.source.fields,
     requiredFields: KNOWLEDGE_SCHEMA_V03.source.requiredFields,
     types: KNOWLEDGE_SCHEMA_V03.source.types,
+    typeDefinitions: KNOWLEDGE_SCHEMA_V03.source.typeDefinitions,
     reliabilities: KNOWLEDGE_SCHEMA_V03.source.reliabilities,
+    reliabilityDefinitions: KNOWLEDGE_SCHEMA_V03.source.reliabilityDefinitions,
+    reliabilitySemanticRule: KNOWLEDGE_SCHEMA_V03.source.reliabilitySemanticRule,
   })
   assert.equal('relation' in schema, false)
   assert.equal('claim' in schema, false)
@@ -56,7 +61,10 @@ test('knowledge_extraction derives complete routine semantics from the authority
     fields: KNOWLEDGE_SCHEMA_V03.source.fields,
     requiredFields: KNOWLEDGE_SCHEMA_V03.source.requiredFields,
     types: KNOWLEDGE_SCHEMA_V03.source.types,
+    typeDefinitions: KNOWLEDGE_SCHEMA_V03.source.typeDefinitions,
     reliabilities: KNOWLEDGE_SCHEMA_V03.source.reliabilities,
+    reliabilityDefinitions: KNOWLEDGE_SCHEMA_V03.source.reliabilityDefinitions,
+    reliabilitySemanticRule: KNOWLEDGE_SCHEMA_V03.source.reliabilitySemanticRule,
   })
   assert.deepEqual(schema.rawIdentity, KNOWLEDGE_SCHEMA_V03.rawIdentity)
   assert.deepEqual(schema.numericConstraints, KNOWLEDGE_SCHEMA_V03.numericConstraints)
@@ -75,13 +83,25 @@ test('reconciliation contains update-relevant authority without operation decisi
     fields: KNOWLEDGE_SCHEMA_V03.claim.fields,
     requiredFields: KNOWLEDGE_SCHEMA_V03.claim.requiredFields,
     temporalScopeTypes: KNOWLEDGE_SCHEMA_V03.claim.temporalScopeTypes,
+    comparators: KNOWLEDGE_SCHEMA_V03.claim.comparators,
     subjectKinds: KNOWLEDGE_SCHEMA_V03.claim.subjectKinds,
+    typeDefinitions: KNOWLEDGE_SCHEMA_V03.claim.typeDefinitions,
+    semanticGuidance: KNOWLEDGE_SCHEMA_V03.claim.semanticGuidance,
   })
   assert.deepEqual(schema.relation, {
     types: KNOWLEDGE_SCHEMA_V03.relation.types,
     commonFields: KNOWLEDGE_SCHEMA_V03.relation.commonFields,
     requiredFields: KNOWLEDGE_SCHEMA_V03.relation.requiredFields,
     definitions: KNOWLEDGE_SCHEMA_V03.relation.definitions,
+  })
+  assert.deepEqual(schema.source, {
+    fields: KNOWLEDGE_SCHEMA_V03.source.fields,
+    requiredFields: KNOWLEDGE_SCHEMA_V03.source.requiredFields,
+    types: KNOWLEDGE_SCHEMA_V03.source.types,
+    typeDefinitions: KNOWLEDGE_SCHEMA_V03.source.typeDefinitions,
+    reliabilities: KNOWLEDGE_SCHEMA_V03.source.reliabilities,
+    reliabilityDefinitions: KNOWLEDGE_SCHEMA_V03.source.reliabilityDefinitions,
+    reliabilitySemanticRule: KNOWLEDGE_SCHEMA_V03.source.reliabilitySemanticRule,
   })
   assert.deepEqual(schema.numericConstraints, KNOWLEDGE_SCHEMA_V03.numericConstraints)
   assert.equal(collectKeys(schema).has('resolution'), false)

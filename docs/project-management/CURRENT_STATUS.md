@@ -9,8 +9,9 @@ API and model request remain unchanged.
 
 Stage B is `Completed / Accepted - Sol verified` at baseline
 `60bf76c045c1d315f3ea90d7733d75d870b7ee54`. Stage C is `In Progress`; C1 is
-`Completed / Sol Verification Pending`. C2 remains responsible for the four
-v0.3 Curation operations and model request cutover.
+`Completed / Rework Required`; C1-R1 is `Completed / Sol Verification Pending`.
+C2 remains responsible for the four v0.3 Curation operations and model request
+cutover.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-003
 

@@ -53,6 +53,7 @@ export const KNOWLEDGE_SCHEMA_V03 = {
   themeGroup: {
     fields: ['id', 'name', 'aliases', 'description', 'sortOrder', 'lifecycle', 'metadata'],
     requiredFields: ['id', 'name', 'aliases', 'lifecycle'],
+    semanticDescription: 'Navigation taxonomy used to organize InvestmentThemes. It is not an Entity, not an economic ontology, and not an auxiliary Reference Taxonomy item.',
   },
   entity: {
     types: ['investment_theme', 'industry', 'company', 'product', 'technology'],
@@ -79,6 +80,12 @@ export const KNOWLEDGE_SCHEMA_V03 = {
       fields: ['themeGroupRef', 'definition', 'inclusionCriteria', 'exclusionCriteria'],
       requiredFields: ['themeGroupRef'],
       cardinality: 'exactly_one_theme_group',
+      semanticDescription: 'An investment-research theme groups economically distinct Industries through theme_exposure and is organized by exactly one ThemeGroup.',
+      creationPolicy: {
+        requiredFields: ['id', 'type', 'name', 'themeGroupRef'],
+        recommendedFields: ['definition', 'inclusionCriteria', 'exclusionCriteria'],
+        themeGroupCardinality: 'exactly_one',
+      },
     },
     industry: {
       forbiddenFields: ['parentTheme', 'themeRefs', 'companyRefs'],
@@ -92,6 +99,23 @@ export const KNOWLEDGE_SCHEMA_V03 = {
     },
     technology: {
       description: 'Reusable technical routes, processes, architectures, or capabilities.',
+    },
+    typeDefinitions: {
+      investment_theme: {
+        semanticDescription: 'An investment-research theme driven by common investment logic, technology cycles, demand cycles, capex cycles, or structural change. It is distinct from an Industry and groups economically distinct Industries through theme_exposure.',
+      },
+      industry: {
+        semanticDescription: 'An independently researchable economic or industrial-chain activity. It is distinct from an InvestmentTheme and from auxiliary securities/reference taxonomies.',
+      },
+      company: {
+        semanticDescription: 'A company or operating corporate entity represented as a canonical research Entity. Industry/theme exposure is represented by Relations rather than embedded concept/theme arrays.',
+      },
+      product: {
+        semanticDescription: 'Recognizable commercial products, product families, components, or equipment categories.',
+      },
+      technology: {
+        semanticDescription: 'Reusable technical routes, processes, architectures, or capabilities.',
+      },
     },
   },
   relation: {
@@ -143,6 +167,7 @@ export const KNOWLEDGE_SCHEMA_V03 = {
         sourceTypes: ['investment_theme'],
         targetTypes: ['industry'],
         cardinality: 'many_to_many',
+        semanticDescription: 'InvestmentTheme-to-Industry thematic relevance/exposure. It represents investment-theme membership/relevance, not navigation containment.',
         attributes: {
           importance: ['core', 'material', 'adjacent'],
           chainPosition: ['upstream', 'midstream', 'downstream', 'infrastructure', 'cross_chain', 'unknown'],
@@ -153,6 +178,7 @@ export const KNOWLEDGE_SCHEMA_V03 = {
         sourceTypes: ['company'],
         targetTypes: ['industry'],
         cardinality: 'at_most_one_active_per_company_industry_pair',
+        semanticDescription: "Company-to-Industry business exposure describing the basis, realization stage, materiality, and optionally disclosed financial contribution of the company's economic exposure.",
         attributes: {
           exposureBasis: [
             'direct_operation',
@@ -185,21 +211,25 @@ export const KNOWLEDGE_SCHEMA_V03 = {
         directionality: 'directed',
         sourceTypes: ['industry'],
         targetTypes: ['industry'],
+        semanticDescription: 'An Industry is economically or industrial-chain upstream of another Industry.',
       },
       supplier_of: {
         directionality: 'directed',
         sourceTypes: ['company'],
         targetTypes: ['company'],
+        semanticDescription: 'A Company supplies products, components, services, or other commercial inputs to another Company.',
       },
       competes_with: {
         directionality: 'symmetric',
         sourceTypes: ['company'],
         targetTypes: ['company'],
+        semanticDescription: 'Two Companies materially compete in a market, product category, technology market, or business activity.',
       },
       owns_stake_in: {
         directionality: 'directed',
         sourceTypes: ['company'],
         targetTypes: ['company'],
+        semanticDescription: 'Current Company ownership/equity-interest state in another Company. Investment events themselves are Claims.',
         attributes: {
           ownershipPct: 'number_0_to_1_or_null',
           controlType: ['controlling', 'significant_influence', 'minority', 'unknown'],
@@ -209,41 +239,49 @@ export const KNOWLEDGE_SCHEMA_V03 = {
         directionality: 'directed',
         sourceTypes: ['company'],
         targetTypes: ['product'],
+        semanticDescription: 'A Company commercially offers or provides a Product.',
       },
       belongs_to_industry: {
         directionality: 'directed',
         sourceTypes: ['product', 'technology'],
         targetTypes: ['industry'],
+        semanticDescription: 'A Product or Technology is structurally associated with an Industry.',
       },
       component_of: {
         directionality: 'directed',
         sourceTypes: ['product'],
         targetTypes: ['product'],
+        semanticDescription: 'A Product is a component, subassembly, or constituent product of another Product.',
       },
       develops_technology: {
         directionality: 'directed',
         sourceTypes: ['company'],
         targetTypes: ['technology'],
+        semanticDescription: 'A Company develops a Technology.',
       },
       uses_technology: {
         directionality: 'directed',
         sourceTypes: ['company', 'product'],
         targetTypes: ['technology'],
+        semanticDescription: 'A Company or Product uses, implements, or incorporates a Technology.',
       },
       applied_in: {
         directionality: 'directed',
         sourceTypes: ['technology'],
         targetTypes: ['industry'],
+        semanticDescription: 'A Technology is applied within an Industry.',
       },
       depends_on: {
         directionality: 'directed',
         sourceTypes: ['industry', 'product', 'technology'],
         targetTypes: ['industry', 'product', 'technology'],
+        semanticDescription: 'An Industry, Product, or Technology has a material structural or functional dependency on another Industry, Product, or Technology.',
       },
       substitutes_for: {
         directionality: 'symmetric',
         sourceTypes: ['product', 'technology'],
         targetTypes: ['product', 'technology'],
+        semanticDescription: 'Two same-kind Products or Technologies can act as substitutes or alternatives for one another.',
         endpointConstraint: 'same_entity_type_on_both_sides',
       },
     },
@@ -260,6 +298,25 @@ export const KNOWLEDGE_SCHEMA_V03 = {
     comparators: ['eq', 'gt', 'gte', 'lt', 'lte', 'approx'],
     subjectKinds: ['Entity', 'Relation'],
     description: 'Claim replaces v0.2 Intelligence and expresses one atomic semantic proposition.',
+    typeDefinitions: {
+      fact: 'Objectively verifiable and consistency-seeking.',
+      forecast: 'Future prediction; divergence between supported forecasts is allowed.',
+      viewpoint: 'Analytical interpretation; supported divergence is allowed.',
+      trend: 'Directional or structural development over time.',
+      risk: 'Uncertain adverse condition; may expire as circumstances change.',
+    },
+    semanticGuidance: {
+      atomicity: 'One Claim expresses one independently evaluable semantic proposition.',
+      temporal: {
+        sourcePublishedAt: 'Source.publishedAt records when a source was published.',
+        claimAsOf: 'Claim.temporal.asOf records the temporal reference point of the Claim.',
+        claimScope: 'Claim.temporal.scope records the Claim period, point, or ongoing scope.',
+        distinction: 'Source publication time and Claim temporal meaning are distinct semantics.',
+      },
+      structuredValue: 'A lightweight metric/value/unit/comparator representation, not a global Metric Ontology.',
+      confidence: 'Claim confidence represents confidence that extraction and support are correct; it is not Source reliability or forecast probability.',
+      provenance: 'Source/Raw binding is trusted provenance; an LLM must not invent canonical Source or Raw IDs.',
+    },
   },
   source: {
     types: [
@@ -279,6 +336,23 @@ export const KNOWLEDGE_SCHEMA_V03 = {
       'createdAt', 'updatedAt',
     ],
     requiredFields: ['id', 'title', 'sourceType'],
+    typeDefinitions: {
+      official_disclosure: 'Formal disclosure published through a regulator, exchange, statutory filing, or equivalent governed disclosure channel.',
+      company_official: 'Company-controlled official communication outside the formal regulated disclosure channel, such as investor-relations material, corporate newsroom content, product documentation, or official company publications.',
+      sell_side_research: 'Research produced by a broker, securities firm, investment bank, or sell-side research organization.',
+      industry_database: 'Structured data, statistics, or research supplied by a specialist industry, market-data, or professional research database.',
+      professional_media: 'Professionally edited specialist financial, business, industry, or technology media.',
+      general_media: 'Professionally published general-interest news or media that is not primarily a specialist research source.',
+      community: 'User-generated or community-originated information such as forums, social platforms, discussion communities, or similar sources.',
+      unknown: 'Source type cannot be reliably determined from available evidence.',
+    },
+    reliabilityDefinitions: {
+      high: 'Strong source authority, directness, traceability, or evidentiary control.',
+      medium: 'Generally credible source with meaningful but secondary, interpretive, or partially indirect evidence.',
+      low: 'Weak provenance, limited editorial/evidentiary control, indirect sourcing, or material risk of distortion.',
+      unknown: 'Available evidence is insufficient to determine source reliability.',
+    },
+    reliabilitySemanticRule: 'Source reliability is distinct from Source type, Claim confidence, and forecast probability; no deterministic SourceType-to-reliability mapping is implied.',
   },
   module: {
     types: ['comparison', 'roadmap', 'market', 'competition', 'capacity', 'supply-chain'],

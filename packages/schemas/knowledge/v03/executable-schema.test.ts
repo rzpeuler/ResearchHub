@@ -79,7 +79,8 @@ test('Schema 0.3 encodes relation rules, constraints, and retired vocabulary', (
     'owns_stake_in', 'offers_product', 'belongs_to_industry', 'component_of',
     'develops_technology', 'uses_technology', 'applied_in', 'depends_on', 'substitutes_for',
   ])
-  assert.deepEqual(KNOWLEDGE_SCHEMA_V03.relation.definitions.business_exposure, {
+  const { semanticDescription: _businessExposureDescription, ...businessExposureDefinition } = KNOWLEDGE_SCHEMA_V03.relation.definitions.business_exposure
+  assert.deepEqual(businessExposureDefinition, {
     directionality: 'directed',
     sourceTypes: ['company'],
     targetTypes: ['industry'],
@@ -110,7 +111,8 @@ test('Schema 0.3 encodes relation rules, constraints, and retired vocabulary', (
   assert.deepEqual(KNOWLEDGE_SCHEMA_V03.relation.directionalityValues, [
     'directed', 'directed_with_inverse', 'symmetric',
   ])
-  assert.deepEqual(KNOWLEDGE_SCHEMA_V03.relation.definitions.theme_exposure, {
+  const { semanticDescription: _themeExposureDescription, ...themeExposureDefinition } = KNOWLEDGE_SCHEMA_V03.relation.definitions.theme_exposure
+  assert.deepEqual(themeExposureDefinition, {
     directionality: 'directed',
     sourceTypes: ['investment_theme'],
     targetTypes: ['industry'],
@@ -120,7 +122,8 @@ test('Schema 0.3 encodes relation rules, constraints, and retired vocabulary', (
       chainPosition: ['upstream', 'midstream', 'downstream', 'infrastructure', 'cross_chain', 'unknown'],
     },
   })
-  assert.deepEqual(KNOWLEDGE_SCHEMA_V03.relation.definitions.substitutes_for, {
+  const { semanticDescription: _substitutesForDescription, ...substitutesForDefinition } = KNOWLEDGE_SCHEMA_V03.relation.definitions.substitutes_for
+  assert.deepEqual(substitutesForDefinition, {
     directionality: 'symmetric',
     sourceTypes: ['product', 'technology'],
     targetTypes: ['product', 'technology'],
@@ -156,6 +159,35 @@ test('Schema 0.3 encodes relation rules, constraints, and retired vocabulary', (
   for (const retired of KNOWLEDGE_SCHEMA_V03.relation.retiredWritableTypes) {
     assert.equal((KNOWLEDGE_SCHEMA_V03.relation.types as readonly string[]).includes(retired), false)
   }
+})
+
+test('Schema 0.3 carries complete machine-readable semantic metadata with exact parity', () => {
+  assert.equal(typeof KNOWLEDGE_SCHEMA_V03.themeGroup.semanticDescription, 'string')
+  assert.equal(typeof KNOWLEDGE_SCHEMA_V03.entity.investmentTheme.semanticDescription, 'string')
+  assert.deepEqual(Object.keys(KNOWLEDGE_SCHEMA_V03.entity.typeDefinitions).sort(), [...KNOWLEDGE_SCHEMA_V03.entity.types].sort())
+  for (const type of KNOWLEDGE_SCHEMA_V03.entity.types) assert.equal(typeof KNOWLEDGE_SCHEMA_V03.entity.typeDefinitions[type].semanticDescription, 'string')
+  assert.deepEqual(KNOWLEDGE_SCHEMA_V03.entity.investmentTheme.creationPolicy, {
+    requiredFields: ['id', 'type', 'name', 'themeGroupRef'],
+    recommendedFields: ['definition', 'inclusionCriteria', 'exclusionCriteria'],
+    themeGroupCardinality: 'exactly_one',
+  })
+
+  assert.deepEqual(Object.keys(KNOWLEDGE_SCHEMA_V03.claim.typeDefinitions).sort(), [...KNOWLEDGE_SCHEMA_V03.claim.types].sort())
+  for (const type of KNOWLEDGE_SCHEMA_V03.claim.types) assert.equal(typeof KNOWLEDGE_SCHEMA_V03.claim.typeDefinitions[type], 'string')
+  assert.equal(typeof KNOWLEDGE_SCHEMA_V03.claim.semanticGuidance.atomicity, 'string')
+  assert.equal(typeof KNOWLEDGE_SCHEMA_V03.claim.semanticGuidance.temporal.distinction, 'string')
+  assert.equal(typeof KNOWLEDGE_SCHEMA_V03.claim.semanticGuidance.structuredValue, 'string')
+  assert.equal(typeof KNOWLEDGE_SCHEMA_V03.claim.semanticGuidance.confidence, 'string')
+  assert.equal(typeof KNOWLEDGE_SCHEMA_V03.claim.semanticGuidance.provenance, 'string')
+
+  assert.deepEqual(Object.keys(KNOWLEDGE_SCHEMA_V03.source.typeDefinitions).sort(), [...KNOWLEDGE_SCHEMA_V03.source.types].sort())
+  assert.deepEqual(Object.keys(KNOWLEDGE_SCHEMA_V03.source.reliabilityDefinitions).sort(), [...KNOWLEDGE_SCHEMA_V03.source.reliabilities].sort())
+  for (const type of KNOWLEDGE_SCHEMA_V03.source.types) assert.equal(typeof KNOWLEDGE_SCHEMA_V03.source.typeDefinitions[type], 'string')
+  for (const reliability of KNOWLEDGE_SCHEMA_V03.source.reliabilities) assert.equal(typeof KNOWLEDGE_SCHEMA_V03.source.reliabilityDefinitions[reliability], 'string')
+  assert.equal(typeof KNOWLEDGE_SCHEMA_V03.source.reliabilitySemanticRule, 'string')
+
+  assert.deepEqual(Object.keys(KNOWLEDGE_SCHEMA_V03.relation.definitions).sort(), [...KNOWLEDGE_SCHEMA_V03.relation.types].sort())
+  for (const definition of Object.values(KNOWLEDGE_SCHEMA_V03.relation.definitions)) assert.equal(typeof definition.semanticDescription, 'string')
 })
 
 test('Schema 0.3 is pure JSON data and does not activate runtime release support', () => {

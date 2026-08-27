@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-001-R1
+
+- Completed the semantic-context closure by adding non-structural,
+  machine-readable meanings for ThemeGroup, Entity, Claim, Source, Source
+  Reliability, and every canonical Relation.
+- Extended the report-understanding, knowledge-extraction, and reconciliation
+  projections while preserving the C1 Builder mechanism and legacy Curation API.
+- Removed the duplicate C1 superpowers design document. C1 is recorded as
+  `Completed / Rework Required`; C1-R1 is `Completed / Sol Verification Pending`.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-001
 
 - Added the runtime-neutral Knowledge Curation v0.3 Schema Context Builder with

@@ -34,7 +34,8 @@
 - B3-R1: Completed / Rework Required
 - B3-R2: Completed / Accepted - Sol verified
 - Stage C: In Progress
-- C1: Completed / Sol Verification Pending
+- C1: Completed / Rework Required
+- C1-R1: Completed / Sol Verification Pending
 - Current approved direction: Implementation Stage C — Knowledge Curation v0.3 foundation
 
 Stage B is accepted after Sol verification. B1, B2, and B3 Evidence are

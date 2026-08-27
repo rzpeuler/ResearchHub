@@ -30,14 +30,19 @@ function reportUnderstandingProjection(): SchemaData {
     },
     themeGroup: schema.themeGroup,
     entity: {
+      types: schema.entity.types,
       investmentTheme: schema.entity.investmentTheme,
+      typeDefinitions: schema.entity.typeDefinitions,
       taxonomyRefs: schema.entity.taxonomyRefs,
     },
     source: {
       fields: schema.source.fields,
       requiredFields: schema.source.requiredFields,
       types: schema.source.types,
+      typeDefinitions: schema.source.typeDefinitions,
       reliabilities: schema.source.reliabilities,
+      reliabilityDefinitions: schema.source.reliabilityDefinitions,
+      reliabilitySemanticRule: schema.source.reliabilitySemanticRule,
     },
   })
 }
@@ -58,7 +63,10 @@ function knowledgeExtractionProjection(): SchemaData {
       fields: schema.source.fields,
       requiredFields: schema.source.requiredFields,
       types: schema.source.types,
+      typeDefinitions: schema.source.typeDefinitions,
       reliabilities: schema.source.reliabilities,
+      reliabilityDefinitions: schema.source.reliabilityDefinitions,
+      reliabilitySemanticRule: schema.source.reliabilitySemanticRule,
     },
     numericConstraints: schema.numericConstraints,
     extensionPolicy: schema.extensionPolicy,
@@ -75,7 +83,10 @@ function reconciliationProjection(): SchemaData {
       fields: schema.claim.fields,
       requiredFields: schema.claim.requiredFields,
       temporalScopeTypes: schema.claim.temporalScopeTypes,
+      comparators: schema.claim.comparators,
       subjectKinds: schema.claim.subjectKinds,
+      typeDefinitions: schema.claim.typeDefinitions,
+      semanticGuidance: schema.claim.semanticGuidance,
     },
     relation: {
       types: schema.relation.types,
@@ -87,7 +98,10 @@ function reconciliationProjection(): SchemaData {
       fields: schema.source.fields,
       requiredFields: schema.source.requiredFields,
       types: schema.source.types,
+      typeDefinitions: schema.source.typeDefinitions,
       reliabilities: schema.source.reliabilities,
+      reliabilityDefinitions: schema.source.reliabilityDefinitions,
+      reliabilitySemanticRule: schema.source.reliabilitySemanticRule,
     },
     numericConstraints: schema.numericConstraints,
   })

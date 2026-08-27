@@ -281,3 +281,25 @@ four-operation and model-request cutover.
 Stage B is recorded as `Completed / Accepted - Sol verified` at baseline
 `60bf76c045c1d315f3ea90d7733d75d870b7ee54`; Stage C is `In Progress` and C1 is
 `Completed / Sol Verification Pending`.
+
+## KNOWLEDGE-V0.3-IMPLEMENTATION-C-001-R1 — Semantic context closure
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-27
+
+C1-R1 completes the semantic metadata required by the frozen Knowledge Schema
+and Curation v0.3 contracts. `KNOWLEDGE_SCHEMA_V03` now provides machine-readable
+definitions for ThemeGroup, all Entity types, InvestmentTheme creation policy,
+all Claim types and semantic guidance, all Source types and reliabilities, and
+every canonical Relation definition. The existing Schema Context Builder
+projects these definitions into the appropriate three operation slices while
+leaving `schema_gap` as a complete deep copy.
+
+The additions are data-only and non-structural: Schema version, Storage version,
+enums, required fields, endpoint contracts, cardinality, numeric constraints,
+and validation behavior are unchanged. The legacy seven-operation Curation API
+and `KnowledgeCurationModelRequest` remain unchanged; C2 is not started.
+
+Stage B remains `Completed / Accepted - Sol verified`; Stage C is `In Progress`;
+C1 is `Completed / Rework Required`; C1-R1 is `Completed / Sol Verification
+Pending`; C2 is `Not Started / Not Authorized`.
