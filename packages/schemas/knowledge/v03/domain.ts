@@ -240,7 +240,7 @@ export interface KnowledgeModuleV03 {
   id: ModuleRefV03
   type: ModuleTypeV03
   /** Existing v0.2-compatible module shape; targetEntity conversion belongs to Stage B. */
-  targetEntity?: string | null
+  targetEntity?: EntityRefV03 | null
   sourceRefs?: SourceRefV03[]
   schemaId?: string | null
   columns?: KnowledgeJsonValueV03[]

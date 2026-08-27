@@ -48,6 +48,10 @@ test('Schema 0.3 contains the frozen semantic vocabularies and boundaries', () =
     'id', 'type', 'targetEntity', 'sourceRefs', 'schemaId', 'columns', 'rows',
   ])
   assert.deepEqual(KNOWLEDGE_SCHEMA_V03.module.requiredFields, ['id', 'type'])
+  assert.deepEqual(KNOWLEDGE_SCHEMA_V03.module.referenceFields, {
+    targetEntity: { targetKind: 'Entity', cardinality: 'zero_or_one' },
+    sourceRefs: { targetKind: 'Source', cardinality: 'zero_or_many' },
+  })
   assert.equal(KNOWLEDGE_SCHEMA_V03.module.fields.includes('name'), false)
   assert.equal(KNOWLEDGE_SCHEMA_V03.module.fields.includes('targetRefs'), false)
   assert.equal(KNOWLEDGE_SCHEMA_V03.auxiliaryAssets.referenceTaxonomy.canonical, false)

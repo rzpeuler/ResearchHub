@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R2
+
+- Constrained Module `targetEntity` to the Schema 0.3 `EntityRefV03`
+  (`entity:<stable-id>`) while retaining the compatible field name.
+- Added declarative Module reference metadata for `targetEntity` and
+  `sourceRefs` so later Validation, Migration, and Schema Context work can
+  identify canonical references without a generic reference engine.
+- Added compile-time rejection coverage for legacy subtype namespaces and
+  preserved the R1 required-field, Source compatibility, Module shape, and
+  RawRef alias corrections.
+- Did not implement migration or activate Schema 0.3 runtime support. R2
+  remains `Completed / Sol Verification Pending` with acceptance
+  `Review Pending / Sol Verification`; Stage B is not started.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R1
 
 - Aligned Schema 0.3 executable `requiredFields` and TypeScript Domain

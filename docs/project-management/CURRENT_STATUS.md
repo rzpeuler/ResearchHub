@@ -1,5 +1,26 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R2
+
+R2 closes the final Stage A canonical-reference fidelity gap:
+
+- Module keeps the compatible `targetEntity` field name, but its v0.3 Domain
+  type is now the Schema-derived `EntityRefV03` (`entity:<stable-id>`).
+- Legacy subtype namespaces such as `segment:`, `industry:`, and `company:`
+  are rejected by the v0.3 target Domain.
+- Executable Schema metadata declares `targetEntity` as an optional Entity
+  reference and `sourceRefs` as optional Source references.
+- No ID transformation or migration implementation was added; that remains
+  Stage B responsibility.
+
+All R1 requiredness, Source compatibility, Module structure, strict semantic
+unions, and RawRef alias corrections remain intact. Schema 0.3 remains absent
+from the runtime release registry.
+
+Status is `Completed / Sol Verification Pending`; acceptance remains
+`Review Pending / Sol Verification`. Parent Stage A and R1 remain pending
+final Stage A acceptance until Sol independently verifies R2.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R1
 
 R1 corrects structural fidelity in the approved Stage A implementation:

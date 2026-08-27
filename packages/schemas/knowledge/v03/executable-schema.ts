@@ -279,6 +279,16 @@ export const KNOWLEDGE_SCHEMA_V03 = {
     types: ['comparison', 'roadmap', 'market', 'competition', 'capacity', 'supply-chain'],
     fields: ['id', 'type', 'targetEntity', 'sourceRefs', 'schemaId', 'columns', 'rows'],
     requiredFields: ['id', 'type'],
+    referenceFields: {
+      targetEntity: {
+        targetKind: 'Entity',
+        cardinality: 'zero_or_one',
+      },
+      sourceRefs: {
+        targetKind: 'Source',
+        cardinality: 'zero_or_many',
+      },
+    },
     description: 'Module is canonical but secondary to the semantic graph.',
   },
   numericConstraints: {

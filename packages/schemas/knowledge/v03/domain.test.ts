@@ -95,7 +95,7 @@ const source: KnowledgeSourceV03 = {
 const module: KnowledgeModuleV03 = {
   id: 'module:comparison',
   type: 'comparison',
-  targetEntity: 'segment:semiconductor',
+  targetEntity: 'entity:semiconductor',
   sourceRefs: ['source:annual-report'],
   schemaId: 'comparison.v0.2',
   columns: ['company', 'revenueShare'],
@@ -110,7 +110,7 @@ test('v0.3 domain accepts minimal canonical objects and the compatible Module sh
   assert.equal(relations[1]?.type, 'upstream_of')
   assert.equal(claim.claimType, 'fact')
   assert.equal(source.sourceType, 'official_disclosure')
-  assert.equal(module.targetEntity, 'segment:semiconductor')
+  assert.equal(module.targetEntity, 'entity:semiconductor')
 })
 
 test('v0.3 domain rejects arbitrary semantic values and invalid durable namespaces', () => {
@@ -133,6 +133,10 @@ test('v0.3 domain rejects arbitrary semantic values and invalid durable namespac
   const invalidEntityField: CompanyV03 = { ...company, industries: ['entity:semiconductor'] }
   // @ts-expect-error Module preserves declared v0.2 fields and does not invent targetRefs
   const invalidModuleField: KnowledgeModuleV03 = { ...module, targetRefs: ['entity:semiconductor'] }
+  // @ts-expect-error legacy subtype namespace is invalid in the v0.3 target Domain
+  const invalidLegacyModuleTarget: KnowledgeModuleV03 = { ...module, targetEntity: 'segment:semiconductor' }
+  // @ts-expect-error all legacy subtype namespaces are invalid in the v0.3 target Domain
+  const invalidIndustryModuleTarget: KnowledgeModuleV03 = { ...module, targetEntity: 'industry:semiconductor' }
 
   assert.equal(typeof invalidEntityType, 'string')
   assert.equal(typeof invalidRelationType, 'string')
@@ -142,6 +146,8 @@ test('v0.3 domain rejects arbitrary semantic values and invalid durable namespac
   assert.equal(typeof invalidEntityRef, 'string')
   assert.equal('industries' in invalidEntityField, true)
   assert.equal('targetRefs' in invalidModuleField, true)
+  assert.equal(invalidLegacyModuleTarget.targetEntity, 'segment:semiconductor')
+  assert.equal(invalidIndustryModuleTarget.targetEntity, 'industry:semiconductor')
 })
 
 test('v0.3 domain does not expose Intelligence as a canonical type or arbitrary fields', () => {
