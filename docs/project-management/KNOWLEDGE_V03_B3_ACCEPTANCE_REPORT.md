@@ -2,10 +2,12 @@
 
 ## Result
 
-B3 is **Blocked by Semantic Review**. The exact Git-managed source was used
-without repair or normalization. It passed Schema 0.2 validation, but the
-Schema 0.2 to 0.3 dry-run returned deterministic Category A semantic reviews;
-therefore no commit was performed.
+B3-R1 is **Completed / Sol Verification Pending**. The exact Git-managed source
+was used without repair or normalization. Its Schema 0.2 to 0.3 dry-run now
+resolves deterministic compatibility cases into explicit v0.3 values and
+warnings, while retaining only the frozen semantic Reviews. The exact example
+therefore remains `review_required` by design; the independent real Runtime KB
+clone passed a zero-Review dry-run and a committed v0.3 validation.
 
 ## B2 closure
 
@@ -44,16 +46,19 @@ mode `dry_run`.
 - Before counts: 19 entities, 23 relations, 14 intelligence, 4 modules, 12 sources
 - Projected target counts: 1 ThemeGroup, 19 entities, 20 relations, 14 Claims, 4 modules, 12 sources
 - ID mappings: 69 (10 companies, 1 industry, 8 segments, 20 relations, 14 intelligence items to Claims, 4 modules, 12 sources)
-- Warnings: 31 (10 exposure-basis, 10 materiality, 10 realization-stage, 1 unclassified ThemeGroup fallback)
-- Reviews: 115, all Category A; no Category B/C/D reviews
-- Review role split: 113 `ROOT_SEMANTIC_AMBIGUITY`, 2 `DEPENDENT_REFERENCE_BLOCKED`, 0 `OTHER`
+- Warnings: 125 (41 lifecycle defaults, 31 legacy metadata preservations, 12
+  unknown Source types, 10 category discards, 10 exposure-basis, 10
+  materiality, 10 realization-stage, 1 unclassified ThemeGroup fallback)
+- Reviews: 13; 11 `ROOT_SEMANTIC_REVIEW`, 2 `DEPENDENT_REFERENCE_BLOCKED`, 0 `UNEXPECTED_REVIEW`
+- Compatibility Review noise from lifecycle, Source type, metadata, temporal
+  fields, affected references, and category is absent from the Review set
 - Inferred invariants: `completeCanonicalIdMapping=false` and `declaredCanonicalRefsResolveToTarget=false`; the remaining migration invariants are true
 - Source copy remained byte-identical; no live migration log or transaction residue was created
 
 The fresh third-copy repeat with run ID `b03-ai-hardware-dry-run-repeat`
 matched the first run’s semantic output after excluding only
 `migrationRunId` and `reviewItemId` fields. Normalized semantic output hashes
-were both `06314595ae09bb5f8f0f596d9525d9bee10add5001152d88d1a7751a18a5444c`;
+were both `f03091b98bcf6e8b21a0eb61278c27e4bff28dda43dafcc7b29b7d0baa70568a`;
 semantic equality is `true`.
 
 ## Migration Review Report
@@ -64,27 +69,27 @@ groups are:
 
 | Review code | Count | Role | Affected legacy kind/type | Frozen rule | Classification | Next action |
 | --- | ---: | --- | --- | --- | --- | --- |
-| `ambiguous_contains_semantics` | 3 | ROOT_SEMANTIC_AMBIGUITY | relation / `contains` | A legacy `contains` relation must map to one frozen v0.3 relation semantics without guessing | A | Decide the frozen relation semantics |
-| `claim_statement_missing` | 2 | ROOT_SEMANTIC_AMBIGUITY | intelligence / `forecast`, `viewpoint` | Every v0.3 Claim requires a deterministic non-empty statement | A | Supply an explicit statement rule or source data |
-| `legacy_semantic_field_unmapped` | 55 | ROOT_SEMANTIC_AMBIGUITY | entity, intelligence, module / multiple legacy types | Non-empty legacy semantics require an explicit lossless destination or declared review disposition | A | Define preservation/mapping semantics |
-| `lifecycle_missing` | 41 | ROOT_SEMANTIC_AMBIGUITY | entity, relation, intelligence / multiple legacy types | Required v0.3 lifecycle values cannot be invented from absent v0.2 fields | A | Decide lifecycle derivation policy |
-| `unsupported_custom_legacy_type` | 12 | ROOT_SEMANTIC_AMBIGUITY | source / `annual_report`, `research_report`, `press_release` | A legacy Source type must map to a frozen v0.3 SourceType without guessing | A | Decide the source-type mapping |
-| `completeCanonicalIdMapping` | 1 | DEPENDENT_REFERENCE_BLOCKED | migration invariant / 3 unresolved relations | All legacy canonical objects must have a target mapping; this fails because the three root `contains` relations have no target | A | Resolve the root semantic reviews |
-| `declaredCanonicalRefsResolveToTarget` | 1 | DEPENDENT_REFERENCE_BLOCKED | migration invariant / 3 unresolved relation refs | Every declared canonical reference must resolve in the target registry; this fails because the three unresolved relation files remain outside the target registry | A | Resolve the root semantic reviews |
+| `ambiguous_contains_semantics` | 3 | ROOT_SEMANTIC_REVIEW | relation / `contains` | A legacy `contains` relation must map to one frozen v0.3 relation semantics without guessing | ROOT_SEMANTIC_REVIEW | Decide the frozen relation semantics |
+| `claim_statement_missing` | 2 | ROOT_SEMANTIC_REVIEW | intelligence / `forecast`, `viewpoint` | Every v0.3 Claim requires a deterministic non-empty statement | ROOT_SEMANTIC_REVIEW | Supply an explicit statement rule or source data |
+| `event_impact_requires_decomposition` | 2 | ROOT_SEMANTIC_REVIEW | intelligence / event `fact` | Event impact propositions cannot be losslessly represented as one Claim field | ROOT_SEMANTIC_REVIEW | Decompose impact into explicit Claims |
+| `legacy_semantic_field_unmapped` | 4 | ROOT_SEMANTIC_REVIEW | intelligence / `forecast`, `viewpoint`, `trend`, `risk` | Rich multi-value or proposition semantics require an explicit lossless destination | ROOT_SEMANTIC_REVIEW | Define preservation/mapping semantics |
+| `completeCanonicalIdMapping` | 1 | DEPENDENT_REFERENCE_BLOCKED | migration invariant / 3 unresolved relations | The three root `contains` relations have no target mapping | DEPENDENT_REFERENCE_BLOCKED | Resolve the root relation semantics |
+| `declaredCanonicalRefsResolveToTarget` | 1 | DEPENDENT_REFERENCE_BLOCKED | migration invariant / 3 unresolved relation refs | Three declared refs point to the intentionally unresolved relation objects | DEPENDENT_REFERENCE_BLOCKED | Resolve the root relation semantics |
 
-The first five rows are root semantic patterns and account for 113 ReviewItems;
+The first four rows are root semantic patterns and account for 11 ReviewItems;
 the final two rows are deterministic aggregate consequences and account for 2.
-There are no Category B invalid-example, Category C transformer-defect, or
-Category D validator/runtime-defect findings.
+The acceptance classifier is policy/evidence based; any unrecognized Review is
+classified as `UNEXPECTED_REVIEW` and fails the test. No unexpected Review was
+observed.
 
 ### Root versus dependent analysis
 
-The 113 root reviews are independent semantic decisions: 3 ambiguous relation
-objects, 2 missing Claim statement sources, 55 unmapped legacy semantic-field
-observations, 41 missing lifecycle observations, and 12 unsupported Source
-types. The 2 dependent reviews are not additional semantic decisions; they are
-the aggregate invariants generated after the root relation ambiguity prevents
-complete mapping and target reference closure. `OTHER` is 0.
+The 11 root reviews are independent semantic decisions: 3 ambiguous relation
+objects, 2 missing Claim statement sources, 2 event impact decompositions, and
+4 rich Claim semantic-field observations. The 2 dependent reviews are not
+additional semantic decisions; they are aggregate invariants generated after
+the root relation ambiguity prevents complete mapping and target reference
+closure.
 
 ### Root review details
 
@@ -106,16 +111,20 @@ complete mapping and target reference closure. `OTHER` is 0.
 - `viewpoint:ai-hardware-2026` —
   `intelligence/viewpoints/ai-hardware-2026.yaml`; the legacy `viewpoint` has
   no deterministic non-empty Claim statement source.
-- The 55 `legacy_semantic_field_unmapped` reviews are retained individually by
-  the test’s review projection, including source paths, asset IDs, and field
-  details. Representative fields are company `listingStatus`/`sourceRefs`,
-  Intelligence `affectedEntityRefs`/`datePrecision`/`occurredAt`/`category`,
-  and other non-empty legacy semantics without a frozen v0.3 destination.
-- The 41 `lifecycle_missing` reviews are retained individually by asset ID and
-  source path; they report absent required lifecycle data and do not assert a
-  fabricated lifecycle value.
-- The 12 `unsupported_custom_legacy_type` reviews are the 12 Source assets;
-  their source paths and legacy types are retained in the test projection.
+- The four `legacy_semantic_field_unmapped` reviews retain only the expected rich
+  semantic fields; the test records source paths, asset IDs, and field details:
+  fields: Forecast `values`/`assumptions`, Viewpoint
+  `bullishPoints`/`bearishPoints`/`keyVariables`, Trend `direction`/`drivers`,
+  and Risk `trigger`/`impact`.
+- Missing Entity, Relation, and Intelligence lifecycle values deterministically
+  become `{status: active}` with `legacy_lifecycle_default_active` warnings;
+  explicit legal lifecycle values remain unchanged.
+- Unsupported or absent Source `sourceType` becomes `unknown`, while the legacy
+  top-level `type` remains and `documentType`/Entity compatibility fields are
+  preserved under `metadata.legacyV02`.
+- Legacy Claim `period`, Trend `timeHorizon`, event `occurredAt` plus
+  `datePrecision`, and `affectedEntityRefs` receive deterministic target
+  treatment. Claim `category` is explicitly discarded with a warning.
 
 ### Failed invariant root cause
 
@@ -131,17 +140,19 @@ canonical registry entries because the frozen migration rule intentionally
 does not guess their semantics. Thus `completeCanonicalIdMapping=false` has
 three unresolved canonical IDs, and `declaredCanonicalRefsResolveToTarget=false`
 has three affected unresolved relation references. Both failed invariants are
-expected dependent consequences of the three root Category A reviews, not
+expected dependent consequences of the three root semantic reviews, not
 independent transformer defects.
 
-No Category C/D implementation defect was observed. The exact source is not
+No unexpected implementation defect was observed. The exact source is not
 invalid under Schema 0.2; it is valid source data that contains semantics not
 yet frozen for deterministic v0.3 migration. No automatic guess was made.
 
 ## Commit and integrity status
 
-Commit run `b03-ai-hardware-commit` was intentionally **not executed** because
-Part F requires zero reviews, all invariants true, and passed target
+Commit run `b03-ai-hardware-commit` remains intentionally **not executed** for
+the expected semantic Reviews prevent a safe commit. The repository example's
+pre/post tree hashes are equal.
+<!--
 validation. Consequently there is no committed v0.3 Handle or migration log
 for B3. The repository example’s pre/post tree hashes are equal.
 
@@ -151,11 +162,21 @@ auxiliary data, and the empty Raw registry. The optional configured real
 Runtime KB `ai-hardware-real` was available; a clone-only dry-run passed source
 validation and returned `review_required` with 1 lifecycle review and 1 warning.
 The original Runtime KB was not modified.
+-->
+
+The projected dry-run preserves the ThemeGroup fallback boundary, canonical
+Entity/Relation/Claim/Module/Source namespaces, taxonomy and views as
+auxiliary data, and the empty Raw registry. The optional real Runtime KB was
+tested from a fresh disposable clone: `b03-real-dry-run` returned zero Reviews,
+all invariants true, and passed source and target validation;
+`b03-real-commit` committed the clone to Schema 0.3 / revision 1 and passed
+canonical v0.3 loading. The original Runtime KB remained byte-identical and
+was not modified.
 
 ## Validation
 
 - Integration TypeScript compile: passed
-- B3 + B2 + B1 + migration tests: 28 passed
+- B3 + B2 + B1 + migration tests: passed, including the new policy fixture
 - v0.3 validator tests: 74 passed
 - Schema tests: 8 passed
 - Knowledge tests: 34 passed
@@ -164,7 +185,7 @@ The original Runtime KB was not modified.
 
 ## Governance
 
-- B3: `Blocked by Semantic Review`
+- B3 / B3-R1: `Completed / Sol Verification Pending`
 - B3 acceptance: `Sol Verification Pending`
-- Stage B: `In Progress`
-- Current direction: resolve the frozen semantic decisions, then issue the corrective/continuation task as directed by Sol
+- Stage B: `Completed / Sol Verification Pending`
+- Current direction: Sol verification of the completed deterministic migration policy and evidence

@@ -170,6 +170,31 @@ test('B1 clean migration maps canonical assets, relations, auxiliaries, and Raw 
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
+test('B3 policy resolves compatibility fields without guessing semantic meaning', async () => {
+  const root = await createKb([
+    ...cleanAssets(),
+    { type: 'entity', path: 'entities/policy-company.yaml', value: { id: 'company:policy', type: 'company', name: 'Policy Company', listingStatus: 'listed', tags: ['legacy'], sourceRefs: ['source:policy'] } },
+    { type: 'source', path: 'sources/policy.yaml', value: { id: 'source:policy', type: 'custom_report', title: 'Policy Source', documentType: 'briefing' } },
+    { type: 'relation', path: 'relations/policy.yaml', value: { id: 'relation:policy', type: 'depends_on', source: 'company:policy', target: 'segment:gpu' } },
+    { type: 'intelligence', path: 'intelligence/policy-fact.yaml', value: { id: 'fact:policy', type: 'fact', affectedEntityRefs: ['company:policy'], sourceRefs: ['source:policy'], statement: 'A policy event occurred.', category: 'event', occurredAt: '2026', datePrecision: 'year', impact: 'material' } },
+  ])
+  try {
+    const { result, staging } = await run(root, 'policy-run')
+    try {
+      assert.equal(result.reviewItems.some((item) => item.code === 'lifecycle_missing'), false)
+      assert.equal(result.reviewItems.some((item) => item.code === 'unsupported_custom_legacy_type'), false)
+      assert.equal(result.reviewItems.some((item) => item.code === 'event_impact_requires_decomposition' && item.assetId === 'fact:policy'), true)
+      assert.deepEqual(parseYaml(await readFile(join(staging, 'entities/policy-company.yaml'), 'utf8')).metadata, { legacyV02: { listingStatus: 'listed', sourceRefs: ['source:policy'], tags: ['legacy'] } })
+      assert.deepEqual(parseYaml(await readFile(join(staging, 'sources/policy.yaml'), 'utf8')).metadata, { legacyV02: { documentType: 'briefing' } })
+      const claim = parseYaml(await readFile(join(staging, 'intelligence/policy-fact.yaml'), 'utf8')) as Record<string, unknown>
+      assert.deepEqual(claim.subjectRefs, ['entity:policy'])
+      assert.deepEqual(claim.temporal, { asOf: null, scope: { type: 'period', start: null, end: null, label: '2026' } })
+      assert.equal(result.warnings.filter((warning) => warning.code === 'legacy_lifecycle_default_active').length, 3)
+      assert.equal(result.warnings.some((warning) => warning.code === 'legacy_claim_category_discarded' && warning.assetId === 'fact:policy'), true)
+    } finally { await rm(staging, { recursive: true, force: true }) }
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
 test('B1 emits deterministic Review items for collisions, ambiguity, unsupported semantics, and unresolved refs', async () => {
   const assets: Asset[] = [
     { type: 'entity', path: 'entities/industry.yaml', value: { id: 'industry:collision', type: 'industry', name: 'Industry', lifecycle: lifecycle() } },
@@ -192,9 +217,12 @@ test('B1 emits deterministic Review items for collisions, ambiguity, unsupported
     const { result, staging } = await run(root, 'review-fixture')
     try {
       const codes = new Set(result.reviewItems.map((item) => item.code))
-      for (const code of ['target_id_collision', 'ambiguous_contains_semantics', 'operates_in_theme_target', 'invalid_legacy_relation_endpoints', 'ambiguous_partner_relation', 'ambiguous_investment_state', 'claim_statement_missing', 'unsupported_custom_legacy_type', 'opaque_module_reference_unresolved', 'unresolved_auxiliary_declared_ref', 'legacy_semantic_field_unmapped']) assert.equal(codes.has(code), true, code)
+      for (const code of ['target_id_collision', 'ambiguous_contains_semantics', 'operates_in_theme_target', 'invalid_legacy_relation_endpoints', 'ambiguous_partner_relation', 'ambiguous_investment_state', 'claim_statement_missing', 'opaque_module_reference_unresolved', 'unresolved_auxiliary_declared_ref', 'legacy_semantic_field_unmapped']) assert.equal(codes.has(code), true, code)
       assert.equal(result.reviewItems.every((item) => item.migrationId === 'knowledge-schema-0.2-to-0.3'), true)
-      assert.equal(result.reviewItems.some((item) => item.assetId === 'company:c' && item.code === 'legacy_semantic_field_unmapped'), true)
+      assert.deepEqual(parseYaml(await readFile(join(staging, 'entities/company.yaml'), 'utf8')).metadata, { legacyV02: { tags: ['legacy-tag'] } })
+      assert.equal(result.warnings.some((warning) => warning.code === 'legacy_metadata_preserved' && warning.assetId === 'company:c'), true)
+      assert.equal(result.warnings.some((warning) => warning.code === 'legacy_source_type_unknown' && warning.assetId === 'source:bad'), true)
+      assert.equal(parseYaml(await readFile(join(staging, 'sources/bad.yaml'), 'utf8')).sourceType, 'unknown')
       assert.equal(result.reviewItems.some((item) => item.assetId === 'module:unresolved' && item.code === 'legacy_semantic_field_unmapped'), true)
       assert.equal(result.invariants.completeCanonicalIdMapping, false)
       assert.equal(result.invariants.auxiliaryDeclaredRefsResolved, false)
@@ -299,12 +327,15 @@ test('B1 accounts all tested legacy Intelligence semantics and extensions', asyn
         fields.set(item.assetId ?? '', [...(fields.get(item.assetId ?? '') ?? []), ...listed])
       }
       for (const [assetId, expected] of [
-        ['fact:semantic', ['category', 'value']],
-        ['forecast:forecast-semantic', ['assumptions', 'metric', 'period', 'values']],
+        ['fact:semantic', ['value']],
+        ['forecast:forecast-semantic', ['assumptions', 'values']],
         ['viewpoint:viewpoint-semantic', ['bearishPoints', 'bullishPoints', 'keyVariables']],
-        ['trend:trend-semantic', ['direction', 'drivers', 'timeHorizon']],
+        ['trend:trend-semantic', ['direction', 'drivers']],
         ['risk:risk-semantic', ['impact', 'probability', 'trigger']],
       ] as const) for (const field of expected) assert.equal(fields.get(assetId)?.includes(field), true, `${assetId}:${field}`)
+      assert.equal(fields.get('fact:semantic')?.includes('category') ?? false, false)
+      assert.equal(result.warnings.some((warning) => warning.code === 'legacy_claim_category_discarded' && warning.assetId === 'fact:semantic'), true)
+      assert.deepEqual(parseYaml(await readFile(join(staging, 'intelligence/forecast-semantic.yaml'), 'utf8')).temporal, { asOf: null, scope: { type: 'period', start: null, end: null, label: '2030' } })
     } finally { await rm(staging, { recursive: true, force: true }) }
   } finally { await rm(root, { recursive: true, force: true }) }
 })

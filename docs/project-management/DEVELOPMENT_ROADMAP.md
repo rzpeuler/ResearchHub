@@ -25,17 +25,18 @@
 - Stage A R3 migration-nullability correction: Completed / Sol verified
 - Stage A Raw identity consistency correction: Completed / Sol verified
 - Runtime Schema Release: Schema 0.1, 0.2, and readable/non-writable 0.3
-- Stage B: In Progress
+- Stage B: Completed / Sol Verification Pending
 - B1: Completed / Sol verified
 - B2 Parent: Completed / Accepted - Sol verified
 - B2-R1: Completed / Accepted - Sol verified
 - B2-R2: Completed / Accepted - Sol verified
-- B3: Blocked by Semantic Review
+- B3: Completed / Sol Verification Pending
 - Current approved direction: Implementation Stage B — 0.2 to 0.3 Migration
 
-Stage B is the current approved implementation stage. B1 and B2 are accepted;
-B3 is the production-like example migration acceptance and is blocked pending
-explicit frozen semantic decisions for the exact example state.
+Stage B is complete pending Sol verification. B1 and B2 are accepted; B3-R1
+completed the deterministic migration-policy closure for the exact example.
+The exact example retains expected semantic Review, while a fresh real Runtime
+KB clone passed zero-Review dry-run and committed v0.3 validation.
 Schema 0.3 read and
 migration-commit support are present, but semantic Writer/Curation/Workflow and
 frontend activation remain outside this stage. B3 does not activate a default

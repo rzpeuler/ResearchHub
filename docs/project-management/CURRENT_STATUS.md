@@ -8,11 +8,16 @@ It runs isolated dry-run, deterministic repeat, and commit paths against
 Schema 0.3 / Storage Format 1 while preserving the repository example and all
 production implementation boundaries.
 
-Status is `Blocked by Semantic Review`; acceptance is `Sol Verification Pending`.
+Status is `Completed / Sol Verification Pending`; acceptance is `Sol Verification Pending`.
 
-The exact example source passes Schema 0.2 validation, but the required
-Schema 0.2 to 0.3 dry-run returns 115 deterministic Category A reviews. No
-commit is authorized until the frozen semantic decisions are supplied.
+The exact example source passes Schema 0.2 validation. The B3-R1 policy now
+resolves compatibility cases deterministically and retains 13 expected
+semantic/dependent Reviews; a fresh real Runtime KB clone passed zero-Review
+dry-run and committed v0.3 validation. The exact example remains uncommitted
+because its semantic Review gate is intentional.
+
+Stage B is `Completed / Sol Verification Pending`; B3-R1 is the completed
+deterministic migration-policy closure awaiting Sol verification.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-002-R2
 

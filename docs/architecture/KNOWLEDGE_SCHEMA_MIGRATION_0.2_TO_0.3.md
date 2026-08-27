@@ -82,7 +82,12 @@ The preserved Raw identity is the existing runtime form
 
 ## 7. Source
 
-Preserve compatible Source fields and legal Source Type values. Invalid custom Source types require explicit mapping or Review; no guessing.
+Preserve compatible Source fields and legal Source Type values. Invalid or
+absent legacy `sourceType` values map deterministically to `unknown`, while the
+legacy top-level `type` remains preserved. Entity `listingStatus`, `tags`, and
+`sourceRefs`, plus Source `documentType`, are preserved under the explicit
+`metadata.legacyV02` namespace. Metadata namespace collisions require Review;
+no guessing is performed.
 
 ## 8. Durable ID Migration
 
@@ -136,6 +141,30 @@ Use deterministic precedence only from frozen legacy semantic text fields.
 If no unambiguous statement source exists → MigrationReviewItem.
 
 LLM MUST NOT synthesize a new statement automatically during canonical migration.
+
+### 11A. B3-R1 deterministic compatibility addendum
+
+The implemented migration policy applies these frozen compatibility rules:
+
+- Missing Entity, Relation, or Intelligence lifecycle defaults to
+  `{status: active}` with warning `legacy_lifecycle_default_active`; explicit
+  legal lifecycle is preserved and contradictory/invalid explicit lifecycle is
+  Review.
+- Legacy `period`, Trend `timeHorizon`, and event `occurredAt` plus
+  `datePrecision` map to a v0.3 temporal label with null `asOf`, `start`, and
+  `end`; no date parsing or invented boundary is allowed. Explicit temporal
+  conflicts remain Review.
+- `affectedEntityRefs` is unioned with `entityRefs` through the complete ID map;
+  unresolved references remain Review. Legacy Claim `category` is explicitly
+  discarded with warning `legacy_claim_category_discarded`.
+- Forecast scalar metric/unit structure may be represented with a null value;
+  multi-value `values` and `assumptions`, Viewpoint proposition lists, Trend
+  direction/drivers, Risk trigger/impact/probability, and event impact retain
+  semantic Review where no lossless v0.3 destination exists.
+
+These rules are policy completion, not runtime activation. The exact example
+may remain `review_required` for genuine semantic decisions; only a clean
+target may be committed by the migration Runner.
 
 ## 12. Claim Temporal / StructuredValue / Provenance
 

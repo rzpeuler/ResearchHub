@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-003-R1
+
+- Completed deterministic Schema 0.2 to 0.3 migration policy for lifecycle,
+  Source type, explicit legacy metadata, Claim temporal fields, affected
+  references, and category handling.
+- Reduced exact-example Review output from 115 compatibility-heavy items to 13
+  expected semantic/dependent Reviews; the acceptance classifier now fails on
+  any unexpected Review.
+- Verified a fresh `ai-hardware-real` clone with zero-Review dry-run, committed
+  v0.3/revision 1 validation, canonical v0.3 loading, and unchanged original
+  Runtime KB.
+- B3-R1 and Stage B are `Completed / Sol Verification Pending`.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-003
 
 - Added the isolated B3 acceptance regression for the exact Git-managed AI

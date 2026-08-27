@@ -207,6 +207,71 @@ function addWarning(
   warnings.push({ code, description, ...(assetId ? { assetId } : {}), ...(details ? { details: clone(details) } : {}) })
 }
 
+function requiredLifecycle(
+  value: unknown,
+  assetId: string,
+  kind: 'Entity' | 'Relation' | 'Intelligence',
+  reviews: ReviewCollector,
+  warnings: KnowledgeMigrationWarning[],
+): Dict {
+  const life = lifecycle(value)
+  if (life) return life
+  if (value === undefined) {
+    addWarning(warnings, 'legacy_lifecycle_default_active', `Legacy ${kind} has no lifecycle; v0.3 defaults it to active.`, assetId, { targetKind: kind.toLowerCase() })
+    return { status: 'active' }
+  }
+  reviews.add('lifecycle_invalid', `Legacy ${kind} lifecycle is not a legal v0.3 lifecycle and cannot be preserved.`, 'provide_valid_lifecycle', assetId, { lifecycle: value })
+  return { status: 'active' }
+}
+
+function preserveLegacyMetadata(
+  metadata: unknown,
+  additions: Dict,
+  reviews: ReviewCollector,
+  warnings: KnowledgeMigrationWarning[],
+  assetId: string,
+): Dict | undefined {
+  const result: Dict = isDict(metadata) ? clone(metadata) : {}
+  if (Object.keys(additions).length === 0) return Object.keys(result).length > 0 ? result : undefined
+  const existing = result.legacyV02
+  if (existing !== undefined && !isDict(existing)) {
+    reviews.add('legacy_metadata_collision', 'Legacy v0.02 metadata cannot be preserved because metadata.legacyV02 is not an object.', 'resolve_legacy_metadata_collision', assetId)
+    return Object.keys(result).length > 0 ? result : undefined
+  }
+  const legacy = isDict(existing) ? clone(existing) : {}
+  const collisions = Object.keys(additions).filter((field) => Object.prototype.hasOwnProperty.call(legacy, field))
+  if (collisions.length > 0) {
+    reviews.add('legacy_metadata_collision', 'Legacy v0.02 metadata field collides with an existing metadata.legacyV02 field.', 'resolve_legacy_metadata_collision', assetId, { fields: collisions.sort((left, right) => left.localeCompare(right)) })
+  }
+  for (const [field, value] of Object.entries(additions)) if (!Object.prototype.hasOwnProperty.call(legacy, field)) legacy[field] = clone(value)
+  result.legacyV02 = legacy
+  addWarning(warnings, 'legacy_metadata_preserved', 'Legacy fields were preserved under metadata.legacyV02.', assetId, { fields: Object.keys(additions).sort((left, right) => left.localeCompare(right)) })
+  return result
+}
+
+function legacyTemporal(source: Dict, type: string): Dict | undefined {
+  const candidates: Array<{ value: unknown; precision?: unknown; kind: 'period' | 'occurredAt' }> = []
+  if (nonEmpty(source.period)) candidates.push({ value: source.period, kind: 'period' })
+  if (type === 'trend' && nonEmpty(source.timeHorizon)) candidates.push({ value: source.timeHorizon, kind: 'period' })
+  if (nonEmpty(source.occurredAt)) candidates.push({ value: source.occurredAt, precision: source.datePrecision, kind: 'occurredAt' })
+  const candidate = candidates.find((item) => nonEmptyString(item.value))
+  if (!candidate) return undefined
+  const label = String(candidate.value)
+  if (candidate.kind === 'period') return { asOf: null, scope: { type: 'period', start: null, end: null, label } }
+  const scopeType = candidate.precision === 'day' ? 'point' : ['year', 'month', 'quarter', 'period'].includes(String(candidate.precision)) ? 'period' : 'unknown'
+  return { asOf: null, scope: { type: scopeType, start: null, end: null, label } }
+}
+
+function noteTemporalConflict(source: Dict, type: string, explicitTemporal: Dict | undefined, reviews: ReviewCollector, assetId: string): void {
+  const legacy = legacyTemporal(source, type)
+  if (!legacy || !explicitTemporal || !isDict(explicitTemporal.scope)) return
+  const legacyLabel = legacy.scope && isDict(legacy.scope) ? legacy.scope.label : undefined
+  const explicitLabel = explicitTemporal.scope.label
+  if (nonEmptyString(legacyLabel) && explicitLabel !== null && explicitLabel !== legacyLabel) {
+    reviews.add('temporal_semantic_conflict', 'Legacy temporal field conflicts with the explicit v0.3 temporal label.', 'review_claim_temporal', assetId, { legacyLabel, explicitLabel })
+  }
+}
+
 class ReviewCollector {
   private sequence = 0
   readonly items: MigrationReviewItem[] = []
@@ -429,7 +494,9 @@ function transformEntity(
   source: Dict,
   info: EntityInfo,
   taxonomyIds: Set<string>,
+  mappings: Map<string, string>,
   reviews: ReviewCollector,
+  warnings: KnowledgeMigrationWarning[],
 ): Dict {
   const result: Dict = { id: info.targetId, type: info.targetType }
   if (nonEmptyString(source.name)) result.name = source.name
@@ -445,10 +512,17 @@ function transformEntity(
     }
     if (resolved.length > 0) result.taxonomyRefs = sortedUnique(resolved)
   }
-  addKnown(result, source, 'metadata', isDict)
-  const life = lifecycle(source.lifecycle)
-  if (life) result.lifecycle = life
-  else reviews.add('lifecycle_missing', 'Legacy Entity has no legal lifecycle for the required v0.3 Entity lifecycle.', 'provide_lifecycle', String(source.id))
+  const legacyMetadata: Dict = {}
+  if (nonEmpty(source.listingStatus)) legacyMetadata.listingStatus = clone(source.listingStatus)
+  if (Array.isArray(source.tags) && source.tags.length > 0) legacyMetadata.tags = clone(source.tags)
+  if (Array.isArray(source.sourceRefs)) {
+    legacyMetadata.sourceRefs = mapArrayRefs(source.sourceRefs, mappings, reviews, String(source.id), 'unresolved_entity_source_ref')
+  } else if (source.sourceRefs !== undefined && nonEmpty(source.sourceRefs)) {
+    reviews.add('unresolved_entity_source_ref', 'Legacy Entity sourceRefs must be an array to map deterministically.', 'review_entity_sources', String(source.id))
+  }
+  const metadata = preserveLegacyMetadata(source.metadata, legacyMetadata, reviews, warnings, String(source.id))
+  if (metadata) result.metadata = metadata
+  result.lifecycle = requiredLifecycle(source.lifecycle, String(source.id), 'Entity', reviews, warnings)
   addKnown(result, source, 'createdAt', nonEmptyString)
   addKnown(result, source, 'updatedAt', nonEmptyString)
   if (info.targetType === 'company') {
@@ -461,36 +535,42 @@ function transformEntity(
   }
   inspectUnmappedFields(source, new Set([
     'id', 'type', 'name', 'aliases', 'description', 'externalIds', 'taxonomyRefs', 'metadata',
-    'lifecycle', 'createdAt', 'updatedAt', 'ticker', 'exchange', 'legalName',
+    'lifecycle', 'createdAt', 'updatedAt', 'ticker', 'exchange', 'legalName', 'listingStatus', 'tags', 'sourceRefs',
   ]), reviews, String(source.id), 'Legacy Entity contains non-empty fields without a deterministic v0.3 destination.')
   return result
 }
 
-function transformSource(source: Dict, mappedId: string, reviews: ReviewCollector): Dict {
+function transformSource(source: Dict, mappedId: string, reviews: ReviewCollector, warnings: KnowledgeMigrationWarning[]): Dict {
   const result: Dict = { id: mappedId }
   if (nonEmptyString(source.title)) result.title = source.title
   else reviews.add('required_field_missing', 'Legacy Source has no deterministic title for the required v0.3 Source title field.', 'provide_source_title', String(source.id))
   let sourceType: string | undefined
   if (SOURCE_TYPES.has(String(source.sourceType))) sourceType = String(source.sourceType)
-  else if (source.sourceType === undefined && SOURCE_TYPES.has(String(source.type))) sourceType = String(source.type)
   else {
-    reviews.add('unsupported_custom_legacy_type', 'Legacy Source type cannot be mapped to a canonical v0.3 SourceType without guessing.', 'review_source_semantics', String(source.id), { type: source.type, sourceType: source.sourceType })
+    sourceType = 'unknown'
+    addWarning(warnings, 'legacy_source_type_unknown', 'Legacy Source sourceType is absent or unsupported; v0.3 uses unknown while preserving the legacy top-level type.', String(source.id), {
+      ...(source.type !== undefined ? { type: source.type } : {}),
+      ...(source.sourceType !== undefined ? { sourceType: source.sourceType } : {}),
+    })
   }
-  if (sourceType) result.sourceType = sourceType
+  result.sourceType = sourceType
   addKnown(result, source, 'type', (value) => value === null || typeof value === 'string')
   for (const field of ['publisher', 'institution', 'author', 'publishedAt', 'url']) addKnown(result, source, field, (value) => value === null || typeof value === 'string')
   addKnown(result, source, 'quality', (value) => scalar(value) || isDict(value) || Array.isArray(value))
   if (SOURCE_RELIABILITIES.has(String(source.sourceReliability))) result.sourceReliability = source.sourceReliability
   else if (source.sourceReliability !== undefined) reviews.add('unsupported_custom_legacy_reliability', 'Legacy Source reliability cannot be mapped to the canonical v0.3 reliability enum.', 'review_source_semantics', String(source.id), { sourceReliability: source.sourceReliability })
   addKnown(result, source, 'rawRefs', (value) => Array.isArray(value) && value.every(nonEmptyString))
-  addKnown(result, source, 'metadata', (value) => value === null || isDict(value))
+  const legacyMetadata: Dict = {}
+  if (nonEmpty(source.documentType)) legacyMetadata.documentType = clone(source.documentType)
+  const metadata = preserveLegacyMetadata(source.metadata, legacyMetadata, reviews, warnings, String(source.id))
+  if (metadata) result.metadata = metadata
   const life = lifecycle(source.lifecycle)
   if (life) result.lifecycle = life
   addKnown(result, source, 'createdAt', nonEmptyString)
   addKnown(result, source, 'updatedAt', nonEmptyString)
   inspectUnmappedFields(source, new Set([
     'id', 'type', 'title', 'sourceType', 'publisher', 'institution', 'author', 'publishedAt', 'url',
-    'quality', 'sourceReliability', 'rawRefs', 'metadata', 'lifecycle', 'createdAt', 'updatedAt',
+    'quality', 'sourceReliability', 'rawRefs', 'metadata', 'documentType', 'lifecycle', 'createdAt', 'updatedAt',
   ]), reviews, String(source.id), 'Legacy Source contains non-empty fields without a deterministic v0.3 destination.')
   return result
 }
@@ -506,27 +586,44 @@ function transformClaim(
   mappedId: string,
   mappings: Map<string, string>,
   reviews: ReviewCollector,
+  warnings: KnowledgeMigrationWarning[],
 ): Dict {
   const type = String(source.type)
   const statement = claimStatement(source, type)
   if (!statement) reviews.add('claim_statement_missing', 'Legacy Intelligence has no deterministic non-empty Claim statement source.', 'provide_claim_statement', String(source.id), { type })
+  const subjectRefs = mapArrayRefs(
+    [...(Array.isArray(source.entityRefs) ? source.entityRefs : []), ...(Array.isArray(source.affectedEntityRefs) ? source.affectedEntityRefs : [])],
+    mappings,
+    reviews,
+    String(source.id),
+    'unresolved_claim_subject_ref',
+  )
   const result: Dict = {
     id: mappedId,
     claimType: type,
     statement: statement ?? '',
-    subjectRefs: mapArrayRefs(source.entityRefs, mappings, reviews, String(source.id), 'unresolved_claim_subject_ref'),
+    subjectRefs,
     sourceRefs: mapArrayRefs(source.sourceRefs, mappings, reviews, String(source.id), 'unresolved_claim_source_ref'),
   }
   if (source.entityRefs !== undefined && !Array.isArray(source.entityRefs)) reviews.add('unresolved_claim_subject_ref', 'Legacy Intelligence entityRefs must be an array to map deterministically.', 'review_claim_subjects', String(source.id))
-  if (source.entityRefs === undefined) reviews.add('claim_subject_refs_missing', 'Legacy Intelligence has no entityRefs for the required v0.3 Claim subjectRefs.', 'provide_claim_subjects', String(source.id))
+  if (source.affectedEntityRefs !== undefined && !Array.isArray(source.affectedEntityRefs)) reviews.add('unresolved_claim_subject_ref', 'Legacy Intelligence affectedEntityRefs must be an array to map deterministically.', 'review_claim_subjects', String(source.id))
+  if (source.entityRefs === undefined && source.affectedEntityRefs === undefined) reviews.add('claim_subject_refs_missing', 'Legacy Intelligence has no entityRefs or affectedEntityRefs for the required v0.3 Claim subjectRefs.', 'provide_claim_subjects', String(source.id))
   if (source.sourceRefs !== undefined && !Array.isArray(source.sourceRefs)) reviews.add('unresolved_claim_source_ref', 'Legacy Intelligence sourceRefs must be an array to map deterministically.', 'review_claim_sources', String(source.id))
   if (source.sourceRefs === undefined) reviews.add('claim_source_refs_missing', 'Legacy Intelligence has no sourceRefs for the required v0.3 Claim sourceRefs.', 'provide_claim_sources', String(source.id))
   const primary = mapOptionalRef(source.primarySubjectRef, mappings, reviews, String(source.id), 'unresolved_claim_subject_ref')
   if (primary) result.primarySubjectRef = primary
-  if (isDict(source.temporal)) result.temporal = clone(source.temporal)
+  const explicitTemporal = isDict(source.temporal) ? clone(source.temporal) : undefined
+  if (explicitTemporal) result.temporal = explicitTemporal
+  else {
+    const temporal = legacyTemporal(source, type)
+    if (temporal) result.temporal = temporal
+  }
+  noteTemporalConflict(source, type, explicitTemporal, reviews, String(source.id))
   const explicitStructuredValue = isDict(source.structuredValue)
   if (explicitStructuredValue) result.structuredValue = clone(source.structuredValue)
-  if (!explicitStructuredValue && nonEmptyString(source.metric) && scalar(source.value)) {
+  if (!explicitStructuredValue && type === 'forecast' && nonEmptyString(source.metric) && !scalar(source.value)) {
+    result.structuredValue = { metric: source.metric, value: null, unit: nonEmptyString(source.unit) ? source.unit : null, comparator: null }
+  } else if (!explicitStructuredValue && nonEmptyString(source.metric) && scalar(source.value)) {
     const structuredValue: Dict = { metric: source.metric, value: source.value, unit: nonEmptyString(source.unit) ? source.unit : null, comparator: null }
     if (source.comparator === undefined || ['eq', 'gt', 'gte', 'lt', 'lte', 'approx'].includes(String(source.comparator))) structuredValue.comparator = source.comparator ?? null
     else reviews.add('legacy_semantic_field_unmapped', 'Legacy Claim comparator is not in the frozen v0.3 comparator vocabulary.', 'review_claim_structured_value', String(source.id), { fields: ['comparator'] })
@@ -541,11 +638,10 @@ function transformClaim(
     })
   }
   if (source.confidence === null || (typeof source.confidence === 'number' && source.confidence >= 0 && source.confidence <= 1)) result.confidence = source.confidence
-  const life = lifecycle(source.lifecycle)
-  if (life) result.lifecycle = life
-  else reviews.add('lifecycle_missing', 'Legacy Intelligence has no legal lifecycle for the required v0.3 Claim lifecycle.', 'provide_lifecycle', String(source.id))
+  result.lifecycle = requiredLifecycle(source.lifecycle, String(source.id), 'Intelligence', reviews, warnings)
   if (!CLAIM_TYPES.has(type)) reviews.add('unsupported_legacy_intelligence_type', 'Legacy Intelligence type is not in the frozen v0.3 Claim vocabulary.', 'review_claim_type', String(source.id), { type })
-  if (nonEmpty(source.period)) reviews.add('legacy_semantic_field_unmapped', 'Legacy Intelligence period cannot be converted without interpreting temporal semantics.', 'review_claim_temporal', String(source.id), { fields: ['period'] })
+  if (nonEmpty(source.category)) addWarning(warnings, 'legacy_claim_category_discarded', 'Legacy Intelligence category has no v0.3 Claim field and was discarded after explicit policy review.', String(source.id), { category: source.category })
+  if (type === 'fact' && nonEmpty(source.impact)) reviews.add('event_impact_requires_decomposition', 'Legacy event fact impact cannot be represented losslessly as a single v0.3 Claim field.', 'decompose_event_impact', String(source.id), { fields: ['impact'] })
   for (const field of ['supersedes', 'supersededBy']) {
     if (Array.isArray(source[field])) result[field] = mapArrayRefs(source[field], mappings, reviews, String(source.id), 'unresolved_claim_reference')
   }
@@ -554,25 +650,23 @@ function transformClaim(
 
   const reviewFields = new Set<string>()
   const reviewIfNonEmpty = (field: string): void => { if (nonEmpty(source[field])) reviewFields.add(field) }
-  if (nonEmpty(source.category)) reviewFields.add('category')
-  if (nonEmpty(source.period)) reviewFields.add('period')
   if (explicitStructuredValue) {
     for (const field of ['metric', 'value', 'unit', 'comparator']) reviewIfNonEmpty(field)
-  } else if (nonEmpty(source.metric) || nonEmpty(source.value) || nonEmpty(source.unit)) {
+  } else if (type !== 'forecast' && (nonEmpty(source.metric) || nonEmpty(source.value) || nonEmpty(source.unit))) {
     if (!(nonEmptyString(source.metric) && scalar(source.value))) {
       for (const field of ['metric', 'value', 'unit']) reviewIfNonEmpty(field)
     }
   }
-  if (type === 'forecast') for (const field of ['metric', 'period', 'values', 'assumptions']) reviewIfNonEmpty(field)
+  if (type === 'forecast') for (const field of ['values', 'assumptions']) reviewIfNonEmpty(field)
   if (type === 'viewpoint') for (const field of ['bullishPoints', 'bearishPoints', 'keyVariables']) reviewIfNonEmpty(field)
-  if (type === 'trend') for (const field of ['direction', 'drivers', 'timeHorizon']) reviewIfNonEmpty(field)
+  if (type === 'trend') for (const field of ['direction', 'drivers']) reviewIfNonEmpty(field)
   if (type === 'risk') for (const field of ['trigger', 'impact', 'probability']) reviewIfNonEmpty(field)
   if (type === 'fact' && nonEmpty(source.description)) reviewFields.add('description')
   if ((type === 'trend' || type === 'risk') && nonEmpty(source.description) && nonEmptyString(source.statement)) reviewFields.add('description')
   if (reviewFields.size > 0) reviews.add('legacy_semantic_field_unmapped', 'Legacy Intelligence contains semantic fields that cannot be represented losslessly by the v0.3 Claim contract.', 'review_legacy_claim_semantics', String(source.id), { fields: [...reviewFields].sort((left, right) => left.localeCompare(right)) })
   inspectUnmappedFields(source, new Set([
-    'id', 'type', 'entityRefs', 'sourceRefs', 'statement', 'description', 'primarySubjectRef',
-    'temporal', 'structuredValue', 'metric', 'value', 'unit', 'comparator', 'category', 'period',
+    'id', 'type', 'entityRefs', 'affectedEntityRefs', 'sourceRefs', 'statement', 'description', 'primarySubjectRef',
+    'temporal', 'occurredAt', 'datePrecision', 'structuredValue', 'metric', 'value', 'unit', 'comparator', 'category', 'period',
     'provenance', 'confidence', 'lifecycle', 'supersedes', 'supersededBy', 'createdAt', 'updatedAt',
     'values', 'assumptions', 'bullishPoints', 'bearishPoints', 'keyVariables', 'direction',
     'drivers', 'timeHorizon', 'trigger', 'impact', 'probability',
@@ -650,7 +744,7 @@ function normalizeRelationPlan(
   const type = String(source.type)
   const common = commonRelationFields(source)
   const legacyAttributes = isDict(source.attributes) ? source.attributes : undefined
-  if (!common.lifecycle) reviews.add('lifecycle_missing', 'Legacy Relation has no legal lifecycle for the required v0.3 Relation lifecycle.', 'provide_lifecycle', oldId)
+  common.lifecycle = requiredLifecycle(source.lifecycle, oldId, 'Relation', reviews, warnings)
   const plan: RelationPlan = {
     oldId,
     initialId,
@@ -1055,7 +1149,7 @@ export async function transformV02ToV03(
   for (const item of sourceAssets.entities) {
     const info = entityInfo.get(item.value.id)
     if (!info || !entityMappings.has(item.value.id)) continue
-    const entity = transformEntity(item.value as Dict, info, taxonomyIds, reviews)
+    const entity = transformEntity(item.value as Dict, info, taxonomyIds, allMappings, reviews, warnings)
     transformedEntities.push(entity)
     if (info.oldType === 'industry') {
       addWarning(warnings, 'theme_group_unclassified', 'Migrated industry has no deterministic ThemeGroup and uses the stable Unclassified fallback.', item.value.id)
@@ -1067,7 +1161,7 @@ export async function transformV02ToV03(
   for (const item of sourceAssets.intelligence) {
     const mappedId = claimMappings.get(item.value.id)
     if (!mappedId) continue
-    const claim = transformClaim(item.value as Dict, mappedId, allMappings, reviews)
+    const claim = transformClaim(item.value as Dict, mappedId, allMappings, reviews, warnings)
     transformedClaims.push(claim)
     await writeAsset(stagingRoot, sourceRelativePath(sourceHandle.rootRef, item.filePath), claim)
   }
@@ -1076,7 +1170,7 @@ export async function transformV02ToV03(
   for (const item of sourceAssets.sources) {
     const mappedId = sourceMappings.get(item.value.id)
     if (!mappedId) continue
-    const source = transformSource(item.value as Dict, mappedId, reviews)
+    const source = transformSource(item.value as Dict, mappedId, reviews, warnings)
     transformedSources.push(source)
     await writeAsset(stagingRoot, sourceRelativePath(sourceHandle.rootRef, item.filePath), source)
   }

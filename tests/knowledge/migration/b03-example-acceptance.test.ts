@@ -25,15 +25,7 @@ const INVARIANT_NAMES = [
   'auxiliaryDeclaredRefsResolved', 'moduleDeclaredRefsResolved',
   'relationEndpointsCanonical', 'noOrphanDeduplicatedRelationFiles', 'canonicalRegistryRebuilt',
 ] as const
-const SEMANTIC_REVIEW_CODES = new Set([
-  'ambiguous_contains_semantics',
-  'claim_statement_missing',
-  'legacy_semantic_field_unmapped',
-  'lifecycle_missing',
-  'unsupported_custom_legacy_type',
-  'completeCanonicalIdMapping',
-  'declaredCanonicalRefsResolveToTarget',
-])
+type ReviewClassification = 'DETERMINISTIC_POLICY_RESOLVED' | 'ROOT_SEMANTIC_REVIEW' | 'DEPENDENT_REFERENCE_BLOCKED' | 'UNEXPECTED_REVIEW'
 
 interface FileSnapshot {
   fileCount: number
@@ -170,9 +162,21 @@ function inferredInvariants(result: KnowledgeMigrationResult): Record<string, bo
   return Object.fromEntries(INVARIANT_NAMES.map((name) => [name, !failed.has(name)]))
 }
 
-function classifyReview(code: string): 'A' | 'B' | 'C' | 'D' {
-  if (SEMANTIC_REVIEW_CODES.has(code)) return 'A'
-  throw new Error(`B3 review classification is missing for code: ${code}`)
+function classifyReview(item: { code: string; assetId?: string; details?: Record<string, unknown> }): ReviewClassification {
+  if (item.code === 'completeCanonicalIdMapping' || item.code === 'declaredCanonicalRefsResolveToTarget') return 'DEPENDENT_REFERENCE_BLOCKED'
+  if (item.code === 'ambiguous_contains_semantics' && item.assetId?.startsWith('relation:')) return 'ROOT_SEMANTIC_REVIEW'
+  if (item.code === 'event_impact_requires_decomposition' && item.assetId?.startsWith('fact:')) return 'ROOT_SEMANTIC_REVIEW'
+  if (item.code === 'claim_statement_missing' && (item.assetId?.startsWith('forecast:') || item.assetId?.startsWith('viewpoint:'))) return 'ROOT_SEMANTIC_REVIEW'
+  if (item.code === 'legacy_semantic_field_unmapped') {
+    const fields = new Set(Array.isArray(item.details?.fields) ? item.details.fields.map(String) : [])
+    const expected = item.assetId?.startsWith('forecast:') ? ['values', 'assumptions']
+      : item.assetId?.startsWith('viewpoint:') ? ['bullishPoints', 'bearishPoints', 'keyVariables']
+        : item.assetId?.startsWith('trend:') ? ['direction', 'drivers']
+          : item.assetId?.startsWith('risk:') ? ['trigger', 'impact', 'probability'] : []
+    if (expected.length > 0 && fields.size > 0 && [...fields].every((field) => expected.includes(field))) return 'ROOT_SEMANTIC_REVIEW'
+  }
+  if (['lifecycle_missing', 'unsupported_custom_legacy_type', 'legacy_metadata_collision'].includes(item.code)) return 'DETERMINISTIC_POLICY_RESOLVED'
+  return 'UNEXPECTED_REVIEW'
 }
 
 async function assertNoTransactionResidue(root: string): Promise<void> {
@@ -227,7 +231,7 @@ test('B3 exact AI Hardware example is accepted only up to deterministic semantic
       code: item.code,
       assetId: item.assetId,
       sourcePath: item.assetId ? sourceCheck.assets.entities.concat(sourceCheck.assets.relations, sourceCheck.assets.intelligence, sourceCheck.assets.modules, sourceCheck.assets.sources).find((asset) => asset.value.id === item.assetId)?.filePath : undefined,
-      classification: classifyReview(item.code),
+      classification: classifyReview(item),
       frozenRule: 'Schema 0.3 migration must preserve frozen semantics deterministically and must not guess missing or incompatible meaning.',
       reason: item.description,
       recommendedNextAction: item.suggestedAction,
@@ -235,8 +239,19 @@ test('B3 exact AI Hardware example is accepted only up to deterministic semantic
     assert.equal(reviewReport.every((item) => !item.assetId || item.sourcePath !== undefined), true)
     if (dry.status === 'review_required') {
       assert.ok(dry.reviewItems.length > 0)
-      assert.equal(new Set(reviewReport.map((item) => item.classification)).size, 1)
-      assert.equal(reviewReport.every((item) => item.classification === 'A'), true)
+      assert.equal(reviewReport.some((item) => item.classification === 'UNEXPECTED_REVIEW'), false, JSON.stringify(reviewReport))
+      assert.equal(reviewReport.some((item) => item.classification === 'DETERMINISTIC_POLICY_RESOLVED'), false, JSON.stringify(reviewReport))
+      assert.deepEqual(new Set(reviewReport.filter((item) => item.classification === 'ROOT_SEMANTIC_REVIEW').map((item) => item.assetId)), new Set([
+        'relation:data-center-contains-liquid-cooling',
+        'relation:data-center-contains-server',
+        'relation:server-contains-liquid-cooling',
+        'fact:ai-server-architecture-upgrade-2024',
+        'fact:nvidia-rubin-release-2026',
+        'forecast:data-center-electricity-demand-2030',
+        'viewpoint:ai-hardware-2026',
+        'trend:accelerated-server-electricity-growth',
+        'risk:data-center-grid-bottleneck',
+      ]))
       assert.equal(dry.validation.source, 'passed')
       assert.equal(dry.validation.target, 'failed')
       assert.deepEqual(inferredInvariants(dry), {
@@ -280,7 +295,7 @@ test('B3 exact AI Hardware example is accepted only up to deterministic semantic
     if (dry.status === 'review_required') {
       const commitCheck = await assertV02Source(commitRoot)
       assert.deepEqual(await snapshot(commitRoot), sourceBefore)
-      assert.equal(reviewReport.every((item) => item.classification === 'A'), true)
+      assert.equal(reviewReport.some((item) => item.classification === 'UNEXPECTED_REVIEW'), false)
       assert.equal(commitCheck.handle.schemaVersion, '0.2')
       assert.equal(commitCheck.handle.revision, 0)
       return

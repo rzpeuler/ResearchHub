@@ -223,3 +223,22 @@ ResearchHub architecture.
 See [Knowledge Architecture v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.1.md),
 [Knowledge Skill Interface v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_SKILL_INTERFACE_V0.1.md),
 and [Knowledge Storage Layout v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md).
+## KNOWLEDGE-V0.3-IMPLEMENTATION-B-003-R1 — Deterministic migration policy closure
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-27
+
+The Schema 0.2 to 0.3 migration policy is now explicit and deterministic. Missing
+required Entity/Relation/Intelligence lifecycle values default to active with a
+warning; unsupported Source types map to `unknown` while preserving legacy type;
+approved Entity/Source compatibility fields are preserved under
+`metadata.legacyV02`; Claim temporal and affected-reference compatibility is
+mapped without invented dates; and Claim category is explicitly discarded with
+a warning. Genuine relation and rich Claim semantic decisions remain Review.
+
+The exact Git-managed example remains unchanged and intentionally gated by its
+13 expected semantic/dependent Reviews. A fresh disposable clone of the real
+Runtime KB passed zero-Review dry-run, committed to Schema 0.3 / revision 1,
+and passed canonical v0.3 validation. The original Runtime KB was not changed.
+Schema 0.3 Runtime activation and v0.3 Writer/Curation/Workflow/Frontend work
+remain outside this task.
