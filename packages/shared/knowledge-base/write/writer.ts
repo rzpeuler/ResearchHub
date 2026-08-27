@@ -11,6 +11,8 @@ import { KnowledgeMutationLockError, withKnowledgeBaseMutationLock } from '../mu
 import { recoverKnowledgeBaseRoot, runKnowledgeRootTransaction } from '../root-transaction.ts'
 import { KnowledgeWriteInternalError } from './errors.ts'
 import { allocateKnowledgeStorageRef, kindForWritableObject, resolveAllocatedPath } from './path-allocation.ts'
+import type { ValidatedKnowledgeChangeSetV03 } from '../../../../packages/schemas/knowledge/v03/mutation.ts'
+import { writeKnowledgeBaseV03 } from './writer-v03.ts'
 
 const LOGICAL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
@@ -21,7 +23,7 @@ export interface KnowledgeWriterOptions {
   loader?: KnowledgeBaseLoader
   registry?: KnowledgeBaseRegistry
   clock?: () => string
-  stagedStateValidator: KnowledgeStagedStateValidator
+  stagedStateValidator?: KnowledgeStagedStateValidator
   failpoint?: KnowledgeWriteFailpoint
 }
 
@@ -300,12 +302,18 @@ export class KnowledgeWriter {
     this.clock = options.clock ?? (() => new Date().toISOString())
   }
 
-  async write(handle: KnowledgeBaseHandle, receipt: ValidatedKnowledgeChangeSet): Promise<KnowledgeWriteResult> {
-    const changeSet = receipt.changeSet
+  async write(handle: KnowledgeBaseHandle, receipt: ValidatedKnowledgeChangeSetV03): Promise<KnowledgeWriteResult>
+  async write(handle: KnowledgeBaseHandle, receipt: ValidatedKnowledgeChangeSet): Promise<KnowledgeWriteResult>
+  async write(handle: KnowledgeBaseHandle, receipt: ValidatedKnowledgeChangeSetV03 | ValidatedKnowledgeChangeSet): Promise<KnowledgeWriteResult> {
+    if ((receipt as ValidatedKnowledgeChangeSetV03).schemaVersion === '0.3') {
+      return writeKnowledgeBaseV03(handle, { receipt: receipt as ValidatedKnowledgeChangeSetV03, registry: this.registry, clock: this.clock, stagedStateValidator: this.options.stagedStateValidator, failpoint: this.options.failpoint })
+    }
+    const legacyReceipt = receipt as ValidatedKnowledgeChangeSet
+    const changeSet = legacyReceipt.changeSet
     const baseResult = { knowledgeBaseId: handle.knowledgeBaseId, changeSetId: changeSet.changeSetId, baseRevision: handle.revision, committedRevision: handle.revision, operations: operationSummary(), hashes: [] as KnowledgeWriteResult['hashes'] }
     const stagedStateValidator = this.options.stagedStateValidator
     if (!stagedStateValidator) return { ...baseResult, status: 'rejected', error: { code: 'validation_required', message: 'KnowledgeWriter requires a full staged-state validator before semantic commit' } }
-    if (receipt.knowledgeBaseId !== handle.knowledgeBaseId || receipt.schemaVersion !== handle.schemaVersion || receipt.baseRevision !== changeSet.expectedBaseRevision || receipt.changeSetId !== changeSet.changeSetId || receipt.changeSetHash !== hashKnowledgeObject(changeSet)) return { ...baseResult, status: 'rejected', error: { code: 'validation_required', message: 'ValidatedChangeSet receipt does not match ChangeSet or Handle' } }
+    if (legacyReceipt.knowledgeBaseId !== handle.knowledgeBaseId || legacyReceipt.schemaVersion !== handle.schemaVersion || legacyReceipt.baseRevision !== changeSet.expectedBaseRevision || legacyReceipt.changeSetId !== changeSet.changeSetId || legacyReceipt.changeSetHash !== hashKnowledgeObject(changeSet)) return { ...baseResult, status: 'rejected', error: { code: 'validation_required', message: 'ValidatedChangeSet receipt does not match ChangeSet or Handle' } }
     try {
       return await withKnowledgeBaseMutationLock(resolve(handle.rootRef), async () => {
         try {
@@ -313,7 +321,7 @@ export class KnowledgeWriter {
         } catch (error) {
           throw new KnowledgeWriteInternalError('recovery_required', error instanceof Error ? error.message : String(error))
         }
-        return await this.writeLocked(handle, receipt, stagedStateValidator)
+        return await this.writeLocked(handle, legacyReceipt, stagedStateValidator)
       })
     } catch (error) {
       const markerExists = await exists(recoveryMarkerPath(resolve(handle.rootRef)))
@@ -322,7 +330,13 @@ export class KnowledgeWriter {
     }
   }
 
-  apply(handle: KnowledgeBaseHandle, receipt: ValidatedKnowledgeChangeSet): Promise<KnowledgeWriteResult> { return this.write(handle, receipt) }
+  apply(handle: KnowledgeBaseHandle, receipt: ValidatedKnowledgeChangeSetV03): Promise<KnowledgeWriteResult>
+  apply(handle: KnowledgeBaseHandle, receipt: ValidatedKnowledgeChangeSet): Promise<KnowledgeWriteResult>
+  apply(handle: KnowledgeBaseHandle, receipt: ValidatedKnowledgeChangeSetV03 | ValidatedKnowledgeChangeSet): Promise<KnowledgeWriteResult> {
+    return (receipt as ValidatedKnowledgeChangeSetV03).schemaVersion === '0.3'
+      ? this.write(handle, receipt as ValidatedKnowledgeChangeSetV03)
+      : this.write(handle, receipt as ValidatedKnowledgeChangeSet)
+  }
 
   private async writeLocked(handle: KnowledgeBaseHandle, receipt: ValidatedKnowledgeChangeSet, stagedStateValidator: KnowledgeStagedStateValidator): Promise<KnowledgeWriteResult> {
     const rootPath = resolve(handle.rootRef)

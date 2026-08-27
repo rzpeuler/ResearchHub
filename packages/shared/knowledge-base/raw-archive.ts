@@ -75,8 +75,8 @@ async function assertMountedKnowledgeBase(handle: KnowledgeBaseHandle, forWrite:
   }
   if (manifest.knowledgeBaseId !== handle.knowledgeBaseId) throw new KnowledgeError('RawArchiveError', 'Knowledge Base handle identity does not match mounted manifest', root)
   if (manifest.schemaVersion !== handle.schemaVersion || manifest.storageFormatVersion !== handle.storageFormatVersion) throw new KnowledgeError('RawArchiveError', 'Knowledge Base handle compatibility does not match mounted manifest', root)
-  if (forWrite && (manifest.schemaVersion !== '0.2' || manifest.storageFormatVersion !== '1' || manifest.status !== 'active' || !handle.writable)) {
-    throw new KnowledgeError('RawArchiveError', 'Raw archive requires an active writable Schema 0.2 / Storage 1 Knowledge Base', root)
+  if (forWrite && (manifest.storageFormatVersion !== '1' || manifest.status !== 'active' || !handle.writable)) {
+    throw new KnowledgeError('RawArchiveError', 'Raw archive requires an active writable Storage Format 1 Knowledge Base', root)
   }
   return manifest
 }

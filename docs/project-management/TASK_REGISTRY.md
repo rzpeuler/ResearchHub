@@ -32,6 +32,10 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-V0.3-IMPLEMENTATION-B-003-R2 | Close temporal migration safety accounting and evidence gaps | Completed | P0 | 2026-08-27 | Luna | Current R2 implementation commit (see Git handoff) | Accepted - Sol verified |
 | KNOWLEDGE-V0.3-IMPLEMENTATION-C-001 | Implement Knowledge Curation v0.3 Schema Context Builder | Completed | P0 | 2026-08-27 | Luna | Current C1 implementation commit (see Git handoff) | Completed / Rework Required |
 | KNOWLEDGE-V0.3-IMPLEMENTATION-C-001-R1 | Complete Knowledge Curation v0.3 semantic Schema Context | Completed | P0 | 2026-08-27 | Luna | Current C1-R1 implementation commit (see Git handoff) | Sol Verification Pending |
+| KNOWLEDGE-V0.3-IMPLEMENTATION-C-002 | Implement Knowledge Curation v0.3 cutover | Blocked | P0 | 2026-08-27 | Luna | — | Superseded by C-002-R1 |
+| KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R1 | Implement Curation/Workflow v0.3 integration | Blocked | P0 | 2026-08-27 | Luna | — | Dependency on C-003 |
+| KNOWLEDGE-V0.3-IMPLEMENTATION-C-003 | Implement and activate Knowledge v0.3 Runtime Foundation | Completed | P0 | 2026-08-28 | Luna | Current C3 implementation commit (see Git handoff) | Completed / Sol Verification Pending |
+| KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2 | Resume Knowledge Curation/Workflow v0.3 cutover | Not Started | P0 | 2026-08-28 | Luna | — | Awaiting C3 Sol Acceptance |
 | RH-GOV-001 | Initialize project execution state management system | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-DOC-002 | Synchronize architecture baseline documentation | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-ENG-001 | Validate minimum ResearchHub Harness integration | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — typecheck and integration test passed |

@@ -18,13 +18,13 @@
 - Governance Integration: Completed / Sol verified
 - Current Normative Knowledge Architecture: Knowledge v0.3
 - Legacy Frozen Compatibility/Migration Source: Knowledge v0.2
-- Runtime Implementation: v0.2 Writer plus v0.3 canonical read/validation and migration commit support
+- Runtime Implementation: version-dispatched v0.2/v0.3 Writer, native v0.3 read/validation, and migration commit support
 - Stage A implementation: Completed / Sol verified
 - Stage A R1 structural correction: Completed / Sol verified
 - Stage A R2 canonical-reference correction: Completed / Sol verified
 - Stage A R3 migration-nullability correction: Completed / Sol verified
 - Stage A Raw identity consistency correction: Completed / Sol verified
-- Runtime Schema Release: Schema 0.1, 0.2, and readable/non-writable 0.3
+- Runtime Schema Release: Schema 0.1 readable, Schema 0.2 readable/writable, and Schema 0.3 readable/writable for active KBs
 - Stage B: Completed / Accepted - Sol verified
 - B1: Completed / Sol verified
 - B2 Parent: Completed / Accepted - Sol verified
@@ -34,18 +34,21 @@
 - B3-R1: Completed / Rework Required
 - B3-R2: Completed / Accepted - Sol verified
 - Stage C: In Progress
-- C1: Completed / Rework Required
-- C1-R1: Completed / Sol Verification Pending
+- C1: Completed / Accepted - Sol verified
+- C1-R1: Completed / Accepted - Sol verified
+- C2: Blocked / Superseded by C-002-R1
+- C2-R1: Blocked / Dependency on C-003
+- C3: Completed / Sol Verification Pending
+- C2-R2: Not Started / Awaiting C3 Sol Acceptance
 - Current approved direction: Implementation Stage C — Knowledge Curation v0.3 foundation
 
 Stage B is accepted after Sol verification. B1, B2, and B3 Evidence are
 accepted; B3-R2 completed the temporal migration-policy safety closure. C1 now
 provides the deterministic Schema Context foundation for Curation v0.3 while
-leaving the legacy Curation API and model request unchanged.
-Schema 0.3 read and
-migration-commit support are present, but semantic Writer/Curation/Workflow and
-frontend activation remain outside this stage. B3 does not activate a default
-Schema 0.3 runtime writer.
+leaving the legacy Curation API and model request unchanged. C3 now activates
+the already frozen Schema 0.3 runtime write capability through the shared
+version-dispatched runtime. Curation and Workflow cutover remain C2-R2 scope;
+Schema 0.4 is not approved.
 Knowledge v0.4 is not approved.
 
 ## Runtime implementation status: v0.2 compatibility track

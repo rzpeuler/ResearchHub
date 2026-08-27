@@ -1,5 +1,24 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003
+
+C3 activates the already frozen Knowledge Schema 0.3 / Storage Format 1 runtime
+write capability. The default adapter uses `CanonicalV03KnowledgeLoader`, the
+runtime has a native v0.3 index and version-aware Access, v0.3 ChangeSet
+validation and mutation contracts, Storage Format 1 Raw support, and one
+version-dispatched atomic Writer with staged validation, revision guards,
+idempotency, and recovery.
+
+Schema 0.2 compatibility and migration behavior remain intact. C3 does not
+create Schema 0.4 and does not modify Knowledge Curation or the Report
+Ingestion Workflow; their v0.3 cutover remains C2-R2 scope.
+
+Status is `Completed`; acceptance is `Sol Verification Pending`.
+Stage B is `Completed / Accepted - Sol verified`; C1 is `Completed / Accepted -
+Sol verified`; C2 is `Blocked / Superseded by C-002-R1`; C2-R1 is `Blocked /
+Dependency on C-003`; C2-R2 is `Not Started / Awaiting C3 Sol Acceptance`; and
+Stage C is `In Progress`.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-001
 
 C1 implements the runtime-neutral Knowledge Curation v0.3 Schema Context

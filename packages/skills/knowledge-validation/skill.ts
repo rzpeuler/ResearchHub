@@ -19,6 +19,7 @@ import type { RelationRule } from './rules.ts'
 import type {
   ChangeSetValidationResult,
   ChangeSetValidationOptions,
+  ChangeSetValidationResultV03,
   ValidationDiagnostic,
   ValidationReport,
   ValidationScope,
@@ -29,11 +30,13 @@ import type {
   KnowledgeWritableObject,
   ValidatedKnowledgeChangeSet,
 } from '../../../packages/schemas/knowledge/index.ts'
+import type { KnowledgeChangeSetV03 } from '../../../packages/schemas/knowledge/v03/mutation.ts'
 import { hashKnowledgeObject } from '../../../packages/shared/knowledge-base/canonical-hash.ts'
 import { verifyRaw } from '../../../packages/shared/knowledge-base/raw-archive.ts'
 import { KnowledgeWriteInternalError } from '../../../packages/shared/knowledge-base/write/errors.ts'
 import type { KnowledgeMigrationStateValidator } from '../../../packages/shared/knowledge-base/migration/types.ts'
 import { validateKnowledgeBaseV03 } from './v03-validator.ts'
+import { validateKnowledgeChangeSetV03 } from './v03-change-set-validator.ts'
 
 const ID_PATTERN = /^(industry|segment|company|product|technology|relation|fact|forecast|viewpoint|trend|risk|source|module|view):[a-z0-9]+(?:-[a-z0-9]+)*$/
 const LOGICAL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
@@ -139,7 +142,11 @@ export class KnowledgeValidationSkill {
     return this.report(scope, diagnostics)
   }
 
-  async validateChangeSet(handle: KnowledgeBaseHandle, changeSet: KnowledgeChangeSet, options: ChangeSetValidationOptions = {}): Promise<ChangeSetValidationResult> {
+  async validateChangeSet(handle: KnowledgeBaseHandle, changeSet: KnowledgeChangeSetV03, options?: ChangeSetValidationOptions): Promise<ChangeSetValidationResultV03>
+  async validateChangeSet(handle: KnowledgeBaseHandle, changeSet: KnowledgeChangeSet, options?: ChangeSetValidationOptions): Promise<ChangeSetValidationResult>
+  async validateChangeSet(handle: KnowledgeBaseHandle, changeSet: KnowledgeChangeSet | KnowledgeChangeSetV03, options: ChangeSetValidationOptions = {}): Promise<ChangeSetValidationResult | ChangeSetValidationResultV03> {
+    if (changeSet.schemaVersion === '0.3') return validateKnowledgeChangeSetV03(handle, changeSet as KnowledgeChangeSetV03, options)
+    const legacyChangeSet = changeSet as KnowledgeChangeSet
     const diagnostics: ValidationDiagnostic[] = []
     const mode = options.mode ?? 'commit'
     const dryRun = mode === 'dry_run'
@@ -154,14 +161,14 @@ export class KnowledgeValidationSkill {
     if (handle.schemaVersion !== '0.2' || handle.storageFormatVersion !== '1' || (!dryRun && !handle.writable)) {
       diagnostics.push({ code: 'WRITE_NOT_SUPPORTED', severity: 'error', message: `Knowledge Base is not writable: ${handle.schemaVersion}/${handle.storageFormatVersion}/${handle.status}` })
     }
-    if (changeSet.knowledgeBaseId !== handle.knowledgeBaseId) diagnostics.push({ code: 'CHANGESET_KB_MISMATCH', severity: 'error', message: 'ChangeSet knowledgeBaseId does not match handle' })
-    if (changeSet.schemaVersion !== handle.schemaVersion) diagnostics.push({ code: 'CHANGESET_SCHEMA_MISMATCH', severity: 'error', message: 'ChangeSet schemaVersion does not match handle' })
-    if (!Number.isInteger(changeSet.expectedBaseRevision) || changeSet.expectedBaseRevision < 0) diagnostics.push({ code: 'CHANGESET_REVISION', severity: 'error', message: 'expectedBaseRevision must be a non-negative integer' })
-    if (changeSet.expectedBaseRevision !== handle.revision) diagnostics.push({ code: 'STALE_BASE_REVISION', severity: 'error', message: `ChangeSet expects revision ${changeSet.expectedBaseRevision}, handle is at ${handle.revision}` })
-    this.validateLogicalId(diagnostics, changeSet.changeSetId, 'CHANGESET_ID')
-    this.validateLogicalId(diagnostics, changeSet.workflowRunId, 'WORKFLOW_RUN_ID')
-    if (typeof changeSet.requiresRawProvenance !== 'boolean') diagnostics.push({ code: 'CHANGESET_PROVENANCE_POLICY', severity: 'error', message: 'requiresRawProvenance must be boolean' })
-    if (!Array.isArray(changeSet.sourceOperations) || !Array.isArray(changeSet.knowledgeOperations)) diagnostics.push({ code: 'CHANGESET_OPERATIONS', severity: 'error', message: 'ChangeSet operation lists must be arrays' })
+    if (legacyChangeSet.knowledgeBaseId !== handle.knowledgeBaseId) diagnostics.push({ code: 'CHANGESET_KB_MISMATCH', severity: 'error', message: 'ChangeSet knowledgeBaseId does not match handle' })
+    if (legacyChangeSet.schemaVersion !== handle.schemaVersion) diagnostics.push({ code: 'CHANGESET_SCHEMA_MISMATCH', severity: 'error', message: 'ChangeSet schemaVersion does not match handle' })
+    if (!Number.isInteger(legacyChangeSet.expectedBaseRevision) || legacyChangeSet.expectedBaseRevision < 0) diagnostics.push({ code: 'CHANGESET_REVISION', severity: 'error', message: 'expectedBaseRevision must be a non-negative integer' })
+    if (legacyChangeSet.expectedBaseRevision !== handle.revision) diagnostics.push({ code: 'STALE_BASE_REVISION', severity: 'error', message: `ChangeSet expects revision ${legacyChangeSet.expectedBaseRevision}, handle is at ${handle.revision}` })
+    this.validateLogicalId(diagnostics, legacyChangeSet.changeSetId, 'CHANGESET_ID')
+    this.validateLogicalId(diagnostics, legacyChangeSet.workflowRunId, 'WORKFLOW_RUN_ID')
+    if (typeof legacyChangeSet.requiresRawProvenance !== 'boolean') diagnostics.push({ code: 'CHANGESET_PROVENANCE_POLICY', severity: 'error', message: 'requiresRawProvenance must be boolean' })
+    if (!Array.isArray(legacyChangeSet.sourceOperations) || !Array.isArray(legacyChangeSet.knowledgeOperations)) diagnostics.push({ code: 'CHANGESET_OPERATIONS', severity: 'error', message: 'ChangeSet operation lists must be arrays' })
 
     const existingById = new Map<string, { type: string; object: Record<string, unknown> }>()
     for (const asset of [...assets.entities, ...assets.relations, ...assets.intelligence, ...assets.modules, ...assets.sources]) existingById.set(asset.value.id, { type: asset.kind, object: asset.value as Record<string, unknown> })
@@ -175,22 +182,22 @@ export class KnowledgeValidationSkill {
     const operationIds = new Set<string>()
     const rawRefs = await this.loadRawRefs(handle, diagnostics, options.virtualRawRefs)
 
-    for (const operation of changeSet.sourceOperations ?? []) {
+    for (const operation of legacyChangeSet.sourceOperations ?? []) {
       this.validateOperationId(diagnostics, operation, operationIds)
       if (operation.type === 'source_create') {
         const source = operation.source
-        this.validateSourceCreateOperation(diagnostics, source, existingById, sourceCreates, rawRefs, changeSet.requiresRawProvenance)
+        this.validateSourceCreateOperation(diagnostics, source, existingById, sourceCreates, rawRefs, legacyChangeSet.requiresRawProvenance)
         if (typeof source?.id === 'string') {
           sources.add(source.id)
         }
       } else if (operation.type === 'source_merge') {
-        this.validateSourceMergeOperation(diagnostics, operation, existingById, sources, rawRefs, changeSet.requiresRawProvenance, mutationTargets)
+        this.validateSourceMergeOperation(diagnostics, operation, existingById, sources, rawRefs, legacyChangeSet.requiresRawProvenance, mutationTargets)
       } else {
         diagnostics.push({ code: 'UNSUPPORTED_SOURCE_OPERATION', severity: 'error', message: `Unsupported source operation: ${String((operation as { type?: unknown }).type)}` })
       }
     }
 
-    for (const operation of changeSet.knowledgeOperations ?? []) {
+    for (const operation of legacyChangeSet.knowledgeOperations ?? []) {
       this.validateOperationId(diagnostics, operation, operationIds)
       if (operation.type === 'create') {
         this.validateKnowledgeCreateOperation(diagnostics, operation.object, existingById, objectCreates, supersedeReplacements, operation.operationId)
@@ -223,13 +230,13 @@ export class KnowledgeValidationSkill {
     const report = this.report('all', diagnostics)
     if (report.status === 'failed') return { report }
     if (dryRun) return { report }
-    const changeSetHash = hashKnowledgeObject(changeSet)
+    const changeSetHash = hashKnowledgeObject(legacyChangeSet)
     const validatedChangeSet: ValidatedKnowledgeChangeSet = deepFreeze({
-      changeSet: deepFreeze(structuredClone(changeSet)),
+      changeSet: deepFreeze(structuredClone(legacyChangeSet)),
       knowledgeBaseId: handle.knowledgeBaseId,
       schemaVersion: handle.schemaVersion,
       baseRevision: handle.revision,
-      changeSetId: changeSet.changeSetId,
+      changeSetId: legacyChangeSet.changeSetId,
       changeSetHash,
       validatedAt: new Date().toISOString(),
     })

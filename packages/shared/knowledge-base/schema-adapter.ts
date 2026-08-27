@@ -2,26 +2,38 @@ import { KnowledgeBaseHandle } from './handle.ts'
 import { KnowledgeLoader } from './loader.ts'
 import { CanonicalV02KnowledgeLoader } from './canonical-v02-loader.ts'
 import { KnowledgeIndex } from './knowledge-index.ts'
+import { KnowledgeIndexV03 } from './knowledge-index-v03.ts'
 import type { KnowledgeAssetCollection } from './types.ts'
+import { CanonicalV03KnowledgeLoader } from './canonical-v03-loader.ts'
+import type { KnowledgeAssetCollectionV03 } from './v03-types.ts'
 
 export interface KnowledgeSchemaAdapter {
-  readonly schemaVersion: string
-  readonly storageFormatVersion: string
+  readonly schemaVersion: '0.1' | '0.2'
+  readonly storageFormatVersion: '1'
   readAssets(handle: KnowledgeBaseHandle): Promise<KnowledgeAssetCollection>
   load(handle: KnowledgeBaseHandle): Promise<KnowledgeIndex>
 }
 
-export class KnowledgeSchemaAdapterRegistry {
-  private readonly adapters = new Map<string, KnowledgeSchemaAdapter>()
+export interface KnowledgeSchemaAdapterV03 {
+  readonly schemaVersion: '0.3'
+  readonly storageFormatVersion: '1'
+  readAssets(handle: KnowledgeBaseHandle): Promise<KnowledgeAssetCollectionV03>
+  load(handle: KnowledgeBaseHandle): Promise<KnowledgeIndexV03>
+}
 
-  register(adapter: KnowledgeSchemaAdapter): this {
+export type VersionedKnowledgeSchemaAdapter = KnowledgeSchemaAdapter | KnowledgeSchemaAdapterV03
+
+export class KnowledgeSchemaAdapterRegistry {
+  private readonly adapters = new Map<string, VersionedKnowledgeSchemaAdapter>()
+
+  register(adapter: VersionedKnowledgeSchemaAdapter): this {
     const key = this.key(adapter.schemaVersion, adapter.storageFormatVersion)
     if (this.adapters.has(key)) throw new Error(`Knowledge Schema Adapter already registered: ${key}`)
     this.adapters.set(key, adapter)
     return this
   }
 
-  get(schemaVersion: string, storageFormatVersion: string): KnowledgeSchemaAdapter | undefined {
+  get(schemaVersion: string, storageFormatVersion: string): VersionedKnowledgeSchemaAdapter | undefined {
     return this.adapters.get(this.key(schemaVersion, storageFormatVersion))
   }
 
@@ -30,10 +42,23 @@ export class KnowledgeSchemaAdapterRegistry {
   }
 }
 
+export class CanonicalV03SchemaAdapter implements KnowledgeSchemaAdapterV03 {
+  readonly schemaVersion = '0.3' as const
+  readonly storageFormatVersion = '1' as const
+
+  async readAssets(handle: KnowledgeBaseHandle): Promise<KnowledgeAssetCollectionV03> {
+    return new CanonicalV03KnowledgeLoader(handle.rootRef).readAssets()
+  }
+
+  async load(handle: KnowledgeBaseHandle): Promise<KnowledgeIndexV03> {
+    return KnowledgeIndexV03.fromAssets(await this.readAssets(handle))
+  }
+}
+
 export class FilesystemKnowledgeSchemaAdapter implements KnowledgeSchemaAdapter {
   constructor(
-    public readonly schemaVersion: string,
-    public readonly storageFormatVersion: string,
+    public readonly schemaVersion: '0.1' | '0.2',
+    public readonly storageFormatVersion: '1',
   ) {}
 
   async load(handle: KnowledgeBaseHandle): Promise<KnowledgeIndex> {
@@ -52,4 +77,5 @@ export function createDefaultKnowledgeSchemaAdapterRegistry(): KnowledgeSchemaAd
   return new KnowledgeSchemaAdapterRegistry()
     .register(new FilesystemKnowledgeSchemaAdapter('0.1', '1'))
     .register(new FilesystemKnowledgeSchemaAdapter('0.2', '1'))
+    .register(new CanonicalV03SchemaAdapter())
 }

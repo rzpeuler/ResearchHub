@@ -50,3 +50,19 @@ export interface KnowledgeAssetCollectionV03 {
   sources: LoadedAssetV03<KnowledgeSourceV03>[]
   registry: KnowledgeRegistryEntryV03[]
 }
+
+export interface LegacyRuntimeState {
+  readonly schemaVersion: '0.1' | '0.2'
+  readonly storageFormatVersion: '1'
+  readonly assets: import('./types.ts').KnowledgeAssetCollection
+  readonly index: import('./knowledge-index.ts').KnowledgeIndex
+}
+
+export interface CanonicalRuntimeStateV03 {
+  readonly schemaVersion: '0.3'
+  readonly storageFormatVersion: '1'
+  readonly assets: KnowledgeAssetCollectionV03
+  readonly index: import('./knowledge-index-v03.ts').KnowledgeIndexV03
+}
+
+export type KnowledgeRuntimeState = LegacyRuntimeState | CanonicalRuntimeStateV03

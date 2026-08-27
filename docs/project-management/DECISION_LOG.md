@@ -303,3 +303,19 @@ and `KnowledgeCurationModelRequest` remain unchanged; C2 is not started.
 Stage B remains `Completed / Accepted - Sol verified`; Stage C is `In Progress`;
 C1 is `Completed / Rework Required`; C1-R1 is `Completed / Sol Verification
 Pending`; C2 is `Not Started / Not Authorized`.
+## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003 — Schema 0.3 Runtime Foundation
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-28
+
+C3 completes and activates the runtime foundation for the already frozen
+Knowledge Schema 0.3 / Storage Format 1. The default adapter uses
+`CanonicalV03KnowledgeLoader`; native v0.3 runtime state, index, Access,
+ChangeSet validation, Raw archive compatibility, and the single dispatched
+Writer now preserve canonical v0.3 semantics. Atomic staged writes retain
+revision, idempotency, target-hash, registry, and recovery guarantees.
+
+Schema 0.2 remains readable and writable, Schema 0.1 remains readable and
+non-writable, and no Schema 0.4 or downstream Curation/Workflow cutover is
+introduced. C2-R1 remains `Blocked / Dependency on C-003`; C2-R2 remains
+`Not Started / Awaiting C3 Sol Acceptance`; Stage C remains `In Progress`.

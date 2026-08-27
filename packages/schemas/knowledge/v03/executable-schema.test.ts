@@ -190,7 +190,7 @@ test('Schema 0.3 carries complete machine-readable semantic metadata with exact 
   for (const definition of Object.values(KNOWLEDGE_SCHEMA_V03.relation.definitions)) assert.equal(typeof definition.semanticDescription, 'string')
 })
 
-test('Schema 0.3 is pure JSON data and does not activate runtime release support', () => {
+test('Schema 0.3 is pure JSON data and is writable after the C3 runtime foundation', () => {
   const serialized = JSON.stringify(KNOWLEDGE_SCHEMA_V03)
   const parsed: unknown = JSON.parse(serialized)
   assert.deepEqual(parsed, KNOWLEDGE_SCHEMA_V03)
@@ -208,5 +208,5 @@ test('Schema 0.3 is pure JSON data and does not activate runtime release support
   assert.equal(values.some((value) => typeof value === 'function'), false)
   assert.equal(ROOT_KNOWLEDGE_SCHEMA_V03, KNOWLEDGE_SCHEMA_V03)
 
-  assert.equal(findKnowledgeSchemaRelease({ schemaVersion: '0.3', storageFormatVersion: '1' })?.writable, false)
+  assert.equal(findKnowledgeSchemaRelease({ schemaVersion: '0.3', storageFormatVersion: '1' })?.writable, true)
 })

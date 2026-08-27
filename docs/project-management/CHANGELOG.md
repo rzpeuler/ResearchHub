@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-28 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-003
+
+- Added the native Schema 0.3 runtime chain: default adapter registration,
+  versioned runtime state, `KnowledgeIndexV03`, version-aware Access, and
+  strongly typed v0.3 mutation contracts.
+- Added deterministic v0.3 ChangeSet validation, Storage Format 1 Raw archive
+  compatibility, and one version-dispatched atomic Writer with staged
+  validation, revision protection, idempotency, and recovery support.
+- Activated Schema 0.3 / Storage 1 as writable for active Knowledge Bases while
+  preserving Schema 0.1/0.2 compatibility. Curation and Workflow remain
+  unchanged; C3 does not create Schema 0.4.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-001-R1
 
 - Completed the semantic-context closure by adding non-structural,
