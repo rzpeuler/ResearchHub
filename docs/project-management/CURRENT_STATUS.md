@@ -1,5 +1,23 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-B-001-R1
+
+R1 hardens the B1 transformer against semantic-safety gaps found during
+independent review:
+
+- Relation declared references are rewritten only after normalization,
+  deduplication, and final survivor mapping.
+- Relation attributes, Entity tags/extensions, Intelligence semantic fields,
+  Module extensions, and unsupported Relation metadata receive an explicit
+  preservation, transformation, or Review disposition.
+- Frozen enum/value validation is applied to theme exposure and ownership
+  attributes; exact dedupe removes only obsolete canonical files from staging.
+- Declared-reference, registry namespace/kind, Raw byte, and orphan-file
+  invariants are computed from the actual target staging state.
+
+Status is `Completed / Sol Verification Pending`; acceptance remains
+`Review Pending / Sol Verification`. B2 and B3 are not started or authorized.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-001
 
 Stage B is now in progress at substage B1, the deterministic v0.2 to v0.3
@@ -16,8 +34,10 @@ Migration Transformation Layer:
   runtime adapter, Writer, Curation, Workflow, Runtime KB, or Example KB was
   activated or modified.
 
-Status is `Completed / Sol Verification Pending`; acceptance remains
-`Review Pending / Sol Verification`. B2 and B3 are not started or authorized.
+Status is `Completed / Rework Required`; acceptance is
+`Rework Required — Sol verification` after the semantic-safety review. R1 is
+the current B1 rework closure and awaits independent verification. B2 and B3
+are not started or authorized.
 
 ## Stage A Governance Closure
 

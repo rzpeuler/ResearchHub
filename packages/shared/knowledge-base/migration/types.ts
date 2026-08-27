@@ -107,6 +107,7 @@ export interface V02ToV03TransformResult {
     fallbackThemeGroupCreated: boolean
     transformedAssetIds: string[]
     preservedAuxiliaryFiles: string[]
+    removedStagingCanonicalFiles: string[]
   }
   invariants: Record<string, boolean>
 }

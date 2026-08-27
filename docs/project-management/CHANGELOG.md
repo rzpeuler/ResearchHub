@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-001-R1
+
+- Hardened the B1 migration transformer with an explicit final mapping barrier
+  before all declared-reference rewrites.
+- Added exhaustive semantic disposition checks for legacy Entity,
+  Intelligence, Relation, Module, and Relation attribute fields.
+- Validated frozen theme/ownership attributes, blocked conflicting dedupe,
+  removed exact-dedupe loser files from staging, and added actual target-state
+  namespace, resolution, Raw, and orphan-file invariants.
+- B1 parent is recorded as `Rework Required`; R1 is
+  `Completed / Sol Verification Pending`.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-001
 
 - Added the deterministic v0.2 to v0.3 staging transformer with complete ID

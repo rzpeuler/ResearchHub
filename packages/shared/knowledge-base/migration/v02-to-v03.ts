@@ -29,10 +29,17 @@ type RelationPlan = {
   initialId: string
   targetId: string
   type: string
-  sourceRef: string
-  targetRef: string
+  sourceId: string
+  targetIdLegacy: string
+  normalizedSourceId: string
+  normalizedTargetId: string
+  legacyContextRefs?: unknown
+  legacySupportingClaimRefs?: unknown
+  legacySourceRefs?: unknown
+  legacyAttributes?: Dict
   attributes?: Dict
   common: Dict
+  dedupeSafe: boolean
   output: boolean
 }
 
@@ -171,6 +178,21 @@ function addKnown(target: Dict, source: Dict, field: string, predicate: (value: 
   if (source[field] !== undefined && predicate(source[field])) target[field] = clone(source[field])
 }
 
+function inspectUnmappedFields(
+  source: Dict,
+  allowed: Set<string>,
+  reviews: ReviewCollector,
+  assetId: string,
+  description: string,
+): void {
+  const unmapped = Object.keys(source).filter((field) => !allowed.has(field) && nonEmpty(source[field]))
+  if (unmapped.length > 0) {
+    reviews.add('legacy_semantic_field_unmapped', description, 'review_legacy_semantics', assetId, {
+      fields: unmapped.sort((left, right) => left.localeCompare(right)),
+    })
+  }
+}
+
 function declaredRef(ref: unknown, mappings: Map<string, string>): string | undefined {
   return nonEmptyString(ref) ? mappings.get(ref) : undefined
 }
@@ -291,14 +313,8 @@ function mapOptionalRef(value: unknown, mappings: Map<string, string>, reviews: 
 
 function commonRelationFields(
   source: Dict,
-  mappings: Map<string, string>,
-  reviews: ReviewCollector,
-  assetId: string,
 ): Dict {
   const result: Dict = {}
-  if (Array.isArray(source.contextRefs)) result.contextRefs = mapArrayRefs(source.contextRefs, mappings, reviews, assetId, 'unresolved_relation_reference')
-  if (Array.isArray(source.supportingClaimRefs)) result.supportingClaimRefs = mapArrayRefs(source.supportingClaimRefs, mappings, reviews, assetId, 'unresolved_relation_reference')
-  if (Array.isArray(source.sourceRefs)) result.sourceRefs = mapArrayRefs(source.sourceRefs, mappings, reviews, assetId, 'unresolved_relation_source_ref')
   if (source.confidence === null || (typeof source.confidence === 'number' && source.confidence >= 0 && source.confidence <= 1)) result.confidence = source.confidence
   if (source.asOf === null || nonEmptyString(source.asOf)) result.asOf = source.asOf
   const life = lifecycle(source.lifecycle)
@@ -443,9 +459,10 @@ function transformEntity(
   if (info.oldType === 'industry') {
     result.themeGroupRef = 'theme-group:unclassified'
   }
-  for (const field of ['industries', 'themes', 'conceptTags', 'businessTags']) {
-    if (nonEmpty(source[field])) reviews.add('legacy_semantic_field_unmapped', `Legacy entity field cannot be represented as a v0.3 canonical field: ${field}.`, 'review_legacy_entity_semantics', String(source.id), { fields: [field] })
-  }
+  inspectUnmappedFields(source, new Set([
+    'id', 'type', 'name', 'aliases', 'description', 'externalIds', 'taxonomyRefs', 'metadata',
+    'lifecycle', 'createdAt', 'updatedAt', 'ticker', 'exchange', 'legalName',
+  ]), reviews, String(source.id), 'Legacy Entity contains non-empty fields without a deterministic v0.3 destination.')
   return result
 }
 
@@ -471,6 +488,10 @@ function transformSource(source: Dict, mappedId: string, reviews: ReviewCollecto
   if (life) result.lifecycle = life
   addKnown(result, source, 'createdAt', nonEmptyString)
   addKnown(result, source, 'updatedAt', nonEmptyString)
+  inspectUnmappedFields(source, new Set([
+    'id', 'type', 'title', 'sourceType', 'publisher', 'institution', 'author', 'publishedAt', 'url',
+    'quality', 'sourceReliability', 'rawRefs', 'metadata', 'lifecycle', 'createdAt', 'updatedAt',
+  ]), reviews, String(source.id), 'Legacy Source contains non-empty fields without a deterministic v0.3 destination.')
   return result
 }
 
@@ -503,8 +524,9 @@ function transformClaim(
   const primary = mapOptionalRef(source.primarySubjectRef, mappings, reviews, String(source.id), 'unresolved_claim_subject_ref')
   if (primary) result.primarySubjectRef = primary
   if (isDict(source.temporal)) result.temporal = clone(source.temporal)
-  if (isDict(source.structuredValue)) result.structuredValue = clone(source.structuredValue)
-  if (nonEmptyString(source.metric) && scalar(source.value)) {
+  const explicitStructuredValue = isDict(source.structuredValue)
+  if (explicitStructuredValue) result.structuredValue = clone(source.structuredValue)
+  if (!explicitStructuredValue && nonEmptyString(source.metric) && scalar(source.value)) {
     const structuredValue: Dict = { metric: source.metric, value: source.value, unit: nonEmptyString(source.unit) ? source.unit : null, comparator: null }
     if (source.comparator === undefined || ['eq', 'gt', 'gte', 'lt', 'lte', 'approx'].includes(String(source.comparator))) structuredValue.comparator = source.comparator ?? null
     else reviews.add('legacy_semantic_field_unmapped', 'Legacy Claim comparator is not in the frozen v0.3 comparator vocabulary.', 'review_claim_structured_value', String(source.id), { fields: ['comparator'] })
@@ -530,11 +552,31 @@ function transformClaim(
   addKnown(result, source, 'createdAt', nonEmptyString)
   addKnown(result, source, 'updatedAt', nonEmptyString)
 
-  const unmapped: string[] = []
-  for (const field of ['assumptions', 'bullishPoints', 'bearishPoints', 'keyVariables', 'drivers', 'trigger', 'impact']) {
-    if (nonEmpty(source[field])) unmapped.push(field)
+  const reviewFields = new Set<string>()
+  const reviewIfNonEmpty = (field: string): void => { if (nonEmpty(source[field])) reviewFields.add(field) }
+  if (nonEmpty(source.category)) reviewFields.add('category')
+  if (nonEmpty(source.period)) reviewFields.add('period')
+  if (explicitStructuredValue) {
+    for (const field of ['metric', 'value', 'unit', 'comparator']) reviewIfNonEmpty(field)
+  } else if (nonEmpty(source.metric) || nonEmpty(source.value) || nonEmpty(source.unit)) {
+    if (!(nonEmptyString(source.metric) && scalar(source.value))) {
+      for (const field of ['metric', 'value', 'unit']) reviewIfNonEmpty(field)
+    }
   }
-  if (unmapped.length > 0) reviews.add('legacy_semantic_field_unmapped', 'Legacy Intelligence contains semantic fields that cannot be represented losslessly by the v0.3 Claim contract.', 'review_legacy_claim_semantics', String(source.id), { fields: unmapped.sort((left, right) => left.localeCompare(right)) })
+  if (type === 'forecast') for (const field of ['metric', 'period', 'values', 'assumptions']) reviewIfNonEmpty(field)
+  if (type === 'viewpoint') for (const field of ['bullishPoints', 'bearishPoints', 'keyVariables']) reviewIfNonEmpty(field)
+  if (type === 'trend') for (const field of ['direction', 'drivers', 'timeHorizon']) reviewIfNonEmpty(field)
+  if (type === 'risk') for (const field of ['trigger', 'impact', 'probability']) reviewIfNonEmpty(field)
+  if (type === 'fact' && nonEmpty(source.description)) reviewFields.add('description')
+  if ((type === 'trend' || type === 'risk') && nonEmpty(source.description) && nonEmptyString(source.statement)) reviewFields.add('description')
+  if (reviewFields.size > 0) reviews.add('legacy_semantic_field_unmapped', 'Legacy Intelligence contains semantic fields that cannot be represented losslessly by the v0.3 Claim contract.', 'review_legacy_claim_semantics', String(source.id), { fields: [...reviewFields].sort((left, right) => left.localeCompare(right)) })
+  inspectUnmappedFields(source, new Set([
+    'id', 'type', 'entityRefs', 'sourceRefs', 'statement', 'description', 'primarySubjectRef',
+    'temporal', 'structuredValue', 'metric', 'value', 'unit', 'comparator', 'category', 'period',
+    'provenance', 'confidence', 'lifecycle', 'supersedes', 'supersededBy', 'createdAt', 'updatedAt',
+    'values', 'assumptions', 'bullishPoints', 'bearishPoints', 'keyVariables', 'direction',
+    'drivers', 'timeHorizon', 'trigger', 'impact', 'probability',
+  ]), reviews, String(source.id), 'Legacy Intelligence contains non-empty fields without an explicit v0.3 disposition.')
   return result
 }
 
@@ -549,6 +591,7 @@ function transformModule(source: Dict, mappedId: string, mappings: Map<string, s
   if (source.schemaId !== undefined && (source.schemaId === null || nonEmptyString(source.schemaId))) result.schemaId = source.schemaId
   if (Array.isArray(source.columns)) result.columns = clone(source.columns)
   if (Array.isArray(source.rows)) result.rows = clone(source.rows)
+  inspectUnmappedFields(source, new Set(['id', 'type', 'targetEntity', 'sourceRefs', 'schemaId', 'columns', 'rows']), reviews, String(source.id), 'Legacy Module contains non-empty fields without a deterministic v0.3 destination.')
   return result
 }
 
@@ -556,14 +599,37 @@ function endpointType(oldId: unknown, entities: Map<string, EntityInfo>): string
   return nonEmptyString(oldId) ? entities.get(oldId)?.targetType : undefined
 }
 
-function filteredRelationAttributes(source: Dict, allowed: string[], reviews: ReviewCollector, assetId: string): Dict | undefined {
+const THEME_IMPORTANCE = new Set<string>(KNOWLEDGE_SCHEMA_V03.relation.definitions.theme_exposure.attributes.importance)
+const THEME_CHAIN_POSITION = new Set<string>(KNOWLEDGE_SCHEMA_V03.relation.definitions.theme_exposure.attributes.chainPosition)
+const OWNERSHIP_CONTROL_TYPES = new Set<string>(KNOWLEDGE_SCHEMA_V03.relation.definitions.owns_stake_in.attributes.controlType)
+
+function filteredRelationAttributes(
+  source: Dict,
+  allowed: string[],
+  reviews: ReviewCollector,
+  assetId: string,
+  validators: Record<string, (value: unknown) => boolean> = {},
+): Dict | undefined {
   const attributes = source.attributes
   if (!isDict(attributes)) return undefined
   const result: Dict = {}
-  for (const field of allowed) if (attributes[field] !== undefined) result[field] = clone(attributes[field])
+  for (const field of allowed) {
+    if (attributes[field] === undefined) continue
+    const validator = validators[field]
+    if (!validator || validator(attributes[field])) result[field] = clone(attributes[field])
+    else reviews.add('invalid_relation_attribute', `Legacy relation attribute is invalid for the target v0.3 relation contract: ${field}.`, 'review_relation_attribute', assetId, { field, value: attributes[field] })
+  }
   const unmapped = Object.keys(attributes).filter((field) => !allowed.includes(field) && nonEmpty(attributes[field]))
   if (unmapped.length > 0) reviews.add('legacy_semantic_field_unmapped', 'Legacy relation attributes cannot be represented by the selected v0.3 relation contract.', 'review_relation_attributes', assetId, { fields: unmapped.sort((left, right) => left.localeCompare(right)) })
   return Object.keys(result).length > 0 ? result : undefined
+}
+
+function inspectRelationAttributes(source: Dict, reviews: ReviewCollector, assetId: string): void {
+  if (isDict(source.attributes) && nonEmpty(source.attributes)) {
+    reviews.add('legacy_semantic_field_unmapped', 'Legacy relation attributes have no deterministic destination in the selected v0.3 relation contract.', 'review_relation_attributes', assetId, {
+      fields: Object.keys(source.attributes).sort((left, right) => left.localeCompare(right)),
+    })
+  }
 }
 
 function normalizeRelationPlan(
@@ -575,16 +641,45 @@ function normalizeRelationPlan(
   warnings: KnowledgeMigrationWarning[],
 ): RelationPlan {
   const oldId = String(source.id)
-  const sourceId = source.source
-  const targetId = source.target
+  const sourceId = nonEmptyString(source.source) ? source.source : ''
+  const targetId = nonEmptyString(source.target) ? source.target : ''
   const sourceRef = declaredRef(sourceId, mappings)
   const targetRef = declaredRef(targetId, mappings)
   const sourceType = endpointType(sourceId, entities)
   const targetType = endpointType(targetId, entities)
   const type = String(source.type)
-  const common = commonRelationFields(source, mappings, reviews, oldId)
+  const common = commonRelationFields(source)
+  const legacyAttributes = isDict(source.attributes) ? source.attributes : undefined
   if (!common.lifecycle) reviews.add('lifecycle_missing', 'Legacy Relation has no legal lifecycle for the required v0.3 Relation lifecycle.', 'provide_lifecycle', oldId)
-  const plan: RelationPlan = { oldId, initialId, targetId: initialId, type, sourceRef: sourceRef ?? '', targetRef: targetRef ?? '', common, output: false }
+  const plan: RelationPlan = {
+    oldId,
+    initialId,
+    targetId: initialId,
+    type,
+    sourceId,
+    targetIdLegacy: targetId,
+    normalizedSourceId: sourceRef ?? '',
+    normalizedTargetId: targetRef ?? '',
+    legacyContextRefs: source.contextRefs,
+    legacySupportingClaimRefs: source.supportingClaimRefs,
+    legacySourceRefs: source.sourceRefs,
+    legacyAttributes: legacyAttributes ? clone(legacyAttributes) : undefined,
+    common,
+    dedupeSafe: true,
+    output: false,
+  }
+  if (source.attributes !== undefined && !legacyAttributes && nonEmpty(source.attributes)) {
+    reviews.add('legacy_semantic_field_unmapped', 'Legacy Relation attributes are not an object and cannot be migrated deterministically.', 'review_relation_attributes', oldId)
+    plan.dedupeSafe = false
+  }
+  inspectUnmappedFields(source, new Set([
+    'id', 'type', 'source', 'target', 'attributes', 'contextRefs', 'supportingClaimRefs', 'sourceRefs',
+    'confidence', 'asOf', 'lifecycle', 'createdAt', 'updatedAt', 'supersedes', 'supersededBy',
+  ]), reviews, oldId, 'Legacy Relation contains non-empty fields without a deterministic v0.3 destination.')
+  if (nonEmpty(source.supersedes) || nonEmpty(source.supersededBy)) {
+    reviews.add('legacy_semantic_field_unmapped', 'Legacy Relation supersession metadata has no deterministic v0.3 destination.', 'review_relation_metadata', oldId, { fields: ['supersededBy', 'supersedes'].filter((field) => nonEmpty(source[field])) })
+    plan.dedupeSafe = false
+  }
   if (!sourceRef || !targetRef || !sourceType || !targetType) {
     reviews.add('invalid_legacy_relation_endpoints', 'Legacy relation endpoints cannot be resolved to canonical entities.', 'review_relation_endpoints', oldId, { source: sourceId, target: targetId })
     return plan
@@ -592,7 +687,12 @@ function normalizeRelationPlan(
   if (type === 'contains') {
     if (sourceType === 'investment_theme' && targetType === 'industry') {
       plan.type = 'theme_exposure'
-      plan.attributes = filteredRelationAttributes(source, ['importance', 'chainPosition'], reviews, oldId)
+      plan.attributes = filteredRelationAttributes(source, ['importance', 'chainPosition'], reviews, oldId, {
+        importance: (value) => typeof value === 'string' && THEME_IMPORTANCE.has(value),
+        chainPosition: (value) => typeof value === 'string' && THEME_CHAIN_POSITION.has(value),
+      })
+      plan.dedupeSafe = !legacyAttributes || Object.keys(legacyAttributes).every((field) =>
+        ['importance', 'chainPosition'].includes(field) && (field === 'importance' ? THEME_IMPORTANCE.has(String(legacyAttributes[field])) : THEME_CHAIN_POSITION.has(String(legacyAttributes[field]))))
       plan.output = true
     } else {
       reviews.add('ambiguous_contains_semantics', 'Legacy contains relation does not have one frozen v0.3 semantic target.', 'review_contains_semantics', oldId, { sourceType, targetType })
@@ -607,6 +707,10 @@ function normalizeRelationPlan(
         financialContribution: null,
       }
       plan.common.asOf = null
+      if (isDict(source.attributes) && nonEmpty(source.attributes)) {
+        reviews.add('legacy_semantic_field_unmapped', 'Legacy operates_in attributes cannot be represented by the frozen deterministic business_exposure mapping.', 'review_business_exposure_attributes', oldId, { fields: Object.keys(source.attributes).sort((left, right) => left.localeCompare(right)) })
+        plan.dedupeSafe = false
+      }
       plan.output = true
       addWarning(warnings, 'business_exposure_basis_unknown', 'Legacy operates_in has no deterministic exposure basis.', oldId)
       addWarning(warnings, 'business_exposure_stage_unknown', 'Legacy operates_in has no deterministic realization stage.', oldId)
@@ -619,13 +723,13 @@ function normalizeRelationPlan(
   } else if (type === 'upstream_of' || type === 'downstream_of') {
     if (sourceType === 'industry' && targetType === 'industry') {
       plan.type = 'upstream_of'
-      if (type === 'downstream_of') [plan.sourceRef, plan.targetRef] = [plan.targetRef, plan.sourceRef]
+      if (type === 'downstream_of') [plan.normalizedSourceId, plan.normalizedTargetId] = [plan.normalizedTargetId, plan.normalizedSourceId]
       plan.output = true
     } else reviews.add('invalid_legacy_relation_endpoints', 'Legacy upstream/downstream endpoints are not Industry to Industry.', 'review_relation_endpoints', oldId, { sourceType, targetType })
   } else if (type === 'supplier_of' || type === 'customer_of') {
     if (sourceType === 'company' && targetType === 'company') {
       plan.type = 'supplier_of'
-      if (type === 'customer_of') [plan.sourceRef, plan.targetRef] = [plan.targetRef, plan.sourceRef]
+      if (type === 'customer_of') [plan.normalizedSourceId, plan.normalizedTargetId] = [plan.normalizedTargetId, plan.normalizedSourceId]
       plan.output = true
     } else reviews.add('invalid_legacy_relation_endpoints', 'Legacy supplier/customer endpoints are not Company to Company.', 'review_relation_endpoints', oldId, { sourceType, targetType })
   } else if (type === 'competes_with') {
@@ -640,9 +744,21 @@ function normalizeRelationPlan(
     else reviews.add('invalid_legacy_relation_endpoints', 'Legacy depends_on endpoints include an unsupported semantic type.', 'review_relation_endpoints', oldId, { sourceType, targetType })
   } else if (type === 'owns_stake_in') {
     if (sourceType === 'company' && targetType === 'company') {
-      const attributes = filteredRelationAttributes(source, ['ownershipPct', 'controlType'], reviews, oldId) ?? {}
+      const attributes = filteredRelationAttributes(source, ['ownershipPct', 'controlType'], reviews, oldId, {
+        ownershipPct: (value) => value === null || (typeof value === 'number' && value >= 0 && value <= 1),
+        controlType: (value) => typeof value === 'string' && OWNERSHIP_CONTROL_TYPES.has(value),
+      }) ?? {}
+      if (legacyAttributes && legacyAttributes.ownershipPct !== undefined && !(legacyAttributes.ownershipPct === null || (typeof legacyAttributes.ownershipPct === 'number' && legacyAttributes.ownershipPct >= 0 && legacyAttributes.ownershipPct <= 1))) {
+        delete attributes.ownershipPct
+        plan.dedupeSafe = false
+      }
+      if (legacyAttributes && legacyAttributes.controlType !== undefined && !(typeof legacyAttributes.controlType === 'string' && OWNERSHIP_CONTROL_TYPES.has(legacyAttributes.controlType))) {
+        delete attributes.controlType
+        plan.dedupeSafe = false
+      }
       if (attributes.ownershipPct === undefined) attributes.ownershipPct = null
       if (attributes.controlType === undefined) attributes.controlType = 'unknown'
+      if (legacyAttributes && Object.keys(legacyAttributes).some((field) => !['ownershipPct', 'controlType'].includes(field) && nonEmpty(legacyAttributes[field]))) plan.dedupeSafe = false
       plan.type = type
       plan.attributes = attributes
       plan.output = true
@@ -655,16 +771,30 @@ function normalizeRelationPlan(
     reviews.add('invalid_legacy_relation_endpoints', `Legacy relation type is not supported by the frozen v0.3 migration matrix: ${type}.`, 'review_relation_semantics', oldId, { type })
   }
   if (plan.output && plan.type !== 'business_exposure' && plan.type !== 'owns_stake_in' && nonEmpty(plan.attributes)) reviews.add('legacy_semantic_field_unmapped', 'Legacy relation attributes cannot be represented by the selected v0.3 relation contract.', 'review_relation_attributes', oldId)
-  if (plan.output && ['competes_with', 'substitutes_for'].includes(plan.type) && plan.sourceRef.localeCompare(plan.targetRef) > 0) [plan.sourceRef, plan.targetRef] = [plan.targetRef, plan.sourceRef]
+  if (plan.output && !['theme_exposure', 'business_exposure', 'owns_stake_in'].includes(plan.type) && isDict(source.attributes) && nonEmpty(source.attributes)) {
+    inspectRelationAttributes(source, reviews, oldId)
+    plan.dedupeSafe = false
+  }
+  if (plan.output && ['competes_with', 'substitutes_for'].includes(plan.type) && plan.normalizedSourceId.localeCompare(plan.normalizedTargetId) > 0) [plan.normalizedSourceId, plan.normalizedTargetId] = [plan.normalizedTargetId, plan.normalizedSourceId]
   return plan
 }
 
 function relationGroupKey(plan: RelationPlan): string {
-  return canonicalSerialize({ type: plan.type, sourceRef: plan.sourceRef, targetRef: plan.targetRef })
+  return canonicalSerialize({ type: plan.type, sourceRef: plan.normalizedSourceId, targetRef: plan.normalizedTargetId })
 }
 
 function relationSemanticKey(plan: RelationPlan): string {
-  return canonicalSerialize({ type: plan.type, sourceRef: plan.sourceRef, targetRef: plan.targetRef, attributes: plan.attributes ?? null })
+  return canonicalSerialize({
+    type: plan.type,
+    sourceRef: plan.normalizedSourceId,
+    targetRef: plan.normalizedTargetId,
+    attributes: plan.attributes ?? null,
+    legacyAttributes: plan.legacyAttributes ?? null,
+    contextRefs: plan.legacyContextRefs ?? null,
+    supportingClaimRefs: plan.legacySupportingClaimRefs ?? null,
+    sourceRefs: plan.legacySourceRefs ?? null,
+    common: plan.common,
+  })
 }
 
 function deduplicateRelations(
@@ -679,9 +809,10 @@ function deduplicateRelations(
     const semanticGroups = new Map<string, RelationPlan[]>()
     for (const plan of group) (semanticGroups.get(relationSemanticKey(plan)) ?? semanticGroups.set(relationSemanticKey(plan), []).get(relationSemanticKey(plan))!).push(plan)
     if (semanticGroups.size > 1) {
-      for (const plan of group) reviews.add('relation_semantic_conflict', 'Normalized relations have conflicting attributes and cannot be deduplicated safely.', 'review_relation_conflict', plan.oldId, { relationType: plan.type, sourceRef: plan.sourceRef, targetRef: plan.targetRef })
+      for (const plan of group) reviews.add('relation_semantic_conflict', 'Normalized relations have conflicting attributes and cannot be deduplicated safely.', 'review_relation_conflict', plan.oldId, { relationType: plan.type, sourceRef: plan.normalizedSourceId, targetRef: plan.normalizedTargetId })
       continue
     }
+    if (group.some((plan) => !plan.dedupeSafe)) continue
     const survivor = [...group].sort((left, right) => left.initialId.localeCompare(right.initialId))[0]!
     for (const plan of group) {
       relationMappings.set(plan.oldId, survivor.initialId)
@@ -703,13 +834,22 @@ async function writeAsset(stagingRoot: string, storageRef: string, value: Dict):
   await writeFile(path, `${canonicalSerialize(value)}\n`, 'utf8')
 }
 
-function relationObject(plan: RelationPlan, relationMappings: Map<string, string>): Dict {
+function relationObject(plan: RelationPlan, allMappings: Map<string, string>, reviews: ReviewCollector): Dict {
   const result: Dict = {
-    id: relationMappings.get(plan.oldId) ?? plan.targetId,
+    id: plan.targetId,
     type: plan.type,
-    sourceRef: plan.sourceRef,
-    targetRef: plan.targetRef,
+    sourceRef: plan.normalizedSourceId,
+    targetRef: plan.normalizedTargetId,
     ...clone(plan.common),
+  }
+  for (const [field, value, code] of [
+    ['contextRefs', plan.legacyContextRefs, 'unresolved_relation_reference'],
+    ['supportingClaimRefs', plan.legacySupportingClaimRefs, 'unresolved_relation_reference'],
+    ['sourceRefs', plan.legacySourceRefs, 'unresolved_relation_source_ref'],
+  ] as const) {
+    if (value === undefined) continue
+    if (Array.isArray(value)) result[field] = mapArrayRefs(value, allMappings, reviews, plan.oldId, code)
+    else if (nonEmpty(value)) reviews.add(code, `Legacy Relation ${field} must be an array to map deterministically.`, 'review_relation_references', plan.oldId)
   }
   if (plan.attributes !== undefined) result.attributes = clone(plan.attributes)
   return result
@@ -723,6 +863,116 @@ function sortReviews(reviews: MigrationReviewItem[]): MigrationReviewItem[] {
   return [...reviews].sort((left, right) => `${left.code}\u0000${left.assetId ?? ''}\u0000${JSON.stringify(left.details ?? {})}`.localeCompare(`${right.code}\u0000${right.assetId ?? ''}\u0000${JSON.stringify(right.details ?? {})}`))
 }
 
+const LEGACY_REF_PREFIXES = ['industry:', 'segment:', 'company:', 'product:', 'technology:', 'fact:', 'forecast:', 'viewpoint:', 'trend:', 'risk:']
+const TARGET_REGISTRY_KINDS: Record<string, string> = {
+  'theme-group:': 'theme_group',
+  'entity:': 'entity',
+  'relation:': 'relation',
+  'claim:': 'claim',
+  'source:': 'source',
+  'module:': 'module',
+}
+
+async function fileSnapshot(root: string): Promise<Record<string, string>> {
+  const result: Record<string, string> = {}
+  for (const filePath of await listFiles(root)) result[sourceRelativePath(root, filePath)] = (await readFile(filePath)).toString('base64')
+  return result
+}
+
+function registryKind(id: string): string | undefined {
+  return Object.entries(TARGET_REGISTRY_KINDS).find(([prefix]) => id.startsWith(prefix))?.[1]
+}
+
+async function declaredRefIntegrity(
+  stagingRoot: string,
+  registry: Record<string, { type: string; storageRef: string }>,
+  entities: Dict[],
+  claims: Dict[],
+  sources: Dict[],
+  modules: Dict[],
+  relations: Dict[],
+  taxonomyIds: Set<string>,
+): Promise<{ useV03Namespaces: boolean; resolveToTarget: boolean; registryNamespaceKindConsistent: boolean }> {
+  let useV03Namespaces = true
+  let resolveToTarget = true
+  const checkCanonical = (value: unknown, expected: string | 'canonical'): void => {
+    if (!nonEmptyString(value)) { useV03Namespaces = false; resolveToTarget = false; return }
+    if (LEGACY_REF_PREFIXES.some((prefix) => value.startsWith(prefix))) useV03Namespaces = false
+    const entry = registry[value]
+    if (!entry || (expected !== 'canonical' && entry.type !== expected)) resolveToTarget = false
+  }
+  const checkArray = (value: unknown, expected: string | 'canonical'): void => {
+    if (!Array.isArray(value)) { if (nonEmpty(value)) { useV03Namespaces = false; resolveToTarget = false }; return }
+    value.forEach((item) => checkCanonical(item, expected))
+  }
+  for (const entity of entities) {
+    if (entity.themeGroupRef !== undefined) checkCanonical(entity.themeGroupRef, 'theme_group')
+    if (Array.isArray(entity.taxonomyRefs)) for (const ref of entity.taxonomyRefs) if (!taxonomyIds.has(String(ref))) resolveToTarget = false
+  }
+  const rawRegistry = new Set<string>()
+  const rawRegistryPath = join(stagingRoot, 'registry', 'raw.yaml')
+  if (await pathExists(rawRegistryPath)) {
+    try {
+      const value = parseYaml(await readFile(rawRegistryPath, 'utf8'), rawRegistryPath)
+      if (isDict(value)) Object.keys(value).forEach((id) => rawRegistry.add(id))
+    } catch { resolveToTarget = false }
+  }
+  for (const source of sources) {
+    if (Array.isArray(source.rawRefs)) for (const ref of source.rawRefs) {
+      if (nonEmptyString(ref) && LEGACY_REF_PREFIXES.some((prefix) => ref.startsWith(prefix))) useV03Namespaces = false
+      if (!nonEmptyString(ref) || !rawRegistry.has(ref)) resolveToTarget = false
+    }
+  }
+  for (const claim of claims) {
+    checkArray(claim.subjectRefs, 'canonical')
+    if (claim.primarySubjectRef !== undefined) checkCanonical(claim.primarySubjectRef, 'canonical')
+    checkArray(claim.sourceRefs, 'source')
+    checkArray(claim.supersedes, 'claim')
+    checkArray(claim.supersededBy, 'claim')
+    if (Array.isArray(claim.provenance)) for (const item of claim.provenance) if (isDict(item)) {
+      checkCanonical(item.sourceRef, 'source')
+      if (!nonEmptyString(item.rawRef) || !rawRegistry.has(item.rawRef)) resolveToTarget = false
+    }
+  }
+  for (const module of modules) {
+    if (module.targetEntity !== undefined) checkCanonical(module.targetEntity, 'entity')
+    checkArray(module.sourceRefs, 'source')
+  }
+  for (const relation of relations) {
+    checkCanonical(relation.sourceRef, 'entity')
+    checkCanonical(relation.targetRef, 'entity')
+    checkArray(relation.contextRefs, 'canonical')
+    checkArray(relation.supportingClaimRefs, 'claim')
+    checkArray(relation.sourceRefs, 'source')
+  }
+  for (const path of await listFiles(join(stagingRoot, 'taxonomy'))) {
+    try {
+      const value = parseYaml(await readFile(path, 'utf8'), path)
+      const visit = (candidate: unknown): void => {
+        if (Array.isArray(candidate)) { candidate.forEach(visit); return }
+        if (!isDict(candidate)) return
+        if (candidate.graphRefs !== undefined) checkArray(candidate.graphRefs, 'canonical')
+        Object.values(candidate).forEach(visit)
+      }
+      visit(value)
+    } catch { resolveToTarget = false }
+  }
+  for (const path of await listFiles(join(stagingRoot, 'views'))) {
+    try {
+      const value = parseYaml(await readFile(path, 'utf8'), path)
+      const visit = (candidate: unknown): void => {
+        if (Array.isArray(candidate)) { candidate.forEach(visit); return }
+        if (!isDict(candidate)) return
+        if (candidate.targetEntity !== undefined) checkCanonical(candidate.targetEntity, 'entity')
+        Object.values(candidate).forEach(visit)
+      }
+      visit(value)
+    } catch { resolveToTarget = false }
+  }
+  const registryNamespaceKindConsistent = Object.entries(registry).every(([id, entry]) => registryKind(id) === entry.type)
+  return { useV03Namespaces, resolveToTarget, registryNamespaceKindConsistent }
+}
+
 export async function transformV02ToV03(
   sourceHandle: KnowledgeBaseHandle,
   stagingRoot: string,
@@ -731,6 +981,7 @@ export async function transformV02ToV03(
   if (isWithin(sourceHandle.rootRef, stagingRoot) || isWithin(stagingRoot, sourceHandle.rootRef)) {
     throw new Error('v0.2 to v0.3 transformation requires a non-nested staging root')
   }
+  const sourceSnapshotBefore = await fileSnapshot(sourceHandle.rootRef)
   const sourceAssets = await new CanonicalV02KnowledgeLoader(sourceHandle.rootRef).readAssets()
   const before = inventory(sourceAssets)
   const reviews = new ReviewCollector(migrationRunId, sourceHandle.knowledgeBaseId)
@@ -786,6 +1037,13 @@ export async function transformV02ToV03(
     .map((item) => normalizeRelationPlan(item.value as Dict, relationMappings.get(item.value.id) ?? mapRelationId(item.value.id), entityInfo, new Map([...entityMappings, ...claimMappings, ...sourceMappings, ...relationMappings]), reviews, warnings))
   for (const plan of relationPlans) if (!plan.output) relationMappings.delete(plan.oldId)
   const transformedRelations = deduplicateRelations(relationPlans, relationMappings, reviews)
+  const allMappings = new Map<string, string>([
+    ...entityMappings,
+    ...claimMappings,
+    ...sourceMappings,
+    ...moduleMappings,
+    ...relationMappings,
+  ])
 
   let fallbackThemeGroupCreated = false
   const themeGroups: Dict[] = []
@@ -809,7 +1067,7 @@ export async function transformV02ToV03(
   for (const item of sourceAssets.intelligence) {
     const mappedId = claimMappings.get(item.value.id)
     if (!mappedId) continue
-    const claim = transformClaim(item.value as Dict, mappedId, new Map([...entityMappings, ...relationMappings, ...sourceMappings, ...claimMappings]), reviews)
+    const claim = transformClaim(item.value as Dict, mappedId, allMappings, reviews)
     transformedClaims.push(claim)
     await writeAsset(stagingRoot, sourceRelativePath(sourceHandle.rootRef, item.filePath), claim)
   }
@@ -827,26 +1085,28 @@ export async function transformV02ToV03(
   for (const item of sourceAssets.modules) {
     const mappedId = moduleMappings.get(item.value.id)
     if (!mappedId) continue
-    const module = transformModule(item.value as Dict, mappedId, new Map([...entityMappings, ...sourceMappings, ...moduleMappings]), reviews)
+    const module = transformModule(item.value as Dict, mappedId, allMappings, reviews)
     transformedModules.push(module)
     await writeAsset(stagingRoot, sourceRelativePath(sourceHandle.rootRef, item.filePath), module)
   }
 
   const transformedRelationObjects: Dict[] = []
+  const removedStagingCanonicalFiles: string[] = []
   for (const plan of transformedRelations) {
-    const relation = relationObject(plan, relationMappings)
+    const relation = relationObject(plan, allMappings, reviews)
     transformedRelationObjects.push(relation)
     const sourceItem = sourceAssets.relations.find((item) => item.value.id === plan.oldId)
     if (sourceItem) await writeAsset(stagingRoot, sourceRelativePath(sourceHandle.rootRef, sourceItem.filePath), relation)
   }
-
-  const allMappings = new Map<string, string>([
-    ...entityMappings,
-    ...claimMappings,
-    ...sourceMappings,
-    ...moduleMappings,
-    ...relationMappings,
-  ])
+  const survivorPaths = new Set(transformedRelations.flatMap((plan) => sourceAssets.relations.find((item) => item.value.id === plan.oldId)?.filePath ?? []).map((filePath) => sourceRelativePath(sourceHandle.rootRef, filePath)))
+  for (const plan of relationPlans.filter((candidate) => candidate.output && candidate.dedupeSafe && candidate.targetId !== candidate.initialId)) {
+    const sourceItem = sourceAssets.relations.find((item) => item.value.id === plan.oldId)
+    if (!sourceItem) continue
+    const relativePath = sourceRelativePath(sourceHandle.rootRef, sourceItem.filePath)
+    if (survivorPaths.has(relativePath)) continue
+    await rm(join(stagingRoot, relativePath), { force: true })
+    removedStagingCanonicalFiles.push(relativePath)
+  }
   await rewriteAuxiliaryFiles(stagingRoot, auxiliary, allMappings, reviews)
   const registry: Record<string, { type: string; storageRef: string }> = {}
   if (fallbackThemeGroupCreated) await writeAsset(stagingRoot, 'theme-groups/unclassified.yaml', themeGroups[0]!)
@@ -880,21 +1140,38 @@ export async function transformV02ToV03(
 
   const after = targetInventory({ themeGroups, entities: transformedEntities, relations: transformedRelationObjects, claims: transformedClaims, modules: transformedModules, sources: transformedSources, taxonomyFiles: auxiliary.taxonomyFiles, taxonomyItemIds: auxiliary.taxonomyItemIds, viewFiles: auxiliary.viewFiles })
   const canonicalSourceIds = [...before.entityIds, ...before.relationIds, ...before.intelligenceIds, ...before.moduleIds, ...before.sourceIds]
-  const unresolvedReview = reviews.items.some((item) => item.code.includes('unresolved') || item.code.includes('opaque_'))
+  const sourceSnapshotAfter = await fileSnapshot(sourceHandle.rootRef)
+  const stagingSnapshot = await fileSnapshot(stagingRoot)
+  const rawPaths = sortedUnique(Object.keys(sourceSnapshotBefore).filter((path) => path.startsWith('raw/')))
+  const rawIdentityPreserved = rawPaths.every((path) => sourceSnapshotBefore[path] === stagingSnapshot[path])
+  const rawRegistryPreserved = sourceSnapshotBefore['registry/raw.yaml'] === stagingSnapshot['registry/raw.yaml']
+  const declaredIntegrity = await declaredRefIntegrity(stagingRoot, registry, transformedEntities, transformedClaims, transformedSources, transformedModules, transformedRelationObjects, taxonomyIds)
+  const targetIds = [
+    ...after.themeGroupIds,
+    ...after.entityIds,
+    ...after.relationIds,
+    ...after.claimIds,
+    ...after.moduleIds,
+    ...after.sourceIds,
+  ]
   const invariants: Record<string, boolean> = {
-    sourceRootUnchanged: true,
-    rawIdentityPreserved: true,
-    rawRegistryPreserved: true,
+    sourceRootUnchanged: JSON.stringify(sourceSnapshotBefore) === JSON.stringify(sourceSnapshotAfter),
+    rawIdentityPreserved,
+    rawRegistryPreserved,
     completeCanonicalIdMapping: canonicalSourceIds.every((id) => allMappings.has(id)),
-    targetCanonicalIdsUnique: Object.keys(registry).length === new Set(Object.keys(registry)).size,
-    noLegacyCanonicalNamespaceInDeclaredRefs: !unresolvedReview,
-    noMixedCanonicalSemanticRegistry: Object.values(registry).every((entry) => ['theme_group', 'entity', 'relation', 'claim', 'module', 'source'].includes(entry.type)),
+    targetCanonicalIdsUnique: targetIds.length === new Set(targetIds).size && targetIds.every((id) => registry[id] !== undefined),
+    noLegacyCanonicalNamespaceInDeclaredRefs: declaredIntegrity.useV03Namespaces,
+    declaredCanonicalRefsUseV03Namespaces: declaredIntegrity.useV03Namespaces,
+    declaredCanonicalRefsResolveToTarget: declaredIntegrity.resolveToTarget,
+    noMixedCanonicalSemanticRegistry: declaredIntegrity.registryNamespaceKindConsistent,
+    registryNamespaceKindConsistent: declaredIntegrity.registryNamespaceKindConsistent,
     taxonomyPreserved: auxiliary.taxonomyFiles.every((path) => pathExists(join(stagingRoot, path))),
     viewsPreserved: auxiliary.viewFiles.every((path) => pathExists(join(stagingRoot, path))),
     auxiliaryDeclaredRefsResolved: !reviews.items.some((item) => item.code === 'unresolved_auxiliary_declared_ref'),
     moduleDeclaredRefsResolved: !reviews.items.some((item) => item.code === 'opaque_module_reference_unresolved'),
     relationEndpointsCanonical: transformedRelationObjects.every((relation) => String(relation.sourceRef).startsWith('entity:') && String(relation.targetRef).startsWith('entity:')),
-    canonicalRegistryRebuilt: true,
+    noOrphanDeduplicatedRelationFiles: removedStagingCanonicalFiles.every((path) => !Object.prototype.hasOwnProperty.call(stagingSnapshot, path)),
+    canonicalRegistryRebuilt: await pathExists(registryPath),
   }
   for (const [name, valid] of Object.entries(invariants)) if (!valid && !reviews.items.some((item) => item.code === name)) reviews.add(name, `Migration invariant failed: ${name}.`, 'review_migration_invariant')
   const transformedAssetIds = [...transformedSources, ...transformedClaims, ...transformedRelationObjects, ...transformedModules].flatMap((item) => nonEmptyString(item.id) ? [item.id] : [])
@@ -910,6 +1187,7 @@ export async function transformV02ToV03(
       fallbackThemeGroupCreated,
       transformedAssetIds: sortedUnique(transformedAssetIds),
       preservedAuxiliaryFiles: [...auxiliary.taxonomyFiles, ...auxiliary.viewFiles].sort((left, right) => left.localeCompare(right)),
+      removedStagingCanonicalFiles: removedStagingCanonicalFiles.sort((left, right) => left.localeCompare(right)),
     },
     invariants,
   }

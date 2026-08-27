@@ -31,7 +31,7 @@ function cleanAssets(): Asset[] {
     { type: 'intelligence', path: 'intelligence/fact.yaml', value: { id: 'fact:gpu', type: 'fact', entityRefs: ['segment:gpu'], sourceRefs: ['source:official'], statement: 'GPU provides compute.', lifecycle: lifecycle() } },
     { type: 'intelligence', path: 'intelligence/trend.yaml', value: { id: 'trend:accelerator', type: 'trend', entityRefs: ['segment:gpu'], sourceRefs: ['source:official'], description: 'Accelerator demand is rising.', lifecycle: lifecycle() } },
     { type: 'intelligence', path: 'intelligence/risk.yaml', value: { id: 'risk:export', type: 'risk', entityRefs: ['company:nvidia'], sourceRefs: ['source:official'], statement: 'Export controls may affect supply.', lifecycle: lifecycle() } },
-    { type: 'module', path: 'modules/comparison/gpu.yaml', value: { id: 'module:gpu', type: 'comparison', targetEntity: 'segment:gpu', sourceRefs: ['source:official'], schemaId: 'gpu-comparison', columns: ['company'], rows: [['segment:gpu', 'company:nvidia']], metadata: { label: 'segment:gpu' } } },
+    { type: 'module', path: 'modules/comparison/gpu.yaml', value: { id: 'module:gpu', type: 'comparison', targetEntity: 'segment:gpu', sourceRefs: ['source:official'], schemaId: 'gpu-comparison', columns: ['company'], rows: [['segment:gpu', 'company:nvidia']] } },
     { type: 'relation', path: 'relations/contains.yaml', value: { id: 'relation:contains', type: 'contains', source: 'industry:semiconductor', target: 'segment:gpu', lifecycle: lifecycle() } },
     { type: 'relation', path: 'relations/operates.yaml', value: { id: 'relation:operates', type: 'operates_in', source: 'company:nvidia', target: 'segment:gpu', lifecycle: lifecycle() } },
     { type: 'relation', path: 'relations/downstream.yaml', value: { id: 'relation:downstream', type: 'downstream_of', source: 'segment:gpu', target: 'segment:network', lifecycle: lifecycle() } },
@@ -130,6 +130,8 @@ test('B1 clean migration maps canonical assets, relations, auxiliaries, and Raw 
       assert.equal(view.targetEntity, 'entity:gpu')
       assert.equal(view.displayText, 'segment:gpu remains opaque here')
       assert.deepEqual(await snapshot(root), before)
+      assert.equal(await readFile(join(staging, 'raw/official.bin'), 'utf8'), await readFile(join(root, 'raw/official.bin'), 'utf8'))
+      assert.equal(await readFile(join(staging, 'registry/raw.yaml'), 'utf8'), await readFile(join(root, 'registry/raw.yaml'), 'utf8'))
       assert.deepEqual(result.invariants, {
         sourceRootUnchanged: true,
         rawIdentityPreserved: true,
@@ -137,12 +139,16 @@ test('B1 clean migration maps canonical assets, relations, auxiliaries, and Raw 
         completeCanonicalIdMapping: true,
         targetCanonicalIdsUnique: true,
         noLegacyCanonicalNamespaceInDeclaredRefs: true,
+        declaredCanonicalRefsUseV03Namespaces: true,
+        declaredCanonicalRefsResolveToTarget: true,
         noMixedCanonicalSemanticRegistry: true,
+        registryNamespaceKindConsistent: true,
         taxonomyPreserved: true,
         viewsPreserved: true,
         auxiliaryDeclaredRefsResolved: true,
         moduleDeclaredRefsResolved: true,
         relationEndpointsCanonical: true,
+        noOrphanDeduplicatedRelationFiles: true,
         canonicalRegistryRebuilt: true,
       })
     } finally { await rm(staging, { recursive: true, force: true }) }
@@ -156,10 +162,10 @@ test('B1 emits deterministic Review items for collisions, ambiguity, unsupported
     { type: 'entity', path: 'entities/theme-target.yaml', value: { id: 'industry:theme-target', type: 'industry', name: 'Theme Target', lifecycle: lifecycle() } },
     { type: 'entity', path: 'entities/product-a.yaml', value: { id: 'product:a', type: 'product', name: 'A', lifecycle: lifecycle() } },
     { type: 'entity', path: 'entities/product-b.yaml', value: { id: 'product:b', type: 'product', name: 'B', lifecycle: lifecycle() } },
-    { type: 'entity', path: 'entities/company.yaml', value: { id: 'company:c', type: 'company', name: 'C', lifecycle: lifecycle() } },
+    { type: 'entity', path: 'entities/company.yaml', value: { id: 'company:c', type: 'company', name: 'C', tags: ['legacy-tag'], lifecycle: lifecycle() } },
     { type: 'source', path: 'sources/bad.yaml', value: { id: 'source:bad', type: 'custom_report', sourceType: 'unsupported_custom', title: 'Bad Source' } },
     { type: 'intelligence', path: 'intelligence/missing.yaml', value: { id: 'viewpoint:missing', type: 'viewpoint', entityRefs: ['company:c'], sourceRefs: ['source:bad'], assumptions: ['opaque semantic'] } },
-    { type: 'module', path: 'modules/unresolved.yaml', value: { id: 'module:unresolved', type: 'comparison', targetEntity: 'segment:missing', sourceRefs: ['source:missing'], rows: [['segment:missing']] } },
+    { type: 'module', path: 'modules/unresolved.yaml', value: { id: 'module:unresolved', type: 'comparison', targetEntity: 'segment:missing', sourceRefs: ['source:missing'], rows: [['segment:missing']], extension: 'legacy module extension' } },
     { type: 'relation', path: 'relations/contains.yaml', value: { id: 'relation:contains', type: 'contains', source: 'product:a', target: 'product:b', lifecycle: lifecycle() } },
     { type: 'relation', path: 'relations/operates.yaml', value: { id: 'relation:operates', type: 'operates_in', source: 'company:c', target: 'industry:theme-target', lifecycle: lifecycle() } },
     { type: 'relation', path: 'relations/depends.yaml', value: { id: 'relation:depends', type: 'depends_on', source: 'company:c', target: 'company:c', lifecycle: lifecycle() } },
@@ -173,6 +179,8 @@ test('B1 emits deterministic Review items for collisions, ambiguity, unsupported
       const codes = new Set(result.reviewItems.map((item) => item.code))
       for (const code of ['target_id_collision', 'ambiguous_contains_semantics', 'operates_in_theme_target', 'invalid_legacy_relation_endpoints', 'ambiguous_partner_relation', 'ambiguous_investment_state', 'claim_statement_missing', 'unsupported_custom_legacy_type', 'opaque_module_reference_unresolved', 'unresolved_auxiliary_declared_ref', 'legacy_semantic_field_unmapped']) assert.equal(codes.has(code), true, code)
       assert.equal(result.reviewItems.every((item) => item.migrationId === 'knowledge-schema-0.2-to-0.3'), true)
+      assert.equal(result.reviewItems.some((item) => item.assetId === 'company:c' && item.code === 'legacy_semantic_field_unmapped'), true)
+      assert.equal(result.reviewItems.some((item) => item.assetId === 'module:unresolved' && item.code === 'legacy_semantic_field_unmapped'), true)
       assert.equal(result.invariants.completeCanonicalIdMapping, false)
       assert.equal(result.invariants.auxiliaryDeclaredRefsResolved, false)
       assert.equal(result.invariants.moduleDeclaredRefsResolved, false)
@@ -207,6 +215,82 @@ test('B1 is deterministic and leaves opaque values and the source snapshot uncha
       await rm(first.staging, { recursive: true, force: true })
       await rm(second.staging, { recursive: true, force: true })
     }
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('B1 rewrites Relation refs after dedupe and removes only the staging loser file', async () => {
+  const root = await createKb([...cleanAssets(), {
+    type: 'relation', path: 'relations/context.yaml', value: {
+      id: 'relation:context', type: 'depends_on', source: 'segment:gpu', target: 'technology:cuda',
+      contextRefs: ['relation:competes-b'], lifecycle: lifecycle(),
+    },
+  }], { raw: true })
+  try {
+    const sourceRelation = join(root, 'relations/competes-b.yaml')
+    const { result, staging } = await run(root, 'post-dedupe-ref-run')
+    try {
+      assert.equal(result.idMappings.find((item) => item.from === 'relation:competes-b')?.to, 'relation:competes-a')
+      const context = parseYaml(await readFile(join(staging, 'relations/context.yaml'), 'utf8')) as Record<string, unknown>
+      assert.deepEqual(context.contextRefs, ['relation:competes-a'])
+      assert.equal(await readFile(join(staging, 'registry/assets.yaml'), 'utf8').then((value) => value.includes('relation:competes-b')), false)
+      await assert.rejects(() => readFile(join(staging, 'relations/competes-b.yaml')))
+      assert.equal(await readFile(sourceRelation, 'utf8').then(() => true), true)
+      assert.equal(result.changes.removedStagingCanonicalFiles.includes('relations/competes-b.yaml'), true)
+      assert.equal(result.changes.removedStagingCanonicalFiles.includes('relations/depends.yaml'), false)
+      assert.equal(result.invariants.noOrphanDeduplicatedRelationFiles, true)
+    } finally { await rm(staging, { recursive: true, force: true }) }
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('B1 reviews conflicting and unmappable Relation attributes without silent loss', async () => {
+  const root = await createKb([
+    ...cleanAssets(),
+    { type: 'relation', path: 'relations/upstream-conflict.yaml', value: { id: 'relation:upstream-conflict', type: 'upstream_of', source: 'segment:network', target: 'segment:gpu', attributes: { legacyMeaning: 'different' }, lifecycle: lifecycle() } },
+    { type: 'relation', path: 'relations/depends-attributes.yaml', value: { id: 'relation:depends-attributes', type: 'depends_on', source: 'segment:gpu', target: 'technology:cuda', attributes: { legacyMeaning: 'preserve me' }, lifecycle: lifecycle() } },
+    { type: 'relation', path: 'relations/owns-invalid.yaml', value: { id: 'relation:owns-invalid', type: 'owns_stake_in', source: 'company:nvidia', target: 'company:amd', attributes: { ownershipPct: 1.5, controlType: 'uncontrolled' }, lifecycle: lifecycle() } },
+    { type: 'relation', path: 'relations/owns-missing.yaml', value: { id: 'relation:owns-missing', type: 'owns_stake_in', source: 'company:amd', target: 'company:nvidia', lifecycle: lifecycle() } },
+    { type: 'relation', path: 'relations/theme-invalid.yaml', value: { id: 'relation:theme-invalid', type: 'contains', source: 'industry:semiconductor', target: 'segment:network', attributes: { importance: 'invalid', chainPosition: 'invalid' }, lifecycle: lifecycle() } },
+  ])
+  try {
+    const { result, staging } = await run(root, 'relation-safety-run')
+    try {
+      const codes = new Set(result.reviewItems.map((item) => item.code))
+      assert.equal(codes.has('relation_semantic_conflict'), true)
+      assert.equal(codes.has('legacy_semantic_field_unmapped'), true)
+      assert.equal(codes.has('invalid_relation_attribute'), true)
+      const missing = parseYaml(await readFile(join(staging, 'relations/owns-missing.yaml'), 'utf8')) as Record<string, unknown>
+      assert.deepEqual(missing.attributes, { ownershipPct: null, controlType: 'unknown' })
+      assert.equal(await readFile(join(staging, 'relations/upstream-conflict.yaml'), 'utf8').then(() => true), true)
+      assert.equal(await readFile(join(staging, 'relations/downstream.yaml'), 'utf8').then(() => true), true)
+    } finally { await rm(staging, { recursive: true, force: true }) }
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('B1 accounts all tested legacy Intelligence semantics and extensions', async () => {
+  const root = await createKb([
+    ...cleanAssets(),
+    { type: 'intelligence', path: 'intelligence/fact-semantic.yaml', value: { id: 'fact:semantic', type: 'fact', entityRefs: ['segment:gpu'], sourceRefs: ['source:official'], statement: 'Fact statement.', category: 'financial_metric', value: { nested: true }, lifecycle: lifecycle() } },
+    { type: 'intelligence', path: 'intelligence/forecast-semantic.yaml', value: { id: 'forecast:forecast-semantic', type: 'forecast', entityRefs: ['segment:gpu'], sourceRefs: ['source:official'], metric: 'market-size', period: '2030', values: { '2030': 500 }, assumptions: ['assumption'], lifecycle: lifecycle() } },
+    { type: 'intelligence', path: 'intelligence/viewpoint-semantic.yaml', value: { id: 'viewpoint:viewpoint-semantic', type: 'viewpoint', entityRefs: ['segment:gpu'], sourceRefs: ['source:official'], statement: 'Viewpoint statement.', bullishPoints: ['bull'], bearishPoints: ['bear'], keyVariables: ['variable'], lifecycle: lifecycle() } },
+    { type: 'intelligence', path: 'intelligence/trend-semantic.yaml', value: { id: 'trend:trend-semantic', type: 'trend', entityRefs: ['segment:gpu'], sourceRefs: ['source:official'], statement: 'Trend statement.', direction: 'increasing', timeHorizon: 'long', drivers: ['driver'], lifecycle: lifecycle() } },
+    { type: 'intelligence', path: 'intelligence/risk-semantic.yaml', value: { id: 'risk:risk-semantic', type: 'risk', entityRefs: ['segment:gpu'], sourceRefs: ['source:official'], statement: 'Risk statement.', trigger: ['trigger'], impact: ['impact'], probability: 0.5, lifecycle: lifecycle() } },
+  ])
+  try {
+    const { result, staging } = await run(root, 'intelligence-accounting-run')
+    try {
+      const fields = new Map<string, string[]>()
+      for (const item of result.reviewItems.filter((candidate) => candidate.code === 'legacy_semantic_field_unmapped')) {
+        const listed = item.details && Array.isArray(item.details.fields) ? item.details.fields.map(String) : []
+        fields.set(item.assetId ?? '', [...(fields.get(item.assetId ?? '') ?? []), ...listed])
+      }
+      for (const [assetId, expected] of [
+        ['fact:semantic', ['category', 'value']],
+        ['forecast:forecast-semantic', ['assumptions', 'metric', 'period', 'values']],
+        ['viewpoint:viewpoint-semantic', ['bearishPoints', 'bullishPoints', 'keyVariables']],
+        ['trend:trend-semantic', ['direction', 'drivers', 'timeHorizon']],
+        ['risk:risk-semantic', ['impact', 'probability', 'trigger']],
+      ] as const) for (const field of expected) assert.equal(fields.get(assetId)?.includes(field), true, `${assetId}:${field}`)
+    } finally { await rm(staging, { recursive: true, force: true }) }
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 

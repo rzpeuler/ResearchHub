@@ -25,14 +25,14 @@
 - Stage A R3 migration-nullability correction: Completed / Sol verified
 - Runtime Schema Release: Schema 0.1 and 0.2 only; Schema 0.3 is not registered
 - Stage B: In Progress
-- B1: Completed / Sol Verification Pending
+- B1: Rework in progress / Sol Verification Pending
 - B2: Not Started / Not Authorized
 - B3: Not Started / Not Authorized
 - Current approved direction: Implementation Stage B — 0.2 to 0.3 Migration
 
-Stage B is the current approved implementation stage. B1 is implemented and
-awaits acceptance review; B2 and B3 are not authorized. This is not a Runtime
-Schema 0.3 activation.
+Stage B is the current approved implementation stage. B1 rework is implemented
+and awaits independent R1 verification; B2 and B3 are not authorized. This is
+not a Runtime Schema 0.3 activation.
 Knowledge v0.4 is not approved.
 
 ## Runtime implementation status: v0.2 compatibility track
