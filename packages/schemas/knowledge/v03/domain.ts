@@ -54,8 +54,8 @@ export interface KnowledgeThemeGroupV03 {
   id: ThemeGroupRefV03
   name: string
   aliases: string[]
-  description: string | null
-  sortOrder: number | null
+  description?: string | null
+  sortOrder?: number | null
   lifecycle: LifecycleV03
   metadata?: KnowledgeMetadataV03
 }
@@ -64,11 +64,11 @@ interface KnowledgeEntityBaseV03<TType extends EntityTypeV03> {
   id: EntityRefV03
   type: TType
   name: string
-  aliases: string[]
-  description: string | null
-  externalIds: KnowledgeMetadataV03
-  taxonomyRefs: string[]
-  metadata: KnowledgeMetadataV03
+  aliases?: string[]
+  description?: string | null
+  externalIds?: KnowledgeMetadataV03
+  taxonomyRefs?: string[]
+  metadata?: KnowledgeMetadataV03
   lifecycle: LifecycleV03
   createdAt?: string | null
   updatedAt?: string | null
@@ -76,9 +76,9 @@ interface KnowledgeEntityBaseV03<TType extends EntityTypeV03> {
 
 export interface InvestmentThemeV03 extends KnowledgeEntityBaseV03<'investment_theme'> {
   themeGroupRef: ThemeGroupRefV03
-  definition: string | null
-  inclusionCriteria: string[]
-  exclusionCriteria: string[]
+  definition?: string | null
+  inclusionCriteria?: string[]
+  exclusionCriteria?: string[]
 }
 
 export interface IndustryV03 extends KnowledgeEntityBaseV03<'industry'> {}
@@ -132,26 +132,26 @@ interface KnowledgeRelationBaseV03<TType extends RelationTypeV03> {
   type: TType
   sourceRef: EntityRefV03
   targetRef: EntityRefV03
-  contextRefs: CanonicalKnowledgeRefV03[]
-  supportingClaimRefs: ClaimRefV03[]
-  sourceRefs: SourceRefV03[]
-  confidence: number | null
-  asOf: string | null
+  contextRefs?: CanonicalKnowledgeRefV03[]
+  supportingClaimRefs?: ClaimRefV03[]
+  sourceRefs?: SourceRefV03[]
+  confidence?: number | null
+  asOf?: string | null
   lifecycle: LifecycleV03
   createdAt?: string | null
   updatedAt?: string | null
 }
 
 export interface ThemeExposureRelationV03 extends KnowledgeRelationBaseV03<'theme_exposure'> {
-  attributes: ThemeExposureAttributesV03
+  attributes?: ThemeExposureAttributesV03
 }
 
 export interface BusinessExposureRelationV03 extends KnowledgeRelationBaseV03<'business_exposure'> {
-  attributes: BusinessExposureAttributesV03
+  attributes?: BusinessExposureAttributesV03
 }
 
 export interface OwnsStakeInRelationV03 extends KnowledgeRelationBaseV03<'owns_stake_in'> {
-  attributes: OwnershipAttributesV03
+  attributes?: OwnershipAttributesV03
 }
 
 type RelationWithoutCustomAttributesV03<TType extends Exclude<RelationTypeV03, 'theme_exposure' | 'business_exposure' | 'owns_stake_in'>> =
@@ -202,32 +202,36 @@ export interface KnowledgeClaimV03 {
   claimType: ClaimTypeV03
   statement: string
   subjectRefs: Array<EntityRefV03 | RelationRefV03>
-  primarySubjectRef: EntityRefV03 | RelationRefV03 | null
-  temporal: ClaimTemporalV03
+  primarySubjectRef?: EntityRefV03 | RelationRefV03 | null
+  temporal?: ClaimTemporalV03
   structuredValue?: ClaimStructuredValueV03
   sourceRefs: SourceRefV03[]
-  provenance: ClaimProvenanceV03[]
-  confidence: number | null
+  provenance?: ClaimProvenanceV03[]
+  confidence?: number | null
   lifecycle: LifecycleV03
-  supersedes: ClaimRefV03[]
-  supersededBy: ClaimRefV03[]
+  supersedes?: ClaimRefV03[]
+  supersededBy?: ClaimRefV03[]
   createdAt?: string | null
   updatedAt?: string | null
 }
 
 export interface KnowledgeSourceV03 {
   id: SourceRefV03
-  sourceType: SourceTypeV03
-  sourceReliability: SourceReliabilityV03
   title: string
+  sourceType: SourceTypeV03
+  /** Legacy v0.2-compatible source field retained as an explicitly declared optional field. */
+  type?: string | null
   publisher?: string | null
   institution?: string | null
   author?: string | null
   publishedAt?: string | null
   url?: string | null
-  rawRefs: RawRefV03[]
+  /** Legacy v0.2-compatible quality field retained as an explicitly declared optional field. */
+  quality?: KnowledgeJsonValueV03
+  sourceReliability?: SourceReliabilityV03
+  rawRefs?: RawRefV03[]
   metadata?: KnowledgeMetadataV03
-  lifecycle: LifecycleV03
+  lifecycle?: LifecycleV03
   createdAt?: string | null
   updatedAt?: string | null
 }
@@ -235,20 +239,10 @@ export interface KnowledgeSourceV03 {
 export interface KnowledgeModuleV03 {
   id: ModuleRefV03
   type: ModuleTypeV03
-  name: string
-  description?: string | null
-  targetRefs: CanonicalKnowledgeRefV03[]
-  sourceRefs: SourceRefV03[]
-  metadata?: KnowledgeMetadataV03
-  lifecycle: LifecycleV03
-  createdAt?: string | null
-  updatedAt?: string | null
-}
-
-export interface KnowledgeRawRefObjectV03 {
-  id: RawRefV03
-  sourceRef: SourceRefV03
-  contentHash: string
-  locator?: string | null
-  metadata?: KnowledgeMetadataV03
+  /** Existing v0.2-compatible module shape; targetEntity conversion belongs to Stage B. */
+  targetEntity?: string | null
+  sourceRefs?: SourceRefV03[]
+  schemaId?: string | null
+  columns?: KnowledgeJsonValueV03[]
+  rows?: KnowledgeJsonValueV03[]
 }

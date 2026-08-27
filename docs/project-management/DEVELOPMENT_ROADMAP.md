@@ -20,6 +20,7 @@
 - Legacy Frozen Compatibility/Migration Source: Knowledge v0.2
 - Runtime Implementation: predominantly v0.2; migration to v0.3 has not started
 - Stage A implementation: Completed / Sol Verification Pending
+- Stage A R1 structural correction: Completed / Sol Verification Pending
 - Runtime Schema Release: Schema 0.1 and 0.2 only; Schema 0.3 is not registered
 - Stage B: not started and not authorized by this task
 - Next approved direction: Implementation Stage A — Executable Schema / Domain

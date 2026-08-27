@@ -7,10 +7,27 @@ import type {
   InvestmentThemeV03,
   KnowledgeClaimV03,
   KnowledgeEntityV03,
+  KnowledgeModuleV03,
   KnowledgeRelationV03,
   KnowledgeSourceV03,
   SourceTypeV03,
 } from './domain.ts'
+
+type RequiredKeys<T> = {
+  [K in keyof T]-?: {} extends Pick<T, K> ? never : K
+}[keyof T]
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends
+  (<T>() => T extends B ? 1 : 2) ? true : false
+type Assert<T extends true> = T
+
+export type DomainRequiredFieldParityChecks = [
+  Assert<Equal<RequiredKeys<IndustryV03>, 'id' | 'type' | 'name' | 'lifecycle'>>,
+  Assert<Equal<RequiredKeys<InvestmentThemeV03>, 'id' | 'type' | 'name' | 'lifecycle' | 'themeGroupRef'>>,
+  Assert<Equal<RequiredKeys<BusinessExposureRelationV03>, 'id' | 'type' | 'sourceRef' | 'targetRef' | 'lifecycle'>>,
+  Assert<Equal<RequiredKeys<KnowledgeClaimV03>, 'id' | 'claimType' | 'statement' | 'subjectRefs' | 'sourceRefs' | 'lifecycle'>>,
+  Assert<Equal<RequiredKeys<KnowledgeSourceV03>, 'id' | 'title' | 'sourceType'>>,
+  Assert<Equal<RequiredKeys<KnowledgeModuleV03>, 'id' | 'type'>>,
+]
 
 const lifecycle = { status: 'active' as const }
 
@@ -18,27 +35,14 @@ const theme: InvestmentThemeV03 = {
   id: 'entity:ai-compute',
   type: 'investment_theme',
   name: 'AI Compute',
-  aliases: [],
-  description: null,
-  externalIds: {},
-  taxonomyRefs: [],
-  metadata: {},
   lifecycle,
   themeGroupRef: 'theme-group:technology',
-  definition: 'AI compute infrastructure',
-  inclusionCriteria: ['compute hardware'],
-  exclusionCriteria: [],
 }
 
 const industry: IndustryV03 = {
   id: 'entity:semiconductor',
   type: 'industry',
   name: 'Semiconductor',
-  aliases: [],
-  description: null,
-  externalIds: {},
-  taxonomyRefs: [],
-  metadata: {},
   lifecycle,
 }
 
@@ -46,15 +50,7 @@ const company: CompanyV03 = {
   id: 'entity:example-company',
   type: 'company',
   name: 'Example Company',
-  aliases: [],
-  description: null,
-  externalIds: {},
-  taxonomyRefs: [],
-  metadata: {},
   lifecycle,
-  ticker: null,
-  exchange: null,
-  legalName: null,
 }
 
 const businessExposure: BusinessExposureRelationV03 = {
@@ -68,11 +64,14 @@ const businessExposure: BusinessExposureRelationV03 = {
     materiality: 'core',
     financialContribution: { revenueShare: 0.4, profitShare: 0.2 },
   },
-  contextRefs: [],
-  supportingClaimRefs: [],
-  sourceRefs: ['source:annual-report'],
-  confidence: 0.9,
-  asOf: null,
+  lifecycle,
+}
+
+const minimalRelation: KnowledgeRelationV03 = {
+  id: 'relation:semiconductor-upstream-of-chip-design',
+  type: 'upstream_of',
+  sourceRef: industry.id,
+  targetRef: 'entity:chip-design',
   lifecycle,
 }
 
@@ -81,38 +80,37 @@ const claim: KnowledgeClaimV03 = {
   claimType: 'fact',
   statement: 'Example Company reports semiconductor revenue.',
   subjectRefs: [company.id, businessExposure.id],
-  primarySubjectRef: company.id,
-  temporal: {
-    asOf: null,
-    scope: { type: 'period', start: null, end: null, label: 'FY2025' },
-  },
-  structuredValue: { metric: 'revenueShare', value: 0.4, unit: 'ratio', comparator: 'eq' },
   sourceRefs: ['source:annual-report'],
-  provenance: [{ sourceRef: 'source:annual-report', rawRef: 'raw:annual-report', locator: null, chunkRef: null }],
-  confidence: 0.95,
   lifecycle,
-  supersedes: [],
-  supersededBy: [],
 }
 
 const source: KnowledgeSourceV03 = {
   id: 'source:annual-report',
-  sourceType: 'official_disclosure',
-  sourceReliability: 'high',
   title: 'Annual Report',
-  publisher: 'Example Company',
-  publishedAt: null,
-  rawRefs: ['raw:annual-report'],
-  lifecycle,
+  sourceType: 'official_disclosure',
+  type: 'research_report',
+  quality: { score: 0.9, note: 'reviewed' },
 }
 
-test('v0.3 domain accepts valid Theme, Entity, Relation, Claim, and Source values', () => {
+const module: KnowledgeModuleV03 = {
+  id: 'module:comparison',
+  type: 'comparison',
+  targetEntity: 'segment:semiconductor',
+  sourceRefs: ['source:annual-report'],
+  schemaId: 'comparison.v0.2',
+  columns: ['company', 'revenueShare'],
+  rows: [['Example Company', 0.4]],
+}
+
+test('v0.3 domain accepts minimal canonical objects and the compatible Module shape', () => {
   const entities: KnowledgeEntityV03[] = [theme, industry, company]
-  const relations: KnowledgeRelationV03[] = [businessExposure]
+  const relations: KnowledgeRelationV03[] = [businessExposure, minimalRelation]
   assert.equal(entities[0]?.type, 'investment_theme')
   assert.equal(relations[0]?.type, 'business_exposure')
+  assert.equal(relations[1]?.type, 'upstream_of')
   assert.equal(claim.claimType, 'fact')
   assert.equal(source.sourceType, 'official_disclosure')
+  assert.equal(module.targetEntity, 'segment:semiconductor')
 })
 
 test('v0.3 domain rejects arbitrary semantic values and invalid durable namespaces', () => {
@@ -133,6 +131,8 @@ test('v0.3 domain rejects arbitrary semantic values and invalid durable namespac
   const invalidEntityRef: CompanyV03['id'] = 'company:example'
   // @ts-expect-error canonical entities do not accept arbitrary top-level fields
   const invalidEntityField: CompanyV03 = { ...company, industries: ['entity:semiconductor'] }
+  // @ts-expect-error Module preserves declared v0.2 fields and does not invent targetRefs
+  const invalidModuleField: KnowledgeModuleV03 = { ...module, targetRefs: ['entity:semiconductor'] }
 
   assert.equal(typeof invalidEntityType, 'string')
   assert.equal(typeof invalidRelationType, 'string')
@@ -141,6 +141,7 @@ test('v0.3 domain rejects arbitrary semantic values and invalid durable namespac
   assert.equal(typeof invalidSourceType, 'string')
   assert.equal(typeof invalidEntityRef, 'string')
   assert.equal('industries' in invalidEntityField, true)
+  assert.equal('targetRefs' in invalidModuleField, true)
 })
 
 test('v0.3 domain does not expose Intelligence as a canonical type or arbitrary fields', () => {

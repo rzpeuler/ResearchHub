@@ -269,15 +269,16 @@ export const KNOWLEDGE_SCHEMA_V03 = {
     ],
     reliabilities: ['high', 'medium', 'low', 'unknown'],
     fields: [
-      'id', 'sourceType', 'sourceReliability', 'title', 'publisher', 'institution',
-      'author', 'publishedAt', 'url', 'rawRefs', 'metadata', 'lifecycle', 'createdAt', 'updatedAt',
+      'id', 'type', 'title', 'publisher', 'institution', 'author', 'publishedAt', 'url',
+      'sourceType', 'quality', 'sourceReliability', 'rawRefs', 'metadata', 'lifecycle',
+      'createdAt', 'updatedAt',
     ],
-    requiredFields: ['id', 'sourceType', 'sourceReliability', 'title', 'rawRefs', 'lifecycle'],
+    requiredFields: ['id', 'title', 'sourceType'],
   },
   module: {
     types: ['comparison', 'roadmap', 'market', 'competition', 'capacity', 'supply-chain'],
-    fields: ['id', 'type', 'name', 'description', 'targetRefs', 'sourceRefs', 'metadata', 'lifecycle', 'createdAt', 'updatedAt'],
-    requiredFields: ['id', 'type', 'name', 'targetRefs', 'sourceRefs', 'lifecycle'],
+    fields: ['id', 'type', 'targetEntity', 'sourceRefs', 'schemaId', 'columns', 'rows'],
+    requiredFields: ['id', 'type'],
     description: 'Module is canonical but secondary to the semantic graph.',
   },
   numericConstraints: {

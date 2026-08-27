@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R1
+
+- Aligned Schema 0.3 executable `requiredFields` and TypeScript Domain
+  requiredness with the frozen validity contract.
+- Preserved migration-compatible Source fields, including optional legacy
+  `type`, `quality`, and `rawRefs` fields, without a top-level index signature.
+- Restored the compatible Module shape (`targetEntity`, `sourceRefs`,
+  `schemaId`, `columns`, and `rows`) and removed the invented Module redesign.
+- Removed the unfrozen RawRef object payload; `RawRefV03` remains a `raw:`
+  reference alias only.
+- Kept Schema 0.3 out of the runtime release registry. R1 remains
+  `Completed / Sol Verification Pending` with acceptance
+  `Review Pending / Sol Verification`; Stage B has not started.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-A-001
 
 - Added the version-isolated Knowledge v0.3 executable Schema authority and

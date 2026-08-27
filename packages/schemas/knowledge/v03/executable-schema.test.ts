@@ -34,11 +34,22 @@ test('Schema 0.3 contains the frozen semantic vocabularies and boundaries', () =
   assert.deepEqual(KNOWLEDGE_SCHEMA_V03.themeGroup.requiredFields, ['id', 'name', 'aliases', 'lifecycle'])
   assert.deepEqual(KNOWLEDGE_SCHEMA_V03.relation.requiredFields, ['id', 'type', 'sourceRef', 'targetRef', 'lifecycle'])
   assert.deepEqual(KNOWLEDGE_SCHEMA_V03.source.requiredFields, [
-    'id', 'sourceType', 'sourceReliability', 'title', 'rawRefs', 'lifecycle',
+    'id', 'title', 'sourceType',
+  ])
+  assert.deepEqual(KNOWLEDGE_SCHEMA_V03.source.fields, [
+    'id', 'type', 'title', 'publisher', 'institution', 'author', 'publishedAt', 'url',
+    'sourceType', 'quality', 'sourceReliability', 'rawRefs', 'metadata', 'lifecycle',
+    'createdAt', 'updatedAt',
   ])
   assert.deepEqual(KNOWLEDGE_SCHEMA_V03.module.types, [
     'comparison', 'roadmap', 'market', 'competition', 'capacity', 'supply-chain',
   ])
+  assert.deepEqual(KNOWLEDGE_SCHEMA_V03.module.fields, [
+    'id', 'type', 'targetEntity', 'sourceRefs', 'schemaId', 'columns', 'rows',
+  ])
+  assert.deepEqual(KNOWLEDGE_SCHEMA_V03.module.requiredFields, ['id', 'type'])
+  assert.equal(KNOWLEDGE_SCHEMA_V03.module.fields.includes('name'), false)
+  assert.equal(KNOWLEDGE_SCHEMA_V03.module.fields.includes('targetRefs'), false)
   assert.equal(KNOWLEDGE_SCHEMA_V03.auxiliaryAssets.referenceTaxonomy.canonical, false)
   assert.equal(KNOWLEDGE_SCHEMA_V03.auxiliaryAssets.projectionConfiguration.canonical, false)
   assert.deepEqual(KNOWLEDGE_SCHEMA_V03.entity.taxonomyRefs.forbiddenUses, [

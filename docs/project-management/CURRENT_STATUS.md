@@ -1,5 +1,28 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R1
+
+R1 corrects structural fidelity in the approved Stage A implementation:
+
+- `requiredFields` now matches the canonical validity contract rather than
+  requiring recommended creation-time richness.
+- Source preserves the migration-compatible v0.2 fields `type` and `quality`
+  while allowing `rawRefs`, `sourceReliability`, and `lifecycle` to remain
+  optional.
+- Module preserves the existing `targetEntity`, `sourceRefs`, `schemaId`,
+  `columns`, and `rows` shape; no replacement `targetRefs` or invented
+  mandatory `name` field is introduced.
+- Raw references remain the `raw:` reference alias only; no separate RawRef
+  object payload is defined.
+
+The v0.2-compatible domain, release registry, runtime KBs, and downstream
+Knowledge capabilities remain unchanged. Schema 0.3 is still not registered
+as readable or writable runtime support.
+
+Status is `Completed / Sol Verification Pending`; acceptance remains
+`Review Pending / Sol Verification`. Parent Stage A remains review pending
+until this R1 is independently verified by Sol.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-A-001
 
 Stage A establishes Schema 0.3 availability without activating Schema 0.3
