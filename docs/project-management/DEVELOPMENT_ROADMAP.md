@@ -15,14 +15,18 @@
 ## Current governance state
 
 - Architecture Freeze: Completed / Sol Accepted
-- Governance Integration: Completed / Sol Verification Pending
+- Governance Integration: Completed / Sol verified
 - Current Normative Knowledge Architecture: Knowledge v0.3
 - Legacy Frozen Compatibility/Migration Source: Knowledge v0.2
 - Runtime Implementation: predominantly v0.2; migration to v0.3 has not started
+- Stage A implementation: Completed / Sol Verification Pending
+- Runtime Schema Release: Schema 0.1 and 0.2 only; Schema 0.3 is not registered
+- Stage B: not started and not authorized by this task
 - Next approved direction: Implementation Stage A — Executable Schema / Domain
   Model
 
-Stage A has not started and is not part of the Governance Integration task.
+Stage A is the current approved implementation stage; its acceptance remains
+`Review Pending / Sol Verification`. It is not a Runtime Schema 0.3 activation.
 Knowledge v0.4 is not approved.
 
 ## Runtime implementation status: v0.2 compatibility track

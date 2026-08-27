@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-A-001
+
+- Added the version-isolated Knowledge v0.3 executable Schema authority and
+  strict TypeScript Domain Model under `packages/schemas/knowledge/v03/`.
+- Derived v0.3 semantic unions and relation-specific attribute types from the
+  single `KNOWLEDGE_SCHEMA_V03` data contract; canonical IDs use object-kind
+  namespaces and Taxonomy/View remain auxiliary.
+- Preserved the existing v0.2-compatible domain and kept Schema 0.3 out of
+  `KNOWLEDGE_SCHEMA_RELEASES`; no Runtime KB or Example KB was migrated.
+- Recorded Governance Integration Parent `6e0245b1` and R1 `747812dc` as
+  `Accepted — Sol verified`. Stage A remains `Completed / Sol Verification
+  Pending`; Stage B has not started.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-GOVERNANCE-INTEGRATION-001-R1
 
 - Marked the earlier Product Validation / Real Data Integration direction in

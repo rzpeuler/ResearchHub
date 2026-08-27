@@ -1,5 +1,23 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-A-001
+
+Stage A establishes Schema 0.3 availability without activating Schema 0.3
+runtime support:
+
+- `KNOWLEDGE_SCHEMA_V03` is the single JSON-serializable executable Schema
+  authority.
+- Version-isolated v0.3 domain types derive semantic unions from that authority
+  and use object-kind durable namespaces.
+- Existing v0.2 domain types and callers remain unchanged.
+- `KNOWLEDGE_SCHEMA_RELEASES` still advertises only Schema 0.1 and 0.2;
+  Schema 0.3 is not readable or writable at runtime.
+- No Runtime KB, Example KB, migration runtime, or downstream Knowledge
+  capability was activated or modified.
+
+Status is `Completed / Sol Verification Pending`; acceptance remains
+`Review Pending / Sol Verification`.
+
 ## KNOWLEDGE-V0.3-GOVERNANCE-INTEGRATION-001-R1
 
 R1 closes three current-governance residuals without changing the frozen
@@ -14,8 +32,8 @@ Knowledge v0.3 contracts:
   Curation Source Assessment blocker rather than claiming that execution is
   still awaiting local inputs.
 
-Status is `Completed / Sol Verification Pending`; acceptance remains
-`Review Pending / Sol Verification`.
+Status is `Completed`; acceptance is `Accepted — Sol verified` against commit
+`747812dcf994ac7804b67d62c82aa9f5fadba00f`.
 
 ## KNOWLEDGE-V0.3-ARCHITECTURE-FREEZE
 
@@ -26,17 +44,19 @@ commit `47e312f79a221d7dd45b42508e52526fd61b1a74`.
 - Schema 0.3 / Storage Format 1 is the Current Target Semantic Contract.
 - Knowledge v0.2 is Frozen Legacy and remains the compatibility/migration
   source.
-- Current runtime implementation remains predominantly v0.2; migration to
-  v0.3 has not started.
-- The next approved engineering direction is Implementation Stage A —
-  Executable Schema / Domain Model. Stage A has not started and is not part of
-  this governance integration task.
+- Current runtime implementation remains predominantly v0.2; Schema 0.3
+  runtime support and migration have not started.
+- The next approved engineering direction remains Implementation Stage A —
+  Executable Schema / Domain Model; its implementation status is recorded in
+  `KNOWLEDGE-V0.3-IMPLEMENTATION-A-001` above.
 - Single DSH, `dsh/` orchestration, runtime-neutral `packages/`, explicit
   `KnowledgeBaseHandle`, Raw/provenance ownership, and the Git/runtime-data
   boundary remain unchanged.
 
-The Governance Integration task is `Completed / Sol Verification Pending`;
-its acceptance remains `Review Pending / Sol Verification`.
+The Governance Integration parent and R1 are `Completed`; acceptance is
+`Accepted — Sol verified` against commits
+`6e0245b1b30a9896273cfd49e710054931792de4` and
+`747812dcf994ac7804b67d62c82aa9f5fadba00f`.
 
 ## Historical: KNOWLEDGE-V0.3-FREEZE-CORRECTION-001-R1
 
