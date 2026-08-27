@@ -1,5 +1,21 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R1
+
+C3-R1 closes the independent v0.3 Runtime acceptance gaps without changing
+the accepted C3 architecture. The ChangeSet validator now simulates
+`source_merge`, `create`, `update`, `supersede`, and `merge_source` in planned
+state, checks mutable-target hashes at validation time, enforces final planned
+Business Exposure cardinality, and returns a deeply immutable clone receipt.
+Focused Runtime coverage now includes source/provenance atomicity, complete
+representative writes, updates, supersede, merge_source, no-op, idempotency,
+stale state, invalid ChangeSets, Raw behavior, and recovery.
+
+Status is `Completed`; acceptance is `Sol Verification Pending`. C3 remains
+`Completed / Rework Required`; C2-R2 remains `Not Started / Awaiting C3-R1
+Sol Acceptance`; Stage C remains `In Progress`. Curation and Workflow were not
+modified and C2-R2 was not started.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003
 
 C3 activates the already frozen Knowledge Schema 0.3 / Storage Format 1 runtime
@@ -13,10 +29,11 @@ Schema 0.2 compatibility and migration behavior remain intact. C3 does not
 create Schema 0.4 and does not modify Knowledge Curation or the Report
 Ingestion Workflow; their v0.3 cutover remains C2-R2 scope.
 
-Status is `Completed`; acceptance is `Sol Verification Pending`.
+Status is `Completed`; acceptance is `Rework Required` pending C3-R1 Sol
+verification.
 Stage B is `Completed / Accepted - Sol verified`; C1 is `Completed / Accepted -
 Sol verified`; C2 is `Blocked / Superseded by C-002-R1`; C2-R1 is `Blocked /
-Dependency on C-003`; C2-R2 is `Not Started / Awaiting C3 Sol Acceptance`; and
+Dependency on C-003`; C2-R2 is `Not Started / Awaiting C3-R1 Sol Acceptance`; and
 Stage C is `In Progress`.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-001

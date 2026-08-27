@@ -1,5 +1,28 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R1 — Runtime Acceptance Gap Closure
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-28
+
+C3-R1 retains the accepted C3 Runtime architecture and closes its independent
+acceptance gaps. v0.3 ChangeSet validation now maintains an in-memory planned
+state across Source merge, Knowledge create/update/supersede/merge_source,
+checks expected target hashes against the validation snapshot, and evaluates
+final Business Exposure cardinality from that planned state. Claim supersede
+simulation matches Writer semantics. Successful validation returns a
+structured-cloned, recursively frozen receipt while leaving the caller's
+ChangeSet unchanged.
+
+Focused tests cover atomic Source merge plus dependent Claim provenance,
+representative Source/ThemeGroup/Entity/Relation/Claim writes, relation
+updates, Claim supersession, legal and illegal source merges, no-op and
+idempotency behavior, validation-time stale state, Raw behavior, an invalid
+ChangeSet matrix, and all three Writer recovery failpoints. Curation,
+Workflow, migration transformation code, and Runtime KB data were not
+modified. C3 remains `Completed / Rework Required`; C2-R2 remains
+`Not Started / Awaiting C3-R1 Sol Acceptance`.
+
 ## ADR-001 — Single DSH Architecture
 
 **Status:** Accepted

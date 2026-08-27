@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-28 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R1
+
+- Closed the v0.3 ChangeSet planned-state gap: Source merges, updates,
+  Claim supersession, and source-reference merges now flow into subsequent
+  validation and final cardinality checks.
+- Added validation-time stale-target protection and deep immutable cloned
+  receipts without freezing or mutating caller-owned ChangeSets.
+- Added focused Runtime acceptance coverage for atomic Source/Raw/Claim
+  provenance, representative writes, updates, supersession, merge_source,
+  no-op, idempotency, stale state, invalid ChangeSets, and recovery.
+- C3 remains `Completed / Rework Required`; C3-R1 is `Completed / Sol
+  Verification Pending`; C2-R2 remains not started.
+
 ## 2026-08-28 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-003
 
 - Added the native Schema 0.3 runtime chain: default adapter registration,

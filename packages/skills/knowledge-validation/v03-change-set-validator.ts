@@ -28,6 +28,14 @@ const rawPattern = /^raw-sha256-[0-9a-f]{64}$/
 
 function isRecord(value: unknown): value is Dict { return typeof value === 'object' && value !== null && !Array.isArray(value) }
 function enumValue(value: unknown, values: readonly unknown[]): boolean { return values.includes(value) }
+function mergeRefs(current: unknown, additions: string[]): string[] { return [...new Set([...(Array.isArray(current) ? current.filter((ref): ref is string => typeof ref === 'string') : []), ...additions])].sort() }
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.freeze(value)
+    for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child)
+  }
+  return value
+}
 function add(errors: ValidationDiagnostic[], code: string, message: string, operationId?: string, assetId?: string): void { errors.push({ code, severity: 'error', message, operationId, assetId }) }
 function report(errors: ValidationDiagnostic[], scope: ValidationReport['scope'] = 'all'): ValidationReport { return { status: errors.length === 0 ? 'passed' : 'failed', errors, warnings: [], info: [], timestamp: new Date().toISOString(), scope } }
 function kindOf(value: Dict): Kind | undefined {
@@ -205,7 +213,8 @@ export async function validateKnowledgeChangeSetV03(handle: KnowledgeBaseHandle,
       if (operation.addRawRefs?.some((ref) => !rawRefs.has(ref))) add(errors, 'V03_RAW_REF_INVALID', 'Source merge references an unknown Raw ref', operation.operationId, operation.sourceId)
       const current = objects.get(operation.sourceId)
       if (current?.kind === 'source') {
-        const merged = structuredClone(current.object); if (operation.addRawRefs) merged.rawRefs = [...new Set([...(Array.isArray(merged.rawRefs) ? merged.rawRefs : []), ...operation.addRawRefs])]; Object.assign(merged, operation.metadataPatch ?? {}); validateSource(merged, rawRefs, errors, operation.operationId)
+        if (/^sha256:[0-9a-f]{64}$/.test(operation.expectedBeforeHash) && hashKnowledgeObject(current.object) !== operation.expectedBeforeHash) add(errors, 'STALE_TARGET_STATE', `Source target hash does not match the validation snapshot: ${operation.sourceId}`, operation.operationId, operation.sourceId)
+        const merged = structuredClone(current.object); if (operation.addRawRefs) merged.rawRefs = mergeRefs(merged.rawRefs, operation.addRawRefs); Object.assign(merged, operation.metadataPatch ?? {}); validateSource(merged, rawRefs, errors, operation.operationId); objects.set(operation.sourceId, { kind: 'source', object: merged })
       }
     }
   }
@@ -224,18 +233,21 @@ export async function validateKnowledgeChangeSetV03(handle: KnowledgeBaseHandle,
       if (!/^sha256:[0-9a-f]{64}$/.test(operation.expectedBeforeHash)) add(errors, 'EXPECTED_BEFORE_HASH', 'Mutation expectedBeforeHash must be a canonical SHA-256 hash', operation.operationId, operation.knowledgeId)
       const target = objects.get(operation.knowledgeId); const replacement = operation.replacement as unknown as Dict; const kind = kindOf(replacement)
       if (!target || target.kind !== 'claim' || kind !== 'claim') add(errors, 'ILLEGAL_SUPERSEDE', 'Only Claim supersession is supported in Schema 0.3', operation.operationId, operation.knowledgeId)
-      else { if (objects.has(String(replacement.id))) add(errors, 'ID_COLLISION', `Supersede replacement already exists: ${replacement.id}`, operation.operationId, String(replacement.id)); objects.set(String(replacement.id), { kind: 'claim', object: replacement }); validateClaim(replacement, objects, new Set([...sources, ...sourceCreates]), rawRefs, errors, operation.operationId) }
+      else if (/^sha256:[0-9a-f]{64}$/.test(operation.expectedBeforeHash) && hashKnowledgeObject(target.object) !== operation.expectedBeforeHash) add(errors, 'STALE_TARGET_STATE', `Knowledge target hash does not match the validation snapshot: ${operation.knowledgeId}`, operation.operationId, operation.knowledgeId)
+      else { if (objects.has(String(replacement.id))) add(errors, 'ID_COLLISION', `Supersede replacement already exists: ${replacement.id}`, operation.operationId, String(replacement.id)); const oldClaim = structuredClone(target.object); oldClaim.lifecycle = { ...(isRecord(oldClaim.lifecycle) ? oldClaim.lifecycle : {}), status: 'superseded' }; oldClaim.supersededBy = mergeRefs(oldClaim.supersededBy, [String(replacement.id)]); const nextClaim = structuredClone(replacement); nextClaim.supersedes = mergeRefs(nextClaim.supersedes, [operation.knowledgeId]); objects.set(operation.knowledgeId, { kind: 'claim', object: oldClaim }); objects.set(String(replacement.id), { kind: 'claim', object: nextClaim }); validateClaim(oldClaim, objects, new Set([...sources, ...sourceCreates]), rawRefs, errors, operation.operationId); validateClaim(nextClaim, objects, new Set([...sources, ...sourceCreates]), rawRefs, errors, operation.operationId) }
       } else if (operation.type === 'update') {
       if (!/^sha256:[0-9a-f]{64}$/.test(operation.expectedBeforeHash)) add(errors, 'EXPECTED_BEFORE_HASH', 'Mutation expectedBeforeHash must be a canonical SHA-256 hash', operation.operationId, operation.knowledgeId)
       const target = objects.get(operation.knowledgeId); const replacement = operation.object as unknown as Dict; const kind = kindOf(replacement)
       if (!target || kind !== target.kind || replacement.id !== operation.knowledgeId) add(errors, 'UPDATE_KIND', 'Update must preserve canonical ID and object kind', operation.operationId, operation.knowledgeId)
+      else if (/^sha256:[0-9a-f]{64}$/.test(operation.expectedBeforeHash) && hashKnowledgeObject(target.object) !== operation.expectedBeforeHash) add(errors, 'STALE_TARGET_STATE', `Knowledge target hash does not match the validation snapshot: ${operation.knowledgeId}`, operation.operationId, operation.knowledgeId)
       else { objects.set(operation.knowledgeId, { kind: target.kind, object: replacement }); if (kind === 'theme_group') validateThemeGroup(replacement, errors, operation.operationId); if (kind === 'entity') validateEntity(replacement, objects, taxonomyRefs, errors, operation.operationId); if (kind === 'relation') validateRelation(replacement, objects, new Set([...sources, ...sourceCreates]), errors, operation.operationId); if (kind === 'claim') validateClaim(replacement, objects, new Set([...sources, ...sourceCreates]), rawRefs, errors, operation.operationId); if (kind === 'module') validateModule(replacement, objects, new Set([...sources, ...sourceCreates]), errors, operation.operationId) }
       } else {
       if (!/^sha256:[0-9a-f]{64}$/.test(operation.expectedBeforeHash)) add(errors, 'EXPECTED_BEFORE_HASH', 'Mutation expectedBeforeHash must be a canonical SHA-256 hash', operation.operationId, operation.knowledgeId)
       const target = objects.get(operation.knowledgeId)
       if (!target || !['relation', 'claim', 'module'].includes(target.kind)) add(errors, 'MERGE_SOURCE_UNSUPPORTED', 'merge_source requires a canonical object with declared sourceRefs', operation.operationId, operation.knowledgeId)
+      if (target && /^sha256:[0-9a-f]{64}$/.test(operation.expectedBeforeHash) && hashKnowledgeObject(target.object) !== operation.expectedBeforeHash) add(errors, 'STALE_TARGET_STATE', `Knowledge target hash does not match the validation snapshot: ${operation.knowledgeId}`, operation.operationId, operation.knowledgeId)
       if (!Array.isArray(operation.addSourceRefs) || operation.addSourceRefs.length === 0 || operation.addSourceRefs.some((ref) => !sources.has(ref) && !sourceCreates.has(ref))) add(errors, 'V03_SOURCE_REF_INVALID', 'merge_source references unknown Source objects', operation.operationId, operation.knowledgeId)
-      if (target && ['relation', 'claim', 'module'].includes(target.kind)) { const merged = structuredClone(target.object); merged.sourceRefs = [...new Set([...(Array.isArray(merged.sourceRefs) ? merged.sourceRefs : []), ...(operation.addSourceRefs ?? [])])]; if (target.kind === 'relation') validateRelation(merged, objects, new Set([...sources, ...sourceCreates]), errors, operation.operationId); if (target.kind === 'claim') validateClaim(merged, objects, new Set([...sources, ...sourceCreates]), rawRefs, errors, operation.operationId); if (target.kind === 'module') validateModule(merged, objects, new Set([...sources, ...sourceCreates]), errors, operation.operationId) }
+      if (target && ['relation', 'claim', 'module'].includes(target.kind)) { const merged = structuredClone(target.object); merged.sourceRefs = mergeRefs(merged.sourceRefs, operation.addSourceRefs ?? []); objects.set(operation.knowledgeId, { kind: target.kind, object: merged }); if (target.kind === 'relation') validateRelation(merged, objects, new Set([...sources, ...sourceCreates]), errors, operation.operationId); if (target.kind === 'claim') validateClaim(merged, objects, new Set([...sources, ...sourceCreates]), rawRefs, errors, operation.operationId); if (target.kind === 'module') validateModule(merged, objects, new Set([...sources, ...sourceCreates]), errors, operation.operationId) }
       }
     }
   }
@@ -246,6 +258,7 @@ export async function validateKnowledgeChangeSetV03(handle: KnowledgeBaseHandle,
   for (const ids of businessPairs.values()) if (ids.length > 1) for (const id of ids) add(errors, 'V03_RELATION_CARDINALITY', 'At most one active business_exposure is allowed per Company/Industry pair', undefined, id)
   const finalReport = report(errors)
   if (finalReport.status === 'failed') return { report: finalReport }
-  const validatedChangeSet: ValidatedKnowledgeChangeSetV03 = Object.freeze({ changeSet: Object.freeze(structuredClone(changeSet)), knowledgeBaseId: handle.knowledgeBaseId, schemaVersion: '0.3', baseRevision: handle.revision, changeSetId: changeSet.changeSetId, changeSetHash: hashKnowledgeObject(changeSet), validatedAt: new Date().toISOString() })
+  const clonedChangeSet = structuredClone(changeSet)
+  const validatedChangeSet: ValidatedKnowledgeChangeSetV03 = deepFreeze({ changeSet: clonedChangeSet, knowledgeBaseId: handle.knowledgeBaseId, schemaVersion: '0.3', baseRevision: handle.revision, changeSetId: changeSet.changeSetId, changeSetHash: hashKnowledgeObject(clonedChangeSet), validatedAt: new Date().toISOString() })
   return { report: finalReport, validatedChangeSet }
 }
