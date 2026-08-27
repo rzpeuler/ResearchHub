@@ -1,5 +1,24 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R2
+
+C3-R2 unifies v0.3 canonical object validation behind the pure
+`v03-validation-core.ts`. Full Knowledge Base validation and ChangeSet
+planned-state validation now consume the same Schema-derived rules for
+ThemeGroup, Entity, Source, Relation, Claim, Module, lifecycle, references,
+financialContribution, temporal, structuredValue, and provenance.
+
+The ChangeSet path now enforces `requiresRawProvenance`, existing Raw
+`contextRefs`, and canonical object parity before issuing an immutable receipt.
+R1 planned-state simulation, stale protection, receipt immutability, Writer
+integration, and recovery behavior remain intact. No Writer, Schema,
+Curation, Workflow, Migration, or Runtime KB changes were made.
+
+Status is `Completed`; acceptance is `Sol Verification Pending`. C3 remains
+`Completed / Rework Required`; C3-R1 remains `Completed / Rework Required`;
+C2-R2 remains `Not Started / Awaiting C3-R2 Sol Acceptance`; Stage C remains
+`In Progress`.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R1
 
 C3-R1 closes the independent v0.3 Runtime acceptance gaps without changing
@@ -11,10 +30,9 @@ Focused Runtime coverage now includes source/provenance atomicity, complete
 representative writes, updates, supersede, merge_source, no-op, idempotency,
 stale state, invalid ChangeSets, Raw behavior, and recovery.
 
-Status is `Completed`; acceptance is `Sol Verification Pending`. C3 remains
-`Completed / Rework Required`; C2-R2 remains `Not Started / Awaiting C3-R1
-Sol Acceptance`; Stage C remains `In Progress`. Curation and Workflow were not
-modified and C2-R2 was not started.
+Status is `Completed`; acceptance is `Rework Required` pending C3-R2 Sol
+verification. Curation and Workflow were not modified and C2-R2 was not
+started.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003
 

@@ -7,6 +7,8 @@ import { archiveRaw } from '../../../packages/shared/knowledge-base/raw-archive.
 import { KnowledgeBaseLoader } from '../../../packages/shared/knowledge-base/knowledge-base-loader.ts'
 import { KnowledgeBaseRegistry } from '../../../packages/shared/knowledge-base/registry.ts'
 import { KnowledgeValidationSkill } from '../../../packages/skills/knowledge-validation/index.ts'
+import { hashKnowledgeObject } from '../../../packages/shared/knowledge-base/canonical-hash.ts'
+import type { KnowledgeChangeSetV03 } from '../../../packages/schemas/knowledge/v03/mutation.ts'
 
 async function put(root: string, path: string, value: unknown): Promise<void> { const file = join(root, path); await mkdir(dirname(file), { recursive: true }); await writeFile(file, typeof value === 'string' ? value : `${JSON.stringify(value)}\n`, 'utf8') }
 async function createV03(): Promise<{ root: string; rawRef: string }> {
@@ -47,6 +49,36 @@ async function mutate(root: string, path: string, change: (value: Record<string,
 
 test('v0.3 validator accepts legal subtype fields, nested taxonomy ids, nested Claim structures, valid relations, and real Raw provenance', async () => {
   const { root } = await createV03(); try { const result = await report(root); assert.equal(result.status, 'passed', JSON.stringify(result.errors)) } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('Full Validator and ChangeSet Validator reject the same canonical defects', async () => {
+  const cases: Array<{ name: string; path: string; change: (value: Record<string, unknown>) => void; operation?: 'source_merge' }> = [
+    { name: 'ThemeGroup sortOrder', path: 'theme-groups/technology.yaml', change: (value) => { value.sortOrder = 'first' } },
+    { name: 'Entity company optional field', path: 'entities/company.yaml', change: (value) => { value.ticker = 7 } },
+    { name: 'Relation confidence', path: 'relations/exposure.yaml', change: (value) => { value.confidence = 2 } },
+    { name: 'Relation Raw contextRef', path: 'relations/exposure.yaml', change: (value) => { value.contextRefs = [`raw-sha256-${'f'.repeat(64)}`] } },
+    { name: 'Relation financialContribution', path: 'relations/exposure.yaml', change: (value) => { (value.attributes as Record<string, unknown>).financialContribution = { revenueAmount: '10' } } },
+    { name: 'Claim temporal', path: 'claims/revenue.yaml', change: (value) => { value.temporal = 'invalid-temporal' } },
+    { name: 'Claim structuredValue', path: 'claims/revenue.yaml', change: (value) => { (value.structuredValue as Record<string, unknown>).value = { nested: true } } },
+    { name: 'Claim provenance', path: 'claims/revenue.yaml', change: (value) => { (value.provenance as Array<Record<string, unknown>>)[0]!.locator = 7 } },
+    { name: 'Module rows', path: 'modules/comparison.yaml', change: (value) => { value.rows = { invalid: true } } },
+    { name: 'Source reliability', path: 'sources/report.yaml', change: (value) => { value.sourceReliability = 'invalid' }, operation: 'source_merge' },
+  ]
+  for (const entry of cases) {
+    const full = await createV03(); const changeSetRoot = await createV03()
+    try {
+      await mutate(full.root, entry.path, entry.change)
+      const fullResult = await report(full.root)
+      assert.equal(fullResult.status, 'failed', `${entry.name} full validation unexpectedly passed`)
+      const original = JSON.parse(await readFile(join(changeSetRoot.root, entry.path), 'utf8')) as Record<string, unknown>
+      const invalid = structuredClone(original); entry.change(invalid)
+      const registry = new KnowledgeBaseRegistry(); const loader = new KnowledgeBaseLoader({ registry }); const handle = await loader.mount(changeSetRoot.root)
+      const changeSet: KnowledgeChangeSetV03 = { changeSetId: `changeset-parity-${entry.name.toLowerCase().replaceAll(' ', '-')}`, workflowRunId: `workflow-parity-${entry.name.toLowerCase().replaceAll(' ', '-')}`, knowledgeBaseId: handle.knowledgeBaseId, schemaVersion: '0.3', storageFormatVersion: '1', expectedBaseRevision: handle.revision, requiresRawProvenance: false, sourceOperations: entry.operation === 'source_merge' ? [{ operationId: 'parity-source-merge', type: 'source_merge', sourceId: String(original.id), expectedBeforeHash: hashKnowledgeObject(original), metadataPatch: { sourceReliability: 'invalid' as never } }] : [], knowledgeOperations: entry.operation === 'source_merge' ? [] : [{ operationId: 'parity-update', type: 'update', knowledgeId: String(original.id), expectedBeforeHash: hashKnowledgeObject(original), object: invalid as never }] }
+      const changeSetResult = await new KnowledgeValidationSkill({ loader }).validateChangeSet(handle, changeSet)
+      assert.equal(changeSetResult.report.status, 'failed', `${entry.name} ChangeSet validation unexpectedly passed`)
+      assert.equal(changeSetResult.validatedChangeSet, undefined)
+    } finally { await rm(full.root, { recursive: true, force: true }); await rm(changeSetRoot.root, { recursive: true, force: true }) }
+  }
 })
 
 for (const label of ['FY2026', '长期', '2026E', null]) test(`v0.3 validator accepts temporal scope label ${String(label)}`, async () => {

@@ -1,5 +1,27 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R2 — Shared Canonical Validation Core
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-28
+
+C3-R2 establishes `packages/skills/knowledge-validation/v03-validation-core.ts`
+as the single pure canonical object-validation implementation for Knowledge
+Schema 0.3. It derives fields, enums, endpoints, constraints, and reference
+semantics from `KNOWLEDGE_SCHEMA_V03`, and accepts only an in-memory planned
+object map plus Raw and taxonomy reference context. It has no filesystem,
+Loader, Writer, Access, Workflow, DSH, LLM, or network dependency.
+
+The Full Validator retains filesystem-only responsibilities and delegates
+canonical object rules and final Business Exposure cardinality to the core.
+The ChangeSet Validator retains envelope and planned-state simulation, then
+delegates every resulting canonical object to the same core before issuing a
+receipt. `requiresRawProvenance` is enforced for affected Sources; Claim
+provenance remains optional but is strict when supplied. C3-R1 behavior and
+Writer defense-in-depth checks remain unchanged. Curation, Workflow,
+Migration, Schema, and Runtime KB data were not modified. C3 and C3-R1 remain
+`Rework Required`; C2-R2 remains not started pending C3-R2 Sol acceptance.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R1 — Runtime Acceptance Gap Closure
 
 **Status:** Completed / Sol Verification Pending

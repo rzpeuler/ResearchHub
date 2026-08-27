@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-28 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R2
+
+- Added the pure Schema-derived v0.3 canonical validation core and refactored
+  Full Validator and ChangeSet Validator to share one object-rule authority.
+- Closed validation parity for lifecycle, ThemeGroup, Entity, Source, Relation,
+  Claim, Module, Raw context references, provenance, temporal and structured
+  values, and Business Exposure financial contribution constraints.
+- Enforced the `requiresRawProvenance` ChangeSet policy, including actual and
+  virtual Raw contexts, while retaining optional Claim provenance semantics.
+- Added differential Full/ChangeSet parity tests and retained all C3-R1
+  planned-state, receipt, Writer, idempotency, stale, and recovery coverage.
+- C3 remains `Completed / Rework Required`; C3-R1 remains `Completed / Rework
+  Required`; C3-R2 is `Completed / Sol Verification Pending`.
+
 ## 2026-08-28 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R1
 
 - Closed the v0.3 ChangeSet planned-state gap: Source merges, updates,
