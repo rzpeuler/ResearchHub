@@ -64,6 +64,35 @@ const businessExposure: BusinessExposureRelationV03 = {
     materiality: 'core',
     financialContribution: { revenueShare: 0.4, profitShare: 0.2 },
   },
+  asOf: null,
+  lifecycle,
+}
+
+const migratedBusinessExposure: BusinessExposureRelationV03 = {
+  id: 'relation:legacy-company-semiconductor',
+  type: 'business_exposure',
+  sourceRef: company.id,
+  targetRef: industry.id,
+  attributes: {
+    exposureBasis: 'unknown',
+    realizationStage: 'unknown',
+    materiality: 'unknown',
+    financialContribution: null,
+  },
+  asOf: null,
+  lifecycle,
+}
+
+const absentFinancialContribution: BusinessExposureRelationV03 = {
+  id: 'relation:company-semiconductor-without-financial-data',
+  type: 'business_exposure',
+  sourceRef: company.id,
+  targetRef: industry.id,
+  attributes: {
+    exposureBasis: 'unknown',
+    realizationStage: 'unknown',
+    materiality: 'unknown',
+  },
   lifecycle,
 }
 
@@ -104,10 +133,18 @@ const module: KnowledgeModuleV03 = {
 
 test('v0.3 domain accepts minimal canonical objects and the compatible Module shape', () => {
   const entities: KnowledgeEntityV03[] = [theme, industry, company]
-  const relations: KnowledgeRelationV03[] = [businessExposure, minimalRelation]
+  const relations: KnowledgeRelationV03[] = [
+    businessExposure,
+    migratedBusinessExposure,
+    absentFinancialContribution,
+    minimalRelation,
+  ]
   assert.equal(entities[0]?.type, 'investment_theme')
   assert.equal(relations[0]?.type, 'business_exposure')
-  assert.equal(relations[1]?.type, 'upstream_of')
+  assert.equal(relations[1]?.type, 'business_exposure')
+  assert.equal(migratedBusinessExposure.attributes?.financialContribution, null)
+  assert.equal(absentFinancialContribution.attributes?.financialContribution, undefined)
+  assert.equal(relations[3]?.type, 'upstream_of')
   assert.equal(claim.claimType, 'fact')
   assert.equal(source.sourceType, 'official_disclosure')
   assert.equal(module.targetEntity, 'entity:semiconductor')

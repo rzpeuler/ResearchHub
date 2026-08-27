@@ -119,7 +119,7 @@ export interface BusinessExposureAttributesV03 {
   exposureBasis?: BusinessExposureBasisV03
   realizationStage?: BusinessExposureRealizationStageV03
   materiality?: BusinessExposureMaterialityV03
-  financialContribution?: FinancialContributionV03
+  financialContribution?: FinancialContributionV03 | null
 }
 
 export interface OwnershipAttributesV03 {

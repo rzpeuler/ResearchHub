@@ -21,6 +21,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-V0.3-IMPLEMENTATION-A-001 | Add Knowledge v0.3 executable Schema and versioned Domain Model | Completed / Sol Verification Pending | P0 | 2026-08-27 | Luna | Current task commit | Review Pending / Sol Verification |
 | KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R1 | Correct Knowledge v0.3 Schema/Domain structural fidelity | Completed / Sol Verification Pending | P0 | 2026-08-27 | Luna | Current task commit | Review Pending / Sol Verification |
 | KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R2 | Enforce v0.3 Module canonical reference typing | Completed / Sol Verification Pending | P0 | 2026-08-27 | Luna | Current task commit | Review Pending / Sol Verification |
+| KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R3 | Align Business Exposure financialContribution nullability | Completed / Sol Verification Pending | P0 | 2026-08-27 | Luna | Current task commit | Review Pending / Sol Verification |
 | RH-GOV-001 | Initialize project execution state management system | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-DOC-002 | Synchronize architecture baseline documentation | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-ENG-001 | Validate minimum ResearchHub Harness integration | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — typecheck and integration test passed |

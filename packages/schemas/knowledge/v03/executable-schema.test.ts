@@ -52,6 +52,13 @@ test('Schema 0.3 contains the frozen semantic vocabularies and boundaries', () =
     targetEntity: { targetKind: 'Entity', cardinality: 'zero_or_one' },
     sourceRefs: { targetKind: 'Source', cardinality: 'zero_or_many' },
   })
+  assert.deepEqual(KNOWLEDGE_SCHEMA_V03.relation.definitions.business_exposure.attributes.financialContribution, {
+    nullable: true,
+    fields: [
+      'period', 'revenueAmount', 'revenueShare', 'profitAmount', 'profitShare',
+      'currency', 'separatelyReported',
+    ],
+  })
   assert.equal(KNOWLEDGE_SCHEMA_V03.module.fields.includes('name'), false)
   assert.equal(KNOWLEDGE_SCHEMA_V03.module.fields.includes('targetRefs'), false)
   assert.equal(KNOWLEDGE_SCHEMA_V03.auxiliaryAssets.referenceTaxonomy.canonical, false)
@@ -80,10 +87,13 @@ test('Schema 0.3 encodes relation rules, constraints, and retired vocabulary', (
       ],
       realizationStage: ['announced', 'transaction_pending', 'pre_revenue', 'commercialized', 'reported', 'unknown'],
       materiality: ['core', 'material', 'minor', 'immaterial', 'unknown'],
-      financialContribution: [
-        'period', 'revenueAmount', 'revenueShare', 'profitAmount', 'profitShare',
-        'currency', 'separatelyReported',
-      ],
+      financialContribution: {
+        nullable: true,
+        fields: [
+          'period', 'revenueAmount', 'revenueShare', 'profitAmount', 'profitShare',
+          'currency', 'separatelyReported',
+        ],
+      },
     },
   })
   assert.deepEqual(KNOWLEDGE_SCHEMA_V03.numericConstraints, {

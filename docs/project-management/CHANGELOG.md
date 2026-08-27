@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R3
+
+- Allowed Business Exposure `financialContribution` to be an object, explicit
+  `null`, or absent, matching the frozen deterministic migration target.
+- Added executable Schema nullability metadata and preserved the exact frozen
+  child-field vocabulary.
+- Preserved the 0..1 numeric constraints for `revenueShare` and `profitShare`,
+  all R1/R2 corrections, and Schema 0.3 runtime non-activation.
+- Did not add migration code or modify Runtime/Example Knowledge Bases. R3
+  remains `Completed / Sol Verification Pending` with acceptance
+  `Review Pending / Sol Verification`; Stage B is not started.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R2
 
 - Constrained Module `targetEntity` to the Schema 0.3 `EntityRefV03`

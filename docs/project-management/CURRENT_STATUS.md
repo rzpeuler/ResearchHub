@@ -1,5 +1,27 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R3
+
+R3 closes the final Stage A Schema / Domain / Migration contract gap for
+Business Exposure:
+
+- `financialContribution` accepts an object, explicit `null`, or remains
+  absent in the v0.3 Domain.
+- Executable Schema metadata explicitly records `nullable: true` and the
+  frozen child-field vocabulary.
+- The deterministic migration target for legacy `operates_in` semantics can
+  therefore represent `financialContribution: null` without bypassing the
+  Domain model.
+- Numeric constraints remain unchanged and apply when numeric values are
+  present.
+
+All R1 and R2 corrections remain intact. No migration code, Schema 0.3
+runtime activation, Runtime KB change, or Example KB change was made.
+
+Status is `Completed / Sol Verification Pending`; acceptance remains
+`Review Pending / Sol Verification`. Parent Stage A, R1, and R2 remain
+pending final Stage A acceptance until Sol independently verifies R3.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R2
 
 R2 closes the final Stage A canonical-reference fidelity gap:

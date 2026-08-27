@@ -165,15 +165,18 @@ export const KNOWLEDGE_SCHEMA_V03 = {
           ],
           realizationStage: ['announced', 'transaction_pending', 'pre_revenue', 'commercialized', 'reported', 'unknown'],
           materiality: ['core', 'material', 'minor', 'immaterial', 'unknown'],
-          financialContribution: [
-            'period',
-            'revenueAmount',
-            'revenueShare',
-            'profitAmount',
-            'profitShare',
-            'currency',
-            'separatelyReported',
-          ],
+          financialContribution: {
+            nullable: true,
+            fields: [
+              'period',
+              'revenueAmount',
+              'revenueShare',
+              'profitAmount',
+              'profitShare',
+              'currency',
+              'separatelyReported',
+            ],
+          },
         },
       },
       upstream_of: {
