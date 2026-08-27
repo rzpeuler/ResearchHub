@@ -142,7 +142,7 @@ If no unambiguous statement source exists → MigrationReviewItem.
 
 LLM MUST NOT synthesize a new statement automatically during canonical migration.
 
-### 11A. B3-R1 deterministic compatibility addendum
+### 11A. B3-R2 deterministic temporal compatibility addendum
 
 The implemented migration policy applies these frozen compatibility rules:
 
@@ -150,10 +150,24 @@ The implemented migration policy applies these frozen compatibility rules:
   `{status: active}` with warning `legacy_lifecycle_default_active`; explicit
   legal lifecycle is preserved and contradictory/invalid explicit lifecycle is
   Review.
-- Legacy `period`, Trend `timeHorizon`, and event `occurredAt` plus
-  `datePrecision` map to a v0.3 temporal label with null `asOf`, `start`, and
-  `end`; no date parsing or invented boundary is allowed. Explicit temporal
-  conflicts remain Review.
+- Every non-empty `period`, Trend `timeHorizon`, and `occurredAt` is collected
+  as a candidate. `occurredAt` maps to point for `day`, period for `year`,
+  `month`, `quarter`, or `period`, and unknown otherwise. Labels are preserved
+  exactly; `asOf`, `start`, and `end` remain null for generated temporal data.
+  No date parsing or invented boundary is allowed.
+- Candidates are equivalent only when both scope type and exact label match;
+  equivalent candidates are deduplicated. Two or more distinct candidates emit
+  `temporal_semantic_conflict` with their source fields, labels, and scope
+  types. No merged or preferred semantic is invented.
+- A legal explicit `temporal` object remains authoritative. A matching legacy
+  candidate is accepted without Review; a compatible null explicit label may
+  be enriched with the exact legacy label while preserving all other fields.
+  Explicit type mismatch, non-null label mismatch, malformed comparison, or
+  multiple incompatible legacy candidates emits `temporal_semantic_conflict`.
+- A present, non-empty non-string `period`, `timeHorizon`, or `occurredAt`
+  emits `legacy_temporal_invalid`; it is never silently ignored. A standalone
+  `datePrecision` without `occurredAt` is likewise invalid and cannot create a
+  temporal boundary.
 - `affectedEntityRefs` is unioned with `entityRefs` through the complete ID map;
   unresolved references remain Review. Legacy Claim `category` is explicitly
   discarded with warning `legacy_claim_category_discarded`.

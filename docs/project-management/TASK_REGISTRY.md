@@ -27,8 +27,9 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-V0.3-IMPLEMENTATION-B-002 | Implement Knowledge v0.3 read, validation, and migration runtime integration | Completed | P0 | 2026-08-27 | Luna | `b401c949a212599e88228366013ec0dee254b30b` | Accepted - Sol verified |
 | KNOWLEDGE-V0.3-IMPLEMENTATION-B-002-R1 | Correct Knowledge v0.3 Raw identity and runtime validation gaps | Completed | P0 | 2026-08-27 | Luna | `268749316f2b4d8ba58441c8885dcf560d0d3e5e` | Accepted - Sol verified |
 | KNOWLEDGE-V0.3-IMPLEMENTATION-B-002-R2 | Close Knowledge v0.3 temporal, numeric, and migration recovery gaps | Completed | P0 | 2026-08-27 | Luna | `b835fac3dabfee029796311c222e744b0a326cdb` | Accepted - Sol verified |
-| KNOWLEDGE-V0.3-IMPLEMENTATION-B-003 | Accept production-like AI Hardware example migration to Knowledge v0.3 | Completed | P0 | 2026-08-27 | Luna | `24973ad5be501ac4088f75c17539a77e90a7d2f4` | Completed / Sol Verification Pending |
-| KNOWLEDGE-V0.3-IMPLEMENTATION-B-003-R1 | Complete deterministic legacy migration policy and evidence closure | Completed | P0 | 2026-08-27 | Luna | Current task commit | Sol Verification Pending |
+| KNOWLEDGE-V0.3-IMPLEMENTATION-B-003 | Accept production-like AI Hardware example migration to Knowledge v0.3 | Completed | P0 | 2026-08-27 | Luna | `24973ad5be501ac4088f75c17539a77e90a7d2f4` | Accepted — Sol verified |
+| KNOWLEDGE-V0.3-IMPLEMENTATION-B-003-R1 | Complete deterministic legacy migration policy and evidence closure | Completed | P0 | 2026-08-27 | Luna | `5a32f9116015ac24151251da05bec64df88af49b` | Completed / Rework Required — Sol verification |
+| KNOWLEDGE-V0.3-IMPLEMENTATION-B-003-R2 | Close temporal migration safety accounting and evidence gaps | Completed | P0 | 2026-08-27 | Luna | Current R2 implementation commit (see Git handoff) | Sol Verification Pending |
 | RH-GOV-001 | Initialize project execution state management system | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-DOC-002 | Synchronize architecture baseline documentation | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-ENG-001 | Validate minimum ResearchHub Harness integration | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — typecheck and integration test passed |

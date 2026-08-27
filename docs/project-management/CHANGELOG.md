@@ -1,17 +1,28 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-003-R2
+
+- Closed the temporal migration safety gap by accounting for every legacy
+  `period`, Trend `timeHorizon`, and `occurredAt` candidate.
+- Added deterministic equivalent-candidate deduplication, conflict Reviews,
+  explicit temporal label enrichment, and invalid-value Reviews.
+- Added the full temporal regression matrix and three metadata collision tests.
+- Re-ran exact-example and isolated real Runtime clone acceptance; B3-R2 is
+  `Completed / Sol Verification Pending` and Stage B remains pending Sol final
+  verification.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-003-R1
 
 - Completed deterministic Schema 0.2 to 0.3 migration policy for lifecycle,
   Source type, explicit legacy metadata, Claim temporal fields, affected
   references, and category handling.
-- Reduced exact-example Review output from 115 compatibility-heavy items to 13
-  expected semantic/dependent Reviews; the acceptance classifier now fails on
-  any unexpected Review.
+- Reduced exact-example compatibility-heavy Review output from 115 to the
+  accounted policy result; the acceptance classifier fails on any unexpected
+  Review.
 - Verified a fresh `ai-hardware-real` clone with zero-Review dry-run, committed
   v0.3/revision 1 validation, canonical v0.3 loading, and unchanged original
   Runtime KB.
-- B3-R1 and Stage B are `Completed / Sol Verification Pending`.
+- B3-R1 is `Completed / Rework Required` pending its temporal correction.
 
 ## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-003
 

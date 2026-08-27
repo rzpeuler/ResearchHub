@@ -30,13 +30,16 @@
 - B2 Parent: Completed / Accepted - Sol verified
 - B2-R1: Completed / Accepted - Sol verified
 - B2-R2: Completed / Accepted - Sol verified
-- B3: Completed / Sol Verification Pending
+- B3: Completed / Sol verified
+- B3-R1: Completed / Rework Required
+- B3-R2: Completed / Sol Verification Pending
 - Current approved direction: Implementation Stage B — 0.2 to 0.3 Migration
 
-Stage B is complete pending Sol verification. B1 and B2 are accepted; B3-R1
-completed the deterministic migration-policy closure for the exact example.
-The exact example retains expected semantic Review, while a fresh real Runtime
-KB clone passed zero-Review dry-run and committed v0.3 validation.
+Stage B is complete pending Sol verification. B1, B2, and B3 Evidence are
+accepted; B3-R2 completed the temporal migration-policy safety closure. The
+exact example retains accounted semantic and invalid-temporal Reviews, while a
+fresh real Runtime KB clone passed zero-Review dry-run and committed v0.3
+validation.
 Schema 0.3 read and
 migration-commit support are present, but semantic Writer/Curation/Workflow and
 frontend activation remain outside this stage. B3 does not activate a default

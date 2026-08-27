@@ -225,7 +225,7 @@ See [Knowledge Architecture v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITEC
 and [Knowledge Storage Layout v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.1.md).
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-003-R1 — Deterministic migration policy closure
 
-**Status:** Completed / Sol Verification Pending
+**Status:** Completed / Rework Required
 **Date:** 2026-08-27
 
 The Schema 0.2 to 0.3 migration policy is now explicit and deterministic. Missing
@@ -237,8 +237,26 @@ mapped without invented dates; and Claim category is explicitly discarded with
 a warning. Genuine relation and rich Claim semantic decisions remain Review.
 
 The exact Git-managed example remains unchanged and intentionally gated by its
-13 expected semantic/dependent Reviews. A fresh disposable clone of the real
+expected semantic/dependent Reviews. A fresh disposable clone of the real
 Runtime KB passed zero-Review dry-run, committed to Schema 0.3 / revision 1,
 and passed canonical v0.3 validation. The original Runtime KB was not changed.
 Schema 0.3 Runtime activation and v0.3 Writer/Curation/Workflow/Frontend work
 remain outside this task.
+
+## KNOWLEDGE-V0.3-IMPLEMENTATION-B-003-R2 — Temporal migration safety closure
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-27
+
+Every explicit legacy temporal field is now accounted for. Equivalent period
+candidates deduplicate only on exact scope type and label; conflicting legacy
+candidates emit `temporal_semantic_conflict`; explicit temporal remains
+authoritative and only a compatible null label is enriched. Non-string temporal
+values emit `legacy_temporal_invalid` and are never silently ignored.
+
+The exact example remains deterministic with 15 accounted Reviews, including
+two newly exposed invalid numeric periods. Metadata collision regressions pass,
+the real Runtime KB was validated through fresh isolated clones, and the
+duplicate agent-specific B3-R1 design file was removed from the current tree.
+Stage B is `Completed / Sol Verification Pending`; Sol final verification is
+still required.

@@ -195,6 +195,58 @@ test('B3 policy resolves compatibility fields without guessing semantic meaning'
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
+test('B3 accounts every legacy temporal candidate without silent loss', async () => {
+  const cases = [
+    { name: 'period-only', type: 'fact', fields: { period: 'FY2026' }, temporal: { asOf: null, scope: { type: 'period', start: null, end: null, label: 'FY2026' } } },
+    { name: 'time-horizon-only', type: 'trend', fields: { timeHorizon: '2026-2030' }, temporal: { asOf: null, scope: { type: 'period', start: null, end: null, label: '2026-2030' } } },
+    { name: 'occurred-day', type: 'fact', fields: { occurredAt: '2026-01-05', datePrecision: 'day' }, temporal: { asOf: null, scope: { type: 'point', start: null, end: null, label: '2026-01-05' } } },
+    { name: 'occurred-year', type: 'fact', fields: { occurredAt: '2026', datePrecision: 'year' }, temporal: { asOf: null, scope: { type: 'period', start: null, end: null, label: '2026' } } },
+    { name: 'equivalent-periods', type: 'trend', fields: { period: '2026-2030', timeHorizon: '2026-2030' }, temporal: { asOf: null, scope: { type: 'period', start: null, end: null, label: '2026-2030' } } },
+    { name: 'conflicting-periods', type: 'trend', fields: { period: 'FY2026', timeHorizon: '2026-2030' }, conflict: true },
+    { name: 'period-occurred-conflict', type: 'fact', fields: { period: 'FY2026', occurredAt: '2026-01-01', datePrecision: 'day' }, conflict: true },
+    { name: 'explicit-match', type: 'fact', fields: { period: 'FY2026', temporal: { asOf: null, scope: { type: 'period', start: null, end: null, label: 'FY2026' } } }, temporal: { asOf: null, scope: { type: 'period', start: null, end: null, label: 'FY2026' } } },
+    { name: 'explicit-null-label', type: 'fact', fields: { period: 'FY2026', temporal: { asOf: '2026-01-01T00:00:00.000Z', scope: { type: 'period', start: null, end: null, label: null } } }, temporal: { asOf: '2026-01-01T00:00:00.000Z', scope: { type: 'period', start: null, end: null, label: 'FY2026' } } },
+    { name: 'explicit-label-mismatch', type: 'fact', fields: { period: 'FY2026', temporal: { asOf: null, scope: { type: 'period', start: null, end: null, label: 'FY2027' } } }, conflict: true },
+    { name: 'explicit-type-mismatch', type: 'fact', fields: { period: 'FY2026', temporal: { asOf: null, scope: { type: 'point', start: null, end: null, label: 'FY2026' } } }, conflict: true },
+    { name: 'numeric-period', type: 'fact', fields: { period: 2026 }, invalid: true },
+    { name: 'numeric-time-horizon', type: 'trend', fields: { timeHorizon: 2026 }, invalid: true },
+    { name: 'numeric-occurred-at', type: 'fact', fields: { occurredAt: 2026 }, invalid: true },
+  ] as const
+  for (const scenario of cases) {
+    const id = `fact:temporal-${scenario.name}`
+    const value = { id, type: scenario.type, entityRefs: ['segment:gpu'], sourceRefs: ['source:official'], statement: 'Temporal policy test.', ...scenario.fields, lifecycle: lifecycle() }
+    const root = await createKb([...cleanAssets(), { type: 'intelligence', path: `intelligence/temporal-${scenario.name}.yaml`, value }])
+    try {
+      const { result, staging } = await run(root, `temporal-${scenario.name}`)
+      try {
+        const reviews = result.reviewItems.filter((item) => item.assetId === id)
+        assert.equal(reviews.some((item) => item.code === 'temporal_semantic_conflict'), 'conflict' in scenario, scenario.name)
+        assert.equal(reviews.some((item) => item.code === 'legacy_temporal_invalid'), 'invalid' in scenario, scenario.name)
+        const claim = parseYaml(await readFile(join(staging, `intelligence/temporal-${scenario.name}.yaml`), 'utf8')) as Record<string, unknown>
+        if ('temporal' in scenario) assert.deepEqual(claim.temporal, scenario.temporal, scenario.name)
+      } finally { await rm(staging, { recursive: true, force: true }) }
+    } finally { await rm(root, { recursive: true, force: true }) }
+  }
+})
+
+test('B3 preserves metadata.legacyV02 collision values and reviews every collision form', async () => {
+  const cases = [
+    { id: 'company:metadata-collision-entity', type: 'entity', path: 'entities/metadata-collision-entity.yaml', value: { id: 'company:metadata-collision-entity', type: 'company', name: 'Collision Entity', metadata: { legacyV02: { listingStatus: 'existing' } }, listingStatus: 'listed' }, expected: { legacyV02: { listingStatus: 'existing' } } },
+    { id: 'source:metadata-collision-source', type: 'source', path: 'sources/metadata-collision-source.yaml', value: { id: 'source:metadata-collision-source', type: 'custom_report', title: 'Collision Source', metadata: { legacyV02: { documentType: 'existing' } }, documentType: 'annual-report' }, expected: { legacyV02: { documentType: 'existing' } } },
+    { id: 'company:metadata-collision-shape', type: 'entity', path: 'entities/metadata-collision-shape.yaml', value: { id: 'company:metadata-collision-shape', type: 'company', name: 'Collision Shape', metadata: { legacyV02: 'occupied' }, tags: ['legacy'] }, expected: { legacyV02: 'occupied' } },
+  ] as const
+  for (const scenario of cases) {
+    const root = await createKb([...cleanAssets(), scenario])
+    try {
+      const { result, staging } = await run(root, `metadata-${scenario.type}-${scenario.id.replaceAll(':', '-')}`)
+      try {
+        assert.equal(result.reviewItems.some((item) => item.assetId === scenario.id && item.code === 'legacy_metadata_collision'), true, scenario.id)
+        assert.deepEqual(parseYaml(await readFile(join(staging, scenario.path), 'utf8')).metadata, scenario.expected, scenario.id)
+      } finally { await rm(staging, { recursive: true, force: true }) }
+    } finally { await rm(root, { recursive: true, force: true }) }
+  }
+})
+
 test('B1 emits deterministic Review items for collisions, ambiguity, unsupported semantics, and unresolved refs', async () => {
   const assets: Asset[] = [
     { type: 'entity', path: 'entities/industry.yaml', value: { id: 'industry:collision', type: 'industry', name: 'Industry', lifecycle: lifecycle() } },

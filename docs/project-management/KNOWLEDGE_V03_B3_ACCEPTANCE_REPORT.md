@@ -2,12 +2,16 @@
 
 ## Result
 
-B3-R1 is **Completed / Sol Verification Pending**. The exact Git-managed source
+B3-R1 result is **Completed / Rework Required**. The exact Git-managed source
 was used without repair or normalization. Its Schema 0.2 to 0.3 dry-run now
 resolves deterministic compatibility cases into explicit v0.3 values and
-warnings, while retaining only the frozen semantic Reviews. The exact example
+warnings, while retaining only the frozen semantic Reviews plus explicit
+invalid-value policy Reviews. The exact example
 therefore remains `review_required` by design; the independent real Runtime KB
 clone passed a zero-Review dry-run and a committed v0.3 validation.
+
+B3-R2 is **Completed / Sol Verification Pending**. It closes the temporal
+accounting gap without suppressing newly exposed invalid legacy values.
 
 ## B2 closure
 
@@ -49,16 +53,17 @@ mode `dry_run`.
 - Warnings: 125 (41 lifecycle defaults, 31 legacy metadata preservations, 12
   unknown Source types, 10 category discards, 10 exposure-basis, 10
   materiality, 10 realization-stage, 1 unclassified ThemeGroup fallback)
-- Reviews: 13; 11 `ROOT_SEMANTIC_REVIEW`, 2 `DEPENDENT_REFERENCE_BLOCKED`, 0 `UNEXPECTED_REVIEW`
-- Compatibility Review noise from lifecycle, Source type, metadata, temporal
-  fields, affected references, and category is absent from the Review set
+- Reviews: 15; 11 `ROOT_SEMANTIC_REVIEW`, 2 `DETERMINISTIC_POLICY_RESOLVED`, 2 `DEPENDENT_REFERENCE_BLOCKED`, 0 `UNEXPECTED_REVIEW`
+- Compatibility Review noise from lifecycle, Source type, metadata, valid
+  temporal fields, affected references, and category is absent from the Review
+  set; invalid temporal values remain explicit policy Reviews
 - Inferred invariants: `completeCanonicalIdMapping=false` and `declaredCanonicalRefsResolveToTarget=false`; the remaining migration invariants are true
 - Source copy remained byte-identical; no live migration log or transaction residue was created
 
 The fresh third-copy repeat with run ID `b03-ai-hardware-dry-run-repeat`
 matched the first run’s semantic output after excluding only
 `migrationRunId` and `reviewItemId` fields. Normalized semantic output hashes
-were both `f03091b98bcf6e8b21a0eb61278c27e4bff28dda43dafcc7b29b7d0baa70568a`;
+were both `aebd5323d7781d88a2805e858f4dbb873ad611f42bb1b6be62b0b605c7e0f708`;
 semantic equality is `true`.
 
 ## Migration Review Report
@@ -73,11 +78,13 @@ groups are:
 | `claim_statement_missing` | 2 | ROOT_SEMANTIC_REVIEW | intelligence / `forecast`, `viewpoint` | Every v0.3 Claim requires a deterministic non-empty statement | ROOT_SEMANTIC_REVIEW | Supply an explicit statement rule or source data |
 | `event_impact_requires_decomposition` | 2 | ROOT_SEMANTIC_REVIEW | intelligence / event `fact` | Event impact propositions cannot be losslessly represented as one Claim field | ROOT_SEMANTIC_REVIEW | Decompose impact into explicit Claims |
 | `legacy_semantic_field_unmapped` | 4 | ROOT_SEMANTIC_REVIEW | intelligence / `forecast`, `viewpoint`, `trend`, `risk` | Rich multi-value or proposition semantics require an explicit lossless destination | ROOT_SEMANTIC_REVIEW | Define preservation/mapping semantics |
+| `legacy_temporal_invalid` | 2 | DETERMINISTIC_POLICY_RESOLVED | intelligence / numeric legacy `period` | Explicit non-string temporal values cannot be safely converted to labels | DETERMINISTIC_POLICY_RESOLVED | Correct legacy temporal values |
 | `completeCanonicalIdMapping` | 1 | DEPENDENT_REFERENCE_BLOCKED | migration invariant / 3 unresolved relations | The three root `contains` relations have no target mapping | DEPENDENT_REFERENCE_BLOCKED | Resolve the root relation semantics |
 | `declaredCanonicalRefsResolveToTarget` | 1 | DEPENDENT_REFERENCE_BLOCKED | migration invariant / 3 unresolved relation refs | Three declared refs point to the intentionally unresolved relation objects | DEPENDENT_REFERENCE_BLOCKED | Resolve the root relation semantics |
 
 The first four rows are root semantic patterns and account for 11 ReviewItems;
-the final two rows are deterministic aggregate consequences and account for 2.
+the temporal policy row accounts for 2 explicitly blocking policy Reviews; the
+final two rows are deterministic aggregate consequences and account for 2.
 The acceptance classifier is policy/evidence based; any unrecognized Review is
 classified as `UNEXPECTED_REVIEW` and fails the test. No unexpected Review was
 observed.
@@ -89,7 +96,8 @@ objects, 2 missing Claim statement sources, 2 event impact decompositions, and
 4 rich Claim semantic-field observations. The 2 dependent reviews are not
 additional semantic decisions; they are aggregate invariants generated after
 the root relation ambiguity prevents complete mapping and target reference
-closure.
+closure. Two additional deterministic-policy Reviews expose numeric legacy
+`period` values that were previously silently ignored.
 
 ### Root review details
 
@@ -125,6 +133,9 @@ closure.
 - Legacy Claim `period`, Trend `timeHorizon`, event `occurredAt` plus
   `datePrecision`, and `affectedEntityRefs` receive deterministic target
   treatment. Claim `category` is explicitly discarded with a warning.
+- The exact example contains two numeric legacy `period` values; both now emit
+  `legacy_temporal_invalid` and remain blocking Review rather than being
+  silently ignored.
 
 ### Failed invariant root cause
 
@@ -149,20 +160,12 @@ yet frozen for deterministic v0.3 migration. No automatic guess was made.
 
 ## Commit and integrity status
 
+Implementation commit: see the final Git handoff for the immutable commit hash.
+
 Commit run `b03-ai-hardware-commit` remains intentionally **not executed** for
 the expected semantic Reviews prevent a safe commit. The repository example's
 pre/post tree hashes are equal.
-<!--
-validation. Consequently there is no committed v0.3 Handle or migration log
-for B3. The repository example’s pre/post tree hashes are equal.
 
-The projected dry-run preserves the ThemeGroup fallback boundary, canonical
-Entity/Relation/Claim/Module/Source namespaces, taxonomy and views as
-auxiliary data, and the empty Raw registry. The optional configured real
-Runtime KB `ai-hardware-real` was available; a clone-only dry-run passed source
-validation and returned `review_required` with 1 lifecycle review and 1 warning.
-The original Runtime KB was not modified.
--->
 
 The projected dry-run preserves the ThemeGroup fallback boundary, canonical
 Entity/Relation/Claim/Module/Source namespaces, taxonomy and views as
@@ -173,11 +176,35 @@ all invariants true, and passed source and target validation;
 canonical v0.3 loading. The original Runtime KB remained byte-identical and
 was not modified.
 
+## B3-R2 Temporal Safety Matrix
+
+| Case | Result |
+| --- | --- |
+| period only | period label preserved |
+| Trend timeHorizon only | period label preserved |
+| occurredAt + day | point label preserved |
+| occurredAt + year | period label preserved |
+| equivalent period + timeHorizon | one target temporal, no Review |
+| conflicting period + timeHorizon | `temporal_semantic_conflict` |
+| period + occurredAt conflict | `temporal_semantic_conflict` |
+| explicit temporal matching label/type | explicit temporal preserved |
+| explicit null label with compatible period | label enriched, other fields preserved |
+| explicit label mismatch | `temporal_semantic_conflict` |
+| explicit scope type mismatch | `temporal_semantic_conflict` |
+| numeric period | `legacy_temporal_invalid` |
+| numeric Trend timeHorizon | `legacy_temporal_invalid` |
+| numeric occurredAt | `legacy_temporal_invalid` |
+
+The three metadata collision regressions also passed: existing Entity
+`listingStatus`, existing Source `documentType`, and non-object
+`metadata.legacyV02` all produce `legacy_metadata_collision` without overwrite.
+
 ## Validation
 
 - Integration TypeScript compile: passed
 - B3 + B2 + B1 + migration tests: passed, including the new policy fixture
-- v0.3 validator tests: 74 passed
+- Migration/acceptance tests: 26 passed
+- v0.3 Schema, Domain, and validator tests: 81 passed
 - Schema tests: 8 passed
 - Knowledge tests: 34 passed
 - Knowledge infrastructure/dependency-boundary tests: 46 passed
@@ -185,7 +212,9 @@ was not modified.
 
 ## Governance
 
-- B3 / B3-R1: `Completed / Sol Verification Pending`
-- B3 acceptance: `Sol Verification Pending`
+- B3 Evidence: `Accepted - Sol verified`
+- B3-R1: `Completed / Rework Required`
+- B3-R1 acceptance: `Rework Required - Sol verification`
+- B3-R2: `Completed / Sol Verification Pending`
 - Stage B: `Completed / Sol Verification Pending`
-- Current direction: Sol verification of the completed deterministic migration policy and evidence
+- Current direction: Sol final verification of temporal safety and Stage B closure evidence

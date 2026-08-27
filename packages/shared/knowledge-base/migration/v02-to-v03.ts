@@ -249,27 +249,94 @@ function preserveLegacyMetadata(
   return result
 }
 
-function legacyTemporal(source: Dict, type: string): Dict | undefined {
-  const candidates: Array<{ value: unknown; precision?: unknown; kind: 'period' | 'occurredAt' }> = []
-  if (nonEmpty(source.period)) candidates.push({ value: source.period, kind: 'period' })
-  if (type === 'trend' && nonEmpty(source.timeHorizon)) candidates.push({ value: source.timeHorizon, kind: 'period' })
-  if (nonEmpty(source.occurredAt)) candidates.push({ value: source.occurredAt, precision: source.datePrecision, kind: 'occurredAt' })
-  const candidate = candidates.find((item) => nonEmptyString(item.value))
-  if (!candidate) return undefined
-  const label = String(candidate.value)
-  if (candidate.kind === 'period') return { asOf: null, scope: { type: 'period', start: null, end: null, label } }
-  const scopeType = candidate.precision === 'day' ? 'point' : ['year', 'month', 'quarter', 'period'].includes(String(candidate.precision)) ? 'period' : 'unknown'
-  return { asOf: null, scope: { type: scopeType, start: null, end: null, label } }
+type LegacyTemporalCandidate = {
+  sourceField: 'period' | 'timeHorizon' | 'occurredAt'
+  label: string
+  scopeType: 'point' | 'period' | 'unknown'
 }
 
-function noteTemporalConflict(source: Dict, type: string, explicitTemporal: Dict | undefined, reviews: ReviewCollector, assetId: string): void {
-  const legacy = legacyTemporal(source, type)
-  if (!legacy || !explicitTemporal || !isDict(explicitTemporal.scope)) return
-  const legacyLabel = legacy.scope && isDict(legacy.scope) ? legacy.scope.label : undefined
-  const explicitLabel = explicitTemporal.scope.label
-  if (nonEmptyString(legacyLabel) && explicitLabel !== null && explicitLabel !== legacyLabel) {
-    reviews.add('temporal_semantic_conflict', 'Legacy temporal field conflicts with the explicit v0.3 temporal label.', 'review_claim_temporal', assetId, { legacyLabel, explicitLabel })
+function legacyTemporalCandidates(source: Dict, type: string, reviews: ReviewCollector, assetId: string): LegacyTemporalCandidate[] {
+  const candidates: LegacyTemporalCandidate[] = []
+  const inspect = (sourceField: LegacyTemporalCandidate['sourceField'], value: unknown, scopeType: LegacyTemporalCandidate['scopeType']): void => {
+    if (!nonEmpty(value)) return
+    if (!nonEmptyString(value)) {
+      reviews.add('legacy_temporal_invalid', `Legacy temporal field ${sourceField} must be a non-empty string.`, 'review_claim_temporal', assetId, { sourceField, value })
+      return
+    }
+    candidates.push({ sourceField, label: value, scopeType })
   }
+  inspect('period', source.period, 'period')
+  if (type === 'trend') inspect('timeHorizon', source.timeHorizon, 'period')
+  if (nonEmpty(source.occurredAt)) {
+    const scopeType = source.datePrecision === 'day' ? 'point' : ['year', 'month', 'quarter', 'period'].includes(String(source.datePrecision)) ? 'period' : 'unknown'
+    inspect('occurredAt', source.occurredAt, scopeType)
+  } else if (nonEmpty(source.datePrecision)) {
+    reviews.add('legacy_temporal_invalid', 'Legacy datePrecision has no occurredAt value to qualify.', 'review_claim_temporal', assetId, { sourceField: 'datePrecision', value: source.datePrecision })
+  }
+  return candidates
+}
+
+function uniqueTemporalCandidates(candidates: LegacyTemporalCandidate[]): LegacyTemporalCandidate[] {
+  const seen = new Set<string>()
+  return candidates
+    .filter((candidate) => {
+      const key = `${candidate.scopeType}\u0000${candidate.label}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .sort((left, right) => `${left.scopeType}\u0000${left.label}\u0000${left.sourceField}`.localeCompare(`${right.scopeType}\u0000${right.label}\u0000${right.sourceField}`))
+}
+
+function temporalFromCandidate(candidate: LegacyTemporalCandidate): Dict {
+  return { asOf: null, scope: { type: candidate.scopeType, start: null, end: null, label: candidate.label } }
+}
+
+function temporalConflictDetails(candidates: LegacyTemporalCandidate[]): Dict {
+  return {
+    sourceFields: sortedUnique(candidates.map((candidate) => candidate.sourceField)),
+    labels: sortedUnique(candidates.map((candidate) => candidate.label)),
+    scopeTypes: sortedUnique(candidates.map((candidate) => candidate.scopeType)),
+  }
+}
+
+function resolveClaimTemporal(source: Dict, type: string, reviews: ReviewCollector, assetId: string): Dict | undefined {
+  const candidates = uniqueTemporalCandidates(legacyTemporalCandidates(source, type, reviews, assetId))
+  const explicit = isDict(source.temporal) ? clone(source.temporal) : undefined
+  if (!explicit) {
+    if (candidates.length === 0) return undefined
+    if (candidates.length > 1) reviews.add('temporal_semantic_conflict', 'Legacy temporal fields produce incompatible v0.3 temporal representations.', 'review_claim_temporal', assetId, temporalConflictDetails(candidates))
+    return temporalFromCandidate(candidates[0]!)
+  }
+  if (candidates.length === 0) return explicit
+  if (candidates.length > 1) {
+    reviews.add('temporal_semantic_conflict', 'Multiple incompatible legacy temporal fields conflict with the explicit v0.3 temporal representation.', 'review_claim_temporal', assetId, {
+      ...temporalConflictDetails(candidates),
+      ...(isDict(explicit.scope) && explicit.scope.type !== undefined ? { explicitScopeType: explicit.scope.type } : {}),
+      ...(isDict(explicit.scope) && explicit.scope.label !== undefined ? { explicitLabel: explicit.scope.label } : {}),
+    })
+    return explicit
+  }
+  const candidate = candidates[0]!
+  if (!isDict(explicit.scope) || typeof explicit.scope.type !== 'string') {
+    reviews.add('temporal_semantic_conflict', 'Explicit temporal scope cannot be compared deterministically with the legacy temporal representation.', 'review_claim_temporal', assetId, temporalConflictDetails(candidates))
+    return explicit
+  }
+  if (explicit.scope.type !== candidate.scopeType) {
+    reviews.add('temporal_semantic_conflict', 'Explicit temporal scope type conflicts with the legacy temporal representation.', 'review_claim_temporal', assetId, {
+      ...temporalConflictDetails(candidates), explicitScopeType: explicit.scope.type, explicitLabel: explicit.scope.label,
+    })
+    return explicit
+  }
+  if (explicit.scope.label === candidate.label) return explicit
+  if (explicit.scope.label === null) {
+    explicit.scope.label = candidate.label
+    return explicit
+  }
+  reviews.add('temporal_semantic_conflict', 'Explicit temporal label conflicts with the legacy temporal representation.', 'review_claim_temporal', assetId, {
+    ...temporalConflictDetails(candidates), explicitScopeType: explicit.scope.type, explicitLabel: explicit.scope.label,
+  })
+  return explicit
 }
 
 class ReviewCollector {
@@ -612,13 +679,8 @@ function transformClaim(
   if (source.sourceRefs === undefined) reviews.add('claim_source_refs_missing', 'Legacy Intelligence has no sourceRefs for the required v0.3 Claim sourceRefs.', 'provide_claim_sources', String(source.id))
   const primary = mapOptionalRef(source.primarySubjectRef, mappings, reviews, String(source.id), 'unresolved_claim_subject_ref')
   if (primary) result.primarySubjectRef = primary
-  const explicitTemporal = isDict(source.temporal) ? clone(source.temporal) : undefined
-  if (explicitTemporal) result.temporal = explicitTemporal
-  else {
-    const temporal = legacyTemporal(source, type)
-    if (temporal) result.temporal = temporal
-  }
-  noteTemporalConflict(source, type, explicitTemporal, reviews, String(source.id))
+  const temporal = resolveClaimTemporal(source, type, reviews, String(source.id))
+  if (temporal) result.temporal = temporal
   const explicitStructuredValue = isDict(source.structuredValue)
   if (explicitStructuredValue) result.structuredValue = clone(source.structuredValue)
   if (!explicitStructuredValue && type === 'forecast' && nonEmptyString(source.metric) && !scalar(source.value)) {

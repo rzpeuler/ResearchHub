@@ -166,6 +166,7 @@ function classifyReview(item: { code: string; assetId?: string; details?: Record
   if (item.code === 'completeCanonicalIdMapping' || item.code === 'declaredCanonicalRefsResolveToTarget') return 'DEPENDENT_REFERENCE_BLOCKED'
   if (item.code === 'ambiguous_contains_semantics' && item.assetId?.startsWith('relation:')) return 'ROOT_SEMANTIC_REVIEW'
   if (item.code === 'event_impact_requires_decomposition' && item.assetId?.startsWith('fact:')) return 'ROOT_SEMANTIC_REVIEW'
+  if (item.code === 'temporal_semantic_conflict' && item.assetId) return 'ROOT_SEMANTIC_REVIEW'
   if (item.code === 'claim_statement_missing' && (item.assetId?.startsWith('forecast:') || item.assetId?.startsWith('viewpoint:'))) return 'ROOT_SEMANTIC_REVIEW'
   if (item.code === 'legacy_semantic_field_unmapped') {
     const fields = new Set(Array.isArray(item.details?.fields) ? item.details.fields.map(String) : [])
@@ -175,7 +176,7 @@ function classifyReview(item: { code: string; assetId?: string; details?: Record
           : item.assetId?.startsWith('risk:') ? ['trigger', 'impact', 'probability'] : []
     if (expected.length > 0 && fields.size > 0 && [...fields].every((field) => expected.includes(field))) return 'ROOT_SEMANTIC_REVIEW'
   }
-  if (['lifecycle_missing', 'unsupported_custom_legacy_type', 'legacy_metadata_collision'].includes(item.code)) return 'DETERMINISTIC_POLICY_RESOLVED'
+  if (['lifecycle_missing', 'unsupported_custom_legacy_type', 'legacy_metadata_collision', 'legacy_temporal_invalid'].includes(item.code)) return 'DETERMINISTIC_POLICY_RESOLVED'
   return 'UNEXPECTED_REVIEW'
 }
 
@@ -240,7 +241,7 @@ test('B3 exact AI Hardware example is accepted only up to deterministic semantic
     if (dry.status === 'review_required') {
       assert.ok(dry.reviewItems.length > 0)
       assert.equal(reviewReport.some((item) => item.classification === 'UNEXPECTED_REVIEW'), false, JSON.stringify(reviewReport))
-      assert.equal(reviewReport.some((item) => item.classification === 'DETERMINISTIC_POLICY_RESOLVED'), false, JSON.stringify(reviewReport))
+      assert.deepEqual(reviewReport.filter((item) => item.classification === 'DETERMINISTIC_POLICY_RESOLVED').map((item) => item.code), ['legacy_temporal_invalid', 'legacy_temporal_invalid'])
       assert.deepEqual(new Set(reviewReport.filter((item) => item.classification === 'ROOT_SEMANTIC_REVIEW').map((item) => item.assetId)), new Set([
         'relation:data-center-contains-liquid-cooling',
         'relation:data-center-contains-server',
