@@ -1,5 +1,20 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-B-002-R2
+
+B-002-R2 closes the remaining B2 verification gaps: temporal scope labels now
+accept arbitrary strings or null without date parsing, bounded numeric values
+use finite 0..1 validation, and the 0.2 to 0.3 runtime has dedicated Review,
+target-validation, and before/during/after-switch recovery coverage.
+
+This is a narrow B2 closure and does not change architecture, Schema semantics,
+Raw identity, or introduce runtime components. Stage A is `Accepted - Sol
+verified`; B1 is `Accepted - Sol verified`; Stage B remains `In Progress`; B3
+is `Not Started / Not Authorized`.
+
+Status is `Completed / Sol Verification Pending`; acceptance is
+`Review Pending / Sol Verification`.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-002-R1
 
 B2-R1 closes the independent verification rework for Knowledge v0.3 Runtime
@@ -15,12 +30,12 @@ the Raw correction recorded here; B1 remains `Accepted - Sol verified` after
 real-Raw regression. Stage B is `In Progress`; B2 Parent is
 `Completed / Rework Required`; B3 remains `Not Started / Not Authorized`.
 
-Status is `Completed / Sol Verification Pending`; acceptance is
-`Review Pending / Sol Verification`.
+Status is `Completed / Rework Required`; acceptance is
+`Rework Required - Sol verification`.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-002
 
-B2 implementation is `Completed / Rework Required` pending the B-002-R1 Sol
+B2 implementation is `Completed / Rework Required` pending the B-002-R2 Sol
 verification. Schema 0.3 is readable through the
 version-isolated canonical reader and integrated into the existing Validation
 Skill. The release remains explicitly non-writable for 0.3. The existing
@@ -30,7 +45,7 @@ and Handle-refresh boundaries are reused by the generalized migration Runner.
 Runtime boundary: v0.2 Writer remains available; no v0.3 Writer, Curation,
 Workflow, Frontend, or semantic runtime activation was added. B1 Parent and
 B1-R1 are accepted — Sol verified. B2 acceptance is `Rework Required - Sol
-verification`; B-002-R1 is the active rework closure. B3 remains `Not Started /
+verification`; B-002-R2 is the active rework closure. B3 remains `Not Started /
 Not Authorized`.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-001-R1

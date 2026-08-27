@@ -28,12 +28,14 @@
 - Stage B: In Progress
 - B1: Completed / Sol verified
 - B2 Parent: Completed / Rework Required
-- B2-R1: Completed / Sol Verification Pending
+- B2-R1: Completed / Rework Required
+- B2-R2: Completed / Sol Verification Pending
 - B3: Not Started / Not Authorized
 - Current approved direction: Implementation Stage B — 0.2 to 0.3 Migration
 
-Stage B is the current approved implementation stage. B1 is accepted and B2-R1
-is implemented pending independent Sol verification after the B2 rework.
+Stage B is the current approved implementation stage. B1 is accepted and B2-R2
+is implemented pending independent Sol verification after the B2 and B2-R1
+rework.
 Schema 0.3 read and
 migration-commit support are present, but semantic Writer/Curation/Workflow and
 frontend activation remain outside this stage. B3 is not authorized.

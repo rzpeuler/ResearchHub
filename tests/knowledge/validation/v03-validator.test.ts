@@ -49,6 +49,22 @@ test('v0.3 validator accepts legal subtype fields, nested taxonomy ids, nested C
   const { root } = await createV03(); try { const result = await report(root); assert.equal(result.status, 'passed', JSON.stringify(result.errors)) } finally { await rm(root, { recursive: true, force: true }) }
 })
 
+for (const label of ['FY2026', '长期', '2026E', null]) test(`v0.3 validator accepts temporal scope label ${String(label)}`, async () => {
+  const { root } = await createV03(); try {
+    await mutate(root, 'claims/revenue.yaml', (value) => { (value.temporal as Record<string, unknown>).scope = { type: 'period', start: '2026-01-01T00:00:00.000Z', end: '2026-12-31T23:59:59.000Z', label } })
+    const result = await report(root)
+    assert.equal(result.status, 'passed', JSON.stringify(result.errors))
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+for (const ownershipPct of [null, 0, 1]) test(`v0.3 validator accepts ownershipPct ${String(ownershipPct)}`, async () => {
+  const { root } = await createV03(); try {
+    await mutate(root, 'relations/exposure.yaml', (value) => { value.type = 'owns_stake_in'; value.targetRef = 'entity:example-company'; value.attributes = { ownershipPct, controlType: 'minority' } })
+    const result = await report(root)
+    assert.equal(result.status, 'passed', JSON.stringify(result.errors))
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
 const invalidCases: Array<[string, string, (value: Record<string, unknown>) => void, string]> = [
   ['company investment-theme field', 'entities/company.yaml', (value) => { value.themeGroupRef = 'theme-group:technology' }, 'V03_UNDECLARED_FIELD'],
   ['entity unknown field', 'entities/company.yaml', (value) => { value.unknown = true }, 'V03_UNDECLARED_FIELD'],
@@ -74,6 +90,10 @@ const invalidCases: Array<[string, string, (value: Record<string, unknown>) => v
   ['financial profit share above range', 'relations/exposure.yaml', (value) => { (value.attributes as Record<string, unknown>).financialContribution = { profitShare: 2 } }, 'V03_RELATION_ATTRIBUTE_INVALID'],
   ['financial contribution child type', 'relations/exposure.yaml', (value) => { (value.attributes as Record<string, unknown>).financialContribution = { revenueAmount: '10' } }, 'V03_RELATION_ATTRIBUTE_INVALID'],
   ['ownership percentage range', 'relations/exposure.yaml', (value) => { value.type = 'owns_stake_in'; value.targetRef = 'entity:example-company'; value.attributes = { ownershipPct: 2 } }, 'V03_NUMERIC_CONSTRAINT'],
+  ['ownership percentage negative', 'relations/exposure.yaml', (value) => { value.type = 'owns_stake_in'; value.targetRef = 'entity:example-company'; value.attributes = { ownershipPct: -1 } }, 'V03_NUMERIC_CONSTRAINT'],
+  ['ownership percentage NaN sentinel', 'relations/exposure.yaml', (value) => { value.type = 'owns_stake_in'; value.targetRef = 'entity:example-company'; value.attributes = { ownershipPct: 'NaN' } }, 'V03_NUMERIC_CONSTRAINT'],
+  ['ownership percentage positive Infinity sentinel', 'relations/exposure.yaml', (value) => { value.type = 'owns_stake_in'; value.targetRef = 'entity:example-company'; value.attributes = { ownershipPct: 'Infinity' } }, 'V03_NUMERIC_CONSTRAINT'],
+  ['ownership percentage negative Infinity sentinel', 'relations/exposure.yaml', (value) => { value.type = 'owns_stake_in'; value.targetRef = 'entity:example-company'; value.attributes = { ownershipPct: '-Infinity' } }, 'V03_NUMERIC_CONSTRAINT'],
   ['ownership control enum', 'relations/exposure.yaml', (value) => { value.type = 'owns_stake_in'; value.targetRef = 'entity:example-company'; value.attributes = { controlType: 'invalid' } }, 'V03_RELATION_ATTRIBUTE_INVALID'],
   ['claim temporal extra field', 'claims/revenue.yaml', (value) => { (value.temporal as Record<string, unknown>).extra = true }, 'V03_TEMPORAL_INVALID'],
   ['invalid claim type', 'claims/revenue.yaml', (value) => { value.claimType = 'unsupported' }, 'V03_ENUM_INVALID'],
@@ -82,6 +102,11 @@ const invalidCases: Array<[string, string, (value: Record<string, unknown>) => v
   ['claim dangling subject', 'claims/revenue.yaml', (value) => { value.subjectRefs = ['entity:missing'] }, 'V03_CLAIM_SUBJECT_INVALID'],
   ['claim primary subject source', 'claims/revenue.yaml', (value) => { value.primarySubjectRef = 'source:report' }, 'V03_CLAIM_SUBJECT_INVALID'],
   ['claim malformed temporal', 'claims/revenue.yaml', (value) => { (value.temporal as Record<string, unknown>).asOf = 'not-a-date' }, 'V03_TEMPORAL_INVALID'],
+  ['claim temporal label number', 'claims/revenue.yaml', (value) => { ((value.temporal as Record<string, unknown>).scope as Record<string, unknown>).label = 123 }, 'V03_TEMPORAL_INVALID'],
+  ['claim temporal label object', 'claims/revenue.yaml', (value) => { ((value.temporal as Record<string, unknown>).scope as Record<string, unknown>).label = {} }, 'V03_TEMPORAL_INVALID'],
+  ['claim temporal label array', 'claims/revenue.yaml', (value) => { ((value.temporal as Record<string, unknown>).scope as Record<string, unknown>).label = [] }, 'V03_TEMPORAL_INVALID'],
+  ['claim temporal start malformed', 'claims/revenue.yaml', (value) => { ((value.temporal as Record<string, unknown>).scope as Record<string, unknown>).start = 'not-a-date' }, 'V03_TEMPORAL_INVALID'],
+  ['claim temporal end malformed', 'claims/revenue.yaml', (value) => { ((value.temporal as Record<string, unknown>).scope as Record<string, unknown>).end = 'not-a-date' }, 'V03_TEMPORAL_INVALID'],
   ['claim structured extra field', 'claims/revenue.yaml', (value) => { (value.structuredValue as Record<string, unknown>).extra = true }, 'V03_STRUCTURED_VALUE_INVALID'],
   ['claim structured malformed value', 'claims/revenue.yaml', (value) => { (value.structuredValue as Record<string, unknown>).value = { nested: true } }, 'V03_STRUCTURED_VALUE_INVALID'],
   ['claim provenance locator type', 'claims/revenue.yaml', (value) => { (value.provenance as Array<Record<string, unknown>>)[0]!.locator = 7 }, 'V03_PROVENANCE_INVALID'],

@@ -5,14 +5,31 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { KnowledgeBaseRegistry } from '../../../packages/shared/knowledge-base/registry.ts'
 import { KnowledgeBaseLoader } from '../../../packages/shared/knowledge-base/knowledge-base-loader.ts'
-import { archiveRaw } from '../../../packages/shared/knowledge-base/raw-archive.ts'
+import { archiveRaw, verifyRaw } from '../../../packages/shared/knowledge-base/raw-archive.ts'
 import { KnowledgeMigrationRunner } from '../../../packages/shared/knowledge-base/migration/runner.ts'
+import { recoverKnowledgeBaseRoot } from '../../../packages/shared/knowledge-base/root-transaction.ts'
 import { KnowledgeValidationSkill, createKnowledgeMigrationStateValidator } from '../../../packages/skills/knowledge-validation/index.ts'
 import { CanonicalV03KnowledgeLoader } from '../../../packages/shared/knowledge-base/canonical-v03-loader.ts'
 import { DEFAULT_KNOWLEDGE_MIGRATION_REGISTRY } from '../../../packages/schemas/knowledge/index.ts'
 
 async function put(root: string, path: string, value: unknown): Promise<void> {
   const file = join(root, path); await mkdir(dirname(file), { recursive: true }); await writeFile(file, typeof value === 'string' ? value : `${JSON.stringify(value)}\n`, 'utf8')
+}
+async function snapshot(root: string): Promise<Record<string, string>> {
+  const result: Record<string, string> = {}
+  async function visit(directory: string): Promise<void> {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name)
+      if (entry.isDirectory()) await visit(path)
+      else result[path.slice(root.length + 1)] = (await readFile(path)).toString('base64')
+    }
+  }
+  await visit(root); return result
+}
+async function assertNoTransactionResidue(root: string): Promise<void> {
+  const leaf = root.split(/[\\/]/).pop()!
+  const siblings = await readdir(dirname(root))
+  assert.equal(siblings.some((name) => name === `${leaf}.recovery.json` || name.startsWith(`${leaf}.staging-`) || name.startsWith(`${leaf}.backup-`)), false)
 }
 async function fixture(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-b02-'))
@@ -66,4 +83,86 @@ test('B2 dry-run leaves v0.2 unchanged and commit activates v0.3 through canonic
     const log = await readFile(join(root, 'logs/migrations/b02-commit.yaml'), 'utf8'); assert.match(log, /knowledge-schema-0\.2-to-0\.3/); assert.match(log, /warnings/)
     assert.equal((await readdir(join(root, 'registry'))).includes('index.yaml'), false)
   } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('B2 0.2 to 0.3 ambiguous relation is review-required without switching or logging', async () => {
+  const root = await fixture()
+  try {
+    await put(root, 'relations/partner.yaml', { id: 'relation:partner', type: 'partner_of', source: 'company:nvidia', target: 'company:nvidia', lifecycle: { status: 'active' } })
+    const registryPath = join(root, 'registry/assets.yaml')
+    const registry = JSON.parse(await readFile(registryPath, 'utf8')) as Record<string, unknown>
+    registry['relation:partner'] = { type: 'relation', storageRef: 'relations/partner.yaml' }
+    await writeFile(registryPath, `${JSON.stringify(registry)}\n`, 'utf8')
+    const before = await snapshot(root)
+    const mounted = new KnowledgeBaseRegistry(); const handle = await mounted.mount(root)
+    const result = await runner(mounted).migrate(handle, { migrationRunId: 'b02-review', targetSchemaVersion: '0.3', targetStorageFormatVersion: '1', expectedBaseRevision: 2, mode: 'commit' })
+    assert.equal(result.status, 'review_required', JSON.stringify(result))
+    assert.equal(result.reviewItems.some((item) => item.code === 'ambiguous_partner_relation'), true)
+    assert.deepEqual(await snapshot(root), before)
+    assert.equal((await readFile(join(root, 'manifest.yaml'), 'utf8')).includes('"schemaVersion":"0.2"'), true)
+    await assert.rejects(readFile(join(root, 'logs/migrations/b02-review.yaml'), 'utf8'))
+    await assertNoTransactionResidue(root)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('B2 0.2 to 0.3 target validation failure blocks before switch', async () => {
+  const root = await fixture()
+  try {
+    const before = await snapshot(root)
+    const registry = new KnowledgeBaseRegistry(); const handle = await registry.mount(root)
+    const targetFail = new KnowledgeMigrationRunner({
+      registry,
+      validator: { validateSource: async () => undefined, validateTarget: async () => { throw new Error('injected v0.3 target validation failure') } },
+    })
+    const result = await targetFail.migrate(handle, { migrationRunId: 'b02-target-fail', targetSchemaVersion: '0.3', targetStorageFormatVersion: '1', expectedBaseRevision: 2, mode: 'commit' })
+    assert.equal(result.status, 'blocked')
+    assert.equal(result.error?.code, 'target_validation_failed')
+    assert.deepEqual(await snapshot(root), before)
+    assert.equal((await readFile(join(root, 'manifest.yaml'), 'utf8')).includes('"schemaVersion":"0.2"'), true)
+    await assertNoTransactionResidue(root)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('B2 0.2 to 0.3 transaction recovery preserves one coherent state for every failpoint', async () => {
+  for (const point of ['before_switch', 'during_switch', 'after_switch'] as const) {
+    const root = await fixture()
+    try {
+      const registry = new KnowledgeBaseRegistry(); const loader = new KnowledgeBaseLoader({ registry }); const handle = await registry.mount(root)
+      const raw = await archiveRaw(handle, { bytes: new TextEncoder().encode(`b02 recovery ${point}`), originalFilename: 'recovery.txt', mediaType: 'text/plain' })
+      const sourcePath = join(root, 'sources/official.yaml')
+      const source = JSON.parse(await readFile(sourcePath, 'utf8')) as Record<string, unknown>
+      source.rawRefs = [raw.manifest.rawRef]
+      await writeFile(sourcePath, `${JSON.stringify(source)}\n`, 'utf8')
+      const rawBefore = { ref: raw.manifest.rawRef, bytes: await readFile(raw.originalPath), manifest: await readFile(raw.manifestPath), registry: await readFile(join(root, 'registry/raw.yaml')) }
+      const result = await new KnowledgeMigrationRunner({
+        registry,
+        validator: createKnowledgeMigrationStateValidator(new KnowledgeValidationSkill({ loader })),
+        clock: () => '2026-08-27T02:00:00.000Z',
+        failpoint: async (current) => { if (current === point) throw new Error(`injected ${point} failure`) },
+      }).migrate(handle, { migrationRunId: `b02-recover-${point}`, targetSchemaVersion: '0.3', targetStorageFormatVersion: '1', expectedBaseRevision: 2, mode: 'commit' })
+      assert.equal(result.status, 'failed')
+      assert.equal(result.error?.message, `injected ${point} failure`)
+      assert.equal((await readdir(dirname(root))).some((name) => name === `${root.split(/[\\/]/).pop()}.recovery.json`), true)
+      assert.equal(await recoverKnowledgeBaseRoot(root), 'recovered')
+      const refreshed = await registry.refresh(root)
+      if (point === 'before_switch') {
+        assert.equal(refreshed.schemaVersion, '0.2')
+        assert.equal(refreshed.revision, 2)
+        assert.equal((await readFile(join(root, 'manifest.yaml'), 'utf8')).includes('"schemaVersion":"0.2"'), true)
+      } else {
+        assert.equal(refreshed.schemaVersion, '0.3')
+        assert.equal(refreshed.revision, 3)
+        assert.equal(refreshed.writable, false)
+        const validation = await new KnowledgeValidationSkill({ loader }).validateKnowledgeBase(refreshed)
+        assert.equal(validation.status, 'passed', JSON.stringify(validation.errors))
+        const assets = await new CanonicalV03KnowledgeLoader(root).readAssets()
+        assert.equal(assets.sources.some((item) => item.value.rawRefs?.includes(rawBefore.ref)), true)
+      }
+      assert.deepEqual(await readFile(raw.originalPath), rawBefore.bytes)
+      assert.deepEqual(await readFile(raw.manifestPath), rawBefore.manifest)
+      assert.deepEqual(await readFile(join(root, 'registry/raw.yaml')), rawBefore.registry)
+      await verifyRaw(refreshed.schemaVersion === '0.3' ? refreshed : handle, rawBefore.ref)
+      await assertNoTransactionResidue(root)
+    } finally { await rm(root, { recursive: true, force: true }); await rm(`${root}.recovery.json`, { force: true }) }
+  }
 })

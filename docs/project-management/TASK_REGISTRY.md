@@ -25,7 +25,8 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-V0.3-IMPLEMENTATION-B-001 | Implement deterministic Knowledge v0.2 to v0.3 migration transformation layer | Completed | P0 | 2026-08-27 | Luna | `2b00ffcd021f70cca1d31259f92dee0105447fd6` | Accepted — Sol verified |
 | KNOWLEDGE-V0.3-IMPLEMENTATION-B-001-R1 | Harden Knowledge v0.2 to v0.3 migration semantic safety | Completed | P0 | 2026-08-27 | Luna | `61d9590bc453f5b78c417057c17e68569341d553` | Accepted — Sol verified |
 | KNOWLEDGE-V0.3-IMPLEMENTATION-B-002 | Implement Knowledge v0.3 read, validation, and migration runtime integration | Completed / Rework Required | P0 | 2026-08-27 | Luna | `b401c949a212599e88228366013ec0dee254b30b` | Rework Required - Sol verification |
-| KNOWLEDGE-V0.3-IMPLEMENTATION-B-002-R1 | Correct Knowledge v0.3 Raw identity and runtime validation gaps | Completed / Sol Verification Pending | P0 | 2026-08-27 | Luna | Current task commit | Review Pending / Sol Verification |
+| KNOWLEDGE-V0.3-IMPLEMENTATION-B-002-R1 | Correct Knowledge v0.3 Raw identity and runtime validation gaps | Completed / Rework Required | P0 | 2026-08-27 | Luna | `268749316f2b4d8ba58441c8885dcf560d0d3e5e` | Rework Required - Sol verification |
+| KNOWLEDGE-V0.3-IMPLEMENTATION-B-002-R2 | Close Knowledge v0.3 temporal, numeric, and migration recovery gaps | Completed / Sol Verification Pending | P0 | 2026-08-27 | Luna | Current task commit | Review Pending / Sol Verification |
 | RH-GOV-001 | Initialize project execution state management system | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-DOC-002 | Synchronize architecture baseline documentation | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-ENG-001 | Validate minimum ResearchHub Harness integration | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — typecheck and integration test passed |

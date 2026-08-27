@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-002-R2
+
+- Corrected Claim temporal validation so `scope.label` accepts arbitrary
+  strings or null while `asOf`, `scope.start`, and `scope.end` remain datetime
+  validated.
+- Unified bounded numeric checks around finite numbers and Schema 0.3 numeric
+  constraints, including `ownershipPct`.
+- Added dedicated 0.2 to 0.3 Review-required, target-validation, and
+  before/during/after-switch transaction recovery coverage, including Raw
+  preservation, revision, residue, and read-only Handle assertions.
+- B2 Parent and B2-R1 remain `Completed / Rework Required`; B-002-R2 is
+  `Completed / Sol Verification Pending` pending independent verification.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-002-R1
 
 - Corrected the frozen Raw identity contract to preserve the existing

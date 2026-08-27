@@ -26,6 +26,9 @@ function error(code: string, message: string, assetId?: string, filePath?: strin
 function add(diagnostics: ValidationDiagnostic[], code: string, message: string, item?: { value: Dict; filePath: string }): void { diagnostics.push(error(code, message, typeof item?.value.id === 'string' ? item.value.id : undefined, item?.filePath)) }
 function nonEmpty(value: unknown): boolean { return typeof value === 'string' ? value.trim().length > 0 : value !== undefined && value !== null }
 function dateLike(value: unknown): boolean { return typeof value === 'string' && !Number.isNaN(Date.parse(value)) }
+function finiteNumberInRange(value: unknown, constraint: { minimum: number; maximum: number }): boolean {
+  return value === null || (typeof value === 'number' && Number.isFinite(value) && value >= constraint.minimum && value <= constraint.maximum)
+}
 function jsonValue(value: unknown): boolean {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
   if (typeof value === 'number') return Number.isFinite(value)
@@ -47,7 +50,7 @@ function lifecycle(value: unknown, diagnostics: ValidationDiagnostic[], item: { 
   if (value.validUntil !== undefined && value.validUntil !== null && !dateLike(value.validUntil)) add(diagnostics, 'V03_LIFECYCLE_DATE_INVALID', 'lifecycle.validUntil must be a date string or null', item)
 }
 function confidence(value: unknown, diagnostics: ValidationDiagnostic[], item: { value: Dict; filePath: string }): void {
-  if (value !== undefined && value !== null && (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1)) add(diagnostics, 'V03_NUMERIC_CONSTRAINT', 'confidence must be between 0 and 1', item)
+  if (value !== undefined && !finiteNumberInRange(value, KNOWLEDGE_SCHEMA_V03.numericConstraints.confidence)) add(diagnostics, 'V03_NUMERIC_CONSTRAINT', 'confidence must be a finite number between 0 and 1 or null', item)
 }
 function refSet(collection: KnowledgeAssetCollectionV03): Map<string, string> {
   return new Map(collection.registry.map((entry) => [entry.id, entry.type]))
@@ -96,7 +99,7 @@ function validateRelation(item: { value: Dict; filePath: string }, diagnostics: 
       const rule = (declared as Record<string, unknown>)[field]
       if (rule === undefined) { add(diagnostics, 'V03_RELATION_ATTRIBUTE_INVALID', `Relation attribute is not declared for ${String(value.type)}: ${field}`, item); continue }
       if (Array.isArray(rule) && !rule.includes(fieldValue as never)) add(diagnostics, 'V03_RELATION_ATTRIBUTE_INVALID', `Relation attribute value is outside the frozen vocabulary: ${field}`, item)
-      if (rule === 'number_0_to_1_or_null' && fieldValue !== null && (typeof fieldValue !== 'number' || fieldValue < 0 || fieldValue > 1)) add(diagnostics, 'V03_NUMERIC_CONSTRAINT', `Relation attribute must be between 0 and 1 or null: ${field}`, item)
+      if (rule === 'number_0_to_1_or_null' && !finiteNumberInRange(fieldValue, KNOWLEDGE_SCHEMA_V03.numericConstraints.ownershipPct)) add(diagnostics, 'V03_NUMERIC_CONSTRAINT', `Relation attribute must be a finite number between 0 and 1 or null: ${field}`, item)
       if (isRecord(rule) && field === 'financialContribution' && fieldValue !== null) {
         if (!isRecord(fieldValue)) add(diagnostics, 'V03_RELATION_ATTRIBUTE_INVALID', 'financialContribution must be an object or null', item)
         else {
@@ -104,7 +107,11 @@ function validateRelation(item: { value: Dict; filePath: string }, diagnostics: 
           for (const [child, childValue] of Object.entries(fieldValue)) {
             const validNullableString = ['period', 'currency'].includes(child) && (childValue === null || typeof childValue === 'string')
             const validNullableNumber = ['revenueAmount', 'profitAmount'].includes(child) && (childValue === null || (typeof childValue === 'number' && Number.isFinite(childValue)))
-            const validShare = ['revenueShare', 'profitShare'].includes(child) && (childValue === null || (typeof childValue === 'number' && Number.isFinite(childValue))) && (childValue === null || (childValue >= 0 && childValue <= 1))
+            const validShare = child === 'revenueShare'
+              ? finiteNumberInRange(childValue, KNOWLEDGE_SCHEMA_V03.numericConstraints.revenueShare)
+              : child === 'profitShare'
+                ? finiteNumberInRange(childValue, KNOWLEDGE_SCHEMA_V03.numericConstraints.profitShare)
+                : false
             const validNullableBoolean = child === 'separatelyReported' && (childValue === null || typeof childValue === 'boolean')
             if (!validNullableString && !validNullableNumber && !validShare && !validNullableBoolean) add(diagnostics, 'V03_RELATION_ATTRIBUTE_INVALID', `financialContribution field has an invalid type or range: ${child}`, item)
           }
@@ -125,7 +132,9 @@ function validateClaim(item: { value: Dict; filePath: string }, diagnostics: Val
   lifecycle(value.lifecycle, diagnostics, item); confidence(value.confidence, diagnostics, item)
   if (value.temporal !== undefined) {
     const temporal = value.temporal; const scope = isRecord(temporal) ? temporal.scope : undefined
-    if (!isRecord(temporal) || Object.keys(temporal).some((field) => !['asOf', 'scope'].includes(field)) || (temporal.asOf !== null && !dateLike(temporal.asOf)) || !isRecord(scope) || Object.keys(scope).some((field) => !['type', 'start', 'end', 'label'].includes(field)) || !(KNOWLEDGE_SCHEMA_V03.claim.temporalScopeTypes as readonly unknown[]).includes(scope.type) || !['start', 'end', 'label'].every((field) => scope[field] === null || (typeof scope[field] === 'string' && dateLike(scope[field]))) ) add(diagnostics, 'V03_TEMPORAL_INVALID', 'Claim temporal scope is not valid', item)
+    const validNullableDate = (candidate: unknown): boolean => candidate === null || (typeof candidate === 'string' && dateLike(candidate))
+    const validNullableString = (candidate: unknown): boolean => candidate === null || typeof candidate === 'string'
+    if (!isRecord(temporal) || Object.keys(temporal).some((field) => !['asOf', 'scope'].includes(field)) || !validNullableDate(temporal.asOf) || !isRecord(scope) || Object.keys(scope).some((field) => !['type', 'start', 'end', 'label'].includes(field)) || !(KNOWLEDGE_SCHEMA_V03.claim.temporalScopeTypes as readonly unknown[]).includes(scope.type) || !validNullableDate(scope.start) || !validNullableDate(scope.end) || !validNullableString(scope.label)) add(diagnostics, 'V03_TEMPORAL_INVALID', 'Claim temporal scope is not valid', item)
   }
   if (value.structuredValue !== undefined) {
     const structured = value.structuredValue
