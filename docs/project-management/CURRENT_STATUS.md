@@ -1,5 +1,19 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-B-002
+
+B2 is completed pending Sol verification. Schema 0.3 is readable through the
+version-isolated canonical reader and integrated into the existing Validation
+Skill. The release remains explicitly non-writable for 0.3. The existing
+staging, target-validation, root-transaction, recovery, lock, migration-log,
+and Handle-refresh boundaries are reused by the generalized migration Runner.
+
+Runtime boundary: v0.2 Writer remains available; no v0.3 Writer, Curation,
+Workflow, Frontend, or semantic runtime activation was added. B1 Parent and
+B1-R1 are accepted — Sol verified. B2 is `Completed / Sol Verification
+Pending`; acceptance is `Review Pending / Sol Verification`. B3 remains `Not
+Started / Not Authorized`.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-001-R1
 
 R1 hardens the B1 transformer against semantic-safety gaps found during
@@ -15,8 +29,9 @@ independent review:
 - Declared-reference, registry namespace/kind, Raw byte, and orphan-file
   invariants are computed from the actual target staging state.
 
-Status is `Completed / Sol Verification Pending`; acceptance remains
-`Review Pending / Sol Verification`. B2 and B3 are not started or authorized.
+Status is `Completed`; acceptance is `Accepted — Sol verified` against the
+verified B1-R1 implementation. B2 is completed pending Sol verification; B3
+is not started or authorized.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-001
 
@@ -34,10 +49,10 @@ Migration Transformation Layer:
   runtime adapter, Writer, Curation, Workflow, Runtime KB, or Example KB was
   activated or modified.
 
-Status is `Completed / Rework Required`; acceptance is
-`Rework Required — Sol verification` after the semantic-safety review. R1 is
-the current B1 rework closure and awaits independent verification. B2 and B3
-are not started or authorized.
+Status is `Completed`; acceptance is
+`Accepted — Sol verified` after the semantic-safety review. R1 is
+the accepted B1 rework closure. B2 is completed pending Sol verification; B3
+is not started or authorized.
 
 ## Stage A Governance Closure
 

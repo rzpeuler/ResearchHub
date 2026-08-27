@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-002
+
+- Registered Schema 0.3 as readable and explicitly non-writable, with the
+  0.2-to-0.3 migration source recorded without changing the v0.2 Writer.
+- Added the version-isolated v0.3 canonical reader and Validation Skill
+  dispatch for canonical assets, references, auxiliary boundaries, Raw
+  provenance, and orphan detection.
+- Generalized the existing migration Runner for 0.1-to-0.2 and 0.2-to-0.3,
+  including warnings, deterministic signatures, sequential-step blocking,
+  target validation, atomic commit, migration logs, and refreshed read-only
+  v0.3 Handles.
+- B1 Parent and B1-R1 are recorded as accepted — Sol verified. B2 is
+  `Completed / Sol Verification Pending`; B3 remains not authorized.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-001-R1
 
 - Hardened the B1 migration transformer with an explicit final mapping barrier

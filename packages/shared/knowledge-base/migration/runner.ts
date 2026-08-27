@@ -14,20 +14,26 @@ import { canonicalSerialize } from '../canonical-hash.ts'
 import { parseYaml } from '../yaml.ts'
 import { KnowledgeMigrationError } from './errors.ts'
 import { transformV01ToV02 } from './v01-to-v02.ts'
+import { transformV02ToV03 } from './v02-to-v03.ts'
 import type { KnowledgeMigrationResult, KnowledgeMigrationRunnerOptions, KnowledgeMigrationRequest, KnowledgeMigrationStateValidator } from './types.ts'
 
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
-type Transformation = Awaited<ReturnType<typeof transformV01ToV02>>
+type Transformation = Awaited<ReturnType<typeof transformV01ToV02>> | Awaited<ReturnType<typeof transformV02ToV03>>
 
 function emptyInventory() { return { entityIds: [], relationIds: [], intelligenceIds: [], moduleIds: [], sourceIds: [], counts: { entities: 0, relations: 0, intelligence: 0, modules: 0, sources: 0 } } }
-function emptyTransformation(): Transformation { return { before: emptyInventory(), after: emptyInventory(), idMappings: [], reviewItems: [], changes: { manifest: { schemaVersion: false, revisionIncrement: 0, updatedAt: false }, registry: { canonicalAssetsCreated: false, legacyIndexRemoved: false, legacyModulesRemoved: false, rawRegistryCreated: false }, assets: { moduleTargetsDerived: [] } }, invariants: {} } }
+function emptyTransformation(): Transformation { return { before: emptyInventory(), after: emptyInventory(), idMappings: [], reviewItems: [], warnings: [], changes: { manifest: { schemaVersion: false, revisionIncrement: 0, updatedAt: false }, registry: { canonicalAssetsCreated: false, legacyIndexRemoved: false, legacyModulesRemoved: false, rawRegistryCreated: false }, assets: { moduleTargetsDerived: [] } }, invariants: {} } }
 function validRunId(value: unknown): value is string { return typeof value === 'string' && RUN_ID_PATTERN.test(value) && !value.includes('..') && !value.includes('/') && !value.includes('\\') }
 function validVersion(value: unknown): value is string { return typeof value === 'string' && value.trim() !== '' }
 function sameVersion(left: { schemaVersion: string; storageFormatVersion: string }, right: { schemaVersion: string; storageFormatVersion: string }): boolean { return left.schemaVersion === right.schemaVersion && left.storageFormatVersion === right.storageFormatVersion }
 function hasReviewCondition(transformation: Transformation): boolean { return transformation.reviewItems.length > 0 || Object.values(transformation.invariants).some((value) => !value) }
-function signature(transformation: Transformation): string { return JSON.stringify({ before: transformation.before, after: transformation.after, idMappings: transformation.idMappings, reviewItems: transformation.reviewItems, changes: transformation.changes, invariants: transformation.invariants }) }
+async function transformFor(definition: KnowledgeMigrationDefinition, handle: KnowledgeBaseHandle, staging: string, runId: string): Promise<Transformation> {
+  if (definition.id === 'knowledge-schema-0.1-to-0.2') return transformV01ToV02(handle, staging, runId)
+  if (definition.id === 'knowledge-schema-0.2-to-0.3') return transformV02ToV03(handle, staging, runId)
+  throw new KnowledgeMigrationError('migration_not_implemented', `Migration implementation is not available: ${definition.id}`)
+}
+function signature(transformation: Transformation): string { return JSON.stringify({ before: transformation.before, after: transformation.after, idMappings: transformation.idMappings, reviewItems: transformation.reviewItems, warnings: 'warnings' in transformation ? transformation.warnings : [], changes: transformation.changes, invariants: transformation.invariants }) }
 function errorValue(error: unknown): { code: string; message: string } { return { code: error instanceof KnowledgeMigrationError ? error.code : 'migration_failed', message: error instanceof Error ? error.message : String(error) } }
-function baseResult(input: KnowledgeMigrationRequest, handle: KnowledgeBaseHandle, migrationPath: KnowledgeMigrationDefinition[], status: KnowledgeMigrationResult['status'], error?: { code: string; message: string }): KnowledgeMigrationResult { return { migrationRunId: input.migrationRunId, knowledgeBaseId: handle.knowledgeBaseId, mode: input.mode, status, migrationPath, source: { schemaVersion: handle.schemaVersion, storageFormatVersion: handle.storageFormatVersion, revision: handle.revision }, target: { schemaVersion: input.targetSchemaVersion, storageFormatVersion: input.targetStorageFormatVersion, revision: handle.revision }, inventory: { before: emptyInventory() }, idMappings: [], reviewItems: [], changes: { manifest: { schemaVersion: false, revisionIncrement: 0, updatedAt: false }, registry: { canonicalAssetsCreated: false, legacyIndexRemoved: false, legacyModulesRemoved: false, rawRegistryCreated: false }, assets: { moduleTargetsDerived: [] } }, validation: { source: 'not_run', target: 'not_run' }, ...(error ? { error } : {}) } }
+function baseResult(input: KnowledgeMigrationRequest, handle: KnowledgeBaseHandle, migrationPath: KnowledgeMigrationDefinition[], status: KnowledgeMigrationResult['status'], error?: { code: string; message: string }): KnowledgeMigrationResult { return { migrationRunId: input.migrationRunId, knowledgeBaseId: handle.knowledgeBaseId, mode: input.mode, status, migrationPath, source: { schemaVersion: handle.schemaVersion, storageFormatVersion: handle.storageFormatVersion, revision: handle.revision }, target: { schemaVersion: input.targetSchemaVersion, storageFormatVersion: input.targetStorageFormatVersion, revision: handle.revision }, inventory: { before: emptyInventory() }, idMappings: [], reviewItems: [], changes: { manifest: { schemaVersion: false, revisionIncrement: 0, updatedAt: false }, registry: { canonicalAssetsCreated: false, legacyIndexRemoved: false, legacyModulesRemoved: false, rawRegistryCreated: false }, assets: { moduleTargetsDerived: [] } }, warnings: [], validation: { source: 'not_run', target: 'not_run' }, ...(error ? { error } : {}) } }
 async function writeManifest(path: string, manifest: KnowledgeBaseManifest): Promise<void> { await writeFile(path, `${canonicalSerialize(manifest)}\n`, 'utf8') }
 async function stageCopy(root: string, runId: string): Promise<string> { const path = `${root}.migration-staging-${createHash('sha256').update(runId).digest('hex').slice(0, 16)}`; await rm(path, { recursive: true, force: true }); await cp(root, path, { recursive: true, errorOnExist: true }); return path }
 
@@ -84,7 +90,8 @@ export class KnowledgeMigrationRunner {
     if (path.length === 0) return { ...result, status: 'blocked', error: { code: 'migration_path_not_found', message: `No migration path from ${manifest.schemaVersion}/${manifest.storageFormatVersion} to ${target.schemaVersion}/${target.storageFormatVersion}` } }
     result.target.revision = manifest.revision + 1
     if (input.mode === 'commit' && manifest.status !== 'active') return { ...result, status: 'blocked', error: { code: 'knowledge_base_not_writable', message: `Migration commit requires an active Knowledge Base, got ${manifest.status}` } }
-    if (path.length !== 1 || path[0]?.id !== 'knowledge-schema-0.1-to-0.2') return { ...result, status: 'blocked', error: { code: 'migration_not_implemented', message: 'Only the concrete Schema 0.1 to 0.2 migration is implemented' } }
+    if (path.length > 1) return { ...result, status: 'blocked', error: { code: 'migration_requires_sequential_steps', message: 'Migration must be executed one version step at a time' } }
+    if (path.length !== 1 || !['knowledge-schema-0.1-to-0.2', 'knowledge-schema-0.2-to-0.3'].includes(path[0]?.id ?? '')) return { ...result, status: 'blocked', error: { code: 'migration_not_implemented', message: `Migration implementation is not available: ${path[0]?.id ?? 'unknown'}` } }
     try { await validator.validateSource(handle); result.validation.source = 'passed' } catch (error) { result.validation.source = 'failed'; result.validation.errors = [error instanceof Error ? error.message : String(error)]; return { ...result, status: 'blocked', error: { code: 'source_validation_failed', message: result.validation.errors[0]! } } }
 
     const preflight = await this.prepareAndValidate(root, handle, manifest, input, validator)
@@ -92,6 +99,7 @@ export class KnowledgeMigrationRunner {
     result.inventory.after = preflight.transformation.after
     result.idMappings = preflight.transformation.idMappings
     result.reviewItems = preflight.transformation.reviewItems
+    result.warnings = 'warnings' in preflight.transformation ? preflight.transformation.warnings : []
     result.changes = preflight.transformation.changes
     result.validation.target = preflight.targetValidation
     if (preflight.targetValidation === 'failed' && preflight.targetValidationError) result.validation.errors = [preflight.targetValidationError.message]
@@ -113,12 +121,12 @@ export class KnowledgeMigrationRunner {
         targetStorageFormatVersion: input.targetStorageFormatVersion,
         targetStatus: manifest.status,
         prepare: async (stagingPath) => {
-          const commitTransformation = await transformV01ToV02(handle, stagingPath, input.migrationRunId)
+          const commitTransformation = await transformFor(path[0]!, handle, stagingPath, input.migrationRunId)
           if (hasReviewCondition(commitTransformation)) throw new KnowledgeMigrationError('migration_transform_drift', 'Commit-time transformation produced review items or failed invariants')
           if (signature(commitTransformation) !== signature(preflight.transformation)) throw new KnowledgeMigrationError('migration_transform_drift', 'Commit-time transformation differs from the validated preflight transformation')
           await writeManifest(join(stagingPath, 'manifest.yaml'), targetManifest)
           await mkdir(dirname(join(stagingPath, logRef)), { recursive: true })
-          await writeFile(join(stagingPath, logRef), `${canonicalSerialize({ migrationRunId: input.migrationRunId, migrationId: path[0]!.id, knowledgeBaseId: manifest.knowledgeBaseId, startedAt: this.clock(), completedAt: this.clock(), source: { schemaVersion: manifest.schemaVersion, storageFormatVersion: manifest.storageFormatVersion, revision: manifest.revision }, target: { schemaVersion: targetManifest.schemaVersion, storageFormatVersion: targetManifest.storageFormatVersion, revision: targetManifest.revision }, migrationPath: path, inventory: { before: commitTransformation.before, after: commitTransformation.after }, idMappings: commitTransformation.idMappings, reviewItems: [], invariants: commitTransformation.invariants, status: 'completed' })}\n`, 'utf8')
+          await writeFile(join(stagingPath, logRef), `${canonicalSerialize({ migrationRunId: input.migrationRunId, migrationId: path[0]!.id, knowledgeBaseId: manifest.knowledgeBaseId, startedAt: this.clock(), completedAt: this.clock(), source: { schemaVersion: manifest.schemaVersion, storageFormatVersion: manifest.storageFormatVersion, revision: manifest.revision }, target: { schemaVersion: targetManifest.schemaVersion, storageFormatVersion: targetManifest.storageFormatVersion, revision: targetManifest.revision }, migrationPath: path, inventory: { before: commitTransformation.before, after: commitTransformation.after }, idMappings: commitTransformation.idMappings, reviewItems: commitTransformation.reviewItems, warnings: 'warnings' in commitTransformation ? commitTransformation.warnings : [], changes: commitTransformation.changes, invariants: commitTransformation.invariants, validation: { source: 'passed', target: 'passed' }, status: 'completed' })}\n`, 'utf8')
         },
         validate: async (stagingPath) => { const stagedManifest = parseKnowledgeBaseManifest(parseYaml(await readFile(join(stagingPath, 'manifest.yaml'), 'utf8'))); await validator.validateTarget(stagingPath, stagedManifest) },
         failpoint: this.failpoint,
@@ -135,7 +143,7 @@ export class KnowledgeMigrationRunner {
     const staging = await stageCopy(root, `preflight-${input.migrationRunId}`)
     try {
       let transformation: Transformation
-      try { transformation = await transformV01ToV02(handle, staging, input.migrationRunId) } catch (error) {
+      try { transformation = await transformFor(input.targetSchemaVersion === '0.3' ? { id: 'knowledge-schema-0.2-to-0.3', source: { schemaVersion: '0.2', storageFormatVersion: '1' }, target: { schemaVersion: '0.3', storageFormatVersion: '1' } } : { id: 'knowledge-schema-0.1-to-0.2', source: { schemaVersion: '0.1', storageFormatVersion: '1' }, target: { schemaVersion: '0.2', storageFormatVersion: '1' } }, handle, staging, input.migrationRunId) } catch (error) {
         return { transformation: emptyTransformation(), targetValidation: 'failed', targetValidationError: { code: 'migration_transform_failed', message: error instanceof Error ? error.message : String(error) } }
       }
       const targetManifest = { ...manifest, schemaVersion: input.targetSchemaVersion, storageFormatVersion: input.targetStorageFormatVersion, revision: manifest.revision + 1, updatedAt: this.clock() }

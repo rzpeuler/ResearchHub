@@ -52,7 +52,7 @@ function runner(registry: KnowledgeBaseRegistry, clock = () => '2026-08-26T00:00
 
 test('migration registry resolves 0.1 to 0.2 and default compatibility exposes migrationAvailable', async () => {
   assert.equal(DEFAULT_KNOWLEDGE_MIGRATION_REGISTRY.resolvePath({ schemaVersion: '0.1', storageFormatVersion: '1' }, { schemaVersion: '0.2', storageFormatVersion: '1' })[0]?.id, 'knowledge-schema-0.1-to-0.2')
-  assert.equal(DEFAULT_KNOWLEDGE_MIGRATION_REGISTRY.resolvePath({ schemaVersion: '0.2', storageFormatVersion: '1' }, { schemaVersion: '0.3', storageFormatVersion: '1' }).length, 0)
+  assert.equal(DEFAULT_KNOWLEDGE_MIGRATION_REGISTRY.resolvePath({ schemaVersion: '0.2', storageFormatVersion: '1' }, { schemaVersion: '0.3', storageFormatVersion: '1' })[0]?.id, 'knowledge-schema-0.2-to-0.3')
   const root = await createV01()
   try {
     const registry = new KnowledgeBaseRegistry()

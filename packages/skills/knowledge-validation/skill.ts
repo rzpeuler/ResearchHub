@@ -33,6 +33,7 @@ import { hashKnowledgeObject } from '../../../packages/shared/knowledge-base/can
 import { verifyRaw } from '../../../packages/shared/knowledge-base/raw-archive.ts'
 import { KnowledgeWriteInternalError } from '../../../packages/shared/knowledge-base/write/errors.ts'
 import type { KnowledgeMigrationStateValidator } from '../../../packages/shared/knowledge-base/migration/types.ts'
+import { validateKnowledgeBaseV03 } from './v03-validator.ts'
 
 const ID_PATTERN = /^(industry|segment|company|product|technology|relation|fact|forecast|viewpoint|trend|risk|source|module|view):[a-z0-9]+(?:-[a-z0-9]+)*$/
 const LOGICAL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
@@ -69,6 +70,13 @@ export class KnowledgeValidationSkill {
   }
 
   async validateKnowledgeBase(handle: KnowledgeBaseHandle, scope: ValidationScope = 'all'): Promise<ValidationReport> {
+    if (handle.schemaVersion === '0.3' && handle.storageFormatVersion === '1') {
+      try {
+        return this.report(scope, await validateKnowledgeBaseV03(handle.rootRef, undefined, scope))
+      } catch (error) {
+        return this.report(scope, [{ code: 'PARSE_ERROR', severity: 'error', message: error instanceof Error ? error.message : String(error) }])
+      }
+    }
     let assets: KnowledgeAssetCollection
     let rules
     try {
@@ -639,7 +647,7 @@ export function createKnowledgeMigrationStateValidator(skill: KnowledgeValidatio
       if (errors.length > 0) throw new Error(`Source Knowledge validation failed: ${errors.map((error) => error.code).join(',')}`)
     },
     async validateTarget(rootRef, manifest) {
-      const handle = createKnowledgeBaseHandle(manifest, rootRef, 'compatible')
+      const handle = createKnowledgeBaseHandle(manifest, rootRef, manifest.schemaVersion === '0.3' ? 'read_only_compatible' : 'compatible')
       const report = await skill.validateKnowledgeBase(handle, 'all')
       const errors = migrationErrors(handle, report)
       if (errors.length > 0) throw new Error(`Target Knowledge validation failed: ${errors.map((error) => error.code).join(',')}`)

@@ -1,4 +1,4 @@
-import type { KnowledgeBaseStatus } from '../../schemas/knowledge/index.ts'
+import { KNOWLEDGE_SCHEMA_RELEASES, type KnowledgeBaseStatus } from '../../schemas/knowledge/index.ts'
 
 export const KNOWLEDGE_COMPATIBILITY_STATUSES = [
   'compatible',
@@ -34,10 +34,12 @@ export interface KnowledgeSchemaCompatibilityResolverOptions {
   migrationAvailable?: boolean | ((input: KnowledgeCompatibilityInput) => boolean)
 }
 
-const DEFAULT_SUPPORTED: KnowledgeSchemaSupport[] = [
-  { schemaVersion: '0.1', storageFormatVersion: '1', writable: false },
-  { schemaVersion: '0.2', storageFormatVersion: '1', writable: true },
-]
+const DEFAULT_SUPPORTED: KnowledgeSchemaSupport[] = KNOWLEDGE_SCHEMA_RELEASES.map((release) => ({
+  schemaVersion: release.schemaVersion,
+  storageFormatVersion: release.storageFormatVersion,
+  readable: release.readable,
+  writable: release.writable,
+}))
 
 export class KnowledgeSchemaCompatibilityResolver {
   private readonly supported: KnowledgeSchemaSupport[]
@@ -45,7 +47,9 @@ export class KnowledgeSchemaCompatibilityResolver {
 
   constructor(options: KnowledgeSchemaCompatibilityResolverOptions = {}) {
     this.supported = [...(options.supported ?? DEFAULT_SUPPORTED)]
-    this.migrationAvailable = options.migrationAvailable ?? (options.supported === undefined ? ((input) => input.schemaVersion === '0.1' && input.storageFormatVersion === '1') : false)
+    this.migrationAvailable = options.migrationAvailable ?? (options.supported === undefined
+      ? ((input) => (input.schemaVersion === '0.1' && input.storageFormatVersion === '1') || KNOWLEDGE_SCHEMA_RELEASES.some((release) => release.migrationSources.some((source) => source.schemaVersion === input.schemaVersion && source.storageFormatVersion === input.storageFormatVersion)))
+      : false)
   }
 
   resolve(input: KnowledgeCompatibilityInput): KnowledgeCompatibilityResult {

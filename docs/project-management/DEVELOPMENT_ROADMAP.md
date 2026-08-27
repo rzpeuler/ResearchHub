@@ -18,21 +18,22 @@
 - Governance Integration: Completed / Sol verified
 - Current Normative Knowledge Architecture: Knowledge v0.3
 - Legacy Frozen Compatibility/Migration Source: Knowledge v0.2
-- Runtime Implementation: predominantly v0.2; Stage B B1 migration transformer implemented
+- Runtime Implementation: v0.2 Writer plus v0.3 canonical read/validation and migration commit support
 - Stage A implementation: Completed / Sol verified
 - Stage A R1 structural correction: Completed / Sol verified
 - Stage A R2 canonical-reference correction: Completed / Sol verified
 - Stage A R3 migration-nullability correction: Completed / Sol verified
-- Runtime Schema Release: Schema 0.1 and 0.2 only; Schema 0.3 is not registered
+- Runtime Schema Release: Schema 0.1, 0.2, and readable/non-writable 0.3
 - Stage B: In Progress
-- B1: Rework in progress / Sol Verification Pending
-- B2: Not Started / Not Authorized
+- B1: Completed / Sol verified
+- B2: Completed / Sol Verification Pending
 - B3: Not Started / Not Authorized
 - Current approved direction: Implementation Stage B — 0.2 to 0.3 Migration
 
-Stage B is the current approved implementation stage. B1 rework is implemented
-and awaits independent R1 verification; B2 and B3 are not authorized. This is
-not a Runtime Schema 0.3 activation.
+Stage B is the current approved implementation stage. B1 is accepted and B2 is
+implemented pending independent Sol verification. Schema 0.3 read and
+migration-commit support are present, but semantic Writer/Curation/Workflow and
+frontend activation remain outside this stage. B3 is not authorized.
 Knowledge v0.4 is not approved.
 
 ## Runtime implementation status: v0.2 compatibility track

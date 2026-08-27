@@ -42,10 +42,11 @@ export interface KnowledgeMigrationResult {
   migrationPath: KnowledgeMigrationDefinition[]
   source: KnowledgeSchemaVersionRef & { revision: number }
   target: KnowledgeSchemaVersionRef & { revision: number }
-  inventory: { before: KnowledgeMigrationInventory; after?: KnowledgeMigrationInventory }
+  inventory: { before: KnowledgeMigrationInventory | KnowledgeV03SourceInventory; after?: KnowledgeMigrationInventory | KnowledgeV03TargetInventory }
   idMappings: KnowledgeIdMapping[]
   reviewItems: MigrationReviewItem[]
-  changes: KnowledgeMigrationChanges
+  changes: KnowledgeMigrationChanges | V02ToV03TransformResult['changes']
+  warnings: KnowledgeMigrationWarning[]
   validation: KnowledgeMigrationValidationSummary
   migrationLogRef?: string
   committedHandle?: KnowledgeBaseHandle

@@ -59,4 +59,8 @@ export const DEFAULT_KNOWLEDGE_MIGRATION_REGISTRY = new KnowledgeMigrationRegist
   id: 'knowledge-schema-0.1-to-0.2',
   source: { schemaVersion: '0.1', storageFormatVersion: '1' },
   target: { schemaVersion: '0.2', storageFormatVersion: '1' },
+}).register({
+  id: 'knowledge-schema-0.2-to-0.3',
+  source: { schemaVersion: '0.2', storageFormatVersion: '1' },
+  target: { schemaVersion: '0.3', storageFormatVersion: '1' },
 })
