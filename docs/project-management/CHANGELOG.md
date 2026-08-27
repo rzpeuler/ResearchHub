@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-001
+
+- Added the deterministic v0.2 to v0.3 staging transformer with complete ID
+  mapping, collision detection, semantic Entity/Claim/Source/Module/Relation
+  conversion, warning/Review separation, relation normalization/deduplication,
+  auxiliary declared-reference rewriting, and target registry rebuilding.
+- Preserved Raw identity, source-tree immutability, Storage Format 1 storageRefs,
+  opaque strings, Reference Taxonomy, Projection Configuration, and historical
+  logs within the B1 boundary.
+- Recorded Stage A Parent/R1/R2/R3 as `Accepted - Sol verified` against
+  `c0c70b832a70f2f0fdc533c00236c03d47554d99`.
+- B1 is `Completed / Sol Verification Pending` with acceptance
+  `Review Pending / Sol Verification`; B2/B3 remain not started and Schema 0.3
+  runtime remains unregistered.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R3
 
 - Allowed Business Exposure `financialContribution` to be an object, explicit

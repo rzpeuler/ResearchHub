@@ -1,5 +1,30 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-B-001
+
+Stage B is now in progress at substage B1, the deterministic v0.2 to v0.3
+Migration Transformation Layer:
+
+- The transformer builds complete canonical ID mappings before rewriting any
+  declared references and reports deterministic collisions, warnings, reviews,
+  inventories, changes, and invariants.
+- It transforms only a supplied staging root, preserves Storage Format 1
+  storageRefs, rebuilds the target canonical registry, and preserves Raw,
+  Reference Taxonomy, Projection Configuration, and opaque strings according
+  to their declared boundaries.
+- No default migration registry entry, Runner execution path, Schema 0.3
+  runtime adapter, Writer, Curation, Workflow, Runtime KB, or Example KB was
+  activated or modified.
+
+Status is `Completed / Sol Verification Pending`; acceptance remains
+`Review Pending / Sol Verification`. B2 and B3 are not started or authorized.
+
+## Stage A Governance Closure
+
+Stage A Parent, R1, R2, and R3 are accepted as `Accepted - Sol verified`
+against verified implementation HEAD
+`c0c70b832a70f2f0fdc533c00236c03d47554d99`.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R3
 
 R3 closes the final Stage A Schema / Domain / Migration contract gap for
@@ -18,9 +43,8 @@ Business Exposure:
 All R1 and R2 corrections remain intact. No migration code, Schema 0.3
 runtime activation, Runtime KB change, or Example KB change was made.
 
-Status is `Completed / Sol Verification Pending`; acceptance remains
-`Review Pending / Sol Verification`. Parent Stage A, R1, and R2 remain
-pending final Stage A acceptance until Sol independently verifies R3.
+Status is `Completed`; acceptance is `Accepted - Sol verified` as part of the
+Stage A closure recorded above.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R2
 
@@ -39,9 +63,8 @@ All R1 requiredness, Source compatibility, Module structure, strict semantic
 unions, and RawRef alias corrections remain intact. Schema 0.3 remains absent
 from the runtime release registry.
 
-Status is `Completed / Sol Verification Pending`; acceptance remains
-`Review Pending / Sol Verification`. Parent Stage A and R1 remain pending
-final Stage A acceptance until Sol independently verifies R2.
+Status is `Completed`; acceptance is `Accepted - Sol verified` as part of the
+Stage A closure recorded above.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-A-001-R1
 
@@ -62,9 +85,8 @@ The v0.2-compatible domain, release registry, runtime KBs, and downstream
 Knowledge capabilities remain unchanged. Schema 0.3 is still not registered
 as readable or writable runtime support.
 
-Status is `Completed / Sol Verification Pending`; acceptance remains
-`Review Pending / Sol Verification`. Parent Stage A remains review pending
-until this R1 is independently verified by Sol.
+Status is `Completed`; acceptance is `Accepted - Sol verified` as part of the
+Stage A closure recorded above.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-A-001
 
@@ -81,8 +103,8 @@ runtime support:
 - No Runtime KB, Example KB, migration runtime, or downstream Knowledge
   capability was activated or modified.
 
-Status is `Completed / Sol Verification Pending`; acceptance remains
-`Review Pending / Sol Verification`.
+Status is `Completed`; acceptance is `Accepted - Sol verified` as part of the
+Stage A closure recorded above.
 
 ## KNOWLEDGE-V0.3-GOVERNANCE-INTEGRATION-001-R1
 

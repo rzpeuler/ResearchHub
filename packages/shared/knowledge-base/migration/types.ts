@@ -64,3 +64,49 @@ export interface KnowledgeMigrationRunnerOptions {
   clock?: () => string
   failpoint?: (point: 'before_switch' | 'during_switch' | 'after_switch') => void | Promise<void>
 }
+
+export interface KnowledgeMigrationWarning {
+  code: string
+  assetId?: string
+  description: string
+  details?: Record<string, unknown>
+}
+
+export interface KnowledgeV03SourceInventory {
+  entityIds: string[]
+  relationIds: string[]
+  intelligenceIds: string[]
+  moduleIds: string[]
+  sourceIds: string[]
+  counts: { entities: number; relations: number; intelligence: number; modules: number; sources: number }
+}
+
+export interface KnowledgeV03TargetInventory {
+  themeGroupIds: string[]
+  entityIds: string[]
+  relationIds: string[]
+  claimIds: string[]
+  moduleIds: string[]
+  sourceIds: string[]
+  auxiliary: {
+    taxonomyFiles: string[]
+    taxonomyItemIds: string[]
+    viewFiles: string[]
+  }
+  counts: { themeGroups: number; entities: number; relations: number; claims: number; modules: number; sources: number }
+}
+
+export interface V02ToV03TransformResult {
+  before: KnowledgeV03SourceInventory
+  after: KnowledgeV03TargetInventory
+  idMappings: KnowledgeIdMapping[]
+  warnings: KnowledgeMigrationWarning[]
+  reviewItems: MigrationReviewItem[]
+  changes: {
+    canonicalRegistryRebuilt: boolean
+    fallbackThemeGroupCreated: boolean
+    transformedAssetIds: string[]
+    preservedAuxiliaryFiles: string[]
+  }
+  invariants: Record<string, boolean>
+}
