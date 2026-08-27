@@ -1,8 +1,27 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-B-002-R1
+
+B2-R1 closes the independent verification rework for Knowledge v0.3 Runtime
+Integration. It restores the frozen Raw identity rule
+`raw-sha256-<64 lowercase hex>`, completes deterministic v0.3 validation for
+ThemeGroup, Entity, Relation, Claim, Source/Raw, Module, Taxonomy, Views, and
+orphans, uses real `archiveRaw()` fixtures, and makes Runner preflight use the
+resolved migration definition.
+
+This is a Knowledge v0.3 freeze-consistency correction, not Schema v0.4 and
+not a semantic model redesign. Stage A remains `Accepted - Sol verified` with
+the Raw correction recorded here; B1 remains `Accepted - Sol verified` after
+real-Raw regression. Stage B is `In Progress`; B2 Parent is
+`Completed / Rework Required`; B3 remains `Not Started / Not Authorized`.
+
+Status is `Completed / Sol Verification Pending`; acceptance is
+`Review Pending / Sol Verification`.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-002
 
-B2 is completed pending Sol verification. Schema 0.3 is readable through the
+B2 implementation is `Completed / Rework Required` pending the B-002-R1 Sol
+verification. Schema 0.3 is readable through the
 version-isolated canonical reader and integrated into the existing Validation
 Skill. The release remains explicitly non-writable for 0.3. The existing
 staging, target-validation, root-transaction, recovery, lock, migration-log,
@@ -10,9 +29,9 @@ and Handle-refresh boundaries are reused by the generalized migration Runner.
 
 Runtime boundary: v0.2 Writer remains available; no v0.3 Writer, Curation,
 Workflow, Frontend, or semantic runtime activation was added. B1 Parent and
-B1-R1 are accepted — Sol verified. B2 is `Completed / Sol Verification
-Pending`; acceptance is `Review Pending / Sol Verification`. B3 remains `Not
-Started / Not Authorized`.
+B1-R1 are accepted — Sol verified. B2 acceptance is `Rework Required - Sol
+verification`; B-002-R1 is the active rework closure. B3 remains `Not Started /
+Not Authorized`.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-001-R1
 
@@ -30,8 +49,8 @@ independent review:
   invariants are computed from the actual target staging state.
 
 Status is `Completed`; acceptance is `Accepted — Sol verified` against the
-verified B1-R1 implementation. B2 is completed pending Sol verification; B3
-is not started or authorized.
+verified B1-R1 implementation. B2 Parent is in rework pending B-002-R1 Sol
+verification; B3 is not started or authorized.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-001
 
@@ -51,8 +70,8 @@ Migration Transformation Layer:
 
 Status is `Completed`; acceptance is
 `Accepted — Sol verified` after the semantic-safety review. R1 is
-the accepted B1 rework closure. B2 is completed pending Sol verification; B3
-is not started or authorized.
+the accepted B1 rework closure. B2 Parent is in rework pending B-002-R1 Sol
+verification; B3 is not started or authorized.
 
 ## Stage A Governance Closure
 

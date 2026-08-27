@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-002-R1
+
+- Corrected the frozen Raw identity contract to preserve the existing
+  `raw-sha256-<64 lowercase hex>` identity across 0.2 to 0.3 migration;
+  Raw remains outside the semantic registry namespace mapping.
+- Completed strict deterministic v0.3 validation for subtype fields,
+  ThemeGroup/lifecycle, relation references and attributes, nested Claims,
+  Source/Raw integrity, Modules, recursive Taxonomy/Views, and orphan files.
+- Replaced synthetic migration Raw fixtures with real `archiveRaw()` bundles
+  and verified Raw bytes, manifests, identities, and `registry/raw.yaml` are
+  preserved.
+- Corrected Migration Runner preflight to use the resolved migration
+  definition, preserving commit, dry-run, review, validation, transaction,
+  recovery, log, and Handle behavior.
+- B2 Parent `b401c949a212599e88228366013ec0dee254b30b` is
+  `Completed / Rework Required`; B-002-R1 is `Completed / Sol Verification
+  Pending`. This is a freeze-consistency correction, not Schema v0.4 or a
+  semantic model redesign.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-002
 
 - Registered Schema 0.3 as readable and explicitly non-writable, with the

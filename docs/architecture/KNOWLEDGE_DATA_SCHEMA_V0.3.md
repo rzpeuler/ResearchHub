@@ -28,7 +28,10 @@ Namespaces:
 - `source:`
 - `module:`
 
-Raw retains existing identity semantics.
+Raw retains the existing Storage/Provenance identity semantics:
+`raw-sha256-<64 lowercase hex>`. RawRef is not a canonical semantic
+object-registry namespace; Raw identity is governed by Raw Storage / Provenance
+and is preserved unchanged by the 0.2 to 0.3 migration.
 
 `Taxonomy` and `View` are not canonical object kinds. Legacy/external
 taxonomy is an auxiliary Reference Taxonomy Asset; legacy `views/*.yaml` are
@@ -345,7 +348,7 @@ structuredValue:
 sourceRefs: [source:<id>]
 provenance:
   - sourceRef: source:<id>
-    rawRef: raw:<id>
+    rawRef: raw-sha256-<64 lowercase hex>
     locator: string | null
     chunkRef: string | null
 

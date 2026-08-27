@@ -94,7 +94,7 @@ export class KnowledgeMigrationRunner {
     if (path.length !== 1 || !['knowledge-schema-0.1-to-0.2', 'knowledge-schema-0.2-to-0.3'].includes(path[0]?.id ?? '')) return { ...result, status: 'blocked', error: { code: 'migration_not_implemented', message: `Migration implementation is not available: ${path[0]?.id ?? 'unknown'}` } }
     try { await validator.validateSource(handle); result.validation.source = 'passed' } catch (error) { result.validation.source = 'failed'; result.validation.errors = [error instanceof Error ? error.message : String(error)]; return { ...result, status: 'blocked', error: { code: 'source_validation_failed', message: result.validation.errors[0]! } } }
 
-    const preflight = await this.prepareAndValidate(root, handle, manifest, input, validator)
+    const preflight = await this.prepareAndValidate(root, handle, manifest, input, path[0]!, validator)
     result.inventory.before = preflight.transformation.before
     result.inventory.after = preflight.transformation.after
     result.idMappings = preflight.transformation.idMappings
@@ -139,11 +139,11 @@ export class KnowledgeMigrationRunner {
     result.status = 'committed'; result.target.revision = committedHandle.revision; result.migrationLogRef = logRef; result.committedHandle = committedHandle; return result
   }
 
-  private async prepareAndValidate(root: string, handle: KnowledgeBaseHandle, manifest: KnowledgeBaseManifest, input: KnowledgeMigrationRequest, validator: KnowledgeMigrationStateValidator): Promise<{ transformation: Transformation; targetValidation: 'passed' | 'failed'; targetValidationError?: { code: string; message: string } }> {
+  private async prepareAndValidate(root: string, handle: KnowledgeBaseHandle, manifest: KnowledgeBaseManifest, input: KnowledgeMigrationRequest, definition: KnowledgeMigrationDefinition, validator: KnowledgeMigrationStateValidator): Promise<{ transformation: Transformation; targetValidation: 'passed' | 'failed'; targetValidationError?: { code: string; message: string } }> {
     const staging = await stageCopy(root, `preflight-${input.migrationRunId}`)
     try {
       let transformation: Transformation
-      try { transformation = await transformFor(input.targetSchemaVersion === '0.3' ? { id: 'knowledge-schema-0.2-to-0.3', source: { schemaVersion: '0.2', storageFormatVersion: '1' }, target: { schemaVersion: '0.3', storageFormatVersion: '1' } } : { id: 'knowledge-schema-0.1-to-0.2', source: { schemaVersion: '0.1', storageFormatVersion: '1' }, target: { schemaVersion: '0.2', storageFormatVersion: '1' } }, handle, staging, input.migrationRunId) } catch (error) {
+      try { transformation = await transformFor(definition, handle, staging, input.migrationRunId) } catch (error) {
         return { transformation: emptyTransformation(), targetValidation: 'failed', targetValidationError: { code: 'migration_transform_failed', message: error instanceof Error ? error.message : String(error) } }
       }
       const targetManifest = { ...manifest, schemaVersion: input.targetSchemaVersion, storageFormatVersion: input.targetStorageFormatVersion, revision: manifest.revision + 1, updatedAt: this.clock() }

@@ -27,8 +27,10 @@ export const KNOWLEDGE_SCHEMA_V03 = {
     module: 'module:',
   },
   rawIdentity: {
-    namespace: 'raw:',
-    description: 'Raw retains immutable evidence identity and is referenced by RawRef.',
+    prefix: 'raw-sha256-',
+    pattern: '^raw-sha256-[0-9a-f]{64}$',
+    preservedAcrossMigration: true,
+    description: 'Raw retains the existing immutable Storage/Provenance identity and is referenced by RawRef.',
   },
   auxiliaryAssets: {
     referenceTaxonomy: {

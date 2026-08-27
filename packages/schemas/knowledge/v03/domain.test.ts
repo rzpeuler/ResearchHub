@@ -166,6 +166,8 @@ test('v0.3 domain rejects arbitrary semantic values and invalid durable namespac
   const invalidSourceType: SourceTypeV03 = 'unsupported'
   // @ts-expect-error Entity refs must use the object-kind entity namespace
   const invalidEntityRef: CompanyV03['id'] = 'company:example'
+  // @ts-expect-error RawRef must preserve the canonical raw-sha256 Storage identity
+  const invalidRawRef: KnowledgeClaimV03['provenance'] = [{ sourceRef: 'source:annual-report', rawRef: 'raw:example', locator: null, chunkRef: null }]
   // @ts-expect-error canonical entities do not accept arbitrary top-level fields
   const invalidEntityField: CompanyV03 = { ...company, industries: ['entity:semiconductor'] }
   // @ts-expect-error Module preserves declared v0.2 fields and does not invent targetRefs
@@ -181,6 +183,7 @@ test('v0.3 domain rejects arbitrary semantic values and invalid durable namespac
   assert.equal(typeof invalidClaimType, 'string')
   assert.equal(typeof invalidSourceType, 'string')
   assert.equal(typeof invalidEntityRef, 'string')
+  assert.equal(invalidRawRef?.[0]?.rawRef, 'raw:example')
   assert.equal('industries' in invalidEntityField, true)
   assert.equal('targetRefs' in invalidModuleField, true)
   assert.equal(invalidLegacyModuleTarget.targetEntity, 'segment:semiconductor')

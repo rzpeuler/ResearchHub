@@ -1,9 +1,10 @@
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { KnowledgeBaseRegistry } from '../../../packages/shared/knowledge-base/registry.ts'
+import { archiveRaw } from '../../../packages/shared/knowledge-base/raw-archive.ts'
 import { transformV02ToV03 } from '../../../packages/shared/knowledge-base/migration/v02-to-v03.ts'
 import { parseYaml } from '../../../packages/shared/knowledge-base/yaml.ts'
 
@@ -27,7 +28,7 @@ function cleanAssets(): Asset[] {
     { type: 'entity', path: 'entities/board.yaml', value: { id: 'product:board', type: 'product', name: 'GPU Board', lifecycle: lifecycle() } },
     { type: 'entity', path: 'entities/server.yaml', value: { id: 'product:server', type: 'product', name: 'AI Server', lifecycle: lifecycle() } },
     { type: 'entity', path: 'entities/cuda.yaml', value: { id: 'technology:cuda', type: 'technology', name: 'CUDA', lifecycle: lifecycle() } },
-    { type: 'source', path: 'sources/official.yaml', value: { id: 'source:official', type: 'official_disclosure', sourceType: 'official_disclosure', title: 'Official Report', publisher: 'NVIDIA', rawRefs: ['raw:official'], lifecycle: lifecycle() } },
+    { type: 'source', path: 'sources/official.yaml', value: { id: 'source:official', type: 'official_disclosure', sourceType: 'official_disclosure', title: 'Official Report', publisher: 'NVIDIA', lifecycle: lifecycle() } },
     { type: 'intelligence', path: 'intelligence/fact.yaml', value: { id: 'fact:gpu', type: 'fact', entityRefs: ['segment:gpu'], sourceRefs: ['source:official'], statement: 'GPU provides compute.', lifecycle: lifecycle() } },
     { type: 'intelligence', path: 'intelligence/trend.yaml', value: { id: 'trend:accelerator', type: 'trend', entityRefs: ['segment:gpu'], sourceRefs: ['source:official'], description: 'Accelerator demand is rising.', lifecycle: lifecycle() } },
     { type: 'intelligence', path: 'intelligence/risk.yaml', value: { id: 'risk:export', type: 'risk', entityRefs: ['company:nvidia'], sourceRefs: ['source:official'], statement: 'Export controls may affect supply.', lifecycle: lifecycle() } },
@@ -57,8 +58,16 @@ async function createKb(assets: Asset[], options: { taxonomy?: unknown; view?: u
   if (options.taxonomy !== undefined) await put(root, 'taxonomy/catalog.yaml', options.taxonomy)
   if (options.view !== undefined) await put(root, 'views/overview.yaml', options.view)
   if (options.raw) {
-    await put(root, 'raw/official.bin', 'immutable raw bytes')
-    await put(root, 'registry/raw.yaml', { 'raw:official': { path: 'raw/official.bin', contentHash: 'sha256:fixture' } })
+    const handle = await new KnowledgeBaseRegistry().mount(root)
+    const raw = await archiveRaw(handle, {
+      bytes: new TextEncoder().encode('immutable raw bytes'),
+      originalFilename: 'official.txt',
+      mediaType: 'text/plain',
+    })
+    const sourcePath = join(root, 'sources/official.yaml')
+    const source = parseYaml(await readFile(sourcePath, 'utf8'), sourcePath) as Record<string, unknown>
+    source.rawRefs = [raw.manifest.rawRef]
+    await writeFile(sourcePath, `${JSON.stringify(source)}\n`, 'utf8')
   }
   return root
 }
@@ -116,7 +125,7 @@ test('B1 clean migration maps canonical assets, relations, auxiliaries, and Raw 
       assert.equal(targetRegistry['entity:semiconductor']?.type, 'entity')
       assert.equal(targetRegistry['claim:gpu']?.type, 'claim')
       assert.equal(targetRegistry['module:gpu']?.type, 'module')
-      assert.equal(Object.keys(targetRegistry).some((id) => id.startsWith('taxonomy:') || id.startsWith('view:') || id.startsWith('raw:')), false)
+      assert.equal(Object.keys(targetRegistry).some((id) => id.startsWith('taxonomy:') || id.startsWith('view:') || id.startsWith('raw-sha256-')), false)
       const migratedOperate = parseYaml(await readFile(join(staging, 'relations/operates.yaml'), 'utf8')) as Record<string, unknown>
       assert.deepEqual(migratedOperate.attributes, { exposureBasis: 'unknown', realizationStage: 'unknown', materiality: 'unknown', financialContribution: null })
       assert.equal(migratedOperate.asOf, null)
@@ -130,8 +139,14 @@ test('B1 clean migration maps canonical assets, relations, auxiliaries, and Raw 
       assert.equal(view.targetEntity, 'entity:gpu')
       assert.equal(view.displayText, 'segment:gpu remains opaque here')
       assert.deepEqual(await snapshot(root), before)
-      assert.equal(await readFile(join(staging, 'raw/official.bin'), 'utf8'), await readFile(join(root, 'raw/official.bin'), 'utf8'))
-      assert.equal(await readFile(join(staging, 'registry/raw.yaml'), 'utf8'), await readFile(join(root, 'registry/raw.yaml'), 'utf8'))
+      const sourceRawRegistry = parseYaml(await readFile(join(root, 'registry/raw.yaml'), 'utf8')) as Record<string, { storageRef: string }>
+      const targetRawRegistry = parseYaml(await readFile(join(staging, 'registry/raw.yaml'), 'utf8')) as Record<string, { storageRef: string }>
+      assert.deepEqual(targetRawRegistry, sourceRawRegistry)
+      const rawRef = Object.keys(sourceRawRegistry)[0]!
+      assert.equal(
+        await readFile(join(staging, targetRawRegistry[rawRef]!.storageRef), 'utf8'),
+        await readFile(join(root, sourceRawRegistry[rawRef]!.storageRef), 'utf8'),
+      )
       assert.deepEqual(result.invariants, {
         sourceRootUnchanged: true,
         rawIdentityPreserved: true,

@@ -23,7 +23,7 @@ export type RelationRefV03 = `${typeof KNOWLEDGE_SCHEMA_V03.canonicalNamespaces.
 export type ClaimRefV03 = `${typeof KNOWLEDGE_SCHEMA_V03.canonicalNamespaces.claim}${string}`
 export type SourceRefV03 = `${typeof KNOWLEDGE_SCHEMA_V03.canonicalNamespaces.source}${string}`
 export type ModuleRefV03 = `${typeof KNOWLEDGE_SCHEMA_V03.canonicalNamespaces.module}${string}`
-export type RawRefV03 = `${typeof KNOWLEDGE_SCHEMA_V03.rawIdentity.namespace}${string}`
+export type RawRefV03 = `${typeof KNOWLEDGE_SCHEMA_V03.rawIdentity.prefix}${string}`
 
 export type CanonicalKnowledgeRefV03 =
   | ThemeGroupRefV03

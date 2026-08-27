@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -84,7 +84,7 @@ test('valid v0.1 migration dry-run is deterministic and leaves the canonical tre
     assert.equal(result.validation.source, 'passed')
     assert.equal(result.validation.target, 'passed')
     assert.deepEqual(await snapshot(root), before)
-    assert.equal((await readdir(dirname(root))).some((name) => name.includes('.migration-staging-')), false)
+    assert.equal((await readdir(dirname(root))).some((name) => name.startsWith(`${basename(root)}.migration-staging-`)), false)
     assert.equal(result.migrationLogRef, undefined)
   } finally { await rm(root, { recursive: true, force: true }) }
 })

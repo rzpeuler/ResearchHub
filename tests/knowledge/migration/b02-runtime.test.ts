@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { KnowledgeBaseRegistry } from '../../../packages/shared/knowledge-base/registry.ts'
 import { KnowledgeBaseLoader } from '../../../packages/shared/knowledge-base/knowledge-base-loader.ts'
+import { archiveRaw } from '../../../packages/shared/knowledge-base/raw-archive.ts'
 import { KnowledgeMigrationRunner } from '../../../packages/shared/knowledge-base/migration/runner.ts'
 import { KnowledgeValidationSkill, createKnowledgeMigrationStateValidator } from '../../../packages/skills/knowledge-validation/index.ts'
 import { CanonicalV03KnowledgeLoader } from '../../../packages/shared/knowledge-base/canonical-v03-loader.ts'
@@ -49,12 +50,19 @@ test('B2 registers v0.3 as readable but non-writable and blocks multi-hop migrat
 test('B2 dry-run leaves v0.2 unchanged and commit activates v0.3 through canonical reader', async () => {
   const root = await fixture()
   try {
-    const registry = new KnowledgeBaseRegistry(); const handle = await registry.mount(root); const before = await readFile(join(root, 'manifest.yaml'), 'utf8')
+    const registry = new KnowledgeBaseRegistry(); const loader = new KnowledgeBaseLoader({ registry }); const handle = await registry.mount(root)
+    const raw = await archiveRaw(handle, { bytes: new TextEncoder().encode('b02 raw bytes'), originalFilename: 'official.txt', mediaType: 'text/plain' })
+    const sourcePath = join(root, 'sources/official.yaml'); const source = JSON.parse(await readFile(sourcePath, 'utf8')) as Record<string, unknown>; source.rawRefs = [raw.manifest.rawRef]; await writeFile(sourcePath, `${JSON.stringify(source)}\n`, 'utf8')
+    const rawBefore = { ref: raw.manifest.rawRef, bytes: await readFile(raw.originalPath), manifest: await readFile(raw.manifestPath), registry: await readFile(join(root, 'registry/raw.yaml')) }
+    const before = await readFile(join(root, 'manifest.yaml'), 'utf8')
     const dry = await runner(registry).migrate(handle, { migrationRunId: 'b02-dry', targetSchemaVersion: '0.3', targetStorageFormatVersion: '1', expectedBaseRevision: 2, mode: 'dry_run' })
     assert.equal(dry.status, 'dry_run_passed', JSON.stringify(dry)); assert.deepEqual(await readFile(join(root, 'manifest.yaml'), 'utf8'), before)
     const committed = await runner(registry).migrate(handle, { migrationRunId: 'b02-commit', targetSchemaVersion: '0.3', targetStorageFormatVersion: '1', expectedBaseRevision: 2, mode: 'commit' })
     assert.equal(committed.status, 'committed', JSON.stringify(committed)); assert.equal(committed.target.revision, 3); assert.equal(committed.committedHandle?.schemaVersion, '0.3'); assert.equal(committed.committedHandle?.writable, false)
     const assets = await new CanonicalV03KnowledgeLoader(root).readAssets(); assert.equal(assets.claims.length, 1); assert.equal(assets.entities.length, 3); assert.equal(assets.relations.length, 1); assert.equal(assets.registry.some((entry) => entry.id.startsWith('taxonomy:')), false)
+    const postValidation = await new KnowledgeValidationSkill({ loader }).validateKnowledgeBase(committed.committedHandle!)
+    assert.equal(postValidation.status, 'passed', JSON.stringify(postValidation.errors))
+    assert.equal(assets.sources[0]?.value.rawRefs?.[0], rawBefore.ref); assert.deepEqual(await readFile(raw.originalPath), rawBefore.bytes); assert.deepEqual(await readFile(raw.manifestPath), rawBefore.manifest); assert.deepEqual(await readFile(join(root, 'registry/raw.yaml')), rawBefore.registry)
     const log = await readFile(join(root, 'logs/migrations/b02-commit.yaml'), 'utf8'); assert.match(log, /knowledge-schema-0\.2-to-0\.3/); assert.match(log, /warnings/)
     assert.equal((await readdir(join(root, 'registry'))).includes('index.yaml'), false)
   } finally { await rm(root, { recursive: true, force: true }) }

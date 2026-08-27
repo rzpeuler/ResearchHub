@@ -17,7 +17,12 @@ test('Schema 0.3 exposes the frozen identity, kinds, and namespaces', () => {
     source: 'source:',
     module: 'module:',
   })
-  assert.equal(KNOWLEDGE_SCHEMA_V03.rawIdentity.namespace, 'raw:')
+  assert.deepEqual(KNOWLEDGE_SCHEMA_V03.rawIdentity, {
+    prefix: 'raw-sha256-',
+    pattern: '^raw-sha256-[0-9a-f]{64}$',
+    preservedAcrossMigration: true,
+    description: 'Raw retains the existing immutable Storage/Provenance identity and is referenced by RawRef.',
+  })
 })
 
 test('Schema 0.3 contains the frozen semantic vocabularies and boundaries', () => {
@@ -171,5 +176,5 @@ test('Schema 0.3 is pure JSON data and does not activate runtime release support
   assert.equal(values.some((value) => typeof value === 'function'), false)
   assert.equal(ROOT_KNOWLEDGE_SCHEMA_V03, KNOWLEDGE_SCHEMA_V03)
 
-  assert.equal(findKnowledgeSchemaRelease({ schemaVersion: '0.3', storageFormatVersion: '1' }), undefined)
+  assert.equal(findKnowledgeSchemaRelease({ schemaVersion: '0.3', storageFormatVersion: '1' })?.writable, false)
 })

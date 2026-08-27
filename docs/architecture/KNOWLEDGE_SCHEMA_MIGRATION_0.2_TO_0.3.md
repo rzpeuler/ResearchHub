@@ -77,6 +77,8 @@ Successful semantic migration → target revision = source revision + 1 exactly 
 ## 6. Raw
 
 Raw bytes, hash, Raw identity, filename, and archived evidence remain unchanged.
+The preserved Raw identity is the existing runtime form
+`raw-sha256-<64 lowercase hex>`; 0.2 to 0.3 does not remap it.
 
 ## 7. Source
 
