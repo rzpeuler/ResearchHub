@@ -2,12 +2,13 @@
 
 ## Status
 
-**Freeze Candidate / Sol Verification Pending**
+**Frozen / Sol Accepted**
 
 - Knowledge Schema Version: `0.3`
 - Storage Format Version: `1`
 - Parent: `RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.3.md`
-- This candidate is not an implementation authorization; v0.2 remains the current frozen normative contract until Sol acceptance and governance integration.
+- Sol/CTO independently verified commit `47e312f79a221d7dd45b42508e52526fd61b1a74`.
+- This frozen target contract is not itself an implementation authorization; runtime migration to v0.3 remains separate and has not started.
 
 ## 1. Canonical Object Kinds
 
@@ -468,5 +469,5 @@ v0.3 writer writes only v0.3 semantics. v0.2 remains readable through compatibil
 
 Schema v0.3 freezes the model above. Storage Format remains 1. Taxonomy and
 View remain auxiliary assets and are not added to the canonical model. Schema
-v0.4 is NOT approved. This document remains a Freeze Candidate pending Sol
-verification.
+v0.4 is NOT approved. This document is Frozen / Sol Accepted; implementation
+status is governed separately.

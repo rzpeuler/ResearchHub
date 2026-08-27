@@ -2,14 +2,15 @@
 
 ## Status
 
-**Freeze Candidate / Sol Verification Pending**
+**Frozen / Sol Accepted**
 
 - Source Schema: `0.2`
 - Target Schema: `0.3`
 - Storage Format: `1 → 1`
 - Migration Type: Breaking Semantic Migration
 - Automatic silent migration: Forbidden
-- v0.2 remains the current frozen normative contract until Sol acceptance and governance integration.
+- Sol/CTO independently verified commit `47e312f79a221d7dd45b42508e52526fd61b1a74`.
+- This frozen migration target is not itself an implementation authorization; runtime migration to v0.3 remains separate and has not started.
 
 ## 1. Purpose
 
@@ -307,4 +308,4 @@ Dry-run performs full staging transformation/validation but no source mutation, 
 
 ## 29. Frozen Decisions
 
-Breaking semantic migration, explicit compatibility, deterministic/warning/review matrix, Raw preservation, complete ID map before ref rewrite, legacy Taxonomy/View preservation and reference coverage, no invented semantic fields, endpoint-aware Relation migration, no silent LLM migration decisions, and Storage Format 1 preservation are frozen. This document remains a Freeze Candidate pending Sol verification.
+Breaking semantic migration, explicit compatibility, deterministic/warning/review matrix, Raw preservation, complete ID map before ref rewrite, legacy Taxonomy/View preservation and reference coverage, no invented semantic fields, endpoint-aware Relation migration, no silent LLM migration decisions, and Storage Format 1 preservation are frozen. This document is Frozen / Sol Accepted; implementation status is governed separately.

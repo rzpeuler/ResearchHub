@@ -42,8 +42,11 @@ retained for compatibility; they are not current product architecture layers.
 The public Research Object envelope is defined in
 [`packages/schemas/research-object.ts`](packages/schemas/research-object.ts).
 
-The current Knowledge architecture is frozen as Knowledge Architecture v0.2
-with an independent Knowledge Base Instance model. Knowledge Runtime Migration
+The current normative Knowledge architecture is frozen as Knowledge
+Architecture v0.3 with an independent Knowledge Base Instance model. It was
+accepted by Sol/CTO against commit `47e312f79a221d7dd45b42508e52526fd61b1a74`.
+Knowledge Architecture v0.2 remains the frozen legacy compatibility and
+migration source. Knowledge Runtime Migration
 Phases A–E are accepted after Sol verification and Closed / Complete. Schema 0.2 / Storage 1 is
 the only writable contract, while Schema 0.1 and readonly/archived bases remain
 read-only. Runtime Migration Phase E is accepted and complete after Sol
@@ -51,7 +54,11 @@ verification; migration remains explicit and never occurs during mount, load,
 access, or ingestion. No Phase F is approved. The Git-managed AI Hardware Example
 Knowledge Base is available at
 [`examples/knowledge-bases/ai-hardware/`](examples/knowledge-bases/ai-hardware/);
-real user Runtime Data remains configurable and independently scoped.
+real user Runtime Data remains configurable and independently scoped. Current
+runtime implementation remains predominantly v0.2; migration to the v0.3
+target has not started. The next approved direction is Implementation Stage A
+— Executable Schema / Domain Model, which is not started by this governance
+integration task. No v0.4 or Phase F is approved.
 
 The AI Hardware Product Validation setup is ready for local real-data input;
 real ingestion remains pending the ignored project `.env` API key and local
@@ -72,7 +79,14 @@ reports under `../ResearchHubData/input/ai-hardware-reports/`.
 
 - [Research Output architecture](docs/architecture/RESEARCH_OUTPUT_ARCHITECTURE.md)
 - [Knowledge Layer current summary](docs/architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md)
-- [Knowledge Architecture v0.2](docs/architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.2.md)
+- [Knowledge Architecture v0.3](docs/architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.3.md)
+- [Knowledge Data Schema v0.3](docs/architecture/KNOWLEDGE_DATA_SCHEMA_V0.3.md)
+- [Knowledge Curation Skill v0.3](docs/architecture/KNOWLEDGE_CURATION_SKILL_V0.3.md)
+- [Research Report Ingestion Workflow v0.3](docs/architecture/RESEARCH_REPORT_INGESTION_WORKFLOW_V0.3.md)
+- [Knowledge Schema Migration v0.2 to v0.3](docs/architecture/KNOWLEDGE_SCHEMA_MIGRATION_0.2_TO_0.3.md)
+- [Knowledge Frontend Projection v0.3](docs/architecture/KNOWLEDGE_FRONTEND_PROJECTION_V0.3.md)
+- [Knowledge v0.3 Frozen Bundle README](docs/architecture/README_V0.3_FREEZE_BUNDLE.md)
+- Frozen legacy [Knowledge Architecture v0.2](docs/architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.2.md)
 - [Knowledge Base Instance Architecture v0.1](docs/architecture/RESEARCHHUB_KNOWLEDGE_BASE_INSTANCE_ARCHITECTURE_V0.1.md)
 - [Knowledge Storage Layout v0.2](docs/architecture/RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.2.md)
 - [Schema Versioning and Migration v0.1](docs/architecture/RESEARCHHUB_KNOWLEDGE_SCHEMA_VERSIONING_MIGRATION_V0.1.md)

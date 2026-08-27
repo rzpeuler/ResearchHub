@@ -54,18 +54,29 @@ ResearchHub Runtime Data
   knowledge-bases/<kb-id>/
 ```
 
-The current architecture is Knowledge Architecture v0.2. Runtime Migration
-Phases A, B, and C plus Knowledge Ingestion D1 are accepted after Sol
-verification. Knowledge Ingestion D2 is implemented and review pending. The AI Hardware Example Knowledge
-Base is stored at `examples/knowledge-bases/ai-hardware/`; it is Git-managed
-example data, not user Runtime Data. User KBs remain configurable under the
-Runtime Data Root.
+The current normative Knowledge architecture is Knowledge Architecture v0.3,
+frozen and accepted by Sol/CTO against commit
+`47e312f79a221d7dd45b42508e52526fd61b1a74`. The target semantic contract is
+Schema 0.3 / Storage Format 1. Current runtime implementation remains
+predominantly v0.2; migration to v0.3 has not started. The next approved
+engineering direction is Implementation Stage A — Executable Schema / Domain
+Model, but Stage A is not started by this governance integration task. The AI
+Hardware Example Knowledge Base is stored at
+`examples/knowledge-bases/ai-hardware/`; it is Git-managed example data, not
+user Runtime Data. User KBs remain configurable under the Runtime Data Root.
 
 ## Primary references
 
 - [Research Output architecture](../architecture/RESEARCH_OUTPUT_ARCHITECTURE.md)
 - [Knowledge Layer architecture](../architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md)
-- [Knowledge Architecture v0.2](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.2.md)
+- [Knowledge Architecture v0.3](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.3.md)
+- [Knowledge Data Schema v0.3](../architecture/KNOWLEDGE_DATA_SCHEMA_V0.3.md)
+- [Knowledge Curation Skill v0.3](../architecture/KNOWLEDGE_CURATION_SKILL_V0.3.md)
+- [Research Report Ingestion Workflow v0.3](../architecture/RESEARCH_REPORT_INGESTION_WORKFLOW_V0.3.md)
+- [Knowledge Schema Migration v0.2 to v0.3](../architecture/KNOWLEDGE_SCHEMA_MIGRATION_0.2_TO_0.3.md)
+- [Knowledge Frontend Projection v0.3](../architecture/KNOWLEDGE_FRONTEND_PROJECTION_V0.3.md)
+- [Knowledge v0.3 Frozen Bundle README](../architecture/README_V0.3_FREEZE_BUNDLE.md)
+- Frozen legacy [Knowledge Architecture v0.2](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.2.md)
 - [Knowledge Base Instance Architecture v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_BASE_INSTANCE_ARCHITECTURE_V0.1.md)
 - [Knowledge Storage Layout v0.2](../architecture/RESEARCHHUB_KNOWLEDGE_STORAGE_LAYOUT_V0.2.md)
 - [Schema Versioning and Migration v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_SCHEMA_VERSIONING_MIGRATION_V0.1.md)

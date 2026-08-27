@@ -2,12 +2,13 @@
 
 ## Status
 
-**Freeze Candidate / Sol Verification Pending**
+**Frozen / Sol Accepted**
 
 - Workflow Version: `0.3`
 - Knowledge Schema Dependency: `0.3`
 - Storage Format Dependency: `1`
-- v0.2 remains the current frozen normative contract until Sol acceptance and governance integration.
+- Sol/CTO independently verified commit `47e312f79a221d7dd45b42508e52526fd61b1a74`.
+- This frozen workflow target is not itself an implementation authorization; runtime migration to v0.3 remains separate and has not started.
 
 ## 1. Purpose
 
@@ -294,4 +295,4 @@ Block semantic commit → blocked.
 
 ## 33. Frozen Decisions
 
-The 18-stage Workflow, Raw-first semantics, non-blocking Theme uncertainty, deterministic batching/consolidation/resolution, batch reconciliation, conditional Schema Gap, dependency-closure review isolation, one semantic atomic commit, all-or-nothing final validation, explicit continuation, observable LLM calls, runtime-neutral boundary, and the absence of Taxonomy/View Workflow stages are frozen. Migration handles those auxiliary assets separately. v0.4 is NOT approved. This document remains a Freeze Candidate pending Sol verification.
+The 18-stage Workflow, Raw-first semantics, non-blocking Theme uncertainty, deterministic batching/consolidation/resolution, batch reconciliation, conditional Schema Gap, dependency-closure review isolation, one semantic atomic commit, all-or-nothing final validation, explicit continuation, observable LLM calls, runtime-neutral boundary, and the absence of Taxonomy/View Workflow stages are frozen. Migration handles those auxiliary assets separately. v0.4 is NOT approved. This document is Frozen / Sol Accepted; implementation status is governed separately.

@@ -2,12 +2,13 @@
 
 ## Status
 
-**Freeze Candidate / Sol Verification Pending**
+**Frozen / Sol Accepted**
 
 - Version: `v0.3`
 - Knowledge Schema Dependency: `0.3`
 - Canonical Knowledge mutation by Projection: Forbidden
-- v0.2 remains the current frozen normative contract until Sol acceptance and governance integration.
+- Sol/CTO independently verified commit `47e312f79a221d7dd45b42508e52526fd61b1a74`.
+- This frozen projection target is not itself an implementation authorization; runtime migration to v0.3 remains separate and has not started.
 
 ## 1. Purpose
 
@@ -335,4 +336,4 @@ Projection MUST NOT:
 
 ## 32. Frozen Decisions
 
-Frontend is read/projection only; Theme directory is ThemeGroup→InvestmentTheme; graph and directory are separate; Theme/Company relevance derives through canonical graph; Concept Exposure is derived and filterable; inverse edges are derived; Claim divergence/history/provenance remain visible; projection caches are non-canonical and rebuildable; legacy View files are Projection Configuration Assets; frontend consumes Runtime Model/Access, not storage paths; Graph UI does not require Graph DB or RAG. v0.4 is NOT approved. This document remains a Freeze Candidate pending Sol verification.
+Frontend is read/projection only; Theme directory is ThemeGroup→InvestmentTheme; graph and directory are separate; Theme/Company relevance derives through canonical graph; Concept Exposure is derived and filterable; inverse edges are derived; Claim divergence/history/provenance remain visible; projection caches are non-canonical and rebuildable; legacy View files are Projection Configuration Assets; frontend consumes Runtime Model/Access, not storage paths; Graph UI does not require Graph DB or RAG. v0.4 is NOT approved. This document is Frozen / Sol Accepted; implementation status is governed separately.

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-GOVERNANCE-INTEGRATION-001
+
+- Recorded Sol/CTO acceptance of the Knowledge v0.3 Architecture Freeze for
+  commit `47e312f79a221d7dd45b42508e52526fd61b1a74`.
+- Promoted Knowledge v0.3 to the current normative Knowledge architecture and
+  Schema 0.3 / Storage Format 1 to the current target semantic contract.
+- Kept Knowledge v0.2 as the frozen legacy compatibility/migration source and
+  preserved the distinction between current architecture and current runtime
+  implementation, which remains predominantly v0.2.
+- Synchronized the architecture entry points, Freeze Index, Project Overview,
+  Decision Log, Task Registry, Current Status, and Roadmap.
+- Recorded the next approved direction as Implementation Stage A — Executable
+  Schema / Domain Model; Stage A and v0.3 runtime migration have not started.
+- Governance Integration remains `Completed / Sol Verification Pending` with
+  acceptance `Review Pending / Sol Verification`.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-FREEZE-CORRECTION-001-R1
 
 - Added Schema 0.3 durable identity policy to the v0.3 supersession scope

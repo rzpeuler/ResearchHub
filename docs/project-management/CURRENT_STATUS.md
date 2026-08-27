@@ -1,6 +1,27 @@
 # Current Status
 
-## KNOWLEDGE-V0.3-FREEZE-CORRECTION-001-R1
+## KNOWLEDGE-V0.3-ARCHITECTURE-FREEZE
+
+Sol/CTO independently verified the Knowledge v0.3 freeze package against
+commit `47e312f79a221d7dd45b42508e52526fd61b1a74`.
+
+- Knowledge v0.3 is the Current Normative Knowledge Architecture.
+- Schema 0.3 / Storage Format 1 is the Current Target Semantic Contract.
+- Knowledge v0.2 is Frozen Legacy and remains the compatibility/migration
+  source.
+- Current runtime implementation remains predominantly v0.2; migration to
+  v0.3 has not started.
+- The next approved engineering direction is Implementation Stage A —
+  Executable Schema / Domain Model. Stage A has not started and is not part of
+  this governance integration task.
+- Single DSH, `dsh/` orchestration, runtime-neutral `packages/`, explicit
+  `KnowledgeBaseHandle`, Raw/provenance ownership, and the Git/runtime-data
+  boundary remain unchanged.
+
+The Governance Integration task is `Completed / Sol Verification Pending`;
+its acceptance remains `Review Pending / Sol Verification`.
+
+## Historical: KNOWLEDGE-V0.3-FREEZE-CORRECTION-001-R1
 
 R1 closes the two residual terminology and normative-scope contradictions
 identified during independent Sol review of commit
@@ -20,7 +41,7 @@ started.
 Status is `Completed / Sol Verification Pending`; acceptance remains
 `Review Pending / Sol Verification`.
 
-## KNOWLEDGE-V0.3-FREEZE-CORRECTION-001
+## Historical: KNOWLEDGE-V0.3-FREEZE-CORRECTION-001
 
 Knowledge v0.3 is a Freeze Candidate with status `Sol Verification Pending`.
 The candidate documentation now closes the Taxonomy/View auxiliary-asset

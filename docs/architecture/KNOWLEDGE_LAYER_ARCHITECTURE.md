@@ -1,11 +1,20 @@
 # Knowledge Layer Architecture
 
-**Status:** Current Architecture Summary  
-**Date:** 2026-08-26
+**Status:** Current Normative Knowledge Architecture Summary
+**Date:** 2026-08-27
 
 ## Normative References
 
-Current frozen architecture:
+Current normative architecture:
+
+- `RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.3.md`
+- `KNOWLEDGE_DATA_SCHEMA_V0.3.md`
+- `KNOWLEDGE_CURATION_SKILL_V0.3.md`
+- `RESEARCH_REPORT_INGESTION_WORKFLOW_V0.3.md`
+- `KNOWLEDGE_SCHEMA_MIGRATION_0.2_TO_0.3.md`
+- `KNOWLEDGE_FRONTEND_PROJECTION_V0.3.md`
+
+Supporting frozen legacy/runtime-boundary references:
 
 - `RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.2.md`
 - `RESEARCHHUB_KNOWLEDGE_BASE_INSTANCE_ARCHITECTURE_V0.1.md`
@@ -62,7 +71,11 @@ ResearchHub Source contains DSH, packages, tests, examples, and docs.
 
 ## Knowledge Semantics
 
-Knowledge continues to model Taxonomy, Entity, Relation, Fact, Forecast, Viewpoint, Trend, Risk, Module, Source, View, and Registry.
+The v0.3 canonical object kinds are ThemeGroup, Entity, Relation, Claim,
+Source, Module, and RawRef. Entity subtypes include InvestmentTheme, Industry,
+Company, Product, and Technology. Reference Taxonomy and Projection
+Configuration are auxiliary assets, not canonical object kinds. v0.2 remains
+the frozen legacy compatibility/migration source.
 
 ## Lifecycle
 
@@ -71,6 +84,12 @@ KB lifecycle includes create, mount, load, read, ingest, update, supersede, vali
 A KB is not an Agent.
 
 ## Ingestion
+
+The normative ingestion SOP is the 18-stage [Research Report Ingestion
+Workflow v0.3](RESEARCH_REPORT_INGESTION_WORKFLOW_V0.3.md). It is the frozen
+target contract; the current runtime implementation has not migrated to v0.3.
+The compact path below records the existing legacy runtime shape and is not a
+second normative workflow definition.
 
 ```text
 Research Report
@@ -102,9 +121,10 @@ Knowledge
 
 ## Schema Evolution
 
-Schema lives under `packages/schemas/knowledge/`. Each KB declares `schemaVersion`.
-
-Breaking changes require Migration design. Mount and ingestion never silently migrate user data.
+The current target is Schema 0.3 / Storage Format 1. Schema 0.2 is the frozen
+legacy compatibility and migration source. The explicit [Schema Migration v0.2
+to v0.3](KNOWLEDGE_SCHEMA_MIGRATION_0.2_TO_0.3.md) is required; mount and
+ingestion never silently migrate user data.
 
 ## Runtime Neutrality
 

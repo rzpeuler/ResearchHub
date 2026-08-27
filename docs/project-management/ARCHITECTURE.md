@@ -107,22 +107,29 @@ interfaces remain usable by another runtime caller.
 
 ## Current Knowledge architecture
 
-The normative architecture is [Knowledge Architecture
-v0.2](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.2.md), supported by
-the [Knowledge Base Instance Architecture
-v0.1](../architecture/RESEARCHHUB_KNOWLEDGE_BASE_INSTANCE_ARCHITECTURE_V0.1.md),
-Storage Layout v0.2, Schema Versioning and Migration, Data Schema v0.2,
-Access/Validation/Curation contracts, Ingestion Workflow, Write Interface,
-Frontend Projection v0.2, and [ADR-015](../architecture/ADR-015-KNOWLEDGE-BASE-INSTANCE-AND-RUNTIME-DATA-SEPARATION.md).
+The current normative Knowledge architecture is [Knowledge Architecture
+v0.3](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.3.md), frozen and
+accepted by Sol/CTO against commit
+`47e312f79a221d7dd45b42508e52526fd61b1a74`. Its target semantic contract is
+Schema 0.3 / Storage Format 1, supported by the [Data Schema
+v0.3](../architecture/KNOWLEDGE_DATA_SCHEMA_V0.3.md), [Curation Skill
+v0.3](../architecture/KNOWLEDGE_CURATION_SKILL_V0.3.md), [Research Report
+Ingestion Workflow v0.3](../architecture/RESEARCH_REPORT_INGESTION_WORKFLOW_V0.3.md),
+[Schema Migration v0.2 to v0.3](../architecture/KNOWLEDGE_SCHEMA_MIGRATION_0.2_TO_0.3.md),
+and [Frontend Projection v0.3](../architecture/KNOWLEDGE_FRONTEND_PROJECTION_V0.3.md).
 
-The v0.1 Knowledge documents remain historical semantic and implementation
-records. No Research Artifact Layer, Knowledge Database, Graph Database, RAG,
-LLM Extraction, autonomous Knowledge update engine, Knowledge Agent, Planner,
-Workflow Engine, or automatic semantic migration is current architecture.
+The v0.2 Knowledge architecture and its supporting documents remain frozen
+legacy compatibility and migration sources. Current runtime implementation is
+still predominantly v0.2; migration to the v0.3 target has not started. The
+next approved engineering direction is Stage A — Executable Schema / Domain
+Model, but Stage A is not part of this governance integration task.
 
 See the [Knowledge Architecture Freeze
 Index](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_FREEZE_INDEX_2026-08-26.md)
-for the complete frozen document set.
+for the complete current and legacy document sets. No Research Artifact Layer,
+Knowledge Database, Graph Database, RAG, LLM Extraction, autonomous Knowledge
+update engine, Knowledge Agent, Planner, Workflow Engine, or automatic semantic
+migration is current architecture.
 
 ## Deprecated architecture
 

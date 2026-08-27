@@ -2,14 +2,16 @@
 
 ## Status
 
-**Freeze Candidate / Sol Verification Pending**
+**Frozen / Sol Accepted**
 
 - Knowledge Schema Version: `0.3`
 - Storage Format Version: `1`
 - v0.2 remains frozen legacy architecture and MUST NOT be rewritten.
 - v0.3 supersedes v0.2 only for Knowledge semantic model, relation vocabulary, Schema 0.3 durable identity policy, curation architecture, and report-ingestion behavior.
 - v0.2 decisions for KB instance isolation, runtime-data separation, Raw ownership, provenance, registry, compatibility, migration, validation/write atomicity, and Git/runtime-data boundary remain valid.
-- This candidate is submitted for independent Sol verification; Knowledge v0.3 implementation remains on HOLD.
+- Runtime migration to v0.3 remains separate from this architecture decision and has not started.
+- Sol/CTO independently verified commit `47e312f79a221d7dd45b42508e52526fd61b1a74`.
+- This document defines the current normative Knowledge architecture; runtime migration to v0.3 remains a separate, not-yet-started engineering track.
 
 ## 1. Purpose
 
@@ -438,5 +440,5 @@ Schema Gap
 → Engineering
 ```
 
-Schema v0.4 is NOT approved. This document remains a Freeze Candidate pending
-Sol verification.
+Schema v0.4 is NOT approved. This document is Frozen / Sol Accepted; runtime
+implementation status is governed separately.

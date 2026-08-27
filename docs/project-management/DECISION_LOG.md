@@ -151,6 +151,35 @@ autonomous Schema evolution, or automatic semantic migration is introduced.
 
 See [ADR-015](../architecture/ADR-015-KNOWLEDGE-BASE-INSTANCE-AND-RUNTIME-DATA-SEPARATION.md).
 
+## KNOWLEDGE-ARCHITECTURE-003 — Knowledge Architecture v0.3 Freeze
+
+**Status:** Accepted / Current Normative Knowledge Architecture
+**Date:** 2026-08-27
+
+Sol/CTO independently verified the Knowledge v0.3 freeze package against
+commit `47e312f79a221d7dd45b42508e52526fd61b1a74`. Knowledge Architecture v0.3
+is therefore adopted as the current normative Knowledge architecture and
+Schema 0.3 / Storage Format 1 is the current target semantic contract.
+
+The frozen v0.3 documents define the ThemeGroup, Entity, Relation, Claim,
+Source, Module, and RawRef model; the Reference Taxonomy and Projection
+Configuration auxiliary-asset boundary; object-kind durable IDs; explicit
+0.2 → 0.3 migration; one Curation Skill with four operations; the 18-stage
+ingestion Workflow; and deterministic Knowledge integrity boundaries. The
+complete definitions remain in the linked frozen documents rather than being
+duplicated here.
+
+Knowledge Architecture v0.2 and its supporting documents remain Frozen Legacy
+and are the compatibility/migration source. The current runtime implementation
+is still predominantly v0.2; Schema 0.3 runtime migration and Implementation
+Stage A have not started. The next approved engineering direction is Stage A —
+Executable Schema / Domain Model. No new Agent, Manager, Planner, Engine,
+Graph DB, Vector DB, RAG, or other architecture layer is introduced.
+
+See [Knowledge Architecture v0.3](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_V0.3.md),
+[Knowledge Layer Architecture](../architecture/KNOWLEDGE_LAYER_ARCHITECTURE.md),
+and the [Knowledge Architecture Freeze Index](../architecture/RESEARCHHUB_KNOWLEDGE_ARCHITECTURE_FREEZE_INDEX_2026-08-26.md).
+
 ## KNOWLEDGE-ARCH-CONSISTENCY-001 — Supersession status
 
 **Status:** Historical semantic foundation; ownership and storage assumptions

@@ -2,7 +2,7 @@
 
 ## Status
 
-**Freeze Candidate / Sol Verification Pending**
+**Frozen / Sol Accepted**
 
 - Version: `v0.3`
 - Knowledge Schema Dependency: `0.3`
@@ -321,4 +321,4 @@ No candidate-by-candidate admission/reconciliation by default.
 
 ## 33. Frozen Decisions
 
-One Curation Skill, four operations, automatic Schema Context, deterministic ref/ID ownership, distinct Entity/Relation/Claim Candidates, batch-capable Reconciliation, conditional Schema Gap, strict post-validation, no hidden retry, no direct canonical mutation, and no invented `taxonomyRefs` without explicit Reference Taxonomy context. v0.4 is NOT approved. This document remains a Freeze Candidate pending Sol verification.
+One Curation Skill, four operations, automatic Schema Context, deterministic ref/ID ownership, distinct Entity/Relation/Claim Candidates, batch-capable Reconciliation, conditional Schema Gap, strict post-validation, no hidden retry, no direct canonical mutation, and no invented `taxonomyRefs` without explicit Reference Taxonomy context. v0.4 is NOT approved. This document is Frozen / Sol Accepted; implementation status is governed separately.

@@ -12,7 +12,20 @@
 - Architecture Simplification governance update and Architecture v0.3.
 - Research Output, Research Object, and Knowledge Layer architecture.
 
-## Current phase: Knowledge Product Validation / Real Data Integration
+## Current governance state
+
+- Architecture Freeze: Completed / Sol Accepted
+- Governance Integration: Completed / Sol Verification Pending
+- Current Normative Knowledge Architecture: Knowledge v0.3
+- Legacy Frozen Compatibility/Migration Source: Knowledge v0.2
+- Runtime Implementation: predominantly v0.2; migration to v0.3 has not started
+- Next approved direction: Implementation Stage A — Executable Schema / Domain
+  Model
+
+Stage A has not started and is not part of the Governance Integration task.
+Knowledge v0.4 is not approved.
+
+## Runtime implementation status: v0.2 compatibility track
 
 Knowledge Architecture v0.2, Knowledge Base Instance Architecture v0.1,
 Storage Layout v0.2, Schema Versioning and Migration, Data Schema v0.2,
@@ -25,7 +38,10 @@ architecture design exercise. The D2 R2 ingestion audit and partial-planning
 contract, together with the R3 public-result completion semantics, are
 accepted as part of the completed Phase D governance record.
 
-The AI Hardware dataset is now a Git-managed Example Knowledge Base at
+The v0.3 frozen architecture is the target for future implementation stages.
+The existing runtime and completed migration records below describe the
+v0.2-compatible implementation track. The AI Hardware dataset is now a
+Git-managed Example Knowledge Base at
 `examples/knowledge-bases/ai-hardware/`. It is not user Runtime Data; real
 user KB roots remain configurable Runtime Data.
 
