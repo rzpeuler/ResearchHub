@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-FREEZE-CORRECTION-001
+
+- Imported and corrected the six Knowledge v0.3 Freeze Candidate documents.
+- Closed the Reference Taxonomy / Projection Configuration auxiliary-asset
+  boundary, the unique `taxonomyRefs` meaning, and legacy Taxonomy/View
+  migration coverage.
+- Made Schema 0.3 the sole durable-ID authority with mandatory object-kind
+  namespaces while preserving the frozen v0.1 ID Convention for Schema `<=
+  0.2`.
+- Kept v0.2 as the current frozen normative architecture and v0.3
+  implementation on HOLD.
+- Status remains `Completed / Sol Verification Pending`; acceptance remains
+  `Review Pending / Sol Verification`.
+
 ## 2026-08-27 - KNOWLEDGE-PRODUCT-VALIDATION-RUN-001-R1
 
 - Resumed the first real AI Hardware Product Validation with the specified

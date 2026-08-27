@@ -1,5 +1,27 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-FREEZE-CORRECTION-001
+
+Knowledge v0.3 is a Freeze Candidate with status `Sol Verification Pending`.
+The candidate documentation now closes the Taxonomy/View auxiliary-asset
+boundary and the Schema 0.3 durable-ID authority ambiguity without changing
+the v0.3 semantic design.
+
+- Canonical kinds remain ThemeGroup, Entity, Relation, Claim, Source, Module,
+  and RawRef.
+- Reference Taxonomy and Projection Configuration are auxiliary assets, not
+  canonical semantic objects.
+- `taxonomyRefs` has one defined auxiliary-reference meaning.
+- Schema 0.3 Data Schema is the sole v0.3 canonical durable-ID authority, and
+  object-kind namespaces are mandatory.
+- The frozen v0.1 ID Convention remains unchanged and applies to Schema `<=
+  0.2`.
+- v0.2 remains the current frozen normative architecture until Sol
+  verification and governance integration.
+- Knowledge v0.3 implementation remains on HOLD and is not authorized.
+
+Acceptance remains `Review Pending / Sol Verification`.
+
 ## KNOWLEDGE-ARCHITECTURE-002
 
 Knowledge Architecture v0.2 and the independent Knowledge Base Instance
