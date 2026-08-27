@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-003
+
+- Added the isolated B3 acceptance regression for the exact Git-managed AI
+  Hardware Example Knowledge Base.
+- Source Schema 0.2 validation passed; dry-run and deterministic repeat both
+  produced 115 Category A semantic reviews, so commit was correctly skipped.
+- B3 is `Blocked by Semantic Review`; the repository example and production
+  implementation remain unchanged.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-002-R2
 
 - Corrected Claim temporal validation so `scope.label` accepts arbitrary

@@ -1,5 +1,19 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-B-003
+
+B3 is the production-like Example Knowledge Base migration acceptance for the
+exact Git-managed `examples/knowledge-bases/ai-hardware/` Schema 0.2 source.
+It runs isolated dry-run, deterministic repeat, and commit paths against
+Schema 0.3 / Storage Format 1 while preserving the repository example and all
+production implementation boundaries.
+
+Status is `Blocked by Semantic Review`; acceptance is `Sol Verification Pending`.
+
+The exact example source passes Schema 0.2 validation, but the required
+Schema 0.2 to 0.3 dry-run returns 115 deterministic Category A reviews. No
+commit is authorized until the frozen semantic decisions are supplied.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-002-R2
 
 B-002-R2 closes the remaining B2 verification gaps: temporal scope labels now
@@ -9,8 +23,8 @@ target-validation, and before/during/after-switch recovery coverage.
 
 This is a narrow B2 closure and does not change architecture, Schema semantics,
 Raw identity, or introduce runtime components. Stage A is `Accepted - Sol
-verified`; B1 is `Accepted - Sol verified`; Stage B remains `In Progress`; B3
-is `Not Started / Not Authorized`.
+verified`; B1 and B2 are `Accepted - Sol verified`; Stage B remains `In
+Progress`; B3 is `Blocked by Semantic Review`.
 
 Status is `Completed / Sol Verification Pending`; acceptance is
 `Review Pending / Sol Verification`.
@@ -28,15 +42,15 @@ This is a Knowledge v0.3 freeze-consistency correction, not Schema v0.4 and
 not a semantic model redesign. Stage A remains `Accepted - Sol verified` with
 the Raw correction recorded here; B1 remains `Accepted - Sol verified` after
 real-Raw regression. Stage B is `In Progress`; B2 Parent is
-`Completed / Rework Required`; B3 remains `Not Started / Not Authorized`.
+`Accepted - Sol verified`; B3 is `In Progress`.
 
 Status is `Completed / Rework Required`; acceptance is
 `Rework Required - Sol verification`.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-002
 
-B2 implementation is `Completed / Rework Required` pending the B-002-R2 Sol
-verification. Schema 0.3 is readable through the
+B2 implementation is `Completed / Accepted - Sol verified` after the B-002-R2
+Sol verification. Schema 0.3 is readable through the
 version-isolated canonical reader and integrated into the existing Validation
 Skill. The release remains explicitly non-writable for 0.3. The existing
 staging, target-validation, root-transaction, recovery, lock, migration-log,
@@ -45,8 +59,8 @@ and Handle-refresh boundaries are reused by the generalized migration Runner.
 Runtime boundary: v0.2 Writer remains available; no v0.3 Writer, Curation,
 Workflow, Frontend, or semantic runtime activation was added. B1 Parent and
 B1-R1 are accepted — Sol verified. B2 acceptance is `Rework Required - Sol
-verification`; B-002-R2 is the active rework closure. B3 remains `Not Started /
-Not Authorized`.
+verification`; B-002-R2 is closed. B3 is the active production-like example
+acceptance.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-001-R1
 

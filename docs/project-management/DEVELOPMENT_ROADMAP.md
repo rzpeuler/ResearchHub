@@ -23,22 +23,23 @@
 - Stage A R1 structural correction: Completed / Sol verified
 - Stage A R2 canonical-reference correction: Completed / Sol verified
 - Stage A R3 migration-nullability correction: Completed / Sol verified
-- Stage A Raw identity consistency correction: Completed / Sol verification
+- Stage A Raw identity consistency correction: Completed / Sol verified
 - Runtime Schema Release: Schema 0.1, 0.2, and readable/non-writable 0.3
 - Stage B: In Progress
 - B1: Completed / Sol verified
-- B2 Parent: Completed / Rework Required
-- B2-R1: Completed / Rework Required
-- B2-R2: Completed / Sol Verification Pending
-- B3: Not Started / Not Authorized
+- B2 Parent: Completed / Accepted - Sol verified
+- B2-R1: Completed / Accepted - Sol verified
+- B2-R2: Completed / Accepted - Sol verified
+- B3: Blocked by Semantic Review
 - Current approved direction: Implementation Stage B — 0.2 to 0.3 Migration
 
-Stage B is the current approved implementation stage. B1 is accepted and B2-R2
-is implemented pending independent Sol verification after the B2 and B2-R1
-rework.
+Stage B is the current approved implementation stage. B1 and B2 are accepted;
+B3 is the production-like example migration acceptance and is blocked pending
+explicit frozen semantic decisions for the exact example state.
 Schema 0.3 read and
 migration-commit support are present, but semantic Writer/Curation/Workflow and
-frontend activation remain outside this stage. B3 is not authorized.
+frontend activation remain outside this stage. B3 does not activate a default
+Schema 0.3 runtime writer.
 Knowledge v0.4 is not approved.
 
 ## Runtime implementation status: v0.2 compatibility track
