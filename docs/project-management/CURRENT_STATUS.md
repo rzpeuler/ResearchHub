@@ -1,5 +1,17 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-C-001
+
+C1 implements the runtime-neutral Knowledge Curation v0.3 Schema Context
+Builder. It exports one deterministic Builder with four explicit operation
+slices derived from `KNOWLEDGE_SCHEMA_V03`; the legacy seven-operation Curation
+API and model request remain unchanged.
+
+Stage B is `Completed / Accepted - Sol verified` at baseline
+`60bf76c045c1d315f3ea90d7733d75d870b7ee54`. Stage C is `In Progress`; C1 is
+`Completed / Sol Verification Pending`. C2 remains responsible for the four
+v0.3 Curation operations and model request cutover.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-003
 
 B3 is the production-like Example Knowledge Base migration acceptance for the
@@ -8,7 +20,7 @@ It runs isolated dry-run, deterministic repeat, and commit paths against
 Schema 0.3 / Storage Format 1 while preserving the repository example and all
 production implementation boundaries.
 
-Status is `Completed / Sol Verification Pending`; acceptance is `Sol Verification Pending`.
+Status is `Completed / Accepted - Sol verified`; acceptance is `Accepted - Sol verified`.
 
 The exact example source passes Schema 0.2 validation. The B3-R2 temporal
 policy closes candidate accounting deterministically and retains 15 accounted
@@ -18,7 +30,7 @@ validation. The exact example remains uncommitted because its semantic and
 invalid-temporal Review gates are intentional.
 
 B3 Evidence is `Accepted - Sol verified`; B3-R1 is `Completed / Rework Required`;
-B3-R2 and Stage B are `Completed / Sol Verification Pending`.
+B3-R2 and Stage B are `Completed / Accepted - Sol verified`.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-002-R2
 

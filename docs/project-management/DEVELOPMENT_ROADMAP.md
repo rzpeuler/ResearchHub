@@ -25,21 +25,22 @@
 - Stage A R3 migration-nullability correction: Completed / Sol verified
 - Stage A Raw identity consistency correction: Completed / Sol verified
 - Runtime Schema Release: Schema 0.1, 0.2, and readable/non-writable 0.3
-- Stage B: Completed / Sol Verification Pending
+- Stage B: Completed / Accepted - Sol verified
 - B1: Completed / Sol verified
 - B2 Parent: Completed / Accepted - Sol verified
 - B2-R1: Completed / Accepted - Sol verified
 - B2-R2: Completed / Accepted - Sol verified
 - B3: Completed / Sol verified
 - B3-R1: Completed / Rework Required
-- B3-R2: Completed / Sol Verification Pending
-- Current approved direction: Implementation Stage B — 0.2 to 0.3 Migration
+- B3-R2: Completed / Accepted - Sol verified
+- Stage C: In Progress
+- C1: Completed / Sol Verification Pending
+- Current approved direction: Implementation Stage C — Knowledge Curation v0.3 foundation
 
-Stage B is complete pending Sol verification. B1, B2, and B3 Evidence are
-accepted; B3-R2 completed the temporal migration-policy safety closure. The
-exact example retains accounted semantic and invalid-temporal Reviews, while a
-fresh real Runtime KB clone passed zero-Review dry-run and committed v0.3
-validation.
+Stage B is accepted after Sol verification. B1, B2, and B3 Evidence are
+accepted; B3-R2 completed the temporal migration-policy safety closure. C1 now
+provides the deterministic Schema Context foundation for Curation v0.3 while
+leaving the legacy Curation API and model request unchanged.
 Schema 0.3 read and
 migration-commit support are present, but semantic Writer/Curation/Workflow and
 frontend activation remain outside this stage. B3 does not activate a default

@@ -245,7 +245,7 @@ remain outside this task.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-B-003-R2 — Temporal migration safety closure
 
-**Status:** Completed / Sol Verification Pending
+**Status:** Completed / Accepted - Sol verified
 **Date:** 2026-08-27
 
 Every explicit legacy temporal field is now accounted for. Equivalent period
@@ -258,5 +258,26 @@ The exact example remains deterministic with 15 accounted Reviews, including
 two newly exposed invalid numeric periods. Metadata collision regressions pass,
 the real Runtime KB was validated through fresh isolated clones, and the
 duplicate agent-specific B3-R1 design file was removed from the current tree.
-Stage B is `Completed / Sol Verification Pending`; Sol final verification is
-still required.
+Stage B is `Completed / Accepted - Sol verified`; Sol verification is complete.
+
+## KNOWLEDGE-V0.3-IMPLEMENTATION-C-001 — Schema Context foundation
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-27
+
+C1 adds one runtime-neutral Schema Context Builder under the existing Knowledge
+Curation package. The Builder projects four explicit slices from the single
+canonical `KNOWLEDGE_SCHEMA_V03` authority: `report_understanding`,
+`knowledge_extraction`, `reconciliation`, and `schema_gap`.
+
+The projection is synchronous, deterministic, side-effect free, and deeply
+copied. It does not mount or query a Knowledge Base, access filesystem/network/
+plugins/DSH, invoke a model, or introduce KB and Workflow instance values.
+Canonical enum and endpoint values are derived from the executable Schema; no
+independent canonical enum lists are added. The legacy seven-operation Curation
+API and `KnowledgeCurationModelRequest` remain unchanged. C2 owns the later
+four-operation and model-request cutover.
+
+Stage B is recorded as `Completed / Accepted - Sol verified` at baseline
+`60bf76c045c1d315f3ea90d7733d75d870b7ee54`; Stage C is `In Progress` and C1 is
+`Completed / Sol Verification Pending`.

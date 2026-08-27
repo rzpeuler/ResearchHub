@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-001
+
+- Added the runtime-neutral Knowledge Curation v0.3 Schema Context Builder with
+  four deterministic, operation-specific slices derived from
+  `KNOWLEDGE_SCHEMA_V03`.
+- Exported the Builder and context types without changing the legacy Curation
+  operations or model request contract.
+- Stage B is recorded as `Completed / Accepted - Sol verified`; Stage C is
+  `In Progress`; C1 is `Completed / Sol Verification Pending`.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-IMPLEMENTATION-B-003-R2
 
 - Closed the temporal migration safety gap by accounting for every legacy
