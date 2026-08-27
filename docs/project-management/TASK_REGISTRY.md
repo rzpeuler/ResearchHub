@@ -17,6 +17,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-V0.3-FREEZE-CORRECTION-001 | Correct Knowledge v0.3 Freeze Candidate architecture blockers | Completed | P0 | 2026-08-27 | Luna | `5620302317cf13e2d4faa52be31ad033d3df8b4f` | Accepted — Sol verified |
 | KNOWLEDGE-V0.3-FREEZE-CORRECTION-001-R1 | Close Knowledge v0.3 Freeze Candidate residual consistency gaps | Completed | P0 | 2026-08-27 | Luna | `47e312f79a221d7dd45b42508e52526fd61b1a74` | Accepted — Sol verified |
 | KNOWLEDGE-V0.3-GOVERNANCE-INTEGRATION-001 | Integrate Knowledge v0.3 Architecture Freeze into project governance | Completed / Sol Verification Pending | P0 | 2026-08-27 | Luna | Current task commit | Review Pending / Sol Verification |
+| KNOWLEDGE-V0.3-GOVERNANCE-INTEGRATION-001-R1 | Close current-governance residuals after Knowledge v0.3 integration | Completed / Sol Verification Pending | P0 | 2026-08-27 | Luna | Current task commit | Review Pending / Sol Verification |
 | RH-GOV-001 | Initialize project execution state management system | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-DOC-002 | Synchronize architecture baseline documentation | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-ENG-001 | Validate minimum ResearchHub Harness integration | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — typecheck and integration test passed |

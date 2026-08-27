@@ -1,7 +1,8 @@
 # ResearchHub Knowledge Architecture Freeze — Download Index
 
-**Freeze date:** 2026-08-26  
-**Consistency result:** PASSED; v0.3 governance integration recorded 2026-08-27
+**Original index date:** 2026-08-26
+**Current normative freeze:** Knowledge v0.3 — Sol Accepted 2026-08-27
+**Consistency result:** PASSED
 
 ## Current Frozen Documents — Knowledge v0.3
 

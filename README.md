@@ -60,9 +60,13 @@ target has not started. The next approved direction is Implementation Stage A
 — Executable Schema / Domain Model, which is not started by this governance
 integration task. No v0.4 or Phase F is approved.
 
-The AI Hardware Product Validation setup is ready for local real-data input;
-real ingestion remains pending the ignored project `.env` API key and local
-reports under `../ResearchHubData/input/ai-hardware-reports/`.
+The first real AI Hardware Product Validation has been executed: Docling
+document resolution succeeded and one authorized real DeepSeek call occurred.
+Execution blocked at Curation Source Assessment because the returned
+`sourceType` violated the supported schema; no semantic Knowledge was
+committed. This Product Validation issue is separate from the Knowledge v0.3
+architecture, and the current next approved engineering direction remains
+Stage A — Executable Schema / Domain Model.
 
 ## Project documents
 

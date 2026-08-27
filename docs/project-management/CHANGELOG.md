@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-27 - KNOWLEDGE-V0.3-GOVERNANCE-INTEGRATION-001-R1
+
+- Marked the earlier Product Validation / Real Data Integration direction in
+  the Roadmap as a historical Phase E checkpoint; Stage A is the only current
+  next approved engineering direction.
+- Clarified the Freeze Index original date (`2026-08-26`) separately from the
+  current Knowledge v0.3 normative freeze accepted on `2026-08-27`.
+- Updated the root README with the executed Product Validation result:
+  Docling succeeded, one authorized real DeepSeek call occurred, and Curation
+  Source Assessment blocked on an unsupported `sourceType`; no semantic
+  Knowledge was committed.
+- Preserved the distinction between this Product Validation blocker and the
+  Knowledge v0.3 architecture. R1 remains `Completed / Sol Verification
+  Pending` with acceptance `Review Pending / Sol Verification`.
+
 ## 2026-08-27 - KNOWLEDGE-V0.3-GOVERNANCE-INTEGRATION-001
 
 - Recorded Sol/CTO acceptance of the Knowledge v0.3 Architecture Freeze for

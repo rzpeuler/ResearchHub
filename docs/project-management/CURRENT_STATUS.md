@@ -1,5 +1,22 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-GOVERNANCE-INTEGRATION-001-R1
+
+R1 closes three current-governance residuals without changing the frozen
+Knowledge v0.3 contracts:
+
+- the Roadmap now marks Product Validation / Real Data Integration as a
+  historical Phase E direction; the only current next approved direction is
+  Stage A — Executable Schema / Domain Model;
+- the Freeze Index distinguishes its original 2026-08-26 index date from the
+  current Knowledge v0.3 normative freeze accepted on 2026-08-27;
+- the root README records the executed Product Validation result and its
+  Curation Source Assessment blocker rather than claiming that execution is
+  still awaiting local inputs.
+
+Status is `Completed / Sol Verification Pending`; acceptance remains
+`Review Pending / Sol Verification`.
+
 ## KNOWLEDGE-V0.3-ARCHITECTURE-FREEZE
 
 Sol/CTO independently verified the Knowledge v0.3 freeze package against
@@ -297,14 +314,18 @@ and Raw ambiguity, module target matrices, lifecycle, recovery failpoints,
 preservation, no-silent-ingestion behavior, and cross-Knowledge-Base
 concurrency. Phase E R1 is closed as part of Knowledge Runtime Migration A–E.
 
-## KNOWLEDGE-RUNTIME-MIGRATION-E-001-CLOSURE
+## Historical: KNOWLEDGE-RUNTIME-MIGRATION-E-001-CLOSURE
 
 Sol independently verified the Phase E parent and R1. Knowledge Runtime
 Migration A–E is now Closed / Complete. Knowledge infrastructure development
-is frozen at the current architecture; future direction is Knowledge Product
-Validation / Real Data Integration. No Phase F, Knowledge Manager, Migration
-Manager, RAG, Graph DB, Vector DB, new Planner, new Agent, or new architecture
-layer is approved.
+is frozen at the architecture boundary recorded at that checkpoint. The next
+direction at that checkpoint was Knowledge Product Validation / Real Data
+Integration; that historical direction subsequently produced the Product
+Validation work recorded below. Following the Knowledge v0.3 Architecture
+Freeze and Governance Integration, the current next approved engineering
+direction is Stage A — Executable Schema / Domain Model. No Phase F, Knowledge
+Manager, Migration Manager, RAG, Graph DB, Vector DB, new Planner, new Agent, or
+new architecture layer is approved.
 
 ## Historical: Knowledge Layer Phase 1 Acceptance Closure
 

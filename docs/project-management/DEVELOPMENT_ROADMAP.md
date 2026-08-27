@@ -122,14 +122,17 @@ projection, and WorkflowStep ownership metadata gaps.
 - default migration-availability reporting for readable legacy bases.
 
 Phase E implementation and Sol verification are complete. Knowledge Runtime
-Migration A–E is Closed / Complete. No Phase F is approved. The next direction
-is Knowledge Product Validation / Real Data Integration; implementation scope
-for that direction is not defined here.
+Migration A–E is Closed / Complete. No Phase F is approved. At the Phase E
+closure checkpoint, the next direction was Knowledge Product Validation / Real
+Data Integration. That historical direction subsequently produced the Product
+Validation work recorded below. Following the Knowledge v0.3 Architecture
+Freeze and Governance Integration, the current next approved engineering
+direction is Stage A — Executable Schema / Domain Model.
 
 Future work remains subject to separate approval. Do not label the v0.2
 Runtime capabilities as implemented based on frozen documentation alone.
 
-### Product validation setup — Completed / Awaiting Local Inputs
+### Product validation setup — Historical checkpoint: Completed / Awaiting Local Inputs
 
 The local runtime setup for AI Hardware Product Validation is ready: an
 external `ai-hardware-real` Runtime KB, ignored secret configuration, the
