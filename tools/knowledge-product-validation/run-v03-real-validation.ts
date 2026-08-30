@@ -18,9 +18,9 @@ import { createRealKnowledgeCurationModel } from './deepseek-composition.ts'
 import { inspectDoclingRuntime } from '../document-parser/doctor-docling.ts'
 
 const execFileAsync = promisify(execFile)
-const TASK_ID = 'KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R2'
-const BASELINE = 'bd55e759cf65f31f3980fffc66d984686318484c'
-const KNOWLEDGE_BASE_ID = 'kb-product-validation-c004-r2'
+const TASK_ID = 'KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R3'
+const BASELINE = 'e3ae005895777936b199a53ce935eeaa33fcfccc'
+const KNOWLEDGE_BASE_ID = 'kb-product-validation-c004-r3'
 const EXPECTED_PDF_SHA256 = '998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63'
 const DEFAULT_PDF = 'C:\\Users\\Administrator\\Documents\\20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf'
 
@@ -84,7 +84,7 @@ class RecordingModel implements KnowledgeCurationModel {
 }
 
 async function main(): Promise<void> {
-  const evidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_EVIDENCE ?? join(tmpdir(), 'researchhub-knowledge-v03-c004-r2-evidence.json')
+  const evidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_EVIDENCE ?? join(tmpdir(), 'researchhub-knowledge-v03-c004-r3-evidence.json')
   const durableEvidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_DURABLE_EVIDENCE
   let root: string | undefined
   const keepRoot = process.env.RESEARCHHUB_KEEP_PRODUCT_VALIDATION_KB === '1'
@@ -134,7 +134,7 @@ async function main(): Promise<void> {
       writer: { write: async (handle, receipt) => { writerInvocations += 1; return writer.write(handle, receipt) } },
     })
     try {
-      const first = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r2-first', true))
+      const first = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r3-first', true))
       const parserSummary = parserEvidence(parser.result)
       evidence.parser = parserSummary
       if (parserSummary.uniqueChunkIds !== parserSummary.chunks || parserSummary.emptyChunks !== 0) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Docling output failed chunk integrity checks')
@@ -142,12 +142,12 @@ async function main(): Promise<void> {
       if (first.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(first.errors))
       const replayCallsBefore = model.calls.length
       const replayWriterBefore = writerInvocations
-      const replay = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r2-replay', false))
+      const replay = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r3-replay', false))
       evidence.replay = await runEvidence(replay, model, writerInvocations, replayCallsBefore, replayWriterBefore)
       if (replay.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(replay.errors))
       const reprocessCallsBefore = model.calls.length
       const reprocessWriterBefore = writerInvocations
-      const reprocess = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r2-reprocess', true))
+      const reprocess = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r3-reprocess', true))
       evidence.reprocess = await runEvidence(reprocess, model, writerInvocations, reprocessCallsBefore, reprocessWriterBefore)
       if (reprocess.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(reprocess.errors))
       const finalTarget = await resolveTarget(root)
@@ -191,9 +191,9 @@ async function resolveTarget(root: string): Promise<{ handle: KnowledgeBaseHandl
 }
 
 async function createIsolatedV03KnowledgeBase(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'researchhub-c004-r2-v03-'))
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-c004-r3-v03-'))
   await mkdir(join(root, 'registry'), { recursive: true })
-  await writeFile(join(root, 'manifest.yaml'), `${canonicalSerialize({ knowledgeBaseId: KNOWLEDGE_BASE_ID, name: 'C-004-R2 disposable real PDF validation KB', schemaVersion: '0.3', storageFormatVersion: '1', revision: 0, status: 'active', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z' })}\n`, 'utf8')
+  await writeFile(join(root, 'manifest.yaml'), `${canonicalSerialize({ knowledgeBaseId: KNOWLEDGE_BASE_ID, name: 'C-004-R3 disposable real PDF validation KB', schemaVersion: '0.3', storageFormatVersion: '1', revision: 0, status: 'active', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z' })}\n`, 'utf8')
   await writeFile(join(root, 'registry/assets.yaml'), '{}\n', 'utf8')
   await writeFile(join(root, 'registry/raw.yaml'), '{}\n', 'utf8')
   return root
