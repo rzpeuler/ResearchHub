@@ -18,12 +18,15 @@ import { createRealKnowledgeCurationModel } from './deepseek-composition.ts'
 import { inspectDoclingRuntime } from '../document-parser/doctor-docling.ts'
 
 const execFileAsync = promisify(execFile)
-const TASK_ID = 'KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R1'
-const BASELINE = '5ecc4a771a592c622f2512dbbd7de6172ca985b0'
-const KNOWLEDGE_BASE_ID = 'kb-product-validation-c004-r1'
+const TASK_ID = 'KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R2'
+const BASELINE = 'bd55e759cf65f31f3980fffc66d984686318484c'
+const KNOWLEDGE_BASE_ID = 'kb-product-validation-c004-r2'
+const EXPECTED_PDF_SHA256 = '998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63'
 const DEFAULT_PDF = 'C:\\Users\\Administrator\\Documents\\20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf'
 
 type JsonRecord = Record<string, unknown>
+type CredentialSourceEvidence = JsonRecord & { match: boolean; diagnostic: string }
+type ParserEvidence = JsonRecord & { chunks: number; uniqueChunkIds: number; emptyChunks: number }
 
 class RecordingParser implements DocumentParser {
   readonly id: string
@@ -81,7 +84,8 @@ class RecordingModel implements KnowledgeCurationModel {
 }
 
 async function main(): Promise<void> {
-  const evidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_EVIDENCE ?? join(tmpdir(), 'researchhub-knowledge-v03-c004-evidence.json')
+  const evidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_EVIDENCE ?? join(tmpdir(), 'researchhub-knowledge-v03-c004-r2-evidence.json')
+  const durableEvidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_DURABLE_EVIDENCE
   let root: string | undefined
   const keepRoot = process.env.RESEARCHHUB_KEEP_PRODUCT_VALIDATION_KB === '1'
   const evidence: JsonRecord = { taskId: TASK_ID, baseline: BASELINE, startedAt: new Date().toISOString() }
@@ -91,6 +95,9 @@ async function main(): Promise<void> {
     if (git.matchesExpected !== true || git.workingTreeClean !== true || git.productionFilesChanged === true) throw new ProductValidationStop('Blocked / Baseline Preflight Failed', JSON.stringify(git))
     const config = loadLocalRuntimeConfig(process.env, process.cwd(), { requireRealLlm: true })
     evidence.runtime = { provider: config.provider, model: config.model, baseUrl: redactUrl(config.baseUrl), curationMaxTokens: config.curationMaxTokens, credentialsPresent: Boolean(config.apiKey) }
+    const credentialSource = await inspectCredentialSource()
+    evidence.credentialSource = credentialSource
+    if (credentialSource.match !== true) throw new ProductValidationStop('Blocked / Environment Credential Override', credentialSource.diagnostic)
     const llmPreflight = await verifyDeepSeekCredentials(config.baseUrl, config.apiKey, config.model)
     evidence.llmPreflight = llmPreflight
     if (llmPreflight.status !== 'READY') throw new ProductValidationStop('Blocked / Runtime Credential Invalid', llmPreflight.diagnostic)
@@ -99,6 +106,7 @@ async function main(): Promise<void> {
     const pdfBytes = Uint8Array.from(await readFile(pdfPath))
     const pdfHash = createHash('sha256').update(pdfBytes).digest('hex')
     evidence.pdf = { filename: basename(pdfPath), path: pdfPath, sha256: pdfHash, bytes: pdfBytes.byteLength }
+    if (pdfHash !== EXPECTED_PDF_SHA256) throw new ProductValidationStop('Blocked / PDF Artifact Mismatch', `Expected ${EXPECTED_PDF_SHA256}, received ${pdfHash}`)
 
     const doctor = await inspectDoclingRuntime()
     evidence.parserPreflight = doctor
@@ -126,15 +134,22 @@ async function main(): Promise<void> {
       writer: { write: async (handle, receipt) => { writerInvocations += 1; return writer.write(handle, receipt) } },
     })
     try {
-      const first = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-first', true))
-      evidence.parser = parserEvidence(parser.result)
-      evidence.firstRun = await runEvidence(first, model, writerInvocations)
+      const first = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r2-first', true))
+      const parserSummary = parserEvidence(parser.result)
+      evidence.parser = parserSummary
+      if (parserSummary.uniqueChunkIds !== parserSummary.chunks || parserSummary.emptyChunks !== 0) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Docling output failed chunk integrity checks')
+      evidence.firstRun = await runEvidence(first, model, writerInvocations, 0, 0)
       if (first.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(first.errors))
-      const second = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-reprocess', true))
-      evidence.reprocess = await runEvidence(second, model, writerInvocations)
-      if (second.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(second.errors))
-      const replay = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-replay', false))
-      evidence.replay = await runEvidence(replay, model, writerInvocations)
+      const replayCallsBefore = model.calls.length
+      const replayWriterBefore = writerInvocations
+      const replay = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r2-replay', false))
+      evidence.replay = await runEvidence(replay, model, writerInvocations, replayCallsBefore, replayWriterBefore)
+      if (replay.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(replay.errors))
+      const reprocessCallsBefore = model.calls.length
+      const reprocessWriterBefore = writerInvocations
+      const reprocess = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r2-reprocess', true))
+      evidence.reprocess = await runEvidence(reprocess, model, writerInvocations, reprocessCallsBefore, reprocessWriterBefore)
+      if (reprocess.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(reprocess.errors))
       const finalTarget = await resolveTarget(root)
       const finalValidation = await validation.validateKnowledgeBase(finalTarget.handle, 'all')
       evidence.finalKnowledgeBase = { revision: finalTarget.handle.revision, counts: indexCounts(finalTarget.index), fullValidation: finalValidation.status, validationErrors: finalValidation.errors.slice(0, 10) }
@@ -144,14 +159,14 @@ async function main(): Promise<void> {
       evidence.completedAt = new Date().toISOString()
       evidence.status = finalValidation.status === 'passed' ? 'TECHNICAL PASS / PRODUCT QUALITY REVIEW REQUIRED' : 'FAIL / SOL REVIEW REQUIRED'
       evidence.recommendation = finalValidation.status === 'passed' ? 'Review semantic and provenance samples before Sol acceptance.' : 'Engineering rework required; preserve diagnostics.'
-      await writeEvidence(evidencePath, evidence)
-      console.log(JSON.stringify({ status: evidence.status, evidencePath, isolatedKnowledgeBase: keepRoot ? root : 'removed', parser: evidence.parser, firstRun: summarizeRun(first), reprocess: summarizeRun(second), replay: summarizeRun(replay), finalKnowledgeBase: evidence.finalKnowledgeBase, writer: evidence.writer }))
+      await persistEvidence(evidencePath, durableEvidencePath, evidence)
+      console.log(JSON.stringify({ status: evidence.status, evidencePath, isolatedKnowledgeBase: keepRoot ? root : 'removed', parser: evidence.parser, firstRun: summarizeRun(first), replay: summarizeRun(replay), reprocess: summarizeRun(reprocess), finalKnowledgeBase: evidence.finalKnowledgeBase, writer: evidence.writer }))
     } finally { await realRuntime.close() }
   } catch (error) {
     evidence.completedAt = new Date().toISOString()
     evidence.status = error instanceof ProductValidationStop ? error.status : error instanceof LocalRuntimeConfigError && error.code === 'missing_deepseek_api_key' ? 'Blocked / Runtime Credential Missing' : 'FAIL / SOL REVIEW REQUIRED'
     evidence.failure = { message: error instanceof Error ? error.message : String(error) }
-    await writeEvidence(evidencePath, evidence)
+    await persistEvidence(evidencePath, durableEvidencePath, evidence)
     console.log(JSON.stringify({ status: evidence.status, evidencePath, failure: evidence.failure, isolatedKnowledgeBase: keepRoot ? root : 'removed' }))
     process.exitCode = 1
   } finally {
@@ -176,9 +191,9 @@ async function resolveTarget(root: string): Promise<{ handle: KnowledgeBaseHandl
 }
 
 async function createIsolatedV03KnowledgeBase(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'researchhub-c004-v03-'))
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-c004-r2-v03-'))
   await mkdir(join(root, 'registry'), { recursive: true })
-  await writeFile(join(root, 'manifest.yaml'), `${canonicalSerialize({ knowledgeBaseId: KNOWLEDGE_BASE_ID, name: 'C-004-R1 disposable real PDF validation KB', schemaVersion: '0.3', storageFormatVersion: '1', revision: 0, status: 'active', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z' })}\n`, 'utf8')
+  await writeFile(join(root, 'manifest.yaml'), `${canonicalSerialize({ knowledgeBaseId: KNOWLEDGE_BASE_ID, name: 'C-004-R2 disposable real PDF validation KB', schemaVersion: '0.3', storageFormatVersion: '1', revision: 0, status: 'active', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z' })}\n`, 'utf8')
   await writeFile(join(root, 'registry/assets.yaml'), '{}\n', 'utf8')
   await writeFile(join(root, 'registry/raw.yaml'), '{}\n', 'utf8')
   return root
@@ -194,15 +209,37 @@ async function gitPreflight(): Promise<JsonRecord> {
 }
 function isAllowedEvidencePath(file: string): boolean { return file.startsWith('tools/knowledge-product-validation/') || file.startsWith('tests/knowledge/product-validation/') || file.startsWith('docs/project-management/') }
 
-function parserEvidence(result: DocumentParseResult | undefined): JsonRecord { return { parser: result?.parser ?? null, pageCount: result?.pageCount ?? result?.quality?.pageCount ?? null, chunks: result?.chunks.length ?? 0, sections: new Set((result?.chunks ?? []).map((chunk) => chunk.section).filter((section): section is string => Boolean(section))).size, tables: result?.structure?.tableCount ?? result?.quality?.tableCount ?? null, images: result?.structure?.imageCount ?? result?.quality?.imageCount ?? null, normalizedCharacters: result?.quality?.normalizedCharacters ?? result?.normalizedText.length ?? 0, warnings: result?.quality?.warnings ?? [] } }
+async function inspectCredentialSource(): Promise<CredentialSourceEvidence> {
+  const raw = await readFile('.env', 'utf8')
+  const definitions = raw.split(/\r?\n/).filter((line) => /^\s*DEEPSEEK_API_KEY\s*=/.test(line))
+  const envFileKey = parseDotEnvValue(definitions[0])
+  const processKey = process.env.DEEPSEEK_API_KEY
+  const envSummary = credentialSummary(envFileKey)
+  const processSummary = credentialSummary(processKey)
+  const fingerprintMatch = envSummary.fingerprint === processSummary.fingerprint
+  const lengthMatch = envSummary.length === processSummary.length
+  return { definitionCount: definitions.length, envFile: envSummary, process: processSummary, fingerprintMatch, lengthMatch, match: definitions.length === 1 && fingerprintMatch && lengthMatch, diagnostic: fingerprintMatch && lengthMatch ? 'Process credential matches .env credential' : 'Process credential does not match .env credential' }
+}
 
-async function runEvidence(result: ResearchReportKnowledgeIngestionResult, model: RecordingModel, writerInvocations: number): Promise<JsonRecord> {
+function parseDotEnvValue(line: string | undefined): string | undefined {
+  if (!line) return undefined
+  const value = line.slice(line.indexOf('=') + 1).trim()
+  if (value.length >= 2 && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))) return value.slice(1, -1)
+  return value.replace(/\s+#.*$/, '').trim()
+}
+
+function credentialSummary(value: string | undefined): JsonRecord { return { present: Boolean(value), length: value?.length ?? 0, fingerprint: value ? createHash('sha256').update(value).digest('hex').slice(0, 12) : null, startsWithSk: value?.startsWith('sk-') ?? false, containsBearerPrefix: value ? /^Bearer\s+/i.test(value) : false, containsWhitespaceInside: value ? /\s/.test(value) : false, containsNewline: value ? /[\r\n]/.test(value) : false, containsQuoteCharacterAfterParsing: value ? /["']/.test(value) : false } }
+
+function parserEvidence(result: DocumentParseResult | undefined): ParserEvidence { const chunks = result?.chunks ?? []; return { parser: result?.parser ?? null, pageCount: result?.pageCount ?? result?.quality?.pageCount ?? null, chunks: chunks.length, uniqueChunkIds: new Set(chunks.map((chunk) => chunk.chunkId)).size, emptyChunks: chunks.filter((chunk) => !chunk.text.trim()).length, sections: new Set(chunks.map((chunk) => chunk.section).filter((section): section is string => Boolean(section))).size, tables: result?.structure?.tableCount ?? result?.quality?.tableCount ?? null, images: result?.structure?.imageCount ?? result?.quality?.imageCount ?? null, normalizedCharacters: result?.quality?.normalizedCharacters ?? result?.normalizedText.length ?? 0, warnings: result?.quality?.warnings ?? [] } }
+
+async function runEvidence(result: ResearchReportKnowledgeIngestionResult, model: RecordingModel, writerInvocations: number, callStart: number, writerStart: number): Promise<JsonRecord> {
   const calls = result.modelCalls
+  const runModelCalls = model.calls.slice(callStart)
   const batchSizes = result.batches.batches.map((batch) => batch.chunkIds.length)
   const charSizes = result.batches.batches.map((batch) => batch.characterCount)
   const groups = model.calls.filter((call) => call.operation === 'reconcileKnowledge').map((call) => ({ groupId: call.groupId, batchId: call.batchId, slice: call.slice }))
   const decisionCount = Object.values(result.reconciliation.decisions).reduce((sum, count) => sum + count, 0)
-  return { status: result.status, workflowRunId: result.workflowRunId, raw: result.raw, source: result.source ? { sourceId: result.source.sourceId, resolution: result.source.resolution, rawRefs: result.source.source.rawRefs ?? [] } : null, understanding: result.reportUnderstanding ? { sourceType: result.reportUnderstanding.sourceAssessment.sourceType, sourceReliability: result.reportUnderstanding.sourceAssessment.sourceReliability, publisher: result.reportUnderstanding.sourceAssessment.publisher, institution: result.reportUnderstanding.sourceAssessment.institution, publishedAt: result.reportUnderstanding.sourceAssessment.publishedAt, sourceIdentityConfidence: result.reportUnderstanding.sourceAssessment.sourceIdentityConfidence, researchScopeCount: result.reportUnderstanding.researchScope.length, majorTopics: result.reportUnderstanding.majorTopics.slice(0, 12), majorEntityMentionCount: result.reportUnderstanding.majorEntityMentions.length, themeHypotheses: result.reportUnderstanding.themeHypotheses.map((item) => ({ mention: short(item.mention), disposition: item.disposition })), uncertaintyCount: result.reportUnderstanding.uncertainty.length } : null, batching: { sections: result.batches.sectionCount, batches: result.batches.batchCount, chunkCount: result.batches.chunkCount, uniqueChunkCount: new Set(result.batches.chunkIds).size, coveredChunkCount: new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, duplicateCoverage: result.batches.batches.flatMap((batch) => batch.chunkIds).length - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, omittedChunkCount: result.batches.chunkCount - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, chunkCountMin: Math.min(...batchSizes), chunkCountMax: Math.max(...batchSizes), chunkCountMedian: median(batchSizes), characterMin: Math.min(...charSizes), characterMax: Math.max(...charSizes), characterMedian: median(charSizes), oversizedSectionSplits: splitSections(result.batches) }, extraction: result.extraction, consolidation: result.consolidation, resolution: result.referenceResolution, reconciliation: { ...result.reconciliation, modelCalls: calls.filter((call) => call.operation === 'reconcileKnowledge').length, decisionCount, coverage: { candidates: result.reconciliation.candidates, decisions: decisionCount, exactlyOnce: result.reconciliation.candidates === decisionCount } }, schemaGaps: { calls: calls.filter((call) => call.operation === 'analyzeSchemaGaps').length, outputs: result.schemaGaps.map((gap) => ({ candidateRefs: gap.candidateRefs, gapType: gap.gapType })) }, reviews: { roots: result.reviewItems.filter((item) => item.candidateId && item.category !== 'dependency_review').length, dependencyClosure: result.reviewItems.filter((item) => item.category === 'dependency_review').length, total: result.reviewItems.length }, validation: result.validation, writerInvocations, callsByOperation: calls.map((call) => ({ operation: call.operation, groupId: call.groupId, attempted: call.attempted, succeeded: call.succeeded, retryCount: call.retryCount })), recordedModelCalls: model.calls.map((call) => ({ operation: call.operation, slice: call.slice, batchId: call.batchId, groupId: call.groupId, succeeded: call.succeeded, retryCount: call.retryCount, outputShape: call.outputShape, error: call.error })) }
+  return { status: result.status, workflowRunId: result.workflowRunId, raw: result.raw, source: result.source ? { sourceId: result.source.sourceId, resolution: result.source.resolution, rawRefs: result.source.source.rawRefs ?? [] } : null, understanding: result.reportUnderstanding ? { sourceType: result.reportUnderstanding.sourceAssessment.sourceType, sourceReliability: result.reportUnderstanding.sourceAssessment.sourceReliability, publisher: result.reportUnderstanding.sourceAssessment.publisher, institution: result.reportUnderstanding.sourceAssessment.institution, publishedAt: result.reportUnderstanding.sourceAssessment.publishedAt, sourceIdentityConfidence: result.reportUnderstanding.sourceAssessment.sourceIdentityConfidence, researchScopeCount: result.reportUnderstanding.researchScope.length, majorTopics: result.reportUnderstanding.majorTopics.slice(0, 12), majorEntityMentionCount: result.reportUnderstanding.majorEntityMentions.length, themeHypotheses: result.reportUnderstanding.themeHypotheses.map((item) => ({ mention: short(item.mention), disposition: item.disposition })), uncertaintyCount: result.reportUnderstanding.uncertainty.length } : null, batching: { sections: result.batches.sectionCount, batches: result.batches.batchCount, chunkCount: result.batches.chunkCount, uniqueChunkCount: new Set(result.batches.chunkIds).size, coveredChunkCount: new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, duplicateCoverage: result.batches.batches.flatMap((batch) => batch.chunkIds).length - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, omittedChunkCount: result.batches.chunkCount - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, chunkCountMin: Math.min(...batchSizes), chunkCountMax: Math.max(...batchSizes), chunkCountMedian: median(batchSizes), characterMin: Math.min(...charSizes), characterMax: Math.max(...charSizes), characterMedian: median(charSizes), oversizedSectionSplits: splitSections(result.batches) }, extraction: result.extraction, consolidation: result.consolidation, resolution: result.referenceResolution, reconciliation: { ...result.reconciliation, modelCalls: calls.filter((call) => call.operation === 'reconcileKnowledge').length, decisionCount, coverage: { candidates: result.reconciliation.candidates, decisions: decisionCount, exactlyOnce: result.reconciliation.candidates === decisionCount } }, schemaGaps: { calls: calls.filter((call) => call.operation === 'analyzeSchemaGaps').length, outputs: result.schemaGaps.map((gap) => ({ candidateRefs: gap.candidateRefs, gapType: gap.gapType })) }, reviews: { roots: result.reviewItems.filter((item) => item.candidateId && item.category !== 'dependency_review').length, dependencyClosure: result.reviewItems.filter((item) => item.category === 'dependency_review').length, total: result.reviewItems.length }, validation: result.validation, writerInvocations: writerInvocations - writerStart, callsByOperation: calls.map((call) => ({ operation: call.operation, groupId: call.groupId, attempted: call.attempted, succeeded: call.succeeded, retryCount: call.retryCount })), recordedModelCalls: runModelCalls.map((call) => ({ operation: call.operation, slice: call.slice, batchId: call.batchId, groupId: call.groupId, succeeded: call.succeeded, retryCount: call.retryCount, outputShape: call.outputShape, error: call.error })) }
 }
 
 function semanticSamples(index: import('../../packages/shared/knowledge-base/knowledge-index-v03.ts').KnowledgeIndexV03, parsed: DocumentParseResult | undefined): JsonRecord { return { entities: [...index.entities.values()].slice(0, 5).map((item) => ({ id: item.id, type: item.type, name: short(item.name), aliases: (item.aliases ?? []).slice(0, 5) })), relations: [...index.relations.values()].slice(0, 5).map((item) => ({ id: item.id, type: item.type, sourceRef: item.sourceRef, targetRef: item.targetRef, attributes: item.attributes ?? null })), claims: [...index.claims.values()].slice(0, 10).map((item) => ({ id: item.id, claimType: item.claimType, statement: short(item.statement), subjectRefs: item.subjectRefs, temporal: item.temporal ?? null, structuredValue: item.structuredValue ?? null, sourceRefs: item.sourceRefs ?? [], provenance: item.provenance ?? [] })), temporalClaimCount: [...index.claims.values()].filter((item) => item.temporal !== undefined && item.temporal !== null).length, parsedChunkCount: parsed?.chunks.length ?? null, manualClassification: 'pending Sol review' } }
@@ -234,6 +271,7 @@ async function verifyDeepSeekCredentials(baseUrl: string, apiKey: string | undef
   }
 }
 async function writeEvidence(path: string, value: JsonRecord): Promise<void> { await mkdir(resolve(path, '..'), { recursive: true }); await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8') }
+async function persistEvidence(tempPath: string, durablePath: string | undefined, value: JsonRecord): Promise<void> { await writeEvidence(tempPath, value); if (durablePath) await writeEvidence(durablePath, value) }
 
 class ProductValidationStop extends Error {
   constructor(readonly status: string, message: string) { super(message) }

@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R2
+
+- Ran the real PDF product-validation path after process-level credential
+  isolation. Credential fingerprints matched `.env`; DeepSeek `/models`
+  returned HTTP 200 and `deepseek-v4-pro` was available.
+- Docling Local and Raw-first passed for the exact 103-page PDF. The normal
+  Workflow reached real `understandReport`, whose output was deterministically
+  rejected because it contained unsupported field `entityMentions`.
+- Per acceptance policy the run stopped as `FAIL / SOL REVIEW REQUIRED` before
+  extraction, reconciliation, ChangeSet, Writer, reload, replay, reprocess,
+  and product-quality review. No production code was changed.
+- Added sanitized evidence at
+  `tests/knowledge/product-validation/evidence/c004-r2-real-pdf-summary.json`.
+- C4-R2 is `Completed / Sol Verification Pending`; Stage C remains in progress.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R1
 
 - Re-ran the real DeepSeek credential preflight from clean baseline
@@ -9,7 +24,8 @@
   fallback, provider switch, model substitution, or production change.
 - Added sanitized Git-tracked evidence at
   `tests/knowledge/product-validation/evidence/c004-r1-real-pdf-summary.json`.
-- C4-R1 is `Blocked / Sol Review Required`; Stage C remains in progress.
+- C4-R1 is `Completed / Root Cause Identified - Sol verified`; Stage C remains
+  in progress pending C4-R2.
 
 ## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004
 

@@ -1,5 +1,27 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R2
+
+C4-R2 passed the clean-baseline, process/.env credential-match, official
+DeepSeek `/models` HTTP 200, configured-model availability, exact PDF hash,
+Docling Local, and isolated Schema 0.3 / Storage 1 initial full-validation
+gates. Docling produced 103 pages, 1,523 unique non-empty chunks, 154
+sections, 45 tables, 178 images, and 97,784 normalized characters; Raw-first
+persisted successfully.
+
+The normal real Workflow then reached `understandReport`. The real model call
+returned an object containing the unsupported top-level field `entityMentions`;
+the Curation contract rejected it deterministically as
+`invalid_model_output`. The run stopped before extraction, reconciliation,
+ChangeSet, C3 commit validation, Writer, reload, replay, reprocess, and
+semantic/provenance review. No production code or manual model output was
+modified.
+
+Status is `Completed`; acceptance is `Sol Verification Pending`. The product
+result is `FAIL / SOL REVIEW REQUIRED`. C4 is historical environment blocked;
+C4-R1 is `Completed / Root Cause Identified - Sol verified`; Stage C remains
+`In Progress / Awaiting C4-R2 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R1
 
 C4-R1 reran the mandatory clean-baseline and real-credential preflight from
@@ -12,8 +34,8 @@ fallback, mock, provider switch, or model substitution was used.
 
 The durable sanitized result is
 `tests/knowledge/product-validation/evidence/c004-r1-real-pdf-summary.json`.
-C4-R1 is `Blocked / Sol Review Required`; Stage C remains
-`In Progress / Awaiting C4-R1 Sol Verification`.
+C4-R1 is `Completed / Root Cause Identified - Sol verified`; Stage C remains
+`In Progress / Awaiting C4-R2 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004
 
@@ -37,9 +59,9 @@ data was used. Sanitized evidence remains in the local temp files
 `researchhub-knowledge-v03-c004-evidence.json` and
 `researchhub-knowledge-v03-c004-credential-preflight.json`.
 
-Status is `Blocked / Sol Review Required`; the attempted product run is
-`FAIL / SOL REVIEW REQUIRED` with an environment credential blocker. Stage C
-remains `In Progress / Awaiting C4 Sol Verification`.
+Status is `Blocked / Environment Credential`; this is the historical C4
+environment blocker superseded by C4-R1 root-cause confirmation. Stage C
+remains `In Progress / Awaiting C4-R2 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2-R1
 

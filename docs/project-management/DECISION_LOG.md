@@ -1,8 +1,30 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R2 - Real PDF Product Validation
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-31
+
+C4-R2 ran from the required `bd55e759cf65f31f3980fffc66d984686318484c`
+baseline lineage with a clean working tree and no production diff. Process
+credential isolation made the `.env` fingerprint authoritative; DeepSeek
+`GET /models` returned HTTP 200 and the configured `deepseek-v4-pro` model was
+available. The exact PDF hash matched, Docling Local completed successfully,
+and a fresh writable Schema 0.3 / Storage 1 KB passed initial full validation.
+
+The normal Workflow persisted Raw first and reached the real
+`understandReport` call. The model returned the unsupported top-level field
+`entityMentions`; strict Curation validation rejected it as
+`invalid_model_output`. The run therefore returned `FAIL / SOL REVIEW REQUIRED`
+and stopped before extraction, reconciliation, ChangeSet, C3, Writer, reload,
+replay, reprocess, and semantic/provenance review. No production fix was made.
+The sanitized Git evidence is
+`tests/knowledge/product-validation/evidence/c004-r2-real-pdf-summary.json`.
+Stage C remains `In Progress / Awaiting C4-R2 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R1 - Credential-Gated Rerun
 
-**Status:** Blocked / Sol Review Required
+**Status:** Completed / Root Cause Identified - Sol verified
 **Date:** 2026-08-31
 
 C4-R1 reran from clean baseline `5ecc4a771a592c622f2512dbbd7de6172ca985b0`
@@ -13,12 +35,12 @@ substitution, fallback, mock, provider switch, or production change occurred.
 
 The durable sanitized evidence is
 `tests/knowledge/product-validation/evidence/c004-r1-real-pdf-summary.json`.
-Stage C remains `In Progress / Awaiting C4-R1 Sol Verification`; the next
-action is credential repair followed by a new real validation run.
+The next action was the C4-R2 real validation run recorded above. Stage C
+remains `In Progress / Awaiting C4-R2 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004 - Real PDF Product Validation
 
-**Status:** Blocked / Sol Review Required
+**Status:** Blocked / Environment Credential - Historical
 **Date:** 2026-08-31
 
 C4 executed the real product-validation path against the specified West
@@ -31,12 +53,10 @@ before semantic output, so no candidates, ChangeSet, Writer invocation, or
 semantic KB mutation was accepted.
 
 The runner-only credential preflight then verified the blocking cause: the
-configured DeepSeek API key is rejected by `/models` with HTTP 401. This is an
-environment credential blocker, not evidence of a Curation, Workflow,
-Validation, Writer, or Schema defect. No production code, runtime KB,
-fallback, mock model, fabricated extraction, prompt, response, PDF, or
-generated KB was committed. C4 must be rerun after credential repair; Stage C
-remains `In Progress / Awaiting C4 Sol Verification`.
+configured DeepSeek API key was rejected by `/models` with HTTP 401. This was
+an environment credential blocker, not evidence of a Curation, Workflow,
+Validation, Writer, or Schema defect. C4 was superseded by C4-R1 and C4-R2;
+Stage C remains `In Progress / Awaiting C4-R2 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2-R1 - Curation/Ingestion Correctness Closure
 
