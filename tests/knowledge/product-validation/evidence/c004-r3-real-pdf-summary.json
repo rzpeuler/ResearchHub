@@ -1,0 +1,61 @@
+{
+  "taskId": "KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R3",
+  "status": "BLOCKED / External LLM Execution Timeout",
+  "baseline": "e3ae005895777936b199a53ce935eeaa33fcfccc",
+  "c5Commit": "2b29e6b224aeb64ae235aa745eaa181f4a02c0aa",
+  "runnerPreparationCommit": "c311c9c5b511cb04648c8b7d32ac0c72423a1f82",
+  "credential": {
+    "envFingerprint": "8b84ae663041",
+    "processFingerprint": "8b84ae663041",
+    "envLength": 35,
+    "processLength": 35,
+    "match": true
+  },
+  "llmPreflight": {
+    "modelsHttpStatus": 200,
+    "model": "deepseek-v4-pro",
+    "modelAvailable": true
+  },
+  "pdf": {
+    "filename": "20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf",
+    "sha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "bytes": 3209114
+  },
+  "parserPreflight": {
+    "status": "READY",
+    "doclingVersion": "2.116.0",
+    "modelInitialization": "PASS",
+    "fixtureParse": "PASS",
+    "tablePipeline": "PASS"
+  },
+  "knownDoclingBaseline": {
+    "pages": 103,
+    "chunks": 1523,
+    "sections": 154,
+    "tables": 45,
+    "images": 178,
+    "normalizedCharacters": 97784
+  },
+  "execution": {
+    "freshKnowledgeBaseId": "kb-product-validation-c004-r3",
+    "schemaVersion": "0.3",
+    "storageFormatVersion": "1",
+    "rawFirst": "not durably recorded before external timeout",
+    "understandReport": "real model stream opened but produced no terminal response within 15 minutes",
+    "modelVisibleContract": "not durably recorded because no model response completed",
+    "majorEntityMentions": "not observed",
+    "downstreamStages": "not reached",
+    "normalization": false,
+    "retry": false,
+    "productionModified": false
+  },
+  "diagnostics": {
+    "reason": "The real DeepSeek HTTPS stream remained established without a terminal response; the runner was stopped after the controlled 15-minute execution window.",
+    "apiKeyExposed": false,
+    "fullPromptCommitted": false,
+    "fullModelResponseCommitted": false,
+    "pdfCommitted": false,
+    "temporaryKnowledgeBaseCommitted": false
+  },
+  "recommendation": "Environment blocker: repeat C4-R3 only after the real DeepSeek completion/latency issue is resolved. Do not mark Stage C accepted."
+}

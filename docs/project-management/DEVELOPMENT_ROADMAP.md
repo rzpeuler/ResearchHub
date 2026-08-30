@@ -21,8 +21,9 @@
 - C4 Product Validation: Blocked / Environment Credential
 - C4-R1 Product Validation: Completed / Root Cause Identified - Sol verified
 - C4-R2 Product Validation: Completed / Engineering Rework Required - Sol verified
-- C5 Integration Fix: Completed / Sol Verification Pending
-- Stage C: In Progress / Awaiting C5 Sol Verification
+- C5 Integration Fix: Completed / Accepted - Sol verified
+- C4-R3 Product Validation: Completed / Environment Blocker - Sol Verification Pending
+- Stage C: In Progress / Awaiting C4-R3 Sol Verification
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3
@@ -31,8 +32,10 @@ accepted after Sol verification. C4 attempted the authorized real PDF Product
 Validation but was blocked by the configured DeepSeek credential. C4-R1
 confirmed the environment override and C4-R2 reached the real Workflow before
 stopping on deterministic `understandReport` contract rejection. C5 corrected
-the DSH contract-propagation boundary and is awaiting Sol verification; the
-next C4-R3 real-PDF validation must wait for that verification.
+the DSH contract-propagation boundary and was accepted by Sol. C4-R3 then
+verified the credential, model availability, exact PDF, and Docling gates, but
+the real DeepSeek stream did not terminate within the controlled execution
+window. Stage C remains pending C4-R3 Sol review; no product PASS is recorded.
 
 - Architecture Freeze: Completed / Sol Accepted
 - Governance Integration: Completed / Sol verified

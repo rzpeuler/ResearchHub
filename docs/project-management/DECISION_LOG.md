@@ -1,8 +1,27 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R3 - Full Real PDF Product Validation
+
+**Status:** Completed / Environment Blocker - Sol Verification Pending
+**Date:** 2026-08-31
+
+C4-R3 ran from the accepted C5 baseline. The exact PDF hash and size matched,
+the `.env` and process credential fingerprints matched, DeepSeek `/models`
+returned HTTP 200 with `deepseek-v4-pro` available, and Docling Local passed
+its READY preflight. A fresh isolated Schema 0.3 / Storage 1 target was used.
+
+The real runner reached the HTTPS model call, but the DeepSeek stream did not
+produce a terminal response within the controlled 15-minute window. No model
+output was available for `understandReport` contract classification, so the
+downstream pipeline was not claimed as executed. No retry, normalization,
+production change, or fabricated model evidence was introduced. Durable
+sanitized evidence is
+`tests/knowledge/product-validation/evidence/c004-r3-real-pdf-summary.json`.
+Stage C remains `In Progress / Awaiting C4-R3 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-INTEGRATION-FIX-C-005 - DSH Contract Propagation Correction
 
-**Status:** Completed / Sol Verification Pending
+**Status:** Completed / Accepted - Sol verified
 **Date:** 2026-08-31
 
 C-005 fixes the integration defect exposed by C4-R2: the stale DSH adapter did
@@ -15,8 +34,8 @@ operation and exact contract data, and missing fields fail before transport.
 Focused adapter and Skill-to-Adapter tests plus the required regression matrix
 are green. No Validator or Schema relaxation, output normalization, retry, or
 unrelated runtime surface was introduced. C4-R3 real-PDF validation waits for
-Sol acceptance of C5. Stage C remains `In Progress / Awaiting C5 Sol
-Verification`.
+Sol acceptance of C5 was recorded before C4-R3. Stage C remains `In Progress /
+Awaiting C4-R3 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R2 - Real PDF Product Validation
 

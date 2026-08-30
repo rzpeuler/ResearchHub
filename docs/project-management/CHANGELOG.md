@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R3
+
+- Started from the C5 baseline and verified the exact PDF hash/size,
+  `.env`/process credential match, DeepSeek `/models` HTTP 200,
+  `deepseek-v4-pro` availability, and READY Docling Local preflight.
+- The fresh isolated C4-R3 runner reached the real HTTPS model call, but the
+  DeepSeek stream produced no terminal response within the controlled
+  15-minute window. No model output, contract classification, or downstream
+  product evidence was fabricated.
+- No normalization, retry, production modification, API-key exposure, PDF,
+  full prompt, full response, or temporary KB was committed.
+- C4-R3 is `Completed / Environment Blocker - Sol Verification Pending`;
+  Stage C remains `In Progress / Awaiting C4-R3 Sol Verification`.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-INTEGRATION-FIX-C-005
 
 - Corrected the stale Knowledge Curation DSH boundary: strict model requests
@@ -12,8 +26,8 @@
   added deterministic Skill-to-Adapter boundary coverage. The focused and
   required regression matrices passed.
 - C4-R2 is `Completed / Engineering Rework Required - Sol verified`; C5 is
-  `Completed / Sol Verification Pending`; Stage C remains
-  `In Progress / Awaiting C5 Sol Verification`.
+  `Completed / Accepted - Sol verified`; Stage C remains
+  `In Progress / Awaiting C4-R3 Sol Verification`.
 
 ## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R2
 
@@ -29,8 +43,9 @@
 - Added sanitized evidence at
   `tests/knowledge/product-validation/evidence/c004-r2-real-pdf-summary.json`.
 - C4-R2 is `Completed / Engineering Rework Required - Sol verified`; C5 is
-  `Completed / Sol Verification Pending`; Stage C remains in progress pending
-  C5 Sol Verification.
+  `Completed / Accepted - Sol verified`; C4-R3 is blocked by the external
+  real-LLM execution timeout; Stage C remains in progress pending C4-R3 Sol
+  Verification.
 
 ## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R1
 

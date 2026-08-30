@@ -1,5 +1,24 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R3
+
+C4-R3 started from the C5 baseline after the C-005 fix. The exact PDF hash
+and size matched, credential fingerprint matched `.env`, DeepSeek `/models`
+returned HTTP 200, `deepseek-v4-pro` was available, and the Docling Local
+doctor was READY. The real runner used a fresh isolated `kb-product-validation-c004-r3`
+target and progressed through parsing into the real HTTPS model call.
+
+The real DeepSeek stream did not produce a terminal response within the
+controlled 15-minute window. No model output was available to classify, so
+the `understandReport` contract gate and all downstream stages were not
+completed. No normalization, retry, production modification, API-key
+exposure, or fabricated evidence occurred.
+
+Status is `Completed`; acceptance is `Environment Blocker - Sol Verification
+Pending`. The product result is `BLOCKED / External LLM Execution Timeout`.
+C5 is `Completed / Accepted - Sol verified`; Stage C remains `In Progress /
+Awaiting C4-R3 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-INTEGRATION-FIX-C-005
 
 C-005 corrected the production integration boundary exposed by C4-R2. The
@@ -14,9 +33,10 @@ adapter coverage, and the required regression matrix are green. No Validator
 or Schema relaxation, output normalization, retry, or unrelated runtime
 surface change was introduced.
 
-C5 is `Completed / Sol Verification Pending`. C4-R2 is `Completed /
-Engineering Rework Required - Sol verified`; Stage C remains `In Progress /
-Awaiting C5 Sol Verification`.
+C5 is `Completed / Accepted - Sol verified`. C4-R2 is `Completed /
+Engineering Rework Required - Sol verified`; C4-R3 is `Completed / Environment
+Blocker - Sol Verification Pending`; Stage C remains `In Progress / Awaiting
+C4-R3 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R2
 
@@ -39,8 +59,9 @@ Status is `Completed`; acceptance is `Engineering Rework Required - Sol
 verified`. The product result is `FAIL / SOL REVIEW REQUIRED`; C-005 completed
 the required integration correction. C4 is historical environment blocked;
 C4-R1 is `Completed / Root Cause Identified - Sol verified`; C5 is
-`Completed / Sol Verification Pending`; Stage C remains `In Progress /
-Awaiting C5 Sol Verification`.
+`Completed / Accepted - Sol verified`; C4-R3 is `Completed / Environment
+Blocker - Sol Verification Pending`; Stage C remains `In Progress / Awaiting
+C4-R3 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R1
 
