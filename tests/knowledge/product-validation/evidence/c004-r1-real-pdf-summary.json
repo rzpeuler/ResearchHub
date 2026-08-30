@@ -1,0 +1,111 @@
+{
+  "taskId": "KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R1",
+  "result": "BLOCKED",
+  "status": "Blocked / Runtime Credential Invalid",
+  "baseline": {
+    "required": "5ecc4a771a592c622f2512dbbd7de6172ca985b0",
+    "headAtPreflight": "5ecc4a771a592c622f2512dbbd7de6172ca985b0",
+    "matchesRequired": true,
+    "workingTreeClean": true,
+    "productionFilesChanged": false
+  },
+  "credentialPreflight": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-pro",
+    "baseUrlHost": "api.deepseek.com",
+    "credentialPresent": true,
+    "endpoint": "GET /models",
+    "httpStatus": 401,
+    "modelAvailabilityCheck": "not reached",
+    "diagnostic": "Configured credential rejected by the official endpoint"
+  },
+  "pdf": {
+    "filename": "20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf",
+    "sha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "bytes": 3209114,
+    "hashVerified": true,
+    "verificationContext": "C4 Attempt 1; C4-R1 stopped before artifact work after credential preflight"
+  },
+  "parser": {
+    "preflight": "READY in C4 Attempt 1",
+    "id": "docling-local",
+    "version": "2.116.0",
+    "pageCount": 103,
+    "chunks": 1523,
+    "sections": 154,
+    "tables": 45,
+    "images": 178,
+    "normalizedCharacters": 97784,
+    "warnings": [],
+    "c4r1Execution": "not reached after credential preflight"
+  },
+  "isolatedKnowledgeBase": {
+    "schemaVersion": "0.3",
+    "storageFormatVersion": "1",
+    "status": "active",
+    "writable": true,
+    "revision": 0,
+    "seedObjects": 0,
+    "initialFullValidation": "passed in C4 Attempt 1",
+    "c4r1Execution": "not created after credential preflight"
+  },
+  "semanticPipeline": {
+    "normalWorkflow": "not reached in C4-R1",
+    "understandReport": { "attempted": false, "reason": "credential preflight HTTP 401" },
+    "extraction": null,
+    "reconciliation": null,
+    "schemaGaps": null,
+    "reviewIsolation": null,
+    "changeset": null,
+    "c3Validation": null,
+    "writer": { "invocations": 0 },
+    "reload": null,
+    "fullValidation": null
+  },
+  "priorRealExecutionEvidence": {
+    "rawFirst": { "persisted": true, "created": true, "reused": false },
+    "understandReport": { "attempted": true, "succeeded": false, "retryCount": 0, "failure": "Knowledge Curation did not finish normally: error" },
+    "semanticWrites": false,
+    "writerInvocations": 0
+  },
+  "batching": null,
+  "temporal": null,
+  "source": null,
+  "reconciliation": null,
+  "changeSetValidation": null,
+  "finalKnowledgeBase": null,
+  "semanticQuality": { "status": "not sampled; semantic pipeline blocked" },
+  "provenanceQuality": { "status": "not sampled; semantic pipeline blocked" },
+  "replay": { "status": "not reached" },
+  "reprocess": { "status": "not reached" },
+  "defects": [
+    {
+      "severity": "environment blocker",
+      "stage": "credential preflight",
+      "component": "DeepSeek official API configuration",
+      "reproduction": "GET api.deepseek.com/models with configured credential returns HTTP 401",
+      "productionDefect": false,
+      "evidence": "local sanitized preflight evidence"
+    }
+  ],
+  "tests": {
+    "productValidation": "15/15 passed",
+    "runnerTypecheck": "passed",
+    "doclingDoctor": "READY; all checks passed in C4 Attempt 1",
+    "gitDiffCheck": "passed"
+  },
+  "evidence": {
+    "runner": "tools/knowledge-product-validation/run-v03-real-validation.ts",
+    "localFullAttempt1": "researchhub-knowledge-v03-c004-evidence.json",
+    "localC4R1Preflight": "researchhub-knowledge-v03-c004-r1-preflight.json",
+    "containsSecrets": false,
+    "containsFullPromptsOrResponses": false,
+    "containsPdfOrGeneratedKb": false
+  },
+  "governance": {
+    "c4": "Blocked / Environment Credential",
+    "c4r1": "Blocked / Sol Review Required",
+    "stageC": "In Progress / Awaiting C4-R1 Sol Verification"
+  },
+  "recommendation": "Environment blocker: repair or replace the configured DeepSeek credential, then rerun C4-R1 without changing production code."
+}

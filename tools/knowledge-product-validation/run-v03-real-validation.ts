@@ -18,7 +18,9 @@ import { createRealKnowledgeCurationModel } from './deepseek-composition.ts'
 import { inspectDoclingRuntime } from '../document-parser/doctor-docling.ts'
 
 const execFileAsync = promisify(execFile)
-const BASELINE = '7f124996a8e48c96fd6ba1cb12b17c63b16ca4e1'
+const TASK_ID = 'KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R1'
+const BASELINE = '5ecc4a771a592c622f2512dbbd7de6172ca985b0'
+const KNOWLEDGE_BASE_ID = 'kb-product-validation-c004-r1'
 const DEFAULT_PDF = 'C:\\Users\\Administrator\\Documents\\20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf'
 
 type JsonRecord = Record<string, unknown>
@@ -82,13 +84,14 @@ async function main(): Promise<void> {
   const evidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_EVIDENCE ?? join(tmpdir(), 'researchhub-knowledge-v03-c004-evidence.json')
   let root: string | undefined
   const keepRoot = process.env.RESEARCHHUB_KEEP_PRODUCT_VALIDATION_KB === '1'
-  const evidence: JsonRecord = { taskId: 'KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004', baseline: BASELINE, startedAt: new Date().toISOString() }
+  const evidence: JsonRecord = { taskId: TASK_ID, baseline: BASELINE, startedAt: new Date().toISOString() }
   try {
     const git = await gitPreflight()
     evidence.baselineCheck = git
+    if (git.matchesExpected !== true || git.workingTreeClean !== true || git.productionFilesChanged === true) throw new ProductValidationStop('Blocked / Baseline Preflight Failed', JSON.stringify(git))
     const config = loadLocalRuntimeConfig(process.env, process.cwd(), { requireRealLlm: true })
     evidence.runtime = { provider: config.provider, model: config.model, baseUrl: redactUrl(config.baseUrl), curationMaxTokens: config.curationMaxTokens, credentialsPresent: Boolean(config.apiKey) }
-    const llmPreflight = await verifyDeepSeekCredentials(config.baseUrl, config.apiKey)
+    const llmPreflight = await verifyDeepSeekCredentials(config.baseUrl, config.apiKey, config.model)
     evidence.llmPreflight = llmPreflight
     if (llmPreflight.status !== 'READY') throw new ProductValidationStop('Blocked / Runtime Credential Invalid', llmPreflight.diagnostic)
     const pdfPath = resolve(process.env.RESEARCHHUB_PRODUCT_VALIDATION_PDF ?? DEFAULT_PDF)
@@ -157,7 +160,7 @@ async function main(): Promise<void> {
 }
 
 function inputFor(pdfPath: string, workflowRunId: string, reprocess: boolean) {
-  return { workflowRunId, knowledgeBaseId: 'kb-product-validation-c004', report: { inputRef: { type: 'file' as const, reference: pdfPath }, suppliedMetadata: { title: basename(pdfPath), publisher: null, institution: null, author: null, publishedAt: null, sourceUrl: null } }, options: { mode: 'commit' as const, reprocess } }
+  return { workflowRunId, knowledgeBaseId: KNOWLEDGE_BASE_ID, report: { inputRef: { type: 'file' as const, reference: pdfPath }, suppliedMetadata: { title: basename(pdfPath), publisher: null, institution: null, author: null, publishedAt: null, sourceUrl: null } }, options: { mode: 'commit' as const, reprocess } }
 }
 
 function createTargetResolver(root: string) {
@@ -175,7 +178,7 @@ async function resolveTarget(root: string): Promise<{ handle: KnowledgeBaseHandl
 async function createIsolatedV03KnowledgeBase(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-c004-v03-'))
   await mkdir(join(root, 'registry'), { recursive: true })
-  await writeFile(join(root, 'manifest.yaml'), `${canonicalSerialize({ knowledgeBaseId: 'kb-product-validation-c004', name: 'C-004 disposable real PDF validation KB', schemaVersion: '0.3', storageFormatVersion: '1', revision: 0, status: 'active', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z' })}\n`, 'utf8')
+  await writeFile(join(root, 'manifest.yaml'), `${canonicalSerialize({ knowledgeBaseId: KNOWLEDGE_BASE_ID, name: 'C-004-R1 disposable real PDF validation KB', schemaVersion: '0.3', storageFormatVersion: '1', revision: 0, status: 'active', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z' })}\n`, 'utf8')
   await writeFile(join(root, 'registry/assets.yaml'), '{}\n', 'utf8')
   await writeFile(join(root, 'registry/raw.yaml'), '{}\n', 'utf8')
   return root
@@ -184,8 +187,12 @@ async function createIsolatedV03KnowledgeBase(): Promise<string> {
 async function gitPreflight(): Promise<JsonRecord> {
   const head = (await execFileAsync('git', ['rev-parse', 'HEAD'])).stdout.trim()
   const status = (await execFileAsync('git', ['status', '--porcelain'])).stdout.trim()
-  return { head, expected: BASELINE, matchesExpected: head === BASELINE, workingTreeClean: status === '' }
+  const changedSinceBaseline = (await execFileAsync('git', ['diff', '--name-only', `${BASELINE}..HEAD`])).stdout.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
+  const matchesExpected = head === BASELINE || await execFileAsync('git', ['merge-base', '--is-ancestor', BASELINE, head]).then(() => true).catch(() => false)
+  const productionFilesChanged = changedSinceBaseline.some((file) => !isAllowedEvidencePath(file))
+  return { head, expected: BASELINE, matchesExpected, workingTreeClean: status === '', changedSinceBaseline, productionFilesChanged }
 }
+function isAllowedEvidencePath(file: string): boolean { return file.startsWith('tools/knowledge-product-validation/') || file.startsWith('tests/knowledge/product-validation/') || file.startsWith('docs/project-management/') }
 
 function parserEvidence(result: DocumentParseResult | undefined): JsonRecord { return { parser: result?.parser ?? null, pageCount: result?.pageCount ?? result?.quality?.pageCount ?? null, chunks: result?.chunks.length ?? 0, sections: new Set((result?.chunks ?? []).map((chunk) => chunk.section).filter((section): section is string => Boolean(section))).size, tables: result?.structure?.tableCount ?? result?.quality?.tableCount ?? null, images: result?.structure?.imageCount ?? result?.quality?.imageCount ?? null, normalizedCharacters: result?.quality?.normalizedCharacters ?? result?.normalizedText.length ?? 0, warnings: result?.quality?.warnings ?? [] } }
 
@@ -211,13 +218,17 @@ function median(values: number[]): number { if (!values.length) return 0; const 
 function splitSections(summary: ResearchReportKnowledgeIngestionResult['batches']): string[] { const counts = new Map<string, number>(); for (const batch of summary.batches) for (const sectionId of batch.sectionIds) counts.set(sectionId, (counts.get(sectionId) ?? 0) + 1); return [...counts.entries()].filter(([, count]) => count > 1).map(([sectionId]) => sectionId) }
 function summarizeRun(result: ResearchReportKnowledgeIngestionResult): JsonRecord { return { status: result.status, raw: result.raw, source: result.source ? { sourceId: result.source.sourceId, resolution: result.source.resolution } : null, revision: { before: result.baseRevision, after: result.finalRevision }, extraction: result.extraction, consolidation: result.consolidation, resolution: result.referenceResolution, reconciliation: result.reconciliation, validation: result.validation?.status ?? null, modelCalls: result.modelCalls.length, errors: result.errors } }
 function redactUrl(value: string): string { try { const url = new URL(value); return `${url.protocol}//${url.host}` } catch { return '[configured]' } }
-async function verifyDeepSeekCredentials(baseUrl: string, apiKey: string | undefined): Promise<JsonRecord & { status: string; diagnostic: string }> {
+async function verifyDeepSeekCredentials(baseUrl: string, apiKey: string | undefined, model: string): Promise<JsonRecord & { status: string; diagnostic: string }> {
   if (!apiKey) return { status: 'BLOCKED', diagnostic: 'DEEPSEEK_API_KEY is not configured' }
   try {
     const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
     const response = await fetch(`${normalizedBaseUrl}/models`, { headers: { accept: 'application/json', authorization: `Bearer ${apiKey}` } })
-    if (response.ok) return { status: 'READY', diagnostic: 'DeepSeek credential accepted by /models' }
-    return { status: 'BLOCKED', httpStatus: response.status, diagnostic: `DeepSeek /models rejected credentials with HTTP ${response.status}` }
+    if (!response.ok) return { status: 'BLOCKED', httpStatus: response.status, diagnostic: `DeepSeek /models rejected credentials with HTTP ${response.status}` }
+    const body = await response.json() as { data?: unknown }
+    const availableModels = Array.isArray(body.data) ? body.data.filter((item): item is { id: string } => isRecord(item) && typeof item.id === 'string') : []
+    const modelAvailable = availableModels.some((item) => item.id === model)
+    if (!modelAvailable) return { status: 'BLOCKED', httpStatus: response.status, modelAvailable: false, diagnostic: `Configured model ${model} is not present in DeepSeek /models` }
+    return { status: 'READY', httpStatus: response.status, modelAvailable: true, diagnostic: 'DeepSeek credential and configured model accepted by /models' }
   } catch (error) {
     return { status: 'BLOCKED', diagnostic: `DeepSeek credential preflight transport failure: ${error instanceof Error ? error.message.slice(0, 180) : String(error).slice(0, 180)}` }
   }

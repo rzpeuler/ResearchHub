@@ -18,14 +18,16 @@
 - C2-R2-R1: Completed / Accepted - Sol verified
 - Current Curation runtime: Knowledge v0.3, exactly four operations
 - Current Report Ingestion runtime: Frozen Workflow v0.3 / Schema 0.3 / Storage 1
-- C4 Product Validation: Blocked / Sol Review Required
-- Stage C: In Progress / Awaiting C4 Sol Verification
+- C4 Product Validation: Blocked / Environment Credential
+- C4-R1 Product Validation: Blocked / Sol Review Required
+- Stage C: In Progress / Awaiting C4-R1 Sol Verification
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3
 boundary; no mixed old/new active contract remains. C2-R2 and C2-R2-R1 are
 accepted after Sol verification. C4 attempted the authorized real PDF Product
-Validation but is blocked by the configured DeepSeek credential.
+Validation but is blocked by the configured DeepSeek credential. C4-R1
+confirmed the same HTTP 401 during the mandatory clean-baseline preflight.
 
 - Architecture Freeze: Completed / Sol Accepted
 - Governance Integration: Completed / Sol verified

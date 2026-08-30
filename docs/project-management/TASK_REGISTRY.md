@@ -41,6 +41,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2 | Resume Knowledge Curation/Workflow v0.3 cutover | Completed | P0 | 2026-08-28 | Luna | Current implementation commit (see Git handoff) | Accepted - Sol verified |
 | KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2-R1 | Close Knowledge v0.3 curation ingestion correctness gaps | Completed | P0 | 2026-08-31 | Luna | Current R1 implementation commit (see Git handoff) | Accepted - Sol verified |
 | KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004 | Validate Knowledge v0.3 with the specified real PDF and configured production-like runtime | Blocked | P0 | 2026-08-31 | Luna | Current product-validation evidence commit (see Git handoff) | Blocked / Sol Review Required |
+| KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R1 | Resume real PDF Product Validation after credential repair | Blocked | P0 | 2026-08-31 | Luna | Current product-validation evidence commit (see Git handoff) | Blocked / Sol Review Required |
 | RH-GOV-001 | Initialize project execution state management system | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-DOC-002 | Synchronize architecture baseline documentation | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-ENG-001 | Validate minimum ResearchHub Harness integration | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — typecheck and integration test passed |

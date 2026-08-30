@@ -1,5 +1,21 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R1 - Credential-Gated Rerun
+
+**Status:** Blocked / Sol Review Required
+**Date:** 2026-08-31
+
+C4-R1 reran from clean baseline `5ecc4a771a592c622f2512dbbd7de6172ca985b0`
+using the existing real-validation runner. The configured provider/model and
+sanitized official host were recorded, but `GET /models` returned HTTP 401.
+The runner stopped before the PDF and semantic stages as required. No model
+substitution, fallback, mock, provider switch, or production change occurred.
+
+The durable sanitized evidence is
+`tests/knowledge/product-validation/evidence/c004-r1-real-pdf-summary.json`.
+Stage C remains `In Progress / Awaiting C4-R1 Sol Verification`; the next
+action is credential repair followed by a new real validation run.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004 - Real PDF Product Validation
 
 **Status:** Blocked / Sol Review Required

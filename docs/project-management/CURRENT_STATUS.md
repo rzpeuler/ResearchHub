@@ -1,5 +1,20 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R1
+
+C4-R1 reran the mandatory clean-baseline and real-credential preflight from
+`5ecc4a771a592c622f2512dbbd7de6172ca985b0`. The working tree was clean and no
+production files were changed. The configured runtime remains
+`deepseek-official` / `deepseek-v4-pro` at host `api.deepseek.com`, with a
+credential present, but `GET /models` returned HTTP 401. Per task policy the
+run stopped before the expensive PDF, parser, KB, and semantic stages; no
+fallback, mock, provider switch, or model substitution was used.
+
+The durable sanitized result is
+`tests/knowledge/product-validation/evidence/c004-r1-real-pdf-summary.json`.
+C4-R1 is `Blocked / Sol Review Required`; Stage C remains
+`In Progress / Awaiting C4-R1 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004
 
 C4 executed the first real PDF product-validation attempt against the exact

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R1
+
+- Re-ran the real DeepSeek credential preflight from clean baseline
+  `5ecc4a771a592c622f2512dbbd7de6172ca985b0`.
+- The configured credential remains invalid: official `GET /models` returned
+  HTTP 401. The run stopped before PDF parsing and semantic execution, with no
+  fallback, provider switch, model substitution, or production change.
+- Added sanitized Git-tracked evidence at
+  `tests/knowledge/product-validation/evidence/c004-r1-real-pdf-summary.json`.
+- C4-R1 is `Blocked / Sol Review Required`; Stage C remains in progress.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004
 
 - Added the real-PDF Product Validation runner for the normal v0.3 Report
