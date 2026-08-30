@@ -16,11 +16,17 @@ export class KnowledgeCurationModelAdapter implements KnowledgeCurationModel {
   constructor(private readonly options: KnowledgeCurationModelAdapterOptions) {}
 
   async invoke(request: KnowledgeCurationModelRequest): Promise<unknown> {
+    if (!request?.schemaContext) throw new LlmSkillAdapterError('Knowledge Curation request requires schemaContext')
+    if (!request?.outputContract) throw new LlmSkillAdapterError('Knowledge Curation request requires outputContract')
     const prompt = [
       'You are a ResearchHub Knowledge Curation model.',
-      'Return JSON only. Do not invent references, IDs, sourceRefs, or rawRefs.',
+      'Return JSON only and follow the supplied Output Contract exactly.',
+      'Property names must exactly match the Output Contract; do not add undeclared properties.',
+      'Treat canonical enum values in the Schema Context as authoritative.',
+      'Do not invent references, durable IDs, sourceRefs, or rawRefs.',
       `Operation: ${request.operation}`,
-      `Expected output contract: ${request.expectedOutputContract}`,
+      `Schema Context:\n${JSON.stringify(request.schemaContext)}`,
+      `Output Contract:\n${JSON.stringify(request.outputContract)}`,
       `Instruction:\n${request.instruction}`,
       `Input:\n${JSON.stringify(request.input)}`,
     ].join('\n\n')

@@ -5,6 +5,8 @@ import test from 'node:test'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { createRealKnowledgeCurationModel } from '../../../tools/knowledge-product-validation/deepseek-composition.ts'
 import { loadLocalRuntimeConfig } from '../../../dsh/llm-runtime/local-runtime-config.ts'
+import { STRUCTURED_OUTPUT_CONTRACTS } from '../../../packages/skills/knowledge-curation/contracts.ts'
+import { buildCurationSchemaContext } from '../../../packages/skills/knowledge-curation/schema-context.ts'
 
 test('real curation composition stays provider-neutral at the Skill boundary with an injected fixture runtime', async () => {
   let request: GenerateOptions | undefined
@@ -12,7 +14,7 @@ test('real curation composition stays provider-neutral at the Skill boundary wit
   const config = loadLocalRuntimeConfig({ RESEARCHHUB_REAL_LLM_ENABLED: 'false', RESEARCHHUB_LLM_PROVIDER: 'deepseek-official', RESEARCHHUB_LLM_MODEL: 'fixture-model' }, process.cwd())
   const runtime = await createRealKnowledgeCurationModel(config, llm)
   try {
-    const value = await runtime.model.invoke({ operation: 'assess_admission', instruction: 'Return JSON.', input: { candidateId: 'candidate-1' }, expectedOutputContract: 'KnowledgeAdmissionDecision' })
+    const value = await runtime.model.invoke({ operation: 'understandReport', instruction: 'Return JSON.', input: { fixture: true }, schemaContext: buildCurationSchemaContext('report_understanding'), outputContract: STRUCTURED_OUTPUT_CONTRACTS.understandReport })
     assert.deepEqual(value, { decision: 'admit' })
     assert.equal(request?.provider, 'deepseek-official')
     assert.equal(request?.model, 'fixture-model')
@@ -41,10 +43,10 @@ test('official DeepSeek provider composition reaches a local streaming server wi
   const config = loadLocalRuntimeConfig({ RESEARCHHUB_REAL_LLM_ENABLED: 'true', DEEPSEEK_API_KEY: 'test-only-fake-key', DEEPSEEK_BASE_URL: `http://127.0.0.1:${address.port}`, RESEARCHHUB_LLM_PROVIDER: 'deepseek-official', RESEARCHHUB_LLM_MODEL: 'fixture-model' }, process.cwd(), { requireRealLlm: true })
   const runtime = await createRealKnowledgeCurationModel(config)
   try {
-    const value = await runtime.model.invoke({ operation: 'assess_admission', instruction: 'Return an admission decision.', input: { candidateId: 'candidate-1' }, expectedOutputContract: 'KnowledgeAdmissionDecision' })
+    const value = await runtime.model.invoke({ operation: 'understandReport', instruction: 'Return report understanding JSON.', input: { fixture: true }, schemaContext: buildCurationSchemaContext('report_understanding'), outputContract: STRUCTURED_OUTPUT_CONTRACTS.understandReport })
     assert.deepEqual(value, { decision: 'admit' })
     assert.deepEqual(requests.map(({ authorization, model }) => ({ authorization, model })), [{ authorization: 'Bearer test-only-fake-key', model: 'fixture-model' }])
-    assert.match(requests[0]?.prompt ?? '', /assess_admission/)
+    assert.match(requests[0]?.prompt ?? '', /understandReport/)
   } finally {
     await runtime.close()
     if (previousKey === undefined) delete process.env.DEEPSEEK_API_KEY

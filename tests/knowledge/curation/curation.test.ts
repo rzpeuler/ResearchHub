@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { KNOWLEDGE_SCHEMA_V03 } from '../../../packages/schemas/knowledge/v03/executable-schema.ts'
 import { KnowledgeCurationError, KnowledgeCurationSkill, type KnowledgeContext, type NormalizedResearchDocument } from '../../../packages/skills/knowledge-curation/index.ts'
+import { KnowledgeCurationModelAdapter } from '../../../dsh/llm-runtime/knowledge-curation-model-adapter.ts'
+import { buildCurationSchemaContext } from '../../../packages/skills/knowledge-curation/schema-context.ts'
+import { STRUCTURED_OUTPUT_CONTRACTS } from '../../../packages/skills/knowledge-curation/contracts.ts'
 import { ScriptedKnowledgeCurationModel } from './scripted-model.ts'
 
 const rawRef = 'raw-sha256-' + 'a'.repeat(64)
@@ -31,7 +35,6 @@ function errorCode(action: () => Promise<unknown>, code: string): Promise<void> 
 test('exposes exactly four public operations and no legacy aliases', () => {
   const methods = Object.getOwnPropertyNames(KnowledgeCurationSkill.prototype).filter((name) => name !== 'constructor' && name !== 'invoke' && !name.startsWith('_')).sort()
   assert.deepEqual(methods, ['analyzeSchemaGaps', 'extractKnowledge', 'reconcileKnowledge', 'understandReport'])
-  for (const legacy of ['assessSource', 'filterRelevantContent', 'extractKnowledgeCandidates', 'assessKnowledgeAdmission', 'mapKnowledgeCandidates', 'analyzeKnowledgeConflicts', 'detectSchemaGaps']) assert.equal(legacy in KnowledgeCurationSkill.prototype, false)
 })
 
 test('understandReport sends the v0.3 request shape and automatic report slice', async () => {
@@ -39,7 +42,7 @@ test('understandReport sends the v0.3 request shape and automatic report slice',
   await curation.understandReport({ ...scope, themeContext: context })
   const request = model.requests[0]!
   assert.deepEqual(Object.keys(request).sort(), ['input', 'instruction', 'operation', 'outputContract', 'schemaContext'].sort())
-  assert.equal(request.operation, 'understandReport'); assert.equal(request.schemaContext?.slice, 'report_understanding'); assert.equal('expectedOutputContract' in request, false)
+  assert.equal(request.operation, 'understandReport'); assert.equal(request.schemaContext?.slice, 'report_understanding')
   assert.equal(request.outputContract?.format, 'json'); assert.equal(typeof request.outputContract?.schema, 'object'); assert.equal(request.instruction.includes('REPORT CONTENT'), false); const schema = request.outputContract?.schema as { properties: { sourceAssessment: { properties: { sourceType: { canonicalEnumRef: string } } } } }; assert.equal(schema.properties.sourceAssessment.properties.sourceType.canonicalEnumRef, 'schema.source.types')
 })
 
@@ -71,3 +74,19 @@ test('reconciliation requires each candidate exactly once and rejects unknown re
 test('reconciliation accepts exactly one decision per candidate in reversed order', async () => { const decision = (candidateId: string) => ({ candidateId, decision: 'create', classification: 'complementary', existingRefs: [], reason: 'No duplicate.', requiresUserReview: false }); const { skill } = makeSkill({ decisions: [decision('candidate-2'), decision('candidate-1')] }, 'reconcileKnowledge'); const result = await skill.reconcileKnowledge(reconciliationInput(['candidate-1', 'candidate-2'])); assert.deepEqual(result.decisions.map((item) => item.candidateId), ['candidate-2', 'candidate-1']) })
 test('analyzeSchemaGaps accepts only governance gap classes and supplied candidates', async () => { const input = { ...scope, candidates: [{ candidateId: 'candidate-1' }], knowledgeContext: context }; const a = makeSkill({ gaps: [{ candidateRefs: ['candidate-1'], gapType: 'schema', observedInformation: { description: 'Missing field.', examples: ['x'] }, currentLimitation: { description: 'No field.' }, suggestedDirection: { description: 'Review schema.' }, affectedKnowledgeTypes: ['entity'], affectedIndustries: ['semiconductor'], generality: 'local', frequency: 'first_seen', recommendedAction: 'review' }] }, 'analyzeSchemaGaps'); const valid = await a.skill.analyzeSchemaGaps(input); assert.equal(valid.gaps[0]?.gapType, 'schema'); const b = makeSkill({ gaps: [{ ...valid.gaps[0]!, gapType: 'new_enum' }] }, 'analyzeSchemaGaps'); await errorCode(() => b.skill.analyzeSchemaGaps(input), 'invalid_semantics') })
 test('malformed output performs no hidden retry and reports one model call', async () => { const model = new ScriptedKnowledgeCurationModel().set('understandReport', { sourceAssessment: null }); const curation = new KnowledgeCurationSkill({ model }); await errorCode(() => curation.understandReport({ ...scope, themeContext: context }), 'invalid_model_output'); assert.equal(model.requests.length, 1) })
+
+test('Skill to DSH adapter boundary preserves v0.3 Schema Context and Output Contract', async () => {
+  let request: GenerateOptions | undefined
+  const llm = { async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> { request = options; yield { type: 'text-delta', index: 0, text: JSON.stringify(understanding()) }; yield { type: 'finish', reason: { kind: 'stop' } } } }
+  const adapter = new KnowledgeCurationModelAdapter({ llm, provider: 'fixture-provider', model: 'fixture-model' })
+  const curation = new KnowledgeCurationSkill({ model: adapter })
+  await curation.understandReport({ ...scope, themeContext: context })
+  const prompt = request?.messages[0]?.content[0]?.type === 'text' ? request.messages[0].content[0].text : ''
+  assert.match(prompt, /Operation: understandReport/)
+  assert.match(prompt, /report_understanding/)
+  assert.match(prompt, /majorEntityMentions/)
+  assert.match(prompt, /"additionalProperties":false/)
+  assert.doesNotMatch(prompt, /undefined/)
+  assert.equal(JSON.stringify(buildCurationSchemaContext('report_understanding')).includes('majorEntityMentions'), false)
+  assert.equal(JSON.stringify(STRUCTURED_OUTPUT_CONTRACTS.understandReport).includes('majorEntityMentions'), true)
+})

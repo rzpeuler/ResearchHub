@@ -2,9 +2,7 @@ import type { CurationSchemaContext } from './schema-context-types.ts'
 import type { ClaimTypeV03, EntityTypeV03, KnowledgeClaimV03, KnowledgeEntityV03, KnowledgeRelationV03, KnowledgeSourceV03, RelationTypeV03, SourceReliabilityV03, SourceTypeV03 } from '../../schemas/knowledge/v03/domain.ts'
 
 export type ActiveCurationOperation = 'understandReport' | 'extractKnowledge' | 'reconcileKnowledge' | 'analyzeSchemaGaps'
-// Kept broad only at the adapter boundary so older external model harnesses can still type-check;
-// the runtime skill exposes and emits exactly ActiveCurationOperation values.
-export type CurationOperation = ActiveCurationOperation | (string & {})
+export type CurationOperation = ActiveCurationOperation
 export type JsonRecord = Record<string, unknown>
 
 export interface ResearchDocumentMetadata {
