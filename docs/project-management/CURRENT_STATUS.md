@@ -1,5 +1,31 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004
+
+C4 executed the first real PDF product-validation attempt against the exact
+specified report `20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf`.
+The PDF was readable and preserved at 3,209,114 bytes with SHA-256
+`998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63`.
+Docling Local was READY and completed the parse with 103 pages, 1,523 chunks,
+154 sections, 45 tables, 178 images, and 97,784 normalized characters; no
+parser warnings were reported. The run created an isolated writable Schema
+0.3 / Storage 1 Knowledge Base and persisted Raw first.
+
+The real configured DeepSeek call was attempted through the normal Workflow,
+but `understandReport` terminated before semantic output with
+`Knowledge Curation did not finish normally: error`; no Curation candidates,
+ChangeSet, Writer invocation, or semantic Knowledge write was produced. A
+runner-only credential preflight then confirmed the configured API key is
+rejected by DeepSeek `/models` with HTTP 401. No production code was patched,
+and no fallback, mock model, fabricated extraction, or committed report/KB
+data was used. Sanitized evidence remains in the local temp files
+`researchhub-knowledge-v03-c004-evidence.json` and
+`researchhub-knowledge-v03-c004-credential-preflight.json`.
+
+Status is `Blocked / Sol Review Required`; the attempted product run is
+`FAIL / SOL REVIEW REQUIRED` with an environment credential blocker. Stage C
+remains `In Progress / Awaiting C4 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2-R1
 
 C2-R2-R1 closes the four correctness and contract defects found during
@@ -16,10 +42,11 @@ Focused acceptance is green: Curation 19/19 and Ingestion 18/18. TypeScript
 integration and the required Workflow, Schema, Knowledge, Runtime, Migration,
 and Product Validation regressions are green. No Schema, Runtime Foundation,
 Writer, Migration, Access, DSH, frontend, examples, or Runtime KB data was
-modified. Real PDF Product Validation remains pending C2-R2-R1 Sol acceptance.
+modified. Real PDF Product Validation is blocked by the invalid configured
+DeepSeek credential; C4 records the evidence above.
 
-Status is `Completed`; acceptance is `Sol Verification Pending`. C2-R2 is
-`Completed / Rework Required`; C3 is `Completed / Accepted - Sol verified`;
+Status is `Completed`; acceptance is `Accepted - Sol verified`. C2-R2 is
+`Completed / Accepted - Sol verified`; C3 is `Completed / Accepted - Sol verified`;
 Stage C remains `In Progress`.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2
@@ -40,11 +67,11 @@ coverage for Workflow, Schema, Knowledge, Runtime Infrastructure, Migration,
 and Product Validation is green. The implementation does not activate a new
 Schema release, modify DSH, Writer, Migration, examples, or Runtime KB data.
 
-Status is `Completed`; acceptance is `Sol Verification Pending`. Stage B is
+Status is `Completed`; acceptance is `Accepted - Sol verified`. Stage B is
 `Completed / Accepted - Sol verified`; C1 is `Completed / Accepted - Sol
 verified`; C3, C3-R1, C3-R2, and C3-R3 are `Completed / Accepted - Sol
 verified`; C2 and C2-R1 are `Blocked / Superseded`; Stage C remains `In
-Progress`.
+Progress`; C4 is `Blocked / Sol Review Required`.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R3
 
@@ -63,7 +90,7 @@ Workflow, Migration, and Runtime KB data were not modified.
 Status is `Completed`; acceptance is `Accepted - Sol verified`. C3 is
 `Completed / Accepted - Sol verified`; C3-R1 is `Completed / Superseded by
 C3-R2/R3`; C3-R2 is `Completed / Superseded by C3-R3`; C2-R2 is `Completed /
-Sol Verification Pending`; Stage C remains `In Progress`.
+Accepted - Sol verified`; Stage C remains `In Progress`.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R2
 

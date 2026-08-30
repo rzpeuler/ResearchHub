@@ -1,8 +1,30 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004 - Real PDF Product Validation
+
+**Status:** Blocked / Sol Review Required
+**Date:** 2026-08-31
+
+C4 executed the real product-validation path against the specified West
+Securities PDF using Docling Local, the normal Research Report Knowledge
+Ingestion Workflow, the configured DeepSeek composition, an isolated writable
+Schema 0.3 / Storage 1 KB, and Raw-first persistence. Docling completed with
+103 pages, 1,523 chunks, 154 sections, 45 tables, 178 images, and 97,784
+normalized characters. The first real `understandReport` request terminated
+before semantic output, so no candidates, ChangeSet, Writer invocation, or
+semantic KB mutation was accepted.
+
+The runner-only credential preflight then verified the blocking cause: the
+configured DeepSeek API key is rejected by `/models` with HTTP 401. This is an
+environment credential blocker, not evidence of a Curation, Workflow,
+Validation, Writer, or Schema defect. No production code, runtime KB,
+fallback, mock model, fabricated extraction, prompt, response, PDF, or
+generated KB was committed. C4 must be rerun after credential repair; Stage C
+remains `In Progress / Awaiting C4 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2-R1 - Curation/Ingestion Correctness Closure
 
-**Status:** Completed / Sol Verification Pending
+**Status:** Completed / Accepted - Sol verified
 **Date:** 2026-08-31
 
 C2-R2-R1 is a narrow corrective patch over the accepted C2-R2 atomic
@@ -26,7 +48,7 @@ awaiting Sol acceptance.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2 - Atomic Curation/Workflow Cutover
 
-**Status:** Completed / Sol Verification Pending
+**Status:** Completed / Accepted - Sol verified
 **Date:** 2026-08-31
 
 C2-R2 adopts the frozen Knowledge v0.3 contract as the single active boundary

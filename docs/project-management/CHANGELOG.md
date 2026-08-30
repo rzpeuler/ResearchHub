@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004
+
+- Added the real-PDF Product Validation runner for the normal v0.3 Report
+  Ingestion Workflow, Docling Local, an isolated Schema 0.3 / Storage 1 KB,
+  real configured DeepSeek composition, Writer, reload, and full validation.
+- Executed against the specified 103-page PDF. Docling completed with 1,523
+  chunks, 154 sections, 45 tables, 178 images, and 97,784 normalized
+  characters; Raw-first persistence succeeded.
+- The real `understandReport` call stopped before semantic output. A runner-only
+  credential preflight confirmed HTTP 401 from DeepSeek `/models`; no semantic
+  write, mock, fallback, fabricated extraction, or production patch occurred.
+- C4 is `Blocked / Sol Review Required`; Stage C remains in progress pending
+  credential repair and a rerun.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2-R1
 
 - Corrected Curation Claim temporal validation to preserve the frozen
@@ -13,8 +27,8 @@
   count and formalized the strict v0.3 request subtype requiring Schema Context
   and Structured Output Contract.
 - Added focused Curation 19/19 and Ingestion 18/18 acceptance coverage.
-- C2-R2 is `Completed / Rework Required`; C2-R2-R1 is `Completed / Sol
-  Verification Pending`; Stage C remains `In Progress`.
+- C2-R2 and C2-R2-R1 are `Completed / Accepted - Sol verified`; Stage C
+  remains `In Progress`.
 
 ## 2026-08-31 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2
 
