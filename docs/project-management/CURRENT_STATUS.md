@@ -1,5 +1,29 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2
+
+C2-R2 atomically cuts the Knowledge Curation Skill and Research Report
+Knowledge Ingestion Workflow over to the frozen Knowledge v0.3 contract.
+Curation now exposes exactly four operations (`understandReport`,
+`extractKnowledge`, `reconcileKnowledge`, and `analyzeSchemaGaps`) with
+automatic C1 Schema Context, structured output contracts, strict validation,
+trusted-envelope protection, and no hidden retry. The ingestion Workflow now
+uses the frozen 18-stage sequence, native Schema 0.3 / Storage 1 state,
+deterministic Source/candidate/reference planning, batched reconciliation,
+dependency-closure review isolation, C3 validation, and the existing atomic
+Writer.
+
+Focused acceptance is green: Curation 16/16 and Ingestion 16/16. Regression
+coverage for Workflow, Schema, Knowledge, Runtime Infrastructure, Migration,
+and Product Validation is green. The implementation does not activate a new
+Schema release, modify DSH, Writer, Migration, examples, or Runtime KB data.
+
+Status is `Completed`; acceptance is `Sol Verification Pending`. Stage B is
+`Completed / Accepted - Sol verified`; C1 is `Completed / Accepted - Sol
+verified`; C3, C3-R1, C3-R2, and C3-R3 are `Completed / Accepted - Sol
+verified`; C2 and C2-R1 are `Blocked / Superseded`; Stage C remains `In
+Progress`.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R3
 
 C3-R3 closes the final Knowledge v0.3 Runtime Foundation acceptance gaps. The
@@ -14,10 +38,10 @@ a Writer-consumable `ValidatedKnowledgeChangeSetV03`; commit mode continues to
 return a deeply immutable receipt. Writer, Full Validator, Schema, Curation,
 Workflow, Migration, and Runtime KB data were not modified.
 
-Status is `Completed`; acceptance is `Sol Verification Pending`. C3 remains
-`Completed / Rework Required`; C3-R1 remains `Completed / Rework Required`;
-C3-R2 remains `Completed / Rework Required`; C2-R2 remains `Not Started /
-Awaiting C3-R3 Sol Acceptance`; Stage C remains `In Progress`.
+Status is `Completed`; acceptance is `Accepted - Sol verified`. C3 is
+`Completed / Accepted - Sol verified`; C3-R1 is `Completed / Superseded by
+C3-R2/R3`; C3-R2 is `Completed / Superseded by C3-R3`; C2-R2 is `Completed /
+Sol Verification Pending`; Stage C remains `In Progress`.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R2
 
@@ -33,10 +57,10 @@ R1 planned-state simulation, stale protection, receipt immutability, Writer
 integration, and recovery behavior remain intact. No Writer, Schema,
 Curation, Workflow, Migration, or Runtime KB changes were made.
 
-Status is `Completed`; acceptance is `Rework Required` pending C3-R3 Sol
-verification. C3 remains `Completed / Rework Required`; C3-R1 remains
-`Completed / Rework Required`; C2-R2 remains `Not Started / Awaiting C3-R3 Sol
-Acceptance`; Stage C remains `In Progress`.
+Status is `Completed`; acceptance is `Accepted - Sol verified`. C3 is
+`Completed / Accepted - Sol verified`; C3-R1 is `Completed / Superseded by
+C3-R2/R3`; C3-R2 is `Completed / Superseded by C3-R3`; C2-R2 is `Completed /
+Sol Verification Pending`; Stage C remains `In Progress`.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R1
 
@@ -49,9 +73,9 @@ Focused Runtime coverage now includes source/provenance atomicity, complete
 representative writes, updates, supersede, merge_source, no-op, idempotency,
 stale state, invalid ChangeSets, Raw behavior, and recovery.
 
-Status is `Completed`; acceptance is `Rework Required` pending C3-R2 Sol
-verification. Curation and Workflow were not modified and C2-R2 was not
-started.
+Status is `Completed`; acceptance is `Superseded by C3-R2/R3`. Curation and
+Workflow were not modified in C3-R1; C2-R2 is now `Completed / Sol Verification
+Pending`.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003
 

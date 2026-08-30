@@ -1,314 +1,336 @@
 import { createHash } from 'node:crypto'
 import { KnowledgeAccessSkill } from '../../../packages/skills/knowledge-access/index.ts'
-import type { ConflictDecision, KnowledgeCandidate, KnowledgeMappingResult, NormalizedResearchDocument, SourceAssessment } from '../../../packages/skills/knowledge-curation/index.ts'
+import { KnowledgeCurationError, type ClaimCandidate, type EntityCandidate, type ExtractKnowledgeOutput, type KnowledgeContext, type NormalizedResearchDocument, type ReconciliationCandidate, type ReconciliationDecision, type ReconciliationGroup, type RelationCandidate, type ReportUnderstanding, type ExtractionBatch, type JsonRecord } from '../../../packages/skills/knowledge-curation/index.ts'
 import { KnowledgeValidationSkill, createKnowledgeStagedStateValidator } from '../../../packages/skills/knowledge-validation/index.ts'
-import type { ValidationReport, ChangeSetValidationResult } from '../../../packages/skills/knowledge-validation/types.ts'
-import { KnowledgeBaseLoader, KnowledgeError, KnowledgeIngestionLogStore, allocateEntityId, allocateKnowledgeId, allocateSourceId, archiveRaw, deriveRawIdentity, hashKnowledgeObject } from '../../../packages/shared/knowledge-base/index.ts'
-import type { KnowledgeBaseHandle } from '../../../packages/shared/knowledge-base/index.ts'
+import { KnowledgeBaseLoader, KnowledgeIngestionLogStore, archiveRaw, deriveRawIdentity, hashKnowledgeObject, KnowledgeIndexV03 } from '../../../packages/shared/knowledge-base/index.ts'
 import { KnowledgeWriter } from '../../../packages/shared/knowledge-base/write/index.ts'
-import type { KnowledgeChangeSet, KnowledgeSource, KnowledgeWritableObject, ValidatedKnowledgeChangeSet, KnowledgeWriteResult } from '../../../packages/schemas/knowledge/index.ts'
+import type { KnowledgeClaimV03, KnowledgeEntityV03, KnowledgeRelationV03, KnowledgeSourceV03 } from '../../../packages/schemas/knowledge/v03/domain.ts'
+import type { KnowledgeChangeSetV03 } from '../../../packages/schemas/knowledge/v03/mutation.ts'
 import { DefaultResearchReportInputResolver } from './input-resolver.ts'
 import { KnowledgeIngestionWorkflowError } from './errors.ts'
 import { createKnowledgeScopeContext } from './scope-context.ts'
-import type { IngestionAuditContext, IngestionTrace, KnowledgeBaseTarget, ResolvedCandidatePlan, ResearchReportKnowledgeIngestionInput, ResearchReportKnowledgeIngestionResult, ResearchReportKnowledgeIngestionWorkflowOptions, ResearchReportInputResolver } from './types.ts'
+import type { ExtractionSummary, IngestionTrace, KnowledgeBaseTarget, ModelCallRecord, ReconciliationSummary, ResearchReportKnowledgeIngestionInput, ResearchReportKnowledgeIngestionResult, ResearchReportKnowledgeIngestionWorkflowOptions, ResearchReportInputResolver, ResolutionSummary, ReviewItem, SectionBatchSummary, SourceProposal, ThemeHandling } from './types.ts'
 
 export const RESEARCH_REPORT_KNOWLEDGE_INGESTION_WORKFLOW_ID = 'research-report-knowledge-ingestion'
-export const RESEARCH_REPORT_KNOWLEDGE_INGESTION_WORKFLOW_VERSION = '0.1'
+export const RESEARCH_REPORT_KNOWLEDGE_INGESTION_WORKFLOW_VERSION = '0.3'
 
-interface ReferenceResolution { id?: string; ambiguous?: boolean }
-interface ResolvedDraft { object: Record<string, unknown>; resolvedRefs: string[] }
+type Candidate = EntityCandidate | RelationCandidate | ClaimCandidate
+type Resolution = IngestionTrace['resolution'][number]
+type PlannedResult = { changeSet: KnowledgeChangeSetV03; source: SourceProposal | null; plannedChanges: ResearchReportKnowledgeIngestionResult['plannedChanges']; safeCandidates: Candidate[] }
 
-function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value) }
+function record(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value) }
 function clone<T>(value: T): T { return structuredClone(value) }
 function text(value: unknown): string { return typeof value === 'string' ? value.trim() : '' }
-function sameName(left: string, right: string): boolean { return left.trim().toLocaleLowerCase() === right.trim().toLocaleLowerCase() }
-function sourceSummary(assessment: SourceAssessment | null): Record<string, unknown> { return assessment ? { sourceType: assessment.sourceType, publisher: assessment.publisher, institution: assessment.institution, publishedAt: assessment.publishedAt, sourceReliability: assessment.sourceReliability } : {} }
-
-function stripModelIdentity(value: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {}
-  for (const [key, child] of Object.entries(value)) {
-    if (key === 'id' || key === 'knowledgeId' || key === 'sourceRefs' || key === 'rawRefs') continue
-    result[key] = isRecord(child) ? stripModelIdentity(child) : Array.isArray(child) ? child.map((item) => isRecord(item) ? stripModelIdentity(item) : item) : child
+function slug(value: string): string { return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'item' }
+function digest(value: unknown): string { return createHash('sha256').update(JSON.stringify(value, (_, child) => child && typeof child === 'object' && !Array.isArray(child) ? Object.fromEntries(Object.entries(child).sort(([a], [b]) => a.localeCompare(b))) : child)).digest('hex') }
+function v03EntityId(candidate: EntityCandidate): string { return `entity:${slug(candidate.entityType)}-${slug(candidate.name)}-${digest({ type: candidate.entityType, name: candidate.name.toLocaleLowerCase(), aliases: candidate.aliases.map((item) => item.toLocaleLowerCase()).sort() }).slice(0, 8)}` }
+function v03ObjectId(namespace: 'relation' | 'claim', value: unknown): string { return `${namespace}:${digest(value).slice(0, 24)}` }
+function safeChangeSetId(identity: string): string { return `changeset-${digest(identity).slice(0, 24)}` }
+function validInput(input: ResearchReportKnowledgeIngestionInput): void { if (!record(input) || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(input.workflowRunId) || input.workflowRunId.includes('..')) throw new KnowledgeIngestionWorkflowError('invalid_input', 'workflowRunId must be path-safe', 'input_validation'); if (typeof input.knowledgeBaseId !== 'string' || input.knowledgeBaseId.trim() === '') throw new KnowledgeIngestionWorkflowError('invalid_input', 'knowledgeBaseId must be non-empty', 'input_validation'); if (!record(input.report) || !record(input.report.inputRef) || !record(input.report.suppliedMetadata)) throw new KnowledgeIngestionWorkflowError('invalid_input', 'report input and supplied metadata are required', 'input_validation'); const ref = input.report.inputRef; if (!['text', 'file', 'document_reference'].includes(String(ref.type)) || (ref.type === 'text' ? typeof ref.text !== 'string' : typeof ref.reference !== 'string' || ref.reference.trim() === '')) throw new KnowledgeIngestionWorkflowError('invalid_input', 'report input reference is invalid', 'input_validation'); if (!record(input.options) || !['commit', 'dry_run'].includes(input.options.mode) || typeof input.options.reprocess !== 'boolean') throw new KnowledgeIngestionWorkflowError('invalid_input', 'workflow options are invalid', 'input_validation') }
+function emptyChanges(): ResearchReportKnowledgeIngestionResult['plannedChanges'] { return { sourceCreate: [], sourceMerge: [], knowledgeCreate: [], knowledgeUpdate: [], knowledgeSupersede: [], knowledgeSourceMerge: [] } }
+function emptyCommitted(): ResearchReportKnowledgeIngestionResult['committedChanges'] { return { sourceCreated: 0, sourceMerged: 0, knowledgeCreated: 0, knowledgeUpdated: 0, knowledgeSuperseded: 0, knowledgeSourceMerged: 0 } }
+function emptyThemeHandling(): ThemeHandling { return { dispositions: { resolved_existing: 0, resolved_multiple: 0, provisional_unresolved: 0, proposed_new: 0, ambiguous: 0 }, reviewItems: [] } }
+function emptyBatches(): SectionBatchSummary { return { sectionCount: 0, batchCount: 0, chunkCount: 0, chunkIds: [], batches: [] } }
+function emptyExtraction(): ExtractionSummary { return { entities: 0, relations: 0, claims: 0, batchesAttempted: 0, batchesSucceeded: 0, batchesFailed: 0 } }
+function emptyResolution(): ResolutionSummary { return { existing_ref: 0, new_object_key: 0, ambiguous: 0, invalid: 0 } }
+function emptyReconciliation(): ReconciliationSummary { return { groups: 0, candidates: 0, decisions: {}, classifications: {} } }
+function blocked(input: ResearchReportKnowledgeIngestionInput, revision: number, rawRef: string, identity: string, calls: ModelCallRecord[], stage: string, error: unknown): ResearchReportKnowledgeIngestionResult { const item = error instanceof KnowledgeIngestionWorkflowError || error instanceof KnowledgeCurationError ? { code: error.code, message: error.message } : { code: 'workflow_error', message: error instanceof Error ? error.message : String(error) }; return { workflowRunId: input.workflowRunId, ingestionIdentity: identity, knowledgeBaseId: input.knowledgeBaseId, mode: input.options.mode, status: 'blocked', baseRevision: revision, finalRevision: revision, raw: { rawRef, persisted: false, created: false, reused: false }, source: null, reportUnderstanding: null, themeHandling: emptyThemeHandling(), batches: emptyBatches(), extraction: emptyExtraction(), consolidation: { before: 0, after: 0, duplicatesMerged: 0 }, referenceResolution: emptyResolution(), reconciliation: emptyReconciliation(), schemaGaps: [], reviewItems: [], plannedChanges: emptyChanges(), committedChanges: emptyCommitted(), validation: null, modelCalls: calls, failureStage: stage, errors: [item] } }
+function sourceFrom(assessment: ReportUnderstanding['sourceAssessment'], input: ResearchReportKnowledgeIngestionInput, rawRef: string, sourceId: string): KnowledgeSourceV03 { return { id: sourceId as KnowledgeSourceV03['id'], title: input.report.suppliedMetadata.title ?? 'Untitled research report', publisher: assessment.publisher ?? input.report.suppliedMetadata.publisher, institution: assessment.institution ?? input.report.suppliedMetadata.institution, author: assessment.author ?? input.report.suppliedMetadata.author, publishedAt: assessment.publishedAt ?? input.report.suppliedMetadata.publishedAt, url: input.report.suppliedMetadata.sourceUrl, sourceType: assessment.sourceType, sourceReliability: assessment.sourceReliability, rawRefs: [rawRef] as NonNullable<KnowledgeSourceV03['rawRefs']> } }
+function sourceIdFor(input: ResearchReportKnowledgeIngestionInput, _rawRef: string): string { const identity = `${input.report.suppliedMetadata.sourceUrl ?? ''}|${input.report.suppliedMetadata.publishedAt ?? ''}|${input.report.suppliedMetadata.title ?? ''}|${input.report.suppliedMetadata.publisher ?? ''}`; return `source:doc-${digest(identity).slice(0, 16)}` }
+function sectionAndBatches(document: NormalizedResearchDocument, maxChars = 6000): { sections: NonNullable<NormalizedResearchDocument['sections']>; batches: ExtractionBatch[]; summary: SectionBatchSummary } {
+  type Chunk = NormalizedResearchDocument['chunks'][number]
+  type Section = NonNullable<NormalizedResearchDocument['sections']>[number]
+  const groups = new Map<string, Chunk[]>()
+  for (const chunk of document.chunks) {
+    const key = text(chunk.section) || '(untitled)'
+    groups.set(key, [...(groups.get(key) ?? []), chunk])
   }
-  return result
+  const sections: Section[] = [...groups.entries()].map(([title, chunks], index) => ({
+    sectionId: `section-${String(index + 1).padStart(4, '0')}`,
+    title: title === '(untitled)' ? null : title,
+    chunkIds: chunks.map((chunk) => chunk.chunkId),
+  }))
+  const batches: ExtractionBatch[] = []
+  let current: ExtractionBatch = { batchId: 'batch-0001', sections: [], chunks: [] }
+  const flush = (): void => {
+    if (current.chunks.length) batches.push(current)
+    current = { batchId: `batch-${String(batches.length + 2).padStart(4, '0')}`, sections: [], chunks: [] }
+  }
+  const size = (chunks: Chunk[]): number => chunks.reduce((sum, chunk) => sum + chunk.text.length, 0)
+  for (const section of sections) {
+    const sectionChunks = section.chunkIds.map((id) => document.chunks.find((chunk) => chunk.chunkId === id)!).filter(Boolean)
+    if (current.chunks.length && size(current.chunks) + size(sectionChunks) > maxChars) flush()
+    if (size(sectionChunks) <= maxChars) {
+      current.sections.push({ ...section })
+      current.chunks.push(...sectionChunks)
+      continue
+    }
+    for (const chunk of sectionChunks) {
+      if (current.chunks.length && size(current.chunks) + chunk.text.length > maxChars) flush()
+      let batchSection = current.sections.find((item) => item.sectionId === section.sectionId)
+      if (!batchSection) {
+        batchSection = { sectionId: section.sectionId, title: section.title, chunkIds: [] }
+        current.sections.push(batchSection)
+      }
+      batchSection.chunkIds.push(chunk.chunkId)
+      current.chunks.push(chunk)
+    }
+  }
+  flush()
+  const summary: SectionBatchSummary = {
+    sectionCount: sections.length,
+    batchCount: batches.length,
+    chunkCount: document.chunks.length,
+    chunkIds: document.chunks.map((chunk) => chunk.chunkId),
+    batches: batches.map((batch) => ({
+      batchId: batch.batchId,
+      sectionIds: batch.sections.map((section) => section.sectionId),
+      chunkIds: batch.chunks.map((chunk) => chunk.chunkId),
+      characterCount: size(batch.chunks),
+    })),
+  }
+  return { sections, batches, summary }
+}
+function themeHandling(understanding: ReportUnderstanding): ThemeHandling { const result = emptyThemeHandling(); for (const item of understanding.themeHypotheses) { result.dispositions[item.disposition] += 1; if (item.disposition === 'proposed_new' || item.disposition === 'ambiguous') result.reviewItems.push({ category: item.disposition === 'proposed_new' ? 'theme_creation' : 'theme_ambiguity', mention: item.mention, reason: item.reason }) } return result }
+function candidatesOf(extraction: ExtractKnowledgeOutput): Candidate[] { return [...extraction.entities, ...extraction.relations, ...extraction.claims] }
+function candidateKey(candidate: Candidate): string { if ('entityType' in candidate) return JSON.stringify(['entity', candidate.entityType, candidate.name.toLocaleLowerCase().trim(), [...candidate.aliases].map((item) => item.toLocaleLowerCase().trim()).sort(), candidate.semanticFields]); if ('relationType' in candidate) return JSON.stringify(['relation', candidate.relationType, candidate.sourceMention.text.toLocaleLowerCase().trim(), candidate.targetMention.text.toLocaleLowerCase().trim(), candidate.attributes]); return JSON.stringify(['claim', candidate.claimType, candidate.statement.toLocaleLowerCase().trim(), candidate.subjectMentions.map((item) => item.text.toLocaleLowerCase().trim()), candidate.temporal, candidate.structuredValue]) }
+function consolidate(values: Candidate[]): { values: Candidate[]; summary: { before: number; after: number; duplicatesMerged: number } } { const result: Candidate[] = []; const seen = new Map<string, Candidate>(); for (const candidate of values) { const key = candidateKey(candidate); const previous = seen.get(key); if (!previous) { seen.set(key, clone(candidate)); result.push(clone(candidate)); continue } previous.evidenceChunkRefs = [...new Set([...previous.evidenceChunkRefs, ...candidate.evidenceChunkRefs])].sort(); const target = result.find((item) => item.candidateId === previous.candidateId); if (target) target.evidenceChunkRefs = previous.evidenceChunkRefs } return { values: result, summary: { before: values.length, after: result.length, duplicatesMerged: values.length - result.length } } }
+function entityMatch(context: KnowledgeContext, mention: string, type?: string | null): string[] { const needle = mention.trim().toLocaleLowerCase(); return context.entities.filter((entity) => (!type || entity.type === type) && [entity.id, entity.name, ...(entity.aliases ?? [])].some((value) => value.toLocaleLowerCase() === needle)).map((entity) => entity.id) }
+function resolutionFor(candidate: Candidate, context: KnowledgeContext, entityTemp: Map<string, string>): Resolution {
+  if ('entityType' in candidate) {
+    const suggested = candidate.suggestedExistingRef
+    if (suggested && context.entities.some((entity) => entity.id === suggested)) return { candidateId: candidate.candidateId, kind: 'entity', outcome: 'existing_ref', refs: [suggested], candidate }
+    const matches = entityMatch(context, candidate.name, candidate.entityType)
+    if (matches.length > 1) return { candidateId: candidate.candidateId, kind: 'entity', outcome: 'ambiguous', refs: [], candidate }
+    if (matches.length === 1) return { candidateId: candidate.candidateId, kind: 'entity', outcome: 'existing_ref', refs: matches, candidate }
+    const key = `new-entity-${candidate.candidateId}`
+    entityTemp.set(candidate.candidateId, key)
+    for (const name of [candidate.name, ...candidate.aliases]) entityTemp.set(name.trim().toLocaleLowerCase(), key)
+    return { candidateId: candidate.candidateId, kind: 'entity', outcome: 'new_object_key', refs: [key], objectKey: key, candidate }
+  }
+  const resolveMention = (value: { text: string; existingRef?: string | null; entityType?: string | null }): string[] => {
+    if (value.existingRef && context.existingRefs.includes(value.existingRef)) return [value.existingRef]
+    const matches = entityMatch(context, value.text, value.entityType)
+    if (matches.length === 1) return matches
+    const temporary = entityTemp.get(value.text.trim().toLocaleLowerCase())
+    return temporary ? [temporary] : matches
+  }
+  if ('relationType' in candidate) {
+    const source = resolveMention(candidate.sourceMention)
+    const target = resolveMention(candidate.targetMention)
+    if (source.length !== 1 || target.length !== 1) return { candidateId: candidate.candidateId, kind: 'relation', outcome: source.length > 1 || target.length > 1 ? 'ambiguous' : 'invalid', refs: [], candidate }
+    const existing = context.relations.filter((item) => item.type === candidate.relationType && item.sourceRef === source[0] && item.targetRef === target[0])
+    return { candidateId: candidate.candidateId, kind: 'relation', outcome: existing.length ? 'existing_ref' : 'new_object_key', refs: [source[0], target[0], ...(existing.length ? [existing[0]!.id] : [])], objectKey: existing.length ? undefined : `new-relation-${candidate.candidateId}`, candidate }
+  }
+  const refs = candidate.subjectMentions.flatMap((item) => resolveMention(item))
+  if (refs.length !== candidate.subjectMentions.length || new Set(refs).size !== refs.length) return { candidateId: candidate.candidateId, kind: 'claim', outcome: refs.length > candidate.subjectMentions.length ? 'ambiguous' : 'invalid', refs: [], candidate }
+  const existing = context.claims?.filter((item) => item.claimType === candidate.claimType && item.statement === candidate.statement && item.subjectRefs.every((ref) => refs.includes(ref))) ?? []
+  return { candidateId: candidate.candidateId, kind: 'claim', outcome: existing.length ? 'existing_ref' : 'new_object_key', refs: [...refs, ...(existing.length ? [existing[0]!.id] : [])], objectKey: existing.length ? undefined : `new-claim-${candidate.candidateId}`, candidate }
+}
+function preciseGroups(values: Candidate[], resolutions: Resolution[], context: KnowledgeContext): ReconciliationGroup[] {
+  const eligible = values.filter((candidate) => {
+    const resolution = resolutions.find((item) => item.candidateId === candidate.candidateId)
+    return resolution?.outcome === 'existing_ref' || resolution?.outcome === 'new_object_key'
+  })
+  const groups: ReconciliationGroup[] = []
+  for (let offset = 0; offset < eligible.length; offset += 8) {
+    const slice = eligible.slice(offset, offset + 8)
+    const candidates: ReconciliationCandidate[] = slice.map((candidate) => {
+      const resolution = resolutions.find((item) => item.candidateId === candidate.candidateId)!
+      return {
+        candidateId: candidate.candidateId,
+        kind: 'entityType' in candidate ? 'entity' : 'relationType' in candidate ? 'relation' : 'claim',
+        semantic: clone(candidate) as unknown as JsonRecord,
+        existingRefs: resolution.refs.filter((ref) => context.existingRefs.includes(ref)),
+      }
+    })
+    const refs = new Set(candidates.flatMap((candidate) => candidate.existingRefs))
+    const existingKnowledge = [...context.entities, ...context.relations, ...(context.claims ?? []), ...(context.sources ?? [])]
+      .filter((item) => refs.has(item.id))
+      .map((item) => clone(item) as unknown as JsonRecord)
+    groups.push({ groupId: `reconciliation-${String(groups.length + 1).padStart(4, '0')}`, candidateIds: candidates.map((candidate) => candidate.candidateId), candidates, existingKnowledge })
+  }
+  return groups
+}
+function plannedStatus(trace: IngestionTrace): 'completed' | 'completed_with_review' { return trace.reviewItems.length || trace.schemaGaps.gaps.length ? 'completed_with_review' : 'completed' }
+
+function reviewClosure(candidates: Candidate[], reviewItems: ReviewItem[]): ReviewItem[] {
+  const entityByMention = new Map<string, string>()
+  for (const candidate of candidates) if ('entityType' in candidate) for (const name of [candidate.name, ...candidate.aliases]) entityByMention.set(name.trim().toLocaleLowerCase(), candidate.candidateId)
+  for (const candidate of candidates) if ('entityType' in candidate && candidate.semanticFields.schemaGap === true && !reviewItems.some((item) => item.candidateId === candidate.candidateId)) reviewItems.push({ candidateId: candidate.candidateId, category: 'schema_gap', reason: 'Candidate signalled material content requiring Schema Gap review', dependencyIds: [] })
+  const dependencies = new Map<string, Set<string>>()
+  for (const candidate of candidates) {
+    const refs = candidate.candidateId
+    const required = new Set<string>()
+    const mentions = 'relationType' in candidate ? [candidate.sourceMention, candidate.targetMention, ...candidate.contextMentions] : 'claimType' in candidate ? candidate.subjectMentions : []
+    for (const mention of mentions) { const dependency = entityByMention.get(mention.text.trim().toLocaleLowerCase()); if (dependency && dependency !== refs) required.add(dependency) }
+    dependencies.set(refs, required)
+  }
+  const reviewIds = new Set(reviewItems.map((item) => item.candidateId).filter((id): id is string => Boolean(id)))
+  const queue = [...reviewIds]
+  while (queue.length) {
+    const root = queue.shift()!
+    for (const [candidateId, required] of dependencies) if (required.has(root) && !reviewIds.has(candidateId)) { reviewIds.add(candidateId); queue.push(candidateId); reviewItems.push({ candidateId, category: 'dependency_review', reason: `Depends on candidate ${root} requiring review`, dependencyIds: [root] }) }
+  }
+  return reviewItems
 }
 
-function validateInput(input: ResearchReportKnowledgeIngestionInput): void {
-  if (!isRecord(input)) throw new KnowledgeIngestionWorkflowError('invalid_input', 'Workflow input must be an object', 'input_validation')
-  if (typeof input.workflowRunId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(input.workflowRunId) || input.workflowRunId.includes('..')) throw new KnowledgeIngestionWorkflowError('invalid_input', 'workflowRunId must be path-safe', 'input_validation')
-  if (typeof input.knowledgeBaseId !== 'string' || input.knowledgeBaseId.trim() === '') throw new KnowledgeIngestionWorkflowError('invalid_input', 'knowledgeBaseId must be non-empty', 'input_validation')
-  if (!isRecord(input.report) || !isRecord(input.report.inputRef) || !isRecord(input.report.suppliedMetadata)) throw new KnowledgeIngestionWorkflowError('invalid_input', 'report.inputRef and report.suppliedMetadata are required', 'input_validation')
-  const ref = input.report.inputRef as Record<string, unknown>
-  if (!['text', 'file', 'document_reference'].includes(String(ref.type))) throw new KnowledgeIngestionWorkflowError('invalid_input', 'inputRef.type is unsupported', 'input_validation')
-  if (ref.type === 'text' ? typeof ref.text !== 'string' : typeof ref.reference !== 'string' || String(ref.reference).trim() === '') throw new KnowledgeIngestionWorkflowError('invalid_input', 'inputRef payload is invalid', 'input_validation')
-  const metadata = input.report.suppliedMetadata as Record<string, unknown>
-  for (const field of ['title', 'publisher', 'institution', 'author', 'publishedAt', 'sourceUrl']) if (metadata[field] !== null && typeof metadata[field] !== 'string') throw new KnowledgeIngestionWorkflowError('invalid_input', `suppliedMetadata.${field} must be string or null`, 'input_validation')
-  if (!isRecord(input.options) || !['commit', 'dry_run'].includes(String(input.options.mode)) || typeof input.options.reprocess !== 'boolean') throw new KnowledgeIngestionWorkflowError('invalid_input', 'options.mode and options.reprocess are invalid', 'input_validation')
+function planChanges(input: ResearchReportKnowledgeIngestionInput, target: KnowledgeBaseTarget, trace: IngestionTrace, identity: string): PlannedResult {
+  const reviewIds = new Set(trace.reviewItems.map((item) => item.candidateId).filter((id): id is string => Boolean(id)))
+  const decisionById = new Map(trace.reconciliation.decisions.map((item) => [item.candidateId, item]))
+  const safe = trace.candidates.filter((candidate) => !reviewIds.has(candidate.candidateId) && !['user_review', 'duplicate', 'reject'].includes(decisionById.get(candidate.candidateId)?.decision ?? 'create'))
+  const allocatedSourceId = sourceIdFor(input, trace.document.rawRef)
+  const sourceMatch = [...target.index.sources.values()].find((item) => {
+    const sameUrl = input.report.suppliedMetadata.sourceUrl && item.url && input.report.suppliedMetadata.sourceUrl === item.url
+    const samePublishedDocument = input.report.suppliedMetadata.title && item.title === input.report.suppliedMetadata.title && input.report.suppliedMetadata.publishedAt && item.publishedAt === input.report.suppliedMetadata.publishedAt
+    return Boolean(sameUrl || samePublishedDocument)
+  })
+  const existingSource = sourceMatch ?? target.index.sources.get(allocatedSourceId)
+  const sourceId = existingSource?.id ?? allocatedSourceId
+  const source = safe.length
+    ? { sourceId, source: sourceFrom(trace.reportUnderstanding.sourceAssessment, input, trace.document.rawRef, sourceId), resolution: existingSource ? 'source_merge' as const : 'source_create' as const }
+    : null
+  const sourceOperations: KnowledgeChangeSetV03['sourceOperations'] = []
+  const rawRef = trace.document.rawRef as `raw-sha256-${string}`
+  if (source?.resolution === 'source_create') sourceOperations.push({ operationId: 'source-create', type: 'source_create', source: source.source })
+  if (source?.resolution === 'source_merge' && existingSource && !(existingSource.rawRefs ?? []).includes(rawRef)) {
+    sourceOperations.push({ operationId: 'source-merge', type: 'source_merge', sourceId: source.sourceId, expectedBeforeHash: hashKnowledgeObject(existingSource), addRawRefs: [rawRef] })
+  }
+
+  const resolutionById = new Map(trace.resolution.map((item) => [item.candidateId, item]))
+  const entityRefs = new Map<string, string>()
+  for (const candidate of safe) {
+    if (!('entityType' in candidate)) continue
+    const resolution = resolutionById.get(candidate.candidateId)
+    if (resolution?.outcome === 'existing_ref') entityRefs.set(candidate.candidateId, resolution.refs[0]!)
+    else entityRefs.set(candidate.candidateId, v03EntityId(candidate))
+  }
+  const mentionRefs = new Map<string, string>()
+  for (const entity of target.index.entities.values()) {
+    for (const name of [entity.name, ...(entity.aliases ?? [])]) mentionRefs.set(name.trim().toLocaleLowerCase(), entity.id)
+  }
+  for (const candidate of safe) {
+    if (!('entityType' in candidate)) continue
+    const ref = entityRefs.get(candidate.candidateId)!
+    for (const name of [candidate.name, ...candidate.aliases]) mentionRefs.set(name.trim().toLocaleLowerCase(), ref)
+  }
+
+  const existingObject = (resolution: Resolution): KnowledgeEntityV03 | KnowledgeRelationV03 | KnowledgeClaimV03 | undefined => {
+    if (resolution.kind === 'entity') return target.index.entities.get(resolution.refs[0]!)
+    if (resolution.kind === 'relation') return target.index.relations.get(resolution.refs[resolution.refs.length - 1]!)
+    return target.index.claims.get(resolution.refs[resolution.refs.length - 1]!)
+  }
+  const knowledgeOperations: KnowledgeChangeSetV03['knowledgeOperations'] = []
+  for (const candidate of safe) {
+    const resolution = resolutionById.get(candidate.candidateId)
+    if (!resolution) continue
+    const decision = decisionById.get(candidate.candidateId)
+    if (decision && ['duplicate', 'reject', 'user_review'].includes(decision.decision)) continue
+    const existing = existingObject(resolution)
+    const existingId = existing?.id
+    let id: string = existingId ?? ''
+    if (!id || decision?.decision === 'keep_both' || decision?.decision === 'create') {
+      id = 'entityType' in candidate ? entityRefs.get(candidate.candidateId)! : v03ObjectId('relationType' in candidate ? 'relation' : 'claim', candidate)
+    }
+    const refs = new Map<string, string>(mentionRefs)
+    for (const [candidateId, canonical] of entityRefs) {
+      refs.set(candidateId, canonical)
+      refs.set(`new-entity-${candidateId}`, canonical)
+    }
+    const canonical = canonicalFrom(candidate, refs, sourceId, trace.document.rawRef, id)
+    const operationId = `candidate-${candidate.candidateId}`
+    if (decision?.decision === 'merge_source' && existing && source) {
+      knowledgeOperations.push({ operationId, type: 'merge_source', knowledgeId: existing.id, expectedBeforeHash: hashKnowledgeObject(existing), addSourceRefs: [sourceId] })
+    } else if (decision?.decision === 'update_state' && existing) {
+      knowledgeOperations.push({ operationId, type: 'update', knowledgeId: existing.id, expectedBeforeHash: hashKnowledgeObject(existing), object: { ...canonical, id: existing.id } as never })
+    } else if (decision?.decision === 'supersede' && existing && 'claimType' in canonical) {
+      knowledgeOperations.push({ operationId, type: 'supersede', knowledgeId: existing.id, expectedBeforeHash: hashKnowledgeObject(existing), replacement: { ...canonical, id } as never })
+    } else if (!existing || decision?.decision === 'keep_both' || decision?.decision === 'create') {
+      knowledgeOperations.push({ operationId, type: 'create', object: canonical as never })
+    }
+  }
+  const changeSet: KnowledgeChangeSetV03 = {
+    changeSetId: safeChangeSetId(identity),
+    workflowRunId: input.workflowRunId,
+    knowledgeBaseId: input.knowledgeBaseId,
+    schemaVersion: '0.3',
+    storageFormatVersion: '1',
+    expectedBaseRevision: target.handle.revision,
+    requiresRawProvenance: true,
+    sourceOperations,
+    knowledgeOperations,
+    ingestionContext: { workflowVersion: RESEARCH_REPORT_KNOWLEDGE_INGESTION_WORKFLOW_VERSION, ingestionIdentity: identity, stages: 18, modelCalls: trace.reconciliation.decisions.length },
+  }
+  return { changeSet, source, plannedChanges: operationSummary(changeSet), safeCandidates: safe }
 }
-
-function emptyChanges() { return { sourceCreate: [] as string[], sourceMerge: [] as string[], knowledgeCreate: [] as string[], knowledgeUpdate: [] as string[], knowledgeSupersede: [] as string[], knowledgeSourceMerge: [] as string[] } }
-function emptyCounts() { return { sourceCreated: 0, sourceMerged: 0, knowledgeCreated: 0, knowledgeUpdated: 0, knowledgeSuperseded: 0, knowledgeSourceMerged: 0 } }
-
-function blockedResult(input: ResearchReportKnowledgeIngestionInput, revision: number, rawRef: string, stage: string, error: unknown): ResearchReportKnowledgeIngestionResult {
-  const item = error instanceof KnowledgeIngestionWorkflowError ? { code: error.code, message: error.message } : { code: 'workflow_error', message: error instanceof Error ? error.message : String(error) }
-  return { workflowRunId: input.workflowRunId, knowledgeBaseId: input.knowledgeBaseId, mode: input.options.mode, status: 'blocked', baseRevision: revision, finalRevision: revision, raw: { rawRef, persisted: false, created: false, reused: false }, source: { sourceId: null, assessment: null }, filtering: { total: 0, relevant: 0, contextual: 0, irrelevant: 0 }, candidates: { extracted: 0, admitted: 0, rejected: 0, mapped: 0, partiallyMapped: 0, unmapped: 0, duplicates: 0, validationRejected: 0 }, changes: emptyCounts(), plannedChanges: emptyChanges(), userReview: [], schemaGaps: [], validation: null, failureStage: stage, errors: [item] }
+function operationSummary(changeSet: KnowledgeChangeSetV03): ResearchReportKnowledgeIngestionResult['plannedChanges'] { const result = emptyChanges(); for (const op of changeSet.sourceOperations) op.type === 'source_create' ? result.sourceCreate.push(op.source.id) : result.sourceMerge.push(op.sourceId); for (const op of changeSet.knowledgeOperations) op.type === 'create' ? result.knowledgeCreate.push(op.object.id) : op.type === 'update' ? result.knowledgeUpdate.push(op.knowledgeId) : op.type === 'supersede' ? result.knowledgeSupersede.push(op.knowledgeId) : result.knowledgeSourceMerge.push(op.knowledgeId); return result }
+function canonicalFrom(candidate: Candidate, refs: Map<string, string>, sourceId: string, rawRef: string, id: string): KnowledgeEntityV03 | KnowledgeRelationV03 | KnowledgeClaimV03 {
+  if ('entityType' in candidate) {
+    const { schemaGap: _schemaGap, ...canonicalFields } = candidate.semanticFields
+    return {
+      ...canonicalFields,
+      id: id as KnowledgeEntityV03['id'],
+      type: candidate.entityType,
+      name: candidate.name,
+      aliases: candidate.aliases,
+      ...(candidate.description ? { description: candidate.description } : {}),
+      lifecycle: { status: 'active' },
+    } as unknown as KnowledgeEntityV03
+  }
+  if ('relationType' in candidate) {
+    const source = candidate.sourceMention.existingRef ?? refs.get(candidate.sourceMention.text) ?? ''
+    const target = candidate.targetMention.existingRef ?? refs.get(candidate.targetMention.text) ?? ''
+    return {
+      id: id as KnowledgeRelationV03['id'],
+      type: candidate.relationType,
+      sourceRef: source as KnowledgeRelationV03['sourceRef'],
+      targetRef: target as KnowledgeRelationV03['targetRef'],
+      ...(Object.keys(candidate.attributes).length ? { attributes: candidate.attributes } : {}),
+      sourceRefs: [`${sourceId}` as `source:${string}`],
+      lifecycle: { status: 'active' },
+    } as unknown as KnowledgeRelationV03
+  }
+  const subjectRefs = candidate.subjectMentions.map((mention) => mention.existingRef ?? refs.get(mention.text)).filter((ref): ref is string => Boolean(ref))
+  return {
+    id: id as KnowledgeClaimV03['id'],
+    claimType: candidate.claimType,
+    statement: candidate.statement,
+    subjectRefs: subjectRefs as KnowledgeClaimV03['subjectRefs'],
+    ...(candidate.temporal ? { temporal: candidate.temporal as unknown as KnowledgeClaimV03['temporal'] } : {}),
+    ...(candidate.structuredValue ? { structuredValue: candidate.structuredValue as unknown as KnowledgeClaimV03['structuredValue'] } : {}),
+    sourceRefs: [`${sourceId}` as `source:${string}`],
+    provenance: [{ sourceRef: `${sourceId}` as `source:${string}`, rawRef: `${rawRef}` as `raw-sha256-${string}`, locator: null, chunkRef: candidate.evidenceChunkRefs[0] ?? null }],
+    confidence: candidate.semanticConfidence,
+    lifecycle: { status: 'active' },
+  } as unknown as KnowledgeClaimV03
 }
 
 export class ResearchReportKnowledgeIngestionWorkflow {
   private readonly inputResolver: ResearchReportInputResolver
-  private readonly validation: KnowledgeValidationSkill
-  private readonly writer: { write(handle: KnowledgeBaseHandle, receipt: ValidatedKnowledgeChangeSet): Promise<KnowledgeWriteResult> }
+  private readonly validation: NonNullable<ResearchReportKnowledgeIngestionWorkflowOptions['validation']>
+  private readonly writer: NonNullable<ResearchReportKnowledgeIngestionWorkflowOptions['writer']>
   private readonly clock: () => string
   private readonly logs = new KnowledgeIngestionLogStore()
-
-  constructor(private readonly options: ResearchReportKnowledgeIngestionWorkflowOptions) {
-    this.inputResolver = options.inputResolver ?? new DefaultResearchReportInputResolver()
-    this.clock = options.clock ?? (() => new Date().toISOString())
-    this.validation = options.validation ?? new KnowledgeValidationSkill({ loader: new KnowledgeBaseLoader() })
-    this.writer = options.writer ?? new KnowledgeWriter({ loader: new KnowledgeBaseLoader(), stagedStateValidator: createKnowledgeStagedStateValidator(this.validation) })
-  }
+  constructor(private readonly options: ResearchReportKnowledgeIngestionWorkflowOptions) { this.inputResolver = options.inputResolver ?? new DefaultResearchReportInputResolver(); this.clock = options.clock ?? (() => new Date().toISOString()); this.validation = options.validation ?? new KnowledgeValidationSkill({ loader: new KnowledgeBaseLoader() }); this.writer = options.writer ?? new KnowledgeWriter({ loader: new KnowledgeBaseLoader(), stagedStateValidator: createKnowledgeStagedStateValidator(this.validation as KnowledgeValidationSkill) }) }
 
   async execute(input: ResearchReportKnowledgeIngestionInput): Promise<ResearchReportKnowledgeIngestionResult> {
-    validateInput(input)
-    let target: KnowledgeBaseTarget | undefined
-    let rawRef = ''
-    let ingestionIdentity = ''
-    let raw = { persisted: false, created: false, reused: false }
+    const calls: ModelCallRecord[] = []; let target: KnowledgeBaseTarget | undefined; let rawRef = ''; let identity = ''; let raw = { persisted: false, created: false, reused: false }
     try {
-      try { target = await this.options.targetResolver.resolve(input.knowledgeBaseId) } catch (error) { throw new KnowledgeIngestionWorkflowError('target_resolution_failed', error instanceof Error ? error.message : String(error), 'intake_target_resolution') }
-      if (target.handle.knowledgeBaseId !== input.knowledgeBaseId) throw new KnowledgeIngestionWorkflowError('target_mismatch', 'Target resolver returned a different Knowledge Base', 'intake_target_resolution')
-      if (target.handle.schemaVersion !== '0.2' || target.handle.storageFormatVersion !== '1') throw new KnowledgeIngestionWorkflowError('unsupported_schema', 'Only Schema 0.2 / Storage 1 is supported by D2', 'intake_target_resolution')
-      if (input.options.mode === 'commit' && (target.handle.status !== 'active' || !target.handle.writable)) throw new KnowledgeIngestionWorkflowError('target_not_writable', 'Commit requires an active writable Knowledge Base', 'intake_target_resolution')
-      let resolved
-      try { resolved = await this.inputResolver.resolve(input.report.inputRef) } catch (error) { if (error instanceof KnowledgeIngestionWorkflowError) throw error; throw new KnowledgeIngestionWorkflowError('document_resolution_failed', error instanceof Error ? error.message : String(error), 'document_resolution') }
-      const identity = deriveRawIdentity(resolved.rawBytes)
-      rawRef = identity.rawRef
-      if (input.options.mode === 'commit') {
-        let archived
-        try { archived = await archiveRaw(target.handle, { bytes: resolved.rawBytes, originalFilename: resolved.originalFilename, mediaType: resolved.mediaType, suppliedMetadata: { title: input.report.suppliedMetadata.title, institution: input.report.suppliedMetadata.institution, author: input.report.suppliedMetadata.author, publishedAt: input.report.suppliedMetadata.publishedAt, sourceUrl: input.report.suppliedMetadata.sourceUrl } }, { clock: this.clock }) } catch (error) { throw new KnowledgeIngestionWorkflowError('raw_archive_failed', error instanceof Error ? error.message : String(error), 'raw_archive') }
-        raw = { persisted: true, created: !archived.reused, reused: Boolean(archived.reused) }
-      }
-      ingestionIdentity = `sha256:${createHash('sha256').update(`${input.knowledgeBaseId}|${rawRef}|${RESEARCH_REPORT_KNOWLEDGE_INGESTION_WORKFLOW_VERSION}|${target.handle.schemaVersion}`).digest('hex')}`
-      if (input.options.mode === 'commit' && !input.options.reprocess) {
-        const previous = await this.logs.findSuccessfulByIdentity(target.handle, ingestionIdentity)
-        if (previous) return { ...blockedResult(input, target.handle.revision, rawRef, '', new Error('unused')), status: previous.status === 'completed_with_review' ? 'completed_with_review' : 'completed', failureStage: undefined, errors: [], raw: { rawRef, ...raw }, ingestionLogRef: typeof previous.ingestionLogRef === 'string' ? previous.ingestionLogRef : undefined }
-      }
-      const document: NormalizedResearchDocument = { rawRef, suppliedMetadata: clone(input.report.suppliedMetadata), normalizedText: resolved.normalizedText, chunks: resolved.chunks }
-      const trace = await this.curate(input, target, document)
-      return await this.planAndMaybeWrite(input, target, trace, ingestionIdentity, raw)
-    } catch (error) {
-      const stage = error instanceof KnowledgeIngestionWorkflowError ? (error.stage ?? (rawRef === '' ? 'document_resolution' : raw.persisted ? 'curation' : 'raw_archive')) : (rawRef === '' ? 'document_resolution' : raw.persisted ? 'curation' : 'raw_archive')
-      const result = blockedResult(input, target?.handle.revision ?? 0, rawRef, stage, error)
-      result.raw = { rawRef, ...raw }
-      if (target && input.options.mode === 'commit' && raw.persisted && rawRef) await this.attachBlockedLog(result, input, target, ingestionIdentity, stage)
-      return result
-    }
+      validInput(input); target = await this.options.targetResolver.resolve(input.knowledgeBaseId); if (target.handle.knowledgeBaseId !== input.knowledgeBaseId || target.handle.schemaVersion !== '0.3' || target.handle.storageFormatVersion !== '1') throw new KnowledgeIngestionWorkflowError('unsupported_schema', 'Workflow requires Schema 0.3 / Storage 1 native runtime', 'intake_target_resolution'); if (!(target.index instanceof KnowledgeIndexV03)) throw new KnowledgeIngestionWorkflowError('unsupported_schema', 'Workflow target must use native KnowledgeIndexV03', 'intake_target_resolution'); if (input.options.mode === 'commit' && (target.handle.status !== 'active' || !target.handle.writable)) throw new KnowledgeIngestionWorkflowError('target_not_writable', 'Commit requires an active writable Knowledge Base', 'intake_target_resolution')
+      const resolved = await this.inputResolver.resolve(input.report.inputRef); rawRef = deriveRawIdentity(resolved.rawBytes).rawRef; if (input.options.mode === 'commit') { const archived = await archiveRaw(target.handle, { bytes: resolved.rawBytes, originalFilename: resolved.originalFilename, mediaType: resolved.mediaType, suppliedMetadata: input.report.suppliedMetadata }, { clock: this.clock }); raw = { persisted: true, created: !archived.reused, reused: Boolean(archived.reused) } }
+      identity = `sha256:${digest(`${input.knowledgeBaseId}|${rawRef}|${RESEARCH_REPORT_KNOWLEDGE_INGESTION_WORKFLOW_VERSION}`)}`; if (input.options.mode === 'commit' && !input.options.reprocess) { const previous = await this.logs.findSuccessfulByIdentity(target.handle, identity); if (previous) return this.replayedResult(input, target.handle.revision, identity, rawRef, raw, previous) }
+      const document: NormalizedResearchDocument = { rawRef, suppliedMetadata: clone(input.report.suppliedMetadata), normalizedText: resolved.normalizedText, chunks: resolved.chunks }; const trace = await this.curate(input, target, document, calls); const planned = planChanges(input, target, trace, identity); const validation = await this.validation.validateChangeSet(target.handle, planned.changeSet, input.options.mode === 'dry_run' ? { mode: 'dry_run', virtualRawRefs: [rawRef] } : { mode: 'commit' }); const base = this.result(input, target.handle.revision, identity, raw, trace, planned, validation.report, calls)
+      if (validation.report.status === 'failed') { base.status = 'blocked'; base.failureStage = 'validation'; base.errors = validation.report.errors.map((item) => ({ code: item.code, message: item.message })); if (raw.persisted) await this.attachBlockedLog(base, input, target, identity, 'validation'); return base }
+      if (input.options.mode === 'dry_run') return base; if (!validation.validatedChangeSet) throw new KnowledgeIngestionWorkflowError('validation_required', 'Commit requires a validated Schema 0.3 receipt', 'validation'); const write = await this.writer.write(target.handle, validation.validatedChangeSet); if (write.status === 'rejected' || write.status === 'failed') { base.status = 'blocked'; base.failureStage = 'writer'; base.errors = [{ code: write.error?.code ?? 'writer_failed', message: write.error?.message ?? `Writer returned ${write.status}` }]; if (raw.persisted) await this.attachBlockedLog(base, input, target, identity, 'writer'); return base } base.finalRevision = write.committedRevision; base.committedChanges = { sourceCreated: write.operations.sourceCreated.length, sourceMerged: write.operations.sourceMerged.length, knowledgeCreated: write.operations.knowledgeCreated.length, knowledgeUpdated: write.operations.knowledgeUpdated.length, knowledgeSuperseded: write.operations.knowledgeSuperseded.length, knowledgeSourceMerged: write.operations.knowledgeSourceMerged.length }; base.status = plannedStatus(trace); await this.logs.writeBlocked(target.handle, { workflowRunId: input.workflowRunId, knowledgeBaseId: input.knowledgeBaseId, status: base.status, ingestionIdentity: identity, rawRef: base.raw.rawRef, ingestionContext: { workflowVersion: RESEARCH_REPORT_KNOWLEDGE_INGESTION_WORKFLOW_VERSION, ingestionIdentity: identity, modelCalls: calls, plannedChanges: base.plannedChanges, committedChanges: base.committedChanges }, schemaGaps: base.schemaGaps, reviewItems: base.reviewItems }); return base
+    } catch (error) { const result = blocked(input, target?.handle.revision ?? 0, rawRef, identity, calls, error instanceof KnowledgeIngestionWorkflowError ? error.stage ?? 'workflow' : 'workflow', error); result.raw = { rawRef, ...raw }; if (target && raw.persisted) await this.attachBlockedLog(result, input, target, identity, result.failureStage ?? 'workflow'); return result }
   }
 
-  private async curate(input: ResearchReportKnowledgeIngestionInput, target: KnowledgeBaseTarget, document: NormalizedResearchDocument): Promise<IngestionTrace> {
-    const context = createKnowledgeScopeContext(target.handle)
-    let sourceAssessment: SourceAssessment
-    let relevance: IngestionTrace['relevance']
-    let candidates: KnowledgeCandidate[]
-    try {
-      sourceAssessment = await this.options.curation.assessSource({ workflowRunId: input.workflowRunId, knowledgeBaseId: input.knowledgeBaseId, document })
-      relevance = await this.options.curation.filterRelevantContent({ document, context, sourceAssessment })
-      const relevantChunks = document.chunks.filter((chunk) => relevance.some((decision) => decision.chunkId === chunk.chunkId && decision.decision === 'relevant'))
-      candidates = relevantChunks.length === 0 ? [] : await this.options.curation.extractKnowledgeCandidates({ workflowRunId: input.workflowRunId, knowledgeBaseId: input.knowledgeBaseId, document, sourceAssessment, relevantChunks, context })
-    } catch (error) { if (error instanceof KnowledgeIngestionWorkflowError) throw error; throw new KnowledgeIngestionWorkflowError('curation_failed', error instanceof Error ? error.message : String(error), 'curation') }
-    const admissions = []
-    const admitted: KnowledgeCandidate[] = []
-    for (const candidate of candidates) {
-      try { const decision = await this.options.curation.assessKnowledgeAdmission({ candidate, sourceAssessment, context }); admissions.push(decision); if (decision.decision === 'admit') admitted.push({ ...candidate, admission: 'admit' }) } catch (error) { throw new KnowledgeIngestionWorkflowError('admission_failed', error instanceof Error ? error.message : String(error), 'curation') }
-    }
-    let mappings: KnowledgeMappingResult[] = []
-    if (admitted.length > 0) try { mappings = await this.options.curation.mapKnowledgeCandidates({ candidates: admitted, context }) } catch (error) { throw new KnowledgeIngestionWorkflowError('mapping_failed', error instanceof Error ? error.message : String(error), 'curation') }
-    let schemaGaps: IngestionTrace['schemaGaps'] = []
-    if (mappings.length > 0) try { schemaGaps = await this.options.curation.detectSchemaGaps({ workflowRunId: input.workflowRunId, knowledgeBaseId: input.knowledgeBaseId, candidates: mappings, context }) } catch (error) { throw new KnowledgeIngestionWorkflowError('schema_gap_detection_failed', error instanceof Error ? error.message : String(error), 'curation') }
-    try { const analysis = await this.resolveAndAnalyze(input, target, mappings, sourceAssessment); return { document, context, sourceAssessment, relevance, candidates, admissions, mappings, schemaGaps, conflicts: analysis.conflicts, plans: analysis.plans } } catch (error) { if (error instanceof KnowledgeIngestionWorkflowError) throw error; throw new KnowledgeIngestionWorkflowError('reference_resolution_failed', error instanceof Error ? error.message : String(error), 'reference_resolution') }
+  private async call<T>(calls: ModelCallRecord[], operation: ModelCallRecord['operation'], groupId: string | undefined, invoke: () => Promise<T>): Promise<T> { const item: ModelCallRecord = { operation, ...(groupId ? { groupId } : {}), attempted: true, succeeded: false, retryCount: 0 }; calls.push(item); try { const result = await invoke(); item.succeeded = true; return result } catch (error) { if (error instanceof KnowledgeCurationError) throw error; throw new KnowledgeIngestionWorkflowError('curation_failed', error instanceof Error ? error.message : String(error), 'curation') } }
+  private async curate(input: ResearchReportKnowledgeIngestionInput, target: KnowledgeBaseTarget, document: NormalizedResearchDocument, calls: ModelCallRecord[]): Promise<IngestionTrace> { const access = new KnowledgeAccessSkill({ handle: target.handle, index: target.index }); const broadEntities = ['investment_theme', 'industry', 'company', 'product', 'technology'].flatMap((type) => access.searchEntities('', type)); const knowledgeContext = createKnowledgeScopeContext(target.handle, target.index); knowledgeContext.entities = broadEntities; const reportUnderstanding = await this.call(calls, 'understandReport', undefined, () => this.options.curation.understandReport({ workflowRunId: input.workflowRunId, knowledgeBaseId: input.knowledgeBaseId, document, themeContext: knowledgeContext })); const theme = themeHandling(reportUnderstanding); const formed = sectionAndBatches(document); document.sections = formed.sections; const extracted: ExtractKnowledgeOutput = { entities: [], relations: [], claims: [] }; const extractionSummary = emptyExtraction(); for (const batch of formed.batches) { extractionSummary.batchesAttempted += 1; try { const result = await this.call(calls, 'extractKnowledge', batch.batchId, () => this.options.curation.extractKnowledge({ workflowRunId: input.workflowRunId, knowledgeBaseId: input.knowledgeBaseId, document, batch, reportUnderstanding, knowledgeContext })); extracted.entities.push(...result.entities); extracted.relations.push(...result.relations); extracted.claims.push(...result.claims); extractionSummary.batchesSucceeded += 1 } catch (error) { extractionSummary.batchesFailed += 1; throw error } } extractionSummary.entities = extracted.entities.length; extractionSummary.relations = extracted.relations.length; extractionSummary.claims = extracted.claims.length; const consolidated = consolidate(candidatesOf(extracted)); const entityTemp = new Map<string, string>(); const resolutions = consolidated.values.map((candidate) => resolutionFor(candidate, knowledgeContext, entityTemp)); const preciseEntities = resolutions.filter((item) => item.outcome === 'existing_ref').flatMap((item) => item.refs).filter((ref) => target.index.entities.has(ref)); const preciseRelations = preciseEntities.flatMap((ref) => access.getRelations(ref)); const preciseClaims = preciseEntities.flatMap((ref) => access.getClaims(ref)); const preciseContext: KnowledgeContext = { ...knowledgeContext, relations: [...new Map([...knowledgeContext.relations, ...preciseRelations].map((item) => [item.id, item])).values()], claims: [...new Map([...(knowledgeContext.claims ?? []), ...preciseClaims].map((item) => [item.id, item])).values()] }; const precise = preciseGroups(consolidated.values, resolutions, preciseContext); const reconciliation = { decisions: [] as ReconciliationDecision[] }; for (const group of precise) { const result = await this.call(calls, 'reconcileKnowledge', group.groupId, () => this.options.curation.reconcileKnowledge({ workflowRunId: input.workflowRunId, knowledgeBaseId: input.knowledgeBaseId, document, groups: [group], sourceAssessment: reportUnderstanding.sourceAssessment })); reconciliation.decisions.push(...result.decisions) } const gapCandidates = consolidated.values.filter((candidate) => 'entityType' in candidate && record(candidate.semanticFields) && candidate.semanticFields.schemaGap === true).map((candidate) => ({ candidateId: candidate.candidateId, kind: 'entity', semantic: candidate })); const schemaGaps = gapCandidates.length ? await this.call(calls, 'analyzeSchemaGaps', undefined, () => this.options.curation.analyzeSchemaGaps({ workflowRunId: input.workflowRunId, knowledgeBaseId: input.knowledgeBaseId, document, candidates: gapCandidates, knowledgeContext })) : { gaps: [] }; const reviewItems: ReviewItem[] = theme.reviewItems.map((item) => ({ category: item.category, reason: item.reason, dependencyIds: [] })); const reviewIds = new Set(resolutions.filter((item) => item.outcome === 'ambiguous' || item.outcome === 'invalid').map((item) => item.candidateId)); for (const resolution of resolutions.filter((item) => reviewIds.has(item.candidateId))) reviewItems.push({ candidateId: resolution.candidateId, category: resolution.outcome === 'ambiguous' ? 'reference_ambiguity' : 'invalid_reference', reason: `${resolution.outcome} reference resolution`, dependencyIds: [] }); for (const decision of reconciliation.decisions.filter((item) => item.requiresUserReview || item.decision === 'user_review')) reviewItems.push({ candidateId: decision.candidateId, category: decision.classification, reason: decision.reason, dependencyIds: [] }); return { document, knowledgeContext, themeHandling: theme, batches: formed.summary, extraction: extracted, candidates: consolidated.values, consolidation: consolidated.summary, resolution: resolutions, preciseGroups: precise, reconciliation, schemaGaps, reviewItems: reviewClosure(consolidated.values, reviewItems), reportUnderstanding }
   }
 
-  private async resolveAndAnalyze(input: ResearchReportKnowledgeIngestionInput, target: KnowledgeBaseTarget, mappings: KnowledgeMappingResult[], sourceAssessment: SourceAssessment): Promise<{ conflicts: ConflictDecision[]; plans: ResolvedCandidatePlan[] }> {
-    const access = this.options.accessFactory?.(target) ?? new KnowledgeAccessSkill({ handle: target.handle, index: target.index })
-    const candidateIds = new Map<string, string>()
-    const entityIssues = new Map<string, 'ambiguous' | 'collision'>()
-    for (const mapping of mappings.filter((item) => item.candidateType === 'entity' && item.mappingStatus !== 'unmapped')) {
-      const object = mapping.proposedKnowledge.object ?? {}
-      const name = text(object.name) || text(mapping.entityResolution?.mention) || mapping.claim.normalizedStatement.slice(0, 80)
-      const type = validEntityType(text(object.type)) ? text(object.type) : 'product'
-      const suggested = text(mapping.entityResolution?.suggestedEntityRef) || text(object.id)
-      const existing = findEntity(access, suggested, name, type)
-      if (existing.ambiguous) { entityIssues.set(mapping.candidateId, 'ambiguous'); continue }
-      const id = existing.id ?? allocateEntityId(type, name)
-      const collision = target.index.entities.get(id)
-      if (collision && !sameName(collision.name, name)) { entityIssues.set(mapping.candidateId, 'collision'); continue }
-      candidateIds.set(mapping.candidateId, id)
-    }
-    const plans: ResolvedCandidatePlan[] = []
-    const conflicts: ConflictDecision[] = []
-    for (const mapping of mappings) {
-      if (mapping.mappingStatus === 'unmapped') { plans.push({ candidate: mapping, mapping, resolvedObject: null, resolvedRefs: [], existingKnowledge: [], resolutionStatus: 'unmapped', reason: 'Curation mapping was unmapped' }); continue }
-      if (entityIssues.get(mapping.candidateId) === 'ambiguous') { plans.push({ candidate: mapping, mapping, resolvedObject: null, resolvedRefs: [], existingKnowledge: [], resolutionStatus: 'user_review', reason: 'Multiple exact Entity matches' }); continue }
-      if (entityIssues.get(mapping.candidateId) === 'collision') { plans.push({ candidate: mapping, mapping, resolvedObject: null, resolvedRefs: [], existingKnowledge: [], resolutionStatus: 'planning_rejected', reason: 'Deterministic Entity ID collision' }); continue }
-      const object = mapping.proposedKnowledge.object
-      if (!object) { plans.push({ candidate: mapping, mapping, resolvedObject: null, resolvedRefs: [], existingKnowledge: [], resolutionStatus: 'unmapped', reason: 'No mapped object was produced' }); continue }
-      const resolved = resolveDraft(clone(object), mapping, access, candidateIds)
-      if (resolved.ambiguous) { plans.push({ candidate: mapping, mapping, resolvedObject: null, resolvedRefs: [], existingKnowledge: [], resolutionStatus: 'user_review', reason: 'Multiple exact Entity matches' }); continue }
-      if (!resolved.draft) { plans.push({ candidate: mapping, mapping, resolvedObject: null, resolvedRefs: [], existingKnowledge: [], resolutionStatus: 'unmapped', reason: 'Required reference could not be resolved' }); continue }
-      const matches = retrieveExisting(access, mapping, resolved.draft.object)
-      const existing = { knowledgeBaseId: input.knowledgeBaseId, candidateId: mapping.candidateId, matchedKnowledge: matches }
-      let conflict: ConflictDecision
-      try { conflict = await this.options.curation.analyzeKnowledgeConflicts({ candidate: mapping, existing, sourceAssessment }) } catch (error) { throw new KnowledgeIngestionWorkflowError('conflict_analysis_failed', error instanceof Error ? error.message : String(error), 'conflict_resolution') }
-      conflicts.push(conflict)
-      const resolutionStatus: ResolvedCandidatePlan['resolutionStatus'] = conflict.requiresUserReview || conflict.resolution === 'user_review' ? 'user_review' : conflict.resolution === 'reject' || conflict.conflictType === 'duplicate' ? 'rejected' : 'eligible'
-      plans.push({ candidate: mapping, mapping, resolvedObject: resolved.draft.object, resolvedRefs: resolved.draft.resolvedRefs, existingKnowledge: matches, conflict, resolutionStatus })
-    }
-    return { conflicts, plans }
-  }
 
-  private async planAndMaybeWrite(input: ResearchReportKnowledgeIngestionInput, target: KnowledgeBaseTarget, trace: IngestionTrace, identity: string, raw: { persisted: boolean; created: boolean; reused: boolean }): Promise<ResearchReportKnowledgeIngestionResult> {
-    const sourceId = allocateSourceId({ sourceUrl: input.report.suppliedMetadata.sourceUrl, publishedAt: input.report.suppliedMetadata.publishedAt, title: input.report.suppliedMetadata.title, rawRef: trace.document.rawRef })
-    let finalPlans = trace.plans
-    let operationPlans = finalPlans.filter((plan) => plan.resolutionStatus === 'eligible')
-    let validationRejectedCandidateIds = new Set<string>()
-    let prepared = await this.validatePlan(input, target, trace, identity, raw, sourceId, finalPlans, operationPlans, validationRejectedCandidateIds)
-    let validation = prepared.validation
-    if (validation.report.status === 'failed') {
-      const candidateOperationIds = new Set(validation.report.errors.map((error) => error.operationId).filter((id): id is string => Boolean(id)))
-      const operationToPlan = new Map(finalPlans.filter((plan) => plan.resolutionStatus === 'eligible').map((plan) => [operationIdForPlan(plan), plan]))
-      const candidateOperationIdSet = new Set([...candidateOperationIds].filter((operationId) => operationToPlan.has(operationId)))
-      const hasUnmappedOperation = [...candidateOperationIds].some((operationId) => !operationToPlan.has(operationId))
-      const systemic = hasUnmappedOperation || validation.report.errors.some((error) => !error.operationId || ['STALE_BASE_REVISION', 'CHANGESET_SCHEMA_MISMATCH', 'CHANGESET_BASE_READ_ERROR', 'RAW_REGISTRY_READ_ERROR', 'RAW_REGISTRY_SCHEMA', 'RAW_BUNDLE_INVALID', 'WRITE_NOT_SUPPORTED', 'CHANGESET_OPERATIONS'].includes(error.code))
-      if (!systemic && candidateOperationIdSet.size > 0) {
-        validationRejectedCandidateIds = new Set([...candidateOperationIdSet].map((operationId) => operationToPlan.get(operationId)?.candidate.candidateId).filter((id): id is string => Boolean(id)))
-        finalPlans = finalPlans.map((plan) => candidateOperationIdSet.has(operationIdForPlan(plan)) ? { ...plan, resolutionStatus: 'validation_rejected', reason: 'Candidate ChangeSet operation failed validation' } : plan)
-        operationPlans = finalPlans.filter((plan) => plan.resolutionStatus === 'eligible')
-        prepared = await this.validatePlan(input, target, trace, identity, raw, sourceId, finalPlans, operationPlans, validationRejectedCandidateIds)
-        validation = prepared.validation
-      }
-      if (validation.report.status === 'failed') {
-        const blocked = makeResult(input, target.handle.revision, trace, finalPlans, raw, validation.report, sourceId, prepared.changeSet)
-        blocked.status = 'blocked'; blocked.failureStage = 'validation'; blocked.errors = validation.report.errors.map((item) => ({ code: item.code, message: item.message })); await this.attachBlockedLog(blocked, input, target, identity, 'validation'); return blocked
-      }
-    }
-    const base = makeResult(input, target.handle.revision, trace, finalPlans, raw, validation.report, sourceId, prepared.changeSet)
-    if (input.options.mode === 'dry_run') return base
-    if (!validation.validatedChangeSet) { base.status = 'blocked'; base.failureStage = 'validation'; base.errors = [{ code: 'validation_required', message: 'Commit requires a validated ChangeSet receipt' }]; await this.attachBlockedLog(base, input, target, identity, 'validation'); return base }
-    let writeResult: KnowledgeWriteResult
-    try { writeResult = await this.writer.write(target.handle, validation.validatedChangeSet) } catch (error) { throw new KnowledgeIngestionWorkflowError('writer_failed', error instanceof Error ? error.message : String(error), 'writer') }
-    if (writeResult.status === 'rejected' || writeResult.status === 'failed') { base.status = 'blocked'; base.failureStage = 'writer'; base.errors = [{ code: writeResult.error?.code ?? 'writer_failed', message: writeResult.error?.message ?? `Writer returned ${writeResult.status}` }]; await this.attachBlockedLog(base, input, target, identity, 'writer'); return base }
-    base.finalRevision = writeResult.committedRevision; base.changes = { sourceCreated: writeResult.operations.sourceCreated.length, sourceMerged: writeResult.operations.sourceMerged.length, knowledgeCreated: writeResult.operations.knowledgeCreated.length, knowledgeUpdated: writeResult.operations.knowledgeUpdated.length, knowledgeSuperseded: writeResult.operations.knowledgeSuperseded.length, knowledgeSourceMerged: writeResult.operations.knowledgeSourceMerged.length }; base.ingestionLogRef = writeResult.ingestionLogRef; base.status = deriveWorkflowCompletionStatus(finalPlans, trace.schemaGaps); return base
-  }
-
-  private async validatePlan(input: ResearchReportKnowledgeIngestionInput, target: KnowledgeBaseTarget, trace: IngestionTrace, identity: string, raw: { persisted: boolean; created: boolean; reused: boolean }, sourceId: string, allPlans: ResolvedCandidatePlan[], operationPlans: ResolvedCandidatePlan[], validationRejectedCandidateIds: ReadonlySet<string>): Promise<{ validation: ChangeSetValidationResult; changeSet: KnowledgeChangeSet }> {
-    const source = buildSource(sourceId, input, trace.sourceAssessment, trace.document.rawRef)
-    const sourceOperations: KnowledgeChangeSet['sourceOperations'] = []
-    const knowledgeOperations: KnowledgeChangeSet['knowledgeOperations'] = []
-    if (operationPlans.length > 0) {
-      const existing = target.index.sources.get(sourceId)
-      if (!existing) sourceOperations.push({ operationId: 'source-create', type: 'source_create', source })
-      else if (!(existing.rawRefs ?? []).includes(trace.document.rawRef)) sourceOperations.push({ operationId: 'source-merge', type: 'source_merge', sourceId, expectedBeforeHash: hashKnowledgeObject(existing), addRawRefs: [trace.document.rawRef], metadataPatch: sourceMetadataPatch(existing, source) })
-    }
-    for (const plan of operationPlans) {
-      if (!plan.resolvedObject || !plan.conflict) continue
-      const operationId = operationIdForPlan(plan)
-      const object = withSourceRef(plan.resolvedObject as KnowledgeWritableObject, sourceId)
-      const existing = plan.existingKnowledge[0]
-      if (plan.conflict.resolution === 'merge_source' && existing) knowledgeOperations.push({ operationId, type: 'merge_source', knowledgeId: existing.knowledgeId, expectedBeforeHash: existing.semanticHash, addSourceRefs: [sourceId] })
-      else if (plan.conflict.resolution === 'update' && existing) knowledgeOperations.push({ operationId, type: 'update', knowledgeId: existing.knowledgeId, expectedBeforeHash: existing.semanticHash, object: { ...object, id: existing.knowledgeId } as KnowledgeWritableObject })
-      else if (plan.conflict.resolution === 'supersede' && existing) knowledgeOperations.push({ operationId, type: 'supersede', knowledgeId: existing.knowledgeId, expectedBeforeHash: existing.semanticHash, replacement: object })
-      else if (plan.conflict.resolution === 'create' || plan.conflict.resolution === 'keep_both' || plan.conflict.conflictType === 'none') knowledgeOperations.push({ operationId, type: 'create', object })
-    }
-    const changeSet: KnowledgeChangeSet = { changeSetId: changeSetId(identity, input), workflowRunId: input.workflowRunId, knowledgeBaseId: input.knowledgeBaseId, schemaVersion: target.handle.schemaVersion, expectedBaseRevision: target.handle.revision, requiresRawProvenance: true, sourceOperations, knowledgeOperations, ingestionContext: auditContext(identity, trace, allPlans, operationPlans, raw, operationPlans.length > 0 ? sourceId : null, validationRejectedCandidateIds.size) }
-    return { validation: await this.validation.validateChangeSet(target.handle, changeSet, input.options.mode === 'dry_run' ? { mode: 'dry_run', virtualRawRefs: [trace.document.rawRef] } : { mode: 'commit' }), changeSet }
-  }
-
-  private async attachBlockedLog(result: ResearchReportKnowledgeIngestionResult, input: ResearchReportKnowledgeIngestionInput, target: KnowledgeBaseTarget, identity: string, stage: string): Promise<void> {
-    if (!result.raw.persisted) return
-    try { result.ingestionLogRef = await this.logs.writeBlocked(target.handle, { workflowRunId: input.workflowRunId, knowledgeBaseId: input.knowledgeBaseId, status: 'blocked', ingestionIdentity: identity, rawRef: result.raw.rawRef, failureStage: stage, errors: result.errors, filterSummary: result.filtering, candidateSummary: result.candidates, validationRejects: result.candidates.validationRejected, userReview: result.userReview, schemaGaps: result.schemaGaps, workflowStatus: 'blocked' }) } catch (error) { result.errors.push({ code: 'ingestion_log_failed', message: error instanceof Error ? error.message : String(error) }) }
-  }
-}
-
-function validEntityType(value: string): boolean { return ['industry', 'segment', 'company', 'product', 'technology'].includes(value) }
-function findEntity(access: KnowledgeAccessSkill, suggested: string, name: string, type: string): ReferenceResolution {
-  if (suggested) {
-    try { return { id: access.getEntity(suggested).id } } catch (error) { if (!(error instanceof KnowledgeError) || error.code !== 'NotFound') throw error }
-  }
-  const results = (validEntityType(type) ? access.searchEntities(name, type) : ['industry', 'segment', 'company', 'product', 'technology'].flatMap((kind) => access.searchEntities(name, kind))).filter((item) => sameName(item.name, name))
-  if (results.length > 1) return { ambiguous: true }
-  return { id: results[0]?.id }
-}
-
-function resolveDraft(object: Record<string, unknown>, mapping: KnowledgeMappingResult, access: KnowledgeAccessSkill, candidateIds: Map<string, string>): { draft?: ResolvedDraft; ambiguous?: boolean } {
-  const result = stripModelIdentity(object)
-  const refs: string[] = []
-  const resolveRef = (value: unknown, expectedType?: string): ReferenceResolution => {
-    if (typeof value !== 'string' || value.trim() === '') return {}
-    if (candidateIds.has(value)) return { id: candidateIds.get(value) }
-    try { return { id: access.getEntity(value).id } } catch (error) { if (!(error instanceof KnowledgeError) || error.code !== 'NotFound') throw error }
-    const kinds = validEntityType(expectedType ?? '') ? [expectedType as string] : ['industry', 'segment', 'company', 'product', 'technology']
-    const results = kinds.flatMap((kind) => access.searchEntities(value, kind)).filter((item) => sameName(item.name, value))
-    if (results.length > 1) return { ambiguous: true }
-    return { id: results[0]?.id }
-  }
-  if (mapping.candidateType === 'entity') {
-    const name = text(result.name) || text(mapping.entityResolution?.mention) || mapping.claim.normalizedStatement.slice(0, 80)
-    const type = validEntityType(text(result.type)) ? text(result.type) : 'product'
-    const found = candidateIds.get(mapping.candidateId)
-    if (!found) return { ambiguous: true }
-    result.id = found; result.type = type; result.name = name; return { draft: { object: result, resolvedRefs: [] } }
-  }
-  if (mapping.candidateType === 'relation') {
-    const source = resolveRef(result.source, ''); const target = resolveRef(result.target, '')
-    if (source.ambiguous || target.ambiguous) return { ambiguous: true }
-    if (!source.id || !target.id) return {}
-    result.source = source.id; result.target = target.id; result.id = allocateKnowledgeId('relation', result); refs.push(source.id, target.id); return { draft: { object: result, resolvedRefs: refs } }
-  }
-  if (mapping.candidateType === 'intelligence') {
-    if (!Array.isArray(result.entityRefs)) return {}
-    const resolved = result.entityRefs.map((value) => resolveRef(value, ''))
-    if (resolved.some((item) => item.ambiguous)) return { ambiguous: true }
-    if (resolved.some((item) => !item.id)) return {}
-    result.entityRefs = resolved.map((item) => item.id); result.type = validIntelligenceType(text(result.type)) ? text(result.type) : mapping.intelligenceType ?? 'fact'; result.id = allocateKnowledgeId(String(result.type), result); refs.push(...resolved.map((item) => item.id as string)); return { draft: { object: result, resolvedRefs: refs } }
-  }
-  const target = resolveRef(result.targetEntity, '')
-  if (target.ambiguous) return { ambiguous: true }
-  if (!target.id) return {}
-  result.targetEntity = target.id; result.type = text(result.type) || 'comparison'; result.id = allocateKnowledgeId('module', result); refs.push(target.id); return { draft: { object: result, resolvedRefs: refs } }
-}
-
-function validIntelligenceType(value: string): boolean { return ['fact', 'forecast', 'viewpoint', 'trend', 'risk'].includes(value) }
-function retrieveExisting(access: KnowledgeAccessSkill, mapping: KnowledgeMappingResult, object: Record<string, unknown>) {
-  const matches: Array<{ knowledgeId: string; kind: 'entity' | 'relation' | 'intelligence' | 'module'; type: string; object: Record<string, unknown>; semanticHash: string }> = []
-  try {
-    if (mapping.candidateType === 'entity') {
-      for (const item of access.searchEntities(text(object.name), text(object.type)).filter((item) => sameName(item.name, text(object.name)))) matches.push({ knowledgeId: item.id, kind: 'entity', type: item.type, object: item, semanticHash: hashKnowledgeObject(item) })
-    } else if (mapping.candidateType === 'relation') {
-      if (typeof object.source !== 'string') return matches
-      for (const item of access.getRelations(object.source)) if (item.target === object.target && item.type === object.type) matches.push({ knowledgeId: item.id, kind: 'relation', type: item.type, object: item, semanticHash: hashKnowledgeObject(item) })
-    } else if (mapping.candidateType === 'intelligence') {
-      if (!Array.isArray(object.entityRefs)) return matches
-      for (const ref of object.entityRefs) for (const item of access.getIntelligence(String(ref), text(object.type))) matches.push({ knowledgeId: item.id, kind: 'intelligence', type: item.type, object: item, semanticHash: hashKnowledgeObject(item) })
-    } else if (typeof object.targetEntity === 'string') {
-      for (const item of access.getModules(object.targetEntity)) matches.push({ knowledgeId: item.id, kind: 'module', type: item.type, object: item, semanticHash: hashKnowledgeObject(item) })
-    }
-  } catch (error) {
-    if (!(error instanceof KnowledgeError) || error.code !== 'NotFound') throw error
-  }
-  return matches
-}
-
-function operationIdForPlan(plan: ResolvedCandidatePlan): string { return `candidate-${plan.candidate.candidateId.replace(/[^A-Za-z0-9_-]/g, '-')}` }
-function buildSource(id: string, input: ResearchReportKnowledgeIngestionInput, assessment: SourceAssessment, rawRef: string): KnowledgeSource { return { id, type: 'research_report', title: input.report.suppliedMetadata.title ?? 'Untitled research report', publisher: assessment.publisher ?? input.report.suppliedMetadata.publisher, institution: assessment.institution ?? input.report.suppliedMetadata.institution, author: assessment.author ?? input.report.suppliedMetadata.author, publishedAt: assessment.publishedAt ?? input.report.suppliedMetadata.publishedAt, url: input.report.suppliedMetadata.sourceUrl, sourceType: assessment.sourceType, sourceReliability: assessment.sourceReliability, rawRefs: [rawRef] } }
-function sourceMetadataPatch(existing: KnowledgeSource, source: KnowledgeSource) { const patch: Record<string, unknown> = {}; for (const key of ['institution', 'author', 'publishedAt', 'url', 'sourceType', 'sourceReliability'] as const) if (source[key] !== undefined && source[key] !== existing[key]) patch[key] = source[key]; return patch }
-function withSourceRef(object: KnowledgeWritableObject, sourceId: string): KnowledgeWritableObject { const result = clone(object) as Record<string, unknown>; result.sourceRefs = [...new Set([...(Array.isArray(result.sourceRefs) ? result.sourceRefs : []), sourceId])]; return result as KnowledgeWritableObject }
-function changeSetId(identity: string, input: ResearchReportKnowledgeIngestionInput): string { const suffix = input.options.reprocess ? `${identity}|${input.workflowRunId}` : identity; return `changeset-${createHash('sha256').update(suffix).digest('hex').slice(0, 24)}` }
-function deriveWorkflowCompletionStatus(plans: readonly Pick<ResolvedCandidatePlan, 'resolutionStatus'>[], schemaGaps: readonly unknown[]): 'completed' | 'completed_with_review' { return plans.some((plan) => plan.resolutionStatus === 'user_review') || schemaGaps.length > 0 ? 'completed_with_review' : 'completed' }
-function auditContext(identity: string, trace: IngestionTrace, allPlans: ResolvedCandidatePlan[], operationPlans: ResolvedCandidatePlan[], raw: { persisted: boolean; created: boolean; reused: boolean }, sourceId: string | null, validationRejects: number): IngestionAuditContext { const relevant = trace.relevance.filter((item) => item.decision === 'relevant').length; return { workflowVersion: RESEARCH_REPORT_KNOWLEDGE_INGESTION_WORKFLOW_VERSION, ingestionIdentity: identity, rawArchive: { rawRefs: [trace.document.rawRef], created: raw.created ? [trace.document.rawRef] : [], reused: raw.reused ? [trace.document.rawRef] : [] }, sourceSummary: { sourceId, ...sourceSummary(trace.sourceAssessment) }, filterSummary: { total: trace.document.chunks.length, relevant, contextual: trace.relevance.filter((item) => item.decision === 'contextual').length, irrelevant: trace.relevance.filter((item) => item.decision === 'irrelevant').length }, candidateSummary: { extracted: trace.candidates.length, admitted: trace.admissions.filter((item) => item.decision === 'admit').length, rejected: trace.admissions.filter((item) => item.decision === 'reject').length, mapped: trace.mappings.filter((item) => item.mappingStatus === 'mapped').length, partiallyMapped: trace.mappings.filter((item) => item.mappingStatus === 'partially_mapped').length, unmapped: allPlans.filter((item) => item.resolutionStatus === 'unmapped').length }, admissionSummary: { admitted: trace.admissions.filter((item) => item.decision === 'admit').length, rejected: trace.admissions.filter((item) => item.decision === 'reject').length }, duplicateSummary: { duplicates: allPlans.filter((item) => item.resolutionStatus === 'rejected' && item.conflict?.conflictType === 'duplicate').length }, validationRejects, userReview: allPlans.filter((item) => item.resolutionStatus === 'user_review').map((item) => ({ candidateId: item.candidate.candidateId, reason: item.reason ?? item.conflict?.reason ?? 'review required' })), schemaGaps: trace.schemaGaps.slice(0, 100).map((gap) => ({ gapId: gap.gapId, gapType: gap.gapType, recommendedAction: gap.recommendedAction })), workflowStatus: deriveWorkflowCompletionStatus(allPlans, trace.schemaGaps), operationPlanCount: operationPlans.length } }
-function makeResult(input: ResearchReportKnowledgeIngestionInput, revision: number, trace: IngestionTrace, plans: ResolvedCandidatePlan[], raw: { persisted: boolean; created: boolean; reused: boolean }, validation: ValidationReport | null, sourceId: string | null, changeSet?: KnowledgeChangeSet): ResearchReportKnowledgeIngestionResult {
-  const plannedChanges = emptyChanges()
-  for (const operation of changeSet?.sourceOperations ?? []) if (operation.type === 'source_create') plannedChanges.sourceCreate.push(operation.source.id); else plannedChanges.sourceMerge.push(operation.sourceId)
-  for (const operation of changeSet?.knowledgeOperations ?? []) if (operation.type === 'create') plannedChanges.knowledgeCreate.push(operation.object.id); else if (operation.type === 'update') plannedChanges.knowledgeUpdate.push(operation.knowledgeId); else if (operation.type === 'supersede') plannedChanges.knowledgeSupersede.push(operation.knowledgeId); else plannedChanges.knowledgeSourceMerge.push(operation.knowledgeId)
-  const effectiveSourceId = sourceId && ((changeSet?.sourceOperations.length ?? 0) > 0 || (changeSet?.knowledgeOperations.length ?? 0) > 0) ? sourceId : null
-  return { workflowRunId: input.workflowRunId, knowledgeBaseId: input.knowledgeBaseId, mode: input.options.mode, status: deriveWorkflowCompletionStatus(plans, trace.schemaGaps), baseRevision: revision, finalRevision: revision, raw: { rawRef: trace.document.rawRef, persisted: raw.persisted, created: raw.created, reused: raw.reused }, source: { sourceId: effectiveSourceId, assessment: sourceSummary(trace.sourceAssessment) }, filtering: { total: trace.document.chunks.length, relevant: trace.relevance.filter((item) => item.decision === 'relevant').length, contextual: trace.relevance.filter((item) => item.decision === 'contextual').length, irrelevant: trace.relevance.filter((item) => item.decision === 'irrelevant').length }, candidates: { extracted: trace.candidates.length, admitted: trace.admissions.filter((item) => item.decision === 'admit').length, rejected: trace.admissions.filter((item) => item.decision === 'reject').length, mapped: trace.mappings.filter((item) => item.mappingStatus === 'mapped').length, partiallyMapped: trace.mappings.filter((item) => item.mappingStatus === 'partially_mapped').length, unmapped: plans.filter((item) => item.resolutionStatus === 'unmapped').length, duplicates: plans.filter((item) => item.resolutionStatus === 'rejected' && item.conflict?.conflictType === 'duplicate').length, validationRejected: plans.filter((item) => item.resolutionStatus === 'validation_rejected').length }, changes: emptyCounts(), plannedChanges, userReview: plans.filter((item) => item.resolutionStatus === 'user_review').map((item) => ({ candidateId: item.candidate.candidateId, reason: item.reason ?? item.conflict?.reason ?? 'review required' })), schemaGaps: trace.schemaGaps, validation, errors: [] }
+  private result(input: ResearchReportKnowledgeIngestionInput, revision: number, identity: string, raw: { persisted: boolean; created: boolean; reused: boolean }, trace: IngestionTrace, planned: PlannedResult, validation: ResearchReportKnowledgeIngestionResult['validation'], calls: ModelCallRecord[]): ResearchReportKnowledgeIngestionResult { const ref = emptyResolution(); for (const item of trace.resolution) ref[item.outcome] += 1; const reconciliation = emptyReconciliation(); reconciliation.groups = trace.preciseGroups.length; reconciliation.candidates = trace.reconciliation.decisions.length; for (const item of trace.reconciliation.decisions) { reconciliation.decisions[item.decision] = (reconciliation.decisions[item.decision] ?? 0) + 1; reconciliation.classifications[item.classification] = (reconciliation.classifications[item.classification] ?? 0) + 1 } return { workflowRunId: input.workflowRunId, ingestionIdentity: identity, knowledgeBaseId: input.knowledgeBaseId, mode: input.options.mode, status: plannedStatus(trace), baseRevision: revision, finalRevision: revision, raw: { rawRef: trace.document.rawRef, ...raw }, source: planned.source, reportUnderstanding: trace.reportUnderstanding, themeHandling: trace.themeHandling, batches: trace.batches, extraction: { ...emptyExtraction(), entities: trace.extraction.entities.length, relations: trace.extraction.relations.length, claims: trace.extraction.claims.length, batchesAttempted: trace.batches.batchCount, batchesSucceeded: trace.batches.batchCount, batchesFailed: 0 }, consolidation: trace.consolidation, referenceResolution: ref, reconciliation, schemaGaps: trace.schemaGaps.gaps, reviewItems: trace.reviewItems, plannedChanges: planned.plannedChanges, committedChanges: emptyCommitted(), validation, modelCalls: calls, errors: [] } }
+  private replayedResult(input: ResearchReportKnowledgeIngestionInput, revision: number, identity: string, rawRef: string, raw: { persisted: boolean; created: boolean; reused: boolean }, previous: Record<string, unknown>): ResearchReportKnowledgeIngestionResult { const result = blocked(input, revision, rawRef, identity, [], '', new Error('replay')); result.status = previous.status === 'completed_with_review' ? 'completed_with_review' : 'completed'; result.failureStage = undefined; result.errors = []; result.raw = { rawRef, ...raw }; return result }
+  private async attachBlockedLog(result: ResearchReportKnowledgeIngestionResult, input: ResearchReportKnowledgeIngestionInput, target: KnowledgeBaseTarget, identity: string, stage: string): Promise<void> { if (!result.raw.persisted) return; try { result.ingestionIdentity = identity; await this.logs.writeBlocked(target.handle, { workflowRunId: input.workflowRunId, knowledgeBaseId: input.knowledgeBaseId, status: 'blocked', ingestionIdentity: identity, rawRef: result.raw.rawRef, failureStage: stage, errors: result.errors, modelCalls: result.modelCalls, reviewItems: result.reviewItems, schemaGaps: result.schemaGaps }) } catch (error) { result.errors.push({ code: 'ingestion_log_failed', message: error instanceof Error ? error.message : String(error) }) } }
 }

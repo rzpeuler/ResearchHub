@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2
+
+- Atomically replaced the active Knowledge Curation surface with the four
+  frozen v0.3 operations and removed the legacy seven-operation runtime path.
+- Added structured machine-readable output contracts, automatic C1 Schema
+  Context mapping, Schema-derived vocabulary validation, trusted-envelope
+  rejection, deterministic candidate identity, and one-call/no-retry behavior.
+- Rebuilt Research Report Knowledge Ingestion around the frozen 18 stages,
+  native Schema 0.3 / Storage 1, deterministic section batching, Source
+  proposal, reference resolution, batched reconciliation, conditional Schema
+  Gaps, review dependency closure, C3 validation, and atomic Writer use.
+- Added focused Curation 16/16 and Ingestion 16/16 acceptance coverage.
+- C2-R2 is `Completed / Sol Verification Pending`; Stage C remains `In
+  Progress`.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R3
 
 - Revalidated the complete final planned canonical object state through the

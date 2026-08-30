@@ -1,10 +1,4 @@
-export type KnowledgeCurationErrorCode =
-  | 'model_error'
-  | 'invalid_model_output'
-  | 'ungrounded_candidate'
-  | 'invalid_reference'
-  | 'invalid_confidence'
-  | 'unsupported_mapping'
+export type KnowledgeCurationErrorCode = 'model_error' | 'invalid_model_output' | 'invalid_reference' | 'invalid_confidence' | 'invalid_semantics' | 'ungrounded_candidate'
 
 export class KnowledgeCurationError extends Error {
   override readonly cause: unknown

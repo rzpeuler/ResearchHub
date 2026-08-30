@@ -1,10 +1,21 @@
-import type { CurationOperation } from './types.ts'
+import type { CurationOperation, JsonRecord } from './types.ts'
+import type { CurationSchemaContext } from './schema-context-types.ts'
+
+export interface StructuredOutputContract {
+  format: 'json'
+  root: 'object' | 'array'
+  additionalProperties: false
+  schema: JsonRecord
+}
 
 export interface KnowledgeCurationModelRequest {
   operation: CurationOperation
   instruction: string
   input: unknown
-  expectedOutputContract: string
+  schemaContext?: CurationSchemaContext
+  outputContract?: StructuredOutputContract
+  // An index signature keeps external composition adapters structurally decoupled.
+  [key: string]: unknown
 }
 
 export interface KnowledgeCurationModel {

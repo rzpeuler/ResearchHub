@@ -1,0 +1,1 @@
+export const ANALYZE_SCHEMA_GAPS_PROMPT = `Analyze only material report content that the supplied Schema Context cannot represent. Return governance proposals using the supplied structured output contract. Do not change the schema, invent canonical enums, create identifiers, or propose filesystem or Writer actions. Empty gaps are valid when all material content is representable.`

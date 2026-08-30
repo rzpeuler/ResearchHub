@@ -1,5 +1,26 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2 - Atomic Curation/Workflow Cutover
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-31
+
+C2-R2 adopts the frozen Knowledge v0.3 contract as the single active boundary
+for Knowledge Curation and Research Report Knowledge Ingestion. The Curation
+Skill exposes exactly four operations and injects the C1 Schema Context slice
+automatically. The Workflow uses the native Schema 0.3 / Storage 1 index and
+the frozen 18-stage sequence, with deterministic batching, Source and
+candidate planning, reference resolution, batched reconciliation, conditional
+Schema Gap review, dependency-closure isolation, C3 validation, dry-run
+virtual Raw validation, and the existing atomic Writer.
+
+This is an atomic in-place cutover: no compatibility shim, second Skill,
+legacy Workflow path, or mixed old/new production contract remains. Schema
+release activation, Migration, Writer, DSH, examples, and Runtime KB data are
+outside this task and remain unchanged. Stage B, C1, C3, C3-R1, C3-R2, and
+C3-R3 are recorded as `Completed / Accepted - Sol verified`; C2 and C2-R1 are
+`Blocked / Superseded`; Stage C remains `In Progress`.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R3 — Final ChangeSet Validation Boundary
 
 **Status:** Completed / Sol Verification Pending

@@ -1,339 +1,91 @@
-import type { NormalizedResearchDocument, ResearchDocumentChunk, SourceAssessment, SourceAssessmentInput, ContentRelevanceDecision, RelevanceInput, KnowledgeCandidate, ExtractionInput, KnowledgeAdmissionDecision, AdmissionInput, KnowledgeMappingResult, ConflictDecision, ConflictInput, SchemaGapInput, SchemaGapProposal, ExistingKnowledgeContext, SchemaGapType, SchemaGapGenerality, SchemaGapFrequency, SchemaGapAction } from './types.ts'
+import { KNOWLEDGE_SCHEMA_V03 } from '../../schemas/knowledge/v03/executable-schema.ts'
 import { KnowledgeCurationError } from './errors.ts'
-import { SOURCE_RELIABILITIES, SOURCE_TYPES } from '../../../packages/schemas/knowledge/index.ts'
+import type { AnalyzeSchemaGapsOutput, ClaimCandidate, EntityCandidate, ExtractKnowledgeInput, ExtractKnowledgeOutput, KnowledgeContext, JsonRecord, MajorEntityMention, NormalizedResearchDocument, RelationCandidate, ReconcileKnowledgeInput, ReconcileKnowledgeOutput, ReportUnderstanding, SchemaGapInput, SemanticMention, SourceAssessment, ThemeHypothesis, UnderstandReportInput } from './types.ts'
 
+type UnknownRecord = Record<string, unknown>
 const PRIMARY_SECONDARY = ['primary', 'secondary', 'unknown'] as const
-const RELEVANCE_DECISIONS = ['relevant', 'contextual', 'irrelevant'] as const
-const RELEVANCE_REASONS = ['research_relevant', 'useful_context', 'legal_disclaimer', 'template_content', 'unrelated_content', 'duplicate_content', 'navigation_content', 'other'] as const
-const ADMISSION_REASONS = ['relevant_and_material', 'irrelevant', 'trivial_commonplace', 'low_information_value', 'insufficient_specificity', 'unsupported_generic_claim', 'transient_noise', 'duplicate_background', 'malformed_claim'] as const
-const CANDIDATE_TYPES = ['entity', 'relation', 'intelligence', 'module_content'] as const
-const INTELLIGENCE_TYPES = ['fact', 'forecast', 'viewpoint', 'trend', 'risk'] as const
-const MAPPING_STATUSES = ['mapped', 'partially_mapped', 'unmapped'] as const
-const CONFLICT_TYPES = ['none', 'duplicate', 'temporal_update', 'correction', 'definition_difference', 'fact_conflict', 'forecast_divergence', 'viewpoint_divergence', 'relation_conflict'] as const
-const CONFLICT_RESOLUTIONS = ['create', 'update', 'supersede', 'merge_source', 'keep_both', 'reject', 'user_review'] as const
-const SCHEMA_GAP_TYPES = ['vocabulary_gap', 'schema_gap', 'validation_gap', 'access_gap', 'projection_gap'] as const
-const SCHEMA_GAP_GENERALITIES = ['local', 'cross_industry', 'universal'] as const
-const SCHEMA_GAP_FREQUENCIES = ['first_seen', 'repeated'] as const
-const SCHEMA_GAP_ACTIONS = ['no_action', 'data_convention_review', 'validation_review', 'access_interface_review', 'projection_review', 'architecture_review'] as const
+const THEME_DISPOSITIONS = ['resolved_existing', 'resolved_multiple', 'provisional_unresolved', 'proposed_new', 'ambiguous'] as const
+const DECISIONS = ['create', 'duplicate', 'merge_source', 'update_state', 'supersede', 'keep_both', 'reject', 'user_review'] as const
+const CLASSIFICATIONS = ['duplicate', 'temporal_update', 'correction', 'fact_conflict', 'forecast_divergence', 'viewpoint_divergence', 'relation_state_change', 'relation_conflict', 'complementary'] as const
+const GAP_TYPES = ['vocabulary', 'schema', 'validation', 'access', 'projection'] as const
+const GAP_GENERALITIES = ['local', 'cross_industry', 'universal'] as const
+const GAP_FREQUENCIES = ['first_seen', 'repeated'] as const
+const TRUSTED_KEYS = new Set(['workflowRunId', 'knowledgeBaseId', 'schemaVersion', 'storageFormatVersion', 'rawRef', 'sourceId', 'sourceRef', 'sourceRefs', 'rawRefs', 'batchId', 'entityId', 'relationId', 'claimId', 'knowledgeId', 'id', 'operationId', 'revision', 'registryPath', 'storageRef'])
 
-type RecordValue = Record<string, unknown>
+function fail(code: 'invalid_model_output' | 'invalid_reference' | 'invalid_semantics' | 'invalid_confidence' | 'ungrounded_candidate', message: string): never { throw new KnowledgeCurationError(code, message) }
+function object(value: unknown, label: string): UnknownRecord { if (typeof value !== 'object' || value === null || Array.isArray(value)) fail('invalid_model_output', `${label} must be an object`); return value as UnknownRecord }
+function array(value: unknown, label: string): unknown[] { if (!Array.isArray(value)) fail('invalid_model_output', `${label} must be an array`); return value }
+function string(value: unknown, label: string, empty = false): string { if (typeof value !== 'string' || (!empty && value.trim() === '')) fail('invalid_model_output', `${label} must be a non-empty string`); return value.trim() }
+function nullableString(value: unknown, label: string): string | null { if (value === null) return null; return string(value, label) }
+function strings(value: unknown, label: string, empty = false): string[] { return array(value, label).map((item, index) => string(item, `${label}[${index}]`, empty)) }
+function boolean(value: unknown, label: string): boolean { if (typeof value !== 'boolean') fail('invalid_model_output', `${label} must be boolean`); return value }
+function number(value: unknown, label: string): number { if (typeof value !== 'number' || !Number.isFinite(value)) fail('invalid_model_output', `${label} must be a finite number`); return value }
+function confidence(value: unknown, label: string): number { const result = number(value, label); if (result < 0 || result > 1) fail('invalid_confidence', `${label} must be between 0 and 1`); return result }
+function enumValue<T extends readonly string[]>(value: unknown, values: T, label: string): T[number] { if (typeof value !== 'string' || !values.includes(value)) fail('invalid_semantics', `${label} is outside the frozen vocabulary`); return value as T[number] }
+function exact(value: UnknownRecord, fields: readonly string[], label: string): void { const allowed = new Set(fields); for (const key of Object.keys(value)) if (!allowed.has(key)) fail('invalid_model_output', `${label} contains unsupported field: ${key}`) }
+function json(value: unknown): boolean { if (value === null || typeof value === 'string' || typeof value === 'boolean') return true; if (typeof value === 'number') return Number.isFinite(value); if (Array.isArray(value)) return value.every(json); if (typeof value === 'object' && value !== null) return Object.values(value).every(json); return false }
+function rejectTrusted(value: unknown, path = 'model output'): void { if (Array.isArray(value)) { value.forEach((item, index) => rejectTrusted(item, `${path}[${index}]`)); return } if (!value || typeof value !== 'object') return; for (const [key, child] of Object.entries(value)) { if (TRUSTED_KEYS.has(key)) fail('invalid_reference', `${path}.${key} is trusted Workflow data and cannot be model-generated`); rejectTrusted(child, `${path}.${key}`) } }
+function safeRef(value: unknown, known: ReadonlySet<string>, label: string): string | null { if (value === null) return null; const ref = string(value, label); if (!known.has(ref)) fail('invalid_reference', `${label} is outside the supplied context: ${ref}`); return ref }
+function chunkRefs(value: unknown, known: ReadonlySet<string>, label: string): string[] { const refs = strings(value, label); if (refs.some((ref) => !known.has(ref))) fail('invalid_reference', `${label} contains a chunk outside the supplied batch`); return [...new Set(refs)] }
+function safeId(value: string): string { const id = value.trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/\.{2,}/g, '-'); if (!/^[A-Za-z0-9]/.test(id)) fail('invalid_reference', 'batchId cannot produce a safe candidate identity'); return id }
+function scope(document: NormalizedResearchDocument, workflowRunId: string, knowledgeBaseId: string): void { if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(workflowRunId) || workflowRunId.includes('..')) fail('invalid_reference', 'workflowRunId must be path-safe'); if (knowledgeBaseId.trim() === '') fail('invalid_reference', 'knowledgeBaseId must be non-empty'); if (!/^raw-sha256-[0-9a-f]{64}$/.test(document.rawRef)) fail('invalid_reference', 'document.rawRef must be a canonical RawRef'); if (!Array.isArray(document.chunks) || document.chunks.length === 0) fail('invalid_reference', 'document.chunks must be non-empty'); const ids = new Set<string>(); for (const chunk of document.chunks) { if (ids.has(chunk.chunkId)) fail('invalid_reference', `Duplicate chunkId: ${chunk.chunkId}`); ids.add(chunk.chunkId) } }
+function contextRefs(context: KnowledgeContext): Set<string> { return new Set(context.existingRefs) }
 
-function object(value: unknown, label: string): RecordValue {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new KnowledgeCurationError('invalid_model_output', `${label} must be an object`)
-  return value as RecordValue
+function sourceAssessment(raw: unknown): SourceAssessment {
+  const value = object(raw, 'sourceAssessment'); exact(value, ['sourceType', 'publisher', 'institution', 'author', 'publishedAt', 'primaryOrSecondary', 'sourceReliability', 'sourceIdentityConfidence', 'reasoning'], 'sourceAssessment')
+  return { sourceType: enumValue(value.sourceType, KNOWLEDGE_SCHEMA_V03.source.types, 'sourceType'), publisher: nullableString(value.publisher, 'publisher'), institution: nullableString(value.institution, 'institution'), author: nullableString(value.author, 'author'), publishedAt: nullableString(value.publishedAt, 'publishedAt'), primaryOrSecondary: enumValue(value.primaryOrSecondary, PRIMARY_SECONDARY, 'primaryOrSecondary'), sourceReliability: enumValue(value.sourceReliability, KNOWLEDGE_SCHEMA_V03.source.reliabilities, 'sourceReliability'), sourceIdentityConfidence: confidence(value.sourceIdentityConfidence, 'sourceIdentityConfidence'), reasoning: strings(value.reasoning, 'reasoning') }
 }
 
-function string(value: unknown, label: string, nonEmpty = true): string {
-  if (typeof value !== 'string' || (nonEmpty && value.trim() === '')) throw new KnowledgeCurationError('invalid_model_output', `${label} must be a non-empty string`)
-  return value
+function majorEntity(value: unknown, refs: ReadonlySet<string>, chunks: ReadonlySet<string>, index: number): MajorEntityMention {
+  const item = object(value, `majorEntityMentions[${index}]`); exact(item, ['mention', 'entityType', 'suggestedExistingRef', 'evidenceChunkRefs', 'reason'], `majorEntityMentions[${index}]`)
+  return { mention: string(item.mention, 'mention'), entityType: item.entityType === null ? null : enumValue(item.entityType, KNOWLEDGE_SCHEMA_V03.entity.types, 'entityType'), suggestedExistingRef: safeRef(item.suggestedExistingRef, refs, 'suggestedExistingRef'), evidenceChunkRefs: chunkRefs(item.evidenceChunkRefs, chunks, 'evidenceChunkRefs'), reason: string(item.reason, 'reason') }
 }
 
-function nullableString(value: unknown, label: string): string | null {
-  if (value === null || value === undefined) return null
-  return string(value, label)
+function themeHypothesis(value: unknown, refs: ReadonlySet<string>, chunks: ReadonlySet<string>, index: number): ThemeHypothesis {
+  const item = object(value, `themeHypotheses[${index}]`); exact(item, ['mention', 'disposition', 'existingThemeRefs', 'reason', 'evidenceChunkRefs'], `themeHypotheses[${index}]`)
+  const existingThemeRefs = strings(item.existingThemeRefs, 'existingThemeRefs'); if (existingThemeRefs.some((ref) => !refs.has(ref))) fail('invalid_reference', 'Theme hypothesis references an unavailable context ref')
+  return { mention: string(item.mention, 'mention'), disposition: enumValue(item.disposition, THEME_DISPOSITIONS, 'disposition'), existingThemeRefs: [...new Set(existingThemeRefs)], reason: string(item.reason, 'reason'), evidenceChunkRefs: chunkRefs(item.evidenceChunkRefs, chunks, 'evidenceChunkRefs') }
 }
 
-function strings(value: unknown, label: string): string[] {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || item.trim() === '')) throw new KnowledgeCurationError('invalid_model_output', `${label} must be an array of non-empty strings`)
-  return [...value]
+export function validateUnderstandReport(raw: unknown, input: UnderstandReportInput): ReportUnderstanding {
+  scope(input.document, input.workflowRunId, input.knowledgeBaseId); rejectTrusted(raw); const value = object(raw, 'understandReport output'); exact(value, ['sourceAssessment', 'researchScope', 'majorTopics', 'majorEntityMentions', 'themeHypotheses', 'newThemeProposal', 'uncertainty'], 'understandReport output')
+  const refs = contextRefs(input.themeContext); const themeRefs = new Set([...input.themeContext.themeGroups, ...input.themeContext.themes].map((item) => item.id).filter((id): id is string => typeof id === 'string')); const chunks = new Set(input.document.chunks.map((chunk) => chunk.chunkId)); const proposal = value.newThemeProposal === undefined || value.newThemeProposal === null ? undefined : (() => { const item = object(value.newThemeProposal, 'newThemeProposal'); exact(item, ['name', 'definition', 'reason'], 'newThemeProposal'); return { name: string(item.name, 'newThemeProposal.name'), definition: string(item.definition, 'newThemeProposal.definition'), reason: string(item.reason, 'newThemeProposal.reason') } })()
+  return { sourceAssessment: sourceAssessment(value.sourceAssessment), researchScope: strings(value.researchScope, 'researchScope'), majorTopics: strings(value.majorTopics, 'majorTopics'), majorEntityMentions: array(value.majorEntityMentions, 'majorEntityMentions').map((item, index) => majorEntity(item, refs, chunks, index)), themeHypotheses: array(value.themeHypotheses, 'themeHypotheses').map((item, index) => themeHypothesis(item, themeRefs, chunks, index)), ...(proposal ? { newThemeProposal: proposal } : {}), uncertainty: strings(value.uncertainty, 'uncertainty', true) }
 }
 
-function boolean(value: unknown, label: string): boolean {
-  if (typeof value !== 'boolean') throw new KnowledgeCurationError('invalid_model_output', `${label} must be boolean`)
-  return value
+function mention(value: unknown, refs: ReadonlySet<string>, label: string): SemanticMention {
+  const item = object(value, label); exact(item, ['text', 'entityType', 'existingRef'], label); return { text: string(item.text, `${label}.text`), entityType: item.entityType === undefined || item.entityType === null ? null : enumValue(item.entityType, KNOWLEDGE_SCHEMA_V03.entity.types, `${label}.entityType`), existingRef: item.existingRef === undefined ? null : safeRef(item.existingRef, refs, `${label}.existingRef`) }
 }
 
-function enumValue<T extends string>(value: unknown, allowed: readonly T[], label: string): T {
-  if (typeof value !== 'string' || !allowed.includes(value as T)) throw new KnowledgeCurationError('invalid_model_output', `${label} has unsupported value`)
-  return value as T
+function relationAttributes(type: string, value: unknown, label: string): JsonRecord {
+  const attributes = object(value, label); const definition = KNOWLEDGE_SCHEMA_V03.relation.definitions[type as keyof typeof KNOWLEDGE_SCHEMA_V03.relation.definitions] as { attributes?: Record<string, unknown> } | undefined; const declared = definition?.attributes ?? {}
+  for (const [key, child] of Object.entries(attributes)) { const rule = declared[key]; if (rule === undefined) fail('invalid_semantics', `${label}.${key} is not declared for ${type}`); if (Array.isArray(rule) && !rule.includes(child as never)) fail('invalid_semantics', `${label}.${key} is outside the frozen vocabulary`); if (rule === 'number_0_to_1_or_null' && child !== null && (typeof child !== 'number' || !Number.isFinite(child) || child < 0 || child > 1)) fail('invalid_semantics', `${label}.${key} must be a number between 0 and 1 or null`); if (typeof rule === 'object' && key === 'financialContribution') financialContribution(child, `${label}.${key}`) }
+  return attributes
+}
+function financialContribution(value: unknown, label: string): void { if (value === null) return; const item = object(value, label); const fields = KNOWLEDGE_SCHEMA_V03.relation.definitions.business_exposure.attributes.financialContribution.fields; exact(item, fields, label); for (const [key, child] of Object.entries(item)) { if (['period', 'currency'].includes(key) && child !== null && typeof child !== 'string') fail('invalid_semantics', `${label}.${key} must be string or null`); if (['revenueAmount', 'profitAmount'].includes(key) && child !== null && (typeof child !== 'number' || !Number.isFinite(child))) fail('invalid_semantics', `${label}.${key} must be finite or null`); if (['revenueShare', 'profitShare'].includes(key) && child !== null && (typeof child !== 'number' || !Number.isFinite(child) || child < 0 || child > 1)) fail('invalid_semantics', `${label}.${key} must be between 0 and 1 or null`); if (key === 'separatelyReported' && child !== null && typeof child !== 'boolean') fail('invalid_semantics', `${label}.${key} must be boolean or null`) } }
+function temporal(value: unknown, label: string): JsonRecord { const item = object(value, label); exact(item, ['asOf', 'scope'], label); const scopeValue = object(item.scope, `${label}.scope`); exact(scopeValue, ['type', 'start', 'end', 'label'], `${label}.scope`); for (const key of ['asOf', 'start', 'end'] as const) if (scopeValue[key] !== null && typeof scopeValue[key] !== 'string') fail('invalid_semantics', `${label}.${key} must be string or null`); if (item.asOf !== null && typeof item.asOf !== 'string') fail('invalid_semantics', `${label}.asOf must be string or null`); enumValue(scopeValue.type, KNOWLEDGE_SCHEMA_V03.claim.temporalScopeTypes, `${label}.scope.type`); if (scopeValue.label !== null && typeof scopeValue.label !== 'string') fail('invalid_semantics', `${label}.scope.label must be string or null`); return item }
+function structured(value: unknown, label: string): JsonRecord { const item = object(value, label); exact(item, ['metric', 'value', 'unit', 'comparator'], label); string(item.metric, `${label}.metric`); if (!json(item.value) || (typeof item.value === 'object' && item.value !== null)) fail('invalid_semantics', `${label}.value must be a scalar JSON value`); if (item.unit !== null && typeof item.unit !== 'string') fail('invalid_semantics', `${label}.unit must be string or null`); if (item.comparator !== null) enumValue(item.comparator, KNOWLEDGE_SCHEMA_V03.claim.comparators, `${label}.comparator`); return item }
+
+function candidateId(batchId: string, kind: string, ordinal: number): string { return `candidate-${safeId(batchId)}-${kind}-${String(ordinal).padStart(4, '0')}` }
+function entityCandidate(value: unknown, refs: ReadonlySet<string>, chunks: ReadonlySet<string>, batchId: string, ordinal: number): EntityCandidate {
+  const item = object(value, 'EntityCandidate'); if ('candidateId' in item) fail('invalid_reference', 'Model cannot supply candidateId'); exact(item, ['entityType', 'name', 'aliases', 'description', 'suggestedExistingRef', 'semanticFields', 'evidenceChunkRefs', 'reason'], 'EntityCandidate'); if (!json(item.semanticFields)) fail('invalid_model_output', 'semanticFields must be JSON data'); return { candidateId: candidateId(batchId, 'entity', ordinal), entityType: enumValue(item.entityType, KNOWLEDGE_SCHEMA_V03.entity.types, 'entityType'), name: string(item.name, 'name'), aliases: strings(item.aliases, 'aliases', true), description: nullableString(item.description, 'description'), suggestedExistingRef: safeRef(item.suggestedExistingRef, refs, 'suggestedExistingRef'), semanticFields: item.semanticFields as JsonRecord, evidenceChunkRefs: chunkRefs(item.evidenceChunkRefs, chunks, 'evidenceChunkRefs'), reason: string(item.reason, 'reason') }
+}
+function relationCandidate(value: unknown, refs: ReadonlySet<string>, chunks: ReadonlySet<string>, batchId: string, ordinal: number): RelationCandidate {
+  const item = object(value, 'RelationCandidate'); if ('candidateId' in item) fail('invalid_reference', 'Model cannot supply candidateId'); exact(item, ['relationType', 'sourceMention', 'targetMention', 'attributes', 'contextMentions', 'evidenceChunkRefs', 'reason'], 'RelationCandidate'); const relationType = enumValue(item.relationType, KNOWLEDGE_SCHEMA_V03.relation.types, 'relationType'); const definition = KNOWLEDGE_SCHEMA_V03.relation.definitions[relationType]; const sourceMention = mention(item.sourceMention, refs, 'sourceMention'); const targetMention = mention(item.targetMention, refs, 'targetMention'); if (sourceMention.entityType && !definition.sourceTypes.includes(sourceMention.entityType as never) || targetMention.entityType && !definition.targetTypes.includes(targetMention.entityType as never)) fail('invalid_semantics', 'Relation endpoint types violate the frozen semantic definition'); if ('endpointConstraint' in definition && definition.endpointConstraint === 'same_entity_type_on_both_sides' && sourceMention.entityType && targetMention.entityType && sourceMention.entityType !== targetMention.entityType) fail('invalid_semantics', 'Relation endpoints must have the same Entity type'); return { candidateId: candidateId(batchId, 'relation', ordinal), relationType, sourceMention, targetMention, attributes: relationAttributes(relationType, item.attributes, 'attributes'), contextMentions: array(item.contextMentions, 'contextMentions').map((entry, index) => mention(entry, refs, `contextMentions[${index}]`)), evidenceChunkRefs: chunkRefs(item.evidenceChunkRefs, chunks, 'evidenceChunkRefs'), reason: string(item.reason, 'reason') }
+}
+function claimCandidate(value: unknown, refs: ReadonlySet<string>, chunks: ReadonlySet<string>, batchId: string, ordinal: number): ClaimCandidate {
+  const item = object(value, 'ClaimCandidate'); if ('candidateId' in item) fail('invalid_reference', 'Model cannot supply candidateId'); exact(item, ['claimType', 'statement', 'subjectMentions', 'temporal', 'structuredValue', 'semanticConfidence', 'evidenceChunkRefs', 'reason'], 'ClaimCandidate'); return { candidateId: candidateId(batchId, 'claim', ordinal), claimType: enumValue(item.claimType, KNOWLEDGE_SCHEMA_V03.claim.types, 'claimType'), statement: string(item.statement, 'statement'), subjectMentions: array(item.subjectMentions, 'subjectMentions').map((entry, index) => mention(entry, refs, `subjectMentions[${index}]`)), ...(item.temporal === undefined || item.temporal === null ? {} : { temporal: temporal(item.temporal, 'temporal') }), ...(item.structuredValue === undefined || item.structuredValue === null ? {} : { structuredValue: structured(item.structuredValue, 'structuredValue') }), semanticConfidence: confidence(item.semanticConfidence, 'semanticConfidence'), evidenceChunkRefs: chunkRefs(item.evidenceChunkRefs, chunks, 'evidenceChunkRefs'), reason: string(item.reason, 'reason') }
 }
 
-function confidence(value: unknown, label: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) throw new KnowledgeCurationError('invalid_confidence', `${label} must be a finite number between 0 and 1`)
-  return value
+export function validateExtractKnowledge(raw: unknown, input: ExtractKnowledgeInput): ExtractKnowledgeOutput {
+  scope(input.document, input.workflowRunId, input.knowledgeBaseId); rejectTrusted(raw); const value = object(raw, 'extractKnowledge output'); exact(value, ['entities', 'relations', 'claims'], 'extractKnowledge output'); const chunks = new Set(input.batch.chunks.map((chunk) => chunk.chunkId)); const refs = contextRefs(input.knowledgeContext); const entities = array(value.entities, 'entities').map((item, index) => entityCandidate(item, refs, chunks, input.batch.batchId, index + 1)); const relations = array(value.relations, 'relations').map((item, index) => relationCandidate(item, refs, chunks, input.batch.batchId, index + 1)); const claims = array(value.claims, 'claims').map((item, index) => claimCandidate(item, refs, chunks, input.batch.batchId, index + 1)); return { entities, relations, claims }
 }
 
-function safeIntermediateId(value: string, label: string): string {
-  if (typeof value !== 'string' || value.trim() === '') throw new KnowledgeCurationError('invalid_reference', `${label} must be a non-empty string`)
-  const safe = value.trim().replace(/[^A-Za-z0-9._-]+/g, '_').replace(/\.\.+/g, '_')
-  if (!/^[A-Za-z0-9]/.test(safe)) throw new KnowledgeCurationError('invalid_reference', `${label} cannot produce a safe intermediate ID`)
-  return safe
+export function validateReconcileKnowledge(raw: unknown, input: ReconcileKnowledgeInput): ReconcileKnowledgeOutput {
+  scope(input.document, input.workflowRunId, input.knowledgeBaseId); const value = object(raw, 'reconcileKnowledge output'); exact(value, ['decisions'], 'reconcileKnowledge output'); const candidates = new Map(input.groups.flatMap((group) => group.candidates.map((candidate) => [candidate.candidateId, candidate]))); const known = new Set(candidates.keys()); const decisions = array(value.decisions, 'decisions').map((entry, index) => { const item = object(entry, `decisions[${index}]`); exact(item, ['candidateId', 'decision', 'classification', 'existingRefs', 'reason', 'requiresUserReview'], `decisions[${index}]`); const candidateId = string(item.candidateId, 'candidateId'); if (!known.has(candidateId)) fail('invalid_reference', `Unknown reconciliation candidate: ${candidateId}`); const existingRefs = strings(item.existingRefs, 'existingRefs'); const allowed = new Set(input.groups.find((group) => group.candidateIds.includes(candidateId))?.existingKnowledge.flatMap((entry) => typeof entry.id === 'string' ? [entry.id] : []) ?? []); if (existingRefs.some((ref) => !allowed.has(ref))) fail('invalid_reference', 'Reconciliation references Knowledge outside supplied precise context'); return { candidateId, decision: enumValue(item.decision, DECISIONS, 'decision'), classification: enumValue(item.classification, CLASSIFICATIONS, 'classification'), existingRefs: [...new Set(existingRefs)], reason: string(item.reason, 'reason'), requiresUserReview: boolean(item.requiresUserReview, 'requiresUserReview') } }) as ReconcileKnowledgeOutput['decisions']; if (new Set(decisions.map((item) => item.candidateId)).size !== known.size) fail('invalid_reference', 'Every reconciliation candidate must receive exactly one decision'); return { decisions }
 }
 
-function normalizeWhitespace(value: string): string {
-  return value.replace(/\s+/g, ' ').trim()
-}
-
-function modelOrSuppliedMetadata(value: unknown, document: NormalizedResearchDocument, field: keyof NormalizedResearchDocument['suppliedMetadata']): string | null {
-  return value === undefined ? document.suppliedMetadata[field] : nullableString(value, field)
-}
-
-function checkInputScope(workflowRunId: string | null, knowledgeBaseId: string, document: NormalizedResearchDocument): void {
-  if (workflowRunId !== null) string(workflowRunId, 'workflowRunId')
-  string(knowledgeBaseId, 'knowledgeBaseId')
-  string(document.rawRef, 'document.rawRef')
-  if (!Array.isArray(document.chunks) || document.chunks.length === 0) throw new KnowledgeCurationError('invalid_reference', 'document.chunks must be non-empty')
-  const ids = new Set<string>()
-  for (const chunk of document.chunks) {
-    string(chunk.chunkId, 'chunk.chunkId')
-    string(chunk.text, 'chunk.text', false)
-    if (ids.has(chunk.chunkId)) throw new KnowledgeCurationError('invalid_reference', `Duplicate chunkId: ${chunk.chunkId}`)
-    ids.add(chunk.chunkId)
-  }
-}
-
-export function validateSourceAssessment(raw: unknown, input: SourceAssessmentInput): SourceAssessment {
-  checkInputScope(input.workflowRunId, input.knowledgeBaseId, input.document)
-  const value = object(raw, 'source assessment')
-  const sourceType = enumValue(value.sourceType, SOURCE_TYPES, 'sourceType')
-  const reliability = enumValue(value.sourceReliability, SOURCE_RELIABILITIES, 'sourceReliability')
-  const primaryOrSecondary = enumValue(value.primaryOrSecondary, PRIMARY_SECONDARY, 'primaryOrSecondary')
-  return {
-    sourceAssessmentId: `source-assessment-${safeIntermediateId(input.workflowRunId, 'workflowRunId')}`,
-    rawRef: input.document.rawRef,
-    sourceType,
-    publisher: modelOrSuppliedMetadata(value.publisher, input.document, 'publisher'),
-    institution: modelOrSuppliedMetadata(value.institution, input.document, 'institution'),
-    author: modelOrSuppliedMetadata(value.author, input.document, 'author'),
-    publishedAt: modelOrSuppliedMetadata(value.publishedAt, input.document, 'publishedAt'),
-    primaryOrSecondary,
-    sourceReliability: reliability,
-    sourceIdentityConfidence: confidence(value.sourceIdentityConfidence, 'sourceIdentityConfidence'),
-    reasoning: strings(value.reasoning, 'reasoning'),
-  }
-}
-
-export function validateRelevance(raw: unknown, input: RelevanceInput): ContentRelevanceDecision[] {
-  checkInputScope(null, input.context.knowledgeBaseId, input.document)
-  const values = Array.isArray(raw) ? raw : object(raw, 'relevance response').decisions
-  if (!Array.isArray(values)) throw new KnowledgeCurationError('invalid_model_output', 'relevance response must contain decisions')
-  const known = new Set(input.document.chunks.map((chunk) => chunk.chunkId))
-  const seen = new Set<string>()
-  const decisions = values.map((item, index) => {
-    const value = object(item, `relevance decision ${index + 1}`)
-    const chunkId = string(value.chunkId, 'chunkId')
-    if (!known.has(chunkId)) throw new KnowledgeCurationError('invalid_reference', `Unknown chunkId: ${chunkId}`)
-    if (seen.has(chunkId)) throw new KnowledgeCurationError('invalid_reference', `Duplicate relevance decision: ${chunkId}`)
-    seen.add(chunkId)
-    return { chunkId, decision: enumValue(value.decision, RELEVANCE_DECISIONS, 'decision'), reason: enumValue(value.reason, RELEVANCE_REASONS, 'reason'), reasoning: value.reasoning === undefined ? undefined : strings(value.reasoning, 'reasoning') }
-  })
-  if (seen.size !== known.size) throw new KnowledgeCurationError('invalid_reference', 'Every input chunk must receive exactly one relevance decision')
-  return decisions
-}
-
-function chunkFor(candidateChunkId: string, chunks: ResearchDocumentChunk[]): ResearchDocumentChunk {
-  const chunk = chunks.find((item) => item.chunkId === candidateChunkId)
-  if (!chunk) throw new KnowledgeCurationError('invalid_reference', `Candidate references an unavailable chunk: ${candidateChunkId}`)
-  return chunk
-}
-
-function sanitizeDraft(value: unknown): Record<string, unknown> | null {
-  if (value === null || value === undefined) return null
-  const draft = object(value, 'proposedKnowledge.object')
-  const sanitized = { ...draft }
-  delete sanitized.id
-  delete sanitized.knowledgeId
-  delete sanitized.sourceRefs
-  delete sanitized.rawRefs
-  return sanitized
-}
-
-export function validateCandidates(raw: unknown, input: ExtractionInput): KnowledgeCandidate[] {
-  checkInputScope(input.workflowRunId, input.knowledgeBaseId, input.document)
-  if (!Array.isArray(input.relevantChunks) || input.relevantChunks.length === 0) throw new KnowledgeCurationError('invalid_reference', 'relevantChunks must be non-empty')
-  const relevantIds = new Set(input.relevantChunks.map((chunk) => chunk.chunkId))
-  if ([...relevantIds].some((id) => !input.document.chunks.some((chunk) => chunk.chunkId === id))) throw new KnowledgeCurationError('invalid_reference', 'relevantChunks must belong to document')
-  const values = Array.isArray(raw) ? raw : object(raw, 'candidate response').candidates
-  if (!Array.isArray(values)) throw new KnowledgeCurationError('invalid_model_output', 'candidate response must contain candidates')
-  return values.map((item, index) => {
-    const value = object(item, `candidate ${index + 1}`)
-    const provenance = object(value.provenance, 'provenance')
-    const chunkId = string(provenance.chunkId, 'provenance.chunkId')
-    if (!relevantIds.has(chunkId)) throw new KnowledgeCurationError('invalid_reference', `Candidate chunk is not relevant: ${chunkId}`)
-    const chunk = chunkFor(chunkId, input.relevantChunks)
-    const claim = object(value.claim, 'claim')
-    const originalStatement = string(claim.originalStatement, 'claim.originalStatement')
-    if (!normalizeWhitespace(chunk.text).includes(normalizeWhitespace(originalStatement))) throw new KnowledgeCurationError('ungrounded_candidate', `Candidate statement is not grounded in chunk ${chunkId}`)
-    const temporalValue = value.temporal === undefined ? {} : object(value.temporal, 'temporal')
-    const factorsValue = object(object(value.confidence, 'confidence').factors, 'confidence.factors')
-    const confidenceValue = object(value.confidence, 'confidence')
-    const resolution = value.entityResolution === null || value.entityResolution === undefined ? null : object(value.entityResolution, 'entityResolution')
-    const candidateId = `candidate-${safeIntermediateId(input.workflowRunId, 'workflowRunId')}-${String(index + 1).padStart(4, '0')}`
-    const candidateConfidence = {
-      score: confidence(confidenceValue.score, 'confidence.score'),
-      factors: {
-        sourceReliability: input.sourceAssessment.sourceReliability,
-        directness: confidence(factorsValue.directness, 'confidence.factors.directness'),
-        corroboration: confidence(factorsValue.corroboration, 'confidence.factors.corroboration'),
-        freshness: confidence(factorsValue.freshness, 'confidence.factors.freshness'),
-        conflictStatus: confidence(factorsValue.conflictStatus, 'confidence.factors.conflictStatus'),
-      },
-      reasoning: strings(confidenceValue.reasoning, 'confidence.reasoning'),
-    }
-    const modelPage = provenance.page
-    const page = typeof modelPage === 'string' || typeof modelPage === 'number' ? modelPage === chunk.page ? modelPage : chunk.page ?? null : chunk.page ?? null
-    return {
-      candidateId,
-      workflowRunId: input.workflowRunId,
-      knowledgeBaseId: input.knowledgeBaseId,
-      candidateType: enumValue(value.candidateType, CANDIDATE_TYPES, 'candidateType'),
-      intelligenceType: value.intelligenceType === null ? null : enumValue(value.intelligenceType, INTELLIGENCE_TYPES, 'intelligenceType'),
-      subjectRefs: strings(value.subjectRefs, 'subjectRefs'),
-      claim: { normalizedStatement: string(claim.normalizedStatement, 'claim.normalizedStatement'), originalStatement },
-      temporal: { asOf: nullableString(temporalValue.asOf, 'temporal.asOf'), periodStart: nullableString(temporalValue.periodStart, 'temporal.periodStart'), periodEnd: nullableString(temporalValue.periodEnd, 'temporal.periodEnd'), forecastHorizon: nullableString(temporalValue.forecastHorizon, 'temporal.forecastHorizon') },
-      provenance: { rawRef: input.document.rawRef, sourceRef: null, page, section: chunk.section ?? null, locator: chunk.locator ?? null, chunkId },
-      sourceAssessmentRef: input.sourceAssessment.sourceAssessmentId,
-      confidence: candidateConfidence,
-      entityResolution: resolution === null ? null : { mention: string(resolution.mention, 'entityResolution.mention'), suggestedEntityRef: nullableString(resolution.suggestedEntityRef, 'entityResolution.suggestedEntityRef'), confidence: confidence(resolution.confidence, 'entityResolution.confidence') },
-      proposedKnowledge: { object: sanitizeDraft(object(value.proposedKnowledge, 'proposedKnowledge').object) },
-      mappingStatus: 'unmapped',
-      admission: 'pending',
-      notes: value.notes === undefined ? [] : strings(value.notes, 'notes'),
-    }
-  })
-}
-
-export function validateAdmission(raw: unknown, input: AdmissionInput): KnowledgeAdmissionDecision {
-  const value = object(raw, 'admission response')
-  if (value.candidateId !== undefined && value.candidateId !== input.candidate.candidateId) throw new KnowledgeCurationError('invalid_reference', 'Admission candidateId does not match the trusted candidate')
-  const dimensions = object(value.dimensions, 'dimensions')
-  return {
-    candidateId: input.candidate.candidateId,
-    decision: enumValue(value.decision, ['admit', 'reject'] as const, 'decision'),
-    reason: enumValue(value.reason, ADMISSION_REASONS, 'reason'),
-    reasoning: strings(value.reasoning, 'reasoning'),
-    dimensions: {
-      relevance: string(dimensions.relevance, 'dimensions.relevance'),
-      specificity: string(dimensions.specificity, 'dimensions.specificity'),
-      informationGain: string(dimensions.informationGain, 'dimensions.informationGain'),
-      evidenceDensity: string(dimensions.evidenceDensity, 'dimensions.evidenceDensity'),
-      temporalScopePrecision: string(dimensions.temporalScopePrecision, 'dimensions.temporalScopePrecision'),
-      researchUtility: string(dimensions.researchUtility, 'dimensions.researchUtility'),
-    },
-  }
-}
-
-const ALLOWED_DRAFT_KEYS: Record<string, string[]> = {
-  entity: ['type', 'name', 'description', 'tags', 'taxonomyRefs', 'metadata'],
-  relation: ['type', 'source', 'target', 'attributes', 'confidence'],
-  intelligence: ['type', 'entityRefs', 'confidence', 'lifecycle', 'statement', 'normalizedStatement', 'originalStatement', 'temporal', 'value', 'metric', 'unit', 'asOf', 'periodStart', 'periodEnd', 'forecastHorizon', 'attribution'],
-  module_content: ['type', 'targetEntity', 'schemaId', 'columns', 'rows'],
-}
-
-export function validateMappings(raw: unknown, admitted: KnowledgeCandidate[]): KnowledgeMappingResult[] {
-  const values = Array.isArray(raw) ? raw : object(raw, 'mapping response').mappings
-  if (!Array.isArray(values)) throw new KnowledgeCurationError('invalid_model_output', 'mapping response must contain mappings')
-  const byId = new Map(admitted.map((candidate) => [candidate.candidateId, candidate]))
-  const seen = new Set<string>()
-  const results = values.map((item, index) => {
-    const value = object(item, `mapping ${index + 1}`)
-    const candidateId = string(value.candidateId ?? admitted[index]?.candidateId, 'candidateId')
-    const candidate = byId.get(candidateId)
-    if (!candidate) throw new KnowledgeCurationError('invalid_reference', `Mapping references a candidate that was not admitted: ${candidateId}`)
-    if (seen.has(candidateId)) throw new KnowledgeCurationError('invalid_reference', `Duplicate mapping for candidate: ${candidateId}`)
-    seen.add(candidateId)
-    const proposed = object(value.proposedKnowledge, 'proposedKnowledge')
-    const objectValue = proposed.object === null || proposed.object === undefined ? null : sanitizeDraft(proposed.object)
-    const allowed = new Set(ALLOWED_DRAFT_KEYS[candidate.candidateType === 'module_content' ? 'module_content' : candidate.candidateType])
-    const unmappedFields = objectValue === null ? [] : Object.keys(objectValue).filter((key) => !allowed.has(key))
-    const safeObject = objectValue === null ? null : Object.fromEntries(Object.entries(objectValue).filter(([key]) => allowed.has(key)))
-    const requestedStatus = enumValue(value.mappingStatus, MAPPING_STATUSES, 'mappingStatus')
-    const mappingStatus = safeObject === null || requestedStatus === 'unmapped' ? 'unmapped' : unmappedFields.length > 0 || requestedStatus === 'partially_mapped' ? 'partially_mapped' : 'mapped'
-    const finalObject = mappingStatus === 'unmapped' ? null : safeObject
-    return { ...candidate, proposedKnowledge: { object: finalObject }, mappingStatus, notes: [...candidate.notes, ...(value.notes === undefined ? [] : strings(value.notes, 'mapping.notes'))], ...(unmappedFields.length > 0 ? { unmappedFields } : {}) } as KnowledgeMappingResult
-  })
-  if (seen.size !== admitted.length) throw new KnowledgeCurationError('invalid_reference', 'Every admitted candidate must receive exactly one mapping result')
-  return results
-}
-
-function comparison(value: unknown, hints: ExistingKnowledgeContext['comparisonHints']): ConflictDecision['comparison'] {
-  const source = value === undefined ? {} : object(value, 'comparison')
-  return {
-    sameEntity: source.sameEntity === undefined ? hints?.sameEntity ?? false : boolean(source.sameEntity, 'comparison.sameEntity'),
-    sameMetric: source.sameMetric === undefined ? hints?.sameMetric ?? false : boolean(source.sameMetric, 'comparison.sameMetric'),
-    samePeriod: source.samePeriod === undefined ? hints?.samePeriod ?? false : boolean(source.samePeriod, 'comparison.samePeriod'),
-    sameUnit: source.sameUnit === undefined ? hints?.sameUnit ?? false : boolean(source.sameUnit, 'comparison.sameUnit'),
-    sameRegion: source.sameRegion === undefined ? hints?.sameRegion ?? false : boolean(source.sameRegion, 'comparison.sameRegion'),
-    sameDefinition: source.sameDefinition === undefined ? hints?.sameDefinition ?? false : boolean(source.sameDefinition, 'comparison.sameDefinition'),
-    sameMethodology: source.sameMethodology === undefined ? hints?.sameMethodology ?? false : boolean(source.sameMethodology, 'comparison.sameMethodology'),
-  }
-}
-
-export function validateConflict(raw: unknown, input: ConflictInput): ConflictDecision {
-  const value = object(raw, 'conflict response')
-  const matched = new Set(input.existing.matchedKnowledge.map((item) => item.knowledgeId))
-  const refs = value.existingKnowledgeRefs === undefined ? [] : strings(value.existingKnowledgeRefs, 'existingKnowledgeRefs')
-  if (refs.some((ref) => !matched.has(ref))) throw new KnowledgeCurationError('invalid_reference', 'Conflict response references Knowledge outside supplied context')
-  const conflictType = enumValue(value.conflictType, CONFLICT_TYPES, 'conflictType')
-  let resolution = enumValue(value.resolution, CONFLICT_RESOLUTIONS, 'resolution')
-  const comparisonResult = comparison(value.comparison, input.existing.comparisonHints)
-  let requiresUserReview = boolean(value.requiresUserReview, 'requiresUserReview')
-  if (refs.length === 0) {
-    resolution = 'create'
-    requiresUserReview = false
-  } else if (conflictType === 'duplicate') {
-    resolution = 'reject'
-    requiresUserReview = false
-  } else if (conflictType === 'forecast_divergence' || conflictType === 'viewpoint_divergence') {
-    resolution = 'keep_both'
-    requiresUserReview = false
-  } else if (conflictType === 'correction') {
-    const authoritativeCorrection = ['official_disclosure', 'company_official'].includes(input.sourceAssessment.sourceType)
-    if (authoritativeCorrection) resolution = 'supersede'
-    else {
-      resolution = 'user_review'
-      requiresUserReview = true
-    }
-  } else if (conflictType === 'fact_conflict') {
-    {
-      resolution = 'user_review'
-      requiresUserReview = true
-    }
-  }
-  if (requiresUserReview) resolution = 'user_review'
-  return {
-    decisionId: `conflict-${safeIntermediateId(input.candidate.workflowRunId, 'workflowRunId')}-${safeIntermediateId(input.candidate.candidateId, 'candidateId')}`,
-    knowledgeBaseId: input.existing.knowledgeBaseId,
-    candidateId: input.candidate.candidateId,
-    existingKnowledgeRefs: [...new Set(refs)],
-    conflictType,
-    resolution,
-    comparison: comparisonResult,
-    reason: string(value.reason, 'reason'),
-    decisionConfidence: confidence(value.decisionConfidence, 'decisionConfidence'),
-    requiresUserReview,
-  }
-}
-
-function gapArray(raw: unknown): unknown[] {
-  const values = Array.isArray(raw) ? raw : object(raw, 'schema gap response').gaps
-  if (!Array.isArray(values)) throw new KnowledgeCurationError('invalid_model_output', 'schema gap response must contain gaps')
-  return values
-}
-
-export function validateSchemaGaps(raw: unknown, input: SchemaGapInput): SchemaGapProposal[] {
-  const known = new Set(input.candidates.map((candidate) => candidate.candidateId))
-  return gapArray(raw).map((item, index) => {
-    const value = object(item, `schema gap ${index + 1}`)
-    const refs = strings(value.candidateRefs, 'candidateRefs')
-    if (refs.some((ref) => !known.has(ref))) throw new KnowledgeCurationError('invalid_reference', 'Schema Gap references an unavailable candidate')
-    const observed = object(value.observedInformation, 'observedInformation')
-    const limitation = object(value.currentLimitation, 'currentLimitation')
-    const direction = object(value.suggestedDirection, 'suggestedDirection')
-    return {
-      gapId: `schema-gap-${safeIntermediateId(input.workflowRunId, 'workflowRunId')}-${String(index + 1).padStart(4, '0')}`,
-      workflowRunId: input.workflowRunId,
-      knowledgeBaseId: input.knowledgeBaseId,
-      candidateRefs: [...new Set(refs)],
-      gapType: enumValue(value.gapType, SCHEMA_GAP_TYPES, 'gapType') as SchemaGapType,
-      observedInformation: { description: string(observed.description, 'observedInformation.description'), examples: strings(observed.examples, 'observedInformation.examples') },
-      currentLimitation: { description: string(limitation.description, 'currentLimitation.description') },
-      suggestedDirection: { description: string(direction.description, 'suggestedDirection.description') },
-      affectedKnowledgeTypes: strings(value.affectedKnowledgeTypes, 'affectedKnowledgeTypes'),
-      affectedIndustries: strings(value.affectedIndustries, 'affectedIndustries'),
-      generality: enumValue(value.generality, SCHEMA_GAP_GENERALITIES, 'generality') as SchemaGapGenerality,
-      frequency: enumValue(value.frequency, SCHEMA_GAP_FREQUENCIES, 'frequency') as SchemaGapFrequency,
-      recommendedAction: enumValue(value.recommendedAction, SCHEMA_GAP_ACTIONS, 'recommendedAction') as SchemaGapAction,
-    }
-  })
+export function validateAnalyzeSchemaGaps(raw: unknown, input: SchemaGapInput): AnalyzeSchemaGapsOutput {
+  scope(input.document, input.workflowRunId, input.knowledgeBaseId); rejectTrusted(raw); const value = object(raw, 'analyzeSchemaGaps output'); exact(value, ['gaps'], 'analyzeSchemaGaps output'); const known = new Set(input.candidates.map((candidate) => candidate.candidateId)); const gaps = array(value.gaps, 'gaps').map((entry, index) => { const item = object(entry, `gaps[${index}]`); exact(item, ['candidateRefs', 'gapType', 'observedInformation', 'currentLimitation', 'suggestedDirection', 'affectedKnowledgeTypes', 'affectedIndustries', 'generality', 'frequency', 'recommendedAction'], `gaps[${index}]`); const candidateRefs = strings(item.candidateRefs, 'candidateRefs'); if (candidateRefs.some((ref) => !known.has(ref))) fail('invalid_reference', 'Schema Gap references an unavailable candidate'); const observed = object(item.observedInformation, 'observedInformation'); exact(observed, ['description', 'examples'], 'observedInformation'); const limitation = object(item.currentLimitation, 'currentLimitation'); exact(limitation, ['description'], 'currentLimitation'); const direction = object(item.suggestedDirection, 'suggestedDirection'); exact(direction, ['description'], 'suggestedDirection'); return { candidateRefs: [...new Set(candidateRefs)], gapType: enumValue(item.gapType, GAP_TYPES, 'gapType'), observedInformation: { description: string(observed.description, 'observedInformation.description'), examples: strings(observed.examples, 'observedInformation.examples') }, currentLimitation: { description: string(limitation.description, 'currentLimitation.description') }, suggestedDirection: { description: string(direction.description, 'suggestedDirection.description') }, affectedKnowledgeTypes: strings(item.affectedKnowledgeTypes, 'affectedKnowledgeTypes'), affectedIndustries: strings(item.affectedIndustries, 'affectedIndustries'), generality: enumValue(item.generality, GAP_GENERALITIES, 'generality'), frequency: enumValue(item.frequency, GAP_FREQUENCIES, 'frequency'), recommendedAction: string(item.recommendedAction, 'recommendedAction') } })
+  return { gaps }
 }

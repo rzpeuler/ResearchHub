@@ -1,13 +1,11 @@
-import type { EntityType, IntelligenceType, ModuleType, RelationType, SourceReliability, SourceType } from '../../../packages/schemas/knowledge/index.ts'
+import type { CurationSchemaContext } from './schema-context-types.ts'
+import type { ClaimTypeV03, EntityTypeV03, KnowledgeClaimV03, KnowledgeEntityV03, KnowledgeRelationV03, KnowledgeSourceV03, RelationTypeV03, SourceReliabilityV03, SourceTypeV03 } from '../../schemas/knowledge/v03/domain.ts'
 
-export type CurationOperation =
-  | 'assess_source'
-  | 'filter_relevance'
-  | 'extract_candidates'
-  | 'assess_admission'
-  | 'map_candidates'
-  | 'analyze_conflicts'
-  | 'detect_schema_gaps'
+export type ActiveCurationOperation = 'understandReport' | 'extractKnowledge' | 'reconcileKnowledge' | 'analyzeSchemaGaps'
+// Kept broad only at the adapter boundary so older external model harnesses can still type-check;
+// the runtime skill exposes and emits exactly ActiveCurationOperation values.
+export type CurationOperation = ActiveCurationOperation | (string & {})
+export type JsonRecord = Record<string, unknown>
 
 export interface ResearchDocumentMetadata {
   title: string | null
@@ -26,255 +24,176 @@ export interface ResearchDocumentChunk {
   locator?: string | null
 }
 
+export interface ResearchDocumentSection {
+  sectionId: string
+  title: string | null
+  chunkIds: string[]
+}
+
 export interface NormalizedResearchDocument {
   rawRef: string
   suppliedMetadata: ResearchDocumentMetadata
   normalizedText: string
   chunks: ResearchDocumentChunk[]
+  sections?: ResearchDocumentSection[]
 }
 
-export interface KnowledgeScopeContext {
+export interface KnowledgeContext {
   knowledgeBaseId: string
-  schemaVersion: string
-  taxonomySummary: string[]
-  supportedEntityTypes: EntityType[]
-  supportedIntelligenceTypes: IntelligenceType[]
-  supportedRelationTypes: RelationType[]
-  supportedModuleTypes: ModuleType[]
-  domainHints?: string[]
+  schemaVersion: '0.3'
+  existingRefs: string[]
+  themeGroups: Array<Pick<JsonRecord, 'id' | 'name' | 'aliases'>>
+  themes: Array<Pick<JsonRecord, 'id' | 'name' | 'aliases' | 'themeGroupRef'>>
+  entities: KnowledgeEntityV03[]
+  relations: KnowledgeRelationV03[]
+  claims?: KnowledgeClaimV03[]
+  sources?: KnowledgeSourceV03[]
 }
 
-export interface SourceAssessmentInput {
+export interface CurationScope {
   workflowRunId: string
   knowledgeBaseId: string
   document: NormalizedResearchDocument
 }
 
 export interface SourceAssessment {
-  sourceAssessmentId: string
-  rawRef: string
-  sourceType: SourceType
+  sourceType: SourceTypeV03
   publisher: string | null
   institution: string | null
   author: string | null
   publishedAt: string | null
   primaryOrSecondary: 'primary' | 'secondary' | 'unknown'
-  sourceReliability: SourceReliability
+  sourceReliability: SourceReliabilityV03
   sourceIdentityConfidence: number
   reasoning: string[]
 }
 
-export interface RelevanceInput {
-  document: NormalizedResearchDocument
-  context: KnowledgeScopeContext
-  sourceAssessment: SourceAssessment
-}
-
-export type ContentRelevanceDecisionValue = 'relevant' | 'contextual' | 'irrelevant'
-export type ContentRelevanceReason =
-  | 'research_relevant'
-  | 'useful_context'
-  | 'legal_disclaimer'
-  | 'template_content'
-  | 'unrelated_content'
-  | 'duplicate_content'
-  | 'navigation_content'
-  | 'other'
-
-export interface ContentRelevanceDecision {
-  chunkId: string
-  decision: ContentRelevanceDecisionValue
-  reason: ContentRelevanceReason
-  reasoning?: string[]
-}
-
-export interface CandidateClaim {
-  normalizedStatement: string
-  originalStatement: string
-}
-
-export interface CandidateTemporalContext {
-  asOf: string | null
-  periodStart: string | null
-  periodEnd: string | null
-  forecastHorizon: string | null
-}
-
-export interface CandidateProvenance {
-  rawRef: string
-  sourceRef: string | null
-  page: string | number | null
-  section: string | null
-  locator: string | null
-  chunkId: string
-}
-
-export interface CandidateConfidenceFactors {
-  sourceReliability: SourceReliability
-  directness: number
-  corroboration: number
-  freshness: number
-  conflictStatus: number
-}
-
-export interface CandidateConfidence {
-  score: number
-  factors: CandidateConfidenceFactors
-  reasoning: string[]
-}
-
-export interface EntityResolutionSuggestion {
+export interface ThemeHypothesis {
   mention: string
-  suggestedEntityRef: string | null
-  confidence: number
-}
-
-export type CurationCandidateType = 'entity' | 'relation' | 'intelligence' | 'module_content'
-
-export interface KnowledgeCandidate {
-  candidateId: string
-  workflowRunId: string
-  knowledgeBaseId: string
-  candidateType: CurationCandidateType
-  intelligenceType: IntelligenceType | null
-  subjectRefs: string[]
-  claim: CandidateClaim
-  temporal: CandidateTemporalContext
-  provenance: CandidateProvenance
-  sourceAssessmentRef: string
-  confidence: CandidateConfidence
-  entityResolution: EntityResolutionSuggestion | null
-  proposedKnowledge: { object: Record<string, unknown> | null }
-  mappingStatus: 'mapped' | 'partially_mapped' | 'unmapped'
-  admission: 'admit' | 'reject' | 'pending'
-  notes: string[]
-}
-
-export interface ExtractionInput {
-  workflowRunId: string
-  knowledgeBaseId: string
-  document: NormalizedResearchDocument
-  sourceAssessment: SourceAssessment
-  relevantChunks: ResearchDocumentChunk[]
-  context?: KnowledgeScopeContext
-}
-
-export type AdmissionReason =
-  | 'relevant_and_material'
-  | 'irrelevant'
-  | 'trivial_commonplace'
-  | 'low_information_value'
-  | 'insufficient_specificity'
-  | 'unsupported_generic_claim'
-  | 'transient_noise'
-  | 'duplicate_background'
-  | 'malformed_claim'
-
-export interface KnowledgeAdmissionDecision {
-  candidateId: string
-  decision: 'admit' | 'reject'
-  reason: AdmissionReason
-  reasoning: string[]
-  dimensions: {
-    relevance: string
-    specificity: string
-    informationGain: string
-    evidenceDensity: string
-    temporalScopePrecision: string
-    researchUtility: string
-  }
-}
-
-export interface AdmissionInput {
-  candidate: KnowledgeCandidate
-  sourceAssessment: SourceAssessment
-  context: KnowledgeScopeContext
-}
-
-export interface MappingInput {
-  candidates?: KnowledgeCandidate[]
-  candidate?: KnowledgeCandidate
-  context: KnowledgeScopeContext
-}
-
-export interface KnowledgeMappingResult extends KnowledgeCandidate {
-  mappingStatus: 'mapped' | 'partially_mapped' | 'unmapped'
-  proposedKnowledge: { object: Record<string, unknown> | null }
-  unmappedFields?: string[]
-}
-
-export interface ExistingKnowledgeMatch {
-  knowledgeId: string
-  kind: 'entity' | 'relation' | 'intelligence' | 'module'
-  type: string
-  object: Record<string, unknown>
-  semanticHash: string
-}
-
-export interface ExistingKnowledgeContext {
-  knowledgeBaseId: string
-  candidateId: string
-  matchedKnowledge: ExistingKnowledgeMatch[]
-  comparisonHints?: {
-    sameEntity?: boolean
-    sameMetric?: boolean
-    samePeriod?: boolean
-    sameUnit?: boolean
-    sameRegion?: boolean
-    sameDefinition?: boolean
-    sameMethodology?: boolean
-  }
-}
-
-export type ConflictType =
-  | 'none'
-  | 'duplicate'
-  | 'temporal_update'
-  | 'correction'
-  | 'definition_difference'
-  | 'fact_conflict'
-  | 'forecast_divergence'
-  | 'viewpoint_divergence'
-  | 'relation_conflict'
-
-export type ConflictResolution = 'create' | 'update' | 'supersede' | 'merge_source' | 'keep_both' | 'reject' | 'user_review'
-
-export interface ConflictDecision {
-  decisionId: string
-  knowledgeBaseId: string
-  candidateId: string
-  existingKnowledgeRefs: string[]
-  conflictType: ConflictType
-  resolution: ConflictResolution
-  comparison: {
-    sameEntity: boolean
-    sameMetric: boolean
-    samePeriod: boolean
-    sameUnit: boolean
-    sameRegion: boolean
-    sameDefinition: boolean
-    sameMethodology: boolean
-  }
+  disposition: 'resolved_existing' | 'resolved_multiple' | 'provisional_unresolved' | 'proposed_new' | 'ambiguous'
+  existingThemeRefs: string[]
   reason: string
-  decisionConfidence: number
+  evidenceChunkRefs: string[]
+}
+
+export interface MajorEntityMention {
+  mention: string
+  entityType: EntityTypeV03 | null
+  suggestedExistingRef: string | null
+  evidenceChunkRefs: string[]
+  reason: string
+}
+
+export interface ReportUnderstanding {
+  sourceAssessment: SourceAssessment
+  researchScope: string[]
+  majorTopics: string[]
+  majorEntityMentions: MajorEntityMention[]
+  themeHypotheses: ThemeHypothesis[]
+  newThemeProposal?: { name: string; definition: string; reason: string }
+  uncertainty: string[]
+}
+
+export interface UnderstandReportInput extends CurationScope {
+  themeContext: KnowledgeContext
+}
+
+export interface SemanticMention {
+  text: string
+  entityType?: EntityTypeV03 | null
+  existingRef?: string | null
+}
+
+export interface EntityCandidate {
+  candidateId: string
+  entityType: EntityTypeV03
+  name: string
+  aliases: string[]
+  description: string | null
+  suggestedExistingRef: string | null
+  semanticFields: JsonRecord
+  evidenceChunkRefs: string[]
+  reason: string
+}
+
+export interface RelationCandidate {
+  candidateId: string
+  relationType: RelationTypeV03
+  sourceMention: SemanticMention
+  targetMention: SemanticMention
+  attributes: JsonRecord
+  contextMentions: SemanticMention[]
+  evidenceChunkRefs: string[]
+  reason: string
+}
+
+export interface ClaimCandidate {
+  candidateId: string
+  claimType: ClaimTypeV03
+  statement: string
+  subjectMentions: SemanticMention[]
+  temporal?: JsonRecord
+  structuredValue?: JsonRecord
+  semanticConfidence: number
+  evidenceChunkRefs: string[]
+  reason: string
+}
+
+export interface ExtractionBatch {
+  batchId: string
+  sections: ResearchDocumentSection[]
+  chunks: ResearchDocumentChunk[]
+}
+
+export interface ExtractKnowledgeInput extends CurationScope {
+  batch: ExtractionBatch
+  reportUnderstanding: ReportUnderstanding
+  knowledgeContext: KnowledgeContext
+}
+
+export interface ExtractKnowledgeOutput {
+  entities: EntityCandidate[]
+  relations: RelationCandidate[]
+  claims: ClaimCandidate[]
+}
+
+export type ReconciliationAction = 'create' | 'duplicate' | 'merge_source' | 'update_state' | 'supersede' | 'keep_both' | 'reject' | 'user_review'
+export type ReconciliationClassification = 'duplicate' | 'temporal_update' | 'correction' | 'fact_conflict' | 'forecast_divergence' | 'viewpoint_divergence' | 'relation_state_change' | 'relation_conflict' | 'complementary'
+
+export interface ReconciliationCandidate {
+  candidateId: string
+  kind: 'entity' | 'relation' | 'claim'
+  semantic: JsonRecord
+  existingRefs: string[]
+}
+
+export interface ReconciliationGroup {
+  groupId: string
+  candidateIds: string[]
+  candidates: ReconciliationCandidate[]
+  existingKnowledge: JsonRecord[]
+}
+
+export interface ReconciliationDecision {
+  candidateId: string
+  decision: ReconciliationAction
+  classification: ReconciliationClassification
+  existingRefs: string[]
+  reason: string
   requiresUserReview: boolean
 }
 
-export interface ConflictInput {
-  candidate: KnowledgeCandidate
-  existing: ExistingKnowledgeContext
+export interface ReconcileKnowledgeInput extends CurationScope {
+  groups: ReconciliationGroup[]
   sourceAssessment: SourceAssessment
 }
 
-export type SchemaGapType = 'vocabulary_gap' | 'schema_gap' | 'validation_gap' | 'access_gap' | 'projection_gap'
-export type SchemaGapGenerality = 'local' | 'cross_industry' | 'universal'
-export type SchemaGapFrequency = 'first_seen' | 'repeated'
-export type SchemaGapAction = 'no_action' | 'data_convention_review' | 'validation_review' | 'access_interface_review' | 'projection_review' | 'architecture_review'
+export interface ReconcileKnowledgeOutput {
+  decisions: ReconciliationDecision[]
+}
 
+export type SchemaGapType = 'vocabulary' | 'schema' | 'validation' | 'access' | 'projection'
 export interface SchemaGapProposal {
-  gapId: string
-  workflowRunId: string
-  knowledgeBaseId: string
   candidateRefs: string[]
   gapType: SchemaGapType
   observedInformation: { description: string; examples: string[] }
@@ -282,14 +201,20 @@ export interface SchemaGapProposal {
   suggestedDirection: { description: string }
   affectedKnowledgeTypes: string[]
   affectedIndustries: string[]
-  generality: SchemaGapGenerality
-  frequency: SchemaGapFrequency
-  recommendedAction: SchemaGapAction
+  generality: 'local' | 'cross_industry' | 'universal'
+  frequency: 'first_seen' | 'repeated'
+  recommendedAction: string
 }
 
-export interface SchemaGapInput {
-  workflowRunId: string
-  knowledgeBaseId: string
-  candidates: KnowledgeCandidate[]
-  context: KnowledgeScopeContext
+export interface SchemaGapInput extends CurationScope {
+  candidates: Array<JsonRecord & { candidateId: string }>
+  knowledgeContext: KnowledgeContext
 }
+
+export interface AnalyzeSchemaGapsOutput {
+  gaps: SchemaGapProposal[]
+}
+
+export type CurationResult = ReportUnderstanding | ExtractKnowledgeOutput | ReconcileKnowledgeOutput | AnalyzeSchemaGapsOutput
+
+export type { CurationSchemaContext }
