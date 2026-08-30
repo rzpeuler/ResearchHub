@@ -40,8 +40,9 @@
 - C2-R1: Blocked / Dependency on C-003
 - C3: Completed / Rework Required
 - C3-R1: Completed / Rework Required
-- C3-R2: Completed / Sol Verification Pending
-- C2-R2: Not Started / Awaiting C3-R2 Sol Acceptance
+- C3-R2: Completed / Rework Required
+- C3-R3: Completed / Sol Verification Pending
+- C2-R2: Not Started / Awaiting C3-R3 Sol Acceptance
 - Current approved direction: Implementation Stage C — Knowledge Curation v0.3 foundation
 
 Stage B is accepted after Sol verification. B1, B2, and B3 Evidence are

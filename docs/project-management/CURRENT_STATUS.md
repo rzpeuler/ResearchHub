@@ -1,5 +1,24 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R3
+
+C3-R3 closes the final Knowledge v0.3 Runtime Foundation acceptance gaps. The
+ChangeSet Validator now revalidates every object in the complete simulated
+planned state through the shared canonical validation core before evaluating
+global invariants and issuing a receipt. This rejects dependency-invalidating
+updates such as changing a Company into a Product while an unchanged
+`business_exposure` Relation still requires a Company endpoint.
+
+Successful dry-run validation now returns report evidence only and never emits
+a Writer-consumable `ValidatedKnowledgeChangeSetV03`; commit mode continues to
+return a deeply immutable receipt. Writer, Full Validator, Schema, Curation,
+Workflow, Migration, and Runtime KB data were not modified.
+
+Status is `Completed`; acceptance is `Sol Verification Pending`. C3 remains
+`Completed / Rework Required`; C3-R1 remains `Completed / Rework Required`;
+C3-R2 remains `Completed / Rework Required`; C2-R2 remains `Not Started /
+Awaiting C3-R3 Sol Acceptance`; Stage C remains `In Progress`.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R2
 
 C3-R2 unifies v0.3 canonical object validation behind the pure
@@ -14,10 +33,10 @@ R1 planned-state simulation, stale protection, receipt immutability, Writer
 integration, and recovery behavior remain intact. No Writer, Schema,
 Curation, Workflow, Migration, or Runtime KB changes were made.
 
-Status is `Completed`; acceptance is `Sol Verification Pending`. C3 remains
-`Completed / Rework Required`; C3-R1 remains `Completed / Rework Required`;
-C2-R2 remains `Not Started / Awaiting C3-R2 Sol Acceptance`; Stage C remains
-`In Progress`.
+Status is `Completed`; acceptance is `Rework Required` pending C3-R3 Sol
+verification. C3 remains `Completed / Rework Required`; C3-R1 remains
+`Completed / Rework Required`; C2-R2 remains `Not Started / Awaiting C3-R3 Sol
+Acceptance`; Stage C remains `In Progress`.
 
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R1
 

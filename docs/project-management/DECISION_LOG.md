@@ -1,5 +1,26 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R3 — Final ChangeSet Validation Boundary
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-31
+
+C3-R3 preserves the C3-R2 shared canonical validation architecture and C3-R1
+planned-state simulation. After all Source and Knowledge operations are
+simulated, the ChangeSet Validator now passes the complete final object map
+through `validateV03CanonicalObjects`, then evaluates the existing global
+invariants. This makes receipt issuance contingent on the semantic validity of
+unchanged dependent objects as well as directly mutated objects.
+
+Successful `dry_run` validation returns only its validation report and never
+creates a `ValidatedKnowledgeChangeSetV03`. Commit mode still returns the
+deeply immutable cloned receipt with the stable ChangeSet hash. Regression
+coverage includes Entity subtype dependency invalidation, normal dry-run,
+virtual Raw dry-run, and existing commit receipt behavior. Writer, Full
+Validator, Schema, Curation, Workflow, Migration, and Runtime KB data were not
+modified. C3, C3-R1, and C3-R2 remain `Completed / Rework Required`; C2-R2
+remains `Not Started / Awaiting C3-R3 Sol Acceptance`.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R2 — Shared Canonical Validation Core
 
 **Status:** Completed / Sol Verification Pending

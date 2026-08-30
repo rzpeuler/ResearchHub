@@ -5,7 +5,7 @@ import { CanonicalV03KnowledgeLoader } from '../../shared/knowledge-base/canonic
 import type { KnowledgeBaseHandle } from '../../shared/knowledge-base/handle.ts'
 import { hashKnowledgeObject } from '../../shared/knowledge-base/canonical-hash.ts'
 import { parseYaml } from '../../shared/knowledge-base/yaml.ts'
-import { kindForV03Id, validateV03CanonicalObject, validateV03GlobalInvariants, type V03CanonicalKind, type V03CanonicalObject } from './v03-validation-core.ts'
+import { kindForV03Id, validateV03CanonicalObject, validateV03CanonicalObjects, validateV03GlobalInvariants, type V03CanonicalKind, type V03CanonicalObject } from './v03-validation-core.ts'
 import type { ChangeSetValidationOptions, ChangeSetValidationResultV03, ValidationDiagnostic, ValidationReport } from './types.ts'
 
 type Dict = Record<string, unknown>
@@ -142,9 +142,12 @@ export async function validateKnowledgeChangeSetV03(handle: KnowledgeBaseHandle,
       } else add(errors, 'OPERATION_TYPE', 'Unknown Knowledge operation type', operation.operationId)
     }
   }
-  validateV03GlobalInvariants({ objects, rawRefs, taxonomyRefs }, errors)
+  const finalContext = { objects, rawRefs, taxonomyRefs }
+  validateV03CanonicalObjects(objects.values(), finalContext, errors, (item) => ({ assetId: typeof item.object.id === 'string' ? item.object.id : undefined }))
+  validateV03GlobalInvariants(finalContext, errors)
   const finalReport = report(errors)
   if (finalReport.status === 'failed') return { report: finalReport }
+  if (dryRun) return { report: finalReport }
   const clonedChangeSet = structuredClone(changeSet)
   const validatedChangeSet: ValidatedKnowledgeChangeSetV03 = deepFreeze({ changeSet: clonedChangeSet, knowledgeBaseId: handle.knowledgeBaseId, schemaVersion: '0.3', baseRevision: handle.revision, changeSetId: changeSet.changeSetId, changeSetHash: hashKnowledgeObject(clonedChangeSet), validatedAt: new Date().toISOString() })
   return { report: finalReport, validatedChangeSet }

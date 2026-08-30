@@ -127,6 +127,20 @@ test('v0.3 Relation update preserves ID/storageRef and Business Exposure uniquen
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
+test('v0.3 ChangeSet rejects dependency-invalidating Entity subtype updates', async () => {
+  const root = await createRoot()
+  try {
+    const registry = writableRegistry(); const loader = new KnowledgeBaseLoader({ registry }); const handle = await loader.mount(root); const validationSkill = new KnowledgeValidationSkill({ loader }); const entity = (await loader.loadRuntimeState(handle)).index.getEntity('entity:example-company')
+    const replacement = { ...entity, type: 'product' as const }
+    const changeSet: KnowledgeChangeSetV03 = { changeSetId: 'changeset-dependent-relation-invalid', workflowRunId: 'workflow-dependent-relation-invalid', knowledgeBaseId: handle.knowledgeBaseId, schemaVersion: '0.3', storageFormatVersion: '1', expectedBaseRevision: handle.revision, requiresRawProvenance: false, sourceOperations: [], knowledgeOperations: [{ operationId: 'change-company-subtype', type: 'update', knowledgeId: entity.id, expectedBeforeHash: hashKnowledgeObject(entity), object: replacement }] }
+
+    const result = await validationSkill.validateChangeSet(handle, changeSet)
+    assert.equal(result.report.status, 'failed', JSON.stringify(result.report.errors))
+    assert.equal(result.report.errors.some((error) => error.code === 'V03_RELATION_SEMANTICS' && error.assetId === 'relation:exposure'), true)
+    assert.equal(result.validatedChangeSet, undefined)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
 test('v0.3 Writer rechecks stale target hash after validation', async () => {
   const root = await createRoot()
   try {
@@ -210,9 +224,24 @@ test('v0.3 ChangeSet enforces requiresRawProvenance policy and virtual Raw conte
     const missingMerge: KnowledgeChangeSetV03 = { changeSetId: 'changeset-provenance-merge-missing', workflowRunId: 'workflow-provenance-merge-missing', knowledgeBaseId: handle.knowledgeBaseId, schemaVersion: '0.3', storageFormatVersion: '1', expectedBaseRevision: 0, requiresRawProvenance: true, sourceOperations: [{ operationId: 'merge-no-raw', type: 'source_merge', sourceId: source.id, expectedBeforeHash: hashKnowledgeObject(source) }], knowledgeOperations: [] }
     const missingMergeResult = await validationSkill.validateChangeSet(handle, missingMerge); assert.equal(missingMergeResult.report.errors.some((error) => error.code === 'V03_RAW_PROVENANCE_REQUIRED'), true)
     const raw = await archiveRaw(handle, { bytes: Buffer.from('policy-raw'), originalFilename: 'policy.txt' }); const withRaw: KnowledgeChangeSetV03 = { ...missingMerge, changeSetId: 'changeset-provenance-merge-real', workflowRunId: 'workflow-provenance-merge-real', sourceOperations: [{ operationId: 'merge-real-raw', type: 'source_merge', sourceId: source.id, expectedBeforeHash: hashKnowledgeObject(source), addRawRefs: [raw.manifest.rawRef] }] }; const withRawResult = await validationSkill.validateChangeSet(handle, withRaw); assert.equal(withRawResult.report.status, 'passed', JSON.stringify(withRawResult.report.errors))
-    const virtualRaw = `raw-sha256-${'a'.repeat(64)}`; const virtual = sourceCreate('source:policy-virtual', true); virtual.sourceOperations[0] = { operationId: 'create-virtual-raw', type: 'source_create', source: { id: 'source:policy-virtual', title: 'Virtual Policy Source', sourceType: 'community', rawRefs: [virtualRaw] } }; const virtualResult = await validationSkill.validateChangeSet(handle, virtual, { mode: 'dry_run', virtualRawRefs: [virtualRaw] }); assert.equal(virtualResult.report.status, 'passed', JSON.stringify(virtualResult.report.errors))
+    const virtualRaw = `raw-sha256-${'a'.repeat(64)}`; const virtual = sourceCreate('source:policy-virtual', true); virtual.sourceOperations[0] = { operationId: 'create-virtual-raw', type: 'source_create', source: { id: 'source:policy-virtual', title: 'Virtual Policy Source', sourceType: 'community', rawRefs: [virtualRaw] } }; const virtualResult = await validationSkill.validateChangeSet(handle, virtual, { mode: 'dry_run', virtualRawRefs: [virtualRaw] }); assert.equal(virtualResult.report.status, 'passed', JSON.stringify(virtualResult.report.errors)); assert.equal(virtualResult.validatedChangeSet, undefined)
     const allowed = await validationSkill.validateChangeSet(handle, sourceCreate('source:policy-allowed', false)); assert.equal(allowed.report.status, 'passed', JSON.stringify(allowed.report.errors))
     const invalidPolicy = { ...sourceCreate('source:policy-invalid', false), requiresRawProvenance: 'yes' as never }; const invalidPolicyResult = await validationSkill.validateChangeSet(handle, invalidPolicy); assert.equal(invalidPolicyResult.report.errors.some((error) => error.code === 'CHANGESET_PROVENANCE_POLICY'), true)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('v0.3 valid dry-run returns evidence without a receipt or semantic mutation', async () => {
+  const root = await createRoot()
+  try {
+    const registry = writableRegistry(); const loader = new KnowledgeBaseLoader({ registry }); const handle = await loader.mount(root); const validationSkill = new KnowledgeValidationSkill({ loader }); const manifestBefore = await readFile(join(root, 'manifest.yaml'), 'utf8')
+    const changeSet: KnowledgeChangeSetV03 = { changeSetId: 'changeset-normal-dry-run', workflowRunId: 'workflow-normal-dry-run', knowledgeBaseId: handle.knowledgeBaseId, schemaVersion: '0.3', storageFormatVersion: '1', expectedBaseRevision: handle.revision, requiresRawProvenance: false, sourceOperations: [{ operationId: 'create-dry-run-source', type: 'source_create', source: { id: 'source:dry-run', title: 'Dry Run Source', sourceType: 'community' } }], knowledgeOperations: [] }
+
+    const result = await validationSkill.validateChangeSet(handle, changeSet, { mode: 'dry_run' })
+    assert.equal(result.report.status, 'passed', JSON.stringify(result.report.errors))
+    assert.equal(result.validatedChangeSet, undefined)
+    assert.equal(await readFile(join(root, 'manifest.yaml'), 'utf8'), manifestBefore)
+    await assert.rejects(() => readFile(join(root, 'sources/dry-run.yaml'), 'utf8'))
+    assert.equal((await loader.mount(root)).revision, handle.revision)
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 

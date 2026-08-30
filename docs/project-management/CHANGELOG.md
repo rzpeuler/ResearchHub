@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R3
+
+- Revalidated the complete final planned canonical object state through the
+  shared v0.3 validation core before global invariants and receipt issuance.
+- Added dependency-invalidation coverage proving an unchanged
+  `business_exposure` Relation rejects an Entity subtype update that violates
+  its endpoint semantics.
+- Closed the dry-run receipt boundary: normal and virtual Raw dry-runs return
+  validation evidence without a `ValidatedKnowledgeChangeSetV03` or semantic
+  mutation, while commit mode retains its deeply immutable receipt.
+- C3 remains `Completed / Rework Required`; C3-R1 remains `Completed / Rework
+  Required`; C3-R2 remains `Completed / Rework Required`; C3-R3 is `Completed /
+  Sol Verification Pending`.
+
 ## 2026-08-28 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R2
 
 - Added the pure Schema-derived v0.3 canonical validation core and refactored
