@@ -12,9 +12,20 @@ export interface KnowledgeCurationModelRequest {
   operation: CurationOperation
   instruction: string
   input: unknown
+  // The external DSH composition adapter still transports legacy envelopes.
+  // Active v0.3 callers use KnowledgeCurationModelV03Request below.
   schemaContext?: CurationSchemaContext
   outputContract?: StructuredOutputContract
-  // An index signature keeps external composition adapters structurally decoupled.
+  // Keep structural widening only for that existing external adapter boundary.
+  [key: string]: unknown
+}
+
+export interface KnowledgeCurationModelV03Request {
+  operation: CurationOperation
+  instruction: string
+  input: unknown
+  schemaContext: CurationSchemaContext
+  outputContract: StructuredOutputContract
   [key: string]: unknown
 }
 

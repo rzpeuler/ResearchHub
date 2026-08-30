@@ -1,5 +1,27 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2-R1
+
+C2-R2-R1 closes the four correctness and contract defects found during
+independent verification: non-null Claim temporal values now follow the frozen
+`asOf`/`scope` shape with deterministic datetime validation, reconciliation
+decisions are duplicate-aware and exactly once per candidate, Source identity
+uses normalized strong metadata with a canonical RawRef fallback, and
+ChangeSet `ingestionContext.modelCalls` records actual model invocations.
+Active v0.3 Skill requests use a strict subtype requiring both Schema Context
+and Structured Output Contract; the existing DSH transport boundary remains
+unchanged because DSH is outside this task.
+
+Focused acceptance is green: Curation 19/19 and Ingestion 18/18. TypeScript
+integration and the required Workflow, Schema, Knowledge, Runtime, Migration,
+and Product Validation regressions are green. No Schema, Runtime Foundation,
+Writer, Migration, Access, DSH, frontend, examples, or Runtime KB data was
+modified. Real PDF Product Validation remains pending C2-R2-R1 Sol acceptance.
+
+Status is `Completed`; acceptance is `Sol Verification Pending`. C2-R2 is
+`Completed / Rework Required`; C3 is `Completed / Accepted - Sol verified`;
+Stage C remains `In Progress`.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2
 
 C2-R2 atomically cuts the Knowledge Curation Skill and Research Report

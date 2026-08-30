@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2-R1
+
+- Corrected Curation Claim temporal validation to preserve the frozen
+  `asOf`/`scope` shape and validate datetime strings without coercion.
+- Enforced duplicate-aware exactly-once reconciliation coverage, including
+  deterministic rejection of duplicate, missing, and unknown candidates while
+  accepting reversed decision order.
+- Unified Workflow-local Source identity derivation and resolution around
+  normalized strong metadata with canonical RawRef fallback for sparse reports.
+- Corrected ChangeSet model-call accounting to use actual model invocation
+  count and formalized the strict v0.3 request subtype requiring Schema Context
+  and Structured Output Contract.
+- Added focused Curation 19/19 and Ingestion 18/18 acceptance coverage.
+- C2-R2 is `Completed / Rework Required`; C2-R2-R1 is `Completed / Sol
+  Verification Pending`; Stage C remains `In Progress`.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2
 
 - Atomically replaced the active Knowledge Curation surface with the four

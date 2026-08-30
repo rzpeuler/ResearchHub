@@ -1,5 +1,29 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2-R1 - Curation/Ingestion Correctness Closure
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-31
+
+C2-R2-R1 is a narrow corrective patch over the accepted C2-R2 atomic
+architecture. It fixes Claim temporal validation against the frozen semantic
+shape, makes reconciliation coverage duplicate-aware and exactly once per
+candidate, and gives Workflow Source identity one normalized policy shared by
+allocation and lookup. Strong URL or complete document metadata is preferred;
+otherwise the canonical RawRef is included as a collision guard. Source
+classification fields do not participate as identity authority, and the model
+cannot provide a Source ID.
+
+The ChangeSet ingestion context now records the actual number of model calls,
+while result/log surfaces retain per-call operation, group/batch, attempted,
+succeeded, and retryCount details. The active Skill emits a strict v0.3 model
+request with required Schema Context and Structured Output Contract. The
+existing DSH transport compatibility boundary is retained without changing
+DSH, and no legacy Curation operation is restored. C3, Runtime, Writer,
+Migration, Schema, Access, frontend, examples, and Runtime KB data remain
+outside scope. Stage C remains `In Progress`; Real PDF Product Validation is
+awaiting Sol acceptance.
+
 ## KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2 - Atomic Curation/Workflow Cutover
 
 **Status:** Completed / Sol Verification Pending

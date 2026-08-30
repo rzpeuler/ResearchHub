@@ -39,6 +39,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R2 | Unify Knowledge v0.3 canonical validation | Completed | P0 | 2026-08-28 | Luna | Current C3-R2 implementation commit (see Git handoff) | Superseded by C3-R3 |
 | KNOWLEDGE-V0.3-IMPLEMENTATION-C-003-R3 | Finalize Knowledge v0.3 ChangeSet validation boundary | Completed | P0 | 2026-08-31 | Luna | Current C3-R3 implementation commit (see Git handoff) | Accepted - Sol verified |
 | KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2 | Resume Knowledge Curation/Workflow v0.3 cutover | Completed | P0 | 2026-08-28 | Luna | Current implementation commit (see Git handoff) | Sol Verification Pending |
+| KNOWLEDGE-V0.3-IMPLEMENTATION-C-002-R2-R1 | Close Knowledge v0.3 curation ingestion correctness gaps | Completed | P0 | 2026-08-31 | Luna | Current R1 implementation commit (see Git handoff) | Completed / Sol Verification Pending |
 | RH-GOV-001 | Initialize project execution state management system | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-DOC-002 | Synchronize architecture baseline documentation | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-ENG-001 | Validate minimum ResearchHub Harness integration | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — typecheck and integration test passed |

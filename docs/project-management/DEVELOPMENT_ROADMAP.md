@@ -14,14 +14,16 @@
 
 ## Current governance state
 
-- C2-R2: Completed / Sol Verification Pending
+- C2-R2: Completed / Rework Required
+- C2-R2-R1: Completed / Sol Verification Pending
 - Current Curation runtime: Knowledge v0.3, exactly four operations
 - Current Report Ingestion runtime: Frozen Workflow v0.3 / Schema 0.3 / Storage 1
 - Stage C: In Progress
 
-The C2-R2 atomic cutover is implemented and locally verified. Curation and
-Report Ingestion now share the frozen v0.3 boundary; no mixed old/new active
-contract remains. Final Sol verification is pending.
+The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
+locally verified. Curation and Report Ingestion now share the frozen v0.3
+boundary; no mixed old/new active contract remains. Real PDF Product
+Validation is the next authorized step after Sol acceptance of C2-R2-R1.
 
 - Architecture Freeze: Completed / Sol Accepted
 - Governance Integration: Completed / Sol verified
@@ -51,7 +53,8 @@ contract remains. Final Sol verification is pending.
 - C3-R1: Completed / Superseded by C3-R2/R3
 - C3-R2: Completed / Superseded by C3-R3
 - C3-R3: Completed / Accepted - Sol verified
-- C2-R2: Completed / Sol Verification Pending
+- C2-R2: Completed / Rework Required
+- C2-R2-R1: Completed / Sol Verification Pending
 - Current approved direction: Implementation Stage C — Knowledge Curation v0.3 foundation
 
 Stage B is accepted after Sol verification. B1, B2, and B3 Evidence are
