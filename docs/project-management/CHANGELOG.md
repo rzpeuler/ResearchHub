@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-INTEGRATION-FIX-C-005
+
+- Corrected the stale Knowledge Curation DSH boundary: strict model requests
+  now require Schema Context and Structured Output Contract, and the adapter
+  serializes both with the active operation.
+- Added runtime guards for missing contract fields and exact-contract prompt
+  instructions; no output normalization, retry, Validator relaxation, or
+  Schema change was introduced.
+- Replaced stale adapter coverage with the four active v0.3 operations and
+  added deterministic Skill-to-Adapter boundary coverage. The focused and
+  required regression matrices passed.
+- C4-R2 is `Completed / Engineering Rework Required - Sol verified`; C5 is
+  `Completed / Sol Verification Pending`; Stage C remains
+  `In Progress / Awaiting C5 Sol Verification`.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R2
 
 - Ran the real PDF product-validation path after process-level credential
@@ -13,7 +28,9 @@
   and product-quality review. No production code was changed.
 - Added sanitized evidence at
   `tests/knowledge/product-validation/evidence/c004-r2-real-pdf-summary.json`.
-- C4-R2 is `Completed / Sol Verification Pending`; Stage C remains in progress.
+- C4-R2 is `Completed / Engineering Rework Required - Sol verified`; C5 is
+  `Completed / Sol Verification Pending`; Stage C remains in progress pending
+  C5 Sol Verification.
 
 ## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R1
 

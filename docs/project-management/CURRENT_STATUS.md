@@ -1,5 +1,23 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-INTEGRATION-FIX-C-005
+
+C-005 corrected the production integration boundary exposed by C4-R2. The
+real model returned the non-contract top-level field `entityMentions` because
+the stale DSH adapter did not serialize the frozen `schemaContext` and
+`outputContract` and still relied on the retired request field.
+
+The Knowledge Curation model request is now strict, the DSH adapter propagates
+the operation, Schema Context, and Structured Output Contract, and missing
+contract fields fail before transport. Focused Skill-to-Adapter coverage,
+adapter coverage, and the required regression matrix are green. No Validator
+or Schema relaxation, output normalization, retry, or unrelated runtime
+surface change was introduced.
+
+C5 is `Completed / Sol Verification Pending`. C4-R2 is `Completed /
+Engineering Rework Required - Sol verified`; Stage C remains `In Progress /
+Awaiting C5 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R2
 
 C4-R2 passed the clean-baseline, process/.env credential-match, official
@@ -17,10 +35,12 @@ ChangeSet, C3 commit validation, Writer, reload, replay, reprocess, and
 semantic/provenance review. No production code or manual model output was
 modified.
 
-Status is `Completed`; acceptance is `Sol Verification Pending`. The product
-result is `FAIL / SOL REVIEW REQUIRED`. C4 is historical environment blocked;
-C4-R1 is `Completed / Root Cause Identified - Sol verified`; Stage C remains
-`In Progress / Awaiting C4-R2 Sol Verification`.
+Status is `Completed`; acceptance is `Engineering Rework Required - Sol
+verified`. The product result is `FAIL / SOL REVIEW REQUIRED`; C-005 completed
+the required integration correction. C4 is historical environment blocked;
+C4-R1 is `Completed / Root Cause Identified - Sol verified`; C5 is
+`Completed / Sol Verification Pending`; Stage C remains `In Progress /
+Awaiting C5 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R1
 

@@ -1,8 +1,26 @@
 # Decision Log
 
-## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R2 - Real PDF Product Validation
+## KNOWLEDGE-V0.3-INTEGRATION-FIX-C-005 - DSH Contract Propagation Correction
 
 **Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-31
+
+C-005 fixes the integration defect exposed by C4-R2: the stale DSH adapter did
+not serialize the frozen Schema Context or Structured Output Contract and used
+the retired request field, allowing real model output to drift to the
+unsupported top-level `entityMentions` property. The strict Knowledge
+Curation request now requires both contracts, the adapter propagates the
+operation and exact contract data, and missing fields fail before transport.
+
+Focused adapter and Skill-to-Adapter tests plus the required regression matrix
+are green. No Validator or Schema relaxation, output normalization, retry, or
+unrelated runtime surface was introduced. C4-R3 real-PDF validation waits for
+Sol acceptance of C5. Stage C remains `In Progress / Awaiting C5 Sol
+Verification`.
+
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R2 - Real PDF Product Validation
+
+**Status:** Completed / Engineering Rework Required - Sol verified
 **Date:** 2026-08-31
 
 C4-R2 ran from the required `bd55e759cf65f31f3980fffc66d984686318484c`
@@ -17,10 +35,12 @@ The normal Workflow persisted Raw first and reached the real
 `entityMentions`; strict Curation validation rejected it as
 `invalid_model_output`. The run therefore returned `FAIL / SOL REVIEW REQUIRED`
 and stopped before extraction, reconciliation, ChangeSet, C3, Writer, reload,
-replay, reprocess, and semantic/provenance review. No production fix was made.
+replay, reprocess, and semantic/provenance review. C-005 corrected the DSH
+contract-propagation boundary; the C4-R2 product result remains failed and is
+recorded as an engineering rework requirement rather than a PASS.
 The sanitized Git evidence is
 `tests/knowledge/product-validation/evidence/c004-r2-real-pdf-summary.json`.
-Stage C remains `In Progress / Awaiting C4-R2 Sol Verification`.
+Stage C remains `In Progress / Awaiting C5 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R1 - Credential-Gated Rerun
 
