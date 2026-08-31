@@ -24,6 +24,7 @@ const BASELINE = 'a872119279bf1eec3e8e4e8c39e1dec60e2558fe'
 const KNOWLEDGE_BASE_ID = 'kb-product-validation-c004-r6'
 const EXPECTED_PDF_SHA256 = '998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63'
 const EXPECTED_PDF_BYTES = 3_209_114
+const RETRYABLE_CODES = ['invalid_model_output', 'invalid_reference', 'invalid_semantics', 'invalid_confidence', 'ungrounded_candidate'] as const
 const DEFAULT_PDF = 'C:\\Users\\Administrator\\Documents\\20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf'
 
 type JsonRecord = Record<string, unknown>
