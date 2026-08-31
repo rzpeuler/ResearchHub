@@ -1,5 +1,24 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R8-FINAL
+
+The single authorized full real-pipeline run used the exact PDF, Local Docling,
+a fresh Schema 0.3 / Storage 1 writable Knowledge Base, Raw-first persistence,
+and the exact `deepseek-official/deepseek-v4-flash` runtime. PDF identity and
+all frozen Docling metrics passed. The Workflow reached `understandReport` and
+batch-0001 extraction, then the first extraction attempt failed on an
+`upstream_of` endpoint semantic violation. The one C9 retry received the
+bounded C10 feedback and repeated the same violation; no third attempt was
+made and the remaining 17 batches were skipped.
+
+The run stopped before consolidation, reference resolution, reconciliation,
+ChangeSet validation, Writer, reload, and replay. Raw was created, semantic
+revision remained 0, and no production fix was applied. Durable sanitized
+evidence is
+`tests/knowledge/product-validation/evidence/c004-r8-final-full-pipeline.json`.
+R8 is `Completed / FAIL - SOL REVIEW REQUIRED`; Stage C remains
+`In Progress / Awaiting R8 Sol Verification` and is not accepted.
+
 ## KNOWLEDGE-V0.3-FLASH-EXTRACTION-SMOKE-C-004-S1
 
 The bounded real Flash smoke passed against the exact required PDF through the

@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-01 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R8-FINAL
+
+- Executed the one authorized full real Knowledge v0.3 pipeline run with the
+  exact PDF, Local Docling, fresh Schema 0.3 / Storage 1 state, and Flash.
+- PDF identity, Docling baseline, credential/model preflight, Raw-first, and
+  `understandReport` passed. Batch-0001 failed an `upstream_of` endpoint
+  semantic validation; its single C9 retry repeated the same violation.
+- The Workflow stopped immediately without a third attempt or downstream
+  semantic stages. Raw was created, revision stayed 0, and no production fix
+  was applied. Replay was not executed because primary ingestion failed.
+- Durable sanitized evidence is
+  `tests/knowledge/product-validation/evidence/c004-r8-final-full-pipeline.json`.
+  R8 is `Completed / FAIL - SOL REVIEW REQUIRED`; Stage C remains in progress
+  pending R8 Sol verification and is not accepted.
+- The explicit real `reprocess=true` rerun was not executed due to the stated
+  token-budget policy. Multi-provider/other-API and reasoning capability
+  portability remain deferred pending detailed user requirements.
+
 ## 2026-09-01 - KNOWLEDGE-V0.3-FLASH-EXTRACTION-SMOKE-C-004-S1
 
 - Ran the authorized bounded real smoke against the exact required PDF through

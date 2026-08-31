@@ -35,7 +35,8 @@
 - C11 Relation-Aware Output Contract: Accepted - Sol verified
 - RH-LLM-DEFAULT-FLASH-001: Accepted - Sol verified
 - C4-S1 Flash Extraction Smoke: Completed / PASS - Sol Verification Pending
-- Stage C: In Progress / not accepted
+- C4-R8-FINAL Product Validation: Completed / FAIL - SOL REVIEW REQUIRED
+- Stage C: In Progress / Awaiting R8 Sol Verification (not accepted)
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3

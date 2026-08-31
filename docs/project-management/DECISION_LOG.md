@@ -1,5 +1,26 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R8-FINAL - Full Flash Pipeline Result
+
+**Status:** Completed / FAIL - SOL REVIEW REQUIRED
+**Date:** 2026-09-01
+
+The one authorized full real-pipeline run used the exact PDF, Local Docling,
+fresh Schema 0.3 / Storage 1 state, Raw-first persistence, and
+`deepseek-official/deepseek-v4-flash`. Credential/model, PDF identity, Docling,
+and fresh-KB gates passed. `understandReport` passed; batch-0001 then failed on
+an `upstream_of` endpoint semantic violation. Its single C9 retry received the
+bounded C10 feedback and repeated the same violation, so the Workflow stopped
+immediately without a third attempt or any downstream semantic stages.
+
+Raw was created, revision remained 0, and Writer/reload/replay were not
+executed because primary extraction did not succeed. No production fix was
+made. Durable sanitized evidence is
+`tests/knowledge/product-validation/evidence/c004-r8-final-full-pipeline.json`.
+The explicit real `reprocess=true` rerun was not executed due to the token-budget
+policy. Stage C remains In Progress / Awaiting R8 Sol Verification and is not
+accepted.
+
 ## KNOWLEDGE-V0.3-FLASH-EXTRACTION-SMOKE-C-004-S1 - Bounded Flash Smoke Result
 
 **Status:** Completed / PASS - Sol Verification Pending
