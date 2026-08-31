@@ -1,8 +1,32 @@
 # Decision Log
 
-## KNOWLEDGE-V0.3-VALIDATION-FEEDBACK-C-010 - Relation Diagnostic Feedback
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R7 - Real PDF Validation Result
 
 **Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-31
+
+R7 completed the real PDF validation preflight and reached the normal
+Knowledge v0.3 extraction path with a fresh isolated Schema 0.3 / Storage 1
+Knowledge Base. Credentials, DeepSeek model availability, exact PDF identity,
+Docling metrics, Raw-first setup, and initial full Knowledge validation passed.
+
+The first extraction batch failed attempt 1 on an undeclared `component_of`
+attribute. Its one C9 retry received bounded feedback and returned a different
+`invalid_semantics` Relation endpoint failure with the complete C10 diagnostic:
+`RelationCandidate[1] component_of endpoint types invalid: received
+industry->industry; allowed source=[product],target=[product]`. The diagnostic
+was not truncated and included the candidate ordinal, relation type, received
+types, and allowed types. No third attempt was made. The result is classified
+as `DIFFERENT_VALIDATION_ERROR`, so the run stopped before downstream stages.
+
+Durable sanitized evidence is
+`tests/knowledge/product-validation/evidence/c004-r7-real-pdf-summary.json`.
+R7 is `FAIL / SOL REVIEW REQUIRED`; C10 is `Completed / Accepted - Sol
+verified`; Stage C remains in progress and is not accepted.
+
+## KNOWLEDGE-V0.3-VALIDATION-FEEDBACK-C-010 - Relation Diagnostic Feedback
+
+**Status:** Completed / Accepted - Sol verified
 **Date:** 2026-08-31
 
 C10 enriches the existing deterministic `invalid_semantics` Relation endpoint
@@ -19,8 +43,8 @@ unchanged. Curation, retry, projection, workflow, adapter, Knowledge,
 infrastructure, migration, product-validation, and TypeScript checks pass.
 No real PDF run was performed. C4-R6 is `Completed / Engineering Rework
 Required - Sol verified`; C9 is `Completed / Accepted - Sol verified`; C10 is
-`Completed / Sol Verification Pending`; Stage C remains `In Progress /
-Awaiting C10 Sol Verification`.
+`Completed / Accepted - Sol verified`; C4-R7 is `Completed / Sol Verification
+Pending`; Stage C remains `In Progress / Awaiting C4-R7 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R6 - Real PDF Validation Result
 
@@ -52,7 +76,8 @@ production code was changed. Durable sanitized evidence is
 `tests/knowledge/product-validation/evidence/c004-r6-real-pdf-summary.json`.
 
 C4-R6 is `Completed / Engineering Rework Required - Sol verified`; C10 is
-pending Sol verification; Stage C remains in progress and is not accepted.
+`Completed / Accepted - Sol verified`; C4-R7 is `Completed / Sol Verification
+Pending`; Stage C remains in progress and is not accepted.
 
 ## KNOWLEDGE-V0.3-EXTRACTION-VALIDATION-RETRY-C-009 - Bounded Extraction Retry
 
@@ -88,8 +113,9 @@ Access, Migration, plugin, or frontend code was changed. C4-R5 remains
 `Completed / Engineering Rework Required - Sol verified`; C9 is
 `Completed / Accepted - Sol verified`; C4-R6 is
 `Completed / Engineering Rework Required - Sol verified`; C10 is
+`Completed / Accepted - Sol verified`; C4-R7 is
 `Completed / Sol Verification Pending`; Stage C remains
-`In Progress / Awaiting C10 Sol Verification`.
+`In Progress / Awaiting C4-R7 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R5 - Real PDF Validation Result
 

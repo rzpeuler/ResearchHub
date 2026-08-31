@@ -1,5 +1,28 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R7
+
+R7 ran the exact required PDF through the normal Knowledge v0.3 / Storage 1
+Workflow using a fresh active writable `kb-product-validation-c004-r7` target.
+Credential fingerprints matched `.env`; DeepSeek `/models` returned HTTP 200
+and `deepseek-v4-pro` was available. The PDF matched the required SHA-256 and
+3,209,114-byte size. Local Docling produced the known 103 pages, 1,523 chunks,
+154 sections, 45 tables, 178 images, and 97,784 normalized characters.
+
+The first extraction batch failed attempt 1 on `attributes.costShare` being
+undeclared for `component_of`. The single C9 retry received bounded feedback,
+then produced a different `invalid_semantics` endpoint failure:
+`RelationCandidate[1] component_of endpoint types invalid: received
+industry->industry; allowed source=[product],target=[product]`. The C10
+diagnostic contained all required fields and was not truncated. No third call
+was made. The failure is classified as `DIFFERENT_VALIDATION_ERROR`; the
+Workflow stopped before remaining extraction batches and all downstream
+stages. Durable sanitized evidence is
+`tests/knowledge/product-validation/evidence/c004-r7-real-pdf-summary.json`.
+
+R7 result is `FAIL / SOL REVIEW REQUIRED`; C10 is `Completed / Accepted - Sol
+verified`; Stage C remains `In Progress / Awaiting C4-R7 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-VALIDATION-FEEDBACK-C-010
 
 C10 enriches deterministic `invalid_semantics` feedback for Relation endpoint
@@ -12,9 +35,10 @@ filesystem paths and remain within the existing bounded retry envelope.
 The Validator remains authoritative; C9 still performs at most one retry,
 C8 projection is unchanged, valid Relations are unchanged, and model-call
 accounting remains physical-invocation based. Focused and required regression
-suites plus TypeScript integration typecheck pass. C10 is `Completed / Sol
-Verification Pending`; C4-R6 is `Completed / Engineering Rework Required - Sol
-verified`; Stage C remains `In Progress / Awaiting C10 Sol Verification`.
+suites plus TypeScript integration typecheck pass. C10 is `Completed / Accepted
+- Sol verified`; C4-R6 is `Completed / Engineering Rework Required - Sol
+verified`; C4-R7 is `Completed / Sol Verification Pending`; Stage C remains
+`In Progress / Awaiting C4-R7 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R6
 
@@ -42,8 +66,9 @@ Durable sanitized evidence is
 `tests/knowledge/product-validation/evidence/c004-r6-real-pdf-summary.json`.
 
 C4-R6 is `Completed / Engineering Rework Required - Sol verified`; C9 is
-`Completed / Accepted - Sol verified`; C10 is `Completed / Sol Verification
-Pending`; Stage C remains `In Progress / Awaiting C10 Sol Verification`.
+`Completed / Accepted - Sol verified`; C10 is `Completed / Accepted - Sol
+verified`; C4-R7 is `Completed / Sol Verification Pending`; Stage C remains
+`In Progress / Awaiting C4-R7 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-EXTRACTION-VALIDATION-RETRY-C-009
 
@@ -68,8 +93,9 @@ plugins, and frontend are unchanged.
 C-009 is `Completed / Accepted - Sol verified`; C8 is `Completed / Accepted -
 Sol verified`; C4-R5 is `Completed / Engineering Rework Required - Sol
 verified`; C4-R6 is `Completed / Engineering Rework Required - Sol verified`;
-C10 is `Completed / Sol Verification Pending`; Stage C remains `In Progress /
-Awaiting C10 Sol Verification`.
+C10 is `Completed / Accepted - Sol verified`; C4-R7 is `Completed / Sol
+Verification Pending`; Stage C remains `In Progress / Awaiting C4-R7 Sol
+Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R5
 

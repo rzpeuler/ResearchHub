@@ -1,0 +1,558 @@
+{
+  "taskId": "KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R7",
+  "baseline": "140a99273766ff05fcaf6bcf3c24e828447f28e6",
+  "startedAt": "2026-08-31T11:22:18.678Z",
+  "baselineCheck": {
+    "head": "b1726e60bd3fe7df828b50fd56db0d6b52d12033",
+    "expected": "140a99273766ff05fcaf6bcf3c24e828447f28e6",
+    "matchesExpected": true,
+    "workingTreeClean": true,
+    "statusLines": [
+      "?? researchhub.architecture.html",
+      "?? researchhub.architecture.json",
+      "?? researchhub.architecture.visual-check.1440x900.dark.png",
+      "?? researchhub.architecture.visual-check.1440x900.light.png",
+      "?? researchhub.architecture.visual-check.2048x1320.dark.png",
+      "?? researchhub.architecture.visual-check.2048x1320.light.png",
+      "?? researchhub.architecture.visual-check.html",
+      "?? researchhub.architecture.visual-check.json"
+    ],
+    "acknowledgedUntracked": [
+      "researchhub.architecture.html",
+      "researchhub.architecture.json",
+      "researchhub.architecture.visual-check.1440x900.dark.png",
+      "researchhub.architecture.visual-check.1440x900.light.png",
+      "researchhub.architecture.visual-check.2048x1320.dark.png",
+      "researchhub.architecture.visual-check.2048x1320.light.png",
+      "researchhub.architecture.visual-check.html",
+      "researchhub.architecture.visual-check.json"
+    ],
+    "unexpectedStatus": [],
+    "changedSinceBaseline": [
+      "tools/knowledge-product-validation/run-v03-real-validation.ts"
+    ],
+    "productionFilesChanged": false
+  },
+  "runtime": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-pro",
+    "baseUrl": "https://api.deepseek.com",
+    "curationMaxTokens": 65536,
+    "credentialsPresent": true
+  },
+  "credentialSource": {
+    "definitionCount": 1,
+    "envFile": {
+      "present": true,
+      "length": 35,
+      "fingerprint": "8b84ae663041",
+      "startsWithSk": true,
+      "containsBearerPrefix": false,
+      "containsWhitespaceInside": false,
+      "containsNewline": false,
+      "containsQuoteCharacterAfterParsing": false
+    },
+    "process": {
+      "present": true,
+      "length": 35,
+      "fingerprint": "8b84ae663041",
+      "startsWithSk": true,
+      "containsBearerPrefix": false,
+      "containsWhitespaceInside": false,
+      "containsNewline": false,
+      "containsQuoteCharacterAfterParsing": false
+    },
+    "fingerprintMatch": true,
+    "lengthMatch": true,
+    "match": true,
+    "diagnostic": "Process credential matches .env credential"
+  },
+  "llmPreflight": {
+    "status": "READY",
+    "httpStatus": 200,
+    "modelAvailable": true,
+    "diagnostic": "DeepSeek credential and configured model accepted by /models"
+  },
+  "pdf": {
+    "filename": "20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf",
+    "path": "C:\\Users\\Administrator\\Documents\\20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf",
+    "sha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "bytes": 3209114,
+    "expectedBytes": 3209114,
+    "bytesMatch": true
+  },
+  "parserPreflight": {
+    "status": "READY",
+    "managedRoot": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\.researchhub-document-parser",
+    "python": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\.researchhub-document-parser\\venv\\Scripts\\python.exe",
+    "doclingVersion": "2.116.0",
+    "modelRoot": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\.researchhub-document-parser\\models",
+    "checks": {
+      "python": "PASS",
+      "doclingImport": "PASS",
+      "version": "PASS",
+      "artifactsDirectory": "PASS",
+      "modelInitialization": "PASS",
+      "fixtureParse": "PASS",
+      "tablePipeline": "PASS"
+    },
+    "diagnostics": []
+  },
+  "isolatedKnowledgeBase": {
+    "root": "system-temp (removed after run)",
+    "knowledgeBaseId": "kb-product-validation-c004-r7",
+    "schemaVersion": "0.3",
+    "storageFormatVersion": "1",
+    "initialRevision": 0,
+    "seedObjects": 0,
+    "target": "KnowledgeIndexV03",
+    "writable": true,
+    "fullValidation": "passed"
+  },
+  "parser": {
+    "parser": {
+      "id": "docling-local",
+      "version": "2.116.0"
+    },
+    "pageCount": 103,
+    "chunks": 1523,
+    "uniqueChunkIds": 1523,
+    "emptyChunks": 0,
+    "sections": 154,
+    "tables": 45,
+    "images": 178,
+    "normalizedCharacters": 97784,
+    "warnings": []
+  },
+  "firstRun": {
+    "status": "blocked",
+    "workflowRunId": "product-validation-c004-r7-first",
+    "raw": {
+      "rawRef": "raw-sha256-998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+      "persisted": true,
+      "created": true,
+      "reused": false
+    },
+    "source": null,
+    "understanding": null,
+    "batching": {
+      "sections": 0,
+      "batches": 0,
+      "chunkCount": 0,
+      "uniqueChunkCount": 0,
+      "coveredChunkCount": 0,
+      "duplicateCoverage": 0,
+      "omittedChunkCount": 0,
+      "chunkCountMin": null,
+      "chunkCountMax": null,
+      "chunkCountMedian": 0,
+      "characterMin": null,
+      "characterMax": null,
+      "characterMedian": 0,
+      "oversizedSectionSplits": []
+    },
+    "c8RuntimeVisibility": {
+      "extractionCalls": 2,
+      "allFullDocumentVisible": true,
+      "allNormalizedTextHidden": true,
+      "allClaimsContextHidden": true,
+      "allSourcesContextHidden": true,
+      "allRawRefsHidden": true,
+      "outOfBatchChunkIdsVisible": 0,
+      "modelVisibleSerializedInputCharacters": {
+        "min": 26897,
+        "median": 26897,
+        "max": 26897
+      },
+      "fullDocumentVisible": false,
+      "normalizedTextVisible": false,
+      "claimsContextVisible": false,
+      "sourcesContextVisible": false,
+      "rawRefsVisible": false
+    },
+    "c9Retry": {
+      "logicalBatches": 1,
+      "retriedBatches": 1,
+      "totalRetryCount": 1,
+      "physicalExtractionInvocations": 2,
+      "maximumRetryCount": 1,
+      "eligibleCodes": [
+        "invalid_model_output",
+        "invalid_reference",
+        "invalid_semantics",
+        "invalid_confidence",
+        "ungrounded_candidate"
+      ],
+      "validationFailures": [
+        {
+          "groupId": "batch-0001",
+          "retryCount": 1,
+          "validationFailures": [
+            {
+              "attempt": 1,
+              "code": "invalid_semantics",
+              "message": "attributes.costShare is not declared for component_of"
+            },
+            {
+              "attempt": 2,
+              "code": "invalid_semantics",
+              "message": "RelationCandidate[1] component_of endpoint types invalid: received industry->industry; allowed source=[product],target=[product]"
+            }
+          ]
+        }
+      ],
+      "feedbackAttempt2Observed": 1,
+      "sameBatchIdForRetries": true,
+      "noThirdAttempt": true,
+      "c10Diagnostics": [
+        {
+          "groupId": "batch-0001",
+          "attempt": 2,
+          "code": "invalid_semantics",
+          "message": "RelationCandidate[1] component_of endpoint types invalid: received industry->industry; allowed source=[product],target=[product]",
+          "truncatedAtExistingBound": false,
+          "candidateOrdinalPresent": true,
+          "relationTypePresent": true,
+          "receivedEndpointTypesPresent": true,
+          "allowedSourceTypesPresent": true,
+          "allowedTargetTypesPresent": true
+        }
+      ],
+      "attempt2Feedback": [
+        {
+          "groupId": "batch-0001",
+          "code": "invalid_semantics",
+          "message": "attributes.costShare is not declared for component_of",
+          "messageLength": 53,
+          "truncatedAtExistingBound": false,
+          "candidateOrdinalPresent": false,
+          "relationTypePresent": false,
+          "receivedEndpointTypesPresent": false,
+          "allowedSourceTypesPresent": false,
+          "allowedTargetTypesPresent": false
+        }
+      ]
+    },
+    "extraction": {
+      "entities": 0,
+      "relations": 0,
+      "claims": 0,
+      "batchesAttempted": 0,
+      "batchesSucceeded": 0,
+      "batchesFailed": 0
+    },
+    "consolidation": {
+      "before": 0,
+      "after": 0,
+      "duplicatesMerged": 0
+    },
+    "resolution": {
+      "existing_ref": 0,
+      "new_object_key": 0,
+      "ambiguous": 0,
+      "invalid": 0
+    },
+    "reconciliation": {
+      "groups": 0,
+      "candidates": 0,
+      "decisions": {},
+      "classifications": {},
+      "modelCalls": 0,
+      "decisionCount": 0,
+      "coverage": {
+        "candidates": 0,
+        "decisions": 0,
+        "exactlyOnce": true
+      }
+    },
+    "schemaGaps": {
+      "calls": 0,
+      "outputs": []
+    },
+    "reviews": {
+      "roots": 0,
+      "dependencyClosure": 0,
+      "total": 0
+    },
+    "validation": null,
+    "changeSet": {
+      "present": true,
+      "status": "blocked",
+      "writeStatus": null,
+      "committedRevision": null,
+      "ingestionContextModelCalls": null,
+      "workflowVersion": null,
+      "operationCounts": null
+    },
+    "modelAccounting": {
+      "logicalModelCallRecords": 2,
+      "retryInvocations": 1,
+      "physicalModelInvocations": 3,
+      "expectedActualModelCalls": 3,
+      "changeSetIngestionContextModelCalls": null,
+      "matchesChangeSet": true
+    },
+    "writerInvocations": 0,
+    "reasoningPolicy": {
+      "expected": {
+        "understandReport": "off",
+        "extractKnowledge": "off",
+        "reconcileKnowledge": "low",
+        "analyzeSchemaGaps": "low"
+      },
+      "observations": [
+        {
+          "operation": "understandReport",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-08-31T11:24:01.457Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 5024,
+          "finishMs": 36642,
+          "durationMs": 36644,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 3316,
+          "finishReason": "stop",
+          "timedOut": false
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-08-31T11:24:38.114Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 834,
+          "finishMs": 77149,
+          "durationMs": 77150,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 9487,
+          "finishReason": "stop",
+          "timedOut": false
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-08-31T11:25:55.266Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 661,
+          "finishMs": 102408,
+          "durationMs": 102408,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 12865,
+          "finishReason": "stop",
+          "timedOut": false
+        }
+      ],
+      "mismatches": []
+    },
+    "callsByOperation": [
+      {
+        "operation": "understandReport",
+        "attempted": true,
+        "succeeded": true,
+        "retryCount": 0,
+        "validationFailures": []
+      },
+      {
+        "operation": "extractKnowledge",
+        "groupId": "batch-0001",
+        "attempted": true,
+        "succeeded": false,
+        "retryCount": 1,
+        "validationFailures": [
+          {
+            "attempt": 1,
+            "code": "invalid_semantics",
+            "message": "attributes.costShare is not declared for component_of"
+          },
+          {
+            "attempt": 2,
+            "code": "invalid_semantics",
+            "message": "RelationCandidate[1] component_of endpoint types invalid: received industry->industry; allowed source=[product],target=[product]"
+          }
+        ]
+      }
+    ],
+    "recordedModelCalls": [
+      {
+        "operation": "understandReport",
+        "slice": "report_understanding",
+        "physicalAttempt": 1,
+        "hasValidationFeedback": false,
+        "succeeded": true,
+        "outputShape": {
+          "type": "object",
+          "keys": [
+            "majorEntityMentions",
+            "majorTopics",
+            "newThemeProposal",
+            "researchScope",
+            "sourceAssessment",
+            "themeHypotheses",
+            "uncertainty"
+          ]
+        },
+        "runtimeObservation": {
+          "operation": "understandReport",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-08-31T11:24:01.457Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 5024,
+          "finishMs": 36642,
+          "durationMs": 36644,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 3316,
+          "finishReason": "stop",
+          "timedOut": false
+        }
+      },
+      {
+        "operation": "extractKnowledge",
+        "slice": "knowledge_extraction",
+        "batchId": "batch-0001",
+        "physicalAttempt": 1,
+        "hasValidationFeedback": false,
+        "succeeded": true,
+        "outputShape": {
+          "type": "object",
+          "keys": [
+            "claims",
+            "entities",
+            "relations"
+          ],
+          "entities": 36,
+          "relations": 12,
+          "claims": 16
+        },
+        "modelInputObservation": {
+          "currentBatchChunkCount": 117,
+          "modelVisibleBatchChunkCount": 117,
+          "modelVisibleSerializedInputCharacters": 26897,
+          "serializedInputCharacters": 26897,
+          "visibleDocumentChunkIdCount": 117,
+          "outOfBatchChunkIdsVisible": 0,
+          "fullDocumentVisible": false,
+          "normalizedTextVisible": false,
+          "claimsContextVisible": false,
+          "sourcesContextVisible": false,
+          "rawRefsVisible": false
+        },
+        "runtimeObservation": {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-08-31T11:24:38.114Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 834,
+          "finishMs": 77149,
+          "durationMs": 77150,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 9487,
+          "finishReason": "stop",
+          "timedOut": false
+        }
+      },
+      {
+        "operation": "extractKnowledge",
+        "slice": "knowledge_extraction",
+        "batchId": "batch-0001",
+        "physicalAttempt": 2,
+        "hasValidationFeedback": true,
+        "validationFeedback": {
+          "code": "invalid_semantics",
+          "message": "attributes.costShare is not declared for component_of",
+          "messageLength": 53,
+          "truncatedAtExistingBound": false,
+          "candidateOrdinalPresent": false,
+          "relationTypePresent": false,
+          "receivedEndpointTypesPresent": false,
+          "allowedSourceTypesPresent": false,
+          "allowedTargetTypesPresent": false
+        },
+        "succeeded": true,
+        "outputShape": {
+          "type": "object",
+          "keys": [
+            "claims",
+            "entities",
+            "relations"
+          ],
+          "entities": 49,
+          "relations": 24,
+          "claims": 18
+        },
+        "modelInputObservation": {
+          "currentBatchChunkCount": 117,
+          "modelVisibleBatchChunkCount": 117,
+          "modelVisibleSerializedInputCharacters": 26897,
+          "serializedInputCharacters": 26897,
+          "visibleDocumentChunkIdCount": 117,
+          "outOfBatchChunkIdsVisible": 0,
+          "fullDocumentVisible": false,
+          "normalizedTextVisible": false,
+          "claimsContextVisible": false,
+          "sourcesContextVisible": false,
+          "rawRefsVisible": false
+        },
+        "runtimeObservation": {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-08-31T11:25:55.266Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 661,
+          "finishMs": 102408,
+          "durationMs": 102408,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 12865,
+          "finishReason": "stop",
+          "timedOut": false
+        }
+      }
+    ],
+    "errors": [
+      {
+        "code": "invalid_semantics",
+        "message": "RelationCandidate[1] component_of endpoint types invalid: received industry->industry; allowed source=[product],target=[product]"
+      }
+    ]
+  },
+  "completedAt": "2026-08-31T11:27:37.681Z",
+  "status": "FAIL / SOL REVIEW REQUIRED",
+  "failure": {
+    "message": "Real pipeline blocked before completion"
+  },
+  "defects": [
+    {
+      "code": "invalid_semantics",
+      "message": "RelationCandidate[1] component_of endpoint types invalid: received industry->industry; allowed source=[product],target=[product]"
+    }
+  ],
+  "notExecutedAfterStop": [
+    "remaining extraction batches",
+    "consolidation",
+    "reference resolution",
+    "precise retrieval",
+    "reconciliation",
+    "schema-gap analysis",
+    "review isolation",
+    "ChangeSet planning",
+    "C3 staged validation",
+    "Writer",
+    "reload",
+    "full Knowledge validation",
+    "Replay",
+    "Reprocess",
+    "semantic quality review",
+    "provenance review"
+  ],
+  "recommendation": "Engineering rework required; preserve deterministic validation failure evidence for Sol review."
+}

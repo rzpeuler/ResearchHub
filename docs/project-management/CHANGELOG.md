@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R7
+
+- Reran the exact real PDF after C10 with a fresh Schema 0.3 / Storage 1
+  Knowledge Base and the normal production Workflow.
+- Credential/model, PDF, Docling, Raw-first, C8 visibility, and C7 reasoning
+  gates passed. The first batch failed one validation, and its single retry
+  produced a different Relation endpoint `invalid_semantics` failure with a
+  complete, untruncated C10 diagnostic.
+- The Workflow stopped without a third call or downstream stages. Durable
+  sanitized evidence is
+  `tests/knowledge/product-validation/evidence/c004-r7-real-pdf-summary.json`.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-VALIDATION-FEEDBACK-C-010
 
 - Enriched deterministic Relation endpoint `invalid_semantics` feedback with
