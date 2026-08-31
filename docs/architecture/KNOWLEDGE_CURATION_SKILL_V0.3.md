@@ -348,3 +348,15 @@ The retry must regenerate the complete Entity/Relation/Claim arrays from the
 same batch and must not normalize, repair, delete, or substitute candidates.
 No other Curation operation gains retry behavior; DSH, provider, Schema,
 Validator, reasoning policy, and runtime envelope remain unchanged.
+
+## C10 Validation Feedback Addendum — Schema-Derived Relation Diagnostics
+
+When strict Relation endpoint validation rejects a candidate, the Validator
+may include a bounded deterministic diagnostic containing the generated
+`RelationCandidate` ordinal, frozen relation type, received endpoint entity
+types, and the executable definition's allowed source and target types. A
+same-entity-type constraint violation uses the same metadata. The diagnostic
+contains no mention text, report text, model output, or filesystem path.
+
+This is feedback precision only: the `invalid_semantics` code, schema,
+Relation semantics, C8 projection, and C9 one-retry policy remain unchanged.

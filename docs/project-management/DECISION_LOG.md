@@ -1,8 +1,30 @@
 # Decision Log
 
-## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R6 - Real PDF Validation Result
+## KNOWLEDGE-V0.3-VALIDATION-FEEDBACK-C-010 - Relation Diagnostic Feedback
 
 **Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-31
+
+C10 enriches the existing deterministic `invalid_semantics` Relation endpoint
+diagnostics inside the Knowledge Curation Validator. Feedback identifies the
+1-based RelationCandidate ordinal, relation type, received endpoint types,
+and allowed source/target types read directly from the executable Schema 0.3
+relation definition. Same-type constraint violations retain their existing
+semantic check and now include the same metadata. No mention text, report
+text, model output, or filesystem path is included.
+
+The error code, strict validation authority, C8 projection, C9 eligible codes,
+one-retry limit, model-call accounting, and all valid Relation behavior remain
+unchanged. Curation, retry, projection, workflow, adapter, Knowledge,
+infrastructure, migration, product-validation, and TypeScript checks pass.
+No real PDF run was performed. C4-R6 is `Completed / Engineering Rework
+Required - Sol verified`; C9 is `Completed / Accepted - Sol verified`; C10 is
+`Completed / Sol Verification Pending`; Stage C remains `In Progress /
+Awaiting C10 Sol Verification`.
+
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R6 - Real PDF Validation Result
+
+**Status:** Completed / Engineering Rework Required - Sol verified
 **Date:** 2026-08-31
 
 C4-R6 reran the exact required PDF through the normal Knowledge v0.3
@@ -29,8 +51,8 @@ provenance review were not executed after the persistent failure. No
 production code was changed. Durable sanitized evidence is
 `tests/knowledge/product-validation/evidence/c004-r6-real-pdf-summary.json`.
 
-C4-R6 remains pending Sol verification; Stage C remains in progress and is
-not accepted.
+C4-R6 is `Completed / Engineering Rework Required - Sol verified`; C10 is
+pending Sol verification; Stage C remains in progress and is not accepted.
 
 ## KNOWLEDGE-V0.3-EXTRACTION-VALIDATION-RETRY-C-009 - Bounded Extraction Retry
 
@@ -65,8 +87,9 @@ No Schema, Validator, DSH, provider, reasoning, C8 projection, batch, Writer,
 Access, Migration, plugin, or frontend code was changed. C4-R5 remains
 `Completed / Engineering Rework Required - Sol verified`; C9 is
 `Completed / Accepted - Sol verified`; C4-R6 is
+`Completed / Engineering Rework Required - Sol verified`; C10 is
 `Completed / Sol Verification Pending`; Stage C remains
-`In Progress / Awaiting C4-R6 Sol Verification`.
+`In Progress / Awaiting C10 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R5 - Real PDF Validation Result
 

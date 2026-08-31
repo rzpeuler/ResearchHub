@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-VALIDATION-FEEDBACK-C-010
+
+- Enriched deterministic Relation endpoint `invalid_semantics` feedback with
+  the failing candidate ordinal, relation type, received endpoint types, and
+  executable-schema-derived allowed endpoint types.
+- Preserved the Validator authority, C8 projection, C9 one-retry policy,
+  model-call accounting, valid Relation behavior, and existing 240-character
+  feedback cap.
+- Added validator, retry, persistent-failure, projection, call-accounting,
+  regression-matrix, and TypeScript coverage. No real PDF run was performed.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R6
 
 - Reran the exact real PDF through the normal Schema 0.3 / Storage 1 Workflow

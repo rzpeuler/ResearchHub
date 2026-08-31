@@ -29,8 +29,9 @@
 - C8 Extraction Input Projection: Completed / Accepted - Sol verified
 - C4-R5 Product Validation: Completed / Engineering Rework Required - Sol verified
 - C9 Extraction Validation Retry: Completed / Accepted - Sol verified
-- C4-R6 Product Validation: Completed / Sol Verification Pending
-- Stage C: In Progress / Awaiting C4-R6 Sol Verification
+- C4-R6 Product Validation: Completed / Engineering Rework Required - Sol verified
+- C10 Validation Feedback: Completed / Sol Verification Pending
+- Stage C: In Progress / Awaiting C10 Sol Verification
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3
@@ -59,8 +60,10 @@ preserving strict validation and the C8 projection. C4-R6 reran the real PDF
 and confirmed two successful recoveries, but `batch-0009` remained rejected by
 `invalid_semantics` after its one allowed retry. The normal Workflow stopped
 before reconciliation and semantic commit; no Stage C acceptance or product
-PASS is recorded. C9 is accepted by Sol and C4-R6 is awaiting Sol
-verification.
+PASS is recorded. C9 is accepted by Sol and C4-R6 required deterministic
+feedback rework. C10 now enriches Relation endpoint semantic diagnostics from
+the executable schema for the existing bounded retry; C10 is pending Sol
+verification and Stage C remains in progress.
 
 - Architecture Freeze: Completed / Sol Accepted
 - Governance Integration: Completed / Sol verified

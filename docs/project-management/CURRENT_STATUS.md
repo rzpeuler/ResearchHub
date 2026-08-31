@@ -1,5 +1,21 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-VALIDATION-FEEDBACK-C-010
+
+C10 enriches deterministic `invalid_semantics` feedback for Relation endpoint
+violations with the 1-based `RelationCandidate` ordinal, relation type,
+received endpoint types, and executable-schema-derived allowed source and
+target types. Same-type constraint failures receive the same deterministic
+metadata. Messages contain no mention text, report text, model output, or
+filesystem paths and remain within the existing bounded retry envelope.
+
+The Validator remains authoritative; C9 still performs at most one retry,
+C8 projection is unchanged, valid Relations are unchanged, and model-call
+accounting remains physical-invocation based. Focused and required regression
+suites plus TypeScript integration typecheck pass. C10 is `Completed / Sol
+Verification Pending`; C4-R6 is `Completed / Engineering Rework Required - Sol
+verified`; Stage C remains `In Progress / Awaiting C10 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R6
 
 C4-R6 reran the real Knowledge v0.3 product pipeline from the C9 baseline
@@ -25,8 +41,9 @@ provenance review were not executed after the persistent validation failure.
 Durable sanitized evidence is
 `tests/knowledge/product-validation/evidence/c004-r6-real-pdf-summary.json`.
 
-C4-R6 is `Completed / Sol Verification Pending`; C9 is `Completed / Accepted -
-Sol verified`; Stage C remains `In Progress / Awaiting C4-R6 Sol Verification`.
+C4-R6 is `Completed / Engineering Rework Required - Sol verified`; C9 is
+`Completed / Accepted - Sol verified`; C10 is `Completed / Sol Verification
+Pending`; Stage C remains `In Progress / Awaiting C10 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-EXTRACTION-VALIDATION-RETRY-C-009
 
@@ -50,7 +67,9 @@ plugins, and frontend are unchanged.
 
 C-009 is `Completed / Accepted - Sol verified`; C8 is `Completed / Accepted -
 Sol verified`; C4-R5 is `Completed / Engineering Rework Required - Sol
-verified`; Stage C remains `In Progress / Awaiting C4-R6 Sol Verification`.
+verified`; C4-R6 is `Completed / Engineering Rework Required - Sol verified`;
+C10 is `Completed / Sol Verification Pending`; Stage C remains `In Progress /
+Awaiting C10 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R5
 
