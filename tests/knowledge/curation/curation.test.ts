@@ -121,6 +121,27 @@ test('extractKnowledge retains Validator defense against hidden out-of-batch ref
   assert.equal(JSON.stringify(model.requests[0]?.input).includes('chunk-0002'), false)
 })
 
+test('extractKnowledge retry preserves the C8 projection and adds only bounded validation feedback', async () => {
+  const input = extractionProjectionInput()
+  const invalid = { entities: [], relations: [{ ...relation(), targetMention: { text: 'Company', entityType: 'company', existingRef: null } }], claims: [] }
+  const longMessage = 'validator-detail-'.repeat(40)
+  const model = new ScriptedKnowledgeCurationModel().queue('extractKnowledge', [invalid, { entities: [entity()], relations: [], claims: [] }])
+  const skill = new KnowledgeCurationSkill({ model })
+  await assert.rejects(skill.extractKnowledge(input), (error: unknown) => error instanceof KnowledgeCurationError && error.code === 'invalid_semantics')
+  const result = await skill.extractKnowledge(input, { validationFeedback: { attempt: 2, code: 'invalid_semantics', message: longMessage } })
+  assert.equal(result.entities.length, 1)
+  assert.equal(model.requests.length, 2)
+  assert.deepEqual(model.requests[0]?.input, model.requests[1]?.input)
+  const firstInput = model.requests[0]?.input as Record<string, any>
+  assert.equal(firstInput.document, undefined)
+  assert.equal(JSON.stringify(firstInput).includes('chunk-0002'), false)
+  assert.equal(model.requests[0]?.instruction.includes('Validation code:'), false)
+  assert.match(model.requests[1]?.instruction ?? '', /Validation code: invalid_semantics/)
+  assert.match(model.requests[1]?.instruction ?? '', /validator-detail-/)
+  assert.equal((model.requests[1]?.instruction.match(/validator-detail-/g) ?? []).length, 14)
+  assert.equal(model.requests[1]?.instruction.includes(longMessage), false)
+})
+
 test('non-extraction operations retain their authoritative model input shape', async () => {
   const understandModel = new ScriptedKnowledgeCurationModel().set('understandReport', understanding())
   await new KnowledgeCurationSkill({ model: understandModel }).understandReport({ ...scope, themeContext: context })

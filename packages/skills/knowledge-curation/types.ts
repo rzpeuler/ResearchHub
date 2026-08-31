@@ -149,6 +149,18 @@ export interface ExtractKnowledgeInput extends CurationScope {
   knowledgeContext: KnowledgeContext
 }
 
+export type CurationValidationFeedbackCode = 'invalid_model_output' | 'invalid_reference' | 'invalid_semantics' | 'invalid_confidence' | 'ungrounded_candidate'
+
+export interface CurationValidationFeedback {
+  attempt: 2
+  code: CurationValidationFeedbackCode
+  message: string
+}
+
+export interface ExtractKnowledgeInvocationOptions {
+  validationFeedback?: CurationValidationFeedback
+}
+
 export interface ExtractKnowledgeOutput {
   entities: EntityCandidate[]
   relations: RelationCandidate[]

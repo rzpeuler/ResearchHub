@@ -8,7 +8,7 @@ import { ANALYZE_SCHEMA_GAPS_PROMPT } from './prompts/analyze-schema-gaps.ts'
 import { buildCurationSchemaContext } from './schema-context.ts'
 import { projectExtractKnowledgeModelInput } from './model-input.ts'
 import { validateAnalyzeSchemaGaps, validateExtractKnowledge, validateReconcileKnowledge, validateUnderstandReport } from './validation.ts'
-import type { AnalyzeSchemaGapsOutput, ExtractKnowledgeInput, ExtractKnowledgeOutput, ReconcileKnowledgeInput, ReconcileKnowledgeOutput, ReportUnderstanding, SchemaGapInput, UnderstandReportInput } from './types.ts'
+import type { AnalyzeSchemaGapsOutput, ExtractKnowledgeInput, ExtractKnowledgeInvocationOptions, ExtractKnowledgeOutput, ReconcileKnowledgeInput, ReconcileKnowledgeOutput, ReportUnderstanding, SchemaGapInput, UnderstandReportInput } from './types.ts'
 
 export interface KnowledgeCurationSkillOptions {
   model: KnowledgeCurationModel
@@ -36,8 +36,8 @@ export class KnowledgeCurationSkill {
     return validateUnderstandReport(raw, input)
   }
 
-  async extractKnowledge(input: ExtractKnowledgeInput): Promise<ExtractKnowledgeOutput> {
-    const raw = await this.invoke('extractKnowledge', EXTRACT_KNOWLEDGE_PROMPT, projectExtractKnowledgeModelInput(input), STRUCTURED_OUTPUT_CONTRACTS.extractKnowledge)
+  async extractKnowledge(input: ExtractKnowledgeInput, options?: ExtractKnowledgeInvocationOptions): Promise<ExtractKnowledgeOutput> {
+    const raw = await this.invoke('extractKnowledge', extractionInstruction(options), projectExtractKnowledgeModelInput(input), STRUCTURED_OUTPUT_CONTRACTS.extractKnowledge)
     return validateExtractKnowledge(raw, input)
   }
 
@@ -50,4 +50,13 @@ export class KnowledgeCurationSkill {
     const raw = await this.invoke('analyzeSchemaGaps', ANALYZE_SCHEMA_GAPS_PROMPT, input, STRUCTURED_OUTPUT_CONTRACTS.analyzeSchemaGaps)
     return validateAnalyzeSchemaGaps(raw, input)
   }
+}
+
+const VALIDATION_FEEDBACK_MESSAGE_LIMIT = 240
+
+function extractionInstruction(options?: ExtractKnowledgeInvocationOptions): string {
+  const feedback = options?.validationFeedback
+  if (!feedback) return EXTRACT_KNOWLEDGE_PROMPT
+  const message = feedback.message.trim().slice(0, VALIDATION_FEEDBACK_MESSAGE_LIMIT)
+  return `${EXTRACT_KNOWLEDGE_PROMPT}\n\nPrevious output was rejected by deterministic Knowledge Curation validation.\nValidation code: ${feedback.code}\nValidation message: ${message}\nRegenerate the COMPLETE extraction output from scratch using the same supplied batch, Schema Context, and Output Contract. Correct the validation violation. Do not patch or return only the failed item. Do not relax or reinterpret the Schema Context. Return the complete Entity/Relation/Claim arrays.`
 }

@@ -1,4 +1,4 @@
-import type { KnowledgeCurationSkill, AnalyzeSchemaGapsOutput, ClaimCandidate, EntityCandidate, ExtractKnowledgeOutput, KnowledgeContext, NormalizedResearchDocument, ReconcileKnowledgeOutput, ReconciliationGroup, ReportUnderstanding, RelationCandidate, SchemaGapProposal } from '../../skills/knowledge-curation/index.ts'
+import type { KnowledgeCurationSkill, AnalyzeSchemaGapsOutput, ClaimCandidate, EntityCandidate, ExtractKnowledgeOutput, KnowledgeContext, NormalizedResearchDocument, ReconcileKnowledgeOutput, ReconciliationGroup, ReportUnderstanding, RelationCandidate, SchemaGapProposal, CurationValidationFeedbackCode } from '../../skills/knowledge-curation/index.ts'
 import type { KnowledgeBaseHandle } from '../../shared/knowledge-base/index.ts'
 import type { KnowledgeIndexV03 } from '../../shared/knowledge-base/knowledge-index-v03.ts'
 import type { KnowledgeSourceV03 } from '../../schemas/knowledge/v03/domain.ts'
@@ -30,7 +30,8 @@ export interface ExtractionSummary { entities: number; relations: number; claims
 export interface ConsolidationSummary { before: number; after: number; duplicatesMerged: number }
 export interface ResolutionSummary { existing_ref: number; new_object_key: number; ambiguous: number; invalid: number }
 export interface ReconciliationSummary { groups: number; candidates: number; decisions: Record<string, number>; classifications: Record<string, number> }
-export interface ModelCallRecord { operation: string; groupId?: string; attempted: boolean; succeeded: boolean; retryCount: 0 }
+export interface ModelCallValidationFailure { attempt: 1 | 2; code: CurationValidationFeedbackCode; message: string }
+export interface ModelCallRecord { operation: string; groupId?: string; attempted: boolean; succeeded: boolean; retryCount: 0 | 1; validationFailures?: ModelCallValidationFailure[] }
 export interface ReviewItem { candidateId?: string; category: string; reason: string; dependencyIds: string[] }
 
 export interface ResearchReportKnowledgeIngestionResult {
