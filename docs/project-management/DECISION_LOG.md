@@ -1,8 +1,32 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R4 - Real PDF Validation Result
+
+**Status:** Completed / FAIL / SOL REVIEW REQUIRED
+**Date:** 2026-08-31
+
+C4-R4 ran the exact PDF through real Docling Local, a fresh isolated Schema
+0.3 / Storage 1 Knowledge Base, Raw-first persistence, and the normal real
+DeepSeek Workflow. Credential fingerprints matched `.env`; `/models` returned
+HTTP 200 with `deepseek-v4-pro`; Docling matched the known 103-page,
+1,523-chunk, 154-section, 45-table, 178-image, 97,784-character baseline.
+
+The Harness observed `understandReport=off` and the first
+`extractKnowledge=off`, both with `maxTokens=65536` and temperature 0.
+`understandReport` completed in 51.678 seconds and passed strict validation.
+The first extraction call completed in 163.305 seconds and returned 49
+entities, 30 relations, and 31 claims before strict Curation rejected an
+`evidenceChunkRefs` value outside `batch-0001` as `invalid_reference`.
+Normal Workflow execution stopped; no retry, normalization, output repair,
+production patch, replay, or reprocess was performed.
+
+Durable sanitized evidence is
+`tests/knowledge/product-validation/evidence/c004-r4-real-pdf-summary.json`.
+Stage C remains `In Progress / Awaiting C4-R4 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-LLM-REASONING-POLICY-C-007 - Explicit Operation Reasoning
 
-**Status:** Completed / Sol Verification Pending
+**Status:** Completed / Accepted - Sol verified
 **Date:** 2026-08-31
 
 C-007 implements the policy established from the C-006 execution diagnostic:
@@ -16,8 +40,9 @@ Product Validation regression matrix, and integration typecheck pass. The
 change does not alter Schema, Curation semantics, Workflow, validation,
 Writer, Access, Migration, plugins, frontend, retries, normalization, model
 construction, temperature, or the existing maxTokens envelope. Input bloat
-remains separately tracked technical debt. C6 is now `Completed / Accepted -
-Sol verified`; Stage C remains `In Progress / Awaiting C7 Sol Verification`.
+remains separately tracked technical debt. C6 and C7 are now `Completed /
+Accepted - Sol verified`; Stage C remains `In Progress / Awaiting C4-R4 Sol
+Verification`.
 
 ## KNOWLEDGE-V0.3-LLM-EXECUTION-DIAGNOSTIC-C-006 - LLM Execution Envelope
 

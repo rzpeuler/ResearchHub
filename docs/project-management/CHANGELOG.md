@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R4
+
+- Ran the real PDF through the C7 operation-specific reasoning policy with
+  the exact artifact, real Docling Local, a fresh isolated v0.3 KB, Raw-first,
+  and the normal Knowledge ingestion Workflow.
+- Credential/model preflight, PDF integrity, Docling metrics, Raw persistence,
+  `understandReport=off`, and the first `extractKnowledge=off` call passed;
+  the first extraction batch then failed strict validation because an
+  `evidenceChunkRefs` value was outside its supplied batch.
+- Stopped at the normal Workflow failure boundary. No retry, normalization,
+  output repair, production patch, replay, reprocess, or fabricated evidence
+  was introduced. Durable sanitized evidence is
+  `tests/knowledge/product-validation/evidence/c004-r4-real-pdf-summary.json`.
+
 ## 2026-08-31 — KNOWLEDGE-V0.3-LLM-REASONING-POLICY-C-007
 
 - Added an exhaustive, operation-specific reasoning policy to the Knowledge

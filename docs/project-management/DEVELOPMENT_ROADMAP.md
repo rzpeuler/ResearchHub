@@ -24,8 +24,9 @@
 - C5 Integration Fix: Completed / Accepted - Sol verified
 - C4-R3 Product Validation: Completed / Runtime Execution Blocker - Sol verified
 - C6 LLM Execution Diagnostic: Completed / Accepted - Sol verified
-- C7 LLM Reasoning Policy: Completed / Sol Verification Pending
-- Stage C: In Progress / Awaiting C7 Sol Verification
+- C7 LLM Reasoning Policy: Completed / Accepted - Sol verified
+- C4-R4 Product Validation: Completed / FAIL / SOL REVIEW REQUIRED
+- Stage C: In Progress / Awaiting C4-R4 Sol Verification
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3
@@ -41,8 +42,10 @@ window. C6 measured sustained default-high reasoning and confirmed that the
 same request with reasoning disabled completes and passes strict validation.
 C7 now materializes the operation-specific reasoning policy in every
 Knowledge Curation DSH request while preserving the 65,536-token envelope and
-all existing contracts. Stage C remains pending C7 Sol review; no product PASS
-is recorded.
+all existing contracts. C4-R4 then reached the real extraction call with the
+correct reasoning policy, but strict Curation rejected an evidence reference
+outside the current batch and stopped the normal Workflow. Stage C remains
+pending C4-R4 Sol review; no product PASS is recorded.
 
 - Architecture Freeze: Completed / Sol Accepted
 - Governance Integration: Completed / Sol verified

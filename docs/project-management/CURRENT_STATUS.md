@@ -1,5 +1,30 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R4
+
+C4-R4 ran from the C7 baseline through the real PDF, Docling Local, fresh
+isolated Schema 0.3 / Storage 1 KB, Raw-first archive, and real DeepSeek
+Workflow. Credential fingerprints matched `.env`; `/models` returned HTTP
+200 with `deepseek-v4-pro`; the exact PDF matched the required SHA-256 and
+size; and Docling produced 103 pages, 1,523 unique non-empty chunks, 154
+sections, 45 tables, 178 images, and 97,784 normalized characters.
+
+The observed Harness options matched C7: `understandReport=off` and the first
+`extractKnowledge` batch used `off`, both with `maxTokens=65536` and
+temperature 0. `understandReport` completed in 51.678 seconds and strict
+validation accepted its required output shape. The first extraction model call
+completed in 163.305 seconds and returned 49 EntityCandidates, 30
+RelationCandidates, and 31 ClaimCandidates, but strict Curation validation
+rejected an `evidenceChunkRefs` value outside `batch-0001` with
+`invalid_reference`. Normal Workflow execution stopped at that point; no
+normalization, retry, output repair, or production patch was applied.
+
+The durable sanitized evidence is
+`tests/knowledge/product-validation/evidence/c004-r4-real-pdf-summary.json`.
+C4-R4 is `Completed / FAIL / SOL REVIEW REQUIRED`; C6 is `Completed / Accepted
+- Sol verified`; C7 is `Completed / Accepted - Sol verified`; Stage C remains
+`In Progress / Awaiting C4-R4 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-LLM-REASONING-POLICY-C-007
 
 C-007 implemented the explicit operation-specific reasoning policy identified
@@ -16,9 +41,10 @@ Writer, Access, Migration, plugin, frontend, retry, normalization, provider,
 model, message, temperature, or maxTokens behavior was changed. The measured
 input bloat remains technical debt and is outside C-007 scope.
 
-C-007 is `Completed / Sol Verification Pending`; C6 is `Completed / Accepted
+C-007 is `Completed / Accepted - Sol verified`; C6 is `Completed / Accepted
 - Sol verified`; C4-R3 remains `Completed / Runtime Execution Blocker - Sol
-verified`; Stage C remains `In Progress / Awaiting C7 Sol Verification`.
+verified`; C4-R4 is `Completed / FAIL / SOL REVIEW REQUIRED`; Stage C remains
+`In Progress / Awaiting C4-R4 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-LLM-EXECUTION-DIAGNOSTIC-C-006
 

@@ -1,0 +1,331 @@
+{
+  "taskId": "KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R4",
+  "baseline": "92e0a704fb3f0b479214a34349d99676fc2dfebc",
+  "startedAt": "2026-08-31T04:26:44.209Z",
+  "baselineCheck": {
+    "head": "c60d4b6dd7d9175e1dc196bc74b5c7c4ed821215",
+    "expected": "92e0a704fb3f0b479214a34349d99676fc2dfebc",
+    "matchesExpected": true,
+    "workingTreeClean": true,
+    "changedSinceBaseline": [
+      "tools/knowledge-product-validation/deepseek-composition.ts",
+      "tools/knowledge-product-validation/run-v03-real-validation.ts"
+    ],
+    "productionFilesChanged": false
+  },
+  "runtime": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-pro",
+    "baseUrl": "https://api.deepseek.com",
+    "curationMaxTokens": 65536,
+    "credentialsPresent": true
+  },
+  "credentialSource": {
+    "definitionCount": 1,
+    "envFile": {
+      "present": true,
+      "length": 35,
+      "fingerprint": "8b84ae663041",
+      "startsWithSk": true,
+      "containsBearerPrefix": false,
+      "containsWhitespaceInside": false,
+      "containsNewline": false,
+      "containsQuoteCharacterAfterParsing": false
+    },
+    "process": {
+      "present": true,
+      "length": 35,
+      "fingerprint": "8b84ae663041",
+      "startsWithSk": true,
+      "containsBearerPrefix": false,
+      "containsWhitespaceInside": false,
+      "containsNewline": false,
+      "containsQuoteCharacterAfterParsing": false
+    },
+    "fingerprintMatch": true,
+    "lengthMatch": true,
+    "match": true,
+    "diagnostic": "Process credential matches .env credential"
+  },
+  "llmPreflight": {
+    "status": "READY",
+    "httpStatus": 200,
+    "modelAvailable": true,
+    "diagnostic": "DeepSeek credential and configured model accepted by /models"
+  },
+  "pdf": {
+    "filename": "20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf",
+    "path": "C:\\Users\\Administrator\\Documents\\20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf",
+    "sha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "bytes": 3209114
+  },
+  "parserPreflight": {
+    "status": "READY",
+    "managedRoot": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\.researchhub-document-parser",
+    "python": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\.researchhub-document-parser\\venv\\Scripts\\python.exe",
+    "doclingVersion": "2.116.0",
+    "modelRoot": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\.researchhub-document-parser\\models",
+    "checks": {
+      "python": "PASS",
+      "doclingImport": "PASS",
+      "version": "PASS",
+      "artifactsDirectory": "PASS",
+      "modelInitialization": "PASS",
+      "fixtureParse": "PASS",
+      "tablePipeline": "PASS"
+    },
+    "diagnostics": []
+  },
+  "isolatedKnowledgeBase": {
+    "root": "system-temp (removed after run)",
+    "knowledgeBaseId": "kb-product-validation-c004-r4",
+    "schemaVersion": "0.3",
+    "storageFormatVersion": "1",
+    "initialRevision": 0,
+    "seedObjects": 0,
+    "target": "KnowledgeIndexV03",
+    "writable": true,
+    "fullValidation": "passed"
+  },
+  "parser": {
+    "parser": {
+      "id": "docling-local",
+      "version": "2.116.0"
+    },
+    "pageCount": 103,
+    "chunks": 1523,
+    "uniqueChunkIds": 1523,
+    "emptyChunks": 0,
+    "sections": 154,
+    "tables": 45,
+    "images": 178,
+    "normalizedCharacters": 97784,
+    "warnings": []
+  },
+  "firstRun": {
+    "status": "blocked",
+    "workflowRunId": "product-validation-c004-r4-first",
+    "raw": {
+      "rawRef": "raw-sha256-998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+      "persisted": true,
+      "created": true,
+      "reused": false
+    },
+    "source": null,
+    "understanding": null,
+    "batching": {
+      "sections": 0,
+      "batches": 0,
+      "chunkCount": 0,
+      "uniqueChunkCount": 0,
+      "coveredChunkCount": 0,
+      "duplicateCoverage": 0,
+      "omittedChunkCount": 0,
+      "chunkCountMin": null,
+      "chunkCountMax": null,
+      "chunkCountMedian": 0,
+      "characterMin": null,
+      "characterMax": null,
+      "characterMedian": 0,
+      "oversizedSectionSplits": []
+    },
+    "extraction": {
+      "entities": 0,
+      "relations": 0,
+      "claims": 0,
+      "batchesAttempted": 0,
+      "batchesSucceeded": 0,
+      "batchesFailed": 0
+    },
+    "consolidation": {
+      "before": 0,
+      "after": 0,
+      "duplicatesMerged": 0
+    },
+    "resolution": {
+      "existing_ref": 0,
+      "new_object_key": 0,
+      "ambiguous": 0,
+      "invalid": 0
+    },
+    "reconciliation": {
+      "groups": 0,
+      "candidates": 0,
+      "decisions": {},
+      "classifications": {},
+      "modelCalls": 0,
+      "decisionCount": 0,
+      "coverage": {
+        "candidates": 0,
+        "decisions": 0,
+        "exactlyOnce": true
+      }
+    },
+    "schemaGaps": {
+      "calls": 0,
+      "outputs": []
+    },
+    "reviews": {
+      "roots": 0,
+      "dependencyClosure": 0,
+      "total": 0
+    },
+    "validation": null,
+    "writerInvocations": 0,
+    "reasoningPolicy": {
+      "expected": {
+        "understandReport": "off",
+        "extractKnowledge": "off",
+        "reconcileKnowledge": "low",
+        "analyzeSchemaGaps": "low"
+      },
+      "observations": [
+        {
+          "operation": "understandReport",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-08-31T04:28:34.819Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 16585,
+          "finishMs": 51676,
+          "durationMs": 51678,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 3510,
+          "finishReason": "stop",
+          "timedOut": false
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-08-31T04:29:26.515Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 25420,
+          "finishMs": 163304,
+          "durationMs": 163305,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 17827,
+          "finishReason": "stop",
+          "timedOut": false
+        }
+      ],
+      "mismatches": []
+    },
+    "callsByOperation": [
+      {
+        "operation": "understandReport",
+        "attempted": true,
+        "succeeded": true,
+        "retryCount": 0
+      },
+      {
+        "operation": "extractKnowledge",
+        "groupId": "batch-0001",
+        "attempted": true,
+        "succeeded": false,
+        "retryCount": 0
+      }
+    ],
+    "recordedModelCalls": [
+      {
+        "operation": "understandReport",
+        "slice": "report_understanding",
+        "succeeded": true,
+        "retryCount": 0,
+        "outputShape": {
+          "type": "object",
+          "keys": [
+            "majorEntityMentions",
+            "majorTopics",
+            "newThemeProposal",
+            "researchScope",
+            "sourceAssessment",
+            "themeHypotheses",
+            "uncertainty"
+          ]
+        },
+        "runtimeObservation": {
+          "operation": "understandReport",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-08-31T04:28:34.819Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 16585,
+          "finishMs": 51676,
+          "durationMs": 51678,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 3510,
+          "finishReason": "stop",
+          "timedOut": false
+        }
+      },
+      {
+        "operation": "extractKnowledge",
+        "slice": "knowledge_extraction",
+        "batchId": "batch-0001",
+        "succeeded": true,
+        "retryCount": 0,
+        "outputShape": {
+          "type": "object",
+          "keys": [
+            "claims",
+            "entities",
+            "relations"
+          ],
+          "entities": 49,
+          "relations": 30,
+          "claims": 31
+        },
+        "runtimeObservation": {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-08-31T04:29:26.515Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 25420,
+          "finishMs": 163304,
+          "durationMs": 163305,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 17827,
+          "finishReason": "stop",
+          "timedOut": false
+        }
+      }
+    ]
+  },
+  "completedAt": "2026-08-31T04:32:09.827Z",
+  "status": "FAIL / SOL REVIEW REQUIRED",
+  "failure": {
+    "message": "[{\"code\":\"invalid_reference\",\"message\":\"evidenceChunkRefs contains a chunk outside the supplied batch\"}]"
+  },
+  "defects": [
+    {
+      "stage": "extractKnowledge",
+      "batchId": "batch-0001",
+      "code": "invalid_reference",
+      "message": "evidenceChunkRefs contains a chunk outside the supplied batch",
+      "action": "Stopped according to normal Workflow behavior; no production patch applied."
+    }
+  ],
+  "notExecutedAfterStop": [
+    "remaining extraction batches",
+    "consolidation",
+    "reference resolution",
+    "precise retrieval",
+    "reconciliation",
+    "conditional schema-gap analysis",
+    "review isolation",
+    "ChangeSet",
+    "C3 staged validation",
+    "Writer",
+    "reload/full validation",
+    "semantic quality review",
+    "provenance review",
+    "replay",
+    "reprocess"
+  ]
+}
