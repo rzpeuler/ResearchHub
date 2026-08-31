@@ -1,0 +1,494 @@
+{
+  "taskId": "KNOWLEDGE-V0.3-FLASH-EXTRACTION-SMOKE-C-004-S1",
+  "baseline": "88e744427c4ccc25bc19362783522a39f3d0055b",
+  "startedAt": "2026-08-31T17:56:05.287Z",
+  "baselineCheck": {
+    "head": "2938e68183e35ea4111139651349e1073a17fafc",
+    "expected": "88e744427c4ccc25bc19362783522a39f3d0055b",
+    "matchesExpected": true,
+    "workingTreeClean": true,
+    "statusLines": [
+      "?? researchhub.architecture.html",
+      "?? researchhub.architecture.json",
+      "?? researchhub.architecture.visual-check.1440x900.dark.png",
+      "?? researchhub.architecture.visual-check.1440x900.light.png",
+      "?? researchhub.architecture.visual-check.2048x1320.dark.png",
+      "?? researchhub.architecture.visual-check.2048x1320.light.png",
+      "?? researchhub.architecture.visual-check.html",
+      "?? researchhub.architecture.visual-check.json"
+    ],
+    "changedSinceBaseline": [
+      "tests/knowledge/product-validation/flash-extraction-smoke.test.ts",
+      "tools/knowledge-product-validation/run-flash-extraction-smoke.ts"
+    ],
+    "productionFilesChanged": false
+  },
+  "effectiveModel": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash",
+    "baseUrl": "https://api.deepseek.com",
+    "curationMaxTokens": 65536
+  },
+  "credentialPreflight": {
+    "definitionCount": 1,
+    "envFilePresent": true,
+    "processPresent": true,
+    "fingerprintMatch": true,
+    "lengthMatch": true,
+    "match": true,
+    "diagnostic": "Process credential matches .env credential"
+  },
+  "modelPreflight": {
+    "status": "READY",
+    "httpStatus": 200,
+    "modelAvailable": true,
+    "diagnostic": "DeepSeek credential and Flash model accepted by /models"
+  },
+  "pdf": {
+    "filename": "20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf",
+    "sha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "bytes": 3209114,
+    "expectedSha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "expectedBytes": 3209114,
+    "sha256Match": true,
+    "bytesMatch": true
+  },
+  "doclingPreflight": {
+    "status": "READY",
+    "managedRoot": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\.researchhub-document-parser",
+    "python": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\.researchhub-document-parser\\venv\\Scripts\\python.exe",
+    "doclingVersion": "2.116.0",
+    "modelRoot": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\.researchhub-document-parser\\models",
+    "checks": {
+      "python": "PASS",
+      "doclingImport": "PASS",
+      "version": "PASS",
+      "artifactsDirectory": "PASS",
+      "modelInitialization": "PASS",
+      "fixtureParse": "PASS",
+      "tablePipeline": "PASS"
+    },
+    "diagnostics": []
+  },
+  "freshKnowledgeBase": {
+    "knowledgeBaseId": "kb-product-validation-c004-s1-flash-smoke",
+    "schemaVersion": "0.3",
+    "storageFormatVersion": "1",
+    "revision": 0,
+    "writable": true,
+    "validation": "passed",
+    "root": "system-temp (removed after run)"
+  },
+  "docling": {
+    "parser": {
+      "id": "docling-local",
+      "version": "2.116.0"
+    },
+    "pageCount": 103,
+    "chunks": 1523,
+    "uniqueChunkIds": 1523,
+    "emptyChunks": 0,
+    "sections": 154,
+    "tables": 45,
+    "images": 178,
+    "normalizedCharacters": 97784
+  },
+  "batchPlan": {
+    "totalPlannedBatches": 18,
+    "plannedFirstTwo": [
+      {
+        "batchId": "batch-0001",
+        "chunkIds": [
+          "docling-0002",
+          "docling-0003",
+          "docling-0004",
+          "docling-0005",
+          "docling-0006",
+          "docling-0009",
+          "docling-0010",
+          "docling-0011",
+          "docling-0012",
+          "docling-0013",
+          "docling-0014",
+          "docling-0015",
+          "docling-0016",
+          "docling-0017",
+          "docling-0018",
+          "docling-0019",
+          "docling-0020",
+          "docling-0021",
+          "docling-0022",
+          "docling-0023",
+          "docling-0024",
+          "docling-0025",
+          "docling-0026",
+          "docling-0027",
+          "docling-0028",
+          "docling-0029",
+          "docling-0031",
+          "docling-0032",
+          "docling-0033",
+          "docling-0035",
+          "docling-0036",
+          "docling-0037",
+          "docling-0038",
+          "docling-0039",
+          "docling-0040",
+          "docling-0041",
+          "docling-0042",
+          "docling-0043",
+          "docling-0044",
+          "docling-0045",
+          "docling-0046",
+          "docling-0047",
+          "docling-0048",
+          "docling-0049",
+          "docling-0050",
+          "docling-0051",
+          "docling-0052",
+          "docling-0053",
+          "docling-0055",
+          "docling-0056",
+          "docling-0057",
+          "docling-0058",
+          "docling-0059",
+          "docling-0060",
+          "docling-0061",
+          "docling-0062",
+          "docling-0063",
+          "docling-0065",
+          "docling-0066",
+          "docling-0067",
+          "docling-0068",
+          "docling-0069",
+          "docling-0070",
+          "docling-0071",
+          "docling-0072",
+          "docling-0074",
+          "docling-0075",
+          "docling-0076",
+          "docling-0077",
+          "docling-0078",
+          "docling-0080",
+          "docling-0081",
+          "docling-0082",
+          "docling-0083",
+          "docling-0084",
+          "docling-0085",
+          "docling-0086",
+          "docling-0089",
+          "docling-0090",
+          "docling-0091",
+          "docling-0092",
+          "docling-0093",
+          "docling-0116",
+          "docling-0117",
+          "docling-0118",
+          "docling-0119",
+          "docling-0120",
+          "docling-0094",
+          "docling-0096",
+          "docling-0097",
+          "docling-0098",
+          "docling-0099",
+          "docling-0100",
+          "docling-0101",
+          "docling-0102",
+          "docling-0103",
+          "docling-0104",
+          "docling-0105",
+          "docling-0106",
+          "docling-0107",
+          "docling-0108",
+          "docling-0109",
+          "docling-0110",
+          "docling-0111",
+          "docling-0112",
+          "docling-0113",
+          "docling-0114",
+          "docling-0121",
+          "docling-0123",
+          "docling-0124",
+          "docling-0125",
+          "docling-0126",
+          "docling-0127",
+          "docling-0128",
+          "docling-0129",
+          "docling-0131",
+          "docling-0132"
+        ],
+        "characterCount": 5480
+      },
+      {
+        "batchId": "batch-0003",
+        "chunkIds": [
+          "docling-0133",
+          "docling-0134",
+          "docling-0135",
+          "docling-0137",
+          "docling-0138",
+          "docling-0139",
+          "docling-0140",
+          "docling-0141",
+          "docling-0142",
+          "docling-0143",
+          "docling-0144",
+          "docling-0145",
+          "docling-0146",
+          "docling-0147",
+          "docling-0148",
+          "docling-0149",
+          "docling-0150",
+          "docling-0151",
+          "docling-0152",
+          "docling-0153",
+          "docling-0154",
+          "docling-0155",
+          "docling-0156",
+          "docling-0157",
+          "docling-0158",
+          "docling-0159",
+          "docling-0160",
+          "docling-0161",
+          "docling-0162",
+          "docling-0164",
+          "docling-0165",
+          "docling-0166",
+          "docling-0168",
+          "docling-0169",
+          "docling-0170",
+          "docling-0171",
+          "docling-0172",
+          "docling-0173",
+          "docling-0174",
+          "docling-0176",
+          "docling-0177",
+          "docling-0178",
+          "docling-0179",
+          "docling-0180",
+          "docling-0182",
+          "docling-0184",
+          "docling-0185",
+          "docling-0186",
+          "docling-0187",
+          "docling-0188",
+          "docling-0189",
+          "docling-0190",
+          "docling-0191",
+          "docling-0192",
+          "docling-0194",
+          "docling-0195",
+          "docling-0196",
+          "docling-0197",
+          "docling-0199",
+          "docling-0200",
+          "docling-0201",
+          "docling-0202",
+          "docling-0203",
+          "docling-0204",
+          "docling-0205",
+          "docling-0206",
+          "docling-0207",
+          "docling-0208",
+          "docling-0209",
+          "docling-0210",
+          "docling-0211",
+          "docling-0212",
+          "docling-0213",
+          "docling-0214",
+          "docling-0215",
+          "docling-0216",
+          "docling-0217",
+          "docling-0218"
+        ],
+        "characterCount": 5890
+      }
+    ],
+    "onlyDelegatedBatches": [
+      "batch-0001",
+      "batch-0003"
+    ],
+    "thirdBatchRequested": "batch-0004",
+    "productionWorkflowProducedPlan": true
+  },
+  "understandReport": {
+    "operation": "understandReport",
+    "modelOutputShape": {
+      "type": "object",
+      "keys": [
+        "majorEntityMentions",
+        "majorTopics",
+        "newThemeProposal",
+        "researchScope",
+        "sourceAssessment",
+        "themeHypotheses",
+        "uncertainty"
+      ]
+    },
+    "runtime": {
+      "operation": "understandReport",
+      "reasoningEffort": "off",
+      "maxTokens": 65536,
+      "temperature": 0,
+      "startedAt": "2026-08-31T17:57:59.506Z",
+      "firstReasoningDeltaMs": null,
+      "firstTextDeltaMs": 6786,
+      "finishMs": 82485,
+      "durationMs": 82487,
+      "reasoningDeltaCount": 0,
+      "textDeltaCount": 17631,
+      "finishReason": "stop",
+      "timedOut": false
+    }
+  },
+  "c8Visibility": {
+    "extractionCalls": 4,
+    "outOfBatchChunkIdsVisible": 0,
+    "fullDocumentVisible": false,
+    "normalizedTextVisible": false,
+    "claimsContextVisible": false,
+    "sourcesContextVisible": false,
+    "rawRefsVisible": false
+  },
+  "c11Contract": [
+    {
+      "relationsItemsOneOf": true,
+      "branchCount": 14,
+      "expectedBranchCount": 14,
+      "component_of": {
+        "present": true,
+        "sourceEntityTypes": [
+          "product",
+          null
+        ],
+        "targetEntityTypes": [
+          "product",
+          null
+        ],
+        "attributesAdditionalProperties": false,
+        "attributeProperties": [],
+        "costSharePresent": false
+      }
+    },
+    {
+      "relationsItemsOneOf": true,
+      "branchCount": 14,
+      "expectedBranchCount": 14,
+      "component_of": {
+        "present": true,
+        "sourceEntityTypes": [
+          "product",
+          null
+        ],
+        "targetEntityTypes": [
+          "product",
+          null
+        ],
+        "attributesAdditionalProperties": false,
+        "attributeProperties": [],
+        "costSharePresent": false
+      }
+    },
+    null
+  ],
+  "batches": [
+    {
+      "batchId": "batch-0001",
+      "chunkCount": 117,
+      "characterCount": 5480,
+      "attemptCount": 2,
+      "retryCount": 1,
+      "candidateCounts": {
+        "entities": 69,
+        "relations": 113,
+        "claims": 25
+      },
+      "strictValidation": "passed",
+      "validationFailures": [
+        {
+          "attempt": 1,
+          "code": "invalid_semantics",
+          "message": "RelationCandidate[40] upstream_of endpoint types invalid: received product->product; allowed source=[industry],target=[industry]"
+        }
+      ]
+    },
+    {
+      "batchId": "batch-0003",
+      "chunkCount": 78,
+      "characterCount": 5890,
+      "attemptCount": 1,
+      "retryCount": 0,
+      "candidateCounts": {
+        "entities": 31,
+        "relations": 47,
+        "claims": 12
+      },
+      "strictValidation": "passed",
+      "validationFailures": []
+    }
+  ],
+  "r7Regression": {
+    "batches": [
+      {
+        "batchId": "batch-0001",
+        "classifications": ["D", "E"]
+      },
+      {
+        "batchId": "batch-0003",
+        "classifications": ["E"]
+      }
+    ],
+    "observedAUndeclaredComponentAttribute": false,
+    "observedBWrongComponentOfEndpoint": false,
+    "observedCOtherRelationContractViolation": false,
+    "observedDDifferentValidation": true,
+    "observedEStrictPass": true,
+    "noABRegression": true
+  },
+  "retry": {
+    "logicalBatches": 3,
+    "retriedBatches": 1,
+    "maximumRetryCount": 1,
+    "noThirdAttempt": true
+  },
+  "expectedSmokeStop": {
+    "triggered": true,
+    "thirdBatchId": "batch-0004",
+    "delegatedToRealModel": false,
+    "physicalCallsForThirdBatch": 0
+  },
+  "modelAccounting": {
+    "logicalModelCalls": 4,
+    "logicalExtractionBatches": 3,
+    "retryInvocations": 1,
+    "physicalRealModelInvocations": 4,
+    "maximumAllowed": 5,
+    "underBudget": true
+  },
+  "downstream": {
+    "writerInvocations": 0,
+    "reconciliationCalls": 0,
+    "schemaGapCalls": 0,
+    "revision": 0,
+    "semanticCommitReached": false
+  },
+  "result": {
+    "status": "blocked",
+    "failureStage": "extraction",
+    "errors": [
+      {
+        "code": "model_error",
+        "message": "ExpectedSmokeStop before real model invocation for batch-0004"
+      }
+    ],
+    "rawPersistence": {
+      "rawRef": "raw-sha256-998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+      "persisted": true,
+      "created": true,
+      "reused": false
+    }
+  },
+  "status": "PASS",
+  "recommendation": "Ready for final full-pipeline validation using Flash.",
+  "completedAt": "2026-08-31T18:04:35.078Z"
+}

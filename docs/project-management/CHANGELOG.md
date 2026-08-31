@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-09-01 - KNOWLEDGE-V0.3-FLASH-EXTRACTION-SMOKE-C-004-S1
+
+- Ran the authorized bounded real smoke against the exact required PDF through
+  the normal Knowledge v0.3 / Storage 1 Workflow with Local Docling, a fresh
+  isolated Knowledge Base, and Raw-first persistence.
+- Effective runtime was `deepseek-official/deepseek-v4-flash`; four physical
+  real model invocations were made, including one bounded extraction retry.
+  The third distinct extraction request was stopped before provider delegation
+  by the validation-only sentinel.
+- Docling matched the frozen baseline. C8 visibility remained closed, and C11
+  observed 14 relation branches with `component_of` product/null endpoints,
+  closed empty attributes, and no `costShare`. Writer and downstream semantic
+  stages were not reached; revision remained 0.
+- Durable sanitized evidence is
+  `tests/knowledge/product-validation/evidence/c004-s1-flash-extraction-smoke.json`.
+  The smoke is `Completed / PASS - Sol Verification Pending`; Stage C remains
+  in progress and is not accepted.
+- DSH multi-provider / other-API capability portability (including reasoning
+  capability compatibility) is `Deferred / Awaiting Detailed User
+  Requirements`; no implementation task is created.
+
 ## 2026-09-01 - RH-LLM-DEFAULT-FLASH-001
 
 - Changed the active ResearchHub DeepSeek default from `deepseek-v4-pro` to
@@ -11,8 +32,8 @@
   explicit Pro. No real LLM or PDF request was made.
 - Historical R5/R6/R7 evidence and prior execution records remain unchanged and
   continue to record the Pro model actually used at those times.
-- RH-LLM-DEFAULT-FLASH-001 is `Completed / Sol Verification Pending`; Stage C
-  remains in progress pending Sol verification.
+- RH-LLM-DEFAULT-FLASH-001 is `Accepted - Sol verified`; Stage C remains in
+  progress and is not accepted.
 
 ## 2026-08-31 - KNOWLEDGE-V0.3-RELATION-AWARE-OUTPUT-CONTRACT-C-011
 
@@ -25,10 +46,11 @@
 - Preserved Validator authority, C8 projection, C9 one-retry policy, C10
   diagnostics, reasoning policy, DSH serialization, public output shape, and
   Workflow semantics. Added exhaustive parity, regression, retry, projection,
-  and adapter-boundary coverage. No real PDF run was performed.
-- C11 is `Completed / Sol Verification Pending`; C4-R7 is `Completed /
-  Engineering Rework Required - Sol verified`; Stage C remains in progress
-  pending C11 Sol verification.
+  and adapter-boundary coverage. The C11 implementation task itself had no
+  real PDF run; the bounded C4-S1 smoke is recorded separately above.
+- C11 is `Accepted - Sol verified`; C4-R7 is `Completed / Engineering Rework
+  Required - Sol verified`; the bounded C4-S1 smoke is recorded separately
+  above and Stage C remains in progress and is not accepted.
 
 ## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R7
 

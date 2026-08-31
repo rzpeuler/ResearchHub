@@ -1,5 +1,32 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-FLASH-EXTRACTION-SMOKE-C-004-S1
+
+The bounded real Flash smoke passed against the exact required PDF through the
+normal Knowledge v0.3 / Storage 1 Workflow with Local Docling and a fresh
+isolated Knowledge Base. Docling matched the frozen baseline: 103 pages, 1,523
+chunks, 154 sections, 45 tables, 178 images, and 97,784 normalized characters.
+The effective runtime was `deepseek-official/deepseek-v4-flash`; four physical
+real model invocations were made (under the five-call cap), with one bounded
+retry. The third distinct extraction batch was requested by the Workflow but
+stopped by the validation-only sentinel before provider delegation. C8 remained
+closed to out-of-batch and full-document context; C11 was observed as 14
+relation branches with `component_of` product/null endpoints and no `costShare`.
+
+Raw-first persisted in the disposable KB, while Writer, reconciliation, schema
+gap analysis, semantic commit, and downstream model calls were not reached;
+revision remained 0. Durable sanitized evidence is
+`tests/knowledge/product-validation/evidence/c004-s1-flash-extraction-smoke.json`.
+The smoke task is `Completed / PASS - Sol Verification Pending`. This is not a
+full-pipeline product acceptance; Stage C remains `In Progress` and is not
+accepted.
+
+## Deferred portability requirement
+
+DSH multi-provider / other-API capability portability (including reasoning
+capability compatibility) is `Deferred / Awaiting Detailed User Requirements`.
+No implementation task is created for this deferred requirement.
+
 ## RH-LLM-DEFAULT-FLASH-001
 
 The active ResearchHub default DeepSeek model is now `deepseek-v4-flash`,
@@ -11,10 +38,10 @@ reasoning, temperature, max-token, adapter, Workflow, or Knowledge behavior
 changed.
 
 The ignored local `.env` and `.env.example` use Flash. `.env` remains
-untracked and no credential was exposed. All validation for this task was
-offline; no real LLM or PDF request was made. RH-LLM-DEFAULT-FLASH-001 is
-`Completed / Sol Verification Pending`; Stage C remains in progress pending
-Sol verification before the next C11 product-validation continuation.
+untracked and no credential was exposed. The configuration change itself was
+covered offline; the subsequent bounded S1 smoke confirmed that the real path
+resolved to Flash. RH-LLM-DEFAULT-FLASH-001 is `Accepted - Sol verified`; Stage
+C remains in progress and is not accepted.
 
 ## KNOWLEDGE-V0.3-RELATION-AWARE-OUTPUT-CONTRACT-C-011
 
@@ -31,11 +58,12 @@ The Validator remains the deterministic authority. C8 model input projection,
 C9 one-retry behavior, C10 diagnostics, reasoning policy, DSH serialization,
 public output shape, and Workflow semantics are unchanged. Focused Curation,
 Ingestion, Workflow, Runtime, Knowledge, Infrastructure, Migration, Product
-Validation, Adapter, and TypeScript checks pass; no real PDF run was performed.
+Validation, Adapter, and TypeScript checks pass. The bounded S1 smoke observed
+the generated contract in the real Flash path.
 
-C11 is `Completed / Sol Verification Pending`; C4-R7 is `Completed /
-Engineering Rework Required - Sol verified`; Stage C remains `In Progress /
-Awaiting C11 Sol Verification`.
+C11 is `Accepted - Sol verified`; C4-R7 is `Completed / Engineering Rework
+Required - Sol verified`; the S1 smoke is `Completed / PASS - Sol Verification
+Pending`; Stage C remains `In Progress` and is not accepted.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R7
 

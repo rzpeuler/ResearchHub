@@ -32,8 +32,10 @@
 - C4-R6 Product Validation: Completed / Engineering Rework Required - Sol verified
 - C10 Validation Feedback: Completed / Accepted - Sol verified
 - C4-R7 Product Validation: Completed / Engineering Rework Required - Sol verified
-- C11 Relation-Aware Output Contract: Completed / Sol Verification Pending
-- Stage C: In Progress / Awaiting C11 Sol Verification
+- C11 Relation-Aware Output Contract: Accepted - Sol verified
+- RH-LLM-DEFAULT-FLASH-001: Accepted - Sol verified
+- C4-S1 Flash Extraction Smoke: Completed / PASS - Sol Verification Pending
+- Stage C: In Progress / not accepted
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3
@@ -74,8 +76,15 @@ C11 now derives a relation-aware `extractKnowledge` Structured Output Contract
 from the executable Schema 0.3 relation definitions. Every frozen relation has
 one discriminated branch exposing its allowed endpoint types and closed
 attribute object. The Validator, C8 projection, C9 retry envelope, C10
-diagnostics, DSH boundary, and public output shape remain unchanged. C11 is
-`Completed / Sol Verification Pending`; Stage C awaits C11 Sol verification.
+diagnostics, DSH boundary, and public output shape remain unchanged. The
+bounded C4-S1 smoke passed with the default Flash model and observed the
+contract in the real path. C11 and the Flash default are accepted by Sol; the
+smoke remains `Completed / PASS - Sol Verification Pending`. Stage C remains
+In Progress and is not accepted.
+
+DSH multi-provider / other-API capability portability (including reasoning
+capability compatibility) is `Deferred / Awaiting Detailed User
+Requirements`; no implementation task is created for it.
 
 - Architecture Freeze: Completed / Sol Accepted
 - Governance Integration: Completed / Sol verified
