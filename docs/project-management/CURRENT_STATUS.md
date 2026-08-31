@@ -1,5 +1,31 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R5
+
+C4-R5 reran the real PDF validation from the C8 baseline with a fresh writable
+Schema 0.3 / Storage 1 Knowledge Base. Credential fingerprints matched `.env`,
+DeepSeek `/models` returned HTTP 200 with `deepseek-v4-pro`, the exact PDF
+matched the required SHA-256 and size, and Docling Local produced the known
+103-page, 1,523-chunk, 154-section, 45-table, 178-image, 97,784-character
+baseline. Raw-first persisted the expected RawRef.
+
+The observed operation policy and envelope remained correct:
+`understandReport=off`, `extractKnowledge=off`, `maxTokens=65536`, and
+temperature 0. `understandReport` passed strict validation in 49.723 seconds.
+C8 runtime evidence showed extraction batches saw only their current chunks,
+with zero out-of-batch chunk IDs and no normalized text, claims, sources, or
+raw references in model-visible context. `batch-0001` returned 43 entities, 12
+relations, and 19 claims and passed; `batch-0003` returned 20 entities, 18
+relations, and 9 claims but strict Curation validation rejected it with
+`invalid_semantics: Relation endpoint types violate the frozen semantic
+definition`. Normal Workflow execution stopped at extraction. No retry,
+normalization, output repair, replay, reprocess, or production patch was made.
+
+The durable sanitized evidence is
+`tests/knowledge/product-validation/evidence/c004-r5-real-pdf-summary.json`.
+C4-R5 is `Completed / Sol Verification Pending`; C8 is `Completed / Accepted -
+Sol verified`; Stage C remains `In Progress / Awaiting C4-R5 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-EXTRACTION-MODEL-INPUT-PROJECTION-C-008
 
 C-008 corrected the extraction model-visible input boundary exposed by C4-R4.
@@ -17,9 +43,10 @@ malicious out-of-batch references. Required regression tests and integration
 typecheck are green. Workflow, DSH, Validator, Schema, contracts, C7 reasoning
 policy, batch algorithm, and runtime envelope remain unchanged.
 
-C-008 is `Completed / Sol Verification Pending`; C4-R4 is `Completed /
+C-008 is `Completed / Accepted - Sol verified`; C4-R4 is `Completed /
 Engineering Rework Required - Sol verified`; C7 is `Completed / Accepted - Sol
-verified`; Stage C remains `In Progress / Awaiting C8 Sol Verification`.
+verified`; C4-R5 is `Completed / Sol Verification Pending`; Stage C remains
+`In Progress / Awaiting C4-R5 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R4
 

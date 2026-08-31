@@ -1,5 +1,42 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R5 - Real PDF Validation Result
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-31
+
+C4-R5 reran the normal Knowledge v0.3 Workflow from the C8 baseline using the
+exact PDF, real Docling Local, a fresh writable Schema 0.3 / Storage 1 KB, and
+real DeepSeek `deepseek-v4-pro`. Credential fingerprints matched `.env`;
+`/models` returned HTTP 200 with the configured model; the PDF SHA-256 and size
+matched; Docling produced 103 pages, 1,523 chunks, 154 sections, 45 tables,
+178 images, and 97,784 normalized characters; and Raw-first persisted the
+expected RawRef.
+
+The runtime observer confirmed `understandReport=off` and
+`extractKnowledge=off`, with `maxTokens=65536` and temperature 0. The
+`understandReport` output passed strict validation in 49.723 seconds. C8
+visibility evidence recorded current-batch-only extraction inputs, zero
+out-of-batch chunk IDs, and no normalized text, claims, sources, or raw refs in
+model-visible context. The first observed extraction batch returned 43
+entities, 12 relations, and 19 claims and passed. The next observed batch
+returned 20 entities, 18 relations, and 9 claims, but normal strict Curation
+validation rejected it with `invalid_semantics: Relation endpoint types violate
+the frozen semantic definition` at `batch-0003`.
+
+The Workflow stopped at extraction according to normal semantics. Consolidation,
+reference resolution, precise retrieval, reconciliation, Schema Gap analysis,
+review isolation, ChangeSet validation, Writer, reload, Replay, Reprocess,
+semantic review, and provenance review were not executed. No retry,
+normalization, output repair, or production patch was applied. This is recorded
+as `FAIL / SOL REVIEW REQUIRED`, not a product PASS or Stage C acceptance.
+
+Durable sanitized evidence is
+`tests/knowledge/product-validation/evidence/c004-r5-real-pdf-summary.json`.
+The C8 implementation is `Completed / Accepted - Sol verified`; C4-R5 remains
+`Completed / Sol Verification Pending`; Stage C remains
+`In Progress / Awaiting C4-R5 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-EXTRACTION-MODEL-INPUT-PROJECTION-C-008 - Extraction Visibility Boundary
 
 **Status:** Completed / Sol Verification Pending

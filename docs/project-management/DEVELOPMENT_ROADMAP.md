@@ -26,8 +26,9 @@
 - C6 LLM Execution Diagnostic: Completed / Accepted - Sol verified
 - C7 LLM Reasoning Policy: Completed / Accepted - Sol verified
 - C4-R4 Product Validation: Completed / Engineering Rework Required - Sol verified
-- C8 Extraction Input Projection: Completed / Sol Verification Pending
-- Stage C: In Progress / Awaiting C8 Sol Verification
+- C8 Extraction Input Projection: Completed / Accepted - Sol verified
+- C4-R5 Product Validation: Completed / Sol Verification Pending
+- Stage C: In Progress / Awaiting C4-R5 Sol Verification
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3
@@ -45,10 +46,12 @@ C7 now materializes the operation-specific reasoning policy in every
 Knowledge Curation DSH request while preserving the 65,536-token envelope and
 all existing contracts. C4-R4 then reached the real extraction call with the
 correct reasoning policy, but strict Curation rejected an evidence reference
-outside the current batch and stopped the normal Workflow. C8 now constrains
+outside the current batch and stopped the normal Workflow. C8 constrained
 `extractKnowledge` model visibility to the authoritative current batch while
-retaining the original input for deterministic validation. Stage C remains
-pending C8 Sol review; no product PASS is recorded.
+retaining the original input for deterministic validation. C4-R5 verified that
+boundary on the real PDF, then stopped at a later deterministic relation
+endpoint semantic rejection in `batch-0003`; no product PASS is recorded and
+Stage C awaits C4-R5 Sol verification.
 
 - Architecture Freeze: Completed / Sol Accepted
 - Governance Integration: Completed / Sol verified

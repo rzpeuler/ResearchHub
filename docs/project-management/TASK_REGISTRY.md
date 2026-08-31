@@ -49,6 +49,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 | KNOWLEDGE-V0.3-LLM-REASONING-POLICY-C-007 | Set explicit operation-specific reasoning policy for Knowledge Curation | Completed | P0 | 2026-08-31 | Luna | Current reasoning-policy implementation commit (see Git handoff) | Completed / Accepted - Sol verified |
 | KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R4 | Complete Knowledge v0.3 real PDF product validation after C7 | Completed | P0 | 2026-08-31 | Luna | Current R4 validation/evidence commit (see Git handoff) | Completed / Engineering Rework Required - Sol verified |
 | KNOWLEDGE-V0.3-EXTRACTION-MODEL-INPUT-PROJECTION-C-008 | Constrain extractKnowledge model-visible input to the authoritative batch | Completed | P0 | 2026-08-31 | Luna | Current extraction projection commit (see Git handoff) | Completed / Sol Verification Pending |
+| KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R5 | Rerun full Knowledge v0.3 real PDF product validation after C8 | Completed | P0 | 2026-08-31 | Luna | Current R5 validation/evidence commit (see Git handoff) | Completed / Sol Verification Pending |
 | RH-GOV-001 | Initialize project execution state management system | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-DOC-002 | Synchronize architecture baseline documentation | Completed | P0 | 2026-08-23 | Luna | `539c35c3daecf6ac0e35947a45d12271ff6044b4` | Accepted |
 | RH-ENG-001 | Validate minimum ResearchHub Harness integration | Completed | P0 | 2026-08-23 | Luna | Historical task commit | Accepted — typecheck and integration test passed |

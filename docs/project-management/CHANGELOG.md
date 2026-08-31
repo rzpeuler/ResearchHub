@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R5
+
+- Reran the exact real PDF from the C8 baseline with real Docling Local,
+  DeepSeek `deepseek-v4-pro`, a fresh writable Schema 0.3 / Storage 1 KB, and
+  the normal Workflow.
+- Credential/model, PDF, Docling, Raw-first, C7 reasoning policy, and C8
+  extraction visibility gates passed. `batch-0001` passed strict validation;
+  `batch-0003` stopped the Workflow on deterministic
+  `invalid_semantics` relation endpoint validation.
+- Stopped without retry, normalization, output repair, production patch,
+  replay, or reprocess. Durable sanitized evidence is
+  `tests/knowledge/product-validation/evidence/c004-r5-real-pdf-summary.json`.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-EXTRACTION-MODEL-INPUT-PROJECTION-C-008
 
 - Added a pure Curation Skill projection for `extractKnowledge` that exposes
