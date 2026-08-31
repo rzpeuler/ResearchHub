@@ -181,6 +181,13 @@ Input:
 - relevant KB Context
 - extraction Schema Context
 
+The authoritative operation input may be larger than the model-visible input.
+For `extractKnowledge`, the Curation Skill owns a deterministic least-privilege
+projection that exposes only the current section batch and required semantic
+context; unrelated document chunks and Knowledge provenance are not model
+visible. Deterministic validation still receives the original authoritative
+input, so model-visible projection never replaces the final validation scope.
+
 Output:
 - EntityCandidates
 - RelationCandidates

@@ -1,5 +1,26 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-EXTRACTION-MODEL-INPUT-PROJECTION-C-008
+
+C-008 corrected the extraction model-visible input boundary exposed by C4-R4.
+`KnowledgeCurationSkill.extractKnowledge` now retains the complete
+authoritative `ExtractKnowledgeInput` for deterministic validation while
+passing a pure projection to the model. The projection includes only the
+current batch, the report semantic summary with evidence refs intersected to
+current batch chunk IDs, and minimum-permission Knowledge context
+(`schemaVersion`, refs, themes, and entities). It omits the full document,
+normalized text, unrelated chunks, claims, sources, and provenance/raw refs.
+
+Deterministic tests prove exact current-batch visibility, report/context
+filtering, non-mutation, valid in-batch extraction, and continued rejection of
+malicious out-of-batch references. Required regression tests and integration
+typecheck are green. Workflow, DSH, Validator, Schema, contracts, C7 reasoning
+policy, batch algorithm, and runtime envelope remain unchanged.
+
+C-008 is `Completed / Sol Verification Pending`; C4-R4 is `Completed /
+Engineering Rework Required - Sol verified`; C7 is `Completed / Accepted - Sol
+verified`; Stage C remains `In Progress / Awaiting C8 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R4
 
 C4-R4 ran from the C7 baseline through the real PDF, Docling Local, fresh
@@ -21,7 +42,7 @@ normalization, retry, output repair, or production patch was applied.
 
 The durable sanitized evidence is
 `tests/knowledge/product-validation/evidence/c004-r4-real-pdf-summary.json`.
-C4-R4 is `Completed / FAIL / SOL REVIEW REQUIRED`; C6 is `Completed / Accepted
+C4-R4 is `Completed / Engineering Rework Required - Sol verified`; C6 is `Completed / Accepted
 - Sol verified`; C7 is `Completed / Accepted - Sol verified`; Stage C remains
 `In Progress / Awaiting C4-R4 Sol Verification`.
 
@@ -43,8 +64,9 @@ input bloat remains technical debt and is outside C-007 scope.
 
 C-007 is `Completed / Accepted - Sol verified`; C6 is `Completed / Accepted
 - Sol verified`; C4-R3 remains `Completed / Runtime Execution Blocker - Sol
-verified`; C4-R4 is `Completed / FAIL / SOL REVIEW REQUIRED`; Stage C remains
-`In Progress / Awaiting C4-R4 Sol Verification`.
+verified`; C4-R4 is `Completed / Engineering Rework Required - Sol verified`;
+C8 is `Completed / Sol Verification Pending`; Stage C remains `In Progress /
+Awaiting C8 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-LLM-EXECUTION-DIAGNOSTIC-C-006
 

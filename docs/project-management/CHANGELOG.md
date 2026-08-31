@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-EXTRACTION-MODEL-INPUT-PROJECTION-C-008
+
+- Added a pure Curation Skill projection for `extractKnowledge` that exposes
+  only the current batch, filtered report-understanding evidence refs, and
+  minimum-permission semantic Knowledge context.
+- Kept the complete authoritative input for unchanged deterministic
+  validation, preserving defense-in-depth rejection of out-of-batch refs.
+- Added visibility-invariant, non-mutation, valid-output, malicious-output,
+  and non-extraction-operation regression coverage. No Workflow, DSH, Schema,
+  Validator, prompt, batch, reasoning-policy, or runtime-envelope change was
+  introduced.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R4
 
 - Ran the real PDF through the C7 operation-specific reasoning policy with

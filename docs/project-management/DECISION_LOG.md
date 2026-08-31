@@ -1,8 +1,28 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-EXTRACTION-MODEL-INPUT-PROJECTION-C-008 - Extraction Visibility Boundary
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-31
+
+C-008 corrects the C4-R4 extraction visibility defect inside the Curation
+Skill. The authoritative `ExtractKnowledgeInput` remains complete and is
+retained for deterministic validation, while `extractKnowledge` sends a pure
+projection containing only the current batch, filtered report-understanding
+evidence references, and minimum-permission semantic Knowledge context.
+
+The projection removes full-document chunks, normalized text, unrelated
+sections, claims, sources, and provenance/raw references without changing the
+public API, Workflow, DSH adapter, Validator, Schema, contracts, batch
+algorithm, or C7 reasoning policy. Tests prove exact batch visibility,
+non-mutation, valid in-batch output, and continued `invalid_reference`
+rejection for malicious out-of-batch output. C4-R4 is recorded as
+`Completed / Engineering Rework Required - Sol verified`; Stage C remains
+`In Progress / Awaiting C8 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R4 - Real PDF Validation Result
 
-**Status:** Completed / FAIL / SOL REVIEW REQUIRED
+**Status:** Completed / Engineering Rework Required - Sol verified
 **Date:** 2026-08-31
 
 C4-R4 ran the exact PDF through real Docling Local, a fresh isolated Schema
