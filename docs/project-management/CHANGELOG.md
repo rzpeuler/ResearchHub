@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-31 — KNOWLEDGE-V0.3-LLM-REASONING-POLICY-C-007
+
+- Added an exhaustive, operation-specific reasoning policy to the Knowledge
+  Curation DSH adapter: `off` for report understanding and extraction, `low`
+  for reconciliation and schema-gap analysis.
+- Added Adapter and Skill-to-Adapter assertions covering all four active
+  operations.
+- Preserved provider/model/message construction, temperature 0, the existing
+  65,536-token runtime envelope, strict output contracts, and all downstream
+  Knowledge semantics.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-LLM-EXECUTION-DIAGNOSTIC-C-006
 
 - Reconstructed the exact C4-R3 `understandReport` request and measured its

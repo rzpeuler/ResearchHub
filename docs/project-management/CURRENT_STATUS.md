@@ -1,5 +1,25 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-LLM-REASONING-POLICY-C-007
+
+C-007 implemented the explicit operation-specific reasoning policy identified
+by C-006 in the DSH Knowledge Curation adapter. `understandReport` and
+`extractKnowledge` use `reasoningEffort=off`; `reconcileKnowledge` and
+`analyzeSchemaGaps` use `reasoningEffort=low`. The exhaustive typed mapping is
+materialized on every Knowledge Curation `GenerateOptions` request, removing
+the dependency on a provider-resolved default-high policy.
+
+Focused Adapter and Skill-to-Adapter coverage, the required Knowledge and
+Workflow regression matrix, Product Validation tests, and integration
+typecheck are green. No Schema, Curation semantics, Workflow, Validator,
+Writer, Access, Migration, plugin, frontend, retry, normalization, provider,
+model, message, temperature, or maxTokens behavior was changed. The measured
+input bloat remains technical debt and is outside C-007 scope.
+
+C-007 is `Completed / Sol Verification Pending`; C6 is `Completed / Accepted
+- Sol verified`; C4-R3 remains `Completed / Runtime Execution Blocker - Sol
+verified`; Stage C remains `In Progress / Awaiting C7 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-LLM-EXECUTION-DIAGNOSTIC-C-006
 
 C-006 measured the exact C4-R3 `understandReport` execution envelope without
@@ -24,8 +44,8 @@ provided conclusive evidence. No production behavior, Schema, Validator,
 Workflow, Writer, or adapter configuration was changed.
 
 C4-R3 is `Completed / Runtime Execution Blocker - Sol verified`; C6 is
-`Completed / Sol Verification Pending`; Stage C remains `In Progress /
-Awaiting C6 Sol Verification`.
+`Completed / Accepted - Sol verified`; C7 is `Completed / Sol Verification
+Pending`; Stage C remains `In Progress / Awaiting C7 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R3
 

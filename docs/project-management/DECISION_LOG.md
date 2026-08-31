@@ -1,8 +1,27 @@
 # Decision Log
 
-## KNOWLEDGE-V0.3-LLM-EXECUTION-DIAGNOSTIC-C-006 - LLM Execution Envelope
+## KNOWLEDGE-V0.3-LLM-REASONING-POLICY-C-007 - Explicit Operation Reasoning
 
 **Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-31
+
+C-007 implements the policy established from the C-006 execution diagnostic:
+`understandReport=off`, `extractKnowledge=off`, `reconcileKnowledge=low`, and
+`analyzeSchemaGaps=low`. The policy is an exhaustive typed mapping in the DSH
+Knowledge Curation adapter and is written explicitly to every generated model
+request, so provider defaults cannot silently select high reasoning.
+
+Focused adapter and Skill-to-Adapter tests, the required Knowledge/Workflow/
+Product Validation regression matrix, and integration typecheck pass. The
+change does not alter Schema, Curation semantics, Workflow, validation,
+Writer, Access, Migration, plugins, frontend, retries, normalization, model
+construction, temperature, or the existing maxTokens envelope. Input bloat
+remains separately tracked technical debt. C6 is now `Completed / Accepted -
+Sol verified`; Stage C remains `In Progress / Awaiting C7 Sol Verification`.
+
+## KNOWLEDGE-V0.3-LLM-EXECUTION-DIAGNOSTIC-C-006 - LLM Execution Envelope
+
+**Status:** Completed / Accepted - Sol verified
 **Date:** 2026-08-31
 
 C-006 reconstructed the exact C4-R3 `understandReport` request after real
@@ -23,7 +42,7 @@ is measured but was not independently isolated. No production behavior,
 Schema, Validator, Workflow, Writer, or adapter configuration was changed.
 Durable sanitized evidence is
 `tests/knowledge/product-validation/evidence/c006-llm-execution-diagnostic-summary.json`.
-Stage C remains `In Progress / Awaiting C6 Sol Verification`.
+Stage C remains `In Progress / Awaiting C7 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R3 - Full Real PDF Product Validation
 

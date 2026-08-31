@@ -23,8 +23,9 @@
 - C4-R2 Product Validation: Completed / Engineering Rework Required - Sol verified
 - C5 Integration Fix: Completed / Accepted - Sol verified
 - C4-R3 Product Validation: Completed / Runtime Execution Blocker - Sol verified
-- C6 LLM Execution Diagnostic: Completed / Sol Verification Pending
-- Stage C: In Progress / Awaiting C6 Sol Verification
+- C6 LLM Execution Diagnostic: Completed / Accepted - Sol verified
+- C7 LLM Reasoning Policy: Completed / Sol Verification Pending
+- Stage C: In Progress / Awaiting C7 Sol Verification
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3
@@ -38,7 +39,10 @@ verified the credential, model availability, exact PDF, and Docling gates, but
 the real DeepSeek stream did not terminate within the controlled execution
 window. C6 measured sustained default-high reasoning and confirmed that the
 same request with reasoning disabled completes and passes strict validation.
-Stage C remains pending C6 Sol review; no product PASS is recorded.
+C7 now materializes the operation-specific reasoning policy in every
+Knowledge Curation DSH request while preserving the 65,536-token envelope and
+all existing contracts. Stage C remains pending C7 Sol review; no product PASS
+is recorded.
 
 - Architecture Freeze: Completed / Sol Accepted
 - Governance Integration: Completed / Sol verified
