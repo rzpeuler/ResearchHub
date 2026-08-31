@@ -360,3 +360,22 @@ contains no mention text, report text, model output, or filesystem path.
 
 This is feedback precision only: the `invalid_semantics` code, schema,
 Relation semantics, C8 projection, and C9 one-retry policy remain unchanged.
+
+## C11 Relation-Aware Output Contract Addendum
+
+The `extractKnowledge` Structured Output Contract now derives one
+RelationCandidate branch for every `KNOWLEDGE_SCHEMA_V03.relation.types` entry.
+The relation branches are discriminated by a one-value `relationType` enum and
+derive source endpoint types, target endpoint types, and attribute keys from
+the corresponding executable relation definition. Attribute objects are
+closed; relations without attributes explicitly accept only `{}`. Array
+attribute definitions become enums, `number_0_to_1_or_null` becomes a nullable
+bounded number, and `financialContribution` becomes a closed object using its
+Schema-defined fields.
+
+This is model guidance only. The Validator remains the deterministic semantic
+authority, including same-type cross-field equality for
+`same_entity_type_on_both_sides`. The first extraction request and the
+existing single retry receive the same relation-aware contract, and the
+existing C8 projection, C9 retry envelope, C10 diagnostics, DSH serialization,
+and public extraction shape remain unchanged.

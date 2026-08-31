@@ -64,6 +64,9 @@ function substitutesRelation(): Record<string, unknown> { return { relationType:
 function claim(): Record<string, unknown> { return { claimType: 'fact', statement: 'Example Company revenue increased.', subjectMentions: [{ text: 'Example Company', entityType: 'company', existingRef: 'entity:existing' }], temporal: null, structuredValue: { metric: 'growth', value: 0.2, unit: 'ratio', comparator: 'approx' }, semanticConfidence: 0.85, evidenceChunkRefs: ['chunk-0001'], reason: 'The report states the change.' } }
 function makeSkill(output: unknown, operation: string): { skill: KnowledgeCurationSkill; model: ScriptedKnowledgeCurationModel } { const model = new ScriptedKnowledgeCurationModel().set(operation, output); return { skill: new KnowledgeCurationSkill({ model }), model } }
 function errorCode(action: () => Promise<unknown>, code: string): Promise<void> { return assert.rejects(action, (error: unknown) => error instanceof KnowledgeCurationError && error.code === code) as Promise<void> }
+function relationBranches(): Array<Record<string, any>> { return ((STRUCTURED_OUTPUT_CONTRACTS.extractKnowledge.schema as any).properties.relations.items.oneOf ?? []) as Array<Record<string, any>> }
+function relationBranch(relationType: string): Record<string, any> { return relationBranches().find((branch) => branch.properties.relationType.enum[0] === relationType)! }
+function endpointTypes(branch: Record<string, any>, endpoint: 'sourceMention' | 'targetMention'): Array<string | null> { return branch.properties[endpoint].properties.entityType.enum }
 
 test('exposes exactly four public operations and no legacy aliases', () => {
   const methods = Object.getOwnPropertyNames(KnowledgeCurationSkill.prototype).filter((name) => name !== 'constructor' && name !== 'invoke' && !name.startsWith('_')).sort()
@@ -77,6 +80,55 @@ test('understandReport sends the v0.3 request shape and automatic report slice',
   assert.deepEqual(Object.keys(request).sort(), ['input', 'instruction', 'operation', 'outputContract', 'schemaContext'].sort())
   assert.equal(request.operation, 'understandReport'); assert.equal(request.schemaContext?.slice, 'report_understanding')
   assert.equal(request.outputContract?.format, 'json'); assert.equal(typeof request.outputContract?.schema, 'object'); assert.equal(request.instruction.includes('REPORT CONTENT'), false); const schema = request.outputContract?.schema as { properties: { sourceAssessment: { properties: { sourceType: { canonicalEnumRef: string } } } } }; assert.equal(schema.properties.sourceAssessment.properties.sourceType.canonicalEnumRef, 'schema.source.types')
+})
+
+test('relation output contract is exhaustive and has no semantic drift from the executable schema', () => {
+  const branches = relationBranches()
+  assert.equal(branches.length, KNOWLEDGE_SCHEMA_V03.relation.types.length)
+  const branchTypes = branches.map((branch) => branch.properties.relationType.enum[0])
+  assert.equal(new Set(branchTypes).size, branchTypes.length)
+  assert.deepEqual(branchTypes, [...KNOWLEDGE_SCHEMA_V03.relation.types])
+  for (const relationType of KNOWLEDGE_SCHEMA_V03.relation.types) {
+    const branch = relationBranch(relationType)
+    const definition = KNOWLEDGE_SCHEMA_V03.relation.definitions[relationType]
+    assert.deepEqual(endpointTypes(branch, 'sourceMention'), [...definition.sourceTypes, null])
+    assert.deepEqual(endpointTypes(branch, 'targetMention'), [...definition.targetTypes, null])
+    assert.deepEqual(Object.keys(branch.properties.attributes.properties).sort(), Object.keys(definition.attributes ?? {}).sort())
+  }
+})
+
+test('relation output contract encodes empty attributes and schema-derived special attributes', () => {
+  const component = relationBranch('component_of')
+  assert.deepEqual(endpointTypes(component, 'sourceMention'), ['product', null])
+  assert.deepEqual(endpointTypes(component, 'targetMention'), ['product', null])
+  assert.deepEqual(component.properties.attributes, { type: 'object', additionalProperties: false, properties: {} })
+  assert.equal(JSON.stringify(component).includes('costShare'), false)
+
+  for (const relationType of KNOWLEDGE_SCHEMA_V03.relation.types) {
+    const definition = KNOWLEDGE_SCHEMA_V03.relation.definitions[relationType]
+    if (!definition.attributes) assert.deepEqual(relationBranch(relationType).properties.attributes.properties, {})
+  }
+
+  const business = relationBranch('business_exposure')
+  assert.deepEqual(endpointTypes(business, 'sourceMention'), ['company', null])
+  assert.deepEqual(endpointTypes(business, 'targetMention'), ['industry', null])
+  assert.deepEqual(Object.keys(business.properties.attributes.properties).sort(), ['exposureBasis', 'financialContribution', 'materiality', 'realizationStage'])
+  assert.deepEqual(business.properties.attributes.properties.exposureBasis.enum, KNOWLEDGE_SCHEMA_V03.relation.definitions.business_exposure.attributes.exposureBasis)
+  assert.deepEqual(business.properties.attributes.properties.realizationStage.enum, KNOWLEDGE_SCHEMA_V03.relation.definitions.business_exposure.attributes.realizationStage)
+  assert.deepEqual(business.properties.attributes.properties.materiality.enum, KNOWLEDGE_SCHEMA_V03.relation.definitions.business_exposure.attributes.materiality)
+  assert.deepEqual(Object.keys(business.properties.attributes.properties.financialContribution.properties).sort(), [...KNOWLEDGE_SCHEMA_V03.relation.definitions.business_exposure.attributes.financialContribution.fields].sort())
+  assert.equal(business.properties.attributes.properties.financialContribution.additionalProperties, false)
+
+  const supplier = relationBranch('supplier_of')
+  assert.deepEqual(endpointTypes(supplier, 'sourceMention'), ['company', null])
+  assert.deepEqual(endpointTypes(supplier, 'targetMention'), ['company', null])
+  assert.deepEqual(supplier.properties.attributes.properties, {})
+
+  const ownership = relationBranch('owns_stake_in')
+  assert.deepEqual(endpointTypes(ownership, 'sourceMention'), ['company', null])
+  assert.deepEqual(endpointTypes(ownership, 'targetMention'), ['company', null])
+  assert.deepEqual(ownership.properties.attributes.properties.controlType.enum, KNOWLEDGE_SCHEMA_V03.relation.definitions.owns_stake_in.attributes.controlType)
+  assert.deepEqual(ownership.properties.attributes.properties.ownershipPct, { type: ['number', 'null'], minimum: 0, maximum: 1 })
 })
 
 test('each operation maps to its frozen C1 slice and each invocation is one model call', async () => {
@@ -142,6 +194,8 @@ test('extractKnowledge retry preserves the C8 projection and adds only bounded v
   assert.match(model.requests[1]?.instruction ?? '', /validator-detail-/)
   assert.equal((model.requests[1]?.instruction.match(/validator-detail-/g) ?? []).length, 14)
   assert.equal(model.requests[1]?.instruction.includes(longMessage), false)
+  assert.deepEqual(model.requests[0]?.outputContract, model.requests[1]?.outputContract)
+  assert.equal(JSON.stringify(model.requests[0]?.outputContract).includes('component_of'), true)
 })
 
 test('non-extraction operations retain their authoritative model input shape', async () => {
@@ -196,4 +250,17 @@ test('Skill to DSH adapter boundary preserves v0.3 Schema Context and Output Con
   assert.doesNotMatch(prompt, /undefined/)
   assert.equal(JSON.stringify(buildCurationSchemaContext('report_understanding')).includes('majorEntityMentions'), false)
   assert.equal(JSON.stringify(STRUCTURED_OUTPUT_CONTRACTS.understandReport).includes('majorEntityMentions'), true)
+})
+
+test('DSH adapter receives the relation-aware extraction contract unchanged', async () => {
+  let request: GenerateOptions | undefined
+  const llm = { async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> { request = options; yield { type: 'text-delta', index: 0, text: JSON.stringify({ entities: [], relations: [], claims: [] }) }; yield { type: 'finish', reason: { kind: 'stop' } } } }
+  const adapter = new KnowledgeCurationModelAdapter({ llm, provider: 'fixture-provider', model: 'fixture-model' })
+  await new KnowledgeCurationSkill({ model: adapter }).extractKnowledge({ ...scope, batch: { batchId: 'batch-0001', sections: [], chunks: document.chunks }, reportUnderstanding: understanding() as never, knowledgeContext: context })
+  const prompt = request?.messages[0]?.content[0]?.type === 'text' ? request.messages[0].content[0].text : ''
+  assert.match(prompt, /"oneOf":\[/)
+  assert.match(prompt, /"component_of"/)
+  assert.match(prompt, /"sourceMention".*"product"/s)
+  assert.match(prompt, /"targetMention".*"product"/s)
+  assert.doesNotMatch(prompt, /component_of[\s\S]*costShare/)
 })

@@ -1,8 +1,30 @@
 # Decision Log
 
-## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R7 - Real PDF Validation Result
+## KNOWLEDGE-V0.3-RELATION-AWARE-OUTPUT-CONTRACT-C-011 - Schema-Derived Relation Contract
 
 **Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-31
+
+C11 replaces the generic RelationCandidate model contract with a pure,
+deterministic `oneOf` generated from the executable Schema 0.3 relation
+definitions. Every frozen relation type has exactly one branch with a precise
+relation discriminator, Schema-derived source and target endpoint types, and
+closed relation attributes. Relations without declared attributes require an
+empty object; array rules become enums, numeric rules retain nullable 0–1
+bounds, and `financialContribution` uses its executable field list.
+
+The Validator remains the semantic authority, including same-type endpoint
+equality. C8 projection, C9 one-retry policy, C10 diagnostics, reasoning, DSH
+serialization, Workflow architecture, and public output shape are unchanged.
+Focused and deterministic regression matrices plus TypeScript checks pass. No
+real PDF validation was performed.
+
+C4-R7 is `Completed / Engineering Rework Required - Sol verified`; C11 is
+pending Sol verification; Stage C remains in progress and is not accepted.
+
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R7 - Real PDF Validation Result
+
+**Status:** Completed / Engineering Rework Required - Sol verified
 **Date:** 2026-08-31
 
 R7 completed the real PDF validation preflight and reached the normal
@@ -22,7 +44,8 @@ as `DIFFERENT_VALIDATION_ERROR`, so the run stopped before downstream stages.
 Durable sanitized evidence is
 `tests/knowledge/product-validation/evidence/c004-r7-real-pdf-summary.json`.
 R7 is `FAIL / SOL REVIEW REQUIRED`; C10 is `Completed / Accepted - Sol
-verified`; Stage C remains in progress and is not accepted.
+verified`; C4-R7 is `Completed / Engineering Rework Required - Sol verified`;
+Stage C remains in progress pending C11 and is not accepted.
 
 ## KNOWLEDGE-V0.3-VALIDATION-FEEDBACK-C-010 - Relation Diagnostic Feedback
 

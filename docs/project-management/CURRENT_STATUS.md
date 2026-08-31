@@ -1,5 +1,26 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-RELATION-AWARE-OUTPUT-CONTRACT-C-011
+
+C11 derives the `extractKnowledge` RelationCandidate Structured Output
+Contract from `KNOWLEDGE_SCHEMA_V03.relation.definitions`. The generated
+contract contains one discriminated branch for every frozen relation type,
+Schema-derived source and target entity types, closed attributes, explicit
+empty attributes for relations without declared attributes, enum attributes,
+numeric bounds, and closed `financialContribution` fields. `component_of`
+therefore exposes `product -> product` and cannot contractually declare
+`costShare`.
+
+The Validator remains the deterministic authority. C8 model input projection,
+C9 one-retry behavior, C10 diagnostics, reasoning policy, DSH serialization,
+public output shape, and Workflow semantics are unchanged. Focused Curation,
+Ingestion, Workflow, Runtime, Knowledge, Infrastructure, Migration, Product
+Validation, Adapter, and TypeScript checks pass; no real PDF run was performed.
+
+C11 is `Completed / Sol Verification Pending`; C4-R7 is `Completed /
+Engineering Rework Required - Sol verified`; Stage C remains `In Progress /
+Awaiting C11 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R7
 
 R7 ran the exact required PDF through the normal Knowledge v0.3 / Storage 1
@@ -21,7 +42,8 @@ stages. Durable sanitized evidence is
 `tests/knowledge/product-validation/evidence/c004-r7-real-pdf-summary.json`.
 
 R7 result is `FAIL / SOL REVIEW REQUIRED`; C10 is `Completed / Accepted - Sol
-verified`; Stage C remains `In Progress / Awaiting C4-R7 Sol Verification`.
+verified`; C4-R7 is `Completed / Engineering Rework Required - Sol verified`;
+Stage C remains `In Progress / Awaiting C11 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-VALIDATION-FEEDBACK-C-010
 

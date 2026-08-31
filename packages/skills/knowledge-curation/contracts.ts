@@ -1,3 +1,4 @@
+import { KNOWLEDGE_SCHEMA_V03 } from '../../schemas/knowledge/v03/executable-schema.ts'
 import type { StructuredOutputContract } from './model.ts'
 
 const nullableString = { type: ['string', 'null'] }
@@ -8,6 +9,56 @@ const mention = {
   required: ['text'],
   properties: { text: { type: 'string' }, entityType: { ...nullableString, canonicalEnumRef: 'schema.entity.types' }, existingRef: nullableString },
 }
+type RelationDefinition = { sourceTypes: readonly string[]; targetTypes: readonly string[]; attributes?: Record<string, unknown> }
+const relationDefinitions = KNOWLEDGE_SCHEMA_V03.relation.definitions as Record<string, RelationDefinition>
+
+function relationMention(entityTypes: readonly string[]) {
+  return {
+    ...mention,
+    properties: {
+      ...mention.properties,
+      entityType: { ...nullableString, enum: [...entityTypes, null], canonicalEnumRef: 'schema.entity.types' },
+    },
+  }
+}
+
+function attributeRuleContract(rule: unknown): Record<string, unknown> {
+  if (Array.isArray(rule)) return { type: 'string', enum: [...rule] }
+  if (rule === 'number_0_to_1_or_null') return { type: ['number', 'null'], minimum: 0, maximum: 1 }
+  if (typeof rule === 'object' && rule !== null && !Array.isArray(rule) && Array.isArray((rule as { fields?: unknown }).fields)) {
+    const fields = (rule as { fields: readonly string[] }).fields
+    return { type: ['object', 'null'], additionalProperties: false, properties: Object.fromEntries(fields.map((field) => [field, {}])) }
+  }
+  throw new Error('Unsupported executable relation attribute rule')
+}
+
+function relationAttributesContract(definition: RelationDefinition): Record<string, unknown> {
+  const attributes = definition.attributes ?? {}
+  return { type: 'object', additionalProperties: false, properties: Object.fromEntries(Object.entries(attributes).map(([key, rule]) => [key, attributeRuleContract(rule)])) }
+}
+
+function buildRelationCandidateContract(): Record<string, unknown> {
+  const branches = KNOWLEDGE_SCHEMA_V03.relation.types.map((relationType) => {
+    const definition = relationDefinitions[relationType]
+    if (!definition) throw new Error(`Missing executable relation definition for ${relationType}`)
+    return {
+      type: 'object', additionalProperties: false,
+      required: ['relationType', 'sourceMention', 'targetMention', 'attributes', 'contextMentions', 'evidenceChunkRefs', 'reason'],
+      properties: {
+        relationType: { type: 'string', enum: [relationType], canonicalEnumRef: 'schema.relation.types' },
+        sourceMention: relationMention(definition.sourceTypes),
+        targetMention: relationMention(definition.targetTypes),
+        attributes: relationAttributesContract(definition),
+        contextMentions: { type: 'array', items: mention },
+        evidenceChunkRefs: stringArray,
+        reason: { type: 'string' },
+      },
+    }
+  })
+  return { oneOf: branches }
+}
+
+const relationCandidate = buildRelationCandidateContract()
 const sourceAssessment = {
   type: 'object', additionalProperties: false,
   required: ['sourceType', 'publisher', 'institution', 'author', 'publishedAt', 'primaryOrSecondary', 'sourceReliability', 'sourceIdentityConfidence', 'reasoning'],
@@ -27,10 +78,6 @@ const entityMention = {
 const entityCandidate = {
   type: 'object', additionalProperties: false, required: ['entityType', 'name', 'aliases', 'description', 'suggestedExistingRef', 'semanticFields', 'evidenceChunkRefs', 'reason'],
   properties: { entityType: { type: 'string', canonicalEnumRef: 'schema.entity.types' }, name: { type: 'string' }, aliases: stringArray, description: nullableString, suggestedExistingRef: nullableString, semanticFields: { type: 'object' }, evidenceChunkRefs: stringArray, reason: { type: 'string' } },
-}
-const relationCandidate = {
-  type: 'object', additionalProperties: false, required: ['relationType', 'sourceMention', 'targetMention', 'attributes', 'contextMentions', 'evidenceChunkRefs', 'reason'],
-  properties: { relationType: { type: 'string', canonicalEnumRef: 'schema.relation.types' }, sourceMention: mention, targetMention: mention, attributes: { type: 'object' }, contextMentions: { type: 'array', items: mention }, evidenceChunkRefs: stringArray, reason: { type: 'string' } },
 }
 const temporal = { type: 'object', additionalProperties: false, required: ['asOf', 'scope'], properties: { asOf: nullableString, scope: { type: 'object', additionalProperties: false, required: ['type', 'start', 'end', 'label'], properties: { type: { type: 'string', canonicalEnumRef: 'schema.claim.temporalScopeTypes' }, start: nullableString, end: nullableString, label: nullableString } } } }
 const structuredValue = { type: 'object', additionalProperties: false, required: ['metric', 'value', 'unit', 'comparator'], properties: { metric: { type: 'string' }, value: { type: ['string', 'number', 'boolean', 'null'] }, unit: nullableString, comparator: { type: ['string', 'null'], canonicalEnumRef: 'schema.claim.comparators' } } }

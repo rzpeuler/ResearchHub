@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-RELATION-AWARE-OUTPUT-CONTRACT-C-011
+
+- Replaced the generic `extractKnowledge` RelationCandidate contract with one
+  Schema-derived discriminated branch per frozen relation type.
+- Derived endpoint entity types, attribute keys, enum values, numeric bounds,
+  and closed `financialContribution` fields from the executable Schema; no
+  attribute relations explicitly require `{}` and `component_of` cannot
+  contractually declare `costShare`.
+- Preserved Validator authority, C8 projection, C9 one-retry policy, C10
+  diagnostics, reasoning policy, DSH serialization, public output shape, and
+  Workflow semantics. Added exhaustive parity, regression, retry, projection,
+  and adapter-boundary coverage. No real PDF run was performed.
+- C11 is `Completed / Sol Verification Pending`; C4-R7 is `Completed /
+  Engineering Rework Required - Sol verified`; Stage C remains in progress
+  pending C11 Sol verification.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R7
 
 - Reran the exact real PDF after C10 with a fresh Schema 0.3 / Storage 1

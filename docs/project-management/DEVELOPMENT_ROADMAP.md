@@ -31,8 +31,9 @@
 - C9 Extraction Validation Retry: Completed / Accepted - Sol verified
 - C4-R6 Product Validation: Completed / Engineering Rework Required - Sol verified
 - C10 Validation Feedback: Completed / Accepted - Sol verified
-- C4-R7 Product Validation: Completed / Sol Verification Pending
-- Stage C: In Progress / Awaiting C4-R7 Sol Verification
+- C4-R7 Product Validation: Completed / Engineering Rework Required - Sol verified
+- C11 Relation-Aware Output Contract: Completed / Sol Verification Pending
+- Stage C: In Progress / Awaiting C11 Sol Verification
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3
@@ -65,8 +66,16 @@ PASS is recorded. C9 is accepted by Sol and C4-R6 required deterministic
 feedback rework. C10 now enriches Relation endpoint semantic diagnostics from
 the executable schema for the existing bounded retry; C10 is accepted by Sol.
 C4-R7 reran the real PDF after C10 but stopped after a different semantic
-validation error on the one allowed retry. C4-R7 is pending Sol verification
-and Stage C remains in progress.
+validation error on the one allowed retry. C4-R7 is recorded as
+`Completed / Engineering Rework Required - Sol verified`; Stage C remains in
+progress pending C11.
+
+C11 now derives a relation-aware `extractKnowledge` Structured Output Contract
+from the executable Schema 0.3 relation definitions. Every frozen relation has
+one discriminated branch exposing its allowed endpoint types and closed
+attribute object. The Validator, C8 projection, C9 retry envelope, C10
+diagnostics, DSH boundary, and public output shape remain unchanged. C11 is
+`Completed / Sol Verification Pending`; Stage C awaits C11 Sol verification.
 
 - Architecture Freeze: Completed / Sol Accepted
 - Governance Integration: Completed / Sol verified
