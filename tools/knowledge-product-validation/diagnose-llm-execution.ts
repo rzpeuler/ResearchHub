@@ -163,7 +163,7 @@ async function main(): Promise<void> {
     ctx = new Context()
     await ctx.plugin(LlmRuntime)
     applyDeepSeek(ctx, { apiKeyEnv: 'DEEPSEEK_API_KEY', baseURL: config.baseUrl, maxTokens: config.curationMaxTokens, models: [{ id: config.model, name: config.model }] })
-    const modelInfo = await ctx.llm.resolveModel(config.provider, config.model)
+    const modelInfo = await ctx.llm.resolveModelInfo(config.provider, config.model)
     evidence.generateOptions = { provider: config.provider, model: config.model, configuredMaxTokens: config.curationMaxTokens, resolved: summarizeModelInfo(modelInfo), currentAdapterReasoningEffort: 'omitted; adapter default / provider-resolved' }
     const observed = new ObservingRuntime(ctx.llm)
     const adapter = createKnowledgeCurationModelAdapter({ llm: observed, provider: config.provider, model: config.model, maxTokens: config.curationMaxTokens })
