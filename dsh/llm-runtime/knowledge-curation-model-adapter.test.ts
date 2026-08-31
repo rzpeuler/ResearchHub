@@ -14,6 +14,10 @@ function sliceFor(operation: ActiveCurationOperation): 'report_understanding' | 
   return ({ understandReport: 'report_understanding', extractKnowledge: 'knowledge_extraction', reconcileKnowledge: 'reconciliation', analyzeSchemaGaps: 'schema_gap' } as const)[operation]
 }
 
+function reasoningEffortFor(operation: ActiveCurationOperation): 'off' | 'low' {
+  return ({ understandReport: 'off', extractKnowledge: 'off', reconcileKnowledge: 'low', analyzeSchemaGaps: 'low' } as const)[operation]
+}
+
 function fixtureLlm(output = '{"ok":true}') {
   let request: GenerateOptions | undefined
   const llm = { async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> { request = options; yield { type: 'text-delta', index: 0, text: output }; yield { type: 'finish', reason: { kind: 'stop' } } } }
@@ -28,6 +32,7 @@ test('understandReport propagates the v0.3 Schema Context and Output Contract', 
   const result = await adapter.invoke(requestFor('understandReport'))
   const prompt = promptOf(fixture.getRequest())
   assert.deepEqual(result, { ok: true })
+  assert.equal(fixture.getRequest()?.reasoningEffort, 'off')
   assert.match(prompt, /Operation: understandReport/)
   assert.match(prompt, /Schema Context:/)
   assert.match(prompt, /report_understanding/)
@@ -45,6 +50,7 @@ test('all four active operations propagate their mapped slice and contract', asy
     const adapter = new KnowledgeCurationModelAdapter({ llm: fixture.llm, provider: 'fixture-provider', model: 'fixture-model' })
     await adapter.invoke(requestFor(operation))
     const prompt = promptOf(fixture.getRequest())
+    assert.equal(fixture.getRequest()?.reasoningEffort, reasoningEffortFor(operation))
     assert.match(prompt, new RegExp(`Operation: ${operation}`))
     assert.match(prompt, new RegExp(sliceFor(operation)))
     assert.match(prompt, /Output Contract:/)

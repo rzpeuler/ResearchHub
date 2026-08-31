@@ -82,6 +82,7 @@ test('Skill to DSH adapter boundary preserves v0.3 Schema Context and Output Con
   const curation = new KnowledgeCurationSkill({ model: adapter })
   await curation.understandReport({ ...scope, themeContext: context })
   const prompt = request?.messages[0]?.content[0]?.type === 'text' ? request.messages[0].content[0].text : ''
+  assert.equal(request?.reasoningEffort, 'off')
   assert.match(prompt, /Operation: understandReport/)
   assert.match(prompt, /report_understanding/)
   assert.match(prompt, /majorEntityMentions/)

@@ -1,5 +1,6 @@
-import { createUserMessage, type GenerateOptions } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, ReasoningEffortId, type GenerateOptions } from '@deepseek-ai/dsh-llm'
 import type { KnowledgeCurationModel, KnowledgeCurationModelRequest } from '../../packages/skills/knowledge-curation/index.ts'
+import type { ActiveCurationOperation } from '../../packages/skills/knowledge-curation/types.ts'
 import { LlmSkillAdapterError } from './errors.ts'
 import type { HarnessLlmRuntime } from './types.ts'
 
@@ -10,6 +11,13 @@ export interface KnowledgeCurationModelAdapterOptions {
   maxTokens?: number
   temperature?: number
 }
+
+const KNOWLEDGE_CURATION_REASONING_POLICY = {
+  understandReport: ReasoningEffortId('off'),
+  extractKnowledge: ReasoningEffortId('off'),
+  reconcileKnowledge: ReasoningEffortId('low'),
+  analyzeSchemaGaps: ReasoningEffortId('low'),
+} satisfies Record<ActiveCurationOperation, ReturnType<typeof ReasoningEffortId>>
 
 /** DSH-only composition adapter. The Curation Skill remains the authoritative validator. */
 export class KnowledgeCurationModelAdapter implements KnowledgeCurationModel {
@@ -34,6 +42,7 @@ export class KnowledgeCurationModelAdapter implements KnowledgeCurationModel {
       provider: this.options.provider,
       model: this.options.model,
       messages: [createUserMessage({ content: [{ type: 'text', text: prompt }], source: { kind: 'user' } })],
+      reasoningEffort: KNOWLEDGE_CURATION_REASONING_POLICY[request.operation],
       temperature: this.options.temperature ?? 0,
       maxTokens: this.options.maxTokens ?? 4096,
     }
