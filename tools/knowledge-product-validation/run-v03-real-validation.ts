@@ -219,6 +219,8 @@ async function main(): Promise<void> {
       evidence.parser = parserSummary
       if (parserSummary.uniqueChunkIds !== parserSummary.chunks || parserSummary.emptyChunks !== 0) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Docling output failed chunk integrity checks')
       evidence.firstRun = await runEvidence(root, first, model, runtimeObserver, writerInvocations, 0, 0)
+      evidence.firstRun.errors = first.errors
+      normalizeC8Evidence(evidence.firstRun)
       assertRunEvidence(evidence.firstRun)
       if (policyMismatchesOf(runtimeObserver.calls).length) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Observed reasoning policy does not match C7')
       if (first.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(first.errors))
@@ -226,12 +228,15 @@ async function main(): Promise<void> {
       const replayWriterBefore = writerInvocations
       const replay = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r6-replay', false))
       evidence.replay = await runEvidence(root, replay, model, runtimeObserver, writerInvocations, replayCallsBefore, replayWriterBefore)
+      evidence.replay.errors = replay.errors
       assertReplayEvidence(evidence.replay)
       if (replay.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(replay.errors))
       const reprocessCallsBefore = model.calls.length
       const reprocessWriterBefore = writerInvocations
       const reprocess = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r6-reprocess', true))
       evidence.reprocess = await runEvidence(root, reprocess, model, runtimeObserver, writerInvocations, reprocessCallsBefore, reprocessWriterBefore)
+      evidence.reprocess.errors = reprocess.errors
+      normalizeC8Evidence(evidence.reprocess)
       assertRunEvidence(evidence.reprocess)
       if (policyMismatchesOf(runtimeObserver.calls).length) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Observed reasoning policy does not match C7')
       if (reprocess.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(reprocess.errors))
@@ -251,6 +256,13 @@ async function main(): Promise<void> {
     evidence.completedAt = new Date().toISOString()
     evidence.status = error instanceof ProductValidationStop ? error.status : error instanceof LocalRuntimeConfigError && error.code === 'missing_deepseek_api_key' ? 'Blocked / Runtime Credential Missing' : 'FAIL / SOL REVIEW REQUIRED'
     evidence.failure = { message: error instanceof Error ? error.message : String(error) }
+    if (isRecord(evidence.firstRun)) {
+      const firstRun = evidence.firstRun
+      const errors = isRecord(firstRun) && Array.isArray(firstRun.errors) ? firstRun.errors : []
+      evidence.defects = errors.length ? errors : [{ stage: 'extraction', classification: 'persistent_validation_failure_after_bounded_retry', action: 'stopped_without_third_call_or_output_repair' }]
+      evidence.notExecutedAfterStop = ['remaining extraction batches', 'consolidation', 'reference resolution', 'precise retrieval', 'reconciliation', 'schema-gap analysis', 'review isolation', 'ChangeSet planning', 'C3 staged validation', 'Writer', 'reload', 'full Knowledge validation', 'Replay', 'Reprocess', 'semantic quality review', 'provenance review']
+      evidence.recommendation = 'Engineering rework required; preserve deterministic validation failure evidence for Sol review.'
+    }
     await persistEvidence(evidencePath, durableEvidencePath, evidence)
     console.log(JSON.stringify({ status: evidence.status, evidencePath, failure: evidence.failure, isolatedKnowledgeBase: keepRoot ? root : 'removed' }))
     process.exitCode = 1
@@ -378,9 +390,19 @@ function assertRunEvidence(value: JsonRecord): void {
   const accounting = isRecord(value.modelAccounting) ? value.modelAccounting : undefined
   if (value.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Real pipeline blocked before completion')
   if (isRecord(value.reasoningPolicy) && Array.isArray(value.reasoningPolicy.mismatches) && value.reasoningPolicy.mismatches.length) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Observed reasoning policy mismatch')
-  if (c8 && (c8.outOfBatchChunkIdsVisible !== 0 || c8.allFullDocumentVisible !== true || c8.allNormalizedTextHidden !== true || c8.allClaimsContextHidden !== true || c8.allSourcesContextHidden !== true || c8.allRawRefsHidden !== true)) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'C8 extraction projection violation observed')
+  if (c8 && (c8.outOfBatchChunkIdsVisible !== 0 || c8.fullDocumentVisible !== false || c8.normalizedTextVisible !== false || c8.claimsContextVisible !== false || c8.sourcesContextVisible !== false || c8.rawRefsVisible !== false)) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'C8 extraction projection violation observed')
   if (retry && (retry.maximumRetryCount !== 1 && retry.maximumRetryCount !== 0 || retry.noThirdAttempt !== true || retry.sameBatchIdForRetries !== true || retry.feedbackAttempt2Observed !== retry.retriedBatches)) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'C9 retry invariant failed')
   if (accounting && accounting.matchesChangeSet !== true) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Model-call accounting does not match ChangeSet ingestionContext')
+}
+
+function normalizeC8Evidence(value: JsonRecord): void {
+  const c8 = isRecord(value.c8RuntimeVisibility) ? value.c8RuntimeVisibility : undefined
+  if (!c8) return
+  c8.fullDocumentVisible = c8.allFullDocumentVisible === true ? false : true
+  c8.normalizedTextVisible = c8.allNormalizedTextHidden === true ? false : true
+  c8.claimsContextVisible = c8.allClaimsContextHidden === true ? false : true
+  c8.sourcesContextVisible = c8.allSourcesContextHidden === true ? false : true
+  c8.rawRefsVisible = c8.allRawRefsHidden === true ? false : true
 }
 
 function assertReplayEvidence(value: JsonRecord): void {
