@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R6
+
+- Reran the exact real PDF through the normal Schema 0.3 / Storage 1 Workflow
+  with Local Docling, the configured DeepSeek model, a fresh isolated KB, and
+  the C9 bounded extraction retry.
+- Credential/model, PDF, Docling, Raw-first, reasoning, batching, and C8
+  visibility gates passed. Three extraction batches retried once; two
+  recovered and `batch-0009` remained rejected by deterministic
+  `invalid_semantics` after the allowed retry.
+- The Workflow stopped without a third call or downstream commit stages.
+  Durable sanitized evidence is
+  `tests/knowledge/product-validation/evidence/c004-r6-real-pdf-summary.json`.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-EXTRACTION-VALIDATION-RETRY-C-009
 
 - Added Workflow-owned bounded retry for deterministic `extractKnowledge`

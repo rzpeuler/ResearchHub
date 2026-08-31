@@ -1,5 +1,33 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R6
+
+C4-R6 reran the real Knowledge v0.3 product pipeline from the C9 baseline
+using the exact PDF, Local Docling, a fresh writable Schema 0.3 / Storage 1
+Knowledge Base, and the normal Workflow. Credential fingerprints matched
+`.env`; DeepSeek `/models` returned HTTP 200 and `deepseek-v4-pro` was
+available; PDF SHA-256/size and Docling metrics matched the frozen artifact
+baseline; Raw-first persisted the expected RawRef.
+
+The first run reached eight logical extraction batches. Three batches received
+one Workflow-owned C9 retry after `invalid_semantics`; `batch-0006` and
+`batch-0008` recovered, while `batch-0009` failed the same deterministic
+semantic validation on both attempts. The retry used the same batch ID,
+attempt-two bounded feedback, unchanged C8 projection, `reasoningEffort=off`,
+and no third call. Physical extraction invocations were 11 for nine logical
+model-call records plus three retries, and no accepted candidates were
+aggregated from the rejected batch.
+
+The normal Workflow stopped at extraction with `FAIL / SOL REVIEW REQUIRED`.
+Consolidation, resolution, reconciliation, Schema Gap analysis, ChangeSet,
+C3 validation, Writer, Reload, Replay, Reprocess, semantic review, and
+provenance review were not executed after the persistent validation failure.
+Durable sanitized evidence is
+`tests/knowledge/product-validation/evidence/c004-r6-real-pdf-summary.json`.
+
+C4-R6 is `Completed / Sol Verification Pending`; C9 is `Completed / Accepted -
+Sol verified`; Stage C remains `In Progress / Awaiting C4-R6 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-EXTRACTION-VALIDATION-RETRY-C-009
 
 C-009 implemented a single bounded retry for `extractKnowledge` validation
@@ -20,9 +48,9 @@ retry, and two-batch physical call accounting. Schema, Validator, DSH,
 reasoning policy, runtime envelope, batch algorithm, Writer, Access, Migration,
 plugins, and frontend are unchanged.
 
-C-009 is `Completed / Sol Verification Pending`; C8 is `Completed / Accepted -
+C-009 is `Completed / Accepted - Sol verified`; C8 is `Completed / Accepted -
 Sol verified`; C4-R5 is `Completed / Engineering Rework Required - Sol
-verified`; Stage C remains `In Progress / Awaiting C9 Sol Verification`.
+verified`; Stage C remains `In Progress / Awaiting C4-R6 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R5
 
@@ -48,8 +76,9 @@ normalization, output repair, replay, reprocess, or production patch was made.
 The durable sanitized evidence is
 `tests/knowledge/product-validation/evidence/c004-r5-real-pdf-summary.json`.
 C4-R5 is `Completed / Engineering Rework Required - Sol verified`; C8 is
-`Completed / Accepted - Sol verified`; C9 is `Completed / Sol Verification
-Pending`; Stage C remains `In Progress / Awaiting C9 Sol Verification`.
+`Completed / Accepted - Sol verified`; C9 is `Completed / Accepted - Sol
+verified`; C4-R6 is `Completed / Sol Verification Pending`; Stage C remains
+`In Progress / Awaiting C4-R6 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-EXTRACTION-MODEL-INPUT-PROJECTION-C-008
 

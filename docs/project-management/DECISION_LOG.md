@@ -1,8 +1,40 @@
 # Decision Log
 
-## KNOWLEDGE-V0.3-EXTRACTION-VALIDATION-RETRY-C-009 - Bounded Extraction Retry
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R6 - Real PDF Validation Result
 
 **Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-31
+
+C4-R6 reran the exact required PDF through the normal Knowledge v0.3
+Workflow, Local Docling, a fresh writable Schema 0.3 / Storage 1 Knowledge
+Base, and real DeepSeek `deepseek-v4-pro`. Credential fingerprints matched
+`.env`; `/models` returned HTTP 200 with the configured model; the PDF matched
+the required SHA-256 and 3,209,114-byte size; Docling matched 103 pages, 1,523
+chunks, 154 sections, 45 tables, 178 images, and 97,784 normalized characters;
+and Raw-first persisted the expected RawRef.
+
+The first run formed eight logical extraction batches and made 11 physical
+extraction invocations. `batch-0006` and `batch-0008` recovered after one
+`invalid_semantics` retry each. `batch-0009` failed the same deterministic
+relation endpoint validation on attempt 1 and attempt 2. The Workflow used the
+same batch ID, bounded attempt-two feedback, unchanged C8 projection, and
+`reasoningEffort=off`; it made no third call. Physical model-call accounting
+was 12 for nine logical records plus three retries. No candidates from the
+rejected batch were accepted.
+
+The normal Workflow stopped at extraction with `FAIL / SOL REVIEW REQUIRED`.
+Consolidation, resolution, reconciliation, Schema Gap analysis, ChangeSet,
+C3 validation, Writer, Reload, Replay, Reprocess, semantic review, and
+provenance review were not executed after the persistent failure. No
+production code was changed. Durable sanitized evidence is
+`tests/knowledge/product-validation/evidence/c004-r6-real-pdf-summary.json`.
+
+C4-R6 remains pending Sol verification; Stage C remains in progress and is
+not accepted.
+
+## KNOWLEDGE-V0.3-EXTRACTION-VALIDATION-RETRY-C-009 - Bounded Extraction Retry
+
+**Status:** Completed / Accepted - Sol verified
 **Date:** 2026-08-31
 
 C-009 implements the approved bounded retry correction for the C4-R5
@@ -32,8 +64,9 @@ TypeScript integration typecheck pass.
 No Schema, Validator, DSH, provider, reasoning, C8 projection, batch, Writer,
 Access, Migration, plugin, or frontend code was changed. C4-R5 remains
 `Completed / Engineering Rework Required - Sol verified`; C9 is
+`Completed / Accepted - Sol verified`; C4-R6 is
 `Completed / Sol Verification Pending`; Stage C remains
-`In Progress / Awaiting C9 Sol Verification`.
+`In Progress / Awaiting C4-R6 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R5 - Real PDF Validation Result
 
