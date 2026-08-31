@@ -6,6 +6,7 @@ import { EXTRACT_KNOWLEDGE_PROMPT } from './prompts/extract-knowledge.ts'
 import { RECONCILE_KNOWLEDGE_PROMPT } from './prompts/reconcile-knowledge.ts'
 import { ANALYZE_SCHEMA_GAPS_PROMPT } from './prompts/analyze-schema-gaps.ts'
 import { buildCurationSchemaContext } from './schema-context.ts'
+import { projectExtractKnowledgeModelInput } from './model-input.ts'
 import { validateAnalyzeSchemaGaps, validateExtractKnowledge, validateReconcileKnowledge, validateUnderstandReport } from './validation.ts'
 import type { AnalyzeSchemaGapsOutput, ExtractKnowledgeInput, ExtractKnowledgeOutput, ReconcileKnowledgeInput, ReconcileKnowledgeOutput, ReportUnderstanding, SchemaGapInput, UnderstandReportInput } from './types.ts'
 
@@ -36,7 +37,7 @@ export class KnowledgeCurationSkill {
   }
 
   async extractKnowledge(input: ExtractKnowledgeInput): Promise<ExtractKnowledgeOutput> {
-    const raw = await this.invoke('extractKnowledge', EXTRACT_KNOWLEDGE_PROMPT, input, STRUCTURED_OUTPUT_CONTRACTS.extractKnowledge)
+    const raw = await this.invoke('extractKnowledge', EXTRACT_KNOWLEDGE_PROMPT, projectExtractKnowledgeModelInput(input), STRUCTURED_OUTPUT_CONTRACTS.extractKnowledge)
     return validateExtractKnowledge(raw, input)
   }
 

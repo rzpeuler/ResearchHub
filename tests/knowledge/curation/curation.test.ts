@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { KNOWLEDGE_SCHEMA_V03 } from '../../../packages/schemas/knowledge/v03/executable-schema.ts'
-import { KnowledgeCurationError, KnowledgeCurationSkill, type KnowledgeContext, type NormalizedResearchDocument } from '../../../packages/skills/knowledge-curation/index.ts'
+import { KnowledgeCurationError, KnowledgeCurationSkill, type ExtractKnowledgeInput, type KnowledgeContext, type NormalizedResearchDocument, type ReportUnderstanding } from '../../../packages/skills/knowledge-curation/index.ts'
 import { KnowledgeCurationModelAdapter } from '../../../dsh/llm-runtime/knowledge-curation-model-adapter.ts'
 import { buildCurationSchemaContext } from '../../../packages/skills/knowledge-curation/schema-context.ts'
 import { STRUCTURED_OUTPUT_CONTRACTS } from '../../../packages/skills/knowledge-curation/contracts.ts'
@@ -18,6 +18,37 @@ const document: NormalizedResearchDocument = {
 const existingEntity = { id: 'entity:existing', type: 'company' as const, name: 'Example Company', aliases: ['Example'], lifecycle: { status: 'active' as const } }
 const context: KnowledgeContext = { knowledgeBaseId: 'kb-test', schemaVersion: '0.3', existingRefs: ['entity:existing'], themeGroups: [], themes: [], entities: [existingEntity], relations: [], claims: [], sources: [] }
 const scope = { workflowRunId: 'run-001', knowledgeBaseId: 'kb-test', document }
+
+function extractionProjectionInput(): ExtractKnowledgeInput {
+  const chunks = [
+    { chunkId: 'chunk-0001', text: 'CURRENT BATCH TEXT', section: 'Current', page: 1, locator: 'p1' },
+    { chunkId: 'chunk-0002', text: 'OUT OF BATCH TEXT', section: 'Other', page: 2, locator: 'p2' },
+    { chunkId: 'chunk-0003', text: 'ANOTHER OUT OF BATCH TEXT', section: 'Other', page: 3, locator: 'p3' },
+  ]
+  const reportUnderstanding = understanding({
+    majorEntityMentions: [{ mention: 'Example Company', entityType: 'company', suggestedExistingRef: 'entity:existing', evidenceChunkRefs: ['chunk-0001', 'chunk-0002'], reason: 'Named in report.' }],
+    themeHypotheses: [{ mention: 'Current Theme', disposition: 'resolved_existing', existingThemeRefs: ['theme:existing'], reason: 'Theme is in context.', evidenceChunkRefs: ['chunk-0003'] }],
+  }) as unknown as ReportUnderstanding
+  const knowledgeContext = {
+    knowledgeBaseId: 'kb-test',
+    schemaVersion: '0.3',
+    existingRefs: ['entity:existing', 'theme:existing'],
+    themeGroups: [{ id: 'theme-group:existing', name: 'Existing Group', aliases: [] }],
+    themes: [{ id: 'theme:existing', name: 'Existing Theme', aliases: [], themeGroupRef: 'theme-group:existing' }],
+    entities: [existingEntity],
+    relations: [{ id: 'relation:context', sourceRef: 'entity:existing', targetRef: 'entity:existing', type: 'business_exposure', provenance: [{ chunkRef: 'chunk-0002' }] }],
+    claims: [{ id: 'claim:context', statement: 'Context claim', provenance: [{ chunkRef: 'chunk-0002', rawRef }] }],
+    sources: [{ id: 'source:context', rawRefs: [rawRef] }],
+  } as unknown as KnowledgeContext
+  return {
+    workflowRunId: 'run-projection',
+    knowledgeBaseId: 'kb-projection',
+    document: { ...document, normalizedText: 'FULL DOCUMENT NORMALIZED TEXT SENTINEL', chunks, sections: [{ sectionId: 'section-all', title: 'All sections', chunkIds: chunks.map((chunk) => chunk.chunkId) }] },
+    batch: { batchId: 'batch-0001', sections: [{ sectionId: 'section-current', title: 'Current', chunkIds: ['chunk-0001'] }], chunks: [chunks[0]!] },
+    reportUnderstanding,
+    knowledgeContext,
+  }
+}
 
 function understanding(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -54,6 +85,54 @@ test('each operation maps to its frozen C1 slice and each invocation is one mode
   assert.deepEqual(KNOWLEDGE_SCHEMA_V03.claim.types, [...KNOWLEDGE_SCHEMA_V03.claim.types])
 })
 function sliceOf(operation: string): string { return ({ understandReport: 'report_understanding', extractKnowledge: 'knowledge_extraction', reconcileKnowledge: 'reconciliation', analyzeSchemaGaps: 'schema_gap' } as Record<string, string>)[operation]! }
+
+test('extractKnowledge projects only the current batch and least-privilege semantic context', async () => {
+  const input = extractionProjectionInput()
+  const before = structuredClone(input)
+  const model = new ScriptedKnowledgeCurationModel().set('extractKnowledge', { entities: [entity()], relations: [], claims: [] })
+  const result = await new KnowledgeCurationSkill({ model }).extractKnowledge(input)
+  const projected = model.requests[0]?.input as Record<string, any>
+  const serialized = JSON.stringify(projected)
+  const visibleDocumentChunkIds = input.document.chunks.map((chunk) => chunk.chunkId).filter((chunkId) => serialized.includes(chunkId))
+  assert.deepEqual(visibleDocumentChunkIds, ['chunk-0001'])
+  assert.equal(projected.workflowRunId, undefined)
+  assert.equal(projected.knowledgeBaseId, undefined)
+  assert.equal(projected.document, undefined)
+  assert.equal(serialized.includes('FULL DOCUMENT NORMALIZED TEXT SENTINEL'), false)
+  assert.equal(serialized.includes('OUT OF BATCH TEXT'), false)
+  assert.equal(projected.batch.batchId, 'batch-0001')
+  assert.equal(projected.batch.chunks[0].text, 'CURRENT BATCH TEXT')
+  assert.deepEqual(projected.reportUnderstanding.majorEntityMentions[0].evidenceChunkRefs, ['chunk-0001'])
+  assert.deepEqual(projected.reportUnderstanding.themeHypotheses[0].evidenceChunkRefs, [])
+  assert.equal(projected.knowledgeContext.schemaVersion, '0.3')
+  assert.deepEqual(projected.knowledgeContext.existingRefs, ['entity:existing', 'theme:existing'])
+  assert.equal(projected.knowledgeContext.entities[0].id, 'entity:existing')
+  assert.equal(projected.knowledgeContext.relations, undefined)
+  assert.equal(projected.knowledgeContext.claims, undefined)
+  assert.equal(projected.knowledgeContext.sources, undefined)
+  assert.equal(result.entities[0]?.candidateId, 'candidate-batch-0001-entity-0001')
+  assert.deepEqual(input, before)
+})
+
+test('extractKnowledge retains Validator defense against hidden out-of-batch references', async () => {
+  const input = extractionProjectionInput()
+  const model = new ScriptedKnowledgeCurationModel().set('extractKnowledge', { entities: [{ ...entity(), evidenceChunkRefs: ['chunk-0002'] }], relations: [], claims: [] })
+  await errorCode(() => new KnowledgeCurationSkill({ model }).extractKnowledge(input), 'invalid_reference')
+  assert.equal(JSON.stringify(model.requests[0]?.input).includes('chunk-0002'), false)
+})
+
+test('non-extraction operations retain their authoritative model input shape', async () => {
+  const understandModel = new ScriptedKnowledgeCurationModel().set('understandReport', understanding())
+  await new KnowledgeCurationSkill({ model: understandModel }).understandReport({ ...scope, themeContext: context })
+  assert.match(JSON.stringify(understandModel.requests[0]?.input), /run-001/)
+  assert.match(JSON.stringify(understandModel.requests[0]?.input), /normalizedText/)
+  const reconcileModel = new ScriptedKnowledgeCurationModel().set('reconcileKnowledge', { decisions: [] })
+  await new KnowledgeCurationSkill({ model: reconcileModel }).reconcileKnowledge({ ...scope, groups: [], sourceAssessment: understanding().sourceAssessment as never })
+  assert.match(JSON.stringify(reconcileModel.requests[0]?.input), /run-001/)
+  const gapModel = new ScriptedKnowledgeCurationModel().set('analyzeSchemaGaps', { gaps: [] })
+  await new KnowledgeCurationSkill({ model: gapModel }).analyzeSchemaGaps({ ...scope, candidates: [], knowledgeContext: context })
+  assert.match(JSON.stringify(gapModel.requests[0]?.input), /normalizedText/)
+})
 
 test('understandReport validates source and semantic understanding', async () => { const { skill: curation } = makeSkill(understanding({ themeHypotheses: [{ mention: 'New Theme', disposition: 'proposed_new', existingThemeRefs: [], reason: 'Not in catalog.', evidenceChunkRefs: ['chunk-0001'] }], newThemeProposal: { name: 'New Theme', definition: 'A new theme.', reason: 'Report focus.' } }), 'understandReport'); const result = await curation.understandReport({ ...scope, themeContext: context }); assert.equal(result.sourceAssessment.sourceType, KNOWLEDGE_SCHEMA_V03.source.types[0]); assert.equal(result.themeHypotheses[0]?.disposition, 'proposed_new') })
 test('invalid source type and reliability are rejected through schema context', async () => { for (const field of ['sourceType', 'sourceReliability']) { const output = understanding({ sourceAssessment: { ...understanding().sourceAssessment as object, [field]: 'not-frozen' } }); const { skill: curation } = makeSkill(output, 'understandReport'); await errorCode(() => curation.understandReport({ ...scope, themeContext: context }), 'invalid_semantics') } })
