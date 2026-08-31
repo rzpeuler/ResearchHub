@@ -1,5 +1,32 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-LLM-EXECUTION-DIAGNOSTIC-C-006
+
+C-006 measured the exact C4-R3 `understandReport` execution envelope without
+changing production behavior. The request contained 97,784 normalized-text
+characters, 1,523 chunks, 367,630 serialized document characters, and a
+375,989-character / 696,743-byte final model prompt. Both normalizedText and
+chunk texts were model-visible, with a measured duplication ratio of 0.9689.
+
+The effective request used `deepseek-official` / `deepseek-v4-pro`,
+`maxTokens=65536`, temperature `0`, and omitted `reasoningEffort`; the
+resolved provider default was explicitly measured as `high`. A tiny control
+finished in 1.378 seconds with reasoning, text, usage, and finish events. The
+current full request emitted 5,702 reasoning deltas and 4,012 text deltas but
+did not finish within the controlled 120-second boundary. The same exact
+request with only `reasoningEffort=off` finished in 50.525 seconds and passed
+strict v0.3 `understandReport` validation with `majorEntityMentions`.
+
+Primary classification is `LONG_REASONING_POLICY_CONFIRMED`. Input bloat is a
+measured contributing factor, not independently causal in this diagnostic;
+16k and projected-input comparisons were skipped after the reasoning-off path
+provided conclusive evidence. No production behavior, Schema, Validator,
+Workflow, Writer, or adapter configuration was changed.
+
+C4-R3 is `Completed / Runtime Execution Blocker - Sol verified`; C6 is
+`Completed / Sol Verification Pending`; Stage C remains `In Progress /
+Awaiting C6 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R3
 
 C4-R3 started from the C5 baseline after the C-005 fix. The exact PDF hash
@@ -9,15 +36,17 @@ doctor was READY. The real runner used a fresh isolated `kb-product-validation-c
 target and progressed through parsing into the real HTTPS model call.
 
 The real DeepSeek stream did not produce a terminal response within the
-controlled 15-minute window. No model output was available to classify, so
-the `understandReport` contract gate and all downstream stages were not
-completed. No normalization, retry, production modification, API-key
-exposure, or fabricated evidence occurred.
+controlled 15-minute window. C-006 subsequently isolated the execution cause:
+the current policy emitted sustained reasoning and delayed text, while the
+same request with reasoning disabled completed and passed strict validation.
+The full C4-R3 product pipeline remains incomplete; no normalization, retry,
+production modification, API-key exposure, or fabricated evidence occurred.
 
-Status is `Completed`; acceptance is `Environment Blocker - Sol Verification
-Pending`. The product result is `BLOCKED / External LLM Execution Timeout`.
-C5 is `Completed / Accepted - Sol verified`; Stage C remains `In Progress /
-Awaiting C4-R3 Sol Verification`.
+Status is `Completed`; acceptance is `Runtime Execution Blocker - Sol
+verified`. The product result is `BLOCKED / External LLM Execution Timeout`.
+C5 is `Completed / Accepted - Sol verified`; C6 is `Completed / Sol
+Verification Pending`; Stage C remains `In Progress / Awaiting C6 Sol
+Verification`.
 
 ## KNOWLEDGE-V0.3-INTEGRATION-FIX-C-005
 

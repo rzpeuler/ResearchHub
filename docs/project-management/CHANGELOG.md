@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-LLM-EXECUTION-DIAGNOSTIC-C-006
+
+- Reconstructed the exact C4-R3 `understandReport` request and measured its
+  model-visible envelope: 375,989 prompt characters / 696,743 UTF-8 bytes,
+  with normalizedText and chunk text both present.
+- Measured effective `maxTokens=65536`, temperature `0`, omitted request
+  reasoning effort, and resolved provider default `high`.
+- Tiny Harness control completed with reasoning/text/usage/finish events. The
+  current request emitted sustained reasoning and delayed text without a
+  natural finish at 120 seconds; the same request with reasoning off finished
+  in 50.525 seconds and passed strict v0.3 validation with
+  `majorEntityMentions`.
+- Primary classification: `LONG_REASONING_POLICY_CONFIRMED`. No production
+  behavior or adapter configuration was changed. C6 is `Completed / Sol
+  Verification Pending`; Stage C remains `In Progress / Awaiting C6 Sol
+  Verification`.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R3
 
 - Started from the C5 baseline and verified the exact PDF hash/size,
@@ -11,8 +28,9 @@
   product evidence was fabricated.
 - No normalization, retry, production modification, API-key exposure, PDF,
   full prompt, full response, or temporary KB was committed.
-- C4-R3 is `Completed / Environment Blocker - Sol Verification Pending`;
-  Stage C remains `In Progress / Awaiting C4-R3 Sol Verification`.
+- C4-R3 is `Completed / Runtime Execution Blocker - Sol verified`; C6 is
+  `Completed / Sol Verification Pending`; Stage C remains
+  `In Progress / Awaiting C6 Sol Verification`.
 
 ## 2026-08-31 - KNOWLEDGE-V0.3-INTEGRATION-FIX-C-005
 

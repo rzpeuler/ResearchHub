@@ -1,0 +1,238 @@
+{
+  "taskId": "KNOWLEDGE-V0.3-LLM-EXECUTION-DIAGNOSTIC-C-006",
+  "baseline": "5ea04fbe879ddd414981c7eba02e9e0a2f56298b",
+  "c5Commit": "2b29e6b224aeb64ae235aa745eaa181f4a02c0aa",
+  "startedAt": "2026-08-31T03:54:09.629Z",
+  "runtime": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-pro",
+    "configuredMaxTokens": 65536,
+    "baseUrl": "https://api.deepseek.com"
+  },
+  "credential": {
+    "envFingerprint": "8b84ae663041",
+    "processFingerprint": "8b84ae663041",
+    "envLength": 35,
+    "processLength": 35,
+    "match": true,
+    "modelsHttpStatus": 200,
+    "modelAvailable": true
+  },
+  "pdf": {
+    "filename": "20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf",
+    "sha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "bytes": 3209114
+  },
+  "knowledgeBase": {
+    "knowledgeBaseId": "kb-product-validation-c004-r3-diagnostic",
+    "schemaVersion": "0.3",
+    "storageFormatVersion": "1",
+    "revision": 0,
+    "writable": true,
+    "seedObjects": 0,
+    "fullValidation": "passed"
+  },
+  "parser": {
+    "parser": "docling-local",
+    "pages": 103,
+    "sections": 154,
+    "tables": 45,
+    "images": 178,
+    "chunks": 1523,
+    "uniqueChunkIds": 1523,
+    "emptyChunks": 0,
+    "normalizedCharacters": 97784,
+    "sumChunkTextCharacters": 94740,
+    "warnings": []
+  },
+  "prompt": {
+    "documentNormalizedTextCharacters": 97784,
+    "documentChunks": 1523,
+    "documentChunkTextCharacters": 94740,
+    "serializedDocumentCharacters": 367630,
+    "serializedThemeContextCharacters": 185,
+    "serializedOperationInputCharacters": 367961,
+    "schemaContextSerializedCharacters": 4848,
+    "outputContractSerializedCharacters": 2344,
+    "instructionCharacters": 409,
+    "finalModelPromptCharacters": 375989,
+    "finalModelPromptUtf8Bytes": 696743,
+    "finalPromptSha256": "32407deddc5941a43d884af34c113ed191096bf196024166956760bd94d4b4ed",
+    "normalizedTextIncluded": true,
+    "chunkTextsIncluded": true,
+    "documentTextDuplicationRatio": 0.9689
+  },
+  "staticEnvelope": {
+    "currentRequestIncludes": [
+      "document.normalizedText",
+      "all document.chunks",
+      "themeContext"
+    ],
+    "extraction": {
+      "batchCount": 18,
+      "minSerializedCharacters": 370791,
+      "medianSerializedCharacters": 384814,
+      "maxSerializedCharacters": 394509,
+      "repeatsFullNormalizedText": true,
+      "repeatsAllDocumentChunks": true,
+      "repeatsCurrentBatch": true,
+      "reportUnderstanding": true,
+      "knowledgeContext": true
+    },
+    "reconciliation": {
+      "serializedCharacters": 368057,
+      "repeatsFullNormalizedText": true,
+      "repeatsAllDocumentChunks": true,
+      "groups": true,
+      "knowledgeContext": false
+    },
+    "schemaGap": {
+      "serializedCharacters": 367954,
+      "repeatsFullNormalizedText": true,
+      "repeatsAllDocumentChunks": true,
+      "knowledgeContext": true
+    },
+    "batchCoverage": {
+      "sections": 155,
+      "batches": 18,
+      "chunkCount": 1523,
+      "uniqueCoveredChunks": 1523,
+      "omissions": 0,
+      "duplicateCoverage": 0
+    }
+  },
+  "generateOptions": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-pro",
+    "configuredMaxTokens": 65536,
+    "resolved": {
+      "provider": "deepseek-official",
+      "model": "deepseek-v4-pro",
+      "defaultMaxTokens": 65536,
+      "reasoning": {
+        "efforts": [
+          "off",
+          "low",
+          "high",
+          "max"
+        ],
+        "defaultEffort": "high"
+      },
+      "contextWindow": 1000000
+    },
+    "currentAdapterReasoningEffort": "omitted; adapter default / provider-resolved"
+  },
+  "harnessControl": {
+    "label": "harnessControl",
+    "requestStart": "2026-08-31T03:56:05.418Z",
+    "elapsedMs": {
+      "firstChunk": 1000,
+      "firstReasoningDelta": 1000,
+      "firstTextDelta": 1378,
+      "firstUsage": 1378,
+      "finish": 1378
+    },
+    "counts": {
+      "block-start": 2,
+      "reasoning-delta": 15,
+      "text-delta": 5,
+      "block-end": 2,
+      "usage": 1,
+      "finish": 1
+    },
+    "reasoningCharacters": 65,
+    "textCharacters": 11,
+    "controlledAbort": false,
+    "options": {
+      "provider": "deepseek-official",
+      "model": "deepseek-v4-pro",
+      "maxTokens": 128,
+      "temperature": 0,
+      "reasoningEffort": null,
+      "reasoningEffortPresence": "omitted",
+      "messageCount": 1
+    },
+    "firstChunk": "2026-08-31T03:56:06.418Z",
+    "firstReasoningDelta": "2026-08-31T03:56:06.418Z",
+    "firstTextDelta": "2026-08-31T03:56:06.796Z",
+    "firstUsage": "2026-08-31T03:56:06.796Z",
+    "finish": "2026-08-31T03:56:06.796Z",
+    "finishReason": "stop"
+  },
+  "currentPolicy": {
+    "durationMs": 120017,
+    "finished": false,
+    "error": "Knowledge Curation did not finish normally: aborted",
+    "observation": {
+      "label": "currentPolicy",
+      "requestStart": "2026-08-31T03:56:06.800Z",
+      "elapsedMs": {
+        "firstChunk": 3510,
+        "firstReasoningDelta": 3510,
+        "firstTextDelta": 86190,
+        "finish": 120015
+      },
+      "counts": {
+        "block-start": 2,
+        "reasoning-delta": 5702,
+        "text-delta": 4012,
+        "block-end": 0,
+        "usage": 0,
+        "finish": 1
+      },
+      "reasoningCharacters": 18609,
+      "textCharacters": 11201,
+      "controlledAbort": true,
+      "options": {
+        "provider": "deepseek-official",
+        "model": "deepseek-v4-pro",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "reasoningEffort": null,
+        "reasoningEffortPresence": "omitted",
+        "messageCount": 1
+      },
+      "firstChunk": "2026-08-31T03:56:10.310Z",
+      "firstReasoningDelta": "2026-08-31T03:56:10.310Z",
+      "firstTextDelta": "2026-08-31T03:57:32.990Z",
+      "finish": "2026-08-31T03:58:06.815Z",
+      "finishReason": "aborted"
+    }
+  },
+  "reasoningOff": {
+    "durationMs": 50525,
+    "finished": true,
+    "outputShape": {
+      "type": "object",
+      "keys": [
+        "majorEntityMentions",
+        "majorTopics",
+        "newThemeProposal",
+        "researchScope",
+        "sourceAssessment",
+        "themeHypotheses",
+        "uncertainty"
+      ]
+    },
+    "validation": "passed"
+  },
+  "maxTokensComparison": {
+    "skipped": true,
+    "rationale": "reasoning-off path completed; task permits skipping the bounded comparison."
+  },
+  "inputProjection": {
+    "skipped": true,
+    "rationale": "reasoning-off path completed; task permits skipping the input projection experiment."
+  },
+  "classification": {
+    "primary": "LONG_REASONING_POLICY_CONFIRMED",
+    "contributingFactors": {
+      "currentPolicyFinished": false,
+      "reasoningOffFinished": true,
+      "boundedFinished": false,
+      "projectedFinished": false
+    }
+  },
+  "status": "LONG_REASONING_POLICY_CONFIRMED",
+  "completedAt": "2026-08-31T03:58:57.340Z"
+}

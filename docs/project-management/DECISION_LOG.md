@@ -1,8 +1,33 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-LLM-EXECUTION-DIAGNOSTIC-C-006 - LLM Execution Envelope
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-31
+
+C-006 reconstructed the exact C4-R3 `understandReport` request after real
+Docling parsing and measured 97,784 normalized-text characters, 1,523 chunks,
+367,630 serialized document characters, and a 375,989-character / 696,743-byte
+model prompt. The request contained both normalizedText and chunk texts. The
+effective options were `deepseek-official` / `deepseek-v4-pro`, temperature 0,
+`maxTokens=65536`, and omitted `reasoningEffort`; DSH resolved the provider
+default as `high`.
+
+A tiny same-runtime control completed in 1.378 seconds with reasoning, text,
+usage, and finish events. The current full request emitted 5,702 reasoning
+deltas and 4,012 text deltas but did not finish within 120 seconds. The same
+exact request with only `reasoningEffort=off` completed in 50.525 seconds and
+passed strict v0.3 validation with the expected `majorEntityMentions` field.
+The primary classification is `LONG_REASONING_POLICY_CONFIRMED`; input bloat
+is measured but was not independently isolated. No production behavior,
+Schema, Validator, Workflow, Writer, or adapter configuration was changed.
+Durable sanitized evidence is
+`tests/knowledge/product-validation/evidence/c006-llm-execution-diagnostic-summary.json`.
+Stage C remains `In Progress / Awaiting C6 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R3 - Full Real PDF Product Validation
 
-**Status:** Completed / Environment Blocker - Sol Verification Pending
+**Status:** Completed / Runtime Execution Blocker - Sol verified
 **Date:** 2026-08-31
 
 C4-R3 ran from the accepted C5 baseline. The exact PDF hash and size matched,
@@ -11,13 +36,14 @@ returned HTTP 200 with `deepseek-v4-pro` available, and Docling Local passed
 its READY preflight. A fresh isolated Schema 0.3 / Storage 1 target was used.
 
 The real runner reached the HTTPS model call, but the DeepSeek stream did not
-produce a terminal response within the controlled 15-minute window. No model
-output was available for `understandReport` contract classification, so the
-downstream pipeline was not claimed as executed. No retry, normalization,
+produce a terminal response within the controlled 15-minute window. C-006
+subsequently measured sustained default-high reasoning and confirmed that the
+same request with reasoning disabled completes and passes strict validation.
+The downstream product pipeline remains incomplete. No retry, normalization,
 production change, or fabricated model evidence was introduced. Durable
 sanitized evidence is
 `tests/knowledge/product-validation/evidence/c004-r3-real-pdf-summary.json`.
-Stage C remains `In Progress / Awaiting C4-R3 Sol Verification`.
+Stage C remains `In Progress / Awaiting C6 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-INTEGRATION-FIX-C-005 - DSH Contract Propagation Correction
 
@@ -33,9 +59,8 @@ operation and exact contract data, and missing fields fail before transport.
 
 Focused adapter and Skill-to-Adapter tests plus the required regression matrix
 are green. No Validator or Schema relaxation, output normalization, retry, or
-unrelated runtime surface was introduced. C4-R3 real-PDF validation waits for
-Sol acceptance of C5 was recorded before C4-R3. Stage C remains `In Progress /
-Awaiting C4-R3 Sol Verification`.
+unrelated runtime surface was introduced. C5 was accepted before C4-R3.
+Stage C remains `In Progress / Awaiting C6 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R2 - Real PDF Product Validation
 
