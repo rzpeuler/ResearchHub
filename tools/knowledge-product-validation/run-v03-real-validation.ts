@@ -11,7 +11,7 @@ import { LocalResearchReportInputResolver } from '../../packages/plugins/documen
 import type { DocumentParseInput, DocumentParseResult, DocumentParser } from '../../packages/plugins/document/types.ts'
 import { ResearchReportKnowledgeIngestionWorkflow } from '../../packages/workflows/research-report-knowledge-ingestion/index.ts'
 import type { ResearchReportKnowledgeIngestionResult } from '../../packages/workflows/research-report-knowledge-ingestion/index.ts'
-import { KnowledgeBaseLoader, KnowledgeBaseRegistry, KnowledgeWriter, canonicalSerialize } from '../../packages/shared/knowledge-base/index.ts'
+import { KnowledgeBaseLoader, KnowledgeBaseRegistry, KnowledgeIngestionLogStore, KnowledgeWriter, canonicalSerialize } from '../../packages/shared/knowledge-base/index.ts'
 import { createKnowledgeStagedStateValidator, KnowledgeValidationSkill } from '../../packages/skills/knowledge-validation/index.ts'
 import type { KnowledgeBaseHandle } from '../../packages/shared/knowledge-base/index.ts'
 import { loadLocalRuntimeConfig, LocalRuntimeConfigError } from '../../dsh/llm-runtime/local-runtime-config.ts'
@@ -19,10 +19,11 @@ import { createRealKnowledgeCurationModel } from './deepseek-composition.ts'
 import { inspectDoclingRuntime } from '../document-parser/doctor-docling.ts'
 
 const execFileAsync = promisify(execFile)
-const TASK_ID = 'KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R5'
-const BASELINE = '7a92b4e128813f1fda76ca4775ca8d356d35a289'
-const KNOWLEDGE_BASE_ID = 'kb-product-validation-c004-r5'
+const TASK_ID = 'KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R6'
+const BASELINE = 'a872119279bf1eec3e8e4e8c39e1dec60e2558fe'
+const KNOWLEDGE_BASE_ID = 'kb-product-validation-c004-r6'
 const EXPECTED_PDF_SHA256 = '998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63'
+const EXPECTED_PDF_BYTES = 3_209_114
 const DEFAULT_PDF = 'C:\\Users\\Administrator\\Documents\\20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf'
 
 type JsonRecord = Record<string, unknown>
@@ -52,7 +53,8 @@ type RecordedModelCall = {
   batchId?: string
   groupId?: string
   succeeded: boolean
-  retryCount: 0
+  physicalAttempt: number
+  hasValidationFeedback: boolean
   outputShape?: JsonRecord
   modelInputObservation?: JsonRecord
   runtimeObservation?: JsonRecord
@@ -115,19 +117,24 @@ class ObservingHarnessRuntime {
 
 class RecordingModel implements KnowledgeCurationModel {
   readonly calls: RecordedModelCall[] = []
+  private readonly physicalAttempts = new Map<string, number>()
 
   constructor(private readonly delegate: KnowledgeCurationModel, private readonly runtime: ObservingHarnessRuntime) {}
 
   async invoke(request: KnowledgeCurationModelRequest): Promise<unknown> {
     const input = isRecord(request.input) ? request.input : undefined
     const batch = input && isRecord(input.batch) ? input.batch : undefined
+    const attemptKey = `${request.operation}|${typeof batch?.batchId === 'string' ? batch.batchId : ''}|${typeof input?.groupId === 'string' ? input.groupId : ''}`
+    const physicalAttempt = (this.physicalAttempts.get(attemptKey) ?? 0) + 1
+    this.physicalAttempts.set(attemptKey, physicalAttempt)
     const call: RecordedModelCall = {
       operation: request.operation,
       slice: request.schemaContext?.slice,
       batchId: typeof batch?.batchId === 'string' ? batch.batchId : undefined,
       groupId: typeof input?.groupId === 'string' ? input.groupId : undefined,
       succeeded: false,
-      retryCount: 0,
+      physicalAttempt,
+      hasValidationFeedback: request.operation === 'extractKnowledge' && request.instruction.includes('Validation code:'),
     }
     if (request.operation === 'extractKnowledge') call.modelInputObservation = extractionModelInputEvidence(input)
     this.calls.push(call)
@@ -147,7 +154,7 @@ class RecordingModel implements KnowledgeCurationModel {
 }
 
 async function main(): Promise<void> {
-  const evidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_EVIDENCE ?? join(tmpdir(), 'researchhub-knowledge-v03-c004-r5-evidence.json')
+  const evidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_EVIDENCE ?? join(tmpdir(), 'researchhub-knowledge-v03-c004-r6-evidence.json')
   const durableEvidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_DURABLE_EVIDENCE
   let root: string | undefined
   const keepRoot = process.env.RESEARCHHUB_KEEP_PRODUCT_VALIDATION_KB === '1'
@@ -169,7 +176,9 @@ async function main(): Promise<void> {
     const pdfBytes = Uint8Array.from(await readFile(pdfPath))
     const pdfHash = createHash('sha256').update(pdfBytes).digest('hex')
     evidence.pdf = { filename: basename(pdfPath), path: pdfPath, sha256: pdfHash, bytes: pdfBytes.byteLength }
-    if (pdfHash !== EXPECTED_PDF_SHA256) throw new ProductValidationStop('Blocked / PDF Artifact Mismatch', `Expected ${EXPECTED_PDF_SHA256}, received ${pdfHash}`)
+      evidence.pdf.expectedBytes = EXPECTED_PDF_BYTES
+      evidence.pdf.bytesMatch = pdfBytes.byteLength === EXPECTED_PDF_BYTES
+      if (pdfBytes.byteLength !== EXPECTED_PDF_BYTES || pdfHash !== EXPECTED_PDF_SHA256) throw new ProductValidationStop('STOP / PDF Artifact Mismatch', `Expected ${EXPECTED_PDF_BYTES} bytes and ${EXPECTED_PDF_SHA256}, received ${pdfBytes.byteLength} bytes and ${pdfHash}`)
 
     const doctor = await inspectDoclingRuntime()
     evidence.parserPreflight = doctor
@@ -204,22 +213,25 @@ async function main(): Promise<void> {
       writer: { write: async (handle, receipt) => { writerInvocations += 1; return writer.write(handle, receipt) } },
     })
     try {
-      const first = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r5-first', true))
+      const first = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r6-first', true))
       const parserSummary = parserEvidence(parser.result)
       evidence.parser = parserSummary
       if (parserSummary.uniqueChunkIds !== parserSummary.chunks || parserSummary.emptyChunks !== 0) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Docling output failed chunk integrity checks')
-      evidence.firstRun = await runEvidence(first, model, runtimeObserver, writerInvocations, 0, 0)
+      evidence.firstRun = await runEvidence(root, first, model, runtimeObserver, writerInvocations, 0, 0)
+      assertRunEvidence(evidence.firstRun)
       if (policyMismatchesOf(runtimeObserver.calls).length) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Observed reasoning policy does not match C7')
       if (first.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(first.errors))
       const replayCallsBefore = model.calls.length
       const replayWriterBefore = writerInvocations
-      const replay = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r5-replay', false))
-      evidence.replay = await runEvidence(replay, model, runtimeObserver, writerInvocations, replayCallsBefore, replayWriterBefore)
+      const replay = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r6-replay', false))
+      evidence.replay = await runEvidence(root, replay, model, runtimeObserver, writerInvocations, replayCallsBefore, replayWriterBefore)
+      assertReplayEvidence(evidence.replay)
       if (replay.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(replay.errors))
       const reprocessCallsBefore = model.calls.length
       const reprocessWriterBefore = writerInvocations
-      const reprocess = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r5-reprocess', true))
-      evidence.reprocess = await runEvidence(reprocess, model, runtimeObserver, writerInvocations, reprocessCallsBefore, reprocessWriterBefore)
+      const reprocess = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r6-reprocess', true))
+      evidence.reprocess = await runEvidence(root, reprocess, model, runtimeObserver, writerInvocations, reprocessCallsBefore, reprocessWriterBefore)
+      assertRunEvidence(evidence.reprocess)
       if (policyMismatchesOf(runtimeObserver.calls).length) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Observed reasoning policy does not match C7')
       if (reprocess.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(reprocess.errors))
       const finalTarget = await resolveTarget(root)
@@ -263,9 +275,9 @@ async function resolveTarget(root: string): Promise<{ handle: KnowledgeBaseHandl
 }
 
 async function createIsolatedV03KnowledgeBase(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'researchhub-c004-r5-v03-'))
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-c004-r6-v03-'))
   await mkdir(join(root, 'registry'), { recursive: true })
-  await writeFile(join(root, 'manifest.yaml'), `${canonicalSerialize({ knowledgeBaseId: KNOWLEDGE_BASE_ID, name: 'C-004-R5 disposable real PDF validation KB', schemaVersion: '0.3', storageFormatVersion: '1', revision: 0, status: 'active', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z' })}\n`, 'utf8')
+  await writeFile(join(root, 'manifest.yaml'), `${canonicalSerialize({ knowledgeBaseId: KNOWLEDGE_BASE_ID, name: 'C-004-R6 disposable real PDF validation KB', schemaVersion: '0.3', storageFormatVersion: '1', revision: 0, status: 'active', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z' })}\n`, 'utf8')
   await writeFile(join(root, 'registry/assets.yaml'), '{}\n', 'utf8')
   await writeFile(join(root, 'registry/raw.yaml'), '{}\n', 'utf8')
   return root
@@ -304,7 +316,7 @@ function credentialSummary(value: string | undefined): JsonRecord { return { pre
 
 function parserEvidence(result: DocumentParseResult | undefined): ParserEvidence { const chunks = result?.chunks ?? []; return { parser: result?.parser ?? null, pageCount: result?.pageCount ?? result?.quality?.pageCount ?? null, chunks: chunks.length, uniqueChunkIds: new Set(chunks.map((chunk) => chunk.chunkId)).size, emptyChunks: chunks.filter((chunk) => !chunk.text.trim()).length, sections: new Set(chunks.map((chunk) => chunk.section).filter((section): section is string => Boolean(section))).size, tables: result?.structure?.tableCount ?? result?.quality?.tableCount ?? null, images: result?.structure?.imageCount ?? result?.quality?.imageCount ?? null, normalizedCharacters: result?.quality?.normalizedCharacters ?? result?.normalizedText.length ?? 0, warnings: result?.quality?.warnings ?? [] } }
 
-async function runEvidence(result: ResearchReportKnowledgeIngestionResult, model: RecordingModel, runtime: ObservingHarnessRuntime, writerInvocations: number, callStart: number, writerStart: number): Promise<JsonRecord> {
+async function runEvidence(root: string, result: ResearchReportKnowledgeIngestionResult, model: RecordingModel, runtime: ObservingHarnessRuntime, writerInvocations: number, callStart: number, writerStart: number): Promise<JsonRecord> {
   const calls = result.modelCalls
   const runModelCalls = model.calls.slice(callStart)
   const batchSizes = result.batches.batches.map((batch) => batch.chunkIds.length)
@@ -315,7 +327,70 @@ async function runEvidence(result: ResearchReportKnowledgeIngestionResult, model
   const policyMismatches = policyMismatchesOf(runObservations)
   const extractionCalls = runModelCalls.filter((call) => call.operation === 'extractKnowledge')
   const extractionPayloadSizes = extractionCalls.map((call) => Number(call.modelInputObservation?.serializedInputCharacters ?? 0)).filter((value) => value > 0)
-  return { status: result.status, workflowRunId: result.workflowRunId, raw: result.raw, source: result.source ? { sourceId: result.source.sourceId, resolution: result.source.resolution, rawRefs: result.source.source.rawRefs ?? [] } : null, understanding: result.reportUnderstanding ? { sourceType: result.reportUnderstanding.sourceAssessment.sourceType, sourceReliability: result.reportUnderstanding.sourceAssessment.sourceReliability, publisher: result.reportUnderstanding.sourceAssessment.publisher, institution: result.reportUnderstanding.sourceAssessment.institution, publishedAt: result.reportUnderstanding.sourceAssessment.publishedAt, sourceIdentityConfidence: result.reportUnderstanding.sourceAssessment.sourceIdentityConfidence, researchScopeCount: result.reportUnderstanding.researchScope.length, majorTopics: result.reportUnderstanding.majorTopics.slice(0, 12), majorEntityMentionCount: result.reportUnderstanding.majorEntityMentions.length, themeHypotheses: result.reportUnderstanding.themeHypotheses.map((item) => ({ mention: short(item.mention), disposition: item.disposition })), uncertaintyCount: result.reportUnderstanding.uncertainty.length } : null, batching: { sections: result.batches.sectionCount, batches: result.batches.batchCount, chunkCount: result.batches.chunkCount, uniqueChunkCount: new Set(result.batches.chunkIds).size, coveredChunkCount: new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, duplicateCoverage: result.batches.batches.flatMap((batch) => batch.chunkIds).length - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, omittedChunkCount: result.batches.chunkCount - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, chunkCountMin: Math.min(...batchSizes), chunkCountMax: Math.max(...batchSizes), chunkCountMedian: median(batchSizes), characterMin: Math.min(...charSizes), characterMax: Math.max(...charSizes), characterMedian: median(charSizes), oversizedSectionSplits: splitSections(result.batches) }, c8RuntimeVisibility: { extractionCalls: extractionCalls.length, allFullDocumentVisible: extractionCalls.every((call) => call.modelInputObservation?.fullDocumentVisible === false), allNormalizedTextHidden: extractionCalls.every((call) => call.modelInputObservation?.normalizedTextVisible === false), allClaimsContextHidden: extractionCalls.every((call) => call.modelInputObservation?.claimsContextVisible === false), allSourcesContextHidden: extractionCalls.every((call) => call.modelInputObservation?.sourcesContextVisible === false), allRawRefsHidden: extractionCalls.every((call) => call.modelInputObservation?.rawRefsVisible === false), outOfBatchChunkIdsVisible: extractionCalls.reduce((sum, call) => sum + Number(call.modelInputObservation?.outOfBatchChunkIdsVisible ?? 0), 0), modelVisibleSerializedInputCharacters: { min: Math.min(...extractionPayloadSizes), median: median(extractionPayloadSizes), max: Math.max(...extractionPayloadSizes) } }, extraction: result.extraction, consolidation: result.consolidation, resolution: result.referenceResolution, reconciliation: { ...result.reconciliation, modelCalls: calls.filter((call) => call.operation === 'reconcileKnowledge').length, decisionCount, coverage: { candidates: result.reconciliation.candidates, decisions: decisionCount, exactlyOnce: result.reconciliation.candidates === decisionCount } }, schemaGaps: { calls: calls.filter((call) => call.operation === 'analyzeSchemaGaps').length, outputs: result.schemaGaps.map((gap) => ({ candidateRefs: gap.candidateRefs, gapType: gap.gapType })) }, reviews: { roots: result.reviewItems.filter((item) => item.candidateId && item.category !== 'dependency_review').length, dependencyClosure: result.reviewItems.filter((item) => item.category === 'dependency_review').length, total: result.reviewItems.length }, validation: result.validation, writerInvocations: writerInvocations - writerStart, reasoningPolicy: { expected: EXPECTED_REASONING_POLICY, observations: runObservations, mismatches: policyMismatches }, callsByOperation: calls.map((call) => ({ operation: call.operation, groupId: call.groupId, attempted: call.attempted, succeeded: call.succeeded, retryCount: call.retryCount })), recordedModelCalls: runModelCalls.map((call) => ({ operation: call.operation, slice: call.slice, batchId: call.batchId, groupId: call.groupId, succeeded: call.succeeded, retryCount: call.retryCount, outputShape: call.outputShape, modelInputObservation: call.modelInputObservation, runtimeObservation: call.runtimeObservation, error: call.error })) }
+  const retryCount = calls.reduce((sum, call) => sum + call.retryCount, 0)
+  const logicalModelCallRecords = calls.length
+  const physicalModelInvocations = runModelCalls.length
+  const changeSet = await readChangeSetEvidence(root, result.workflowRunId)
+  const changeSetModelCalls = typeof changeSet.ingestionContextModelCalls === 'number' ? changeSet.ingestionContextModelCalls : null
+  const c9Retry = {
+    logicalBatches: calls.filter((call) => call.operation === 'extractKnowledge').length,
+    retriedBatches: calls.filter((call) => call.operation === 'extractKnowledge' && call.retryCount === 1).length,
+    totalRetryCount: retryCount,
+    physicalExtractionInvocations: extractionCalls.length,
+    maximumRetryCount: Math.max(0, ...calls.filter((call) => call.operation === 'extractKnowledge').map((call) => call.retryCount)),
+    eligibleCodes: RETRYABLE_CODES,
+    validationFailures: calls.filter((call) => call.operation === 'extractKnowledge' && call.validationFailures).map((call) => ({ groupId: call.groupId, retryCount: call.retryCount, validationFailures: call.validationFailures })),
+    feedbackAttempt2Observed: extractionCalls.filter((call) => call.hasValidationFeedback).length,
+    sameBatchIdForRetries: sameBatchIdForRetries(calls, extractionCalls),
+    noThirdAttempt: extractionCalls.every((call) => call.physicalAttempt <= 2),
+  }
+  const modelAccounting = { logicalModelCallRecords, retryInvocations: retryCount, physicalModelInvocations, expectedActualModelCalls: logicalModelCallRecords + retryCount, changeSetIngestionContextModelCalls: changeSetModelCalls, matchesChangeSet: changeSetModelCalls === null || changeSetModelCalls === logicalModelCallRecords + retryCount }
+  return { status: result.status, workflowRunId: result.workflowRunId, raw: result.raw, source: result.source ? { sourceId: result.source.sourceId, resolution: result.source.resolution, rawRefs: result.source.source.rawRefs ?? [] } : null, understanding: result.reportUnderstanding ? { sourceType: result.reportUnderstanding.sourceAssessment.sourceType, sourceReliability: result.reportUnderstanding.sourceAssessment.sourceReliability, publisher: result.reportUnderstanding.sourceAssessment.publisher, institution: result.reportUnderstanding.sourceAssessment.institution, publishedAt: result.reportUnderstanding.sourceAssessment.publishedAt, sourceIdentityConfidence: result.reportUnderstanding.sourceAssessment.sourceIdentityConfidence, researchScopeCount: result.reportUnderstanding.researchScope.length, majorTopics: result.reportUnderstanding.majorTopics.slice(0, 12), majorEntityMentionCount: result.reportUnderstanding.majorEntityMentions.length, themeHypotheses: result.reportUnderstanding.themeHypotheses.map((item) => ({ mention: short(item.mention), disposition: item.disposition })), uncertaintyCount: result.reportUnderstanding.uncertainty.length } : null, batching: { sections: result.batches.sectionCount, batches: result.batches.batchCount, chunkCount: result.batches.chunkCount, uniqueChunkCount: new Set(result.batches.chunkIds).size, coveredChunkCount: new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, duplicateCoverage: result.batches.batches.flatMap((batch) => batch.chunkIds).length - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, omittedChunkCount: result.batches.chunkCount - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, chunkCountMin: Math.min(...batchSizes), chunkCountMax: Math.max(...batchSizes), chunkCountMedian: median(batchSizes), characterMin: Math.min(...charSizes), characterMax: Math.max(...charSizes), characterMedian: median(charSizes), oversizedSectionSplits: splitSections(result.batches) }, c8RuntimeVisibility: { extractionCalls: extractionCalls.length, allFullDocumentVisible: extractionCalls.every((call) => call.modelInputObservation?.fullDocumentVisible === false), allNormalizedTextHidden: extractionCalls.every((call) => call.modelInputObservation?.normalizedTextVisible === false), allClaimsContextHidden: extractionCalls.every((call) => call.modelInputObservation?.claimsContextVisible === false), allSourcesContextHidden: extractionCalls.every((call) => call.modelInputObservation?.sourcesContextVisible === false), allRawRefsHidden: extractionCalls.every((call) => call.modelInputObservation?.rawRefsVisible === false), outOfBatchChunkIdsVisible: extractionCalls.reduce((sum, call) => sum + Number(call.modelInputObservation?.outOfBatchChunkIdsVisible ?? 0), 0), modelVisibleSerializedInputCharacters: { min: Math.min(...extractionPayloadSizes), median: median(extractionPayloadSizes), max: Math.max(...extractionPayloadSizes) } }, c9Retry, extraction: result.extraction, consolidation: result.consolidation, resolution: result.referenceResolution, reconciliation: { ...result.reconciliation, modelCalls: calls.filter((call) => call.operation === 'reconcileKnowledge').length, decisionCount, coverage: { candidates: result.reconciliation.candidates, decisions: decisionCount, exactlyOnce: result.reconciliation.candidates === decisionCount } }, schemaGaps: { calls: calls.filter((call) => call.operation === 'analyzeSchemaGaps').length, outputs: result.schemaGaps.map((gap) => ({ candidateRefs: gap.candidateRefs, gapType: gap.gapType })) }, reviews: { roots: result.reviewItems.filter((item) => item.candidateId && item.category !== 'dependency_review').length, dependencyClosure: result.reviewItems.filter((item) => item.category === 'dependency_review').length, total: result.reviewItems.length }, validation: result.validation, changeSet, modelAccounting, writerInvocations: writerInvocations - writerStart, reasoningPolicy: { expected: EXPECTED_REASONING_POLICY, observations: runObservations, mismatches: policyMismatches }, callsByOperation: calls.map((call) => ({ operation: call.operation, groupId: call.groupId, attempted: call.attempted, succeeded: call.succeeded, retryCount: call.retryCount, validationFailures: call.validationFailures ?? [] })), recordedModelCalls: runModelCalls.map((call) => ({ operation: call.operation, slice: call.slice, batchId: call.batchId, groupId: call.groupId, physicalAttempt: call.physicalAttempt, hasValidationFeedback: call.hasValidationFeedback, succeeded: call.succeeded, outputShape: call.outputShape, modelInputObservation: call.modelInputObservation, runtimeObservation: call.runtimeObservation, error: call.error })) }
+}
+
+async function readChangeSetEvidence(root: string, workflowRunId: string): Promise<JsonRecord> {
+  const loader = new KnowledgeBaseLoader({ registry: new KnowledgeBaseRegistry() })
+  const handle = await loader.mount(root)
+  const log = await new KnowledgeIngestionLogStore().read(handle, workflowRunId)
+  const context = log && isRecord(log.ingestionContext) ? log.ingestionContext : undefined
+  return {
+    present: Boolean(log),
+    status: log?.status ?? null,
+    writeStatus: typeof log?.writeStatus === 'string' ? log.writeStatus : null,
+    committedRevision: typeof log?.committedRevision === 'number' ? log.committedRevision : null,
+    ingestionContextModelCalls: typeof context?.modelCalls === 'number' ? context.modelCalls : null,
+    workflowVersion: typeof context?.workflowVersion === 'string' ? context.workflowVersion : null,
+    operationCounts: isRecord(log?.changes) ? {
+      sourceCreate: typeof log.changes.sourceCreated === 'number' ? log.changes.sourceCreated : 0,
+      sourceMerge: typeof log.changes.sourceMerged === 'number' ? log.changes.sourceMerged : 0,
+      knowledgeCreate: typeof log.changes.knowledgeCreated === 'number' ? log.changes.knowledgeCreated : 0,
+      knowledgeUpdate: typeof log.changes.knowledgeUpdated === 'number' ? log.changes.knowledgeUpdated : 0,
+      supersede: typeof log.changes.knowledgeSuperseded === 'number' ? log.changes.knowledgeSuperseded : 0,
+      mergeSource: typeof log.changes.knowledgeSourceMerged === 'number' ? log.changes.knowledgeSourceMerged : 0,
+    } : null,
+  }
+}
+
+function assertRunEvidence(value: JsonRecord): void {
+  const c8 = isRecord(value.c8RuntimeVisibility) ? value.c8RuntimeVisibility : undefined
+  const retry = isRecord(value.c9Retry) ? value.c9Retry : undefined
+  const accounting = isRecord(value.modelAccounting) ? value.modelAccounting : undefined
+  if (value.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Real pipeline blocked before completion')
+  if (isRecord(value.reasoningPolicy) && Array.isArray(value.reasoningPolicy.mismatches) && value.reasoningPolicy.mismatches.length) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Observed reasoning policy mismatch')
+  if (c8 && (c8.outOfBatchChunkIdsVisible !== 0 || c8.allFullDocumentVisible !== true || c8.allNormalizedTextHidden !== true || c8.allClaimsContextHidden !== true || c8.allSourcesContextHidden !== true || c8.allRawRefsHidden !== true)) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'C8 extraction projection violation observed')
+  if (retry && (retry.maximumRetryCount !== 1 && retry.maximumRetryCount !== 0 || retry.noThirdAttempt !== true || retry.sameBatchIdForRetries !== true || retry.feedbackAttempt2Observed !== retry.retriedBatches)) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'C9 retry invariant failed')
+  if (accounting && accounting.matchesChangeSet !== true) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Model-call accounting does not match ChangeSet ingestionContext')
+}
+
+function assertReplayEvidence(value: JsonRecord): void {
+  if (value.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Replay was blocked')
+  const accounting = isRecord(value.modelAccounting) ? value.modelAccounting : undefined
+  if (accounting && accounting.physicalModelInvocations !== 0) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Replay made physical model calls')
+}
+
+function sameBatchIdForRetries(logicalCalls: ResearchReportKnowledgeIngestionResult['modelCalls'], physicalCalls: RecordedModelCall[]): boolean {
+  const expectedRetryBatchIds = logicalCalls.filter((call) => call.operation === 'extractKnowledge' && call.retryCount === 1).map((call) => call.groupId).filter((value): value is string => Boolean(value))
+  return expectedRetryBatchIds.every((batchId) => physicalCalls.filter((call) => call.batchId === batchId).length === 2 && physicalCalls.filter((call) => call.batchId === batchId).every((call) => call.hasValidationFeedback === (call.physicalAttempt === 2)))
 }
 
 function extractionModelInputEvidence(input: JsonRecord | undefined): JsonRecord {
