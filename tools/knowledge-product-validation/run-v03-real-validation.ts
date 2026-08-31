@@ -4,6 +4,7 @@ import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promise
 import { promisify } from 'node:util'
 import { basename, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
+import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { KnowledgeCurationSkill } from '../../packages/skills/knowledge-curation/index.ts'
 import type { KnowledgeCurationModel, KnowledgeCurationModelRequest } from '../../packages/skills/knowledge-curation/index.ts'
 import { LocalResearchReportInputResolver } from '../../packages/plugins/document/index.ts'
@@ -18,15 +19,17 @@ import { createRealKnowledgeCurationModel } from './deepseek-composition.ts'
 import { inspectDoclingRuntime } from '../document-parser/doctor-docling.ts'
 
 const execFileAsync = promisify(execFile)
-const TASK_ID = 'KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R3'
-const BASELINE = 'e3ae005895777936b199a53ce935eeaa33fcfccc'
-const KNOWLEDGE_BASE_ID = 'kb-product-validation-c004-r3'
+const TASK_ID = 'KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R4'
+const BASELINE = '92e0a704fb3f0b479214a34349d99676fc2dfebc'
+const KNOWLEDGE_BASE_ID = 'kb-product-validation-c004-r4'
 const EXPECTED_PDF_SHA256 = '998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63'
 const DEFAULT_PDF = 'C:\\Users\\Administrator\\Documents\\20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf'
 
 type JsonRecord = Record<string, unknown>
 type CredentialSourceEvidence = JsonRecord & { match: boolean; diagnostic: string }
 type ParserEvidence = JsonRecord & { chunks: number; uniqueChunkIds: number; emptyChunks: number }
+const OBSERVATION_TIMEOUT_MS = 180_000
+const EXPECTED_REASONING_POLICY = { understandReport: 'off', extractKnowledge: 'off', reconcileKnowledge: 'low', analyzeSchemaGaps: 'low' } as const
 
 class RecordingParser implements DocumentParser {
   readonly id: string
@@ -51,13 +54,68 @@ type RecordedModelCall = {
   succeeded: boolean
   retryCount: 0
   outputShape?: JsonRecord
+  runtimeObservation?: JsonRecord
   error?: string
+}
+
+type ReasoningObservation = JsonRecord & { operation: string | null; reasoningEffort: string | null; maxTokens: number | null; temperature: number | null; timedOut: boolean }
+
+class ObservingHarnessRuntime {
+  readonly calls: ReasoningObservation[] = []
+
+  constructor(private readonly delegate: { stream(options: GenerateOptions): AsyncIterable<StreamChunk> }) {}
+
+  stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    return this.observe(options)
+  }
+
+  private async *observe(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    const startedAt = new Date().toISOString()
+    const started = performance.now()
+    const observation: ReasoningObservation = {
+      operation: operationFromPrompt(options),
+      reasoningEffort: options.reasoningEffort === undefined ? null : String(options.reasoningEffort),
+      maxTokens: options.maxTokens ?? null,
+      temperature: options.temperature ?? null,
+      startedAt,
+      firstReasoningDeltaMs: null,
+      firstTextDeltaMs: null,
+      finishMs: null,
+      durationMs: null,
+      reasoningDeltaCount: 0,
+      textDeltaCount: 0,
+      finishReason: null,
+      timedOut: false,
+    }
+    this.calls.push(observation)
+    const controller = new AbortController()
+    const upstreamAbort = () => controller.abort()
+    if (options.signal?.aborted) controller.abort()
+    else options.signal?.addEventListener('abort', upstreamAbort, { once: true })
+    const timer = setTimeout(() => { observation.timedOut = true; controller.abort() }, OBSERVATION_TIMEOUT_MS)
+    try {
+      for await (const chunk of this.delegate.stream({ ...options, signal: controller.signal })) {
+        const elapsed = Math.round(performance.now() - started)
+        if (chunk.type === 'reasoning-delta') { observation.reasoningDeltaCount = Number(observation.reasoningDeltaCount) + 1; if (observation.firstReasoningDeltaMs === null) observation.firstReasoningDeltaMs = elapsed }
+        if (chunk.type === 'text-delta') { observation.textDeltaCount = Number(observation.textDeltaCount) + 1; if (observation.firstTextDeltaMs === null) observation.firstTextDeltaMs = elapsed }
+        if (chunk.type === 'finish') { observation.finishMs = elapsed; observation.finishReason = chunk.reason.kind }
+        yield chunk
+      }
+    } catch (error) {
+      observation.error = error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240)
+      throw error
+    } finally {
+      clearTimeout(timer)
+      options.signal?.removeEventListener('abort', upstreamAbort)
+      observation.durationMs = Math.round(performance.now() - started)
+    }
+  }
 }
 
 class RecordingModel implements KnowledgeCurationModel {
   readonly calls: RecordedModelCall[] = []
 
-  constructor(private readonly delegate: KnowledgeCurationModel) {}
+  constructor(private readonly delegate: KnowledgeCurationModel, private readonly runtime: ObservingHarnessRuntime) {}
 
   async invoke(request: KnowledgeCurationModelRequest): Promise<unknown> {
     const input = isRecord(request.input) ? request.input : undefined
@@ -71,12 +129,15 @@ class RecordingModel implements KnowledgeCurationModel {
       retryCount: 0,
     }
     this.calls.push(call)
+    const observationStart = this.runtime.calls.length
     try {
       const output = await this.delegate.invoke(request)
       call.succeeded = true
       call.outputShape = outputShape(output)
+      call.runtimeObservation = this.runtime.calls[observationStart]
       return output
     } catch (error) {
+      call.runtimeObservation = this.runtime.calls[observationStart]
       call.error = error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240)
       throw error
     }
@@ -84,7 +145,7 @@ class RecordingModel implements KnowledgeCurationModel {
 }
 
 async function main(): Promise<void> {
-  const evidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_EVIDENCE ?? join(tmpdir(), 'researchhub-knowledge-v03-c004-r3-evidence.json')
+  const evidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_EVIDENCE ?? join(tmpdir(), 'researchhub-knowledge-v03-c004-r4-evidence.json')
   const durableEvidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_DURABLE_EVIDENCE
   let root: string | undefined
   const keepRoot = process.env.RESEARCHHUB_KEEP_PRODUCT_VALIDATION_KB === '1'
@@ -122,8 +183,15 @@ async function main(): Promise<void> {
 
     const parser = new RecordingParser(new (await import('../../packages/plugins/document/docling-document-parser.ts')).DoclingDocumentParser())
     const resolver = new LocalResearchReportInputResolver({ documentParser: parser, parserId: parser.id })
-    const realRuntime = await createRealKnowledgeCurationModel(config)
-    const model = new RecordingModel(realRuntime.model)
+    if (config.curationMaxTokens !== 65536) throw new ProductValidationStop('Blocked / Runtime Configuration Mismatch', `Expected curationMaxTokens=65536, received ${config.curationMaxTokens}`)
+    let runtimeObserver: ObservingHarnessRuntime | undefined
+    const realRuntime = await createRealKnowledgeCurationModel(config, undefined, (runtime) => {
+      const observer = new ObservingHarnessRuntime(runtime)
+      runtimeObserver = observer
+      return observer
+    })
+    if (!runtimeObserver) throw new Error('validation observer was not initialized')
+    const model = new RecordingModel(realRuntime.model, runtimeObserver)
     let writerInvocations = 0
     const writer = new KnowledgeWriter({ loader, stagedStateValidator: createKnowledgeStagedStateValidator(validation) })
     const workflow = new ResearchReportKnowledgeIngestionWorkflow({
@@ -134,21 +202,23 @@ async function main(): Promise<void> {
       writer: { write: async (handle, receipt) => { writerInvocations += 1; return writer.write(handle, receipt) } },
     })
     try {
-      const first = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r3-first', true))
+      const first = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r4-first', true))
       const parserSummary = parserEvidence(parser.result)
       evidence.parser = parserSummary
       if (parserSummary.uniqueChunkIds !== parserSummary.chunks || parserSummary.emptyChunks !== 0) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Docling output failed chunk integrity checks')
-      evidence.firstRun = await runEvidence(first, model, writerInvocations, 0, 0)
+      evidence.firstRun = await runEvidence(first, model, runtimeObserver, writerInvocations, 0, 0)
+      if (policyMismatchesOf(runtimeObserver.calls).length) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Observed reasoning policy does not match C7')
       if (first.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(first.errors))
       const replayCallsBefore = model.calls.length
       const replayWriterBefore = writerInvocations
-      const replay = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r3-replay', false))
-      evidence.replay = await runEvidence(replay, model, writerInvocations, replayCallsBefore, replayWriterBefore)
+      const replay = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r4-replay', false))
+      evidence.replay = await runEvidence(replay, model, runtimeObserver, writerInvocations, replayCallsBefore, replayWriterBefore)
       if (replay.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(replay.errors))
       const reprocessCallsBefore = model.calls.length
       const reprocessWriterBefore = writerInvocations
-      const reprocess = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r3-reprocess', true))
-      evidence.reprocess = await runEvidence(reprocess, model, writerInvocations, reprocessCallsBefore, reprocessWriterBefore)
+      const reprocess = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r4-reprocess', true))
+      evidence.reprocess = await runEvidence(reprocess, model, runtimeObserver, writerInvocations, reprocessCallsBefore, reprocessWriterBefore)
+      if (policyMismatchesOf(runtimeObserver.calls).length) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Observed reasoning policy does not match C7')
       if (reprocess.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(reprocess.errors))
       const finalTarget = await resolveTarget(root)
       const finalValidation = await validation.validateKnowledgeBase(finalTarget.handle, 'all')
@@ -232,23 +302,27 @@ function credentialSummary(value: string | undefined): JsonRecord { return { pre
 
 function parserEvidence(result: DocumentParseResult | undefined): ParserEvidence { const chunks = result?.chunks ?? []; return { parser: result?.parser ?? null, pageCount: result?.pageCount ?? result?.quality?.pageCount ?? null, chunks: chunks.length, uniqueChunkIds: new Set(chunks.map((chunk) => chunk.chunkId)).size, emptyChunks: chunks.filter((chunk) => !chunk.text.trim()).length, sections: new Set(chunks.map((chunk) => chunk.section).filter((section): section is string => Boolean(section))).size, tables: result?.structure?.tableCount ?? result?.quality?.tableCount ?? null, images: result?.structure?.imageCount ?? result?.quality?.imageCount ?? null, normalizedCharacters: result?.quality?.normalizedCharacters ?? result?.normalizedText.length ?? 0, warnings: result?.quality?.warnings ?? [] } }
 
-async function runEvidence(result: ResearchReportKnowledgeIngestionResult, model: RecordingModel, writerInvocations: number, callStart: number, writerStart: number): Promise<JsonRecord> {
+async function runEvidence(result: ResearchReportKnowledgeIngestionResult, model: RecordingModel, runtime: ObservingHarnessRuntime, writerInvocations: number, callStart: number, writerStart: number): Promise<JsonRecord> {
   const calls = result.modelCalls
   const runModelCalls = model.calls.slice(callStart)
   const batchSizes = result.batches.batches.map((batch) => batch.chunkIds.length)
   const charSizes = result.batches.batches.map((batch) => batch.characterCount)
   const groups = model.calls.filter((call) => call.operation === 'reconcileKnowledge').map((call) => ({ groupId: call.groupId, batchId: call.batchId, slice: call.slice }))
   const decisionCount = Object.values(result.reconciliation.decisions).reduce((sum, count) => sum + count, 0)
-  return { status: result.status, workflowRunId: result.workflowRunId, raw: result.raw, source: result.source ? { sourceId: result.source.sourceId, resolution: result.source.resolution, rawRefs: result.source.source.rawRefs ?? [] } : null, understanding: result.reportUnderstanding ? { sourceType: result.reportUnderstanding.sourceAssessment.sourceType, sourceReliability: result.reportUnderstanding.sourceAssessment.sourceReliability, publisher: result.reportUnderstanding.sourceAssessment.publisher, institution: result.reportUnderstanding.sourceAssessment.institution, publishedAt: result.reportUnderstanding.sourceAssessment.publishedAt, sourceIdentityConfidence: result.reportUnderstanding.sourceAssessment.sourceIdentityConfidence, researchScopeCount: result.reportUnderstanding.researchScope.length, majorTopics: result.reportUnderstanding.majorTopics.slice(0, 12), majorEntityMentionCount: result.reportUnderstanding.majorEntityMentions.length, themeHypotheses: result.reportUnderstanding.themeHypotheses.map((item) => ({ mention: short(item.mention), disposition: item.disposition })), uncertaintyCount: result.reportUnderstanding.uncertainty.length } : null, batching: { sections: result.batches.sectionCount, batches: result.batches.batchCount, chunkCount: result.batches.chunkCount, uniqueChunkCount: new Set(result.batches.chunkIds).size, coveredChunkCount: new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, duplicateCoverage: result.batches.batches.flatMap((batch) => batch.chunkIds).length - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, omittedChunkCount: result.batches.chunkCount - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, chunkCountMin: Math.min(...batchSizes), chunkCountMax: Math.max(...batchSizes), chunkCountMedian: median(batchSizes), characterMin: Math.min(...charSizes), characterMax: Math.max(...charSizes), characterMedian: median(charSizes), oversizedSectionSplits: splitSections(result.batches) }, extraction: result.extraction, consolidation: result.consolidation, resolution: result.referenceResolution, reconciliation: { ...result.reconciliation, modelCalls: calls.filter((call) => call.operation === 'reconcileKnowledge').length, decisionCount, coverage: { candidates: result.reconciliation.candidates, decisions: decisionCount, exactlyOnce: result.reconciliation.candidates === decisionCount } }, schemaGaps: { calls: calls.filter((call) => call.operation === 'analyzeSchemaGaps').length, outputs: result.schemaGaps.map((gap) => ({ candidateRefs: gap.candidateRefs, gapType: gap.gapType })) }, reviews: { roots: result.reviewItems.filter((item) => item.candidateId && item.category !== 'dependency_review').length, dependencyClosure: result.reviewItems.filter((item) => item.category === 'dependency_review').length, total: result.reviewItems.length }, validation: result.validation, writerInvocations: writerInvocations - writerStart, callsByOperation: calls.map((call) => ({ operation: call.operation, groupId: call.groupId, attempted: call.attempted, succeeded: call.succeeded, retryCount: call.retryCount })), recordedModelCalls: runModelCalls.map((call) => ({ operation: call.operation, slice: call.slice, batchId: call.batchId, groupId: call.groupId, succeeded: call.succeeded, retryCount: call.retryCount, outputShape: call.outputShape, error: call.error })) }
+  const runObservations = runtime.calls.slice(callStart)
+  const policyMismatches = policyMismatchesOf(runObservations)
+  return { status: result.status, workflowRunId: result.workflowRunId, raw: result.raw, source: result.source ? { sourceId: result.source.sourceId, resolution: result.source.resolution, rawRefs: result.source.source.rawRefs ?? [] } : null, understanding: result.reportUnderstanding ? { sourceType: result.reportUnderstanding.sourceAssessment.sourceType, sourceReliability: result.reportUnderstanding.sourceAssessment.sourceReliability, publisher: result.reportUnderstanding.sourceAssessment.publisher, institution: result.reportUnderstanding.sourceAssessment.institution, publishedAt: result.reportUnderstanding.sourceAssessment.publishedAt, sourceIdentityConfidence: result.reportUnderstanding.sourceAssessment.sourceIdentityConfidence, researchScopeCount: result.reportUnderstanding.researchScope.length, majorTopics: result.reportUnderstanding.majorTopics.slice(0, 12), majorEntityMentionCount: result.reportUnderstanding.majorEntityMentions.length, themeHypotheses: result.reportUnderstanding.themeHypotheses.map((item) => ({ mention: short(item.mention), disposition: item.disposition })), uncertaintyCount: result.reportUnderstanding.uncertainty.length } : null, batching: { sections: result.batches.sectionCount, batches: result.batches.batchCount, chunkCount: result.batches.chunkCount, uniqueChunkCount: new Set(result.batches.chunkIds).size, coveredChunkCount: new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, duplicateCoverage: result.batches.batches.flatMap((batch) => batch.chunkIds).length - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, omittedChunkCount: result.batches.chunkCount - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, chunkCountMin: Math.min(...batchSizes), chunkCountMax: Math.max(...batchSizes), chunkCountMedian: median(batchSizes), characterMin: Math.min(...charSizes), characterMax: Math.max(...charSizes), characterMedian: median(charSizes), oversizedSectionSplits: splitSections(result.batches) }, extraction: result.extraction, consolidation: result.consolidation, resolution: result.referenceResolution, reconciliation: { ...result.reconciliation, modelCalls: calls.filter((call) => call.operation === 'reconcileKnowledge').length, decisionCount, coverage: { candidates: result.reconciliation.candidates, decisions: decisionCount, exactlyOnce: result.reconciliation.candidates === decisionCount } }, schemaGaps: { calls: calls.filter((call) => call.operation === 'analyzeSchemaGaps').length, outputs: result.schemaGaps.map((gap) => ({ candidateRefs: gap.candidateRefs, gapType: gap.gapType })) }, reviews: { roots: result.reviewItems.filter((item) => item.candidateId && item.category !== 'dependency_review').length, dependencyClosure: result.reviewItems.filter((item) => item.category === 'dependency_review').length, total: result.reviewItems.length }, validation: result.validation, writerInvocations: writerInvocations - writerStart, reasoningPolicy: { expected: EXPECTED_REASONING_POLICY, observations: runObservations, mismatches: policyMismatches }, callsByOperation: calls.map((call) => ({ operation: call.operation, groupId: call.groupId, attempted: call.attempted, succeeded: call.succeeded, retryCount: call.retryCount })), recordedModelCalls: runModelCalls.map((call) => ({ operation: call.operation, slice: call.slice, batchId: call.batchId, groupId: call.groupId, succeeded: call.succeeded, retryCount: call.retryCount, outputShape: call.outputShape, runtimeObservation: call.runtimeObservation, error: call.error })) }
 }
 
-function semanticSamples(index: import('../../packages/shared/knowledge-base/knowledge-index-v03.ts').KnowledgeIndexV03, parsed: DocumentParseResult | undefined): JsonRecord { return { entities: [...index.entities.values()].slice(0, 5).map((item) => ({ id: item.id, type: item.type, name: short(item.name), aliases: (item.aliases ?? []).slice(0, 5) })), relations: [...index.relations.values()].slice(0, 5).map((item) => ({ id: item.id, type: item.type, sourceRef: item.sourceRef, targetRef: item.targetRef, attributes: item.attributes ?? null })), claims: [...index.claims.values()].slice(0, 10).map((item) => ({ id: item.id, claimType: item.claimType, statement: short(item.statement), subjectRefs: item.subjectRefs, temporal: item.temporal ?? null, structuredValue: item.structuredValue ?? null, sourceRefs: item.sourceRefs ?? [], provenance: item.provenance ?? [] })), temporalClaimCount: [...index.claims.values()].filter((item) => item.temporal !== undefined && item.temporal !== null).length, parsedChunkCount: parsed?.chunks.length ?? null, manualClassification: 'pending Sol review' } }
+function semanticSamples(index: import('../../packages/shared/knowledge-base/knowledge-index-v03.ts').KnowledgeIndexV03, parsed: DocumentParseResult | undefined): JsonRecord { const claims = [...index.claims.values()]; const temporalClaims = claims.filter((item) => item.temporal !== undefined && item.temporal !== null); const scopeTypes = temporalClaims.reduce<Record<string, number>>((counts, claim) => { const scopeType = claim.temporal?.scope?.type ?? 'unknown'; counts[scopeType] = (counts[scopeType] ?? 0) + 1; return counts }, {}); return { entities: [...index.entities.values()].slice(0, 5).map((item) => ({ id: item.id, type: item.type, name: short(item.name), aliases: (item.aliases ?? []).slice(0, 5) })), relations: [...index.relations.values()].slice(0, 5).map((item) => ({ id: item.id, type: item.type, sourceRef: item.sourceRef, targetRef: item.targetRef, attributes: item.attributes ?? null })), claims: claims.slice(0, 10).map((item) => ({ id: item.id, claimType: item.claimType, statement: short(item.statement), subjectRefs: item.subjectRefs, temporal: item.temporal ?? null, structuredValue: item.structuredValue ?? null, sourceRefs: item.sourceRefs ?? [], provenance: item.provenance ?? [] })), temporal: { totalClaims: claims.length, temporalClaimCount: temporalClaims.length, asOfCount: temporalClaims.filter((item) => typeof item.temporal?.asOf === 'string').length, scopeTypes, structuredValueCount: claims.filter((item) => item.structuredValue !== undefined && item.structuredValue !== null).length, representativeClaims: temporalClaims.slice(0, 5).map((item) => ({ claimId: item.id, temporal: item.temporal, structuredValue: item.structuredValue ?? null })) }, parsedChunkCount: parsed?.chunks.length ?? null, manualClassification: 'pending Sol review' } }
 
 function provenanceSamples(index: import('../../packages/shared/knowledge-base/knowledge-index-v03.ts').KnowledgeIndexV03, parsed: DocumentParseResult | undefined): JsonRecord { const chunks = new Map((parsed?.chunks ?? []).map((chunk) => [chunk.chunkId, chunk.text])); return { claims: [...index.claims.values()].slice(0, 10).map((claim) => ({ claimId: claim.id, sourceRefs: claim.sourceRefs ?? [], provenance: (claim.provenance ?? []).map((item) => ({ sourceRef: item.sourceRef, rawRef: item.rawRef, chunkRef: item.chunkRef, excerpt: item.chunkRef ? short(chunks.get(item.chunkRef) ?? '', 180) : null })) })), manualSupportClassification: 'pending Sol review' } }
 
 function indexCounts(index: import('../../packages/shared/knowledge-base/knowledge-index-v03.ts').KnowledgeIndexV03): JsonRecord { return { themeGroups: index.themeGroups.size, investmentThemes: [...index.entities.values()].filter((item) => item.type === 'investment_theme').length, industries: [...index.entities.values()].filter((item) => item.type === 'industry').length, companies: [...index.entities.values()].filter((item) => item.type === 'company').length, products: [...index.entities.values()].filter((item) => item.type === 'product').length, technologies: [...index.entities.values()].filter((item) => item.type === 'technology').length, relations: index.relations.size, claims: index.claims.size, sources: index.sources.size, modules: index.modules.size, rawRefs: new Set([...index.sources.values()].flatMap((source) => source.rawRefs ?? [])).size } }
 
 function outputShape(value: unknown): JsonRecord { if (!isRecord(value)) return { type: Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value }; return { type: 'object', keys: Object.keys(value).sort(), entities: Array.isArray(value.entities) ? value.entities.length : undefined, relations: Array.isArray(value.relations) ? value.relations.length : undefined, claims: Array.isArray(value.claims) ? value.claims.length : undefined, decisions: Array.isArray(value.decisions) ? value.decisions.length : undefined, gaps: Array.isArray(value.gaps) ? value.gaps.length : undefined } }
+function operationFromPrompt(options: GenerateOptions): string | null { for (const message of options.messages) for (const content of message.content) if (content.type === 'text') return content.text.match(/Operation: (understandReport|extractKnowledge|reconcileKnowledge|analyzeSchemaGaps)/)?.[1] ?? null; return null }
+function policyMismatchesOf(observations: ReasoningObservation[]): ReasoningObservation[] { return observations.filter((observation) => observation.operation === null || EXPECTED_REASONING_POLICY[observation.operation as keyof typeof EXPECTED_REASONING_POLICY] !== observation.reasoningEffort) }
 function isRecord(value: unknown): value is JsonRecord { return typeof value === 'object' && value !== null && !Array.isArray(value) }
 function short(value: string, max = 180): string { const normalized = value.replace(/\s+/g, ' ').trim(); return normalized.length > max ? `${normalized.slice(0, max)}…` : normalized }
 function median(values: number[]): number { if (!values.length) return 0; const sorted = [...values].sort((a, b) => a - b); return sorted[Math.floor(sorted.length / 2)] ?? 0 }
