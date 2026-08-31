@@ -238,6 +238,31 @@ Raw archival is explicit pre-semantic-commit exception.
 
 Validate complete safe ChangeSet for Schema 0.3, refs, provenance, endpoints, cardinality, Business Exposure uniqueness, Claim constraints, lifecycle, IDs, registry compatibility, and base revision.
 
+## 26. Bounded Extraction Validation Retry (C9)
+
+The Workflow owns a bounded retry policy for `extractKnowledge` only. Each
+logical batch receives at most two model attempts. The first attempt uses the
+normal Curation input and behavior. If strict Curation validation rejects the
+model output with one of `invalid_model_output`, `invalid_reference`,
+`invalid_semantics`, `invalid_confidence`, or `ungrounded_candidate`, the
+Workflow records the sanitized validation feedback and invokes the same logical
+batch exactly once more with that feedback. The Skill converts the feedback to
+a correction instruction while preserving the C8 model-visible projection.
+
+Transport, provider, timeout, credential, unsupported-schema, infrastructure,
+Writer, and other Workflow failures are not retry-eligible. A second
+validation failure blocks the Workflow with the final error; no third attempt,
+normalization, candidate deletion, evidence substitution, or repair is
+allowed.
+
+`ModelCallRecord.retryCount` is `0 | 1` and records logical-batch retry state.
+`ingestionContext.modelCalls` records actual underlying model invocations,
+defined as the sum of `1 + retryCount` across logical model-call records.
+Extraction batch counters remain logical-batch counters, so a retry does not
+create a second batch. Retry metadata is execution trace only and cannot enter
+ingestion identity, Raw identity, Candidate identity, canonical IDs, or
+ChangeSet identity.
+
 Final validation is all-or-nothing. Do not silently drop failing operations and commit the rest.
 
 ## 26. Atomic Write / Revision

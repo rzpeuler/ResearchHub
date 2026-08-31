@@ -329,3 +329,22 @@ No candidate-by-candidate admission/reconciliation by default.
 ## 33. Frozen Decisions
 
 One Curation Skill, four operations, automatic Schema Context, deterministic ref/ID ownership, distinct Entity/Relation/Claim Candidates, batch-capable Reconciliation, conditional Schema Gap, strict post-validation, no hidden retry, no direct canonical mutation, and no invented `taxonomyRefs` without explicit Reference Taxonomy context. v0.4 is NOT approved. This document is Frozen / Sol Accepted; implementation status is governed separately.
+
+## C9 Approved Design Addendum — Bounded Extraction Validation Retry
+
+The C9 implementation may add an optional `validationFeedback` argument to
+`extractKnowledge`. The first invocation remains byte-for-byte equivalent at
+the Skill boundary: the authoritative input is retained for validation and the
+C8 projection is the only model-visible input. On a retry, the Skill adds a
+provider-neutral instruction containing only `attempt=2`, a bounded Validator
+error code, and a bounded Validator message. The prior model output, report
+text outside the existing projection, API data, stack traces, and filesystem
+paths are never sent to the model.
+
+The retry is not autonomous Skill behavior. The Workflow owns whether a retry
+is eligible and may invoke exactly one retry for one logical extraction batch.
+Both attempts independently use the same strict Validator and C8 projection.
+The retry must regenerate the complete Entity/Relation/Claim arrays from the
+same batch and must not normalize, repair, delete, or substitute candidates.
+No other Curation operation gains retry behavior; DSH, provider, Schema,
+Validator, reasoning policy, and runtime envelope remain unchanged.
