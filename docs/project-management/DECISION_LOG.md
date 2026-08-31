@@ -1,5 +1,40 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-EXTRACTION-VALIDATION-RETRY-C-009 - Bounded Extraction Retry
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-08-31
+
+C-009 implements the approved bounded retry correction for the C4-R5
+`extractKnowledge` validation failure. The Workflow owns retry control and
+allows exactly one retry only for deterministic model-output validation codes:
+`invalid_model_output`, `invalid_reference`, `invalid_semantics`,
+`invalid_confidence`, and `ungrounded_candidate`. Transport, provider,
+timeout, credential, infrastructure, Writer, and other Curation failures are
+not retried.
+
+The Curation Skill accepts optional attempt-two validation feedback and turns
+it into a provider-neutral correction instruction containing only a bounded
+error code/message. It never receives the previous model output. Both attempts
+use the same authoritative input, C8 projection, Schema Context, Output
+Contract, reasoning policy, and strict Validator. No normalization, repair,
+candidate deletion, evidence substitution, or third attempt exists.
+
+`ModelCallRecord.retryCount` is `0 | 1` with sanitized validation failures.
+Logical extraction batch counters are unchanged, while ChangeSet
+`ingestionContext.modelCalls` now equals the actual invocation count derived
+from `1 + retryCount` per logical call. Retry state does not enter any durable
+identity. Focused tests cover no-retry success, semantic/reference recovery,
+persistent failure, `model_error` no-retry, C8 projection preservation, and
+two-batch actual-call accounting. The full required regression matrix and
+TypeScript integration typecheck pass.
+
+No Schema, Validator, DSH, provider, reasoning, C8 projection, batch, Writer,
+Access, Migration, plugin, or frontend code was changed. C4-R5 remains
+`Completed / Engineering Rework Required - Sol verified`; C9 is
+`Completed / Sol Verification Pending`; Stage C remains
+`In Progress / Awaiting C9 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R5 - Real PDF Validation Result
 
 **Status:** Completed / Sol Verification Pending
@@ -33,9 +68,10 @@ as `FAIL / SOL REVIEW REQUIRED`, not a product PASS or Stage C acceptance.
 
 Durable sanitized evidence is
 `tests/knowledge/product-validation/evidence/c004-r5-real-pdf-summary.json`.
-The C8 implementation is `Completed / Accepted - Sol verified`; C4-R5 remains
+The C8 implementation is `Completed / Accepted - Sol verified`; C4-R5 is
+`Completed / Engineering Rework Required - Sol verified`; C9 is
 `Completed / Sol Verification Pending`; Stage C remains
-`In Progress / Awaiting C4-R5 Sol Verification`.
+`In Progress / Awaiting C9 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-EXTRACTION-MODEL-INPUT-PROJECTION-C-008 - Extraction Visibility Boundary
 

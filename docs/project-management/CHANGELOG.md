@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-31 - KNOWLEDGE-V0.3-EXTRACTION-VALIDATION-RETRY-C-009
+
+- Added Workflow-owned bounded retry for deterministic `extractKnowledge`
+  validation failures, with at most one retry per logical batch.
+- Added sanitized retry feedback at the Curation Skill boundary while
+  preserving the C8 projection, strict validation, C7 reasoning policy, and
+  existing runtime envelope.
+- Changed retry accounting to retain logical `retryCount` and count actual
+  model invocations in ChangeSet `ingestionContext.modelCalls`.
+- Added focused recovery, persistent-failure, no-retry, projection, and
+  physical-call-accounting tests. No Schema, Validator, DSH, provider, Writer,
+  Access, Migration, or frontend behavior changed.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R5
 
 - Reran the exact real PDF from the C8 baseline with real Docling Local,

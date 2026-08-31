@@ -1,5 +1,29 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-EXTRACTION-VALIDATION-RETRY-C-009
+
+C-009 implemented a single bounded retry for `extractKnowledge` validation
+failures. Workflow owns retry eligibility and observability; only
+`invalid_model_output`, `invalid_reference`, `invalid_semantics`,
+`invalid_confidence`, and `ungrounded_candidate` are retryable. Each logical
+batch receives at most two attempts. Retry feedback contains only the attempt,
+error code, and a bounded Validator message; the prior model output is never
+sent back.
+
+Both attempts preserve the C8 model-visible projection and strict validation.
+`retryCount` is now `0 | 1`, validation failures are retained as sanitized
+execution metadata, and ChangeSet `ingestionContext.modelCalls` counts actual
+model invocations as the sum of `1 + retryCount` across logical calls. Tests
+cover valid no-retry output, invalid semantic/reference recovery, persistent
+failure without a third attempt, non-retryable `model_error`, C8 projection on
+retry, and two-batch physical call accounting. Schema, Validator, DSH,
+reasoning policy, runtime envelope, batch algorithm, Writer, Access, Migration,
+plugins, and frontend are unchanged.
+
+C-009 is `Completed / Sol Verification Pending`; C8 is `Completed / Accepted -
+Sol verified`; C4-R5 is `Completed / Engineering Rework Required - Sol
+verified`; Stage C remains `In Progress / Awaiting C9 Sol Verification`.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R5
 
 C4-R5 reran the real PDF validation from the C8 baseline with a fresh writable
@@ -23,8 +47,9 @@ normalization, output repair, replay, reprocess, or production patch was made.
 
 The durable sanitized evidence is
 `tests/knowledge/product-validation/evidence/c004-r5-real-pdf-summary.json`.
-C4-R5 is `Completed / Sol Verification Pending`; C8 is `Completed / Accepted -
-Sol verified`; Stage C remains `In Progress / Awaiting C4-R5 Sol Verification`.
+C4-R5 is `Completed / Engineering Rework Required - Sol verified`; C8 is
+`Completed / Accepted - Sol verified`; C9 is `Completed / Sol Verification
+Pending`; Stage C remains `In Progress / Awaiting C9 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-EXTRACTION-MODEL-INPUT-PROJECTION-C-008
 
@@ -45,8 +70,9 @@ policy, batch algorithm, and runtime envelope remain unchanged.
 
 C-008 is `Completed / Accepted - Sol verified`; C4-R4 is `Completed /
 Engineering Rework Required - Sol verified`; C7 is `Completed / Accepted - Sol
-verified`; C4-R5 is `Completed / Sol Verification Pending`; Stage C remains
-`In Progress / Awaiting C4-R5 Sol Verification`.
+verified`; C4-R5 is `Completed / Engineering Rework Required - Sol verified`;
+C9 is `Completed / Sol Verification Pending`; Stage C remains `In Progress /
+Awaiting C9 Sol Verification`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R4
 

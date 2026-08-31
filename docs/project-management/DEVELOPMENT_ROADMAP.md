@@ -27,8 +27,9 @@
 - C7 LLM Reasoning Policy: Completed / Accepted - Sol verified
 - C4-R4 Product Validation: Completed / Engineering Rework Required - Sol verified
 - C8 Extraction Input Projection: Completed / Accepted - Sol verified
-- C4-R5 Product Validation: Completed / Sol Verification Pending
-- Stage C: In Progress / Awaiting C4-R5 Sol Verification
+- C4-R5 Product Validation: Completed / Engineering Rework Required - Sol verified
+- C9 Extraction Validation Retry: Completed / Sol Verification Pending
+- Stage C: In Progress / Awaiting C9 Sol Verification
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3
@@ -51,7 +52,10 @@ outside the current batch and stopped the normal Workflow. C8 constrained
 retaining the original input for deterministic validation. C4-R5 verified that
 boundary on the real PDF, then stopped at a later deterministic relation
 endpoint semantic rejection in `batch-0003`; no product PASS is recorded and
-Stage C awaits C4-R5 Sol verification.
+Stage C awaited the C4-R5 engineering correction. C9 now adds one
+Workflow-owned retry for deterministic extraction validation failures while
+preserving strict validation and the C8 projection. C9 is pending Sol review;
+no Stage C acceptance or product PASS is recorded.
 
 - Architecture Freeze: Completed / Sol Accepted
 - Governance Integration: Completed / Sol verified
