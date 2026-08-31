@@ -19,9 +19,9 @@ import { createRealKnowledgeCurationModel } from './deepseek-composition.ts'
 import { inspectDoclingRuntime } from '../document-parser/doctor-docling.ts'
 
 const execFileAsync = promisify(execFile)
-const TASK_ID = 'KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R6'
-const BASELINE = 'a872119279bf1eec3e8e4e8c39e1dec60e2558fe'
-const KNOWLEDGE_BASE_ID = 'kb-product-validation-c004-r6'
+const TASK_ID = 'KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R7'
+const BASELINE = '140a99273766ff05fcaf6bcf3c24e828447f28e6'
+const KNOWLEDGE_BASE_ID = 'kb-product-validation-c004-r7'
 const EXPECTED_PDF_SHA256 = '998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63'
 const EXPECTED_PDF_BYTES = 3_209_114
 const RETRYABLE_CODES = ['invalid_model_output', 'invalid_reference', 'invalid_semantics', 'invalid_confidence', 'ungrounded_candidate'] as const
@@ -56,6 +56,7 @@ type RecordedModelCall = {
   succeeded: boolean
   physicalAttempt: number
   hasValidationFeedback: boolean
+  validationFeedback?: JsonRecord
   outputShape?: JsonRecord
   modelInputObservation?: JsonRecord
   runtimeObservation?: JsonRecord
@@ -136,6 +137,7 @@ class RecordingModel implements KnowledgeCurationModel {
       succeeded: false,
       physicalAttempt,
       hasValidationFeedback: request.operation === 'extractKnowledge' && request.instruction.includes('Validation code:'),
+      ...(request.operation === 'extractKnowledge' ? { validationFeedback: extractValidationFeedback(request.instruction) } : {}),
     }
     if (request.operation === 'extractKnowledge') call.modelInputObservation = extractionModelInputEvidence(input)
     this.calls.push(call)
@@ -155,7 +157,7 @@ class RecordingModel implements KnowledgeCurationModel {
 }
 
 async function main(): Promise<void> {
-  const evidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_EVIDENCE ?? join(tmpdir(), 'researchhub-knowledge-v03-c004-r6-evidence.json')
+  const evidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_EVIDENCE ?? join(tmpdir(), 'researchhub-knowledge-v03-c004-r7-evidence.json')
   const durableEvidencePath = process.env.RESEARCHHUB_PRODUCT_VALIDATION_DURABLE_EVIDENCE
   let root: string | undefined
   const keepRoot = process.env.RESEARCHHUB_KEEP_PRODUCT_VALIDATION_KB === '1'
@@ -214,7 +216,7 @@ async function main(): Promise<void> {
       writer: { write: async (handle, receipt) => { writerInvocations += 1; return writer.write(handle, receipt) } },
     })
     try {
-      const first = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r6-first', true))
+      const first = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r7-first', true))
       const parserSummary = parserEvidence(parser.result)
       evidence.parser = parserSummary
       if (parserSummary.uniqueChunkIds !== parserSummary.chunks || parserSummary.emptyChunks !== 0) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Docling output failed chunk integrity checks')
@@ -226,14 +228,14 @@ async function main(): Promise<void> {
       if (first.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(first.errors))
       const replayCallsBefore = model.calls.length
       const replayWriterBefore = writerInvocations
-      const replay = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r6-replay', false))
+      const replay = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r7-replay', false))
       evidence.replay = await runEvidence(root, replay, model, runtimeObserver, writerInvocations, replayCallsBefore, replayWriterBefore)
       evidence.replay.errors = replay.errors
       assertReplayEvidence(evidence.replay)
       if (replay.status === 'blocked') throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', JSON.stringify(replay.errors))
       const reprocessCallsBefore = model.calls.length
       const reprocessWriterBefore = writerInvocations
-      const reprocess = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r6-reprocess', true))
+      const reprocess = await workflow.execute(inputFor(pdfPath, 'product-validation-c004-r7-reprocess', true))
       evidence.reprocess = await runEvidence(root, reprocess, model, runtimeObserver, writerInvocations, reprocessCallsBefore, reprocessWriterBefore)
       evidence.reprocess.errors = reprocess.errors
       normalizeC8Evidence(evidence.reprocess)
@@ -288,9 +290,9 @@ async function resolveTarget(root: string): Promise<{ handle: KnowledgeBaseHandl
 }
 
 async function createIsolatedV03KnowledgeBase(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'researchhub-c004-r6-v03-'))
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-c004-r7-v03-'))
   await mkdir(join(root, 'registry'), { recursive: true })
-  await writeFile(join(root, 'manifest.yaml'), `${canonicalSerialize({ knowledgeBaseId: KNOWLEDGE_BASE_ID, name: 'C-004-R6 disposable real PDF validation KB', schemaVersion: '0.3', storageFormatVersion: '1', revision: 0, status: 'active', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z' })}\n`, 'utf8')
+  await writeFile(join(root, 'manifest.yaml'), `${canonicalSerialize({ knowledgeBaseId: KNOWLEDGE_BASE_ID, name: 'C-004-R7 disposable real PDF validation KB', schemaVersion: '0.3', storageFormatVersion: '1', revision: 0, status: 'active', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z' })}\n`, 'utf8')
   await writeFile(join(root, 'registry/assets.yaml'), '{}\n', 'utf8')
   await writeFile(join(root, 'registry/raw.yaml'), '{}\n', 'utf8')
   return root
@@ -298,13 +300,16 @@ async function createIsolatedV03KnowledgeBase(): Promise<string> {
 
 async function gitPreflight(): Promise<JsonRecord> {
   const head = (await execFileAsync('git', ['rev-parse', 'HEAD'])).stdout.trim()
-  const status = (await execFileAsync('git', ['status', '--porcelain'])).stdout.trim()
+  const statusLines = (await execFileAsync('git', ['status', '--porcelain'])).stdout.split(/\r?\n/).map((item) => item.trimEnd()).filter(Boolean)
   const changedSinceBaseline = (await execFileAsync('git', ['diff', '--name-only', `${BASELINE}..HEAD`])).stdout.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
   const matchesExpected = head === BASELINE || await execFileAsync('git', ['merge-base', '--is-ancestor', BASELINE, head]).then(() => true).catch(() => false)
   const productionFilesChanged = changedSinceBaseline.some((file) => !isAllowedEvidencePath(file))
-  return { head, expected: BASELINE, matchesExpected, workingTreeClean: status === '', changedSinceBaseline, productionFilesChanged }
+  const untracked = statusLines.filter((line) => line.startsWith('?? ')).map((line) => line.slice(3))
+  const unexpectedStatus = statusLines.filter((line) => !line.startsWith('?? ') || !isAcknowledgedUntracked(line.slice(3)))
+  return { head, expected: BASELINE, matchesExpected, workingTreeClean: unexpectedStatus.length === 0, statusLines, acknowledgedUntracked: untracked.filter(isAcknowledgedUntracked), unexpectedStatus, changedSinceBaseline, productionFilesChanged }
 }
 function isAllowedEvidencePath(file: string): boolean { return file.startsWith('tools/knowledge-product-validation/') || file.startsWith('tests/knowledge/product-validation/') || file.startsWith('docs/project-management/') }
+function isAcknowledgedUntracked(file: string): boolean { return /^researchhub\.architecture(?:\.|$)/.test(file) }
 
 async function inspectCredentialSource(): Promise<CredentialSourceEvidence> {
   const raw = await readFile('.env', 'utf8')
@@ -326,6 +331,16 @@ function parseDotEnvValue(line: string | undefined): string | undefined {
 }
 
 function credentialSummary(value: string | undefined): JsonRecord { return { present: Boolean(value), length: value?.length ?? 0, fingerprint: value ? createHash('sha256').update(value).digest('hex').slice(0, 12) : null, startsWithSk: value?.startsWith('sk-') ?? false, containsBearerPrefix: value ? /^Bearer\s+/i.test(value) : false, containsWhitespaceInside: value ? /\s/.test(value) : false, containsNewline: value ? /[\r\n]/.test(value) : false, containsQuoteCharacterAfterParsing: value ? /["']/.test(value) : false } }
+
+function extractValidationFeedback(instruction: string): JsonRecord | undefined {
+  const code = instruction.match(/Validation code: ([^\r\n]+)/)?.[1]
+  const start = instruction.indexOf('Validation message: ')
+  if (start < 0) return undefined
+  const messageStart = start + 'Validation message: '.length
+  const end = instruction.indexOf('\nRegenerate', messageStart)
+  const message = instruction.slice(messageStart, end < 0 ? undefined : end).trim()
+  return { code: code ?? null, message, messageLength: message.length, truncatedAtExistingBound: message.length === 240, candidateOrdinalPresent: /RelationCandidate\[\d+\]/.test(message), relationTypePresent: /RelationCandidate\[\d+\] [A-Za-z0-9_]+/.test(message), receivedEndpointTypesPresent: /received [^;\r\n]+->[A-Za-z0-9_]+/.test(message), allowedSourceTypesPresent: /allowed source=\[[^\]]+\]/.test(message), allowedTargetTypesPresent: /target=\[[^\]]+\]/.test(message) }
+}
 
 function parserEvidence(result: DocumentParseResult | undefined): ParserEvidence { const chunks = result?.chunks ?? []; return { parser: result?.parser ?? null, pageCount: result?.pageCount ?? result?.quality?.pageCount ?? null, chunks: chunks.length, uniqueChunkIds: new Set(chunks.map((chunk) => chunk.chunkId)).size, emptyChunks: chunks.filter((chunk) => !chunk.text.trim()).length, sections: new Set(chunks.map((chunk) => chunk.section).filter((section): section is string => Boolean(section))).size, tables: result?.structure?.tableCount ?? result?.quality?.tableCount ?? null, images: result?.structure?.imageCount ?? result?.quality?.imageCount ?? null, normalizedCharacters: result?.quality?.normalizedCharacters ?? result?.normalizedText.length ?? 0, warnings: result?.quality?.warnings ?? [] } }
 
@@ -356,9 +371,11 @@ async function runEvidence(root: string, result: ResearchReportKnowledgeIngestio
     feedbackAttempt2Observed: extractionCalls.filter((call) => call.hasValidationFeedback).length,
     sameBatchIdForRetries: sameBatchIdForRetries(calls, extractionCalls),
     noThirdAttempt: extractionCalls.every((call) => call.physicalAttempt <= 2),
+    c10Diagnostics: calls.filter((call) => call.operation === 'extractKnowledge' && call.validationFailures).flatMap((call) => (call.validationFailures ?? []).filter((failure) => failure.code === 'invalid_semantics' && failure.message.includes('RelationCandidate[')).map((failure) => ({ groupId: call.groupId, attempt: failure.attempt, code: failure.code, message: failure.message, truncatedAtExistingBound: failure.message.length === 240, candidateOrdinalPresent: /RelationCandidate\[\d+\]/.test(failure.message), relationTypePresent: /RelationCandidate\[\d+\] [A-Za-z0-9_]+/.test(failure.message), receivedEndpointTypesPresent: /received [^;\r\n]+->[A-Za-z0-9_]+/.test(failure.message), allowedSourceTypesPresent: /allowed source=\[[^\]]+\]/.test(failure.message), allowedTargetTypesPresent: /target=\[[^\]]+\]/.test(failure.message) }))),
+    attempt2Feedback: extractionCalls.filter((call) => call.physicalAttempt === 2 && call.validationFeedback).map((call) => ({ groupId: call.batchId, ...call.validationFeedback })),
   }
   const modelAccounting = { logicalModelCallRecords, retryInvocations: retryCount, physicalModelInvocations, expectedActualModelCalls: logicalModelCallRecords + retryCount, changeSetIngestionContextModelCalls: changeSetModelCalls, matchesChangeSet: changeSetModelCalls === null || changeSetModelCalls === logicalModelCallRecords + retryCount }
-  return { status: result.status, workflowRunId: result.workflowRunId, raw: result.raw, source: result.source ? { sourceId: result.source.sourceId, resolution: result.source.resolution, rawRefs: result.source.source.rawRefs ?? [] } : null, understanding: result.reportUnderstanding ? { sourceType: result.reportUnderstanding.sourceAssessment.sourceType, sourceReliability: result.reportUnderstanding.sourceAssessment.sourceReliability, publisher: result.reportUnderstanding.sourceAssessment.publisher, institution: result.reportUnderstanding.sourceAssessment.institution, publishedAt: result.reportUnderstanding.sourceAssessment.publishedAt, sourceIdentityConfidence: result.reportUnderstanding.sourceAssessment.sourceIdentityConfidence, researchScopeCount: result.reportUnderstanding.researchScope.length, majorTopics: result.reportUnderstanding.majorTopics.slice(0, 12), majorEntityMentionCount: result.reportUnderstanding.majorEntityMentions.length, themeHypotheses: result.reportUnderstanding.themeHypotheses.map((item) => ({ mention: short(item.mention), disposition: item.disposition })), uncertaintyCount: result.reportUnderstanding.uncertainty.length } : null, batching: { sections: result.batches.sectionCount, batches: result.batches.batchCount, chunkCount: result.batches.chunkCount, uniqueChunkCount: new Set(result.batches.chunkIds).size, coveredChunkCount: new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, duplicateCoverage: result.batches.batches.flatMap((batch) => batch.chunkIds).length - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, omittedChunkCount: result.batches.chunkCount - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, chunkCountMin: Math.min(...batchSizes), chunkCountMax: Math.max(...batchSizes), chunkCountMedian: median(batchSizes), characterMin: Math.min(...charSizes), characterMax: Math.max(...charSizes), characterMedian: median(charSizes), oversizedSectionSplits: splitSections(result.batches) }, c8RuntimeVisibility: { extractionCalls: extractionCalls.length, allFullDocumentVisible: extractionCalls.every((call) => call.modelInputObservation?.fullDocumentVisible === false), allNormalizedTextHidden: extractionCalls.every((call) => call.modelInputObservation?.normalizedTextVisible === false), allClaimsContextHidden: extractionCalls.every((call) => call.modelInputObservation?.claimsContextVisible === false), allSourcesContextHidden: extractionCalls.every((call) => call.modelInputObservation?.sourcesContextVisible === false), allRawRefsHidden: extractionCalls.every((call) => call.modelInputObservation?.rawRefsVisible === false), outOfBatchChunkIdsVisible: extractionCalls.reduce((sum, call) => sum + Number(call.modelInputObservation?.outOfBatchChunkIdsVisible ?? 0), 0), modelVisibleSerializedInputCharacters: { min: Math.min(...extractionPayloadSizes), median: median(extractionPayloadSizes), max: Math.max(...extractionPayloadSizes) } }, c9Retry, extraction: result.extraction, consolidation: result.consolidation, resolution: result.referenceResolution, reconciliation: { ...result.reconciliation, modelCalls: calls.filter((call) => call.operation === 'reconcileKnowledge').length, decisionCount, coverage: { candidates: result.reconciliation.candidates, decisions: decisionCount, exactlyOnce: result.reconciliation.candidates === decisionCount } }, schemaGaps: { calls: calls.filter((call) => call.operation === 'analyzeSchemaGaps').length, outputs: result.schemaGaps.map((gap) => ({ candidateRefs: gap.candidateRefs, gapType: gap.gapType })) }, reviews: { roots: result.reviewItems.filter((item) => item.candidateId && item.category !== 'dependency_review').length, dependencyClosure: result.reviewItems.filter((item) => item.category === 'dependency_review').length, total: result.reviewItems.length }, validation: result.validation, changeSet, modelAccounting, writerInvocations: writerInvocations - writerStart, reasoningPolicy: { expected: EXPECTED_REASONING_POLICY, observations: runObservations, mismatches: policyMismatches }, callsByOperation: calls.map((call) => ({ operation: call.operation, groupId: call.groupId, attempted: call.attempted, succeeded: call.succeeded, retryCount: call.retryCount, validationFailures: call.validationFailures ?? [] })), recordedModelCalls: runModelCalls.map((call) => ({ operation: call.operation, slice: call.slice, batchId: call.batchId, groupId: call.groupId, physicalAttempt: call.physicalAttempt, hasValidationFeedback: call.hasValidationFeedback, succeeded: call.succeeded, outputShape: call.outputShape, modelInputObservation: call.modelInputObservation, runtimeObservation: call.runtimeObservation, error: call.error })) }
+  return { status: result.status, workflowRunId: result.workflowRunId, raw: result.raw, source: result.source ? { sourceId: result.source.sourceId, resolution: result.source.resolution, rawRefs: result.source.source.rawRefs ?? [] } : null, understanding: result.reportUnderstanding ? { sourceType: result.reportUnderstanding.sourceAssessment.sourceType, sourceReliability: result.reportUnderstanding.sourceAssessment.sourceReliability, publisher: result.reportUnderstanding.sourceAssessment.publisher, institution: result.reportUnderstanding.sourceAssessment.institution, publishedAt: result.reportUnderstanding.sourceAssessment.publishedAt, sourceIdentityConfidence: result.reportUnderstanding.sourceAssessment.sourceIdentityConfidence, researchScopeCount: result.reportUnderstanding.researchScope.length, majorTopics: result.reportUnderstanding.majorTopics.slice(0, 12), majorEntityMentionCount: result.reportUnderstanding.majorEntityMentions.length, themeHypotheses: result.reportUnderstanding.themeHypotheses.map((item) => ({ mention: short(item.mention), disposition: item.disposition })), uncertaintyCount: result.reportUnderstanding.uncertainty.length } : null, batching: { sections: result.batches.sectionCount, batches: result.batches.batchCount, chunkCount: result.batches.chunkCount, uniqueChunkCount: new Set(result.batches.chunkIds).size, coveredChunkCount: new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, duplicateCoverage: result.batches.batches.flatMap((batch) => batch.chunkIds).length - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, omittedChunkCount: result.batches.chunkCount - new Set(result.batches.batches.flatMap((batch) => batch.chunkIds)).size, chunkCountMin: Math.min(...batchSizes), chunkCountMax: Math.max(...batchSizes), chunkCountMedian: median(batchSizes), characterMin: Math.min(...charSizes), characterMax: Math.max(...charSizes), characterMedian: median(charSizes), oversizedSectionSplits: splitSections(result.batches) }, c8RuntimeVisibility: { extractionCalls: extractionCalls.length, allFullDocumentVisible: extractionCalls.every((call) => call.modelInputObservation?.fullDocumentVisible === false), allNormalizedTextHidden: extractionCalls.every((call) => call.modelInputObservation?.normalizedTextVisible === false), allClaimsContextHidden: extractionCalls.every((call) => call.modelInputObservation?.claimsContextVisible === false), allSourcesContextHidden: extractionCalls.every((call) => call.modelInputObservation?.sourcesContextVisible === false), allRawRefsHidden: extractionCalls.every((call) => call.modelInputObservation?.rawRefsVisible === false), outOfBatchChunkIdsVisible: extractionCalls.reduce((sum, call) => sum + Number(call.modelInputObservation?.outOfBatchChunkIdsVisible ?? 0), 0), modelVisibleSerializedInputCharacters: { min: Math.min(...extractionPayloadSizes), median: median(extractionPayloadSizes), max: Math.max(...extractionPayloadSizes) } }, c9Retry, extraction: result.extraction, consolidation: result.consolidation, resolution: result.referenceResolution, reconciliation: { ...result.reconciliation, modelCalls: calls.filter((call) => call.operation === 'reconcileKnowledge').length, decisionCount, coverage: { candidates: result.reconciliation.candidates, decisions: decisionCount, exactlyOnce: result.reconciliation.candidates === decisionCount } }, schemaGaps: { calls: calls.filter((call) => call.operation === 'analyzeSchemaGaps').length, outputs: result.schemaGaps.map((gap) => ({ candidateRefs: gap.candidateRefs, gapType: gap.gapType })) }, reviews: { roots: result.reviewItems.filter((item) => item.candidateId && item.category !== 'dependency_review').length, dependencyClosure: result.reviewItems.filter((item) => item.category === 'dependency_review').length, total: result.reviewItems.length }, validation: result.validation, changeSet, modelAccounting, writerInvocations: writerInvocations - writerStart, reasoningPolicy: { expected: EXPECTED_REASONING_POLICY, observations: runObservations, mismatches: policyMismatches }, callsByOperation: calls.map((call) => ({ operation: call.operation, groupId: call.groupId, attempted: call.attempted, succeeded: call.succeeded, retryCount: call.retryCount, validationFailures: call.validationFailures ?? [] })), recordedModelCalls: runModelCalls.map((call) => ({ operation: call.operation, slice: call.slice, batchId: call.batchId, groupId: call.groupId, physicalAttempt: call.physicalAttempt, hasValidationFeedback: call.hasValidationFeedback, validationFeedback: call.validationFeedback, succeeded: call.succeeded, outputShape: call.outputShape, modelInputObservation: call.modelInputObservation, runtimeObservation: call.runtimeObservation, error: call.error })) }
 }
 
 async function readChangeSetEvidence(root: string, workflowRunId: string): Promise<JsonRecord> {
@@ -392,6 +409,12 @@ function assertRunEvidence(value: JsonRecord): void {
   if (isRecord(value.reasoningPolicy) && Array.isArray(value.reasoningPolicy.mismatches) && value.reasoningPolicy.mismatches.length) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Observed reasoning policy mismatch')
   if (c8 && (c8.outOfBatchChunkIdsVisible !== 0 || c8.fullDocumentVisible !== false || c8.normalizedTextVisible !== false || c8.claimsContextVisible !== false || c8.sourcesContextVisible !== false || c8.rawRefsVisible !== false)) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'C8 extraction projection violation observed')
   if (retry && (retry.maximumRetryCount !== 1 && retry.maximumRetryCount !== 0 || retry.noThirdAttempt !== true || retry.sameBatchIdForRetries !== true || retry.feedbackAttempt2Observed !== retry.retriedBatches)) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'C9 retry invariant failed')
+  if (retry && Array.isArray(retry.validationFailures)) {
+    const legacyRelationDiagnostics = retry.validationFailures.flatMap((entry) => isRecord(entry) && Array.isArray(entry.validationFailures) ? entry.validationFailures : []).filter((failure) => isRecord(failure) && failure.code === 'invalid_semantics' && typeof failure.message === 'string' && (failure.message === 'Relation endpoint types violate the frozen semantic definition' || failure.message === 'Relation endpoints must have the same Entity type'))
+    if (legacyRelationDiagnostics.length) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'C10 Relation diagnostic remained generic')
+  }
+  if (retry && Array.isArray(retry.c10Diagnostics)) for (const diagnostic of retry.c10Diagnostics) if (!isRecord(diagnostic) || diagnostic.candidateOrdinalPresent !== true || diagnostic.relationTypePresent !== true || diagnostic.receivedEndpointTypesPresent !== true || diagnostic.allowedSourceTypesPresent !== true || diagnostic.allowedTargetTypesPresent !== true || diagnostic.truncatedAtExistingBound === true) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'C10 Relation diagnostic was incomplete or truncated')
+  if (retry && Array.isArray(retry.attempt2Feedback)) for (const feedback of retry.attempt2Feedback) if (!isRecord(feedback) || feedback.candidateOrdinalPresent !== true || feedback.relationTypePresent !== true || feedback.receivedEndpointTypesPresent !== true || feedback.allowedSourceTypesPresent !== true || feedback.allowedTargetTypesPresent !== true || feedback.truncatedAtExistingBound === true) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'C10 retry feedback was incomplete or truncated')
   if (accounting && accounting.matchesChangeSet !== true) throw new ProductValidationStop('FAIL / SOL REVIEW REQUIRED', 'Model-call accounting does not match ChangeSet ingestionContext')
 }
 
