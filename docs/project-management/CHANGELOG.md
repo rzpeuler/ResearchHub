@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-01 - RH-LLM-DEFAULT-FLASH-001
+
+- Changed the active ResearchHub DeepSeek default from `deepseek-v4-pro` to
+  `deepseek-v4-flash` in runtime configuration and `.env.example`.
+- Preserved `RESEARCHHUB_LLM_MODEL` overrides, including explicit Pro; provider,
+  base URL, credential handling, reasoning, temperature, max tokens, adapters,
+  Workflow, and Knowledge behavior are unchanged.
+- Updated offline configuration coverage for default Flash, explicit Flash, and
+  explicit Pro. No real LLM or PDF request was made.
+- Historical R5/R6/R7 evidence and prior execution records remain unchanged and
+  continue to record the Pro model actually used at those times.
+- RH-LLM-DEFAULT-FLASH-001 is `Completed / Sol Verification Pending`; Stage C
+  remains in progress pending Sol verification.
+
 ## 2026-08-31 - KNOWLEDGE-V0.3-RELATION-AWARE-OUTPUT-CONTRACT-C-011
 
 - Replaced the generic `extractKnowledge` RelationCandidate contract with one

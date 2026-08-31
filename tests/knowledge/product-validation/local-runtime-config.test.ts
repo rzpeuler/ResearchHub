@@ -8,10 +8,15 @@ test('local product validation config is deterministic and resolves external pat
   const config = loadLocalRuntimeConfig(base, 'C:\\ResearchHub')
   assert.equal(config.realLlmEnabled, false)
   assert.equal(config.provider, 'deepseek-official')
-  assert.equal(config.model, 'deepseek-v4-pro')
+  assert.equal(config.model, 'deepseek-v4-flash')
   assert.equal(config.dataRoot, 'C:\\ResearchHubData')
   assert.equal(config.reportsDir, 'C:\\ResearchHubData\\input\\ai-hardware-reports')
   assert.equal(config.knowledgeBaseId, 'ai-hardware-real')
+})
+
+test('explicit Flash and Pro model overrides remain supported', () => {
+  assert.equal(loadLocalRuntimeConfig({ ...base, RESEARCHHUB_LLM_MODEL: 'deepseek-v4-flash' }, 'C:\\ResearchHub').model, 'deepseek-v4-flash')
+  assert.equal(loadLocalRuntimeConfig({ ...base, RESEARCHHUB_LLM_MODEL: 'deepseek-v4-pro' }, 'C:\\ResearchHub').model, 'deepseek-v4-pro')
 })
 
 test('real execution fails fast without exposing a key', () => {

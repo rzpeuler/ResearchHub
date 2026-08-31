@@ -1,5 +1,26 @@
 # Decision Log
 
+## RH-LLM-DEFAULT-FLASH-001 - Change ResearchHub Default DeepSeek Model
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-09-01
+
+ResearchHub's default DeepSeek runtime model changes from
+`deepseek-v4-pro` to `deepseek-v4-flash` to reduce normal operating and
+validation token cost and make Flash the preferred default runtime model.
+`RESEARCHHUB_LLM_MODEL` remains the explicit override mechanism, and Pro
+continues to resolve correctly when selected explicitly.
+
+Only the active runtime fallback, example configuration, local ignored `.env`,
+and offline configuration expectations changed. Provider, base URL, credential
+handling, reasoning policy, temperature, max tokens, adapters, Workflow,
+Knowledge behavior, and historical product-validation records remain
+unchanged. No real LLM request was made.
+
+RH-LLM-DEFAULT-FLASH-001 is pending Sol verification. Stage C remains in
+progress; future C11 product validation should record Flash as the effective
+model unless an explicit Pro override is supplied.
+
 ## KNOWLEDGE-V0.3-RELATION-AWARE-OUTPUT-CONTRACT-C-011 - Schema-Derived Relation Contract
 
 **Status:** Completed / Sol Verification Pending

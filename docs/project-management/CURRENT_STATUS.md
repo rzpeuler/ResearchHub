@@ -1,5 +1,21 @@
 # Current Status
 
+## RH-LLM-DEFAULT-FLASH-001
+
+The active ResearchHub default DeepSeek model is now `deepseek-v4-flash`,
+replacing the previous default `deepseek-v4-pro`. The existing
+`RESEARCHHUB_LLM_MODEL` override remains authoritative, so explicit Flash and
+explicit Pro selections are both supported. Provider remains
+`deepseek-official`, base URL remains `https://api.deepseek.com`, and no
+reasoning, temperature, max-token, adapter, Workflow, or Knowledge behavior
+changed.
+
+The ignored local `.env` and `.env.example` use Flash. `.env` remains
+untracked and no credential was exposed. All validation for this task was
+offline; no real LLM or PDF request was made. RH-LLM-DEFAULT-FLASH-001 is
+`Completed / Sol Verification Pending`; Stage C remains in progress pending
+Sol verification before the next C11 product-validation continuation.
+
 ## KNOWLEDGE-V0.3-RELATION-AWARE-OUTPUT-CONTRACT-C-011
 
 C11 derives the `extractKnowledge` RelationCandidate Structured Output

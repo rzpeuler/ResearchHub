@@ -2,7 +2,7 @@ import { isAbsolute, resolve } from 'node:path'
 
 export const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
 export const DEFAULT_LLM_PROVIDER = 'deepseek-official'
-export const DEFAULT_LLM_MODEL = 'deepseek-v4-pro'
+export const DEFAULT_LLM_MODEL = 'deepseek-v4-flash'
 export const DEFAULT_CURATION_MAX_TOKENS = 16_384
 export const DEFAULT_DATA_ROOT = '../ResearchHubData'
 export const DEFAULT_REPORTS_DIR = '../ResearchHubData/input/ai-hardware-reports'
