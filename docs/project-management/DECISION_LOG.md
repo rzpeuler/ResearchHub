@@ -1,20 +1,27 @@
 # Decision Log
 
-## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-FINAL - Commit A and Result
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R1 - Authorization and Commit A
 
-Status: Completed / BLOCKED - EXTERNAL SERVICE - SOL REVIEW REQUIRED
+Status: Authorized / In Progress
 Date: 2026-09-01
 
-Sol authorized the final full Knowledge v0.3 product validation after the
-accepted C13/C13-R1 and S3-R2 candidate-isolation evidence. Commit A was
-`1abf11ea686c5784f0e1d82f06be339270925447`; the unique supervised real
-Provider process passed runtime, exact PDF, Local Docling, and fresh-KB gates,
-then timed out at batch-0008 attempt 1 after 180016 ms. The workflow returned
-blocked before semantic commit, so no Writer mutation or guarded replay
-occurred. Durable evidence is
-`tests/knowledge/product-validation/evidence/c004-r9-final-full-pipeline.json`.
-Stage C remains In Progress / Awaiting C4-R9 Sol Verification and is not
-accepted.
+Sol authorized one corrected R9-R1 full validation. Commit A is restricted to
+the passive full-validation observer, R9 harness ordering correction, focused
+offline tests, package/launcher updates, and governance transition. The real
+run must use the exact Commit A SHA, preserve the process-local `.env`
+isolation, and use only the 7200-second outer watchdog. Stage C remains In
+Progress / Awaiting C4-R9-R1 Sol Verification and is not accepted.
+
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-FINAL - Historical Result
+
+Status: Completed / INVALID TEST SETUP - Smoke Observer Timeout - Sol verified
+Date: 2026-09-01
+
+C4-R9 used `SmokeObservingRuntime`, whose validation-owned 180-second abort
+locally terminated batch-0008 while the upstream stream was active. This did
+not prove an external DeepSeek outage. No Writer mutation occurred, revision
+remained 0, and Stage C was not tested to completion. Original evidence is
+preserved unchanged at `tests/knowledge/product-validation/evidence/c004-r9-final-full-pipeline.json`.
 
 ## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R2 - Real Candidate Isolation Smoke Result
 

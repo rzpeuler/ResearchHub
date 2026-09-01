@@ -45,9 +45,10 @@
 - RH-REAL-ENV-BOOTSTRAP-001-R1: Accepted - Sol verified
 - S3-R1: Completed / INVALID TEST SETUP - External Execution Boundary Too Short - Sol verified
 - S3-R2: Accepted / PASS - CANDIDATE ISOLATION EXERCISED - Sol verified
-- C4-R9 Product Validation: Completed / BLOCKED - EXTERNAL SERVICE - SOL REVIEW REQUIRED
+- C4-R9 Product Validation: Completed / INVALID TEST SETUP - Smoke Observer Timeout - Sol verified
+- C4-R9-R1 Product Validation: Authorized / In Progress (corrected passive observer)
 - S3: Completed / INVALID TEST SETUP - Parent Environment Credential Override - Sol verified
-- Stage C: In Progress / Awaiting C4-R9 Sol Verification
+- Stage C: In Progress / Awaiting C4-R9-R1 Sol Verification
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3

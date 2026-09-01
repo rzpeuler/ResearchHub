@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-01 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R1
+
+- C4-R9 historical result corrected to `Completed / INVALID TEST SETUP -
+  Smoke Observer Timeout - Sol verified`; its validation observer locally
+  aborted batch-0008 after 180 seconds while the upstream stream was active.
+- Added a passive R9-class observer that forwards the original runtime signal
+  without creating an AbortController, timeout, or per-call cancellation.
+- Corrected blocked-result ordering and added focused offline coverage. R9-R1
+  is Authorized / In Progress; Stage C awaits C4-R9-R1 Sol Verification.
+
 ## 2026-09-01 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-FINAL
 
 - Commit A `1abf11ea686c5784f0e1d82f06be339270925447` was used for the unique

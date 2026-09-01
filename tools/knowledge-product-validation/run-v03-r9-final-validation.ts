@@ -17,18 +17,18 @@ import type { KnowledgeBaseHandle } from "../../packages/shared/knowledge-base/i
 import { createKnowledgeStagedStateValidator, KnowledgeValidationSkill } from "../../packages/skills/knowledge-validation/index.ts";
 import { loadLocalRuntimeConfig } from "../../dsh/llm-runtime/local-runtime-config.ts";
 import { createRealKnowledgeCurationModel } from "./deepseek-composition.ts";
-import { SmokeObservingRuntime } from "./run-flash-extraction-smoke.ts";
+import { FullValidationObservingRuntime } from "./full-validation-observing-runtime.ts";
 import { writeEvidenceAtomically } from "./run-post-c12-extraction-smoke.ts";
 import { inspectDoclingRuntime } from "../document-parser/doctor-docling.ts";
 
-export const R9_TASK_ID = "KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-FINAL";
+export const R9_TASK_ID = process.env.RESEARCHHUB_PRODUCT_VALIDATION_TASK_ID ?? "KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-FINAL";
 export const R9_BASELINE = process.env.RESEARCHHUB_R9_EXECUTION_BASELINE ?? "UNSET";
-export const R9_KNOWLEDGE_BASE_ID = "kb-product-validation-c004-r9-final";
+export const R9_KNOWLEDGE_BASE_ID = process.env.RESEARCHHUB_PRODUCT_VALIDATION_KB_ID ?? "kb-product-validation-c004-r9-final";
 export const R9_EXPECTED_MODEL = "deepseek-v4-flash";
 export const R9_EXPECTED_PDF_SHA256 = "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63";
 export const R9_EXPECTED_PDF_BYTES = 3_209_114;
 export const R9_EXPECTED_BATCH_COUNT = 18;
-export const R9_EVIDENCE_PATH = "tests/knowledge/product-validation/evidence/c004-r9-final-full-pipeline.json";
+export const R9_EVIDENCE_PATH = process.env.RESEARCHHUB_PRODUCT_VALIDATION_DURABLE_EVIDENCE ?? "tests/knowledge/product-validation/evidence/c004-r9-final-full-pipeline.json";
 export const R9_EXPECTED_REASONING_POLICY = { understandReport: "off", extractKnowledge: "off", reconcileKnowledge: "low", analyzeSchemaGaps: "low" } as const;
 
 type JsonRecord = Record<string, unknown>;
@@ -47,7 +47,7 @@ class R9RecordingModel implements KnowledgeCurationModel {
   private readonly attempts = new Map<string, number>();
   private replayGuard = false;
 
-  constructor(private readonly delegate: KnowledgeCurationModel, private readonly runtime: SmokeObservingRuntime, private readonly checkpoint: R9Checkpoint) {}
+  constructor(private readonly delegate: KnowledgeCurationModel, private readonly runtime: FullValidationObservingRuntime, private readonly checkpoint: R9Checkpoint) {}
   get replayIntercepted(): boolean { return this.calls.some((call) => call.error === "replay_model_call_intercepted"); }
   setReplayGuard(): void { this.replayGuard = true; }
 
@@ -214,8 +214,8 @@ export async function main(): Promise<void> {
 
     const parser = new RecordingParser(new DoclingDocumentParser(), checkpoint);
     const resolver = new RecordingResolver(new LocalResearchReportInputResolver({ documentParser: parser, parserId: parser.id }));
-    let observer: SmokeObservingRuntime | undefined;
-    realRuntime = await createRealKnowledgeCurationModel(config, undefined, (delegate) => { observer = new SmokeObservingRuntime(delegate); return observer; });
+  let observer: FullValidationObservingRuntime | undefined;
+    realRuntime = await createRealKnowledgeCurationModel(config, undefined, (delegate) => { observer = new FullValidationObservingRuntime(delegate); return observer; });
     if (!observer) throw new Error("runtime observer was not initialized");
     const model = new R9RecordingModel(realRuntime.model, observer, checkpoint);
     let writerInvocations = 0;
@@ -234,15 +234,16 @@ export async function main(): Promise<void> {
     evidence.docling = parserEvidence(parser.result);
     evidence.batchPlan = planned;
     evidence.primary = primaryEvidenceValue;
+    evidence.observer = { passive: true, observerCreatedTimeout: observer.observerCreatedTimeout, observerCreatedAbortController: observer.observerCreatedAbortController, originalRuntimeSignalPreserved: observer.originalSignalPreserved };
     const extractionBatches = isRecord(primaryEvidenceValue.extraction) && Array.isArray(primaryEvidenceValue.extraction.batches)
       ? primaryEvidenceValue.extraction.batches.filter(isRecord)
       : [];
     for (const batch of extractionBatches)
       await checkpoint(`batch_${String(batch.batchId)}_validation_observed`, { batchValidation: batch });
-    if (!parserMatchesExpected(evidence.docling as JsonRecord)) throw new ValidationFailure("FAIL / SOL REVIEW REQUIRED", "Docling metrics differ from frozen baseline");
-    if (!batchPlanMatchesExpected(planned) || primary.batches.batchCount !== R9_EXPECTED_BATCH_COUNT || primary.batches.chunkCount !== 1_523)
-      throw new ValidationFailure("FAIL / SOL REVIEW REQUIRED", "deterministic batch plan differs from frozen baseline");
-    if (primary.status === "blocked") throw new ValidationFailure("FAIL / SOL REVIEW REQUIRED", `primary workflow blocked at ${primary.failureStage ?? "unknown stage"}`);
+    const primaryGate = evaluatePrimaryCompletionGate(primary, evidence.docling as JsonRecord, planned);
+    if (primaryGate === "docling_invalid") throw new ValidationFailure("FAIL / SOL REVIEW REQUIRED", "Docling metrics differ from frozen baseline");
+    if (primaryGate === "batch_plan_invalid") throw new ValidationFailure("FAIL / SOL REVIEW REQUIRED", "deterministic batch plan differs from frozen baseline");
+    if (primaryGate === "blocked") throw new ValidationFailure(classifyBlockedStatus(primary, model, observer), blockedFailureMessage(primary, model, observer));
     const primaryLog = await readIngestionLog(root, primary.workflowRunId);
     ((evidence.primary as JsonRecord).modelAccounting as JsonRecord).changeSetIngestionContextModelCalls = primaryLog.modelCalls;
     ((evidence.primary as JsonRecord).modelAccounting as JsonRecord).changeSetMatches = primaryLog.modelCalls === ((evidence.primary as JsonRecord).modelAccounting as JsonRecord).physicalProviderCalls;
@@ -304,7 +305,7 @@ async function resolveTarget(root: string): Promise<{ handle: KnowledgeBaseHandl
 async function readIngestionLog(root: string, workflowRunId: string): Promise<JsonRecord & { modelCalls: number }> { const handle = (await resolveTarget(root)).handle; const log = await new KnowledgeIngestionLogStore().read(handle, workflowRunId); const context = log && isRecord(log.ingestionContext) ? log.ingestionContext : undefined; return { present: Boolean(log), status: log?.status ?? null, writeStatus: typeof log?.writeStatus === "string" ? log.writeStatus : null, committedRevision: typeof log?.committedRevision === "number" ? log.committedRevision : null, modelCalls: context && Array.isArray(context.modelCalls) ? context.modelCalls.length : typeof context?.modelCalls === "number" ? context.modelCalls : 0 }; }
 async function createFreshKnowledgeBase(): Promise<string> { const root = await mkdtemp(join(tmpdir(), "researchhub-c004-r9-final-")); await mkdir(join(root, "registry"), { recursive: true }); const timestamp = "2026-09-01T00:00:00.000Z"; await writeFile(join(root, "manifest.yaml"), `${canonicalSerialize({ knowledgeBaseId: R9_KNOWLEDGE_BASE_ID, name: "C-004-R9 final disposable KB", schemaVersion: "0.3", storageFormatVersion: "1", revision: 0, status: "active", createdAt: timestamp, updatedAt: timestamp })}\n`, "utf8"); await writeFile(join(root, "registry/assets.yaml"), "{}\n", "utf8"); await writeFile(join(root, "registry/raw.yaml"), "{}\n", "utf8"); return root; }
 async function findExactPdf(): Promise<string> { const directory = "C:\\Users\\Administrator\\Documents"; for (const entry of await readdir(directory)) { if (!entry.toLocaleLowerCase().endsWith(".pdf")) continue; const candidate = join(directory, entry); const bytes = Uint8Array.from(await readFile(candidate)); if (bytes.byteLength === R9_EXPECTED_PDF_BYTES && createHash("sha256").update(bytes).digest("hex") === R9_EXPECTED_PDF_SHA256) return candidate; } throw new Error("exact R9 PDF was not found"); }
-async function gitPreflight(): Promise<JsonRecord & { head: string; workingTreeClean: boolean; productionFilesChanged: boolean }> { const head = (await git(["rev-parse", "HEAD"])).trim(); const status = (await git(["status", "--porcelain"])).split(/\r?\n/).filter(Boolean); const changed = (await git(["diff", "--name-only", `${R9_BASELINE}..HEAD`])).split(/\r?\n/).map((item) => item.trim()).filter(Boolean); const unexpected = status.filter((line) => !line.startsWith("?? ") || !/^researchhub\.architecture(?:\.|$)/.test(line.slice(3))); return { head, expected: R9_BASELINE, workingTreeClean: unexpected.length === 0, statusLines: status, changedSinceBaseline: changed, productionFilesChanged: changed.some((file) => !isAllowed(file)) }; }
+async function gitPreflight(): Promise<JsonRecord & { head: string; workingTreeClean: boolean; productionFilesChanged: boolean }> { const head = (await git(["rev-parse", "HEAD"])).trim(); const status = (await git(["status", "--porcelain"])).split(/\r?\n/).filter(Boolean); const changed = (await git(["diff", "--name-only", `${R9_BASELINE}..HEAD`])).split(/\r?\n/).map((item) => item.trim()).filter(Boolean); const evidencePath = R9_EVIDENCE_PATH.replaceAll("\\", "/"); const unexpected = status.filter((line) => { if (!line.startsWith("?? ")) return true; const path = line.slice(3).replaceAll("\\", "/"); return !/^researchhub\.architecture(?:\.|$)/.test(path) && path !== evidencePath; }); return { head, expected: R9_BASELINE, workingTreeClean: unexpected.length === 0, statusLines: status, changedSinceBaseline: changed, productionFilesChanged: changed.some((file) => !isAllowed(file)) }; }
 async function git(args: string[]): Promise<string> { const { execFile } = await import("node:child_process"); const { promisify } = await import("node:util"); return (await promisify(execFile)("git", args)).stdout; }
 function isAllowed(file: string): boolean { return file === "package.json" || file.startsWith("tools/knowledge-product-validation/") || file.startsWith("tests/knowledge/product-validation/") || file.startsWith("docs/project-management/"); }
 async function deepSeekModelPreflight(baseUrl: string, apiKey: string | undefined, model: string): Promise<JsonRecord & { status: string; diagnostic: string }> { if (!apiKey) return { status: "BLOCKED", diagnostic: "DeepSeek credential is not configured in the isolated runtime" }; try { const response = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, { headers: { accept: "application/json", authorization: `Bearer ${apiKey}` } }); if (!response.ok) return { status: "BLOCKED", httpStatus: response.status, diagnostic: `DeepSeek /models rejected credentials with HTTP ${response.status}` }; const body = await response.json() as { data?: unknown }; const available = Array.isArray(body.data) ? body.data.filter((item): item is { id: string } => isRecord(item) && typeof item.id === "string") : []; return available.some((item) => item.id === model) ? { status: "READY", httpStatus: response.status, modelAvailable: true, diagnostic: "DeepSeek credential and Flash model accepted by /models" } : { status: "BLOCKED", httpStatus: response.status, modelAvailable: false, diagnostic: `Configured model ${model} is not present in DeepSeek /models` }; } catch (error) { return { status: "BLOCKED", diagnostic: `DeepSeek model preflight transport failure: ${error instanceof Error ? error.message.slice(0, 180) : String(error).slice(0, 180)}` }; } }
@@ -313,9 +314,25 @@ function parserEvidence(result: DocumentParseResult | undefined): JsonRecord { c
 function sanitizeDoclingPreflight(value: JsonRecord): JsonRecord { return { status: typeof value.status === "string" ? value.status : "unknown", doclingVersion: typeof value.doclingVersion === "string" ? value.doclingVersion : null, managedRootConfigured: typeof value.managedRoot === "string", pythonConfigured: typeof value.python === "string", modelRootConfigured: typeof value.modelRoot === "string", checks: isRecord(value.checks) ? value.checks : {}, diagnostics: Array.isArray(value.diagnostics) ? value.diagnostics.slice(0, 12) : [] }; }
 function parserMatchesExpected(value: JsonRecord): boolean { return value.pageCount === 103 && value.chunks === 1_523 && value.uniqueChunkIds === 1_523 && value.emptyChunks === 0 && value.sections === 154 && value.tables === 45 && value.images === 178 && value.normalizedCharacters === 97_784; }
 function batchPlanMatchesExpected(value: JsonRecord): boolean { return value.planned === R9_EXPECTED_BATCH_COUNT && value.inputChunks === 1_523 && value.inputUniqueChunks === 1_523 && value.plannedCoveredChunks === 1_523 && value.plannedCoveredUniqueChunks === 1_523 && value.omissions === 0 && value.duplicateCoverage === 0 && value.complete === true; }
+export type PrimaryCompletionGate = "docling_invalid" | "batch_plan_invalid" | "blocked" | "success_invariants_applicable";
+export function evaluatePrimaryCompletionGate(primary: Pick<ResearchReportKnowledgeIngestionResult, "status" | "batches">, docling: JsonRecord, planned: JsonRecord): PrimaryCompletionGate {
+  if (!parserMatchesExpected(docling)) return "docling_invalid";
+  if (!batchPlanMatchesExpected(planned)) return "batch_plan_invalid";
+  if (primary.status === "blocked") return "blocked";
+  if (primary.batches.batchCount !== R9_EXPECTED_BATCH_COUNT || primary.batches.chunkCount !== 1_523) return "batch_plan_invalid";
+  return "success_invariants_applicable";
+}
+function classifyBlockedStatus(primary: ResearchReportKnowledgeIngestionResult, model: R9RecordingModel, runtime: FullValidationObservingRuntime): FinalStatus {
+  const upstreamError = runtime.calls.some((call) => typeof call.upstreamError === "string") || model.calls.some((call) => isRecord(call.runtime) && typeof call.runtime.upstreamError === "string");
+  return upstreamError ? "BLOCKED / EXTERNAL SERVICE - SOL REVIEW REQUIRED" : "FAIL / SOL REVIEW REQUIRED";
+}
+function blockedFailureMessage(primary: ResearchReportKnowledgeIngestionResult, model: R9RecordingModel, runtime: FullValidationObservingRuntime): string {
+  const upstreamError = runtime.calls.some((call) => typeof call.upstreamError === "string") || model.calls.some((call) => isRecord(call.runtime) && typeof call.runtime.upstreamError === "string");
+  return upstreamError ? `primary workflow blocked at ${primary.failureStage ?? "unknown stage"}; upstream provider/runtime error observed` : `primary workflow blocked at ${primary.failureStage ?? "unknown stage"}; no upstream provider/runtime error observed`;
+}
 function deterministicBatchEvidence(result: DocumentParseResult | undefined): JsonRecord { const chunks = result?.chunks ?? []; const groups = new Map<string, Array<{ chunkId: string; text: string }>>(); for (const chunk of chunks) { const section = chunk.section?.trim() || "(untitled)"; const group = groups.get(section) ?? []; group.push({ chunkId: chunk.chunkId, text: chunk.text }); groups.set(section, group); } const batches: Array<{ chunkIds: string[]; characterCount: number }> = []; let current = { chunkIds: [] as string[], characterCount: 0 }; const flush = () => { if (current.chunkIds.length) batches.push(current); current = { chunkIds: [], characterCount: 0 }; }; for (const section of groups.values()) { const sectionCharacters = section.reduce((sum, chunk) => sum + chunk.text.length, 0); if (current.chunkIds.length && current.characterCount + sectionCharacters > 6_000) flush(); if (!current.chunkIds.length && sectionCharacters <= 6_000) { current.chunkIds.push(...section.map((chunk) => chunk.chunkId)); current.characterCount += sectionCharacters; continue; } for (const chunk of section) { if (current.chunkIds.length && current.characterCount + chunk.text.length > 6_000) flush(); current.chunkIds.push(chunk.chunkId); current.characterCount += chunk.text.length; } } flush(); const ids = batches.flatMap((batch) => batch.chunkIds); return { planned: batches.length, inputChunks: chunks.length, inputUniqueChunks: new Set(chunks.map((chunk) => chunk.chunkId)).size, plannedCoveredChunks: ids.length, plannedCoveredUniqueChunks: new Set(ids).size, omissions: chunks.length - new Set(ids).size, duplicateCoverage: ids.length - new Set(ids).size, complete: ids.length === chunks.length && new Set(ids).size === chunks.length }; }
 
-function primaryEvidence(result: ResearchReportKnowledgeIngestionResult, model: R9RecordingModel, runtime: SmokeObservingRuntime, writerInvocations: number, planned: JsonRecord): JsonRecord {
+function primaryEvidence(result: ResearchReportKnowledgeIngestionResult, model: R9RecordingModel, runtime: FullValidationObservingRuntime, writerInvocations: number, planned: JsonRecord): JsonRecord {
   const extraction = model.calls.filter((call) => call.operation === "extractKnowledge");
   const batches: JsonRecord[] = result.batches.batches.map((batch) => {
     const calls = extraction.filter((call) => call.batchId === batch.batchId);
