@@ -12,14 +12,22 @@ calls, one physical extraction call, retryCount zero, and stopped before
 delegating batch-0003; no Writer call or revision mutation occurred.
 
 The first-run evidence serializer did not project the Workflow's nested
-candidate-validation `attempts` shape. Candidate-local rejection and accepted
-candidate counts were therefore not durably observed. S3-R2 is
-Completed / INCONCLUSIVE / ISOLATION PATH NOT EXERCISED; the serializer was
-corrected in the working tree and the real smoke was not rerun. Durable
-sanitized evidence is
+candidate-validation `attempts` shape, so exact accepted/rejected counts are
+not present in the historical artifact and have not been fabricated. Sol's
+independent adjudication establishes the isolation proof from the durable raw
+Flash output: endpoint-incompatible `upstream_of` product-to-industry and
+product-to-product relations, frozen Schema 0.3/C13 validation semantics,
+validationStatus `passed`, one physical extraction, zero retry, and the
+candidate_set_exhausted invariant. Rejected candidates therefore remained
+isolated from accepted candidates without semantic coercion. The separate
+derived adjudication evidence is
+tests/knowledge/product-validation/evidence/c004-s3-r2-sol-adjudication.json.
+S3-R2 is
+Accepted / PASS - CANDIDATE ISOLATION EXERCISED - Sol verified; the serializer
+correction remains in the working tree and the real smoke was not rerun.
+The historical run evidence remains
 tests/knowledge/product-validation/evidence/c004-s3-r2-post-c13-real-candidate-isolation-smoke.json.
-This does not establish C13 candidate-isolation behavior, does not execute full
-report validation, and does not authorize C4-R9.
+This does not execute full report validation and does not authorize C4-R9.
 
 ## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R1
 

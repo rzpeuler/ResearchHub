@@ -1,0 +1,63 @@
+{
+  "taskId": "KNOWLEDGE-V0.3-S3-R2-SOL-ADJUDICATION-CLOSURE-C-004-S3-R2-R1",
+  "realRunCommit": "dc15fef03d1c96dbe49069d3fe0731d142d1cd26",
+  "realRunEvidence": "tests/knowledge/product-validation/evidence/c004-s3-r2-post-c13-real-candidate-isolation-smoke.json",
+  "solClassification": "Accepted / PASS - CANDIDATE ISOLATION EXERCISED - Sol verified",
+  "rawCandidateCounts": {
+    "entities": 32,
+    "relations": 12,
+    "claims": 17
+  },
+  "validationStatus": "passed",
+  "physicalExtractionCalls": 1,
+  "retryCount": 0,
+  "relationObservations": [
+    {
+      "relationType": "upstream_of",
+      "sourceEntityType": "industry",
+      "targetEntityType": "industry",
+      "observedCount": 1,
+      "schemaAccepted": true
+    }
+  ],
+  "invalidEndpointObservations": [
+    {
+      "relationType": "upstream_of",
+      "sourceEntityType": "product",
+      "targetEntityType": "industry",
+      "observedCount": 3,
+      "schemaAccepted": false,
+      "rejectionCode": "invalid_semantics"
+    },
+    {
+      "relationType": "upstream_of",
+      "sourceEntityType": "product",
+      "targetEntityType": "product",
+      "observedCount": 6,
+      "schemaAccepted": false,
+      "rejectionCode": "invalid_semantics"
+    }
+  ],
+  "deterministicInference": {
+    "candidateLocalInvalidSemanticsOccurred": true,
+    "acceptedCandidatesOccurredInSamePhysicalAttempt": true,
+    "candidateSetExhaustedWouldRequireC9Retry": true,
+    "zeroRetryRulesOutAllCandidatesRejected": true,
+    "partialRejectionDidNotTriggerFullRegeneration": true,
+    "rejectedCandidatesExcludedByFrozenValidator": true,
+    "noSemanticCoercion": true,
+    "basis": [
+      "Real Flash output contained endpoint-incompatible upstream_of product-to-industry and product-to-product relations.",
+      "Frozen Schema 0.3 permits upstream_of only for industry-to-industry endpoints.",
+      "C13 candidate-local validation rejects invalid candidates while retaining valid candidates.",
+      "All candidates rejected would produce candidate_set_exhausted and require the bounded C9 retry.",
+      "The real batch completed with validationStatus passed after one physical extraction and zero retries.",
+      "Existing offline C13 tests verify rejection isolation, no coercion, and exclusion from consolidation, reconciliation, ChangeSet, and Writer."
+    ]
+  },
+  "observabilityGap": "The first-run serializer did not durably project exact accepted/rejected counts from candidateValidation.attempts; no missing values were fabricated.",
+  "realSmokeRerun": false,
+  "productionSemanticChanges": false,
+  "fullPipelineExecuted": false,
+  "c4R9Executed": false
+}

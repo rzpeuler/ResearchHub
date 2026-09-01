@@ -12,9 +12,15 @@
   writer/revision mutation; the smoke boundary stopped before batch-0003
   delegation.
 - The first-run evidence serializer did not project nested candidate
-  validation attempts, so accepted/rejected candidate isolation was not
-  durably observed. The result is conservatively
-  `INCONCLUSIVE / ISOLATION PATH NOT EXERCISED`; the smoke was not rerun.
+  validation attempts, so exact accepted/rejected counts remain absent from
+  the historical artifact and were not fabricated. Sol adjudicated candidate
+  isolation from the durable invalid endpoint observations, frozen C13
+  semantics, validationStatus `passed`, one extraction, zero retry, and the
+  `candidate_set_exhausted` invariant. The result is
+  `Accepted / PASS - CANDIDATE ISOLATION EXERCISED - Sol verified`; the smoke
+  was not rerun.
+- Separate sanitized adjudication evidence is
+  tests/knowledge/product-validation/evidence/c004-s3-r2-sol-adjudication.json.
 - Durable sanitized evidence is
   tests/knowledge/product-validation/evidence/c004-s3-r2-post-c13-real-candidate-isolation-smoke.json.
 

@@ -2,7 +2,7 @@
 
 ## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R2 - Real Candidate Isolation Smoke Result
 
-Status: Completed / INCONCLUSIVE / ISOLATION PATH NOT EXERCISED
+Status: Accepted / PASS - CANDIDATE ISOLATION EXERCISED - Sol verified
 Date: 2026-09-01
 
 The authorized S3-R2 smoke ran exactly once in a supervised process-local
@@ -16,12 +16,20 @@ zero, and reached the expected smoke boundary at batch-0003 without delegation,
 writer invocation, or revision change.
 
 The first-run durable serializer did not correctly project the Workflow's
-nested candidate-validation `attempts` shape. Candidate-local rejection and
-accepted-candidate counts therefore remain unobserved in the durable artifact,
-so the required isolation path cannot be claimed. The artifact records the
-conservative classification `INCONCLUSIVE / ISOLATION PATH NOT EXERCISED` and
-that the real smoke was not rerun. The serializer correction is present in the
-working tree for subsequent authorized runs; no second real run was made.
+nested candidate-validation `attempts` shape. Exact accepted/rejected counts
+are therefore absent from the historical artifact and are not fabricated. Sol
+adjudicated the isolation proof from the durable raw Flash output containing
+endpoint-incompatible `upstream_of` product-to-industry and product-to-product
+relations, the frozen Schema 0.3/C13 validator semantics, validationStatus
+`passed`, one physical extraction, zero retry, and the invariant that an
+all-rejected set would have produced `candidate_set_exhausted` and required
+C9. The frozen validator retains valid candidates, excludes rejected
+candidates from downstream processing, and performs no semantic coercion.
+
+The separate sanitized derived adjudication evidence is
+tests/knowledge/product-validation/evidence/c004-s3-r2-sol-adjudication.json.
+The serializer correction is present in the working tree; no second real run
+was made.
 
 Durable sanitized evidence is
 tests/knowledge/product-validation/evidence/c004-s3-r2-post-c13-real-candidate-isolation-smoke.json.
