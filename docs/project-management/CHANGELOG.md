@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-01 - KNOWLEDGE-V0.3-RELATION-SELECTION-GUIDANCE-C-012
+
+- Added a pure model-facing Relation selection guide to `extractKnowledge`.
+- Generated all 14 canonical relation compatibility entries from executable
+  Schema 0.3 definitions in stable relation vocabulary order, including
+  endpoint types, semantic descriptions, and optional endpoint constraints.
+- Added endpoint-first, semantic-description matching, omission, no-coercion,
+  and no-lexical-selection guidance. The shared guide is byte-identical across
+  the first extraction attempt and the existing C9 retry; only bounded retry
+  feedback is added.
+- Added exact Schema-parity and retry-equality tests. All deterministic Curation,
+  Ingestion, Workflow, Knowledge, Runtime, Migration, Product Validation, and
+  TypeScript checks pass. No real LLM/API call was made.
+- C12 is `Completed / Sol Verification Pending`; C4-R8-FINAL remains
+  `Completed / FAIL - SOL REVIEW REQUIRED`; Stage C remains in progress and is
+  not accepted. DSH multi-provider / other-API capability portability remains
+  deferred pending detailed user requirements.
+
 ## 2026-09-01 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R8-FINAL
 
 - Executed the one authorized full real Knowledge v0.3 pipeline run with the

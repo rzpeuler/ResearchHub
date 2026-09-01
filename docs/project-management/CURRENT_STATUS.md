@@ -1,5 +1,28 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-RELATION-SELECTION-GUIDANCE-C-012
+
+C12 adds a pure model-facing Relation selection guide to `extractKnowledge`.
+The guide is generated from the executable Schema 0.3 relation vocabulary in
+stable `relation.types` order and carries the Schema-derived source types,
+target types, semantic descriptions, and optional endpoint constraints for all
+14 canonical relations. It instructs endpoint-first selection, semantic
+description matching, omission when neither endpoint compatibility nor meaning
+matches, and no endpoint-type coercion or lexical-name selection.
+
+The guide is part of the shared extraction prompt, so attempt 1 and the C9
+retry receive identical guidance; retry feedback remains bounded and is the
+only added retry section. Focused parity/retry tests and all deterministic
+curation, ingestion, Workflow, Knowledge, runtime, migration,
+product-validation, and TypeScript checks pass. No real PDF, `/models`,
+DeepSeek request, or real LLM call was made for C12. Schema, Validator, C8,
+C9, C10, C11, DSH, reasoning policy, provider routing, and Workflow behavior
+remain unchanged.
+
+C12 is `Completed / Sol Verification Pending`. C4-R8-FINAL remains
+`Completed / FAIL - SOL REVIEW REQUIRED`; Stage C remains `In Progress` and is
+not accepted.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R8-FINAL
 
 The single authorized full real-pipeline run used the exact PDF, Local Docling,

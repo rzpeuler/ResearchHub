@@ -36,7 +36,8 @@
 - RH-LLM-DEFAULT-FLASH-001: Accepted - Sol verified
 - C4-S1 Flash Extraction Smoke: Completed / PASS - Sol Verification Pending
 - C4-R8-FINAL Product Validation: Completed / FAIL - SOL REVIEW REQUIRED
-- Stage C: In Progress / Awaiting R8 Sol Verification (not accepted)
+- C12 Relation Selection Guidance: Completed / Sol Verification Pending
+- Stage C: In Progress / Awaiting C12 Sol Verification (not accepted)
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3
@@ -82,6 +83,15 @@ bounded C4-S1 smoke passed with the default Flash model and observed the
 contract in the real path. C11 and the Flash default are accepted by Sol; the
 smoke remains `Completed / PASS - Sol Verification Pending`. Stage C remains
 In Progress and is not accepted.
+
+C12 adds concise endpoint-first Relation selection guidance to the extraction
+prompt. Its compatibility entries are generated from all 14 executable Schema
+relation definitions in stable order, and the retry receives the identical
+guide before bounded validation feedback. Offline parity, retry, regression,
+and TypeScript checks pass; no real LLM call was made. C12 is
+`Completed / Sol Verification Pending`. The R8 failure remains a required
+engineering rework signal, and no product acceptance or Stage C closure is
+recorded.
 
 DSH multi-provider / other-API capability portability (including reasoning
 capability compatibility) is `Deferred / Awaiting Detailed User

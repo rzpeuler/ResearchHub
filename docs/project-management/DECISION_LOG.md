@@ -1,5 +1,31 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-RELATION-SELECTION-GUIDANCE-C-012 - Schema-Derived Endpoint-First Guidance
+
+**Status:** Completed / Sol Verification Pending
+**Date:** 2026-09-01
+
+C12 adds one pure prompt helper and composes it into `extractKnowledge`. The
+helper derives all 14 canonical relation entries from executable Schema 0.3
+definitions in stable vocabulary order, including endpoint types, semantic
+descriptions, and optional endpoint constraints. The model-facing rules make
+endpoint type determination precede relation selection, require semantic
+description matching, permit omission when no canonical relation fits, and
+forbid endpoint coercion or lexical-name selection.
+
+The same base prompt carries the same guide on the first extraction attempt and
+the existing C9 retry; only bounded validation feedback is appended on retry.
+Focused exact-parity and retry-equality tests plus the deterministic regression
+suite and TypeScript checks pass. No real LLM call, PDF run, `/models` request,
+or provider request was made. The Schema, Validator, C8, C9, C10, C11, DSH,
+reasoning policy, provider routing, Workflow, Writer, and public output shape
+are unchanged.
+
+C4-R8-FINAL remains `Completed / FAIL - SOL REVIEW REQUIRED`; Stage C remains
+In Progress and is not accepted. DSH multi-provider / other-API capability
+portability (including reasoning capability compatibility) remains
+`Deferred / Awaiting Detailed User Requirements`, with no implementation task.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R8-FINAL - Full Flash Pipeline Result
 
 **Status:** Completed / FAIL - SOL REVIEW REQUIRED
