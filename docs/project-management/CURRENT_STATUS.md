@@ -1,5 +1,16 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL - Result
+
+C4-R9-R2 completed its single authorized real run with canonical result
+`BLOCKED / EXTERNAL SERVICE - SOL REVIEW REQUIRED`. The exact runtime, PDF,
+Docling baseline, fresh KB, and zero-reconciliation boundary were verified;
+the Provider returned `max-tokens` during extraction batch-0004, before
+extraction completion, consolidation, Writer, or replay. Durable evidence is
+at `tests/knowledge/product-validation/evidence/c004-r9-r2-final-full-pipeline.json`.
+No product correction was made. Stage C remains In Progress / Awaiting
+C4-R9-R2 Sol Verification and is not accepted.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL
 
 C4-R9-R2 is `Authorized / In Progress`. It is the single authorized full

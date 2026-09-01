@@ -1,5 +1,23 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL - Result
+
+Status: Completed / BLOCKED - EXTERNAL SERVICE - SOL REVIEW REQUIRED
+Date: 2026-09-02
+
+The single authorized R9-R2 process ran from Commit A
+`76393c80790233139211a37089159d02ed288314`. Runtime, exact PDF, Docling,
+fresh-KB initialization, and the C14 fresh-KB boundary all passed with zero
+existing_ref candidates and zero reconciliation calls. The Provider completed
+understandReport and extraction batches 0001 and 0003, then returned
+`finish_reason=max-tokens` for batch-0004 at `maxTokens=65536`; extraction did
+not complete, so consolidation, Writer, and replay were not reached. This is
+classified as an external/provider block with bounded evidence, not a product
+semantic correction. Evidence:
+`tests/knowledge/product-validation/evidence/c004-r9-r2-final-full-pipeline.json`.
+Stage C remains In Progress / Awaiting C4-R9-R2 Sol Verification and is not
+accepted.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL - Authorization
 
 Status: Authorized / In Progress

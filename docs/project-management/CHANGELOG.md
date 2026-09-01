@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL - Result
+
+- The one authorized real run completed with
+  `BLOCKED / EXTERNAL SERVICE - SOL REVIEW REQUIRED` after the Provider
+  returned `finish_reason=max-tokens` for extraction batch-0004 at the frozen
+  65536-token limit.
+- Runtime, exact PDF, Docling, fresh-KB setup, and the C14 zero-reconciliation
+  boundary passed; no product semantic changes, Writer mutation, or replay
+  were performed after the block.
+- Durable evidence:
+  `tests/knowledge/product-validation/evidence/c004-r9-r2-final-full-pipeline.json`.
+- Stage C remains In Progress / Awaiting C4-R9-R2 Sol Verification; no
+  acceptance is predeclared.
+
 ## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL
 
 - Authorized the single R9-R2 full-pipeline real validation from the exact
