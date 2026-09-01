@@ -1,8 +1,30 @@
 # Decision Log
 
-## KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013 - Candidate-Level Validation Isolation
+## KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013-R1 - Restore candidateId Trusted Boundary
 
 Status: Completed / Sol Verification Pending
+Date: 2026-09-01
+
+Independent acceptance found that candidateId was checked only inside
+candidate-level validators because it was absent from the existing global
+TRUSTED_KEYS set. C13-R1 adds candidateId to that existing set and preserves
+the recursive rejectTrusted traversal before candidate partition. Any
+model-generated candidateId in an Entity, Relation, Claim, or nested object is
+now an operation-fatal invalid_reference; its value is not copied into
+CandidateValidationRejection metadata or retry feedback. The defensive
+candidate-level checks remain unchanged.
+
+Tests cover all candidate kinds, nested injection, existing trusted-field
+regression, one C9 recovery, persistent two-attempt failure, and metadata
+safety. No real LLM, PDF, or API call was made. C13 remains Completed /
+Engineering Rework Required - Sol verified; C4-S2 remains Completed /
+Engineering Rework Required - Sol verified; Stage C is In Progress and not
+accepted. S3 and C4-R9 are NOT AUTHORIZED. Deferred multi-provider
+portability remains unchanged.
+
+## KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013 - Candidate-Level Validation Isolation
+
+Status: Completed / Engineering Rework Required - Sol verified
 Date: 2026-09-01
 
 C13 preserves global validation as the operation boundary and isolates local

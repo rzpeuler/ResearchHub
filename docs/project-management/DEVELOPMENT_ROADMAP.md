@@ -38,8 +38,10 @@
 - C4-S1 Flash Extraction Smoke: Completed / PASS - Sol Verification Pending
 - C4-R8-FINAL Product Validation: Completed / FAIL - SOL REVIEW REQUIRED
 - C4-S2 Post-C12 Extraction Smoke: Completed / Engineering Rework Required - Sol verified
-- C13 Candidate-Isolated Validation: Completed / Sol Verification Pending
+- C13 Candidate-Isolated Validation: Completed / Engineering Rework Required - Sol verified
+- C13-R1 Trusted candidateId boundary correction: Completed / Sol Verification Pending
 - C4-R9 Product Validation: NOT AUTHORIZED
+- S3: NOT AUTHORIZED
 - Stage C: In Progress / not accepted
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and

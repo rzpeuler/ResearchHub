@@ -1,5 +1,22 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013-R1
+
+C13-R1 fixes the trusted-boundary defect identified during independent
+acceptance: candidateId is a Workflow-local, system-owned identity and is now
+included in the existing global TRUSTED_KEYS traversal before candidate
+partition. Entity, Relation, Claim, and arbitrarily nested candidateId
+injections therefore fail the whole extractKnowledge attempt with
+invalid_reference. The existing candidate-local checks remain as
+defense-in-depth; local semantic/reference/confidence failures remain isolated.
+
+Focused tests cover all three candidate kinds, nested traversal, existing
+trusted fields, metadata non-disclosure, C9 recovery, and persistent failure.
+No real LLM, PDF, or API call was made. C13 is Completed / Engineering Rework
+Required - Sol verified; C13-R1 is Completed / Sol Verification Pending. C4-S2
+remains Completed / Engineering Rework Required - Sol verified; Stage C remains
+In Progress and is not accepted. S3 and C4-R9 remain NOT AUTHORIZED.
+
 ## KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013
 
 C13 changes Knowledge v0.3 extractKnowledge from batch-level semantic

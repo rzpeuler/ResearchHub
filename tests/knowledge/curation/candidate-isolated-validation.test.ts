@@ -98,12 +98,29 @@ test('accepts only the frozen upstream_of Industry to Industry variant without c
 test('trusted candidate fields and malformed top-level extraction remain operation-fatal', async () => {
   for (const output of [
     { entities: [entity('Attacker', { id: 'entity:attacker' })], relations: [], claims: [] },
+    { entities: [], relations: [relation('supplier_of', 'company', 'company', { candidateId: 'relation:attacker' })], claims: [] },
+    { entities: [], relations: [], claims: [claim({ candidateId: 'claim:attacker' })] },
+    { entities: [entity('Nested', { semanticFields: { nested: { candidateId: 'nested:attacker' } } })], relations: [], claims: [] },
     { entities: [], relations: 'not-an-array', claims: [] },
     { entities: [], claims: [] },
     { entities: [], relations: [], claims: [], extra: true },
   ]) {
     const { skill: curation } = skill(output)
     await assert.rejects(() => curation.extractKnowledge(input), (error: unknown) => error instanceof KnowledgeCurationError && (error.code === 'invalid_reference' || error.code === 'invalid_model_output'))
+  }
+})
+
+test('all existing trusted candidate fields are global-fatal and do not leak injected values', async () => {
+  for (const field of ['id', 'sourceRef', 'sourceRefs', 'rawRef', 'relationId', 'claimId', 'entityId']) {
+    const injectedValue = 'attacker-' + field
+    const output = { entities: [entity('Trusted field test', { [field]: injectedValue })], relations: [], claims: [] }
+    const { skill: curation } = skill(output)
+    await assert.rejects(() => curation.extractKnowledge(input), (error: unknown) => {
+      return error instanceof KnowledgeCurationError &&
+        error.code === 'invalid_reference' &&
+        error.candidateValidationRejections === undefined &&
+        !error.message.includes(injectedValue)
+    })
   }
 })
 

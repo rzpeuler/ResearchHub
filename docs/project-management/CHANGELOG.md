@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-01 - KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013-R1
+
+- Corrected the C13 trusted-boundary defect by adding candidateId to the
+  existing global trusted-key traversal before candidate partition.
+- Entity, Relation, Claim, and nested model-generated candidateId values now
+  cause operation-fatal invalid_reference; the injected value is not included
+  in candidate rejection metadata or retry feedback. Candidate-local checks
+  remain as defense-in-depth.
+- Added focused trusted-boundary, C9 recovery/persistent-failure, and metadata
+  safety tests. No real LLM, PDF, or API call was made.
+- C13 remains Completed / Engineering Rework Required - Sol verified; C13-R1
+  is Completed / Sol Verification Pending; Stage C remains In Progress and is
+  not accepted; S3 and C4-R9 remain NOT AUTHORIZED.
+
 ## 2026-09-01 - KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013
 
 - Added deterministic candidate-level isolation to Knowledge v0.3

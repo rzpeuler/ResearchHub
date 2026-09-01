@@ -79,6 +79,7 @@ const TRUSTED_KEYS = new Set([
   "entityId",
   "relationId",
   "claimId",
+  "candidateId",
   "knowledgeId",
   "id",
   "operationId",
