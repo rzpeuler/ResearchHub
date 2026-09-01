@@ -1,5 +1,15 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-FINAL
+
+C4-R9 is authorized and In Progress under the two-commit execution protocol.
+Commit A contains only the R9 validation harness, isolated launcher, package
+entry, and this governance transition; the exact Commit A SHA will be used as
+the real-run execution baseline. The authorized run is one supervised full
+18-batch real Flash workflow followed by one guarded `reprocess=false` replay.
+Stage C remains In Progress / Awaiting C4-R9 Sol Verification and is not
+accepted. No result or Stage C acceptance is being predeclared.
+
 ## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R2
 
 S3-R2 ran exactly once as a supervised process-local isolated `.env` child
@@ -27,7 +37,8 @@ Accepted / PASS - CANDIDATE ISOLATION EXERCISED - Sol verified; the serializer
 correction remains in the working tree and the real smoke was not rerun.
 The historical run evidence remains
 tests/knowledge/product-validation/evidence/c004-s3-r2-post-c13-real-candidate-isolation-smoke.json.
-This does not execute full report validation and does not authorize C4-R9.
+This did not execute full report validation; C4-R9 is now separately
+authorized under its own execution protocol.
 
 ## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R1
 

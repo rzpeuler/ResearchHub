@@ -27,6 +27,7 @@
     "knowledge:preflight:real": "node --env-file=.env --import tsx tools/knowledge-product-validation/preflight-real-env.ts",
     "knowledge:preflight:isolated": "node --import tsx tools/knowledge-product-validation/preflight-isolated-env.ts",
     "knowledge:smoke:isolated": "node --import tsx tools/knowledge-product-validation/run-isolated-knowledge-smoke.ts",
+    "knowledge:validation:r9:isolated": "node --import tsx tools/knowledge-product-validation/run-isolated-r9-validation.ts",
     "document:setup:docling": "node --import tsx tools/document-parser/setup-docling.ts",
     "document:doctor:docling": "node --import tsx tools/document-parser/doctor-docling.ts",
     "test:akshare-bridge": "python -m unittest tools.test_akshare_financial_bridge -v",

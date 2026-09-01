@@ -45,9 +45,9 @@
 - RH-REAL-ENV-BOOTSTRAP-001-R1: Accepted - Sol verified
 - S3-R1: Completed / INVALID TEST SETUP - External Execution Boundary Too Short - Sol verified
 - S3-R2: Accepted / PASS - CANDIDATE ISOLATION EXERCISED - Sol verified
-- C4-R9 Product Validation: NOT AUTHORIZED
+- C4-R9 Product Validation: Authorized / In Progress (Commit A preparation)
 - S3: Completed / INVALID TEST SETUP - Parent Environment Credential Override - Sol verified
-- Stage C: In Progress / not accepted
+- Stage C: In Progress / Awaiting C4-R9 Sol Verification
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3

@@ -1,5 +1,19 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-FINAL - Authorization and Commit A
+
+Status: Authorized / In Progress
+Date: 2026-09-01
+
+Sol authorized the final full Knowledge v0.3 product validation after the
+accepted C13/C13-R1 and S3-R2 candidate-isolation evidence. Commit A is
+restricted to the R9 validation harness, process-local isolated launcher,
+package entry, offline support coverage, and governance transition. The real
+run must use the exact Commit A SHA, execute all 18 batches in commit mode,
+perform one guarded `reprocess=false` replay on the same temporary Knowledge
+Base and PDF, and write only sanitized durable evidence. Stage C remains In
+Progress / Awaiting C4-R9 Sol Verification and is not accepted.
+
 ## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R2 - Real Candidate Isolation Smoke Result
 
 Status: Accepted / PASS - CANDIDATE ISOLATION EXERCISED - Sol verified

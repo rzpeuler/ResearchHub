@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-01 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-FINAL
+
+- Sol authorized C4-R9 final full-pipeline product validation after the
+  accepted C13/C13-R1 and S3-R2 states.
+- Commit A is limited to the R9 validation harness, isolated `.env` launcher,
+  package entry, offline support coverage, and governance transition. The
+  real run must use Commit A exactly, process all 18 batches, commit once, and
+  execute one guarded `reprocess=false` replay.
+- C4-R9 is Authorized / In Progress. Stage C remains In Progress / Awaiting
+  C4-R9 Sol Verification; no Stage C acceptance is predeclared.
+
 ## 2026-09-01 - KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R2
 
 - Ran exactly one supervised process-local isolated real Flash smoke with a
