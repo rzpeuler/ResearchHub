@@ -692,7 +692,7 @@
   },
   "status": "BLOCKED / EXTERNAL SERVICE - SOL REVIEW REQUIRED",
   "failure": {
-    "message": "primary workflow blocked at extraction; no upstream provider/runtime error observed"
+    "message": "primary workflow blocked at extraction; Provider returned max-tokens before extraction completion"
   },
   "completedAt": "2026-09-01T18:19:07.829Z"
 }
