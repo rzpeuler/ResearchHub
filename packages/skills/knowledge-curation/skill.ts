@@ -10,7 +10,7 @@ import { EXTRACT_KNOWLEDGE_PROMPT } from "./prompts/extract-knowledge.ts";
 import { RECONCILE_KNOWLEDGE_PROMPT } from "./prompts/reconcile-knowledge.ts";
 import { ANALYZE_SCHEMA_GAPS_PROMPT } from "./prompts/analyze-schema-gaps.ts";
 import { buildCurationSchemaContext } from "./schema-context.ts";
-import { projectExtractKnowledgeModelInput } from "./model-input.ts";
+import { projectExtractKnowledgeModelInput, projectReconcileKnowledgeModelInput } from "./model-input.ts";
 import {
   validateAnalyzeSchemaGaps,
   validateExtractKnowledge,
@@ -22,6 +22,7 @@ import type {
   ExtractKnowledgeInput,
   ExtractKnowledgeInvocationOptions,
   ReconcileKnowledgeInput,
+  ReconcileKnowledgeInvocationOptions,
   ReconcileKnowledgeOutput,
   ReportUnderstanding,
   SchemaGapInput,
@@ -101,11 +102,12 @@ export class KnowledgeCurationSkill {
 
   async reconcileKnowledge(
     input: ReconcileKnowledgeInput,
+    options?: ReconcileKnowledgeInvocationOptions,
   ): Promise<ReconcileKnowledgeOutput> {
     const raw = await this.invoke(
       "reconcileKnowledge",
-      RECONCILE_KNOWLEDGE_PROMPT,
-      input,
+      reconciliationInstruction(options),
+      projectReconcileKnowledgeModelInput(input),
       STRUCTURED_OUTPUT_CONTRACTS.reconcileKnowledge,
     );
     return validateReconcileKnowledge(raw, input);
@@ -135,4 +137,13 @@ function extractionInstruction(
     .trim()
     .slice(0, VALIDATION_FEEDBACK_MESSAGE_LIMIT);
   return `${EXTRACT_KNOWLEDGE_PROMPT}\n\nPrevious output was rejected by deterministic Knowledge Curation validation.\nValidation code: ${feedback.code}\nValidation message: ${message}\nRegenerate the COMPLETE extraction output from scratch using the same supplied batch, Schema Context, and Output Contract. Correct the validation violation. Do not patch or return only the failed item. Do not relax or reinterpret the Schema Context. Return the complete Entity/Relation/Claim arrays.`;
+}
+
+function reconciliationInstruction(
+  options?: ReconcileKnowledgeInvocationOptions,
+): string {
+  const feedback = options?.validationFeedback;
+  if (!feedback) return RECONCILE_KNOWLEDGE_PROMPT;
+  const message = feedback.message.trim().slice(0, VALIDATION_FEEDBACK_MESSAGE_LIMIT);
+  return `${RECONCILE_KNOWLEDGE_PROMPT}\n\nPrevious reconciliation output was rejected by deterministic validation.\nValidation code: ${feedback.code}\nValidation message: ${message}\nRegenerate the COMPLETE reconciliation decision set for the same supplied groups. Do not return the previous output, unrelated candidates, or any Writer/storage/revision operation.`;
 }

@@ -979,17 +979,11 @@ export function validateReconcileKnowledge(
       );
     seen.add(candidateId);
     const existingRefs = strings(item.existingRefs, "existingRefs");
-    const allowed = new Set(
-      input.groups
-        .find((group) => group.candidateIds.includes(candidateId))
-        ?.existingKnowledge.flatMap((entry) =>
-          typeof entry.id === "string" ? [entry.id] : [],
-        ) ?? [],
-    );
+    const allowed = new Set(candidates.get(candidateId)?.existingRefs ?? []);
     if (existingRefs.some((ref) => !allowed.has(ref)))
       fail(
         "invalid_reference",
-        "Reconciliation references Knowledge outside supplied precise context",
+        "Reconciliation references Knowledge outside candidate existingRefs",
       );
     return {
       candidateId,

@@ -81,6 +81,11 @@ const EXTRACTION_RETRYABLE_CODES = new Set([
   "ungrounded_candidate",
   "candidate_set_exhausted",
 ] as const);
+const RECONCILIATION_RETRYABLE_CODES: ReadonlySet<ModelCallValidationFailure["code"]> = new Set([
+  "invalid_model_output",
+  "invalid_reference",
+  "invalid_semantics",
+] as const);
 const VALIDATION_FEEDBACK_MESSAGE_LIMIT = 240;
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -103,6 +108,18 @@ function isRetryableExtractionValidationError(
   return (
     error instanceof KnowledgeCurationError &&
     EXTRACTION_RETRYABLE_CODES.has(
+      error.code as ModelCallValidationFailure["code"],
+    )
+  );
+}
+function isRetryableReconciliationValidationError(
+  error: unknown,
+): error is KnowledgeCurationError & {
+  code: ModelCallValidationFailure["code"];
+} {
+  return (
+    error instanceof KnowledgeCurationError &&
+    RECONCILIATION_RETRYABLE_CODES.has(
       error.code as ModelCallValidationFailure["code"],
     )
   );
@@ -769,10 +786,7 @@ function preciseGroups(
     const resolution = resolutions.find(
       (item) => item.candidateId === candidate.candidateId,
     );
-    return (
-      resolution?.outcome === "existing_ref" ||
-      resolution?.outcome === "new_object_key"
-    );
+    return resolution?.outcome === "existing_ref";
   });
   const groups: ReconciliationGroup[] = [];
   for (let offset = 0; offset < eligible.length; offset += 8) {
@@ -781,6 +795,11 @@ function preciseGroups(
       const resolution = resolutions.find(
         (item) => item.candidateId === candidate.candidateId,
       )!;
+      const targetRefs = resolution.refs.filter((ref) => {
+        if (resolution.kind === "entity") return context.entities.some((item) => item.id === ref);
+        if (resolution.kind === "relation") return context.relations.some((item) => item.id === ref);
+        return (context.claims ?? []).some((item) => item.id === ref);
+      });
       return {
         candidateId: candidate.candidateId,
         kind:
@@ -790,13 +809,14 @@ function preciseGroups(
               ? "relation"
               : "claim",
         semantic: clone(candidate) as unknown as JsonRecord,
-        existingRefs: resolution.refs.filter((ref) =>
-          context.existingRefs.includes(ref),
-        ),
+        existingRefs: targetRefs,
       };
     });
     const refs = new Set(
-      candidates.flatMap((candidate) => candidate.existingRefs),
+      slice.flatMap((candidate) => {
+        const resolution = resolutions.find((item) => item.candidateId === candidate.candidateId)!;
+        return resolution.refs.filter((ref) => context.existingRefs.includes(ref));
+      }),
     );
     const existingKnowledge = [
       ...context.entities,
@@ -1475,6 +1495,61 @@ export class ResearchReportKnowledgeIngestionWorkflow {
       );
     }
   }
+  private async reconcileGroup(
+    input: ResearchReportKnowledgeIngestionInput,
+    document: NormalizedResearchDocument,
+    sourceAssessment: ReportUnderstanding["sourceAssessment"],
+    group: ReconciliationGroup,
+    calls: ModelCallRecord[],
+  ): Promise<{ decisions: ReconciliationDecision[] }> {
+    const item = this.beginCall(calls, "reconcileKnowledge", group.groupId);
+    const authoritative = {
+      workflowRunId: input.workflowRunId,
+      knowledgeBaseId: input.knowledgeBaseId,
+      document,
+      groups: [group],
+      sourceAssessment,
+    };
+    try {
+      const result = await this.options.curation.reconcileKnowledge(authoritative);
+      item.succeeded = true;
+      return result;
+    } catch (error) {
+      if (!isRetryableReconciliationValidationError(error)) {
+        if (error instanceof KnowledgeCurationError) throw error;
+        throw new KnowledgeIngestionWorkflowError(
+          "curation_failed",
+          error instanceof Error ? error.message : String(error),
+          "curation",
+        );
+      }
+      item.retryCount = 1;
+      item.validationFailures = [validationFailure(1, error)];
+      try {
+        const result = await this.options.curation.reconcileKnowledge(
+          authoritative,
+          {
+            validationFeedback: {
+              attempt: 2,
+              code: error.code,
+              message: boundedValidationMessage(error.message),
+            },
+          },
+        );
+        item.succeeded = true;
+        return result;
+      } catch (retryError) {
+        if (isRetryableReconciliationValidationError(retryError))
+          item.validationFailures.push(validationFailure(2, retryError));
+        if (retryError instanceof KnowledgeCurationError) throw retryError;
+        throw new KnowledgeIngestionWorkflowError(
+          "curation_failed",
+          retryError instanceof Error ? retryError.message : String(retryError),
+          "curation",
+        );
+      }
+    }
+  }
   private async extractBatch(
     input: ExtractKnowledgeInput,
     calls: ModelCallRecord[],
@@ -1648,18 +1723,12 @@ export class ResearchReportKnowledgeIngestionWorkflow {
     );
     const reconciliation = { decisions: [] as ReconciliationDecision[] };
     for (const group of precise) {
-      const result = await this.call(
+      const result = await this.reconcileGroup(
+        input,
+        document,
+        reportUnderstanding.sourceAssessment,
+        group,
         calls,
-        "reconcileKnowledge",
-        group.groupId,
-        () =>
-          this.options.curation.reconcileKnowledge({
-            workflowRunId: input.workflowRunId,
-            knowledgeBaseId: input.knowledgeBaseId,
-            document,
-            groups: [group],
-            sourceAssessment: reportUnderstanding.sourceAssessment,
-          }),
       );
       reconciliation.decisions.push(...result.decisions);
     }

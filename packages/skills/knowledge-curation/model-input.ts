@@ -1,4 +1,4 @@
-import type { ExtractKnowledgeInput, ExtractionBatch, KnowledgeContext, ReportUnderstanding } from './types.ts'
+import type { ExtractKnowledgeInput, ExtractionBatch, KnowledgeContext, ReconcileKnowledgeInput, ReconciliationGroup, ReportUnderstanding } from './types.ts'
 
 export interface ExtractKnowledgeModelInput {
   batch: ExtractionBatch
@@ -26,6 +26,22 @@ export function projectExtractKnowledgeModelInput(input: ExtractKnowledgeInput):
       themes: structuredClone(input.knowledgeContext.themes),
       entities: structuredClone(input.knowledgeContext.entities),
     },
+  }
+}
+
+export interface ReconcileKnowledgeModelInput {
+  groups: ReconciliationGroup[]
+  sourceAssessment: ReconcileKnowledgeInput['sourceAssessment']
+}
+
+/**
+ * Project reconciliation to candidate groups and precise context only. The
+ * authoritative input remains available to the deterministic validator.
+ */
+export function projectReconcileKnowledgeModelInput(input: ReconcileKnowledgeInput): ReconcileKnowledgeModelInput {
+  return {
+    groups: structuredClone(input.groups),
+    sourceAssessment: structuredClone(input.sourceAssessment),
   }
 }
 

@@ -269,6 +269,10 @@ export interface ReconcileKnowledgeInput extends CurationScope {
   sourceAssessment: SourceAssessment;
 }
 
+export interface ReconcileKnowledgeInvocationOptions {
+  validationFeedback?: CurationValidationFeedback;
+}
+
 export interface ReconcileKnowledgeOutput {
   decisions: ReconciliationDecision[];
 }

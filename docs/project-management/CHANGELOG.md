@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-02 - KNOWLEDGE-V0.3-RECONCILIATION-BOUNDARY-C-014
+
+- Corrected the reconciliation boundary so only exact same-kind `existing_ref`
+  targets enter model reconciliation; new objects bypass it and retain
+  deterministic create semantics.
+- Separated candidate target refs from dependency/context refs, projected
+  reconciliation model input without the full document, and added one bounded
+  deterministic-validation retry with complete model-call accounting.
+- Corrected the nullable upstream relation endpoint contract check and added
+  bounded sanitized blocked diagnostics with reconciliation group observability.
+- Offline curation, ingestion, product-validation, integration typecheck, and
+  full regression verification passed. No real LLM, DeepSeek, or C4-R9-R2 run
+  was performed. Result: `C14 COMPLETE / SOL VERIFICATION REQUIRED`.
+
 ## 2026-09-01 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R1
 
 - C4-R9 historical result corrected to `Completed / INVALID TEST SETUP -

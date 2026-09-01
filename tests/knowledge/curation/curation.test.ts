@@ -205,7 +205,12 @@ test('non-extraction operations retain their authoritative model input shape', a
   assert.match(JSON.stringify(understandModel.requests[0]?.input), /normalizedText/)
   const reconcileModel = new ScriptedKnowledgeCurationModel().set('reconcileKnowledge', { decisions: [] })
   await new KnowledgeCurationSkill({ model: reconcileModel }).reconcileKnowledge({ ...scope, groups: [], sourceAssessment: understanding().sourceAssessment as never })
-  assert.match(JSON.stringify(reconcileModel.requests[0]?.input), /run-001/)
+  const reconcileInput = reconcileModel.requests[0]?.input as Record<string, unknown>
+  assert.equal(reconcileInput.workflowRunId, undefined)
+  assert.equal(reconcileInput.knowledgeBaseId, undefined)
+  assert.equal(reconcileInput.document, undefined)
+  assert.equal(JSON.stringify(reconcileInput).includes('normalizedText'), false)
+  assert.equal(JSON.stringify(reconcileInput).includes('run-001'), false)
   const gapModel = new ScriptedKnowledgeCurationModel().set('analyzeSchemaGaps', { gaps: [] })
   await new KnowledgeCurationSkill({ model: gapModel }).analyzeSchemaGaps({ ...scope, candidates: [], knowledgeContext: context })
   assert.match(JSON.stringify(gapModel.requests[0]?.input), /normalizedText/)
@@ -231,6 +236,43 @@ test('model durable candidate IDs and malformed nested output are rejected', asy
 function reconciliationInput(candidateIds = ['candidate-1']) { return { ...scope, groups: [{ groupId: 'group-0001', candidateIds, candidates: candidateIds.map((candidateId) => ({ candidateId, kind: 'entity' as const, semantic: { name: 'New Company' }, existingRefs: ['entity:existing'] })), existingKnowledge: [{ id: 'entity:existing', type: 'company' }] }], sourceAssessment: understanding().sourceAssessment as never } }
 test('reconcileKnowledge enforces exact decision/classification vocabulary and coverage', async () => { const valid = { decisions: [{ candidateId: 'candidate-1', decision: 'create', classification: 'complementary', existingRefs: [], reason: 'New semantic object.', requiresUserReview: false }] }; const a = makeSkill(valid, 'reconcileKnowledge'); const result = await a.skill.reconcileKnowledge(reconciliationInput()); assert.equal(result.decisions[0]?.decision, 'create'); for (const key of ['decision', 'classification']) { const bad = { decisions: [{ ...valid.decisions[0], [key]: 'not-frozen' }] }; const b = makeSkill(bad, 'reconcileKnowledge'); await errorCode(() => b.skill.reconcileKnowledge(reconciliationInput()), 'invalid_semantics') } })
 test('reconciliation requires each candidate exactly once and rejects unknown refs', async () => { const missing = makeSkill({ decisions: [] }, 'reconcileKnowledge'); await errorCode(() => missing.skill.reconcileKnowledge(reconciliationInput()), 'invalid_reference'); const unknown = makeSkill({ decisions: [{ candidateId: 'candidate-unknown', decision: 'create', classification: 'complementary', existingRefs: [], reason: 'bad', requiresUserReview: false }] }, 'reconcileKnowledge'); await errorCode(() => unknown.skill.reconcileKnowledge(reconciliationInput()), 'invalid_reference'); const outside = makeSkill({ decisions: [{ candidateId: 'candidate-1', decision: 'merge_source', classification: 'complementary', existingRefs: ['entity:outside'], reason: 'bad', requiresUserReview: false }] }, 'reconcileKnowledge'); await errorCode(() => outside.skill.reconcileKnowledge(reconciliationInput()), 'invalid_reference'); const duplicate = makeSkill({ decisions: [{ candidateId: 'candidate-1', decision: 'create', classification: 'complementary', existingRefs: [], reason: 'first', requiresUserReview: false }, { candidateId: 'candidate-1', decision: 'create', classification: 'complementary', existingRefs: [], reason: 'duplicate', requiresUserReview: false }] }, 'reconcileKnowledge'); await errorCode(() => duplicate.skill.reconcileKnowledge(reconciliationInput()), 'invalid_reference'); const duplicateAndMissing = makeSkill({ decisions: [{ candidateId: 'candidate-1', decision: 'create', classification: 'complementary', existingRefs: [], reason: 'duplicate', requiresUserReview: false }, { candidateId: 'candidate-1', decision: 'create', classification: 'complementary', existingRefs: [], reason: 'duplicate again', requiresUserReview: false }] }, 'reconcileKnowledge'); await errorCode(() => duplicateAndMissing.skill.reconcileKnowledge(reconciliationInput(['candidate-1', 'candidate-2'])), 'invalid_reference') })
+test('reconciliation rejects context-only references that are not candidate existingRefs', async () => {
+  const input = reconciliationInput()
+  input.groups[0]!.candidates[0]!.existingRefs = []
+  const { skill } = makeSkill({ decisions: [{ candidateId: 'candidate-1', decision: 'merge_source', classification: 'duplicate', existingRefs: ['entity:existing'], reason: 'Context-only ref.', requiresUserReview: false }] }, 'reconcileKnowledge')
+  await errorCode(() => skill.reconcileKnowledge(input), 'invalid_reference')
+})
+
+test('reconciliation projection preserves precise groups and omits authoritative document internals', async () => {
+  const input = reconciliationInput()
+  const before = structuredClone(input)
+  const { skill, model } = makeSkill({ decisions: [{ candidateId: 'candidate-1', decision: 'create', classification: 'complementary', existingRefs: [], reason: 'No duplicate.', requiresUserReview: false }] }, 'reconcileKnowledge')
+  await skill.reconcileKnowledge(input)
+  const projected = model.requests[0]?.input as Record<string, any>
+  assert.deepEqual(projected.groups, input.groups)
+  assert.deepEqual(projected.sourceAssessment, input.sourceAssessment)
+  assert.equal(projected.workflowRunId, undefined)
+  assert.equal(projected.knowledgeBaseId, undefined)
+  assert.equal(projected.document, undefined)
+  assert.equal(JSON.stringify(projected).includes('normalizedText'), false)
+  assert.equal(JSON.stringify(projected).includes('chunks'), false)
+  assert.deepEqual(input, before)
+})
+
+test('reconciliation retry keeps the projected input and contract while excluding prior output', async () => {
+  const input = reconciliationInput()
+  const invalid = { decisions: [{ candidateId: 'candidate-1', decision: 'merge_source', classification: 'duplicate', existingRefs: ['entity:outside'], reason: 'invalid', requiresUserReview: false }] }
+  const valid = { decisions: [{ candidateId: 'candidate-1', decision: 'create', classification: 'complementary', existingRefs: [], reason: 'corrected', requiresUserReview: false }] }
+  const model = new ScriptedKnowledgeCurationModel().queue('reconcileKnowledge', [invalid, valid])
+  const skill = new KnowledgeCurationSkill({ model })
+  await errorCode(() => skill.reconcileKnowledge(input), 'invalid_reference')
+  await skill.reconcileKnowledge(input, { validationFeedback: { attempt: 2, code: 'invalid_reference', message: 'bounded validation detail '.repeat(30) } })
+  assert.deepEqual(model.requests[0]?.input, model.requests[1]?.input)
+  assert.deepEqual(model.requests[0]?.outputContract, model.requests[1]?.outputContract)
+  assert.equal((model.requests[1]?.instruction.match(/bounded validation detail/g) ?? []).length, 9)
+  assert.equal(model.requests[1]?.instruction.includes(JSON.stringify(invalid)), false)
+  assert.equal(JSON.stringify(model.requests[1]?.input).includes('document'), false)
+})
 test('reconciliation accepts exactly one decision per candidate in reversed order', async () => { const decision = (candidateId: string) => ({ candidateId, decision: 'create', classification: 'complementary', existingRefs: [], reason: 'No duplicate.', requiresUserReview: false }); const { skill } = makeSkill({ decisions: [decision('candidate-2'), decision('candidate-1')] }, 'reconcileKnowledge'); const result = await skill.reconcileKnowledge(reconciliationInput(['candidate-1', 'candidate-2'])); assert.deepEqual(result.decisions.map((item) => item.candidateId), ['candidate-2', 'candidate-1']) })
 test('analyzeSchemaGaps accepts only governance gap classes and supplied candidates', async () => { const input = { ...scope, candidates: [{ candidateId: 'candidate-1' }], knowledgeContext: context }; const a = makeSkill({ gaps: [{ candidateRefs: ['candidate-1'], gapType: 'schema', observedInformation: { description: 'Missing field.', examples: ['x'] }, currentLimitation: { description: 'No field.' }, suggestedDirection: { description: 'Review schema.' }, affectedKnowledgeTypes: ['entity'], affectedIndustries: ['semiconductor'], generality: 'local', frequency: 'first_seen', recommendedAction: 'review' }] }, 'analyzeSchemaGaps'); const valid = await a.skill.analyzeSchemaGaps(input); assert.equal(valid.gaps[0]?.gapType, 'schema'); const b = makeSkill({ gaps: [{ ...valid.gaps[0]!, gapType: 'new_enum' }] }, 'analyzeSchemaGaps'); await errorCode(() => b.skill.analyzeSchemaGaps(input), 'invalid_semantics') })
 test('malformed output performs no hidden retry and reports one model call', async () => { const model = new ScriptedKnowledgeCurationModel().set('understandReport', { sourceAssessment: null }); const curation = new KnowledgeCurationSkill({ model }); await errorCode(() => curation.understandReport({ ...scope, themeContext: context }), 'invalid_model_output'); assert.equal(model.requests.length, 1) })

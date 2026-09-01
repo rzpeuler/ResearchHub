@@ -1,5 +1,33 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-RECONCILIATION-BOUNDARY-C-014 - Engineering Result
+
+Status: C14 COMPLETE / SOL VERIFICATION REQUIRED
+Date: 2026-09-02
+
+C14 corrected the reconciliation boundary exposed by C4-R9-R1. Only
+`existing_ref` resolutions with exact same-kind durable target refs enter
+reconciliation; `new_object_key` candidates bypass the model and use
+deterministic create semantics. Relation and Claim dependency Entity refs may
+remain in `existingKnowledge` as context, but model decisions may reference
+only the candidate's supplied `existingRefs`. Reconciliation model input now
+omits the authoritative document, normalized text, chunks, workflow identity,
+and unrelated Writer/storage state while preserving precise groups and source
+assessment.
+
+The workflow performs at most one retry for `invalid_model_output`,
+`invalid_reference`, or `invalid_semantics`, with the same projected input and
+contract, bounded validation feedback, no prior model output, and complete
+logical/physical call accounting including `groupId`, `retryCount`, and
+validation failures. Model/transport failures do not retry. The R9 harness now
+observes reconciliation groups, uses non-null Schema-derived endpoint values
+for nullable contract checks, and retains bounded sanitized blocked diagnostics.
+
+Offline curation, ingestion, product-validation, integration typecheck, and
+full regression tests passed. No new real LLM, DeepSeek, or C4-R9-R2 execution
+was performed. Stage C remains In Progress and is not accepted; C4-R9-R2
+remains NOT AUTHORIZED.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R1 - Result
 
 Status: Completed / FAIL - SOL REVIEW REQUIRED
@@ -14,8 +42,7 @@ AbortController. Runtime, exact PDF, Local Docling, fresh KB, deterministic
 blocked on an `invalid_reference` product invariant with no upstream runtime
 error observed. No Writer or replay occurred; revision remained 0. Evidence:
 `tests/knowledge/product-validation/evidence/c004-r9-r1-final-full-pipeline.json`.
-Stage C remains In Progress / Awaiting C4-R9-R1 Sol Verification and is not
-accepted.
+Stage C remains In Progress and is not accepted.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-FINAL - Historical Result
 
