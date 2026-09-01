@@ -1,5 +1,32 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-POST-C12-REAL-EXTRACTION-SMOKE-C-004-S2
+
+The authorized post-C12 bounded real smoke used the exact C4-R8 PDF
+(`998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63`,
+3,209,114 bytes), Local Docling, a fresh writable Schema 0.3 / Storage 1 KB,
+and `deepseek-official/deepseek-v4-flash` with the existing 65,536-token
+runtime envelope. PDF identity and frozen Docling metrics passed. The normal
+Workflow reached `understandReport` and `batch-0001` extraction. Both real
+extraction requests contained C12 guidance and all 14 canonical relation
+entries.
+
+The final bounded extraction returned 51 entities, 91 relations, and 25
+claims, but strict validation rejected `upstream_of` with `product->product`.
+The one allowed C9 retry then returned `upstream_of` with `product->industry`,
+which was again rejected as `invalid_semantics`. The smoke stopped at the
+batch-0001 failure; no further real extraction batch, Writer, downstream model
+call, or semantic revision occurred. Three physical real model invocations
+were made: `understandReport` plus two extraction attempts. Durable sanitized
+evidence is
+`tests/knowledge/product-validation/evidence/c004-s2-post-c12-extraction-smoke.json`.
+
+S2 is `Completed / FAIL - SOL REVIEW REQUIRED`. This confirms C12 guidance
+reached the real path but did not establish reliable elimination of the R8
+relation-selection failure. C4-R8-FINAL remains historical
+`Completed / FAIL - SOL REVIEW REQUIRED`; Stage C remains `In Progress` and is
+not accepted.
+
 ## KNOWLEDGE-V0.3-RELATION-SELECTION-GUIDANCE-C-012
 
 C12 adds a pure model-facing Relation selection guide to `extractKnowledge`.
@@ -19,7 +46,7 @@ DeepSeek request, or real LLM call was made for C12. Schema, Validator, C8,
 C9, C10, C11, DSH, reasoning policy, provider routing, and Workflow behavior
 remain unchanged.
 
-C12 is `Completed / Sol Verification Pending`. C4-R8-FINAL remains
+C12 is `Accepted - Sol verified`. C4-R8-FINAL remains
 `Completed / FAIL - SOL REVIEW REQUIRED`; Stage C remains `In Progress` and is
 not accepted.
 

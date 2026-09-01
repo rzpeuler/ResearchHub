@@ -33,11 +33,12 @@
 - C10 Validation Feedback: Completed / Accepted - Sol verified
 - C4-R7 Product Validation: Completed / Engineering Rework Required - Sol verified
 - C11 Relation-Aware Output Contract: Accepted - Sol verified
+- C12 Relation Selection Guidance: Accepted - Sol verified
 - RH-LLM-DEFAULT-FLASH-001: Accepted - Sol verified
 - C4-S1 Flash Extraction Smoke: Completed / PASS - Sol Verification Pending
 - C4-R8-FINAL Product Validation: Completed / FAIL - SOL REVIEW REQUIRED
-- C12 Relation Selection Guidance: Completed / Sol Verification Pending
-- Stage C: In Progress / Awaiting C12 Sol Verification (not accepted)
+- C4-S2 Post-C12 Extraction Smoke: Completed / FAIL - SOL REVIEW REQUIRED
+- Stage C: In Progress / Awaiting S2 engineering rework (not accepted)
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3
@@ -88,8 +89,10 @@ C12 adds concise endpoint-first Relation selection guidance to the extraction
 prompt. Its compatibility entries are generated from all 14 executable Schema
 relation definitions in stable order, and the retry receives the identical
 guide before bounded validation feedback. Offline parity, retry, regression,
-and TypeScript checks pass; no real LLM call was made. C12 is
-`Completed / Sol Verification Pending`. The R8 failure remains a required
+and TypeScript checks pass; C12 is `Accepted - Sol verified`. The post-C12 S2
+real smoke reached batch-0001 with the guide present but reproduced persistent
+invalid `upstream_of` endpoint selections across its one retry. S2 is
+`Completed / FAIL - SOL REVIEW REQUIRED`; the R8 failure remains a required
 engineering rework signal, and no product acceptance or Stage C closure is
 recorded.
 

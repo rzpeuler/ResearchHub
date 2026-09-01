@@ -1,0 +1,804 @@
+{
+  "taskId": "KNOWLEDGE-V0.3-POST-C12-REAL-EXTRACTION-SMOKE-C-004-S2",
+  "baseline": "81b7b4b831c3630c2071a58e39026694bf7c682c",
+  "startedAt": "2026-09-01T02:45:13.613Z",
+  "baselineCheck": {
+    "head": "81b7b4b831c3630c2071a58e39026694bf7c682c",
+    "expected": "81b7b4b831c3630c2071a58e39026694bf7c682c",
+    "exact": true
+  },
+  "effectiveModel": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash",
+    "baseUrl": "https://api.deepseek.com",
+    "curationMaxTokens": 65536
+  },
+  "modelPreflight": {
+    "status": "READY",
+    "httpStatus": 200,
+    "modelAvailable": true,
+    "diagnostic": "DeepSeek credential and Flash model accepted by /models"
+  },
+  "pdf": {
+    "filename": "20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf",
+    "sha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "bytes": 3209114,
+    "expectedSha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "expectedBytes": 3209114,
+    "sha256Match": true,
+    "bytesMatch": true
+  },
+  "doclingPreflight": {
+    "status": "READY",
+    "managedRoot": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\.researchhub-document-parser",
+    "python": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\.researchhub-document-parser\\venv\\Scripts\\python.exe",
+    "doclingVersion": "2.116.0",
+    "modelRoot": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\.researchhub-document-parser\\models",
+    "checks": {
+      "python": "PASS",
+      "doclingImport": "PASS",
+      "version": "PASS",
+      "artifactsDirectory": "PASS",
+      "modelInitialization": "PASS",
+      "fixtureParse": "PASS",
+      "tablePipeline": "PASS"
+    },
+    "diagnostics": []
+  },
+  "freshKnowledgeBase": {
+    "knowledgeBaseId": "kb-product-validation-c004-s2-post-c12",
+    "schemaVersion": "0.3",
+    "storageFormatVersion": "1",
+    "revision": 0,
+    "writable": true,
+    "validation": "passed",
+    "root": "system-temp (removed after run)"
+  },
+  "docling": {
+    "parser": {
+      "id": "docling-local",
+      "version": "2.116.0"
+    },
+    "pageCount": 103,
+    "chunks": 1523,
+    "uniqueChunkIds": 1523,
+    "emptyChunks": 0,
+    "sections": 154,
+    "tables": 45,
+    "images": 178,
+    "normalizedCharacters": 97784
+  },
+  "result": {
+    "status": "blocked",
+    "failureStage": "extraction",
+    "errors": [
+      {
+        "code": "invalid_semantics",
+        "message": "RelationCandidate[29] upstream_of endpoint types invalid: received product->industry; allowed source=[industry],target=[industry]"
+      }
+    ],
+    "raw": {
+      "rawRef": "raw-sha256-998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+      "persisted": true,
+      "created": true,
+      "reused": false
+    },
+    "modelCalls": [
+      {
+        "operation": "understandReport",
+        "attempted": true,
+        "succeeded": true,
+        "retryCount": 0
+      },
+      {
+        "operation": "extractKnowledge",
+        "groupId": "batch-0001",
+        "attempted": true,
+        "succeeded": false,
+        "retryCount": 1,
+        "validationFailures": [
+          {
+            "attempt": 1,
+            "code": "invalid_semantics",
+            "message": "RelationCandidate[10] upstream_of endpoint types invalid: received product->product; allowed source=[industry],target=[industry]"
+          },
+          {
+            "attempt": 2,
+            "code": "invalid_semantics",
+            "message": "RelationCandidate[29] upstream_of endpoint types invalid: received product->industry; allowed source=[industry],target=[industry]"
+          }
+        ]
+      }
+    ]
+  },
+  "modelCalls": [
+    {
+      "operation": "understandReport",
+      "batchId": null,
+      "physicalAttempt": 1,
+      "delegatedToRealModel": true,
+      "guidancePresent": null,
+      "canonicalRelationEntryCount": null,
+      "input": {
+        "batchId": null,
+        "currentBatchChunkCount": 0,
+        "currentBatchCharacterCount": 0,
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 367955
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "majorEntityMentions",
+          "majorTopics",
+          "newThemeProposal",
+          "researchScope",
+          "sourceAssessment",
+          "themeHypotheses",
+          "uncertainty"
+        ]
+      },
+      "runtimeObservation": {
+        "operation": "understandReport",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T02:47:02.967Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1090,
+        "finishMs": 79338,
+        "durationMs": 79340,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 17382,
+        "finishReason": "stop",
+        "timedOut": false
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0001",
+      "physicalAttempt": 1,
+      "delegatedToRealModel": true,
+      "guidancePresent": true,
+      "canonicalRelationEntryCount": 14,
+      "input": {
+        "batchId": "batch-0001",
+        "currentBatchChunkCount": 117,
+        "currentBatchCharacterCount": 5480,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 62745
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 22,
+        "relations": 38,
+        "claims": 24
+      },
+      "runtimeObservation": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T02:48:22.321Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1438,
+        "finishMs": 67098,
+        "durationMs": 67098,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 14424,
+        "finishReason": "stop",
+        "timedOut": false
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0001",
+      "physicalAttempt": 2,
+      "delegatedToRealModel": true,
+      "guidancePresent": true,
+      "canonicalRelationEntryCount": 14,
+      "input": {
+        "batchId": "batch-0001",
+        "currentBatchChunkCount": 117,
+        "currentBatchCharacterCount": 5480,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 62745
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 51,
+        "relations": 91,
+        "claims": 25
+      },
+      "runtimeObservation": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T02:49:29.425Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 2105,
+        "finishMs": 122491,
+        "durationMs": 122492,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 26346,
+        "finishReason": "stop",
+        "timedOut": false
+      },
+      "error": null
+    }
+  ],
+  "c12RuntimeObservation": {
+    "operation": "extractKnowledge",
+    "guidancePresent": true,
+    "canonicalRelationEntryCount": 14,
+    "upstreamOfAdvertisedEndpointCompatibility": "industry -> industry",
+    "extractionRequestCount": 2,
+    "retryGuidanceEqual": true,
+    "retryFeedbackBounded": true,
+    "retryCount": 1
+  },
+  "extractionResult": {
+    "entities": 51,
+    "relations": 91,
+    "claims": 25,
+    "validationStatus": "failed",
+    "retryCount": 1,
+    "validationFailures": [
+      {
+        "attempt": 1,
+        "code": "invalid_semantics",
+        "message": "RelationCandidate[10] upstream_of endpoint types invalid: received product->product; allowed source=[industry],target=[industry]"
+      },
+      {
+        "attempt": 2,
+        "code": "invalid_semantics",
+        "message": "RelationCandidate[29] upstream_of endpoint types invalid: received product->industry; allowed source=[industry],target=[industry]"
+      }
+    ],
+    "relationObservations": [
+      {
+        "relationType": "theme_exposure",
+        "sourceEntityType": "investment_theme",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "theme_exposure",
+        "sourceEntityType": "investment_theme",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "theme_exposure",
+        "sourceEntityType": "investment_theme",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "theme_exposure",
+        "sourceEntityType": "investment_theme",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "business_exposure",
+        "sourceEntityType": "company",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "industry",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "offers_product",
+        "sourceEntityType": "company",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "belongs_to_industry",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "depends_on",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "depends_on",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "depends_on",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "depends_on",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "depends_on",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "depends_on",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "depends_on",
+        "sourceEntityType": "industry",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "depends_on",
+        "sourceEntityType": "industry",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "depends_on",
+        "sourceEntityType": "industry",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "depends_on",
+        "sourceEntityType": "industry",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "depends_on",
+        "sourceEntityType": "industry",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "depends_on",
+        "sourceEntityType": "industry",
+        "targetEntityType": "product"
+      }
+    ]
+  },
+  "batch0001": {
+    "realPhysicalAttempts": 2,
+    "calls": [
+      {
+        "physicalAttempt": 1,
+        "guidancePresent": true,
+        "canonicalRelationEntryCount": 14,
+        "input": {
+          "batchId": "batch-0001",
+          "currentBatchChunkCount": 117,
+          "currentBatchCharacterCount": 5480,
+          "fullDocumentVisible": false,
+          "normalizedTextVisible": false,
+          "serializedInputCharacters": 62745
+        },
+        "outputShape": {
+          "type": "object",
+          "keys": [
+            "claims",
+            "entities",
+            "relations"
+          ],
+          "entities": 22,
+          "relations": 38,
+          "claims": 24
+        },
+        "error": null
+      },
+      {
+        "physicalAttempt": 2,
+        "guidancePresent": true,
+        "canonicalRelationEntryCount": 14,
+        "input": {
+          "batchId": "batch-0001",
+          "currentBatchChunkCount": 117,
+          "currentBatchCharacterCount": 5480,
+          "fullDocumentVisible": false,
+          "normalizedTextVisible": false,
+          "serializedInputCharacters": 62745
+        },
+        "outputShape": {
+          "type": "object",
+          "keys": [
+            "claims",
+            "entities",
+            "relations"
+          ],
+          "entities": 51,
+          "relations": 91,
+          "claims": 25
+        },
+        "error": null
+      }
+    ]
+  },
+  "smokeBoundary": {
+    "expectedStop": null,
+    "nextBatchRequested": null,
+    "nextBatchDelegatedToRealModel": false,
+    "writerInvocations": 0,
+    "downstreamModelCalls": 0,
+    "finalRevision": 0
+  },
+  "modelAccounting": {
+    "logicalModelCalls": 2,
+    "physicalRealModelInvocations": 3,
+    "maximumAllowed": 5,
+    "underBudget": true
+  },
+  "status": "FAIL / SOL REVIEW REQUIRED",
+  "recommendation": "Stop; do not reinterpret this smoke as product acceptance.",
+  "completedAt": "2026-09-01T02:51:31.923Z"
+}

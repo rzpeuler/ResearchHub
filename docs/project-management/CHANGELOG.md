@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-01 - KNOWLEDGE-V0.3-POST-C12-REAL-EXTRACTION-SMOKE-C-004-S2
+
+- Ran the bounded real Flash smoke through the normal Workflow, DSH, and
+  Knowledge Curation path using the exact R8 PDF, Local Docling, and a fresh
+  Schema 0.3 / Storage 1 KB.
+- Confirmed both real `extractKnowledge` requests carried C12 guidance with
+  all 14 canonical relation entries and identical retry guidance.
+- Batch-0001 still failed strict validation: attempt 1 emitted
+  `upstream_of` with `product->product`; the single retry emitted
+  `product->industry`. No later batch, Writer, downstream model call, or
+  semantic revision was reached. Three physical real model calls were made.
+- Durable sanitized evidence is
+  `tests/knowledge/product-validation/evidence/c004-s2-post-c12-extraction-smoke.json`.
+  S2 is `Completed / FAIL - SOL REVIEW REQUIRED`; C12 is `Accepted - Sol
+  verified`; Stage C remains in progress and is not accepted.
+
 ## 2026-09-01 - KNOWLEDGE-V0.3-RELATION-SELECTION-GUIDANCE-C-012
 
 - Added a pure model-facing Relation selection guide to `extractKnowledge`.
@@ -13,7 +29,7 @@
 - Added exact Schema-parity and retry-equality tests. All deterministic Curation,
   Ingestion, Workflow, Knowledge, Runtime, Migration, Product Validation, and
   TypeScript checks pass. No real LLM/API call was made.
-- C12 is `Completed / Sol Verification Pending`; C4-R8-FINAL remains
+- C12 is `Accepted - Sol verified`; C4-R8-FINAL remains
   `Completed / FAIL - SOL REVIEW REQUIRED`; Stage C remains in progress and is
   not accepted. DSH multi-provider / other-API capability portability remains
   deferred pending detailed user requirements.

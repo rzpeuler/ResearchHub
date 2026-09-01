@@ -1,8 +1,37 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-POST-C12-REAL-EXTRACTION-SMOKE-C-004-S2 - Post-C12 Flash Extraction Result
+
+**Status:** Completed / FAIL - SOL REVIEW REQUIRED
+**Date:** 2026-09-01
+
+The authorized bounded smoke used the exact R8 PDF, Local Docling, fresh
+Schema 0.3 / Storage 1 state, and the real
+`deepseek-official/deepseek-v4-flash` path. PDF identity, frozen Docling
+metrics, model preflight, and fresh-KB gates passed. The normal Workflow
+reached `understandReport` and `batch-0001`. Both extraction requests included
+the C12 guide with all 14 Schema-derived relation entries; retry guidance was
+identical and bounded.
+
+The final batch-0001 output contained 51 entities, 91 relations, and 25 claims.
+Attempt 1 failed strict validation because `upstream_of` used `product->product`
+endpoints. The single C9 retry failed again with `upstream_of`
+`product->industry`. This is persistent `invalid_semantics`, so S2 is FAIL
+under its stop criteria. Physical calls were 3, no further extraction batch
+was delegated, Writer was not invoked, and revision remained 0. Durable
+sanitized evidence is
+`tests/knowledge/product-validation/evidence/c004-s2-post-c12-extraction-smoke.json`.
+
+C12 is now `Accepted - Sol verified`; its guidance was observed in the real
+path but did not prevent the invalid relation selection in this smoke. C4-R8-
+FINAL remains `Completed / FAIL - SOL REVIEW REQUIRED`; Stage C remains In
+Progress and is not accepted. DSH multi-provider / other-API capability
+portability (including reasoning capability compatibility) remains
+`Deferred / Awaiting Detailed User Requirements`, with no implementation task.
+
 ## KNOWLEDGE-V0.3-RELATION-SELECTION-GUIDANCE-C-012 - Schema-Derived Endpoint-First Guidance
 
-**Status:** Completed / Sol Verification Pending
+**Status:** Accepted - Sol verified
 **Date:** 2026-09-01
 
 C12 adds one pure prompt helper and composes it into `extractKnowledge`. The
