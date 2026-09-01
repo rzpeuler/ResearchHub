@@ -321,3 +321,21 @@ Block semantic commit → blocked.
 ## 33. Frozen Decisions
 
 The 18-stage Workflow, Raw-first semantics, non-blocking Theme uncertainty, deterministic batching/consolidation/resolution, batch reconciliation, conditional Schema Gap, dependency-closure review isolation, one semantic atomic commit, all-or-nothing final validation, explicit continuation, observable LLM calls, runtime-neutral boundary, and the absence of Taxonomy/View Workflow stages are frozen. Migration handles those auxiliary assets separately. v0.4 is NOT approved. This document is Frozen / Sol Accepted; implementation status is governed separately.
+
+## C13 Candidate-Isolated Validation Addendum
+
+C13 preserves the Workflow's Extraction Batch as the transport/orchestration
+unit while making each candidate the semantic validation atomic unit. The
+Curation Skill returns accepted candidates plus deterministic sanitized local
+rejection metadata. Only accepted candidates enter consolidation, reference
+resolution, existing-Knowledge retrieval, reconciliation, Schema Gap handling,
+ChangeSet construction, and Writer.
+
+Candidate-local rejection alone is not C9-retry eligible. If all non-empty raw
+candidates are rejected, the operation reports `candidate_set_exhausted` and
+may use the existing one complete retry. Global/trusted/output-envelope
+failures retain the existing at-most-one complete retry and then fail with no
+third attempt. Accepted/rejected counts and validation-code counts are recorded
+in Workflow model-call metadata without sensitive model text. No Schema v0.4,
+canonical semantic change, coercion, repair, or provider/runtime change is
+introduced.

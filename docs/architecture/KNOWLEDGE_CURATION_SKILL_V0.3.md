@@ -379,3 +379,27 @@ authority, including same-type cross-field equality for
 existing single retry receive the same relation-aware contract, and the
 existing C8 projection, C9 retry envelope, C10 diagnostics, DSH serialization,
 and public extraction shape remain unchanged.
+
+## C13 Candidate-Isolated Validation Addendum
+
+C13 changes the semantic validation atomic unit from the Extraction Batch to
+the individual EntityCandidate, RelationCandidate, or ClaimCandidate. The
+batch remains the transport and orchestration unit. Global trusted-envelope,
+scope, top-level object, exact-field, and candidate-array structural failures
+remain operation-fatal and continue to use the Workflow's bounded C9 complete
+regeneration behavior.
+
+After global validation succeeds, candidate-local failures are rejected with a
+deterministic, bounded `CandidateValidationRejection`; all other candidates
+continue through strict validation. Rejected candidates never reach
+consolidation, reference resolution, reconciliation, Schema Gap processing,
+ChangeSet, or Writer. No semantic repair, coercion, relation substitution, or
+Schema relaxation is permitted. Candidate IDs preserve their original array
+ordinals. The Skill exposes rejection metadata separately from the unchanged
+LLM output contract; the LLM never generates `validationRejections`.
+
+An empty candidate set remains valid. A non-empty raw set with no accepted
+candidates is `candidate_set_exhausted` and may use one complete C9 retry.
+Partial local rejection does not trigger C9 retry. C13 supersedes C9 complete
+regeneration only for candidate-local validation failures. No Schema v0.4 is
+introduced and no canonical semantic definition changes.
