@@ -2,14 +2,14 @@
 
 ## 2026-09-01 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-FINAL
 
-- Sol authorized C4-R9 final full-pipeline product validation after the
-  accepted C13/C13-R1 and S3-R2 states.
-- Commit A is limited to the R9 validation harness, isolated `.env` launcher,
-  package entry, offline support coverage, and governance transition. The
-  real run must use Commit A exactly, process all 18 batches, commit once, and
-  execute one guarded `reprocess=false` replay.
-- C4-R9 is Authorized / In Progress. Stage C remains In Progress / Awaiting
-  C4-R9 Sol Verification; no Stage C acceptance is predeclared.
+- Commit A `1abf11ea686c5784f0e1d82f06be339270925447` was used for the unique
+  supervised real Provider process.
+- Runtime, exact PDF, Local Docling, and fresh-KB gates passed; the process
+  timed out at batch-0008 attempt 1 after 180016 ms and returned
+  `BLOCKED / EXTERNAL SERVICE - SOL REVIEW REQUIRED` before Writer or replay.
+- Durable evidence: `tests/knowledge/product-validation/evidence/c004-r9-final-full-pipeline.json`.
+- Stage C remains In Progress / Awaiting C4-R9 Sol Verification; no acceptance
+  is predeclared.
 
 ## 2026-09-01 - KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R2
 

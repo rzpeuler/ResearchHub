@@ -2,13 +2,15 @@
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-FINAL
 
-C4-R9 is authorized and In Progress under the two-commit execution protocol.
-Commit A contains only the R9 validation harness, isolated launcher, package
-entry, and this governance transition; the exact Commit A SHA will be used as
-the real-run execution baseline. The authorized run is one supervised full
-18-batch real Flash workflow followed by one guarded `reprocess=false` replay.
+C4-R9 completed with `BLOCKED / EXTERNAL SERVICE - SOL REVIEW REQUIRED`.
+The unique supervised real Provider process used Commit A
+`1abf11ea686c5784f0e1d82f06be339270925447`, passed runtime/PDF/Docling gates,
+and timed out during batch-0008 attempt 1 after 180016 ms. The primary
+workflow remained blocked at revision 0; Writer and the guarded replay were
+not reached. Durable evidence is
+`tests/knowledge/product-validation/evidence/c004-r9-final-full-pipeline.json`.
 Stage C remains In Progress / Awaiting C4-R9 Sol Verification and is not
-accepted. No result or Stage C acceptance is being predeclared.
+accepted.
 
 ## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R2
 

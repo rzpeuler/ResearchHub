@@ -1,0 +1,1025 @@
+{
+  "taskId": "KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-FINAL",
+  "baseline": "1abf11ea686c5784f0e1d82f06be339270925447",
+  "startedAt": "2026-09-01T10:20:28.839Z",
+  "phase": "batch_batch-0008_attempt_1_completed",
+  "phaseTimestamps": {
+    "initialized": "2026-09-01T10:20:28.839Z",
+    "baseline_verified": "2026-09-01T10:20:28.921Z",
+    "runtime_verified": "2026-09-01T10:20:28.922Z",
+    "model_preflight_ready": "2026-09-01T10:20:29.332Z",
+    "pdf_verified": "2026-09-01T10:20:29.352Z",
+    "docling_preflight_ready": "2026-09-01T10:20:36.676Z",
+    "fresh_kb_ready": "2026-09-01T10:20:36.682Z",
+    "docling_parse_started": "2026-09-01T10:20:36.692Z",
+    "docling_parse_completed": "2026-09-01T10:22:21.719Z",
+    "understand_report_started": "2026-09-01T10:22:21.738Z",
+    "understand_report_completed": "2026-09-01T10:23:24.249Z",
+    "batch_batch-0001_attempt_1_started": "2026-09-01T10:23:24.266Z",
+    "batch_batch-0001_attempt_1_completed": "2026-09-01T10:25:44.788Z",
+    "batch_batch-0003_attempt_1_started": "2026-09-01T10:25:44.796Z",
+    "batch_batch-0003_attempt_1_completed": "2026-09-01T10:26:58.534Z",
+    "batch_batch-0004_attempt_1_started": "2026-09-01T10:26:58.537Z",
+    "batch_batch-0004_attempt_1_completed": "2026-09-01T10:27:50.957Z",
+    "batch_batch-0005_attempt_1_started": "2026-09-01T10:27:50.961Z",
+    "batch_batch-0005_attempt_1_completed": "2026-09-01T10:28:23.765Z",
+    "batch_batch-0006_attempt_1_started": "2026-09-01T10:28:23.770Z",
+    "batch_batch-0006_attempt_1_completed": "2026-09-01T10:30:52.415Z",
+    "batch_batch-0007_attempt_1_started": "2026-09-01T10:30:52.420Z",
+    "batch_batch-0007_attempt_1_completed": "2026-09-01T10:31:39.246Z",
+    "batch_batch-0008_attempt_1_started": "2026-09-01T10:31:39.251Z",
+    "batch_batch-0008_attempt_1_completed": "2026-09-01T10:34:39.269Z"
+  },
+  "elapsedMs": 850430,
+  "effectiveRuntime": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash",
+    "host": "api.deepseek.com",
+    "maxTokens": 65536,
+    "reasoningPolicy": {
+      "understandReport": "off",
+      "extractKnowledge": "off",
+      "reconcileKnowledge": "low",
+      "analyzeSchemaGaps": "low"
+    }
+  },
+  "modelPreflight": {
+    "status": "READY",
+    "httpStatus": 200,
+    "modelAvailable": true,
+    "diagnostic": "DeepSeek credential and Flash model accepted by /models"
+  },
+  "pdf": {
+    "filename": "20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf",
+    "sha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "bytes": 3209114,
+    "expectedSha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "expectedBytes": 3209114,
+    "sha256Match": true,
+    "bytesMatch": true
+  },
+  "doclingPreflight": {
+    "status": "READY",
+    "doclingVersion": "2.116.0",
+    "managedRootConfigured": true,
+    "pythonConfigured": true,
+    "modelRootConfigured": true,
+    "checks": {
+      "python": "PASS",
+      "doclingImport": "PASS",
+      "version": "PASS",
+      "artifactsDirectory": "PASS",
+      "modelInitialization": "PASS",
+      "fixtureParse": "PASS",
+      "tablePipeline": "PASS"
+    },
+    "diagnostics": []
+  },
+  "freshKnowledgeBase": {
+    "knowledgeBaseId": "kb-product-validation-c004-r9-final",
+    "schemaVersion": "0.3",
+    "storageFormatVersion": "1",
+    "revision": 0,
+    "writable": true,
+    "seedObjects": 0,
+    "initialFullValidation": "passed",
+    "root": "system-temp (removed after run)"
+  },
+  "primary": {
+    "workflow": {
+      "status": "blocked",
+      "revision": {
+        "before": 0,
+        "after": 0
+      },
+      "raw": {
+        "persisted": true,
+        "created": true,
+        "reused": false
+      },
+      "sourceResolution": null,
+      "batching": {
+        "sectionCount": 0,
+        "batchCount": 0,
+        "chunkCount": 0,
+        "chunkIds": [],
+        "batches": []
+      },
+      "extraction": {
+        "entities": 0,
+        "relations": 0,
+        "claims": 0,
+        "batchesAttempted": 0,
+        "batchesSucceeded": 0,
+        "batchesFailed": 0
+      },
+      "consolidation": {
+        "before": 0,
+        "after": 0,
+        "duplicatesMerged": 0
+      },
+      "referenceResolution": {
+        "existing_ref": 0,
+        "new_object_key": 0,
+        "ambiguous": 0,
+        "invalid": 0
+      },
+      "reconciliation": {
+        "groups": 0,
+        "candidates": 0,
+        "decisions": {},
+        "classifications": {}
+      },
+      "schemaGapCount": 0,
+      "reviewItemCount": 0,
+      "plannedChangeCounts": {
+        "sourceCreate": 0,
+        "sourceMerge": 0,
+        "knowledgeCreate": 0,
+        "knowledgeUpdate": 0,
+        "knowledgeSupersede": 0,
+        "knowledgeSourceMerge": 0
+      },
+      "committedChanges": {
+        "sourceCreated": 0,
+        "sourceMerged": 0,
+        "knowledgeCreated": 0,
+        "knowledgeUpdated": 0,
+        "knowledgeSuperseded": 0,
+        "knowledgeSourceMerged": 0
+      },
+      "validation": null,
+      "modelCalls": 8,
+      "errorCodes": [
+        "model_error"
+      ]
+    },
+    "batching": {
+      "workflow": {
+        "planned": 0,
+        "inputChunks": 0,
+        "inputUniqueChunks": 0,
+        "coveredChunks": 0,
+        "coveredUniqueChunks": 0,
+        "omissions": 0,
+        "duplicateCoverage": 0,
+        "complete": true
+      },
+      "independent": {
+        "planned": 18,
+        "inputChunks": 1523,
+        "inputUniqueChunks": 1523,
+        "plannedCoveredChunks": 1523,
+        "plannedCoveredUniqueChunks": 1523,
+        "omissions": 0,
+        "duplicateCoverage": 0,
+        "complete": true
+      }
+    },
+    "extraction": {
+      "plannedBatches": 0,
+      "completedBatches": 0,
+      "batches": [],
+      "terminalRawCandidateCounts": {
+        "entities": 0,
+        "relations": 0,
+        "claims": 0
+      },
+      "terminalAcceptedCandidateCounts": {
+        "entity": 0,
+        "relation": 0,
+        "claim": 0
+      },
+      "terminalRejectedCandidateCounts": {
+        "entity": 0,
+        "relation": 0,
+        "claim": 0
+      },
+      "rejectionCodeCounts": {}
+    },
+    "candidateIsolation": {
+      "partialRejectionBatches": [],
+      "candidateSetExhaustedBatches": [],
+      "batchesRequiringC9Retry": [],
+      "maximumRetryCount": 0,
+      "thirdAttempt": false,
+      "rejectedCandidateDownstreamLeakage": false,
+      "semanticCoercion": false
+    },
+    "c8": {
+      "physicalExtractionInvocations": 7,
+      "outOfBatchChunkIdsVisible": 0,
+      "fullDocumentVisible": false,
+      "normalizedTextVisible": false,
+      "normalizedTextHidden": true,
+      "claimsContextVisible": false,
+      "sourcesContextVisible": false,
+      "rawRefsVisible": false
+    },
+    "relationContract": {
+      "logicalFirstAttemptContracts": 7,
+      "expectedBatches": 18,
+      "allCanonicalRelationCounts": false,
+      "allUpstreamOfCompatibility": false,
+      "canonicalRelationCount": 14,
+      "observations": [
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        }
+      ]
+    },
+    "consolidation": {
+      "before": 0,
+      "after": 0,
+      "duplicatesMerged": 0
+    },
+    "referenceResolution": {
+      "existing_ref": 0,
+      "new_object_key": 0,
+      "ambiguous": 0,
+      "invalid": 0
+    },
+    "reconciliation": {
+      "groups": 0,
+      "candidates": 0,
+      "decisions": {},
+      "classifications": {},
+      "exactlyOnce": true
+    },
+    "schemaGaps": {
+      "invoked": false,
+      "callCount": 0,
+      "gapCount": 0,
+      "gapTypes": []
+    },
+    "reviewIsolation": {
+      "roots": 0,
+      "dependencyReviews": 0,
+      "total": 0
+    },
+    "changeSet": {
+      "planned": {
+        "sourceCreate": [],
+        "sourceMerge": [],
+        "knowledgeCreate": [],
+        "knowledgeUpdate": [],
+        "knowledgeSupersede": [],
+        "knowledgeSourceMerge": []
+      },
+      "committed": {
+        "sourceCreated": 0,
+        "sourceMerged": 0,
+        "knowledgeCreated": 0,
+        "knowledgeUpdated": 0,
+        "knowledgeSuperseded": 0,
+        "knowledgeSourceMerged": 0
+      }
+    },
+    "modelAccounting": {
+      "logicalModelCalls": 8,
+      "physicalProviderCalls": 8,
+      "retryProviderCalls": 0,
+      "formulaMatches": true,
+      "changeSetIngestionContextModelCalls": null,
+      "changeSetMatches": null
+    },
+    "reasoning": {
+      "expected": {
+        "understandReport": "off",
+        "extractKnowledge": "off",
+        "reconcileKnowledge": "low",
+        "analyzeSchemaGaps": "low"
+      },
+      "observations": [
+        {
+          "operation": "understandReport",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T10:22:21.742Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 2291,
+          "finishMs": 62503,
+          "durationMs": 62505,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 13033,
+          "finishReason": "stop",
+          "timedOut": false
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T10:23:24.268Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 529,
+          "finishMs": 140519,
+          "durationMs": 140520,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 32687,
+          "finishReason": "stop",
+          "timedOut": false
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T10:25:44.798Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 443,
+          "finishMs": 73733,
+          "durationMs": 73733,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 17025,
+          "finishReason": "stop",
+          "timedOut": false
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T10:26:58.540Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 537,
+          "finishMs": 52416,
+          "durationMs": 52417,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 10686,
+          "finishReason": "stop",
+          "timedOut": false
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T10:27:50.964Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1115,
+          "finishMs": 32800,
+          "durationMs": 32800,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 6684,
+          "finishReason": "stop",
+          "timedOut": false
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T10:28:23.772Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1186,
+          "finishMs": 148642,
+          "durationMs": 148642,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 32284,
+          "finishReason": "stop",
+          "timedOut": false
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T10:30:52.423Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 612,
+          "finishMs": 46822,
+          "durationMs": 46822,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 9759,
+          "finishReason": "stop",
+          "timedOut": false
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T10:31:39.252Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1264,
+          "finishMs": 180016,
+          "durationMs": 180016,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 41150,
+          "finishReason": "aborted",
+          "timedOut": true
+        }
+      ],
+      "mismatches": []
+    },
+    "writerInvocations": 0
+  },
+  "replay": null,
+  "finalKnowledgeBase": null,
+  "provenance": null,
+  "semanticQuality": null,
+  "writer": null,
+  "baselineCheck": {
+    "head": "1abf11ea686c5784f0e1d82f06be339270925447",
+    "expected": "1abf11ea686c5784f0e1d82f06be339270925447",
+    "workingTreeClean": true,
+    "statusLines": [
+      "?? researchhub.architecture.html",
+      "?? researchhub.architecture.json",
+      "?? researchhub.architecture.visual-check.1440x900.dark.png",
+      "?? researchhub.architecture.visual-check.1440x900.light.png",
+      "?? researchhub.architecture.visual-check.2048x1320.dark.png",
+      "?? researchhub.architecture.visual-check.2048x1320.light.png",
+      "?? researchhub.architecture.visual-check.html",
+      "?? researchhub.architecture.visual-check.json"
+    ],
+    "changedSinceBaseline": [],
+    "productionFilesChanged": false
+  },
+  "docling": {
+    "parser": {
+      "id": "docling-local",
+      "version": "2.116.0"
+    },
+    "pageCount": 103,
+    "chunks": 1523,
+    "uniqueChunkIds": 1523,
+    "emptyChunks": 0,
+    "sections": 154,
+    "tables": 45,
+    "images": 178,
+    "normalizedCharacters": 97784
+  },
+  "modelCalls": [
+    {
+      "operation": "understandReport",
+      "batchId": null,
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T10:22:21.738Z",
+      "completedAt": "2026-09-01T10:23:24.249Z",
+      "durationMs": 62511,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 367948
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "majorEntityMentions",
+          "majorTopics",
+          "newThemeProposal",
+          "researchScope",
+          "sourceAssessment",
+          "themeHypotheses",
+          "uncertainty"
+        ]
+      },
+      "runtime": {
+        "operation": "understandReport",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T10:22:21.742Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 2291,
+        "finishMs": 62503,
+        "durationMs": 62505,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 13033,
+        "finishReason": "stop",
+        "timedOut": false
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0001",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T10:23:24.266Z",
+      "completedAt": "2026-09-01T10:25:44.788Z",
+      "durationMs": 140522,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0001",
+        "currentBatchChunkCount": 117,
+        "currentBatchCharacterCount": 5480,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 64027
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 72,
+        "relations": 99,
+        "claims": 42
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T10:23:24.268Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 529,
+        "finishMs": 140519,
+        "durationMs": 140520,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 32687,
+        "finishReason": "stop",
+        "timedOut": false
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0003",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T10:25:44.796Z",
+      "completedAt": "2026-09-01T10:26:58.534Z",
+      "durationMs": 73738,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0003",
+        "currentBatchChunkCount": 78,
+        "currentBatchCharacterCount": 5890,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 59262
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 31,
+        "relations": 81,
+        "claims": 14
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T10:25:44.798Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 443,
+        "finishMs": 73733,
+        "durationMs": 73733,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 17025,
+        "finishReason": "stop",
+        "timedOut": false
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0004",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T10:26:58.537Z",
+      "completedAt": "2026-09-01T10:27:50.957Z",
+      "durationMs": 52420,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0004",
+        "currentBatchChunkCount": 70,
+        "currentBatchCharacterCount": 5168,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 57493
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 30,
+        "relations": 19,
+        "claims": 14
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T10:26:58.540Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 537,
+        "finishMs": 52416,
+        "durationMs": 52417,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 10686,
+        "finishReason": "stop",
+        "timedOut": false
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0005",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T10:27:50.961Z",
+      "completedAt": "2026-09-01T10:28:23.765Z",
+      "durationMs": 32804,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0005",
+        "currentBatchChunkCount": 64,
+        "currentBatchCharacterCount": 5366,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 56682
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 12,
+        "relations": 9,
+        "claims": 17
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T10:27:50.964Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1115,
+        "finishMs": 32800,
+        "durationMs": 32800,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 6684,
+        "finishReason": "stop",
+        "timedOut": false
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0006",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T10:28:23.770Z",
+      "completedAt": "2026-09-01T10:30:52.415Z",
+      "durationMs": 148645,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0006",
+        "currentBatchChunkCount": 105,
+        "currentBatchCharacterCount": 5668,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 63677
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 70,
+        "relations": 110,
+        "claims": 30
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T10:28:23.772Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1186,
+        "finishMs": 148642,
+        "durationMs": 148642,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 32284,
+        "finishReason": "stop",
+        "timedOut": false
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0007",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T10:30:52.420Z",
+      "completedAt": "2026-09-01T10:31:39.246Z",
+      "durationMs": 46826,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0007",
+        "currentBatchChunkCount": 159,
+        "currentBatchCharacterCount": 5566,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 69149
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 27,
+        "relations": 24,
+        "claims": 11
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T10:30:52.423Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 612,
+        "finishMs": 46822,
+        "durationMs": 46822,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 9759,
+        "finishReason": "stop",
+        "timedOut": false
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0008",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T10:31:39.251Z",
+      "completedAt": "2026-09-01T10:34:39.269Z",
+      "durationMs": 180018,
+      "completed": false,
+      "input": {
+        "batchId": "batch-0008",
+        "currentBatchChunkCount": 42,
+        "currentBatchCharacterCount": 5278,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 53716
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": null,
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T10:31:39.252Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1264,
+        "finishMs": 180016,
+        "durationMs": 180016,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 41150,
+        "finishReason": "aborted",
+        "timedOut": true
+      },
+      "error": "Knowledge Curation did not finish normally: aborted"
+    }
+  ],
+  "batchPlan": {
+    "planned": 18,
+    "inputChunks": 1523,
+    "inputUniqueChunks": 1523,
+    "plannedCoveredChunks": 1523,
+    "plannedCoveredUniqueChunks": 1523,
+    "omissions": 0,
+    "duplicateCoverage": 0,
+    "complete": true
+  },
+  "status": "BLOCKED / EXTERNAL SERVICE - SOL REVIEW REQUIRED",
+  "failure": {
+    "message": "DeepSeek Provider request timed out at batch-0008 attempt 1 after 180016 ms; workflow returned blocked before semantic commit"
+  },
+  "observedHarnessClassification": "FAIL / SOL REVIEW REQUIRED",
+  "observedHarnessFailure": "deterministic batch plan differs from frozen baseline",
+  "classificationBasis": "Model preflight was READY, but the external Provider request timed out during batch-0008; no Writer commit or replay occurred.",
+  "completedAt": "2026-09-01T10:34:39.279Z"
+}
