@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-01 - KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R2
+
+- Ran exactly one supervised process-local isolated real Flash smoke with a
+  600-second outer watchdog. The child reached the durable `completed` phase
+  in 267192 ms from the exact C13-R1 baseline.
+- Runtime/input gates passed: deepseek-official/deepseek-v4-flash, exact PDF
+  identity, frozen Docling metrics, fresh Schema 0.3 / Storage 1 Knowledge
+  Base, understandReport, and batch-0001 extraction. Physical accounting was
+  two real-model calls, one physical extraction call, retryCount zero, and no
+  writer/revision mutation; the smoke boundary stopped before batch-0003
+  delegation.
+- The first-run evidence serializer did not project nested candidate
+  validation attempts, so accepted/rejected candidate isolation was not
+  durably observed. The result is conservatively
+  `INCONCLUSIVE / ISOLATION PATH NOT EXERCISED`; the smoke was not rerun.
+- Durable sanitized evidence is
+  tests/knowledge/product-validation/evidence/c004-s3-r2-post-c13-real-candidate-isolation-smoke.json.
+
 ## 2026-09-01 - KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R1
 
 - Started the authorized first-batch real Flash smoke from the exact C13-R1
@@ -9,7 +27,8 @@
   made, and candidate behavior remains unobserved.
 - Durable sanitized evidence is
   `tests/knowledge/product-validation/evidence/c004-s3-r1-post-c13-real-candidate-isolation-smoke.json`.
-  S3-R1 is Completed / FAIL - SOL REVIEW REQUIRED; no full report validation or
+  S3-R1 is Completed / INVALID TEST SETUP - External Execution Boundary Too
+  Short - Sol verified; no full report validation or
   C4-R9 execution occurred.
 
 ## 2026-09-01 - RH-REAL-ENV-BOOTSTRAP-001-R1

@@ -5,11 +5,12 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { KnowledgeCurationSkill } from "../../packages/skills/knowledge-curation/index.ts";
 import type {
@@ -30,7 +31,6 @@ import type {
   ResearchReportInputRef,
   ResolvedResearchReportInput,
   ResearchReportInputResolver,
-  ResearchReportKnowledgeIngestionResult,
 } from "../../packages/workflows/research-report-knowledge-ingestion/index.ts";
 import { ResearchReportKnowledgeIngestionWorkflow } from "../../packages/workflows/research-report-knowledge-ingestion/index.ts";
 import {
@@ -70,7 +70,60 @@ type RelationObservation = {
   relationType: string | null;
   sourceEntityType: string | null;
   targetEntityType: string | null;
+  accepted?: boolean | null;
+  rejected?: boolean | null;
+  rejectionCode?: string | null;
 };
+
+export type SmokePhase =
+  | "initialized"
+  | "baseline_verified"
+  | "runtime_config_verified"
+  | "model_preflight_ready"
+  | "pdf_verified"
+  | "docling_preflight_ready"
+  | "fresh_kb_ready"
+  | "docling_parse_started"
+  | "docling_parse_completed"
+  | "understand_report_started"
+  | "understand_report_completed"
+  | "batch_0001_extraction_started"
+  | "batch_0001_extraction_completed"
+  | "candidate_validation_observed"
+  | "smoke_boundary_reached"
+  | "completed";
+
+export function applyPhaseCheckpoint(
+  evidence: JsonRecord,
+  phase: SmokePhase,
+  now = Date.now(),
+): JsonRecord {
+  const existing = isRecord(evidence.phaseTimestamps)
+    ? evidence.phaseTimestamps
+    : {};
+  const startedAtMs =
+    typeof evidence.startedAt === "string"
+      ? Date.parse(evidence.startedAt)
+      : Number.NaN;
+  return {
+    ...evidence,
+    phase,
+    phaseTimestamps: {
+      ...existing,
+      ...(Object.hasOwn(existing, phase)
+        ? {}
+        : { [phase]: new Date(now).toISOString() }),
+    },
+    elapsedMs: Number.isFinite(startedAtMs)
+      ? Math.max(0, now - startedAtMs)
+      : null,
+  };
+}
+
+type PhaseCheckpoint = (
+  phase: SmokePhase,
+  patch?: JsonRecord,
+) => Promise<void>;
 
 class PostC12SmokeStop extends Error {
   constructor(readonly batchId: string) {
@@ -100,6 +153,7 @@ class PostC12SmokeModel implements KnowledgeCurationModel {
   constructor(
     private readonly delegate: KnowledgeCurationModel,
     private readonly runtime: SmokeObservingRuntime,
+    private readonly checkpoint: PhaseCheckpoint,
   ) {}
 
   get physicalRealModelInvocations(): number {
@@ -138,6 +192,7 @@ class PostC12SmokeModel implements KnowledgeCurationModel {
           ? relationEntryCount(request.instruction)
           : undefined,
       input: inputObservation(input),
+      completed: false,
     };
     if (operation === "extractKnowledge") {
       if (!batchId)
@@ -146,6 +201,14 @@ class PostC12SmokeModel implements KnowledgeCurationModel {
       if (batchId !== EXPECTED_FIRST_BATCH) {
         this.expectedStop = batchId;
         this.calls.push(call);
+        await this.checkpoint("smoke_boundary_reached", {
+          modelCalls: this.calls.map(modelCallEvidence),
+          smokeBoundary: {
+            expectedStop: this.expectedStop,
+            nextBatchRequested: batchId,
+            nextBatchDelegatedToRealModel: false,
+          },
+        });
         throw new PostC12SmokeStop(batchId);
       }
       this.instructions.push(request.instruction);
@@ -157,20 +220,61 @@ class PostC12SmokeModel implements KnowledgeCurationModel {
     call.delegatedToRealModel = true;
     this.physicalCalls += 1;
     this.calls.push(call);
+    call.startedAt = new Date().toISOString();
+    await this.checkpoint(
+      operation === "understandReport"
+        ? "understand_report_started"
+        : "batch_0001_extraction_started",
+      {
+        modelCalls: this.calls.map(modelCallEvidence),
+        modelAccounting: {
+          physicalRealModelInvocations: this.physicalCalls,
+          physicalExtractionCalls: this.calls.filter(
+            (item) =>
+              item.operation === "extractKnowledge" &&
+              item.delegatedToRealModel,
+          ).length,
+        },
+      },
+    );
     const observationStart = this.runtime.calls.length;
+    const startedAtMs = Date.parse(call.startedAt as string);
     try {
       const output = await this.delegate.invoke(request);
+      call.completed = true;
+      call.completedAt = new Date().toISOString();
+      call.durationMs = Math.max(
+        0,
+        Date.parse(call.completedAt as string) - startedAtMs,
+      );
       call.outputShape = outputShape(output);
       call.runtimeObservation = this.runtime.calls[observationStart] ?? null;
       if (operation === "extractKnowledge" && batchId)
         this.outputs.push({ batchId, output: summarizeExtraction(output) });
+      await this.checkpoint(
+        operation === "understandReport"
+          ? "understand_report_completed"
+          : "batch_0001_extraction_completed",
+        { modelCalls: this.calls.map(modelCallEvidence) },
+      );
       return output;
     } catch (error) {
+      call.completedAt = new Date().toISOString();
+      call.durationMs = Math.max(
+        0,
+        Date.parse(call.completedAt as string) - startedAtMs,
+      );
       call.runtimeObservation = this.runtime.calls[observationStart] ?? null;
       call.error =
         error instanceof Error
           ? error.message.slice(0, 240)
           : String(error).slice(0, 240);
+      await this.checkpoint(
+        operation === "understandReport"
+          ? "understand_report_completed"
+          : "batch_0001_extraction_completed",
+        { modelCalls: this.calls.map(modelCallEvidence) },
+      );
       throw error;
     }
   }
@@ -187,6 +291,9 @@ export async function main(): Promise<void> {
     taskId: POST_C12_TASK_ID,
     baseline: POST_C12_BASELINE,
     startedAt: new Date().toISOString(),
+    phase: null,
+    phaseTimestamps: {},
+    elapsedMs: 0,
     rawCandidateOutput: {
       status: "not_observed",
       counts: { entities: null, relations: null, claims: null },
@@ -221,9 +328,15 @@ export async function main(): Promise<void> {
       retryCount: 0,
     },
   };
+  const checkpoint: PhaseCheckpoint = async (phase, patch = {}) => {
+    Object.assign(evidence, patch);
+    Object.assign(evidence, applyPhaseCheckpoint(evidence, phase));
+    await writeEvidence(evidencePath, evidence);
+  };
   let root: string | undefined;
   let runtime: { close: () => Promise<void> } | undefined;
   try {
+    await checkpoint("initialized");
     const head = (await execGit(["rev-parse", "HEAD"])).trim();
     evidence.baselineCheck = {
       head,
@@ -232,6 +345,7 @@ export async function main(): Promise<void> {
     };
     if (head !== POST_C12_BASELINE)
       throw new Error("C12 accepted baseline mismatch");
+    await checkpoint("baseline_verified");
     const config = loadLocalRuntimeConfig(process.env, process.cwd(), {
       requireRealLlm: true,
     });
@@ -248,6 +362,7 @@ export async function main(): Promise<void> {
       throw new Error(
         `effective runtime must be deepseek-official/${POST_C12_EXPECTED_MODEL}`,
       );
+    await checkpoint("runtime_config_verified");
     const modelPreflight = await verifyDeepSeekModel(
       config.baseUrl,
       config.apiKey,
@@ -256,6 +371,7 @@ export async function main(): Promise<void> {
     evidence.modelPreflight = modelPreflight;
     if (modelPreflight.status !== "READY")
       throw new Error(modelPreflight.diagnostic);
+    await checkpoint("model_preflight_ready");
     const pdfPath = await findExactPdf();
     const pdfBytes = Uint8Array.from(await readFile(pdfPath));
     const sha256 = createHash("sha256").update(pdfBytes).digest("hex");
@@ -273,10 +389,12 @@ export async function main(): Promise<void> {
       pdfBytes.byteLength !== POST_C12_EXPECTED_PDF_BYTES
     )
       throw new Error("PDF identity mismatch");
+    await checkpoint("pdf_verified");
     const doclingPreflight = await inspectDoclingRuntime();
-    evidence.doclingPreflight = doclingPreflight;
+    evidence.doclingPreflight = sanitizeDoclingPreflight(doclingPreflight);
     if (doclingPreflight.status !== "READY")
       throw new Error("Local Docling is unavailable");
+    await checkpoint("docling_preflight_ready");
     root = await createFreshKnowledgeBase();
     const loader = new KnowledgeBaseLoader({
       registry: new KnowledgeBaseRegistry(),
@@ -305,7 +423,14 @@ export async function main(): Promise<void> {
       initialValidation.status !== "passed"
     )
       throw new Error("fresh Knowledge Base preflight failed");
-    const parser = new RecordingParser(new DoclingDocumentParser());
+    await checkpoint("fresh_kb_ready");
+    const parser = new RecordingParser(new DoclingDocumentParser(), {
+      onStarted: () => checkpoint("docling_parse_started"),
+      onCompleted: (parsed) =>
+        checkpoint("docling_parse_completed", {
+          docling: parserEvidence(parsed),
+        }),
+    });
     const resolver = new RecordingResolver(
       new LocalResearchReportInputResolver({
         documentParser: parser,
@@ -325,7 +450,11 @@ export async function main(): Promise<void> {
     runtime = real;
     if (!observingRuntime)
       throw new Error("runtime observer was not initialized");
-    const smokeModel = new PostC12SmokeModel(real.model, observingRuntime);
+    const smokeModel = new PostC12SmokeModel(
+      real.model,
+      observingRuntime,
+      checkpoint,
+    );
     const writer = new KnowledgeWriter({
       loader,
       stagedStateValidator: createKnowledgeStagedStateValidator(validation),
@@ -361,26 +490,20 @@ export async function main(): Promise<void> {
         call.groupId === EXPECTED_FIRST_BATCH,
     );
     const firstBatchOutput = smokeModel.outputs.at(-1)?.output ?? {};
+    const candidateValidation = summarizeCandidateValidation(
+      firstBatchOutput,
+      firstBatchLogical?.candidateValidation,
+    );
+    const annotatedRelations = annotateRelationObservations(
+      firstBatchOutput,
+      candidateValidation,
+    );
     evidence.result = {
       status: result.status,
       failureStage: result.failureStage ?? null,
-      errors: result.errors,
-      raw: result.raw,
-      modelCalls: result.modelCalls,
+      errorCount: result.errors.length,
     };
-    evidence.modelCalls = smokeModel.calls.map((call) => ({
-      operation: call.operation,
-      batchId: call.batchId ?? null,
-      physicalAttempt: call.physicalAttempt,
-      delegatedToRealModel: call.delegatedToRealModel,
-      guidancePresent: call.guidancePresent ?? null,
-      canonicalRelationEntryCount: call.relationEntryCount ?? null,
-      input: call.input,
-      outputShape: call.outputShape ?? null,
-      runtimeObservation: call.runtimeObservation ?? null,
-      error: call.error ?? null,
-      candidateValidation: call.candidateValidation ?? null,
-    }));
+    evidence.modelCalls = smokeModel.calls.map(modelCallEvidence);
     const retryGuidanceEqual =
       smokeModel.instructions.length < 2 ||
       smokeModel.instructions[1]?.slice(
@@ -411,13 +534,12 @@ export async function main(): Promise<void> {
         firstBatchLogical?.succeeded === true ? "passed" : "failed",
       retryCount: firstBatchLogical?.retryCount ?? null,
       validationFailures: firstBatchLogical?.validationFailures ?? [],
-      candidateValidation: firstBatchLogical?.candidateValidation ?? null,
-      relationObservations: firstBatchOutput.relationObservations ?? [],
+      candidateValidation,
+      relationObservations: annotatedRelations,
     };
     evidence.rawCandidateOutput = firstBatchOutput;
-    evidence.candidateValidation =
-      firstBatchLogical?.candidateValidation ?? null;
-    evidence.relationObservations = firstBatchOutput.relationObservations ?? [];
+    evidence.candidateValidation = candidateValidation;
+    evidence.relationObservations = annotatedRelations;
     evidence.c9 = {
       physicalExtractionCalls: firstBatchCalls.length,
       retryCount: firstBatchLogical?.retryCount ?? null,
@@ -460,8 +582,41 @@ export async function main(): Promise<void> {
       underBudget:
         smokeModel.physicalRealModelInvocations <= MAX_REAL_MODEL_INVOCATIONS,
     };
+    const acceptedCounts = isRecord(candidateValidation?.acceptedCandidateCounts)
+      ? candidateValidation.acceptedCandidateCounts
+      : {};
+    const rejectedCounts = isRecord(candidateValidation?.rejectedCandidateCounts)
+      ? candidateValidation.rejectedCandidateCounts
+      : {};
+    const acceptedCandidateCount = Object.values(acceptedCounts).reduce(
+      (sum, value) => sum + (typeof value === "number" ? value : 0),
+      0,
+    );
+    const rejectedCandidateCount = Object.values(rejectedCounts).reduce(
+      (sum, value) => sum + (typeof value === "number" ? value : 0),
+      0,
+    );
+    evidence.candidateIsolation = {
+      candidateLocalRejectionObserved: rejectedCandidateCount > 0,
+      acceptedCandidateObserved: acceptedCandidateCount > 0,
+      acceptedCandidateCount,
+      rejectedCandidateCount,
+      samePhysicalAttempt: firstBatchCalls.length === 1,
+      rejectedExcludedFromDownstream: writerInvocations === 0,
+    };
+    await checkpoint("candidate_validation_observed", {
+      rawCandidateOutput: firstBatchOutput,
+      candidateValidation,
+      relationObservations: annotatedRelations,
+      c9: evidence.c9,
+      modelCalls: smokeModel.calls.map(modelCallEvidence),
+    });
     const pass =
       firstBatchLogical?.succeeded === true &&
+      rejectedCandidateCount > 0 &&
+      acceptedCandidateCount > 0 &&
+      firstBatchCalls.length === 1 &&
+      firstBatchLogical?.retryCount === 0 &&
       smokeModel.calls
         .filter((call) => call.operation === "extractKnowledge")
         .every((call) => call.guidancePresent === true) &&
@@ -481,7 +636,7 @@ export async function main(): Promise<void> {
       ? "Eligible for C4-R9 final full-pipeline validation using Flash."
       : "Stop; do not reinterpret this smoke as product acceptance.";
     evidence.completedAt = new Date().toISOString();
-    await writeEvidence(evidencePath, evidence);
+    await checkpoint("completed");
     console.log(
       JSON.stringify({
         status: evidence.status,
@@ -520,7 +675,13 @@ export async function main(): Promise<void> {
 class RecordingParser implements DocumentParser {
   readonly id: string;
   result: DocumentParseResult | undefined;
-  constructor(private readonly delegate: DocumentParser) {
+  constructor(
+    private readonly delegate: DocumentParser,
+    private readonly lifecycle?: {
+      onStarted: () => Promise<void>;
+      onCompleted: (result: DocumentParseResult) => Promise<void>;
+    },
+  ) {
     this.id = delegate.id;
   }
   supports(input: { filename: string; mediaType: string }): boolean {
@@ -531,7 +692,9 @@ class RecordingParser implements DocumentParser {
     filename: string;
     mediaType: string;
   }): Promise<DocumentParseResult> {
+    await this.lifecycle?.onStarted();
     this.result = await this.delegate.parse(input);
+    await this.lifecycle?.onCompleted(this.result);
     return this.result;
   }
 }
@@ -692,6 +855,20 @@ function parserEvidence(result: DocumentParseResult | undefined): JsonRecord {
       0,
   };
 }
+function sanitizeDoclingPreflight(value: JsonRecord): JsonRecord {
+  return {
+    status: typeof value.status === "string" ? value.status : "unknown",
+    doclingVersion:
+      typeof value.doclingVersion === "string" ? value.doclingVersion : null,
+    managedRootConfigured: typeof value.managedRoot === "string",
+    pythonConfigured: typeof value.python === "string",
+    modelRootConfigured: typeof value.modelRoot === "string",
+    checks: isRecord(value.checks) ? value.checks : {},
+    diagnostics: Array.isArray(value.diagnostics)
+      ? value.diagnostics.slice(0, 12)
+      : [],
+  };
+}
 function parserMatchesExpected(value: JsonRecord): boolean {
   return (
     value.pageCount === 103 &&
@@ -734,6 +911,84 @@ function relationObservations(output: JsonRecord): RelationObservation[] {
       }))
     : [];
 }
+export function summarizeCandidateValidation(
+  output: JsonRecord,
+  validation: unknown,
+): JsonRecord | null {
+  if (!isRecord(validation)) return null;
+  const attempt = Array.isArray(validation.attempts)
+    ? validation.attempts.find(isRecord)
+    : validation;
+  if (!attempt) return null;
+  const accepted = isRecord(attempt.accepted)
+    ? attempt.accepted
+    : null;
+  const rejected = isRecord(attempt.rejected)
+    ? attempt.rejected
+    : null;
+  const rejectionCountsByCode = isRecord(attempt.rejectionCountsByCode)
+    ? attempt.rejectionCountsByCode
+    : {};
+  const rejections = Array.isArray(attempt.rejections)
+    ? attempt.rejections
+        .filter(isRecord)
+        .map((rejection) => ({
+          candidateKind:
+            typeof rejection.candidateKind === "string"
+              ? rejection.candidateKind
+              : null,
+          originalOrdinal:
+            typeof rejection.originalOrdinal === "number"
+              ? rejection.originalOrdinal
+              : null,
+          code: typeof rejection.code === "string" ? rejection.code : null,
+          relationType:
+            typeof rejection.relationType === "string"
+              ? rejection.relationType
+              : null,
+        }))
+    : [];
+  return {
+    status: "observed",
+    rawCandidateCounts: {
+      entity: typeof output.entities === "number" ? output.entities : null,
+      relation: typeof output.relations === "number" ? output.relations : null,
+      claim: typeof output.claims === "number" ? output.claims : null,
+    },
+    acceptedCandidateCounts: accepted,
+    rejectedCandidateCounts: rejected,
+    rejectionCodeCounts: rejectionCountsByCode,
+    rejections,
+    attemptCount: Array.isArray(validation.attempts)
+      ? validation.attempts.filter(isRecord).length
+      : 1,
+  };
+}
+function annotateRelationObservations(
+  output: JsonRecord,
+  validation: JsonRecord | null,
+): RelationObservation[] {
+  const base = relationObservations(output);
+  const rejections = validation && Array.isArray(validation.rejections)
+    ? validation.rejections.filter(isRecord)
+    : [];
+  return base.map((observation, index) => {
+    const rejection = rejections.find(
+      (item) =>
+        item.candidateKind === "relation" &&
+        item.originalOrdinal === index + 1,
+    );
+    return {
+      ...observation,
+      accepted: rejection ? false : validation ? true : null,
+      rejected: rejection ? true : validation ? false : null,
+      rejectionCode:
+        rejection && typeof rejection.code === "string"
+          ? rejection.code
+          : null,
+    };
+  });
+}
 function summarizeExtraction(value: unknown): JsonRecord {
   if (!isRecord(value))
     return {
@@ -747,6 +1002,28 @@ function summarizeExtraction(value: unknown): JsonRecord {
     relations: Array.isArray(value.relations) ? value.relations.length : null,
     claims: Array.isArray(value.claims) ? value.claims.length : null,
     relationObservations: relationObservations(value),
+  };
+}
+
+function modelCallEvidence(call: JsonRecord): JsonRecord {
+  return {
+    operation: typeof call.operation === "string" ? call.operation : null,
+    batchId: typeof call.batchId === "string" ? call.batchId : null,
+    physicalAttempt:
+      typeof call.physicalAttempt === "number" ? call.physicalAttempt : null,
+    delegatedToRealModel: call.delegatedToRealModel === true,
+    startedAt: typeof call.startedAt === "string" ? call.startedAt : null,
+    completedAt:
+      typeof call.completedAt === "string" ? call.completedAt : null,
+    durationMs: typeof call.durationMs === "number" ? call.durationMs : null,
+    completed: call.completed === true,
+    guidancePresent: call.guidancePresent ?? null,
+    canonicalRelationEntryCount: call.relationEntryCount ?? null,
+    input: call.input ?? null,
+    outputShape: call.outputShape ?? null,
+    runtimeObservation: call.runtimeObservation ?? null,
+    candidateValidation: call.candidateValidation ?? null,
+    error: typeof call.error === "string" ? call.error : null,
   };
 }
 
@@ -809,9 +1086,29 @@ async function execGit(args: string[]): Promise<string> {
   const { promisify } = await import("node:util");
   return (await promisify(execFile)("git", args)).stdout;
 }
+export async function writeEvidenceAtomically(
+  path: string,
+  value: JsonRecord,
+  options: { beforeReplace?: (temporaryPath: string) => Promise<void> | void } = {},
+): Promise<void> {
+  const target = resolve(path);
+  const directory = dirname(target);
+  await mkdir(directory, { recursive: true });
+  const temporary = join(
+    directory,
+    `.${basename(target)}.${process.pid}.${Date.now()}.tmp`,
+  );
+  try {
+    await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    await options.beforeReplace?.(temporary);
+    await rename(temporary, target);
+  } finally {
+    await rm(temporary, { force: true });
+  }
+}
+
 async function writeEvidence(path: string, value: JsonRecord): Promise<void> {
-  await mkdir(resolve(path, ".."), { recursive: true });
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await writeEvidenceAtomically(path, value);
 }
 
 if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? "")).href)

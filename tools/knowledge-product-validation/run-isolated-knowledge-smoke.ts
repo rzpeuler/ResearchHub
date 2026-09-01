@@ -12,11 +12,8 @@ export function runIsolatedKnowledgeSmoke(): number {
     runner,
   ], {
     env: isolatedEnvironment(process.env),
-    encoding: 'utf8',
-    stdio: ['inherit', 'pipe', 'pipe'],
+    stdio: ['inherit', 'inherit', 'inherit'],
   })
-  if (child.stdout) process.stdout.write(child.stdout)
-  if (child.stderr) process.stderr.write(child.stderr)
   return child.status ?? 1
 }
 

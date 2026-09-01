@@ -1,5 +1,26 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R2
+
+S3-R2 ran exactly once as a supervised process-local isolated `.env` child
+with a 600-second outer watchdog. It reached the durable `completed` phase in
+267192 ms from the exact C13-R1 baseline. The effective runtime was
+deepseek-official/deepseek-v4-flash; PDF identity, Docling readiness and frozen
+metrics, fresh Schema 0.3 / Storage 1 Knowledge Base, understandReport, and
+batch-0001 extraction all passed their gates. It made two physical real-model
+calls, one physical extraction call, retryCount zero, and stopped before
+delegating batch-0003; no Writer call or revision mutation occurred.
+
+The first-run evidence serializer did not project the Workflow's nested
+candidate-validation `attempts` shape. Candidate-local rejection and accepted
+candidate counts were therefore not durably observed. S3-R2 is
+Completed / INCONCLUSIVE / ISOLATION PATH NOT EXERCISED; the serializer was
+corrected in the working tree and the real smoke was not rerun. Durable
+sanitized evidence is
+tests/knowledge/product-validation/evidence/c004-s3-r2-post-c13-real-candidate-isolation-smoke.json.
+This does not establish C13 candidate-isolation behavior, does not execute full
+report validation, and does not authorize C4-R9.
+
 ## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R1
 
 S3-R1 started from the exact authorized `66e4c86f394d3d142113e59531b6c69fc27081cd`
@@ -10,7 +31,8 @@ evidence. The verified npm, wrapper, and smoke-runner process chain was
 terminated; no retry was made. Candidate counts, relation observations,
 physical call counts, and retryCount are therefore not observed.
 
-S3-R1 is Completed / FAIL - SOL REVIEW REQUIRED. This is not evidence of a
+S3-R1 is Completed / INVALID TEST SETUP - External Execution Boundary Too
+Short - Sol verified. This is not evidence of a
 C13 semantic regression and does not establish candidate-isolation behavior.
 The run did not continue into full report validation and did not execute C4-R9.
 C13, C13-R1, RH-REAL-ENV-BOOTSTRAP-001, and RH-REAL-ENV-BOOTSTRAP-001-R1 remain

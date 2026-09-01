@@ -1,8 +1,38 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R2 - Real Candidate Isolation Smoke Result
+
+Status: Completed / INCONCLUSIVE / ISOLATION PATH NOT EXERCISED
+Date: 2026-09-01
+
+The authorized S3-R2 smoke ran exactly once in a supervised process-local
+isolated `.env` child with a 600-second outer watchdog. The durable run reached
+`completed` in 267192 ms from the exact C13-R1 baseline. The effective runtime
+was deepseek-official/deepseek-v4-flash; the exact PDF hash/byte identity,
+Docling readiness and frozen metrics, fresh Schema 0.3 / Storage 1 Knowledge
+Base, understandReport, and batch-0001 extraction were all observed. The run
+made two physical real-model calls, one physical extraction call, retryCount
+zero, and reached the expected smoke boundary at batch-0003 without delegation,
+writer invocation, or revision change.
+
+The first-run durable serializer did not correctly project the Workflow's
+nested candidate-validation `attempts` shape. Candidate-local rejection and
+accepted-candidate counts therefore remain unobserved in the durable artifact,
+so the required isolation path cannot be claimed. The artifact records the
+conservative classification `INCONCLUSIVE / ISOLATION PATH NOT EXERCISED` and
+that the real smoke was not rerun. The serializer correction is present in the
+working tree for subsequent authorized runs; no second real run was made.
+
+Durable sanitized evidence is
+tests/knowledge/product-validation/evidence/c004-s3-r2-post-c13-real-candidate-isolation-smoke.json.
+S3-R2 did not execute full report product validation or C4-R9. C13 and C13-R1
+remain Accepted - Sol verified; historical S3 remains Completed / INVALID TEST
+SETUP - Parent Environment Credential Override - Sol verified; Stage C remains
+In Progress and is not accepted; C4-R9 remains NOT AUTHORIZED.
+
 ## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R1 - Real Candidate Isolation Smoke Result
 
-Status: Completed / FAIL - SOL REVIEW REQUIRED
+Status: Completed / INVALID TEST SETUP - External Execution Boundary Too Short - Sol verified
 Date: 2026-09-01
 
 The authorized S3-R1 smoke used the exact C13-R1 baseline and the process-local
@@ -11,7 +41,8 @@ deepseek-v4-flash real path, but exceeded the external 120-second command
 boundary before the runner wrote durable evidence. The verified process chain
 was terminated and no real retry was made. Runtime/input gates, model-call
 counts, candidate counts, relation observations, and retryCount are recorded
-as not observed rather than inferred. Durable sanitized evidence is
+as not observed rather than inferred. This is an invalid test setup caused by
+an execution boundary too short for the authorized smoke. Durable sanitized evidence is
 tests/knowledge/product-validation/evidence/c004-s3-r1-post-c13-real-candidate-isolation-smoke.json.
 
 S3-R1 did not establish or disprove candidate isolation. It did not execute

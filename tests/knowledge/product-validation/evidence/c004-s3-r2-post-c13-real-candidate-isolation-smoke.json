@@ -1,0 +1,396 @@
+{
+  "taskId": "KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R2",
+  "baseline": "f9774ab56003e8275f715507525bfaa92b899334",
+  "startedAt": "2026-09-01T08:44:01.456Z",
+  "phase": "completed",
+  "phaseTimestamps": {
+    "initialized": "2026-09-01T08:44:01.456Z",
+    "baseline_verified": "2026-09-01T08:44:01.484Z",
+    "runtime_config_verified": "2026-09-01T08:44:01.485Z",
+    "model_preflight_ready": "2026-09-01T08:44:01.848Z",
+    "pdf_verified": "2026-09-01T08:44:01.887Z",
+    "docling_preflight_ready": "2026-09-01T08:44:08.996Z",
+    "fresh_kb_ready": "2026-09-01T08:44:09.003Z",
+    "docling_parse_started": "2026-09-01T08:44:09.013Z",
+    "docling_parse_completed": "2026-09-01T08:46:08.901Z",
+    "understand_report_started": "2026-09-01T08:46:08.921Z",
+    "understand_report_completed": "2026-09-01T08:47:44.999Z",
+    "batch_0001_extraction_started": "2026-09-01T08:47:45.016Z",
+    "batch_0001_extraction_completed": "2026-09-01T08:48:28.638Z",
+    "smoke_boundary_reached": "2026-09-01T08:48:28.643Z",
+    "candidate_validation_observed": "2026-09-01T08:48:28.648Z",
+    "completed": "2026-09-01T08:48:28.648Z"
+  },
+  "elapsedMs": 267192,
+  "rawCandidateOutput": {
+    "entities": 32,
+    "relations": 12,
+    "claims": 17,
+    "relationObservations": [
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "industry",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "product",
+        "targetEntityType": "industry"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "upstream_of",
+        "sourceEntityType": "product",
+        "targetEntityType": "product"
+      },
+      {
+        "relationType": "uses_technology",
+        "sourceEntityType": "product",
+        "targetEntityType": "technology"
+      },
+      {
+        "relationType": "uses_technology",
+        "sourceEntityType": "technology",
+        "targetEntityType": "industry"
+      }
+    ]
+  },
+  "candidateValidation": {
+    "status": "observed",
+    "rawCandidateCounts": {
+      "entity": 32,
+      "relation": 12,
+      "claim": 17
+    },
+    "acceptedCandidateCounts": null,
+    "rejectedCandidateCounts": null,
+    "rejectionCodeCounts": {},
+    "rejections": []
+  },
+  "relationObservations": [],
+  "c9": {
+    "physicalExtractionCalls": 1,
+    "retryCount": 0
+  },
+  "modelCalls": [
+    {
+      "operation": "understandReport",
+      "batchId": null,
+      "physicalAttempt": 1,
+      "delegatedToRealModel": true,
+      "startedAt": "2026-09-01T08:46:08.921Z",
+      "completedAt": "2026-09-01T08:47:44.998Z",
+      "durationMs": 96077,
+      "completed": true,
+      "guidancePresent": null,
+      "canonicalRelationEntryCount": null,
+      "input": {
+        "batchId": null,
+        "currentBatchChunkCount": 0,
+        "currentBatchCharacterCount": 0,
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 367964
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "majorEntityMentions",
+          "majorTopics",
+          "newThemeProposal",
+          "researchScope",
+          "sourceAssessment",
+          "themeHypotheses",
+          "uncertainty"
+        ]
+      },
+      "runtimeObservation": {
+        "operation": "understandReport",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T08:46:08.925Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 9254,
+        "finishMs": 96055,
+        "durationMs": 96058,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 20042,
+        "finishReason": "stop",
+        "timedOut": false
+      },
+      "candidateValidation": null,
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0001",
+      "physicalAttempt": 1,
+      "delegatedToRealModel": true,
+      "startedAt": "2026-09-01T08:47:45.016Z",
+      "completedAt": "2026-09-01T08:48:28.638Z",
+      "durationMs": 43622,
+      "completed": true,
+      "guidancePresent": true,
+      "canonicalRelationEntryCount": 14,
+      "input": {
+        "batchId": "batch-0001",
+        "currentBatchChunkCount": 117,
+        "currentBatchCharacterCount": 5480,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 68237
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 32,
+        "relations": 12,
+        "claims": 17
+      },
+      "runtimeObservation": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T08:47:45.019Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1352,
+        "finishMs": 43617,
+        "durationMs": 43618,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 9007,
+        "finishReason": "stop",
+        "timedOut": false
+      },
+      "candidateValidation": null,
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0003",
+      "physicalAttempt": 1,
+      "delegatedToRealModel": false,
+      "startedAt": null,
+      "completedAt": null,
+      "durationMs": null,
+      "completed": false,
+      "guidancePresent": true,
+      "canonicalRelationEntryCount": 14,
+      "input": {
+        "batchId": "batch-0003",
+        "currentBatchChunkCount": 78,
+        "currentBatchCharacterCount": 5890,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 63262
+      },
+      "outputShape": null,
+      "runtimeObservation": null,
+      "candidateValidation": null,
+      "error": null
+    }
+  ],
+  "extractionResult": {
+    "entities": 32,
+    "relations": 12,
+    "claims": 17,
+    "validationStatus": "passed",
+    "retryCount": 0,
+    "validationFailures": [],
+    "candidateValidation": {
+      "status": "observed",
+      "rawCandidateCounts": {
+        "entity": 32,
+        "relation": 12,
+        "claim": 17
+      },
+      "acceptedCandidateCounts": null,
+      "rejectedCandidateCounts": null,
+      "rejectionCodeCounts": {},
+      "rejections": []
+    },
+    "relationObservations": []
+  },
+  "batch0001": {
+    "realPhysicalAttempts": 1,
+    "calls": [
+      {
+        "physicalAttempt": 1,
+        "guidancePresent": true,
+        "canonicalRelationEntryCount": 14,
+        "input": {
+          "batchId": "batch-0001",
+          "currentBatchChunkCount": 117,
+          "currentBatchCharacterCount": 5480,
+          "fullDocumentVisible": false,
+          "normalizedTextVisible": false,
+          "serializedInputCharacters": 68237
+        },
+        "outputShape": {
+          "type": "object",
+          "keys": [
+            "claims",
+            "entities",
+            "relations"
+          ],
+          "entities": 32,
+          "relations": 12,
+          "claims": 17
+        },
+        "error": null
+      }
+    ]
+  },
+  "modelAccounting": {
+    "logicalModelCalls": 3,
+    "physicalRealModelInvocations": 2,
+    "physicalExtractionCalls": 1,
+    "retryCount": 0,
+    "maximumAllowed": 5,
+    "underBudget": true
+  },
+  "baselineCheck": {
+    "head": "f9774ab56003e8275f715507525bfaa92b899334",
+    "expected": "f9774ab56003e8275f715507525bfaa92b899334",
+    "exact": true
+  },
+  "effectiveModel": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash",
+    "baseUrl": "https://api.deepseek.com",
+    "curationMaxTokens": 65536
+  },
+  "modelPreflight": {
+    "status": "READY",
+    "httpStatus": 200,
+    "modelAvailable": true,
+    "diagnostic": "DeepSeek credential and Flash model accepted by /models"
+  },
+  "pdf": {
+    "filename": "20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf",
+    "sha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "bytes": 3209114,
+    "expectedSha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "expectedBytes": 3209114,
+    "sha256Match": true,
+    "bytesMatch": true
+  },
+  "doclingPreflight": {
+    "status": "READY",
+    "managedRootConfigured": true,
+    "pythonConfigured": true,
+    "doclingVersion": "2.116.0",
+    "modelRootConfigured": true,
+    "checks": {
+      "python": "PASS",
+      "doclingImport": "PASS",
+      "version": "PASS",
+      "artifactsDirectory": "PASS",
+      "modelInitialization": "PASS",
+      "fixtureParse": "PASS",
+      "tablePipeline": "PASS"
+    },
+    "diagnostics": []
+  },
+  "freshKnowledgeBase": {
+    "knowledgeBaseId": "kb-product-validation-c004-s3-r2-post-c13",
+    "schemaVersion": "0.3",
+    "storageFormatVersion": "1",
+    "revision": 0,
+    "writable": true,
+    "validation": "passed",
+    "root": "system-temp (removed after run)"
+  },
+  "docling": {
+    "parser": {
+      "id": "docling-local",
+      "version": "2.116.0"
+    },
+    "pageCount": 103,
+    "chunks": 1523,
+    "uniqueChunkIds": 1523,
+    "emptyChunks": 0,
+    "sections": 154,
+    "tables": 45,
+    "images": 178,
+    "normalizedCharacters": 97784
+  },
+  "smokeBoundary": {
+    "expectedStop": "batch-0003",
+    "nextBatchRequested": "batch-0003",
+    "nextBatchDelegatedToRealModel": false,
+    "writerInvocations": 0,
+    "downstreamModelCalls": 0,
+    "finalRevision": 0
+  },
+  "result": {
+    "status": "blocked",
+    "failureStage": "extraction",
+    "errorCount": 1
+  },
+  "c12RuntimeObservation": {
+    "operation": "extractKnowledge",
+    "guidancePresent": true,
+    "canonicalRelationEntryCount": 14,
+    "upstreamOfAdvertisedEndpointCompatibility": "industry -> industry",
+    "extractionRequestCount": 1,
+    "retryGuidanceEqual": true,
+    "retryFeedbackBounded": true,
+    "retryCount": 0
+  },
+  "candidateIsolation": {
+    "candidateLocalRejectionObserved": false,
+    "acceptedCandidateObserved": false,
+    "acceptedCandidateCount": 0,
+    "rejectedCandidateCount": 0,
+    "samePhysicalAttempt": true,
+    "rejectedExcludedFromDownstream": true
+  },
+  "status": "INCONCLUSIVE / ISOLATION PATH NOT EXERCISED",
+  "recommendation": "Sol review required; candidate-local rejection was not durably observed, so this smoke is not product acceptance.",
+  "evidenceIntegrity": {
+    "candidateValidationShape": "not captured by the first-run serializer",
+    "postRunClassification": "INCONCLUSIVE / ISOLATION PATH NOT EXERCISED",
+    "realSmokeWasNotRerun": true
+  },
+  "completedAt": "2026-09-01T08:48:28.648Z"
+}
