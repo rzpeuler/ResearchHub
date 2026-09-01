@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-01 - KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013
+
+- Added deterministic candidate-level isolation to Knowledge v0.3
+  extractKnowledge after global output validation. Local Entity, Relation,
+  and Claim failures are rejected independently with sanitized metadata while
+  accepted candidates preserve original array ordinals.
+- Preserved operation-fatal trusted/top-level failures, valid empty arrays, and
+  the existing single C9 retry for candidate_set_exhausted; partial local
+  rejection does not retry.
+- Added Workflow metadata for accepted/rejected counts, rejection code counts,
+  sanitized rejection details, and retry attempts. Only accepted candidates
+  reach downstream consolidation, reconciliation, ChangeSet, and Writer.
+- Added focused C13 and workflow isolation/retry tests. No real LLM, PDF, or
+  API call was made. C13 is Completed / Sol Verification Pending; C4-S2 is
+  Completed / Engineering Rework Required - Sol verified; C4-R9 remains NOT
+  AUTHORIZED; Stage C remains In Progress and is not accepted.
+
 ## 2026-09-01 - KNOWLEDGE-V0.3-POST-C12-REAL-EXTRACTION-SMOKE-C-004-S2
 
 - Ran the bounded real Flash smoke through the normal Workflow, DSH, and
@@ -13,7 +30,7 @@
   semantic revision was reached. Three physical real model calls were made.
 - Durable sanitized evidence is
   `tests/knowledge/product-validation/evidence/c004-s2-post-c12-extraction-smoke.json`.
-  S2 is `Completed / FAIL - SOL REVIEW REQUIRED`; C12 is `Accepted - Sol
+  S2 is `Completed / Engineering Rework Required - Sol verified`; C12 is `Accepted - Sol
   verified`; Stage C remains in progress and is not accepted.
 
 ## 2026-09-01 - KNOWLEDGE-V0.3-RELATION-SELECTION-GUIDANCE-C-012

@@ -1,5 +1,29 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013 - Candidate-Level Validation Isolation
+
+Status: Completed / Sol Verification Pending
+Date: 2026-09-01
+
+C13 preserves global validation as the operation boundary and isolates local
+Entity, Relation, and Claim validation failures. Accepted candidates retain
+their original array ordinals; rejected candidates produce deterministic,
+sanitized CandidateValidationRejection metadata. Empty arrays remain valid,
+while a nonempty output with zero accepted candidates produces
+candidate_set_exhausted and may use the existing single C9 retry.
+
+Only accepted candidates enter downstream consolidation, reference resolution,
+reconciliation, Schema Gap analysis, ChangeSet construction, and Writer.
+Workflow call metadata records accepted/rejected counts by kind, rejection
+code counts, rejection metadata, and retry count. The Structured Output
+Contract, Schema semantics, C8 projection, C11 contract, and ordinary C9/C10
+behavior remain unchanged. No real LLM, PDF, or API call was made.
+
+C4-S2 is reclassified as Completed / Engineering Rework Required - Sol
+verified; C12 remains Accepted - Sol verified; Stage C remains In Progress
+and is not accepted. C4-R9 is NOT AUTHORIZED. DSH multi-provider / other-API
+capability portability remains deferred pending detailed user requirements.
+
 ## KNOWLEDGE-V0.3-POST-C12-REAL-EXTRACTION-SMOKE-C-004-S2 - Post-C12 Flash Extraction Result
 
 **Status:** Completed / FAIL - SOL REVIEW REQUIRED

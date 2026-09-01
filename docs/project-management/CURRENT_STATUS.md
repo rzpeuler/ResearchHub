@@ -1,5 +1,30 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013
+
+C13 changes Knowledge v0.3 extractKnowledge from batch-level semantic
+all-or-nothing validation to deterministic candidate-level isolation after
+global output validation. Trusted-field violations, unsupported top-level
+fields, missing or malformed arrays, and other global failures remain
+operation-fatal. Each Entity, Relation, and Claim candidate is validated
+independently; local failures are rejected with sanitized metadata while
+accepted candidates retain their original array ordinals in deterministic
+candidate IDs. Empty arrays are valid. A nonempty output with no accepted
+candidates raises candidate_set_exhausted and remains eligible for the
+existing single C9 retry.
+
+Only accepted candidates proceed to consolidation, reference resolution,
+reconciliation, Schema Gap analysis, ChangeSet construction, and Writer.
+Workflow metadata records accepted/rejected counts by kind, rejection code
+counts, rejection details, and retry count without changing the model contract
+or adding validationRejections to Structured Output. Focused C13 tests and
+offline regression checks pass; no real LLM, PDF, or API call was made.
+
+C4-S2 is now Completed / Engineering Rework Required - Sol verified; C12
+remains Accepted - Sol verified; Stage C remains In Progress and is not
+accepted. C4-R9 is NOT AUTHORIZED. DSH multi-provider / other-API capability
+portability remains Deferred / Awaiting Detailed User Requirements.
+
 ## KNOWLEDGE-V0.3-POST-C12-REAL-EXTRACTION-SMOKE-C-004-S2
 
 The authorized post-C12 bounded real smoke used the exact C4-R8 PDF
@@ -21,7 +46,7 @@ were made: `understandReport` plus two extraction attempts. Durable sanitized
 evidence is
 `tests/knowledge/product-validation/evidence/c004-s2-post-c12-extraction-smoke.json`.
 
-S2 is `Completed / FAIL - SOL REVIEW REQUIRED`. This confirms C12 guidance
+S2 is `Completed / Engineering Rework Required - Sol verified`. This confirms C12 guidance
 reached the real path but did not establish reliable elimination of the R8
 relation-selection failure. C4-R8-FINAL remains historical
 `Completed / FAIL - SOL REVIEW REQUIRED`; Stage C remains `In Progress` and is
