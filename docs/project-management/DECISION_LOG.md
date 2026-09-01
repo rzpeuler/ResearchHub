@@ -1,8 +1,25 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL - Authorization
+
+Status: Authorized / In Progress
+Date: 2026-09-02
+
+C4-R9-R2 is authorized as the single next Stage C full-pipeline real
+validation from the C14-accepted baseline. It must run exactly once from its
+Commit A baseline with the accepted isolated `.env` child, the exact PDF, the
+Flash runtime, a fresh empty Schema 0.3 / Storage 1 writable Knowledge Base,
+primary `commit` with `reprocess=true`, and one guarded `reprocess=false`
+replay. The fresh-KB C14 invariant requires zero `existing_ref` candidates,
+zero reconciliation groups, zero reconciliation logical calls, and zero
+reconciliation physical provider calls. Any violation is
+`FAIL / SOL REVIEW REQUIRED`; no product correction may be made during the
+run. Stage C remains In Progress / Awaiting C4-R9-R2 Sol Verification and is
+not accepted.
+
 ## KNOWLEDGE-V0.3-RECONCILIATION-BOUNDARY-C-014 - Engineering Result
 
-Status: C14 COMPLETE / SOL VERIFICATION REQUIRED
+Status: Accepted - Sol verified
 Date: 2026-09-02
 
 C14 corrected the reconciliation boundary exposed by C4-R9-R1. Only
@@ -24,9 +41,9 @@ observes reconciliation groups, uses non-null Schema-derived endpoint values
 for nullable contract checks, and retains bounded sanitized blocked diagnostics.
 
 Offline curation, ingestion, product-validation, integration typecheck, and
-full regression tests passed. No new real LLM, DeepSeek, or C4-R9-R2 execution
-was performed. Stage C remains In Progress and is not accepted; C4-R9-R2
-remains NOT AUTHORIZED.
+full regression tests passed. No real LLM or DeepSeek execution was performed
+during C14. C4-R9-R2 is now Authorized / In Progress. Stage C remains In
+Progress and is not accepted.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R1 - Result
 

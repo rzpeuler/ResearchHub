@@ -30,6 +30,7 @@ export const R9_EXPECTED_PDF_BYTES = 3_209_114;
 export const R9_EXPECTED_BATCH_COUNT = 18;
 export const R9_EVIDENCE_PATH = process.env.RESEARCHHUB_PRODUCT_VALIDATION_DURABLE_EVIDENCE ?? "tests/knowledge/product-validation/evidence/c004-r9-final-full-pipeline.json";
 export const R9_EXPECTED_REASONING_POLICY = { understandReport: "off", extractKnowledge: "off", reconcileKnowledge: "low", analyzeSchemaGaps: "low" } as const;
+export const R9_EXPECT_ZERO_RECONCILIATION = process.env.RESEARCHHUB_EXPECT_ZERO_RECONCILIATION === "1";
 
 type JsonRecord = Record<string, unknown>;
 type CandidateCounts = { entity: number; relation: number; claim: number };
@@ -245,6 +246,11 @@ export async function main(): Promise<void> {
       : [];
     for (const batch of extractionBatches)
       await checkpoint(`batch_${String(batch.batchId)}_validation_observed`, { batchValidation: batch });
+    const reconciliationEligibility = primary.referenceResolution;
+    const reconciliationBoundary = { existingRefCandidates: reconciliationEligibility.existing_ref, newObjectKeyCandidates: reconciliationEligibility.new_object_key, ambiguousCandidates: reconciliationEligibility.ambiguous, invalidCandidates: reconciliationEligibility.invalid, reconciliationGroups: primary.reconciliation.groups, reconciliationCandidates: primary.reconciliation.candidates, reconciliationLogicalCalls: primary.modelCalls.filter((call) => call.operation === "reconcileKnowledge").length, reconciliationPhysicalCalls: model.calls.filter((call) => call.operation === "reconcileKnowledge" && call.delegatedToProvider).length };
+    await checkpoint("reconciliation_boundary_verified", { reconciliationEligibility, reconciliationBoundary });
+    if (R9_EXPECT_ZERO_RECONCILIATION && !c14FreshKbReconciliationBoundaryPasses(reconciliationBoundary))
+      throw new ValidationFailure("FAIL / SOL REVIEW REQUIRED", "C14 fresh-KB reconciliation boundary invariant failed");
     const primaryGate = evaluatePrimaryCompletionGate(primary, evidence.docling as JsonRecord, planned);
     if (primaryGate === "docling_invalid") throw new ValidationFailure("FAIL / SOL REVIEW REQUIRED", "Docling metrics differ from frozen baseline");
     if (primaryGate === "batch_plan_invalid") throw new ValidationFailure("FAIL / SOL REVIEW REQUIRED", "deterministic batch plan differs from frozen baseline");
@@ -285,7 +291,9 @@ export async function main(): Promise<void> {
       throw new ValidationFailure("FAIL / SOL REVIEW REQUIRED", "final Knowledge Base validation or provenance failed");
     evidence.finalClassification = "TECHNICAL PASS / SOL PRODUCT QUALITY REVIEW REQUIRED";
     evidence.status = evidence.finalClassification;
-    evidence.governance = { c13: "Accepted - Sol verified", c13r1: "Accepted - Sol verified", s3r2: "Accepted / PASS - CANDIDATE ISOLATION EXERCISED - Sol verified", c4r9: "Completed / TECHNICAL PASS - SOL PRODUCT QUALITY REVIEW REQUIRED", stageC: "In Progress / Awaiting C4-R9 Sol Verification" };
+    evidence.governance = R9_TASK_ID.includes("R9-R2")
+      ? { c13: "Accepted - Sol verified", c13r1: "Accepted - Sol verified", s3r2: "Accepted / PASS - CANDIDATE ISOLATION EXERCISED - Sol verified", c4r9: "Completed / INVALID TEST SETUP - Smoke Observer Timeout - Sol verified", c4r9r1: "Completed / FAIL - Reconciliation Boundary Defect - Sol verified", c14: "Accepted - Sol verified", c4r9r2: "TECHNICAL PASS / SOL PRODUCT QUALITY REVIEW REQUIRED", stageC: "In Progress / Awaiting C4-R9-R2 Sol Verification" }
+      : { c13: "Accepted - Sol verified", c13r1: "Accepted - Sol verified", s3r2: "Accepted / PASS - CANDIDATE ISOLATION EXERCISED - Sol verified", c4r9: "Completed / TECHNICAL PASS - SOL PRODUCT QUALITY REVIEW REQUIRED", stageC: "In Progress / Awaiting C4-R9 Sol Verification" };
     evidence.completedAt = new Date().toISOString();
     await checkpoint("completed");
     console.log(JSON.stringify({ status: evidence.status, evidencePath, primary: summarizeResult(primary), replay: summarizeResult(replay), finalKnowledgeBase: evidence.finalKnowledgeBase, writer: evidence.writer }));
@@ -320,6 +328,9 @@ function sanitizeDoclingPreflight(value: JsonRecord): JsonRecord { return { stat
 function parserMatchesExpected(value: JsonRecord): boolean { return value.pageCount === 103 && value.chunks === 1_523 && value.uniqueChunkIds === 1_523 && value.emptyChunks === 0 && value.sections === 154 && value.tables === 45 && value.images === 178 && value.normalizedCharacters === 97_784; }
 function batchPlanMatchesExpected(value: JsonRecord): boolean { return value.planned === R9_EXPECTED_BATCH_COUNT && value.inputChunks === 1_523 && value.inputUniqueChunks === 1_523 && value.plannedCoveredChunks === 1_523 && value.plannedCoveredUniqueChunks === 1_523 && value.omissions === 0 && value.duplicateCoverage === 0 && value.complete === true; }
 export type PrimaryCompletionGate = "docling_invalid" | "batch_plan_invalid" | "blocked" | "success_invariants_applicable";
+export function c14FreshKbReconciliationBoundaryPasses(boundary: { existingRefCandidates: number; reconciliationGroups: number; reconciliationCandidates: number; reconciliationLogicalCalls: number; reconciliationPhysicalCalls: number }): boolean {
+  return boundary.existingRefCandidates === 0 && boundary.reconciliationGroups === 0 && boundary.reconciliationCandidates === 0 && boundary.reconciliationLogicalCalls === 0 && boundary.reconciliationPhysicalCalls === 0;
+}
 export function evaluatePrimaryCompletionGate(primary: Pick<ResearchReportKnowledgeIngestionResult, "status" | "batches">, docling: JsonRecord, planned: JsonRecord): PrimaryCompletionGate {
   if (!parserMatchesExpected(docling)) return "docling_invalid";
   if (!batchPlanMatchesExpected(planned)) return "batch_plan_invalid";
@@ -396,6 +407,7 @@ function primaryEvidence(result: ResearchReportKnowledgeIngestionResult, model: 
     consolidation: result.consolidation,
     referenceResolution: result.referenceResolution,
     reconciliation: { ...result.reconciliation, exactlyOnce: Object.values(result.reconciliation.decisions).reduce((sum, count) => sum + count, 0) === result.reconciliation.candidates },
+    reconciliationEligibility: result.referenceResolution,
     schemaGaps: schemaGapEvidence(result),
     reviewIsolation: { roots: result.reviewItems.filter((item) => item.candidateId && item.category !== "dependency_review").length, dependencyReviews: result.reviewItems.filter((item) => item.category === "dependency_review").length, total: result.reviewItems.length },
     changeSet: { planned: result.plannedChanges, committed: result.committedChanges },

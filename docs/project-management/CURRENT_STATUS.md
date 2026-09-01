@@ -1,15 +1,24 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL
+
+C4-R9-R2 is `Authorized / In Progress`. It is the single authorized full
+pipeline real validation from the exact C14-accepted baseline. The run must
+use a fresh empty Schema 0.3 / Storage 1 KB and prove zero existing_ref
+candidates and zero reconciliation calls before final product-quality review.
+Stage C remains In Progress / Awaiting C4-R9-R2 Sol Verification and is not
+accepted.
+
 ## KNOWLEDGE-V0.3-RECONCILIATION-BOUNDARY-C-014
 
-C14 is `COMPLETE / SOL VERIFICATION REQUIRED`. Offline implementation and
+C14 is `Accepted - Sol verified`. Offline implementation and
 regression coverage now admit only exact same-kind `existing_ref` targets to
 reconciliation; `new_object_key` Entity/Relation/Claim candidates use
 deterministic create semantics. Reconciliation input is projected to precise
 candidate groups and bounded retry feedback, with one retry for deterministic
 validation failures and no retry for model/transport failures. No new real
-LLM, DeepSeek, or C4-R9-R2 execution was performed. Stage C remains In
-Progress and is not accepted; C4-R9-R2 remains NOT AUTHORIZED.
+LLM or DeepSeek execution was performed during C14. C4-R9-R2 is now
+Authorized / In Progress. Stage C remains In Progress and is not accepted.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R1
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL
+
+- Authorized the single R9-R2 full-pipeline real validation from the exact
+  C14-accepted baseline `edee915ff54e0b6bfb0de5eba2e21ccb6e1ef599`.
+- Added the isolated R9-R2 launcher and package command with a fresh-KB hard
+  invariant requiring zero `existing_ref` candidates and zero reconciliation
+  logical or physical provider calls.
+- Stage C remains In Progress / Awaiting C4-R9-R2 Sol Verification; no Stage C
+  acceptance is predeclared.
+
 ## 2026-09-02 - KNOWLEDGE-V0.3-RECONCILIATION-BOUNDARY-C-014
 
 - Corrected the reconciliation boundary so only exact same-kind `existing_ref`
@@ -11,8 +21,8 @@
 - Corrected the nullable upstream relation endpoint contract check and added
   bounded sanitized blocked diagnostics with reconciliation group observability.
 - Offline curation, ingestion, product-validation, integration typecheck, and
-  full regression verification passed. No real LLM, DeepSeek, or C4-R9-R2 run
-  was performed. Result: `C14 COMPLETE / SOL VERIFICATION REQUIRED`.
+  full regression verification passed. C14 was accepted by Sol; no real LLM or
+  DeepSeek run was performed during C14.
 
 ## 2026-09-01 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R1
 
