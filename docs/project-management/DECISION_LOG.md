@@ -1,8 +1,27 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3 - Real Flash Smoke Result
+
+Status: Completed / FAIL - SOL REVIEW REQUIRED
+Date: 2026-09-01
+
+The authorized smoke used the exact C13-R1 baseline and requested
+deepseek-official/deepseek-v4-flash runtime. Baseline verification passed, but
+the DeepSeek /models credential preflight returned HTTP 401. The run stopped
+before PDF verification, Local Docling, fresh Knowledge Base setup,
+understandReport, and extractKnowledge. Physical LLM calls and physical
+extractKnowledge calls were zero. Durable sanitized evidence is
+tests/knowledge/product-validation/evidence/c004-s3-post-c13-real-candidate-isolation-smoke.json.
+
+S3 is recorded as Completed / FAIL - SOL REVIEW REQUIRED and provides no
+real-output evidence for candidate isolation. C13 and C13-R1 are Accepted -
+Sol verified. C4-S2 remains Completed / Engineering Rework Required - Sol
+verified; Stage C remains In Progress and is not accepted. C4-R9 is NOT
+AUTHORIZED. Deferred multi-provider portability is unchanged.
+
 ## KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013-R1 - Restore candidateId Trusted Boundary
 
-Status: Completed / Sol Verification Pending
+Status: Accepted - Sol verified
 Date: 2026-09-01
 
 Independent acceptance found that candidateId was checked only inside
@@ -16,10 +35,10 @@ candidate-level checks remain unchanged.
 
 Tests cover all candidate kinds, nested injection, existing trusted-field
 regression, one C9 recovery, persistent two-attempt failure, and metadata
-safety. No real LLM, PDF, or API call was made. C13 remains Completed /
-Engineering Rework Required - Sol verified; C4-S2 remains Completed /
-Engineering Rework Required - Sol verified; Stage C is In Progress and not
-accepted. S3 and C4-R9 are NOT AUTHORIZED. Deferred multi-provider
+safety. No real LLM, PDF, or API call was made. C13 and C13-R1 are Accepted -
+Sol verified; C4-S2 remains Completed / Engineering Rework Required - Sol
+verified; Stage C is In Progress and not accepted. S3 is Completed / FAIL -
+SOL REVIEW REQUIRED and C4-R9 is NOT AUTHORIZED. Deferred multi-provider
 portability remains unchanged.
 
 ## KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013 - Candidate-Level Validation Isolation

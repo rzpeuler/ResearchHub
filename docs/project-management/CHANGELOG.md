@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-01 - KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3
+
+- Started the authorized first-batch real Flash smoke from the exact C13-R1
+  baseline with the deepseek-official/deepseek-v4-flash runtime.
+- Baseline verification passed, but the DeepSeek /models credential preflight
+  returned HTTP 401. The run stopped before PDF, Docling, fresh-KB,
+  understandReport, or extractKnowledge; physical LLM and extraction calls
+  were zero.
+- Durable sanitized evidence is
+  tests/knowledge/product-validation/evidence/c004-s3-post-c13-real-candidate-isolation-smoke.json.
+  S3 is Completed / FAIL - SOL REVIEW REQUIRED and is inconclusive for
+  real-output candidate-isolation behavior. C13 and C13-R1 are Accepted -
+  Sol verified; Stage C remains In Progress and C4-R9 remains NOT AUTHORIZED.
+
 ## 2026-09-01 - KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013-R1
 
 - Corrected the C13 trusted-boundary defect by adding candidateId to the
@@ -10,9 +24,9 @@
   remain as defense-in-depth.
 - Added focused trusted-boundary, C9 recovery/persistent-failure, and metadata
   safety tests. No real LLM, PDF, or API call was made.
-- C13 remains Completed / Engineering Rework Required - Sol verified; C13-R1
-  is Completed / Sol Verification Pending; Stage C remains In Progress and is
-  not accepted; S3 and C4-R9 remain NOT AUTHORIZED.
+- C13 and C13-R1 are Accepted - Sol verified; Stage C remains In Progress and
+  is not accepted; S3 is Completed / FAIL - SOL REVIEW REQUIRED and C4-R9
+  remains NOT AUTHORIZED.
 
 ## 2026-09-01 - KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013
 

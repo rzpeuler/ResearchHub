@@ -50,9 +50,13 @@ import { inspectDoclingRuntime } from "../document-parser/doctor-docling.ts";
 import { SmokeObservingRuntime } from "./run-flash-extraction-smoke.ts";
 
 export const POST_C12_TASK_ID =
+  process.env.RESEARCHHUB_PRODUCT_VALIDATION_TASK_ID ??
   "KNOWLEDGE-V0.3-POST-C12-REAL-EXTRACTION-SMOKE-C-004-S2";
-export const POST_C12_BASELINE = "81b7b4b831c3630c2071a58e39026694bf7c682c";
+export const POST_C12_BASELINE =
+  process.env.RESEARCHHUB_PRODUCT_VALIDATION_BASELINE ??
+  "81b7b4b831c3630c2071a58e39026694bf7c682c";
 export const POST_C12_KNOWLEDGE_BASE_ID =
+  process.env.RESEARCHHUB_PRODUCT_VALIDATION_KB_ID ??
   "kb-product-validation-c004-s2-post-c12";
 export const POST_C12_EXPECTED_MODEL = "deepseek-v4-flash";
 export const POST_C12_EXPECTED_PDF_SHA256 =
@@ -183,6 +187,39 @@ export async function main(): Promise<void> {
     taskId: POST_C12_TASK_ID,
     baseline: POST_C12_BASELINE,
     startedAt: new Date().toISOString(),
+    rawCandidateOutput: {
+      status: "not_observed",
+      counts: { entities: null, relations: null, claims: null },
+    },
+    candidateValidation: {
+      status: "not_observed",
+      rawCandidateCounts: { entity: null, relation: null, claim: null },
+      acceptedCandidateCounts: { entity: null, relation: null, claim: null },
+      rejectedCandidateCounts: { entity: null, relation: null, claim: null },
+      rejectionCodeCounts: {},
+    },
+    relationObservations: [],
+    c9: { physicalExtractionCalls: 0, retryCount: 0 },
+    modelCalls: [],
+    extractionResult: {
+      status: "not_observed",
+      rawCandidateCounts: null,
+      acceptedCandidateCounts: null,
+      rejectedCandidateCounts: null,
+      rejectionCodeCounts: {},
+      relationObservations: [],
+      retryCount: 0,
+    },
+    batch0001: {
+      realPhysicalAttempts: 0,
+      calls: [],
+    },
+    modelAccounting: {
+      logicalModelCalls: 0,
+      physicalRealModelInvocations: 0,
+      physicalExtractionCalls: 0,
+      retryCount: 0,
+    },
   };
   let root: string | undefined;
   let runtime: { close: () => Promise<void> } | undefined;
@@ -342,6 +379,7 @@ export async function main(): Promise<void> {
       outputShape: call.outputShape ?? null,
       runtimeObservation: call.runtimeObservation ?? null,
       error: call.error ?? null,
+      candidateValidation: call.candidateValidation ?? null,
     }));
     const retryGuidanceEqual =
       smokeModel.instructions.length < 2 ||
@@ -373,7 +411,16 @@ export async function main(): Promise<void> {
         firstBatchLogical?.succeeded === true ? "passed" : "failed",
       retryCount: firstBatchLogical?.retryCount ?? null,
       validationFailures: firstBatchLogical?.validationFailures ?? [],
+      candidateValidation: firstBatchLogical?.candidateValidation ?? null,
       relationObservations: firstBatchOutput.relationObservations ?? [],
+    };
+    evidence.rawCandidateOutput = firstBatchOutput;
+    evidence.candidateValidation =
+      firstBatchLogical?.candidateValidation ?? null;
+    evidence.relationObservations = firstBatchOutput.relationObservations ?? [];
+    evidence.c9 = {
+      physicalExtractionCalls: firstBatchCalls.length,
+      retryCount: firstBatchLogical?.retryCount ?? null,
     };
     evidence.batch0001 = {
       realPhysicalAttempts: firstBatchCalls.length,
@@ -407,6 +454,8 @@ export async function main(): Promise<void> {
     evidence.modelAccounting = {
       logicalModelCalls: result.modelCalls.length,
       physicalRealModelInvocations: smokeModel.physicalRealModelInvocations,
+      physicalExtractionCalls: firstBatchCalls.length,
+      retryCount: firstBatchLogical?.retryCount ?? 0,
       maximumAllowed: MAX_REAL_MODEL_INVOCATIONS,
       underBudget:
         smokeModel.physicalRealModelInvocations <= MAX_REAL_MODEL_INVOCATIONS,
@@ -498,7 +547,9 @@ class RecordingResolver implements ResearchReportInputResolver {
 
 function inputFor(pdfPath: string) {
   return {
-    workflowRunId: "product-validation-c004-s2-post-c12",
+    workflowRunId:
+      process.env.RESEARCHHUB_PRODUCT_VALIDATION_WORKFLOW_RUN ??
+      "product-validation-c004-s2-post-c12",
     knowledgeBaseId: POST_C12_KNOWLEDGE_BASE_ID,
     report: {
       inputRef: { type: "file" as const, reference: pdfPath },
@@ -534,7 +585,9 @@ function createTargetResolver(root: string) {
   };
 }
 async function createFreshKnowledgeBase(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "researchhub-c004-s2-post-c12-"));
+  const root = await mkdtemp(
+    join(tmpdir(), POST_C12_KNOWLEDGE_BASE_ID + "-"),
+  );
   await mkdir(join(root, "registry"), { recursive: true });
   const timestamp = "2026-09-01T00:00:00.000Z";
   await writeFile(

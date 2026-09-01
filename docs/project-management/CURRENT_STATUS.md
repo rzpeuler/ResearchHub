@@ -1,5 +1,24 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3
+
+The authorized S3 smoke started from the exact C13-R1 baseline with the
+required deepseek-official/deepseek-v4-flash runtime. Baseline verification
+passed, but the DeepSeek /models credential preflight returned HTTP 401. The
+run stopped before PDF identity verification, Local Docling parsing, fresh
+Knowledge Base creation, understandReport, or any real extractKnowledge call.
+Physical LLM calls and physical extraction calls were zero. Durable sanitized
+evidence is
+tests/knowledge/product-validation/evidence/c004-s3-post-c13-real-candidate-isolation-smoke.json.
+
+S3 is Completed / FAIL - SOL REVIEW REQUIRED. This run is inconclusive for
+real candidate-isolation behavior because no model output was obtained; it is
+not a C13 regression. C13 and C13-R1 are Accepted - Sol verified. C4-S2
+remains Completed / Engineering Rework Required - Sol verified; Stage C remains
+In Progress and is not accepted. C4-R9 remains NOT AUTHORIZED and
+multi-provider portability remains Deferred / Awaiting Detailed User
+Requirements.
+
 ## KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013-R1
 
 C13-R1 fixes the trusted-boundary defect identified during independent
@@ -12,10 +31,10 @@ defense-in-depth; local semantic/reference/confidence failures remain isolated.
 
 Focused tests cover all three candidate kinds, nested traversal, existing
 trusted fields, metadata non-disclosure, C9 recovery, and persistent failure.
-No real LLM, PDF, or API call was made. C13 is Completed / Engineering Rework
-Required - Sol verified; C13-R1 is Completed / Sol Verification Pending. C4-S2
-remains Completed / Engineering Rework Required - Sol verified; Stage C remains
-In Progress and is not accepted. S3 and C4-R9 remain NOT AUTHORIZED.
+No real LLM, PDF, or API call was made. C13 and C13-R1 are Accepted - Sol
+verified. C4-S2 remains Completed / Engineering Rework Required - Sol verified;
+Stage C remains In Progress and is not accepted. S3 is Completed / FAIL - SOL
+REVIEW REQUIRED and C4-R9 remains NOT AUTHORIZED.
 
 ## KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013
 
