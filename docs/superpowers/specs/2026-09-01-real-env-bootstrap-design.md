@@ -33,6 +33,8 @@ process with a fake parent environment. It verifies the actual Node runtime
 precedence for duplicate variables, confirms the resulting values are visible
 through `process.env`, and confirms `loadLocalRuntimeConfig()` maps those values
 without reading `.env` itself. The test never reads the repository `.env`.
+In the Node 22 runtime observed for this project, a duplicate parent-process
+variable takes precedence over the value from `--env-file`.
 
 The only authorized external check is one `/models` request launched with the
 canonical `.env` bootstrap. Its evidence is limited to provider, model, baseUrl

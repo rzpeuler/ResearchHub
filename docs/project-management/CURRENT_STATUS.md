@@ -1,5 +1,27 @@
 # Current Status
 
+## RH-REAL-ENV-BOOTSTRAP-001
+
+Real Runtime configuration is now standardized at the process bootstrap
+boundary. The existing bootstrap, ingest, and serve entries, plus the generic
+Knowledge smoke entry, use Node 22 native `node --env-file=.env --import tsx`.
+`.env` is ignored by Git and `.env.example` contains only supported variable
+names and template values: `DEEPSEEK_API_KEY`,
+`RESEARCHHUB_REAL_LLM_ENABLED`, `RESEARCHHUB_LLM_PROVIDER`,
+`RESEARCHHUB_LLM_MODEL`, and `RESEARCHHUB_CURATION_MAX_TOKENS`.
+
+The deterministic fake-value bootstrap test observed that `.env` values become
+available through `process.env`, while a duplicate parent-process variable
+takes precedence over the env-file value. DSH remains responsible only for
+consuming `process.env`; no dotenv dependency or DSH-side `.env` parser was
+added.
+
+The one authorized canonical `/models` preflight returned HTTP 401 for
+`deepseek-official/deepseek-v4-flash`. This verifies the bootstrap path and
+classifies the environment as `ENV BOOTSTRAP VERIFIED / USER CREDENTIAL ACTION
+REQUIRED`. S3's historical execution was blocked before product validation;
+S3 was not rerun and no product code was changed.
+
 ## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3
 
 The authorized S3 smoke started from the exact C13-R1 baseline with the

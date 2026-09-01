@@ -1,5 +1,29 @@
 # Decision Log
 
+## RH-REAL-ENV-BOOTSTRAP-001 - Canonical Local Real Runtime Environment Bootstrap
+
+Status: Completed / ENV BOOTSTRAP VERIFIED / USER CREDENTIAL ACTION REQUIRED
+Date: 2026-09-01
+
+`.env` loading belongs to the local process bootstrap, not DSH, Workflow,
+Knowledge Curation, Provider, or smoke-runner business logic. Node 22 native
+`--env-file=.env` is the canonical local mechanism. DSH continues to consume
+`process.env` and remains environment-source agnostic. No dotenv dependency was
+added.
+
+The generic real smoke entry reuses the existing post-C12 runner and keeps its
+task, baseline, Knowledge Base, and evidence overrides in environment
+configuration. The supported local Knowledge runtime variables are
+`DEEPSEEK_API_KEY`, `RESEARCHHUB_REAL_LLM_ENABLED`,
+`RESEARCHHUB_LLM_PROVIDER`, `RESEARCHHUB_LLM_MODEL`, and
+`RESEARCHHUB_CURATION_MAX_TOKENS`.
+
+The deterministic fake-value test observed that parent-process variables take
+precedence over duplicate env-file variables. The one authorized canonical
+`/models` preflight returned HTTP 401 for `deepseek-official/deepseek-v4-flash`.
+The result is `ENV BOOTSTRAP VERIFIED / USER CREDENTIAL ACTION REQUIRED`.
+S3 remains historical blocked-before-product-validation and was not rerun.
+
 ## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3 - Real Flash Smoke Result
 
 Status: Completed / FAIL - SOL REVIEW REQUIRED

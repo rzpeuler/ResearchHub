@@ -1,0 +1,9 @@
+{
+  "taskId": "RH-REAL-ENV-BOOTSTRAP-001",
+  "provider": "deepseek-official",
+  "model": "deepseek-v4-flash",
+  "baseUrlHost": "api.deepseek.com",
+  "httpStatus": 401,
+  "status": "BLOCKED",
+  "classification": "ENV BOOTSTRAP VERIFIED / USER CREDENTIAL ACTION REQUIRED"
+}

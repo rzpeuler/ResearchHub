@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-01 - RH-REAL-ENV-BOOTSTRAP-001
+
+- Added the canonical generic `knowledge:smoke:real` entry using Node native
+  `--env-file=.env` and reused the existing post-C12 smoke runner.
+- Added a safe `knowledge:preflight:real` entry that performs only the
+  authorized `/models` credential/model check and reports no key material.
+- Added deterministic fake-value coverage for Node env-file bootstrap,
+  observed parent-process precedence, and confirmed DSH consumes
+  `process.env` without `.env` parsing. No dotenv dependency was added.
+- The one canonical preflight returned HTTP 401 for
+  `deepseek-official/deepseek-v4-flash`: `ENV BOOTSTRAP VERIFIED / USER
+  CREDENTIAL ACTION REQUIRED`. S3 remains historical blocked-before-product-
+  validation and was not rerun.
+
 ## 2026-09-01 - KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3
 
 - Started the authorized first-batch real Flash smoke from the exact C13-R1

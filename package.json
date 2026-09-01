@@ -23,6 +23,8 @@
     "knowledge:bootstrap:real": "node --env-file=.env --import tsx tools/knowledge-product-validation/bootstrap-real.ts",
     "knowledge:ingest:real": "node --env-file=.env --import tsx tools/knowledge-product-validation/ingest-ai-hardware-reports.ts",
     "knowledge:serve:real": "node --env-file=.env --import tsx tools/knowledge-product-validation/serve-real.ts",
+    "knowledge:smoke:real": "node --env-file=.env --import tsx tools/knowledge-product-validation/run-post-c12-extraction-smoke.ts",
+    "knowledge:preflight:real": "node --env-file=.env --import tsx tools/knowledge-product-validation/preflight-real-env.ts",
     "document:setup:docling": "node --import tsx tools/document-parser/setup-docling.ts",
     "document:doctor:docling": "node --import tsx tools/document-parser/doctor-docling.ts",
     "test:akshare-bridge": "python -m unittest tools.test_akshare_financial_bridge -v",
