@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { loadLocalRuntimeConfig, LocalRuntimeConfigError } from '../../../dsh/llm-runtime/local-runtime-config.ts'
+import { ISOLATED_RUNTIME_ENV_KEYS, isolatedEnvironment } from '../../../tools/knowledge-product-validation/preflight-isolated-env.ts'
 
 const base = { RESEARCHHUB_REAL_LLM_ENABLED: 'false' }
 
@@ -93,4 +94,21 @@ test('DSH runtime config consumes process.env-shaped input without .env parsing'
     RESEARCHHUB_LLM_MODEL: 'fake-process-model',
   }, 'C:\\ResearchHub')
   assert.equal(config.model, 'fake-process-model')
+})
+
+test('isolated preflight removes inherited runtime overrides without mutating the parent environment', () => {
+  const parent = {
+    DEEPSEEK_API_KEY: 'fake-parent-key',
+    DEEPSEEK_BASE_URL: 'https://fake-parent.example',
+    RESEARCHHUB_REAL_LLM_ENABLED: 'true',
+    RESEARCHHUB_LLM_PROVIDER: 'fake-parent-provider',
+    RESEARCHHUB_LLM_MODEL: 'fake-parent-model',
+    RESEARCHHUB_CURATION_MAX_TOKENS: '999',
+    UNRELATED_VALUE: 'preserved',
+  }
+  const isolated = isolatedEnvironment(parent)
+  for (const key of ISOLATED_RUNTIME_ENV_KEYS) assert.equal(isolated[key], undefined)
+  assert.equal(isolated.UNRELATED_VALUE, 'preserved')
+  assert.equal(parent.DEEPSEEK_API_KEY, 'fake-parent-key')
+  assert.equal(parent.RESEARCHHUB_LLM_MODEL, 'fake-parent-model')
 })

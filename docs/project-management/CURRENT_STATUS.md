@@ -1,5 +1,25 @@
 # Current Status
 
+## RH-REAL-ENV-BOOTSTRAP-001-R1
+
+The isolated credential-source diagnostic removed the inherited runtime
+overrides only inside a child process, then launched Node with native
+`--env-file=.env`. The parent process had `DEEPSEEK_API_KEY` present. The
+isolated `.env` bootstrap succeeded; `/models` returned HTTP 200 and the
+required `deepseek-v4-flash` model was available.
+
+R1 is Accepted - Sol verified with classification `PARENT ENV OVERRIDE
+CONFIRMED / ENV FILE CREDENTIAL READY`. The previous 401 came from the stale
+parent environment shadowing `.env`; the `.env` credential is usable. No user
+environment, system environment, registry, profile, or account setting was
+changed. No S3-R1, product validation, or other real Knowledge operation was
+executed.
+
+RH-REAL-ENV-BOOTSTRAP-001 is Accepted - Sol verified. S3 is reclassified as
+Completed / INVALID TEST SETUP - Parent Environment Credential Override - Sol
+verified. Stage C remains In Progress and is not accepted; C4-R9 remains NOT
+AUTHORIZED.
+
 ## RH-REAL-ENV-BOOTSTRAP-001
 
 Real Runtime configuration is now standardized at the process bootstrap
@@ -16,26 +36,26 @@ takes precedence over the env-file value. DSH remains responsible only for
 consuming `process.env`; no dotenv dependency or DSH-side `.env` parser was
 added.
 
-The one authorized canonical `/models` preflight returned HTTP 401 for
-`deepseek-official/deepseek-v4-flash`. This verifies the bootstrap path and
-classifies the environment as `ENV BOOTSTRAP VERIFIED / USER CREDENTIAL ACTION
-REQUIRED`. S3's historical execution was blocked before product validation;
-S3 was not rerun and no product code was changed.
+The initial canonical `/models` preflight returned HTTP 401 for
+`deepseek-official/deepseek-v4-flash` because a parent credential shadowed
+`.env`. R1 isolated the child process and confirmed the `.env` credential is
+ready. S3's historical execution was invalid test setup and was not rerun; no
+product code was changed.
 
 ## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3
 
-The authorized S3 smoke started from the exact C13-R1 baseline with the
-required deepseek-official/deepseek-v4-flash runtime. Baseline verification
-passed, but the DeepSeek /models credential preflight returned HTTP 401. The
-run stopped before PDF identity verification, Local Docling parsing, fresh
-Knowledge Base creation, understandReport, or any real extractKnowledge call.
-Physical LLM calls and physical extraction calls were zero. Durable sanitized
-evidence is
+The historical authorized S3 smoke started from the exact C13-R1 baseline with
+the required deepseek-official/deepseek-v4-flash runtime. Baseline verification
+passed, but the DeepSeek /models credential preflight returned HTTP 401 because
+an inherited parent credential shadowed `.env`. The run stopped before PDF
+identity verification, Local Docling parsing, fresh Knowledge Base creation,
+understandReport, or any real extractKnowledge call. Physical LLM calls and
+physical extraction calls were zero. Durable sanitized evidence is
 tests/knowledge/product-validation/evidence/c004-s3-post-c13-real-candidate-isolation-smoke.json.
 
-S3 is Completed / FAIL - SOL REVIEW REQUIRED. This run is inconclusive for
-real candidate-isolation behavior because no model output was obtained; it is
-not a C13 regression. C13 and C13-R1 are Accepted - Sol verified. C4-S2
+S3 is Completed / INVALID TEST SETUP - Parent Environment Credential Override -
+Sol verified. This run has no real-output evidence for candidate isolation; it
+is not a C13 regression. C13 and C13-R1 are Accepted - Sol verified. C4-S2
 remains Completed / Engineering Rework Required - Sol verified; Stage C remains
 In Progress and is not accepted. C4-R9 remains NOT AUTHORIZED and
 multi-provider portability remains Deferred / Awaiting Detailed User
@@ -55,8 +75,9 @@ Focused tests cover all three candidate kinds, nested traversal, existing
 trusted fields, metadata non-disclosure, C9 recovery, and persistent failure.
 No real LLM, PDF, or API call was made. C13 and C13-R1 are Accepted - Sol
 verified. C4-S2 remains Completed / Engineering Rework Required - Sol verified;
-Stage C remains In Progress and is not accepted. S3 is Completed / FAIL - SOL
-REVIEW REQUIRED and C4-R9 remains NOT AUTHORIZED.
+Stage C remains In Progress and is not accepted. S3 is Completed / INVALID TEST
+SETUP - Parent Environment Credential Override - Sol verified and C4-R9 remains
+NOT AUTHORIZED.
 
 ## KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013
 

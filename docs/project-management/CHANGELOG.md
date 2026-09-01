@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-01 - RH-REAL-ENV-BOOTSTRAP-001-R1
+
+- Ran exactly one process-local isolated `/models` preflight after removing
+  inherited Real Runtime overrides from the child environment before native
+  Node `.env` loading.
+- Parent `DEEPSEEK_API_KEY` was present; the isolated `.env` bootstrap
+  succeeded, `/models` returned HTTP 200, and Flash was available.
+- Classified the result as `PARENT ENV OVERRIDE CONFIRMED / ENV FILE CREDENTIAL
+  READY`. The previous 401 was stale-parent shadowing; no global environment
+  state changed and no S3-R1 or product validation ran.
+- RH-REAL-ENV-BOOTSTRAP-001 is Accepted - Sol verified. S3 is
+  `Completed / INVALID TEST SETUP - Parent Environment Credential Override -
+  Sol verified`.
+
 ## 2026-09-01 - RH-REAL-ENV-BOOTSTRAP-001
 
 - Added the canonical generic `knowledge:smoke:real` entry using Node native
@@ -9,10 +23,9 @@
 - Added deterministic fake-value coverage for Node env-file bootstrap,
   observed parent-process precedence, and confirmed DSH consumes
   `process.env` without `.env` parsing. No dotenv dependency was added.
-- The one canonical preflight returned HTTP 401 for
-  `deepseek-official/deepseek-v4-flash`: `ENV BOOTSTRAP VERIFIED / USER
-  CREDENTIAL ACTION REQUIRED`. S3 remains historical blocked-before-product-
-  validation and was not rerun.
+- The initial canonical preflight returned HTTP 401 because a parent
+  credential shadowed `.env`; R1 confirmed the `.env` credential is ready.
+  S3 remains historical invalid test setup and was not rerun.
 
 ## 2026-09-01 - KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3
 
@@ -24,9 +37,10 @@
   were zero.
 - Durable sanitized evidence is
   tests/knowledge/product-validation/evidence/c004-s3-post-c13-real-candidate-isolation-smoke.json.
-  S3 is Completed / FAIL - SOL REVIEW REQUIRED and is inconclusive for
-  real-output candidate-isolation behavior. C13 and C13-R1 are Accepted -
-  Sol verified; Stage C remains In Progress and C4-R9 remains NOT AUTHORIZED.
+  S3 is Completed / INVALID TEST SETUP - Parent Environment Credential
+  Override - Sol verified and has no real-output candidate-isolation evidence.
+  C13 and C13-R1 are Accepted - Sol verified; Stage C remains In Progress and
+  C4-R9 remains NOT AUTHORIZED.
 
 ## 2026-09-01 - KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013-R1
 
@@ -39,8 +53,8 @@
 - Added focused trusted-boundary, C9 recovery/persistent-failure, and metadata
   safety tests. No real LLM, PDF, or API call was made.
 - C13 and C13-R1 are Accepted - Sol verified; Stage C remains In Progress and
-  is not accepted; S3 is Completed / FAIL - SOL REVIEW REQUIRED and C4-R9
-  remains NOT AUTHORIZED.
+  is not accepted; S3 is Completed / INVALID TEST SETUP - Parent Environment
+  Credential Override - Sol verified and C4-R9 remains NOT AUTHORIZED.
 
 ## 2026-09-01 - KNOWLEDGE-V0.3-CANDIDATE-ISOLATED-VALIDATION-C-013
 

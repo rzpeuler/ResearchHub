@@ -1,0 +1,20 @@
+{
+  "taskId": "RH-REAL-ENV-BOOTSTRAP-001-R1",
+  "parentDeepSeekApiKeyPresent": true,
+  "parentOverrides": {
+    "DEEPSEEK_API_KEY": true,
+    "DEEPSEEK_BASE_URL": false,
+    "RESEARCHHUB_REAL_LLM_ENABLED": false,
+    "RESEARCHHUB_LLM_PROVIDER": false,
+    "RESEARCHHUB_LLM_MODEL": false,
+    "RESEARCHHUB_CURATION_MAX_TOKENS": false
+  },
+  "isolatedEnvBootstrapSuccessful": true,
+  "provider": "deepseek-official",
+  "model": "deepseek-v4-flash",
+  "baseUrlHost": "api.deepseek.com",
+  "httpStatus": 200,
+  "requiredModelAvailable": true,
+  "status": "READY",
+  "classification": "PARENT ENV OVERRIDE CONFIRMED / ENV FILE CREDENTIAL READY"
+}

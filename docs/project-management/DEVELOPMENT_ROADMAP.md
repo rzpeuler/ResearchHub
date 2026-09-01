@@ -40,10 +40,11 @@
 - C4-S2 Post-C12 Extraction Smoke: Completed / Engineering Rework Required - Sol verified
 - C13 Candidate-Isolated Validation: Accepted - Sol verified
 - C13-R1 Trusted candidateId boundary correction: Accepted - Sol verified
-- C4-S3 Post-C13 Real Candidate-Isolation Smoke: Completed / FAIL - SOL REVIEW REQUIRED
-- RH-REAL-ENV-BOOTSTRAP-001: Completed / ENV BOOTSTRAP VERIFIED / USER CREDENTIAL ACTION REQUIRED
+- C4-S3 Post-C13 Real Candidate-Isolation Smoke: Completed / INVALID TEST SETUP - Parent Environment Credential Override - Sol verified
+- RH-REAL-ENV-BOOTSTRAP-001: Accepted - Sol verified
+- RH-REAL-ENV-BOOTSTRAP-001-R1: Accepted - Sol verified
 - C4-R9 Product Validation: NOT AUTHORIZED
-- S3: Completed / FAIL - SOL REVIEW REQUIRED
+- S3: Completed / INVALID TEST SETUP - Parent Environment Credential Override - Sol verified
 - Stage C: In Progress / not accepted
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
