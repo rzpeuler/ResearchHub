@@ -1,0 +1,4707 @@
+{
+  "taskId": "KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R1",
+  "baseline": "90558a1c1508184597de7f9543dbf9a7c731e12f",
+  "startedAt": "2026-09-01T15:12:48.531Z",
+  "phase": "reconcileKnowledge_completed",
+  "phaseTimestamps": {
+    "initialized": "2026-09-01T15:12:48.531Z",
+    "baseline_verified": "2026-09-01T15:12:48.613Z",
+    "runtime_verified": "2026-09-01T15:12:48.615Z",
+    "model_preflight_ready": "2026-09-01T15:12:48.965Z",
+    "pdf_verified": "2026-09-01T15:12:48.998Z",
+    "docling_preflight_ready": "2026-09-01T15:13:02.328Z",
+    "fresh_kb_ready": "2026-09-01T15:13:02.334Z",
+    "docling_parse_started": "2026-09-01T15:13:02.347Z",
+    "docling_parse_completed": "2026-09-01T15:14:42.582Z",
+    "understand_report_started": "2026-09-01T15:14:42.602Z",
+    "understand_report_completed": "2026-09-01T15:16:12.181Z",
+    "batch_batch-0001_attempt_1_started": "2026-09-01T15:16:12.199Z",
+    "batch_batch-0001_attempt_1_completed": "2026-09-01T15:17:37.166Z",
+    "batch_batch-0003_attempt_1_started": "2026-09-01T15:17:37.173Z",
+    "batch_batch-0003_attempt_1_completed": "2026-09-01T15:18:31.863Z",
+    "batch_batch-0004_attempt_1_started": "2026-09-01T15:18:31.868Z",
+    "batch_batch-0004_attempt_1_completed": "2026-09-01T15:19:17.947Z",
+    "batch_batch-0005_attempt_1_started": "2026-09-01T15:19:17.951Z",
+    "batch_batch-0005_attempt_1_completed": "2026-09-01T15:20:17.289Z",
+    "batch_batch-0006_attempt_1_started": "2026-09-01T15:20:17.294Z",
+    "batch_batch-0006_attempt_1_completed": "2026-09-01T15:21:39.222Z",
+    "batch_batch-0007_attempt_1_started": "2026-09-01T15:21:39.226Z",
+    "batch_batch-0007_attempt_1_completed": "2026-09-01T15:22:31.791Z",
+    "batch_batch-0008_attempt_1_started": "2026-09-01T15:22:31.795Z",
+    "batch_batch-0008_attempt_1_completed": "2026-09-01T15:23:22.554Z",
+    "batch_batch-0009_attempt_1_started": "2026-09-01T15:23:22.559Z",
+    "batch_batch-0009_attempt_1_completed": "2026-09-01T15:24:06.384Z",
+    "batch_batch-0010_attempt_1_started": "2026-09-01T15:24:06.388Z",
+    "batch_batch-0010_attempt_1_completed": "2026-09-01T15:24:51.304Z",
+    "batch_batch-0011_attempt_1_started": "2026-09-01T15:24:51.308Z",
+    "batch_batch-0011_attempt_1_completed": "2026-09-01T15:25:45.323Z",
+    "batch_batch-0012_attempt_1_started": "2026-09-01T15:25:45.327Z",
+    "batch_batch-0012_attempt_1_completed": "2026-09-01T15:27:06.288Z",
+    "batch_batch-0013_attempt_1_started": "2026-09-01T15:27:06.293Z",
+    "batch_batch-0013_attempt_1_completed": "2026-09-01T15:27:51.270Z",
+    "batch_batch-0014_attempt_1_started": "2026-09-01T15:27:51.274Z",
+    "batch_batch-0014_attempt_1_completed": "2026-09-01T15:28:50.858Z",
+    "batch_batch-0015_attempt_1_started": "2026-09-01T15:28:50.863Z",
+    "batch_batch-0015_attempt_1_completed": "2026-09-01T15:29:13.861Z",
+    "batch_batch-0016_attempt_1_started": "2026-09-01T15:29:13.865Z",
+    "batch_batch-0016_attempt_1_completed": "2026-09-01T15:30:06.059Z",
+    "batch_batch-0017_attempt_1_started": "2026-09-01T15:30:06.063Z",
+    "batch_batch-0017_attempt_1_completed": "2026-09-01T15:31:14.743Z",
+    "batch_batch-0018_attempt_1_started": "2026-09-01T15:31:14.747Z",
+    "batch_batch-0018_attempt_1_completed": "2026-09-01T15:32:24.768Z",
+    "batch_batch-0019_attempt_1_started": "2026-09-01T15:32:24.774Z",
+    "batch_batch-0019_attempt_1_completed": "2026-09-01T15:32:25.592Z",
+    "reconcileKnowledge_started": "2026-09-01T15:39:20.900Z",
+    "reconcileKnowledge_completed": "2026-09-01T15:39:48.921Z"
+  },
+  "elapsedMs": 1620390,
+  "effectiveRuntime": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash",
+    "host": "api.deepseek.com",
+    "maxTokens": 65536,
+    "reasoningPolicy": {
+      "understandReport": "off",
+      "extractKnowledge": "off",
+      "reconcileKnowledge": "low",
+      "analyzeSchemaGaps": "low"
+    }
+  },
+  "modelPreflight": {
+    "status": "READY",
+    "httpStatus": 200,
+    "modelAvailable": true,
+    "diagnostic": "DeepSeek credential and Flash model accepted by /models"
+  },
+  "pdf": {
+    "filename": "20260805-西部证券-AI算力行业：AI算力上游材料产业链研究报告.pdf",
+    "sha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "bytes": 3209114,
+    "expectedSha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "expectedBytes": 3209114,
+    "sha256Match": true,
+    "bytesMatch": true
+  },
+  "doclingPreflight": {
+    "status": "READY",
+    "doclingVersion": "2.116.0",
+    "managedRootConfigured": true,
+    "pythonConfigured": true,
+    "modelRootConfigured": true,
+    "checks": {
+      "python": "PASS",
+      "doclingImport": "PASS",
+      "version": "PASS",
+      "artifactsDirectory": "PASS",
+      "modelInitialization": "PASS",
+      "fixtureParse": "PASS",
+      "tablePipeline": "PASS"
+    },
+    "diagnostics": []
+  },
+  "freshKnowledgeBase": {
+    "knowledgeBaseId": "kb-product-validation-c004-r9-r1-final",
+    "schemaVersion": "0.3",
+    "storageFormatVersion": "1",
+    "revision": 0,
+    "writable": true,
+    "seedObjects": 0,
+    "initialFullValidation": "passed",
+    "root": "system-temp (removed after run)"
+  },
+  "primary": {
+    "workflow": {
+      "status": "blocked",
+      "revision": {
+        "before": 0,
+        "after": 0
+      },
+      "raw": {
+        "persisted": true,
+        "created": true,
+        "reused": false
+      },
+      "sourceResolution": null,
+      "batching": {
+        "sectionCount": 0,
+        "batchCount": 0,
+        "chunkCount": 0,
+        "chunkIds": [],
+        "batches": []
+      },
+      "extraction": {
+        "entities": 0,
+        "relations": 0,
+        "claims": 0,
+        "batchesAttempted": 0,
+        "batchesSucceeded": 0,
+        "batchesFailed": 0
+      },
+      "consolidation": {
+        "before": 0,
+        "after": 0,
+        "duplicatesMerged": 0
+      },
+      "referenceResolution": {
+        "existing_ref": 0,
+        "new_object_key": 0,
+        "ambiguous": 0,
+        "invalid": 0
+      },
+      "reconciliation": {
+        "groups": 0,
+        "candidates": 0,
+        "decisions": {},
+        "classifications": {}
+      },
+      "schemaGapCount": 0,
+      "reviewItemCount": 0,
+      "plannedChangeCounts": {
+        "sourceCreate": 0,
+        "sourceMerge": 0,
+        "knowledgeCreate": 0,
+        "knowledgeUpdate": 0,
+        "knowledgeSupersede": 0,
+        "knowledgeSourceMerge": 0
+      },
+      "committedChanges": {
+        "sourceCreated": 0,
+        "sourceMerged": 0,
+        "knowledgeCreated": 0,
+        "knowledgeUpdated": 0,
+        "knowledgeSuperseded": 0,
+        "knowledgeSourceMerged": 0
+      },
+      "validation": null,
+      "modelCalls": 70,
+      "errorCodes": [
+        "invalid_reference"
+      ]
+    },
+    "batching": {
+      "workflow": {
+        "planned": 0,
+        "inputChunks": 0,
+        "inputUniqueChunks": 0,
+        "coveredChunks": 0,
+        "coveredUniqueChunks": 0,
+        "omissions": 0,
+        "duplicateCoverage": 0,
+        "complete": true
+      },
+      "independent": {
+        "planned": 18,
+        "inputChunks": 1523,
+        "inputUniqueChunks": 1523,
+        "plannedCoveredChunks": 1523,
+        "plannedCoveredUniqueChunks": 1523,
+        "omissions": 0,
+        "duplicateCoverage": 0,
+        "complete": true
+      }
+    },
+    "extraction": {
+      "plannedBatches": 0,
+      "completedBatches": 0,
+      "batches": [],
+      "terminalRawCandidateCounts": {
+        "entities": 0,
+        "relations": 0,
+        "claims": 0
+      },
+      "terminalAcceptedCandidateCounts": {
+        "entity": 0,
+        "relation": 0,
+        "claim": 0
+      },
+      "terminalRejectedCandidateCounts": {
+        "entity": 0,
+        "relation": 0,
+        "claim": 0
+      },
+      "rejectionCodeCounts": {}
+    },
+    "candidateIsolation": {
+      "partialRejectionBatches": [],
+      "candidateSetExhaustedBatches": [],
+      "batchesRequiringC9Retry": [],
+      "maximumRetryCount": 0,
+      "thirdAttempt": false,
+      "rejectedCandidateDownstreamLeakage": false,
+      "semanticCoercion": false
+    },
+    "c8": {
+      "physicalExtractionInvocations": 18,
+      "outOfBatchChunkIdsVisible": 0,
+      "fullDocumentVisible": false,
+      "normalizedTextVisible": false,
+      "normalizedTextHidden": true,
+      "claimsContextVisible": false,
+      "sourcesContextVisible": false,
+      "rawRefsVisible": false
+    },
+    "relationContract": {
+      "logicalFirstAttemptContracts": 18,
+      "expectedBatches": 18,
+      "allCanonicalRelationCounts": true,
+      "allUpstreamOfCompatibility": false,
+      "canonicalRelationCount": 14,
+      "observations": [
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        },
+        {
+          "branchCount": 14,
+          "upstreamOfSourceTypes": [
+            "industry",
+            null
+          ],
+          "upstreamOfTargetTypes": [
+            "industry",
+            null
+          ],
+          "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+        }
+      ]
+    },
+    "consolidation": {
+      "before": 0,
+      "after": 0,
+      "duplicatesMerged": 0
+    },
+    "referenceResolution": {
+      "existing_ref": 0,
+      "new_object_key": 0,
+      "ambiguous": 0,
+      "invalid": 0
+    },
+    "reconciliation": {
+      "groups": 0,
+      "candidates": 0,
+      "decisions": {},
+      "classifications": {},
+      "exactlyOnce": true
+    },
+    "schemaGaps": {
+      "invoked": false,
+      "callCount": 0,
+      "gapCount": 0,
+      "gapTypes": []
+    },
+    "reviewIsolation": {
+      "roots": 0,
+      "dependencyReviews": 0,
+      "total": 0
+    },
+    "changeSet": {
+      "planned": {
+        "sourceCreate": [],
+        "sourceMerge": [],
+        "knowledgeCreate": [],
+        "knowledgeUpdate": [],
+        "knowledgeSupersede": [],
+        "knowledgeSourceMerge": []
+      },
+      "committed": {
+        "sourceCreated": 0,
+        "sourceMerged": 0,
+        "knowledgeCreated": 0,
+        "knowledgeUpdated": 0,
+        "knowledgeSuperseded": 0,
+        "knowledgeSourceMerged": 0
+      }
+    },
+    "modelAccounting": {
+      "logicalModelCalls": 70,
+      "physicalProviderCalls": 70,
+      "retryProviderCalls": 0,
+      "formulaMatches": true,
+      "changeSetIngestionContextModelCalls": null,
+      "changeSetMatches": null
+    },
+    "reasoning": {
+      "expected": {
+        "understandReport": "off",
+        "extractKnowledge": "off",
+        "reconcileKnowledge": "low",
+        "analyzeSchemaGaps": "low"
+      },
+      "observations": [
+        {
+          "operation": "understandReport",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:14:42.606Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 7272,
+          "finishMs": 89572,
+          "durationMs": 89574,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 18904,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:16:12.201Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 532,
+          "finishMs": 84963,
+          "durationMs": 84964,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 19165,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:17:37.175Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1077,
+          "finishMs": 54687,
+          "durationMs": 54688,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 12344,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:18:31.870Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 636,
+          "finishMs": 46076,
+          "durationMs": 46076,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 9884,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:19:17.953Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1300,
+          "finishMs": 59335,
+          "durationMs": 59336,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 13460,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:20:17.296Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1110,
+          "finishMs": 81926,
+          "durationMs": 81926,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 18678,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:21:39.229Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1386,
+          "finishMs": 52561,
+          "durationMs": 52562,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 12107,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:22:31.797Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1229,
+          "finishMs": 50756,
+          "durationMs": 50756,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 11937,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:23:22.561Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1045,
+          "finishMs": 43821,
+          "durationMs": 43822,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 9803,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:24:06.389Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1090,
+          "finishMs": 44913,
+          "durationMs": 44914,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 9910,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:24:51.310Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1174,
+          "finishMs": 54012,
+          "durationMs": 54013,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 11986,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:25:45.330Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 852,
+          "finishMs": 80956,
+          "durationMs": 80956,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 18276,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:27:06.297Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1111,
+          "finishMs": 44972,
+          "durationMs": 44973,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 10291,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:27:51.277Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 940,
+          "finishMs": 59580,
+          "durationMs": 59580,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 13016,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:28:50.864Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1065,
+          "finishMs": 22996,
+          "durationMs": 22996,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 4840,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:29:13.889Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1011,
+          "finishMs": 52169,
+          "durationMs": 52170,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 11332,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:30:06.065Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1203,
+          "finishMs": 68677,
+          "durationMs": 68677,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 14932,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:31:14.749Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 1090,
+          "finishMs": 70017,
+          "durationMs": 70018,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 16004,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "extractKnowledge",
+          "reasoningEffort": "off",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:32:24.776Z",
+          "firstReasoningDeltaMs": null,
+          "firstTextDeltaMs": 638,
+          "finishMs": 816,
+          "durationMs": 816,
+          "reasoningDeltaCount": 0,
+          "textDeltaCount": 21,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:32:25.637Z",
+          "firstReasoningDeltaMs": 8678,
+          "firstTextDeltaMs": 15189,
+          "finishMs": 17146,
+          "durationMs": 17146,
+          "reasoningDeltaCount": 648,
+          "textDeltaCount": 466,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:32:42.795Z",
+          "firstReasoningDeltaMs": 2325,
+          "firstTextDeltaMs": 3365,
+          "finishMs": 5446,
+          "durationMs": 5447,
+          "reasoningDeltaCount": 91,
+          "textDeltaCount": 511,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:32:48.250Z",
+          "firstReasoningDeltaMs": 1613,
+          "firstTextDeltaMs": 8311,
+          "finishMs": 10284,
+          "durationMs": 10284,
+          "reasoningDeltaCount": 687,
+          "textDeltaCount": 478,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:32:58.544Z",
+          "firstReasoningDeltaMs": 1356,
+          "firstTextDeltaMs": 5233,
+          "finishMs": 7351,
+          "durationMs": 7352,
+          "reasoningDeltaCount": 495,
+          "textDeltaCount": 467,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:33:05.906Z",
+          "firstReasoningDeltaMs": 1233,
+          "firstTextDeltaMs": 9074,
+          "finishMs": 12103,
+          "durationMs": 12103,
+          "reasoningDeltaCount": 823,
+          "textDeltaCount": 746,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:33:18.019Z",
+          "firstReasoningDeltaMs": 1357,
+          "firstTextDeltaMs": 5754,
+          "finishMs": 8437,
+          "durationMs": 8437,
+          "reasoningDeltaCount": 390,
+          "textDeltaCount": 658,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:33:26.464Z",
+          "firstReasoningDeltaMs": 2194,
+          "firstTextDeltaMs": 8190,
+          "finishMs": 10499,
+          "durationMs": 10500,
+          "reasoningDeltaCount": 619,
+          "textDeltaCount": 509,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:33:36.973Z",
+          "firstReasoningDeltaMs": 1291,
+          "firstTextDeltaMs": 5786,
+          "finishMs": 7685,
+          "durationMs": 7685,
+          "reasoningDeltaCount": 475,
+          "textDeltaCount": 489,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:33:44.667Z",
+          "firstReasoningDeltaMs": 1024,
+          "firstTextDeltaMs": 4129,
+          "finishMs": 6024,
+          "durationMs": 6024,
+          "reasoningDeltaCount": 324,
+          "textDeltaCount": 455,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:33:50.700Z",
+          "firstReasoningDeltaMs": 1400,
+          "firstTextDeltaMs": 5046,
+          "finishMs": 8287,
+          "durationMs": 8287,
+          "reasoningDeltaCount": 376,
+          "textDeltaCount": 787,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:33:58.998Z",
+          "firstReasoningDeltaMs": 1670,
+          "firstTextDeltaMs": 10052,
+          "finishMs": 12647,
+          "durationMs": 12648,
+          "reasoningDeltaCount": 1087,
+          "textDeltaCount": 636,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:34:11.654Z",
+          "firstReasoningDeltaMs": 1049,
+          "firstTextDeltaMs": 4162,
+          "finishMs": 5994,
+          "durationMs": 5995,
+          "reasoningDeltaCount": 334,
+          "textDeltaCount": 451,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:34:17.658Z",
+          "firstReasoningDeltaMs": 1454,
+          "firstTextDeltaMs": 3782,
+          "finishMs": 6297,
+          "durationMs": 6297,
+          "reasoningDeltaCount": 221,
+          "textDeltaCount": 546,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:34:23.965Z",
+          "firstReasoningDeltaMs": 1288,
+          "firstTextDeltaMs": 11701,
+          "finishMs": 13799,
+          "durationMs": 13800,
+          "reasoningDeltaCount": 1177,
+          "textDeltaCount": 470,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:34:37.775Z",
+          "firstReasoningDeltaMs": 1099,
+          "firstTextDeltaMs": 4902,
+          "finishMs": 7511,
+          "durationMs": 7511,
+          "reasoningDeltaCount": 409,
+          "textDeltaCount": 560,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:34:45.296Z",
+          "firstReasoningDeltaMs": 1426,
+          "firstTextDeltaMs": 4534,
+          "finishMs": 6974,
+          "durationMs": 6975,
+          "reasoningDeltaCount": 305,
+          "textDeltaCount": 599,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:34:52.279Z",
+          "firstReasoningDeltaMs": 1340,
+          "firstTextDeltaMs": 3223,
+          "finishMs": 5495,
+          "durationMs": 5496,
+          "reasoningDeltaCount": 170,
+          "textDeltaCount": 517,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:34:57.784Z",
+          "firstReasoningDeltaMs": 1290,
+          "firstTextDeltaMs": 2099,
+          "finishMs": 4370,
+          "durationMs": 4371,
+          "reasoningDeltaCount": 54,
+          "textDeltaCount": 503,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:35:02.164Z",
+          "firstReasoningDeltaMs": 1024,
+          "firstTextDeltaMs": 5060,
+          "finishMs": 7017,
+          "durationMs": 7017,
+          "reasoningDeltaCount": 445,
+          "textDeltaCount": 462,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:35:09.200Z",
+          "firstReasoningDeltaMs": 1293,
+          "firstTextDeltaMs": 3711,
+          "finishMs": 5651,
+          "durationMs": 5652,
+          "reasoningDeltaCount": 237,
+          "textDeltaCount": 459,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:35:14.860Z",
+          "firstReasoningDeltaMs": 1442,
+          "firstTextDeltaMs": 4149,
+          "finishMs": 6294,
+          "durationMs": 6294,
+          "reasoningDeltaCount": 255,
+          "textDeltaCount": 515,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:35:21.164Z",
+          "firstReasoningDeltaMs": 1194,
+          "firstTextDeltaMs": 2266,
+          "finishMs": 4222,
+          "durationMs": 4223,
+          "reasoningDeltaCount": 89,
+          "textDeltaCount": 455,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:35:25.395Z",
+          "firstReasoningDeltaMs": 1756,
+          "firstTextDeltaMs": 6579,
+          "finishMs": 8512,
+          "durationMs": 8512,
+          "reasoningDeltaCount": 524,
+          "textDeltaCount": 480,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:35:33.916Z",
+          "firstReasoningDeltaMs": 1086,
+          "firstTextDeltaMs": 2586,
+          "finishMs": 4219,
+          "durationMs": 4219,
+          "reasoningDeltaCount": 122,
+          "textDeltaCount": 406,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:35:38.144Z",
+          "firstReasoningDeltaMs": 1333,
+          "firstTextDeltaMs": 19458,
+          "finishMs": 22152,
+          "durationMs": 22152,
+          "reasoningDeltaCount": 2039,
+          "textDeltaCount": 646,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:36:00.305Z",
+          "firstReasoningDeltaMs": 1199,
+          "firstTextDeltaMs": 3541,
+          "finishMs": 5357,
+          "durationMs": 5357,
+          "reasoningDeltaCount": 226,
+          "textDeltaCount": 464,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:36:05.671Z",
+          "firstReasoningDeltaMs": 1464,
+          "firstTextDeltaMs": 3869,
+          "finishMs": 6576,
+          "durationMs": 6576,
+          "reasoningDeltaCount": 246,
+          "textDeltaCount": 639,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:36:12.256Z",
+          "firstReasoningDeltaMs": 866,
+          "firstTextDeltaMs": 3631,
+          "finishMs": 6068,
+          "durationMs": 6068,
+          "reasoningDeltaCount": 256,
+          "textDeltaCount": 536,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:36:18.333Z",
+          "firstReasoningDeltaMs": 1163,
+          "firstTextDeltaMs": 4994,
+          "finishMs": 7199,
+          "durationMs": 7199,
+          "reasoningDeltaCount": 486,
+          "textDeltaCount": 562,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:36:25.542Z",
+          "firstReasoningDeltaMs": 1466,
+          "firstTextDeltaMs": 3614,
+          "finishMs": 5215,
+          "durationMs": 5216,
+          "reasoningDeltaCount": 215,
+          "textDeltaCount": 406,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:36:30.767Z",
+          "firstReasoningDeltaMs": 1184,
+          "firstTextDeltaMs": 5225,
+          "finishMs": 7148,
+          "durationMs": 7149,
+          "reasoningDeltaCount": 513,
+          "textDeltaCount": 462,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:36:37.929Z",
+          "firstReasoningDeltaMs": 1183,
+          "firstTextDeltaMs": 5868,
+          "finishMs": 8377,
+          "durationMs": 8378,
+          "reasoningDeltaCount": 479,
+          "textDeltaCount": 495,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:36:46.315Z",
+          "firstReasoningDeltaMs": 1059,
+          "firstTextDeltaMs": 8483,
+          "finishMs": 11412,
+          "durationMs": 11412,
+          "reasoningDeltaCount": 732,
+          "textDeltaCount": 714,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:36:57.737Z",
+          "firstReasoningDeltaMs": 1376,
+          "firstTextDeltaMs": 3815,
+          "finishMs": 5975,
+          "durationMs": 5975,
+          "reasoningDeltaCount": 191,
+          "textDeltaCount": 505,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:37:03.722Z",
+          "firstReasoningDeltaMs": 1365,
+          "firstTextDeltaMs": 4398,
+          "finishMs": 6396,
+          "durationMs": 6396,
+          "reasoningDeltaCount": 367,
+          "textDeltaCount": 474,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:37:10.126Z",
+          "firstReasoningDeltaMs": 991,
+          "firstTextDeltaMs": 4132,
+          "finishMs": 6795,
+          "durationMs": 6796,
+          "reasoningDeltaCount": 342,
+          "textDeltaCount": 652,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:37:16.931Z",
+          "firstReasoningDeltaMs": 1338,
+          "firstTextDeltaMs": 2835,
+          "finishMs": 4950,
+          "durationMs": 4951,
+          "reasoningDeltaCount": 125,
+          "textDeltaCount": 512,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:37:21.891Z",
+          "firstReasoningDeltaMs": 1431,
+          "firstTextDeltaMs": 5420,
+          "finishMs": 8365,
+          "durationMs": 8365,
+          "reasoningDeltaCount": 479,
+          "textDeltaCount": 680,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:37:30.265Z",
+          "firstReasoningDeltaMs": 1260,
+          "firstTextDeltaMs": 5123,
+          "finishMs": 7973,
+          "durationMs": 7974,
+          "reasoningDeltaCount": 393,
+          "textDeltaCount": 675,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:37:38.249Z",
+          "firstReasoningDeltaMs": 1865,
+          "firstTextDeltaMs": 7754,
+          "finishMs": 10108,
+          "durationMs": 10109,
+          "reasoningDeltaCount": 671,
+          "textDeltaCount": 586,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:37:48.366Z",
+          "firstReasoningDeltaMs": 1295,
+          "firstTextDeltaMs": 6357,
+          "finishMs": 8295,
+          "durationMs": 8295,
+          "reasoningDeltaCount": 649,
+          "textDeltaCount": 460,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:37:56.671Z",
+          "firstReasoningDeltaMs": 1667,
+          "firstTextDeltaMs": 4622,
+          "finishMs": 7015,
+          "durationMs": 7016,
+          "reasoningDeltaCount": 342,
+          "textDeltaCount": 488,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:38:03.696Z",
+          "firstReasoningDeltaMs": 1185,
+          "firstTextDeltaMs": 4853,
+          "finishMs": 7461,
+          "durationMs": 7461,
+          "reasoningDeltaCount": 384,
+          "textDeltaCount": 623,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:38:11.166Z",
+          "firstReasoningDeltaMs": 1208,
+          "firstTextDeltaMs": 2246,
+          "finishMs": 4216,
+          "durationMs": 4217,
+          "reasoningDeltaCount": 78,
+          "textDeltaCount": 449,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:38:15.392Z",
+          "firstReasoningDeltaMs": 1460,
+          "firstTextDeltaMs": 20621,
+          "finishMs": 23802,
+          "durationMs": 23802,
+          "reasoningDeltaCount": 2150,
+          "textDeltaCount": 665,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:38:39.208Z",
+          "firstReasoningDeltaMs": 1321,
+          "firstTextDeltaMs": 4124,
+          "finishMs": 6272,
+          "durationMs": 6272,
+          "reasoningDeltaCount": 285,
+          "textDeltaCount": 506,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:38:45.490Z",
+          "firstReasoningDeltaMs": 1126,
+          "firstTextDeltaMs": 8068,
+          "finishMs": 11089,
+          "durationMs": 11089,
+          "reasoningDeltaCount": 768,
+          "textDeltaCount": 696,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:38:56.588Z",
+          "firstReasoningDeltaMs": 1395,
+          "firstTextDeltaMs": 6695,
+          "finishMs": 8332,
+          "durationMs": 8332,
+          "reasoningDeltaCount": 623,
+          "textDeltaCount": 406,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:39:04.933Z",
+          "firstReasoningDeltaMs": 1065,
+          "firstTextDeltaMs": 5821,
+          "finishMs": 7934,
+          "durationMs": 7934,
+          "reasoningDeltaCount": 542,
+          "textDeltaCount": 497,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:39:12.877Z",
+          "firstReasoningDeltaMs": 1161,
+          "firstTextDeltaMs": 6067,
+          "finishMs": 8017,
+          "durationMs": 8017,
+          "reasoningDeltaCount": 671,
+          "textDeltaCount": 465,
+          "finishReason": "stop"
+        },
+        {
+          "operation": "reconcileKnowledge",
+          "reasoningEffort": "low",
+          "maxTokens": 65536,
+          "temperature": 0,
+          "startedAt": "2026-09-01T15:39:20.903Z",
+          "firstReasoningDeltaMs": 1041,
+          "firstTextDeltaMs": 24997,
+          "finishMs": 28017,
+          "durationMs": 28017,
+          "reasoningDeltaCount": 2706,
+          "textDeltaCount": 647,
+          "finishReason": "stop"
+        }
+      ],
+      "mismatches": []
+    },
+    "writerInvocations": 0
+  },
+  "replay": null,
+  "finalKnowledgeBase": null,
+  "provenance": null,
+  "semanticQuality": null,
+  "writer": null,
+  "baselineCheck": {
+    "head": "90558a1c1508184597de7f9543dbf9a7c731e12f",
+    "expected": "90558a1c1508184597de7f9543dbf9a7c731e12f",
+    "workingTreeClean": true,
+    "statusLines": [
+      "?? researchhub.architecture.html",
+      "?? researchhub.architecture.json",
+      "?? researchhub.architecture.visual-check.1440x900.dark.png",
+      "?? researchhub.architecture.visual-check.1440x900.light.png",
+      "?? researchhub.architecture.visual-check.2048x1320.dark.png",
+      "?? researchhub.architecture.visual-check.2048x1320.light.png",
+      "?? researchhub.architecture.visual-check.html",
+      "?? researchhub.architecture.visual-check.json",
+      "?? tests/knowledge/product-validation/evidence/c004-r9-r1-final-full-pipeline.json"
+    ],
+    "changedSinceBaseline": [],
+    "productionFilesChanged": false
+  },
+  "docling": {
+    "parser": {
+      "id": "docling-local",
+      "version": "2.116.0"
+    },
+    "pageCount": 103,
+    "chunks": 1523,
+    "uniqueChunkIds": 1523,
+    "emptyChunks": 0,
+    "sections": 154,
+    "tables": 45,
+    "images": 178,
+    "normalizedCharacters": 97784
+  },
+  "modelCalls": [
+    {
+      "operation": "understandReport",
+      "batchId": null,
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:14:42.602Z",
+      "completedAt": "2026-09-01T15:16:12.181Z",
+      "durationMs": 89579,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 367954
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "majorEntityMentions",
+          "majorTopics",
+          "newThemeProposal",
+          "researchScope",
+          "sourceAssessment",
+          "themeHypotheses",
+          "uncertainty"
+        ]
+      },
+      "runtime": {
+        "operation": "understandReport",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:14:42.606Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 7272,
+        "finishMs": 89572,
+        "durationMs": 89574,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 18904,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0001",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:16:12.199Z",
+      "completedAt": "2026-09-01T15:17:37.166Z",
+      "durationMs": 84967,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0001",
+        "currentBatchChunkCount": 117,
+        "currentBatchCharacterCount": 5480,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 66471
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 53,
+        "relations": 64,
+        "claims": 21
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:16:12.201Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 532,
+        "finishMs": 84963,
+        "durationMs": 84964,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 19165,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0003",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:17:37.173Z",
+      "completedAt": "2026-09-01T15:18:31.863Z",
+      "durationMs": 54690,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0003",
+        "currentBatchChunkCount": 78,
+        "currentBatchCharacterCount": 5890,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 61907
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 30,
+        "relations": 48,
+        "claims": 13
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:17:37.175Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1077,
+        "finishMs": 54687,
+        "durationMs": 54688,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 12344,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0004",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:18:31.868Z",
+      "completedAt": "2026-09-01T15:19:17.947Z",
+      "durationMs": 46079,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0004",
+        "currentBatchChunkCount": 70,
+        "currentBatchCharacterCount": 5168,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 60152
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 28,
+        "relations": 20,
+        "claims": 16
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:18:31.870Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 636,
+        "finishMs": 46076,
+        "durationMs": 46076,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 9884,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0005",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:19:17.951Z",
+      "completedAt": "2026-09-01T15:20:17.289Z",
+      "durationMs": 59338,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0005",
+        "currentBatchChunkCount": 64,
+        "currentBatchCharacterCount": 5366,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 59342
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 12,
+        "relations": 9,
+        "claims": 48
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:19:17.953Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1300,
+        "finishMs": 59335,
+        "durationMs": 59336,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 13460,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0006",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:20:17.294Z",
+      "completedAt": "2026-09-01T15:21:39.222Z",
+      "durationMs": 81928,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0006",
+        "currentBatchChunkCount": 105,
+        "currentBatchCharacterCount": 5668,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 66589
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 53,
+        "relations": 70,
+        "claims": 17
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:20:17.296Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1110,
+        "finishMs": 81926,
+        "durationMs": 81926,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 18678,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0007",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:21:39.226Z",
+      "completedAt": "2026-09-01T15:22:31.791Z",
+      "durationMs": 52565,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0007",
+        "currentBatchChunkCount": 159,
+        "currentBatchCharacterCount": 5566,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 71911
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 29,
+        "relations": 27,
+        "claims": 17
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:21:39.229Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1386,
+        "finishMs": 52561,
+        "durationMs": 52562,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 12107,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0008",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:22:31.795Z",
+      "completedAt": "2026-09-01T15:23:22.554Z",
+      "durationMs": 50759,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0008",
+        "currentBatchChunkCount": 42,
+        "currentBatchCharacterCount": 5278,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 56376
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 32,
+        "relations": 35,
+        "claims": 20
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:22:31.797Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1229,
+        "finishMs": 50756,
+        "durationMs": 50756,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 11937,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0009",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:23:22.559Z",
+      "completedAt": "2026-09-01T15:24:06.384Z",
+      "durationMs": 43825,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0009",
+        "currentBatchChunkCount": 134,
+        "currentBatchCharacterCount": 5428,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 69915
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 25,
+        "relations": 23,
+        "claims": 14
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:23:22.561Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1045,
+        "finishMs": 43821,
+        "durationMs": 43822,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 9803,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0010",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:24:06.388Z",
+      "completedAt": "2026-09-01T15:24:51.304Z",
+      "durationMs": 44916,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0010",
+        "currentBatchChunkCount": 68,
+        "currentBatchCharacterCount": 5346,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 59698
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 24,
+        "relations": 15,
+        "claims": 21
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:24:06.389Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1090,
+        "finishMs": 44913,
+        "durationMs": 44914,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 9910,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0011",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:24:51.308Z",
+      "completedAt": "2026-09-01T15:25:45.323Z",
+      "durationMs": 54015,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0011",
+        "currentBatchChunkCount": 122,
+        "currentBatchCharacterCount": 5832,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 67886
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 31,
+        "relations": 41,
+        "claims": 10
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:24:51.310Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1174,
+        "finishMs": 54012,
+        "durationMs": 54013,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 11986,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0012",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:25:45.327Z",
+      "completedAt": "2026-09-01T15:27:06.288Z",
+      "durationMs": 80961,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0012",
+        "currentBatchChunkCount": 99,
+        "currentBatchCharacterCount": 5370,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 64103
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 37,
+        "relations": 58,
+        "claims": 21
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:25:45.330Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 852,
+        "finishMs": 80956,
+        "durationMs": 80956,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 18276,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0013",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:27:06.293Z",
+      "completedAt": "2026-09-01T15:27:51.270Z",
+      "durationMs": 44977,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0013",
+        "currentBatchChunkCount": 137,
+        "currentBatchCharacterCount": 5845,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 70300
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 29,
+        "relations": 38,
+        "claims": 11
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:27:06.297Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1111,
+        "finishMs": 44972,
+        "durationMs": 44973,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 10291,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0014",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:27:51.274Z",
+      "completedAt": "2026-09-01T15:28:50.858Z",
+      "durationMs": 59584,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0014",
+        "currentBatchChunkCount": 37,
+        "currentBatchCharacterCount": 5738,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 56283
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 27,
+        "relations": 43,
+        "claims": 8
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:27:51.277Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 940,
+        "finishMs": 59580,
+        "durationMs": 59580,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 13016,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0015",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:28:50.863Z",
+      "completedAt": "2026-09-01T15:29:13.861Z",
+      "durationMs": 22998,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0015",
+        "currentBatchChunkCount": 135,
+        "currentBatchCharacterCount": 5088,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 68634
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 11,
+        "relations": 9,
+        "claims": 11
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:28:50.864Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1065,
+        "finishMs": 22996,
+        "durationMs": 22996,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 4840,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0016",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:29:13.865Z",
+      "completedAt": "2026-09-01T15:30:06.059Z",
+      "durationMs": 52194,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0016",
+        "currentBatchChunkCount": 51,
+        "currentBatchCharacterCount": 5778,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 58561
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 26,
+        "relations": 33,
+        "claims": 11
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:29:13.889Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1011,
+        "finishMs": 52169,
+        "durationMs": 52170,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 11332,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0017",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:30:06.063Z",
+      "completedAt": "2026-09-01T15:31:14.743Z",
+      "durationMs": 68680,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0017",
+        "currentBatchChunkCount": 69,
+        "currentBatchCharacterCount": 5273,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 60815
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 45,
+        "relations": 50,
+        "claims": 13
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:30:06.065Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1203,
+        "finishMs": 68677,
+        "durationMs": 68677,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 14932,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0018",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:31:14.747Z",
+      "completedAt": "2026-09-01T15:32:24.768Z",
+      "durationMs": 70021,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0018",
+        "currentBatchChunkCount": 28,
+        "currentBatchCharacterCount": 5106,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 54419
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 63,
+        "relations": 44,
+        "claims": 19
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:31:14.749Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 1090,
+        "finishMs": 70017,
+        "durationMs": 70018,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 16004,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "extractKnowledge",
+      "batchId": "batch-0019",
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:32:24.774Z",
+      "completedAt": "2026-09-01T15:32:25.592Z",
+      "durationMs": 818,
+      "completed": true,
+      "input": {
+        "batchId": "batch-0019",
+        "currentBatchChunkCount": 8,
+        "currentBatchCharacterCount": 1520,
+        "outOfBatchChunkIdsVisible": 0,
+        "fullDocumentVisible": false,
+        "normalizedTextVisible": false,
+        "claimsContextVisible": false,
+        "sourcesContextVisible": false,
+        "rawRefsVisible": false,
+        "serializedInputCharacters": 47687
+      },
+      "validationFeedback": null,
+      "contract": {
+        "branchCount": 14,
+        "upstreamOfSourceTypes": [
+          "industry",
+          null
+        ],
+        "upstreamOfTargetTypes": [
+          "industry",
+          null
+        ],
+        "contractHash": "98fb87d37077f1b24d0aed785ad36b7cba4c56f82c3e205cffe3aff6bc28c293"
+      },
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "claims",
+          "entities",
+          "relations"
+        ],
+        "entities": 0,
+        "relations": 0,
+        "claims": 0
+      },
+      "runtime": {
+        "operation": "extractKnowledge",
+        "reasoningEffort": "off",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:32:24.776Z",
+        "firstReasoningDeltaMs": null,
+        "firstTextDeltaMs": 638,
+        "finishMs": 816,
+        "durationMs": 816,
+        "reasoningDeltaCount": 0,
+        "textDeltaCount": 21,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 1,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:32:25.633Z",
+      "completedAt": "2026-09-01T15:32:42.783Z",
+      "durationMs": 17150,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 408291
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:32:25.637Z",
+        "firstReasoningDeltaMs": 8678,
+        "firstTextDeltaMs": 15189,
+        "finishMs": 17146,
+        "durationMs": 17146,
+        "reasoningDeltaCount": 648,
+        "textDeltaCount": 466,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 2,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:32:42.789Z",
+      "completedAt": "2026-09-01T15:32:48.241Z",
+      "durationMs": 5452,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 408117
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:32:42.795Z",
+        "firstReasoningDeltaMs": 2325,
+        "firstTextDeltaMs": 3365,
+        "finishMs": 5446,
+        "durationMs": 5447,
+        "reasoningDeltaCount": 91,
+        "textDeltaCount": 511,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 3,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:32:48.247Z",
+      "completedAt": "2026-09-01T15:32:58.534Z",
+      "durationMs": 10287,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 408133
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:32:48.250Z",
+        "firstReasoningDeltaMs": 1613,
+        "firstTextDeltaMs": 8311,
+        "finishMs": 10284,
+        "durationMs": 10284,
+        "reasoningDeltaCount": 687,
+        "textDeltaCount": 478,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 4,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:32:58.540Z",
+      "completedAt": "2026-09-01T15:33:05.896Z",
+      "durationMs": 7356,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 408237
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:32:58.544Z",
+        "firstReasoningDeltaMs": 1356,
+        "firstTextDeltaMs": 5233,
+        "finishMs": 7351,
+        "durationMs": 7352,
+        "reasoningDeltaCount": 495,
+        "textDeltaCount": 467,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 5,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:33:05.902Z",
+      "completedAt": "2026-09-01T15:33:18.009Z",
+      "durationMs": 12107,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 408352
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:33:05.906Z",
+        "firstReasoningDeltaMs": 1233,
+        "firstTextDeltaMs": 9074,
+        "finishMs": 12103,
+        "durationMs": 12103,
+        "reasoningDeltaCount": 823,
+        "textDeltaCount": 746,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 6,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:33:18.015Z",
+      "completedAt": "2026-09-01T15:33:26.456Z",
+      "durationMs": 8441,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 408407
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:33:18.019Z",
+        "firstReasoningDeltaMs": 1357,
+        "firstTextDeltaMs": 5754,
+        "finishMs": 8437,
+        "durationMs": 8437,
+        "reasoningDeltaCount": 390,
+        "textDeltaCount": 658,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 7,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:33:26.461Z",
+      "completedAt": "2026-09-01T15:33:36.964Z",
+      "durationMs": 10503,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407966
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:33:26.464Z",
+        "firstReasoningDeltaMs": 2194,
+        "firstTextDeltaMs": 8190,
+        "finishMs": 10499,
+        "durationMs": 10500,
+        "reasoningDeltaCount": 619,
+        "textDeltaCount": 509,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 8,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:33:36.970Z",
+      "completedAt": "2026-09-01T15:33:44.658Z",
+      "durationMs": 7688,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407689
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:33:36.973Z",
+        "firstReasoningDeltaMs": 1291,
+        "firstTextDeltaMs": 5786,
+        "finishMs": 7685,
+        "durationMs": 7685,
+        "reasoningDeltaCount": 475,
+        "textDeltaCount": 489,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 9,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:33:44.664Z",
+      "completedAt": "2026-09-01T15:33:50.692Z",
+      "durationMs": 6028,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407652
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:33:44.667Z",
+        "firstReasoningDeltaMs": 1024,
+        "firstTextDeltaMs": 4129,
+        "finishMs": 6024,
+        "durationMs": 6024,
+        "reasoningDeltaCount": 324,
+        "textDeltaCount": 455,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 10,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:33:50.697Z",
+      "completedAt": "2026-09-01T15:33:58.988Z",
+      "durationMs": 8291,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407314
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:33:50.700Z",
+        "firstReasoningDeltaMs": 1400,
+        "firstTextDeltaMs": 5046,
+        "finishMs": 8287,
+        "durationMs": 8287,
+        "reasoningDeltaCount": 376,
+        "textDeltaCount": 787,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 11,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:33:58.993Z",
+      "completedAt": "2026-09-01T15:34:11.645Z",
+      "durationMs": 12652,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407894
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:33:58.998Z",
+        "firstReasoningDeltaMs": 1670,
+        "firstTextDeltaMs": 10052,
+        "finishMs": 12647,
+        "durationMs": 12648,
+        "reasoningDeltaCount": 1087,
+        "textDeltaCount": 636,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 12,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:34:11.651Z",
+      "completedAt": "2026-09-01T15:34:17.648Z",
+      "durationMs": 5997,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407632
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:34:11.654Z",
+        "firstReasoningDeltaMs": 1049,
+        "firstTextDeltaMs": 4162,
+        "finishMs": 5994,
+        "durationMs": 5995,
+        "reasoningDeltaCount": 334,
+        "textDeltaCount": 451,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 13,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:34:17.653Z",
+      "completedAt": "2026-09-01T15:34:23.956Z",
+      "durationMs": 6303,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407588
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:34:17.658Z",
+        "firstReasoningDeltaMs": 1454,
+        "firstTextDeltaMs": 3782,
+        "finishMs": 6297,
+        "durationMs": 6297,
+        "reasoningDeltaCount": 221,
+        "textDeltaCount": 546,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 14,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:34:23.960Z",
+      "completedAt": "2026-09-01T15:34:37.765Z",
+      "durationMs": 13805,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407515
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:34:23.965Z",
+        "firstReasoningDeltaMs": 1288,
+        "firstTextDeltaMs": 11701,
+        "finishMs": 13799,
+        "durationMs": 13800,
+        "reasoningDeltaCount": 1177,
+        "textDeltaCount": 470,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 15,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:34:37.771Z",
+      "completedAt": "2026-09-01T15:34:45.287Z",
+      "durationMs": 7516,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407724
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:34:37.775Z",
+        "firstReasoningDeltaMs": 1099,
+        "firstTextDeltaMs": 4902,
+        "finishMs": 7511,
+        "durationMs": 7511,
+        "reasoningDeltaCount": 409,
+        "textDeltaCount": 560,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 16,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:34:45.292Z",
+      "completedAt": "2026-09-01T15:34:52.271Z",
+      "durationMs": 6979,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407940
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:34:45.296Z",
+        "firstReasoningDeltaMs": 1426,
+        "firstTextDeltaMs": 4534,
+        "finishMs": 6974,
+        "durationMs": 6975,
+        "reasoningDeltaCount": 305,
+        "textDeltaCount": 599,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 17,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:34:52.276Z",
+      "completedAt": "2026-09-01T15:34:57.775Z",
+      "durationMs": 5499,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 408133
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:34:52.279Z",
+        "firstReasoningDeltaMs": 1340,
+        "firstTextDeltaMs": 3223,
+        "finishMs": 5495,
+        "durationMs": 5496,
+        "reasoningDeltaCount": 170,
+        "textDeltaCount": 517,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 18,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:34:57.780Z",
+      "completedAt": "2026-09-01T15:35:02.155Z",
+      "durationMs": 4375,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 408244
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:34:57.784Z",
+        "firstReasoningDeltaMs": 1290,
+        "firstTextDeltaMs": 2099,
+        "finishMs": 4370,
+        "durationMs": 4371,
+        "reasoningDeltaCount": 54,
+        "textDeltaCount": 503,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 19,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:35:02.161Z",
+      "completedAt": "2026-09-01T15:35:09.181Z",
+      "durationMs": 7020,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 408190
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:35:02.164Z",
+        "firstReasoningDeltaMs": 1024,
+        "firstTextDeltaMs": 5060,
+        "finishMs": 7017,
+        "durationMs": 7017,
+        "reasoningDeltaCount": 445,
+        "textDeltaCount": 462,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 20,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:35:09.188Z",
+      "completedAt": "2026-09-01T15:35:14.852Z",
+      "durationMs": 5664,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 408110
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:35:09.200Z",
+        "firstReasoningDeltaMs": 1293,
+        "firstTextDeltaMs": 3711,
+        "finishMs": 5651,
+        "durationMs": 5652,
+        "reasoningDeltaCount": 237,
+        "textDeltaCount": 459,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 21,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:35:14.857Z",
+      "completedAt": "2026-09-01T15:35:21.155Z",
+      "durationMs": 6298,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407853
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:35:14.860Z",
+        "firstReasoningDeltaMs": 1442,
+        "firstTextDeltaMs": 4149,
+        "finishMs": 6294,
+        "durationMs": 6294,
+        "reasoningDeltaCount": 255,
+        "textDeltaCount": 515,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 22,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:35:21.161Z",
+      "completedAt": "2026-09-01T15:35:25.387Z",
+      "durationMs": 4226,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407570
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:35:21.164Z",
+        "firstReasoningDeltaMs": 1194,
+        "firstTextDeltaMs": 2266,
+        "finishMs": 4222,
+        "durationMs": 4223,
+        "reasoningDeltaCount": 89,
+        "textDeltaCount": 455,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 23,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:35:25.391Z",
+      "completedAt": "2026-09-01T15:35:33.907Z",
+      "durationMs": 8516,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407554
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:35:25.395Z",
+        "firstReasoningDeltaMs": 1756,
+        "firstTextDeltaMs": 6579,
+        "finishMs": 8512,
+        "durationMs": 8512,
+        "reasoningDeltaCount": 524,
+        "textDeltaCount": 480,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 24,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:35:33.912Z",
+      "completedAt": "2026-09-01T15:35:38.135Z",
+      "durationMs": 4223,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407465
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:35:33.916Z",
+        "firstReasoningDeltaMs": 1086,
+        "firstTextDeltaMs": 2586,
+        "finishMs": 4219,
+        "durationMs": 4219,
+        "reasoningDeltaCount": 122,
+        "textDeltaCount": 406,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 25,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:35:38.140Z",
+      "completedAt": "2026-09-01T15:36:00.296Z",
+      "durationMs": 22156,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407267
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:35:38.144Z",
+        "firstReasoningDeltaMs": 1333,
+        "firstTextDeltaMs": 19458,
+        "finishMs": 22152,
+        "durationMs": 22152,
+        "reasoningDeltaCount": 2039,
+        "textDeltaCount": 646,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 26,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:36:00.301Z",
+      "completedAt": "2026-09-01T15:36:05.662Z",
+      "durationMs": 5361,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407532
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:36:00.305Z",
+        "firstReasoningDeltaMs": 1199,
+        "firstTextDeltaMs": 3541,
+        "finishMs": 5357,
+        "durationMs": 5357,
+        "reasoningDeltaCount": 226,
+        "textDeltaCount": 464,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 27,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:36:05.668Z",
+      "completedAt": "2026-09-01T15:36:12.248Z",
+      "durationMs": 6580,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407336
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:36:05.671Z",
+        "firstReasoningDeltaMs": 1464,
+        "firstTextDeltaMs": 3869,
+        "finishMs": 6576,
+        "durationMs": 6576,
+        "reasoningDeltaCount": 246,
+        "textDeltaCount": 639,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 28,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:36:12.253Z",
+      "completedAt": "2026-09-01T15:36:18.324Z",
+      "durationMs": 6071,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407360
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:36:12.256Z",
+        "firstReasoningDeltaMs": 866,
+        "firstTextDeltaMs": 3631,
+        "finishMs": 6068,
+        "durationMs": 6068,
+        "reasoningDeltaCount": 256,
+        "textDeltaCount": 536,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 29,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:36:18.329Z",
+      "completedAt": "2026-09-01T15:36:25.533Z",
+      "durationMs": 7204,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407396
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:36:18.333Z",
+        "firstReasoningDeltaMs": 1163,
+        "firstTextDeltaMs": 4994,
+        "finishMs": 7199,
+        "durationMs": 7199,
+        "reasoningDeltaCount": 486,
+        "textDeltaCount": 562,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 30,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:36:25.538Z",
+      "completedAt": "2026-09-01T15:36:30.757Z",
+      "durationMs": 5219,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407445
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:36:25.542Z",
+        "firstReasoningDeltaMs": 1466,
+        "firstTextDeltaMs": 3614,
+        "finishMs": 5215,
+        "durationMs": 5216,
+        "reasoningDeltaCount": 215,
+        "textDeltaCount": 406,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 31,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:36:30.763Z",
+      "completedAt": "2026-09-01T15:36:37.916Z",
+      "durationMs": 7153,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407446
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:36:30.767Z",
+        "firstReasoningDeltaMs": 1184,
+        "firstTextDeltaMs": 5225,
+        "finishMs": 7148,
+        "durationMs": 7149,
+        "reasoningDeltaCount": 513,
+        "textDeltaCount": 462,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 32,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:36:37.922Z",
+      "completedAt": "2026-09-01T15:36:46.307Z",
+      "durationMs": 8385,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407544
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:36:37.929Z",
+        "firstReasoningDeltaMs": 1183,
+        "firstTextDeltaMs": 5868,
+        "finishMs": 8377,
+        "durationMs": 8378,
+        "reasoningDeltaCount": 479,
+        "textDeltaCount": 495,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 33,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:36:46.312Z",
+      "completedAt": "2026-09-01T15:36:57.728Z",
+      "durationMs": 11416,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407618
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:36:46.315Z",
+        "firstReasoningDeltaMs": 1059,
+        "firstTextDeltaMs": 8483,
+        "finishMs": 11412,
+        "durationMs": 11412,
+        "reasoningDeltaCount": 732,
+        "textDeltaCount": 714,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 34,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:36:57.732Z",
+      "completedAt": "2026-09-01T15:37:03.712Z",
+      "durationMs": 5980,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407492
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:36:57.737Z",
+        "firstReasoningDeltaMs": 1376,
+        "firstTextDeltaMs": 3815,
+        "finishMs": 5975,
+        "durationMs": 5975,
+        "reasoningDeltaCount": 191,
+        "textDeltaCount": 505,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 35,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:37:03.718Z",
+      "completedAt": "2026-09-01T15:37:10.117Z",
+      "durationMs": 6399,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407252
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:37:03.722Z",
+        "firstReasoningDeltaMs": 1365,
+        "firstTextDeltaMs": 4398,
+        "finishMs": 6396,
+        "durationMs": 6396,
+        "reasoningDeltaCount": 367,
+        "textDeltaCount": 474,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 36,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:37:10.123Z",
+      "completedAt": "2026-09-01T15:37:16.922Z",
+      "durationMs": 6799,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407132
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:37:10.126Z",
+        "firstReasoningDeltaMs": 991,
+        "firstTextDeltaMs": 4132,
+        "finishMs": 6795,
+        "durationMs": 6796,
+        "reasoningDeltaCount": 342,
+        "textDeltaCount": 652,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 37,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:37:16.927Z",
+      "completedAt": "2026-09-01T15:37:21.882Z",
+      "durationMs": 4955,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407382
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:37:16.931Z",
+        "firstReasoningDeltaMs": 1338,
+        "firstTextDeltaMs": 2835,
+        "finishMs": 4950,
+        "durationMs": 4951,
+        "reasoningDeltaCount": 125,
+        "textDeltaCount": 512,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 38,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:37:21.887Z",
+      "completedAt": "2026-09-01T15:37:30.256Z",
+      "durationMs": 8369,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407825
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:37:21.891Z",
+        "firstReasoningDeltaMs": 1431,
+        "firstTextDeltaMs": 5420,
+        "finishMs": 8365,
+        "durationMs": 8365,
+        "reasoningDeltaCount": 479,
+        "textDeltaCount": 680,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 39,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:37:30.261Z",
+      "completedAt": "2026-09-01T15:37:38.239Z",
+      "durationMs": 7978,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407674
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:37:30.265Z",
+        "firstReasoningDeltaMs": 1260,
+        "firstTextDeltaMs": 5123,
+        "finishMs": 7973,
+        "durationMs": 7974,
+        "reasoningDeltaCount": 393,
+        "textDeltaCount": 675,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 40,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:37:38.245Z",
+      "completedAt": "2026-09-01T15:37:48.358Z",
+      "durationMs": 10113,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407650
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:37:38.249Z",
+        "firstReasoningDeltaMs": 1865,
+        "firstTextDeltaMs": 7754,
+        "finishMs": 10108,
+        "durationMs": 10109,
+        "reasoningDeltaCount": 671,
+        "textDeltaCount": 586,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 41,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:37:48.363Z",
+      "completedAt": "2026-09-01T15:37:56.661Z",
+      "durationMs": 8298,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407837
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:37:48.366Z",
+        "firstReasoningDeltaMs": 1295,
+        "firstTextDeltaMs": 6357,
+        "finishMs": 8295,
+        "durationMs": 8295,
+        "reasoningDeltaCount": 649,
+        "textDeltaCount": 460,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 42,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:37:56.667Z",
+      "completedAt": "2026-09-01T15:38:03.686Z",
+      "durationMs": 7019,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407917
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:37:56.671Z",
+        "firstReasoningDeltaMs": 1667,
+        "firstTextDeltaMs": 4622,
+        "finishMs": 7015,
+        "durationMs": 7016,
+        "reasoningDeltaCount": 342,
+        "textDeltaCount": 488,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 43,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:38:03.692Z",
+      "completedAt": "2026-09-01T15:38:11.157Z",
+      "durationMs": 7465,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407813
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:38:03.696Z",
+        "firstReasoningDeltaMs": 1185,
+        "firstTextDeltaMs": 4853,
+        "finishMs": 7461,
+        "durationMs": 7461,
+        "reasoningDeltaCount": 384,
+        "textDeltaCount": 623,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 44,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:38:11.163Z",
+      "completedAt": "2026-09-01T15:38:15.383Z",
+      "durationMs": 4220,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407630
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:38:11.166Z",
+        "firstReasoningDeltaMs": 1208,
+        "firstTextDeltaMs": 2246,
+        "finishMs": 4216,
+        "durationMs": 4217,
+        "reasoningDeltaCount": 78,
+        "textDeltaCount": 449,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 45,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:38:15.389Z",
+      "completedAt": "2026-09-01T15:38:39.194Z",
+      "durationMs": 23805,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407989
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:38:15.392Z",
+        "firstReasoningDeltaMs": 1460,
+        "firstTextDeltaMs": 20621,
+        "finishMs": 23802,
+        "durationMs": 23802,
+        "reasoningDeltaCount": 2150,
+        "textDeltaCount": 665,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 46,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:38:39.202Z",
+      "completedAt": "2026-09-01T15:38:45.481Z",
+      "durationMs": 6279,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 408028
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:38:39.208Z",
+        "firstReasoningDeltaMs": 1321,
+        "firstTextDeltaMs": 4124,
+        "finishMs": 6272,
+        "durationMs": 6272,
+        "reasoningDeltaCount": 285,
+        "textDeltaCount": 506,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 47,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:38:45.487Z",
+      "completedAt": "2026-09-01T15:38:56.579Z",
+      "durationMs": 11092,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 408168
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:38:45.490Z",
+        "firstReasoningDeltaMs": 1126,
+        "firstTextDeltaMs": 8068,
+        "finishMs": 11089,
+        "durationMs": 11089,
+        "reasoningDeltaCount": 768,
+        "textDeltaCount": 696,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 48,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:38:56.585Z",
+      "completedAt": "2026-09-01T15:39:04.920Z",
+      "durationMs": 8335,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407795
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:38:56.588Z",
+        "firstReasoningDeltaMs": 1395,
+        "firstTextDeltaMs": 6695,
+        "finishMs": 8332,
+        "durationMs": 8332,
+        "reasoningDeltaCount": 623,
+        "textDeltaCount": 406,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 49,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:39:04.928Z",
+      "completedAt": "2026-09-01T15:39:12.867Z",
+      "durationMs": 7939,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 407848
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:39:04.933Z",
+        "firstReasoningDeltaMs": 1065,
+        "firstTextDeltaMs": 5821,
+        "finishMs": 7934,
+        "durationMs": 7934,
+        "reasoningDeltaCount": 542,
+        "textDeltaCount": 497,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 50,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:39:12.872Z",
+      "completedAt": "2026-09-01T15:39:20.894Z",
+      "durationMs": 8022,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 408281
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:39:12.877Z",
+        "firstReasoningDeltaMs": 1161,
+        "firstTextDeltaMs": 6067,
+        "finishMs": 8017,
+        "durationMs": 8017,
+        "reasoningDeltaCount": 671,
+        "textDeltaCount": 465,
+        "finishReason": "stop"
+      },
+      "error": null
+    },
+    {
+      "operation": "reconcileKnowledge",
+      "batchId": null,
+      "physicalAttempt": 51,
+      "delegatedToProvider": true,
+      "startedAt": "2026-09-01T15:39:20.900Z",
+      "completedAt": "2026-09-01T15:39:48.921Z",
+      "durationMs": 28021,
+      "completed": true,
+      "input": {
+        "fullDocumentVisible": true,
+        "normalizedTextVisible": false,
+        "serializedInputCharacters": 408069
+      },
+      "validationFeedback": null,
+      "contract": null,
+      "outputShape": {
+        "type": "object",
+        "keys": [
+          "decisions"
+        ],
+        "decisions": 8
+      },
+      "runtime": {
+        "operation": "reconcileKnowledge",
+        "reasoningEffort": "low",
+        "maxTokens": 65536,
+        "temperature": 0,
+        "startedAt": "2026-09-01T15:39:20.903Z",
+        "firstReasoningDeltaMs": 1041,
+        "firstTextDeltaMs": 24997,
+        "finishMs": 28017,
+        "durationMs": 28017,
+        "reasoningDeltaCount": 2706,
+        "textDeltaCount": 647,
+        "finishReason": "stop"
+      },
+      "error": null
+    }
+  ],
+  "batchPlan": {
+    "planned": 18,
+    "inputChunks": 1523,
+    "inputUniqueChunks": 1523,
+    "plannedCoveredChunks": 1523,
+    "plannedCoveredUniqueChunks": 1523,
+    "omissions": 0,
+    "duplicateCoverage": 0,
+    "complete": true
+  },
+  "observer": {
+    "passive": true,
+    "observerCreatedTimeout": false,
+    "observerCreatedAbortController": false,
+    "originalRuntimeSignalPreserved": true
+  },
+  "status": "FAIL / SOL REVIEW REQUIRED",
+  "failure": {
+    "message": "primary workflow blocked at workflow; no upstream provider/runtime error observed"
+  },
+  "completedAt": "2026-09-01T15:39:48.931Z"
+}

@@ -2,13 +2,15 @@
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R1
 
-C4-R9-R1 is authorized and In Progress under the corrected two-commit
-protocol. Commit A will use a passive full-validation observer with no
-observer-created timeout or AbortController, and will evaluate independently
-recomputed Docling/batch facts before blocked Workflow diagnosis. The exact
-Commit A SHA will be used for one supervised real R9-R1 process with the
-7200-second outer watchdog. Stage C remains In Progress / Awaiting C4-R9-R1
-Sol Verification and is not accepted.
+C4-R9-R1 completed with `FAIL / SOL REVIEW REQUIRED`. Commit A
+`90558a1c1508184597de7f9543dbf9a7c731e12f` used the passive observer: no
+observer-created timeout or AbortController, and the original runtime signal
+was preserved. All 18 extraction batches completed, but reconciliation
+blocked on an `invalid_reference` product invariant without an upstream
+runtime error; Writer and replay were not reached, and revision remained 0.
+Evidence is `tests/knowledge/product-validation/evidence/c004-r9-r1-final-full-pipeline.json`.
+Stage C remains In Progress / Awaiting C4-R9-R1 Sol Verification and is not
+accepted.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-FINAL
 

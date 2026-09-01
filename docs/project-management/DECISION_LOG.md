@@ -1,16 +1,21 @@
 # Decision Log
 
-## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R1 - Authorization and Commit A
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R1 - Result
 
-Status: Authorized / In Progress
+Status: Completed / FAIL - SOL REVIEW REQUIRED
 Date: 2026-09-01
 
-Sol authorized one corrected R9-R1 full validation. Commit A is restricted to
-the passive full-validation observer, R9 harness ordering correction, focused
-offline tests, package/launcher updates, and governance transition. The real
-run must use the exact Commit A SHA, preserve the process-local `.env`
-isolation, and use only the 7200-second outer watchdog. Stage C remains In
-Progress / Awaiting C4-R9-R1 Sol Verification and is not accepted.
+The corrected R9-R1 run used Commit A
+`90558a1c1508184597de7f9543dbf9a7c731e12f` in one supervised process with the
+process-local `.env` isolation and 7200-second outer watchdog. The passive
+observer preserved the upstream signal and did not create a timeout or
+AbortController. Runtime, exact PDF, Local Docling, fresh KB, deterministic
+18-batch plan, and all 18 extraction batches completed. Reconciliation then
+blocked on an `invalid_reference` product invariant with no upstream runtime
+error observed. No Writer or replay occurred; revision remained 0. Evidence:
+`tests/knowledge/product-validation/evidence/c004-r9-r1-final-full-pipeline.json`.
+Stage C remains In Progress / Awaiting C4-R9-R1 Sol Verification and is not
+accepted.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-FINAL - Historical Result
 

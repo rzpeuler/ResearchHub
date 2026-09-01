@@ -46,7 +46,7 @@
 - S3-R1: Completed / INVALID TEST SETUP - External Execution Boundary Too Short - Sol verified
 - S3-R2: Accepted / PASS - CANDIDATE ISOLATION EXERCISED - Sol verified
 - C4-R9 Product Validation: Completed / INVALID TEST SETUP - Smoke Observer Timeout - Sol verified
-- C4-R9-R1 Product Validation: Authorized / In Progress (corrected passive observer)
+- C4-R9-R1 Product Validation: Completed / FAIL - SOL REVIEW REQUIRED
 - S3: Completed / INVALID TEST SETUP - Parent Environment Credential Override - Sol verified
 - Stage C: In Progress / Awaiting C4-R9-R1 Sol Verification
 

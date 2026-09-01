@@ -7,8 +7,12 @@
   aborted batch-0008 after 180 seconds while the upstream stream was active.
 - Added a passive R9-class observer that forwards the original runtime signal
   without creating an AbortController, timeout, or per-call cancellation.
-- Corrected blocked-result ordering and added focused offline coverage. R9-R1
-  is Authorized / In Progress; Stage C awaits C4-R9-R1 Sol Verification.
+- Corrected blocked-result ordering and added focused offline coverage. The
+  one supervised R9-R1 run completed all 18 extraction batches, then failed
+  during reconciliation on `invalid_reference` without Writer or replay:
+  `FAIL / SOL REVIEW REQUIRED`.
+- R9-R1 evidence: `tests/knowledge/product-validation/evidence/c004-r9-r1-final-full-pipeline.json`.
+  Stage C remains In Progress / Awaiting C4-R9-R1 Sol Verification.
 
 ## 2026-09-01 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-FINAL
 
