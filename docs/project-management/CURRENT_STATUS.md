@@ -1,5 +1,23 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R1
+
+S3-R1 started from the exact authorized `66e4c86f394d3d142113e59531b6c69fc27081cd`
+baseline through the process-local isolated `.env` child launcher with the
+required deepseek-official/deepseek-v4-flash runtime. The real smoke exceeded
+the external 120-second command boundary before the runner emitted durable
+evidence. The verified npm, wrapper, and smoke-runner process chain was
+terminated; no retry was made. Candidate counts, relation observations,
+physical call counts, and retryCount are therefore not observed.
+
+S3-R1 is Completed / FAIL - SOL REVIEW REQUIRED. This is not evidence of a
+C13 semantic regression and does not establish candidate-isolation behavior.
+The run did not continue into full report validation and did not execute C4-R9.
+C13, C13-R1, RH-REAL-ENV-BOOTSTRAP-001, and RH-REAL-ENV-BOOTSTRAP-001-R1 remain
+Accepted - Sol verified. Historical S3 remains Completed / INVALID TEST SETUP -
+Parent Environment Credential Override - Sol verified. Stage C remains In
+Progress and is not accepted; C4-R9 remains NOT AUTHORIZED.
+
 ## RH-REAL-ENV-BOOTSTRAP-001-R1
 
 The isolated credential-source diagnostic removed the inherited runtime

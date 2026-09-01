@@ -1,0 +1,68 @@
+{
+  "taskId": "KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R1",
+  "baseline": "66e4c86f394d3d142113e59531b6c69fc27081cd",
+  "result": "FAIL / SOL REVIEW REQUIRED",
+  "runtime": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash",
+    "baseUrlHost": "api.deepseek.com",
+    "physicalTotalLlmCalls": null,
+    "observed": false
+  },
+  "environmentIsolation": {
+    "isolatedChildUsed": true,
+    "inheritedRuntimeOverridesRemoved": true,
+    "globalEnvironmentModified": false,
+    "processChainTerminatedAfterTimeout": true
+  },
+  "input": {
+    "expectedPdfSha256": "998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63",
+    "expectedPdfBytes": 3209114,
+    "expectedDocling": {
+      "pages": 103,
+      "chunks": 1523,
+      "sections": 154,
+      "tables": 45,
+      "images": 178,
+      "normalizedCharacters": 97784
+    },
+    "freshKnowledgeBase": {
+      "schemaVersion": "0.3",
+      "storageFormatVersion": "1",
+      "revision": 0,
+      "writable": true
+    },
+    "observed": false
+  },
+  "modelCalls": {
+    "understandReport": null,
+    "physicalExtractionCalls": null,
+    "retryCount": null,
+    "observed": false
+  },
+  "candidateCounts": {
+    "raw": { "entity": null, "relation": null, "claim": null },
+    "accepted": { "entity": null, "relation": null, "claim": null },
+    "rejected": { "entity": null, "relation": null, "claim": null },
+    "rejectionCodeCounts": {},
+    "observed": false
+  },
+  "relationObservations": [],
+  "candidateIsolation": {
+    "rejectedAbsentFromAccepted": null,
+    "validCandidatesPreserved": null,
+    "semanticCoercion": null,
+    "partialRejectionTriggeredRetry": null,
+    "observed": false
+  },
+  "smokeBoundary": {
+    "fullReportProductValidationExecuted": false,
+    "c4R9Executed": false,
+    "observed": true
+  },
+  "failure": {
+    "type": "external_timeout",
+    "timeoutSeconds": 120,
+    "message": "The isolated S3-R1 smoke did not complete within the external command boundary; the runner emitted no durable evidence before the verified process chain was terminated."
+  }
+}

@@ -1,5 +1,25 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R1 - Real Candidate Isolation Smoke Result
+
+Status: Completed / FAIL - SOL REVIEW REQUIRED
+Date: 2026-09-01
+
+The authorized S3-R1 smoke used the exact C13-R1 baseline and the process-local
+isolated `.env` launcher. It started the required deepseek-official /
+deepseek-v4-flash real path, but exceeded the external 120-second command
+boundary before the runner wrote durable evidence. The verified process chain
+was terminated and no real retry was made. Runtime/input gates, model-call
+counts, candidate counts, relation observations, and retryCount are recorded
+as not observed rather than inferred. Durable sanitized evidence is
+tests/knowledge/product-validation/evidence/c004-s3-r1-post-c13-real-candidate-isolation-smoke.json.
+
+S3-R1 did not establish or disprove candidate isolation. It did not execute
+full report product validation or C4-R9. C13 and C13-R1 remain Accepted - Sol
+verified; historical S3 remains Completed / INVALID TEST SETUP - Parent
+Environment Credential Override - Sol verified; Stage C remains In Progress
+and is not accepted; C4-R9 remains NOT AUTHORIZED.
+
 ## RH-REAL-ENV-BOOTSTRAP-001-R1 - Isolated .env Credential Source Diagnosis
 
 Status: Accepted - Sol verified

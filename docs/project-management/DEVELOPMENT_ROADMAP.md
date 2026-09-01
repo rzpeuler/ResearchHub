@@ -43,6 +43,7 @@
 - C4-S3 Post-C13 Real Candidate-Isolation Smoke: Completed / INVALID TEST SETUP - Parent Environment Credential Override - Sol verified
 - RH-REAL-ENV-BOOTSTRAP-001: Accepted - Sol verified
 - RH-REAL-ENV-BOOTSTRAP-001-R1: Accepted - Sol verified
+- S3-R1: Completed / FAIL - SOL REVIEW REQUIRED
 - C4-R9 Product Validation: NOT AUTHORIZED
 - S3: Completed / INVALID TEST SETUP - Parent Environment Credential Override - Sol verified
 - Stage C: In Progress / not accepted

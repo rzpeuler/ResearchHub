@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-01 - KNOWLEDGE-V0.3-POST-C13-REAL-CANDIDATE-ISOLATION-SMOKE-C-004-S3-R1
+
+- Started the authorized first-batch real Flash smoke from the exact C13-R1
+  baseline through the isolated `.env` child launcher.
+- The run exceeded the external 120-second command boundary before durable
+  evidence was emitted. The verified process chain was terminated, no retry was
+  made, and candidate behavior remains unobserved.
+- Durable sanitized evidence is
+  `tests/knowledge/product-validation/evidence/c004-s3-r1-post-c13-real-candidate-isolation-smoke.json`.
+  S3-R1 is Completed / FAIL - SOL REVIEW REQUIRED; no full report validation or
+  C4-R9 execution occurred.
+
 ## 2026-09-01 - RH-REAL-ENV-BOOTSTRAP-001-R1
 
 - Ran exactly one process-local isolated `/models` preflight after removing
