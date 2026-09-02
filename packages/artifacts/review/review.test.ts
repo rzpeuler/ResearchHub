@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createOutcome } from '../../evaluation/outcome/index.ts'
+import { createOutcome } from '../outcome/index.ts'
 import {
   createReview,
   deserializeReview,

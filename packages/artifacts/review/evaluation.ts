@@ -3,17 +3,17 @@ import {
   type EvaluationSummary,
   type MetricEvaluation,
   type Review,
-} from '../../artifacts/review/index.ts'
+} from './review.ts'
 import {
   assertNonEmptyString,
   assertTimestamp,
   isJsonObject,
   type JsonObject,
   type JsonValue,
-} from '../../artifacts/core/index.ts'
-import { validatePrediction, type Prediction } from '../../artifacts/prediction/index.ts'
+} from '../core/index.ts'
+import { validatePrediction, type Prediction } from '../prediction/index.ts'
 import { validateOutcome, type Outcome } from '../outcome/index.ts'
-import type { EvaluationEngineOptions, ReviewClock, ReviewIdFactory } from './types.ts'
+import type { EvaluationEngineOptions, ReviewClock, ReviewIdFactory } from './evaluation-types.ts'
 
 const DEFAULT_TOLERANCE = 0
 

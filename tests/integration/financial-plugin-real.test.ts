@@ -10,7 +10,7 @@ import {
   serializePrediction,
   serializeThesis,
 } from '../../packages/artifacts/index.ts'
-import { evaluatePrediction } from '../../packages/evaluation/index.ts'
+import { evaluatePrediction } from '../../packages/artifacts/index.ts'
 import { FinancialPlugin, createFinancialEvidence } from '../../packages/plugins/financial/index.ts'
 import { createFinancialPluginComposition } from '../../packages/plugins/financial/composition-index.ts'
 import { runEquityResearchCommand } from '../../packages/skills/equity-research/index.ts'

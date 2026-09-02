@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { type JsonObject } from '../../artifacts/core/index.ts'
-import { createPrediction } from '../../artifacts/prediction/index.ts'
-import { compareMetrics } from '../core/index.ts'
+import { type JsonObject } from '../core/index.ts'
+import { createPrediction } from '../prediction/index.ts'
+import { compareMetrics, evaluatePrediction } from './index.ts'
 import { createOutcome, type Outcome } from '../outcome/index.ts'
-import { createEvaluationReview, evaluatePrediction } from './index.ts'
 
 const prediction = createPrediction({
   id: 'prediction-001',
@@ -161,7 +160,7 @@ test('passes deep-cloned snapshots to idFactory and clock callbacks', () => {
 })
 
 test('uses injected identity, clock, metadata and prediction session', () => {
-  const review = createEvaluationReview(prediction, outcome({ exact: 10 }), deterministicOptions)
+  const review = evaluatePrediction(prediction, outcome({ exact: 10 }), deterministicOptions)
 
   assert.equal(review.id, 'review-001')
   assert.equal(review.createdAt, '2026-08-23T12:01:00.000Z')

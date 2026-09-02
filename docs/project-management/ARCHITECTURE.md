@@ -9,21 +9,19 @@ infrastructure and independent Runtime Data.
 
 ```text
 ResearchHub/
-├── dsh/                         system control plane
-├── packages/                    reusable runtime-neutral research assets
-│   ├── workflows/               research SOPs
-│   ├── skills/                  professional research methods
-│   ├── plugins/                 external data and tools
-│   ├── artifacts/               compatibility output/provenance code
-│   ├── memory/                  compatibility API
-│   ├── evaluation/              compatibility review API
-│   ├── schemas/                 public contracts
-│   └── shared/                  runtime-neutral utilities
-├── research-output/             reports, objects, and provenance
-├── examples/
-│   └── knowledge-bases/         example Knowledge Base instances
-├── tests/
-└── docs/
+|- dsh/                         system control plane
+|- packages/                    reusable runtime-neutral research assets
+|  |- workflows/               research SOPs
+|  |- skills/                  professional research methods
+|  |- plugins/                 external data and tools
+|  |- artifacts/               output, review, outcome, and provenance code
+|  |- schemas/                 public contracts
+|  `- shared/                  runtime-neutral utilities
+|- research-output/             reports, objects, and provenance
+|- examples/
+|  `- knowledge-bases/         example Knowledge Base instances
+|- tests/
+`- docs/
 ```
 
 The tree above expresses source architecture. It does not create runtime data
@@ -33,9 +31,9 @@ directories or imply that a user Knowledge Base belongs in the repository.
 
 ```text
 <ResearchHub Data Root>/
-└── knowledge-bases/
-    ├── <kb-id>/
-    └── ...
+`- knowledge-bases/
+   |- <kb-id>/
+   `- ...
 ```
 
 Each Knowledge Base is independently mutable, versioned, mountable, and
@@ -87,12 +85,13 @@ interface ResearchObjectEnvelope<TPayload> {
 Existing Skill output formats and Artifact core models remain compatibility
 contracts.
 
-## Compatibility modules
+## Compatibility boundaries
 
-`packages/artifacts/`, `packages/memory/`, and `packages/evaluation/` remain to
-preserve validated imports and tests. They are not new independent
-architecture layers. New durable Knowledge belongs to explicitly scoped
-Knowledge Base Runtime Data, not a compatibility Memory store.
+`packages/artifacts/` contains the remaining compatibility output, Review,
+Outcome, and provenance contracts. The standalone Memory and Evaluation
+packages have been retired and no longer exist in the current source tree.
+New durable Knowledge belongs to explicitly scoped Knowledge Base Runtime Data,
+not a compatibility Memory store.
 
 ## Dependency direction
 
@@ -121,7 +120,7 @@ and [Frontend Projection v0.3](../architecture/KNOWLEDGE_FRONTEND_PROJECTION_V0.
 The v0.2 Knowledge architecture and its supporting documents remain frozen
 legacy compatibility and migration sources. Current runtime implementation is
 still predominantly v0.2; migration to the v0.3 target has not started. The
-next approved engineering direction is Stage A — Executable Schema / Domain
+next approved engineering direction is Stage A - Executable Schema / Domain
 Model, but Stage A is not part of this governance integration task.
 
 See the [Knowledge Architecture Freeze
@@ -136,5 +135,8 @@ migration is current architecture.
 Capability Layer, Provider Layer, Agent Planner, Workflow Composition Layer,
 Workflow Engine, Multi-Agent architecture, standalone Memory Layer, and
 standalone Evaluation Layer are not current ResearchHub architecture layers.
-Historical documents remain in the repository as records and are marked as
-historical or superseded where terminology would otherwise be ambiguous.
+The standalone Memory and Evaluation compatibility modules are retired. Their
+active responsibilities belong to Artifact Review/Outcome contracts and
+Knowledge Base Runtime Data. Historical documents remain in the repository as
+records and are marked as historical or superseded where terminology would
+otherwise be ambiguous.

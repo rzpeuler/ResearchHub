@@ -36,8 +36,9 @@ The repository-level DSH Runtime Orchestrator is `dsh/`. The `packages/`
 directory contains reusable, runtime-neutral research assets: Workflows,
 Skills, Plugins, compatibility Artifact code, public Schemas, and shared
 utilities. Packages do not depend on the DSH and can be used by another
-Runtime or external caller. `packages/memory/` and `packages/evaluation/` are
-retained for compatibility; they are not current product architecture layers.
+Runtime or external caller. Review and Outcome behavior lives under the
+existing `packages/artifacts/` boundary. Standalone Memory and Evaluation
+compatibility modules have been retired.
 
 The public Research Object envelope is defined in
 [`packages/schemas/research-object.ts`](packages/schemas/research-object.ts).

@@ -33,14 +33,19 @@
     Composition Layer, Workflow Engine, Multi-Agent architecture, Knowledge
     Agent, Graph DB, Vector DB, RAG, or autonomous Knowledge formation without
     a separate architecture decision.
-15. Treat Artifact as a compatibility technical term; use the Research Object
+15. Standalone Memory and Evaluation legacy modules are retired and removed.
+    Do not reintroduce standalone Memory or Evaluation architecture without a
+    new architecture decision. Research Context is Application State, not a
+    replacement Memory Layer. Durable research state belongs to Research
+    Output, Knowledge, Source, Provenance, and Workflow Audit contracts.
+16. Treat Artifact as a compatibility technical term; use the Research Object
     envelope for new public output contracts. Do not modify Artifact core
     models without a separate architecture decision.
-16. Packages remain runtime-neutral and must not depend on `dsh/`. Research
+17. Packages remain runtime-neutral and must not depend on `dsh/`. Research
     Output and Knowledge interfaces must remain usable by other runtimes.
-17. Every change must run relevant focused validation and the default full
+18. Every change must run relevant focused validation and the default full
     validation command before commit.
-18. Engineering Agent may mark an implementation task Status as Completed
+19. Engineering Agent may mark an implementation task Status as Completed
     after implementation, validation, commit, and push. Engineering Agent
     must not self-mark Sol/CTO Acceptance as Accepted. Acceptance remains
     Review Pending / Sol Verification until Sol independently reviews the

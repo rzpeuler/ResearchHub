@@ -5,7 +5,7 @@ import {
   assertTimestamp,
   isJsonObject,
   type JsonObject,
-} from '../../artifacts/core/index.ts'
+} from '../core/index.ts'
 
 /** A caller-supplied, observed result suitable for deterministic evaluation. */
 export type Outcome = {

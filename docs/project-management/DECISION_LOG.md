@@ -1,5 +1,17 @@
 # Decision Log
 
+## ARCH-LEGACY-MEMORY-EVALUATION-RETIREMENT-001 - Result
+
+Status: Completed / SOL VERIFICATION REQUIRED
+Date: 2026-09-02
+
+The standalone Memory and Evaluation compatibility modules were retired and
+removed. Evaluation's active Prediction + Outcome comparison responsibility
+now lives under the existing Artifact Review boundary, and Outcome is an
+Artifact data contract. The Memory-only integration compatibility test and
+legacy test scripts were removed. No replacement architecture layer was added;
+historical documents remain preserved.
+
 ## KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015-R1 - Result
 
 Status: Completed / SOL VERIFICATION REQUIRED

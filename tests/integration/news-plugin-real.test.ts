@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { deserializeEvidence, deserializePrediction, deserializeThesis, serializeEvidence, serializePrediction, serializeThesis } from '../../packages/artifacts/index.ts'
-import { evaluatePrediction } from '../../packages/evaluation/index.ts'
+import { evaluatePrediction } from '../../packages/artifacts/index.ts'
 import { PluginRegistry } from '../../packages/plugins/registry/index.ts'
 import { GdeltNewsPlugin } from '../../packages/plugins/adapters/gdelt/index.ts'
 import { NewsPlugin } from '../../packages/plugins/news/index.ts'

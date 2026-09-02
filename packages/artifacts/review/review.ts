@@ -8,7 +8,7 @@ import {
   type ArtifactBase,
   type JsonValue,
 } from '../core/index.ts'
-import { validateOutcome, type Outcome } from '../../evaluation/outcome/index.ts'
+import { validateOutcome, type Outcome } from '../outcome/index.ts'
 
 export type ReviewArtifactBase = ArtifactBase<'review'>
 

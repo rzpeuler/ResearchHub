@@ -13,3 +13,5 @@ export type {
   ReviewArtifactBase,
   ReviewInput,
 } from './review.ts'
+export { compareMetrics, evaluatePrediction } from './evaluation.ts'
+export type { EvaluationEngineOptions, ReviewClock, ReviewIdFactory } from './evaluation-types.ts'

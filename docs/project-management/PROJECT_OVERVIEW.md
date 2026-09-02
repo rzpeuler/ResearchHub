@@ -34,13 +34,13 @@ compatibility implementations.
 - Knowledge lifecycle: Workflow controls ingestion and update orchestration;
   Curation performs explicitly invoked research reasoning; Access and
   Validation remain deterministic; Write accepts only validated changes.
-- Memory / Evaluation: legacy compatibility paths; no new product layer or
-  autonomous prediction-evaluation loop is planned.
+- Review / Outcome: active Artifact contracts; deterministic Prediction
+  comparison is owned by the Artifact Review boundary.
 
 The existing Event Analysis, Company Research, and Equity Research flows
 validate the runtime path from request through Workflow, Skill, Plugin, and
-Research Output. Existing Artifact, Memory, and Evaluation tests remain as
-compatibility coverage.
+Research Output. Standalone Memory and Evaluation compatibility modules and
+their tests have been retired.
 
 ## Knowledge Source / Runtime boundary
 

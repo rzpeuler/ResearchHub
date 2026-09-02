@@ -10,7 +10,7 @@ import {
   serializePrediction,
   serializeThesis,
 } from '../../packages/artifacts/index.ts'
-import { evaluatePrediction } from '../../packages/evaluation/index.ts'
+import { evaluatePrediction } from '../../packages/artifacts/index.ts'
 import {
   OfficialAnnouncementFetcher,
   OfficialAnnouncementSearchProvider,

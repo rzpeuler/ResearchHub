@@ -1,6 +1,6 @@
 import type { Outcome } from '../outcome/index.ts'
-import type { Prediction } from '../../artifacts/prediction/index.ts'
-import type { JsonObject } from '../../artifacts/core/index.ts'
+import type { Prediction } from '../prediction/index.ts'
+import type { JsonObject } from '../core/index.ts'
 
 export type ReviewIdFactory = (prediction: Prediction, outcome: Outcome) => string
 

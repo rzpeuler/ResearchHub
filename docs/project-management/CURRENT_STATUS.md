@@ -1,5 +1,14 @@
 # Current Status
 
+## ARCH-LEGACY-MEMORY-EVALUATION-RETIREMENT-001
+
+This task is `Completed / SOL VERIFICATION REQUIRED`. The standalone
+`packages/memory/` and `packages/evaluation/` modules were removed. Active
+Prediction/Outcome comparison now belongs to Artifact Review, Outcome is an
+Artifact data contract, and durable research state remains in Research Output,
+Knowledge, Provenance, and Workflow Audit boundaries. Historical records remain
+preserved. No replacement Memory or Evaluation architecture was introduced.
+
 ## KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015-R1
 
 C15-R1 is `Completed / SOL VERIFICATION REQUIRED`. Reference Resolution

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-02 - ARCH-LEGACY-MEMORY-EVALUATION-RETIREMENT-001
+
+- Retired and removed the standalone `packages/memory/` and
+  `packages/evaluation/` compatibility modules.
+- Moved active Outcome and deterministic Prediction comparison behavior into
+  the existing Artifacts/Review boundary.
+- Removed legacy Memory/Evaluation test scripts and compatibility-only tests;
+  historical documentation remains preserved.
+- Status: Completed / SOL VERIFICATION REQUIRED.
+
 ## 2026-09-02 - KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015-R1
 
 - Added the runtime-neutral Workflow fact `referenceResolutionReached` and

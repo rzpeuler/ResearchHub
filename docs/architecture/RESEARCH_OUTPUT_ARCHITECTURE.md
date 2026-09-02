@@ -73,15 +73,11 @@ store.
 
 ## Compatibility boundaries
 
-The following directories remain so existing imports and tests continue to
-work, but they are not new top-level product layers:
-
-- `packages/artifacts/`: compatibility implementation for output builders and
-  provenance;
-- `packages/memory/`: legacy research-memory compatibility APIs; durable
-  knowledge direction is now `knowledge/`;
-- `packages/evaluation/`: legacy review compatibility APIs; ResearchHub does
-  not expand an investment-prediction Evaluation product layer.
+`packages/artifacts/` is the remaining compatibility implementation for
+output builders, Review, Outcome, and provenance. Standalone Memory and
+Evaluation compatibility modules have been retired; durable knowledge belongs
+to the Knowledge boundary, and deterministic Prediction comparison belongs to
+Artifact Review. No standalone replacement layer is introduced.
 
 No DSH, Skill, Workflow, or Plugin business logic changes are required by this
 architecture migration. No database, graph engine, RAG system, extraction

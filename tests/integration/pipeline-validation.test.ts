@@ -8,7 +8,7 @@ import {
   serializePrediction,
   serializeThesis,
 } from '../../packages/artifacts/index.ts'
-import { evaluatePrediction } from '../../packages/evaluation/index.ts'
+import { evaluatePrediction } from '../../packages/artifacts/index.ts'
 import { CompanyResearchWorkflow } from '../../packages/skills/company-research/index.ts'
 import { CompanyResearchWorkflowExecutor, companyResearchWorkflowDefinition, WorkflowRegistry } from '../../packages/workflows/index.ts'
 import { ResearchManager } from '../../dsh/research-manager/index.ts'
