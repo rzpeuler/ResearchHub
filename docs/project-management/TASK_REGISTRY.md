@@ -14,7 +14,8 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 
 | Task ID | Task Name | Status | Priority | Created | Assignee | Commit Hash | Acceptance |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| KNOWLEDGE-V0.3-R9-OBSERVER-RETRY-ATTRIBUTION-C-018 | Correct R9 observer retry-cause attribution from actual attempt evidence | Completed | P0 | 2026-09-02 | Luna | Current implementation commit (see Git handoff) | Completed / SOL VERIFICATION REQUIRED |
+| KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R6-FINAL | Execute one authorized real Knowledge v0.3 Full Pipeline validation after C18 | Completed | P0 | 2026-09-02 | Luna | R9-R6 evidence (see Git handoff) | Completed / INVALID TEST SETUP / SOL REVIEW REQUIRED |
+| KNOWLEDGE-V0.3-R9-OBSERVER-RETRY-ATTRIBUTION-C-018 | Correct R9 observer retry-cause attribution from actual attempt evidence | Completed | P0 | 2026-09-02 | Luna | Current implementation commit (see Git handoff) | Completed / Accepted - Sol verified |
 | KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R5-FINAL | Execute one authorized real Knowledge v0.3 Full Pipeline validation after C17 | Completed | P0 | 2026-09-02 | Luna | R9-R5 evidence (see Git handoff) | Completed / FAIL - R9 Observer Retry-Cause Attribution Defect - Sol verified |
 | KNOWLEDGE-V0.3-CLAIM-SUBJECT-INVARIANT-C-017 | Close Claim subject non-empty invariant across Contract, Validation, Resolution, and Write Readiness | Completed | P0 | 2026-09-02 | Luna | Current implementation commit (see Git handoff) | Completed / Accepted - Sol verified |
 | KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R4-FINAL | Execute one authorized real Knowledge v0.3 Full Pipeline validation after C16 | Completed | P0 | 2026-09-02 | Luna | R9-R4 evidence (see Git handoff) | Completed / FAIL - Claim Subject Non-Empty Contract Gap - Sol verified |

@@ -1,8 +1,22 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R6-FINAL
+
+R9-R6 is Completed / INVALID TEST SETUP / SOL REVIEW REQUIRED. The single
+authorized launcher attempt verified the exact baseline at
+13927f6268c8a7764a1270379f6ae5f67968bce6, then stopped before runtime
+initialization because RESEARCHHUB_REAL_LLM_ENABLED was not true. No provider,
+Docling, fresh KB, Primary Workflow, Writer, replay, or final validation was
+executed. No correction rerun is authorized by this task.
+
+Evidence:
+tests/knowledge/product-validation/evidence/c004-r9-r6-final-full-pipeline.json.
+The evidence is durable and records the setup failure, baseline facts, and
+productionFilesChanged=false. Stage C remains In Progress / not accepted.
+
 ## KNOWLEDGE-V0.3-R9-OBSERVER-RETRY-ATTRIBUTION-C-018
 
-C18 is Completed / SOL VERIFICATION REQUIRED. The R9 validation harness now
+C18 is Completed / Accepted - Sol verified. The R9 validation harness now
 attributes extraction retries from actual attempt and validation-failure
 evidence. A terminal partial candidate result no longer implies that the
 retry was caused by candidate rejection. Completion failures such as

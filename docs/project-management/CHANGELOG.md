@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R6-FINAL
+
+- Performed the single authorized R9-R6 launcher attempt from the exact C18
+  baseline 13927f6268c8a7764a1270379f6ae5f67968bce6.
+- Baseline verification passed, but the launcher stopped before runtime
+  initialization because RESEARCHHUB_REAL_LLM_ENABLED was not true.
+- No real pipeline stage ran and no correction rerun was performed. Evidence:
+  tests/knowledge/product-validation/evidence/c004-r9-r6-final-full-pipeline.json
+  with SHA256 B08E722A4B148D7899051A7A8879D45817BE27B0D647E1BFCB46E147ACB6020F.
+- R9-R6 status: Completed / INVALID TEST SETUP / SOL REVIEW REQUIRED.
+
 ## 2026-09-02 - KNOWLEDGE-V0.3-R9-OBSERVER-RETRY-ATTRIBUTION-C-018
 
 - Corrected R9 retry attribution to use actual validation-failure attempt/code
@@ -13,7 +24,7 @@
 - Preserved all existing third-attempt, C9, accounting, Writer, revision,
   C8/C14, replay, provenance, and final-KB gates. No real R9-R6 execution was
   performed and no Product implementation was changed.
-- C18 status: Completed / SOL VERIFICATION REQUIRED.
+- C18 status: Completed / Accepted - Sol verified.
 - C4-R9-R5 classification: Completed / FAIL - R9 Observer Retry-Cause
   Attribution Defect - Sol verified.
 

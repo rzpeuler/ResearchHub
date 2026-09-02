@@ -1,0 +1,46 @@
+{
+  "taskId": "KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R6-FINAL",
+  "baseline": "13927f6268c8a7764a1270379f6ae5f67968bce6",
+  "startedAt": "2026-09-02T12:05:31.439Z",
+  "phase": "baseline_verified",
+  "phaseTimestamps": {
+    "initialized": "2026-09-02T12:05:31.439Z",
+    "baseline_verified": "2026-09-02T12:05:31.518Z"
+  },
+  "elapsedMs": 79,
+  "effectiveRuntime": null,
+  "modelPreflight": null,
+  "pdf": null,
+  "doclingPreflight": null,
+  "freshKnowledgeBase": null,
+  "primary": null,
+  "referenceResolutionReached": null,
+  "replay": null,
+  "finalKnowledgeBase": null,
+  "provenance": null,
+  "semanticQuality": null,
+  "writer": null,
+  "baselineCheck": {
+    "head": "13927f6268c8a7764a1270379f6ae5f67968bce6",
+    "expected": "13927f6268c8a7764a1270379f6ae5f67968bce6",
+    "workingTreeClean": true,
+    "statusLines": [
+      "?? researchhub.architecture.html",
+      "?? researchhub.architecture.json",
+      "?? researchhub.architecture.visual-check.1440x900.dark.png",
+      "?? researchhub.architecture.visual-check.1440x900.light.png",
+      "?? researchhub.architecture.visual-check.2048x1320.dark.png",
+      "?? researchhub.architecture.visual-check.2048x1320.light.png",
+      "?? researchhub.architecture.visual-check.html",
+      "?? researchhub.architecture.visual-check.json",
+      "?? tests/knowledge/product-validation/evidence/c004-r9-r6-final-full-pipeline.json"
+    ],
+    "changedSinceBaseline": [],
+    "productionFilesChanged": false
+  },
+  "status": "FAIL / SOL REVIEW REQUIRED",
+  "failure": {
+    "message": "RESEARCHHUB_REAL_LLM_ENABLED must be true for real LLM execution"
+  },
+  "completedAt": "2026-09-02T12:05:31.519Z"
+}

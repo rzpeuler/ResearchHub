@@ -1,9 +1,29 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R6-FINAL - Result
+
+Status: Completed / INVALID TEST SETUP / SOL REVIEW REQUIRED
+Date: 2026-09-02
+
+The single authorized R9-R6 launcher attempt used the required baseline
+13927f6268c8a7764a1270379f6ae5f67968bce6 and passed baseline verification.
+It stopped before runtime initialization because the invocation did not set
+RESEARCHHUB_REAL_LLM_ENABLED=true. Therefore no real LLM, provider preflight
+inside the runner, PDF, Docling, fresh Knowledge Base, Primary Workflow,
+Writer, replay, final KB validation, or provenance validation was executed.
+The durable evidence records phase baseline_verified, the actual setup error,
+and productionFilesChanged=false. Per the formal one-execution rule, no
+correction rerun was performed.
+
+Evidence SHA256: B08E722A4B148D7899051A7A8879D45817BE27B0D647E1BFCB46E147ACB6020F.
+R9-R6 is not a product PASS. Stage C remains In Progress / not accepted.
+
 ## KNOWLEDGE-V0.3-R9-OBSERVER-RETRY-ATTRIBUTION-C-018 - Result
 
-Status: Completed / SOL VERIFICATION REQUIRED
+Status: Completed / Accepted - Sol verified
 Date: 2026-09-02
+
+C18 is accepted as the deterministic correction to R9 retry-cause attribution.
 
 C18 corrects the R9 observer's retry-cause attribution defect. The observer
 now derives retry transitions from actual validationFailures attempt/code
