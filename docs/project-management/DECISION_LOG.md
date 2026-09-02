@@ -1,8 +1,30 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R3-FINAL - Result
+
+Status: Completed / FAIL - SOL REVIEW REQUIRED
+Date: 2026-09-02
+
+The single authorized isolated real Full Pipeline run used baseline
+`8c81cb8fcb3c5dd6787d380b0161f28b5447fa3b`, the exact frozen PDF, Local
+Docling 2.116.0, DeepSeek Flash, and a fresh empty Knowledge Base. It
+completed all 18 extraction batches and reached Reference Resolution and
+reconciliation planning. The C14 boundary was `reached_and_passed` with
+observed zero existing-reference candidates, zero reconciliation groups, and
+zero reconciliation model calls.
+
+The primary Workflow then blocked during deterministic validation because real
+model output produced `V03_REQUIRED_FIELD_MISSING` for `targetRef` as the
+first error, with additional relation endpoint, claim subject, relation
+semantic, and relation cardinality violations. No provider/runtime error was
+observed. The run stopped with revision 0 before Writer, provenance, and
+replay. Evidence is preserved in the new R9-R3 evidence file; no product code
+or historical R9-R2 evidence was modified after the run. Stage C remains In
+Progress / not accepted.
+
 ## KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015-R2 - Result
 
-Status: Completed / SOL VERIFICATION REQUIRED
+Status: Completed / Accepted - Sol verified
 Date: 2026-09-02
 
 C15-R2 added runtime-neutral execution facts for the observed Reference
@@ -16,7 +38,7 @@ fact in addition to the existing zero-reference and zero-call facts.
 Deterministic Workflow and R9 tests pass. Historical R9-R2 evidence files are
 unchanged. No C15 adapter, C9, C13, C14, Schema/Storage, Writer, batching,
 token, reasoning, provider, or real-run semantics changed. Stage C remains In
-Progress / not accepted and C4-R9-R3 remains not authorized.
+Progress / not accepted.
 
 ## ARCH-LEGACY-MEMORY-EVALUATION-RETIREMENT-001 - Result
 

@@ -14,7 +14,8 @@
 
 ## Current governance state
 
-- C15-R2 Execution Facts Preservation: Completed / SOL VERIFICATION REQUIRED
+- C4-R9-R3 Product Validation: Completed / FAIL - SOL REVIEW REQUIRED
+- C15-R2 Execution Facts Preservation: Completed / Accepted - Sol verified
 - C2-R2: Completed / Accepted - Sol verified
 - C2-R2-R1: Completed / Accepted - Sol verified
 - Current Curation runtime: Knowledge v0.3, exactly four operations
@@ -55,12 +56,12 @@
 - ARCH-LEGACY-MEMORY-EVALUATION-RETIREMENT-001: Completed / SOL VERIFICATION REQUIRED
 - S3: Completed / INVALID TEST SETUP - Parent Environment Credential Override - Sol verified
 - Stage C: In Progress / not accepted
-- C4-R9-R3: NOT AUTHORIZED
+- C4-R9-R3: Completed / FAIL - SOL REVIEW REQUIRED
 
-C15-R2 closes the remaining C15-R1 evidence-preservation defect. Reference
-Resolution and precise reconciliation-planning facts are captured before
-post-resolution failure points, and R9 uses explicit reachability to keep
-unobserved values nullable. Stage C remains In Progress / not accepted.
+C15-R2 closes the remaining C15-R1 evidence-preservation defect. The single
+authorized R9-R3 real run then reached the C14 boundary but failed during
+deterministic validation on real extraction-derived ChangeSet content. Stage C
+remains In Progress / not accepted.
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3

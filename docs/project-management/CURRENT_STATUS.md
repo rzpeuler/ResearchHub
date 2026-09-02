@@ -1,15 +1,26 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R3-FINAL
+
+C4-R9-R3 is `Completed / FAIL - SOL REVIEW REQUIRED`. The single authorized
+real isolated Full Pipeline run used the frozen PDF, Local Docling 2.116.0,
+DeepSeek Flash, and a fresh Schema 0.3 / Storage 1 Knowledge Base. The run
+completed extraction and reached Reference Resolution and reconciliation
+planning, including a C14 `reached_and_passed` boundary, but the primary
+Workflow blocked during deterministic validation on real model output. The
+failure was not an upstream provider/runtime error. Evidence is preserved at
+`tests/knowledge/product-validation/evidence/c004-r9-r3-final-full-pipeline.json`.
+No product code was modified or rerun after the failure.
+
 ## KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015-R2
 
-C15-R2 is `Completed / SOL VERIFICATION REQUIRED`. The Workflow now snapshots
+C15-R2 is `Completed / Accepted - Sol verified`. The Workflow now snapshots
 the deterministic Reference Resolution summary and reconciliation-planning
 reachability before later post-resolution work can fail. `blocked()` preserves
 those observed facts, while R9 emits `null` for reconciliation groups when
 planning was not observed and accepts C14 zero reconciliation only after an
-explicit planning observation. No historical R9-R2 evidence was modified; no
-real LLM, DeepSeek, or R9-R3 run was performed. Stage C remains In Progress /
-not accepted and C4-R9-R3 remains not authorized.
+explicit planning observation. No historical R9-R2 evidence was modified.
+Stage C remains In Progress / not accepted.
 
 ## ARCH-LEGACY-MEMORY-EVALUATION-RETIREMENT-001
 

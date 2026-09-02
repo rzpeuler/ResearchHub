@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R3-FINAL
+
+- Executed the single authorized isolated real Full Pipeline validation from
+  baseline `8c81cb8fcb3c5dd6787d380b0161f28b5447fa3b`.
+- Frozen PDF identity, Local Docling 2.116.0, fresh Knowledge Base, 18-batch
+  extraction, Reference Resolution, and reconciliation planning were observed;
+  the C14 boundary reached `reached_and_passed`.
+- Primary Workflow failed during deterministic validation on real output, with
+  `V03_REQUIRED_FIELD_MISSING` (`targetRef`) as the first error and no
+  upstream provider/runtime failure. Writer, provenance, and replay did not
+  run because validation blocked at revision 0.
+- Preserved sanitized evidence at
+  `tests/knowledge/product-validation/evidence/c004-r9-r3-final-full-pipeline.json`.
+- C4-R9-R3 status: Completed / FAIL - SOL REVIEW REQUIRED. Stage C remains In
+  Progress / not accepted.
+
 ## 2026-09-02 - KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015-R2
 
 - Added runtime-neutral execution facts for deterministic Reference Resolution
