@@ -1,5 +1,15 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015-R1
+
+C15-R1 is `Completed / SOL VERIFICATION REQUIRED`. Reference Resolution
+reachability now comes from the Workflow's explicit runtime-neutral
+`referenceResolutionReached` fact, not from the final Workflow status. An
+extraction-stage block is `not_reached`; any later validation, reconciliation,
+schema-gap, or Writer block retains `reached_and_passed` or
+`reached_and_failed`. No real LLM, DeepSeek, or R9-R3 run was performed.
+C4-R9-R3 remains not authorized.
+
 ## KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015
 
 C15 is `Completed / SOL VERIFICATION REQUIRED`. It maps the explicit

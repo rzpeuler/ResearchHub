@@ -348,6 +348,7 @@ function blocked(
   calls: ModelCallRecord[],
   stage: string,
   error: unknown,
+  referenceResolutionReached = false,
 ): ResearchReportKnowledgeIngestionResult {
   const item =
     error instanceof KnowledgeIngestionWorkflowError ||
@@ -363,6 +364,7 @@ function blocked(
     knowledgeBaseId: input.knowledgeBaseId,
     mode: input.options.mode,
     status: "blocked",
+    referenceResolutionReached,
     baseRevision: revision,
     finalRevision: revision,
     raw: { rawRef, persisted: false, created: false, reused: false },
@@ -1273,6 +1275,7 @@ export class ResearchReportKnowledgeIngestionWorkflow {
     let rawRef = "";
     let identity = "";
     let raw = { persisted: false, created: false, reused: false };
+    const executionFacts = { referenceResolutionReached: false };
     try {
       validInput(input);
       target = await this.options.targetResolver.resolve(input.knowledgeBaseId);
@@ -1342,7 +1345,7 @@ export class ResearchReportKnowledgeIngestionWorkflow {
         normalizedText: resolved.normalizedText,
         chunks: resolved.chunks,
       };
-      const trace = await this.curate(input, target, document, calls);
+      const trace = await this.curate(input, target, document, calls, executionFacts);
       const planned = planChanges(
         input,
         target,
@@ -1366,6 +1369,7 @@ export class ResearchReportKnowledgeIngestionWorkflow {
         planned,
         validation.report,
         calls,
+        executionFacts.referenceResolutionReached,
       );
       if (validation.report.status === "failed") {
         base.status = "blocked";
@@ -1446,6 +1450,7 @@ export class ResearchReportKnowledgeIngestionWorkflow {
           ? (error.stage ?? "workflow")
           : "workflow",
         error,
+        executionFacts.referenceResolutionReached,
       );
       result.raw = { rawRef, ...raw };
       if (target && raw.persisted)
@@ -1611,6 +1616,7 @@ export class ResearchReportKnowledgeIngestionWorkflow {
     target: KnowledgeBaseTarget,
     document: NormalizedResearchDocument,
     calls: ModelCallRecord[],
+    executionFacts: { referenceResolutionReached: boolean },
   ): Promise<IngestionTrace> {
     const access = new KnowledgeAccessSkill({
       handle: target.handle,
@@ -1687,6 +1693,7 @@ export class ResearchReportKnowledgeIngestionWorkflow {
     const resolutions = consolidated.values.map((candidate) =>
       resolutionFor(candidate, knowledgeContext, entityTemp),
     );
+    executionFacts.referenceResolutionReached = true;
     const preciseEntities = resolutions
       .filter((item) => item.outcome === "existing_ref")
       .flatMap((item) => item.refs)
@@ -1814,6 +1821,7 @@ export class ResearchReportKnowledgeIngestionWorkflow {
     planned: PlannedResult,
     validation: ResearchReportKnowledgeIngestionResult["validation"],
     calls: ModelCallRecord[],
+    referenceResolutionReached: boolean,
   ): ResearchReportKnowledgeIngestionResult {
     const ref = emptyResolution();
     for (const item of trace.resolution) ref[item.outcome] += 1;
@@ -1832,6 +1840,7 @@ export class ResearchReportKnowledgeIngestionWorkflow {
       knowledgeBaseId: input.knowledgeBaseId,
       mode: input.options.mode,
       status: plannedStatus(trace),
+      referenceResolutionReached,
       baseRevision: revision,
       finalRevision: revision,
       raw: { rawRef: trace.document.rawRef, ...raw },

@@ -63,8 +63,18 @@ test("R9 blocked-result diagnosis follows independent frozen facts before succes
 });
 
 test("R9 boundary records not_reached before Reference Resolution", () => {
-  const boundary = buildReconciliationBoundary({ status: "blocked", referenceResolution: { existing_ref: 0, new_object_key: 0, ambiguous: 0, invalid: 0 }, reconciliation: { groups: 0 } }, 0, 0);
+  const boundary = buildReconciliationBoundary({ referenceResolutionReached: false, referenceResolution: { existing_ref: 0, new_object_key: 0, ambiguous: 0, invalid: 0 }, reconciliation: { groups: 0 } }, 0, 0);
   assert.deepEqual(boundary, { status: "not_reached", existingRefCandidates: null, newObjectKeyCandidates: null, ambiguousCandidates: null, invalidCandidates: null, reconciliationGroups: null, logicalCalls: 0, physicalCalls: 0 });
+});
+
+test("R9 boundary reachability is sourced from the explicit stage fact", async () => {
+  const source = await readFile(new URL("../../../tools/knowledge-product-validation/run-v03-r9-final-validation.ts", import.meta.url), "utf8");
+  const start = source.indexOf("export function buildReconciliationBoundary");
+  const end = source.indexOf("export function c14FreshKbReconciliationBoundaryPasses");
+  assert.ok(start >= 0 && end > start);
+  const boundarySource = source.slice(start, end);
+  assert.match(boundarySource, /referenceResolutionReached/);
+  assert.doesNotMatch(boundarySource, /primary\.status/);
 });
 
 test("R9 C14 boundary is passed only after a reached zero-call resolution", () => {
@@ -73,10 +83,14 @@ test("R9 C14 boundary is passed only after a reached zero-call resolution", () =
   assert.equal(c14FreshKbReconciliationBoundaryPasses({ ...clean, existingRefCandidates: 1 }), false);
   assert.equal(c14FreshKbReconciliationBoundaryPasses({ ...clean, logicalCalls: 1 }), false);
   assert.equal(c14FreshKbReconciliationBoundaryPasses({ ...clean, physicalCalls: 1 }), false);
-  const reached = buildReconciliationBoundary({ status: "completed", referenceResolution: { existing_ref: 0, new_object_key: 4, ambiguous: 1, invalid: 0 }, reconciliation: { groups: 0 } }, 0, 0);
+  const reached = buildReconciliationBoundary({ referenceResolutionReached: true, referenceResolution: { existing_ref: 0, new_object_key: 4, ambiguous: 1, invalid: 0 }, reconciliation: { groups: 0 } }, 0, 0);
   assert.equal(reached.status, "reached_and_passed");
   assert.equal(reached.newObjectKeyCandidates, 4);
   assert.equal(reached.ambiguousCandidates, 1);
+  const postResolutionBlock = buildReconciliationBoundary({ referenceResolutionReached: true, referenceResolution: { existing_ref: 0, new_object_key: 0, ambiguous: 0, invalid: 0 }, reconciliation: { groups: 0 } }, 0, 0);
+  assert.equal(postResolutionBlock.status, "reached_and_passed");
+  const failed = buildReconciliationBoundary({ referenceResolutionReached: true, referenceResolution: { existing_ref: 1, new_object_key: 0, ambiguous: 0, invalid: 0 }, reconciliation: { groups: 1 } }, 1, 1);
+  assert.equal(failed.status, "reached_and_failed");
 });
 
 test("R9 blocked classification reserves external status for upstream errors", () => {

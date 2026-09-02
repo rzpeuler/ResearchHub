@@ -50,6 +50,7 @@
 - C14 Reconciliation Boundary Correction: Accepted - Sol verified
 - C4-R9-R2 Product Validation: Completed / FAIL - Extraction Output Completion Boundary Defect - Sol verified
 - C15 Extraction Completion Resilience: Completed / SOL VERIFICATION REQUIRED
+- C15-R1 Extraction Reachability Correction: Completed / SOL VERIFICATION REQUIRED
 - S3: Completed / INVALID TEST SETUP - Parent Environment Credential Override - Sol verified
 - Stage C: In Progress / not accepted
 - C4-R9-R3: NOT AUTHORIZED

@@ -1,5 +1,20 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015-R1 - Result
+
+Status: Completed / SOL VERIFICATION REQUIRED
+Date: 2026-09-02
+
+C15-R1 removed the semantic equivalence between final `status=blocked` and
+Reference Resolution not being reached. The Workflow now records the
+runtime-neutral `referenceResolutionReached` fact immediately after all
+resolution decisions complete. The R9 harness consumes that fact: extraction
+blocks produce `not_reached` with null resolution counts, while later
+validation, reconciliation, schema-gap, or Writer failures retain a reached
+boundary state. C15 max-tokens behavior and all Schema/C13/C14/Writer
+semantics remain unchanged. No real LLM, DeepSeek, or R9-R3 execution
+occurred. Stage C remains In Progress / not accepted.
+
 ## KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015 - Result
 
 Status: Completed / SOL VERIFICATION REQUIRED

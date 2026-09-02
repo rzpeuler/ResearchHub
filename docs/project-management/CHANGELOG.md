@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-02 - KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015-R1
+
+- Added the runtime-neutral Workflow fact `referenceResolutionReached` and
+  made R9 boundary evidence depend on that execution fact rather than final
+  `status=blocked`.
+- Extraction-stage blocks now record `not_reached` with null resolution
+  counts; post-Resolution validation and Writer failures retain reached
+  boundary states.
+- Added deterministic coverage for extraction, post-Resolution validation,
+  Writer, reached-and-failed, null-count, and historical-evidence cases.
+- C15-R1 is Completed / SOL VERIFICATION REQUIRED; Stage C remains In
+  Progress and C4-R9-R3 is not authorized.
+
 ## 2026-09-02 - KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015
 
 - Corrected explicit `finish_reason=max-tokens` handling to emit

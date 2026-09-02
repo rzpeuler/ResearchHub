@@ -160,6 +160,7 @@ export interface ResearchReportKnowledgeIngestionResult {
   knowledgeBaseId: string;
   mode: "commit" | "dry_run";
   status: "completed" | "completed_with_review" | "blocked";
+  referenceResolutionReached: boolean;
   baseRevision: number;
   finalRevision: number;
   raw: {
