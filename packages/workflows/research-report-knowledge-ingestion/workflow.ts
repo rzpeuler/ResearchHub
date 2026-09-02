@@ -38,6 +38,7 @@ import type {
   KnowledgeRelationV03,
   KnowledgeSourceV03,
 } from "../../../packages/schemas/knowledge/v03/domain.ts";
+import { KNOWLEDGE_SCHEMA_V03 } from "../../../packages/schemas/knowledge/v03/executable-schema.ts";
 import type { KnowledgeChangeSetV03 } from "../../../packages/schemas/knowledge/v03/mutation.ts";
 import { DefaultResearchReportInputResolver } from "./input-resolver.ts";
 import { KnowledgeIngestionWorkflowError } from "./errors.ts";
@@ -794,12 +795,188 @@ function resolutionFor(
     candidate,
   };
 }
+function canonicalizeResolvedRef(
+  ref: string,
+  entityRefs: Map<string, string>,
+): string {
+  return entityRefs.get(ref) ?? ref;
+}
+type PostResolutionWriteReadiness = {
+  reviewItems: ReviewItem[];
+  reviewedCandidateIds: Set<string>;
+  entityRefs: Map<string, string>;
+  entityTypes: Map<string, string>;
+};
+function postResolutionWriteReadiness(
+  candidates: Candidate[],
+  resolutions: Resolution[],
+  target: KnowledgeBaseTarget,
+): PostResolutionWriteReadiness {
+  const resolutionById = new Map(
+    resolutions.map((item) => [item.candidateId, item]),
+  );
+  const entityRefs = new Map<string, string>();
+  const entityTypes = new Map<string, string>();
+  for (const entity of target.index.entities.values()) {
+    entityRefs.set(entity.id, entity.id);
+    entityTypes.set(entity.id, entity.type);
+  }
+  for (const candidate of candidates) {
+    if (!("entityType" in candidate)) continue;
+    const resolution = resolutionById.get(candidate.candidateId);
+    const canonical =
+      resolution?.outcome === "existing_ref"
+        ? resolution.refs[0]
+        : resolution?.outcome === "new_object_key"
+          ? v03EntityId(candidate)
+          : undefined;
+    if (!canonical) continue;
+    entityRefs.set(candidate.candidateId, canonical);
+    if (resolution?.refs[0]) entityRefs.set(resolution.refs[0], canonical);
+    entityTypes.set(canonical, resolution?.outcome === "existing_ref"
+      ? target.index.entities.get(canonical)?.type ?? candidate.entityType
+      : candidate.entityType);
+  }
+  const reviewItems: ReviewItem[] = [];
+  const reviewedCandidateIds = new Set<string>();
+  const addReview = (
+    candidateId: string,
+    category: string,
+    reason: string,
+    dependencyIds: string[],
+  ): void => {
+    if (
+      reviewItems.some(
+        (item) => item.candidateId === candidateId && item.category === category,
+      )
+    )
+      return;
+    reviewItems.push({
+      candidateId,
+      category,
+      reason,
+      dependencyIds,
+    });
+    reviewedCandidateIds.add(candidateId);
+  };
+  const entityCandidateByCanonicalRef = new Map<string, string>();
+  for (const candidate of candidates) {
+    if ("entityType" in candidate) {
+      const canonical = entityRefs.get(candidate.candidateId);
+      if (canonical) entityCandidateByCanonicalRef.set(canonical, candidate.candidateId);
+    }
+  }
+  const resolvedRelationRefs = new Set<string>();
+  for (const candidate of candidates) {
+    if (!("relationType" in candidate)) continue;
+    const resolution = resolutionById.get(candidate.candidateId);
+    if (!resolution || ["ambiguous", "invalid"].includes(resolution.outcome)) continue;
+    const relationId =
+      resolution.outcome === "existing_ref"
+        ? resolution.refs.at(-1)
+        : v03ObjectId("relation", candidate);
+    if (relationId) resolvedRelationRefs.add(relationId);
+  }
+  const relationPairs = new Map<string, string[]>();
+  for (const candidate of candidates) {
+    const resolution = resolutionById.get(candidate.candidateId);
+    if (!resolution || ["ambiguous", "invalid"].includes(resolution.outcome)) continue;
+    if ("relationType" in candidate) {
+      const sourceRef = resolution.refs[0]
+        ? canonicalizeResolvedRef(resolution.refs[0], entityRefs)
+        : "";
+      const targetRef = resolution.refs[1]
+        ? canonicalizeResolvedRef(resolution.refs[1], entityRefs)
+        : "";
+      const dependencies = [sourceRef, targetRef]
+        .map((ref) => entityCandidateByCanonicalRef.get(ref))
+        .filter((id): id is string => Boolean(id));
+      const sourceType = entityTypes.get(sourceRef);
+      const targetType = entityTypes.get(targetRef);
+      const definition = KNOWLEDGE_SCHEMA_V03.relation.definitions[
+        candidate.relationType
+      ];
+      if (!sourceRef || !targetRef || !sourceType || !targetType) {
+        addReview(
+          candidate.candidateId,
+          "invalid_reference",
+          "Post-resolution relation endpoints are not fully resolved to Entity refs",
+          dependencies,
+        );
+        continue;
+      }
+      if (
+        !definition.sourceTypes.includes(sourceType as never) ||
+        !definition.targetTypes.includes(targetType as never) ||
+        ("endpointConstraint" in definition &&
+          definition.endpointConstraint === "same_entity_type_on_both_sides" &&
+          sourceType !== targetType)
+      ) {
+        addReview(
+          candidate.candidateId,
+          "invalid_semantics",
+          `Resolved relation endpoint types ${sourceType}->${targetType} violate frozen Schema 0.3 semantics for ${candidate.relationType}`,
+          dependencies,
+        );
+        continue;
+      }
+      if (
+        resolution.outcome === "new_object_key" &&
+        candidate.relationType === "business_exposure"
+      ) {
+        const pair = `${sourceRef}\u0000${targetRef}`;
+        const ids = relationPairs.get(pair) ?? [];
+        ids.push(candidate.candidateId);
+        relationPairs.set(pair, ids);
+      }
+    } else if ("claimType" in candidate) {
+      const subjectRefs = resolution.refs
+        .slice(0, candidate.subjectMentions.length)
+        .map((ref) => canonicalizeResolvedRef(ref, entityRefs));
+      const dependencies = subjectRefs
+        .map((ref) => entityCandidateByCanonicalRef.get(ref))
+        .filter((id): id is string => Boolean(id));
+      const subjectsAreKnown = subjectRefs.every(
+        (ref) =>
+          Boolean(ref) &&
+          (entityTypes.has(ref) ||
+            target.index.relations.has(ref) ||
+            resolvedRelationRefs.has(ref)),
+      );
+      if (
+        subjectRefs.length !== candidate.subjectMentions.length ||
+        !subjectsAreKnown
+      )
+        addReview(
+          candidate.candidateId,
+          "invalid_reference",
+          "Post-resolution Claim subjectRefs are incomplete or do not resolve to Entity/Relation objects",
+          dependencies,
+        );
+    }
+  }
+  for (const [pair, candidateIds] of relationPairs) {
+    if (candidateIds.length < 2) continue;
+    const reason = `new-object cardinality collision for business_exposure pair ${pair.replace("\u0000", " -> ")}; candidates: ${candidateIds.join(", ")}`;
+    for (const candidateId of candidateIds) {
+      const resolution = resolutionById.get(candidateId)!;
+      const dependencies = resolution.refs
+        .slice(0, 2)
+        .map((ref) => entityCandidateByCanonicalRef.get(canonicalizeResolvedRef(ref, entityRefs)))
+        .filter((id): id is string => Boolean(id));
+      addReview(candidateId, "relation_cardinality", reason, dependencies);
+    }
+  }
+  return { reviewItems, reviewedCandidateIds, entityRefs, entityTypes };
+}
 function preciseGroups(
   values: Candidate[],
   resolutions: Resolution[],
   context: KnowledgeContext,
+  excludedCandidateIds: ReadonlySet<string> = new Set(),
 ): ReconciliationGroup[] {
   const eligible = values.filter((candidate) => {
+    if (excludedCandidateIds.has(candidate.candidateId)) return false;
     const resolution = resolutions.find(
       (item) => item.candidateId === candidate.candidateId,
     );
@@ -1021,24 +1198,16 @@ function planChanges(
     trace.resolution.map((item) => [item.candidateId, item]),
   );
   const entityRefs = new Map<string, string>();
-  for (const candidate of safe) {
+  for (const candidate of trace.candidates) {
     if (!("entityType" in candidate)) continue;
     const resolution = resolutionById.get(candidate.candidateId);
     if (resolution?.outcome === "existing_ref")
       entityRefs.set(candidate.candidateId, resolution.refs[0]!);
-    else entityRefs.set(candidate.candidateId, v03EntityId(candidate));
+    else if (resolution?.outcome === "new_object_key")
+      entityRefs.set(candidate.candidateId, v03EntityId(candidate));
   }
-  const mentionRefs = new Map<string, string>();
-  for (const entity of target.index.entities.values()) {
-    for (const name of [entity.name, ...(entity.aliases ?? [])])
-      mentionRefs.set(name.trim().toLocaleLowerCase(), entity.id);
-  }
-  for (const candidate of safe) {
-    if (!("entityType" in candidate)) continue;
-    const ref = entityRefs.get(candidate.candidateId)!;
-    for (const name of [candidate.name, ...candidate.aliases])
-      mentionRefs.set(name.trim().toLocaleLowerCase(), ref);
-  }
+  for (const [candidateId, canonical] of [...entityRefs])
+    entityRefs.set(`new-entity-${candidateId}`, canonical);
 
   const existingObject = (
     resolution: Resolution,
@@ -1083,14 +1252,10 @@ function planChanges(
               candidate,
             );
     }
-    const refs = new Map<string, string>(mentionRefs);
-    for (const [candidateId, canonical] of entityRefs) {
-      refs.set(candidateId, canonical);
-      refs.set(`new-entity-${candidateId}`, canonical);
-    }
     const canonical = canonicalFrom(
       candidate,
-      refs,
+      resolution,
+      entityRefs,
       sourceId,
       trace.document.rawRef,
       id,
@@ -1180,7 +1345,8 @@ function operationSummary(
 }
 function canonicalFrom(
   candidate: Candidate,
-  refs: Map<string, string>,
+  resolution: Resolution,
+  entityRefs: Map<string, string>,
   sourceId: string,
   rawRef: string,
   id: string,
@@ -1199,14 +1365,12 @@ function canonicalFrom(
     } as unknown as KnowledgeEntityV03;
   }
   if ("relationType" in candidate) {
-    const source =
-      candidate.sourceMention.existingRef ??
-      refs.get(candidate.sourceMention.text) ??
-      "";
-    const target =
-      candidate.targetMention.existingRef ??
-      refs.get(candidate.targetMention.text) ??
-      "";
+    const source = resolution.refs[0]
+      ? canonicalizeResolvedRef(resolution.refs[0], entityRefs)
+      : "";
+    const target = resolution.refs[1]
+      ? canonicalizeResolvedRef(resolution.refs[1], entityRefs)
+      : "";
     return {
       id: id as KnowledgeRelationV03["id"],
       type: candidate.relationType,
@@ -1220,8 +1384,9 @@ function canonicalFrom(
     } as unknown as KnowledgeRelationV03;
   }
   const subjectRefs = candidate.subjectMentions
-    .map((mention) => mention.existingRef ?? refs.get(mention.text))
-    .filter((ref): ref is string => Boolean(ref));
+    .map((_, index) => resolution.refs[index])
+    .filter((ref): ref is string => Boolean(ref))
+    .map((ref) => canonicalizeResolvedRef(ref, entityRefs));
   return {
     id: id as KnowledgeClaimV03["id"],
     claimType: candidate.claimType,
@@ -1712,8 +1877,17 @@ export class ResearchReportKnowledgeIngestionWorkflow {
     for (const item of resolutions) referenceResolution[item.outcome] += 1;
     executionFacts.referenceResolution = referenceResolution;
     executionFacts.referenceResolutionReached = true;
+    const postResolution = postResolutionWriteReadiness(
+      consolidated.values,
+      resolutions,
+      target,
+    );
     const preciseEntities = resolutions
-      .filter((item) => item.outcome === "existing_ref")
+      .filter(
+        (item) =>
+          item.outcome === "existing_ref" &&
+          !postResolution.reviewedCandidateIds.has(item.candidateId),
+      )
       .flatMap((item) => item.refs)
       .filter((ref) => target.index.entities.has(ref));
     const preciseRelations = preciseEntities.flatMap((ref) =>
@@ -1745,6 +1919,7 @@ export class ResearchReportKnowledgeIngestionWorkflow {
       consolidated.values,
       resolutions,
       preciseContext,
+      postResolution.reviewedCandidateIds,
     );
     executionFacts.reconciliationPlanningReached = true;
     executionFacts.reconciliationGroups = precise.length;
@@ -1782,11 +1957,14 @@ export class ResearchReportKnowledgeIngestionWorkflow {
           }),
         )
       : { gaps: [] };
-    const reviewItems: ReviewItem[] = theme.reviewItems.map((item) => ({
+    const reviewItems: ReviewItem[] = [
+      ...postResolution.reviewItems,
+      ...theme.reviewItems.map((item) => ({
       category: item.category,
       reason: item.reason,
       dependencyIds: [],
-    }));
+      })),
+    ];
     const reviewIds = new Set(
       resolutions
         .filter(

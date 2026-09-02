@@ -33,6 +33,20 @@ class WorkflowModel implements KnowledgeCurationModel {
   readonly requests: KnowledgeCurationModelRequest[] = []
   async invoke(request: KnowledgeCurationModelRequest): Promise<unknown> { this.requests.push(request); if (request.operation === 'understandReport') return understanding(); if (request.operation === 'extractKnowledge') return extraction(); if (request.operation === 'reconcileKnowledge') { const groups = (request.input as { groups: Array<{ candidates: Array<{ candidateId: string; existingRefs: string[] }> }> }).groups; return { decisions: groups.flatMap((group) => group.candidates.map((candidate) => ({ candidateId: candidate.candidateId, decision: candidate.existingRefs.length ? 'duplicate' : 'create', classification: candidate.existingRefs.length ? 'duplicate' : 'complementary', existingRefs: candidate.existingRefs, reason: 'No duplicate beyond precise context.', requiresUserReview: false }))) } } return { gaps: [] } }
 }
+class FixedExtractionWorkflowModel extends WorkflowModel {
+  constructor(private readonly output: Record<string, unknown>) { super() }
+  override async invoke(request: KnowledgeCurationModelRequest): Promise<unknown> {
+    if (request.operation !== 'extractKnowledge') return super.invoke(request)
+    this.requests.push(request)
+    return structuredClone(this.output)
+  }
+}
+function postResolutionRelation(source: string, targetName: string, sourceType: string | null, targetType: string | null, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return { relationType: 'business_exposure', sourceMention: { text: source, entityType: sourceType, existingRef: null }, targetMention: { text: targetName, entityType: targetType, existingRef: null }, attributes: { exposureBasis: 'direct_operation', realizationStage: 'reported', materiality: 'material' }, contextMentions: [], evidenceChunkRefs: ['chunk-0001'], reason: 'Post-resolution relation fixture.', ...overrides }
+}
+function postResolutionClaim(subject: string): Record<string, unknown> {
+  return { claimType: 'fact', statement: 'Example Company revenue increased.', subjectMentions: [{ text: subject, entityType: null, existingRef: null }], temporal: null, structuredValue: null, semanticConfidence: 0.85, evidenceChunkRefs: ['chunk-0001'], reason: 'Post-resolution claim fixture.' }
+}
 function extractionForBatch(request: KnowledgeCurationModelRequest): Record<string, unknown> {
   const value = extraction() as { entities: Array<Record<string, unknown>>; relations: Array<Record<string, unknown>>; claims: Array<Record<string, unknown>> }
   const batch = request.input as { batch?: { chunks?: Array<{ chunkId: string }> } }
@@ -145,3 +159,95 @@ test('candidate-local rejections do not enter consolidation, reconciliation, Cha
 test('candidateId injection is a global invalid_reference with one C9 recovery and no leakage', async () => { const root = await createV03Root('readonly'); try { const model = new RetryWorkflowModel().queue('batch-0001', [candidateIdExtraction(), extraction()]); const result = await workflow(root, model).execute(input('dry_run')); const extractionCall = result.modelCalls.find((call) => call.operation === 'extractKnowledge')!; const requests = model.requests.filter((request) => request.operation === 'extractKnowledge'); assert.equal(result.status, 'completed'); assert.equal(requests.length, 2); assert.equal(extractionCall.retryCount, 1); assert.equal(extractionCall.validationFailures?.[0]?.code, 'invalid_reference'); assert.equal(extractionCall.candidateValidation?.attempts.length, 1); assert.deepEqual(extractionCall.candidateValidation?.attempts[0]?.rejected, { entity: 0, relation: 0, claim: 0 }); assert.doesNotMatch(JSON.stringify(extractionCall.candidateValidation), /attacker-candidate-id/); assert.doesNotMatch(extractionCall.validationFailures?.[0]?.message ?? '', /attacker-candidate-id/); assert.doesNotMatch(requests[1]?.instruction ?? '', /attacker-candidate-id/) } finally { await removeRuntimeKnowledgeBase(root) } })
 
 test('persistent candidateId injection blocks after exactly one C9 retry', async () => { const root = await createV03Root('readonly'); try { const model = new RetryWorkflowModel().queue('batch-0001', [candidateIdExtraction(), candidateIdExtraction()]); const result = await workflow(root, model).execute(input('dry_run')); const extractionCall = result.modelCalls.find((call) => call.operation === 'extractKnowledge')!; assert.equal(result.status, 'blocked'); assert.equal(result.errors[0]?.code, 'invalid_reference'); assert.equal(model.requests.filter((request) => request.operation === 'extractKnowledge').length, 2); assert.equal(extractionCall.retryCount, 1); assert.equal(extractionCall.validationFailures?.length, 2); assert.equal(extractionCall.candidateValidation, undefined) } finally { await removeRuntimeKnowledgeBase(root) } })
+
+test('post-resolution projection uses authoritative refs for normalized mentions, aliases, and claim subjects', async () => {
+  const root = await createV03Root('readonly')
+  try {
+    const model = new FixedExtractionWorkflowModel({ entities: [], relations: [postResolutionRelation(' Example ', 'SEMICONDUCTOR', 'company', 'industry')], claims: [postResolutionClaim(' EXAMPLE COMPANY ')] })
+    let changeSet: any
+    const result = await workflow(root, model, { validation: { validateChangeSet: async (_handle, candidate) => { changeSet = candidate; return { report: { status: 'passed', errors: [], warnings: [] } as never } } } }).execute(input('dry_run'))
+    assert.equal(result.status, 'completed', JSON.stringify(result.errors))
+    const objects = (changeSet.knowledgeOperations as Array<{ object: Record<string, unknown> }>).map((operation) => operation.object)
+    const relation = objects.find((object) => object.type === 'business_exposure')!
+    const claim = objects.find((object) => object.claimType === 'fact')!
+    assert.equal(relation.sourceRef, 'entity:existing')
+    assert.equal(relation.targetRef, 'entity:semiconductor')
+    assert.deepEqual(claim.subjectRefs, ['entity:existing'])
+    assert.doesNotMatch(JSON.stringify(objects), /"sourceRef":""|"targetRef":""/)
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
+
+test('post-resolution semantic validation isolates a deferred relation with incompatible actual endpoint types', async () => {
+  const root = await createV03Root('readonly')
+  try {
+    const model = new FixedExtractionWorkflowModel({ entities: [], relations: [postResolutionRelation('Semiconductor', 'Example Company', null, null)], claims: [] })
+    const result = await workflow(root, model).execute(input('dry_run'))
+    assert.equal(result.status, 'completed_with_review', JSON.stringify(result.errors))
+    assert.equal(result.validation?.status, 'passed')
+    assert.equal(result.plannedChanges.knowledgeCreate.length, 0)
+    assert.equal(result.reviewItems.some((item) => item.category === 'invalid_semantics' && item.reason.includes('industry->company')), true)
+    assert.equal(model.requests.filter((request) => request.operation === 'reconcileKnowledge').length, 0)
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
+
+test('post-resolution semantic validation admits a deferred relation when actual endpoint types satisfy Schema 0.3', async () => {
+  const root = await createV03Root('readonly')
+  try {
+    const model = new FixedExtractionWorkflowModel({ entities: [], relations: [postResolutionRelation('Example Company', 'Semiconductor', null, null)], claims: [] })
+    const result = await workflow(root, model).execute(input('dry_run'))
+    assert.equal(result.status, 'completed', JSON.stringify(result.errors))
+    assert.equal(result.validation?.status, 'passed')
+    assert.equal(result.plannedChanges.knowledgeCreate.length, 1)
+    assert.equal(result.reviewItems.some((item) => item.category === 'invalid_semantics'), false)
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
+
+test('new business exposure cardinality collisions are isolated before ChangeSet validation without reconciliation', async () => {
+  const root = await createV03Root('readonly')
+  try {
+    const first = postResolutionRelation('Example Company', 'Semiconductor', 'company', 'industry')
+    const second = postResolutionRelation('example', ' semiconductor ', 'company', 'industry', { attributes: { exposureBasis: 'strategic_cooperation', realizationStage: 'reported', materiality: 'material' }, reason: 'Distinct collision fixture.' })
+    const model = new FixedExtractionWorkflowModel({ entities: [], relations: [first, second], claims: [] })
+    const result = await workflow(root, model).execute(input('dry_run'))
+    assert.equal(result.status, 'completed_with_review', JSON.stringify(result.errors))
+    assert.equal(result.validation?.status, 'passed')
+    assert.equal(result.plannedChanges.knowledgeCreate.length, 0)
+    const collisions = result.reviewItems.filter((item) => item.category === 'relation_cardinality')
+    assert.equal(collisions.length, 2)
+    assert.equal(collisions.every((item) => item.reason.includes('new-object cardinality collision')), true)
+    assert.equal(model.requests.filter((request) => request.operation === 'reconcileKnowledge').length, 0)
+    assert.equal(result.errors.some((error) => error.code === 'V03_RELATION_CARDINALITY'), false)
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
+
+test('exact duplicate relations remain consolidated and are not classified as cardinality collisions', async () => {
+  const root = await createV03Root('readonly')
+  try {
+    const relation = postResolutionRelation('Example Company', 'Semiconductor', 'company', 'industry')
+    const model = new FixedExtractionWorkflowModel({ entities: [], relations: [relation, structuredClone(relation)], claims: [] })
+    const result = await workflow(root, model).execute(input('dry_run'))
+    assert.equal(result.status, 'completed', JSON.stringify(result.errors))
+    assert.equal(result.consolidation.before, 2)
+    assert.equal(result.consolidation.after, 1)
+    assert.equal(result.plannedChanges.knowledgeCreate.length, 1)
+    assert.equal(result.reviewItems.some((item) => item.category === 'relation_cardinality'), false)
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
+
+test('mixed post-resolution safe and review candidates produce a validator-passing ChangeSet', async () => {
+  const root = await createV03Root('readonly')
+  try {
+    const safe = postResolutionRelation('Safe Company', 'Semiconductor', null, null)
+    const invalid = postResolutionRelation('Semiconductor', 'Example Company', null, null)
+    const collisionA = postResolutionRelation('Example Company', 'Semiconductor', 'company', 'industry', { attributes: { exposureBasis: 'strategic_cooperation', realizationStage: 'reported', materiality: 'material' } })
+    const collisionB = postResolutionRelation('example', ' semiconductor ', 'company', 'industry', { attributes: { exposureBasis: 'joint_venture', realizationStage: 'reported', materiality: 'material' } })
+    const model = new FixedExtractionWorkflowModel({ entities: [{ entityType: 'company', name: 'Safe Company', aliases: [], description: null, suggestedExistingRef: null, semanticFields: {}, evidenceChunkRefs: ['chunk-0001'], reason: 'Safe dependency fixture.' }], relations: [safe, invalid, collisionA, collisionB], claims: [postResolutionClaim('Example Company')] })
+    const result = await workflow(root, model).execute(input('dry_run'))
+    assert.equal(result.status, 'completed_with_review', JSON.stringify(result.errors))
+    assert.equal(result.validation?.status, 'passed')
+    assert.equal(result.plannedChanges.knowledgeCreate.length, 3)
+    assert.equal(result.reviewItems.some((item) => item.category === 'invalid_semantics'), true)
+    assert.equal(result.reviewItems.filter((item) => item.category === 'relation_cardinality').length, 2)
+    assert.equal(result.errors.some((error) => error.code.startsWith('V03_')), false)
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
