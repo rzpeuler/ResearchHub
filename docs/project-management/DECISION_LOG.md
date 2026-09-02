@@ -1,8 +1,30 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R4-FINAL - Result
+
+Status: Completed / FAIL - SOL REVIEW REQUIRED
+Date: 2026-09-02
+
+The single authorized real Full Pipeline run started from
+`97d047db3b917db2ec3a2580ecfabef060dad5e5` and used the frozen PDF,
+Docling 2.116.0, official DeepSeek Flash, and a fresh Knowledge Base. The run
+completed 18/18 extraction batches with 540 Entity, 594 Relation, and 316
+Claim candidates accepted; consolidation ended at 1,374 candidates and
+Reference Resolution reached with 1,233 `new_object_key` and 141 `invalid`.
+C14 reached and passed with zero existing-reference candidates and zero
+reconciliation calls.
+
+C16 behavior was exercised: 240 candidates were reviewed and 1,140 Knowledge
+creates were planned. Final deterministic ChangeSet validation nevertheless
+failed with `V03_CLAIM_SUBJECT_INVALID`. Writer, replay, provenance, and final
+Knowledge Base validation did not run; revision remained 0. No upstream
+provider/runtime error was observed. Evidence SHA256:
+`E594DF0B48EFB38B87EC92FD39905AD57E8B43DBD8CF5E5341BF18FE2434123C`.
+No product code was modified after the run.
+
 ## KNOWLEDGE-V0.3-POST-RESOLUTION-WRITE-READINESS-C-016 - Result
 
-Status: Completed / SOL VERIFICATION REQUIRED
+Status: Completed / Accepted - Sol verified
 Date: 2026-09-02
 
 C16 keeps the change inside the existing Research Report Knowledge Ingestion

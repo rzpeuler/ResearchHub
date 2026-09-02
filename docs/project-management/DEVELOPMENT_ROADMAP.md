@@ -14,7 +14,8 @@
 
 ## Current governance state
 
-- C16 Post-Resolution Write Readiness: Completed / SOL VERIFICATION REQUIRED
+- C4-R9-R4 Product Validation: Completed / FAIL - SOL REVIEW REQUIRED
+- C16 Post-Resolution Write Readiness: Completed / Accepted - Sol verified
 - C4-R9-R3 Product Validation: Completed / FAIL - SOL REVIEW REQUIRED
 - C15-R2 Execution Facts Preservation: Completed / Accepted - Sol verified
 - C2-R2: Completed / Accepted - Sol verified

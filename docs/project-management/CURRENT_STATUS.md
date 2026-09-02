@@ -1,17 +1,22 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R4-FINAL
+
+R9-R4 is `Completed / FAIL - SOL REVIEW REQUIRED`. The single authorized
+real Full Pipeline run used the exact frozen PDF, Local Docling 2.116.0,
+official DeepSeek Flash, and a fresh Schema 0.3 / Storage 1 Knowledge Base.
+It completed 18/18 extraction batches, candidate validation, Reference
+Resolution, and the C14 boundary. After C16, the Workflow planned 1,140 safe
+Knowledge creates and isolated 240 review items, but final deterministic
+ChangeSet validation still failed with `V03_CLAIM_SUBJECT_INVALID`. Writer did
+not run and revision remained 0. No provider/runtime failure was observed.
+Evidence: `tests/knowledge/product-validation/evidence/c004-r9-r4-final-full-pipeline.json`.
+
 ## KNOWLEDGE-V0.3-POST-RESOLUTION-WRITE-READINESS-C-016
 
-C16 is `Completed / SOL VERIFICATION REQUIRED`. The existing ingestion
-Workflow now performs deterministic post-resolution write-readiness before
-reconciliation and ChangeSet planning: Relation and Claim projections consume
-authoritative Resolution refs, deferred Relation semantics are checked against
-resolved Entity types, and new business-exposure cardinality collisions are
-isolated into review without reconciliation. Deterministic safe candidates
-still pass the authoritative final ChangeSet validator. No real LLM, DeepSeek,
-or R9-R4 run was performed.
-
-Implementation commit: `2597b9e`.
+C16 is `Completed / Accepted - Sol verified` as the engineering correction
+under test. R9-R4 still identified a residual Claim subject projection issue;
+this does not change the preserved C4-R9-R3 classification.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R3-FINAL
 

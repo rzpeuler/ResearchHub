@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R4-FINAL
+
+- Executed the single authorized real Full Pipeline validation from baseline
+  `97d047db3b917db2ec3a2580ecfabef060dad5e5` after C16.
+- Frozen PDF identity, Local Docling 2.116.0, 18/18 extraction batches,
+  candidate validation, Reference Resolution, and C14 were verified.
+- C16 isolated 240 review candidates and planned 1,140 safe Knowledge creates,
+  but final deterministic validation still failed with
+  `V03_CLAIM_SUBJECT_INVALID`; Writer did not run and revision remained 0.
+- Preserved sanitized evidence at
+  `tests/knowledge/product-validation/evidence/c004-r9-r4-final-full-pipeline.json`
+  with SHA256
+  `E594DF0B48EFB38B87EC92FD39905AD57E8B43DBD8CF5E5341BF18FE2434123C`.
+- R9-R4 status: Completed / FAIL - SOL REVIEW REQUIRED. Stage C remains In
+  Progress / not accepted.
+
 ## 2026-09-02 - KNOWLEDGE-V0.3-POST-RESOLUTION-WRITE-READINESS-C-016
 
 - Added deterministic post-resolution write-readiness inside the existing
