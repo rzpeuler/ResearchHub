@@ -760,6 +760,12 @@ function claimCandidate(
     ],
     "ClaimCandidate",
   );
+  const rawSubjectMentions = array(item.subjectMentions, "subjectMentions");
+  if (rawSubjectMentions.length === 0)
+    fail(
+      "invalid_semantics",
+      "ClaimCandidate subjectMentions must contain at least one subject mention",
+    );
   return {
     candidateId: candidateId(batchId, "claim", ordinal),
     claimType: enumValue(
@@ -768,7 +774,7 @@ function claimCandidate(
       "claimType",
     ),
     statement: string(item.statement, "statement"),
-    subjectMentions: array(item.subjectMentions, "subjectMentions").map(
+    subjectMentions: rawSubjectMentions.map(
       (entry, index) => mention(entry, refs, `subjectMentions[${index}]`),
     ),
     ...(item.temporal === undefined || item.temporal === null

@@ -760,6 +760,14 @@ function resolutionFor(
       candidate,
     };
   }
+  if (candidate.subjectMentions.length === 0)
+    return {
+      candidateId: candidate.candidateId,
+      kind: "claim",
+      outcome: "invalid",
+      refs: [],
+      candidate,
+    };
   const refs = candidate.subjectMentions.flatMap((item) =>
     resolveMention(item),
   );
@@ -944,6 +952,7 @@ function postResolutionWriteReadiness(
             resolvedRelationRefs.has(ref)),
       );
       if (
+        subjectRefs.length === 0 ||
         subjectRefs.length !== candidate.subjectMentions.length ||
         !subjectsAreKnown
       )
@@ -1387,6 +1396,8 @@ function canonicalFrom(
     .map((_, index) => resolution.refs[index])
     .filter((ref): ref is string => Boolean(ref))
     .map((ref) => canonicalizeResolvedRef(ref, entityRefs));
+  if (subjectRefs.length === 0)
+    throw new Error("Canonical Claim requires at least one subjectRef");
   return {
     id: id as KnowledgeClaimV03["id"],
     claimType: candidate.claimType,

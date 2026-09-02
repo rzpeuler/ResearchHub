@@ -83,7 +83,7 @@ const temporal = { type: 'object', additionalProperties: false, required: ['asOf
 const structuredValue = { type: 'object', additionalProperties: false, required: ['metric', 'value', 'unit', 'comparator'], properties: { metric: { type: 'string' }, value: { type: ['string', 'number', 'boolean', 'null'] }, unit: nullableString, comparator: { type: ['string', 'null'], canonicalEnumRef: 'schema.claim.comparators' } } }
 const claimCandidate = {
   type: 'object', additionalProperties: false, required: ['claimType', 'statement', 'subjectMentions', 'temporal', 'structuredValue', 'semanticConfidence', 'evidenceChunkRefs', 'reason'],
-  properties: { claimType: { type: 'string', canonicalEnumRef: 'schema.claim.types' }, statement: { type: 'string' }, subjectMentions: { type: 'array', items: mention }, temporal: { ...temporal, type: ['object', 'null'] }, structuredValue: { ...structuredValue, type: ['object', 'null'] }, semanticConfidence: confidence, evidenceChunkRefs: stringArray, reason: { type: 'string' } },
+  properties: { claimType: { type: 'string', canonicalEnumRef: 'schema.claim.types' }, statement: { type: 'string' }, subjectMentions: { type: 'array', minItems: 1, items: mention }, temporal: { ...temporal, type: ['object', 'null'] }, structuredValue: { ...structuredValue, type: ['object', 'null'] }, semanticConfidence: confidence, evidenceChunkRefs: stringArray, reason: { type: 'string' } },
 }
 const reconciliationDecision = {
   type: 'object', additionalProperties: false, required: ['candidateId', 'decision', 'classification', 'existingRefs', 'reason', 'requiresUserReview'],

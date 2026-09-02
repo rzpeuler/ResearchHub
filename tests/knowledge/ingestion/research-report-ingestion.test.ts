@@ -47,6 +47,9 @@ function postResolutionRelation(source: string, targetName: string, sourceType: 
 function postResolutionClaim(subject: string): Record<string, unknown> {
   return { claimType: 'fact', statement: 'Example Company revenue increased.', subjectMentions: [{ text: subject, entityType: null, existingRef: null }], temporal: null, structuredValue: null, semanticConfidence: 0.85, evidenceChunkRefs: ['chunk-0001'], reason: 'Post-resolution claim fixture.' }
 }
+function subjectlessClaim(): Record<string, unknown> {
+  return { ...postResolutionClaim('Example Company'), subjectMentions: [] }
+}
 function extractionForBatch(request: KnowledgeCurationModelRequest): Record<string, unknown> {
   const value = extraction() as { entities: Array<Record<string, unknown>>; relations: Array<Record<string, unknown>>; claims: Array<Record<string, unknown>> }
   const batch = request.input as { batch?: { chunks?: Array<{ chunkId: string }> } }
@@ -249,5 +252,81 @@ test('mixed post-resolution safe and review candidates produce a validator-passi
     assert.equal(result.reviewItems.some((item) => item.category === 'invalid_semantics'), true)
     assert.equal(result.reviewItems.filter((item) => item.category === 'relation_cardinality').length, 2)
     assert.equal(result.errors.some((error) => error.code.startsWith('V03_')), false)
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
+
+test('subjectless-only extraction keeps candidate_set_exhausted and exactly one bounded C9 retry', async () => {
+  const root = await createV03Root('readonly')
+  try {
+    const model = new RetryWorkflowModel().queue('batch-0001', [
+      { entities: [], relations: [], claims: [subjectlessClaim()] },
+      { entities: [], relations: [], claims: [subjectlessClaim()] },
+    ])
+    const result = await workflow(root, model).execute(input('dry_run'))
+    const extractionCall = result.modelCalls.find((call) => call.operation === 'extractKnowledge')!
+    assert.equal(result.status, 'blocked')
+    assert.equal(result.failureStage, 'extraction')
+    assert.equal(result.errors[0]?.code, 'candidate_set_exhausted')
+    assert.equal(model.requests.filter((request) => request.operation === 'extractKnowledge').length, 2)
+    assert.equal(extractionCall.retryCount, 1)
+    assert.deepEqual(extractionCall.candidateValidation?.attempts.map((attempt) => attempt.rejected), [
+      { entity: 0, relation: 0, claim: 1 },
+      { entity: 0, relation: 0, claim: 1 },
+    ])
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
+
+test('Resolution and Write Readiness reject a subjectless Claim without a safe ChangeSet create', async () => {
+  const root = await createV03Root('readonly')
+  try {
+    const subjectless = { ...subjectlessClaim(), candidateId: 'candidate-batch-0001-claim-0001' }
+    const curation = {
+      understandReport: async () => understanding(),
+      extractKnowledge: async () => ({
+        entities: [],
+        relations: [],
+        claims: [subjectless],
+        validationRejections: [],
+        validationSummary: {
+          accepted: { entity: 0, relation: 0, claim: 1 },
+          rejected: { entity: 0, relation: 0, claim: 0 },
+          rejectionCountsByCode: {},
+          rejections: [],
+        },
+      }),
+      reconcileKnowledge: async () => ({ decisions: [] }),
+      analyzeSchemaGaps: async () => ({ gaps: [] }),
+    } as unknown as KnowledgeCurationSkill
+    const result = await workflow(root, new WorkflowModel(), { curation }).execute(input('dry_run'))
+    assert.equal(result.status, 'completed_with_review', JSON.stringify(result.errors))
+    assert.equal(result.referenceResolution.invalid, 1)
+    assert.equal(result.reviewItems.some((item) => item.category === 'invalid_reference'), true)
+    assert.equal(result.plannedChanges.knowledgeCreate.length, 0)
+    assert.equal(result.validation?.status, 'passed')
+  } finally { await removeRuntimeKnowledgeBase(root) }
+})
+
+test('valid multi-subject Claim preserves all authoritative subject refs in the ChangeSet', async () => {
+  const root = await createV03Root('readonly')
+  try {
+    const model = new FixedExtractionWorkflowModel({
+      entities: [],
+      relations: [],
+      claims: [{
+        ...postResolutionClaim('Example Company'),
+        subjectMentions: [
+          { text: 'Example Company', entityType: null, existingRef: null },
+          { text: 'Semiconductor', entityType: null, existingRef: null },
+        ],
+      }],
+    })
+    let changeSet: Record<string, unknown> | undefined
+    const result = await workflow(root, model, { validation: { validateChangeSet: async (_handle, candidate) => { changeSet = candidate as unknown as Record<string, unknown>; return { report: { status: 'passed', errors: [], warnings: [] } as never } } } }).execute(input('dry_run'))
+    const objects = (changeSet?.knowledgeOperations as Array<{ object: Record<string, unknown> }>).map((operation) => operation.object)
+    const claim = objects.find((object) => object.claimType === 'fact')!
+    assert.equal(result.status, 'completed', JSON.stringify(result.errors))
+    assert.deepEqual(claim.subjectRefs, ['entity:existing', 'entity:semiconductor'])
+    assert.equal(result.reviewItems.some((item) => item.category === 'invalid_reference'), false)
+    assert.equal(result.errors.some((error) => error.code === 'V03_CLAIM_SUBJECT_INVALID'), false)
   } finally { await removeRuntimeKnowledgeBase(root) }
 })

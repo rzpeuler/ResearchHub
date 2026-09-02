@@ -14,9 +14,10 @@
 
 ## Current governance state
 
-- C4-R9-R4 Product Validation: Completed / FAIL - SOL REVIEW REQUIRED
+- C17 Claim Subject Invariant: Completed / SOL VERIFICATION REQUIRED
+- C4-R9-R4 Product Validation: Completed / FAIL - Claim Subject Non-Empty Contract Gap - Sol verified
 - C16 Post-Resolution Write Readiness: Completed / Accepted - Sol verified
-- C4-R9-R3 Product Validation: Completed / FAIL - SOL REVIEW REQUIRED
+- C4-R9-R3 Product Validation: Completed / FAIL - Deterministic Post-Resolution Write-Projection Boundary Defect - Sol verified
 - C15-R2 Execution Facts Preservation: Completed / Accepted - Sol verified
 - C2-R2: Completed / Accepted - Sol verified
 - C2-R2-R1: Completed / Accepted - Sol verified
@@ -56,10 +57,11 @@
 - C4-R9-R2 Product Validation: Completed / FAIL - Extraction Output Completion Boundary Defect - Sol verified
 - C15 Extraction Completion Resilience: Completed / SOL VERIFICATION REQUIRED
 - C15-R1 Extraction Reachability Correction: Completed / SOL VERIFICATION REQUIRED
-- ARCH-LEGACY-MEMORY-EVALUATION-RETIREMENT-001: Completed / SOL VERIFICATION REQUIRED
+- ARCH-LEGACY-MEMORY-EVALUATION-RETIREMENT-001: Completed / Accepted - Sol verified
 - S3: Completed / INVALID TEST SETUP - Parent Environment Credential Override - Sol verified
 - Stage C: In Progress / not accepted
-- C4-R9-R3: Completed / FAIL - SOL REVIEW REQUIRED
+- C4-R9-R3: Completed / FAIL - Deterministic Post-Resolution Write-Projection Boundary Defect - Sol verified
+- Stage C remains In Progress / not accepted; R9-R5 remains NOT AUTHORIZED
 
 C15-R2 closes the remaining C15-R1 evidence-preservation defect. The single
 authorized R9-R3 real run then reached the C14 boundary but failed during

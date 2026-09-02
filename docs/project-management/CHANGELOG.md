@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-02 - KNOWLEDGE-V0.3-CLAIM-SUBJECT-INVARIANT-C-017
+
+- Closed the Claim subject non-empty invariant at the output Contract,
+  candidate-local Validator, Reference Resolution, and Post-Resolution Write
+  Readiness boundaries.
+- Subjectless Claims are rejected as `invalid_semantics`; valid sibling
+  candidates survive, while all-rejected extraction retains the existing
+  `candidate_set_exhausted` and one bounded C9 retry behavior.
+- Canonical Claim projection has no invented or fallback subject, and the
+  authoritative Schema 0.3 validator remains unchanged.
+- Added deterministic coverage for Contract cardinality, candidate isolation,
+  C9 exhaustion, Resolution defense, Write Readiness exclusion, and valid
+  single/multi-subject Claims.
+- C17 status: Completed / SOL VERIFICATION REQUIRED. Stage C remains In
+  Progress / not accepted and R9-R5 remains NOT AUTHORIZED.
+
 ## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R4-FINAL
 
 - Executed the single authorized real Full Pipeline validation from baseline
@@ -13,8 +29,8 @@
   `tests/knowledge/product-validation/evidence/c004-r9-r4-final-full-pipeline.json`
   with SHA256
   `E594DF0B48EFB38B87EC92FD39905AD57E8B43DBD8CF5E5341BF18FE2434123C`.
-- R9-R4 status: Completed / FAIL - SOL REVIEW REQUIRED. Stage C remains In
-  Progress / not accepted.
+- R9-R4 status: Completed / FAIL - Claim Subject Non-Empty Contract Gap - Sol
+  verified. Stage C remains In Progress / not accepted.
 
 ## 2026-09-02 - KNOWLEDGE-V0.3-POST-RESOLUTION-WRITE-READINESS-C-016
 
@@ -46,8 +62,9 @@
   run because validation blocked at revision 0.
 - Preserved sanitized evidence at
   `tests/knowledge/product-validation/evidence/c004-r9-r3-final-full-pipeline.json`.
-- C4-R9-R3 status: Completed / FAIL - SOL REVIEW REQUIRED. Stage C remains In
-  Progress / not accepted.
+- C4-R9-R3 status: Completed / FAIL - Deterministic Post-Resolution
+  Write-Projection Boundary Defect - Sol verified. Stage C remains In Progress /
+  not accepted.
 
 ## 2026-09-02 - KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015-R2
 

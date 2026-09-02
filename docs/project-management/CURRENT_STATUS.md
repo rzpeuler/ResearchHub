@@ -1,8 +1,24 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-CLAIM-SUBJECT-INVARIANT-C-017
+
+C17 is `Completed / SOL VERIFICATION REQUIRED`. The Claim subject invariant is
+now enforced at the structured-output contract, candidate-local validation,
+Reference Resolution, and Post-Resolution Write Readiness boundaries. Empty
+Claim candidates are rejected as `invalid_semantics` without discarding valid
+sibling candidates; only an all-rejected extraction uses the existing bounded
+C9 retry. Resolution classifies empty subjects as `invalid`, and no empty
+canonical Claim can enter a safe ChangeSet create. Schema 0.3 and its
+authoritative final validator remain unchanged. Deterministic curation,
+ingestion, validation, infrastructure, product-validation, and typecheck
+regressions passed. `npm test` retains only the pre-existing external
+`PIPELINE-REAL-DATA-003` AkShare fetch failure. Stage C remains In Progress /
+not accepted and R9-R5 remains NOT AUTHORIZED.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R4-FINAL
 
-R9-R4 is `Completed / FAIL - SOL REVIEW REQUIRED`. The single authorized
+R9-R4 is `Completed / FAIL - Claim Subject Non-Empty Contract Gap - Sol verified`.
+The single authorized
 real Full Pipeline run used the exact frozen PDF, Local Docling 2.116.0,
 official DeepSeek Flash, and a fresh Schema 0.3 / Storage 1 Knowledge Base.
 It completed 18/18 extraction batches, candidate validation, Reference
@@ -20,7 +36,7 @@ this does not change the preserved C4-R9-R3 classification.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R3-FINAL
 
-C4-R9-R3 is `Completed / FAIL - SOL REVIEW REQUIRED`. The single authorized
+C4-R9-R3 is `Completed / FAIL - Deterministic Post-Resolution Write-Projection Boundary Defect - Sol verified`. The single authorized
 real isolated Full Pipeline run used the frozen PDF, Local Docling 2.116.0,
 DeepSeek Flash, and a fresh Schema 0.3 / Storage 1 Knowledge Base. The run
 completed extraction and reached Reference Resolution and reconciliation
@@ -42,7 +58,7 @@ Stage C remains In Progress / not accepted.
 
 ## ARCH-LEGACY-MEMORY-EVALUATION-RETIREMENT-001
 
-This task is `Completed / SOL VERIFICATION REQUIRED`. The standalone
+This task is `Completed / Accepted - Sol verified`. The standalone
 `packages/memory/` and `packages/evaluation/` modules were removed. Active
 Prediction/Outcome comparison now belongs to Artifact Review, Outcome is an
 Artifact data contract, and durable research state remains in Research Output,

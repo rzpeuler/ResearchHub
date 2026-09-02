@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { KnowledgeCurationError, KnowledgeCurationSkill, type KnowledgeContext, type NormalizedResearchDocument } from '../../../packages/skills/knowledge-curation/index.ts'
+import { STRUCTURED_OUTPUT_CONTRACTS } from '../../../packages/skills/knowledge-curation/contracts.ts'
 import { ScriptedKnowledgeCurationModel } from './scripted-model.ts'
 
 const document: NormalizedResearchDocument = {
@@ -50,6 +51,31 @@ function skill(output: unknown): { skill: KnowledgeCurationSkill; model: Scripte
   const model = new ScriptedKnowledgeCurationModel().set('extractKnowledge', output)
   return { skill: new KnowledgeCurationSkill({ model }), model }
 }
+
+test('requires Claim subjectMentions to be non-empty in the output contract and validator', async () => {
+  const contract = STRUCTURED_OUTPUT_CONTRACTS.extractKnowledge.schema as { properties: { claims: { items: { properties: { subjectMentions: { minItems?: number } } } } } }
+  assert.equal(contract.properties.claims.items.properties.subjectMentions.minItems, 1)
+
+  const { skill: curation } = skill({
+    entities: [entity('Accepted Entity')],
+    relations: [relation()],
+    claims: [claim({ subjectMentions: [] }), claim()],
+  })
+  const result = await curation.extractKnowledge(input)
+  assert.equal(result.entities.length, 1)
+  assert.equal(result.relations.length, 1)
+  assert.equal(result.claims.length, 1)
+  assert.deepEqual(result.validationRejections.map((item) => [item.candidateKind, item.originalOrdinal, item.code]), [['claim', 1, 'invalid_semantics']])
+})
+
+test('all subjectless Claims retain candidate_set_exhausted semantics for the bounded retry boundary', async () => {
+  const { skill: curation } = skill({ entities: [], relations: [], claims: [claim({ subjectMentions: [] })] })
+  await assert.rejects(() => curation.extractKnowledge(input), (error: unknown) => {
+    return error instanceof KnowledgeCurationError &&
+      error.code === 'candidate_set_exhausted' &&
+      error.candidateValidationRejections?.[0]?.code === 'invalid_semantics'
+  })
+})
 
 test('isolates local Entity, Relation, and Claim failures while preserving ordinals', async () => {
   const { skill: curation, model } = skill({

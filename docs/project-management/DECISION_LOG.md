@@ -1,8 +1,31 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-CLAIM-SUBJECT-INVARIANT-C-017 - Result
+
+Status: Completed / SOL VERIFICATION REQUIRED
+Date: 2026-09-02
+
+C17 closes the Claim subject non-empty contract gap exposed by C4-R9-R4. The
+`extractKnowledge` contract now declares `subjectMentions.minItems = 1`, and
+candidate validation explicitly rejects an empty Claim subject list as
+`invalid_semantics` while retaining valid sibling candidates. The existing
+all-candidates-rejected `candidate_set_exhausted` path and one bounded C9
+retry remain unchanged.
+
+Reference Resolution now defensively classifies empty Claim subjects as
+`invalid`. Post-Resolution Write Readiness requires non-empty,
+length-preserving, Entity/Relation-resolving subject refs, and Canonical Claim
+projection has no subject fallback. The authoritative Schema 0.3 validator,
+Writer, C9, C13, C14, C15, and C16 relation behavior were not changed.
+
+Deterministic cases A-H and the required regression suites passed. No real LLM,
+DeepSeek, or R9-R5 run was performed. C4-R9-R4 remains `Completed / FAIL -
+Claim Subject Non-Empty Contract Gap - Sol verified`; Stage C remains In
+Progress / not accepted and R9-R5 remains NOT AUTHORIZED.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R4-FINAL - Result
 
-Status: Completed / FAIL - SOL REVIEW REQUIRED
+Status: Completed / FAIL - Claim Subject Non-Empty Contract Gap - Sol verified
 Date: 2026-09-02
 
 The single authorized real Full Pipeline run started from
@@ -40,7 +63,7 @@ Stage C remains In Progress / not accepted and R9-R4 remains NOT AUTHORIZED.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R3-FINAL - Result
 
-Status: Completed / FAIL - SOL REVIEW REQUIRED
+Status: Completed / FAIL - Deterministic Post-Resolution Write-Projection Boundary Defect - Sol verified
 Date: 2026-09-02
 
 The single authorized isolated real Full Pipeline run used baseline
