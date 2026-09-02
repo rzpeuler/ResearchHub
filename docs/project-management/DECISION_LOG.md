@@ -1,5 +1,21 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-POST-RESOLUTION-WRITE-READINESS-C-016 - Result
+
+Status: Completed / SOL VERIFICATION REQUIRED
+Date: 2026-09-02
+
+C16 keeps the change inside the existing Research Report Knowledge Ingestion
+Workflow. It consumes authoritative Resolution refs for Relation endpoints and
+Claim subjects, maps temporary Entity refs deterministically, validates
+resolved Relation endpoint types against frozen Schema 0.3 definitions, and
+isolates candidate-local semantic and new-object business-exposure
+cardinality failures before ChangeSet construction. Existing dependency
+closure and final `validateChangeSet()` remain authoritative. Deterministic
+regression suites passed; no real LLM, DeepSeek, or R9-R4 run was performed.
+Implementation commit: `2597b9e`.
+Stage C remains In Progress / not accepted and R9-R4 remains NOT AUTHORIZED.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R3-FINAL - Result
 
 Status: Completed / FAIL - SOL REVIEW REQUIRED

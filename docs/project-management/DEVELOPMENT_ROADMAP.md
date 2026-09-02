@@ -14,12 +14,14 @@
 
 ## Current governance state
 
+- C16 Post-Resolution Write Readiness: Completed / SOL VERIFICATION REQUIRED
 - C4-R9-R3 Product Validation: Completed / FAIL - SOL REVIEW REQUIRED
 - C15-R2 Execution Facts Preservation: Completed / Accepted - Sol verified
 - C2-R2: Completed / Accepted - Sol verified
 - C2-R2-R1: Completed / Accepted - Sol verified
 - Current Curation runtime: Knowledge v0.3, exactly four operations
 - Current Report Ingestion runtime: Frozen Workflow v0.3 / Schema 0.3 / Storage 1
+- C16 implementation commit: `2597b9e`; no real LLM/DeepSeek/R9-R4 execution
 - C4 Product Validation: Blocked / Environment Credential
 - C4-R1 Product Validation: Completed / Root Cause Identified - Sol verified
 - C4-R2 Product Validation: Completed / Engineering Rework Required - Sol verified

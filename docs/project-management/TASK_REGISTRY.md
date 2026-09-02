@@ -14,6 +14,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 
 | Task ID | Task Name | Status | Priority | Created | Assignee | Commit Hash | Acceptance |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| KNOWLEDGE-V0.3-POST-RESOLUTION-WRITE-READINESS-C-016 | Add deterministic post-resolution write-readiness before ChangeSet planning | Completed | P0 | 2026-09-02 | Luna | `2597b9e` | Completed / SOL VERIFICATION REQUIRED |
 | KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R3-FINAL | Execute one authorized real Knowledge v0.3 Full Pipeline validation after C15-R2 | Completed | P0 | 2026-09-02 | Luna | R9-R3 evidence (see Git handoff) | Completed / FAIL - SOL REVIEW REQUIRED |
 | KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015-R2 | Preserve observed Resolution and reconciliation-planning facts through post-resolution blocks | Completed | P0 | 2026-09-02 | Luna | `8c81cb8fcb3c5dd6787d380b0161f28b5447fa3b` | Completed / Accepted - Sol verified |
 | KNOWLEDGE-V0.3-FREEZE-CORRECTION-001 | Correct Knowledge v0.3 Freeze Candidate architecture blockers | Completed | P0 | 2026-08-27 | Luna | `5620302317cf13e2d4faa52be31ad033d3df8b4f` | Accepted — Sol verified |

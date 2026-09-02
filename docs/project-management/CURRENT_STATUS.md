@@ -1,5 +1,18 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-POST-RESOLUTION-WRITE-READINESS-C-016
+
+C16 is `Completed / SOL VERIFICATION REQUIRED`. The existing ingestion
+Workflow now performs deterministic post-resolution write-readiness before
+reconciliation and ChangeSet planning: Relation and Claim projections consume
+authoritative Resolution refs, deferred Relation semantics are checked against
+resolved Entity types, and new business-exposure cardinality collisions are
+isolated into review without reconciliation. Deterministic safe candidates
+still pass the authoritative final ChangeSet validator. No real LLM, DeepSeek,
+or R9-R4 run was performed.
+
+Implementation commit: `2597b9e`.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R3-FINAL
 
 C4-R9-R3 is `Completed / FAIL - SOL REVIEW REQUIRED`. The single authorized

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-02 - KNOWLEDGE-V0.3-POST-RESOLUTION-WRITE-READINESS-C-016
+
+- Added deterministic post-resolution write-readiness inside the existing
+  Research Report Knowledge Ingestion Workflow.
+- Relation endpoints and Claim subjects now project from authoritative
+  Reference Resolution refs, including deterministic temporary Entity ref
+  mapping.
+- Resolved Relation semantics and new-object `business_exposure` cardinality
+  collisions are isolated into review before ChangeSet planning; no LLM
+  reconciliation is used for these post-resolution facts.
+- Added deterministic ingestion regression coverage for projection,
+  deferred semantics, collision isolation, exact duplicates, and mixed safe /
+  review ChangeSets.
+- C16 is `Completed / SOL VERIFICATION REQUIRED`; Stage C remains In Progress /
+  not accepted and R9-R4 remains NOT AUTHORIZED. Implementation commit:
+  `2597b9e`.
+
 ## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R3-FINAL
 
 - Executed the single authorized isolated real Full Pipeline validation from
