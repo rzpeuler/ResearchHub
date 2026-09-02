@@ -1,8 +1,46 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-STAGE-C-GOVERNANCE-CLOSURE-001 - Stage C Closure
+
+Status: Completed / Accepted - Sol verified
+Date: 2026-09-02
+
+Sol's final adjudication accepted R9-R6-R1 and closed Knowledge v0.3
+Implementation Stage C. The accepted R9-R6-R1 evidence commit is
+`89312d1d6666b8294108ea3a0402f7b348e32ded`. Sol verified the exact commit and
+parent baseline, complete diff, durable evidence, productionFilesChanged,
+real runtime, frozen PDF identity, Docling, batch coverage, C18 retry
+attribution, candidate isolation, C14, ChangeSet, Writer, Replay, final KB,
+provenance, semantic-quality samples, and GitHub CI/status availability.
+
+The Stage C acceptance record is the R9-R6-R1 result: official DeepSeek
+`deepseek-v4-flash`; frozen 103-page PDF; Docling 2.116.0; 18/18 batches;
+exact 1,523/1,523 chunk coverage; correctly attributed bounded C9 retries;
+effective candidate isolation; no rejected-candidate downstream leakage; C14
+zero reconciliation; deterministic ChangeSet validation; Writer exactly once;
+revision 0 to 1; replay with zero model calls, zero Writer calls, and zero
+mutation; final KB full validation; 279/279 coherent Claim provenance; zero
+orphans; zero unresolved evidence references; zero dangling Relations; and
+Sol-accepted semantic-quality samples.
+
+The acceptance boundary validates the real Knowledge v0.3 ingestion, curation,
+validation, persistence, and sampled product-quality pipeline. It does not
+certify every extracted real-world assertion as independently fact-checked
+truth. The primary Workflow status remains `completed_with_review` and
+`reviewItemCount=157`; the review candidates were isolated rather than
+silently written into the Knowledge Base, and Stage C acceptance does not
+claim that every review item was manually resolved.
+
+Final governance state: C18 is Completed / Accepted - Sol verified; C4-R9-R6
+is Completed / INVALID TEST SETUP - Real LLM Execution Gate Not Enabled - Sol
+verified; C4-R9-R6-R1 is Completed / Accepted - Sol verified; Stage C is
+Completed / Accepted - Sol verified. Historical R9-R2/R3/R4/R5/R6 results
+remain preserved. No R9-R7 is authorized or created, and no Runtime/Product
+implementation or new real validation run was performed.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R6-R1-FINAL - Result
 
-Status: Completed / TECHNICAL PASS - SOL PRODUCT QUALITY REVIEW REQUIRED
+Status: Completed / Accepted - Sol verified
 Date: 2026-09-02
 
 The single formal isolated Full Pipeline execution used the exact baseline
@@ -37,12 +75,12 @@ Evidence:
 `tests/knowledge/product-validation/evidence/c004-r9-r6-r1-final-full-pipeline.json`
 SHA256 `6C11CFE5304CC22E251D749B1E469B7BFBDE853125CE32D8C50B7F8C889ED342`.
 The prior R9-R6 setup-failure evidence remains immutable. C18 remains
-Completed / Accepted - Sol verified. This is a technical PASS, not product
-acceptance; Stage C remains In Progress / not accepted pending Sol review.
+Completed / Accepted - Sol verified. This result was accepted by Sol under
+KNOWLEDGE-V0.3-STAGE-C-GOVERNANCE-CLOSURE-001.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R6-FINAL - Result
 
-Status: Completed / INVALID TEST SETUP / SOL REVIEW REQUIRED
+Status: Completed / INVALID TEST SETUP - Real LLM Execution Gate Not Enabled - Sol verified
 Date: 2026-09-02
 
 The single authorized R9-R6 launcher attempt used the required baseline

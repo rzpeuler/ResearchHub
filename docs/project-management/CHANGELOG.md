@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-02 - KNOWLEDGE-V0.3-STAGE-C-GOVERNANCE-CLOSURE-001
+
+- Recorded Sol's final adjudication of R9-R6-R1 as `Completed / Accepted - Sol
+  verified` at evidence commit
+  `89312d1d6666b8294108ea3a0402f7b348e32ded`.
+- Closed Knowledge v0.3 Implementation Stage C as
+  `Completed / Accepted - Sol verified`.
+- Preserved C18 as `Completed / Accepted - Sol verified` and preserved the
+  historical R9-R6 result as `Completed / INVALID TEST SETUP - Real LLM
+  Execution Gate Not Enabled - Sol verified`; historical R9-R2/R3/R4/R5
+  failures remain unchanged.
+- Recorded the acceptance boundary: pipeline correctness and sampled product
+  quality are accepted, while the 157 isolated `completed_with_review` items
+  are not represented as independently fact-checked assertions.
+- No Runtime, Product implementation, R9 evidence, new architecture layer,
+  R9-R7 task, or new real validation run was created.
+
 ## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R6-R1-FINAL
 
 - Executed the single formal isolated real Knowledge v0.3 Full Pipeline run
@@ -20,8 +37,8 @@
   `tests/knowledge/product-validation/evidence/c004-r9-r6-r1-final-full-pipeline.json`
   with SHA256
   `6C11CFE5304CC22E251D749B1E469B7BFBDE853125CE32D8C50B7F8C889ED342`.
-- Result: Completed / TECHNICAL PASS - SOL PRODUCT QUALITY REVIEW REQUIRED.
-  Stage C remains In Progress / not accepted.
+- Result: Completed / Accepted - Sol verified. Stage C was subsequently
+  closed by KNOWLEDGE-V0.3-STAGE-C-GOVERNANCE-CLOSURE-001.
 
 ## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R6-FINAL
 
@@ -32,7 +49,8 @@
 - No real pipeline stage ran and no correction rerun was performed. Evidence:
   tests/knowledge/product-validation/evidence/c004-r9-r6-final-full-pipeline.json
   with SHA256 B08E722A4B148D7899051A7A8879D45817BE27B0D647E1BFCB46E147ACB6020F.
-- R9-R6 status: Completed / INVALID TEST SETUP / SOL REVIEW REQUIRED.
+- R9-R6 status: Completed / INVALID TEST SETUP - Real LLM Execution Gate Not
+  Enabled - Sol verified.
 
 ## 2026-09-02 - KNOWLEDGE-V0.3-R9-OBSERVER-RETRY-ATTRIBUTION-C-018
 
