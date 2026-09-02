@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-02 - KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015-R2
+
+- Added runtime-neutral execution facts for deterministic Reference Resolution
+  counts and reconciliation-planning reachability/group count.
+- Preserved those facts through reconciliation and schema-gap exceptions in
+  `blocked()`; validation and Writer post-resolution behavior remains intact.
+- Updated R9 boundary evidence to distinguish observed numeric zero from
+  unobserved `null` and to require observed planning for C14 PASS.
+- Added Workflow-level and R9 deterministic regression coverage. Historical
+  R9-R2 evidence remains unchanged; no real LLM, DeepSeek, or R9-R3 execution
+  occurred.
+- Status: Completed / SOL VERIFICATION REQUIRED.
+
 ## 2026-09-02 - ARCH-LEGACY-MEMORY-EVALUATION-RETIREMENT-001
 
 - Retired and removed the standalone `packages/memory/` and

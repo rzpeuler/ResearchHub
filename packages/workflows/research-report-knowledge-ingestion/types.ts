@@ -127,6 +127,12 @@ export interface ResolutionSummary {
   ambiguous: number;
   invalid: number;
 }
+export interface IngestionExecutionFacts {
+  referenceResolutionReached: boolean;
+  referenceResolution: ResolutionSummary | null;
+  reconciliationPlanningReached: boolean;
+  reconciliationGroups: number | null;
+}
 export interface ReconciliationSummary {
   groups: number;
   candidates: number;
@@ -161,6 +167,7 @@ export interface ResearchReportKnowledgeIngestionResult {
   mode: "commit" | "dry_run";
   status: "completed" | "completed_with_review" | "blocked";
   referenceResolutionReached: boolean;
+  reconciliationPlanningReached: boolean;
   baseRevision: number;
   finalRevision: number;
   raw: {

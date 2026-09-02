@@ -1,5 +1,16 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015-R2
+
+C15-R2 is `Completed / SOL VERIFICATION REQUIRED`. The Workflow now snapshots
+the deterministic Reference Resolution summary and reconciliation-planning
+reachability before later post-resolution work can fail. `blocked()` preserves
+those observed facts, while R9 emits `null` for reconciliation groups when
+planning was not observed and accepts C14 zero reconciliation only after an
+explicit planning observation. No historical R9-R2 evidence was modified; no
+real LLM, DeepSeek, or R9-R3 run was performed. Stage C remains In Progress /
+not accepted and C4-R9-R3 remains not authorized.
+
 ## ARCH-LEGACY-MEMORY-EVALUATION-RETIREMENT-001
 
 This task is `Completed / SOL VERIFICATION REQUIRED`. The standalone

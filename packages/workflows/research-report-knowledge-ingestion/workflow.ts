@@ -44,6 +44,7 @@ import { KnowledgeIngestionWorkflowError } from "./errors.ts";
 import { createKnowledgeScopeContext } from "./scope-context.ts";
 import type {
   ExtractionSummary,
+  IngestionExecutionFacts,
   IngestionTrace,
   KnowledgeBaseTarget,
   ModelCallRecord,
@@ -337,6 +338,14 @@ function emptyExtraction(): ExtractionSummary {
 function emptyResolution(): ResolutionSummary {
   return { existing_ref: 0, new_object_key: 0, ambiguous: 0, invalid: 0 };
 }
+function emptyExecutionFacts(): IngestionExecutionFacts {
+  return {
+    referenceResolutionReached: false,
+    referenceResolution: null,
+    reconciliationPlanningReached: false,
+    reconciliationGroups: null,
+  };
+}
 function emptyReconciliation(): ReconciliationSummary {
   return { groups: 0, candidates: 0, decisions: {}, classifications: {} };
 }
@@ -348,7 +357,7 @@ function blocked(
   calls: ModelCallRecord[],
   stage: string,
   error: unknown,
-  referenceResolutionReached = false,
+  executionFacts: IngestionExecutionFacts = emptyExecutionFacts(),
 ): ResearchReportKnowledgeIngestionResult {
   const item =
     error instanceof KnowledgeIngestionWorkflowError ||
@@ -364,7 +373,8 @@ function blocked(
     knowledgeBaseId: input.knowledgeBaseId,
     mode: input.options.mode,
     status: "blocked",
-    referenceResolutionReached,
+    referenceResolutionReached: executionFacts.referenceResolutionReached,
+    reconciliationPlanningReached: executionFacts.reconciliationPlanningReached,
     baseRevision: revision,
     finalRevision: revision,
     raw: { rawRef, persisted: false, created: false, reused: false },
@@ -374,8 +384,13 @@ function blocked(
     batches: emptyBatches(),
     extraction: emptyExtraction(),
     consolidation: { before: 0, after: 0, duplicatesMerged: 0 },
-    referenceResolution: emptyResolution(),
-    reconciliation: emptyReconciliation(),
+    referenceResolution: executionFacts.referenceResolution ?? emptyResolution(),
+    reconciliation: {
+      ...emptyReconciliation(),
+      groups: executionFacts.reconciliationPlanningReached
+        ? executionFacts.reconciliationGroups ?? 0
+        : 0,
+    },
     schemaGaps: [],
     reviewItems: [],
     plannedChanges: emptyChanges(),
@@ -1275,7 +1290,7 @@ export class ResearchReportKnowledgeIngestionWorkflow {
     let rawRef = "";
     let identity = "";
     let raw = { persisted: false, created: false, reused: false };
-    const executionFacts = { referenceResolutionReached: false };
+    const executionFacts = emptyExecutionFacts();
     try {
       validInput(input);
       target = await this.options.targetResolver.resolve(input.knowledgeBaseId);
@@ -1369,7 +1384,7 @@ export class ResearchReportKnowledgeIngestionWorkflow {
         planned,
         validation.report,
         calls,
-        executionFacts.referenceResolutionReached,
+        executionFacts,
       );
       if (validation.report.status === "failed") {
         base.status = "blocked";
@@ -1450,7 +1465,7 @@ export class ResearchReportKnowledgeIngestionWorkflow {
           ? (error.stage ?? "workflow")
           : "workflow",
         error,
-        executionFacts.referenceResolutionReached,
+        executionFacts,
       );
       result.raw = { rawRef, ...raw };
       if (target && raw.persisted)
@@ -1616,7 +1631,7 @@ export class ResearchReportKnowledgeIngestionWorkflow {
     target: KnowledgeBaseTarget,
     document: NormalizedResearchDocument,
     calls: ModelCallRecord[],
-    executionFacts: { referenceResolutionReached: boolean },
+    executionFacts: IngestionExecutionFacts,
   ): Promise<IngestionTrace> {
     const access = new KnowledgeAccessSkill({
       handle: target.handle,
@@ -1693,6 +1708,9 @@ export class ResearchReportKnowledgeIngestionWorkflow {
     const resolutions = consolidated.values.map((candidate) =>
       resolutionFor(candidate, knowledgeContext, entityTemp),
     );
+    const referenceResolution = emptyResolution();
+    for (const item of resolutions) referenceResolution[item.outcome] += 1;
+    executionFacts.referenceResolution = referenceResolution;
     executionFacts.referenceResolutionReached = true;
     const preciseEntities = resolutions
       .filter((item) => item.outcome === "existing_ref")
@@ -1728,6 +1746,8 @@ export class ResearchReportKnowledgeIngestionWorkflow {
       resolutions,
       preciseContext,
     );
+    executionFacts.reconciliationPlanningReached = true;
+    executionFacts.reconciliationGroups = precise.length;
     const reconciliation = { decisions: [] as ReconciliationDecision[] };
     for (const group of precise) {
       const result = await this.reconcileGroup(
@@ -1821,7 +1841,7 @@ export class ResearchReportKnowledgeIngestionWorkflow {
     planned: PlannedResult,
     validation: ResearchReportKnowledgeIngestionResult["validation"],
     calls: ModelCallRecord[],
-    referenceResolutionReached: boolean,
+    executionFacts: IngestionExecutionFacts,
   ): ResearchReportKnowledgeIngestionResult {
     const ref = emptyResolution();
     for (const item of trace.resolution) ref[item.outcome] += 1;
@@ -1840,7 +1860,8 @@ export class ResearchReportKnowledgeIngestionWorkflow {
       knowledgeBaseId: input.knowledgeBaseId,
       mode: input.options.mode,
       status: plannedStatus(trace),
-      referenceResolutionReached,
+      referenceResolutionReached: executionFacts.referenceResolutionReached,
+      reconciliationPlanningReached: executionFacts.reconciliationPlanningReached,
       baseRevision: revision,
       finalRevision: revision,
       raw: { rawRef: trace.document.rawRef, ...raw },

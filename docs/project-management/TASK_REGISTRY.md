@@ -14,6 +14,7 @@ ResearchHub 的轻量任务数据库。每个可独立执行、审查和验收�
 
 | Task ID | Task Name | Status | Priority | Created | Assignee | Commit Hash | Acceptance |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015-R2 | Preserve observed Resolution and reconciliation-planning facts through post-resolution blocks | Completed | P0 | 2026-09-02 | Luna | Current implementation commit (see Git handoff) | Completed / SOL VERIFICATION REQUIRED |
 | KNOWLEDGE-V0.3-FREEZE-CORRECTION-001 | Correct Knowledge v0.3 Freeze Candidate architecture blockers | Completed | P0 | 2026-08-27 | Luna | `5620302317cf13e2d4faa52be31ad033d3df8b4f` | Accepted — Sol verified |
 | KNOWLEDGE-V0.3-FREEZE-CORRECTION-001-R1 | Close Knowledge v0.3 Freeze Candidate residual consistency gaps | Completed | P0 | 2026-08-27 | Luna | `47e312f79a221d7dd45b42508e52526fd61b1a74` | Accepted — Sol verified |
 | KNOWLEDGE-V0.3-GOVERNANCE-INTEGRATION-001 | Integrate Knowledge v0.3 Architecture Freeze into project governance | Completed | P0 | 2026-08-27 | Luna | `6e0245b1b30a9896273cfd49e710054931792de4` | Accepted — Sol verified |

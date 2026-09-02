@@ -1,5 +1,23 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015-R2 - Result
+
+Status: Completed / SOL VERIFICATION REQUIRED
+Date: 2026-09-02
+
+C15-R2 added runtime-neutral execution facts for the observed Reference
+Resolution summary, reconciliation-planning reachability, and precise group
+count. These facts are captured at their stage boundaries and passed through
+the top-level blocked result, so reconciliation and schema-gap failures cannot
+replace observed counts with empty defaults. R9 distinguishes observed zero
+groups from unobserved planning and C14 PASS requires the explicit planning
+fact in addition to the existing zero-reference and zero-call facts.
+
+Deterministic Workflow and R9 tests pass. Historical R9-R2 evidence files are
+unchanged. No C15 adapter, C9, C13, C14, Schema/Storage, Writer, batching,
+token, reasoning, provider, or real-run semantics changed. Stage C remains In
+Progress / not accepted and C4-R9-R3 remains not authorized.
+
 ## ARCH-LEGACY-MEMORY-EVALUATION-RETIREMENT-001 - Result
 
 Status: Completed / SOL VERIFICATION REQUIRED

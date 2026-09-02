@@ -63,8 +63,8 @@ test("R9 blocked-result diagnosis follows independent frozen facts before succes
 });
 
 test("R9 boundary records not_reached before Reference Resolution", () => {
-  const boundary = buildReconciliationBoundary({ referenceResolutionReached: false, referenceResolution: { existing_ref: 0, new_object_key: 0, ambiguous: 0, invalid: 0 }, reconciliation: { groups: 0 } }, 0, 0);
-  assert.deepEqual(boundary, { status: "not_reached", existingRefCandidates: null, newObjectKeyCandidates: null, ambiguousCandidates: null, invalidCandidates: null, reconciliationGroups: null, logicalCalls: 0, physicalCalls: 0 });
+  const boundary = buildReconciliationBoundary({ referenceResolutionReached: false, referenceResolution: { existing_ref: 0, new_object_key: 0, ambiguous: 0, invalid: 0 }, reconciliationPlanningReached: false, reconciliation: { groups: 0 } }, 0, 0);
+  assert.deepEqual(boundary, { status: "not_reached", existingRefCandidates: null, newObjectKeyCandidates: null, ambiguousCandidates: null, invalidCandidates: null, reconciliationPlanningReached: false, reconciliationGroups: null, logicalCalls: 0, physicalCalls: 0 });
 });
 
 test("R9 boundary reachability is sourced from the explicit stage fact", async () => {
@@ -78,19 +78,31 @@ test("R9 boundary reachability is sourced from the explicit stage fact", async (
 });
 
 test("R9 C14 boundary is passed only after a reached zero-call resolution", () => {
-  const clean = { existingRefCandidates: 0, reconciliationGroups: 0, logicalCalls: 0, physicalCalls: 0 };
+  const clean = { reconciliationPlanningReached: true, existingRefCandidates: 0, reconciliationGroups: 0, logicalCalls: 0, physicalCalls: 0 };
   assert.equal(c14FreshKbReconciliationBoundaryPasses(clean), true);
   assert.equal(c14FreshKbReconciliationBoundaryPasses({ ...clean, existingRefCandidates: 1 }), false);
   assert.equal(c14FreshKbReconciliationBoundaryPasses({ ...clean, logicalCalls: 1 }), false);
   assert.equal(c14FreshKbReconciliationBoundaryPasses({ ...clean, physicalCalls: 1 }), false);
-  const reached = buildReconciliationBoundary({ referenceResolutionReached: true, referenceResolution: { existing_ref: 0, new_object_key: 4, ambiguous: 1, invalid: 0 }, reconciliation: { groups: 0 } }, 0, 0);
+  const reached = buildReconciliationBoundary({ referenceResolutionReached: true, referenceResolution: { existing_ref: 0, new_object_key: 4, ambiguous: 1, invalid: 0 }, reconciliationPlanningReached: true, reconciliation: { groups: 0 } }, 0, 0);
   assert.equal(reached.status, "reached_and_passed");
   assert.equal(reached.newObjectKeyCandidates, 4);
   assert.equal(reached.ambiguousCandidates, 1);
-  const postResolutionBlock = buildReconciliationBoundary({ referenceResolutionReached: true, referenceResolution: { existing_ref: 0, new_object_key: 0, ambiguous: 0, invalid: 0 }, reconciliation: { groups: 0 } }, 0, 0);
+  const postResolutionBlock = buildReconciliationBoundary({ referenceResolutionReached: true, referenceResolution: { existing_ref: 0, new_object_key: 0, ambiguous: 0, invalid: 0 }, reconciliationPlanningReached: true, reconciliation: { groups: 0 } }, 0, 0);
   assert.equal(postResolutionBlock.status, "reached_and_passed");
-  const failed = buildReconciliationBoundary({ referenceResolutionReached: true, referenceResolution: { existing_ref: 1, new_object_key: 0, ambiguous: 0, invalid: 0 }, reconciliation: { groups: 1 } }, 1, 1);
+  const failed = buildReconciliationBoundary({ referenceResolutionReached: true, referenceResolution: { existing_ref: 1, new_object_key: 0, ambiguous: 0, invalid: 0 }, reconciliationPlanningReached: true, reconciliation: { groups: 1 } }, 1, 1);
   assert.equal(failed.status, "reached_and_failed");
+});
+
+test("R9 distinguishes observed zero reconciliation from unobserved planning", () => {
+  const unobserved = buildReconciliationBoundary({ referenceResolutionReached: true, referenceResolution: { existing_ref: 0, new_object_key: 0, ambiguous: 0, invalid: 0 }, reconciliationPlanningReached: false, reconciliation: { groups: 0 } }, 0, 0);
+  assert.equal(unobserved.status, "reached_and_failed");
+  assert.equal(unobserved.reconciliationGroups, null);
+  assert.equal(c14FreshKbReconciliationBoundaryPasses(unobserved), false);
+
+  const observed = buildReconciliationBoundary({ referenceResolutionReached: true, referenceResolution: { existing_ref: 0, new_object_key: 0, ambiguous: 0, invalid: 0 }, reconciliationPlanningReached: true, reconciliation: { groups: 0 } }, 0, 0);
+  assert.equal(observed.status, "reached_and_passed");
+  assert.equal(observed.reconciliationGroups, 0);
+  assert.equal(c14FreshKbReconciliationBoundaryPasses(observed), true);
 });
 
 test("R9 blocked classification reserves external status for upstream errors", () => {
