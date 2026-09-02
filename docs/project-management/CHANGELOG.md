@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-02 - KNOWLEDGE-V0.3-R9-OBSERVER-RETRY-ATTRIBUTION-C-018
+
+- Corrected R9 retry attribution to use actual validation-failure attempt/code
+  evidence and physical-attempt ordering.
+- Terminal partial candidate validation no longer correlates with retry by
+  retryCount alone. Completion failures and candidate-set exhaustion are
+  attributed explicitly; unexplained retry after a partial result remains a
+  failure.
+- Added deterministic A-G coverage and candidate-isolation evidence fields
+  retryAttribution and partialRejectionTriggeredRetry.
+- Preserved all existing third-attempt, C9, accounting, Writer, revision,
+  C8/C14, replay, provenance, and final-KB gates. No real R9-R6 execution was
+  performed and no Product implementation was changed.
+- C18 status: Completed / SOL VERIFICATION REQUIRED.
+- C4-R9-R5 classification: Completed / FAIL - R9 Observer Retry-Cause
+  Attribution Defect - Sol verified.
+
 ## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R5-FINAL
 
 - Executed the single authorized real Full Pipeline validation after C17 from
@@ -9,15 +26,15 @@
   primary Workflow result.
 - C17 recorded 2 Claim `invalid_semantics` candidate-local rejections with no
   rejected-candidate leakage or empty safe `subjectRefs`.
-- The R9 observer classified the run `FAIL / SOL REVIEW REQUIRED` at
+- The prior R9 observer classified the run FAIL / SOL REVIEW REQUIRED at
   `extraction_complete` because a partial-rejection batch also had a bounded
   retry. The retry recorded the natural max-tokens completion path; no third
   attempt occurred. Final KB reload, provenance, and replay were not recorded
   after the observer stopped.
 - Evidence: `tests/knowledge/product-validation/evidence/c004-r9-r5-final-full-pipeline.json`
   with SHA256 `39DAD2CC2BFC3FC9EEA55896821C6EB72E5DDBB52FC5E879CC67A4A5B7BDB4A7`.
-- C4-R9-R5 status: Completed / FAIL - SOL REVIEW REQUIRED. Stage C remains In
-  Progress / not accepted.
+- C4-R9-R5 status: Completed / FAIL - R9 Observer Retry-Cause Attribution
+  Defect - Sol verified. Stage C remains In Progress / not accepted.
 
 ## 2026-09-02 - KNOWLEDGE-V0.3-CLAIM-SUBJECT-INVARIANT-C-017
 

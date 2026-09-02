@@ -1,8 +1,32 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-R9-OBSERVER-RETRY-ATTRIBUTION-C-018 - Result
+
+Status: Completed / SOL VERIFICATION REQUIRED
+Date: 2026-09-02
+
+C18 corrects the R9 observer's retry-cause attribution defect. The observer
+now derives retry transitions from actual validationFailures attempt/code
+records and physical-attempt ordering. A terminal candidate-validation summary
+with both accepted and rejected candidates is not itself a retry cause.
+invalid_model_output is recorded as a completion failure, while
+candidate_set_exhausted remains its own existing C9 cause; other existing
+recoverable codes are retained as validation-failure causes. A partial
+candidate result followed by an unexplained physical retry remains a failure.
+
+Deterministic cases A-G pass, including the frozen R9-R5 batch-0001 shape:
+attempt 1 invalid_model_output, attempt 2 terminal partial candidates, and no
+partial-candidate-triggered retry. Candidate-isolation evidence now exposes
+retryAttribution and partialRejectionTriggeredRetry. Third-attempt,
+maximum-retry, model-accounting, Writer, revision, C8, C14, replay, provenance,
+and final-KB gates remain unchanged. No real R9-R6 execution was performed.
+
+C4-R9-R5 is recorded as Completed / FAIL - R9 Observer Retry-Cause Attribution
+Defect - Sol verified. Stage C remains In Progress / not accepted.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R5-FINAL - Result
 
-Status: Completed / FAIL - SOL REVIEW REQUIRED
+Status: Completed / FAIL - R9 Observer Retry-Cause Attribution Defect - Sol verified
 Date: 2026-09-02
 
 The single authorized real Full Pipeline run started from
@@ -17,11 +41,11 @@ calls.
 C17 observed 2 Claim `invalid_semantics` rejections, valid candidates were
 retained, and no rejected candidate leaked downstream. The primary ChangeSet
 validation passed; Writer ran once, created one Source and 1,635 Knowledge
-objects, and advanced revision 0 to 1. The R9 observer classified the run as
-FAIL at `extraction_complete` because a partial-rejection batch also used a
-bounded retry. The recorded retry cause was natural max-tokens completion;
-there was no third attempt. Final KB reload, provenance, and replay were not
-recorded after the observer stopped. Evidence SHA256:
+objects, and advanced revision 0 to 1. The prior R9 observer classified the run
+as FAIL at extraction_complete because it correlated a partial-rejection batch
+with a bounded retry. The recorded retry cause was natural max-tokens
+completion; there was no third attempt. Final KB reload, provenance, and replay
+were not recorded after the observer stopped. Evidence SHA256:
 `39DAD2CC2BFC3FC9EEA55896821C6EB72E5DDBB52FC5E879CC67A4A5B7BDB4A7`.
 No product code or historical evidence was modified after the run.
 
@@ -46,7 +70,8 @@ Writer, C9, C13, C14, C15, and C16 relation behavior were not changed.
 Deterministic cases A-H and the required regression suites passed. C4-R9-R4
 remains `Completed / FAIL - Claim Subject Non-Empty Contract Gap - Sol
 verified`; Stage C remains In Progress / not accepted and R9-R5 is recorded
-separately as `Completed / FAIL - SOL REVIEW REQUIRED`.
+separately as Completed / FAIL - R9 Observer Retry-Cause Attribution Defect -
+Sol verified.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R4-FINAL - Result
 

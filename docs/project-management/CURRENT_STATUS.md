@@ -1,8 +1,27 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-R9-OBSERVER-RETRY-ATTRIBUTION-C-018
+
+C18 is Completed / SOL VERIFICATION REQUIRED. The R9 validation harness now
+attributes extraction retries from actual attempt and validation-failure
+evidence. A terminal partial candidate result no longer implies that the
+retry was caused by candidate rejection. Completion failures such as
+invalid_model_output, candidate-set exhaustion, and other existing recoverable
+validation codes are recorded as the retry cause; an unexplained physical
+attempt after a partial candidate result remains a failure.
+
+The harness adds deterministic retry-attribution and candidate-isolation
+evidence, while preserving the third-attempt, maximum-retry, model-accounting,
+Writer, revision, C8, C14, replay, provenance, and final-KB gates. No Product,
+Schema, Writer, C9, C13, C14, C15, C16, or C17 implementation was changed.
+No real R9-R6 execution was performed. R9-R5 is reclassified as
+Completed / FAIL - R9 Observer Retry-Cause Attribution Defect - Sol verified.
+Stage C remains In Progress / not accepted.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R5-FINAL
 
-R9-R5 is `Completed / FAIL - SOL REVIEW REQUIRED`. The single authorized
+R9-R5 is Completed / FAIL - R9 Observer Retry-Cause Attribution Defect - Sol
+verified. The single authorized
 real Full Pipeline run used the exact frozen PDF, Local Docling 2.116.0,
 official DeepSeek Flash, and a fresh Schema 0.3 / Storage 1 Knowledge Base.
 The primary Workflow completed with review, final ChangeSet validation passed,
@@ -11,7 +30,7 @@ objects were committed. C17 observed 2 candidate-local Claim
 `invalid_semantics` rejections with no downstream leakage or empty safe
 `subjectRefs`.
 
-The R9 observer then failed at `extraction_complete` because a partial
+The prior R9 observer failed at extraction_complete because a partial
 candidate-rejection batch also had a bounded retry (`partial candidate
 rejection caused a retry`). The retry's recorded cause was the natural
 `invalid_model_output`/max-tokens completion path; no third attempt occurred.
@@ -32,8 +51,8 @@ authoritative final validator remain unchanged. Deterministic curation,
 ingestion, validation, infrastructure, product-validation, and typecheck
 regressions passed. `npm test` retains only the pre-existing external
 `PIPELINE-REAL-DATA-003` AkShare fetch failure. Stage C remains In Progress /
-not accepted and R9-R5 is recorded separately as `Completed / FAIL - SOL REVIEW
-REQUIRED`.
+not accepted and R9-R5 is recorded separately as Completed / FAIL - R9 Observer
+Retry-Cause Attribution Defect - Sol verified.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R4-FINAL
 

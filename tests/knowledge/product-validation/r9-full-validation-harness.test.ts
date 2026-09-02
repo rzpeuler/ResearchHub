@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import type { GenerateOptions } from "@deepseek-ai/dsh-llm";
 import { FullValidationObservingRuntime } from "../../../tools/knowledge-product-validation/full-validation-observing-runtime.ts";
-import { buildReconciliationBoundary, c14FreshKbReconciliationBoundaryPasses, classifyBlockedStatusFromUpstreamError, evaluatePrimaryCompletionGate } from "../../../tools/knowledge-product-validation/run-v03-r9-final-validation.ts";
+import { buildReconciliationBoundary, buildRetryAttribution, c14FreshKbReconciliationBoundaryPasses, candidateIsolationEvidence, classifyBlockedStatusFromUpstreamError, evaluatePrimaryCompletionGate } from "../../../tools/knowledge-product-validation/run-v03-r9-final-validation.ts";
 
 test("R9 full-validation observer is passive and preserves the upstream signal", async () => {
   const source = await readFile(new URL("../../../tools/knowledge-product-validation/full-validation-observing-runtime.ts", import.meta.url), "utf8");
@@ -108,6 +108,93 @@ test("R9 distinguishes observed zero reconciliation from unobserved planning", (
 test("R9 blocked classification reserves external status for upstream errors", () => {
   assert.equal(classifyBlockedStatusFromUpstreamError(false), "FAIL / SOL REVIEW REQUIRED");
   assert.equal(classifyBlockedStatusFromUpstreamError(true), "BLOCKED / EXTERNAL SERVICE - SOL REVIEW REQUIRED");
+});
+
+test("R9 retry attribution treats max-tokens before terminal partial output as completion failure", () => {
+  const attribution = buildRetryAttribution({
+    physicalAttempts: 2,
+    retryCount: 1,
+    validationFailures: [{ attempt: 1, code: "invalid_model_output" }],
+    validationAttempts: [{ accepted: { entity: 1, relation: 1, claim: 1 }, rejected: { entity: 0, relation: 1, claim: 0 } }],
+  });
+  assert.deepEqual(attribution.causes, [{ fromAttempt: 1, toAttempt: 2, code: "invalid_model_output", cause: "completion_failure" }]);
+  assert.equal(attribution.partialCandidateAttemptTriggeredRetry, false);
+});
+
+test("R9 retry attribution passes a terminal partial result without retry", () => {
+  const attribution = buildRetryAttribution({
+    physicalAttempts: 1,
+    retryCount: 0,
+    validationAttempts: [{ accepted: { entity: 1, relation: 0, claim: 0 }, rejected: { entity: 0, relation: 1, claim: 0 } }],
+  });
+  assert.deepEqual(attribution.causes, []);
+  assert.equal(attribution.partialCandidateAttemptTriggeredRetry, false);
+});
+
+test("R9 candidate isolation evidence exposes attribution and does not correlate partial output with retry", () => {
+  const evidence = candidateIsolationEvidence([{
+    batchId: "batch-a",
+    physicalAttempts: 2,
+    retryCount: 1,
+    validationFailures: [{ attempt: 1, code: "invalid_model_output" }],
+    validationAttempts: [{ accepted: { entity: 1, relation: 0, claim: 0 }, rejected: { entity: 0, relation: 1, claim: 0 } }],
+  }]);
+  assert.deepEqual(evidence.partialRejectionBatches, ["batch-a"]);
+  assert.deepEqual(evidence.batchesRequiringC9Retry, ["batch-a"]);
+  assert.deepEqual(evidence.partialRejectionTriggeredRetry, []);
+  assert.deepEqual(evidence.retryAttribution, [{
+    batchId: "batch-a",
+    retryCount: 1,
+    causes: [{ fromAttempt: 1, toAttempt: 2, code: "invalid_model_output", cause: "completion_failure" }],
+    partialCandidateAttemptTriggeredRetry: false,
+  }]);
+});
+
+test("R9 retry attribution treats candidate-set exhaustion as the retry cause", () => {
+  const attribution = buildRetryAttribution({
+    physicalAttempts: 2,
+    retryCount: 1,
+    validationFailures: [{ attempt: 1, code: "candidate_set_exhausted" }],
+    validationAttempts: [
+      { accepted: { entity: 0, relation: 0, claim: 0 }, rejected: { entity: 0, relation: 2, claim: 0 } },
+      { accepted: { entity: 1, relation: 1, claim: 0 }, rejected: { entity: 0, relation: 1, claim: 0 } },
+    ],
+  });
+  assert.deepEqual(attribution.causes, [{ fromAttempt: 1, toAttempt: 2, code: "candidate_set_exhausted", cause: "candidate_set_exhausted" }]);
+  assert.equal(attribution.partialCandidateAttemptTriggeredRetry, false);
+});
+
+test("R9 retry attribution fails only when a partial candidate result itself precedes an unexplained retry", () => {
+  const attribution = buildRetryAttribution({
+    physicalAttempts: 2,
+    retryCount: 0,
+    validationAttempts: [{ attempt: 1, accepted: { entity: 1, relation: 0, claim: 0 }, rejected: { entity: 0, relation: 1, claim: 0 } }],
+  });
+  assert.deepEqual(attribution.causes, [{ fromAttempt: 1, toAttempt: 2, code: null, cause: "unattributed_retry" }]);
+  assert.equal(attribution.partialCandidateAttemptTriggeredRetry, true);
+});
+
+test("R9 retry attribution preserves the third-attempt gate for independent validation", async () => {
+  const source = await readFile(new URL("../../../tools/knowledge-product-validation/run-v03-r9-final-validation.ts", import.meta.url), "utf8");
+  assert.match(source, /numberOrZero\(batch\.physicalAttempts\) > 2/);
+  const attribution = buildRetryAttribution({ physicalAttempts: 3, retryCount: 1, validationAttempts: [] });
+  assert.equal(attribution.causes.length, 2);
+});
+
+test("R9 retry attribution preserves the maximum retry-count gate for independent validation", async () => {
+  const source = await readFile(new URL("../../../tools/knowledge-product-validation/run-v03-r9-final-validation.ts", import.meta.url), "utf8");
+  assert.match(source, /numberOrZero\(batch\.retryCount\) > 1/);
+  const attribution = buildRetryAttribution({ physicalAttempts: 2, retryCount: 2, validationAttempts: [] });
+  assert.equal(attribution.retryCount, 2);
+});
+
+test("R9-R5 frozen batch-0001 is attributed to invalid_model_output, not terminal partial rejection", async () => {
+  const evidence = JSON.parse(await readFile(new URL("../../../tests/knowledge/product-validation/evidence/c004-r9-r5-final-full-pipeline.json", import.meta.url), "utf8")) as { primary: { extraction: { batches: Array<Record<string, unknown>> } } };
+  const batch = evidence.primary.extraction.batches.find((item) => item.batchId === "batch-0001");
+  if (!batch) throw new Error("batch-0001 was not found in frozen R9-R5 evidence");
+  const attribution = buildRetryAttribution(batch);
+  assert.deepEqual(attribution.causes, [{ fromAttempt: 1, toAttempt: 2, code: "invalid_model_output", cause: "completion_failure" }]);
+  assert.equal(attribution.partialCandidateAttemptTriggeredRetry, false);
 });
 
 test("R9-R2 launcher requires an explicit Commit A baseline and pins fresh-run identity", async () => {

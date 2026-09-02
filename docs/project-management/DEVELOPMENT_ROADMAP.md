@@ -14,7 +14,8 @@
 
 ## Current governance state
 
-- C4-R9-R5 Product Validation: Completed / FAIL - SOL REVIEW REQUIRED
+- C18 R9 Observer Retry Attribution: Completed / SOL VERIFICATION REQUIRED
+- C4-R9-R5 Product Validation: Completed / FAIL - R9 Observer Retry-Cause Attribution Defect - Sol verified
 - C17 Claim Subject Invariant: Completed / Accepted - Sol verified
 - C4-R9-R4 Product Validation: Completed / FAIL - Claim Subject Non-Empty Contract Gap - Sol verified
 - C16 Post-Resolution Write Readiness: Completed / Accepted - Sol verified
