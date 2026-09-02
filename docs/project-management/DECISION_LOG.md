@@ -1,5 +1,45 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R6-R1-FINAL - Result
+
+Status: Completed / TECHNICAL PASS - SOL PRODUCT QUALITY REVIEW REQUIRED
+Date: 2026-09-02
+
+The single formal isolated Full Pipeline execution used the exact baseline
+`6f351cc919f96a5da49a7a1010f84d2a8f6f3ae0`, official DeepSeek
+`deepseek-v4-flash`, the frozen PDF, Local Docling 2.116.0, and a fresh
+Schema 0.3 / Storage 1 Knowledge Base. The PDF matched the frozen SHA256
+`998703cef102300518bb2edcbcc3e9bc26fa374f157b0714f3986c5028d78d63` and
+3,209,114 bytes. Docling matched 103 pages, 1,523 chunks, 154 sections,
+45 tables, 178 images, and 97,784 normalized characters. All 18 batches
+completed with exact coverage of all 1,523 chunks.
+
+Terminal extraction counts were 559 Entity, 670 Relation, and 320 Claim;
+559/652/320 candidates were accepted, and 18 Relations were isolated as
+`invalid_semantics`. Batches 0001, 0003, and 0010 each used one bounded C9
+retry, with actual attempt evidence attributing every retry to
+`invalid_model_output` / `completion_failure`. No partial-candidate rejection
+triggered a retry, no third attempt occurred, and rejected candidates did not
+leak downstream. Consolidation merged 78 duplicates, reducing 1,531 to 1,453.
+
+Reference Resolution observed 0 existing, 1,387 new, 0 ambiguous, and 66
+invalid references. C14 observed zero reconciliation groups, candidates, and
+calls. ChangeSet validation passed; Writer executed exactly once, creating one
+Source and 1,302 Knowledge objects and advancing revision 0 to 1. Replay
+completed at revision 1 with zero model calls, zero Writer invocations, and no
+mutation. Final Knowledge Base reload/full validation passed with 497 Entity,
+526 Relation, 279 Claim, one Source, and one RawRef. Provenance was coherent
+for all 279 checked Claims, with zero orphans and zero unresolved evidence
+references; dangling Relations were zero. Manual semantic quality review is
+pending Sol.
+
+Evidence:
+`tests/knowledge/product-validation/evidence/c004-r9-r6-r1-final-full-pipeline.json`
+SHA256 `6C11CFE5304CC22E251D749B1E469B7BFBDE853125CE32D8C50B7F8C889ED342`.
+The prior R9-R6 setup-failure evidence remains immutable. C18 remains
+Completed / Accepted - Sol verified. This is a technical PASS, not product
+acceptance; Stage C remains In Progress / not accepted pending Sol review.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R6-FINAL - Result
 
 Status: Completed / INVALID TEST SETUP / SOL REVIEW REQUIRED

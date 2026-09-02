@@ -14,6 +14,7 @@
 
 ## Current governance state
 
+- C4-R9-R6-R1 Product Validation: Completed / TECHNICAL PASS - SOL PRODUCT QUALITY REVIEW REQUIRED
 - C4-R9-R6 Product Validation: Completed / INVALID TEST SETUP / SOL REVIEW REQUIRED
 - C18 R9 Observer Retry Attribution: Completed / Accepted - Sol verified
 - C4-R9-R5 Product Validation: Completed / FAIL - R9 Observer Retry-Cause Attribution Defect - Sol verified
@@ -64,7 +65,15 @@
 - S3: Completed / INVALID TEST SETUP - Parent Environment Credential Override - Sol verified
 - Stage C: In Progress / not accepted
 - C4-R9-R3: Completed / FAIL - Deterministic Post-Resolution Write-Projection Boundary Defect - Sol verified
-- Stage C remains In Progress / not accepted; R9-R5 remains NOT AUTHORIZED
+- Stage C remains In Progress / not accepted; R9-R6-R1 awaits Sol product-quality review
+
+R9-R6-R1 completed the single authorized isolated real Full Pipeline execution
+from the exact Commit A baseline `6f351cc919f96a5da49a7a1010f84d2a8f6f3ae0`.
+All 18 batches completed, C18 retry attribution passed, C14 observed zero
+reconciliation calls, ChangeSet validation passed, Writer committed once, and
+replay plus final Knowledge Base reload were idempotent and mutation-free.
+The technical result is a PASS, but Sol product-quality review is still
+required; this does not close Stage C.
 
 C15-R2 closes the remaining C15-R1 evidence-preservation defect. The single
 authorized R9-R3 real run then reached the C14 boundary but failed during

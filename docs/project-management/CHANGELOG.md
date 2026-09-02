@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R6-R1-FINAL
+
+- Executed the single formal isolated real Knowledge v0.3 Full Pipeline run
+  from exact baseline `6f351cc919f96a5da49a7a1010f84d2a8f6f3ae0` using
+  official DeepSeek `deepseek-v4-flash`, the frozen PDF, Local Docling 2.116.0,
+  and a fresh Schema 0.3 / Storage 1 Knowledge Base.
+- All 18 batches completed with exact 1,523/1,523 chunk coverage. Terminal
+  candidates were 559 Entity, 670 Relation, and 320 Claim; 559/652/320 were
+  accepted, with 18 invalid semantic Relation candidates isolated.
+- Batches 0001, 0003, and 0010 each used one C9 retry attributed to
+  `invalid_model_output` / `completion_failure`; no partial-candidate retry,
+  third attempt, downstream leakage, or semantic coercion occurred.
+- C14 observed zero reconciliation groups/candidates/calls. ChangeSet
+  validation passed; Writer ran once, created one Source and 1,302 Knowledge
+  objects, and advanced revision 0 to 1. Replay made zero calls and no
+  mutation; final reload/full validation and provenance passed.
+- Evidence:
+  `tests/knowledge/product-validation/evidence/c004-r9-r6-r1-final-full-pipeline.json`
+  with SHA256
+  `6C11CFE5304CC22E251D749B1E469B7BFBDE853125CE32D8C50B7F8C889ED342`.
+- Result: Completed / TECHNICAL PASS - SOL PRODUCT QUALITY REVIEW REQUIRED.
+  Stage C remains In Progress / not accepted.
+
 ## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R6-FINAL
 
 - Performed the single authorized R9-R6 launcher attempt from the exact C18
