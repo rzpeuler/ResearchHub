@@ -1,0 +1,23 @@
+{
+  "taskId": "KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015",
+  "historicalRunEvidence": "tests/knowledge/product-validation/evidence/c004-r9-r2-final-full-pipeline.json",
+  "historicalRunCommit": "835bdafd68473f9a83ff2ce8635a88e31932f0b2",
+  "postRunClarificationCommit": "def4b01622bcd6b2b2307ee54e171a7f7a0eebeb",
+  "originalEvidencePreserved": true,
+  "solClassification": "Completed / FAIL - Extraction Output Completion Boundary Defect - Sol verified",
+  "factualBasis": {
+    "upstreamRuntimeError": false,
+    "finishReason": "max-tokens",
+    "maxTokens": 65536,
+    "textDeltaCount": 65536,
+    "identicalHistoricalBatchFinishReason": "stop",
+    "identicalHistoricalBatchTextDeltaCount": 9884,
+    "referenceResolutionReached": false,
+    "c14FreshKnowledgeBaseBoundaryProvenByR9R2": false
+  },
+  "scope": {
+    "reportTextIncluded": false,
+    "modelOutputIncluded": false,
+    "credentialsIncluded": false
+  }
+}

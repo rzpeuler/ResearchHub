@@ -1,22 +1,41 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015 - Result
+
+Status: Completed / SOL VERIFICATION REQUIRED
+Date: 2026-09-02
+
+C15 corrected the DSH Knowledge Curation Model Adapter's explicit
+`finish_reason=max-tokens` boundary to raise `KnowledgeCurationError` with
+code `invalid_model_output`, discard the accumulated partial output, and use
+the existing single bounded C9 retry. Other finish reasons and transport
+errors retain their existing behavior. The R9 harness now records
+`reconciliationBoundary.status=not_reached` before Reference Resolution and
+uses nullable resolution counts in that state. No real LLM, DeepSeek, or
+R9-R3 execution occurred.
+
+The historical R9-R2 run is independently adjudicated as `Completed / FAIL -
+Extraction Output Completion Boundary Defect - Sol verified`; its original
+evidence was not rewritten by C15. C4-R9-R3 remains not authorized. Stage C
+remains In Progress / not accepted.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL - Result
 
-Status: Completed / BLOCKED - EXTERNAL SERVICE - SOL REVIEW REQUIRED
+Status: Completed / FAIL - Extraction Output Completion Boundary Defect - Sol verified
 Date: 2026-09-02
 
 The single authorized R9-R2 process ran from Commit A
 `76393c80790233139211a37089159d02ed288314`. Runtime, exact PDF, Docling,
-fresh-KB initialization, and the C14 fresh-KB boundary all passed with zero
-existing_ref candidates and zero reconciliation calls. The Provider completed
-understandReport and extraction batches 0001 and 0003, then returned
-`finish_reason=max-tokens` for batch-0004 at `maxTokens=65536`; extraction did
-not complete, so consolidation, Writer, and replay were not reached. This is
-classified as an external/provider block with bounded evidence, not a product
-semantic correction. Evidence:
+fresh-KB initialization passed. The Provider completed understandReport and
+extraction batches 0001 and 0003, then returned `finish_reason=max-tokens`
+for batch-0004 at `maxTokens=65536`; extraction did not complete, so
+Reference Resolution, consolidation, Writer, and replay were not reached.
+This is an output-completion product boundary defect, not an external-service
+outage. The original evidence:
 `tests/knowledge/product-validation/evidence/c004-r9-r2-final-full-pipeline.json`.
-Stage C remains In Progress / Awaiting C4-R9-R2 Sol Verification and is not
-accepted.
+Derived adjudication:
+`tests/knowledge/product-validation/evidence/c004-r9-r2-sol-adjudication.json`.
+Stage C remains In Progress and is not accepted.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL - Authorization
 

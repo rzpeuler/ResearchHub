@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import type { GenerateOptions } from "@deepseek-ai/dsh-llm";
 import { FullValidationObservingRuntime } from "../../../tools/knowledge-product-validation/full-validation-observing-runtime.ts";
-import { c14FreshKbReconciliationBoundaryPasses, evaluatePrimaryCompletionGate } from "../../../tools/knowledge-product-validation/run-v03-r9-final-validation.ts";
+import { buildReconciliationBoundary, c14FreshKbReconciliationBoundaryPasses, classifyBlockedStatusFromUpstreamError, evaluatePrimaryCompletionGate } from "../../../tools/knowledge-product-validation/run-v03-r9-final-validation.ts";
 
 test("R9 full-validation observer is passive and preserves the upstream signal", async () => {
   const source = await readFile(new URL("../../../tools/knowledge-product-validation/full-validation-observing-runtime.ts", import.meta.url), "utf8");
@@ -61,12 +62,26 @@ test("R9 blocked-result diagnosis follows independent frozen facts before succes
   assert.equal(gate, "blocked");
 });
 
-test("R9-R2 C14 fresh-KB boundary requires zero existing candidates and reconciliation calls", () => {
-  const clean = { existingRefCandidates: 0, reconciliationGroups: 0, reconciliationCandidates: 0, reconciliationLogicalCalls: 0, reconciliationPhysicalCalls: 0 };
+test("R9 boundary records not_reached before Reference Resolution", () => {
+  const boundary = buildReconciliationBoundary({ status: "blocked", referenceResolution: { existing_ref: 0, new_object_key: 0, ambiguous: 0, invalid: 0 }, reconciliation: { groups: 0 } }, 0, 0);
+  assert.deepEqual(boundary, { status: "not_reached", existingRefCandidates: null, newObjectKeyCandidates: null, ambiguousCandidates: null, invalidCandidates: null, reconciliationGroups: null, logicalCalls: 0, physicalCalls: 0 });
+});
+
+test("R9 C14 boundary is passed only after a reached zero-call resolution", () => {
+  const clean = { existingRefCandidates: 0, reconciliationGroups: 0, logicalCalls: 0, physicalCalls: 0 };
   assert.equal(c14FreshKbReconciliationBoundaryPasses(clean), true);
   assert.equal(c14FreshKbReconciliationBoundaryPasses({ ...clean, existingRefCandidates: 1 }), false);
-  assert.equal(c14FreshKbReconciliationBoundaryPasses({ ...clean, reconciliationLogicalCalls: 1 }), false);
-  assert.equal(c14FreshKbReconciliationBoundaryPasses({ ...clean, reconciliationPhysicalCalls: 1 }), false);
+  assert.equal(c14FreshKbReconciliationBoundaryPasses({ ...clean, logicalCalls: 1 }), false);
+  assert.equal(c14FreshKbReconciliationBoundaryPasses({ ...clean, physicalCalls: 1 }), false);
+  const reached = buildReconciliationBoundary({ status: "completed", referenceResolution: { existing_ref: 0, new_object_key: 4, ambiguous: 1, invalid: 0 }, reconciliation: { groups: 0 } }, 0, 0);
+  assert.equal(reached.status, "reached_and_passed");
+  assert.equal(reached.newObjectKeyCandidates, 4);
+  assert.equal(reached.ambiguousCandidates, 1);
+});
+
+test("R9 blocked classification reserves external status for upstream errors", () => {
+  assert.equal(classifyBlockedStatusFromUpstreamError(false), "FAIL / SOL REVIEW REQUIRED");
+  assert.equal(classifyBlockedStatusFromUpstreamError(true), "BLOCKED / EXTERNAL SERVICE - SOL REVIEW REQUIRED");
 });
 
 test("R9-R2 launcher requires an explicit Commit A baseline and pins fresh-run identity", async () => {
@@ -75,4 +90,14 @@ test("R9-R2 launcher requires an explicit Commit A baseline and pins fresh-run i
   assert.match(source, /KNOWLEDGE-V0\.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL/);
   assert.match(source, /kb-product-validation-c004-r9-r2-final/);
   assert.match(source, /RESEARCHHUB_EXPECT_ZERO_RECONCILIATION/);
+});
+
+test("C15 preserves the historical R9-R2 evidence and uses derived adjudication", async () => {
+  const historicalPath = "tests/knowledge/product-validation/evidence/c004-r9-r2-final-full-pipeline.json";
+  const current = await readFile(new URL(`../../../${historicalPath}`, import.meta.url), "utf8");
+  const committed = execFileSync("git", ["show", "def4b01622bcd6b2b2307ee54e171a7f7a0eebeb:" + historicalPath], { encoding: "utf8" });
+  assert.equal(current, committed);
+  const adjudication = await readFile(new URL("../../../tests/knowledge/product-validation/evidence/c004-r9-r2-sol-adjudication.json", import.meta.url), "utf8");
+  assert.match(adjudication, /originalEvidencePreserved/);
+  assert.match(adjudication, /Extraction Output Completion Boundary Defect/);
 });

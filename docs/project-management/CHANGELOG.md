@@ -1,18 +1,31 @@
 # Changelog
 
+## 2026-09-02 - KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015
+
+- Corrected explicit `finish_reason=max-tokens` handling to emit
+  `invalid_model_output`, discard partial output, and reuse the existing
+  bounded C9 retry without increasing `maxTokens` or changing batching.
+- Corrected R9 evidence ordering so extraction-stage blocks record
+  `reconciliationBoundary.status=not_reached` and never claim C14 boundary
+  verification before Reference Resolution.
+- Added focused adapter, C9, R9 boundary, classification, transport, and
+  historical-evidence immutability tests, plus derived R9-R2 Sol adjudication
+  evidence. No real LLM/DeepSeek/R9-R3 execution occurred.
+- C15 is Completed / SOL VERIFICATION REQUIRED; Stage C remains In Progress
+  and C4-R9-R3 is not authorized.
+
 ## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL - Result
 
 - The one authorized real run completed with
-  `BLOCKED / EXTERNAL SERVICE - SOL REVIEW REQUIRED` after the Provider
-  returned `finish_reason=max-tokens` for extraction batch-0004 at the frozen
-  65536-token limit.
-- Runtime, exact PDF, Docling, fresh-KB setup, and the C14 zero-reconciliation
-  boundary passed; no product semantic changes, Writer mutation, or replay
-  were performed after the block.
+  `FAIL - Extraction Output Completion Boundary Defect - Sol verified` after
+  the Provider returned `finish_reason=max-tokens` for extraction batch-0004
+  at the frozen 65536-token limit.
+- Reference Resolution was not reached, so the C14 fresh-KB boundary was not
+  proven by R9-R2. The original evidence remains unchanged; the derived Sol
+  adjudication is recorded separately.
 - Durable evidence:
   `tests/knowledge/product-validation/evidence/c004-r9-r2-final-full-pipeline.json`.
-- Stage C remains In Progress / Awaiting C4-R9-R2 Sol Verification; no
-  acceptance is predeclared.
+- Stage C remains In Progress / not accepted; C4-R9-R3 is not authorized.
 
 ## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL
 

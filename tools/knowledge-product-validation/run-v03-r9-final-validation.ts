@@ -35,6 +35,17 @@ export const R9_EXPECT_ZERO_RECONCILIATION = process.env.RESEARCHHUB_EXPECT_ZERO
 type JsonRecord = Record<string, unknown>;
 type CandidateCounts = { entity: number; relation: number; claim: number };
 type FinalStatus = "TECHNICAL PASS / SOL PRODUCT QUALITY REVIEW REQUIRED" | "FAIL / SOL REVIEW REQUIRED" | "INVALID TEST SETUP / SOL REVIEW REQUIRED" | "BLOCKED / EXTERNAL SERVICE - SOL REVIEW REQUIRED" | "TIMEOUT / SOL REVIEW REQUIRED";
+export type ReconciliationBoundaryStatus = "not_reached" | "reached_and_passed" | "reached_and_failed";
+export interface ReconciliationBoundaryEvidence {
+  status: ReconciliationBoundaryStatus;
+  existingRefCandidates: number | null;
+  newObjectKeyCandidates: number | null;
+  ambiguousCandidates: number | null;
+  invalidCandidates: number | null;
+  reconciliationGroups: number | null;
+  logicalCalls: number;
+  physicalCalls: number;
+}
 type R9ModelCall = JsonRecord & { operation: string; batchId?: string; groupId?: string; physicalAttempt: number; delegatedToProvider: boolean };
 type R9Checkpoint = (phase: string, patch?: JsonRecord) => Promise<void>;
 
@@ -246,15 +257,18 @@ export async function main(): Promise<void> {
       : [];
     for (const batch of extractionBatches)
       await checkpoint(`batch_${String(batch.batchId)}_validation_observed`, { batchValidation: batch });
-    const reconciliationEligibility = primary.referenceResolution;
-    const reconciliationBoundary = { existingRefCandidates: reconciliationEligibility.existing_ref, newObjectKeyCandidates: reconciliationEligibility.new_object_key, ambiguousCandidates: reconciliationEligibility.ambiguous, invalidCandidates: reconciliationEligibility.invalid, reconciliationGroups: primary.reconciliation.groups, reconciliationCandidates: primary.reconciliation.candidates, reconciliationLogicalCalls: primary.modelCalls.filter((call) => call.operation === "reconcileKnowledge").length, reconciliationPhysicalCalls: model.calls.filter((call) => call.operation === "reconcileKnowledge" && call.delegatedToProvider).length };
-    await checkpoint("reconciliation_boundary_verified", { reconciliationEligibility, reconciliationBoundary });
-    if (R9_EXPECT_ZERO_RECONCILIATION && !c14FreshKbReconciliationBoundaryPasses(reconciliationBoundary))
-      throw new ValidationFailure("FAIL / SOL REVIEW REQUIRED", "C14 fresh-KB reconciliation boundary invariant failed");
     const primaryGate = evaluatePrimaryCompletionGate(primary, evidence.docling as JsonRecord, planned);
     if (primaryGate === "docling_invalid") throw new ValidationFailure("FAIL / SOL REVIEW REQUIRED", "Docling metrics differ from frozen baseline");
     if (primaryGate === "batch_plan_invalid") throw new ValidationFailure("FAIL / SOL REVIEW REQUIRED", "deterministic batch plan differs from frozen baseline");
-    if (primaryGate === "blocked") throw new ValidationFailure(classifyBlockedStatus(primary, model, observer), blockedFailureMessage(primary, model, observer));
+    if (primaryGate === "blocked") {
+      const reconciliationBoundary = buildReconciliationBoundary(primary, primary.modelCalls.filter((call) => call.operation === "reconcileKnowledge").length, model.calls.filter((call) => call.operation === "reconcileKnowledge" && call.delegatedToProvider).length);
+      await checkpoint("reconciliation_boundary_not_reached", { reconciliationEligibility: null, reconciliationBoundary });
+      throw new ValidationFailure(classifyBlockedStatus(primary, model, observer), blockedFailureMessage(primary, model, observer));
+    }
+    const reconciliationBoundary = buildReconciliationBoundary(primary, primary.modelCalls.filter((call) => call.operation === "reconcileKnowledge").length, model.calls.filter((call) => call.operation === "reconcileKnowledge" && call.delegatedToProvider).length);
+    await checkpoint("reconciliation_boundary_verified", { reconciliationEligibility: primary.referenceResolution, reconciliationBoundary });
+    if (R9_EXPECT_ZERO_RECONCILIATION && !c14FreshKbReconciliationBoundaryPasses(reconciliationBoundary))
+      throw new ValidationFailure("FAIL / SOL REVIEW REQUIRED", "C14 fresh-KB reconciliation boundary invariant failed");
     const primaryLog = await readIngestionLog(root, primary.workflowRunId);
     ((evidence.primary as JsonRecord).modelAccounting as JsonRecord).changeSetIngestionContextModelCalls = primaryLog.modelCalls;
     ((evidence.primary as JsonRecord).modelAccounting as JsonRecord).changeSetMatches = primaryLog.modelCalls === ((evidence.primary as JsonRecord).modelAccounting as JsonRecord).physicalProviderCalls;
@@ -328,8 +342,16 @@ function sanitizeDoclingPreflight(value: JsonRecord): JsonRecord { return { stat
 function parserMatchesExpected(value: JsonRecord): boolean { return value.pageCount === 103 && value.chunks === 1_523 && value.uniqueChunkIds === 1_523 && value.emptyChunks === 0 && value.sections === 154 && value.tables === 45 && value.images === 178 && value.normalizedCharacters === 97_784; }
 function batchPlanMatchesExpected(value: JsonRecord): boolean { return value.planned === R9_EXPECTED_BATCH_COUNT && value.inputChunks === 1_523 && value.inputUniqueChunks === 1_523 && value.plannedCoveredChunks === 1_523 && value.plannedCoveredUniqueChunks === 1_523 && value.omissions === 0 && value.duplicateCoverage === 0 && value.complete === true; }
 export type PrimaryCompletionGate = "docling_invalid" | "batch_plan_invalid" | "blocked" | "success_invariants_applicable";
-export function c14FreshKbReconciliationBoundaryPasses(boundary: { existingRefCandidates: number; reconciliationGroups: number; reconciliationCandidates: number; reconciliationLogicalCalls: number; reconciliationPhysicalCalls: number }): boolean {
-  return boundary.existingRefCandidates === 0 && boundary.reconciliationGroups === 0 && boundary.reconciliationCandidates === 0 && boundary.reconciliationLogicalCalls === 0 && boundary.reconciliationPhysicalCalls === 0;
+export function buildReconciliationBoundary(primary: { status: string; referenceResolution: { existing_ref: number; new_object_key: number; ambiguous: number; invalid: number }; reconciliation: { groups: number }; }, logicalCalls: number, physicalCalls: number): ReconciliationBoundaryEvidence {
+  if (primary.status === "blocked") {
+    return { status: "not_reached", existingRefCandidates: null, newObjectKeyCandidates: null, ambiguousCandidates: null, invalidCandidates: null, reconciliationGroups: null, logicalCalls, physicalCalls };
+  }
+  const boundary = { status: "reached_and_failed" as ReconciliationBoundaryStatus, existingRefCandidates: primary.referenceResolution.existing_ref, newObjectKeyCandidates: primary.referenceResolution.new_object_key, ambiguousCandidates: primary.referenceResolution.ambiguous, invalidCandidates: primary.referenceResolution.invalid, reconciliationGroups: primary.reconciliation.groups, logicalCalls, physicalCalls };
+  boundary.status = c14FreshKbReconciliationBoundaryPasses(boundary) ? "reached_and_passed" : "reached_and_failed";
+  return boundary;
+}
+export function c14FreshKbReconciliationBoundaryPasses(boundary: Pick<ReconciliationBoundaryEvidence, "existingRefCandidates" | "reconciliationGroups" | "logicalCalls" | "physicalCalls">): boolean {
+  return boundary.existingRefCandidates === 0 && boundary.reconciliationGroups === 0 && boundary.logicalCalls === 0 && boundary.physicalCalls === 0;
 }
 export function evaluatePrimaryCompletionGate(primary: Pick<ResearchReportKnowledgeIngestionResult, "status" | "batches">, docling: JsonRecord, planned: JsonRecord): PrimaryCompletionGate {
   if (!parserMatchesExpected(docling)) return "docling_invalid";
@@ -340,8 +362,9 @@ export function evaluatePrimaryCompletionGate(primary: Pick<ResearchReportKnowle
 }
 function classifyBlockedStatus(primary: ResearchReportKnowledgeIngestionResult, model: R9RecordingModel, runtime: FullValidationObservingRuntime): FinalStatus {
   const upstreamError = runtime.calls.some((call) => typeof call.upstreamError === "string") || model.calls.some((call) => isRecord(call.runtime) && typeof call.runtime.upstreamError === "string");
-  return upstreamError ? "BLOCKED / EXTERNAL SERVICE - SOL REVIEW REQUIRED" : "FAIL / SOL REVIEW REQUIRED";
+  return classifyBlockedStatusFromUpstreamError(upstreamError);
 }
+export function classifyBlockedStatusFromUpstreamError(upstreamError: boolean): FinalStatus { return upstreamError ? "BLOCKED / EXTERNAL SERVICE - SOL REVIEW REQUIRED" : "FAIL / SOL REVIEW REQUIRED"; }
 function blockedFailureMessage(primary: ResearchReportKnowledgeIngestionResult, model: R9RecordingModel, runtime: FullValidationObservingRuntime): string {
   const upstreamError = runtime.calls.some((call) => typeof call.upstreamError === "string") || model.calls.some((call) => isRecord(call.runtime) && typeof call.runtime.upstreamError === "string");
   return upstreamError ? `primary workflow blocked at ${primary.failureStage ?? "unknown stage"}; upstream provider/runtime error observed` : `primary workflow blocked at ${primary.failureStage ?? "unknown stage"}; no upstream provider/runtime error observed`;
@@ -407,7 +430,7 @@ function primaryEvidence(result: ResearchReportKnowledgeIngestionResult, model: 
     consolidation: result.consolidation,
     referenceResolution: result.referenceResolution,
     reconciliation: { ...result.reconciliation, exactlyOnce: Object.values(result.reconciliation.decisions).reduce((sum, count) => sum + count, 0) === result.reconciliation.candidates },
-    reconciliationEligibility: result.referenceResolution,
+    reconciliationEligibility: result.status === "blocked" ? null : result.referenceResolution,
     schemaGaps: schemaGapEvidence(result),
     reviewIsolation: { roots: result.reviewItems.filter((item) => item.candidateId && item.category !== "dependency_review").length, dependencyReviews: result.reviewItems.filter((item) => item.category === "dependency_review").length, total: result.reviewItems.length },
     changeSet: { planned: result.plannedChanges, committed: result.committedChanges },

@@ -1,15 +1,23 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015
+
+C15 is `Completed / SOL VERIFICATION REQUIRED`. It maps the explicit
+`max-tokens` completion condition to `invalid_model_output`, discards the
+partial output, and reuses the existing bounded C9 retry. R9 evidence now
+records `not_reached` before Reference Resolution and does not infer C14
+success from blocked-result defaults. No real LLM, DeepSeek, or R9-R3 run was
+performed. C4-R9-R3 remains not authorized.
+
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL - Result
 
-C4-R9-R2 completed its single authorized real run with canonical result
-`BLOCKED / EXTERNAL SERVICE - SOL REVIEW REQUIRED`. The exact runtime, PDF,
-Docling baseline, fresh KB, and zero-reconciliation boundary were verified;
-the Provider returned `max-tokens` during extraction batch-0004, before
-extraction completion, consolidation, Writer, or replay. Durable evidence is
-at `tests/knowledge/product-validation/evidence/c004-r9-r2-final-full-pipeline.json`.
-No product correction was made. Stage C remains In Progress / Awaiting
-C4-R9-R2 Sol Verification and is not accepted.
+C4-R9-R2 is `Completed / FAIL - Extraction Output Completion Boundary Defect -
+Sol verified`. Its original single real run received `max-tokens` during
+extraction batch-0004 before extraction completion. Reference Resolution was
+not reached, so the run did not prove the C14 fresh-KB boundary. The original
+evidence remains historical; the derived adjudication is at
+`tests/knowledge/product-validation/evidence/c004-r9-r2-sol-adjudication.json`.
+Stage C remains In Progress / not accepted.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL
 

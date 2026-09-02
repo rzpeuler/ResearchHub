@@ -1,5 +1,6 @@
 import { createUserMessage, ReasoningEffortId, type GenerateOptions } from '@deepseek-ai/dsh-llm'
 import type { KnowledgeCurationModel, KnowledgeCurationModelRequest } from '../../packages/skills/knowledge-curation/index.ts'
+import { KnowledgeCurationError } from '../../packages/skills/knowledge-curation/errors.ts'
 import type { ActiveCurationOperation } from '../../packages/skills/knowledge-curation/types.ts'
 import { LlmSkillAdapterError } from './errors.ts'
 import type { HarnessLlmRuntime } from './types.ts'
@@ -52,6 +53,10 @@ export class KnowledgeCurationModelAdapter implements KnowledgeCurationModel {
       if (chunk.type === 'text-delta') output += chunk.text
       if (chunk.type === 'finish') {
         finished = true
+        if (chunk.reason.kind === 'max-tokens') {
+          output = ''
+          throw new KnowledgeCurationError('invalid_model_output', 'Knowledge Curation output exceeded the configured token budget before a complete structured result was produced')
+        }
         if (chunk.reason.kind !== 'stop') throw new LlmSkillAdapterError(`Knowledge Curation did not finish normally: ${chunk.reason.kind}`)
       }
     }

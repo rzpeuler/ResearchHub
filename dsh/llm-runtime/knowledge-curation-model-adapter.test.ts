@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { STRUCTURED_OUTPUT_CONTRACTS } from '../../packages/skills/knowledge-curation/contracts.ts'
+import { KnowledgeCurationError } from '../../packages/skills/knowledge-curation/errors.ts'
+import { KnowledgeCurationSkill } from '../../packages/skills/knowledge-curation/skill.ts'
 import { buildCurationSchemaContext } from '../../packages/skills/knowledge-curation/schema-context.ts'
 import type { ActiveCurationOperation } from '../../packages/skills/knowledge-curation/types.ts'
 import { KnowledgeCurationModelAdapter } from './knowledge-curation-model-adapter.ts'
@@ -71,4 +73,42 @@ test('malformed JSON remains rejected at the transport boundary', async () => {
   const fixture = fixtureLlm('not-json')
   const adapter = new KnowledgeCurationModelAdapter({ llm: fixture.llm, provider: 'fixture-provider', model: 'fixture-model' })
   await assert.rejects(() => adapter.invoke(requestFor('understandReport')), /invalid JSON/)
+})
+
+test('max-tokens is invalid_model_output and never parses partial output', async () => {
+  let parsed = false
+  const llm = {
+    async *stream(): AsyncIterable<StreamChunk> {
+      yield { type: 'text-delta', index: 0, text: '{"partial-output-secret":true}' }
+      yield { type: 'finish', reason: { kind: 'max-tokens' } }
+      parsed = true
+    },
+  }
+  const adapter = new KnowledgeCurationModelAdapter({ llm, provider: 'fixture-provider', model: 'fixture-model' })
+  await assert.rejects(() => adapter.invoke(requestFor('extractKnowledge')), (error: unknown) => {
+    return error instanceof KnowledgeCurationError && error.code === 'invalid_model_output' && /token budget/.test(error.message) && !error.message.includes('partial-output-secret')
+  })
+  assert.equal(parsed, false)
+})
+
+test('other finish reasons retain the existing adapter error behavior', async () => {
+  const llm = {
+    async *stream(): AsyncIterable<StreamChunk> {
+      yield { type: 'text-delta', index: 0, text: '{"ok":true}' }
+      yield { type: 'finish', reason: { kind: 'tool-calls' } }
+    },
+  }
+  const adapter = new KnowledgeCurationModelAdapter({ llm, provider: 'fixture-provider', model: 'fixture-model' })
+  await assert.rejects(() => adapter.invoke(requestFor('extractKnowledge')), /did not finish normally: tool-calls/)
+})
+
+test('transport stream errors remain model_error at the Skill boundary', async () => {
+  const llm = {
+    async *stream(): AsyncIterable<StreamChunk> {
+      throw new Error('transport sentinel')
+    },
+  }
+  const adapter = new KnowledgeCurationModelAdapter({ llm, provider: 'fixture-provider', model: 'fixture-model' })
+  const skill = new KnowledgeCurationSkill({ model: adapter })
+  await assert.rejects(() => skill.understandReport({} as never), (error: unknown) => error instanceof KnowledgeCurationError && error.code === 'model_error' && /transport sentinel/.test(error.message))
 })

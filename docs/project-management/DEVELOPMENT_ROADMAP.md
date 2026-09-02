@@ -48,9 +48,11 @@
 - C4-R9 Product Validation: Completed / INVALID TEST SETUP - Smoke Observer Timeout - Sol verified
 - C4-R9-R1 Product Validation: Completed / FAIL - SOL REVIEW REQUIRED
 - C14 Reconciliation Boundary Correction: Accepted - Sol verified
-- C4-R9-R2 Product Validation: Completed / BLOCKED - EXTERNAL SERVICE - SOL REVIEW REQUIRED
+- C4-R9-R2 Product Validation: Completed / FAIL - Extraction Output Completion Boundary Defect - Sol verified
+- C15 Extraction Completion Resilience: Completed / SOL VERIFICATION REQUIRED
 - S3: Completed / INVALID TEST SETUP - Parent Environment Credential Override - Sol verified
-- Stage C: In Progress / Awaiting C4-R9-R2 Sol Verification / not accepted
+- Stage C: In Progress / not accepted
+- C4-R9-R3: NOT AUTHORIZED
 
 The C2-R2 atomic cutover and C2-R2-R1 correctness closure are implemented and
 locally verified. Curation and Report Ingestion now share the frozen v0.3
