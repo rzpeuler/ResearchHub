@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R5-FINAL
+
+- Executed the single authorized real Full Pipeline validation after C17 from
+  baseline `37b4467b32da2ab6e30815a4bcb227b75d94fc67`.
+- Provider, frozen PDF, Docling, fresh KB, 18-batch extraction, C14, final
+  ChangeSet validation, Writer, and revision advancement were observed in the
+  primary Workflow result.
+- C17 recorded 2 Claim `invalid_semantics` candidate-local rejections with no
+  rejected-candidate leakage or empty safe `subjectRefs`.
+- The R9 observer classified the run `FAIL / SOL REVIEW REQUIRED` at
+  `extraction_complete` because a partial-rejection batch also had a bounded
+  retry. The retry recorded the natural max-tokens completion path; no third
+  attempt occurred. Final KB reload, provenance, and replay were not recorded
+  after the observer stopped.
+- Evidence: `tests/knowledge/product-validation/evidence/c004-r9-r5-final-full-pipeline.json`
+  with SHA256 `39DAD2CC2BFC3FC9EEA55896821C6EB72E5DDBB52FC5E879CC67A4A5B7BDB4A7`.
+- C4-R9-R5 status: Completed / FAIL - SOL REVIEW REQUIRED. Stage C remains In
+  Progress / not accepted.
+
 ## 2026-09-02 - KNOWLEDGE-V0.3-CLAIM-SUBJECT-INVARIANT-C-017
 
 - Closed the Claim subject non-empty invariant at the output Contract,
@@ -13,8 +32,9 @@
 - Added deterministic coverage for Contract cardinality, candidate isolation,
   C9 exhaustion, Resolution defense, Write Readiness exclusion, and valid
   single/multi-subject Claims.
-- C17 status: Completed / SOL VERIFICATION REQUIRED. Stage C remains In
-  Progress / not accepted and R9-R5 remains NOT AUTHORIZED.
+- C17 status: Completed / Accepted - Sol verified. Stage C remains In Progress /
+  not accepted and R9-R5 is recorded separately as Completed / FAIL - SOL
+  REVIEW REQUIRED.
 
 ## 2026-09-02 - KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R4-FINAL
 

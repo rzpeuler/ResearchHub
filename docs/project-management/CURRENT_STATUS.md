@@ -1,8 +1,27 @@
 # Current Status
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R5-FINAL
+
+R9-R5 is `Completed / FAIL - SOL REVIEW REQUIRED`. The single authorized
+real Full Pipeline run used the exact frozen PDF, Local Docling 2.116.0,
+official DeepSeek Flash, and a fresh Schema 0.3 / Storage 1 Knowledge Base.
+The primary Workflow completed with review, final ChangeSet validation passed,
+Writer executed once, revision advanced from 0 to 1, and 1,635 Knowledge
+objects were committed. C17 observed 2 candidate-local Claim
+`invalid_semantics` rejections with no downstream leakage or empty safe
+`subjectRefs`.
+
+The R9 observer then failed at `extraction_complete` because a partial
+candidate-rejection batch also had a bounded retry (`partial candidate
+rejection caused a retry`). The retry's recorded cause was the natural
+`invalid_model_output`/max-tokens completion path; no third attempt occurred.
+The observer stopped before recording final KB reload, provenance, and replay.
+Evidence: `tests/knowledge/product-validation/evidence/c004-r9-r5-final-full-pipeline.json`.
+Stage C remains In Progress / not accepted.
+
 ## KNOWLEDGE-V0.3-CLAIM-SUBJECT-INVARIANT-C-017
 
-C17 is `Completed / SOL VERIFICATION REQUIRED`. The Claim subject invariant is
+C17 is `Completed / Accepted - Sol verified`. The Claim subject invariant is
 now enforced at the structured-output contract, candidate-local validation,
 Reference Resolution, and Post-Resolution Write Readiness boundaries. Empty
 Claim candidates are rejected as `invalid_semantics` without discarding valid
@@ -13,7 +32,8 @@ authoritative final validator remain unchanged. Deterministic curation,
 ingestion, validation, infrastructure, product-validation, and typecheck
 regressions passed. `npm test` retains only the pre-existing external
 `PIPELINE-REAL-DATA-003` AkShare fetch failure. Stage C remains In Progress /
-not accepted and R9-R5 remains NOT AUTHORIZED.
+not accepted and R9-R5 is recorded separately as `Completed / FAIL - SOL REVIEW
+REQUIRED`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R4-FINAL
 
@@ -31,7 +51,7 @@ Evidence: `tests/knowledge/product-validation/evidence/c004-r9-r4-final-full-pip
 ## KNOWLEDGE-V0.3-POST-RESOLUTION-WRITE-READINESS-C-016
 
 C16 is `Completed / Accepted - Sol verified` as the engineering correction
-under test. R9-R4 still identified a residual Claim subject projection issue;
+under test. R9-R4 is recorded separately as a completed Claim subject gap;
 this does not change the preserved C4-R9-R3 classification.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R3-FINAL
@@ -73,7 +93,8 @@ reachability now comes from the Workflow's explicit runtime-neutral
 extraction-stage block is `not_reached`; any later validation, reconciliation,
 schema-gap, or Writer block retains `reached_and_passed` or
 `reached_and_failed`. No real LLM, DeepSeek, or R9-R3 run was performed.
-C4-R9-R3 remains not authorized.
+C4-R9-R3 is recorded separately as a completed deterministic
+post-resolution write-projection failure.
 
 ## KNOWLEDGE-V0.3-EXTRACTION-COMPLETION-RESILIENCE-C-015
 
@@ -82,7 +103,8 @@ C15 is `Completed / SOL VERIFICATION REQUIRED`. It maps the explicit
 partial output, and reuses the existing bounded C9 retry. R9 evidence now
 records `not_reached` before Reference Resolution and does not infer C14
 success from blocked-result defaults. No real LLM, DeepSeek, or R9-R3 run was
-performed. C4-R9-R3 remains not authorized.
+performed. C4-R9-R3 is recorded separately as a completed deterministic
+post-resolution write-projection failure.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R2-FINAL - Result
 

@@ -14,7 +14,8 @@
 
 ## Current governance state
 
-- C17 Claim Subject Invariant: Completed / SOL VERIFICATION REQUIRED
+- C4-R9-R5 Product Validation: Completed / FAIL - SOL REVIEW REQUIRED
+- C17 Claim Subject Invariant: Completed / Accepted - Sol verified
 - C4-R9-R4 Product Validation: Completed / FAIL - Claim Subject Non-Empty Contract Gap - Sol verified
 - C16 Post-Resolution Write Readiness: Completed / Accepted - Sol verified
 - C4-R9-R3 Product Validation: Completed / FAIL - Deterministic Post-Resolution Write-Projection Boundary Defect - Sol verified

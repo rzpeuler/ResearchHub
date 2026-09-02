@@ -1,8 +1,33 @@
 # Decision Log
 
+## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R5-FINAL - Result
+
+Status: Completed / FAIL - SOL REVIEW REQUIRED
+Date: 2026-09-02
+
+The single authorized real Full Pipeline run started from
+`37b4467b32da2ab6e30815a4bcb227b75d94fc67` and passed the Provider, PDF,
+Docling, fresh-KB, batching, and C14 gates. The primary Workflow completed
+with review: 723 Entity, 850 Relation, and 371 Claim candidates were accepted;
+1,749 candidates remained after consolidation; Reference Resolution observed
+0 `existing_ref`, 1,669 `new_object_key`, 0 ambiguous, and 80 invalid. C14
+reached and passed with zero reconciliation groups and zero reconciliation
+calls.
+
+C17 observed 2 Claim `invalid_semantics` rejections, valid candidates were
+retained, and no rejected candidate leaked downstream. The primary ChangeSet
+validation passed; Writer ran once, created one Source and 1,635 Knowledge
+objects, and advanced revision 0 to 1. The R9 observer classified the run as
+FAIL at `extraction_complete` because a partial-rejection batch also used a
+bounded retry. The recorded retry cause was natural max-tokens completion;
+there was no third attempt. Final KB reload, provenance, and replay were not
+recorded after the observer stopped. Evidence SHA256:
+`39DAD2CC2BFC3FC9EEA55896821C6EB72E5DDBB52FC5E879CC67A4A5B7BDB4A7`.
+No product code or historical evidence was modified after the run.
+
 ## KNOWLEDGE-V0.3-CLAIM-SUBJECT-INVARIANT-C-017 - Result
 
-Status: Completed / SOL VERIFICATION REQUIRED
+Status: Completed / Accepted - Sol verified
 Date: 2026-09-02
 
 C17 closes the Claim subject non-empty contract gap exposed by C4-R9-R4. The
@@ -18,10 +43,10 @@ length-preserving, Entity/Relation-resolving subject refs, and Canonical Claim
 projection has no subject fallback. The authoritative Schema 0.3 validator,
 Writer, C9, C13, C14, C15, and C16 relation behavior were not changed.
 
-Deterministic cases A-H and the required regression suites passed. No real LLM,
-DeepSeek, or R9-R5 run was performed. C4-R9-R4 remains `Completed / FAIL -
-Claim Subject Non-Empty Contract Gap - Sol verified`; Stage C remains In
-Progress / not accepted and R9-R5 remains NOT AUTHORIZED.
+Deterministic cases A-H and the required regression suites passed. C4-R9-R4
+remains `Completed / FAIL - Claim Subject Non-Empty Contract Gap - Sol
+verified`; Stage C remains In Progress / not accepted and R9-R5 is recorded
+separately as `Completed / FAIL - SOL REVIEW REQUIRED`.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R4-FINAL - Result
 
@@ -59,7 +84,8 @@ cardinality failures before ChangeSet construction. Existing dependency
 closure and final `validateChangeSet()` remain authoritative. Deterministic
 regression suites passed; no real LLM, DeepSeek, or R9-R4 run was performed.
 Implementation commit: `2597b9e`.
-Stage C remains In Progress / not accepted and R9-R4 remains NOT AUTHORIZED.
+Stage C remains In Progress / not accepted and R9-R4 is recorded separately as
+a completed Claim subject gap.
 
 ## KNOWLEDGE-V0.3-PRODUCT-VALIDATION-C-004-R9-R3-FINAL - Result
 
