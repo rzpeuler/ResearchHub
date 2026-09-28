@@ -10,7 +10,7 @@ const blockedField = /raw|quote|excerpt|body|content|local|absolute|file.?path|f
 function rec(value: unknown): RecordValue | undefined { return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as RecordValue : undefined }
 function str(value: unknown): string | undefined { return typeof value === 'string' && value.trim() ? value : undefined }
 function safeText(value: string): string | undefined {
-  if (/(?:^|[\s=(\["'])\/(?!\/)(?:[^\s/]+\/)*[^\s/]+/.test(value) || /(?:^|[\s=(])(?:[A-Za-z]:[\\/]|\\\\)/i.test(value)) return undefined
+  if (/(?:^|[^A-Za-z0-9+.-])file:/i.test(value) || /(?:^|[\s=(\["'])\/(?!\/)(?:[^\s/]+\/)*[^\s/]+/.test(value) || /(?:^|[\s=(])(?:[A-Za-z]:[\\/]|\\\\)/i.test(value)) return undefined
   return value
 }
 function safeUrl(value: unknown): string | undefined {

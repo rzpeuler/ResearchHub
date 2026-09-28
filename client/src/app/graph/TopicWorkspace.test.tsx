@@ -64,6 +64,24 @@ describe('TopicWorkspace', () => {
     expect(client.listTopicItems).not.toHaveBeenCalled()
   })
 
+  it('labels capped focus suggestions and byte-bounded pages while keeping pagination available', async () => {
+    const focusedSummary = { ...summary(), connected: { ...summary().connected, focusRefs: ['entity:industry-a'], focusRefsTotal: 65, focusRefsTruncated: true } }
+    const item = { ref: 'observation:metric-a', kind: 'observation', scope: 'connected', lifecycleStatus: 'active', label: 'HBM shipment index', fields: { observationType: 'metric' } }
+    const listTopicItems = vi.fn().mockResolvedValue(page('observation', [item], { scope: 'connected', focusRefs: ['entity:industry-a'], focusRefsTotal: 65, focusRefsTruncated: true, responseBounded: true, nextCursor: 'cursor-after-budget' }))
+    const client = { getTopicSummary: vi.fn().mockResolvedValue(focusedSummary), listTopicItems } as unknown as RuntimeClient
+    const props = workspaceProps(client)
+    const view = render(<TopicWorkspace {...props} section="observation" scope="connected" />)
+    expect(await screen.findByText('HBM shipment index')).toBeTruthy()
+    expect(screen.getByText(/focus suggestions capped: showing 1 of 65/)).toBeTruthy()
+    expect(screen.getByRole('status').textContent).toContain('shortened to fit the 1 MiB response limit')
+    const next = screen.getByRole('button', { name: 'Next' })
+    expect((next as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(next)
+    await waitFor(() => expect(listTopicItems).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: 'cursor-after-budget' })))
+    view.rerender(<TopicWorkspace {...props} section="overview" scope="direct" />)
+    expect(screen.getByRole('status').textContent).toContain('Connected focus suggestions are capped: showing 1 of 65')
+  })
+
   it('renders Source backlinks with the exact count and opens referenced items in Inspector selection', async () => {
     const source = { ref: 'source:filing-a', kind: 'source', scope: 'direct', lifecycleStatus: 'active', label: 'Issuer filing', fields: { provider: 'Issuer', rightsAccessScope: 'public', rightsProviderTermsKnown: true, rightsRedistributionAllowed: false, rightsRetentionAllowed: 'conditional', rightsAiProcessingAllowed: true, rightsDerivativeKnowledgeAllowed: false, rightsExpiresAt: '2027-01-01', rightsPolicyBasis: 'public filing', usagePolicyMode: 'personal_noncommercial_research', usagePolicyRetainRaw: false, usagePolicyAllowAiProcessing: true, usagePolicyAllowDerivedKnowledge: true, usagePolicyRedistributionAllowed: false, canonicalUrl: 'https://example.test/filing', referencedByRefs: ['claim:risk-a', 'observation:metric-a'], referencedByTotal: 5, referencedByTruncated: true } }
     const client = { getTopicSummary: vi.fn().mockResolvedValue(summary()), listTopicItems: vi.fn().mockResolvedValue(page('source', [source])) } as unknown as RuntimeClient
@@ -187,7 +205,7 @@ describe('TopicInspector', () => {
   it('redacts arbitrary Unix absolute paths in free text while retaining safe links and canonical refs', async () => {
     const getKnowledgeObject = vi.fn().mockImplementation((ref: string) => Promise.resolve(ref.startsWith('source:')
       ? { ref, kind: 'Source', object: { id: ref, title: 'Report /opt/private/report.pdf', publisher: 'Stored under /srv/research/restricted', canonicalUrl: 'https://example.test/public/report', rights: { accessScope: 'public', providerTermsKnown: true } } }
-      : { ref, kind: 'Claim', object: { id: ref, title: 'Path check', statement: 'See /usr/local/share and /System/Library/PrivateFrameworks; /var/lib/research.', subjectRefs: ['entity:usable'], sourceRefs: ['source:usable'] } }))
+      : { ref, kind: 'Claim', object: { id: ref, title: 'Path check', description: 'Local file URI: file:///Users/private/report.pdf;file:///C:/private/report.pdf.', statement: 'See /usr/local/share and /System/Library/PrivateFrameworks; /var/lib/research.', subjectRefs: ['entity:usable'], sourceRefs: ['source:usable'], provenance: [{ locator: 'file:///Users/private/evidence.pdf' }] } }))
     const onFocus = vi.fn()
     const client = { getKnowledgeObject } as unknown as RuntimeClient
     const view = render(<TopicInspector refValue="source:report" client={client} onFocus={onFocus} />)
@@ -195,7 +213,7 @@ describe('TopicInspector', () => {
     expect(screen.queryByText(/\/opt\/private|\/srv\/research/)).toBeNull()
     view.rerender(<TopicInspector refValue="claim:path-check" client={client} onFocus={onFocus} />)
     expect(await screen.findByRole('heading', { name: 'Path check' })).toBeTruthy()
-    expect(screen.queryByText(/\/usr\/local|\/System\/Library|\/var\/lib/)).toBeNull()
+    expect(screen.queryByText(/\/usr\/local|\/System\/Library|\/var\/lib|file:\/\//)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'entity:usable' }))
     expect(onFocus).toHaveBeenCalledWith('entity:usable')
   })
