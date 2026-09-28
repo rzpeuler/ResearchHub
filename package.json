@@ -20,6 +20,7 @@
     "acceptance:unified-research-final-fix": "tsx scripts/acceptance-unified-research-final-fix.ts",
     "acceptance:knowledge-v04": "tsx scripts/acceptance-knowledge-v04.ts",
     "acceptance:knowledge-v04-final": "tsx scripts/acceptance-knowledge-v04-final.ts",
+    "acceptance:knowledge-topic-workspace": "tsx scripts/acceptance-knowledge-topic-workspace.ts",
     "test": "npm run client:test && npm run test:node",
     "test:node": "node tests/run-node-tests.mjs",
     "document-parser:check": "node scripts/document-parser-runtime.mjs --check",
