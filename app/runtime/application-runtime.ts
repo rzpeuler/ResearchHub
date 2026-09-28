@@ -4,6 +4,7 @@ import { PiReasoningExecutor } from '../../plugins/reasoning/pi/executor.ts'
 import { createIndustryProductionReasoningExecutor, selectProductionReasoningModel } from '../pi/model-selection.ts'
 import { KnowledgeService } from '../services/knowledge-service.ts'
 import { KnowledgeGraphService } from '../services/knowledge-graph-service.ts'
+import { KnowledgeTopicProjectionService } from '../services/knowledge-topic-projection.ts'
 import { ProductionService } from '../services/production-service.ts'
 import { ReviewService } from '../services/review-service.ts'
 import { WorkflowService } from '../services/workflow-service.ts'
@@ -125,6 +126,7 @@ export class ResearchHubApplicationRuntime {
     const reasoningExecutor = options.reasoningExecutor ?? new PiReasoningExecutor({ modelRuntime, model: selectedModel })
     const knowledgeService = new KnowledgeService(mountedKnowledgeBaseRoot)
     const knowledgeGraphService = new KnowledgeGraphService(mountedKnowledgeBaseRoot)
+    const knowledgeTopicProjectionService = new KnowledgeTopicProjectionService(mountedKnowledgeBaseRoot)
     const reviewService = new ReviewService(mountedKnowledgeBaseRoot)
     let thesisQueryService: ThesisQueryService | undefined
     let thesisDecisionService: ThesisDecisionService | undefined
@@ -157,7 +159,7 @@ export class ResearchHubApplicationRuntime {
     const sourceLibraryService = new SourceLibraryService(join(cwd, 'runtime-data', 'source-library'))
     const skillOnboardingService = new SkillOnboardingService(join(cwd, 'runtime-data', 'skill-onboarding', 'installed'), join(cwd, 'runtime-data', 'skill-onboarding'))
     const researchDispatchService = new ResearchDispatchService({ researchService, dailyIntelligenceService, workflowService, skillRegistry, bundleStore: new FileResearchBundleStore(join(cwd, 'runtime-data', 'research-bundles')), sourceLibraryService, mountedKnowledgeBaseRoot, reasoningExecutor })
-    const services = { knowledgeService, knowledgeGraphService, reviewService, workflowService, productionService, researchDispatchService, sourceLibraryService, skillOnboardingService, ...(researchService === undefined ? {} : { researchService }), ...(thesisQueryService === undefined ? {} : { thesisQueryService }), ...(thesisDecisionService === undefined ? {} : { thesisDecisionService }), ...(thesisCriterionService === undefined ? {} : { thesisCriterionService }), dailyIntelligenceService }
+    const services = { knowledgeService, knowledgeGraphService, knowledgeTopicProjectionService, reviewService, workflowService, productionService, researchDispatchService, sourceLibraryService, skillOnboardingService, ...(researchService === undefined ? {} : { researchService }), ...(thesisQueryService === undefined ? {} : { thesisQueryService }), ...(thesisDecisionService === undefined ? {} : { thesisDecisionService }), ...(thesisCriterionService === undefined ? {} : { thesisCriterionService }), dailyIntelligenceService }
     const { thesisCriterionService: _humanOnlyCriterionService, ...piApplicationServices } = services
     void _humanOnlyCriterionService
     const sessionManager = options.sessionManager ?? SessionManager.create(cwd, options.sessionDir)
@@ -174,6 +176,7 @@ export class ResearchHubApplicationRuntime {
 
   get knowledgeService(): KnowledgeService { return this.services.knowledgeService }
   get knowledgeGraphService(): KnowledgeGraphService { return this.services.knowledgeGraphService }
+  get knowledgeTopicProjectionService(): KnowledgeTopicProjectionService { return this.services.knowledgeTopicProjectionService! }
   get reviewService(): ReviewService { return this.services.reviewService }
   get workflowService(): WorkflowService { return this.services.workflowService }
   get productionService(): ProductionService { return this.services.productionService }

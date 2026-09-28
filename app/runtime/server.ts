@@ -17,6 +17,7 @@ import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { normalizeResearchRequest } from '../services/research-dispatch-contracts.ts'
 import type { ResearchHubRequestPolicy } from '../pi/tools.ts'
 import type { ThesisCriterionConfirmInput, ThesisCriterionPrepareInput, ThesisCriterionPreview } from '../services/thesis-criterion-service.ts'
+import type { KnowledgeTopicFilters, KnowledgeTopicKind, KnowledgeTopicPageInput, KnowledgeTopicScope } from '../services/knowledge-topic-contracts.ts'
 
 const MAX_JSON_BYTES = 1_000_000
 const MAX_MESSAGE_LENGTH = 50_000
@@ -139,6 +140,39 @@ function positiveInteger(value: string | null): number | undefined {
 
 function decodeSegment(value: string): string {
   try { return decodeURIComponent(value) } catch { throw new ApplicationServiceError('invalid_input', 'URL path segment is invalid') }
+}
+
+const TOPIC_QUERY_KEYS = new Set(['depth', 'kind', 'scope', 'limit', 'cursor', 'lifecycle', 'observationType', 'claimType', 'relationType'])
+const TOPIC_KINDS = new Set<KnowledgeTopicKind>(['relation', 'claim', 'observation', 'event', 'thesis', 'module', 'source', 'reasoning_edge'])
+
+function topicQueryValue(url: URL, name: string, maxLength?: number): string | undefined {
+  const values = url.searchParams.getAll(name)
+  if (values.length === 0) return undefined
+  if (values.length !== 1 || (maxLength !== undefined && values[0]!.length > maxLength)) throw new ApplicationServiceError('invalid_input', `query parameter ${name} is invalid`)
+  return values[0]
+}
+
+function validateTopicQuery(url: URL, allowed: ReadonlySet<string>): void {
+  for (const [key] of url.searchParams) {
+    if (!TOPIC_QUERY_KEYS.has(key) || !allowed.has(key)) throw new ApplicationServiceError('invalid_input', 'Topic query contains an unsupported parameter')
+    if (url.searchParams.getAll(key).length !== 1) throw new ApplicationServiceError('invalid_input', `query parameter ${key} must appear once`)
+  }
+}
+
+function topicDepth(url: URL): 1 | 2 | undefined {
+  const value = topicQueryValue(url, 'depth')
+  if (value === undefined) return undefined
+  if (value !== '1' && value !== '2') throw new ApplicationServiceError('invalid_input', 'depth must be 1 or 2')
+  return Number(value) as 1 | 2
+}
+
+function topicLimit(url: URL): number | undefined {
+  const value = topicQueryValue(url, 'limit')
+  if (value === undefined) return undefined
+  if (!/^[1-9]\d*$/.test(value)) throw new ApplicationServiceError('invalid_input', 'limit must be a positive integer')
+  const parsed = Number(value)
+  if (!Number.isSafeInteger(parsed)) throw new ApplicationServiceError('invalid_input', 'limit must be a positive integer')
+  return parsed
 }
 
 function isInsideStaticRoot(root: string, candidate: string): boolean {
@@ -440,6 +474,45 @@ export class ResearchHubRuntimeServer {
       const service = this.runtime!.services.thesisQueryService
       if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Thesis queries require a mounted Schema 0.4 Knowledge Base')
       await this.sendJson(response, 200, await service.getThesis(decodeSegment(pieces[4]!))); return
+    }
+    if (method === 'GET' && path.startsWith('/api/knowledge/topics/')) {
+      const pieces = path.split('/')
+      if (pieces.length !== 6 || !pieces[4] || (pieces[5] !== 'summary' && pieces[5] !== 'items')) throw new ApplicationServiceError('not_found', 'Knowledge topic route not found')
+      const themeRef = decodeSegment(pieces[4])
+      if (themeRef.length > 300) throw new ApplicationServiceError('invalid_input', 'themeRef is invalid or oversized')
+      const service = this.runtime!.knowledgeTopicProjectionService
+      if (pieces[5] === 'summary') {
+        validateTopicQuery(url, new Set(['depth']))
+        await this.sendJson(response, 200, await service.getSummary(themeRef, topicDepth(url) ?? 1)); return
+      }
+      validateTopicQuery(url, new Set(['kind', 'scope', 'depth', 'limit', 'cursor', 'lifecycle', 'observationType', 'claimType', 'relationType']))
+      const kindValue = topicQueryValue(url, 'kind')
+      if (kindValue === undefined || !TOPIC_KINDS.has(kindValue as KnowledgeTopicKind)) throw new ApplicationServiceError('invalid_input', 'kind is required and must be supported')
+      const scopeValue = topicQueryValue(url, 'scope')
+      const cursor = topicQueryValue(url, 'cursor', 4_096)
+      const lifecycle = topicQueryValue(url, 'lifecycle')
+      const observationType = topicQueryValue(url, 'observationType')
+      const claimType = topicQueryValue(url, 'claimType')
+      const relationType = topicQueryValue(url, 'relationType')
+      const depth = topicDepth(url)
+      const limit = topicLimit(url)
+      const input: KnowledgeTopicPageInput = {
+        themeRef,
+        kind: kindValue as KnowledgeTopicKind,
+        ...(scopeValue === undefined ? {} : { scope: scopeValue as KnowledgeTopicScope }),
+        ...(depth === undefined ? {} : { depth }),
+        ...(limit === undefined ? {} : { limit }),
+        ...(cursor === undefined ? {} : { cursor }),
+        ...([lifecycle, observationType, claimType, relationType].every((value) => value === undefined) ? {} : {
+          filters: {
+            ...(lifecycle === undefined ? {} : { lifecycle }),
+            ...(observationType === undefined ? {} : { observationType }),
+            ...(claimType === undefined ? {} : { claimType }),
+            ...(relationType === undefined ? {} : { relationType }),
+          } as KnowledgeTopicFilters,
+        }),
+      }
+      await this.sendJson(response, 200, await service.listItems(input)); return
     }
     if ((method === 'GET' || method === 'POST') && (path === '/api/knowledge/search' || path === '/api/search-knowledge')) { const input = (method === 'GET' ? this.searchInputFromQuery(url) : await this.readJson(request)) as KnowledgeSearchInput; await this.sendJson(response, 200, await this.runtime!.knowledgeService.searchKnowledge(input)); return }
     if (method === 'GET' && (path === '/api/knowledge/object' || path === '/api/knowledge/get')) { await this.sendJson(response, 200, await this.runtime!.knowledgeService.getKnowledgeObject(url.searchParams.get('ref') ?? '', positiveInteger(url.searchParams.get('relatedLimit')))); return }

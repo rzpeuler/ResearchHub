@@ -2,6 +2,7 @@ import type { ModelRuntime, SessionManager, SettingsManager, DefaultResourceLoad
 import type { Api, Model } from '@earendil-works/pi-ai'
 import type { KnowledgeService } from '../services/knowledge-service.ts'
 import type { KnowledgeGraphService } from '../services/knowledge-graph-service.ts'
+import type { KnowledgeTopicProjectionService } from '../services/knowledge-topic-projection.ts'
 import type { ProductionService } from '../services/production-service.ts'
 import type { ReviewService } from '../services/review-service.ts'
 import type { WorkflowService } from '../services/workflow-service.ts'
@@ -46,6 +47,8 @@ export interface CurrentSessionState {
 export interface ResearchHubApplicationServices {
   readonly knowledgeService: KnowledgeService
   readonly knowledgeGraphService: KnowledgeGraphService
+  /** Read-only Schema 0.4 topic projection; absent only in legacy test/session adapters. */
+  readonly knowledgeTopicProjectionService?: KnowledgeTopicProjectionService
   readonly reviewService: ReviewService
   readonly workflowService: WorkflowService
   readonly researchDispatchService?: ResearchDispatchService
