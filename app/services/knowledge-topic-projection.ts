@@ -64,7 +64,8 @@ export class KnowledgeTopicProjectionService {
     const theme = requireTheme(context.index, themeRef)
     const traversal = buildTraversal(context.index, themeRef, depth)
     const direct = collectCandidates(context.index, [themeRef], themeRef, 'direct', new Map())
-    const connected = collectCandidates(context.index, connectedContentAnchors(context.index, traversal), themeRef, 'connected', traversal.pathsByEntity)
+    const connectedCandidates = collectCandidates(context.index, connectedContentAnchors(context.index, traversal), themeRef, 'connected', traversal.pathsByEntity)
+    const connected = withoutDirectMembership(connectedCandidates, direct)
     const counts = {
       direct: countKinds(direct, false),
       connected: countKinds(connected, traversal.truncated),
@@ -94,7 +95,11 @@ export class KnowledgeTopicProjectionService {
     requireTheme(context.index, input.themeRef)
     const traversal = scope === 'connected' ? buildTraversal(context.index, input.themeRef, depth) : emptyTraversal()
     const anchors = scope === 'direct' ? [input.themeRef] : connectedContentAnchors(context.index, traversal)
-    const candidates = collectCandidates(context.index, anchors, input.themeRef, scope, traversal.pathsByEntity, filters.lifecycle === 'all')
+    let candidates = collectCandidates(context.index, anchors, input.themeRef, scope, traversal.pathsByEntity, filters.lifecycle === 'all')
+    if (scope === 'connected') {
+      const directCandidates = collectCandidates(context.index, [input.themeRef], input.themeRef, 'direct', new Map(), filters.lifecycle === 'all')
+      candidates = withoutDirectMembership(candidates, directCandidates)
+    }
     const projected = [...candidates.values()]
       .filter(({ value }) => kindMatches(value, input.kind))
       .filter(({ value }) => filters.lifecycle === 'all' || active(value))
@@ -266,6 +271,11 @@ function buildTraversal(index: KnowledgeIndexV04, themeRef: string, depth: 1 | 2
 }
 
 function emptyTraversal(): Traversal { return { pathsByEntity: new Map(), truncated: false, focusRefs: [] } }
+function withoutDirectMembership(connected: Map<string, Candidate>, direct: ReadonlyMap<string, Candidate>): Map<string, Candidate> {
+  const result = new Map(connected)
+  for (const ref of direct.keys()) result.delete(ref)
+  return result
+}
 function connectedContentAnchors(index: KnowledgeIndexV04, traversal: Traversal): string[] {
   return [...traversal.pathsByEntity.keys()].filter((ref) => dict(index.objects.get(ref)).type !== 'investment_theme')
 }

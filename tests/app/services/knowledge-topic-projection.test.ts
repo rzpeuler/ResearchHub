@@ -92,6 +92,16 @@ test('topic projection separates direct membership from related industry records
   assert.deepEqual(connectedTheses.items.map((item) => item.ref), [])
   const connectedRelations = await service.listItems({ themeRef: 'entity:theme-a', kind: 'relation', scope: 'connected', depth: 2 })
   assert.ok(!connectedRelations.items.some((item) => item.ref === 'relation:theme-b-industry'))
+  assert.ok(!connectedRelations.items.some((item) => item.ref === 'relation:theme-a-industry'))
+  const directRelations = await service.listItems({ themeRef: 'entity:theme-a', kind: 'relation', scope: 'direct', depth: 2 })
+  assert.ok(directRelations.items.some((item) => item.ref === 'relation:theme-a-industry'))
+  assert.equal(directRelations.total, summary.counts.direct.relation.total)
+  assert.equal(connectedRelations.total, summary.counts.connected.relation.total)
+  const directSources = await service.listItems({ themeRef: 'entity:theme-a', kind: 'source', scope: 'direct', depth: 2 })
+  const connectedSources = await service.listItems({ themeRef: 'entity:theme-a', kind: 'source', scope: 'connected', depth: 2 })
+  assert.equal(directSources.total, summary.counts.direct.source.total)
+  assert.equal(connectedSources.total, summary.counts.connected.source.total)
+  assert.equal(connectedSources.total, 0)
 })
 
 test('summary and items honor lifecycle, thesis state, source rights, and allowlisted privacy fields', async (t) => {
