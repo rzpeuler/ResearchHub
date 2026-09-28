@@ -205,6 +205,42 @@ export interface KnowledgeConsensusObservationV04 {
 export type KnowledgeObservationV04 = KnowledgeMetricObservationV04 | KnowledgeEstimateObservationV04 | KnowledgeConsensusObservationV04
 
 export type ThesisStatusV04 = 'active' | 'strengthening' | 'weakening' | 'challenged' | 'invalidated' | 'archived'
+export type KillCriterionOperatorV04 = 'eq' | 'gt' | 'gte' | 'lt' | 'lte'
+export interface NumericThresholdDefinitionV1 {
+  metricRef: string
+  operator: KillCriterionOperatorV04
+  threshold: number
+  unit: string
+  period: string
+  deadline?: string
+}
+export interface KillCriterionHumanRuleOriginV04 { kind: 'human_rule' }
+export interface KillCriterionSourceOriginV04 {
+  kind: 'source_derived'
+  sourceRef: SourceRefV04
+  rawRef: RawRefV04
+  locator: string
+  publishedAt: string
+}
+export type KillCriterionOriginV04 = KillCriterionHumanRuleOriginV04 | KillCriterionSourceOriginV04
+export interface KillCriterionAuthorityV04 {
+  workflowRunId: string
+  confirmedAt: string
+  origin: KillCriterionOriginV04
+}
+export interface KillCriterionV04 {
+  conditionId: string
+  revision: number
+  state: 'active' | 'superseded'
+  type: string
+  definitionVersion: number
+  /** Known V1 definitions are typed; future definitions remain bounded JSON. */
+  definition: NumericThresholdDefinitionV1 | Record<string, unknown>
+  targetClaimRefs: ClaimRefV04[]
+  effectiveAt: string
+  definitionHash: string
+  authority: KillCriterionAuthorityV04
+}
 export interface KnowledgeThesisV04 {
   id: ThesisRefV04
   subjectRefs: EntityRefV04[]
@@ -215,6 +251,7 @@ export interface KnowledgeThesisV04 {
   lastReviewedAt?: string | null
   lifecycle: KnowledgeEntityV04['lifecycle']
   updatedAt?: string | null
+  killCriteria?: KillCriterionV04[]
 }
 
 export type ReasoningEdgeTypeV04 = 'supports' | 'contradicts' | 'depends_on' | 'qualifies' | 'invalidates' | 'challenges'

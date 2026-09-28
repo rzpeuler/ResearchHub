@@ -1,6 +1,7 @@
 import { KNOWLEDGE_SCHEMA_V04 } from '../schema/executable-schema-v04.ts'
 import { getMetricDefinitionV04 } from '../schema/metric-registry.ts'
-import type { ClaimTypeV04, KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeEntityV04, KnowledgeEventV04, KnowledgeObservationV04, KnowledgeReasoningEdgeV04, KnowledgeRelationV04, KnowledgeSourceV04, KnowledgeThesisV04 } from '../schema/domain-v04.ts'
+import type { ClaimTypeV04, KillCriterionOriginV04, KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeEntityV04, KnowledgeEventV04, KnowledgeObservationV04, KnowledgeReasoningEdgeV04, KnowledgeRelationV04, KnowledgeSourceV04, KnowledgeThesisV04 } from '../schema/domain-v04.ts'
+import { hashKillCriterionDefinitionV04, isBoundedSafeKillCriterionJsonV04, KILL_CRITERION_V04_LIMITS } from '../schema/kill-criterion-v04.ts'
 import { validateRelationAttributesV03 } from './v03-validation-core.ts'
 
 export interface KnowledgeV04Diagnostic { readonly code: string; readonly message: string; readonly assetId?: string }
@@ -112,7 +113,98 @@ function validateObservation(observation: KnowledgeObservationV04, objects: Read
   }
 }
 
-function validateThesis(thesis: KnowledgeThesisV04, ids: ReadonlySet<string>, errors: KnowledgeV04Diagnostic[]): void { const id = thesis.id; if (!ref(id, 'thesis:') || !Array.isArray(thesis.subjectRefs) || thesis.subjectRefs.length === 0 || thesis.subjectRefs.some((item) => !ids.has(item) || !ref(item, 'entity:')) || typeof thesis.title !== 'string' || thesis.title.trim() === '' || typeof thesis.statement !== 'string' || thesis.statement.trim() === '' || !THESIS_STATUSES.has(thesis.status) || !date(thesis.createdAt)) add(errors, 'V04_THESIS', 'Thesis requires valid identity, subject, title, statement, status, and createdAt', id) }
+function hasExactKeys(value: Dict, expected: readonly string[]): boolean {
+  const actual = Object.keys(value).sort()
+  return actual.length === expected.length && actual.every((key, index) => key === [...expected].sort()[index])
+}
+
+function validateKillCriterionOrigin(value: unknown, confirmedAt: string, sources: ReadonlyMap<string, KnowledgeSourceV04>, id: string, errors: KnowledgeV04Diagnostic[]): value is KillCriterionOriginV04 {
+  if (!record(value)) { add(errors, 'V04_KILL_CRITERION_AUTHORITY', 'Kill criterion authority origin must be an object', id); return false }
+  if (value.kind === 'human_rule') {
+    if (!hasExactKeys(value, ['kind'])) { add(errors, 'V04_KILL_CRITERION_AUTHORITY', 'human_rule origin may contain only kind', id); return false }
+    return true
+  }
+  if (value.kind !== 'source_derived') { add(errors, 'V04_KILL_CRITERION_AUTHORITY', 'Kill criterion origin kind must be human_rule or source_derived', id); return false }
+  if (!hasExactKeys(value, ['kind', 'sourceRef', 'rawRef', 'locator', 'publishedAt'])) { add(errors, 'V04_KILL_CRITERION_AUTHORITY', 'source_derived origin has missing or unsupported fields', id); return false }
+  const sourceRef = value.sourceRef
+  const rawRef = value.rawRef
+  const source = typeof sourceRef === 'string' ? sources.get(sourceRef) : undefined
+  if (!ref(sourceRef, 'source:') || !source || typeof rawRef !== 'string' || !RAW_PATTERN.test(rawRef) || !Array.isArray(source.rawRefs) || !source.rawRefs.includes(rawRef as `raw-sha256-${string}`) || typeof value.locator !== 'string' || value.locator.trim() === '' || value.locator.length > 2048 || !date(value.publishedAt) || !date(source.publishedAt) || source.publishedAt !== value.publishedAt || Date.parse(String(value.publishedAt)) > Date.parse(confirmedAt)) {
+    add(errors, 'V04_KILL_CRITERION_ORIGIN_SOURCE', 'Source-derived origin requires a resolving Source with the bound RawRef, exact locator, and matching publishedAt', id)
+    return false
+  }
+  return true
+}
+
+function validateKillCriterionDefinition(criterion: Record<string, unknown>, id: string, errors: KnowledgeV04Diagnostic[]): boolean {
+  if (!isBoundedSafeKillCriterionJsonV04(criterion.definition)) { add(errors, 'V04_KILL_CRITERION_DEFINITION', 'Kill criterion definition must be bounded safe JSON object data', id); return false }
+  if (criterion.type !== 'numeric_threshold') return true
+  const definition = criterion.definition
+  const keys = Object.keys(definition)
+  const allowed = new Set(['metricRef', 'operator', 'threshold', 'unit', 'period', 'deadline'])
+  if (criterion.definitionVersion !== 1 || keys.some((key) => !allowed.has(key)) || typeof definition.metricRef !== 'string' || definition.metricRef.trim() === '' || definition.metricRef.length > 256 || !['eq', 'gt', 'gte', 'lt', 'lte'].includes(String(definition.operator)) || typeof definition.threshold !== 'number' || !Number.isFinite(definition.threshold) || typeof definition.unit !== 'string' || definition.unit.trim() === '' || definition.unit.length > 128 || typeof definition.period !== 'string' || definition.period.trim() === '' || definition.period.length > 256 || (definition.deadline !== undefined && !date(definition.deadline))) {
+    add(errors, 'V04_KILL_CRITERION_NUMERIC_THRESHOLD', 'numeric_threshold V1 requires metricRef, a supported operator, finite threshold, exact unit and period, and an optional valid deadline', id)
+    return false
+  }
+  return true
+}
+
+function validateKillCriteria(thesis: KnowledgeThesisV04, claims: ReadonlyMap<string, KnowledgeClaimV04>, sources: ReadonlyMap<string, KnowledgeSourceV04>, edges: ReadonlyMap<string, KnowledgeReasoningEdgeV04>, errors: KnowledgeV04Diagnostic[]): void {
+  const id = thesis.id
+  const criteria = (thesis as unknown as Dict).killCriteria
+  if (criteria === undefined) return
+  if (!Array.isArray(criteria) || criteria.length > KILL_CRITERION_V04_LIMITS.revisionsPerThesis) { add(errors, 'V04_KILL_CRITERIA_LIMIT', `killCriteria must be an array with at most ${KILL_CRITERION_V04_LIMITS.revisionsPerThesis} revisions`, id); return }
+  const byCondition = new Map<string, Array<{ revision: number; state: unknown }>>()
+  const pairs = new Set<string>()
+  for (const raw of criteria) {
+    if (!record(raw)) { add(errors, 'V04_KILL_CRITERION', 'Kill criterion revision must be an object', id); continue }
+    const conditionId = raw.conditionId
+    const revision = raw.revision
+    if (typeof conditionId !== 'string' || conditionId.length > 128 || !SAFE_ID.test(conditionId) || !Number.isSafeInteger(revision) || Number(revision) <= 0 || !['active', 'superseded'].includes(String(raw.state))) {
+      add(errors, 'V04_KILL_CRITERION_IDENTITY', 'Kill criterion requires a safe conditionId, positive revision, and active/superseded state', id)
+      continue
+    }
+    const key = `${conditionId}@${revision}`
+    if (pairs.has(key)) add(errors, 'V04_KILL_CRITERION_DUPLICATE_REVISION', `Duplicate kill criterion revision ${key}`, id)
+    pairs.add(key)
+    const revisions = byCondition.get(conditionId) ?? []
+    revisions.push({ revision: Number(revision), state: raw.state })
+    byCondition.set(conditionId, revisions)
+
+    if (typeof raw.type !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(raw.type) || !Number.isSafeInteger(raw.definitionVersion) || Number(raw.definitionVersion) <= 0) add(errors, 'V04_KILL_CRITERION_TYPE', 'Kill criterion requires a stable type and positive definitionVersion', id)
+    const typed = validateKillCriterionDefinition(raw, id, errors)
+    if (!Array.isArray(raw.targetClaimRefs) || raw.targetClaimRefs.length === 0 || raw.targetClaimRefs.length > KILL_CRITERION_V04_LIMITS.targetsPerCriterion || !arrayOfRefs(raw.targetClaimRefs, 'claim:')) add(errors, 'V04_KILL_CRITERION_TARGETS', `targetClaimRefs must contain 1 to ${KILL_CRITERION_V04_LIMITS.targetsPerCriterion} unique Claim refs`, id)
+    else for (const targetRef of raw.targetClaimRefs) {
+      const target = claims.get(targetRef)
+      const qualifies = [...edges.values()].some((edge) => edge.type === 'qualifies' && edge.sourceRef === targetRef && edge.targetRef === id && edge.lifecycle?.status === 'active')
+      if (!target) add(errors, 'V04_KILL_CRITERION_TARGET_REF', `Target Claim does not resolve: ${targetRef}`, id)
+      else if (raw.state === 'active' && (target.lifecycle?.status !== 'active' || !qualifies)) add(errors, 'V04_KILL_CRITERION_TARGET_MEMBERSHIP', `Active criterion targets must be active Claims with active qualifies membership in the Thesis: ${targetRef}`, id)
+    }
+    if (!date(raw.effectiveAt) || String(raw.effectiveAt).length > 128) add(errors, 'V04_KILL_CRITERION_EFFECTIVE_AT', 'effectiveAt must be a valid date', id)
+    const authority = raw.authority
+    let origin: KillCriterionOriginV04 | undefined
+    if (!record(authority) || !hasExactKeys(authority, ['workflowRunId', 'confirmedAt', 'origin']) || typeof authority.workflowRunId !== 'string' || authority.workflowRunId.length > 128 || !SAFE_ID.test(authority.workflowRunId) || !date(authority.confirmedAt) || String(authority.confirmedAt).length > 128) add(errors, 'V04_KILL_CRITERION_AUTHORITY', 'Authority requires only workflowRunId, confirmedAt, and origin', id)
+    else {
+      if (date(raw.effectiveAt) && Date.parse(String(raw.effectiveAt)) < Date.parse(String(authority.confirmedAt))) add(errors, 'V04_KILL_CRITERION_TIME', 'effectiveAt must not predate authority.confirmedAt', id)
+      if (validateKillCriterionOrigin(authority.origin, String(authority.confirmedAt), sources, id, errors)) origin = authority.origin
+    }
+    if (typeof raw.definitionHash !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(raw.definitionHash)) add(errors, 'V04_KILL_CRITERION_HASH', 'definitionHash must be a canonical sha256 hash', id)
+    else if (typed && origin && Array.isArray(raw.targetClaimRefs) && raw.type && Number.isSafeInteger(raw.definitionVersion)) {
+      try {
+        const expected = hashKillCriterionDefinitionV04({ type: raw.type as string, definitionVersion: Number(raw.definitionVersion), definition: raw.definition as Record<string, unknown>, targetClaimRefs: raw.targetClaimRefs as string[], origin })
+        if (raw.definitionHash !== expected) add(errors, 'V04_KILL_CRITERION_HASH', 'definitionHash does not match immutable criterion meaning', id)
+      } catch { add(errors, 'V04_KILL_CRITERION_HASH', 'definitionHash cannot be computed from criterion meaning', id) }
+    }
+  }
+  for (const [conditionId, revisions] of byCondition) {
+    revisions.sort((left, right) => left.revision - right.revision)
+    const active = revisions.filter((revision) => revision.state === 'active')
+    if (active.length > 1) add(errors, 'V04_KILL_CRITERION_ACTIVE_REVISION', `conditionId ${conditionId} has more than one active revision`, id)
+    if (revisions.some((revision, index) => revision.revision !== index + 1 || (index < revisions.length - 1 && revision.state !== 'superseded') || (revision.state === 'active' && index !== revisions.length - 1))) add(errors, 'V04_KILL_CRITERION_REVISION_ORDER', `conditionId ${conditionId} revisions must be contiguous, increasing, and superseded before the latest revision`, id)
+  }
+}
+
+function validateThesis(thesis: KnowledgeThesisV04, ids: ReadonlySet<string>, claims: ReadonlyMap<string, KnowledgeClaimV04>, sources: ReadonlyMap<string, KnowledgeSourceV04>, edges: ReadonlyMap<string, KnowledgeReasoningEdgeV04>, errors: KnowledgeV04Diagnostic[]): void { const id = thesis.id; if (!ref(id, 'thesis:') || !Array.isArray(thesis.subjectRefs) || thesis.subjectRefs.length === 0 || thesis.subjectRefs.some((item) => !ids.has(item) || !ref(item, 'entity:')) || typeof thesis.title !== 'string' || thesis.title.trim() === '' || typeof thesis.statement !== 'string' || thesis.statement.trim() === '' || !THESIS_STATUSES.has(thesis.status) || !date(thesis.createdAt)) add(errors, 'V04_THESIS', 'Thesis requires valid identity, subject, title, statement, status, and createdAt', id); validateKillCriteria(thesis, claims, sources, edges, errors) }
 
 function validateReasoningEdge(edge: KnowledgeReasoningEdgeV04, objects: ReadonlyMap<string, KnowledgeAssetV04>, sources: ReadonlySet<string>, errors: KnowledgeV04Diagnostic[]): void { const id = edge.id; const source = objects.get(edge.sourceRef); const target = objects.get(edge.targetRef); const sourceKind = source?.id.split(':', 1)[0]; const targetKind = target?.id.split(':', 1)[0]; if (!ref(id, 'reasoning-edge:') || !EDGE_TYPES.has(edge.type) || !source || !target) add(errors, 'V04_REASONING_EDGE', 'ReasoningEdge requires resolvable endpoints', id); if (!((sourceKind === 'observation' || sourceKind === 'claim') && (targetKind === 'claim' || targetKind === 'thesis'))) add(errors, 'V04_REASONING_ENDPOINT', 'ReasoningEdge endpoints must be Observation/Claim to Claim/Thesis', id); if (edge.sourceRef === edge.targetRef || sourceKind === 'source' || sourceKind === 'raw-sha256-' || sourceKind === 'theme-group') add(errors, 'V04_REASONING_ENDPOINT', 'ReasoningEdge endpoint is not an admissible research dependency', id); if (edge.sourceRefs?.some((item) => !sources.has(item))) add(errors, 'V04_REASONING_SOURCE', 'ReasoningEdge sourceRefs must resolve to Source objects', id); if (edge.confidence !== undefined && edge.confidence !== null && !inRange(edge.confidence)) add(errors, 'V04_CONFIDENCE', 'ReasoningEdge confidence must be between 0 and 1', id); if (!nullableDate(edge.asOf)) add(errors, 'V04_REASONING_TIME', 'ReasoningEdge asOf must be a date or null', id) }
 
@@ -120,6 +212,6 @@ function validateCycles(claims: ReadonlyMap<string, KnowledgeClaimV04>, errors: 
 
  export function validateKnowledgeV04Objects(objects: readonly KnowledgeAssetV04[]): KnowledgeV04ValidationReport { const errors: KnowledgeV04Diagnostic[] = []; const ids = new Set<string>(); const sources = new Map<string, KnowledgeSourceV04>(); const claims = new Map<string, KnowledgeClaimV04>(); const relations = new Map<string, KnowledgeRelationV04>(); const entities = new Map<string, string>(); const events = new Map<string, KnowledgeEventV04>(); const observations = new Map<string, KnowledgeObservationV04>(); const theses = new Map<string, KnowledgeThesisV04>(); const edges = new Map<string, KnowledgeReasoningEdgeV04>(); for (const object of objects) { if (!record(object) || typeof object.id !== 'string') { add(errors, 'V04_OBJECT', 'Canonical object must have a string id'); continue } if (ids.has(object.id)) add(errors, 'V04_DUPLICATE_ID', `Duplicate canonical id: ${object.id}`, object.id); ids.add(object.id); if (object.id.startsWith('source:')) sources.set(object.id, object as unknown as KnowledgeSourceV04); else if (object.id.startsWith('claim:')) claims.set(object.id, object as unknown as KnowledgeClaimV04); else if (object.id.startsWith('relation:')) relations.set(object.id, object as unknown as KnowledgeRelationV04); else if (object.id.startsWith('entity:')) entities.set(object.id, String((object as Dict).type)); else if (object.id.startsWith('event:')) events.set(object.id, object as unknown as KnowledgeEventV04); else if (object.id.startsWith('observation:')) observations.set(object.id, object as unknown as KnowledgeObservationV04); else if (object.id.startsWith('thesis:')) theses.set(object.id, object as unknown as KnowledgeThesisV04); else if (object.id.startsWith('reasoning-edge:')) edges.set(object.id, object as unknown as KnowledgeReasoningEdgeV04) }
    const sourceIds = new Set(sources.keys()); const claimIds = new Set(claims.keys()); const objectMap = new Map(objects.map((object) => [object.id, object])); for (const object of objects) if (object.id.startsWith('entity:')) validateEntity(object as KnowledgeEntityV04, sourceIds, errors); for (const source of sources.values()) validateSource(source, errors); for (const claim of claims.values()) validateClaim(claim, sourceIds, claimIds, errors); for (const relation of relations.values()) { const definition = typeof relation.type === 'string' ? KNOWLEDGE_SCHEMA_V04.relation.definitions[relation.type as keyof typeof KNOWLEDGE_SCHEMA_V04.relation.definitions] : undefined; const sourceType = entities.get(relation.sourceRef); const targetType = entities.get(relation.targetRef); if (!definition || !KNOWLEDGE_SCHEMA_V04.relation.types.includes(relation.type as never)) add(errors, 'V04_RELATION_TYPE', 'Relation type is not declared by Schema 0.4', relation.id); if (!sourceType || !targetType) add(errors, 'V04_RELATION_ENDPOINT', 'Relation endpoints must resolve to Entity objects', relation.id); if (definition && sourceType && targetType && (!(definition.sourceTypes as readonly string[]).includes(sourceType) || !(definition.targetTypes as readonly string[]).includes(targetType) || ('endpointConstraint' in definition && definition.endpointConstraint === 'same_entity_type_on_both_sides' && sourceType !== targetType))) add(errors, 'V04_RELATION_SEMANTICS', 'Relation endpoint types violate the Schema 0.4 semantic definition', relation.id); if (relation.sourceRefs?.some((item) => !sourceIds.has(item))) add(errors, 'V04_RELATION_SOURCE_REF', 'Relation sourceRefs must resolve to Source objects', relation.id); if (relation.supportingClaimRefs?.some((item) => !claimIds.has(item))) add(errors, 'V04_RELATION_CLAIM_REF', 'Relation supportingClaimRefs must resolve to Claim objects', relation.id); if (!validateRelationAttributesV03(relation.type, relation.attributes).valid) add(errors, 'V04_RELATION_ATTRIBUTES', 'Relation attributes are not admissible for Schema 0.4', relation.id) }
-   for (const event of events.values()) validateEvent(event, ids, sourceIds, errors); for (const observation of observations.values()) validateObservation(observation, objectMap, ids, sourceIds, observations, errors); for (const thesis of theses.values()) validateThesis(thesis, ids, errors); for (const edge of edges.values()) validateReasoningEdge(edge, objectMap, sourceIds, errors); validateCycles(claims, errors); return { status: errors.length === 0 ? 'passed' : 'failed', errors } }
+   for (const event of events.values()) validateEvent(event, ids, sourceIds, errors); for (const observation of observations.values()) validateObservation(observation, objectMap, ids, sourceIds, observations, errors); for (const thesis of theses.values()) validateThesis(thesis, ids, claims, sources, edges, errors); for (const edge of edges.values()) validateReasoningEdge(edge, objectMap, sourceIds, errors); validateCycles(claims, errors); return { status: errors.length === 0 ? 'passed' : 'failed', errors } }
 export function assertKnowledgeV04Objects(objects: readonly KnowledgeAssetV04[]): void { const report = validateKnowledgeV04Objects(objects); if (report.status === 'failed') throw new Error(report.errors.map((error) => `${error.code}: ${error.message}`).join('; ')) }
 export function isKnowledgeV04RawRef(value: unknown): value is string { return typeof value === 'string' && RAW_PATTERN.test(value) }

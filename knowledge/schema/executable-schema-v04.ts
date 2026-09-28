@@ -55,8 +55,9 @@ export const KNOWLEDGE_SCHEMA_V04 = {
   },
   thesis: {
     statuses: ['active', 'strengthening', 'weakening', 'challenged', 'invalidated', 'archived'] as const,
-    fields: ['id', 'subjectRefs', 'title', 'statement', 'status', 'createdAt', 'lastReviewedAt', 'lifecycle', 'updatedAt'] as const,
+    fields: ['id', 'subjectRefs', 'title', 'statement', 'status', 'createdAt', 'lastReviewedAt', 'lifecycle', 'updatedAt', 'killCriteria'] as const,
     requiredFields: ['id', 'subjectRefs', 'title', 'statement', 'status', 'createdAt', 'lifecycle'] as const,
+    killCriteria: { types: ['numeric_threshold'] as const, numericThresholdDefinitionVersion: 1, maxRevisionsPerThesis: 100, maxTargetsPerCriterion: 32 } as const,
   },
   reasoningEdge: {
     types: ['supports', 'contradicts', 'depends_on', 'qualifies', 'invalidates', 'challenges'] as const,
