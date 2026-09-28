@@ -100,6 +100,26 @@ export interface ThesisReviewScope {
   readonly asOf: string
   readonly proposedThesisStatus?: ThesisStatusV04
   readonly killCriterionAssessments?: readonly KillCriterionAssessment[]
+  /** Canonical evaluator bindings that authorize an invalidation proposal. */
+  readonly killCriterionBindings?: readonly KillCriterionReviewBindingV1[]
+}
+export interface KillCriterionReviewBindingV1 {
+  readonly conditionId: string
+  readonly revision: number
+  readonly definitionHash: string
+  readonly evaluatedValueIdentity: string
+  readonly evidenceRef: string
+  readonly value: number
+  readonly metricRef: string
+  readonly unit: string
+  readonly period: string
+  readonly sourceRef: string
+  readonly rawRef: string
+  readonly locator: string
+  readonly publishedAt: string
+  readonly targetClaimRefs: readonly string[]
+  readonly numericValueVersionVerified: true
+  readonly asOf: string
 }
 export interface ThesisReviewedEvidence {
   readonly evidenceRef: string
