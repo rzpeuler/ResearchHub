@@ -34,6 +34,7 @@ import { createResearchSkillRegistry } from '../services/skill-registry.ts'
 import { loadOnboardedResearchSkillDefinitions, SkillOnboardingService } from '../services/skill-onboarding.ts'
 import { ThesisQueryService } from '../services/thesis-query-service.ts'
 import { ThesisDecisionService } from '../services/thesis-decision-service.ts'
+import { ThesisCriterionService } from '../services/thesis-criterion-service.ts'
 import { loadReviewCase } from '../../knowledge/review/store.ts'
 import { loadReviewDecision } from '../../knowledge/review/decision-store.ts'
 
@@ -127,12 +128,14 @@ export class ResearchHubApplicationRuntime {
     const reviewService = new ReviewService(mountedKnowledgeBaseRoot)
     let thesisQueryService: ThesisQueryService | undefined
     let thesisDecisionService: ThesisDecisionService | undefined
+    let thesisCriterionService: ThesisCriterionService | undefined
     if (mountedKnowledgeBaseRoot !== undefined) {
       try {
         const manifest = await loadKnowledgeBaseManifest(mountedKnowledgeBaseRoot)
         if (manifest.schemaVersion === '0.4' && manifest.storageFormatVersion === '1') {
           thesisQueryService = new ThesisQueryService(mountedKnowledgeBaseRoot)
           thesisDecisionService = new ThesisDecisionService({ mountedKnowledgeBaseRoot })
+          if (manifest.status === 'active') thesisCriterionService = new ThesisCriterionService({ mountedKnowledgeBaseRoot })
         }
       } catch { /* Thesis projections and decisions require a readable Schema 0.4 Knowledge Base. */ }
     }
@@ -154,10 +157,12 @@ export class ResearchHubApplicationRuntime {
     const sourceLibraryService = new SourceLibraryService(join(cwd, 'runtime-data', 'source-library'))
     const skillOnboardingService = new SkillOnboardingService(join(cwd, 'runtime-data', 'skill-onboarding', 'installed'), join(cwd, 'runtime-data', 'skill-onboarding'))
     const researchDispatchService = new ResearchDispatchService({ researchService, dailyIntelligenceService, workflowService, skillRegistry, bundleStore: new FileResearchBundleStore(join(cwd, 'runtime-data', 'research-bundles')), sourceLibraryService, mountedKnowledgeBaseRoot, reasoningExecutor })
-    const services = { knowledgeService, knowledgeGraphService, reviewService, workflowService, productionService, researchDispatchService, sourceLibraryService, skillOnboardingService, ...(researchService === undefined ? {} : { researchService }), ...(thesisQueryService === undefined ? {} : { thesisQueryService }), ...(thesisDecisionService === undefined ? {} : { thesisDecisionService }), dailyIntelligenceService }
+    const services = { knowledgeService, knowledgeGraphService, reviewService, workflowService, productionService, researchDispatchService, sourceLibraryService, skillOnboardingService, ...(researchService === undefined ? {} : { researchService }), ...(thesisQueryService === undefined ? {} : { thesisQueryService }), ...(thesisDecisionService === undefined ? {} : { thesisDecisionService }), ...(thesisCriterionService === undefined ? {} : { thesisCriterionService }), dailyIntelligenceService }
+    const { thesisCriterionService: _humanOnlyCriterionService, ...piApplicationServices } = services
+    void _humanOnlyCriterionService
     const sessionManager = options.sessionManager ?? SessionManager.create(cwd, options.sessionDir)
     try {
-      const sessionRuntime = await createResearchHubSessionRuntime({ cwd, agentDir, modelRuntime, sessionManager, applicationServices: services, mountedKnowledgeBaseRoot, workspaceRoot, model: selectedModel, reasoningExecutor, settingsManager: options.settingsManager, resourceLoader: options.resourceLoader, researchService, dailyIntelligenceService })
+      const sessionRuntime = await createResearchHubSessionRuntime({ cwd, agentDir, modelRuntime, sessionManager, applicationServices: piApplicationServices, mountedKnowledgeBaseRoot, workspaceRoot, model: selectedModel, reasoningExecutor, settingsManager: options.settingsManager, resourceLoader: options.resourceLoader, researchService, dailyIntelligenceService })
       const dailyScheduler = new DailyBriefScheduler({ statePath: join(cwd, 'runtime-data', 'daily-scheduler.json'), calendar: dailyComposition?.calendar ?? dailyIntelligenceService.calendar ?? new TradingCalendarService({ cachePath: join(cwd, 'runtime-data', 'trading-calendar.json') }), run: async (briefType, tradeDate) => { const run = dailyIntelligenceService.startBrief({ workflowRunId: `scheduled-${briefType}-${tradeDate}`, briefType, tradeDate }); const result = await run.completion; return { status: result.status } } })
       const dailySchedulerTimer = setInterval(() => { void dailyScheduler.tick(new Date()).catch(() => undefined) }, 60_000); dailySchedulerTimer.unref?.(); void dailyScheduler.tick(new Date()).catch(() => undefined)
       return new ResearchHubApplicationRuntime({ cwd, agentDir, workspaceRoot, mountedKnowledgeBaseRoot, modelRuntime, sessionManager, services, sessionRuntime, ownsModelRuntime, dailyScheduler, dailySchedulerTimer })

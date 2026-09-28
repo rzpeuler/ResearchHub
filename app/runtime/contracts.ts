@@ -15,6 +15,7 @@ import type { SkillOnboardingService } from '../services/skill-onboarding.ts'
 import type { IndustryOperatingObservationAcquisitionPort } from '../../plugins/research-acquisition/industry-operating-observations.ts'
 import type { ThesisQueryService } from '../services/thesis-query-service.ts'
 import type { ThesisDecisionService } from '../services/thesis-decision-service.ts'
+import type { ThesisCriterionService } from '../services/thesis-criterion-service.ts'
 
 export interface SafeConversationSummary {
   readonly conversationId: string
@@ -54,6 +55,8 @@ export interface ResearchHubApplicationServices {
   readonly researchService?: ResearchService
   readonly thesisQueryService?: ThesisQueryService
   readonly thesisDecisionService?: ThesisDecisionService
+  /** Human-only HTTP criterion authoring; deliberately excluded from the Pi session context. */
+  readonly thesisCriterionService?: ThesisCriterionService
   readonly dailyIntelligenceService?: DailyIntelligenceService
 }
 

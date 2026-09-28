@@ -16,6 +16,7 @@ import type { ResearchDispatchService } from '../services/research-dispatch-serv
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { normalizeResearchRequest } from '../services/research-dispatch-contracts.ts'
 import type { ResearchHubRequestPolicy } from '../pi/tools.ts'
+import type { ThesisCriterionConfirmInput, ThesisCriterionPrepareInput, ThesisCriterionPreview } from '../services/thesis-criterion-service.ts'
 
 const MAX_JSON_BYTES = 1_000_000
 const MAX_MESSAGE_LENGTH = 50_000
@@ -24,6 +25,52 @@ const TOKEN_HEADER = 'x-researchhub-runtime-token'
 const MAX_SSE_PENDING_FRAMES = 64
 const MAX_BACKGROUND_OPERATIONS = 128
 const CLIENT_MIME_TYPES: Readonly<Record<string, string>> = { '.css': 'text/css; charset=utf-8', '.gif': 'image/gif', '.html': 'text/html; charset=utf-8', '.ico': 'image/x-icon', '.jpeg': 'image/jpeg', '.jpg': 'image/jpeg', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.map': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8', '.webp': 'image/webp', '.woff': 'font/woff', '.woff2': 'font/woff2' }
+const THESIS_CRITERION_PREVIEW_FIELDS = ['knowledgeBaseId', 'expectedKnowledgeBaseRevision', 'thesisRef', 'conditionId', 'revision', 'type', 'definitionVersion', 'definition', 'targetClaimRefs', 'origin', 'definitionHash', 'previewHash'] as const
+
+function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value) }
+function assertExactFields(value: Record<string, unknown>, required: readonly string[], optional: readonly string[] = [], label: string): void {
+  const allowed = new Set([...required, ...optional])
+  if (required.some((key) => !Object.prototype.hasOwnProperty.call(value, key)) || Object.keys(value).some((key) => !allowed.has(key))) throw new ApplicationServiceError('invalid_input', `${label} contains missing or unsupported fields`)
+}
+function validateCriterionDefinition(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) throw new ApplicationServiceError('invalid_input', 'definition must be an object')
+  assertExactFields(value, ['metricRef', 'operator', 'threshold', 'unit', 'period'], [], 'definition')
+  if (typeof value.metricRef !== 'string' || !value.metricRef.trim() || value.metricRef.length > 256 || !['eq', 'gt', 'gte', 'lt', 'lte'].includes(String(value.operator)) || typeof value.threshold !== 'number' || !Number.isFinite(value.threshold) || typeof value.unit !== 'string' || !value.unit.trim() || value.unit.length > 128 || typeof value.period !== 'string' || !value.period.trim() || value.period.length > 256) throw new ApplicationServiceError('invalid_input', 'definition has invalid or oversized fields')
+  return value
+}
+function validateCriterionOrigin(value: unknown): Record<string, unknown> {
+  if (!isRecord(value) || typeof value.kind !== 'string') throw new ApplicationServiceError('invalid_input', 'origin must be an object with a supported kind')
+  if (value.kind === 'human_rule') { assertExactFields(value, ['kind'], [], 'origin'); return value }
+  if (value.kind === 'source_derived') {
+    assertExactFields(value, ['kind', 'sourceRef', 'rawRef', 'locator', 'publishedAt'], [], 'origin')
+    if (typeof value.sourceRef !== 'string' || value.sourceRef.length > 300 || typeof value.rawRef !== 'string' || value.rawRef.length > 100 || typeof value.locator !== 'string' || !value.locator.trim() || value.locator.length > 2048 || typeof value.publishedAt !== 'string' || value.publishedAt.length > 128) throw new ApplicationServiceError('invalid_input', 'source-derived origin has invalid or oversized fields')
+    return value
+  }
+  throw new ApplicationServiceError('invalid_input', 'origin kind is unsupported')
+}
+function validateCriterionTargets(value: unknown): readonly string[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 32 || value.some((ref) => typeof ref !== 'string' || ref.length > 300 || !ref.trim())) throw new ApplicationServiceError('invalid_input', 'targetClaimRefs must contain 1 to 32 bounded Claim refs')
+  return value as string[]
+}
+function validateCriterionPrepareBody(value: Record<string, unknown>): ThesisCriterionPrepareInput {
+  assertExactFields(value, ['thesisRef', 'conditionId', 'definition', 'targetClaimRefs', 'origin'], ['type', 'definitionVersion'], 'criterion prepare request')
+  if (typeof value.thesisRef !== 'string' || value.thesisRef.length > 300 || typeof value.conditionId !== 'string' || value.conditionId.length > 128 || (value.type !== undefined && (typeof value.type !== 'string' || value.type.length > 64)) || (value.definitionVersion !== undefined && (typeof value.definitionVersion !== 'number' || !Number.isSafeInteger(value.definitionVersion)))) throw new ApplicationServiceError('invalid_input', 'criterion prepare identity is invalid or oversized')
+  return { thesisRef: value.thesisRef, conditionId: value.conditionId, ...(value.type === undefined ? {} : { type: value.type as string }), ...(value.definitionVersion === undefined ? {} : { definitionVersion: value.definitionVersion as number }), definition: validateCriterionDefinition(value.definition), targetClaimRefs: validateCriterionTargets(value.targetClaimRefs), origin: validateCriterionOrigin(value.origin) }
+}
+function validateCriterionPreview(value: unknown): ThesisCriterionPreview {
+  if (!isRecord(value)) throw new ApplicationServiceError('invalid_input', 'preview must be an object')
+  assertExactFields(value, THESIS_CRITERION_PREVIEW_FIELDS, [], 'criterion preview')
+  if (typeof value.knowledgeBaseId !== 'string' || !value.knowledgeBaseId || value.knowledgeBaseId.length > 256 || typeof value.expectedKnowledgeBaseRevision !== 'number' || !Number.isSafeInteger(value.expectedKnowledgeBaseRevision) || value.expectedKnowledgeBaseRevision < 0 || typeof value.thesisRef !== 'string' || value.thesisRef.length > 300 || typeof value.conditionId !== 'string' || value.conditionId.length > 128 || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 1 || value.type !== 'numeric_threshold' || value.definitionVersion !== 1 || typeof value.definitionHash !== 'string' || value.definitionHash.length > 256 || typeof value.previewHash !== 'string' || value.previewHash.length > 256) throw new ApplicationServiceError('invalid_input', 'criterion preview metadata is invalid or oversized')
+  const definition = validateCriterionDefinition(value.definition)
+  const targetClaimRefs = validateCriterionTargets(value.targetClaimRefs)
+  const origin = validateCriterionOrigin(value.origin)
+  return { knowledgeBaseId: value.knowledgeBaseId, expectedKnowledgeBaseRevision: value.expectedKnowledgeBaseRevision, thesisRef: value.thesisRef, conditionId: value.conditionId, revision: value.revision, type: 'numeric_threshold', definitionVersion: 1, definition: definition as unknown as ThesisCriterionPreview['definition'], targetClaimRefs, origin: origin as unknown as ThesisCriterionPreview['origin'], definitionHash: value.definitionHash, previewHash: value.previewHash }
+}
+function validateCriterionConfirmBody(value: Record<string, unknown>): ThesisCriterionConfirmInput {
+  assertExactFields(value, ['preview', 'previewHash', 'expectedKnowledgeBaseRevision', 'workflowRunId'], [], 'criterion confirm request')
+  if (typeof value.previewHash !== 'string' || value.previewHash.length > 256 || typeof value.expectedKnowledgeBaseRevision !== 'number' || !Number.isSafeInteger(value.expectedKnowledgeBaseRevision) || value.expectedKnowledgeBaseRevision < 0 || typeof value.workflowRunId !== 'string' || value.workflowRunId.length > 128) throw new ApplicationServiceError('invalid_input', 'criterion confirmation metadata is invalid or oversized')
+  return { preview: validateCriterionPreview(value.preview), previewHash: value.previewHash, expectedKnowledgeBaseRevision: value.expectedKnowledgeBaseRevision, workflowRunId: value.workflowRunId }
+}
 
 export interface ResearchHubRuntimeServerOptions extends Omit<ResearchHubApplicationRuntimeOptions, 'cwd'> {
   readonly cwd?: string
@@ -366,6 +413,19 @@ export class ResearchHubRuntimeServer {
     const method = request.method ?? 'GET'
     const path = url.pathname
     if (method === 'GET' && (path === '/api/researchhub/status' || path === '/api/status')) { await this.sendJson(response, 200, await this.status()) ; return }
+    // Exact, human-operated criterion routes precede the broader Thesis and review route families.
+    if (method === 'POST' && path === '/api/production/thesis-lifecycle/criteria/prepare') {
+      const body = await this.readJson(request)
+      const service = this.runtime!.services.thesisCriterionService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Thesis criterion authoring requires an active mounted Schema 0.4 Knowledge Base')
+      await this.sendJson(response, 200, await service.prepare(validateCriterionPrepareBody(body))); return
+    }
+    if (method === 'POST' && path === '/api/production/thesis-lifecycle/criteria/confirm') {
+      const body = await this.readJson(request)
+      const service = this.runtime!.services.thesisCriterionService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Thesis criterion authoring requires an active mounted Schema 0.4 Knowledge Base')
+      await this.sendJson(response, 200, await service.confirm(validateCriterionConfirmBody(body))); return
+    }
     if (method === 'GET' && path === '/api/knowledge/theses') {
       const service = this.runtime!.services.thesisQueryService
       if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Thesis queries require a mounted Schema 0.4 Knowledge Base')
