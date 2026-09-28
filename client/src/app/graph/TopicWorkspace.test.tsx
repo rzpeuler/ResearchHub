@@ -118,6 +118,8 @@ describe('TopicInspector', () => {
     expect(screen.getByText('sha256:abc')).toBeTruthy()
     expect(screen.getByText('AI processing allowed')).toBeTruthy()
     expect(screen.getAllByText(/Usage policy/).length).toBeGreaterThan(0)
+    const retainRawPolicy = screen.getByText('Usage policy Retain Raw')
+    expect(retainRawPolicy.nextElementSibling?.textContent).toBe('false')
     expect(screen.queryByText(/raw-sha256-secret|private quotation|C:\\private/)).toBeNull()
     expect(screen.queryByText(/Canonical object/)).toBeNull()
     view.rerender(<TopicInspector refValue="source:restricted-a" client={client} onFocus={vi.fn()} />)
