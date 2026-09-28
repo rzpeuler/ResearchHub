@@ -1,13 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { RuntimeClient, KnowledgeTopicKind, KnowledgeTopicSummary } from '../../api/runtime-client'
+import { RuntimeClientError, type RuntimeClient, type KnowledgeTopicKind, type KnowledgeTopicSummary } from '../../api/runtime-client'
 import { TopicWorkspace } from './TopicWorkspace'
 import { TopicInspector } from './TopicInspector'
 
 const kinds: readonly KnowledgeTopicKind[] = ['relation', 'claim', 'observation', 'event', 'thesis', 'module', 'source', 'reasoning_edge']
 function summary(): KnowledgeTopicSummary {
   const counts = Object.fromEntries(kinds.map((kind) => [kind, { total: kind === 'claim' ? 2 : 0, totalExact: kind !== 'claim', truncated: kind === 'claim' }])) as KnowledgeTopicSummary['counts']['direct']
-  return { knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 7, theme: { ref: 'entity:theme-a', name: 'AI Hardware', aliases: ['Accelerator supply chain'], definition: 'Compute systems and supply chain', lifecycleStatus: 'active' }, counts: { direct: counts, connected: counts }, connected: { depth: 2, totalExact: false, truncated: true, focusRefs: ['entity:industry-a'] } }
+  return { knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 7, theme: { ref: 'entity:theme-a', name: 'AI Hardware', aliases: ['Accelerator supply chain'], definition: 'Compute systems and supply chain', lifecycleStatus: 'active' }, counts: { direct: counts, connected: counts }, overview: { direct: { latestDatedRecord: { ref: 'claim:risk-a', kind: 'claim', dateField: 'asOf', dateValue: '2026-06-01' }, nonSourceRecordsWithoutExplicitSourceRef: 1, totalExact: true, truncated: false }, connected: { latestDatedRecord: { ref: 'observation:metric-a', kind: 'observation', dateField: 'reportedAt', dateValue: '2026-06-02' }, nonSourceRecordsWithoutExplicitSourceRef: 4, totalExact: false, truncated: true } }, connected: { depth: 2, totalExact: false, truncated: true, focusRefs: ['entity:industry-a'] } }
 }
 function page(kind: KnowledgeTopicKind, items: readonly unknown[], extra: Record<string, unknown> = {}): unknown {
   return { knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 7, themeRef: 'entity:theme-a', kind, scope: 'direct', depth: 1, filters: { lifecycle: 'active' }, items, total: 2, totalExact: true, limit: 1, truncated: false, ...extra }
@@ -28,7 +29,7 @@ describe('TopicWorkspace', () => {
     const view = render(<TopicWorkspace {...props} />)
     expect(await screen.findByText('AI Hardware')).toBeTruthy()
     expect(await screen.findByText('Memory supply risk')).toBeTruthy()
-    expect(listTopicItems).toHaveBeenCalledWith(expect.objectContaining({ themeRef: 'entity:theme-a', kind: 'claim', scope: 'direct', filters: { lifecycle: 'all', claimType: 'risk' } }))
+    expect(listTopicItems).toHaveBeenCalledWith(expect.objectContaining({ themeRef: 'entity:theme-a', kind: 'claim', scope: 'direct', expectedRevision: 7, filters: { lifecycle: 'all', claimType: 'risk' } }))
     expect(screen.getByText(/At least 2/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
     expect(await screen.findByText('Packaging capacity risk')).toBeTruthy()
@@ -50,23 +51,80 @@ describe('TopicWorkspace', () => {
     expect(screen.getByText(/entity:theme-a —\[relation:theme-a-industry\]→ entity:industry-a/)).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Focus entity:industry-a' })).toBeTruthy()
   })
+
+  it('shows per-scope overview fields and honest connected lower-bound guidance', async () => {
+    const client = { getTopicSummary: vi.fn().mockResolvedValue(summary()), listTopicItems: vi.fn() } as unknown as RuntimeClient
+    render(<TopicWorkspace {...workspaceProps(client)} section="overview" />)
+    expect(await screen.findByRole('region', { name: 'direct overview' })).toBeTruthy()
+    expect(screen.getByText('asOf: 2026-06-01 (Claim)')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'claim:risk-a' })).toBeTruthy()
+    expect(screen.getAllByText('Records without explicit Source refs')).toHaveLength(2)
+    expect(screen.getByText(/At least the returned counts; association scan truncated/)).toBeTruthy()
+    expect(screen.queryByText(/not included in this topic summary/)).toBeNull()
+    expect(client.listTopicItems).not.toHaveBeenCalled()
+  })
+
+  it('renders Source backlinks with the exact count and opens referenced items in Inspector selection', async () => {
+    const source = { ref: 'source:filing-a', kind: 'source', scope: 'direct', lifecycleStatus: 'active', label: 'Issuer filing', fields: { provider: 'Issuer', rightsAccessScope: 'public', providerTermsKnown: true, canonicalUrl: 'https://example.test/filing', referencedByRefs: ['claim:risk-a', 'observation:metric-a'], referencedByTotal: 5, referencedByTruncated: true } }
+    const client = { getTopicSummary: vi.fn().mockResolvedValue(summary()), listTopicItems: vi.fn().mockResolvedValue(page('source', [source])) } as unknown as RuntimeClient
+    const props = workspaceProps(client)
+    render(<TopicWorkspace {...props} section="source" />)
+    expect(await screen.findByText('Issuer filing')).toBeTruthy()
+    expect(screen.getByText('5 supported items · reference list truncated')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'claim:risk-a' }))
+    expect(props.onSelect).toHaveBeenCalledWith('claim:risk-a')
+    expect(screen.getByRole('link', { name: 'Open source' }).getAttribute('href')).toBe('https://example.test/filing')
+  })
+
+  it('refreshes summary and fetches page one after an expected-revision conflict; retry performs a new fetch', async () => {
+    const fresh = { ...summary(), revision: 8 }
+    const getTopicSummary = vi.fn().mockResolvedValueOnce(summary()).mockResolvedValue(fresh)
+    const listTopicItems = vi.fn().mockRejectedValueOnce(new RuntimeClientError('conflict', 'Revision changed', 409)).mockResolvedValue(page('claim', [], { revision: 8 }))
+    const client = { getTopicSummary, listTopicItems } as unknown as RuntimeClient
+    function Harness() {
+      const [lifecycle, setLifecycle] = useState<'all' | 'active'>('all')
+      return <TopicWorkspace {...workspaceProps(client)} lifecycle={lifecycle} onLifecycleChange={setLifecycle} />
+    }
+    render(<Harness />)
+    await waitFor(() => expect(listTopicItems).toHaveBeenCalledTimes(2))
+    expect(getTopicSummary).toHaveBeenCalledTimes(2)
+    expect(listTopicItems.mock.calls[0][0]).toMatchObject({ expectedRevision: 7 })
+    expect(listTopicItems.mock.calls[1][0]).toMatchObject({ expectedRevision: 8 })
+    expect(listTopicItems.mock.calls[1][0].cursor).toBeUndefined()
+    listTopicItems.mockRejectedValueOnce(new Error('Temporary read error'))
+    fireEvent.change(screen.getByLabelText('Lifecycle filter'), { target: { value: 'active' } })
+    await waitFor(() => expect(listTopicItems).toHaveBeenCalledTimes(3))
+    await waitFor(() => expect(screen.getByText('Knowledge topic request failed')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Reload first page' }))
+    await waitFor(() => expect(listTopicItems).toHaveBeenCalledTimes(4))
+    expect(listTopicItems.mock.calls[3][0].cursor).toBeUndefined()
+  })
 })
 
 describe('TopicInspector', () => {
   afterEach(() => cleanup())
 
   it('shows a safe canonical source link only when its public terms permit it and hides Raw fields', async () => {
-    const getKnowledgeObject = vi.fn().mockImplementation((ref: string) => Promise.resolve({ ref, kind: 'Source', object: ref === 'source:filing-a' ? { id: ref, title: 'Issuer annual report', publisher: 'Issuer', canonicalUrl: 'https://example.test/report', rights: { accessScope: 'public', providerTermsKnown: true, redistributionAllowed: false }, rawRefs: ['raw-sha256-secret'], excerpt: 'private quotation', localPath: 'C:\\private\\report.pdf' } : { id: ref, title: 'Restricted source', publisher: 'Acme C:\\private\\folder', canonicalUrl: 'https://example.test/restricted', rights: { accessScope: 'restricted', providerTermsKnown: true, redistributionAllowed: false }, rawRefs: ['raw-sha256-hidden'], excerpt: 'restricted quote' } }))
+    const getKnowledgeObject = vi.fn().mockImplementation((ref: string) => Promise.resolve({ ref, kind: 'Source', object: ref === 'source:filing-a' ? { id: ref, title: 'Issuer annual report', publisher: 'Issuer', provider: 'Issuer portal', retrievedAt: '2026-06-02', contentHash: 'sha256:abc', canonicalUrl: 'https://example.test/report', rights: { accessScope: 'public', providerTermsKnown: true, redistributionAllowed: false, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, retentionAllowed: true, policyBasis: 'public filing' }, usagePolicy: { mode: 'metadata_only', retainRaw: false, allowAiProcessing: true, allowDerivedKnowledge: false }, rawRefs: ['raw-sha256-secret'], excerpt: 'private quotation', localPath: 'C:\\private\\report.pdf' } : ref === 'source:restricted-a' ? { id: ref, title: 'Restricted source', publisher: 'Acme C:\\private\\folder', canonicalUrl: 'https://example.test/restricted', rights: { accessScope: 'restricted', providerTermsKnown: true, redistributionAllowed: false }, rawRefs: ['raw-sha256-hidden'], excerpt: 'restricted quote' } : { id: ref, title: 'Unsafe URL source', canonicalUrl: 'file:///C:/private/report.pdf', rights: { accessScope: 'public', providerTermsKnown: true } } }))
     const client = { getKnowledgeObject } as unknown as RuntimeClient
     const view = render(<TopicInspector refValue="source:filing-a" client={client} onFocus={vi.fn()} />)
     expect((await screen.findAllByText('Issuer annual report')).length).toBeGreaterThan(0)
     expect(screen.getByRole('link', { name: 'Open source' }).getAttribute('href')).toBe('https://example.test/report')
+    expect(screen.getByText('Issuer portal')).toBeTruthy()
+    expect(screen.getByText('2026-06-02')).toBeTruthy()
+    expect(screen.getByText('sha256:abc')).toBeTruthy()
+    expect(screen.getByText('AI processing allowed')).toBeTruthy()
+    expect(screen.getAllByText(/Usage policy/).length).toBeGreaterThan(0)
     expect(screen.queryByText(/raw-sha256-secret|private quotation|C:\\private/)).toBeNull()
     expect(screen.queryByText(/Canonical object/)).toBeNull()
     view.rerender(<TopicInspector refValue="source:restricted-a" client={client} onFocus={vi.fn()} />)
     expect((await screen.findAllByText('Restricted source')).length).toBeGreaterThan(0)
     expect(screen.queryByRole('link', { name: 'Open source' })).toBeNull()
     expect(screen.queryByText(/C:\\private|restricted quote|raw-sha256-hidden/)).toBeNull()
+    view.rerender(<TopicInspector refValue="source:unsafe-a" client={client} onFocus={vi.fn()} />)
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Unsafe URL source' })).toBeTruthy())
+    expect(screen.queryByText('file:///C:/private/report.pdf')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Open source' })).toBeNull()
   })
 
   it('separates Thesis status and lifecycle, marks unknown criterion types unevaluable, and renders Module object rows', async () => {
@@ -81,5 +139,43 @@ describe('TopicInspector', () => {
     expect(screen.getByText('Current type/version is not evaluable')).toBeTruthy()
     view.rerender(<TopicInspector refValue="module:comparison" client={client} onFocus={vi.fn()} />)
     expect(await screen.findByText('Chipmaker')).toBeTruthy()
+  })
+
+  it('shows complete observation variants and labeled Claim relationships as Inspector navigation', async () => {
+    const getKnowledgeObject = vi.fn().mockImplementation((ref: string) => Promise.resolve(ref.startsWith('observation:metric')
+      ? { ref, kind: 'Observation', object: { id: ref, observationType: 'metric', metricRef: 'metric:shipments', value: 120, unit: 'index', dimensions: { region: 'global', product: 'HBM' } } }
+      : ref.startsWith('observation:estimate')
+      ? { ref, kind: 'Observation', object: { id: ref, observationType: 'estimate', metricRef: 'metric:revenue', fiscalPeriod: 'FY2027', estimateValue: 42, institutionRef: 'entity:bank', analystRef: 'entity:analyst', currency: 'USD', estimateHorizon: '12 months', revisionOf: 'observation:estimate-old' } }
+      : ref.startsWith('observation:consensus')
+        ? { ref, kind: 'Observation', object: { id: ref, observationType: 'consensus', metricRef: 'metric:revenue', median: 42, high: 50, low: 35, dispersion: 4, contributingObservationRefs: ['observation:estimate-a'] } }
+        : { ref, kind: 'Claim', object: { id: ref, claimType: 'fact', statement: 'Production improved.', supportsClaimRefs: ['claim:support'], dependsOnClaimRefs: ['claim:dependency'], contradictsClaimRefs: ['claim:contradiction'], supersedes: ['claim:old'], supersededBy: ['claim:new'] } }))
+    const onFocus = vi.fn()
+    const client = { getKnowledgeObject } as unknown as RuntimeClient
+    const view = render(<TopicInspector refValue="observation:metric-current" client={client} onFocus={onFocus} />)
+    expect(await screen.findByText('Metric dimensions')).toBeTruthy()
+    expect(screen.getByText('global')).toBeTruthy()
+    view.rerender(<TopicInspector refValue="observation:estimate-current" client={client} onFocus={onFocus} />)
+    expect(await screen.findByRole('button', { name: 'entity:bank' })).toBeTruthy()
+    expect(screen.getByText('USD')).toBeTruthy()
+    expect(screen.getByText('12 months')).toBeTruthy()
+    expect(screen.getByText('observation:estimate-old')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'entity:bank' }))
+    expect(onFocus).toHaveBeenCalledWith('entity:bank')
+    view.rerender(<TopicInspector refValue="observation:consensus-current" client={client} onFocus={onFocus} />)
+    expect(await screen.findByText('42')).toBeTruthy()
+    expect(screen.getByText('35 – 50')).toBeTruthy()
+    expect(screen.getByText('Range (low–high)')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'observation:estimate-a' })).toBeTruthy()
+    view.rerender(<TopicInspector refValue="claim:current" client={client} onFocus={onFocus} />)
+    expect(await screen.findByText('Claim relationships')).toBeTruthy()
+    for (const label of ['Supports', 'Depends on', 'Contradicts', 'Supersedes', 'Superseded by']) expect(screen.getByText(label)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'claim:old' }))
+    expect(onFocus).toHaveBeenCalledWith('claim:old')
+  })
+
+  it('explains when Module table columns or rows are missing', async () => {
+    const client = { getKnowledgeObject: vi.fn().mockResolvedValue({ ref: 'module:empty', kind: 'Module', object: { id: 'module:empty', type: 'comparison', columns: [{ name: 'company' }] } }) } as unknown as RuntimeClient
+    render(<TopicInspector refValue="module:empty" client={client} onFocus={vi.fn()} />)
+    expect(await screen.findByText('Module table unavailable: rows are not recorded.')).toBeTruthy()
   })
 })

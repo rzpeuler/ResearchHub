@@ -31,7 +31,8 @@ describe('KnowledgeGraphPage', () => {
   it('toggles ThemeGroup themes without treating the group as a graph root', async () => {
     const getKnowledgeGraph = vi.fn().mockResolvedValue({ rootRef: 'entity:theme-a', profile: 'theme_context', depth: 1, nodes: [{ ref: 'entity:theme-a', entityType: 'investment_theme', label: 'Theme A', lifecycleStatus: 'active', isRoot: true }], edges: [], nodeTotal: 1, edgeTotal: 0, nodeLimit: 60, edgeLimit: 120, truncated: false })
     const counts = Object.fromEntries(['relation', 'claim', 'observation', 'event', 'thesis', 'module', 'source', 'reasoning_edge'].map((kind) => [kind, { total: 0, totalExact: true, truncated: false }]))
-    const client = { getKnowledgeDirectory: vi.fn().mockResolvedValue({ themeGroups: [{ ref: 'theme-group:infra', name: 'Infrastructure', themes: [{ ref: 'entity:theme-a', name: 'Theme A' }, { ref: 'entity:theme-b', name: 'Theme B' }] }], industries: { items: [], total: 0, limit: 30, truncated: false }, companies: { items: [], total: 0, limit: 30, truncated: false }, products: { items: [], total: 0, limit: 30, truncated: false }, technologies: { items: [], total: 0, limit: 30, truncated: false } }), getKnowledgeGraph, getTopicSummary: vi.fn().mockImplementation((themeRef: string) => Promise.resolve({ knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 1, theme: { ref: themeRef, name: 'Theme A', aliases: [], lifecycleStatus: 'active' }, counts: { direct: counts, connected: counts }, connected: { depth: 1, totalExact: true, truncated: false, focusRefs: [] } })), listTopicItems: vi.fn().mockResolvedValue({ items: [], total: 0, totalExact: true, limit: 30, truncated: false }), getKnowledgeObject: vi.fn(), searchKnowledge: vi.fn() } as unknown as RuntimeClient
+    const overview = { direct: { nonSourceRecordsWithoutExplicitSourceRef: 0, totalExact: true, truncated: false }, connected: { nonSourceRecordsWithoutExplicitSourceRef: 0, totalExact: true, truncated: false } }
+    const client = { getKnowledgeDirectory: vi.fn().mockResolvedValue({ themeGroups: [{ ref: 'theme-group:infra', name: 'Infrastructure', themes: [{ ref: 'entity:theme-a', name: 'Theme A' }, { ref: 'entity:theme-b', name: 'Theme B' }] }], industries: { items: [], total: 0, limit: 30, truncated: false }, companies: { items: [], total: 0, limit: 30, truncated: false }, products: { items: [], total: 0, limit: 30, truncated: false }, technologies: { items: [], total: 0, limit: 30, truncated: false } }), getKnowledgeGraph, getTopicSummary: vi.fn().mockImplementation((themeRef: string) => Promise.resolve({ knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 1, theme: { ref: themeRef, name: 'Theme A', aliases: [], lifecycleStatus: 'active' }, counts: { direct: counts, connected: counts }, overview, connected: { depth: 1, totalExact: true, truncated: false, focusRefs: [] } })), listTopicItems: vi.fn().mockResolvedValue({ items: [], total: 0, totalExact: true, limit: 30, truncated: false }), getKnowledgeObject: vi.fn(), searchKnowledge: vi.fn() } as unknown as RuntimeClient
     render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb' }} client={client} />)
     const group = await screen.findByRole('button', { name: /Infrastructure/ })
     await waitFor(() => expect(group.getAttribute('aria-expanded')).toBe('true'))
@@ -63,7 +64,7 @@ describe('KnowledgeGraphPage', () => {
     const client = {
       getKnowledgeDirectory: vi.fn().mockResolvedValue({ themeGroups: [{ ref: 'theme-group:infra', name: 'Infrastructure', themes: [{ ref: 'entity:theme-a', name: 'AI Hardware' }] }], industries: { items: [{ ref: 'entity:industry-a', name: 'Semiconductor industry' }], total: 1, limit: 30, truncated: false }, companies: { items: [], total: 0, limit: 30, truncated: false }, products: { items: [], total: 0, limit: 30, truncated: false }, technologies: { items: [], total: 0, limit: 30, truncated: false } }),
       getKnowledgeGraph: graph,
-      getTopicSummary: vi.fn().mockResolvedValue({ knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 7, theme: { ref: 'entity:theme-a', name: 'AI Hardware', aliases: [], lifecycleStatus: 'active' }, counts: { direct: counts, connected: counts }, connected: { depth: 1, totalExact: true, truncated: false, focusRefs: [] } }),
+      getTopicSummary: vi.fn().mockResolvedValue({ knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 7, theme: { ref: 'entity:theme-a', name: 'AI Hardware', aliases: [], lifecycleStatus: 'active' }, counts: { direct: counts, connected: counts }, overview: { direct: { nonSourceRecordsWithoutExplicitSourceRef: 0, totalExact: true, truncated: false }, connected: { nonSourceRecordsWithoutExplicitSourceRef: 0, totalExact: true, truncated: false } }, connected: { depth: 1, totalExact: true, truncated: false, focusRefs: [] } }),
       listTopicItems: vi.fn().mockResolvedValue({ items: [], total: 0, totalExact: true, limit: 30, truncated: false }),
       getKnowledgeObject: vi.fn().mockResolvedValue({ ref: 'claim:forecast-a', kind: 'Claim', object: { id: 'claim:forecast-a', claimType: 'forecast', statement: 'Memory shipments may rise.', lifecycle: { status: 'active' } } }),
       searchKnowledge: vi.fn().mockResolvedValue({ results: [{ ref: 'claim:forecast-a', kind: 'Claim', semanticType: 'forecast', displayName: 'Memory shipment forecast' }], total: 1, limit: 20, truncated: false }),
@@ -82,6 +83,29 @@ describe('KnowledgeGraphPage', () => {
     expect((await screen.findAllByText('Memory shipments may rise.')).length).toBeGreaterThan(0)
     expect(window.location.search).toContain('selectedRef=claim%3Aforecast-a')
     expect(window.location.search).toContain('themeRef=entity%3Atheme-a')
+  })
+
+  it('clears the previous topic workspace immediately when switching themes', async () => {
+    const counts = Object.fromEntries(['relation', 'claim', 'observation', 'event', 'thesis', 'module', 'source', 'reasoning_edge'].map((kind) => [kind, { total: 0, totalExact: true, truncated: false }]))
+    const overview = { direct: { nonSourceRecordsWithoutExplicitSourceRef: 0, totalExact: true, truncated: false }, connected: { nonSourceRecordsWithoutExplicitSourceRef: 0, totalExact: true, truncated: false } }
+    let resolveThemeB: ((value: unknown) => void) | undefined
+    const themeBSummary = new Promise<unknown>((resolve) => { resolveThemeB = resolve })
+    const summary = (themeRef: string) => ({ knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 7, theme: { ref: themeRef, name: themeRef === 'entity:theme-a' ? 'Theme A' : 'Theme B', aliases: [], lifecycleStatus: 'active' }, counts: { direct: counts, connected: counts }, overview, connected: { depth: 1, totalExact: true, truncated: false, focusRefs: [] } })
+    const client = {
+      getKnowledgeDirectory: vi.fn().mockResolvedValue({ themeGroups: [{ ref: 'theme-group:test', name: 'Test themes', themes: [{ ref: 'entity:theme-a', name: 'Theme A' }, { ref: 'entity:theme-b', name: 'Theme B' }] }], industries: { items: [], total: 0, limit: 30, truncated: false }, companies: { items: [], total: 0, limit: 30, truncated: false }, products: { items: [], total: 0, limit: 30, truncated: false }, technologies: { items: [], total: 0, limit: 30, truncated: false } }),
+      getKnowledgeGraph: vi.fn().mockImplementation(({ rootRef, depth }: { rootRef: string; depth: 1 | 2 }) => Promise.resolve({ rootRef, profile: 'theme_context', depth, nodes: [{ ref: rootRef, entityType: 'investment_theme', label: rootRef, lifecycleStatus: 'active', isRoot: true }], edges: [], nodeTotal: 1, edgeTotal: 0, nodeLimit: 60, edgeLimit: 120, truncated: false })),
+      getTopicSummary: vi.fn().mockImplementation((ref: string) => ref === 'entity:theme-b' ? themeBSummary : Promise.resolve(summary(ref))),
+      listTopicItems: vi.fn().mockResolvedValue({ items: [], total: 0, totalExact: true, limit: 30, truncated: false }), getKnowledgeObject: vi.fn(), searchKnowledge: vi.fn(),
+    } as unknown as RuntimeClient
+    window.history.replaceState({}, '', '/graph?themeRef=entity%3Atheme-a')
+    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 7 }} client={client} />)
+    expect(await screen.findByRole('heading', { name: 'Theme A' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /Theme B/ }))
+    await waitFor(() => expect(client.getTopicSummary).toHaveBeenCalledWith('entity:theme-b', 1))
+    expect(screen.queryByRole('heading', { name: 'Theme A' })).toBeNull()
+    expect(resolveThemeB).toBeTruthy()
+    resolveThemeB!(summary('entity:theme-b'))
+    expect(await screen.findByRole('heading', { name: 'Theme B' })).toBeTruthy()
   })
 
   it('renders bounded node canonical fields, relations, claims, sources, and provenance', async () => {

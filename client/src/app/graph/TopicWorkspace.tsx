@@ -73,13 +73,15 @@ export function TopicWorkspace({ themeRef, graphRootRef, section, scope, depth, 
   const [pageIndex, setPageIndex] = useState(0)
   const [observedRevision, setObservedRevision] = useState<number | undefined>(revisionHint)
   const [summaryRefresh, setSummaryRefresh] = useState(0)
+  const [pageReload, setPageReload] = useState(0)
+  const [refreshingRevision, setRefreshingRevision] = useState(false)
 
   useEffect(() => {
     let current = true
     setSummary(undefined); setSummaryError(''); setUnsupported(false)
     void client.getTopicSummary(themeRef, depth).then((value) => {
       if (!current) return
-      setSummary(value); setObservedRevision(value.revision); setSummaryError('')
+      setSummary(value); setObservedRevision(value.revision); setSummaryError(''); setRefreshingRevision(false)
     }).catch((error: unknown) => {
       if (!current) return
       setSummaryError(errorMessage(error)); setUnsupported(isUnsupported(error))
@@ -94,22 +96,22 @@ export function TopicWorkspace({ themeRef, graphRootRef, section, scope, depth, 
     setCursorStack([undefined]); setPageIndex(0); setPage(undefined); setPageError('')
   }, [themeRef, graphRootRef, kind, scope, depth, lifecycle, observationType, claimType, relationType, observedRevision])
   useEffect(() => {
-    if (!kind || unsupported) { setPage(undefined); setPageBusy(false); return }
+    if (!kind || unsupported || refreshingRevision || observedRevision === undefined) { setPage(undefined); setPageBusy(false); return }
     let current = true
     setPageBusy(true); setPageError('')
-    void client.listTopicItems({ themeRef, kind, scope, depth, limit: pageSize, ...(cursor ? { cursor } : {}), filters }).then((value) => {
+    void client.listTopicItems({ themeRef, kind, scope, depth, limit: pageSize, ...(cursor ? { cursor } : {}), ...(observedRevision !== undefined ? { expectedRevision: observedRevision } : {}), filters }).then((value) => {
       if (!current) return
       if (observedRevision !== undefined && value.revision !== observedRevision) {
-        setObservedRevision(value.revision); setCursorStack([undefined]); setPageIndex(0); setPage(undefined); setSummaryRefresh((current) => current + 1); return
+        setCursorStack([undefined]); setPageIndex(0); setPage(undefined); setRefreshingRevision(true); setSummaryRefresh((current) => current + 1); return
       }
       setPage(value)
     }).catch((error: unknown) => {
       if (!current) return
       setPageError(errorMessage(error)); setPage(undefined)
-      if (error instanceof RuntimeClientError && (error.code === 'conflict' || error.status === 409)) { setCursorStack([undefined]); setPageIndex(0) }
+      if (error instanceof RuntimeClientError && (error.code === 'conflict' || error.status === 409)) { setCursorStack([undefined]); setPageIndex(0); setRefreshingRevision(true); setSummaryRefresh((current) => current + 1) }
     }).finally(() => { if (current) setPageBusy(false) })
     return () => { current = false }
-  }, [client, themeRef, kind, scope, depth, cursor, filters, observedRevision, unsupported])
+  }, [client, themeRef, kind, scope, depth, cursor, filters, observedRevision, unsupported, refreshingRevision, pageReload])
 
   const count = kind && summary ? summary.counts[scope][kind] : undefined
   const pageCountLabel = page ? `${page.totalExact ? page.total : `At least ${page.total}`}${page.truncated ? ' · truncated' : ''}` : countLabel(count)
@@ -138,7 +140,7 @@ export function TopicWorkspace({ themeRef, graphRootRef, section, scope, depth, 
     {graphContent}
     {summary ? <>
       <div className="topic-scope-bar"><div><span className="eyebrow">TOPIC CONTENT</span><p>Direct records belong to this theme. Connected records belong to entities reached by canonical relations.</p></div><div className="topic-segmented" role="group" aria-label="Knowledge scope"><button aria-pressed={scope === 'direct'} className={scope === 'direct' ? 'selected' : ''} onClick={() => onScopeChange('direct')}>Direct</button><button aria-pressed={scope === 'connected'} className={scope === 'connected' ? 'selected' : ''} onClick={() => onScopeChange('connected')}>Connected</button></div></div>
-      {scope === 'connected' ? <p className="topic-boundary">Depth {scopeSummary?.depth ?? depth}: {scopeSummary?.totalExact ? 'connected totals are exact' : 'connected totals are at least the returned counts'} · {scopeSummary?.truncated ? 'association traversal truncated' : 'bounded relation paths'}{scopeSummary?.focusRefs.length ? <> · focus refs available: {scopeSummary.focusRefs.map((ref) => <button className="topic-inline-link" key={ref} onClick={() => onFocus(ref)}>{ref}</button>)}</> : null}</p> : null}
+      {scope === 'connected' ? <p className="topic-boundary">Depth {scopeSummary?.depth ?? depth}: {scopeSummary?.totalExact ? 'connected totals are exact' : 'connected totals are lower bounds'}{scopeSummary?.truncated ? ' · association traversal truncated; counts are at least the values shown' : ' · bounded relation paths'}{scopeSummary?.focusRefs.length ? <> · focus refs available: {scopeSummary.focusRefs.map((ref) => <button className="topic-inline-link" key={ref} onClick={() => onFocus(ref)}>{ref}</button>)}</> : null}</p> : null}
       <nav className="topic-section-nav" aria-label="Topic sections">{sections.map((entry) => {
         const sectionCount = entry.key === 'overview' ? undefined : summary.counts[scope][entry.key as KnowledgeTopicKind]
         return <button key={entry.key} type="button" aria-current={section === entry.key ? 'page' : undefined} className={section === entry.key ? 'selected' : ''} onClick={() => onSectionChange(entry.key)}><span>{entry.label}</span>{sectionCount ? <small>{countLabel(sectionCount)}</small> : null}</button>
@@ -146,15 +148,23 @@ export function TopicWorkspace({ themeRef, graphRootRef, section, scope, depth, 
       {section === 'overview' ? <div className="topic-overview">
         <div className="topic-overview-heading"><div><h3>{summary.theme.name} overview</h3><p>Counts and reach come from the mounted Knowledge projection at revision {summary.revision}.</p></div>{summary.connected.truncated ? <span className="topic-state topic-state-warning">Connected traversal truncated</span> : null}</div>
         <div className="topic-count-grid">{sections.filter((entry) => entry.key !== 'overview').map((entry) => { const value = summary.counts[scope][entry.key as KnowledgeTopicKind]; return <button key={entry.key} className="topic-count-card" onClick={() => onSectionChange(entry.key)}><span>{entry.label}</span><strong>{countLabel(value)}</strong></button> })}</div>
-        <p className="topic-boundary">Connected context uses canonical relation paths up to depth {summary.connected.depth}. {summary.connected.totalExact ? 'The projection reports exact connected totals.' : 'Connected totals are lower bounds.'}{summary.connected.truncated ? ' The association scan is incomplete.' : ''}</p>
-        <p className="topic-boundary">Latest recorded time and evidence gap summaries are not included in this topic summary response.</p>
+        <p className="topic-boundary">Connected context uses canonical relation paths up to depth {summary.connected.depth}. {summary.connected.truncated ? 'Connected totals are at least the returned counts because association traversal was truncated.' : summary.connected.totalExact ? 'The projection reports exact connected totals.' : 'Connected totals are lower bounds.'}</p>
+        <div className="topic-overview-grid">{(['direct', 'connected'] as const).map((overviewScope) => {
+          const data = summary.overview[overviewScope]
+          return <section className="topic-overview-scope" key={overviewScope} aria-label={`${overviewScope} overview`}>
+            <h4>{overviewScope === 'direct' ? 'Direct' : 'Connected'} overview</h4>
+            {overviewScope === 'connected' && data.truncated ? <p className="topic-state topic-state-warning">At least the returned counts; association scan truncated</p> : null}
+            <dl className="graph-meta"><dt>Latest recorded time</dt><dd>{data.latestDatedRecord ? <><span>{data.latestDatedRecord.dateField}: {data.latestDatedRecord.dateValue} ({titleFor(data.latestDatedRecord.kind)})</span> <button className="topic-inline-link" onClick={() => onSelect(data.latestDatedRecord!.ref)}>{data.latestDatedRecord.ref}</button></> : 'No dated record reported'}</dd>
+              <dt>Records without explicit Source refs</dt><dd>{data.totalExact ? String(data.nonSourceRecordsWithoutExplicitSourceRef) : `At least ${data.nonSourceRecordsWithoutExplicitSourceRef}`}{data.truncated ? ' · truncated' : ''}</dd></dl>
+          </section>
+        })}</div>
         {summary.schemaVersion !== '0.4' ? <p className="topic-boundary">Topic sections are not supported for this schema version.</p> : null}
       </div> : <div className="topic-list-panel">
         <div className="topic-list-heading"><div><span className="eyebrow">{scope === 'direct' ? 'DIRECTLY ATTRIBUTED' : 'RELATED ENTITY CONTEXT'}</span><h3>{titleFor(kind!)}</h3><p>{pageCountLabel} in this filtered scope{page ? ` · page ${pageIndex + 1} · KB revision ${page.revision}` : ''}</p></div><label className="topic-filter">Lifecycle<select aria-label="Lifecycle filter" value={lifecycle} onChange={(event) => onLifecycleChange(event.target.value as 'active' | 'all')}><option value="active">Active</option><option value="all">All lifecycle states</option></select></label></div>
         {kind === 'observation' ? <label className="topic-filter">Observation type<select aria-label="Observation type" value={observationType ?? ''} onChange={(event) => onObservationTypeChange(event.target.value ? event.target.value as 'metric' | 'estimate' | 'consensus' : undefined)}><option value="">All observation types</option><option value="metric">Metric</option><option value="estimate">Estimate</option><option value="consensus">Consensus</option></select></label> : null}
         {kind === 'claim' ? <label className="topic-filter">Claim type<select aria-label="Claim type" value={claimType ?? ''} onChange={(event) => onClaimTypeChange(event.target.value || undefined)}><option value="">All claim types</option>{['fact','forecast','viewpoint','trend','risk','assumption','thesis','catalyst'].map((value) => <option key={value} value={value}>{value}</option>)}</select></label> : null}
         {kind === 'relation' ? <label className="topic-filter">Relation type<select aria-label="Relation type" value={relationType ?? ''} onChange={(event) => onRelationTypeChange(event.target.value || undefined)}><option value="">All relation types</option>{relationTypes.map((value) => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}</select></label> : null}
-        {pageError ? <div className="inline-error topic-error">{pageError} <button type="button" onClick={() => { setCursorStack([undefined]); setPageIndex(0); setPageError('') }}>Reload first page</button></div> : null}
+        {pageError ? <div className="inline-error topic-error">{pageError} <button type="button" onClick={() => { setCursorStack([undefined]); setPageIndex(0); setPage(undefined); setRefreshingRevision(false); setPageError(''); setPageReload((current) => current + 1) }}>Reload first page</button></div> : null}
         {pageBusy ? <p className="topic-empty">Loading {titleFor(kind!)}…</p> : null}
         {!pageBusy && page?.items.length === 0 ? <p className="topic-empty">No {titleFor(kind!).toLowerCase()} records in this scope.</p> : null}
         <div className="topic-item-list">{page?.items.map((item) => <TopicItemCard key={`${item.kind}:${item.ref}`} item={item} selected={item.ref === selectedRef} onSelect={onSelect} onFocus={onFocus} />)}</div>
@@ -165,15 +175,19 @@ export function TopicWorkspace({ themeRef, graphRootRef, section, scope, depth, 
 }
 
 function TopicItemCard({ item, selected, onSelect, onFocus }: { readonly item: KnowledgeTopicItem; readonly selected: boolean; readonly onSelect: (ref: string) => void; readonly onFocus: (ref: string) => void }): ReactElement {
-  const entries = Object.entries(item.fields).filter(([key, value]) => !['url', 'sourceUrl', 'canonicalUrl'].includes(key) && fieldText(key, value) !== undefined)
+  const entries = Object.entries(item.fields).filter(([key, value]) => !['url', 'sourceUrl', 'canonicalUrl', 'referencedByRefs', 'referencedByTotal', 'referencedByTruncated'].includes(key) && fieldText(key, value) !== undefined)
   const linkPermitted = item.kind === 'source' && item.fields.rightsAccessScope === 'public' && item.fields.providerTermsKnown === true
   const url = linkPermitted ? safeUrl(item.fields.canonicalUrl) : undefined
+  const referencedByRefs = item.kind === 'source' && Array.isArray(item.fields.referencedByRefs) ? item.fields.referencedByRefs.filter((ref): ref is string => typeof ref === 'string') : []
+  const referencedByTotal = item.kind === 'source' && typeof item.fields.referencedByTotal === 'number' ? item.fields.referencedByTotal : undefined
+  const referencedByTruncated = item.kind === 'source' && item.fields.referencedByTruncated === true
   return <article className={`topic-item-card ${selected ? 'selected' : ''}`}>
     <div className="topic-item-topline"><span className="topic-kind">{titleFor(item.kind)}</span><span className="topic-lifecycle">{item.lifecycleStatus}</span>{item.scope === 'connected' ? <span className="topic-state">Related entity knowledge</span> : <span className="topic-state">Direct</span>}</div>
     <button type="button" className="topic-item-title" onClick={() => onSelect(item.ref)}>{item.label}</button>
     <p className="topic-item-summary">{item.summary ?? 'No summary recorded.'}</p>
     <p className="topic-item-date">{itemDate(item)}</p>
     {entries.length ? <dl className="topic-item-fields">{entries.map(([key, value]) => <Fragment key={key}><dt>{key}</dt><dd>{fieldText(key, value)}</dd></Fragment>)}</dl> : null}
+    {item.kind === 'source' ? <section className="topic-source-backlinks" aria-label="Source references"><strong>Referenced by</strong><p>{referencedByTotal === undefined ? 'Reference count unavailable' : `${referencedByTotal} supported items${referencedByTruncated ? ' · reference list truncated' : ''}`}</p>{referencedByRefs.length ? <ul>{referencedByRefs.map((ref) => <li key={ref}><button type="button" className="topic-inline-link" onClick={() => onSelect(ref)}>{ref}</button></li>)}</ul> : <p>No supported-item refs returned.</p>}</section> : null}
     {item.associationPaths?.length ? <div className="topic-paths"><strong>Proven association path</strong>{item.associationPaths.map((path, index) => <div key={`${path.entityRef}:${index}`}><p>{pathText(path)}</p><button type="button" onClick={() => onFocus(path.entityRef)}>Focus {path.entityRef}</button></div>)}</div> : null}
     {url ? <a className="graph-evidence-link" href={url} target="_blank" rel="noreferrer noopener">Open source</a> : item.kind === 'source' ? <p className="topic-rights-note">Source URL is unavailable or not permitted for this view.</p> : null}
   </article>
