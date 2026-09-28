@@ -5,6 +5,7 @@ import type { KnowledgeBaseHandle } from '../../knowledge/storage/handle.ts'
 import { KnowledgeIndexV04 } from '../../knowledge/query/index.ts'
 import { refreshThesis } from '../../skills/thesis_refresh/calculations.ts'
 import type { PriorThesisSnapshot, RefreshEvidence, RefreshEvidenceRelation, ThesisRefreshResult } from '../../skills/thesis_refresh/contracts.ts'
+import { evaluateThesisKillCriterion, type KillCriterionEvidenceBindingV1, type ThesisKillCriterionEvaluatorResult } from './kill-criterion-evaluator.ts'
 
 export interface ThesisRefreshEvidenceBinding {
   readonly evidenceRef: string
@@ -38,6 +39,8 @@ export interface ThesisRefreshAdapterResult {
   readonly thesisRef: ThesisRefV04
   readonly priorSnapshot?: PriorThesisSnapshot
   readonly refresh?: ThesisRefreshResult
+  /** Deterministic evaluations of active canonical criteria; separate from Skill proposition assessments. */
+  readonly criterionEvaluations: readonly ThesisKillCriterionEvaluatorResult[]
   readonly evidenceLineage: readonly ThesisRefreshEvidenceLineage[]
   readonly diagnostics: readonly string[]
 }
@@ -47,6 +50,7 @@ const active = (asset: KnowledgeAssetV04): boolean => 'lifecycle' in asset && as
 const ordered = (values: readonly string[]): string[] => [...new Set(values)].sort((a, b) => a.localeCompare(b))
 const isClaim = (value: KnowledgeAssetV04 | undefined): value is KnowledgeClaimV04 => value?.id.startsWith('claim:') === true
 const isObservation = (value: KnowledgeAssetV04 | undefined): value is KnowledgeObservationV04 => value?.id.startsWith('observation:') === true
+const MAX_ACTIVE_CRITERIA = 100
 
 function publicationTime(asset: KnowledgeClaimV04 | KnowledgeObservationV04, binding: ThesisRefreshEvidenceBinding, index: KnowledgeIndexV04): { publishedAt?: string; reason?: string } {
   const dates = binding.sourceBindings.map((pair) => {
@@ -105,7 +109,38 @@ function sourceEligible(source: KnowledgeSourceV04, asOf: string): boolean {
 }
 
 function blocked(input: ThesisRefreshAdapterInput, diagnostics: readonly string[], lineage: readonly ThesisRefreshEvidenceLineage[] = []): ThesisRefreshAdapterResult {
-  return { status: 'blocked', thesisRef: input.thesisRef, evidenceLineage: lineage, diagnostics }
+  return { status: 'blocked', thesisRef: input.thesisRef, criterionEvaluations: [], evidenceLineage: lineage, diagnostics }
+}
+
+function criterionEvidenceBindings(
+  index: KnowledgeIndexV04,
+  lineage: readonly ThesisRefreshEvidenceLineage[],
+  targetClaimRefs: readonly string[],
+): KillCriterionEvidenceBindingV1[] {
+  const targets = new Set(targetClaimRefs)
+  const bindings: KillCriterionEvidenceBindingV1[] = []
+  for (const item of lineage) {
+    if (item.decision !== 'included' || item.targetClaimRefs.length === 0 || !item.targetClaimRefs.some((ref) => targets.has(ref))) continue
+    const evidence = index.objects.get(item.evidenceRef)
+    if (!isClaim(evidence) && !isObservation(evidence)) continue
+    const provenance = (evidence as unknown as { provenance?: unknown }).provenance
+    for (const pair of item.sourceBindings) {
+      const matchingProvenance = Array.isArray(provenance)
+        ? provenance.filter((value) => value !== null && typeof value === 'object' && (value as Record<string, unknown>).sourceRef === pair.sourceRef && (value as Record<string, unknown>).rawRef === pair.rawRef)
+        : []
+      if (matchingProvenance.length === 0) {
+        bindings.push({ evidenceRef: item.evidenceRef, targetClaimRefs: [...item.targetClaimRefs], sourceRef: pair.sourceRef, rawRef: pair.rawRef, locator: '' })
+      }
+      for (const value of matchingProvenance) {
+        const entry = value as Record<string, unknown>
+        bindings.push({ evidenceRef: item.evidenceRef, targetClaimRefs: [...item.targetClaimRefs], sourceRef: pair.sourceRef, rawRef: pair.rawRef, locator: typeof entry.locator === 'string' ? entry.locator : '' })
+        // The evaluator rejects >80 bindings. Preserve that fail-closed signal
+        // without constructing an unbounded array from malformed provenance.
+        if (bindings.length > 80) return bindings
+      }
+    }
+  }
+  return bindings
 }
 
 /** Reconstructs a refresh snapshot from the current v0.4 graph and runs the deterministic refresh skill. */
@@ -200,5 +235,30 @@ export async function runThesisRefreshAdapter(input: ThesisRefreshAdapterInput):
   try { refresh = refreshThesis({ priorSnapshot, currentAsOf: input.currentAsOf, evidence }) }
   catch (error) { return blocked(input, [...diagnostics, error instanceof Error ? error.message : 'THESIS_REFRESH_FAILED'], lineage) }
   diagnostics.push(...refresh.diagnostics)
-  return { status: refresh.status === 'blocked' ? 'blocked' : 'completed', thesisRef: thesis.id, priorSnapshot, refresh, evidenceLineage: lineage, diagnostics: [...new Set(diagnostics)] }
+
+  const activeCriteria = Array.isArray(thesis.killCriteria) ? thesis.killCriteria.filter((criterion) => criterion.state === 'active') : []
+  const criterionEvaluations: ThesisKillCriterionEvaluatorResult[] = []
+  if (activeCriteria.length === 0) {
+    diagnostics.push('KILL_CRITERION_MISSING')
+  } else if (activeCriteria.length > MAX_ACTIVE_CRITERIA) {
+    diagnostics.push('KILL_CRITERION_ACTIVE_LIMIT_EXCEEDED')
+  } else {
+    for (const criterion of activeCriteria) {
+      const evidenceBindings = criterionEvidenceBindings(index, lineage, criterion.targetClaimRefs)
+      const evaluation = await evaluateThesisKillCriterion({
+        assets: input.assets,
+        handle: input.handle,
+        thesisRef: thesis.id,
+        conditionId: criterion.conditionId,
+        asOf: input.currentAsOf,
+        evidenceBindings,
+      })
+      criterionEvaluations.push(evaluation)
+      for (const code of evaluation.diagnostics) diagnostics.push(`KILL_CRITERION:${evaluation.conditionId}:${code}`)
+    }
+  }
+  if (criterionEvaluations.some((evaluation) => evaluation.status === 'met')) {
+    refresh = { ...refresh, candidateTransition: 'invalidation_condition_met' }
+  }
+  return { status: refresh.status === 'blocked' ? 'blocked' : 'completed', thesisRef: thesis.id, priorSnapshot, refresh, criterionEvaluations, evidenceLineage: lineage, diagnostics: [...new Set(diagnostics)] }
 }
