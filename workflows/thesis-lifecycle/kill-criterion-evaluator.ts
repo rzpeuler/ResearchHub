@@ -124,6 +124,7 @@ function decodeExactQuote(locator: string): string | undefined {
 
 function exactTokenSpan(text: string, token: string): { start: number; end: number } | undefined {
   if (!token) return undefined
+  const containsHan = /\p{Script=Han}/u.test(token)
   const isWord = (character: string | undefined): boolean => character !== undefined && /[\p{L}\p{N}_]/u.test(character)
   const spans: Array<{ start: number; end: number }> = []
   let from = 0
@@ -131,8 +132,8 @@ function exactTokenSpan(text: string, token: string): { start: number; end: numb
     const start = text.indexOf(token, from)
     if (start < 0) break
     const end = start + token.length
-    if (!isWord(text[start - 1]) && !isWord(text[end])) spans.push({ start, end })
-    from = start + Math.max(1, token.length)
+    if (containsHan || (!isWord(text[start - 1]) && !isWord(text[end]))) spans.push({ start, end })
+    from = start + (containsHan ? 1 : Math.max(1, token.length))
   }
   return spans.length === 1 ? spans[0] : undefined
 }
@@ -143,8 +144,11 @@ function quoteProvesValue(rawText: string, locator: string, fields: { metricRef:
   const metricLabel = getMetricDefinitionV04(fields.metricRef)?.label ?? fields.metricRef
   const spans = [metricLabel, fields.unit, fields.period].map((token) => exactTokenSpan(quote, token))
   if (spans.some((span) => span === undefined)) return false
+  const exactSpans = spans as Array<{ start: number; end: number }>
+  const ascendingSpans = [...exactSpans].sort((left, right) => left.start - right.start)
+  if (ascendingSpans.some((span, index) => index > 0 && ascendingSpans[index - 1]!.end > span.start)) return false
   let remainder = quote
-  for (const span of (spans as Array<{ start: number; end: number }>).sort((left, right) => right.start - left.start)) {
+  for (const span of exactSpans.sort((left, right) => right.start - left.start)) {
     remainder = remainder.slice(0, span.start) + remainder.slice(span.end)
   }
   const numericTokens = remainder.match(/[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?/g) ?? []

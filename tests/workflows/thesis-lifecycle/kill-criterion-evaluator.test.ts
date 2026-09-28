@@ -81,6 +81,38 @@ test('quote must contain exactly one numeric value after metric, unit, and perio
   } finally { await removeKnowledgeBase(ambiguous.root); await removeKnowledgeBase(registeredLabel.root) }
 })
 
+test('Chinese metric, unit, and period literals match inside original prose, while duplicate tokens and embedded Latin tokens fail', async () => {
+  const chinese = await fixture({
+    metricRef: '毛利率', unit: '比例', period: '2026年第一季度', criterionUnit: '比例', criterionPeriod: '2026年第一季度',
+    rawQuote: '公司披露，2026年第一季度毛利率达到0.42比例。',
+  })
+  const duplicateChinese = await fixture({
+    metricRef: '毛利率', unit: '比例', period: '2026年第一季度', criterionUnit: '比例', criterionPeriod: '2026年第一季度',
+    rawQuote: '公司披露，2026年第一季度毛利率达到0.42比例，毛利率维持稳定。',
+  })
+  const embeddedLatin = await fixture({
+    metricRef: 'metric:revenue', unit: 'CNY', period: 'FY2026', criterionUnit: 'CNY', criterionPeriod: 'FY2026',
+    rawQuote: 'xRevenue reached 0.42 CNY FY2026',
+  })
+  const overlappingFields = await fixture({
+    metricRef: '比例', unit: '比例', period: '2026年第一季度', criterionUnit: '比例', criterionPeriod: '2026年第一季度',
+    rawQuote: '公司披露，2026年第一季度比例为0.42。',
+  })
+  try {
+    assert.equal((await evaluateThesisKillCriterion(chinese.input)).status, 'met')
+    const duplicate = await evaluateThesisKillCriterion(duplicateChinese.input)
+    assert.equal(duplicate.status, 'insufficient_evidence')
+    assert.ok(duplicate.diagnostics.includes('KILL_CRITERION_NUMERIC_VALUE_VERSION_UNVERIFIED'))
+    assert.equal((await evaluateThesisKillCriterion(embeddedLatin.input)).status, 'insufficient_evidence')
+    assert.equal((await evaluateThesisKillCriterion(overlappingFields.input)).status, 'insufficient_evidence')
+  } finally {
+    await removeKnowledgeBase(chinese.root)
+    await removeKnowledgeBase(duplicateChinese.root)
+    await removeKnowledgeBase(embeddedLatin.root)
+    await removeKnowledgeBase(overlappingFields.root)
+  }
+})
+
 test('deadline definitions stay insufficient until their evaluation semantics are defined', async () => {
   const f = await fixture({ deadline: '2026-12-31T23:59:59.000Z' })
   try {
