@@ -27,6 +27,8 @@ const MAX_RELATIONS_SCANNED = 10_000
 const MAX_CONNECTED_ENTITIES = 5_000
 const MAX_PATHS_PER_ITEM = 32
 const MAX_SOURCE_BACKLINKS_PER_ITEM = 64
+const MAX_FOCUS_REFS = 64
+const MAX_TOPIC_RESPONSE_BYTES = 1024 * 1024
 const CURSOR_VERSION = 1
 const CURSOR_SECRET = 'knowledge-topic-projection-cursor-v1'
 const CLAIM_TYPES = new Set(['fact', 'forecast', 'viewpoint', 'trend', 'risk', 'assumption', 'thesis', 'catalyst'])
@@ -71,9 +73,10 @@ export class KnowledgeTopicProjectionService {
       direct: countKinds(direct, false),
       connected: countKinds(connected, traversal.truncated),
     }
-    return {
+    const focus = focusRefProjection(traversal.focusRefs)
+    const summary: KnowledgeTopicSummary = {
       knowledgeBaseId: context.knowledgeBaseId,
-      schemaVersion: '0.4',
+      schemaVersion: '0.4' as const,
       revision: context.revision,
       theme: themeSummary(theme),
       counts,
@@ -81,8 +84,10 @@ export class KnowledgeTopicProjectionService {
         direct: scopeOverview(direct, false),
         connected: scopeOverview(connected, traversal.truncated),
       },
-      connected: { depth, totalExact: !traversal.truncated, truncated: traversal.truncated, focusRefs: traversal.focusRefs },
+      connected: { depth, totalExact: !traversal.truncated, truncated: traversal.truncated, ...focus },
     }
+    assertTopicResponseSize(summary)
+    return summary
   }
 
   async listItems(input: KnowledgeTopicPageInput): Promise<KnowledgeTopicItemPage> {
@@ -124,25 +129,41 @@ export class KnowledgeTopicProjectionService {
       offset = projected.findIndex((item) => item.ref === payload.after) + 1
       if (offset === 0) throw topicError('conflict', 'Topic page cursor no longer matches the current canonical page; reload the first page')
     }
-    const items = projected.slice(offset, offset + limit)
-    const next = offset + items.length < total ? encodeCursor({ v: 1, ...binding, after: items.at(-1)!.ref }) : undefined
-    return {
+    const candidatesForPage = projected.slice(offset, offset + limit)
+    const focus = focusRefProjection(scope === 'connected' ? traversal.focusRefs : [])
+    const base = {
       knowledgeBaseId: context.knowledgeBaseId,
-      schemaVersion: '0.4',
+      schemaVersion: '0.4' as const,
       revision: context.revision,
       themeRef: input.themeRef,
       kind: input.kind,
       scope,
       depth,
       filters,
-      items,
       total,
       totalExact: scope === 'direct' || !traversal.truncated,
       limit,
-      ...(next ? { nextCursor: next } : {}),
       truncated: scope === 'connected' && traversal.truncated,
-      focusRefs: scope === 'connected' ? traversal.focusRefs : [],
+      ...focus,
     }
+    const makePage = (items: readonly KnowledgeTopicItem[], responseBounded: boolean): KnowledgeTopicItemPage => {
+      const nextCursor = offset + items.length < total && items.length > 0
+        ? encodeCursor({ v: 1, ...binding, after: items.at(-1)!.ref })
+        : undefined
+      return { ...base, items, responseBounded, ...(nextCursor ? { nextCursor } : {}) }
+    }
+    const accepted: KnowledgeTopicItem[] = []
+    for (const item of candidatesForPage) {
+      const candidate = makePage([...accepted, item], false)
+      if (serializedTopicResponseBytes(candidate) > MAX_TOPIC_RESPONSE_BYTES) {
+        if (accepted.length === 0) throw topicError('failed', 'topic_response_too_large: one topic item exceeds the 1 MiB response bound')
+        break
+      }
+      accepted.push(item)
+    }
+    const page = makePage(accepted, accepted.length < candidatesForPage.length)
+    assertTopicResponseSize(page)
+    return page
   }
 
   private async load(): Promise<LoadedContext> {
@@ -436,11 +457,12 @@ function countKinds(candidates: Map<string, Candidate>, traversalTruncated: bool
 }
 
 function scopeOverview(candidates: Map<string, Candidate>, truncated: boolean): KnowledgeTopicSummary['overview'][KnowledgeTopicScope] {
-  const records = [...candidates.values()].filter(({ value }) => assetKind(value) !== 'source')
-  const latest = records.map(({ value }) => ({ value, date: dateOf(value) }))
+  const values = [...candidates.values()]
+  const nonSourceRecords = values.filter(({ value }) => assetKind(value) !== 'source')
+  const latest = values.map(({ value }) => ({ value, date: dateOf(value) }))
     .filter((item): item is { value: KnowledgeAssetV04; date: { field: string; value: string } } => item.date !== undefined)
-    .sort((a, b) => orderText(b.date.value, a.date.value) || orderText(a.value.id, b.value.id))[0]
-  const unreferenced = records.filter(({ value }) => sourceRefsFor(dict(value)).length === 0).length
+    .sort((a, b) => compareDateValues(b.date.value, a.date.value) || orderText(a.value.id, b.value.id))[0]
+  const unreferenced = nonSourceRecords.filter(({ value }) => sourceRefsFor(dict(value)).length === 0).length
   return {
     ...(latest ? { latestDatedRecord: { ref: latest.value.id, kind: (assetKind(latest.value) === 'reasoning-edge' ? 'reasoning_edge' : assetKind(latest.value)) as KnowledgeTopicKind, dateField: latest.date.field, dateValue: latest.date.value } } : {}),
     nonSourceRecordsWithoutExplicitSourceRef: unreferenced,
@@ -595,10 +617,33 @@ function firstDate(values: readonly (readonly [string, unknown])[]): { field: st
   return undefined
 }
 function compareItems(a: KnowledgeTopicItem, b: KnowledgeTopicItem): number {
-  if (a.date && b.date) return orderText(b.date.value, a.date.value) || orderText(a.ref, b.ref)
+  if (a.date && b.date) return compareDateValues(b.date.value, a.date.value) || orderText(a.ref, b.ref)
   if (a.date) return -1
   if (b.date) return 1
   return orderText(a.ref, b.ref)
+}
+
+function compareDateValues(a: string, b: string): number {
+  const instantA = Date.parse(a)
+  const instantB = Date.parse(b)
+  if (instantA === instantB) return 0
+  return instantA < instantB ? -1 : 1
+}
+
+function focusRefProjection(refs: readonly string[]): { readonly focusRefs: readonly string[]; readonly focusRefsTotal: number; readonly focusRefsTruncated: boolean } {
+  return {
+    focusRefs: refs.slice(0, MAX_FOCUS_REFS),
+    focusRefsTotal: refs.length,
+    focusRefsTruncated: refs.length > MAX_FOCUS_REFS,
+  }
+}
+
+function serializedTopicResponseBytes(value: KnowledgeTopicSummary | KnowledgeTopicItemPage): number {
+  return Buffer.byteLength(JSON.stringify(value), 'utf8')
+}
+
+function assertTopicResponseSize(value: KnowledgeTopicSummary | KnowledgeTopicItemPage): void {
+  if (serializedTopicResponseBytes(value) > MAX_TOPIC_RESPONSE_BYTES) throw topicError('failed', 'topic_response_too_large: topic response exceeds the 1 MiB bound')
 }
 
 function encodeCursor(payload: CursorPayload): string {

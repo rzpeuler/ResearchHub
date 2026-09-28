@@ -59,6 +59,8 @@ export interface KnowledgeTopicSummary {
     readonly totalExact: boolean
     readonly truncated: boolean
     readonly focusRefs: readonly string[]
+    readonly focusRefsTotal: number
+    readonly focusRefsTruncated: boolean
   }
 }
 
@@ -108,6 +110,9 @@ export interface KnowledgeTopicItemPage {
   readonly nextCursor?: string
   readonly truncated: boolean
   readonly focusRefs: readonly string[]
+  readonly focusRefsTotal: number
+  readonly focusRefsTruncated: boolean
+  readonly responseBounded: boolean
 }
 
 export type KnowledgeTopicAssetKind = Exclude<KnowledgeAssetKindV04, 'theme_group' | 'entity'>
