@@ -5,7 +5,7 @@ import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { KnowledgeProductionGateway } from '../../knowledge/production/gateway.ts'
 import type { KnowledgeProductionInput, SemanticProductionInputProposal } from '../../knowledge/production/contracts.ts'
 import { verifyRaw } from '../../knowledge/raw/raw-archive.ts'
-import type { KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeObservationV04, KnowledgeSourceV04, KnowledgeThesisV04 } from '../../knowledge/schema/domain-v04.ts'
+import type { KillCriterionV04, KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeObservationV04, KnowledgeSourceV04, KnowledgeThesisV04 } from '../../knowledge/schema/domain-v04.ts'
 import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
 import { hashKnowledgeObject } from '../../knowledge/storage/canonical-hash.ts'
 import type { KnowledgeAssetCollectionV04 } from '../../knowledge/storage/v04-types.ts'
@@ -15,7 +15,7 @@ import { executeThesisRefresh } from '../../skills/thesis_refresh/semantic.ts'
 import type { RefreshEvidenceCandidate, RefreshEvidenceRelation, ThesisRefreshResult } from '../../skills/thesis_refresh/contracts.ts'
 import { runThesisRefreshAdapter, type ThesisRefreshEvidenceBinding } from '../../workflows/thesis-lifecycle/refresh-adapter.ts'
 import { buildThesisRefreshReviewCases } from '../../workflows/thesis-lifecycle/review-case-builder.ts'
-import type { ReviewCase } from '../../knowledge/review/contracts.ts'
+import type { KillCriterionReviewBindingV1, ReviewCase } from '../../knowledge/review/contracts.ts'
 import { listReviewCases, persistReviewCases } from '../../knowledge/review/store.ts'
 import { ApplicationServiceError, type TerminalWorkflowStatus } from './contracts.ts'
 import { WorkflowService, type WorkflowOutcome } from './workflow-service.ts'
@@ -348,7 +348,39 @@ function sameReviewSet(existing: readonly ReviewCase[], proposed: readonly Revie
   return JSON.stringify([...existing].map(stable).sort()) === JSON.stringify([...proposed].map(stable).sort())
 }
 
-function buildReport(input: { readonly runId: string; readonly asOf: string; readonly generatedAt: string; readonly revision: number; readonly thesisRef: string; readonly adapterResult: Awaited<ReturnType<typeof runThesisRefreshAdapter>>; readonly decisions: readonly ThesisRefreshEvidenceDecision[]; readonly diagnostics: readonly string[]; readonly reviewCaseIds: readonly string[]; readonly disposition: 'completed' | 'completed_with_review'; readonly autoSafe?: AutoSafeWriteResult; readonly inputFingerprint: string; readonly runResult: ApplicationThesisLifecycleResult }): ResearchReport {
+function reportText(value: string): string { return value.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() }
+
+function renderKillCriterionBindings(bindings: readonly KillCriterionReviewBindingV1[], criteria: readonly KillCriterionV04[]): string {
+  if (bindings.length === 0) return 'None.'
+  return bindings.map((binding) => {
+    const criterion = criteria.find((item) => item.conditionId === binding.conditionId && item.state === 'active')
+    const definition = criterion?.type === 'numeric_threshold' ? criterion.definition : undefined
+    const metricRef = typeof definition?.metricRef === 'string' ? definition.metricRef : undefined
+    const operator = typeof definition?.operator === 'string' ? definition.operator : undefined
+    const threshold = typeof definition?.threshold === 'number' && Number.isFinite(definition.threshold) ? definition.threshold : undefined
+    const unit = typeof definition?.unit === 'string' ? definition.unit : undefined
+    const period = typeof definition?.period === 'string' ? definition.period : undefined
+    const definitionComplete = metricRef !== undefined && operator !== undefined && threshold !== undefined && unit !== undefined && period !== undefined
+    const bindingMatches = criterion?.revision === binding.revision && criterion.definitionHash === binding.definitionHash
+    const canonicalRule = definitionComplete
+      ? `  Current canonical rule: ${reportText(metricRef)} ${reportText(operator)} ${threshold} ${reportText(unit)} for ${reportText(period)}.`
+      : '  Current canonical rule: no complete active numeric threshold is available for this condition.'
+    const bindingCheck = criterion
+      ? `  Current canonical revision/hash: ${criterion.revision} / ${reportText(criterion.definitionHash)}; ${bindingMatches ? 'matches' : 'DOES NOT MATCH'} the ReviewCase binding.`
+      : '  Current canonical revision/hash: no active criterion; DOES NOT MATCH the ReviewCase binding.'
+    return [
+      `- ${reportText(binding.conditionId)} revision ${binding.revision}; assessment met; bound definition hash ${reportText(binding.definitionHash)}`,
+      canonicalRule,
+      bindingCheck,
+      `  Evaluated value: ${binding.value} ${reportText(binding.unit)} (${reportText(binding.metricRef)}, ${reportText(binding.period)})`,
+      `  Evidence: ${reportText(binding.evidenceRef)}; Source: ${reportText(binding.sourceRef)}; Raw: ${reportText(binding.rawRef)}`,
+      `  Published: ${reportText(binding.publishedAt)}; as of: ${reportText(binding.asOf)}; targets: ${binding.targetClaimRefs.map(reportText).join(', ')}`,
+      `  Numeric value version verified: yes; evaluated value identity: ${reportText(binding.evaluatedValueIdentity)}`,
+    ].join('\n')
+  }).join('\n')
+}
+
+function buildReport(input: { readonly runId: string; readonly asOf: string; readonly generatedAt: string; readonly revision: number; readonly thesisRef: string; readonly adapterResult: Awaited<ReturnType<typeof runThesisRefreshAdapter>>; readonly decisions: readonly ThesisRefreshEvidenceDecision[]; readonly diagnostics: readonly string[]; readonly reviewCaseIds: readonly string[]; readonly killCriterionBindings?: readonly KillCriterionReviewBindingV1[]; readonly canonicalKillCriteria?: readonly KillCriterionV04[]; readonly disposition: 'completed' | 'completed_with_review'; readonly autoSafe?: AutoSafeWriteResult; readonly inputFingerprint: string; readonly runResult: ApplicationThesisLifecycleResult }): ResearchReport {
   const sourceRefs = sortedUnique(input.decisions.flatMap((item) => item.sourceBindings.map((pair) => pair.sourceRef)))
   const claimRefs = sortedUnique([...(input.adapterResult.priorSnapshot?.propositions.map((item) => item.propositionId) ?? []), ...(input.adapterResult.refresh?.propositionDeltas.map((item) => item.propositionRef) ?? []), ...(input.autoSafe?.claimRefs ?? [])])
   const before = input.adapterResult.priorSnapshot?.propositions.map((item) => `- ${item.propositionId}: ${item.statement}`).join('\n') || 'No active proposition snapshot.'
@@ -372,7 +404,7 @@ function buildReport(input: { readonly runId: string; readonly asOf: string; rea
       { id: 'before-after', title: 'Before and After', markdown: `## Before\n${before}\n\n## Candidate changes\n${after}\n\n## Candidate transition\n${input.adapterResult.refresh?.candidateTransition ?? 'unavailable'}` , claimRefs },
       { id: 'evidence-pit', title: 'Evidence and Point-in-Time Decisions', markdown: pit || 'No candidates.', sourceRefs },
       { id: 'unchanged', title: 'Unchanged Propositions', markdown: unchanged, claimRefs: input.adapterResult.refresh?.unchangedPropositionRefs ?? [] },
-      { id: 'review-state', title: 'Review and Write State', markdown: `Refresh disposition: ${input.disposition}\n\nDecision state: ${input.autoSafe ? 'AUTO_APPLIED' : input.reviewCaseIds.length ? 'REVIEW_REQUIRED' : 'NO_CHANGE'}\n\nReviewCase IDs: ${input.reviewCaseIds.length ? input.reviewCaseIds.join(', ') : 'None.'}\n\nAUTO_SAFE Claim refs: ${input.autoSafe?.claimRefs.length ? input.autoSafe.claimRefs.join(', ') : 'None.'}\n\nGateway Writer run: ${input.autoSafe?.writerRunId ?? 'None.'}\n\nFinal Knowledge revision: ${input.revision}\n\nThesis membership/status and reviewed impact edges require explicit human decision.` },
+      { id: 'review-state', title: 'Review and Write State', markdown: `Refresh disposition: ${input.disposition}\n\nDecision state: ${input.autoSafe ? 'AUTO_APPLIED' : input.reviewCaseIds.length ? 'REVIEW_REQUIRED' : 'NO_CHANGE'}\n\nReviewCase IDs: ${input.reviewCaseIds.length ? input.reviewCaseIds.join(', ') : 'None.'}\n\nAUTO_SAFE Claim refs: ${input.autoSafe?.claimRefs.length ? input.autoSafe.claimRefs.join(', ') : 'None.'}\n\nGateway Writer run: ${input.autoSafe?.writerRunId ?? 'None.'}\n\nFinal Knowledge revision: ${input.revision}\n\nCanonical Kill Criterion bindings:\n${renderKillCriterionBindings(input.killCriterionBindings ?? [], input.canonicalKillCriteria ?? [])}\n\nThesis membership/status and reviewed impact edges require explicit human decision.` },
       runResultSection(input.inputFingerprint, input.runResult),
       { id: 'diagnostics', title: 'Diagnostics', markdown: diagnostics.length ? diagnostics.map((item) => `- ${item}`).join('\n') : 'None.' },
     ],
@@ -666,7 +698,8 @@ export class ThesisLifecycleService {
     const finalRevision = autoSafe?.revision ?? handle.revision
     const reportId = `thesis-lifecycle-${runId}`
     const result = base(status, diagnostics, handle.knowledgeBaseId, finalRevision, adapterResult.refresh, decisions, { reportId, reportPath: `${reportId}.md`, reviewCaseIds: finalCases.map((item) => item.reviewCaseId), ...(autoSafe ? { autoSafeWriterRunId: autoSafe.writerRunId, autoSafeClaimRefs: autoSafe.claimRefs } : {}) })
-    const report = buildReport({ runId, asOf: input.asOf, generatedAt: new Date().toISOString(), revision: finalRevision, thesisRef: thesis.id, adapterResult, decisions, diagnostics, reviewCaseIds: finalCases.map((item) => item.reviewCaseId), disposition: status, autoSafe, inputFingerprint: fingerprint, runResult: result })
+    const killCriterionBindings = finalCases.flatMap((item) => item.thesisScope?.killCriterionBindings ?? [])
+    const report = buildReport({ runId, asOf: input.asOf, generatedAt: new Date().toISOString(), revision: finalRevision, thesisRef: thesis.id, adapterResult, decisions, diagnostics, reviewCaseIds: finalCases.map((item) => item.reviewCaseId), killCriterionBindings, canonicalKillCriteria: thesis.killCriteria ?? [], disposition: status, autoSafe, inputFingerprint: fingerprint, runResult: result })
     try { await persistReport(report, reportRoot) }
     catch (error) { return base('failed', [...diagnostics, 'THESIS_REFRESH_REPORT_WRITE_FAILED', error instanceof Error ? error.message : String(error)], handle.knowledgeBaseId, finalRevision, adapterResult.refresh, decisions, { reviewCaseIds: finalCases.map((item) => item.reviewCaseId), ...(autoSafe ? { autoSafeWriterRunId: autoSafe.writerRunId, autoSafeClaimRefs: autoSafe.claimRefs } : {}) }) }
     if (autoSafe) try { await unlink(intentPath) } catch { /* durable report replays and clears the intent */ }

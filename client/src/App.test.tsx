@@ -110,8 +110,10 @@ describe('Homepage shell', () => {
     let refreshStarted = false
     let accepted = false
     const thesisSummary = { thesisRef: 'thesis:value-driver', title: 'Value driver', statement: 'Growth supports value', status: 'active', companySubject: { companyRef: 'entity:company-acme', name: 'Acme' }, lastReviewedAt: null, propositionCount: 1 }
-    const thesisDetail = { ...thesisSummary, propositions: [{ claimRef: 'claim:driver', statement: 'Margins will expand', claimType: 'forecast', sourceRefs: ['source:annual-report'], membershipEdgeRef: 'reasoning-edge:qualifies' }], propositionRefs: ['claim:driver'], membershipEdgeRefs: ['reasoning-edge:qualifies'], revision: 7 }
-    const reviewDetail = () => ({ reviewCaseId: 'review-thesis-1', producerRunId: 'refresh-thesis-1', producerType: 'thesis_lifecycle', createdAt: '2026-09-24T10:00:00.000Z', classification: { rationale: 'Evidence challenges the load-bearing claim' }, rootProposal: { proposalKind: 'update', semanticType: 'claim' }, evidenceBindings: [{ kind: 'canonical_research_evidence', sourceRef: 'source:annual-report', rawRef: 'raw-sha256-abc' }], existingKnowledgeProjections: [], impact: {}, thesisScope: { thesisRef: 'thesis:value-driver', rootClaimRef: 'claim:driver', affectedClaimRefs: ['claim:driver'], evidenceRefs: ['observation:revenue'], reviewedEvidence: [{ evidenceRef: 'observation:revenue', relation: 'weakens', targetClaimRefs: ['claim:driver'] }], candidateTransition: 'weakening', asOf: '2026-09-24T10:00:00.000Z' }, decision: { state: accepted ? 'ACCEPTED' : 'OPEN', revision: accepted ? 1 : 0, actionable: !accepted, events: [], totalEvents: 0, eventsTruncated: false }, state: { status: 'open' }, totalDependentProposals: 0, dependentProposalSamples: [], dependentProposals: [], dependentsTruncated: false })
+    let currentConditionRevision = 2
+    let currentConditionHash = `sha256:${'d'.repeat(64)}`
+    const thesisDetail = () => ({ ...thesisSummary, propositions: [{ claimRef: 'claim:driver', statement: 'Margins will expand', claimType: 'forecast', sourceRefs: ['source:annual-report'], membershipEdgeRef: 'reasoning-edge:qualifies' }], propositionRefs: ['claim:driver'], membershipEdgeRefs: ['reasoning-edge:qualifies'], killCriteria: [{ conditionId: 'revenue-floor', revision: currentConditionRevision, state: 'active', type: 'numeric_threshold', definitionVersion: 1, definition: { metricRef: 'metric:revenue', operator: 'lt', threshold: 1500, unit: 'CNY', period: 'FY2026' }, targetClaimRefs: ['claim:driver'], effectiveAt: '2026-09-22T00:00:00.000Z', definitionHash: currentConditionHash, origin: { kind: 'human_rule' }, authority: { workflowRunId: 'criterion-run', confirmedAt: '2026-09-22T00:00:00.000Z' } }], revision: 7 })
+    const reviewDetail = () => ({ reviewCaseId: 'review-thesis-1', producerRunId: 'refresh-thesis-1', producerType: 'thesis_lifecycle', createdAt: '2026-09-24T10:00:00.000Z', classification: { rationale: 'Canonical kill criterion was met' }, rootProposal: { proposalKind: 'update', semanticType: 'claim' }, evidenceBindings: [{ kind: 'canonical_research_evidence', sourceRef: 'source:annual-report', rawRef: 'raw-sha256-abc' }], existingKnowledgeProjections: [], impact: {}, thesisScope: { thesisRef: 'thesis:value-driver', rootClaimRef: 'claim:driver', affectedClaimRefs: ['claim:driver'], evidenceRefs: ['observation:revenue'], reviewedEvidence: [{ evidenceRef: 'observation:revenue', relation: 'context', targetClaimRefs: ['claim:driver'] }], candidateTransition: 'invalidation_condition_met', asOf: '2026-09-24T10:00:00.000Z', proposedThesisStatus: 'invalidated', killCriterionAssessments: [{ conditionId: 'revenue-floor', status: 'met', targetPropositionRefs: ['claim:driver'], evidenceRefs: ['observation:revenue'], rationale: 'Deterministic evaluator found the threshold met.' }], killCriterionBindings: [{ conditionId: 'revenue-floor', revision: 2, definitionHash: `sha256:${'d'.repeat(64)}`, evaluatedValueIdentity: `sha256:${'e'.repeat(64)}`, evidenceRef: 'observation:revenue', value: 1000, metricRef: 'metric:revenue', unit: 'CNY', period: 'FY2026', sourceRef: 'source:annual-report', rawRef: `raw-sha256-${'a'.repeat(64)}`, locator: 'quote:U291cmNlIHF1b3RlIG11c3Qgbm90IGRpc3BsYXk=', publishedAt: '2026-09-22T00:00:00.000Z', targetClaimRefs: ['claim:driver'], numericValueVersionVerified: true, asOf: '2026-09-24T10:00:00.000Z' }] }, decision: { state: accepted ? 'ACCEPTED' : 'OPEN', revision: accepted ? 1 : 0, actionable: !accepted, events: [], totalEvents: 0, eventsTruncated: false }, state: { status: 'open' }, totalDependentProposals: 0, dependentProposalSamples: [], dependentProposals: [], dependentsTruncated: false })
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input)
       if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 7, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} }, openReviewCases: 1 })
@@ -121,7 +123,7 @@ describe('Homepage shell', () => {
       if (path === '/api/conversations') return json({ conversations: [] })
       if (path === '/api/knowledge/directory') return json({ themeGroups: [], industries: { items: [], total: 0, limit: 30, truncated: false }, companies: { items: [{ ref: 'entity:company-acme', name: 'Acme' }], total: 1, limit: 30, truncated: false }, products: { items: [], total: 0, limit: 30, truncated: false }, technologies: { items: [], total: 0, limit: 30, truncated: false } })
       if (path === '/api/knowledge/theses?limit=50') return json({ theses: [thesisSummary], total: 1, limit: 50, truncated: false, revision: 7 })
-      if (path === '/api/knowledge/theses/thesis%3Avalue-driver') return json(thesisDetail)
+      if (path === '/api/knowledge/theses/thesis%3Avalue-driver') return json(thesisDetail())
       if (path === '/api/reviews') return json(accepted ? { cases: [], total: 0, limit: 50, truncated: false } : { cases: [{ reviewCaseId: 'review-thesis-1', producerRunId: 'refresh-thesis-1', producerType: 'thesis_lifecycle', createdAt: '2026-09-24T10:00:00.000Z', category: 'semantic_conflict', actionability: 'actionable', origin: 'thesis_refresh', rationale: 'Evidence challenges the load-bearing claim', proposalKind: 'update', semanticType: 'claim', dependentProposalCount: 0, status: 'open', decisionState: 'OPEN' }], total: 1, limit: 50, truncated: false })
       if (path === '/api/production/thesis-lifecycle/refresh') { refreshStarted = true; return json({ accepted: true, runId: 'refresh-thesis-1' }, 202) }
       if (path === '/api/workflows/refresh-thesis-1') return json({ runId: 'refresh-thesis-1', workflowType: 'thesis_lifecycle', objective: 'Refresh Thesis', status: 'completed_with_review', startedAt: '2026-09-24T10:00:00.000Z', updatedAt: '2026-09-24T10:01:00.000Z', completedAt: '2026-09-24T10:01:00.000Z', reviewCount: 1 })
@@ -140,6 +142,32 @@ describe('Homepage shell', () => {
     expect(await screen.findByText('PIT accepted observation:revenue')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /review-thesis-1/ }))
     expect((await screen.findAllByText('claim:driver', { selector: 'p' })).length).toBeGreaterThan(0)
+    const criterionDetails = await screen.findByRole('region', { name: 'Canonical Kill Criterion evaluation' })
+    expect(criterionDetails.textContent).toContain('revenue-floor · revision 2')
+    expect(criterionDetails.textContent).toContain('Current canonical rule: metric:revenue lt 1500 CNY · FY2026')
+    expect(criterionDetails.textContent).toContain(`Definition hash: sha256:${'d'.repeat(64)}`)
+    expect(criterionDetails.textContent).toContain('Evaluated value: 1000 CNY · metric:revenue · FY2026')
+    expect(criterionDetails.textContent).toContain(`Source: source:annual-report · Raw: raw-sha256-${'a'.repeat(64)}`)
+    expect(criterionDetails.textContent).toContain('Numeric value version: verified')
+    expect(criterionDetails.textContent).toContain('Matches the active canonical condition revision and hash.')
+    expect((screen.getByRole('button', { name: 'Accept reviewed changes' }) as HTMLButtonElement).disabled).toBe(false)
+    currentConditionRevision = 3
+    currentConditionHash = `sha256:${'e'.repeat(64)}`
+    fireEvent.click(screen.getByRole('button', { name: /review-thesis-1/ }))
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Canonical Kill Criterion evaluation' }).textContent).toContain(`MISMATCH: active canonical condition is revision 3 with hash sha256:${'e'.repeat(64)}.`))
+    const staleDetails = screen.getByRole('region', { name: 'Canonical Kill Criterion evaluation' })
+    expect(staleDetails.textContent).toContain(`MISMATCH: active canonical condition is revision 3 with hash sha256:${'e'.repeat(64)}.`)
+    let acceptButton = screen.getByRole('button', { name: 'Accept reviewed changes' }) as HTMLButtonElement
+    expect(acceptButton.disabled).toBe(true)
+    expect(screen.getByText('ACCEPT is disabled because the active condition revision or hash changed; this ReviewCase is stale.')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Defer' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: 'Reject' }) as HTMLButtonElement).disabled).toBe(false)
+    currentConditionRevision = 2
+    currentConditionHash = `sha256:${'d'.repeat(64)}`
+    fireEvent.click(screen.getByRole('button', { name: /review-thesis-1/ }))
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Canonical Kill Criterion evaluation' }).textContent).toContain('Matches the active canonical condition revision and hash.'))
+    acceptButton = screen.getByRole('button', { name: 'Accept reviewed changes' }) as HTMLButtonElement
+    expect(acceptButton.disabled).toBe(false)
     fireEvent.change(screen.getByRole('textbox', { name: 'Decision note' }), { target: { value: 'Confirmed after source review' } })
     fireEvent.click(screen.getByRole('button', { name: 'Accept reviewed changes' }))
     await waitFor(() => expect(screen.getByText('This case is resolved or is no longer actionable.')).toBeTruthy())

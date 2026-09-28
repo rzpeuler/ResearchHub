@@ -9,6 +9,7 @@ import { KnowledgeBaseRegistry } from '../../../knowledge/registry/registry.ts'
 import { createFreshKnowledgeBaseV04 } from '../../../knowledge/storage/create-v04.ts'
 import { readCanonicalV04Assets } from '../../../knowledge/storage/canonical-v04-loader.ts'
 import { ResearchService } from '../../../app/services/research-service.ts'
+import { ThesisCriterionService } from '../../../app/services/thesis-criterion-service.ts'
 import { readResearchReport, writeResearchReport, type ResearchReport } from '../../../app/services/research-report.ts'
 import { WorkflowService } from '../../../app/services/workflow-service.ts'
 import { runThesisRefreshAdapter } from '../../../workflows/thesis-lifecycle/refresh-adapter.ts'
@@ -48,6 +49,74 @@ test('ResearchService runs normal thesis REFRESH and persists a no-change report
     assert.equal(replay.reportId, result.reportId)
     assert.deepEqual(replay.evidenceDecisions, result.evidenceDecisions)
     assert.match(await readFile(join(reports, `${result.reportId}.md`), 'utf8'), /Thesis Lifecycle/)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('ResearchService records canonical kill criterion bindings in the ReviewCase report without source quote content', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-thesis-lifecycle-kill-report-'))
+  const reports = join(root, 'reports')
+  try {
+    const kbRoot = join(root, 'kb')
+    await createFreshKnowledgeBaseV04(kbRoot, { knowledgeBaseId: 'kb-thesis-lifecycle-kill-report', now: '2026-09-01T00:00:00.000Z' })
+    const registry = new KnowledgeBaseRegistry()
+    const handle = await registry.mount(kbRoot)
+    const quote = 'Revenue 1000 CNY FY2026 SOURCE_SENTINEL_DETAIL'
+    const locator = `quote:${Buffer.from(quote, 'utf8').toString('base64url')}`
+    const source = normalizedSource('kill-filing', 'Annual filing', quote)
+    const seed = knowledgeV04Input(handle, 'seed-thesis-kill-report')
+    const seeded = await new KnowledgeProductionGateway(registry).submit({ ...seed, producerRunId: 'seed-thesis-kill-report', proposals: seed.proposals.map((proposal) => proposal.proposalId === 'edge-claim-thesis' ? { ...proposal, edgeType: 'qualifies' as const } : proposal) })
+    assert.equal(seeded.status, 'committed', seeded.errors.join('; '))
+    const thesisRef = seeded.thesisRefsByProposalId?.thesis
+    const targetClaimRef = seeded.claimRefsByProposalId['earnings-claim']
+    assert.ok(thesisRef)
+    assert.ok(targetClaimRef, JSON.stringify(seeded))
+    const evidenceHandle = await registry.mount(kbRoot)
+    const datedNewSource = { ...source, candidate: { ...source.candidate, publishedAt: '2026-09-24T00:00:00.000Z' }, retrievedAt: '2026-09-24T00:00:00.000Z' }
+    const added = await new KnowledgeProductionGateway(registry).submit({
+      ...knowledgeV04Input(evidenceHandle, 'seed-thesis-kill-evidence'), producerRunId: 'seed-thesis-kill-evidence',
+      asOf: '2026-09-23T00:00:00.000Z', now: () => '2026-09-23T00:00:00.000Z',
+      proposals: [{ proposalId: 'kill-evidence', kind: 'observation', observationType: 'metric', subjectKey: 'company', metricRef: 'metric:revenue', value: 1000, unit: 'CNY', period: 'FY2026', sourceCandidateIds: ['kill-filing'] }],
+      evidenceBindings: [{ localSourceId: 'kill-filing', source: datedNewSource, locator }],
+    })
+    assert.equal(added.status, 'committed', added.errors.join('; '))
+    const evidenceRef = added.observationRefsByProposalId?.['kill-evidence']
+    assert.ok(evidenceRef)
+    const criterionService = new ThesisCriterionService({ mountedKnowledgeBaseRoot: kbRoot, now: () => '2026-09-23T00:00:00.000Z' })
+    const preview = await criterionService.prepare({ thesisRef, conditionId: 'revenue-floor', type: 'numeric_threshold', definitionVersion: 1, definition: { metricRef: 'metric:revenue', operator: 'lt', threshold: 1500, unit: 'CNY', period: 'FY2026' }, targetClaimRefs: [targetClaimRef], origin: { kind: 'human_rule' } })
+    await criterionService.confirm({ preview, previewHash: preview.previewHash, expectedKnowledgeBaseRevision: preview.expectedKnowledgeBaseRevision, workflowRunId: 'confirm-revenue-floor' })
+
+    const executor = {
+      capabilities: () => ({ maxContextTokens: 20_000, maxOutputTokens: 2_000, structuredOutputSupport: true, maxConcurrency: 1 }),
+      execute: async (request: { input: unknown; operation: string }) => {
+        assert.equal(request.operation, 'thesis_refresh_semantic')
+        const semanticInput = request.input as { evidence: { evidenceId: string; sourceRefs: readonly string[] }[] }
+        return { operation: request.operation as never, output: { evidence: semanticInput.evidence.map((item) => ({ evidenceId: item.evidenceId, relation: 'context', targetPropositionRefs: [targetClaimRef], sourceRefs: item.sourceRefs, rationale: 'Bound numeric value for deterministic evaluation.' })) } }
+      },
+    }
+    const service = new ResearchService({ mountedKnowledgeBaseRoot: kbRoot, reportRoot: reports, acquisitionPlugins: [], workflowService: new WorkflowService(), reasoningExecutor: executor })
+    const result = await service.startThesisLifecycleRefresh({ thesisRef, asOf: '2026-09-25T00:00:00.000Z', evidenceRefs: [evidenceRef], runId: 'thesis-lifecycle-kill-report' }).completion
+    assert.equal(result.status, 'completed_with_review', result.diagnostics.join('; '))
+    assert.equal(result.reviewCaseIds.length, 1)
+    const report = JSON.parse(await readFile(join(reports, `${result.reportId}.md.json`), 'utf8')) as { sections: { id: string; markdown: string }[] }
+    const reviewState = report.sections.find((section) => section.id === 'review-state')?.markdown ?? ''
+    const reportMarkdown = report.sections.map((section) => section.markdown).join('\n')
+    assert.match(reviewState, /Canonical Kill Criterion bindings:/)
+    assert.match(reviewState, /revenue-floor revision 1; assessment met; bound definition hash sha256:/)
+    assert.match(reviewState, /Current canonical rule: metric:revenue lt 1500 CNY for FY2026\./)
+    assert.match(reviewState, /Current canonical revision\/hash: 1 \/ sha256:[a-f0-9]{64}; matches the ReviewCase binding\./)
+    assert.match(reviewState, /Evaluated value: 1000 CNY \(metric:revenue, FY2026\)/)
+    assert.match(reviewState, /Evidence: observation:[^;]+; Source: source:research-[a-f0-9]{16}; Raw: raw-sha256-[a-f0-9]{64}/)
+    assert.match(reviewState, /Numeric value version verified: yes/)
+    assert.doesNotMatch(reportMarkdown, /SOURCE_SENTINEL_DETAIL/)
+    assert.equal(reportMarkdown.includes(locator), false)
+    const deferred = await service.recordThesisLifecycleDecision({ producerRunId: result.runId, reviewCaseId: result.reviewCaseIds[0]!, decisionState: 'DEFERRED', knowledgeBaseRevision: result.knowledgeBaseRevision! })
+    assert.equal(deferred.status, 'updated')
+    const finalReport = JSON.parse(await readFile(join(reports, `${result.reportId}.md.json`), 'utf8')) as { sections: { id: string; markdown: string }[] }
+    const finalMarkdown = finalReport.sections.map((section) => section.markdown).join('\n')
+    assert.match(finalReport.sections.find((section) => section.id === 'review-state')?.markdown ?? '', /Canonical Kill Criterion bindings:/)
+    assert.match(finalReport.sections.find((section) => section.id === 'decision-outcome')?.markdown ?? '', /Decision state: DEFERRED/)
+    assert.doesNotMatch(finalMarkdown, /SOURCE_SENTINEL_DETAIL/)
+    assert.equal(finalMarkdown.includes(locator), false)
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 

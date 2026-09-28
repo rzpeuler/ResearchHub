@@ -327,6 +327,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .thesis-review-layout .review-item.selected { border-color: #72d2c4; background: #173633; }
 .thesis-history { margin-top: 14px; padding-top: 10px; border-top: 1px solid #273a45; color: #89aaa5; font-size: 10px; }
 .thesis-history p { font-size: 9px; overflow-wrap: anywhere; }
+.thesis-kill-bindings { display: grid; gap: 7px; margin-top: 14px; padding: 12px; border: 1px solid #487e77; border-radius: 7px; background: #10211f; }
+.thesis-kill-bindings h3 { margin: 0; color: #b6ded6; font-size: 11px; }
+.thesis-kill-binding { padding-top: 7px; border-top: 1px solid #294541; }
+.thesis-kill-binding p { margin: 4px 0; color: #b7c9c8; font-size: 9px; overflow-wrap: anywhere; }
+.thesis-kill-binding strong { color: #dce9e7; }
+.thesis-kill-current-state { margin: 0; color: #e5c989; font-size: 9px; overflow-wrap: anywhere; }
+.thesis-kill-binding .thesis-kill-mismatch, .thesis-kill-mismatch { color: #e2a2a2; }
+.thesis-kill-accept-block { margin: 0 0 10px; color: #e2a2a2; font-size: 10px; line-height: 1.45; }
 .thesis-decision-controls { margin-top: 16px; padding-top: 12px; border-top: 1px solid #273a45; }
 .thesis-decision-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
 .thesis-decision-buttons .secondary-action { color: #c1d4d7; background: #1a292f; border-color: #40515a; }

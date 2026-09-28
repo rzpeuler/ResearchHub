@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactElement } from 'react'
-import { RuntimeClient, RuntimeClientError, type AttachmentRef, type ClientEvent, type ConversationMessage, type ConversationSummary, type DailyBriefReport, type DailyBriefSummary, type KnowledgeBaseStatus, type KnowledgeDirectoryItem, type ResearchBundleSummary, type ResearchDispatchResponse, type ResearchExecutionSummary, type ResearchReport, type ResearchReportSummary, type ResearchStartResponse, type ReviewDetail, type ReviewListResponse, type SessionState, type SourceLibraryHit, type ThesisCriterionConfirmResult, type ThesisCriterionOrigin, type ThesisCriterionPreview, type ThesisDecision, type ThesisQueryDetail, type ThesisQuerySummary, type WorkflowDefinition, type WorkflowRun } from './api/runtime-client'
+import { RuntimeClient, RuntimeClientError, type AttachmentRef, type ClientEvent, type ConversationMessage, type ConversationSummary, type DailyBriefReport, type DailyBriefSummary, type KnowledgeBaseStatus, type KnowledgeDirectoryItem, type ResearchBundleSummary, type ResearchDispatchResponse, type ResearchExecutionSummary, type ResearchReport, type ResearchReportSummary, type ResearchStartResponse, type ReviewDetail, type ReviewListResponse, type SessionState, type SourceLibraryHit, type ThesisCriterionConfirmResult, type ThesisCriterionOrigin, type ThesisCriterionPreview, type ThesisDecision, type ThesisQueryDetail, type ThesisQuerySummary, type ThesisReviewScope, type WorkflowDefinition, type WorkflowRun } from './api/runtime-client'
 import { startWorkflowPolling, terminalWorkflowStatuses } from './app/workflow-polling'
 import { KnowledgeGraphPage } from './app/graph/KnowledgeGraphPage'
 import { ResearchRunPage } from './app/run/ResearchRunPage'
@@ -123,6 +123,60 @@ function ThesisCriterionAuthoring({ client, thesis, onThesisReload }: ThesisCrit
 }
 
 interface ThesisLifecyclePageProps { readonly client: RuntimeClient; readonly knowledgeBase?: KnowledgeBaseStatus }
+
+function ThesisKillCriterionBindings({ scope, currentThesis, loading, loadError }: { readonly scope: ThesisReviewScope; readonly currentThesis?: ThesisQueryDetail; readonly loading: boolean; readonly loadError?: string }): ReactElement | null {
+  const bindings = scope.killCriterionBindings ?? []
+  if (bindings.length === 0) return null
+  const canonicalThesis = currentThesis?.thesisRef === scope.thesisRef ? currentThesis : undefined
+  return <section className="thesis-kill-bindings" aria-label="Canonical Kill Criterion evaluation">
+    <h3>Canonical Kill Criterion evaluation</h3>
+    {loading ? <p className="thesis-kill-current-state">Loading the current canonical Thesis definition before decision controls become available…</p> : null}
+    {loadError ? <p className="thesis-kill-current-state thesis-kill-mismatch" role="alert">Current canonical Thesis definition could not be loaded: {loadError}</p> : null}
+    {bindings.map((binding) => {
+      const assessment = scope.killCriterionAssessments?.find((item) => item.conditionId === binding.conditionId)
+      const criterion = canonicalThesis?.killCriteria?.find((item) => item.conditionId === binding.conditionId && item.state === 'active')
+      const definition = criterion?.type === 'numeric_threshold' ? criterion.definition : undefined
+      const metricRef = typeof definition?.metricRef === 'string' ? definition.metricRef : undefined
+      const operator = typeof definition?.operator === 'string' ? definition.operator : undefined
+      const threshold = typeof definition?.threshold === 'number' && Number.isFinite(definition.threshold) ? definition.threshold : undefined
+      const unit = typeof definition?.unit === 'string' ? definition.unit : undefined
+      const period = typeof definition?.period === 'string' ? definition.period : undefined
+      const definitionComplete = metricRef !== undefined && operator !== undefined && threshold !== undefined && unit !== undefined && period !== undefined
+      const matches = criterion?.revision === binding.revision && criterion.definitionHash === binding.definitionHash
+      const matchStatus = !canonicalThesis
+        ? loading ? 'Current canonical condition is loading.' : 'Current canonical condition is unavailable; this binding has not been compared.'
+        : !criterion ? 'No active canonical condition matches this binding; the case is stale.'
+          : matches ? 'Matches the active canonical condition revision and hash.'
+            : `MISMATCH: active canonical condition is revision ${criterion.revision} with hash ${criterion.definitionHash}.`
+      return <article className="thesis-kill-binding" key={`${binding.conditionId}-${binding.revision}`}>
+        <p><strong>Condition:</strong> {binding.conditionId} · revision {binding.revision}</p>
+        <p><strong>Assessment:</strong> {assessment?.status ?? 'Unreported'}</p>
+        <p><strong>Current canonical rule:</strong> {definitionComplete ? `${metricRef} ${operator} ${threshold} ${unit} · ${period}` : criterion ? 'The active condition does not contain a complete numeric threshold definition.' : 'No active matching canonical numeric threshold is available.'}</p>
+        <p className={matches ? '' : 'thesis-kill-mismatch'}><strong>Binding check:</strong> {matchStatus}</p>
+        <p><strong>Definition hash:</strong> {binding.definitionHash}</p>
+        <p><strong>Evaluated value:</strong> {binding.value} {binding.unit} · {binding.metricRef} · {binding.period}</p>
+        <p><strong>Evidence:</strong> {binding.evidenceRef} · <strong>Source:</strong> {binding.sourceRef} · <strong>Raw:</strong> {binding.rawRef}</p>
+        <p><strong>Published:</strong> {binding.publishedAt} · <strong>As of:</strong> {binding.asOf}</p>
+        <p><strong>Target Claims:</strong> {binding.targetClaimRefs.join(', ')}</p>
+        <p><strong>Numeric value version:</strong> {binding.numericValueVersionVerified ? 'verified' : 'unverified'}</p>
+      </article>
+    })}
+  </section>
+}
+
+function thesisKillCriterionAcceptBlockReason(scope: ThesisReviewScope | undefined, currentThesis: ThesisQueryDetail | undefined, loading: boolean, loadError: string): string | undefined {
+  const bindings = scope?.killCriterionBindings ?? []
+  if (bindings.length === 0) return undefined
+  if (loading) return 'ACCEPT is unavailable while the current canonical condition loads.'
+  if (!currentThesis || currentThesis.thesisRef !== scope?.thesisRef) return loadError ? 'ACCEPT is disabled because the current canonical condition could not be loaded.' : 'ACCEPT is disabled until the current canonical condition is available.'
+  for (const binding of bindings) {
+    const criterion = currentThesis.killCriteria?.find((item) => item.conditionId === binding.conditionId && item.state === 'active')
+    if (!criterion) return 'ACCEPT is disabled because an active canonical condition is missing; this ReviewCase is stale.'
+    if (criterion.revision !== binding.revision || criterion.definitionHash !== binding.definitionHash) return 'ACCEPT is disabled because the active condition revision or hash changed; this ReviewCase is stale.'
+  }
+  return undefined
+}
+
 function ThesisLifecyclePage({ client, knowledgeBase }: ThesisLifecyclePageProps): ReactElement {
   const [theses, setTheses] = useState<readonly ThesisQuerySummary[]>([])
   const [companies, setCompanies] = useState<readonly KnowledgeDirectoryItem[]>([])
@@ -144,10 +198,14 @@ function ThesisLifecyclePage({ client, knowledgeBase }: ThesisLifecyclePageProps
   const [reviews, setReviews] = useState<ReviewListResponse>()
   const [selectedCaseId, setSelectedCaseId] = useState('')
   const [reviewDetail, setReviewDetail] = useState<ReviewDetail>()
+  const [reviewThesis, setReviewThesis] = useState<ThesisQueryDetail>()
+  const [reviewThesisBusy, setReviewThesisBusy] = useState(false)
+  const [reviewThesisError, setReviewThesisError] = useState('')
   const [decisionNote, setDecisionNote] = useState('')
   const [decisionBusy, setDecisionBusy] = useState(false)
   const [error, setError] = useState('')
   const reportLookupRun = useRef('')
+  const reviewLoadGeneration = useRef(0)
 
   const reloadTheses = useCallback(async (): Promise<void> => {
     setThesesBusy(true)
@@ -233,8 +291,26 @@ function ThesisLifecyclePage({ client, knowledgeBase }: ThesisLifecyclePageProps
   }
 
   const selectCase = async (id: string): Promise<void> => {
-    setSelectedCaseId(id); setError('')
-    try { const detail = await client.getThesisReview(id); setReviewDetail(detail); setDecisionNote(''); if (detail.thesisScope) setSelectedRef(detail.thesisScope.thesisRef) } catch (caught) { setReviewDetail(undefined); setError(errorText(caught)) }
+    const generation = ++reviewLoadGeneration.current
+    setSelectedCaseId(id); setError(''); setReviewDetail(undefined); setReviewThesis(undefined); setReviewThesisBusy(false); setReviewThesisError('')
+    try {
+      const detail = await client.getThesisReview(id)
+      if (generation !== reviewLoadGeneration.current) return
+      setReviewDetail(detail); setDecisionNote('')
+      const scope = detail.thesisScope
+      if (scope) setSelectedRef(scope.thesisRef)
+      if (scope?.killCriterionBindings?.length) {
+        setReviewThesisBusy(true)
+        const currentThesis = await client.getThesis(scope.thesisRef)
+        if (generation !== reviewLoadGeneration.current) return
+        setReviewThesis(currentThesis)
+        setThesis(currentThesis)
+      }
+    } catch (caught) {
+      if (generation === reviewLoadGeneration.current) { setReviewThesisError(errorText(caught)); setError(errorText(caught)) }
+    } finally {
+      if (generation === reviewLoadGeneration.current) setReviewThesisBusy(false)
+    }
   }
 
   const submitDecision = async (decision: ThesisDecision): Promise<void> => {
@@ -244,12 +320,13 @@ function ThesisLifecyclePage({ client, knowledgeBase }: ThesisLifecyclePageProps
       await client.decideThesisReview(selectedCaseId, decision, decisionNote.trim() || undefined)
       const [detail, list] = await Promise.all([client.getThesisReview(selectedCaseId), client.listReviews()])
       setReviewDetail(detail); setReviews(list)
-      if (decision === 'ACCEPT') { await reloadTheses(); setThesis(await client.getThesis(detail.thesisScope!.thesisRef)) }
+      if (decision === 'ACCEPT') { await reloadTheses(); const currentThesis = await client.getThesis(detail.thesisScope!.thesisRef); setThesis(currentThesis); setReviewThesis(currentThesis) }
     } catch (caught) { setError(errorText(caught)) } finally { setDecisionBusy(false) }
   }
 
   const thesisCases = (reviews?.cases ?? []).filter((item) => item.producerType === 'thesis_lifecycle')
   const scopedCase = Boolean(reviewDetail?.producerType === 'thesis_lifecycle' && reviewDetail.thesisScope && reviewDetail.thesisScope.thesisRef === selectedRef)
+  const killCriterionAcceptBlockReason = thesisKillCriterionAcceptBlockReason(reviewDetail?.thesisScope, reviewThesis, reviewThesisBusy, reviewThesisError)
 
   return <main className="page-frame thesis-page" aria-labelledby="theses-title">
     <div className="page-heading"><div><span className="eyebrow">CANONICAL KNOWLEDGE · V0.4</span><h1 id="theses-title">Thesis Lifecycle</h1></div><span className="read-only-badge">CREATE uses selected evidence · REFRESH requires review</span></div>
@@ -282,7 +359,7 @@ function ThesisLifecyclePage({ client, knowledgeBase }: ThesisLifecyclePageProps
       {runId ? <section className="thesis-result" aria-label={`${runMode} run`}><div className="section-title"><div><span className="eyebrow">{runMode} RUN</span><h2>{workflow?.status ?? 'accepted'}</h2></div><small>{runId}</small></div><p>{workflow?.progressSummary ?? workflow?.errorSummary ?? `Waiting for the lifecycle ${runMode} workflow to finish…`}</p>{workflow?.status === 'blocked' || workflow?.status === 'failed' ? <p className="thesis-diagnostic">{workflow.errorSummary ?? `The ${runMode} did not complete.`}</p> : null}</section> : null}
       {report ? <section className="thesis-result" aria-label="Persisted Thesis Lifecycle report"><div className="section-title"><div><span className="eyebrow">PERSISTED REPORT · {report.reportType}</span><h2>{report.reportId}</h2></div><small>KB revision {report.knowledgeBaseRevision} · as of {report.asOf}</small></div><p>{report.methodology}</p><div className="brief-metrics"><span><b>{report.sourceRefs.length}</b> sources</span><span><b>{report.claimRefs.length}</b> claims</span><span><b>{report.sections.length}</b> sections</span></div>{report.sections.map((section) => <article className="brief-section" key={section.id}><div className="brief-section-heading"><h3>{section.title}</h3><span>{section.id}</span></div><pre className="thesis-report-markdown">{section.markdown}</pre></article>)}</section> : null}
       <section className="thesis-review-area" aria-label="Thesis scoped ReviewCases"><div className="section-title"><div><span className="eyebrow">HUMAN DECISIONS</span><h2>Thesis ReviewCases</h2></div><span className="read-only-badge">Gateway → Writer on ACCEPT</span></div><div className="thesis-review-layout"><section className="thesis-panel"><div className="result-list">{thesisCases.map((item) => <button className={`review-item ${selectedCaseId === item.reviewCaseId ? 'selected' : ''}`} key={item.reviewCaseId} onClick={() => void selectCase(item.reviewCaseId)}><strong>{item.reviewCaseId}</strong><span>{item.decisionState ?? 'OPEN'} · {item.category} · {item.actionability}</span><small>{item.rationale}</small><small>{item.producerRunId}</small></button>)}</div>{thesisCases.length === 0 ? <p className="muted">No actionable Thesis ReviewCases are currently listed.</p> : null}</section>
-        {reviewDetail && scopedCase ? <section className="review-detail" aria-label="Thesis ReviewCase detail"><div className="detail-title"><span>Thesis ReviewCase</span><button onClick={() => { setReviewDetail(undefined); setSelectedCaseId('') }}>Close</button></div><h2>{reviewDetail.reviewCaseId}</h2><p><strong>Thesis:</strong> {reviewDetail.thesisScope!.thesisRef}</p><p><strong>Root Claim:</strong> {reviewDetail.thesisScope!.rootClaimRef}</p><p><strong>Transition:</strong> {reviewDetail.thesisScope!.candidateTransition}{reviewDetail.thesisScope!.proposedThesisStatus ? ` → ${reviewDetail.thesisScope!.proposedThesisStatus}` : ''}</p><p><strong>As of:</strong> {reviewDetail.thesisScope!.asOf}</p><p><strong>Affected Claims:</strong> {reviewDetail.thesisScope!.affectedClaimRefs.join(', ')}</p><p><strong>Reviewed evidence:</strong> {safeStructured(reviewDetail.thesisScope!.reviewedEvidence)}</p><p><strong>Evidence bindings:</strong> {safeStructured(reviewDetail.evidenceBindings)}</p><p><strong>Decision state:</strong> {reviewDetail.decision?.state ?? 'OPEN'}</p>{reviewDetail.decision?.events.length ? <div className="thesis-history"><strong>Decision history</strong>{reviewDetail.decision.events.map((item) => <p key={`${item.revision}-${item.type}`}>{item.type} · {item.at}{item.note ? ` · ${item.note}` : ''}{item.writerRunId ? ` · ${item.writerRunId}` : ''}</p>)}</div> : null}{reviewDetail.decision?.actionable ? <div className="thesis-decision-controls"><label className="thesis-field"><span>Decision note <small>optional · up to 1000 characters</small></span><textarea aria-label="Decision note" rows={3} maxLength={1000} value={decisionNote} onChange={(event) => setDecisionNote(event.target.value)} /></label><div className="thesis-decision-buttons"><button className="primary-action" onClick={() => void submitDecision('ACCEPT')} disabled={decisionBusy}>Accept reviewed changes</button><button className="secondary-action" onClick={() => void submitDecision('DEFER')} disabled={decisionBusy}>Defer</button><button className="danger-action" onClick={() => void submitDecision('REJECT')} disabled={decisionBusy}>Reject</button></div></div> : <p className="muted">This case is resolved or is no longer actionable.</p>}</section> : <div className="notice detail-empty"><strong>Select a Thesis ReviewCase</strong><p>Acceptance rebinds the current Thesis, propositions, evidence, and provenance before the Gateway and Writer execute the reviewed change.</p></div>}
+        {reviewDetail && scopedCase ? <section className="review-detail" aria-label="Thesis ReviewCase detail"><div className="detail-title"><span>Thesis ReviewCase</span><button onClick={() => { reviewLoadGeneration.current++; setReviewDetail(undefined); setReviewThesis(undefined); setReviewThesisBusy(false); setReviewThesisError(''); setSelectedCaseId('') }}>Close</button></div><h2>{reviewDetail.reviewCaseId}</h2><p><strong>Thesis:</strong> {reviewDetail.thesisScope!.thesisRef}</p><p><strong>Root Claim:</strong> {reviewDetail.thesisScope!.rootClaimRef}</p><p><strong>Transition:</strong> {reviewDetail.thesisScope!.candidateTransition}{reviewDetail.thesisScope!.proposedThesisStatus ? ` → ${reviewDetail.thesisScope!.proposedThesisStatus}` : ''}</p><p><strong>As of:</strong> {reviewDetail.thesisScope!.asOf}</p><p><strong>Affected Claims:</strong> {reviewDetail.thesisScope!.affectedClaimRefs.join(', ')}</p><p><strong>Reviewed evidence:</strong> {safeStructured(reviewDetail.thesisScope!.reviewedEvidence)}</p><p><strong>Evidence bindings:</strong> {safeStructured(reviewDetail.evidenceBindings)}</p><ThesisKillCriterionBindings scope={reviewDetail.thesisScope!} currentThesis={reviewThesis} loading={reviewThesisBusy} loadError={reviewThesisError || undefined} /><p><strong>Decision state:</strong> {reviewDetail.decision?.state ?? 'OPEN'}</p>{reviewDetail.decision?.events.length ? <div className="thesis-history"><strong>Decision history</strong>{reviewDetail.decision.events.map((item) => <p key={`${item.revision}-${item.type}`}>{item.type} · {item.at}{item.note ? ` · ${item.note}` : ''}{item.writerRunId ? ` · ${item.writerRunId}` : ''}</p>)}</div> : null}{reviewDetail.decision?.actionable ? <div className="thesis-decision-controls"><label className="thesis-field"><span>Decision note <small>optional · up to 1000 characters</small></span><textarea aria-label="Decision note" rows={3} maxLength={1000} value={decisionNote} onChange={(event) => setDecisionNote(event.target.value)} /></label>{killCriterionAcceptBlockReason ? <p className="thesis-kill-accept-block" role="status">{killCriterionAcceptBlockReason}</p> : null}<div className="thesis-decision-buttons"><button className="primary-action" onClick={() => void submitDecision('ACCEPT')} disabled={decisionBusy || Boolean(killCriterionAcceptBlockReason)}>Accept reviewed changes</button><button className="secondary-action" onClick={() => void submitDecision('DEFER')} disabled={decisionBusy}>Defer</button><button className="danger-action" onClick={() => void submitDecision('REJECT')} disabled={decisionBusy}>Reject</button></div></div> : <p className="muted">This case is resolved or is no longer actionable.</p>}</section> : <div className="notice detail-empty"><strong>Select a Thesis ReviewCase</strong><p>Acceptance rebinds the current Thesis, propositions, evidence, and provenance before the Gateway and Writer execute the reviewed change.</p></div>}
       </div></section>
     </>}
   </main>
