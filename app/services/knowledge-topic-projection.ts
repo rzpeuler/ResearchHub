@@ -153,8 +153,11 @@ export class KnowledgeTopicProjectionService {
       return { ...base, items, responseBounded, ...(nextCursor ? { nextCursor } : {}) }
     }
     const accepted: KnowledgeTopicItem[] = []
-    for (const item of candidatesForPage) {
-      const candidate = makePage([...accepted, item], false)
+    for (const [index, item] of candidatesForPage.entries()) {
+      // Reserve the final true flag whenever more candidates remain. If the next
+      // item crosses the bound, the returned shorter page will keep that flag.
+      const mayBeShortened = index + 1 < candidatesForPage.length
+      const candidate = makePage([...accepted, item], mayBeShortened)
       if (serializedTopicResponseBytes(candidate) > MAX_TOPIC_RESPONSE_BYTES) {
         if (accepted.length === 0) throw topicError('failed', 'topic_response_too_large: one topic item exceeds the 1 MiB response bound')
         break
