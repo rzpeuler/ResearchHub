@@ -22,15 +22,17 @@ async function fixture(): Promise<{ root: string; service: KnowledgeTopicProject
     { type: 'relation', value: { id: 'relation:theme-b-industry', type: 'theme_exposure', sourceRef: 'entity:theme-b', targetRef: 'entity:industry', lifecycle: active } },
     { type: 'relation', value: { id: 'relation:industry-company', type: 'upstream_of', sourceRef: 'entity:chipmaker', targetRef: 'entity:industry', asOf: at, lifecycle: active } },
     { type: 'relation', value: { id: 'relation:unrelated', type: 'theme_exposure', sourceRef: 'entity:theme-a', targetRef: 'entity:chipmaker', lifecycle: inactive } },
-    { type: 'claim', value: { id: 'claim:theme-a', claimType: 'viewpoint', subjectRefs: ['entity:theme-a'], statement: 'Accelerator demand is broadening.', sourceRefs: ['source:public'], createdAt: at, lifecycle: active } },
+    { type: 'claim', value: { id: 'claim:theme-a', claimType: 'viewpoint', subjectRefs: ['entity:theme-a'], statement: 'Accelerator demand is broadening.', sourceRefs: ['source:public'], supportsClaimRefs: ['claim:theme-b'], createdAt: at, lifecycle: active } },
     { type: 'claim', value: { id: 'claim:theme-b', claimType: 'fact', subjectRefs: ['entity:theme-b'], statement: 'Robotics claim.', sourceRefs: ['source:public'], lifecycle: active } },
     { type: 'claim', value: { id: 'claim:old', claimType: 'fact', subjectRefs: ['entity:theme-a'], statement: 'Historical statement.', lifecycle: inactive } },
     { type: 'observation', value: { id: 'observation:industry-metric', observationType: 'metric', subjectRef: 'entity:industry', metricRef: 'market_size', value: 42, unit: 'USD bn', observedAt: at, sourceRef: 'source:public', provenance: [{ sourceRef: 'source:public', rawRef: 'raw-sha256-secret', locator: 'C:\\private\\local.pdf' }], lifecycle: active } },
-    { type: 'observation', value: { id: 'observation:estimate', observationType: 'estimate', subjectRef: 'entity:industry', metricRef: 'revenue', fiscalPeriod: 'FY2027', estimateValue: 100, institutionRef: 'entity:chipmaker', publishedAt: at, sourceRef: 'source:restricted', lifecycle: active } },
+    { type: 'observation', value: { id: 'observation:estimate', observationType: 'estimate', subjectRef: 'entity:industry', metricRef: 'revenue', fiscalPeriod: 'FY2027', estimateValue: 100, institutionRef: 'entity:chipmaker', analystRef: 'entity:chipmaker', revisionOf: 'observation:estimate-old', publishedAt: at, sourceRef: 'source:restricted', lifecycle: active } },
+    { type: 'observation', value: { id: 'observation:estimate-old', observationType: 'estimate', subjectRef: 'entity:industry', metricRef: 'revenue', fiscalPeriod: 'FY2027', estimateValue: 90, institutionRef: 'entity:chipmaker', publishedAt: '2026-09-01T10:00:00.000Z', sourceRef: 'source:restricted', lifecycle: inactive } },
     { type: 'observation', value: { id: 'observation:consensus', observationType: 'consensus', subjectRef: 'entity:industry', metricRef: 'revenue', fiscalPeriod: 'FY2027', asOf: at, mean: 100, count: 5, contributingObservationRefs: ['observation:estimate'], sourceRef: 'source:restricted', lifecycle: active } },
-    { type: 'observation', value: { id: 'observation:company-metric', observationType: 'metric', subjectRef: 'entity:chipmaker', metricRef: 'capacity', value: 12, unit: 'fab lines', sourceRef: 'source:public', lifecycle: active } },
-    { type: 'event', value: { id: 'event:theme', eventType: 'capacity_expansion', title: 'New fab capacity', subjectRefs: ['entity:theme-a'], temporal: { occurredAt: at }, sourceRefs: ['source:restricted'], lifecycle: active } },
+    { type: 'observation', value: { id: 'observation:company-metric', observationType: 'metric', subjectRef: 'entity:chipmaker', metricRef: 'capacity', value: 'C:\\private\\users\\research\\capacity.csv', unit: 'fab lines', sourceRef: 'source:public', lifecycle: active } },
+    { type: 'event', value: { id: 'event:theme', eventType: 'capacity_expansion', title: 'New fab capacity', subjectRefs: ['entity:theme-a'], participantRefs: ['entity:chipmaker'], temporal: { occurredAt: at }, sourceRefs: ['source:restricted'], lifecycle: active } },
     { type: 'thesis', value: { id: 'thesis:theme', subjectRefs: ['entity:theme-a'], title: 'Thesis title', statement: 'Thesis statement.', status: 'invalidated', lastReviewedAt: at, lifecycle: active } },
+    { type: 'thesis', value: { id: 'thesis:theme-b', subjectRefs: ['entity:theme-b'], title: 'Robotics thesis', statement: 'Private theme thesis.', status: 'active', lifecycle: active } },
     { type: 'reasoning_edge', value: { id: 'reasoning-edge:thesis-claim', type: 'challenges', sourceRef: 'claim:theme-a', targetRef: 'thesis:theme', sourceRefs: ['source:public'], lifecycle: active } },
     { type: 'module', value: { id: 'module:theme', type: 'comparison', targetEntity: 'entity:theme-a', schemaId: 'comparison-v1', columns: [{ name: 'company' }], rows: [{ company: 'Chipmaker' }] } },
     { type: 'source', value: { id: 'source:public', title: 'Public filing', publisher: 'Exchange', sourceType: 'filing', canonicalUrl: 'https://example.test/filing', publishedAt: at, rights: { accessScope: 'public', providerTermsKnown: true, redistributionAllowed: false }, usagePolicy: { mode: 'personal_noncommercial_research', retainRaw: true, allowAiProcessing: true, allowDerivedKnowledge: true, redistributionAllowed: false }, rawRefs: ['raw-sha256-secret'], lifecycle: active } },
@@ -71,6 +73,7 @@ test('topic projection separates direct membership from related industry records
   const metric = connected.items.find((item) => item.ref === 'observation:industry-metric')!
   assert.deepEqual(metric.associationPaths?.[0]?.hops.map((hop) => [hop.sourceRef, hop.targetRef]), [['entity:theme-a', 'entity:industry']])
   assert.equal(metric.scope, 'connected')
+  assert.equal(metric.fields.value, 42)
 
   assert.equal(connected.total, 4)
   const companyMetric = connected.items.find((item) => item.ref === 'observation:company-metric')!
@@ -78,9 +81,17 @@ test('topic projection separates direct membership from related industry records
     ['entity:theme-a', 'entity:industry'],
     ['entity:chipmaker', 'entity:industry'],
   ])
+  assert.equal(companyMetric.fields.value, '[local path omitted]')
+  assert.doesNotMatch(JSON.stringify(connected), /C:\\\\private\\\\users\\\\research/)
 
   const noThemeB = await service.listItems({ themeRef: 'entity:theme-a', kind: 'claim' })
   assert.deepEqual(noThemeB.items.map((item) => item.ref), ['claim:theme-a'])
+  const connectedClaims = await service.listItems({ themeRef: 'entity:theme-a', kind: 'claim', scope: 'connected', depth: 2 })
+  assert.deepEqual(connectedClaims.items.map((item) => item.ref), [])
+  const connectedTheses = await service.listItems({ themeRef: 'entity:theme-a', kind: 'thesis', scope: 'connected', depth: 2 })
+  assert.deepEqual(connectedTheses.items.map((item) => item.ref), [])
+  const connectedRelations = await service.listItems({ themeRef: 'entity:theme-a', kind: 'relation', scope: 'connected', depth: 2 })
+  assert.ok(!connectedRelations.items.some((item) => item.ref === 'relation:theme-b-industry'))
 })
 
 test('summary and items honor lifecycle, thesis state, source rights, and allowlisted privacy fields', async (t) => {
@@ -144,11 +155,23 @@ test('projection rejects a mounted Schema 0.3 base with an explicit unsupported 
 })
 
 test('broken references fail closed for included records', async (t) => {
-  const { root } = await fixture()
+  const { root, service } = await fixture()
   t.after(() => rm(root, { recursive: true, force: true }))
-  const path = join(root, 'claims', 'claim-theme-a.json')
-  const claim = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>
-  claim.sourceRefs = ['source:missing']
-  await writeFile(path, `${JSON.stringify(claim)}\n`)
-  await assert.rejects(new KnowledgeTopicProjectionService(root).listItems({ themeRef: 'entity:theme-a', kind: 'claim' }), /broken_reference/)
+  const brokenFields: Array<{ readonly path: string; readonly field: string; readonly value: unknown; readonly request: () => Promise<unknown> }> = [
+    { path: 'claims/claim-theme-a.json', field: 'sourceRefs', value: ['source:missing'], request: () => service.listItems({ themeRef: 'entity:theme-a', kind: 'claim' }) },
+    { path: 'claims/claim-theme-a.json', field: 'supportsClaimRefs', value: ['claim:missing'], request: () => service.listItems({ themeRef: 'entity:theme-a', kind: 'claim' }) },
+    { path: 'observations/observation-estimate.json', field: 'revisionOf', value: 'observation:missing', request: () => service.listItems({ themeRef: 'entity:theme-a', kind: 'observation', scope: 'connected' }) },
+    { path: 'observations/observation-estimate.json', field: 'institutionRef', value: 'entity:missing', request: () => service.listItems({ themeRef: 'entity:theme-a', kind: 'observation', scope: 'connected' }) },
+    { path: 'observations/observation-consensus.json', field: 'contributingObservationRefs', value: ['observation:missing'], request: () => service.listItems({ themeRef: 'entity:theme-a', kind: 'observation', scope: 'connected' }) },
+    { path: 'events/event-theme.json', field: 'participantRefs', value: ['entity:missing'], request: () => service.listItems({ themeRef: 'entity:theme-a', kind: 'event' }) },
+  ]
+  for (const item of brokenFields) {
+    const path = join(root, item.path)
+    const value = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>
+    value[item.field] = item.value
+    await writeFile(path, `${JSON.stringify(value)}\n`)
+    await assert.rejects(item.request(), /broken_reference/, `${item.path} ${item.field}`)
+    delete value[item.field]
+    await writeFile(path, `${JSON.stringify(value)}\n`)
+  }
 })

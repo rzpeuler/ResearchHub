@@ -45,7 +45,7 @@ const dict = (value: unknown): Dict => typeof value === 'object' && value !== nu
 const arr = (value: unknown): unknown[] => Array.isArray(value) ? value : []
 const string = (value: unknown): string | undefined => typeof value === 'string' && value.trim() !== '' ? value : undefined
 const refs = (value: unknown): string[] => arr(value).filter((item): item is string => typeof item === 'string')
-const statusOf = (value: KnowledgeAssetV04): string => string(dict(dict(value).lifecycle).status) ?? 'unknown'
+const statusOf = (value: KnowledgeAssetV04): string => safeText(dict(dict(value).lifecycle).status, 100) ?? 'unknown'
 const active = (value: KnowledgeAssetV04): boolean => statusOf(value) === 'active' || (assetKind(value) === 'module' && string(dict(dict(value).lifecycle).status) === undefined)
 const assetKind = (value: KnowledgeAssetV04): string => value.id.slice(0, value.id.indexOf(':'))
 const orderText = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0
@@ -64,7 +64,7 @@ export class KnowledgeTopicProjectionService {
     const theme = requireTheme(context.index, themeRef)
     const traversal = buildTraversal(context.index, themeRef, depth)
     const direct = collectCandidates(context.index, [themeRef], themeRef, 'direct', new Map())
-    const connected = collectCandidates(context.index, [...traversal.pathsByEntity.keys()], themeRef, 'connected', traversal.pathsByEntity)
+    const connected = collectCandidates(context.index, connectedContentAnchors(context.index, traversal), themeRef, 'connected', traversal.pathsByEntity)
     const counts = {
       direct: countKinds(direct, false),
       connected: countKinds(connected, traversal.truncated),
@@ -93,7 +93,7 @@ export class KnowledgeTopicProjectionService {
     const context = await this.load()
     requireTheme(context.index, input.themeRef)
     const traversal = scope === 'connected' ? buildTraversal(context.index, input.themeRef, depth) : emptyTraversal()
-    const anchors = scope === 'direct' ? [input.themeRef] : [...traversal.pathsByEntity.keys()]
+    const anchors = scope === 'direct' ? [input.themeRef] : connectedContentAnchors(context.index, traversal)
     const candidates = collectCandidates(context.index, anchors, input.themeRef, scope, traversal.pathsByEntity, filters.lifecycle === 'all')
     const projected = [...candidates.values()]
       .filter(({ value }) => kindMatches(value, input.kind))
@@ -192,7 +192,7 @@ function requireTheme(index: KnowledgeIndexV04, ref: string): KnowledgeAssetV04 
 
 function themeSummary(theme: KnowledgeAssetV04): KnowledgeTopicSummary['theme'] {
   const raw = dict(theme)
-  const simpleStrings = (value: unknown): string[] => arr(value).filter((item): item is string => typeof item === 'string').slice(0, 40)
+  const simpleStrings = (value: unknown): string[] => arr(value).map((item) => safeText(item, 300)).filter((item): item is string => item !== undefined).slice(0, 40)
   const description = safeText(raw.description, 2_000)
   const definition = safeText(raw.definition, 2_000)
   return {
@@ -203,7 +203,7 @@ function themeSummary(theme: KnowledgeAssetV04): KnowledgeTopicSummary['theme'] 
     ...(definition ? { definition } : {}),
     ...(simpleStrings(raw.inclusionCriteria).length ? { inclusionCriteria: simpleStrings(raw.inclusionCriteria) } : {}),
     ...(simpleStrings(raw.exclusionCriteria).length ? { exclusionCriteria: simpleStrings(raw.exclusionCriteria) } : {}),
-    ...(string(raw.themeGroupRef) ? { themeGroupRef: string(raw.themeGroupRef) } : {}),
+    ...(typeof raw.themeGroupRef === 'string' && REF_PATTERN.test(raw.themeGroupRef) ? { themeGroupRef: raw.themeGroupRef } : {}),
     lifecycleStatus: statusOf(theme),
   }
 }
@@ -219,6 +219,10 @@ function buildTraversal(index: KnowledgeIndexV04, themeRef: string, depth: 1 | 2
     .filter((relation) => THEME_RELATION_TYPES.has(String(dict(relation).type)))
     .filter((relation) => entityRefs.has(String(dict(relation).sourceRef)) && entityRefs.has(String(dict(relation).targetRef)))
     .sort((a, b) => orderText(a.id, b.id))
+  for (const relation of allRelations) {
+    const raw = dict(relation)
+    if (!REF_PATTERN.test(relation.id) || !REF_PATTERN.test(String(raw.sourceRef)) || !REF_PATTERN.test(String(raw.targetRef))) throw topicError('failed', 'broken_reference: graph relation contains a malformed canonical reference')
+  }
   const truncatedByRelationLimit = allRelations.length > MAX_RELATIONS_SCANNED
   const relations = allRelations.slice(0, MAX_RELATIONS_SCANNED)
   const adjacency = new Map<string, { readonly relation: KnowledgeAssetV04; readonly neighborRef: string }[]>()
@@ -262,6 +266,9 @@ function buildTraversal(index: KnowledgeIndexV04, themeRef: string, depth: 1 | 2
 }
 
 function emptyTraversal(): Traversal { return { pathsByEntity: new Map(), truncated: false, focusRefs: [] } }
+function connectedContentAnchors(index: KnowledgeIndexV04, traversal: Traversal): string[] {
+  return [...traversal.pathsByEntity.keys()].filter((ref) => dict(index.objects.get(ref)).type !== 'investment_theme')
+}
 function dedupePaths(paths: readonly KnowledgeTopicAssociationPath[]): KnowledgeTopicAssociationPath[] {
   const unique = new Map<string, KnowledgeTopicAssociationPath>()
   for (const path of paths) unique.set(path.hops.map((hop) => hop.relationRef).join('>'), path)
@@ -273,6 +280,7 @@ function collectCandidates(index: KnowledgeIndexV04, anchors: readonly string[],
   const result = new Map<string, Candidate>()
   const add = (value: KnowledgeAssetV04, anchor?: string): void => {
     if (scope === 'connected' && value.id === themeRef) return
+    if (!REF_PATTERN.test(value.id)) throw topicError('failed', 'broken_reference: included object has a malformed canonical reference')
     const paths = new Map(result.get(value.id)?.paths ?? [])
     if (scope === 'connected' && anchor) for (const path of pathsByEntity.get(anchor) ?? []) paths.set(path.hops.map((hop) => hop.relationRef).join('>'), path)
     result.set(value.id, { value, paths })
@@ -289,6 +297,8 @@ function collectCandidates(index: KnowledgeIndexV04, anchors: readonly string[],
       else if (kind === 'module' && typeof raw.targetEntity === 'string' && anchorSet.has(raw.targetEntity)) memberships.push(raw.targetEntity)
       else if (kind === 'relation') {
         for (const ref of [raw.sourceRef, raw.targetRef, ...refs(raw.contextRefs)]) if (typeof ref === 'string' && anchorSet.has(ref)) memberships.push(ref)
+        const otherThemeEndpoint = [raw.sourceRef, raw.targetRef].some((ref) => typeof ref === 'string' && ref !== themeRef && dict(index.objects.get(ref)).type === 'investment_theme')
+        if (scope === 'connected' && otherThemeEndpoint && !refs(raw.contextRefs).includes(themeRef)) continue
       }
       if (!memberships.length) continue
       validateRecordReferences(index, value)
@@ -354,7 +364,17 @@ function validateRecordReferences(index: KnowledgeIndexV04, value: KnowledgeAsse
   }
   const kind = assetKind(value)
   if (kind === 'claim' || kind === 'event' || kind === 'thesis') for (const ref of refs(raw.subjectRefs)) check(ref, 'entity')
+  if (kind === 'claim') {
+    for (const field of ['supportsClaimRefs', 'dependsOnClaimRefs', 'contradictsClaimRefs', 'supersedes', 'supersededBy']) for (const ref of refs(raw[field])) check(ref, 'claim')
+  }
   if (kind === 'observation') check(raw.subjectRef, 'entity')
+  if (kind === 'observation' && raw.observationType === 'estimate') {
+    check(raw.institutionRef, 'entity')
+    if (raw.analystRef !== undefined && raw.analystRef !== null) check(raw.analystRef, 'entity')
+    if (raw.revisionOf !== undefined && raw.revisionOf !== null) check(raw.revisionOf, 'observation')
+  }
+  if (kind === 'observation' && raw.observationType === 'consensus') for (const ref of refs(raw.contributingObservationRefs)) check(ref, 'observation')
+  if (kind === 'event') for (const ref of refs(raw.participantRefs)) check(ref, 'entity')
   if (kind === 'module' && typeof raw.targetEntity === 'string') check(raw.targetEntity, 'entity')
   if (kind === 'relation') {
     check(raw.sourceRef, 'entity'); check(raw.targetRef, 'entity')
@@ -403,8 +423,11 @@ function projectItem(value: KnowledgeAssetV04, scope: KnowledgeTopicScope, paths
   let summary: string | undefined
   let date = dateOf(value)
   const put = (key: string, field: unknown): void => {
-    if (typeof field === 'string' || typeof field === 'number' || typeof field === 'boolean' || field === null) fields[key] = field
-    else if (Array.isArray(field)) fields[key] = field.filter((entry): entry is string => typeof entry === 'string').slice(0, 64)
+    if (typeof field === 'string') {
+      const sanitized = safeText(field, 2_000)
+      if (sanitized !== undefined) fields[key] = sanitized
+    } else if (typeof field === 'number' || typeof field === 'boolean' || field === null) fields[key] = field
+    else if (Array.isArray(field)) fields[key] = field.map((entry) => safeText(entry, 300)).filter((entry): entry is string => entry !== undefined).slice(0, 64)
   }
   switch (kind) {
     case 'relation':
