@@ -2,7 +2,7 @@
 
 Date: 2026-09-28
 
-Status: **ACCEPTED; main integration pending**
+Status: **CLOSED; accepted implementation merged to main and remotely verified**
 
 Scope: CREATE, ordinary REFRESH, human decisions, and canonical `invalidated` transition.
 
@@ -31,4 +31,4 @@ An exploratory invalidation run initially observed a post-confirm revision asser
 
 Unknown future criterion types and `deadline` remain readable only and cannot cause `met` in this release. Source-derived and human-rule authoring, stale revisions, rights/Raw failure, conflicting values, crash recovery, and old-Thesis blocking have deterministic test coverage; the live gate used a human-rule criterion. No independent research Skill, new orchestration layer, new canonical store, or automatic legacy-condition migration was added. Further Thesis Lifecycle features are outside TL-001.
 
-Mainline integration and remote verification complete formal closure; record that delivery in the final status update.
+The accepted branch `codex/tl-001-product-closure` was fast-forwarded into `main` at `c14d3af`. The remote branch and remote `main` were both verified at `c14d3af` immediately after push, and both worktrees were clean. This closes TL-001. The next product capability is a separate task and is outside this closure.

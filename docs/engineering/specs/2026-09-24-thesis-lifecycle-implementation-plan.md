@@ -2,7 +2,7 @@
 
 Date: 2026-09-24
 
-Status: ACCEPTANCE PASSED / MAIN INTEGRATION PENDING (2026-09-28). See [final TL-001 acceptance](../reports/2026-09-28-thesis-lifecycle-final-closure.md).
+Status: CLOSED ON MAIN (2026-09-28). See [final TL-001 acceptance](../reports/2026-09-28-thesis-lifecycle-final-closure.md).
 
 Branch: `codex/tl-001-product-closure`
 Authority: TL-001 product design plus the implementation contract amendment.
