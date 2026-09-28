@@ -11,6 +11,7 @@ import type { NormalizedResearchSource } from '../../../plugins/research-acquisi
 import { validateUsableAcquisitionPayload } from '../../../plugins/research-acquisition/payload-validation.ts'
 import { listReviewCases } from '../../../knowledge/review/store.ts'
 import { loadKnowledgeBaseManifest } from '../../../knowledge/storage/manifest-loader.ts'
+import { hashKillCriterionDefinitionV04 } from '../../../knowledge/schema/kill-criterion-v04.ts'
 
 const clock = () => '2026-09-08T00:00:00.000Z'
 function source(symbol: string, candidateId = `structured-${symbol}`, value = 'same bytes'): NormalizedResearchSource { return { candidate: { candidateId, kind: 'structured_data', tier: 2, title: 'Financial fixture', provider: 'akshare', metadata: { companySymbol: symbol, dataKind: 'financial', period: 'FY2027' } }, retrievedAt: clock(), title: 'Financial fixture', content: value, contentHash: 'a'.repeat(64), publisher: 'AKShare', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } } }
@@ -139,8 +140,8 @@ test('distinct evidence keeps Source-to-Raw Claim provenance and replay merges i
     await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-provenance', now: clock() }); const gateway = new KnowledgeProductionGateway()
     const a = source('600519', 'evidence-a', 'bytes-a'); const b = { ...source('600519', 'evidence-b', 'bytes-b'), title: 'Second fixture', candidate: { ...source('600519', 'evidence-b', 'bytes-b').candidate, title: 'Second fixture' } }; const p = (id: string) => ({ proposalId: id, kind: 'claim' as const, subjectKey: 'company', claimType: 'fact' as const, statement: 'Revenue was observed', sourceCandidateIds: ['evidence-a', 'evidence-b'] })
     const result = await gateway.submit({ ...(await input(root, 'prov-1')), proposals: [p('claim-1')], evidenceBindings: [{ localSourceId: 'evidence-a', source: a }, { localSourceId: 'evidence-b', source: b }] })
-    assert.equal(result.status, 'committed'); const assets = await readCanonicalV04Assets(root); const c = assets.objects.find((x) => x.kind === 'claim')!.value as { provenance: Array<{ sourceRef: string; rawRef: string }>; sourceRefs: string[] }
-    assert.equal(c.provenance.length, 2); assert.equal(new Set(c.provenance.map((x) => x.rawRef)).size, 2); assert.deepEqual(new Set(c.provenance.map((x) => x.sourceRef)), new Set(c.sourceRefs))
+    assert.equal(result.status, 'committed'); const assets = await readCanonicalV04Assets(root); const c = assets.objects.find((x) => x.kind === 'claim')!.value as { provenance: Array<{ sourceRef: string; rawRef: string; locator: string | null }>; sourceRefs: string[] }
+    assert.equal(c.provenance.length, 2); assert.equal(new Set(c.provenance.map((x) => x.rawRef)).size, 2); assert.deepEqual(new Set(c.provenance.map((x) => x.sourceRef)), new Set(c.sourceRefs)); assert.ok(c.provenance.every((item) => item.locator === null))
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
@@ -315,6 +316,74 @@ test('one submit commits at most one ChangeSet and replay does not advance revis
   try {
     await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-one-commit', now: clock() }); const gateway = new KnowledgeProductionGateway(); const first = await gateway.submit({ ...(await input(root, 'one-commit-1')), proposals: [claim('one', 1)] }); assert.equal(first.status, 'committed'); assert.equal(first.knowledgeBaseRevision, first.baseRevision + 1); assert.equal(first.changeSetId !== undefined, true)
     const replay = await gateway.submit({ ...(await input(root, 'one-commit-2')), proposals: [claim('one-replay', 1)] }); assert.equal(replay.status, 'no_changes'); assert.equal(replay.knowledgeBaseRevision, first.knowledgeBaseRevision); assert.equal(replay.changeSetId, undefined)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('confirmed Thesis criteria append immutable revisions and ordinary updates preserve them', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-thesis-criterion-gateway-'))
+  try {
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-thesis-criterion-gateway', now: clock() })
+    const gateway = new KnowledgeProductionGateway()
+    const publishedAt = '2026-09-01T00:00:00.000Z'
+    const admitted = { ...source('600519', 'criterion-source', 'Threshold source bytes'), candidate: { ...source('600519', 'criterion-source', 'Threshold source bytes').candidate, publishedAt } }
+    const seed = await gateway.submit({ ...(await input(root, 'criterion-seed', '600519', [], [admitted])), evidenceBindings: [{ localSourceId: 'criterion-source', source: admitted, locator: 'table:FY2027/revenue_growth' }], proposals: [
+      { proposalId: 'criterion-thesis', kind: 'thesis', subjectKey: 'company', thesisTitle: 'Durable growth', thesisStatus: 'active', statement: 'Revenue growth remains durable.' },
+      { proposalId: 'criterion-target', kind: 'claim', subjectKey: 'company', claimType: 'fact', statement: 'FY2027 revenue growth was reported.', sourceCandidateIds: ['criterion-source'], existingEvidenceBindings: [] }
+    ] })
+    assert.equal(seed.status, 'committed', seed.errors.join('; '))
+    const thesisRef = seed.thesisRefsByProposalId?.['criterion-thesis']
+    const claimRef = seed.claimRefsByProposalId['criterion-target']
+    assert.ok(thesisRef && claimRef)
+    let assets = await readCanonicalV04Assets(root)
+    const sourceAsset = assets.objects.find((asset) => asset.kind === 'source')!.value as { id: `source:${string}`; rawRefs: `raw-sha256-${string}`[] }
+    const membership = await gateway.submit({ ...(await input(root, 'criterion-membership')), proposals: [{ proposalId: 'criterion-qualifies', kind: 'reasoning_edge', edgeType: 'qualifies', existingSourceRef: claimRef as `claim:${string}`, existingTargetRef: thesisRef as `thesis:${string}` }] as never[] })
+    assert.equal(membership.status, 'committed', membership.errors.join('; '))
+    assets = await readCanonicalV04Assets(root)
+    const claimAsset = assets.objects.find((asset) => asset.value.id === claimRef)!.value as { provenance?: Array<{ locator: string | null }> }
+    assert.equal(claimAsset.provenance?.[0]?.locator, 'table:FY2027/revenue_growth')
+
+    const makeRevision = (revision: number, threshold: number) => {
+      const origin = { kind: 'source_derived' as const, sourceRef: sourceAsset.id, rawRef: sourceAsset.rawRefs[0]!, locator: 'table:FY2027/revenue_growth', publishedAt }
+      const definition = { metricRef: 'revenue_growth', operator: 'lt' as const, threshold, unit: 'percent', period: 'FY2027' }
+      return { conditionId: 'growth-floor', revision, state: 'active' as const, type: 'numeric_threshold', definitionVersion: 1, definition, targetClaimRefs: [claimRef as `claim:${string}`], effectiveAt: '2026-09-08T00:00:00.000Z', definitionHash: hashKillCriterionDefinitionV04({ type: 'numeric_threshold', definitionVersion: 1, definition, targetClaimRefs: [claimRef], origin }), authority: { workflowRunId: `criterion-confirm-${revision}`, confirmedAt: '2026-09-08T00:00:00.000Z', origin } }
+    }
+    const beforeConfirmation = await new KnowledgeBaseRegistry().mount(root)
+    const binding = { sourceRef: sourceAsset.id, rawRef: sourceAsset.rawRefs[0]!, locator: 'table:FY2027/revenue_growth' }
+    const withBinding = async (run: string, criterionRevision: unknown, handle?: KnowledgeProductionInput['handle']) => gateway.submit({ ...(await input(root, run)), ...(handle ? { handle } : {}), producerType: 'thesis_criterion_confirmed', proposals: [{ proposalId: `confirm-${run}`, kind: 'thesis', subjectKey: 'company', thesisTitle: 'Durable growth', thesisStatus: 'active', statement: 'Revenue growth remains durable.', criterionRevision, existingEvidenceBindings: [binding] } as never], evidenceBindings: [] })
+    const revisionOne = makeRevision(1, 0.1)
+    const first = await withBinding('criterion-confirm-1', revisionOne, beforeConfirmation)
+    assert.equal(first.status, 'committed', first.errors.join('; '))
+    const duplicate = await withBinding('criterion-duplicate', revisionOne)
+    assert.equal(duplicate.status, 'blocked')
+    const badProducer = await gateway.submit({ ...(await input(root, 'criterion-unauthorized')), proposals: [{ proposalId: 'unauthorized-criterion', kind: 'thesis', subjectKey: 'company', thesisTitle: 'Durable growth', thesisStatus: 'active', statement: 'Revenue growth remains durable.', criterionRevision: makeRevision(2, 0.1) } as never] })
+    assert.equal(badProducer.status, 'blocked')
+    const malformed = await withBinding('criterion-malformed', { ...makeRevision(2, 0.1), definitionHash: 'sha256:bad' })
+    assert.equal(malformed.status, 'blocked')
+    const unknown = await withBinding('criterion-unknown', { ...makeRevision(2, 0.1), type: 'future_condition' })
+    assert.equal(unknown.status, 'blocked')
+    const nextHandle = await new KnowledgeBaseRegistry().mount(root)
+    const revisionTwo = makeRevision(2, 0.15)
+    const second = await withBinding('criterion-confirm-2', revisionTwo, nextHandle)
+    assert.equal(second.status, 'committed', second.errors.join('; '))
+    assets = await readCanonicalV04Assets(root)
+    const thesis = assets.objects.find((asset) => asset.value.id === thesisRef)!.value as { killCriteria?: Array<{ revision: number; state: string; definitionHash: string }> }
+    assert.deepEqual(thesis.killCriteria?.map((item) => [item.revision, item.state]), [[1, 'superseded'], [2, 'active']])
+    assert.notEqual(thesis.killCriteria?.[0]?.definitionHash, thesis.killCriteria?.[1]?.definitionHash)
+    const staleHandle = await withBinding('criterion-confirm-3', makeRevision(3, 0.2), nextHandle)
+    assert.notEqual(staleHandle.status, 'committed')
+    const third = await withBinding('criterion-confirm-3', makeRevision(3, 0.2))
+    assert.equal(third.status, 'committed', third.errors.join('; '))
+    const changedReplayValue = makeRevision(4, 0.25)
+    const changedReplay = await withBinding('criterion-confirm-3', { ...changedReplayValue, authority: { ...changedReplayValue.authority, workflowRunId: 'criterion-confirm-3' } })
+    assert.notEqual(changedReplay.status, 'committed')
+    assets = await readCanonicalV04Assets(root)
+    const beforeOrdinaryUpdate = assets.objects.find((asset) => asset.value.id === thesisRef)!.value as { killCriteria?: unknown[] }
+    const ordinary = await gateway.submit({ ...(await input(root, 'criterion-ordinary-update')), proposals: [{ proposalId: 'ordinary-thesis-update', kind: 'thesis', subjectKey: 'company', thesisTitle: 'Durable growth', thesisStatus: 'weakening', statement: 'Revenue growth remains durable.' }] })
+    assert.equal(ordinary.status, 'committed', ordinary.errors.join('; '))
+    assets = await readCanonicalV04Assets(root)
+    const preserved = assets.objects.find((asset) => asset.value.id === thesisRef)!.value as { status: string; killCriteria?: unknown[] }
+    assert.equal(preserved.status, 'weakening')
+    assert.deepEqual(preserved.killCriteria, beforeOrdinaryUpdate.killCriteria)
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 

@@ -1,6 +1,6 @@
 import type { KnowledgeBaseHandle } from '../storage/handle.ts'
 import type { NormalizedResearchSource } from '../../plugins/research-acquisition/contracts.ts'
-import type { CanonicalKnowledgeRefV04, EventTypeV04, ObservationTypeV04, ReasoningEdgeTypeV04, ThesisStatusV04, ExternalIdentifierV04 } from '../schema/domain-v04.ts'
+import type { CanonicalKnowledgeRefV04, EventTypeV04, ObservationTypeV04, ReasoningEdgeTypeV04, ThesisStatusV04, ExternalIdentifierV04, KillCriterionV04 } from '../schema/domain-v04.ts'
 
 export type SemanticProductionClaimType = 'fact' | 'forecast' | 'viewpoint' | 'trend' | 'risk' | 'assumption' | 'thesis' | 'catalyst'
 
@@ -41,6 +41,8 @@ export interface SemanticProductionProposal {
   readonly consensusDispersion?: number | null
   readonly thesisTitle?: string
   readonly thesisStatus?: ThesisStatusV04
+  /** Confirmed criterion revision; accepted only from thesis_criterion_confirmed for one existing Thesis. */
+  readonly criterionRevision?: KillCriterionV04
   readonly edgeType?: ReasoningEdgeTypeV04
   readonly sourceProposalId?: string
   /** Producer-owned binding to an existing canonical ReasoningEdge source endpoint. */
@@ -52,7 +54,7 @@ export interface SemanticProductionProposal {
   /** Optional producer-owned binding to an existing canonical Claim. */
   readonly existingKnowledgeRefs?: readonly string[]
   /** Producer-owned bindings to existing canonical Source and Raw evidence. */
-  readonly existingEvidenceBindings?: readonly { readonly sourceRef: `source:${string}`; readonly rawRef: `raw-sha256-${string}` }[]
+  readonly existingEvidenceBindings?: readonly { readonly sourceRef: `source:${string}`; readonly rawRef: `raw-sha256-${string}`; readonly locator?: string }[]
   readonly temporal?: unknown
   readonly structuredValue?: Readonly<Record<string, unknown>> | null
   readonly confidence?: number
@@ -97,6 +99,8 @@ export interface ProductionEvidenceBinding {
   readonly source: NormalizedResearchSource
   readonly originalFilename?: string
   readonly mediaType?: string
+  /** Optional exact locator retained with Source/Raw provenance. */
+  readonly locator?: string
 }
 
 export interface KnowledgeProductionInput {
