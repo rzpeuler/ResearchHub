@@ -1,6 +1,9 @@
+import { createHash } from 'node:crypto'
 import { readRaw, verifyRaw } from '../../knowledge/raw/raw-archive.ts'
 import { hashKillCriterionDefinitionV04 } from '../../knowledge/schema/kill-criterion-v04.ts'
 import { getMetricDefinitionV04 } from '../../knowledge/schema/metric-registry.ts'
+import { DocumentInputResolver } from '../../plugins/document/input-resolver.ts'
+import type { DocumentInputRef } from '../../plugins/document/contracts.ts'
 import type { KillCriterionV04, KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeObservationV04, KnowledgeReasoningEdgeV04, KnowledgeSourceV04, KnowledgeThesisV04, NumericThresholdDefinitionV1 } from '../../knowledge/schema/domain-v04.ts'
 import type { KnowledgeAssetCollectionV04 } from '../../knowledge/storage/v04-types.ts'
 import type { KnowledgeBaseHandle } from '../../knowledge/storage/handle.ts'
@@ -21,6 +24,8 @@ export interface ThesisKillCriterionEvaluatorInput {
   readonly conditionId: string
   readonly asOf: string
   readonly evidenceBindings: readonly KillCriterionEvidenceBindingV1[]
+  /** Optional deterministic document parser seam; used only for verified archived PDF bytes. */
+  readonly documentResolver?: Pick<DocumentInputResolver, 'resolve'>
 }
 
 export interface KillCriterionEvaluatedValueV1 {
@@ -176,13 +181,20 @@ function compare(value: number, definition: NumericThresholdDefinitionV1): boole
   }
 }
 
-async function readVerifiedTextRaw(input: ThesisKillCriterionEvaluatorInput, rawRef: string): Promise<string | undefined> {
+async function readVerifiedRawText(input: ThesisKillCriterionEvaluatorInput, rawRef: string): Promise<string | undefined> {
   try {
     const verified = await verifyRaw(input.handle, rawRef)
     const type = verified.manifest.mediaType.toLowerCase().split(';', 1)[0]!.trim()
-    if (!['text/plain', 'text/html', 'application/xhtml+xml'].includes(type)) return undefined
     const bytes = await readRaw(input.handle, rawRef)
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    if (`sha256:${createHash('sha256').update(bytes).digest('hex')}` !== verified.contentHash) return undefined
+    if (['text/plain', 'text/html', 'application/xhtml+xml'].includes(type)) return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    if (type !== 'application/pdf') return undefined
+    const resolver = input.documentResolver ?? new DocumentInputResolver()
+    const filename = verified.manifest.originalFilename ?? `${rawRef}.pdf`
+    const documentInput: DocumentInputRef = { type: 'bytes', bytes: Uint8Array.from(bytes), originalFilename: filename, mediaType: 'application/pdf', documentId: rawRef }
+    const resolved = await resolver.resolve(documentInput)
+    const normalizedText = resolved.document?.normalizedText
+    return typeof normalizedText === 'string' && normalizedText.trim() ? normalizedText : undefined
   } catch { return undefined }
 }
 
@@ -232,7 +244,7 @@ export async function evaluateThesisKillCriterion(input: ThesisKillCriterionEval
       || !Array.isArray(source.rawRefs) || !source.rawRefs.includes(origin.rawRef as never)
       || !validTime(source.publishedAt) || source.publishedAt !== origin.publishedAt
       || Date.parse(source.publishedAt) > Date.parse(criterion.authority.confirmedAt)) return result(input, 'insufficient_evidence', ['KILL_CRITERION_ORIGIN_SOURCE_INELIGIBLE'], criterion)
-    const rawText = await readVerifiedTextRaw(input, origin.rawRef)
+    const rawText = await readVerifiedRawText(input, origin.rawRef)
     if (rawText === undefined || !quoteProvesValue(rawText, origin.locator, { metricRef: definition.metricRef, value: definition.threshold, unit: definition.unit, period: definition.period })) return result(input, 'insufficient_evidence', ['KILL_CRITERION_ORIGIN_VALUE_UNVERIFIED'], criterion)
   }
 
@@ -263,8 +275,8 @@ export async function evaluateThesisKillCriterion(input: ThesisKillCriterionEval
     if (sourceMatches.length !== 1 || !source || !source.id.startsWith('source:') || !sourceEligible(source, input.asOf)) { diagnostics.push('KILL_CRITERION_SOURCE_INELIGIBLE'); scopedFailure = true; continue }
     if (Date.parse(criterion.effectiveAt) > Date.parse(input.asOf) || !validTime(source.publishedAt) || Date.parse(source.publishedAt) > Date.parse(input.asOf) || Date.parse(source.publishedAt) < Date.parse(criterion.effectiveAt)) { diagnostics.push('KILL_CRITERION_PUBLICATION_TIME_INVALID'); scopedFailure = true; continue }
     if (!Array.isArray(source.rawRefs) || !source.rawRefs.includes(binding.rawRef as never)) { diagnostics.push('KILL_CRITERION_SOURCE_RAW_BINDING_INVALID'); scopedFailure = true; continue }
-    const rawText = await readVerifiedTextRaw(input, binding.rawRef)
-    if (rawText === undefined) { diagnostics.push('KILL_CRITERION_RAW_FORMAT_OR_INTEGRITY_UNSUPPORTED'); scopedFailure = true; continue }
+    const rawText = await readVerifiedRawText(input, binding.rawRef)
+    if (rawText === undefined) { diagnostics.push('KILL_CRITERION_RAW_FORMAT_INTEGRITY_OR_EXTRACTION_UNSUPPORTED'); scopedFailure = true; continue }
     if (!quoteProvesValue(rawText, binding.locator, { metricRef: definition.metricRef, value: fields.value, unit: definition.unit, period: definition.period })) { diagnostics.push('KILL_CRITERION_NUMERIC_VALUE_VERSION_UNVERIFIED'); scopedFailure = true; continue }
     candidates.push({ evidenceRef: evidence.id, value: fields.value, metricRef: definition.metricRef, unit: definition.unit, period: definition.period, sourceRef: source.id, rawRef: binding.rawRef, locator: binding.locator, publishedAt: source.publishedAt, targetClaimRefs: [...binding.targetClaimRefs].sort(), numericValueVersionVerified: true })
   }

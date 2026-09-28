@@ -8,6 +8,7 @@ import type { KnowledgeAssetCollectionV04, LoadedAssetV04 } from '../../../knowl
 import { KnowledgeBaseRegistry } from '../../../knowledge/registry/registry.ts'
 import { createKnowledgeBase, removeKnowledgeBase } from '../../knowledge/helpers.ts'
 import { evaluateThesisKillCriterion, type KillCriterionEvidenceBindingV1, type ThesisKillCriterionEvaluatorInput } from '../../../workflows/thesis-lifecycle/kill-criterion-evaluator.ts'
+import type { DocumentInputResolver } from '../../../plugins/document/input-resolver.ts'
 
 const AS_OF = '2026-09-01T00:00:00.000Z'
 const PUBLISHED = '2026-05-01T00:00:00.000Z'
@@ -15,7 +16,7 @@ const asLoaded = (value: KnowledgeAssetV04, kind: LoadedAssetV04['kind']): Loade
 const quote = (value: number, metric = 'gross_margin', unit = 'ratio', period = '2026-Q1'): string => `${metric} ${value} ${unit} ${period}`
 const locator = (value: number, exactQuote = quote(value)): string => `quote:${Buffer.from(exactQuote, 'utf8').toString('base64url')}`
 
-async function fixture(options: { value?: number; unit?: string; period?: string; criterionUnit?: string; criterionPeriod?: string; metricRef?: string; rawQuote?: string; deadline?: string; mediaType?: string; sourcePublishedAt?: string; rights?: boolean; includeCriterion?: boolean; type?: string } = {}) {
+async function fixture(options: { value?: number; unit?: string; period?: string; criterionUnit?: string; criterionPeriod?: string; metricRef?: string; rawQuote?: string; rawBytesText?: string; deadline?: string; mediaType?: string; sourcePublishedAt?: string; rights?: boolean; includeCriterion?: boolean; type?: string } = {}) {
   const root = await createKnowledgeBase({ schemaVersion: '0.4', knowledgeBaseId: 'kb-kill-criterion-evaluator' })
   const handle = await new KnowledgeBaseRegistry().mount(root)
   const value = options.value ?? 0.42
@@ -24,7 +25,7 @@ async function fixture(options: { value?: number; unit?: string; period?: string
   const period = options.period ?? '2026-Q1'
   const exactQuote = options.rawQuote ?? quote(value, getMetricDefinitionV04(metricRef)?.label ?? metricRef, unit, period)
   const exactLocator = locator(value, exactQuote)
-  const raw = await archiveRaw(handle, { bytes: Buffer.from(exactQuote, 'utf8'), originalFilename: options.mediaType === 'application/pdf' ? 'evidence.pdf' : 'evidence.txt', mediaType: options.mediaType ?? 'text/plain' }, { clock: () => PUBLISHED })
+  const raw = await archiveRaw(handle, { bytes: Buffer.from(options.rawBytesText ?? exactQuote, 'utf8'), originalFilename: options.mediaType === 'application/pdf' ? 'evidence.pdf' : 'evidence.txt', mediaType: options.mediaType ?? 'text/plain' }, { clock: () => PUBLISHED })
   const origin = { kind: 'human_rule' as const }
   const definition = { metricRef, operator: 'gte' as const, threshold: 0.4, unit: options.criterionUnit ?? 'ratio', period: options.criterionPeriod ?? '2026-Q1', ...(options.deadline === undefined ? {} : { deadline: options.deadline }) }
   const criterion: KillCriterionV04 = {
@@ -113,11 +114,44 @@ test('unverifiable locators, unsupported Raw formats, rights failures, and futur
   const future = await fixture({ sourcePublishedAt: '2027-01-01T00:00:00.000Z' })
   try {
     const invalid = { ...badLocator.input, evidenceBindings: [{ ...badLocator.binding, locator: 'page 2' }] }
+    const pdfUnavailable = { ...pdf.input, documentResolver: { resolve: async () => { throw new Error('PDF parser unavailable') } } as unknown as Pick<DocumentInputResolver, 'resolve'> }
     assert.equal((await evaluateThesisKillCriterion(invalid)).status, 'insufficient_evidence')
-    assert.equal((await evaluateThesisKillCriterion(pdf.input)).status, 'insufficient_evidence')
+    assert.equal((await evaluateThesisKillCriterion(pdfUnavailable)).status, 'insufficient_evidence')
     assert.equal((await evaluateThesisKillCriterion(restricted.input)).status, 'insufficient_evidence')
     assert.equal((await evaluateThesisKillCriterion(future.input)).status, 'insufficient_evidence')
   } finally { await removeKnowledgeBase(badLocator.root); await removeKnowledgeBase(pdf.root); await removeKnowledgeBase(restricted.root); await removeKnowledgeBase(future.root) }
+})
+
+test('PDF evidence is parsed from verified archived bytes and exact extracted text can prove the quote', async () => {
+  const f = await fixture({ mediaType: 'application/pdf', rawBytesText: '%PDF-original-bytes' })
+  let parsedBytes: Uint8Array | undefined
+  try {
+    const documentResolver = {
+      resolve: async (input: { type: string; bytes?: Uint8Array; mediaType?: string }) => {
+        assert.equal(input.type, 'bytes')
+        assert.equal(input.mediaType, 'application/pdf')
+        parsedBytes = input.bytes
+        return { document: { normalizedText: quote(0.42) } }
+      },
+    } as unknown as Pick<DocumentInputResolver, 'resolve'>
+    const result = await evaluateThesisKillCriterion({ ...f.input, documentResolver })
+    assert.equal(result.status, 'met')
+    assert.equal(Buffer.from(parsedBytes!).toString('utf8'), '%PDF-original-bytes')
+  } finally { await removeKnowledgeBase(f.root) }
+})
+
+test('PDF parser errors and extracted quote mismatches fail closed', async () => {
+  const f = await fixture({ mediaType: 'application/pdf', rawBytesText: '%PDF-original-bytes' })
+  try {
+    const mismatchResolver = { resolve: async () => ({ document: { normalizedText: 'gross_margin 0.41 ratio 2026-Q1' } }) } as unknown as Pick<DocumentInputResolver, 'resolve'>
+    const errorResolver = { resolve: async () => { throw new Error('PDF extraction unavailable') } } as unknown as Pick<DocumentInputResolver, 'resolve'>
+    const mismatch = await evaluateThesisKillCriterion({ ...f.input, documentResolver: mismatchResolver })
+    const errored = await evaluateThesisKillCriterion({ ...f.input, documentResolver: errorResolver })
+    assert.equal(mismatch.status, 'insufficient_evidence')
+    assert.ok(mismatch.diagnostics.includes('KILL_CRITERION_NUMERIC_VALUE_VERSION_UNVERIFIED'))
+    assert.equal(errored.status, 'insufficient_evidence')
+    assert.ok(errored.diagnostics.includes('KILL_CRITERION_RAW_FORMAT_INTEGRITY_OR_EXTRACTION_UNSUPPORTED'))
+  } finally { await removeKnowledgeBase(f.root) }
 })
 
 test('exact unit and period are required', async () => {
