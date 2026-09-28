@@ -10,6 +10,14 @@ const sections: readonly { readonly key: TopicSection; readonly label: string }[
 ]
 const pageSize = 30
 const hiddenSourceKeys = /raw|quote|excerpt|body|content|local|absolute|path|filesystem|credential|token/i
+const topicFieldLabels: Readonly<Record<string, string>> = {
+  rightsAccessScope: 'Rights access scope', rightsProviderTermsKnown: 'Provider terms known',
+  rightsRedistributionAllowed: 'Rights redistribution allowed', rightsRetentionAllowed: 'Rights retention allowed',
+  rightsAiProcessingAllowed: 'Rights AI processing allowed', rightsDerivativeKnowledgeAllowed: 'Rights derivative knowledge allowed',
+  rightsExpiresAt: 'Rights expire at', rightsPolicyBasis: 'Rights policy basis', usagePolicyMode: 'Usage policy mode',
+  usagePolicyRetainRaw: 'Usage policy permits Raw retention', usagePolicyAllowAiProcessing: 'Usage policy allows AI processing',
+  usagePolicyAllowDerivedKnowledge: 'Usage policy allows derived knowledge', usagePolicyRedistributionAllowed: 'Usage policy allows redistribution',
+}
 const relationTypes = ['theme_exposure', 'business_exposure', 'upstream_of', 'supplier_of', 'competes_with', 'owns_stake_in', 'offers_product', 'belongs_to_industry', 'component_of', 'develops_technology', 'uses_technology', 'applied_in', 'depends_on', 'substitutes_for'] as const
 
 function text(value: unknown): string | undefined { return typeof value === 'string' && value.trim() ? value : undefined }
@@ -22,7 +30,7 @@ function safeUrl(value: unknown): string | undefined {
 }
 function titleFor(kind: KnowledgeTopicKind): string { return sections.find((item) => item.key === kind)?.label ?? kind }
 function fieldText(key: string, value: unknown): string | undefined {
-  if (hiddenSourceKeys.test(key)) return undefined
+  if (hiddenSourceKeys.test(key) && key !== 'usagePolicyRetainRaw') return undefined
   if (value === null || value === undefined || value === '') return undefined
   if (Array.isArray(value)) return value.filter((item) => ['string', 'number', 'boolean'].includes(typeof item)).map(String).join(', ')
   if (typeof value === 'object') return undefined
@@ -176,7 +184,7 @@ export function TopicWorkspace({ themeRef, graphRootRef, section, scope, depth, 
 
 function TopicItemCard({ item, selected, onSelect, onFocus }: { readonly item: KnowledgeTopicItem; readonly selected: boolean; readonly onSelect: (ref: string) => void; readonly onFocus: (ref: string) => void }): ReactElement {
   const entries = Object.entries(item.fields).filter(([key, value]) => !['url', 'sourceUrl', 'canonicalUrl', 'referencedByRefs', 'referencedByTotal', 'referencedByTruncated'].includes(key) && fieldText(key, value) !== undefined)
-  const linkPermitted = item.kind === 'source' && item.fields.rightsAccessScope === 'public' && item.fields.providerTermsKnown === true
+  const linkPermitted = item.kind === 'source' && item.fields.rightsAccessScope === 'public' && item.fields.rightsProviderTermsKnown === true
   const url = linkPermitted ? safeUrl(item.fields.canonicalUrl) : undefined
   const referencedByRefs = item.kind === 'source' && Array.isArray(item.fields.referencedByRefs) ? item.fields.referencedByRefs.filter((ref): ref is string => typeof ref === 'string') : []
   const referencedByTotal = item.kind === 'source' && typeof item.fields.referencedByTotal === 'number' ? item.fields.referencedByTotal : undefined
@@ -186,7 +194,7 @@ function TopicItemCard({ item, selected, onSelect, onFocus }: { readonly item: K
     <button type="button" className="topic-item-title" onClick={() => onSelect(item.ref)}>{item.label}</button>
     <p className="topic-item-summary">{item.summary ?? 'No summary recorded.'}</p>
     <p className="topic-item-date">{itemDate(item)}</p>
-    {entries.length ? <dl className="topic-item-fields">{entries.map(([key, value]) => <Fragment key={key}><dt>{key}</dt><dd>{fieldText(key, value)}</dd></Fragment>)}</dl> : null}
+    {entries.length ? <dl className="topic-item-fields">{entries.map(([key, value]) => <Fragment key={key}><dt>{topicFieldLabels[key] ?? key}</dt><dd>{fieldText(key, value)}</dd></Fragment>)}</dl> : null}
     {item.kind === 'source' ? <section className="topic-source-backlinks" aria-label="Source references"><strong>Referenced by</strong><p>{referencedByTotal === undefined ? 'Reference count unavailable' : `${referencedByTotal} supported items${referencedByTruncated ? ' · reference list truncated' : ''}`}</p>{referencedByRefs.length ? <ul>{referencedByRefs.map((ref) => <li key={ref}><button type="button" className="topic-inline-link" onClick={() => onSelect(ref)}>{ref}</button></li>)}</ul> : <p>No supported-item refs returned.</p>}</section> : null}
     {item.associationPaths?.length ? <div className="topic-paths"><strong>Proven association path</strong>{item.associationPaths.map((path, index) => <div key={`${path.entityRef}:${index}`}><p>{pathText(path)}</p><button type="button" onClick={() => onFocus(path.entityRef)}>Focus {path.entityRef}</button></div>)}</div> : null}
     {url ? <a className="graph-evidence-link" href={url} target="_blank" rel="noreferrer noopener">Open source</a> : item.kind === 'source' ? <p className="topic-rights-note">Source URL is unavailable or not permitted for this view.</p> : null}

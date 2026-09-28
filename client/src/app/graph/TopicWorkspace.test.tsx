@@ -65,12 +65,15 @@ describe('TopicWorkspace', () => {
   })
 
   it('renders Source backlinks with the exact count and opens referenced items in Inspector selection', async () => {
-    const source = { ref: 'source:filing-a', kind: 'source', scope: 'direct', lifecycleStatus: 'active', label: 'Issuer filing', fields: { provider: 'Issuer', rightsAccessScope: 'public', providerTermsKnown: true, canonicalUrl: 'https://example.test/filing', referencedByRefs: ['claim:risk-a', 'observation:metric-a'], referencedByTotal: 5, referencedByTruncated: true } }
+    const source = { ref: 'source:filing-a', kind: 'source', scope: 'direct', lifecycleStatus: 'active', label: 'Issuer filing', fields: { provider: 'Issuer', rightsAccessScope: 'public', rightsProviderTermsKnown: true, rightsRedistributionAllowed: false, rightsRetentionAllowed: 'conditional', rightsAiProcessingAllowed: true, rightsDerivativeKnowledgeAllowed: false, rightsExpiresAt: '2027-01-01', rightsPolicyBasis: 'public filing', usagePolicyMode: 'personal_noncommercial_research', usagePolicyRetainRaw: false, usagePolicyAllowAiProcessing: true, usagePolicyAllowDerivedKnowledge: true, usagePolicyRedistributionAllowed: false, canonicalUrl: 'https://example.test/filing', referencedByRefs: ['claim:risk-a', 'observation:metric-a'], referencedByTotal: 5, referencedByTruncated: true } }
     const client = { getTopicSummary: vi.fn().mockResolvedValue(summary()), listTopicItems: vi.fn().mockResolvedValue(page('source', [source])) } as unknown as RuntimeClient
     const props = workspaceProps(client)
     render(<TopicWorkspace {...props} section="source" />)
     expect(await screen.findByText('Issuer filing')).toBeTruthy()
     expect(screen.getByText('5 supported items · reference list truncated')).toBeTruthy()
+    expect(screen.getByText('Provider terms known')).toBeTruthy()
+    expect(screen.getByText('Rights redistribution allowed')).toBeTruthy()
+    expect(screen.getByText('Usage policy permits Raw retention')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'claim:risk-a' }))
     expect(props.onSelect).toHaveBeenCalledWith('claim:risk-a')
     expect(screen.getByRole('link', { name: 'Open source' }).getAttribute('href')).toBe('https://example.test/filing')
@@ -145,7 +148,7 @@ describe('TopicInspector', () => {
     const getKnowledgeObject = vi.fn().mockImplementation((ref: string) => Promise.resolve(ref.startsWith('observation:metric')
       ? { ref, kind: 'Observation', object: { id: ref, observationType: 'metric', metricRef: 'metric:shipments', value: 120, unit: 'index', dimensions: { region: 'global', product: 'HBM' } } }
       : ref.startsWith('observation:estimate')
-      ? { ref, kind: 'Observation', object: { id: ref, observationType: 'estimate', metricRef: 'metric:revenue', fiscalPeriod: 'FY2027', estimateValue: 42, institutionRef: 'entity:bank', analystRef: 'entity:analyst', currency: 'USD', estimateHorizon: '12 months', revisionOf: 'observation:estimate-old' } }
+      ? { ref, kind: 'Observation', object: { id: ref, observationType: 'estimate', metricRef: 'metric:revenue', fiscalPeriod: 'FY2027', estimateValue: 42, institutionRef: 'entity:bank', analystRef: 'entity:analyst', currency: 'USD', estimateHorizon: '12 months', ...(ref === 'observation:estimate-current' ? { revisionOf: 'observation:estimate-old' } : {}) } }
       : ref.startsWith('observation:consensus')
         ? { ref, kind: 'Observation', object: { id: ref, observationType: 'consensus', metricRef: 'metric:revenue', median: 42, high: 50, low: 35, dispersion: 4, contributingObservationRefs: ['observation:estimate-a'] } }
         : { ref, kind: 'Claim', object: { id: ref, claimType: 'fact', statement: 'Production improved.', supportsClaimRefs: ['claim:support'], dependsOnClaimRefs: ['claim:dependency'], contradictsClaimRefs: ['claim:contradiction'], supersedes: ['claim:old'], supersededBy: ['claim:new'] } }))
@@ -158,7 +161,7 @@ describe('TopicInspector', () => {
     expect(await screen.findByRole('button', { name: 'entity:bank' })).toBeTruthy()
     expect(screen.getByText('USD')).toBeTruthy()
     expect(screen.getByText('12 months')).toBeTruthy()
-    expect(screen.getByText('observation:estimate-old')).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'observation:estimate-old' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'entity:bank' }))
     expect(onFocus).toHaveBeenCalledWith('entity:bank')
     view.rerender(<TopicInspector refValue="observation:consensus-current" client={client} onFocus={onFocus} />)
@@ -177,5 +180,58 @@ describe('TopicInspector', () => {
     const client = { getKnowledgeObject: vi.fn().mockResolvedValue({ ref: 'module:empty', kind: 'Module', object: { id: 'module:empty', type: 'comparison', columns: [{ name: 'company' }] } }) } as unknown as RuntimeClient
     render(<TopicInspector refValue="module:empty" client={client} onFocus={vi.fn()} />)
     expect(await screen.findByText('Module table unavailable: rows are not recorded.')).toBeTruthy()
+  })
+
+  it('redacts arbitrary Unix absolute paths in free text while retaining safe links and canonical refs', async () => {
+    const getKnowledgeObject = vi.fn().mockImplementation((ref: string) => Promise.resolve(ref.startsWith('source:')
+      ? { ref, kind: 'Source', object: { id: ref, title: 'Report /opt/private/report.pdf', publisher: 'Stored under /srv/research/restricted', canonicalUrl: 'https://example.test/public/report', rights: { accessScope: 'public', providerTermsKnown: true } } }
+      : { ref, kind: 'Claim', object: { id: ref, title: 'Path check', statement: 'See /usr/local/share and /System/Library/PrivateFrameworks; /var/lib/research.', subjectRefs: ['entity:usable'], sourceRefs: ['source:usable'] } }))
+    const onFocus = vi.fn()
+    const client = { getKnowledgeObject } as unknown as RuntimeClient
+    const view = render(<TopicInspector refValue="source:report" client={client} onFocus={onFocus} />)
+    expect((await screen.findByRole('link', { name: 'Open source' })).getAttribute('href')).toBe('https://example.test/public/report')
+    expect(screen.queryByText(/\/opt\/private|\/srv\/research/)).toBeNull()
+    view.rerender(<TopicInspector refValue="claim:path-check" client={client} onFocus={onFocus} />)
+    expect(await screen.findByRole('heading', { name: 'Path check' })).toBeTruthy()
+    expect(screen.queryByText(/\/usr\/local|\/System\/Library|\/var\/lib/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'entity:usable' }))
+    expect(onFocus).toHaveBeenCalledWith('entity:usable')
+  })
+
+  it('loads and presents an ordered estimate revision chain with explicit data and navigable refs', async () => {
+    const values: Record<string, Record<string, unknown>> = {
+      'observation:estimate-current': { id: 'observation:estimate-current', observationType: 'estimate', estimateValue: 42, publishedAt: '2026-06-03', revisionOf: 'observation:estimate-mid' },
+      'observation:estimate-mid': { id: 'observation:estimate-mid', observationType: 'estimate', estimateValue: 37, publishedAt: '2026-06-02', revisionOf: 'observation:estimate-old' },
+      'observation:estimate-old': { id: 'observation:estimate-old', observationType: 'estimate', estimateValue: 30, publishedAt: '2026-06-01' },
+    }
+    const getKnowledgeObject = vi.fn((ref: string) => Promise.resolve({ ref, kind: 'Observation', object: values[ref] }))
+    const onFocus = vi.fn()
+    const client = { getKnowledgeObject } as unknown as RuntimeClient
+    render(<TopicInspector refValue="observation:estimate-current" client={client} onFocus={onFocus} />)
+    const chain = await screen.findByRole('region', { name: 'Estimate revision chain' })
+    const refs = Array.from(chain.querySelectorAll('li button')).map((button) => button.textContent)
+    expect(refs).toEqual(['observation:estimate-old', 'observation:estimate-mid', 'observation:estimate-current'])
+    expect(chain.textContent).toContain('2026-06-01')
+    expect(chain.textContent).toContain('30')
+    expect(chain.textContent).toContain('2026-06-03')
+    expect(chain.textContent).toContain('42')
+    fireEvent.click(screen.getByRole('button', { name: 'observation:estimate-old' }))
+    expect(onFocus).toHaveBeenCalledWith('observation:estimate-old')
+  })
+
+  it('labels missing, cyclic, and capped estimate revision chains', async () => {
+    const missingClient = { getKnowledgeObject: vi.fn().mockImplementation((ref: string) => ref === 'observation:estimate-a' ? Promise.resolve({ ref, kind: 'Observation', object: { id: ref, observationType: 'estimate', estimateValue: 10, revisionOf: 'observation:missing' } }) : Promise.reject(new RuntimeClientError('not_found', 'missing', 404))) } as unknown as RuntimeClient
+    const view = render(<TopicInspector refValue="observation:estimate-a" client={missingClient} onFocus={vi.fn()} />)
+    expect(await screen.findByText('Referenced predecessor is missing: observation:missing.')).toBeTruthy()
+    const cycleClient = { getKnowledgeObject: vi.fn().mockImplementation((ref: string) => Promise.resolve(ref.endsWith(':a') ? { ref, kind: 'Observation', object: { id: ref, observationType: 'estimate', revisionOf: 'observation:b' } } : { ref, kind: 'Observation', object: { id: ref, observationType: 'estimate', revisionOf: 'observation:a' } })) } as unknown as RuntimeClient
+    view.rerender(<TopicInspector refValue="observation:a" client={cycleClient} onFocus={vi.fn()} />)
+    expect(await screen.findByText(/Revision cycle detected at observation:a/)).toBeTruthy()
+    const cappedObjects: Record<string, Record<string, unknown>> = {}
+    for (let index = 0; index <= 20; index += 1) cappedObjects[`observation:cap-${index}`] = { id: `observation:cap-${index}`, observationType: 'estimate', estimateValue: index, publishedAt: `2026-06-${String(index + 1).padStart(2, '0')}`, ...(index > 0 ? { revisionOf: `observation:cap-${index - 1}` } : {}) }
+    const capClient = { getKnowledgeObject: vi.fn((ref: string) => Promise.resolve({ ref, kind: 'Observation', object: cappedObjects[ref] })) } as unknown as RuntimeClient
+    view.rerender(<TopicInspector refValue="observation:cap-20" client={capClient} onFocus={vi.fn()} />)
+    expect(await screen.findByText(/Revision history is capped at 20 observations/)).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Estimate revision chain' }).querySelectorAll('li')).toHaveLength(20)
+    expect(capClient.getKnowledgeObject).toHaveBeenCalledTimes(20)
   })
 })
