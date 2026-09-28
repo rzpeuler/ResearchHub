@@ -1,7 +1,9 @@
 # RHL-TL-001 Thesis Lifecycle final acceptance
 
-Date: 2026-09-28  
-Status: **ACCEPTED; main integration pending**  
+Date: 2026-09-28
+
+Status: **ACCEPTED; main integration pending**
+
 Scope: CREATE, ordinary REFRESH, human decisions, and canonical `invalidated` transition.
 
 ## Product result
