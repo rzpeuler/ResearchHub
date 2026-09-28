@@ -35,8 +35,8 @@ async function fixture(): Promise<{ root: string; service: KnowledgeTopicProject
     { type: 'thesis', value: { id: 'thesis:theme-b', subjectRefs: ['entity:theme-b'], title: 'Robotics thesis', statement: 'Private theme thesis.', status: 'active', lifecycle: active } },
     { type: 'reasoning_edge', value: { id: 'reasoning-edge:thesis-claim', type: 'challenges', sourceRef: 'claim:theme-a', targetRef: 'thesis:theme', sourceRefs: ['source:public'], lifecycle: active } },
     { type: 'module', value: { id: 'module:theme', type: 'comparison', targetEntity: 'entity:theme-a', schemaId: 'comparison-v1', columns: [{ name: 'company' }], rows: [{ company: 'Chipmaker' }] } },
-    { type: 'source', value: { id: 'source:public', title: 'Public filing', publisher: 'Exchange', provider: 'exchange-feed', sourceType: 'filing', canonicalUrl: 'https://example.test/filing', publishedAt: at, rights: { accessScope: 'public', providerTermsKnown: true, redistributionAllowed: false }, usagePolicy: { mode: 'personal_noncommercial_research', retainRaw: true, allowAiProcessing: true, allowDerivedKnowledge: true, redistributionAllowed: false }, rawRefs: ['raw-sha256-secret'], lifecycle: active } },
-    { type: 'source', value: { id: 'source:restricted', title: 'Restricted report', publisher: 'Broker', sourceType: 'broker_research', canonicalUrl: 'https://private.example.test/report', rights: { accessScope: 'restricted', providerTermsKnown: false, redistributionAllowed: false }, usagePolicy: { mode: 'personal_noncommercial_research', retainRaw: true, allowAiProcessing: false, allowDerivedKnowledge: false, redistributionAllowed: false }, rawRefs: ['raw-sha256-private'], lifecycle: active } },
+    { type: 'source', value: { id: 'source:public', title: 'Public filing', publisher: 'Exchange', provider: 'exchange-feed', sourceType: 'filing', canonicalUrl: 'https://example.test/filing', publishedAt: at, rights: { accessScope: 'public', providerTermsKnown: true, redistributionAllowed: false, retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, expiresAt: '2027-01-01T00:00:00.000Z', policyBasis: 'Public filing terms' }, usagePolicy: { mode: 'personal_noncommercial_research', retainRaw: true, allowAiProcessing: true, allowDerivedKnowledge: true, redistributionAllowed: false }, rawRefs: ['raw-sha256-secret'], lifecycle: active } },
+    { type: 'source', value: { id: 'source:restricted', title: 'Restricted report', publisher: 'Broker', sourceType: 'broker_research', canonicalUrl: 'https://private.example.test/report', rights: { accessScope: 'restricted', providerTermsKnown: false, redistributionAllowed: 'conditional', retentionAllowed: false, aiProcessingAllowed: false, derivativeKnowledgeAllowed: false }, usagePolicy: { mode: 'personal_noncommercial_research', retainRaw: true, allowAiProcessing: false, allowDerivedKnowledge: false, redistributionAllowed: false }, rawRefs: ['raw-sha256-private'], lifecycle: active } },
     { type: 'source', value: { id: 'source:unsafe', title: 'Unsafe URL', sourceType: 'other', canonicalUrl: 'file:///private/report.pdf', rights: { accessScope: 'public', providerTermsKnown: true }, usagePolicy: { mode: 'personal_noncommercial_research', retainRaw: false, allowAiProcessing: false, allowDerivedKnowledge: false, redistributionAllowed: false }, lifecycle: active } },
   ]
   const registry: Record<string, { type: string; storageRef: string }> = {}
@@ -146,10 +146,22 @@ test('summary and items honor lifecycle, thesis state, source rights, and allowl
   assert.deepEqual(sources.items.map((item) => item.ref), ['source:public', 'source:restricted'])
   assert.equal(sources.items[0]?.fields.canonicalUrl, 'https://example.test/filing')
   assert.equal(sources.items[0]?.fields.provider, 'exchange-feed')
+  assert.equal(sources.items[0]?.fields.rightsAiProcessingAllowed, true)
+  assert.equal(sources.items[0]?.fields.rightsDerivativeKnowledgeAllowed, true)
+  assert.equal(sources.items[0]?.fields.rightsRetentionAllowed, true)
+  assert.equal(sources.items[0]?.fields.rightsRedistributionAllowed, false)
+  assert.equal(sources.items[0]?.fields.rightsExpiresAt, '2027-01-01T00:00:00.000Z')
+  assert.equal(sources.items[0]?.fields.usagePolicyRetainRaw, true)
+  assert.equal(sources.items[0]?.fields.usagePolicyAllowAiProcessing, true)
+  assert.equal(sources.items[0]?.fields.usagePolicyAllowDerivedKnowledge, true)
+  assert.equal(sources.items[0]?.fields.usagePolicyRedistributionAllowed, false)
   assert.deepEqual(sources.items[0]?.fields.referencedByRefs, ['claim:theme-a', 'reasoning-edge:thesis-claim', 'relation:theme-a-industry'])
   assert.equal(sources.items[0]?.fields.referencedByTotal, 3)
   assert.equal(sources.items[0]?.fields.referencedByTruncated, false)
   assert.equal(sources.items[1]?.fields.canonicalUrl, undefined)
+  assert.equal(sources.items[1]?.fields.rightsRedistributionAllowed, 'conditional')
+  assert.equal(sources.items[1]?.fields.rightsAiProcessingAllowed, false)
+  assert.equal(sources.items[1]?.fields.usagePolicyAllowAiProcessing, false)
   const serialized = JSON.stringify(sources)
   assert.doesNotMatch(serialized, /private\.example|file:\/\/|raw-sha256|private\\local|rawRefs|locator/)
   const observations = await service.listItems({ themeRef: 'entity:theme-a', kind: 'observation', scope: 'connected' })

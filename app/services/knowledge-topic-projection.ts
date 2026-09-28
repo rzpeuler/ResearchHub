@@ -514,8 +514,23 @@ function projectItem(value: KnowledgeAssetV04, scope: KnowledgeTopicScope, paths
       fields.referencedByTruncated = backlinks.length > MAX_SOURCE_BACKLINKS_PER_ITEM
       const rights = dict(raw.rights)
       const usagePolicy = dict(raw.usagePolicy)
-      for (const [field, source] of [['rightsAccessScope', 'accessScope'], ['providerTermsKnown', 'providerTermsKnown'], ['redistributionAllowed', 'redistributionAllowed'], ['allowAiProcessing', 'allowAiProcessing']] as const) put(field, rights[source])
-      for (const [field, source] of [['usagePolicyMode', 'mode'], ['allowDerivedKnowledge', 'allowDerivedKnowledge']] as const) put(field, usagePolicy[source])
+      for (const [field, source] of [
+        ['rightsAccessScope', 'accessScope'],
+        ['rightsProviderTermsKnown', 'providerTermsKnown'],
+        ['rightsRedistributionAllowed', 'redistributionAllowed'],
+        ['rightsRetentionAllowed', 'retentionAllowed'],
+        ['rightsAiProcessingAllowed', 'aiProcessingAllowed'],
+        ['rightsDerivativeKnowledgeAllowed', 'derivativeKnowledgeAllowed'],
+        ['rightsExpiresAt', 'expiresAt'],
+        ['rightsPolicyBasis', 'policyBasis'],
+      ] as const) put(field, rights[source])
+      for (const [field, source] of [
+        ['usagePolicyMode', 'mode'],
+        ['usagePolicyRetainRaw', 'retainRaw'],
+        ['usagePolicyAllowAiProcessing', 'allowAiProcessing'],
+        ['usagePolicyAllowDerivedKnowledge', 'allowDerivedKnowledge'],
+        ['usagePolicyRedistributionAllowed', 'redistributionAllowed'],
+      ] as const) put(field, usagePolicy[source])
       if (canExposeSourceUrl(raw) && isSafeHttpUrl(raw.canonicalUrl)) put('canonicalUrl', raw.canonicalUrl)
       break
     }
