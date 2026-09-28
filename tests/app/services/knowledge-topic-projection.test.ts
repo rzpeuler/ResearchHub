@@ -57,6 +57,7 @@ test('topic projection separates direct membership from related industry records
 
   const summary = await service.getSummary('entity:theme-a', 2)
   assert.equal(summary.theme.name, 'AI Hardware')
+  assert.equal(summary.theme.themeGroupRef, 'theme-group:technology')
   assert.equal(summary.theme.definition, 'Theme definition')
   assert.equal(summary.theme.description, 'Accelerator supply chain [local path omitted]')
   assert.equal(summary.overview.direct.latestDatedRecord?.ref, 'source:public')

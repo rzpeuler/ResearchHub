@@ -34,6 +34,7 @@ const CURSOR_SECRET = 'knowledge-topic-projection-cursor-v1'
 const CLAIM_TYPES = new Set(['fact', 'forecast', 'viewpoint', 'trend', 'risk', 'assumption', 'thesis', 'catalyst'])
 const RELATION_TYPES = new Set<string>(KNOWLEDGE_SCHEMA_V03.relation.types)
 const REF_PATTERN = /^(entity|relation|claim|source|module|event|observation|thesis|reasoning-edge):[A-Za-z0-9][A-Za-z0-9._:-]{0,240}$/
+const THEME_GROUP_REF_PATTERN = /^theme-group:[A-Za-z0-9][A-Za-z0-9._:-]{0,240}$/
 const RAW_REF_PATTERN = /^raw-sha256-[A-Za-z0-9][A-Za-z0-9._:-]{0,240}$/
 const HTTP_URL = /^https?:\/\//i
 
@@ -239,7 +240,7 @@ function themeSummary(theme: KnowledgeAssetV04): KnowledgeTopicSummary['theme'] 
     ...(definition ? { definition } : {}),
     ...(simpleStrings(raw.inclusionCriteria).length ? { inclusionCriteria: simpleStrings(raw.inclusionCriteria) } : {}),
     ...(simpleStrings(raw.exclusionCriteria).length ? { exclusionCriteria: simpleStrings(raw.exclusionCriteria) } : {}),
-    ...(typeof raw.themeGroupRef === 'string' && REF_PATTERN.test(raw.themeGroupRef) ? { themeGroupRef: raw.themeGroupRef } : {}),
+    ...(typeof raw.themeGroupRef === 'string' && THEME_GROUP_REF_PATTERN.test(raw.themeGroupRef) ? { themeGroupRef: raw.themeGroupRef } : {}),
     lifecycleStatus: statusOf(theme),
   }
 }
