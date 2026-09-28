@@ -118,4 +118,29 @@ describe('RuntimeClient', () => {
     expect(new Headers(calls[4]?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('a'.repeat(64))
     expect(new Headers(calls[6]?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('a'.repeat(64))
   })
+
+  it('prepares and explicitly confirms a Thesis Kill Criterion through separate authorized routes', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    const preview = { knowledgeBaseId: 'kb-1', expectedKnowledgeBaseRevision: 7, thesisRef: 'thesis:value-driver', conditionId: 'margin-floor', revision: 1, type: 'numeric_threshold', definitionVersion: 1, definition: { metricRef: 'gross_margin', operator: 'lt', threshold: 0.2, unit: 'ratio', period: 'FY2026' }, targetClaimRefs: ['claim:driver'], origin: { kind: 'human_rule' }, definitionHash: 'definition-hash', previewHash: 'preview-hash' } as const
+    const result = { status: 'confirmed', replay: false, thesisRef: 'thesis:value-driver', conditionId: 'margin-floor', criterionRevision: 1, definitionHash: 'definition-hash', knowledgeBaseId: 'kb-1', knowledgeBaseRevision: 8, committedRevision: 8, writerRunId: 'criterion-run-1' }
+    const client = new RuntimeClient(async (input, init) => { calls.push({ path: String(input), init }); return json(calls.length === 1 ? bootstrap : calls.length === 2 ? preview : result) })
+    await client.bootstrap()
+    const prepared = await client.prepareThesisCriterion({ thesisRef: preview.thesisRef, conditionId: preview.conditionId, definition: preview.definition, targetClaimRefs: preview.targetClaimRefs, origin: preview.origin })
+    expect(prepared).toEqual(preview)
+    expect(calls.map((call) => call.path)).toEqual(['/api/bootstrap', '/api/production/thesis-lifecycle/criteria/prepare'])
+    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({ thesisRef: preview.thesisRef, conditionId: preview.conditionId, definition: preview.definition, targetClaimRefs: preview.targetClaimRefs, origin: preview.origin })
+    expect(new Headers(calls[1]?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('a'.repeat(64))
+    const confirmed = await client.confirmThesisCriterion({ preview: prepared, previewHash: prepared.previewHash, expectedKnowledgeBaseRevision: prepared.expectedKnowledgeBaseRevision, workflowRunId: 'criterion-run-1' })
+    expect(confirmed).toEqual(result)
+    expect(calls[2]?.path).toBe('/api/production/thesis-lifecycle/criteria/confirm')
+    expect(JSON.parse(String(calls[2]?.init?.body))).toEqual({ preview, previewHash: 'preview-hash', expectedKnowledgeBaseRevision: 7, workflowRunId: 'criterion-run-1' })
+    expect(new Headers(calls[2]?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('a'.repeat(64))
+  })
+
+  it('preserves stale criterion conflicts as RuntimeClientError details', async () => {
+    let calls = 0
+    const client = new RuntimeClient(async () => ++calls === 1 ? json(bootstrap) : json({ code: 'conflict', error: 'Knowledge Base revision changed after criterion preparation' }, 409))
+    await client.bootstrap()
+    await expect(client.confirmThesisCriterion({ preview: { knowledgeBaseId: 'kb', expectedKnowledgeBaseRevision: 2, thesisRef: 'thesis:t', conditionId: 'c', revision: 1, type: 'numeric_threshold', definitionVersion: 1, definition: { metricRef: 'm', operator: 'lt', threshold: 1, unit: 'x', period: 'y' }, targetClaimRefs: ['claim:c'], origin: { kind: 'human_rule' }, definitionHash: 'd', previewHash: 'p' }, previewHash: 'p', expectedKnowledgeBaseRevision: 2, workflowRunId: 'criterion-run-1' })).rejects.toMatchObject({ code: 'conflict', status: 409, message: 'Knowledge Base revision changed after criterion preparation' })
+  })
 })

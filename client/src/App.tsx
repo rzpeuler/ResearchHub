@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactElement } from 'react'
-import { RuntimeClient, RuntimeClientError, type AttachmentRef, type ClientEvent, type ConversationMessage, type ConversationSummary, type DailyBriefReport, type DailyBriefSummary, type KnowledgeBaseStatus, type KnowledgeDirectoryItem, type ResearchBundleSummary, type ResearchDispatchResponse, type ResearchExecutionSummary, type ResearchReport, type ResearchReportSummary, type ResearchStartResponse, type ReviewDetail, type ReviewListResponse, type SessionState, type SourceLibraryHit, type ThesisDecision, type ThesisQueryDetail, type ThesisQuerySummary, type WorkflowDefinition, type WorkflowRun } from './api/runtime-client'
+import { RuntimeClient, RuntimeClientError, type AttachmentRef, type ClientEvent, type ConversationMessage, type ConversationSummary, type DailyBriefReport, type DailyBriefSummary, type KnowledgeBaseStatus, type KnowledgeDirectoryItem, type ResearchBundleSummary, type ResearchDispatchResponse, type ResearchExecutionSummary, type ResearchReport, type ResearchReportSummary, type ResearchStartResponse, type ReviewDetail, type ReviewListResponse, type SessionState, type SourceLibraryHit, type ThesisCriterionConfirmResult, type ThesisCriterionOrigin, type ThesisCriterionPreview, type ThesisDecision, type ThesisQueryDetail, type ThesisQuerySummary, type WorkflowDefinition, type WorkflowRun } from './api/runtime-client'
 import { startWorkflowPolling, terminalWorkflowStatuses } from './app/workflow-polling'
 import { KnowledgeGraphPage } from './app/graph/KnowledgeGraphPage'
 import { ResearchRunPage } from './app/run/ResearchRunPage'
@@ -39,6 +39,88 @@ function ReviewsPage({ knowledgeBase, reviews, reviewDetail, reviewsBusy, onSele
 
 function initialAsOfInput(): string { const date = new Date(); date.setSeconds(0, 0); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16) }
 function parseEvidenceRefs(value: string): readonly string[] { return [...new Set(value.split(/[\s,;]+/).map((item) => item.trim()).filter(Boolean))].slice(0, 80) }
+function criterionRunId(): string { return `criterion-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}` }
+
+interface ThesisCriterionAuthoringProps { readonly client: RuntimeClient; readonly thesis: ThesisQueryDetail; readonly onThesisReload: (thesis: ThesisQueryDetail) => void }
+function ThesisCriterionAuthoring({ client, thesis, onThesisReload }: ThesisCriterionAuthoringProps): ReactElement {
+  const [conditionId, setConditionId] = useState('')
+  const [metricRef, setMetricRef] = useState('')
+  const [operator, setOperator] = useState<'eq' | 'gt' | 'gte' | 'lt' | 'lte'>('lt')
+  const [threshold, setThreshold] = useState('')
+  const [unit, setUnit] = useState('')
+  const [period, setPeriod] = useState('')
+  const [targetClaimRefs, setTargetClaimRefs] = useState<readonly string[]>([])
+  const [originKind, setOriginKind] = useState<'human_rule' | 'source_derived'>('human_rule')
+  const [sourceRef, setSourceRef] = useState('')
+  const [rawRef, setRawRef] = useState('')
+  const [locator, setLocator] = useState('')
+  const [publishedAt, setPublishedAt] = useState('')
+  const [preview, setPreview] = useState<ThesisCriterionPreview>()
+  const [workflowRunId, setWorkflowRunId] = useState('')
+  const [prepareBusy, setPrepareBusy] = useState(false)
+  const [confirmBusy, setConfirmBusy] = useState(false)
+  const [confirmResult, setConfirmResult] = useState<ThesisCriterionConfirmResult>()
+  const [criterionError, setCriterionError] = useState('')
+  const previewGeneration = useRef(0)
+  const criteria = thesis.killCriteria ?? []
+  const activeCriteria = criteria.filter((item) => item.state === 'active')
+  const invalidatePreview = (): void => { previewGeneration.current += 1; setPreview(undefined); setWorkflowRunId(''); setConfirmResult(undefined); setCriterionError('') }
+  const origin: ThesisCriterionOrigin = originKind === 'human_rule'
+    ? { kind: 'human_rule' }
+    : { kind: 'source_derived', sourceRef, rawRef, locator, publishedAt: publishedAt ? new Date(publishedAt).toISOString() : '' }
+
+  const prepare = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault()
+    if (!conditionId.trim() || !metricRef.trim() || threshold.trim() === '' || !unit.trim() || !period.trim() || targetClaimRefs.length === 0) return
+    const generation = ++previewGeneration.current
+    setPrepareBusy(true); setCriterionError(''); setPreview(undefined); setWorkflowRunId(''); setConfirmResult(undefined)
+    try {
+      const result = await client.prepareThesisCriterion({ thesisRef: thesis.thesisRef, conditionId: conditionId.trim(), definition: { metricRef: metricRef.trim(), operator, threshold: Number(threshold), unit: unit.trim(), period: period.trim() }, targetClaimRefs, origin })
+      if (generation === previewGeneration.current) { setPreview(result); setWorkflowRunId(criterionRunId()) }
+    } catch (caught) { setCriterionError(errorText(caught)) } finally { setPrepareBusy(false) }
+  }
+  const confirm = async (): Promise<void> => {
+    if (!preview || !workflowRunId || confirmBusy) return
+    setConfirmBusy(true); setCriterionError('')
+    try {
+      const result = await client.confirmThesisCriterion({ preview, previewHash: preview.previewHash, expectedKnowledgeBaseRevision: preview.expectedKnowledgeBaseRevision, workflowRunId })
+      setConfirmResult(result)
+      try { onThesisReload(await client.getThesis(thesis.thesisRef)) }
+      catch (caught) { setCriterionError(`Criterion was confirmed, but canonical Thesis reload failed: ${errorText(caught)}`) }
+    } catch (caught) { setCriterionError(errorText(caught)) } finally { setConfirmBusy(false) }
+  }
+
+  return <section className="thesis-criterion" aria-label="Kill Criterion authoring">
+    <div className="section-title"><div><span className="eyebrow">HUMAN-AUTHORED INVALIDATION RULE</span><h4>Kill Criterion</h4></div><span className="read-only-badge">Prepare → review → confirm</span></div>
+    {activeCriteria.length === 0 ? <div className="notice thesis-criterion-missing"><strong>No active Kill Criterion</strong><p>Thesis invalidation is blocked pending human confirmation. Narrative text is not inferred as a criterion.</p></div> : null}
+    {criteria.length > 0 ? <div className="thesis-criterion-history" aria-label="Canonical Kill Criterion revisions"><strong>Canonical criterion revisions</strong>{criteria.map((item) => <article key={`${item.conditionId}-${item.revision}`}><span>{item.state} · {item.conditionId} v{item.revision} · {item.type}</span><p>{JSON.stringify(item.definition)}</p><small>Targets: {item.targetClaimRefs.join(', ')} · Origin: {item.origin.kind} · Confirmed {item.authority.confirmedAt}</small><small>Definition hash: {shortHash(item.definitionHash)}</small></article>)}</div> : null}
+    <form className="thesis-refresh-form thesis-criterion-form" onSubmit={(event) => void prepare(event)}>
+      <p className="muted">Define a numeric threshold and explicitly select its qualifying Claims. Preparation is read-only; only the separate confirmation action writes through the Knowledge Production Gateway.</p>
+      <label className="thesis-field"><span>Condition ID</span><input aria-label="Criterion condition ID" maxLength={128} value={conditionId} onChange={(event) => { invalidatePreview(); setConditionId(event.target.value) }} required /></label>
+      <label className="thesis-field"><span>Metric reference</span><input aria-label="Criterion metric reference" maxLength={256} value={metricRef} onChange={(event) => { invalidatePreview(); setMetricRef(event.target.value) }} required /></label>
+      <div className="thesis-criterion-definition">
+        <label className="thesis-field"><span>Operator</span><select aria-label="Criterion operator" value={operator} onChange={(event) => { invalidatePreview(); setOperator(event.target.value as typeof operator) }}><option value="lt">less than</option><option value="lte">less than or equal</option><option value="eq">equal</option><option value="gte">greater than or equal</option><option value="gt">greater than</option></select></label>
+        <label className="thesis-field"><span>Threshold</span><input aria-label="Criterion threshold" type="number" step="any" value={threshold} onChange={(event) => { invalidatePreview(); setThreshold(event.target.value) }} required /></label>
+      </div>
+      <div className="thesis-criterion-definition">
+        <label className="thesis-field"><span>Exact unit</span><input aria-label="Criterion unit" maxLength={128} value={unit} onChange={(event) => { invalidatePreview(); setUnit(event.target.value) }} required /></label>
+        <label className="thesis-field"><span>Exact period</span><input aria-label="Criterion period" maxLength={256} value={period} onChange={(event) => { invalidatePreview(); setPeriod(event.target.value) }} required /></label>
+      </div>
+      <fieldset className="thesis-criterion-targets"><legend>Qualifying Claim targets <small>select one or more canonical active Claims</small></legend>{thesis.propositions.map((claim) => <label key={claim.claimRef}><input type="checkbox" checked={targetClaimRefs.includes(claim.claimRef)} onChange={(event) => { invalidatePreview(); setTargetClaimRefs((current) => event.target.checked ? [...current, claim.claimRef] : current.filter((ref) => ref !== claim.claimRef)) }} /><span>{claim.statement}</span><small>{claim.claimRef}</small></label>)}</fieldset>
+      <label className="thesis-field"><span>Definition origin</span><select aria-label="Criterion definition origin" value={originKind} onChange={(event) => { invalidatePreview(); setOriginKind(event.target.value as typeof originKind) }}><option value="human_rule">Human-set investment rule</option><option value="source_derived">Source-derived threshold</option></select></label>
+      {originKind === 'source_derived' ? <>
+        <label className="thesis-field"><span>Canonical Source ref</span><input aria-label="Criterion source ref" value={sourceRef} onChange={(event) => { invalidatePreview(); setSourceRef(event.target.value) }} placeholder="source:…" required /></label>
+        <label className="thesis-field"><span>Bound Raw ref</span><input aria-label="Criterion raw ref" value={rawRef} onChange={(event) => { invalidatePreview(); setRawRef(event.target.value) }} placeholder="raw-sha256-…" required /></label>
+        <label className="thesis-field"><span>Exact quote locator</span><input aria-label="Criterion quote locator" value={locator} onChange={(event) => { invalidatePreview(); setLocator(event.target.value) }} placeholder="quote:<base64url exact span>" required /></label>
+        <label className="thesis-field"><span>Source publication time</span><input aria-label="Criterion source published at" type="datetime-local" value={publishedAt} onChange={(event) => { invalidatePreview(); setPublishedAt(event.target.value) }} required /></label>
+      </> : null}
+      <button className="primary-action" type="submit" disabled={prepareBusy || targetClaimRefs.length === 0 || (originKind === 'source_derived' && !publishedAt)}>{prepareBusy ? 'Preparing preview…' : 'Prepare criterion preview'}</button>
+    </form>
+    {preview ? <section className="thesis-criterion-preview" aria-label="Prepared Kill Criterion preview"><span className="eyebrow">IMMUTABLE PREVIEW · NO WRITE YET</span><h5>{preview.conditionId} revision {preview.revision}</h5><p>{preview.definition.metricRef} {preview.definition.operator} {preview.definition.threshold} {preview.definition.unit} · {preview.definition.period}</p><p><strong>Definition hash:</strong> {preview.definitionHash}</p><p><strong>Targets:</strong> {preview.targetClaimRefs.join(', ')}</p><p><strong>Origin:</strong> {safeStructured(preview.origin)}</p><p><strong>Knowledge Base revision:</strong> {preview.expectedKnowledgeBaseRevision} · <strong>Confirmation run:</strong> {workflowRunId}</p><button className="primary-action" type="button" onClick={() => void confirm()} disabled={confirmBusy || Boolean(confirmResult)}>{confirmBusy ? 'Confirming…' : confirmResult ? 'Criterion confirmed' : 'Confirm and write criterion'}</button></section> : null}
+    {confirmResult ? <div className="notice thesis-criterion-confirmed" role="status"><strong>Criterion {confirmResult.status}</strong><p>Canonical revision {confirmResult.criterionRevision} · Knowledge Base revision {confirmResult.knowledgeBaseRevision} · Writer run {confirmResult.writerRunId}</p></div> : null}
+    {criterionError ? <div className="notice thesis-error" role="alert"><strong>Kill Criterion operation</strong><p>{criterionError}</p></div> : null}
+  </section>
+}
 
 interface ThesisLifecyclePageProps { readonly client: RuntimeClient; readonly knowledgeBase?: KnowledgeBaseStatus }
 function ThesisLifecyclePage({ client, knowledgeBase }: ThesisLifecyclePageProps): ReactElement {
@@ -184,8 +266,9 @@ function ThesisLifecyclePage({ client, knowledgeBase }: ThesisLifecyclePageProps
       </section>
       <div className="thesis-layout">
         <section className="thesis-panel" aria-label="Active theses"><div className="section-title"><div><span className="eyebrow">ACTIVE THESIS</span><h2>{theses.length} available</h2></div><button className="secondary-action" onClick={() => void reloadTheses()} disabled={thesesBusy}>{thesesBusy ? 'Loading…' : 'Reload'}</button></div>
-          <label className="thesis-field"><span>Canonical Thesis</span><select aria-label="Canonical Thesis" value={selectedRef} onChange={(event) => { setSelectedRef(event.target.value); setReport(undefined); setReviewDetail(undefined); setSelectedCaseId('') }} disabled={thesesBusy || theses.length === 0}><option value="">Select a Thesis</option>{theses.map((item) => <option key={item.thesisRef} value={item.thesisRef}>{item.title} · {item.companySubject.name} · {item.status}</option>)}</select></label>
+          <label className="thesis-field"><span>Canonical Thesis</span><select aria-label="Canonical Thesis" value={selectedRef} onChange={(event) => { setSelectedRef(event.target.value); setThesis(undefined); setReport(undefined); setReviewDetail(undefined); setSelectedCaseId('') }} disabled={thesesBusy || theses.length === 0}><option value="">Select a Thesis</option>{theses.map((item) => <option key={item.thesisRef} value={item.thesisRef}>{item.title} · {item.companySubject.name} · {item.status}</option>)}</select></label>
           {thesis ? <div className="thesis-summary"><span className="result-kind">{thesis.status} · revision {thesis.revision}</span><h3>{thesis.title}</h3><p>{thesis.statement}</p><small>{thesis.thesisRef} · {thesis.companySubject.name} · {thesis.propositions.length} propositions</small><div className="thesis-propositions">{thesis.propositions.map((item) => <article key={item.claimRef}><strong>{item.claimType}</strong><p>{item.statement}</p><small>{item.claimRef}</small></article>)}</div></div> : <p className="muted">{thesesBusy ? 'Loading active theses…' : 'No active canonical Theses were found.'}</p>}
+          {thesis && thesis.thesisRef === selectedRef ? <ThesisCriterionAuthoring key={thesis.thesisRef} client={client} thesis={thesis} onThesisReload={setThesis} /> : null}
         </section>
         <section className="thesis-panel" aria-label="Refresh controls"><div className="section-title"><div><span className="eyebrow">POINT-IN-TIME REFRESH</span><h2>Re-evaluate accepted evidence</h2></div></div><p className="muted">The runtime reconstructs proposition membership from canonical <code>qualifies</code> edges and admits only source-bound evidence published by the selected time.</p>
           <form className="thesis-refresh-form" onSubmit={(event) => void launchRefresh(event)}>

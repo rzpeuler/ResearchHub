@@ -59,8 +59,29 @@ test('Thesis query lists bounded active summaries and returns exact qualifying C
     assert.deepEqual(new Set(detail.propositionRefs), new Set([data.claimRefs['claim-one'], data.claimRefs['claim-two']]))
     assert.equal(detail.membershipEdgeRefs.length, 2)
     assert.ok(detail.propositions.every((item) => item.sourceRefs.length === 1 && item.sourceRefs[0]?.startsWith('source:')))
+    assert.deepEqual(detail.killCriteria, [])
     assert.equal(detail.revision, list.revision)
     await assert.rejects(service.getThesis('thesis:missing'), (error: unknown) => error instanceof ApplicationServiceError && error.code === 'not_found')
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('Thesis query projects only explicitly stored active and superseded Kill Criterion revisions', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-thesis-query-criteria-'))
+  try {
+    const data = await seed(root)
+    const assets = await readCanonicalV04Assets(root)
+    const thesisAsset = assets.objects.find((item) => item.kind === 'thesis' && item.value.id === data.thesisRef)!
+    const criteria = [
+      { conditionId: 'margin-floor', revision: 1, state: 'superseded', type: 'numeric_threshold', definitionVersion: 1, definition: { metricRef: 'gross_margin', operator: 'lt', threshold: 0.2, unit: 'ratio', period: 'FY2026' }, targetClaimRefs: [data.claimRefs['claim-one']], effectiveAt: NOW, definitionHash: 'old-hash', authority: { workflowRunId: 'criterion-old', confirmedAt: NOW, origin: { kind: 'human_rule' } } },
+      { conditionId: 'margin-floor', revision: 2, state: 'active', type: 'numeric_threshold', definitionVersion: 1, definition: { metricRef: 'gross_margin', operator: 'lt', threshold: 0.18, unit: 'ratio', period: 'FY2026' }, targetClaimRefs: [data.claimRefs['claim-two']], effectiveAt: NOW, definitionHash: 'active-hash', authority: { workflowRunId: 'criterion-active', confirmedAt: NOW, origin: { kind: 'human_rule' } } },
+    ]
+    await writeFile(thesisAsset.filePath, JSON.stringify({ ...thesisAsset.value, killCriteria: criteria }))
+    const detail = await new ThesisQueryService(root).getThesis(data.thesisRef)
+    assert.deepEqual(detail.killCriteria.map((item) => [item.conditionId, item.revision, item.state]), [['margin-floor', 1, 'superseded'], ['margin-floor', 2, 'active']])
+    assert.equal(detail.killCriteria[1]?.definitionHash, 'active-hash')
+    assert.deepEqual(detail.killCriteria[1]?.targetClaimRefs, [data.claimRefs['claim-two']])
+    assert.deepEqual(detail.killCriteria[1]?.origin, { kind: 'human_rule' })
+    assert.equal(detail.killCriteria[1]?.authority.workflowRunId, 'criterion-active')
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 

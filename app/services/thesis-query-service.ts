@@ -1,4 +1,4 @@
-import type { ClaimTypeV04, KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeEntityV04, KnowledgeReasoningEdgeV04, KnowledgeThesisV04, ThesisRefV04, ThesisStatusV04 } from '../../knowledge/schema/domain-v04.ts'
+import type { ClaimTypeV04, KillCriterionOriginV04, KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeEntityV04, KnowledgeReasoningEdgeV04, KnowledgeThesisV04, ThesisRefV04, ThesisStatusV04 } from '../../knowledge/schema/domain-v04.ts'
 import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
 import { loadKnowledgeBaseManifest } from '../../knowledge/storage/manifest-loader.ts'
 import { ApplicationServiceError } from './contracts.ts'
@@ -9,6 +9,7 @@ const HARD_PROPOSITION_LIMIT = 40
 const HARD_SOURCE_REFS_PER_PROPOSITION = 50
 const HARD_STATEMENT_LENGTH = 4_000
 const HARD_TITLE_LENGTH = 300
+const HARD_KILL_CRITERION_REVISIONS = 100
 const CLAIM_TYPES = new Set<ClaimTypeV04>(['fact', 'forecast', 'viewpoint', 'trend', 'risk', 'assumption', 'catalyst'])
 const TERMINAL_THESIS_STATUSES = new Set<ThesisStatusV04>(['invalidated', 'archived'])
 const LIFECYCLE_STATUSES = new Set(['active', 'expired', 'superseded', 'archived'])
@@ -39,10 +40,25 @@ export interface ThesisQueryProposition {
   readonly membershipEdgeRef: string
 }
 
+export interface ThesisQueryKillCriterion {
+  readonly conditionId: string
+  readonly revision: number
+  readonly state: 'active' | 'superseded'
+  readonly type: string
+  readonly definitionVersion: number
+  readonly definition: Readonly<Record<string, unknown>>
+  readonly targetClaimRefs: readonly string[]
+  readonly effectiveAt: string
+  readonly definitionHash: string
+  readonly origin: KillCriterionOriginV04
+  readonly authority: { readonly workflowRunId: string; readonly confirmedAt: string }
+}
+
 export interface ThesisQueryDetail extends ThesisQuerySummary {
   readonly propositions: readonly ThesisQueryProposition[]
   readonly propositionRefs: readonly string[]
   readonly membershipEdgeRefs: readonly string[]
+  readonly killCriteria: readonly ThesisQueryKillCriterion[]
   readonly revision: number
 }
 
@@ -108,11 +124,23 @@ export class ThesisQueryService {
     }
     propositions.sort((left, right) => left.claimRef.localeCompare(right.claimRef))
     if (propositions.length > HARD_PROPOSITION_LIMIT) invalid(`Thesis has more than ${HARD_PROPOSITION_LIMIT} active propositions: ${thesisRef}`)
+    const canonicalCriteria = thesis.killCriteria ?? []
+    if (!Array.isArray(canonicalCriteria) || canonicalCriteria.length > HARD_KILL_CRITERION_REVISIONS) invalid(`Thesis has a malformed or oversized Kill Criterion history: ${thesisRef}`)
+    const killCriteria: ThesisQueryKillCriterion[] = canonicalCriteria.map((criterion) => {
+      if (!criterion || typeof criterion.conditionId !== 'string' || !Number.isSafeInteger(criterion.revision) || criterion.revision < 1 || (criterion.state !== 'active' && criterion.state !== 'superseded') || typeof criterion.type !== 'string' || !Number.isSafeInteger(criterion.definitionVersion) || !criterion.definition || typeof criterion.definition !== 'object' || Array.isArray(criterion.definition) || !Array.isArray(criterion.targetClaimRefs) || criterion.targetClaimRefs.length > 32 || typeof criterion.effectiveAt !== 'string' || typeof criterion.definitionHash !== 'string' || !criterion.authority || typeof criterion.authority.workflowRunId !== 'string' || typeof criterion.authority.confirmedAt !== 'string' || !criterion.authority.origin || typeof criterion.authority.origin !== 'object') invalid(`Thesis has a malformed Kill Criterion revision: ${thesisRef}`)
+      return {
+        conditionId: criterion.conditionId, revision: criterion.revision, state: criterion.state, type: criterion.type,
+        definitionVersion: criterion.definitionVersion, definition: { ...criterion.definition },
+        targetClaimRefs: [...criterion.targetClaimRefs], effectiveAt: criterion.effectiveAt,
+        definitionHash: criterion.definitionHash, origin: { ...criterion.authority.origin },
+        authority: { workflowRunId: criterion.authority.workflowRunId, confirmedAt: criterion.authority.confirmedAt },
+      }
+    }).sort((left, right) => left.conditionId.localeCompare(right.conditionId) || left.revision - right.revision)
     return {
       thesisRef: thesis.id, title: thesis.title, statement: thesis.statement, status: thesis.status,
       companySubject: { companyRef: company.id, name: company.name }, lastReviewedAt: thesis.lastReviewedAt ?? null,
       propositionCount: propositions.length, propositions, propositionRefs: propositions.map((item) => item.claimRef),
-      membershipEdgeRefs: propositions.map((item) => item.membershipEdgeRef), revision: snapshot.revision,
+      membershipEdgeRefs: propositions.map((item) => item.membershipEdgeRef), killCriteria, revision: snapshot.revision,
     }
   }
 

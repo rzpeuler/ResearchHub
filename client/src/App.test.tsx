@@ -177,4 +177,54 @@ describe('Homepage shell', () => {
     expect(createBody).not.toHaveProperty('rawPath')
     expect(await screen.findByText('Thesis: thesis:durable-growth')).toBeTruthy()
   })
+
+  it('requires a separate human confirmation for an explicitly defined Kill Criterion and reloads canonical state', async () => {
+    window.history.replaceState({}, '', '/theses')
+    const thesisSummary = { thesisRef: 'thesis:value-driver', title: 'Value driver', statement: 'Growth supports value', status: 'active', companySubject: { companyRef: 'entity:company-acme', name: 'Acme' }, lastReviewedAt: null, propositionCount: 1 }
+    let confirmed = false
+    const preview = { knowledgeBaseId: 'kb-1', expectedKnowledgeBaseRevision: 7, thesisRef: 'thesis:value-driver', conditionId: 'margin-floor', revision: 1, type: 'numeric_threshold', definitionVersion: 1, definition: { metricRef: 'gross_margin', operator: 'lt', threshold: 0.2, unit: 'ratio', period: 'FY2026' }, targetClaimRefs: ['claim:driver'], origin: { kind: 'human_rule' }, definitionHash: 'definition-hash', previewHash: 'preview-hash' }
+    const confirmedCriterion = { conditionId: 'margin-floor', revision: 1, state: 'active', type: 'numeric_threshold', definitionVersion: 1, definition: preview.definition, targetClaimRefs: ['claim:driver'], effectiveAt: '2026-09-28T00:00:00.000Z', definitionHash: 'definition-hash', origin: { kind: 'human_rule' }, authority: { workflowRunId: 'criterion-run-test', confirmedAt: '2026-09-28T00:00:00.000Z' } }
+    const detail = () => ({ ...thesisSummary, propositions: [{ claimRef: 'claim:driver', statement: 'Margins will expand', claimType: 'forecast', sourceRefs: ['source:annual-report'], membershipEdgeRef: 'edge:qualifies' }], propositionRefs: ['claim:driver'], membershipEdgeRefs: ['edge:qualifies'], killCriteria: confirmed ? [confirmedCriterion] : [], revision: confirmed ? 8 : 7 })
+    const calls: { path: string; init?: RequestInit }[] = []
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input); calls.push({ path, init })
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 7, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/knowledge/directory') return json({ themeGroups: [], industries: { items: [], total: 0, limit: 30, truncated: false }, companies: { items: [{ ref: 'entity:company-acme', name: 'Acme' }], total: 1, limit: 30, truncated: false }, products: { items: [], total: 0, limit: 30, truncated: false }, technologies: { items: [], total: 0, limit: 30, truncated: false } })
+      if (path === '/api/knowledge/theses?limit=50') return json({ theses: [thesisSummary], total: 1, limit: 50, truncated: false, revision: confirmed ? 8 : 7 })
+      if (path === '/api/knowledge/theses/thesis%3Avalue-driver') return json(detail())
+      if (path === '/api/reviews') return json({ cases: [], total: 0, limit: 50, truncated: false })
+      if (path === '/api/production/thesis-lifecycle/criteria/prepare') return json(preview)
+      if (path === '/api/production/thesis-lifecycle/criteria/confirm') { confirmed = true; return json({ status: 'confirmed', replay: false, thesisRef: 'thesis:value-driver', conditionId: 'margin-floor', criterionRevision: 1, definitionHash: 'definition-hash', knowledgeBaseId: 'kb-1', knowledgeBaseRevision: 8, committedRevision: 8, writerRunId: 'criterion-run-test' }) }
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+
+    render(<App />)
+    expect(await screen.findByText('Thesis invalidation is blocked pending human confirmation. Narrative text is not inferred as a criterion.')).toBeTruthy()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Criterion condition ID' }), { target: { value: 'margin-floor' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Criterion metric reference' }), { target: { value: 'gross_margin' } })
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Criterion threshold' }), { target: { value: '0.2' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Criterion unit' }), { target: { value: 'ratio' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Criterion period' }), { target: { value: 'FY2026' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: /Margins will expand/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare criterion preview' }))
+    expect(await screen.findByRole('heading', { name: 'margin-floor revision 1' })).toBeTruthy()
+    expect(calls.some((call) => call.path.endsWith('/criteria/confirm'))).toBe(false)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Criterion metric reference' }), { target: { value: 'net_margin' } })
+    expect(screen.queryByRole('heading', { name: 'margin-floor revision 1' })).toBeNull()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Criterion metric reference' }), { target: { value: 'gross_margin' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare criterion preview' }))
+    expect(await screen.findByRole('heading', { name: 'margin-floor revision 1' })).toBeTruthy()
+    const previewCall = calls.filter((call) => call.path.endsWith('/criteria/prepare')).at(-1)
+    expect(JSON.parse(String(previewCall?.init?.body))).toMatchObject({ thesisRef: 'thesis:value-driver', conditionId: 'margin-floor', targetClaimRefs: ['claim:driver'], origin: { kind: 'human_rule' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm and write criterion' }))
+    expect(await screen.findByRole('status')).toBeTruthy()
+    await waitFor(() => expect(calls.some((call) => call.path === '/api/knowledge/theses/thesis%3Avalue-driver' && calls.indexOf(call) > calls.findIndex((item) => item.path.endsWith('/criteria/confirm')))).toBe(true))
+    const confirmCall = calls.find((call) => call.path.endsWith('/criteria/confirm'))
+    expect(JSON.parse(String(confirmCall?.init?.body))).toMatchObject({ previewHash: 'preview-hash', expectedKnowledgeBaseRevision: 7, workflowRunId: expect.stringMatching(/^criterion-/) })
+    expect(await screen.findByText(/active · margin-floor v1/)).toBeTruthy()
+  })
 })
