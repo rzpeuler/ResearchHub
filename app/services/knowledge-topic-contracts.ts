@@ -46,6 +46,14 @@ export interface KnowledgeTopicSummary {
     readonly lifecycleStatus: string
   }
   readonly counts: Readonly<Record<KnowledgeTopicScope, Readonly<Record<KnowledgeTopicKind, KnowledgeTopicSummaryCount>>>>
+  readonly overview: Readonly<Record<KnowledgeTopicScope, {
+    /** Latest explicitly dated record among the canonical records included in this scope. */
+    readonly latestDatedRecord?: { readonly ref: string; readonly kind: KnowledgeTopicKind; readonly dateField: string; readonly dateValue: string }
+    /** Non-Source records in this scope that have no explicit canonical Source reference. */
+    readonly nonSourceRecordsWithoutExplicitSourceRef: number
+    readonly totalExact: boolean
+    readonly truncated: boolean
+  }>>
   readonly connected: {
     readonly depth: 1 | 2
     readonly totalExact: boolean
@@ -74,6 +82,8 @@ export interface KnowledgeTopicPageInput {
   readonly depth?: 1 | 2
   readonly limit?: number
   readonly cursor?: string
+  /** Rejects a page request if the mounted Knowledge Base has changed revision. */
+  readonly expectedRevision?: number
   readonly filters?: KnowledgeTopicFilters
 }
 

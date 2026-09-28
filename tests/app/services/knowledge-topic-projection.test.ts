@@ -14,7 +14,7 @@ async function fixture(): Promise<{ root: string; service: KnowledgeTopicProject
   const root = await mkdtemp(join(tmpdir(), 'rhl-topic-projection-'))
   await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-topic-fixture', now: at })
   const objects: Array<{ type: string; value: Record<string, unknown> }> = [
-    { type: 'entity', value: { id: 'entity:theme-a', type: 'investment_theme', name: 'AI Hardware', aliases: ['AI芯片'], description: 'Accelerator supply chain', definition: 'Theme definition', inclusionCriteria: ['AI accelerators'], exclusionCriteria: ['consumer devices'], themeGroupRef: 'theme-group:technology', lifecycle: active } },
+    { type: 'entity', value: { id: 'entity:theme-a', type: 'investment_theme', name: 'AI Hardware', aliases: ['AI芯片'], description: 'Accelerator supply chain /home/research/private.txt', definition: 'Theme definition', inclusionCriteria: ['AI accelerators'], exclusionCriteria: ['consumer devices'], themeGroupRef: 'theme-group:technology', lifecycle: active } },
     { type: 'entity', value: { id: 'entity:theme-b', type: 'investment_theme', name: 'Robotics', lifecycle: active } },
     { type: 'entity', value: { id: 'entity:industry', type: 'industry', name: 'Semiconductors', lifecycle: active } },
     { type: 'entity', value: { id: 'entity:chipmaker', type: 'company', name: 'Chipmaker', lifecycle: active } },
@@ -25,17 +25,17 @@ async function fixture(): Promise<{ root: string; service: KnowledgeTopicProject
     { type: 'claim', value: { id: 'claim:theme-a', claimType: 'viewpoint', subjectRefs: ['entity:theme-a'], statement: 'Accelerator demand is broadening.', sourceRefs: ['source:public'], supportsClaimRefs: ['claim:theme-b'], createdAt: at, lifecycle: active } },
     { type: 'claim', value: { id: 'claim:theme-b', claimType: 'fact', subjectRefs: ['entity:theme-b'], statement: 'Robotics claim.', sourceRefs: ['source:public'], lifecycle: active } },
     { type: 'claim', value: { id: 'claim:old', claimType: 'fact', subjectRefs: ['entity:theme-a'], statement: 'Historical statement.', lifecycle: inactive } },
-    { type: 'observation', value: { id: 'observation:industry-metric', observationType: 'metric', subjectRef: 'entity:industry', metricRef: 'market_size', value: 42, unit: 'USD bn', observedAt: at, sourceRef: 'source:public', provenance: [{ sourceRef: 'source:public', rawRef: 'raw-sha256-secret', locator: 'C:\\private\\local.pdf' }], lifecycle: active } },
-    { type: 'observation', value: { id: 'observation:estimate', observationType: 'estimate', subjectRef: 'entity:industry', metricRef: 'revenue', fiscalPeriod: 'FY2027', estimateValue: 100, institutionRef: 'entity:chipmaker', analystRef: 'entity:chipmaker', revisionOf: 'observation:estimate-old', publishedAt: at, sourceRef: 'source:restricted', lifecycle: active } },
+    { type: 'observation', value: { id: 'observation:industry-metric', observationType: 'metric', subjectRef: 'entity:industry', metricRef: 'market_size', value: 42, unit: 'USD bn', period: 'FY2026', dimensions: { region: 'global', product: 'accelerators', unsafe: { path: '/private/nope' } }, observedAt: at, sourceRef: 'source:public', provenance: [{ sourceRef: 'source:public', rawRef: 'raw-sha256-secret', locator: 'C:\\private\\local.pdf' }], lifecycle: active } },
+    { type: 'observation', value: { id: 'observation:estimate', observationType: 'estimate', subjectRef: 'entity:industry', metricRef: 'revenue', fiscalPeriod: 'FY2027', estimateValue: 100, unit: 'USD bn', currency: 'USD', institutionRef: 'entity:chipmaker', analystRef: 'entity:chipmaker', estimateHorizon: '12m', revisionOf: 'observation:estimate-old', publishedAt: at, sourceRef: 'source:restricted', lifecycle: active } },
     { type: 'observation', value: { id: 'observation:estimate-old', observationType: 'estimate', subjectRef: 'entity:industry', metricRef: 'revenue', fiscalPeriod: 'FY2027', estimateValue: 90, institutionRef: 'entity:chipmaker', publishedAt: '2026-09-01T10:00:00.000Z', sourceRef: 'source:restricted', lifecycle: inactive } },
-    { type: 'observation', value: { id: 'observation:consensus', observationType: 'consensus', subjectRef: 'entity:industry', metricRef: 'revenue', fiscalPeriod: 'FY2027', asOf: at, mean: 100, count: 5, contributingObservationRefs: ['observation:estimate'], sourceRef: 'source:restricted', lifecycle: active } },
+    { type: 'observation', value: { id: 'observation:consensus', observationType: 'consensus', subjectRef: 'entity:industry', metricRef: 'revenue', fiscalPeriod: 'FY2027', asOf: at, mean: 100, median: 99, high: 120, low: 80, count: 5, dispersion: 12, contributingObservationRefs: ['observation:estimate'], sourceRef: 'source:restricted', lifecycle: active } },
     { type: 'observation', value: { id: 'observation:company-metric', observationType: 'metric', subjectRef: 'entity:chipmaker', metricRef: 'capacity', value: 'C:\\private\\users\\research\\capacity.csv', unit: 'fab lines', sourceRef: 'source:public', lifecycle: active } },
-    { type: 'event', value: { id: 'event:theme', eventType: 'capacity_expansion', title: 'New fab capacity', subjectRefs: ['entity:theme-a'], participantRefs: ['entity:chipmaker'], temporal: { occurredAt: at }, sourceRefs: ['source:restricted'], lifecycle: active } },
+    { type: 'event', value: { id: 'event:theme', eventType: 'capacity_expansion', title: 'New fab capacity', subjectRefs: ['entity:theme-a'], participantRefs: ['entity:chipmaker'], temporal: { occurredAt: '2026-09-21T10:00:00.000Z' }, sourceRefs: ['source:restricted'], lifecycle: active } },
     { type: 'thesis', value: { id: 'thesis:theme', subjectRefs: ['entity:theme-a'], title: 'Thesis title', statement: 'Thesis statement.', status: 'invalidated', lastReviewedAt: at, lifecycle: active } },
     { type: 'thesis', value: { id: 'thesis:theme-b', subjectRefs: ['entity:theme-b'], title: 'Robotics thesis', statement: 'Private theme thesis.', status: 'active', lifecycle: active } },
     { type: 'reasoning_edge', value: { id: 'reasoning-edge:thesis-claim', type: 'challenges', sourceRef: 'claim:theme-a', targetRef: 'thesis:theme', sourceRefs: ['source:public'], lifecycle: active } },
     { type: 'module', value: { id: 'module:theme', type: 'comparison', targetEntity: 'entity:theme-a', schemaId: 'comparison-v1', columns: [{ name: 'company' }], rows: [{ company: 'Chipmaker' }] } },
-    { type: 'source', value: { id: 'source:public', title: 'Public filing', publisher: 'Exchange', sourceType: 'filing', canonicalUrl: 'https://example.test/filing', publishedAt: at, rights: { accessScope: 'public', providerTermsKnown: true, redistributionAllowed: false }, usagePolicy: { mode: 'personal_noncommercial_research', retainRaw: true, allowAiProcessing: true, allowDerivedKnowledge: true, redistributionAllowed: false }, rawRefs: ['raw-sha256-secret'], lifecycle: active } },
+    { type: 'source', value: { id: 'source:public', title: 'Public filing', publisher: 'Exchange', provider: 'exchange-feed', sourceType: 'filing', canonicalUrl: 'https://example.test/filing', publishedAt: at, rights: { accessScope: 'public', providerTermsKnown: true, redistributionAllowed: false }, usagePolicy: { mode: 'personal_noncommercial_research', retainRaw: true, allowAiProcessing: true, allowDerivedKnowledge: true, redistributionAllowed: false }, rawRefs: ['raw-sha256-secret'], lifecycle: active } },
     { type: 'source', value: { id: 'source:restricted', title: 'Restricted report', publisher: 'Broker', sourceType: 'broker_research', canonicalUrl: 'https://private.example.test/report', rights: { accessScope: 'restricted', providerTermsKnown: false, redistributionAllowed: false }, usagePolicy: { mode: 'personal_noncommercial_research', retainRaw: true, allowAiProcessing: false, allowDerivedKnowledge: false, redistributionAllowed: false }, rawRefs: ['raw-sha256-private'], lifecycle: active } },
     { type: 'source', value: { id: 'source:unsafe', title: 'Unsafe URL', sourceType: 'other', canonicalUrl: 'file:///private/report.pdf', rights: { accessScope: 'public', providerTermsKnown: true }, usagePolicy: { mode: 'personal_noncommercial_research', retainRaw: false, allowAiProcessing: false, allowDerivedKnowledge: false, redistributionAllowed: false }, lifecycle: active } },
   ]
@@ -58,6 +58,15 @@ test('topic projection separates direct membership from related industry records
   const summary = await service.getSummary('entity:theme-a', 2)
   assert.equal(summary.theme.name, 'AI Hardware')
   assert.equal(summary.theme.definition, 'Theme definition')
+  assert.equal(summary.theme.description, 'Accelerator supply chain [local path omitted]')
+  assert.equal(summary.overview.direct.latestDatedRecord?.ref, 'event:theme')
+  assert.equal(summary.overview.direct.latestDatedRecord?.dateField, 'occurredAt')
+  assert.equal(summary.overview.direct.nonSourceRecordsWithoutExplicitSourceRef, 2)
+  assert.equal(summary.overview.direct.totalExact, true)
+  assert.equal(summary.overview.connected.latestDatedRecord?.ref, 'observation:consensus')
+  assert.equal(summary.overview.connected.nonSourceRecordsWithoutExplicitSourceRef, 1)
+  assert.equal(summary.overview.connected.totalExact, true)
+  assert.equal(summary.overview.connected.truncated, false)
   assert.equal(summary.counts.direct.claim.total, 1)
   assert.equal(summary.counts.direct.observation.total, 0)
   assert.equal(summary.counts.direct.event.total, 1)
@@ -74,6 +83,22 @@ test('topic projection separates direct membership from related industry records
   assert.deepEqual(metric.associationPaths?.[0]?.hops.map((hop) => [hop.sourceRef, hop.targetRef]), [['entity:theme-a', 'entity:industry']])
   assert.equal(metric.scope, 'connected')
   assert.equal(metric.fields.value, 42)
+  assert.deepEqual(metric.fields.dimensions, ['product=accelerators', 'region=global'])
+  assert.equal(metric.fields.period, 'FY2026')
+  assert.equal(metric.fields.raw, undefined)
+
+  const estimate = connected.items.find((item) => item.ref === 'observation:estimate')!
+  assert.equal(estimate.fields.institutionRef, 'entity:chipmaker')
+  assert.equal(estimate.fields.analystRef, 'entity:chipmaker')
+  assert.equal(estimate.fields.currency, 'USD')
+  assert.equal(estimate.fields.estimateHorizon, '12m')
+  assert.equal(estimate.fields.revisionOf, 'observation:estimate-old')
+  const consensus = connected.items.find((item) => item.ref === 'observation:consensus')!
+  assert.equal(consensus.fields.median, 99)
+  assert.equal(consensus.fields.high, 120)
+  assert.equal(consensus.fields.low, 80)
+  assert.equal(consensus.fields.dispersion, 12)
+  assert.deepEqual(consensus.fields.contributingObservationRefs, ['observation:estimate'])
 
   assert.equal(connected.total, 4)
   const companyMetric = connected.items.find((item) => item.ref === 'observation:company-metric')!
@@ -120,11 +145,36 @@ test('summary and items honor lifecycle, thesis state, source rights, and allowl
   const sources = await service.listItems({ themeRef: 'entity:theme-a', kind: 'source' })
   assert.deepEqual(sources.items.map((item) => item.ref), ['source:public', 'source:restricted'])
   assert.equal(sources.items[0]?.fields.canonicalUrl, 'https://example.test/filing')
+  assert.equal(sources.items[0]?.fields.provider, 'exchange-feed')
+  assert.deepEqual(sources.items[0]?.fields.referencedByRefs, ['claim:theme-a', 'reasoning-edge:thesis-claim', 'relation:theme-a-industry'])
+  assert.equal(sources.items[0]?.fields.referencedByTotal, 3)
+  assert.equal(sources.items[0]?.fields.referencedByTruncated, false)
   assert.equal(sources.items[1]?.fields.canonicalUrl, undefined)
   const serialized = JSON.stringify(sources)
   assert.doesNotMatch(serialized, /private\.example|file:\/\/|raw-sha256|private\\local|rawRefs|locator/)
   const observations = await service.listItems({ themeRef: 'entity:theme-a', kind: 'observation', scope: 'connected' })
   assert.doesNotMatch(JSON.stringify(observations), /C:\\\\private|raw-sha256-secret|locator/)
+  assert.doesNotMatch(JSON.stringify(observations), /\/private\/nope/)
+})
+
+test('source reverse references are deduplicated and bounded with explicit truncation metadata', async (t) => {
+  const { root, service } = await fixture()
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const registryPath = join(root, 'registry', 'assets.yaml')
+  const registry = JSON.parse(await readFile(registryPath, 'utf8')) as Record<string, { type: string; storageRef: string }>
+  for (let index = 0; index < 65; index += 1) {
+    const id = `claim:backlink-${String(index).padStart(3, '0')}`
+    const storageRef = `claims/${id.replaceAll(':', '-')}.json`
+    await writeFile(join(root, storageRef), JSON.stringify({ id, claimType: 'fact', statement: 'Backlink fixture', subjectRefs: ['entity:theme-a'], sourceRefs: ['source:public'], lifecycle: active }))
+    registry[id] = { type: 'claim', storageRef }
+  }
+  await writeFile(registryPath, `${JSON.stringify(registry)}\n`)
+  const sources = await service.listItems({ themeRef: 'entity:theme-a', kind: 'source' })
+  const publicSource = sources.items.find((item) => item.ref === 'source:public')!
+  assert.ok(Array.isArray(publicSource.fields.referencedByRefs))
+  assert.equal(publicSource.fields.referencedByRefs.length, 64)
+  assert.equal(publicSource.fields.referencedByTotal, 68)
+  assert.equal(publicSource.fields.referencedByTruncated, true)
 })
 
 test('pagination is deterministic and rejects changed revisions and parameter bindings', async (t) => {
@@ -136,6 +186,9 @@ test('pagination is deterministic and rejects changed revisions and parameter bi
   const second = await service.listItems({ themeRef: 'entity:theme-a', kind: 'claim', filters: { lifecycle: 'all' }, limit: 1, cursor: first.nextCursor })
   assert.equal(second.items[0]?.ref, 'claim:old')
   await assert.rejects(service.listItems({ themeRef: 'entity:theme-a', kind: 'event', filters: { lifecycle: 'all' }, limit: 1, cursor: first.nextCursor }), { code: 'conflict' })
+  await assert.rejects(service.listItems({ themeRef: 'entity:theme-a', kind: 'claim', expectedRevision: 1 }), { code: 'conflict' })
+  await assert.rejects(service.listItems({ themeRef: 'entity:theme-a', kind: 'claim', expectedRevision: Number.MAX_SAFE_INTEGER + 1 }), { code: 'invalid_input' })
+  assert.equal((await service.listItems({ themeRef: 'entity:theme-a', kind: 'claim', expectedRevision: 0 })).revision, 0)
 
   const manifest = JSON.parse(await readFile(join(root, 'manifest.yaml'), 'utf8')) as Record<string, unknown>
   manifest.revision = 1

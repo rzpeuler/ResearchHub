@@ -61,7 +61,7 @@ test('Runtime exposes read-only Knowledge Topic summary and item APIs with stric
     assert.equal(summary.counts.direct.claim.total, 1)
     assert.equal(summary.connected.depth, 2)
 
-    const itemsResponse = await fetch(`${info.origin}${themePath}/items?kind=claim&scope=direct&limit=1&lifecycle=active`)
+    const itemsResponse = await fetch(`${info.origin}${themePath}/items?kind=claim&scope=direct&limit=1&lifecycle=active&expectedRevision=${summary.revision}`)
     assert.equal(itemsResponse.status, 200)
     const page = await itemsResponse.json() as { revision: number; themeRef: string; kind: string; total: number; items: { ref: string; label: string }[] }
     assert.equal(page.themeRef, 'entity:theme-runtime')
@@ -69,6 +69,10 @@ test('Runtime exposes read-only Knowledge Topic summary and item APIs with stric
     assert.equal(page.total, 1)
     assert.deepEqual(page.items.map((item) => item.ref), ['claim:theme-runtime'])
     assert.equal(page.revision, summary.revision)
+
+    const staleRevision = await fetch(`${info.origin}${themePath}/items?kind=claim&expectedRevision=${summary.revision + 1}`)
+    assert.equal(staleRevision.status, 409)
+    assert.equal((await staleRevision.json()).code, 'conflict')
 
     const malformedRequests = [
       [`${info.origin}/api/knowledge/topics/${encodeURIComponent('entity:missing')}/summary`, 404, 'not_found'],
@@ -78,6 +82,8 @@ test('Runtime exposes read-only Knowledge Topic summary and item APIs with stric
       [`${info.origin}${themePath}/items?kind=claim&kind=event`, 400, 'invalid_input'],
       [`${info.origin}${themePath}/items?kind=unknown`, 400, 'invalid_input'],
       [`${info.origin}${themePath}/items?kind=claim&limit=0`, 400, 'invalid_input'],
+      [`${info.origin}${themePath}/items?kind=claim&expectedRevision=-1`, 400, 'invalid_input'],
+      [`${info.origin}${themePath}/items?kind=claim&expectedRevision=9007199254740992`, 400, 'invalid_input'],
       [`${info.origin}${themePath}/items?kind=claim&cursor=malformed`, 400, 'invalid_input'],
       [`${info.origin}${themePath}/items?kind=claim&cursor=${'x'.repeat(4_097)}`, 400, 'invalid_input'],
     ] as const

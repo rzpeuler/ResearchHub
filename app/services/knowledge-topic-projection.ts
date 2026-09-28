@@ -26,6 +26,7 @@ const DEFAULT_PAGE_SIZE = 30
 const MAX_RELATIONS_SCANNED = 10_000
 const MAX_CONNECTED_ENTITIES = 5_000
 const MAX_PATHS_PER_ITEM = 32
+const MAX_SOURCE_BACKLINKS_PER_ITEM = 64
 const CURSOR_VERSION = 1
 const CURSOR_SECRET = 'knowledge-topic-projection-cursor-v1'
 const CLAIM_TYPES = new Set(['fact', 'forecast', 'viewpoint', 'trend', 'risk', 'assumption', 'thesis', 'catalyst'])
@@ -36,7 +37,7 @@ const HTTP_URL = /^https?:\/\//i
 
 type Dict = Record<string, unknown>
 type LoadedContext = { readonly knowledgeBaseId: string; readonly revision: number; readonly index: KnowledgeIndexV04 }
-type Candidate = { readonly value: KnowledgeAssetV04; readonly paths: Map<string, KnowledgeTopicAssociationPath> }
+type Candidate = { readonly value: KnowledgeAssetV04; readonly paths: Map<string, KnowledgeTopicAssociationPath>; readonly referencedByRefs?: readonly string[] }
 type Traversal = { readonly pathsByEntity: Map<string, readonly KnowledgeTopicAssociationPath[]>; readonly truncated: boolean; readonly focusRefs: readonly string[] }
 type CursorPayload = { readonly v: 1; readonly kb: string; readonly revision: number; readonly theme: string; readonly scope: KnowledgeTopicScope; readonly kind: KnowledgeTopicKind; readonly depth: 1 | 2; readonly filters: NormalizedFilters; readonly after: string }
 type NormalizedFilters = { readonly lifecycle: KnowledgeTopicLifecycleFilter; readonly observationType?: 'metric' | 'estimate' | 'consensus'; readonly claimType?: string; readonly relationType?: string }
@@ -76,6 +77,10 @@ export class KnowledgeTopicProjectionService {
       revision: context.revision,
       theme: themeSummary(theme),
       counts,
+      overview: {
+        direct: scopeOverview(direct, false),
+        connected: scopeOverview(connected, traversal.truncated),
+      },
       connected: { depth, totalExact: !traversal.truncated, truncated: traversal.truncated, focusRefs: traversal.focusRefs },
     }
   }
@@ -90,8 +95,10 @@ export class KnowledgeTopicProjectionService {
     validateDepth(depth)
     const limit = pageLimit(input.limit)
     const filters = normalizeFilters(input.filters)
+    if (input.expectedRevision !== undefined && (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0)) throw topicError('invalid_input', 'expectedRevision must be a non-negative safe integer')
     const cursor = input.cursor === undefined ? undefined : decodeCursor(input.cursor)
     const context = await this.load()
+    if (input.expectedRevision !== undefined && input.expectedRevision !== context.revision) throw topicError('conflict', 'Knowledge Base revision changed; reload the topic before paging')
     requireTheme(context.index, input.themeRef)
     const traversal = scope === 'connected' ? buildTraversal(context.index, input.themeRef, depth) : emptyTraversal()
     const anchors = scope === 'direct' ? [input.themeRef] : connectedContentAnchors(context.index, traversal)
@@ -104,7 +111,7 @@ export class KnowledgeTopicProjectionService {
       .filter(({ value }) => kindMatches(value, input.kind))
       .filter(({ value }) => filters.lifecycle === 'all' || active(value))
       .filter(({ value }) => matchesFilters(value, filters))
-      .map(({ value, paths }) => projectItem(value, scope, paths))
+      .map(({ value, paths, referencedByRefs }) => projectItem(value, scope, paths, referencedByRefs))
       .sort(compareItems)
     const total = projected.length
     const binding = { kb: context.knowledgeBaseId, revision: context.revision, theme: input.themeRef, scope, kind: input.kind, depth, filters }
@@ -336,6 +343,7 @@ function collectCandidates(index: KnowledgeIndexV04, anchors: readonly string[],
     }
   }
   const sourcePaths = new Map<string, Map<string, KnowledgeTopicAssociationPath>>()
+  const sourceReferencedBy = new Map<string, Set<string>>()
   for (const recordId of [...includedRecords]) {
     const record = index.objects.get(recordId)
     if (!record) continue
@@ -346,12 +354,15 @@ function collectCandidates(index: KnowledgeIndexV04, anchors: readonly string[],
       const byPath = sourcePaths.get(sourceRef) ?? new Map<string, KnowledgeTopicAssociationPath>()
       for (const path of result.get(recordId)?.paths.values() ?? []) byPath.set(path.hops.map((hop) => hop.relationRef).join('>'), path)
       sourcePaths.set(sourceRef, byPath)
+      const referencedBy = sourceReferencedBy.get(sourceRef) ?? new Set<string>()
+      referencedBy.add(recordId)
+      sourceReferencedBy.set(sourceRef, referencedBy)
     }
   }
   for (const [sourceRef, paths] of sourcePaths) {
     const source = index.objects.get(sourceRef)!
     if (!includeHistory && !active(source)) continue
-    result.set(sourceRef, { value: source, paths })
+    result.set(sourceRef, { value: source, paths, referencedByRefs: [...(sourceReferencedBy.get(sourceRef) ?? [])].sort(orderText) })
   }
   return result
 }
@@ -424,7 +435,21 @@ function countKinds(candidates: Map<string, Candidate>, traversalTruncated: bool
   return Object.fromEntries(KINDS.map((kind) => [kind, { total: entries[kind], totalExact: !traversalTruncated, truncated: traversalTruncated }])) as Record<KnowledgeTopicKind, KnowledgeTopicSummaryCount>
 }
 
-function projectItem(value: KnowledgeAssetV04, scope: KnowledgeTopicScope, paths: Map<string, KnowledgeTopicAssociationPath>): KnowledgeTopicItem {
+function scopeOverview(candidates: Map<string, Candidate>, truncated: boolean): KnowledgeTopicSummary['overview'][KnowledgeTopicScope] {
+  const records = [...candidates.values()].filter(({ value }) => assetKind(value) !== 'source')
+  const latest = records.map(({ value }) => ({ value, date: dateOf(value) }))
+    .filter((item): item is { value: KnowledgeAssetV04; date: { field: string; value: string } } => item.date !== undefined)
+    .sort((a, b) => orderText(b.date.value, a.date.value) || orderText(a.value.id, b.value.id))[0]
+  const unreferenced = records.filter(({ value }) => sourceRefsFor(dict(value)).length === 0).length
+  return {
+    ...(latest ? { latestDatedRecord: { ref: latest.value.id, kind: (assetKind(latest.value) === 'reasoning-edge' ? 'reasoning_edge' : assetKind(latest.value)) as KnowledgeTopicKind, dateField: latest.date.field, dateValue: latest.date.value } } : {}),
+    nonSourceRecordsWithoutExplicitSourceRef: unreferenced,
+    totalExact: !truncated,
+    truncated,
+  }
+}
+
+function projectItem(value: KnowledgeAssetV04, scope: KnowledgeTopicScope, paths: Map<string, KnowledgeTopicAssociationPath>, referencedByRefs: readonly string[] = []): KnowledgeTopicItem {
   const raw = dict(value)
   const kind = assetKind(value) === 'reasoning-edge' ? 'reasoning_edge' : assetKind(value) as KnowledgeTopicKind
   const lifecycleStatus = statusOf(value)
@@ -453,7 +478,16 @@ function projectItem(value: KnowledgeAssetV04, scope: KnowledgeTopicScope, paths
     case 'observation':
       label = safeText(raw.observationType, 100) ?? 'observation'
       summary = safeText(raw.metricRef, 240)
-      for (const key of ['observationType', 'subjectRef', 'metricRef', 'value', 'unit', 'period', 'fiscalPeriod', 'estimateValue', 'mean', 'count', 'asOf', 'observedAt', 'reportedAt', 'publishedAt']) put(key, raw[key])
+      for (const key of ['observationType', 'subjectRef', 'metricRef', 'sourceRef']) put(key, raw[key])
+      if (raw.observationType === 'metric') {
+        for (const key of ['value', 'unit', 'period', 'observedAt', 'reportedAt', 'asOf']) put(key, raw[key])
+        const dimensions = projectDimensions(raw.dimensions)
+        if (dimensions.length) fields.dimensions = dimensions
+      } else if (raw.observationType === 'estimate') {
+        for (const key of ['fiscalPeriod', 'estimateValue', 'unit', 'currency', 'institutionRef', 'analystRef', 'publishedAt', 'estimateHorizon', 'revisionOf']) put(key, raw[key])
+      } else if (raw.observationType === 'consensus') {
+        for (const key of ['fiscalPeriod', 'asOf', 'mean', 'median', 'high', 'low', 'count', 'dispersion', 'contributingObservationRefs']) put(key, raw[key])
+      }
       break
     case 'event':
       label = safeText(raw.eventType, 100) ?? 'event'
@@ -473,7 +507,11 @@ function projectItem(value: KnowledgeAssetV04, scope: KnowledgeTopicScope, paths
     case 'source': {
       label = safeText(raw.title, 300) ?? 'Source'
       summary = safeText(raw.publisher, 240)
-      for (const key of ['sourceType', 'publisher', 'publishedAt', 'retrievedAt', 'contentHash']) put(key, raw[key])
+      for (const key of ['sourceType', 'provider', 'publisher', 'publishedAt', 'retrievedAt', 'contentHash']) put(key, raw[key])
+      const backlinks = [...new Set(referencedByRefs)].sort(orderText)
+      fields.referencedByRefs = backlinks.slice(0, MAX_SOURCE_BACKLINKS_PER_ITEM)
+      fields.referencedByTotal = backlinks.length
+      fields.referencedByTruncated = backlinks.length > MAX_SOURCE_BACKLINKS_PER_ITEM
       const rights = dict(raw.rights)
       const usagePolicy = dict(raw.usagePolicy)
       for (const [field, source] of [['rightsAccessScope', 'accessScope'], ['providerTermsKnown', 'providerTermsKnown'], ['redistributionAllowed', 'redistributionAllowed'], ['allowAiProcessing', 'allowAiProcessing']] as const) put(field, rights[source])
@@ -501,12 +539,22 @@ function projectItem(value: KnowledgeAssetV04, scope: KnowledgeTopicScope, paths
   }
 }
 
+function projectDimensions(value: unknown): string[] {
+  const dimensions = dict(value)
+  return Object.entries(dimensions).sort(([a], [b]) => orderText(a, b)).flatMap(([key, raw]) => {
+    if (!/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(key) || !(typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean')) return []
+    const safeValue = safeText(String(raw), 120)
+    return safeValue === undefined ? [] : [`${key}=${safeValue}`]
+  }).slice(0, 32)
+}
+
 function safeText(value: unknown, max: number): string | undefined {
   if (typeof value !== 'string') return undefined
   const trimmed = value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '')
     .replace(/\b[A-Za-z]:[\\/][^\s<>"']+/g, '[local path omitted]')
     .replace(/\\\\[^\s<>"']+/g, '[local path omitted]')
     .replace(/file:\/\/[^\s<>"']+/gi, '[local path omitted]')
+    .replace(/(^|[\s("'=])\/[^\s<>"']+/g, '$1[local path omitted]')
     .trim()
   return trimmed ? trimmed.slice(0, max) : undefined
 }

@@ -146,14 +146,14 @@ describe('RuntimeClient', () => {
 
   it('encodes topic API paths and filters and uses the standard error path', async () => {
     const paths: string[] = []
-    const summary = { knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 3, theme: { ref: 'entity:theme-a', name: 'A', aliases: [], lifecycleStatus: 'active' }, counts: {}, connected: { depth: 2, totalExact: true, truncated: false, focusRefs: [] } }
+    const summary = { knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 3, theme: { ref: 'entity:theme-a', name: 'A', aliases: [], lifecycleStatus: 'active' }, counts: {}, overview: { direct: { nonSourceRecordsWithoutExplicitSourceRef: 0, totalExact: true, truncated: false }, connected: { nonSourceRecordsWithoutExplicitSourceRef: 0, totalExact: true, truncated: false } }, connected: { depth: 2, totalExact: true, truncated: false, focusRefs: [] } }
     const page = { knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 3, themeRef: 'entity:theme-a', kind: 'claim', scope: 'connected', depth: 2, filters: { lifecycle: 'all', claimType: 'viewpoint' }, items: [], total: 0, totalExact: true, limit: 20, truncated: false, focusRefs: [] }
     const client = new RuntimeClient(async (input) => { paths.push(String(input)); return json(paths.length === 1 ? summary : page) })
     await client.getTopicSummary('entity:theme-a', 2)
-    await client.listTopicItems({ themeRef: 'entity:theme-a', kind: 'claim', scope: 'connected', depth: 2, limit: 20, cursor: 'cursor +/=secret', filters: { lifecycle: 'all', claimType: 'viewpoint' } })
+    await client.listTopicItems({ themeRef: 'entity:theme-a', kind: 'claim', scope: 'connected', depth: 2, limit: 20, cursor: 'cursor +/=secret', expectedRevision: 3, filters: { lifecycle: 'all', claimType: 'viewpoint' } })
     expect(paths).toEqual([
       '/api/knowledge/topics/entity%3Atheme-a/summary?depth=2',
-      '/api/knowledge/topics/entity%3Atheme-a/items?kind=claim&scope=connected&depth=2&limit=20&cursor=cursor+%2B%2F%3Dsecret&lifecycle=all&claimType=viewpoint',
+      '/api/knowledge/topics/entity%3Atheme-a/items?kind=claim&scope=connected&depth=2&limit=20&cursor=cursor+%2B%2F%3Dsecret&expectedRevision=3&lifecycle=all&claimType=viewpoint',
     ])
     const rejected = new RuntimeClient(async () => json({ code: 'not_found', error: 'Theme not found' }, 404))
     await expect(rejected.getTopicSummary('entity:missing')).rejects.toMatchObject({ code: 'not_found', status: 404, message: 'Theme not found' })

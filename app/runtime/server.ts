@@ -142,7 +142,7 @@ function decodeSegment(value: string): string {
   try { return decodeURIComponent(value) } catch { throw new ApplicationServiceError('invalid_input', 'URL path segment is invalid') }
 }
 
-const TOPIC_QUERY_KEYS = new Set(['depth', 'kind', 'scope', 'limit', 'cursor', 'lifecycle', 'observationType', 'claimType', 'relationType'])
+const TOPIC_QUERY_KEYS = new Set(['depth', 'kind', 'scope', 'limit', 'cursor', 'expectedRevision', 'lifecycle', 'observationType', 'claimType', 'relationType'])
 const TOPIC_KINDS = new Set<KnowledgeTopicKind>(['relation', 'claim', 'observation', 'event', 'thesis', 'module', 'source', 'reasoning_edge'])
 
 function topicQueryValue(url: URL, name: string, maxLength?: number): string | undefined {
@@ -172,6 +172,15 @@ function topicLimit(url: URL): number | undefined {
   if (!/^[1-9]\d*$/.test(value)) throw new ApplicationServiceError('invalid_input', 'limit must be a positive integer')
   const parsed = Number(value)
   if (!Number.isSafeInteger(parsed)) throw new ApplicationServiceError('invalid_input', 'limit must be a positive integer')
+  return parsed
+}
+
+function topicExpectedRevision(url: URL): number | undefined {
+  const value = topicQueryValue(url, 'expectedRevision')
+  if (value === undefined) return undefined
+  if (!/^(0|[1-9]\d*)$/.test(value)) throw new ApplicationServiceError('invalid_input', 'expectedRevision must be a non-negative safe integer')
+  const parsed = Number(value)
+  if (!Number.isSafeInteger(parsed)) throw new ApplicationServiceError('invalid_input', 'expectedRevision must be a non-negative safe integer')
   return parsed
 }
 
@@ -485,7 +494,7 @@ export class ResearchHubRuntimeServer {
         validateTopicQuery(url, new Set(['depth']))
         await this.sendJson(response, 200, await service.getSummary(themeRef, topicDepth(url) ?? 1)); return
       }
-      validateTopicQuery(url, new Set(['kind', 'scope', 'depth', 'limit', 'cursor', 'lifecycle', 'observationType', 'claimType', 'relationType']))
+      validateTopicQuery(url, new Set(['kind', 'scope', 'depth', 'limit', 'cursor', 'expectedRevision', 'lifecycle', 'observationType', 'claimType', 'relationType']))
       const kindValue = topicQueryValue(url, 'kind')
       if (kindValue === undefined || !TOPIC_KINDS.has(kindValue as KnowledgeTopicKind)) throw new ApplicationServiceError('invalid_input', 'kind is required and must be supported')
       const scopeValue = topicQueryValue(url, 'scope')
@@ -496,6 +505,7 @@ export class ResearchHubRuntimeServer {
       const relationType = topicQueryValue(url, 'relationType')
       const depth = topicDepth(url)
       const limit = topicLimit(url)
+      const expectedRevision = topicExpectedRevision(url)
       const input: KnowledgeTopicPageInput = {
         themeRef,
         kind: kindValue as KnowledgeTopicKind,
@@ -503,6 +513,7 @@ export class ResearchHubRuntimeServer {
         ...(depth === undefined ? {} : { depth }),
         ...(limit === undefined ? {} : { limit }),
         ...(cursor === undefined ? {} : { cursor }),
+        ...(expectedRevision === undefined ? {} : { expectedRevision }),
         ...([lifecycle, observationType, claimType, relationType].every((value) => value === undefined) ? {} : {
           filters: {
             ...(lifecycle === undefined ? {} : { lifecycle }),
