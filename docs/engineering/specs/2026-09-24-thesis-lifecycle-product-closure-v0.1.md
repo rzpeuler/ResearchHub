@@ -1,8 +1,10 @@
 # RHL-TL-001 Thesis Lifecycle Product Closure — Design & Contract Freeze
 
-**Status:** DESIGN_RECONCILED / SOL REVIEW PENDING
+**Status:** DESIGN ACCEPTED / IMPLEMENTATION ACCEPTANCE PASSED; MAIN INTEGRATION PENDING
 **Date:** 2026-09-24
 **Mode:** design and source-code audit only; no runtime implementation in this task
+
+Implementation and real-source acceptance are recorded separately in the [2026-09-28 TL-001 final acceptance](../reports/2026-09-28-thesis-lifecycle-final-closure.md). The mode above describes this original design task.
 
 This document freezes the smallest product contract for maintaining an existing
 canonical Thesis when new accepted, point-in-time-safe evidence arrives. It is

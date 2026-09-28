@@ -1,5 +1,7 @@
 # RHL-TL-001 Kill Criterion Closure — Implementation Plan
 
+**Status:** acceptance passed; main integration pending. See [final TL-001 acceptance](../reports/2026-09-28-thesis-lifecycle-final-closure.md).
+
 **Date:** 2026-09-28
 
 **Binding design:** `docs/engineering/specs/2026-09-28-thesis-kill-criterion-canonical-binding-design.md`

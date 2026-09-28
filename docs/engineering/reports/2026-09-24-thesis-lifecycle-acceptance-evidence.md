@@ -31,3 +31,7 @@ Before setup, `npm run document-parser:check` reported `MANAGED_PYTHON_MISSING`.
 - Real acceptance entry point: `scripts/acceptance-thesis-lifecycle-real.ts`.
 - Deterministic HTTP closure integration test: `tests/app/runtime/thesis-lifecycle-closure.integration.test.ts`. This test uses a controlled reasoning executor and is supporting test evidence, not a substitute for the real run.
 - The live run used a disposable temporary v0.4 Knowledge Base; its run identifiers, proposition references, and lifecycle revisions are in the JSON evidence. No user Knowledge Base data was included in that artifact.
+
+## Later closure
+
+The `invalidated` limitation documented above was closed in the separate [2026-09-28 TL-001 final acceptance](2026-09-28-thesis-lifecycle-final-closure.md). This report retains the scope and result of the earlier ordinary REFRESH acceptance.

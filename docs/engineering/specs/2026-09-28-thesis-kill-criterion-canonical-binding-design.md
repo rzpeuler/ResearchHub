@@ -1,6 +1,6 @@
 # RHL-TL-001 Kill Criterion Canonical Binding — Design
 
-**Status:** approved design direction; implementation acceptance pending
+**Status:** accepted implementation; main integration pending. See [final TL-001 acceptance](../reports/2026-09-28-thesis-lifecycle-final-closure.md).
 
 **Date:** 2026-09-28
 **Scope:** close the `DESIGN_SCHEMA_GAP` for aggregate Thesis `invalidated`, then close TL-001. This is not a new research capability or a new orchestration layer.
