@@ -27,6 +27,17 @@ export interface KnowledgeGraphProjection { readonly rootRef: string; readonly p
 export interface KnowledgeDirectoryItem { readonly ref: string; readonly name: string }
 export interface KnowledgeDirectorySection { readonly items: readonly KnowledgeDirectoryItem[]; readonly total: number; readonly limit: number; readonly truncated: boolean }
 export interface KnowledgeDirectoryProjection { readonly themeGroups: readonly { readonly ref: string; readonly name: string; readonly themes: readonly KnowledgeDirectoryItem[] }[]; readonly industries: KnowledgeDirectorySection; readonly companies: KnowledgeDirectorySection; readonly products: KnowledgeDirectorySection; readonly technologies: KnowledgeDirectorySection }
+export type KnowledgeTopicKind = 'relation' | 'claim' | 'observation' | 'event' | 'thesis' | 'module' | 'source' | 'reasoning_edge'
+export type KnowledgeTopicScope = 'direct' | 'connected'
+export type KnowledgeTopicLifecycleFilter = 'active' | 'all'
+export interface KnowledgeTopicFilters { readonly lifecycle?: KnowledgeTopicLifecycleFilter; readonly observationType?: 'metric' | 'estimate' | 'consensus'; readonly claimType?: string; readonly relationType?: string }
+export interface KnowledgeTopicSummaryCount { readonly total: number; readonly totalExact: boolean; readonly truncated: boolean }
+export interface KnowledgeTopicSummary { readonly knowledgeBaseId: string; readonly schemaVersion: '0.4'; readonly revision: number; readonly theme: { readonly ref: string; readonly name: string; readonly aliases: readonly string[]; readonly description?: string; readonly definition?: string; readonly inclusionCriteria?: readonly string[]; readonly exclusionCriteria?: readonly string[]; readonly themeGroupRef?: string; readonly lifecycleStatus: string }; readonly counts: Readonly<Record<KnowledgeTopicScope, Readonly<Record<KnowledgeTopicKind, KnowledgeTopicSummaryCount>>>>; readonly connected: { readonly depth: 1 | 2; readonly totalExact: boolean; readonly truncated: boolean; readonly focusRefs: readonly string[] } }
+export interface KnowledgeTopicPathHop { readonly relationRef: string; readonly sourceRef: string; readonly targetRef: string }
+export interface KnowledgeTopicAssociationPath { readonly entityRef: string; readonly hops: readonly KnowledgeTopicPathHop[] }
+export interface KnowledgeTopicItem { readonly ref: string; readonly kind: KnowledgeTopicKind; readonly scope: KnowledgeTopicScope; readonly lifecycleStatus: string; readonly label: string; readonly summary?: string; readonly fields: Readonly<Record<string, string | number | boolean | null | readonly string[]>>; readonly date?: { readonly field: string; readonly value: string }; readonly associationPaths?: readonly KnowledgeTopicAssociationPath[] }
+export interface KnowledgeTopicPageInput { readonly themeRef: string; readonly kind: KnowledgeTopicKind; readonly scope?: KnowledgeTopicScope; readonly depth?: 1 | 2; readonly limit?: number; readonly cursor?: string; readonly filters?: KnowledgeTopicFilters }
+export interface KnowledgeTopicItemPage { readonly knowledgeBaseId: string; readonly schemaVersion: '0.4'; readonly revision: number; readonly themeRef: string; readonly kind: KnowledgeTopicKind; readonly scope: KnowledgeTopicScope; readonly depth: 1 | 2; readonly filters: { readonly lifecycle: KnowledgeTopicLifecycleFilter; readonly observationType?: 'metric' | 'estimate' | 'consensus'; readonly claimType?: string; readonly relationType?: string }; readonly items: readonly KnowledgeTopicItem[]; readonly total: number; readonly totalExact: boolean; readonly limit: number; readonly nextCursor?: string; readonly truncated: boolean; readonly focusRefs: readonly string[] }
 export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'completed_with_review' | 'blocked' | 'cancelled' | 'failed'
 export interface WorkflowRun { readonly runId: string; readonly workflowType: string; readonly objective: string; readonly status: WorkflowStatus; readonly currentStage?: string; readonly progressSummary?: string; readonly startedAt: string; readonly updatedAt: string; readonly completedAt?: string; readonly reviewCount?: number; readonly errorSummary?: string }
 export interface ReviewSummary { readonly reviewCaseId: string; readonly producerRunId: string; readonly producerType: string; readonly createdAt: string; readonly category: string; readonly actionability: string; readonly origin: string; readonly rationale: string; readonly proposalKind: string; readonly semanticType: string; readonly dependentProposalCount: number; readonly suggestedNextAction?: string; readonly status: string; readonly decisionState?: string }
@@ -178,6 +189,18 @@ export class RuntimeClient {
   async getKnowledgeObject(ref: string): Promise<KnowledgeObjectResponse> { return this.request(`/api/knowledge/object?${new URLSearchParams({ ref }).toString()}`) }
   async getKnowledgeDirectory(): Promise<KnowledgeDirectoryProjection> { return this.request('/api/knowledge/directory') }
   async getKnowledgeGraph(input: { readonly rootRef: string; readonly depth?: 1 | 2; readonly maxNodes?: number; readonly maxEdges?: number }): Promise<KnowledgeGraphProjection> { const params = new URLSearchParams({ rootRef: input.rootRef }); if (input.depth !== undefined) params.set('depth', String(input.depth)); if (input.maxNodes !== undefined) params.set('maxNodes', String(input.maxNodes)); if (input.maxEdges !== undefined) params.set('maxEdges', String(input.maxEdges)); return this.request(`/api/knowledge/graph?${params.toString()}`) }
+  async getTopicSummary(themeRef: string, depth: 1 | 2 = 1): Promise<KnowledgeTopicSummary> { if (!isSafeTopicThemeRef(themeRef)) throw new RuntimeClientError('invalid_input', 'A canonical InvestmentTheme ref is required', 400); return this.request(`/api/knowledge/topics/${encodeURIComponent(themeRef)}/summary?depth=${depth}`) }
+  async listTopicItems(input: KnowledgeTopicPageInput): Promise<KnowledgeTopicItemPage> {
+    if (!isSafeTopicThemeRef(input.themeRef)) throw new RuntimeClientError('invalid_input', 'A canonical InvestmentTheme ref is required', 400)
+    const params = new URLSearchParams({ kind: input.kind, scope: input.scope ?? 'direct', depth: String(input.depth ?? 1) })
+    if (input.limit !== undefined) params.set('limit', String(input.limit))
+    if (input.cursor !== undefined) params.set('cursor', input.cursor)
+    if (input.filters?.lifecycle !== undefined) params.set('lifecycle', input.filters.lifecycle)
+    if (input.filters?.observationType !== undefined) params.set('observationType', input.filters.observationType)
+    if (input.filters?.claimType !== undefined) params.set('claimType', input.filters.claimType)
+    if (input.filters?.relationType !== undefined) params.set('relationType', input.filters.relationType)
+    return this.request(`/api/knowledge/topics/${encodeURIComponent(input.themeRef)}/items?${params.toString()}`)
+  }
   async listReviews(): Promise<ReviewListResponse> { return this.request('/api/reviews') }
   async getReview(reviewCaseId: string): Promise<ReviewDetail> { return this.request(`/api/reviews/${encodeURIComponent(reviewCaseId)}`) }
   async listTheses(limit = 20): Promise<ThesisQueryListResult> { return this.request(`/api/knowledge/theses?limit=${encodeURIComponent(String(limit))}`) }
@@ -217,3 +240,5 @@ export class RuntimeClient {
   }
   private mutate<T>(path: string, value: unknown): Promise<T> { return this.request<T>(path, { method: 'POST', body: JSON.stringify(value) }, true) }
 }
+
+function isSafeTopicThemeRef(value: string): boolean { return /^entity:[A-Za-z0-9][A-Za-z0-9._:-]{0,240}$/.test(value) }

@@ -143,4 +143,21 @@ describe('RuntimeClient', () => {
     await client.bootstrap()
     await expect(client.confirmThesisCriterion({ preview: { knowledgeBaseId: 'kb', expectedKnowledgeBaseRevision: 2, thesisRef: 'thesis:t', conditionId: 'c', revision: 1, type: 'numeric_threshold', definitionVersion: 1, definition: { metricRef: 'm', operator: 'lt', threshold: 1, unit: 'x', period: 'y' }, targetClaimRefs: ['claim:c'], origin: { kind: 'human_rule' }, definitionHash: 'd', previewHash: 'p' }, previewHash: 'p', expectedKnowledgeBaseRevision: 2, workflowRunId: 'criterion-run-1' })).rejects.toMatchObject({ code: 'conflict', status: 409, message: 'Knowledge Base revision changed after criterion preparation' })
   })
+
+  it('encodes topic API paths and filters and uses the standard error path', async () => {
+    const paths: string[] = []
+    const summary = { knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 3, theme: { ref: 'entity:theme-a', name: 'A', aliases: [], lifecycleStatus: 'active' }, counts: {}, connected: { depth: 2, totalExact: true, truncated: false, focusRefs: [] } }
+    const page = { knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 3, themeRef: 'entity:theme-a', kind: 'claim', scope: 'connected', depth: 2, filters: { lifecycle: 'all', claimType: 'viewpoint' }, items: [], total: 0, totalExact: true, limit: 20, truncated: false, focusRefs: [] }
+    const client = new RuntimeClient(async (input) => { paths.push(String(input)); return json(paths.length === 1 ? summary : page) })
+    await client.getTopicSummary('entity:theme-a', 2)
+    await client.listTopicItems({ themeRef: 'entity:theme-a', kind: 'claim', scope: 'connected', depth: 2, limit: 20, cursor: 'cursor +/=secret', filters: { lifecycle: 'all', claimType: 'viewpoint' } })
+    expect(paths).toEqual([
+      '/api/knowledge/topics/entity%3Atheme-a/summary?depth=2',
+      '/api/knowledge/topics/entity%3Atheme-a/items?kind=claim&scope=connected&depth=2&limit=20&cursor=cursor+%2B%2F%3Dsecret&lifecycle=all&claimType=viewpoint',
+    ])
+    const rejected = new RuntimeClient(async () => json({ code: 'not_found', error: 'Theme not found' }, 404))
+    await expect(rejected.getTopicSummary('entity:missing')).rejects.toMatchObject({ code: 'not_found', status: 404, message: 'Theme not found' })
+    const unsafe = new RuntimeClient(async () => json({}))
+    await expect(unsafe.getTopicSummary('../private')).rejects.toMatchObject({ code: 'invalid_input', status: 400 })
+  })
 })
