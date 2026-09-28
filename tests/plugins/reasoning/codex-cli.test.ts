@@ -1,14 +1,38 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
 import { buildCodexCliInvocationArgs, buildCodexCliProcessInvocation, classifyCodexFailure, CODEX_CLI_LUNA_CONFIG, CodexCliReasoningExecutor, normalizeCodexOutputSchema, parseCodexCliJsonlFinalResponse, resolveCodexCliExecutable } from '../../../plugins/reasoning/codex-cli/executor.ts'
 import { PiReasoningExecutor } from '../../../plugins/reasoning/pi/executor.ts'
+import { buildCurationSchemaContext } from '../../../skills/knowledge-curation/model/schema-context.ts'
+import { buildExtractKnowledgeOutputContract, buildResolveSemanticCaseOutputContract, buildUnderstandAndPlanOutputContract } from '../../../skills/knowledge-curation/model/output-contracts.ts'
 
 const capabilities = { maxContextTokens: 4_000, maxOutputTokens: 1_000, structuredOutputSupport: true, maxConcurrency: 1 }
 const fixture = join(process.cwd(), 'tests/plugins/reasoning/fixtures/fake-reasoning-host.mjs')
+
+async function runFakeCodexCompletion(input: { readonly output: unknown; readonly operation?: string; readonly outputContract: unknown }): Promise<{ readonly result: string; readonly prompt: string; readonly schema: Record<string, any> }> {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-codex-structured-transport-'))
+  try {
+    const hostPath = join(root, 'fake-codex.mjs')
+    const promptPath = join(root, 'captured-prompt.json')
+    const schemaPath = join(root, 'captured-schema.json')
+    const source = [
+      "import { readFileSync, writeFileSync } from 'node:fs'",
+      "let input = ''; for await (const chunk of process.stdin) input += chunk",
+      `writeFileSync(${JSON.stringify(promptPath)}, input, 'utf8')`,
+      "const flag = process.argv.indexOf('--output-schema')",
+      `writeFileSync(${JSON.stringify(schemaPath)}, readFileSync(process.argv[flag + 1]))`,
+      "const outputFlag = process.argv.indexOf('-o')",
+      `writeFileSync(process.argv[outputFlag + 1], ${JSON.stringify(JSON.stringify(input.output))}, 'utf8')`,
+    ].join('\n')
+    await writeFile(hostPath, source, 'utf8')
+    const adapter = new CodexCliReasoningExecutor({ capabilities, executable: process.execPath, tempRoot: root, commandPrefix: [hostPath] })
+    const result = await adapter.complete(undefined, { systemPrompt: 'Synthetic contract test.', messages: [] }, { signal: new AbortController().signal, maxTokens: 1_000, metadata: { operation: input.operation ?? 'extractKnowledge' }, operationId: 'synthetic-contract-test', outputContract: input.outputContract })
+    return { result, prompt: await readFile(promptPath, 'utf8'), schema: JSON.parse(await readFile(schemaPath, 'utf8')) as Record<string, any> }
+  } finally { await rm(root, { recursive: true, force: true }) }
+}
 
 test('Codex resolver honors explicit paths before environment, PATH, and AppData', async () => {
   const root = await mkdtemp(join(tmpdir(), 'rhl-codex-resolver-'))
@@ -122,6 +146,103 @@ test('Codex schema normalizer preserves the Schema 0.4 Industry structured value
   assert.equal(structured.additionalProperties, false)
   assert.deepEqual(Object.keys(structured.properties).sort(), ['comparator', 'fiscalPeriod', 'metric', 'period', 'semanticKey', 'unit', 'value'])
   assert.deepEqual(structured.properties.comparator.enum, ['eq', 'gt', 'gte', 'lt', 'lte', 'approx'])
+})
+
+test('Codex normalizer unwraps the strict Knowledge Curation contracts and rejects malformed wrappers', () => {
+  const contracts = [
+    buildUnderstandAndPlanOutputContract(buildCurationSchemaContext('understand_and_plan')),
+    buildExtractKnowledgeOutputContract(buildCurationSchemaContext('knowledge_extraction')),
+    buildResolveSemanticCaseOutputContract({ caseKind: 'entity_identity', allowedOutcomes: ['bind_existing', 'create_new', 'review'], existingAliases: ['Entity A'] }),
+  ]
+  for (const contract of contracts) {
+    const normalized = normalizeCodexOutputSchema(contract)
+    assert.equal(normalized.schema.type, 'object')
+    assert.equal(normalized.schema.additionalProperties, false)
+    assert.equal(JSON.stringify(normalized.schema).includes('"format":"json"'), false)
+  }
+  const schema = { type: 'object', additionalProperties: false, properties: { ok: { type: 'string' } } }
+  const wrapper = { format: 'json', root: 'object', additionalProperties: false, schema }
+  assert.throws(() => normalizeCodexOutputSchema({ ...wrapper, proposalRules: {} }), /wrapper must contain only/)
+  assert.throws(() => normalizeCodexOutputSchema({ ...wrapper, root: 'array' }), /must declare JSON object output/)
+  assert.throws(() => normalizeCodexOutputSchema({ ...wrapper, additionalProperties: true }), /must declare JSON object output/)
+  assert.throws(() => normalizeCodexOutputSchema({ format: 'json', root: 'object', additionalProperties: false }), /wrapper must contain only/)
+  assert.throws(() => normalizeCodexOutputSchema({ ...wrapper, schema: { type: 'object', properties: {} } }), /must preserve its declared object root constraints/)
+})
+
+test('Codex curation wrapper lowers only finite primitive type unions and preserves sibling constraints', () => {
+  const schema = {
+    type: 'object', additionalProperties: false,
+    properties: {
+      nullable: { type: ['string', 'null'], description: 'Optional text.' },
+      scalar: { type: ['string', 'number', 'boolean', 'null'], description: 'Supported scalar value.' },
+    },
+  }
+  const wrapped = { format: 'json', root: 'object', additionalProperties: false, schema }
+  const normalized = normalizeCodexOutputSchema(wrapped).schema as any
+  assert.deepEqual(normalized.properties.nullable, { anyOf: [{ type: 'string' }, { type: 'null' }], description: 'Optional text.' })
+  assert.deepEqual(normalized.properties.scalar, { anyOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }, { type: 'null' }], description: 'Supported scalar value.' })
+  assert.deepEqual(schema.properties.nullable.type, ['string', 'null'])
+  const causeIncludes = (text: string) => (error: unknown): boolean => error instanceof Error && 'cause' in error && (error as { cause?: unknown }).cause instanceof Error && ((error as { cause: Error }).cause.message.includes(text))
+  for (const type of [[], ['string', 'string'], ['object', 'null']]) {
+    assert.throws(() => normalizeCodexOutputSchema({ ...wrapped, schema: { ...schema, properties: { value: { type } } } }), causeIncludes('unsupported type union'))
+  }
+  assert.throws(() => normalizeCodexOutputSchema({ ...wrapped, schema: { ...schema, properties: { value: { type: ['string', 'null'], anyOf: [{ type: 'string' }] } } } }), causeIncludes('unsupported combination'))
+  assert.throws(() => normalizeCodexOutputSchema({ type: ['string', 'null'] }), causeIncludes('unsupported type union'))
+})
+
+test('Codex extraction transport round-trips open Knowledge Curation objects before Skill validation', async () => {
+  const outputContract = buildExtractKnowledgeOutputContract(buildCurationSchemaContext('knowledge_extraction'))
+  const encoded = {
+    entities: [{ candidateId: 'synthetic-entity', semanticFields: '{"ticker":"T001","exchange":"SSE","attributes":{"layer":2}}' }],
+    relations: [{ candidateId: 'synthetic-relation', attributes: '{"importance":"material","rank":3}' }],
+    claims: [],
+  }
+  const result = await runFakeCodexCompletion({ output: encoded, outputContract })
+  const decoded = JSON.parse(result.result)
+  assert.deepEqual(decoded.entities[0].semanticFields, { ticker: 'T001', exchange: 'SSE', attributes: { layer: 2 } })
+  assert.deepEqual(decoded.relations[0].attributes, { importance: 'material', rank: 3 })
+  assert.equal(result.schema.properties.entities.items.properties.semanticFields.type, 'string')
+  assert.equal(result.schema.properties.relations.items.properties.attributes.type, 'string')
+  const claimProperties = result.schema.properties.claims.items.properties
+  assert.ok(Array.isArray(claimProperties.temporal.anyOf), 'temporal nullable oneOf is lowered only in the extraction transport schema')
+  assert.ok(Array.isArray(claimProperties.structuredValue.anyOf), 'structuredValue nullable oneOf is lowered only in the extraction transport schema')
+  const structuredValueObject = claimProperties.structuredValue.anyOf.find((branch: any) => branch.type === 'object')
+  assert.ok(Array.isArray(structuredValueObject.properties.comparator.anyOf), 'comparator nullable oneOf is lowered only in the extraction transport schema')
+  const original = normalizeCodexOutputSchema(outputContract).schema as any
+  assert.ok(Array.isArray(original.properties.claims.items.properties.temporal.oneOf), 'direct normalizer keeps source oneOf unchanged')
+  const prompt = JSON.parse(result.prompt)
+  assert.match(prompt.systemPrompt, /complete JSON objects encoded as JSON strings/u)
+  assert.equal(JSON.stringify(prompt).includes('Synthetic contract test.'), true)
+})
+
+test('Codex extraction transport rejects overlapping and unsupported nullable oneOf branches', async () => {
+  const outputContract = buildExtractKnowledgeOutputContract(buildCurationSchemaContext('knowledge_extraction'))
+  const malformed = structuredClone(outputContract) as any
+  const claims = malformed.schema.properties.claims.items.properties
+  claims.temporal.oneOf[0] = { type: ['object', 'null'] }
+  await assert.rejects(
+    () => runFakeCodexCompletion({ output: { entities: [], relations: [], claims: [] }, outputContract: malformed }),
+    (error: unknown) => error instanceof Error && 'code' in error && (error as { code?: unknown }).code === 'reasoning_configuration_invalid',
+  )
+  const unsupported = structuredClone(outputContract) as any
+  unsupported.schema.properties.claims.items.properties.temporal.description = 'nullable wrapper metadata is unsupported'
+  await assert.rejects(
+    () => runFakeCodexCompletion({ output: { entities: [], relations: [], claims: [] }, outputContract: unsupported }),
+    (error: unknown) => error instanceof Error && 'code' in error && (error as { code?: unknown }).code === 'reasoning_configuration_invalid',
+  )
+})
+
+test('Codex extraction transport rejects malformed, non-object, and omitted bridge fields', async () => {
+  const outputContract = buildExtractKnowledgeOutputContract(buildCurationSchemaContext('knowledge_extraction'))
+  const base = { entities: [{ candidateId: 'synthetic-entity', semanticFields: '{}' }], relations: [{ candidateId: 'synthetic-relation', attributes: '{}' }], claims: [] }
+  for (const output of [
+    { ...base, entities: [{ ...base.entities[0], semanticFields: '{bad' }] },
+    { ...base, entities: [{ ...base.entities[0], semanticFields: '[]' }] },
+    { ...base, relations: [{ ...base.relations[0], attributes: 'null' }] },
+    { ...base, entities: [{ candidateId: 'synthetic-entity' }] },
+  ]) {
+    await assert.rejects(() => runFakeCodexCompletion({ output, outputContract }), (error: unknown) => error instanceof Error && 'code' in error && (error as { code?: unknown }).code === 'reasoning_output_invalid')
+  }
 })
 
 test('Codex schema normalizer supports dynamic enum, const and oneOf contracts and fails closed for unsafe inputs', () => {
@@ -290,6 +411,7 @@ test('Codex CLI JSONL parser keeps only the final assistant response', () => {
 test('Codex failure classifier safely distinguishes synthetic stdout and stderr categories', () => {
   const cases = [
     [{ type: 'error', error: { code: 'invalid_schema' } }, '', 'structured_output_configuration'],
+    [{ type: 'error', error: { code: 'invalid_json_schema' } }, '', 'structured_output_configuration'],
     [{ type: 'turn.failed', error: { code: 'authentication_required' } }, '', 'authentication_or_account'],
     [{ type: 'error', error: { code: 'model_unavailable' } }, '', 'model_unavailable'],
     [null, 'quota exceeded for fixture', 'rate_limit_or_quota'],

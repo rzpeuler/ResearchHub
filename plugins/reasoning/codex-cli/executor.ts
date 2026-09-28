@@ -23,6 +23,103 @@ const RESEARCHHUB_METADATA_KEYS = new Set(['name', 'bounds', 'allowlists', 'prop
 const CODEX_UNSUPPORTED_GENERATION_KEYS = new Set(['minLength', 'maxLength', 'pattern', 'minItems', 'maxItems', 'uniqueItems', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'])
 const CODEX_SCHEMA_KEYS = new Set(['type', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'const', 'oneOf', 'anyOf', 'description'])
 const JSON_SCHEMA_TYPES = new Set(['object', 'array', 'string', 'number', 'integer', 'boolean', 'null'])
+const CURATION_EXTRACTION_TRANSPORT_INSTRUCTION = 'Codex transport bridge: return entities[].semanticFields and relations[].attributes as complete JSON objects encoded as JSON strings. Do not omit, paraphrase, or drop any fields. Use the literal string "{}" when the source supports an empty object.'
+
+interface CurationExtractionTransport { readonly outputContract: unknown; readonly instruction: string }
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function isExactStructuredOutputWrapper(value: unknown): value is Record<string, unknown> & { schema: Record<string, unknown> } {
+  if (!isPlainRecord(value)) return false
+  const keys = Reflect.ownKeys(value)
+  return keys.length === 4 && keys.every((key) => typeof key === 'string' && ['format', 'root', 'additionalProperties', 'schema'].includes(key)) && value.format === 'json' && value.root === 'object' && value.additionalProperties === false && isPlainRecord(value.schema)
+}
+
+function isNullableDisjointOneOf(value: unknown): value is Record<string, unknown> & { oneOf: readonly [Record<string, unknown>, Record<string, unknown>] } {
+  if (!isPlainRecord(value) || Object.keys(value).length !== 1 || !Array.isArray(value.oneOf) || value.oneOf.length !== 2) return false
+  const [left, right] = value.oneOf
+  if (!isPlainRecord(left) || !isPlainRecord(right)) return false
+  const isNull = (branch: Record<string, unknown>) => Object.keys(branch).length === 1 && branch.type === 'null'
+  const nullable = isNull(left) ? right : isNull(right) ? left : undefined
+  return nullable !== undefined && typeof nullable.type === 'string' && nullable.type !== 'null' && JSON_SCHEMA_TYPES.has(nullable.type)
+}
+
+function lowerNullableOneOf(owner: Record<string, unknown>, key: string, path: string): void {
+  const value = owner[key]
+  if (!isNullableDisjointOneOf(value)) invalid(`Knowledge Curation extractKnowledge has an unsupported nullable union at ${path}`)
+  const { oneOf, ...rest } = value
+  owner[key] = { ...rest, anyOf: oneOf }
+}
+
+function curationExtractionTransport(operation: string, outputContract: unknown): CurationExtractionTransport | undefined {
+  if (operation !== 'extractKnowledge' || !isExactStructuredOutputWrapper(outputContract)) return undefined
+  const schema = outputContract.schema
+  if (schema.type !== 'object' || schema.additionalProperties !== false || !isPlainRecord(schema.properties)) return undefined
+  const rootProperties = schema.properties
+  if (Object.keys(rootProperties).sort().join('|') !== 'claims|entities|relations') return undefined
+  const entityArray = rootProperties.entities
+  const relationArray = rootProperties.relations
+  const claimArray = rootProperties.claims
+  if (!isPlainRecord(entityArray) || entityArray.type !== 'array' || !isPlainRecord(entityArray.items) || !isPlainRecord(entityArray.items.properties)) invalid('Knowledge Curation extractKnowledge contract has an invalid entities schema')
+  if (!isPlainRecord(relationArray) || relationArray.type !== 'array' || !isPlainRecord(relationArray.items) || !isPlainRecord(relationArray.items.properties)) invalid('Knowledge Curation extractKnowledge contract has an invalid relations schema')
+  if (!isPlainRecord(claimArray) || claimArray.type !== 'array' || !isPlainRecord(claimArray.items) || !isPlainRecord(claimArray.items.properties)) invalid('Knowledge Curation extractKnowledge contract has an invalid claims schema')
+  const entityProperties = entityArray.items.properties
+  const relationProperties = relationArray.items.properties
+  const openObject = (value: unknown): value is Record<string, unknown> => isPlainRecord(value) && Object.keys(value).length === 1 && value.type === 'object'
+  if (!openObject(entityProperties.semanticFields) || !openObject(relationProperties.attributes)) invalid('Knowledge Curation extractKnowledge contract changed the expected open-object transport fields')
+  const transportContract = structuredClone(outputContract) as Record<string, unknown>
+  const transportedSchema = transportContract.schema as Record<string, unknown>
+  const transportedRoot = transportedSchema.properties as Record<string, unknown>
+  const transportedEntities = transportedRoot.entities as Record<string, unknown>
+  const transportedRelations = transportedRoot.relations as Record<string, unknown>
+  const transportedEntityProperties = (transportedEntities.items as Record<string, unknown>).properties as Record<string, unknown>
+  const transportedRelationProperties = (transportedRelations.items as Record<string, unknown>).properties as Record<string, unknown>
+  const transportedClaims = transportedRoot.claims as Record<string, unknown>
+  const transportedClaimProperties = (transportedClaims.items as Record<string, unknown>).properties as Record<string, unknown>
+  transportedEntityProperties.semanticFields = { type: 'string', description: 'JSON-encoded object; decoded by the ResearchHub adapter before Knowledge Curation validation.' }
+  transportedRelationProperties.attributes = { type: 'string', description: 'JSON-encoded object; decoded by the ResearchHub adapter before Knowledge Curation validation.' }
+  lowerNullableOneOf(transportedClaimProperties, 'temporal', 'claims[].temporal')
+  lowerNullableOneOf(transportedClaimProperties, 'structuredValue', 'claims[].structuredValue')
+  const transportedStructuredValueUnion = transportedClaimProperties.structuredValue as Record<string, unknown>
+  const structuredValueBranches = transportedStructuredValueUnion.anyOf as unknown[]
+  const structuredValueObject = structuredValueBranches.find((item) => isPlainRecord(item) && item.type === 'object') as Record<string, unknown> | undefined
+  if (structuredValueObject === undefined || !isPlainRecord(structuredValueObject.properties)) invalid('Knowledge Curation extractKnowledge structuredValue nullable union changed unexpectedly')
+  lowerNullableOneOf(structuredValueObject.properties, 'comparator', 'claims[].structuredValue.comparator')
+  return { outputContract: transportContract, instruction: CURATION_EXTRACTION_TRANSPORT_INSTRUCTION }
+}
+
+function decodeCurationObjectField(value: unknown, path: string, operation: ReasoningOperation, operationId: string): Record<string, unknown> {
+  if (typeof value !== 'string') throw new ReasoningExecutorError('reasoning_output_invalid', `Codex extraction field ${path} must be a JSON-encoded object string`, { operation, operationId })
+  let parsed: unknown
+  try { parsed = JSON.parse(value) } catch {
+    throw new ReasoningExecutorError('reasoning_output_invalid', `Codex extraction field ${path} contains invalid JSON`, { operation, operationId })
+  }
+  if (!isPlainRecord(parsed)) throw new ReasoningExecutorError('reasoning_output_invalid', `Codex extraction field ${path} must decode to a JSON object`, { operation, operationId })
+  return parsed
+}
+
+function decodeCurationExtractionOutput(output: string, operation: ReasoningOperation, operationId: string): string {
+  let parsed: unknown
+  try { parsed = JSON.parse(output) } catch {
+    throw new ReasoningExecutorError('reasoning_output_invalid', 'Codex extraction result is not valid JSON', { operation, operationId })
+  }
+  if (!isPlainRecord(parsed) || !Array.isArray(parsed.entities) || !Array.isArray(parsed.relations)) {
+    throw new ReasoningExecutorError('reasoning_output_invalid', 'Codex extraction result must contain entity and relation arrays', { operation, operationId })
+  }
+  for (const [index, candidate] of parsed.entities.entries()) {
+    if (!isPlainRecord(candidate) || !Object.prototype.hasOwnProperty.call(candidate, 'semanticFields')) throw new ReasoningExecutorError('reasoning_output_invalid', `Codex extraction entity ${index} omitted semanticFields`, { operation, operationId })
+    candidate.semanticFields = decodeCurationObjectField(candidate.semanticFields, `entities[${index}].semanticFields`, operation, operationId)
+  }
+  for (const [index, candidate] of parsed.relations.entries()) {
+    if (!isPlainRecord(candidate) || !Object.prototype.hasOwnProperty.call(candidate, 'attributes')) throw new ReasoningExecutorError('reasoning_output_invalid', `Codex extraction relation ${index} omitted attributes`, { operation, operationId })
+    candidate.attributes = decodeCurationObjectField(candidate.attributes, `relations[${index}].attributes`, operation, operationId)
+  }
+  return JSON.stringify(parsed)
+}
 
 export type CodexCliReasoningEffort = (typeof CODEX_REASONING_EFFORTS)[number]
 
@@ -202,12 +299,13 @@ export class CodexCliReasoningExecutor {
   async complete(_model: unknown, context: Context, options: PiCompletionOptions): Promise<string> {
     const operation = options.metadata.operation as ReasoningOperation
     const operationId = options.operationId || randomUUID()
+    const curationTransport = curationExtractionTransport(operation, options.outputContract)
     const directory = await mkdtemp(join(this.tempRoot, 'researchhub-codex-cli-'))
     const outputPath = join(directory, 'final-output.txt')
     const schemaPath = join(directory, 'output-schema.json')
-    const prompt = JSON.stringify({ systemPrompt: context.systemPrompt, messages: context.messages })
+    const prompt = JSON.stringify({ systemPrompt: curationTransport === undefined ? context.systemPrompt : `${context.systemPrompt}\n\n${curationTransport.instruction}`, messages: context.messages })
     try {
-      const normalized = normalizeCodexOutputSchema(options.outputContract)
+      const normalized = normalizeCodexOutputSchema(curationTransport?.outputContract ?? options.outputContract)
       this.schemaMetadata = { structuredOutputSchemaFingerprint: normalized.fingerprint, structuredOutputSchemaBytes: normalized.bytes }
       await writeFile(schemaPath, normalized.serialized, { encoding: 'utf8', flag: 'wx' })
       const args = buildCodexCliInvocationArgs({ commandPrefix: this.commandPrefix, model: this.model, reasoningEffort: this.reasoningEffort, invocationDirectory: directory, outputPath, schemaPath })
@@ -222,6 +320,8 @@ export class CodexCliReasoningExecutor {
       }
       if (Buffer.byteLength(output, 'utf8') > this.maxOutputChars) throw tooLarge(operation, operationId)
       if (!output.trim()) throw new ReasoningExecutorError('reasoning_output_invalid', 'Codex CLI returned an empty final response', { operation, operationId })
+      if (curationTransport !== undefined) output = decodeCurationExtractionOutput(output, operation, operationId)
+      if (Buffer.byteLength(output, 'utf8') > this.maxOutputChars) throw tooLarge(operation, operationId)
       this.lastDiagnosticsValue = { ...this.lastDiagnosticsValue, exitState: 'normal_exit', semanticResultAvailable: true }
       return output
     } finally { await rm(directory, { recursive: true, force: true }) }
@@ -270,6 +370,33 @@ export interface CodexOutputSchema {
 }
 
 export function normalizeCodexOutputSchema(outputContract: unknown): CodexOutputSchema {
+  let schemaContract = outputContract
+  let structuredOutputWrapper = false
+  if (outputContract !== null && typeof outputContract === 'object' && !Array.isArray(outputContract)) {
+    const wrapper = outputContract as Record<string, unknown>
+    const hasWrapperField = Object.prototype.hasOwnProperty.call(wrapper, 'format') || Object.prototype.hasOwnProperty.call(wrapper, 'root') || Object.prototype.hasOwnProperty.call(wrapper, 'schema')
+    if (hasWrapperField) {
+      const exactKeys = ['additionalProperties', 'format', 'root', 'schema']
+      const prototype = Object.getPrototypeOf(outputContract)
+      const ownKeys = Reflect.ownKeys(outputContract)
+      if ((prototype !== Object.prototype && prototype !== null) || ownKeys.length !== exactKeys.length || ownKeys.some((key) => typeof key !== 'string' || !exactKeys.includes(key))) {
+        invalid('ResearchHub structured output wrapper must contain only format, root, additionalProperties, and schema')
+      }
+      if (wrapper.format !== 'json' || wrapper.root !== 'object' || wrapper.additionalProperties !== false) {
+        invalid('ResearchHub structured output wrapper must declare JSON object output with additionalProperties disabled')
+      }
+      const innerSchema = wrapper.schema
+      if (innerSchema === null || typeof innerSchema !== 'object' || Array.isArray(innerSchema) || (Object.getPrototypeOf(innerSchema) !== Object.prototype && Object.getPrototypeOf(innerSchema) !== null)) {
+        invalid('ResearchHub structured output wrapper schema must be a plain object')
+      }
+      const inner = innerSchema as Record<string, unknown>
+      if (inner.type !== 'object' || inner.additionalProperties !== false) {
+        invalid('ResearchHub structured output wrapper schema must preserve its declared object root constraints')
+      }
+      schemaContract = innerSchema
+      structuredOutputWrapper = true
+    }
+  }
   const removed = new Set<string>()
   let strengthenedObjectCount = 0
   const strengthenedObjectPaths: string[] = []
@@ -309,12 +436,25 @@ export function normalizeCodexOutputSchema(outputContract: unknown): CodexOutput
     if (prototype !== Object.prototype && prototype !== null) throw new Error(`outputContract contains a non-plain object at ${path}`)
     const sourceOneOf = (value as Record<string, unknown>).oneOf
     const sourceCanConvertOneOf = Array.isArray(sourceOneOf) && sourceOneOf.length > 0 && sourceOneOf.every(isGuardedKindVariant) && new Set(sourceOneOf.map((variant) => ((variant as Record<string, unknown>).properties as Record<string, unknown>).kind as Record<string, unknown>).map((kind) => kind.const)).size === sourceOneOf.length
+    const sourceTypeUnion = (value as Record<string, unknown>).type
+    if (Array.isArray(sourceTypeUnion)) {
+      const primitiveTypes = new Set(['string', 'number', 'integer', 'boolean', 'null'])
+      const unionKeys = Object.keys(value as Record<string, unknown>)
+      if (!structuredOutputWrapper || sourceTypeUnion.length === 0 || sourceTypeUnion.some((type) => typeof type !== 'string' || !primitiveTypes.has(type)) || new Set(sourceTypeUnion).size !== sourceTypeUnion.length) {
+        throw new Error(`outputContract has an unsupported type union at ${path}`)
+      }
+      if (unionKeys.some((key) => ['anyOf', 'oneOf', 'const', 'enum', 'items', 'properties', 'additionalProperties', 'required'].includes(key))) {
+        throw new Error(`outputContract type union has an unsupported combination at ${path}`)
+      }
+    }
     const result: Record<string, unknown> = {}
     for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
       if (RESEARCHHUB_METADATA_KEYS.has(key)) { removed.add(key); continue }
       if (CODEX_UNSUPPORTED_GENERATION_KEYS.has(key)) { removed.add(key); continue }
       if (!CODEX_SCHEMA_KEYS.has(key)) throw new Error(`outputContract contains unsupported schema keyword ${key}`)
-      if (key === 'properties') {
+      if (key === 'type' && Array.isArray(child)) {
+        result.anyOf = child.map((type) => ({ type }))
+      } else if (key === 'properties') {
         if (child === null || typeof child !== 'object' || Array.isArray(child)) throw new Error(`outputContract properties must be an object at ${path}`)
         result[key] = Object.fromEntries(Object.entries(child as Record<string, unknown>).map(([property, schema]) => [property, convert(schema, `${path}.properties.${property}`)]))
       } else if (key === 'const') {
@@ -354,7 +494,7 @@ export function normalizeCodexOutputSchema(outputContract: unknown): CodexOutput
     return result
   }
   let schema: unknown
-  try { schema = convert(outputContract, '$') } catch (error) { throw new ReasoningExecutorError('reasoning_configuration_invalid', 'ResearchHub output contract cannot be converted to Codex structured output schema', { cause: error }) }
+  try { schema = convert(schemaContract, '$') } catch (error) { throw new ReasoningExecutorError('reasoning_configuration_invalid', 'ResearchHub output contract cannot be converted to Codex structured output schema', { cause: error }) }
   if (schema === null || typeof schema !== 'object' || Array.isArray(schema) || Object.keys(schema as object).length === 0) invalid('ResearchHub output contract must convert to one JSON Schema object')
   const root = schema as Record<string, unknown>
   if (typeof root.type !== 'string' && root.oneOf === undefined && root.anyOf === undefined && root.enum === undefined && root.const === undefined) invalid('Codex structured output schema must be rooted in one JSON value')
@@ -418,8 +558,17 @@ export function classifyCodexFailure(stdout: string, stderr: string): CodexFailu
       const value = JSON.parse(line) as Record<string, unknown>
       const type = typeof value.type === 'string' ? value.type.slice(0, 64) : undefined
       const error = value.error && typeof value.error === 'object' ? value.error as Record<string, unknown> : value
-      const code = typeof error.code === 'string' && SAFE_CODE.test(error.code) ? error.code : undefined
-      const hint = `${type ?? ''} ${code ?? ''}`.toLowerCase()
+      let nestedError: Record<string, unknown> | undefined
+      if (typeof error.message === 'string') {
+        try {
+          const nested = JSON.parse(error.message) as Record<string, unknown>
+          if (nested.error && typeof nested.error === 'object') nestedError = nested.error as Record<string, unknown>
+        } catch { /* ordinary event messages need no nested-envelope handling */ }
+      }
+      const candidateCode = typeof error.code === 'string' ? error.code : typeof nestedError?.code === 'string' ? nestedError.code : undefined
+      const code = candidateCode !== undefined && SAFE_CODE.test(candidateCode) ? candidateCode : undefined
+      const message = [error.message, nestedError?.message].filter((item): item is string => typeof item === 'string').join(' ')
+      const hint = `${type ?? ''} ${typeof error.type === 'string' ? error.type : ''} ${code ?? ''} ${message}`.toLowerCase()
       const failureClass = classifySignalText(hint)
       if (failureClass) signals.push({ failureClass, structuredEventType: type, safeErrorCode: code })
     } catch { /* malformed JSONL is deliberately ignored; stderr remains authoritative */ }
@@ -433,7 +582,7 @@ export function classifyCodexFailure(stdout: string, stderr: string): CodexFailu
 function tooLarge(operation: ReasoningOperation, operationId: string): ReasoningExecutorError { return new ReasoningExecutorError('reasoning_output_too_large', 'Codex CLI output exceeded the configured limit', { operation, operationId }) }
 function invalid(message: string): never { throw new ReasoningExecutorError('reasoning_configuration_invalid', message) }
 function classifySignalText(value: string): ReasoningFailureClass | undefined {
-  if (/structured[_ -]?output|output[- ]schema|json schema|(?:invalid|unsupported|reject|config).*schema|schema.*(?:invalid|unsupported|reject|config)/iu.test(value)) return 'structured_output_configuration'
+  if (/invalid[_ -]?json[_ -]?schema|structured[_ -]?output|output[- ]schema|json schema|(?:invalid|unsupported|reject|config).*schema|schema.*(?:invalid|unsupported|reject|config)/iu.test(value)) return 'structured_output_configuration'
   if (/auth|login|sign.?in|account|credential|otp/iu.test(value)) return 'authentication_or_account'
   if (/model.*(?:unavailable|not found|unknown)|model_unavailable/iu.test(value)) return 'model_unavailable'
   if (/rate.?limit|quota|too many requests/iu.test(value)) return 'rate_limit_or_quota'
