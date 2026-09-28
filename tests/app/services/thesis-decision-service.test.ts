@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdtemp, rm, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import test from 'node:test'
 import { KnowledgeProductionGateway } from '../../../knowledge/production/gateway.ts'
+import { ThesisCriterionService } from '../../../app/services/thesis-criterion-service.ts'
 import { loadReviewDecision } from '../../../knowledge/review/decision-store.ts'
 import { persistReviewCases } from '../../../knowledge/review/store.ts'
 import { KnowledgeBaseRegistry } from '../../../knowledge/registry/registry.ts'
@@ -25,6 +27,13 @@ async function fixture(relation: 'weakens' | 'contradicts' = 'weakens', invalida
   await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: `kb-thesis-decision-${Date.now()}`, now: '2026-09-01T00:00:00.000Z' })
   const registry = new KnowledgeBaseRegistry()
   const gateway = new KnowledgeProductionGateway(registry)
+  const numericQuote = 'Revenue 1000 CNY FY2026'
+  const numericLocator = `quote:${Buffer.from(numericQuote, 'utf8').toString('base64url')}`
+  const evidenceSource: NormalizedResearchSource = invalidationCase ? {
+    ...source,
+    candidate: { ...source.candidate, title: 'Annual filing', publishedAt: '2026-09-11T00:00:00.000Z' },
+    title: 'Annual filing', content: numericQuote, contentHash: sha256(numericQuote), rawBytes: new TextEncoder().encode(numericQuote),
+  } : source
   const seeded = await gateway.submit({
     handle: await registry.mount(root), producerType: 'fixture_seed', producerRunId: 'thesis-seed',
     schemaProfile: { schemaVersion: '0.4', storageFormatVersion: '1', requiresRawProvenance: true },
@@ -32,31 +41,36 @@ async function fixture(relation: 'weakens' | 'contradicts' = 'weakens', invalida
     proposals: [
       { proposalId: 'root-claim', kind: 'claim', claimType: 'viewpoint', subjectKey: 'company', statement: 'Margins expand as utilization improves.', sourceCandidateIds: ['decision-evidence'] },
       { proposalId: 'evidence-claim', kind: 'claim', claimType: 'fact', subjectKey: 'company', statement: 'Gross margin declined in the latest quarter.', sourceCandidateIds: ['decision-evidence'] },
+      ...(invalidationCase ? [{ proposalId: 'kill-evidence', kind: 'observation' as const, observationType: 'metric' as const, subjectKey: 'company', metricRef: 'metric:revenue', value: 1000, unit: 'CNY', period: 'FY2026', sourceCandidateIds: ['decision-evidence'] }] : []),
       { proposalId: 'thesis', kind: 'thesis', subjectKey: 'company', thesisTitle: 'Margin recovery', statement: 'Issuer margins recover.', thesisStatus: 'active' },
       { proposalId: 'membership', kind: 'reasoning_edge', sourceProposalId: 'root-claim', targetKey: 'thesis', edgeType: 'qualifies' },
     ],
-    evidenceBindings: [{ localSourceId: 'decision-evidence', source }], asOf: '2026-09-11T00:00:00.000Z', now: () => '2026-09-01T00:00:00.000Z',
+    evidenceBindings: [{ localSourceId: 'decision-evidence', source: evidenceSource, ...(invalidationCase ? { locator: numericLocator } : {}) }], asOf: '2026-09-11T00:00:00.000Z', now: () => '2026-09-01T00:00:00.000Z',
   })
   assert.equal(seeded.status, 'committed', seeded.errors.join('; '))
-  const handle = await registry.mount(root)
-  const assets = await readCanonicalV04Assets(root)
   const rootClaimRef = seeded.claimRefsByProposalId['root-claim']!
-  const evidenceRef = seeded.claimRefsByProposalId['evidence-claim']!
+  const evidenceRef = invalidationCase ? seeded.observationRefsByProposalId?.['kill-evidence']! : seeded.claimRefsByProposalId['evidence-claim']!
   const thesisRef = seeded.thesisRefsByProposalId?.thesis as `thesis:${string}`
-  const sourceAsset = assets.objects.find((item) => item.kind === 'source')!.value as { id: `source:${string}`; rawRefs: readonly `raw-sha256-${string}`[] }
-  const rawRef = sourceAsset.rawRefs[0]!
-  const adapterResult = await runThesisRefreshAdapter({ assets, handle, thesisRef, currentAsOf: at, evidenceBindings: [{ evidenceRef, relation, targetClaimRefs: [rootClaimRef], sourceBindings: [{ sourceRef: sourceAsset.id, rawRef }] }] })
+  if (invalidationCase) {
+    const criterionService = new ThesisCriterionService({ mountedKnowledgeBaseRoot: root, now: () => '2026-09-01T00:00:00.000Z' })
+    const preview = await criterionService.prepare({ thesisRef, conditionId: 'kill-margin', type: 'numeric_threshold', definitionVersion: 1, definition: { metricRef: 'metric:revenue', operator: 'lt', threshold: 1500, unit: 'CNY', period: 'FY2026' }, targetClaimRefs: [rootClaimRef], origin: { kind: 'human_rule' } })
+    await criterionService.confirm({ preview, previewHash: preview.previewHash, expectedKnowledgeBaseRevision: preview.expectedKnowledgeBaseRevision, workflowRunId: 'decision-test-criterion' })
+  }
+  const currentHandle = await new KnowledgeBaseRegistry().mount(root)
+  const currentAssets = await readCanonicalV04Assets(root)
+  const sourceNow = currentAssets.objects.find((item) => item.kind === 'source')!.value as { id: `source:${string}`; rawRefs: readonly `raw-sha256-${string}`[] }
+  const currentRawRef = sourceNow.rawRefs[0]!
+  const adapterResult = await runThesisRefreshAdapter({ assets: currentAssets, handle: currentHandle, thesisRef, currentAsOf: at, evidenceBindings: [{ evidenceRef, relation: invalidationCase ? 'context' : relation, targetClaimRefs: [rootClaimRef], sourceBindings: [{ sourceRef: sourceNow.id, rawRef: currentRawRef }] }] })
   assert.equal(adapterResult.status, 'completed', adapterResult.diagnostics.join('; '))
-  const built = buildThesisRefreshReviewCases({ adapterResult, assets, knowledgeBaseId: handle.knowledgeBaseId, producerRunId: 'thesis-review-run', knowledgeBaseRevisionAtCreation: handle.revision, createdAt: at })
+  const built = buildThesisRefreshReviewCases({ adapterResult, assets: currentAssets, knowledgeBaseId: currentHandle.knowledgeBaseId, producerRunId: 'thesis-review-run', knowledgeBaseRevisionAtCreation: currentHandle.revision, createdAt: at })
   assert.equal(built.status, 'completed', built.diagnostics.join('; '))
-  assert.equal(built.cases.length, 1)
+  assert.equal(built.cases.length, 1, `${built.status}: ${built.diagnostics.join('; ')}; adapter=${adapterResult.diagnostics.join('; ')}`)
   const base = built.cases[0]!
   const cases = ['accept', 'defer', 'stale'].map((suffix) => ({ ...structuredClone(base), reviewCaseId: `${base.reviewCaseId}-${suffix}` }))
-  cases[0] = { ...cases[0]!, thesisScope: { ...cases[0]!.thesisScope!, proposedThesisStatus: relation === 'contradicts' ? 'challenged' : 'weakening' } }
-  if (invalidationCase) cases[0] = { ...cases[0]!, thesisScope: { ...cases[0]!.thesisScope!, candidateTransition: 'invalidation_condition_met', proposedThesisStatus: 'invalidated', killCriterionAssessments: [{ conditionId: 'kill-margin', status: 'met', targetPropositionRefs: [rootClaimRef], evidenceRefs: [evidenceRef], rationale: 'The sourced margin threshold was met.' }] } }
-  const persisted = await persistReviewCases({ rootRef: root, knowledgeBaseId: handle.knowledgeBaseId, producerRunId: 'thesis-review-run', producerType: 'thesis_lifecycle', cases, createdAt: at, schemaVersionAtCreation: '0.4', knowledgeBaseRevisionAtCreation: handle.revision })
+  if (!invalidationCase) cases[0] = { ...cases[0]!, thesisScope: { ...cases[0]!.thesisScope!, proposedThesisStatus: relation === 'contradicts' ? 'challenged' : 'weakening' } }
+  const persisted = await persistReviewCases({ rootRef: root, knowledgeBaseId: currentHandle.knowledgeBaseId, producerRunId: 'thesis-review-run', producerType: 'thesis_lifecycle', cases, createdAt: at, schemaVersionAtCreation: '0.4', knowledgeBaseRevisionAtCreation: currentHandle.revision })
   assert.equal(persisted.kind, 'written')
-  return { root, gateway, registry, handle, assets, cases, rootClaimRef, thesisRef }
+  return { root, gateway, registry, handle: currentHandle, assets: currentAssets, cases, rootClaimRef, thesisRef, evidenceRef, rawRef: currentRawRef, invalidationCase }
 }
 
 test('Thesis decisions use durable intents, Gateway writes, terminal replay, and no-write DEFER/REJECT', async () => {
@@ -120,18 +134,105 @@ test('possible invalidation applies only a reviewed challenged status and does n
   } finally { await rm(f.root, { recursive: true, force: true }) }
 })
 
-test('invalidation ACCEPT fails closed when the met assessment has no current canonical criterion binding', async () => {
+test('invalidation ACCEPT re-evaluates the canonical criterion, writes invalidated, reloads, and replays', async () => {
   const f = await fixture('weakens', true)
   try {
     const before = await readCanonicalV04Assets(f.root)
     const invalidationCase = f.cases[0]!
+    assert.equal(invalidationCase.resolutionContext.knowledgeBaseRevisionAtCreation, f.handle.revision)
+    assert.equal((await new KnowledgeBaseRegistry().mount(f.root)).revision, f.handle.revision)
+    let interrupted = false
+    const recovering = new ThesisDecisionService({ mountedKnowledgeBaseRoot: f.root, now: () => at, failpoint: (phase) => { if (phase === 'after_writer' && !interrupted) { interrupted = true; throw new Error('simulated process interruption') } } })
+    await assert.rejects(() => recovering.decide({ reviewCaseId: invalidationCase.reviewCaseId, decision: 'ACCEPT', note: 'approve invalidation' }), /simulated process interruption/)
+    assert.equal((await loadReviewDecision(f.root, invalidationCase.producerRunId, invalidationCase.reviewCaseId))?.state, 'APPLYING')
+    const afterWriter = await readCanonicalV04Assets(f.root)
+    assert.equal((afterWriter.objects.find((item) => item.value.id === f.thesisRef)?.value as { status: string }).status, 'invalidated')
     const result = await new ThesisDecisionService({ mountedKnowledgeBaseRoot: f.root, now: () => at }).decide({ reviewCaseId: invalidationCase.reviewCaseId, decision: 'ACCEPT', note: 'approve invalidation' })
-    assert.equal(result.status, 'stale')
-    assert.ok(result.errors.includes('THESIS_DECISION_KILL_CRITERION_CANONICAL_BINDING_UNAVAILABLE'))
-    assert.equal((await loadReviewDecision(f.root, invalidationCase.producerRunId, invalidationCase.reviewCaseId))?.state, 'STALE')
+    assert.equal(result.status, 'accepted', result.errors.join('; '))
+    assert.ok((result.committedRevision ?? -1) > f.handle.revision)
+    assert.equal((await loadReviewDecision(f.root, invalidationCase.producerRunId, invalidationCase.reviewCaseId))?.state, 'ACCEPTED')
     const after = await readCanonicalV04Assets(f.root)
-    assert.deepEqual(after.objects.map((item) => item.value.id).sort(), before.objects.map((item) => item.value.id).sort())
-    const thesis = after.objects.find((item) => item.kind === 'thesis' && item.value.id === f.thesisRef)?.value as { status: string }
-    assert.equal(thesis.status, 'active')
+    assert.equal(after.objects.length, before.objects.length)
+    const thesis = after.objects.find((item) => item.kind === 'thesis' && item.value.id === f.thesisRef)?.value as { status: string; killCriteria?: unknown[] }
+    assert.equal(thesis.status, 'invalidated')
+    assert.equal(thesis.killCriteria?.length, 1)
+    const replay = await new ThesisDecisionService({ mountedKnowledgeBaseRoot: f.root, now: () => at }).decide({ reviewCaseId: invalidationCase.reviewCaseId, decision: 'ACCEPT', note: 'approve invalidation' })
+    assert.equal(replay.status, 'accepted')
+    assert.equal(replay.replay, true)
+    assert.equal(((await readCanonicalV04Assets(f.root)).objects.find((item) => item.value.id === f.thesisRef)?.value as { status: string } | undefined)?.status, 'invalidated')
   } finally { await rm(f.root, { recursive: true, force: true }) }
+})
+
+test('invalidation DEFER and REJECT persist decisions without canonical writes', async () => {
+  const f = await fixture('weakens', true)
+  try {
+    const before = await readCanonicalV04Assets(f.root)
+    const [deferCase, rejectCase] = f.cases.slice(1)
+    assert.equal((await new ThesisDecisionService({ mountedKnowledgeBaseRoot: f.root, now: () => at }).decide({ reviewCaseId: deferCase!.reviewCaseId, decision: 'DEFER' })).status, 'deferred')
+    assert.equal((await new ThesisDecisionService({ mountedKnowledgeBaseRoot: f.root, now: () => at }).decide({ reviewCaseId: rejectCase!.reviewCaseId, decision: 'REJECT' })).status, 'rejected')
+    assert.deepEqual((await readCanonicalV04Assets(f.root)).objects, before.objects)
+    assert.equal((await loadReviewDecision(f.root, deferCase!.producerRunId, deferCase!.reviewCaseId))?.state, 'DEFERRED')
+    assert.equal((await loadReviewDecision(f.root, rejectCase!.producerRunId, rejectCase!.reviewCaseId))?.state, 'REJECTED')
+  } finally { await rm(f.root, { recursive: true, force: true }) }
+})
+
+test('invalidation ACCEPT rejects a well-formed but canonically mismatched value binding', async () => {
+  const f = await fixture('weakens', true)
+  try {
+    const sourceCase = structuredClone(f.cases[0]!)
+    const original = sourceCase.thesisScope!.killCriterionBindings![0]!
+    const changed = { ...original, value: original.value + 1 }
+    const identityInput = [changed.conditionId, changed.revision, changed.definitionHash, changed.evidenceRef, changed.value, changed.metricRef, changed.unit, changed.period, changed.sourceRef, changed.rawRef, changed.locator, changed.publishedAt, [...changed.targetClaimRefs], changed.numericValueVersionVerified, changed.asOf]
+    const binding = { ...changed, evaluatedValueIdentity: `sha256:${createHash('sha256').update(JSON.stringify(identityInput)).digest('hex')}` }
+    const reviewCase = { ...sourceCase, reviewCaseId: `${sourceCase.reviewCaseId}-mismatched-value`, producerRunId: 'thesis-review-invalid-binding', thesisScope: { ...sourceCase.thesisScope!, killCriterionBindings: [binding] } }
+    const stored = await persistReviewCases({ rootRef: f.root, knowledgeBaseId: reviewCase.knowledgeBaseId, producerRunId: reviewCase.producerRunId, producerType: 'thesis_lifecycle', cases: [reviewCase], createdAt: at, schemaVersionAtCreation: '0.4', knowledgeBaseRevisionAtCreation: reviewCase.resolutionContext.knowledgeBaseRevisionAtCreation })
+    assert.equal(stored.kind, 'written')
+    const stale = await new ThesisDecisionService({ mountedKnowledgeBaseRoot: f.root, now: () => at }).decide({ reviewCaseId: reviewCase.reviewCaseId, decision: 'ACCEPT' })
+    assert.equal(stale.status, 'stale')
+    assert.ok(stale.errors.includes('THESIS_DECISION_KILL_CRITERION_BINDING_CHANGED'))
+    assert.equal(((await readCanonicalV04Assets(f.root)).objects.find((item) => item.value.id === f.thesisRef)?.value as { status: string } | undefined)?.status, 'active')
+  } finally { await rm(f.root, { recursive: true, force: true }) }
+})
+
+test('invalidation goes stale after a changed criterion or any competing Knowledge revision', async () => {
+  const changed = await fixture('weakens', true)
+  try {
+    const criterionService = new ThesisCriterionService({ mountedKnowledgeBaseRoot: changed.root, now: () => '2026-09-25T00:00:00.000Z' })
+    const preview = await criterionService.prepare({ thesisRef: changed.thesisRef, conditionId: 'kill-margin', type: 'numeric_threshold', definitionVersion: 1, definition: { metricRef: 'metric:revenue', operator: 'lt', threshold: 1100, unit: 'CNY', period: 'FY2026' }, targetClaimRefs: [changed.rootClaimRef], origin: { kind: 'human_rule' } })
+    await criterionService.confirm({ preview, previewHash: preview.previewHash, expectedKnowledgeBaseRevision: preview.expectedKnowledgeBaseRevision, workflowRunId: 'decision-test-criterion-revision-2' })
+    const stale = await new ThesisDecisionService({ mountedKnowledgeBaseRoot: changed.root, now: () => at }).decide({ reviewCaseId: changed.cases[0]!.reviewCaseId, decision: 'ACCEPT' })
+    assert.equal(stale.status, 'stale')
+    assert.ok(stale.errors.includes('THESIS_DECISION_BASE_KNOWLEDGE_REVISION_STALE'))
+    assert.equal(((await readCanonicalV04Assets(changed.root)).objects.find((item) => item.value.id === changed.thesisRef)?.value as { status: string } | undefined)?.status, 'active')
+  } finally { await rm(changed.root, { recursive: true, force: true }) }
+
+  const competing = await fixture('weakens', true)
+  try {
+    await new KnowledgeProductionGateway().submit({ handle: await new KnowledgeBaseRegistry().mount(competing.root), producerType: 'fixture_competing_write', producerRunId: 'decision-competing-revision', schemaProfile: { schemaVersion: '0.4', storageFormatVersion: '1', requiresRawProvenance: true }, entity: { localKey: 'company', entityType: 'company', name: 'Fixture Company', aliases: ['600519'], semanticFields: { ticker: '600519', exchange: 'SSE' }, existingEntityRef: (competing.assets.objects.find((item) => item.kind === 'entity')!.value as { id: string }).id }, proposals: [{ proposalId: 'new-claim', kind: 'claim', claimType: 'fact', subjectKey: 'company', statement: 'A competing canonical fact.', sourceCandidateIds: ['decision-evidence'] }], evidenceBindings: [{ localSourceId: 'decision-evidence', source }], asOf: at, now: () => at })
+    const stale = await new ThesisDecisionService({ mountedKnowledgeBaseRoot: competing.root, now: () => at }).decide({ reviewCaseId: competing.cases[0]!.reviewCaseId, decision: 'ACCEPT' })
+    assert.equal(stale.status, 'stale')
+    assert.ok(stale.errors.includes('THESIS_DECISION_BASE_KNOWLEDGE_REVISION_STALE'))
+  } finally { await rm(competing.root, { recursive: true, force: true }) }
+})
+
+test('invalidation rechecks decision-time rights and archived Raw integrity', async () => {
+  const rights = await fixture('weakens', true)
+  try {
+    // The Gateway input fixture does not expose rights expiry. Add the valid
+    // canonical Source field directly to model an already-stored expiring right.
+    const rightsSource = rights.assets.objects.find((item) => item.kind === 'source')!
+    const sourceValue = rightsSource.value as unknown as Record<string, unknown>
+    await writeFile(rightsSource.filePath, JSON.stringify({ ...sourceValue, rights: { ...(sourceValue.rights as Record<string, unknown>), expiresAt: '2026-09-24T23:00:00.000Z' } }, null, 2), 'utf8')
+    const stale = await new ThesisDecisionService({ mountedKnowledgeBaseRoot: rights.root, now: () => '2026-09-25T00:00:00.000Z' }).decide({ reviewCaseId: rights.cases[0]!.reviewCaseId, decision: 'ACCEPT' })
+    assert.equal(stale.status, 'stale')
+    assert.ok(stale.errors.includes('THESIS_DECISION_SOURCE_RAW_BINDING_STALE'))
+  } finally { await rm(rights.root, { recursive: true, force: true }) }
+
+  const missingRaw = await fixture('weakens', true)
+  try {
+    await unlink(join(missingRaw.root, 'raw', missingRaw.rawRef, 'original.txt'))
+    const stale = await new ThesisDecisionService({ mountedKnowledgeBaseRoot: missingRaw.root, now: () => at }).decide({ reviewCaseId: missingRaw.cases[0]!.reviewCaseId, decision: 'ACCEPT' })
+    assert.equal(stale.status, 'stale')
+    assert.ok(stale.errors.includes('THESIS_DECISION_RAW_UNAVAILABLE'))
+  } finally { await rm(missingRaw.root, { recursive: true, force: true }) }
 })

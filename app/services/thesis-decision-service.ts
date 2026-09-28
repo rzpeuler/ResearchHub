@@ -5,7 +5,7 @@ import { KnowledgeProductionGateway } from '../../knowledge/production/gateway.t
 import type { KnowledgeProductionInput, KnowledgeProductionOutcome, SemanticProductionInputProposal } from '../../knowledge/production/contracts.ts'
 import { loadReviewCase } from '../../knowledge/review/store.ts'
 import { beginApplyingReviewCase, deferReviewCase, finalizeAcceptedReviewCase, loadReviewDecision, markReviewCaseStale, rejectReviewCase, type ReviewDecisionApplyingIntent, type ReviewDecisionSnapshot } from '../../knowledge/review/decision-store.ts'
-import type { ReviewCase, ThesisReviewedEvidence } from '../../knowledge/review/contracts.ts'
+import type { KillCriterionReviewBindingV1, ReviewCase, ThesisReviewedEvidence } from '../../knowledge/review/contracts.ts'
 import { verifyRaw } from '../../knowledge/raw/raw-archive.ts'
 import { allocateKnowledgeId } from '../../knowledge/registry/id-allocation.ts'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
@@ -78,7 +78,7 @@ function requiredCaseIdentity(reviewCase: ReviewCase, handle: KnowledgeBaseHandl
   if (handle.schemaVersion !== '0.4' || handle.storageFormatVersion !== '1' || handle.status !== 'active') return 'THESIS_DECISION_KNOWLEDGE_BASE_NOT_WRITABLE'
   return undefined
 }
-function extractionBindings(reviewCase: ReviewCase): { readonly values?: readonly BoundRefreshEvidence[]; readonly diagnostic?: string } {
+function extractionBindings(reviewCase: ReviewCase, allowContext: boolean): { readonly values?: readonly BoundRefreshEvidence[]; readonly diagnostic?: string } {
   const scope = reviewCase.thesisScope!
   const byEvidence = new Map<string, SourceRawPair[]>()
   for (const binding of reviewCase.rootProposal.evidenceBindings) {
@@ -95,8 +95,13 @@ function extractionBindings(reviewCase: ReviewCase): { readonly values?: readonl
     if (!sourceBindings.length) return { diagnostic: 'REVIEW_EVIDENCE_BINDING_UNAVAILABLE' }
     values.push({ evidenceRef: item.evidenceRef, relation: item.relation, targetClaimRefs: [...item.targetClaimRefs], sourceBindings })
   }
-  if (values.length === 0 || values.some((item) => item.relation === 'context' || item.relation === 'irrelevant')) return { diagnostic: 'THESIS_DECISION_RELATION_UNSUPPORTED' }
+  if (values.length === 0 || (!allowContext && values.some((item) => item.relation === 'context' || item.relation === 'irrelevant'))) return { diagnostic: 'THESIS_DECISION_RELATION_UNSUPPORTED' }
   return { values }
+}
+
+function killCriterionValueIdentity(binding: KillCriterionReviewBindingV1): string {
+  const value = [binding.conditionId, binding.revision, binding.definitionHash, binding.evidenceRef, binding.value, binding.metricRef, binding.unit, binding.period, binding.sourceRef, binding.rawRef, binding.locator, binding.publishedAt, [...binding.targetClaimRefs], binding.numericValueVersionVerified, binding.asOf]
+  return `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`
 }
 function rootEntityFor(thesis: KnowledgeThesisV04, assets: KnowledgeAssetCollectionV04): (KnowledgeEntityV04 & { readonly type: KnowledgeProductionInput['entity']['entityType'] }) | undefined {
   if (thesis.subjectRefs.length !== 1) return undefined
@@ -189,14 +194,15 @@ export class ThesisDecisionService {
     try { assets = await readCanonicalV04Assets(handle.rootRef) } catch { return { diagnostic: 'THESIS_DECISION_CANONICAL_ASSETS_UNAVAILABLE' } }
     const scope = reviewCase.thesisScope!
     if (!Number.isSafeInteger(handle.revision) || handle.revision < reviewCase.resolutionContext.knowledgeBaseRevisionAtCreation) return { diagnostic: 'THESIS_DECISION_REVISION_INVALID' }
-    // The ReviewCase currently preserves the skill's met assessment but the
-    // canonical v0.4 graph has no persisted kill-criterion definition to bind
-    // that assessment to. Replaying the assessment alone would trust stale
-    // proposal data, so ACCEPT must fail closed until the criterion can be
-    // resolved from current Knowledge and re-run through the refresh skill.
-    if (scope.candidateTransition === 'invalidation_condition_met') return { diagnostic: 'THESIS_DECISION_KILL_CRITERION_CANONICAL_BINDING_UNAVAILABLE' }
-    if ((scope.candidateTransition === 'possible_invalidation') !== (scope.proposedThesisStatus === 'challenged')) return { diagnostic: 'THESIS_DECISION_STATUS_TRANSITION_UNSUPPORTED' }
-    if (scope.proposedThesisStatus === 'invalidated' || scope.proposedThesisStatus === 'archived' || scope.proposedThesisStatus === 'active') return { diagnostic: 'THESIS_DECISION_STATUS_TRANSITION_UNSUPPORTED' }
+    const invalidation = scope.candidateTransition === 'invalidation_condition_met'
+    if (invalidation) {
+      if (scope.proposedThesisStatus !== 'invalidated') return { diagnostic: 'THESIS_DECISION_STATUS_TRANSITION_UNSUPPORTED' }
+      if (handle.revision !== reviewCase.resolutionContext.knowledgeBaseRevisionAtCreation) return { diagnostic: 'THESIS_DECISION_BASE_KNOWLEDGE_REVISION_STALE' }
+      if (!Array.isArray(scope.killCriterionBindings) || scope.killCriterionBindings.length === 0) return { diagnostic: 'THESIS_DECISION_KILL_CRITERION_CANONICAL_BINDING_UNAVAILABLE' }
+    } else {
+      if ((scope.candidateTransition === 'possible_invalidation') !== (scope.proposedThesisStatus === 'challenged')) return { diagnostic: 'THESIS_DECISION_STATUS_TRANSITION_UNSUPPORTED' }
+      if (scope.proposedThesisStatus === 'invalidated' || scope.proposedThesisStatus === 'archived' || scope.proposedThesisStatus === 'active') return { diagnostic: 'THESIS_DECISION_STATUS_TRANSITION_UNSUPPORTED' }
+    }
     const thesisMatches = assets.objects.filter((item) => item.kind === 'thesis' && item.value.id === scope.thesisRef)
     if (thesisMatches.length !== 1) return { diagnostic: 'THESIS_DECISION_THESIS_MISSING_OR_AMBIGUOUS' }
     const thesis = thesisMatches[0]!.value as KnowledgeThesisV04
@@ -213,7 +219,7 @@ export class ThesisDecisionService {
     const rootClaim = claims.get(scope.rootClaimRef)
     if (!rootClaim || !affected.includes(scope.rootClaimRef) || !memberRefs.has(scope.rootClaimRef) || !active(rootClaim) || !rootClaim.id.startsWith('claim:') || (rootClaim as { claimType: string }).claimType !== reviewCase.rootProposal.semanticType || (rootClaim as { claimType: string }).claimType !== rootPayload.claimType || (rootClaim as { statement: string }).statement !== rootPayload.statement || !exactScopeEqual(ordered((rootClaim as { subjectRefs: readonly string[] }).subjectRefs), ordered(rootSubjects.filter((ref): ref is string => typeof ref === 'string')))) return { diagnostic: 'THESIS_DECISION_ROOT_CLAIM_REBIND_FAILED' }
 
-    const extracted = extractionBindings(reviewCase)
+    const extracted = extractionBindings(reviewCase, invalidation)
     if (!extracted.values) return { diagnostic: extracted.diagnostic }
     const asOf = scope.asOf
     const sourceAssets = new Map<string, KnowledgeSourceV04>(assets.objects.filter((item) => item.kind === 'source').map((item) => [item.value.id, item.value as KnowledgeSourceV04]))
@@ -224,12 +230,47 @@ export class ThesisDecisionService {
       if (!evidence || !hasSourceProvenance(evidence, pair)) return { diagnostic: 'THESIS_DECISION_EVIDENCE_PROVENANCE_STALE' }
       try { await verifyRaw(handle, pair.rawRef) } catch { return { diagnostic: 'THESIS_DECISION_RAW_UNAVAILABLE' } }
     }
+    if (invalidation) {
+      const activeCriteria = Array.isArray(thesis.killCriteria) ? thesis.killCriteria.filter((criterion) => criterion.state === 'active') : []
+      const reviewedBindings = scope.killCriterionBindings!
+      const bindingIds = new Set<string>()
+      for (const binding of reviewedBindings) {
+        const key = `${binding.conditionId}\u0000${binding.revision}`
+        if (bindingIds.has(key) || killCriterionValueIdentity(binding) !== binding.evaluatedValueIdentity) return { diagnostic: 'THESIS_DECISION_KILL_CRITERION_BINDING_INVALID' }
+        bindingIds.add(key)
+        const matching = activeCriteria.filter((criterion) => criterion.conditionId === binding.conditionId && criterion.revision === binding.revision)
+        if (matching.length !== 1 || matching[0]!.definitionHash !== binding.definitionHash || binding.targetClaimRefs.some((ref) => !matching[0]!.targetClaimRefs.includes(ref as ClaimRefV04))) return { diagnostic: 'THESIS_DECISION_KILL_CRITERION_BINDING_STALE' }
+      }
+      // The evaluator checks source-derived origin eligibility at the reviewed
+      // asOf. Recheck the origin's rights and archived bytes at decision time too.
+      for (const criterion of activeCriteria) {
+        const origin = criterion.authority?.origin
+        if (origin?.kind !== 'source_derived') continue
+        const source = sourceAssets.get(origin.sourceRef)
+        if (!source || !sourceEligible(source, this.now()) || !source.rawRefs?.includes(origin.rawRef)) return { diagnostic: 'THESIS_DECISION_KILL_CRITERION_ORIGIN_RIGHTS_STALE' }
+        try { await verifyRaw(handle, origin.rawRef) } catch { return { diagnostic: 'THESIS_DECISION_KILL_CRITERION_ORIGIN_RAW_UNAVAILABLE' } }
+      }
+    }
     const adapter = await runThesisRefreshAdapter({ assets, handle, thesisRef: thesis.id, currentAsOf: asOf, evidenceBindings: extracted.values })
     if (adapter.status !== 'completed' || !adapter.refresh || adapter.refresh.candidateTransition !== scope.candidateTransition) return { diagnostic: 'THESIS_DECISION_REFRESH_SCOPE_CHANGED' }
     const included = adapter.evidenceLineage.filter((item) => item.decision === 'included').map(({ evidenceRef, relation, targetClaimRefs }) => ({ evidenceRef, relation, targetClaimRefs: ordered(targetClaimRefs) })).sort((a, b) => a.evidenceRef.localeCompare(b.evidenceRef) || a.relation.localeCompare(b.relation))
     const reviewed = scope.reviewedEvidence.map(({ evidenceRef, relation, targetClaimRefs }) => ({ evidenceRef, relation, targetClaimRefs: ordered(targetClaimRefs) })).sort((a, b) => a.evidenceRef.localeCompare(b.evidenceRef) || a.relation.localeCompare(b.relation))
     if (adapter.evidenceLineage.some((item) => item.decision !== 'included') || !exactScopeEqual(included, reviewed) || !exactScopeEqual(ordered(scope.affectedClaimRefs), ordered(scope.reviewedEvidence.flatMap((item) => item.targetClaimRefs)))) return { diagnostic: 'THESIS_DECISION_REVIEWED_EVIDENCE_SCOPE_CHANGED' }
-    const expectedEdges = edgeDrafts(extracted.values)
+    if (invalidation) {
+      const bindings = scope.killCriterionBindings!
+      const evaluations = adapter.criterionEvaluations.filter((evaluation) => evaluation.status === 'met')
+      const evaluationIds = new Set(evaluations.map((evaluation) => `${evaluation.conditionId}\u0000${evaluation.revision}`))
+      if (evaluationIds.size !== bindings.length || bindings.some((binding) => !evaluationIds.has(`${binding.conditionId}\u0000${binding.revision}`))) return { diagnostic: 'THESIS_DECISION_KILL_CRITERION_ASSESSMENT_CHANGED' }
+      for (const binding of bindings) {
+        const evaluation = evaluations.find((item) => item.conditionId === binding.conditionId && item.revision === binding.revision)
+        const value = evaluation?.evaluatedValue
+        if (!evaluation || evaluation.definitionHash !== binding.definitionHash || evaluation.asOf !== binding.asOf || !value || value.numericValueVersionVerified !== true) return { diagnostic: 'THESIS_DECISION_KILL_CRITERION_ASSESSMENT_CHANGED' }
+        const rebound = { conditionId: evaluation.conditionId, revision: evaluation.revision!, definitionHash: evaluation.definitionHash!, evaluatedValueIdentity: '', evidenceRef: value.evidenceRef, value: value.value, metricRef: value.metricRef, unit: value.unit, period: value.period, sourceRef: value.sourceRef, rawRef: value.rawRef, locator: value.locator, publishedAt: value.publishedAt, targetClaimRefs: value.targetClaimRefs, numericValueVersionVerified: value.numericValueVersionVerified, asOf: evaluation.asOf } as KillCriterionReviewBindingV1
+        if (killCriterionValueIdentity(rebound) !== binding.evaluatedValueIdentity) return { diagnostic: 'THESIS_DECISION_KILL_CRITERION_BINDING_CHANGED' }
+      }
+    }
+    const edgeBindings = invalidation ? extracted.values.filter((item) => item.relation !== 'context' && item.relation !== 'irrelevant') : extracted.values
+    const expectedEdges = edgeDrafts(edgeBindings)
     if (scope.proposedThesisStatus && allocateKnowledgeId('thesis', { subjectRefs: thesis.subjectRefs, title: thesis.title }) !== thesis.id) return { diagnostic: 'THESIS_DECISION_THESIS_IDENTITY_UNSTABLE' }
     const thesisStatus = scope.proposedThesisStatus
     const checks = expectedChecks(expectedEdges, thesis.id, thesisStatus)
