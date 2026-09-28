@@ -30,7 +30,8 @@
     "acceptance:valuation-basis-d3-real": "tsx scripts/acceptance-valuation-basis-evidence-d3-real.ts",
     "acceptance:auto-comps-d3-real": "tsx scripts/acceptance-auto-comps-d3-real.ts",
     "acceptance:industry-operating-observations-d4-real": "tsx scripts/acceptance-industry-operating-observations-d4-real.ts",
-    "acceptance:daily-breadth-d5-real": "tsx scripts/acceptance-daily-breadth-d5-real.ts"
+    "acceptance:daily-breadth-d5-real": "tsx scripts/acceptance-daily-breadth-d5-real.ts",
+    "acceptance:thesis-lifecycle-invalidation-real": "tsx scripts/acceptance-thesis-lifecycle-invalidation-real.ts"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.0",
