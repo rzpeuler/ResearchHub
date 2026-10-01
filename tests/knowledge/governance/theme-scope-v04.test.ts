@@ -190,6 +190,30 @@ test('coverage gaps are required, may be empty, and remain bounded', () => {
   assert.ok(codes({ version: '0.4', themeRef: THEME, basedOnRevision: REVISION, decisions: [missingCoverageGaps] }).includes('THEME_SCOPE_DECISION_SHAPE'))
 })
 
+test('JSON validation caps aggregate characters, UTF-8 bytes, and object-key length', () => {
+  const asciiOverflow = {
+    version: '0.4',
+    themeRef: THEME,
+    basedOnRevision: REVISION,
+    decisions: Array.from({ length: 123 }, () => 'x'.repeat(8192)),
+  }
+  assert.ok(codes(asciiOverflow).includes('THEME_SCOPE_JSON_ONLY'))
+
+  const utf8Overflow = {
+    version: '0.4',
+    themeRef: THEME,
+    basedOnRevision: REVISION,
+    decisions: Array.from({ length: 41 }, () => '界'.repeat(8192)),
+  }
+  assert.ok(codes(utf8Overflow).includes('THEME_SCOPE_JSON_ONLY'))
+
+  const longKey = {
+    ...batch([makeDecision({ candidate: industry('Long Object Key') })]),
+    ['k'.repeat(257)]: true,
+  }
+  assert.ok(codes(longKey).includes('THEME_SCOPE_JSON_ONLY'))
+})
+
 test('decision ID and hash helpers are stable and reviewed timestamps must be valid ISO instants', () => {
   const candidate = industry('Timestamp Review')
   const confirmed = makeDecision({ candidate, decision: 'pending', review: { status: 'human_confirmed', confirmedAt: '2026-10-02T11:40:00+08:00' } })
@@ -247,4 +271,22 @@ test('history links must match candidate identity and cannot move backward or fo
 
   const stale = makeDecision({ candidate, decision: 'include', evidence: [EVIDENCE], revision: 7, previousDecisionId: prior.id })
   assert.ok(codes(batch([stale], 7), { previousDecisions: [prior, firstSuccessor] }).includes('THEME_SCOPE_PREVIOUS_NOT_HEAD'))
+})
+
+test('complete decision history requires one connected chain and rejects an orphan predecessor pointer', () => {
+  const candidate = industry('Complete History Subject')
+  const root = makeDecision({ candidate, decision: 'pending', revision: 2 })
+  const middle = makeDecision({ candidate, decision: 'pending', revision: 3, previousDecisionId: root.id })
+  const current = makeDecision({ candidate, decision: 'include', evidence: [EVIDENCE], revision: 4, previousDecisionId: middle.id })
+  assert.equal(validateThemeScopeDecisionBatchV04(batch([current], 4), { previousDecisions: [root, middle] }).valid, true)
+
+  const absentParent = `theme-scope-decision:${'f'.repeat(64)}` as NonNullable<ThemeScopeDecisionDraftV04['previousDecisionId']>
+  const orphan = makeDecision({ candidate, decision: 'pending', revision: 3, previousDecisionId: absentParent })
+  const successor = makeDecision({ candidate, decision: 'include', evidence: [EVIDENCE], revision: 4, previousDecisionId: orphan.id })
+  const orphanResult = codes(batch([successor], 4), { previousDecisions: [orphan] })
+  assert.ok(orphanResult.includes('THEME_SCOPE_HISTORY_PREVIOUS_MISSING'))
+
+  const disconnectedRoot = makeDecision({ candidate, decision: 'pending', revision: 3 })
+  const multipleRoots = codes(batch([successor], 4), { previousDecisions: [root, disconnectedRoot] })
+  assert.ok(multipleRoots.includes('THEME_SCOPE_HISTORY_ROOT_COUNT'))
 })

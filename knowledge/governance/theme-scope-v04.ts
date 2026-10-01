@@ -9,6 +9,9 @@ export const THEME_SCOPE_V04_LIMITS = {
   maxEvidencePerDecision: 16,
   maxCoverageGaps: 32,
   maxCoverageGapLength: 1024,
+  maxJsonCharacters: 1_000_000,
+  maxJsonUtf8Bytes: 1_000_000,
+  maxJsonObjectKeyLength: 256,
   maxIndustryNameLength: 256,
   maxIdentityContextLength: 256,
   maxRationaleLength: 4000,
@@ -82,7 +85,7 @@ export interface ThemeScopeDecisionBatchV04 {
 }
 
 export interface ThemeScopeValidationOptionsV04 {
-  /** Existing append-only decision records needed to validate a version/reopen link. */
+  /** Complete, bounded append-only decision history needed to validate version/reopen links. */
   readonly previousDecisions?: readonly ThemeScopeDecisionV04[]
 }
 
@@ -115,11 +118,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isJsonOnly(value: unknown): boolean {
   const ancestors = new Set<object>()
   let nodes = 0
+  let jsonCharacters = 0
+  let jsonUtf8Bytes = 0
+  const accountText = (text: string): boolean => {
+    jsonCharacters += text.length
+    jsonUtf8Bytes += Buffer.byteLength(text, 'utf8')
+    return jsonCharacters <= THEME_SCOPE_V04_LIMITS.maxJsonCharacters
+      && jsonUtf8Bytes <= THEME_SCOPE_V04_LIMITS.maxJsonUtf8Bytes
+  }
   const visit = (item: unknown, depth: number): boolean => {
     nodes += 1
     if (nodes > 100000 || depth > 8) return false
     if (item === null || typeof item === 'boolean') return true
-    if (typeof item === 'string') return item.length <= 8192
+    if (typeof item === 'string') return item.length <= 8192 && accountText(item)
     if (typeof item === 'number') return Number.isFinite(item)
     if (typeof item !== 'object') return false
     if (ancestors.has(item)) return false
@@ -136,6 +147,7 @@ function isJsonOnly(value: unknown): boolean {
       if (!isRecord(item) || Reflect.ownKeys(item).some((key) => typeof key !== 'string')) return false
       const keys = Reflect.ownKeys(item) as string[]
       for (const key of keys) {
+        if (key.length > THEME_SCOPE_V04_LIMITS.maxJsonObjectKeyLength || !accountText(key)) return false
         const descriptor = Object.getOwnPropertyDescriptor(item, key)
         if (!descriptor?.enumerable || !('value' in descriptor) || !visit(descriptor.value, depth + 1)) return false
       }
@@ -432,14 +444,50 @@ function validateHistory(history: unknown, errors: ThemeScopeValidationIssueV04[
   }
   const byId = new Map(history.filter(isRecord).filter((item) => typeof item.id === 'string').map((item) => [String(item.id), item]))
   const children = new Set<string>()
+  const groups = new Map<string, Record<string, unknown>[]>()
   for (const item of history) {
-    if (!isRecord(item) || typeof item.previousDecisionId !== 'string') continue
+    if (!isRecord(item) || typeof item.themeRef !== 'string' || typeof item.candidateFingerprint !== 'string') continue
+    const key = `${item.themeRef}\u0000${item.candidateFingerprint}`
+    const group = groups.get(key) ?? []
+    group.push(item)
+    groups.set(key, group)
+  }
+  for (const item of history) {
+    if (!isRecord(item)) continue
+    if (typeof item.previousDecisionId !== 'string') continue
     const previous = byId.get(item.previousDecisionId)
-    if (!previous) continue
+    if (!previous) {
+      addIssue(errors, 'THEME_SCOPE_HISTORY_PREVIOUS_MISSING', `previousDecisions entry ${String(item.id)} points outside the supplied complete history`, typeof item.id === 'string' ? item.id : undefined)
+      valid = false
+      continue
+    }
     if (children.has(item.previousDecisionId)) { addIssue(errors, 'THEME_SCOPE_HISTORY_FORK', `previousDecisions contains multiple successors for ${item.previousDecisionId}`, item.previousDecisionId); valid = false }
     children.add(item.previousDecisionId)
     if (item.themeRef !== previous.themeRef || item.candidateFingerprint !== previous.candidateFingerprint || Number(item.basedOnRevision) < Number(previous.basedOnRevision)) {
       addIssue(errors, 'THEME_SCOPE_HISTORY_LINK', `previousDecisions contains a cross-candidate, cross-theme, or backward-revision link`, typeof item.id === 'string' ? item.id : undefined)
+      valid = false
+    }
+  }
+  for (const [key, group] of groups) {
+    const roots = group.filter((item) => item.previousDecisionId === undefined)
+    if (roots.length !== 1) {
+      addIssue(errors, 'THEME_SCOPE_HISTORY_ROOT_COUNT', `Complete history for ${key.replace('\u0000', '/')} must have exactly one root decision`)
+      valid = false
+      continue
+    }
+    const root = roots[0]
+    if (!root || typeof root.id !== 'string') continue
+    const reached = new Set<string>([root.id])
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const item of group) {
+        if (typeof item.id !== 'string' || typeof item.previousDecisionId !== 'string' || reached.has(item.id)) continue
+        if (reached.has(item.previousDecisionId)) { reached.add(item.id); changed = true }
+      }
+    }
+    if (group.some((item) => typeof item.id === 'string' && !reached.has(item.id))) {
+      addIssue(errors, 'THEME_SCOPE_HISTORY_ORPHAN', `Complete history for ${key.replace('\u0000', '/')} contains a disconnected decision`)
       valid = false
     }
   }
