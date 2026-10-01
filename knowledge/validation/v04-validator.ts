@@ -1,6 +1,6 @@
 import { KNOWLEDGE_SCHEMA_V04 } from '../schema/executable-schema-v04.ts'
 import { getMetricDefinitionV04 } from '../schema/metric-registry.ts'
-import type { ClaimTypeV04, KillCriterionOriginV04, KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeEntityV04, KnowledgeEventV04, KnowledgeObservationV04, KnowledgeReasoningEdgeV04, KnowledgeRelationV04, KnowledgeSourceV04, KnowledgeThesisV04 } from '../schema/domain-v04.ts'
+import type { ClaimTypeV04, KillCriterionOriginV04, KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeEntityV04, KnowledgeEventV04, KnowledgeObservationV04, KnowledgeReasoningEdgeV04, KnowledgeRelationV04, KnowledgeSourceV04, KnowledgeThemeGroupV04, KnowledgeThesisV04 } from '../schema/domain-v04.ts'
 import { hashKillCriterionDefinitionV04, isBoundedSafeKillCriterionJsonV04, KILL_CRITERION_V04_LIMITS } from '../schema/kill-criterion-v04.ts'
 import { COMPETITION_MODULE_V1_LIMITS, isSupportedBaseCurrencyCodeV1, validateCompetitionModuleV1 } from '../schema/competition-module-v04.ts'
 import { validateRelationAttributesV03 } from './v03-validation-core.ts'
@@ -19,6 +19,16 @@ const EDGE_TYPES = new Set(KNOWLEDGE_SCHEMA_V04.reasoningEdge.types)
 const RAW_PATTERN = /^raw-sha256-[0-9a-f]{64}$/
 const HASH_PATTERN = /^[0-9a-f]{64}$/
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+const THEME_V04_LIMITS = Object.freeze({
+  maxIdLength: 256,
+  maxNameLength: 256,
+  maxAliases: 128,
+  maxAliasLength: 256,
+  maxDescriptionLength: 4096,
+  maxDefinitionLength: 8192,
+  maxCriteria: 64,
+  maxCriterionLength: 2048,
+})
 type Dict = Record<string, unknown>
 const record = (value: unknown): value is Dict => typeof value === 'object' && value !== null && !Array.isArray(value)
 const date = (value: unknown): boolean => typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Date.parse(value))
@@ -27,6 +37,62 @@ const inRange = (value: unknown): boolean => typeof value === 'number' && Number
 const ref = (value: unknown, prefix: string): value is string => typeof value === 'string' && value.startsWith(prefix) && SAFE_ID.test(value.slice(prefix.length))
 const arrayOfRefs = (value: unknown, prefix: string): value is string[] => Array.isArray(value) && value.every((item) => ref(item, prefix)) && new Set(value).size === value.length
 function add(errors: KnowledgeV04Diagnostic[], code: string, message: string, assetId?: string): void { errors.push({ code, message, ...(assetId === undefined ? {} : { assetId }) }) }
+
+function boundedStringArray(value: unknown, maxItems: number, maxItemLength: number): value is string[] {
+  return Array.isArray(value)
+    && value.length <= maxItems
+    && value.every((item) => typeof item === 'string' && item.trim() !== '' && item.length <= maxItemLength)
+}
+
+function validateThemeLifecycle(value: unknown, errors: KnowledgeV04Diagnostic[], id: string, label: string): void {
+  const allowedFields = ['status', 'validFrom', 'validUntil']
+  if (!record(value)
+    || Object.keys(value).some((field) => !allowedFields.includes(field))
+    || !KNOWLEDGE_SCHEMA_V04.lifecycle.values.includes(value.status as never)
+    || !nullableDate(value.validFrom)
+    || !nullableDate(value.validUntil)) {
+    add(errors, 'V04_THEME_LIFECYCLE', `${label} lifecycle requires a declared status and only validFrom/validUntil date fields`, id)
+  }
+}
+
+function validateThemeGroup(group: KnowledgeThemeGroupV04, errors: KnowledgeV04Diagnostic[]): void {
+  const value = group as unknown as Dict
+  const id = typeof value.id === 'string' ? value.id : undefined
+  if (!ref(value.id, 'theme-group:') || value.id.length > THEME_V04_LIMITS.maxIdLength) add(errors, 'V04_THEME_GROUP_ID', 'ThemeGroup id must use a bounded theme-group: namespace', id)
+  if (typeof value.name !== 'string' || value.name.trim() === '' || value.name.length > THEME_V04_LIMITS.maxNameLength) add(errors, 'V04_THEME_GROUP_NAME', `ThemeGroup name must be non-empty and at most ${THEME_V04_LIMITS.maxNameLength} characters`, id)
+  if (!boundedStringArray(value.aliases, THEME_V04_LIMITS.maxAliases, THEME_V04_LIMITS.maxAliasLength)) add(errors, 'V04_THEME_GROUP_ALIASES', `ThemeGroup aliases must be a string array with at most ${THEME_V04_LIMITS.maxAliases} non-empty values of at most ${THEME_V04_LIMITS.maxAliasLength} characters`, id)
+  validateThemeLifecycle(value.lifecycle, errors, id ?? '', 'ThemeGroup')
+  if (value.description !== undefined && value.description !== null && (typeof value.description !== 'string' || value.description.length > THEME_V04_LIMITS.maxDescriptionLength)) add(errors, 'V04_THEME_GROUP_DESCRIPTION', `ThemeGroup description must be a string or null with at most ${THEME_V04_LIMITS.maxDescriptionLength} characters`, id)
+  if (value.sortOrder !== undefined && value.sortOrder !== null && (typeof value.sortOrder !== 'number' || !Number.isFinite(value.sortOrder))) add(errors, 'V04_THEME_GROUP_SORT_ORDER', 'ThemeGroup sortOrder must be a finite number or null', id)
+}
+
+function looksLikeThemeGroup(value: Dict): boolean {
+  return value.type === undefined
+    && typeof value.name === 'string'
+    && record(value.lifecycle)
+    && (Object.hasOwn(value, 'aliases') || Object.hasOwn(value, 'sortOrder') || Object.hasOwn(value, 'metadata') || Object.hasOwn(value, 'description'))
+}
+
+function validateInvestmentTheme(theme: KnowledgeEntityV04, themeGroups: ReadonlyMap<string, KnowledgeThemeGroupV04>, errors: KnowledgeV04Diagnostic[]): void {
+  const value = theme as unknown as Dict
+  const id = theme.id
+  if (typeof value.name !== 'string' || value.name.trim() === '' || value.name.length > THEME_V04_LIMITS.maxNameLength) add(errors, 'V04_THEME_NAME', `InvestmentTheme name must be non-empty and at most ${THEME_V04_LIMITS.maxNameLength} characters`, id)
+  if (value.aliases !== undefined && !boundedStringArray(value.aliases, THEME_V04_LIMITS.maxAliases, THEME_V04_LIMITS.maxAliasLength)) add(errors, 'V04_THEME_ALIASES', `InvestmentTheme aliases must contain at most ${THEME_V04_LIMITS.maxAliases} non-empty strings of at most ${THEME_V04_LIMITS.maxAliasLength} characters`, id)
+  validateThemeLifecycle(value.lifecycle, errors, id, 'InvestmentTheme')
+
+  const groupRef = value.themeGroupRef
+  if (!ref(groupRef, 'theme-group:') || groupRef.length > THEME_V04_LIMITS.maxIdLength || !themeGroups.has(groupRef)) {
+    add(errors, 'V04_THEME_GROUP_REF_INVALID', 'InvestmentTheme themeGroupRef must use theme-group: and resolve to an existing ThemeGroup', id)
+  } else if (record(value.lifecycle) && value.lifecycle.status === 'active' && themeGroups.get(groupRef)?.lifecycle.status !== 'active') {
+    add(errors, 'V04_THEME_GROUP_NOT_ACTIVE', 'An active InvestmentTheme must reference an active ThemeGroup', id)
+  }
+
+  if (value.definition !== undefined && value.definition !== null && (typeof value.definition !== 'string' || value.definition.trim() === '' || value.definition.length > THEME_V04_LIMITS.maxDefinitionLength)) add(errors, 'V04_THEME_DEFINITION', `InvestmentTheme definition must be a non-empty string or null with at most ${THEME_V04_LIMITS.maxDefinitionLength} characters`, id)
+  for (const field of ['inclusionCriteria', 'exclusionCriteria'] as const) {
+    const criteria = value[field]
+    if (criteria !== undefined && !boundedStringArray(criteria, THEME_V04_LIMITS.maxCriteria, THEME_V04_LIMITS.maxCriterionLength)) add(errors, 'V04_THEME_CRITERIA', `InvestmentTheme ${field} must contain at most ${THEME_V04_LIMITS.maxCriteria} non-empty strings of at most ${THEME_V04_LIMITS.maxCriterionLength} characters`, id)
+  }
+}
 
 function validateExternalIdentifiers(value: unknown, sources: ReadonlySet<string>, errors: KnowledgeV04Diagnostic[], id: string): void {
   if (value === undefined) return
@@ -51,13 +117,14 @@ function validateSource(source: KnowledgeSourceV04, errors: KnowledgeV04Diagnost
   if (source.rawRefs !== undefined && (!Array.isArray(source.rawRefs) || source.rawRefs.some((item) => !RAW_PATTERN.test(item)))) add(errors, 'V04_RAW_REF', 'Source rawRefs must be valid RawRef values', id)
 }
 
-function validateEntity(entity: KnowledgeEntityV04, sources: ReadonlySet<string>, errors: KnowledgeV04Diagnostic[]): void {
+function validateEntity(entity: KnowledgeEntityV04, sources: ReadonlySet<string>, themeGroups: ReadonlyMap<string, KnowledgeThemeGroupV04>, errors: KnowledgeV04Diagnostic[]): void {
   const id = entity.id
   if (!ref(id, 'entity:')) add(errors, 'V04_ENTITY_ID', 'Entity id must use entity: namespace', id)
   if (!ENTITY_TYPES.has(entity.type)) add(errors, 'V04_ENTITY_TYPE', 'Entity type is invalid', id)
   if (typeof entity.name !== 'string' || entity.name.trim() === '') add(errors, 'V04_REQUIRED_FIELD', 'Entity name is required', id)
   if (!record(entity.lifecycle) || typeof entity.lifecycle.status !== 'string') add(errors, 'V04_LIFECYCLE', 'Entity lifecycle is required', id)
   validateExternalIdentifiers((entity as unknown as Dict).externalIdentifiers, sources, errors, id)
+  if (entity.type === 'investment_theme') validateInvestmentTheme(entity, themeGroups, errors)
   if (entity.type === 'security') { const security = entity as Extract<KnowledgeEntityV04, { type: 'security' }>; if (typeof security.ticker !== 'string' || security.ticker.trim() === '' || typeof security.exchange !== 'string' || security.exchange.trim() === '' || !['equity', 'bond', 'fund', 'adr', 'other'].includes(security.securityType)) add(errors, 'V04_SECURITY_IDENTITY', 'Security requires ticker, exchange, and securityType', id) }
   if (entity.type === 'institution' && (entity as Extract<KnowledgeEntityV04, { type: 'institution' }>).institutionType !== undefined && !['broker', 'investment_bank', 'fund', 'regulator', 'industry_association', 'research_institution', 'media_organization', 'other'].includes(String((entity as unknown as Dict).institutionType))) add(errors, 'V04_INSTITUTION_TYPE', 'Institution type is invalid', id)
 }
@@ -464,6 +531,8 @@ export function validateKnowledgeV04Objects(objects: readonly KnowledgeAssetV04[
   const theses = new Map<string, KnowledgeThesisV04>()
   const edges = new Map<string, KnowledgeReasoningEdgeV04>()
   const objectMap = new Map<string, KnowledgeAssetV04>()
+  const themeGroups = new Map<string, KnowledgeThemeGroupV04>()
+  const themeGroupCandidates: Dict[] = []
 
   for (const object of candidates) {
     if (!record(object) || typeof object.id !== 'string') {
@@ -474,6 +543,12 @@ export function validateKnowledgeV04Objects(objects: readonly KnowledgeAssetV04[
     if (ids.has(id)) add(errors, 'V04_DUPLICATE_ID', `Duplicate canonical id: ${id}`, id)
     ids.add(id)
     objectMap.set(id, object as unknown as KnowledgeAssetV04)
+    if (id.startsWith('theme-group:')) {
+      themeGroups.set(id, object as unknown as KnowledgeThemeGroupV04)
+      themeGroupCandidates.push(object)
+    } else if (looksLikeThemeGroup(object)) {
+      themeGroupCandidates.push(object)
+    }
     if (id.startsWith('source:')) sources.set(id, object as unknown as KnowledgeSourceV04)
     else if (id.startsWith('claim:')) claims.set(id, object as unknown as KnowledgeClaimV04)
     else if (id.startsWith('relation:')) relations.set(id, object as unknown as KnowledgeRelationV04)
@@ -487,11 +562,13 @@ export function validateKnowledgeV04Objects(objects: readonly KnowledgeAssetV04[
     else if (id.startsWith('reasoning-edge:')) edges.set(id, object as unknown as KnowledgeReasoningEdgeV04)
   }
 
+  for (const group of themeGroupCandidates) validateThemeGroup(group as unknown as KnowledgeThemeGroupV04, errors)
+
   const sourceIds = new Set(sources.keys())
   const claimIds = new Set(claims.keys())
   for (const object of candidates) {
     if (!record(object) || typeof object.id !== 'string') continue
-    if (object.id.startsWith('entity:')) validateEntity(object as unknown as KnowledgeEntityV04, sourceIds, errors)
+    if (object.id.startsWith('entity:')) validateEntity(object as unknown as KnowledgeEntityV04, sourceIds, themeGroups, errors)
   }
   for (const source of sources.values()) validateSource(source, errors)
   for (const claim of claims.values()) validateClaim(claim, sourceIds, claimIds, errors)
