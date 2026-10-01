@@ -147,3 +147,81 @@ test('rejects unbounded columns, rows, cell references, and undeclared fields', 
   undeclaredField.rows[0].cells.products.sourceRefs = ['source:unreviewed']
   assert.equal(hasIssue(undeclaredField, 'FIELD_UNDECLARED'), true)
 })
+
+test('rejects sparse arrays and unexpected own properties in every contract array', () => {
+  const sparseColumns = cloned(validModule()) as any
+  delete sparseColumns.columns[0]
+  assert.equal(hasIssue(sparseColumns, 'ARRAY_SLOT_MISSING'), true)
+
+  const sparseRows = cloned(validModule()) as any
+  delete sparseRows.rows[0]
+  assert.equal(hasIssue(sparseRows, 'ARRAY_SLOT_MISSING'), true)
+
+  const sparseSources = cloned(validModule()) as any
+  delete sparseSources.sourceRefs[0]
+  assert.equal(hasIssue(sparseSources, 'ARRAY_SLOT_MISSING'), true)
+
+  const sparseKnowledgeRefs = cloned(validModule()) as any
+  delete sparseKnowledgeRefs.rows[0].cells.products.knowledgeRefs[0]
+  assert.equal(hasIssue(sparseKnowledgeRefs, 'ARRAY_SLOT_MISSING'), true)
+
+  const extraColumnProperty = cloned(validModule()) as any
+  extraColumnProperty.columns.extra = true
+  assert.equal(hasIssue(extraColumnProperty, 'ARRAY_PROPERTY_UNDECLARED'), true)
+
+  const extraRowProperty = cloned(validModule()) as any
+  extraRowProperty.rows.extra = true
+  assert.equal(hasIssue(extraRowProperty, 'ARRAY_PROPERTY_UNDECLARED'), true)
+
+  const extraSourceProperty = cloned(validModule()) as any
+  extraSourceProperty.sourceRefs.extra = true
+  assert.equal(hasIssue(extraSourceProperty, 'ARRAY_PROPERTY_UNDECLARED'), true)
+
+  const extraKnowledgeRefProperty = cloned(validModule()) as any
+  extraKnowledgeRefProperty.rows[0].cells.products.knowledgeRefs.extra = true
+  assert.equal(hasIssue(extraKnowledgeRefProperty, 'ARRAY_PROPERTY_UNDECLARED'), true)
+})
+
+test('indexed traversal catches invalid slots despite overridden array methods', () => {
+  const overriddenSlice = cloned(validModule()) as any
+  overriddenSlice.rows[0].companyRef = 'company:malformed'
+  overriddenSlice.rows.slice = () => []
+  assert.equal(hasIssue(overriddenSlice, 'ROW_COMPANY_REF'), true)
+
+  const overriddenForEach = cloned(validModule()) as any
+  overriddenForEach.sourceRefs[0] = 'source:bad id'
+  overriddenForEach.sourceRefs.forEach = () => undefined
+  assert.equal(hasIssue(overriddenForEach, 'MODULE_SOURCE_REF_INVALID'), true)
+
+  const overriddenCellForEach = cloned(validModule()) as any
+  overriddenCellForEach.rows[0].cells.products.knowledgeRefs[0] = 'claim:bad id'
+  overriddenCellForEach.rows[0].cells.products.knowledgeRefs.forEach = () => undefined
+  assert.equal(hasIssue(overriddenCellForEach, 'CELL_KNOWLEDGE_REF_INVALID'), true)
+})
+
+test('requires consistent available financial units per role while preserving row-specific dates and years', () => {
+  const withSecondRow = (): any => {
+    const module = cloned(validModule()) as any
+    const secondRow = structuredClone(module.rows[0])
+    secondRow.companyRef = 'entity:second-company'
+    secondRow.cells['market-cap'].asOf = '2025-05-30'
+    secondRow.cells.revenue.fiscalYear = 2024
+    module.rows.push(secondRow)
+    return module
+  }
+
+  assert.equal(validateCompetitionModuleV1(withSecondRow()).valid, true)
+
+  const mixedMarketCapUnit = withSecondRow()
+  mixedMarketCapUnit.rows[1].cells['market-cap'].unit = 'million'
+  assert.equal(hasIssue(mixedMarketCapUnit, 'MARKET_CAP_UNIT_CURRENCY_INCONSISTENT'), true)
+
+  const mixedMarketCapCurrency = withSecondRow()
+  mixedMarketCapCurrency.rows[1].cells['market-cap'].currency = 'USD'
+  assert.equal(hasIssue(mixedMarketCapCurrency, 'MARKET_CAP_UNIT_CURRENCY_INCONSISTENT'), true)
+
+  const mixedAnnualRevenuePair = withSecondRow()
+  mixedAnnualRevenuePair.rows[1].cells.revenue.unit = 'million'
+  mixedAnnualRevenuePair.rows[1].cells.revenue.currency = 'USD'
+  assert.equal(hasIssue(mixedAnnualRevenuePair, 'ANNUAL_REVENUE_UNIT_CURRENCY_INCONSISTENT'), true)
+})

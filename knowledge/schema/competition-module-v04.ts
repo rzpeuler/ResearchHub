@@ -155,6 +155,20 @@ function addIssue(issues: CompetitionModuleIssueV1[], code: string, path: string
   if (issues.length < MAX_DIAGNOSTICS) issues.push({ code, path, message })
 }
 
+function validateOwnArraySlots(value: readonly unknown[], path: string, maxEntries: number, issues: CompetitionModuleIssueV1[]): void {
+  for (const key of Reflect.ownKeys(value)) {
+    if (key === 'length') continue
+    const index = typeof key === 'string' && /^(0|[1-9][0-9]*)$/.test(key) ? Number(key) : Number.NaN
+    if (!Number.isSafeInteger(index) || index < 0 || index >= value.length || String(index) !== key) {
+      addIssue(issues, 'ARRAY_PROPERTY_UNDECLARED', `${path}.[property]`, 'Array has an unexpected own property')
+    }
+  }
+  const inspectedLength = Math.min(value.length, maxEntries)
+  for (let index = 0; index < inspectedLength; index += 1) {
+    if (!Object.prototype.hasOwnProperty.call(value, String(index))) addIssue(issues, 'ARRAY_SLOT_MISSING', `${path}[${index}]`, 'Arrays must not contain sparse slots')
+  }
+}
+
 function checkExactFields(
   value: Dict,
   allowed: readonly string[],
@@ -197,19 +211,26 @@ function validateAvailableCell(
     addIssue(issues, 'CELL_DISPLAY_VALUE', `${path}.displayValue`, `Display value must be non-empty and at most ${COMPETITION_MODULE_V1_LIMITS.maxDisplayValueLength} characters`)
   }
 
-  if (!Array.isArray(cell.knowledgeRefs) || cell.knowledgeRefs.length < 1 || cell.knowledgeRefs.length > COMPETITION_MODULE_V1_LIMITS.maxCellKnowledgeRefs) {
+  if (!Array.isArray(cell.knowledgeRefs)) {
     addIssue(issues, 'CELL_KNOWLEDGE_REFS', `${path}.knowledgeRefs`, `Available cells require 1-${COMPETITION_MODULE_V1_LIMITS.maxCellKnowledgeRefs} canonical knowledge refs`)
   } else {
-    const allowedPrefixes = allowedKnowledgeRefPrefixes(role)
-    const seen = new Set<string>()
-    cell.knowledgeRefs.forEach((ref, index) => {
-      const matchesAllowedKind = allowedPrefixes.some((prefix) => validCanonicalRef(ref, prefix))
-      if (!matchesAllowedKind) addIssue(issues, 'CELL_KNOWLEDGE_REF_INVALID', `${path}.knowledgeRefs[${index}]`, `Reference must use an allowed canonical kind for the ${role} role`)
-      if (typeof ref === 'string') {
-        if (seen.has(ref)) addIssue(issues, 'CELL_KNOWLEDGE_REF_DUPLICATE', `${path}.knowledgeRefs[${index}]`, 'Knowledge refs must be unique within a cell')
-        seen.add(ref)
+    if (cell.knowledgeRefs.length < 1 || cell.knowledgeRefs.length > COMPETITION_MODULE_V1_LIMITS.maxCellKnowledgeRefs) {
+      addIssue(issues, 'CELL_KNOWLEDGE_REFS', `${path}.knowledgeRefs`, `Available cells require 1-${COMPETITION_MODULE_V1_LIMITS.maxCellKnowledgeRefs} canonical knowledge refs`)
+    }
+    validateOwnArraySlots(cell.knowledgeRefs, `${path}.knowledgeRefs`, COMPETITION_MODULE_V1_LIMITS.maxCellKnowledgeRefs, issues)
+    if (cell.knowledgeRefs.length >= 1 && cell.knowledgeRefs.length <= COMPETITION_MODULE_V1_LIMITS.maxCellKnowledgeRefs) {
+      const allowedPrefixes = allowedKnowledgeRefPrefixes(role)
+      const seen = new Set<string>()
+      for (let index = 0; index < cell.knowledgeRefs.length; index += 1) {
+        const ref = cell.knowledgeRefs[index]
+        const matchesAllowedKind = allowedPrefixes.some((prefix) => validCanonicalRef(ref, prefix))
+        if (!matchesAllowedKind) addIssue(issues, 'CELL_KNOWLEDGE_REF_INVALID', `${path}.knowledgeRefs[${index}]`, `Reference must use an allowed canonical kind for the ${role} role`)
+        if (typeof ref === 'string') {
+          if (seen.has(ref)) addIssue(issues, 'CELL_KNOWLEDGE_REF_DUPLICATE', `${path}.knowledgeRefs[${index}]`, 'Knowledge refs must be unique within a cell')
+          seen.add(ref)
+        }
       }
-    })
+    }
   }
 
   if (role === 'market_cap') {
@@ -295,17 +316,24 @@ export function validateCompetitionModuleV1(value: unknown): CompetitionModuleVa
   if (value.schemaId !== COMPETITION_MODULE_SCHEMA_ID_V1) addIssue(issues, 'MODULE_SCHEMA_ID', '$.schemaId', `schemaId must be ${COMPETITION_MODULE_SCHEMA_ID_V1}`)
 
   if (value.sourceRefs !== undefined) {
-    if (!Array.isArray(value.sourceRefs) || value.sourceRefs.length > COMPETITION_MODULE_V1_LIMITS.maxSourceRefs) {
+    if (!Array.isArray(value.sourceRefs)) {
       addIssue(issues, 'MODULE_SOURCE_REFS', '$.sourceRefs', `sourceRefs must be an array of at most ${COMPETITION_MODULE_V1_LIMITS.maxSourceRefs} refs`)
     } else {
-      const seen = new Set<string>()
-      value.sourceRefs.forEach((sourceRef, index) => {
-        if (!validCanonicalRef(sourceRef, 'source:')) addIssue(issues, 'MODULE_SOURCE_REF_INVALID', `$.sourceRefs[${index}]`, 'sourceRef must use a canonical Source reference')
-        if (typeof sourceRef === 'string') {
-          if (seen.has(sourceRef)) addIssue(issues, 'MODULE_SOURCE_REF_DUPLICATE', `$.sourceRefs[${index}]`, 'sourceRefs must be unique')
-          seen.add(sourceRef)
+      if (value.sourceRefs.length > COMPETITION_MODULE_V1_LIMITS.maxSourceRefs) {
+        addIssue(issues, 'MODULE_SOURCE_REFS', '$.sourceRefs', `sourceRefs must be an array of at most ${COMPETITION_MODULE_V1_LIMITS.maxSourceRefs} refs`)
+      }
+      validateOwnArraySlots(value.sourceRefs, '$.sourceRefs', COMPETITION_MODULE_V1_LIMITS.maxSourceRefs, issues)
+      if (value.sourceRefs.length <= COMPETITION_MODULE_V1_LIMITS.maxSourceRefs) {
+        const seen = new Set<string>()
+        for (let index = 0; index < value.sourceRefs.length; index += 1) {
+          const sourceRef = value.sourceRefs[index]
+          if (!validCanonicalRef(sourceRef, 'source:')) addIssue(issues, 'MODULE_SOURCE_REF_INVALID', `$.sourceRefs[${index}]`, 'sourceRef must use a canonical Source reference')
+          if (typeof sourceRef === 'string') {
+            if (seen.has(sourceRef)) addIssue(issues, 'MODULE_SOURCE_REF_DUPLICATE', `$.sourceRefs[${index}]`, 'sourceRefs must be unique')
+            seen.add(sourceRef)
+          }
         }
-      })
+      }
     }
   }
 
@@ -319,10 +347,13 @@ export function validateCompetitionModuleV1(value: unknown): CompetitionModuleVa
     if (value.columns.length < COMPETITION_MODULE_V1_LIMITS.minColumns || value.columns.length > COMPETITION_MODULE_V1_LIMITS.maxColumns) {
       addIssue(issues, 'COLUMNS_BOUNDS', '$.columns', `columns must contain ${COMPETITION_MODULE_V1_LIMITS.minColumns}-${COMPETITION_MODULE_V1_LIMITS.maxColumns} entries`)
     }
-    value.columns.slice(0, COMPETITION_MODULE_V1_LIMITS.maxColumns).forEach((column, index) => {
+    validateOwnArraySlots(value.columns, '$.columns', COMPETITION_MODULE_V1_LIMITS.maxColumns, issues)
+    const inspectedColumns = Math.min(value.columns.length, COMPETITION_MODULE_V1_LIMITS.maxColumns)
+    for (let index = 0; index < inspectedColumns; index += 1) {
+      const column = value.columns[index]
       const path = `$.columns[${index}]`
       const role = validateColumn(column, path, issues)
-      if (!isRecord(column)) return
+      if (!isRecord(column)) continue
       if (typeof column.id === 'string' && column.id.length <= COMPETITION_MODULE_V1_LIMITS.maxColumnIdLength) {
         const previous = seenColumnIds.get(column.id)
         if (previous !== undefined) addIssue(issues, 'COLUMN_ID_DUPLICATE', `${path}.id`, `Column id duplicates $.columns[${previous}].id`)
@@ -336,7 +367,7 @@ export function validateCompetitionModuleV1(value: unknown): CompetitionModuleVa
         else seenColumnLabels.set(normalizedLabel, index)
       }
       if (role !== undefined) roleCounts.set(role, (roleCounts.get(role) ?? 0) + 1)
-    })
+    }
 
     for (const requiredRole of REQUIRED_ROLES) {
       if (roleCounts.get(requiredRole) !== 1) {
@@ -352,13 +383,17 @@ export function validateCompetitionModuleV1(value: unknown): CompetitionModuleVa
     if (value.rows.length > COMPETITION_MODULE_V1_LIMITS.maxRows) {
       addIssue(issues, 'ROWS_BOUNDS', '$.rows', `rows must contain at most ${COMPETITION_MODULE_V1_LIMITS.maxRows} entries`)
     }
+    validateOwnArraySlots(value.rows, '$.rows', COMPETITION_MODULE_V1_LIMITS.maxRows, issues)
     const seenCompanies = new Map<string, number>()
+    const financialUnitsByRole = new Map<'market_cap' | 'annual_revenue', { unit: string; currency: string; rowIndex: number }>()
     const nonCompanyColumns = [...columnsById.entries()].filter(([, column]) => column.role !== 'company')
-    value.rows.slice(0, COMPETITION_MODULE_V1_LIMITS.maxRows).forEach((row, rowIndex) => {
+    const inspectedRows = Math.min(value.rows.length, COMPETITION_MODULE_V1_LIMITS.maxRows)
+    for (let rowIndex = 0; rowIndex < inspectedRows; rowIndex += 1) {
+      const row = value.rows[rowIndex]
       const rowPath = `$.rows[${rowIndex}]`
       if (!isRecord(row)) {
         addIssue(issues, 'ROW_INVALID', rowPath, 'Row must be an object')
-        return
+        continue
       }
       checkExactFields(row, ['companyRef', 'cells'], ['companyRef', 'cells'], rowPath, issues)
       if (!validCanonicalRef(row.companyRef, 'entity:')) {
@@ -371,7 +406,7 @@ export function validateCompetitionModuleV1(value: unknown): CompetitionModuleVa
 
       if (!isRecord(row.cells)) {
         addIssue(issues, 'ROW_CELLS_INVALID', `${rowPath}.cells`, 'cells must be an object keyed by non-company column id')
-        return
+        continue
       }
       const expectedCellIds = new Set(nonCompanyColumns.map(([id]) => id))
       let unknownCellCount = 0
@@ -387,10 +422,21 @@ export function validateCompetitionModuleV1(value: unknown): CompetitionModuleVa
         if (!hasOwn(row.cells, cellId)) {
           addIssue(issues, 'ROW_CELL_MISSING', cellPath, 'Every non-company column requires an explicit cell state')
         } else {
-          validateCell(row.cells[cellId], column.role, cellPath, issues)
+          const cell = row.cells[cellId]
+          validateCell(cell, column.role, cellPath, issues)
+          if ((column.role === 'market_cap' || column.role === 'annual_revenue') && isRecord(cell) && cell.status === 'available' &&
+            boundedNonEmptyString(cell.unit, COMPETITION_MODULE_V1_LIMITS.maxUnitLength) && typeof cell.currency === 'string' && /^[A-Z]{3}$/.test(cell.currency)) {
+            const previous = financialUnitsByRole.get(column.role)
+            if (previous !== undefined && (previous.unit !== cell.unit || previous.currency !== cell.currency)) {
+              const code = column.role === 'market_cap' ? 'MARKET_CAP_UNIT_CURRENCY_INCONSISTENT' : 'ANNUAL_REVENUE_UNIT_CURRENCY_INCONSISTENT'
+              addIssue(issues, code, cellPath, `${column.role} cells must use one identical unit and currency pair across available rows`)
+            } else if (previous === undefined) {
+              financialUnitsByRole.set(column.role, { unit: cell.unit, currency: cell.currency, rowIndex })
+            }
+          }
         }
       }
-    })
+    }
   }
 
   return { valid: issues.length === 0, issues }
