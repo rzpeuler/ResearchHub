@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { appendFile, lstat, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { KnowledgeBaseRegistry } from '../../../knowledge/registry/registry.ts'
@@ -296,5 +296,22 @@ test('Theme scope ledger enforces the per-log byte bound before parsing', async 
     const oversized = ' '.repeat(THEME_SCOPE_LEDGER_V04_LIMITS.maxLogBytes + 1)
     await writeFile(join(root, 'logs', 'research', 'oversized-log.yaml'), oversized, 'utf8')
     assertFailed(await readThemeScopeLedgerV04(await mounted(root)), 'LOG_SIZE_LIMIT')
+  })
+})
+
+test('Theme scope ledger caps descriptor reads when a Writer log grows after open', async () => {
+  await withFreshKb('growth-bound', async (root) => {
+    const decision = makeDecision({ candidate: industry('Growing Writer Log'), revision: 0 })
+    await writeScopeLog(root, 'growing-scope-log', batch(decision, 0))
+    const logPath = join(root, 'logs', 'research', 'growing-scope-log.yaml')
+    assert.ok(Number((await lstat(logPath)).size) < THEME_SCOPE_LEDGER_V04_LIMITS.maxLogBytes)
+
+    const result = await readThemeScopeLedgerV04(await mounted(root), {
+      afterLogOpen: async (relativeLogPath) => {
+        assert.equal(relativeLogPath, join('logs', 'research', 'growing-scope-log.yaml'))
+        await appendFile(logPath, ' '.repeat(THEME_SCOPE_LEDGER_V04_LIMITS.maxLogBytes + 1), 'utf8')
+      },
+    })
+    assertFailed(result, 'LOG_SIZE_LIMIT')
   })
 })

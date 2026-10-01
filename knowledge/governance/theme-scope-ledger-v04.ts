@@ -1,4 +1,5 @@
-import { lstat, opendir, readFile, realpath } from 'node:fs/promises'
+import { constants, type BigIntStats } from 'node:fs'
+import { lstat, opendir, open, realpath, type FileHandle } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import type { KnowledgeBaseHandle } from '../storage/handle.ts'
 import { knowledgeBaseMutationLockPath } from '../storage/mutation-lock.ts'
@@ -31,6 +32,7 @@ export type ThemeScopeLedgerErrorCodeV04 =
   | 'LOG_PATH_UNSAFE'
   | 'LOG_SCAN_LIMIT'
   | 'LOG_SIZE_LIMIT'
+  | 'LOG_CHANGED_DURING_READ'
   | 'LOG_UNREADABLE'
   | 'LOG_MALFORMED'
   | 'LOG_IDENTITY_MISMATCH'
@@ -48,6 +50,11 @@ export interface ThemeScopeLedgerErrorV04 {
   readonly message: string
   readonly logPath?: string
   readonly issues?: readonly ThemeScopeValidationIssueV04[]
+}
+
+export interface ThemeScopeLedgerReadHooksV04 {
+  /** Internal deterministic race seam for verifying descriptor-based bounded reads. */
+  readonly afterLogOpen?: (relativeLogPath: string) => void | Promise<void>
 }
 
 export interface ThemeScopeLedgerEntryV04 {
@@ -149,12 +156,118 @@ function failed(
   }
 }
 
-async function lstatOptional(path: string): Promise<Awaited<ReturnType<typeof lstat>> | undefined> {
+async function lstatOptional(path: string): Promise<BigIntStats | undefined> {
   try {
-    return await lstat(path)
+    return await lstat(path, { bigint: true })
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR') return undefined
     throw error
+  }
+}
+
+function sameFileIdentity(left: BigIntStats, right: BigIntStats): boolean {
+  return left.dev === right.dev && (left.ino === 0n || right.ino === 0n
+    ? left.size === right.size && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs
+    : left.ino === right.ino)
+}
+
+function sameFileSnapshot(left: BigIntStats, right: BigIntStats): boolean {
+  return sameFileIdentity(left, right)
+    && left.size === right.size
+    && left.mtimeNs === right.mtimeNs
+    && left.ctimeNs === right.ctimeNs
+}
+
+async function readBoundedFileHandle(file: FileHandle, relativeLogPath: string): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  const chunk = Buffer.allocUnsafe(64 * 1024)
+  let totalBytes = 0
+  while (true) {
+    const remainingWithOverflowByte = THEME_SCOPE_LEDGER_V04_LIMITS.maxLogBytes + 1 - totalBytes
+    if (remainingWithOverflowByte <= 0) {
+      throw new LedgerFailure('LOG_SIZE_LIMIT', 'Writer log grew beyond the per-log byte limit while being read.', relativeLogPath)
+    }
+    const length = Math.min(chunk.length, remainingWithOverflowByte)
+    let bytesRead: number
+    try {
+      ({ bytesRead } = await file.read(chunk, 0, length, null))
+    } catch (error) {
+      throw new LedgerFailure('LOG_UNREADABLE', 'Unable to read a bounded research Writer log: ' + (error instanceof Error ? error.message : String(error)), relativeLogPath)
+    }
+    if (bytesRead === 0) break
+    totalBytes += bytesRead
+    if (totalBytes > THEME_SCOPE_LEDGER_V04_LIMITS.maxLogBytes) {
+      throw new LedgerFailure('LOG_SIZE_LIMIT', 'Writer log grew beyond the per-log byte limit while being read.', relativeLogPath)
+    }
+    chunks.push(Buffer.from(chunk.subarray(0, bytesRead)))
+  }
+  return Buffer.concat(chunks, totalBytes)
+}
+
+async function readValidatedWriterLog(
+  path: string,
+  relativeLogPath: string,
+  rootReal: string,
+  pathRealBeforeOpen: string,
+  pathStatBeforeOpen: BigIntStats,
+  hooks: ThemeScopeLedgerReadHooksV04,
+): Promise<Buffer> {
+  const noFollow = typeof constants.O_NOFOLLOW === 'number' ? constants.O_NOFOLLOW : 0
+  let file: FileHandle
+  try {
+    file = await open(path, constants.O_RDONLY | noFollow)
+  } catch (error) {
+    throw new LedgerFailure('LOG_PATH_UNSAFE', 'Unable to open validated Writer log without following a replaced path: ' + (error instanceof Error ? error.message : String(error)), relativeLogPath)
+  }
+  try {
+    const openedStat = await file.stat({ bigint: true })
+    if (!openedStat.isFile() || !sameFileIdentity(pathStatBeforeOpen, openedStat)) {
+      throw new LedgerFailure('LOG_PATH_UNSAFE', 'Writer log identity changed between path validation and open.', relativeLogPath)
+    }
+    if (Number(openedStat.size) > THEME_SCOPE_LEDGER_V04_LIMITS.maxLogBytes) {
+      throw new LedgerFailure('LOG_SIZE_LIMIT', 'Writer log grew beyond the per-log byte limit before it was read.', relativeLogPath)
+    }
+    if (!sameFileSnapshot(pathStatBeforeOpen, openedStat)) {
+      throw new LedgerFailure('LOG_CHANGED_DURING_READ', 'Writer log size or timestamps changed between path validation and open.', relativeLogPath)
+    }
+    const openedPathStat = await lstatOptional(path)
+    const openedPathReal = await realpath(path)
+    if (
+      !openedPathStat
+      || openedPathStat.isSymbolicLink()
+      || !openedPathStat.isFile()
+      || !sameFileIdentity(openedStat, openedPathStat)
+      || openedPathReal !== pathRealBeforeOpen
+      || !relativeWithin(rootReal, openedPathReal)
+    ) {
+      throw new LedgerFailure('LOG_PATH_UNSAFE', 'Writer log path changed while the validated file handle was being opened.', relativeLogPath)
+    }
+    if (!sameFileSnapshot(openedStat, openedPathStat)) {
+      throw new LedgerFailure('LOG_CHANGED_DURING_READ', 'Writer log size or timestamps changed while its file handle was being opened.', relativeLogPath)
+    }
+    await hooks.afterLogOpen?.(relativeLogPath)
+    const bytes = await readBoundedFileHandle(file, relativeLogPath)
+    const finishedStat = await file.stat({ bigint: true })
+    const finishedPathStat = await lstatOptional(path)
+    let finishedPathReal: string | undefined
+    try { finishedPathReal = await realpath(path) } catch { finishedPathReal = undefined }
+    if (
+      !sameFileSnapshot(openedStat, finishedStat)
+      || Number(finishedStat.size) !== bytes.byteLength
+      || !finishedPathStat
+      || finishedPathStat.isSymbolicLink()
+      || !finishedPathStat.isFile()
+      || !sameFileSnapshot(finishedStat, finishedPathStat)
+      || finishedPathReal !== pathRealBeforeOpen
+    ) {
+      throw new LedgerFailure('LOG_CHANGED_DURING_READ', 'Writer log identity or contents changed while its bounded file handle was being read.', relativeLogPath)
+    }
+    return bytes
+  } catch (error) {
+    if (error instanceof LedgerFailure) throw error
+    throw new LedgerFailure('LOG_UNREADABLE', 'Unable to verify or read a bounded research Writer log: ' + (error instanceof Error ? error.message : String(error)), relativeLogPath)
+  } finally {
+    await file.close().catch(() => undefined)
   }
 }
 
@@ -193,7 +306,12 @@ async function assertRegularContainedPath(
   }
 }
 
-async function scanResearchLogs(root: string, rootReal: string, knowledgeBaseId: string): Promise<readonly ScopeLog[]> {
+async function scanResearchLogs(
+  root: string,
+  rootReal: string,
+  knowledgeBaseId: string,
+  hooks: ThemeScopeLedgerReadHooksV04,
+): Promise<readonly ScopeLog[]> {
   const logsDirectory = join(root, 'logs')
   const researchDirectory = join(logsDirectory, 'research')
   const logsStat = await lstatOptional(logsDirectory)
@@ -255,20 +373,17 @@ async function scanResearchLogs(root: string, rootReal: string, knowledgeBaseId:
     if (!Number.isSafeInteger(logBytes) || logBytes > THEME_SCOPE_LEDGER_V04_LIMITS.maxLogBytes) {
       throw new LedgerFailure('LOG_SIZE_LIMIT', 'Writer log exceeds the per-log byte limit.', relativeLogPath)
     }
-    totalBytes += logBytes
-    if (totalBytes > THEME_SCOPE_LEDGER_V04_LIMITS.maxTotalLogBytes) {
+    if (totalBytes + logBytes > THEME_SCOPE_LEDGER_V04_LIMITS.maxTotalLogBytes) {
       throw new LedgerFailure('LOG_SIZE_LIMIT', 'Research Writer logs exceed the total byte limit.')
     }
-
-    let contents: string
-    try {
-      contents = await readFile(path, 'utf8')
-    } catch (error) {
-      throw new LedgerFailure('LOG_UNREADABLE', 'Unable to read a bounded research Writer log: ' + (error instanceof Error ? error.message : String(error)), relativeLogPath)
+    const bytes = await readValidatedWriterLog(path, relativeLogPath, rootReal, pathReal, stat, hooks)
+    if (totalBytes + bytes.byteLength > THEME_SCOPE_LEDGER_V04_LIMITS.maxTotalLogBytes) {
+      throw new LedgerFailure('LOG_SIZE_LIMIT', 'Research Writer logs exceed the total byte limit.')
     }
+    totalBytes += bytes.byteLength
     let parsed: unknown
     try {
-      parsed = parseYaml(contents, path)
+      parsed = parseYaml(new TextDecoder('utf-8', { fatal: true }).decode(bytes), path)
     } catch (error) {
       throw new LedgerFailure('LOG_MALFORMED', 'Unable to parse a bounded research Writer log: ' + (error instanceof Error ? error.message : String(error)), relativeLogPath)
     }
@@ -390,7 +505,10 @@ function buildLedger(
 }
 
 /** Reads the authoritative Theme scope history from bounded, committed Schema 0.4 Writer logs. */
-export async function readThemeScopeLedgerV04(handle: KnowledgeBaseHandle): Promise<ThemeScopeLedgerReadResultV04> {
+export async function readThemeScopeLedgerV04(
+  handle: KnowledgeBaseHandle,
+  hooks: ThemeScopeLedgerReadHooksV04 = {},
+): Promise<ThemeScopeLedgerReadResultV04> {
   let knowledgeBaseId: string | undefined
   let knowledgeBaseRevision: number | undefined
   try {
@@ -420,7 +538,7 @@ export async function readThemeScopeLedgerV04(handle: KnowledgeBaseHandle): Prom
       throw new LedgerFailure('KNOWLEDGE_BASE_REVISION_ROLLBACK', 'Current manifest revision is older than the mounted handle revision.')
     }
 
-    const scopeLogs = await scanResearchLogs(root, rootReal, manifest.knowledgeBaseId)
+    const scopeLogs = await scanResearchLogs(root, rootReal, manifest.knowledgeBaseId, hooks)
     for (const log of scopeLogs) {
       if (log.committedRevision > manifest.revision) {
         throw new LedgerFailure('LOG_REVISION_FUTURE', 'Writer log committedRevision is newer than the current Knowledge Base manifest.', log.path)
