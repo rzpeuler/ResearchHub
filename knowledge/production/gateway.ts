@@ -302,6 +302,14 @@ export class KnowledgeProductionGateway {
           else { const original = assets.objects.find((asset) => asset.value.id === id)?.value; if (original) operations.push({ operationId: `link-claim-${operations.length + 1}`, type: 'update', knowledgeId: id, expectedBeforeHash: hashKnowledgeObject(original), object: linked }) }
         }
       }
+      const evidenceBackedClaimRefs = new Set<string>()
+      for (const [ref, value] of objects) {
+        if (!ref.startsWith('claim:')) continue
+        const before = canonicalObjects.get(ref) as KnowledgeClaimV04 | undefined
+        if (!before) continue
+        const priorEvidence = new Set((before.provenance ?? []).map((item) => `${item.sourceRef}|${item.rawRef}|${item.locator ?? ''}`))
+        if ((value as KnowledgeClaimV04).provenance?.some((item) => !priorEvidence.has(`${item.sourceRef}|${item.rawRef}|${item.locator ?? ''}`))) evidenceBackedClaimRefs.add(ref)
+      }
       for (const p of proposals.filter((x) => x.kind === 'reasoning_edge')) {
         const localSource = p.sourceProposalId ?? p.subjectKey
         const sourceRef = p.existingSourceRef ?? boundRef(localSource)
@@ -330,28 +338,72 @@ export class KnowledgeProductionGateway {
       }
       const competitionModuleProposals = input.proposals.filter((proposal): proposal is CompetitionModuleProductionProposal => proposal.kind === 'module')
       const activeObject = (value: KnowledgeAssetV04 | undefined): value is KnowledgeAssetV04 => record(value) && record((value as unknown as Dict).lifecycle) && ((value as unknown as Dict).lifecycle as Dict).status === 'active'
-      const sourceRefsForKnowledge = (ref: string, visited = new Set<string>()): readonly string[] => {
-        if (visited.has(ref)) return []
+      const moduleSourceChecks = new Map<string, Promise<string | undefined>>()
+      const moduleSourceFailure = (sourceRef: string): Promise<string | undefined> => {
+        const cached = moduleSourceChecks.get(sourceRef)
+        if (cached) return cached
+        const checked = (async (): Promise<string | undefined> => {
+          const source = objects.get(sourceRef) as KnowledgeSourceV04 | undefined
+          const lifecycle = source?.lifecycle
+          const validFrom = lifecycle?.validFrom == null ? undefined : Date.parse(lifecycle.validFrom)
+          const validUntil = lifecycle?.validUntil == null ? undefined : Date.parse(lifecycle.validUntil)
+          const rightsExpiresAt = source?.rights.expiresAt == null ? undefined : Date.parse(source.rights.expiresAt)
+          const lifecycleValid = Boolean(source && lifecycle?.status === 'active' && Number.isFinite(evidenceEvaluatedAt)
+            && (validFrom === undefined || (Number.isFinite(validFrom) && validFrom <= evidenceEvaluatedAt))
+            && (validUntil === undefined || (Number.isFinite(validUntil) && validUntil > evidenceEvaluatedAt))
+            && (rightsExpiresAt === undefined || (Number.isFinite(rightsExpiresAt) && rightsExpiresAt > evidenceEvaluatedAt)))
+          const usagePolicy = source?.usagePolicy
+          if (!source || !lifecycleValid || !['public', 'authenticated'].includes(source.rights.accessScope)
+            || source.rights.retentionAllowed !== true || source.rights.aiProcessingAllowed !== true || source.rights.derivativeKnowledgeAllowed !== true
+            || usagePolicy?.retainRaw !== true || usagePolicy.allowAiProcessing !== true || usagePolicy.allowDerivedKnowledge !== true) {
+            return `Source ${sourceRef} is missing, inactive, expired, or does not permit retained derived Knowledge`
+          }
+          if (!Array.isArray(source.rawRefs) || source.rawRefs.length === 0) return `Source ${sourceRef} has no registered Raw evidence`
+          for (const rawRef of source.rawRefs) {
+            if (typeof rawRef !== 'string' || !/^raw-sha256-[0-9a-f]{64}$/.test(rawRef)) return `Source ${sourceRef} has a malformed Raw reference`
+            try { await verifyRaw(input.handle, rawRef) } catch { return `Source ${sourceRef} Raw evidence failed registry or integrity verification: ${rawRef}` }
+          }
+          return undefined
+        })()
+        moduleSourceChecks.set(sourceRef, checked)
+        return checked
+      }
+      interface KnowledgeSourceResolution { readonly sourceRefs: readonly string[]; readonly errors: readonly string[] }
+      const sourceRefsForKnowledge = async (ref: string, visited = new Set<string>()): Promise<KnowledgeSourceResolution> => {
+        if (visited.has(ref)) return { sourceRefs: [], errors: [] }
         visited.add(ref)
         const value = objects.get(ref) as unknown as Dict | undefined
-        if (!value) return []
-        if (ref.startsWith('source:')) return [ref]
-        const sourceRefs = new Set<string>()
-        const addSource = (sourceRef: unknown): void => {
-          if (typeof sourceRef !== 'string' || !sourceRef.startsWith('source:')) return
-          const source = objects.get(sourceRef) as KnowledgeSourceV04 | undefined
-          if (source && activeObject(source)) sourceRefs.add(sourceRef)
+        if (!value) return { sourceRefs: [], errors: [`Knowledge reference ${ref} does not resolve`] }
+        if (ref.startsWith('source:')) {
+          const failure = await moduleSourceFailure(ref)
+          return failure ? { sourceRefs: [], errors: [failure] } : { sourceRefs: [ref], errors: [] }
         }
-        if (Array.isArray(value.sourceRefs)) for (const sourceRef of value.sourceRefs) addSource(sourceRef)
-        addSource(value.sourceRef)
+        const sourceRefs = new Set<string>()
+        const sourceErrors: string[] = []
+        const addSource = async (sourceRef: unknown): Promise<void> => {
+          if (typeof sourceRef !== 'string' || !sourceRef.startsWith('source:')) { sourceErrors.push(`Knowledge reference ${ref} contains a malformed Source reference`); return }
+          const failure = await moduleSourceFailure(sourceRef)
+          if (failure) sourceErrors.push(failure)
+          else sourceRefs.add(sourceRef)
+        }
+        if (Array.isArray(value.sourceRefs)) for (const sourceRef of value.sourceRefs) await addSource(sourceRef)
+        else if (value.sourceRefs !== undefined && value.sourceRefs !== null) sourceErrors.push(`Knowledge reference ${ref} has malformed sourceRefs`)
+        if (value.sourceRef !== undefined && value.sourceRef !== null && (ref.startsWith('observation:') || (typeof value.sourceRef === 'string' && value.sourceRef.startsWith('source:')))) await addSource(value.sourceRef)
         if (Array.isArray(value.supportingClaimRefs)) for (const claimRef of value.supportingClaimRefs) {
           const claim = objects.get(String(claimRef)) as KnowledgeClaimV04 | undefined
-          if (claim && claim.subjectRefs.includes(ref as `relation:${string}`)) for (const sourceRef of sourceRefsForKnowledge(claim.id, visited)) sourceRefs.add(sourceRef)
+          if (!claim || !claim.id.startsWith('claim:')) { sourceErrors.push(`Knowledge reference ${ref} contains an unresolved supporting Claim: ${String(claimRef)}`); continue }
+          if (claim.subjectRefs.includes(ref as `relation:${string}`)) {
+            const nested = await sourceRefsForKnowledge(claim.id, visited)
+            for (const sourceRef of nested.sourceRefs) sourceRefs.add(sourceRef)
+            sourceErrors.push(...nested.errors)
+          }
         }
         if (Array.isArray(value.contributingObservationRefs)) for (const observationRef of value.contributingObservationRefs) {
-          for (const sourceRef of sourceRefsForKnowledge(String(observationRef), visited)) sourceRefs.add(sourceRef)
+          const nested = await sourceRefsForKnowledge(String(observationRef), visited)
+          for (const sourceRef of nested.sourceRefs) sourceRefs.add(sourceRef)
+          sourceErrors.push(...nested.errors)
         }
-        return uniqueSorted([...sourceRefs])
+        return { sourceRefs: uniqueSorted([...sourceRefs]), errors: sourceErrors }
       }
       const isRelevantToCompany = (value: KnowledgeAssetV04, companyRef: string): boolean => {
         const data = value as unknown as Dict
@@ -384,12 +436,14 @@ export class KnowledgeProductionGateway {
         if (collision && (!collision.id.startsWith('module:') || (collision as KnowledgeModuleV04).type !== 'competition' || (collision as KnowledgeModuleV04).targetEntity !== targetRef)) return blockedModule(proposal, 'stable Module identity collides with an incompatible canonical object')
         const existing = collision as unknown as CompetitionModuleV1 | undefined
         if (existing && (existing.schemaId !== COMPETITION_MODULE_SCHEMA_ID_V1 || hashKnowledgeObject(existing.columns) !== hashKnowledgeObject(proposal.columns))) return blockedModule(proposal, 'existing table columns differ; schema changes require review')
+        const existingModuleEvidence = existing ? await sourceRefsForKnowledge(moduleId) : { sourceRefs: [], errors: [] }
+        if (existingModuleEvidence.errors.length) return blockedModule(proposal, `existing Module Source evidence is unusable: ${existingModuleEvidence.errors.join('; ')}`)
 
         const directEvidence = evidenceFor(proposal)
         const unresolvedCandidates = uniqueSorted(proposal.sourceCandidateIds ?? []).filter((candidateId) => !sourceRefs[candidateId] || !rawBySource.has(candidateId))
         if (unresolvedCandidates.length) return blockedModule(proposal, `direct Source evidence did not resolve to usable admitted candidates: ${unresolvedCandidates.join(', ')}`)
         const moduleSourceRefs = new Set<string>([
-          ...(existing?.sourceRefs ?? []),
+          ...existingModuleEvidence.sourceRefs,
           ...directEvidence.map((item) => item.sourceRef),
         ])
         const incomingRows: CompetitionRowV1[] = []
@@ -404,9 +458,10 @@ export class KnowledgeProductionGateway {
           const relationRef = 'proposalId' in rowProposal.businessExposure && typeof rowProposal.businessExposure.proposalId === 'string' ? relationRefs[rowProposal.businessExposure.proposalId] : rowProposal.businessExposure.existingRef
           const relation = relationRef ? objects.get(relationRef) as KnowledgeRelationV04 | undefined : undefined
           if (!relationRef || !relation || !relation.id.startsWith('relation:') || relation.type !== 'business_exposure' || relation.sourceRef !== companyRef || relation.targetRef !== targetRef || !activeObject(relation) || ('existingRef' in rowProposal.businessExposure && !canonicalObjects.has(relationRef))) return blockedModule(proposal, `row ${rowIndex} requires an active Company-to-Industry business_exposure Relation`)
-          const relationEvidence = sourceRefsForKnowledge(relationRef)
-          if (relationEvidence.length === 0) return blockedModule(proposal, `row ${rowIndex} business_exposure Relation has no resolved Source evidence`)
-          for (const sourceRef of relationEvidence) moduleSourceRefs.add(sourceRef)
+          const relationEvidence = await sourceRefsForKnowledge(relationRef)
+          if (relationEvidence.errors.length) return blockedModule(proposal, `row ${rowIndex} business_exposure Relation has unusable Source evidence: ${relationEvidence.errors.join('; ')}`)
+          if (relationEvidence.sourceRefs.length === 0) return blockedModule(proposal, `row ${rowIndex} business_exposure Relation has no resolved Source evidence`)
+          for (const sourceRef of relationEvidence.sourceRefs) moduleSourceRefs.add(sourceRef)
 
           const cells: Record<string, CompetitionModuleV1['rows'][number]['cells'][string]> = {}
           for (const [columnId, cellProposal] of Object.entries(rowProposal.cells)) {
@@ -420,10 +475,11 @@ export class KnowledgeProductionGateway {
               const knowledge = knowledgeRef ? objects.get(knowledgeRef) : undefined
               if (!knowledgeRef || !knowledge || !['claim:', 'observation:', 'relation:'].some((prefix) => knowledge.id.startsWith(prefix)) || ('existingRef' in selector && !canonicalObjects.has(knowledgeRef))) return blockedModule(proposal, `row ${rowIndex} cell ${columnId} has an unresolved canonical knowledge reference`)
               if (!activeObject(knowledge) || !isRelevantToCompany(knowledge, companyRef)) return blockedModule(proposal, `row ${rowIndex} cell ${columnId} reference is inactive or unrelated to Company ${companyRef}`)
-              const evidenceRefs = sourceRefsForKnowledge(knowledgeRef)
-              if (evidenceRefs.length === 0) return blockedModule(proposal, `row ${rowIndex} cell ${columnId} reference has no resolved Source evidence`)
+              const evidenceRefs = await sourceRefsForKnowledge(knowledgeRef)
+              if (evidenceRefs.errors.length) return blockedModule(proposal, `row ${rowIndex} cell ${columnId} reference has unusable Source evidence: ${evidenceRefs.errors.join('; ')}`)
+              if (evidenceRefs.sourceRefs.length === 0) return blockedModule(proposal, `row ${rowIndex} cell ${columnId} reference has no resolved Source evidence`)
               refs.push(knowledgeRef)
-              for (const sourceRef of evidenceRefs) moduleSourceRefs.add(sourceRef)
+              for (const sourceRef of evidenceRefs.sourceRefs) moduleSourceRefs.add(sourceRef)
             }
             const canonicalRefs = uniqueSorted(refs) as CompetitionCellKnowledgeRefV1[]
             const { knowledgeRefs: _selectors, ...cellFields } = cellProposal
@@ -448,7 +504,17 @@ export class KnowledgeProductionGateway {
             if (priorCell?.status === 'available' && incomingCell.status === 'available') {
               const priorRefs = uniqueSorted(priorCell.knowledgeRefs)
               const incomingRefs = uniqueSorted(incomingCell.knowledgeRefs)
-              if (hashKnowledgeObject(priorRefs) === hashKnowledgeObject(incomingRefs) && hashKnowledgeObject(priorCell) !== hashKnowledgeObject(incomingCell)) mergeError = `row Company ${incoming.companyRef} cell ${columnId} changes with the same knowledge references`
+              if (hashKnowledgeObject(priorRefs) === hashKnowledgeObject(incomingRefs) && hashKnowledgeObject(priorCell) !== hashKnowledgeObject(incomingCell)) {
+                const withoutDisplayAndAsOf = (cell: CompetitionModuleV1['rows'][number]['cells'][string]): Dict => {
+                  const remaining = { ...cell } as Dict
+                  delete remaining.displayValue
+                  delete remaining.asOf
+                  return remaining
+                }
+                const onlyDisplayOrAsOfChanged = hashKnowledgeObject(withoutDisplayAndAsOf(priorCell)) === hashKnowledgeObject(withoutDisplayAndAsOf(incomingCell))
+                const backedByUpdatedClaim = incomingRefs.some((ref) => evidenceBackedClaimRefs.has(ref))
+                if (!onlyDisplayOrAsOfChanged || !backedByUpdatedClaim) mergeError = `row Company ${incoming.companyRef} cell ${columnId} changes with the same knowledge references without newly admitted Claim evidence`
+              }
             }
             cells[columnId] = structuredClone(incomingCell)
           }

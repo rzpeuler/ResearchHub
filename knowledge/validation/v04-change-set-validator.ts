@@ -47,11 +47,59 @@ function validateRawRef(ref: unknown, known: ReadonlySet<string>, errors: V04Cha
   if (typeof ref !== 'string' || !RAW.test(ref) || !known.has(ref)) add(errors, 'V04_RAW_REF_INVALID', `Raw reference does not resolve through the Raw registry: ${String(ref)}`, undefined, assetId)
 }
 
-function validateEvidence(objects: Iterable<KnowledgeAssetV04>, knownRawRefs: ReadonlySet<string>, errors: V04ChangeSetValidationDiagnostic[]): void {
+function validateEvidence(objects: Iterable<KnowledgeAssetV04>, knownRawRefs: ReadonlySet<string>, errors: V04ChangeSetValidationDiagnostic[], evaluatedAt: number): void {
   const all = [...objects]
   const sourceObjects = new Map<string, Dict>(all.filter((object) => object.id.startsWith('source:')).map((object) => [object.id, object as unknown as Dict]))
   const sources = new Set<string>(sourceObjects.keys())
+  const claims = new Map<string, Dict>(all.filter((object) => object.id.startsWith('claim:')).map((object) => [object.id, object as unknown as Dict]))
+  const observations = new Map<string, Dict>(all.filter((object) => object.id.startsWith('observation:')).map((object) => [object.id, object as unknown as Dict]))
+  const relations = new Map<string, Dict>(all.filter((object) => object.id.startsWith('relation:')).map((object) => [object.id, object as unknown as Dict]))
   const denied = new Set([...sourceObjects.entries()].filter(([, source]) => { const rights = source.rights; return record(rights) && rights.derivativeKnowledgeAllowed === false }).map(([id]) => id))
+  const evidenceRefs = (value: Dict): Set<string> => {
+    const refs = new Set<string>()
+    if (Array.isArray(value.sourceRefs)) for (const ref of value.sourceRefs) if (typeof ref === 'string' && ref.startsWith('source:')) refs.add(ref)
+    if (typeof value.sourceRef === 'string' && value.sourceRef.startsWith('source:')) refs.add(value.sourceRef)
+    if (Array.isArray(value.provenance)) for (const item of value.provenance) if (record(item) && typeof item.sourceRef === 'string' && item.sourceRef.startsWith('source:')) refs.add(item.sourceRef)
+    return refs
+  }
+  const relationAndClaimEvidence = (relation: Dict, refs: Set<string>): void => {
+    const directRefs = evidenceRefs(relation)
+    for (const ref of directRefs) refs.add(ref)
+    const relationId = relation.id
+    if (typeof relationId !== 'string') return
+    const explicitSupportingRefs = Array.isArray(relation.supportingClaimRefs) ? relation.supportingClaimRefs : []
+    for (const claimRef of explicitSupportingRefs) {
+      const claim = typeof claimRef === 'string' ? claims.get(claimRef) : undefined
+      if (claim) for (const ref of evidenceRefs(claim)) refs.add(ref)
+    }
+    if (directRefs.size === 0 && explicitSupportingRefs.length === 0) for (const claim of claims.values()) {
+      if (Array.isArray(claim.subjectRefs) && claim.subjectRefs.includes(relationId)) for (const ref of evidenceRefs(claim)) refs.add(ref)
+    }
+  }
+  const competitionModuleEvidenceRefs = (module: Dict): Set<string> => {
+    const refs = evidenceRefs(module)
+    const targetRef = module.targetEntity
+    const rows = Array.isArray(module.rows) ? module.rows : []
+    for (const rowValue of rows) {
+      if (!record(rowValue)) continue
+      const companyRef = rowValue.companyRef
+      for (const relation of relations.values()) if (relation.type === 'business_exposure' && relation.sourceRef === companyRef && relation.targetRef === targetRef && record(relation.lifecycle) && relation.lifecycle.status === 'active') relationAndClaimEvidence(relation, refs)
+      const cells = record(rowValue.cells) ? Object.values(rowValue.cells) : []
+      for (const cell of cells) {
+        if (!record(cell) || cell.status !== 'available' || !Array.isArray(cell.knowledgeRefs)) continue
+        for (const knowledgeRef of cell.knowledgeRefs) {
+          if (typeof knowledgeRef !== 'string') continue
+          const claim = claims.get(knowledgeRef)
+          if (claim) { for (const ref of evidenceRefs(claim)) refs.add(ref); continue }
+          const observation = observations.get(knowledgeRef)
+          if (observation) { for (const ref of evidenceRefs(observation)) refs.add(ref); continue }
+          const relation = relations.get(knowledgeRef)
+          if (relation) relationAndClaimEvidence(relation, refs)
+        }
+      }
+    }
+    return refs
+  }
   for (const object of all) {
     const value = object as unknown as Dict
     if (object.id.startsWith('source:')) for (const ref of Array.isArray(value.rawRefs) ? value.rawRefs : []) validateRawRef(ref, knownRawRefs, errors, object.id)
@@ -65,6 +113,44 @@ function validateEvidence(objects: Iterable<KnowledgeAssetV04>, knownRawRefs: Re
     if (object.id.startsWith('observation:')) { const type = value.observationType; const sourceRef = value.sourceRef; if ((type === 'metric' || type === 'estimate') && (typeof sourceRef !== 'string' || !sources.has(sourceRef))) add(errors, 'V04_SOURCE_REFERENCE_INVALID', `Observation sourceRef does not resolve: ${String(sourceRef)}`, undefined, object.id); if (Array.isArray(value.provenance)) for (const item of value.provenance as unknown[]) if (record(item)) { if (typeof item.sourceRef !== 'string' || !sources.has(item.sourceRef)) add(errors, 'V04_PROVENANCE_SOURCE_INVALID', 'Observation provenance sourceRef does not resolve', undefined, object.id); validateRawRef(item.rawRef, knownRawRefs, errors, object.id) } }
     if (object.id.startsWith('reasoning-edge:') && Array.isArray(value.sourceRefs)) for (const ref of value.sourceRefs as unknown[]) if (typeof ref !== 'string' || !sources.has(ref)) add(errors, 'V04_SOURCE_REFERENCE_INVALID', `ReasoningEdge sourceRef does not resolve: ${String(ref)}`, undefined, object.id)
     if (object.id.startsWith('event:') || object.id.startsWith('observation:') || object.id.startsWith('claim:') || object.id.startsWith('thesis:') || object.id.startsWith('reasoning-edge:')) { const refs = [...(Array.isArray(value.sourceRefs) ? value.sourceRefs : []), ...(typeof value.sourceRef === 'string' ? [value.sourceRef] : [])]; if (refs.some((item) => denied.has(item))) add(errors, 'V04_DERIVATIVE_KNOWLEDGE_DENIED', 'Source rights prohibit derived canonical Knowledge', undefined, object.id) }
+    if (object.id.startsWith('module:') && value.type === 'competition') {
+      for (const ref of competitionModuleEvidenceRefs(value)) {
+        const source = typeof ref === 'string' ? sourceObjects.get(ref) : undefined
+        if (!source) {
+          add(errors, 'V04_MODULE_SOURCE_REF_INVALID', `Competition Module Source reference does not resolve: ${String(ref)}`, undefined, object.id)
+          continue
+        }
+        const lifecycle = source.lifecycle
+        const rights = source.rights
+        const usagePolicy = source.usagePolicy
+        const validDate = (date: unknown, before: boolean): boolean => {
+          if (date === undefined || date === null) return true
+          if (typeof date !== 'string') return false
+          const parsed = Date.parse(date)
+          return Number.isFinite(parsed) && (before ? parsed <= evaluatedAt : parsed > evaluatedAt)
+        }
+        const active = record(lifecycle) && lifecycle.status === 'active'
+          && Number.isFinite(evaluatedAt)
+          && validDate(lifecycle.validFrom, true)
+          && validDate(lifecycle.validUntil, false)
+          && record(rights) && validDate(rights.expiresAt, false)
+        const policyAllowsDerivedKnowledge = active
+          && record(rights)
+          && (rights.accessScope === 'public' || rights.accessScope === 'authenticated')
+          && rights.retentionAllowed === true
+          && rights.aiProcessingAllowed === true
+          && rights.derivativeKnowledgeAllowed === true
+          && record(usagePolicy)
+          && usagePolicy.mode === 'personal_noncommercial_research'
+          && usagePolicy.retainRaw === true
+          && usagePolicy.allowAiProcessing === true
+          && usagePolicy.allowDerivedKnowledge === true
+        if (!policyAllowsDerivedKnowledge) add(errors, 'V04_MODULE_SOURCE_POLICY_INELIGIBLE', `Competition Module Source is inactive, expired, or does not permit derived knowledge: ${String(ref)}`, undefined, object.id)
+        const rawRefs = source.rawRefs
+        if (!Array.isArray(rawRefs) || rawRefs.length === 0) add(errors, 'V04_MODULE_SOURCE_RAW_REQUIRED', `Competition Module Source must resolve at least one registered Raw reference: ${String(ref)}`, undefined, object.id)
+        else for (const rawRef of rawRefs) if (typeof rawRef !== 'string' || !RAW.test(rawRef) || !knownRawRefs.has(rawRef)) add(errors, 'V04_MODULE_SOURCE_RAW_INVALID', `Competition Module Source Raw reference does not resolve through the Raw registry: ${String(rawRef)}`, undefined, object.id)
+      }
+    }
   }
 }
 
@@ -96,6 +182,7 @@ function applyOperation(objects: Map<string, KnowledgeAssetV04>, operation: Know
 export async function validateKnowledgeChangeSetV04(handle: KnowledgeBaseHandle, changeSet: KnowledgeChangeSetV04, options: V04ChangeSetValidationOptions = {}): Promise<V04ChangeSetValidationResult> {
   const errors: V04ChangeSetValidationDiagnostic[] = []
   const mode = options.mode ?? 'commit'
+  const validatedAt = options.now?.() ?? new Date().toISOString()
   if (!handle || handle.schemaVersion !== '0.4' || handle.storageFormatVersion !== '1') add(errors, 'V04_HANDLE_VERSION_INVALID', 'ChangeSet validation requires a Schema 0.4 / Storage Format 1 handle')
   if (mode !== 'commit' && mode !== 'dry_run') add(errors, 'V04_MODE_INVALID', `Unknown validation mode: ${mode}`)
   if (mode === 'commit' && (!handle.writable || handle.status !== 'active')) add(errors, 'V04_HANDLE_NOT_WRITABLE', 'Commit validation requires an active writable Knowledge Base')
@@ -117,10 +204,10 @@ export async function validateKnowledgeChangeSetV04(handle: KnowledgeBaseHandle,
   const mutationTargets = new Set<string>()
   for (const operation of Array.isArray(changeSet.operations) ? changeSet.operations : []) if (record(operation)) { validateNewThesisClaim(operation as KnowledgeOperationV04, errors); applyOperation(objects, operation as KnowledgeOperationV04, errors, seenOperationIds, mutationTargets) } else add(errors, 'V04_OPERATION_INVALID', 'Operation must be an object')
   try { assertKnowledgeV04Objects([...objects.values()]) } catch (error) { add(errors, 'V04_CANONICAL_INVALID', error instanceof Error ? error.message : String(error)) }
-  validateEvidence(objects.values(), knownRawRefs, errors)
+  validateEvidence(objects.values(), knownRawRefs, errors, Date.parse(validatedAt))
   const report = { status: errors.length === 0 ? 'passed' as const : 'failed' as const, errors }
   if (report.status === 'failed' || mode === 'dry_run') return { report }
-  const validatedChangeSet = Object.freeze({ changeSet: structuredClone(changeSet), knowledgeBaseId: changeSet.knowledgeBaseId, schemaVersion: '0.4' as const, baseRevision: changeSet.expectedBaseRevision, changeSetId: changeSet.changeSetId, changeSetHash: hashKnowledgeObject(changeSet), validatedAt: options.now?.() ?? new Date().toISOString() })
+  const validatedChangeSet = Object.freeze({ changeSet: structuredClone(changeSet), knowledgeBaseId: changeSet.knowledgeBaseId, schemaVersion: '0.4' as const, baseRevision: changeSet.expectedBaseRevision, changeSetId: changeSet.changeSetId, changeSetHash: hashKnowledgeObject(changeSet), validatedAt })
   issuedReceipts.add(validatedChangeSet)
   return { report, validatedChangeSet }
 }
@@ -140,7 +227,7 @@ export async function validateKnowledgeBaseV04State(rootRef: string): Promise<V0
   try {
     const assets = await readCanonicalV04Assets(handle.rootRef)
     try { assertKnowledgeV04Objects(assets.objects.map((item) => item.value)) } catch (error) { add(errors, 'V04_CANONICAL_INVALID', error instanceof Error ? error.message : String(error)) }
-    validateEvidence(assets.objects.map((item) => item.value), knownRawRefs, errors)
+    validateEvidence(assets.objects.map((item) => item.value), knownRawRefs, errors, Date.now())
   } catch (error) {
     add(errors, 'V04_CANONICAL_REGISTRY_INVALID', error instanceof Error ? error.message : String(error))
   }

@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { KnowledgeBaseRegistry } from '../../../knowledge/registry/registry.ts'
 import { createFreshKnowledgeBaseV04, readCanonicalV04Assets } from '../../../knowledge/storage/index.ts'
+import { hashKnowledgeObject } from '../../../knowledge/storage/canonical-hash.ts'
 import { KnowledgeProductionGateway } from '../../../knowledge/production/gateway.ts'
 import type { CompetitionModuleProductionProposal, KnowledgeProductionInput } from '../../../knowledge/production/contracts.ts'
 import { COMPETITION_MODULE_SCHEMA_ID_V1, type CompetitionColumnV1, type CompetitionModuleV1 } from '../../../knowledge/schema/competition-module-v04.ts'
-import type { EntityRefV04, RelationRefV04 } from '../../../knowledge/schema/domain-v04.ts'
+import type { EntityRefV04, KnowledgeAssetV04, RelationRefV04 } from '../../../knowledge/schema/domain-v04.ts'
+import type { KnowledgeChangeSetV04 } from '../../../knowledge/schema/mutation-v04.ts'
+import { validateKnowledgeChangeSetV04 } from '../../../knowledge/validation/v04-change-set-validator.ts'
 import type { NormalizedResearchSource } from '../../../plugins/research-acquisition/contracts.ts'
 
 const clock = () => '2026-09-08T00:00:00.000Z'
@@ -27,6 +30,7 @@ interface RowFixture {
   readonly marketDisplay: string
   readonly marketClaimId?: string
   readonly marketStatement?: string
+  readonly marketAsOf?: string
   readonly marketReference?: { readonly proposalId: string } | { readonly existingRef: `claim:${string}` | `observation:${string}` | `relation:${string}` }
   readonly unavailableMarket?: boolean
 }
@@ -62,7 +66,7 @@ function rowProposals(rows: readonly RowFixture[], options: { columns?: readonly
         'main-products': { status: 'available', displayValue: 'Industrial valves', knowledgeRefs: [{ proposalId: `products-${row.key}` }] },
         'market-cap': row.unavailableMarket
           ? { status: 'unavailable', reason: 'No current verified quote' }
-          : { status: 'available', displayValue: options.displayOverride ?? row.marketDisplay, asOf: '2026-09-01', unit: 'billion', currency: row.currency, knowledgeRefs: [row.marketReference ?? { proposalId: marketClaimId }] },
+          : { status: 'available', displayValue: options.displayOverride ?? row.marketDisplay, asOf: row.marketAsOf ?? '2026-09-01', unit: 'billion', currency: row.currency, knowledgeRefs: [row.marketReference ?? { proposalId: marketClaimId }] },
         'annual-revenue': { status: 'available', displayValue: '8.2', fiscalYear: 2025, unit: 'billion', currency: row.currency, knowledgeRefs: [{ proposalId: `revenue-${row.key}` }] },
       },
     }
@@ -87,6 +91,36 @@ async function makeInput(root: string, run: string, rows: readonly RowFixture[],
 }
 
 function equivalentResolver() { return () => ({ outcome: 'equivalent' as const, reason: 'Fixture Company and Industry identities match' }) }
+
+function explicitModuleProposal(module: CompetitionModuleV1, industryRef: string, relationRef: string, proposalId = 'competition-existing'): CompetitionModuleProductionProposal {
+  return {
+    proposalId,
+    kind: 'module',
+    targetIndustry: { existingRef: industryRef as EntityRefV04 },
+    schemaId: module.schemaId,
+    columns: module.columns,
+    rows: module.rows.map((row) => ({
+      company: { existingRef: row.companyRef },
+      businessExposure: { existingRef: relationRef as RelationRefV04 },
+      cells: Object.fromEntries(Object.entries(row.cells).map(([columnId, cell]) => [columnId, cell.status === 'available'
+        ? { ...cell, knowledgeRefs: cell.knowledgeRefs.map((existingRef) => ({ existingRef })) }
+        : cell])) as CompetitionModuleProductionProposal['rows'][number]['cells'],
+    })),
+  }
+}
+
+async function moduleOnlyInput(root: string, run: string, module: CompetitionModuleV1, industryRef: string, relationRef: string, proposalId = 'competition-existing'): Promise<KnowledgeProductionInput> {
+  return {
+    handle: await new KnowledgeBaseRegistry().mount(root),
+    producerType: 'industry_deep_research',
+    producerRunId: run,
+    schemaProfile: { schemaVersion: '0.4', storageFormatVersion: '1', requiresRawProvenance: true },
+    entity: { localKey: 'industry', entityType: 'industry', name: 'Battery Materials', existingEntityRef: industryRef },
+    proposals: [explicitModuleProposal(module, industryRef, relationRef, proposalId)],
+    evidenceBindings: [],
+    now: clock,
+  }
+}
 
 async function withFreshKb(name: string, run: (root: string) => Promise<void>): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), `rhl-${name}-`))
@@ -175,6 +209,35 @@ test('evidence-backed cell update commits, and an unavailable update preserves t
   })
 })
 
+test('same Claim may support a display and asOf update after new provenance is admitted', async () => {
+  await withFreshKb('competition-module-same-claim-evidence', async (root) => {
+    const gateway = new KnowledgeProductionGateway()
+    const statement = 'Acme Valves market value is CNY 10bn'
+    const firstRow = [{ key: 'company-a', name: 'Acme Valves', sourceId: 'source-same-claim-1', currency: 'CNY', marketDisplay: 'CNY 10bn', marketStatement: statement }]
+    const first = await gateway.submit(await makeInput(root, 'competition-same-claim-1', firstRow))
+    assert.equal(first.status, 'committed', first.errors.join('; '))
+    const initialAssets = await readCanonicalV04Assets(root)
+    const initialModule = initialAssets.objects.find((asset) => asset.value.id === first.moduleRefsByProposalId?.competition)!.value as unknown as CompetitionModuleV1
+    const initialMarketCell = initialModule.rows[0]!.cells['market-cap'] as Extract<CompetitionModuleV1['rows'][number]['cells'][string], { status: 'available' }>
+    const updatedRow = [{ key: 'company-a', name: 'Acme Valves', sourceId: 'source-same-claim-2', currency: 'CNY', marketDisplay: 'CNY 11bn', marketClaimId: 'market-company-a', marketStatement: statement, marketAsOf: '2026-09-08' }]
+    const updated = await gateway.submit(await makeInput(root, 'competition-same-claim-2', updatedRow, { semanticResolver: equivalentResolver() }))
+    assert.equal(updated.status, 'committed', updated.errors.join('; '))
+    assert.equal(updated.moduleRefsByProposalId?.competition, first.moduleRefsByProposalId?.competition)
+
+    const assets = await readCanonicalV04Assets(root)
+    const module = assets.objects.find((asset) => asset.value.id === first.moduleRefsByProposalId?.competition)!.value as unknown as CompetitionModuleV1
+    const firstAssets = assets.objects.filter((asset) => asset.kind === 'claim')
+    const marketClaim = firstAssets.find((asset) => (asset.value as { statement?: string }).statement === statement)!.value as { id: string; provenance?: unknown[] }
+    assert.equal(module.rows[0]?.cells['market-cap']?.status, 'available')
+    const cell = module.rows[0]!.cells['market-cap'] as Extract<CompetitionModuleV1['rows'][number]['cells'][string], { status: 'available' }>
+    assert.equal(cell.displayValue, 'CNY 11bn')
+    assert.equal('asOf' in cell ? cell.asOf : undefined, '2026-09-08')
+    assert.deepEqual(cell.knowledgeRefs, initialMarketCell.knowledgeRefs)
+    assert.deepEqual(cell.knowledgeRefs, [marketClaim.id])
+    assert.equal(marketClaim.provenance?.length, 2)
+  })
+})
+
 test('Module blocks the whole submit when a cell reference cannot resolve', async () => {
   await withFreshKb('competition-module-bad-ref', async (root) => {
     const gateway = new KnowledgeProductionGateway()
@@ -190,6 +253,67 @@ test('Module blocks the whole submit when a cell reference cannot resolve', asyn
   })
 })
 
+test('ChangeSet validation rejects denied or missing Raw evidence listed by a competition Module', async () => {
+  await withFreshKb('competition-module-validator-source-policy', async (root) => {
+    const gateway = new KnowledgeProductionGateway()
+    const row = [{ key: 'company-a', name: 'Acme Valves', sourceId: 'source-direct-main', currency: 'CNY', marketDisplay: 'CNY 10bn' }]
+    const base = await makeInput(root, 'competition-direct-module-source', row)
+    const extraSource = fixtureSource('source-direct-extra')
+    const first = await gateway.submit({ ...base, evidenceBindings: [...base.evidenceBindings, { localSourceId: 'source-direct-extra', source: extraSource }] })
+    assert.equal(first.status, 'committed', first.errors.join('; '))
+
+    const assets = await readCanonicalV04Assets(root)
+    const moduleAsset = assets.objects.find((asset) => asset.value.id === first.moduleRefsByProposalId?.competition)!
+    const module = moduleAsset.value as unknown as CompetitionModuleV1
+    const extraSourceRef = first.sourceRefsByLocalId['source-direct-extra']!
+    const extraSourceAsset = assets.objects.find((asset) => asset.value.id === extraSourceRef)!
+    const originalSource = structuredClone(extraSourceAsset.value) as unknown as { rawRefs: string[]; rights: Record<string, unknown>; usagePolicy: Record<string, unknown> }
+
+    const validateModuleChange = async (run: string, changedModule: Record<string, unknown>) => {
+      const handle = await new KnowledgeBaseRegistry().mount(root)
+      const changeSet: KnowledgeChangeSetV04 = {
+        changeSetId: `direct-module-${run}`,
+        workflowRunId: `direct-module-${run}`,
+        knowledgeBaseId: handle.knowledgeBaseId,
+        schemaVersion: '0.4',
+        storageFormatVersion: '1',
+        expectedBaseRevision: handle.revision,
+        operations: [{ operationId: 'update-competition-module', type: 'update', knowledgeId: module.id, expectedBeforeHash: hashKnowledgeObject(module), object: changedModule as unknown as KnowledgeAssetV04 }],
+      }
+      return validateKnowledgeChangeSetV04(handle, changeSet, { mode: 'commit', now: clock })
+    }
+
+    const deniedSource = structuredClone(originalSource)
+    deniedSource.rights.derivativeKnowledgeAllowed = false
+    deniedSource.usagePolicy.allowDerivedKnowledge = false
+    await writeFile(extraSourceAsset.filePath, `${JSON.stringify(deniedSource)}\n`, 'utf8')
+    const denied = await validateModuleChange('denied', { ...module, sourceRefs: [...new Set([...(module.sourceRefs ?? []), extraSourceRef as `source:${string}`])] })
+    assert.equal(denied.report.status, 'failed')
+    assert.ok(denied.report.errors.some((error) => error.code === 'V04_MODULE_SOURCE_POLICY_INELIGIBLE'))
+    assert.equal(denied.validatedChangeSet, undefined)
+
+    const missingRawSource = structuredClone(originalSource)
+    missingRawSource.rawRefs = []
+    await writeFile(extraSourceAsset.filePath, `${JSON.stringify(missingRawSource)}\n`, 'utf8')
+    const missingRaw = await validateModuleChange('missing-raw', { ...module, sourceRefs: [...new Set([...(module.sourceRefs ?? []), extraSourceRef as `source:${string}`])] })
+    assert.equal(missingRaw.report.status, 'failed')
+    assert.ok(missingRaw.report.errors.some((error) => error.code === 'V04_MODULE_SOURCE_RAW_REQUIRED'))
+    assert.equal(missingRaw.validatedChangeSet, undefined)
+
+    const mainSourceRef = first.sourceRefsByLocalId['source-direct-main']!
+    const mainSourceAsset = assets.objects.find((asset) => asset.value.id === mainSourceRef)!
+    const restrictedSource = structuredClone(mainSourceAsset.value) as unknown as { rights: Record<string, unknown> }
+    restrictedSource.rights.accessScope = 'restricted'
+    await writeFile(mainSourceAsset.filePath, `${JSON.stringify(restrictedSource)}\n`, 'utf8')
+    const moduleWithoutListedSources = structuredClone(module) as unknown as Record<string, unknown>
+    delete moduleWithoutListedSources.sourceRefs
+    const omitted = await validateModuleChange('omitted-sources', moduleWithoutListedSources)
+    assert.equal(omitted.report.status, 'failed')
+    assert.ok(omitted.report.errors.some((error) => error.code === 'V04_MODULE_SOURCE_POLICY_INELIGIBLE'))
+    assert.equal(omitted.validatedChangeSet, undefined)
+  })
+})
+
 test('Module blocks when the row Source payload is unusable', async () => {
   await withFreshKb('competition-module-unusable-source', async (root) => {
     const gateway = new KnowledgeProductionGateway()
@@ -200,6 +324,40 @@ test('Module blocks when the row Source payload is unusable', async () => {
     assert.ok(result.errors.some((error) => error.includes('business_exposure Relation')))
     assert.equal((await readCanonicalV04Assets(root)).objects.some((asset) => asset.kind === 'module'), false)
   })
+})
+
+test('Module blocks unusable Source evidence inherited from an existing business_exposure Relation', async () => {
+  for (const scenario of ['denied', 'missing-raw'] as const) {
+    await withFreshKb(`competition-module-inherited-${scenario}`, async (root) => {
+      const gateway = new KnowledgeProductionGateway()
+      const row = [{ key: 'company-a', name: 'Acme Valves', sourceId: `source-inherited-${scenario}`, currency: 'CNY', marketDisplay: 'CNY 10bn' }]
+      const first = await gateway.submit(await makeInput(root, `competition-inherited-${scenario}`, row))
+      assert.equal(first.status, 'committed', first.errors.join('; '))
+      const assets = await readCanonicalV04Assets(root)
+      const module = assets.objects.find((asset) => asset.value.id === first.moduleRefsByProposalId?.competition)!.value as unknown as CompetitionModuleV1
+      const sourceRef = first.sourceRefsByLocalId[row[0]!.sourceId]!
+      const sourceAsset = assets.objects.find((asset) => asset.value.id === sourceRef)!
+      const source = structuredClone(sourceAsset.value) as unknown as { rights: Record<string, unknown>; rawRefs: string[]; usagePolicy: Record<string, unknown> }
+      if (scenario === 'denied') {
+        source.rights.derivativeKnowledgeAllowed = false
+        source.usagePolicy.allowDerivedKnowledge = false
+        await writeFile(sourceAsset.filePath, `${JSON.stringify(source)}\n`, 'utf8')
+      } else {
+        const registryPath = join(root, 'registry', 'raw.yaml')
+        const rawRegistry = JSON.parse(await readFile(registryPath, 'utf8')) as Record<string, unknown>
+        delete rawRegistry[source.rawRefs[0]!]
+        await writeFile(registryPath, `${JSON.stringify(rawRegistry, null, 2)}\n`, 'utf8')
+      }
+
+      const beforeRevision = (await new KnowledgeBaseRegistry().mount(root)).revision
+      const moduleOnly = await moduleOnlyInput(root, `competition-inherited-check-${scenario}`, module, first.entityRefsByLocalKey.industry!, first.relationRefsByProposalId['exposure-company-a']!)
+      const result = await gateway.submit(moduleOnly)
+      assert.equal(result.status, 'blocked')
+      assert.ok(result.errors.some((error) => error.includes(scenario === 'denied' ? 'does not permit retained derived Knowledge' : 'Raw evidence failed registry or integrity verification')))
+      assert.equal((await new KnowledgeBaseRegistry().mount(root)).revision, beforeRevision)
+      assert.equal((await readCanonicalV04Assets(root)).objects.filter((asset) => asset.kind === 'module').length, 1)
+    })
+  }
 })
 
 test('same knowledge references cannot justify a changed display value', async () => {
