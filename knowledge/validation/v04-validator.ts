@@ -242,6 +242,8 @@ function hasVerifiableRelationEvidence(
     && relation.supportingClaimRefs.some((claimRef) => {
       const claim = claims.get(claimRef)
       return claim !== undefined
+        && Array.isArray(claim.subjectRefs)
+        && claim.subjectRefs.includes(relation.id)
         && Array.isArray(claim.sourceRefs)
         && claim.sourceRefs.some((sourceRef) => typeof sourceRef === 'string' && sources.has(sourceRef))
     })
@@ -255,6 +257,7 @@ function validateCompetitionModule(
   claims: ReadonlyMap<string, KnowledgeClaimV04>,
   observations: ReadonlyMap<string, KnowledgeObservationV04>,
   relations: ReadonlyMap<string, KnowledgeRelationV04>,
+  businessExposurePairs: ReadonlySet<string>,
   errors: KnowledgeV04Diagnostic[],
 ): void {
   const structural = validateCompetitionModuleV1(module)
@@ -299,13 +302,7 @@ function validateCompetitionModule(
     }
 
     if (companyIsActive && targetIsIndustry) {
-      const hasBusinessExposure = [...relations.values()].some((relation) =>
-        relation.type === 'business_exposure'
-        && relation.sourceRef === companyRef
-        && relation.targetRef === module.targetEntity
-        && active(relation)
-        && hasVerifiableRelationEvidence(relation, sources, claims),
-      )
+      const hasBusinessExposure = businessExposurePairs.has(`${companyRef}\u0000${String(module.targetEntity)}`)
       if (!hasBusinessExposure) {
         add(errors, 'V04_COMPETITION_MODULE_BUSINESS_EXPOSURE', `Competition row ${rowIndex} requires an active, evidence-backed business_exposure Relation from its Company to the target Industry`, moduleId)
       }
@@ -395,12 +392,18 @@ export function validateKnowledgeV04Objects(objects: readonly KnowledgeAssetV04[
     if (relation.supportingClaimRefs?.some((item) => !claimIds.has(item))) add(errors, 'V04_RELATION_CLAIM_REF', 'Relation supportingClaimRefs must resolve to Claim objects', relation.id)
     if (!validateRelationAttributesV03(relation.type, relation.attributes).valid) add(errors, 'V04_RELATION_ATTRIBUTES', 'Relation attributes are not admissible for Schema 0.4', relation.id)
   }
+  const businessExposurePairs = new Set<string>()
+  for (const relation of relations.values()) {
+    if (relation.type !== 'business_exposure' || !active(relation) || !hasVerifiableRelationEvidence(relation, sourceIds, claims)) continue
+    if (typeof relation.sourceRef !== 'string' || typeof relation.targetRef !== 'string') continue
+    businessExposurePairs.add(`${relation.sourceRef}\u0000${relation.targetRef}`)
+  }
   for (const event of events.values()) validateEvent(event, ids, sourceIds, errors)
   for (const observation of observations.values()) validateObservation(observation, objectMap, ids, sourceIds, observations, errors)
   for (const thesis of theses.values()) validateThesis(thesis, ids, claims, sources, edges, errors)
   for (const edge of edges.values()) validateReasoningEdge(edge, objectMap, sourceIds, errors)
   for (const [id, module] of modules) if (module.type === 'competition') {
-    validateCompetitionModule(module, id, entityObjects, sourceIds, claims, observations, relations, errors)
+    validateCompetitionModule(module, id, entityObjects, sourceIds, claims, observations, relations, businessExposurePairs, errors)
   }
   validateCycles(claims, errors)
   return { status: errors.length === 0 ? 'passed' : 'failed', errors }

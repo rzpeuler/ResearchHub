@@ -170,11 +170,25 @@ test('competition row business_exposure relation requires verifiable evidence', 
   relation.sourceRefs = []
   assert.ok(errorCodes(noEvidence).includes('V04_COMPETITION_MODULE_BUSINESS_EXPOSURE'))
 
-  const supportingClaim = competitionObjects()
-  const supportedRelation = supportingClaim.find((value) => typeof value === 'object' && value !== null && 'id' in value && value.id === BUSINESS_EXPOSURE_REF) as Record<string, unknown>
+  const unrelatedSupportingClaim = competitionObjects()
+  const unsupportedRelation = unrelatedSupportingClaim.find((value) => typeof value === 'object' && value !== null && 'id' in value && value.id === BUSINESS_EXPOSURE_REF) as Record<string, unknown>
+  unsupportedRelation.sourceRefs = []
+  unsupportedRelation.supportingClaimRefs = ['claim:competition-products']
+  assert.ok(errorCodes(unrelatedSupportingClaim).includes('V04_COMPETITION_MODULE_BUSINESS_EXPOSURE'))
+
+  const relationSubjectEvidence = competitionObjects()
+  relationSubjectEvidence.push({
+    id: 'claim:competition-exposure-evidence',
+    claimType: 'fact',
+    statement: 'The company operates in the target industry.',
+    subjectRefs: [BUSINESS_EXPOSURE_REF],
+    sourceRefs: [SOURCE_REF],
+    lifecycle: { status: 'active' },
+  })
+  const supportedRelation = relationSubjectEvidence.find((value) => typeof value === 'object' && value !== null && 'id' in value && value.id === BUSINESS_EXPOSURE_REF) as Record<string, unknown>
   supportedRelation.sourceRefs = []
-  supportedRelation.supportingClaimRefs = ['claim:competition-products']
-  const supportedResult = validateKnowledgeV04Objects(supportingClaim as never)
+  supportedRelation.supportingClaimRefs = ['claim:competition-exposure-evidence']
+  const supportedResult = validateKnowledgeV04Objects(relationSubjectEvidence as never)
   assert.equal(supportedResult.status, 'passed', JSON.stringify(supportedResult.errors))
 
   const unresolvedSource = competitionObjects()
