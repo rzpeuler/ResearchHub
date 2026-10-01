@@ -30,6 +30,7 @@ function competitionObjects(): unknown[] {
       type: 'business_exposure',
       sourceRef: COMPANY_REF,
       targetRef: INDUSTRY_REF,
+      sourceRefs: [SOURCE_REF],
       lifecycle: { status: 'active' },
     },
     {
@@ -163,6 +164,25 @@ test('competition row requires an active Company-to-Industry business_exposure r
   assert.ok(errorCodes(objects).includes('V04_COMPETITION_MODULE_BUSINESS_EXPOSURE'))
 })
 
+test('competition row business_exposure relation requires verifiable evidence', () => {
+  const noEvidence = competitionObjects()
+  const relation = noEvidence.find((value) => typeof value === 'object' && value !== null && 'id' in value && value.id === BUSINESS_EXPOSURE_REF) as Record<string, unknown>
+  relation.sourceRefs = []
+  assert.ok(errorCodes(noEvidence).includes('V04_COMPETITION_MODULE_BUSINESS_EXPOSURE'))
+
+  const supportingClaim = competitionObjects()
+  const supportedRelation = supportingClaim.find((value) => typeof value === 'object' && value !== null && 'id' in value && value.id === BUSINESS_EXPOSURE_REF) as Record<string, unknown>
+  supportedRelation.sourceRefs = []
+  supportedRelation.supportingClaimRefs = ['claim:competition-products']
+  const supportedResult = validateKnowledgeV04Objects(supportingClaim as never)
+  assert.equal(supportedResult.status, 'passed', JSON.stringify(supportedResult.errors))
+
+  const unresolvedSource = competitionObjects()
+  const unresolvedRelation = unresolvedSource.find((value) => typeof value === 'object' && value !== null && 'id' in value && value.id === BUSINESS_EXPOSURE_REF) as Record<string, unknown>
+  unresolvedRelation.sourceRefs = ['source:missing-relation-evidence']
+  assert.ok(errorCodes(unresolvedSource).includes('V04_COMPETITION_MODULE_BUSINESS_EXPOSURE'))
+})
+
 test('competition module sourceRefs must resolve to Source objects', () => {
   const objects = competitionObjects()
   moduleFrom(objects).sourceRefs = ['source:missing-evidence']
@@ -252,6 +272,19 @@ test('malformed competition module input reports diagnostics without throwing', 
   ]
   assert.doesNotThrow(() => validateKnowledgeV04Objects(malformed as never))
   assert.equal(validateKnowledgeV04Objects(malformed as never).status, 'failed')
+})
+
+test('malformed columns array cannot override slice to make validation throw', () => {
+  const objects = competitionObjects()
+  const columns = moduleFrom(objects).columns as unknown[]
+  Object.defineProperty(columns, 'slice', {
+    configurable: true,
+    value: () => { throw new Error('untrusted slice override') },
+  })
+
+  let result: ReturnType<typeof validateKnowledgeV04Objects> | undefined
+  assert.doesNotThrow(() => { result = validateKnowledgeV04Objects(objects as never) })
+  assert.equal(result?.status, 'failed')
 })
 
 test('legacy non-competition modules remain readable', () => {

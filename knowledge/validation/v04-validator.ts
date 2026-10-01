@@ -230,6 +230,23 @@ function competitionKnowledgeRelevant(value: Dict, kind: string, companyRef: str
   return false
 }
 
+function hasVerifiableRelationEvidence(
+  relation: KnowledgeRelationV04,
+  sources: ReadonlySet<string>,
+  claims: ReadonlyMap<string, KnowledgeClaimV04>,
+): boolean {
+  const hasSource = Array.isArray(relation.sourceRefs)
+    && relation.sourceRefs.some((sourceRef) => typeof sourceRef === 'string' && sources.has(sourceRef))
+  if (hasSource) return true
+  return Array.isArray(relation.supportingClaimRefs)
+    && relation.supportingClaimRefs.some((claimRef) => {
+      const claim = claims.get(claimRef)
+      return claim !== undefined
+        && Array.isArray(claim.sourceRefs)
+        && claim.sourceRefs.some((sourceRef) => typeof sourceRef === 'string' && sources.has(sourceRef))
+    })
+}
+
 function validateCompetitionModule(
   module: Dict,
   moduleId: string,
@@ -263,11 +280,14 @@ function validateCompetitionModule(
 
   if (!Array.isArray(module.rows)) return
   const inspectedRows = Math.min(module.rows.length, COMPETITION_MODULE_V1_LIMITS.maxRows)
-  const cellIds = Array.isArray(module.columns)
-    ? module.columns.slice(0, COMPETITION_MODULE_V1_LIMITS.maxColumns).flatMap((column) =>
-      record(column) && column.role !== 'company' && typeof column.id === 'string' ? [column.id] : [],
-    )
-    : []
+  const cellIds: string[] = []
+  if (Array.isArray(module.columns)) {
+    const inspectedColumns = Math.min(module.columns.length, COMPETITION_MODULE_V1_LIMITS.maxColumns)
+    for (let columnIndex = 0; columnIndex < inspectedColumns; columnIndex += 1) {
+      const column = module.columns[columnIndex]
+      if (record(column) && column.role !== 'company' && typeof column.id === 'string') cellIds.push(column.id)
+    }
+  }
   for (let rowIndex = 0; rowIndex < inspectedRows; rowIndex += 1) {
     const rowValue = module.rows[rowIndex]
     if (!record(rowValue)) continue
@@ -283,10 +303,11 @@ function validateCompetitionModule(
         relation.type === 'business_exposure'
         && relation.sourceRef === companyRef
         && relation.targetRef === module.targetEntity
-        && active(relation),
+        && active(relation)
+        && hasVerifiableRelationEvidence(relation, sources, claims),
       )
       if (!hasBusinessExposure) {
-        add(errors, 'V04_COMPETITION_MODULE_BUSINESS_EXPOSURE', `Competition row ${rowIndex} requires an active business_exposure Relation from its Company to the target Industry`, moduleId)
+        add(errors, 'V04_COMPETITION_MODULE_BUSINESS_EXPOSURE', `Competition row ${rowIndex} requires an active, evidence-backed business_exposure Relation from its Company to the target Industry`, moduleId)
       }
     }
 
