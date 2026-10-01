@@ -39,6 +39,7 @@ function makeDecision(options: {
   decision?: ThemeScopeDecisionValueV04
   rationale?: string
   evidence?: readonly ThemeScopeEvidenceV04[]
+  coverageGaps?: readonly string[]
   review?: ThemeScopeReviewV04
   revision?: number
   previousDecisionId?: ThemeScopeDecisionDraftV04['previousDecisionId']
@@ -54,6 +55,7 @@ function makeDecision(options: {
     decision: options.decision ?? 'pending',
     rationale: options.rationale ?? 'A bounded reason for this decision.',
     evidence: options.evidence ?? [],
+    coverageGaps: options.coverageGaps ?? [],
     review: options.review ?? { status: 'suggested' },
     basedOnRevision: options.revision ?? REVISION,
     affectedBranchKeys: options.branches ?? ['ai-compute'],
@@ -168,6 +170,24 @@ test('batch rejects ambiguous candidates, malformed refs, missing include eviden
 
   const nonJson = { ...batch([makeDecision({ candidate: industry('Non JSON') })]), extra: BigInt(1) }
   assert.ok(codes(nonJson).includes('THEME_SCOPE_JSON_ONLY'))
+})
+
+test('coverage gaps are required, may be empty, and remain bounded', () => {
+  const noKnownGap = makeDecision({ candidate: industry('No Coverage Gap') })
+  assert.deepEqual(noKnownGap.coverageGaps, [])
+  assert.equal(validateThemeScopeDecisionBatchV04(batch([noKnownGap])).valid, true)
+
+  const invalidGap = makeDecision({ candidate: industry('Invalid Coverage Gap'), coverageGaps: ['   '] })
+  assert.ok(codes(batch([invalidGap])).includes('THEME_SCOPE_COVERAGE_GAP'))
+
+  const tooManyGaps = makeDecision({
+    candidate: industry('Coverage Gap Bound'),
+    coverageGaps: Array.from({ length: THEME_SCOPE_V04_LIMITS.maxCoverageGaps + 1 }, (_, index) => `Known gap ${index}`),
+  })
+  assert.ok(codes(batch([tooManyGaps])).includes('THEME_SCOPE_COVERAGE_GAPS_BOUNDS'))
+
+  const { coverageGaps: _coverageGaps, ...missingCoverageGaps } = noKnownGap
+  assert.ok(codes({ version: '0.4', themeRef: THEME, basedOnRevision: REVISION, decisions: [missingCoverageGaps] }).includes('THEME_SCOPE_DECISION_SHAPE'))
 })
 
 test('decision ID and hash helpers are stable and reviewed timestamps must be valid ISO instants', () => {

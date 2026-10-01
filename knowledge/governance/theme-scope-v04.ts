@@ -7,6 +7,8 @@ export const THEME_SCOPE_V04_LIMITS = {
   maxHistoryDecisions: 1000,
   maxBranchKeysPerDecision: 16,
   maxEvidencePerDecision: 16,
+  maxCoverageGaps: 32,
+  maxCoverageGapLength: 1024,
   maxIndustryNameLength: 256,
   maxIdentityContextLength: 256,
   maxRationaleLength: 4000,
@@ -60,6 +62,7 @@ export interface ThemeScopeDecisionDraftV04 {
   readonly decision: ThemeScopeDecisionValueV04
   readonly rationale: string
   readonly evidence: readonly ThemeScopeEvidenceV04[]
+  readonly coverageGaps: readonly string[]
   readonly review: ThemeScopeReviewV04
   readonly basedOnRevision: number
   readonly previousDecisionId?: ThemeScopeDecisionIdV04
@@ -335,9 +338,24 @@ function validateBranchKeys(value: unknown, label: string, errors: ThemeScopeVal
   return true
 }
 
+function validateCoverageGaps(value: unknown, label: string, errors: ThemeScopeValidationIssueV04[], decisionId?: string): value is string[] {
+  if (!Array.isArray(value) || value.length > THEME_SCOPE_V04_LIMITS.maxCoverageGaps) {
+    addIssue(errors, 'THEME_SCOPE_COVERAGE_GAPS_BOUNDS', `${label} must be an array of at most ${THEME_SCOPE_V04_LIMITS.maxCoverageGaps} gap descriptions`, decisionId)
+    return false
+  }
+  let valid = true
+  value.forEach((gap, index) => {
+    if (!boundedText(gap, THEME_SCOPE_V04_LIMITS.maxCoverageGapLength)) {
+      addIssue(errors, 'THEME_SCOPE_COVERAGE_GAP', `${label}[${index}] must be non-empty and at most ${THEME_SCOPE_V04_LIMITS.maxCoverageGapLength} characters`, decisionId)
+      valid = false
+    }
+  })
+  return valid
+}
+
 function validateDecisionShape(value: unknown, label: string, errors: ThemeScopeValidationIssueV04[]): value is ThemeScopeDecisionV04 {
   if (!isRecord(value) || !hasExactKeys(value,
-    ['id', 'version', 'themeRef', 'candidate', 'candidateFingerprint', 'decision', 'rationale', 'evidence', 'review', 'basedOnRevision', 'affectedBranchKeys'],
+    ['id', 'version', 'themeRef', 'candidate', 'candidateFingerprint', 'decision', 'rationale', 'evidence', 'coverageGaps', 'review', 'basedOnRevision', 'affectedBranchKeys'],
     ['previousDecisionId', 'reopenBasis'])) {
     addIssue(errors, 'THEME_SCOPE_DECISION_SHAPE', `${label} has unexpected or missing fields`)
     return false
@@ -362,6 +380,8 @@ function validateDecisionShape(value: unknown, label: string, errors: ThemeScope
   const evidenceValid = validateEvidenceList(value.evidence, `${label}.evidence`, errors, id)
   valid &&= evidenceValid
   if (value.decision === 'include' && Array.isArray(value.evidence) && value.evidence.length === 0) { at('THEME_SCOPE_INCLUDE_EVIDENCE', `${label} include decision requires source-backed evidence`); valid = false }
+  const coverageGapsValid = validateCoverageGaps(value.coverageGaps, `${label}.coverageGaps`, errors, id)
+  valid &&= coverageGapsValid
   if (!isRecord(value.review)) {
     at('THEME_SCOPE_REVIEW', `${label}.review must be an object`)
     valid = false
