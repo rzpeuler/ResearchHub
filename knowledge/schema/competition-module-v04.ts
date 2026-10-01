@@ -385,7 +385,6 @@ export function validateCompetitionModuleV1(value: unknown): CompetitionModuleVa
     }
     validateOwnArraySlots(value.rows, '$.rows', COMPETITION_MODULE_V1_LIMITS.maxRows, issues)
     const seenCompanies = new Map<string, number>()
-    const financialUnitsByRole = new Map<'market_cap' | 'annual_revenue', { unit: string; currency: string; rowIndex: number }>()
     const nonCompanyColumns = [...columnsById.entries()].filter(([, column]) => column.role !== 'company')
     const inspectedRows = Math.min(value.rows.length, COMPETITION_MODULE_V1_LIMITS.maxRows)
     for (let rowIndex = 0; rowIndex < inspectedRows; rowIndex += 1) {
@@ -424,16 +423,6 @@ export function validateCompetitionModuleV1(value: unknown): CompetitionModuleVa
         } else {
           const cell = row.cells[cellId]
           validateCell(cell, column.role, cellPath, issues)
-          if ((column.role === 'market_cap' || column.role === 'annual_revenue') && isRecord(cell) && cell.status === 'available' &&
-            boundedNonEmptyString(cell.unit, COMPETITION_MODULE_V1_LIMITS.maxUnitLength) && typeof cell.currency === 'string' && /^[A-Z]{3}$/.test(cell.currency)) {
-            const previous = financialUnitsByRole.get(column.role)
-            if (previous !== undefined && (previous.unit !== cell.unit || previous.currency !== cell.currency)) {
-              const code = column.role === 'market_cap' ? 'MARKET_CAP_UNIT_CURRENCY_INCONSISTENT' : 'ANNUAL_REVENUE_UNIT_CURRENCY_INCONSISTENT'
-              addIssue(issues, code, cellPath, `${column.role} cells must use one identical unit and currency pair across available rows`)
-            } else if (previous === undefined) {
-              financialUnitsByRole.set(column.role, { unit: cell.unit, currency: cell.currency, rowIndex })
-            }
-          }
         }
       }
     }

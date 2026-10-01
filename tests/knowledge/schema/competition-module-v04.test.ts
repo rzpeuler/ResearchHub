@@ -199,7 +199,17 @@ test('indexed traversal catches invalid slots despite overridden array methods',
   assert.equal(hasIssue(overriddenCellForEach, 'CELL_KNOWLEDGE_REF_INVALID'), true)
 })
 
-test('requires consistent available financial units per role while preserving row-specific dates and years', () => {
+test('requires financial units and currencies on available cells', () => {
+  const missingMarketCapUnit = cloned(validModule()) as any
+  delete missingMarketCapUnit.rows[0].cells['market-cap'].unit
+  assert.equal(hasIssue(missingMarketCapUnit, 'CELL_UNIT'), true)
+
+  const missingAnnualRevenueCurrency = cloned(validModule()) as any
+  delete missingAnnualRevenueCurrency.rows[0].cells.revenue.currency
+  assert.equal(hasIssue(missingAnnualRevenueCurrency, 'CELL_CURRENCY'), true)
+})
+
+test('preserves different financial unit/currency pairs and row-specific dates and years', () => {
   const withSecondRow = (): any => {
     const module = cloned(validModule()) as any
     const secondRow = structuredClone(module.rows[0])
@@ -210,18 +220,19 @@ test('requires consistent available financial units per role while preserving ro
     return module
   }
 
-  assert.equal(validateCompetitionModuleV1(withSecondRow()).valid, true)
+  const module = withSecondRow()
+  module.rows[1].cells['market-cap'].displayValue = 'USD 7.0 million'
+  module.rows[1].cells['market-cap'].unit = 'million'
+  module.rows[1].cells['market-cap'].currency = 'USD'
+  module.rows[1].cells.revenue.displayValue = 'EUR 2.1 thousand'
+  module.rows[1].cells.revenue.unit = 'thousand'
+  module.rows[1].cells.revenue.currency = 'EUR'
 
-  const mixedMarketCapUnit = withSecondRow()
-  mixedMarketCapUnit.rows[1].cells['market-cap'].unit = 'million'
-  assert.equal(hasIssue(mixedMarketCapUnit, 'MARKET_CAP_UNIT_CURRENCY_INCONSISTENT'), true)
-
-  const mixedMarketCapCurrency = withSecondRow()
-  mixedMarketCapCurrency.rows[1].cells['market-cap'].currency = 'USD'
-  assert.equal(hasIssue(mixedMarketCapCurrency, 'MARKET_CAP_UNIT_CURRENCY_INCONSISTENT'), true)
-
-  const mixedAnnualRevenuePair = withSecondRow()
-  mixedAnnualRevenuePair.rows[1].cells.revenue.unit = 'million'
-  mixedAnnualRevenuePair.rows[1].cells.revenue.currency = 'USD'
-  assert.equal(hasIssue(mixedAnnualRevenuePair, 'ANNUAL_REVENUE_UNIT_CURRENCY_INCONSISTENT'), true)
+  assert.equal(validateCompetitionModuleV1(module).valid, true)
+  assert.equal(module.rows[1].cells['market-cap'].unit, 'million')
+  assert.equal(module.rows[1].cells['market-cap'].currency, 'USD')
+  assert.equal(module.rows[1].cells['market-cap'].asOf, '2025-05-30')
+  assert.equal(module.rows[1].cells.revenue.unit, 'thousand')
+  assert.equal(module.rows[1].cells.revenue.currency, 'EUR')
+  assert.equal(module.rows[1].cells.revenue.fiscalYear, 2024)
 })
