@@ -4,7 +4,9 @@ import { hashKnowledgeObject } from '../storage/canonical-hash.ts'
 import { allocateEntityId, allocateKnowledgeId, normalizeSemanticText } from '../registry/id-allocation.ts'
 import { normalizeExchange } from '../../skills/knowledge-curation/identity/company-identity.ts'
 import { KnowledgeBaseRegistry } from '../registry/registry.ts'
-import type { ExternalIdentifierV04, KillCriterionV04, KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeEntityV04, KnowledgeEventV04, KnowledgeObservationV04, KnowledgeReasoningEdgeV04, KnowledgeRelationV04, KnowledgeSourceV04, KnowledgeThesisV04 } from '../schema/domain-v04.ts'
+import type { EntityRefV04, ExternalIdentifierV04, KillCriterionV04, KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeEntityV04, KnowledgeEventV04, KnowledgeModuleV04, KnowledgeObservationV04, KnowledgeReasoningEdgeV04, KnowledgeRelationV04, KnowledgeSourceV04, KnowledgeThesisV04 } from '../schema/domain-v04.ts'
+import { COMPETITION_MODULE_SCHEMA_ID_V1, validateCompetitionModuleV1 } from '../schema/competition-module-v04.ts'
+import type { CompetitionCellKnowledgeRefV1, CompetitionModuleV1, CompetitionRowV1 } from '../schema/competition-module-v04.ts'
 import { getMetricDefinitionV04 } from '../schema/metric-registry.ts'
 import { KNOWLEDGE_SCHEMA_V04 } from '../schema/executable-schema-v04.ts'
 import type { KnowledgeChangeSetV04, KnowledgeOperationV04, KnowledgeWriteResultV04 } from '../schema/mutation-v04.ts'
@@ -17,7 +19,7 @@ import { sha256 } from '../../plugins/research-acquisition/hash.ts'
 import { isBoundedSafeKillCriterionJsonV04 } from '../schema/kill-criterion-v04.ts'
 import { persistReviewCases } from '../review/store.ts'
 import type { ReviewCase } from '../review/contracts.ts'
-import type { KnowledgeProductionInput, KnowledgeProductionOutcome, ResolutionIntentSummary, SemanticProductionInputProposal, SemanticProductionProposal, SemanticResolver } from './contracts.ts'
+import type { CompetitionModuleKnowledgeSelectorV1, CompetitionModuleProductionProposal, KnowledgeProductionInput, KnowledgeProductionOutcome, ResolutionIntentSummary, SemanticProductionInputProposal, SemanticProductionProposal, SemanticResolver } from './contracts.ts'
 
 type Dict = Record<string, unknown>
 type AssetMap = Map<string, KnowledgeAssetV04>
@@ -32,8 +34,21 @@ const text = (v: unknown) => typeof v === 'string' ? v.trim() : ''
 const ident = (v: unknown) => normalizeSemanticText(String(v ?? ''))
 const intent = (intentId: string, disposition: ResolutionIntentSummary['disposition'], reason: string, fields: Partial<ResolutionIntentSummary> = {}): ResolutionIntentSummary => ({ intentId, disposition, reason, ...fields })
 
-function outcome(input: KnowledgeProductionInput, status: 'blocked' | 'failed', errors: readonly string[], intents: readonly ResolutionIntentSummary[] = [], entities: Readonly<Record<string, string>> = {}, relations: Readonly<Record<string, string>> = {}, sources: Readonly<Record<string, string>> = {}, claims: Readonly<Record<string, string>> = {}): KnowledgeProductionOutcome {
-  return { status, knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: input.handle.revision, baseRevision: input.handle.revision, createdIds: [], updatedIds: [], sourceRefsByLocalId: sources, claimRefsByProposalId: claims, entityRefsByLocalKey: entities, relationRefsByProposalId: relations, resolutionIntents: intents, errors }
+function exactRecord(value: unknown, fields: readonly string[], required: readonly string[] = fields): value is Dict {
+  return record(value) && Object.keys(value).every((key) => fields.includes(key)) && required.every((key) => Object.prototype.hasOwnProperty.call(value, key))
+}
+function validEntitySelector(value: unknown): boolean {
+  return record(value) && Object.keys(value).length === 1
+    && ((typeof value.localKey === 'string' && safeId.test(value.localKey))
+      || (typeof value.existingRef === 'string' && /^entity:[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value.existingRef)))
+}
+function validRelationSelector(value: unknown): boolean {
+  return record(value) && Object.keys(value).length === 1
+    && ((typeof value.proposalId === 'string' && safeId.test(value.proposalId))
+      || (typeof value.existingRef === 'string' && /^relation:[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value.existingRef)))
+}
+function createOutcome(input: KnowledgeProductionInput, status: 'blocked' | 'failed', errors: readonly string[], intents: readonly ResolutionIntentSummary[] = [], entities: Readonly<Record<string, string>> = {}, relations: Readonly<Record<string, string>> = {}, sources: Readonly<Record<string, string>> = {}, claims: Readonly<Record<string, string>> = {}, modules: Readonly<Record<string, string>> = {}): KnowledgeProductionOutcome {
+  return { status, knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: input.handle.revision, baseRevision: input.handle.revision, createdIds: [], updatedIds: [], sourceRefsByLocalId: sources, claimRefsByProposalId: claims, entityRefsByLocalKey: entities, relationRefsByProposalId: relations, moduleRefsByProposalId: modules, resolutionIntents: intents, errors }
 }
 function companyFields(input: KnowledgeProductionInput) { const f = input.entity.semanticFields ?? {}; return { ...(text(f.ticker) ? { ticker: text(f.ticker) } : {}), ...(text(f.exchange) ? { exchange: normalizeExchange(text(f.exchange)) } : {}), ...(input.entity.externalIdentifiers === undefined ? {} : { externalIdentifiers: input.entity.externalIdentifiers }) } }
 function companyMatch(o: KnowledgeAssetV04, f: { ticker?: string; exchange?: string }) { const v = o as KnowledgeEntityV04 & Dict; return o.id.startsWith('entity:') && v.type === 'company' && f.ticker !== undefined && ident(v.ticker) === ident(f.ticker) && (f.exchange === undefined || ident(v.exchange) === ident(f.exchange)) }
@@ -86,13 +101,45 @@ function mergeSource(existing: KnowledgeSourceV04, incoming: KnowledgeSourceV04)
   }
 }
 
+function competitionModuleProposalErrors(p: Dict): string[] {
+  const errors: string[] = []
+  const id = String(p.proposalId)
+  if (!exactRecord(p, ['proposalId', 'kind', 'targetIndustry', 'schemaId', 'columns', 'rows', 'sourceCandidateIds', 'existingEvidenceBindings'], ['proposalId', 'kind', 'targetIndustry', 'schemaId', 'columns', 'rows']) || p.kind !== 'module') errors.push(`Competition Module proposal has undeclared or missing fields: ${id}`)
+  if (!validEntitySelector(p.targetIndustry)) errors.push(`Competition Module targetIndustry selector is invalid: ${id}`)
+  if (p.schemaId !== COMPETITION_MODULE_SCHEMA_ID_V1) errors.push(`Competition Module schemaId is unsupported: ${id}`)
+  if (!Array.isArray(p.columns)) errors.push(`Competition Module columns must be an array: ${id}`)
+  else if (p.columns.length < 4 || p.columns.length > 7) errors.push(`Competition Module column count is outside the 4-7 schema bound: ${id}`)
+  if (!Array.isArray(p.rows)) errors.push(`Competition Module rows must be an array: ${id}`)
+  else if (p.rows.length > 40) errors.push(`Competition Module row count exceeds the 40-row schema bound: ${id}`)
+  if (p.sourceCandidateIds !== undefined && (!Array.isArray(p.sourceCandidateIds) || p.sourceCandidateIds.length > 40 || p.sourceCandidateIds.some((candidateId) => typeof candidateId !== 'string' || !safeId.test(candidateId)))) errors.push(`Competition Module sourceCandidateIds must be at most 40 local IDs: ${id}`)
+  if (p.existingEvidenceBindings !== undefined && (!Array.isArray(p.existingEvidenceBindings) || p.existingEvidenceBindings.length > 40 || p.existingEvidenceBindings.some((binding) => !exactRecord(binding, ['sourceRef', 'rawRef', 'locator'], ['sourceRef', 'rawRef']) || typeof binding.sourceRef !== 'string' || !binding.sourceRef.startsWith('source:') || typeof binding.rawRef !== 'string' || !/^raw-sha256-[0-9a-f]{64}$/.test(binding.rawRef) || (binding.locator !== undefined && !validLocator(binding.locator))))) errors.push(`Competition Module existing evidence bindings are invalid: ${id}`)
+  for (const [rowIndex, row] of (Array.isArray(p.rows) ? p.rows.slice(0, 40) : []).entries()) {
+    if (!exactRecord(row, ['company', 'businessExposure', 'cells'])) { errors.push(`Competition Module row shape is invalid: ${id}[${rowIndex}]`); continue }
+    if (!validEntitySelector(row.company)) errors.push(`Competition Module row Company selector is invalid: ${id}[${rowIndex}]`)
+    if (!validRelationSelector(row.businessExposure)) errors.push(`Competition Module business_exposure selector is invalid: ${id}[${rowIndex}]`)
+    if (!record(row.cells)) { errors.push(`Competition Module row cells must be keyed by column ID: ${id}[${rowIndex}]`); continue }
+    const cellEntries = Object.entries(row.cells)
+    if (cellEntries.length > 6) errors.push(`Competition Module row has more cells than the schema allows: ${id}[${rowIndex}]`)
+    for (const [columnId, cell] of cellEntries.slice(0, 6)) {
+      if (!safeId.test(columnId) || !record(cell)) { errors.push(`Competition Module cell is malformed: ${id}[${rowIndex}].${columnId}`); continue }
+      if (cell.status === 'available') {
+        const fields = ['status', 'displayValue', 'knowledgeRefs', 'asOf', 'unit', 'currency', 'fiscalYear']
+        if (!exactRecord(cell, fields, ['status', 'displayValue', 'knowledgeRefs']) || typeof cell.displayValue !== 'string' || !Array.isArray(cell.knowledgeRefs) || cell.knowledgeRefs.length === 0 || cell.knowledgeRefs.length > 16 || cell.knowledgeRefs.some((ref) => !exactRecord(ref, ['proposalId', 'existingRef'], []) || Object.keys(ref).length !== 1 || !((typeof ref.proposalId === 'string' && safeId.test(ref.proposalId)) || (typeof ref.existingRef === 'string' && /^(claim|observation|relation):[A-Za-z0-9][A-Za-z0-9._-]*$/.test(ref.existingRef))))) errors.push(`Competition Module available cell selectors or fields are invalid: ${id}[${rowIndex}].${columnId}`)
+      } else if (!exactRecord(cell, ['status', 'reason']) || !['unavailable', 'not_comparable'].includes(String(cell.status)) || typeof cell.reason !== 'string') errors.push(`Competition Module unavailable cell is invalid: ${id}[${rowIndex}].${columnId}`)
+    }
+  }
+  return errors
+}
+
 function localErrors(input: KnowledgeProductionInput): string[] {
   const errors: string[] = []; const ids = new Set<string>()
   if (!safeId.test(input.entity.localKey) || !input.entity.name.trim() || !validExternalIdentifiers(input.entity.externalIdentifiers)) errors.push('Root Entity localKey/name/externalIdentifiers are invalid')
   for (const raw of input.proposals as readonly unknown[]) {
     if (!record(raw)) { errors.push('Proposal must be an object'); continue }
+    const proposalId = raw.proposalId
+    if (typeof proposalId !== 'string' || !safeId.test(proposalId) || ids.has(proposalId)) errors.push(`Proposal ID is not unique and local: ${String(proposalId)}`); if (typeof proposalId === 'string') ids.add(proposalId)
+    if (raw.kind === 'module') { errors.push(...competitionModuleProposalErrors(raw)); continue }
     const p = raw as unknown as SemanticProductionInputProposal
-    if (!safeId.test(p.proposalId) || ids.has(p.proposalId)) errors.push(`Proposal ID is not unique and local: ${String(p.proposalId)}`); ids.add(p.proposalId)
     if (p.kind !== 'reasoning_edge' && (typeof p.subjectKey !== 'string' || !safeId.test(p.subjectKey))) errors.push(`Proposal subjectKey is not safe: ${String(p.subjectKey)}`)
     if (!['entity', 'claim', 'relation', 'source', 'event', 'observation', 'thesis', 'reasoning_edge'].includes(p.kind)) errors.push(`Unsupported proposal kind: ${String(p.kind)}`)
     if (p.kind === 'entity' && (!['company', 'industry', 'product', 'technology', 'person', 'institution', 'security'].includes(p.entityType ?? '') || !text(p.entityName) || !validExternalIdentifiers(p.externalIdentifiers))) errors.push(`Entity proposal is invalid: ${p.proposalId}`)
@@ -121,9 +168,11 @@ export class KnowledgeProductionGateway {
   async projectExistingKnowledge(handle: KnowledgeBaseHandle, entity: { name?: string; symbol: string; exchange?: string }): Promise<readonly Dict[]> { const objects = (await readCanonicalV04Assets(handle.rootRef)).objects.map((x) => x.value); const f = { ticker: entity.symbol, ...(entity.exchange ? { exchange: normalizeExchange(entity.exchange) } : {}) }; const ids = new Set(objects.filter((o) => companyMatch(o, f) || nameMatch(o, 'company', entity.name ?? entity.symbol, [entity.symbol])).map((o) => o.id)); for (const r of objects.filter((o) => o.id.startsWith('relation:')) as KnowledgeRelationV04[]) if (ids.has(r.sourceRef) || ids.has(r.targetRef)) { ids.add(r.id); ids.add(r.sourceRef); ids.add(r.targetRef) } for (const c of objects.filter((o) => o.id.startsWith('claim:')) as KnowledgeClaimV04[]) if (c.subjectRefs.some((r) => ids.has(r))) ids.add(c.id); return objects.filter((o) => ids.has(o.id)).sort((a, b) => a.id.localeCompare(b.id)).slice(0, 80).map((o) => { const v = o as unknown as Dict; return { canonicalRef: o.id, kind: o.id.split(':', 1)[0], name: v.name ?? v.statement ?? null, aliases: Array.isArray(v.aliases) ? v.aliases.slice(0, 10) : [], ...v } }) }
   async submit(input: KnowledgeProductionInput): Promise<KnowledgeProductionOutcome> {
     const now = input.now ?? (() => new Date().toISOString()); const intents: ResolutionIntentSummary[] = []; const relationRefs: Record<string, string> = {}; const entityRefs: Record<string, string> = {}; const claimRefs: Record<string, string> = {}; const sourceRefs: Record<string, string> = {}; const eventRefs: Record<string, string> = {}; const observationRefs: Record<string, string> = {}; const thesisRefs: Record<string, string> = {}; const reasoningEdgeRefs: Record<string, string> = {}
+    const moduleRefs: Record<string, string> = {}
+    const terminalOutcome = (status: 'blocked' | 'failed', errors: readonly string[], terminalIntents: readonly ResolutionIntentSummary[] = intents, entities: Readonly<Record<string, string>> = entityRefs, relations: Readonly<Record<string, string>> = relationRefs, sources: Readonly<Record<string, string>> = sourceRefs, claims: Readonly<Record<string, string>> = claimRefs): KnowledgeProductionOutcome => createOutcome(input, status, errors, terminalIntents, entities, relations, sources, claims, moduleRefs)
     try {
-      const errors = localErrors(input); const criterionProposals = input.proposals.filter((proposal) => (proposal as unknown as Dict).criterionRevision !== undefined); if (criterionProposals.length && (input.producerType !== 'thesis_criterion_confirmed' || input.proposals.length !== 1 || criterionProposals.length !== 1 || criterionProposals[0]?.kind !== 'thesis')) errors.push('Confirmed criterion revisions require one Thesis proposal from thesis_criterion_confirmed'); if (input.evidenceBindings.some((binding) => binding.locator !== undefined && !validLocator(binding.locator))) errors.push('Evidence binding locator is invalid'); if (input.evidenceBindings.some((binding) => !['public', 'authenticated'].includes(binding.source.rights.accessScope) || binding.source.rights.retentionAllowed !== true || binding.source.rights.aiProcessingAllowed !== true || binding.source.rights.derivativeKnowledgeAllowed !== true)) errors.push('Source access scope or rights do not permit raw retention, AI processing, and derived canonical Knowledge'); if (input.handle.schemaVersion !== '0.4' || input.handle.storageFormatVersion !== '1') errors.push('Knowledge Production Gateway requires Schema 0.4 / Storage Format 1'); if (errors.length) return outcome(input, 'blocked', errors, intents, entityRefs, relationRefs, sourceRefs, claimRefs)
-      const proposals = input.proposals as readonly SemanticProductionProposal[]
+      const errors = localErrors(input); const criterionProposals = input.proposals.filter((proposal) => (proposal as unknown as Dict).criterionRevision !== undefined); if (criterionProposals.length && (input.producerType !== 'thesis_criterion_confirmed' || input.proposals.length !== 1 || criterionProposals.length !== 1 || criterionProposals[0]?.kind !== 'thesis')) errors.push('Confirmed criterion revisions require one Thesis proposal from thesis_criterion_confirmed'); if (input.evidenceBindings.some((binding) => binding.locator !== undefined && !validLocator(binding.locator))) errors.push('Evidence binding locator is invalid'); if (input.evidenceBindings.some((binding) => !['public', 'authenticated'].includes(binding.source.rights.accessScope) || binding.source.rights.retentionAllowed !== true || binding.source.rights.aiProcessingAllowed !== true || binding.source.rights.derivativeKnowledgeAllowed !== true)) errors.push('Source access scope or rights do not permit raw retention, AI processing, and derived canonical Knowledge'); if (input.handle.schemaVersion !== '0.4' || input.handle.storageFormatVersion !== '1') errors.push('Knowledge Production Gateway requires Schema 0.4 / Storage Format 1'); if (errors.length) return terminalOutcome('blocked', errors, intents, entityRefs, relationRefs, sourceRefs, claimRefs)
+      const proposals = input.proposals.filter((proposal): proposal is SemanticProductionInputProposal => proposal.kind !== 'module') as readonly SemanticProductionProposal[]
       const assets = await readCanonicalV04Assets(input.handle.rootRef); const canonicalObjects: AssetMap = new Map(assets.objects.map((x) => [x.value.id, structuredClone(x.value)])); const objects: AssetMap = new Map(assets.objects.map((x) => [x.value.id, structuredClone(x.value)])); const operations: KnowledgeOperationV04[] = []; const createdIds: string[] = []; const updatedIds: string[] = []; const rawBySource = new Map<string, RawRef>(); const f = companyFields(input)
       const existingEvidenceByProposal = new Map<string, EvidenceRef[]>()
       const existingEvidenceErrors: string[] = []
@@ -153,9 +202,9 @@ export class KnowledgeProductionGateway {
         }
         existingEvidenceByProposal.set(proposal.proposalId, accepted)
       }
-      if (existingEvidenceErrors.length) return outcome(input, 'blocked', existingEvidenceErrors, intents, entityRefs, relationRefs, sourceRefs, claimRefs)
+      if (existingEvidenceErrors.length) return terminalOutcome('blocked', existingEvidenceErrors, intents, entityRefs, relationRefs, sourceRefs, claimRefs)
       const entityInputs = new Map<string, KnowledgeProductionInput['entity']>([[input.entity.localKey, input.entity]])
-      for (const p of proposals.filter((x) => x.kind === 'entity')) { if (p.subjectKey === input.entity.localKey) { if (p.entityType !== input.entity.entityType || p.entityName !== input.entity.name) return outcome(input, 'blocked', ['Semantic Entity proposal cannot overwrite authoritative root ProductionEntityInput'], intents, entityRefs, relationRefs, sourceRefs, claimRefs); continue } entityInputs.set(p.subjectKey, { localKey: p.subjectKey, entityType: p.entityType!, name: p.entityName!, aliases: [], semanticFields: p.structuredValue ?? undefined, externalIdentifiers: p.externalIdentifiers }) }
+      for (const p of proposals.filter((x) => x.kind === 'entity')) { if (p.subjectKey === input.entity.localKey) { if (p.entityType !== input.entity.entityType || p.entityName !== input.entity.name) return terminalOutcome('blocked', ['Semantic Entity proposal cannot overwrite authoritative root ProductionEntityInput'], intents, entityRefs, relationRefs, sourceRefs, claimRefs); continue } entityInputs.set(p.subjectKey, { localKey: p.subjectKey, entityType: p.entityType!, name: p.entityName!, aliases: [], semanticFields: p.structuredValue ?? undefined, externalIdentifiers: p.externalIdentifiers }) }
       for (const [localKey, ei] of entityInputs) {
         const isRoot = localKey === input.entity.localKey; let existing: KnowledgeEntityV04 | undefined
         if (ei.existingEntityRef) { const x = objects.get(ei.existingEntityRef); if (!x || !x.id.startsWith('entity:') || (x as KnowledgeEntityV04).type !== ei.entityType || (ei.entityType === 'company' && !companyMatch(x, f))) { intents.push(intent(`entity-${localKey}`, 'review_required', 'Explicit canonical Entity ref is missing, type-mismatched, or violates Company hard identity', { localKey })); continue } existing = x as KnowledgeEntityV04 }
@@ -165,9 +214,9 @@ export class KnowledgeProductionGateway {
         if (existing) { const merged = mergeEntity(existing, { aliases: ei.aliases ?? [], semanticFields: isRoot ? f : ei.semanticFields, externalIdentifiers: isRoot ? f.externalIdentifiers : ei.externalIdentifiers }); if (hashKnowledgeObject(existing) !== hashKnowledgeObject(merged)) { objects.set(ref, merged); operations.push({ operationId: `update-entity-${operations.length + 1}`, type: 'update', knowledgeId: ref, expectedBeforeHash: hashKnowledgeObject(existing), object: merged }); updatedIds.push(ref) } intents.push(intent(`entity-${localKey}`, 'bound_existing', 'Bound to a validated canonical Entity', { localKey, targetRef: ref })) }
         else { const created = { id: ref as `entity:${string}`, type: ei.entityType, name: ei.name, aliases: [...new Set(ei.aliases ?? [])], ...(isRoot ? f : ei.semanticFields ?? {}), ...(isRoot || ei.externalIdentifiers === undefined ? {} : { externalIdentifiers: ei.externalIdentifiers }), lifecycle: { status: 'active' } } as KnowledgeEntityV04; objects.set(ref, created); operations.push({ operationId: `create-entity-${operations.length + 1}`, type: 'create', object: created }); createdIds.push(ref); intents.push(intent(`entity-${localKey}`, 'created_new', 'No plausible canonical Entity was proven equivalent', { localKey, targetRef: ref })) }
       }
-      if (!entityRefs[input.entity.localKey]) return outcome(input, 'blocked', ['Root Entity binding requires review before dependent Knowledge can be committed'], intents, entityRefs, relationRefs, sourceRefs, claimRefs)
+      if (!entityRefs[input.entity.localKey]) return terminalOutcome('blocked', ['Root Entity binding requires review before dependent Knowledge can be committed'], intents, entityRefs, relationRefs, sourceRefs, claimRefs)
       for (const b of input.evidenceBindings) { if (validateUsableAcquisitionPayload(b.source.content).status !== 'usable') continue; const bytes = b.source.rawBytes === undefined ? new TextEncoder().encode(b.source.content) : Uint8Array.from(b.source.rawBytes); const raw = await archiveRaw(input.handle, { bytes, originalFilename: b.originalFilename ?? `${b.localSourceId}.txt`, mediaType: b.mediaType ?? 'text/plain', suppliedMetadata: { title: b.source.title, institution: b.source.publisher, publishedAt: b.source.candidate.publishedAt ?? null, sourceUrl: b.source.canonicalUrl ?? b.source.candidate.url ?? null } }, { clock: now }); const rawRef = raw.manifest.rawRef as RawRef; rawBySource.set(b.localSourceId, rawRef); const hash = hashKnowledgeObject(sourceIdentity(b.source, f)); const old = [...objects.values()].find((o) => o.id.startsWith('source:') && (o as KnowledgeSourceV04).metadata?.researchSourceIdentity === hash) as KnowledgeSourceV04 | undefined; const s = sourceObject(b.source, old?.id ?? `source:research-${hash.slice(7, 23)}`, rawRef, f); const final = old ? mergeSource(old, s) : s; sourceRefs[b.localSourceId] = final.id; objects.set(final.id, final); if (!old) { operations.push({ operationId: `create-source-${operations.length + 1}`, type: 'create', object: final }); createdIds.push(final.id) } else if (hashKnowledgeObject(old) !== hashKnowledgeObject(final)) { operations.push({ operationId: `update-source-${operations.length + 1}`, type: 'update', knowledgeId: old.id, expectedBeforeHash: hashKnowledgeObject(old), object: final }); updatedIds.push(old.id) } }
-      const evidenceFor = (p: SemanticProductionProposal): EvidenceRef[] => {
+      const evidenceFor = (p: { readonly proposalId: string; readonly sourceCandidateIds?: readonly string[]; readonly existingEvidenceBindings?: readonly { readonly sourceRef: `source:${string}`; readonly rawRef: `raw-sha256-${string}`; readonly locator?: string }[] }): EvidenceRef[] => {
         const locatorBySource = new Map(input.evidenceBindings.map((binding) => [binding.localSourceId, binding.locator]))
         const submitted = uniqueSorted(p.sourceCandidateIds ?? []).flatMap((id): EvidenceRef[] => { const sourceRef = sourceRefs[id]; const rawRef = rawBySource.get(id); if (!sourceRef || !rawRef) return []; const locator = locatorBySource.get(id); return [{ sourceRef: sourceRef as `source:${string}`, rawRef, ...(locator === undefined ? {} : { locator }) }] })
         const combined = [...submitted, ...(existingEvidenceByProposal.get(p.proposalId) ?? [])]
@@ -224,7 +273,7 @@ export class KnowledgeProductionGateway {
         addOrUpdate(observation, 'observation', observationId)
         intents.push(intent(`observation-${p.proposalId}`, existing ? 'bound_existing' : 'created_new', existing ? 'Canonical Observation resolved' : 'Created canonical Observation', { proposalId: p.proposalId, targetRef: observationId }))
       }
-      for (const p of proposals.filter((x) => x.kind === 'thesis')) { const subjectRef = entityRefs[p.subjectKey]; if (!subjectRef || !p.thesisTitle || !p.statement || !p.thesisStatus) { intents.push(intent(`thesis-${p.proposalId}`, 'review_required', 'Thesis requires a bound Entity subject and complete semantic fields', { proposalId: p.proposalId })); continue } const id = allocateKnowledgeId('thesis', { subjectRefs: [subjectRef], title: p.thesisTitle }); const existing = objects.get(id) as KnowledgeThesisV04 | undefined; if (p.criterionRevision !== undefined) { const revision = p.criterionRevision; const origin = revision.authority.origin; if (!existing || input.producerType !== 'thesis_criterion_confirmed' || input.proposals.length !== 1 || p.subjectKey !== input.entity.localKey || p.thesisTitle !== existing.title || p.statement !== existing.statement || p.thesisStatus !== existing.status || !validConfirmedCriterion(revision, input.producerRunId)) return outcome(input, 'blocked', [`Proposal ${p.proposalId} cannot confirm a criterion for a new, changed, or unauthorized Thesis`], intents, entityRefs, relationRefs, sourceRefs, claimRefs); const sameCondition = (existing.killCriteria ?? []).filter((item) => item.conditionId === revision.conditionId); const expectedRevision = Math.max(0, ...sameCondition.map((item) => item.revision)) + 1; if (revision.revision !== expectedRevision) return outcome(input, 'blocked', [`Criterion ${String(revision.conditionId)} revision is stale or conflicts with canonical history`], intents, entityRefs, relationRefs, sourceRefs, claimRefs); if (origin.kind === 'source_derived') { const ev = evidenceFor(p); const bound = ev.some((item) => item.sourceRef === origin.sourceRef && item.rawRef === origin.rawRef && item.locator === origin.locator); if (!bound) return outcome(input, 'blocked', ['Source-derived criterion origin must match admitted Source/Raw evidence and its exact locator at confirmation'], intents, entityRefs, relationRefs, sourceRefs, claimRefs); try { await verifyRaw(input.handle, origin.rawRef as RawRef) } catch { return outcome(input, 'blocked', ['Source-derived criterion Raw failed integrity verification at confirmation'], intents, entityRefs, relationRefs, sourceRefs, claimRefs) } } const priorCriteria = existing.killCriteria ?? []; const updatedCriteria = priorCriteria.map((item) => item.conditionId === revision.conditionId && item.state === 'active' ? { ...item, state: 'superseded' as const } : item); const canonicalRevision = structuredClone(revision); const thesis: KnowledgeThesisV04 = { ...existing, killCriteria: [...updatedCriteria, canonicalRevision], updatedAt: now() }; thesisRefs[p.proposalId] = id; addOrUpdate(thesis, 'thesis', id); intents.push(intent(`thesis-${p.proposalId}`, 'bound_existing', 'Confirmed criterion revision appended to canonical Thesis', { proposalId: p.proposalId, targetRef: id })); continue } const thesis: KnowledgeThesisV04 = { id: id as `thesis:${string}`, subjectRefs: [subjectRef as `entity:${string}`], title: p.thesisTitle, statement: p.statement, status: p.thesisStatus, createdAt: existing?.createdAt ?? now(), ...(existing?.lastReviewedAt ? { lastReviewedAt: existing.lastReviewedAt } : {}), ...(existing?.killCriteria === undefined ? {} : { killCriteria: existing.killCriteria }), lifecycle: { status: p.thesisStatus === 'archived' ? 'archived' : 'active' }, updatedAt: now() }; thesisRefs[p.proposalId] = id; addOrUpdate(thesis, 'thesis', id); intents.push(intent(`thesis-${p.proposalId}`, existing ? 'bound_existing' : 'created_new', existing ? 'Canonical Thesis resolved' : 'Created canonical Thesis', { proposalId: p.proposalId, targetRef: id })) }
+      for (const p of proposals.filter((x) => x.kind === 'thesis')) { const subjectRef = entityRefs[p.subjectKey]; if (!subjectRef || !p.thesisTitle || !p.statement || !p.thesisStatus) { intents.push(intent(`thesis-${p.proposalId}`, 'review_required', 'Thesis requires a bound Entity subject and complete semantic fields', { proposalId: p.proposalId })); continue } const id = allocateKnowledgeId('thesis', { subjectRefs: [subjectRef], title: p.thesisTitle }); const existing = objects.get(id) as KnowledgeThesisV04 | undefined; if (p.criterionRevision !== undefined) { const revision = p.criterionRevision; const origin = revision.authority.origin; if (!existing || input.producerType !== 'thesis_criterion_confirmed' || input.proposals.length !== 1 || p.subjectKey !== input.entity.localKey || p.thesisTitle !== existing.title || p.statement !== existing.statement || p.thesisStatus !== existing.status || !validConfirmedCriterion(revision, input.producerRunId)) return terminalOutcome('blocked', [`Proposal ${p.proposalId} cannot confirm a criterion for a new, changed, or unauthorized Thesis`], intents, entityRefs, relationRefs, sourceRefs, claimRefs); const sameCondition = (existing.killCriteria ?? []).filter((item) => item.conditionId === revision.conditionId); const expectedRevision = Math.max(0, ...sameCondition.map((item) => item.revision)) + 1; if (revision.revision !== expectedRevision) return terminalOutcome('blocked', [`Criterion ${String(revision.conditionId)} revision is stale or conflicts with canonical history`], intents, entityRefs, relationRefs, sourceRefs, claimRefs); if (origin.kind === 'source_derived') { const ev = evidenceFor(p); const bound = ev.some((item) => item.sourceRef === origin.sourceRef && item.rawRef === origin.rawRef && item.locator === origin.locator); if (!bound) return terminalOutcome('blocked', ['Source-derived criterion origin must match admitted Source/Raw evidence and its exact locator at confirmation'], intents, entityRefs, relationRefs, sourceRefs, claimRefs); try { await verifyRaw(input.handle, origin.rawRef as RawRef) } catch { return terminalOutcome('blocked', ['Source-derived criterion Raw failed integrity verification at confirmation'], intents, entityRefs, relationRefs, sourceRefs, claimRefs) } } const priorCriteria = existing.killCriteria ?? []; const updatedCriteria = priorCriteria.map((item) => item.conditionId === revision.conditionId && item.state === 'active' ? { ...item, state: 'superseded' as const } : item); const canonicalRevision = structuredClone(revision); const thesis: KnowledgeThesisV04 = { ...existing, killCriteria: [...updatedCriteria, canonicalRevision], updatedAt: now() }; thesisRefs[p.proposalId] = id; addOrUpdate(thesis, 'thesis', id); intents.push(intent(`thesis-${p.proposalId}`, 'bound_existing', 'Confirmed criterion revision appended to canonical Thesis', { proposalId: p.proposalId, targetRef: id })); continue } const thesis: KnowledgeThesisV04 = { id: id as `thesis:${string}`, subjectRefs: [subjectRef as `entity:${string}`], title: p.thesisTitle, statement: p.statement, status: p.thesisStatus, createdAt: existing?.createdAt ?? now(), ...(existing?.lastReviewedAt ? { lastReviewedAt: existing.lastReviewedAt } : {}), ...(existing?.killCriteria === undefined ? {} : { killCriteria: existing.killCriteria }), lifecycle: { status: p.thesisStatus === 'archived' ? 'archived' : 'active' }, updatedAt: now() }; thesisRefs[p.proposalId] = id; addOrUpdate(thesis, 'thesis', id); intents.push(intent(`thesis-${p.proposalId}`, existing ? 'bound_existing' : 'created_new', existing ? 'Canonical Thesis resolved' : 'Created canonical Thesis', { proposalId: p.proposalId, targetRef: id })) }
       for (const p of proposals.filter((x) => x.kind === 'relation')) { const sr = entityRefs[p.subjectKey]; const tr = p.targetKey ? entityRefs[p.targetKey] : undefined; const d = p.relationType ? KNOWLEDGE_SCHEMA_V04.relation.definitions[p.relationType as keyof typeof KNOWLEDGE_SCHEMA_V04.relation.definitions] : undefined; const se = sr ? objects.get(sr) as KnowledgeEntityV04 : undefined; const te = tr ? objects.get(tr) as KnowledgeEntityV04 : undefined; const ev = evidenceFor(p); const valid = Boolean(sr && tr && d && relationTypes.has(p.relationType ?? '') && se && te && (d.sourceTypes as readonly string[]).includes(se.type) && (d.targetTypes as readonly string[]).includes(te.type) && validateRelationAttributesV03(p.relationType!, p.attributes).valid && ev.length); if (!valid) { intents.push(intent(`relation-${p.proposalId}`, 'review_required', 'Relation endpoint, type, attributes, or evidence could not be resolved', { proposalId: p.proposalId })); continue } const old = [...objects.values()].find((o) => o.id.startsWith('relation:') && (o as KnowledgeRelationV04).type === p.relationType && (o as KnowledgeRelationV04).sourceRef === sr && (o as KnowledgeRelationV04).targetRef === tr && hashKnowledgeObject((o as KnowledgeRelationV04).attributes ?? null) === hashKnowledgeObject(p.attributes ?? null)) as KnowledgeRelationV04 | undefined; const id = old?.id ?? allocateKnowledgeId('relation', { type: p.relationType, sourceRef: sr, targetRef: tr, attributes: p.attributes ?? null }); relationRefs[p.proposalId] = id; const merged = { id, type: p.relationType, sourceRef: sr, targetRef: tr, ...(p.attributes === undefined ? {} : { attributes: p.attributes }), sourceRefs: [...new Set([...(old?.sourceRefs ?? []), ...ev.map((x) => x.sourceRef)])], lifecycle: { status: 'active' } } as unknown as KnowledgeRelationV04; objects.set(id, merged); if (!old) { operations.push({ operationId: `create-relation-${operations.length + 1}`, type: 'create', object: merged }); createdIds.push(id) } else if (hashKnowledgeObject(old) !== hashKnowledgeObject(merged)) { operations.push({ operationId: `update-relation-${operations.length + 1}`, type: 'update', knowledgeId: id, expectedBeforeHash: hashKnowledgeObject(old), object: merged }); updatedIds.push(id) } intents.push(intent(`relation-${p.proposalId}`, old ? 'bound_existing' : 'created_new', old ? 'Exact canonical Relation matched' : 'Created canonical Relation', { proposalId: p.proposalId, targetRef: id })) }
       const reviewCases: ReviewCase[] = []
       for (const p of proposals.filter((x) => x.kind === 'claim')) { const ev = evidenceFor(p); const relationSubject = proposals.some((x) => x.kind === 'relation' && x.proposalId === p.subjectKey); const subject = p.resolution === 'review' ? undefined : relationRefs[p.subjectKey] ?? entityRefs[p.subjectKey] ?? (relationSubject ? undefined : entityRefs[input.entity.localKey]); if (!subject || ev.length === 0) { intents.push(intent(`claim-${p.proposalId}`, 'review_required', p.resolution === 'review' ? 'Producer marked semantic resolution for review' : relationSubject ? 'Relation subject unresolved; no root fallback permitted' : 'Claim lacks a bound subject or usable evidence', { proposalId: p.proposalId })); if (p.resolution === 'review' && ev[0]?.rawRef) reviewCases.push(reviewCase(input, p, ev[0].rawRef)); continue }
@@ -279,11 +328,157 @@ export class KnowledgeProductionGateway {
         const edge: KnowledgeReasoningEdgeV04 = { id: id as `reasoning-edge:${string}`, type: p.edgeType!, sourceRef: sourceRef as KnowledgeReasoningEdgeV04['sourceRef'], targetRef: targetRef as KnowledgeReasoningEdgeV04['targetRef'], ...(ev.length ? { sourceRefs: uniqueSorted(ev.map((item) => item.sourceRef)) as `source:${string}`[] } : {}), ...(p.confidence === undefined ? {} : { confidence: p.confidence }), ...(input.asOf ? { asOf: input.asOf } : {}), lifecycle: { status: 'active' }, createdAt: existing?.createdAt ?? now(), updatedAt: now() }
         reasoningEdgeRefs[p.proposalId] = id; addOrUpdate(edge, 'reasoning-edge', id); intents.push(intent(`reasoning-edge-${p.proposalId}`, existing ? 'bound_existing' : 'created_new', existing ? 'Canonical ReasoningEdge resolved' : 'Created canonical ReasoningEdge', { proposalId: p.proposalId, targetRef: id }))
       }
-      for (const operation of operations) if (operation.type === 'update' && operation.knowledgeId !== operation.object.id) return outcome(input, 'blocked', ['Update operation knowledgeId must equal operation.object.id'], intents, entityRefs, relationRefs, sourceRefs, claimRefs)
+      const competitionModuleProposals = input.proposals.filter((proposal): proposal is CompetitionModuleProductionProposal => proposal.kind === 'module')
+      const activeObject = (value: KnowledgeAssetV04 | undefined): value is KnowledgeAssetV04 => record(value) && record((value as unknown as Dict).lifecycle) && ((value as unknown as Dict).lifecycle as Dict).status === 'active'
+      const sourceRefsForKnowledge = (ref: string, visited = new Set<string>()): readonly string[] => {
+        if (visited.has(ref)) return []
+        visited.add(ref)
+        const value = objects.get(ref) as unknown as Dict | undefined
+        if (!value) return []
+        if (ref.startsWith('source:')) return [ref]
+        const sourceRefs = new Set<string>()
+        const addSource = (sourceRef: unknown): void => {
+          if (typeof sourceRef !== 'string' || !sourceRef.startsWith('source:')) return
+          const source = objects.get(sourceRef) as KnowledgeSourceV04 | undefined
+          if (source && activeObject(source)) sourceRefs.add(sourceRef)
+        }
+        if (Array.isArray(value.sourceRefs)) for (const sourceRef of value.sourceRefs) addSource(sourceRef)
+        addSource(value.sourceRef)
+        if (Array.isArray(value.supportingClaimRefs)) for (const claimRef of value.supportingClaimRefs) {
+          const claim = objects.get(String(claimRef)) as KnowledgeClaimV04 | undefined
+          if (claim && claim.subjectRefs.includes(ref as `relation:${string}`)) for (const sourceRef of sourceRefsForKnowledge(claim.id, visited)) sourceRefs.add(sourceRef)
+        }
+        if (Array.isArray(value.contributingObservationRefs)) for (const observationRef of value.contributingObservationRefs) {
+          for (const sourceRef of sourceRefsForKnowledge(String(observationRef), visited)) sourceRefs.add(sourceRef)
+        }
+        return uniqueSorted([...sourceRefs])
+      }
+      const isRelevantToCompany = (value: KnowledgeAssetV04, companyRef: string): boolean => {
+        const data = value as unknown as Dict
+        if (value.id.startsWith('claim:')) {
+          if (!Array.isArray(data.subjectRefs)) return false
+          return data.subjectRefs.some((subjectRef) => subjectRef === companyRef || (typeof subjectRef === 'string' && subjectRef.startsWith('relation:') && (() => {
+            const relation = objects.get(subjectRef) as KnowledgeRelationV04 | undefined
+            return relation?.sourceRef === companyRef || relation?.targetRef === companyRef
+          })()))
+        }
+        if (value.id.startsWith('observation:')) return data.subjectRef === companyRef
+        if (value.id.startsWith('relation:')) return data.sourceRef === companyRef || data.targetRef === companyRef
+        return false
+      }
+      const blockedModule = (proposal: CompetitionModuleProductionProposal, message: string): KnowledgeProductionOutcome => {
+        intents.push(intent(`module-${proposal.proposalId}`, 'review_required', message, { proposalId: proposal.proposalId }))
+        return terminalOutcome('blocked', [`Competition Module ${proposal.proposalId}: ${message}`], intents, entityRefs, relationRefs, sourceRefs, claimRefs)
+      }
+      const handledModuleIds = new Set<string>()
+      for (const proposal of competitionModuleProposals) {
+        const targetRef = 'localKey' in proposal.targetIndustry && typeof proposal.targetIndustry.localKey === 'string' ? entityRefs[proposal.targetIndustry.localKey] : proposal.targetIndustry.existingRef
+        const target = targetRef ? objects.get(targetRef) as KnowledgeEntityV04 | undefined : undefined
+        if (!targetRef || !target || !target.id.startsWith('entity:') || target.type !== 'industry' || !activeObject(target) || ('existingRef' in proposal.targetIndustry && !canonicalObjects.has(targetRef))) return blockedModule(proposal, 'target must resolve to an active Industry Entity')
+        const existingModules = [...objects.values()].filter((value) => value.id.startsWith('module:') && (value as KnowledgeModuleV04).type === 'competition' && (value as KnowledgeModuleV04).targetEntity === targetRef)
+        if (existingModules.length > 1) return blockedModule(proposal, 'multiple canonical competition Modules already target this Industry')
+        const moduleId = existingModules[0]?.id ?? allocateKnowledgeId('module', { type: 'competition', targetEntity: targetRef })
+        if (handledModuleIds.has(moduleId)) return blockedModule(proposal, 'multiple Module proposals target the same Industry in one submission')
+        handledModuleIds.add(moduleId)
+        const collision = objects.get(moduleId)
+        if (collision && (!collision.id.startsWith('module:') || (collision as KnowledgeModuleV04).type !== 'competition' || (collision as KnowledgeModuleV04).targetEntity !== targetRef)) return blockedModule(proposal, 'stable Module identity collides with an incompatible canonical object')
+        const existing = collision as unknown as CompetitionModuleV1 | undefined
+        if (existing && (existing.schemaId !== COMPETITION_MODULE_SCHEMA_ID_V1 || hashKnowledgeObject(existing.columns) !== hashKnowledgeObject(proposal.columns))) return blockedModule(proposal, 'existing table columns differ; schema changes require review')
+
+        const directEvidence = evidenceFor(proposal)
+        const unresolvedCandidates = uniqueSorted(proposal.sourceCandidateIds ?? []).filter((candidateId) => !sourceRefs[candidateId] || !rawBySource.has(candidateId))
+        if (unresolvedCandidates.length) return blockedModule(proposal, `direct Source evidence did not resolve to usable admitted candidates: ${unresolvedCandidates.join(', ')}`)
+        const moduleSourceRefs = new Set<string>([
+          ...(existing?.sourceRefs ?? []),
+          ...directEvidence.map((item) => item.sourceRef),
+        ])
+        const incomingRows: CompetitionRowV1[] = []
+        const incomingCompanies = new Set<string>()
+        for (const [rowIndex, rowProposal] of proposal.rows.entries()) {
+          const companyRef = 'localKey' in rowProposal.company && typeof rowProposal.company.localKey === 'string' ? entityRefs[rowProposal.company.localKey] : rowProposal.company.existingRef
+          const company = companyRef ? objects.get(companyRef) as KnowledgeEntityV04 | undefined : undefined
+          if (!companyRef || !company || !company.id.startsWith('entity:') || company.type !== 'company' || !activeObject(company) || ('existingRef' in rowProposal.company && !canonicalObjects.has(companyRef))) return blockedModule(proposal, `row ${rowIndex} Company must resolve to an active canonical Company Entity`)
+          if (incomingCompanies.has(companyRef)) return blockedModule(proposal, `row ${rowIndex} duplicates Company ${companyRef}`)
+          incomingCompanies.add(companyRef)
+
+          const relationRef = 'proposalId' in rowProposal.businessExposure && typeof rowProposal.businessExposure.proposalId === 'string' ? relationRefs[rowProposal.businessExposure.proposalId] : rowProposal.businessExposure.existingRef
+          const relation = relationRef ? objects.get(relationRef) as KnowledgeRelationV04 | undefined : undefined
+          if (!relationRef || !relation || !relation.id.startsWith('relation:') || relation.type !== 'business_exposure' || relation.sourceRef !== companyRef || relation.targetRef !== targetRef || !activeObject(relation) || ('existingRef' in rowProposal.businessExposure && !canonicalObjects.has(relationRef))) return blockedModule(proposal, `row ${rowIndex} requires an active Company-to-Industry business_exposure Relation`)
+          const relationEvidence = sourceRefsForKnowledge(relationRef)
+          if (relationEvidence.length === 0) return blockedModule(proposal, `row ${rowIndex} business_exposure Relation has no resolved Source evidence`)
+          for (const sourceRef of relationEvidence) moduleSourceRefs.add(sourceRef)
+
+          const cells: Record<string, CompetitionModuleV1['rows'][number]['cells'][string]> = {}
+          for (const [columnId, cellProposal] of Object.entries(rowProposal.cells)) {
+            if (cellProposal.status !== 'available') {
+              cells[columnId] = structuredClone(cellProposal)
+              continue
+            }
+            const refs: string[] = []
+            for (const selector of cellProposal.knowledgeRefs as readonly CompetitionModuleKnowledgeSelectorV1[]) {
+              const knowledgeRef = 'proposalId' in selector ? boundRef(selector.proposalId) : selector.existingRef
+              const knowledge = knowledgeRef ? objects.get(knowledgeRef) : undefined
+              if (!knowledgeRef || !knowledge || !['claim:', 'observation:', 'relation:'].some((prefix) => knowledge.id.startsWith(prefix)) || ('existingRef' in selector && !canonicalObjects.has(knowledgeRef))) return blockedModule(proposal, `row ${rowIndex} cell ${columnId} has an unresolved canonical knowledge reference`)
+              if (!activeObject(knowledge) || !isRelevantToCompany(knowledge, companyRef)) return blockedModule(proposal, `row ${rowIndex} cell ${columnId} reference is inactive or unrelated to Company ${companyRef}`)
+              const evidenceRefs = sourceRefsForKnowledge(knowledgeRef)
+              if (evidenceRefs.length === 0) return blockedModule(proposal, `row ${rowIndex} cell ${columnId} reference has no resolved Source evidence`)
+              refs.push(knowledgeRef)
+              for (const sourceRef of evidenceRefs) moduleSourceRefs.add(sourceRef)
+            }
+            const canonicalRefs = uniqueSorted(refs) as CompetitionCellKnowledgeRefV1[]
+            const { knowledgeRefs: _selectors, ...cellFields } = cellProposal
+            cells[columnId] = { ...structuredClone(cellFields), knowledgeRefs: canonicalRefs } as CompetitionModuleV1['rows'][number]['cells'][string]
+          }
+          incomingRows.push({ companyRef: companyRef as EntityRefV04, cells })
+        }
+
+        const priorRows = existing?.rows ?? []
+        const priorRowsByCompany = new Map(priorRows.map((row) => [row.companyRef, row]))
+        let mergeError: string | undefined
+        const mergedRows: CompetitionRowV1[] = incomingRows.map((incoming) => {
+          const prior = priorRowsByCompany.get(incoming.companyRef)
+          if (!prior) return incoming
+          const cells: Record<string, CompetitionRowV1['cells'][string]> = {}
+          for (const [columnId, incomingCell] of Object.entries(incoming.cells)) {
+            const priorCell = prior.cells[columnId]
+            if (priorCell?.status === 'available' && incomingCell.status !== 'available') {
+              cells[columnId] = structuredClone(priorCell)
+              continue
+            }
+            if (priorCell?.status === 'available' && incomingCell.status === 'available') {
+              const priorRefs = uniqueSorted(priorCell.knowledgeRefs)
+              const incomingRefs = uniqueSorted(incomingCell.knowledgeRefs)
+              if (hashKnowledgeObject(priorRefs) === hashKnowledgeObject(incomingRefs) && hashKnowledgeObject(priorCell) !== hashKnowledgeObject(incomingCell)) mergeError = `row Company ${incoming.companyRef} cell ${columnId} changes with the same knowledge references`
+            }
+            cells[columnId] = structuredClone(incomingCell)
+          }
+          return { companyRef: incoming.companyRef, cells }
+        })
+        if (mergeError) return blockedModule(proposal, mergeError)
+        for (const prior of priorRows) if (!incomingCompanies.has(prior.companyRef)) mergedRows.push(structuredClone(prior))
+
+        const sourceRefsForModule = uniqueSorted([...moduleSourceRefs])
+        const candidate = {
+          id: moduleId as `module:${string}`,
+          type: 'competition' as const,
+          targetEntity: targetRef as EntityRefV04,
+          ...(sourceRefsForModule.length ? { sourceRefs: sourceRefsForModule as `source:${string}`[] } : {}),
+          schemaId: proposal.schemaId,
+          columns: structuredClone(proposal.columns),
+          rows: mergedRows,
+        } as CompetitionModuleV1
+        const structural = validateCompetitionModuleV1(candidate)
+        if (!structural.valid) return blockedModule(proposal, structural.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; '))
+        moduleRefs[proposal.proposalId] = moduleId
+        const changed = !existing || hashKnowledgeObject(existing) !== hashKnowledgeObject(candidate)
+        addOrUpdate(candidate as unknown as KnowledgeAssetV04, 'module', moduleId)
+        intents.push(intent(`module-${proposal.proposalId}`, !existing ? 'created_new' : changed ? 'bound_existing' : 'bound_existing', !existing ? 'Created canonical competition Module' : changed ? 'Merged evidence-backed changes into the canonical competition Module' : 'Canonical competition Module resolved without changes', { proposalId: proposal.proposalId, targetRef: moduleId }))
+      }
+      for (const operation of operations) if (operation.type === 'update' && operation.knowledgeId !== operation.object.id) return terminalOutcome('blocked', ['Update operation knowledgeId must equal operation.object.id'], intents, entityRefs, relationRefs, sourceRefs, claimRefs)
       if (input.writeKnowledge !== false && reviewCases.length) await persistReviewCases({ rootRef: input.handle.rootRef, knowledgeBaseId: input.handle.knowledgeBaseId, producerRunId: input.producerRunId, producerType: input.reviewProducerType ?? input.producerType, cases: reviewCases, createdAt: now(), schemaVersionAtCreation: '0.4', knowledgeBaseRevisionAtCreation: input.handle.revision })
-      if (input.writeKnowledge === false) return { status: 'no_changes', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: input.handle.revision, baseRevision: input.handle.revision, createdIds: [], updatedIds: [], sourceRefsByLocalId: sourceRefs, claimRefsByProposalId: claimRefs, entityRefsByLocalKey: entityRefs, relationRefsByProposalId: relationRefs, eventRefsByProposalId: eventRefs, observationRefsByProposalId: observationRefs, thesisRefsByProposalId: thesisRefs, reasoningEdgeRefsByProposalId: reasoningEdgeRefs, resolutionIntents: intents, errors: [] }
-      if (!operations.length) return { status: 'no_changes', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: input.handle.revision, baseRevision: input.handle.revision, createdIds: [], updatedIds: [], sourceRefsByLocalId: sourceRefs, claimRefsByProposalId: claimRefs, entityRefsByLocalKey: entityRefs, relationRefsByProposalId: relationRefs, eventRefsByProposalId: eventRefs, observationRefsByProposalId: observationRefs, thesisRefsByProposalId: thesisRefs, reasoningEdgeRefsByProposalId: reasoningEdgeRefs, resolutionIntents: intents, errors: [] }
-      const cs: KnowledgeChangeSetV04 = { changeSetId: `changeset-${input.producerType}-${sha256(JSON.stringify(operations.map((o) => o.operationId))).slice(0, 20)}`, workflowRunId: input.producerRunId, knowledgeBaseId: input.handle.knowledgeBaseId, schemaVersion: '0.4', storageFormatVersion: '1', expectedBaseRevision: input.handle.revision, operations, ingestionContext: { producerType: input.producerType, producerRunId: input.producerRunId, asOf: input.asOf ?? null } }; const v = await validateKnowledgeChangeSetV04(input.handle, cs, { mode: 'commit', now }); if (!v.validatedChangeSet) return outcome(input, 'blocked', v.report.errors.map((e) => `${e.code}: ${e.message}`), intents, entityRefs, relationRefs, sourceRefs, claimRefs); const w = await writeKnowledgeBase(input.handle, v.validatedChangeSet, { registry: this.registry, clock: now }) as KnowledgeWriteResultV04; if (w.status === 'failed' || w.status === 'rejected') return outcome(input, 'failed', [w.error?.message ?? 'Shared Writer rejected the validated ChangeSet'], intents, entityRefs, relationRefs, sourceRefs, claimRefs); return { status: w.status, knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: w.committedRevision, baseRevision: input.handle.revision, changeSetId: cs.changeSetId, createdIds: w.createdIds, updatedIds: w.updatedIds, sourceRefsByLocalId: sourceRefs, claimRefsByProposalId: claimRefs, entityRefsByLocalKey: entityRefs, relationRefsByProposalId: relationRefs, eventRefsByProposalId: eventRefs, observationRefsByProposalId: observationRefs, thesisRefsByProposalId: thesisRefs, reasoningEdgeRefsByProposalId: reasoningEdgeRefs, resolutionIntents: intents, errors: [] }
-    } catch (e) { return outcome(input, 'failed', [e instanceof Error ? e.message : String(e)], intents, entityRefs, relationRefs, sourceRefs, claimRefs) }
+      if (input.writeKnowledge === false) return { status: 'no_changes', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: input.handle.revision, baseRevision: input.handle.revision, createdIds: [], updatedIds: [], sourceRefsByLocalId: sourceRefs, claimRefsByProposalId: claimRefs, entityRefsByLocalKey: entityRefs, relationRefsByProposalId: relationRefs, moduleRefsByProposalId: moduleRefs, eventRefsByProposalId: eventRefs, observationRefsByProposalId: observationRefs, thesisRefsByProposalId: thesisRefs, reasoningEdgeRefsByProposalId: reasoningEdgeRefs, resolutionIntents: intents, errors: [] }
+      if (!operations.length) return { status: 'no_changes', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: input.handle.revision, baseRevision: input.handle.revision, createdIds: [], updatedIds: [], sourceRefsByLocalId: sourceRefs, claimRefsByProposalId: claimRefs, entityRefsByLocalKey: entityRefs, relationRefsByProposalId: relationRefs, moduleRefsByProposalId: moduleRefs, eventRefsByProposalId: eventRefs, observationRefsByProposalId: observationRefs, thesisRefsByProposalId: thesisRefs, reasoningEdgeRefsByProposalId: reasoningEdgeRefs, resolutionIntents: intents, errors: [] }
+      const cs: KnowledgeChangeSetV04 = { changeSetId: `changeset-${input.producerType}-${sha256(JSON.stringify(operations.map((o) => o.operationId))).slice(0, 20)}`, workflowRunId: input.producerRunId, knowledgeBaseId: input.handle.knowledgeBaseId, schemaVersion: '0.4', storageFormatVersion: '1', expectedBaseRevision: input.handle.revision, operations, ingestionContext: { producerType: input.producerType, producerRunId: input.producerRunId, asOf: input.asOf ?? null } }; const v = await validateKnowledgeChangeSetV04(input.handle, cs, { mode: 'commit', now }); if (!v.validatedChangeSet) return terminalOutcome('blocked', v.report.errors.map((e) => `${e.code}: ${e.message}`), intents, entityRefs, relationRefs, sourceRefs, claimRefs); const w = await writeKnowledgeBase(input.handle, v.validatedChangeSet, { registry: this.registry, clock: now }) as KnowledgeWriteResultV04; if (w.status === 'failed' || w.status === 'rejected') return terminalOutcome('failed', [w.error?.message ?? 'Shared Writer rejected the validated ChangeSet'], intents, entityRefs, relationRefs, sourceRefs, claimRefs); return { status: w.status, knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: w.committedRevision, baseRevision: input.handle.revision, changeSetId: cs.changeSetId, createdIds: w.createdIds, updatedIds: w.updatedIds, sourceRefsByLocalId: sourceRefs, claimRefsByProposalId: claimRefs, entityRefsByLocalKey: entityRefs, relationRefsByProposalId: relationRefs, moduleRefsByProposalId: moduleRefs, eventRefsByProposalId: eventRefs, observationRefsByProposalId: observationRefs, thesisRefsByProposalId: thesisRefs, reasoningEdgeRefsByProposalId: reasoningEdgeRefs, resolutionIntents: intents, errors: [] }
+    } catch (e) { return terminalOutcome('failed', [e instanceof Error ? e.message : String(e)], intents, entityRefs, relationRefs, sourceRefs, claimRefs) }
   }
 }
