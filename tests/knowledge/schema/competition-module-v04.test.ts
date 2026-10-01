@@ -121,9 +121,11 @@ test('rejects invalid market-cap and annual-revenue temporal or currency metadat
   badCurrency.rows[0].cells.revenue.currency = '¥'
   assert.equal(hasIssue(badCurrency, 'CELL_CURRENCY'), true)
 
-  const unsupportedCurrency = cloned(validModule()) as any
-  unsupportedCurrency.rows[0].cells.revenue.currency = 'ZZZ'
-  assert.equal(hasIssue(unsupportedCurrency, 'CELL_CURRENCY'), true)
+  for (const code of ['ZZZ', 'CLF']) {
+    const unsupportedCurrency = cloned(validModule()) as any
+    unsupportedCurrency.rows[0].cells.revenue.currency = code
+    assert.equal(hasIssue(unsupportedCurrency, 'CELL_CURRENCY'), true)
+  }
 })
 
 test('rejects unbounded columns, rows, cell references, and undeclared fields', () => {

@@ -18,11 +18,18 @@ export const COMPETITION_MODULE_V1_LIMITS = {
   maxUnitLength: 32,
 } as const
 
-const SUPPORTED_BASE_CURRENCY_CODES = new Set(Intl.supportedValuesOf('currency'))
+// Schema V1 pins a conservative, common-currency subset to avoid runtime ICU drift.
+// This is not an exhaustive ISO 4217 list; other valid ISO codes remain unavailable
+// until the supported currency registry is explicitly expanded in a later schema.
+const SUPPORTED_BASE_CURRENCY_CODES_V1: ReadonlySet<string> = new Set([
+  'AED', 'AUD', 'BRL', 'CAD', 'CHF', 'CNY', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD',
+  'HUF', 'IDR', 'ILS', 'INR', 'JPY', 'KRW', 'MXN', 'MYR', 'NOK', 'NZD', 'PHP',
+  'PLN', 'RUB', 'SAR', 'SEK', 'SGD', 'THB', 'TRY', 'TWD', 'USD', 'VND', 'ZAR',
+])
 
-/** A base ISO currency code supported by the current Node ICU runtime. */
+/** A base ISO currency code in the pinned Schema V1 supported subset. */
 export function isSupportedBaseCurrencyCodeV1(value: unknown): value is string {
-  return typeof value === 'string' && SUPPORTED_BASE_CURRENCY_CODES.has(value)
+  return typeof value === 'string' && SUPPORTED_BASE_CURRENCY_CODES_V1.has(value)
 }
 
 export type CompetitionColumnRoleV1 = 'company' | 'main_products' | 'market_cap' | 'annual_revenue' | 'custom'
