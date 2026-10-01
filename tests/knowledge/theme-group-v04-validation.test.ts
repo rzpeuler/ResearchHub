@@ -59,6 +59,17 @@ test('Schema 0.4 requires an active InvestmentTheme to reference an active Theme
   assert.equal(archivedPair.status, 'passed', JSON.stringify(archivedPair.errors))
 })
 
+test('Schema 0.4 reports malformed referenced ThemeGroup lifecycle without throwing', () => {
+  const missingLifecycle = themeGroup()
+  delete missingLifecycle.lifecycle
+
+  for (const group of [themeGroup({ lifecycle: null }), missingLifecycle]) {
+    const report = validate(group, investmentTheme())
+    assert.equal(report.status, 'failed')
+    assert.ok(hasCode(report, 'V04_THEME_LIFECYCLE'))
+  }
+})
+
 test('Schema 0.4 bounds ThemeGroup names and validates aliases, optional fields, and lifecycle shape', () => {
   const malformed = validate(themeGroup({
     name: '   ',

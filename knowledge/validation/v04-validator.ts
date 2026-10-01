@@ -93,8 +93,9 @@ function validateInvestmentTheme(theme: KnowledgeEntityV04, themeGroups: Readonl
   const groupRef = value.themeGroupRef
   if (!ref(groupRef, 'theme-group:') || groupRef.length > THEME_V04_LIMITS.maxIdLength || !themeGroups.has(groupRef)) {
     add(errors, 'V04_THEME_GROUP_REF_INVALID', 'InvestmentTheme themeGroupRef must use theme-group: and resolve to an existing ThemeGroup', id)
-  } else if (record(value.lifecycle) && value.lifecycle.status === 'active' && themeGroups.get(groupRef)?.lifecycle.status !== 'active') {
-    add(errors, 'V04_THEME_GROUP_NOT_ACTIVE', 'An active InvestmentTheme must reference an active ThemeGroup', id)
+  } else if (record(value.lifecycle) && value.lifecycle.status === 'active') {
+    const groupLifecycle = themeGroups.get(groupRef)?.lifecycle
+    if (!record(groupLifecycle) || groupLifecycle.status !== 'active') add(errors, 'V04_THEME_GROUP_NOT_ACTIVE', 'An active InvestmentTheme must reference an active ThemeGroup', id)
   }
 
   if (value.definition !== undefined && value.definition !== null && (typeof value.definition !== 'string' || value.definition.trim() === '' || value.definition.length > THEME_V04_LIMITS.maxDefinitionLength)) add(errors, 'V04_THEME_DEFINITION', `InvestmentTheme definition must be a non-empty string or null with at most ${THEME_V04_LIMITS.maxDefinitionLength} characters`, id)
