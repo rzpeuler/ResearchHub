@@ -31,6 +31,7 @@ interface RowFixture {
   readonly marketClaimId?: string
   readonly marketStatement?: string
   readonly marketAsOf?: string
+  readonly marketValue?: number
   readonly marketReference?: { readonly proposalId: string } | { readonly existingRef: `claim:${string}` | `observation:${string}` | `relation:${string}` }
   readonly unavailableMarket?: boolean
 }
@@ -54,7 +55,7 @@ function rowProposals(rows: readonly RowFixture[], options: { columns?: readonly
     proposals.push({ proposalId: `entity-${row.key}`, kind: 'entity', subjectKey: row.key, entityType: 'company', entityName: row.name })
     proposals.push({ proposalId: `exposure-${row.key}`, kind: 'relation', subjectKey: row.key, targetKey: 'industry', relationType: 'business_exposure', sourceCandidateIds: [row.sourceId] })
     proposals.push({ proposalId: `products-${row.key}`, kind: 'claim', subjectKey: row.key, claimType: 'fact', statement: `${row.name} makes industrial valves`, sourceCandidateIds: [row.sourceId] })
-    proposals.push({ proposalId: marketClaimId, kind: 'claim', subjectKey: row.key, claimType: 'fact', statement: row.marketStatement ?? `${row.name} market value is ${row.marketDisplay}`, sourceCandidateIds: [row.sourceId] })
+    proposals.push({ proposalId: marketClaimId, kind: 'claim', subjectKey: row.key, claimType: 'fact', statement: row.marketStatement ?? `${row.name} market value is ${row.marketDisplay}`, sourceCandidateIds: [row.sourceId], ...(row.marketValue === undefined ? {} : { structuredValue: { metric: 'market_cap', value: row.marketValue, unit: 'billion', comparator: 'eq' } }) })
     proposals.push({ proposalId: `revenue-${row.key}`, kind: 'claim', subjectKey: row.key, claimType: 'fact', statement: `${row.name} FY2025 revenue is documented`, sourceCandidateIds: [row.sourceId] })
   }
   const moduleRows: CompetitionModuleProductionProposal['rows'][number][] = rows.map((row) => {
@@ -212,22 +213,27 @@ test('evidence-backed cell update commits, and an unavailable update preserves t
 test('same Claim may support a display and asOf update after new provenance is admitted', async () => {
   await withFreshKb('competition-module-same-claim-evidence', async (root) => {
     const gateway = new KnowledgeProductionGateway()
-    const statement = 'Acme Valves market value is CNY 10bn'
-    const firstRow = [{ key: 'company-a', name: 'Acme Valves', sourceId: 'source-same-claim-1', currency: 'CNY', marketDisplay: 'CNY 10bn', marketStatement: statement }]
+    const statement = 'Acme Valves market capitalization'
+    const firstRow = [{ key: 'company-a', name: 'Acme Valves', sourceId: 'source-same-claim-1', currency: 'CNY', marketDisplay: 'CNY 10bn', marketStatement: statement, marketValue: 10 }]
     const first = await gateway.submit(await makeInput(root, 'competition-same-claim-1', firstRow))
     assert.equal(first.status, 'committed', first.errors.join('; '))
     const initialAssets = await readCanonicalV04Assets(root)
     const initialModule = initialAssets.objects.find((asset) => asset.value.id === first.moduleRefsByProposalId?.competition)!.value as unknown as CompetitionModuleV1
     const initialMarketCell = initialModule.rows[0]!.cells['market-cap'] as Extract<CompetitionModuleV1['rows'][number]['cells'][string], { status: 'available' }>
-    const updatedRow = [{ key: 'company-a', name: 'Acme Valves', sourceId: 'source-same-claim-2', currency: 'CNY', marketDisplay: 'CNY 11bn', marketClaimId: 'market-company-a', marketStatement: statement, marketAsOf: '2026-09-08' }]
-    const updated = await gateway.submit(await makeInput(root, 'competition-same-claim-2', updatedRow, { semanticResolver: equivalentResolver() }))
+    const updatedRow = [{ key: 'company-a', name: 'Acme Valves', sourceId: 'source-same-claim-2', currency: 'CNY', marketDisplay: 'CNY 11bn', marketClaimId: 'market-company-a', marketStatement: statement, marketAsOf: '2026-09-08', marketValue: 11 }]
+    const updateInput = await makeInput(root, 'competition-same-claim-2', updatedRow, { semanticResolver: equivalentResolver() })
+    const priorMarketClaimRef = initialMarketCell.knowledgeRefs[0]
+    const updateProposals = updateInput.proposals.map((proposal) => proposal.kind === 'claim' && proposal.proposalId === 'market-company-a'
+      ? { ...proposal, resolution: 'update' as const, existingKnowledgeRefs: [priorMarketClaimRef as `claim:${string}`] }
+      : proposal)
+    const updated = await gateway.submit({ ...updateInput, proposals: updateProposals })
     assert.equal(updated.status, 'committed', updated.errors.join('; '))
     assert.equal(updated.moduleRefsByProposalId?.competition, first.moduleRefsByProposalId?.competition)
 
     const assets = await readCanonicalV04Assets(root)
     const module = assets.objects.find((asset) => asset.value.id === first.moduleRefsByProposalId?.competition)!.value as unknown as CompetitionModuleV1
     const firstAssets = assets.objects.filter((asset) => asset.kind === 'claim')
-    const marketClaim = firstAssets.find((asset) => (asset.value as { statement?: string }).statement === statement)!.value as { id: string; provenance?: unknown[] }
+    const marketClaim = firstAssets.find((asset) => (asset.value as { statement?: string }).statement === statement)!.value as { id: string; provenance?: unknown[]; structuredValue?: { value?: unknown } }
     assert.equal(module.rows[0]?.cells['market-cap']?.status, 'available')
     const cell = module.rows[0]!.cells['market-cap'] as Extract<CompetitionModuleV1['rows'][number]['cells'][string], { status: 'available' }>
     assert.equal(cell.displayValue, 'CNY 11bn')
@@ -235,6 +241,7 @@ test('same Claim may support a display and asOf update after new provenance is a
     assert.deepEqual(cell.knowledgeRefs, initialMarketCell.knowledgeRefs)
     assert.deepEqual(cell.knowledgeRefs, [marketClaim.id])
     assert.equal(marketClaim.provenance?.length, 2)
+    assert.equal(marketClaim.structuredValue?.value, 11)
   })
 })
 
@@ -360,15 +367,24 @@ test('Module blocks unusable Source evidence inherited from an existing business
   }
 })
 
-test('same knowledge references cannot justify a changed display value', async () => {
+test('new Claim provenance alone cannot justify a contradictory same-reference display value', async () => {
   await withFreshKb('competition-module-same-refs', async (root) => {
     const gateway = new KnowledgeProductionGateway()
-    const row = [{ key: 'company-a', name: 'Acme Valves', sourceId: 'source-same-refs', currency: 'CNY', marketDisplay: 'CNY 10bn' }]
+    const statement = 'Acme Valves market capitalization'
+    const row = [{ key: 'company-a', name: 'Acme Valves', sourceId: 'source-same-refs-1', currency: 'CNY', marketDisplay: 'CNY 10bn', marketStatement: statement, marketValue: 10 }]
     const first = await gateway.submit(await makeInput(root, 'competition-same-refs-1', row))
-    const changed = { ...(await makeInput(root, 'competition-same-refs-2', row, { semanticResolver: equivalentResolver() })), proposals: rowProposals(row, { displayOverride: 'CNY 99bn' }) }
+    const assetsBeforeUpdate = await readCanonicalV04Assets(root)
+    const beforeModule = assetsBeforeUpdate.objects.find((asset) => asset.value.id === first.moduleRefsByProposalId?.competition)!.value as unknown as CompetitionModuleV1
+    const priorClaimRef = (beforeModule.rows[0]!.cells['market-cap'] as Extract<CompetitionModuleV1['rows'][number]['cells'][string], { status: 'available' }>).knowledgeRefs[0]
+    const changedRow = [{ key: 'company-a', name: 'Acme Valves', sourceId: 'source-same-refs-2', currency: 'CNY', marketDisplay: 'CNY 99bn', marketClaimId: 'market-company-a', marketStatement: statement, marketAsOf: '2026-09-08', marketValue: 10 }]
+    const changedInput = await makeInput(root, 'competition-same-refs-2', changedRow, { semanticResolver: equivalentResolver() })
+    const changedProposals = changedInput.proposals.map((proposal) => proposal.kind === 'claim' && proposal.proposalId === 'market-company-a'
+      ? { ...proposal, resolution: 'update' as const, existingKnowledgeRefs: [priorClaimRef as `claim:${string}`] }
+      : proposal)
+    const changed = { ...changedInput, proposals: changedProposals }
     const rejected = await gateway.submit(changed)
     assert.equal(rejected.status, 'blocked')
-    assert.ok(rejected.errors.some((error) => error.includes('same knowledge references')))
+    assert.ok(rejected.errors.some((error) => error.includes('numeric Claim value change')))
     const module = (await readCanonicalV04Assets(root)).objects.find((asset) => asset.value.id === first.moduleRefsByProposalId?.competition)!.value as unknown as { rows: Array<{ cells: Record<string, { displayValue?: string }> }> }
     assert.equal(module.rows[0]?.cells['market-cap']?.displayValue, 'CNY 10bn')
   })

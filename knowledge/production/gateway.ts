@@ -302,13 +302,32 @@ export class KnowledgeProductionGateway {
           else { const original = assets.objects.find((asset) => asset.value.id === id)?.value; if (original) operations.push({ operationId: `link-claim-${operations.length + 1}`, type: 'update', knowledgeId: id, expectedBeforeHash: hashKnowledgeObject(original), object: linked }) }
         }
       }
-      const evidenceBackedClaimRefs = new Set<string>()
+      const evidenceBackedNumericClaimRefs = new Set<string>()
       for (const [ref, value] of objects) {
         if (!ref.startsWith('claim:')) continue
         const before = canonicalObjects.get(ref) as KnowledgeClaimV04 | undefined
         if (!before) continue
         const priorEvidence = new Set((before.provenance ?? []).map((item) => `${item.sourceRef}|${item.rawRef}|${item.locator ?? ''}`))
-        if ((value as KnowledgeClaimV04).provenance?.some((item) => !priorEvidence.has(`${item.sourceRef}|${item.rawRef}|${item.locator ?? ''}`))) evidenceBackedClaimRefs.add(ref)
+        const current = value as KnowledgeClaimV04
+        const addedEvidence = current.provenance?.some((item) => !priorEvidence.has(`${item.sourceRef}|${item.rawRef}|${item.locator ?? ''}`)) ?? false
+        const priorStructured = validStructured(before.structuredValue)
+        const currentStructured = validStructured(current.structuredValue)
+        const finiteNumericValueChanged = Boolean(priorStructured && currentStructured
+          && typeof priorStructured.value === 'number' && Number.isFinite(priorStructured.value)
+          && typeof currentStructured.value === 'number' && Number.isFinite(currentStructured.value)
+          && priorStructured.value !== currentStructured.value
+          && hashKnowledgeObject({ ...priorStructured, value: null }) === hashKnowledgeObject({ ...currentStructured, value: null }))
+        if (addedEvidence && finiteNumericValueChanged) evidenceBackedNumericClaimRefs.add(ref)
+      }
+      const claimMetricMatchesNumericRole = (ref: string, role: string | undefined): boolean => {
+        if (role !== 'market_cap' && role !== 'annual_revenue') return false
+        const claim = objects.get(ref) as KnowledgeClaimV04 | undefined
+        const structured = claim ? validStructured(claim.structuredValue) : undefined
+        if (!structured || typeof structured.value !== 'number' || !Number.isFinite(structured.value)) return false
+        const metric = String(structured.metric).toLowerCase().replace(/^metric:/, '').replace(/[^a-z0-9]/g, '')
+        return role === 'market_cap'
+          ? ['marketcap', 'marketcapitalization', 'marketcapitalisation', 'marketvalue'].includes(metric)
+          : ['revenue', 'annualrevenue', 'sales', 'turnover'].includes(metric)
       }
       for (const p of proposals.filter((x) => x.kind === 'reasoning_edge')) {
         const localSource = p.sourceProposalId ?? p.subjectKey
@@ -512,8 +531,9 @@ export class KnowledgeProductionGateway {
                   return remaining
                 }
                 const onlyDisplayOrAsOfChanged = hashKnowledgeObject(withoutDisplayAndAsOf(priorCell)) === hashKnowledgeObject(withoutDisplayAndAsOf(incomingCell))
-                const backedByUpdatedClaim = incomingRefs.some((ref) => evidenceBackedClaimRefs.has(ref))
-                if (!onlyDisplayOrAsOfChanged || !backedByUpdatedClaim) mergeError = `row Company ${incoming.companyRef} cell ${columnId} changes with the same knowledge references without newly admitted Claim evidence`
+                const columnRole = proposal.columns.find((column) => column.id === columnId)?.role
+                const backedByUpdatedClaim = incomingRefs.some((ref) => evidenceBackedNumericClaimRefs.has(ref) && claimMetricMatchesNumericRole(ref, columnRole))
+                if (!onlyDisplayOrAsOfChanged || !backedByUpdatedClaim) mergeError = `row Company ${incoming.companyRef} cell ${columnId} changes with the same knowledge references without a newly evidenced numeric Claim value change`
               }
             }
             cells[columnId] = structuredClone(incomingCell)
