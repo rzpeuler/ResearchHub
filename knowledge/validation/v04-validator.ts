@@ -16,6 +16,7 @@ const EVENT_TYPES = new Set(KNOWLEDGE_SCHEMA_V04.event.types)
 const OBSERVATION_TYPES = new Set(KNOWLEDGE_SCHEMA_V04.observation.types)
 const THESIS_STATUSES = new Set(KNOWLEDGE_SCHEMA_V04.thesis.statuses)
 const EDGE_TYPES = new Set(KNOWLEDGE_SCHEMA_V04.reasoningEdge.types)
+const CANONICAL_ID_PREFIXES = Object.values(KNOWLEDGE_SCHEMA_V04.canonicalNamespaces)
 const RAW_PATTERN = /^raw-sha256-[0-9a-f]{64}$/
 const HASH_PATTERN = /^[0-9a-f]{64}$/
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
@@ -39,9 +40,25 @@ const arrayOfRefs = (value: unknown, prefix: string): value is string[] => Array
 function add(errors: KnowledgeV04Diagnostic[], code: string, message: string, assetId?: string): void { errors.push({ code, message, ...(assetId === undefined ? {} : { assetId }) }) }
 
 function boundedStringArray(value: unknown, maxItems: number, maxItemLength: number): value is string[] {
-  return Array.isArray(value)
-    && value.length <= maxItems
-    && value.every((item) => typeof item === 'string' && item.trim() !== '' && item.length <= maxItemLength)
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return false
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length')
+  if (!lengthDescriptor || !('value' in lengthDescriptor) || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value > maxItems) return false
+  const length = lengthDescriptor.value as number
+  if (Object.getOwnPropertySymbols(value).length > 0) return false
+
+  for (const key of Object.getOwnPropertyNames(value)) {
+    if (key === 'length') continue
+    const index = Number(key)
+    if (!Number.isInteger(index) || index < 0 || index >= length || String(index) !== key) return false
+  }
+
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
+    if (!descriptor || !('value' in descriptor) || !descriptor.enumerable) return false
+    const item = descriptor.value
+    if (typeof item !== 'string' || item.trim() === '' || item.length > maxItemLength) return false
+  }
+  return true
 }
 
 function validateThemeLifecycle(value: unknown, errors: KnowledgeV04Diagnostic[], id: string, label: string): void {
@@ -64,13 +81,6 @@ function validateThemeGroup(group: KnowledgeThemeGroupV04, errors: KnowledgeV04D
   validateThemeLifecycle(value.lifecycle, errors, id ?? '', 'ThemeGroup')
   if (value.description !== undefined && value.description !== null && (typeof value.description !== 'string' || value.description.length > THEME_V04_LIMITS.maxDescriptionLength)) add(errors, 'V04_THEME_GROUP_DESCRIPTION', `ThemeGroup description must be a string or null with at most ${THEME_V04_LIMITS.maxDescriptionLength} characters`, id)
   if (value.sortOrder !== undefined && value.sortOrder !== null && (typeof value.sortOrder !== 'number' || !Number.isFinite(value.sortOrder))) add(errors, 'V04_THEME_GROUP_SORT_ORDER', 'ThemeGroup sortOrder must be a finite number or null', id)
-}
-
-function looksLikeThemeGroup(value: Dict): boolean {
-  return value.type === undefined
-    && typeof value.name === 'string'
-    && record(value.lifecycle)
-    && (Object.hasOwn(value, 'aliases') || Object.hasOwn(value, 'sortOrder') || Object.hasOwn(value, 'metadata') || Object.hasOwn(value, 'description'))
 }
 
 function validateInvestmentTheme(theme: KnowledgeEntityV04, themeGroups: ReadonlyMap<string, KnowledgeThemeGroupV04>, errors: KnowledgeV04Diagnostic[]): void {
@@ -532,7 +542,6 @@ export function validateKnowledgeV04Objects(objects: readonly KnowledgeAssetV04[
   const edges = new Map<string, KnowledgeReasoningEdgeV04>()
   const objectMap = new Map<string, KnowledgeAssetV04>()
   const themeGroups = new Map<string, KnowledgeThemeGroupV04>()
-  const themeGroupCandidates: Dict[] = []
 
   for (const object of candidates) {
     if (!record(object) || typeof object.id !== 'string') {
@@ -543,11 +552,9 @@ export function validateKnowledgeV04Objects(objects: readonly KnowledgeAssetV04[
     if (ids.has(id)) add(errors, 'V04_DUPLICATE_ID', `Duplicate canonical id: ${id}`, id)
     ids.add(id)
     objectMap.set(id, object as unknown as KnowledgeAssetV04)
+    if (!CANONICAL_ID_PREFIXES.some((prefix) => id.startsWith(prefix))) add(errors, 'V04_UNKNOWN_OBJECT_NAMESPACE', 'Canonical object id must use a declared Schema 0.4 namespace', id)
     if (id.startsWith('theme-group:')) {
       themeGroups.set(id, object as unknown as KnowledgeThemeGroupV04)
-      themeGroupCandidates.push(object)
-    } else if (looksLikeThemeGroup(object)) {
-      themeGroupCandidates.push(object)
     }
     if (id.startsWith('source:')) sources.set(id, object as unknown as KnowledgeSourceV04)
     else if (id.startsWith('claim:')) claims.set(id, object as unknown as KnowledgeClaimV04)
@@ -562,7 +569,7 @@ export function validateKnowledgeV04Objects(objects: readonly KnowledgeAssetV04[
     else if (id.startsWith('reasoning-edge:')) edges.set(id, object as unknown as KnowledgeReasoningEdgeV04)
   }
 
-  for (const group of themeGroupCandidates) validateThemeGroup(group as unknown as KnowledgeThemeGroupV04, errors)
+  for (const group of themeGroups.values()) validateThemeGroup(group, errors)
 
   const sourceIds = new Set(sources.keys())
   const claimIds = new Set(claims.keys())

@@ -47,9 +47,8 @@ test('Schema 0.4 requires InvestmentTheme.themeGroupRef to resolve to a ThemeGro
   const missing = validate(investmentTheme())
   assert.ok(hasCode(missing, 'V04_THEME_GROUP_REF_INVALID'))
 
-  const wrongNamespace = validate(themeGroup({ id: 'group:default' }), investmentTheme())
-  assert.ok(hasCode(wrongNamespace, 'V04_THEME_GROUP_ID'))
-  assert.ok(hasCode(wrongNamespace, 'V04_THEME_GROUP_REF_INVALID'))
+  const minimalWrongNamespace = validate({ id: 'group:default', name: 'Default', lifecycle: activeLifecycle })
+  assert.ok(hasCode(minimalWrongNamespace, 'V04_UNKNOWN_OBJECT_NAMESPACE'))
 })
 
 test('Schema 0.4 requires an active InvestmentTheme to reference an active ThemeGroup', () => {
@@ -76,6 +75,32 @@ test('Schema 0.4 bounds ThemeGroup names and validates aliases, optional fields,
 
   const tooLong = validate(themeGroup({ name: 'n'.repeat(257) }))
   assert.ok(hasCode(tooLong, 'V04_THEME_GROUP_NAME'))
+})
+
+test('Schema 0.4 rejects sparse or method-overridden alias arrays without invoking their methods', () => {
+  const sparseAliases = new Array(1) as string[]
+  const sparse = validate(themeGroup({ aliases: sparseAliases }))
+  assert.ok(hasCode(sparse, 'V04_THEME_GROUP_ALIASES'))
+
+  let everyInvoked = false
+  const ownOverride = ['alias']
+  Object.defineProperty(ownOverride, 'every', { value: () => { everyInvoked = true; return true } })
+  const ownOverrideReport = validate(themeGroup({ aliases: ownOverride }))
+  assert.ok(hasCode(ownOverrideReport, 'V04_THEME_GROUP_ALIASES'))
+  assert.equal(everyInvoked, false)
+
+  const extraProperty = ['alias'] as string[] & { extra: string }
+  Object.defineProperty(extraProperty, 'extra', { value: 'unexpected' })
+  const extraPropertyReport = validate(themeGroup({ aliases: extraProperty }))
+  assert.ok(hasCode(extraPropertyReport, 'V04_THEME_GROUP_ALIASES'))
+
+  const inheritedOverride = ['alias']
+  const customPrototype = Object.create(Array.prototype) as { every: () => boolean }
+  customPrototype.every = () => { everyInvoked = true; return true }
+  Object.setPrototypeOf(inheritedOverride, customPrototype)
+  const inheritedOverrideReport = validate(themeGroup({ aliases: inheritedOverride }))
+  assert.ok(hasCode(inheritedOverrideReport, 'V04_THEME_GROUP_ALIASES'))
+  assert.equal(everyInvoked, false)
 })
 
 test('Schema 0.4 bounds optional InvestmentTheme definition and criteria fields', () => {
