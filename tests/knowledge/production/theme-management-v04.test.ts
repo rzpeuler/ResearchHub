@@ -8,6 +8,7 @@ import { ThemeManagementGatewayV04, DEFAULT_THEME_GROUP_REF_V04 } from '../../..
 import type { KnowledgeIndustryV04, KnowledgeInvestmentThemeV04, KnowledgeRelationV04 } from '../../../knowledge/schema/domain-v04.ts'
 import type { KnowledgeChangeSetV04 } from '../../../knowledge/schema/mutation-v04.ts'
 import { createFreshKnowledgeBaseV04, loadKnowledgeBaseManifest, readCanonicalV04Assets } from '../../../knowledge/storage/index.ts'
+import { hashKnowledgeObject } from '../../../knowledge/storage/canonical-hash.ts'
 import { validateKnowledgeChangeSetV04 } from '../../../knowledge/validation/v04-change-set-validator.ts'
 import { writeKnowledgeBase } from '../../../knowledge/writer/writer.ts'
 
@@ -62,6 +63,25 @@ async function addThemeExposureRelation(root: string, themeRef: string): Promise
   return relation.id
 }
 
+async function archiveThemeReference(root: string, themeRef: string): Promise<void> {
+  const handle = await mount(root)
+  const before = await themeByRef(root, themeRef)
+  const archived: KnowledgeInvestmentThemeV04 = { ...before, lifecycle: { ...before.lifecycle, status: 'archived' } }
+  const changeSet: KnowledgeChangeSetV04 = {
+    changeSetId: 'theme-management-archive-fixture-changeset',
+    workflowRunId: 'theme-management-archive-fixture-run',
+    knowledgeBaseId: handle.knowledgeBaseId,
+    schemaVersion: '0.4',
+    storageFormatVersion: '1',
+    expectedBaseRevision: handle.revision,
+    operations: [{ operationId: 'archive-fixture-theme', type: 'update', knowledgeId: themeRef, expectedBeforeHash: hashKnowledgeObject(before), object: archived }],
+  }
+  const validation = await validateKnowledgeChangeSetV04(handle, changeSet, { mode: 'commit', now: clock })
+  assert.ok(validation.validatedChangeSet, JSON.stringify(validation.report.errors))
+  const result = await writeKnowledgeBase(handle, validation.validatedChangeSet, { registry: new KnowledgeBaseRegistry(), clock })
+  assert.equal(result.status, 'committed', result.error?.message)
+}
+
 async function themeByRef(root: string, ref: string): Promise<KnowledgeInvestmentThemeV04> {
   const assets = await readCanonicalV04Assets(root)
   const found = assets.objects.find((item) => item.value.id === ref)
@@ -113,6 +133,68 @@ test('Theme creation is replayable and blocks a normalized-name duplicate with d
     assert.equal(duplicate.status, 'blocked')
     assert.equal(duplicate.errors[0]?.code, 'THEME_NAME_DUPLICATE')
     assert.equal((await loadKnowledgeBaseManifest(root)).revision, 1)
+  })
+})
+
+test('an existing Theme definition and criteria can be supplemented and updated without changing its name', async () => {
+  await withFreshKb('theme-update', async (root) => {
+    const gateway = new ThemeManagementGatewayV04({ clock })
+    const created = await gateway.createTheme(await mount(root), { name: 'AI Compute' })
+    assert.equal(created.status, 'committed', created.errors.map((item) => item.message).join('; '))
+    const relationRef = await addThemeExposureRelation(root, created.themeRef!)
+    const relationBefore = (await readCanonicalV04Assets(root)).objects.find((item) => item.value.id === relationRef)?.value
+    assert.ok(relationBefore)
+    const staleHandle = await mount(root)
+    const patch = {
+      themeRef: created.themeRef!,
+      definition: 'Compute infrastructure and demand',
+      inclusionCriteria: ['accelerators', 'data-center systems'],
+      exclusionCriteria: ['consumer devices'],
+    }
+    const updated = await gateway.updateTheme(staleHandle, patch)
+    assert.equal(updated.status, 'committed', updated.errors.map((item) => item.message).join('; '))
+    assert.deepEqual(updated.updatedIds, [created.themeRef])
+    const current = await themeByRef(root, created.themeRef!)
+    assert.equal(current.name, 'AI Compute')
+    assert.equal(current.definition, patch.definition)
+    assert.deepEqual(current.inclusionCriteria, patch.inclusionCriteria)
+    assert.deepEqual(current.exclusionCriteria, patch.exclusionCriteria)
+
+    const retry = await gateway.updateTheme(await mount(root), patch)
+    assert.equal(retry.status, 'no_changes')
+    assert.equal(retry.themeRef, created.themeRef)
+    const changed = await gateway.updateTheme(await mount(root), { themeRef: created.themeRef!, definition: 'Updated compute scope', inclusionCriteria: [] })
+    assert.equal(changed.status, 'committed', changed.errors.map((item) => item.message).join('; '))
+    const changedTheme = await themeByRef(root, created.themeRef!)
+    assert.equal(changedTheme.name, 'AI Compute')
+    assert.equal(changedTheme.definition, 'Updated compute scope')
+    assert.deepEqual(changedTheme.inclusionCriteria, [])
+    assert.deepEqual(changedTheme.exclusionCriteria, patch.exclusionCriteria)
+    const unsupportedRename = await gateway.updateTheme(await mount(root), { themeRef: created.themeRef!, name: '' } as never)
+    assert.equal(unsupportedRename.status, 'blocked')
+    assert.equal(unsupportedRename.errors[0]?.code, 'THEME_UPDATE_FIELD_UNSUPPORTED')
+    const staleUpdate = await gateway.updateTheme(staleHandle, { themeRef: created.themeRef!, definition: 'stale update' })
+    assert.equal(staleUpdate.status, 'blocked')
+    assert.equal(staleUpdate.errors[0]?.code, 'THEME_MANAGEMENT_STALE_HANDLE')
+    const relationAfter = (await readCanonicalV04Assets(root)).objects.find((item) => item.value.id === relationRef)?.value
+    assert.deepEqual(relationAfter, relationBefore)
+  })
+})
+
+test('Default stays reserved when renaming a custom ThemeGroup before fallback initialization', async () => {
+  await withFreshKb('group-reserved-name', async (root) => {
+    const gateway = new ThemeManagementGatewayV04({ clock })
+    const group = await gateway.createThemeGroup(await mount(root), { name: 'Custom Group' })
+    assert.equal(group.status, 'committed', group.errors.map((item) => item.message).join('; '))
+    const beforeRevision = (await loadKnowledgeBaseManifest(root)).revision
+    const rename = await gateway.renameThemeGroup(await mount(root), { themeGroupRef: group.themeGroupRef!, name: ' Default ' })
+    assert.equal(rename.status, 'blocked')
+    assert.equal(rename.errors[0]?.code, 'THEME_GROUP_RESERVED_NAME')
+    assert.equal((await loadKnowledgeBaseManifest(root)).revision, beforeRevision)
+    const assets = await readCanonicalV04Assets(root)
+    assert.equal(assets.objects.some((item) => item.value.id === DEFAULT_THEME_GROUP_REF_V04), false)
+    const currentGroup = assets.objects.find((item) => item.value.id === group.themeGroupRef)?.value as { name: string } | undefined
+    assert.equal(currentGroup?.name, 'Custom Group')
   })
 })
 
@@ -178,6 +260,36 @@ test('non-empty ThemeGroup archive requires a target and migrates every active T
     assert.equal(archivedGroup?.lifecycle?.status, 'archived')
     const relationAfter = assets.objects.find((item) => item.value.id === relationRef)?.value
     assert.deepEqual(relationAfter, relationBefore)
+  })
+})
+
+test('archived Themes remain ThemeGroup members and migrate before group archival', async () => {
+  await withFreshKb('group-archive-inactive-member', async (root) => {
+    const gateway = new ThemeManagementGatewayV04({ clock })
+    const source = await gateway.createThemeGroup(await mount(root), { name: 'Source Group' })
+    assert.equal(source.status, 'committed', source.errors.map((item) => item.message).join('; '))
+    const target = await gateway.createThemeGroup(await mount(root), { name: 'Target Group' })
+    assert.equal(target.status, 'committed', target.errors.map((item) => item.message).join('; '))
+    const theme = await gateway.createTheme(await mount(root), { name: 'Archived Member', themeGroupRef: source.themeGroupRef })
+    assert.equal(theme.status, 'committed', theme.errors.map((item) => item.message).join('; '))
+    await archiveThemeReference(root, theme.themeRef!)
+    const beforeRevision = (await loadKnowledgeBaseManifest(root)).revision
+
+    const missingTarget = await gateway.deleteThemeGroup(await mount(root), { themeGroupRef: source.themeGroupRef! })
+    assert.equal(missingTarget.status, 'blocked')
+    assert.equal(missingTarget.errors[0]?.code, 'THEME_GROUP_TARGET_REQUIRED')
+    assert.equal((await loadKnowledgeBaseManifest(root)).revision, beforeRevision)
+
+    const result = await gateway.deleteThemeGroup(await mount(root), { themeGroupRef: source.themeGroupRef!, targetThemeGroupRef: target.themeGroupRef })
+    assert.equal(result.status, 'committed', result.errors.map((item) => item.message).join('; '))
+    assert.equal(result.updatedIds.length, 2)
+    assert.equal(result.knowledgeBaseRevision, beforeRevision + 1)
+    const archivedTheme = await themeByRef(root, theme.themeRef!)
+    assert.equal(archivedTheme.lifecycle.status, 'archived')
+    assert.equal(archivedTheme.themeGroupRef, target.themeGroupRef)
+    const assets = await readCanonicalV04Assets(root)
+    const archivedGroup = assets.objects.find((item) => item.value.id === source.themeGroupRef)?.value as { lifecycle?: { status?: string } } | undefined
+    assert.equal(archivedGroup?.lifecycle?.status, 'archived')
   })
 })
 

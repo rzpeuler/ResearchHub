@@ -50,6 +50,13 @@ export interface CreateThemeGroupV04Input {
   readonly sortOrder?: number | null
 }
 
+export interface UpdateThemeV04Input {
+  readonly themeRef: string
+  readonly definition?: string | null
+  readonly inclusionCriteria?: readonly string[]
+  readonly exclusionCriteria?: readonly string[]
+}
+
 export interface RenameThemeGroupV04Input {
   readonly themeGroupRef: string
   readonly name: string
@@ -183,6 +190,24 @@ function validateGroupFields(input: unknown): ThemeManagementErrorV04 | undefine
   return undefined
 }
 
+function validateThemeUpdateFields(input: unknown): ThemeManagementErrorV04 | undefined {
+  if (!record(input)) return { code: 'THEME_MANAGEMENT_INPUT_INVALID', message: 'Theme update input must be an object' }
+  if (typeof input.themeRef !== 'string' || !input.themeRef.startsWith('entity:')) return { code: 'THEME_REF_INVALID', message: 'themeRef must be a canonical Entity reference' }
+  const allowedFields = new Set(['themeRef', 'definition', 'inclusionCriteria', 'exclusionCriteria'])
+  if (Object.keys(input).some((key) => !allowedFields.has(key))) return { code: 'THEME_UPDATE_FIELD_UNSUPPORTED', message: 'Theme updates can change definition and criteria only; the required name is preserved' }
+  if (!['definition', 'inclusionCriteria', 'exclusionCriteria'].some((field) => Object.hasOwn(input, field))) return { code: 'THEME_UPDATE_EMPTY', message: 'Theme update must provide a definition or criteria field' }
+  if (input.definition !== undefined && input.definition !== null && (typeof input.definition !== 'string' || input.definition.trim() === '' || input.definition.length > MAX_DEFINITION_LENGTH)) {
+    return { code: 'THEME_MANAGEMENT_DEFINITION_INVALID', message: `Theme definition must be a non-empty string or null with at most ${MAX_DEFINITION_LENGTH} characters` }
+  }
+  for (const field of ['inclusionCriteria', 'exclusionCriteria'] as const) {
+    const values = input[field]
+    if (values !== undefined && !validCriteriaArray(values)) {
+      return { code: 'THEME_MANAGEMENT_CRITERIA_INVALID', message: `${field} must contain at most ${MAX_CRITERIA} non-empty strings of at most ${MAX_CRITERION_LENGTH} characters` }
+    }
+  }
+  return undefined
+}
+
 function sameCriteria(left: readonly string[] | undefined, right: readonly string[] | undefined): boolean {
   return hashKnowledgeObject(left ?? null) === hashKnowledgeObject(right ?? null)
 }
@@ -303,6 +328,39 @@ export class ThemeManagementGatewayV04 {
     return this.commit(handle, 'create_theme', { theme: request, themeGroupRef: selectedGroup.id }, operations, { themeRef: theme.id, themeGroupRef: selectedGroup.id })
   }
 
+  async updateTheme(handle: KnowledgeBaseHandle, input: UpdateThemeV04Input): Promise<ThemeManagementResultV04> {
+    const fieldError = validateThemeUpdateFields(input)
+    if (fieldError) return blocked(handle, fieldError.code, fieldError.message, record(input) ? { themeRef: typeof input.themeRef === 'string' ? input.themeRef : undefined } : {})
+    const read = await this.readState(handle)
+    if (!read.state) return this.readFailure(handle, read, { themeRef: input.themeRef })
+    const themeAsset = read.state.byId.get(input.themeRef)
+    if (!themeAsset || !themeAsset.id.startsWith('entity:') || (themeAsset as KnowledgeInvestmentThemeV04).type !== 'investment_theme') return blocked(handle, 'THEME_NOT_FOUND', `InvestmentTheme reference does not resolve: ${input.themeRef}`, { themeRef: input.themeRef })
+    const theme = themeAsset as KnowledgeInvestmentThemeV04
+    if (!active(theme)) return blocked(handle, 'THEME_NOT_ACTIVE', `InvestmentTheme is archived: ${theme.id}`, { themeRef: theme.id, themeGroupRef: theme.themeGroupRef })
+    const nameError = validateName(theme.name, 'InvestmentTheme')
+    if (nameError) return blocked(handle, 'THEME_NAME_REQUIRED', 'An InvestmentTheme update must preserve its required non-empty name', { themeRef: theme.id, themeGroupRef: theme.themeGroupRef })
+
+    const hasDefinition = Object.hasOwn(input, 'definition')
+    const hasInclusion = Object.hasOwn(input, 'inclusionCriteria')
+    const hasExclusion = Object.hasOwn(input, 'exclusionCriteria')
+    const nextDefinition = hasDefinition ? input.definition : theme.definition
+    const nextInclusion = hasInclusion ? input.inclusionCriteria : theme.inclusionCriteria
+    const nextExclusion = hasExclusion ? input.exclusionCriteria : theme.exclusionCriteria
+    const changed = (hasDefinition && theme.definition !== nextDefinition)
+      || (hasInclusion && !sameCriteria(theme.inclusionCriteria, nextInclusion))
+      || (hasExclusion && !sameCriteria(theme.exclusionCriteria, nextExclusion))
+    if (!changed) return this.noChanges(handle, { themeRef: theme.id, themeGroupRef: theme.themeGroupRef })
+
+    const patch = {
+      ...(hasDefinition ? { definition: nextDefinition } : {}),
+      ...(hasInclusion ? { inclusionCriteria: nextInclusion ? [...nextInclusion] : nextInclusion } : {}),
+      ...(hasExclusion ? { exclusionCriteria: nextExclusion ? [...nextExclusion] : nextExclusion } : {}),
+    }
+    const updated: KnowledgeInvestmentThemeV04 = { ...theme, ...patch, updatedAt: this.clock() }
+    const operation = updateOperation('update-investment-theme', theme as unknown as KnowledgeAssetV04, updated as unknown as KnowledgeAssetV04)
+    return this.commit(handle, 'update_theme', { themeRef: theme.id, patch }, [operation], { themeRef: theme.id, themeGroupRef: theme.themeGroupRef })
+  }
+
   async createThemeGroup(handle: KnowledgeBaseHandle, input: CreateThemeGroupV04Input): Promise<ThemeManagementResultV04> {
     const fieldError = validateGroupFields(input)
     if (fieldError) return blocked(handle, fieldError.code, fieldError.message)
@@ -346,6 +404,7 @@ export class ThemeManagementGatewayV04 {
     if (!active(oldGroup)) return blocked(handle, 'THEME_GROUP_NOT_ACTIVE', `ThemeGroup is archived: ${oldGroup.id}`, { themeGroupRef: oldGroup.id })
     const name = cleanedName(input.name)
     const key = normalizedName(name)
+    if (key === normalizedName(DEFAULT_THEME_GROUP_NAME_V04)) return blocked(handle, 'THEME_GROUP_RESERVED_NAME', 'The name “Default” is reserved for the protected V1 system fallback', { themeGroupRef: DEFAULT_THEME_GROUP_REF_V04 }, handle.revision, [DEFAULT_GROUP_NOTICE])
     const duplicate = read.state.groups.find((item) => item.id !== oldGroup.id && normalizedName(item.name) === key)
     if (duplicate) return blocked(handle, 'THEME_GROUP_NAME_DUPLICATE', `A ThemeGroup with normalized name “${name}” already exists`, { themeGroupRef: duplicate.id })
     if (oldGroup.name === name) return this.noChanges(handle, { themeGroupRef: oldGroup.id })
@@ -374,8 +433,8 @@ export class ThemeManagementGatewayV04 {
 
   /**
    * Deleting a ThemeGroup is a lifecycle archive so canonical refs remain valid.
-   * The default group is protected. Active Themes move before the group is archived,
-   * in the same validated ChangeSet and Writer transaction.
+   * The default group is protected. Every referencing Theme, including archived
+   * Themes, moves before the group is archived in the same ChangeSet and Writer transaction.
    */
   async deleteThemeGroup(handle: KnowledgeBaseHandle, input: ArchiveThemeGroupV04Input): Promise<ThemeManagementResultV04> {
     if (!record(input)) return blocked(handle, 'THEME_MANAGEMENT_INPUT_INVALID', 'ThemeGroup archive input must be an object')
@@ -385,12 +444,10 @@ export class ThemeManagementGatewayV04 {
     const groupAsset = read.state.byId.get(input.themeGroupRef)
     if (!groupAsset || !groupAsset.id.startsWith('theme-group:')) return blocked(handle, 'THEME_GROUP_NOT_FOUND', `ThemeGroup reference does not resolve: ${input.themeGroupRef}`, { themeGroupRef: input.themeGroupRef })
     const group = groupAsset as KnowledgeThemeGroupV04
-    const activeThemes = read.state.themes.filter((theme) => theme.themeGroupRef === group.id && active(theme)).sort((left, right) => left.id.localeCompare(right.id))
-    if (!active(group)) {
-      if (activeThemes.length > 0) return blocked(handle, 'THEME_GROUP_ARCHIVED_WITH_ACTIVE_THEMES', 'Archived ThemeGroup still has active Themes and cannot be treated as a completed deletion', { themeGroupRef: group.id })
-      return this.noChanges(handle, { themeGroupRef: group.id }, [GROUP_ARCHIVE_NOTICE])
-    }
-    if (activeThemes.length > 0 && input.targetThemeGroupRef === undefined) return blocked(handle, 'THEME_GROUP_TARGET_REQUIRED', 'Archiving a non-empty ThemeGroup requires an explicit active target ThemeGroup for all active Themes', { themeGroupRef: group.id })
+    const themesToMigrate = read.state.themes.filter((theme) => theme.themeGroupRef === group.id).sort((left, right) => left.id.localeCompare(right.id))
+    if (!active(group) && themesToMigrate.some(active)) return blocked(handle, 'THEME_GROUP_ARCHIVED_WITH_ACTIVE_THEMES', 'Archived ThemeGroup still has active Themes and cannot be treated as a completed deletion', { themeGroupRef: group.id })
+    if (!active(group) && themesToMigrate.length === 0) return this.noChanges(handle, { themeGroupRef: group.id }, [GROUP_ARCHIVE_NOTICE])
+    if (themesToMigrate.length > 0 && input.targetThemeGroupRef === undefined) return blocked(handle, 'THEME_GROUP_TARGET_REQUIRED', 'Archiving a non-empty ThemeGroup requires an explicit active target ThemeGroup for every referenced Theme', { themeGroupRef: group.id })
     const operations: KnowledgeOperationV04[] = []
     let target: KnowledgeThemeGroupV04 | undefined
     if (input.targetThemeGroupRef !== undefined) {
@@ -400,17 +457,19 @@ export class ThemeManagementGatewayV04 {
       if (!active(target)) return blocked(handle, 'THEME_GROUP_NOT_ACTIVE', `Target ThemeGroup is archived: ${target.id}`, { themeGroupRef: target.id })
       if (target.id === group.id) return blocked(handle, 'THEME_GROUP_TARGET_INVALID', 'ThemeGroup cannot be its own migration target', { themeGroupRef: group.id })
     }
-    if (activeThemes.length > 0 && !target) return blocked(handle, 'THEME_GROUP_TARGET_REQUIRED', 'Archiving a non-empty ThemeGroup requires an explicit active target ThemeGroup', { themeGroupRef: group.id })
+    if (themesToMigrate.length > 0 && !target) return blocked(handle, 'THEME_GROUP_TARGET_REQUIRED', 'Archiving a non-empty ThemeGroup requires an explicit active target ThemeGroup', { themeGroupRef: group.id })
     if (target) {
       const now = this.clock()
-      for (const theme of activeThemes) {
+      for (const theme of themesToMigrate) {
         const updated: KnowledgeInvestmentThemeV04 = { ...theme, themeGroupRef: target.id, updatedAt: now }
         operations.push(updateOperation(`move-theme-${operations.length + 1}`, theme as unknown as KnowledgeAssetV04, updated as unknown as KnowledgeAssetV04))
       }
     }
-    const archived: KnowledgeThemeGroupV04 = { ...group, lifecycle: { ...group.lifecycle, status: 'archived' } }
-    operations.push(updateOperation(`archive-theme-group-${operations.length + 1}`, group as unknown as KnowledgeAssetV04, archived as unknown as KnowledgeAssetV04))
-    return this.commit(handle, 'delete_theme_group', { themeGroupRef: group.id, targetThemeGroupRef: target?.id ?? null, migratedThemeRefs: activeThemes.map((theme) => theme.id) }, operations, { themeGroupRef: group.id, ...(target ? { targetThemeGroupRef: target.id } : {}) }, [GROUP_ARCHIVE_NOTICE])
+    if (active(group)) {
+      const archived: KnowledgeThemeGroupV04 = { ...group, lifecycle: { ...group.lifecycle, status: 'archived' } }
+      operations.push(updateOperation(`archive-theme-group-${operations.length + 1}`, group as unknown as KnowledgeAssetV04, archived as unknown as KnowledgeAssetV04))
+    }
+    return this.commit(handle, 'delete_theme_group', { themeGroupRef: group.id, targetThemeGroupRef: target?.id ?? null, migratedThemeRefs: themesToMigrate.map((theme) => theme.id) }, operations, { themeGroupRef: group.id, ...(target ? { targetThemeGroupRef: target.id } : {}) }, [GROUP_ARCHIVE_NOTICE])
   }
 
   async archiveThemeGroup(handle: KnowledgeBaseHandle, input: ArchiveThemeGroupV04Input): Promise<ThemeManagementResultV04> {
