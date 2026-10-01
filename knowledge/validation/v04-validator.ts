@@ -2,7 +2,7 @@ import { KNOWLEDGE_SCHEMA_V04 } from '../schema/executable-schema-v04.ts'
 import { getMetricDefinitionV04 } from '../schema/metric-registry.ts'
 import type { ClaimTypeV04, KillCriterionOriginV04, KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeEntityV04, KnowledgeEventV04, KnowledgeObservationV04, KnowledgeReasoningEdgeV04, KnowledgeRelationV04, KnowledgeSourceV04, KnowledgeThesisV04 } from '../schema/domain-v04.ts'
 import { hashKillCriterionDefinitionV04, isBoundedSafeKillCriterionJsonV04, KILL_CRITERION_V04_LIMITS } from '../schema/kill-criterion-v04.ts'
-import { COMPETITION_MODULE_V1_LIMITS, validateCompetitionModuleV1 } from '../schema/competition-module-v04.ts'
+import { COMPETITION_MODULE_V1_LIMITS, isSupportedBaseCurrencyCodeV1, validateCompetitionModuleV1 } from '../schema/competition-module-v04.ts'
 import { validateRelationAttributesV03 } from './v03-validation-core.ts'
 
 export interface KnowledgeV04Diagnostic { readonly code: string; readonly message: string; readonly assetId?: string }
@@ -323,13 +323,13 @@ function validateCompetitionNumericCell(
   const displayValue = cell.displayValue
   const cellUnit = cell.unit
   const cellCurrency = cell.currency
-  if (typeof cellUnit !== 'string' || !/^[A-Z]{3}$/.test(cellUnit) || cellCurrency !== cellUnit) {
-    add(errors, 'V04_COMPETITION_MODULE_NUMERIC_UNIT', `${location} unit and currency must both be the base three-letter currency code`, moduleId)
+  if (!isSupportedBaseCurrencyCodeV1(cellUnit) || cellCurrency !== cellUnit) {
+    add(errors, 'V04_COMPETITION_MODULE_NUMERIC_UNIT', `${location} unit and currency must both be a supported base ISO currency code`, moduleId)
   }
 
   for (const fact of facts) {
-    if (typeof fact.unit !== 'string' || !/^[A-Z]{3}$/.test(fact.unit)) {
-      add(errors, 'V04_COMPETITION_MODULE_NUMERIC_UNIT', `${location} reference ${fact.ref} must store its value in a base three-letter currency unit`, moduleId)
+    if (!isSupportedBaseCurrencyCodeV1(fact.unit)) {
+      add(errors, 'V04_COMPETITION_MODULE_NUMERIC_UNIT', `${location} reference ${fact.ref} must store its value in a supported base ISO currency unit`, moduleId)
     } else if (fact.unit !== cellUnit || fact.unit !== cellCurrency) {
       add(errors, 'V04_COMPETITION_MODULE_NUMERIC_UNIT', `${location} unit and currency must match the cited fact unit ${fact.unit}`, moduleId)
     }

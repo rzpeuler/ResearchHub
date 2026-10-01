@@ -195,6 +195,19 @@ test('numeric Claim support must be an exact fact rather than a comparison thres
   assert.ok(result.errors.some((error) => error.code === 'V04_COMPETITION_MODULE_NUMERIC_FACT_INVALID'))
 })
 
+test('competition numeric cells reject currency codes unsupported by the runtime', () => {
+  const objects = competitionObjects()
+  const module = moduleFrom(objects)
+  const rows = module.rows as Array<{ cells: Record<string, { unit: string; currency: string }> }>
+  rows[0]!.cells.market_cap!.unit = 'ZZZ'
+  rows[0]!.cells.market_cap!.currency = 'ZZZ'
+  const claim = objects.find((value) => typeof value === 'object' && value !== null && 'id' in value && value.id === 'claim:competition-market-cap') as Record<string, unknown>
+  claim.structuredValue = { ...(claim.structuredValue as Record<string, unknown>), unit: 'ZZZ' }
+  const result = validateKnowledgeV04Objects(objects as never)
+  assert.equal(result.status, 'failed')
+  assert.ok(result.errors.some((error) => error.code === 'V04_COMPETITION_MODULE_NUMERIC_UNIT'))
+})
+
 test('competition target must resolve to an active Industry Entity', () => {
   const missingTarget = competitionObjects()
   moduleFrom(missingTarget).targetEntity = 'entity:missing-industry'

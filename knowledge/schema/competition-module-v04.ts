@@ -18,6 +18,13 @@ export const COMPETITION_MODULE_V1_LIMITS = {
   maxUnitLength: 32,
 } as const
 
+const SUPPORTED_BASE_CURRENCY_CODES = new Set(Intl.supportedValuesOf('currency'))
+
+/** A base ISO currency code supported by the current Node ICU runtime. */
+export function isSupportedBaseCurrencyCodeV1(value: unknown): value is string {
+  return typeof value === 'string' && SUPPORTED_BASE_CURRENCY_CODES.has(value)
+}
+
 export type CompetitionColumnRoleV1 = 'company' | 'main_products' | 'market_cap' | 'annual_revenue' | 'custom'
 
 interface CompetitionColumnBaseV1 {
@@ -249,8 +256,8 @@ function validateFinancialUnits(cell: Dict, path: string, issues: CompetitionMod
   if (!boundedNonEmptyString(cell.unit, COMPETITION_MODULE_V1_LIMITS.maxUnitLength)) {
     addIssue(issues, 'CELL_UNIT', `${path}.unit`, `Unit must be non-empty and at most ${COMPETITION_MODULE_V1_LIMITS.maxUnitLength} characters`)
   }
-  if (typeof cell.currency !== 'string' || !/^[A-Z]{3}$/.test(cell.currency)) {
-    addIssue(issues, 'CELL_CURRENCY', `${path}.currency`, 'Currency must be a three-letter uppercase currency code')
+  if (!isSupportedBaseCurrencyCodeV1(cell.currency)) {
+    addIssue(issues, 'CELL_CURRENCY', `${path}.currency`, 'Currency must be a supported ISO 4217 currency code')
   }
   if (typeof cell.unit === 'string' && typeof cell.currency === 'string' && cell.unit !== cell.currency) {
     addIssue(issues, 'CELL_FINANCIAL_UNIT', `${path}.unit`, 'Numeric financial cells must use the base ISO currency as both unit and currency')
