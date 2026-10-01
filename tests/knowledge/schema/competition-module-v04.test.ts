@@ -93,6 +93,21 @@ test('rejects duplicate column ids, required roles, and company rows', () => {
   assert.equal(hasIssue(duplicateCompany, 'ROW_COMPANY_DUPLICATE'), true)
 })
 
+test('rejects visible labels duplicated after whitespace, NFKC, and casefold normalization', () => {
+  const whitespaceAndCase = cloned(validModule()) as any
+  whitespaceAndCase.columns[0].label = '  MAIN PRODUCTS  '
+  assert.equal(hasIssue(whitespaceAndCase, 'COLUMN_LABEL_DUPLICATE'), true)
+
+  const compatibilityForm = cloned(validModule()) as any
+  compatibilityForm.columns[4].label = 'ＣＯＭＰＡＮＹ'
+  assert.equal(hasIssue(compatibilityForm, 'COLUMN_LABEL_DUPLICATE'), true)
+
+  const fullCaseFold = cloned(validModule()) as any
+  fullCaseFold.columns[4].label = 'Straße'
+  fullCaseFold.columns[1].label = 'STRASSE'
+  assert.equal(hasIssue(fullCaseFold, 'COLUMN_LABEL_DUPLICATE'), true)
+})
+
 test('rejects invalid market-cap and annual-revenue temporal or currency metadata', () => {
   const badMarketCapDate = cloned(validModule()) as any
   badMarketCapDate.rows[0].cells['market-cap'].asOf = '2026-02-30'

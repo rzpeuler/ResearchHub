@@ -123,6 +123,15 @@ function isValidColumnId(value: unknown): value is string {
   return typeof value === 'string' && value.length <= COMPETITION_MODULE_V1_LIMITS.maxColumnIdLength && COLUMN_ID.test(value)
 }
 
+function normalizeColumnLabel(value: string): string {
+  const compatible = value.trim().normalize('NFKC')
+  // ECMAScript has no casefold API. Upper-then-lower performs locale-neutral
+  // Unicode folding for case variants; keep dotless i distinct and expand sharp s.
+  return Array.from(compatible, (character) => character === '\u0131'
+    ? character
+    : character.toUpperCase().toLowerCase()).join('').replace(/\u00df/g, 'ss')
+}
+
 function validCanonicalRef(value: unknown, prefix: string, maxLength = COMPETITION_MODULE_V1_LIMITS.maxModuleRefLength): value is string {
   if (typeof value !== 'string' || value.length > maxLength || !value.startsWith(prefix)) return false
   const localId = value.slice(prefix.length)
@@ -302,6 +311,7 @@ export function validateCompetitionModuleV1(value: unknown): CompetitionModuleVa
 
   const columnsById = new Map<string, { role: CompetitionColumnRoleV1; index: number }>()
   const seenColumnIds = new Map<string, number>()
+  const seenColumnLabels = new Map<string, number>()
   const roleCounts = new Map<CompetitionColumnRoleV1, number>()
   if (!Array.isArray(value.columns)) {
     addIssue(issues, 'COLUMNS_INVALID', '$.columns', 'columns must be an array')
@@ -318,6 +328,12 @@ export function validateCompetitionModuleV1(value: unknown): CompetitionModuleVa
         if (previous !== undefined) addIssue(issues, 'COLUMN_ID_DUPLICATE', `${path}.id`, `Column id duplicates $.columns[${previous}].id`)
         else seenColumnIds.set(column.id, index)
         if (isValidColumnId(column.id) && role !== undefined && previous === undefined) columnsById.set(column.id, { role, index })
+      }
+      if (boundedNonEmptyString(column.label, COMPETITION_MODULE_V1_LIMITS.maxColumnLabelLength)) {
+        const normalizedLabel = normalizeColumnLabel(column.label)
+        const previous = seenColumnLabels.get(normalizedLabel)
+        if (previous !== undefined) addIssue(issues, 'COLUMN_LABEL_DUPLICATE', `${path}.label`, `Column label duplicates $.columns[${previous}].label after normalization`)
+        else seenColumnLabels.set(normalizedLabel, index)
       }
       if (role !== undefined) roleCounts.set(role, (roleCounts.get(role) ?? 0) + 1)
     })
