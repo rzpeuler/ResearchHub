@@ -12,6 +12,7 @@ export interface MetricDefinitionV04 {
 
 export const METRIC_REGISTRY_V04: readonly MetricDefinitionV04[] = [
   { id: 'metric:revenue', label: 'Revenue', dataType: 'currency', canonicalUnit: 'currency' },
+  { id: 'metric:market_cap', label: 'Market Capitalization', dataType: 'currency', canonicalUnit: 'currency' },
   { id: 'metric:net_profit', label: 'Net Profit', dataType: 'currency', canonicalUnit: 'currency' },
   { id: 'metric:gross_margin', label: 'Gross Margin', dataType: 'percentage', canonicalUnit: '%' },
   { id: 'metric:net_profit_margin', label: 'Net Profit Margin', dataType: 'percentage', canonicalUnit: '%' },

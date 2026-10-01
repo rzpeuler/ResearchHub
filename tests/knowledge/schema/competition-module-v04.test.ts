@@ -27,8 +27,8 @@ function validModule(): CompetitionModuleV1 {
         companyRef: 'entity:example-company',
         cells: {
           products: { status: 'available', displayValue: 'AI accelerators', knowledgeRefs: ['claim:example-products'] },
-          'market-cap': { status: 'available', displayValue: 'CNY 12.4 billion', knowledgeRefs: ['observation:example-market-cap'], asOf: '2026-09-30', unit: 'billion', currency: 'CNY' },
-          revenue: { status: 'available', displayValue: 'CNY 3.2 billion', knowledgeRefs: ['observation:example-revenue'], fiscalYear: 2025, unit: 'billion', currency: 'CNY' },
+          'market-cap': { status: 'available', displayValue: '12400000000', knowledgeRefs: ['observation:example-market-cap'], asOf: '2026-09-30', unit: 'CNY', currency: 'CNY' },
+          revenue: { status: 'available', displayValue: '3200000000', knowledgeRefs: ['observation:example-revenue'], fiscalYear: 2025, unit: 'CNY', currency: 'CNY' },
           share: { status: 'available', displayValue: 'About 8%', knowledgeRefs: ['claim:example-share'] },
         },
       },
@@ -207,9 +207,13 @@ test('requires financial units and currencies on available cells', () => {
   const missingAnnualRevenueCurrency = cloned(validModule()) as any
   delete missingAnnualRevenueCurrency.rows[0].cells.revenue.currency
   assert.equal(hasIssue(missingAnnualRevenueCurrency, 'CELL_CURRENCY'), true)
+
+  const scaledMarketCapUnit = cloned(validModule()) as any
+  scaledMarketCapUnit.rows[0].cells['market-cap'].unit = 'billion'
+  assert.equal(hasIssue(scaledMarketCapUnit, 'CELL_FINANCIAL_UNIT'), true)
 })
 
-test('preserves different financial unit/currency pairs and row-specific dates and years', () => {
+test('preserves mixed base currencies and row-specific dates and years', () => {
   const withSecondRow = (): any => {
     const module = cloned(validModule()) as any
     const secondRow = structuredClone(module.rows[0])
@@ -221,18 +225,18 @@ test('preserves different financial unit/currency pairs and row-specific dates a
   }
 
   const module = withSecondRow()
-  module.rows[1].cells['market-cap'].displayValue = 'USD 7.0 million'
-  module.rows[1].cells['market-cap'].unit = 'million'
+  module.rows[1].cells['market-cap'].displayValue = '7000000'
+  module.rows[1].cells['market-cap'].unit = 'USD'
   module.rows[1].cells['market-cap'].currency = 'USD'
-  module.rows[1].cells.revenue.displayValue = 'EUR 2.1 thousand'
-  module.rows[1].cells.revenue.unit = 'thousand'
+  module.rows[1].cells.revenue.displayValue = '2100'
+  module.rows[1].cells.revenue.unit = 'EUR'
   module.rows[1].cells.revenue.currency = 'EUR'
 
   assert.equal(validateCompetitionModuleV1(module).valid, true)
-  assert.equal(module.rows[1].cells['market-cap'].unit, 'million')
+  assert.equal(module.rows[1].cells['market-cap'].unit, 'USD')
   assert.equal(module.rows[1].cells['market-cap'].currency, 'USD')
   assert.equal(module.rows[1].cells['market-cap'].asOf, '2025-05-30')
-  assert.equal(module.rows[1].cells.revenue.unit, 'thousand')
+  assert.equal(module.rows[1].cells.revenue.unit, 'EUR')
   assert.equal(module.rows[1].cells.revenue.currency, 'EUR')
   assert.equal(module.rows[1].cells.revenue.fiscalYear, 2024)
 })

@@ -252,6 +252,9 @@ function validateFinancialUnits(cell: Dict, path: string, issues: CompetitionMod
   if (typeof cell.currency !== 'string' || !/^[A-Z]{3}$/.test(cell.currency)) {
     addIssue(issues, 'CELL_CURRENCY', `${path}.currency`, 'Currency must be a three-letter uppercase currency code')
   }
+  if (typeof cell.unit === 'string' && typeof cell.currency === 'string' && cell.unit !== cell.currency) {
+    addIssue(issues, 'CELL_FINANCIAL_UNIT', `${path}.unit`, 'Numeric financial cells must use the base ISO currency as both unit and currency')
+  }
 }
 
 function validateCell(value: unknown, role: CompetitionColumnRoleV1, path: string, issues: CompetitionModuleIssueV1[]): void {

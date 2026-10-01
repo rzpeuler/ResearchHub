@@ -44,9 +44,11 @@ function competitionObjects(): unknown[] {
     {
       id: 'claim:competition-market-cap',
       claimType: 'fact',
-      statement: 'The company has a verified market capitalization.',
+      statement: 'The company market capitalization',
       subjectRefs: [COMPANY_REF],
       sourceRefs: [SOURCE_REF],
+      temporal: { asOf: '2026-09-30' },
+      structuredValue: { metric: 'metric:market_cap', value: 3000000000, unit: 'USD', comparator: 'eq' },
       lifecycle: { status: 'active' },
     },
     {
@@ -54,8 +56,9 @@ function competitionObjects(): unknown[] {
       observationType: 'metric',
       subjectRef: COMPANY_REF,
       metricRef: 'metric:revenue',
-      value: 125,
-      unit: 'CNY 100M',
+      value: 12500000000,
+      unit: 'CNY',
+      period: 'FY2025',
       sourceRef: SOURCE_REF,
       reportedAt: '2026-03-31T00:00:00.000Z',
       lifecycle: { status: 'active' },
@@ -84,7 +87,7 @@ function competitionObjects(): unknown[] {
             },
             market_cap: {
               status: 'available',
-              displayValue: 'USD 3B',
+              displayValue: '3000000000',
               knowledgeRefs: ['claim:competition-market-cap'],
               asOf: '2026-09-30',
               unit: 'USD',
@@ -92,10 +95,10 @@ function competitionObjects(): unknown[] {
             },
             annual_revenue: {
               status: 'available',
-              displayValue: 'CNY 12.5B',
+              displayValue: '12500000000',
               knowledgeRefs: ['observation:competition-revenue'],
               fiscalYear: 2025,
-              unit: 'CNY 100M',
+              unit: 'CNY',
               currency: 'CNY',
             },
             business_link: {
@@ -121,6 +124,75 @@ function errorCodes(objects: unknown[]): string[] {
 test('global Schema 0.4 validation accepts a competition module with candidate-batch references and mixed currencies', () => {
   const result = validateKnowledgeV04Objects(competitionObjects() as never)
   assert.equal(result.status, 'passed', JSON.stringify(result.errors))
+})
+
+test('competition numeric display must exactly present the cited canonical amount', () => {
+  const objects = competitionObjects()
+  const module = moduleFrom(objects)
+  const rows = module.rows as Array<{ cells: Record<string, { displayValue: string }> }>
+  rows[0]!.cells.market_cap!.displayValue = 'USD 3B'
+  const result = validateKnowledgeV04Objects(objects as never)
+  assert.equal(result.status, 'failed')
+  assert.ok(result.errors.some((error) => error.code === 'V04_COMPETITION_MODULE_NUMERIC_DISPLAY'))
+})
+
+test('all matching numeric references in a cell must agree', () => {
+  const objects = competitionObjects()
+  objects.push({
+    id: 'claim:competition-market-cap-alternate',
+    claimType: 'fact',
+    statement: 'The company market capitalization from an alternate report',
+    subjectRefs: [COMPANY_REF],
+    sourceRefs: [SOURCE_REF],
+    temporal: { asOf: '2026-09-30' },
+    structuredValue: { metric: 'metric:market_cap', value: 3100000000, unit: 'USD', comparator: 'eq' },
+    lifecycle: { status: 'active' },
+  })
+  const module = moduleFrom(objects)
+  const rows = module.rows as Array<{ cells: Record<string, { knowledgeRefs: string[] }> }>
+  rows[0]!.cells.market_cap!.knowledgeRefs.push('claim:competition-market-cap-alternate')
+  const result = validateKnowledgeV04Objects(objects as never)
+  assert.equal(result.status, 'failed')
+  assert.ok(result.errors.some((error) => error.code === 'V04_COMPETITION_MODULE_NUMERIC_FACT_CONFLICT'))
+})
+
+test('annual revenue fiscalYear must match the cited FYyyyy fact period', () => {
+  const objects = competitionObjects()
+  const module = moduleFrom(objects)
+  const rows = module.rows as Array<{ cells: Record<string, { fiscalYear: number }> }>
+  rows[0]!.cells.annual_revenue!.fiscalYear = 2026
+  const result = validateKnowledgeV04Objects(objects as never)
+  assert.equal(result.status, 'failed')
+  assert.ok(result.errors.some((error) => error.code === 'V04_COMPETITION_MODULE_NUMERIC_FISCAL_PERIOD'))
+})
+
+test('market capitalization asOf must match the cited Claim or Observation', () => {
+  const objects = competitionObjects()
+  const module = moduleFrom(objects)
+  const rows = module.rows as Array<{ cells: Record<string, { asOf: string }> }>
+  rows[0]!.cells.market_cap!.asOf = '2026-09-29'
+  const result = validateKnowledgeV04Objects(objects as never)
+  assert.equal(result.status, 'failed')
+  assert.ok(result.errors.some((error) => error.code === 'V04_COMPETITION_MODULE_NUMERIC_AS_OF'))
+})
+
+test('available numeric cells require a matching numeric fact reference', () => {
+  const objects = competitionObjects()
+  const module = moduleFrom(objects)
+  const rows = module.rows as Array<{ cells: Record<string, { knowledgeRefs: string[] }> }>
+  rows[0]!.cells.market_cap!.knowledgeRefs = ['claim:competition-products']
+  const result = validateKnowledgeV04Objects(objects as never)
+  assert.equal(result.status, 'failed')
+  assert.ok(result.errors.some((error) => error.code === 'V04_COMPETITION_MODULE_NUMERIC_FACT_REQUIRED'))
+})
+
+test('numeric Claim support must be an exact fact rather than a comparison threshold', () => {
+  const objects = competitionObjects()
+  const claim = objects.find((value) => typeof value === 'object' && value !== null && 'id' in value && value.id === 'claim:competition-market-cap') as Record<string, unknown>
+  claim.structuredValue = { ...(claim.structuredValue as Record<string, unknown>), comparator: 'gte' }
+  const result = validateKnowledgeV04Objects(objects as never)
+  assert.equal(result.status, 'failed')
+  assert.ok(result.errors.some((error) => error.code === 'V04_COMPETITION_MODULE_NUMERIC_FACT_INVALID'))
 })
 
 test('competition target must resolve to an active Industry Entity', () => {
@@ -247,8 +319,9 @@ test('available competition cell references must resolve and match the row Compa
     observationType: 'metric',
     subjectRef: 'entity:other-company',
     metricRef: 'metric:revenue',
-    value: 300,
-    unit: 'CNY 100M',
+    value: 30000000000,
+    unit: 'CNY',
+    period: 'FY2025',
     sourceRef: SOURCE_REF,
     lifecycle: { status: 'active' },
   })

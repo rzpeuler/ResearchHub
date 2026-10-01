@@ -249,6 +249,117 @@ function hasVerifiableRelationEvidence(
     })
 }
 
+interface CompetitionNumericFact {
+  readonly ref: string
+  readonly value: unknown
+  readonly unit: unknown
+  readonly exactAmount?: boolean
+  readonly asOf?: unknown
+  readonly fiscalPeriod?: unknown
+}
+
+function isCanonicalCompetitionDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+}
+
+function annualFiscalYear(period: unknown): number | undefined {
+  if (typeof period !== 'string' || !/^FY\d{4}$/.test(period)) return undefined
+  const year = Number(period.slice(2))
+  return Number.isInteger(year) && year >= 1900 && year <= 9999 ? year : undefined
+}
+
+function validateCompetitionNumericCell(
+  cell: Dict,
+  role: 'market_cap' | 'annual_revenue',
+  knowledgeRefs: readonly unknown[],
+  claims: ReadonlyMap<string, KnowledgeClaimV04>,
+  observations: ReadonlyMap<string, KnowledgeObservationV04>,
+  moduleId: string,
+  rowIndex: number,
+  cellId: string,
+  errors: KnowledgeV04Diagnostic[],
+): void {
+  const metricRef = role === 'market_cap' ? 'metric:market_cap' : 'metric:revenue'
+  const facts: CompetitionNumericFact[] = []
+  for (const refValue of knowledgeRefs) {
+    if (typeof refValue !== 'string') continue
+    if (refValue.startsWith('claim:')) {
+      const claim = claims.get(refValue)
+      const structured = claim && record(claim.structuredValue) ? claim.structuredValue as unknown as Dict : undefined
+      if (structured?.metric !== metricRef) continue
+      facts.push({
+        ref: refValue,
+        value: structured.value,
+        unit: structured.unit,
+        exactAmount: claim?.claimType === 'fact' && structured.comparator === 'eq',
+        ...(role === 'market_cap' ? { asOf: record(claim?.temporal) ? claim.temporal.asOf : undefined } : { fiscalPeriod: structured.fiscalPeriod }),
+      })
+      continue
+    }
+    if (!refValue.startsWith('observation:')) continue
+    const observation = observations.get(refValue)
+    if (observation?.observationType !== 'metric' || observation.metricRef !== metricRef) continue
+    facts.push({
+      ref: refValue,
+      value: observation.value,
+      unit: observation.unit,
+      ...(role === 'market_cap' ? { asOf: observation.asOf } : { fiscalPeriod: observation.period }),
+    })
+  }
+
+  const location = `Competition row ${rowIndex} ${cellId} cell`
+  if (facts.length === 0) {
+    add(errors, 'V04_COMPETITION_MODULE_NUMERIC_FACT_REQUIRED', `${location} requires a matching numeric ${metricRef} Claim or metric Observation`, moduleId)
+    return
+  }
+
+  const factsWithValues = facts.filter((fact) => typeof fact.value === 'number' && Number.isFinite(fact.value) && fact.exactAmount !== false)
+  if (factsWithValues.length !== facts.length) {
+    add(errors, 'V04_COMPETITION_MODULE_NUMERIC_FACT_INVALID', `${location} references a matching ${metricRef} fact that is not an exact finite numeric fact`, moduleId)
+  }
+
+  const displayValue = cell.displayValue
+  const cellUnit = cell.unit
+  const cellCurrency = cell.currency
+  if (typeof cellUnit !== 'string' || !/^[A-Z]{3}$/.test(cellUnit) || cellCurrency !== cellUnit) {
+    add(errors, 'V04_COMPETITION_MODULE_NUMERIC_UNIT', `${location} unit and currency must both be the base three-letter currency code`, moduleId)
+  }
+
+  for (const fact of facts) {
+    if (typeof fact.unit !== 'string' || !/^[A-Z]{3}$/.test(fact.unit)) {
+      add(errors, 'V04_COMPETITION_MODULE_NUMERIC_UNIT', `${location} reference ${fact.ref} must store its value in a base three-letter currency unit`, moduleId)
+    } else if (fact.unit !== cellUnit || fact.unit !== cellCurrency) {
+      add(errors, 'V04_COMPETITION_MODULE_NUMERIC_UNIT', `${location} unit and currency must match the cited fact unit ${fact.unit}`, moduleId)
+    }
+
+    if (role === 'market_cap') {
+      if (!isCanonicalCompetitionDate(fact.asOf)) {
+        add(errors, 'V04_COMPETITION_MODULE_NUMERIC_AS_OF', `${location} reference ${fact.ref} must have an explicit YYYY-MM-DD asOf`, moduleId)
+      } else if (fact.asOf !== cell.asOf) {
+        add(errors, 'V04_COMPETITION_MODULE_NUMERIC_AS_OF', `${location} asOf must match the cited fact asOf ${fact.asOf}`, moduleId)
+      }
+    } else {
+      const year = annualFiscalYear(fact.fiscalPeriod)
+      if (year === undefined) {
+        add(errors, 'V04_COMPETITION_MODULE_NUMERIC_FISCAL_PERIOD', `${location} reference ${fact.ref} must have an explicit annual FYyyyy fiscal period`, moduleId)
+      } else if (year !== cell.fiscalYear) {
+        add(errors, 'V04_COMPETITION_MODULE_NUMERIC_FISCAL_PERIOD', `${location} fiscalYear must match the cited fact fiscal period ${fact.fiscalPeriod}`, moduleId)
+      }
+    }
+  }
+
+  const first = factsWithValues[0]
+  if (first && typeof displayValue === 'string' && displayValue !== String(first.value)) {
+    add(errors, 'V04_COMPETITION_MODULE_NUMERIC_DISPLAY', `${location} displayValue must equal String(${String(first.value)}) from cited numeric fact ${first.ref}`, moduleId)
+  }
+  if (first && factsWithValues.some((fact) => fact.value !== first.value || fact.unit !== first.unit
+    || (role === 'market_cap' ? fact.asOf !== first.asOf : fact.fiscalPeriod !== first.fiscalPeriod))) {
+    add(errors, 'V04_COMPETITION_MODULE_NUMERIC_FACT_CONFLICT', `${location} matching numeric fact references must agree on value, currency unit, and period`, moduleId)
+  }
+}
+
 function validateCompetitionModule(
   module: Dict,
   moduleId: string,
@@ -283,12 +394,12 @@ function validateCompetitionModule(
 
   if (!Array.isArray(module.rows)) return
   const inspectedRows = Math.min(module.rows.length, COMPETITION_MODULE_V1_LIMITS.maxRows)
-  const cellIds: string[] = []
+  const cellColumns: Array<{ id: string; role: string }> = []
   if (Array.isArray(module.columns)) {
     const inspectedColumns = Math.min(module.columns.length, COMPETITION_MODULE_V1_LIMITS.maxColumns)
     for (let columnIndex = 0; columnIndex < inspectedColumns; columnIndex += 1) {
       const column = module.columns[columnIndex]
-      if (record(column) && column.role !== 'company' && typeof column.id === 'string') cellIds.push(column.id)
+      if (record(column) && column.role !== 'company' && typeof column.id === 'string' && typeof column.role === 'string') cellColumns.push({ id: column.id, role: column.role })
     }
   }
   for (let rowIndex = 0; rowIndex < inspectedRows; rowIndex += 1) {
@@ -309,7 +420,7 @@ function validateCompetitionModule(
     }
 
     if (!record(rowValue.cells)) continue
-    for (const cellId of cellIds) {
+    for (const { id: cellId, role } of cellColumns) {
       const cellValue = rowValue.cells[cellId]
       if (!record(cellValue) || cellValue.status !== 'available' || !Array.isArray(cellValue.knowledgeRefs)) continue
       const inspectedKnowledgeRefs = Math.min(cellValue.knowledgeRefs.length, COMPETITION_MODULE_V1_LIMITS.maxCellKnowledgeRefs)
@@ -328,6 +439,9 @@ function validateCompetitionModule(
         if (companyIsActive && !competitionKnowledgeRelevant(resolved as unknown as Dict, kind, companyRef!, relations)) {
           add(errors, 'V04_COMPETITION_MODULE_KNOWLEDGE_RELEVANCE', `Competition cell knowledgeRef is not relevant to row Company ${companyRef}: ${knowledgeRef}`, moduleId)
         }
+      }
+      if (role === 'market_cap' || role === 'annual_revenue') {
+        validateCompetitionNumericCell(cellValue, role, cellValue.knowledgeRefs, claims, observations, moduleId, rowIndex, cellId, errors)
       }
     }
   }
