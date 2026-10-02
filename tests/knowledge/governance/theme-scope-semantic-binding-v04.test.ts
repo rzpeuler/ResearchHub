@@ -15,7 +15,7 @@ import {
 } from '../../../knowledge/governance/theme-scope-v04.ts'
 import { ThemeManagementGatewayV04 } from '../../../knowledge/production/theme-management-v04.ts'
 import { KnowledgeBaseRegistry } from '../../../knowledge/registry/registry.ts'
-import type { KnowledgeAssetV04, KnowledgeIndustryV04, KnowledgeRelationV04, KnowledgeSourceV04 } from '../../../knowledge/schema/domain-v04.ts'
+import type { KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeIndustryV04, KnowledgeRelationV04, KnowledgeSourceV04 } from '../../../knowledge/schema/domain-v04.ts'
 import type { KnowledgeChangeSetV04, KnowledgeOperationV04 } from '../../../knowledge/schema/mutation-v04.ts'
 import { createFreshKnowledgeBaseV04, readCanonicalV04Assets } from '../../../knowledge/storage/index.ts'
 import { hashKnowledgeObject } from '../../../knowledge/storage/canonical-hash.ts'
@@ -246,6 +246,41 @@ test('human-confirmed Industry include binds active canonical exposure evidence 
     ]
     const validation = await validateKnowledgeChangeSetV04(handle, makeChangeSet(handle, 'semantic-positive-network', batch(themeRef, handle.revision, decisions), operations), { mode: 'commit', now: clock })
     assert.ok(validation.validatedChangeSet, JSON.stringify(validation.report.errors))
+  })
+})
+
+test('a Relation cannot borrow overlapping Source evidence from an unrelated supporting Claim', async () => {
+  await withFreshKb('unrelated-supporting-claim', async (root) => {
+    const themeRef = await createTheme(root, 'Claim Link Theme')
+    const { evidence } = await seedEvidence(root)
+    const handle = await mount(root)
+    const item = industry('semantic-claim-link-industry', 'Claim link industry')
+    const candidate = industryCandidate(item.name, item.id)
+    const unrelatedClaim: KnowledgeClaimV04 = {
+      id: 'claim:unrelated-theme-exposure-evidence',
+      claimType: 'fact',
+      statement: 'A fact about the Industry that does not support its Theme exposure.',
+      subjectRefs: [item.id],
+      sourceRefs: [evidence.sourceRef],
+      provenance: [{ sourceRef: evidence.sourceRef, rawRef: evidence.rawRef, locator: evidence.locator, chunkRef: null }],
+      lifecycle: { status: 'active' },
+    }
+    const exposureWithUnrelatedClaim: KnowledgeRelationV04 = {
+      id: 'relation:semantic-claim-link-exposure',
+      type: 'theme_exposure',
+      sourceRef: themeRef as `entity:${string}`,
+      targetRef: item.id,
+      supportingClaimRefs: [unrelatedClaim.id],
+      lifecycle: { status: 'active' },
+    }
+    const scopeDecision = decision(themeRef, handle.revision, candidate, 'include', [evidence])
+    const validation = await validateKnowledgeChangeSetV04(handle, makeChangeSet(handle, 'unrelated-supporting-claim', batch(themeRef, handle.revision, [scopeDecision]), [
+      createOperation('create-claim-link-industry', item),
+      createOperation('create-unrelated-theme-claim', unrelatedClaim),
+      createOperation('create-exposure-with-unrelated-claim', exposureWithUnrelatedClaim),
+    ]), { mode: 'commit', now: clock })
+    assert.equal(validation.validatedChangeSet, undefined)
+    assert.ok(validation.report.errors.some((error) => error.code === 'THEME_SCOPE_INDUSTRY_EXPOSURE_EVIDENCE_REQUIRED'), JSON.stringify(validation.report.errors))
   })
 })
 

@@ -231,7 +231,9 @@ function relationEvidenceSourceRefs(relation: Dict, objects: ReadonlyMap<string,
   const explicitSupportingRefs = Array.isArray(relation.supportingClaimRefs) ? relation.supportingClaimRefs : []
   for (const claimRef of explicitSupportingRefs) {
     const claim = typeof claimRef === 'string' ? objects.get(claimRef) as unknown as Dict | undefined : undefined
-    if (claim) for (const ref of sourceRefsForEvidence(claim)) refs.add(ref)
+    if (claim && typeof relationId === 'string' && Array.isArray(claim.subjectRefs) && claim.subjectRefs.includes(relationId)) {
+      for (const ref of sourceRefsForEvidence(claim)) refs.add(ref)
+    }
   }
   if (refs.size === 0 && explicitSupportingRefs.length === 0 && typeof relationId === 'string') {
     for (const object of objects.values()) {
