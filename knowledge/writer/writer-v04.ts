@@ -9,7 +9,7 @@ import { withKnowledgeBaseMutationLock } from '../storage/mutation-lock.ts'
 import { recoverKnowledgeBaseRoot, runKnowledgeRootTransaction } from '../storage/root-transaction.ts'
 import { KnowledgeBaseRegistry } from '../registry/registry.ts'
 import { assertKnowledgeV04Objects } from '../validation/v04-validator.ts'
-import { isValidatorIssuedV04Receipt, validateKnowledgeBaseV04State } from '../validation/v04-change-set-validator.ts'
+import { inspectThemeScopeContextV04, isValidatorIssuedV04Receipt, validateKnowledgeBaseV04State } from '../validation/v04-change-set-validator.ts'
 import { allocateKnowledgeStorageRefV04, kindForKnowledgeV04 } from './path-allocation-v04.ts'
 import type { KnowledgeBaseHandle } from '../storage/handle.ts'
 
@@ -34,11 +34,6 @@ function registryMap(objects: readonly { value: KnowledgeAssetV04; storageRef: s
 function idempotencyHash(changeSet: KnowledgeChangeSetV04): string {
   const { expectedBaseRevision: _expectedBaseRevision, ...stableChangeSet } = changeSet
   return hashKnowledgeObject(stableChangeSet)
-}
-
-function hasThemeScope(changeSet: KnowledgeChangeSetV04): boolean {
-  const context = changeSet.ingestionContext
-  return typeof context === 'object' && context !== null && Object.hasOwn(context, 'themeScope')
 }
 
 async function existingExecution(root: string, changeSet: KnowledgeChangeSetV04): Promise<Dict | undefined> {
@@ -78,6 +73,8 @@ export async function writeKnowledgeBaseV04(
   const changeSet = receipt && typeof receipt === 'object' && 'changeSet' in receipt ? (receipt as ValidatedKnowledgeChangeSetV04).changeSet : { changeSetId: 'invalid-receipt', workflowRunId: 'invalid-receipt', knowledgeBaseId: handle.knowledgeBaseId } as unknown as KnowledgeChangeSetV04
   const base = result(changeSet, handle)
   if (!isValidatorIssuedV04Receipt(receipt)) return { ...base, error: { code: 'validation_required', message: 'Schema 0.4 Writer accepts only a runtime Validator-issued receipt' } }
+  const scopeContext = inspectThemeScopeContextV04(changeSet)
+  if (scopeContext.error) return { ...base, error: { code: 'receipt_mismatch', message: scopeContext.error } }
   if (
     receipt.knowledgeBaseId !== handle.knowledgeBaseId ||
     changeSet.knowledgeBaseId !== handle.knowledgeBaseId ||
@@ -136,7 +133,7 @@ export async function writeKnowledgeBaseV04(
         }
       }
       assertKnowledgeV04Objects([...objects.values()])
-      const hasCommittedChanges = created.length + updated.length > 0 || hasThemeScope(changeSet)
+      const hasCommittedChanges = created.length + updated.length > 0 || scopeContext.present
       const nextRevision = hasCommittedChanges ? manifest.revision + 1 : manifest.revision
       const nextManifest = { ...manifest, revision: nextRevision, updatedAt: hasCommittedChanges ? clock() : manifest.updatedAt }
       const logRef = `logs/research/${changeSet.workflowRunId}.yaml`

@@ -33,11 +33,82 @@ function add(errors: V04ChangeSetValidationDiagnostic[], code: string, message: 
   errors.push({ code, message, ...(operationId === undefined ? {} : { operationId }), ...(assetId === undefined ? {} : { assetId }) })
 }
 
-function themeScopeValue(changeSet: unknown): { readonly present: boolean; readonly value?: unknown } {
+function isJsonSafeIngestionContext(value: unknown): boolean {
+  const ancestors = new Set<object>()
+  let visitedNodes = 0
+  const visit = (item: unknown, depth: number): boolean => {
+    visitedNodes += 1
+    if (visitedNodes > 100_000 || depth > 64) return false
+    if (item === null || typeof item === 'string' || typeof item === 'boolean') return true
+    if (typeof item === 'number') return Number.isFinite(item) && !Object.is(item, -0)
+    if (typeof item !== 'object' || ancestors.has(item)) return false
+    ancestors.add(item)
+    try {
+      if (Array.isArray(item)) {
+        if (Object.getPrototypeOf(item) !== Array.prototype || Object.getOwnPropertySymbols(item).length > 0 || item.length > 100_000) return false
+        const names = Object.getOwnPropertyNames(item)
+        if (names.length !== item.length + 1) return false
+        const lengthDescriptor = Object.getOwnPropertyDescriptor(item, 'length')
+        if (!lengthDescriptor || lengthDescriptor.enumerable || !('value' in lengthDescriptor)) return false
+        for (let index = 0; index < item.length; index += 1) {
+          const descriptor = Object.getOwnPropertyDescriptor(item, String(index))
+          if (!descriptor?.enumerable || !('value' in descriptor) || !visit(descriptor.value, depth + 1)) return false
+        }
+        return true
+      }
+      const prototype = Object.getPrototypeOf(item)
+      if ((prototype !== Object.prototype && prototype !== null) || Object.getOwnPropertySymbols(item).length > 0) return false
+      const names = Object.getOwnPropertyNames(item)
+      if (names.length > 100_000) return false
+      for (const name of names) {
+        const descriptor = Object.getOwnPropertyDescriptor(item, name)
+        if (!descriptor?.enumerable || !('value' in descriptor) || !visit(descriptor.value, depth + 1)) return false
+      }
+      return true
+    } catch {
+      return false
+    } finally {
+      ancestors.delete(item)
+    }
+  }
+  return visit(value, 0)
+}
+
+export interface ThemeScopeContextProbeV04 {
+  readonly present: boolean
+  readonly value?: unknown
+  readonly error?: string
+}
+
+/** Inspects scope presence without invoking accessors or accepting data that clone/hash would omit. */
+export function inspectThemeScopeContextV04(changeSet: unknown): ThemeScopeContextProbeV04 {
   if (!record(changeSet)) return { present: false }
-  const context = changeSet.ingestionContext
-  if (typeof context !== 'object' || context === null || !Object.hasOwn(context, 'themeScope')) return { present: false }
-  return { present: true, value: (context as Dict).themeScope }
+  let contextDescriptor: PropertyDescriptor | undefined
+  try {
+    contextDescriptor = Object.getOwnPropertyDescriptor(changeSet, 'ingestionContext')
+  } catch {
+    return { present: true, error: 'ChangeSet ingestionContext descriptor could not be inspected' }
+  }
+  if (!contextDescriptor) return { present: false }
+  if (!contextDescriptor.enumerable || !('value' in contextDescriptor)) {
+    return { present: true, error: 'ChangeSet ingestionContext must be an enumerable data property' }
+  }
+  const context = contextDescriptor.value
+  if ((typeof context !== 'object' || context === null) && typeof context !== 'function') return { present: false }
+  let scopeDescriptor: PropertyDescriptor | undefined
+  try {
+    scopeDescriptor = Object.getOwnPropertyDescriptor(context, 'themeScope')
+  } catch {
+    return { present: true, error: 'Theme scope property descriptor could not be inspected' }
+  }
+  if (!scopeDescriptor) return { present: false }
+  if (!scopeDescriptor.enumerable || !('value' in scopeDescriptor)) {
+    return { present: true, error: 'ingestionContext.themeScope must be an enumerable data property' }
+  }
+  if (!isJsonSafeIngestionContext(context)) {
+    return { present: true, error: 'Scope-bearing ingestionContext must contain JSON-safe enumerable data only' }
+  }
+  return { present: true, value: scopeDescriptor.value }
 }
 
 async function validateThemeScope(
@@ -47,12 +118,16 @@ async function validateThemeScope(
   projectedObjects: ReadonlyMap<string, KnowledgeAssetV04>,
   errors: V04ChangeSetValidationDiagnostic[],
 ): Promise<void> {
-  const scope = themeScopeValue(changeSet)
+  const scope = inspectThemeScopeContextV04(changeSet)
   if (!scope.present) return
 
   const ledger = await readThemeScopeLedgerV04(handle)
   if (ledger.status === 'failed') {
     add(errors, 'THEME_SCOPE_LEDGER_UNAVAILABLE', `Theme scope history is unavailable (${ledger.error.code}): ${ledger.error.message}`)
+  }
+  if (scope.error) {
+    add(errors, 'THEME_SCOPE_CONTEXT_INVALID', scope.error)
+    return
   }
   const previousDecisions: readonly ThemeScopeDecisionV04[] = ledger.status === 'available'
     ? ledger.themes.flatMap((theme) => theme.history.map((entry) => entry.decision))

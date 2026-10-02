@@ -285,6 +285,70 @@ test('ordinary empty ChangeSets keep no_changes revision behavior and existing r
   })
 })
 
+test('scope-bearing ingestionContext rejects hidden, accessor, array, and non-JSON-safe scope data', async () => {
+  await withFreshKb('invalid-context-shapes', async (root) => {
+    const themeRef = await createTheme(root)
+    const handle = await mount(root)
+    const scopeBatch = batch(themeRef, handle.revision, [decision({ themeRef, revision: handle.revision, name: 'Descriptor candidate' })])
+
+    const hiddenContext: Record<string, unknown> = { producerType: 'theme_framework' }
+    Object.defineProperty(hiddenContext, 'themeScope', { value: scopeBatch, enumerable: false })
+
+    let getterReads = 0
+    const accessorContext: Record<string, unknown> = { producerType: 'theme_framework' }
+    Object.defineProperty(accessorContext, 'themeScope', {
+      get() {
+        getterReads += 1
+        return scopeBatch
+      },
+      enumerable: true,
+    })
+
+    const arrayContext = [] as unknown as Record<string, unknown>
+    Object.defineProperty(arrayContext, 'themeScope', { value: scopeBatch, enumerable: true })
+
+    const undefinedContext: Record<string, unknown> = {
+      producerType: 'theme_framework',
+      themeScope: scopeBatch,
+      optionalMetadata: undefined,
+    }
+
+    const contexts = [
+      ['hidden', hiddenContext],
+      ['accessor', accessorContext],
+      ['array', arrayContext],
+      ['undefined', undefinedContext],
+    ] as const
+    for (const [suffix, ingestionContext] of contexts) {
+      const set: KnowledgeChangeSetV04 = {
+        ...changeSet(handle, `scope-context-${suffix}-run`, scopeBatch),
+        ingestionContext,
+      }
+      const validation = await validateKnowledgeChangeSetV04(handle, set, { mode: 'commit', now: clock })
+      assert.equal(validation.report.status, 'failed', suffix)
+      assert.ok(validation.report.errors.some((error) => error.code === 'THEME_SCOPE_CONTEXT_INVALID'), suffix)
+      assert.equal(validation.validatedChangeSet, undefined, suffix)
+    }
+    assert.equal(getterReads, 0)
+
+    const writerSet = changeSet(handle, 'scope-writer-hidden-run', scopeBatch)
+    const writerValidation = await validateKnowledgeChangeSetV04(handle, writerSet, { mode: 'commit', now: clock })
+    assert.ok(writerValidation.validatedChangeSet, JSON.stringify(writerValidation.report.errors))
+    const receiptContext = writerValidation.validatedChangeSet.changeSet.ingestionContext!
+    Object.defineProperty(receiptContext, 'themeScope', {
+      value: scopeBatch,
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    })
+    const writerResult = await writeKnowledgeBase(handle, writerValidation.validatedChangeSet, { registry: new KnowledgeBaseRegistry(), clock })
+    assert.equal(writerResult.status, 'rejected')
+    assert.equal(writerResult.error?.code, 'receipt_mismatch')
+    assert.match(writerResult.error?.message ?? '', /enumerable data property/u)
+    assert.equal((await loadKnowledgeBaseManifest(root)).revision, handle.revision)
+  })
+})
+
 test('suggested, malformed, and history-disconnected scope batches fail closed', async () => {
   await withFreshKb('invalid-batches', async (root) => {
     const themeRef = await createTheme(root)
