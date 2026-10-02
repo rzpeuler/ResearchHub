@@ -55,6 +55,31 @@ describe('RuntimeClient', () => {
     expect(String(fetchMock.mock.calls[1]?.[0])).toBe('/api/production/raw-document-preview-v04/accept')
   })
 
+  it('authorizes Theme Framework review reads and posts only explicit decision maps', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ path: String(input), init })
+      if (calls.length === 1) return json(bootstrap)
+      if (String(input).endsWith('/accept')) return json({ status: 'committed', workflowRunId: 'run / 1' })
+      if (String(input).endsWith('/reject')) return json({ status: 'rejected', workflowRunId: 'run / 1' })
+      return json({ status: 'running', workflowRunId: 'run / 1' })
+    })
+    const client = new RuntimeClient(fetchMock)
+    await client.bootstrap()
+    expect((await client.getThemeFrameworkRun('run / 1')).status).toBe('running')
+    await client.acceptThemeFrameworkRun('run / 1', { 'industry-a': 'include', 'relation-a': 'pending' })
+    await client.rejectThemeFrameworkRun('run / 1')
+    expect(calls.map((call) => call.path)).toEqual([
+      '/api/bootstrap',
+      '/api/theme-framework/runs/run%20%2F%201',
+      '/api/theme-framework/runs/run%20%2F%201/accept',
+      '/api/theme-framework/runs/run%20%2F%201/reject',
+    ])
+    expect(new Headers(calls[1]?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('a'.repeat(64))
+    expect(JSON.parse(String(calls[2]?.init?.body))).toEqual({ decisions: { 'industry-a': 'include', 'relation-a': 'pending' } })
+    expect(JSON.parse(String(calls[3]?.init?.body))).toEqual({})
+  })
+
   it('encodes Graph read contracts and never adds a mutation token', async () => {
     const paths: string[] = []; const headers: Headers[] = []
     const client = new RuntimeClient(async (input, init) => { paths.push(String(input)); headers.push(new Headers(init?.headers)); return json({ themeGroups: [], industries: { items: [], total: 0, limit: 30, truncated: false }, companies: { items: [], total: 0, limit: 30, truncated: false }, products: { items: [], total: 0, limit: 30, truncated: false }, technologies: { items: [], total: 0, limit: 30, truncated: false } }) })

@@ -47,6 +47,54 @@ describe('Homepage shell', () => {
     expect(document.body.textContent).not.toContain('b'.repeat(64))
   })
 
+  it('dispatches a named Theme Framework workflow and reviews only server candidates', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    let themeCommitted = false
+    const candidate = {
+      knowledgeBaseId: 'kb-1', basedOnRevision: 7, theme: { name: 'AI 算力' },
+      framework: {
+        proposedDefinition: { statement: 'AI compute infrastructure and its material supply chain', status: 'provisional' },
+        inclusionPrinciples: ['Include researchable supply-chain industries'], exclusionPrinciples: ['Exclude remote downstream end markets'],
+        industryCandidates: [{ candidateId: 'pcb', name: 'PCB', description: 'Printed circuit boards', recommendation: 'include', boundaryRationale: 'Core upstream material', themeRelevanceRationale: 'Enables compute systems', evidenceRefs: ['ev-1'], coverageGaps: ['Confirm substrate depth'] }],
+        relationCandidates: [{ candidateId: 'pcb-server', sourceIndustryRef: 'PCB', targetIndustryRef: 'AI servers', relationType: 'upstream_of', topologyRole: 'main_chain', recommendation: 'pending', boundaryRationale: 'Direct supply-chain connection', themeRelevanceRationale: 'Relevant to compute delivery', directionRationale: 'PCB supplies server boards', evidenceRefs: ['ev-1'], coverageGaps: [] }],
+        coverageGaps: [{ gapId: 'gap-1', question: 'Should copper foil be included?', reason: 'Boundary needs review', affectedCandidateIds: ['pcb'] }],
+      }, acquisitionStatus: 'partial', diagnostics: [], evidence: [{ evidenceId: 'ev-1', summary: 'Industry report describes PCB demand from AI servers.', sourceRef: 'source:report-1' }],
+    }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input); calls.push({ path, init })
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 7, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'theme_framework', label: 'Theme Framework', intentDescription: 'Initialize an industry network', inputSchema: {}, requiredInputs: ['name'], outputContract: 'ThemeFrameworkReviewCandidate', knowledgeEffects: ['Theme', 'Industry', 'Relation'] }] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
+      if (path === '/api/research-reports?limit=20') return json({ reports: [] })
+      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'AI 算力', mode: { type: 'workflow', workflowId: 'theme_framework' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'theme_framework', confidence: 1, arguments: { name: 'AI 算力' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit workflow selection' }, summary: { mode: 'Explicit Workflow', workflowId: 'theme_framework', workflowLabel: 'Theme Framework', selectedSkillIds: [], argumentsStatus: 'extracted', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'theme-run-1', workflow: { runId: 'theme-run-1', workflowType: 'theme_framework_construction', objective: 'Initialize AI 算力', status: 'running', startedAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:00.000Z' } }, 202)
+      if (path === '/api/theme-framework/runs/theme-run-1') return json({ status: themeCommitted ? 'committed' : 'awaiting_review', workflowRunId: 'theme-run-1', candidate, ...(themeCommitted ? { receipt: { themeRef: 'entity:theme-ai-compute', committedRevision: 8, decisionCount: 2 } } : {}) })
+      if (path === '/api/theme-framework/runs/theme-run-1/accept') { themeCommitted = true; return json({ status: 'committed', workflowRunId: 'theme-run-1', themeRef: 'entity:theme-ai-compute' }) }
+      if (path === '/api/workflows/theme-run-1') return json({ runId: 'theme-run-1', workflowType: 'theme_framework_construction', objective: 'Initialize AI 算力', status: 'completed', startedAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:01.000Z' })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Workflow' }), { target: { value: 'theme_framework' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'AI 算力' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    expect(await screen.findByRole('heading', { name: 'Industry framework' })).toBeTruthy()
+    expect(await screen.findByText('PCB')).toBeTruthy()
+    expect(screen.getByText(/Should copper foil be included/)).toBeTruthy()
+    expect(screen.getAllByText(/Industry report describes PCB demand/).length).toBe(2)
+    expect(screen.getByText(/Some sources were unavailable or the research scope was truncated/)).toBeTruthy()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Exclude' })[0]!)
+    fireEvent.click(screen.getByRole('button', { name: 'Accept framework decisions' }))
+    await waitFor(() => expect(screen.getByText('Theme framework accepted and saved.')).toBeTruthy())
+    const dispatch = calls.find((call) => call.path === '/api/research/dispatch')
+    expect(JSON.parse(String(dispatch?.init?.body))).toMatchObject({ query: 'AI 算力', mode: { type: 'workflow', workflowId: 'theme_framework' } })
+    const accept = calls.find((call) => call.path.endsWith('/accept'))
+    expect(JSON.parse(String(accept?.init?.body))).toEqual({ decisions: { pcb: 'exclude', 'pcb-server': 'pending' } })
+    expect(new Headers(calls.find((call) => call.path.includes('/theme-framework/runs/theme-run-1'))?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('b'.repeat(64))
+    expect(JSON.stringify(JSON.parse(String(dispatch?.init?.body)))).not.toContain('evidence')
+  })
+
   it('stages a pasted source, requires caller-supplied rights, and only accepts explicitly selected V0.4 candidates', async () => {
     const posted: { path: string; body?: Record<string, unknown> }[] = []
     mockV04UploadRuntime(async (input, init) => {

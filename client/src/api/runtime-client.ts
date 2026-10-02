@@ -88,6 +88,54 @@ export interface ResearchReportSummary { readonly reportId: string; readonly rep
 export interface ResearchReport extends ResearchReportSummary { readonly sourceRefs: readonly string[]; readonly claimRefs: readonly string[]; readonly sections: readonly { readonly id: string; readonly title: string; readonly markdown: string; readonly sourceRefs?: readonly string[]; readonly claimRefs?: readonly string[]; readonly relationRefs?: readonly string[]; readonly signalRefs?: readonly string[]; readonly evidenceLinks?: readonly string[] }[] }
 export interface ResearchStartResponse { readonly accepted: boolean; readonly runId: string; readonly workflow?: WorkflowRun }
 export interface WorkflowDefinition { readonly id: string; readonly label: string; readonly intentDescription: string; readonly inputSchema: Readonly<Record<string, unknown>>; readonly requiredInputs: readonly string[]; readonly outputContract: string; readonly knowledgeEffects: readonly string[] }
+export type ThemeFrameworkDecision = 'include' | 'exclude' | 'pending'
+export type ThemeFrameworkReviewStatus = 'running' | 'awaiting_review' | 'rejected' | 'committed' | 'stale' | 'blocked' | 'failed'
+export interface ThemeFrameworkReviewItem {
+  readonly candidateId: string
+  readonly kind: 'industry' | 'relation'
+  readonly recommendation: ThemeFrameworkDecision
+  readonly name?: string
+  readonly description?: string
+  readonly sourceIndustryRef?: string
+  readonly targetIndustryRef?: string
+  readonly relationType?: string
+  readonly topologyRole?: 'main_chain' | 'cross_chain'
+  readonly boundaryRationale: string
+  readonly relevanceRationale: string
+  readonly directionRationale?: string
+  readonly evidenceRefs: readonly string[]
+  readonly coverageGaps: readonly string[]
+}
+export interface ThemeFrameworkReviewCandidate {
+  readonly knowledgeBaseId: string
+  readonly basedOnRevision: number
+  readonly theme: { readonly name: string; readonly definition?: string }
+  readonly framework: {
+    readonly proposedDefinition: { readonly statement: string; readonly status: 'supported' | 'provisional' }
+    readonly inclusionPrinciples: readonly string[]
+    readonly exclusionPrinciples: readonly string[]
+    readonly industryCandidates: readonly ThemeFrameworkReviewItem[]
+    readonly relationCandidates: readonly ThemeFrameworkReviewItem[]
+    readonly coverageGaps: readonly { readonly gapId: string; readonly question: string; readonly reason: string; readonly affectedCandidateIds: readonly string[] }[]
+  }
+  readonly acquisitionStatus: string
+  readonly diagnostics: readonly string[]
+  readonly evidence: readonly { readonly evidenceId: string; readonly summary: string; readonly sourceRef: string }[]
+}
+export interface ThemeFrameworkReviewResponse {
+  readonly status: ThemeFrameworkReviewStatus
+  readonly workflowRunId: string
+  readonly candidate?: ThemeFrameworkReviewCandidate
+  readonly receipt?: { readonly themeRef: string; readonly committedRevision: number; readonly decisionCount: number }
+}
+export interface ThemeFrameworkActionResponse {
+  readonly status: string
+  readonly workflowRunId: string
+  readonly themeRef?: string
+  readonly committedRevision?: number
+  readonly decisionCount?: number
+  readonly diagnostics?: readonly string[]
+}
 export interface ResearchRequest { readonly query: string; readonly mode?: { readonly type: 'free_research' } | { readonly type: 'workflow'; readonly workflowId: string }; readonly contextPolicy?: { readonly structuredKnowledge: boolean; readonly sourceLibrary: boolean }; readonly persistencePolicy?: { readonly writeKnowledge: boolean }; readonly attachments?: readonly string[] }
 export interface ResearchDispatchDecision { readonly mode: 'workflow' | 'skill_plan' | 'free_research'; readonly workflow?: { readonly id: string; readonly confidence: number; readonly arguments: Readonly<Record<string, unknown>> }; readonly skills: readonly { readonly id: string; readonly purpose: string }[]; readonly entities: readonly { readonly type: string; readonly value: string; readonly confidence: number }[]; readonly missingRequiredInputs: readonly string[]; readonly contextPolicy: { readonly structuredKnowledge: boolean; readonly sourceLibrary: boolean }; readonly persistencePolicy: { readonly writeKnowledge: boolean }; readonly rationale: string }
 export interface ResearchExecutionSummary { readonly mode: 'Free Research' | 'Explicit Workflow'; readonly workflowId?: string; readonly workflowLabel?: string; readonly selectedSkillIds: readonly string[]; readonly argumentsStatus: 'not_required' | 'extracted' | 'missing'; readonly argumentKeys: readonly string[]; readonly contextPolicy: { readonly structuredKnowledge: boolean; readonly sourceLibrary: boolean }; readonly persistencePolicy: { readonly writeKnowledge: boolean } }
@@ -279,6 +327,9 @@ export class RuntimeClient {
   async getResearchReport(reportId: string): Promise<ResearchReport> { return this.request(`/api/research-reports/${encodeURIComponent(reportId)}`) }
   async listWorkflowDefinitions(): Promise<readonly WorkflowDefinition[]> { return (await this.request<{ workflows: readonly WorkflowDefinition[] }>('/api/research/workflows')).workflows }
   async dispatchResearch(input: ResearchRequest): Promise<ResearchDispatchResponse> { return this.mutate('/api/research/dispatch', input) }
+  async getThemeFrameworkRun(runId: string): Promise<ThemeFrameworkReviewResponse> { return this.request(`/api/theme-framework/runs/${encodeURIComponent(runId)}`, {}, true) }
+  async acceptThemeFrameworkRun(runId: string, decisions: Readonly<Record<string, ThemeFrameworkDecision>>): Promise<ThemeFrameworkActionResponse> { return this.mutate(`/api/theme-framework/runs/${encodeURIComponent(runId)}/accept`, { decisions }) }
+  async rejectThemeFrameworkRun(runId: string): Promise<ThemeFrameworkActionResponse> { return this.mutate(`/api/theme-framework/runs/${encodeURIComponent(runId)}/reject`, {}) }
   async listResearchBundles(limit = 20): Promise<readonly ResearchBundleSummary[]> { return (await this.request<{ bundles: readonly ResearchBundleSummary[] }>(`/api/research/bundles?limit=${limit}`)).bundles }
   async getResearchBundle(bundleId: string): Promise<ResearchBundleSummary & { readonly structuredResult: unknown; readonly sourceLibraryHits: readonly SourceLibraryHit[] }> { return this.request(`/api/research/bundles/${encodeURIComponent(bundleId)}`) }
   async searchSourceLibrary(query: string, sourceLibrary = true): Promise<{ readonly enabled: boolean; readonly hits: readonly SourceLibraryHit[] }> { return this.mutate('/api/research/source-library/search', { query, contextPolicy: { sourceLibrary } }) }
