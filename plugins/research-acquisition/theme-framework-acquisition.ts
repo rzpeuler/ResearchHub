@@ -68,6 +68,30 @@ function canonicalUrl(value: string | undefined): string | undefined {
     return url.toString()
   } catch { return undefined }
 }
+function sourceTitle(source: NormalizedResearchSource): string {
+  return source.title.trim().slice(0, 500) || source.candidate.title.slice(0, 500)
+}
+function titleTerms(value: string): { readonly latin: ReadonlySet<string>; readonly cjk: readonly string[] } {
+  const normalized = value.normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+  const latin = new Set((normalized.match(/[\p{Script=Latin}\p{N}]+/gu) ?? []).filter((term) => Array.from(term).length >= 2))
+  const cjkRuns = normalized.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]+/gu) ?? []
+  const cjk = cjkRuns.flatMap((run) => {
+    const chars = Array.from(run)
+    if (chars.length === 2) return [run]
+    if (chars.length < 3) return []
+    return Array.from({ length: chars.length - 2 }, (_, index) => chars.slice(index, index + 3).join(''))
+  })
+  return { latin, cjk }
+}
+function titleMatchesTheme(title: string, themeName: string): boolean {
+  const theme = titleTerms(themeName)
+  if (theme.latin.size === 0 && theme.cjk.length === 0) return false
+  const candidate = titleTerms(title)
+  // Latin terms are matched as complete title tokens; CJK terms use meaningful
+  // two-character names or overlapping trigrams from longer theme compounds.
+  return [...theme.latin].some((term) => candidate.latin.has(term))
+    || theme.cjk.some((term) => candidate.cjk.some((candidateTerm) => candidateTerm.includes(term) || term.includes(candidateTerm)))
+}
 function eligibleRights(source: NormalizedResearchSource): boolean {
   const rights = source.rights
   return (rights.accessScope === 'public' || rights.accessScope === 'authenticated')
@@ -168,6 +192,8 @@ export class ThemeFrameworkAcquisitionAdapter implements ThemeFrameworkAcquisiti
         diagnostics.push('acquisition_cancelled_before_next_persistence')
         break
       }
+      const title = sourceTitle(source)
+      if (!titleMatchesTheme(title, themeName)) { diagnostics.push(`source_rejected_title_relevance:${source.candidate.provider}`); continue }
       const representation = rawRepresentation(source)
       if (!representation) { diagnostics.push(`source_rejected_raw_representation:${source.candidate.provider}`); continue }
       if (!eligibleRights(source)) { diagnostics.push(`source_rejected_rights:${source.candidate.provider}`); continue }
@@ -191,7 +217,6 @@ export class ThemeFrameworkAcquisitionAdapter implements ThemeFrameworkAcquisiti
         diagnostics.push('source_persistence_kb_refresh_failed')
         break
       }
-      const title = source.title.trim().slice(0, 500) || source.candidate.title.slice(0, 500)
       let rawResult: RawDocumentGatewayV04Result
       try { rawResult = await this.gateway.submit({
         handle,

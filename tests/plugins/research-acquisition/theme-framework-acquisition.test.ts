@@ -16,6 +16,7 @@ const html = new TextEncoder().encode('<!doctype html><html><body><h1>Industry s
 
 type FixtureDocument = {
   readonly id: string
+  readonly title?: string
   readonly url?: string
   readonly bytes?: Uint8Array
   readonly mediaType?: string | null
@@ -30,7 +31,7 @@ class FixturePlugin implements ResearchAcquisitionPlugin {
   constructor(documents: readonly FixtureDocument[]) {
     this.candidates = documents.map((document) => {
       this.documents.set(document.id, document)
-      return { candidateId: document.id, kind: 'web_article', tier: 2, title: `Evidence ${document.id}`, url: document.url ?? `https://fixture.example/${document.id}`, provider: this.name }
+      return { candidateId: document.id, kind: 'web_article', tier: 2, title: document.title ?? `Evidence ${document.id}`, url: document.url ?? `https://fixture.example/${document.id}`, provider: this.name }
     })
   }
   async discover(): Promise<readonly ResearchSourceCandidate[]> { this.discoverCalls += 1; return this.candidates }
@@ -74,8 +75,8 @@ function adapter(root: string, plugin: ResearchAcquisitionPlugin, registry = new
   return new ThemeFrameworkAcquisitionAdapter({ knowledgeBaseRoot: root, plugins: [plugin], registry, clock: () => NOW })
 }
 
-function request(knowledgeBaseId: string, knowledgeBaseRevision: number, maxSources = 8, signal?: AbortSignal) {
-  return { themeName: 'AI Compute', definition: 'AI compute infrastructure and its supply chain', maxSources, knowledgeBaseId, knowledgeBaseRevision, ...(signal ? { signal } : {}) }
+function request(knowledgeBaseId: string, knowledgeBaseRevision: number, maxSources = 8, signal?: AbortSignal, themeName = 'Evidence') {
+  return { themeName, definition: 'AI compute infrastructure and its supply chain', maxSources, knowledgeBaseId, knowledgeBaseRevision, ...(signal ? { signal } : {}) }
 }
 
 test('Theme Framework adapter persists source and raw before returning verified evidence bindings and is rerun-idempotent', async () => {
@@ -119,6 +120,54 @@ test('Theme Framework adapter denies sources without explicit retention policy b
     assert.ok(result.diagnostics?.includes('source_rejected_rights:fixture-industry-acquisition'))
     assert.equal(after.revision, before.revision)
     assert.equal((await readCanonicalV04Assets(root)).objects.some((entry) => entry.kind === 'source'), false)
+  })
+})
+
+test('Theme Framework title gate rejects generic navigation pages before Raw Gateway persistence', async () => {
+  await withKb(async (root, knowledgeBaseId) => {
+    const registry = new KnowledgeBaseRegistry()
+    const plugin = new FixturePlugin([
+      { id: 'english', title: 'English' },
+      { id: 'exhibition', title: '行业展览' },
+      { id: 'exchange', title: '国际交流' },
+    ])
+    const before = await registry.mount(root)
+    const result = await adapter(root, plugin, registry).acquire(request(knowledgeBaseId, before.revision))
+    const after = await registry.refresh(root)
+
+    assert.equal(result.status, 'unavailable')
+    assert.equal(result.reason, 'no_eligible_durable_sources')
+    assert.equal(result.diagnostics?.filter((item) => item === 'source_rejected_title_relevance:fixture-industry-acquisition').length, 3)
+    assert.equal(after.revision, before.revision)
+    assert.equal((await readCanonicalV04Assets(root)).objects.some((entry) => entry.kind === 'source'), false)
+  })
+})
+
+test('Theme Framework title gate accepts a relevant mixed-language article and Chinese theme trigrams', async () => {
+  await withKb(async (root, knowledgeBaseId) => {
+    const registry = new KnowledgeBaseRegistry()
+    const plugin = new FixturePlugin([
+      { id: 'relevant-ai', title: 'AI 驱动下 PCB 制程演进与算力需求' },
+      { id: 'generic', title: '国际交流' },
+    ])
+    const before = await registry.mount(root)
+    const result = await adapter(root, plugin, registry).acquire(request(knowledgeBaseId, before.revision, 8, undefined, 'AI 算力'))
+
+    assert.equal(result.status, 'partial', JSON.stringify(result))
+    assert.equal(result.evidence.length, 1)
+    assert.match(result.evidence[0]!.description, /^AI 驱动下 PCB 制程演进/u)
+    assert.equal((await registry.refresh(root)).revision, before.revision + 1)
+
+    const chinesePlugin = new FixturePlugin([
+      { id: 'relevant-cn', title: '先进封装产业链的技术演进' },
+      { id: 'category-cn', title: '行业展览' },
+    ])
+    const afterFirst = await registry.refresh(root)
+    const chinese = await adapter(root, chinesePlugin, registry).acquire(request(knowledgeBaseId, afterFirst.revision, 8, undefined, '先进封装'))
+
+    assert.equal(chinese.status, 'partial', JSON.stringify(chinese))
+    assert.equal(chinese.evidence.length, 1)
+    assert.match(chinese.evidence[0]!.description, /^先进封装产业链/u)
   })
 })
 
