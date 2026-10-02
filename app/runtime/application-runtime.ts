@@ -1,7 +1,7 @@
 import { join, resolve } from 'node:path'
 import { getAgentDir, ModelRuntime, SessionManager } from '@earendil-works/pi-coding-agent'
 import { PiReasoningExecutor } from '../../plugins/reasoning/pi/executor.ts'
-import { createIndustryProductionReasoningExecutor, selectProductionReasoningModel } from '../pi/model-selection.ts'
+import { createIndustryProductionReasoningExecutor, createThemeFrameworkProductionReasoningExecutor, selectProductionReasoningModel } from '../pi/model-selection.ts'
 import { KnowledgeService } from '../services/knowledge-service.ts'
 import { KnowledgeGraphService } from '../services/knowledge-graph-service.ts'
 import { KnowledgeTopicProjectionService } from '../services/knowledge-topic-projection.ts'
@@ -166,10 +166,11 @@ export class ResearchHubApplicationRuntime {
       try {
         const manifest = await loadKnowledgeBaseManifest(mountedKnowledgeBaseRoot)
         if (manifest.schemaVersion === '0.4' && manifest.storageFormatVersion === '1' && manifest.status === 'active') {
+          const themeFrameworkReasoningExecutor = options.reasoningExecutor ?? await createThemeFrameworkProductionReasoningExecutor({ capabilities: reasoningExecutor.capabilities() })
           themeFrameworkService = new ThemeFrameworkService({
             mountedKnowledgeBaseRoot,
             workflowService,
-            reasoningExecutor,
+            reasoningExecutor: themeFrameworkReasoningExecutor,
             acquisition: new ThemeFrameworkAcquisitionAdapter({ knowledgeBaseRoot: mountedKnowledgeBaseRoot, plugins: [...industryAcquisitionPlugins, new AkshareIndustryResearchPlugin(akshare)] }),
           })
         }
