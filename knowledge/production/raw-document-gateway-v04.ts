@@ -79,6 +79,7 @@ export interface RawDocumentGatewayV04Options {
 
 interface CleanRequest {
   readonly workflowRunId: string
+  readonly bytes: Uint8Array
   readonly filename: string
   readonly mediaType: string
   readonly title: string
@@ -170,7 +171,10 @@ function validateRights(value: unknown, now: number): RawDocumentRightsV04 {
 
 function cleanInput(input: unknown, now: number): CleanRequest {
   if (!record(input)) throw new Error('input must be an object')
-  if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength < 1 || input.bytes.byteLength > MAX_DOCUMENT_BYTES) throw new Error(`bytes must be a non-empty Uint8Array of at most ${MAX_DOCUMENT_BYTES} bytes`)
+  const incomingBytes = input.bytes
+  if (!(incomingBytes instanceof Uint8Array) || incomingBytes.byteLength < 1 || incomingBytes.byteLength > MAX_DOCUMENT_BYTES) throw new Error(`bytes must be a non-empty Uint8Array of at most ${MAX_DOCUMENT_BYTES} bytes`)
+  const bytes = new Uint8Array(incomingBytes)
+  if (bytes.byteLength < 1 || bytes.byteLength > MAX_DOCUMENT_BYTES) throw new Error(`bytes must be a non-empty Uint8Array of at most ${MAX_DOCUMENT_BYTES} bytes`)
   const filename = cleanFilename(input.filename)
   if (typeof input.mediaType !== 'string' || !MEDIA_TYPE.test(input.mediaType.trim())) throw new Error('mediaType must be a valid MIME type')
   if (typeof input.workflowRunId !== 'string' || !WORKFLOW_RUN_ID.test(input.workflowRunId)) throw new Error('workflowRunId must be 1-80 safe letters, digits, underscores, or hyphens')
@@ -193,6 +197,7 @@ function cleanInput(input: unknown, now: number): CleanRequest {
   }
   return {
     workflowRunId: input.workflowRunId,
+    bytes,
     filename,
     mediaType: input.mediaType.trim().toLowerCase(),
     title,
@@ -338,9 +343,8 @@ export class RawDocumentKnowledgeGatewayV04 {
 
       if (!['public', 'authenticated'].includes(request.rights.accessScope) || request.rights.retentionAllowed !== true || request.rights.aiProcessingAllowed !== true || request.rights.derivativeKnowledgeAllowed !== true) return blocked(handle, 'RAW_DOCUMENT_RIGHTS_INELIGIBLE', 'Source rights do not permit retained Raw, AI processing, and derived Knowledge', manifest.revision)
 
-      const bytes = Uint8Array.from(input.bytes)
       const raw = await archiveRaw(currentHandle, {
-        bytes,
+        bytes: request.bytes,
         originalFilename: request.filename,
         mediaType: request.mediaType,
         suppliedMetadata: { title: request.title, institution: request.institution ?? request.publisher, author: request.author, publishedAt: request.publishedAt, sourceUrl: request.canonicalUrl },
@@ -370,7 +374,20 @@ export class RawDocumentKnowledgeGatewayV04 {
       let write: KnowledgeWriteResultV04
       try { write = await this.writer(currentHandle, validation.validatedChangeSet, { registry: this.registry, clock: this.clock }) as KnowledgeWriteResultV04 }
       catch (error) { return { ...failed(currentHandle, 'RAW_DOCUMENT_WRITER_FAILED', error instanceof Error ? error.message : String(error)), rawRef: raw.manifest.rawRef as `raw-sha256-${string}`, rawReused: raw.reused, changeSetId: changeSet.changeSetId } }
-      if (write.status === 'failed' || write.status === 'rejected') return { ...failed(currentHandle, write.error?.code ?? 'RAW_DOCUMENT_WRITER_REJECTED', write.error?.message ?? 'Shared Writer rejected the validated Source ChangeSet', write.committedRevision), rawRef: raw.manifest.rawRef as `raw-sha256-${string}`, rawReused: raw.reused, changeSetId: changeSet.changeSetId }
+      if (write.status === 'failed' || write.status === 'rejected') {
+        const code = write.error?.code ?? 'RAW_DOCUMENT_WRITER_REJECTED'
+        const message = write.error?.message ?? 'Shared Writer rejected the validated Source ChangeSet'
+        if (code === 'stale_revision' || code === 'idempotency_conflict') {
+          let currentRevision = write.committedRevision
+          try {
+            const latest = await loadKnowledgeBaseManifest(currentHandle.rootRef)
+            if (latest.knowledgeBaseId === currentHandle.knowledgeBaseId) currentRevision = latest.revision
+          } catch { /* Preserve the best revision available from Writer. */ }
+          const conflictCode = code === 'stale_revision' ? 'RAW_DOCUMENT_STALE_REVISION' : 'RAW_DOCUMENT_IDEMPOTENCY_CONFLICT'
+          return { ...blocked(currentHandle, conflictCode, message, currentRevision), rawRef: raw.manifest.rawRef as `raw-sha256-${string}`, rawReused: raw.reused, changeSetId: changeSet.changeSetId }
+        }
+        return { ...failed(currentHandle, code, message, write.committedRevision), rawRef: raw.manifest.rawRef as `raw-sha256-${string}`, rawReused: raw.reused, changeSetId: changeSet.changeSetId }
+      }
       return { status: write.status, knowledgeBaseId: write.knowledgeBaseId, baseRevision: write.baseRevision, knowledgeBaseRevision: write.committedRevision, sourceRef: source.id, rawRef: raw.manifest.rawRef as `raw-sha256-${string}`, changeSetId: write.changeSetId, rawReused: raw.reused, createdIds: write.createdIds, updatedIds: write.updatedIds, errors: [] }
     } catch (error) {
       const code = record(error) && typeof error.code === 'string' ? error.code : undefined

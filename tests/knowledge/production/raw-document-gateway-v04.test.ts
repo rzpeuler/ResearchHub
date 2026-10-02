@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { KnowledgeBaseRegistry } from '../../../knowledge/registry/registry.ts'
 import { RawDocumentKnowledgeGatewayV04, type RawDocumentGatewayV04Input } from '../../../knowledge/production/raw-document-gateway-v04.ts'
+import { ThemeManagementGatewayV04 } from '../../../knowledge/production/theme-management-v04.ts'
 import { getRaw, readRaw } from '../../../knowledge/raw/raw-archive.ts'
 import { createFreshKnowledgeBaseV04, loadKnowledgeBaseManifest, readCanonicalV04Assets } from '../../../knowledge/storage/index.ts'
 import { writeKnowledgeBase } from '../../../knowledge/writer/writer.ts'
@@ -108,6 +109,21 @@ test('same workflow retry is idempotent after the original handle becomes stale'
   })
 })
 
+test('bytes are snapshotted before the first asynchronous boundary', async () => {
+  await withFreshKb('input-snapshot', async (root) => {
+    const handle = await mount(root)
+    const gateway = new RawDocumentKnowledgeGatewayV04({ clock })
+    const mutableInput = { ...request(handle) }
+    const expectedBytes = Buffer.from(mutableInput.bytes)
+    const pending = gateway.submit(mutableInput)
+    mutableInput.bytes = Buffer.from('replacement bytes supplied after submit began')
+    const result = await pending
+    assert.equal(result.status, 'committed', result.errors.map((error) => error.message).join('; '))
+    assert.deepEqual(await readRaw(handle, result.rawRef!), expectedBytes)
+    assert.notDeepEqual(await readRaw(handle, result.rawRef!), mutableInput.bytes)
+  })
+})
+
 test('ineligible or unspecified rights block before Raw archival', async () => {
   await withFreshKb('rights', async (root) => {
     const handle = await mount(root)
@@ -184,6 +200,49 @@ test('Writer failure reports no canonical success while preserving the archived 
     assert.equal(retry.rawReused, true)
     assert.equal((await readCanonicalV04Assets(root)).objects.length, 1)
     assert.equal((await loadKnowledgeBaseManifest(root)).revision, 1)
+  })
+})
+
+test('shared Writer stale revision and idempotency conflicts are blocked with current revision', async () => {
+  await withFreshKb('writer-stale-conflict', async (root) => {
+    const writer = (async (writerHandle) => {
+      const concurrent = await new ThemeManagementGatewayV04({ clock }).createTheme(await mount(root), { name: 'Concurrent Theme' })
+      assert.equal(concurrent.status, 'committed', concurrent.errors.map((error) => error.message).join('; '))
+      return {
+        status: 'rejected' as const,
+        knowledgeBaseId: writerHandle.knowledgeBaseId,
+        changeSetId: 'fixture-stale-writer',
+        baseRevision: writerHandle.revision,
+        committedRevision: writerHandle.revision,
+        createdIds: [],
+        updatedIds: [],
+        error: { code: 'stale_revision', message: 'Writer observed a concurrent revision advance' },
+      }
+    }) as typeof writeKnowledgeBase
+    const result = await new RawDocumentKnowledgeGatewayV04({ clock, writer }).submit(request(await mount(root)))
+    assert.equal(result.status, 'blocked')
+    assert.equal(result.errors[0]?.code, 'RAW_DOCUMENT_STALE_REVISION')
+    assert.equal(result.knowledgeBaseRevision, (await loadKnowledgeBaseManifest(root)).revision)
+    assert.ok(result.knowledgeBaseRevision > result.baseRevision)
+    assert.equal((await readCanonicalV04Assets(root)).objects.some((asset) => asset.value.id.startsWith('source:')), false)
+  })
+
+  await withFreshKb('writer-idempotency-conflict', async (root) => {
+    const writer = (async (writerHandle) => ({
+      status: 'rejected' as const,
+      knowledgeBaseId: writerHandle.knowledgeBaseId,
+      changeSetId: 'fixture-idempotency-writer',
+      baseRevision: writerHandle.revision,
+      committedRevision: writerHandle.revision,
+      createdIds: [],
+      updatedIds: [],
+      error: { code: 'idempotency_conflict', message: 'Writer observed a reused workflow run ID' },
+    })) as typeof writeKnowledgeBase
+    const result = await new RawDocumentKnowledgeGatewayV04({ clock, writer }).submit(request(await mount(root)))
+    assert.equal(result.status, 'blocked')
+    assert.equal(result.errors[0]?.code, 'RAW_DOCUMENT_IDEMPOTENCY_CONFLICT')
+    assert.equal(result.knowledgeBaseRevision, (await loadKnowledgeBaseManifest(root)).revision)
+    assert.equal((await readCanonicalV04Assets(root)).objects.length, 0)
   })
 })
 
