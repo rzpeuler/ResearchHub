@@ -5,7 +5,7 @@ import { KnowledgeCurationSkill } from '../../skills/knowledge-curation/skill.ts
 import { runRawDocumentKnowledgeIngestion } from '../../workflows/raw-document-knowledge-ingestion/workflow.ts'
 import type { IngestionWorkflowResult } from '../../workflows/raw-document-knowledge-ingestion/contracts.ts'
 import { runRawDocumentKnowledgePreviewV04 } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts'
-import type { RawDocumentCandidateGroupV04, RawDocumentPreviewWorkflowResultV04 } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts'
+import type { RawDocumentCandidateGroupV04, RawDocumentPreviewSnapshotStoreV04, RawDocumentPreviewWorkflowResultV04 } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts'
 import { acceptRawDocumentV04Candidates } from '../../workflows/raw-document-knowledge-ingestion/v04-candidate-acceptance.ts'
 import type { RawDocumentV04CandidateAcceptanceResult } from '../../workflows/raw-document-knowledge-ingestion/v04-candidate-acceptance.ts'
 import { readRawDocumentV04PreviewSnapshot } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-store.ts'
@@ -40,6 +40,7 @@ export interface ProductionServiceOptions {
   readonly rawDocumentPreviewRunner?: typeof runRawDocumentKnowledgePreviewV04
   readonly rawDocumentCandidateAcceptanceRunner?: typeof acceptRawDocumentV04Candidates
   readonly rawDocumentPreviewDocumentResolver?: DocumentInputResolverV04
+  readonly rawDocumentPreviewSnapshotStore?: RawDocumentPreviewSnapshotStoreV04
 }
 
 export class ProductionService {
@@ -129,17 +130,23 @@ export class ProductionService {
           sourceMetadata: input.sourceMetadata,
           ...(input.instructions === undefined ? {} : { instructions: input.instructions }),
           ...(this.options.rawDocumentPreviewDocumentResolver === undefined ? {} : { documentResolver: this.options.rawDocumentPreviewDocumentResolver }),
+          ...(this.options.rawDocumentPreviewSnapshotStore === undefined ? {} : { previewSnapshotStore: this.options.rawDocumentPreviewSnapshotStore }),
           signal: combined.signal,
         })
         const status: WorkflowOutcome['status'] = workflow.status === 'cancelled' ? 'cancelled'
           : workflow.status === 'blocked' || workflow.status === 'incompatible_schema' || workflow.status === 'source_only' ? 'blocked'
             : workflow.status === 'preview_partial' ? 'completed_with_review' : 'completed'
         const summary = previewSummary(workflow)
-        if (status !== 'cancelled') this.options.workflowService.markAuthoritativeTerminal(input.workflowRunId, status, { summary, errorSummary: workflow.extractionPreview.errors.length ? workflow.extractionPreview.errors.join('; ').slice(0, 500) : undefined })
+        if (status !== 'cancelled') this.options.workflowService.markAuthoritativeTerminal(input.workflowRunId, status, { summary, ...(status === 'blocked' ? { errorSummary: summary } : {}) })
         return { status, summary, workflow }
+      } catch (error) {
+        if (combined.signal.aborted || activeSignal.aborted || callerSignal?.aborted) throw new ApplicationServiceError('cancelled', 'V0.4 raw-document preview was cancelled')
+        throw new ApplicationServiceError('failed', 'V0.4 raw-document preview failed during a bounded processing stage')
       } finally { combined.dispose() }
-    }).then(({ workflow }) => {
-      const result = projectV04Preview(input.workflowRunId, workflow)
+    }).then(async ({ workflow }) => {
+      const provisional = projectV04Preview(input.workflowRunId, workflow)
+      const verified = workflow.previewSnapshot.committable ? await this.readRawDocumentKnowledgePreviewV04(input.workflowRunId) : undefined
+      const result = verified ?? (provisional.committable ? { ...provisional, committable: false, candidateGroups: [], statusNote: 'Durable preview verification was unavailable.' } : provisional)
       this.rawDocumentPreviewResults.set(input.workflowRunId, result)
       return result
     }).catch((error) => {
@@ -158,15 +165,20 @@ export class ProductionService {
     if (!this.options.mountedKnowledgeBaseRoot) throw new ApplicationServiceError('no_kb_mounted', 'No canonical Knowledge Base is mounted')
     if (!V04_RUN_ID.test(workflowRunId)) throw new ApplicationServiceError('invalid_input', 'workflowRunId is invalid')
     const inMemoryResult = this.rawDocumentPreviewResults.get(workflowRunId)
-    if (inMemoryResult && !inMemoryResult.committable) return inMemoryResult
-    const handle = await this.registry.refresh(this.options.mountedKnowledgeBaseRoot)
-    if (handle.schemaVersion !== '0.4' || handle.storageFormatVersion !== '1' || handle.status !== 'active' || !handle.writable) return inMemoryResult
-    const snapshot = await readRawDocumentV04PreviewSnapshot(handle, workflowRunId)
-    if (!snapshot) return this.rawDocumentPreviewResults.get(workflowRunId)
+    let handle: KnowledgeBaseHandle
+    try { handle = await this.registry.refresh(this.options.mountedKnowledgeBaseRoot) }
+    catch { return nonCommittablePreview(inMemoryResult, 'The mounted Knowledge Base could not be verified.') }
+    if (handle.schemaVersion !== '0.4' || handle.storageFormatVersion !== '1' || handle.status !== 'active' || !handle.writable) return nonCommittablePreview(inMemoryResult, 'The mounted Knowledge Base is not active Schema 0.4 / Storage Format 1.')
+    let snapshot: RawDocumentV04CandidatePreviewSnapshot | undefined
+    try { snapshot = await readRawDocumentV04PreviewSnapshot(handle, workflowRunId) }
+    catch { return nonCommittablePreview(inMemoryResult, 'The durable preview could not be verified against Source and Raw.') }
+    if (!snapshot) return nonCommittablePreview(inMemoryResult, 'No verified durable candidate preview exists for this run.')
     const workflow = this.options.workflowService.getWorkflowStatus(workflowRunId)
-    const workflowAllowsCommit = workflow === undefined || workflow.status === 'completed' || workflow.status === 'completed_with_review'
+    const workflowAllowsCommit = workflow === undefined || workflow.status === 'completed' || workflow.status === 'completed_with_review' || workflow.status === 'cancelled'
     const projected = projectV04Snapshot(workflowRunId, snapshot, handle, workflowAllowsCommit)
-    return workflow === undefined || workflowAllowsCommit ? projected : { ...projected, status: workflow.status === 'cancelled' ? 'cancelled' : 'blocked', committable: false, candidateGroups: [] }
+    return workflow?.status === 'cancelled'
+      ? { ...projected, statusNote: 'The Workflow was cancelled; the durable preview persisted later and passed read-back verification.' }
+      : projected
   }
   async acceptRawDocumentV04Candidates(input: ApplicationRawDocumentPreviewAcceptanceInput): Promise<RawDocumentV04CandidateAcceptanceResult> {
     if (!this.options.mountedKnowledgeBaseRoot) throw new ApplicationServiceError('no_kb_mounted', 'No canonical Knowledge Base is mounted')
@@ -223,8 +235,14 @@ function projectV04Snapshot(runId: string, snapshot: RawDocumentV04CandidatePrev
   const validSnapshot = snapshot.version === 2 && snapshot.extractionCompleteness !== undefined
   const compatibleHandle = handle.schemaVersion === '0.4' && handle.storageFormatVersion === '1' && handle.status === 'active' && handle.writable && handle.knowledgeBaseId === snapshot.knowledgeBaseId
   const committable = validSnapshot && compatibleHandle && workflowAllowsCommit
-  return { runId, status: committable ? snapshot.extractionCompleteness === 'partial' ? 'preview_partial' : 'preview_ready' : 'stale_revision', knowledgeBaseId: snapshot.knowledgeBaseId, sourceRef: snapshot.sourceRef, rawRef: snapshot.rawRef, documentId: snapshot.documentId, candidateGroups, committable }
+  return { runId, status: committable ? snapshot.extractionCompleteness === 'partial' ? 'preview_partial' : 'preview_ready' : 'stale_revision', knowledgeBaseId: snapshot.knowledgeBaseId, sourceRef: snapshot.sourceRef, rawRef: snapshot.rawRef, documentId: snapshot.documentId, candidateGroups, committable, ...(snapshot.extractionCompleteness === undefined ? {} : { extractionCompleteness: snapshot.extractionCompleteness }), ...(snapshot.incompleteUnits === undefined ? {} : { incompleteUnits: snapshot.incompleteUnits.map((unit) => ({ unitId: unit.unitId, proposedUnitId: unit.proposedUnitId, status: unit.status, errorSummary: safeUnitSummary(unit.status) })) }) }
 }
 function cancelledV04Preview(runId: string): ApplicationRawDocumentPreviewV04 {
   return { runId, status: 'cancelled', candidateGroups: [], committable: false }
 }
+function nonCommittablePreview(previous: ApplicationRawDocumentPreviewV04 | undefined, statusNote: string): ApplicationRawDocumentPreviewV04 | undefined {
+  if (!previous) return undefined
+  const { extractionCompleteness: _completeness, incompleteUnits: _incomplete, ...safePrevious } = previous
+  return { ...safePrevious, status: previous.status === 'incompatible_schema' ? 'incompatible_schema' : previous.status === 'cancelled' ? 'cancelled' : 'source_only', committable: false, candidateGroups: [], statusNote }
+}
+function safeUnitSummary(status: 'failed' | 'cancelled'): string { return status === 'cancelled' ? 'Extraction unit was cancelled.' : 'Extraction unit failed; details are withheld from the preview response.' }

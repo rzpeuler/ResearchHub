@@ -3,6 +3,7 @@ import type { IndustryOperatingObservation, IndustryOperatingObservationStatus }
 import type { RawDocumentMetadataV04, RawDocumentRightsV04 } from '../../knowledge/production/raw-document-gateway-v04.ts'
 import type { RawDocumentCandidateGroupV04, RawDocumentPreviewWorkflowResultV04 } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts'
 import type { RawDocumentV04CandidateAcceptanceResult } from '../../workflows/raw-document-knowledge-ingestion/v04-candidate-acceptance.ts'
+import type { RawDocumentV04IncompleteExtractionUnit } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-store.ts'
 
 export type ApplicationErrorCode = 'not_found' | 'invalid_input' | 'cancelled' | 'failed' | 'conflict' | 'no_kb_mounted' | 'unauthorized_runtime_token'
 
@@ -202,6 +203,9 @@ export interface ApplicationRawDocumentPreviewV04 {
   readonly candidateGroups: readonly RawDocumentCandidateGroupV04[]
   readonly committable: boolean
   readonly errorSummary?: string
+  readonly statusNote?: string
+  readonly extractionCompleteness?: 'complete' | 'partial'
+  readonly incompleteUnits?: readonly RawDocumentV04IncompleteExtractionUnit[]
 }
 export interface ApplicationRawDocumentPreviewAcceptanceInput {
   readonly previewWorkflowRunId: string
