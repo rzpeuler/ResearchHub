@@ -36,6 +36,71 @@ function idempotencyHash(changeSet: KnowledgeChangeSetV04): string {
   return hashKnowledgeObject(stableChangeSet)
 }
 
+function operationIds(changeSet: KnowledgeChangeSetV04, type: 'create' | 'update'): readonly string[] {
+  if (type === 'create') return changeSet.operations.flatMap((operation) => operation.type === 'create' ? [operation.object.id] : [])
+  return changeSet.operations.flatMap((operation) => operation.type === 'update' ? [operation.knowledgeId] : [])
+}
+
+function sameStringArray(value: unknown, expected: readonly string[]): boolean {
+  return Array.isArray(value) && value.length === expected.length && value.every((item, index) => item === expected[index])
+}
+
+async function verifyPriorExecutionState(
+  root: string,
+  manifest: Awaited<ReturnType<typeof loadKnowledgeBaseManifest>>,
+  changeSet: KnowledgeChangeSetV04,
+  prior: Dict,
+): Promise<{ readonly valid: true } | { readonly valid: false; readonly code: 'idempotency_conflict' | 'stale_target'; readonly message: string }> {
+  if (prior.workflowRunId !== changeSet.workflowRunId
+    || prior.changeSetId !== changeSet.changeSetId
+    || prior.knowledgeBaseId !== manifest.knowledgeBaseId
+    || prior.schemaVersionAtExecution !== '0.4'
+    || prior.status !== 'completed'
+    || !['committed', 'no_changes'].includes(String(prior.writeStatus))
+    || !Number.isSafeInteger(prior.committedRevision)
+    || Number(prior.committedRevision) < 0
+    || Number(prior.committedRevision) > manifest.revision) {
+    return { valid: false, code: 'idempotency_conflict', message: 'Prior Writer receipt is malformed or inconsistent with the current Knowledge Base.' }
+  }
+  const changes = typeof prior.changes === 'object' && prior.changes !== null && !Array.isArray(prior.changes) ? prior.changes as Dict : undefined
+  const createdIds = operationIds(changeSet, 'create')
+  const updatedIds = operationIds(changeSet, 'update')
+  if (!changes
+    || !sameStringArray(changes.createdIds, createdIds)
+    || !sameStringArray(changes.updatedIds, updatedIds)
+    || (prior.writeStatus === 'no_changes' && (createdIds.length > 0 || updatedIds.length > 0))) {
+    return { valid: false, code: 'idempotency_conflict', message: 'Prior Writer receipt change IDs do not match the submitted ChangeSet operations.' }
+  }
+
+  const finalObjects = new Map<string, KnowledgeAssetV04>()
+  for (const operation of changeSet.operations) {
+    const id = operation.type === 'create' ? operation.object.id : operation.knowledgeId
+    finalObjects.set(id, operation.object)
+  }
+  if (finalObjects.size === 0) return { valid: true }
+
+  let loaded: Awaited<ReturnType<typeof readCanonicalV04Assets>>
+  try {
+    loaded = await readCanonicalV04Assets(root)
+  } catch {
+    return { valid: false, code: 'stale_target', message: 'Canonical registry or assets could not be verified for idempotent replay.' }
+  }
+  const assetsById = new Map<string, typeof loaded.objects[number]>(loaded.objects.map((item) => [item.value.id, item]))
+  const registryById = new Map<string, typeof loaded.registry[number]>(loaded.registry.map((item) => [item.id, item]))
+  for (const [id, expected] of finalObjects) {
+    const asset = assetsById.get(id)
+    const entry = registryById.get(id)
+    const expectedKind = kindForKnowledgeV04(expected)
+    if (!asset || !entry) {
+      return { valid: false, code: 'stale_target', message: `Canonical target is missing during idempotent replay: ${id}` }
+    }
+    if (asset.kind !== expectedKind || entry.type !== expectedKind || hashKnowledgeObject(asset.value) !== hashKnowledgeObject(expected)) {
+      return { valid: false, code: 'stale_target', message: `Canonical target no longer matches the final ChangeSet object: ${id}` }
+    }
+  }
+  return { valid: true }
+}
+
 async function existingExecution(root: string, changeSet: KnowledgeChangeSetV04): Promise<Dict | undefined> {
   let names: string[]
   try {
@@ -115,7 +180,9 @@ export async function writeKnowledgeBaseV04(
         if (prior.changeSetHash !== stableHash && prior.changeSetHash !== hashKnowledgeObject(changeSet)) {
           return { ...base, error: { code: 'idempotency_conflict', message: 'Workflow run was already used with a different ChangeSet' } }
         }
-        const changes = typeof prior.changes === 'object' && prior.changes !== null ? prior.changes as Dict : {}
+        const verified = await verifyPriorExecutionState(root, manifest, changeSet, prior)
+        if (!verified.valid) return { ...base, error: { code: verified.code, message: verified.message } }
+        const changes = prior.changes as Dict
         return {
           ...base,
           status: 'already_committed',

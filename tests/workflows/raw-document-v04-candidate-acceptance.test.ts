@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { KnowledgeBaseHandle } from '../../knowledge/storage/handle.ts'
-import { createFreshKnowledgeBaseV04, readCanonicalV04Assets } from '../../knowledge/storage/index.ts'
+import { createFreshKnowledgeBaseV04, loadKnowledgeBaseManifest, readCanonicalV04Assets } from '../../knowledge/storage/index.ts'
 import { getRaw } from '../../knowledge/raw/raw-archive.ts'
 import { KnowledgeProductionGateway } from '../../knowledge/production/gateway.ts'
 import { RawDocumentKnowledgeGatewayV04 } from '../../knowledge/production/raw-document-gateway-v04.ts'
@@ -187,6 +187,44 @@ test('replay sorts the accepted set for a stable producer run and does not dupli
     assert.equal(second.producerRunId, first.producerRunId)
     assert.equal((await new KnowledgeBaseRegistry().mount(root)).revision, manifestAfterFirst)
     assert.deepEqual(second.canonicalRefsByCandidateId, first.canonicalRefsByCandidateId)
+  })
+})
+
+test('acceptance retry rejects a committed Writer log when its canonical Entity target was removed', async () => {
+  await withFreshKb('removed-accepted-target', async (root) => {
+    const source = await persistSource(root, 'source-removed-target')
+    const { snapshot } = await persistPreview(source)
+    const first = await acceptRawDocumentV04Candidates({ handle: source.handle, previewWorkflowRunId: snapshot.workflowRunId, acceptedCandidateIds: selectedBoth, now: () => NOW })
+    assert.equal(first.status, 'committed', first.errors.map((error) => error.message).join('; '))
+    assert.ok(first.producerRunId)
+
+    const writerLogPath = join(root, 'logs', 'research', `${first.producerRunId}.yaml`)
+    const writerLogBefore = await readFile(writerLogPath, 'utf8')
+    const manifestRevisionBefore = (await loadKnowledgeBaseManifest(root)).revision
+    const entityRef = first.canonicalRefsByCandidateId['industry-ai-computing']
+    assert.ok(entityRef)
+    const assets = await readCanonicalV04Assets(root)
+    const entity = assets.objects.find((item) => item.value.id === entityRef)
+    assert.ok(entity)
+    const registryPath = join(root, 'registry', 'assets.yaml')
+    const entries = JSON.parse(await readFile(registryPath, 'utf8')) as Record<string, unknown>
+    assert.ok(entries[entityRef])
+    delete entries[entityRef]
+    await writeFile(registryPath, `${JSON.stringify(entries)}\n`, 'utf8')
+    await unlink(entity.filePath)
+
+    const retry = await acceptRawDocumentV04Candidates({
+      handle: await new KnowledgeBaseRegistry().mount(root),
+      previewWorkflowRunId: snapshot.workflowRunId,
+      acceptedCandidateIds: selectedBoth,
+      now: () => NOW,
+    })
+    assert.equal(retry.status, 'failed')
+    assert.deepEqual(retry.acceptedCandidateIds, [])
+    assert.notEqual(retry.status, 'already_committed')
+    assert.match(retry.errors.map((error) => error.message).join('; '), /already used with a different ChangeSet/i)
+    assert.equal(await readFile(writerLogPath, 'utf8'), writerLogBefore)
+    assert.equal((await loadKnowledgeBaseManifest(root)).revision, manifestRevisionBefore)
   })
 })
 
