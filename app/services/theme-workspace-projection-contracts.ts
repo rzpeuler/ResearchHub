@@ -6,6 +6,14 @@ export interface ThemeWorkspaceProjectionLimits {
   readonly maxEdges?: number
   readonly maxItemsPerSection?: number
   readonly maxCompaniesPerIndustry?: number
+  /** Hard-capped response budget in UTF-8 bytes; defaults to the service budget. */
+  readonly maxResponseBytes?: number
+}
+
+export interface ThemeWorkspaceResponseBounds {
+  readonly maxBytes: number
+  readonly serializedBytes: number
+  readonly truncated: boolean
 }
 
 export interface ThemeWorkspaceProjectionInput extends ThemeWorkspaceProjectionLimits {
@@ -91,6 +99,8 @@ export interface ThemeWorkspaceCompetitionTable {
   readonly schemaId: string
   readonly columns: readonly ThemeWorkspaceCompetitionColumn[]
   readonly rows: readonly ThemeWorkspaceCompetitionRow[]
+  readonly rowTotal: number
+  readonly truncated: boolean
   readonly note?: string
 }
 
@@ -141,6 +151,7 @@ export interface ThemeWorkspaceIndustryProjection {
   readonly sections: ThemeWorkspaceContentProjection
   readonly companies: readonly ThemeWorkspaceCompanySummary[]
   readonly companiesLimit: ThemeWorkspaceLimitView
+  readonly responseBounds: ThemeWorkspaceResponseBounds
 }
 
 export interface ThemeWorkspaceCompanyProjection {
@@ -150,6 +161,7 @@ export interface ThemeWorkspaceCompanyProjection {
   readonly industryRef: string
   readonly company: ThemeWorkspaceCompanySummary
   readonly sections: ThemeWorkspaceContentProjection
+  readonly responseBounds: ThemeWorkspaceResponseBounds
 }
 
 export interface ThemeWorkspaceProjection {
@@ -166,6 +178,7 @@ export interface ThemeWorkspaceProjection {
     readonly excludedCount: number
     readonly basedOnRevision: number
   }
+  readonly responseBounds: ThemeWorkspaceResponseBounds
 }
 
 export type ThemeWorkspaceScopeRecommendation = ThemeFrameworkRecommendation

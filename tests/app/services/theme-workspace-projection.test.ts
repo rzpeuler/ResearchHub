@@ -66,7 +66,7 @@ async function prepare(root: string): Promise<{ readonly themeRef: ThemeRef; rea
     retrievedAt: NOW,
     contentHash: raw.manifest.contentHash.slice('sha256:'.length),
     rawRefs: [rawRef],
-    rights: { accessScope: 'public', providerTermsKnown: true, retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false },
+    rights: { accessScope: 'public', providerTermsKnown: true, retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false, expiresAt: '2026-10-03T00:00:00.000Z' },
     usagePolicy: { mode: 'personal_noncommercial_research', retainRaw: true, allowAiProcessing: true, allowDerivedKnowledge: true, redistributionAllowed: false },
     lifecycle: { status: 'active' },
   }
@@ -75,11 +75,16 @@ async function prepare(root: string): Promise<{ readonly themeRef: ThemeRef; rea
     id: 'source:restricted',
     title: 'Restricted source',
     rights: { ...source.rights, accessScope: 'restricted' },
-    usagePolicy: { ...source.usagePolicy, allowDerivedKnowledge: true },
+  }
+  const expired: KnowledgeSourceV04 = {
+    ...source,
+    id: 'source:expired',
+    title: 'Expired source',
   }
   await write(root, 'theme-workspace-source', [
     { operationId: 'source', type: 'create', object: source },
     { operationId: 'restricted-source', type: 'create', object: restricted },
+    { operationId: 'expired-source', type: 'create', object: expired },
   ])
   return { themeRef, rawRef }
 }
@@ -119,6 +124,8 @@ async function seedWorkspace(root: string): Promise<{ readonly themeRef: ThemeRe
   const pendingRef = 'entity:industry-pending'
   const tvRef = 'entity:industry-tv'
   const companyRef = 'entity:company-fixture'
+  const companyTwoRef = 'entity:company-fixture-two'
+  const restrictedCompanyRef = 'entity:company-restricted-exposure'
   const includeServers = scopeDecision(themeRef, handle.revision, industryCandidate('Server industry', serversRef), 'include', rawRef)
   const includePcb = scopeDecision(themeRef, handle.revision, industryCandidate('PCB industry', pcbRef), 'include', rawRef)
   const excludeConsumer = scopeDecision(themeRef, handle.revision, industryCandidate('Consumer electronics', consumerRef), 'exclude', rawRef)
@@ -128,6 +135,9 @@ async function seedWorkspace(root: string): Promise<{ readonly themeRef: ThemeRe
   const edgeCandidate: ThemeScopeCandidateV04 = { kind: 'relation', relationType: 'upstream_of', sourceFingerprint: pcbFingerprint, targetFingerprint: serversFingerprint, canonicalRef: 'relation:pcb-server' }
   const includeEdge = scopeDecision(themeRef, handle.revision, edgeCandidate, 'include', rawRef)
   const businessExposure = relation('relation:company-servers', 'business_exposure', companyRef, serversRef)
+  const businessExposureTwo = relation('relation:company-two-servers', 'business_exposure', companyTwoRef, serversRef)
+  const restrictedBusinessExposure = { ...relation('relation:company-restricted-servers', 'business_exposure', restrictedCompanyRef, serversRef), sourceRefs: ['source:restricted'] } as KnowledgeRelationV04
+  const expiredBusinessExposure = { ...relation('relation:company-expired-servers', 'business_exposure', 'entity:company-expired-exposure', serversRef), sourceRefs: ['source:expired'] } as KnowledgeRelationV04
   const themeServers = relation('relation:theme-servers', 'theme_exposure', themeRef, serversRef, { importance: 'core' })
   const themePcb = relation('relation:theme-pcb', 'theme_exposure', themeRef, pcbRef, { importance: 'material' })
   const facts = [
@@ -140,6 +150,8 @@ async function seedWorkspace(root: string): Promise<{ readonly themeRef: ThemeRe
     { id: 'claim:company-products', claimType: 'fact', statement: 'Fixture Corp sells server systems.', subjectRefs: [companyRef as `entity:${string}`], primarySubjectRef: companyRef as `entity:${string}`, sourceRefs: [SOURCE], provenance: [{ sourceRef: SOURCE, rawRef, locator: 'page 1', chunkRef: null }], lifecycle: { status: 'active' } },
     { id: 'claim:company-market-cap', claimType: 'fact', statement: 'Fixture Corp market capitalization.', subjectRefs: [companyRef as `entity:${string}`], primarySubjectRef: companyRef as `entity:${string}`, temporal: { asOf: '2026-09-30', scope: { type: 'point', start: '2026-09-30', end: '2026-09-30', label: 'quote date' } }, structuredValue: { metric: 'metric:market_cap', value: 100, unit: 'CNY', comparator: 'eq' }, sourceRefs: [SOURCE], provenance: [{ sourceRef: SOURCE, rawRef, locator: 'page 1', chunkRef: null }], lifecycle: { status: 'active' } },
     { id: 'claim:company-revenue', claimType: 'fact', statement: 'Fixture Corp FY2025 annual revenue.', subjectRefs: [companyRef as `entity:${string}`], primarySubjectRef: companyRef as `entity:${string}`, structuredValue: { metric: 'metric:revenue', value: 20, unit: 'CNY', comparator: 'eq', fiscalPeriod: 'FY2025' }, sourceRefs: [SOURCE], provenance: [{ sourceRef: SOURCE, rawRef, locator: 'page 1', chunkRef: null }], lifecycle: { status: 'active' } },
+    { id: 'claim:company-two-products-restricted', claimType: 'fact', statement: 'Fixture Two sells products.', subjectRefs: [companyTwoRef as `entity:${string}`], primarySubjectRef: companyTwoRef as `entity:${string}`, sourceRefs: [SOURCE], provenance: [{ sourceRef: SOURCE, rawRef, locator: 'page 1', chunkRef: null }], lifecycle: { status: 'active' } },
+    { id: 'claim:company-two-market-cap', claimType: 'fact', statement: 'Fixture Two market capitalization.', subjectRefs: [companyTwoRef as `entity:${string}`], primarySubjectRef: companyTwoRef as `entity:${string}`, temporal: { asOf: '2026-09-29', scope: { type: 'point', start: '2026-09-29', end: '2026-09-29', label: 'quote date' } }, structuredValue: { metric: 'metric:market_cap', value: 200, unit: 'CNY', comparator: 'eq' }, sourceRefs: [SOURCE], provenance: [{ sourceRef: SOURCE, rawRef, locator: 'page 1', chunkRef: null }], lifecycle: { status: 'active' } },
   ]
   const rawBackedFacts = facts.map((item) => ({ ...item, provenance: [{ sourceRef: SOURCE, rawRef, locator: 'page 1', chunkRef: null }] })) as unknown as KnowledgeAssetV04[]
   const event: KnowledgeEventV04 = {
@@ -161,13 +173,23 @@ async function seedWorkspace(root: string): Promise<{ readonly themeRef: ThemeRe
         market_cap: { status: 'available', displayValue: '100', knowledgeRefs: ['claim:company-market-cap'], asOf: '2026-09-30', unit: 'CNY', currency: 'CNY' },
         annual_revenue: { status: 'available', displayValue: '20', knowledgeRefs: ['claim:company-revenue'], fiscalYear: 2025, unit: 'CNY', currency: 'CNY' },
       },
+    }, {
+      companyRef: companyTwoRef as `entity:${string}`,
+      cells: {
+        products: { status: 'available', displayValue: 'Restricted product', knowledgeRefs: ['claim:company-two-products-restricted'] },
+        market_cap: { status: 'available', displayValue: '200', knowledgeRefs: ['claim:company-two-market-cap'], asOf: '2026-09-29', unit: 'CNY', currency: 'CNY' },
+        annual_revenue: { status: 'unavailable', reason: 'No verified annual revenue.' },
+      },
     }],
     sourceRefs: [SOURCE],
   }
   const canonicalObjects: KnowledgeAssetV04[] = [
     industry(serversRef, 'Server industry'), industry(pcbRef, 'PCB industry'), industry(consumerRef, 'Consumer electronics'), industry(pendingRef, 'Pending industry'), industry(tvRef, 'Televisions'),
     { id: companyRef, type: 'company', name: 'Fixture Corp', ticker: 'FIX', exchange: 'SSE', lifecycle: { status: 'active' } } as KnowledgeAssetV04,
-    themeServers, themePcb, relation('relation:pcb-server', 'upstream_of', pcbRef, serversRef), relation('relation:server-consumer', 'upstream_of', serversRef, consumerRef), relation('relation:consumer-tv', 'upstream_of', consumerRef, tvRef), businessExposure,
+    { id: companyTwoRef, type: 'company', name: 'Fixture Two', ticker: 'FIX2', exchange: 'SSE', lifecycle: { status: 'active' } } as KnowledgeAssetV04,
+    { id: restrictedCompanyRef, type: 'company', name: 'Restricted Exposure Co', ticker: 'REX', exchange: 'SSE', lifecycle: { status: 'active' } } as KnowledgeAssetV04,
+    { id: 'entity:company-expired-exposure', type: 'company', name: 'Expired Exposure Co', ticker: 'EEX', exchange: 'SSE', lifecycle: { status: 'active' } } as KnowledgeAssetV04,
+    themeServers, themePcb, relation('relation:pcb-server', 'upstream_of', pcbRef, serversRef), relation('relation:server-consumer', 'upstream_of', serversRef, consumerRef), relation('relation:consumer-tv', 'upstream_of', consumerRef, tvRef), businessExposure, businessExposureTwo, restrictedBusinessExposure, expiredBusinessExposure,
     ...rawBackedFacts, ...companyClaims, event, module as unknown as KnowledgeModuleV04,
   ]
   const objects: KnowledgeOperationV04[] = canonicalObjects.map((object, index) => ({ operationId: `object-${index}`, type: 'create', object }))
@@ -205,8 +227,29 @@ test('Industry projection returns bounded facts, deterministic core views, publi
     assert.equal(industry.sections.timeline.futureCatalysts[0]?.dateBasis, 'expected')
     assert.equal(industry.sections.competition?.rows[0]?.cells.find((cell) => cell.columnId === 'market_cap')?.value.status, 'available')
     assert.equal(industry.sections.omittedRestrictedCount, 1)
+    assert.deepEqual(industry.companies.map((company) => company.ref), ['entity:company-expired-exposure', 'entity:company-fixture', 'entity:company-fixture-two'])
+    const secondRow = industry.sections.competition?.rows.find((row) => row.companyRef === 'entity:company-fixture-two')
+    assert.equal(secondRow?.cells.find((cell) => cell.columnId === 'products')?.value.status, 'available')
+    assert.equal(secondRow?.cells.find((cell) => cell.columnId === 'market_cap')?.notComparable, true)
     const bounded = await service.getIndustryProjection({ themeRef, maxItemsPerSection: 1 }, 'entity:industry-servers')
     assert.equal(bounded.sections.limited.viewpoint?.truncated, true)
+    const byteBounded = await service.getIndustryProjection({ themeRef, maxResponseBytes: 2_048 }, 'entity:industry-servers')
+    assert.equal(byteBounded.responseBounds.truncated, true)
+    assert.ok(byteBounded.responseBounds.serializedBytes <= byteBounded.responseBounds.maxBytes)
+  })
+})
+
+test('current restricted or expired source rights suppress company exposures and dependent competition data', async () => {
+  await withFreshKb('rights-filtering', async (root) => {
+    const { themeRef, service } = await seedWorkspace(root)
+    const industry = await service.getIndustryProjection({ themeRef }, 'entity:industry-servers')
+    assert.deepEqual(industry.companies.map((company) => company.ref), ['entity:company-expired-exposure', 'entity:company-fixture', 'entity:company-fixture-two'])
+    await assert.rejects(service.getCompanyProjection({ themeRef }, 'entity:industry-servers', 'entity:company-restricted-exposure'), { code: 'not_found' })
+    const afterRightsExpiry = new ThemeWorkspaceProjectionService(root, () => '2026-10-04T00:00:00.000Z')
+    const expired = await afterRightsExpiry.getIndustryProjection({ themeRef, asOf: NOW }, 'entity:industry-servers')
+    assert.deepEqual(expired.companies, [])
+    assert.equal(expired.sections.competition, undefined)
+    assert.ok(expired.responseBounds.serializedBytes <= expired.responseBounds.maxBytes)
   })
 })
 

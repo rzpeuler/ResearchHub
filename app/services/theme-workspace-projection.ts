@@ -39,6 +39,9 @@ const DEFAULT_ITEMS_PER_SECTION = 30
 const HARD_ITEMS_PER_SECTION = 100
 const DEFAULT_COMPANIES_PER_INDUSTRY = 40
 const HARD_COMPANIES_PER_INDUSTRY = 100
+const DEFAULT_RESPONSE_BYTE_LIMIT = 1_000_000
+const HARD_RESPONSE_BYTE_LIMIT = 2_000_000
+const MIN_RESPONSE_BYTE_LIMIT = 1_024
 const MAX_STRING_LENGTH = 2400
 const ACTIVE = 'active'
 const INCLUDE = 'include'
@@ -59,7 +62,7 @@ type Context = {
   readonly pendingCount: number
   readonly excludedCount: number
   readonly ledgerRevision: number
-  readonly relationsForCompanies: () => readonly KnowledgeRelationV04[]
+  readonly relationsForCompanies: (now: number) => readonly KnowledgeRelationV04[]
 }
 
 function dict(value: unknown): Dict {
@@ -93,6 +96,7 @@ function sourceRefs(value: KnowledgeAssetV04): readonly string[] {
   }
   if (value.id.startsWith('event:')) return (value as KnowledgeEventV04).sourceRefs ?? []
   if (value.id.startsWith('module:')) return (value as KnowledgeModuleV04).sourceRefs ?? []
+  if (value.id.startsWith('relation:')) return (value as KnowledgeRelationV04).sourceRefs ?? []
   return []
 }
 
@@ -108,6 +112,121 @@ function itemReadable(value: KnowledgeAssetV04, assets: ReadonlyMap<string, Know
   const refs = sourceRefs(value)
   if (refs.length === 0) return false
   return refs.every((ref) => sourceIsReadable(assets.get(ref) as KnowledgeSourceV04 | undefined, now))
+}
+
+function evidenceReadable(ref: string, assets: ReadonlyMap<string, KnowledgeAssetV04>, now: number): boolean {
+  const evidence = assets.get(ref)
+  if (!evidence || !isActiveAsset(evidence)) return false
+  if (evidence.id.startsWith('claim:') || evidence.id.startsWith('observation:') || evidence.id.startsWith('event:') || evidence.id.startsWith('relation:')) {
+    return itemReadable(evidence, assets, now)
+  }
+  return false
+}
+
+function responseByteLimit(value: number | undefined): number {
+  if (value === undefined) return DEFAULT_RESPONSE_BYTE_LIMIT
+  if (!Number.isSafeInteger(value) || value < MIN_RESPONSE_BYTE_LIMIT) {
+    throw new ApplicationServiceError('invalid_input', `maxResponseBytes must be an integer of at least ${MIN_RESPONSE_BYTE_LIMIT}`)
+  }
+  return Math.min(value, HARD_RESPONSE_BYTE_LIMIT)
+}
+
+type MutableRecord = Record<string, unknown>
+type ArrayCandidate = { readonly array: unknown[]; readonly path: readonly string[] }
+function collectBoundedArrays(value: unknown, path: readonly string[], output: ArrayCandidate[]): void {
+  if (Array.isArray(value)) {
+    const finalKey = path[path.length - 1]
+    const allowed = ['nodes', 'edges', 'companies', 'rows', 'items', 'historicalEvents', 'futureCatalysts', 'modules']
+    if (finalKey && allowed.includes(finalKey)) output.push({ array: value, path })
+    return
+  }
+  if (!value || typeof value !== 'object') return
+  for (const [key, child] of Object.entries(value)) {
+    if (key === 'factsByType' && child && typeof child === 'object') {
+      for (const [type, facts] of Object.entries(child)) if (Array.isArray(facts)) output.push({ array: facts, path: [...path, key, type] })
+    } else collectBoundedArrays(child, [...path, key], output)
+  }
+}
+
+function markBoundedCollection(root: unknown, path: readonly string[]): void {
+  if (!root || typeof root !== 'object') return
+  const atPath = (keys: readonly string[]): MutableRecord | undefined => {
+    let current: unknown = root
+    for (const key of keys) current = current && typeof current === 'object' ? (current as MutableRecord)[key] : undefined
+    return current && typeof current === 'object' ? current as MutableRecord : undefined
+  }
+  const graphIndex = path.indexOf('graph')
+  const sectionsIndex = path.indexOf('sections')
+  const factsIndex = path.indexOf('factsByType')
+  const competitionIndex = path.indexOf('competition')
+  const coreViewsIndex = path.indexOf('coreViews')
+  const timelineIndex = path.indexOf('timeline')
+  if (graphIndex >= 0) {
+    const graph = atPath(path.slice(0, graphIndex + 1))
+    if (graph) graph.truncated = true
+  } else if (path[0] === 'companies') {
+    const record = root as MutableRecord
+    record.companiesLimit = { ...(record.companiesLimit as MutableRecord), truncated: true }
+  } else if (factsIndex >= 0) {
+    const content = atPath(path.slice(0, factsIndex))
+    const limited = content?.limited as MutableRecord | undefined
+    const semanticType = path[factsIndex + 1]
+    if (limited && semanticType) limited[semanticType] = { ...(limited[semanticType] as MutableRecord), truncated: true }
+  } else if (path.at(-1) === 'modules' && sectionsIndex >= 0) {
+    const content = atPath(path.slice(0, sectionsIndex + 1))
+    const limited = content?.limited as MutableRecord | undefined
+    if (limited) limited.modules = { ...(limited.modules as MutableRecord), truncated: true }
+  } else if (competitionIndex >= 0) {
+    const competition = atPath(path.slice(0, competitionIndex + 1))
+    if (competition) competition.truncated = true
+  } else if (coreViewsIndex >= 0) {
+    const coreViews = atPath(path.slice(0, coreViewsIndex + 1))
+    if (coreViews) coreViews.truncated = true
+  } else if (timelineIndex >= 0) {
+    const timeline = atPath(path.slice(0, timelineIndex + 1))
+    const limitKey = path[timelineIndex + 1] === 'historicalEvents' ? 'eventsLimit' : 'catalystsLimit'
+    if (timeline) timeline[limitKey] = { ...(timeline[limitKey] as MutableRecord), truncated: true }
+  }
+}
+
+function serializeByteLength(value: unknown): number { return Buffer.byteLength(JSON.stringify(value), 'utf8') }
+
+function removeBoundedItem(root: unknown, candidate: ArrayCandidate): void {
+  const removed = candidate.array.pop()
+  if (candidate.path.at(-1) !== 'nodes' || candidate.path.at(-2) !== 'graph' || !removed || typeof removed !== 'object') return
+  const graph = (root as MutableRecord).graph as MutableRecord | undefined
+  if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) return
+  const refs = new Set((graph.nodes as Array<{ ref?: unknown }>).map((node) => node.ref).filter((ref): ref is string => typeof ref === 'string'))
+  graph.edges = (graph.edges as Array<{ sourceRef?: unknown; targetRef?: unknown }>).filter((edge) => refs.has(String(edge.sourceRef)) && refs.has(String(edge.targetRef)))
+}
+
+/** Applies a hard aggregate response budget after domain-specific limits; preserves totals and marks byte-pruned sections. */
+function enforceResponseByteLimit<T extends MutableRecord>(value: T, maxBytes: number): T & { responseBounds: { maxBytes: number; serializedBytes: number; truncated: boolean } } {
+  const bounded = value as T & { responseBounds: { maxBytes: number; serializedBytes: number; truncated: boolean } }
+  bounded.responseBounds = { maxBytes, serializedBytes: 0, truncated: false }
+  let bytes = serializeByteLength(bounded)
+  while (true) {
+    bounded.responseBounds.serializedBytes = bytes
+    const withByteCount = serializeByteLength(bounded)
+    if (withByteCount <= maxBytes) {
+      bounded.responseBounds.serializedBytes = withByteCount
+      const finalBytes = serializeByteLength(bounded)
+      if (finalBytes <= maxBytes) return bounded
+      bytes = finalBytes
+      bounded.responseBounds.serializedBytes = 0
+    }
+    const candidates: ArrayCandidate[] = []
+    collectBoundedArrays(bounded, [], candidates)
+    const candidate = candidates.filter((item) => item.array.length > 0)
+      .sort((left, right) => serializeByteLength(right.array[right.array.length - 1]) - serializeByteLength(left.array[left.array.length - 1])
+        || left.path.join('.').localeCompare(right.path.join('.')))[0]
+    if (!candidate) throw new ApplicationServiceError('failed', `Theme Workspace response exceeds its ${maxBytes}-byte budget after bounded collections were exhausted`)
+    removeBoundedItem(bounded, candidate)
+    markBoundedCollection(bounded, candidate.path)
+    bounded.responseBounds.truncated = true
+    bounded.responseBounds.serializedBytes = 0
+    bytes = serializeByteLength(bounded)
+  }
 }
 
 function recordAt(value: KnowledgeAssetV04): string | undefined {
@@ -243,16 +362,15 @@ function timelineItem(value: KnowledgeAssetV04, sources: readonly string[], asse
 function buildContent(
   assets: ReadonlyMap<string, KnowledgeAssetV04>,
   subjectRef: string,
-  options: { readonly asOf: string; readonly itemLimit: number; readonly relatedCompanyRefs?: ReadonlySet<string> },
+  options: { readonly asOf: string; readonly rightsNow: number; readonly itemLimit: number; readonly relatedCompanyRefs?: ReadonlySet<string> },
 ): ThemeWorkspaceContentProjection {
   const candidates = [...assets.values()].filter((value) => value.id.startsWith('claim:') || value.id.startsWith('observation:') || value.id.startsWith('event:'))
     .filter((value) => isActiveAsset(value) && itemBelongsTo(value, subjectRef))
   const sourcesAllowed = new Map<string, boolean>()
   const isReadable = (value: KnowledgeAssetV04) => {
     const refs = sourceRefs(value)
-    const now = Date.parse(options.asOf)
     const allowed = refs.length > 0 && refs.every((ref) => {
-      if (!sourcesAllowed.has(ref)) sourcesAllowed.set(ref, sourceIsReadable(assets.get(ref) as KnowledgeSourceV04 | undefined, now))
+      if (!sourcesAllowed.has(ref)) sourcesAllowed.set(ref, sourceIsReadable(assets.get(ref) as KnowledgeSourceV04 | undefined, options.rightsNow))
       return sourcesAllowed.get(ref) === true
     })
     return allowed
@@ -292,12 +410,12 @@ function buildContent(
   futureCatalysts.sort((a, b) => (a.date ?? '\uffff').localeCompare(b.date ?? '\uffff') || stableCompare(a.ref, b.ref))
 
   const modules = [...assets.values()].filter((value): value is KnowledgeModuleV04 => moduleBelongsTo(value, subjectRef) && isActiveAsset(value))
-    .filter((value) => itemReadable(value as unknown as KnowledgeAssetV04, assets, Date.parse(options.asOf)))
+    .filter((value) => itemReadable(value as unknown as KnowledgeAssetV04, assets, options.rightsNow))
     .sort((a, b) => stableCompare(a.id, b.id))
   const canonicalModules = modules.slice(0, options.itemLimit).map(projectModule)
   const limitedModules = limitView(modules.length, options.itemLimit)
   const competition = modules.find((module) => module.type === 'competition' && module.schemaId === COMPETITION_MODULE_SCHEMA_ID_V1)
-  const competitionTable = competition ? projectCompetition(competition, assets, options.relatedCompanyRefs ?? new Set()) : undefined
+  const competitionTable = competition ? projectCompetition(competition, assets, options.relatedCompanyRefs ?? new Set(), options.rightsNow) : undefined
   const flattenedTimelineLimit = options.itemLimit
   return {
     factsByType,
@@ -315,45 +433,57 @@ function buildContent(
   }
 }
 
-function projectCompetition(module: KnowledgeModuleV04, assets: ReadonlyMap<string, KnowledgeAssetV04>, relatedCompanyRefs: ReadonlySet<string>): ThemeWorkspaceCompetitionTable | undefined {
+function projectCompetition(module: KnowledgeModuleV04, assets: ReadonlyMap<string, KnowledgeAssetV04>, relatedCompanyRefs: ReadonlySet<string>, asOf: number): ThemeWorkspaceCompetitionTable | undefined {
   const validation = validateCompetitionModuleV1(module)
   if (!validation.valid) return undefined
   const value = module as unknown as CompetitionModuleV1
+  const rowsWithReadableCells = value.rows.filter((row) => {
+    const company = assets.get(row.companyRef)
+    return relatedCompanyRefs.has(row.companyRef) && Boolean(company?.id.startsWith('entity:')) && (company as KnowledgeEntityV04).type === 'company' && isActive(company as KnowledgeEntityV04)
+  }).map((row) => ({
+    companyRef: row.companyRef,
+    cells: value.columns.filter((column) => column.role !== 'company').map((column) => {
+      const cell = row.cells[column.id]!
+      if (cell.status !== 'available') return { columnId: column.id, value: cell, notComparable: cell.status === 'not_comparable' }
+      const readable = cell.knowledgeRefs.length > 0 && cell.knowledgeRefs.every((ref) => evidenceReadable(ref, assets, asOf))
+      return {
+        columnId: column.id,
+        value: readable ? cell : { status: 'unavailable' as const, reason: '关联证据不可用或权限受限。' },
+        notComparable: false,
+      }
+    }),
+  }))
   const comparableByColumn = new Map<string, boolean>()
   for (const column of value.columns) {
     if (!['market_cap', 'annual_revenue'].includes(column.role)) continue
-    const available = value.rows.map((row) => row.cells[column.id]).filter((cell) => cell.status === 'available')
+    const available = rowsWithReadableCells.flatMap((row) => row.cells.filter((cell) => cell.columnId === column.id).map((cell) => cell.value)).filter((cell) => cell.status === 'available')
     const keys = new Set(available.map((cell) => {
       if (cell.status !== 'available') return ''
       const fields = cell as { readonly currency?: string; readonly unit?: string; readonly fiscalYear?: number }
       return column.role === 'market_cap'
-        ? `${fields.currency}|${fields.unit}`
+        ? `${fields.currency}|${fields.unit}|${(cell as { readonly asOf?: string }).asOf}`
         : `${fields.currency}|${fields.unit}|${fields.fiscalYear}`
     }))
     comparableByColumn.set(column.id, keys.size <= 1)
   }
-  const rows = value.rows.filter((row) => {
-    const company = assets.get(row.companyRef)
-    return relatedCompanyRefs.has(row.companyRef) && Boolean(company?.id.startsWith('entity:')) && (company as KnowledgeEntityV04).type === 'company' && isActive(company as KnowledgeEntityV04)
-  })
-    .map((row) => ({
-      companyRef: row.companyRef,
-      cells: value.columns.filter((column) => column.role !== 'company').map((column) => {
-        const cell = row.cells[column.id]!
-        const mismatch = cell.status === 'available' && comparableByColumn.get(column.id) === false
-        return {
-          columnId: column.id,
-          value: cell,
-          notComparable: mismatch,
-          ...(mismatch ? { comparabilityNote: COMPARABILITY_NOTE } : {}),
-        }
-      }),
-    }))
+  const rows = rowsWithReadableCells.map((row) => ({
+    companyRef: row.companyRef,
+    cells: row.cells.map((cell) => {
+      const mismatch = cell.value.status === 'available' && comparableByColumn.get(cell.columnId) === false
+      return {
+        ...cell,
+        notComparable: cell.notComparable || mismatch,
+        ...(mismatch ? { comparabilityNote: COMPARABILITY_NOTE } : {}),
+      }
+    }),
+  }))
   return {
     ref: value.id,
     schemaId: value.schemaId,
     columns: value.columns,
     rows,
+    rowTotal: rowsWithReadableCells.length,
+    truncated: false,
     ...(rows.length === 0 && value.rows.length > 0 ? { note: '竞争格局表中暂无与已确认行业公司关系相匹配的行。' } : {}),
   }
 }
@@ -375,6 +505,7 @@ export class ThemeWorkspaceProjectionService {
 
   async getThemeProjection(input: ThemeWorkspaceProjectionInput): Promise<ThemeWorkspaceProjection> {
     validateInput(input)
+    const maxResponseBytes = responseByteLimit(input.maxResponseBytes)
     const nodeLimit = asLimit(input.maxNodes, DEFAULT_NODE_LIMIT, HARD_NODE_LIMIT, 'maxNodes')
     const edgeLimit = asLimit(input.maxEdges, DEFAULT_EDGE_LIMIT, HARD_EDGE_LIMIT, 'maxEdges')
     const context = await this.load(input.themeRef, input.expectedRevision)
@@ -395,10 +526,10 @@ export class ThemeWorkspaceProjectionService {
       .map((relation) => ({ ref: relation.id, relationType: relation.type as 'upstream_of' | 'depends_on', sourceRef: relation.sourceRef, targetRef: relation.targetRef }))
       .sort((a, b) => stableCompare(a.ref, b.ref))
     const edges = allEdges.slice(0, edgeLimit)
-    return {
-      status: 'available',
+    return enforceResponseByteLimit({
+      status: 'available' as const,
       knowledgeBaseId: context.knowledgeBaseId,
-      schemaVersion: '0.4',
+      schemaVersion: '0.4' as const,
       revision: context.revision,
       theme: { ref: input.themeRef, name: context.theme.name, themeGroupRef: context.theme.themeGroupRef, ...(context.theme.definition ? { definition: context.theme.definition } : {}) },
       graph: {
@@ -417,24 +548,26 @@ export class ThemeWorkspaceProjectionService {
         excludedCount: context.excludedCount,
         basedOnRevision: context.ledgerRevision,
       },
-    }
+    }, maxResponseBytes)
   }
 
   async getIndustryProjection(input: ThemeWorkspaceProjectionInput, industryRef: string): Promise<ThemeWorkspaceIndustryProjection> {
     validateInput(input)
+    const maxResponseBytes = responseByteLimit(input.maxResponseBytes)
     const context = await this.load(input.themeRef, input.expectedRevision)
     if (!context.includedIndustryRefs.has(industryRef)) throw scopeError('not_found', 'Industry is not in the confirmed Theme scope')
     const industry = context.entities.get(industryRef)!
-    const exposureRelations = context.relationsForCompanies()
+    const asOf = input.asOf ?? this.clock()
+    const rightsNow = Date.parse(this.clock())
+    const exposureRelations = context.relationsForCompanies(rightsNow)
     const allCompanyRefs = [...new Set(exposureRelations.filter((relation) => relation.targetRef === industryRef).map((relation) => relation.sourceRef))]
       .filter((ref) => context.entities.get(ref)?.type === 'company')
       .sort(stableCompare)
     const companyLimit = asLimit(input.maxCompaniesPerIndustry, DEFAULT_COMPANIES_PER_INDUSTRY, HARD_COMPANIES_PER_INDUSTRY, 'maxCompaniesPerIndustry')
     const companyRefs = allCompanyRefs.slice(0, companyLimit)
     const companySet = new Set(companyRefs)
-    const asOf = input.asOf ?? this.clock()
     const itemLimit = asLimit(input.maxItemsPerSection, DEFAULT_ITEMS_PER_SECTION, HARD_ITEMS_PER_SECTION, 'maxItemsPerSection')
-    return {
+    return enforceResponseByteLimit({
       knowledgeBaseId: context.knowledgeBaseId,
       revision: context.revision,
       themeRef: input.themeRef,
@@ -444,30 +577,32 @@ export class ThemeWorkspaceProjectionService {
         ...(str(industry.description) ? { description: str(industry.description) } : {}),
         ...(context.importanceByIndustry.get(industryRef) ? { importance: context.importanceByIndustry.get(industryRef) } : {}),
       },
-      sections: buildContent(context.assets, industryRef, { asOf, itemLimit, relatedCompanyRefs: companySet }),
+      sections: buildContent(context.assets, industryRef, { asOf, rightsNow, itemLimit, relatedCompanyRefs: companySet }),
       companies: companyRefs.map((ref) => companySummary(context.entities.get(ref)!)),
       companiesLimit: limitView(allCompanyRefs.length, companyLimit),
-    }
+    }, maxResponseBytes)
   }
 
   async getCompanyProjection(input: ThemeWorkspaceProjectionInput, industryRef: string, companyRef: string): Promise<ThemeWorkspaceCompanyProjection> {
     validateInput(input)
+    const maxResponseBytes = responseByteLimit(input.maxResponseBytes)
     const context = await this.load(input.themeRef, input.expectedRevision)
     if (!context.includedIndustryRefs.has(industryRef)) throw scopeError('not_found', 'Industry is not in the confirmed Theme scope')
     const company = context.entities.get(companyRef)
-    if (!company || company.type !== 'company' || !context.relationsForCompanies().some((relation) => relation.sourceRef === companyRef && relation.targetRef === industryRef)) {
+    const asOf = input.asOf ?? this.clock()
+    const rightsNow = Date.parse(this.clock())
+    if (!company || company.type !== 'company' || !context.relationsForCompanies(rightsNow).some((relation) => relation.sourceRef === companyRef && relation.targetRef === industryRef)) {
       throw scopeError('not_found', 'Company has no canonical business exposure to this confirmed Industry')
     }
-    const asOf = input.asOf ?? this.clock()
     const itemLimit = asLimit(input.maxItemsPerSection, DEFAULT_ITEMS_PER_SECTION, HARD_ITEMS_PER_SECTION, 'maxItemsPerSection')
-    return {
+    return enforceResponseByteLimit({
       knowledgeBaseId: context.knowledgeBaseId,
       revision: context.revision,
       themeRef: input.themeRef,
       industryRef,
       company: companySummary(company),
-      sections: buildContent(context.assets, companyRef, { asOf, itemLimit }),
-    }
+      sections: buildContent(context.assets, companyRef, { asOf, rightsNow, itemLimit }),
+    }, maxResponseBytes)
   }
 
   private async load(themeRef: string, expectedRevision?: number): Promise<Context> {
@@ -541,8 +676,9 @@ export class ThemeWorkspaceProjectionService {
       pendingCount: counts.pendingCount,
       excludedCount: counts.excludedCount,
       ledgerRevision: ledger.knowledgeBaseRevision,
-      relationsForCompanies: () => assetsCollection.objects.filter((entry) => entry.kind === 'relation').map((entry) => entry.value as KnowledgeRelationV04)
-        .filter((relation) => relation.type === 'business_exposure' && isActive(relation) && includedIndustryRefs.has(relation.targetRef)),
+      relationsForCompanies: (now) => assetsCollection.objects.filter((entry) => entry.kind === 'relation').map((entry) => entry.value as KnowledgeRelationV04)
+        .filter((relation) => relation.type === 'business_exposure' && isActive(relation) && includedIndustryRefs.has(relation.targetRef)
+          && itemReadable(relation as unknown as KnowledgeAssetV04, assets, now)),
     }
   }
 }
