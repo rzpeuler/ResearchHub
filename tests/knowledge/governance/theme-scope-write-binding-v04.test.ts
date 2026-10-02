@@ -312,12 +312,33 @@ test('scope-bearing ingestionContext rejects hidden, accessor, array, and non-JS
       themeScope: scopeBatch,
       optionalMetadata: undefined,
     }
+    const proxyContext: Record<string, unknown> = {
+      producerType: 'theme_framework',
+      themeScope: scopeBatch,
+      siblingMetadata: new Proxy({ safe: 'value' }, {}),
+    }
+    const oversizedContext: Record<string, unknown> = {
+      producerType: 'theme_framework',
+      themeScope: scopeBatch,
+      siblingMetadata: 'x'.repeat(2_000_000),
+    }
+    const oversizedUtf8Context: Record<string, unknown> = {
+      producerType: 'theme_framework',
+      themeScope: scopeBatch,
+      siblingMetadata: '界'.repeat(400_000),
+    }
+    const longKeyContext: Record<string, unknown> = { producerType: 'theme_framework', themeScope: scopeBatch }
+    Object.defineProperty(longKeyContext, 'k'.repeat(257), { value: 'value', enumerable: true })
 
     const contexts = [
       ['hidden', hiddenContext],
       ['accessor', accessorContext],
       ['array', arrayContext],
       ['undefined', undefinedContext],
+      ['proxy', proxyContext],
+      ['oversized', oversizedContext],
+      ['oversized-utf8', oversizedUtf8Context],
+      ['long-key', longKeyContext],
     ] as const
     for (const [suffix, ingestionContext] of contexts) {
       const set: KnowledgeChangeSetV04 = {
@@ -345,6 +366,21 @@ test('scope-bearing ingestionContext rejects hidden, accessor, array, and non-JS
     assert.equal(writerResult.status, 'rejected')
     assert.equal(writerResult.error?.code, 'receipt_mismatch')
     assert.match(writerResult.error?.message ?? '', /enumerable data property/u)
+    assert.equal((await loadKnowledgeBaseManifest(root)).revision, handle.revision)
+
+    const proxyWriterSet = changeSet(handle, 'scope-writer-proxy-run', scopeBatch)
+    const proxyWriterValidation = await validateKnowledgeChangeSetV04(handle, proxyWriterSet, { mode: 'commit', now: clock })
+    assert.ok(proxyWriterValidation.validatedChangeSet, JSON.stringify(proxyWriterValidation.report.errors))
+    Object.defineProperty(proxyWriterValidation.validatedChangeSet.changeSet.ingestionContext!, 'siblingMetadata', {
+      value: new Proxy({ safe: 'value' }, {}),
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    })
+    const proxyWriterResult = await writeKnowledgeBase(handle, proxyWriterValidation.validatedChangeSet, { registry: new KnowledgeBaseRegistry(), clock })
+    assert.equal(proxyWriterResult.status, 'rejected')
+    assert.equal(proxyWriterResult.error?.code, 'receipt_mismatch')
+    assert.match(proxyWriterResult.error?.message ?? '', /JSON-safe enumerable data only/u)
     assert.equal((await loadKnowledgeBaseManifest(root)).revision, handle.revision)
   })
 })

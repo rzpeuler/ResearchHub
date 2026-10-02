@@ -1,16 +1,17 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { types as utilTypes } from 'node:util'
 import { loadKnowledgeBaseManifest } from '../storage/manifest-loader.ts'
 import { parseYaml } from '../storage/yaml.ts'
 import { readCanonicalV04Assets } from '../storage/canonical-v04-loader.ts'
 import { verifyRaw } from '../raw/raw-archive.ts'
 import { kindForKnowledgeV04 } from '../writer/path-allocation-v04.ts'
-import { hashKnowledgeObject } from '../storage/canonical-hash.ts'
+import { canonicalSerialize, hashKnowledgeObject } from '../storage/canonical-hash.ts'
 import type { KnowledgeBaseHandle } from '../storage/handle.ts'
 import type { KnowledgeAssetV04 } from '../schema/domain-v04.ts'
 import { assertKnowledgeV04Objects } from './v04-validator.ts'
 import type { ValidatedKnowledgeChangeSetV04, KnowledgeChangeSetV04, KnowledgeOperationV04 } from '../schema/mutation-v04.ts'
-import { validateThemeScopeDecisionBatchV04, type ThemeScopeDecisionV04 } from '../governance/theme-scope-v04.ts'
+import { THEME_SCOPE_V04_LIMITS, validateThemeScopeDecisionBatchV04, type ThemeScopeDecisionV04 } from '../governance/theme-scope-v04.ts'
 import { readThemeScopeLedgerV04 } from '../governance/theme-scope-ledger-v04.ts'
 
 export interface V04ChangeSetValidationDiagnostic { readonly code: string; readonly message: string; readonly operationId?: string; readonly assetId?: string }
@@ -36,12 +37,21 @@ function add(errors: V04ChangeSetValidationDiagnostic[], code: string, message: 
 function isJsonSafeIngestionContext(value: unknown): boolean {
   const ancestors = new Set<object>()
   let visitedNodes = 0
+  let textCharacters = 0
+  let textUtf8Bytes = 0
+  const accountText = (text: string): boolean => {
+    textCharacters += text.length
+    textUtf8Bytes += Buffer.byteLength(text, 'utf8')
+    return textCharacters <= THEME_SCOPE_V04_LIMITS.maxJsonCharacters
+      && textUtf8Bytes <= THEME_SCOPE_V04_LIMITS.maxJsonUtf8Bytes
+  }
   const visit = (item: unknown, depth: number): boolean => {
     visitedNodes += 1
     if (visitedNodes > 100_000 || depth > 64) return false
-    if (item === null || typeof item === 'string' || typeof item === 'boolean') return true
+    if (item === null || typeof item === 'boolean') return true
+    if (typeof item === 'string') return accountText(item)
     if (typeof item === 'number') return Number.isFinite(item) && !Object.is(item, -0)
-    if (typeof item !== 'object' || ancestors.has(item)) return false
+    if (typeof item !== 'object' || utilTypes.isProxy(item) || ancestors.has(item)) return false
     ancestors.add(item)
     try {
       if (Array.isArray(item)) {
@@ -61,6 +71,7 @@ function isJsonSafeIngestionContext(value: unknown): boolean {
       const names = Object.getOwnPropertyNames(item)
       if (names.length > 100_000) return false
       for (const name of names) {
+        if (name.length > THEME_SCOPE_V04_LIMITS.maxJsonObjectKeyLength || !accountText(name)) return false
         const descriptor = Object.getOwnPropertyDescriptor(item, name)
         if (!descriptor?.enumerable || !('value' in descriptor) || !visit(descriptor.value, depth + 1)) return false
       }
@@ -71,7 +82,14 @@ function isJsonSafeIngestionContext(value: unknown): boolean {
       ancestors.delete(item)
     }
   }
-  return visit(value, 0)
+  if (!visit(value, 0)) return false
+  try {
+    const serialized = canonicalSerialize(value)
+    return serialized.length <= THEME_SCOPE_V04_LIMITS.maxJsonCharacters
+      && Buffer.byteLength(serialized, 'utf8') <= THEME_SCOPE_V04_LIMITS.maxJsonUtf8Bytes
+  } catch {
+    return false
+  }
 }
 
 export interface ThemeScopeContextProbeV04 {
@@ -83,6 +101,7 @@ export interface ThemeScopeContextProbeV04 {
 /** Inspects scope presence without invoking accessors or accepting data that clone/hash would omit. */
 export function inspectThemeScopeContextV04(changeSet: unknown): ThemeScopeContextProbeV04 {
   if (!record(changeSet)) return { present: false }
+  if (utilTypes.isProxy(changeSet)) return { present: true, error: 'ChangeSet cannot be a Proxy when carrying Theme scope' }
   let contextDescriptor: PropertyDescriptor | undefined
   try {
     contextDescriptor = Object.getOwnPropertyDescriptor(changeSet, 'ingestionContext')
@@ -95,6 +114,7 @@ export function inspectThemeScopeContextV04(changeSet: unknown): ThemeScopeConte
   }
   const context = contextDescriptor.value
   if ((typeof context !== 'object' || context === null) && typeof context !== 'function') return { present: false }
+  if (utilTypes.isProxy(context)) return { present: true, error: 'Scope-bearing ingestionContext cannot be a Proxy' }
   let scopeDescriptor: PropertyDescriptor | undefined
   try {
     scopeDescriptor = Object.getOwnPropertyDescriptor(context, 'themeScope')
@@ -337,7 +357,16 @@ export async function validateKnowledgeChangeSetV04(handle: KnowledgeBaseHandle,
   await validateThemeScope(handle, changeSet, manifest.revision, objects, errors)
   const report = { status: errors.length === 0 ? 'passed' as const : 'failed' as const, errors }
   if (report.status === 'failed' || mode === 'dry_run') return { report }
-  const validatedChangeSet = Object.freeze({ changeSet: structuredClone(changeSet), knowledgeBaseId: changeSet.knowledgeBaseId, schemaVersion: '0.4' as const, baseRevision: changeSet.expectedBaseRevision, changeSetId: changeSet.changeSetId, changeSetHash: hashKnowledgeObject(changeSet), validatedAt })
+  let changeSetSnapshot: KnowledgeChangeSetV04
+  let changeSetHash: string
+  try {
+    changeSetSnapshot = structuredClone(changeSet)
+    changeSetHash = hashKnowledgeObject(changeSet)
+  } catch (error) {
+    add(errors, 'V04_CHANGESET_SERIALIZATION_INVALID', error instanceof Error ? error.message : String(error))
+    return { report: { status: 'failed', errors } }
+  }
+  const validatedChangeSet = Object.freeze({ changeSet: changeSetSnapshot, knowledgeBaseId: changeSet.knowledgeBaseId, schemaVersion: '0.4' as const, baseRevision: changeSet.expectedBaseRevision, changeSetId: changeSet.changeSetId, changeSetHash, validatedAt })
   issuedReceipts.add(validatedChangeSet)
   return { report, validatedChangeSet }
 }

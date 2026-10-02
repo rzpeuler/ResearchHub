@@ -75,13 +75,19 @@ export async function writeKnowledgeBaseV04(
   if (!isValidatorIssuedV04Receipt(receipt)) return { ...base, error: { code: 'validation_required', message: 'Schema 0.4 Writer accepts only a runtime Validator-issued receipt' } }
   const scopeContext = inspectThemeScopeContextV04(changeSet)
   if (scopeContext.error) return { ...base, error: { code: 'receipt_mismatch', message: scopeContext.error } }
+  let currentChangeSetHash: string
+  try {
+    currentChangeSetHash = hashKnowledgeObject(changeSet)
+  } catch (error) {
+    return { ...base, error: { code: 'receipt_mismatch', message: error instanceof Error ? error.message : String(error) } }
+  }
   if (
     receipt.knowledgeBaseId !== handle.knowledgeBaseId ||
     changeSet.knowledgeBaseId !== handle.knowledgeBaseId ||
     handle.schemaVersion !== '0.4' ||
     changeSet.schemaVersion !== '0.4' ||
     receipt.baseRevision !== changeSet.expectedBaseRevision ||
-    receipt.changeSetHash !== hashKnowledgeObject(changeSet)
+    receipt.changeSetHash !== currentChangeSetHash
   ) {
     return { ...base, error: { code: 'receipt_mismatch', message: 'Validated Schema 0.4 receipt does not match handle or ChangeSet' } }
   }
