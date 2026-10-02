@@ -65,6 +65,20 @@ describe('RuntimeClient', () => {
     expect(headers.every((value) => value.has('X-ResearchHub-Runtime-Token') === false)).toBe(true)
   })
 
+  it('reads Theme workspace projections with encoded canonical refs and revision/volume bounds', async () => {
+    const paths: string[] = []; const headers: Headers[] = []
+    const client = new RuntimeClient(async (input, init) => { paths.push(String(input)); headers.push(new Headers(init?.headers)); return json({ status: 'available' }) })
+    await client.getThemeWorkspaceOverview('entity:theme-a', { expectedRevision: 8, maxNodes: 60, maxEdges: 120, maxResponseBytes: 1_000_000 })
+    await client.getThemeWorkspaceIndustry('entity:theme-a', 'entity:industry-b', { expectedRevision: 8, maxItemsPerSection: 30, maxCompaniesPerIndustry: 40 })
+    await client.getThemeWorkspaceCompany('entity:theme-a', 'entity:industry-b', 'entity:company-c', { expectedRevision: 8, maxItemsPerSection: 30 })
+    expect(paths).toEqual([
+      '/api/knowledge/themes/entity%3Atheme-a/overview?expectedRevision=8&maxNodes=60&maxEdges=120&maxResponseBytes=1000000',
+      '/api/knowledge/themes/entity%3Atheme-a/industries/entity%3Aindustry-b?expectedRevision=8&maxItemsPerSection=30&maxCompaniesPerIndustry=40',
+      '/api/knowledge/themes/entity%3Atheme-a/industries/entity%3Aindustry-b/companies/entity%3Acompany-c?expectedRevision=8&maxItemsPerSection=30',
+    ])
+    expect(headers.every((value) => value.has('X-ResearchHub-Runtime-Token') === false)).toBe(true)
+  })
+
   it('uses the standard RuntimeClientError path for Graph read failures', async () => {
     const client = new RuntimeClient(async () => json({ code: 'not_found', error: 'Resource not found' }, 404))
     await expect(client.getKnowledgeGraph({ rootRef: 'entity:missing' })).rejects.toMatchObject({ code: 'not_found', status: 404 })

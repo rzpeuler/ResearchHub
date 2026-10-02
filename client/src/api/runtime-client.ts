@@ -27,6 +27,17 @@ export interface KnowledgeGraphProjection { readonly rootRef: string; readonly p
 export interface KnowledgeDirectoryItem { readonly ref: string; readonly name: string }
 export interface KnowledgeDirectorySection { readonly items: readonly KnowledgeDirectoryItem[]; readonly total: number; readonly limit: number; readonly truncated: boolean }
 export interface KnowledgeDirectoryProjection { readonly themeGroups: readonly { readonly ref: string; readonly name: string; readonly themes: readonly KnowledgeDirectoryItem[] }[]; readonly industries: KnowledgeDirectorySection; readonly companies: KnowledgeDirectorySection; readonly products: KnowledgeDirectorySection; readonly technologies: KnowledgeDirectorySection }
+export interface ThemeWorkspaceProjectionInput { readonly expectedRevision?: number; readonly asOf?: string; readonly maxNodes?: number; readonly maxEdges?: number; readonly maxItemsPerSection?: number; readonly maxCompaniesPerIndustry?: number; readonly maxResponseBytes?: number }
+export interface ThemeWorkspaceResponseBounds { readonly maxBytes: number; readonly serializedBytes: number; readonly truncated: boolean }
+export interface ThemeWorkspaceFact { readonly ref: string; readonly kind: 'claim' | 'observation' | 'event'; readonly semanticType: string; readonly title: string; readonly statement?: string; readonly value?: string | number | boolean | null; readonly unit?: string; readonly period?: string; readonly confidence?: number; readonly probability?: number }
+export interface ThemeWorkspaceTimelineItem { readonly ref: string; readonly title: string; readonly date?: string; readonly dateBasis: string; readonly dateLabel: string }
+export type ThemeWorkspaceCompetitionValue = { readonly status: 'available'; readonly displayValue: string; readonly asOf?: string; readonly fiscalYear?: number; readonly currency?: string; readonly unit?: string } | { readonly status: 'unavailable' | 'not_comparable'; readonly reason: string }
+export interface ThemeWorkspaceCompetitionCell { readonly columnId: string; readonly value: ThemeWorkspaceCompetitionValue; readonly notComparable: boolean; readonly comparabilityNote?: string }
+export interface ThemeWorkspaceCompetitionTable { readonly ref: string; readonly schemaId: string; readonly columns: readonly { readonly id: string; readonly label: string; readonly role: string }[]; readonly rows: readonly { readonly companyRef: string; readonly cells: readonly ThemeWorkspaceCompetitionCell[] }[]; readonly rowTotal: number; readonly truncated: boolean; readonly note?: string }
+export interface ThemeWorkspaceContentProjection { readonly factsByType: Readonly<Record<string, readonly ThemeWorkspaceFact[]>>; readonly modules: readonly { readonly ref: string; readonly moduleType: string; readonly schemaId?: string; readonly targetRef: string }[]; readonly competition?: ThemeWorkspaceCompetitionTable; readonly coreViews: { readonly items: readonly ThemeWorkspaceFact[]; readonly defaultCount: 3; readonly total: number; readonly truncated: boolean }; readonly timeline: { readonly historicalEvents: readonly ThemeWorkspaceTimelineItem[]; readonly futureCatalysts: readonly ThemeWorkspaceTimelineItem[]; readonly eventsLimit: { readonly total: number; readonly limit: number; readonly truncated: boolean }; readonly catalystsLimit: { readonly total: number; readonly limit: number; readonly truncated: boolean } }; readonly limited: Readonly<Record<string, { readonly total: number; readonly limit: number; readonly truncated: boolean }>>; readonly omittedRestrictedCount: number }
+export interface ThemeWorkspaceProjection { readonly status: 'available'; readonly knowledgeBaseId: string; readonly schemaVersion: '0.4'; readonly revision: number; readonly theme: { readonly ref: string; readonly name: string; readonly themeGroupRef: string; readonly definition?: string }; readonly graph: { readonly nodes: readonly { readonly ref: string; readonly name: string; readonly importance?: 'core' | 'material' | 'adjacent' }[]; readonly edges: readonly { readonly ref: string; readonly relationType: 'upstream_of' | 'depends_on'; readonly sourceRef: string; readonly targetRef: string }[]; readonly nodeTotal: number; readonly edgeTotal: number; readonly nodeLimit: number; readonly edgeLimit: number; readonly truncated: boolean }; readonly scope: { readonly includedIndustryCount: number; readonly includedRelationCount: number; readonly pendingCount: number; readonly excludedCount: number; readonly basedOnRevision: number }; readonly responseBounds: ThemeWorkspaceResponseBounds }
+export interface ThemeWorkspaceIndustryProjection { readonly knowledgeBaseId: string; readonly revision: number; readonly themeRef: string; readonly industry: { readonly ref: string; readonly name: string; readonly description?: string; readonly importance?: 'core' | 'material' | 'adjacent' }; readonly sections: ThemeWorkspaceContentProjection; readonly companies: readonly { readonly ref: string; readonly name: string; readonly ticker?: string; readonly exchange?: string }[]; readonly companiesLimit: { readonly total: number; readonly limit: number; readonly truncated: boolean }; readonly responseBounds: ThemeWorkspaceResponseBounds }
+export interface ThemeWorkspaceCompanyProjection { readonly knowledgeBaseId: string; readonly revision: number; readonly themeRef: string; readonly industryRef: string; readonly company: { readonly ref: string; readonly name: string; readonly ticker?: string; readonly exchange?: string }; readonly sections: ThemeWorkspaceContentProjection; readonly responseBounds: ThemeWorkspaceResponseBounds }
 export type KnowledgeTopicKind = 'relation' | 'claim' | 'observation' | 'event' | 'thesis' | 'module' | 'source' | 'reasoning_edge'
 export type KnowledgeTopicScope = 'direct' | 'connected'
 export type KnowledgeTopicLifecycleFilter = 'active' | 'all'
@@ -195,6 +206,38 @@ export class RuntimeClient {
   async getKnowledgeObject(ref: string): Promise<KnowledgeObjectResponse> { return this.request(`/api/knowledge/object?${new URLSearchParams({ ref }).toString()}`) }
   async getKnowledgeDirectory(): Promise<KnowledgeDirectoryProjection> { return this.request('/api/knowledge/directory') }
   async getKnowledgeGraph(input: { readonly rootRef: string; readonly depth?: 1 | 2; readonly maxNodes?: number; readonly maxEdges?: number }): Promise<KnowledgeGraphProjection> { const params = new URLSearchParams({ rootRef: input.rootRef }); if (input.depth !== undefined) params.set('depth', String(input.depth)); if (input.maxNodes !== undefined) params.set('maxNodes', String(input.maxNodes)); if (input.maxEdges !== undefined) params.set('maxEdges', String(input.maxEdges)); return this.request(`/api/knowledge/graph?${params.toString()}`) }
+  async getThemeWorkspaceOverview(themeRef: string, input: Omit<ThemeWorkspaceProjectionInput, 'themeRef'> = {}): Promise<ThemeWorkspaceProjection> {
+    if (!isSafeTopicThemeRef(themeRef)) throw new RuntimeClientError('invalid_input', 'A canonical InvestmentTheme ref is required', 400)
+    const params = new URLSearchParams()
+    if (input.expectedRevision !== undefined) params.set('expectedRevision', String(input.expectedRevision))
+    if (input.asOf !== undefined) params.set('asOf', input.asOf)
+    if (input.maxNodes !== undefined) params.set('maxNodes', String(input.maxNodes))
+    if (input.maxEdges !== undefined) params.set('maxEdges', String(input.maxEdges))
+    if (input.maxResponseBytes !== undefined) params.set('maxResponseBytes', String(input.maxResponseBytes))
+    const query = params.size > 0 ? `?${params.toString()}` : ''
+    return this.request(`/api/knowledge/themes/${encodeURIComponent(themeRef)}/overview${query}`)
+  }
+  async getThemeWorkspaceIndustry(themeRef: string, industryRef: string, input: Omit<ThemeWorkspaceProjectionInput, 'themeRef'> = {}): Promise<ThemeWorkspaceIndustryProjection> {
+    if (!isSafeTopicThemeRef(themeRef) || !isSafeTopicThemeRef(industryRef)) throw new RuntimeClientError('invalid_input', 'Canonical Theme and Industry refs are required', 400)
+    const params = new URLSearchParams()
+    if (input.expectedRevision !== undefined) params.set('expectedRevision', String(input.expectedRevision))
+    if (input.asOf !== undefined) params.set('asOf', input.asOf)
+    if (input.maxItemsPerSection !== undefined) params.set('maxItemsPerSection', String(input.maxItemsPerSection))
+    if (input.maxCompaniesPerIndustry !== undefined) params.set('maxCompaniesPerIndustry', String(input.maxCompaniesPerIndustry))
+    if (input.maxResponseBytes !== undefined) params.set('maxResponseBytes', String(input.maxResponseBytes))
+    const query = params.size > 0 ? `?${params.toString()}` : ''
+    return this.request(`/api/knowledge/themes/${encodeURIComponent(themeRef)}/industries/${encodeURIComponent(industryRef)}${query}`)
+  }
+  async getThemeWorkspaceCompany(themeRef: string, industryRef: string, companyRef: string, input: Omit<ThemeWorkspaceProjectionInput, 'themeRef'> = {}): Promise<ThemeWorkspaceCompanyProjection> {
+    if (!isSafeTopicThemeRef(themeRef) || !isSafeTopicThemeRef(industryRef) || !isSafeTopicThemeRef(companyRef)) throw new RuntimeClientError('invalid_input', 'Canonical Theme, Industry, and Company refs are required', 400)
+    const params = new URLSearchParams()
+    if (input.expectedRevision !== undefined) params.set('expectedRevision', String(input.expectedRevision))
+    if (input.asOf !== undefined) params.set('asOf', input.asOf)
+    if (input.maxItemsPerSection !== undefined) params.set('maxItemsPerSection', String(input.maxItemsPerSection))
+    if (input.maxResponseBytes !== undefined) params.set('maxResponseBytes', String(input.maxResponseBytes))
+    const query = params.size > 0 ? `?${params.toString()}` : ''
+    return this.request(`/api/knowledge/themes/${encodeURIComponent(themeRef)}/industries/${encodeURIComponent(industryRef)}/companies/${encodeURIComponent(companyRef)}${query}`)
+  }
   async getTopicSummary(themeRef: string, depth: 1 | 2 = 1): Promise<KnowledgeTopicSummary> { if (!isSafeTopicThemeRef(themeRef)) throw new RuntimeClientError('invalid_input', 'A canonical InvestmentTheme ref is required', 400); return this.request(`/api/knowledge/topics/${encodeURIComponent(themeRef)}/summary?depth=${depth}`) }
   async listTopicItems(input: KnowledgeTopicPageInput): Promise<KnowledgeTopicItemPage> {
     if (!isSafeTopicThemeRef(input.themeRef)) throw new RuntimeClientError('invalid_input', 'A canonical InvestmentTheme ref is required', 400)
