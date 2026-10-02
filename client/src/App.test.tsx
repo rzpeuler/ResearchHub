@@ -95,6 +95,36 @@ describe('Homepage shell', () => {
     expect(JSON.stringify(JSON.parse(String(dispatch?.init?.body)))).not.toContain('evidence')
   })
 
+  it('shows the Theme Framework review when automatic dispatch routes the query there', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    const candidate = {
+      knowledgeBaseId: 'kb-1', basedOnRevision: 7, theme: { name: 'AI Compute' },
+      framework: { proposedDefinition: { statement: 'Compute infrastructure', status: 'provisional' }, inclusionPrinciples: [], exclusionPrinciples: [], industryCandidates: [], relationCandidates: [], coverageGaps: [] },
+      acquisitionStatus: 'complete', diagnostics: [], evidence: [],
+    }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input); calls.push({ path, init })
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 7, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'theme_framework', label: 'Theme Framework', intentDescription: 'Initialize an industry network', inputSchema: {}, requiredInputs: ['name'], outputContract: 'ThemeFrameworkReviewCandidate', knowledgeEffects: ['Theme', 'Industry', 'Relation'] }] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
+      if (path === '/api/research-reports?limit=20') return json({ reports: [] })
+      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'AI compute', mode: { type: 'free_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'theme_framework', confidence: 0.94, arguments: { name: 'AI Compute' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Detected a Theme initialization request' }, summary: { mode: 'Explicit Workflow', workflowId: 'theme_framework', workflowLabel: 'Theme Framework', selectedSkillIds: [], argumentsStatus: 'extracted', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'theme-auto-run', workflow: { runId: 'theme-auto-run', workflowType: 'theme_framework_construction', objective: 'Initialize AI Compute', status: 'running', startedAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:00.000Z' } }, 202)
+      if (path === '/api/theme-framework/runs/theme-auto-run') return json({ status: 'awaiting_review', workflowRunId: 'theme-auto-run', candidate })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), { target: { value: 'Initialize the AI compute theme' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    expect(await screen.findByRole('heading', { name: 'Industry framework' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'AI Compute' })).toBeTruthy()
+    expect(screen.getByText('Accepting these decisions will write the Theme framework to the Knowledge Base.')).toBeTruthy()
+    const dispatch = calls.find((call) => call.path === '/api/research/dispatch')
+    expect(JSON.parse(String(dispatch?.init?.body))).toMatchObject({ mode: { type: 'free_research' } })
+  })
+
   it('stages a pasted source, requires caller-supplied rights, and only accepts explicitly selected V0.4 candidates', async () => {
     const posted: { path: string; body?: Record<string, unknown> }[] = []
     mockV04UploadRuntime(async (input, init) => {
@@ -224,6 +254,53 @@ describe('Homepage shell', () => {
     fireEvent.drop(composer, { dataTransfer: { files: [new File(['binary'], 'archive.zip', { type: 'application/zip' })], types: ['Files'] } })
     expect(await screen.findByText(/Unsupported file/)).toBeTruthy()
     expect(mock).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects files above the upload limit before staging them', async () => {
+    const mock = vi.fn(async () => json({ code: 'not_found', error: 'not found' }, 404))
+    mockV04UploadRuntime(mock)
+    render(<App />)
+    await screen.findByRole('textbox', { name: 'Message' })
+    const oversized = new File(['x'], 'large.pdf', { type: 'application/pdf' })
+    Object.defineProperty(oversized, 'size', { value: 100 * 1024 * 1024 + 1 })
+    fireEvent.change(screen.getByLabelText('Add document'), { target: { files: [oversized] } })
+    expect(await screen.findByText('File exceeds the 100 MB upload limit.')).toBeTruthy()
+    expect(mock).not.toHaveBeenCalled()
+  })
+
+  it('uses the compact composer picker, preserves staged files when cancelled, and clears explicitly', async () => {
+    const uploaded = vi.fn(async () => json({ attachment: { attachmentId: 'attachment-picker', filename: 'picked.pdf', mediaType: 'application/pdf', size: 12, sha256: 'e'.repeat(64), createdAt: '2026-10-02T00:00:00.000Z' } }, 201))
+    mockV04UploadRuntime(async (input) => String(input) === '/api/attachments' ? uploaded() : json({ code: 'not_found', error: 'not found' }, 404))
+    render(<App />)
+    await screen.findByRole('textbox', { name: 'Message' })
+    expect(screen.queryByRole('region', { name: 'Knowledge upload' })).toBeNull()
+    const picker = screen.getByLabelText('Add document') as HTMLInputElement
+    fireEvent.change(picker, { target: { files: [new File(['pdf'], 'picked.pdf', { type: 'application/pdf' })] } })
+    expect(await screen.findByText('picked.pdf')).toBeTruthy()
+    fireEvent.change(picker, { target: { files: [] } })
+    expect(screen.getByText('picked.pdf')).toBeTruthy()
+    expect(uploaded).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove attachment' }))
+    expect(screen.queryByText('picked.pdf')).toBeNull()
+    expect(screen.getByLabelText('Add document')).toBeTruthy()
+  })
+
+  it('keeps an uploaded file staged in no-KB mode and disables governed write', async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeError: { code: 'no_kb_mounted', error: 'not mounted' } })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/attachments') return json({ attachment: { attachmentId: 'attachment-no-kb', filename: 'no-kb.pdf', mediaType: 'application/pdf', size: 12, sha256: 'f'.repeat(64), createdAt: '2026-10-02T00:00:00.000Z' } }, 201)
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByLabelText('Add document'), { target: { files: [new File(['pdf'], 'no-kb.pdf', { type: 'application/pdf' })] } })
+    expect(await screen.findByText('no-kb.pdf')).toBeTruthy()
+    expect(screen.getByText('Mount a Knowledge Base to prepare a governed Schema 0.4 preview.')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Write Knowledge' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('resets source rights and ignores a late preview when replacing a file, then locks replacement during acceptance', async () => {
