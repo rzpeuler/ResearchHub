@@ -4,7 +4,7 @@ import { KnowledgeGraphPage } from './KnowledgeGraphPage'
 import type { RuntimeClient } from '../../api/runtime-client'
 import type { ThemeWorkspaceCompanyProjection, ThemeWorkspaceIndustryProjection, ThemeWorkspaceProjection } from '../../api/runtime-client'
 
-const emptyContent = { factsByType: {}, modules: [], coreViews: { items: [], defaultCount: 3 as const, total: 0, truncated: false }, timeline: { historicalEvents: [], futureCatalysts: [], eventsLimit: { total: 0, limit: 30, truncated: false }, catalystsLimit: { total: 0, limit: 30, truncated: false } }, limited: {}, omittedRestrictedCount: 0 }
+const emptyContent = { factsByType: {}, sectionCatalog: [], factsBySection: {}, unclassifiedFacts: [], classification: { status: 'classified' as const, method: 'not_needed' as const, revision: 7, classifiedCount: 0, unclassifiedCount: 0 }, modules: [], coreViews: { items: [], defaultCount: 3 as const, total: 0, truncated: false }, timeline: { historicalEvents: [], futureCatalysts: [], eventsLimit: { total: 0, limit: 30, truncated: false }, catalystsLimit: { total: 0, limit: 30, truncated: false } }, limited: {}, omittedRestrictedCount: 0 }
 const directory = { themeGroups: [{ ref: 'theme-group:default', name: '默认分组', themes: [{ ref: 'entity:theme-a', name: '主题 A' }, { ref: 'entity:theme-b', name: '主题 B' }] }], industries: { items: [], total: 0, limit: 30, truncated: false }, companies: { items: [], total: 0, limit: 30, truncated: false }, products: { items: [], total: 0, limit: 30, truncated: false }, technologies: { items: [], total: 0, limit: 30, truncated: false } }
 
 function overview(themeRef = 'entity:theme-a'): ThemeWorkspaceProjection {
@@ -18,7 +18,8 @@ function industryProjection(industryRef: string, companyRefs: readonly string[])
 }
 
 function companyProjection(industryRef: string, companyRef: string): ThemeWorkspaceCompanyProjection {
-  return { knowledgeBaseId: 'kb', revision: 7, themeRef: 'entity:theme-a', industryRef, company: { ref: companyRef, name: `详情 ${companyRef.split(':').at(-1)}` }, sections: { ...emptyContent, factsByType: { fact: [{ ref: `claim:${companyRef}`, kind: 'claim', semanticType: 'fact', title: '经营情况', statement: `${companyRef} 的详细公司事实` }] } }, responseBounds: { maxBytes: 1_000_000, serializedBytes: 400, truncated: false } }
+  const fact = { ref: `claim:${companyRef}`, kind: 'claim' as const, semanticType: 'fact', title: '经营情况', statement: `${companyRef} 的详细公司事实` }
+  return { knowledgeBaseId: 'kb', revision: 7, themeRef: 'entity:theme-a', industryRef, company: { ref: companyRef, name: `详情 ${companyRef.split(':').at(-1)}` }, sections: { ...emptyContent, factsByType: { fact: [fact] }, sectionCatalog: [{ id: 'company_profile', title: '公司概况' }], factsBySection: { company_profile: [fact] }, classification: { status: 'classified', method: 'deterministic_fallback', revision: 7, classifiedCount: 1, unclassifiedCount: 0 } }, responseBounds: { maxBytes: 1_000_000, serializedBytes: 400, truncated: false } }
 }
 
 function makeClient(overrides: Partial<RuntimeClient> = {}): RuntimeClient {
@@ -128,6 +129,58 @@ describe('KnowledgeGraphPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'company-b' }))
     await waitFor(() => expect(screen.getByText('观点 3')).toBeTruthy())
     expect(screen.queryByText('观点 4')).toBeNull()
+  })
+
+  it('renders canonical facts in the returned research chapters and keeps unclassified facts visible', async () => {
+    const chapterFact = { ref: 'claim:chapter-fact', kind: 'claim' as const, semanticType: 'fact', title: '供需情况', statement: '服务器需求保持增长。' }
+    const looseFact = { ref: 'claim:loose-fact', kind: 'claim' as const, semanticType: 'viewpoint', title: '其他观察', statement: '仍需跟踪行业变化。' }
+    const industry = industryProjection('entity:industry-a', [])
+    const client = makeClient({ getThemeWorkspaceIndustry: vi.fn().mockResolvedValue({
+      ...industry,
+      sections: { ...emptyContent, sectionCatalog: [{ id: 'supply_demand_analysis', title: '供需分析' }, { id: 'risk_analysis', title: '风险分析' }], factsBySection: { supply_demand_analysis: [chapterFact], risk_analysis: [] }, unclassifiedFacts: [looseFact], classification: { status: 'partial', method: 'reasoning_executor', revision: 7, classifiedCount: 1, unclassifiedCount: 1 } },
+    }) })
+    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
+    expect(await screen.findByText('服务器需求保持增长。')).toBeTruthy()
+    expect(screen.getByText('仍需跟踪行业变化。')).toBeTruthy()
+    expect(screen.getByText('部分事实尚未归类')).toBeTruthy()
+    const emptyChapter = screen.getByText('风险分析').closest('details')
+    expect(emptyChapter?.open).toBe(false)
+    expect(emptyChapter?.textContent).toContain('暂无已归类知识')
+  })
+
+  it('formats competition scale values while retaining currency, date, and comparability cues', async () => {
+    const industry = industryProjection('entity:industry-a', ['entity:company-a', 'entity:company-b'])
+    const competition = {
+      ref: 'module:market-overview', schemaId: 'competition-landscape-v1',
+      columns: [{ id: 'company', label: '公司', role: 'company' as const }, { id: 'market-cap', label: '市值', role: 'market_cap' as const }, { id: 'annual-revenue', label: '年营收', role: 'annual_revenue' as const }],
+      rows: [
+        { companyRef: 'entity:company-a', cells: [
+          { columnId: 'market-cap', value: { status: 'available' as const, displayValue: '128000000000', asOf: '2026-10-01', currency: 'CNY', unit: 'CNY' }, notComparable: true },
+          { columnId: 'annual-revenue', value: { status: 'available' as const, displayValue: '8600000000', fiscalYear: 2025, currency: 'CNY', unit: 'CNY' }, notComparable: false },
+        ] },
+        { companyRef: 'entity:company-b', cells: [
+          { columnId: 'market-cap', value: { status: 'available' as const, displayValue: '12800000000', asOf: '2026-10-01', currency: 'USD', unit: 'USD' }, notComparable: true },
+          { columnId: 'annual-revenue', value: { status: 'available' as const, displayValue: '5200000000', fiscalYear: 2025, currency: 'USD', unit: 'USD' }, notComparable: true },
+        ] },
+      ], rowTotal: 2, truncated: false,
+    }
+    const client = makeClient({ getThemeWorkspaceIndustry: vi.fn().mockResolvedValue({ ...industry, sections: { ...emptyContent, competition } }) })
+    const { container } = render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
+    const rowA = await screen.findByRole('row', { name: /company-a/ })
+    expect(rowA.textContent).toContain('1,280 亿元')
+    expect(rowA.textContent).toContain('86 亿元')
+    expect(rowA.textContent).toContain('交易日 2026-10-01 · CNY')
+    expect(rowA.textContent).not.toContain('CNY · CNY')
+    expect(rowA.textContent).toContain('不可直接比较')
+    const rowB = screen.getByRole('row', { name: /company-b/ })
+    expect(rowB.textContent).toContain('128 亿 USD')
+    expect(rowB.textContent).toContain('年报 · USD')
+    const minimap = container.querySelector<HTMLElement>('.react-flow__minimap')
+    expect(minimap?.style.width).toBe('116px')
+    expect(minimap?.style.height).toBe('74px')
+    expect(screen.queryByRole('link', { name: 'React Flow attribution' })).toBeNull()
   })
 
   it('accepts a legacy root URL parameter when it identifies a Theme ref', async () => {

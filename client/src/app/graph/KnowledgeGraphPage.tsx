@@ -17,6 +17,26 @@ type FollowedTarget = { readonly kind: 'industry'; readonly ref: string } | { re
 const importanceOrder = (value: string | undefined): number => value === 'core' ? 0 : value === 'material' ? 1 : value === 'adjacent' ? 2 : 3
 const compareRef = (a: { readonly ref: string }, b: { readonly ref: string }): number => a.ref.localeCompare(b.ref)
 const sectionLabel = (value: string): string => value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+const localizedSections: Readonly<Record<string, string>> = {
+  industry_definition: '行业定义与范围', market_size_growth: '市场规模与增长', supply_demand_analysis: '供需分析', industry_chain_analysis: '产业链分析',
+  competitive_landscape: '竞争格局', technology_evolution: '技术演进', company_mapping: '重点公司', risk_analysis: '风险分析',
+  'company-overview': '公司概况', 'business-model': '商业模式', 'business-segments': '业务构成', 'revenue-profit-drivers': '收入与利润驱动',
+  products: '产品', technologies: '技术', 'industry-exposure': '行业敞口', 'supply-chain': '供应链', competition: '竞争格局',
+  'financial-quality': '财务质量', 'growth-drivers': '增长驱动', 'management-capital-allocation': '管理层与资本配置', catalysts: '催化剂',
+  risks: '风险', valuation: '估值', 'bull-base-bear': '多空情景', 'variant-perception': '预期差', 'investment-thesis': '投资逻辑', 'monitoring-checklist': '跟踪清单',
+}
+function localizedSectionTitle(id: string, fallback: string): string { return localizedSections[id] ?? fallback }
+function formatCompetitionValue(value: string, role: string, currency?: string): string {
+  if ((role !== 'market_cap' && role !== 'annual_revenue') || !currency) return value
+  const amount = Number(value)
+  if (!Number.isFinite(amount)) return value
+  const absolute = Math.abs(amount)
+  const divisor = absolute >= 1_000_000_000_000 ? 1_000_000_000_000 : absolute >= 100_000_000 ? 100_000_000 : undefined
+  if (!divisor) return `${new Intl.NumberFormat('zh-CN').format(amount)} ${currency}`
+  const scale = divisor === 1_000_000_000_000 ? '万亿' : '亿'
+  const compact = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(amount / divisor)
+  return currency === 'CNY' ? `${compact} ${scale}元` : `${compact} ${scale} ${currency}`
+}
 function safeMessage(error: unknown): string {
   if (error instanceof RuntimeClientError && error.code === 'conflict') return 'Knowledge Base 已更新。请重新载入当前 Theme。'
   if (error instanceof RuntimeClientError && error.code === 'no_kb_mounted') return '当前没有已挂载的 Knowledge Base。'
@@ -75,7 +95,7 @@ function GraphPanel({ projection, selectedIndustryRef, busy, onSelectIndustry }:
   return <section className="theme-workspace-panel theme-graph-panel" aria-labelledby="theme-graph-title">
     <div className="theme-panel-heading"><div><div className="theme-panel-kicker">CONFIRMED SCOPE · SCHEMA 0.4</div><h2 id="theme-graph-title">产业图谱</h2></div>{projection ? <span className="theme-revision">Revision {projection.revision}</span> : null}</div>
     {busy ? <div className="theme-graph-loading" role="status">读取已确认的产业范围…</div> : !projection ? <EmptyState title="选择一个 Theme" detail="图谱只展示该 Theme 已确认纳入的行业环节及关系。" /> : projection.graph.nodes.length === 0 ? <EmptyState title="尚无已确认的行业节点" detail="该 Theme 目前没有可展示的产业范围。" /> : <>
-      <div className="theme-flow-canvas" aria-label="行业关系图谱"><ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodeClick={(_, node) => onSelectIndustry(node.id)} nodesConnectable={false} nodesDraggable={false} fitView fitViewOptions={{ padding: .18 }} minZoom={.2} maxZoom={2}><Background color="#29404b" gap={24} /><Controls showInteractive={false} /><MiniMap nodeColor={(node) => (node.data as GraphNodeData).selected ? '#8cd4c6' : '#42756f'} pannable zoomable /></ReactFlow></div>
+      <div className="theme-flow-canvas" aria-label="行业关系图谱"><ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodeClick={(_, node) => onSelectIndustry(node.id)} nodesConnectable={false} nodesDraggable={false} fitView fitViewOptions={{ padding: .18 }} minZoom={.2} maxZoom={2} proOptions={{ hideAttribution: true }}><Background color="#29404b" gap={24} /><Controls showInteractive={false} /><MiniMap nodeColor={(node) => (node.data as GraphNodeData).selected ? '#8cd4c6' : '#42756f'} pannable zoomable maskColor="rgba(8, 16, 20, .7)" style={{ width: 116, height: 74, backgroundColor: 'rgba(17, 30, 36, .96)' }} /></ReactFlow></div>
       <div className="theme-graph-summary"><span>{projection.graph.nodes.length}/{projection.graph.nodeTotal} 个行业节点</span><span>{projection.graph.edges.length}/{projection.graph.edgeTotal} 条关系</span>{projection.graph.truncated ? <strong>结果已截断</strong> : null}</div>
       <nav className="theme-node-list" aria-label="图谱行业节点">{projection.graph.nodes.map((node) => <button type="button" key={node.ref} className={node.ref === selectedIndustryRef ? 'is-selected' : ''} aria-pressed={node.ref === selectedIndustryRef} onClick={() => onSelectIndustry(node.ref)}>{node.name}</button>)}</nav>
       {projection.graph.edges.length > 0 ? <details className="theme-edge-list"><summary>关系明细</summary><ul>{projection.graph.edges.map((edge) => <li key={edge.ref}><span>{projection.graph.nodes.find((node) => node.ref === edge.sourceRef)?.name ?? edge.sourceRef}</span><b>→ {sectionLabel(edge.relationType)} →</b><span>{projection.graph.nodes.find((node) => node.ref === edge.targetRef)?.name ?? edge.targetRef}</span></li>)}</ul></details> : null}
@@ -84,9 +104,29 @@ function GraphPanel({ projection, selectedIndustryRef, busy, onSelectIndustry }:
 }
 
 function FactGroups({ content }: { readonly content?: ThemeWorkspaceContentProjection }): ReactElement {
-  const groups = content ? Object.entries(content.factsByType).sort(([a], [b]) => a.localeCompare(b)) : []
-  if (groups.length === 0) return <EmptyState title="暂无已写入知识" detail="没有可展示且符合来源权利要求的 canonical 内容。" />
-  return <div className="theme-fact-groups">{groups.map(([kind, facts]) => <section className="theme-fact-group" key={kind}><h4>{sectionLabel(kind)}</h4>{facts.map((fact) => <article className="theme-fact" key={fact.ref}><p>{fact.statement ?? fact.title}</p>{fact.value !== undefined && fact.value !== null ? <small>{String(fact.value)}{fact.unit ? ` ${fact.unit}` : ''}{fact.period ? ` · ${fact.period}` : ''}</small> : null}</article>)}{content?.limited[kind]?.truncated ? <p className="theme-truncation">仅显示 {facts.length} 条 / 共 {content.limited[kind].total} 条</p> : null}</section>)}</div>
+  if (!content) return <EmptyState title="暂无已写入知识" detail="没有可展示且符合来源权利要求的 canonical 内容。" />
+  const sectionFactCount = content.sectionCatalog.reduce((count, section) => count + (content.factsBySection[section.id]?.length ?? 0), 0)
+  const statusLabel: Partial<Record<ThemeWorkspaceContentProjection['classification']['status'], string>> = {
+    partial: '部分事实尚未归类',
+    llm_unavailable: '语义分类暂不可用；未归类事实仍保留在下方。',
+    llm_failed: '语义分类未完成；未归类事实仍保留在下方。',
+    invalid_output: '语义分类结果未通过校验；仅展示可确认的归类，其他事实保留在未归类区。',
+    bounded_fallback: '部分事实使用规则回退归类；未归类事实仍保留在下方。',
+  }
+  const status = statusLabel[content.classification.status]
+  const renderFacts = (facts: ThemeWorkspaceContentProjection['unclassifiedFacts']) => facts.map((fact) => <article className="theme-fact" key={fact.ref}><p>{fact.statement ?? fact.title}</p>{fact.value !== undefined && fact.value !== null ? <small>{String(fact.value)}{fact.unit ? ` ${fact.unit}` : ''}{fact.period ? ` · ${fact.period}` : ''}</small> : null}</article>)
+  if (content.sectionCatalog.length === 0 && sectionFactCount === 0 && content.unclassifiedFacts.length === 0) return <EmptyState title="暂无已写入知识" detail="没有可展示且符合来源权利要求的 canonical 内容。" />
+  return <div className="theme-fact-groups">
+    {status ? <div className="theme-classification-status" role="status">{status}{content.classification.reason ? <details><summary>分类详情</summary><p>{content.classification.reason}</p></details> : null}</div> : null}
+    {content.sectionCatalog.map((section) => {
+      const facts = content.factsBySection[section.id] ?? []
+      return <details className="theme-fact-group" key={section.id} open={facts.length > 0}>
+        <summary><span>{localizedSectionTitle(section.id, section.title)}</span><small>{facts.length > 0 ? `${facts.length} 条` : '暂无已归类知识'}</small></summary>
+        <div className="theme-fact-group-content">{facts.length ? renderFacts(facts) : <p className="theme-muted">该模块暂无已归类知识。</p>}</div>
+      </details>
+    })}
+    {content.unclassifiedFacts.length > 0 ? <section className="theme-fact-group theme-unclassified-group"><h4>未归类（{content.unclassifiedFacts.length}）</h4>{renderFacts(content.unclassifiedFacts)}</section> : null}
+  </div>
 }
 
 function CompetitionTable({ projection, selectedCompanyRef, onSelectCompany }: { readonly projection?: ThemeWorkspaceIndustryProjection; readonly selectedCompanyRef?: string; readonly onSelectCompany: (companyRef: string) => void }): ReactElement {
@@ -100,8 +140,10 @@ function CompetitionTable({ projection, selectedCompanyRef, onSelectCompany }: {
       const item = row.cells.find((cell) => cell.columnId === column.id)
       const value = item?.value
       if (!value || value.status !== 'available') return <td key={column.id}><span className="theme-unavailable">{value?.status === 'not_comparable' ? '不可比较' : value?.reason ?? '暂无资料'}</span></td>
-      const detail = value.status === 'available' ? [('asOf' in value && value.asOf ? `交易日 ${value.asOf}` : undefined), ('fiscalYear' in value && value.fiscalYear ? `${value.fiscalYear} 年报` : undefined), ('currency' in value ? value.currency : undefined), ('unit' in value ? value.unit : undefined)].filter(Boolean).join(' · ') : ''
-      return <td key={column.id}><span>{value.displayValue}</span>{item?.notComparable ? <strong className="theme-risk-label">不可直接比较</strong> : null}{detail ? <small>{detail}</small> : null}</td>
+      const currency = 'currency' in value ? value.currency : undefined
+      const unit = 'unit' in value ? value.unit : undefined
+      const uniqueDetail = [('asOf' in value && value.asOf ? `交易日 ${value.asOf}` : undefined), ('fiscalYear' in value && value.fiscalYear ? `${value.fiscalYear} 年报` : undefined), currency, unit && unit !== currency ? unit : undefined].filter(Boolean).join(' · ')
+      return <td key={column.id}><span>{formatCompetitionValue(value.displayValue, column.role, currency)}</span>{item?.notComparable ? <strong className="theme-risk-label">不可直接比较</strong> : null}{uniqueDetail ? <small>{uniqueDetail}</small> : null}</td>
     })}</tr>
   })}</tbody></table>{table.rows.length === 0 ? <EmptyState title="表格没有关联到该行业的公司记录" /> : null}{table.truncated || table.rowTotal > table.rows.length ? <p className="theme-truncation">显示 {table.rows.length} / {table.rowTotal} 行，表格已截断。</p> : null}{table.note ? <p className="theme-muted">{table.note}</p> : null}</div>
 }
