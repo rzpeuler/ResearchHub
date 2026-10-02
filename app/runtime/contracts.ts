@@ -3,6 +3,7 @@ import type { Api, Model } from '@earendil-works/pi-ai'
 import type { KnowledgeService } from '../services/knowledge-service.ts'
 import type { KnowledgeGraphService } from '../services/knowledge-graph-service.ts'
 import type { KnowledgeTopicProjectionService } from '../services/knowledge-topic-projection.ts'
+import type { ThemeWorkspaceProjectionService } from '../services/theme-workspace-projection.ts'
 import type { ProductionService } from '../services/production-service.ts'
 import type { ReviewService } from '../services/review-service.ts'
 import type { WorkflowService } from '../services/workflow-service.ts'
@@ -49,6 +50,8 @@ export interface ResearchHubApplicationServices {
   readonly knowledgeGraphService: KnowledgeGraphService
   /** Read-only Schema 0.4 topic projection; absent only in legacy test/session adapters. */
   readonly knowledgeTopicProjectionService?: KnowledgeTopicProjectionService
+  /** Read-only Theme Graph workspace projection; absent only in legacy adapters. */
+  readonly themeWorkspaceProjectionService?: ThemeWorkspaceProjectionService
   readonly reviewService: ReviewService
   readonly workflowService: WorkflowService
   readonly researchDispatchService?: ResearchDispatchService

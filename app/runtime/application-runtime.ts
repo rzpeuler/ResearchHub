@@ -5,6 +5,7 @@ import { createIndustryProductionReasoningExecutor, selectProductionReasoningMod
 import { KnowledgeService } from '../services/knowledge-service.ts'
 import { KnowledgeGraphService } from '../services/knowledge-graph-service.ts'
 import { KnowledgeTopicProjectionService } from '../services/knowledge-topic-projection.ts'
+import { ThemeWorkspaceProjectionService } from '../services/theme-workspace-projection.ts'
 import { ProductionService } from '../services/production-service.ts'
 import { ReviewService } from '../services/review-service.ts'
 import { WorkflowService } from '../services/workflow-service.ts'
@@ -127,6 +128,7 @@ export class ResearchHubApplicationRuntime {
     const knowledgeService = new KnowledgeService(mountedKnowledgeBaseRoot)
     const knowledgeGraphService = new KnowledgeGraphService(mountedKnowledgeBaseRoot)
     const knowledgeTopicProjectionService = new KnowledgeTopicProjectionService(mountedKnowledgeBaseRoot)
+    const themeWorkspaceProjectionService = new ThemeWorkspaceProjectionService(mountedKnowledgeBaseRoot)
     const reviewService = new ReviewService(mountedKnowledgeBaseRoot)
     let thesisQueryService: ThesisQueryService | undefined
     let thesisDecisionService: ThesisDecisionService | undefined
@@ -159,7 +161,7 @@ export class ResearchHubApplicationRuntime {
     const sourceLibraryService = new SourceLibraryService(join(cwd, 'runtime-data', 'source-library'))
     const skillOnboardingService = new SkillOnboardingService(join(cwd, 'runtime-data', 'skill-onboarding', 'installed'), join(cwd, 'runtime-data', 'skill-onboarding'))
     const researchDispatchService = new ResearchDispatchService({ researchService, dailyIntelligenceService, workflowService, skillRegistry, bundleStore: new FileResearchBundleStore(join(cwd, 'runtime-data', 'research-bundles')), sourceLibraryService, mountedKnowledgeBaseRoot, reasoningExecutor })
-    const services = { knowledgeService, knowledgeGraphService, knowledgeTopicProjectionService, reviewService, workflowService, productionService, researchDispatchService, sourceLibraryService, skillOnboardingService, ...(researchService === undefined ? {} : { researchService }), ...(thesisQueryService === undefined ? {} : { thesisQueryService }), ...(thesisDecisionService === undefined ? {} : { thesisDecisionService }), ...(thesisCriterionService === undefined ? {} : { thesisCriterionService }), dailyIntelligenceService }
+    const services = { knowledgeService, knowledgeGraphService, knowledgeTopicProjectionService, themeWorkspaceProjectionService, reviewService, workflowService, productionService, researchDispatchService, sourceLibraryService, skillOnboardingService, ...(researchService === undefined ? {} : { researchService }), ...(thesisQueryService === undefined ? {} : { thesisQueryService }), ...(thesisDecisionService === undefined ? {} : { thesisDecisionService }), ...(thesisCriterionService === undefined ? {} : { thesisCriterionService }), dailyIntelligenceService }
     const { thesisCriterionService: _humanOnlyCriterionService, ...piApplicationServices } = services
     void _humanOnlyCriterionService
     const sessionManager = options.sessionManager ?? SessionManager.create(cwd, options.sessionDir)

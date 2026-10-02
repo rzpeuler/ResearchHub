@@ -18,6 +18,7 @@ import { normalizeResearchRequest } from '../services/research-dispatch-contract
 import type { ResearchHubRequestPolicy } from '../pi/tools.ts'
 import type { ThesisCriterionConfirmInput, ThesisCriterionPrepareInput, ThesisCriterionPreview } from '../services/thesis-criterion-service.ts'
 import type { KnowledgeTopicFilters, KnowledgeTopicKind, KnowledgeTopicPageInput, KnowledgeTopicScope } from '../services/knowledge-topic-contracts.ts'
+import type { ThemeWorkspaceProjectionInput } from '../services/theme-workspace-projection-contracts.ts'
 import type { RawDocumentMetadataV04, RawDocumentRightsV04 } from '../../knowledge/production/raw-document-gateway-v04.ts'
 
 const MAX_JSON_BYTES = 1_000_000
@@ -145,6 +146,7 @@ function decodeSegment(value: string): string {
 
 const TOPIC_QUERY_KEYS = new Set(['depth', 'kind', 'scope', 'limit', 'cursor', 'expectedRevision', 'lifecycle', 'observationType', 'claimType', 'relationType'])
 const TOPIC_KINDS = new Set<KnowledgeTopicKind>(['relation', 'claim', 'observation', 'event', 'thesis', 'module', 'source', 'reasoning_edge'])
+const THEME_WORKSPACE_QUERY_KEYS = new Set(['expectedRevision', 'asOf', 'maxNodes', 'maxEdges', 'maxItemsPerSection', 'maxCompaniesPerIndustry', 'maxResponseBytes'])
 
 function topicQueryValue(url: URL, name: string, maxLength?: number): string | undefined {
   const values = url.searchParams.getAll(name)
@@ -155,7 +157,7 @@ function topicQueryValue(url: URL, name: string, maxLength?: number): string | u
 
 function validateTopicQuery(url: URL, allowed: ReadonlySet<string>): void {
   for (const [key] of url.searchParams) {
-    if (!TOPIC_QUERY_KEYS.has(key) || !allowed.has(key)) throw new ApplicationServiceError('invalid_input', 'Topic query contains an unsupported parameter')
+    if ((!TOPIC_QUERY_KEYS.has(key) && !THEME_WORKSPACE_QUERY_KEYS.has(key)) || !allowed.has(key)) throw new ApplicationServiceError('invalid_input', 'Topic query contains an unsupported parameter')
     if (url.searchParams.getAll(key).length !== 1) throw new ApplicationServiceError('invalid_input', `query parameter ${key} must appear once`)
   }
 }
@@ -183,6 +185,40 @@ function topicExpectedRevision(url: URL): number | undefined {
   const parsed = Number(value)
   if (!Number.isSafeInteger(parsed)) throw new ApplicationServiceError('invalid_input', 'expectedRevision must be a non-negative safe integer')
   return parsed
+}
+
+function themeWorkspaceRef(value: string, label: string): string {
+  if (value.length > 300 || !/^entity:[A-Za-z0-9][A-Za-z0-9._:-]{0,240}$/u.test(value) || value.includes('..')) throw new ApplicationServiceError('invalid_input', `${label} is invalid`)
+  return value
+}
+
+function themeWorkspaceQuery(url: URL, allowed: ReadonlySet<string>): Omit<ThemeWorkspaceProjectionInput, 'themeRef'> {
+  validateTopicQuery(url, allowed)
+  const asOf = topicQueryValue(url, 'asOf', 80)
+  if (asOf !== undefined && !Number.isFinite(Date.parse(asOf))) throw new ApplicationServiceError('invalid_input', 'asOf must be a parseable timestamp')
+  const boundedLimit = (key: string, maximum: number, minimum = 1): number | undefined => {
+    const value = topicQueryValue(url, key)
+    if (value === undefined) return undefined
+    if (!/^[1-9]\d*$/.test(value)) throw new ApplicationServiceError('invalid_input', `${key} must be a positive integer`)
+    const parsed = Number(value)
+    if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) throw new ApplicationServiceError('invalid_input', `${key} is outside its supported bound`)
+    return parsed
+  }
+  const expectedRevision = topicExpectedRevision(url)
+  const maxNodes = boundedLimit('maxNodes', 150)
+  const maxEdges = boundedLimit('maxEdges', 300)
+  const maxItemsPerSection = boundedLimit('maxItemsPerSection', 100)
+  const maxCompaniesPerIndustry = boundedLimit('maxCompaniesPerIndustry', 100)
+  const maxResponseBytes = boundedLimit('maxResponseBytes', 2_000_000, 1_024)
+  return {
+    ...(expectedRevision === undefined ? {} : { expectedRevision }),
+    ...(asOf === undefined ? {} : { asOf }),
+    ...(maxNodes === undefined ? {} : { maxNodes }),
+    ...(maxEdges === undefined ? {} : { maxEdges }),
+    ...(maxItemsPerSection === undefined ? {} : { maxItemsPerSection }),
+    ...(maxCompaniesPerIndustry === undefined ? {} : { maxCompaniesPerIndustry }),
+    ...(maxResponseBytes === undefined ? {} : { maxResponseBytes }),
+  }
 }
 
 function isInsideStaticRoot(root: string, candidate: string): boolean {
@@ -484,6 +520,28 @@ export class ResearchHubRuntimeServer {
       const service = this.runtime!.services.thesisQueryService
       if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Thesis queries require a mounted Schema 0.4 Knowledge Base')
       await this.sendJson(response, 200, await service.getThesis(decodeSegment(pieces[4]!))); return
+    }
+    if (method === 'GET' && path.startsWith('/api/knowledge/themes/')) {
+      const pieces = path.split('/')
+      const themeRef = themeWorkspaceRef(decodeSegment(pieces[4] ?? ''), 'themeRef')
+      const service = this.runtime!.services.themeWorkspaceProjectionService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme Workspace requires a mounted Schema 0.4 Knowledge Base')
+      if (pieces.length === 6 && pieces[5] === 'overview') {
+        const query = themeWorkspaceQuery(url, new Set(['expectedRevision', 'asOf', 'maxNodes', 'maxEdges', 'maxResponseBytes']))
+        await this.sendJson(response, 200, await service.getThemeProjection({ ...query, themeRef })); return
+      }
+      if (pieces.length === 7 && pieces[5] === 'industries') {
+        const industryRef = themeWorkspaceRef(decodeSegment(pieces[6] ?? ''), 'industryRef')
+        const query = themeWorkspaceQuery(url, new Set(['expectedRevision', 'asOf', 'maxItemsPerSection', 'maxCompaniesPerIndustry', 'maxResponseBytes']))
+        await this.sendJson(response, 200, await service.getIndustryProjection({ ...query, themeRef }, industryRef)); return
+      }
+      if (pieces.length === 9 && pieces[5] === 'industries' && pieces[7] === 'companies') {
+        const industryRef = themeWorkspaceRef(decodeSegment(pieces[6] ?? ''), 'industryRef')
+        const companyRef = themeWorkspaceRef(decodeSegment(pieces[8] ?? ''), 'companyRef')
+        const query = themeWorkspaceQuery(url, new Set(['expectedRevision', 'asOf', 'maxItemsPerSection', 'maxResponseBytes']))
+        await this.sendJson(response, 200, await service.getCompanyProjection({ ...query, themeRef }, industryRef, companyRef)); return
+      }
+      throw new ApplicationServiceError('not_found', 'Theme Workspace route not found')
     }
     if (method === 'GET' && path.startsWith('/api/knowledge/topics/')) {
       const pieces = path.split('/')
