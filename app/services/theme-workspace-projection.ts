@@ -11,6 +11,7 @@ import type {
   KnowledgeSourceV04,
 } from '../../knowledge/schema/domain-v04.ts'
 import type { ThemeScopeDecisionV04 } from '../../knowledge/governance/theme-scope-v04.ts'
+import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import { COMPETITION_MODULE_SCHEMA_ID_V1, validateCompetitionModuleV1, type CompetitionModuleV1 } from '../../knowledge/schema/competition-module-v04.ts'
 import { readThemeScopeLedgerV04, type ThemeScopeLedgerEntryV04 } from '../../knowledge/governance/theme-scope-ledger-v04.ts'
 import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
@@ -30,6 +31,7 @@ import type {
   ThemeWorkspaceProjectionInput,
   ThemeWorkspaceTimelineItem,
 } from './theme-workspace-projection-contracts.ts'
+import { ThemeWorkspaceSectionClassifier, type ThemeWorkspaceSectionTaxonomy } from './theme-workspace-section-classifier.ts'
 
 const DEFAULT_NODE_LIMIT = 60
 const HARD_NODE_LIMIT = 150
@@ -144,6 +146,10 @@ function collectBoundedArrays(value: unknown, path: readonly string[], output: A
   for (const [key, child] of Object.entries(value)) {
     if (key === 'factsByType' && child && typeof child === 'object') {
       for (const [type, facts] of Object.entries(child)) if (Array.isArray(facts)) output.push({ array: facts, path: [...path, key, type] })
+    } else if (key === 'factsBySection' && child && typeof child === 'object') {
+      for (const [section, facts] of Object.entries(child)) if (Array.isArray(facts)) output.push({ array: facts, path: [...path, key, section] })
+    } else if (key === 'unclassifiedFacts' && Array.isArray(child)) {
+      output.push({ array: child, path: [...path, key] })
     } else collectBoundedArrays(child, [...path, key], output)
   }
 }
@@ -158,6 +164,7 @@ function markBoundedCollection(root: unknown, path: readonly string[]): void {
   const graphIndex = path.indexOf('graph')
   const sectionsIndex = path.indexOf('sections')
   const factsIndex = path.indexOf('factsByType')
+  const sectionsByIdIndex = path.indexOf('factsBySection')
   const competitionIndex = path.indexOf('competition')
   const coreViewsIndex = path.indexOf('coreViews')
   const timelineIndex = path.indexOf('timeline')
@@ -172,6 +179,12 @@ function markBoundedCollection(root: unknown, path: readonly string[]): void {
     const limited = content?.limited as MutableRecord | undefined
     const semanticType = path[factsIndex + 1]
     if (limited && semanticType) limited[semanticType] = { ...(limited[semanticType] as MutableRecord), truncated: true }
+  } else if (sectionsByIdIndex >= 0 || path.at(-1) === 'unclassifiedFacts') {
+    const content = atPath(path.slice(0, sectionsIndex + 1))
+    if (content) {
+      const classification = content.classification as MutableRecord | undefined
+      if (classification) classification.truncated = true
+    }
   } else if (path.at(-1) === 'modules' && sectionsIndex >= 0) {
     const content = atPath(path.slice(0, sectionsIndex + 1))
     const limited = content?.limited as MutableRecord | undefined
@@ -359,11 +372,11 @@ function timelineItem(value: KnowledgeAssetV04, sources: readonly string[], asse
   }
 }
 
-function buildContent(
+async function buildContent(
   assets: ReadonlyMap<string, KnowledgeAssetV04>,
   subjectRef: string,
-  options: { readonly asOf: string; readonly rightsNow: number; readonly itemLimit: number; readonly relatedCompanyRefs?: ReadonlySet<string> },
-): ThemeWorkspaceContentProjection {
+  options: { readonly asOf: string; readonly rightsNow: number; readonly itemLimit: number; readonly knowledgeBaseId: string; readonly revision: number; readonly scopeRef: string; readonly taxonomy: ThemeWorkspaceSectionTaxonomy; readonly sectionClassifier: ThemeWorkspaceSectionClassifier; readonly relatedCompanyRefs?: ReadonlySet<string> },
+): Promise<ThemeWorkspaceContentProjection> {
   const candidates = [...assets.values()].filter((value) => value.id.startsWith('claim:') || value.id.startsWith('observation:') || value.id.startsWith('event:'))
     .filter((value) => isActiveAsset(value) && itemBelongsTo(value, subjectRef))
   const sourcesAllowed = new Map<string, boolean>()
@@ -417,8 +430,13 @@ function buildContent(
   const competition = modules.find((module) => module.type === 'competition' && module.schemaId === COMPETITION_MODULE_SCHEMA_ID_V1)
   const competitionTable = competition ? projectCompetition(competition, assets, options.relatedCompanyRefs ?? new Set(), options.rightsNow) : undefined
   const flattenedTimelineLimit = options.itemLimit
+  const classified = await options.sectionClassifier.classify({ knowledgeBaseId: options.knowledgeBaseId, revision: options.revision, scopeRef: options.scopeRef, taxonomy: options.taxonomy, facts: projectedFacts })
   return {
     factsByType,
+    sectionCatalog: classified.sectionCatalog,
+    factsBySection: classified.factsBySection,
+    unclassifiedFacts: classified.unclassifiedFacts,
+    classification: classified.classification,
     modules: canonicalModules,
     ...(competitionTable ? { competition: competitionTable } : {}),
     coreViews,
@@ -500,8 +518,11 @@ function importanceOrder(value: ThemeWorkspaceIndustryNode['importance']): numbe
 
 export class ThemeWorkspaceProjectionService {
   private readonly registry = new KnowledgeBaseRegistry()
+  private readonly sectionClassifier: ThemeWorkspaceSectionClassifier
 
-  constructor(private readonly mountedKnowledgeBaseRoot?: string, private readonly clock: () => string = () => new Date().toISOString()) {}
+  constructor(private readonly mountedKnowledgeBaseRoot?: string, private readonly clock: () => string = () => new Date().toISOString(), reasoningExecutor?: ReasoningExecutor) {
+    this.sectionClassifier = new ThemeWorkspaceSectionClassifier(reasoningExecutor)
+  }
 
   async getThemeProjection(input: ThemeWorkspaceProjectionInput): Promise<ThemeWorkspaceProjection> {
     validateInput(input)
@@ -577,7 +598,7 @@ export class ThemeWorkspaceProjectionService {
         ...(str(industry.description) ? { description: str(industry.description) } : {}),
         ...(context.importanceByIndustry.get(industryRef) ? { importance: context.importanceByIndustry.get(industryRef) } : {}),
       },
-      sections: buildContent(context.assets, industryRef, { asOf, rightsNow, itemLimit, relatedCompanyRefs: companySet }),
+      sections: await buildContent(context.assets, industryRef, { asOf, rightsNow, itemLimit, knowledgeBaseId: context.knowledgeBaseId, revision: context.revision, scopeRef: `${input.themeRef}:industry:${industryRef}`, taxonomy: 'industry', sectionClassifier: this.sectionClassifier, relatedCompanyRefs: companySet }),
       companies: companyRefs.map((ref) => companySummary(context.entities.get(ref)!)),
       companiesLimit: limitView(allCompanyRefs.length, companyLimit),
     }, maxResponseBytes)
@@ -601,7 +622,7 @@ export class ThemeWorkspaceProjectionService {
       themeRef: input.themeRef,
       industryRef,
       company: companySummary(company),
-      sections: buildContent(context.assets, companyRef, { asOf, rightsNow, itemLimit }),
+      sections: await buildContent(context.assets, companyRef, { asOf, rightsNow, itemLimit, knowledgeBaseId: context.knowledgeBaseId, revision: context.revision, scopeRef: `${input.themeRef}:industry:${industryRef}:company:${companyRef}`, taxonomy: 'company', sectionClassifier: this.sectionClassifier }),
     }, maxResponseBytes)
   }
 

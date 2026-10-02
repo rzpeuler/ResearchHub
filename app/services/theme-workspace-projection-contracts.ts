@@ -123,6 +123,19 @@ export interface ThemeWorkspaceTimelineItem {
 
 export interface ThemeWorkspaceContentProjection {
   readonly factsByType: Readonly<Record<string, readonly ThemeWorkspaceFact[]>>
+  /** Exactly one reading section per classified fact; unclear facts remain visible below. */
+  readonly sectionCatalog: readonly { readonly id: string; readonly title: string }[]
+  readonly factsBySection: Readonly<Record<string, readonly ThemeWorkspaceFact[]>>
+  readonly unclassifiedFacts: readonly ThemeWorkspaceFact[]
+  readonly classification: {
+    readonly status: 'classified' | 'partial' | 'llm_unavailable' | 'llm_failed' | 'invalid_output' | 'bounded_fallback'
+    readonly method: 'reasoning_executor' | 'deterministic_fallback' | 'not_needed'
+    readonly revision: number
+    readonly classifiedCount: number
+    readonly unclassifiedCount: number
+    readonly reason?: string
+    readonly truncated?: boolean
+  }
   readonly modules: readonly ThemeWorkspaceCanonicalModule[]
   readonly competition?: ThemeWorkspaceCompetitionTable
   readonly coreViews: ThemeWorkspaceCoreViews

@@ -128,7 +128,7 @@ export class ResearchHubApplicationRuntime {
     const knowledgeService = new KnowledgeService(mountedKnowledgeBaseRoot)
     const knowledgeGraphService = new KnowledgeGraphService(mountedKnowledgeBaseRoot)
     const knowledgeTopicProjectionService = new KnowledgeTopicProjectionService(mountedKnowledgeBaseRoot)
-    const themeWorkspaceProjectionService = new ThemeWorkspaceProjectionService(mountedKnowledgeBaseRoot)
+    const themeWorkspaceProjectionService = new ThemeWorkspaceProjectionService(mountedKnowledgeBaseRoot, undefined, reasoningExecutor)
     const reviewService = new ReviewService(mountedKnowledgeBaseRoot)
     let thesisQueryService: ThesisQueryService | undefined
     let thesisDecisionService: ThesisDecisionService | undefined

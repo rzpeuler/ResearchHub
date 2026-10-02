@@ -13,6 +13,7 @@ import { COMPETITION_MODULE_SCHEMA_ID_V1, type CompetitionModuleV1 } from '../..
 import { createFreshKnowledgeBaseV04 } from '../../../knowledge/storage/index.ts'
 import { validateKnowledgeChangeSetV04 } from '../../../knowledge/validation/v04-change-set-validator.ts'
 import { writeKnowledgeBase } from '../../../knowledge/writer/writer.ts'
+import type { ReasoningExecutor } from '../../../plugins/reasoning/contracts.ts'
 import { ThemeWorkspaceProjectionService } from '../../../app/services/theme-workspace-projection.ts'
 
 const NOW = '2026-10-02T00:00:00.000Z'
@@ -233,9 +234,43 @@ test('Industry projection returns bounded facts, deterministic core views, publi
     assert.equal(secondRow?.cells.find((cell) => cell.columnId === 'market_cap')?.notComparable, true)
     const bounded = await service.getIndustryProjection({ themeRef, maxItemsPerSection: 1 }, 'entity:industry-servers')
     assert.equal(bounded.sections.limited.viewpoint?.truncated, true)
-    const byteBounded = await service.getIndustryProjection({ themeRef, maxResponseBytes: 2_048 }, 'entity:industry-servers')
+    const byteBounded = await service.getIndustryProjection({ themeRef, maxResponseBytes: 4_096 }, 'entity:industry-servers')
     assert.equal(byteBounded.responseBounds.truncated, true)
     assert.ok(byteBounded.responseBounds.serializedBytes <= byteBounded.responseBounds.maxBytes)
+  })
+})
+
+test('semantic section classification receives only readable facts and cannot block the base projection', async () => {
+  await withFreshKb('section-classification', async (root) => {
+    const { themeRef } = await seedWorkspace(root)
+    let receivedFacts: readonly { factRef: string }[] = []
+    const executor: ReasoningExecutor = {
+      capabilities: () => ({ maxContextTokens: 1000, maxOutputTokens: 1000, structuredOutputSupport: true, maxConcurrency: 1 }),
+      execute: async (request) => {
+        receivedFacts = (request.input as { facts: readonly { factRef: string }[] }).facts
+        return { operation: request.operation, output: { assignments: [{ factRef: 'claim:server-view', sectionId: 'industry_chain_analysis' }] } }
+      },
+    }
+    const service = new ThemeWorkspaceProjectionService(root, clock, executor)
+    const result = await service.getIndustryProjection({ themeRef }, 'entity:industry-servers')
+    const sectionRefs = Object.values(result.sections.factsBySection).flat().map((item) => item.ref)
+
+    assert.equal(receivedFacts.some((item) => item.factRef === 'claim:restricted'), false)
+    assert.ok(sectionRefs.includes('claim:server-view'))
+    assert.equal(sectionRefs.includes('claim:restricted'), false)
+    assert.ok(result.sections.unclassifiedFacts.some((item) => item.ref === 'claim:future-catalyst'))
+    assert.equal(sectionRefs.length + result.sections.unclassifiedFacts.length, receivedFacts.length)
+    assert.equal(new Set([...sectionRefs, ...result.sections.unclassifiedFacts.map((item) => item.ref)]).size, receivedFacts.length)
+    assert.equal(result.sections.classification.status, 'partial')
+
+    const failingExecutor: ReasoningExecutor = {
+      ...executor,
+      execute: async () => { throw new Error('provider details must not escape') },
+    }
+    const fallback = await new ThemeWorkspaceProjectionService(root, clock, failingExecutor).getIndustryProjection({ themeRef }, 'entity:industry-servers')
+    assert.ok(fallback.sections.factsByType.viewpoint?.length)
+    assert.equal(fallback.sections.classification.status, 'llm_failed')
+    assert.equal(fallback.sections.classification.reason?.includes('provider details'), false)
   })
 })
 
