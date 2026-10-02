@@ -96,6 +96,7 @@ const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/u
 const SOURCE_REF = /^source:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u
 const RAW_REF = /^raw-sha256-[0-9a-f]{64}$/u
 const CANDIDATE_ID = /^(?!entity:|relation:|claim:|source:|module:|theme-group:)[^\u0000-\u001f\u007f-\u009f]{1,200}$/iu
+const DOCUMENT_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u
 const REVIEW_CATEGORIES = new Set(['invalid_reference', 'invalid_semantics', 'relation_cardinality', 'schema_gap', 'theme_creation', 'theme_ambiguity', 'reconciliation_review', 'other'])
 const TOP_LEVEL_KEYS = ['format', 'version', 'workflowRunId', 'knowledgeBaseId', 'sourceRef', 'rawRef', 'sourceRevision', 'documentId', 'orderedBlocks', 'candidateGroups', 'blockingReviewConstraints', 'candidateSupport', 'contentHash']
 const GROUP_KEYS = ['candidateId', 'kind', 'candidate']
@@ -124,6 +125,12 @@ function boundedString(value: unknown, label: string, maxLength: number, allowEm
     fail('PREVIEW_MALFORMED', label + ' must be a bounded string')
   }
   return value
+}
+
+function safeDocumentIdentifier(value: unknown, label: string): string {
+  const identifier = boundedString(value, label, 256)
+  if (!DOCUMENT_IDENTIFIER.test(identifier) || identifier.includes('..')) fail('PREVIEW_MALFORMED', label + ' must be a safe document or block identifier')
+  return identifier
 }
 
 function safeInteger(value: unknown, label: string, minimum = 0): number {
@@ -253,14 +260,14 @@ function validateSnapshot(value: unknown, expectedRunId?: string): RawDocumentV0
   if (!SOURCE_REF.test(String(value.sourceRef))) fail('PREVIEW_MALFORMED', 'Preview sourceRef is invalid')
   if (!RAW_REF.test(String(value.rawRef))) fail('PREVIEW_MALFORMED', 'Preview rawRef is invalid')
   safeInteger(value.sourceRevision, 'sourceRevision', 1)
-  boundedString(value.documentId, 'documentId', 256)
+  safeDocumentIdentifier(value.documentId, 'documentId')
   if (!Array.isArray(value.orderedBlocks) || value.orderedBlocks.length > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxDocumentBlocks) fail('PREVIEW_MALFORMED', 'Preview orderedBlocks has an unsupported shape')
   const blockIds = new Set<string>()
   const orderedBlocks = value.orderedBlocks.map((rawBlock, index): RawDocumentV04PreviewBlockOrder => {
     const label = 'orderedBlocks[' + index + ']'
     if (!isRecord(rawBlock)) fail('PREVIEW_MALFORMED', label + ' must be an object')
     exactKeys(rawBlock, ['blockId', 'order'], [], label)
-    const blockId = boundedString(rawBlock.blockId, label + '.blockId', RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxBlockIdLength)
+    const blockId = safeDocumentIdentifier(rawBlock.blockId, label + '.blockId')
     const order = safeInteger(rawBlock.order, label + '.order')
     if (blockIds.has(blockId)) fail('PREVIEW_MALFORMED', 'Preview orderedBlocks contains a duplicate block ID')
     blockIds.add(blockId)
@@ -301,7 +308,7 @@ function validateSnapshot(value: unknown, expectedRunId?: string): RawDocumentV0
     if (isRecord(current)) return Object.values(current).some(containsFullRawText)
     return false
   }
-  if (containsFullRawText(candidateGroups) || containsFullRawText(blockingReviewConstraints)) fail('PREVIEW_MALFORMED', 'Preview candidates or review constraints contain the complete Raw text')
+  if (containsFullRawText(value)) fail('PREVIEW_MALFORMED', 'A serialized preview field contains the complete Raw text')
   const contentHash = boundedString(value.contentHash, 'contentHash', 71)
   if (!/^sha256:[0-9a-f]{64}$/u.test(contentHash)) fail('PREVIEW_MALFORMED', 'Preview contentHash is invalid')
   const snapshot = value as unknown as RawDocumentV04CandidatePreviewSnapshot
@@ -326,9 +333,9 @@ function makeSnapshot(handle: KnowledgeBaseHandle, input: PersistRawDocumentV04P
   if (!RUN_ID.test(input.workflowRunId) || input.workflowRunId.includes('..')) fail('PREVIEW_INPUT_INVALID', 'workflowRunId must be a safe bounded identifier')
   if (!SOURCE_REF.test(input.sourceRef) || !RAW_REF.test(input.rawRef)) fail('PREVIEW_INPUT_INVALID', 'sourceRef or rawRef is invalid')
   safeInteger(input.sourceRevision, 'sourceRevision', 1)
-  boundedString(input.document.documentId, 'documentId', 256)
+  safeDocumentIdentifier(input.document.documentId, 'documentId')
   if (!Array.isArray(input.document.blocks) || input.document.blocks.length > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxDocumentBlocks) fail('PREVIEW_SIZE_LIMIT', 'Document block order exceeds its bound')
-  const orderedBlocks = input.document.blocks.map((block, index) => ({ blockId: boundedString(block.blockId, 'document.blocks[' + index + '].blockId', RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxBlockIdLength), order: safeInteger(block.order, 'document.blocks[' + index + '].order') }))
+  const orderedBlocks = input.document.blocks.map((block, index) => ({ blockId: safeDocumentIdentifier(block.blockId, 'document.blocks[' + index + '].blockId'), order: safeInteger(block.order, 'document.blocks[' + index + '].order') }))
   if (new Set(orderedBlocks.map((block) => block.blockId)).size !== orderedBlocks.length || new Set(orderedBlocks.map((block) => block.order)).size !== orderedBlocks.length) fail('PREVIEW_INPUT_INVALID', 'Document block IDs and order values must be unique')
   if (!Array.isArray(input.candidateGroups) || input.candidateGroups.length > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxCandidateGroups) fail('PREVIEW_SIZE_LIMIT', 'Candidate group count exceeds its bound')
   if (!Array.isArray(input.reviewConstraints) || input.reviewConstraints.length > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxReviewConstraints) fail('PREVIEW_SIZE_LIMIT', 'Review constraint count exceeds its bound')

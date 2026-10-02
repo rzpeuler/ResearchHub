@@ -170,6 +170,51 @@ test('durable preview round-trips the pure mapper input without storing document
   })
 })
 
+test('short complete Raw content is rejected in document and block identifiers', async () => {
+  await withFreshKb('short-raw-identifiers', async (root) => {
+    const source = await persistSource(root, 'x', 'source-run-short-raw-identifiers')
+    const base = previewInput(source)
+    const documentLeak = previewInput(source, {
+      workflowRunId: 'preview-run-document-raw-leak',
+      document: { ...base.document, documentId: 'x' },
+    })
+    await assertStoreError(persistRawDocumentV04PreviewSnapshot(source.handle, documentLeak), 'PREVIEW_MALFORMED')
+
+    const blockLeak = previewInput(source, {
+      workflowRunId: 'preview-run-block-raw-leak',
+      document: {
+        ...base.document,
+        blocks: base.document.blocks.map((block, index) => index === 0 ? { ...block, blockId: 'x' } : block),
+      },
+    })
+    await assertStoreError(persistRawDocumentV04PreviewSnapshot(source.handle, blockLeak), 'PREVIEW_MALFORMED')
+  })
+})
+
+test('a remounted store reconstructs an approved Industry proposal after restart', async () => {
+  await withFreshKb('remount-proposal', async (root) => {
+    const source = await persistSource(root, RAW_TEXT, 'source-run-remount-proposal')
+    const input = previewInput(source, {
+      workflowRunId: 'preview-run-remount-proposal',
+      reviewConstraints: [],
+    })
+    await persistRawDocumentV04PreviewSnapshot(source.handle, input)
+
+    const remountedHandle = await new KnowledgeBaseRegistry().mount(root)
+    const restored = await readRawDocumentV04PreviewSnapshot(remountedHandle, 'preview-run-remount-proposal')
+    assert.ok(restored)
+    const mappingInput = rawDocumentV04PreviewToProposalMappingInput(restored)
+    const candidateId = 'merged-entity-ai-computing'
+    const mapped = mapRawDocumentExtractionToV04Proposals({ ...mappingInput, approvedCandidateIds: [candidateId] })
+    assert.equal(mapped.entity?.entityType, 'industry')
+    assert.equal(mapped.entity?.name, 'AI Computing')
+    const proposal = mapped.proposals.find((item) => item.kind === 'entity')
+    assert.equal(proposal?.kind, 'entity')
+    if (proposal?.kind === 'entity') assert.equal(proposal.entityName, 'AI Computing')
+    assert.equal(mapped.decisions.find((item) => item.candidateId === candidateId)?.disposition, 'root')
+  })
+})
+
 test('same run and content hash replays idempotently while changed content conflicts', async () => {
   await withFreshKb('replay', async (root) => {
     const source = await persistSource(root, RAW_TEXT, 'source-run-replay')
