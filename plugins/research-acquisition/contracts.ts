@@ -44,10 +44,14 @@ export interface NormalizedResearchSource {
   readonly canonicalUrl?: string
   readonly contentHash: string
   readonly rawBytes?: Uint8Array
+  /** Original fetched representation type; required by retention adapters. */
+  readonly mediaType?: string
   readonly author?: string
   readonly publisher: string
   readonly rights: {
     readonly accessScope: 'public' | 'authenticated' | 'restricted' | 'unknown'
+    /** Explicitly known provider terms; absence is treated as false. */
+    readonly providerTermsKnown?: boolean
     readonly retentionAllowed: boolean
     readonly aiProcessingAllowed: boolean
     readonly derivativeKnowledgeAllowed: boolean
@@ -74,9 +78,9 @@ export type ResearchAcquisitionRequest =
 
 export interface ResearchAcquisitionPlugin {
   readonly name: string
-  discover(request: ResearchAcquisitionRequest): Promise<readonly ResearchSourceCandidate[]>
-  fetch(candidate: ResearchSourceCandidate): Promise<ResearchFetchedSource>
-  normalize(source: ResearchFetchedSource): Promise<NormalizedResearchSource>
+  discover(request: ResearchAcquisitionRequest, signal?: AbortSignal): Promise<readonly ResearchSourceCandidate[]>
+  fetch(candidate: ResearchSourceCandidate, signal?: AbortSignal): Promise<ResearchFetchedSource>
+  normalize(source: ResearchFetchedSource, signal?: AbortSignal): Promise<NormalizedResearchSource>
 }
 
 export type AcquisitionPayloadStatus = 'usable' | 'empty' | 'failed'
