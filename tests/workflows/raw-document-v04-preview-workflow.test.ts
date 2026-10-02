@@ -12,11 +12,13 @@ import { DocumentInputResolver } from '../../plugins/document/input-resolver.ts'
 import type { DocumentParser, DocumentParserInput, StructuredDocument } from '../../plugins/document/contracts.ts'
 import { RawDocumentKnowledgeGatewayV04 } from '../../knowledge/production/raw-document-gateway-v04.ts'
 import type { RawDocumentGatewayV04Input, RawDocumentGatewayV04Result } from '../../knowledge/production/raw-document-gateway-v04.ts'
+import { RawDocumentV04PreviewStoreError, readRawDocumentV04PreviewSnapshot } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-store.ts'
 import type { RawDocumentPreviewSkillV04, RawDocumentPreviewWorkflowInputV04 } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts'
 import { runRawDocumentKnowledgePreviewV04 } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts'
 import type { ClaimCandidate, EntityCandidate, ReportMap, UnderstandAndPlanOutput, ValidatedExtractKnowledgeResult } from '../../skills/knowledge-curation/contracts.ts'
 
 const NOW = '2026-10-02T00:00:00.000Z'
+const RAW_DOCUMENT_TEXT = 'AI computing demand is increasing. Additional market context follows.'
 const RIGHTS = {
   accessScope: 'authenticated' as const,
   providerTermsKnown: true,
@@ -52,10 +54,10 @@ function documentFixture(): StructuredDocument {
     documentId: 'doc-ai-capacity-fixture',
     parser: { id: 'preview-fixture-parser', version: '1' },
     metadata: { originalFilename: 'ai-capacity.txt', mediaType: 'text/plain', title: 'AI Computing Industry Research' },
-    normalizedText: 'AI computing demand is increasing.',
+    normalizedText: RAW_DOCUMENT_TEXT,
     sections: [],
     blocks: [{ blockId: 'block-ai-demand', type: 'paragraph', text: 'AI computing demand is increasing.', sectionRef: null, page: 1, locator: { page: 1, parserItemRef: 'paragraph-1' }, order: 1 }],
-    stats: { pageCount: 1, sectionCount: 0, blockCount: 1, normalizedCharacters: 36, tableCount: 0, headingCount: 0, listCount: 0, captionCount: 0 },
+    stats: { pageCount: 1, sectionCount: 0, blockCount: 1, normalizedCharacters: RAW_DOCUMENT_TEXT.length, tableCount: 0, headingCount: 0, listCount: 0, captionCount: 0 },
     warnings: [],
   }
 }
@@ -129,7 +131,7 @@ function skill(options: {
 function input(handle: KnowledgeBaseHandle, overrides: Partial<RawDocumentPreviewWorkflowInputV04> = {}): RawDocumentPreviewWorkflowInputV04 {
   return {
     handle,
-    documentInput: { type: 'text', text: 'AI computing demand is increasing.', originalFilename: 'ai-capacity.txt', mediaType: 'text/plain', documentId: 'doc-ai-capacity-fixture' },
+    documentInput: { type: 'text', text: RAW_DOCUMENT_TEXT, originalFilename: 'ai-capacity.txt', mediaType: 'text/plain', documentId: 'doc-ai-capacity-fixture' },
     documentResolver: new DocumentInputResolver({ documentParser: parser() }),
     skill: skill(),
     workflowRunId: 'preview-run-001',
@@ -182,7 +184,11 @@ test('Schema 0.4 workflow persists Source and Raw then returns evidence-linked c
     const handle = await mount(root)
     const result = await runRawDocumentKnowledgePreviewV04(input(handle))
 
-    assert.equal(result.status, 'preview_ready')
+    assert.equal(result.status, 'preview_ready', JSON.stringify(result.previewSnapshot))
+    assert.equal(result.previewSnapshot.status, 'persisted')
+    assert.equal(result.previewSnapshot.workflowRunId, input(handle).workflowRunId)
+    assert.match(result.previewSnapshot.contentHash ?? '', /^sha256:[0-9a-f]{64}$/u)
+    assert.equal(result.previewSnapshot.committable, true)
     assert.equal(result.sourceRaw.status, 'committed')
     assert.equal(result.sourceRaw.persisted, true)
     assert.equal(result.sourceRaw.revision, 1)
@@ -198,12 +204,121 @@ test('Schema 0.4 workflow persists Source and Raw then returns evidence-linked c
     assert.equal(result.extractionPreview.candidateCounts.consolidated, 2)
     assert.deepEqual(result.extractionPreview.rejectedCandidates, [])
     assert.equal(result.provenance?.documentId, 'doc-ai-capacity-fixture')
-    assert.deepEqual(await readRaw(handle, result.sourceRaw.rawRef!), Buffer.from('AI computing demand is increasing.'))
+    assert.deepEqual(await readRaw(handle, result.sourceRaw.rawRef!), Buffer.from(RAW_DOCUMENT_TEXT))
+
+    const remounted = await readRawDocumentV04PreviewSnapshot(await mount(root), result.workflowRunId)
+    assert.ok(remounted)
+    assert.equal(remounted.workflowRunId, result.workflowRunId)
+    assert.equal(remounted.knowledgeBaseId, result.knowledgeBaseId)
+    assert.equal(remounted.contentHash, result.previewSnapshot.contentHash)
+    assert.equal(remounted.sourceRef, result.sourceRaw.sourceRef)
+    assert.equal(remounted.rawRef, result.sourceRaw.rawRef)
+    assert.equal(remounted.sourceRevision, result.sourceRaw.revision)
+    assert.equal(remounted.documentId, result.extractionPreview.documentId)
+    assert.deepEqual(remounted.orderedBlocks, [{ blockId: 'block-ai-demand', order: 1 }])
+    assert.equal(remounted.candidateGroups.length, 2)
+
+    const replay = await runRawDocumentKnowledgePreviewV04(input(handle))
+    assert.equal(replay.status, 'preview_ready')
+    assert.equal(replay.sourceRaw.status, 'already_committed')
+    assert.equal(replay.previewSnapshot.status, 'already_present')
+    assert.equal(replay.previewSnapshot.contentHash, result.previewSnapshot.contentHash)
+    assert.equal(replay.previewSnapshot.committable, true)
 
     const assets = await readCanonicalV04Assets(root)
     assert.deepEqual(assets.objects.map((asset) => asset.kind), ['source'])
     assert.equal(assets.objects.some((asset) => asset.kind === 'theme_group'), false)
     assert.equal(assets.objects.some((asset) => asset.kind === 'entity' || asset.kind === 'relation' || asset.kind === 'claim'), false)
+  })
+})
+
+test('changed extraction under the same workflowRunId conflicts with the immutable preview and preserves the original', async () => {
+  await withFreshKb('candidate-preview-conflict', async (root) => {
+    const handle = await mount(root)
+    const first = await runRawDocumentKnowledgePreviewV04(input(handle))
+    const original = await readRawDocumentV04PreviewSnapshot(handle, first.workflowRunId)
+    assert.ok(original)
+
+    const changed = candidates()
+    const changedOutput: ValidatedExtractKnowledgeResult = {
+      ...changed,
+      entities: changed.entities.map((entity) => ({ ...entity, confidence: 0.81 })),
+    }
+    const conflict = await runRawDocumentKnowledgePreviewV04(input(handle, { skill: skill({ output: changedOutput }) }))
+
+    assert.equal(conflict.status, 'source_only')
+    assert.equal(conflict.sourceRaw.persisted, true)
+    assert.equal(conflict.sourceRaw.status, 'already_committed')
+    assert.equal(conflict.extractionPreview.status, 'completed')
+    assert.equal(conflict.extractionPreview.candidateGroups.length, 2)
+    assert.equal(conflict.previewSnapshot.status, 'failed')
+    assert.equal(conflict.previewSnapshot.committable, false)
+    assert.equal(conflict.previewSnapshot.error?.code, 'PREVIEW_CONFLICT')
+    assert.match(conflict.extractionPreview.errors.join('\n'), /PREVIEW_CONFLICT/u)
+    const afterConflict = await readRawDocumentV04PreviewSnapshot(handle, first.workflowRunId)
+    assert.equal(afterConflict?.contentHash, original.contentHash)
+    assert.deepEqual((await readCanonicalV04Assets(root)).objects.map((asset) => asset.kind), ['source'])
+  })
+})
+
+test('preview store failure preserves extraction telemetry and leaves the candidate preview non-committable', async () => {
+  await withFreshKb('candidate-preview-store-failure', async (root) => {
+    const handle = await mount(root)
+    const result = await runRawDocumentKnowledgePreviewV04(input(handle, {
+      previewSnapshotStore: {
+        async persist() {
+          throw new RawDocumentV04PreviewStoreError('PREVIEW_PATH_UNSAFE', 'fixture preview storage failure')
+        },
+      },
+    }))
+
+    assert.equal(result.status, 'source_only')
+    assert.equal(result.sourceRaw.persisted, true)
+    assert.equal(result.sourceRaw.status, 'committed')
+    assert.equal(result.extractionPreview.status, 'completed')
+    assert.equal(result.extractionPreview.candidateGroups.length, 2)
+    assert.equal(result.extractionPreview.candidateCounts.consolidated, 2)
+    assert.match(result.extractionPreview.errors.join('\n'), /fixture preview storage failure/u)
+    assert.equal(result.previewSnapshot.status, 'failed')
+    assert.equal(result.previewSnapshot.workflowRunId, result.workflowRunId)
+    assert.equal(result.previewSnapshot.contentHash, undefined)
+    assert.equal(result.previewSnapshot.committable, false)
+    assert.equal(result.previewSnapshot.error?.code, 'PREVIEW_PATH_UNSAFE')
+    assert.equal(await readRawDocumentV04PreviewSnapshot(handle, result.workflowRunId), undefined)
+    assert.deepEqual((await readCanonicalV04Assets(root)).objects.map((asset) => asset.kind), ['source'])
+  })
+})
+
+test('cancellation during durable preview persistence reports an unknown state without claiming a commit', async () => {
+  await withFreshKb('candidate-preview-cancel-persist', async (root) => {
+    const handle = await mount(root)
+    const controller = new AbortController()
+    const result = await within(runRawDocumentKnowledgePreviewV04(input(handle, {
+      signal: controller.signal,
+      previewSnapshotStore: {
+        async persist(targetHandle, previewInput) {
+          void targetHandle
+          void previewInput
+          setTimeout(() => controller.abort(), 0)
+          return new Promise<never>(() => undefined)
+        },
+      },
+    })))
+
+    assert.equal(result.status, 'cancelled')
+    assert.equal(result.sourceRaw.persisted, true)
+    assert.equal(result.extractionPreview.status, 'completed')
+    assert.equal(result.extractionPreview.candidateGroups.length, 2)
+    assert.equal(result.previewSnapshot.status, 'unknown')
+    assert.equal(result.previewSnapshot.workflowRunId, result.workflowRunId)
+    assert.equal(result.previewSnapshot.contentHash, undefined)
+    assert.equal(result.previewSnapshot.committable, false)
+    assert.equal(result.cancellation?.pendingOperation, 'preview_snapshot_persist')
+    assert.equal(result.cancellation?.pendingCallMayContinue, true)
+    assert.match(result.cancellation?.message ?? '', /final persistence state is unknown/u)
+
+    assert.equal(await readRawDocumentV04PreviewSnapshot(handle, result.workflowRunId), undefined)
+    assert.deepEqual((await readCanonicalV04Assets(root)).objects.map((asset) => asset.kind), ['source'])
   })
 })
 
@@ -261,6 +376,8 @@ test('cancellation during planning preserves Source and Raw and reports preview 
     assert.equal(result.sourceRaw.persisted, true)
     assert.equal(result.extractionPreview.status, 'cancelled')
     assert.deepEqual(result.extractionPreview.candidateGroups, [])
+    assert.equal(result.previewSnapshot.status, 'not_attempted')
+    assert.equal(result.previewSnapshot.committable, false)
     assert.equal((await readCanonicalV04Assets(root)).objects.map((asset) => asset.kind).join(','), 'source')
   })
 })
@@ -371,6 +488,7 @@ test('cancellation stops waiting for a hanging Gateway and reports persistence a
 
 test('a malformed extraction unit fails while valid units remain available as a partial preview', async () => {
   await withFreshKb('malformed-unit', async (root) => {
+    const handle = await mount(root)
     const output = candidates()
     const secondOutput: ValidatedExtractKnowledgeResult = {
       ...output,
@@ -399,7 +517,7 @@ test('a malformed extraction unit fails while valid units remain available as a 
       },
       async parse() { return twoBlockDocument() },
     }
-    const result = await runRawDocumentKnowledgePreviewV04(input(await mount(root), { skill: testSkill, documentResolver }))
+    const result = await runRawDocumentKnowledgePreviewV04(input(handle, { skill: testSkill, documentResolver }))
 
     assert.equal(result.status, 'preview_partial')
     assert.equal(result.extractionPreview.status, 'partial')
@@ -408,6 +526,13 @@ test('a malformed extraction unit fails while valid units remain available as a 
     assert.match(result.extractionPreview.errors.join('\n'), /not supplied to this extraction unit/u)
     assert.equal(result.extractionPreview.candidateGroups.length, 1)
     assert.match(result.extractionPreview.candidateGroups[0]?.candidateId ?? '', /^merged-entity-/u)
+    assert.equal(result.previewSnapshot.status, 'persisted')
+    assert.equal(result.previewSnapshot.committable, true)
+    const snapshot = await readRawDocumentV04PreviewSnapshot(handle, result.workflowRunId)
+    assert.equal(snapshot?.candidateGroups.length, 1)
+    assert.equal(snapshot?.candidateGroups[0]?.candidateId, result.extractionPreview.candidateGroups[0]?.candidateId)
+    assert.equal(snapshot?.sourceRef, result.sourceRaw.sourceRef)
+    assert.equal(snapshot?.rawRef, result.sourceRaw.rawRef)
   })
 })
 

@@ -11,6 +11,8 @@ import type { ConsolidatedExtraction } from './extraction/consolidation.ts'
 import { consolidateExtractions } from './extraction/consolidation.ts'
 import type { AcceptedExtractionPlan, AcceptedExtractionUnit, ConsolidationReviewConstraint, PlanAttemptSummary } from './contracts.ts'
 import { ExtractionPlanValidationError, validateExtractionPlan } from './planning/plan-validation.ts'
+import { persistRawDocumentV04PreviewSnapshot, RawDocumentV04PreviewStoreError } from './v04-preview-store.ts'
+import type { PersistRawDocumentV04PreviewInput, RawDocumentV04CandidatePreviewSnapshot } from './v04-preview-store.ts'
 import type { KnowledgeCurationSkill } from '../../skills/knowledge-curation/skill.ts'
 import type { CandidateEntityRef, CandidateKind, CandidateValidationCode, ClaimCandidate, EntityCandidate, ExtractKnowledgeInput, RelationCandidate, UnderstandAndPlanInput, UnderstandAndPlanOutput, ValidatedExtractKnowledgeResult } from '../../skills/knowledge-curation/contracts.ts'
 import { KNOWLEDGE_SCHEMA_V03 } from '../../knowledge/schema/executable-schema.ts'
@@ -72,11 +74,31 @@ export interface RawDocumentPreviewUnitSummaryV04 {
 export type RawDocumentPreviewWorkflowStatusV04 = 'preview_ready' | 'preview_partial' | 'source_only' | 'blocked' | 'cancelled' | 'incompatible_schema'
 export type RawDocumentPreviewStageStatusV04 = 'not_started' | 'completed' | 'partial' | 'blocked' | 'cancelled'
 export type RawDocumentSourceStageStatusV04 = RawDocumentGatewayV04Result['status'] | 'not_started' | 'in_flight' | 'unknown'
+export type RawDocumentPreviewSnapshotStatusV04 = 'not_attempted' | 'persisted' | 'already_present' | 'failed' | 'unknown'
+
+export interface RawDocumentPreviewSnapshotResultV04 {
+  readonly status: RawDocumentPreviewSnapshotStatusV04
+  readonly workflowRunId: string
+  readonly contentHash?: string
+  readonly committable: boolean
+  readonly error?: { readonly code: string; readonly message: string }
+}
+
+export interface RawDocumentPreviewSnapshotStoreV04 {
+  persist(
+    handle: KnowledgeBaseHandle,
+    input: PersistRawDocumentV04PreviewInput,
+  ): Promise<{
+    readonly status: 'persisted' | 'already_present'
+    readonly snapshot: Pick<RawDocumentV04CandidatePreviewSnapshot, 'workflowRunId' | 'knowledgeBaseId' | 'contentHash'>
+  }>
+}
 
 export interface RawDocumentPreviewWorkflowResultV04 {
   readonly workflowRunId: string
   readonly knowledgeBaseId: string
   readonly status: RawDocumentPreviewWorkflowStatusV04
+  readonly previewSnapshot: RawDocumentPreviewSnapshotResultV04
   readonly sourceRaw: {
     readonly status: RawDocumentSourceStageStatusV04
     readonly persisted: boolean
@@ -105,7 +127,7 @@ export interface RawDocumentPreviewWorkflowResultV04 {
   }
   readonly compatibility?: { readonly requiredSchemaVersion: '0.4'; readonly actualSchemaVersion: string }
   readonly cancellation?: {
-    readonly pendingOperation: 'document_acquire' | 'raw_gateway_submit' | 'source_receipt_verification' | 'document_parse' | 'understand_and_plan' | 'extract_knowledge'
+    readonly pendingOperation: 'document_acquire' | 'raw_gateway_submit' | 'source_receipt_verification' | 'document_parse' | 'understand_and_plan' | 'extract_knowledge' | 'preview_snapshot_persist'
     readonly pendingCallMayContinue: true
     readonly message: string
   }
@@ -123,6 +145,7 @@ export interface RawDocumentPreviewWorkflowInputV04 {
   readonly clock?: () => string
   readonly documentResolver?: DocumentInputResolverV04
   readonly gateway?: RawDocumentGatewayV04Port
+  readonly previewSnapshotStore?: RawDocumentPreviewSnapshotStoreV04
   readonly signal?: AbortSignal
 }
 
@@ -176,6 +199,8 @@ function cancellationInfo(pendingOperation: NonNullable<RawDocumentPreviewWorkfl
     ? 'Workflow stopped waiting after cancellation; the non-abortable Source/Raw Gateway call may still finish and persist data.'
     : pendingOperation === 'source_receipt_verification'
       ? 'Workflow stopped waiting after cancellation; Source/Raw persistence is not verified, and read-only verification may still finish.'
+      : pendingOperation === 'preview_snapshot_persist'
+        ? 'Workflow stopped waiting after cancellation; the durable preview snapshot write may still finish, so its final persistence state is unknown.'
       : `Workflow stopped waiting for ${pendingOperation} after cancellation; the underlying non-abortable call may still continue.`
   return { pendingOperation, pendingCallMayContinue: true, message }
 }
@@ -371,8 +396,38 @@ function isRawGatewayResult(value: unknown): value is RawDocumentGatewayV04Resul
     && (value.rawRef === undefined || typeof value.rawRef === 'string')
 }
 
-function result(input: RawDocumentPreviewWorkflowInputV04, status: RawDocumentPreviewWorkflowStatusV04, sourceRaw: RawDocumentPreviewWorkflowResultV04['sourceRaw'], extractionPreview: RawDocumentPreviewWorkflowResultV04['extractionPreview'], extra: Partial<Pick<RawDocumentPreviewWorkflowResultV04, 'provenance' | 'compatibility' | 'cancellation'>> = {}): RawDocumentPreviewWorkflowResultV04 {
-  return { workflowRunId: input.workflowRunId, knowledgeBaseId: input.handle.knowledgeBaseId, status, sourceRaw, extractionPreview, ...extra }
+function result(input: RawDocumentPreviewWorkflowInputV04, status: RawDocumentPreviewWorkflowStatusV04, sourceRaw: RawDocumentPreviewWorkflowResultV04['sourceRaw'], extractionPreview: RawDocumentPreviewWorkflowResultV04['extractionPreview'], extra: Partial<Pick<RawDocumentPreviewWorkflowResultV04, 'provenance' | 'compatibility' | 'cancellation' | 'previewSnapshot'>> = {}): RawDocumentPreviewWorkflowResultV04 {
+  return {
+    workflowRunId: input.workflowRunId,
+    knowledgeBaseId: input.handle.knowledgeBaseId,
+    status,
+    sourceRaw,
+    extractionPreview,
+    ...extra,
+    previewSnapshot: extra.previewSnapshot ?? { status: 'not_attempted', workflowRunId: input.workflowRunId, committable: false },
+  }
+}
+
+function validPreviewSnapshotWriteResult(
+  value: unknown,
+  input: RawDocumentPreviewWorkflowInputV04,
+): value is Awaited<ReturnType<RawDocumentPreviewSnapshotStoreV04['persist']>> {
+  if (!isRecord(value) || (value.status !== 'persisted' && value.status !== 'already_present') || !isRecord(value.snapshot)) return false
+  return value.snapshot.workflowRunId === input.workflowRunId
+    && value.snapshot.knowledgeBaseId === input.handle.knowledgeBaseId
+    && typeof value.snapshot.contentHash === 'string'
+    && /^sha256:[0-9a-f]{64}$/u.test(value.snapshot.contentHash)
+}
+
+function previewSnapshotError(error: unknown): { readonly code: string; readonly message: string } {
+  return {
+    code: error instanceof RawDocumentV04PreviewStoreError
+      ? error.code
+      : isRecord(error) && typeof error.code === 'string' && /^[A-Z0-9_]{1,80}$/u.test(error.code)
+        ? error.code
+        : 'PREVIEW_PERSISTENCE_FAILED',
+    message: errorText(error),
+  }
 }
 
 function sourceStageFromGateway(value: RawDocumentGatewayV04Result): RawDocumentPreviewWorkflowResultV04['sourceRaw'] {
@@ -640,7 +695,63 @@ export async function runRawDocumentKnowledgePreviewV04(input: RawDocumentPrevie
       errors: [...extracted.errors, ...(cancelled ? ['Workflow cancelled during candidate extraction.'] : [])],
     }
     const workflowStatus: RawDocumentPreviewWorkflowStatusV04 = cancelled ? 'cancelled' : stageStatus === 'completed' ? 'preview_ready' : groups.length > 0 ? 'preview_partial' : 'source_only'
-    return result(input, workflowStatus, sourceRaw, extractionPreview, { provenance, ...(extracted.pendingCallMayContinue ? { cancellation: cancellationInfo('extract_knowledge') } : {}) })
+    const extractionCancellation = extracted.pendingCallMayContinue ? { cancellation: cancellationInfo('extract_knowledge') } : {}
+    if (workflowStatus !== 'preview_ready' && workflowStatus !== 'preview_partial') {
+      return result(input, workflowStatus, sourceRaw, extractionPreview, { provenance, ...extractionCancellation })
+    }
+
+    if (aborted(input)) {
+      const cancelledPreview = { ...extractionPreview, errors: [...extractionPreview.errors, 'Workflow cancelled before durable candidate preview persistence.'] }
+      return result(input, 'cancelled', sourceRaw, cancelledPreview, { provenance, ...extractionCancellation })
+    }
+
+    const previewInput: PersistRawDocumentV04PreviewInput = {
+      workflowRunId: input.workflowRunId,
+      sourceRef: sourceRaw.sourceRef,
+      rawRef: sourceRaw.rawRef,
+      sourceRevision: sourceRaw.revision,
+      document,
+      candidateGroups: consolidated.groups,
+      reviewConstraints: constraints,
+      candidateSupport: consolidated.candidateSupport,
+    }
+    const previewStore = input.previewSnapshotStore ?? { persist: persistRawDocumentV04PreviewSnapshot }
+    const persistence = await awaitAbortable(() => previewStore.persist(input.handle, previewInput), input.signal)
+    if (persistence.kind === 'cancelled') {
+      const cancelledPreview = { ...extractionPreview, errors: [...extractionPreview.errors, 'Workflow cancelled while durable candidate preview persistence was pending.'] }
+      return result(input, 'cancelled', sourceRaw, cancelledPreview, {
+        provenance,
+        previewSnapshot: { status: 'unknown', workflowRunId: input.workflowRunId, committable: false },
+        cancellation: cancellationInfo('preview_snapshot_persist'),
+      })
+    }
+
+    let persisted: Awaited<ReturnType<RawDocumentPreviewSnapshotStoreV04['persist']>> | undefined
+    let persistenceError: unknown
+    if (persistence.kind === 'rejected') persistenceError = persistence.error
+    else if (!validPreviewSnapshotWriteResult(persistence.value, input)) persistenceError = new Error('Preview store returned a malformed persistence receipt.')
+    else persisted = persistence.value
+
+    if (!persisted) {
+      const failure = previewSnapshotError(persistenceError)
+      const failedPreview = { ...extractionPreview, errors: [...extractionPreview.errors, `Durable candidate preview persistence failed (${failure.code}): ${failure.message}`] }
+      return result(input, 'source_only', sourceRaw, failedPreview, {
+        provenance,
+        previewSnapshot: { status: 'failed', workflowRunId: input.workflowRunId, committable: false, error: failure },
+        ...extractionCancellation,
+      })
+    }
+
+    return result(input, workflowStatus, sourceRaw, extractionPreview, {
+      provenance,
+      previewSnapshot: {
+        status: persisted.status,
+        workflowRunId: persisted.snapshot.workflowRunId,
+        contentHash: persisted.snapshot.contentHash,
+        committable: true,
+      },
+      ...extractionCancellation,
+    })
   } catch (error) {
     const message = errorText(error)
     const cancelled = aborted(input)
