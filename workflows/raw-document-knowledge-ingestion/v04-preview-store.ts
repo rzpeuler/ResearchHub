@@ -96,7 +96,6 @@ const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/u
 const SOURCE_REF = /^source:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u
 const RAW_REF = /^raw-sha256-[0-9a-f]{64}$/u
 const CANDIDATE_ID = /^(?!entity:|relation:|claim:|source:|module:|theme-group:)[^\u0000-\u001f\u007f-\u009f]{1,200}$/iu
-const DOCUMENT_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u
 const REVIEW_CATEGORIES = new Set(['invalid_reference', 'invalid_semantics', 'relation_cardinality', 'schema_gap', 'theme_creation', 'theme_ambiguity', 'reconciliation_review', 'other'])
 const TOP_LEVEL_KEYS = ['format', 'version', 'workflowRunId', 'knowledgeBaseId', 'sourceRef', 'rawRef', 'sourceRevision', 'documentId', 'orderedBlocks', 'candidateGroups', 'blockingReviewConstraints', 'candidateSupport', 'contentHash']
 const GROUP_KEYS = ['candidateId', 'kind', 'candidate']
@@ -128,9 +127,10 @@ function boundedString(value: unknown, label: string, maxLength: number, allowEm
 }
 
 function safeDocumentIdentifier(value: unknown, label: string): string {
-  const identifier = boundedString(value, label, 256)
-  if (!DOCUMENT_IDENTIFIER.test(identifier) || identifier.includes('..')) fail('PREVIEW_MALFORMED', label + ' must be a safe document or block identifier')
-  return identifier
+  // StructuredDocument identifiers are opaque labels, not filesystem paths.
+  // Match the parser contract's nonempty string semantics while keeping the
+  // preview's explicit length and control-character bounds.
+  return boundedString(value, label, 256)
 }
 
 function safeInteger(value: unknown, label: string, minimum = 0): number {

@@ -191,6 +191,29 @@ test('short complete Raw content is rejected in document and block identifiers',
   })
 })
 
+test('Unicode and space document and block identifiers round-trip', async () => {
+  await withFreshKb('unicode-identifiers', async (root) => {
+    const source = await persistSource(root, RAW_TEXT, 'source-run-unicode-identifiers')
+    const input = previewInput(source, {
+      workflowRunId: 'preview-run-unicode-identifiers',
+      document: {
+        documentId: 'AI 产业报告 文档 01',
+        blocks: [
+          { blockId: '内容 区块 二', type: 'paragraph', text: RAW_TEXT, sectionRef: null, page: 2, locator: { page: 2 }, order: 9 },
+          { blockId: '内容 区块 一', type: 'paragraph', text: RAW_TEXT, sectionRef: null, page: 1, locator: { page: 1 }, order: 2 },
+        ],
+      },
+    })
+    const written = await persistRawDocumentV04PreviewSnapshot(source.handle, input)
+    const remountedHandle = await new KnowledgeBaseRegistry().mount(root)
+    const restored = await readRawDocumentV04PreviewSnapshot(remountedHandle, input.workflowRunId)
+    assert.ok(restored)
+    assert.equal(restored.documentId, 'AI 产业报告 文档 01')
+    assert.deepEqual(restored.orderedBlocks, written.snapshot.orderedBlocks)
+    assert.deepEqual(restored.orderedBlocks.map((block) => block.blockId), ['内容 区块 二', '内容 区块 一'])
+  })
+})
+
 test('a remounted store reconstructs an approved Industry proposal after restart', async () => {
   await withFreshKb('remount-proposal', async (root) => {
     const source = await persistSource(root, RAW_TEXT, 'source-run-remount-proposal')
