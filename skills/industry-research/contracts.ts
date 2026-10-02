@@ -1,6 +1,7 @@
 import type { NormalizedResearchSource } from "../../plugins/research-acquisition/contracts.ts";
 import type { IndustryOperatingObservation } from "../../plugins/research-acquisition/industry-operating-observations.ts";
 import type { SemanticProductionProposal } from "../../knowledge/production/contracts.ts";
+import type { CompetitionColumnV1 } from "../../knowledge/schema/competition-module-v04.ts";
 import { KNOWLEDGE_SCHEMA_V04 } from "../../knowledge/schema/executable-schema-v04.ts";
 export const INDUSTRY_MODULES = [
   "industry_definition",
@@ -141,6 +142,19 @@ export interface IndustryModuleResult {
   readonly proposals: readonly SemanticProductionProposal[];
   readonly gaps: readonly ResearchGap[];
   readonly reportMaterial: LocalReportMaterial;
+  /** Local-only table proposal emitted by competitive_landscape. */
+  readonly competitionTable?: IndustryCompetitionTable;
+}
+export type IndustryCompetitionCell =
+  | { readonly status: "available"; readonly displayValue: string; readonly knowledgeProposalIds: readonly string[]; readonly asOf?: string; readonly fiscalYear?: number; readonly unit?: string; readonly currency?: string }
+  | { readonly status: "unavailable" | "not_comparable"; readonly reason: string };
+export interface IndustryCompetitionTable {
+  readonly columns: readonly CompetitionColumnV1[];
+  readonly rows: readonly {
+    readonly companyKey: string;
+    readonly businessExposureProposalId: string;
+    readonly cells: Readonly<Record<string, IndustryCompetitionCell>>;
+  }[];
 }
 export interface CrossModuleSynthesis {
   readonly executiveView: string;
@@ -240,7 +254,7 @@ const structuredValue = {
     semanticKey: boundedString(200),
   },
 };
-const entityProposal = {
+const entityProposal = (allowed: readonly string[]) => ({
   type: "object",
   additionalProperties: false,
   required: ["proposalId", "kind", "subjectKey", "entityType", "entityName"],
@@ -250,8 +264,18 @@ const entityProposal = {
     subjectKey: localId,
     entityType: { enum: ["industry", "product", "technology", "company"] },
     entityName: boundedString(300),
+    structuredValue: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        ticker: boundedString(32),
+        exchange: boundedString(32),
+        aliases: { type: "array", minItems: 0, maxItems: 16, uniqueItems: true, items: boundedString(300) },
+      },
+    },
+    sourceCandidateIds: evidenceRefs(allowed),
   },
-};
+});
 const relationProposal = (allowed: readonly string[]) => ({
   type: "object",
   additionalProperties: false,
@@ -294,7 +318,7 @@ const claimProposal = (allowed: readonly string[]) => ({
   },
 });
 const proposalVariants = (allowed: readonly string[]) => ({
-  oneOf: [entityProposal, relationProposal(allowed), claimProposal(allowed)],
+  oneOf: [entityProposal(allowed), relationProposal(allowed), claimProposal(allowed)],
   description: "Exactly one kind-specific proposal variant; all IDs are local.",
 });
 const material = (
@@ -391,6 +415,7 @@ export const createIndustryModuleResultContract = (
     "proposals",
     "gaps",
     "reportMaterial",
+    ...(module === "competitive_landscape" ? ["competitionTable"] : []),
   ],
   bounds: INDUSTRY_MODEL_BOUNDS,
   properties: {
@@ -406,6 +431,49 @@ export const createIndustryModuleResultContract = (
     },
     gaps: { type: "array", minItems: 0, maxItems: 16, items: gap },
     reportMaterial: material(allowedEvidence, allowedProposals),
+    ...(module === "competitive_landscape" ? {
+      competitionTable: {
+        type: "object",
+        additionalProperties: false,
+        required: ["columns", "rows"],
+        properties: {
+          columns: {
+            type: "array", minItems: 4, maxItems: 7,
+            items: { oneOf: [
+              ...["company", "main_products", "market_cap", "annual_revenue"].map((role) => ({ type: "object", additionalProperties: false, required: ["id", "label", "role"], properties: { id: localId, label: boundedString(128), role: { const: role } } })),
+              { type: "object", additionalProperties: false, required: ["id", "label", "role", "customRole"], properties: { id: localId, label: boundedString(128), role: { const: "custom" }, customRole: localId } },
+            ] },
+          },
+          rows: {
+            type: "array", minItems: 0, maxItems: 40,
+            items: {
+              type: "object", additionalProperties: false,
+              required: ["companyKey", "businessExposureProposalId", "cells"],
+              properties: {
+                companyKey: localId,
+                businessExposureProposalId: localId,
+                cells: {
+                  type: "array", minItems: 3, maxItems: 6,
+                  items: {
+                    type: "object", additionalProperties: false, required: ["columnId", "status"],
+                    properties: {
+                      columnId: localId,
+                      status: { enum: ["available", "unavailable", "not_comparable"] },
+                      displayValue: boundedString(2048),
+                      knowledgeProposalIds: { type: "array", minItems: 1, maxItems: 16, uniqueItems: true, items: localId },
+                      asOf: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+                      fiscalYear: { type: "integer", minimum: 1900, maximum: 9999 },
+                      unit: boundedString(32), currency: boundedString(3), reason: boundedString(1024),
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        rules: "Columns must include company, main_products, market_cap, and annual_revenue. Every row must provide one cell entry for each non-company column. Available cells bind local Claim or Relation proposal IDs; missing evidence uses unavailable or not_comparable with a reason. Market cap uses the matching metric:market_cap numeric Claim with temporal.asOf. Revenue uses metric:revenue and its latest annual fiscal period. Numeric displayValue must equal the cited Claim value.",
+      },
+    } : {}),
   },
   allowlists: {
     evidenceIds: [...allowedEvidence],

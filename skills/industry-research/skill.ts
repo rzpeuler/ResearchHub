@@ -4,6 +4,7 @@ import type {
   ReasoningOperation,
 } from "../../plugins/reasoning/contracts.ts";
 import type { SemanticProductionProposal } from "../../knowledge/production/contracts.ts";
+import { isSupportedBaseCurrencyCodeV1 } from "../../knowledge/schema/competition-module-v04.ts";
 import type { IndustryOperatingObservation } from "../../plugins/research-acquisition/industry-operating-observations.ts";
 import {
   INDUSTRY_MODULES,
@@ -14,6 +15,7 @@ import {
   createIndustrySynthesisContract,
   type CrossModuleSynthesis,
   type IndustryModuleResult,
+  type IndustryCompetitionTable,
   type IndustryResearchModule,
   type IndustryResearchSkillInput,
   type LocalReportMaterial,
@@ -191,6 +193,14 @@ function proposal(
       !text(v.entityName))
   )
     fail("proposal_invalid", "Unsupported Entity proposal");
+  if (v.kind === "entity" && v.structuredValue !== undefined) {
+    const identity = v.structuredValue;
+    if (!obj(identity) || Object.keys(identity).some((key) => !["ticker", "exchange", "aliases"].includes(key)) ||
+      (identity.ticker !== undefined && !boundedText(identity.ticker, 32)) ||
+      (identity.exchange !== undefined && !boundedText(identity.exchange, 32)) ||
+      (identity.aliases !== undefined && (!uniq(identity.aliases) || identity.aliases.length > 16 || identity.aliases.some((alias) => alias.length > 300))))
+      fail("proposal_invalid", "Entity identity fields must use the bounded ticker, exchange, and aliases contract");
+  }
   if (v.kind === "relation" && (!text(v.relationType) || !text(v.targetKey)))
     fail("proposal_invalid", "Invalid Relation proposal");
   if (
@@ -313,6 +323,9 @@ export function validateIndustryModuleResult(
     rs = new Set(
       ps.filter((x) => x.kind === "relation").map((x) => x.proposalId),
     );
+  const competitionTable = module === "competitive_landscape"
+    ? validateCompetitionTable(v.competitionTable, ids, ps)
+    : undefined;
   return {
     module,
     status: v.status as IndustryModuleResult["status"],
@@ -321,7 +334,74 @@ export function validateIndustryModuleResult(
     proposals: ps,
     gaps: gapList(v.gaps, module),
     reportMaterial: material(v.reportMaterial, ev, ids, rs),
+    ...(competitionTable ? { competitionTable } : {}),
   };
+}
+
+const competitionDate = (value: unknown): value is string => {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
+function validateCompetitionTable(value: unknown, proposalIds: Set<string>, proposals: readonly SemanticProductionProposal[]): IndustryCompetitionTable {
+  if (!obj(value) || Object.keys(value).some((key) => !["columns", "rows"].includes(key)) || !arr(value.columns) || value.columns.length < 4 || value.columns.length > 7 || !arr(value.rows) || value.rows.length > 40)
+    fail("module_shape_invalid", "Invalid competitive landscape table bounds");
+  const columns = value.columns as readonly R[];
+  const requiredRoles = ["company", "main_products", "market_cap", "annual_revenue"];
+  const ids = new Set<string>(), labels = new Set<string>(), roles = new Set<string>();
+  for (const column of columns) {
+    if (!obj(column) || Object.keys(column).some((key) => !["id", "label", "role", "customRole"].includes(key)) || !local(column.id) || column.id.length > 64 || !boundedText(column.label, 128) || ids.has(String(column.id)) || labels.has(String(column.label).trim().toLocaleLowerCase()) || ![...requiredRoles, "custom"].includes(String(column.role)))
+      fail("module_shape_invalid", "Invalid or duplicate competition table column");
+    if (column.role === "custom" ? !local(column.customRole) || String(column.customRole).length > 64 : column.customRole !== undefined)
+      fail("module_shape_invalid", "Invalid custom competition table role");
+    if (roles.has(String(column.role)) && column.role !== "custom") fail("module_shape_invalid", "Competition table role must be unique");
+    ids.add(String(column.id)); labels.add(String(column.label).trim().toLocaleLowerCase()); roles.add(String(column.role));
+  }
+  if (requiredRoles.some((role) => !roles.has(role))) fail("module_shape_invalid", "Competition table must contain company, main_products, market_cap, and annual_revenue columns");
+  const nonCompanyColumns = columns.filter((column) => column.role !== "company");
+  const companies = new Set<string>();
+  const rows = value.rows.map((row): IndustryCompetitionTable["rows"][number] => {
+    if (!obj(row) || Object.keys(row).some((key) => !["companyKey", "businessExposureProposalId", "cells"].includes(key)) || !local(row.companyKey) || !local(row.businessExposureProposalId) || !arr(row.cells) || row.cells.length > 6 || companies.has(String(row.companyKey)))
+      fail("module_shape_invalid", "Invalid or duplicate competition table row");
+    companies.add(String(row.companyKey));
+    const company = proposals.find((proposal) => proposal.proposalId === row.companyKey);
+    const exposure = proposals.find((proposal) => proposal.proposalId === row.businessExposureProposalId);
+    if (!company || company.kind !== "entity" || company.entityType !== "company" || !obj(company.structuredValue) || !text(company.structuredValue.ticker) || !text(company.structuredValue.exchange) || !company.sourceCandidateIds?.length || !exposure || exposure.kind !== "relation" || exposure.relationType !== "business_exposure" || exposure.subjectKey !== company.subjectKey)
+      fail("module_shape_invalid", "Competition row must bind a proposed Company and its business_exposure Relation");
+    const sourceCells = new Map<string, R>();
+    for (const cell of row.cells) {
+      if (!obj(cell) || !local(cell.columnId) || sourceCells.has(cell.columnId)) fail("module_shape_invalid", "Competition row cells must have unique local column IDs");
+      sourceCells.set(cell.columnId, cell);
+    }
+    const cellKeys = [...sourceCells.keys()];
+    if (cellKeys.length !== nonCompanyColumns.length || cellKeys.some((key) => !nonCompanyColumns.some((column) => column.id === key)))
+      fail("module_shape_invalid", "Competition row must have exactly one cell for every non-company column");
+    const cells: R = {};
+    for (const column of nonCompanyColumns) {
+      const sourceCell = sourceCells.get(column.id);
+      if (!sourceCell) fail("module_shape_invalid", "Competition row is missing a cell for a declared column");
+      const { columnId: _columnId, ...cell } = sourceCell;
+      if (!obj(cell)) fail("module_shape_invalid", "Competition cell must be an object");
+      if (cell.status === "unavailable" || cell.status === "not_comparable") {
+        if (Object.keys(cell).some((key) => !["status", "reason"].includes(key)) || !boundedText(cell.reason, 1024)) fail("module_shape_invalid", "Unavailable competition cell requires a bounded reason");
+        cells[String(column.id)] = cell as IndustryCompetitionTable["rows"][number]["cells"][string];
+        continue;
+      }
+      const allowed = ["status", "displayValue", "knowledgeProposalIds", ...(column.role === "market_cap" ? ["asOf", "unit", "currency"] : []), ...(column.role === "annual_revenue" ? ["fiscalYear", "unit", "currency"] : [])];
+      if (cell.status !== "available" || Object.keys(cell).some((key) => !allowed.includes(key)) || !boundedText(cell.displayValue, 2048) || !uniq(cell.knowledgeProposalIds) || !cell.knowledgeProposalIds.length || cell.knowledgeProposalIds.some((id) => !proposalIds.has(id))) fail("module_shape_invalid", "Available competition cell requires supported local knowledge proposal IDs");
+      if (column.role === "market_cap" && (!competitionDate(cell.asOf) || !boundedText(cell.unit, 32) || !isSupportedBaseCurrencyCodeV1(cell.currency) || cell.unit !== cell.currency)) fail("module_shape_invalid", "Market capitalization cell requires a verified date and matching supported ISO currency unit");
+      if (column.role === "annual_revenue" && (!Number.isInteger(cell.fiscalYear) || (cell.fiscalYear as number) < 1900 || (cell.fiscalYear as number) > 9999 || !boundedText(cell.unit, 32) || !isSupportedBaseCurrencyCodeV1(cell.currency) || cell.unit !== cell.currency)) fail("module_shape_invalid", "Annual revenue cell requires fiscal year and matching supported ISO currency unit");
+      for (const proposalId of cell.knowledgeProposalIds) {
+        const referenced = proposals.find((proposal) => proposal.proposalId === proposalId);
+        if (!referenced || !["claim", "relation"].includes(referenced.kind)) fail("module_shape_invalid", "Competition cells may reference only Claim or Relation proposals");
+        if ((column.role === "market_cap" || column.role === "annual_revenue") && (referenced.kind !== "claim" || referenced.structuredValue?.metric !== (column.role === "market_cap" ? "metric:market_cap" : "metric:revenue"))) fail("module_shape_invalid", "Numeric competition cells must reference the matching structured market_cap or revenue Claim");
+        if ((column.role === "market_cap" || column.role === "annual_revenue") && referenced.kind === "claim" && String(referenced.structuredValue?.value) !== cell.displayValue) fail("module_shape_invalid", "Numeric competition cell displayValue must exactly match its cited Claim value");
+      }
+      cells[String(column.id)] = cell as IndustryCompetitionTable["rows"][number]["cells"][string];
+    }
+    return { companyKey: row.companyKey, businessExposureProposalId: row.businessExposureProposalId, cells };
+  });
+  return { columns: columns as IndustryCompetitionTable["columns"], rows };
 }
 
 function validateIndustryModuleResultWithProposalIsolation(
@@ -603,7 +683,7 @@ const instruction = {
   design:
     "Return exactly the bounded IndustryResearchDesign object. Ontology: independently researchable economic/industrial-chain activity=industry; broad cross-industry concept=theme; commercial category/component=product; technical route/process/architecture=technology; insufficiently resolvable=uncertain. Use all eight exact module keys and the explicit property schemas. This is a plan only: no canonical IDs, Knowledge writes, unsupported numbers, or durable proposals.",
   module:
-    "Return exactly the bounded IndustryModuleResult for the requested module. The contract fixes module to the requested module and exposes the exact evidence allowlist. Copy evidence IDs exactly; if empty, keep evidenceIds/proposals empty and use partial/unavailable plus explicit gaps. Use local IDs only; industry is the reserved root key. Relations use only frozen names. Claim/Relation candidates require direct evidence; quantitative claims require metric, finite value, unit, comparator and period or fiscalPeriod. Never invent unsupported numbers. Operating observations are code-owned numeric truth: do not mutate value, unit, qualifier, period, geography, product, or sourceCandidateId; do not average conflicts or derive a missing number. Observation-backed structured claims must use semanticKey observation:<observationId> and exactly match the supplied observation or be omitted. If a conclusion is useful for the report but not directly supported enough for a durable candidate, return no candidate for it and set reportMaterial.reportOnly=true. In industry_chain_analysis and company_mapping, prefer report-only material over inferred entities, relations, companies, or quantitative claims when the supplied evidence does not name and support them directly. supplier_of requires direct authoritative evidence. No canonical writes.",
+    "Return exactly the bounded IndustryModuleResult for the requested module. The contract fixes module to the requested module and exposes the exact evidence allowlist. Copy evidence IDs exactly; if empty, keep evidenceIds/proposals empty and use partial/unavailable plus explicit gaps. Use local IDs only; industry is the reserved root key. Relations use only frozen names. Claim/Relation candidates require direct evidence; quantitative claims require metric, finite value, unit, comparator and period or fiscalPeriod. Never invent unsupported numbers. Operating observations are code-owned numeric truth: do not mutate value, unit, qualifier, period, geography, product, or sourceCandidateId; do not average conflicts or derive a missing number. Observation-backed structured claims must use semanticKey observation:<observationId> and exactly match the supplied observation or be omitted. If a conclusion is useful for the report but not directly supported enough for a durable candidate, return no candidate for it and set reportMaterial.reportOnly=true. In industry_chain_analysis and company_mapping, prefer report-only material over inferred entities, relations, companies, or quantitative claims when the supplied evidence does not name and support them directly. For competitive_landscape, also produce competitionTable with 4-7 industry-specific columns including company, main_products, market_cap, and annual_revenue. Bind each row to a proposed Company and its evidence-backed business_exposure Relation; bind each available cell to existing local Claim or Relation proposal IDs. Market cap must cite a verified trading date, unit, and currency. Annual revenue must be from the latest verifiable annual report and include fiscalYear, unit, and currency. Missing or incomparable values must be blank by using unavailable/not_comparable plus a reason. The table must not introduce a fact that is absent from the bound proposals. supplier_of requires direct authoritative evidence. No canonical writes.",
   synthesis:
     "Return exactly the bounded CrossModuleSynthesis using only validated modules and supplied evidence. Copy evidence and existing proposal/Relation IDs only from the explicit allowlists; new IDs are local. Keep concrete gap and alternative-view item schemas bounded. No new facts, unsupported numbers, canonical IDs, resolution ownership, or Knowledge writes.",
 };

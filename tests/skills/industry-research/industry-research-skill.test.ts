@@ -79,6 +79,17 @@ function moduleOutput(module: (typeof INDUSTRY_MODULES)[number]) {
       evidenceIds: ["e1"],
       proposalIds: [],
     },
+    ...(module === "competitive_landscape" ? {
+      competitionTable: {
+        columns: [
+          { id: "company", label: "公司", role: "company" },
+          { id: "products", label: "主要产品", role: "main_products" },
+          { id: "market_cap", label: "市值", role: "market_cap" },
+          { id: "revenue", label: "年营收", role: "annual_revenue" },
+        ],
+        rows: [],
+      },
+    } : {}),
   };
 }
 
@@ -174,6 +185,44 @@ test("Industry module rejects an observation-backed comparator mismatch without 
   });
   assert.equal(result.proposals.length, 0);
   assert.equal(calls, 1);
+});
+
+test("competitive landscape binds a compact dynamic table to local evidence-backed proposals", () => {
+  const columns = [
+    { id: "company", label: "公司", role: "company" },
+    { id: "products", label: "主要产品", role: "main_products" },
+    { id: "market_cap", label: "最新市值", role: "market_cap" },
+    { id: "annual_revenue", label: "最新年报营收", role: "annual_revenue" },
+    { id: "barrier", label: "竞争壁垒", role: "custom", customRole: "barrier" },
+  ] as const;
+  const proposals = [
+    { proposalId: "company-a", kind: "entity", subjectKey: "company-a", entityType: "company", entityName: "Fixture Corp", sourceCandidateIds: ["e1"], structuredValue: { ticker: "000001", exchange: "SZSE" } },
+    { proposalId: "exposure-a", kind: "relation", subjectKey: "company-a", targetKey: "industry", relationType: "business_exposure", sourceCandidateIds: ["e1"] },
+    { proposalId: "product-claim", kind: "claim", subjectKey: "company-a", claimType: "fact", statement: "Makes core products", sourceCandidateIds: ["e1"] },
+    { proposalId: "market-cap-claim", kind: "claim", subjectKey: "company-a", claimType: "fact", statement: "Market capitalization on the stated date", sourceCandidateIds: ["e1"], temporal: { asOf: "2026-09-30" }, structuredValue: { metric: "metric:market_cap", value: 100, unit: "CNY", comparator: "eq", period: "2026-09-30" } },
+    { proposalId: "annual-revenue-claim", kind: "claim", subjectKey: "company-a", claimType: "fact", statement: "Latest annual report revenue", sourceCandidateIds: ["e1"], structuredValue: { metric: "metric:revenue", value: 20, unit: "CNY", comparator: "eq", fiscalPeriod: "FY2025" } },
+  ];
+  const candidate = {
+    ...moduleOutput("competitive_landscape"),
+    evidenceIds: ["e1"],
+    proposals,
+    reportMaterial: { markdown: "Competition overview.", evidenceIds: ["e1"], proposalIds: proposals.map((item) => item.proposalId), relationProposalIds: ["exposure-a"] },
+    competitionTable: {
+      columns,
+      rows: [{ companyKey: "company-a", businessExposureProposalId: "exposure-a", cells: [
+        { columnId: "products", status: "available", displayValue: "Core products", knowledgeProposalIds: ["product-claim"] },
+        { columnId: "market_cap", status: "available", displayValue: "100", knowledgeProposalIds: ["market-cap-claim"], asOf: "2026-09-30", unit: "CNY", currency: "CNY" },
+        { columnId: "annual_revenue", status: "available", displayValue: "20", knowledgeProposalIds: ["annual-revenue-claim"], fiscalYear: 2025, unit: "CNY", currency: "CNY" },
+        { columnId: "barrier", status: "not_comparable", reason: "Source material does not support a comparable barrier assessment." },
+      ] }],
+    },
+  };
+  const parsed = validateIndustryModuleResult(candidate, "competitive_landscape", ["e1"]);
+  assert.equal(parsed.competitionTable?.columns.length, 5);
+  assert.equal(parsed.competitionTable?.rows.length, 1);
+  assert.equal(parsed.competitionTable?.rows[0]?.cells.barrier?.status, "not_comparable");
+  assert.throws(() => validateIndustryModuleResult({ ...candidate, competitionTable: { ...candidate.competitionTable, rows: [{ ...candidate.competitionTable.rows[0], cells: candidate.competitionTable.rows[0].cells.map((cell) => cell.columnId === "market_cap" ? { ...cell, knowledgeProposalIds: ["missing"] } : cell) }] } }, "competitive_landscape", ["e1"]), /available competition cell/i);
+  assert.throws(() => validateIndustryModuleResult({ ...moduleOutput("competitive_landscape"), competitionTable: { ...moduleOutput("competitive_landscape").competitionTable, columns: columns.slice(0, 3) } }, "competitive_landscape", ["e1"]), /table bounds/i);
 });
 
 test("Industry Skill emits structured operation contracts and operation-specific bounded instructions", async () => {
