@@ -85,6 +85,27 @@ test('approved candidates with missing document evidence are retained as review 
   assert.equal(result.decisions[0]?.reasonCode, 'unresolved_evidence')
 })
 
+test('blocking consolidation conflicts hold the candidate and its Relation and Claim dependents for review', () => {
+  const conflicted = entity('industry-ai', 'AI Computing', 'industry')
+  const other = entity('industry-other', 'Advanced Packaging', 'industry', ['block-2'])
+  const edge = relation('relation-upstream', 'upstream_of', conflicted.candidateId, other.candidateId)
+  const statement = claim('claim-industry', [conflicted.candidateId])
+  const source = consolidated(group(conflicted, 'entity'), group(other, 'entity'), group(edge, 'relation'), group(statement, 'claim'))
+  const withBlockingConflict: ConsolidatedExtraction = {
+    ...source,
+    reviewConstraints: [{ candidateId: conflicted.candidateId, reason: 'Conflicting legal identity across extraction units.', conflictingFields: ['name'], blocking: true, category: 'reconciliation_review', reviewKey: 'identity-conflict' }],
+  }
+  const result = map({ consolidated: withBlockingConflict, approvedCandidateIds: [conflicted.candidateId, other.candidateId, edge.candidateId, statement.candidateId] })
+
+  assert.equal(result.entity?.name, 'Advanced Packaging')
+  assert.equal(result.proposals.some((proposal) => proposal.kind === 'entity' && proposal.entityName === 'AI Computing'), false)
+  assert.equal(result.proposals.some((proposal) => proposal.kind === 'relation'), false)
+  assert.equal(result.proposals.some((proposal) => proposal.kind === 'claim'), false)
+  assert.equal(result.decisions.find((item) => item.candidateId === conflicted.candidateId)?.reasonCode, 'blocking_consolidation_constraint')
+  assert.equal(result.decisions.find((item) => item.candidateId === edge.candidateId)?.reasonCode, 'relation_dependency_not_approved')
+  assert.equal(result.decisions.find((item) => item.candidateId === statement.candidateId)?.reasonCode, 'claim_subject_not_approved')
+})
+
 test('a Relation is held for review until both endpoint candidates are explicitly approved', () => {
   const upstream = entity('industry-upstream', 'Chip Materials', 'industry')
   const downstream = entity('industry-downstream', 'Advanced Packaging', 'industry')

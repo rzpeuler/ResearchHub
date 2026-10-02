@@ -164,6 +164,12 @@ export function mapRawDocumentExtractionToV04Proposals(input: RawDocumentV04Prop
       decisions.set(group.candidateId, decision(group.candidateId, group.kind, 'skip', 'not_explicitly_approved', 'Candidate was not explicitly approved for canonical Knowledge production.'))
       continue
     }
+    const blockingConstraints = input.consolidated.reviewConstraints.filter((constraint) => constraint.blocking && constraint.candidateId === group.candidateId)
+    if (blockingConstraints.length > 0) {
+      const reasons = [...new Set(blockingConstraints.map((constraint) => constraint.reason.trim()).filter(Boolean))].sort(compareText)
+      decisions.set(group.candidateId, decision(group.candidateId, group.kind, 'review', 'blocking_consolidation_constraint', `Approved candidate has a blocking consolidation conflict: ${reasons.join('; ') || 'manual reconciliation is required.'}`))
+      continue
+    }
     if (group.kind !== 'entity') continue
     if (!asEntityCandidate(group.candidate)) {
       decisions.set(group.candidateId, decision(group.candidateId, 'entity', 'review', 'invalid_entity_candidate', 'Approved candidate does not satisfy the Entity candidate contract.'))
