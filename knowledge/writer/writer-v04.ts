@@ -36,6 +36,11 @@ function idempotencyHash(changeSet: KnowledgeChangeSetV04): string {
   return hashKnowledgeObject(stableChangeSet)
 }
 
+function hasThemeScope(changeSet: KnowledgeChangeSetV04): boolean {
+  const context = changeSet.ingestionContext
+  return typeof context === 'object' && context !== null && Object.hasOwn(context, 'themeScope')
+}
+
 async function existingExecution(root: string, changeSet: KnowledgeChangeSetV04): Promise<Dict | undefined> {
   let names: string[]
   try {
@@ -131,8 +136,9 @@ export async function writeKnowledgeBaseV04(
         }
       }
       assertKnowledgeV04Objects([...objects.values()])
-      const nextRevision = created.length + updated.length > 0 ? manifest.revision + 1 : manifest.revision
-      const nextManifest = { ...manifest, revision: nextRevision, updatedAt: created.length + updated.length > 0 ? clock() : manifest.updatedAt }
+      const hasCommittedChanges = created.length + updated.length > 0 || hasThemeScope(changeSet)
+      const nextRevision = hasCommittedChanges ? manifest.revision + 1 : manifest.revision
+      const nextManifest = { ...manifest, revision: nextRevision, updatedAt: hasCommittedChanges ? clock() : manifest.updatedAt }
       const logRef = `logs/research/${changeSet.workflowRunId}.yaml`
       const log = {
         workflowRunId: changeSet.workflowRunId,
@@ -141,7 +147,7 @@ export async function writeKnowledgeBaseV04(
         knowledgeBaseId: manifest.knowledgeBaseId,
         schemaVersionAtExecution: '0.4',
         status: 'completed',
-        writeStatus: created.length + updated.length > 0 ? 'committed' : 'no_changes',
+        writeStatus: hasCommittedChanges ? 'committed' : 'no_changes',
         committedRevision: nextRevision,
         changes: { createdIds: created, updatedIds: updated },
         ingestionContext: changeSet.ingestionContext,
@@ -167,7 +173,7 @@ export async function writeKnowledgeBaseV04(
         },
       })
       await registry.refresh(root)
-      return { ...base, status: created.length + updated.length > 0 ? 'committed' : 'no_changes', committedRevision: nextRevision, createdIds: created, updatedIds: updated }
+      return { ...base, status: hasCommittedChanges ? 'committed' : 'no_changes', committedRevision: nextRevision, createdIds: created, updatedIds: updated }
     })
   } catch (error) {
     return { ...base, status: 'failed', error: { code: 'commit_failed', message: error instanceof Error ? error.message : String(error) } }

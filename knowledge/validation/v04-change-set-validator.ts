@@ -10,6 +10,8 @@ import type { KnowledgeBaseHandle } from '../storage/handle.ts'
 import type { KnowledgeAssetV04 } from '../schema/domain-v04.ts'
 import { assertKnowledgeV04Objects } from './v04-validator.ts'
 import type { ValidatedKnowledgeChangeSetV04, KnowledgeChangeSetV04, KnowledgeOperationV04 } from '../schema/mutation-v04.ts'
+import { validateThemeScopeDecisionBatchV04, type ThemeScopeDecisionV04 } from '../governance/theme-scope-v04.ts'
+import { readThemeScopeLedgerV04 } from '../governance/theme-scope-ledger-v04.ts'
 
 export interface V04ChangeSetValidationDiagnostic { readonly code: string; readonly message: string; readonly operationId?: string; readonly assetId?: string }
 export interface V04ChangeSetValidationReport { readonly status: 'passed' | 'failed'; readonly errors: readonly V04ChangeSetValidationDiagnostic[] }
@@ -29,6 +31,58 @@ export function isValidatorIssuedV04Receipt(value: unknown): value is ValidatedK
 
 function add(errors: V04ChangeSetValidationDiagnostic[], code: string, message: string, operationId?: string, assetId?: string): void {
   errors.push({ code, message, ...(operationId === undefined ? {} : { operationId }), ...(assetId === undefined ? {} : { assetId }) })
+}
+
+function themeScopeValue(changeSet: unknown): { readonly present: boolean; readonly value?: unknown } {
+  if (!record(changeSet)) return { present: false }
+  const context = changeSet.ingestionContext
+  if (typeof context !== 'object' || context === null || !Object.hasOwn(context, 'themeScope')) return { present: false }
+  return { present: true, value: (context as Dict).themeScope }
+}
+
+async function validateThemeScope(
+  handle: KnowledgeBaseHandle,
+  changeSet: KnowledgeChangeSetV04,
+  manifestRevision: number,
+  projectedObjects: ReadonlyMap<string, KnowledgeAssetV04>,
+  errors: V04ChangeSetValidationDiagnostic[],
+): Promise<void> {
+  const scope = themeScopeValue(changeSet)
+  if (!scope.present) return
+
+  const ledger = await readThemeScopeLedgerV04(handle)
+  if (ledger.status === 'failed') {
+    add(errors, 'THEME_SCOPE_LEDGER_UNAVAILABLE', `Theme scope history is unavailable (${ledger.error.code}): ${ledger.error.message}`)
+  }
+  const previousDecisions: readonly ThemeScopeDecisionV04[] = ledger.status === 'available'
+    ? ledger.themes.flatMap((theme) => theme.history.map((entry) => entry.decision))
+    : []
+  const validation = validateThemeScopeDecisionBatchV04(scope.value, { previousDecisions })
+  if (!validation.valid) {
+    add(errors, 'THEME_SCOPE_BATCH_INVALID', validation.errors.map((issue) => `${issue.code}: ${issue.message}`).join('; '))
+    return
+  }
+
+  const batch = scope.value as { readonly basedOnRevision: number; readonly themeRef: string; readonly decisions: readonly ThemeScopeDecisionV04[] }
+  const ledgerRevision = ledger.status === 'available' ? ledger.knowledgeBaseRevision : undefined
+  if (
+    batch.basedOnRevision !== changeSet.expectedBaseRevision
+    || batch.basedOnRevision !== manifestRevision
+    || batch.basedOnRevision !== handle.revision
+    || batch.basedOnRevision !== ledgerRevision
+  ) {
+    add(errors, 'THEME_SCOPE_BASE_REVISION_INVALID', 'Theme scope basedOnRevision must match the ChangeSet, mounted handle, current manifest, and readable ledger revision')
+  }
+  for (const decision of batch.decisions) {
+    if (decision.review.status !== 'human_confirmed') {
+      add(errors, 'THEME_SCOPE_REVIEW_NOT_CONFIRMED', `Theme scope decision must be human-confirmed before commit: ${decision.id}`, undefined, decision.id)
+    }
+  }
+  const theme = projectedObjects.get(batch.themeRef) as unknown as Dict | undefined
+  const lifecycle = theme && record(theme.lifecycle) ? theme.lifecycle : undefined
+  if (!theme || theme.type !== 'investment_theme' || lifecycle?.status !== 'active') {
+    add(errors, 'THEME_SCOPE_THEME_NOT_ACTIVE', `Theme scope batch must resolve to an active InvestmentTheme after ChangeSet operations: ${batch.themeRef}`, undefined, batch.themeRef)
+  }
 }
 
 async function rawRefsInRegistry(root: string, errors: V04ChangeSetValidationDiagnostic[]): Promise<Set<string>> {
@@ -205,6 +259,7 @@ export async function validateKnowledgeChangeSetV04(handle: KnowledgeBaseHandle,
   for (const operation of Array.isArray(changeSet.operations) ? changeSet.operations : []) if (record(operation)) { validateNewThesisClaim(operation as KnowledgeOperationV04, errors); applyOperation(objects, operation as KnowledgeOperationV04, errors, seenOperationIds, mutationTargets) } else add(errors, 'V04_OPERATION_INVALID', 'Operation must be an object')
   try { assertKnowledgeV04Objects([...objects.values()]) } catch (error) { add(errors, 'V04_CANONICAL_INVALID', error instanceof Error ? error.message : String(error)) }
   validateEvidence(objects.values(), knownRawRefs, errors, Date.parse(validatedAt))
+  await validateThemeScope(handle, changeSet, manifest.revision, objects, errors)
   const report = { status: errors.length === 0 ? 'passed' as const : 'failed' as const, errors }
   if (report.status === 'failed' || mode === 'dry_run') return { report }
   const validatedChangeSet = Object.freeze({ changeSet: structuredClone(changeSet), knowledgeBaseId: changeSet.knowledgeBaseId, schemaVersion: '0.4' as const, baseRevision: changeSet.expectedBaseRevision, changeSetId: changeSet.changeSetId, changeSetHash: hashKnowledgeObject(changeSet), validatedAt })
