@@ -10,6 +10,7 @@ import { recoverKnowledgeBaseRoot, runKnowledgeRootTransaction } from '../storag
 import { KnowledgeBaseRegistry } from '../registry/registry.ts'
 import { assertKnowledgeV04Objects } from '../validation/v04-validator.ts'
 import { inspectThemeScopeContextV04, isValidatorIssuedV04Receipt, validateKnowledgeBaseV04State } from '../validation/v04-change-set-validator.ts'
+import { advanceThemeScopeReverseIndexV04, loadOrRebuildThemeScopeReverseIndexV04, persistThemeScopeReverseIndexV04, themeScopeDecisionsFromContextV04 } from '../governance/theme-scope-reverse-index-v04.ts'
 import { allocateKnowledgeStorageRefV04, kindForKnowledgeV04 } from './path-allocation-v04.ts'
 import type { KnowledgeBaseHandle } from '../storage/handle.ts'
 
@@ -181,6 +182,21 @@ export async function writeKnowledgeBaseV04(
     return { ...base, error: { code: 'receipt_mismatch', message: 'Validated Schema 0.4 receipt does not match handle or ChangeSet' } }
   }
 
+  // Preserve established replay/stale outcomes before consulting the derived
+  // index. In the normal path, load a matching index or rebuild from A4 logs.
+  let reverseIndexResult: Awaited<ReturnType<typeof loadOrRebuildThemeScopeReverseIndexV04>> | undefined
+  const priorBeforeLock = await existingExecution(handle.rootRef, changeSet)
+  const manifestBeforeLock = await loadKnowledgeBaseManifest(handle.rootRef)
+  if (!priorBeforeLock && manifestBeforeLock.revision !== changeSet.expectedBaseRevision) {
+    return { ...base, error: { code: 'stale_revision', message: `Expected ${changeSet.expectedBaseRevision}, current ${manifestBeforeLock.revision}` } }
+  }
+  if (!priorBeforeLock) {
+    reverseIndexResult = await loadOrRebuildThemeScopeReverseIndexV04(handle)
+    if (reverseIndexResult.status !== 'available') {
+      return { ...base, error: { code: 'commit_failed', message: `Theme scope reverse index unavailable: ${reverseIndexResult.message}` } }
+    }
+  }
+
   try {
     return await withKnowledgeBaseMutationLock(handle.rootRef, async () => {
       await recoverKnowledgeBaseRoot(handle.rootRef)
@@ -209,6 +225,9 @@ export async function writeKnowledgeBaseV04(
       if (manifest.revision !== changeSet.expectedBaseRevision) {
         return { ...base, error: { code: 'stale_revision', message: `Expected ${changeSet.expectedBaseRevision}, current ${manifest.revision}` } }
       }
+      if (reverseIndexResult?.status !== 'available') {
+        return { ...base, error: { code: 'commit_failed', message: 'Theme scope reverse index was not prepared for the current revision' } }
+      }
 
       const loaded = await readCanonicalV04Assets(root)
       const objects = objectMap(loaded.objects)
@@ -232,6 +251,13 @@ export async function writeKnowledgeBaseV04(
       assertKnowledgeV04Objects([...objects.values()])
       const hasCommittedChanges = created.length + updated.length > 0 || scopeContext.present
       const nextRevision = hasCommittedChanges ? manifest.revision + 1 : manifest.revision
+      const reverseIndex = advanceThemeScopeReverseIndexV04(reverseIndexResult.index, {
+        knowledgeBaseId: manifest.knowledgeBaseId,
+        previousRevision: manifest.revision,
+        nextRevision,
+        workflowRunId: changeSet.workflowRunId,
+        decisions: themeScopeDecisionsFromContextV04(changeSet.ingestionContext),
+      })
       const nextManifest = { ...manifest, revision: nextRevision, updatedAt: hasCommittedChanges ? clock() : manifest.updatedAt }
       const logRef = `logs/research/${changeSet.workflowRunId}.yaml`
       const log = {
@@ -243,6 +269,7 @@ export async function writeKnowledgeBaseV04(
         status: 'completed',
         writeStatus: hasCommittedChanges ? 'committed' : 'no_changes',
         committedRevision: nextRevision,
+        themeScopeReverseIndexChecksum: reverseIndex.checksum,
         changes: { createdIds: created, updatedIds: updated },
         ingestionContext: changeSet.ingestionContext,
       }
@@ -260,6 +287,7 @@ export async function writeKnowledgeBaseV04(
           await writeState(staging, nextManifest, registryEntries, objects)
           await mkdir(dirname(join(staging, logRef)), { recursive: true })
           await writeFile(join(staging, logRef), yaml(log))
+          await persistThemeScopeReverseIndexV04(staging, reverseIndex)
         },
         validate: async (staging) => {
           const staged = await validateKnowledgeBaseV04State(staging)
