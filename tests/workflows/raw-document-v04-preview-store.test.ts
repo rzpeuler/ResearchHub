@@ -3,6 +3,7 @@ import test from 'node:test'
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { performance } from 'node:perf_hooks'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { RawDocumentKnowledgeGatewayV04 } from '../../knowledge/production/raw-document-gateway-v04.ts'
 import { createFreshKnowledgeBaseV04 } from '../../knowledge/storage/create-v04.ts'
@@ -188,6 +189,87 @@ test('short complete Raw content is rejected in document and block identifiers',
       },
     })
     await assertStoreError(persistRawDocumentV04PreviewSnapshot(source.handle, blockLeak), 'PREVIEW_MALFORMED')
+
+    const semanticKeyLeak = previewInput(source, {
+      workflowRunId: 'preview-run-semantic-key-raw-leak',
+      candidateGroups: base.candidateGroups.map((group) => group.kind === 'entity'
+        ? { ...group, candidate: { ...group.candidate, semanticFields: { x: 'ordinary-value' } } }
+        : group),
+    })
+    await assertStoreError(persistRawDocumentV04PreviewSnapshot(source.handle, semanticKeyLeak), 'PREVIEW_MALFORMED')
+  })
+})
+
+test('duplicate group IDs reject repeated near-limit payloads before inspecting or cloning them', async () => {
+  await withFreshKb('repeated-reference-preflight', async (root) => {
+    const source = await persistSource(root, 'x', 'source-run-repeated-reference-preflight')
+    const input = previewInput(source, { workflowRunId: 'preview-run-repeated-reference-preflight' })
+    const semanticFields = Object.fromEntries(Array.from({ length: 500 }, (_, index) => ['field-' + index, 'v'.repeat(15_000)]))
+    let candidatePayloadReads = 0
+    const sharedGroup = new Proxy({
+      candidateId: 'repeated-large-candidate',
+      kind: 'entity' as const,
+      candidate: {
+        candidateId: 'repeated-large-candidate',
+        entityType: 'industry',
+        name: 'Large shared payload',
+        evidenceBlockRefs: ['block-1'],
+        reason: 'Preflight fixture.',
+        semanticFields,
+      },
+    }, {
+      get(target, property, receiver) {
+        if (property === 'candidate') candidatePayloadReads += 1
+        return Reflect.get(target, property, receiver) as unknown
+      },
+    }) as unknown as ConsolidatedExtraction['groups'][number]
+    const startedAt = performance.now()
+    const heapBefore = process.memoryUsage().heapUsed
+    await assertStoreError(persistRawDocumentV04PreviewSnapshot(source.handle, {
+      ...input,
+      candidateGroups: Array.from({ length: RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxCandidateGroups }, () => sharedGroup),
+    }), 'PREVIEW_INPUT_INVALID')
+    const elapsedMs = performance.now() - startedAt
+    const heapGrowth = process.memoryUsage().heapUsed - heapBefore
+    assert.equal(candidatePayloadReads, 0, 'duplicate scan should stop before reading the shared payload')
+    assert.ok(elapsedMs < 2_000, 'duplicate scan should complete within a bounded interval')
+    assert.ok(heapGrowth < 64 * 1024 * 1024, 'duplicate scan should not multiply the large payload in memory')
+  })
+})
+
+test('aggregate JSON size is rejected before cloning repeated shared candidate fields', async () => {
+  await withFreshKb('aggregate-preflight', async (root) => {
+    const source = await persistSource(root, RAW_TEXT, 'source-run-aggregate-preflight')
+    const input = previewInput(source, { workflowRunId: 'preview-run-aggregate-preflight' })
+    const sharedFieldsTarget = Object.fromEntries(Array.from({ length: 20 }, (_, index) => ['field-' + index, 'v'.repeat(12_000)])) as Record<string, string>
+    let sharedFieldValueReads = 0
+    const sharedFields = new Proxy(sharedFieldsTarget, {
+      get(target, property, receiver) {
+        if (typeof property === 'string' && property.startsWith('field-')) sharedFieldValueReads += 1
+        return Reflect.get(target, property, receiver) as string | undefined
+      },
+    })
+    const groups: ConsolidatedExtraction['groups'] = Array.from({ length: 34 }, (_, index) => {
+      const candidateId = 'aggregate-candidate-' + index
+      return {
+        candidateId,
+        kind: 'entity',
+        candidate: {
+          candidateId,
+          entityType: 'industry',
+          name: 'Industry ' + index,
+          evidenceBlockRefs: ['block-1'],
+          reason: 'Aggregate size fixture.',
+          semanticFields: sharedFields,
+        },
+      }
+    })
+    await assertStoreError(persistRawDocumentV04PreviewSnapshot(source.handle, {
+      ...input,
+      reviewConstraints: [],
+      candidateGroups: groups,
+    }), 'PREVIEW_SIZE_LIMIT')
+    assert.equal(sharedFieldValueReads, 0, 'aggregate size check should stop before canonical cloning reads shared values')
   })
 })
 

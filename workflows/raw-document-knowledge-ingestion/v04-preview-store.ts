@@ -100,6 +100,8 @@ const REVIEW_CATEGORIES = new Set(['invalid_reference', 'invalid_semantics', 're
 const TOP_LEVEL_KEYS = ['format', 'version', 'workflowRunId', 'knowledgeBaseId', 'sourceRef', 'rawRef', 'sourceRevision', 'documentId', 'orderedBlocks', 'candidateGroups', 'blockingReviewConstraints', 'candidateSupport', 'contentHash']
 const GROUP_KEYS = ['candidateId', 'kind', 'candidate']
 const SUPPORT_KEYS = ['candidateId', 'supportingCandidateCount']
+const MAX_PREFLIGHT_NODES = 400_000
+const MAX_PREFLIGHT_DEPTH = 32
 
 function fail(code: RawDocumentV04PreviewStoreErrorCode, message: string): never {
   throw new RawDocumentV04PreviewStoreError(code, message)
@@ -305,7 +307,7 @@ function validateSnapshot(value: unknown, expectedRunId?: string): RawDocumentV0
   const containsFullRawText = (current: unknown): boolean => {
     if (typeof current === 'string') return createHash('sha256').update(current, 'utf8').digest('hex') === rawDigest
     if (Array.isArray(current)) return current.some(containsFullRawText)
-    if (isRecord(current)) return Object.values(current).some(containsFullRawText)
+    if (isRecord(current)) return Object.keys(current).some((key) => containsFullRawText(key) || containsFullRawText(current[key]))
     return false
   }
   if (containsFullRawText(value)) fail('PREVIEW_MALFORMED', 'A serialized preview field contains the complete Raw text')
@@ -329,21 +331,147 @@ function cloneJson<T>(value: T, label: string): T {
   try { return JSON.parse(encoded) as T } catch { return fail('PREVIEW_INPUT_INVALID', label + ' could not be cloned as JSON') }
 }
 
+/**
+ * Reject duplicate candidate IDs before looking into candidate payloads. Apart
+ * from being a useful invariant, this prevents a repeated near-limit object
+ * from being cloned thousands of times before the aggregate-size check runs.
+ */
+function preflightCandidateGroupIds(groups: readonly CandidateGroup[]): void {
+  const ids = new Set<string>()
+  for (let index = 0; index < groups.length; index += 1) {
+    let group: unknown
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(groups, String(index))
+      if (!descriptor || !('value' in descriptor)) fail('PREVIEW_INPUT_INVALID', 'candidateGroups must be a dense array of data values')
+      group = descriptor.value
+      if (!isRecord(group) || (Object.getPrototypeOf(group) !== Object.prototype && Object.getPrototypeOf(group) !== null)) {
+        fail('PREVIEW_INPUT_INVALID', 'candidateGroups[' + index + '] must be a plain object')
+      }
+      const idDescriptor = Object.getOwnPropertyDescriptor(group, 'candidateId')
+      if (!idDescriptor || !('value' in idDescriptor)) fail('PREVIEW_INPUT_INVALID', 'candidateGroups[' + index + '].candidateId must be a data value')
+      const candidateId = idDescriptor.value
+      if (typeof candidateId !== 'string' || candidateId.length > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxCandidateIdLength || !CANDIDATE_ID.test(candidateId)) {
+        fail('PREVIEW_INPUT_INVALID', 'candidateGroups[' + index + '].candidateId is invalid')
+      }
+      if (ids.has(candidateId)) fail('PREVIEW_INPUT_INVALID', 'candidateGroups contains duplicate candidate IDs')
+      ids.add(candidateId)
+    } catch (error) {
+      if (error instanceof RawDocumentV04PreviewStoreError) throw error
+      fail('PREVIEW_INPUT_INVALID', 'candidateGroups could not be safely inspected')
+    }
+  }
+}
+
+/**
+ * Compute a bounded UTF-8 size estimate without serializing or cloning the
+ * object graph. The memo stores each shared object's encoded size once, while
+ * every reference still contributes that size to its containing snapshot.
+ */
+function assertAggregatePreviewBudget(value: unknown): void {
+  const memo = new WeakMap<object, number>()
+  const active = new WeakSet<object>()
+  let visited = 0
+  const stringBytes = (text: string, label: string): number => {
+    if (text.length > 16_000) fail('PREVIEW_SIZE_LIMIT', label + ' exceeds its string size bound')
+    let bytes = 2 // JSON quotes
+    for (let index = 0; index < text.length; index += 1) {
+      const code = text.charCodeAt(index)
+      if (code === 0x22 || code === 0x5c || code === 0x08 || code === 0x09 || code === 0x0a || code === 0x0c || code === 0x0d) {
+        bytes += 2
+      } else if (code < 0x20 || (code >= 0xd800 && code <= 0xdfff && !(code <= 0xdbff && index + 1 < text.length && text.charCodeAt(index + 1) >= 0xdc00 && text.charCodeAt(index + 1) <= 0xdfff))) {
+        bytes += 6
+      } else if (code >= 0xd800 && code <= 0xdbff) {
+        bytes += 4
+        index += 1
+      } else if (code <= 0x7f) {
+        bytes += 1
+      } else if (code <= 0x7ff) {
+        bytes += 2
+      } else {
+        bytes += 3
+      }
+      if (bytes > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxSnapshotBytes) {
+        fail('PREVIEW_SIZE_LIMIT', label + ' exceeds the aggregate byte limit')
+      }
+    }
+    return bytes
+  }
+  const measure = (current: unknown, depth: number, label: string): number => {
+    visited += 1
+    if (visited > MAX_PREFLIGHT_NODES || depth > MAX_PREFLIGHT_DEPTH) fail('PREVIEW_SIZE_LIMIT', 'Preview snapshot exceeds its JSON complexity bound')
+    if (current === null) return 4
+    if (typeof current === 'boolean') return current ? 4 : 5
+    if (typeof current === 'string') return stringBytes(current, label)
+    if (typeof current === 'number') {
+      if (!Number.isFinite(current)) fail('PREVIEW_INPUT_INVALID', label + ' contains a non-finite number')
+      return Buffer.byteLength(JSON.stringify(current), 'utf8')
+    }
+    if (typeof current !== 'object') fail('PREVIEW_INPUT_INVALID', label + ' contains a non-JSON value')
+    const cached = memo.get(current)
+    if (cached !== undefined) return cached
+    if (active.has(current)) fail('PREVIEW_INPUT_INVALID', label + ' contains a cycle')
+    active.add(current)
+    let size = 0
+    try {
+      if (Array.isArray(current)) {
+        if (current.length > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxDocumentBlocks) fail('PREVIEW_SIZE_LIMIT', label + ' contains an oversized array')
+        size = 2
+        for (let index = 0; index < current.length; index += 1) {
+          const descriptor = Object.getOwnPropertyDescriptor(current, String(index))
+          if (!descriptor || !('value' in descriptor)) fail('PREVIEW_INPUT_INVALID', label + ' contains a sparse or accessor array')
+          if (index > 0) size += 1
+          size += measure(descriptor.value, depth + 1, label + '[' + index + ']')
+          if (size > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxSnapshotBytes) fail('PREVIEW_SIZE_LIMIT', label + ' exceeds the aggregate byte limit')
+        }
+      } else {
+        if ((Object.getPrototypeOf(current) !== Object.prototype && Object.getPrototypeOf(current) !== null) || Object.getOwnPropertySymbols(current).length > 0) {
+          fail('PREVIEW_INPUT_INVALID', label + ' contains a non-plain JSON object')
+        }
+        const keys = Object.keys(current)
+        if (keys.length > 4_096) fail('PREVIEW_SIZE_LIMIT', label + ' contains an oversized object')
+        size = 2
+        let included = 0
+        for (const key of keys) {
+          const descriptor = Object.getOwnPropertyDescriptor(current, key)
+          if (!descriptor || !('value' in descriptor)) fail('PREVIEW_INPUT_INVALID', label + ' contains an accessor property')
+          if (descriptor.value === undefined) continue // canonicalSerialize omits undefined object properties
+          if (key.length > 512) fail('PREVIEW_SIZE_LIMIT', label + ' contains an oversized object key')
+          if (included > 0) size += 1
+          size += stringBytes(key, label + ' key') + 1
+          size += measure(descriptor.value, depth + 1, label + '.' + key)
+          included += 1
+          if (size > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxSnapshotBytes) fail('PREVIEW_SIZE_LIMIT', label + ' exceeds the aggregate byte limit')
+        }
+      }
+    } catch (error) {
+      if (error instanceof RawDocumentV04PreviewStoreError) throw error
+      fail('PREVIEW_INPUT_INVALID', label + ' could not be safely inspected')
+    } finally {
+      active.delete(current)
+    }
+    memo.set(current, size)
+    return size
+  }
+  if (measure(value, 0, 'preview snapshot') > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxSnapshotBytes) {
+    fail('PREVIEW_SIZE_LIMIT', 'Preview snapshot exceeds the aggregate byte limit')
+  }
+}
+
 function makeSnapshot(handle: KnowledgeBaseHandle, input: PersistRawDocumentV04PreviewInput): RawDocumentV04CandidatePreviewSnapshot {
   if (!RUN_ID.test(input.workflowRunId) || input.workflowRunId.includes('..')) fail('PREVIEW_INPUT_INVALID', 'workflowRunId must be a safe bounded identifier')
   if (!SOURCE_REF.test(input.sourceRef) || !RAW_REF.test(input.rawRef)) fail('PREVIEW_INPUT_INVALID', 'sourceRef or rawRef is invalid')
   safeInteger(input.sourceRevision, 'sourceRevision', 1)
   safeDocumentIdentifier(input.document.documentId, 'documentId')
+  if (!Array.isArray(input.candidateGroups) || input.candidateGroups.length > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxCandidateGroups) fail('PREVIEW_SIZE_LIMIT', 'Candidate group count exceeds its bound')
+  preflightCandidateGroupIds(input.candidateGroups)
   if (!Array.isArray(input.document.blocks) || input.document.blocks.length > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxDocumentBlocks) fail('PREVIEW_SIZE_LIMIT', 'Document block order exceeds its bound')
   const orderedBlocks = input.document.blocks.map((block, index) => ({ blockId: safeDocumentIdentifier(block.blockId, 'document.blocks[' + index + '].blockId'), order: safeInteger(block.order, 'document.blocks[' + index + '].order') }))
   if (new Set(orderedBlocks.map((block) => block.blockId)).size !== orderedBlocks.length || new Set(orderedBlocks.map((block) => block.order)).size !== orderedBlocks.length) fail('PREVIEW_INPUT_INVALID', 'Document block IDs and order values must be unique')
-  if (!Array.isArray(input.candidateGroups) || input.candidateGroups.length > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxCandidateGroups) fail('PREVIEW_SIZE_LIMIT', 'Candidate group count exceeds its bound')
   if (!Array.isArray(input.reviewConstraints) || input.reviewConstraints.length > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxReviewConstraints) fail('PREVIEW_SIZE_LIMIT', 'Review constraint count exceeds its bound')
-  const groups = input.candidateGroups.map((group, index) => cloneJson(group, 'candidateGroups[' + index + ']'))
-  const blocking = input.reviewConstraints.filter((constraint) => constraint.blocking).map((constraint, index) => cloneJson(constraint, 'blockingReviewConstraints[' + index + ']'))
   if (!(input.candidateSupport instanceof Map) || input.candidateSupport.size > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxSupportEntries) fail('PREVIEW_INPUT_INVALID', 'candidateSupport must be a bounded Map')
+  const blockingInput = input.reviewConstraints.filter((constraint) => constraint.blocking)
   const candidateSupport = [...input.candidateSupport.entries()].map(([candidateId, support]) => ({ candidateId, supportingCandidateCount: support.supportingCandidateCount })).sort((left, right) => left.candidateId.localeCompare(right.candidateId))
-  const body = {
+  const preflightBody = {
     format: FORMAT as typeof FORMAT,
     version: 1 as const,
     workflowRunId: input.workflowRunId,
@@ -353,11 +481,12 @@ function makeSnapshot(handle: KnowledgeBaseHandle, input: PersistRawDocumentV04P
     sourceRevision: input.sourceRevision,
     documentId: input.document.documentId,
     orderedBlocks,
-    candidateGroups: groups,
-    blockingReviewConstraints: blocking,
+    candidateGroups: input.candidateGroups,
+    blockingReviewConstraints: blockingInput,
     candidateSupport,
   }
-  const draft = cloneJson(body, 'preview snapshot')
+  assertAggregatePreviewBudget(preflightBody)
+  const draft = cloneJson(preflightBody, 'preview snapshot')
   const snapshot = { ...draft, contentHash: hashKnowledgeObject(draft) } as RawDocumentV04CandidatePreviewSnapshot
   validateSnapshot(snapshot, input.workflowRunId)
   const byteLength = Buffer.byteLength(JSON.stringify(snapshot, null, 2) + '\n', 'utf8')
