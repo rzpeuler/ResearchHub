@@ -101,8 +101,8 @@ async function seedEvidence(root: string): Promise<{ readonly rawRef: `raw-sha25
   }
 }
 
-function industry(id: string, name = id): KnowledgeIndustryV04 {
-  return { id: `entity:${id}`, type: 'industry', name, lifecycle: { status: 'active' } }
+function industry(id: string, name = id, aliases?: readonly string[]): KnowledgeIndustryV04 {
+  return { id: `entity:${id}`, type: 'industry', name, ...(aliases === undefined ? {} : { aliases: [...aliases] }), lifecycle: { status: 'active' } }
 }
 
 function exposure(id: string, themeRef: string, industryRef: string, sourceRefs: readonly string[] = [SOURCE_REF]): KnowledgeRelationV04 {
@@ -205,12 +205,16 @@ test('human-confirmed Industry include binds active canonical exposure evidence 
     const unresolvedIndustryValidation = await validateScope(root, themeRef, [unresolvedIndustry], [], 'missing-canonical-industry')
     assert.equal(unresolvedIndustryValidation.validatedChangeSet, undefined)
     assert.ok(unresolvedIndustryValidation.report.errors.some((error) => error.code === 'THEME_SCOPE_INDUSTRY_CANONICAL_REF_INVALID'))
-    const accelerator = industry('semantic-accelerator', 'Compute accelerators')
+    const accelerator = industry('semantic-accelerator', 'Compute accelerators', ['AI Accelerators'])
     const packaging = industry('semantic-packaging', 'Advanced packaging')
     const infrastructure = industry('semantic-infrastructure', 'Data center infrastructure')
-    const acceleratorCandidate = industryCandidate(accelerator.name, accelerator.id)
+    const acceleratorCandidate = industryCandidate(' ai   accelerators ', accelerator.id)
     const packagingCandidate = industryCandidate(packaging.name, packaging.id)
     const infrastructureCandidate = industryCandidate(infrastructure.name, infrastructure.id)
+    const wrongName = decision(themeRef, handle.revision, industryCandidate('Unrelated candidate name', infrastructure.id), 'pending', [evidence])
+    const wrongNameValidation = await validateScope(root, themeRef, [wrongName], [createOperation('create-name-mismatch-industry', infrastructure)], 'industry-name-mismatch')
+    assert.equal(wrongNameValidation.validatedChangeSet, undefined)
+    assert.ok(wrongNameValidation.report.errors.some((error) => error.code === 'THEME_SCOPE_INDUSTRY_NAME_MISMATCH'))
     const edge = relationCandidate(
       'upstream_of',
       fingerprintThemeScopeCandidateV04(acceleratorCandidate),
@@ -405,6 +409,27 @@ test('wrong directed endpoints and endpoints outside the Theme block relation in
     assert.equal(outsideValidation.validatedChangeSet, undefined)
     assert.ok(outsideValidation.report.errors.some((error) => error.code === 'THEME_SCOPE_RELATION_ENDPOINT_OUTSIDE_THEME'), JSON.stringify(outsideValidation.report.errors))
     assert.ok(outsideValidation.report.errors.some((error) => error.code === 'THEME_SCOPE_RELATION_THEME_EXPOSURE_REQUIRED'), JSON.stringify(outsideValidation.report.errors))
+
+    const reversedPendingRelation: KnowledgeRelationV04 = {
+      id: 'relation:semantic-reversed-pending-edge',
+      type: 'upstream_of',
+      sourceRef: right.id,
+      targetRef: left.id,
+      sourceRefs: [SOURCE_REF],
+      lifecycle: { status: 'active' },
+    }
+    const reversedPendingCandidate = relationCandidate(
+      'upstream_of',
+      fingerprintThemeScopeCandidateV04(leftCandidate),
+      fingerprintThemeScopeCandidateV04(rightCandidate),
+      reversedPendingRelation.id,
+    )
+    for (const decisionValue of ['pending', 'exclude'] as const) {
+      const misboundRelation = decision(themeRef, outsideHandle.revision, reversedPendingCandidate, decisionValue, [evidence])
+      const misboundValidation = await validateScope(root, themeRef, [misboundRelation], [createOperation(`create-${decisionValue}-reversed-edge`, reversedPendingRelation)], `reversed-edge-${decisionValue}`)
+      assert.equal(misboundValidation.validatedChangeSet, undefined)
+      assert.ok(misboundValidation.report.errors.some((error) => error.code === 'THEME_SCOPE_RELATION_ENDPOINT_BINDING_INVALID'), JSON.stringify(misboundValidation.report.errors))
+    }
   })
 })
 

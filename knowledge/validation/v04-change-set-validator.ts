@@ -5,6 +5,7 @@ import { loadKnowledgeBaseManifest } from '../storage/manifest-loader.ts'
 import { parseYaml } from '../storage/yaml.ts'
 import { readCanonicalV04Assets } from '../storage/canonical-v04-loader.ts'
 import { verifyRaw } from '../raw/raw-archive.ts'
+import { normalizeSemanticText } from '../registry/id-allocation.ts'
 import { kindForKnowledgeV04 } from '../writer/path-allocation-v04.ts'
 import { canonicalSerialize, hashKnowledgeObject } from '../storage/canonical-hash.ts'
 import type { KnowledgeBaseHandle } from '../storage/handle.ts'
@@ -334,6 +335,12 @@ function validateThemeScopeSemanticBindings(
         add(errors, 'THEME_SCOPE_INDUSTRY_CANONICAL_REF_INVALID', `Theme scope Industry canonicalRef must resolve to an Industry: ${canonicalRef}`, undefined, decision.id)
         continue
       }
+      const candidateName = normalizeSemanticText(candidate.name)
+      const canonicalNames = [industry.name, ...(Array.isArray(industry.aliases) ? industry.aliases : [])]
+        .filter((name): name is string => typeof name === 'string')
+      if (!canonicalNames.some((name) => normalizeSemanticText(name) === candidateName)) {
+        add(errors, 'THEME_SCOPE_INDUSTRY_NAME_MISMATCH', `Theme scope Industry candidate name must match its canonical Industry name or alias: ${canonicalRef}`, undefined, decision.id)
+      }
       if (decision.decision === 'include' && !activeAt(industry, evaluatedAt)) {
         add(errors, 'THEME_SCOPE_INDUSTRY_NOT_ACTIVE', `Included Industry must be active in the projected canonical state: ${canonicalRef}`, undefined, decision.id)
       }
@@ -357,11 +364,18 @@ function validateThemeScopeSemanticBindings(
       add(errors, 'THEME_SCOPE_RELATION_ENDPOINT_TYPE_INVALID', `Theme scope ${candidate.relationType} endpoints must both resolve to Industry objects: ${canonicalRef}`, undefined, decision.id)
       continue
     }
+    const sourceDecision = currentDecisions.get(candidate.sourceFingerprint)
+    const targetDecision = currentDecisions.get(candidate.targetFingerprint)
+    const sourceCanonicalRef = sourceDecision?.candidate.kind === 'industry' ? sourceDecision.candidate.canonicalRef : undefined
+    const targetCanonicalRef = targetDecision?.candidate.kind === 'industry' ? targetDecision.candidate.canonicalRef : undefined
+    if (sourceCanonicalRef === undefined || targetCanonicalRef === undefined) {
+      add(errors, 'THEME_SCOPE_RELATION_ENDPOINT_BINDING_UNRESOLVED', `Theme scope relation endpoints must resolve through current Industry candidate decisions: ${canonicalRef}`, undefined, decision.id)
+    } else if (sourceCanonicalRef !== relation.sourceRef || targetCanonicalRef !== relation.targetRef) {
+      add(errors, 'THEME_SCOPE_RELATION_ENDPOINT_BINDING_INVALID', `Theme scope relation direction must match its source and target Industry candidate bindings: ${canonicalRef}`, undefined, decision.id)
+    }
     if (decision.decision !== 'include') continue
 
     if (!activeAt(relation, evaluatedAt)) add(errors, 'THEME_SCOPE_RELATION_NOT_ACTIVE', `Included canonical relation must be active in the projected state: ${canonicalRef}`, undefined, decision.id)
-    const sourceDecision = currentDecisions.get(candidate.sourceFingerprint)
-    const targetDecision = currentDecisions.get(candidate.targetFingerprint)
     const sourceIncluded = sourceDecision?.candidate.kind === 'industry'
       && sourceDecision.decision === 'include'
       && sourceDecision.candidate.canonicalRef === relation.sourceRef
