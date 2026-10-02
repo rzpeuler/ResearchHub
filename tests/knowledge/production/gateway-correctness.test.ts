@@ -80,6 +80,38 @@ test('Changed semantic slot can supersede or persist a durable ReviewCase', asyn
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
+test('strict all-resolved mode blocks canonical and ReviewCase side effects when one proposal needs review', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-gateway-strict-resolution-'))
+  try {
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-gateway-strict-resolution', now: clock() })
+    const gateway = new KnowledgeProductionGateway()
+    const seeded = await gateway.submit(await input(root, 'strict-resolution-seed'))
+    assert.equal(seeded.status, 'committed', seeded.errors.join('; '))
+    const sourceRef = seeded.sourceRefsByLocalId['structured-600519']
+    assert.ok(sourceRef)
+    const sourceAsset = (await readCanonicalV04Assets(root)).objects.find((item) => item.kind === 'source' && item.value.id === sourceRef)
+    assert.ok(sourceAsset)
+    const rawRef = (sourceAsset.value as { rawRefs?: readonly string[] }).rawRefs?.[0]
+    assert.ok(rawRef)
+    const beforeRevision = (await loadKnowledgeBaseManifest(root)).revision
+    const evidence = [{ sourceRef: sourceRef as `source:${string}`, rawRef: rawRef as `raw-sha256-${string}`, locator: 'block-1' }]
+    const result = await gateway.submit({
+      ...(await input(root, 'strict-resolution-mixed')),
+      evidenceBindings: [],
+      proposals: [
+        { proposalId: 'strict-valid-claim', kind: 'claim', subjectKey: 'company', claimType: 'fact', statement: 'A fully resolvable proposal.', existingEvidenceBindings: evidence },
+        { proposalId: 'strict-review-claim', kind: 'claim', subjectKey: 'missing-subject', claimType: 'fact', statement: 'An unresolved proposal.', resolution: 'review', existingEvidenceBindings: evidence },
+      ],
+      requireAllResolved: true,
+    })
+    assert.equal(result.status, 'blocked')
+    assert.ok(result.resolutionIntents.some((item) => item.disposition === 'review_required'))
+    assert.equal((await loadKnowledgeBaseManifest(root)).revision, beforeRevision)
+    assert.equal((await readCanonicalV04Assets(root)).objects.filter((item) => item.kind === 'claim').length, 0)
+    assert.equal((await listReviewCases(root, { producerRunId: 'strict-resolution-mixed' })).length, 0)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
 test('producer-neutral Industry Relation mapping resolves Relation-subject Claims without root fallback', async () => {
   const root = await mkdtemp(join(tmpdir(), 'rhl-producer-neutral-'))
   try {

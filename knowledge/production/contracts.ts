@@ -160,6 +160,8 @@ export interface KnowledgeProductionInput {
   readonly reviewProducerType?: string
   /** Resolve proposals without changing canonical Knowledge when false. */
   readonly writeKnowledge?: boolean
+  /** Block the whole run before ReviewCase or Writer side effects if any intent is unresolved. */
+  readonly requireAllResolved?: boolean
 }
 
 export interface ResolutionIntentSummary {
