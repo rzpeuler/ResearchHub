@@ -106,6 +106,29 @@ test('blocking consolidation conflicts hold the candidate and its Relation and C
   assert.equal(result.decisions.find((item) => item.candidateId === statement.candidateId)?.reasonCode, 'claim_subject_not_approved')
 })
 
+test('blocking Relation and Claim conflicts prevent their own mapping and a dependent Claim cannot use a blocked Relation', () => {
+  const upstream = entity('industry-upstream', 'Chip Materials', 'industry')
+  const downstream = entity('industry-downstream', 'Advanced Packaging', 'industry')
+  const blockedRelation = relation('relation-conflicted', 'upstream_of', upstream.candidateId, downstream.candidateId)
+  const dependentClaim = claim('claim-on-conflicted-relation', [blockedRelation.candidateId])
+  const blockedClaim = claim('claim-conflicted', [upstream.candidateId])
+  const source = consolidated(group(upstream, 'entity'), group(downstream, 'entity'), group(blockedRelation, 'relation'), group(dependentClaim, 'claim'), group(blockedClaim, 'claim'))
+  const withBlockingConflicts: ConsolidatedExtraction = {
+    ...source,
+    reviewConstraints: [
+      { candidateId: blockedRelation.candidateId, reason: 'Relation direction conflicts across units.', conflictingFields: ['source', 'target'], blocking: true, category: 'reconciliation_review', reviewKey: 'relation-conflict' },
+      { candidateId: blockedClaim.candidateId, reason: 'Claim statement conflicts across units.', conflictingFields: ['statement'], blocking: true, category: 'reconciliation_review', reviewKey: 'claim-conflict' },
+    ],
+  }
+  const result = map({ consolidated: withBlockingConflicts, approvedCandidateIds: [upstream.candidateId, downstream.candidateId, blockedRelation.candidateId, dependentClaim.candidateId, blockedClaim.candidateId] })
+
+  assert.equal(result.proposals.some((proposal) => proposal.kind === 'relation'), false)
+  assert.equal(result.proposals.some((proposal) => proposal.kind === 'claim'), false)
+  assert.equal(result.decisions.find((item) => item.candidateId === blockedRelation.candidateId)?.reasonCode, 'blocking_consolidation_constraint')
+  assert.equal(result.decisions.find((item) => item.candidateId === blockedClaim.candidateId)?.reasonCode, 'blocking_consolidation_constraint')
+  assert.equal(result.decisions.find((item) => item.candidateId === dependentClaim.candidateId)?.reasonCode, 'claim_subject_not_approved')
+})
+
 test('a Relation is held for review until both endpoint candidates are explicitly approved', () => {
   const upstream = entity('industry-upstream', 'Chip Materials', 'industry')
   const downstream = entity('industry-downstream', 'Advanced Packaging', 'industry')

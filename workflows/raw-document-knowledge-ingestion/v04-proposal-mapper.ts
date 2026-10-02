@@ -231,6 +231,7 @@ export function mapRawDocumentExtractionToV04Proposals(input: RawDocumentV04Prop
 
   for (const group of groups.filter((item) => item.kind === 'relation')) {
     if (!approvedIds.has(group.candidateId)) continue
+    if (decisions.get(group.candidateId)?.disposition === 'review') continue
     if (!asRelationCandidate(group.candidate)) {
       decisions.set(group.candidateId, decision(group.candidateId, 'relation', 'review', 'invalid_relation_candidate', 'Approved candidate does not satisfy the Relation candidate contract.'))
       continue
@@ -268,6 +269,7 @@ export function mapRawDocumentExtractionToV04Proposals(input: RawDocumentV04Prop
 
   for (const group of groups.filter((item) => item.kind === 'claim')) {
     if (!approvedIds.has(group.candidateId)) continue
+    if (decisions.get(group.candidateId)?.disposition === 'review') continue
     if (!asClaimCandidate(group.candidate)) {
       decisions.set(group.candidateId, decision(group.candidateId, 'claim', 'review', 'invalid_claim_candidate', 'Approved candidate does not satisfy the Claim candidate contract.'))
       continue
