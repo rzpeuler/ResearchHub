@@ -21,6 +21,7 @@ import { createFreshKnowledgeBaseV04, loadKnowledgeBaseManifest, readCanonicalV0
 import { hashKnowledgeObject } from '../../../knowledge/storage/canonical-hash.ts'
 import { validateKnowledgeChangeSetV04 } from '../../../knowledge/validation/v04-change-set-validator.ts'
 import { writeKnowledgeBase } from '../../../knowledge/writer/writer.ts'
+import { writeKnowledgeBaseV04 } from '../../../knowledge/writer/writer-v04.ts'
 
 const NOW = '2026-10-02T00:00:00.000Z'
 const clock = () => NOW
@@ -159,6 +160,44 @@ test('governance-only scope writes advance one revision, preserve history, and r
     const ledgerAfterReplay = await readThemeScopeLedgerV04(await mount(root))
     assert.equal(ledgerAfterReplay.status, 'available')
     if (ledgerAfterReplay.status === 'available') assert.equal(ledgerAfterReplay.decisionCount, 3)
+  })
+})
+
+test('V04 Writer replay rejects tampered governance-only scope context, status, or revision', async () => {
+  await withFreshKb('governance-only-replay-log-tamper', async (root) => {
+    const themeRef = await createTheme(root)
+    const handle = await mount(root)
+    const originalBatch = batch(themeRef, handle.revision, [decision({ themeRef, revision: handle.revision, name: 'Original scope candidate' })])
+    const set = changeSet(handle, 'scope-replay-log-tamper-run', originalBatch)
+    const validation = await validateKnowledgeChangeSetV04(handle, set, { mode: 'commit', now: clock })
+    assert.ok(validation.validatedChangeSet, JSON.stringify(validation.report.errors))
+
+    const receipt = validation.validatedChangeSet
+    const first = await writeKnowledgeBaseV04(handle, receipt, new KnowledgeBaseRegistry(), clock)
+    assert.equal(first.status, 'committed', first.error?.message)
+    assert.equal(first.createdIds.length + first.updatedIds.length, 0)
+    assert.equal(first.committedRevision, handle.revision + 1)
+
+    const logPath = join(root, 'logs', 'research', 'scope-replay-log-tamper-run.yaml')
+    const originalLog = JSON.parse(await readFile(logPath, 'utf8')) as Record<string, unknown>
+    const originalContext = originalLog.ingestionContext as Record<string, unknown>
+    const alternateBatch = batch(themeRef, handle.revision, [decision({ themeRef, revision: handle.revision, name: 'Tampered scope candidate' })])
+    const variants: readonly [string, Record<string, unknown>][] = [
+      ['context', { ...originalLog, ingestionContext: { ...originalContext, themeScope: alternateBatch } }],
+      ['writeStatus', { ...originalLog, writeStatus: 'no_changes' }],
+      ['committedRevision', { ...originalLog, committedRevision: handle.revision }],
+    ]
+
+    for (const [field, tamperedLog] of variants) {
+      assert.equal(tamperedLog.changeSetHash, originalLog.changeSetHash)
+      await writeFile(logPath, `${JSON.stringify(tamperedLog)}\n`, 'utf8')
+      const replay = await writeKnowledgeBaseV04(handle, receipt, new KnowledgeBaseRegistry(), clock)
+      assert.equal(replay.status, 'rejected', `${field} tampering must not be reported as an accepted replay`)
+      assert.equal(replay.error?.code, 'idempotency_conflict', `${field} tampering must fail closed`)
+      assert.equal((await loadKnowledgeBaseManifest(root)).revision, first.committedRevision)
+      assert.deepEqual(JSON.parse(await readFile(logPath, 'utf8')), tamperedLog)
+      await writeFile(logPath, `${JSON.stringify(originalLog)}\n`, 'utf8')
+    }
   })
 })
 

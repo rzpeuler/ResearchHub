@@ -51,24 +51,39 @@ async function verifyPriorExecutionState(
   changeSet: KnowledgeChangeSetV04,
   prior: Dict,
 ): Promise<{ readonly valid: true } | { readonly valid: false; readonly code: 'idempotency_conflict' | 'stale_target'; readonly message: string }> {
+  let contextMatches = false
+  try {
+    const expectedContextHash = changeSet.ingestionContext === undefined ? undefined : hashKnowledgeObject(changeSet.ingestionContext)
+    const priorContextHash = prior.ingestionContext === undefined ? undefined : hashKnowledgeObject(prior.ingestionContext)
+    contextMatches = expectedContextHash === priorContextHash
+  } catch {
+    contextMatches = false
+  }
+  const scopeContext = inspectThemeScopeContextV04(changeSet)
+  const hasCommittedChanges = changeSet.operations.length > 0 || scopeContext.present
+  const expectedWriteStatus = hasCommittedChanges ? 'committed' : 'no_changes'
+  const expectedCommittedRevision = changeSet.expectedBaseRevision + (hasCommittedChanges ? 1 : 0)
   if (prior.workflowRunId !== changeSet.workflowRunId
     || prior.changeSetId !== changeSet.changeSetId
     || prior.knowledgeBaseId !== manifest.knowledgeBaseId
     || prior.schemaVersionAtExecution !== '0.4'
     || prior.status !== 'completed'
-    || !['committed', 'no_changes'].includes(String(prior.writeStatus))
+    || !contextMatches
+    || scopeContext.error !== undefined
+    || !Number.isSafeInteger(changeSet.expectedBaseRevision)
+    || changeSet.expectedBaseRevision < 0
+    || prior.writeStatus !== expectedWriteStatus
     || !Number.isSafeInteger(prior.committedRevision)
-    || Number(prior.committedRevision) < 0
+    || Number(prior.committedRevision) !== expectedCommittedRevision
     || Number(prior.committedRevision) > manifest.revision) {
-    return { valid: false, code: 'idempotency_conflict', message: 'Prior Writer receipt is malformed or inconsistent with the current Knowledge Base.' }
+    return { valid: false, code: 'idempotency_conflict', message: 'Prior Writer receipt is malformed or inconsistent with the submitted ChangeSet or current Knowledge Base.' }
   }
   const changes = typeof prior.changes === 'object' && prior.changes !== null && !Array.isArray(prior.changes) ? prior.changes as Dict : undefined
   const createdIds = operationIds(changeSet, 'create')
   const updatedIds = operationIds(changeSet, 'update')
   if (!changes
     || !sameStringArray(changes.createdIds, createdIds)
-    || !sameStringArray(changes.updatedIds, updatedIds)
-    || (prior.writeStatus === 'no_changes' && (createdIds.length > 0 || updatedIds.length > 0))) {
+    || !sameStringArray(changes.updatedIds, updatedIds)) {
     return { valid: false, code: 'idempotency_conflict', message: 'Prior Writer receipt change IDs do not match the submitted ChangeSet operations.' }
   }
 
