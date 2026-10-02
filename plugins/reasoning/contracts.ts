@@ -22,6 +22,7 @@ export const REASONING_OPERATIONS = [
   'industry_research_design',
   'industry_module_analysis',
   'industry_cross_module_synthesis',
+  'theme_framework_semantic',
 ] as const
 
 export type ReasoningOperation = (typeof REASONING_OPERATIONS)[number]
