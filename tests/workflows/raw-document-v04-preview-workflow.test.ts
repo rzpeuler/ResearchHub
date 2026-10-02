@@ -12,7 +12,7 @@ import { DocumentInputResolver } from '../../plugins/document/input-resolver.ts'
 import type { DocumentParser, DocumentParserInput, StructuredDocument } from '../../plugins/document/contracts.ts'
 import { RawDocumentKnowledgeGatewayV04 } from '../../knowledge/production/raw-document-gateway-v04.ts'
 import type { RawDocumentGatewayV04Input, RawDocumentGatewayV04Result } from '../../knowledge/production/raw-document-gateway-v04.ts'
-import { RawDocumentV04PreviewStoreError, readRawDocumentV04PreviewSnapshot } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-store.ts'
+import { persistRawDocumentV04PreviewSnapshot, RawDocumentV04PreviewStoreError, readRawDocumentV04PreviewSnapshot } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-store.ts'
 import type { RawDocumentPreviewSkillV04, RawDocumentPreviewWorkflowInputV04 } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts'
 import { runRawDocumentKnowledgePreviewV04 } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts'
 import type { ClaimCandidate, EntityCandidate, ReportMap, UnderstandAndPlanOutput, ValidatedExtractKnowledgeResult } from '../../skills/knowledge-curation/contracts.ts'
@@ -217,6 +217,8 @@ test('Schema 0.4 workflow persists Source and Raw then returns evidence-linked c
     assert.equal(remounted.documentId, result.extractionPreview.documentId)
     assert.deepEqual(remounted.orderedBlocks, [{ blockId: 'block-ai-demand', order: 1 }])
     assert.equal(remounted.candidateGroups.length, 2)
+    assert.equal(remounted.extractionCompleteness, 'complete')
+    assert.deepEqual(remounted.incompleteUnits, [])
 
     const replay = await runRawDocumentKnowledgePreviewV04(input(handle))
     assert.equal(replay.status, 'preview_ready')
@@ -286,6 +288,108 @@ test('preview store failure preserves extraction telemetry and leaves the candid
     assert.equal(result.previewSnapshot.error?.code, 'PREVIEW_PATH_UNSAFE')
     assert.equal(await readRawDocumentV04PreviewSnapshot(handle, result.workflowRunId), undefined)
     assert.deepEqual((await readCanonicalV04Assets(root)).objects.map((asset) => asset.kind), ['source'])
+  })
+})
+
+test('fabricated or mismatched store receipts fail real read-back verification', async () => {
+  await withFreshKb('candidate-preview-fabricated-receipt', async (root) => {
+    const handle = await mount(root)
+    const result = await runRawDocumentKnowledgePreviewV04(input(handle, {
+      previewSnapshotStore: {
+        async persist(_targetHandle, previewInput) {
+          return {
+            status: 'persisted',
+            snapshot: {
+              workflowRunId: previewInput.workflowRunId,
+              knowledgeBaseId: handle.knowledgeBaseId,
+              contentHash: `sha256:${'0'.repeat(64)}`,
+            },
+          }
+        },
+      },
+    }))
+
+    assert.equal(result.status, 'source_only')
+    assert.equal(result.sourceRaw.persisted, true)
+    assert.equal(result.extractionPreview.status, 'completed')
+    assert.equal(result.extractionPreview.candidateGroups.length, 2)
+    assert.equal(result.previewSnapshot.status, 'failed')
+    assert.equal(result.previewSnapshot.committable, false)
+    assert.equal(result.previewSnapshot.error?.code, 'PREVIEW_SNAPSHOT_MISSING')
+    assert.equal(await readRawDocumentV04PreviewSnapshot(handle, result.workflowRunId), undefined)
+    assert.deepEqual((await readCanonicalV04Assets(root)).objects.map((asset) => asset.kind), ['source'])
+  })
+
+  await withFreshKb('candidate-preview-mismatched-readback', async (root) => {
+    const handle = await mount(root)
+    const result = await runRawDocumentKnowledgePreviewV04(input(handle, {
+      previewSnapshotStore: {
+        async persist(targetHandle, previewInput) {
+          const altered = {
+            ...previewInput,
+            document: { ...previewInput.document, documentId: 'fabricated-document-id' },
+            candidateGroups: previewInput.candidateGroups.map((group) => group.kind === 'entity'
+              ? { ...group, candidate: { ...group.candidate, description: 'Altered after extraction.' } }
+              : group),
+            reviewConstraints: previewInput.reviewConstraints.map((constraint) => ({ ...constraint, reason: 'Altered after extraction.' })),
+          }
+          return persistRawDocumentV04PreviewSnapshot(targetHandle, altered)
+        },
+      },
+    }))
+
+    assert.equal(result.status, 'source_only')
+    assert.equal(result.sourceRaw.persisted, true)
+    assert.equal(result.extractionPreview.status, 'completed')
+    assert.equal(result.previewSnapshot.status, 'failed')
+    assert.equal(result.previewSnapshot.committable, false)
+    assert.equal(result.previewSnapshot.error?.code, 'PREVIEW_SNAPSHOT_MISMATCH')
+    const stored = await readRawDocumentV04PreviewSnapshot(handle, result.workflowRunId)
+    assert.equal(stored?.documentId, 'fabricated-document-id')
+    assert.deepEqual((await readCanonicalV04Assets(root)).objects.map((asset) => asset.kind), ['source'])
+  })
+
+  await withFreshKb('candidate-preview-mismatched-block-order', async (root) => {
+    const handle = await mount(root)
+    const result = await runRawDocumentKnowledgePreviewV04(input(handle, {
+      previewSnapshotStore: {
+        async persist(targetHandle, previewInput) {
+          const altered = {
+            ...previewInput,
+            document: {
+              ...previewInput.document,
+              blocks: previewInput.document.blocks.map((block) => ({ ...block, order: block.order + 100 })),
+            },
+          }
+          return persistRawDocumentV04PreviewSnapshot(targetHandle, altered)
+        },
+      },
+    }))
+
+    assert.equal(result.status, 'source_only')
+    assert.equal(result.sourceRaw.persisted, true)
+    assert.equal(result.previewSnapshot.status, 'failed')
+    assert.equal(result.previewSnapshot.committable, false)
+    assert.equal(result.previewSnapshot.error?.code, 'PREVIEW_SNAPSHOT_MISMATCH')
+    assert.deepEqual((await readCanonicalV04Assets(root)).objects.map((asset) => asset.kind), ['source'])
+  })
+
+  await withFreshKb('candidate-preview-forged-hash', async (root) => {
+    const handle = await mount(root)
+    const result = await runRawDocumentKnowledgePreviewV04(input(handle, {
+      previewSnapshotStore: {
+        async persist(targetHandle, previewInput) {
+          const persisted = await persistRawDocumentV04PreviewSnapshot(targetHandle, previewInput)
+          return { ...persisted, snapshot: { ...persisted.snapshot, contentHash: `sha256:${'1'.repeat(64)}` } }
+        },
+      },
+    }))
+
+    assert.equal(result.status, 'source_only')
+    assert.equal(result.sourceRaw.persisted, true)
+    assert.equal(result.previewSnapshot.status, 'failed')
+    assert.equal(result.previewSnapshot.committable, false)
+    assert.equal(result.previewSnapshot.error?.code, 'PREVIEW_RECEIPT_MISMATCH')
   })
 })
 
@@ -533,6 +637,12 @@ test('a malformed extraction unit fails while valid units remain available as a 
     assert.equal(snapshot?.candidateGroups[0]?.candidateId, result.extractionPreview.candidateGroups[0]?.candidateId)
     assert.equal(snapshot?.sourceRef, result.sourceRaw.sourceRef)
     assert.equal(snapshot?.rawRef, result.sourceRaw.rawRef)
+    assert.equal(snapshot?.extractionCompleteness, 'partial')
+    assert.equal(snapshot?.incompleteUnits?.length, 1)
+    assert.equal(snapshot?.incompleteUnits?.[0]?.unitId, 'unit-002')
+    assert.equal(snapshot?.incompleteUnits?.[0]?.proposedUnitId, 'ai-supply-unit')
+    assert.equal(snapshot?.incompleteUnits?.[0]?.status, 'failed')
+    assert.match(snapshot?.incompleteUnits?.[0]?.errorSummary ?? '', /not supplied to this extraction unit/u)
   })
 })
 

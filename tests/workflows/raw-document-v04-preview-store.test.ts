@@ -129,6 +129,8 @@ function previewInput(
     candidateGroups,
     reviewConstraints,
     candidateSupport: new Map([[entityId, { supportingCandidateCount: 3, supportingUnitIds: ['unit-a', 'unit-b'], evidenceBlockRefs: ['block-1', 'block-2'] }]]),
+    extractionCompleteness: 'complete',
+    incompleteUnits: [],
     ...overrides,
   }
 }
@@ -153,6 +155,9 @@ test('durable preview round-trips the pure mapper input without storing document
     assert.equal(written.snapshot.sourceRevision, source.sourceRevision)
     assert.deepEqual(written.snapshot.orderedBlocks, [{ blockId: 'block-2', order: 9 }, { blockId: 'block-1', order: 2 }])
     assert.deepEqual(written.snapshot.candidateSupport, [{ candidateId: 'merged-entity-ai-computing', supportingCandidateCount: 3 }])
+    assert.equal(written.snapshot.version, 2)
+    assert.equal(written.snapshot.extractionCompleteness, 'complete')
+    assert.deepEqual(written.snapshot.incompleteUnits, [])
     assert.equal(written.snapshot.blockingReviewConstraints.length, 1)
 
     const path = join(root, 'logs', 'ingestion', 'v04-preview', 'preview-run-001.json')
@@ -168,6 +173,52 @@ test('durable preview round-trips the pure mapper input without storing document
 
     const mapped = mapRawDocumentExtractionToV04Proposals({ ...mappingInput, approvedCandidateIds: ['merged-entity-ai-computing'] })
     assert.equal(mapped.decisions[0]?.reasonCode, 'blocking_consolidation_constraint')
+  })
+})
+
+test('partial extraction metadata and bounded unit errors survive remount', async () => {
+  await withFreshKb('partial-remount', async (root) => {
+    const source = await persistSource(root, RAW_TEXT, 'source-run-partial-remount')
+    const input = previewInput(source, {
+      workflowRunId: 'preview-run-partial-remount',
+      extractionCompleteness: 'partial',
+      incompleteUnits: [
+        {
+          unitId: 'unit-002',
+          proposedUnitId: 'supply-observation',
+          status: 'failed',
+          errorSummary: 'Skill extraction timed out after its bounded retry.',
+        },
+        {
+          unitId: 'unit-003',
+          proposedUnitId: 'cancelled-observation',
+          status: 'cancelled',
+          errorSummary: 'Extraction cancelled while the unit was pending.',
+        },
+      ],
+    })
+    const rawTextLeak = previewInput(source, {
+      workflowRunId: 'preview-run-partial-raw-leak',
+      extractionCompleteness: 'partial',
+      incompleteUnits: [{ unitId: 'unit-002', proposedUnitId: 'supply-observation', status: 'failed', errorSummary: RAW_TEXT }],
+    })
+    await assertStoreError(persistRawDocumentV04PreviewSnapshot(source.handle, rawTextLeak), 'PREVIEW_MALFORMED')
+    const written = await persistRawDocumentV04PreviewSnapshot(source.handle, input)
+    const remountedHandle = await new KnowledgeBaseRegistry().mount(root)
+    const restored = await readRawDocumentV04PreviewSnapshot(remountedHandle, input.workflowRunId)
+
+    assert.ok(restored)
+    assert.equal(restored.version, 2)
+    assert.equal(restored.extractionCompleteness, 'partial')
+    assert.deepEqual(restored.incompleteUnits, input.incompleteUnits)
+    assert.equal(restored.contentHash, written.snapshot.contentHash)
+    assert.equal(restored.incompleteUnits?.[0]?.unitId, 'unit-002')
+    assert.equal(restored.incompleteUnits?.[0]?.proposedUnitId, 'supply-observation')
+    assert.equal(restored.incompleteUnits?.[0]?.status, 'failed')
+    assert.match(restored.incompleteUnits?.[0]?.errorSummary ?? '', /bounded retry/u)
+    assert.equal(restored.incompleteUnits?.[1]?.unitId, 'unit-003')
+    assert.equal(restored.incompleteUnits?.[1]?.status, 'cancelled')
+    assert.match(restored.incompleteUnits?.[1]?.errorSummary ?? '', /cancelled while/u)
   })
 })
 
@@ -332,6 +383,12 @@ test('same run and content hash replays idempotently while changed content confl
 
     const changed = previewInput(source, { document: { ...input.document, documentId: 'changed-document-id' } })
     await assertStoreError(persistRawDocumentV04PreviewSnapshot(source.handle, changed), 'PREVIEW_CONFLICT')
+
+    const changedCompleteness = previewInput(source, {
+      extractionCompleteness: 'partial',
+      incompleteUnits: [{ unitId: 'unit-002', proposedUnitId: 'supply-unit', status: 'cancelled', errorSummary: 'Cancelled while pending.' }],
+    })
+    await assertStoreError(persistRawDocumentV04PreviewSnapshot(source.handle, changedCompleteness), 'PREVIEW_CONFLICT')
   })
 })
 

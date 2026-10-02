@@ -22,6 +22,9 @@ export const RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS = {
   maxSupportEntries: 4_096,
   maxEvidenceBlockRefsPerCandidate: 16_384,
   maxSupportUnitIds: 64,
+  maxIncompleteUnits: 64,
+  maxUnitIdLength: 128,
+  maxUnitErrorSummaryLength: 2_000,
   maxBlockIdLength: 256,
   maxCandidateIdLength: 200,
   maxDirectoryDepth: 4,
@@ -40,9 +43,16 @@ export interface RawDocumentV04PreviewCandidateSupport {
   readonly supportingCandidateCount: number
 }
 
+export interface RawDocumentV04IncompleteExtractionUnit {
+  readonly unitId: string
+  readonly proposedUnitId: string
+  readonly status: 'failed' | 'cancelled'
+  readonly errorSummary: string
+}
+
 export interface RawDocumentV04CandidatePreviewSnapshot {
   readonly format: 'researchhub.raw-document-v04-candidate-preview'
-  readonly version: 1
+  readonly version: 1 | 2
   readonly workflowRunId: string
   readonly knowledgeBaseId: string
   readonly sourceRef: string
@@ -55,6 +65,10 @@ export interface RawDocumentV04CandidatePreviewSnapshot {
   readonly candidateGroups: readonly CandidateGroup[]
   readonly blockingReviewConstraints: readonly ConsolidationReviewConstraint[]
   readonly candidateSupport: readonly RawDocumentV04PreviewCandidateSupport[]
+  /** Present on v2 snapshots. Legacy v1 snapshots remain readable with unknown completeness. */
+  readonly extractionCompleteness?: 'complete' | 'partial'
+  /** Present on v2 snapshots; contains only bounded failed/cancelled unit summaries. */
+  readonly incompleteUnits?: readonly RawDocumentV04IncompleteExtractionUnit[]
   readonly contentHash: string
 }
 
@@ -67,6 +81,8 @@ export interface PersistRawDocumentV04PreviewInput {
   readonly candidateGroups: readonly CandidateGroup[]
   readonly reviewConstraints: readonly ConsolidationReviewConstraint[]
   readonly candidateSupport: ReadonlyMap<string, ConsolidatedCandidateSupport>
+  readonly extractionCompleteness: 'complete' | 'partial'
+  readonly incompleteUnits: readonly RawDocumentV04IncompleteExtractionUnit[]
 }
 
 export type RawDocumentV04PreviewStoreErrorCode =
@@ -97,9 +113,12 @@ const SOURCE_REF = /^source:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u
 const RAW_REF = /^raw-sha256-[0-9a-f]{64}$/u
 const CANDIDATE_ID = /^(?!entity:|relation:|claim:|source:|module:|theme-group:)[^\u0000-\u001f\u007f-\u009f]{1,200}$/iu
 const REVIEW_CATEGORIES = new Set(['invalid_reference', 'invalid_semantics', 'relation_cardinality', 'schema_gap', 'theme_creation', 'theme_ambiguity', 'reconciliation_review', 'other'])
-const TOP_LEVEL_KEYS = ['format', 'version', 'workflowRunId', 'knowledgeBaseId', 'sourceRef', 'rawRef', 'sourceRevision', 'documentId', 'orderedBlocks', 'candidateGroups', 'blockingReviewConstraints', 'candidateSupport', 'contentHash']
+const TOP_LEVEL_KEYS_V1 = ['format', 'version', 'workflowRunId', 'knowledgeBaseId', 'sourceRef', 'rawRef', 'sourceRevision', 'documentId', 'orderedBlocks', 'candidateGroups', 'blockingReviewConstraints', 'candidateSupport', 'contentHash']
+const TOP_LEVEL_KEYS_V2 = ['format', 'version', 'workflowRunId', 'knowledgeBaseId', 'sourceRef', 'rawRef', 'sourceRevision', 'documentId', 'orderedBlocks', 'candidateGroups', 'blockingReviewConstraints', 'candidateSupport', 'extractionCompleteness', 'incompleteUnits', 'contentHash']
 const GROUP_KEYS = ['candidateId', 'kind', 'candidate']
 const SUPPORT_KEYS = ['candidateId', 'supportingCandidateCount']
+const INCOMPLETE_UNIT_KEYS = ['unitId', 'proposedUnitId', 'status', 'errorSummary']
+const UNIT_ID = /^unit-[0-9]{3}$/u
 const MAX_PREFLIGHT_NODES = 400_000
 const MAX_PREFLIGHT_DEPTH = 32
 
@@ -252,10 +271,33 @@ function validateConstraint(value: unknown, index: number): ConsolidationReviewC
   return value as unknown as ConsolidationReviewConstraint
 }
 
+function validateIncompleteUnits(value: unknown, completeness: 'complete' | 'partial'): readonly RawDocumentV04IncompleteExtractionUnit[] {
+  if (!Array.isArray(value) || value.length > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxIncompleteUnits) fail('PREVIEW_MALFORMED', 'Preview incompleteUnits has an unsupported shape')
+  if ((completeness === 'complete' && value.length !== 0) || (completeness === 'partial' && value.length === 0)) fail('PREVIEW_MALFORMED', 'Preview extractionCompleteness disagrees with incompleteUnits')
+  const ids = new Set<string>()
+  return value.map((rawUnit, index): RawDocumentV04IncompleteExtractionUnit => {
+    const label = 'incompleteUnits[' + index + ']'
+    if (!isRecord(rawUnit)) fail('PREVIEW_MALFORMED', label + ' must be an object')
+    exactKeys(rawUnit, INCOMPLETE_UNIT_KEYS, [], label)
+    const unitId = boundedString(rawUnit.unitId, label + '.unitId', RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxUnitIdLength)
+    if (!UNIT_ID.test(unitId)) fail('PREVIEW_MALFORMED', label + '.unitId is invalid')
+    if (ids.has(unitId)) fail('PREVIEW_MALFORMED', 'Preview incompleteUnits contains duplicate unit IDs')
+    ids.add(unitId)
+    const proposedUnitId = boundedString(rawUnit.proposedUnitId, label + '.proposedUnitId', RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxBlockIdLength)
+    if (rawUnit.status !== 'failed' && rawUnit.status !== 'cancelled') fail('PREVIEW_MALFORMED', label + '.status is invalid')
+    const errorSummary = boundedString(rawUnit.errorSummary, label + '.errorSummary', RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxUnitErrorSummaryLength)
+    return { unitId, proposedUnitId, status: rawUnit.status, errorSummary }
+  })
+}
+
 function validateSnapshot(value: unknown, expectedRunId?: string): RawDocumentV04CandidatePreviewSnapshot {
   if (!isRecord(value)) fail('PREVIEW_MALFORMED', 'Preview snapshot must be an object')
-  exactKeys(value, TOP_LEVEL_KEYS, [], 'Preview snapshot')
-  if (value.format !== FORMAT || value.version !== 1) fail('PREVIEW_MALFORMED', 'Preview snapshot format or version is unsupported')
+  if (value.format !== FORMAT || (value.version !== 1 && value.version !== 2)) fail('PREVIEW_MALFORMED', 'Preview snapshot format or version is unsupported')
+  exactKeys(value, value.version === 1 ? TOP_LEVEL_KEYS_V1 : TOP_LEVEL_KEYS_V2, [], 'Preview snapshot')
+  if (value.version === 2) {
+    if (value.extractionCompleteness !== 'complete' && value.extractionCompleteness !== 'partial') fail('PREVIEW_MALFORMED', 'Preview extractionCompleteness is invalid')
+    validateIncompleteUnits(value.incompleteUnits, value.extractionCompleteness)
+  }
   const workflowRunId = boundedString(value.workflowRunId, 'workflowRunId', 80)
   if (!RUN_ID.test(workflowRunId) || workflowRunId.includes('..') || (expectedRunId !== undefined && workflowRunId !== expectedRunId)) fail('PREVIEW_MALFORMED', 'Preview workflowRunId is invalid or does not match the requested path')
   boundedString(value.knowledgeBaseId, 'knowledgeBaseId', 256)
@@ -469,11 +511,13 @@ function makeSnapshot(handle: KnowledgeBaseHandle, input: PersistRawDocumentV04P
   if (new Set(orderedBlocks.map((block) => block.blockId)).size !== orderedBlocks.length || new Set(orderedBlocks.map((block) => block.order)).size !== orderedBlocks.length) fail('PREVIEW_INPUT_INVALID', 'Document block IDs and order values must be unique')
   if (!Array.isArray(input.reviewConstraints) || input.reviewConstraints.length > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxReviewConstraints) fail('PREVIEW_SIZE_LIMIT', 'Review constraint count exceeds its bound')
   if (!(input.candidateSupport instanceof Map) || input.candidateSupport.size > RAW_DOCUMENT_V04_PREVIEW_STORE_LIMITS.maxSupportEntries) fail('PREVIEW_INPUT_INVALID', 'candidateSupport must be a bounded Map')
+  if (input.extractionCompleteness !== 'complete' && input.extractionCompleteness !== 'partial') fail('PREVIEW_INPUT_INVALID', 'extractionCompleteness must be complete or partial')
+  const incompleteUnits = validateIncompleteUnits(input.incompleteUnits, input.extractionCompleteness)
   const blockingInput = input.reviewConstraints.filter((constraint) => constraint.blocking)
   const candidateSupport = [...input.candidateSupport.entries()].map(([candidateId, support]) => ({ candidateId, supportingCandidateCount: support.supportingCandidateCount })).sort((left, right) => left.candidateId.localeCompare(right.candidateId))
   const preflightBody = {
     format: FORMAT as typeof FORMAT,
-    version: 1 as const,
+    version: 2 as const,
     workflowRunId: input.workflowRunId,
     knowledgeBaseId: handle.knowledgeBaseId,
     sourceRef: input.sourceRef,
@@ -484,6 +528,8 @@ function makeSnapshot(handle: KnowledgeBaseHandle, input: PersistRawDocumentV04P
     candidateGroups: input.candidateGroups,
     blockingReviewConstraints: blockingInput,
     candidateSupport,
+    extractionCompleteness: input.extractionCompleteness,
+    incompleteUnits,
   }
   assertAggregatePreviewBudget(preflightBody)
   const draft = cloneJson(preflightBody, 'preview snapshot')
