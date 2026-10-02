@@ -51,7 +51,24 @@ function createOutcome(input: KnowledgeProductionInput, status: 'blocked' | 'fai
   return { status, knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: input.handle.revision, baseRevision: input.handle.revision, createdIds: [], updatedIds: [], sourceRefsByLocalId: sources, claimRefsByProposalId: claims, entityRefsByLocalKey: entities, relationRefsByProposalId: relations, moduleRefsByProposalId: modules, resolutionIntents: intents, errors }
 }
 function companyFields(input: KnowledgeProductionInput) { const f = input.entity.semanticFields ?? {}; return { ...(text(f.ticker) ? { ticker: text(f.ticker) } : {}), ...(text(f.exchange) ? { exchange: normalizeExchange(text(f.exchange)) } : {}), ...(input.entity.externalIdentifiers === undefined ? {} : { externalIdentifiers: input.entity.externalIdentifiers }) } }
-function companyMatch(o: KnowledgeAssetV04, f: { ticker?: string; exchange?: string }) { const v = o as KnowledgeEntityV04 & Dict; return o.id.startsWith('entity:') && v.type === 'company' && f.ticker !== undefined && ident(v.ticker) === ident(f.ticker) && (f.exchange === undefined || ident(v.exchange) === ident(f.exchange)) }
+function companyMatch(o: KnowledgeAssetV04, f: { ticker?: string; exchange?: string }) { const v = o as KnowledgeEntityV04 & Dict; const existingExchange = text(v.exchange); const requestedExchange = text(f.exchange); return o.id.startsWith('entity:') && v.type === 'company' && f.ticker !== undefined && ident(v.ticker) === ident(f.ticker) && (!requestedExchange || (Boolean(existingExchange) && ident(normalizeExchange(existingExchange)) === ident(normalizeExchange(requestedExchange)))) }
+function nonRootCompanyIdentity(semanticFields: Readonly<Record<string, unknown>> | undefined): { ticker: string; exchange: string } | undefined {
+  const ticker = text(semanticFields?.ticker)
+  const exchange = text(semanticFields?.exchange)
+  return ticker && exchange ? { ticker, exchange: normalizeExchange(exchange) } : undefined
+}
+function normalizeNonRootCompanyFields(entityType: EntityType, semanticFields: unknown): Readonly<Record<string, unknown>> | undefined {
+  if (!record(semanticFields) || entityType !== 'company') return record(semanticFields) ? semanticFields : undefined
+  return {
+    ...semanticFields,
+    ...(typeof semanticFields.ticker === 'string' && text(semanticFields.ticker) ? { ticker: text(semanticFields.ticker) } : {}),
+    ...(typeof semanticFields.exchange === 'string' && text(semanticFields.exchange) ? { exchange: normalizeExchange(text(semanticFields.exchange)) } : {}),
+  }
+}
+function entityProposalAliases(value: unknown): readonly string[] {
+  if (!record(value) || !Array.isArray(value.aliases)) return []
+  return uniqueSorted(value.aliases.filter((alias): alias is string => typeof alias === 'string' && Boolean(text(alias))).map(text))
+}
 function nameMatch(o: KnowledgeAssetV04, type: EntityType, name: string, aliases: readonly string[]) { if (!o.id.startsWith('entity:')) return false; const v = o as KnowledgeEntityV04; const names = [v.name, ...(v.aliases ?? [])].map(ident); return v.type === type && (names.includes(ident(name)) || aliases.some((a) => names.includes(ident(a)))) }
 function mergeEntity(e: KnowledgeEntityV04, i: { aliases: readonly string[]; semanticFields?: Readonly<Record<string, unknown>>; externalIdentifiers?: readonly ExternalIdentifierV04[]; allowDescription?: boolean }) { const v = e as unknown as Dict; const merged: Dict = { ...v, aliases: [...new Set([...(e.aliases ?? []), ...i.aliases])].sort() }; for (const k of ['ticker', 'exchange', 'legalName']) if (typeof i.semanticFields?.[k] === 'string' && !merged[k]) merged[k] = i.semanticFields[k]; if (i.allowDescription && typeof i.semanticFields?.description === 'string' && !text(merged.description)) merged.description = text(i.semanticFields.description); const identifiers = [...(Array.isArray((e as unknown as Dict).externalIdentifiers) ? (e as unknown as Dict).externalIdentifiers as ExternalIdentifierV04[] : []), ...(i.externalIdentifiers ?? [])]; if (identifiers.length) merged.externalIdentifiers = [...new Map(identifiers.map((item) => [`${item.namespace}|${item.value}|${item.validFrom ?? ''}|${item.validUntil ?? ''}`, item])).values()]; return merged as unknown as KnowledgeEntityV04 }
 function validExternalIdentifiers(value: unknown): value is readonly ExternalIdentifierV04[] { return value === undefined || (Array.isArray(value) && value.every((item) => record(item) && typeof item.namespace === 'string' && item.namespace.trim() !== '' && typeof item.value === 'string' && item.value.trim() !== '' && (item.validFrom === undefined || item.validFrom === null || (typeof item.validFrom === 'string' && !Number.isNaN(Date.parse(item.validFrom)))) && (item.validUntil === undefined || item.validUntil === null || (typeof item.validUntil === 'string' && !Number.isNaN(Date.parse(item.validUntil)))) && (item.confidence === undefined || item.confidence === null || (typeof item.confidence === 'number' && Number.isFinite(item.confidence) && item.confidence >= 0 && item.confidence <= 1)))) }
@@ -143,6 +160,7 @@ function localErrors(input: KnowledgeProductionInput): string[] {
     if (p.kind !== 'reasoning_edge' && (typeof p.subjectKey !== 'string' || !safeId.test(p.subjectKey))) errors.push(`Proposal subjectKey is not safe: ${String(p.subjectKey)}`)
     if (!['entity', 'claim', 'relation', 'source', 'event', 'observation', 'thesis', 'reasoning_edge'].includes(p.kind)) errors.push(`Unsupported proposal kind: ${String(p.kind)}`)
     if (p.kind === 'entity' && (!['company', 'industry', 'product', 'technology', 'person', 'institution', 'security'].includes(p.entityType ?? '') || !text(p.entityName) || !validExternalIdentifiers(p.externalIdentifiers))) errors.push(`Entity proposal is invalid: ${p.proposalId}`)
+    if (p.kind === 'entity' && p.structuredValue !== undefined && (!record(p.structuredValue) || (Object.prototype.hasOwnProperty.call(p.structuredValue, 'aliases') && (!Array.isArray(p.structuredValue.aliases) || p.structuredValue.aliases.some((alias) => typeof alias !== 'string' || !text(alias)))))) errors.push(`Entity proposal structured fields or aliases are invalid: ${p.proposalId}`)
     if (p.kind === 'claim' && (p.claimType === 'thesis' || !claimTypes.has(p.claimType ?? '') || !text(p.statement))) errors.push(`Claim proposal is invalid or uses legacy Thesis Claim semantics: ${p.proposalId}`)
     if (p.kind === 'relation' && (!text(p.relationType) || !text(p.targetKey))) errors.push(`Relation proposal is invalid: ${p.proposalId}`)
     if (p.kind === 'event' && (!text(p.eventType) || !text(p.statement) || !text(p.subjectKey))) errors.push(`Event proposal is invalid: ${p.proposalId}`)
@@ -232,15 +250,85 @@ export class KnowledgeProductionGateway {
         }
       }
       const entityInputs = new Map<string, KnowledgeProductionInput['entity']>([[input.entity.localKey, input.entity]])
-      for (const p of proposals.filter((x) => x.kind === 'entity')) { if (p.subjectKey === input.entity.localKey) { if (p.entityType !== input.entity.entityType || p.entityName !== input.entity.name) return terminalOutcome('blocked', ['Semantic Entity proposal cannot overwrite authoritative root ProductionEntityInput'], intents, entityRefs, relationRefs, sourceRefs, claimRefs); continue } entityInputs.set(p.subjectKey, { localKey: p.subjectKey, entityType: p.entityType!, name: p.entityName!, aliases: [], semanticFields: p.structuredValue ?? undefined, externalIdentifiers: p.externalIdentifiers }) }
+      const entityProposalByLocalKey = new Map<string, SemanticProductionProposal>()
+      for (const p of proposals.filter((x) => x.kind === 'entity')) {
+        if (p.subjectKey === input.entity.localKey) {
+          if (p.entityType !== input.entity.entityType || p.entityName !== input.entity.name) return terminalOutcome('blocked', ['Semantic Entity proposal cannot overwrite authoritative root ProductionEntityInput'], intents, entityRefs, relationRefs, sourceRefs, claimRefs)
+          continue
+        }
+        entityProposalByLocalKey.set(p.subjectKey, p)
+        entityInputs.set(p.subjectKey, { localKey: p.subjectKey, entityType: p.entityType!, name: p.entityName!, aliases: entityProposalAliases(p.structuredValue), semanticFields: normalizeNonRootCompanyFields(p.entityType!, p.structuredValue), externalIdentifiers: p.externalIdentifiers })
+      }
       for (const [localKey, ei] of entityInputs) {
-        const isRoot = localKey === input.entity.localKey; let existing: KnowledgeEntityV04 | undefined
-        if (ei.existingEntityRef) { const x = objects.get(ei.existingEntityRef); if (!x || !x.id.startsWith('entity:') || (x as KnowledgeEntityV04).type !== ei.entityType || (ei.entityType === 'company' && !companyMatch(x, f))) { intents.push(intent(`entity-${localKey}`, 'review_required', 'Explicit canonical Entity ref is missing, type-mismatched, or violates Company hard identity', { localKey })); continue } existing = x as KnowledgeEntityV04 }
-        else if (isRoot && ei.entityType === 'company') { const matches = [...objects.values()].filter((o) => companyMatch(o, f)); if (matches.length > 1) { intents.push(intent(`entity-${localKey}`, 'review_required', 'Multiple canonical companies match hard identity', { localKey })); continue } existing = matches[0] as KnowledgeEntityV04 | undefined }
-        else { const matches = [...objects.values()].filter((o) => nameMatch(o, ei.entityType, ei.name, ei.aliases ?? [])) as KnowledgeEntityV04[]; if (matches.length) { const resolver = input.semanticResolver ?? this.resolver; const decision = resolver ? await resolver({ proposal: { proposalId: `entity-${localKey}`, kind: 'entity', subjectKey: localKey, entityType: ei.entityType, entityName: ei.name }, existing: matches.map((m) => ({ canonicalRef: m.id, type: m.type, name: m.name, aliases: m.aliases ?? [] })), evidence: [] }) : undefined; if (decision?.outcome === 'equivalent' && matches.length === 1) existing = matches[0]; else { intents.push(intent(`entity-${localKey}`, 'review_required', matches.length > 1 ? 'Multiple plausible non-Company candidates require semantic resolution' : 'Name similarity alone cannot establish non-Company identity', { localKey, ...(matches.length === 1 ? { targetRef: matches[0].id } : {}) })); continue } } }
-        const ref = existing?.id ?? allocateEntityId(ei.entityType, ei.entityType === 'company' && text(f.ticker) ? text(f.ticker) : ei.name); entityRefs[localKey] = ref
-        if (existing) { const merged = mergeEntity(existing, { aliases: ei.aliases ?? [], semanticFields: isRoot ? { ...f, ...evidencedRootFields } : ei.semanticFields, externalIdentifiers: isRoot ? f.externalIdentifiers : ei.externalIdentifiers, allowDescription: isRoot }); if (hashKnowledgeObject(existing) !== hashKnowledgeObject(merged)) { objects.set(ref, merged); operations.push({ operationId: `update-entity-${operations.length + 1}`, type: 'update', knowledgeId: ref, expectedBeforeHash: hashKnowledgeObject(existing), object: merged }); updatedIds.push(ref) } intents.push(intent(`entity-${localKey}`, 'bound_existing', 'Bound to a validated canonical Entity', { localKey, targetRef: ref })) }
-        else { const created = { id: ref as `entity:${string}`, type: ei.entityType, name: ei.name, aliases: [...new Set(ei.aliases ?? [])], ...(isRoot ? { ...f, ...evidencedRootFields } : ei.semanticFields ?? {}), ...(isRoot || ei.externalIdentifiers === undefined ? {} : { externalIdentifiers: ei.externalIdentifiers }), lifecycle: { status: 'active' } } as KnowledgeEntityV04; objects.set(ref, created); operations.push({ operationId: `create-entity-${operations.length + 1}`, type: 'create', object: created }); createdIds.push(ref); intents.push(intent(`entity-${localKey}`, 'created_new', 'No plausible canonical Entity was proven equivalent', { localKey, targetRef: ref })) }
+        const isRoot = localKey === input.entity.localKey
+        const hardIdentity = !isRoot && ei.entityType === 'company' ? nonRootCompanyIdentity(ei.semanticFields) : undefined
+        let existing: KnowledgeEntityV04 | undefined
+        if (ei.existingEntityRef) {
+          const x = objects.get(ei.existingEntityRef)
+          const identity = isRoot ? f : hardIdentity
+          if (!x || !x.id.startsWith('entity:') || (x as KnowledgeEntityV04).type !== ei.entityType || (ei.entityType === 'company' && (!identity || !companyMatch(x, identity)))) {
+            intents.push(intent(`entity-${localKey}`, 'review_required', 'Explicit canonical Entity ref is missing, type-mismatched, or violates Company hard identity', { localKey }))
+            continue
+          }
+          existing = x as KnowledgeEntityV04
+        } else if (isRoot && ei.entityType === 'company') {
+          const matches = [...objects.values()].filter((o) => companyMatch(o, f))
+          if (matches.length > 1) { intents.push(intent(`entity-${localKey}`, 'review_required', 'Multiple canonical companies match hard identity', { localKey })); continue }
+          existing = matches[0] as KnowledgeEntityV04 | undefined
+        } else if (!isRoot && ei.entityType === 'company') {
+          if (!hardIdentity) {
+            intents.push(intent(`entity-${localKey}`, 'review_required', 'Non-root Company requires both ticker and exchange to establish hard identity', { localKey }))
+            continue
+          }
+          const matches = [...objects.values()].filter((o) => companyMatch(o, hardIdentity)) as KnowledgeEntityV04[]
+          if (matches.length > 1) { intents.push(intent(`entity-${localKey}`, 'review_required', 'Multiple canonical companies match non-root ticker and exchange', { localKey })); continue }
+          if (matches.length === 1) existing = matches[0]
+          else {
+            const nameConflicts = [...objects.values()].filter((o) => nameMatch(o, 'company', ei.name, ei.aliases ?? [])) as KnowledgeEntityV04[]
+            if (nameConflicts.length) {
+              intents.push(intent(`entity-${localKey}`, 'review_required', 'Company name matches canonical entities with a different hard identity', { localKey, ...(nameConflicts.length === 1 ? { targetRef: nameConflicts[0]!.id } : {}) }))
+              continue
+            }
+          }
+        } else {
+          const matches = [...objects.values()].filter((o) => nameMatch(o, ei.entityType, ei.name, ei.aliases ?? [])) as KnowledgeEntityV04[]
+          if (matches.length) {
+            const resolver = input.semanticResolver ?? this.resolver
+            const decision = resolver ? await resolver({ proposal: { proposalId: `entity-${localKey}`, kind: 'entity', subjectKey: localKey, entityType: ei.entityType, entityName: ei.name }, existing: matches.map((m) => ({ canonicalRef: m.id, type: m.type, name: m.name, aliases: m.aliases ?? [] })), evidence: [] }) : undefined
+            if (decision?.outcome === 'equivalent' && matches.length === 1) existing = matches[0]
+            else { intents.push(intent(`entity-${localKey}`, 'review_required', matches.length > 1 ? 'Multiple plausible non-Company candidates require semantic resolution' : 'Name similarity alone cannot establish non-Company identity', { localKey, ...(matches.length === 1 ? { targetRef: matches[0]!.id } : {}) })); continue }
+          }
+        }
+        const ref = existing?.id ?? (isRoot
+          ? allocateEntityId(ei.entityType, ei.entityType === 'company' && text(f.ticker) ? text(f.ticker) : ei.name)
+          : ei.entityType === 'company' && hardIdentity
+            ? allocateEntityId('company', hardIdentity.ticker, { ticker: ident(hardIdentity.ticker), exchange: ident(hardIdentity.exchange) })
+            : allocateEntityId(ei.entityType, ei.name))
+        entityRefs[localKey] = ref
+        if (existing) {
+          const entityProposal = entityProposalByLocalKey.get(localKey)
+          const declaredSourceIds = new Set(entityProposal?.sourceCandidateIds ?? [])
+          const hasSubmittedEvidence = Boolean(entityProposal && input.evidenceBindings.some((binding) => declaredSourceIds.has(binding.localSourceId) && validateUsableAcquisitionPayload(binding.source.content).status === 'usable'))
+          const evidenceBacked = Boolean(entityProposal && ((existingEvidenceByProposal.get(entityProposal.proposalId) ?? []).length > 0 || hasSubmittedEvidence))
+          const incomingFields = isRoot ? { ...f, ...evidencedRootFields } : ei.semanticFields
+          const requestedSupplementalFields = Boolean((ei.aliases?.length ?? 0) || (entityProposal && ident(ei.name) !== ident(existing.name)) || text(incomingFields?.description))
+          if (!isRoot && requestedSupplementalFields && !evidenceBacked) intents.push(intent(`entity-fields-evidence-${entityProposal?.proposalId ?? localKey}`, 'review_required', 'Non-root Entity aliases, name variants, and description require validated Source/Raw evidence; unverified values were not applied', { ...(entityProposal ? { proposalId: entityProposal.proposalId } : {}), localKey, targetRef: ref }))
+          const incomingDescription = evidenceBacked ? text(incomingFields?.description) : ''
+          const priorDescription = text((existing as unknown as Dict).description)
+          if (!isRoot && incomingDescription && priorDescription && ident(incomingDescription) !== ident(priorDescription)) intents.push(intent(`entity-description-conflict-${entityProposal?.proposalId ?? localKey}`, 'review_required', 'Evidence-backed non-root Entity description conflicts with the canonical description; the existing value was retained', { proposalId: entityProposal?.proposalId, localKey, targetRef: ref }))
+          const incomingLegalName = evidenceBacked ? text(incomingFields?.legalName) : ''
+          const priorLegalName = text((existing as unknown as Dict).legalName)
+          if (!isRoot && incomingLegalName && priorLegalName && ident(incomingLegalName) !== ident(priorLegalName)) intents.push(intent(`entity-legal-name-conflict-${entityProposal?.proposalId ?? localKey}`, 'review_required', 'Evidence-backed non-root Company legalName conflicts with the canonical legalName; the existing value was retained', { proposalId: entityProposal?.proposalId, localKey, targetRef: ref }))
+          const nameAlias = evidenceBacked && ident(ei.name) !== ident(existing.name) ? [ei.name] : []
+          const aliases = isRoot ? ei.aliases ?? [] : evidenceBacked ? uniqueSorted([...(ei.aliases ?? []), ...nameAlias]) : []
+          const merged = mergeEntity(existing, { aliases, semanticFields: incomingFields, externalIdentifiers: isRoot ? f.externalIdentifiers : ei.externalIdentifiers, allowDescription: isRoot || evidenceBacked })
+          if (hashKnowledgeObject(existing) !== hashKnowledgeObject(merged)) { objects.set(ref, merged); operations.push({ operationId: `update-entity-${operations.length + 1}`, type: 'update', knowledgeId: ref, expectedBeforeHash: hashKnowledgeObject(existing), object: merged }); updatedIds.push(ref) }
+          intents.push(intent(`entity-${localKey}`, 'bound_existing', 'Bound to a validated canonical Entity', { localKey, targetRef: ref }))
+        } else {
+          const fields = isRoot ? { ...f, ...evidencedRootFields } : ei.semanticFields ?? {}
+          const created = { id: ref as `entity:${string}`, type: ei.entityType, name: ei.name, ...fields, ...(isRoot || ei.externalIdentifiers === undefined ? {} : { externalIdentifiers: ei.externalIdentifiers }), aliases: [...new Set(ei.aliases ?? [])], lifecycle: { status: 'active' } } as KnowledgeEntityV04
+          objects.set(ref, created); operations.push({ operationId: `create-entity-${operations.length + 1}`, type: 'create', object: created }); createdIds.push(ref); intents.push(intent(`entity-${localKey}`, 'created_new', 'No plausible canonical Entity was proven equivalent', { localKey, targetRef: ref }))
+        }
       }
       if (!entityRefs[input.entity.localKey]) return terminalOutcome('blocked', ['Root Entity binding requires review before dependent Knowledge can be committed'], intents, entityRefs, relationRefs, sourceRefs, claimRefs)
       for (const b of input.evidenceBindings) { if (validateUsableAcquisitionPayload(b.source.content).status !== 'usable') continue; const bytes = b.source.rawBytes === undefined ? new TextEncoder().encode(b.source.content) : Uint8Array.from(b.source.rawBytes); const raw = await archiveRaw(input.handle, { bytes, originalFilename: b.originalFilename ?? `${b.localSourceId}.txt`, mediaType: b.mediaType ?? 'text/plain', suppliedMetadata: { title: b.source.title, institution: b.source.publisher, publishedAt: b.source.candidate.publishedAt ?? null, sourceUrl: b.source.canonicalUrl ?? b.source.candidate.url ?? null } }, { clock: now }); const rawRef = raw.manifest.rawRef as RawRef; rawBySource.set(b.localSourceId, rawRef); const hash = hashKnowledgeObject(sourceIdentity(b.source, f)); const old = [...objects.values()].find((o) => o.id.startsWith('source:') && (o as KnowledgeSourceV04).metadata?.researchSourceIdentity === hash) as KnowledgeSourceV04 | undefined; const s = sourceObject(b.source, old?.id ?? `source:research-${hash.slice(7, 23)}`, rawRef, f); const final = old ? mergeSource(old, s) : s; sourceRefs[b.localSourceId] = final.id; objects.set(final.id, final); if (!old) { operations.push({ operationId: `create-source-${operations.length + 1}`, type: 'create', object: final }); createdIds.push(final.id) } else if (hashKnowledgeObject(old) !== hashKnowledgeObject(final)) { operations.push({ operationId: `update-source-${operations.length + 1}`, type: 'update', knowledgeId: old.id, expectedBeforeHash: hashKnowledgeObject(old), object: final }); updatedIds.push(old.id) } }
