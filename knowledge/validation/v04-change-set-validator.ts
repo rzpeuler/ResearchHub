@@ -136,6 +136,8 @@ async function validateThemeScope(
   changeSet: KnowledgeChangeSetV04,
   manifestRevision: number,
   projectedObjects: ReadonlyMap<string, KnowledgeAssetV04>,
+  knownRawRefs: ReadonlySet<string>,
+  evaluatedAt: number,
   errors: V04ChangeSetValidationDiagnostic[],
 ): Promise<void> {
   const scope = inspectThemeScopeContextV04(changeSet)
@@ -152,13 +154,13 @@ async function validateThemeScope(
   const previousDecisions: readonly ThemeScopeDecisionV04[] = ledger.status === 'available'
     ? ledger.themes.flatMap((theme) => theme.history.map((entry) => entry.decision))
     : []
+  const batch = scope.value as { readonly basedOnRevision: number; readonly themeRef: string; readonly decisions: readonly ThemeScopeDecisionV04[] }
   const validation = validateThemeScopeDecisionBatchV04(scope.value, { previousDecisions })
   if (!validation.valid) {
     add(errors, 'THEME_SCOPE_BATCH_INVALID', validation.errors.map((issue) => `${issue.code}: ${issue.message}`).join('; '))
     return
   }
 
-  const batch = scope.value as { readonly basedOnRevision: number; readonly themeRef: string; readonly decisions: readonly ThemeScopeDecisionV04[] }
   const ledgerRevision = ledger.status === 'available' ? ledger.knowledgeBaseRevision : undefined
   if (
     batch.basedOnRevision !== changeSet.expectedBaseRevision
@@ -177,6 +179,206 @@ async function validateThemeScope(
   const lifecycle = theme && record(theme.lifecycle) ? theme.lifecycle : undefined
   if (!theme || theme.type !== 'investment_theme' || lifecycle?.status !== 'active') {
     add(errors, 'THEME_SCOPE_THEME_NOT_ACTIVE', `Theme scope batch must resolve to an active InvestmentTheme after ChangeSet operations: ${batch.themeRef}`, undefined, batch.themeRef)
+  }
+  validateThemeScopeSemanticBindings(batch, projectedObjects, knownRawRefs, ledger, evaluatedAt, errors)
+}
+
+function validAt(value: unknown, evaluatedAt: number, inclusive: boolean): boolean {
+  if (value === undefined || value === null) return true
+  if (typeof value !== 'string') return false
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) && (inclusive ? parsed <= evaluatedAt : parsed > evaluatedAt)
+}
+
+function activeAt(value: Dict | undefined, evaluatedAt: number): boolean {
+  const lifecycle = value && record(value.lifecycle) ? value.lifecycle : undefined
+  return Number.isFinite(evaluatedAt)
+    && !!lifecycle
+    && lifecycle.status === 'active'
+    && validAt(lifecycle.validFrom, evaluatedAt, true)
+    && validAt(lifecycle.validUntil, evaluatedAt, false)
+}
+
+function sourceAllowsThemeEvidence(source: Dict, evaluatedAt: number): boolean {
+  const rights = source.rights
+  const usagePolicy = source.usagePolicy
+  return activeAt(source, evaluatedAt)
+    && record(rights)
+    && (rights.accessScope === 'public' || rights.accessScope === 'authenticated')
+    && rights.retentionAllowed === true
+    && rights.aiProcessingAllowed === true
+    && rights.derivativeKnowledgeAllowed === true
+    && validAt(rights.expiresAt, evaluatedAt, false)
+    && record(usagePolicy)
+    && usagePolicy.mode === 'personal_noncommercial_research'
+    && usagePolicy.retainRaw === true
+    && usagePolicy.allowAiProcessing === true
+    && usagePolicy.allowDerivedKnowledge === true
+}
+
+function sourceRefsForEvidence(value: Dict): Set<string> {
+  const refs = new Set<string>()
+  if (Array.isArray(value.sourceRefs)) for (const ref of value.sourceRefs) if (typeof ref === 'string' && ref.startsWith('source:')) refs.add(ref)
+  if (typeof value.sourceRef === 'string' && value.sourceRef.startsWith('source:')) refs.add(value.sourceRef)
+  if (Array.isArray(value.provenance)) for (const item of value.provenance) if (record(item) && typeof item.sourceRef === 'string' && item.sourceRef.startsWith('source:')) refs.add(item.sourceRef)
+  return refs
+}
+
+function relationEvidenceSourceRefs(relation: Dict, objects: ReadonlyMap<string, KnowledgeAssetV04>): Set<string> {
+  const refs = sourceRefsForEvidence(relation)
+  const relationId = relation.id
+  const explicitSupportingRefs = Array.isArray(relation.supportingClaimRefs) ? relation.supportingClaimRefs : []
+  for (const claimRef of explicitSupportingRefs) {
+    const claim = typeof claimRef === 'string' ? objects.get(claimRef) as unknown as Dict | undefined : undefined
+    if (claim) for (const ref of sourceRefsForEvidence(claim)) refs.add(ref)
+  }
+  if (refs.size === 0 && explicitSupportingRefs.length === 0 && typeof relationId === 'string') {
+    for (const object of objects.values()) {
+      if (!object.id.startsWith('claim:')) continue
+      const claim = object as unknown as Dict
+      if (Array.isArray(claim.subjectRefs) && claim.subjectRefs.includes(relationId)) {
+        for (const ref of sourceRefsForEvidence(claim)) refs.add(ref)
+      }
+    }
+  }
+  return refs
+}
+
+function validateThemeScopeSemanticBindings(
+  batch: { readonly themeRef: string; readonly decisions: readonly ThemeScopeDecisionV04[] },
+  objects: ReadonlyMap<string, KnowledgeAssetV04>,
+  knownRawRefs: ReadonlySet<string>,
+  ledger: Awaited<ReturnType<typeof readThemeScopeLedgerV04>>,
+  evaluatedAt: number,
+  errors: V04ChangeSetValidationDiagnostic[],
+): void {
+  const ledgerTheme = ledger.status === 'available' ? ledger.themes.find((theme) => theme.themeRef === batch.themeRef) : undefined
+  const previousThemeDecisions = ledgerTheme?.history.map((entry) => entry.decision) ?? []
+  const currentDecisions = new Map<string, ThemeScopeDecisionV04>()
+  for (const [fingerprint, entry] of Object.entries(ledgerTheme?.currentByCandidateFingerprint ?? {})) currentDecisions.set(fingerprint, entry.decision)
+  for (const decision of batch.decisions) currentDecisions.set(decision.candidateFingerprint, decision)
+
+  const sourceObjects = new Map<string, Dict>([...objects.values()]
+    .filter((object) => object.id.startsWith('source:'))
+    .map((object) => [object.id, object as unknown as Dict]))
+  const entityObjects = new Map<string, Dict>([...objects.values()]
+    .filter((object) => object.id.startsWith('entity:'))
+    .map((object) => [object.id, object as unknown as Dict]))
+  const relations = [...objects.values()]
+    .filter((object) => object.id.startsWith('relation:'))
+    .map((object) => object as unknown as Dict)
+
+  const decisionEvidenceSources = new Map<string, Set<string>>()
+  for (const decision of batch.decisions) {
+    const evidenceSources = new Set<string>()
+    for (const evidence of decision.evidence) {
+      const source = sourceObjects.get(evidence.sourceRef)
+      if (!source) {
+        add(errors, 'THEME_SCOPE_EVIDENCE_SOURCE_INVALID', `Theme scope evidence Source does not resolve: ${evidence.sourceRef}`, undefined, decision.id)
+        continue
+      }
+      evidenceSources.add(evidence.sourceRef)
+      if (!knownRawRefs.has(evidence.rawRef) || !Array.isArray(source.rawRefs) || !source.rawRefs.includes(evidence.rawRef)) {
+        add(errors, 'THEME_SCOPE_EVIDENCE_RAW_INVALID', `Theme scope evidence Raw must be registered and owned by Source ${evidence.sourceRef}: ${evidence.rawRef}`, undefined, decision.id)
+      }
+      if (!sourceAllowsThemeEvidence(source, evaluatedAt)) {
+        add(errors, 'THEME_SCOPE_EVIDENCE_SOURCE_POLICY_INELIGIBLE', `Theme scope evidence Source is inactive, expired, or does not permit retained AI-derived personal research: ${evidence.sourceRef}`, undefined, decision.id)
+      }
+    }
+    decisionEvidenceSources.set(decision.id, evidenceSources)
+  }
+
+  // Once a candidate has a canonical binding, later versions may not omit or silently change it.
+  for (const decision of batch.decisions) {
+    const historicalBindings = new Set(previousThemeDecisions
+      .filter((prior) => prior.candidateFingerprint === decision.candidateFingerprint)
+      .flatMap((prior) => prior.candidate.canonicalRef === undefined ? [] : [prior.candidate.canonicalRef]))
+    if (historicalBindings.size > 0 && (decision.candidate.canonicalRef === undefined || !historicalBindings.has(decision.candidate.canonicalRef))) {
+      add(errors, 'THEME_SCOPE_CANONICAL_BINDING_CHANGED', `Theme scope candidate cannot omit or change its previously bound canonical reference: ${decision.candidateFingerprint}`, undefined, decision.id)
+    }
+  }
+
+  const activeExposures = (industryRef: string): Dict[] => relations.filter((relation) =>
+    relation.type === 'theme_exposure'
+    && relation.sourceRef === batch.themeRef
+    && relation.targetRef === industryRef
+    && activeAt(relation, evaluatedAt))
+  const hasEvidenceOverlap = (relation: Dict, decision: ThemeScopeDecisionV04): boolean => {
+    const relationSources = relationEvidenceSourceRefs(relation, objects)
+    const decisionSources = decisionEvidenceSources.get(decision.id) ?? new Set<string>()
+    return [...relationSources].some((sourceRef) => decisionSources.has(sourceRef))
+  }
+  const validateIndustryExposure = (decision: ThemeScopeDecisionV04, industryRef: string): void => {
+    const exposures = activeExposures(industryRef)
+    if (decision.decision === 'include') {
+      if (exposures.length === 0) {
+        add(errors, 'THEME_SCOPE_INDUSTRY_EXPOSURE_REQUIRED', `Included Industry must have an active theme_exposure from ${batch.themeRef}: ${industryRef}`, undefined, decision.id)
+      } else if (!exposures.some((exposure) => hasEvidenceOverlap(exposure, decision))) {
+        add(errors, 'THEME_SCOPE_INDUSTRY_EXPOSURE_EVIDENCE_REQUIRED', `Active theme_exposure for included Industry must have source-backed evidence overlapping the decision: ${industryRef}`, undefined, decision.id)
+      }
+    } else if (exposures.length > 0) {
+      add(errors, 'THEME_SCOPE_INDUSTRY_EXPOSURE_MUST_BE_INACTIVE', `Excluded or pending Industry must not retain an active theme_exposure for ${batch.themeRef}: ${industryRef}`, undefined, decision.id)
+    }
+  }
+
+  for (const decision of batch.decisions) {
+    const candidate = decision.candidate
+    if (candidate.kind === 'industry') {
+      const canonicalRef = candidate.canonicalRef
+      if (canonicalRef === undefined) {
+        if (decision.decision === 'include') add(errors, 'THEME_SCOPE_INDUSTRY_CANONICAL_REF_REQUIRED', `Included Industry candidate must resolve to a canonical Industry: ${candidate.name}`, undefined, decision.id)
+        continue
+      }
+      const industry = entityObjects.get(canonicalRef)
+      if (!industry || industry.type !== 'industry') {
+        add(errors, 'THEME_SCOPE_INDUSTRY_CANONICAL_REF_INVALID', `Theme scope Industry canonicalRef must resolve to an Industry: ${canonicalRef}`, undefined, decision.id)
+        continue
+      }
+      if (decision.decision === 'include' && !activeAt(industry, evaluatedAt)) {
+        add(errors, 'THEME_SCOPE_INDUSTRY_NOT_ACTIVE', `Included Industry must be active in the projected canonical state: ${canonicalRef}`, undefined, decision.id)
+      }
+      validateIndustryExposure(decision, canonicalRef)
+      continue
+    }
+
+    const canonicalRef = candidate.canonicalRef
+    if (canonicalRef === undefined) {
+      if (decision.decision === 'include') add(errors, 'THEME_SCOPE_RELATION_CANONICAL_REF_REQUIRED', `Included relation candidate must resolve to a canonical Relation: ${candidate.relationType}`, undefined, decision.id)
+      continue
+    }
+    const relation = objects.get(canonicalRef) as unknown as Dict | undefined
+    if (!relation || !canonicalRef.startsWith('relation:') || relation.type !== candidate.relationType) {
+      add(errors, 'THEME_SCOPE_RELATION_CANONICAL_REF_INVALID', `Theme scope relation canonicalRef must resolve to a Relation of type ${candidate.relationType}: ${canonicalRef}`, undefined, decision.id)
+      continue
+    }
+    const sourceIndustry = typeof relation.sourceRef === 'string' ? entityObjects.get(relation.sourceRef) : undefined
+    const targetIndustry = typeof relation.targetRef === 'string' ? entityObjects.get(relation.targetRef) : undefined
+    if (sourceIndustry?.type !== 'industry' || targetIndustry?.type !== 'industry') {
+      add(errors, 'THEME_SCOPE_RELATION_ENDPOINT_TYPE_INVALID', `Theme scope ${candidate.relationType} endpoints must both resolve to Industry objects: ${canonicalRef}`, undefined, decision.id)
+      continue
+    }
+    if (decision.decision !== 'include') continue
+
+    if (!activeAt(relation, evaluatedAt)) add(errors, 'THEME_SCOPE_RELATION_NOT_ACTIVE', `Included canonical relation must be active in the projected state: ${canonicalRef}`, undefined, decision.id)
+    const sourceDecision = currentDecisions.get(candidate.sourceFingerprint)
+    const targetDecision = currentDecisions.get(candidate.targetFingerprint)
+    const sourceIncluded = sourceDecision?.candidate.kind === 'industry'
+      && sourceDecision.decision === 'include'
+      && sourceDecision.candidate.canonicalRef === relation.sourceRef
+      && activeAt(sourceIndustry, evaluatedAt)
+    const targetIncluded = targetDecision?.candidate.kind === 'industry'
+      && targetDecision.decision === 'include'
+      && targetDecision.candidate.canonicalRef === relation.targetRef
+      && activeAt(targetIndustry, evaluatedAt)
+    if (!sourceIncluded || !targetIncluded) {
+      add(errors, 'THEME_SCOPE_RELATION_ENDPOINT_OUTSIDE_THEME', `Included relation endpoints must match directed Industry candidates currently included in Theme ${batch.themeRef}: ${canonicalRef}`, undefined, decision.id)
+    }
+    if (activeExposures(String(relation.sourceRef)).length === 0 || activeExposures(String(relation.targetRef)).length === 0) {
+      add(errors, 'THEME_SCOPE_RELATION_THEME_EXPOSURE_REQUIRED', `Included relation requires active theme_exposure for both Industry endpoints in Theme ${batch.themeRef}: ${canonicalRef}`, undefined, decision.id)
+    }
+    if (!hasEvidenceOverlap(relation, decision)) {
+      add(errors, 'THEME_SCOPE_RELATION_EVIDENCE_REQUIRED', `Included relation must have source-backed evidence overlapping the decision: ${canonicalRef}`, undefined, decision.id)
+    }
   }
 }
 
@@ -354,7 +556,7 @@ export async function validateKnowledgeChangeSetV04(handle: KnowledgeBaseHandle,
   for (const operation of Array.isArray(changeSet.operations) ? changeSet.operations : []) if (record(operation)) { validateNewThesisClaim(operation as KnowledgeOperationV04, errors); applyOperation(objects, operation as KnowledgeOperationV04, errors, seenOperationIds, mutationTargets) } else add(errors, 'V04_OPERATION_INVALID', 'Operation must be an object')
   try { assertKnowledgeV04Objects([...objects.values()]) } catch (error) { add(errors, 'V04_CANONICAL_INVALID', error instanceof Error ? error.message : String(error)) }
   validateEvidence(objects.values(), knownRawRefs, errors, Date.parse(validatedAt))
-  await validateThemeScope(handle, changeSet, manifest.revision, objects, errors)
+  await validateThemeScope(handle, changeSet, manifest.revision, objects, knownRawRefs, Date.parse(validatedAt), errors)
   const report = { status: errors.length === 0 ? 'passed' as const : 'failed' as const, errors }
   if (report.status === 'failed' || mode === 'dry_run') return { report }
   let changeSetSnapshot: KnowledgeChangeSetV04
