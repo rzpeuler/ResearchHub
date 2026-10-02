@@ -2,6 +2,7 @@ import {
   executeThemeFramework,
 } from '../../skills/theme-framework/semantic.ts'
 import {
+  THEME_FRAMEWORK_BOUNDS,
   THEME_FRAMEWORK_RECOMMENDATIONS,
   validateThemeFrameworkInput,
   type ThemeFrameworkIndustryCandidate,
@@ -14,6 +15,7 @@ import {
   type ThemeFrameworkConstructionRequest,
   type ThemeFrameworkConstructionResult,
   type ThemeFrameworkDecision,
+  type ThemeFrameworkKnowledgeSnapshot,
   type ThemeFrameworkReviewCandidate,
   type ThemeFrameworkReviewRequest,
   type ThemeFrameworkReviewResult,
@@ -36,6 +38,49 @@ function validDurableBinding(value: ThemeFrameworkDurableEvidenceBinding): boole
     && /^source:[A-Za-z0-9][A-Za-z0-9._-]{0,250}$/u.test(value.sourceRef)
     && /^raw-sha256-[a-f0-9]{64}$/u.test(value.rawRef)
     && (value.locator === undefined || (typeof value.locator === 'string' && value.locator.length > 0 && value.locator.length <= 2048))
+}
+
+function evidenceIdentity(value: ThemeFrameworkKnowledgeSnapshot['evidence'][number]): string {
+  return JSON.stringify({
+    evidenceId: value.evidenceId,
+    origin: value.origin,
+    description: value.description,
+    sourceRef: value.sourceRef,
+    publishedAt: value.publishedAt ?? null,
+    excerpt: value.excerpt ?? null,
+  })
+}
+
+function mergeEvidence(
+  groups: readonly (readonly ThemeFrameworkKnowledgeSnapshot['evidence'][number][])[],
+): readonly ThemeFrameworkKnowledgeSnapshot['evidence'][number][] | string {
+  const byId = new Map<string, ThemeFrameworkKnowledgeSnapshot['evidence'][number]>()
+  for (const group of groups) {
+    for (const item of group) {
+      if (!item || typeof item.evidenceId !== 'string' || item.evidenceId.length === 0) return 'theme_framework_evidence_invalid'
+      const previous = byId.get(item.evidenceId)
+      if (previous && evidenceIdentity(previous) !== evidenceIdentity(item)) return `theme_framework_evidence_identity_conflict:${item.evidenceId.slice(0, 80)}`
+      if (!previous) byId.set(item.evidenceId, item)
+    }
+  }
+  return [...byId.values()]
+}
+
+function mergeDurableBindings(
+  groups: readonly (readonly ThemeFrameworkDurableEvidenceBinding[] | undefined)[],
+): readonly ThemeFrameworkDurableEvidenceBinding[] | string {
+  const byId = new Map<string, ThemeFrameworkDurableEvidenceBinding>()
+  for (const group of groups) {
+    for (const binding of group ?? []) {
+      if (!binding || !validDurableBinding(binding)) return 'theme_framework_durable_evidence_binding_invalid'
+      const previous = byId.get(binding.evidenceId)
+      if (previous && (previous.sourceRef !== binding.sourceRef || previous.rawRef !== binding.rawRef || (previous.locator !== undefined && binding.locator !== undefined && previous.locator !== binding.locator))) {
+        return `theme_framework_durable_evidence_identity_conflict:${binding.evidenceId.slice(0, 80)}`
+      }
+      if (!previous || (previous.locator === undefined && binding.locator !== undefined)) byId.set(binding.evidenceId, binding)
+    }
+  }
+  return [...byId.values()]
 }
 
 function allCandidates(framework: ThemeFrameworkReviewCandidate['framework']): readonly (ThemeFrameworkIndustryCandidate | ThemeFrameworkRelationCandidate)[] {
@@ -72,10 +117,8 @@ export async function runThemeFrameworkConstruction(
 
   let acquisition: NonNullable<ThemeFrameworkReviewCandidate['acquisitionStatus']> = 'unavailable'
   const diagnostics: string[] = []
-  const evidence: Parameters<typeof validateThemeFrameworkInput>[0]['evidence'][number][] = [...snapshot.evidence]
-  const evidenceIds = new Set(evidence.map((item) => item.evidenceId))
-  const durableEvidenceBindings: ThemeFrameworkDurableEvidenceBinding[] = (snapshot.durableEvidenceBindings ?? []).filter(validDurableBinding)
-  if ((snapshot.durableEvidenceBindings?.length ?? 0) !== durableEvidenceBindings.length) diagnostics.push('invalid_kb_evidence_bindings_ignored')
+  let acquiredEvidence: ThemeFrameworkKnowledgeSnapshot['evidence'][number][] = []
+  let acquiredBindings: ThemeFrameworkDurableEvidenceBinding[] = []
   if (!ports.acquisition) {
     diagnostics.push('external_acquisition_unavailable:not_configured')
   } else {
@@ -91,16 +134,10 @@ export async function runThemeFrameworkConstruction(
       acquisition = result.status
       diagnostics.push(...(result.diagnostics ?? []).slice(0, 16))
       if (result.status !== 'unavailable') {
-        const room = Math.max(0, THEME_FRAMEWORK_CONSTRUCTION_LIMITS.maxEvidence - evidence.length)
-        const acceptedEvidence = result.evidence
-          .filter((item) => !evidenceIds.has(item.evidenceId))
-          .slice(0, Math.min(THEME_FRAMEWORK_CONSTRUCTION_LIMITS.maxSources, room))
-        for (const item of acceptedEvidence) evidenceIds.add(item.evidenceId)
-        evidence.push(...acceptedEvidence)
-        const acceptedIds = new Set(acceptedEvidence.map((item) => item.evidenceId))
-        const acquiredBindings = result.durableEvidenceBindings ?? []
-        if (acquiredBindings.some((binding) => !validDurableBinding(binding))) diagnostics.push('invalid_acquisition_evidence_bindings_ignored')
-        durableEvidenceBindings.push(...acquiredBindings.filter((binding) => validDurableBinding(binding) && acceptedIds.has(binding.evidenceId)))
+        if (!Array.isArray(result.evidence)) return { status: 'failed', diagnostics: ['theme_framework_acquisition_evidence_invalid'] }
+        acquiredEvidence = [...result.evidence.slice(0, THEME_FRAMEWORK_CONSTRUCTION_LIMITS.maxSources)]
+        if (result.evidence.length > acquiredEvidence.length) diagnostics.push(`external_evidence_truncated:${result.evidence.length}:${acquiredEvidence.length}`)
+        acquiredBindings = [...(result.durableEvidenceBindings ?? [])]
       } else {
         diagnostics.push(`external_acquisition_unavailable:${result.reason.slice(0, 160)}`)
       }
@@ -111,11 +148,46 @@ export async function runThemeFrameworkConstruction(
   }
   if (cancelled(request.signal)) return { status: 'cancelled', diagnostics: ['workflow_cancelled'] }
 
+  // Acquisition may persist eligible Source/Raw evidence through Writer. Refresh
+  // the canonical snapshot after acquisition so the review candidate is bound to
+  // the revision that contains those durable records.
+  let latestSnapshot: Awaited<ReturnType<ThemeFrameworkConstructionPorts['readKnowledgeSnapshot']>>
+  try {
+    latestSnapshot = await ports.readKnowledgeSnapshot(themeName)
+  } catch (error) {
+    return { status: 'failed', diagnostics: [`knowledge_snapshot_refresh_unavailable:${diagnostic(error)}`] }
+  }
+  if (latestSnapshot.knowledgeBaseId !== snapshot.knowledgeBaseId) {
+    return { status: 'failed', diagnostics: ['knowledge_snapshot_identity_changed_during_acquisition'] }
+  }
+  if (!Number.isSafeInteger(latestSnapshot.revision) || latestSnapshot.revision < snapshot.revision) {
+    return { status: 'failed', diagnostics: ['knowledge_snapshot_revision_invalid_after_acquisition'] }
+  }
+  if (latestSnapshot.existingThemeRef) {
+    return { status: 'blocked', diagnostics: ['theme_already_exists:use_framework_update_workflow'] }
+  }
+
+  const mergedEvidence = mergeEvidence([snapshot.evidence, latestSnapshot.evidence, acquiredEvidence])
+  if (typeof mergedEvidence === 'string') return { status: 'failed', diagnostics: [mergedEvidence] }
+  const evidence = mergedEvidence.slice(0, THEME_FRAMEWORK_CONSTRUCTION_LIMITS.maxEvidence)
+  if (mergedEvidence.length > evidence.length) diagnostics.push(`theme_framework_evidence_truncated:${mergedEvidence.length}:${evidence.length}`)
+  const mergedBindings = mergeDurableBindings([
+    snapshot.durableEvidenceBindings,
+    latestSnapshot.durableEvidenceBindings,
+    acquiredBindings,
+  ])
+  if (typeof mergedBindings === 'string') return { status: 'failed', diagnostics: [mergedBindings] }
+  const evidenceIds = new Set(evidence.map((item) => item.evidenceId))
+  const durableEvidenceBindings = mergedBindings.filter((binding) => evidenceIds.has(binding.evidenceId))
+  if (durableEvidenceBindings.length !== mergedBindings.length) diagnostics.push('durable_bindings_without_candidate_evidence_ignored')
+  const industries = latestSnapshot.industries.slice(0, THEME_FRAMEWORK_BOUNDS.maxIndustries)
+  if (latestSnapshot.industries.length > industries.length) diagnostics.push(`knowledge_industries_truncated:${latestSnapshot.industries.length}:${industries.length}`)
+
   const skillInput = {
     theme: { name: themeName, ...(request.definition ? { definition: request.definition } : {}) },
-    existingKnowledge: { summary: snapshot.summary.slice(0, 8000), industries: snapshot.industries.slice(0, 80) },
-    evidence: evidence.slice(0, THEME_FRAMEWORK_CONSTRUCTION_LIMITS.maxEvidence),
-    priorDecisions: snapshot.priorDecisions.slice(0, 120),
+    existingKnowledge: { summary: latestSnapshot.summary.slice(0, THEME_FRAMEWORK_BOUNDS.maxSummary), industries },
+    evidence: evidence.slice(0, THEME_FRAMEWORK_BOUNDS.maxEvidence),
+    priorDecisions: latestSnapshot.priorDecisions.slice(0, THEME_FRAMEWORK_BOUNDS.maxPriorDecisions),
   }
   try {
     validateThemeFrameworkInput(skillInput)
@@ -126,8 +198,8 @@ export async function runThemeFrameworkConstruction(
   if (result.status !== 'complete') return { status: 'blocked', diagnostics: result.diagnostics }
   const candidate: ThemeFrameworkReviewCandidate = {
     workflowRunId: request.workflowRunId,
-    knowledgeBaseId: snapshot.knowledgeBaseId,
-    basedOnRevision: snapshot.revision,
+    knowledgeBaseId: latestSnapshot.knowledgeBaseId,
+    basedOnRevision: latestSnapshot.revision,
     theme: { name: themeName, ...(request.definition ? { definition: request.definition } : {}) },
     framework: result.result,
     durableEvidenceBindings: durableEvidenceBindings.filter((binding) => evidence.some((item) => item.evidenceId === binding.evidenceId)).slice(0, THEME_FRAMEWORK_CONSTRUCTION_LIMITS.maxEvidence),

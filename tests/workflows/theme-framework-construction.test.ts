@@ -83,7 +83,7 @@ test('construction reads Knowledge first, bounds Plugin acquisition, and returns
     reasoningExecutor: executor([frameworkOutput], requests),
   }))
   assert.equal(result.status, 'awaiting_review')
-  assert.deepEqual(order, ['knowledge', 'acquisition'])
+  assert.deepEqual(order, ['knowledge', 'acquisition', 'knowledge'])
   assert.equal(requestedBudget, 24)
   assert.equal(requests.length, 1)
   assert.equal(requests[0]?.operation, 'theme_framework_semantic')
@@ -238,4 +238,93 @@ test('stale snapshot conflict is returned without claiming successful Theme crea
     },
   })
   assert.equal(result.status, 'conflict')
+})
+
+test('industry snapshot is bounded to the Skill limit and reports truncation', async () => {
+  const manyIndustries: ThemeFrameworkKnowledgeSnapshot = {
+    ...snapshot,
+    industries: Array.from({ length: 44 }, (_, index) => ({ ref: `entity:industry-${index}`, name: `Industry ${index}` })),
+  }
+  const requests: ReasoningRequest[] = []
+  const result = await runThemeFrameworkConstruction({ workflowRunId: 'theme-run-industry-limit', themeName: 'AI Compute' }, ports({
+    readKnowledgeSnapshot: async () => manyIndustries,
+    reasoningExecutor: executor([frameworkOutput], requests),
+  }))
+
+  assert.equal(result.status, 'awaiting_review')
+  assert.equal((requests[0]?.input as ThemeFrameworkInput).existingKnowledge.industries.length, 40)
+  if (result.status === 'awaiting_review') assert.ok(result.candidate.diagnostics.includes('knowledge_industries_truncated:44:40'))
+})
+
+test('refreshes after acquisition and binds the candidate to the latest persisted KB revision', async () => {
+  const acquired = {
+    evidenceId: 'e-acquisition-written-to-kb',
+    origin: 'existing_kb' as const,
+    description: 'Acquisition persisted this source before returning.',
+    sourceRef: 'source:acquisition-written-to-kb',
+  }
+  const binding = {
+    evidenceId: acquired.evidenceId,
+    sourceRef: 'source:acquisition-written-to-kb' as const,
+    rawRef: `raw-sha256-${'b'.repeat(64)}` as const,
+    locator: 'whole document',
+  }
+  const latest: ThemeFrameworkKnowledgeSnapshot = {
+    ...snapshot,
+    revision: 8,
+    evidence: [...snapshot.evidence, acquired],
+    durableEvidenceBindings: [...(snapshot.durableEvidenceBindings ?? []), binding],
+  }
+  let reads = 0
+  const requests: ReasoningRequest[] = []
+  const result = await runThemeFrameworkConstruction({ workflowRunId: 'theme-run-acquisition-revision', themeName: 'AI Compute' }, ports({
+    readKnowledgeSnapshot: async () => ++reads === 1 ? snapshot : latest,
+    acquisition: {
+      acquire: async ({ knowledgeBaseRevision }) => {
+        assert.equal(knowledgeBaseRevision, 7)
+        return { status: 'available', evidence: [acquired], durableEvidenceBindings: [binding] }
+      },
+    },
+    reasoningExecutor: executor([frameworkOutput], requests),
+  }))
+
+  assert.equal(reads, 2)
+  assert.equal(result.status, 'awaiting_review')
+  if (result.status === 'awaiting_review') {
+    assert.equal(result.candidate.basedOnRevision, 8)
+    assert.ok(result.candidate.durableEvidenceBindings.some((item) => item.evidenceId === acquired.evidenceId && item.rawRef === binding.rawRef))
+  }
+  const input = requests[0]?.input as ThemeFrameworkInput
+  assert.equal(input.evidence.filter((item) => item.evidenceId === acquired.evidenceId).length, 1)
+})
+
+test('blocks acquisition-time KB identity changes, same-ID evidence changes, and concurrent Theme creation', async () => {
+  let identityReads = 0
+  const identityChanged = await runThemeFrameworkConstruction({ workflowRunId: 'theme-run-kb-identity-change', themeName: 'AI Compute' }, ports({
+    readKnowledgeSnapshot: async () => ++identityReads === 1 ? snapshot : { ...snapshot, knowledgeBaseId: 'kb-replaced' },
+    acquisition: { acquire: async () => ({ status: 'unavailable', reason: 'offline' }) },
+  }))
+  assert.equal(identityChanged.status, 'failed')
+  if (identityChanged.status === 'failed') assert.ok(identityChanged.diagnostics.includes('knowledge_snapshot_identity_changed_during_acquisition'))
+
+  let evidenceReads = 0
+  const conflictingEvidence = await runThemeFrameworkConstruction({ workflowRunId: 'theme-run-evidence-id-change', themeName: 'AI Compute' }, ports({
+    readKnowledgeSnapshot: async () => ({
+      ...(++evidenceReads === 1 ? snapshot : {
+        ...snapshot,
+        evidence: [{ ...snapshot.evidence[0]!, description: 'Changed evidence under a reused ID.' }],
+      }),
+    }),
+    acquisition: { acquire: async () => ({ status: 'unavailable', reason: 'offline' }) },
+  }))
+  assert.equal(conflictingEvidence.status, 'failed')
+  if (conflictingEvidence.status === 'failed') assert.ok(conflictingEvidence.diagnostics[0]?.startsWith('theme_framework_evidence_identity_conflict:'))
+
+  let themeReads = 0
+  const themeAppeared = await runThemeFrameworkConstruction({ workflowRunId: 'theme-run-theme-created-during-acquisition', themeName: 'AI Compute' }, ports({
+    readKnowledgeSnapshot: async () => ++themeReads === 1 ? snapshot : { ...snapshot, existingThemeRef: 'entity:investment_theme-ai-compute' },
+    acquisition: { acquire: async () => ({ status: 'unavailable', reason: 'offline' }) },
+  }))
+  assert.equal(themeAppeared.status, 'blocked')
+  if (themeAppeared.status === 'blocked') assert.ok(themeAppeared.diagnostics.includes('theme_already_exists:use_framework_update_workflow'))
 })
