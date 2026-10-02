@@ -4,7 +4,7 @@ import { pipeline } from 'node:stream/promises'
 import { createReadStream } from 'node:fs'
 import { lstat, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
-import { ApplicationServiceError, type EarningsReviewInput, type EventAnchor, type EventResearchInput, type IndustryResearchInput, type IngestDocumentInput, type KnowledgeGraphProjectionInput, type KnowledgeSearchInput, type ReviewCaseListInput, type ResearchCompanyInput, type ThesisRedTeamInput, type ValuationInput, type ValuationMethod } from '../services/contracts.ts'
+import { ApplicationServiceError, type EarningsReviewInput, type EventAnchor, type EventResearchInput, type IndustryResearchInput, type IngestDocumentInput, type KnowledgeGraphProjectionInput, type KnowledgeSearchInput, type ReviewCaseListInput, type ResearchCompanyInput, type ThesisRedTeamInput, type ValuationInput, type ValuationMethod, type RawDocumentPreviewV04Input } from '../services/contracts.ts'
 import type { DailyBriefType } from '../../plugins/daily-intelligence/contracts.ts'
 import { createResearchHubApplicationRuntime, ResearchHubApplicationRuntime } from './application-runtime.ts'
 import { AttachmentService, DEFAULT_MAX_ATTACHMENT_BYTES } from './attachment-service.ts'
@@ -18,6 +18,7 @@ import { normalizeResearchRequest } from '../services/research-dispatch-contract
 import type { ResearchHubRequestPolicy } from '../pi/tools.ts'
 import type { ThesisCriterionConfirmInput, ThesisCriterionPrepareInput, ThesisCriterionPreview } from '../services/thesis-criterion-service.ts'
 import type { KnowledgeTopicFilters, KnowledgeTopicKind, KnowledgeTopicPageInput, KnowledgeTopicScope } from '../services/knowledge-topic-contracts.ts'
+import type { RawDocumentMetadataV04, RawDocumentRightsV04 } from '../../knowledge/production/raw-document-gateway-v04.ts'
 
 const MAX_JSON_BYTES = 1_000_000
 const MAX_MESSAGE_LENGTH = 50_000
@@ -536,6 +537,13 @@ export class ResearchHubRuntimeServer {
     }
     if (method === 'POST' && path === '/api/knowledge/object') { const input = await this.readJson(request); await this.sendJson(response, 200, await this.runtime!.knowledgeService.getKnowledgeObject(this.stringField(input, 'ref'), this.optionalPositive(input, 'relatedLimit'))); return }
     if (method === 'GET' && path.startsWith('/api/workflows/')) { const runId = decodeSegment(path.split('/')[3] ?? ''); const value = this.runtime!.workflowService.getWorkflowStatus(runId); if (!value) throw new ApplicationServiceError('not_found', 'Workflow run not found'); await this.sendJson(response, 200, value); return }
+    if (method === 'GET' && path.startsWith('/api/production/raw-document-preview-v04/')) {
+      const runId = decodeSegment(path.split('/')[4] ?? '')
+      const workflow = this.runtime!.workflowService.getWorkflowStatus(runId)
+      const preview = await this.runtime!.productionService.readRawDocumentKnowledgePreviewV04(runId)
+      if (!workflow && !preview) throw new ApplicationServiceError('not_found', 'Raw-document preview not found')
+      await this.sendJson(response, 200, { runId, workflow, preview: preview ?? null, committable: preview?.committable ?? false }); return
+    }
     if (method === 'GET' && path === '/api/research-reports') { const service = this.runtime!.researchService; if (!service) throw new ApplicationServiceError('not_found', 'Research Reports are not configured'); await this.sendJson(response, 200, { reports: await service.listResearchReports(positiveInteger(url.searchParams.get('limit'))) }); return }
     if (method === 'GET' && path === '/api/research/workflows') { await this.sendJson(response, 200, { workflows: this.runtime!.services.researchDispatchService?.listWorkflowDefinitions() ?? [] }); return }
     if (method === 'GET' && path === '/api/research/bundles') { const service = this.runtime!.services.researchDispatchService; if (!service) throw new ApplicationServiceError('not_found', 'Research dispatch is not configured'); await this.sendJson(response, 200, { bundles: await service.listBundles(positiveInteger(url.searchParams.get('limit'))) }); return }
@@ -571,6 +579,8 @@ export class ResearchHubRuntimeServer {
     if (method === 'POST' && (path === '/api/attachments' || path === '/api/attachments/upload')) { const contentType = request.headers['content-type']; if (typeof contentType !== 'string') throw new ApplicationServiceError('invalid_input', 'multipart Content-Type is required'); const length = Number(request.headers['content-length']); if (Number.isFinite(length) && length > (this.attachmentService?.maxBytes ?? DEFAULT_MAX_ATTACHMENT_BYTES) + 1024 * 1024) throw new ApplicationServiceError('invalid_input', 'attachment request is too large'); const attachment = await this.attachmentService!.upload(request, contentType); await this.sendJson(response, 201, { attachment }); return }
     if (method === 'GET' && path.startsWith('/api/attachments/')) { const pieces = path.split('/'); const id = decodeSegment(pieces[3] ?? ''); if (pieces[4] === 'content') { await this.streamAttachment(response, id); return } await this.sendJson(response, 200, { attachment: await this.attachmentService!.getAttachment(id) }); return }
     if (method === 'POST' && (path === '/api/production/ingest' || path === '/api/production/ingest-document' || path === '/api/production/start-ingest' || path === '/api/workflows/ingest' || path === '/api/ingest-document' || path === '/api/ingestion')) { await this.startIngestion(request, response); return }
+    if (method === 'POST' && path === '/api/production/raw-document-preview-v04') { await this.startRawDocumentPreviewV04(request, response); return }
+    if (method === 'POST' && path === '/api/production/raw-document-preview-v04/accept') { await this.acceptRawDocumentPreviewV04(request, response); return }
     if (method === 'POST' && path === '/api/production/thesis-lifecycle/create') { await this.startThesisLifecycleCreate(request, response); return }
     if (method === 'POST' && path === '/api/production/thesis-lifecycle/refresh') { await this.startThesisLifecycleRefresh(request, response); return }
     if (method === 'POST' && (path === '/api/production/research-company' || path === '/api/research-company')) { await this.startCompanyResearch(request, response); return }
@@ -651,6 +661,39 @@ export class ResearchHubRuntimeServer {
     const started = this.runtime!.productionService.startIngestDocument(input, controller.signal)
     this.trackBackground(started.completion, () => { controller.abort() })
     await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
+  }
+  private async startRawDocumentPreviewV04(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const body = await this.readJson(request)
+    this.ensureRunning()
+    const allowed = ['workflowRunId', 'attachmentId', 'text', 'originalFilename', 'mediaType', 'instructions', 'sourceMetadata', 'rights']
+    if (Object.keys(body).some((key) => !allowed.includes(key))) throw new ApplicationServiceError('invalid_input', 'V0.4 raw-document preview contains unsupported fields')
+    const attachmentId = this.optionalString(body, 'attachmentId', 120)
+    const text = this.optionalString(body, 'text', 2_000_000)
+    if ((attachmentId === undefined) === (text === undefined)) throw new ApplicationServiceError('invalid_input', 'Exactly one of attachmentId or text is required')
+    const workflowRunId = this.optionalString(body, 'workflowRunId', 80) ?? randomUUID()
+    const sourceMetadata = this.rawDocumentMetadataV04(body.sourceMetadata)
+    const rights = this.rawDocumentRightsV04(body.rights)
+    let input: RawDocumentPreviewV04Input
+    if (attachmentId !== undefined) {
+      const attachment = await this.attachmentService!.getAttachment(attachmentId)
+      input = { workflowRunId, workspaceFile: await this.attachmentService!.getWorkspaceFileReference(attachmentId), originalFilename: attachment.filename, mediaType: attachment.mediaType, sourceMetadata, rights, ...(this.optionalString(body, 'instructions', MAX_MESSAGE_LENGTH) === undefined ? {} : { instructions: this.optionalString(body, 'instructions', MAX_MESSAGE_LENGTH) }) }
+    } else {
+      input = { workflowRunId, text: text!, sourceMetadata, rights, ...(this.optionalString(body, 'originalFilename', 255) === undefined ? {} : { originalFilename: this.optionalString(body, 'originalFilename', 255) }), ...(this.optionalString(body, 'mediaType', 120) === undefined ? {} : { mediaType: this.optionalString(body, 'mediaType', 120) }), ...(this.optionalString(body, 'instructions', MAX_MESSAGE_LENGTH) === undefined ? {} : { instructions: this.optionalString(body, 'instructions', MAX_MESSAGE_LENGTH) }) }
+    }
+    this.ensureRunning()
+    const controller = new AbortController()
+    const started = this.runtime!.productionService.startRawDocumentKnowledgePreviewV04(input, controller.signal)
+    this.trackBackground(started.completion, () => { controller.abort(); try { this.runtime!.workflowService.cancelWorkflow(started.runId) } catch { /* workflow may already be terminal */ } })
+    await this.sendJson(response, 202, { accepted: true, runId: started.runId, committable: false, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
+  }
+  private async acceptRawDocumentPreviewV04(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const body = await this.readJson(request)
+    if (Object.keys(body).some((key) => !['previewWorkflowRunId', 'acceptedCandidateIds'].includes(key))) throw new ApplicationServiceError('invalid_input', 'Candidate acceptance contains unsupported fields')
+    const previewWorkflowRunId = this.stringField(body, 'previewWorkflowRunId', 80)
+    if (!Array.isArray(body.acceptedCandidateIds) || body.acceptedCandidateIds.length > 4096 || body.acceptedCandidateIds.some((item) => typeof item !== 'string' || item.length > 200)) throw new ApplicationServiceError('invalid_input', 'acceptedCandidateIds must contain at most 4096 bounded candidate IDs')
+    const result = await this.runtime!.productionService.acceptRawDocumentV04Candidates({ previewWorkflowRunId, acceptedCandidateIds: body.acceptedCandidateIds as string[] })
+    const successful = ['committed', 'already_committed', 'no_changes'].includes(result.status)
+    await this.sendJson(response, result.status === 'stale_revision' || result.status === 'incompatible_schema' ? 409 : successful ? 200 : 422, result)
   }
   private async startThesisLifecycleRefresh(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const service = this.runtime!.researchService
@@ -750,6 +793,36 @@ export class ResearchHubRuntimeServer {
   }
 
   private sourceMetadata(value: Record<string, unknown>): IngestDocumentInput['sourceMetadata'] | undefined { const raw = value.sourceMetadata; if (raw === undefined) return undefined; if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ApplicationServiceError('invalid_input', 'sourceMetadata must be an object'); const input = raw as Record<string, unknown>; return { ...(this.optionalString(input, 'title', 500) === undefined ? {} : { title: this.optionalString(input, 'title', 500) }), ...(this.optionalString(input, 'institution', 500) === undefined ? {} : { institution: this.optionalString(input, 'institution', 500) }), ...(this.optionalString(input, 'author', 500) === undefined ? {} : { author: this.optionalString(input, 'author', 500) }), ...(this.optionalString(input, 'publishedAt', 100) === undefined ? {} : { publishedAt: this.optionalString(input, 'publishedAt', 100) }), ...(this.optionalString(input, 'sourceUrl', 2_000) === undefined ? {} : { sourceUrl: this.optionalString(input, 'sourceUrl', 2_000) }) } }
+  private rawDocumentMetadataV04(value: unknown): RawDocumentMetadataV04 {
+    if (value === undefined) return {}
+    if (!isRecord(value)) throw new ApplicationServiceError('invalid_input', 'sourceMetadata must be an object')
+    const fields = ['title', 'sourceType', 'sourceReliability', 'publisher', 'institution', 'author', 'publishedAt', 'canonicalUrl']
+    if (Object.keys(value).some((key) => !fields.includes(key))) throw new ApplicationServiceError('invalid_input', 'sourceMetadata contains unsupported fields')
+    const textOrNull = (field: string, max: number): string | null | undefined => {
+      const item = value[field]
+      if (item === undefined || item === null) return item
+      if (typeof item !== 'string' || item.length > max || /[\u0000-\u001f\u007f-\u009f]/u.test(item)) throw new ApplicationServiceError('invalid_input', `sourceMetadata.${field} is invalid`)
+      return item
+    }
+    const sourceType = value.sourceType
+    const sourceReliability = value.sourceReliability
+    if (sourceType !== undefined && !['official_disclosure', 'company_official', 'sell_side_research', 'industry_database', 'professional_media', 'general_media', 'community', 'unknown'].includes(String(sourceType))) throw new ApplicationServiceError('invalid_input', 'sourceMetadata.sourceType is invalid')
+    if (sourceReliability !== undefined && !['high', 'medium', 'low', 'unknown'].includes(String(sourceReliability))) throw new ApplicationServiceError('invalid_input', 'sourceMetadata.sourceReliability is invalid')
+    const title = textOrNull('title', 500); const publisher = textOrNull('publisher', 500); const institution = textOrNull('institution', 500); const author = textOrNull('author', 500); const publishedAt = textOrNull('publishedAt', 100); const canonicalUrl = textOrNull('canonicalUrl', 2_000)
+    return { ...(title === undefined ? {} : { title }), ...(sourceType === undefined ? {} : { sourceType: sourceType as RawDocumentMetadataV04['sourceType'] }), ...(sourceReliability === undefined ? {} : { sourceReliability: sourceReliability as RawDocumentMetadataV04['sourceReliability'] }), ...(publisher === undefined ? {} : { publisher }), ...(institution === undefined ? {} : { institution }), ...(author === undefined ? {} : { author }), ...(publishedAt === undefined ? {} : { publishedAt }), ...(canonicalUrl === undefined ? {} : { canonicalUrl }) }
+  }
+  private rawDocumentRightsV04(value: unknown): RawDocumentRightsV04 {
+    if (!isRecord(value)) throw new ApplicationServiceError('invalid_input', 'rights must be supplied explicitly')
+    const required = ['accessScope', 'providerTermsKnown', 'retentionAllowed', 'aiProcessingAllowed', 'derivativeKnowledgeAllowed', 'redistributionAllowed', 'policyBasis']
+    const allowed = [...required, 'expiresAt', 'entitlementRef']
+    if (required.some((key) => !Object.hasOwn(value, key)) || Object.keys(value).some((key) => !allowed.includes(key))) throw new ApplicationServiceError('invalid_input', 'rights must explicitly state access scope, terms, retention, AI processing, derived knowledge, redistribution, and policy basis')
+    if (!['public', 'authenticated', 'restricted', 'unknown'].includes(String(value.accessScope))) throw new ApplicationServiceError('invalid_input', 'rights.accessScope is invalid')
+    for (const key of ['providerTermsKnown', 'retentionAllowed', 'aiProcessingAllowed', 'derivativeKnowledgeAllowed', 'redistributionAllowed']) if (typeof value[key] !== 'boolean') throw new ApplicationServiceError('invalid_input', `rights.${key} must be an explicit boolean`)
+    if (typeof value.policyBasis !== 'string' || !value.policyBasis.trim() || value.policyBasis.length > 512) throw new ApplicationServiceError('invalid_input', 'rights.policyBasis must be a non-empty bounded string')
+    const optional = (key: string): string | null | undefined => { const item = value[key]; if (item === undefined || item === null) return item; if (typeof item !== 'string' || item.length > 256) throw new ApplicationServiceError('invalid_input', `rights.${key} is invalid`); return item }
+    const expiresAt = optional('expiresAt'); const entitlementRef = optional('entitlementRef')
+    return { accessScope: value.accessScope as RawDocumentRightsV04['accessScope'], providerTermsKnown: value.providerTermsKnown as boolean, retentionAllowed: value.retentionAllowed as boolean, aiProcessingAllowed: value.aiProcessingAllowed as boolean, derivativeKnowledgeAllowed: value.derivativeKnowledgeAllowed as boolean, redistributionAllowed: value.redistributionAllowed as boolean, policyBasis: value.policyBasis, ...(expiresAt === undefined ? {} : { expiresAt }), ...(entitlementRef === undefined ? {} : { entitlementRef }) }
+  }
 
   private ensureRunning(): void { if (this.lifecycle !== 'running') throw new ApplicationServiceError(this.lifecycle === 'closing' ? 'conflict' : 'failed', this.lifecycle === 'closing' ? 'Runtime server is closing' : 'Runtime server is not ready') }
   private observeBackground(operation: Promise<unknown>): Promise<void> {
