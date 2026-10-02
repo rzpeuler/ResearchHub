@@ -437,29 +437,85 @@ function sameCanonicalValue(left: unknown, right: unknown): boolean {
   try { return canonicalSerialize(left) === canonicalSerialize(right) } catch { return false }
 }
 
-function snapshotMatchesPreviewInput(
-  snapshot: RawDocumentV04CandidatePreviewSnapshot,
+type RawDocumentV04PreviewVerificationProjection = Pick<
+  RawDocumentV04CandidatePreviewSnapshot,
+  | 'workflowRunId'
+  | 'knowledgeBaseId'
+  | 'sourceRef'
+  | 'rawRef'
+  | 'sourceRevision'
+  | 'documentId'
+  | 'orderedBlocks'
+  | 'candidateGroups'
+  | 'blockingReviewConstraints'
+  | 'candidateSupport'
+  | 'extractionCompleteness'
+  | 'incompleteUnits'
+>
+
+function cloneCanonicalValue<T>(value: T): T {
+  return JSON.parse(canonicalSerialize(value)) as T
+}
+
+function deepFreeze<T>(value: T): T {
+  if (typeof value === 'object' && value !== null && !Object.isFrozen(value)) {
+    for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child)
+    Object.freeze(value)
+  }
+  return value
+}
+
+function expectedPreviewProjection(
   handle: KnowledgeBaseHandle,
   input: PersistRawDocumentV04PreviewInput,
-): boolean {
+): RawDocumentV04PreviewVerificationProjection {
   const expectedSupport = [...input.candidateSupport.entries()]
     .map(([candidateId, support]) => ({ candidateId, supportingCandidateCount: support.supportingCandidateCount }))
     .sort((left, right) => left.candidateId.localeCompare(right.candidateId))
-  const expectedBlocks = input.document.blocks.map(({ blockId, order }) => ({ blockId, order }))
-  const expectedBlockingConstraints = input.reviewConstraints.filter((constraint) => constraint.blocking)
+  return deepFreeze({
+    workflowRunId: input.workflowRunId,
+    knowledgeBaseId: handle.knowledgeBaseId,
+    sourceRef: input.sourceRef,
+    rawRef: input.rawRef,
+    sourceRevision: input.sourceRevision,
+    documentId: input.document.documentId,
+    orderedBlocks: input.document.blocks.map(({ blockId, order }) => ({ blockId, order })),
+    candidateGroups: cloneCanonicalValue(input.candidateGroups),
+    blockingReviewConstraints: cloneCanonicalValue(input.reviewConstraints.filter((constraint) => constraint.blocking)),
+    candidateSupport: expectedSupport,
+    extractionCompleteness: input.extractionCompleteness,
+    incompleteUnits: cloneCanonicalValue(input.incompleteUnits),
+  })
+}
+
+function defensivePreviewInput(input: PersistRawDocumentV04PreviewInput): PersistRawDocumentV04PreviewInput {
+  return {
+    ...input,
+    document: cloneCanonicalValue(input.document),
+    candidateGroups: cloneCanonicalValue(input.candidateGroups),
+    reviewConstraints: cloneCanonicalValue(input.reviewConstraints),
+    candidateSupport: new Map([...input.candidateSupport.entries()].map(([candidateId, support]) => [candidateId, cloneCanonicalValue(support)])),
+    incompleteUnits: cloneCanonicalValue(input.incompleteUnits),
+  }
+}
+
+function snapshotMatchesExpectedPreview(
+  snapshot: RawDocumentV04CandidatePreviewSnapshot,
+  expected: RawDocumentV04PreviewVerificationProjection,
+): boolean {
   return snapshot.version === 2
-    && snapshot.workflowRunId === input.workflowRunId
-    && snapshot.knowledgeBaseId === handle.knowledgeBaseId
-    && snapshot.sourceRef === input.sourceRef
-    && snapshot.rawRef === input.rawRef
-    && snapshot.sourceRevision === input.sourceRevision
-    && snapshot.documentId === input.document.documentId
-    && sameCanonicalValue(snapshot.orderedBlocks, expectedBlocks)
-    && sameCanonicalValue(snapshot.candidateGroups, input.candidateGroups)
-    && sameCanonicalValue(snapshot.blockingReviewConstraints, expectedBlockingConstraints)
-    && sameCanonicalValue(snapshot.candidateSupport, expectedSupport)
-    && snapshot.extractionCompleteness === input.extractionCompleteness
-    && sameCanonicalValue(snapshot.incompleteUnits, input.incompleteUnits)
+    && snapshot.workflowRunId === expected.workflowRunId
+    && snapshot.knowledgeBaseId === expected.knowledgeBaseId
+    && snapshot.sourceRef === expected.sourceRef
+    && snapshot.rawRef === expected.rawRef
+    && snapshot.sourceRevision === expected.sourceRevision
+    && snapshot.documentId === expected.documentId
+    && sameCanonicalValue(snapshot.orderedBlocks, expected.orderedBlocks)
+    && sameCanonicalValue(snapshot.candidateGroups, expected.candidateGroups)
+    && sameCanonicalValue(snapshot.blockingReviewConstraints, expected.blockingReviewConstraints)
+    && sameCanonicalValue(snapshot.candidateSupport, expected.candidateSupport)
+    && snapshot.extractionCompleteness === expected.extractionCompleteness
+    && sameCanonicalValue(snapshot.incompleteUnits, expected.incompleteUnits)
 }
 
 function previewVerificationError(code: string, message: string): Error {
@@ -774,6 +830,8 @@ export async function runRawDocumentKnowledgePreviewV04(input: RawDocumentPrevie
       incompleteUnits: incompleteExtractionUnits(extracted.summaries, [Buffer.from(acquired.bytes).toString('utf8'), document.normalizedText]),
     }
     const previewStore = input.previewSnapshotStore ?? { persist: persistRawDocumentV04PreviewSnapshot }
+    const expectedProjection = expectedPreviewProjection(input.handle, previewInput)
+    const storeInput = defensivePreviewInput(previewInput)
     const nonCommittablePersistenceResult = (error: unknown): RawDocumentPreviewWorkflowResultV04 => {
       const failure = previewSnapshotError(error)
       const failedPreview = { ...extractionPreview, errors: [...extractionPreview.errors, `Durable candidate preview persistence verification failed (${failure.code}): ${failure.message}`] }
@@ -783,7 +841,7 @@ export async function runRawDocumentKnowledgePreviewV04(input: RawDocumentPrevie
         ...extractionCancellation,
       })
     }
-    const persistence = await awaitAbortable(() => previewStore.persist(input.handle, previewInput), input.signal)
+    const persistence = await awaitAbortable(() => previewStore.persist(input.handle, storeInput), input.signal)
     if (persistence.kind === 'cancelled') {
       const cancelledPreview = { ...extractionPreview, errors: [...extractionPreview.errors, 'Workflow cancelled while durable candidate preview persistence was pending.'] }
       return result(input, 'cancelled', sourceRaw, cancelledPreview, {
@@ -821,7 +879,7 @@ export async function runRawDocumentKnowledgePreviewV04(input: RawDocumentPrevie
     if (readBack.value.contentHash !== persisted.snapshot.contentHash) {
       return nonCommittablePersistenceResult(previewVerificationError('PREVIEW_RECEIPT_MISMATCH', 'Preview store receipt hash does not match the durable snapshot read-back.'))
     }
-    if (!snapshotMatchesPreviewInput(readBack.value, input.handle, previewInput)) {
+    if (!snapshotMatchesExpectedPreview(readBack.value, expectedProjection)) {
       return nonCommittablePersistenceResult(previewVerificationError('PREVIEW_SNAPSHOT_MISMATCH', 'Durable preview read-back does not exactly match the submitted Source/Raw, document, candidates, constraints, support, or extraction completeness.'))
     }
 

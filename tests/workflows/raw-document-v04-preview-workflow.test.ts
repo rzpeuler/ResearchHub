@@ -426,6 +426,58 @@ test('cancellation during durable preview persistence reports an unknown state w
   })
 })
 
+test('mutable injected preview store cannot change the verification baseline or extraction telemetry', async () => {
+  await withFreshKb('candidate-preview-store-mutation', async (root) => {
+    const handle = await mount(root)
+    const theme: EntityCandidate = {
+      candidateId: 'theme-ai-computing',
+      entityType: 'investment_theme',
+      name: 'AI Computing',
+      evidenceBlockRefs: ['block-ai-demand'],
+      reason: 'A possible research theme mentioned in the report.',
+      confidence: 0.8,
+    }
+    const output: ValidatedExtractKnowledgeResult = {
+      entities: [theme],
+      relations: [],
+      claims: [],
+      rejected: [],
+      summary: { inputCounts: { entity: 1, relation: 0, claim: 0 }, acceptedCounts: { entity: 1, relation: 0, claim: 0 }, rejectedCounts: { entity: 0, relation: 0, claim: 0 }, rejectionCodes: [] },
+    }
+    const result = await runRawDocumentKnowledgePreviewV04(input(handle, {
+      skill: skill({ output }),
+      previewSnapshotStore: {
+        async persist(targetHandle, previewInput) {
+          const group = previewInput.candidateGroups[0]
+          const block = previewInput.document.blocks[0]
+          const constraint = previewInput.reviewConstraints[0]
+          assert.ok(group)
+          assert.ok(block)
+          assert.ok(constraint)
+          Reflect.set(group.candidate, 'name', 'Mutated by injected store.')
+          Reflect.set(block, 'order', block.order + 100)
+          Reflect.set(constraint, 'reason', 'Mutated by injected store.')
+          return persistRawDocumentV04PreviewSnapshot(targetHandle, previewInput)
+        },
+      },
+    }))
+
+    assert.equal(result.status, 'source_only')
+    assert.equal(result.sourceRaw.persisted, true)
+    assert.equal((result.extractionPreview.candidateGroups[0]?.candidate as EntityCandidate | undefined)?.name, 'AI Computing')
+    assert.match(result.extractionPreview.reviewConstraints[0]?.reason ?? '', /Theme Framework workflow/u)
+    assert.equal(result.previewSnapshot.status, 'failed')
+    assert.equal(result.previewSnapshot.committable, false)
+    assert.equal(result.previewSnapshot.error?.code, 'PREVIEW_SNAPSHOT_MISMATCH')
+
+    const stored = await readRawDocumentV04PreviewSnapshot(handle, result.workflowRunId)
+    assert.equal((stored?.candidateGroups[0]?.candidate as EntityCandidate | undefined)?.name, 'Mutated by injected store.')
+    assert.equal(stored?.orderedBlocks[0]?.order, 101)
+    assert.equal(stored?.blockingReviewConstraints[0]?.reason, 'Mutated by injected store.')
+    assert.deepEqual((await readCanonicalV04Assets(root)).objects.map((asset) => asset.kind), ['source'])
+  })
+})
+
 test('invalid extraction plan leaves a truthful Source-only result and does not write candidate objects', async () => {
   await withFreshKb('invalid-plan', async (root) => {
     const result = await runRawDocumentKnowledgePreviewV04(input(await mount(root), { skill: skill({ plan: invalidPlan() }), config: { maxPlanAttempts: 1 } }))
