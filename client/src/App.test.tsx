@@ -4,6 +4,20 @@ import App from './App'
 
 function json(body: unknown, status = 200): Response { return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }) }
 
+function mockV04UploadRuntime(fetchMock: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): void {
+  globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = String(input)
+    if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 7, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+    if (path === '/api/research/workflows') return json({ workflows: [] })
+    if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+    if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+    if (path === '/api/conversations') return json({ conversations: [] })
+    return fetchMock(input, init)
+  }) as typeof fetch
+}
+
+const v04Preview = { runId: 'preview-1', status: 'preview_ready', knowledgeBaseId: 'kb-1', candidateGroups: [{ candidateId: 'candidate-claim-1', kind: 'claim', candidate: { statement: 'Revenue grew in FY2025' }, provenanceRefs: { sourceRef: 'source:annual-report', rawRef: `raw-sha256-${'a'.repeat(64)}`, evidenceBlockRefs: ['block-1'] } }], committable: true }
+
 describe('Homepage shell', () => {
   const originalFetch = globalThis.fetch
   const originalEventSource = globalThis.EventSource
@@ -31,6 +45,60 @@ describe('Homepage shell', () => {
     expect(await screen.findByText('Research conversation')).toBeTruthy()
     expect(screen.getByText('No Knowledge Base mounted')).toBeTruthy()
     expect(document.body.textContent).not.toContain('b'.repeat(64))
+  })
+
+  it('stages a pasted source, requires caller-supplied rights, and only accepts explicitly selected V0.4 candidates', async () => {
+    const posted: { path: string; body?: Record<string, unknown> }[] = []
+    mockV04UploadRuntime(async (input, init) => {
+      const path = String(input)
+      const body = init?.body && typeof init.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : undefined
+      posted.push({ path, body })
+      if (path === '/api/attachments') return json({ attachment: { attachmentId: 'attachment-1', filename: 'annual-report.pdf', mediaType: 'application/pdf', size: 1024, sha256: 'c'.repeat(64), createdAt: '2026-10-02T00:00:00.000Z' } }, 201)
+      if (path === '/api/production/raw-document-preview-v04') return json({ accepted: true, runId: 'preview-1', committable: false, workflow: { runId: 'preview-1', workflowType: 'raw_document_knowledge_v04', objective: 'Preview source', status: 'running', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:00.000Z' } }, 202)
+      if (path === '/api/production/raw-document-preview-v04/preview-1') return json({ runId: 'preview-1', workflow: { runId: 'preview-1', workflowType: 'raw_document_knowledge_v04', objective: 'Preview source', status: 'completed', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:01.000Z' }, preview: v04Preview, committable: true })
+      if (path === '/api/production/raw-document-preview-v04/accept') return json({ status: 'committed', knowledgeBaseId: 'kb-1', knowledgeBaseRevision: 8, baseRevision: 7, previewWorkflowRunId: 'preview-1', extractionCompleteness: 'complete', acceptedCandidateIds: ['candidate-claim-1'], createdIds: ['claim:revenue-growth'], updatedIds: [], errors: [] })
+      if (path === '/api/workflows/preview-1') return json({ runId: 'preview-1', workflowType: 'raw_document_knowledge_v04', objective: 'Preview source', status: 'completed', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:01.000Z' })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    })
+    render(<App />)
+    const file = new File(['annual filing content'], 'annual-report.pdf', { type: 'application/pdf' })
+    fireEvent.paste(await screen.findByRole('textbox', { name: 'Message' }), { clipboardData: { files: [file] } })
+    expect(await screen.findByText('annual-report.pdf')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Write Knowledge' }))
+    fireEvent.change(screen.getByLabelText('Source title'), { target: { value: 'Annual report' } })
+    fireEvent.change(screen.getByLabelText(/Policy basis/), { target: { value: 'Publisher terms permit research use' } })
+    expect((screen.getByRole('checkbox', { name: 'Raw retention is allowed' }) as HTMLInputElement).checked).toBe(false)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'I checked the provider terms' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Raw retention is allowed' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'AI processing is allowed' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Derived Knowledge is allowed' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Extract candidates for review' }))
+    expect(await screen.findByText('candidate-claim-1')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Accept 0 selected' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select claim candidate' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Accept 1 selected' }))
+    expect(await screen.findByText('committed')).toBeTruthy()
+    const previewPost = posted.find((request) => request.path === '/api/production/raw-document-preview-v04')
+    expect(previewPost?.body?.sourceMetadata).toMatchObject({ title: 'Annual report' })
+    expect(previewPost?.body?.rights).toMatchObject({ providerTermsKnown: true, retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false, policyBasis: 'Publisher terms permit research use' })
+    const acceptancePost = posted.find((request) => request.path === '/api/production/raw-document-preview-v04/accept')
+    expect(acceptancePost?.body).toMatchObject({ previewWorkflowRunId: 'preview-1', acceptedCandidateIds: ['candidate-claim-1'] })
+  })
+
+  it('accepts document drops on the Chat composer and rejects unsupported files', async () => {
+    const mock = vi.fn(async (input: RequestInfo | URL) => String(input) === '/api/attachments'
+      ? json({ attachment: { attachmentId: 'attachment-2', filename: 'notes.md', mediaType: 'text/markdown', size: 18, sha256: 'd'.repeat(64), createdAt: '2026-10-02T00:00:00.000Z' } }, 201)
+      : json({ code: 'not_found', error: 'not found' }, 404))
+    mockV04UploadRuntime(mock)
+    render(<App />)
+    await screen.findByRole('textbox', { name: 'Message' })
+    const composer = document.querySelector('.composer-wrap')
+    if (!composer) throw new Error('Composer not found')
+    fireEvent.drop(composer, { dataTransfer: { files: [new File(['notes'], 'notes.md', { type: 'text/markdown' })], types: ['Files'] } })
+    expect(await screen.findByText('notes.md')).toBeTruthy()
+    fireEvent.drop(composer, { dataTransfer: { files: [new File(['binary'], 'archive.zip', { type: 'application/zip' })], types: ['Files'] } })
+    expect(await screen.findByText(/Unsupported file/)).toBeTruthy()
+    expect(mock).toHaveBeenCalledTimes(1)
   })
 
   it('renders registry-backed Workflow and safe research policy defaults', async () => {

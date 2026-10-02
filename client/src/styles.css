@@ -409,6 +409,41 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .thesis-field > span { display: flex; justify-content: space-between; gap: 10px; color: #8fa5ad; font-size: 10px; }
 .thesis-field small { color: #657d86; font-size: 9px; font-weight: 400; }
 .thesis-field input, .thesis-field select, .thesis-field textarea { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #344653; border-radius: 6px; color: #dce8ed; background: #121d25; font: inherit; }
+.knowledge-upload { width: min(760px, 100%); max-height: min(42vh, 360px); overflow: auto; margin: 0 auto 10px; padding: 10px 12px; border: 1px solid #2b4148; border-radius: 8px; background: #111d24; }
+.upload-selection, .write-knowledge-cta, .candidate-accept-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.upload-selection > div { display: grid; min-width: 0; gap: 4px; }
+.upload-selection strong { overflow: hidden; color: #dce8ed; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.upload-selection small, .upload-status { color: #79909b; font-size: 10px; }
+.upload-picker { position: relative; overflow: hidden; flex: 0 0 auto; cursor: pointer; }
+.upload-picker input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.upload-picker:focus-within { outline: 2px solid #72d2c4; outline-offset: 2px; }
+.text-action { padding: 5px 7px; border: 0; color: #8ca4ad; background: transparent; font-size: 10px; }
+.write-knowledge-cta { margin-top: 9px; padding-top: 9px; border-top: 1px solid #273541; color: #92a6af; font-size: 10px; }
+.v04-rights-form, .v04-preview { display: grid; gap: 9px; margin-top: 10px; padding-top: 11px; border-top: 1px solid #273541; }
+.v04-rights-form h3, .v04-preview h3 { margin: 4px 0 0; color: #dce8ed; font-size: 13px; }
+.v04-field { display: grid; gap: 4px; color: #91a7b0; font-size: 10px; }
+.v04-field input, .v04-field select, .v04-field textarea { width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid #344653; border-radius: 5px; color: #dce8ed; background: #121d25; font: inherit; }
+.v04-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.rights-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin: 0; padding: 8px; border: 1px solid #344653; border-radius: 6px; }
+.rights-checks legend { padding: 0 4px; color: #91a7b0; font-size: 10px; }
+.rights-checks label { display: flex; align-items: flex-start; gap: 6px; color: #b8c9cf; font-size: 10px; line-height: 1.4; }
+.rights-checks input, .candidate-item input { accent-color: #72d2c4; }
+.preview-status { padding: 4px 7px; border: 1px solid #3a5d5a; border-radius: 999px; color: #a0ded4; font-size: 9px; white-space: nowrap; }
+.preview-status.preview_partial, .partial-notice { border-color: #79613a; color: #e5c58d; }
+.preview-status.blocked, .preview-status.incompatible_schema, .preview-status.stale_revision { border-color: #744b4c; color: #e0a8a8; }
+.candidate-group { display: grid; gap: 6px; }
+.candidate-group h4 { margin: 0; color: #b8c9cf; font-size: 11px; text-transform: capitalize; }
+.candidate-group h4 small { color: #718895; font-weight: 400; }
+.candidate-item { display: flex; align-items: flex-start; gap: 8px; padding: 7px; border: 1px solid #2b3a44; border-radius: 6px; background: #131e26; cursor: pointer; }
+.candidate-item > input { flex: 0 0 auto; margin-top: 2px; }
+.candidate-item > span { display: grid; min-width: 0; gap: 4px; }
+.candidate-item strong { overflow-wrap: anywhere; color: #dce8ed; font-size: 10px; }
+.candidate-item small { color: #81959e; font-size: 9px; line-height: 1.45; overflow-wrap: anywhere; }
+.candidate-accept-actions { padding-top: 7px; border-top: 1px solid #273541; color: #91a7b0; font-size: 10px; }
+.acceptance-result { display: grid; gap: 4px; padding: 8px; border: 1px solid #395a4e; border-radius: 6px; color: #acd8c5; background: #142722; font-size: 10px; }
+.acceptance-result.failure { border-color: #70464a; color: #e5b3b4; background: #2c1d22; }
+.acceptance-result small { font-size: 9px; }
+.incompatibility-notice { border-color: #744b4c; }
 .thesis-field textarea { resize: vertical; line-height: 1.5; }
 .thesis-summary { margin-top: 18px; padding-top: 14px; border-top: 1px solid #273a45; }
 .thesis-summary h3 { margin: 9px 0; color: #dce9ed; font-size: 15px; }

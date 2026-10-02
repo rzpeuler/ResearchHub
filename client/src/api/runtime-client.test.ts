@@ -43,6 +43,18 @@ describe('RuntimeClient', () => {
     await expect(unauthorized.bootstrap()).rejects.toMatchObject({ message: 'ResearchHub Runtime authorization expired. Reload the page.' })
   })
 
+  it('preserves structured V0.4 stale revision conflicts from candidate acceptance', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => fetchMock.mock.calls.length === 1
+      ? json(bootstrap)
+      : json({ status: 'stale_revision', knowledgeBaseId: 'kb-1', knowledgeBaseRevision: 8, baseRevision: 7, previewWorkflowRunId: 'preview-1', acceptedCandidateIds: [], createdIds: [], updatedIds: [], errors: [{ code: 'STALE_REVISION', message: 'Knowledge Base revision changed' }] }, 409))
+    const client = new RuntimeClient(fetchMock)
+    await client.bootstrap()
+    const result = await client.acceptRawDocumentPreviewV04('preview-1', ['candidate-1'])
+    expect(result.status).toBe('stale_revision')
+    expect(result.errors[0]?.message).toBe('Knowledge Base revision changed')
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe('/api/production/raw-document-preview-v04/accept')
+  })
+
   it('encodes Graph read contracts and never adds a mutation token', async () => {
     const paths: string[] = []; const headers: Headers[] = []
     const client = new RuntimeClient(async (input, init) => { paths.push(String(input)); headers.push(new Headers(init?.headers)); return json({ themeGroups: [], industries: { items: [], total: 0, limit: 30, truncated: false }, companies: { items: [], total: 0, limit: 30, truncated: false }, products: { items: [], total: 0, limit: 30, truncated: false }, technologies: { items: [], total: 0, limit: 30, truncated: false } }) })

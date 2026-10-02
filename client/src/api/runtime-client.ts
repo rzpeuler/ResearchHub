@@ -62,6 +62,11 @@ export interface ThesisCriterionConfirmResult { readonly status: 'confirmed' | '
 export type ThesisDecision = 'ACCEPT' | 'REJECT' | 'DEFER'
 export interface ThesisDecisionResult { readonly status: string; readonly reviewCaseId: string; readonly decisionState?: string; readonly replay?: boolean; readonly knowledgeBaseRevision?: number; readonly committedRevision?: number; readonly writerRunId?: string; readonly errors: readonly string[] }
 export interface AttachmentRef { readonly attachmentId: string; readonly filename: string; readonly mediaType: string; readonly size: number; readonly sha256: string; readonly createdAt: string }
+export interface RawDocumentCandidateGroupV04 { readonly candidateId: string; readonly kind: 'entity' | 'relation' | 'claim'; readonly candidate: Readonly<Record<string, unknown>>; readonly provenanceRefs: { readonly sourceRef: string; readonly rawRef: string; readonly evidenceBlockRefs: readonly string[] } }
+export type RawDocumentPreviewStatusV04 = 'preview_ready' | 'preview_partial' | 'source_only' | 'blocked' | 'cancelled' | 'incompatible_schema' | 'stale_revision'
+export interface RawDocumentPreviewV04 { readonly runId: string; readonly status: RawDocumentPreviewStatusV04; readonly knowledgeBaseId?: string; readonly sourceRef?: string; readonly rawRef?: string; readonly documentId?: string; readonly candidateGroups: readonly RawDocumentCandidateGroupV04[]; readonly committable: boolean; readonly errorSummary?: string }
+export interface RawDocumentPreviewPollV04 { readonly runId: string; readonly workflow?: WorkflowRun; readonly preview: RawDocumentPreviewV04 | null; readonly committable: boolean }
+export interface RawDocumentAcceptanceV04 { readonly status: string; readonly knowledgeBaseId: string; readonly knowledgeBaseRevision: number; readonly baseRevision: number; readonly previewWorkflowRunId: string; readonly extractionCompleteness?: 'complete' | 'partial'; readonly acceptedCandidateIds: readonly string[]; readonly createdIds: readonly string[]; readonly updatedIds: readonly string[]; readonly errors: readonly { readonly code: string; readonly message: string }[] }
 export interface ClientEvent { readonly eventId: string; readonly conversationId: string; readonly timestamp: string; readonly type: string; readonly role?: 'user' | 'assistant'; readonly summary?: string; readonly status?: string; readonly toolCallId?: string; readonly name?: string; readonly isError?: boolean; readonly steeringCount?: number; readonly followUpCount?: number; readonly code?: string }
 export interface BootstrapResponse { readonly runtime: { readonly origin: string; readonly runtimeToken: string }; readonly origin: string; readonly session: SessionState; readonly conversations: readonly ConversationSummary[]; readonly knowledgeBase?: KnowledgeBaseStatus; readonly openReviewCases?: number; readonly knowledgeError?: RuntimeErrorBody }
 export interface DailyBriefSummary { readonly reportId: string; readonly briefType: 'morning' | 'evening'; readonly tradeDate: string; readonly generatedAt: string; readonly quality: { readonly topCount: number; readonly reportItemWithSourceRatio: number; readonly reportItemCount?: number; readonly claimCount?: number }; readonly sections: readonly { readonly title: string; readonly unavailable?: boolean }[] }
@@ -156,7 +161,7 @@ export class RuntimeClient {
 
   constructor(fetchImpl: FetchLike = defaultFetch) { this.fetchImpl = fetchImpl }
 
-  private async request<T>(path: string, init: RequestInit = {}, mutation = false): Promise<T> {
+  private async request<T>(path: string, init: RequestInit = {}, mutation = false, acceptedStatuses: readonly number[] = []): Promise<T> {
     const headers = createHeaders(init.headers)
     headers.set('Accept', 'application/json')
     if (mutation) {
@@ -168,7 +173,7 @@ export class RuntimeClient {
     const response = await this.fetchImpl(path, { ...init, headers: headers as unknown as HeadersInit })
     let body: unknown
     try { body = await response.json() } catch { body = undefined }
-    if (!response.ok) {
+    if (!response.ok && !acceptedStatuses.includes(response.status)) {
       const error = isRecord(body) ? body as unknown as RuntimeErrorBody : undefined
       const message = response.status === 401 ? 'ResearchHub Runtime authorization expired. Reload the page.' : safeErrorMessage(error?.error)
       throw new RuntimeClientError(error?.code ?? 'failed', message, response.status)
@@ -216,6 +221,14 @@ export class RuntimeClient {
   async cancelWorkflow(runId: string): Promise<unknown> { return this.mutate('/api/workflows/cancel', { runId }) }
   async uploadAttachment(file: File): Promise<AttachmentRef> { const form = new FormData(); form.append('file', file, file.name); const value = await this.request<{ attachment: AttachmentRef }>('/api/attachments', { method: 'POST', body: form }, true); return value.attachment }
   async startProduction(attachmentId: string): Promise<{ readonly accepted: boolean; readonly runId: string; readonly workflow?: WorkflowRun }> { return this.mutate('/api/production/ingest', { attachmentId }) }
+  async startRawDocumentPreviewV04(input: { readonly attachmentId: string; readonly sourceMetadata: Readonly<Record<string, unknown>>; readonly rights: Readonly<Record<string, unknown>> }): Promise<{ readonly accepted: boolean; readonly runId: string; readonly committable: false; readonly workflow?: WorkflowRun }> { return this.mutate('/api/production/raw-document-preview-v04', input) }
+  async getRawDocumentPreviewV04(runId: string): Promise<RawDocumentPreviewPollV04> { return this.request(`/api/production/raw-document-preview-v04/${encodeURIComponent(runId)}`) }
+  async acceptRawDocumentPreviewV04(previewWorkflowRunId: string, acceptedCandidateIds: readonly string[]): Promise<RawDocumentAcceptanceV04> {
+    const value = await this.request<unknown>('/api/production/raw-document-preview-v04/accept', { method: 'POST', body: JSON.stringify({ previewWorkflowRunId, acceptedCandidateIds }) }, true, [409, 422])
+    if (isRecord(value) && typeof value.status === 'string') return value as unknown as RawDocumentAcceptanceV04
+    if (isRecord(value)) throw new RuntimeClientError(typeof value.code === 'string' ? value.code : 'failed', safeErrorMessage(value.error), 422)
+    throw new RuntimeClientError('failed', 'Candidate acceptance returned an invalid response', 422)
+  }
   async listDailyBriefs(limit = 10): Promise<readonly DailyBriefSummary[]> { return (await this.request<{ briefs: readonly DailyBriefSummary[] }>(`/api/daily-briefs?limit=${limit}`)).briefs }
   async getDailyBrief(reportId: string): Promise<DailyBriefReport> { return this.request(`/api/daily-briefs/${encodeURIComponent(reportId)}`) }
   async listResearchReports(limit = 20): Promise<readonly ResearchReportSummary[]> { return (await this.request<{ reports: readonly ResearchReportSummary[] }>(`/api/research-reports?limit=${limit}`)).reports }
