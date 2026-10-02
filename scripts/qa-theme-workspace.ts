@@ -73,7 +73,7 @@ async function seedFixture(kbRoot: string): Promise<string> {
   const handle = await registry.refresh(kbRoot)
   const exposureA: KnowledgeRelationV04 = { id: 'relation:qa-theme-exposure-accelerators', type: 'theme_exposure', sourceRef: themeRef as `entity:${string}`, targetRef: INDUSTRY_A.id, sourceRefs: [SOURCE_REF], attributes: { importance: 'core' }, lifecycle: { status: 'active' } }
   const exposureB: KnowledgeRelationV04 = { id: 'relation:qa-theme-exposure-packaging', type: 'theme_exposure', sourceRef: themeRef as `entity:${string}`, targetRef: INDUSTRY_B.id, sourceRefs: [SOURCE_REF], attributes: { importance: 'material' }, lifecycle: { status: 'active' } }
-  const upstream: KnowledgeRelationV04 = { id: 'relation:qa-accelerators-upstream-of-packaging', type: 'upstream_of', sourceRef: INDUSTRY_A.id, targetRef: INDUSTRY_B.id, sourceRefs: [SOURCE_REF], lifecycle: { status: 'active' } }
+  const upstream: KnowledgeRelationV04 = { id: 'relation:qa-packaging-upstream-of-accelerators', type: 'upstream_of', sourceRef: INDUSTRY_B.id, targetRef: INDUSTRY_A.id, sourceRefs: [SOURCE_REF], lifecycle: { status: 'active' } }
   const companyAExposure: KnowledgeRelationV04 = { id: 'relation:qa-silicon-exposure', type: 'business_exposure', sourceRef: COMPANY_A.id, targetRef: INDUSTRY_A.id, sourceRefs: [SOURCE_REF], attributes: { exposureBasis: 'direct_operation', realizationStage: 'commercialized', materiality: 'core' }, lifecycle: { status: 'active' } }
   const companyBExposure: KnowledgeRelationV04 = { id: 'relation:qa-packaging-exposure', type: 'business_exposure', sourceRef: COMPANY_B.id, targetRef: INDUSTRY_A.id, sourceRefs: [SOURCE_REF], attributes: { exposureBasis: 'direct_operation', realizationStage: 'commercialized', materiality: 'material' }, lifecycle: { status: 'active' } }
   const industryA: KnowledgeIndustryV04 = { ...INDUSTRY_A, type: 'industry', description: '加速器芯片、板卡与系统级算力产品。', lifecycle: { status: 'active' } }
@@ -119,7 +119,7 @@ async function seedFixture(kbRoot: string): Promise<string> {
 
   const industryCandidateA: ThemeScopeCandidateV04 = { kind: 'industry', name: INDUSTRY_A.name, canonicalRef: INDUSTRY_A.id }
   const industryCandidateB: ThemeScopeCandidateV04 = { kind: 'industry', name: INDUSTRY_B.name, canonicalRef: INDUSTRY_B.id }
-  const relationCandidate: ThemeScopeCandidateV04 = { kind: 'relation', relationType: 'upstream_of', sourceFingerprint: fingerprintThemeScopeCandidateV04(industryCandidateA), targetFingerprint: fingerprintThemeScopeCandidateV04(industryCandidateB), canonicalRef: upstream.id }
+  const relationCandidate: ThemeScopeCandidateV04 = { kind: 'relation', relationType: 'upstream_of', sourceFingerprint: fingerprintThemeScopeCandidateV04(industryCandidateB), targetFingerprint: fingerprintThemeScopeCandidateV04(industryCandidateA), canonicalRef: upstream.id }
   const evidence: ThemeScopeEvidenceV04 = { sourceRef: SOURCE_REF, rawRef, locator: 'QA fixture, sections 1–4' }
   const scope: ThemeScopeDecisionBatchV04 = { version: '0.4', themeRef: themeRef as ThemeScopeDecisionBatchV04['themeRef'], basedOnRevision: handle.revision, decisions: [decision(themeRef, handle.revision, industryCandidateA, evidence), decision(themeRef, handle.revision, industryCandidateB, evidence), decision(themeRef, handle.revision, relationCandidate, evidence)] }
   await commit(kbRoot, registry, 'seed-qa-theme-workspace-content', [

@@ -6,6 +6,16 @@ import type { ThemeWorkspaceCompanyProjection, ThemeWorkspaceIndustryProjection,
 
 const emptyContent = { factsByType: {}, sectionCatalog: [], factsBySection: {}, unclassifiedFacts: [], classification: { status: 'classified' as const, method: 'not_needed' as const, revision: 7, classifiedCount: 0, unclassifiedCount: 0 }, modules: [], coreViews: { items: [], defaultCount: 3 as const, total: 0, truncated: false }, timeline: { historicalEvents: [], futureCatalysts: [], eventsLimit: { total: 0, limit: 30, truncated: false }, catalystsLimit: { total: 0, limit: 30, truncated: false } }, limited: {}, omittedRestrictedCount: 0 }
 const directory = { themeGroups: [{ ref: 'theme-group:default', name: '默认分组', themes: [{ ref: 'entity:theme-a', name: '主题 A' }, { ref: 'entity:theme-b', name: '主题 B' }] }], industries: { items: [], total: 0, limit: 30, truncated: false }, companies: { items: [], total: 0, limit: 30, truncated: false }, products: { items: [], total: 0, limit: 30, truncated: false }, technologies: { items: [], total: 0, limit: 30, truncated: false } }
+const companySections = [
+  ['company-overview', '公司概况'], ['business-model', '商业模式'], ['business-segments', '业务构成'], ['revenue-profit-drivers', '收入与利润驱动'],
+  ['products', '产品'], ['technologies', '技术'], ['industry-exposure', '行业敞口'], ['supply-chain', '供应链'], ['competition', '竞争格局'],
+  ['financial-quality', '财务质量'], ['growth-drivers', '增长驱动'], ['management-capital-allocation', '管理层与资本配置'], ['catalysts', '催化剂'],
+  ['risks', '风险'], ['valuation', '估值'], ['bull-base-bear', '多空情景'], ['variant-perception', '预期差'], ['investment-thesis', '投资逻辑'], ['monitoring-checklist', '跟踪清单'],
+] as const
+const industrySections = [
+  ['industry_definition', '行业定义与范围'], ['market_size_growth', '市场规模与增长'], ['supply_demand_analysis', '供需分析'], ['industry_chain_analysis', '产业链分析'],
+  ['competitive_landscape', '竞争格局'], ['technology_evolution', '技术演进'], ['company_mapping', '重点公司'], ['risk_analysis', '风险分析'],
+] as const
 
 function overview(themeRef = 'entity:theme-a'): ThemeWorkspaceProjection {
   return { status: 'available', knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 7, theme: { ref: themeRef, name: themeRef.endsWith('a') ? '主题 A' : '主题 B', themeGroupRef: 'theme-group:default' }, graph: { nodes: [{ ref: 'entity:industry-a', name: '行业 A', importance: 'core' }, { ref: 'entity:industry-b', name: '行业 B', importance: 'material' }], edges: [{ ref: 'relation:a-b', relationType: 'upstream_of', sourceRef: 'entity:industry-b', targetRef: 'entity:industry-a' }], nodeTotal: 2, edgeTotal: 1, nodeLimit: 60, edgeLimit: 120, truncated: false }, scope: { includedIndustryCount: 2, includedRelationCount: 1, pendingCount: 0, excludedCount: 0, basedOnRevision: 7 }, responseBounds: { maxBytes: 1_000_000, serializedBytes: 500, truncated: false } }
@@ -14,12 +24,12 @@ function overview(themeRef = 'entity:theme-a'): ThemeWorkspaceProjection {
 function industryProjection(industryRef: string, companyRefs: readonly string[]): ThemeWorkspaceIndustryProjection {
   const companies = companyRefs.map((ref) => ({ ref, name: ref.split(':').at(-1)!, ticker: ref.toUpperCase(), exchange: 'SSE' }))
   const competition = { ref: `module:${industryRef}`, schemaId: 'competition-landscape-v1', columns: [{ id: 'company', label: '公司', role: 'company' as const }, { id: 'products', label: '主要产品', role: 'main_products' as const }], rows: companies.map((company) => ({ companyRef: company.ref, cells: [{ columnId: 'products', value: { status: 'available' as const, displayValue: '服务器' }, notComparable: false }] })), rowTotal: companies.length, truncated: false }
-  return { knowledgeBaseId: 'kb', revision: 7, themeRef: 'entity:theme-a', industry: { ref: industryRef, name: industryRef.endsWith('a') ? '行业 A' : '行业 B' }, sections: { ...emptyContent, competition }, companies, companiesLimit: { total: companies.length, limit: 40, truncated: false }, responseBounds: { maxBytes: 1_000_000, serializedBytes: 700, truncated: false } }
+  return { knowledgeBaseId: 'kb', revision: 7, themeRef: 'entity:theme-a', industry: { ref: industryRef, name: industryRef.endsWith('a') ? '行业 A' : '行业 B' }, sections: { ...emptyContent, sectionCatalog: industrySections.map(([id, title]) => ({ id, title })), factsBySection: Object.fromEntries(industrySections.map(([id]) => [id, []])), competition }, companies, companiesLimit: { total: companies.length, limit: 40, truncated: false }, responseBounds: { maxBytes: 1_000_000, serializedBytes: 700, truncated: false } }
 }
 
 function companyProjection(industryRef: string, companyRef: string): ThemeWorkspaceCompanyProjection {
   const fact = { ref: `claim:${companyRef}`, kind: 'claim' as const, semanticType: 'fact', title: '经营情况', statement: `${companyRef} 的详细公司事实` }
-  return { knowledgeBaseId: 'kb', revision: 7, themeRef: 'entity:theme-a', industryRef, company: { ref: companyRef, name: `详情 ${companyRef.split(':').at(-1)}` }, sections: { ...emptyContent, factsByType: { fact: [fact] }, sectionCatalog: [{ id: 'company_profile', title: '公司概况' }], factsBySection: { company_profile: [fact] }, classification: { status: 'classified', method: 'deterministic_fallback', revision: 7, classifiedCount: 1, unclassifiedCount: 0 } }, responseBounds: { maxBytes: 1_000_000, serializedBytes: 400, truncated: false } }
+  return { knowledgeBaseId: 'kb', revision: 7, themeRef: 'entity:theme-a', industryRef, company: { ref: companyRef, name: `详情 ${companyRef.split(':').at(-1)}` }, sections: { ...emptyContent, factsByType: { fact: [fact] }, sectionCatalog: companySections.map(([id, title]) => ({ id, title })), factsBySection: { 'company-overview': [fact] }, classification: { status: 'classified', method: 'deterministic_fallback', revision: 7, classifiedCount: 1, unclassifiedCount: 0 } }, responseBounds: { maxBytes: 1_000_000, serializedBytes: 400, truncated: false } }
 }
 
 function makeClient(overrides: Partial<RuntimeClient> = {}): RuntimeClient {
@@ -64,6 +74,16 @@ describe('KnowledgeGraphPage', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'company-b' }).closest('tr')?.className).toContain('is-selected'))
     await screen.findByText('entity:company-b 的详细公司事实')
     expect(client.getThemeWorkspaceCompany).toHaveBeenLastCalledWith('entity:theme-a', 'entity:industry-a', 'entity:company-b', { expectedRevision: 7 })
+  })
+
+  it('shows graph relation labels in Chinese with source-to-target direction intact', async () => {
+    const client = makeClient()
+    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
+    await screen.findByText('关系明细')
+    const relationDetails = screen.getByText('关系明细').closest('details')
+    expect(relationDetails?.textContent).toContain('上游供给')
+    expect(relationDetails?.textContent).toMatch(/行业 B→ 上游供给 →行业 A/)
   })
 
   it('ignores late overview responses from a Theme that has already been switched away', async () => {
@@ -144,9 +164,32 @@ describe('KnowledgeGraphPage', () => {
     expect(await screen.findByText('服务器需求保持增长。')).toBeTruthy()
     expect(screen.getByText('仍需跟踪行业变化。')).toBeTruthy()
     expect(screen.getByText('部分事实尚未归类')).toBeTruthy()
-    const emptyChapter = screen.getByText('风险分析').closest('details')
-    expect(emptyChapter?.open).toBe(false)
-    expect(emptyChapter?.textContent).toContain('暂无已归类知识')
+    const emptyChapterGroup = screen.getByText('暂无内容的章节（1）').closest('details')
+    expect(emptyChapterGroup?.open).toBe(false)
+    fireEvent.click(screen.getByText('暂无内容的章节（1）'))
+    expect(emptyChapterGroup?.open).toBe(true)
+    expect(emptyChapterGroup?.textContent).toContain('风险分析')
+    expect(emptyChapterGroup?.textContent).toContain('该模块暂无已归类知识。')
+  })
+
+  it('folds empty industry and company chapters into compact expandable summaries', async () => {
+    const client = makeClient()
+    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
+    const emptyIndustrySections = (await screen.findByText('暂无内容的章节（8）')).closest('details')
+    expect(emptyIndustrySections?.open).toBe(false)
+    fireEvent.click(screen.getByText('暂无内容的章节（8）'))
+    expect(emptyIndustrySections?.open).toBe(true)
+    expect(emptyIndustrySections?.textContent?.match(/该模块暂无已归类知识。/g)).toHaveLength(8)
+    fireEvent.click(screen.getByRole('button', { name: 'company-a' }))
+    await screen.findByText('entity:company-a 的详细公司事实')
+    const emptyCompanySections = screen.getByText('暂无内容的章节（18）').closest('details')
+    expect(emptyCompanySections?.open).toBe(false)
+    fireEvent.click(screen.getByText('暂无内容的章节（18）'))
+    expect(emptyCompanySections?.open).toBe(true)
+    expect(emptyCompanySections?.textContent).toContain('商业模式')
+    expect(emptyCompanySections?.textContent).toContain('跟踪清单')
+    expect(emptyCompanySections?.textContent?.match(/该模块暂无已归类知识。/g)).toHaveLength(18)
   })
 
   it('formats competition scale values while retaining currency, date, and comparability cues', async () => {

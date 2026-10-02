@@ -26,6 +26,7 @@ const localizedSections: Readonly<Record<string, string>> = {
   risks: '风险', valuation: '估值', 'bull-base-bear': '多空情景', 'variant-perception': '预期差', 'investment-thesis': '投资逻辑', 'monitoring-checklist': '跟踪清单',
 }
 function localizedSectionTitle(id: string, fallback: string): string { return localizedSections[id] ?? fallback }
+function relationLabel(value: string): string { return value === 'upstream_of' ? '上游供给' : value === 'depends_on' ? '依赖' : sectionLabel(value) }
 function formatCompetitionValue(value: string, role: string, currency?: string): string {
   if ((role !== 'market_cap' && role !== 'annual_revenue') || !currency) return value
   const amount = Number(value)
@@ -91,14 +92,14 @@ function EmptyState({ title, detail }: { readonly title: string; readonly detail
 
 function GraphPanel({ projection, selectedIndustryRef, busy, onSelectIndustry }: { readonly projection?: ThemeWorkspaceProjection; readonly selectedIndustryRef?: string; readonly busy: boolean; readonly onSelectIndustry: (ref: string) => void }): ReactElement {
   const nodes = useMemo(() => projection ? positionGraph(projection.graph.nodes, projection.graph.edges, selectedIndustryRef) : [], [projection, selectedIndustryRef])
-  const edges: Edge[] = useMemo(() => (projection?.graph.edges ?? []).map((edge) => ({ id: edge.ref, source: edge.sourceRef, target: edge.targetRef, label: edge.relationType.replaceAll('_', ' '), markerEnd: { type: MarkerType.ArrowClosed, color: '#6bbcb0' }, style: { stroke: '#528e87', strokeWidth: 1.7 }, labelStyle: { fill: '#a8c6c2', fontSize: 10 }, labelBgStyle: { fill: '#15242b', fillOpacity: .94 } })), [projection])
+  const edges: Edge[] = useMemo(() => (projection?.graph.edges ?? []).map((edge) => ({ id: edge.ref, source: edge.sourceRef, target: edge.targetRef, label: relationLabel(edge.relationType), markerEnd: { type: MarkerType.ArrowClosed, color: '#6bbcb0' }, style: { stroke: '#528e87', strokeWidth: 1.7 }, labelStyle: { fill: '#a8c6c2', fontSize: 10 }, labelBgStyle: { fill: '#15242b', fillOpacity: .94 } })), [projection])
   return <section className="theme-workspace-panel theme-graph-panel" aria-labelledby="theme-graph-title">
     <div className="theme-panel-heading"><div><div className="theme-panel-kicker">CONFIRMED SCOPE · SCHEMA 0.4</div><h2 id="theme-graph-title">产业图谱</h2></div>{projection ? <span className="theme-revision">Revision {projection.revision}</span> : null}</div>
     {busy ? <div className="theme-graph-loading" role="status">读取已确认的产业范围…</div> : !projection ? <EmptyState title="选择一个 Theme" detail="图谱只展示该 Theme 已确认纳入的行业环节及关系。" /> : projection.graph.nodes.length === 0 ? <EmptyState title="尚无已确认的行业节点" detail="该 Theme 目前没有可展示的产业范围。" /> : <>
       <div className="theme-flow-canvas" aria-label="行业关系图谱"><ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodeClick={(_, node) => onSelectIndustry(node.id)} nodesConnectable={false} nodesDraggable={false} fitView fitViewOptions={{ padding: .18 }} minZoom={.2} maxZoom={2} proOptions={{ hideAttribution: true }}><Background color="#29404b" gap={24} /><Controls showInteractive={false} /><MiniMap nodeColor={(node) => (node.data as GraphNodeData).selected ? '#8cd4c6' : '#42756f'} pannable zoomable maskColor="rgba(8, 16, 20, .7)" style={{ width: 116, height: 74, backgroundColor: 'rgba(17, 30, 36, .96)' }} /></ReactFlow></div>
       <div className="theme-graph-summary"><span>{projection.graph.nodes.length}/{projection.graph.nodeTotal} 个行业节点</span><span>{projection.graph.edges.length}/{projection.graph.edgeTotal} 条关系</span>{projection.graph.truncated ? <strong>结果已截断</strong> : null}</div>
       <nav className="theme-node-list" aria-label="图谱行业节点">{projection.graph.nodes.map((node) => <button type="button" key={node.ref} className={node.ref === selectedIndustryRef ? 'is-selected' : ''} aria-pressed={node.ref === selectedIndustryRef} onClick={() => onSelectIndustry(node.ref)}>{node.name}</button>)}</nav>
-      {projection.graph.edges.length > 0 ? <details className="theme-edge-list"><summary>关系明细</summary><ul>{projection.graph.edges.map((edge) => <li key={edge.ref}><span>{projection.graph.nodes.find((node) => node.ref === edge.sourceRef)?.name ?? edge.sourceRef}</span><b>→ {sectionLabel(edge.relationType)} →</b><span>{projection.graph.nodes.find((node) => node.ref === edge.targetRef)?.name ?? edge.targetRef}</span></li>)}</ul></details> : null}
+      {projection.graph.edges.length > 0 ? <details className="theme-edge-list"><summary>关系明细</summary><ul>{projection.graph.edges.map((edge) => <li key={edge.ref}><span>{projection.graph.nodes.find((node) => node.ref === edge.sourceRef)?.name ?? edge.sourceRef}</span><b>→ {relationLabel(edge.relationType)} →</b><span>{projection.graph.nodes.find((node) => node.ref === edge.targetRef)?.name ?? edge.targetRef}</span></li>)}</ul></details> : null}
     </>}
   </section>
 }
@@ -116,15 +117,21 @@ function FactGroups({ content }: { readonly content?: ThemeWorkspaceContentProje
   const status = statusLabel[content.classification.status]
   const renderFacts = (facts: ThemeWorkspaceContentProjection['unclassifiedFacts']) => facts.map((fact) => <article className="theme-fact" key={fact.ref}><p>{fact.statement ?? fact.title}</p>{fact.value !== undefined && fact.value !== null ? <small>{String(fact.value)}{fact.unit ? ` ${fact.unit}` : ''}{fact.period ? ` · ${fact.period}` : ''}</small> : null}</article>)
   if (content.sectionCatalog.length === 0 && sectionFactCount === 0 && content.unclassifiedFacts.length === 0) return <EmptyState title="暂无已写入知识" detail="没有可展示且符合来源权利要求的 canonical 内容。" />
+  const populatedSections = content.sectionCatalog.filter((section) => (content.factsBySection[section.id]?.length ?? 0) > 0)
+  const emptySections = content.sectionCatalog.filter((section) => (content.factsBySection[section.id]?.length ?? 0) === 0)
   return <div className="theme-fact-groups">
     {status ? <div className="theme-classification-status" role="status">{status}{content.classification.reason ? <details><summary>分类详情</summary><p>{content.classification.reason}</p></details> : null}</div> : null}
-    {content.sectionCatalog.map((section) => {
+    {populatedSections.map((section) => {
       const facts = content.factsBySection[section.id] ?? []
-      return <details className="theme-fact-group" key={section.id} open={facts.length > 0}>
+      return <details className="theme-fact-group" key={section.id} open>
         <summary><span>{localizedSectionTitle(section.id, section.title)}</span><small>{facts.length > 0 ? `${facts.length} 条` : '暂无已归类知识'}</small></summary>
-        <div className="theme-fact-group-content">{facts.length ? renderFacts(facts) : <p className="theme-muted">该模块暂无已归类知识。</p>}</div>
+        <div className="theme-fact-group-content">{renderFacts(facts)}</div>
       </details>
     })}
+    {emptySections.length > 0 ? <details className="theme-empty-sections">
+      <summary>暂无内容的章节（{emptySections.length}）</summary>
+      <div className="theme-empty-sections-list">{emptySections.map((section) => <section key={section.id}><strong>{localizedSectionTitle(section.id, section.title)}</strong><p>该模块暂无已归类知识。</p></section>)}</div>
+    </details> : null}
     {content.unclassifiedFacts.length > 0 ? <section className="theme-fact-group theme-unclassified-group"><h4>未归类（{content.unclassifiedFacts.length}）</h4>{renderFacts(content.unclassifiedFacts)}</section> : null}
   </div>
 }
