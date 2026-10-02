@@ -120,6 +120,11 @@ function frameworkExecutor(): ReasoningExecutor {
         relationCandidates: [],
         coverageGaps: included ? [] : [{ gapId: 'gap-evidence', question: 'Which activities belong?', reason: 'No eligible retained Source/Raw evidence.', affectedCandidateIds: ['member-a', 'member-b'] }],
       }
+      if (input.theme.name === 'Name Only Theme') {
+        output.industryCandidates = []
+        output.relationCandidates = []
+        output.coverageGaps = []
+      }
       return { operation: request.operation, output }
     },
   }
@@ -192,6 +197,37 @@ test('refreshes after acquisition persists Source/Raw and allows acceptance at t
     const accepted = await target.accept({ workflowRunId: 'theme-service-acquisition-refresh' })
     assert.equal(accepted.status, 'committed')
     assert.equal((await loadKnowledgeBaseManifest(root)).revision, revisionAfterAcquisition + 1)
+  })
+})
+
+test('fetches and accepts a name-only Theme, then returns the same receipt on retry', async () => {
+  await withFreshKb('name-only-accept', async (root) => {
+    const registry = new KnowledgeBaseRegistry()
+    const target = service(root, registry)
+    const started = await target.start({ workflowRunId: 'theme-service-name-only', name: 'Name Only Theme' }).completion
+    assert.equal(started.status, 'awaiting_review')
+    const view = await target.getReviewCandidate('theme-service-name-only')
+    assert.equal(view.status, 'awaiting_review')
+    assert.deepEqual(view.candidate?.framework.industryCandidates, [])
+    assert.deepEqual(view.candidate?.framework.relationCandidates, [])
+    const baseRevision = (await loadKnowledgeBaseManifest(root)).revision
+
+    const accepted = await target.accept({ workflowRunId: 'theme-service-name-only' })
+    assert.equal(accepted.status, 'committed')
+    if (accepted.status !== 'committed') return
+    assert.equal(accepted.decisionCount, 0)
+    const replay = await target.accept({ workflowRunId: 'theme-service-name-only' })
+    assert.equal(replay.status, 'already_committed')
+    assert.equal(replay.themeRef, accepted.themeRef)
+    assert.equal(replay.decisionCount, 0)
+
+    const assets = await readCanonicalV04Assets(root)
+    const objects = assets.objects.map((item) => item.value)
+    assert.ok(objects.some((object) => object.id === accepted.themeRef && (object as { type?: string }).type === 'investment_theme'))
+    assert.ok(objects.some((object) => object.id === 'theme-group:default' && (object as { name?: string }).name === 'Default'))
+    assert.equal(objects.filter((object) => object.id.startsWith('entity:') && (object as { type?: string }).type === 'industry').length, 0)
+    assert.equal(objects.filter((object) => object.id.startsWith('relation:')).length, 0)
+    assert.equal((await loadKnowledgeBaseManifest(root)).revision, baseRevision + 1)
   })
 })
 

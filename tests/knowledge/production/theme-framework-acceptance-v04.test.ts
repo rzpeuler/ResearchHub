@@ -237,6 +237,73 @@ test('first acceptance with no includes commits Theme and pending/exclude decisi
   })
 })
 
+test('name-only acceptance commits only Theme and default group, then replays from its Writer receipt', async () => {
+  await withFreshKb('name-only', async (root) => {
+    const registry = new KnowledgeBaseRegistry()
+    const handle = await registry.mount(root)
+    const emptyFramework: ThemeFrameworkResult = {
+      proposedDefinition: { statement: 'A name-only research objective.', status: 'provisional', evidenceRefs: [] },
+      inclusionPrinciples: [],
+      exclusionPrinciples: [],
+      industryCandidates: [],
+      relationCandidates: [],
+      coverageGaps: [],
+    }
+    const adapter = new ThemeFrameworkAcceptanceV04({ registry, clock })
+    const input = {
+      workflowRunId: 'theme-framework-name-only-run',
+      knowledgeBaseId: handle.knowledgeBaseId,
+      expectedBaseRevision: handle.revision,
+      theme: { name: 'Name Only Theme' },
+      framework: emptyFramework,
+      decisions: [] as ThemeFrameworkDecision[],
+    }
+    const accepted = await adapter.commitThemeFrameworkAtomically(input)
+    assert.equal(accepted.status, 'committed', accepted.errors?.join('; '))
+    assert.equal(accepted.committedRevision, handle.revision + 1)
+    const assets = await readCanonicalV04Assets(root)
+    const objects = assets.objects.map((item) => item.value)
+    assert.ok(objects.some((object) => object.id === accepted.themeRef && (object as { type?: string }).type === 'investment_theme'))
+    assert.ok(objects.some((object) => object.id === 'theme-group:default' && (object as { name?: string }).name === 'Default'))
+    assert.equal(objects.filter((object) => object.id.startsWith('entity:') && (object as { type?: string }).type === 'industry').length, 0)
+    assert.equal(objects.filter((object) => object.id.startsWith('relation:')).length, 0)
+    assert.equal((await loadKnowledgeBaseManifest(root)).revision, handle.revision + 1)
+
+    const replay = await adapter.commitThemeFrameworkAtomically(input)
+    assert.equal(replay.status, 'already_committed')
+    assert.equal(replay.themeRef, accepted.themeRef)
+    assert.equal(replay.committedRevision, accepted.committedRevision)
+    assert.equal((await loadKnowledgeBaseManifest(root)).revision, handle.revision + 1)
+  })
+})
+
+test('zero decisions are rejected when framework candidates exist', async () => {
+  await withFreshKb('zero-decisions-with-candidates', async (root) => {
+    const registry = new KnowledgeBaseRegistry()
+    const handle = await registry.mount(root)
+    const resultFramework: ThemeFrameworkResult = {
+      proposedDefinition: { statement: 'A bounded theme.', status: 'provisional', evidenceRefs: [] },
+      inclusionPrinciples: [],
+      exclusionPrinciples: [],
+      industryCandidates: [candidate({ candidateId: 'industry-one', semanticFingerprint: 'industry-one', name: 'Industry One', recommendation: 'pending' })],
+      relationCandidates: [],
+      coverageGaps: [],
+    }
+    const result = await new ThemeFrameworkAcceptanceV04({ registry, clock }).commitThemeFrameworkAtomically({
+      workflowRunId: 'theme-framework-empty-decision-run',
+      knowledgeBaseId: handle.knowledgeBaseId,
+      expectedBaseRevision: handle.revision,
+      theme: { name: 'Must Review Candidate' },
+      framework: resultFramework,
+      decisions: [],
+    })
+    assert.equal(result.status, 'blocked')
+    assert.ok(result.errors?.some((message) => message.includes('one decision for every')))
+    assert.equal((await loadKnowledgeBaseManifest(root)).revision, handle.revision)
+    assert.equal((await readCanonicalV04Assets(root)).objects.length, 0)
+  })
+})
+
 test('stale accepted revisions conflict before committing Theme or canonical candidates', async () => {
   await withFreshKb('stale-revision', async (root) => {
     const registry = new KnowledgeBaseRegistry()

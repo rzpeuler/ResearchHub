@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { allocateKnowledgeId } from '../registry/id-allocation.ts'
 import { KnowledgeBaseRegistry } from '../registry/registry.ts'
 import type { KnowledgeAssetV04, KnowledgeEntityV04, KnowledgeIndustryV04, KnowledgeRelationV04 } from '../schema/domain-v04.ts'
@@ -60,6 +61,58 @@ function writeFailure(changeSet: KnowledgeChangeSetV04, code: string, message: s
     createdIds: [],
     updatedIds: [],
     error: { code, message },
+  }
+}
+
+async function hasThemeOnlyWriterReceipt(input: {
+  readonly root: string
+  readonly workflowRunId: string
+  readonly knowledgeBaseId: string
+  readonly expectedBaseRevision: number
+  readonly themeRef: string
+  readonly themeGroupRef: string
+  readonly themeDigest: string
+  readonly currentRevision: number
+}): Promise<boolean> {
+  try {
+    const raw = JSON.parse(await readFile(`${input.root}/logs/research/${input.workflowRunId}.yaml`, 'utf8')) as Record<string, unknown>
+    const context = raw.ingestionContext
+    const changes = raw.changes
+    const createdIds = typeof changes === 'object' && changes !== null && !Array.isArray(changes)
+      ? (changes as Record<string, unknown>).createdIds
+      : undefined
+    const expectedChangeSetId = `changeset-theme-framework-name-only-${input.themeDigest.slice('sha256:'.length, 'sha256:'.length + 24)}`
+    if (raw.workflowRunId !== input.workflowRunId
+      || raw.knowledgeBaseId !== input.knowledgeBaseId
+      || raw.schemaVersionAtExecution !== '0.4'
+      || raw.status !== 'completed'
+      || raw.writeStatus !== 'committed'
+      || raw.changeSetId !== expectedChangeSetId
+      || typeof raw.changeSetHash !== 'string' || !/^sha256:[a-f0-9]{64}$/u.test(raw.changeSetHash)
+      || raw.committedRevision !== input.expectedBaseRevision + 1
+      || Number(raw.committedRevision) > input.currentRevision
+      || typeof context !== 'object' || context === null || Array.isArray(context)
+      || hashKnowledgeObject(context) !== hashKnowledgeObject({
+        producerType: 'theme_framework_name_only',
+        producerRunId: input.workflowRunId,
+        themeRef: input.themeRef,
+        themeDigest: input.themeDigest,
+      })
+      || !Array.isArray(createdIds)
+      || !(createdIds as unknown[]).includes(input.themeRef)
+      || (createdIds as unknown[]).some((id) => id !== input.themeRef && id !== input.themeGroupRef)
+      || new Set(createdIds as unknown[]).size !== (createdIds as unknown[]).length) return false
+
+    const assets = await readCanonicalV04Assets(input.root)
+    const objects = new Map<string, KnowledgeAssetV04>(assets.objects.map((item) => [item.value.id, item.value]))
+    const theme = objects.get(input.themeRef) as KnowledgeEntityV04 | undefined
+    const group = objects.get(input.themeGroupRef)
+    return theme?.type === 'investment_theme'
+      && group?.id.startsWith('theme-group:') === true
+      && (group as { lifecycle?: { status?: string } }).lifecycle?.status === 'active'
+      && (theme as KnowledgeEntityV04 & { themeGroupRef?: string }).themeGroupRef === input.themeGroupRef
+  } catch {
+    return false
   }
 }
 
@@ -277,7 +330,54 @@ export class ThemeFrameworkAcceptanceV04 implements ThemeFrameworkAtomicCommitPo
 
     const indexed = indexFramework(input.framework, input.decisions)
     if (!indexed.valid) return failure('blocked', [indexed.error])
-    if (input.decisions.length === 0 || input.decisions.length > THEME_SCOPE_V04_LIMITS.maxDecisionsPerBatch) return failure('blocked', [`A4 requires between 1 and ${THEME_SCOPE_V04_LIMITS.maxDecisionsPerBatch} decisions; no decisions were truncated`])
+    const hasCandidates = input.framework.industryCandidates.length > 0 || input.framework.relationCandidates.length > 0
+    if (input.decisions.length === 0 && hasCandidates) return failure('blocked', ['Theme Framework acceptance requires one decision for every Industry and Relation candidate'])
+    if (input.decisions.length === 0 && !hasCandidates) {
+      const themeDigest = hashKnowledgeObject(themeInput)
+      if (themePlan.status === 'no_changes') {
+        const replayed = await hasThemeOnlyWriterReceipt({
+          root: handle.rootRef,
+          workflowRunId: input.workflowRunId,
+          knowledgeBaseId: input.knowledgeBaseId,
+          expectedBaseRevision: input.expectedBaseRevision,
+          themeRef,
+          themeGroupRef: themePlan.result.themeGroupRef ?? 'theme-group:default',
+          themeDigest,
+          currentRevision: handle.revision,
+        })
+        if (replayed) return success('already_committed', themeRef, input.expectedBaseRevision + 1)
+        if (handle.revision !== input.expectedBaseRevision) return failure('conflict', [`Knowledge Base revision changed: expected ${input.expectedBaseRevision}, current ${handle.revision}`])
+        return failure('blocked', ['The requested Theme already exists without a matching Writer receipt for this workflowRunId'])
+      }
+      if (handle.revision !== input.expectedBaseRevision || themePlan.result.baseRevision !== input.expectedBaseRevision) {
+        return failure('conflict', [`Knowledge Base revision changed: expected ${input.expectedBaseRevision}, current ${handle.revision}`])
+      }
+      const context = {
+        producerType: 'theme_framework_name_only',
+        producerRunId: input.workflowRunId,
+        themeRef,
+        themeDigest,
+      }
+      const changeSet: KnowledgeChangeSetV04 = {
+        changeSetId: `changeset-theme-framework-name-only-${themeDigest.slice('sha256:'.length, 'sha256:'.length + 24)}`,
+        workflowRunId: input.workflowRunId,
+        knowledgeBaseId: input.knowledgeBaseId,
+        schemaVersion: '0.4',
+        storageFormatVersion: '1',
+        expectedBaseRevision: input.expectedBaseRevision,
+        operations: [...themePlan.operations],
+        ingestionContext: context,
+      }
+      const validation = await validateKnowledgeChangeSetV04(handle, changeSet, { mode: 'commit', now: this.clock })
+      if (!validation.validatedChangeSet) return failure('blocked', validation.report.errors.map((error) => `${error.code}: ${error.message}`))
+      const written = await writeKnowledgeBase(handle, validation.validatedChangeSet, { registry: this.registry, clock: this.clock }) as KnowledgeWriteResultV04
+      if (written.status === 'committed' || written.status === 'already_committed') {
+        return success(written.status, themeRef, written.committedRevision)
+      }
+      const status = /revision|stale|conflict/i.test(`${written.error?.code ?? ''} ${written.error?.message ?? ''}`) ? 'conflict' : 'failed'
+      return failure(status, [written.error?.message ?? 'Shared Writer did not commit the name-only Theme ChangeSet'])
+    }
+    if (input.decisions.length > THEME_SCOPE_V04_LIMITS.maxDecisionsPerBatch) return failure('blocked', [`A4 accepts at most ${THEME_SCOPE_V04_LIMITS.maxDecisionsPerBatch} decisions; no decisions were truncated`])
 
     const industryFingerprints = new Map<string, ThemeScopeFingerprintV04>()
     for (const industry of indexed.industries.values()) {
