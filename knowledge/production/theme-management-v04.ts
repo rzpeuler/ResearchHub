@@ -34,6 +34,10 @@ export interface ThemeManagementResultV04 {
   readonly notices: readonly string[]
 }
 
+export type ThemeCreationPlanV04 =
+  | { readonly status: 'planned'; readonly result: ThemeManagementResultV04; readonly operations: readonly KnowledgeOperationV04[] }
+  | { readonly status: 'no_changes' | 'blocked' | 'failed'; readonly result: ThemeManagementResultV04; readonly operations: readonly [] }
+
 type ThemeRefsV04 = { readonly themeRef?: string; readonly themeGroupRef?: string; readonly targetThemeGroupRef?: string }
 
 export interface CreateThemeV04Input {
@@ -277,39 +281,46 @@ export class ThemeManagementGatewayV04 {
   }
 
   async createTheme(handle: KnowledgeBaseHandle, input: CreateThemeV04Input): Promise<ThemeManagementResultV04> {
+    const plan = await this.planCreateTheme(handle, input)
+    if (plan.status !== 'planned') return plan.result
+    return this.commit(handle, 'create_theme', { theme: { ...input, name: cleanedName(input.name) }, themeGroupRef: plan.result.themeGroupRef }, plan.operations, { themeRef: plan.result.themeRef, themeGroupRef: plan.result.themeGroupRef })
+  }
+
+  /** Read-only A3 planning seam for composing Theme creation into a larger atomic ChangeSet. */
+  async planCreateTheme(handle: KnowledgeBaseHandle, input: CreateThemeV04Input): Promise<ThemeCreationPlanV04> {
     const fieldError = validateThemeFields(input)
-    if (fieldError) return blocked(handle, fieldError.code, fieldError.message)
+    if (fieldError) return { status: 'blocked', result: blocked(handle, fieldError.code, fieldError.message), operations: [] }
     const read = await this.readState(handle)
-    if (!read.state) return this.readFailure(handle, read)
+    if (!read.state) return { status: 'blocked', result: this.readFailure(handle, read), operations: [] }
     const name = cleanedName(input.name)
     const themeId = allocateEntityId('investment_theme', normalizedName(name)) as `entity:${string}`
     const existingById = read.state.byId.get(themeId)
     const request = { ...input, name }
     if (existingById) {
-      if (!existingById.id.startsWith('entity:') || (existingById as KnowledgeInvestmentThemeV04).type !== 'investment_theme') return blocked(handle, 'THEME_ID_COLLISION', `Stable Theme identity is occupied by an incompatible object: ${themeId}`, { themeRef: themeId })
+      if (!existingById.id.startsWith('entity:') || (existingById as KnowledgeInvestmentThemeV04).type !== 'investment_theme') return { status: 'blocked', result: blocked(handle, 'THEME_ID_COLLISION', `Stable Theme identity is occupied by an incompatible object: ${themeId}`, { themeRef: themeId }), operations: [] }
       const theme = existingById as KnowledgeInvestmentThemeV04
-      if (!active(theme)) return blocked(handle, 'THEME_ARCHIVED', `An archived InvestmentTheme already uses this normalized name: ${theme.id}`, { themeRef: theme.id, themeGroupRef: theme.themeGroupRef })
-      if (!canonicalThemeRequestMatches(theme, request)) return blocked(handle, 'THEME_NAME_DUPLICATE', `A Theme with normalized name “${name}” already exists with different fields`, { themeRef: theme.id, themeGroupRef: theme.themeGroupRef })
+      if (!active(theme)) return { status: 'blocked', result: blocked(handle, 'THEME_ARCHIVED', `An archived InvestmentTheme already uses this normalized name: ${theme.id}`, { themeRef: theme.id, themeGroupRef: theme.themeGroupRef }), operations: [] }
+      if (!canonicalThemeRequestMatches(theme, request)) return { status: 'blocked', result: blocked(handle, 'THEME_NAME_DUPLICATE', `A Theme with normalized name “${name}” already exists with different fields`, { themeRef: theme.id, themeGroupRef: theme.themeGroupRef }), operations: [] }
       const group = read.state.byId.get(theme.themeGroupRef) as KnowledgeThemeGroupV04 | undefined
-      if (!group || !active(group)) return blocked(handle, 'THEME_GROUP_NOT_ACTIVE', `Existing Theme ${theme.id} does not reference an active ThemeGroup`, { themeRef: theme.id, themeGroupRef: theme.themeGroupRef })
-      return this.noChanges(handle, { themeRef: theme.id, themeGroupRef: theme.themeGroupRef })
+      if (!group || !active(group)) return { status: 'blocked', result: blocked(handle, 'THEME_GROUP_NOT_ACTIVE', `Existing Theme ${theme.id} does not reference an active ThemeGroup`, { themeRef: theme.id, themeGroupRef: theme.themeGroupRef }), operations: [] }
+      return { status: 'no_changes', result: this.noChanges(handle, { themeRef: theme.id, themeGroupRef: theme.themeGroupRef }), operations: [] }
     }
     const normalized = normalizedName(name)
     const nameMatch = read.state.themes.find((theme) => normalizedName(theme.name) === normalized)
-    if (nameMatch) return blocked(handle, 'THEME_NAME_DUPLICATE', `A Theme with normalized name “${name}” already exists`, { themeRef: nameMatch.id, themeGroupRef: nameMatch.themeGroupRef })
+    if (nameMatch) return { status: 'blocked', result: blocked(handle, 'THEME_NAME_DUPLICATE', `A Theme with normalized name “${name}” already exists`, { themeRef: nameMatch.id, themeGroupRef: nameMatch.themeGroupRef }), operations: [] }
 
     const requestedGroupRef = input.themeGroupRef
-    if (requestedGroupRef !== undefined && (typeof requestedGroupRef !== 'string' || !requestedGroupRef.startsWith('theme-group:'))) return blocked(handle, 'THEME_GROUP_REF_INVALID', 'themeGroupRef must be a canonical ThemeGroup reference')
+    if (requestedGroupRef !== undefined && (typeof requestedGroupRef !== 'string' || !requestedGroupRef.startsWith('theme-group:'))) return { status: 'blocked', result: blocked(handle, 'THEME_GROUP_REF_INVALID', 'themeGroupRef must be a canonical ThemeGroup reference'), operations: [] }
     const selectedGroupRef = requestedGroupRef ?? DEFAULT_THEME_GROUP_REF_V04
     let selectedGroup = read.state.byId.get(selectedGroupRef) as KnowledgeThemeGroupV04 | undefined
     const operations: KnowledgeOperationV04[] = []
-    if (!selectedGroup && requestedGroupRef !== undefined) return blocked(handle, 'THEME_GROUP_NOT_FOUND', `ThemeGroup reference does not resolve: ${selectedGroupRef}`, { themeRef: themeId, themeGroupRef: selectedGroupRef })
+    if (!selectedGroup && requestedGroupRef !== undefined) return { status: 'blocked', result: blocked(handle, 'THEME_GROUP_NOT_FOUND', `ThemeGroup reference does not resolve: ${selectedGroupRef}`, { themeRef: themeId, themeGroupRef: selectedGroupRef }), operations: [] }
     if (!selectedGroup && selectedGroupRef === DEFAULT_THEME_GROUP_REF_V04) {
-      if (read.state.groups.some((group) => normalizedName(group.name) === normalizedName(DEFAULT_THEME_GROUP_NAME_V04))) return blocked(handle, 'THEME_GROUP_NAME_DUPLICATE', 'Another ThemeGroup already uses the reserved default name “Default”', { themeGroupRef: DEFAULT_THEME_GROUP_REF_V04 }, handle.revision, [DEFAULT_GROUP_NOTICE])
+      if (read.state.groups.some((group) => normalizedName(group.name) === normalizedName(DEFAULT_THEME_GROUP_NAME_V04))) return { status: 'blocked', result: blocked(handle, 'THEME_GROUP_NAME_DUPLICATE', 'Another ThemeGroup already uses the reserved default name “Default”', { themeGroupRef: DEFAULT_THEME_GROUP_REF_V04 }, handle.revision, [DEFAULT_GROUP_NOTICE]), operations: [] }
       selectedGroup = { id: DEFAULT_THEME_GROUP_REF_V04, name: DEFAULT_THEME_GROUP_NAME_V04, aliases: [], lifecycle: { status: 'active' } }
       operations.push(createOperation('create-default-theme-group', selectedGroup))
     }
-    if (!selectedGroup || !active(selectedGroup)) return blocked(handle, 'THEME_GROUP_NOT_ACTIVE', `InvestmentTheme must reference an active ThemeGroup: ${selectedGroupRef}`, { themeRef: themeId, themeGroupRef: selectedGroupRef })
+    if (!selectedGroup || !active(selectedGroup)) return { status: 'blocked', result: blocked(handle, 'THEME_GROUP_NOT_ACTIVE', `InvestmentTheme must reference an active ThemeGroup: ${selectedGroupRef}`, { themeRef: themeId, themeGroupRef: selectedGroupRef }), operations: [] }
 
     const now = this.clock()
     const theme: KnowledgeInvestmentThemeV04 = {
@@ -325,7 +336,11 @@ export class ThemeManagementGatewayV04 {
       updatedAt: now,
     }
     operations.push(createOperation('create-investment-theme', theme))
-    return this.commit(handle, 'create_theme', { theme: request, themeGroupRef: selectedGroup.id }, operations, { themeRef: theme.id, themeGroupRef: selectedGroup.id })
+    return {
+      status: 'planned',
+      result: { status: 'no_changes', ...baseResult(handle), themeRef: theme.id, themeGroupRef: selectedGroup.id },
+      operations,
+    }
   }
 
   async updateTheme(handle: KnowledgeBaseHandle, input: UpdateThemeV04Input): Promise<ThemeManagementResultV04> {
