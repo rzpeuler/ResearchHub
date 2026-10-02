@@ -276,6 +276,7 @@ export function KnowledgeGraphPage({ knowledgeBase, client }: Props): ReactEleme
 
   const selectedTheme = directory?.themeGroups.flatMap((group) => group.themes).find((theme) => theme.ref === themeRef)
   const currentIndustry = industryProjection?.industry.ref === selectedIndustryRef ? industryProjection : undefined
+  const industryPending = industryBusy || Boolean(overview && selectedIndustryRef && !currentIndustry && !error)
   const currentCompany = companyProjection?.company.ref === selectedCompanyRef && companyProjection?.industryRef === selectedIndustryRef ? companyProjection : undefined
   const responseTruncated = Boolean(overview?.responseBounds.truncated || currentIndustry?.responseBounds.truncated || currentCompany?.responseBounds.truncated)
   const omittedRestrictedCount = (currentIndustry?.sections.omittedRestrictedCount ?? 0) + (currentCompany?.sections.omittedRestrictedCount ?? 0)
@@ -301,7 +302,7 @@ export function KnowledgeGraphPage({ knowledgeBase, client }: Props): ReactEleme
           <GraphPanel projection={overview?.theme.ref === themeRef ? overview : undefined} selectedIndustryRef={selectedIndustryRef} busy={overviewBusy} onSelectIndustry={selectIndustry} />
           <div className="theme-workspace-middle">
             <ContentPanel title="产业信息" kicker={currentIndustry?.industry.name ?? 'INDUSTRY OVERVIEW'}>
-              {industryBusy ? <div className="theme-loading" role="status">读取产业信息…</div> : !selectedIndustryRef ? <EmptyState title="没有已确认的行业节点" detail="产业信息与竞争格局将在确认行业范围后显示。" /> : currentIndustry ? <>
+              {industryPending ? <div className="theme-loading" role="status">读取产业信息…</div> : !selectedIndustryRef ? <EmptyState title="没有已确认的行业节点" detail="产业信息与竞争格局将在确认行业范围后显示。" /> : currentIndustry ? <>
                 {currentIndustry.industry.description ? <p className="theme-industry-description">{currentIndustry.industry.description}</p> : null}
                 <FactGroups content={currentIndustry.sections} />
                 <div className="theme-competition-block"><div className="theme-subheading"><h3>竞争格局</h3>{currentIndustry.sections.competition ? <span>{currentIndustry.sections.competition.rows.length} 家</span> : null}</div><CompetitionTable projection={currentIndustry} selectedCompanyRef={selectedCompanyRef} onSelectCompany={selectCompany} /></div>

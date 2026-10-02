@@ -111,6 +111,19 @@ describe('KnowledgeGraphPage', () => {
     expect(screen.getByText('没有已挂载的 Knowledge Base')).toBeTruthy()
   })
 
+  it('shows industry loading while its first projection request is pending, not a revision error', async () => {
+    let resolveIndustry: ((value: ThemeWorkspaceIndustryProjection) => void) | undefined
+    const pendingIndustry = new Promise<ThemeWorkspaceIndustryProjection>((resolve) => { resolveIndustry = resolve })
+    const client = makeClient({ getThemeWorkspaceIndustry: vi.fn().mockReturnValue(pendingIndustry) })
+    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
+    expect(await screen.findByText('读取产业信息…')).toBeTruthy()
+    expect(screen.queryByText('行业内容暂不可用')).toBeNull()
+    resolveIndustry?.(industryProjection('entity:industry-a', ['entity:company-a']))
+    expect(await screen.findByRole('button', { name: 'company-a' })).toBeTruthy()
+    expect(screen.queryByText('行业内容暂不可用')).toBeNull()
+  })
+
   it('surfaces response-size truncation and facts omitted by source rights', async () => {
     const base = overview()
     const client = makeClient({
