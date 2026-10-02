@@ -261,6 +261,10 @@ export class KnowledgeProductionGateway {
       }
       for (const [localKey, ei] of entityInputs) {
         const isRoot = localKey === input.entity.localKey
+        const entityProposal = entityProposalByLocalKey.get(localKey)
+        const declaredSourceIds = new Set(entityProposal?.sourceCandidateIds ?? [])
+        const hasSubmittedEvidence = Boolean(entityProposal && input.evidenceBindings.some((binding) => declaredSourceIds.has(binding.localSourceId) && validateUsableAcquisitionPayload(binding.source.content).status === 'usable'))
+        const evidenceBacked = Boolean(entityProposal && ((existingEvidenceByProposal.get(entityProposal.proposalId) ?? []).length > 0 || hasSubmittedEvidence))
         const hardIdentity = !isRoot && ei.entityType === 'company' ? nonRootCompanyIdentity(ei.semanticFields) : undefined
         let existing: KnowledgeEntityV04 | undefined
         if (ei.existingEntityRef) {
@@ -306,13 +310,9 @@ export class KnowledgeProductionGateway {
             : allocateEntityId(ei.entityType, ei.name))
         entityRefs[localKey] = ref
         if (existing) {
-          const entityProposal = entityProposalByLocalKey.get(localKey)
-          const declaredSourceIds = new Set(entityProposal?.sourceCandidateIds ?? [])
-          const hasSubmittedEvidence = Boolean(entityProposal && input.evidenceBindings.some((binding) => declaredSourceIds.has(binding.localSourceId) && validateUsableAcquisitionPayload(binding.source.content).status === 'usable'))
-          const evidenceBacked = Boolean(entityProposal && ((existingEvidenceByProposal.get(entityProposal.proposalId) ?? []).length > 0 || hasSubmittedEvidence))
           const incomingFields = isRoot ? { ...f, ...evidencedRootFields } : ei.semanticFields
-          const requestedSupplementalFields = Boolean((ei.aliases?.length ?? 0) || (entityProposal && ident(ei.name) !== ident(existing.name)) || text(incomingFields?.description))
-          if (!isRoot && requestedSupplementalFields && !evidenceBacked) intents.push(intent(`entity-fields-evidence-${entityProposal?.proposalId ?? localKey}`, 'review_required', 'Non-root Entity aliases, name variants, and description require validated Source/Raw evidence; unverified values were not applied', { ...(entityProposal ? { proposalId: entityProposal.proposalId } : {}), localKey, targetRef: ref }))
+          const requestedSupplementalFields = Boolean((ei.aliases?.length ?? 0) || (entityProposal && ident(ei.name) !== ident(existing.name)) || text(incomingFields?.description) || text(incomingFields?.legalName))
+          if (!isRoot && requestedSupplementalFields && !evidenceBacked) intents.push(intent(`entity-fields-evidence-${entityProposal?.proposalId ?? localKey}`, 'review_required', 'Non-root Entity aliases, name variants, description, and legalName require validated Source/Raw evidence; unverified values were not applied', { ...(entityProposal ? { proposalId: entityProposal.proposalId } : {}), localKey, targetRef: ref }))
           const incomingDescription = evidenceBacked ? text(incomingFields?.description) : ''
           const priorDescription = text((existing as unknown as Dict).description)
           if (!isRoot && incomingDescription && priorDescription && ident(incomingDescription) !== ident(priorDescription)) intents.push(intent(`entity-description-conflict-${entityProposal?.proposalId ?? localKey}`, 'review_required', 'Evidence-backed non-root Entity description conflicts with the canonical description; the existing value was retained', { proposalId: entityProposal?.proposalId, localKey, targetRef: ref }))
@@ -321,13 +321,21 @@ export class KnowledgeProductionGateway {
           if (!isRoot && incomingLegalName && priorLegalName && ident(incomingLegalName) !== ident(priorLegalName)) intents.push(intent(`entity-legal-name-conflict-${entityProposal?.proposalId ?? localKey}`, 'review_required', 'Evidence-backed non-root Company legalName conflicts with the canonical legalName; the existing value was retained', { proposalId: entityProposal?.proposalId, localKey, targetRef: ref }))
           const nameAlias = evidenceBacked && ident(ei.name) !== ident(existing.name) ? [ei.name] : []
           const aliases = isRoot ? ei.aliases ?? [] : evidenceBacked ? uniqueSorted([...(ei.aliases ?? []), ...nameAlias]) : []
-          const merged = mergeEntity(existing, { aliases, semanticFields: incomingFields, externalIdentifiers: isRoot ? f.externalIdentifiers : ei.externalIdentifiers, allowDescription: isRoot || evidenceBacked })
+          const mergeFields = !isRoot && !evidenceBacked && ei.semanticFields ? Object.fromEntries(Object.entries(ei.semanticFields).filter(([key]) => key !== 'legalName')) : incomingFields
+          const merged = mergeEntity(existing, { aliases, semanticFields: mergeFields, externalIdentifiers: isRoot ? f.externalIdentifiers : ei.externalIdentifiers, allowDescription: isRoot || evidenceBacked })
           if (hashKnowledgeObject(existing) !== hashKnowledgeObject(merged)) { objects.set(ref, merged); operations.push({ operationId: `update-entity-${operations.length + 1}`, type: 'update', knowledgeId: ref, expectedBeforeHash: hashKnowledgeObject(existing), object: merged }); updatedIds.push(ref) }
           intents.push(intent(`entity-${localKey}`, 'bound_existing', 'Bound to a validated canonical Entity', { localKey, targetRef: ref }))
         } else {
-          const fields = isRoot ? { ...f, ...evidencedRootFields } : ei.semanticFields ?? {}
-          const created = { id: ref as `entity:${string}`, type: ei.entityType, name: ei.name, ...fields, ...(isRoot || ei.externalIdentifiers === undefined ? {} : { externalIdentifiers: ei.externalIdentifiers }), aliases: [...new Set(ei.aliases ?? [])], lifecycle: { status: 'active' } } as KnowledgeEntityV04
-          objects.set(ref, created); operations.push({ operationId: `create-entity-${operations.length + 1}`, type: 'create', object: created }); createdIds.push(ref); intents.push(intent(`entity-${localKey}`, 'created_new', 'No plausible canonical Entity was proven equivalent', { localKey, targetRef: ref }))
+          const fields: Dict = isRoot ? { ...f, ...evidencedRootFields } : { ...(ei.semanticFields ?? {}) }
+          const supplementalFieldsRequested = !isRoot && Boolean((ei.aliases?.length ?? 0) || text(fields.description) || text(fields.legalName))
+          if (supplementalFieldsRequested && !evidenceBacked) {
+            delete fields.aliases
+            delete fields.description
+            delete fields.legalName
+            intents.push(intent(`entity-fields-evidence-${entityProposal?.proposalId ?? localKey}`, 'review_required', 'Non-root Entity aliases, description, and legalName require validated Source/Raw evidence; unverified values were not applied', { ...(entityProposal ? { proposalId: entityProposal.proposalId } : {}), localKey, targetRef: ref }))
+          }
+          const created = { id: ref as `entity:${string}`, type: ei.entityType, name: ei.name, ...fields, ...(isRoot || ei.externalIdentifiers === undefined ? {} : { externalIdentifiers: ei.externalIdentifiers }), aliases: [...new Set(isRoot || evidenceBacked ? ei.aliases ?? [] : [])], lifecycle: { status: 'active' } } as KnowledgeEntityV04
+          objects.set(ref, created); operations.push({ operationId: `create-entity-${operations.length + 1}`, type: 'create', object: created }); createdIds.push(ref); intents.push(intent(`entity-${localKey}`, 'created_new', supplementalFieldsRequested && !evidenceBacked ? 'Created Entity identity while holding unverified supplemental fields for review' : 'No plausible canonical Entity was proven equivalent', { localKey, targetRef: ref }))
         }
       }
       if (!entityRefs[input.entity.localKey]) return terminalOutcome('blocked', ['Root Entity binding requires review before dependent Knowledge can be committed'], intents, entityRefs, relationRefs, sourceRefs, claimRefs)

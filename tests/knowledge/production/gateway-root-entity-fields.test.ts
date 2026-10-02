@@ -121,7 +121,7 @@ test('non-root Companies bind and allocate by normalized ticker plus exchange, a
     const seeded = await gateway.submit(await input(root, seedRoot, [
       {
         proposalId: 'company-a-seed', kind: 'entity', subjectKey: 'company-a', entityType: 'company', entityName: 'Company Alpha',
-        structuredValue: { ticker: '600001', exchange: 'SSE', aliases: ['Alpha Seed Alias'] },
+        structuredValue: { ticker: '600001', exchange: 'SSE', aliases: ['Alpha Seed Alias'], description: 'Unverified initial profile.', legalName: 'Unverified Alpha Holdings.' },
       },
       {
         proposalId: 'company-b-seed', kind: 'entity', subjectKey: 'company-b', entityType: 'company', entityName: 'Company Beta',
@@ -137,29 +137,53 @@ test('non-root Companies bind and allocate by normalized ticker plus exchange, a
     assert.notEqual(companyARef, companyBRef, 'different ticker/exchange pairs must allocate distinct Company IDs, independent of the root ticker')
     assert.notEqual(companyARef, seeded.entityRefsByLocalKey['seed-root-company'])
     assert.notEqual(companyBRef, seeded.entityRefsByLocalKey['seed-root-company'])
+    assert.ok(seeded.resolutionIntents.some((item) => item.disposition === 'review_required' && item.proposalId === 'company-a-seed' && item.reason.includes('validated Source/Raw evidence')))
+    assert.ok(seeded.resolutionIntents.some((item) => item.disposition === 'created_new' && item.localKey === 'company-a' && item.reason.includes('holding unverified supplemental fields')))
+    let assets = await readCanonicalV04Assets(root)
+    let companyA = assets.objects.find((item) => item.value.id === companyARef)?.value as unknown as Record<string, unknown>
+    assert.equal(companyA?.ticker, '600001')
+    assert.equal(companyA?.exchange, 'SH')
+    assert.deepEqual(companyA?.aliases, [])
+    assert.equal('description' in (companyA ?? {}), false)
+    assert.equal('legalName' in (companyA ?? {}), false)
 
     const evidence = await persistDocumentEvidence(root)
     const rootCompanyB = {
       localKey: 'root-company-b', entityType: 'company' as const, name: 'Company Beta', aliases: ['Beta Root Alias'],
       semanticFields: { ticker: '000002', exchange: 'SZSE' },
     }
-    const variant = await gateway.submit(await input(root, rootCompanyB, [{
-      proposalId: 'company-a-variant', kind: 'entity', subjectKey: 'company-a-variant', entityType: 'company', entityName: 'Company Alpha Group',
-      structuredValue: { ticker: '600001', exchange: 'SH', aliases: ['Alpha New Alias'], description: 'Evidence-backed profile for Company A.' },
-      existingEvidenceBindings: [{ ...evidence, locator: 'company-a-profile-block' }],
-    }], 'non-root-company-variant'))
+    const variant = await gateway.submit(await input(root, rootCompanyB, [
+      {
+        proposalId: 'company-a-variant', kind: 'entity', subjectKey: 'company-a-variant', entityType: 'company', entityName: 'Company Alpha Group',
+        structuredValue: { ticker: '600001', exchange: 'SH', aliases: ['Alpha New Alias'], description: 'Evidence-backed profile for Company A.' },
+        existingEvidenceBindings: [{ ...evidence, locator: 'company-a-profile-block' }],
+      },
+      {
+        proposalId: 'company-c-evidence-create', kind: 'entity', subjectKey: 'company-c-create', entityType: 'company', entityName: 'Company Gamma',
+        structuredValue: { ticker: '600003', exchange: 'SSE', aliases: ['Gamma Alias'], description: 'Evidence-backed profile for Company Gamma.', legalName: 'Gamma Holdings Co., Ltd.' },
+        existingEvidenceBindings: [{ ...evidence, locator: 'company-gamma-profile-block' }],
+      },
+    ], 'non-root-company-variant'))
 
     assert.equal(variant.status, 'committed', variant.errors.join('; '))
     assert.equal(variant.entityRefsByLocalKey['company-a-variant'], companyARef, 'normalized exchange and ticker must bind despite a name variant')
-    let assets = await readCanonicalV04Assets(root)
-    let companyA = assets.objects.find((item) => item.value.id === companyARef)?.value as unknown as Record<string, unknown>
+    const companyCRef = variant.entityRefsByLocalKey['company-c-create']
+    assert.ok(companyCRef)
+    assets = await readCanonicalV04Assets(root)
+    companyA = assets.objects.find((item) => item.value.id === companyARef)?.value as unknown as Record<string, unknown>
     assert.equal(companyA?.description, 'Evidence-backed profile for Company A.')
-    assert.deepEqual(companyA?.aliases, ['Alpha New Alias', 'Alpha Seed Alias', 'Company Alpha Group'])
+    assert.deepEqual(companyA?.aliases, ['Alpha New Alias', 'Company Alpha Group'])
     assert.equal(companyA?.exchange, 'SH')
+    const companyC = assets.objects.find((item) => item.value.id === companyCRef)?.value as unknown as Record<string, unknown>
+    assert.equal(companyC?.ticker, '600003')
+    assert.equal(companyC?.exchange, 'SH')
+    assert.deepEqual(companyC?.aliases, ['Gamma Alias'])
+    assert.equal(companyC?.description, 'Evidence-backed profile for Company Gamma.')
+    assert.equal(companyC?.legalName, 'Gamma Holdings Co., Ltd.')
 
     const unverifiedUpdate = await gateway.submit(await input(root, rootCompanyB, [{
       proposalId: 'company-a-unverified-supplement', kind: 'entity', subjectKey: 'company-a-unverified-supplement', entityType: 'company', entityName: 'Company Alpha Unverified',
-      structuredValue: { ticker: '600001', exchange: 'SSE', aliases: ['Unverified Alias'], description: 'Unverified description must not be applied.' },
+      structuredValue: { ticker: '600001', exchange: 'SSE', aliases: ['Unverified Alias'], description: 'Unverified description must not be applied.', legalName: 'Unverified Alpha Legal Name.' },
     }], 'non-root-company-unverified-supplement'))
 
     assert.equal(unverifiedUpdate.entityRefsByLocalKey['company-a-unverified-supplement'], companyARef)
@@ -167,6 +191,7 @@ test('non-root Companies bind and allocate by normalized ticker plus exchange, a
     assets = await readCanonicalV04Assets(root)
     companyA = assets.objects.find((item) => item.value.id === companyARef)?.value as unknown as Record<string, unknown>
     assert.equal(companyA?.description, 'Evidence-backed profile for Company A.')
+    assert.equal('legalName' in (companyA ?? {}), false)
     assert.equal((companyA?.aliases as string[]).includes('Unverified Alias'), false)
     assert.equal((companyA?.aliases as string[]).includes('Company Alpha Unverified'), false)
 
@@ -207,6 +232,6 @@ test('non-root Companies bind and allocate by normalized ticker plus exchange, a
     assert.equal(companyA?.description, 'Evidence-backed profile for Company A.', 'conflicting description must not overwrite the canonical value')
     assert.ok((companyA?.aliases as string[]).includes('Alias Added Despite Description Conflict'))
     assert.ok((companyA?.aliases as string[]).includes('Company Alpha Alternative'))
-    assert.equal(assets.objects.filter((item) => (item.value as unknown as Record<string, unknown>).type === 'company').length, 3)
+    assert.equal(assets.objects.filter((item) => (item.value as unknown as Record<string, unknown>).type === 'company').length, 4)
   })
 })
