@@ -55,6 +55,29 @@ test('Theme Framework intent routes to the governed Workflow and extracts the Th
   assert.equal(service.skillRegistry.get('theme-framework')?.kind, 'knowledge')
 })
 
+test('explicit Theme Framework accepts a short bare Chinese or English Theme name', () => {
+  const service = new ResearchDispatchService()
+  for (const [query, expectedName] of [['AI 算力', 'AI 算力'], ['AI compute', 'AI compute']] as const) {
+    const resolved = service.resolve({ query, mode: { type: 'workflow', workflowId: 'theme_framework' } })
+    assert.deepEqual(resolved.decision.workflow?.arguments, { name: expectedName }, query)
+    assert.deepEqual(resolved.decision.missingRequiredInputs, [], query)
+  }
+})
+
+test('explicit Theme Framework retains phrase extraction and rejects a question as a bare name', () => {
+  const service = new ResearchDispatchService()
+  const phrase = service.resolve({ query: '请创建 AI 算力投资主题框架', mode: { type: 'workflow', workflowId: 'theme_framework' } })
+  assert.deepEqual(phrase.decision.workflow?.arguments, { name: 'AI 算力' })
+  const question = service.resolve({ query: 'AI 算力目前的发展趋势有哪些', mode: { type: 'workflow', workflowId: 'theme_framework' } })
+  assert.equal(question.decision.workflow?.arguments.name, undefined)
+  assert.deepEqual(question.decision.missingRequiredInputs, ['name'])
+})
+
+test('automatic routing does not treat an unqualified Theme name as Theme Framework intent', () => {
+  const resolved = new ResearchDispatchService().resolve({ query: 'AI 算力' })
+  assert.equal(resolved.decision.mode, 'free_research')
+})
+
 test('semantic Chat routing sees the narrow Theme Framework knowledge Skill metadata', async () => {
   let metadata: unknown
   const service = new ResearchDispatchService({ reasoningExecutor: {

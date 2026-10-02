@@ -126,7 +126,7 @@ function extractThesisRef(query: string): string | undefined {
   return query.match(/\bclaim:[A-Za-z0-9._-]+\b/)?.[0]
 }
 
-function extractThemeName(query: string): string | undefined {
+function extractThemeName(query: string, allowBareName = false): string | undefined {
   const patterns = [
     /(?:为|给)\s*([\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9 &/_-]{0,79}?)\s*(?:创建|新建|构建|初始化|搭建)\s*(?:一个)?\s*(?:投资)?主题/iu,
     /(?:创建|新建|构建|初始化|搭建|梳理)\s*(?:一个)?\s*([\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9 &/_-]{0,79}?)\s*(?:的)?(?:投资)?主题(?:框架)?/iu,
@@ -137,10 +137,17 @@ function extractThemeName(query: string): string | undefined {
     const value = query.match(pattern)?.[1]?.trim().replace(/\s+/gu, ' ')
     if (value && value.length <= 80) return value
   }
+  if (allowBareName) {
+    const value = query.trim().replace(/\s+/gu, ' ')
+    const isSafeName = value.length <= 80 && /^[\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9 &/_-]{0,79}$/u.test(value)
+    const looksLikeInstructionOrQuestion = /请|帮我|分析|研究|创建|新建|构建|初始化|搭建|梳理|定义|如何|哪些|什么|为什么|是否|趋势|目前|现在|有哪些|是什么|怎么|能否|吗|要不要/u.test(value)
+      || /\b(?:please|analy[sz]e|research|create|build|construct|initialize|define|what|how|which|why|whether|currently|trend|trends|companies|stocks|should|can)\b/i.test(value)
+    if (isSafeName && !looksLikeInstructionOrQuestion) return value
+  }
   return undefined
 }
 
-export function extractWorkflowArguments(definition: WorkflowDefinition, query: string): ExtractedResearchArguments {
+export function extractWorkflowArguments(definition: WorkflowDefinition, query: string, allowBareThemeName = false): ExtractedResearchArguments {
   const args: Record<string, unknown> = {}
   const diagnostics: string[] = []
   const identity = extractSymbol(query)
@@ -181,7 +188,7 @@ export function extractWorkflowArguments(definition: WorkflowDefinition, query: 
     if (tradeDate !== undefined) args.tradeDate = tradeDate
   }
   if (definition.id === 'theme_framework') {
-    const name = extractThemeName(query)
+    const name = extractThemeName(query, allowBareThemeName)
     if (name !== undefined) args.name = name
     const definitionMatch = query.match(/(?:定义|范围定义|definition)\s*[:：为是]?\s*([^。\n]{1,300})/iu)?.[1]?.trim()
     if (definitionMatch) args.definition = definitionMatch.slice(0, 300)
@@ -282,7 +289,7 @@ export class ResearchDispatchService {
     }
     const routedDefinition = definition ?? this.bestWorkflow(request.query)
     if (routedDefinition !== undefined) {
-      const extracted = extractWorkflowArguments(routedDefinition, request.query)
+      const extracted = extractWorkflowArguments(routedDefinition, request.query, explicit && routedDefinition.id === 'theme_framework')
       const decision = validateResearchDispatchDecision({ mode: 'workflow', workflow: { id: routedDefinition.id, confidence: explicit ? 1 : Math.min(1, 0.5 + scoreWorkflow(routedDefinition, request.query) / 10), arguments: extracted.arguments }, skills: selectedSkillIds(this.skillRegistry, routedDefinition).map((id) => ({ id, purpose: this.skillRegistry.get(id)?.purpose ?? 'selected by the authoritative Workflow definition' })), entities: this.entities(request.query), missingRequiredInputs: extracted.missingRequiredInputs, contextPolicy: request.contextPolicy, persistencePolicy: request.persistencePolicy, rationale: explicit ? 'User-selected Workflow has precedence over automatic routing.' : `Matched existing Workflow definition ${routedDefinition.id}.` })
       return { request, decision, summary: this.summary(request, decision, routedDefinition) }
     }
