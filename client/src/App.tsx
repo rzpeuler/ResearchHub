@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactElement } from 'react'
-import { RuntimeClient, RuntimeClientError, type AttachmentRef, type ClientEvent, type ConversationMessage, type ConversationSummary, type DailyBriefReport, type DailyBriefSummary, type KnowledgeBaseStatus, type KnowledgeDirectoryItem, type RawDocumentAcceptanceV04, type RawDocumentCandidateGroupV04, type RawDocumentPreviewV04, type ResearchBundleSummary, type ResearchDispatchResponse, type ResearchExecutionSummary, type ResearchReport, type ResearchReportSummary, type ResearchStartResponse, type ReviewDetail, type ReviewListResponse, type SessionState, type SourceLibraryHit, type ThesisCriterionConfirmResult, type ThesisCriterionOrigin, type ThesisCriterionPreview, type ThesisDecision, type ThesisQueryDetail, type ThesisQuerySummary, type ThesisReviewScope, type WorkflowDefinition, type WorkflowRun } from './api/runtime-client'
+import { RuntimeClient, RuntimeClientError, type AttachmentRef, type ClientEvent, type ConversationMessage, type ConversationSummary, type DailyBriefReport, type DailyBriefSummary, type KnowledgeBaseStatus, type KnowledgeDirectoryItem, type RawDocumentAcceptanceV04, type RawDocumentCandidateGroupV04, type RawDocumentPreviewV04, type RawDocumentPreviewPollV04, type ResearchBundleSummary, type ResearchDispatchResponse, type ResearchExecutionSummary, type ResearchReport, type ResearchReportSummary, type ResearchStartResponse, type ReviewDetail, type ReviewListResponse, type SessionState, type SourceLibraryHit, type ThesisCriterionConfirmResult, type ThesisCriterionOrigin, type ThesisCriterionPreview, type ThesisDecision, type ThesisQueryDetail, type ThesisQuerySummary, type ThesisReviewScope, type WorkflowDefinition, type WorkflowRun } from './api/runtime-client'
 import { startWorkflowPolling, terminalWorkflowStatuses } from './app/workflow-polling'
 import { KnowledgeGraphPage } from './app/graph/KnowledgeGraphPage'
 import { ResearchRunPage } from './app/run/ResearchRunPage'
@@ -15,6 +15,11 @@ const defaultRightsForm: V04RightsForm = { accessScope: 'unknown', providerTerms
 const defaultSourceForm: V04SourceForm = { title: '', sourceType: 'unknown', sourceReliability: 'unknown', publisher: '', institution: '', author: '', publishedAt: '', canonicalUrl: '' }
 const supportedDocumentExtension = /\.(pdf|csv|htm|html|json|md|text|txt|xml)$/i
 const knownTools: Record<string, string> = { researchhub_status: 'ResearchHub status', search_knowledge: 'Knowledge search', get_knowledge_object: 'Knowledge object lookup', ingest_document: 'Document ingestion', get_workflow_status: 'Workflow status', cancel_workflow: 'Workflow cancellation', list_review_cases: 'Review case list', get_review_case: 'Review case detail' }
+
+function previewPollTerminalDisposition(result: RawDocumentPreviewPollV04): 'wait' | 'verified' | 'terminal' {
+  if (!result.workflow || !terminalWorkflowStatuses.has(result.workflow.status)) return 'wait'
+  return result.preview?.committable ? 'verified' : 'terminal'
+}
 
 function routeForPath(pathname: string): Route { return pathname === '/briefs' ? 'briefs' : pathname === '/reports' ? 'reports' : pathname === '/bundles' ? 'bundles' : pathname === '/run' ? 'run' : pathname === '/graph' ? 'graph' : pathname === '/reviews' ? 'reviews' : pathname === '/theses' ? 'theses' : 'research' }
 function routePath(route: Route): string { return route === 'research' ? '/research' : `/${route}` }
@@ -663,15 +668,20 @@ export default function App(): ReactElement {
       const started = await client.startRawDocumentPreviewV04({ attachmentId: attachment.attachmentId, sourceMetadata, rights })
       if (generation !== previewGeneration.current) return
       setWorkflowRunId(started.runId); setWorkflow(started.workflow); setContextPanel('workflow')
-      for (let attempt = 0; attempt < 120; attempt += 1) {
+      while (generation === previewGeneration.current) {
         const result = await client.getRawDocumentPreviewV04(started.runId)
         if (generation !== previewGeneration.current) return
         if (result.workflow) setWorkflow(result.workflow)
-        if (result.preview) { setPreview(result.preview); setUploadStatus(''); return }
-        if (result.workflow && terminalWorkflowStatuses.has(result.workflow.status)) { setUploadStatus(''); setError(result.workflow.errorSummary ?? 'Preview workflow ended without a candidate preview.'); return }
+        const disposition = previewPollTerminalDisposition(result)
+        if (disposition === 'verified' && result.preview) { setPreview(result.preview); setUploadStatus(''); return }
+        if (disposition === 'terminal') {
+          if (result.preview) setPreview(result.preview)
+          setUploadStatus('')
+          setError(result.workflow?.errorSummary ?? result.preview?.statusNote ?? 'Preview workflow ended without a verified candidate preview.')
+          return
+        }
         await new Promise((resolve) => window.setTimeout(resolve, 1000))
       }
-      setUploadStatus(''); setError('Preview is still running. Check the Workflow panel for its current status.')
     } catch (caught) { if (generation === previewGeneration.current) { setUploadStatus(''); setError(errorText(caught)) } }
     finally { if (generation === previewGeneration.current) setPreviewBusy(false) }
   }

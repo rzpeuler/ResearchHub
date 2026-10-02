@@ -231,10 +231,12 @@ function projectV04Preview(runId: string, result: RawDocumentPreviewWorkflowResu
   }
 }
 function projectV04Snapshot(runId: string, snapshot: RawDocumentV04CandidatePreviewSnapshot, handle: KnowledgeBaseHandle, workflowAllowsCommit: boolean): ApplicationRawDocumentPreviewV04 {
-  const candidateGroups: RawDocumentCandidateGroupV04[] = snapshot.candidateGroups.map((group) => ({ ...group, provenanceRefs: { sourceRef: snapshot.sourceRef, rawRef: snapshot.rawRef, evidenceBlockRefs: [...group.candidate.evidenceBlockRefs] } }))
   const validSnapshot = snapshot.version === 2 && snapshot.extractionCompleteness !== undefined
   const compatibleHandle = handle.schemaVersion === '0.4' && handle.storageFormatVersion === '1' && handle.status === 'active' && handle.writable && handle.knowledgeBaseId === snapshot.knowledgeBaseId
   const committable = validSnapshot && compatibleHandle && workflowAllowsCommit
+  const candidateGroups: RawDocumentCandidateGroupV04[] = committable
+    ? snapshot.candidateGroups.map((group) => ({ ...group, provenanceRefs: { sourceRef: snapshot.sourceRef, rawRef: snapshot.rawRef, evidenceBlockRefs: [...group.candidate.evidenceBlockRefs] } }))
+    : []
   return { runId, status: committable ? snapshot.extractionCompleteness === 'partial' ? 'preview_partial' : 'preview_ready' : 'stale_revision', knowledgeBaseId: snapshot.knowledgeBaseId, sourceRef: snapshot.sourceRef, rawRef: snapshot.rawRef, documentId: snapshot.documentId, candidateGroups, committable, ...(snapshot.extractionCompleteness === undefined ? {} : { extractionCompleteness: snapshot.extractionCompleteness }), ...(snapshot.incompleteUnits === undefined ? {} : { incompleteUnits: snapshot.incompleteUnits.map((unit) => ({ unitId: unit.unitId, proposedUnitId: unit.proposedUnitId, status: unit.status, errorSummary: safeUnitSummary(unit.status) })) }) }
 }
 function cancelledV04Preview(runId: string): ApplicationRawDocumentPreviewV04 {

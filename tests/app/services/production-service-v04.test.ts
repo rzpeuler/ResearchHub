@@ -82,6 +82,35 @@ test('V0.4 service returns a durable candidate preview and accepts only explicit
   })
 })
 
+test('a durable V0.4 snapshot remains hidden until its Workflow reaches a terminal state', async () => {
+  await fixture('0.4', async (root) => {
+    let allowTerminal!: () => void
+    let notifySnapshotReady!: () => void
+    const terminalGate = new Promise<void>((resolve) => { allowTerminal = resolve })
+    const snapshotReady = new Promise<void>((resolve) => { notifySnapshotReady = resolve })
+    const runner: typeof runRawDocumentKnowledgePreviewV04 = async (input) => {
+      const result = await runRawDocumentKnowledgePreviewV04(input)
+      notifySnapshotReady()
+      await terminalGate
+      return result
+    }
+    const workflows = new WorkflowService()
+    const subject = service(root, undefined, runner, workflows)
+    const started = subject.startRawDocumentKnowledgePreviewV04({ workflowRunId: 'snapshot-before-terminal', text: 'AI computing demand is increasing. Additional report sections follow.', sourceMetadata, rights })
+
+    await snapshotReady
+    assert.equal(workflows.getWorkflowStatus(started.runId)?.status, 'running')
+    const early = await subject.readRawDocumentKnowledgePreviewV04(started.runId)
+    assert.equal(early?.committable, false)
+    assert.deepEqual(early?.candidateGroups, [])
+
+    allowTerminal()
+    const completed = await started.completion
+    assert.equal(completed.committable, true)
+    assert.ok(completed.candidateGroups.length > 0)
+  })
+})
+
 test('V0.4 service rejects missing rights and reports explicit incompatibility for a Schema 0.3 KB', async () => {
   await fixture('0.4', async (root) => {
     const subject = service(root)
