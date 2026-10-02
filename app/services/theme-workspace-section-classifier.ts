@@ -38,7 +38,17 @@ interface CacheEntry {
   readonly reason?: string
 }
 
-const INDUSTRY_CATALOG: readonly ThemeWorkspaceSectionDefinition[] = INDUSTRY_MODULES.map((id) => ({ id, title: titleCase(id) }))
+const INDUSTRY_TITLES: Readonly<Record<(typeof INDUSTRY_MODULES)[number], string>> = {
+  industry_definition: '行业定义与范围',
+  market_size_growth: '市场规模与增长',
+  supply_demand_analysis: '供需分析',
+  industry_chain_analysis: '产业链分析',
+  competitive_landscape: '竞争格局',
+  technology_evolution: '技术演进',
+  company_mapping: '重点公司',
+  risk_analysis: '风险分析',
+}
+const INDUSTRY_CATALOG: readonly ThemeWorkspaceSectionDefinition[] = INDUSTRY_MODULES.map((id) => ({ id, title: INDUSTRY_TITLES[id] }))
 const COMPANY_CATALOG: readonly ThemeWorkspaceSectionDefinition[] = COMPANY_RESEARCH_SECTIONS.map((title) => ({ id: sectionId(title), title }))
 const MAX_FACTS = 120
 const MAX_FACT_TEXT = 1000
@@ -47,7 +57,6 @@ const MAX_ASSIGNMENT_BYTES = 128_000
 const MAX_CACHE_ENTRIES = 128
 const CLASSIFICATION_TIMEOUT_MS = 8_000
 
-function titleCase(value: string): string { return value.split('_').map((part) => part[0]?.toUpperCase() + part.slice(1)).join(' ') }
 function sectionId(title: string): string { return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') }
 function parseOutput(output: unknown): unknown {
   if (typeof output !== 'string') return output
@@ -58,7 +67,6 @@ function isRecord(value: unknown): value is Record<string, unknown> { return typ
 function deterministicSection(taxonomy: ThemeWorkspaceSectionTaxonomy, fact: ThemeWorkspaceFact): string | undefined {
   if (taxonomy === 'industry') {
     if (fact.semanticType === 'risk') return 'risk_analysis'
-    if (fact.semanticType === 'forecast') return 'market_size_growth'
     return undefined
   }
   if (fact.semanticType === 'risk') return 'risks'

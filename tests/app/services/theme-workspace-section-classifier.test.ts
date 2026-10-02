@@ -49,8 +49,10 @@ test('section classifier rejects unknown, duplicate, and multi-section assignmen
 })
 
 test('deterministic fallback only maps explicit known semantic types', async () => {
-  const result = await new ThemeWorkspaceSectionClassifier().classify(input(1, [fact('claim:risk', 'risk'), fact('claim:other', 'viewpoint')]))
+  const result = await new ThemeWorkspaceSectionClassifier().classify(input(1, [fact('claim:risk', 'risk'), fact('claim:other', 'viewpoint'), fact('claim:capacity-forecast', 'forecast')]))
   assert.equal(result.classification.status, 'llm_unavailable')
   assert.deepEqual(result.factsBySection.risk_analysis?.map((item) => item.ref), ['claim:risk'])
-  assert.deepEqual(result.unclassifiedFacts.map((item) => item.ref), ['claim:other'])
+  assert.deepEqual(result.unclassifiedFacts.map((item) => item.ref), ['claim:other', 'claim:capacity-forecast'])
+  assert.equal(result.factsBySection.market_size_growth?.some((item) => item.ref === 'claim:capacity-forecast'), false)
+  assert.deepEqual(result.sectionCatalog.map((section) => section.title), ['行业定义与范围', '市场规模与增长', '供需分析', '产业链分析', '竞争格局', '技术演进', '重点公司', '风险分析'])
 })
