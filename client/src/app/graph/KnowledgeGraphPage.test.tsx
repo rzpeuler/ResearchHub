@@ -50,7 +50,9 @@ describe('KnowledgeGraphPage', () => {
     await screen.findByText('entity:company-b 的详细公司事实')
     expect(screen.getByRole('button', { name: '行业 A' }).getAttribute('aria-pressed')).toBe('true')
 
-    fireEvent.click(screen.getByRole('button', { name: '行业 B' }))
+    const visualIndustryB = screen.getByText('行业 B', { selector: '.theme-graph-node strong' }).closest('.react-flow__node')
+    expect(visualIndustryB).toBeTruthy()
+    fireEvent.click(visualIndustryB!)
     await screen.findByRole('button', { name: 'company-c' })
     await waitFor(() => expect(client.getThemeWorkspaceCompany).toHaveBeenLastCalledWith('entity:theme-a', 'entity:industry-b', 'entity:company-c', { expectedRevision: 7 }))
     expect(screen.getByRole('button', { name: '行业 B' }).getAttribute('aria-pressed')).toBe('true')
@@ -98,5 +100,41 @@ describe('KnowledgeGraphPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
     expect(await screen.findByText(/响应体积上限已截断/)).toBeTruthy()
     expect(await screen.findByText(/有 2 项知识因来源访问权限或有效期限制未展示/)).toBeTruthy()
+  })
+
+  it('shows three core views by default, expands them, and resets on a followed-target change', async () => {
+    const views = Array.from({ length: 5 }, (_, index) => ({ ref: `claim:view-${index + 1}`, kind: 'claim' as const, semanticType: 'viewpoint', title: `观点 ${index + 1}` }))
+    const client = makeClient({
+      getThemeWorkspaceCompany: vi.fn().mockImplementation((_themeRef: string, industryRef: string, companyRef: string) => {
+        const result = companyProjection(industryRef, companyRef)
+        return Promise.resolve({ ...result, sections: { ...result.sections, coreViews: { items: views, defaultCount: 3, total: 5, truncated: false } } })
+      }),
+    })
+    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'company-a' }))
+    await waitFor(() => expect(client.getThemeWorkspaceCompany).toHaveBeenLastCalledWith('entity:theme-a', 'entity:industry-a', 'entity:company-a', { expectedRevision: 7 }))
+    await screen.findByText('entity:company-a 的详细公司事实')
+    expect(await screen.findByText('观点 1')).toBeTruthy()
+    expect(screen.getByText('观点 3')).toBeTruthy()
+    expect(screen.queryByText('观点 4')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '展开其余 2 条观点' }))
+    expect(screen.getByText('观点 5')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '收起观点' }))
+    expect(screen.queryByText('观点 4')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '展开其余 2 条观点' }))
+    expect(screen.getByText('观点 4')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'company-b' }))
+    await waitFor(() => expect(screen.getByText('观点 3')).toBeTruthy())
+    expect(screen.queryByText('观点 4')).toBeNull()
+  })
+
+  it('accepts a legacy root URL parameter when it identifies a Theme ref', async () => {
+    window.history.replaceState({}, '', '/graph?root=entity%3Atheme-a')
+    const client = makeClient()
+    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    await waitFor(() => expect(client.getThemeWorkspaceOverview).toHaveBeenCalledWith('entity:theme-a'))
+    expect(window.location.search).toContain('root=entity%3Atheme-a')
   })
 })

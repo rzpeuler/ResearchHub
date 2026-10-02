@@ -24,13 +24,15 @@ function safeMessage(error: unknown): string {
   return error instanceof Error ? error.message : '读取 Knowledge Graph 失败。'
 }
 function themeFromLocation(): string | undefined {
-  const value = new URLSearchParams(window.location.search).get('themeRef')
-  return value?.startsWith('entity:') ? value : undefined
+  const params = new URLSearchParams(window.location.search)
+  const value = params.get('themeRef') ?? params.get('root')
+  return value && /^entity:[A-Za-z0-9][A-Za-z0-9._:-]{0,240}$/.test(value) ? value : undefined
 }
 function writeThemeLocation(themeRef: string | undefined): void {
   const params = new URLSearchParams(window.location.search)
   if (themeRef) params.set('themeRef', themeRef)
   else params.delete('themeRef')
+  params.delete('root')
   const query = params.toString()
   window.history.pushState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`)
 }
@@ -38,7 +40,6 @@ function writeThemeLocation(themeRef: string | undefined): void {
 function positionGraph(nodes: ThemeWorkspaceProjection['graph']['nodes'], edges: ThemeWorkspaceProjection['graph']['edges'], selectedRef?: string): FlowNode[] {
   const graph = new graphlib.Graph({ multigraph: true }).setDefaultEdgeLabel(() => ({}))
   graph.setGraph({ rankdir: 'LR', nodesep: 38, ranksep: 90, marginx: 32, marginy: 32 })
-  graph.setNode('size', { width: 200, height: 76 })
   for (const node of nodes) graph.setNode(node.ref, { width: 200, height: 76 })
   for (const edge of edges) graph.setEdge(edge.sourceRef, edge.targetRef, { width: 1, height: 1 }, edge.ref)
   layout(graph)
@@ -74,7 +75,7 @@ function GraphPanel({ projection, selectedIndustryRef, busy, onSelectIndustry }:
   return <section className="theme-workspace-panel theme-graph-panel" aria-labelledby="theme-graph-title">
     <div className="theme-panel-heading"><div><div className="theme-panel-kicker">CONFIRMED SCOPE · SCHEMA 0.4</div><h2 id="theme-graph-title">产业图谱</h2></div>{projection ? <span className="theme-revision">Revision {projection.revision}</span> : null}</div>
     {busy ? <div className="theme-graph-loading" role="status">读取已确认的产业范围…</div> : !projection ? <EmptyState title="选择一个 Theme" detail="图谱只展示该 Theme 已确认纳入的行业环节及关系。" /> : projection.graph.nodes.length === 0 ? <EmptyState title="尚无已确认的行业节点" detail="该 Theme 目前没有可展示的产业范围。" /> : <>
-      <div className="theme-flow-canvas" aria-label="行业关系图谱"><ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} nodesConnectable={false} nodesDraggable={false} fitView fitViewOptions={{ padding: .18 }} minZoom={.2} maxZoom={2}><Background color="#29404b" gap={24} /><Controls showInteractive={false} /><MiniMap nodeColor={(node) => (node.data as GraphNodeData).selected ? '#8cd4c6' : '#42756f'} pannable zoomable /></ReactFlow></div>
+      <div className="theme-flow-canvas" aria-label="行业关系图谱"><ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodeClick={(_, node) => onSelectIndustry(node.id)} nodesConnectable={false} nodesDraggable={false} fitView fitViewOptions={{ padding: .18 }} minZoom={.2} maxZoom={2}><Background color="#29404b" gap={24} /><Controls showInteractive={false} /><MiniMap nodeColor={(node) => (node.data as GraphNodeData).selected ? '#8cd4c6' : '#42756f'} pannable zoomable /></ReactFlow></div>
       <div className="theme-graph-summary"><span>{projection.graph.nodes.length}/{projection.graph.nodeTotal} 个行业节点</span><span>{projection.graph.edges.length}/{projection.graph.edgeTotal} 条关系</span>{projection.graph.truncated ? <strong>结果已截断</strong> : null}</div>
       <nav className="theme-node-list" aria-label="图谱行业节点">{projection.graph.nodes.map((node) => <button type="button" key={node.ref} className={node.ref === selectedIndustryRef ? 'is-selected' : ''} aria-pressed={node.ref === selectedIndustryRef} onClick={() => onSelectIndustry(node.ref)}>{node.name}</button>)}</nav>
       {projection.graph.edges.length > 0 ? <details className="theme-edge-list"><summary>关系明细</summary><ul>{projection.graph.edges.map((edge) => <li key={edge.ref}><span>{projection.graph.nodes.find((node) => node.ref === edge.sourceRef)?.name ?? edge.sourceRef}</span><b>→ {sectionLabel(edge.relationType)} →</b><span>{projection.graph.nodes.find((node) => node.ref === edge.targetRef)?.name ?? edge.targetRef}</span></li>)}</ul></details> : null}
@@ -124,6 +125,7 @@ export function KnowledgeGraphPage({ knowledgeBase, client }: Props): ReactEleme
   const [selectedIndustryRef, setSelectedIndustryRef] = useState<string>()
   const [selectedCompanyRef, setSelectedCompanyRef] = useState<string>()
   const [followed, setFollowed] = useState<FollowedTarget>()
+  const [expandedCoreViewsTarget, setExpandedCoreViewsTarget] = useState<string>()
   const [overviewBusy, setOverviewBusy] = useState(false)
   const [industryBusy, setIndustryBusy] = useState(false)
   const [companyBusy, setCompanyBusy] = useState(false)
@@ -144,6 +146,7 @@ export function KnowledgeGraphPage({ knowledgeBase, client }: Props): ReactEleme
   const clearThemeData = useCallback(() => {
     setOverview(undefined); setIndustryProjection(undefined); setCompanyProjection(undefined)
     setSelectedIndustryRef(undefined); setSelectedCompanyRef(undefined); setFollowed(undefined); setError('')
+    setExpandedCoreViewsTarget(undefined)
     lastCompanyByIndustry.current.clear()
   }, [])
 
@@ -179,6 +182,7 @@ export function KnowledgeGraphPage({ knowledgeBase, client }: Props): ReactEleme
   }, [client, knowledgeBase?.knowledgeBaseId, knowledgeBase?.revision, themeRef, reloadKey])
 
   const selectIndustry = useCallback((industryRef: string): void => {
+    setExpandedCoreViewsTarget(undefined)
     if (industryRef === selectedIndustryRef) { setFollowed({ kind: 'industry', ref: industryRef }); return }
     industrySequence.current += 1; companySequence.current += 1
     setIndustryProjection(undefined); setCompanyProjection(undefined); setSelectedCompanyRef(undefined)
@@ -203,9 +207,12 @@ export function KnowledgeGraphPage({ knowledgeBase, client }: Props): ReactEleme
 
   const selectCompany = useCallback((companyRef: string): void => {
     if (!selectedIndustryRef) return
+    setExpandedCoreViewsTarget(undefined)
     lastCompanyByIndustry.current.set(selectedIndustryRef, companyRef)
-    companySequence.current += 1; setCompanyProjection(undefined); setSelectedCompanyRef(companyRef); setFollowed({ kind: 'company', ref: companyRef }); setError('')
-  }, [selectedIndustryRef])
+    setFollowed({ kind: 'company', ref: companyRef })
+    if (companyRef === selectedCompanyRef) return
+    companySequence.current += 1; setCompanyProjection(undefined); setSelectedCompanyRef(companyRef); setError('')
+  }, [selectedCompanyRef, selectedIndustryRef])
 
   useEffect(() => {
     if (!overview || !themeRef || !selectedIndustryRef || !selectedCompanyRef) { setCompanyProjection(undefined); setCompanyBusy(false); return }
@@ -224,6 +231,8 @@ export function KnowledgeGraphPage({ knowledgeBase, client }: Props): ReactEleme
   const responseTruncated = Boolean(overview?.responseBounds.truncated || currentIndustry?.responseBounds.truncated || currentCompany?.responseBounds.truncated)
   const omittedRestrictedCount = (currentIndustry?.sections.omittedRestrictedCount ?? 0) + (currentCompany?.sections.omittedRestrictedCount ?? 0)
   const rightContent = followed?.kind === 'company' ? currentCompany?.sections : followed?.kind === 'industry' ? currentIndustry?.sections : undefined
+  const followedKey = followed ? `${followed.kind}:${followed.ref}` : undefined
+  const coreViewsExpanded = followedKey !== undefined && expandedCoreViewsTarget === followedKey
   const rightTitle = followed?.kind === 'company' ? currentCompany?.company.name ?? '公司观点与时间链' : currentIndustry?.industry.name ?? '行业观点与时间链'
   const retry = (): void => { clearThemeData(); setReloadKey((value) => value + 1) }
 
@@ -259,8 +268,9 @@ export function KnowledgeGraphPage({ knowledgeBase, client }: Props): ReactEleme
           <div className="theme-workspace-right">
             <ContentPanel title="核心观点" kicker={rightTitle}>
               {!rightContent ? <EmptyState title="选择行业或公司查看核心观点" /> : rightContent.coreViews.items.length === 0 ? <EmptyState title="暂无已写入核心观点" detail="核心观点只从可读的 canonical Claim 中投影。" /> : <>
-                <ul className="theme-core-views">{rightContent.coreViews.items.map((item, index) => <li key={item.ref}><span>{index + 1}</span><p>{item.statement ?? item.title}</p></li>)}</ul>
-                {rightContent.coreViews.total > rightContent.coreViews.items.length ? <p className="theme-truncation">当前展示 {rightContent.coreViews.items.length} / {rightContent.coreViews.total} 条观点。</p> : null}
+                <ul className="theme-core-views">{rightContent.coreViews.items.slice(0, coreViewsExpanded ? undefined : rightContent.coreViews.defaultCount).map((item, index) => <li key={item.ref}><span>{index + 1}</span><p>{item.statement ?? item.title}</p></li>)}</ul>
+                {rightContent.coreViews.items.length > rightContent.coreViews.defaultCount ? <button type="button" className="theme-expand-views" onClick={() => setExpandedCoreViewsTarget(coreViewsExpanded ? undefined : followedKey)}>{coreViewsExpanded ? '收起观点' : `展开其余 ${rightContent.coreViews.items.length - rightContent.coreViews.defaultCount} 条观点`}</button> : null}
+                {rightContent.coreViews.total > rightContent.coreViews.items.length ? <p className="theme-truncation">已读取 {rightContent.coreViews.items.length} / 共 {rightContent.coreViews.total} 条观点。</p> : null}
               </>}
             </ContentPanel>
             <ContentPanel title="时间链" kicker={followed?.kind === 'company' ? 'COMPANY EVENTS & CATALYSTS' : 'INDUSTRY EVENTS & CATALYSTS'}>
