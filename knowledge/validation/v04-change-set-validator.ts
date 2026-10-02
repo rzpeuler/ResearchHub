@@ -361,7 +361,7 @@ export async function validateKnowledgeChangeSetV04(handle: KnowledgeBaseHandle,
   let changeSetHash: string
   try {
     changeSetSnapshot = structuredClone(changeSet)
-    changeSetHash = hashKnowledgeObject(changeSet)
+    changeSetHash = hashKnowledgeObject(changeSetSnapshot)
   } catch (error) {
     add(errors, 'V04_CHANGESET_SERIALIZATION_INVALID', error instanceof Error ? error.message : String(error))
     return { report: { status: 'failed', errors } }

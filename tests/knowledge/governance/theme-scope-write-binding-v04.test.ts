@@ -200,6 +200,42 @@ test('canonical operations and Theme scope share one committed revision', async 
   })
 })
 
+test('Writer snapshots the validated scope batch before its first asynchronous boundary', async () => {
+  await withFreshKb('invocation-snapshot', async (root) => {
+    const themeRef = await createTheme(root)
+    const handle = await mount(root)
+    const originalDecision = decision({ themeRef, revision: handle.revision, name: 'Validated at invocation' })
+    const replacementDecision = decision({ themeRef, revision: handle.revision, name: 'Changed after invocation' })
+    const originalBatch = batch(themeRef, handle.revision, [originalDecision])
+    const replacementBatch = batch(themeRef, handle.revision, [replacementDecision])
+    const set = changeSet(handle, 'scope-invocation-snapshot-run', originalBatch)
+    const validation = await validateKnowledgeChangeSetV04(handle, set, { mode: 'commit', now: clock })
+    assert.ok(validation.validatedChangeSet, JSON.stringify(validation.report.errors))
+
+    const receipt = validation.validatedChangeSet
+    const writePending = writeKnowledgeBase(handle, receipt, { registry: new KnowledgeBaseRegistry(), clock })
+    Object.defineProperty(receipt.changeSet.ingestionContext!, 'themeScope', {
+      value: replacementBatch,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    })
+    const write = await writePending
+    assert.equal(write.status, 'committed', write.error?.message)
+    assert.equal(write.committedRevision, handle.revision + 1)
+
+    const ledger = await readThemeScopeLedgerV04(await mount(root))
+    assert.equal(ledger.status, 'available')
+    if (ledger.status === 'available') {
+      const history = ledger.themes.find((item) => item.themeRef === themeRef)?.history ?? []
+      assert.deepEqual(history.map((entry) => entry.decision.id), [originalDecision.id])
+      assert.equal(history.some((entry) => entry.decision.id === replacementDecision.id), false)
+    }
+    const log = JSON.parse(await readFile(join(root, 'logs', 'research', 'scope-invocation-snapshot-run.yaml'), 'utf8')) as { ingestionContext: { themeScope: unknown } }
+    assert.deepEqual(log.ingestionContext.themeScope, originalBatch)
+  })
+})
+
 test('scope Theme must be active in the projected post-operation canonical state', async () => {
   await withFreshKb('projected-theme-state', async (root) => {
     const themeRef = await createTheme(root)

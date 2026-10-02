@@ -70,9 +70,18 @@ export async function writeKnowledgeBaseV04(
   registry: KnowledgeBaseRegistry,
   clock: () => string = () => new Date().toISOString(),
 ): Promise<KnowledgeWriteResultV04> {
-  const changeSet = receipt && typeof receipt === 'object' && 'changeSet' in receipt ? (receipt as ValidatedKnowledgeChangeSetV04).changeSet : { changeSetId: 'invalid-receipt', workflowRunId: 'invalid-receipt', knowledgeBaseId: handle.knowledgeBaseId } as unknown as KnowledgeChangeSetV04
+  const submittedChangeSet = receipt && typeof receipt === 'object' && 'changeSet' in receipt ? (receipt as ValidatedKnowledgeChangeSetV04).changeSet : { changeSetId: 'invalid-receipt', workflowRunId: 'invalid-receipt', knowledgeBaseId: handle.knowledgeBaseId } as unknown as KnowledgeChangeSetV04
+  const fallback = result(submittedChangeSet, handle)
+  if (!isValidatorIssuedV04Receipt(receipt)) return { ...fallback, error: { code: 'validation_required', message: 'Schema 0.4 Writer accepts only a runtime Validator-issued receipt' } }
+  const submittedScopeContext = inspectThemeScopeContextV04(submittedChangeSet)
+  if (submittedScopeContext.error) return { ...fallback, error: { code: 'receipt_mismatch', message: submittedScopeContext.error } }
+  let changeSet: KnowledgeChangeSetV04
+  try {
+    changeSet = structuredClone(submittedChangeSet)
+  } catch (error) {
+    return { ...fallback, error: { code: 'receipt_mismatch', message: error instanceof Error ? error.message : String(error) } }
+  }
   const base = result(changeSet, handle)
-  if (!isValidatorIssuedV04Receipt(receipt)) return { ...base, error: { code: 'validation_required', message: 'Schema 0.4 Writer accepts only a runtime Validator-issued receipt' } }
   const scopeContext = inspectThemeScopeContextV04(changeSet)
   if (scopeContext.error) return { ...base, error: { code: 'receipt_mismatch', message: scopeContext.error } }
   let currentChangeSetHash: string
