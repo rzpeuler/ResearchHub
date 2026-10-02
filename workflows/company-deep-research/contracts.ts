@@ -31,10 +31,11 @@ export interface CompanyDeepResearchResult {
   readonly knowledgeBaseRevision?: number
   readonly report?: { readonly reportId: string; readonly outputPath: string }
   readonly proposalIds: readonly string[]
+  readonly createdIds: readonly string[]
+  readonly updatedIds: readonly string[]
   readonly committedIds: readonly string[]
   readonly sourceIds: readonly string[]
   readonly claimIds: readonly string[]
-  readonly updatedIds?: readonly string[]
   readonly resolutionIntents?: readonly ResolutionIntentSummary[]
   readonly errors: readonly string[]
   readonly research?: CompanyResearchResult

@@ -36,6 +36,41 @@ function exec(): ReasoningExecutor {
 test('Industry workflow rejects disabled structured Knowledge before reading or acquiring', async () => { const root = await mkdtemp(join(tmpdir(), 'rhl-industry-structured-off-')); const reports = await mkdtemp(join(tmpdir(), 'rhl-industry-structured-off-reports-')); try { await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-industry-structured-off', now: '2026-09-01T00:00:00.000Z' }); const result = await runIndustryDeepResearch({ workflowRunId: 'industry-structured-off', handle: await new KnowledgeBaseRegistry().mount(root), target: { name: 'Fixture Industry' }, reportRoot: reports, reasoningExecutor: exec(), useStructuredKnowledge: false, acquisitionWave: async () => { throw new Error('acquisition must not run') } }); assert.equal(result.status, 'blocked'); assert.equal(result.gatewaySubmitCount, 0); assert.equal(result.acquisitionWaves, 0); assert.match(result.errors.join('; '), /structured Knowledge context/i); assert.deepEqual(await readdir(reports), []) } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) } })
 test('Industry workflow runs eight modules, skips Wave 2 on no-gap flow, and persists sixteen sections', async () => { const root = await mkdtemp(join(tmpdir(), 'rhl-industry-')); const reports = await mkdtemp(join(tmpdir(), 'rhl-industry-reports-')); try { await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-industry', now: '2026-09-01T00:00:00.000Z' }); let waves = 0; const result = await runIndustryDeepResearch({ workflowRunId: 'industry-run', handle: await new KnowledgeBaseRegistry().mount(root), target: { name: 'Fixture Industry' }, reportRoot: reports, reasoningExecutor: exec(), acquisitionWave: async ({ wave }) => { waves++; return wave === 1 ? [source('s1')] : [] }, now: () => '2026-09-02T00:00:00.000Z' }); assert.equal(result.status, 'completed', result.errors.join('; ')); assert.equal(waves, 1); assert.equal(result.modules.length, 8); assert.equal(result.gatewaySubmitCount, 1); assert.equal(result.acquisitionWaves, 1); const json = JSON.parse(await readFile(`${result.report?.outputPath}.json`, 'utf8')); assert.equal(json.sections.length, 16) } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) } })
 
+test('Industry rerun preserves canonical refs and exposes updated IDs with the committed revision', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-industry-refresh-'))
+  const reports = await mkdtemp(join(tmpdir(), 'rhl-industry-refresh-reports-'))
+  try {
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-industry-refresh', now: '2026-09-01T00:00:00.000Z' })
+    let body = 'Official industry supplier capacity evidence.'
+    const evidence = () => ({ ...source('s1'), content: body, contentHash: sha256(body) })
+    const reasoning = proposalExecutor([
+      { proposalId: 'refresh-company', kind: 'entity', subjectKey: 'refresh-company', entityType: 'company', entityName: 'Refresh Fixture Company' },
+      { proposalId: 'refresh-exposure', kind: 'relation', subjectKey: 'refresh-company', targetKey: 'industry', relationType: 'business_exposure', sourceCandidateIds: ['evidence-s1'] },
+      { proposalId: 'refresh-claim', kind: 'claim', subjectKey: 'refresh-company', claimType: 'fact', statement: 'The company operates in the fixture industry.', sourceCandidateIds: ['evidence-s1'] },
+    ]) as unknown as ReasoningExecutor
+    const originalHandle = await new KnowledgeBaseRegistry().mount(root)
+    const run = (workflowRunId: string, handle: Awaited<ReturnType<KnowledgeBaseRegistry['mount']>>, canonicalRef?: string) => runIndustryDeepResearch({ workflowRunId, handle, target: { name: 'Fixture Industry', ...(canonicalRef === undefined ? {} : { canonicalRef }) }, reportRoot: reports, reasoningExecutor: reasoning, acquisitionWave: async () => [evidence()], now: () => '2026-09-02T00:00:00.000Z' })
+    const first = await run('industry-refresh-1', originalHandle)
+    assert.equal(first.status, 'completed', first.errors.join('; '))
+    assert.equal(first.knowledgeBaseRevision, 1)
+    assert.ok(first.createdIds.includes(first.sourceRefs['evidence-s1']))
+    assert.deepEqual(first.committedIds, [...first.createdIds, ...first.updatedIds])
+
+    body = 'Official industry supplier capacity evidence with an updated observation.'
+    const second = await run('industry-refresh-2', await new KnowledgeBaseRegistry().mount(root), first.entityRefs.industry)
+    assert.equal(second.status, 'completed', second.errors.join('; '))
+    assert.equal(second.knowledgeBaseRevision, 2)
+    assert.deepEqual(second.createdIds, [])
+    assert.ok(second.updatedIds.includes(first.sourceRefs['evidence-s1']))
+    assert.equal(second.sourceRefs['evidence-s1'], first.sourceRefs['evidence-s1'])
+    assert.deepEqual(second.committedIds, [...second.createdIds, ...second.updatedIds])
+
+  } finally {
+    await rm(root, { recursive: true, force: true })
+    await rm(reports, { recursive: true, force: true })
+  }
+})
+
 test('competitive landscape maps the Skill table through Gateway and persists the canonical Module with evidence refs', async () => {
   const root = await mkdtemp(join(tmpdir(), 'rhl-industry-competition-'))
   const reports = await mkdtemp(join(tmpdir(), 'rhl-industry-competition-reports-'))

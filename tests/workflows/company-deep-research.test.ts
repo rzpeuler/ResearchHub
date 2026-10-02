@@ -18,10 +18,11 @@ test('Company Deep Research produces atomic canonical Knowledge and a linked rep
     const handle = await new KnowledgeBaseRegistry().mount(root)
     const signals: ResearchSignal[] = []
     const signalStore: ResearchSignalStore = { append: async (signal) => { signals.push(signal) }, listForCompany: async () => signals }
+    let content = 'The company reported stable revenue and profit.'
     const plugin: ResearchAcquisitionPlugin = {
       name: 'fixture-official',
       discover: async () => [{ candidateId: 'official-1', kind: 'official_disclosure', tier: 1, title: 'Fixture filing', url: 'https://example.com/filing', provider: 'cninfo', publishedAt: '2026-09-07T00:00:00.000Z', metadata: { companySymbol: '600519' } }],
-      fetch: async (candidate) => ({ candidate, retrievedAt: '2026-09-08T00:00:00.000Z', content: 'The company reported stable revenue and profit.', contentHash: 'b'.repeat(64) }),
+      fetch: async (candidate) => ({ candidate, retrievedAt: '2026-09-08T00:00:00.000Z', content, contentHash: content.includes('improved') ? 'c'.repeat(64) : 'b'.repeat(64) }),
       normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: fetched.candidate.provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
     }
     const input = { workflowRunId: 'company-run-1', handle, company: { symbol: '600519', name: 'Fixture Company' }, acquisitionPlugins: [plugin], signalStore, reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z' }
@@ -35,12 +36,19 @@ test('Company Deep Research produces atomic canonical Knowledge and a linked rep
     assert.ok(loaded.objects.some((item) => item.value.id.startsWith('source:research-')))
     assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('claim:research-')).length, 0)
     assert.equal(result.knowledgeBaseRevision, 1)
+    assert.ok(result.createdIds.includes('entity:company-600519'))
+    assert.deepEqual(result.committedIds, [...result.createdIds, ...result.updatedIds])
 
-    const replay = await runCompanyDeepResearch({ ...input, handle: await new KnowledgeBaseRegistry().mount(root) })
+    content = 'The company reported improved revenue and profit.'
+    const replay = await runCompanyDeepResearch({ ...input, workflowRunId: 'company-run-2', handle: await new KnowledgeBaseRegistry().mount(root) })
     assert.equal(replay.status, 'completed')
-    assert.equal(replay.knowledgeBaseRevision, 1)
+    assert.equal(replay.knowledgeBaseRevision, 2)
+    assert.deepEqual(replay.createdIds, [])
+    assert.ok(replay.updatedIds.includes(result.sourceIds[0]))
+    assert.deepEqual(replay.committedIds, [...replay.createdIds, ...replay.updatedIds])
     const replayLoaded = await readCanonicalV04Assets(root)
     assert.equal(replayLoaded.objects.filter((item) => item.value.id.startsWith('source:research-')).length, 1)
+    assert.equal(replay.sourceIds[0], result.sourceIds[0])
   } finally {
     await rm(root, { recursive: true, force: true })
     await rm(reports, { recursive: true, force: true })
