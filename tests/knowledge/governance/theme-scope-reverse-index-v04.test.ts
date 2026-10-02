@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createFreshKnowledgeBaseV04 } from '../../../knowledge/storage/create-v04.ts'
 import { KnowledgeBaseRegistry } from '../../../knowledge/registry/registry.ts'
-import { buildThemeScopeReverseIndexV04, advanceThemeScopeReverseIndexV04, lookupAffectedThemesV04, lookupAffectedThemeSlicesV04, loadOrRebuildThemeScopeReverseIndexV04 } from '../../../knowledge/governance/theme-scope-reverse-index-v04.ts'
+import { buildThemeScopeReverseIndexV04, advanceThemeScopeReverseIndexV04, lookupAffectedThemesV04, lookupAffectedThemeSlicesV04, lookupAffectedThemeScopeSlicesV04, loadOrRebuildThemeScopeReverseIndexV04 } from '../../../knowledge/governance/theme-scope-reverse-index-v04.ts'
 import type { ThemeScopeDecisionV04 } from '../../../knowledge/governance/theme-scope-v04.ts'
 import type { ThemeScopeLedgerReadResultV04 } from '../../../knowledge/governance/theme-scope-ledger-v04.ts'
 import { ThemeManagementGatewayV04 } from '../../../knowledge/production/theme-management-v04.ts'
@@ -39,11 +39,14 @@ function ledger(decisions: readonly ThemeScopeDecisionV04[], revision = 4): Extr
 test('reverse index resolves only affected Themes across multiple Theme slices', () => {
   const first = decision({ theme: 'entity:theme-a', fingerprint: `sha256:${'1'.repeat(64)}`, id: `theme-scope-decision:${'a'.repeat(64)}`, canonicalRef: 'entity:industry-a', sourceRef: 'source:shared' })
   const second = decision({ theme: 'entity:theme-b', fingerprint: `sha256:${'2'.repeat(64)}`, id: `theme-scope-decision:${'b'.repeat(64)}`, canonicalRef: 'entity:industry-b', sourceRef: 'source:shared' })
-  const index = buildThemeScopeReverseIndexV04(ledger([first, second]))
+  const unboundExcluded = { ...decision({ theme: 'entity:theme-c', fingerprint: `sha256:${'3'.repeat(64)}`, id: `theme-scope-decision:${'c'.repeat(64)}`, canonicalRef: 'entity:placeholder' }), candidate: { kind: 'industry' as const, name: 'Unbound Candidate' }, candidateFingerprint: `sha256:${'4'.repeat(64)}` as ThemeScopeDecisionV04['candidateFingerprint'], decision: 'exclude' as const }
+  const index = buildThemeScopeReverseIndexV04(ledger([first, second, unboundExcluded]))
   assert.deepEqual(lookupAffectedThemesV04(index, { knowledgeBaseId: 'kb-index-test', revision: 4, changedRefs: ['entity:industry-a'] }), ['entity:theme-a'])
   assert.deepEqual(lookupAffectedThemesV04(index, { knowledgeBaseId: 'kb-index-test', revision: 4, changedRefs: ['source:shared'] }), ['entity:theme-a', 'entity:theme-b'])
   assert.deepEqual(lookupAffectedThemesV04(index, { knowledgeBaseId: 'kb-index-test', revision: 4, changedRefs: ['entity:unrelated'] }), [])
   assert.deepEqual(lookupAffectedThemesV04(index, { knowledgeBaseId: 'kb-index-test', revision: 4, changedRefs: [], changedFingerprints: [first.candidateFingerprint] }), ['entity:theme-a'])
+  assert.deepEqual(lookupAffectedThemesV04(index, { knowledgeBaseId: 'kb-index-test', revision: 4, changedRefs: [], changedFingerprints: [unboundExcluded.candidateFingerprint] }), ['entity:theme-c'])
+  assert.deepEqual(lookupAffectedThemesV04(index, { knowledgeBaseId: 'kb-index-test', revision: 4, changedRefs: ['entity:theme-b'] }), ['entity:theme-b'])
   const slices = lookupAffectedThemeSlicesV04(index, { knowledgeBaseId: 'kb-index-test', revision: 4, changedRefs: ['entity:industry-a'] })
   assert.equal(slices.knowledgeBaseRevision, 4)
   assert.deepEqual(slices.themes.map((theme) => theme.themeRef), ['entity:theme-a'])
@@ -68,7 +71,8 @@ test('Writer commits a revision-bound sidecar that survives remount and rebuilds
   try {
     await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-index-writer-test', now: NOW })
     const registry = new KnowledgeBaseRegistry()
-    const created = await new ThemeManagementGatewayV04({ clock: () => NOW }).createTheme(await registry.mount(root), { name: 'Index Test Theme' })
+    const preWriteHandle = await registry.mount(root)
+    const created = await new ThemeManagementGatewayV04({ clock: () => NOW }).createTheme(preWriteHandle, { name: 'Index Test Theme' })
     assert.equal(created.status, 'committed')
 
     const remounted = await new KnowledgeBaseRegistry().mount(root)
@@ -78,6 +82,9 @@ test('Writer commits a revision-bound sidecar that survives remount and rebuilds
     assert.equal(loaded.rebuilt, false, 'a committed matching sidecar should survive process/remount')
     assert.equal(loaded.index.revision, remounted.revision)
     assert.ok(loaded.index.sourceWorkflowRunId)
+    const postWriteLookup = await lookupAffectedThemeScopeSlicesV04(preWriteHandle, [created.themeRef!], [], remounted.revision)
+    assert.equal(postWriteLookup.status, 'available', 'production port remounts the handle after a successful canonical write')
+    if (postWriteLookup.status === 'available') assert.equal(postWriteLookup.knowledgeBaseRevision, remounted.revision)
 
     const manifest = await loadKnowledgeBaseManifest(root)
     assert.equal(manifest.revision, remounted.revision)

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { KnowledgeBaseHandle } from '../../knowledge/storage/handle.ts'
 import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
+import { loadKnowledgeBaseManifest } from '../../knowledge/storage/manifest-loader.ts'
 import type { ThemeScopeLedgerThemeV04 } from '../../knowledge/governance/theme-scope-ledger-v04.ts'
 import { fingerprintThemeScopeCandidateV04, type ThemeScopeCandidateV04, type ThemeScopeDecisionV04, type ThemeScopeFingerprintV04 } from '../../knowledge/governance/theme-scope-v04.ts'
 
@@ -23,7 +24,7 @@ export interface ThemeScopeImpactCheckInput {
   /** The exact created/updated canonical refs from the write result. */
   readonly changedRefs: readonly string[]
   /** Indexed A4/Writer lookup; returns only Themes affected by these refs. */
-  readonly lookupAffectedThemes: (changedRefs: readonly string[], revision: number) => Promise<ThemeScopeImpactLookupResult>
+  readonly lookupAffectedThemes: (changedRefs: readonly string[], changedFingerprints: readonly string[], revision: number) => Promise<ThemeScopeImpactLookupResult>
 }
 
 export type ThemeScopeImpactLookupResult =
@@ -102,8 +103,68 @@ export async function runThemeScopeImpactCheck(input: ThemeScopeImpactCheckInput
     return { status: 'no_changes', basedOnRevision: input.committedRevision, candidates: [], diagnostics: ['Canonical write reported no changed refs; scope impact was not expanded.'] }
   }
 
+  let assets: Awaited<ReturnType<typeof readCanonicalV04Assets>>
+  try {
+    const manifest = await loadKnowledgeBaseManifest(input.handle.rootRef)
+    if (manifest.knowledgeBaseId !== input.handle.knowledgeBaseId || manifest.revision !== input.committedRevision) {
+      return { status: 'blocked', code: 'stale_revision', diagnostics: [`Canonical state is at revision ${manifest.revision}; impact check expected ${input.committedRevision}.`] }
+    }
+    assets = await readCanonicalV04Assets(input.handle.rootRef)
+  } catch (error) {
+    return { status: 'blocked', code: 'canonical_read_failed', diagnostics: [`Changed canonical refs could not be inspected: ${error instanceof Error ? error.message : String(error)}`] }
+  }
+  const allAssetsByRef = new Map(assets.objects.flatMap((entry) => {
+    const asset = asAsset(entry.value)
+    return asset ? [[asset.id, asset] as const] : []
+  }))
+  const changed = new Map<string, ChangedAsset>()
+  for (const ref of changedRefs) {
+    const asset = allAssetsByRef.get(ref)
+    if (asset) changed.set(ref, asset)
+  }
+  if (changedRefs.some((ref) => !changed.has(ref))) {
+    return { status: 'blocked', code: 'canonical_read_failed', diagnostics: [`One or more changed refs do not resolve in canonical state at revision ${input.committedRevision}.`] }
+  }
+
+  // Canonical IDs identify the write result, but unbound A4 candidates have no
+  // such ID yet. Include only the changed assets' explicit subjects/endpoints,
+  // evidence refs, and stable semantic fingerprints in the reverse lookup.
+  const lookupRefs = new Set(changedRefs)
+  const lookupFingerprints = new Set<ThemeScopeFingerprintV04>()
+  const fingerprintsByChangedRef = new Map<string, ThemeScopeFingerprintV04[]>()
+  const industryFingerprint = (assetRef: string): ThemeScopeFingerprintV04 | undefined => {
+    const asset = allAssetsByRef.get(assetRef)
+    if (asset?.type !== 'industry' || typeof asset.name !== 'string' || asset.name.trim() === '') return undefined
+    return fingerprintThemeScopeCandidateV04({ kind: 'industry', name: asset.name })
+  }
+  for (const asset of changed.values()) {
+    const fingerprintsForAsset = new Set<ThemeScopeFingerprintV04>()
+    for (const ref of [...(asset.subjectRefs ?? []), ...(asset.sourceRefs ?? []), ...(asset.sourceRef ? [asset.sourceRef] : []), ...(asset.targetRef ? [asset.targetRef] : [])]) lookupRefs.add(ref)
+    if (asset.type === 'industry' && typeof asset.name === 'string' && asset.name.trim() !== '') {
+      fingerprintsForAsset.add(fingerprintThemeScopeCandidateV04({ kind: 'industry', name: asset.name }))
+    }
+    const endpointRefs = [asset.sourceRef, asset.targetRef].filter((value): value is string => typeof value === 'string')
+    for (const ref of endpointRefs) {
+      const fingerprint = industryFingerprint(ref)
+      if (fingerprint) fingerprintsForAsset.add(fingerprint)
+    }
+    if ((asset.type === 'upstream_of' || asset.type === 'depends_on') && asset.sourceRef && asset.targetRef) {
+      const sourceFingerprint = industryFingerprint(asset.sourceRef)
+      const targetFingerprint = industryFingerprint(asset.targetRef)
+      if (sourceFingerprint && targetFingerprint) {
+        fingerprintsForAsset.add(fingerprintThemeScopeCandidateV04({ kind: 'relation', relationType: asset.type, sourceFingerprint, targetFingerprint }))
+      }
+    }
+    for (const subjectRef of asset.subjectRefs ?? []) {
+      const fingerprint = industryFingerprint(subjectRef)
+      if (fingerprint) fingerprintsForAsset.add(fingerprint)
+    }
+    fingerprintsByChangedRef.set(asset.id, sorted(fingerprintsForAsset) as ThemeScopeFingerprintV04[])
+    for (const fingerprint of fingerprintsForAsset) lookupFingerprints.add(fingerprint)
+  }
+
   let lookup: ThemeScopeImpactLookupResult
-  try { lookup = await input.lookupAffectedThemes(changedRefs, input.committedRevision) }
+  try { lookup = await input.lookupAffectedThemes(sorted(lookupRefs), sorted(lookupFingerprints), input.committedRevision) }
   catch (error) {
     return { status: 'blocked', code: 'scope_ledger_unavailable', diagnostics: [`Affected Theme lookup failed: ${error instanceof Error ? error.message : String(error)}`] }
   }
@@ -114,25 +175,11 @@ export async function runThemeScopeImpactCheck(input: ThemeScopeImpactCheckInput
     return { status: 'blocked', code: 'stale_revision', diagnostics: [`Scope impact check expected committed revision ${input.committedRevision}, but the affected Theme lookup is at ${lookup.knowledgeBaseRevision}.`] }
   }
 
-  let assets: Awaited<ReturnType<typeof readCanonicalV04Assets>>
-  try { assets = await readCanonicalV04Assets(input.handle.rootRef) }
-  catch (error) {
-    return { status: 'blocked', code: 'canonical_read_failed', diagnostics: [`Changed canonical refs could not be inspected: ${error instanceof Error ? error.message : String(error)}`] }
-  }
-  const wanted = new Set(changedRefs)
-  const changed = new Map<string, ChangedAsset>()
-  for (const entry of assets.objects) {
-    if (!wanted.has(entry.value.id)) continue
-    const asset = asAsset(entry.value)
-    if (asset) changed.set(entry.value.id, asset)
-  }
-  if (changedRefs.some((ref) => !changed.has(ref))) {
-    return { status: 'blocked', code: 'canonical_read_failed', diagnostics: [`One or more changed refs do not resolve in canonical state at revision ${lookup.knowledgeBaseRevision}.`] }
-  }
-
   const allDecisions = lookup.themes.flatMap((theme) => Object.values(theme.currentByCandidateFingerprint).map((entry) => ({ theme, decision: entry.decision })))
   const decisionsByCanonicalRef = new Map<string, Array<{ theme: ThemeScopeLedgerThemeV04; decision: ThemeScopeDecisionV04 }>>()
+  const decisionsByFingerprint = new Map<string, Array<{ theme: ThemeScopeLedgerThemeV04; decision: ThemeScopeDecisionV04 }>>()
   for (const item of allDecisions) {
+    decisionsByFingerprint.set(item.decision.candidateFingerprint, [...(decisionsByFingerprint.get(item.decision.candidateFingerprint) ?? []), item])
     const canonicalRef = item.decision.candidate.canonicalRef
     if (!canonicalRef) continue
     decisionsByCanonicalRef.set(canonicalRef, [...(decisionsByCanonicalRef.get(canonicalRef) ?? []), item])
@@ -192,6 +239,7 @@ export async function runThemeScopeImpactCheck(input: ThemeScopeImpactCheckInput
       ...(asset.subjectRefs ?? []).flatMap((subjectRef) => decisionsByCanonicalRef.get(subjectRef) ?? []),
       ...(asset.sourceRef ? decisionsByCanonicalRef.get(asset.sourceRef) ?? [] : []),
       ...(asset.targetRef ? decisionsByCanonicalRef.get(asset.targetRef) ?? [] : []),
+      ...(fingerprintsByChangedRef.get(ref) ?? []).flatMap((fingerprint) => decisionsByFingerprint.get(fingerprint) ?? []),
     ]
     for (const { theme, decision } of boundDecisions) {
       const inactive = !isActive(asset)

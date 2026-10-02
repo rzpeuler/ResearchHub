@@ -4,6 +4,7 @@ import type { KnowledgeBaseHandle } from '../storage/handle.ts'
 import { canonicalSerialize, hashKnowledgeObject } from '../storage/canonical-hash.ts'
 import { loadKnowledgeBaseManifest } from '../storage/manifest-loader.ts'
 import { parseYaml } from '../storage/yaml.ts'
+import { KnowledgeBaseRegistry } from '../registry/registry.ts'
 import type { ThemeScopeDecisionV04, ThemeScopeFingerprintV04 } from './theme-scope-v04.ts'
 import { readThemeScopeLedgerV04, type ThemeScopeLedgerEntryV04, type ThemeScopeLedgerReadResultV04, type ThemeScopeLedgerThemeV04 } from './theme-scope-ledger-v04.ts'
 
@@ -47,7 +48,7 @@ function validIndex(value: unknown, knowledgeBaseId: string, revision: number): 
 }
 
 function decisionRefs(decision: ThemeScopeDecisionV04): { refs: string[]; fingerprints: string[] } {
-  const refs: string[] = []
+  const refs: string[] = [decision.themeRef]
   const fingerprints: ThemeScopeFingerprintV04[] = [decision.candidateFingerprint]
   const candidate = decision.candidate as unknown as Record<string, unknown>
   if (typeof candidate.canonicalRef === 'string') refs.push(candidate.canonicalRef)
@@ -187,14 +188,18 @@ export function lookupAffectedThemeSlicesV04(index: ThemeScopeReverseIndexV04, i
 }
 
 /** Production port shape for `runThemeScopeImpactCheck`'s indexed lookup callback. */
-export async function lookupAffectedThemeScopeSlicesV04(handle: KnowledgeBaseHandle, changedRefs: readonly string[], revision: number): Promise<
+export async function lookupAffectedThemeScopeSlicesV04(handle: KnowledgeBaseHandle, changedRefs: readonly string[], changedFingerprints: readonly string[], revision: number): Promise<
   | { readonly status: 'available'; readonly knowledgeBaseRevision: number; readonly themes: readonly ThemeScopeLedgerThemeV04[] }
   | { readonly status: 'failed'; readonly error: string }
 > {
-  const loaded = await loadOrRebuildThemeScopeReverseIndexV04(handle)
+  let currentHandle: KnowledgeBaseHandle
+  try { currentHandle = await new KnowledgeBaseRegistry().mount(handle.rootRef) }
+  catch (error) { return { status: 'failed', error: error instanceof Error ? error.message : String(error) } }
+  if (currentHandle.knowledgeBaseId !== handle.knowledgeBaseId) return { status: 'failed', error: 'Mounted Knowledge Base identity changed.' }
+  const loaded = await loadOrRebuildThemeScopeReverseIndexV04(currentHandle)
   if (loaded.status !== 'available') return { status: 'failed', error: `${loaded.reason}: ${loaded.message}` }
   try {
-    return { status: 'available', ...lookupAffectedThemeSlicesV04(loaded.index, { knowledgeBaseId: handle.knowledgeBaseId, revision, changedRefs }) }
+    return { status: 'available', ...lookupAffectedThemeSlicesV04(loaded.index, { knowledgeBaseId: currentHandle.knowledgeBaseId, revision, changedRefs, changedFingerprints }) }
   } catch (error) {
     return { status: 'failed', error: error instanceof Error ? error.message : String(error) }
   }

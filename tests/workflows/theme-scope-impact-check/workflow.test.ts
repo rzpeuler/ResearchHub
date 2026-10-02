@@ -49,9 +49,9 @@ async function addObjects(root: string, objects: readonly { readonly type: strin
 }
 
 async function mount(root: string) { return new KnowledgeBaseRegistry().mount(root) }
-function affectedLookup(root: string, themeRefs: readonly string[], observedCalls: string[][] = []) {
-  return async (changedRefs: readonly string[], _revision: number) => {
-    observedCalls.push([...changedRefs])
+function affectedLookup(root: string, themeRefs: readonly string[], observedCalls: { refs: string[]; fingerprints: string[] }[] = []) {
+  return async (changedRefs: readonly string[], changedFingerprints: readonly string[], _revision: number) => {
+    observedCalls.push({ refs: [...changedRefs], fingerprints: [...changedFingerprints] })
     const ledger = await readThemeScopeLedgerV04(await mount(root))
     if (ledger.status === 'failed') return { status: 'failed' as const, error: `${ledger.error.code}: ${ledger.error.message}` }
     const wantedThemes = new Set(themeRefs)
@@ -74,28 +74,61 @@ test('unrelated canonical write yields no impact candidate and does not scan unr
     await addObjects(root, [industry('memory', 'Memory'), industry('other', 'Other'), claim('unrelated', 'entity:other', 'source:unrelated')])
     await appendScope(root, 'scope-memory', draft(candidate, { revision: 0 }), 0)
     await bumpRevision(root, 2)
-    const lookupCalls: string[][] = []
+    const lookupCalls: { refs: string[]; fingerprints: string[] }[] = []
     const handle = await mount(root)
     const result = await runThemeScopeImpactCheck({ handle, baseRevision: 1, committedRevision: 2, changedRefs: ['claim:unrelated'], lookupAffectedThemes: affectedLookup(root, [], lookupCalls) })
     assert.equal(result.status, 'completed')
     if (result.status === 'completed') assert.deepEqual(result.candidates, [])
-    assert.deepEqual(lookupCalls, [['claim:unrelated']])
+    assert.deepEqual(lookupCalls, [{ refs: ['claim:unrelated', 'entity:other', 'source:unrelated'], fingerprints: [fingerprintThemeScopeCandidateV04({ kind: 'industry', name: 'Other' })] }])
   })
 })
 
 test('materially new evidence attached to an excluded Industry reopens only that candidate', async () => {
   await withKb('new-evidence', async (root) => {
-    const candidate: ThemeScopeCandidateV04 = { kind: 'industry', name: 'Memory', canonicalRef: 'entity:memory' }
+    const candidate: ThemeScopeCandidateV04 = { kind: 'industry', name: 'Memory' }
     await addObjects(root, [industry('memory', 'Memory'), claim('new-evidence', 'entity:memory', NEW_EVIDENCE.sourceRef)])
     await appendScope(root, 'scope-memory-excluded', draft(candidate, { decision: 'exclude', revision: 0, evidence: [OLD_EVIDENCE] }), 0)
     await bumpRevision(root, 2)
-    const result = await runThemeScopeImpactCheck({ handle: await mount(root), baseRevision: 1, committedRevision: 2, changedRefs: ['claim:new-evidence'], lookupAffectedThemes: affectedLookup(root, [THEME]) })
+    const lookupCalls: { refs: string[]; fingerprints: string[] }[] = []
+    const result = await runThemeScopeImpactCheck({ handle: await mount(root), baseRevision: 1, committedRevision: 2, changedRefs: ['claim:new-evidence'], lookupAffectedThemes: affectedLookup(root, [THEME], lookupCalls) })
     assert.equal(result.status, 'completed')
     if (result.status !== 'completed') return
     assert.equal(result.candidates.length, 1)
     assert.equal(result.candidates[0]?.changeKind, 'excluded_candidate_new_evidence')
     assert.deepEqual(result.candidates[0]?.evidenceRefs, ['claim:new-evidence', NEW_EVIDENCE.sourceRef])
     assert.equal(result.candidates[0]?.priorDecision?.decision, 'exclude')
+    assert.deepEqual(lookupCalls[0]?.fingerprints, [fingerprintThemeScopeCandidateV04({ kind: 'industry', name: 'Memory' })])
+    assert.ok(lookupCalls[0]?.refs.includes('entity:memory'))
+  })
+})
+
+test('new Industry relation intersects a confirmed Theme and reverse lookup receives endpoint fingerprints', async () => {
+  await withKb('new-edge-intersection', async (root) => {
+    const confirmed: ThemeScopeCandidateV04 = { kind: 'industry', name: 'Known', canonicalRef: 'entity:known' }
+    await addObjects(root, [
+      industry('known', 'Known'), industry('new', 'New Industry'),
+      { type: 'relation', value: { id: 'relation:new-edge', type: 'upstream_of', sourceRef: 'entity:new', targetRef: 'entity:known', sourceRefs: [NEW_EVIDENCE.sourceRef], lifecycle: { status: 'active' } } },
+    ])
+    await appendScope(root, 'scope-known', draft(confirmed, { revision: 0 }), 0)
+    await bumpRevision(root, 2)
+    const calls: { refs: string[]; fingerprints: string[] }[] = []
+    const result = await runThemeScopeImpactCheck({
+      handle: await mount(root), baseRevision: 1, committedRevision: 2, changedRefs: ['relation:new-edge'],
+      lookupAffectedThemes: async (refs, fingerprints, revision) => {
+        calls.push({ refs: [...refs], fingerprints: [...fingerprints] })
+        const ledger = await readThemeScopeLedgerV04(await mount(root))
+        if (ledger.status === 'failed') return { status: 'failed', error: ledger.error.message }
+        return { status: 'available', knowledgeBaseRevision: revision, themes: ledger.themes }
+      },
+    })
+    assert.equal(result.status, 'completed')
+    if (result.status !== 'completed') return
+    assert.ok(result.candidates.some((candidate) => candidate.changeKind === 'new_theme_node' && candidate.candidate.kind === 'industry' && candidate.candidate.name === 'New Industry'))
+    assert.ok(calls[0]?.refs.includes('entity:known'))
+    assert.ok(calls[0]?.refs.includes('entity:new'))
+    assert.ok(calls[0]?.fingerprints.includes(fingerprintThemeScopeCandidateV04({ kind: 'industry', name: 'New Industry' })))
+    assert.ok(calls[0]?.fingerprints.includes(fingerprintThemeScopeCandidateV04({ kind: 'industry', name: 'Known' })))
+    assert.ok(calls[0]?.fingerprints.includes(fingerprintThemeScopeCandidateV04({ kind: 'relation', relationType: 'upstream_of', sourceFingerprint: fingerprintThemeScopeCandidateV04({ kind: 'industry', name: 'New Industry' }), targetFingerprint: fingerprintThemeScopeCandidateV04({ kind: 'industry', name: 'Known' }) })))
   })
 })
 
@@ -114,7 +147,7 @@ test('proposal fingerprints are stable on replay and a recorded pending decision
     assert.equal(first.candidates[0]?.proposalId, replay.candidates[0]?.proposalId)
     const pendingCandidate: ThemeScopeCandidateV04 = { kind: 'industry', name: 'Candidate', canonicalRef: 'entity:candidate' }
     await appendScope(root, 'scope-candidate-pending', draft(pendingCandidate, { decision: 'pending', revision: 2, evidence: [OLD_EVIDENCE] }), 2)
-    const noChangeLookups: string[][] = []
+    const noChangeLookups: { refs: string[]; fingerprints: string[] }[] = []
     const afterDecision = await runThemeScopeImpactCheck({ handle: await mount(root), baseRevision: 3, committedRevision: 3, changedRefs: [], lookupAffectedThemes: affectedLookup(root, [THEME], noChangeLookups) })
     assert.equal(afterDecision.status, 'no_changes')
     assert.deepEqual(noChangeLookups, [])
@@ -142,8 +175,8 @@ test('a changed canonical Relation is surfaced when its confirmed endpoint bindi
     await bumpRevision(root, 2)
     const result = await runThemeScopeImpactCheck({
       handle: await mount(root), baseRevision: 1, committedRevision: 2, changedRefs: ['relation:link'],
-      lookupAffectedThemes: async (refs, revision) => {
-        assert.deepEqual(refs, ['relation:link']); assert.equal(revision, 2)
+      lookupAffectedThemes: async (refs, _fingerprints, revision) => {
+        assert.ok(refs.includes('relation:link')); assert.ok(refs.includes('entity:target')); assert.equal(revision, 2)
         return { status: 'available', knowledgeBaseRevision: 2, themes: [theme] }
       },
     })
@@ -167,6 +200,8 @@ test('stale write revision and unavailable scope ledger fail closed', async () =
   })
   await withKb('ledger-failed', async (root) => {
     await writeFile(join(root, 'logs', 'research', 'broken.yaml'), '{broken\n', 'utf8')
+    await addObjects(root, [industry('any', 'Any')])
+    await bumpRevision(root, 1)
     const failed = await runThemeScopeImpactCheck({ handle: await mount(root), baseRevision: 0, committedRevision: 1, changedRefs: ['entity:any'], lookupAffectedThemes: affectedLookup(root, []) })
     assert.equal(failed.status, 'blocked')
     if (failed.status === 'blocked') assert.equal(failed.code, 'scope_ledger_unavailable')
