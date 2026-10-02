@@ -15,10 +15,11 @@ const defaultRightsForm: V04RightsForm = { accessScope: 'unknown', providerTerms
 const defaultSourceForm: V04SourceForm = { title: '', sourceType: 'unknown', sourceReliability: 'unknown', publisher: '', institution: '', author: '', publishedAt: '', canonicalUrl: '' }
 const supportedDocumentExtension = /\.(pdf|csv|htm|html|json|md|text|txt|xml)$/i
 const knownTools: Record<string, string> = { researchhub_status: 'ResearchHub status', search_knowledge: 'Knowledge search', get_knowledge_object: 'Knowledge object lookup', ingest_document: 'Document ingestion', get_workflow_status: 'Workflow status', cancel_workflow: 'Workflow cancellation', list_review_cases: 'Review case list', get_review_case: 'Review case detail' }
+const rawDocumentPreviewPollLimit = 120
 
 function previewPollTerminalDisposition(result: RawDocumentPreviewPollV04): 'wait' | 'verified' | 'terminal' {
-  if (!result.workflow || !terminalWorkflowStatuses.has(result.workflow.status)) return 'wait'
-  return result.preview?.committable ? 'verified' : 'terminal'
+  if (result.preview?.committable) return 'verified'
+  return result.workflow && terminalWorkflowStatuses.has(result.workflow.status) ? 'terminal' : 'wait'
 }
 
 function routeForPath(pathname: string): Route { return pathname === '/briefs' ? 'briefs' : pathname === '/reports' ? 'reports' : pathname === '/bundles' ? 'bundles' : pathname === '/run' ? 'run' : pathname === '/graph' ? 'graph' : pathname === '/reviews' ? 'reviews' : pathname === '/theses' ? 'theses' : 'research' }
@@ -668,7 +669,7 @@ export default function App(): ReactElement {
       const started = await client.startRawDocumentPreviewV04({ attachmentId: attachment.attachmentId, sourceMetadata, rights })
       if (generation !== previewGeneration.current) return
       setWorkflowRunId(started.runId); setWorkflow(started.workflow); setContextPanel('workflow')
-      while (generation === previewGeneration.current) {
+      for (let attempt = 0; attempt < rawDocumentPreviewPollLimit && generation === previewGeneration.current; attempt += 1) {
         const result = await client.getRawDocumentPreviewV04(started.runId)
         if (generation !== previewGeneration.current) return
         if (result.workflow) setWorkflow(result.workflow)
@@ -680,8 +681,9 @@ export default function App(): ReactElement {
           setError(result.workflow?.errorSummary ?? result.preview?.statusNote ?? 'Preview workflow ended without a verified candidate preview.')
           return
         }
-        await new Promise((resolve) => window.setTimeout(resolve, 1000))
+        if (attempt + 1 < rawDocumentPreviewPollLimit) await new Promise((resolve) => window.setTimeout(resolve, 1000))
       }
+      if (generation === previewGeneration.current) { setUploadStatus(''); setError('Preview is still running. Check the Workflow panel for its current status.') }
     } catch (caught) { if (generation === previewGeneration.current) { setUploadStatus(''); setError(errorText(caught)) } }
     finally { if (generation === previewGeneration.current) setPreviewBusy(false) }
   }

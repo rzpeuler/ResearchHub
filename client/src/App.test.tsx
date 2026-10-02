@@ -85,7 +85,7 @@ describe('Homepage shell', () => {
     expect(acceptancePost?.body).toMatchObject({ previewWorkflowRunId: 'preview-1', acceptedCandidateIds: ['candidate-claim-1'] })
   })
 
-  it('keeps candidates hidden while a durable snapshot is noncommittable and polls through terminal verification', async () => {
+  it('keeps candidates hidden while a durable snapshot is noncommittable and accepts a verified read-back without Workflow status', async () => {
     let previewReads = 0
     let releaseTerminalPreview: (response: Response) => void = () => undefined
     const running = { runId: 'preview-race', workflowType: 'raw_document_knowledge_preview_v04', objective: 'Preview source', status: 'running', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:00.000Z' }
@@ -123,9 +123,43 @@ describe('Homepage shell', () => {
     await waitFor(() => expect(previewReads).toBe(2), { timeout: 2500 })
     expect(screen.queryByText('candidate-premature')).toBeNull()
 
-    releaseTerminalPreview(json({ runId: 'preview-race', workflow: { ...running, status: 'completed', updatedAt: '2026-10-02T00:00:01.000Z' }, preview: { ...v04Preview, runId: 'preview-race' }, committable: true }))
+    releaseTerminalPreview(json({ runId: 'preview-race', preview: { ...v04Preview, runId: 'preview-race' }, committable: true }))
     expect(await screen.findByText('candidate-claim-1')).toBeTruthy()
     expect(screen.queryByText('candidate-premature')).toBeNull()
+  })
+
+  it('stops polling after the bounded wait and reports that the Workflow is still running', async () => {
+    let previewReads = 0
+    let notifyPollLimitReached!: () => void
+    const pollLimitReached = new Promise<void>((resolve) => { notifyPollLimitReached = resolve })
+    const running = { runId: 'preview-timeout', workflowType: 'raw_document_knowledge_preview_v04', objective: 'Preview source', status: 'running', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:00.000Z' }
+    mockV04UploadRuntime(async (input) => {
+      const path = String(input)
+      if (path === '/api/attachments') return json({ attachment: { attachmentId: 'attachment-timeout', filename: 'timeout.pdf', mediaType: 'application/pdf', size: 16, sha256: 'f'.repeat(64), createdAt: '2026-10-02T00:00:00.000Z' } }, 201)
+      if (path === '/api/production/raw-document-preview-v04') return json({ accepted: true, runId: 'preview-timeout', committable: false, workflow: running }, 202)
+      if (path === '/api/production/raw-document-preview-v04/preview-timeout') { previewReads += 1; if (previewReads === 120) notifyPollLimitReached(); return json({ runId: 'preview-timeout', committable: false }) }
+      if (path === '/api/workflows/preview-timeout') return json({ ...running, status: 'completed' })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    })
+    render(<App />)
+    const message = await screen.findByRole('textbox', { name: 'Message' })
+    fireEvent.paste(message, { clipboardData: { files: [new File(['source'], 'timeout.pdf', { type: 'application/pdf' })] } })
+    await screen.findByText('timeout.pdf')
+    fireEvent.click(screen.getByRole('button', { name: 'Write Knowledge' }))
+    fireEvent.change(screen.getByLabelText('Source title'), { target: { value: 'Timeout source' } })
+    fireEvent.change(screen.getByLabelText(/Policy basis/), { target: { value: 'User supplied rights basis' } })
+
+    const realSetTimeout = window.setTimeout.bind(window)
+    const timerSpy = vi.spyOn(window, 'setTimeout').mockImplementation(((handler: TimerHandler, timeout?: number, ...args: unknown[]) => realSetTimeout(handler, timeout === 1000 ? 0 : timeout, ...args)) as typeof window.setTimeout)
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Extract candidates for review' }))
+      await pollLimitReached
+      await new Promise((resolve) => realSetTimeout(resolve, 0))
+      expect(previewReads).toBe(120)
+      expect(document.body.textContent).toContain('Preview is still running. Check the Workflow panel for its current status.')
+    } finally {
+      timerSpy.mockRestore()
+    }
   })
 
   it('accepts document drops on the Chat composer and rejects unsupported files', async () => {
