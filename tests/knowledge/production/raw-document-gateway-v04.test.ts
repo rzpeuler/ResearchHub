@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { KnowledgeBaseRegistry } from '../../../knowledge/registry/registry.ts'
@@ -176,10 +176,10 @@ test('reusing one workflowRunId with different document bytes reports an idempot
 test('Writer failure reports no canonical success while preserving the archived Raw for retry', async () => {
   await withFreshKb('writer-failure', async (root) => {
     const handle = await mount(root)
-    const writer = (async (writerHandle) => ({
+    const writer = (async (writerHandle, receipt) => ({
       status: 'failed' as const,
       knowledgeBaseId: writerHandle.knowledgeBaseId,
-      changeSetId: 'fixture-writer-failure',
+      changeSetId: receipt.changeSet.changeSetId,
       baseRevision: writerHandle.revision,
       committedRevision: writerHandle.revision,
       createdIds: [],
@@ -205,13 +205,13 @@ test('Writer failure reports no canonical success while preserving the archived 
 
 test('shared Writer stale revision and idempotency conflicts are blocked with current revision', async () => {
   await withFreshKb('writer-stale-conflict', async (root) => {
-    const writer = (async (writerHandle) => {
+    const writer = (async (writerHandle, receipt) => {
       const concurrent = await new ThemeManagementGatewayV04({ clock }).createTheme(await mount(root), { name: 'Concurrent Theme' })
       assert.equal(concurrent.status, 'committed', concurrent.errors.map((error) => error.message).join('; '))
       return {
         status: 'rejected' as const,
         knowledgeBaseId: writerHandle.knowledgeBaseId,
-        changeSetId: 'fixture-stale-writer',
+        changeSetId: receipt.changeSet.changeSetId,
         baseRevision: writerHandle.revision,
         committedRevision: writerHandle.revision,
         createdIds: [],
@@ -228,10 +228,10 @@ test('shared Writer stale revision and idempotency conflicts are blocked with cu
   })
 
   await withFreshKb('writer-idempotency-conflict', async (root) => {
-    const writer = (async (writerHandle) => ({
+    const writer = (async (writerHandle, receipt) => ({
       status: 'rejected' as const,
       knowledgeBaseId: writerHandle.knowledgeBaseId,
-      changeSetId: 'fixture-idempotency-writer',
+      changeSetId: receipt.changeSet.changeSetId,
       baseRevision: writerHandle.revision,
       committedRevision: writerHandle.revision,
       createdIds: [],
@@ -243,6 +243,105 @@ test('shared Writer stale revision and idempotency conflicts are blocked with cu
     assert.equal(result.errors[0]?.code, 'RAW_DOCUMENT_IDEMPOTENCY_CONFLICT')
     assert.equal(result.knowledgeBaseRevision, (await loadKnowledgeBaseManifest(root)).revision)
     assert.equal((await readCanonicalV04Assets(root)).objects.length, 0)
+  })
+})
+
+test('a fabricated Writer success cannot claim a Source commit without a committed log and canonical Source', async () => {
+  await withFreshKb('fake-writer-success', async (root) => {
+    const handle = await mount(root)
+    const writer = (async (writerHandle, receipt) => ({
+      status: 'committed' as const,
+      knowledgeBaseId: writerHandle.knowledgeBaseId,
+      changeSetId: receipt.changeSet.changeSetId,
+      baseRevision: receipt.baseRevision,
+      committedRevision: receipt.baseRevision + 1,
+      createdIds: receipt.changeSet.schemaVersion === '0.4'
+        ? [receipt.changeSet.operations[0]!.type === 'create' ? receipt.changeSet.operations[0]!.object.id : 'unexpected']
+        : [],
+      updatedIds: [],
+    })) as typeof writeKnowledgeBase
+    const result = await new RawDocumentKnowledgeGatewayV04({ clock, writer }).submit(request(handle))
+    assert.equal(result.status, 'failed')
+    assert.equal(result.errors[0]?.code, 'RAW_DOCUMENT_POST_WRITE_VERIFY_FAILED')
+    assert.equal(result.sourceRef, undefined)
+    assert.equal(result.knowledgeBaseRevision, 0)
+    assert.equal((await readCanonicalV04Assets(root)).objects.length, 0)
+    assert.equal((await loadKnowledgeBaseManifest(root)).revision, 0)
+  })
+})
+
+test('no_changes is rejected as an impossible Writer status for a new Source create', async () => {
+  await withFreshKb('fake-writer-no-changes', async (root) => {
+    const handle = await mount(root)
+    const writer = (async (writerHandle, receipt) => ({
+      status: 'no_changes' as const,
+      knowledgeBaseId: writerHandle.knowledgeBaseId,
+      changeSetId: receipt.changeSet.changeSetId,
+      baseRevision: receipt.baseRevision,
+      committedRevision: receipt.baseRevision,
+      createdIds: [],
+      updatedIds: [],
+    })) as typeof writeKnowledgeBase
+    const result = await new RawDocumentKnowledgeGatewayV04({ clock, writer }).submit(request(handle))
+    assert.equal(result.status, 'failed')
+    assert.equal(result.errors[0]?.code, 'RAW_DOCUMENT_WRITER_RESULT_INVALID')
+    assert.equal(result.sourceRef, undefined)
+    assert.equal((await readCanonicalV04Assets(root)).objects.length, 0)
+  })
+})
+
+test('tampered Writer execution log identity is rejected on retry', async () => {
+  await withFreshKb('tampered-log', async (root) => {
+    const staleHandle = await mount(root)
+    const input = request(staleHandle)
+    const gateway = new RawDocumentKnowledgeGatewayV04({ clock })
+    assert.equal((await gateway.submit(input)).status, 'committed')
+    const logPath = join(root, 'logs', 'research', `${input.workflowRunId}.yaml`)
+    const log = JSON.parse(await readFile(logPath, 'utf8')) as Record<string, unknown>
+    log.knowledgeBaseId = 'kb-tampered'
+    await writeFile(logPath, JSON.stringify(log), 'utf8')
+    const retry = await gateway.submit(input)
+    assert.equal(retry.status, 'failed')
+    assert.equal(retry.errors[0]?.code, 'RAW_DOCUMENT_EXECUTION_LOG_INVALID')
+    assert.equal(retry.sourceRef, undefined)
+  })
+})
+
+test('oversized Writer execution log is rejected without an unbounded read', async () => {
+  await withFreshKb('oversized-log', async (root) => {
+    const staleHandle = await mount(root)
+    const input = request(staleHandle)
+    const gateway = new RawDocumentKnowledgeGatewayV04({ clock })
+    assert.equal((await gateway.submit(input)).status, 'committed')
+    const logPath = join(root, 'logs', 'research', `${input.workflowRunId}.yaml`)
+    await writeFile(logPath, Buffer.alloc(2_000_001, 0x20))
+    const retry = await gateway.submit(input)
+    assert.equal(retry.status, 'failed')
+    assert.equal(retry.errors[0]?.code, 'RAW_DOCUMENT_EXECUTION_LOG_SIZE_LIMIT')
+    assert.equal(retry.sourceRef, undefined)
+  })
+})
+
+test('symlinked Writer execution log is rejected on retry', async (context) => {
+  await withFreshKb('symlink-log', async (root) => {
+    const staleHandle = await mount(root)
+    const input = request(staleHandle)
+    const gateway = new RawDocumentKnowledgeGatewayV04({ clock })
+    assert.equal((await gateway.submit(input)).status, 'committed')
+    const logPath = join(root, 'logs', 'research', `${input.workflowRunId}.yaml`)
+    const outsidePath = join(root, 'outside-writer-log.yaml')
+    await writeFile(outsidePath, '{}', 'utf8')
+    await unlink(logPath)
+    try { await symlink(outsidePath, logPath) }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code === 'EPERM' || code === 'EACCES' || code === 'ENOTSUP') return context.skip(`Symlink creation is unavailable on this platform: ${code}`)
+      throw error
+    }
+    const retry = await gateway.submit(input)
+    assert.equal(retry.status, 'failed')
+    assert.equal(retry.errors[0]?.code, 'RAW_DOCUMENT_EXECUTION_LOG_UNSAFE')
+    assert.equal(retry.sourceRef, undefined)
   })
 })
 
