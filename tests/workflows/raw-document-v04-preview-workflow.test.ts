@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
 import { createFreshKnowledgeBaseV04 } from '../../knowledge/storage/create-v04.ts'
 import { KnowledgeBaseHandle } from '../../knowledge/storage/handle.ts'
-import { readRaw } from '../../knowledge/raw/raw-archive.ts'
+import { getRaw, readRaw } from '../../knowledge/raw/raw-archive.ts'
 import { DocumentInputResolver } from '../../plugins/document/input-resolver.ts'
 import type { DocumentParser, DocumentParserInput, StructuredDocument } from '../../plugins/document/contracts.ts'
+import { RawDocumentKnowledgeGatewayV04 } from '../../knowledge/production/raw-document-gateway-v04.ts'
+import type { RawDocumentGatewayV04Input, RawDocumentGatewayV04Result } from '../../knowledge/production/raw-document-gateway-v04.ts'
 import type { RawDocumentPreviewSkillV04, RawDocumentPreviewWorkflowInputV04 } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts'
 import { runRawDocumentKnowledgePreviewV04 } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts'
 import type { ClaimCandidate, EntityCandidate, ReportMap, UnderstandAndPlanOutput, ValidatedExtractKnowledgeResult } from '../../skills/knowledge-curation/contracts.ts'
@@ -140,6 +142,41 @@ function input(handle: KnowledgeBaseHandle, overrides: Partial<RawDocumentPrevie
 
 async function mount(root: string) { return new KnowledgeBaseRegistry().mount(root) }
 
+async function within<T>(promise: Promise<T>, timeoutMs = 1_000): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error(`Operation did not return within ${timeoutMs} ms`)), timeoutMs) }),
+    ])
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout)
+  }
+}
+
+function twoBlockDocument(): StructuredDocument {
+  const one = documentFixture()
+  return {
+    ...one,
+    normalizedText: `${one.normalizedText}\nA second independent observation.`,
+    blocks: [...one.blocks, { blockId: 'block-ai-supply', type: 'paragraph', text: 'A second independent observation.', sectionRef: null, page: 1, locator: { page: 1, parserItemRef: 'paragraph-2' }, order: 2 }],
+    stats: { ...one.stats, blockCount: 2, normalizedCharacters: one.normalizedText.length + 34 },
+  }
+}
+
+function twoUnitPlan(): UnderstandAndPlanOutput {
+  return {
+    reportMap: reportMap(),
+    extractionPlanProposal: {
+      units: [
+        { proposedUnitId: 'ai-demand-unit', topic: 'AI computing demand', semanticPurpose: 'Extract the first grounded observation', primaryRefs: [{ kind: 'block', blockId: 'block-ai-demand' }], contextRefs: [] },
+        { proposedUnitId: 'ai-supply-unit', topic: 'AI computing supply', semanticPurpose: 'Extract the second grounded observation', primaryRefs: [{ kind: 'block', blockId: 'block-ai-supply' }], contextRefs: [] },
+      ],
+      excludedRefs: [],
+    },
+  }
+}
+
 test('Schema 0.4 workflow persists Source and Raw then returns evidence-linked candidates without canonical knowledge writes', async () => {
   await withFreshKb('candidate-preview', async (root) => {
     const handle = await mount(root)
@@ -225,6 +262,228 @@ test('cancellation during planning preserves Source and Raw and reports preview 
     assert.equal(result.extractionPreview.status, 'cancelled')
     assert.deepEqual(result.extractionPreview.candidateGroups, [])
     assert.equal((await readCanonicalV04Assets(root)).objects.map((asset) => asset.kind).join(','), 'source')
+  })
+})
+
+test('untrusted Gateway receipts with a mismatched KB, impossible revision, or malformed refs cannot establish Source persistence', async () => {
+  const mutations: readonly [string, (receipt: RawDocumentGatewayV04Result) => RawDocumentGatewayV04Result][] = [
+    ['kb-identity', (receipt: RawDocumentGatewayV04Result) => ({ ...receipt, knowledgeBaseId: 'kb-forged' })],
+    ['revision', (receipt: RawDocumentGatewayV04Result) => ({ ...receipt, knowledgeBaseRevision: receipt.baseRevision + 2 })],
+    ['ref-syntax', (receipt: RawDocumentGatewayV04Result) => ({ ...receipt, sourceRef: 'source:../forged' as `source:${string}` })],
+  ]
+  for (const [name, mutate] of mutations) {
+    await withFreshKb(`receipt-${name}`, async (root) => {
+      const realGateway = new RawDocumentKnowledgeGatewayV04({ clock: () => NOW })
+      const gateway = {
+        async submit(request: RawDocumentGatewayV04Input) {
+          return mutate(await realGateway.submit(request))
+        },
+      }
+      let planned = false
+      const result = await runRawDocumentKnowledgePreviewV04(input(await mount(root), {
+        gateway,
+        skill: skill({ onPlan: () => { planned = true } }),
+      }))
+
+      assert.equal(result.status, 'blocked')
+      assert.equal(result.sourceRaw.persisted, false)
+      assert.equal(result.sourceRaw.status, 'failed')
+      assert.equal(planned, false)
+      assert.equal(result.provenance, undefined)
+    })
+  }
+})
+
+test('corrupt Raw bytes fail verification before candidate provenance is created', async () => {
+  await withFreshKb('raw-corrupt', async (root) => {
+    const realGateway = new RawDocumentKnowledgeGatewayV04({ clock: () => NOW })
+    const gateway = {
+      async submit(request: RawDocumentGatewayV04Input) {
+        const receipt = await realGateway.submit(request)
+        assert.ok(receipt.rawRef)
+        const raw = await getRaw(request.handle, receipt.rawRef)
+        await writeFile(raw.originalPath, Buffer.from('tampered bytes'))
+        return receipt
+      },
+    }
+    let planned = false
+    const result = await runRawDocumentKnowledgePreviewV04(input(await mount(root), {
+      gateway,
+      skill: skill({ onPlan: () => { planned = true } }),
+    }))
+
+    assert.equal(result.status, 'blocked')
+    assert.equal(result.sourceRaw.persisted, false)
+    assert.equal(result.sourceRaw.status, 'failed')
+    assert.match(result.sourceRaw.errors.at(-1)?.message ?? '', /integrity|hash|content/u)
+    assert.equal(result.provenance, undefined)
+    assert.equal(planned, false)
+  })
+})
+
+test('cancellation stops waiting for a hanging parser and reports verified Source/Raw with the pending call', async () => {
+  await withFreshKb('cancel-parser-pending', async (root) => {
+    const controller = new AbortController()
+    const baseResolver = new DocumentInputResolver({ documentParser: parser() })
+    let forwardedSignal: AbortSignal | undefined
+    const documentResolver = {
+      acquire: (ref: RawDocumentPreviewWorkflowInputV04['documentInput']) => baseResolver.acquire(ref),
+      parse: (_acquired: Parameters<typeof baseResolver.parse>[0], options?: { readonly signal?: AbortSignal }) => {
+        forwardedSignal = options?.signal
+        setTimeout(() => controller.abort(), 0)
+        return new Promise<StructuredDocument>(() => undefined)
+      },
+    }
+    const result = await within(runRawDocumentKnowledgePreviewV04(input(await mount(root), { documentResolver, signal: controller.signal })))
+
+    assert.equal(result.status, 'cancelled')
+    assert.equal(result.sourceRaw.persisted, true)
+    assert.equal(result.extractionPreview.status, 'cancelled')
+    assert.equal(forwardedSignal, controller.signal)
+    assert.equal(result.cancellation?.pendingOperation, 'document_parse')
+    assert.equal(result.cancellation?.pendingCallMayContinue, true)
+    assert.match(result.cancellation?.message ?? '', /underlying non-abortable call may still continue/u)
+  })
+})
+
+test('cancellation stops waiting for a hanging Gateway and reports persistence as unknown', async () => {
+  await withFreshKb('cancel-gateway-pending', async (root) => {
+    const controller = new AbortController()
+    let forwardedSignal: AbortSignal | undefined
+    const gateway = {
+      submit: (_request: RawDocumentGatewayV04Input, options?: { readonly signal?: AbortSignal }) => {
+        forwardedSignal = options?.signal
+        setTimeout(() => controller.abort(), 0)
+        return new Promise<RawDocumentGatewayV04Result>(() => undefined)
+      },
+    }
+    const result = await within(runRawDocumentKnowledgePreviewV04(input(await mount(root), { gateway, signal: controller.signal })))
+
+    assert.equal(result.status, 'cancelled')
+    assert.equal(result.sourceRaw.status, 'unknown')
+    assert.equal(result.sourceRaw.persisted, false)
+    assert.equal(result.cancellation?.pendingOperation, 'raw_gateway_submit')
+    assert.equal(result.cancellation?.pendingCallMayContinue, true)
+    assert.match(result.cancellation?.message ?? '', /may still finish and persist/u)
+    assert.equal(forwardedSignal, controller.signal)
+  })
+})
+
+test('a malformed extraction unit fails while valid units remain available as a partial preview', async () => {
+  await withFreshKb('malformed-unit', async (root) => {
+    const output = candidates()
+    const secondOutput: ValidatedExtractKnowledgeResult = {
+      ...output,
+      entities: output.entities.map((entity) => ({ ...entity, candidateId: 'entity-second-unit', evidenceBlockRefs: ['block-ai-demand'] })),
+      claims: [],
+      summary: {
+        inputCounts: { entity: 1, relation: 0, claim: 0 },
+        acceptedCounts: { entity: 1, relation: 0, claim: 0 },
+        rejectedCounts: { entity: 0, relation: 0, claim: 0 },
+        rejectionCodes: [],
+      },
+    }
+    const plan = twoUnitPlan()
+    const testSkill: RawDocumentPreviewSkillV04 = {
+      ...skill({ plan }),
+      async extractKnowledge(request) {
+        return request.unit.proposedUnitId === 'ai-demand-unit'
+          ? { ...output, claims: [], summary: { inputCounts: { entity: 1, relation: 0, claim: 0 }, acceptedCounts: { entity: 1, relation: 0, claim: 0 }, rejectedCounts: { entity: 0, relation: 0, claim: 0 }, rejectionCodes: [] } }
+          : secondOutput
+      },
+    }
+    const documentResolver = {
+      acquire: async (ref: RawDocumentPreviewWorkflowInputV04['documentInput']) => {
+        const baseResolver = new DocumentInputResolver({ documentParser: parser() })
+        return baseResolver.acquire(ref)
+      },
+      async parse() { return twoBlockDocument() },
+    }
+    const result = await runRawDocumentKnowledgePreviewV04(input(await mount(root), { skill: testSkill, documentResolver }))
+
+    assert.equal(result.status, 'preview_partial')
+    assert.equal(result.extractionPreview.status, 'partial')
+    assert.equal(result.extractionPreview.unitSummaries.find((item) => item.proposedUnitId === 'ai-demand-unit')?.status, 'completed')
+    assert.equal(result.extractionPreview.unitSummaries.find((item) => item.proposedUnitId === 'ai-supply-unit')?.status, 'failed')
+    assert.match(result.extractionPreview.errors.join('\n'), /not supplied to this extraction unit/u)
+    assert.equal(result.extractionPreview.candidateGroups.length, 1)
+    assert.match(result.extractionPreview.candidateGroups[0]?.candidateId ?? '', /^merged-entity-/u)
+  })
+})
+
+test('an extraction unit over the candidate-count bound is failed before consolidation', async () => {
+  await withFreshKb('candidate-count-bound', async (root) => {
+    const template = candidates().entities[0]!
+    const count = 257
+    const oversized: ValidatedExtractKnowledgeResult = {
+      entities: Array.from({ length: count }, (_, index) => ({ ...template, candidateId: `entity-${index}` })),
+      relations: [],
+      claims: [],
+      rejected: [],
+      summary: {
+        inputCounts: { entity: count, relation: 0, claim: 0 },
+        acceptedCounts: { entity: count, relation: 0, claim: 0 },
+        rejectedCounts: { entity: 0, relation: 0, claim: 0 },
+        rejectionCodes: [],
+      },
+    }
+    const result = await runRawDocumentKnowledgePreviewV04(input(await mount(root), { skill: skill({ output: oversized }) }))
+
+    assert.equal(result.status, 'source_only')
+    assert.equal(result.extractionPreview.unitSummaries[0]?.status, 'failed')
+    assert.match(result.extractionPreview.errors.join('\n'), /exceeds 256 candidates/u)
+    assert.deepEqual(result.extractionPreview.candidateGroups, [])
+  })
+})
+
+test('cancellation stops waiting for Skill extraction and observes its late rejection without changing results', async () => {
+  await withFreshKb('cancel-extraction-pending', async (root) => {
+    const controller = new AbortController()
+    let forwardedSignal: AbortSignal | undefined
+    let lateRejected = false
+    const testSkill: RawDocumentPreviewSkillV04 = {
+      ...skill(),
+      extractKnowledge: (request) => {
+        forwardedSignal = request.signal
+        setTimeout(() => controller.abort(), 0)
+        return new Promise<ValidatedExtractKnowledgeResult>((_resolve, reject) => setTimeout(() => {
+          lateRejected = true
+          reject(new Error('late Skill failure after Workflow cancellation'))
+        }, 20))
+      },
+    }
+    const result = await within(runRawDocumentKnowledgePreviewV04(input(await mount(root), { skill: testSkill, signal: controller.signal })))
+
+    assert.equal(result.status, 'cancelled')
+    assert.equal(result.sourceRaw.persisted, true)
+    assert.equal(result.cancellation?.pendingOperation, 'extract_knowledge')
+    assert.equal(result.cancellation?.pendingCallMayContinue, true)
+    assert.equal(forwardedSignal, controller.signal)
+    assert.deepEqual(result.extractionPreview.candidateGroups, [])
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    assert.equal(lateRejected, true)
+    assert.deepEqual(result.extractionPreview.candidateGroups, [])
+  })
+})
+
+test('retry after Source-only failure reuses the committed Source and completes the candidate preview', async () => {
+  await withFreshKb('source-only-retry', async (root) => {
+    const handle = await mount(root)
+    const first = await runRawDocumentKnowledgePreviewV04(input(handle, { documentResolver: new DocumentInputResolver({ documentParser: parser({ fail: true }) }) }))
+
+    assert.equal(first.status, 'source_only')
+    assert.equal(first.sourceRaw.status, 'committed')
+    assert.equal(first.sourceRaw.persisted, true)
+    assert.equal((await readCanonicalV04Assets(root)).objects.length, 1)
+
+    const retry = await runRawDocumentKnowledgePreviewV04(input(handle))
+
+    assert.equal(retry.status, 'preview_ready')
+    assert.equal(retry.sourceRaw.status, 'already_committed')
+    assert.equal(retry.sourceRaw.persisted, true)
+    assert.equal(retry.sourceRaw.revision, first.sourceRaw.revision)
+    assert.equal(retry.extractionPreview.candidateGroups.length, 2)
+    assert.equal((await readCanonicalV04Assets(root)).objects.length, 1)
   })
 })
 
