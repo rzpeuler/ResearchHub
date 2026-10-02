@@ -101,6 +101,82 @@ describe('Homepage shell', () => {
     expect(mock).toHaveBeenCalledTimes(1)
   })
 
+  it('resets source rights and ignores a late preview when replacing a file, then locks replacement during acceptance', async () => {
+    let resolvePreviewA: (response: Response) => void = () => undefined
+    let notifyPreviewAStarted: () => void = () => undefined
+    const previewAStarted = new Promise<void>((resolve) => { notifyPreviewAStarted = resolve })
+    let resolveAcceptance: (response: Response) => void = () => undefined
+    let notifyAcceptanceStarted: () => void = () => undefined
+    const acceptanceStarted = new Promise<void>((resolve) => { notifyAcceptanceStarted = resolve })
+    const uploadedFiles: string[] = []
+    mockV04UploadRuntime(async (input, init) => {
+      const path = String(input)
+      if (path === '/api/attachments') {
+        const form = init?.body as FormData
+        const file = form.get('file') as File
+        uploadedFiles.push(file.name)
+        return json({ attachment: { attachmentId: file.name === 'source-a.pdf' ? 'attachment-a' : 'attachment-b', filename: file.name, mediaType: file.type, size: file.size, sha256: file.name === 'source-a.pdf' ? 'a'.repeat(64) : 'b'.repeat(64), createdAt: '2026-10-02T00:00:00.000Z' } }, 201)
+      }
+      if (path === '/api/production/raw-document-preview-v04') {
+        const body = JSON.parse(String(init?.body)) as { attachmentId: string }
+        const runId = body.attachmentId === 'attachment-a' ? 'preview-a' : 'preview-b'
+        return json({ accepted: true, runId, committable: false, workflow: { runId, workflowType: 'raw_document_knowledge_v04', objective: 'Preview source', status: 'running', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:00.000Z' } }, 202)
+      }
+      if (path === '/api/production/raw-document-preview-v04/preview-a') {
+        notifyPreviewAStarted()
+        return new Promise<Response>((resolve) => { resolvePreviewA = resolve })
+      }
+      if (path === '/api/production/raw-document-preview-v04/preview-b') return json({ runId: 'preview-b', workflow: { runId: 'preview-b', workflowType: 'raw_document_knowledge_v04', objective: 'Preview source', status: 'completed', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:01.000Z' }, preview: { ...v04Preview, runId: 'preview-b', status: 'preview_partial', extractionCompleteness: 'partial', statusNote: 'The durable preview persisted after the workflow was cancelled and passed read-back verification.', incompleteUnits: [{ unitId: 'unit-failed', proposedUnitId: 'section:risks', status: 'failed', errorSummary: 'Extraction failed for this section.' }] }, committable: true })
+      if (path === '/api/production/raw-document-preview-v04/accept') {
+        notifyAcceptanceStarted()
+        return new Promise<Response>((resolve) => { resolveAcceptance = resolve })
+      }
+      if (path === '/api/workflows/preview-a' || path === '/api/workflows/preview-b') {
+        const runId = path.endsWith('preview-a') ? 'preview-a' : 'preview-b'
+        return json({ runId, workflowType: 'raw_document_knowledge_v04', objective: 'Preview source', status: runId === 'preview-b' ? 'completed' : 'running', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:01.000Z' })
+      }
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    })
+    render(<App />)
+    await screen.findByRole('textbox', { name: 'Message' })
+    const composer = document.querySelector('.composer-wrap')
+    if (!composer) throw new Error('Composer not found')
+    fireEvent.drop(composer, { dataTransfer: { files: [new File(['a'], 'source-a.pdf', { type: 'application/pdf' })], types: ['Files'] } })
+    expect(await screen.findByText('source-a.pdf')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Write Knowledge' }))
+    fireEvent.change(screen.getByLabelText('Source title'), { target: { value: 'Metadata from A' } })
+    fireEvent.change(screen.getByLabelText(/Policy basis/), { target: { value: 'Rights basis from A' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'AI processing is allowed' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Extract candidates for review' }))
+    await previewAStarted
+
+    fireEvent.drop(composer, { dataTransfer: { files: [new File(['b'], 'source-b.pdf', { type: 'application/pdf' })], types: ['Files'] } })
+    expect(await screen.findByText('source-b.pdf')).toBeTruthy()
+    expect(screen.queryByText('candidate-claim-1')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Write Knowledge' }))
+    expect((screen.getByLabelText('Source title') as HTMLInputElement).value).toBe('')
+    expect((screen.getByLabelText(/Policy basis/) as HTMLTextAreaElement).value).toBe('')
+    expect((screen.getByRole('checkbox', { name: 'AI processing is allowed' }) as HTMLInputElement).checked).toBe(false)
+
+    resolvePreviewA(json({ runId: 'preview-a', workflow: { runId: 'preview-a', workflowType: 'raw_document_knowledge_v04', objective: 'Preview A', status: 'completed', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:01.000Z' }, preview: { ...v04Preview, runId: 'preview-a', candidateGroups: [{ ...v04Preview.candidateGroups[0]!, candidateId: 'candidate-from-A' }] }, committable: true }))
+    await waitFor(() => expect(screen.queryByText('candidate-from-A')).toBeNull())
+
+    fireEvent.change(screen.getByLabelText('Source title'), { target: { value: 'Metadata from B' } })
+    fireEvent.change(screen.getByLabelText(/Policy basis/), { target: { value: 'Rights basis from B' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Extract candidates for review' }))
+    expect(await screen.findByText(/1 extraction unit\(s\) failed or were cancelled/)).toBeTruthy()
+    expect(screen.getByText(/durable preview persisted after the workflow was cancelled/)).toBeTruthy()
+    expect(document.querySelector('.incomplete-units')?.textContent).toContain('Extraction failed for this section.')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select claim candidate' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Accept 1 selected' }))
+    await acceptanceStarted
+    fireEvent.drop(composer, { dataTransfer: { files: [new File(['c'], 'source-c.pdf', { type: 'application/pdf' })], types: ['Files'] } })
+    expect(await screen.findByText('Wait for candidate acceptance to finish before replacing this file.')).toBeTruthy()
+    expect(uploadedFiles).toEqual(['source-a.pdf', 'source-b.pdf'])
+    resolveAcceptance(json({ status: 'committed', knowledgeBaseId: 'kb-1', knowledgeBaseRevision: 8, baseRevision: 7, previewWorkflowRunId: 'preview-b', extractionCompleteness: 'partial', acceptedCandidateIds: ['candidate-claim-1'], createdIds: ['claim:example'], updatedIds: [], errors: [] }))
+    expect(await screen.findByText('committed')).toBeTruthy()
+  })
+
   it('renders registry-backed Workflow and safe research policy defaults', async () => {
     render(<App />)
     expect(await screen.findByRole('combobox', { name: 'Workflow' })).toBeTruthy()

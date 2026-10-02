@@ -444,6 +444,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .acceptance-result.failure { border-color: #70464a; color: #e5b3b4; background: #2c1d22; }
 .acceptance-result small { font-size: 9px; }
 .incompatibility-notice { border-color: #744b4c; }
+.preview-status-note { border-color: #79613a; }
+.incomplete-units { padding: 8px; border: 1px solid #3a4b55; border-radius: 6px; color: #b8c9cf; font-size: 10px; }
+.incomplete-units summary { cursor: pointer; }
+.incomplete-units > div { display: grid; gap: 3px; margin-top: 8px; padding-top: 7px; border-top: 1px solid #2b3a44; }
+.incomplete-units strong { color: #dce8ed; overflow-wrap: anywhere; }
+.incomplete-units small { color: #e0b49c; line-height: 1.45; overflow-wrap: anywhere; }
 .thesis-field textarea { resize: vertical; line-height: 1.5; }
 .thesis-summary { margin-top: 18px; padding-top: 14px; border-top: 1px solid #273a45; }
 .thesis-summary h3 { margin: 9px 0; color: #dce9ed; font-size: 15px; }
