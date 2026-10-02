@@ -18,6 +18,7 @@ import type { IndustryOperatingObservationAcquisitionPort } from '../../plugins/
 import type { ThesisQueryService } from '../services/thesis-query-service.ts'
 import type { ThesisDecisionService } from '../services/thesis-decision-service.ts'
 import type { ThesisCriterionService } from '../services/thesis-criterion-service.ts'
+import type { ThemeFrameworkService } from '../services/theme-framework-service.ts'
 
 export interface SafeConversationSummary {
   readonly conversationId: string
@@ -63,6 +64,8 @@ export interface ResearchHubApplicationServices {
   readonly thesisDecisionService?: ThesisDecisionService
   /** Human-only HTTP criterion authoring; deliberately excluded from the Pi session context. */
   readonly thesisCriterionService?: ThesisCriterionService
+  /** Explicitly reviewed Theme Framework construction; canonical writes occur only on accept. */
+  readonly themeFrameworkService?: ThemeFrameworkService
   readonly dailyIntelligenceService?: DailyIntelligenceService
 }
 
@@ -98,6 +101,7 @@ export interface ResearchHubApplicationRuntimeOptions {
   readonly resourceLoader?: DefaultResourceLoader
   readonly researchService?: ResearchService
   readonly industryAcquisitionPlugins?: readonly ResearchAcquisitionPlugin[]
+  readonly themeFrameworkService?: ThemeFrameworkService
   readonly industryOperatingObservationAcquisition?: IndustryOperatingObservationAcquisitionPort
   readonly dailyIntelligenceService?: DailyIntelligenceService
 }

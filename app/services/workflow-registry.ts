@@ -7,6 +7,8 @@ export interface WorkflowDefinition {
   readonly inputSchema: Readonly<Record<string, unknown>>
   readonly requiredInputs: readonly string[]
   readonly skillIds: readonly string[]
+  /** Knowledge-kind methodology metadata, not an independently dispatched Skill. */
+  readonly knowledgeSkillIds?: readonly string[]
   readonly qualityGateProfile?: ResearchQualityGateProfile
   readonly outputContract: string
   readonly knowledgeEffects: readonly string[]
@@ -18,6 +20,7 @@ const integerSchema = (description: string): Readonly<Record<string, unknown>> =
 const DEFINITIONS: readonly WorkflowDefinition[] = [
   { id: 'company_research', label: 'Company Research', intentDescription: 'Build an evidence-backed research profile for one A-share company.', inputSchema: { symbol: stringSchema('Six-digit A-share symbol'), name: stringSchema('Optional company name'), exchange: stringSchema('Optional exchange') }, requiredInputs: ['symbol'], skillIds: ['business_model_map', 'business_driver_analysis', 'unit_economics', 'financial_quality_analysis', 'management_execution', 'capital_allocation_review', 'market_structure_analysis', 'expectation_gap', 'thesis_formalize'], qualityGateProfile: 'company', outputContract: 'ResearchReport + KnowledgeProposal', knowledgeEffects: ['Company', 'Source', 'Claim', 'Relation'] },
   { id: 'industry_research', label: 'Industry Research', intentDescription: 'Run bounded multi-module research for one industry.', inputSchema: { name: stringSchema('Industry name'), aliases: { type: 'array', items: stringSchema('Target alias') } }, requiredInputs: ['name'], skillIds: ['market_structure_analysis', 'industry_supply_demand_cycle', 'competitive_market_map'], qualityGateProfile: 'industry', outputContract: 'ResearchReport + KnowledgeProposal', knowledgeEffects: ['Industry', 'Source', 'Claim', 'Relation'] },
+  { id: 'theme_framework', label: 'Theme Framework', intentDescription: 'Construct a bounded, evidence-backed initial Industry network for a named investment Theme and submit it for human review.', inputSchema: { name: stringSchema('Required Theme name'), definition: stringSchema('Optional Theme definition') }, requiredInputs: ['name'], skillIds: [], knowledgeSkillIds: ['theme-framework'], outputContract: 'Reviewable Theme Framework candidate; canonical writes only after explicit acceptance', knowledgeEffects: ['Theme', 'Industry', 'Relation', 'Theme scope decisions'] },
   { id: 'earnings_review', label: 'Earnings Review', intentDescription: 'Review an exact fiscal reporting period for a covered A-share company.', inputSchema: { symbol: stringSchema('Six-digit A-share symbol'), fiscalYear: integerSchema('Fiscal year'), period: { type: 'string', enum: ['Q1', 'H1', 'Q3', 'FY'] } }, requiredInputs: ['symbol', 'fiscalYear', 'period'], skillIds: ['consensus_expectations_analysis', 'earnings_variance_analysis', 'guidance_analysis', 'financial_quality_analysis', 'estimate_revision_analysis', 'expectation_gap', 'thesis_refresh'], qualityGateProfile: 'earnings', outputContract: 'ResearchReport + KnowledgeProposal', knowledgeEffects: ['Source', 'Claim'] },
   { id: 'valuation', label: 'Valuation', intentDescription: 'Calculate bounded valuation scenarios for a covered A-share company.', inputSchema: { symbol: stringSchema('Six-digit A-share symbol'), methods: { type: 'array', items: { type: 'string', enum: ['PE', 'PB', 'EV_EBITDA'] } }, targetFiscalYear: integerSchema('Optional target fiscal year') }, requiredInputs: ['symbol'], skillIds: ['consensus_expectations_analysis', 'dcf_valuation', 'reverse_dcf_expectation_decode', 'comps_valuation', 'scenario_valuation'], qualityGateProfile: 'valuation', outputContract: 'ResearchReport + KnowledgeProposal', knowledgeEffects: ['Source', 'Claim'] },
   { id: 'event_research', label: 'Event Research', intentDescription: 'Assess one explicit event anchor and its company-bound impacts.', inputSchema: { symbol: stringSchema('Six-digit A-share symbol'), anchor: { type: 'object', description: 'Explicit event anchor' } }, requiredInputs: ['symbol', 'anchor'], skillIds: ['catalyst_map'], qualityGateProfile: 'event', outputContract: 'ResearchReport + KnowledgeProposal', knowledgeEffects: ['Source', 'Claim', 'Relation'] },
@@ -27,7 +30,7 @@ const DEFINITIONS: readonly WorkflowDefinition[] = [
 ]
 
 function clone(definition: WorkflowDefinition): WorkflowDefinition {
-  return { ...definition, inputSchema: JSON.parse(JSON.stringify(definition.inputSchema)) as Readonly<Record<string, unknown>>, requiredInputs: [...definition.requiredInputs], skillIds: [...definition.skillIds], knowledgeEffects: [...definition.knowledgeEffects] }
+  return { ...definition, inputSchema: JSON.parse(JSON.stringify(definition.inputSchema)) as Readonly<Record<string, unknown>>, requiredInputs: [...definition.requiredInputs], skillIds: [...definition.skillIds], ...(definition.knowledgeSkillIds === undefined ? {} : { knowledgeSkillIds: [...definition.knowledgeSkillIds] }), knowledgeEffects: [...definition.knowledgeEffects] }
 }
 
 export class WorkflowDefinitionRegistry {
@@ -43,6 +46,7 @@ export class WorkflowDefinitionRegistry {
     if (!definition.label.trim() || !definition.intentDescription.trim() || !definition.outputContract.trim()) throw new Error(`Incomplete Workflow definition: ${definition.id}`)
     if (definition.requiredInputs.some((item) => typeof item !== 'string' || !item.trim())) throw new Error(`Invalid required input metadata: ${definition.id}`)
     if (definition.skillIds.some((item) => typeof item !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(item))) throw new Error(`Invalid Workflow Skill mapping: ${definition.id}`)
+    if (definition.knowledgeSkillIds?.some((item) => typeof item !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(item))) throw new Error(`Invalid Workflow knowledge Skill metadata: ${definition.id}`)
     this.definitions.set(definition.id, clone(definition))
   }
 

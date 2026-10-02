@@ -106,6 +106,7 @@ const CANONICAL_RUNTIME_EXECUTORS: Readonly<Partial<Record<string, ResearchSkill
 
 const CORE_SKILLS: readonly ResearchSkillDefinition[] = [
   ...RUNTIME_CANONICAL_RESEARCH_SKILLS.map((item) => canonicalDefinition(item.canonicalSkillId)),
+  { id: 'theme-framework', kind: 'knowledge', intentDescription: 'Construct an evidence-backed initial Industry network for an explicitly named Theme.', whenToUse: 'Use only through the theme_framework Workflow when the user asks to initialize or build a Theme Framework; submit all candidates for human review before canonical persistence.', inputs: ['name', 'optional definition', 'current Knowledge snapshot', 'bounded retained evidence'], produces: ['Industry and Relation candidates', 'include/exclude/pending recommendations', 'boundary rationales and coverage gaps'], enabled: true, scope: 'researchhub' },
   { id: 'knowledge-curation', kind: 'knowledge', intentDescription: 'Knowledge extraction and semantic resolution.', whenToUse: 'Use only inside governed Knowledge Production.', outputContract: 'Validated Knowledge candidates', enabled: true, scope: 'researchhub' },
 ]
 

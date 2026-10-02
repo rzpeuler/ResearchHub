@@ -425,7 +425,7 @@ export class ResearchHubRuntimeServer {
       if (request.method === 'OPTIONS') { this.validateRead(request); this.sendEmpty(response, 204); return }
       if (url.pathname === '/api/bootstrap') { this.validateBootstrap(request); await this.bootstrap(response); return }
       if (url.pathname === '/api/events' && request.method === 'GET') { this.validateRead(request); this.openEvents(response); return }
-      if (this.isMutation(request.method, url.pathname)) this.validateMutation(request)
+      if (this.isMutation(request.method, url.pathname) || (request.method === 'GET' && /^\/api\/theme-framework\/runs\/[^/]+$/.test(url.pathname))) this.validateMutation(request)
       else this.validateRead(request)
       if (url.pathname !== '/api' && !url.pathname.startsWith('/api/')) {
         if (await this.serveClient(request, response, url)) return
@@ -493,6 +493,48 @@ export class ResearchHubRuntimeServer {
     const method = request.method ?? 'GET'
     const path = url.pathname
     if (method === 'GET' && (path === '/api/researchhub/status' || path === '/api/status')) { await this.sendJson(response, 200, await this.status()) ; return }
+    if (method === 'POST' && path === '/api/theme-framework/start') {
+      const body = await this.readJson(request, 8_192)
+      assertExactFields(body, ['workflowRunId', 'name'], ['definition'], 'Theme Framework start request')
+      const workflowRunId = this.stringField(body, 'workflowRunId', 128)
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(workflowRunId) || workflowRunId.includes('..')) throw new ApplicationServiceError('invalid_input', 'workflowRunId is invalid')
+      const name = this.stringField(body, 'name', 300)
+      if (!name.trim()) throw new ApplicationServiceError('invalid_input', 'name is invalid')
+      const definition = this.optionalString(body, 'definition', 2_000)
+      if (definition !== undefined && !definition.trim()) throw new ApplicationServiceError('invalid_input', 'definition is invalid')
+      const service = this.runtime!.services.themeFrameworkService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme Framework construction requires an active mounted Schema 0.4 Knowledge Base')
+      const started = service.start({ workflowRunId, name, ...(definition === undefined ? {} : { definition }) })
+      started.completion.catch(() => undefined)
+      await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) }); return
+    }
+    if (/^\/api\/theme-framework\/runs\/[^/]+(?:\/(?:accept|reject))?$/.test(path)) {
+      const pieces = path.split('/')
+      const runId = decodeSegment(pieces[4] ?? '')
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(runId) || runId.includes('..')) throw new ApplicationServiceError('invalid_input', 'workflowRunId is invalid')
+      const service = this.runtime!.services.themeFrameworkService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme Framework construction requires an active mounted Schema 0.4 Knowledge Base')
+      if (method === 'GET' && pieces.length === 5) { await this.sendJson(response, 200, await service.getReviewCandidate(runId)); return }
+      if (method === 'POST' && pieces[5] === 'accept') {
+        const body = await this.readJson(request, 32_768)
+        assertExactFields(body, [], ['decisions'], 'Theme Framework accept request')
+        let decisions: Record<string, 'include' | 'exclude' | 'pending'> | undefined
+        if (body.decisions !== undefined) {
+          if (!isRecord(body.decisions) || Object.keys(body.decisions).length > 120) throw new ApplicationServiceError('invalid_input', 'decisions must be a bounded candidate decision map')
+          decisions = {}
+          for (const [candidateId, decision] of Object.entries(body.decisions)) {
+            if (!/^[A-Za-z][A-Za-z0-9._-]{0,79}$/u.test(candidateId) || !['include', 'exclude', 'pending'].includes(String(decision))) throw new ApplicationServiceError('invalid_input', 'decisions contains an invalid candidate ref or decision')
+            decisions[candidateId] = decision as 'include' | 'exclude' | 'pending'
+          }
+        }
+        await this.sendJson(response, 200, await service.accept({ workflowRunId: runId, ...(decisions === undefined ? {} : { decisions }) })); return
+      }
+      if (method === 'POST' && pieces[5] === 'reject') {
+        const body = await this.readJson(request, 1_024)
+        assertExactFields(body, [], [], 'Theme Framework reject request')
+        await this.sendJson(response, 200, await service.reject(runId)); return
+      }
+    }
     // Exact, human-operated criterion routes precede the broader Thesis and review route families.
     if (method === 'POST' && path === '/api/production/thesis-lifecycle/criteria/prepare') {
       const body = await this.readJson(request)
@@ -902,7 +944,7 @@ export class ResearchHubRuntimeServer {
   }
   private publishRuntimeError(error: unknown): void { if (this.lifecycle === 'closing' || this.lifecycle === 'closed') return; const conversationId = (() => { try { return (this.sessionState() as { conversationId: string }).conversationId } catch { return 'conversation' } })(); const code = errorCode(error) === 'cancelled' ? 'agent_aborted' : 'agent_error'; this.eventStream.publish({ eventId: `runtime:${randomUUID()}`, conversationId: safeIdentifier(conversationId, 'conversation'), timestamp: new Date().toISOString(), type: 'error', code, summary: code === 'agent_aborted' ? 'Agent request aborted' : 'Agent request failed' } satisfies ClientEvent) }
 
-  private async readJson(request: IncomingMessage): Promise<Record<string, unknown>> { const length = Number(request.headers['content-length']); if (Number.isFinite(length) && length > MAX_JSON_BYTES) throw new ApplicationServiceError('invalid_input', 'JSON request is too large'); const chunks: Buffer[] = []; let total = 0; for await (const input of request) { const chunk = Buffer.isBuffer(input) ? input : Buffer.from(input); total += chunk.length; if (total > MAX_JSON_BYTES) throw new ApplicationServiceError('invalid_input', 'JSON request is too large'); chunks.push(chunk) } if (total === 0) return {}; try { const value: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('object required'); return value as Record<string, unknown> } catch (error) { throw new ApplicationServiceError('invalid_input', 'JSON request is invalid', { cause: error }) } }
+  private async readJson(request: IncomingMessage, maxBytes = MAX_JSON_BYTES): Promise<Record<string, unknown>> { const length = Number(request.headers['content-length']); if (Number.isFinite(length) && length > maxBytes) throw new ApplicationServiceError('invalid_input', 'JSON request is too large'); const chunks: Buffer[] = []; let total = 0; for await (const input of request) { const chunk = Buffer.isBuffer(input) ? input : Buffer.from(input); total += chunk.length; if (total > maxBytes) throw new ApplicationServiceError('invalid_input', 'JSON request is too large'); chunks.push(chunk) } if (total === 0) return {}; try { const value: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('object required'); return value as Record<string, unknown> } catch (error) { throw new ApplicationServiceError('invalid_input', 'JSON request is invalid', { cause: error }) } }
   private stringField(body: Record<string, unknown>, field: string, maxLength = 2_000_000): string { const value = body[field]; if (typeof value !== 'string' || value.length > maxLength) throw new ApplicationServiceError('invalid_input', `${field} is invalid`); return value }
   private optionalString(body: Record<string, unknown>, field: string, maxLength: number): string | undefined { const value = body[field]; if (value === undefined || value === null) return undefined; if (typeof value !== 'string' || value.length > maxLength) throw new ApplicationServiceError('invalid_input', `${field} is invalid`); return value }
   private stringArray(body: Record<string, unknown>, field: string, maxItems: number, maxLength: number): string[] { const value = body[field]; if (!Array.isArray(value) || value.length > maxItems || value.some((x) => typeof x !== 'string' || !x.trim() || x.length > maxLength)) throw new ApplicationServiceError('invalid_input', `${field} is invalid`); return value as string[] }

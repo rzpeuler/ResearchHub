@@ -44,6 +44,47 @@ test('English FY notation and explicit Daily Intelligence are dispatched with co
   assert.deepEqual(daily.decision.missingRequiredInputs, [])
 })
 
+test('Theme Framework intent routes to the governed Workflow and extracts the Theme name', () => {
+  const service = new ResearchDispatchService()
+  const resolved = service.resolve({ query: '请创建 AI 算力投资主题框架', mode: { type: 'free_research' } })
+  assert.equal(resolved.decision.mode, 'workflow')
+  assert.equal(resolved.decision.workflow?.id, 'theme_framework')
+  assert.deepEqual(resolved.decision.workflow?.arguments, { name: 'AI 算力' })
+  assert.deepEqual(resolved.decision.skills, [])
+  assert.deepEqual(service.workflowRegistry.get('theme_framework')?.knowledgeSkillIds, ['theme-framework'])
+  assert.equal(service.skillRegistry.get('theme-framework')?.kind, 'knowledge')
+})
+
+test('semantic Chat routing sees the narrow Theme Framework knowledge Skill metadata', async () => {
+  let metadata: unknown
+  const service = new ResearchDispatchService({ reasoningExecutor: {
+    capabilities: () => ({ maxContextTokens: 4_000, maxOutputTokens: 2_000, structuredOutputSupport: true, maxConcurrency: 1 }),
+    async execute(request) {
+      metadata = (request.input as { knowledgeSkillMetadata?: unknown }).knowledgeSkillMetadata
+      return { operation: request.operation, output: { mode: 'workflow', workflow: { id: 'theme_framework', confidence: 0.98, arguments: { name: 'AI 算力' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Theme Framework intent.' } }
+    },
+  } })
+  const resolved = await service.resolveAsync({ query: '初始化 AI 算力主题框架', mode: { type: 'free_research' } })
+  assert.equal(resolved.decision.workflow?.id, 'theme_framework')
+  assert.deepEqual((metadata as readonly { id: string; kind: string }[]).map(({ id, kind }) => ({ id, kind })), [{ id: 'theme-framework', kind: 'knowledge' }])
+})
+
+test('Theme Framework dispatch returns only the safe review candidate projection', async () => {
+  const calls: unknown[] = []
+  let safeView: unknown
+  const themeFrameworkService = {
+    start(input: { readonly workflowRunId: string }) { calls.push(input); return { runId: input.workflowRunId, completion: Promise.resolve({ status: 'awaiting_review', workflowRunId: input.workflowRunId }) } },
+    async getReviewCandidate(workflowRunId: string) { safeView = { status: 'awaiting_review', workflowRunId, candidate: { knowledgeBaseId: 'kb-safe', basedOnRevision: 1, theme: { name: 'AI 算力' }, framework: { industryCandidates: [], relationCandidates: [] }, acquisitionStatus: 'unavailable', diagnostics: [], evidence: [{ evidenceId: 'evidence-1', summary: 'Public source', sourceRef: 'source:safe' }] } }; return safeView },
+  }
+  const service = new ResearchDispatchService({ themeFrameworkService: themeFrameworkService as never })
+  const started = service.start({ query: '请创建 AI 算力投资主题框架', mode: { type: 'workflow', workflowId: 'theme_framework' } })
+  assert.equal(started.status, 'started')
+  const result = await started.completion
+  assert.deepEqual(calls, [{ workflowRunId: started.runId, name: 'AI 算力' }])
+  assert.deepEqual(result, safeView)
+  assert.equal(JSON.stringify(result).includes('rawRef'), false)
+})
+
 test('started dispatch persists one ResearchBundle from the workflow result and forwards policy', async () => {
   const calls: unknown[] = []
   const store = new (class { readonly values = new Map<string, unknown>(); async put(bundle: { bundleId: string }) { this.values.set(bundle.bundleId, bundle) }; async get(id: string) { return this.values.get(id) }; async list() { return [...this.values.values()] } })()

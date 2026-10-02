@@ -37,6 +37,9 @@ import { loadOnboardedResearchSkillDefinitions, SkillOnboardingService } from '.
 import { ThesisQueryService } from '../services/thesis-query-service.ts'
 import { ThesisDecisionService } from '../services/thesis-decision-service.ts'
 import { ThesisCriterionService } from '../services/thesis-criterion-service.ts'
+import { ThemeFrameworkService } from '../services/theme-framework-service.ts'
+import { ThemeFrameworkAcquisitionAdapter } from '../../plugins/research-acquisition/theme-framework-acquisition.ts'
+import { AkshareIndustryResearchPlugin } from '../../plugins/research-acquisition/industry.ts'
 import { loadReviewCase } from '../../knowledge/review/store.ts'
 import { loadReviewDecision } from '../../knowledge/review/decision-store.ts'
 
@@ -146,6 +149,9 @@ export class ResearchHubApplicationRuntime {
     const workflowService = new WorkflowService()
     const productionService = new ProductionService({ mountedKnowledgeBaseRoot, workspaceRoot, cwd, reasoningExecutor, workflowService })
     let researchService = options.researchService
+    let themeFrameworkService = options.themeFrameworkService
+    const akshare = new AkshareDataAdapter()
+    const industryAcquisitionPlugins = options.industryAcquisitionPlugins ?? [new MiitIndustryResearchPlugin(), new GovCnIndustryResearchPlugin(), new EastmoneyIndustryResearchPlugin(), new CpcaIndustryResearchPlugin()]
     let industryReasoningExecutorFactory = options.industryReasoningExecutorFactory
     if (industryReasoningExecutorFactory === undefined && options.reasoningExecutor === undefined) {
       let industryExecutorPromise: Promise<ReasoningExecutor> | undefined
@@ -154,14 +160,27 @@ export class ResearchHubApplicationRuntime {
     const dailyComposition = options.dailyIntelligenceService === undefined ? await createDailyIntelligenceComposition({ cwd, workflowService, reasoningExecutor, modelRuntime, mountedKnowledgeBaseRoot, industryOperatingObservationAcquisition: options.industryOperatingObservationAcquisition }) : undefined
     const dailyIntelligenceService = options.dailyIntelligenceService ?? dailyComposition!.service
     if (researchService === undefined && mountedKnowledgeBaseRoot !== undefined) {
-      try { const manifest = await loadKnowledgeBaseManifest(mountedKnowledgeBaseRoot); if (manifest.schemaVersion === '0.4' && manifest.storageFormatVersion === '1') { const dailySignalStore = new FileDailySignalStore(join(cwd, 'runtime-data', 'daily-signals.jsonl')); const cninfo = new CninfoOfficialDisclosureClient(); const akshare = new AkshareDataAdapter(); researchService = new ResearchService({ mountedKnowledgeBaseRoot, cwd, workflowService, reasoningExecutor, industryReasoningExecutorFactory, industryOperatingObservationAcquisition: options.industryOperatingObservationAcquisition ?? new IndustryOperatingObservationAcquisition(), signalStore: new FileResearchSignalStore(join(cwd, 'runtime-data', 'research-signals.jsonl')), dailySignalStore, acquisitionPlugins: [new OfficialDisclosureResearchPlugin(cninfo), new GdeltResearchPlugin()], industryAcquisitionPlugins: options.industryAcquisitionPlugins ?? [new MiitIndustryResearchPlugin(), new GovCnIndustryResearchPlugin(), new EastmoneyIndustryResearchPlugin(), new CpcaIndustryResearchPlugin()], akshare, officialDisclosure: cninfo, managementCommunicationSources: createManagementCommunicationSources(cninfo, akshare) }) } } catch { /* the normal v0.3 runtime remains available without Company Research */ }
+      try { const manifest = await loadKnowledgeBaseManifest(mountedKnowledgeBaseRoot); if (manifest.schemaVersion === '0.4' && manifest.storageFormatVersion === '1') { const dailySignalStore = new FileDailySignalStore(join(cwd, 'runtime-data', 'daily-signals.jsonl')); const cninfo = new CninfoOfficialDisclosureClient(); researchService = new ResearchService({ mountedKnowledgeBaseRoot, cwd, workflowService, reasoningExecutor, industryReasoningExecutorFactory, industryOperatingObservationAcquisition: options.industryOperatingObservationAcquisition ?? new IndustryOperatingObservationAcquisition(), signalStore: new FileResearchSignalStore(join(cwd, 'runtime-data', 'research-signals.jsonl')), dailySignalStore, acquisitionPlugins: [new OfficialDisclosureResearchPlugin(cninfo), new GdeltResearchPlugin()], industryAcquisitionPlugins, akshare, officialDisclosure: cninfo, managementCommunicationSources: createManagementCommunicationSources(cninfo, akshare) }) } } catch { /* the normal v0.3 runtime remains available without Company Research */ }
+    }
+    if (themeFrameworkService === undefined && mountedKnowledgeBaseRoot !== undefined) {
+      try {
+        const manifest = await loadKnowledgeBaseManifest(mountedKnowledgeBaseRoot)
+        if (manifest.schemaVersion === '0.4' && manifest.storageFormatVersion === '1' && manifest.status === 'active') {
+          themeFrameworkService = new ThemeFrameworkService({
+            mountedKnowledgeBaseRoot,
+            workflowService,
+            reasoningExecutor,
+            acquisition: new ThemeFrameworkAcquisitionAdapter({ knowledgeBaseRoot: mountedKnowledgeBaseRoot, plugins: [...industryAcquisitionPlugins, new AkshareIndustryResearchPlugin(akshare)] }),
+          })
+        }
+      } catch { /* Theme Framework requires a readable active Schema 0.4 Knowledge Base. */ }
     }
     if (thesisDecisionService !== undefined && mountedKnowledgeBaseRoot !== undefined) thesisDecisionService = withThesisDecisionReportSync(thesisDecisionService, researchService, mountedKnowledgeBaseRoot)
     const skillRegistry = createResearchSkillRegistry(); for (const definition of await loadOnboardedResearchSkillDefinitions(join(cwd, 'runtime-data', 'skill-onboarding'))) { try { skillRegistry.register(definition) } catch { /* duplicate or invalid external records remain excluded */ } }
     const sourceLibraryService = new SourceLibraryService(join(cwd, 'runtime-data', 'source-library'))
     const skillOnboardingService = new SkillOnboardingService(join(cwd, 'runtime-data', 'skill-onboarding', 'installed'), join(cwd, 'runtime-data', 'skill-onboarding'))
-    const researchDispatchService = new ResearchDispatchService({ researchService, dailyIntelligenceService, workflowService, skillRegistry, bundleStore: new FileResearchBundleStore(join(cwd, 'runtime-data', 'research-bundles')), sourceLibraryService, mountedKnowledgeBaseRoot, reasoningExecutor })
-    const services = { knowledgeService, knowledgeGraphService, knowledgeTopicProjectionService, themeWorkspaceProjectionService, reviewService, workflowService, productionService, researchDispatchService, sourceLibraryService, skillOnboardingService, ...(researchService === undefined ? {} : { researchService }), ...(thesisQueryService === undefined ? {} : { thesisQueryService }), ...(thesisDecisionService === undefined ? {} : { thesisDecisionService }), ...(thesisCriterionService === undefined ? {} : { thesisCriterionService }), dailyIntelligenceService }
+    const researchDispatchService = new ResearchDispatchService({ researchService, dailyIntelligenceService, workflowService, skillRegistry, bundleStore: new FileResearchBundleStore(join(cwd, 'runtime-data', 'research-bundles')), sourceLibraryService, mountedKnowledgeBaseRoot, reasoningExecutor, ...(themeFrameworkService === undefined ? {} : { themeFrameworkService }) })
+    const services = { knowledgeService, knowledgeGraphService, knowledgeTopicProjectionService, themeWorkspaceProjectionService, reviewService, workflowService, productionService, researchDispatchService, sourceLibraryService, skillOnboardingService, ...(researchService === undefined ? {} : { researchService }), ...(themeFrameworkService === undefined ? {} : { themeFrameworkService }), ...(thesisQueryService === undefined ? {} : { thesisQueryService }), ...(thesisDecisionService === undefined ? {} : { thesisDecisionService }), ...(thesisCriterionService === undefined ? {} : { thesisCriterionService }), dailyIntelligenceService }
     const { thesisCriterionService: _humanOnlyCriterionService, ...piApplicationServices } = services
     void _humanOnlyCriterionService
     const sessionManager = options.sessionManager ?? SessionManager.create(cwd, options.sessionDir)

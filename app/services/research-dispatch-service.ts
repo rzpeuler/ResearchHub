@@ -10,6 +10,7 @@ import type { EventAnchor, EarningsReviewPeriod, ValuationMethod } from './contr
 import type { ResearchBundle, ResearchBundleStore, ResearchSessionResult } from './research-bundle.ts'
 import { createResearchBundle } from './research-bundle.ts'
 import type { SourceLibraryService, SourceLibraryHit } from './source-library.ts'
+import type { ThemeFrameworkService } from './theme-framework-service.ts'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import type { ReasoningExecutor, ReasoningRequest } from '../../plugins/reasoning/contracts.ts'
 import { runThesisLifecycle } from '../../workflows/thesis-lifecycle/workflow.ts'
@@ -55,6 +56,7 @@ export interface ResearchDispatchServiceOptions {
   readonly workflowService?: WorkflowService
   readonly bundleStore?: ResearchBundleStore
   readonly sourceLibraryService?: SourceLibraryService
+  readonly themeFrameworkService?: ThemeFrameworkService
   readonly mountedKnowledgeBaseRoot?: string
   readonly reasoningExecutor?: ReasoningExecutor
 }
@@ -68,6 +70,7 @@ const WORKFLOW_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
   industry_research: ['行业', '产业', '产业链', 'industry', 'pcb', '半导体', '服务器'],
   company_research: ['公司', '个股', 'company', '股票'],
   daily_intelligence: ['日报', '盘前', '盘后', 'morning brief', 'evening brief', 'daily intelligence'],
+  theme_framework: ['主题框架', '投资主题初始化', '构建投资主题', '创建投资主题', 'theme framework', 'investment theme framework'],
 }
 
 function safeQuery(query: string): string { return query.toLocaleLowerCase() }
@@ -123,6 +126,20 @@ function extractThesisRef(query: string): string | undefined {
   return query.match(/\bclaim:[A-Za-z0-9._-]+\b/)?.[0]
 }
 
+function extractThemeName(query: string): string | undefined {
+  const patterns = [
+    /(?:为|给)\s*([\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9 &/_-]{0,79}?)\s*(?:创建|新建|构建|初始化|搭建)\s*(?:一个)?\s*(?:投资)?主题/iu,
+    /(?:创建|新建|构建|初始化|搭建|梳理)\s*(?:一个)?\s*([\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9 &/_-]{0,79}?)\s*(?:的)?(?:投资)?主题(?:框架)?/iu,
+    /([\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9 &/_-]{0,79}?)\s*(?:投资)?主题(?:框架)?/iu,
+    /(?:theme framework|investment theme)\s*(?:for|:)?\s*([A-Za-z0-9][A-Za-z0-9 &/_-]{0,79})/iu,
+  ]
+  for (const pattern of patterns) {
+    const value = query.match(pattern)?.[1]?.trim().replace(/\s+/gu, ' ')
+    if (value && value.length <= 80) return value
+  }
+  return undefined
+}
+
 export function extractWorkflowArguments(definition: WorkflowDefinition, query: string): ExtractedResearchArguments {
   const args: Record<string, unknown> = {}
   const diagnostics: string[] = []
@@ -162,6 +179,12 @@ export function extractWorkflowArguments(definition: WorkflowDefinition, query: 
     const tradeDate = query.match(/\b20\d{2}-\d{2}-\d{2}\b/)?.[0]
     if (briefType !== undefined) args.briefType = briefType
     if (tradeDate !== undefined) args.tradeDate = tradeDate
+  }
+  if (definition.id === 'theme_framework') {
+    const name = extractThemeName(query)
+    if (name !== undefined) args.name = name
+    const definitionMatch = query.match(/(?:定义|范围定义|definition)\s*[:：为是]?\s*([^。\n]{1,300})/iu)?.[1]?.trim()
+    if (definitionMatch) args.definition = definitionMatch.slice(0, 300)
   }
   const missingRequiredInputs = definition.requiredInputs.filter((key) => args[key] === undefined)
   if (missingRequiredInputs.length > 0) diagnostics.push(`missing_required_inputs:${missingRequiredInputs.join(',')}`)
@@ -358,7 +381,7 @@ export class ResearchDispatchService {
         instruction: explicit
           ? 'Extract arguments and entities for the user-selected Workflow. Never select or replace the Workflow; return mode workflow with the exact supplied workflow ID.'
           : 'Resolve the user research intent. Prefer one registered Workflow when its intent is clear, otherwise select eligible Research Skills, otherwise use Free Research. Do not invent canonical IDs or change request policies.',
-        input: { query: request.query, requestedMode: request.mode, explicitWorkflow: explicitDefinition, workflows: this.workflowRegistry.list(), researchSkills: this.skillRegistry.researchCandidates(), sourceLibraryHits, ...(previousOutput === undefined ? {} : { previousOutput, repairDiagnostics: diagnostics.slice(-16) }) },
+        input: { query: request.query, requestedMode: request.mode, explicitWorkflow: explicitDefinition, workflows: this.workflowRegistry.list(), researchSkills: this.skillRegistry.researchCandidates(), knowledgeSkillMetadata: this.skillRegistry.get('theme-framework') === undefined ? [] : [this.skillRegistry.get('theme-framework')], sourceLibraryHits, ...(previousOutput === undefined ? {} : { previousOutput, repairDiagnostics: diagnostics.slice(-16) }) },
         outputContract: dispatchOutputContract,
         metadata: { operationFamily: 'research-dispatch', attempt: String(attempt) },
       }
@@ -448,6 +471,14 @@ export class ResearchDispatchService {
 
   private startWorkflow(workflowId: string, args: Readonly<Record<string, unknown>>, runId: string, callerSignal?: AbortSignal, writeKnowledge = false, useStructuredKnowledge = true, sourceLibraryHits: readonly SourceLibraryHit[] = []): Promise<unknown> {
     const research = this.options.researchService
+    if (workflowId === 'theme_framework') {
+      const service = this.options.themeFrameworkService
+      if (service === undefined) throw new ApplicationServiceError('failed', 'Theme Framework service is not configured')
+      const started = service.start({ workflowRunId: runId, name: args.name as string, ...(typeof args.definition === 'string' ? { definition: args.definition } : {}) }, callerSignal)
+      // Never expose or persist the internal construction result: it contains
+      // provenance bindings. Chat receives the same safe projection as the API.
+      return started.completion.then(() => service.getReviewCandidate(runId))
+    }
     if (workflowId === 'daily_intelligence') {
       const daily = this.options.dailyIntelligenceService
       if (daily === undefined) throw new ApplicationServiceError('failed', 'Daily Intelligence service is not configured')
