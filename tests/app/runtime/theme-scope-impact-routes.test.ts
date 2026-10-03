@@ -40,6 +40,10 @@ test('Theme scope impact inbox and decisions require runtime token and only acce
     const headers = { origin: f.origin, 'x-researchhub-runtime-token': f.token, 'content-type': 'application/json' }
     const unauthenticated = await fetch(`${f.origin}/api/theme-scope-impact?limit=10`, { headers: { origin: f.origin } })
     assert.equal(unauthenticated.status, 401)
+    const browserLikeRead = await fetch(`${f.origin}/api/theme-scope-impact?limit=10`, { headers: { 'x-researchhub-runtime-token': f.token } })
+    assert.equal(browserLikeRead.status, 200)
+    const crossOriginRead = await fetch(`${f.origin}/api/theme-scope-impact?limit=10`, { headers: { origin: 'http://127.0.0.1:1', 'x-researchhub-runtime-token': f.token } })
+    assert.equal(crossOriginRead.status, 401)
     const invalidLimit = await fetch(`${f.origin}/api/theme-scope-impact?limit=101`, { headers })
     assert.equal(invalidLimit.status, 400)
 
@@ -64,6 +68,9 @@ test('Theme scope impact inbox and decisions require runtime token and only acce
     assert.deepEqual(f.calls.find((call) => Array.isArray(call) && call[0] === 'decideBatch'), ['decideBatch', { receiptKey: f.receiptKey, workflowRunId: 'scope-test-1', decisions: [{ proposalId: f.proposalId, decision: 'include', rationale: 'Confirmed by analyst' }] }])
 
     const proposalPath = `${f.origin}/api/theme-scope-impact/records/${f.receiptKey}/proposals/${encodeURIComponent(f.proposalId)}`
+    const mutationWithoutOrigin = await fetch(`${proposalPath}/dismiss`, { method: 'POST', headers: { 'x-researchhub-runtime-token': f.token, 'content-type': 'application/json' }, body: JSON.stringify({ workflowRunId: 'scope-test-no-origin' }) })
+    assert.equal(mutationWithoutOrigin.status, 401)
+    assert.equal(f.calls.some((call) => Array.isArray(call) && call[0] === 'reject'), false)
     const dismissed = await fetch(`${proposalPath}/dismiss`, { method: 'POST', headers, body: JSON.stringify({ workflowRunId: 'scope-test-2' }) })
     assert.equal(dismissed.status, 200)
     assert.deepEqual(f.calls.find((call) => Array.isArray(call) && call[0] === 'reject'), ['reject', f.receiptKey, f.proposalId])

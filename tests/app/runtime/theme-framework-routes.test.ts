@@ -39,6 +39,10 @@ test('Theme Framework start/get/accept/reject use runtime-token protected routes
     assert.equal((await started.json() as { runId: string }).runId, 'theme-route-run-1')
     const unauthorizedRead = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1`, { headers: { origin: f.origin } })
     assert.equal(unauthorizedRead.status, 401)
+    const browserLikeRead = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1`, { headers: { 'x-researchhub-runtime-token': f.token } })
+    assert.equal(browserLikeRead.status, 200)
+    const crossOriginRead = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1`, { headers: { origin: 'http://127.0.0.1:1', 'x-researchhub-runtime-token': f.token } })
+    assert.equal(crossOriginRead.status, 401)
     const candidateResponse = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1`, { headers })
     assert.equal(candidateResponse.status, 200)
     const candidate = await candidateResponse.json() as { candidate: { evidence: readonly Record<string, unknown>[] } }
@@ -50,6 +54,8 @@ test('Theme Framework start/get/accept/reject use runtime-token protected routes
     assert.deepEqual(f.calls.find((call) => Array.isArray(call) && call[0] === 'accept'), ['accept', { workflowRunId: 'theme-route-run-1', decisions: { industry_1: 'include', relation_1: 'pending' } }])
     const rejected = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/reject`, { method: 'POST', headers, body: '{}' })
     assert.equal(rejected.status, 200)
+    const mutationWithoutOrigin = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/reject`, { method: 'POST', headers: { 'x-researchhub-runtime-token': f.token, 'content-type': 'application/json' }, body: '{}' })
+    assert.equal(mutationWithoutOrigin.status, 401)
   } finally { await f.server.close(); await f.runtime.close(); await Promise.resolve((f.modelRuntime as unknown as { dispose?: () => void | Promise<void> }).dispose?.()); await rm(f.root, { recursive: true, force: true }) }
 })
 

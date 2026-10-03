@@ -425,8 +425,9 @@ export class ResearchHubRuntimeServer {
       if (request.method === 'OPTIONS') { this.validateRead(request); this.sendEmpty(response, 204); return }
       if (url.pathname === '/api/bootstrap') { this.validateBootstrap(request); await this.bootstrap(response); return }
       if (url.pathname === '/api/events' && request.method === 'GET') { this.validateRead(request); this.openEvents(response); return }
-      if (this.isMutation(request.method, url.pathname)
-        || (request.method === 'GET' && (/^\/api\/theme-framework\/runs\/[^/]+$/.test(url.pathname) || /^\/api\/theme-scope-impact(?:\/.*)?$/.test(url.pathname)))) this.validateMutation(request)
+      const tokenProtectedRead = request.method === 'GET' && (/^\/api\/theme-framework\/runs\/[^/]+$/.test(url.pathname) || /^\/api\/theme-scope-impact(?:\/.*)?$/.test(url.pathname))
+      if (this.isMutation(request.method, url.pathname)) this.validateMutation(request)
+      else if (tokenProtectedRead) this.validateTokenProtectedRead(request)
       else this.validateRead(request)
       if (url.pathname !== '/api' && !url.pathname.startsWith('/api/')) {
         if (await this.serveClient(request, response, url)) return
@@ -488,6 +489,12 @@ export class ResearchHubRuntimeServer {
 
   private validateMutation(request: IncomingMessage): void {
     this.runtimeSecurity!.validateRequest({ host: request.headers.host, origin: request.headers.origin, runtimeToken: request.headers[TOKEN_HEADER] as string | undefined }, 'mutation')
+  }
+
+  private validateTokenProtectedRead(request: IncomingMessage): void {
+    const security = this.runtimeSecurity!
+    const origin = typeof request.headers.origin === 'string' ? request.headers.origin : security.expectedOrigin
+    security.validateRequest({ host: request.headers.host, origin, runtimeToken: request.headers[TOKEN_HEADER] as string | undefined }, 'mutation')
   }
 
   private async route(request: IncomingMessage, response: ServerResponse, url: URL): Promise<void> {
