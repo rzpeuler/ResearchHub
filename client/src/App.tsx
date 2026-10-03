@@ -608,7 +608,7 @@ function ThemeFrameworkReviewInbox({ props }: { readonly props: ResearchPageProp
     {error ? <div className="notice" role="alert"><strong>Review list unavailable</strong><p>{error}</p><button type="button" className="secondary-action" onClick={() => void load()} disabled={loading}>Retry</button></div> : null}
     {loading && items.length === 0 ? <p className="muted" role="status">Loading saved Theme reviews…</p> : null}
     {!loading && items.length === 0 && !error ? <p className="muted">No saved Theme Framework reviews.</p> : null}
-    {items.map((item) => <div className="theme-framework-resume-item" key={item.runId}><div><strong>{item.themeName}</strong><small>Knowledge revision {item.basedOnRevision} · {item.status.replaceAll('_', ' ')}</small></div>{item.status === 'awaiting_review' ? <button type="button" className="secondary-action" onClick={() => props.setThemeFrameworkRunId(item.runId)}>{props.themeFrameworkRunId === item.runId ? 'Review open' : 'Resume review'}</button> : <span className={`rail-badge theme-status-${item.status}`}>{item.status}</span>}</div>)}
+    {items.map((item) => <div className="theme-framework-resume-item" key={item.runId}><div><strong>{item.themeName}</strong><small>Run …{item.runId.slice(-11)} · Knowledge revision {item.basedOnRevision} · {item.status.replaceAll('_', ' ')}</small></div>{item.status === 'awaiting_review' ? <button type="button" className="secondary-action" onClick={() => props.setThemeFrameworkRunId(item.runId)}>{props.themeFrameworkRunId === item.runId ? 'Review open' : 'Resume review'}</button> : <span className={`rail-badge theme-status-${item.status}`}>{item.status}</span>}</div>)}
   </section>
 }
 
