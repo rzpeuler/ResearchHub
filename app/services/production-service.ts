@@ -17,6 +17,7 @@ import type { RawDocumentRightsV04 } from '../../knowledge/production/raw-docume
 import type { KnowledgeBaseHandle } from '../../knowledge/storage/handle.ts'
 import { ApplicationServiceError, type ApplicationProductionResult, type ApplicationRawDocumentPreviewAcceptanceInput, type ApplicationRawDocumentPreviewV04, type IngestDocumentInput, type RawDocumentPreviewV04Input } from './contracts.ts'
 import { WorkflowService, type WorkflowOutcome } from './workflow-service.ts'
+import { triggerThemeScopeImpactPostWrite, type ThemeScopeImpactChecker, type ThemeScopeImpactTriggerResult } from '../../workflows/theme-scope-impact-check/post-write.ts'
 
 const SAFE_RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 const MAX_DOCUMENT_TEXT_BYTES = 2_000_000
@@ -41,6 +42,7 @@ export interface ProductionServiceOptions {
   readonly rawDocumentCandidateAcceptanceRunner?: typeof acceptRawDocumentV04Candidates
   readonly rawDocumentPreviewDocumentResolver?: DocumentInputResolverV04
   readonly rawDocumentPreviewSnapshotStore?: RawDocumentPreviewSnapshotStoreV04
+  readonly themeScopeImpactChecker?: ThemeScopeImpactChecker
 }
 
 export class ProductionService {
@@ -180,12 +182,18 @@ export class ProductionService {
       ? { ...projected, statusNote: 'The Workflow was cancelled; the durable preview persisted later and passed read-back verification.' }
       : projected
   }
-  async acceptRawDocumentV04Candidates(input: ApplicationRawDocumentPreviewAcceptanceInput): Promise<RawDocumentV04CandidateAcceptanceResult> {
+  async acceptRawDocumentV04Candidates(input: ApplicationRawDocumentPreviewAcceptanceInput): Promise<RawDocumentV04CandidateAcceptanceResult & { readonly themeScopeImpact: ThemeScopeImpactTriggerResult }> {
     if (!this.options.mountedKnowledgeBaseRoot) throw new ApplicationServiceError('no_kb_mounted', 'No canonical Knowledge Base is mounted')
     if (!input || !V04_RUN_ID.test(input.previewWorkflowRunId)) throw new ApplicationServiceError('invalid_input', 'previewWorkflowRunId is invalid')
     if (!Array.isArray(input.acceptedCandidateIds) || input.acceptedCandidateIds.length > 4096 || input.acceptedCandidateIds.some((id) => typeof id !== 'string')) throw new ApplicationServiceError('invalid_input', 'acceptedCandidateIds must be an array of at most 4096 candidate IDs')
     const handle = await this.registry.refresh(this.options.mountedKnowledgeBaseRoot)
-    return (this.options.rawDocumentCandidateAcceptanceRunner ?? acceptRawDocumentV04Candidates)({ handle, previewWorkflowRunId: input.previewWorkflowRunId, acceptedCandidateIds: [...input.acceptedCandidateIds] })
+    const result = await (this.options.rawDocumentCandidateAcceptanceRunner ?? acceptRawDocumentV04Candidates)({ handle, previewWorkflowRunId: input.previewWorkflowRunId, acceptedCandidateIds: [...input.acceptedCandidateIds] })
+    const successfulWrite = result.status === 'committed' || result.status === 'already_committed'
+    const hasChanges = result.createdIds.length + result.updatedIds.length > 0
+    const themeScopeImpact = successfulWrite && hasChanges && result.producerRunId && result.changeSetId
+      ? await triggerThemeScopeImpactPostWrite({ mountedKnowledgeBaseRoot: resolve(this.options.mountedKnowledgeBaseRoot), writerRunId: result.producerRunId, expectedKnowledgeBaseId: result.knowledgeBaseId, expectedCommittedRevision: result.knowledgeBaseRevision, expectedCreatedIds: result.createdIds, expectedUpdatedIds: result.updatedIds, checker: this.options.themeScopeImpactChecker })
+      : { status: 'not_triggered' as const, diagnostics: [successfulWrite ? 'Raw candidate acceptance completed without canonical writes.' : 'Raw candidate acceptance did not commit canonical writes.'] }
+    return { ...result, themeScopeImpact }
   }
   private async resolveWorkspaceFile(reference: string): Promise<string> {
     if (reference.trim() === '') throw new ApplicationServiceError('invalid_input', 'workspaceFile must be non-empty')

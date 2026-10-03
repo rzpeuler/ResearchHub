@@ -38,6 +38,7 @@ import { ThesisQueryService } from '../services/thesis-query-service.ts'
 import { ThesisDecisionService } from '../services/thesis-decision-service.ts'
 import { ThesisCriterionService } from '../services/thesis-criterion-service.ts'
 import { ThemeFrameworkService } from '../services/theme-framework-service.ts'
+import { ThemeScopeImpactService } from '../services/theme-scope-impact-service.ts'
 import { ThemeFrameworkAcquisitionAdapter } from '../../plugins/research-acquisition/theme-framework-acquisition.ts'
 import { AkshareIndustryResearchPlugin } from '../../plugins/research-acquisition/industry.ts'
 import { loadReviewCase } from '../../knowledge/review/store.ts'
@@ -136,18 +137,22 @@ export class ResearchHubApplicationRuntime {
     let thesisQueryService: ThesisQueryService | undefined
     let thesisDecisionService: ThesisDecisionService | undefined
     let thesisCriterionService: ThesisCriterionService | undefined
+    let themeScopeImpactService: ThemeScopeImpactService | undefined
     if (mountedKnowledgeBaseRoot !== undefined) {
       try {
         const manifest = await loadKnowledgeBaseManifest(mountedKnowledgeBaseRoot)
         if (manifest.schemaVersion === '0.4' && manifest.storageFormatVersion === '1') {
           thesisQueryService = new ThesisQueryService(mountedKnowledgeBaseRoot)
           thesisDecisionService = new ThesisDecisionService({ mountedKnowledgeBaseRoot })
-          if (manifest.status === 'active') thesisCriterionService = new ThesisCriterionService({ mountedKnowledgeBaseRoot })
+          if (manifest.status === 'active') {
+            thesisCriterionService = new ThesisCriterionService({ mountedKnowledgeBaseRoot })
+            themeScopeImpactService = new ThemeScopeImpactService({ mountedKnowledgeBaseRoot })
+          }
         }
       } catch { /* Thesis projections and decisions require a readable Schema 0.4 Knowledge Base. */ }
     }
     const workflowService = new WorkflowService()
-    const productionService = new ProductionService({ mountedKnowledgeBaseRoot, workspaceRoot, cwd, reasoningExecutor, workflowService })
+    const productionService = new ProductionService({ mountedKnowledgeBaseRoot, workspaceRoot, cwd, reasoningExecutor, workflowService, ...(themeScopeImpactService === undefined ? {} : { themeScopeImpactChecker: themeScopeImpactService }) })
     let researchService = options.researchService
     let themeFrameworkService = options.themeFrameworkService
     const akshare = new AkshareDataAdapter()
@@ -160,7 +165,7 @@ export class ResearchHubApplicationRuntime {
     const dailyComposition = options.dailyIntelligenceService === undefined ? await createDailyIntelligenceComposition({ cwd, workflowService, reasoningExecutor, modelRuntime, mountedKnowledgeBaseRoot, industryOperatingObservationAcquisition: options.industryOperatingObservationAcquisition }) : undefined
     const dailyIntelligenceService = options.dailyIntelligenceService ?? dailyComposition!.service
     if (researchService === undefined && mountedKnowledgeBaseRoot !== undefined) {
-      try { const manifest = await loadKnowledgeBaseManifest(mountedKnowledgeBaseRoot); if (manifest.schemaVersion === '0.4' && manifest.storageFormatVersion === '1') { const dailySignalStore = new FileDailySignalStore(join(cwd, 'runtime-data', 'daily-signals.jsonl')); const cninfo = new CninfoOfficialDisclosureClient(); researchService = new ResearchService({ mountedKnowledgeBaseRoot, cwd, workflowService, reasoningExecutor, industryReasoningExecutorFactory, industryOperatingObservationAcquisition: options.industryOperatingObservationAcquisition ?? new IndustryOperatingObservationAcquisition(), signalStore: new FileResearchSignalStore(join(cwd, 'runtime-data', 'research-signals.jsonl')), dailySignalStore, acquisitionPlugins: [new OfficialDisclosureResearchPlugin(cninfo), new GdeltResearchPlugin()], industryAcquisitionPlugins, akshare, officialDisclosure: cninfo, managementCommunicationSources: createManagementCommunicationSources(cninfo, akshare) }) } } catch { /* the normal v0.3 runtime remains available without Company Research */ }
+      try { const manifest = await loadKnowledgeBaseManifest(mountedKnowledgeBaseRoot); if (manifest.schemaVersion === '0.4' && manifest.storageFormatVersion === '1') { const dailySignalStore = new FileDailySignalStore(join(cwd, 'runtime-data', 'daily-signals.jsonl')); const cninfo = new CninfoOfficialDisclosureClient(); researchService = new ResearchService({ mountedKnowledgeBaseRoot, cwd, workflowService, reasoningExecutor, industryReasoningExecutorFactory, industryOperatingObservationAcquisition: options.industryOperatingObservationAcquisition ?? new IndustryOperatingObservationAcquisition(), signalStore: new FileResearchSignalStore(join(cwd, 'runtime-data', 'research-signals.jsonl')), dailySignalStore, acquisitionPlugins: [new OfficialDisclosureResearchPlugin(cninfo), new GdeltResearchPlugin()], industryAcquisitionPlugins, akshare, officialDisclosure: cninfo, managementCommunicationSources: createManagementCommunicationSources(cninfo, akshare), ...(themeScopeImpactService === undefined ? {} : { themeScopeImpactChecker: themeScopeImpactService }) }) } } catch { /* the normal v0.3 runtime remains available without Company Research */ }
     }
     if (themeFrameworkService === undefined && mountedKnowledgeBaseRoot !== undefined) {
       try {
@@ -181,7 +186,7 @@ export class ResearchHubApplicationRuntime {
     const sourceLibraryService = new SourceLibraryService(join(cwd, 'runtime-data', 'source-library'))
     const skillOnboardingService = new SkillOnboardingService(join(cwd, 'runtime-data', 'skill-onboarding', 'installed'), join(cwd, 'runtime-data', 'skill-onboarding'))
     const researchDispatchService = new ResearchDispatchService({ researchService, dailyIntelligenceService, workflowService, skillRegistry, bundleStore: new FileResearchBundleStore(join(cwd, 'runtime-data', 'research-bundles')), sourceLibraryService, mountedKnowledgeBaseRoot, reasoningExecutor, ...(themeFrameworkService === undefined ? {} : { themeFrameworkService }) })
-    const services = { knowledgeService, knowledgeGraphService, knowledgeTopicProjectionService, themeWorkspaceProjectionService, reviewService, workflowService, productionService, researchDispatchService, sourceLibraryService, skillOnboardingService, ...(researchService === undefined ? {} : { researchService }), ...(themeFrameworkService === undefined ? {} : { themeFrameworkService }), ...(thesisQueryService === undefined ? {} : { thesisQueryService }), ...(thesisDecisionService === undefined ? {} : { thesisDecisionService }), ...(thesisCriterionService === undefined ? {} : { thesisCriterionService }), dailyIntelligenceService }
+    const services = { knowledgeService, knowledgeGraphService, knowledgeTopicProjectionService, themeWorkspaceProjectionService, reviewService, workflowService, productionService, researchDispatchService, sourceLibraryService, skillOnboardingService, ...(researchService === undefined ? {} : { researchService }), ...(themeFrameworkService === undefined ? {} : { themeFrameworkService }), ...(themeScopeImpactService === undefined ? {} : { themeScopeImpactService }), ...(thesisQueryService === undefined ? {} : { thesisQueryService }), ...(thesisDecisionService === undefined ? {} : { thesisDecisionService }), ...(thesisCriterionService === undefined ? {} : { thesisCriterionService }), dailyIntelligenceService }
     const { thesisCriterionService: _humanOnlyCriterionService, ...piApplicationServices } = services
     void _humanOnlyCriterionService
     const sessionManager = options.sessionManager ?? SessionManager.create(cwd, options.sessionDir)

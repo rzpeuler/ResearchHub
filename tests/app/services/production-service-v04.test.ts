@@ -12,9 +12,12 @@ import { WorkflowService } from '../../../app/services/workflow-service.ts'
 import type { RawDocumentRightsV04 } from '../../../knowledge/production/raw-document-gateway-v04.ts'
 import { createKnowledgeBase } from '../../knowledge/helpers.ts'
 import { runRawDocumentKnowledgePreviewV04 } from '../../../workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts'
+import { acceptRawDocumentV04Candidates } from '../../../workflows/raw-document-knowledge-ingestion/v04-candidate-acceptance.ts'
 import type { RawDocumentPreviewSnapshotStoreV04, RawDocumentPreviewWorkflowResultV04 } from '../../../workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts'
 import { persistRawDocumentV04PreviewSnapshot } from '../../../workflows/raw-document-knowledge-ingestion/v04-preview-store.ts'
 import type { ReasoningExecutor, ReasoningRequest, ReasoningResult } from '../../../plugins/reasoning/contracts.ts'
+import type { ThemeScopeImpactChecker } from '../../../workflows/theme-scope-impact-check/post-write.ts'
+import type { ThemeScopeImpactWriteReceipt } from '../../../app/services/theme-scope-impact-service.ts'
 
 const rights: RawDocumentRightsV04 = { accessScope: 'authenticated', providerTermsKnown: true, retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false, policyBasis: 'User supplied this document for personal research processing.' }
 const sourceMetadata = { title: 'AI Computing Research', sourceType: 'sell_side_research' as const, sourceReliability: 'medium' as const, publisher: 'Fixture Research' }
@@ -46,14 +49,20 @@ async function fixture(schema: '0.3' | '0.4', run: (root: string) => Promise<voi
   } finally { await rm(root, { recursive: true, force: true }) }
 }
 
-function service(root: string, reasoningExecutor: ReasoningExecutor = new MockReasoningExecutor({ capabilities: caps, responses: { understandAndPlan: plan, extractKnowledge: extraction } }), rawDocumentPreviewRunner: typeof runRawDocumentKnowledgePreviewV04 = runRawDocumentKnowledgePreviewV04, workflowService = new WorkflowService(), snapshotStore?: RawDocumentPreviewSnapshotStoreV04, documentParser: DocumentParser = parser) {
-  return new ProductionService({ mountedKnowledgeBaseRoot: root, reasoningExecutor, workflowService, rawDocumentPreviewDocumentResolver: new DocumentInputResolver({ documentParser }), rawDocumentPreviewRunner, ...(snapshotStore === undefined ? {} : { rawDocumentPreviewSnapshotStore: snapshotStore }) })
+function service(root: string, reasoningExecutor: ReasoningExecutor = new MockReasoningExecutor({ capabilities: caps, responses: { understandAndPlan: plan, extractKnowledge: extraction } }), rawDocumentPreviewRunner: typeof runRawDocumentKnowledgePreviewV04 = runRawDocumentKnowledgePreviewV04, workflowService = new WorkflowService(), snapshotStore?: RawDocumentPreviewSnapshotStoreV04, documentParser: DocumentParser = parser, impactChecker?: ThemeScopeImpactChecker, acceptanceRunner: typeof acceptRawDocumentV04Candidates = acceptRawDocumentV04Candidates) {
+  return new ProductionService({ mountedKnowledgeBaseRoot: root, reasoningExecutor, workflowService, rawDocumentPreviewDocumentResolver: new DocumentInputResolver({ documentParser }), rawDocumentPreviewRunner, rawDocumentCandidateAcceptanceRunner: acceptanceRunner, ...(snapshotStore === undefined ? {} : { rawDocumentPreviewSnapshotStore: snapshotStore }), ...(impactChecker === undefined ? {} : { themeScopeImpactChecker: impactChecker }) })
 }
 
 test('V0.4 service returns a durable candidate preview and accepts only explicitly selected IDs', async () => {
   await fixture('0.4', async (root) => {
+    const receipts: ThemeScopeImpactWriteReceipt[] = []
+    const impactChecker: ThemeScopeImpactChecker = { check: async (input) => {
+      const receipt = input as ThemeScopeImpactWriteReceipt
+      receipts.push(receipt)
+      return { receiptKey: 'd'.repeat(64), knowledgeBaseId: receipt.knowledgeBaseId, baseRevision: receipt.baseRevision, committedRevision: receipt.committedRevision, status: 'ready', proposals: [], diagnostics: [] }
+    } }
     let workflowResult: RawDocumentPreviewWorkflowResultV04 | undefined
-    const subject = service(root, undefined, async (input) => { workflowResult = await runRawDocumentKnowledgePreviewV04(input); return workflowResult })
+    const subject = service(root, undefined, async (input) => { workflowResult = await runRawDocumentKnowledgePreviewV04(input); return workflowResult }, new WorkflowService(), undefined, parser, impactChecker)
     const started = subject.startRawDocumentKnowledgePreviewV04({ workflowRunId: 'service-v04-preview', text: 'AI computing demand is increasing. DO_NOT_RETURN_RAW_TEXT', sourceMetadata, rights })
     assert.equal(started.runId, 'service-v04-preview')
     const preview = await started.completion
@@ -79,6 +88,37 @@ test('V0.4 service returns a durable candidate preview and accepts only explicit
     assert.ok(['committed', 'already_committed', 'no_changes'].includes(accepted.status))
     assert.equal(accepted.acceptedCandidateIds[0], candidateId)
     assert.ok(accepted.canonicalRefsByCandidateId[candidateId]?.startsWith('entity:'))
+    if (accepted.createdIds.length + accepted.updatedIds.length > 0) {
+      assert.equal(accepted.themeScopeImpact.status, 'ready')
+      assert.equal(receipts.length, 1)
+      assert.equal(receipts[0]?.writerRunId, accepted.producerRunId)
+      assert.equal(receipts[0]?.changeSetId, accepted.changeSetId)
+      assert.deepEqual(new Set([...receipts[0]!.createdRefs, ...receipts[0]!.updatedRefs]), new Set([...accepted.createdIds, ...accepted.updatedIds]))
+    } else {
+      assert.equal(accepted.themeScopeImpact.status, 'not_triggered')
+      assert.equal(receipts.length, 0)
+    }
+    const checksBeforeNoWrite = receipts.length
+    const noWrite = await subject.acceptRawDocumentV04Candidates({ previewWorkflowRunId: started.runId, acceptedCandidateIds: [] })
+    assert.equal(noWrite.themeScopeImpact.status, 'not_triggered')
+    assert.equal(receipts.length, checksBeforeNoWrite)
+  })
+})
+
+test('failed raw candidate Writer outcome never triggers Theme scope impact', async () => {
+  await fixture('0.4', async (root) => {
+    let checks = 0
+    const checker: ThemeScopeImpactChecker = { check: async () => { checks++; throw new Error('must not run') } }
+    const failed: Awaited<ReturnType<typeof acceptRawDocumentV04Candidates>> = {
+      status: 'failed', knowledgeBaseId: 'kb-production-service-v04', knowledgeBaseRevision: 0, baseRevision: 0,
+      previewWorkflowRunId: 'failed-preview', requestedCandidateIds: ['candidate'], acceptedCandidateIds: [], canonicalRefsByCandidateId: {},
+      mappingDecisions: [], resolutionIntents: [], createdIds: [], updatedIds: [], errors: [{ code: 'WRITER_FAILED', message: 'Writer failed.' }],
+    }
+    const subject = service(root, undefined, undefined, undefined, undefined, parser, checker, async () => failed)
+    const result = await subject.acceptRawDocumentV04Candidates({ previewWorkflowRunId: 'failed-preview', acceptedCandidateIds: ['candidate'] })
+    assert.equal(result.status, 'failed')
+    assert.equal(result.themeScopeImpact.status, 'not_triggered')
+    assert.equal(checks, 0)
   })
 })
 

@@ -71,6 +71,8 @@ test('Application Runtime wires the Theme Framework executor explicitly and pres
   const injectedExecutor: ReasoningExecutor = { capabilities: () => CAPABILITIES, async execute(request) { return { operation: request.operation, output: {} } } }
   try {
     productionRuntime = await createResearchHubApplicationRuntime({ cwd, agentDir, workspaceRoot, mountedKnowledgeBaseRoot: knowledgeBaseRoot, modelRuntime, model: faux.getModel() })
+    assert.ok(productionRuntime.services.themeScopeImpactService, 'active Schema 0.4 runtime should expose the Theme scope impact inbox service')
+    assert.equal((productionRuntime.productionService as unknown as { options: { themeScopeImpactChecker: unknown } }).options.themeScopeImpactChecker, productionRuntime.services.themeScopeImpactService)
     const productionMetadata = (themeFrameworkExecutor(productionRuntime) as unknown as { runtimeMetadata(): Record<string, unknown> }).runtimeMetadata()
     assert.equal(productionMetadata.backend, 'codex-cli')
     assert.equal(productionMetadata.requestedModel, 'gpt-6-luna')

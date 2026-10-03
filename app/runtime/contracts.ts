@@ -19,6 +19,7 @@ import type { ThesisQueryService } from '../services/thesis-query-service.ts'
 import type { ThesisDecisionService } from '../services/thesis-decision-service.ts'
 import type { ThesisCriterionService } from '../services/thesis-criterion-service.ts'
 import type { ThemeFrameworkService } from '../services/theme-framework-service.ts'
+import type { ThemeScopeImpactService } from '../services/theme-scope-impact-service.ts'
 
 export interface SafeConversationSummary {
   readonly conversationId: string
@@ -66,6 +67,8 @@ export interface ResearchHubApplicationServices {
   readonly thesisCriterionService?: ThesisCriterionService
   /** Explicitly reviewed Theme Framework construction; canonical writes occur only on accept. */
   readonly themeFrameworkService?: ThemeFrameworkService
+  /** Read and review the durable post-write Theme scope impact proposal inbox. */
+  readonly themeScopeImpactService?: ThemeScopeImpactService
   readonly dailyIntelligenceService?: DailyIntelligenceService
 }
 
