@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { EastmoneyIndustryResearchPlugin } from '../../../plugins/research-acquisition/eastmoney-industry.ts'
+import { EastmoneyIndustryResearchPlugin, EastmoneyRequestError } from '../../../plugins/research-acquisition/eastmoney-industry.ts'
 
 const request = { industry: { name: 'PCB Manufacturing', aliases: ['Printed Circuit Board'], searchTerms: ['PCB 印制电路板'] }, asOf: '2026-09-12T00:00:00.000Z', limitPerKind: 12 }
 const response = (data: unknown, status = 200) => new Response(JSON.stringify({ data }), { status, headers: { 'content-type': 'application/json' } })
@@ -20,5 +20,10 @@ test('Eastmoney fetches bounded identity-only constituents, sorts, hashes, and n
 })
 
 test('Malformed and HTTP error responses are rejected', async () => { const bad = new EastmoneyIndustryResearchPlugin({ fetchImpl: async () => new Response('{bad', { status: 200 }) }); await assert.rejects(() => bad.discover(request), /JSON/); const http = new EastmoneyIndustryResearchPlugin({ fetchImpl: async () => new Response('{}', { status: 503 }) }); await assert.rejects(() => http.discover(request), /HTTP 503/) })
+
+test('Transport failures retain a sanitized provider category and socket diagnosis', async () => {
+  const plugin = new EastmoneyIndustryResearchPlugin({ fetchImpl: async () => { const error = new TypeError('fetch failed'); Object.defineProperty(error, 'cause', { value: { code: 'UND_ERR_SOCKET', message: 'other side closed' } }); throw error } })
+  await assert.rejects(() => plugin.discover(request), (error: unknown) => error instanceof EastmoneyRequestError && error.category === 'transport' && error.message === 'Eastmoney remote socket closed (UND_ERR_SOCKET)' && error.cause instanceof TypeError)
+})
 
 test('Generic Manufacturing and Industry words alone do not select unrelated boards', async () => { const plugin = new EastmoneyIndustryResearchPlugin({ fetchImpl: async (url) => boardRows([{ f12: 'BK0099', f14: new URL(String(url)).searchParams.get('fs') === 'm:90+t:2' ? 'Advanced Manufacturing' : 'Industry Services' }]) }); assert.deepEqual(await plugin.discover(request), []) })
