@@ -18,6 +18,12 @@ export const THEME_FRAMEWORK_ACQUISITION_MAX_SOURCES = 8
 const MAX_CANDIDATES_PER_PROVIDER = 4
 const MAX_RAW_DOCUMENT_BYTES = 8 * 1024 * 1024
 const MAX_EVIDENCE_EXCERPT = 240
+const MAX_THEME_SEARCH_TERMS = 8
+const THEME_CHAIN_FACETS_ZH = ['产业链', '上游', '下游', '基础设施', '设备', '材料', '核心环节'] as const
+const THEME_CHAIN_FACETS_EN = ['value chain', 'upstream', 'downstream', 'infrastructure', 'equipment', 'materials', 'key segments'] as const
+const AI_COMPUTE_THEME_NAMES = new Set(['ai算力', '人工智能算力', 'aicompute', 'artificialintelligencecompute'])
+const AI_COMPUTE_QUERY_ALIASES = ['人工智能算力', 'AI服务器', 'AI芯片', '智算中心', 'AI数据中心', '算力网络', '算力基础设施', '先进封装'] as const
+const AI_COMPUTE_TITLE_ALIASES = ['人工智能算力', 'AI服务器', 'AI芯片', '智算中心', 'AI数据中心', '算力网络', '算力基础设施'] as const
 const SUPPORTED_MEDIA_TYPES = new Set(['application/pdf', 'text/html', 'application/xhtml+xml'])
 const TRACKING_PARAMS = new Set(['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'from', 'spm', 'share'])
 
@@ -83,14 +89,45 @@ function titleTerms(value: string): { readonly latin: ReadonlySet<string>; reado
   })
   return { latin, cjk }
 }
-function titleMatchesTheme(title: string, themeName: string): boolean {
+function titleMatchesTerms(title: string, terms: readonly string[]): boolean {
+  const candidate = titleTerms(title)
+  return terms.some((term) => {
+    const match = titleTerms(term)
+    return [...match.latin].some((value) => candidate.latin.has(value))
+      || match.cjk.some((value) => candidate.cjk.some((candidateTerm) => candidateTerm.includes(value) || value.includes(candidateTerm)))
+  })
+}
+function titleMatchesTheme(title: string, themeName: string, aliases: readonly string[] = []): boolean {
   const theme = titleTerms(themeName)
   if (theme.latin.size === 0 && theme.cjk.length === 0) return false
+  const anchors = [themeName, ...aliases]
   const candidate = titleTerms(title)
   // Latin terms are matched as complete title tokens; CJK terms use meaningful
   // two-character names or overlapping trigrams from longer theme compounds.
   return [...theme.latin].some((term) => candidate.latin.has(term))
     || theme.cjk.some((term) => candidate.cjk.some((candidateTerm) => candidateTerm.includes(term) || term.includes(candidateTerm)))
+    || titleMatchesTerms(title, anchors.slice(1))
+}
+function themeAcquisitionPlan(themeName: string, definition?: string): {
+  readonly searchTerms: readonly string[]
+  readonly queryAliases: readonly string[]
+  readonly titleAliases: readonly string[]
+} {
+  const normalizedName = themeName.normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
+  const aiCompute = AI_COMPUTE_THEME_NAMES.has(normalizedName)
+  const cjkTheme = titleTerms(themeName).cjk.length > 0
+  const facets = (cjkTheme ? THEME_CHAIN_FACETS_ZH : THEME_CHAIN_FACETS_EN).map((facet) => `${themeName} ${facet}`)
+  const definitionTerms = (definition?.match(/[^\s，,；;。！？!?]{2,}/gu) ?? []).map((term) => term.slice(0, 120))
+  // Preserve user-supplied definition terms while retaining a bounded set of
+  // broad chain facets. Name-only Theme creation still gets every facet.
+  const searchTerms = definitionTerms.length > 0
+    ? [themeName, ...definitionTerms.slice(0, 2), ...facets.slice(0, 5)]
+    : [themeName, ...facets]
+  return {
+    searchTerms: [...new Set(searchTerms.map((term) => term.slice(0, 120)))].slice(0, MAX_THEME_SEARCH_TERMS),
+    queryAliases: aiCompute ? AI_COMPUTE_QUERY_ALIASES : [],
+    titleAliases: aiCompute ? AI_COMPUTE_TITLE_ALIASES : [],
+  }
 }
 function eligibleRights(source: NormalizedResearchSource): boolean {
   const rights = source.rights
@@ -169,12 +206,12 @@ export class ThemeFrameworkAcquisitionAdapter implements ThemeFrameworkAcquisiti
     }
 
     const themeName = input.themeName.normalize('NFKC').trim().replace(/\s+/gu, ' ')
-    const searchTerms = [...new Set([themeName, ...(input.definition?.match(/[^\s，,；;。！？!?]{2,}/gu) ?? [])])].slice(0, 8).map((term) => term.slice(0, 120))
-    const target = { name: themeName, searchTerms, asOf: this.clock() }
+    const searchPlan = themeAcquisitionPlan(themeName, input.definition)
+    const target = { name: themeName, aliases: searchPlan.queryAliases, searchTerms: searchPlan.searchTerms, asOf: this.clock() }
     const composition = new IndustryAcquisitionComposition(this.options.plugins, MAX_CANDIDATES_PER_PROVIDER, budget)
     let acquired: Awaited<ReturnType<IndustryAcquisitionComposition['acquire']>>
     try {
-      acquired = await composition.acquire({ target, wave: 1, design: {} as never, gaps: [], searchTerms }, { signal: input.signal })
+      acquired = await composition.acquire({ target, wave: 1, design: {} as never, gaps: [], searchTerms: searchPlan.searchTerms }, { signal: input.signal })
     } catch {
       return { status: 'unavailable', reason: 'industry_acquisition_failed', diagnostics: ['industry_composition_failed'] }
     }
@@ -183,6 +220,7 @@ export class ThemeFrameworkAcquisitionAdapter implements ThemeFrameworkAcquisiti
 
     const evidence: ThemeFrameworkInput['evidence'][number][] = []
     const bindings: ThemeFrameworkDurableEvidenceBinding[] = []
+    const durableSourcesByProvider = new Map<string, number>()
     const seen = new Set<string>()
     let expectedRevision = input.knowledgeBaseRevision
     const sources = acquired.sources.slice(0, budget)
@@ -193,7 +231,7 @@ export class ThemeFrameworkAcquisitionAdapter implements ThemeFrameworkAcquisiti
         break
       }
       const title = sourceTitle(source)
-      if (!titleMatchesTheme(title, themeName)) { diagnostics.push(`source_rejected_title_relevance:${source.candidate.provider}`); continue }
+      if (!titleMatchesTheme(title, themeName, searchPlan.titleAliases)) { diagnostics.push(`source_rejected_title_relevance:${source.candidate.provider}`); continue }
       const representation = rawRepresentation(source)
       if (!representation) { diagnostics.push(`source_rejected_raw_representation:${source.candidate.provider}`); continue }
       if (!eligibleRights(source)) { diagnostics.push(`source_rejected_rights:${source.candidate.provider}`); continue }
@@ -280,13 +318,20 @@ export class ThemeFrameworkAcquisitionAdapter implements ThemeFrameworkAcquisiti
       })
       const locator = source.candidate.metadata?.locator
       bindings.push({ evidenceId: id, sourceRef: rawResult.sourceRef, rawRef: rawResult.rawRef, ...(typeof locator === 'string' && locator.trim() ? { locator: locator.slice(0, 2048) } : {}) })
+      const provider = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u.test(source.candidate.provider) ? source.candidate.provider : 'unknown-provider'
+      durableSourcesByProvider.set(provider, (durableSourcesByProvider.get(provider) ?? 0) + 1)
+    }
+
+    const hasAcquisitionWarnings = diagnostics.length > 0
+    for (const [provider, count] of [...durableSourcesByProvider].sort(([left], [right]) => left.localeCompare(right))) {
+      diagnostics.push(`theme_acquisition_durable_sources:${provider}:${count}`)
     }
 
     if (evidence.length === 0) {
       return { status: 'unavailable', reason: isAborted(input.signal) ? 'acquisition_cancelled' : 'no_eligible_durable_sources', diagnostics: diagnostics.slice(0, 32) }
     }
     return {
-      status: evidence.length === sources.length && diagnostics.length === 0 ? 'available' : 'partial',
+      status: evidence.length === sources.length && !hasAcquisitionWarnings ? 'available' : 'partial',
       evidence,
       durableEvidenceBindings: bindings,
       diagnostics: diagnostics.slice(0, 32),

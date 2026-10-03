@@ -7,7 +7,7 @@ import { KnowledgeBaseRegistry } from '../../../knowledge/registry/registry.ts'
 import { createFreshKnowledgeBaseV04 } from '../../../knowledge/storage/index.ts'
 import { readCanonicalV04Assets } from '../../../knowledge/storage/canonical-v04-loader.ts'
 import type { KnowledgeSourceV04 } from '../../../knowledge/schema/domain-v04.ts'
-import type { NormalizedResearchSource, ResearchAcquisitionPlugin, ResearchFetchedSource, ResearchSourceCandidate } from '../../../plugins/research-acquisition/contracts.ts'
+import type { NormalizedResearchSource, ResearchAcquisitionPlugin, ResearchAcquisitionRequest, ResearchFetchedSource, ResearchSourceCandidate } from '../../../plugins/research-acquisition/contracts.ts'
 import { ThemeFrameworkAcquisitionAdapter } from '../../../plugins/research-acquisition/theme-framework-acquisition.ts'
 import { sha256 } from '../../../plugins/research-acquisition/hash.ts'
 
@@ -26,6 +26,7 @@ type FixtureDocument = {
 class FixturePlugin implements ResearchAcquisitionPlugin {
   readonly name = 'fixture-industry-acquisition'
   discoverCalls = 0
+  readonly discoveryRequests: ResearchAcquisitionRequest[] = []
   readonly candidates: readonly ResearchSourceCandidate[]
   private readonly documents = new Map<string, FixtureDocument>()
   constructor(documents: readonly FixtureDocument[]) {
@@ -34,7 +35,7 @@ class FixturePlugin implements ResearchAcquisitionPlugin {
       return { candidateId: document.id, kind: 'web_article', tier: 2, title: document.title ?? `Evidence ${document.id}`, url: document.url ?? `https://fixture.example/${document.id}`, provider: this.name }
     })
   }
-  async discover(): Promise<readonly ResearchSourceCandidate[]> { this.discoverCalls += 1; return this.candidates }
+  async discover(request: ResearchAcquisitionRequest): Promise<readonly ResearchSourceCandidate[]> { this.discoverCalls += 1; this.discoveryRequests.push(request); return this.candidates }
   async fetch(candidate: ResearchSourceCandidate): Promise<ResearchFetchedSource> {
     const document = this.documents.get(candidate.candidateId)!
     const bytes = document.bytes ?? html
@@ -75,8 +76,8 @@ function adapter(root: string, plugin: ResearchAcquisitionPlugin, registry = new
   return new ThemeFrameworkAcquisitionAdapter({ knowledgeBaseRoot: root, plugins: [plugin], registry, clock: () => NOW })
 }
 
-function request(knowledgeBaseId: string, knowledgeBaseRevision: number, maxSources = 8, signal?: AbortSignal, themeName = 'Evidence') {
-  return { themeName, definition: 'AI compute infrastructure and its supply chain', maxSources, knowledgeBaseId, knowledgeBaseRevision, ...(signal ? { signal } : {}) }
+function request(knowledgeBaseId: string, knowledgeBaseRevision: number, maxSources = 8, signal?: AbortSignal, themeName = 'Evidence', definition = 'AI compute infrastructure and its supply chain') {
+  return { themeName, ...(definition ? { definition } : {}), maxSources, knowledgeBaseId, knowledgeBaseRevision, ...(signal ? { signal } : {}) }
 }
 
 test('Theme Framework adapter persists source and raw before returning verified evidence bindings and is rerun-idempotent', async () => {
@@ -168,6 +169,66 @@ test('Theme Framework title gate accepts a relevant mixed-language article and C
     assert.equal(chinese.status, 'partial', JSON.stringify(chinese))
     assert.equal(chinese.evidence.length, 1)
     assert.match(chinese.evidence[0]!.description, /^先进封装产业链/u)
+  })
+})
+
+test('Theme Framework fans out bounded chain facets and explicit AI Compute query aliases behind the title gate', async () => {
+  await withKb(async (root, knowledgeBaseId) => {
+    const registry = new KnowledgeBaseRegistry()
+    const plugin = new FixturePlugin([
+      { id: 'ai-server', title: 'AI服务器产业链关键设备' },
+      { id: 'intelligence-compute', title: '人工智能算力基础设施建设' },
+      { id: 'query-only-advanced-packaging', title: '先进封装设备产业研究' },
+      { id: 'generic-upstream', title: '设备上游环节情况' },
+    ])
+    const before = await registry.mount(root)
+    const result = await adapter(root, plugin, registry).acquire(request(knowledgeBaseId, before.revision, 8, undefined, 'AI 算力', ''))
+
+    assert.equal(result.status, 'partial')
+    assert.equal(result.evidence.length, 2)
+    assert.equal(result.durableEvidenceBindings?.length, 2)
+    const target = plugin.discoveryRequests[0]
+    const industry = target && 'industry' in target ? target.industry : undefined
+    assert.ok(industry)
+    if (!industry) return
+    assert.equal(industry.searchTerms.length, 8)
+    assert.ok(industry.searchTerms.includes('AI 算力 产业链'))
+    assert.ok(industry.searchTerms.includes('AI 算力 上游'))
+    assert.ok(industry.searchTerms.includes('AI 算力 材料'))
+    assert.ok(industry.aliases?.includes('AI服务器'))
+    assert.ok(industry.aliases?.includes('AI芯片'))
+    assert.ok(industry.aliases?.includes('先进封装'))
+    assert.ok(result.diagnostics?.includes('source_rejected_title_relevance:fixture-industry-acquisition'))
+    assert.ok(result.diagnostics?.includes('theme_acquisition_durable_sources:fixture-industry-acquisition:2'))
+    assert.equal((await registry.refresh(root)).revision, before.revision + 2)
+  })
+})
+
+test('Theme Framework query facets remain generic and bounded for other name-only Themes', async () => {
+  await withKb(async (root, knowledgeBaseId) => {
+    const registry = new KnowledgeBaseRegistry()
+    const plugin = new FixturePlugin([{ id: 'energy-storage', title: 'Energy storage supply chain overview' }])
+    const before = await registry.mount(root)
+    const result = await adapter(root, plugin, registry).acquire(request(knowledgeBaseId, before.revision, 8, undefined, 'Energy Storage', ''))
+
+    assert.equal(result.status, 'available')
+    assert.equal(plugin.discoverCalls, 1)
+    const target = plugin.discoveryRequests[0]
+    const industry = target && 'industry' in target ? target.industry : undefined
+    assert.ok(industry)
+    if (!industry) return
+    assert.deepEqual(industry.searchTerms, [
+      'Energy Storage',
+      'Energy Storage value chain',
+      'Energy Storage upstream',
+      'Energy Storage downstream',
+      'Energy Storage infrastructure',
+      'Energy Storage equipment',
+      'Energy Storage materials',
+      'Energy Storage key segments',
+    ])
+    assert.deepEqual(industry.aliases, [])
+    assert.ok(result.diagnostics?.includes('theme_acquisition_durable_sources:fixture-industry-acquisition:1'))
   })
 })
 
