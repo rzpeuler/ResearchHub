@@ -542,3 +542,36 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .theme-status-committed { border-color: #3b7268; }
 @media (max-width: 850px) { .theme-framework-review { padding: 11px; } }
 @media (max-width: 850px) { .thesis-layout, .thesis-review-layout { grid-template-columns: 1fr; } .thesis-criterion-definition { grid-template-columns: 1fr; } }
+.theme-scope-impact-inbox { display: grid; gap: 10px; width: min(100% - 32px, 1100px); margin: 0 auto 24px; padding: 16px; border: 1px solid #36565a; border-radius: 9px; background: linear-gradient(145deg, #132327, #111a20); }
+.theme-scope-impact-inbox > .section-title { margin: 0; }
+.theme-scope-impact-intro { margin: 0; color: #aabfc2; font-size: 11px; line-height: 1.5; }
+.theme-scope-impact-record { display: grid; gap: 9px; padding: 12px; border: 1px solid #2e4149; border-radius: 7px; background: #111b21; }
+.theme-scope-impact-record > header, .theme-scope-impact-proposal > header { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.theme-scope-impact-record > header small, .theme-scope-impact-proposal > header small { display: block; margin-top: 4px; color: #839ba0; font-size: 9px; overflow-wrap: anywhere; }
+.theme-scope-impact-record.stale { border-color: #806841; }
+.scope-impact-status { flex: 0 0 auto; padding: 4px 7px; border-radius: 99px; color: #c5d7d8; background: #253a3e; font-size: 8px; text-transform: uppercase; }
+.scope-impact-status.ready, .scope-impact-status.proposal-accepted { color: #cde9dc; background: #294337; }
+.scope-impact-status.stale { color: #f0d69d; background: #493f28; }
+.scope-impact-status.proposal-rejected { color: #f0c4c4; background: #492b30; }
+.scope-impact-stale-note, .scope-impact-diagnostic { margin: 0; color: #e4c585; font-size: 10px; line-height: 1.5; }
+.theme-scope-impact-proposal { display: grid; gap: 8px; padding: 11px; border: 1px solid #293d45; border-radius: 7px; background: #142127; }
+.theme-scope-impact-proposal h3 { margin: 3px 0 0; color: #d9e5e7; font-size: 11px; overflow-wrap: anywhere; }
+.scope-impact-rationale { margin: 0; color: #b7c8ca; font-size: 10px; line-height: 1.5; }
+.scope-impact-counts { display: flex; flex-wrap: wrap; gap: 6px; color: #90aaae; font-size: 9px; }
+.scope-impact-counts span { padding: 5px 7px; border: 1px solid #2c4449; border-radius: 5px; background: #101b20; }
+.scope-impact-counts b { color: #d9e5e7; }
+.scope-impact-refs { color: #a9c2c4; font-size: 9px; }
+.scope-impact-refs summary { cursor: pointer; }
+.scope-impact-refs ul { display: grid; gap: 4px; margin: 7px 0; padding-left: 18px; }
+.scope-impact-refs li { overflow-wrap: anywhere; color: #8eaaae; }
+.scope-impact-refs small { color: #789297; }
+.scope-impact-no-evidence { margin: 0; color: #e2a2a2; font-size: 9px; }
+.scope-impact-rationale-field { display: grid; gap: 5px; color: #91a9ad; font-size: 9px; }
+.scope-impact-rationale-field textarea { min-height: 54px; resize: vertical; border: 1px solid #34474e; border-radius: 5px; padding: 8px; color: #d6e2e4; background: #0f191e; font: inherit; }
+.scope-impact-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.scope-impact-actions button { min-height: 30px; font-size: 9px; }
+.scope-impact-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; color: #789297; font-size: 9px; }
+.theme-scope-impact-error { margin: 0; }
+@media (max-width: 850px) { .theme-scope-impact-inbox { width: auto; margin: 14px 12px; padding: 11px; } }
+.scope-impact-actions button.selected { outline: 1px solid #65bbae; box-shadow: 0 0 0 1px #65bbae40; }
+.scope-impact-save-row { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; padding-top: 9px; border-top: 1px solid #293c43; color: #90aaae; font-size: 9px; }

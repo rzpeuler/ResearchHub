@@ -12,6 +12,7 @@ function mockV04UploadRuntime(fetchMock: (input: RequestInfo | URL, init?: Reque
     if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
     if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
     if (path === '/api/conversations') return json({ conversations: [] })
+    if (path === '/api/theme-scope-impact?limit=50') return json({ items: [], total: 0, truncated: false })
     return fetchMock(input, init)
   }) as typeof fetch
 }
@@ -600,5 +601,47 @@ describe('Homepage shell', () => {
     const confirmCall = calls.find((call) => call.path.endsWith('/criteria/confirm'))
     expect(JSON.parse(String(confirmCall?.init?.body))).toMatchObject({ previewHash: 'preview-hash', expectedKnowledgeBaseRevision: 7, workflowRunId: expect.stringMatching(/^criterion-/) })
     expect(await screen.findByText(/active · margin-floor v1/)).toBeTruthy()
+  })
+
+  it('shows durable Theme scope proposals in Chat and refreshes after a human decision', async () => {
+    const receiptKey = 'a'.repeat(64)
+    const proposalId = `theme-scope-impact:${'b'.repeat(40)}`
+    let decisionSaved = false
+    const proposal = { proposalId, themeRef: 'entity:theme-ai', candidate: { kind: 'industry', name: 'PCB' }, candidateFingerprint: `sha256:${'b'.repeat(64)}`, changeKind: 'new_theme_node', rationale: 'New research evidence identifies PCB as a relevant upstream industry.', evidenceRefs: ['source:annual-report'], changedRefs: ['entity:pcb'], basedOnRevision: 8, status: decisionSaved ? 'accepted' : 'pending', ...(decisionSaved ? { decision: 'include' } : {}) }
+    const record = { receiptKey, knowledgeBaseId: 'kb-1', baseRevision: 7, committedRevision: 8, status: 'ready', proposals: [proposal], diagnostics: [] }
+    const calls: { path: string; init?: RequestInit }[] = []
+    let failRefresh = false
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input); calls.push({ path, init })
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 8, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
+      if (path === '/api/theme-scope-impact?limit=50') return failRefresh ? json({ code: 'failed', error: 'Runtime unavailable' }, 500) : json({ items: [{ ...record, status: decisionSaved ? 'stale' : 'ready', proposals: [{ ...proposal, status: decisionSaved ? 'accepted' : 'pending', ...(decisionSaved ? { decision: 'include' } : {}) }] }], total: 1, truncated: false })
+      if (path.endsWith('/decisions')) { decisionSaved = true; return json({ ...record, proposals: [{ ...proposal, status: 'accepted', decision: 'include' }] }) }
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Theme scope changes' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'PCB' })).toBeTruthy()
+    expect(screen.getByText('New research evidence identifies PCB as a relevant upstream industry.')).toBeTruthy()
+    expect(screen.getByText((_, element) => element?.textContent === '1 evidence refs')).toBeTruthy()
+    expect(document.body.textContent).not.toContain('rawRef')
+    fireEvent.click(screen.getByRole('button', { name: 'Include' }))
+    expect(calls.some((call) => call.path.endsWith('/decisions'))).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Save decisions for 1 proposal' }))
+    await waitFor(() => expect(screen.getByText('Decision saved · include')).toBeTruthy())
+    const decisionCall = calls.find((call) => call.path.endsWith('/decisions'))
+    expect(JSON.parse(String(decisionCall?.init?.body))).toMatchObject({ workflowRunId: expect.stringMatching(/^scope-impact-/), decisions: [{ proposalId, decision: 'include' }] })
+    expect(JSON.parse(String(decisionCall?.init?.body))).not.toHaveProperty('evidenceRefs')
+    expect(new Headers(decisionCall?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('b'.repeat(64))
+    expect(await screen.findByText('Stale')).toBeTruthy()
+    failRefresh = true
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh proposals' }))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(screen.getByText('Scope inbox could not be refreshed')).toBeTruthy()
   })
 })

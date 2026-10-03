@@ -128,6 +128,31 @@ export interface ThemeFrameworkReviewResponse {
   readonly candidate?: ThemeFrameworkReviewCandidate
   readonly receipt?: { readonly themeRef: string; readonly committedRevision: number; readonly decisionCount: number }
 }
+export type ThemeScopeImpactDecision = 'include' | 'exclude' | 'pending' | 'dismiss'
+export interface ThemeScopeImpactProposal {
+  readonly proposalId: string
+  readonly themeRef: string
+  readonly candidate: { readonly kind: 'industry'; readonly name: string; readonly identityContext?: string; readonly canonicalRef?: string } | { readonly kind: 'relation'; readonly relationType: string; readonly sourceFingerprint: string; readonly targetFingerprint: string; readonly canonicalRef?: string }
+  readonly candidateFingerprint: string
+  readonly changeKind: string
+  readonly priorDecision?: { readonly id: string; readonly decision: 'include' | 'exclude' | 'pending' }
+  readonly rationale: string
+  readonly evidenceRefs: readonly string[]
+  readonly changedRefs: readonly string[]
+  readonly basedOnRevision: number
+  readonly status: 'pending' | 'accepted' | 'rejected'
+  readonly decision?: 'include' | 'exclude' | 'pending' | 'dismiss'
+}
+export interface ThemeScopeImpactInboxRecord {
+  readonly receiptKey: string
+  readonly knowledgeBaseId: string
+  readonly baseRevision: number
+  readonly committedRevision: number
+  readonly status: 'ready' | 'no_changes' | 'stale'
+  readonly proposals: readonly ThemeScopeImpactProposal[]
+  readonly diagnostics: readonly string[]
+}
+export interface ThemeScopeImpactInboxResponse { readonly items: readonly ThemeScopeImpactInboxRecord[]; readonly total: number; readonly truncated: boolean }
 export interface ThemeFrameworkActionResponse {
   readonly status: string
   readonly workflowRunId: string
@@ -330,6 +355,14 @@ export class RuntimeClient {
   async getThemeFrameworkRun(runId: string): Promise<ThemeFrameworkReviewResponse> { return this.request(`/api/theme-framework/runs/${encodeURIComponent(runId)}`, {}, true) }
   async acceptThemeFrameworkRun(runId: string, decisions: Readonly<Record<string, ThemeFrameworkDecision>>): Promise<ThemeFrameworkActionResponse> { return this.mutate(`/api/theme-framework/runs/${encodeURIComponent(runId)}/accept`, { decisions }) }
   async rejectThemeFrameworkRun(runId: string): Promise<ThemeFrameworkActionResponse> { return this.mutate(`/api/theme-framework/runs/${encodeURIComponent(runId)}/reject`, {}) }
+  async listThemeScopeImpactInbox(limit = 50): Promise<ThemeScopeImpactInboxResponse> { return this.request(`/api/theme-scope-impact?limit=${encodeURIComponent(String(limit))}`, {}, true) }
+  async getThemeScopeImpactRecord(receiptKey: string): Promise<ThemeScopeImpactInboxRecord> { return this.request(`/api/theme-scope-impact/records/${encodeURIComponent(receiptKey)}`, {}, true) }
+  async decideThemeScopeImpactBatch(input: { readonly receiptKey: string; readonly workflowRunId: string; readonly decisions: readonly { readonly proposalId: string; readonly decision: Exclude<ThemeScopeImpactDecision, 'dismiss'>; readonly rationale?: string }[] }): Promise<ThemeScopeImpactInboxRecord> {
+    return this.mutate(`/api/theme-scope-impact/records/${encodeURIComponent(input.receiptKey)}/decisions`, { workflowRunId: input.workflowRunId, decisions: input.decisions })
+  }
+  async dismissThemeScopeImpact(input: { readonly receiptKey: string; readonly proposalId: string; readonly workflowRunId: string }): Promise<ThemeScopeImpactProposal> {
+    return this.mutate(`/api/theme-scope-impact/records/${encodeURIComponent(input.receiptKey)}/proposals/${encodeURIComponent(input.proposalId)}/dismiss`, { workflowRunId: input.workflowRunId })
+  }
   async listResearchBundles(limit = 20): Promise<readonly ResearchBundleSummary[]> { return (await this.request<{ bundles: readonly ResearchBundleSummary[] }>(`/api/research/bundles?limit=${limit}`)).bundles }
   async getResearchBundle(bundleId: string): Promise<ResearchBundleSummary & { readonly structuredResult: unknown; readonly sourceLibraryHits: readonly SourceLibraryHit[] }> { return this.request(`/api/research/bundles/${encodeURIComponent(bundleId)}`) }
   async searchSourceLibrary(query: string, sourceLibrary = true): Promise<{ readonly enabled: boolean; readonly hits: readonly SourceLibraryHit[] }> { return this.mutate('/api/research/source-library/search', { query, contextPolicy: { sourceLibrary } }) }

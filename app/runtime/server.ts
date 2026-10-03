@@ -425,7 +425,8 @@ export class ResearchHubRuntimeServer {
       if (request.method === 'OPTIONS') { this.validateRead(request); this.sendEmpty(response, 204); return }
       if (url.pathname === '/api/bootstrap') { this.validateBootstrap(request); await this.bootstrap(response); return }
       if (url.pathname === '/api/events' && request.method === 'GET') { this.validateRead(request); this.openEvents(response); return }
-      if (this.isMutation(request.method, url.pathname) || (request.method === 'GET' && /^\/api\/theme-framework\/runs\/[^/]+$/.test(url.pathname))) this.validateMutation(request)
+      if (this.isMutation(request.method, url.pathname)
+        || (request.method === 'GET' && (/^\/api\/theme-framework\/runs\/[^/]+$/.test(url.pathname) || /^\/api\/theme-scope-impact(?:\/.*)?$/.test(url.pathname)))) this.validateMutation(request)
       else this.validateRead(request)
       if (url.pathname !== '/api' && !url.pathname.startsWith('/api/')) {
         if (await this.serveClient(request, response, url)) return
@@ -533,6 +534,60 @@ export class ResearchHubRuntimeServer {
         const body = await this.readJson(request, 1_024)
         assertExactFields(body, [], [], 'Theme Framework reject request')
         await this.sendJson(response, 200, await service.reject(runId)); return
+      }
+    }
+    if (path === '/api/theme-scope-impact' && method === 'GET') {
+      const service = this.runtime!.services.themeScopeImpactService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme scope impact inbox requires an active mounted Schema 0.4 Knowledge Base')
+      const limit = positiveInteger(url.searchParams.get('limit'))
+      if (Number.isNaN(limit) || (limit !== undefined && limit > 100)) throw new ApplicationServiceError('invalid_input', 'limit must be a positive integer no greater than 100')
+      if ([...url.searchParams.keys()].some((key) => key !== 'limit')) throw new ApplicationServiceError('invalid_input', 'Theme scope impact inbox query contains unsupported fields')
+      await this.sendJson(response, 200, await service.list({ ...(limit === undefined ? {} : { limit }) })); return
+    }
+    const scopeImpactDetailRoute = path.match(/^\/api\/theme-scope-impact\/records\/([A-Za-z0-9%_-]+)$/u)
+    if (method === 'GET' && scopeImpactDetailRoute) {
+      const service = this.runtime!.services.themeScopeImpactService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme scope impact inbox requires an active mounted Schema 0.4 Knowledge Base')
+      await this.sendJson(response, 200, await service.get(decodeSegment(scopeImpactDetailRoute[1]!))); return
+    }
+    const scopeImpactDecisionBatchRoute = path.match(/^\/api\/theme-scope-impact\/records\/([A-Za-z0-9%_-]+)\/decisions$/u)
+    if (method === 'POST' && scopeImpactDecisionBatchRoute) {
+      const service = this.runtime!.services.themeScopeImpactService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme scope impact inbox requires an active mounted Schema 0.4 Knowledge Base')
+      const receiptKey = decodeSegment(scopeImpactDecisionBatchRoute[1]!)
+      const body = await this.readJson(request, 128_000)
+      assertExactFields(body, ['workflowRunId', 'decisions'], [], 'Theme scope impact decision batch request')
+      if (typeof body.workflowRunId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(body.workflowRunId) || body.workflowRunId.includes('..')
+        || !Array.isArray(body.decisions) || body.decisions.length < 1 || body.decisions.length > 100) throw new ApplicationServiceError('invalid_input', 'Theme scope impact decision batch is invalid or exceeds its bounded size')
+      const decisions: { proposalId: string; decision: 'include' | 'exclude' | 'pending'; rationale?: string }[] = []
+      const seen = new Set<string>()
+      for (const value of body.decisions) {
+        if (!isRecord(value)) throw new ApplicationServiceError('invalid_input', 'Theme scope impact decisions must be objects')
+        assertExactFields(value, ['proposalId', 'decision'], ['rationale'], 'Theme scope impact decision')
+        if (typeof value.proposalId !== 'string' || !/^theme-scope-impact:[a-f0-9]{40}$/u.test(value.proposalId) || seen.has(value.proposalId)
+          || typeof value.decision !== 'string' || !['include', 'exclude', 'pending'].includes(value.decision)
+          || (value.rationale !== undefined && (typeof value.rationale !== 'string' || value.rationale.length > 2_000))) throw new ApplicationServiceError('invalid_input', 'Theme scope impact decision contains invalid, duplicate, or oversized fields')
+        seen.add(value.proposalId)
+        decisions.push({ proposalId: value.proposalId, decision: value.decision as 'include' | 'exclude' | 'pending', ...(value.rationale === undefined ? {} : { rationale: value.rationale as string }) })
+      }
+      const decisionService = service as typeof service & { decideBatch?: (input: { readonly receiptKey: string; readonly decisions: readonly { readonly proposalId: string; readonly decision: 'include' | 'exclude' | 'pending'; readonly rationale?: string }[]; readonly workflowRunId: string }) => Promise<unknown> }
+      if (typeof decisionService.decideBatch !== 'function') throw new ApplicationServiceError('failed', 'Atomic Theme scope impact decision batches are not available')
+      await this.sendJson(response, 200, await decisionService.decideBatch({ receiptKey, workflowRunId: body.workflowRunId, decisions })); return
+    }
+    const scopeImpactRoute = path.match(/^\/api\/theme-scope-impact\/records\/([A-Za-z0-9%_-]+)\/proposals\/([A-Za-z0-9%:._-]+)\/dismiss$/u)
+    if (scopeImpactRoute) {
+      const [, receiptKey, proposalId] = scopeImpactRoute
+      const service = this.runtime!.services.themeScopeImpactService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme scope impact inbox requires an active mounted Schema 0.4 Knowledge Base')
+      const decodedReceiptKey = decodeSegment(receiptKey!)
+      const decodedProposalId = decodeSegment(proposalId!)
+      if (method === 'POST') {
+        const body = await this.readJson(request, 8_192)
+        assertExactFields(body, ['workflowRunId'], [], 'Theme scope impact dismiss request')
+        if (typeof body.workflowRunId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(body.workflowRunId) || body.workflowRunId.includes('..')) {
+          throw new ApplicationServiceError('invalid_input', 'Theme scope impact decision fields are invalid or do not match the route')
+        }
+        await this.sendJson(response, 200, await service.reject(decodedReceiptKey, decodedProposalId)); return
       }
     }
     // Exact, human-operated criterion routes precede the broader Thesis and review route families.
