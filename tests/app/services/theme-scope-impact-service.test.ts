@@ -177,7 +177,7 @@ test('sidecar write failure returns an error without reporting an inbox record',
   })
 })
 
-test('rejection is durable and repeated rejection is idempotent; no acceptance mutation API exists', async () => {
+test('dismissal is durable and idempotent while remaining a sidecar action', async () => {
   await withKb('reject', async (root) => {
     await setRevision(root, 1)
     const service = new ThemeScopeImpactService({ mountedKnowledgeBaseRoot: root, impactRunner: fakeRunner() })
@@ -188,6 +188,7 @@ test('rejection is durable and repeated rejection is idempotent; no acceptance m
     assert.equal((await service.reject(view.receiptKey, proposal.proposalId)).status, 'rejected')
     assert.equal((await service.reject(view.receiptKey, proposal.proposalId)).status, 'rejected')
     assert.equal((await service.get(view.receiptKey)).proposals[0]?.status, 'rejected')
-    assert.equal('accept' in service, false)
+    assert.equal((await service.get(view.receiptKey)).proposals[0]?.decision, 'dismiss')
+    assert.equal((JSON.parse(await readFile(join(root, 'manifest.yaml'), 'utf8')) as { revision: number }).revision, 1)
   })
 })
