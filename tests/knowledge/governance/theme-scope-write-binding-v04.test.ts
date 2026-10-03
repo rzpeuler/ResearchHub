@@ -163,6 +163,32 @@ test('governance-only scope writes advance one revision, preserve history, and r
   })
 })
 
+test('one Writer transaction commits decisions for multiple Themes at one revision', async () => {
+  await withFreshKb('multi-theme-batches', async (root) => {
+    const firstTheme = await createTheme(root, 'AI Compute')
+    const secondTheme = await createTheme(root, 'Industrial Automation')
+    const handle = await mount(root)
+    const first = decision({ themeRef: firstTheme, revision: handle.revision, name: 'Compute Materials' })
+    const second = decision({ themeRef: secondTheme, revision: handle.revision, name: 'Factory Robotics' })
+    const set = changeSet(handle, 'scope-multi-theme-run', undefined)
+    const multiSet: KnowledgeChangeSetV04 = { ...set, ingestionContext: { producerType: 'theme_scope_impact_human_decision', themeScopeBatches: [batch(firstTheme, handle.revision, [first]), batch(secondTheme, handle.revision, [second])] } }
+    const validated = await validateKnowledgeChangeSetV04(handle, multiSet, { mode: 'commit', now: clock })
+    assert.ok(validated.validatedChangeSet, JSON.stringify(validated.report.errors))
+    const result = await writeKnowledgeBase(handle, validated.validatedChangeSet, { registry: new KnowledgeBaseRegistry(), clock }) as KnowledgeWriteResultV04
+    assert.equal(result.status, 'committed', result.error?.message)
+    assert.equal(result.committedRevision, handle.revision + 1)
+    const ledger = await readThemeScopeLedgerV04(await mount(root))
+    assert.equal(ledger.status, 'available')
+    if (ledger.status === 'available') {
+      const firstEntry = ledger.themes.find((theme) => theme.themeRef === firstTheme)?.history.at(-1)
+      const secondEntry = ledger.themes.find((theme) => theme.themeRef === secondTheme)?.history.at(-1)
+      assert.equal(firstEntry?.committedRevision, result.committedRevision)
+      assert.equal(secondEntry?.committedRevision, result.committedRevision)
+      assert.equal(ledger.decisionCount, 2)
+    }
+  })
+})
+
 test('V04 Writer replay rejects tampered governance-only scope context, status, or revision', async () => {
   await withFreshKb('governance-only-replay-log-tamper', async (root) => {
     const themeRef = await createTheme(root)

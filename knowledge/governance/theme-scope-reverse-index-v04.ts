@@ -263,6 +263,9 @@ export async function persistThemeScopeReverseIndexV04(rootRef: string, index: T
 
 /** Parse a trusted committed scope envelope without treating the sidecar as authority. */
 export function themeScopeDecisionsFromContextV04(context: unknown): readonly ThemeScopeDecisionV04[] {
-  if (!isRecord(context) || !isRecord(context.themeScope) || !Array.isArray(context.themeScope.decisions)) return []
-  return context.themeScope.decisions.filter(isDecision)
+  if (!isRecord(context)) return []
+  const batches: unknown[] = []
+  if (isRecord(context.themeScope)) batches.push(context.themeScope)
+  if (Array.isArray(context.themeScopeBatches)) batches.push(...context.themeScopeBatches)
+  return batches.flatMap((batch) => isRecord(batch) && Array.isArray(batch.decisions) ? batch.decisions.filter(isDecision) : [])
 }

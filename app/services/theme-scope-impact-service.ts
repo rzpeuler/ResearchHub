@@ -1,6 +1,6 @@
 import { constants as fsConstants } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
-import { link, lstat, mkdir, open, realpath, readdir, unlink } from 'node:fs/promises'
+import { link, lstat, mkdir, open, realpath, readdir, readFile, unlink } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { lookupAffectedThemeScopeSlicesV04 } from '../../knowledge/governance/theme-scope-reverse-index-v04.ts'
 import type { ThemeScopeImpactCandidate, ThemeScopeImpactCheckResult } from '../../workflows/theme-scope-impact-check/workflow.ts'
@@ -9,6 +9,8 @@ import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { parseYaml } from '../../knowledge/storage/yaml.ts'
 import type { KnowledgeBaseHandle } from '../../knowledge/storage/handle.ts'
 import { ApplicationServiceError } from './contracts.ts'
+import { ThemeScopeImpactAcceptanceV04, type ThemeScopeImpactAcceptanceResultV04 } from '../../knowledge/production/theme-scope-impact-acceptance-v04.ts'
+import { readThemeScopeLedgerV04 } from '../../knowledge/governance/theme-scope-ledger-v04.ts'
 
 export const THEME_SCOPE_IMPACT_INBOX_LIMITS = {
   directory: 'logs/theme-scope-impact/proposals',
@@ -43,7 +45,8 @@ export interface ThemeScopeImpactProposalView {
   readonly evidenceRefs: readonly string[]
   readonly changedRefs: readonly string[]
   readonly basedOnRevision: number
-  readonly status: 'pending' | 'rejected'
+  readonly status: 'pending' | 'rejected' | 'accepted'
+  readonly decision?: 'include' | 'exclude' | 'pending' | 'dismiss'
 }
 
 export interface ThemeScopeImpactInboxRecordView {
@@ -56,16 +59,18 @@ export interface ThemeScopeImpactInboxRecordView {
   readonly diagnostics: readonly string[]
 }
 
-interface PersistedProposal extends Omit<ThemeScopeImpactProposalView, 'status'> { readonly status: 'pending' | 'rejected' }
+interface PersistedProposal extends Omit<ThemeScopeImpactProposalView, 'status'> { readonly status: 'pending' | 'rejected' | 'accepted' }
 interface PersistedRecord extends Omit<ThemeScopeImpactInboxRecordView, 'proposals'> { readonly proposals: readonly PersistedProposal[]; readonly receiptDigest: string }
 interface Envelope { readonly version: 1; readonly record: PersistedRecord; readonly checksum: string }
 interface RejectionEnvelope { readonly version: 1; readonly receiptKey: string; readonly proposalId: string; readonly knowledgeBaseId: string; readonly committedRevision: number; readonly status: 'rejected'; readonly checksum: string }
+interface AcceptanceEnvelope { readonly version: 1; readonly receiptKey: string; readonly proposalId: string; readonly knowledgeBaseId: string; readonly candidateFingerprint: string; readonly decision: 'include' | 'exclude' | 'pending'; readonly rationale: string; readonly writerRunId: string; readonly changeSetId: string; readonly decisionId: string; readonly baseRevision: number; readonly committedRevision: number; readonly status: 'accepted'; readonly checksum: string }
 
 export interface ThemeScopeImpactServiceOptions {
   readonly mountedKnowledgeBaseRoot: string
   readonly registry?: KnowledgeBaseRegistry
   readonly lookupAffectedThemes?: (handle: KnowledgeBaseHandle, changedRefs: readonly string[], changedFingerprints: readonly string[], revision: number) => ReturnType<typeof lookupAffectedThemeScopeSlicesV04>
   readonly impactRunner?: typeof runThemeScopeImpactCheck
+  readonly acceptance?: ThemeScopeImpactAcceptanceV04
 }
 
 const SAFE_REF = /^(entity|relation|claim|observation|event|source|module|thesis|reasoning-edge|theme-group):[A-Za-z0-9][A-Za-z0-9._-]*$/u
@@ -135,11 +140,13 @@ export class ThemeScopeImpactService {
   private readonly registry: KnowledgeBaseRegistry
   private readonly lookup: NonNullable<ThemeScopeImpactServiceOptions['lookupAffectedThemes']>
   private readonly runner: typeof runThemeScopeImpactCheck
+  private readonly acceptance: ThemeScopeImpactAcceptanceV04
 
   constructor(private readonly options: ThemeScopeImpactServiceOptions) {
     this.registry = options.registry ?? new KnowledgeBaseRegistry()
     this.lookup = options.lookupAffectedThemes ?? lookupAffectedThemeScopeSlicesV04
     this.runner = options.impactRunner ?? runThemeScopeImpactCheck
+    this.acceptance = options.acceptance ?? new ThemeScopeImpactAcceptanceV04({ registry: this.registry })
   }
 
   async check(receiptInput: unknown): Promise<ThemeScopeImpactInboxRecordView> {
@@ -228,7 +235,52 @@ export class ThemeScopeImpactService {
     const current = loaded.record.proposals[index]!
     if (current.status === 'rejected') return current
     await this.writeRejection(loaded.record, current)
-    return { ...current, status: 'rejected' }
+    return { ...current, status: 'rejected', decision: 'dismiss' }
+  }
+
+  /** Narrow legacy entry point; a multi-proposal inbox must be decided atomically with decideBatch. */
+  async decide(input: { readonly receiptKey: string; readonly proposalId: string; readonly decision: 'include' | 'exclude' | 'pending'; readonly rationale?: string; readonly workflowRunId: string }): Promise<ThemeScopeImpactProposalView> {
+    const loaded = await this.read(input.receiptKey, true)
+    if (!loaded) throw new ApplicationServiceError('not_found', 'Theme scope impact proposal record was not found.')
+    const nonDismissed = loaded.record.proposals.filter((proposal) => proposal.status !== 'rejected')
+    if (nonDismissed.length !== 1 || nonDismissed[0]!.proposalId !== input.proposalId) throw new ApplicationServiceError('conflict', 'This inbox contains multiple proposals; submit one atomic decideBatch request for the complete record.')
+    const record = await this.decideBatch({ receiptKey: input.receiptKey, workflowRunId: input.workflowRunId, decisions: [{ proposalId: input.proposalId, decision: input.decision, ...(input.rationale === undefined ? {} : { rationale: input.rationale }) }] })
+    return record.proposals.find((proposal) => proposal.proposalId === input.proposalId)!
+  }
+
+  /** Re-reads every proposal from the persisted inbox and commits one all-proposal A4 multi-Theme transaction. */
+  async decideBatch(input: { readonly receiptKey: string; readonly decisions: readonly { readonly proposalId: string; readonly decision: 'include' | 'exclude' | 'pending'; readonly rationale?: string }[]; readonly workflowRunId: string }): Promise<ThemeScopeImpactInboxRecordView> {
+    const loaded = await this.read(input.receiptKey, true)
+    if (!loaded) throw new ApplicationServiceError('not_found', 'Theme scope impact proposal record was not found.')
+    const currentHandle = await this.registry.refresh(this.options.mountedKnowledgeBaseRoot)
+    if (currentHandle.knowledgeBaseId !== loaded.record.knowledgeBaseId) throw new ApplicationServiceError('conflict', 'Theme scope proposal belongs to a different Knowledge Base.')
+    const undecided = loaded.record.proposals.filter((proposal) => proposal.status !== 'rejected')
+    const submittedIds = input.decisions.map((item) => item.proposalId)
+    if (new Set(submittedIds).size !== submittedIds.length || submittedIds.length !== undecided.length || undecided.some((proposal) => !submittedIds.includes(proposal.proposalId))) throw new ApplicationServiceError('conflict', 'Atomic Theme scope decision must contain exactly one explicit decision for every non-dismissed proposal in the persisted inbox.')
+    const byProposalId = new Map(input.decisions.map((item) => [item.proposalId, item]))
+    const items = []
+    for (const proposal of undecided) {
+      const submitted = byProposalId.get(proposal.proposalId)!
+      const rationale = submitted.rationale?.trim() || proposal.rationale
+      const existing = await this.readProposalDecision(loaded.record, proposal)
+      if (existing?.status === 'accepted' && (existing.writerRunId !== input.workflowRunId || existing.decision !== submitted.decision || existing.rationale !== rationale)) throw new ApplicationServiceError('conflict', 'This impact proposal already has a different accepted decision.')
+      items.push({ proposal, decision: submitted.decision, ...(submitted.rationale === undefined ? {} : { rationale: submitted.rationale }) })
+    }
+    const result = await this.acceptance.executeBatch({ handle: currentHandle, items, expectedBaseRevision: loaded.record.committedRevision, workflowRunId: input.workflowRunId })
+    if (result.status !== 'committed' && result.status !== 'already_committed') throw new ApplicationServiceError(result.status === 'failed' ? 'failed' : 'conflict', result.errors.join('; ') || 'Theme scope decision batch was not committed by Writer.')
+    if (!result.changeSetId || result.decisions.length !== items.length) throw new ApplicationServiceError('failed', 'A4 batch acceptance returned without a complete verifiable Writer receipt.')
+    for (const item of items) {
+      const accepted = result.decisions.find((decision) => decision.proposalId === item.proposal.proposalId)
+      if (!accepted) throw new ApplicationServiceError('failed', 'A4 batch acceptance omitted a persisted proposal decision.')
+      await this.writeAcceptance(loaded.record, item.proposal, {
+        status: result.status, knowledgeBaseId: result.knowledgeBaseId, baseRevision: result.baseRevision, committedRevision: result.committedRevision,
+        themeRef: item.proposal.themeRef, proposalId: item.proposal.proposalId, candidateFingerprint: accepted.candidateFingerprint,
+        decision: accepted.decision, decisionId: accepted.decisionId as ThemeScopeImpactAcceptanceResultV04['decisionId'], writerRunId: input.workflowRunId, changeSetId: result.changeSetId, errors: [],
+      }, item.rationale?.trim() || item.proposal.rationale)
+    }
+    const refreshed = await this.read(input.receiptKey, true)
+    if (!refreshed) throw new ApplicationServiceError('failed', 'The accepted Theme scope impact inbox could not be re-read after Writer commit.')
+    return refreshed.record
   }
 
   private async safeDirectory(create: boolean, suffix: readonly string[] = []): Promise<string | undefined> {
@@ -284,7 +336,10 @@ export class ThemeScopeImpactService {
         || !Number.isSafeInteger(parsed.record.baseRevision) || !Number.isSafeInteger(parsed.record.committedRevision)
         || !['ready', 'no_changes'].includes(String(parsed.record.status)) || typeof parsed.record.receiptDigest !== 'string') throw new Error('record checksum or shape invalid')
       const record = parsed.record as unknown as PersistedRecord
-      const proposals = await Promise.all(record.proposals.map(async (proposal) => await this.hasRejection(record, proposal) ? { ...proposal, status: 'rejected' as const } : { ...proposal, status: 'pending' as const }))
+      const proposals = await Promise.all(record.proposals.map(async (proposal) => {
+        const decision = await this.readProposalDecision(record, proposal)
+        return { ...proposal, status: (decision?.status ?? 'pending') as ThemeScopeImpactProposalView['status'], ...(decision ? { decision: decision.status === 'rejected' ? 'dismiss' as const : decision.decision } : {}) }
+      }))
       return { record: { ...record, proposals } }
     } catch {
       if (failCorrupt) throw new ApplicationServiceError('conflict', 'Theme scope impact inbox record is corrupt or unsafe.')
@@ -347,30 +402,99 @@ export class ThemeScopeImpactService {
     }
   }
 
-  private async hasRejection(record: PersistedRecord, proposal: PersistedProposal): Promise<boolean> {
+  private async readProposalDecision(record: PersistedRecord, proposal: PersistedProposal): Promise<RejectionEnvelope | AcceptanceEnvelope | undefined> {
     const directory = await this.safeDirectory(false, [`${record.receiptKey}.decisions`])
-    if (!directory) return false
+    if (!directory) return undefined
     const path = join(directory, `${digest(proposal.proposalId)}.json`)
     const stat = await lstat(path).catch((error: NodeJS.ErrnoException) => error.code === 'ENOENT' ? undefined : Promise.reject(error))
-    if (!stat) return false
+    if (!stat) return undefined
     try {
-      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16_000) throw new Error('unsafe rejection')
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16_000) throw new Error('unsafe decision')
       const rootReal = await realpath(resolve(this.options.mountedKnowledgeBaseRoot))
-      if (!contained(rootReal, await realpath(path))) throw new Error('rejection path escaped Knowledge Base')
+      if (!contained(rootReal, await realpath(path))) throw new Error('decision path escaped Knowledge Base')
       const noFollow = typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0
       const handle = await open(path, fsConstants.O_RDONLY | noFollow)
       const opened = await handle.stat()
       const text = await handle.readFile('utf8')
       await handle.close()
-      if (opened.ino !== stat.ino || opened.dev !== stat.dev || opened.size > 16_000) throw new Error('rejection changed during read')
+      if (opened.ino !== stat.ino || opened.dev !== stat.dev || opened.size > 16_000) throw new Error('decision changed during read')
       const parsed: unknown = JSON.parse(text)
-      if (!isRecord(parsed) || parsed.version !== 1 || parsed.receiptKey !== record.receiptKey || parsed.proposalId !== proposal.proposalId || parsed.knowledgeBaseId !== record.knowledgeBaseId || parsed.committedRevision !== record.committedRevision || parsed.status !== 'rejected' || typeof parsed.checksum !== 'string') throw new Error('rejection envelope mismatch')
+      if (!isRecord(parsed) || parsed.version !== 1 || parsed.receiptKey !== record.receiptKey || parsed.proposalId !== proposal.proposalId || parsed.knowledgeBaseId !== record.knowledgeBaseId || typeof parsed.checksum !== 'string' || !['rejected', 'accepted'].includes(String(parsed.status))) throw new Error('decision envelope mismatch')
       const { checksum, ...body } = parsed
-      if (digest(body) !== checksum) throw new Error('rejection checksum invalid')
-      return true
+      if (digest(body) !== checksum) throw new Error('decision checksum invalid')
+      if (parsed.status === 'rejected') {
+        if (parsed.committedRevision !== record.committedRevision) throw new Error('dismissal revision mismatch')
+        return parsed as unknown as RejectionEnvelope
+      }
+      const accepted = parsed as unknown as AcceptanceEnvelope
+      if (accepted.candidateFingerprint !== proposal.candidateFingerprint || !['include', 'exclude', 'pending'].includes(accepted.decision)
+        || typeof accepted.rationale !== 'string' || !SAFE_RUN_ID.test(accepted.writerRunId) || !SAFE_RUN_ID.test(accepted.changeSetId)
+        || !/^theme-scope-decision:[a-f0-9]{64}$/u.test(accepted.decisionId)
+        || !Number.isSafeInteger(accepted.baseRevision) || !Number.isSafeInteger(accepted.committedRevision)
+        || accepted.committedRevision !== accepted.baseRevision + 1) throw new Error('acceptance envelope shape invalid')
+      await this.verifyAcceptedDecision(record, proposal, accepted)
+      return accepted
     } catch {
-      throw new ApplicationServiceError('conflict', 'Theme scope rejection record is corrupt or unsafe.')
+      throw new ApplicationServiceError('conflict', 'Theme scope decision record is corrupt, unsafe, or lacks a matching A4 Writer receipt.')
     }
+  }
+
+  private async hasRejection(record: PersistedRecord, proposal: PersistedProposal): Promise<boolean> {
+    return (await this.readProposalDecision(record, proposal))?.status === 'rejected'
+  }
+
+  private async verifyAcceptedDecision(record: PersistedRecord, proposal: PersistedProposal, accepted: AcceptanceEnvelope): Promise<void> {
+    const handle = await this.registry.refresh(this.options.mountedKnowledgeBaseRoot)
+    const ledger = await readThemeScopeLedgerV04(handle)
+    if (handle.knowledgeBaseId !== record.knowledgeBaseId || ledger.status !== 'available' || ledger.knowledgeBaseRevision !== handle.revision) throw new Error('A4 ledger unavailable')
+    const entry = ledger.themes.find((theme) => theme.themeRef === proposal.themeRef)?.history.find((item) => item.workflowRunId === accepted.writerRunId && item.decision.id === accepted.decisionId)
+    if (!entry || entry.committedRevision !== accepted.committedRevision || entry.decision.candidateFingerprint !== proposal.candidateFingerprint
+      || entry.decision.decision !== accepted.decision || entry.decision.rationale !== accepted.rationale || entry.decision.review.status !== 'human_confirmed') throw new Error('A4 acceptance ledger binding mismatch')
+    const path = join(this.options.mountedKnowledgeBaseRoot, 'logs', 'research', `${accepted.writerRunId}.yaml`)
+    const log = parseYaml(await readFile(path, 'utf8'), path)
+    if (!isRecord(log) || !isRecord(log.changes) || !Array.isArray(log.changes.createdIds) || !Array.isArray(log.changes.updatedIds)) throw new Error('A4 Writer log shape invalid')
+    await this.verifyWriterReceipt({
+      knowledgeBaseRoot: this.options.mountedKnowledgeBaseRoot,
+      knowledgeBaseId: record.knowledgeBaseId,
+      writerRunId: accepted.writerRunId,
+      changeSetId: accepted.changeSetId,
+      status: 'committed',
+      baseRevision: accepted.baseRevision,
+      committedRevision: accepted.committedRevision,
+      createdRefs: log.changes.createdIds as string[],
+      updatedRefs: log.changes.updatedIds as string[],
+    })
+  }
+
+  private async writeAcceptance(record: PersistedRecord, proposal: PersistedProposal, result: ThemeScopeImpactAcceptanceResultV04, rationale: string): Promise<void> {
+    const directory = await this.safeDirectory(true, [`${record.receiptKey}.decisions`])
+    if (!directory) throw new ApplicationServiceError('failed', 'Theme scope decision directory could not be created.')
+    const body = {
+      version: 1 as const,
+      receiptKey: record.receiptKey,
+      proposalId: proposal.proposalId,
+      knowledgeBaseId: record.knowledgeBaseId,
+      candidateFingerprint: proposal.candidateFingerprint,
+      decision: result.decision!,
+      rationale,
+      writerRunId: result.writerRunId,
+      changeSetId: result.changeSetId!,
+      decisionId: result.decisionId!,
+      baseRevision: result.baseRevision,
+      committedRevision: result.committedRevision,
+      status: 'accepted' as const,
+    }
+    const envelope: AcceptanceEnvelope = { ...body, checksum: digest(body) }
+    const temporary = join(directory, `.${digest(proposal.proposalId)}.${randomUUID()}.tmp`)
+    const destination = join(directory, `${digest(proposal.proposalId)}.json`)
+    const file = await open(temporary, fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY, 0o600)
+    try { await file.writeFile(`${JSON.stringify(envelope)}\n`, 'utf8'); await file.sync() } finally { await file.close() }
+    try { await link(temporary, destination) }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      const persisted = await this.readProposalDecision(record, proposal)
+      if (!persisted || persisted.status !== 'accepted' || persisted.writerRunId !== result.writerRunId || persisted.decisionId !== result.decisionId) throw new ApplicationServiceError('conflict', 'Concurrent Theme scope acceptance has a different Writer decision.')
+    } finally { await unlink(temporary).catch(() => undefined) }
   }
 
   private async writeRejection(record: PersistedRecord, proposal: PersistedProposal): Promise<void> {

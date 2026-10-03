@@ -90,7 +90,7 @@ export type ThemeScopeLedgerReadResultV04 =
 interface ScopeLog {
   readonly workflowRunId: string
   readonly committedRevision: number
-  readonly batch: unknown
+  readonly batches: readonly unknown[]
   readonly path: string
 }
 
@@ -392,8 +392,13 @@ async function scanResearchLogs(
     }
 
     const context = parsed.ingestionContext
-    if (!isRecord(context) || !Object.hasOwn(context, 'themeScope')) continue
-    const scopeValue = context.themeScope
+    if (!isRecord(context)) continue
+    const hasLegacy = Object.hasOwn(context, 'themeScope')
+    const hasBatches = Object.hasOwn(context, 'themeScopeBatches')
+    if (!hasLegacy && !hasBatches) continue
+    if (hasLegacy && hasBatches) throw new LedgerFailure('SCOPE_BATCH_INVALID', 'Writer log cannot contain both themeScope and themeScopeBatches.', relativeLogPath)
+    const scopeValues = hasLegacy ? [context.themeScope] : context.themeScopeBatches
+    if (!Array.isArray(scopeValues) || scopeValues.length === 0 || scopeValues.length > 32) throw new LedgerFailure('SCOPE_BATCH_INVALID', 'Writer log themeScopeBatches must contain 1 to 32 batches.', relativeLogPath)
     if (parsed.workflowRunId !== workflowRunId) {
       throw new LedgerFailure('LOG_IDENTITY_MISMATCH', 'Writer log workflowRunId does not match its filename.', relativeLogPath)
     }
@@ -413,7 +418,7 @@ async function scanResearchLogs(
     logs.push({
       workflowRunId,
       committedRevision: Number(committedRevision),
-      batch: scopeValue,
+      batches: scopeValues,
       path: relativeLogPath,
     })
   }
@@ -442,16 +447,16 @@ function buildLedger(
     if (log.committedRevision > knowledgeBaseRevision) {
       throw new LedgerFailure('LOG_REVISION_FUTURE', 'Writer log committedRevision is newer than the current Knowledge Base manifest.', log.path)
     }
-    if (!isRecord(log.batch) || !Array.isArray(log.batch.decisions) || !Number.isSafeInteger(log.batch.basedOnRevision)) {
-      const validation = validateThemeScopeDecisionBatchV04(log.batch)
-      throw new LedgerFailure('SCOPE_BATCH_INVALID', 'Committed Theme scope batch is malformed.', log.path, validation.errors)
-    }
-    if (Number(log.batch.basedOnRevision) + 1 !== log.committedRevision) {
-      throw new LedgerFailure(
-        'LOG_REVISION_INCONSISTENT',
-        'A committed scope batch must be based on the immediately prior Knowledge Base revision.',
-        log.path,
-      )
+    if (log.batches.length === 0 || log.batches.length > 32) throw new LedgerFailure('SCOPE_BATCH_INVALID', 'Committed Theme scope batch count is outside its bounds.', log.path)
+    const themeRefs = new Set<string>()
+    for (const value of log.batches) {
+      if (!isRecord(value) || !Array.isArray(value.decisions) || !Number.isSafeInteger(value.basedOnRevision)) {
+        const validation = validateThemeScopeDecisionBatchV04(value)
+        throw new LedgerFailure('SCOPE_BATCH_INVALID', 'Committed Theme scope batch is malformed.', log.path, validation.errors)
+      }
+      if (themeRefs.has(String(value.themeRef))) throw new LedgerFailure('SCOPE_BATCH_INVALID', 'Committed multi-Theme transaction repeats a Theme ref.', log.path)
+      themeRefs.add(String(value.themeRef))
+      if (Number(value.basedOnRevision) + 1 !== log.committedRevision) throw new LedgerFailure('LOG_REVISION_INCONSISTENT', 'A committed scope batch must be based on the immediately prior Knowledge Base revision.', log.path)
     }
   }
 
@@ -459,22 +464,18 @@ function buildLedger(
   const entries: ThemeScopeLedgerEntryV04[] = []
   const decisionIds = new Set<string>()
   for (const log of sortedLogs) {
-    const batch = log.batch as unknown as ThemeScopeDecisionBatchV04
-    if (decisions.length + batch.decisions.length > THEME_SCOPE_LEDGER_V04_LIMITS.maxHistoryDecisions) {
-      throw new LedgerFailure('SCOPE_HISTORY_LIMIT', 'Theme scope history exceeds the bounded complete-history limit.', log.path)
-    }
-    const duplicate = batch.decisions.find((item) => isRecord(item) && typeof item.id === 'string' && decisionIds.has(item.id))
-    if (duplicate && isRecord(duplicate)) {
-      throw new LedgerFailure('SCOPE_DECISION_DUPLICATE', 'A Theme scope decision ID appears in more than one committed batch.', log.path)
-    }
-    const validation = validateThemeScopeDecisionBatchV04(batch, { previousDecisions: decisions })
-    if (!validation.valid) {
-      throw new LedgerFailure('SCOPE_BATCH_INVALID', 'Committed Theme scope batch does not extend the complete prior history.', log.path, validation.errors)
-    }
-    for (const decision of batch.decisions) {
-      decisionIds.add(decision.id)
-      decisions.push(decision)
-      entries.push({ workflowRunId: log.workflowRunId, committedRevision: log.committedRevision, decision })
+    for (const rawBatch of log.batches) {
+      const batch = rawBatch as ThemeScopeDecisionBatchV04
+      if (decisions.length + batch.decisions.length > THEME_SCOPE_LEDGER_V04_LIMITS.maxHistoryDecisions) throw new LedgerFailure('SCOPE_HISTORY_LIMIT', 'Theme scope history exceeds the bounded complete-history limit.', log.path)
+      const duplicate = batch.decisions.find((item) => isRecord(item) && typeof item.id === 'string' && decisionIds.has(item.id))
+      if (duplicate && isRecord(duplicate)) throw new LedgerFailure('SCOPE_DECISION_DUPLICATE', 'A Theme scope decision ID appears in more than one committed batch.', log.path)
+      const validation = validateThemeScopeDecisionBatchV04(batch, { previousDecisions: decisions })
+      if (!validation.valid) throw new LedgerFailure('SCOPE_BATCH_INVALID', 'Committed Theme scope batch does not extend the complete prior history.', log.path, validation.errors)
+      for (const decision of batch.decisions) {
+        decisionIds.add(decision.id)
+        decisions.push(decision)
+        entries.push({ workflowRunId: log.workflowRunId, committedRevision: log.committedRevision, decision })
+      }
     }
   }
 
@@ -499,7 +500,7 @@ function buildLedger(
     knowledgeBaseId,
     knowledgeBaseRevision,
     themes,
-    scopeBatchCount: scopeLogs.length,
+    scopeBatchCount: scopeLogs.reduce((count, log) => count + log.batches.length, 0),
     decisionCount: entries.length,
   }
 }

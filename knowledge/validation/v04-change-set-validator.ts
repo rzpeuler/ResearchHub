@@ -96,6 +96,7 @@ function isJsonSafeIngestionContext(value: unknown): boolean {
 export interface ThemeScopeContextProbeV04 {
   readonly present: boolean
   readonly value?: unknown
+  readonly batches?: readonly unknown[]
   readonly error?: string
 }
 
@@ -117,19 +118,27 @@ export function inspectThemeScopeContextV04(changeSet: unknown): ThemeScopeConte
   if ((typeof context !== 'object' || context === null) && typeof context !== 'function') return { present: false }
   if (utilTypes.isProxy(context)) return { present: true, error: 'Scope-bearing ingestionContext cannot be a Proxy' }
   let scopeDescriptor: PropertyDescriptor | undefined
+  let batchesDescriptor: PropertyDescriptor | undefined
   try {
     scopeDescriptor = Object.getOwnPropertyDescriptor(context, 'themeScope')
+    batchesDescriptor = Object.getOwnPropertyDescriptor(context, 'themeScopeBatches')
   } catch {
     return { present: true, error: 'Theme scope property descriptor could not be inspected' }
   }
-  if (!scopeDescriptor) return { present: false }
-  if (!scopeDescriptor.enumerable || !('value' in scopeDescriptor)) {
+  if (scopeDescriptor && batchesDescriptor) return { present: true, error: 'ingestionContext cannot contain both themeScope and themeScopeBatches' }
+  if (!scopeDescriptor && !batchesDescriptor) return { present: false }
+  const selected = scopeDescriptor ?? batchesDescriptor!
+  if (!selected.enumerable || !('value' in selected)) {
     return { present: true, error: 'ingestionContext.themeScope must be an enumerable data property' }
   }
   if (!isJsonSafeIngestionContext(context)) {
     return { present: true, error: 'Scope-bearing ingestionContext must contain JSON-safe enumerable data only' }
   }
-  return { present: true, value: scopeDescriptor.value }
+  if (batchesDescriptor) {
+    if (!Array.isArray(batchesDescriptor.value) || batchesDescriptor.value.length === 0 || batchesDescriptor.value.length > 32) return { present: true, error: 'ingestionContext.themeScopeBatches must contain 1 to 32 Theme batches' }
+    return { present: true, batches: batchesDescriptor.value }
+  }
+  return { present: true, value: selected.value, batches: [selected.value] }
 }
 
 async function validateThemeScope(
@@ -155,33 +164,43 @@ async function validateThemeScope(
   const previousDecisions: readonly ThemeScopeDecisionV04[] = ledger.status === 'available'
     ? ledger.themes.flatMap((theme) => theme.history.map((entry) => entry.decision))
     : []
-  const batch = scope.value as { readonly basedOnRevision: number; readonly themeRef: string; readonly decisions: readonly ThemeScopeDecisionV04[] }
-  const validation = validateThemeScopeDecisionBatchV04(scope.value, { previousDecisions })
-  if (!validation.valid) {
-    add(errors, 'THEME_SCOPE_BATCH_INVALID', validation.errors.map((issue) => `${issue.code}: ${issue.message}`).join('; '))
-    return
-  }
-
   const ledgerRevision = ledger.status === 'available' ? ledger.knowledgeBaseRevision : undefined
-  if (
-    batch.basedOnRevision !== changeSet.expectedBaseRevision
-    || batch.basedOnRevision !== manifestRevision
-    || batch.basedOnRevision !== handle.revision
-    || batch.basedOnRevision !== ledgerRevision
-  ) {
-    add(errors, 'THEME_SCOPE_BASE_REVISION_INVALID', 'Theme scope basedOnRevision must match the ChangeSet, mounted handle, current manifest, and readable ledger revision')
-  }
-  for (const decision of batch.decisions) {
-    if (decision.review.status !== 'human_confirmed') {
-      add(errors, 'THEME_SCOPE_REVIEW_NOT_CONFIRMED', `Theme scope decision must be human-confirmed before commit: ${decision.id}`, undefined, decision.id)
+  const batches = scope.batches ?? (scope.value === undefined ? [] : [scope.value])
+  const themeRefs = new Set<string>()
+  const decisionIds = new Set<string>()
+  let totalDecisions = 0
+  for (const value of batches) {
+    if (!record(value)) {
+      const validation = validateThemeScopeDecisionBatchV04(value)
+      add(errors, 'THEME_SCOPE_BATCH_INVALID', validation.errors.map((issue) => `${issue.code}: ${issue.message}`).join('; ') || 'Theme scope batch must be an object')
+      continue
     }
+    const batch = value as { readonly basedOnRevision: number; readonly themeRef: string; readonly decisions: readonly ThemeScopeDecisionV04[] }
+    if (themeRefs.has(batch.themeRef)) add(errors, 'THEME_SCOPE_BATCH_INVALID', `themeScopeBatches cannot repeat Theme ${batch.themeRef}`)
+    themeRefs.add(batch.themeRef)
+    totalDecisions += Array.isArray(batch.decisions) ? batch.decisions.length : 0
+    if (totalDecisions > THEME_SCOPE_V04_LIMITS.maxDecisionsPerBatch) add(errors, 'THEME_SCOPE_BATCH_INVALID', 'themeScopeBatches exceeds the total decision limit')
+    const validation = validateThemeScopeDecisionBatchV04(value, { previousDecisions })
+    if (!validation.valid) {
+      add(errors, 'THEME_SCOPE_BATCH_INVALID', validation.errors.map((issue) => `${issue.code}: ${issue.message}`).join('; '))
+      continue
+    }
+    if (
+      batch.basedOnRevision !== changeSet.expectedBaseRevision
+      || batch.basedOnRevision !== manifestRevision
+      || batch.basedOnRevision !== handle.revision
+      || batch.basedOnRevision !== ledgerRevision
+    ) add(errors, 'THEME_SCOPE_BASE_REVISION_INVALID', 'Theme scope basedOnRevision must match the ChangeSet, mounted handle, current manifest, and readable ledger revision')
+    for (const decision of batch.decisions) {
+      if (decisionIds.has(decision.id)) add(errors, 'THEME_SCOPE_BATCH_INVALID', `Theme scope decision ID is duplicated across batches: ${decision.id}`, undefined, decision.id)
+      decisionIds.add(decision.id)
+      if (decision.review.status !== 'human_confirmed') add(errors, 'THEME_SCOPE_REVIEW_NOT_CONFIRMED', `Theme scope decision must be human-confirmed before commit: ${decision.id}`, undefined, decision.id)
+    }
+    const theme = projectedObjects.get(batch.themeRef) as unknown as Dict | undefined
+    const lifecycle = theme && record(theme.lifecycle) ? theme.lifecycle : undefined
+    if (!theme || theme.type !== 'investment_theme' || lifecycle?.status !== 'active') add(errors, 'THEME_SCOPE_THEME_NOT_ACTIVE', `Theme scope batch must resolve to an active InvestmentTheme after ChangeSet operations: ${batch.themeRef}`, undefined, batch.themeRef)
+    validateThemeScopeSemanticBindings(batch, projectedObjects, knownRawRefs, ledger, evaluatedAt, errors)
   }
-  const theme = projectedObjects.get(batch.themeRef) as unknown as Dict | undefined
-  const lifecycle = theme && record(theme.lifecycle) ? theme.lifecycle : undefined
-  if (!theme || theme.type !== 'investment_theme' || lifecycle?.status !== 'active') {
-    add(errors, 'THEME_SCOPE_THEME_NOT_ACTIVE', `Theme scope batch must resolve to an active InvestmentTheme after ChangeSet operations: ${batch.themeRef}`, undefined, batch.themeRef)
-  }
-  validateThemeScopeSemanticBindings(batch, projectedObjects, knownRawRefs, ledger, evaluatedAt, errors)
 }
 
 function validAt(value: unknown, evaluatedAt: number, inclusive: boolean): boolean {
