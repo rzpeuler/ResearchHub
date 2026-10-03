@@ -52,7 +52,7 @@ export const RAW_DOCUMENT_PREVIEW_PRODUCTION_REASONING_SELECTION: RawDocumentPre
   requestedReasoningEffort: 'high',
 })
 
-export const RAW_DOCUMENT_PREVIEW_PRODUCTION_REASONING_TIMEOUT_MS = 180_000
+export const RAW_DOCUMENT_PREVIEW_PRODUCTION_REASONING_TIMEOUT_MS = 600_000
 
 export function selectProductionReasoningModel(runtime: ModelRuntime, selection: ProductionReasoningModelSelection = PRIMARY_PRODUCTION_REASONING_MODEL): Model<Api> {
   const model = runtime.getModel(selection.providerId, selection.modelId)
