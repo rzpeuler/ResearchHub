@@ -562,6 +562,70 @@ test('revalidates the Writer revision chain before returning an exact refresh re
   })
 })
 
+test('does not return a refresh candidate as reviewable when a Writer advances the KB during candidate persistence', async () => {
+  await withFreshKb('refresh-write-race', async (root) => {
+    const registry = new KnowledgeBaseRegistry()
+    await persistSource(root, registry, 'refresh-race-base', 'Compute supply evidence')
+    const target = service(root, registry)
+    const sourceRunId = 'theme-refresh-write-race'
+    assert.equal((await target.start({ workflowRunId: sourceRunId, name: 'AI Compute' }).completion).status, 'awaiting_review')
+    await gatewaySource(root, registry, 'raw-race-before-refresh')
+
+    const instrumented = target as unknown as { writeEvent: (runId: string, type: string, payload: unknown) => Promise<void> }
+    const writeEvent = instrumented.writeEvent.bind(target)
+    let raced = false
+    instrumented.writeEvent = async (runId, type, payload) => {
+      await writeEvent(runId, type, payload)
+      if (!raced && runId.startsWith('tf-refresh-') && type === 'candidate') {
+        raced = true
+        await gatewaySource(root, registry, 'raw-race-after-candidate')
+      }
+    }
+
+    const result = await target.refresh(sourceRunId)
+    assert.equal(result.status, 'blocked')
+    assert.equal(raced, true)
+    assert.equal((await target.getReviewCandidate(result.workflowRunId)).status, 'stale')
+    assert.equal((await target.accept({ workflowRunId: result.workflowRunId })).status, 'conflict')
+  })
+})
+
+test('conflicts when the deterministic refresh run ID already contains different candidate content', async () => {
+  await withFreshKb('refresh-content-conflict', async (root) => {
+    const registry = new KnowledgeBaseRegistry()
+    await persistSource(root, registry, 'refresh-content-conflict-base', 'Compute supply evidence')
+    const target = service(root, registry)
+    const sourceRunId = 'theme-refresh-content-conflict'
+    assert.equal((await target.start({ workflowRunId: sourceRunId, name: 'AI Compute' }).completion).status, 'awaiting_review')
+    await gatewaySource(root, registry, 'raw-content-conflict')
+    const handle = await registry.refresh(root)
+    const deterministicRunId = `tf-refresh-${createHash('sha256').update(JSON.stringify({ sourceRunId, knowledgeBaseId: handle.knowledgeBaseId, targetRevision: handle.revision }), 'utf8').digest('hex').slice(0, 40)}`
+    assert.equal((await target.start({ workflowRunId: deterministicRunId, name: 'Conflicting candidate' }).completion).status, 'awaiting_review')
+    assert.equal((await target.refresh(sourceRunId)).status, 'conflict')
+    assert.equal((await target.getReviewCandidate(deterministicRunId)).candidate?.theme.name, 'Conflicting candidate')
+  })
+})
+
+test('rejects a replay whose candidate payload claims a different Workflow run ID', async () => {
+  await withFreshKb('refresh-payload-run-id', async (root) => {
+    const registry = new KnowledgeBaseRegistry()
+    await persistSource(root, registry, 'refresh-payload-run-id-base', 'Compute supply evidence')
+    const target = service(root, registry)
+    const sourceRunId = 'theme-refresh-payload-run-id'
+    assert.equal((await target.start({ workflowRunId: sourceRunId, name: 'AI Compute' }).completion).status, 'awaiting_review')
+    await gatewaySource(root, registry, 'raw-payload-run-id')
+    const refreshed = await target.refresh(sourceRunId)
+    assert.equal(refreshed.status, 'awaiting_review')
+    const candidatePath = join(root, 'logs', 'theme-framework', 'reviews', `${refreshed.workflowRunId}.candidate.json`)
+    const envelope = JSON.parse(await readFile(candidatePath, 'utf8')) as { version: 1; type: 'candidate'; runId: string; payload: { candidate: { workflowRunId: string } }; checksum: string }
+    envelope.payload.candidate.workflowRunId = 'tf-refresh-impostor'
+    const body = { version: envelope.version, type: envelope.type, runId: envelope.runId, payload: envelope.payload }
+    envelope.checksum = createHash('sha256').update(JSON.stringify(body), 'utf8').digest('hex')
+    await writeFile(candidatePath, JSON.stringify(envelope))
+    assert.equal((await target.refresh(sourceRunId)).status, 'conflict')
+  })
+})
+
 test('blocks refresh when bound Source/Raw evidence has been tampered with', async () => {
   await withFreshKb('refresh-evidence-invalid', async (root) => {
     const registry = new KnowledgeBaseRegistry()

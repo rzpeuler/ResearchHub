@@ -543,7 +543,7 @@ export class ThemeFrameworkService {
       catch { return blocked('source_only_writer_revision_chain_unproven', newRunId) }
       if (!(await this.candidateAndLocatorsStillValid(original, current))) return blocked('source_candidate_evidence_no_longer_valid', newRunId)
       if (existingRefresh) {
-        if (this.isExactRefreshReplay(existingRefresh.payload, original, sourceRunId, sourceRevision, handle.revision, writerSources)) {
+        if (this.isExactRefreshReplay(existingRefresh.payload, original, sourceRunId, newRunId, sourceRevision, handle.revision, writerSources)) {
           return { status: 'already_refreshed', workflowRunId: newRunId, refreshedFromRunId: sourceRunId, basedOnRevision: handle.revision }
         }
         return { status: 'conflict', workflowRunId: newRunId, refreshedFromRunId: sourceRunId, diagnostics: ['refresh_run_id_content_conflict'] }
@@ -575,10 +575,24 @@ export class ThemeFrameworkService {
       }
       try {
         await this.writeEvent(newRunId, 'candidate', refreshed)
+        const postWriteHandle = await this.registry.refresh(this.root).catch(() => undefined)
+        if (!postWriteHandle || postWriteHandle.knowledgeBaseId !== handle.knowledgeBaseId || postWriteHandle.revision !== handle.revision
+          || postWriteHandle.schemaVersion !== '0.4' || postWriteHandle.storageFormatVersion !== '1' || postWriteHandle.status !== 'active' || !postWriteHandle.writable) {
+          try { await this.writeEvent(newRunId, 'stale', { reason: 'knowledge_snapshot_changed_during_refresh_persistence' }) }
+          catch { /* Candidate revision checks in getReviewCandidate and accept remain the fail-closed fallback. */ }
+          return blocked('knowledge_changed_during_refresh_persistence', newRunId)
+        }
         return { status: 'awaiting_review', workflowRunId: newRunId, refreshedFromRunId: sourceRunId, basedOnRevision: handle.revision }
       } catch {
         const replay = await this.readEvent<PersistedCandidate>(newRunId, 'candidate').catch(() => undefined)
-        if (replay && this.isExactRefreshReplay(replay.payload, original, sourceRunId, sourceRevision, handle.revision, writerSources)) {
+        if (replay && this.isExactRefreshReplay(replay.payload, original, sourceRunId, newRunId, sourceRevision, handle.revision, writerSources)) {
+          const postWriteHandle = await this.registry.refresh(this.root).catch(() => undefined)
+          if (!postWriteHandle || postWriteHandle.knowledgeBaseId !== handle.knowledgeBaseId || postWriteHandle.revision !== handle.revision
+            || postWriteHandle.schemaVersion !== '0.4' || postWriteHandle.storageFormatVersion !== '1' || postWriteHandle.status !== 'active' || !postWriteHandle.writable) {
+            try { await this.writeEvent(newRunId, 'stale', { reason: 'knowledge_snapshot_changed_during_refresh_persistence' }) }
+            catch { /* Candidate revision checks in getReviewCandidate and accept remain the fail-closed fallback. */ }
+            return blocked('knowledge_changed_during_refresh_persistence', newRunId)
+          }
           return { status: 'already_refreshed', workflowRunId: newRunId, refreshedFromRunId: sourceRunId, basedOnRevision: handle.revision }
         }
         return { status: 'conflict', workflowRunId: newRunId, refreshedFromRunId: sourceRunId, diagnostics: ['refresh_candidate_persistence_conflict'] }
@@ -736,14 +750,14 @@ export class ThemeFrameworkService {
     } catch { return false }
   }
 
-  private isExactRefreshReplay(existing: PersistedCandidate, original: PersistedCandidate, sourceRunId: string, sourceRevision: number, targetRevision: number, sourceIds: readonly string[]): boolean {
+  private isExactRefreshReplay(existing: PersistedCandidate, original: PersistedCandidate, sourceRunId: string, expectedRunId: string, sourceRevision: number, targetRevision: number, sourceIds: readonly string[]): boolean {
     if (!isRecord(existing) || !isRecord(existing.candidate) || !Array.isArray(existing.evidence) || !isRecord(original) || !isRecord(original.candidate)) return false
     const meta = existing.refresh
     if (!meta || meta.refreshedFromRunId !== sourceRunId || meta.sourceBasedOnRevision !== sourceRevision || meta.targetRevision !== targetRevision
       || !Number.isFinite(Date.parse(meta.refreshedAt)) || !Array.isArray(meta.validationSummary?.sourceIds)) return false
-    if (typeof existing.candidate.workflowRunId !== 'string') return false
-    const expectedCandidate = { ...original.candidate, workflowRunId: existing.candidate.workflowRunId, basedOnRevision: targetRevision }
-    return existing.candidate.workflowRunId.startsWith('tf-refresh-')
+    if (existing.candidate.workflowRunId !== expectedRunId) return false
+    const expectedCandidate = { ...original.candidate, workflowRunId: expectedRunId, basedOnRevision: targetRevision }
+    return existing.candidate.workflowRunId === expectedRunId
       && sha256(existing.candidate) === sha256(expectedCandidate)
       && sha256(existing.evidence) === sha256(original.evidence)
       && meta.validationSummary.writerReceipts === targetRevision - sourceRevision
@@ -857,6 +871,7 @@ export class ThemeFrameworkService {
       if ((committedRevision as number) <= sourceRevision || (committedRevision as number) > handle.revision) continue
       if (parsed.status !== 'completed' || parsed.writeStatus !== 'committed'
         || !isRecord(parsed.ingestionContext) || parsed.ingestionContext.workflowRunId !== parsed.workflowRunId || parsed.ingestionContext.producerType !== 'raw_document_source_gateway'
+        || typeof parsed.themeScopeReverseIndexChecksum !== 'string' || !/^sha256:[0-9a-f]{64}$/u.test(parsed.themeScopeReverseIndexChecksum)
         || parsed.changes.createdIds.length === 0 || parsed.changes.updatedIds.length !== 0) throw new Error('Writer receipt is not a verified Source-only Gateway commit')
       const receipts = byRevision.get(committedRevision as number) ?? []
       receipts.push({ workflowRunId: parsed.workflowRunId, createdIds: parsed.changes.createdIds as string[] })
