@@ -371,7 +371,9 @@ export class RuntimeClient {
   async getThemeFrameworkRun(runId: string): Promise<ThemeFrameworkReviewResponse> { return this.request(`/api/theme-framework/runs/${encodeURIComponent(runId)}`, {}, true) }
   async listThemeFrameworkReviews(limit = 50): Promise<ThemeFrameworkReviewListResponse> { return this.request(`/api/theme-framework/reviews?limit=${encodeURIComponent(String(limit))}`, {}, true) }
   async refreshThemeFrameworkRun(runId: string): Promise<ThemeFrameworkRefreshResult> { return this.request(`/api/theme-framework/runs/${encodeURIComponent(runId)}/refresh`, { method: 'POST', body: '{}' }, true, [409, 422]) }
-  async acceptThemeFrameworkRun(runId: string, decisions: Readonly<Record<string, ThemeFrameworkDecision>>): Promise<ThemeFrameworkActionResponse> { return this.mutate(`/api/theme-framework/runs/${encodeURIComponent(runId)}/accept`, { decisions }) }
+  async acceptThemeFrameworkRun(runId: string, decisions: Readonly<Record<string, ThemeFrameworkDecision>>, decisionRationales?: Readonly<Record<string, string>>): Promise<ThemeFrameworkActionResponse> {
+    return this.mutate(`/api/theme-framework/runs/${encodeURIComponent(runId)}/accept`, { decisions, ...(decisionRationales ? { decisionRationales } : {}) })
+  }
   async rejectThemeFrameworkRun(runId: string): Promise<ThemeFrameworkActionResponse> { return this.mutate(`/api/theme-framework/runs/${encodeURIComponent(runId)}/reject`, {}) }
   async listThemeScopeImpactInbox(limit = 50): Promise<ThemeScopeImpactInboxResponse> { return this.request(`/api/theme-scope-impact?limit=${encodeURIComponent(String(limit))}`, {}, true) }
   async getThemeScopeImpactRecord(receiptKey: string): Promise<ThemeScopeImpactInboxRecord> { return this.request(`/api/theme-scope-impact/records/${encodeURIComponent(receiptKey)}`, {}, true) }

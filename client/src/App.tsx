@@ -509,6 +509,7 @@ function KnowledgeUploadSection(props: ResearchPageProps): ReactElement | null {
 function ThemeFrameworkReviewPanel({ client, runId, onChanged, refreshInfo, onRefreshed }: { readonly client: RuntimeClient; readonly runId: string; readonly onChanged: () => void; readonly refreshInfo?: ResearchPageProps['themeFrameworkRefreshInfo']; readonly onRefreshed: (runId: string, info: NonNullable<ResearchPageProps['themeFrameworkRefreshInfo']>) => void }): ReactElement {
   const [review, setReview] = useState<ThemeFrameworkReviewResponse>()
   const [decisions, setDecisions] = useState<Record<string, ThemeFrameworkDecision>>({})
+  const [decisionRationales, setDecisionRationales] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   useEffect(() => {
@@ -541,8 +542,13 @@ function ThemeFrameworkReviewPanel({ client, runId, onChanged, refreshInfo, onRe
   }, [client, runId])
 
   const accept = async (): Promise<void> => {
+    const items = [...(review?.candidate?.framework.industryCandidates ?? []), ...(review?.candidate?.framework.relationCandidates ?? [])]
+    const overridden = items.filter((item) => (decisions[item.candidateId] ?? item.recommendation) !== item.recommendation)
+    const missingRationale = overridden.some((item) => !decisionRationales[item.candidateId]?.trim())
+    if (missingRationale) { setError('Add a reason for every decision that differs from the recommendation before accepting. Your entered reasons will be kept.'); return }
+    const rationales = Object.fromEntries(overridden.map((item) => [item.candidateId, decisionRationales[item.candidateId]!.trim()]))
     setBusy(true); setError('')
-    try { await client.acceptThemeFrameworkRun(runId, decisions); const refreshed = await client.getThemeFrameworkRun(runId); setReview(refreshed); onChanged() }
+    try { await client.acceptThemeFrameworkRun(runId, decisions, rationales); const refreshed = await client.getThemeFrameworkRun(runId); setReview(refreshed); onChanged() }
     catch (caught) { setError(errorText(caught)) }
     finally { setBusy(false) }
   }
@@ -571,9 +577,12 @@ function ThemeFrameworkReviewPanel({ client, runId, onChanged, refreshInfo, onRe
   const terminalCopy: Readonly<Record<string, string>> = { stale: 'Knowledge changed during research. Restart the review to use the current Theme and evidence.', blocked: 'The framework could not be safely completed. Review the reported gaps before retrying.', failed: 'Framework research failed before it produced a reviewable candidate.', rejected: 'This framework proposal was rejected.', committed: 'Theme framework accepted and saved.' }
   const evidenceFor = (refs: readonly string[]) => refs.map((ref) => candidate?.evidence.find((evidence) => evidence.evidenceId === ref)).filter((value): value is NonNullable<typeof value> => Boolean(value))
   const setDecision = (candidateId: string, decision: ThemeFrameworkDecision): void => setDecisions((current) => ({ ...current, [candidateId]: decision }))
+  const setDecisionRationale = (candidateId: string, rationale: string): void => setDecisionRationales((current) => ({ ...current, [candidateId]: rationale }))
   const itemCard = (item: ThemeFrameworkReviewCandidate['framework']['industryCandidates'][number] | ThemeFrameworkReviewCandidate['framework']['relationCandidates'][number]) => {
     const relation = 'sourceIndustryRef' in item
     const evidence = evidenceFor(item.evidenceRefs)
+    const decision = decisions[item.candidateId] ?? item.recommendation
+    const itemName = relation ? `${item.sourceIndustryRef} → ${item.targetIndustryRef}` : item.name
     return <article className="theme-framework-candidate" key={item.candidateId}>
       <header><div><span className="eyebrow">{relation ? (item.topologyRole === 'cross_chain' ? 'CROSS CONNECTION' : 'INDUSTRY LINK') : 'INDUSTRY'}</span><h4>{relation ? `${item.sourceIndustryRef} → ${item.targetIndustryRef}` : item.name}</h4></div><span className={`theme-decision-pill ${decisions[item.candidateId] ?? item.recommendation}`}>{decisions[item.candidateId] ?? item.recommendation}</span></header>
       {!relation && item.description ? <p>{item.description}</p> : null}
@@ -584,8 +593,9 @@ function ThemeFrameworkReviewPanel({ client, runId, onChanged, refreshInfo, onRe
       {item.coverageGaps.length ? <div className="theme-framework-gaps"><strong>Coverage gaps</strong><ul>{item.coverageGaps.map((gap, index) => <li key={`${item.candidateId}-gap-${index}`}>{gap}</li>)}</ul></div> : null}
       <div className="theme-framework-evidence"><strong>Evidence</strong>{evidence.length ? evidence.map((source) => <p key={source.evidenceId}>{source.summary}<small>{source.sourceRef}</small></p>) : <p className="muted">No retained source summary for this candidate.</p>}</div>
       <div className="theme-decision-controls" aria-label={`Decision for ${relation ? 'relation' : item.name}`}>
-        {(['include', 'exclude', 'pending'] as const).map((value) => <button type="button" key={value} className={(decisions[item.candidateId] ?? item.recommendation) === value ? 'selected' : ''} onClick={() => setDecision(item.candidateId, value)} disabled={review?.status !== 'awaiting_review' || busy}>{value === 'include' ? 'Include' : value === 'exclude' ? 'Exclude' : 'Pending'}</button>)}
+        {(['include', 'exclude', 'pending'] as const).map((value) => <button type="button" key={value} className={decision === value ? 'selected' : ''} onClick={() => setDecision(item.candidateId, value)} disabled={review?.status !== 'awaiting_review' || busy}>{value === 'include' ? 'Include' : value === 'exclude' ? 'Exclude' : 'Pending'}</button>)}
       </div>
+      {decision !== item.recommendation ? <label className="theme-framework-rationale-field"><span>Reason for changing the recommendation · required · up to 4000 characters</span><textarea aria-label={`Reason for changing recommendation for ${itemName}`} rows={2} maxLength={4000} value={decisionRationales[item.candidateId] ?? ''} onChange={(event) => setDecisionRationale(item.candidateId, event.target.value)} disabled={review?.status !== 'awaiting_review' || busy} /></label> : null}
     </article>
   }
   return <section className="theme-framework-review" aria-label="Theme framework review">

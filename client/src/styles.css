@@ -536,6 +536,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .theme-decision-pill.exclude { color: #f0c4c4; background: #492b30; }
 .theme-decision-pill.pending { color: #ecd69f; background: #493f28; }
 .theme-decision-controls, .theme-framework-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.theme-framework-rationale-field { display: grid; gap: 5px; color: #b8cbcd; font-size: 9px; line-height: 1.4; }
+.theme-framework-rationale-field textarea { width: 100%; min-height: 54px; resize: vertical; border: 1px solid #34474e; border-radius: 5px; padding: 8px; color: #d6e2e4; background: #0f191e; font: inherit; }
 .theme-decision-controls button { min-height: 30px; padding: 6px 10px; border: 1px solid #40555c; border-radius: 5px; color: #b7c8ca; background: #1b292f; font-size: 9px; cursor: pointer; }
 .theme-decision-controls button.selected { border-color: #65bbae; color: #d9eeeb; background: #1b3c39; }
 .theme-framework-actions { padding-top: 10px; border-top: 1px solid #293c43; }
