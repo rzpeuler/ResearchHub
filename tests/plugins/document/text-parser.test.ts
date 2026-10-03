@@ -50,3 +50,9 @@ test('plain text paragraph behavior is unchanged', async () => {
 
   assert.deepEqual(document.blocks.map((block) => block.text), ['First line\nsecond line', 'Third paragraph'])
 })
+
+test('plain text preserves repeated spaces and tabs', async () => {
+  const document = await parser.parse({ bytes: bytes('Alpha   beta\t\tgamma'), filename: 'spacing.txt', mediaType: 'text/plain' })
+
+  assert.equal(document.blocks[0]?.text, 'Alpha   beta\t\tgamma')
+})

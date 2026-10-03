@@ -25,7 +25,7 @@ export class PlainTextDocumentParser implements DocumentParser {
   async parse(input: DocumentParserInput): Promise<StructuredDocument> {
     const html = input.mediaType.includes('html') || /\.html?$/i.test(input.filename)
     const decoded = new TextDecoder().decode(input.bytes)
-    const text = (html ? normalizeHtmlText(decoded) : decoded.replace(/[ \t]+/g, ' ')).replace(/\r\n?/g, '\n').trim()
+    const text = (html ? normalizeHtmlText(decoded) : decoded).replace(/\r\n?/g, '\n').trim()
     if (!text) throw new DocumentPluginError('document_text_extraction_insufficient', 'document_text_extraction_insufficient: text input is empty', this.id)
     const sections: MutableSection[] = []
     const blocks: DocumentBlock[] = []
