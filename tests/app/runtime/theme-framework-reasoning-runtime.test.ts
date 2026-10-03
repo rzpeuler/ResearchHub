@@ -19,6 +19,12 @@ function themeFrameworkExecutor(runtime: Awaited<ReturnType<typeof createResearc
   return (service as unknown as { options: { reasoningExecutor: ReasoningExecutor } }).options.reasoningExecutor
 }
 
+function rawDocumentPreviewExecutorFactory(runtime: Awaited<ReturnType<typeof createResearchHubApplicationRuntime>>): () => Promise<ReasoningExecutor> {
+  const factory = (runtime.productionService as unknown as { options: { rawDocumentPreviewReasoningExecutorFactory?: () => Promise<ReasoningExecutor> } }).options.rawDocumentPreviewReasoningExecutorFactory
+  assert.equal(typeof factory, 'function', 'active Schema 0.4 runtime without an executor override should configure the Raw Document preview factory')
+  return factory!
+}
+
 test('Theme Framework production reasoning uses one bounded timeout at both executor layers', async () => {
   const root = await mkdtemp(join(tmpdir(), 'theme-framework-reasoning-factory-'))
   const executable = join(root, 'codex.cmd')
@@ -79,10 +85,23 @@ test('Application Runtime wires the Theme Framework executor explicitly and pres
     assert.equal(productionMetadata.requestedReasoningEffort, 'high')
     assert.equal(productionMetadata.structuredOutputEnabled, true)
 
+    const rawPreviewExecutor = await rawDocumentPreviewExecutorFactory(productionRuntime)()
+    assert.deepEqual((rawPreviewExecutor as ReasoningExecutor & { runtimeMetadata(): Record<string, unknown> }).runtimeMetadata(), {
+      provider: 'pi-coding-agent',
+      backend: 'codex-cli',
+      requestedModel: 'gpt-6-luna',
+      requestedReasoningEffort: 'high',
+      invocationMode: 'exec-stdin-json-output-read-only',
+      structuredOutputEnabled: true,
+    })
+
     await productionRuntime.close()
     productionRuntime = undefined
     injectedRuntime = await createResearchHubApplicationRuntime({ cwd, agentDir, workspaceRoot, mountedKnowledgeBaseRoot: knowledgeBaseRoot, modelRuntime, model: faux.getModel(), reasoningExecutor: injectedExecutor })
     assert.equal(themeFrameworkExecutor(injectedRuntime), injectedExecutor)
+    const injectedProductionOptions = (injectedRuntime.productionService as unknown as { options: { reasoningExecutor: ReasoningExecutor; rawDocumentPreviewReasoningExecutorFactory?: () => Promise<ReasoningExecutor> } }).options
+    assert.equal(injectedProductionOptions.reasoningExecutor, injectedExecutor)
+    assert.equal(injectedProductionOptions.rawDocumentPreviewReasoningExecutorFactory, undefined)
   } finally {
     await injectedRuntime?.close()
     await productionRuntime?.close()

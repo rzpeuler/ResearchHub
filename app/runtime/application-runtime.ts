@@ -1,7 +1,7 @@
 import { join, resolve } from 'node:path'
 import { getAgentDir, ModelRuntime, SessionManager } from '@earendil-works/pi-coding-agent'
 import { PiReasoningExecutor } from '../../plugins/reasoning/pi/executor.ts'
-import { createCodexCliLunaReasoningExecutor, createIndustryProductionReasoningExecutor, createThemeFrameworkProductionReasoningExecutor, selectProductionReasoningModel } from '../pi/model-selection.ts'
+import { createIndustryProductionReasoningExecutor, createRawDocumentPreviewProductionReasoningExecutor, createThemeFrameworkProductionReasoningExecutor, selectProductionReasoningModel } from '../pi/model-selection.ts'
 import { KnowledgeService } from '../services/knowledge-service.ts'
 import { KnowledgeGraphService } from '../services/knowledge-graph-service.ts'
 import { KnowledgeTopicProjectionService } from '../services/knowledge-topic-projection.ts'
@@ -155,7 +155,7 @@ export class ResearchHubApplicationRuntime {
     }
     const workflowService = new WorkflowService()
     const rawDocumentPreviewReasoningExecutorFactory = isSchema04KnowledgeBase && options.reasoningExecutor === undefined
-      ? () => createCodexCliLunaReasoningExecutor({ capabilities: reasoningExecutor.capabilities() })
+      ? () => createRawDocumentPreviewProductionReasoningExecutor({ capabilities: reasoningExecutor.capabilities() })
       : undefined
     const productionService = new ProductionService({ mountedKnowledgeBaseRoot, workspaceRoot, cwd, reasoningExecutor, workflowService, ...(rawDocumentPreviewReasoningExecutorFactory === undefined ? {} : { rawDocumentPreviewReasoningExecutorFactory }), ...(themeScopeImpactService === undefined ? {} : { themeScopeImpactChecker: themeScopeImpactService }) })
     let researchService = options.researchService
