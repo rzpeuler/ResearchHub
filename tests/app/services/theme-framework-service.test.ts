@@ -7,11 +7,12 @@ import { tmpdir } from 'node:os'
 import { archiveRaw } from '../../../knowledge/raw/raw-archive.ts'
 import { KnowledgeBaseRegistry } from '../../../knowledge/registry/registry.ts'
 import type { KnowledgeChangeSetV04 } from '../../../knowledge/schema/mutation-v04.ts'
-import type { KnowledgeSourceV04 } from '../../../knowledge/schema/domain-v04.ts'
+import type { KnowledgeEntityV04, KnowledgeSourceV04 } from '../../../knowledge/schema/domain-v04.ts'
 import { createFreshKnowledgeBaseV04, loadKnowledgeBaseManifest, readCanonicalV04Assets } from '../../../knowledge/storage/index.ts'
 import { validateKnowledgeChangeSetV04 } from '../../../knowledge/validation/v04-change-set-validator.ts'
 import { writeKnowledgeBase } from '../../../knowledge/writer/writer.ts'
 import { getRaw } from '../../../knowledge/raw/raw-archive.ts'
+import { RawDocumentKnowledgeGatewayV04 } from '../../../knowledge/production/raw-document-gateway-v04.ts'
 import { DocumentInputResolver } from '../../../plugins/document/input-resolver.ts'
 import type { DocumentParser, DocumentParserInput, StructuredDocument } from '../../../plugins/document/contracts.ts'
 import type { ReasoningExecutor, ReasoningRequest, ReasoningResult } from '../../../plugins/reasoning/contracts.ts'
@@ -92,6 +93,20 @@ async function persistSourceBatch(root: string, registry: KnowledgeBaseRegistry,
   assert.ok(validation.validatedChangeSet, JSON.stringify(validation.report.errors))
   const result = await writeKnowledgeBase(handle, validation.validatedChangeSet, { registry, clock })
   assert.equal(result.status, 'committed', result.error?.message)
+}
+
+async function gatewaySource(root: string, registry: KnowledgeBaseRegistry, workflowRunId = 'raw-gateway-source'): Promise<void> {
+  const handle = await registry.refresh(root)
+  const result = await new RawDocumentKnowledgeGatewayV04({ registry, clock }).submit({
+    handle,
+    workflowRunId,
+    bytes: Buffer.from('Official compute infrastructure source body for refresh verification.'),
+    filename: `${workflowRunId}.txt`,
+    mediaType: 'text/plain',
+    source: { title: 'Official compute infrastructure source', sourceType: 'official_disclosure', publisher: 'Fixture publisher', publishedAt: NOW },
+    rights: { accessScope: 'public', providerTermsKnown: true, retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false, policyBasis: 'fixture test' },
+  })
+  assert.equal(result.status, 'committed', JSON.stringify(result.errors))
 }
 
 function frameworkExecutor(): ReasoningExecutor {
@@ -462,5 +477,143 @@ test('caps retained inputs at 24 Source/Raw pairs and 48 existing KB evidence it
     assert.equal(new Set(existing.map((item) => item.sourceRef)).size, 24)
     assert.equal(existing.filter((item) => item.excerpt !== undefined).length, 24)
     assert.ok(existing.every((item) => item.excerpt === undefined || item.excerpt.length <= 2_400))
+  })
+})
+
+test('refreshes a stale candidate after one Source/Raw-only Writer revision and replays the exact new run', async () => {
+  await withFreshKb('refresh-success', async (root) => {
+    const registry = new KnowledgeBaseRegistry()
+    await persistSource(root, registry, 'refresh-base', 'Compute supply evidence')
+    const target = service(root, registry)
+    const sourceRunId = 'theme-refresh-source'
+    assert.equal((await target.start({ workflowRunId: sourceRunId, name: 'AI Compute' }).completion).status, 'awaiting_review')
+    const originalBytes = await readFile(join(root, 'logs', 'theme-framework', 'reviews', `${sourceRunId}.candidate.json`))
+    await gatewaySource(root, registry)
+    assert.equal((await target.getReviewCandidate(sourceRunId)).status, 'stale')
+    const beforeRevision = (await loadKnowledgeBaseManifest(root)).revision
+
+    const refreshed = await target.refresh(sourceRunId)
+    assert.equal(refreshed.status, 'awaiting_review')
+    assert.ok(refreshed.workflowRunId.startsWith('tf-refresh-'))
+    assert.equal(refreshed.refreshedFromRunId, sourceRunId)
+    assert.equal(refreshed.basedOnRevision, beforeRevision)
+    assert.deepEqual(await readFile(join(root, 'logs', 'theme-framework', 'reviews', `${sourceRunId}.candidate.json`)), originalBytes)
+    const review = await target.getReviewCandidate(refreshed.workflowRunId)
+    assert.equal(review.status, 'awaiting_review')
+    assert.equal(review.candidate?.refresh?.refreshedFromRunId, sourceRunId)
+    assert.equal(review.candidate?.basedOnRevision, beforeRevision)
+    assert.equal((await target.refresh(sourceRunId)).status, 'already_refreshed')
+    const rawSource = (await readCanonicalV04Assets(root)).objects.find((item) => item.kind === 'source' && (item.value as KnowledgeSourceV04).title === 'Official compute infrastructure source')?.value as KnowledgeSourceV04
+    const raw = await getRaw(await registry.refresh(root), rawSource.rawRefs![0]!)
+    await writeFile(raw.originalPath, 'tampered after successful refresh')
+    assert.equal((await target.refresh(sourceRunId)).status, 'blocked')
+    assert.equal((await loadKnowledgeBaseManifest(root)).revision, beforeRevision)
+  })
+})
+
+test('blocks refresh when a required revision receipt is missing, duplicated, forged, or records a non-Source write', async (t) => {
+  for (const scenario of ['missing', 'duplicate', 'forged', 'non-source'] as const) {
+    await t.test(scenario, async () => withFreshKb(`refresh-${scenario}`, async (root) => {
+      const registry = new KnowledgeBaseRegistry()
+      await persistSource(root, registry, `refresh-${scenario}-base`, 'Compute supply evidence')
+      const target = service(root, registry)
+      const runId = `theme-refresh-${scenario}`
+      assert.equal((await target.start({ workflowRunId: runId, name: 'AI Compute' }).completion).status, 'awaiting_review')
+      await gatewaySource(root, registry, `raw-${scenario}`)
+      const logDir = join(root, 'logs', 'research')
+      const writerPath = join(logDir, `raw-${scenario}.yaml`)
+      const writerLog = await readFile(writerPath, 'utf8')
+      if (scenario === 'missing') await rm(writerPath)
+      if (scenario === 'duplicate') await writeFile(join(logDir, 'duplicate-receipt.yaml'), writerLog)
+      if (scenario === 'forged') await writeFile(writerPath, writerLog.replace('raw_document_source_gateway', 'unverified_producer'))
+      if (scenario === 'non-source') {
+        const handle = await registry.refresh(root)
+        const changeSet: KnowledgeChangeSetV04 = {
+          changeSetId: 'refresh-nonsource-changeset', workflowRunId: 'refresh-nonsource-writer', knowledgeBaseId: handle.knowledgeBaseId,
+          schemaVersion: '0.4', storageFormatVersion: '1', expectedBaseRevision: handle.revision,
+          operations: [{ operationId: 'create-nonsource', type: 'create', object: {
+            id: 'entity:refresh-nonsource', type: 'industry', name: 'Non-source change', description: 'Changes the canonical graph.', lifecycle: { status: 'active' },
+          } as unknown as KnowledgeEntityV04 }],
+        }
+        const validation = await validateKnowledgeChangeSetV04(handle, changeSet, { mode: 'commit', now: clock })
+        assert.ok(validation.validatedChangeSet)
+        assert.equal((await writeKnowledgeBase(handle, validation.validatedChangeSet!, { registry, clock })).status, 'committed')
+      }
+      assert.equal((await target.refresh(runId)).status, 'blocked')
+      assert.equal((await target.listReviews(10)).items.some((item) => item.runId.startsWith('tf-refresh-')), false)
+    }))
+  }
+})
+
+test('revalidates the Writer revision chain before returning an exact refresh replay', async () => {
+  await withFreshKb('refresh-replay-receipt-tamper', async (root) => {
+    const registry = new KnowledgeBaseRegistry()
+    await persistSource(root, registry, 'refresh-replay-base', 'Compute supply evidence')
+    const target = service(root, registry)
+    const runId = 'theme-refresh-replay-receipt'
+    assert.equal((await target.start({ workflowRunId: runId, name: 'AI Compute' }).completion).status, 'awaiting_review')
+    await gatewaySource(root, registry)
+    assert.equal((await target.refresh(runId)).status, 'awaiting_review')
+    assert.equal((await target.refresh(runId)).status, 'already_refreshed')
+    const receiptPath = join(root, 'logs', 'research', 'raw-gateway-source.yaml')
+    const receipt = await readFile(receiptPath, 'utf8')
+    await writeFile(receiptPath, receipt.replace('raw_document_source_gateway', 'unverified_producer'))
+    assert.equal((await target.refresh(runId)).status, 'blocked')
+  })
+})
+
+test('blocks refresh when bound Source/Raw evidence has been tampered with', async () => {
+  await withFreshKb('refresh-evidence-invalid', async (root) => {
+    const registry = new KnowledgeBaseRegistry()
+    await persistSource(root, registry, 'refresh-evidence-base', 'Compute supply evidence')
+    const target = service(root, registry)
+    const runId = 'theme-refresh-evidence'
+    assert.equal((await target.start({ workflowRunId: runId, name: 'AI Compute' }).completion).status, 'awaiting_review')
+    await gatewaySource(root, registry)
+    const assets = await readCanonicalV04Assets(root)
+    const source = assets.objects.find((item) => item.kind === 'source' && (item.value as KnowledgeSourceV04).title === 'Official compute infrastructure source')?.value as KnowledgeSourceV04
+    assert.ok(source?.rawRefs?.[0])
+    const raw = await getRaw(await registry.refresh(root), source.rawRefs![0]!)
+    await writeFile(raw.originalPath, 'tampered body invalidates the Raw content hash')
+    assert.equal((await target.refresh(runId)).status, 'blocked')
+  })
+})
+
+test('blocks refresh when a persisted body-block locator no longer resolves', async () => {
+  await withFreshKb('refresh-locator-invalid', async (root) => {
+    const registry = new KnowledgeBaseRegistry()
+    await persistSource(root, registry, 'refresh-locator-base', 'Compute supply evidence')
+    const firstResolver = new DocumentInputResolver({ documentParser: fixtureDocumentParser({ sectionCounts: [2, 2] }) })
+    const first = evidenceService(root, registry, firstResolver, () => undefined)
+    const runId = 'theme-refresh-locator'
+    assert.equal((await first.start({ workflowRunId: runId, name: 'AI Compute' }).completion).status, 'awaiting_review')
+    await gatewaySource(root, registry)
+    const changedResolver = new DocumentInputResolver({ documentParser: fixtureDocumentParser({ sectionCounts: [1] }) })
+    const restarted = evidenceService(root, new KnowledgeBaseRegistry(), changedResolver, () => undefined)
+    assert.equal((await restarted.refresh(runId)).status, 'blocked')
+  })
+})
+
+test('blocks refresh of rejected and committed source runs', async () => {
+  await withFreshKb('refresh-terminal', async (root) => {
+    const registry = new KnowledgeBaseRegistry()
+    await persistSource(root, registry, 'refresh-terminal-base', 'Compute supply evidence')
+    const target = service(root, registry)
+    const rejected = 'theme-refresh-rejected'
+    assert.equal((await target.start({ workflowRunId: rejected, name: 'AI Compute' }).completion).status, 'awaiting_review')
+    await target.reject(rejected)
+    await gatewaySource(root, registry, 'raw-after-reject')
+    assert.equal((await target.refresh(rejected)).status, 'blocked')
+
+    await withFreshKb('refresh-committed-inner', async (innerRoot) => {
+      const innerRegistry = new KnowledgeBaseRegistry()
+      await persistSource(innerRoot, innerRegistry, 'refresh-committed-base', 'Compute supply evidence')
+      const inner = service(innerRoot, innerRegistry)
+      const committed = 'theme-refresh-committed'
+      assert.equal((await inner.start({ workflowRunId: committed, name: 'AI Compute' }).completion).status, 'awaiting_review')
+      assert.equal((await inner.accept({ workflowRunId: committed })).status, 'committed')
+      await gatewaySource(innerRoot, innerRegistry, 'raw-after-commit')
+      assert.equal((await inner.refresh(committed)).status, 'blocked')
+    })
   })
 })

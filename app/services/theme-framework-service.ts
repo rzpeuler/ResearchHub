@@ -7,6 +7,7 @@ import { readThemeScopeLedgerV04 } from '../../knowledge/governance/theme-scope-
 import { getRaw, verifyRaw } from '../../knowledge/raw/raw-archive.ts'
 import type { KnowledgeEntityV04, KnowledgeSourceV04 } from '../../knowledge/schema/domain-v04.ts'
 import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
+import { parseYaml } from '../../knowledge/storage/yaml.ts'
 import type { KnowledgeBaseHandle } from '../../knowledge/storage/handle.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import { DocumentInputResolver } from '../../plugins/document/input-resolver.ts'
@@ -37,7 +38,17 @@ export const THEME_FRAMEWORK_REVIEW_STORE_LIMITS = {
 } as const
 
 type SafeEvidenceView = { readonly evidenceId: string; readonly summary: string; readonly sourceRef: `source:${string}` }
-type PersistedCandidate = { readonly candidate: ThemeFrameworkReviewCandidate; readonly evidence: readonly SafeEvidenceView[] }
+type PersistedCandidate = {
+  readonly candidate: ThemeFrameworkReviewCandidate
+  readonly evidence: readonly SafeEvidenceView[]
+  readonly refresh?: {
+    readonly refreshedFromRunId: string
+    readonly sourceBasedOnRevision: number
+    readonly targetRevision: number
+    readonly validationSummary: { readonly writerReceipts: number; readonly sourceIds: readonly string[]; readonly evidenceBindings: number }
+    readonly refreshedAt: string
+  }
+}
 type CachedRawEvidence = { readonly bodyAvailable: boolean; readonly excerpts: readonly ThemeFrameworkRawEvidenceExcerpt[] }
 type ExistingRawEvidenceProjection = {
   readonly titleEvidence: ThemeFrameworkInput['evidence'][number]
@@ -64,6 +75,7 @@ export interface ThemeFrameworkReviewCandidateView {
     readonly acquisitionStatus: ThemeFrameworkReviewCandidate['acquisitionStatus']
     readonly diagnostics: readonly string[]
     readonly evidence: readonly SafeEvidenceView[]
+    readonly refresh?: NonNullable<PersistedCandidate['refresh']>
   }
   readonly receipt?: { readonly themeRef: string; readonly committedRevision: number; readonly decisionCount: number }
 }
@@ -87,6 +99,14 @@ export interface ThemeFrameworkActionResult {
   readonly themeRef?: string
   readonly committedRevision?: number
   readonly decisionCount?: number
+  readonly diagnostics?: readonly string[]
+}
+
+export interface ThemeFrameworkRefreshResult {
+  readonly status: 'awaiting_review' | 'already_refreshed' | 'conflict' | 'blocked'
+  readonly workflowRunId: string
+  readonly refreshedFromRunId: string
+  readonly basedOnRevision?: number
   readonly diagnostics?: readonly string[]
 }
 
@@ -129,6 +149,8 @@ const MAX_REVIEW_DIRECTORY_ENTRIES = 256
 const MAX_REVIEW_LIST_ITEMS = 100
 const TYPES: readonly EventType[] = ['started', 'candidate', 'accept-intent', 'committed', 'rejected', 'stale', 'blocked', 'failed', 'cancelled']
 const safeEvidenceLocator = 'retained source document'
+const MAX_WRITER_LOG_BYTES = 2_000_000
+const MAX_WRITER_LOG_FILES = 4096
 
 function sha256(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex')
@@ -472,6 +494,98 @@ export class ThemeFrameworkService {
     })
   }
 
+  /** Rebase a persisted, still-unaccepted proposal across Source/Raw-only Writer revisions. */
+  async refresh(workflowRunId: string): Promise<ThemeFrameworkRefreshResult> {
+    this.requireRunId(workflowRunId)
+    return this.serialize(workflowRunId, async () => {
+      const sourceRunId = workflowRunId
+      const blocked = (diagnostic: string, refreshedRunId = ''): ThemeFrameworkRefreshResult => ({
+        status: 'blocked', workflowRunId: refreshedRunId || sourceRunId, refreshedFromRunId: sourceRunId, diagnostics: [diagnostic],
+      })
+      let sourceEvent: Envelope<PersistedCandidate> | undefined
+      let sourceTerminal: Envelope<unknown> | undefined
+      try {
+        sourceEvent = await this.readEvent<PersistedCandidate>(sourceRunId, 'candidate')
+        sourceTerminal = await this.readTerminal(sourceRunId)
+      } catch { return blocked('source_review_unavailable') }
+      if (!sourceEvent) return blocked('source_candidate_unavailable')
+      if (sourceTerminal && sourceTerminal.type !== 'stale') return blocked('source_review_terminal')
+      try { if (await this.readEvent(sourceRunId, 'accept-intent')) return blocked('source_acceptance_intent_exists') }
+      catch { return blocked('source_acceptance_intent_unavailable') }
+
+      const rawOriginal: unknown = sourceEvent.payload
+      if (!isRecord(rawOriginal)) return blocked('source_candidate_invalid')
+      const rawCandidate = rawOriginal.candidate
+      if (!isRecord(rawCandidate) || rawCandidate.workflowRunId !== sourceRunId
+        || !Number.isSafeInteger(rawCandidate.basedOnRevision) || (rawCandidate.basedOnRevision as number) < 0
+        || typeof rawCandidate.knowledgeBaseId !== 'string' || !isRecord(rawCandidate.theme)
+        || typeof rawCandidate.theme.name !== 'string' || !Array.isArray(rawCandidate.durableEvidenceBindings)
+        || !Array.isArray(rawOriginal.evidence)) return blocked('source_candidate_invalid')
+      const original = rawOriginal as unknown as PersistedCandidate
+      const sourceCandidate = original.candidate
+
+      let current: ThemeFrameworkKnowledgeSnapshot
+      let handle: KnowledgeBaseHandle
+      try {
+        current = await this.readKnowledgeSnapshot(sourceCandidate.theme.name)
+        handle = await this.registry.refresh(this.root)
+      } catch { return blocked('active_writable_knowledge_base_unavailable') }
+      if (handle.schemaVersion !== '0.4' || handle.storageFormatVersion !== '1' || handle.status !== 'active' || !handle.writable
+        || current.knowledgeBaseId !== sourceCandidate.knowledgeBaseId || handle.knowledgeBaseId !== current.knowledgeBaseId) return blocked('knowledge_base_identity_or_write_state_changed')
+      if (current.existingThemeRef) return blocked('same_name_theme_exists')
+      const sourceRevision = sourceCandidate.basedOnRevision as number
+      if (handle.revision <= sourceRevision || current.revision !== handle.revision) return blocked('knowledge_revision_not_refreshable')
+      const newRunId = `tf-refresh-${sha256({ sourceRunId, knowledgeBaseId: handle.knowledgeBaseId, targetRevision: handle.revision }).slice(0, 40)}`
+
+      const existingRefresh = await this.readEvent<PersistedCandidate>(newRunId, 'candidate').catch(() => undefined)
+      let writerSources: readonly string[]
+      try { writerSources = await this.verifySourceOnlyRevisionChain(handle, sourceRevision) }
+      catch { return blocked('source_only_writer_revision_chain_unproven', newRunId) }
+      if (!(await this.candidateAndLocatorsStillValid(original, current))) return blocked('source_candidate_evidence_no_longer_valid', newRunId)
+      if (existingRefresh) {
+        if (this.isExactRefreshReplay(existingRefresh.payload, original, sourceRunId, sourceRevision, handle.revision, writerSources)) {
+          return { status: 'already_refreshed', workflowRunId: newRunId, refreshedFromRunId: sourceRunId, basedOnRevision: handle.revision }
+        }
+        return { status: 'conflict', workflowRunId: newRunId, refreshedFromRunId: sourceRunId, diagnostics: ['refresh_run_id_content_conflict'] }
+      }
+
+      // Recheck all gate conditions immediately before the single candidate-event commit.
+      const latest = await this.registry.refresh(this.root).catch(() => undefined)
+      const latestTerminal = await this.readTerminal(sourceRunId).catch(() => undefined)
+      const latestIntent = await this.readEvent(sourceRunId, 'accept-intent').catch(() => undefined)
+      if (!latest || latest.knowledgeBaseId !== handle.knowledgeBaseId || latest.revision !== handle.revision
+        || latest.schemaVersion !== '0.4' || latest.status !== 'active' || !latest.writable
+        || latestTerminal && latestTerminal.type !== 'stale' || latestIntent) return blocked('refresh_precommit_state_changed', newRunId)
+      const refreshedAt = this.clock()
+      const refreshedCandidate: ThemeFrameworkReviewCandidate = {
+        ...sourceCandidate,
+        workflowRunId: newRunId,
+        basedOnRevision: handle.revision,
+      }
+      const refreshed: PersistedCandidate = {
+        candidate: refreshedCandidate,
+        evidence: original.evidence,
+        refresh: {
+          refreshedFromRunId: sourceRunId,
+          sourceBasedOnRevision: sourceRevision,
+          targetRevision: handle.revision,
+          validationSummary: { writerReceipts: handle.revision - sourceRevision, sourceIds: writerSources, evidenceBindings: sourceCandidate.durableEvidenceBindings.length },
+          refreshedAt,
+        },
+      }
+      try {
+        await this.writeEvent(newRunId, 'candidate', refreshed)
+        return { status: 'awaiting_review', workflowRunId: newRunId, refreshedFromRunId: sourceRunId, basedOnRevision: handle.revision }
+      } catch {
+        const replay = await this.readEvent<PersistedCandidate>(newRunId, 'candidate').catch(() => undefined)
+        if (replay && this.isExactRefreshReplay(replay.payload, original, sourceRunId, sourceRevision, handle.revision, writerSources)) {
+          return { status: 'already_refreshed', workflowRunId: newRunId, refreshedFromRunId: sourceRunId, basedOnRevision: handle.revision }
+        }
+        return { status: 'conflict', workflowRunId: newRunId, refreshedFromRunId: sourceRunId, diagnostics: ['refresh_candidate_persistence_conflict'] }
+      }
+    })
+  }
+
   private async resolveRawEvidence(rawRef: string, sourceRef: string, originalPath: string): Promise<CachedRawEvidence> {
     const cached = this.rawEvidenceCache.get(rawRef)
     if (cached) {
@@ -622,6 +736,157 @@ export class ThemeFrameworkService {
     } catch { return false }
   }
 
+  private isExactRefreshReplay(existing: PersistedCandidate, original: PersistedCandidate, sourceRunId: string, sourceRevision: number, targetRevision: number, sourceIds: readonly string[]): boolean {
+    if (!isRecord(existing) || !isRecord(existing.candidate) || !Array.isArray(existing.evidence) || !isRecord(original) || !isRecord(original.candidate)) return false
+    const meta = existing.refresh
+    if (!meta || meta.refreshedFromRunId !== sourceRunId || meta.sourceBasedOnRevision !== sourceRevision || meta.targetRevision !== targetRevision
+      || !Number.isFinite(Date.parse(meta.refreshedAt)) || !Array.isArray(meta.validationSummary?.sourceIds)) return false
+    if (typeof existing.candidate.workflowRunId !== 'string') return false
+    const expectedCandidate = { ...original.candidate, workflowRunId: existing.candidate.workflowRunId, basedOnRevision: targetRevision }
+    return existing.candidate.workflowRunId.startsWith('tf-refresh-')
+      && sha256(existing.candidate) === sha256(expectedCandidate)
+      && sha256(existing.evidence) === sha256(original.evidence)
+      && meta.validationSummary.writerReceipts === targetRevision - sourceRevision
+      && sha256(meta.validationSummary.sourceIds) === sha256(sourceIds)
+      && Number.isSafeInteger(meta.validationSummary.evidenceBindings)
+      && Array.isArray(original.candidate.durableEvidenceBindings)
+      && meta.validationSummary.evidenceBindings === original.candidate.durableEvidenceBindings.length
+  }
+
+  private async candidateAndLocatorsStillValid(persisted: PersistedCandidate, snapshot: ThemeFrameworkKnowledgeSnapshot): Promise<boolean> {
+    try {
+      const bindings = persisted.candidate.durableEvidenceBindings
+      if (!Array.isArray(bindings) || !Array.isArray(persisted.evidence)) return false
+      const boundById = new Map(bindings.map((binding) => [binding.evidenceId, binding]))
+      if (boundById.size !== bindings.length || persisted.evidence.length !== bindings.length) return false
+      for (const view of persisted.evidence) {
+        const binding = boundById.get(view.evidenceId)
+        if (!binding || binding.sourceRef !== view.sourceRef) return false
+      }
+      const framework = persisted.candidate.framework
+      if (!framework || !Array.isArray(framework.industryCandidates) || !Array.isArray(framework.relationCandidates)
+        || !isRecord(framework.proposedDefinition)) return false
+      const refs: string[] = [
+        ...(Array.isArray(framework.proposedDefinition.evidenceRefs) ? framework.proposedDefinition.evidenceRefs : []),
+        ...framework.industryCandidates.flatMap((item) => Array.isArray(item.evidenceRefs) ? item.evidenceRefs : []),
+        ...framework.relationCandidates.flatMap((item) => Array.isArray(item.evidenceRefs) ? item.evidenceRefs : []),
+      ]
+      if (refs.some((ref) => typeof ref !== 'string' || !boundById.has(ref))) return false
+      const currentBindings = await this.verifyCandidateBindings(persisted.candidate, snapshot)
+      if (currentBindings.bindings.length !== bindings.length || currentBindings.bindings.some((binding, index) => {
+        const previous = bindings[index]
+        return binding.evidenceId !== previous?.evidenceId || binding.sourceRef !== previous?.sourceRef || binding.rawRef !== previous?.rawRef || binding.locator !== (previous?.locator ?? safeEvidenceLocator)
+      })) return false
+      const handle = await this.registry.refresh(this.root)
+      for (const binding of bindings) {
+        const locator = binding.locator?.trim()
+        if (!binding.evidenceId.startsWith('raw-evidence-')) continue
+        if (!locator || locator === safeEvidenceLocator || themeFrameworkRawEvidenceId(binding.sourceRef, binding.rawRef, locator) !== binding.evidenceId) return false
+        const raw = await getRaw(handle, binding.rawRef)
+        const verified = await verifyRaw(handle, binding.rawRef)
+        if (verified.rawRef !== binding.rawRef || verified.contentHash !== raw.manifest.contentHash) return false
+        const parsed = await this.resolveRawEvidence(binding.rawRef, binding.sourceRef, verified.originalPath)
+        if (!parsed.bodyAvailable || !parsed.excerpts.some((excerpt) => excerpt.blockId === locator)) return false
+      }
+      const latest = await this.registry.refresh(this.root)
+      return latest.knowledgeBaseId === snapshot.knowledgeBaseId && latest.revision === snapshot.revision
+    } catch { return false }
+  }
+
+  /** Prove exactly one completed raw Source Gateway Writer receipt for every revision in the gap. */
+  private async verifySourceOnlyRevisionChain(handle: KnowledgeBaseHandle, sourceRevision: number): Promise<readonly string[]> {
+    const rootReal = await realpath(handle.rootRef)
+    const logsPath = join(handle.rootRef, 'logs')
+    const logsStat = await lstat(logsPath).catch(() => undefined)
+    if (!logsStat || logsStat.isSymbolicLink() || !logsStat.isDirectory() || !inside(rootReal, await realpath(logsPath))) throw new Error('Writer log root is unavailable or unsafe')
+    const directory = join(logsPath, 'research')
+    const directoryStat = await lstat(directory).catch(() => undefined)
+    if (!directoryStat || directoryStat.isSymbolicLink() || !directoryStat.isDirectory() || !inside(rootReal, await realpath(directory))) throw new Error('Writer log directory is unavailable or unsafe')
+    const logNames: string[] = []
+    const dir = await opendir(directory)
+    for await (const entry of dir) {
+      if (logNames.length >= MAX_WRITER_LOG_FILES) throw new Error('Writer log directory exceeds bounded scan limit')
+      if (entry.name.endsWith('.yaml')) {
+        if (!entry.isFile()) throw new Error('Writer log entry is not a regular file')
+        logNames.push(entry.name)
+      }
+    }
+    const byRevision = new Map<number, { readonly workflowRunId: string; readonly createdIds: readonly string[] }[]>()
+    for (const name of logNames) {
+      const path = join(directory, name)
+      const before = await lstat(path)
+      if (before.isSymbolicLink() || !before.isFile() || before.size > MAX_WRITER_LOG_BYTES || !inside(rootReal, await realpath(path))) throw new Error('Writer log file is unsafe or oversized')
+      const file = await open(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0))
+      let parsed: unknown
+      try {
+        const opened = await file.stat()
+        if (!opened.isFile() || !sameFile(before, opened) || opened.size > MAX_WRITER_LOG_BYTES) throw new Error('Writer log changed while opening')
+        const chunks: Buffer[] = []
+        let total = 0
+        const chunk = Buffer.allocUnsafe(16 * 1024)
+        while (true) {
+          const remaining = MAX_WRITER_LOG_BYTES + 1 - total
+          if (remaining <= 0) throw new Error('Writer log exceeds bounded read limit')
+          const { bytesRead } = await file.read(chunk, 0, Math.min(chunk.length, remaining), null)
+          if (bytesRead === 0) break
+          chunks.push(Buffer.from(chunk.subarray(0, bytesRead)))
+          total += bytesRead
+        }
+        const bytes = Buffer.concat(chunks)
+        const finished = await file.stat()
+        const after = await lstat(path)
+        if (!sameFile(opened, finished) || finished.size !== bytes.byteLength || !sameFile(finished, after) || after.isSymbolicLink() || !inside(rootReal, await realpath(path))) throw new Error('Writer log changed while reading')
+        parsed = parseYaml(new TextDecoder('utf-8', { fatal: true }).decode(bytes), path)
+      } finally { await file.close() }
+      if (!isRecord(parsed)) throw new Error('Writer log is malformed')
+      const committedRevision = parsed.committedRevision
+      if (!Number.isSafeInteger(committedRevision) || (committedRevision as number) < 1) throw new Error('Writer log revision is malformed')
+      if ((committedRevision as number) <= sourceRevision) continue
+      if ((committedRevision as number) > handle.revision) throw new Error('Writer log is newer than the active Knowledge Base revision')
+      if (parsed.knowledgeBaseId !== handle.knowledgeBaseId || parsed.schemaVersionAtExecution !== '0.4'
+        || typeof parsed.workflowRunId !== 'string' || !validRunId(parsed.workflowRunId) || name !== `${parsed.workflowRunId}.yaml`
+        || typeof parsed.changeSetId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(parsed.changeSetId)
+        || typeof parsed.changeSetHash !== 'string' || !/^sha256:[0-9a-f]{64}$/u.test(parsed.changeSetHash)
+        || !isRecord(parsed.changes) || !Array.isArray(parsed.changes.createdIds)
+        || parsed.changes.createdIds.some((id) => typeof id !== 'string' || !id.startsWith('source:'))
+        || !Array.isArray(parsed.changes.updatedIds)) throw new Error('Writer receipt fields are malformed or inconsistent')
+      if (parsed.writeStatus === 'no_changes') {
+        if (parsed.status !== 'completed' || parsed.changes.createdIds.length !== 0 || parsed.changes.updatedIds.length !== 0) throw new Error('No-change Writer record conflicts with its change inventory')
+        continue
+      }
+      if ((committedRevision as number) <= sourceRevision || (committedRevision as number) > handle.revision) continue
+      if (parsed.status !== 'completed' || parsed.writeStatus !== 'committed'
+        || !isRecord(parsed.ingestionContext) || parsed.ingestionContext.workflowRunId !== parsed.workflowRunId || parsed.ingestionContext.producerType !== 'raw_document_source_gateway'
+        || parsed.changes.createdIds.length === 0 || parsed.changes.updatedIds.length !== 0) throw new Error('Writer receipt is not a verified Source-only Gateway commit')
+      const receipts = byRevision.get(committedRevision as number) ?? []
+      receipts.push({ workflowRunId: parsed.workflowRunId, createdIds: parsed.changes.createdIds as string[] })
+      byRevision.set(committedRevision as number, receipts)
+    }
+    const sourcesAdded: string[] = []
+    const createdAcrossChain = new Set<string>()
+    const assets = await readCanonicalV04Assets(handle.rootRef)
+    const sourceAssets = new Map<string, KnowledgeSourceV04>(assets.objects.filter((item) => item.kind === 'source').map((item) => [item.value.id, item.value as KnowledgeSourceV04]))
+    for (let revision = sourceRevision + 1; revision <= handle.revision; revision += 1) {
+      const matches = byRevision.get(revision) ?? []
+      if (matches.length !== 1) throw new Error(`Revision ${revision} does not have exactly one Writer receipt`)
+      for (const sourceId of matches[0]!.createdIds) {
+        if (createdAcrossChain.has(sourceId)) throw new Error('Source creation is duplicated across Writer receipts')
+        createdAcrossChain.add(sourceId)
+        const source = sourceAssets.get(sourceId)
+        if (!source || !Array.isArray(source.rawRefs) || source.rawRefs.length === 0) throw new Error('Created Source or its Raw binding is missing')
+        for (const rawRef of source.rawRefs) {
+          const raw = await getRaw(handle, rawRef)
+          const verified = await verifyRaw(handle, rawRef)
+          if (raw.manifest.rawRef !== rawRef || verified.rawRef !== rawRef || verified.contentHash !== raw.manifest.contentHash) throw new Error('Created Source Raw failed integrity verification')
+        }
+        sourcesAdded.push(sourceId)
+      }
+    }
+    const final = await this.registry.refresh(this.root)
+    if (final.knowledgeBaseId !== handle.knowledgeBaseId || final.revision !== handle.revision) throw new Error('Knowledge Base changed while verifying revision chain')
+    return sourcesAdded.sort()
+  }
+
   /** Verify candidate bindings directly against canonical Source/Raw, independent of the bounded prompt-evidence projection. */
   private async verifyCandidateBindings(candidate: ThemeFrameworkReviewCandidate, snapshot: ThemeFrameworkKnowledgeSnapshot): Promise<{ readonly bindings: readonly ThemeFrameworkDurableEvidenceBinding[]; readonly evidence: readonly SafeEvidenceView[] }> {
     if (!Array.isArray(candidate.durableEvidenceBindings) || candidate.durableEvidenceBindings.length > MAX_CANDIDATE_BINDINGS) throw new ApplicationServiceError('conflict', 'Candidate evidence binding count is invalid')
@@ -671,6 +936,7 @@ export class ThemeFrameworkService {
       acquisitionStatus: candidate.acquisitionStatus,
       diagnostics: diagnosticProjection(candidate.diagnostics),
       evidence,
+      ...(value.refresh ? { refresh: value.refresh } : {}),
     }
   }
 
