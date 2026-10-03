@@ -4,6 +4,7 @@ dist/
 coverage/
 .superpowers/
 runtime-data/
+/workspace/uploads/
 *.staging-*
 *.backup-*
 *.recovery.json
