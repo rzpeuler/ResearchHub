@@ -21,6 +21,7 @@ async function fixture(withService = true, withKb = true) {
   const themeFrameworkService = {
     start(input: unknown) { calls.push(['start', input]); return { runId: 'theme-route-run-1', completion: Promise.resolve({ status: 'awaiting_review', workflowRunId: 'theme-route-run-1' }) } },
     async getReviewCandidate(runId: string) { calls.push(['get', runId]); return { ...safeCandidate, workflowRunId: runId } },
+    async refresh(runId: string) { calls.push(['refresh', runId]); if (runId === 'blocked-run') return { status: 'blocked', workflowRunId: '', refreshedFromRunId: runId, diagnostics: ['source_only_writer_revision_chain_unproven'] }; if (runId === 'conflict-run') return { status: 'conflict', workflowRunId: 'refresh-id', refreshedFromRunId: runId }; return { status: 'awaiting_review', workflowRunId: 'theme-route-refresh-1', refreshedFromRunId: runId, basedOnRevision: 8 } },
     async listReviews(limit?: number) { calls.push(['list', limit]); return { items: [{ runId: 'theme-route-run-1', themeName: 'AI 算力', basedOnRevision: 7, status: 'awaiting_review' }], total: 1, truncated: false } },
     async accept(input: unknown) { calls.push(['accept', input]); return { status: 'committed', workflowRunId: 'theme-route-run-1', themeRef: 'entity:theme-safe', committedRevision: 1, decisionCount: 2 } },
     async reject(runId: string) { calls.push(['reject', runId]); return { status: 'rejected', workflowRunId: runId } },
@@ -65,6 +66,21 @@ test('Theme Framework start/get/accept/reject use runtime-token protected routes
     assert.equal(candidate.candidate.evidence[0]?.sourceRef, 'source:retained-source')
     assert.equal(JSON.stringify(candidate).includes('rawRef'), false)
 
+    const refreshed = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/refresh`, { method: 'POST', headers, body: '{}' })
+    assert.equal(refreshed.status, 200)
+    assert.deepEqual(await refreshed.json(), { status: 'awaiting_review', workflowRunId: 'theme-route-refresh-1', refreshedFromRunId: 'theme-route-run-1', basedOnRevision: 8 })
+    assert.deepEqual(f.calls.find((call) => Array.isArray(call) && call[0] === 'refresh'), ['refresh', 'theme-route-run-1'])
+    const refreshWithoutToken = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/refresh`, { method: 'POST', headers: { origin: f.origin, 'content-type': 'application/json' }, body: '{}' })
+    assert.equal(refreshWithoutToken.status, 401)
+    const crossOriginRefresh = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/refresh`, { method: 'POST', headers: { ...headers, origin: 'http://127.0.0.1:1' }, body: '{}' })
+    assert.equal(crossOriginRefresh.status, 401)
+    const blockedRefresh = await fetch(`${f.origin}/api/theme-framework/runs/blocked-run/refresh`, { method: 'POST', headers, body: '{}' })
+    assert.equal(blockedRefresh.status, 422)
+    assert.deepEqual((await blockedRefresh.json() as { status: string; diagnostics: readonly string[] }).diagnostics, ['source_only_writer_revision_chain_unproven'])
+    const conflictedRefresh = await fetch(`${f.origin}/api/theme-framework/runs/conflict-run/refresh`, { method: 'POST', headers, body: '{}' })
+    assert.equal(conflictedRefresh.status, 409)
+    assert.equal((await conflictedRefresh.json() as { status: string }).status, 'conflict')
+
     const accepted = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/accept`, { method: 'POST', headers, body: JSON.stringify({ decisions: { industry_1: 'include', relation_1: 'pending' } }) })
     assert.equal(accepted.status, 200)
     assert.deepEqual(f.calls.find((call) => Array.isArray(call) && call[0] === 'accept'), ['accept', { workflowRunId: 'theme-route-run-1', decisions: { industry_1: 'include', relation_1: 'pending' } }])
@@ -87,6 +103,10 @@ test('Theme Framework routes reject unsupported request and ref fields with narr
     assert.equal(invalidDecision.status, 400)
     const extraReject = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/reject`, { method: 'POST', headers, body: JSON.stringify({ decision: 'reject' }) })
     assert.equal(extraReject.status, 400)
+    const extraRefresh = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/refresh`, { method: 'POST', headers, body: JSON.stringify({ workflowRunId: 'override' }) })
+    assert.equal(extraRefresh.status, 400)
+    const hugeRefresh = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/refresh`, { method: 'POST', headers, body: JSON.stringify({ filler: 'x'.repeat(2_000) }) })
+    assert.equal(hugeRefresh.status, 400)
     const huge = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/accept`, { method: 'POST', headers, body: JSON.stringify({ decisions: { industry: 'include', filler: 'x'.repeat(40_000) } }) })
     assert.equal(huge.status, 400)
   } finally { await f.server.close(); await f.runtime.close(); await Promise.resolve((f.modelRuntime as unknown as { dispose?: () => void | Promise<void> }).dispose?.()); await rm(f.root, { recursive: true, force: true }) }

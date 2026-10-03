@@ -163,6 +163,13 @@ export interface ThemeFrameworkActionResponse {
   readonly decisionCount?: number
   readonly diagnostics?: readonly string[]
 }
+export interface ThemeFrameworkRefreshResult {
+  readonly status: 'awaiting_review' | 'already_refreshed' | 'conflict' | 'blocked'
+  readonly workflowRunId: string
+  readonly refreshedFromRunId: string
+  readonly basedOnRevision?: number
+  readonly diagnostics?: readonly string[]
+}
 export interface ResearchRequest { readonly query: string; readonly mode?: { readonly type: 'free_research' } | { readonly type: 'workflow'; readonly workflowId: string }; readonly contextPolicy?: { readonly structuredKnowledge: boolean; readonly sourceLibrary: boolean }; readonly persistencePolicy?: { readonly writeKnowledge: boolean }; readonly attachments?: readonly string[] }
 export interface ResearchDispatchDecision { readonly mode: 'workflow' | 'skill_plan' | 'free_research'; readonly workflow?: { readonly id: string; readonly confidence: number; readonly arguments: Readonly<Record<string, unknown>> }; readonly skills: readonly { readonly id: string; readonly purpose: string }[]; readonly entities: readonly { readonly type: string; readonly value: string; readonly confidence: number }[]; readonly missingRequiredInputs: readonly string[]; readonly contextPolicy: { readonly structuredKnowledge: boolean; readonly sourceLibrary: boolean }; readonly persistencePolicy: { readonly writeKnowledge: boolean }; readonly rationale: string }
 export interface ResearchExecutionSummary { readonly mode: 'Free Research' | 'Explicit Workflow'; readonly workflowId?: string; readonly workflowLabel?: string; readonly selectedSkillIds: readonly string[]; readonly argumentsStatus: 'not_required' | 'extracted' | 'missing'; readonly argumentKeys: readonly string[]; readonly contextPolicy: { readonly structuredKnowledge: boolean; readonly sourceLibrary: boolean }; readonly persistencePolicy: { readonly writeKnowledge: boolean } }
@@ -356,6 +363,7 @@ export class RuntimeClient {
   async dispatchResearch(input: ResearchRequest): Promise<ResearchDispatchResponse> { return this.mutate('/api/research/dispatch', input) }
   async getThemeFrameworkRun(runId: string): Promise<ThemeFrameworkReviewResponse> { return this.request(`/api/theme-framework/runs/${encodeURIComponent(runId)}`, {}, true) }
   async listThemeFrameworkReviews(limit = 50): Promise<ThemeFrameworkReviewListResponse> { return this.request(`/api/theme-framework/reviews?limit=${encodeURIComponent(String(limit))}`, {}, true) }
+  async refreshThemeFrameworkRun(runId: string): Promise<ThemeFrameworkRefreshResult> { return this.request(`/api/theme-framework/runs/${encodeURIComponent(runId)}/refresh`, { method: 'POST', body: '{}' }, true, [409, 422]) }
   async acceptThemeFrameworkRun(runId: string, decisions: Readonly<Record<string, ThemeFrameworkDecision>>): Promise<ThemeFrameworkActionResponse> { return this.mutate(`/api/theme-framework/runs/${encodeURIComponent(runId)}/accept`, { decisions }) }
   async rejectThemeFrameworkRun(runId: string): Promise<ThemeFrameworkActionResponse> { return this.mutate(`/api/theme-framework/runs/${encodeURIComponent(runId)}/reject`, {}) }
   async listThemeScopeImpactInbox(limit = 50): Promise<ThemeScopeImpactInboxResponse> { return this.request(`/api/theme-scope-impact?limit=${encodeURIComponent(String(limit))}`, {}, true) }

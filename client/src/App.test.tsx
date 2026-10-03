@@ -127,6 +127,47 @@ describe('Homepage shell', () => {
     expect(JSON.parse(String(dispatch?.init?.body))).toMatchObject({ mode: { type: 'free_research' } })
   })
 
+  it('refreshes a stale Theme Framework candidate into a new review without accepting it', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    const candidate = {
+      knowledgeBaseId: 'kb-1', basedOnRevision: 7, theme: { name: 'AI Compute' },
+      framework: { proposedDefinition: { statement: 'Compute infrastructure', status: 'provisional' }, inclusionPrinciples: [], exclusionPrinciples: [], industryCandidates: [{ candidateId: 'pcb', name: 'PCB', recommendation: 'include', boundaryRationale: 'Material input', relevanceRationale: 'Supports compute equipment', evidenceRefs: [], coverageGaps: [] }], relationCandidates: [], coverageGaps: [] },
+      acquisitionStatus: 'complete', diagnostics: [], evidence: [],
+    }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input); calls.push({ path, init })
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 8, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
+      if (path === '/api/research-reports?limit=20') return json({ reports: [] })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'theme_framework', label: 'Theme Framework', intentDescription: 'Initialize an industry network', inputSchema: {}, requiredInputs: ['name'], outputContract: 'ThemeFrameworkReviewCandidate', knowledgeEffects: ['Theme', 'Industry', 'Relation'] }] })
+      if (path === '/api/theme-framework/reviews?limit=50') return json({ items: [], total: 0, truncated: false })
+      if (path === '/api/theme-scope-impact?limit=50') return json({ items: [], total: 0, truncated: false })
+      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'AI Compute', mode: { type: 'workflow', workflowId: 'theme_framework' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'theme_framework', confidence: 1, arguments: { name: 'AI Compute' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit workflow selection' }, summary: { mode: 'Explicit Workflow', workflowId: 'theme_framework', workflowLabel: 'Theme Framework', selectedSkillIds: [], argumentsStatus: 'extracted', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'stale-run', workflow: { runId: 'stale-run', workflowType: 'theme_framework_construction', objective: 'Initialize AI Compute', status: 'running', startedAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:00.000Z' } }, 202)
+      if (path === '/api/theme-framework/runs/stale-run') return json({ status: 'stale', workflowRunId: 'stale-run', candidate })
+      if (path === '/api/theme-framework/runs/stale-run/refresh') return json({ status: 'awaiting_review', workflowRunId: 'fresh-run', refreshedFromRunId: 'stale-run', basedOnRevision: 8 })
+      if (path === '/api/theme-framework/runs/fresh-run') return json({ status: 'awaiting_review', workflowRunId: 'fresh-run', candidate: { ...candidate, basedOnRevision: 8 } })
+      if (path === '/api/workflows/stale-run') return json({ runId: 'stale-run', workflowType: 'theme_framework_construction', objective: 'Initialize AI Compute', status: 'completed', startedAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:01.000Z' })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Workflow' }), { target: { value: 'theme_framework' } })
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), { target: { value: 'initialize compute theme' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    expect((await screen.findAllByText('stale')).length).toBeGreaterThan(0)
+    fireEvent.click(await screen.findByRole('button', { name: 'Refresh to current revision' }))
+    expect(await screen.findByText(/From run stale-run · Knowledge revision 7 → 8/)).toBeTruthy()
+    expect(screen.getByText(/does not include sources added after revision 7/)).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'AI Compute' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Accept framework decisions' })).toBeTruthy()
+    expect(calls.some((call) => call.path.endsWith('/accept'))).toBe(false)
+    const refreshCall = calls.find((call) => call.path.endsWith('/stale-run/refresh'))
+    expect(refreshCall?.init?.method).toBe('POST')
+    expect(JSON.parse(String(refreshCall?.init?.body))).toEqual({})
+  })
+
   it('resumes a persisted Theme Framework review after a fresh Chat mount', async () => {
     const calls: { path: string; init?: RequestInit }[] = []
     const candidate = {

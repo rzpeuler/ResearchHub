@@ -60,6 +60,7 @@ describe('RuntimeClient', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       calls.push({ path: String(input), init })
       if (calls.length === 1) return json(bootstrap)
+      if (String(input).endsWith('/refresh')) return json({ status: 'awaiting_review', workflowRunId: 'fresh-run', refreshedFromRunId: 'old-run', basedOnRevision: 8 })
       if (String(input).endsWith('/accept')) return json({ status: 'committed', workflowRunId: 'run / 1' })
       if (String(input).endsWith('/reject')) return json({ status: 'rejected', workflowRunId: 'run / 1' })
       return json({ status: 'running', workflowRunId: 'run / 1' })
@@ -67,17 +68,23 @@ describe('RuntimeClient', () => {
     const client = new RuntimeClient(fetchMock)
     await client.bootstrap()
     expect((await client.getThemeFrameworkRun('run / 1')).status).toBe('running')
+    const refresh = await client.refreshThemeFrameworkRun('old/run')
+    expect(refresh.workflowRunId).toBe('fresh-run')
     await client.acceptThemeFrameworkRun('run / 1', { 'industry-a': 'include', 'relation-a': 'pending' })
     await client.rejectThemeFrameworkRun('run / 1')
     expect(calls.map((call) => call.path)).toEqual([
       '/api/bootstrap',
       '/api/theme-framework/runs/run%20%2F%201',
+      '/api/theme-framework/runs/old%2Frun/refresh',
       '/api/theme-framework/runs/run%20%2F%201/accept',
       '/api/theme-framework/runs/run%20%2F%201/reject',
     ])
     expect(new Headers(calls[1]?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('a'.repeat(64))
-    expect(JSON.parse(String(calls[2]?.init?.body))).toEqual({ decisions: { 'industry-a': 'include', 'relation-a': 'pending' } })
-    expect(JSON.parse(String(calls[3]?.init?.body))).toEqual({})
+    expect(new Headers(calls[2]?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('a'.repeat(64))
+    expect(calls[2]?.init?.method).toBe('POST')
+    expect(JSON.parse(String(calls[2]?.init?.body))).toEqual({})
+    expect(JSON.parse(String(calls[3]?.init?.body))).toEqual({ decisions: { 'industry-a': 'include', 'relation-a': 'pending' } })
+    expect(JSON.parse(String(calls[4]?.init?.body))).toEqual({})
   })
 
   it('encodes Graph read contracts and never adds a mutation token', async () => {

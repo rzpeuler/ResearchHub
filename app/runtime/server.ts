@@ -524,13 +524,20 @@ export class ResearchHubRuntimeServer {
       started.completion.catch(() => undefined)
       await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) }); return
     }
-    if (/^\/api\/theme-framework\/runs\/[^/]+(?:\/(?:accept|reject))?$/.test(path)) {
+    if (/^\/api\/theme-framework\/runs\/[^/]+(?:\/(?:accept|reject|refresh))?$/.test(path)) {
       const pieces = path.split('/')
       const runId = decodeSegment(pieces[4] ?? '')
       if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(runId) || runId.includes('..')) throw new ApplicationServiceError('invalid_input', 'workflowRunId is invalid')
       const service = this.runtime!.services.themeFrameworkService
       if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme Framework construction requires an active mounted Schema 0.4 Knowledge Base')
       if (method === 'GET' && pieces.length === 5) { await this.sendJson(response, 200, await service.getReviewCandidate(runId)); return }
+      if (method === 'POST' && pieces[5] === 'refresh') {
+        const body = await this.readJson(request, 1_024)
+        assertExactFields(body, [], [], 'Theme Framework refresh request')
+        const result = await service.refresh(runId)
+        const status = result.status === 'conflict' ? 409 : result.status === 'blocked' ? 422 : 200
+        await this.sendJson(response, status, result); return
+      }
       if (method === 'POST' && pieces[5] === 'accept') {
         const body = await this.readJson(request, 32_768)
         assertExactFields(body, [], ['decisions'], 'Theme Framework accept request')
