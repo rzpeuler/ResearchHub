@@ -222,7 +222,7 @@ function decisionsForReview(request: ThemeFrameworkReviewRequest): readonly Them
     const decision = overrides[candidate.candidateId] ?? candidate.recommendation
     const rationale = rationales[candidate.candidateId]
     if (decision !== candidate.recommendation) {
-      if (typeof rationale !== 'string' || rationale.trim().length === 0 || rationale.length > THEME_SCOPE_V04_LIMITS.maxRationaleLength) return 'review_decision_override_requires_rationale'
+      if (typeof rationale !== 'string' || rationale.trim().length === 0 || rationale.trim().length > THEME_SCOPE_V04_LIMITS.maxRationaleLength) return 'review_decision_override_requires_rationale'
     } else if (rationale !== undefined) {
       return 'review_rationale_without_decision_override'
     }
@@ -232,7 +232,7 @@ function decisionsForReview(request: ThemeFrameworkReviewRequest): readonly Them
     candidateId: candidate.candidateId,
     kind: 'independentlyResearchableRationale' in candidate ? 'industry' : 'relation',
     decision: overrides[candidate.candidateId] ?? candidate.recommendation,
-    rationale: rationales[candidate.candidateId] ?? candidate.boundaryRationale,
+    rationale: rationales[candidate.candidateId]?.trim() ?? candidate.boundaryRationale,
     // Only already retained, integrity-verified Source/Raw evidence can be
     // bound to an A4 human-confirmed scope decision. Acquired-but-unpersisted
     // material remains visible to Chat but cannot justify canonical inclusion.

@@ -240,7 +240,7 @@ test('persists a privacy-safe review candidate, reloads it after restart, and co
       /decisionRationales must include a rationale/u,
     )
     assert.equal((await loadKnowledgeBaseManifest(root)).revision, baseRevision)
-    const result = await restarted.accept({ workflowRunId: 'theme-service-restart', decisions: { 'member-b': 'pending' }, decisionRationales: { 'member-b': humanRationale } })
+    const result = await restarted.accept({ workflowRunId: 'theme-service-restart', decisions: { 'member-b': 'pending' }, decisionRationales: { 'member-b': `  ${humanRationale}  ` } })
     assert.equal(result.status, 'committed')
     assert.equal(result.decisionCount, 2)
     const assets = await readCanonicalV04Assets(root)
@@ -255,6 +255,18 @@ test('persists a privacy-safe review candidate, reloads it after restart, and co
       assert.equal(humanDecision?.decision.decision, 'pending')
       assert.equal(humanDecision?.decision.rationale, humanRationale)
     }
+    const normalizedRationaleReplay = await restarted.accept({ workflowRunId: 'theme-service-restart', decisions: { 'member-b': 'pending' }, decisionRationales: { 'member-b': humanRationale } })
+    assert.equal(normalizedRationaleReplay.status, 'already_committed')
+
+    // Simulate a committed accept-intent written by the previous implementation:
+    // it stored only decisions and hashed that map, even when it contained overrides.
+    const intentPath = join(root, 'logs', 'theme-framework', 'reviews', 'theme-service-restart.accept-intent.json')
+    const legacyDecisions: Record<string, 'include' | 'exclude' | 'pending'> = { 'member-b': 'pending' }
+    const legacyPayload = { digest: createHash('sha256').update(JSON.stringify(legacyDecisions), 'utf8').digest('hex'), decisions: legacyDecisions }
+    const legacyBody = { version: 1, type: 'accept-intent', runId: 'theme-service-restart', payload: legacyPayload }
+    await writeFile(intentPath, JSON.stringify({ ...legacyBody, checksum: createHash('sha256').update(JSON.stringify(legacyBody), 'utf8').digest('hex') }))
+    const legacyReplay = await restarted.accept({ workflowRunId: 'theme-service-restart', decisions: legacyDecisions })
+    assert.equal(legacyReplay.status, 'already_committed')
     const differentRationaleReplay = await restarted.accept({ workflowRunId: 'theme-service-restart', decisions: { 'member-b': 'pending' }, decisionRationales: { 'member-b': 'Use a different human reason.' } })
     assert.equal(differentRationaleReplay.status, 'conflict')
     const committed = await restarted.getReviewCandidate('theme-service-restart')

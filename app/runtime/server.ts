@@ -556,7 +556,7 @@ export class ResearchHubRuntimeServer {
           if (!isRecord(body.decisionRationales) || Object.keys(body.decisionRationales).length > 120) throw new ApplicationServiceError('invalid_input', 'decisionRationales must be a bounded candidate rationale map')
           decisionRationales = {}
           for (const [candidateId, rationale] of Object.entries(body.decisionRationales)) {
-            if (!/^[A-Za-z][A-Za-z0-9._-]{0,79}$/u.test(candidateId) || typeof rationale !== 'string' || rationale.trim().length === 0 || rationale.length > THEME_SCOPE_V04_LIMITS.maxRationaleLength) throw new ApplicationServiceError('invalid_input', 'decisionRationales contains an invalid candidate ref or rationale')
+            if (!/^[A-Za-z][A-Za-z0-9._-]{0,79}$/u.test(candidateId) || typeof rationale !== 'string' || rationale.trim().length === 0 || rationale.trim().length > THEME_SCOPE_V04_LIMITS.maxRationaleLength) throw new ApplicationServiceError('invalid_input', 'decisionRationales contains an invalid candidate ref or rationale')
             decisionRationales[candidateId] = rationale
           }
         }

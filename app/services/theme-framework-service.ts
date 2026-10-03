@@ -420,14 +420,20 @@ export class ThemeFrameworkService {
       const candidateEvent = await this.readEvent<PersistedCandidate>(input.workflowRunId, 'candidate')
       if (!candidateEvent) throw new ApplicationServiceError('conflict', 'No persisted review candidate is available')
       const persisted = candidateEvent.payload
-      this.validateDecisionRationalesForCandidate(decisions, decisionRationales, persisted.candidate)
-      const digest = sha256({ decisions, decisionRationales })
+      this.validateDecisionRationalesForCandidate(decisions, decisionRationales, persisted.candidate, false)
+      const legacyDigest = sha256(decisions)
+      const digest = Object.keys(decisionRationales).length === 0 ? legacyDigest : sha256({ decisions, decisionRationales })
       const committed = await this.readEvent<{ themeRef: string; committedRevision: number; decisionCount: number }>(input.workflowRunId, 'committed')
       if (committed) {
         const priorIntent = await this.readEvent<{ digest: string; decisions: Readonly<Record<string, string>>; decisionRationales?: Readonly<Record<string, string>> }>(input.workflowRunId, 'accept-intent')
-        if (priorIntent && priorIntent.payload.digest === digest) return { status: 'already_committed', workflowRunId: input.workflowRunId, themeRef: committed.payload.themeRef, committedRevision: committed.payload.committedRevision, decisionCount: committed.payload.decisionCount }
+        const sameCurrentIntent = priorIntent?.payload.digest === digest
+        const sameLegacyIntent = Object.keys(decisionRationales).length === 0
+          && priorIntent?.payload.decisionRationales === undefined
+          && priorIntent?.payload.digest === legacyDigest
+        if (priorIntent && (sameCurrentIntent || sameLegacyIntent)) return { status: 'already_committed', workflowRunId: input.workflowRunId, themeRef: committed.payload.themeRef, committedRevision: committed.payload.committedRevision, decisionCount: committed.payload.decisionCount }
         return { status: 'conflict', workflowRunId: input.workflowRunId, diagnostics: ['theme_framework_run_already_committed'] }
       }
+      this.validateDecisionRationalesForCandidate(decisions, decisionRationales, persisted.candidate, true)
       if (await this.readTerminal(input.workflowRunId)) return { status: 'conflict', workflowRunId: input.workflowRunId, diagnostics: ['theme_framework_run_is_terminal'] }
       let intent = await this.readEvent<{ digest: string; decisions: Readonly<Record<string, string>>; decisionRationales?: Readonly<Record<string, string>> }>(input.workflowRunId, 'accept-intent')
       if (intent && intent.payload.digest !== digest) return { status: 'conflict', workflowRunId: input.workflowRunId, diagnostics: ['theme_framework_acceptance_intent_differs'] }
@@ -988,10 +994,10 @@ export class ThemeFrameworkService {
       if (!/^[A-Za-z][A-Za-z0-9._-]{0,79}$/u.test(candidateId)
         || typeof rationale !== 'string'
         || rationale.trim().length === 0
-        || rationale.length > THEME_SCOPE_V04_LIMITS.maxRationaleLength) {
+        || rationale.trim().length > THEME_SCOPE_V04_LIMITS.maxRationaleLength) {
         throw new ApplicationServiceError('invalid_input', `decisionRationales must contain candidate IDs and non-empty rationales up to ${THEME_SCOPE_V04_LIMITS.maxRationaleLength} characters`)
       }
-      result[candidateId] = rationale
+      result[candidateId] = rationale.trim()
     }
     return Object.fromEntries(Object.entries(result).sort(([left], [right]) => left.localeCompare(right)))
   }
@@ -1000,6 +1006,7 @@ export class ThemeFrameworkService {
     decisions: Readonly<Record<string, 'include' | 'exclude' | 'pending'>>,
     rationales: Readonly<Record<string, string>>,
     candidate: ThemeFrameworkReviewCandidate,
+    requireOverrideRationale: boolean,
   ): void {
     const all = [...candidate.framework.industryCandidates, ...candidate.framework.relationCandidates]
     const byId = new Map(all.map((item) => [item.candidateId, item]))
@@ -1009,7 +1016,7 @@ export class ThemeFrameworkService {
     for (const item of all) {
       const rationale = rationales[item.candidateId]
       if ((decisions[item.candidateId] ?? item.recommendation) !== item.recommendation) {
-        if (rationale === undefined) throw new ApplicationServiceError('invalid_input', `decisionRationales must include a rationale for overridden candidate ${item.candidateId}`)
+        if (requireOverrideRationale && rationale === undefined) throw new ApplicationServiceError('invalid_input', `decisionRationales must include a rationale for overridden candidate ${item.candidateId}`)
       } else if (rationale !== undefined) {
         throw new ApplicationServiceError('invalid_input', `decisionRationales contains a candidate without a decision override: ${item.candidateId}`)
       }

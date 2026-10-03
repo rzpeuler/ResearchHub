@@ -162,7 +162,7 @@ test('partial human decisions preserve excluded and pending candidates, passing 
   }))
   let committedInput: Parameters<ThemeFrameworkAtomicCommitPort['commitThemeFrameworkAtomically']>[0] | undefined
   const commit: ThemeFrameworkAtomicCommitPort = { commitThemeFrameworkAtomically: async (input) => { committedInput = input; return { status: 'committed', themeRef: 'entity:theme', committedRevision: 8 } } }
-  const result = await reviewThemeFrameworkConstruction({ candidate, disposition: 'accept', decisions: { consumer: 'pending' }, decisionRationales: { consumer: 'Reassess this boundary because accelerator demand makes the downstream segment relevant.' } }, commit)
+  const result = await reviewThemeFrameworkConstruction({ candidate, disposition: 'accept', decisions: { consumer: 'pending' }, decisionRationales: { consumer: '  Reassess this boundary because accelerator demand makes the downstream segment relevant.  ' } }, commit)
   assert.equal(result.status, 'committed')
   assert.ok(committedInput)
   assert.equal(committedInput.decisions.length, 3)
