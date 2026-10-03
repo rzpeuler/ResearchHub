@@ -204,6 +204,24 @@ test('Theme Framework fans out bounded chain facets and explicit AI Compute quer
   })
 })
 
+test('AI Compute title gate recognizes the exact new-type data-center alias', async () => {
+  await withKb(async (root, knowledgeBaseId) => {
+    const registry = new KnowledgeBaseRegistry()
+    const plugin = new FixturePlugin([
+      { id: 'new-type-data-center', title: '新型数据中心建设指南' },
+      { id: 'unrelated-center', title: '新型中心计算规划' },
+    ])
+    const before = await registry.mount(root)
+    const result = await adapter(root, plugin, registry).acquire(request(knowledgeBaseId, before.revision, 8, undefined, 'AI 算力', ''))
+
+    assert.equal(result.status, 'partial', JSON.stringify(result))
+    assert.equal(result.evidence.length, 1)
+    assert.match(result.evidence[0]!.description, /^新型数据中心建设指南/u)
+    assert.ok(result.diagnostics?.includes('source_rejected_title_relevance:fixture-industry-acquisition'))
+    assert.equal((await registry.refresh(root)).revision, before.revision + 1)
+  })
+})
+
 test('Theme Framework query facets remain generic and bounded for other name-only Themes', async () => {
   await withKb(async (root, knowledgeBaseId) => {
     const registry = new KnowledgeBaseRegistry()

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { MiitIndustryResearchPlugin, MIIT_AI_COMPUTE_INFRASTRUCTURE_ANCHOR, MIIT_INDUSTRY_ROUTES, MIIT_PCB_DEFINITION_ANCHORS, validMiitUrl } from '../../../plugins/research-acquisition/miit-industry.ts'
+import { MiitIndustryResearchPlugin, MIIT_AI_COMPUTE_DATA_CENTER_ANCHOR, MIIT_AI_COMPUTE_INFRASTRUCTURE_ANCHOR, MIIT_INDUSTRY_ROUTES, MIIT_PCB_DEFINITION_ANCHORS, validMiitUrl } from '../../../plugins/research-acquisition/miit-industry.ts'
 import { sha256 } from '../../../plugins/research-acquisition/hash.ts'
 
 const req = { industry: { name: 'PCB Manufacturing', aliases: ['Printed Circuit Board', '印制电路板'], searchTerms: ['PCB', '电子信息制造业'] }, asOf: '2026-09-14T00:00:00.000Z', limitPerKind: 8 }
@@ -83,7 +83,7 @@ test('deduplicates normal discovery against an authoritative anchor without losi
   assert.equal(items[0]!.url, anchor)
 })
 
-test('discovers the single bounded AI compute infrastructure anchor only for explicit AI compute targets and respects asOf and limit', async () => {
+test('discovers dated AI compute MIIT anchors only for explicit AI compute targets and respects asOf and limit', async () => {
   const p = new MiitIndustryResearchPlugin({ routes: [], fetchImpl: async () => response('') })
   const aiCompute = await p.discover({ industry: { name: 'AI\u7b97\u529b', aliases: [], searchTerms: [] }, asOf: '2026-10-03T00:00:00.000Z', limitPerKind: 1 })
   assert.equal(aiCompute.length, 1)
@@ -95,10 +95,22 @@ test('discovers the single bounded AI compute infrastructure anchor only for exp
   assert.equal((aiCompute[0]!.metadata as any).anchor, true)
   assert.ok(validMiitUrl(aiCompute[0]!.url))
 
+  const allAnchors = await p.discover({ industry: { name: 'AI\u7b97\u529b', aliases: [], searchTerms: [] }, asOf: '2026-10-03T00:00:00.000Z', limitPerKind: 8 })
+  const dataCenter = allAnchors.find((x) => x.url === MIIT_AI_COMPUTE_DATA_CENTER_ANCHOR.url)!
+  assert.ok(dataCenter)
+  assert.equal(dataCenter.title, MIIT_AI_COMPUTE_DATA_CENTER_ANCHOR.title)
+  assert.equal(dataCenter.publishedAt, '2021-07-14T00:00:00.000Z')
+  assert.equal((dataCenter.metadata as any).discoveryRoute, 'ai-compute-data-center-anchor')
+  assert.equal((dataCenter.metadata as any).anchor, true)
+  assert.ok(validMiitUrl(dataCenter.url))
+
   const beforePublication = await p.discover({ industry: { name: 'AI\u7b97\u529b', searchTerms: [] }, asOf: '2023-10-07T23:59:59.999Z' })
   assert.equal(beforePublication.some((x) => x.url === MIIT_AI_COMPUTE_INFRASTRUCTURE_ANCHOR.url), false)
+  const beforeDataCenterPublication = await p.discover({ industry: { name: 'AI\u7b97\u529b', searchTerms: [] }, asOf: '2021-07-13T23:59:59.999Z' })
+  assert.equal(beforeDataCenterPublication.some((x) => x.url === MIIT_AI_COMPUTE_DATA_CENTER_ANCHOR.url), false)
   const unrelated = await p.discover({ industry: { name: 'Semiconductor Equipment', aliases: ['AI semiconductor'], searchTerms: ['semiconductor equipment'] }, asOf: '2026-10-03T00:00:00.000Z' })
   assert.equal(unrelated.some((x) => (x.metadata as any)?.discoveryRoute === 'ai-compute-infrastructure-anchor'), false)
+  assert.equal(unrelated.some((x) => (x.metadata as any)?.discoveryRoute === 'ai-compute-data-center-anchor'), false)
 })
 
 test('AI compute anchor uses the existing bounded PDF fetch and normalization path', async () => {

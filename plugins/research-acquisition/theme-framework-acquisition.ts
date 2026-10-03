@@ -23,7 +23,7 @@ const THEME_CHAIN_FACETS_ZH = ['产业链', '上游', '下游', '基础设施', 
 const THEME_CHAIN_FACETS_EN = ['value chain', 'upstream', 'downstream', 'infrastructure', 'equipment', 'materials', 'key segments'] as const
 const AI_COMPUTE_THEME_NAMES = new Set(['ai算力', '人工智能算力', 'aicompute', 'artificialintelligencecompute'])
 const AI_COMPUTE_QUERY_ALIASES = ['人工智能算力', 'AI服务器', 'AI芯片', '智算中心', 'AI数据中心', '算力网络', '算力基础设施', '先进封装'] as const
-const AI_COMPUTE_TITLE_ALIASES = ['人工智能算力', 'AI服务器', 'AI芯片', '智算中心', 'AI数据中心', '算力网络', '算力基础设施'] as const
+const AI_COMPUTE_TITLE_ALIASES = ['人工智能算力', 'AI服务器', 'AI芯片', '智算中心', 'AI数据中心', '新型数据中心', '算力网络', '算力基础设施'] as const
 const SUPPORTED_MEDIA_TYPES = new Set(['application/pdf', 'text/html', 'application/xhtml+xml'])
 const TRACKING_PARAMS = new Set(['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'from', 'spm', 'share'])
 
