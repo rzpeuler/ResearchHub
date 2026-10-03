@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { KnowledgeGraphPage } from './KnowledgeGraphPage'
+import { LanguageProvider, useLanguage } from '../../i18n'
 import type { RuntimeClient } from '../../api/runtime-client'
 import type { ThemeWorkspaceCompanyProjection, ThemeWorkspaceIndustryProjection, ThemeWorkspaceProjection } from '../../api/runtime-client'
 
@@ -16,6 +17,15 @@ const industrySections = [
   ['industry_definition', '行业定义与范围'], ['market_size_growth', '市场规模与增长'], ['supply_demand_analysis', '供需分析'], ['industry_chain_analysis', '产业链分析'],
   ['competitive_landscape', '竞争格局'], ['technology_evolution', '技术演进'], ['company_mapping', '重点公司'], ['risk_analysis', '风险分析'],
 ] as const
+
+function LanguageToggle(): React.ReactElement {
+  const { language, setLanguage } = useLanguage()
+  return <button type="button" onClick={() => setLanguage(language === 'zh-CN' ? 'en' : 'zh-CN')}>Toggle language</button>
+}
+
+function renderPage(ui: React.ReactElement) {
+  return render(<LanguageProvider>{ui}</LanguageProvider>)
+}
 
 function overview(themeRef = 'entity:theme-a'): ThemeWorkspaceProjection {
   return { status: 'available', knowledgeBaseId: 'kb', schemaVersion: '0.4', revision: 7, theme: { ref: themeRef, name: themeRef.endsWith('a') ? '主题 A' : '主题 B', themeGroupRef: 'theme-group:default' }, graph: { nodes: [{ ref: 'entity:industry-a', name: '行业 A', importance: 'core' }, { ref: 'entity:industry-b', name: '行业 B', importance: 'material' }], edges: [{ ref: 'relation:a-b', relationType: 'upstream_of', sourceRef: 'entity:industry-b', targetRef: 'entity:industry-a' }], nodeTotal: 2, edgeTotal: 1, nodeLimit: 60, edgeLimit: 120, truncated: false }, scope: { includedIndustryCount: 2, includedRelationCount: 1, pendingCount: 0, excludedCount: 0, basedOnRevision: 7 }, responseBounds: { maxBytes: 1_000_000, serializedBytes: 500, truncated: false } }
@@ -44,15 +54,36 @@ function makeClient(overrides: Partial<RuntimeClient> = {}): RuntimeClient {
 
 describe('KnowledgeGraphPage', () => {
   beforeEach(() => {
+    window.localStorage.removeItem('researchhub.language')
     window.history.replaceState({}, '', '/graph')
     Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: class { observe() {} unobserve() {} disconnect() {} } })
     Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }) })
   })
   afterEach(() => cleanup())
 
+  it('switches graph controls and section titles between Chinese and English while preserving Knowledge names', async () => {
+    const client = makeClient()
+    render(<LanguageProvider><LanguageToggle /><KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} /></LanguageProvider>)
+    fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
+    expect(await screen.findByText('产业图谱')).toBeTruthy()
+    fireEvent.click(await screen.findByText('暂无内容的章节（8）'))
+    expect(await screen.findByText('供需分析')).toBeTruthy()
+    expect(client.getThemeWorkspaceOverview).toHaveBeenCalledTimes(1)
+    expect(client.getThemeWorkspaceIndustry).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle language' }))
+    expect(await screen.findByText('Industry graph')).toBeTruthy()
+    expect(await screen.findByText('Supply and demand')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '主题 A' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '行业 A' }).getAttribute('aria-pressed')).toBe('true')
+    expect(client.getThemeWorkspaceOverview).toHaveBeenCalledTimes(1)
+    expect(client.getThemeWorkspaceIndustry).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle language' }))
+    expect(await screen.findByText('产业图谱')).toBeTruthy()
+  })
+
   it('keeps Theme graph industry selection separate from company selection and restores last company per industry', async () => {
     const client = makeClient()
-    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    renderPage(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
     fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
     await screen.findByRole('button', { name: 'company-a' })
     await screen.findByText('entity:company-a 的详细公司事实')
@@ -78,7 +109,7 @@ describe('KnowledgeGraphPage', () => {
 
   it('shows graph relation labels in Chinese with source-to-target direction intact', async () => {
     const client = makeClient()
-    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    renderPage(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
     fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
     await screen.findByText('关系明细')
     const relationDetails = screen.getByText('关系明细').closest('details')
@@ -93,7 +124,7 @@ describe('KnowledgeGraphPage', () => {
       getThemeWorkspaceOverview: vi.fn().mockImplementation((themeRef: string) => themeRef === 'entity:theme-a' ? delayedA : Promise.resolve({ ...overview(themeRef), graph: { ...overview(themeRef).graph, nodes: [{ ref: 'entity:industry-theme-b', name: '行业 B 专属' }], edges: [], nodeTotal: 1, edgeTotal: 0 } })),
       getThemeWorkspaceIndustry: vi.fn().mockImplementation((_themeRef: string, industryRef: string) => Promise.resolve(industryProjection(industryRef, []))),
     })
-    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    renderPage(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
     fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
     fireEvent.click(screen.getByRole('button', { name: '主题 B' }))
     await screen.findByRole('button', { name: '行业 B 专属' })
@@ -104,10 +135,10 @@ describe('KnowledgeGraphPage', () => {
 
   it('shows the empty and no Knowledge Base states without inventing graph content', async () => {
     const client = makeClient({ getThemeWorkspaceOverview: vi.fn().mockResolvedValue({ ...overview(), graph: { ...overview().graph, nodes: [], edges: [], nodeTotal: 0, edgeTotal: 0 } }) })
-    const { rerender } = render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    const { rerender } = renderPage(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
     fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
     expect(await screen.findByText('尚无已确认的行业节点')).toBeTruthy()
-    rerender(<KnowledgeGraphPage client={client} />)
+    rerender(<LanguageProvider><KnowledgeGraphPage client={client} /></LanguageProvider>)
     expect(screen.getByText('没有已挂载的 Knowledge Base')).toBeTruthy()
   })
 
@@ -115,7 +146,7 @@ describe('KnowledgeGraphPage', () => {
     let resolveIndustry: ((value: ThemeWorkspaceIndustryProjection) => void) | undefined
     const pendingIndustry = new Promise<ThemeWorkspaceIndustryProjection>((resolve) => { resolveIndustry = resolve })
     const client = makeClient({ getThemeWorkspaceIndustry: vi.fn().mockReturnValue(pendingIndustry) })
-    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    renderPage(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
     fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
     expect(await screen.findByText('读取产业信息…')).toBeTruthy()
     expect(screen.queryByText('行业内容暂不可用')).toBeNull()
@@ -130,7 +161,7 @@ describe('KnowledgeGraphPage', () => {
       getThemeWorkspaceOverview: vi.fn().mockResolvedValue({ ...base, responseBounds: { ...base.responseBounds, truncated: true } }),
       getThemeWorkspaceIndustry: vi.fn().mockResolvedValue({ ...industryProjection('entity:industry-a', []), sections: { ...emptyContent, omittedRestrictedCount: 2 } }),
     })
-    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    renderPage(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
     fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
     expect(await screen.findByText(/响应体积上限已截断/)).toBeTruthy()
     expect(await screen.findByText(/有 2 项知识因来源访问权限或有效期限制未展示/)).toBeTruthy()
@@ -144,7 +175,7 @@ describe('KnowledgeGraphPage', () => {
         return Promise.resolve({ ...result, sections: { ...result.sections, coreViews: { items: views, defaultCount: 3, total: 5, truncated: false } } })
       }),
     })
-    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    renderPage(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
     fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
     fireEvent.click(await screen.findByRole('button', { name: 'company-a' }))
     await waitFor(() => expect(client.getThemeWorkspaceCompany).toHaveBeenLastCalledWith('entity:theme-a', 'entity:industry-a', 'entity:company-a', { expectedRevision: 7 }))
@@ -172,7 +203,7 @@ describe('KnowledgeGraphPage', () => {
       ...industry,
       sections: { ...emptyContent, sectionCatalog: [{ id: 'supply_demand_analysis', title: '供需分析' }, { id: 'risk_analysis', title: '风险分析' }], factsBySection: { supply_demand_analysis: [chapterFact], risk_analysis: [] }, unclassifiedFacts: [looseFact], classification: { status: 'partial', method: 'reasoning_executor', revision: 7, classifiedCount: 1, unclassifiedCount: 1 } },
     }) })
-    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    renderPage(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
     fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
     expect(await screen.findByText('服务器需求保持增长。')).toBeTruthy()
     expect(screen.getByText('仍需跟踪行业变化。')).toBeTruthy()
@@ -187,7 +218,7 @@ describe('KnowledgeGraphPage', () => {
 
   it('folds empty industry and company chapters into compact expandable summaries', async () => {
     const client = makeClient()
-    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    renderPage(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
     fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
     const emptyIndustrySections = (await screen.findByText('暂无内容的章节（8）')).closest('details')
     expect(emptyIndustrySections?.open).toBe(false)
@@ -222,7 +253,7 @@ describe('KnowledgeGraphPage', () => {
       ], rowTotal: 2, truncated: false,
     }
     const client = makeClient({ getThemeWorkspaceIndustry: vi.fn().mockResolvedValue({ ...industry, sections: { ...emptyContent, competition } }) })
-    const { container } = render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    const { container } = renderPage(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
     fireEvent.click(await screen.findByRole('button', { name: '主题 A' }))
     const rowA = await screen.findByRole('row', { name: /company-a/ })
     expect(rowA.textContent).toContain('1,280 亿元')
@@ -242,7 +273,7 @@ describe('KnowledgeGraphPage', () => {
   it('accepts a legacy root URL parameter when it identifies a Theme ref', async () => {
     window.history.replaceState({}, '', '/graph?root=entity%3Atheme-a')
     const client = makeClient()
-    render(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
+    renderPage(<KnowledgeGraphPage knowledgeBase={{ knowledgeBaseId: 'kb', rootRef: 'kb:root', status: 'mounted', schemaVersion: '0.4', storageFormatVersion: '0.4', revision: 7, counts: {} }} client={client} />)
     await waitFor(() => expect(client.getThemeWorkspaceOverview).toHaveBeenCalledWith('entity:theme-a'))
     expect(window.location.search).toContain('root=entity%3Atheme-a')
   })

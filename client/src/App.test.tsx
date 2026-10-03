@@ -24,6 +24,7 @@ describe('Homepage shell', () => {
   const originalFetch = globalThis.fetch
   const originalEventSource = globalThis.EventSource
   beforeEach(() => {
+    window.localStorage.setItem('researchhub.language', 'en')
     window.history.replaceState({}, '', '/')
     const FakeEventSource = class { onopen: ((event: Event) => void) | null = null; onerror: ((event: Event) => void) | null = null; close = vi.fn(); addEventListener = vi.fn(); removeEventListener = vi.fn() }
     globalThis.EventSource = FakeEventSource as unknown as typeof EventSource
@@ -41,6 +42,28 @@ describe('Homepage shell', () => {
     }) as typeof fetch
   })
   afterEach(() => { cleanup(); window.history.replaceState({}, '', '/'); globalThis.fetch = originalFetch; globalThis.EventSource = originalEventSource; Object.defineProperty(window, 'EventSource', { configurable: true, value: originalEventSource }) })
+
+  it('defaults to Chinese and switches visible App text with persistent language selection', async () => {
+    window.localStorage.removeItem('researchhub.language')
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: '从一个研究问题开始' })).toBeTruthy()
+    expect(document.documentElement.lang).toBe('zh-CN')
+    fireEvent.click(screen.getByRole('button', { name: 'EN' }))
+    expect(await screen.findByRole('heading', { name: 'Start with a research question' })).toBeTruthy()
+    expect(window.localStorage.getItem('researchhub.language')).toBe('en')
+    expect(document.documentElement.lang).toBe('en')
+  })
+
+  it('keeps the language switch usable when localStorage writes are unavailable', async () => {
+    window.localStorage.removeItem('researchhub.language')
+    const storageWrite = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage disabled') })
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: '从一个研究问题开始' })).toBeTruthy()
+    expect(() => fireEvent.click(screen.getByRole('button', { name: 'EN' }))).not.toThrow()
+    expect(await screen.findByRole('heading', { name: 'Start with a research question' })).toBeTruthy()
+    expect(document.documentElement.lang).toBe('en')
+    storageWrite.mockRestore()
+  })
 
   it('loads conversation UI in no-KB mode without rendering the runtime token', async () => {
     render(<App />)
@@ -537,7 +560,8 @@ describe('Homepage shell', () => {
     expect(screen.getByRole('link', { name: 'Reports' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Run Research' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Reviews' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('link', { name: 'Knowledge Graph' }))
+    fireEvent.click(screen.getByRole('button', { name: '中文' }))
+    fireEvent.click(screen.getByRole('link', { name: '知识图谱' }))
     expect(await screen.findByRole('heading', { name: '主题工作台' })).toBeTruthy()
     expect(screen.getByText('没有已挂载的 Knowledge Base')).toBeTruthy()
     expect(screen.queryByRole('canvas')).toBeNull()
