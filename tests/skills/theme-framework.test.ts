@@ -211,6 +211,24 @@ test("semantic transport omits an empty optional Industry enum but preserves non
   assert.deepEqual(priorContract.properties.relationCandidates.items.properties.priorDecisionId, { type: "string", pattern: "^[A-Za-z][A-Za-z0-9._-]{0,79}$" });
 });
 
+test("first semantic instruction surveys chain breadth without forcing unsupported links", async () => {
+  let instruction = "";
+  const executor: ReasoningExecutor = {
+    capabilities: () => ({ maxContextTokens: 4000, maxOutputTokens: 2000, structuredOutputSupport: true, maxConcurrency: 1 }),
+    execute: async (request) => { instruction = request.instruction; return { operation: request.operation, output: output() }; },
+  };
+
+  assert.equal((await executeThemeFramework(input, executor)).status, "complete");
+  assert.match(instruction, /upstream and downstream activities/u);
+  assert.match(instruction, /cross-chain connections/u);
+  assert.match(instruction, /independently researchable infrastructure or service activities/u);
+  assert.match(instruction, /adjacent branches that may warrant exclusion/u);
+  assert.match(instruction, /include a Relation only when supplied evidence supports the relationship and its direction/u);
+  assert.match(instruction, /pending with empty evidenceRefs and a specific coverageGaps entry/u);
+  assert.match(instruction, /Include and exclude recommendations must be supported by supplied evidence/u);
+  assert.doesNotMatch(instruction, /AI Compute|consumer electronics|data center|semiconductor/u);
+});
+
 test("semantic executor diagnostics expose only the safe error code", async () => {
   const result = await executeThemeFramework(input, {
     capabilities: () => ({ maxContextTokens: 4000, maxOutputTokens: 2000, structuredOutputSupport: true, maxConcurrency: 1 }),

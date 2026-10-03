@@ -137,7 +137,15 @@ export async function executeThemeFramework(
         operation: "theme_framework_semantic",
         instruction: repair
           ? `Repair the previous Theme Framework result. The deterministic validator reported ${priorDiagnostic}. Use only the supplied Theme, bounded Knowledge, evidence, and prior decision references. Fix malformed or unsupported output; do not invent evidence or relationships. Return one strict JSON object.`
-          : "Build a bounded, evidence-grounded Theme Framework candidate result. Choose independently researchable Industry activities at a consistent granularity. Decide Theme relevance separately from whether an economic relationship is true. Use only the provided evidence refs and existing Industry refs. Mark uncertainty pending. Preserve true cross-chain edges, allow related standalone infrastructure nodes, and do not add edges merely to connect every node. For upstream_of, sourceIndustryRef is upstream and targetIndustryRef downstream; for depends_on, sourceIndustryRef is the dependent activity and targetIndustryRef its dependency. Do not use fixed-hop expansion. Do not create canonical IDs, invoke another Skill, or write Knowledge. Return one strict JSON object.",
+          : [
+              "Build a bounded, evidence-grounded Theme Framework candidate result. Choose independently researchable Industry activities at a consistent granularity.",
+              "Deliberately assess important upstream and downstream activities, cross-chain connections, related but independently researchable infrastructure or service activities, and adjacent branches that may warrant exclusion.",
+              "A cross-chain or standalone activity need not have an edge to the main chain; include a Relation only when supplied evidence supports the relationship and its direction.",
+              "Decide Theme relevance separately from whether an economic relationship is true. Include and exclude recommendations must be supported by supplied evidence; never invent facts or edges to complete a chain.",
+              "When a potentially relevant independent activity lacks direct evidence, you may return it as pending with empty evidenceRefs and a specific coverageGaps entry. State the unresolved question without presenting the activity or its relationships as established facts.",
+              "Use only provided evidence refs and existing Industry refs. Mark uncertainty pending. For upstream_of, sourceIndustryRef is upstream and targetIndustryRef downstream; for depends_on, sourceIndustryRef is the dependent activity and targetIndustryRef its dependency.",
+              "Do not use fixed-hop expansion. Do not create canonical IDs, invoke another Skill, or write Knowledge. Return one strict JSON object.",
+            ].join(" "),
         input: repair
           ? {
               context: boundedInput(input),
