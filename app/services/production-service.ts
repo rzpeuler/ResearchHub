@@ -36,6 +36,8 @@ export interface ProductionServiceOptions {
   readonly workspaceRoot?: string
   readonly cwd?: string
   readonly reasoningExecutor: ReasoningExecutor
+  /** Optional, lazy executor used only by Schema 0.4 raw-document previews. */
+  readonly rawDocumentPreviewReasoningExecutorFactory?: () => Promise<ReasoningExecutor>
   readonly workflowService: WorkflowService
   readonly workflowRunner?: typeof runRawDocumentKnowledgeIngestion
   readonly rawDocumentPreviewRunner?: typeof runRawDocumentKnowledgePreviewV04
@@ -108,7 +110,26 @@ export class ProductionService {
     this.options.workflowService.register({ runId: input.workflowRunId, workflowType: 'raw_document_knowledge_preview_v04', objective: input.originalFilename ?? input.workspaceFile ?? 'ResearchHub V0.4 document preview' })
     const onCallerAbort = () => { try { this.options.workflowService.cancelWorkflow(input.workflowRunId) } catch { /* the run may already be terminal */ } }
     callerSignal?.addEventListener('abort', onCallerAbort, { once: true })
-    const completion = this.options.workflowService.start(input.workflowRunId, async (activeSignal): Promise<WorkflowOutcome & { readonly workflow: RawDocumentPreviewWorkflowResultV04 }> => {
+    const completion = (async (): Promise<ApplicationRawDocumentPreviewV04> => {
+      let previewReasoningExecutor: ReasoningExecutor
+      try {
+        previewReasoningExecutor = this.options.rawDocumentPreviewReasoningExecutorFactory === undefined
+          ? this.options.reasoningExecutor
+          : await this.options.rawDocumentPreviewReasoningExecutorFactory()
+      } catch {
+        if (callerSignal?.aborted) {
+          this.options.workflowService.markAuthoritativeTerminal(input.workflowRunId, 'cancelled', { summary: 'V0.4 raw-document preview was cancelled' })
+          const cancelled = cancelledV04Preview(input.workflowRunId)
+          this.rawDocumentPreviewResults.set(input.workflowRunId, cancelled)
+          return cancelled
+        }
+        const statusNote = 'The configured raw-document preview reasoning executor is unavailable.'
+        this.options.workflowService.markAuthoritativeTerminal(input.workflowRunId, 'blocked', { summary: statusNote, errorSummary: statusNote })
+        const blocked: ApplicationRawDocumentPreviewV04 = { runId: input.workflowRunId, status: 'blocked', candidateGroups: [], committable: false, errorSummary: statusNote, statusNote }
+        this.rawDocumentPreviewResults.set(input.workflowRunId, blocked)
+        return blocked
+      }
+      return this.options.workflowService.start(input.workflowRunId, async (activeSignal): Promise<WorkflowOutcome & { readonly workflow: RawDocumentPreviewWorkflowResultV04 }> => {
       const combined = combineSignals(callerSignal, activeSignal)
       try {
         if (combined.signal.aborted) throw new ApplicationServiceError('cancelled', 'Workflow was cancelled before start')
@@ -116,9 +137,9 @@ export class ProductionService {
         const documentInput: DocumentInputRef = hasText
           ? { type: 'text', text: input.text!, originalFilename: input.originalFilename ?? 'researchhub-prompt.txt', mediaType: input.mediaType ?? 'text/plain' }
           : { type: 'file', reference: await this.resolveWorkspaceFile(input.workspaceFile!) }
-        const executor: ReasoningExecutor = { capabilities: () => this.options.reasoningExecutor.capabilities(), execute: async (request) => {
+        const executor: ReasoningExecutor = { capabilities: () => previewReasoningExecutor.capabilities(), execute: async (request) => {
           if (combined.signal.aborted) throw new ApplicationServiceError('cancelled', 'Workflow was cancelled')
-          const signalAware = this.options.reasoningExecutor as ReasoningExecutor & { execute(request: Parameters<ReasoningExecutor['execute']>[0], signal?: AbortSignal): ReturnType<ReasoningExecutor['execute']> }
+          const signalAware = previewReasoningExecutor as ReasoningExecutor & { execute(request: Parameters<ReasoningExecutor['execute']>[0], signal?: AbortSignal): ReturnType<ReasoningExecutor['execute']> }
           const response = await signalAware.execute(request, combined.signal)
           if (combined.signal.aborted) throw new ApplicationServiceError('cancelled', 'Workflow was cancelled')
           return response
@@ -145,20 +166,21 @@ export class ProductionService {
         if (combined.signal.aborted || activeSignal.aborted || callerSignal?.aborted) throw new ApplicationServiceError('cancelled', 'V0.4 raw-document preview was cancelled')
         throw new ApplicationServiceError('failed', 'V0.4 raw-document preview failed during a bounded processing stage')
       } finally { combined.dispose() }
-    }).then(async ({ workflow }) => {
+      }).then(async ({ workflow }) => {
       const provisional = projectV04Preview(input.workflowRunId, workflow)
       const verified = workflow.previewSnapshot.committable ? await this.readRawDocumentKnowledgePreviewV04(input.workflowRunId) : undefined
       const result = verified ?? (provisional.committable ? { ...provisional, committable: false, candidateGroups: [], statusNote: 'Durable preview verification was unavailable.' } : provisional)
       this.rawDocumentPreviewResults.set(input.workflowRunId, result)
       return result
-    }).catch((error) => {
+      }).catch((error) => {
       if (error instanceof ApplicationServiceError && error.code === 'cancelled') {
         const result = cancelledV04Preview(input.workflowRunId)
         this.rawDocumentPreviewResults.set(input.workflowRunId, result)
         return result
       }
       return Promise.reject(error)
-    }).finally(() => callerSignal?.removeEventListener('abort', onCallerAbort))
+      }).finally(() => callerSignal?.removeEventListener('abort', onCallerAbort))
+    })()
     if (callerSignal?.aborted) this.options.workflowService.cancelWorkflow(input.workflowRunId)
     completion.catch(() => undefined)
     return { runId: input.workflowRunId, completion }

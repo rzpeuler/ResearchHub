@@ -1,7 +1,7 @@
 import { join, resolve } from 'node:path'
 import { getAgentDir, ModelRuntime, SessionManager } from '@earendil-works/pi-coding-agent'
 import { PiReasoningExecutor } from '../../plugins/reasoning/pi/executor.ts'
-import { createIndustryProductionReasoningExecutor, createThemeFrameworkProductionReasoningExecutor, selectProductionReasoningModel } from '../pi/model-selection.ts'
+import { createCodexCliLunaReasoningExecutor, createIndustryProductionReasoningExecutor, createThemeFrameworkProductionReasoningExecutor, selectProductionReasoningModel } from '../pi/model-selection.ts'
 import { KnowledgeService } from '../services/knowledge-service.ts'
 import { KnowledgeGraphService } from '../services/knowledge-graph-service.ts'
 import { KnowledgeTopicProjectionService } from '../services/knowledge-topic-projection.ts'
@@ -138,10 +138,12 @@ export class ResearchHubApplicationRuntime {
     let thesisDecisionService: ThesisDecisionService | undefined
     let thesisCriterionService: ThesisCriterionService | undefined
     let themeScopeImpactService: ThemeScopeImpactService | undefined
+    let isSchema04KnowledgeBase = false
     if (mountedKnowledgeBaseRoot !== undefined) {
       try {
         const manifest = await loadKnowledgeBaseManifest(mountedKnowledgeBaseRoot)
         if (manifest.schemaVersion === '0.4' && manifest.storageFormatVersion === '1') {
+          isSchema04KnowledgeBase = true
           thesisQueryService = new ThesisQueryService(mountedKnowledgeBaseRoot)
           thesisDecisionService = new ThesisDecisionService({ mountedKnowledgeBaseRoot })
           if (manifest.status === 'active') {
@@ -152,7 +154,10 @@ export class ResearchHubApplicationRuntime {
       } catch { /* Thesis projections and decisions require a readable Schema 0.4 Knowledge Base. */ }
     }
     const workflowService = new WorkflowService()
-    const productionService = new ProductionService({ mountedKnowledgeBaseRoot, workspaceRoot, cwd, reasoningExecutor, workflowService, ...(themeScopeImpactService === undefined ? {} : { themeScopeImpactChecker: themeScopeImpactService }) })
+    const rawDocumentPreviewReasoningExecutorFactory = isSchema04KnowledgeBase && options.reasoningExecutor === undefined
+      ? () => createCodexCliLunaReasoningExecutor({ capabilities: reasoningExecutor.capabilities() })
+      : undefined
+    const productionService = new ProductionService({ mountedKnowledgeBaseRoot, workspaceRoot, cwd, reasoningExecutor, workflowService, ...(rawDocumentPreviewReasoningExecutorFactory === undefined ? {} : { rawDocumentPreviewReasoningExecutorFactory }), ...(themeScopeImpactService === undefined ? {} : { themeScopeImpactChecker: themeScopeImpactService }) })
     let researchService = options.researchService
     let themeFrameworkService = options.themeFrameworkService
     const akshare = new AkshareDataAdapter()

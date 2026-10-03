@@ -49,8 +49,8 @@ async function fixture(schema: '0.3' | '0.4', run: (root: string) => Promise<voi
   } finally { await rm(root, { recursive: true, force: true }) }
 }
 
-function service(root: string, reasoningExecutor: ReasoningExecutor = new MockReasoningExecutor({ capabilities: caps, responses: { understandAndPlan: plan, extractKnowledge: extraction } }), rawDocumentPreviewRunner: typeof runRawDocumentKnowledgePreviewV04 = runRawDocumentKnowledgePreviewV04, workflowService = new WorkflowService(), snapshotStore?: RawDocumentPreviewSnapshotStoreV04, documentParser: DocumentParser = parser, impactChecker?: ThemeScopeImpactChecker, acceptanceRunner: typeof acceptRawDocumentV04Candidates = acceptRawDocumentV04Candidates) {
-  return new ProductionService({ mountedKnowledgeBaseRoot: root, reasoningExecutor, workflowService, rawDocumentPreviewDocumentResolver: new DocumentInputResolver({ documentParser }), rawDocumentPreviewRunner, rawDocumentCandidateAcceptanceRunner: acceptanceRunner, ...(snapshotStore === undefined ? {} : { rawDocumentPreviewSnapshotStore: snapshotStore }), ...(impactChecker === undefined ? {} : { themeScopeImpactChecker: impactChecker }) })
+function service(root: string, reasoningExecutor: ReasoningExecutor = new MockReasoningExecutor({ capabilities: caps, responses: { understandAndPlan: plan, extractKnowledge: extraction } }), rawDocumentPreviewRunner: typeof runRawDocumentKnowledgePreviewV04 = runRawDocumentKnowledgePreviewV04, workflowService = new WorkflowService(), snapshotStore?: RawDocumentPreviewSnapshotStoreV04, documentParser: DocumentParser = parser, impactChecker?: ThemeScopeImpactChecker, acceptanceRunner: typeof acceptRawDocumentV04Candidates = acceptRawDocumentV04Candidates, rawDocumentPreviewReasoningExecutorFactory?: () => Promise<ReasoningExecutor>) {
+  return new ProductionService({ mountedKnowledgeBaseRoot: root, reasoningExecutor, workflowService, rawDocumentPreviewDocumentResolver: new DocumentInputResolver({ documentParser }), rawDocumentPreviewRunner, rawDocumentCandidateAcceptanceRunner: acceptanceRunner, ...(snapshotStore === undefined ? {} : { rawDocumentPreviewSnapshotStore: snapshotStore }), ...(impactChecker === undefined ? {} : { themeScopeImpactChecker: impactChecker }), ...(rawDocumentPreviewReasoningExecutorFactory === undefined ? {} : { rawDocumentPreviewReasoningExecutorFactory }) })
 }
 
 test('V0.4 service returns a durable candidate preview and accepts only explicitly selected IDs', async () => {
@@ -102,6 +102,35 @@ test('V0.4 service returns a durable candidate preview and accepts only explicit
     const noWrite = await subject.acceptRawDocumentV04Candidates({ previewWorkflowRunId: started.runId, acceptedCandidateIds: [] })
     assert.equal(noWrite.themeScopeImpact.status, 'not_triggered')
     assert.equal(receipts.length, checksBeforeNoWrite)
+  })
+})
+
+test('V0.4 preview lazily uses the preview-only executor factory and blocks when it is unavailable', async () => {
+  await fixture('0.4', async (root) => {
+    let factoryCalls = 0
+    const previewExecutor = new MockReasoningExecutor({ capabilities: caps, responses: { understandAndPlan: plan, extractKnowledge: extraction } })
+    const baseExecutor: ReasoningExecutor = { capabilities: () => caps, async execute(): Promise<ReasoningResult> { throw new Error('base executor should not be used') } }
+    const subject = service(root, baseExecutor, undefined, new WorkflowService(), undefined, parser, undefined, undefined, async () => { factoryCalls++; return previewExecutor })
+    assert.equal(factoryCalls, 0)
+    const started = subject.startRawDocumentKnowledgePreviewV04({ workflowRunId: 'preview-executor-factory', text: 'AI computing demand is increasing. DO_NOT_RETURN_RAW_TEXT', sourceMetadata, rights })
+    const preview = await started.completion
+    assert.equal(factoryCalls, 1)
+    assert.deepEqual(previewExecutor.calls.map((call) => call.operation), ['understandAndPlan', 'extractKnowledge'])
+    assert.equal(preview.status, 'preview_ready', JSON.stringify(preview))
+    assert.equal(preview.committable, true)
+  })
+
+  await fixture('0.4', async (root) => {
+    const workflowService = new WorkflowService()
+    let runnerCalled = false
+    const subject = service(root, undefined, async () => { runnerCalled = true; throw new Error('preview must not run') }, workflowService, undefined, parser, undefined, undefined, async () => { throw new Error('Codex CLI unavailable') })
+    const started = subject.startRawDocumentKnowledgePreviewV04({ workflowRunId: 'preview-executor-blocked', text: 'AI computing demand is increasing.', sourceMetadata, rights })
+    const preview = await started.completion
+    assert.equal(preview.status, 'blocked')
+    assert.equal(preview.committable, false)
+    assert.match(preview.errorSummary ?? '', /reasoning executor is unavailable/u)
+    assert.equal(workflowService.getWorkflowStatus(started.runId)?.status, 'blocked')
+    assert.equal(runnerCalled, false)
   })
 })
 
