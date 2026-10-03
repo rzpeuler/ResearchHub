@@ -12,7 +12,7 @@
 |---|---|---|
 | A1–A2 | Schema 0.4 competition Module 契约；Gateway 将行业研究的表格提案解析为 canonical Module 写入，并保留公司、证据及度量口径约束。 | `knowledge/schema/`、`knowledge/production/` |
 | A3–A4 | 默认 ThemeGroup、Theme 创建／管理及范围决定 ledger；include／exclude／pending 按 revision 和证据持久化，纳入范围与 canonical exposure 经 ChangeSet／Writer 提交。 | `knowledge/production/theme-management-v04.ts`、`knowledge/governance/theme-scope-*`、`knowledge/writer/writer-v04.ts` |
-| A5 | Chat 文件上传可走 Schema 0.4 Raw／Source 与 Knowledge Production 路径，上传本身不要求 Theme。 | `app/runtime/`、`app/services/`、`client/` |
+| A5 | Chat 文件上传可走 Schema 0.4 Raw／Source 与 Knowledge Production 路径，上传本身不要求 Theme。默认挂载 Schema 0.4 KB 且未注入自定义 executor 时，Raw preview 在首次运行时惰性创建专用 Codex CLI `gpt-6-luna` high executor；executor 不可用时 Workflow 明确 blocked。 | `app/runtime/application-runtime.ts`、`app/pi/model-selection.ts`、`app/services/production-service.ts`、`client/` |
 | B1–B2 | Theme Framework Skill 与构建 Workflow；按名称创建 Theme 候选，研究边界节点／关系，Chat 展示持久化候选并支持人工逐项决定，接受后再经受治理写入。推理通过专用 Codex CLI `gpt-6-luna` high 执行。 | `skills/theme-framework/`、`workflows/theme-framework-construction/`、`app/services/theme-framework-service.ts`、`client/` |
 | C1–C3 | Industry Research 输出可更新的 competition landscape；Theme workspace 只读投影按已确认范围组织图谱和研究章节；Industry／Company 研究结果暴露本轮 created/updated refs 与 revision，供后续影响检查使用。 | `workflows/industry-research/`、`app/services/theme-workspace-projection.ts`、`app/services/research-service.ts` |
 | D1–D2 | `/graph` 主题工作台及 Chat 上传交互；图谱范围由已确认 Theme 决定，Theme 目录、图、产业／公司信息和观点／时间链联动。上传支持 Chat 输入区，不再依赖常驻附件侧栏。 | `app/runtime/server.ts`、`app/services/theme-workspace-projection.ts`、`client/` |
@@ -23,6 +23,7 @@
 写接口要求 Runtime token 和匹配的 Origin；受 token 保护的敏感 GET 要求 Runtime token。此类 GET 若未携带 Origin，服务端以配置的 expected Origin 校验；若请求显式提供了跨 Origin 值则拒绝。当前实现包括：
 
 - `POST /api/theme-framework/start`：按 Theme 名称启动构建 Workflow。
+- `GET /api/theme-framework/reviews?limit=...`：列出已持久化的 Theme Framework 审阅，按 run ID 最新优先排序；可通过下方详情读取路由恢复待审阅运行。
 - `GET /api/theme-framework/runs/:runId`：读取候选；`POST .../accept` 与 `POST .../reject`：确认或拒绝首次框架。
 - `GET /api/theme-scope-impact?limit=...`、`GET /api/theme-scope-impact/records/:receiptKey`：读取影响提案收件箱及记录。
 - `POST /api/theme-scope-impact/records/:receiptKey/decisions`：对记录中的全部未 dismiss 提案提交原子批量决定，决定为 include、exclude 或 pending。
@@ -32,7 +33,7 @@ Theme Framework 与 Theme scope 接口由 `app/runtime/server.ts` 注册。浏�
 
 ## 可复核验证
 
-在本记录编写时的 `HEAD=3160f77` 上独立执行：
+此前在 `HEAD=3160f77` 上独立执行：
 
 - `npm run typecheck` — 通过（`tsc --noEmit`）。
 - `npm run client:typecheck` — 通过（客户端 TypeScript 检查）。
@@ -42,8 +43,8 @@ Theme Framework 与 Theme scope 接口由 `app/runtime/server.ts` 注册。浏�
 
 - 隔离的空 Schema 0.4 KB 已从 bounded acquisition 获得一条相关 CPCA Source/Raw。Theme Framework fix3 产出 3 个待人工处理节点、0 条关系；这不是已接受的 canonical 产业网络。
 - 本轮资料获取中 Eastmoney 连接以 socket closed 失败，MIIT 与政府来源返回 0 项。当前真实运行不足以证明完整上下游覆盖、交叉关系或独立节点质量。
-- 浏览器复核确认：修复后新建 Chat 的 Theme scope 收件箱可正常加载，不再出现认证错误；真实 KB 的 `/graph` 显示空 Theme 状态，等待人工确认。这只验证了空状态和收件箱加载，没有验证已确认产业图谱。
-- 用户本机西部证券 PDF 的 AI 处理／衍生知识／保留权限尚未得到确认，因此尚未解析并写入该 PDF，也没有真实 PDF 知识写入证据。
+- 浏览器复核确认：修复后新建 Chat 的 Theme scope 收件箱可正常加载，不再出现认证错误；Theme Framework 持久化审阅列表中 fix3、fix2 按最新优先显示，run 后缀可区分条目并恢复待审阅运行。真实 KB 的 `/graph` 显示空 Theme 状态，等待人工确认。这只验证了列表／恢复入口和空状态，没有验证已确认产业图谱。
+- 用户本机西部证券 PDF 的 AI 处理／衍生知识／保留权限尚未得到确认，因此尚未启动该 PDF 的 Raw preview 或人工接受，也没有真实 PDF 知识写入证据。默认 0.4 Raw preview 的 CLI gpt-6-luna high 接线已完成，但该资料的处理和接受仍待进行。
 - 尚未完成真实浏览器从知识写入到已确认图谱刷新和 D3 人工决策的端到端闭环；E 阶段验收未完成。本分支也尚未合入或推送 `main`。
 
 因此，A1–D3 的实现基础已经落地，但本项目目标仍处于“实现完成、真实数据与产品闭环验收待完成”阶段。不能将当前 KB 或 fixture 测试表述为完整 Graph 产品验收。
