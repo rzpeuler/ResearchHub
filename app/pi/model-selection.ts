@@ -38,6 +38,8 @@ export const THEME_FRAMEWORK_PRODUCTION_REASONING_SELECTION: ThemeFrameworkProdu
   requestedReasoningEffort: 'high',
 })
 
+export const THEME_FRAMEWORK_PRODUCTION_REASONING_TIMEOUT_MS = 180_000
+
 export function selectProductionReasoningModel(runtime: ModelRuntime, selection: ProductionReasoningModelSelection = PRIMARY_PRODUCTION_REASONING_MODEL): Model<Api> {
   const model = runtime.getModel(selection.providerId, selection.modelId)
   if (model === undefined) throw new Error(`Configured production reasoning model is unavailable: ${selection.providerId}/${selection.modelId}`)
@@ -66,15 +68,17 @@ export async function createIndustryProductionReasoningExecutor(options: CodexCl
 
 /** Explicit Theme Framework production backend. It has no fallback policy. */
 export async function createThemeFrameworkProductionReasoningExecutor(options: CodexCliLunaExecutorOptions): Promise<PiReasoningExecutor> {
+  const timeoutMs = options.timeoutMs ?? THEME_FRAMEWORK_PRODUCTION_REASONING_TIMEOUT_MS
   const adapter = new CodexCliReasoningExecutor({
     ...options,
+    timeoutMs,
     model: THEME_FRAMEWORK_PRODUCTION_REASONING_SELECTION.requestedModel,
     reasoningEffort: THEME_FRAMEWORK_PRODUCTION_REASONING_SELECTION.requestedReasoningEffort,
   })
   const metadata = adapter.runtimeMetadata()
   return new PiReasoningExecutor({
     capabilities: options.capabilities,
-    timeoutMs: options.timeoutMs,
+    timeoutMs,
     maxOutputChars: options.maxOutputChars,
     completion: adapter.complete.bind(adapter),
     runtimeMetadata: {
