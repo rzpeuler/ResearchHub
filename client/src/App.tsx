@@ -565,6 +565,9 @@ function ThemeFrameworkReviewPanel({ client, runId, onChanged, refreshInfo, onRe
     finally { setBusy(false) }
   }
   const candidate = review?.candidate
+  const refreshDisplay = candidate?.refresh
+    ? { fromRunId: candidate.refresh.refreshedFromRunId, fromRevision: candidate.refresh.sourceBasedOnRevision, toRevision: candidate.refresh.targetRevision }
+    : refreshInfo
   const terminalCopy: Readonly<Record<string, string>> = { stale: 'Knowledge changed during research. Restart the review to use the current Theme and evidence.', blocked: 'The framework could not be safely completed. Review the reported gaps before retrying.', failed: 'Framework research failed before it produced a reviewable candidate.', rejected: 'This framework proposal was rejected.', committed: 'Theme framework accepted and saved.' }
   const evidenceFor = (refs: readonly string[]) => refs.map((ref) => candidate?.evidence.find((evidence) => evidence.evidenceId === ref)).filter((value): value is NonNullable<typeof value> => Boolean(value))
   const setDecision = (candidateId: string, decision: ThemeFrameworkDecision): void => setDecisions((current) => ({ ...current, [candidateId]: decision }))
@@ -590,7 +593,7 @@ function ThemeFrameworkReviewPanel({ client, runId, onChanged, refreshInfo, onRe
     {error ? <p role="alert" className="inline-error">{error}</p> : null}
     {!review || review.status === 'running' ? <p className="muted" role="status">Researching bounded industry branches and evidence…</p> : null}
     {review?.status === 'awaiting_review' && candidate ? <>
-      {refreshInfo ? <div className="notice theme-framework-refresh-note" role="status"><strong>Refreshed candidate</strong><p>From run {refreshInfo.fromRunId} · Knowledge revision {refreshInfo.fromRevision} → {refreshInfo.toRevision}.</p><p>This candidate preserves the prior proposal and does not include sources added after revision {refreshInfo.fromRevision}. Review every item and decision before accepting.</p></div> : null}
+      {refreshDisplay ? <div className="notice theme-framework-refresh-note" role="status"><strong>Refreshed candidate</strong><p>From run {refreshDisplay.fromRunId} · Knowledge revision {refreshDisplay.fromRevision} → {refreshDisplay.toRevision}.</p><p>This candidate preserves the prior proposal and does not include sources added after revision {refreshDisplay.fromRevision}. Review every item and decision before accepting.</p></div> : null}
       <div className="theme-framework-summary"><h3>{candidate.theme.name}</h3><p>{candidate.framework.proposedDefinition.statement}</p><small>Based on Knowledge revision {candidate.basedOnRevision} · acquisition: {candidate.acquisitionStatus}</small>{candidate.acquisitionStatus !== 'complete' ? <p className="theme-framework-limited">Some sources were unavailable or the research scope was truncated; assess the gaps before accepting.</p> : null}</div>
       {candidate.framework.inclusionPrinciples.length ? <div className="theme-framework-branch"><h3>Include when</h3><ul>{candidate.framework.inclusionPrinciples.map((value, index) => <li key={`include-${index}`}>{value}</li>)}</ul></div> : null}
       {candidate.framework.exclusionPrinciples.length ? <div className="theme-framework-branch"><h3>Exclude when</h3><ul>{candidate.framework.exclusionPrinciples.map((value, index) => <li key={`exclude-${index}`}>{value}</li>)}</ul></div> : null}

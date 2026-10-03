@@ -168,10 +168,10 @@ describe('Homepage shell', () => {
     expect(JSON.parse(String(refreshCall?.init?.body))).toEqual({})
   })
 
-  it('resumes a persisted Theme Framework review after a fresh Chat mount', async () => {
+  it('resumes a persisted refreshed Theme Framework review with its source revision after a fresh Chat mount', async () => {
     const calls: { path: string; init?: RequestInit }[] = []
     const candidate = {
-      knowledgeBaseId: 'kb-1', basedOnRevision: 7, theme: { name: 'AI Compute' },
+      knowledgeBaseId: 'kb-1', basedOnRevision: 8, refresh: { refreshedFromRunId: 'original-theme-run', sourceBasedOnRevision: 7, targetRevision: 8, validationSummary: { writerReceipts: 1, sourceIds: ['source:added-source'], evidenceBindings: 2 }, refreshedAt: '2026-10-03T00:00:00.000Z' }, theme: { name: 'AI Compute' },
       framework: { proposedDefinition: { statement: 'Compute infrastructure', status: 'provisional' }, inclusionPrinciples: [], exclusionPrinciples: [], industryCandidates: [], relationCandidates: [], coverageGaps: [] },
       acquisitionStatus: 'complete', diagnostics: [], evidence: [],
     }
@@ -182,7 +182,7 @@ describe('Homepage shell', () => {
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
       if (path === '/api/conversations') return json({ conversations: [] })
-      if (path === '/api/theme-framework/reviews?limit=50') return json({ items: [{ runId: 'saved-theme-run-3', themeName: 'AI Compute', basedOnRevision: 7, status: 'awaiting_review' }, { runId: 'saved-theme-run-2', themeName: 'AI Compute', basedOnRevision: 7, status: 'awaiting_review' }], total: 2, truncated: false })
+      if (path === '/api/theme-framework/reviews?limit=50') return json({ items: [{ runId: 'saved-theme-run-3', themeName: 'AI Compute', basedOnRevision: 8, status: 'awaiting_review' }, { runId: 'saved-theme-run-2', themeName: 'AI Compute', basedOnRevision: 7, status: 'awaiting_review' }], total: 2, truncated: false })
       if (path.startsWith('/api/theme-framework/runs/saved-theme-run-')) return json({ status: 'awaiting_review', workflowRunId: path.split('/').at(-1), candidate })
       if (path === '/api/theme-scope-impact?limit=50') return json({ items: [], total: 0, truncated: false })
       return json({ code: 'not_found', error: 'not found' }, 404)
@@ -196,6 +196,8 @@ describe('Homepage shell', () => {
     fireEvent.click(resumeButtons[0]!)
     expect(await screen.findByRole('heading', { name: 'Industry framework' })).toBeTruthy()
     expect(await screen.findByRole('heading', { name: 'AI Compute' })).toBeTruthy()
+    expect(await screen.findByText(/From run original-theme-run · Knowledge revision 7 → 8/)).toBeTruthy()
+    expect(screen.getByText(/does not include sources added after revision 7/)).toBeTruthy()
     const inboxCall = calls.find((call) => call.path === '/api/theme-framework/reviews?limit=50')
     expect(inboxCall).toBeTruthy()
     expect(new Headers(inboxCall?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('b'.repeat(64))

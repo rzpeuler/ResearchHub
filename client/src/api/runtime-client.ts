@@ -109,6 +109,13 @@ export interface ThemeFrameworkReviewItem {
 export interface ThemeFrameworkReviewCandidate {
   readonly knowledgeBaseId: string
   readonly basedOnRevision: number
+  readonly refresh?: {
+    readonly refreshedFromRunId: string
+    readonly sourceBasedOnRevision: number
+    readonly targetRevision: number
+    readonly validationSummary: { readonly writerReceipts: number; readonly sourceIds: readonly string[]; readonly evidenceBindings: number }
+    readonly refreshedAt: string
+  }
   readonly theme: { readonly name: string; readonly definition?: string }
   readonly framework: {
     readonly proposedDefinition: { readonly statement: string; readonly status: 'supported' | 'provisional' }
