@@ -129,6 +129,12 @@ export class ProductionService {
         this.rawDocumentPreviewResults.set(input.workflowRunId, blocked)
         return blocked
       }
+      if (callerSignal?.aborted) {
+        this.options.workflowService.markAuthoritativeTerminal(input.workflowRunId, 'cancelled', { summary: 'V0.4 raw-document preview was cancelled' })
+        const cancelled = cancelledV04Preview(input.workflowRunId)
+        this.rawDocumentPreviewResults.set(input.workflowRunId, cancelled)
+        return cancelled
+      }
       return this.options.workflowService.start(input.workflowRunId, async (activeSignal): Promise<WorkflowOutcome & { readonly workflow: RawDocumentPreviewWorkflowResultV04 }> => {
       const combined = combineSignals(callerSignal, activeSignal)
       try {
@@ -179,8 +185,8 @@ export class ProductionService {
         return result
       }
       return Promise.reject(error)
-      }).finally(() => callerSignal?.removeEventListener('abort', onCallerAbort))
-    })()
+      })
+    })().finally(() => callerSignal?.removeEventListener('abort', onCallerAbort))
     if (callerSignal?.aborted) this.options.workflowService.cancelWorkflow(input.workflowRunId)
     completion.catch(() => undefined)
     return { runId: input.workflowRunId, completion }

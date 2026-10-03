@@ -134,6 +134,25 @@ test('V0.4 preview lazily uses the preview-only executor factory and blocks when
   })
 })
 
+test('V0.4 preview cancelled while executor factory is pending does not start the workflow', async () => {
+  await fixture('0.4', async (root) => {
+    const workflowService = new WorkflowService()
+    let resolveFactory!: (executor: ReasoningExecutor) => void
+    let runnerCalled = false
+    const factory = () => new Promise<ReasoningExecutor>((resolve) => { resolveFactory = resolve })
+    const subject = service(root, undefined, async () => { runnerCalled = true; throw new Error('preview must not run after cancellation') }, workflowService, undefined, parser, undefined, undefined, factory)
+    const controller = new AbortController()
+    const started = subject.startRawDocumentKnowledgePreviewV04({ workflowRunId: 'preview-factory-aborted', text: 'AI computing demand', sourceMetadata, rights }, controller.signal)
+    controller.abort()
+    resolveFactory(new MockReasoningExecutor({ capabilities: caps, responses: { understandAndPlan: plan, extractKnowledge: extraction } }))
+    const preview = await started.completion
+    assert.equal(preview.status, 'cancelled')
+    assert.equal(preview.committable, false)
+    assert.equal(workflowService.getWorkflowStatus(started.runId)?.status, 'cancelled')
+    assert.equal(runnerCalled, false)
+  })
+})
+
 test('failed raw candidate Writer outcome never triggers Theme scope impact', async () => {
   await fixture('0.4', async (root) => {
     let checks = 0
