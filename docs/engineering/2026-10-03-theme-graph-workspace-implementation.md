@@ -42,10 +42,12 @@ Theme Framework 与 Theme scope 接口由 `app/runtime/server.ts` 注册。浏�
 
 ## 真实验收状态与限制
 
-- 隔离的空 Schema 0.4 KB 已从 bounded acquisition 获得一条相关 CPCA Source/Raw。Theme Framework fix3 产出 3 个待人工处理节点、0 条关系；这不是已接受的 canonical 产业网络。
-- 本轮资料获取中 Eastmoney 连接以 socket closed 失败，MIIT 与政府来源返回 0 项。当前真实运行不足以证明完整上下游覆盖、交叉关系或独立节点质量。
-- 浏览器复核确认：修复后新建 Chat 的 Theme scope 收件箱可正常加载，不再出现认证错误；Theme Framework 持久化审阅列表中 fix3、fix2 按最新优先显示，run 后缀可区分条目并恢复待审阅运行。真实 KB 的 `/graph` 显示空 Theme 状态，等待人工确认。这只验证了列表／恢复入口和空状态，没有验证已确认产业图谱。
-- 用户本机西部证券 PDF 的 AI 处理／衍生知识／保留权限尚未得到确认，因此尚未启动该 PDF 的 Raw preview 或人工接受，也没有该 PDF 的知识写入证据。默认 0.4 Raw preview 的 CLI gpt-6-luna high 接线已有上述合成资料运行证据，但该资料的处理和接受仍待进行。
+- 用户确认对其提供的行业研究 PDF 具有本地保留、AI 处理及形成衍生知识的权限后，Workflow 使用专用 Codex CLI `gpt-6-luna` high 完成 Schema 0.4 Raw preview。运行记录为 `preview_ready`、`committable=true`、`extractionCompleteness=complete`；14 个 extraction units 汇总为 581 组候选（entity 240、relation 238、claim 103），另有 28 项在提取/归并阶段被拒绝。以上均为待审阅提案；没有候选被人工接受，也没有实体、关系或观点写入 canonical Knowledge。
+- 当前核验的 `ai-compute-theme-v04-verified` 为 Schema 0.4、revision 2，包含 2 个 Source 和 2 个 Raw；canonical Entity、Relation、ThemeGroup 与 Theme 数量均为 0。Raw preview 不等于知识已写入。
+- Theme Framework 候选 `tf-ai-compute-20261003-58894667-0e32-4fb7-a751-331049874d61` 基于 revision 2，提出 13 个行业节点（10 个建议纳入、3 个待处理）和 9 条关系（7 条建议纳入、2 条待处理），状态为等待人工审阅。后续候选 `tf-ai-compute-20261003-4e2af1f8-5515-42bf-9ed1-be2a1b638ad3` 仅提出 9 个节点（6 个建议纳入、3 个待处理）且没有关系；两者都未被接受。因此目前没有 canonical Theme 或产业图谱，不能把任一候选表述为已确认框架。
+- Theme Framework construction 当前只支持首次框架构建；`workflows/theme-framework-construction/workflow.ts` 在读取到 `existingThemeRef` 时以 `theme_already_exists:use_framework_update_workflow` 阻断，而仓库没有实现等价的广度重建更新 Workflow。D3 影响检查只处理后续成功 canonical Writer 写入所带的变化 refs，并生成范围决定提案；它不能替代完整框架重建。因此若先接受一个不完整框架，不能承诺可直接重新运行完整 Theme Framework 来补全。
+- 本轮资料获取中的 Eastmoney 连接以 socket closed 失败，MIIT 与政府来源返回 0 项。当前证据不足以证明完整上下游覆盖、交叉关系、独立节点质量或服务器／数据中心相关分支的边界。
+- 浏览器复核曾确认 Theme scope 收件箱、Theme Framework 审阅列表及空图状态可加载；这些结果只覆盖审阅入口与空状态，不覆盖真实候选接受、知识写入、已确认图谱刷新或 D3 决策闭环。
 - 尚未完成真实浏览器从知识写入到已确认图谱刷新和 D3 人工决策的端到端闭环；E 阶段验收未完成。本分支尚未合入 `main`。
 
-因此，A1–D3 的实现基础已经落地，但本项目目标仍处于“实现完成、真实数据与产品闭环验收待完成”阶段。不能将当前 KB 或 fixture 测试表述为完整 Graph 产品验收。
+因此，A1–D3 的实现基础已经落地，但真实资料目前只到 Raw preview 和待审阅 Theme Framework 候选阶段。不能将当前 KB、候选快照或 fixture 测试表述为完整 Graph 产品验收。
