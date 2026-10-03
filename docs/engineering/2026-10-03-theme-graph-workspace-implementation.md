@@ -38,13 +38,14 @@ Theme Framework 与 Theme scope 接口由 `app/runtime/server.ts` 注册。浏�
 - `npm run typecheck` — 通过（`tsc --noEmit`）。
 - `npm run client:typecheck` — 通过（客户端 TypeScript 检查）。
 - D3 多 Theme 单 revision、精确重放及 stale conflict 的确定性覆盖位于 `tests/knowledge/theme-scope-impact-acceptance-v04.test.ts`；HTTP 路由覆盖位于 `tests/app/runtime/theme-scope-impact-routes.test.ts`。本次文档核验没有运行 Node 测试套件，因此不在此记录测试通过结论。
+- 使用自编虚构文本与明确的测试权限字段，在全新临时 Schema 0.4 KB 上实际运行默认 Raw preview。Workflow 为 `completed`，preview 为 `preview_ready`、`committable=true`，得到 6 组待审阅候选；运行元数据为 `backend=codex-cli`、`requestedModel=gpt-6-luna`、`requestedReasoningEffort=high`、`invocationMode=exec-stdin-json-output-read-only`。Source/Raw 仅写入临时 KB；未接受候选，临时 KB 与脚本已清理。该测试没有读取或处理用户 PDF。
 
 ## 真实验收状态与限制
 
 - 隔离的空 Schema 0.4 KB 已从 bounded acquisition 获得一条相关 CPCA Source/Raw。Theme Framework fix3 产出 3 个待人工处理节点、0 条关系；这不是已接受的 canonical 产业网络。
 - 本轮资料获取中 Eastmoney 连接以 socket closed 失败，MIIT 与政府来源返回 0 项。当前真实运行不足以证明完整上下游覆盖、交叉关系或独立节点质量。
 - 浏览器复核确认：修复后新建 Chat 的 Theme scope 收件箱可正常加载，不再出现认证错误；Theme Framework 持久化审阅列表中 fix3、fix2 按最新优先显示，run 后缀可区分条目并恢复待审阅运行。真实 KB 的 `/graph` 显示空 Theme 状态，等待人工确认。这只验证了列表／恢复入口和空状态，没有验证已确认产业图谱。
-- 用户本机西部证券 PDF 的 AI 处理／衍生知识／保留权限尚未得到确认，因此尚未启动该 PDF 的 Raw preview 或人工接受，也没有真实 PDF 知识写入证据。默认 0.4 Raw preview 的 CLI gpt-6-luna high 接线已完成，但该资料的处理和接受仍待进行。
-- 尚未完成真实浏览器从知识写入到已确认图谱刷新和 D3 人工决策的端到端闭环；E 阶段验收未完成。本分支也尚未合入或推送 `main`。
+- 用户本机西部证券 PDF 的 AI 处理／衍生知识／保留权限尚未得到确认，因此尚未启动该 PDF 的 Raw preview 或人工接受，也没有该 PDF 的知识写入证据。默认 0.4 Raw preview 的 CLI gpt-6-luna high 接线已有上述合成资料运行证据，但该资料的处理和接受仍待进行。
+- 尚未完成真实浏览器从知识写入到已确认图谱刷新和 D3 人工决策的端到端闭环；E 阶段验收未完成。本分支尚未合入 `main`。
 
 因此，A1–D3 的实现基础已经落地，但本项目目标仍处于“实现完成、真实数据与产品闭环验收待完成”阶段。不能将当前 KB 或 fixture 测试表述为完整 Graph 产品验收。
