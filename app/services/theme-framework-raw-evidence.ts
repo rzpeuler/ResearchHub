@@ -22,6 +22,34 @@ interface SectionBucket {
   readonly blocks: StructuredDocument['blocks'][number][]
 }
 
+const SUBSTANTIVE_BODY_MIN_LENGTH = 80
+
+function isSubstantiveBody(block: StructuredDocument['blocks'][number]): boolean {
+  return block.type !== 'heading'
+    && (block.type === 'paragraph' || block.type === 'list' || block.type === 'table')
+    && block.text.trim().length >= SUBSTANTIVE_BODY_MIN_LENGTH
+}
+
+function preferredSectionBlock(blocks: readonly StructuredDocument['blocks'][number][]): StructuredDocument['blocks'][number] | undefined {
+  return blocks.find(isSubstantiveBody)
+    ?? blocks.find((block) => block.type !== 'heading')
+    ?? blocks[0]
+}
+
+function addEvenlySpaced(
+  candidates: readonly StructuredDocument['blocks'][number][],
+  selected: Set<string>,
+  slots: number,
+): number {
+  const remaining = candidates.filter((block) => !selected.has(block.blockId))
+  const count = Math.min(remaining.length, slots)
+  for (const index of evenlySpacedIndices(remaining.length, count)) {
+    const block = remaining[index]
+    if (block) selected.add(block.blockId)
+  }
+  return count
+}
+
 function compareBlocks(left: StructuredDocument['blocks'][number], right: StructuredDocument['blocks'][number]): number {
   return left.order - right.order || left.blockId.localeCompare(right.blockId)
 }
@@ -76,34 +104,39 @@ export function sampleThemeFrameworkRawEvidence(input: {
     .sort(compareBlocks)
   if (orderedBlocks.length === 0) return []
 
+  const seenBlockIds = new Set<string>()
+  const uniqueBlocks = orderedBlocks.filter((block) => {
+    if (seenBlockIds.has(block.blockId)) return false
+    seenBlockIds.add(block.blockId)
+    return true
+  })
+
   const bucketsByKey = new Map<string, SectionBucket>()
-  for (const block of orderedBlocks) {
+  for (const block of uniqueBlocks) {
     const key = sectionKey(block)
     const bucket = bucketsByKey.get(key) ?? { key, blocks: [] }
     bucket.blocks.push(block)
     bucketsByKey.set(key, bucket)
   }
   const buckets = [...bucketsByKey.values()]
-  const excerptCount = Math.min(maxExcerpts, orderedBlocks.length)
+  const excerptCount = Math.min(maxExcerpts, uniqueBlocks.length)
   const sectionIndices = evenlySpacedIndices(buckets.length, Math.min(buckets.length, excerptCount))
   const selected = new Set<string>()
   for (const index of sectionIndices) {
-    const first = buckets[index]?.blocks[0]
-    if (first) selected.add(first.blockId)
+    const preferred = buckets[index] ? preferredSectionBlock(buckets[index].blocks) : undefined
+    if (preferred) selected.add(preferred.blockId)
   }
 
-  const remaining = orderedBlocks.filter((block) => !selected.has(block.blockId))
-  const remainingSlots = excerptCount - selected.size
-  for (const index of evenlySpacedIndices(remaining.length, remainingSlots)) {
-    const block = remaining[index]
-    if (block) selected.add(block.blockId)
-  }
+  let remainingSlots = excerptCount - selected.size
+  remainingSlots -= addEvenlySpaced(uniqueBlocks.filter(isSubstantiveBody), selected, remainingSlots)
+  remainingSlots -= addEvenlySpaced(uniqueBlocks.filter((block) => block.type !== 'heading' && !isSubstantiveBody(block)), selected, remainingSlots)
+  addEvenlySpaced(uniqueBlocks.filter((block) => block.type === 'heading'), selected, remainingSlots)
 
   // Defend against repeated/malformed block IDs while preserving the same
   // deterministic document-order projection.
   const selectedBlocks: StructuredDocument['blocks'][number][] = []
   const emitted = new Set<string>()
-  for (const block of orderedBlocks) {
+  for (const block of uniqueBlocks) {
     if (!selected.has(block.blockId) || emitted.has(block.blockId)) continue
     emitted.add(block.blockId)
     selectedBlocks.push(block)

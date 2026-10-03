@@ -44,8 +44,29 @@ test('samples across sections first, then spreads remaining excerpts over docume
 
   assert.equal(sampled.length, 6)
   assert.deepEqual(sampled.map((item) => item.sectionTitle), ['Section 0', 'Section 0', 'Section 0', 'Section 0', 'Section 1', 'Section 2'])
-  assert.deepEqual(sampled.map((item) => item.blockId), ['block-0-0', 'block-0-1', 'block-0-50', 'block-0-99', 'block-1-0', 'block-2-0'])
+  assert.deepEqual(sampled.map((item) => item.blockId), ['block-0-1', 'block-0-2', 'block-0-51', 'block-0-99', 'block-1-0', 'block-2-0'])
   assert.ok(sampled.every((item) => item.page === Number(item.sectionTitle?.slice(-1)) + 1))
+})
+
+test('prefers substantial section body blocks over headings and preserves their exact locators', () => {
+  const document = documentFixture([2, 2, 2])
+  const sampled = sampleThemeFrameworkRawEvidence({ document, sourceRef: 'source:body-first', rawRef: `raw-sha256-${'d'.repeat(64)}`, maxExcerptsPerRaw: 3 })
+
+  assert.deepEqual(sampled.map((item) => item.blockId), ['block-0-1', 'block-1-1', 'block-2-1'])
+  assert.deepEqual(sampled.map((item) => item.page), [1, 2, 3])
+  assert.deepEqual(sampled.map((item) => item.sectionTitle), ['Section 0', 'Section 1', 'Section 2'])
+  assert.ok(sampled.every((item) => document.blocks.find((block) => block.blockId === item.blockId)?.type === 'paragraph'))
+})
+
+test('global fill prefers substantive bodies while maintaining document-wide first and last coverage', () => {
+  const document = documentFixture([30])
+  const sampled = sampleThemeFrameworkRawEvidence({ document, sourceRef: 'source:body-spread', rawRef: `raw-sha256-${'e'.repeat(64)}`, maxExcerptsPerRaw: 16 })
+
+  assert.equal(sampled.length, 16)
+  assert.ok(sampled.every((item) => item.blockId !== 'block-0-0'))
+  assert.ok(sampled.every((item) => document.blocks.find((block) => block.blockId === item.blockId)?.type === 'paragraph'))
+  assert.equal(sampled[0]?.blockId, 'block-0-1')
+  assert.equal(sampled.at(-1)?.blockId, 'block-0-29')
 })
 
 test('caps large documents and distributes section representatives from beginning to end', () => {
