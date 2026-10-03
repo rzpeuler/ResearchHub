@@ -20,7 +20,7 @@
 
 ## 运行时接口
 
-写接口及敏感读取要求 Runtime token 和匹配的 Origin。当前实现包括：
+写接口要求 Runtime token 和匹配的 Origin；受 token 保护的敏感 GET 要求 Runtime token。此类 GET 若未携带 Origin，服务端以配置的 expected Origin 校验；若请求显式提供了跨 Origin 值则拒绝。当前实现包括：
 
 - `POST /api/theme-framework/start`：按 Theme 名称启动构建 Workflow。
 - `GET /api/theme-framework/runs/:runId`：读取候选；`POST .../accept` 与 `POST .../reject`：确认或拒绝首次框架。
@@ -42,7 +42,8 @@ Theme Framework 与 Theme scope 接口由 `app/runtime/server.ts` 注册。浏�
 
 - 隔离的空 Schema 0.4 KB 已从 bounded acquisition 获得一条相关 CPCA Source/Raw。Theme Framework fix3 产出 3 个待人工处理节点、0 条关系；这不是已接受的 canonical 产业网络。
 - 本轮资料获取中 Eastmoney 连接以 socket closed 失败，MIIT 与政府来源返回 0 项。当前真实运行不足以证明完整上下游覆盖、交叉关系或独立节点质量。
+- 浏览器复核确认：修复后新建 Chat 的 Theme scope 收件箱可正常加载，不再出现认证错误；真实 KB 的 `/graph` 显示空 Theme 状态，等待人工确认。这只验证了空状态和收件箱加载，没有验证已确认产业图谱。
 - 用户本机西部证券 PDF 的 AI 处理／衍生知识／保留权限尚未得到确认，因此尚未解析并写入该 PDF，也没有真实 PDF 知识写入证据。
-- 尚未完成真实浏览器从空 KB 到知识写入、图谱刷新和 D3 人工决策的端到端闭环；E 阶段验收未完成。本分支也尚未合入或推送 `main`。
+- 尚未完成真实浏览器从知识写入到已确认图谱刷新和 D3 人工决策的端到端闭环；E 阶段验收未完成。本分支也尚未合入或推送 `main`。
 
 因此，A1–D3 的实现基础已经落地，但本项目目标仍处于“实现完成、真实数据与产品闭环验收待完成”阶段。不能将当前 KB 或 fixture 测试表述为完整 Graph 产品验收。
