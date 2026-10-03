@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { MiitIndustryResearchPlugin, MIIT_AI_COMPUTE_DATA_CENTER_ANCHOR, MIIT_AI_COMPUTE_INFRASTRUCTURE_ANCHOR, MIIT_INDUSTRY_ROUTES, MIIT_PCB_DEFINITION_ANCHORS, validMiitUrl } from '../../../plugins/research-acquisition/miit-industry.ts'
+import { MiitIndustryResearchPlugin, MIIT_AI_COMPUTE_DATA_CENTER_ANCHOR, MIIT_AI_COMPUTE_GLOSSARY_ATTACHMENT_ANCHOR, MIIT_AI_COMPUTE_INFRASTRUCTURE_ANCHOR, MIIT_INDUSTRY_ROUTES, MIIT_PCB_DEFINITION_ANCHORS, validMiitUrl } from '../../../plugins/research-acquisition/miit-industry.ts'
 import { sha256 } from '../../../plugins/research-acquisition/hash.ts'
 
 const req = { industry: { name: 'PCB Manufacturing', aliases: ['Printed Circuit Board', '印制电路板'], searchTerms: ['PCB', '电子信息制造业'] }, asOf: '2026-09-14T00:00:00.000Z', limitPerKind: 8 }
@@ -104,13 +104,32 @@ test('discovers dated AI compute MIIT anchors only for explicit AI compute targe
   assert.equal((dataCenter.metadata as any).anchor, true)
   assert.ok(validMiitUrl(dataCenter.url))
 
+  const glossary = allAnchors.find((x) => x.url === MIIT_AI_COMPUTE_GLOSSARY_ATTACHMENT_ANCHOR.url)!
+  assert.ok(glossary)
+  assert.equal(glossary.title, '\u65b0\u578b\u6570\u636e\u4e2d\u5fc3\u53d1\u5c55\u4e09\u5e74\u884c\u52a8\u8ba1\u5212\uff082021-2023\u5e74\uff09\u9644\u4ef6\uff1a\u540d\u8bcd\u89e3\u91ca')
+  assert.equal(glossary.publishedAt, MIIT_AI_COMPUTE_DATA_CENTER_ANCHOR.publishedAt)
+  assert.equal((glossary.metadata as any).discoveryRoute, 'ai-compute-glossary-attachment-anchor')
+  assert.equal((glossary.metadata as any).parentUrl, MIIT_AI_COMPUTE_DATA_CENTER_ANCHOR.url)
+  assert.match((glossary.metadata as any).evidenceBasis, /GPU, FPGA/u)
+  assert.equal((glossary.metadata as any).anchor, true)
+  assert.ok(validMiitUrl(glossary.url))
+  assert.deepEqual(allAnchors.slice(0, 3).map((x) => x.url), [
+    MIIT_AI_COMPUTE_INFRASTRUCTURE_ANCHOR.url,
+    MIIT_AI_COMPUTE_DATA_CENTER_ANCHOR.url,
+    MIIT_AI_COMPUTE_GLOSSARY_ATTACHMENT_ANCHOR.url,
+  ])
+  const limitedAnchors = await p.discover({ industry: { name: 'AI\u7b97\u529b', searchTerms: [] }, asOf: '2026-10-03T00:00:00.000Z', limitPerKind: 2 })
+  assert.deepEqual(limitedAnchors.map((x) => x.url), [MIIT_AI_COMPUTE_INFRASTRUCTURE_ANCHOR.url, MIIT_AI_COMPUTE_DATA_CENTER_ANCHOR.url])
+
   const beforePublication = await p.discover({ industry: { name: 'AI\u7b97\u529b', searchTerms: [] }, asOf: '2023-10-07T23:59:59.999Z' })
   assert.equal(beforePublication.some((x) => x.url === MIIT_AI_COMPUTE_INFRASTRUCTURE_ANCHOR.url), false)
   const beforeDataCenterPublication = await p.discover({ industry: { name: 'AI\u7b97\u529b', searchTerms: [] }, asOf: '2021-07-13T23:59:59.999Z' })
   assert.equal(beforeDataCenterPublication.some((x) => x.url === MIIT_AI_COMPUTE_DATA_CENTER_ANCHOR.url), false)
+  assert.equal(beforeDataCenterPublication.some((x) => x.url === MIIT_AI_COMPUTE_GLOSSARY_ATTACHMENT_ANCHOR.url), false)
   const unrelated = await p.discover({ industry: { name: 'Semiconductor Equipment', aliases: ['AI semiconductor'], searchTerms: ['semiconductor equipment'] }, asOf: '2026-10-03T00:00:00.000Z' })
   assert.equal(unrelated.some((x) => (x.metadata as any)?.discoveryRoute === 'ai-compute-infrastructure-anchor'), false)
   assert.equal(unrelated.some((x) => (x.metadata as any)?.discoveryRoute === 'ai-compute-data-center-anchor'), false)
+  assert.equal(unrelated.some((x) => (x.metadata as any)?.discoveryRoute === 'ai-compute-glossary-attachment-anchor'), false)
 })
 
 test('AI compute anchor uses the existing bounded PDF fetch and normalization path', async () => {
