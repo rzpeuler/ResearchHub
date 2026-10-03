@@ -55,7 +55,7 @@ Theme Framework 与 Theme scope 接口由 `app/runtime/server.ts` 注册。浏�
 - **旧候选状态（历史）：**revision 3 的候选 `tf-ai-compute-20261003-931745f8-e81e-4741-9ea3-825a5e6e2da7` 曾提出 10 个节点、0 条关系；`tf-ai-compute-20261003-39d77366-341c-4c86-9b7c-992296a42623` 曾提出 8 个节点（6 个建议纳入、2 个待处理）和 1 条主链关系。它们均不是 revision 6 当前已接受 Theme Framework 的依据。此前“没有 canonical Theme 或产业图谱”仅描述 revision 5 及更早状态，不再是当前状态。
 - Theme Framework construction 当前只支持首次框架构建；`workflows/theme-framework-construction/workflow.ts` 在读取到 `existingThemeRef` 时以 `theme_already_exists:use_framework_update_workflow` 阻断，而仓库没有实现等价的广度重建更新 Workflow。D3 影响检查只处理后续成功 canonical Writer 写入所带的变化 refs，并生成范围决定提案；它不能替代完整框架重建。因此若先接受一个不完整框架，不能承诺可直接重新运行完整 Theme Framework 来补全。
 - 为本轮研究输入，MIIT acquisition Plugin 增加了 AI 算力基础设施官方资料 anchor；Theme Framework Skill 明确允许关系端点引用同一结果中的行业 `candidateId`，并要求建议纳入的关系两端也均建议纳入。此前 Eastmoney 连接以 socket closed 失败。revision 6 的范围和图谱已由用户决定并落入 canonical Knowledge；旧候选中关于覆盖和边界的待核查项不应再表述为当前待接受决定。
-- 浏览器复核曾确认 Theme scope 收件箱、Theme Framework 审阅列表及空图状态可加载。此后已完成真实 Theme Framework 接受和服务层图谱投影读取；但尚未完成浏览器端从知识写入、刷新已确认图谱到 D3 影响提案人工决策的完整端到端闭环。
-- A1–D3 实现基础及 revision 6 的首次真实 Theme Framework 接受已完成；581 项 Raw preview 仍待独立人工审阅，真实浏览器 D3 决策闭环和 E 阶段验收仍未完成。本分支尚未合入 `main`，因此 canonical 首次接受及 projection 验证不等同于完整 Graph 产品 E2E 验收。
+- **浏览器只读 smoke：**本地 runtime 挂载 `ai-compute-theme-v04-verified` 后，真实浏览器打开 `/graph?root=entity%3Ainvestment_theme-ai-2f805c60`，页面显示 revision 6、Default / AI算力、8/8 节点和 5/5 边。产业信息、竞争格局、公司、观点和时间链区域为空，UI 对空状态给出了明确提示。该 smoke 验证了已确认 Theme 图谱的浏览器显示；没有覆盖 D3 提案决策或事实/公司研究的端到端流程。
+- A1–D3 实现基础及 revision 6 的首次真实 Theme Framework 接受与图谱页只读显示 smoke 已完成；581 项 Raw preview 仍待独立人工审阅，D3 决策闭环、事实/公司 E2E 和 E 阶段验收仍未完成。本分支尚未合入 `main`，因此 canonical 首次接受、projection 和图谱页显示不等同于完整 Graph 产品 E2E 验收。
 
 因此，当前真实资料已达到 canonical Theme Framework 首次接受和 8 节点/5 边 projection 验证；不能将这项验收、候选快照或 fixture 测试表述为完整 Graph 产品验收。
