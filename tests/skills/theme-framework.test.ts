@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ReasoningExecutor, ReasoningRequest, ReasoningResult } from "../../plugins/reasoning/contracts.ts";
+import { ReasoningExecutorError } from "../../plugins/reasoning/errors.ts";
 import {
   fingerprintThemeIndustry,
   fingerprintThemeRelation,
@@ -166,6 +167,58 @@ test("theme framework rejects forged evidence, unknown nodes, and ungrounded sco
   const ungrounded = output();
   (ungrounded.industryCandidates[0] as { evidenceRefs: string[] }).evidenceRefs = [];
   assert.throws(() => validateThemeFrameworkResult(ungrounded, input), (error: unknown) => error instanceof ThemeFrameworkValidationError && error.code === "decision_ungrounded");
+
+  const unknownIndustryRef = output();
+  (unknownIndustryRef.industryCandidates[0] as { existingIndustryRef?: string }).existingIndustryRef = "entity:unprovided";
+  assert.throws(() => validateThemeFrameworkResult(unknownIndustryRef, input), (error: unknown) => error instanceof ThemeFrameworkValidationError && error.code === "existing_industry_ref_unknown");
+});
+
+test("semantic transport omits an empty optional Industry enum but preserves non-empty refs", async () => {
+  const requests: ReasoningRequest[] = [];
+  const executor: ReasoningExecutor = {
+    capabilities: () => ({ maxContextTokens: 4000, maxOutputTokens: 2000, structuredOutputSupport: true, maxConcurrency: 1 }),
+    execute: async (request) => { requests.push(request); return { operation: request.operation, output: output() }; },
+  };
+
+  assert.equal((await executeThemeFramework(input, executor)).status, "complete");
+  const emptyContract = requests[0]?.outputContract as { properties: { industryCandidates: { items: { properties: Record<string, unknown> } }; relationCandidates: { items: { properties: Record<string, unknown> } } } };
+  const emptyIndustryProperties = emptyContract.properties.industryCandidates.items.properties;
+  const emptyRelationProperties = emptyContract.properties.relationCandidates.items.properties;
+  assert.equal(Object.hasOwn(emptyIndustryProperties, "existingIndustryRef"), false);
+  assert.equal(Object.hasOwn(emptyIndustryProperties, "priorDecisionId"), false);
+  assert.equal(Object.hasOwn(emptyIndustryProperties, "reopenEvidenceRefs"), false);
+  assert.equal(Object.hasOwn(emptyRelationProperties, "priorDecisionId"), false);
+  assert.equal(Object.hasOwn(emptyRelationProperties, "reopenEvidenceRefs"), false);
+  assert.deepEqual(emptyIndustryProperties.decisionChange, { enum: ["new"] });
+  assert.deepEqual(emptyRelationProperties.decisionChange, { enum: ["new"] });
+
+  const populatedInput: ThemeFrameworkInput = {
+    ...input,
+    existingKnowledge: { ...input.existingKnowledge, industries: [{ ref: "entity:industry-existing", name: "Existing Industry" }] },
+  };
+  assert.equal((await executeThemeFramework(populatedInput, executor)).status, "complete");
+  const populatedContract = requests[1]?.outputContract as { properties: { industryCandidates: { items: { properties: Record<string, unknown> } } } };
+  assert.deepEqual(populatedContract.properties.industryCandidates.items.properties.existingIndustryRef, { enum: ["entity:industry-existing"] });
+
+  const priorInput: ThemeFrameworkInput = {
+    ...populatedInput,
+    priorDecisions: [{ decisionId: "prior-unmatched", semanticFingerprint: fingerprintThemeIndustry("Unmatched industry"), candidateType: "industry", recommendation: "exclude", rationale: "Earlier bounded scope decision.", evidenceRefs: ["e-compute"] }],
+  };
+  assert.equal((await executeThemeFramework(priorInput, executor)).status, "complete");
+  const priorContract = requests[2]?.outputContract as { properties: { industryCandidates: { items: { properties: Record<string, unknown> } }; relationCandidates: { items: { properties: Record<string, unknown> } } } };
+  assert.deepEqual(priorContract.properties.industryCandidates.items.properties.decisionChange, { enum: ["new", "unchanged", "reopen"] });
+  assert.deepEqual(priorContract.properties.industryCandidates.items.properties.priorDecisionId, { type: "string", pattern: "^[A-Za-z][A-Za-z0-9._-]{0,79}$" });
+  assert.deepEqual(priorContract.properties.relationCandidates.items.properties.priorDecisionId, { type: "string", pattern: "^[A-Za-z][A-Za-z0-9._-]{0,79}$" });
+});
+
+test("semantic executor diagnostics expose only the safe error code", async () => {
+  const result = await executeThemeFramework(input, {
+    capabilities: () => ({ maxContextTokens: 4000, maxOutputTokens: 2000, structuredOutputSupport: true, maxConcurrency: 1 }),
+    execute: async () => { throw new ReasoningExecutorError("reasoning_configuration_invalid", "private source text must not appear"); },
+  });
+  assert.equal(result.status, "blocked");
+  assert.deepEqual(result.diagnostics, ["executor_reasoning_configuration_invalid"]);
+  assert.equal(JSON.stringify(result).includes("private source text"), false);
 });
 
 test("semantic output parsing repairs once then fails closed for malformed or unsupported model output", async () => {

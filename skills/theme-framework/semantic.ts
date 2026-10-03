@@ -1,4 +1,5 @@
 import type { ReasoningExecutor } from "../../plugins/reasoning/contracts.ts";
+import { ReasoningExecutorError } from "../../plugins/reasoning/errors.ts";
 import {
   createThemeFrameworkOutputContract,
   ThemeFrameworkValidationError,
@@ -31,7 +32,44 @@ export type ThemeFrameworkExecutionResult =
 
 function safeCode(error: unknown): string {
   if (error instanceof ThemeFrameworkValidationError) return error.code;
+  if (error instanceof ReasoningExecutorError) return `executor_${error.code}`;
   return "theme_framework_semantic_failed";
+}
+
+function outputContract(input: ThemeFrameworkInput) {
+  const contract = createThemeFrameworkOutputContract(input);
+  const omitEmptyIndustryRefs = input.existingKnowledge.industries.length === 0;
+  const noPriorDecisions = input.priorDecisions.length === 0;
+  if (!omitEmptyIndustryRefs && !noPriorDecisions) return contract;
+
+  const adaptCandidates = <T extends { items: { properties: Record<string, unknown> } }>(
+    schema: T,
+    omitProperties: readonly string[],
+  ): T => {
+    const itemProperties = { ...schema.items.properties };
+    for (const property of omitProperties) delete itemProperties[property];
+    if (noPriorDecisions) itemProperties.decisionChange = { enum: ["new"] };
+    return { ...schema, items: { ...schema.items, properties: itemProperties } };
+  };
+  const industrySchema = contract.properties.industryCandidates;
+  const relationSchema = contract.properties.relationCandidates;
+  const industryOmissions = [
+    ...(omitEmptyIndustryRefs ? ["existingIndustryRef"] : []),
+    ...(noPriorDecisions ? ["priorDecisionId", "reopenEvidenceRefs"] : []),
+  ];
+  const relationOmissions = noPriorDecisions ? ["priorDecisionId", "reopenEvidenceRefs"] : [];
+  // Empty allowlists cannot be represented by Codex's structured-output schema.
+  // With no prior decisions, unchanged/reopen metadata is also impossible. Omit
+  // those transport fields and narrow the enum; the deterministic validator
+  // still checks every returned candidate against the complete input contract.
+  return {
+    ...contract,
+    properties: {
+      ...contract.properties,
+      industryCandidates: adaptCandidates(industrySchema, industryOmissions),
+      relationCandidates: adaptCandidates(relationSchema, relationOmissions),
+    },
+  };
 }
 
 function boundedInput(input: ThemeFrameworkInput): ThemeFrameworkInput {
@@ -107,7 +145,7 @@ export async function executeThemeFramework(
               diagnostic: priorDiagnostic,
             }
           : boundedInput(input),
-        outputContract: createThemeFrameworkOutputContract(input),
+        outputContract: outputContract(input),
       });
       if (!repair) firstOutput = response.output;
       const result = validateThemeFrameworkResult(response.output, input);
