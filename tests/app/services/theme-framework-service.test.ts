@@ -149,6 +149,10 @@ test('persists a privacy-safe review candidate, reloads it after restart, and co
     const restarted = service(root, new KnowledgeBaseRegistry())
     const view = await restarted.getReviewCandidate('theme-service-restart')
     assert.equal(view.status, 'awaiting_review')
+    const inbox = await restarted.listReviews(10)
+    assert.deepEqual(inbox.items, [{ runId: 'theme-service-restart', themeName: 'AI Compute', basedOnRevision: view.candidate?.basedOnRevision, status: 'awaiting_review' }])
+    assert.equal(JSON.stringify(inbox).includes('rawRef'), false)
+    assert.equal(JSON.stringify(inbox).includes(root), false)
     assert.equal(view.candidate?.evidence[0]?.sourceRef, source.sourceRef)
     const serialized = JSON.stringify(view)
     assert.equal(serialized.includes(source.rawRef), false)
@@ -167,6 +171,7 @@ test('persists a privacy-safe review candidate, reloads it after restart, and co
     const committed = await restarted.getReviewCandidate('theme-service-restart')
     assert.equal(committed.status, 'committed')
     assert.equal(committed.receipt?.decisionCount, 2)
+    assert.deepEqual((await restarted.listReviews()).items, [{ runId: 'theme-service-restart', themeName: 'AI Compute', basedOnRevision: view.candidate?.basedOnRevision, status: 'committed' }])
   })
 })
 
@@ -268,6 +273,7 @@ test('a changed revision marks the candidate stale; altered sidecars fail checks
     const stale = await target.accept({ workflowRunId: 'theme-service-stale' })
     assert.equal(stale.status, 'conflict')
     assert.equal((await target.getReviewCandidate('theme-service-stale')).status, 'stale')
+    assert.deepEqual((await target.listReviews()).items, [{ runId: 'theme-service-stale', themeName: 'AI Compute', basedOnRevision: (await loadKnowledgeBaseManifest(root)).revision - 1, status: 'stale' }])
 
     const second = service(root, registry)
     await second.start({ workflowRunId: 'theme-service-tamper', name: 'Other Compute' }).completion

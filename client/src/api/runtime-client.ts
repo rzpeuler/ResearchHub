@@ -128,6 +128,8 @@ export interface ThemeFrameworkReviewResponse {
   readonly candidate?: ThemeFrameworkReviewCandidate
   readonly receipt?: { readonly themeRef: string; readonly committedRevision: number; readonly decisionCount: number }
 }
+export interface ThemeFrameworkReviewSummary { readonly runId: string; readonly themeName: string; readonly basedOnRevision: number; readonly status: 'awaiting_review' | 'stale' | 'committed' }
+export interface ThemeFrameworkReviewListResponse { readonly items: readonly ThemeFrameworkReviewSummary[]; readonly total: number; readonly truncated: boolean }
 export type ThemeScopeImpactDecision = 'include' | 'exclude' | 'pending' | 'dismiss'
 export interface ThemeScopeImpactProposal {
   readonly proposalId: string
@@ -353,6 +355,7 @@ export class RuntimeClient {
   async listWorkflowDefinitions(): Promise<readonly WorkflowDefinition[]> { return (await this.request<{ workflows: readonly WorkflowDefinition[] }>('/api/research/workflows')).workflows }
   async dispatchResearch(input: ResearchRequest): Promise<ResearchDispatchResponse> { return this.mutate('/api/research/dispatch', input) }
   async getThemeFrameworkRun(runId: string): Promise<ThemeFrameworkReviewResponse> { return this.request(`/api/theme-framework/runs/${encodeURIComponent(runId)}`, {}, true) }
+  async listThemeFrameworkReviews(limit = 50): Promise<ThemeFrameworkReviewListResponse> { return this.request(`/api/theme-framework/reviews?limit=${encodeURIComponent(String(limit))}`, {}, true) }
   async acceptThemeFrameworkRun(runId: string, decisions: Readonly<Record<string, ThemeFrameworkDecision>>): Promise<ThemeFrameworkActionResponse> { return this.mutate(`/api/theme-framework/runs/${encodeURIComponent(runId)}/accept`, { decisions }) }
   async rejectThemeFrameworkRun(runId: string): Promise<ThemeFrameworkActionResponse> { return this.mutate(`/api/theme-framework/runs/${encodeURIComponent(runId)}/reject`, {}) }
   async listThemeScopeImpactInbox(limit = 50): Promise<ThemeScopeImpactInboxResponse> { return this.request(`/api/theme-scope-impact?limit=${encodeURIComponent(String(limit))}`, {}, true) }

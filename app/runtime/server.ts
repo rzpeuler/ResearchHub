@@ -425,7 +425,7 @@ export class ResearchHubRuntimeServer {
       if (request.method === 'OPTIONS') { this.validateRead(request); this.sendEmpty(response, 204); return }
       if (url.pathname === '/api/bootstrap') { this.validateBootstrap(request); await this.bootstrap(response); return }
       if (url.pathname === '/api/events' && request.method === 'GET') { this.validateRead(request); this.openEvents(response); return }
-      const tokenProtectedRead = request.method === 'GET' && (/^\/api\/theme-framework\/runs\/[^/]+$/.test(url.pathname) || /^\/api\/theme-scope-impact(?:\/.*)?$/.test(url.pathname))
+      const tokenProtectedRead = request.method === 'GET' && (/^\/api\/theme-framework\/reviews$/.test(url.pathname) || /^\/api\/theme-framework\/runs\/[^/]+$/.test(url.pathname) || /^\/api\/theme-scope-impact(?:\/.*)?$/.test(url.pathname))
       if (this.isMutation(request.method, url.pathname)) this.validateMutation(request)
       else if (tokenProtectedRead) this.validateTokenProtectedRead(request)
       else this.validateRead(request)
@@ -501,6 +501,14 @@ export class ResearchHubRuntimeServer {
     const method = request.method ?? 'GET'
     const path = url.pathname
     if (method === 'GET' && (path === '/api/researchhub/status' || path === '/api/status')) { await this.sendJson(response, 200, await this.status()) ; return }
+    if (method === 'GET' && path === '/api/theme-framework/reviews') {
+      if ([...url.searchParams.keys()].some((key) => key !== 'limit')) throw new ApplicationServiceError('invalid_input', 'Theme Framework reviews query contains unsupported fields')
+      const limit = positiveInteger(url.searchParams.get('limit'))
+      if (Number.isNaN(limit) || (limit !== undefined && limit > 100)) throw new ApplicationServiceError('invalid_input', 'limit must be a positive integer no greater than 100')
+      const service = this.runtime!.services.themeFrameworkService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme Framework construction requires an active mounted Schema 0.4 Knowledge Base')
+      await this.sendJson(response, 200, await service.listReviews(limit)); return
+    }
     if (method === 'POST' && path === '/api/theme-framework/start') {
       const body = await this.readJson(request, 8_192)
       assertExactFields(body, ['workflowRunId', 'name'], ['definition'], 'Theme Framework start request')

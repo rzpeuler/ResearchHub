@@ -12,6 +12,7 @@ function mockV04UploadRuntime(fetchMock: (input: RequestInfo | URL, init?: Reque
     if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
     if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
     if (path === '/api/conversations') return json({ conversations: [] })
+    if (path === '/api/theme-framework/reviews?limit=50') return json({ items: [], total: 0, truncated: false })
     if (path === '/api/theme-scope-impact?limit=50') return json({ items: [], total: 0, truncated: false })
     return fetchMock(input, init)
   }) as typeof fetch
@@ -124,6 +125,36 @@ describe('Homepage shell', () => {
     expect(screen.getByText('Accepting these decisions will write the Theme framework to the Knowledge Base.')).toBeTruthy()
     const dispatch = calls.find((call) => call.path === '/api/research/dispatch')
     expect(JSON.parse(String(dispatch?.init?.body))).toMatchObject({ mode: { type: 'free_research' } })
+  })
+
+  it('resumes a persisted Theme Framework review after a fresh Chat mount', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    const candidate = {
+      knowledgeBaseId: 'kb-1', basedOnRevision: 7, theme: { name: 'AI Compute' },
+      framework: { proposedDefinition: { statement: 'Compute infrastructure', status: 'provisional' }, inclusionPrinciples: [], exclusionPrinciples: [], industryCandidates: [], relationCandidates: [], coverageGaps: [] },
+      acquisitionStatus: 'complete', diagnostics: [], evidence: [],
+    }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input); calls.push({ path, init })
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 7, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/theme-framework/reviews?limit=50') return json({ items: [{ runId: 'saved-theme-run', themeName: 'AI Compute', basedOnRevision: 7, status: 'awaiting_review' }], total: 1, truncated: false })
+      if (path === '/api/theme-framework/runs/saved-theme-run') return json({ status: 'awaiting_review', workflowRunId: 'saved-theme-run', candidate })
+      if (path === '/api/theme-scope-impact?limit=50') return json({ items: [], total: 0, truncated: false })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Resume review' }))
+    expect(await screen.findByRole('heading', { name: 'Industry framework' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'AI Compute' })).toBeTruthy()
+    expect(calls.some((call) => call.path === '/api/theme-framework/reviews?limit=50')).toBe(true)
+    const detail = calls.find((call) => call.path === '/api/theme-framework/runs/saved-theme-run')
+    expect(detail).toBeTruthy()
+    expect(new Headers(detail?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('b'.repeat(64))
+    expect(calls.some((call) => call.path === '/api/theme-framework/start')).toBe(false)
   })
 
   it('stages a pasted source, requires caller-supplied rights, and only accepts explicitly selected V0.4 candidates', async () => {

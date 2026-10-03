@@ -21,6 +21,7 @@ async function fixture(withService = true, withKb = true) {
   const themeFrameworkService = {
     start(input: unknown) { calls.push(['start', input]); return { runId: 'theme-route-run-1', completion: Promise.resolve({ status: 'awaiting_review', workflowRunId: 'theme-route-run-1' }) } },
     async getReviewCandidate(runId: string) { calls.push(['get', runId]); return { ...safeCandidate, workflowRunId: runId } },
+    async listReviews(limit?: number) { calls.push(['list', limit]); return { items: [{ runId: 'theme-route-run-1', themeName: 'AI 算力', basedOnRevision: 7, status: 'awaiting_review' }], total: 1, truncated: false } },
     async accept(input: unknown) { calls.push(['accept', input]); return { status: 'committed', workflowRunId: 'theme-route-run-1', themeRef: 'entity:theme-safe', committedRevision: 1, decisionCount: 2 } },
     async reject(runId: string) { calls.push(['reject', runId]); return { status: 'rejected', workflowRunId: runId } },
   }
@@ -43,6 +44,21 @@ test('Theme Framework start/get/accept/reject use runtime-token protected routes
     assert.equal(browserLikeRead.status, 200)
     const crossOriginRead = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1`, { headers: { origin: 'http://127.0.0.1:1', 'x-researchhub-runtime-token': f.token } })
     assert.equal(crossOriginRead.status, 401)
+    const noTokenInbox = await fetch(`${f.origin}/api/theme-framework/reviews`, { headers: { origin: f.origin } })
+    assert.equal(noTokenInbox.status, 401)
+    const browserLikeInbox = await fetch(`${f.origin}/api/theme-framework/reviews?limit=25`, { headers: { 'x-researchhub-runtime-token': f.token } })
+    assert.equal(browserLikeInbox.status, 200)
+    const inbox = await browserLikeInbox.json() as { items: readonly Record<string, unknown>[] }
+    assert.equal(inbox.items[0]?.themeName, 'AI 算力')
+    assert.deepEqual(Object.keys(inbox.items[0] ?? {}).sort(), ['basedOnRevision', 'runId', 'status', 'themeName'])
+    assert.equal(JSON.stringify(inbox).includes('rawRef'), false)
+    const crossOriginInbox = await fetch(`${f.origin}/api/theme-framework/reviews`, { headers: { origin: 'http://127.0.0.1:1', 'x-researchhub-runtime-token': f.token } })
+    assert.equal(crossOriginInbox.status, 401)
+    const oversizedList = await fetch(`${f.origin}/api/theme-framework/reviews?limit=101`, { headers })
+    assert.equal(oversizedList.status, 400)
+    const unsupportedQuery = await fetch(`${f.origin}/api/theme-framework/reviews?raw=true`, { headers })
+    assert.equal(unsupportedQuery.status, 400)
+    assert.deepEqual(f.calls.find((call) => Array.isArray(call) && call[0] === 'list'), ['list', 25])
     const candidateResponse = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1`, { headers })
     assert.equal(candidateResponse.status, 200)
     const candidate = await candidateResponse.json() as { candidate: { evidence: readonly Record<string, unknown>[] } }

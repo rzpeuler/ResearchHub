@@ -1,6 +1,6 @@
 import { constants as fsConstants } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
-import { link, lstat, mkdir, open, realpath, unlink } from 'node:fs/promises'
+import { link, lstat, mkdir, open, opendir, realpath, unlink } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { readThemeScopeLedgerV04 } from '../../knowledge/governance/theme-scope-ledger-v04.ts'
@@ -55,6 +55,19 @@ export interface ThemeFrameworkReviewCandidateView {
   readonly receipt?: { readonly themeRef: string; readonly committedRevision: number; readonly decisionCount: number }
 }
 
+export interface ThemeFrameworkReviewSummary {
+  readonly runId: string
+  readonly themeName: string
+  readonly basedOnRevision: number
+  readonly status: 'awaiting_review' | 'stale' | 'committed'
+}
+
+export interface ThemeFrameworkReviewList {
+  readonly items: readonly ThemeFrameworkReviewSummary[]
+  readonly total: number
+  readonly truncated: boolean
+}
+
 export interface ThemeFrameworkActionResult {
   readonly status: ThemeFrameworkReviewResult['status']
   readonly workflowRunId: string
@@ -95,6 +108,8 @@ export interface ThemeFrameworkServiceOptions {
 const SAFE_RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 const MAX_VERIFIED_RAW_BYTES = 8_000_000
 const MAX_CANDIDATE_BINDINGS = THEME_FRAMEWORK_CONSTRUCTION_LIMITS.maxSources * 2
+const MAX_REVIEW_DIRECTORY_ENTRIES = 256
+const MAX_REVIEW_LIST_ITEMS = 100
 const TYPES: readonly EventType[] = ['started', 'candidate', 'accept-intent', 'committed', 'rejected', 'stale', 'blocked', 'failed', 'cancelled']
 const safeEvidenceLocator = 'retained source document'
 
@@ -318,6 +333,40 @@ export class ThemeFrameworkService {
       return { status: 'stale', workflowRunId, candidate: this.projectCandidate(saved.payload) }
     }
     return { status: 'awaiting_review', workflowRunId, candidate: this.projectCandidate(saved.payload) }
+  }
+
+  async listReviews(limit = 50): Promise<ThemeFrameworkReviewList> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_REVIEW_LIST_ITEMS) throw new ApplicationServiceError('invalid_input', 'limit must be an integer from 1 to 100')
+    const { directory } = await this.ensureReviewDirectory()
+    const names: string[] = []
+    const handle = await opendir(directory)
+    let truncated = false
+    let entriesRead = 0
+    try {
+      for await (const entry of handle) {
+        if (entriesRead >= MAX_REVIEW_DIRECTORY_ENTRIES) { truncated = true; break }
+        entriesRead += 1
+        if (entry.isFile() && entry.name.endsWith('.candidate.json')) names.push(entry.name)
+      }
+    } catch (error) {
+      throw new ApplicationServiceError('failed', 'Theme Framework review summaries are unavailable', { cause: error })
+    }
+    const summaries: ThemeFrameworkReviewSummary[] = []
+    for (const filename of names) {
+      const runId = filename.slice(0, -'.candidate.json'.length)
+      if (!validRunId(runId)) continue
+      const candidate = await this.readEvent<PersistedCandidate>(runId, 'candidate')
+      if (!candidate) continue
+      const terminal = await this.readTerminal(runId)
+      const status = terminal?.type === 'committed' || terminal?.type === 'stale'
+        ? terminal.type
+        : terminal ? undefined : 'awaiting_review'
+      if (!status) continue
+      summaries.push({ runId, themeName: candidate.payload.candidate.theme.name, basedOnRevision: candidate.payload.candidate.basedOnRevision, status })
+    }
+    summaries.sort((left, right) => right.runId.localeCompare(left.runId))
+    truncated ||= summaries.length > limit
+    return { items: summaries.slice(0, limit), total: summaries.length, truncated }
   }
 
   async accept(input: { readonly workflowRunId: string; readonly decisions?: Readonly<Record<string, 'include' | 'exclude' | 'pending'>> }): Promise<ThemeFrameworkActionResult> {
