@@ -11,6 +11,9 @@ import type { KnowledgeSourceV04 } from '../../../knowledge/schema/domain-v04.ts
 import { createFreshKnowledgeBaseV04, loadKnowledgeBaseManifest, readCanonicalV04Assets } from '../../../knowledge/storage/index.ts'
 import { validateKnowledgeChangeSetV04 } from '../../../knowledge/validation/v04-change-set-validator.ts'
 import { writeKnowledgeBase } from '../../../knowledge/writer/writer.ts'
+import { getRaw } from '../../../knowledge/raw/raw-archive.ts'
+import { DocumentInputResolver } from '../../../plugins/document/input-resolver.ts'
+import type { DocumentParser, DocumentParserInput, StructuredDocument } from '../../../plugins/document/contracts.ts'
 import type { ReasoningExecutor, ReasoningRequest, ReasoningResult } from '../../../plugins/reasoning/contracts.ts'
 import type { ThemeFrameworkInput } from '../../../skills/theme-framework/contracts.ts'
 import { ThemeFrameworkService } from '../../../app/services/theme-framework-service.ts'
@@ -128,6 +131,61 @@ function frameworkExecutor(): ReasoningExecutor {
       return { operation: request.operation, output }
     },
   }
+}
+
+function fixtureDocumentParser(options: { readonly onParse?: () => void; readonly fail?: boolean; readonly sectionCounts?: readonly number[]; readonly blockTextLength?: number } = {}): DocumentParser {
+  return {
+    id: 'theme-framework-fixture-parser',
+    supports: () => true,
+    parse: async (input: DocumentParserInput): Promise<StructuredDocument> => {
+      options.onParse?.()
+      if (options.fail) throw new Error('fixture parser failed at C:\\private\\source.pdf')
+      const counts = options.sectionCounts ?? [2, 2]
+      const sections = counts.map((_, sectionIndex) => ({
+        sectionId: `section-${sectionIndex}`,
+        title: `Fixture section ${sectionIndex}`,
+        level: 1,
+        parentSectionRef: null,
+        blockRefs: Array.from({ length: counts[sectionIndex] ?? 0 }, (_, blockIndex) => `fixture-block-${sectionIndex}-${blockIndex}`),
+        pageStart: sectionIndex + 1,
+        pageEnd: sectionIndex + 1,
+      }))
+      const blocks = counts.flatMap((count, sectionIndex) => Array.from({ length: count }, (_, blockIndex) => ({
+        blockId: `fixture-block-${sectionIndex}-${blockIndex}`,
+        type: blockIndex === 0 ? 'heading' as const : 'paragraph' as const,
+        text: `section ${sectionIndex} paragraph ${blockIndex}: ${'body '.repeat(Math.ceil((options.blockTextLength ?? 100) / 5))}`.slice(0, options.blockTextLength ?? 100),
+        sectionRef: `section-${sectionIndex}`,
+        page: sectionIndex + 1,
+        locator: { page: sectionIndex + 1, sectionPath: [`Fixture section ${sectionIndex}`], sourceOrder: blockIndex },
+        order: counts.slice(0, sectionIndex).reduce((sum, value) => sum + value, 0) + blockIndex,
+      })))
+      return {
+        documentId: input.documentId ?? 'theme-framework-fixture-document',
+        parser: { id: 'theme-framework-fixture-parser' },
+        metadata: { originalFilename: input.filename, mediaType: input.mediaType, pageCount: counts.length },
+        normalizedText: `FULL-ORIGINAL-DOCUMENT-SENTINEL ${blocks.map((block) => block.text).join('\n')}`,
+        sections,
+        blocks,
+        stats: { pageCount: counts.length, sectionCount: sections.length, blockCount: blocks.length, normalizedCharacters: blocks.reduce((sum, block) => sum + block.text.length, 0), tableCount: 0, headingCount: sections.length, listCount: 0, captionCount: 0 },
+        warnings: [],
+      }
+    },
+  }
+}
+
+function observingExecutor(capture: (input: ThemeFrameworkInput) => void): ReasoningExecutor {
+  const delegate = frameworkExecutor()
+  return {
+    capabilities: () => delegate.capabilities(),
+    execute: async (request, signal) => {
+      capture(request.input as ThemeFrameworkInput)
+      return delegate.execute(request, signal)
+    },
+  }
+}
+
+function evidenceService(root: string, registry: KnowledgeBaseRegistry, resolver: DocumentInputResolver, capture: (input: ThemeFrameworkInput) => void): ThemeFrameworkService {
+  return new ThemeFrameworkService({ mountedKnowledgeBaseRoot: root, registry, workflowService: new WorkflowService(), reasoningExecutor: observingExecutor(capture), documentInputResolver: resolver, clock })
 }
 
 function service(root: string, registry: KnowledgeBaseRegistry, workflowService = new WorkflowService(), acquisition?: ConstructorParameters<typeof ThemeFrameworkService>[0]['acquisition']): ThemeFrameworkService {
@@ -298,5 +356,111 @@ test('a source-free build stays pending and rejection records no canonical write
     assert.equal((await target.reject('theme-service-reject')).status, 'rejected')
     assert.equal((await target.getReviewCandidate('theme-service-reject')).status, 'rejected')
     assert.equal((await loadKnowledgeBaseManifest(root)).revision, baseRevision)
+  })
+})
+
+test('projects bounded document body evidence with real block locators and reuses verified excerpts', async () => {
+  await withFreshKb('raw-body-evidence', async (root) => {
+    const registry = new KnowledgeBaseRegistry()
+    const source = await persistSource(root, registry, 'body-evidence', 'Compute materials report')
+    let parserCalls = 0
+    const resolver = new DocumentInputResolver({ documentParser: fixtureDocumentParser({ onParse: () => { parserCalls += 1 } }) })
+    const inputs: ThemeFrameworkInput[] = []
+    const target = evidenceService(root, registry, resolver, (input) => inputs.push(input))
+    const runId = 'theme-service-raw-body-evidence'
+    const result = await target.start({ workflowRunId: runId, name: 'AI Compute' }).completion
+    assert.equal(result.status, 'awaiting_review')
+    assert.equal(parserCalls, 1)
+
+    const input = inputs[0]
+    assert.ok(input)
+    const bodyEvidence = input.evidence.filter((item) => item.evidenceId.startsWith('raw-evidence-'))
+    assert.equal(bodyEvidence.length, 4)
+    assert.ok(bodyEvidence.every((item) => item.excerpt !== undefined && item.excerpt.length <= 2_400))
+    assert.ok(bodyEvidence.every((item) => /block=fixture-block-\d-\d; page=\d; section=Fixture section \d/u.test(item.description)))
+    assert.ok(bodyEvidence.every((item) => item.sourceRef === source.sourceRef))
+    assert.equal(JSON.stringify(input).includes('FULL-ORIGINAL-DOCUMENT-SENTINEL'), false)
+
+    const candidatePath = join(root, 'logs', 'theme-framework', 'reviews', `${runId}.candidate.json`)
+    const persisted = JSON.parse(await readFile(candidatePath, 'utf8')) as { payload: { candidate: { durableEvidenceBindings: { evidenceId: string; locator: string }[] } } }
+    const bodyBindings = persisted.payload.candidate.durableEvidenceBindings.filter((binding) => binding.evidenceId.startsWith('raw-evidence-'))
+    assert.equal(bodyBindings.length, 4)
+    assert.deepEqual(new Set(bodyBindings.map((binding) => binding.locator)), new Set(['fixture-block-0-0', 'fixture-block-0-1', 'fixture-block-1-0', 'fixture-block-1-1']))
+    const review = await target.getReviewCandidate(runId)
+    assert.equal(review.status, 'awaiting_review')
+    assert.ok(review.candidate?.evidence.filter((item) => item.evidenceId.startsWith('raw-evidence-')).every((item) => item.summary.length <= 500 && item.summary.includes('block=fixture-block-')))
+    assert.equal(JSON.stringify(review).includes('FULL-ORIGINAL-DOCUMENT-SENTINEL'), false)
+    const canonical = await readCanonicalV04Assets(root)
+    assert.equal(canonical.objects.filter((item) => item.kind === 'entity' || item.kind === 'relation').length, 0)
+    assert.equal(canonical.objects.filter((item) => item.kind === 'source').length, 1)
+
+    const handle = await registry.refresh(root)
+    const raw = await getRaw(handle, source.rawRef)
+    await writeFile(raw.originalPath, 'tampered bytes')
+    assert.equal((await target.getReviewCandidate(runId)).status, 'stale')
+    assert.equal(parserCalls, 1)
+  })
+})
+
+test('parse failure keeps title evidence, marks body unavailable, and caches the failure without paths', async () => {
+  await withFreshKb('raw-body-fallback', async (root) => {
+    const registry = new KnowledgeBaseRegistry()
+    const source = await persistSource(root, registry, 'body-fallback', 'Compute report title')
+    let parserCalls = 0
+    const resolver = new DocumentInputResolver({ documentParser: fixtureDocumentParser({ fail: true, onParse: () => { parserCalls += 1 } }) })
+    const inputs: ThemeFrameworkInput[] = []
+    const target = evidenceService(root, registry, resolver, (input) => inputs.push(input))
+    const runId = 'theme-service-body-fallback'
+    const result = await target.start({ workflowRunId: runId, name: 'AI Compute' }).completion
+
+    assert.equal(result.status, 'awaiting_review')
+    assert.equal(parserCalls, 1)
+    const input = inputs[0]
+    assert.ok(input)
+    assert.ok(input.existingKnowledge.summary.includes('Body excerpts unavailable for 1 retained Source/Raw pair'))
+    assert.equal(input.evidence.filter((item) => item.sourceRef === source.sourceRef && item.excerpt !== undefined).length, 0)
+    assert.ok(input.evidence.some((item) => item.sourceRef === source.sourceRef && item.description.includes('retained body unavailable')))
+    assert.equal(JSON.stringify(input).includes('C:\\private'), false)
+    assert.equal((await target.getReviewCandidate(runId)).status, 'awaiting_review')
+    assert.equal(parserCalls, 1)
+  })
+})
+
+test('Raw integrity failure is rejected before parsing', async () => {
+  await withFreshKb('raw-body-invalid', async (root) => {
+    const registry = new KnowledgeBaseRegistry()
+    const source = await persistSource(root, registry, 'body-invalid', 'Invalid Raw title')
+    const handle = await registry.refresh(root)
+    const raw = await getRaw(handle, source.rawRef)
+    await writeFile(raw.originalPath, 'tampered before parse')
+    let parserCalls = 0
+    const resolver = new DocumentInputResolver({ documentParser: fixtureDocumentParser({ onParse: () => { parserCalls += 1 } }) })
+    const inputs: ThemeFrameworkInput[] = []
+    const target = evidenceService(root, registry, resolver, (input) => inputs.push(input))
+    const result = await target.start({ workflowRunId: 'theme-service-body-invalid', name: 'AI Compute' }).completion
+
+    assert.equal(result.status, 'awaiting_review')
+    assert.equal(parserCalls, 0)
+    assert.equal(inputs[0]?.evidence.some((item) => item.sourceRef === source.sourceRef), false)
+  })
+})
+
+test('caps retained inputs at 24 Source/Raw pairs and 48 existing KB evidence items', async () => {
+  await withFreshKb('raw-body-budget', async (root) => {
+    const registry = new KnowledgeBaseRegistry()
+    await persistSourceBatch(root, registry, 25)
+    let parserCalls = 0
+    const resolver = new DocumentInputResolver({ documentParser: fixtureDocumentParser({ sectionCounts: [8, 8], onParse: () => { parserCalls += 1 } }) })
+    const inputs: ThemeFrameworkInput[] = []
+    const target = evidenceService(root, registry, resolver, (input) => inputs.push(input))
+    const result = await target.start({ workflowRunId: 'theme-service-body-budget', name: 'AI Compute' }).completion
+
+    assert.equal(result.status, 'awaiting_review')
+    assert.equal(parserCalls, 24)
+    const existing = inputs[0]?.evidence.filter((item) => item.origin === 'existing_kb') ?? []
+    assert.equal(existing.length, 48)
+    assert.equal(new Set(existing.map((item) => item.sourceRef)).size, 24)
+    assert.equal(existing.filter((item) => item.excerpt !== undefined).length, 24)
+    assert.ok(existing.every((item) => item.excerpt === undefined || item.excerpt.length <= 2_400))
   })
 })

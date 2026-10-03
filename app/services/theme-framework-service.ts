@@ -9,6 +9,7 @@ import type { KnowledgeEntityV04, KnowledgeSourceV04 } from '../../knowledge/sch
 import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
 import type { KnowledgeBaseHandle } from '../../knowledge/storage/handle.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
+import { DocumentInputResolver } from '../../plugins/document/input-resolver.ts'
 import { THEME_FRAMEWORK_BOUNDS, type ThemeFrameworkInput } from '../../skills/theme-framework/contracts.ts'
 import {
   runThemeFrameworkConstruction,
@@ -27,6 +28,7 @@ import { THEME_FRAMEWORK_CONSTRUCTION_LIMITS } from '../../workflows/theme-frame
 import { ThemeFrameworkAcceptanceV04 } from '../../knowledge/production/theme-framework-acceptance-v04.ts'
 import { ApplicationServiceError } from './contracts.ts'
 import { WorkflowService, type WorkflowOutcome } from './workflow-service.ts'
+import { sampleThemeFrameworkRawEvidence, THEME_FRAMEWORK_RAW_EVIDENCE_LIMITS, themeFrameworkRawEvidenceId, type ThemeFrameworkRawEvidenceExcerpt } from './theme-framework-raw-evidence.ts'
 
 export const THEME_FRAMEWORK_REVIEW_STORE_LIMITS = {
   maxSnapshotBytes: 1_000_000,
@@ -36,6 +38,17 @@ export const THEME_FRAMEWORK_REVIEW_STORE_LIMITS = {
 
 type SafeEvidenceView = { readonly evidenceId: string; readonly summary: string; readonly sourceRef: `source:${string}` }
 type PersistedCandidate = { readonly candidate: ThemeFrameworkReviewCandidate; readonly evidence: readonly SafeEvidenceView[] }
+type CachedRawEvidence = { readonly bodyAvailable: boolean; readonly excerpts: readonly ThemeFrameworkRawEvidenceExcerpt[] }
+type ExistingRawEvidenceProjection = {
+  readonly titleEvidence: ThemeFrameworkInput['evidence'][number]
+  readonly titleBinding: ThemeFrameworkDurableEvidenceBinding
+  readonly titleView: SafeEvidenceView
+  readonly excerpts: readonly ThemeFrameworkRawEvidenceExcerpt[]
+  readonly sourceTitle: string
+  readonly publishedAt?: string
+  readonly sourceRef: `source:${string}`
+  readonly rawRef: `raw-sha256-${string}`
+}
 type EventType = 'started' | 'candidate' | 'accept-intent' | 'committed' | 'rejected' | 'stale' | 'blocked' | 'failed' | 'cancelled'
 type Envelope<T> = { readonly version: 1; readonly type: EventType; readonly runId: string; readonly payload: T; readonly checksum: string }
 
@@ -103,11 +116,15 @@ export interface ThemeFrameworkServiceOptions {
   readonly clock?: () => string
   readonly constructionRunner?: ThemeFrameworkConstructionRunner
   readonly reviewRunner?: ThemeFrameworkReviewRunner
+  readonly documentInputResolver?: Pick<DocumentInputResolver, 'resolve'>
 }
 
 const SAFE_RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 const MAX_VERIFIED_RAW_BYTES = 8_000_000
-const MAX_CANDIDATE_BINDINGS = THEME_FRAMEWORK_CONSTRUCTION_LIMITS.maxSources * 2
+const MAX_EXISTING_KB_SOURCE_RAW_PAIRS = THEME_FRAMEWORK_CONSTRUCTION_LIMITS.maxSources
+const MAX_EXISTING_KB_EVIDENCE = 48
+const MAX_RAW_EVIDENCE_CACHE_ENTRIES = THEME_FRAMEWORK_CONSTRUCTION_LIMITS.maxSources
+const MAX_CANDIDATE_BINDINGS = THEME_FRAMEWORK_BOUNDS.maxEvidence
 const MAX_REVIEW_DIRECTORY_ENTRIES = 256
 const MAX_REVIEW_LIST_ITEMS = 100
 const TYPES: readonly EventType[] = ['started', 'candidate', 'accept-intent', 'committed', 'rejected', 'stale', 'blocked', 'failed', 'cancelled']
@@ -229,6 +246,8 @@ export class ThemeFrameworkService {
   private readonly commitPort: ThemeFrameworkAtomicCommitPort
   private readonly clock: () => string
   private readonly root: string
+  private readonly documentInputResolver: Pick<DocumentInputResolver, 'resolve'>
+  private readonly rawEvidenceCache = new Map<string, CachedRawEvidence>()
   private readonly locks = new Map<string, Promise<void>>()
 
   constructor(private readonly options: ThemeFrameworkServiceOptions) {
@@ -237,6 +256,7 @@ export class ThemeFrameworkService {
     this.registry = options.registry ?? new KnowledgeBaseRegistry()
     this.commitPort = options.commitPort ?? new ThemeFrameworkAcceptanceV04({ registry: this.registry, clock: options.clock })
     this.clock = options.clock ?? (() => new Date().toISOString())
+    this.documentInputResolver = options.documentInputResolver ?? new DocumentInputResolver()
   }
 
   start(input: ThemeFrameworkStartInput, callerSignal?: AbortSignal): { readonly runId: string; readonly completion: Promise<ThemeFrameworkStartCompletion> } {
@@ -452,6 +472,41 @@ export class ThemeFrameworkService {
     })
   }
 
+  private async resolveRawEvidence(rawRef: string, sourceRef: string, originalPath: string): Promise<CachedRawEvidence> {
+    const cached = this.rawEvidenceCache.get(rawRef)
+    if (cached) {
+      this.rawEvidenceCache.delete(rawRef)
+      this.rawEvidenceCache.set(rawRef, cached)
+      return cached
+    }
+
+    let value: CachedRawEvidence = { bodyAvailable: false, excerpts: [] }
+    try {
+      const resolved = await this.documentInputResolver.resolve({
+        type: 'file',
+        reference: originalPath,
+        documentId: `theme-framework-${rawRef.slice(-20)}`,
+      })
+      const excerpts = sampleThemeFrameworkRawEvidence({ document: resolved.document, sourceRef, rawRef })
+      if (excerpts.length > 0) value = { bodyAvailable: true, excerpts }
+    } catch {
+      // Parser/path diagnostics can contain local filesystem details and must
+      // not enter the model context. Cache only the bounded unavailable marker.
+    }
+
+    this.rawEvidenceCache.set(rawRef, value)
+    while (this.rawEvidenceCache.size > MAX_RAW_EVIDENCE_CACHE_ENTRIES) {
+      const oldest = this.rawEvidenceCache.keys().next().value as string | undefined
+      if (oldest === undefined) break
+      this.rawEvidenceCache.delete(oldest)
+    }
+    return value
+  }
+
+  private cachedRawExcerpt(rawRef: string, locator: string | undefined): ThemeFrameworkRawEvidenceExcerpt | undefined {
+    return this.rawEvidenceCache.get(rawRef)?.excerpts.find((excerpt) => excerpt.blockId === locator)
+  }
+
   private async readKnowledgeSnapshot(themeName: string): Promise<ThemeFrameworkKnowledgeSnapshot> {
     let handle: KnowledgeBaseHandle
     try { handle = await this.registry.refresh(this.root) }
@@ -474,29 +529,63 @@ export class ThemeFrameworkService {
     const evidence: ThemeFrameworkInput['evidence'][number][] = []
     const bindings: ThemeFrameworkDurableEvidenceBinding[] = []
     const evidenceViews: SafeEvidenceView[] = []
+    const existingEvidenceRecords: ExistingRawEvidenceProjection[] = []
+    let unavailableBodyCount = 0
     const sourceObjects = objects.filter((value): value is KnowledgeSourceV04 => value.id.startsWith('source:')).sort((left, right) => left.id.localeCompare(right.id))
-    for (const source of sourceObjects) {
-      if (evidence.length >= THEME_FRAMEWORK_CONSTRUCTION_LIMITS.maxSources) break
+    sourceLoop: for (const source of sourceObjects) {
       if (!Number.isFinite(evaluatedAt) || !eligibleSource(source, evaluatedAt)) continue
       for (const rawRef of [...new Set(source.rawRefs ?? [])].sort()) {
-        if (evidence.length >= THEME_FRAMEWORK_CONSTRUCTION_LIMITS.maxSources) break
+        if (existingEvidenceRecords.length >= MAX_EXISTING_KB_SOURCE_RAW_PAIRS) break sourceLoop
+        let raw: Awaited<ReturnType<typeof getRaw>>
+        let verified: Awaited<ReturnType<typeof verifyRaw>>
         try {
-          const raw = await getRaw(handle, rawRef)
-          if (raw.manifest.sizeBytes > MAX_VERIFIED_RAW_BYTES) continue
-          await verifyRaw(handle, rawRef)
+          raw = await getRaw(handle, rawRef)
+          if (raw.manifest.rawRef !== rawRef || raw.manifest.sizeBytes > MAX_VERIFIED_RAW_BYTES) continue
+          verified = await verifyRaw(handle, rawRef)
+          if (!verified.valid || verified.rawRef !== rawRef || verified.sizeBytes !== raw.manifest.sizeBytes || verified.contentHash !== raw.manifest.contentHash) continue
         } catch {
           continue
         }
         const evidenceId = `E${sha256([source.id, rawRef]).slice(0, 40)}`
-        const summary = safeDisplayText([source.title.trim(), source.publisher?.trim()].filter((part): part is string => typeof part === 'string' && part.length > 0).join(' — ')).slice(0, 500)
-        if (!summary) continue
-        evidence.push({ evidenceId, origin: 'existing_kb', description: summary, sourceRef: source.id, ...(source.publishedAt ? { publishedAt: source.publishedAt } : {}) })
-        bindings.push({ evidenceId, sourceRef: source.id, rawRef, locator: safeEvidenceLocator })
-        evidenceViews.push({ evidenceId, summary, sourceRef: source.id })
+        const sourceRef = source.id as `source:${string}`
+        const rawEvidence = await this.resolveRawEvidence(rawRef, sourceRef, verified.originalPath)
+        const summary = safeDisplayText([source.title.trim(), source.publisher?.trim()].filter((part): part is string => typeof part === 'string' && part.length > 0).join(' — ')).slice(0, 500) || 'Retained source document'
+        if (!rawEvidence.bodyAvailable) unavailableBodyCount += 1
+        const titleSummary = rawEvidence.bodyAvailable ? summary : `${summary} — retained body unavailable`.slice(0, 500)
+        existingEvidenceRecords.push({
+          titleEvidence: { evidenceId, origin: 'existing_kb', description: titleSummary, sourceRef, ...(source.publishedAt ? { publishedAt: source.publishedAt } : {}) },
+          titleBinding: { evidenceId, sourceRef, rawRef: rawRef as `raw-sha256-${string}`, locator: safeEvidenceLocator },
+          titleView: { evidenceId, summary: titleSummary, sourceRef },
+          excerpts: rawEvidence.excerpts,
+          sourceTitle: summary,
+          ...(source.publishedAt ? { publishedAt: source.publishedAt } : {}),
+          sourceRef,
+          rawRef: rawRef as `raw-sha256-${string}`,
+        })
+      }
+    }
+    for (const record of existingEvidenceRecords) {
+      evidence.push(record.titleEvidence)
+      bindings.push(record.titleBinding)
+      evidenceViews.push(record.titleView)
+    }
+    let remainingExcerptSlots = Math.max(0, MAX_EXISTING_KB_EVIDENCE - evidence.length)
+    for (let excerptIndex = 0; excerptIndex < THEME_FRAMEWORK_RAW_EVIDENCE_LIMITS.maxExcerptsPerRaw && remainingExcerptSlots > 0; excerptIndex += 1) {
+      for (const record of existingEvidenceRecords) {
+        const excerpt = record.excerpts[excerptIndex]
+        if (!excerpt || remainingExcerptSlots <= 0) continue
+        const locatorDescription = safeDisplayText(`${record.sourceTitle} — retained body excerpt (block=${excerpt.blockId}; page=${excerpt.page ?? 'unknown'}; section=${excerpt.sectionTitle ?? 'unlabeled'})`).slice(0, 500)
+        const summary = safeDisplayText(`${locatorDescription}: ${excerpt.excerpt}`).slice(0, 500)
+        const evidenceId = themeFrameworkRawEvidenceId(record.sourceRef, record.rawRef, excerpt.blockId)
+        evidence.push({ evidenceId, origin: 'existing_kb', description: locatorDescription, sourceRef: record.sourceRef, ...(record.publishedAt ? { publishedAt: record.publishedAt } : {}), excerpt: excerpt.excerpt })
+        bindings.push({ evidenceId, sourceRef: record.sourceRef, rawRef: record.rawRef, locator: excerpt.blockId })
+        evidenceViews.push({ evidenceId, summary, sourceRef: record.sourceRef })
+        remainingExcerptSlots -= 1
       }
     }
     const ledgerSummary = `${ledger.decisionCount} prior A4 scope decisions across ${ledger.themes.length} Themes.`
-    const summary = `Active Knowledge Base revision ${handle.revision}. Existing active Industries: ${industries.map((item) => item.name).join(', ') || 'none'}. ${ledgerSummary}`.slice(0, THEME_FRAMEWORK_BOUNDS.maxSummary)
+    const bodyEvidenceSummary = unavailableBodyCount > 0 ? ` Body excerpts unavailable for ${unavailableBodyCount} retained Source/Raw pair(s); title metadata only.` : ' Body excerpts available for eligible retained Source/Raw pairs.'
+    const summary = `Active Knowledge Base revision ${handle.revision}. Existing active Industries: ${industries.map((item) => item.name).join(', ') || 'none'}. ${ledgerSummary}${bodyEvidenceSummary}`.slice(0, THEME_FRAMEWORK_BOUNDS.maxSummary)
     const priorDecisions: ThemeFrameworkKnowledgeSnapshot['priorDecisions'] = []
     return {
       knowledgeBaseId: handle.knowledgeBaseId,
@@ -556,8 +645,12 @@ export class ThemeFrameworkService {
       if (rawRecord.manifest.sizeBytes > MAX_VERIFIED_RAW_BYTES) throw new ApplicationServiceError('conflict', 'Candidate Raw object exceeds the verification size limit')
       const raw = await verifyRaw(handle, binding.rawRef)
       if (raw.manifest.rawRef !== binding.rawRef) throw new ApplicationServiceError('conflict', 'Candidate Raw identity did not verify')
-      const summary = safeDisplayText([source.title.trim(), source.publisher?.trim()].filter((part): part is string => typeof part === 'string' && part.length > 0).join(' — ')).slice(0, 500)
-      if (!summary) throw new ApplicationServiceError('conflict', 'Candidate Source summary is unavailable')
+      const sourceSummary = safeDisplayText([source.title.trim(), source.publisher?.trim()].filter((part): part is string => typeof part === 'string' && part.length > 0).join(' — ')).slice(0, 500)
+      if (!sourceSummary) throw new ApplicationServiceError('conflict', 'Candidate Source summary is unavailable')
+      const excerpt = this.cachedRawExcerpt(binding.rawRef, locator)
+      const summary = excerpt
+        ? safeDisplayText(`${sourceSummary} — body excerpt (block=${excerpt.blockId}; page=${excerpt.page ?? 'unknown'}; section=${excerpt.sectionTitle ?? 'unlabeled'}): ${excerpt.excerpt}`).slice(0, 500)
+        : sourceSummary
       const verifiedBinding = { ...binding, locator: locator ?? safeEvidenceLocator }
       result.push(verifiedBinding)
       views.push({ evidenceId: binding.evidenceId, summary, sourceRef: binding.sourceRef })
