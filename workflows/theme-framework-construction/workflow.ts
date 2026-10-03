@@ -1,6 +1,7 @@
 import {
   executeThemeFramework,
 } from '../../skills/theme-framework/semantic.ts'
+import { THEME_SCOPE_V04_LIMITS } from '../../knowledge/governance/theme-scope-v04.ts'
 import {
   THEME_FRAMEWORK_BOUNDS,
   THEME_FRAMEWORK_RECOMMENDATIONS,
@@ -212,15 +213,26 @@ export async function runThemeFrameworkConstruction(
 function decisionsForReview(request: ThemeFrameworkReviewRequest): readonly ThemeFrameworkDecision[] | string {
   const candidates = allCandidates(request.candidate.framework)
   const overrides = request.decisions ?? {}
+  const rationales = request.decisionRationales ?? {}
   const ids = new Set(candidates.map((candidate) => candidate.candidateId))
   if (Object.keys(overrides).some((id) => !ids.has(id))) return 'review_contains_unknown_candidate'
   if (Object.values(overrides).some((value) => !THEME_FRAMEWORK_RECOMMENDATIONS.includes(value))) return 'review_decision_invalid'
+  if (Object.keys(rationales).some((id) => !ids.has(id))) return 'review_contains_unknown_candidate'
+  for (const candidate of candidates) {
+    const decision = overrides[candidate.candidateId] ?? candidate.recommendation
+    const rationale = rationales[candidate.candidateId]
+    if (decision !== candidate.recommendation) {
+      if (typeof rationale !== 'string' || rationale.trim().length === 0 || rationale.length > THEME_SCOPE_V04_LIMITS.maxRationaleLength) return 'review_decision_override_requires_rationale'
+    } else if (rationale !== undefined) {
+      return 'review_rationale_without_decision_override'
+    }
+  }
   const durableBindings = new Map(request.candidate.durableEvidenceBindings.map((binding) => [binding.evidenceId, binding]))
   const decisions: ThemeFrameworkDecision[] = candidates.map((candidate) => ({
     candidateId: candidate.candidateId,
     kind: 'independentlyResearchableRationale' in candidate ? 'industry' : 'relation',
     decision: overrides[candidate.candidateId] ?? candidate.recommendation,
-    rationale: candidate.boundaryRationale,
+    rationale: rationales[candidate.candidateId] ?? candidate.boundaryRationale,
     // Only already retained, integrity-verified Source/Raw evidence can be
     // bound to an A4 human-confirmed scope decision. Acquired-but-unpersisted
     // material remains visible to Chat but cannot justify canonical inclusion.

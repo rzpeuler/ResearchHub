@@ -134,6 +134,8 @@ export interface ThemeFrameworkReviewRequest {
    * a complete batch to the atomic commit port.
    */
   readonly decisions?: Readonly<Record<string, ThemeFrameworkRecommendation>>
+  /** Required only for candidates whose final decision differs from the Skill recommendation. */
+  readonly decisionRationales?: Readonly<Record<string, string>>
 }
 
 export type ThemeFrameworkReviewResult =

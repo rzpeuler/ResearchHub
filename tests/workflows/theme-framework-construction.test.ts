@@ -162,7 +162,7 @@ test('partial human decisions preserve excluded and pending candidates, passing 
   }))
   let committedInput: Parameters<ThemeFrameworkAtomicCommitPort['commitThemeFrameworkAtomically']>[0] | undefined
   const commit: ThemeFrameworkAtomicCommitPort = { commitThemeFrameworkAtomically: async (input) => { committedInput = input; return { status: 'committed', themeRef: 'entity:theme', committedRevision: 8 } } }
-  const result = await reviewThemeFrameworkConstruction({ candidate, disposition: 'accept', decisions: { consumer: 'pending' } }, commit)
+  const result = await reviewThemeFrameworkConstruction({ candidate, disposition: 'accept', decisions: { consumer: 'pending' }, decisionRationales: { consumer: 'Reassess this boundary because accelerator demand makes the downstream segment relevant.' } }, commit)
   assert.equal(result.status, 'committed')
   assert.ok(committedInput)
   assert.equal(committedInput.decisions.length, 3)
@@ -171,6 +171,22 @@ test('partial human decisions preserve excluded and pending candidates, passing 
   ])
   assert.deepEqual(committedInput.decisions[0]?.evidenceBindings.map((binding) => binding.sourceRef), ['source:existing'])
   assert.equal(committedInput.decisions[1]?.evidenceRefs.length, 0)
+  assert.equal(committedInput.decisions[1]?.rationale, 'Reassess this boundary because accelerator demand makes the downstream segment relevant.')
+})
+
+test('a human decision override requires its own bounded rationale', async () => {
+  const candidate = await candidateOrFail()
+  let commitCalls = 0
+  const commit: ThemeFrameworkAtomicCommitPort = { commitThemeFrameworkAtomically: async () => { commitCalls += 1; return { status: 'committed', themeRef: 'entity:theme', committedRevision: 8 } } }
+  const missing = await reviewThemeFrameworkConstruction({ candidate, disposition: 'accept', decisions: { consumer: 'pending' } }, commit)
+  assert.equal(missing.status, 'blocked')
+  if (missing.status === 'blocked') assert.deepEqual(missing.diagnostics, ['review_decision_override_requires_rationale'])
+  assert.equal(commitCalls, 0)
+
+  const unnecessary = await reviewThemeFrameworkConstruction({ candidate, disposition: 'accept', decisionRationales: { consumer: 'No decision was changed.' } }, commit)
+  assert.equal(unnecessary.status, 'blocked')
+  if (unnecessary.status === 'blocked') assert.deepEqual(unnecessary.diagnostics, ['review_rationale_without_decision_override'])
+  assert.equal(commitCalls, 0)
 })
 
 test('canonical include is blocked when cited evidence has no persisted Source/Raw binding', async () => {
@@ -198,7 +214,7 @@ test('an included relation cannot outlive a node the user leaves pending', async
   }
   const candidate = await candidateOrFail(ports({ reasoningExecutor: executor([withEdge]) }))
   let commitCalls = 0
-  const result = await reviewThemeFrameworkConstruction({ candidate, disposition: 'accept', decisions: { packaging: 'pending', 'accelerators-packaging': 'include' } }, {
+  const result = await reviewThemeFrameworkConstruction({ candidate, disposition: 'accept', decisions: { packaging: 'pending', 'accelerators-packaging': 'include' }, decisionRationales: { 'accelerators-packaging': 'The edge should be reconsidered after including its endpoints.' } }, {
     commitThemeFrameworkAtomically: async () => { commitCalls += 1; return { status: 'committed', themeRef: 'entity:theme', committedRevision: 8 } },
   })
   assert.equal(result.status, 'blocked')

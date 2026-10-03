@@ -4,6 +4,7 @@ import { link, lstat, mkdir, open, opendir, realpath, unlink } from 'node:fs/pro
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { readThemeScopeLedgerV04 } from '../../knowledge/governance/theme-scope-ledger-v04.ts'
+import { THEME_SCOPE_V04_LIMITS } from '../../knowledge/governance/theme-scope-v04.ts'
 import { getRaw, verifyRaw } from '../../knowledge/raw/raw-archive.ts'
 import type { KnowledgeEntityV04, KnowledgeSourceV04 } from '../../knowledge/schema/domain-v04.ts'
 import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
@@ -411,22 +412,24 @@ export class ThemeFrameworkService {
     return { items: summaries.slice(0, limit), total: summaries.length, truncated }
   }
 
-  async accept(input: { readonly workflowRunId: string; readonly decisions?: Readonly<Record<string, 'include' | 'exclude' | 'pending'>> }): Promise<ThemeFrameworkActionResult> {
+  async accept(input: { readonly workflowRunId: string; readonly decisions?: Readonly<Record<string, 'include' | 'exclude' | 'pending'>>; readonly decisionRationales?: Readonly<Record<string, string>> }): Promise<ThemeFrameworkActionResult> {
     if (!input || !validRunId(input.workflowRunId)) throw new ApplicationServiceError('invalid_input', 'workflowRunId is invalid')
     const decisions = this.validateDecisions(input.decisions)
+    const decisionRationales = this.validateDecisionRationales(input.decisionRationales)
     return this.serialize(input.workflowRunId, async () => {
-      const committed = await this.readEvent<{ themeRef: string; committedRevision: number; decisionCount: number }>(input.workflowRunId, 'committed')
-      if (committed) {
-        const priorIntent = await this.readEvent<{ digest: string; decisions: Readonly<Record<string, string>> }>(input.workflowRunId, 'accept-intent')
-        if (priorIntent && priorIntent.payload.digest === sha256(decisions)) return { status: 'already_committed', workflowRunId: input.workflowRunId, themeRef: committed.payload.themeRef, committedRevision: committed.payload.committedRevision, decisionCount: committed.payload.decisionCount }
-        return { status: 'conflict', workflowRunId: input.workflowRunId, diagnostics: ['theme_framework_run_already_committed'] }
-      }
-      if (await this.readTerminal(input.workflowRunId)) return { status: 'conflict', workflowRunId: input.workflowRunId, diagnostics: ['theme_framework_run_is_terminal'] }
       const candidateEvent = await this.readEvent<PersistedCandidate>(input.workflowRunId, 'candidate')
       if (!candidateEvent) throw new ApplicationServiceError('conflict', 'No persisted review candidate is available')
       const persisted = candidateEvent.payload
-      const digest = sha256(decisions)
-      let intent = await this.readEvent<{ digest: string; decisions: Readonly<Record<string, string>> }>(input.workflowRunId, 'accept-intent')
+      this.validateDecisionRationalesForCandidate(decisions, decisionRationales, persisted.candidate)
+      const digest = sha256({ decisions, decisionRationales })
+      const committed = await this.readEvent<{ themeRef: string; committedRevision: number; decisionCount: number }>(input.workflowRunId, 'committed')
+      if (committed) {
+        const priorIntent = await this.readEvent<{ digest: string; decisions: Readonly<Record<string, string>>; decisionRationales?: Readonly<Record<string, string>> }>(input.workflowRunId, 'accept-intent')
+        if (priorIntent && priorIntent.payload.digest === digest) return { status: 'already_committed', workflowRunId: input.workflowRunId, themeRef: committed.payload.themeRef, committedRevision: committed.payload.committedRevision, decisionCount: committed.payload.decisionCount }
+        return { status: 'conflict', workflowRunId: input.workflowRunId, diagnostics: ['theme_framework_run_already_committed'] }
+      }
+      if (await this.readTerminal(input.workflowRunId)) return { status: 'conflict', workflowRunId: input.workflowRunId, diagnostics: ['theme_framework_run_is_terminal'] }
+      let intent = await this.readEvent<{ digest: string; decisions: Readonly<Record<string, string>>; decisionRationales?: Readonly<Record<string, string>> }>(input.workflowRunId, 'accept-intent')
       if (intent && intent.payload.digest !== digest) return { status: 'conflict', workflowRunId: input.workflowRunId, diagnostics: ['theme_framework_acceptance_intent_differs'] }
 
       let current: ThemeFrameworkKnowledgeSnapshot
@@ -446,14 +449,14 @@ export class ThemeFrameworkService {
       }
       if (!intent) {
         try {
-          await this.writeEvent(input.workflowRunId, 'accept-intent', { digest, decisions })
+          await this.writeEvent(input.workflowRunId, 'accept-intent', { digest, decisions, decisionRationales })
           intent = await this.readEvent(input.workflowRunId, 'accept-intent') as typeof intent
         } catch {
           return { status: 'conflict', workflowRunId: input.workflowRunId, diagnostics: ['theme_framework_acceptance_intent_unavailable'] }
         }
       }
       if (!intent) return { status: 'failed', workflowRunId: input.workflowRunId, diagnostics: ['theme_framework_acceptance_intent_unavailable'] }
-      const review = await (this.options.reviewRunner ?? reviewThemeFrameworkConstruction)({ candidate: persisted.candidate, disposition: 'accept', decisions }, this.commitPort)
+      const review = await (this.options.reviewRunner ?? reviewThemeFrameworkConstruction)({ candidate: persisted.candidate, disposition: 'accept', decisions, decisionRationales }, this.commitPort)
       if (review.status === 'blocked') {
         await this.removeEvent(input.workflowRunId, 'accept-intent').catch(() => undefined)
         return this.projectAction(review)
@@ -975,6 +978,42 @@ export class ThemeFrameworkService {
       result[candidateId] = decision
     }
     return Object.fromEntries(Object.entries(result).sort(([left], [right]) => left.localeCompare(right)))
+  }
+
+  private validateDecisionRationales(value: Readonly<Record<string, unknown>> | undefined): Readonly<Record<string, string>> {
+    if (value === undefined) return {}
+    if (!isRecord(value) || Object.keys(value).length > 120) throw new ApplicationServiceError('invalid_input', 'decisionRationales must be a bounded candidate-rationale map')
+    const result: Record<string, string> = {}
+    for (const [candidateId, rationale] of Object.entries(value)) {
+      if (!/^[A-Za-z][A-Za-z0-9._-]{0,79}$/u.test(candidateId)
+        || typeof rationale !== 'string'
+        || rationale.trim().length === 0
+        || rationale.length > THEME_SCOPE_V04_LIMITS.maxRationaleLength) {
+        throw new ApplicationServiceError('invalid_input', `decisionRationales must contain candidate IDs and non-empty rationales up to ${THEME_SCOPE_V04_LIMITS.maxRationaleLength} characters`)
+      }
+      result[candidateId] = rationale
+    }
+    return Object.fromEntries(Object.entries(result).sort(([left], [right]) => left.localeCompare(right)))
+  }
+
+  private validateDecisionRationalesForCandidate(
+    decisions: Readonly<Record<string, 'include' | 'exclude' | 'pending'>>,
+    rationales: Readonly<Record<string, string>>,
+    candidate: ThemeFrameworkReviewCandidate,
+  ): void {
+    const all = [...candidate.framework.industryCandidates, ...candidate.framework.relationCandidates]
+    const byId = new Map(all.map((item) => [item.candidateId, item]))
+    if (Object.keys(decisions).some((id) => !byId.has(id)) || Object.keys(rationales).some((id) => !byId.has(id))) {
+      throw new ApplicationServiceError('invalid_input', 'decisions or decisionRationales contain an unknown candidate ID')
+    }
+    for (const item of all) {
+      const rationale = rationales[item.candidateId]
+      if ((decisions[item.candidateId] ?? item.recommendation) !== item.recommendation) {
+        if (rationale === undefined) throw new ApplicationServiceError('invalid_input', `decisionRationales must include a rationale for overridden candidate ${item.candidateId}`)
+      } else if (rationale !== undefined) {
+        throw new ApplicationServiceError('invalid_input', `decisionRationales contains a candidate without a decision override: ${item.candidateId}`)
+      }
+    }
   }
 
   private requireRunId(value: string): void {

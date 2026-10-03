@@ -13,6 +13,7 @@ import { validateKnowledgeChangeSetV04 } from '../../../knowledge/validation/v04
 import { writeKnowledgeBase } from '../../../knowledge/writer/writer.ts'
 import { getRaw } from '../../../knowledge/raw/raw-archive.ts'
 import { RawDocumentKnowledgeGatewayV04 } from '../../../knowledge/production/raw-document-gateway-v04.ts'
+import { readThemeScopeLedgerV04 } from '../../../knowledge/governance/theme-scope-ledger-v04.ts'
 import { DocumentInputResolver } from '../../../plugins/document/input-resolver.ts'
 import type { DocumentParser, DocumentParserInput, StructuredDocument } from '../../../plugins/document/contracts.ts'
 import type { ReasoningExecutor, ReasoningRequest, ReasoningResult } from '../../../plugins/reasoning/contracts.ts'
@@ -233,7 +234,13 @@ test('persists a privacy-safe review candidate, reloads it after restart, and co
     assert.equal(serialized.includes('service-evidence evidence payload'), false)
 
     const baseRevision = (await loadKnowledgeBaseManifest(root)).revision
-    const result = await restarted.accept({ workflowRunId: 'theme-service-restart', decisions: { 'member-b': 'pending' } })
+    const humanRationale = 'Keep accelerator manufacturing under review until wafer supply boundaries are independently established.'
+    await assert.rejects(
+      () => restarted.accept({ workflowRunId: 'theme-service-restart', decisions: { 'member-b': 'pending' } }),
+      /decisionRationales must include a rationale/u,
+    )
+    assert.equal((await loadKnowledgeBaseManifest(root)).revision, baseRevision)
+    const result = await restarted.accept({ workflowRunId: 'theme-service-restart', decisions: { 'member-b': 'pending' }, decisionRationales: { 'member-b': humanRationale } })
     assert.equal(result.status, 'committed')
     assert.equal(result.decisionCount, 2)
     const assets = await readCanonicalV04Assets(root)
@@ -241,6 +248,15 @@ test('persists a privacy-safe review candidate, reloads it after restart, and co
     assert.ok(entities.some((item) => item.id === result.themeRef && item.type === 'investment_theme'))
     assert.equal(entities.filter((item) => item.type === 'industry').length, 1)
     assert.equal((await loadKnowledgeBaseManifest(root)).revision, baseRevision + 1)
+    const ledger = await readThemeScopeLedgerV04(await registry.refresh(root))
+    assert.equal(ledger.status, 'available')
+    if (ledger.status === 'available') {
+      const humanDecision = ledger.themes.flatMap((theme) => theme.history).find((entry) => entry.decision.candidate.kind === 'industry' && entry.decision.candidate.name === 'Accelerator Manufacturing')
+      assert.equal(humanDecision?.decision.decision, 'pending')
+      assert.equal(humanDecision?.decision.rationale, humanRationale)
+    }
+    const differentRationaleReplay = await restarted.accept({ workflowRunId: 'theme-service-restart', decisions: { 'member-b': 'pending' }, decisionRationales: { 'member-b': 'Use a different human reason.' } })
+    assert.equal(differentRationaleReplay.status, 'conflict')
     const committed = await restarted.getReviewCandidate('theme-service-restart')
     assert.equal(committed.status, 'committed')
     assert.equal(committed.receipt?.decisionCount, 2)

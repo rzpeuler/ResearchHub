@@ -81,9 +81,10 @@ test('Theme Framework start/get/accept/reject use runtime-token protected routes
     assert.equal(conflictedRefresh.status, 409)
     assert.equal((await conflictedRefresh.json() as { status: string }).status, 'conflict')
 
-    const accepted = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/accept`, { method: 'POST', headers, body: JSON.stringify({ decisions: { industry_1: 'include', relation_1: 'pending' } }) })
+    const rationale = 'Retain this industry as a boundary candidate pending evidence.'
+    const accepted = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/accept`, { method: 'POST', headers, body: JSON.stringify({ decisions: { industry_1: 'include', relation_1: 'pending' }, decisionRationales: { industry_1: rationale } }) })
     assert.equal(accepted.status, 200)
-    assert.deepEqual(f.calls.find((call) => Array.isArray(call) && call[0] === 'accept'), ['accept', { workflowRunId: 'theme-route-run-1', decisions: { industry_1: 'include', relation_1: 'pending' } }])
+    assert.deepEqual(f.calls.find((call) => Array.isArray(call) && call[0] === 'accept'), ['accept', { workflowRunId: 'theme-route-run-1', decisions: { industry_1: 'include', relation_1: 'pending' }, decisionRationales: { industry_1: rationale } }])
     const rejected = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/reject`, { method: 'POST', headers, body: '{}' })
     assert.equal(rejected.status, 200)
     const mutationWithoutOrigin = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/reject`, { method: 'POST', headers: { 'x-researchhub-runtime-token': f.token, 'content-type': 'application/json' }, body: '{}' })
@@ -101,6 +102,10 @@ test('Theme Framework routes reject unsupported request and ref fields with narr
     assert.equal(oversized.status, 400)
     const invalidDecision = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/accept`, { method: 'POST', headers, body: JSON.stringify({ decisions: { 'unsafe/ref': 'include' } }) })
     assert.equal(invalidDecision.status, 400)
+    const invalidRationale = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/accept`, { method: 'POST', headers, body: JSON.stringify({ decisionRationales: { industry: '   ' } }) })
+    assert.equal(invalidRationale.status, 400)
+    const oversizedRationale = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/accept`, { method: 'POST', headers, body: JSON.stringify({ decisionRationales: { industry: 'x'.repeat(4_001) } }) })
+    assert.equal(oversizedRationale.status, 400)
     const extraReject = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/reject`, { method: 'POST', headers, body: JSON.stringify({ decision: 'reject' }) })
     assert.equal(extraReject.status, 400)
     const extraRefresh = await fetch(`${f.origin}/api/theme-framework/runs/theme-route-run-1/refresh`, { method: 'POST', headers, body: JSON.stringify({ workflowRunId: 'override' }) })

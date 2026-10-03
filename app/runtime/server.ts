@@ -14,6 +14,7 @@ import type { CurrentSessionState, ResearchHubApplicationRuntimeOptions } from '
 import { safeIdentifier, safeSummary, type ClientEvent } from './client-events.ts'
 import type { ResearchDispatchService } from '../services/research-dispatch-service.ts'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
+import { THEME_SCOPE_V04_LIMITS } from '../../knowledge/governance/theme-scope-v04.ts'
 import { normalizeResearchRequest } from '../services/research-dispatch-contracts.ts'
 import type { ResearchHubRequestPolicy } from '../pi/tools.ts'
 import type { ThesisCriterionConfirmInput, ThesisCriterionPrepareInput, ThesisCriterionPreview } from '../services/thesis-criterion-service.ts'
@@ -540,7 +541,7 @@ export class ResearchHubRuntimeServer {
       }
       if (method === 'POST' && pieces[5] === 'accept') {
         const body = await this.readJson(request, 32_768)
-        assertExactFields(body, [], ['decisions'], 'Theme Framework accept request')
+        assertExactFields(body, [], ['decisions', 'decisionRationales'], 'Theme Framework accept request')
         let decisions: Record<string, 'include' | 'exclude' | 'pending'> | undefined
         if (body.decisions !== undefined) {
           if (!isRecord(body.decisions) || Object.keys(body.decisions).length > 120) throw new ApplicationServiceError('invalid_input', 'decisions must be a bounded candidate decision map')
@@ -550,7 +551,16 @@ export class ResearchHubRuntimeServer {
             decisions[candidateId] = decision as 'include' | 'exclude' | 'pending'
           }
         }
-        await this.sendJson(response, 200, await service.accept({ workflowRunId: runId, ...(decisions === undefined ? {} : { decisions }) })); return
+        let decisionRationales: Record<string, string> | undefined
+        if (body.decisionRationales !== undefined) {
+          if (!isRecord(body.decisionRationales) || Object.keys(body.decisionRationales).length > 120) throw new ApplicationServiceError('invalid_input', 'decisionRationales must be a bounded candidate rationale map')
+          decisionRationales = {}
+          for (const [candidateId, rationale] of Object.entries(body.decisionRationales)) {
+            if (!/^[A-Za-z][A-Za-z0-9._-]{0,79}$/u.test(candidateId) || typeof rationale !== 'string' || rationale.trim().length === 0 || rationale.length > THEME_SCOPE_V04_LIMITS.maxRationaleLength) throw new ApplicationServiceError('invalid_input', 'decisionRationales contains an invalid candidate ref or rationale')
+            decisionRationales[candidateId] = rationale
+          }
+        }
+        await this.sendJson(response, 200, await service.accept({ workflowRunId: runId, ...(decisions === undefined ? {} : { decisions }), ...(decisionRationales === undefined ? {} : { decisionRationales }) })); return
       }
       if (method === 'POST' && pieces[5] === 'reject') {
         const body = await this.readJson(request, 1_024)
