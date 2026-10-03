@@ -229,6 +229,27 @@ test("first semantic instruction surveys chain breadth without forcing unsupport
   assert.doesNotMatch(instruction, /AI Compute|consumer electronics|data center|semiconductor/u);
 });
 
+test("semantic framework permits evidence-backed relations between new Industry candidates", async () => {
+  const proposed = output();
+  proposed.industryCandidates[0]!.candidateId = "upstream-stage";
+  proposed.industryCandidates[1]!.candidateId = "downstream-stage";
+  proposed.relationCandidates = [edge("candidate-edge", "upstream-stage", "downstream-stage", ["e-pcb"])];
+  let request: ReasoningRequest | undefined;
+  const result = await executeThemeFramework(input, {
+    capabilities: () => ({ maxContextTokens: 4000, maxOutputTokens: 2000, structuredOutputSupport: true, maxConcurrency: 1 }),
+    execute: async (next) => { request = next; return { operation: next.operation, output: proposed }; },
+  });
+
+  assert.equal(result.status, "complete");
+  if (result.status !== "complete") return;
+  assert.deepEqual(
+    [result.result.relationCandidates[0]?.sourceIndustryRef, result.result.relationCandidates[0]?.targetIndustryRef],
+    ["upstream-stage", "downstream-stage"],
+  );
+  assert.match(request?.instruction ?? "", /candidateId values from this same output's industryCandidates/u);
+  assert.match(request?.instruction ?? "", /do not require newly proposed Industries to already have canonical refs/u);
+});
+
 test("semantic executor diagnostics expose only the safe error code", async () => {
   const result = await executeThemeFramework(input, {
     capabilities: () => ({ maxContextTokens: 4000, maxOutputTokens: 2000, structuredOutputSupport: true, maxConcurrency: 1 }),

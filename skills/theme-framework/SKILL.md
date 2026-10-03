@@ -71,6 +71,10 @@ for or process an unbounded Knowledge Base dump.
 
 ## Relation direction
 
+- A Relation candidate may refer to an Industry candidate by that candidate's
+  `candidateId` from the same result, or to an allowlisted existing Industry
+  ref. Newly proposed Industries do not need canonical refs before their
+  relationship can be proposed.
 - `upstream_of`: the source Industry supplies an economic input or earlier
   chain-stage output to the target Industry.
 - `depends_on`: the source Industry depends on the target Industry or service.
@@ -83,6 +87,13 @@ Use only exact evidence refs and existing Industry refs supplied in the input.
 An included or excluded Industry / Relation must cite evidence. A pending
 candidate may have no evidence, but must state what is missing. Statements
 about sources must not exceed their supplied descriptions or excerpts.
+
+For Relation endpoints, use same-result Industry `candidateId` values or
+allowlisted existing Industry refs. Recommend an included Relation only when
+supplied evidence supports the relationship and its direction, and both
+endpoints are recommended `include`. If evidence does not establish the edge,
+omit it or keep it `pending` with a specific gap; do not invent an edge to
+complete the network.
 
 This Skill allocates no canonical IDs, invokes no other Skill or Workflow, and
 does not call Gateway, Validation, ChangeSet, or Writer. Workflow owns source
