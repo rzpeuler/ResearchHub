@@ -4,7 +4,7 @@ import { pipeline } from 'node:stream/promises'
 import { createReadStream } from 'node:fs'
 import { lstat, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
-import { ApplicationServiceError, type EarningsReviewInput, type EventAnchor, type EventResearchInput, type IndustryResearchInput, type IngestDocumentInput, type KnowledgeGraphProjectionInput, type KnowledgeSearchInput, type ReviewCaseListInput, type ResearchCompanyInput, type ThesisRedTeamInput, type ValuationInput, type ValuationMethod } from '../services/contracts.ts'
+import { ApplicationServiceError, type EarningsReviewInput, type EventAnchor, type EventResearchInput, type IndustryResearchInput, type IngestDocumentInput, type KnowledgeGraphProjectionInput, type KnowledgeSearchInput, type ReviewCaseListInput, type ResearchCompanyInput, type ThesisRedTeamInput, type ValuationInput, type ValuationMethod, type RawDocumentPreviewV04Input } from '../services/contracts.ts'
 import type { DailyBriefType } from '../../plugins/daily-intelligence/contracts.ts'
 import { createResearchHubApplicationRuntime, ResearchHubApplicationRuntime } from './application-runtime.ts'
 import { AttachmentService, DEFAULT_MAX_ATTACHMENT_BYTES } from './attachment-service.ts'
@@ -14,10 +14,13 @@ import type { CurrentSessionState, ResearchHubApplicationRuntimeOptions } from '
 import { safeIdentifier, safeSummary, type ClientEvent } from './client-events.ts'
 import type { ResearchDispatchService } from '../services/research-dispatch-service.ts'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
+import { THEME_SCOPE_V04_LIMITS } from '../../knowledge/governance/theme-scope-v04.ts'
 import { normalizeResearchRequest } from '../services/research-dispatch-contracts.ts'
 import type { ResearchHubRequestPolicy } from '../pi/tools.ts'
 import type { ThesisCriterionConfirmInput, ThesisCriterionPrepareInput, ThesisCriterionPreview } from '../services/thesis-criterion-service.ts'
 import type { KnowledgeTopicFilters, KnowledgeTopicKind, KnowledgeTopicPageInput, KnowledgeTopicScope } from '../services/knowledge-topic-contracts.ts'
+import type { ThemeWorkspaceProjectionInput } from '../services/theme-workspace-projection-contracts.ts'
+import type { RawDocumentMetadataV04, RawDocumentRightsV04 } from '../../knowledge/production/raw-document-gateway-v04.ts'
 
 const MAX_JSON_BYTES = 1_000_000
 const MAX_MESSAGE_LENGTH = 50_000
@@ -144,6 +147,7 @@ function decodeSegment(value: string): string {
 
 const TOPIC_QUERY_KEYS = new Set(['depth', 'kind', 'scope', 'limit', 'cursor', 'expectedRevision', 'lifecycle', 'observationType', 'claimType', 'relationType'])
 const TOPIC_KINDS = new Set<KnowledgeTopicKind>(['relation', 'claim', 'observation', 'event', 'thesis', 'module', 'source', 'reasoning_edge'])
+const THEME_WORKSPACE_QUERY_KEYS = new Set(['expectedRevision', 'asOf', 'maxNodes', 'maxEdges', 'maxItemsPerSection', 'maxCompaniesPerIndustry', 'maxResponseBytes'])
 
 function topicQueryValue(url: URL, name: string, maxLength?: number): string | undefined {
   const values = url.searchParams.getAll(name)
@@ -154,7 +158,7 @@ function topicQueryValue(url: URL, name: string, maxLength?: number): string | u
 
 function validateTopicQuery(url: URL, allowed: ReadonlySet<string>): void {
   for (const [key] of url.searchParams) {
-    if (!TOPIC_QUERY_KEYS.has(key) || !allowed.has(key)) throw new ApplicationServiceError('invalid_input', 'Topic query contains an unsupported parameter')
+    if ((!TOPIC_QUERY_KEYS.has(key) && !THEME_WORKSPACE_QUERY_KEYS.has(key)) || !allowed.has(key)) throw new ApplicationServiceError('invalid_input', 'Topic query contains an unsupported parameter')
     if (url.searchParams.getAll(key).length !== 1) throw new ApplicationServiceError('invalid_input', `query parameter ${key} must appear once`)
   }
 }
@@ -182,6 +186,40 @@ function topicExpectedRevision(url: URL): number | undefined {
   const parsed = Number(value)
   if (!Number.isSafeInteger(parsed)) throw new ApplicationServiceError('invalid_input', 'expectedRevision must be a non-negative safe integer')
   return parsed
+}
+
+function themeWorkspaceRef(value: string, label: string): string {
+  if (value.length > 300 || !/^entity:[A-Za-z0-9][A-Za-z0-9._:-]{0,240}$/u.test(value) || value.includes('..')) throw new ApplicationServiceError('invalid_input', `${label} is invalid`)
+  return value
+}
+
+function themeWorkspaceQuery(url: URL, allowed: ReadonlySet<string>): Omit<ThemeWorkspaceProjectionInput, 'themeRef'> {
+  validateTopicQuery(url, allowed)
+  const asOf = topicQueryValue(url, 'asOf', 80)
+  if (asOf !== undefined && !Number.isFinite(Date.parse(asOf))) throw new ApplicationServiceError('invalid_input', 'asOf must be a parseable timestamp')
+  const boundedLimit = (key: string, maximum: number, minimum = 1): number | undefined => {
+    const value = topicQueryValue(url, key)
+    if (value === undefined) return undefined
+    if (!/^[1-9]\d*$/.test(value)) throw new ApplicationServiceError('invalid_input', `${key} must be a positive integer`)
+    const parsed = Number(value)
+    if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) throw new ApplicationServiceError('invalid_input', `${key} is outside its supported bound`)
+    return parsed
+  }
+  const expectedRevision = topicExpectedRevision(url)
+  const maxNodes = boundedLimit('maxNodes', 150)
+  const maxEdges = boundedLimit('maxEdges', 300)
+  const maxItemsPerSection = boundedLimit('maxItemsPerSection', 100)
+  const maxCompaniesPerIndustry = boundedLimit('maxCompaniesPerIndustry', 100)
+  const maxResponseBytes = boundedLimit('maxResponseBytes', 2_000_000, 1_024)
+  return {
+    ...(expectedRevision === undefined ? {} : { expectedRevision }),
+    ...(asOf === undefined ? {} : { asOf }),
+    ...(maxNodes === undefined ? {} : { maxNodes }),
+    ...(maxEdges === undefined ? {} : { maxEdges }),
+    ...(maxItemsPerSection === undefined ? {} : { maxItemsPerSection }),
+    ...(maxCompaniesPerIndustry === undefined ? {} : { maxCompaniesPerIndustry }),
+    ...(maxResponseBytes === undefined ? {} : { maxResponseBytes }),
+  }
 }
 
 function isInsideStaticRoot(root: string, candidate: string): boolean {
@@ -388,7 +426,9 @@ export class ResearchHubRuntimeServer {
       if (request.method === 'OPTIONS') { this.validateRead(request); this.sendEmpty(response, 204); return }
       if (url.pathname === '/api/bootstrap') { this.validateBootstrap(request); await this.bootstrap(response); return }
       if (url.pathname === '/api/events' && request.method === 'GET') { this.validateRead(request); this.openEvents(response); return }
+      const tokenProtectedRead = request.method === 'GET' && (/^\/api\/theme-framework\/reviews$/.test(url.pathname) || /^\/api\/theme-framework\/runs\/[^/]+$/.test(url.pathname) || /^\/api\/theme-scope-impact(?:\/.*)?$/.test(url.pathname))
       if (this.isMutation(request.method, url.pathname)) this.validateMutation(request)
+      else if (tokenProtectedRead) this.validateTokenProtectedRead(request)
       else this.validateRead(request)
       if (url.pathname !== '/api' && !url.pathname.startsWith('/api/')) {
         if (await this.serveClient(request, response, url)) return
@@ -452,10 +492,136 @@ export class ResearchHubRuntimeServer {
     this.runtimeSecurity!.validateRequest({ host: request.headers.host, origin: request.headers.origin, runtimeToken: request.headers[TOKEN_HEADER] as string | undefined }, 'mutation')
   }
 
+  private validateTokenProtectedRead(request: IncomingMessage): void {
+    const security = this.runtimeSecurity!
+    const origin = typeof request.headers.origin === 'string' ? request.headers.origin : security.expectedOrigin
+    security.validateRequest({ host: request.headers.host, origin, runtimeToken: request.headers[TOKEN_HEADER] as string | undefined }, 'mutation')
+  }
+
   private async route(request: IncomingMessage, response: ServerResponse, url: URL): Promise<void> {
     const method = request.method ?? 'GET'
     const path = url.pathname
     if (method === 'GET' && (path === '/api/researchhub/status' || path === '/api/status')) { await this.sendJson(response, 200, await this.status()) ; return }
+    if (method === 'GET' && path === '/api/theme-framework/reviews') {
+      if ([...url.searchParams.keys()].some((key) => key !== 'limit')) throw new ApplicationServiceError('invalid_input', 'Theme Framework reviews query contains unsupported fields')
+      const limit = positiveInteger(url.searchParams.get('limit'))
+      if (Number.isNaN(limit) || (limit !== undefined && limit > 100)) throw new ApplicationServiceError('invalid_input', 'limit must be a positive integer no greater than 100')
+      const service = this.runtime!.services.themeFrameworkService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme Framework construction requires an active mounted Schema 0.4 Knowledge Base')
+      await this.sendJson(response, 200, await service.listReviews(limit)); return
+    }
+    if (method === 'POST' && path === '/api/theme-framework/start') {
+      const body = await this.readJson(request, 8_192)
+      assertExactFields(body, ['workflowRunId', 'name'], ['definition'], 'Theme Framework start request')
+      const workflowRunId = this.stringField(body, 'workflowRunId', 128)
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(workflowRunId) || workflowRunId.includes('..')) throw new ApplicationServiceError('invalid_input', 'workflowRunId is invalid')
+      const name = this.stringField(body, 'name', 300)
+      if (!name.trim()) throw new ApplicationServiceError('invalid_input', 'name is invalid')
+      const definition = this.optionalString(body, 'definition', 2_000)
+      if (definition !== undefined && !definition.trim()) throw new ApplicationServiceError('invalid_input', 'definition is invalid')
+      const service = this.runtime!.services.themeFrameworkService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme Framework construction requires an active mounted Schema 0.4 Knowledge Base')
+      const started = service.start({ workflowRunId, name, ...(definition === undefined ? {} : { definition }) })
+      started.completion.catch(() => undefined)
+      await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) }); return
+    }
+    if (/^\/api\/theme-framework\/runs\/[^/]+(?:\/(?:accept|reject|refresh))?$/.test(path)) {
+      const pieces = path.split('/')
+      const runId = decodeSegment(pieces[4] ?? '')
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(runId) || runId.includes('..')) throw new ApplicationServiceError('invalid_input', 'workflowRunId is invalid')
+      const service = this.runtime!.services.themeFrameworkService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme Framework construction requires an active mounted Schema 0.4 Knowledge Base')
+      if (method === 'GET' && pieces.length === 5) { await this.sendJson(response, 200, await service.getReviewCandidate(runId)); return }
+      if (method === 'POST' && pieces[5] === 'refresh') {
+        const body = await this.readJson(request, 1_024)
+        assertExactFields(body, [], [], 'Theme Framework refresh request')
+        const result = await service.refresh(runId)
+        const status = result.status === 'conflict' ? 409 : result.status === 'blocked' ? 422 : 200
+        await this.sendJson(response, status, result); return
+      }
+      if (method === 'POST' && pieces[5] === 'accept') {
+        const body = await this.readJson(request, 32_768)
+        assertExactFields(body, [], ['decisions', 'decisionRationales'], 'Theme Framework accept request')
+        let decisions: Record<string, 'include' | 'exclude' | 'pending'> | undefined
+        if (body.decisions !== undefined) {
+          if (!isRecord(body.decisions) || Object.keys(body.decisions).length > 120) throw new ApplicationServiceError('invalid_input', 'decisions must be a bounded candidate decision map')
+          decisions = {}
+          for (const [candidateId, decision] of Object.entries(body.decisions)) {
+            if (!/^[A-Za-z][A-Za-z0-9._-]{0,79}$/u.test(candidateId) || !['include', 'exclude', 'pending'].includes(String(decision))) throw new ApplicationServiceError('invalid_input', 'decisions contains an invalid candidate ref or decision')
+            decisions[candidateId] = decision as 'include' | 'exclude' | 'pending'
+          }
+        }
+        let decisionRationales: Record<string, string> | undefined
+        if (body.decisionRationales !== undefined) {
+          if (!isRecord(body.decisionRationales) || Object.keys(body.decisionRationales).length > 120) throw new ApplicationServiceError('invalid_input', 'decisionRationales must be a bounded candidate rationale map')
+          decisionRationales = {}
+          for (const [candidateId, rationale] of Object.entries(body.decisionRationales)) {
+            if (!/^[A-Za-z][A-Za-z0-9._-]{0,79}$/u.test(candidateId) || typeof rationale !== 'string' || rationale.trim().length === 0 || rationale.trim().length > THEME_SCOPE_V04_LIMITS.maxRationaleLength) throw new ApplicationServiceError('invalid_input', 'decisionRationales contains an invalid candidate ref or rationale')
+            decisionRationales[candidateId] = rationale
+          }
+        }
+        await this.sendJson(response, 200, await service.accept({ workflowRunId: runId, ...(decisions === undefined ? {} : { decisions }), ...(decisionRationales === undefined ? {} : { decisionRationales }) })); return
+      }
+      if (method === 'POST' && pieces[5] === 'reject') {
+        const body = await this.readJson(request, 1_024)
+        assertExactFields(body, [], [], 'Theme Framework reject request')
+        await this.sendJson(response, 200, await service.reject(runId)); return
+      }
+    }
+    if (path === '/api/theme-scope-impact' && method === 'GET') {
+      const service = this.runtime!.services.themeScopeImpactService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme scope impact inbox requires an active mounted Schema 0.4 Knowledge Base')
+      const limit = positiveInteger(url.searchParams.get('limit'))
+      if (Number.isNaN(limit) || (limit !== undefined && limit > 100)) throw new ApplicationServiceError('invalid_input', 'limit must be a positive integer no greater than 100')
+      if ([...url.searchParams.keys()].some((key) => key !== 'limit')) throw new ApplicationServiceError('invalid_input', 'Theme scope impact inbox query contains unsupported fields')
+      await this.sendJson(response, 200, await service.list({ ...(limit === undefined ? {} : { limit }) })); return
+    }
+    const scopeImpactDetailRoute = path.match(/^\/api\/theme-scope-impact\/records\/([A-Za-z0-9%_-]+)$/u)
+    if (method === 'GET' && scopeImpactDetailRoute) {
+      const service = this.runtime!.services.themeScopeImpactService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme scope impact inbox requires an active mounted Schema 0.4 Knowledge Base')
+      await this.sendJson(response, 200, await service.get(decodeSegment(scopeImpactDetailRoute[1]!))); return
+    }
+    const scopeImpactDecisionBatchRoute = path.match(/^\/api\/theme-scope-impact\/records\/([A-Za-z0-9%_-]+)\/decisions$/u)
+    if (method === 'POST' && scopeImpactDecisionBatchRoute) {
+      const service = this.runtime!.services.themeScopeImpactService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme scope impact inbox requires an active mounted Schema 0.4 Knowledge Base')
+      const receiptKey = decodeSegment(scopeImpactDecisionBatchRoute[1]!)
+      const body = await this.readJson(request, 128_000)
+      assertExactFields(body, ['workflowRunId', 'decisions'], [], 'Theme scope impact decision batch request')
+      if (typeof body.workflowRunId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(body.workflowRunId) || body.workflowRunId.includes('..')
+        || !Array.isArray(body.decisions) || body.decisions.length < 1 || body.decisions.length > 100) throw new ApplicationServiceError('invalid_input', 'Theme scope impact decision batch is invalid or exceeds its bounded size')
+      const decisions: { proposalId: string; decision: 'include' | 'exclude' | 'pending'; rationale?: string }[] = []
+      const seen = new Set<string>()
+      for (const value of body.decisions) {
+        if (!isRecord(value)) throw new ApplicationServiceError('invalid_input', 'Theme scope impact decisions must be objects')
+        assertExactFields(value, ['proposalId', 'decision'], ['rationale'], 'Theme scope impact decision')
+        if (typeof value.proposalId !== 'string' || !/^theme-scope-impact:[a-f0-9]{40}$/u.test(value.proposalId) || seen.has(value.proposalId)
+          || typeof value.decision !== 'string' || !['include', 'exclude', 'pending'].includes(value.decision)
+          || (value.rationale !== undefined && (typeof value.rationale !== 'string' || value.rationale.length > 2_000))) throw new ApplicationServiceError('invalid_input', 'Theme scope impact decision contains invalid, duplicate, or oversized fields')
+        seen.add(value.proposalId)
+        decisions.push({ proposalId: value.proposalId, decision: value.decision as 'include' | 'exclude' | 'pending', ...(value.rationale === undefined ? {} : { rationale: value.rationale as string }) })
+      }
+      const decisionService = service as typeof service & { decideBatch?: (input: { readonly receiptKey: string; readonly decisions: readonly { readonly proposalId: string; readonly decision: 'include' | 'exclude' | 'pending'; readonly rationale?: string }[]; readonly workflowRunId: string }) => Promise<unknown> }
+      if (typeof decisionService.decideBatch !== 'function') throw new ApplicationServiceError('failed', 'Atomic Theme scope impact decision batches are not available')
+      await this.sendJson(response, 200, await decisionService.decideBatch({ receiptKey, workflowRunId: body.workflowRunId, decisions })); return
+    }
+    const scopeImpactRoute = path.match(/^\/api\/theme-scope-impact\/records\/([A-Za-z0-9%_-]+)\/proposals\/([A-Za-z0-9%:._-]+)\/dismiss$/u)
+    if (scopeImpactRoute) {
+      const [, receiptKey, proposalId] = scopeImpactRoute
+      const service = this.runtime!.services.themeScopeImpactService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme scope impact inbox requires an active mounted Schema 0.4 Knowledge Base')
+      const decodedReceiptKey = decodeSegment(receiptKey!)
+      const decodedProposalId = decodeSegment(proposalId!)
+      if (method === 'POST') {
+        const body = await this.readJson(request, 8_192)
+        assertExactFields(body, ['workflowRunId'], [], 'Theme scope impact dismiss request')
+        if (typeof body.workflowRunId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(body.workflowRunId) || body.workflowRunId.includes('..')) {
+          throw new ApplicationServiceError('invalid_input', 'Theme scope impact decision fields are invalid or do not match the route')
+        }
+        await this.sendJson(response, 200, await service.reject(decodedReceiptKey, decodedProposalId)); return
+      }
+    }
     // Exact, human-operated criterion routes precede the broader Thesis and review route families.
     if (method === 'POST' && path === '/api/production/thesis-lifecycle/criteria/prepare') {
       const body = await this.readJson(request)
@@ -483,6 +649,28 @@ export class ResearchHubRuntimeServer {
       const service = this.runtime!.services.thesisQueryService
       if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Thesis queries require a mounted Schema 0.4 Knowledge Base')
       await this.sendJson(response, 200, await service.getThesis(decodeSegment(pieces[4]!))); return
+    }
+    if (method === 'GET' && path.startsWith('/api/knowledge/themes/')) {
+      const pieces = path.split('/')
+      const themeRef = themeWorkspaceRef(decodeSegment(pieces[4] ?? ''), 'themeRef')
+      const service = this.runtime!.services.themeWorkspaceProjectionService
+      if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme Workspace requires a mounted Schema 0.4 Knowledge Base')
+      if (pieces.length === 6 && pieces[5] === 'overview') {
+        const query = themeWorkspaceQuery(url, new Set(['expectedRevision', 'asOf', 'maxNodes', 'maxEdges', 'maxResponseBytes']))
+        await this.sendJson(response, 200, await service.getThemeProjection({ ...query, themeRef })); return
+      }
+      if (pieces.length === 7 && pieces[5] === 'industries') {
+        const industryRef = themeWorkspaceRef(decodeSegment(pieces[6] ?? ''), 'industryRef')
+        const query = themeWorkspaceQuery(url, new Set(['expectedRevision', 'asOf', 'maxItemsPerSection', 'maxCompaniesPerIndustry', 'maxResponseBytes']))
+        await this.sendJson(response, 200, await service.getIndustryProjection({ ...query, themeRef }, industryRef)); return
+      }
+      if (pieces.length === 9 && pieces[5] === 'industries' && pieces[7] === 'companies') {
+        const industryRef = themeWorkspaceRef(decodeSegment(pieces[6] ?? ''), 'industryRef')
+        const companyRef = themeWorkspaceRef(decodeSegment(pieces[8] ?? ''), 'companyRef')
+        const query = themeWorkspaceQuery(url, new Set(['expectedRevision', 'asOf', 'maxItemsPerSection', 'maxResponseBytes']))
+        await this.sendJson(response, 200, await service.getCompanyProjection({ ...query, themeRef }, industryRef, companyRef)); return
+      }
+      throw new ApplicationServiceError('not_found', 'Theme Workspace route not found')
     }
     if (method === 'GET' && path.startsWith('/api/knowledge/topics/')) {
       const pieces = path.split('/')
@@ -536,6 +724,13 @@ export class ResearchHubRuntimeServer {
     }
     if (method === 'POST' && path === '/api/knowledge/object') { const input = await this.readJson(request); await this.sendJson(response, 200, await this.runtime!.knowledgeService.getKnowledgeObject(this.stringField(input, 'ref'), this.optionalPositive(input, 'relatedLimit'))); return }
     if (method === 'GET' && path.startsWith('/api/workflows/')) { const runId = decodeSegment(path.split('/')[3] ?? ''); const value = this.runtime!.workflowService.getWorkflowStatus(runId); if (!value) throw new ApplicationServiceError('not_found', 'Workflow run not found'); await this.sendJson(response, 200, value); return }
+    if (method === 'GET' && path.startsWith('/api/production/raw-document-preview-v04/')) {
+      const runId = decodeSegment(path.split('/')[4] ?? '')
+      const workflow = this.runtime!.workflowService.getWorkflowStatus(runId)
+      const preview = await this.runtime!.productionService.readRawDocumentKnowledgePreviewV04(runId)
+      if (!workflow && !preview) throw new ApplicationServiceError('not_found', 'Raw-document preview not found')
+      await this.sendJson(response, 200, { runId, workflow, preview: preview ?? null, committable: preview?.committable ?? false }); return
+    }
     if (method === 'GET' && path === '/api/research-reports') { const service = this.runtime!.researchService; if (!service) throw new ApplicationServiceError('not_found', 'Research Reports are not configured'); await this.sendJson(response, 200, { reports: await service.listResearchReports(positiveInteger(url.searchParams.get('limit'))) }); return }
     if (method === 'GET' && path === '/api/research/workflows') { await this.sendJson(response, 200, { workflows: this.runtime!.services.researchDispatchService?.listWorkflowDefinitions() ?? [] }); return }
     if (method === 'GET' && path === '/api/research/bundles') { const service = this.runtime!.services.researchDispatchService; if (!service) throw new ApplicationServiceError('not_found', 'Research dispatch is not configured'); await this.sendJson(response, 200, { bundles: await service.listBundles(positiveInteger(url.searchParams.get('limit'))) }); return }
@@ -571,6 +766,8 @@ export class ResearchHubRuntimeServer {
     if (method === 'POST' && (path === '/api/attachments' || path === '/api/attachments/upload')) { const contentType = request.headers['content-type']; if (typeof contentType !== 'string') throw new ApplicationServiceError('invalid_input', 'multipart Content-Type is required'); const length = Number(request.headers['content-length']); if (Number.isFinite(length) && length > (this.attachmentService?.maxBytes ?? DEFAULT_MAX_ATTACHMENT_BYTES) + 1024 * 1024) throw new ApplicationServiceError('invalid_input', 'attachment request is too large'); const attachment = await this.attachmentService!.upload(request, contentType); await this.sendJson(response, 201, { attachment }); return }
     if (method === 'GET' && path.startsWith('/api/attachments/')) { const pieces = path.split('/'); const id = decodeSegment(pieces[3] ?? ''); if (pieces[4] === 'content') { await this.streamAttachment(response, id); return } await this.sendJson(response, 200, { attachment: await this.attachmentService!.getAttachment(id) }); return }
     if (method === 'POST' && (path === '/api/production/ingest' || path === '/api/production/ingest-document' || path === '/api/production/start-ingest' || path === '/api/workflows/ingest' || path === '/api/ingest-document' || path === '/api/ingestion')) { await this.startIngestion(request, response); return }
+    if (method === 'POST' && path === '/api/production/raw-document-preview-v04') { await this.startRawDocumentPreviewV04(request, response); return }
+    if (method === 'POST' && path === '/api/production/raw-document-preview-v04/accept') { await this.acceptRawDocumentPreviewV04(request, response); return }
     if (method === 'POST' && path === '/api/production/thesis-lifecycle/create') { await this.startThesisLifecycleCreate(request, response); return }
     if (method === 'POST' && path === '/api/production/thesis-lifecycle/refresh') { await this.startThesisLifecycleRefresh(request, response); return }
     if (method === 'POST' && (path === '/api/production/research-company' || path === '/api/research-company')) { await this.startCompanyResearch(request, response); return }
@@ -651,6 +848,39 @@ export class ResearchHubRuntimeServer {
     const started = this.runtime!.productionService.startIngestDocument(input, controller.signal)
     this.trackBackground(started.completion, () => { controller.abort() })
     await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
+  }
+  private async startRawDocumentPreviewV04(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const body = await this.readJson(request)
+    this.ensureRunning()
+    const allowed = ['workflowRunId', 'attachmentId', 'text', 'originalFilename', 'mediaType', 'instructions', 'sourceMetadata', 'rights']
+    if (Object.keys(body).some((key) => !allowed.includes(key))) throw new ApplicationServiceError('invalid_input', 'V0.4 raw-document preview contains unsupported fields')
+    const attachmentId = this.optionalString(body, 'attachmentId', 120)
+    const text = this.optionalString(body, 'text', 2_000_000)
+    if ((attachmentId === undefined) === (text === undefined)) throw new ApplicationServiceError('invalid_input', 'Exactly one of attachmentId or text is required')
+    const workflowRunId = this.optionalString(body, 'workflowRunId', 80) ?? randomUUID()
+    const sourceMetadata = this.rawDocumentMetadataV04(body.sourceMetadata)
+    const rights = this.rawDocumentRightsV04(body.rights)
+    let input: RawDocumentPreviewV04Input
+    if (attachmentId !== undefined) {
+      const attachment = await this.attachmentService!.getAttachment(attachmentId)
+      input = { workflowRunId, workspaceFile: await this.attachmentService!.getWorkspaceFileReference(attachmentId), originalFilename: attachment.filename, mediaType: attachment.mediaType, sourceMetadata, rights, ...(this.optionalString(body, 'instructions', MAX_MESSAGE_LENGTH) === undefined ? {} : { instructions: this.optionalString(body, 'instructions', MAX_MESSAGE_LENGTH) }) }
+    } else {
+      input = { workflowRunId, text: text!, sourceMetadata, rights, ...(this.optionalString(body, 'originalFilename', 255) === undefined ? {} : { originalFilename: this.optionalString(body, 'originalFilename', 255) }), ...(this.optionalString(body, 'mediaType', 120) === undefined ? {} : { mediaType: this.optionalString(body, 'mediaType', 120) }), ...(this.optionalString(body, 'instructions', MAX_MESSAGE_LENGTH) === undefined ? {} : { instructions: this.optionalString(body, 'instructions', MAX_MESSAGE_LENGTH) }) }
+    }
+    this.ensureRunning()
+    const controller = new AbortController()
+    const started = this.runtime!.productionService.startRawDocumentKnowledgePreviewV04(input, controller.signal)
+    this.trackBackground(started.completion, () => { controller.abort(); try { this.runtime!.workflowService.cancelWorkflow(started.runId) } catch { /* workflow may already be terminal */ } })
+    await this.sendJson(response, 202, { accepted: true, runId: started.runId, committable: false, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
+  }
+  private async acceptRawDocumentPreviewV04(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const body = await this.readJson(request)
+    if (Object.keys(body).some((key) => !['previewWorkflowRunId', 'acceptedCandidateIds'].includes(key))) throw new ApplicationServiceError('invalid_input', 'Candidate acceptance contains unsupported fields')
+    const previewWorkflowRunId = this.stringField(body, 'previewWorkflowRunId', 80)
+    if (!Array.isArray(body.acceptedCandidateIds) || body.acceptedCandidateIds.length > 4096 || body.acceptedCandidateIds.some((item) => typeof item !== 'string' || item.length > 200)) throw new ApplicationServiceError('invalid_input', 'acceptedCandidateIds must contain at most 4096 bounded candidate IDs')
+    const result = await this.runtime!.productionService.acceptRawDocumentV04Candidates({ previewWorkflowRunId, acceptedCandidateIds: body.acceptedCandidateIds as string[] })
+    const successful = ['committed', 'already_committed', 'no_changes'].includes(result.status)
+    await this.sendJson(response, result.status === 'stale_revision' || result.status === 'incompatible_schema' ? 409 : successful ? 200 : 422, result)
   }
   private async startThesisLifecycleRefresh(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const service = this.runtime!.researchService
@@ -750,6 +980,36 @@ export class ResearchHubRuntimeServer {
   }
 
   private sourceMetadata(value: Record<string, unknown>): IngestDocumentInput['sourceMetadata'] | undefined { const raw = value.sourceMetadata; if (raw === undefined) return undefined; if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ApplicationServiceError('invalid_input', 'sourceMetadata must be an object'); const input = raw as Record<string, unknown>; return { ...(this.optionalString(input, 'title', 500) === undefined ? {} : { title: this.optionalString(input, 'title', 500) }), ...(this.optionalString(input, 'institution', 500) === undefined ? {} : { institution: this.optionalString(input, 'institution', 500) }), ...(this.optionalString(input, 'author', 500) === undefined ? {} : { author: this.optionalString(input, 'author', 500) }), ...(this.optionalString(input, 'publishedAt', 100) === undefined ? {} : { publishedAt: this.optionalString(input, 'publishedAt', 100) }), ...(this.optionalString(input, 'sourceUrl', 2_000) === undefined ? {} : { sourceUrl: this.optionalString(input, 'sourceUrl', 2_000) }) } }
+  private rawDocumentMetadataV04(value: unknown): RawDocumentMetadataV04 {
+    if (value === undefined) return {}
+    if (!isRecord(value)) throw new ApplicationServiceError('invalid_input', 'sourceMetadata must be an object')
+    const fields = ['title', 'sourceType', 'sourceReliability', 'publisher', 'institution', 'author', 'publishedAt', 'canonicalUrl']
+    if (Object.keys(value).some((key) => !fields.includes(key))) throw new ApplicationServiceError('invalid_input', 'sourceMetadata contains unsupported fields')
+    const textOrNull = (field: string, max: number): string | null | undefined => {
+      const item = value[field]
+      if (item === undefined || item === null) return item
+      if (typeof item !== 'string' || item.length > max || /[\u0000-\u001f\u007f-\u009f]/u.test(item)) throw new ApplicationServiceError('invalid_input', `sourceMetadata.${field} is invalid`)
+      return item
+    }
+    const sourceType = value.sourceType
+    const sourceReliability = value.sourceReliability
+    if (sourceType !== undefined && !['official_disclosure', 'company_official', 'sell_side_research', 'industry_database', 'professional_media', 'general_media', 'community', 'unknown'].includes(String(sourceType))) throw new ApplicationServiceError('invalid_input', 'sourceMetadata.sourceType is invalid')
+    if (sourceReliability !== undefined && !['high', 'medium', 'low', 'unknown'].includes(String(sourceReliability))) throw new ApplicationServiceError('invalid_input', 'sourceMetadata.sourceReliability is invalid')
+    const title = textOrNull('title', 500); const publisher = textOrNull('publisher', 500); const institution = textOrNull('institution', 500); const author = textOrNull('author', 500); const publishedAt = textOrNull('publishedAt', 100); const canonicalUrl = textOrNull('canonicalUrl', 2_000)
+    return { ...(title === undefined ? {} : { title }), ...(sourceType === undefined ? {} : { sourceType: sourceType as RawDocumentMetadataV04['sourceType'] }), ...(sourceReliability === undefined ? {} : { sourceReliability: sourceReliability as RawDocumentMetadataV04['sourceReliability'] }), ...(publisher === undefined ? {} : { publisher }), ...(institution === undefined ? {} : { institution }), ...(author === undefined ? {} : { author }), ...(publishedAt === undefined ? {} : { publishedAt }), ...(canonicalUrl === undefined ? {} : { canonicalUrl }) }
+  }
+  private rawDocumentRightsV04(value: unknown): RawDocumentRightsV04 {
+    if (!isRecord(value)) throw new ApplicationServiceError('invalid_input', 'rights must be supplied explicitly')
+    const required = ['accessScope', 'providerTermsKnown', 'retentionAllowed', 'aiProcessingAllowed', 'derivativeKnowledgeAllowed', 'redistributionAllowed', 'policyBasis']
+    const allowed = [...required, 'expiresAt', 'entitlementRef']
+    if (required.some((key) => !Object.hasOwn(value, key)) || Object.keys(value).some((key) => !allowed.includes(key))) throw new ApplicationServiceError('invalid_input', 'rights must explicitly state access scope, terms, retention, AI processing, derived knowledge, redistribution, and policy basis')
+    if (!['public', 'authenticated', 'restricted', 'unknown'].includes(String(value.accessScope))) throw new ApplicationServiceError('invalid_input', 'rights.accessScope is invalid')
+    for (const key of ['providerTermsKnown', 'retentionAllowed', 'aiProcessingAllowed', 'derivativeKnowledgeAllowed', 'redistributionAllowed']) if (typeof value[key] !== 'boolean') throw new ApplicationServiceError('invalid_input', `rights.${key} must be an explicit boolean`)
+    if (typeof value.policyBasis !== 'string' || !value.policyBasis.trim() || value.policyBasis.length > 512) throw new ApplicationServiceError('invalid_input', 'rights.policyBasis must be a non-empty bounded string')
+    const optional = (key: string): string | null | undefined => { const item = value[key]; if (item === undefined || item === null) return item; if (typeof item !== 'string' || item.length > 256) throw new ApplicationServiceError('invalid_input', `rights.${key} is invalid`); return item }
+    const expiresAt = optional('expiresAt'); const entitlementRef = optional('entitlementRef')
+    return { accessScope: value.accessScope as RawDocumentRightsV04['accessScope'], providerTermsKnown: value.providerTermsKnown as boolean, retentionAllowed: value.retentionAllowed as boolean, aiProcessingAllowed: value.aiProcessingAllowed as boolean, derivativeKnowledgeAllowed: value.derivativeKnowledgeAllowed as boolean, redistributionAllowed: value.redistributionAllowed as boolean, policyBasis: value.policyBasis, ...(expiresAt === undefined ? {} : { expiresAt }), ...(entitlementRef === undefined ? {} : { entitlementRef }) }
+  }
 
   private ensureRunning(): void { if (this.lifecycle !== 'running') throw new ApplicationServiceError(this.lifecycle === 'closing' ? 'conflict' : 'failed', this.lifecycle === 'closing' ? 'Runtime server is closing' : 'Runtime server is not ready') }
   private observeBackground(operation: Promise<unknown>): Promise<void> {
@@ -771,7 +1031,7 @@ export class ResearchHubRuntimeServer {
   }
   private publishRuntimeError(error: unknown): void { if (this.lifecycle === 'closing' || this.lifecycle === 'closed') return; const conversationId = (() => { try { return (this.sessionState() as { conversationId: string }).conversationId } catch { return 'conversation' } })(); const code = errorCode(error) === 'cancelled' ? 'agent_aborted' : 'agent_error'; this.eventStream.publish({ eventId: `runtime:${randomUUID()}`, conversationId: safeIdentifier(conversationId, 'conversation'), timestamp: new Date().toISOString(), type: 'error', code, summary: code === 'agent_aborted' ? 'Agent request aborted' : 'Agent request failed' } satisfies ClientEvent) }
 
-  private async readJson(request: IncomingMessage): Promise<Record<string, unknown>> { const length = Number(request.headers['content-length']); if (Number.isFinite(length) && length > MAX_JSON_BYTES) throw new ApplicationServiceError('invalid_input', 'JSON request is too large'); const chunks: Buffer[] = []; let total = 0; for await (const input of request) { const chunk = Buffer.isBuffer(input) ? input : Buffer.from(input); total += chunk.length; if (total > MAX_JSON_BYTES) throw new ApplicationServiceError('invalid_input', 'JSON request is too large'); chunks.push(chunk) } if (total === 0) return {}; try { const value: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('object required'); return value as Record<string, unknown> } catch (error) { throw new ApplicationServiceError('invalid_input', 'JSON request is invalid', { cause: error }) } }
+  private async readJson(request: IncomingMessage, maxBytes = MAX_JSON_BYTES): Promise<Record<string, unknown>> { const length = Number(request.headers['content-length']); if (Number.isFinite(length) && length > maxBytes) throw new ApplicationServiceError('invalid_input', 'JSON request is too large'); const chunks: Buffer[] = []; let total = 0; for await (const input of request) { const chunk = Buffer.isBuffer(input) ? input : Buffer.from(input); total += chunk.length; if (total > maxBytes) throw new ApplicationServiceError('invalid_input', 'JSON request is too large'); chunks.push(chunk) } if (total === 0) return {}; try { const value: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('object required'); return value as Record<string, unknown> } catch (error) { throw new ApplicationServiceError('invalid_input', 'JSON request is invalid', { cause: error }) } }
   private stringField(body: Record<string, unknown>, field: string, maxLength = 2_000_000): string { const value = body[field]; if (typeof value !== 'string' || value.length > maxLength) throw new ApplicationServiceError('invalid_input', `${field} is invalid`); return value }
   private optionalString(body: Record<string, unknown>, field: string, maxLength: number): string | undefined { const value = body[field]; if (value === undefined || value === null) return undefined; if (typeof value !== 'string' || value.length > maxLength) throw new ApplicationServiceError('invalid_input', `${field} is invalid`); return value }
   private stringArray(body: Record<string, unknown>, field: string, maxItems: number, maxLength: number): string[] { const value = body[field]; if (!Array.isArray(value) || value.length > maxItems || value.some((x) => typeof x !== 'string' || !x.trim() || x.length > maxLength)) throw new ApplicationServiceError('invalid_input', `${field} is invalid`); return value as string[] }

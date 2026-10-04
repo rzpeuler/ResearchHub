@@ -4,10 +4,27 @@ import App from './App'
 
 function json(body: unknown, status = 200): Response { return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }) }
 
+function mockV04UploadRuntime(fetchMock: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): void {
+  globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = String(input)
+    if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 7, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+    if (path === '/api/research/workflows') return json({ workflows: [] })
+    if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+    if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+    if (path === '/api/conversations') return json({ conversations: [] })
+    if (path === '/api/theme-framework/reviews?limit=50') return json({ items: [], total: 0, truncated: false })
+    if (path === '/api/theme-scope-impact?limit=50') return json({ items: [], total: 0, truncated: false })
+    return fetchMock(input, init)
+  }) as typeof fetch
+}
+
+const v04Preview = { runId: 'preview-1', status: 'preview_ready', knowledgeBaseId: 'kb-1', candidateGroups: [{ candidateId: 'candidate-claim-1', kind: 'claim', candidate: { statement: 'Revenue grew in FY2025' }, provenanceRefs: { sourceRef: 'source:annual-report', rawRef: `raw-sha256-${'a'.repeat(64)}`, evidenceBlockRefs: ['block-1'] } }], committable: true }
+
 describe('Homepage shell', () => {
   const originalFetch = globalThis.fetch
   const originalEventSource = globalThis.EventSource
   beforeEach(() => {
+    window.localStorage.setItem('researchhub.language', 'en')
     window.history.replaceState({}, '', '/')
     const FakeEventSource = class { onopen: ((event: Event) => void) | null = null; onerror: ((event: Event) => void) | null = null; close = vi.fn(); addEventListener = vi.fn(); removeEventListener = vi.fn() }
     globalThis.EventSource = FakeEventSource as unknown as typeof EventSource
@@ -26,11 +43,493 @@ describe('Homepage shell', () => {
   })
   afterEach(() => { cleanup(); window.history.replaceState({}, '', '/'); globalThis.fetch = originalFetch; globalThis.EventSource = originalEventSource; Object.defineProperty(window, 'EventSource', { configurable: true, value: originalEventSource }) })
 
+  it('defaults to Chinese and switches visible App text with persistent language selection', async () => {
+    window.localStorage.removeItem('researchhub.language')
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: '从一个研究问题开始' })).toBeTruthy()
+    expect(document.documentElement.lang).toBe('zh-CN')
+    fireEvent.click(screen.getByRole('button', { name: 'EN' }))
+    expect(await screen.findByRole('heading', { name: 'Start with a research question' })).toBeTruthy()
+    expect(window.localStorage.getItem('researchhub.language')).toBe('en')
+    expect(document.documentElement.lang).toBe('en')
+  })
+
+  it('keeps the language switch usable when localStorage writes are unavailable', async () => {
+    window.localStorage.removeItem('researchhub.language')
+    const storageWrite = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage disabled') })
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: '从一个研究问题开始' })).toBeTruthy()
+    expect(() => fireEvent.click(screen.getByRole('button', { name: 'EN' }))).not.toThrow()
+    expect(await screen.findByRole('heading', { name: 'Start with a research question' })).toBeTruthy()
+    expect(document.documentElement.lang).toBe('en')
+    storageWrite.mockRestore()
+  })
+
   it('loads conversation UI in no-KB mode without rendering the runtime token', async () => {
     render(<App />)
     expect(await screen.findByText('Research conversation')).toBeTruthy()
     expect(screen.getByText('No Knowledge Base mounted')).toBeTruthy()
     expect(document.body.textContent).not.toContain('b'.repeat(64))
+  })
+
+  it('dispatches a named Theme Framework workflow and reviews only server candidates', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    let themeCommitted = false
+    const candidate = {
+      knowledgeBaseId: 'kb-1', basedOnRevision: 7, theme: { name: 'AI 算力' },
+      framework: {
+        proposedDefinition: { statement: 'AI compute infrastructure and its material supply chain', status: 'provisional' },
+        inclusionPrinciples: ['Include researchable supply-chain industries'], exclusionPrinciples: ['Exclude remote downstream end markets'],
+        industryCandidates: [{ candidateId: 'pcb', name: 'PCB', description: 'Printed circuit boards', recommendation: 'include', boundaryRationale: 'Core upstream material', themeRelevanceRationale: 'Enables compute systems', evidenceRefs: ['ev-1'], coverageGaps: ['Confirm substrate depth'] }],
+        relationCandidates: [{ candidateId: 'pcb-server', sourceIndustryRef: 'PCB', targetIndustryRef: 'AI servers', relationType: 'upstream_of', topologyRole: 'main_chain', recommendation: 'pending', boundaryRationale: 'Direct supply-chain connection', themeRelevanceRationale: 'Relevant to compute delivery', directionRationale: 'PCB supplies server boards', evidenceRefs: ['ev-1'], coverageGaps: [] }],
+        coverageGaps: [{ gapId: 'gap-1', question: 'Should copper foil be included?', reason: 'Boundary needs review', affectedCandidateIds: ['pcb'] }],
+      }, acquisitionStatus: 'partial', diagnostics: [], evidence: [{ evidenceId: 'ev-1', summary: 'Industry report describes PCB demand from AI servers.', sourceRef: 'source:report-1' }],
+    }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input); calls.push({ path, init })
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 7, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'theme_framework', label: 'Theme Framework', intentDescription: 'Initialize an industry network', inputSchema: {}, requiredInputs: ['name'], outputContract: 'ThemeFrameworkReviewCandidate', knowledgeEffects: ['Theme', 'Industry', 'Relation'] }] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
+      if (path === '/api/research-reports?limit=20') return json({ reports: [] })
+      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'AI 算力', mode: { type: 'workflow', workflowId: 'theme_framework' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'theme_framework', confidence: 1, arguments: { name: 'AI 算力' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit workflow selection' }, summary: { mode: 'Explicit Workflow', workflowId: 'theme_framework', workflowLabel: 'Theme Framework', selectedSkillIds: [], argumentsStatus: 'extracted', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'theme-run-1', workflow: { runId: 'theme-run-1', workflowType: 'theme_framework_construction', objective: 'Initialize AI 算力', status: 'running', startedAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:00.000Z' } }, 202)
+      if (path === '/api/theme-framework/runs/theme-run-1') return json({ status: themeCommitted ? 'committed' : 'awaiting_review', workflowRunId: 'theme-run-1', candidate, ...(themeCommitted ? { receipt: { themeRef: 'entity:theme-ai-compute', committedRevision: 8, decisionCount: 2 } } : {}) })
+      if (path === '/api/theme-framework/runs/theme-run-1/accept') { themeCommitted = true; return json({ status: 'committed', workflowRunId: 'theme-run-1', themeRef: 'entity:theme-ai-compute' }) }
+      if (path === '/api/workflows/theme-run-1') return json({ runId: 'theme-run-1', workflowType: 'theme_framework_construction', objective: 'Initialize AI 算力', status: 'completed', startedAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:01.000Z' })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Workflow' }), { target: { value: 'theme_framework' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'AI 算力' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    expect(await screen.findByRole('heading', { name: 'Industry framework' })).toBeTruthy()
+    expect(await screen.findByText('PCB')).toBeTruthy()
+    expect(screen.getByText(/Should copper foil be included/)).toBeTruthy()
+    expect(screen.getAllByText(/Industry report describes PCB demand/).length).toBe(2)
+    expect(screen.getByText(/Some sources were unavailable or the research scope was truncated/)).toBeTruthy()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Exclude' })[0]!)
+    fireEvent.click(screen.getByRole('button', { name: 'Accept framework decisions' }))
+    expect(await screen.findByText(/Add a reason for every decision that differs from the recommendation/)).toBeTruthy()
+    expect(calls.some((call) => call.path.endsWith('/accept'))).toBe(false)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Reason for changing recommendation for PCB' }), { target: { value: 'Include wafer manufacturing when the evidence supports its role in the AI compute supply chain.' } })
+    expect(screen.getByRole('textbox', { name: 'Reason for changing recommendation for PCB' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Accept framework decisions' }))
+    await waitFor(() => expect(screen.getByText('Theme framework accepted and saved.')).toBeTruthy())
+    const dispatch = calls.find((call) => call.path === '/api/research/dispatch')
+    expect(JSON.parse(String(dispatch?.init?.body))).toMatchObject({ query: 'AI 算力', mode: { type: 'workflow', workflowId: 'theme_framework' } })
+    const accept = calls.find((call) => call.path.endsWith('/accept'))
+    expect(JSON.parse(String(accept?.init?.body))).toEqual({ decisions: { pcb: 'exclude', 'pcb-server': 'pending' }, decisionRationales: { pcb: 'Include wafer manufacturing when the evidence supports its role in the AI compute supply chain.' } })
+    expect(new Headers(calls.find((call) => call.path.includes('/theme-framework/runs/theme-run-1'))?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('b'.repeat(64))
+    expect(JSON.stringify(JSON.parse(String(dispatch?.init?.body)))).not.toContain('evidence')
+  })
+
+  it('clears decision drafts on a review run switch while preserving them for the current run', async () => {
+    const currentCandidate = {
+      knowledgeBaseId: 'kb-1', basedOnRevision: 7, theme: { name: 'AI Compute' },
+      framework: { proposedDefinition: { statement: 'Compute infrastructure', status: 'provisional' }, inclusionPrinciples: [], exclusionPrinciples: [], industryCandidates: [{ candidateId: 'pcb', name: 'PCB', recommendation: 'include', boundaryRationale: 'Material input', relevanceRationale: 'Supports compute equipment', evidenceRefs: [], coverageGaps: [] }], relationCandidates: [], coverageGaps: [] },
+      acquisitionStatus: 'complete', diagnostics: [], evidence: [],
+    }
+    const savedCandidate = {
+      ...currentCandidate,
+      framework: { ...currentCandidate.framework, industryCandidates: [{ candidateId: 'data-centers', name: 'Data centers', recommendation: 'pending', boundaryRationale: 'Infrastructure branch', relevanceRationale: 'Hosts compute equipment', evidenceRefs: [], coverageGaps: [] }] },
+    }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 7, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'theme_framework', label: 'Theme Framework', intentDescription: 'Initialize an industry network', inputSchema: {}, requiredInputs: ['name'], outputContract: 'ThemeFrameworkReviewCandidate', knowledgeEffects: ['Theme', 'Industry', 'Relation'] }] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
+      if (path === '/api/research-reports?limit=20') return json({ reports: [] })
+      if (path === '/api/theme-framework/reviews?limit=50') return json({ items: [{ runId: 'current-run', themeName: 'AI Compute', basedOnRevision: 7, status: 'awaiting_review' }, { runId: 'saved-run', themeName: 'AI Compute', basedOnRevision: 7, status: 'awaiting_review' }], total: 2, truncated: false })
+      if (path === '/api/theme-framework/runs/current-run') return json({ status: 'awaiting_review', workflowRunId: 'current-run', candidate: currentCandidate })
+      if (path === '/api/theme-framework/runs/saved-run') return json({ status: 'awaiting_review', workflowRunId: 'saved-run', candidate: savedCandidate })
+      if (path === '/api/theme-scope-impact?limit=50') return json({ items: [], total: 0, truncated: false })
+      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'AI Compute', mode: { type: 'workflow', workflowId: 'theme_framework' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'theme_framework', confidence: 1, arguments: { name: 'AI Compute' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit workflow selection' }, summary: { mode: 'Explicit Workflow', workflowId: 'theme_framework', workflowLabel: 'Theme Framework', selectedSkillIds: [], argumentsStatus: 'extracted', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'current-run', workflow: { runId: 'current-run', workflowType: 'theme_framework_construction', objective: 'Initialize AI Compute', status: 'running', startedAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:00.000Z' } }, 202)
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Workflow' }), { target: { value: 'theme_framework' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'Initialize AI Compute' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    expect(await screen.findByText('PCB')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Exclude' }))
+    const reason = await screen.findByRole('textbox', { name: 'Reason for changing recommendation for PCB' })
+    fireEvent.change(reason, { target: { value: 'Keep PCB out until boundary evidence is stronger.' } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Review open' }))
+    expect((screen.getByRole('textbox', { name: 'Reason for changing recommendation for PCB' }) as HTMLTextAreaElement).value).toBe('Keep PCB out until boundary evidence is stronger.')
+    fireEvent.click(screen.getByRole('button', { name: 'Resume review' }))
+    expect(await screen.findByRole('heading', { name: 'Data centers' })).toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: 'Reason for changing recommendation for PCB' })).toBeNull()
+    expect(screen.queryByText('exclude')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Pending' }).className).toContain('selected')
+  })
+
+  it('shows the Theme Framework review when automatic dispatch routes the query there', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    const candidate = {
+      knowledgeBaseId: 'kb-1', basedOnRevision: 7, theme: { name: 'AI Compute' },
+      framework: { proposedDefinition: { statement: 'Compute infrastructure', status: 'provisional' }, inclusionPrinciples: [], exclusionPrinciples: [], industryCandidates: [], relationCandidates: [], coverageGaps: [] },
+      acquisitionStatus: 'complete', diagnostics: [], evidence: [],
+    }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input); calls.push({ path, init })
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 7, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'theme_framework', label: 'Theme Framework', intentDescription: 'Initialize an industry network', inputSchema: {}, requiredInputs: ['name'], outputContract: 'ThemeFrameworkReviewCandidate', knowledgeEffects: ['Theme', 'Industry', 'Relation'] }] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
+      if (path === '/api/research-reports?limit=20') return json({ reports: [] })
+      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'AI compute', mode: { type: 'free_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'theme_framework', confidence: 0.94, arguments: { name: 'AI Compute' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Detected a Theme initialization request' }, summary: { mode: 'Explicit Workflow', workflowId: 'theme_framework', workflowLabel: 'Theme Framework', selectedSkillIds: [], argumentsStatus: 'extracted', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'theme-auto-run', workflow: { runId: 'theme-auto-run', workflowType: 'theme_framework_construction', objective: 'Initialize AI Compute', status: 'running', startedAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:00.000Z' } }, 202)
+      if (path === '/api/theme-framework/runs/theme-auto-run') return json({ status: 'awaiting_review', workflowRunId: 'theme-auto-run', candidate })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), { target: { value: 'Initialize the AI compute theme' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    expect(await screen.findByRole('heading', { name: 'Industry framework' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'AI Compute' })).toBeTruthy()
+    expect(screen.getByText('Accepting these decisions will write the Theme framework to the Knowledge Base.')).toBeTruthy()
+    const dispatch = calls.find((call) => call.path === '/api/research/dispatch')
+    expect(JSON.parse(String(dispatch?.init?.body))).toMatchObject({ mode: { type: 'free_research' } })
+  })
+
+  it('refreshes a stale Theme Framework candidate into a new review without accepting it', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    const candidate = {
+      knowledgeBaseId: 'kb-1', basedOnRevision: 7, theme: { name: 'AI Compute' },
+      framework: { proposedDefinition: { statement: 'Compute infrastructure', status: 'provisional' }, inclusionPrinciples: [], exclusionPrinciples: [], industryCandidates: [{ candidateId: 'pcb', name: 'PCB', recommendation: 'include', boundaryRationale: 'Material input', relevanceRationale: 'Supports compute equipment', evidenceRefs: [], coverageGaps: [] }], relationCandidates: [], coverageGaps: [] },
+      acquisitionStatus: 'complete', diagnostics: [], evidence: [],
+    }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input); calls.push({ path, init })
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 8, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
+      if (path === '/api/research-reports?limit=20') return json({ reports: [] })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'theme_framework', label: 'Theme Framework', intentDescription: 'Initialize an industry network', inputSchema: {}, requiredInputs: ['name'], outputContract: 'ThemeFrameworkReviewCandidate', knowledgeEffects: ['Theme', 'Industry', 'Relation'] }] })
+      if (path === '/api/theme-framework/reviews?limit=50') return json({ items: [], total: 0, truncated: false })
+      if (path === '/api/theme-scope-impact?limit=50') return json({ items: [], total: 0, truncated: false })
+      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'AI Compute', mode: { type: 'workflow', workflowId: 'theme_framework' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'theme_framework', confidence: 1, arguments: { name: 'AI Compute' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit workflow selection' }, summary: { mode: 'Explicit Workflow', workflowId: 'theme_framework', workflowLabel: 'Theme Framework', selectedSkillIds: [], argumentsStatus: 'extracted', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'stale-run', workflow: { runId: 'stale-run', workflowType: 'theme_framework_construction', objective: 'Initialize AI Compute', status: 'running', startedAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:00.000Z' } }, 202)
+      if (path === '/api/theme-framework/runs/stale-run') return json({ status: 'stale', workflowRunId: 'stale-run', candidate })
+      if (path === '/api/theme-framework/runs/stale-run/refresh') return json({ status: 'awaiting_review', workflowRunId: 'fresh-run', refreshedFromRunId: 'stale-run', basedOnRevision: 8 })
+      if (path === '/api/theme-framework/runs/fresh-run') return json({ status: 'awaiting_review', workflowRunId: 'fresh-run', candidate: { ...candidate, basedOnRevision: 8 } })
+      if (path === '/api/workflows/stale-run') return json({ runId: 'stale-run', workflowType: 'theme_framework_construction', objective: 'Initialize AI Compute', status: 'completed', startedAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:01.000Z' })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Workflow' }), { target: { value: 'theme_framework' } })
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), { target: { value: 'initialize compute theme' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    expect((await screen.findAllByText('stale')).length).toBeGreaterThan(0)
+    fireEvent.click(await screen.findByRole('button', { name: 'Refresh to current revision' }))
+    expect(await screen.findByText(/From run stale-run · Knowledge revision 7 → 8/)).toBeTruthy()
+    expect(screen.getByText(/does not include sources added after revision 7/)).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'AI Compute' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Accept framework decisions' })).toBeTruthy()
+    expect(calls.some((call) => call.path.endsWith('/accept'))).toBe(false)
+    const refreshCall = calls.find((call) => call.path.endsWith('/stale-run/refresh'))
+    expect(refreshCall?.init?.method).toBe('POST')
+    expect(JSON.parse(String(refreshCall?.init?.body))).toEqual({})
+  })
+
+  it('resumes a persisted refreshed Theme Framework review with its source revision after a fresh Chat mount', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    const candidate = {
+      knowledgeBaseId: 'kb-1', basedOnRevision: 8, refresh: { refreshedFromRunId: 'original-theme-run', sourceBasedOnRevision: 7, targetRevision: 8, validationSummary: { writerReceipts: 1, sourceIds: ['source:added-source'], evidenceBindings: 2 }, refreshedAt: '2026-10-03T00:00:00.000Z' }, theme: { name: 'AI Compute' },
+      framework: { proposedDefinition: { statement: 'Compute infrastructure', status: 'provisional' }, inclusionPrinciples: [], exclusionPrinciples: [], industryCandidates: [], relationCandidates: [], coverageGaps: [] },
+      acquisitionStatus: 'complete', diagnostics: [], evidence: [],
+    }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input); calls.push({ path, init })
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 7, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/theme-framework/reviews?limit=50') return json({ items: [{ runId: 'saved-theme-run-3', themeName: 'AI Compute', basedOnRevision: 8, status: 'awaiting_review' }, { runId: 'saved-theme-run-2', themeName: 'AI Compute', basedOnRevision: 7, status: 'awaiting_review' }], total: 2, truncated: false })
+      if (path.startsWith('/api/theme-framework/runs/saved-theme-run-')) return json({ status: 'awaiting_review', workflowRunId: path.split('/').at(-1), candidate })
+      if (path === '/api/theme-scope-impact?limit=50') return json({ items: [], total: 0, truncated: false })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Theme Framework review history' }).textContent).toContain('theme-run-3'))
+    const reviewList = screen.getByRole('region', { name: 'Theme Framework review history' }).textContent ?? ''
+    expect(reviewList).toContain('theme-run-2')
+    expect(reviewList.indexOf('theme-run-3')).toBeLessThan(reviewList.indexOf('theme-run-2'))
+    const resumeButtons = await screen.findAllByRole('button', { name: 'Resume review' })
+    fireEvent.click(resumeButtons[0]!)
+    expect(await screen.findByRole('heading', { name: 'Industry framework' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'AI Compute' })).toBeTruthy()
+    expect(await screen.findByText(/From run original-theme-run · Knowledge revision 7 → 8/)).toBeTruthy()
+    expect(screen.getByText(/does not include sources added after revision 7/)).toBeTruthy()
+    const inboxCall = calls.find((call) => call.path === '/api/theme-framework/reviews?limit=50')
+    expect(inboxCall).toBeTruthy()
+    expect(new Headers(inboxCall?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('b'.repeat(64))
+    const detail = calls.find((call) => call.path === '/api/theme-framework/runs/saved-theme-run-3')
+    expect(detail).toBeTruthy()
+    expect(new Headers(detail?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('b'.repeat(64))
+    expect(calls.some((call) => call.path === '/api/theme-framework/start')).toBe(false)
+  })
+
+  it('stages a pasted source, requires caller-supplied rights, and only accepts explicitly selected V0.4 candidates', async () => {
+    const posted: { path: string; body?: Record<string, unknown> }[] = []
+    mockV04UploadRuntime(async (input, init) => {
+      const path = String(input)
+      const body = init?.body && typeof init.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : undefined
+      posted.push({ path, body })
+      if (path === '/api/attachments') return json({ attachment: { attachmentId: 'attachment-1', filename: 'annual-report.pdf', mediaType: 'application/pdf', size: 1024, sha256: 'c'.repeat(64), createdAt: '2026-10-02T00:00:00.000Z' } }, 201)
+      if (path === '/api/production/raw-document-preview-v04') return json({ accepted: true, runId: 'preview-1', committable: false, workflow: { runId: 'preview-1', workflowType: 'raw_document_knowledge_v04', objective: 'Preview source', status: 'running', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:00.000Z' } }, 202)
+      if (path === '/api/production/raw-document-preview-v04/preview-1') return json({ runId: 'preview-1', workflow: { runId: 'preview-1', workflowType: 'raw_document_knowledge_v04', objective: 'Preview source', status: 'completed', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:01.000Z' }, preview: v04Preview, committable: true })
+      if (path === '/api/production/raw-document-preview-v04/accept') return json({ status: 'committed', knowledgeBaseId: 'kb-1', knowledgeBaseRevision: 8, baseRevision: 7, previewWorkflowRunId: 'preview-1', extractionCompleteness: 'complete', acceptedCandidateIds: ['candidate-claim-1'], createdIds: ['claim:revenue-growth'], updatedIds: [], errors: [] })
+      if (path === '/api/workflows/preview-1') return json({ runId: 'preview-1', workflowType: 'raw_document_knowledge_v04', objective: 'Preview source', status: 'completed', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:01.000Z' })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    })
+    render(<App />)
+    const file = new File(['annual filing content'], 'annual-report.pdf', { type: 'application/pdf' })
+    fireEvent.paste(await screen.findByRole('textbox', { name: 'Message' }), { clipboardData: { files: [file] } })
+    expect(await screen.findByText('annual-report.pdf')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Write Knowledge' }))
+    fireEvent.change(screen.getByLabelText('Source title'), { target: { value: 'Annual report' } })
+    fireEvent.change(screen.getByLabelText(/Policy basis/), { target: { value: 'Publisher terms permit research use' } })
+    expect((screen.getByRole('checkbox', { name: 'Raw retention is allowed' }) as HTMLInputElement).checked).toBe(false)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'I checked the provider terms' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Raw retention is allowed' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'AI processing is allowed' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Derived Knowledge is allowed' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Extract candidates for review' }))
+    expect(await screen.findByText('candidate-claim-1')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Accept 0 selected' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select claim candidate' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Accept 1 selected' }))
+    expect(await screen.findByText('committed')).toBeTruthy()
+    const previewPost = posted.find((request) => request.path === '/api/production/raw-document-preview-v04')
+    expect(previewPost?.body?.sourceMetadata).toMatchObject({ title: 'Annual report' })
+    expect(previewPost?.body?.rights).toMatchObject({ providerTermsKnown: true, retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false, policyBasis: 'Publisher terms permit research use' })
+    const acceptancePost = posted.find((request) => request.path === '/api/production/raw-document-preview-v04/accept')
+    expect(acceptancePost?.body).toMatchObject({ previewWorkflowRunId: 'preview-1', acceptedCandidateIds: ['candidate-claim-1'] })
+  })
+
+  it('keeps candidates hidden while a durable snapshot is noncommittable and accepts a verified read-back without Workflow status', async () => {
+    let previewReads = 0
+    let releaseTerminalPreview: (response: Response) => void = () => undefined
+    const running = { runId: 'preview-race', workflowType: 'raw_document_knowledge_preview_v04', objective: 'Preview source', status: 'running', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:00.000Z' }
+    const earlyPreview = {
+      ...v04Preview,
+      runId: 'preview-race',
+      status: 'stale_revision' as const,
+      committable: false,
+      candidateGroups: [{ ...v04Preview.candidateGroups[0]!, candidateId: 'candidate-premature' }],
+    }
+    mockV04UploadRuntime(async (input) => {
+      const path = String(input)
+      if (path === '/api/attachments') return json({ attachment: { attachmentId: 'attachment-race', filename: 'race.pdf', mediaType: 'application/pdf', size: 16, sha256: 'e'.repeat(64), createdAt: '2026-10-02T00:00:00.000Z' } }, 201)
+      if (path === '/api/production/raw-document-preview-v04') return json({ accepted: true, runId: 'preview-race', committable: false, workflow: running }, 202)
+      if (path === '/api/production/raw-document-preview-v04/preview-race') {
+        previewReads += 1
+        if (previewReads === 1) return json({ runId: 'preview-race', workflow: running, preview: earlyPreview, committable: false })
+        return new Promise<Response>((resolve) => { releaseTerminalPreview = resolve })
+      }
+      if (path === '/api/workflows/preview-race') return json(running)
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    })
+    render(<App />)
+    const message = await screen.findByRole('textbox', { name: 'Message' })
+    fireEvent.paste(message, { clipboardData: { files: [new File(['source'], 'race.pdf', { type: 'application/pdf' })] } })
+    await screen.findByText('race.pdf')
+    fireEvent.click(screen.getByRole('button', { name: 'Write Knowledge' }))
+    fireEvent.change(screen.getByLabelText('Source title'), { target: { value: 'Race source' } })
+    fireEvent.change(screen.getByLabelText(/Policy basis/), { target: { value: 'User supplied rights basis' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Extract candidates for review' }))
+
+    await waitFor(() => expect(previewReads).toBe(1))
+    await new Promise((resolve) => window.setTimeout(resolve, 30))
+    expect(screen.queryByText('candidate-premature')).toBeNull()
+    await waitFor(() => expect(previewReads).toBe(2), { timeout: 2500 })
+    expect(screen.queryByText('candidate-premature')).toBeNull()
+
+    releaseTerminalPreview(json({ runId: 'preview-race', preview: { ...v04Preview, runId: 'preview-race' }, committable: true }))
+    expect(await screen.findByText('candidate-claim-1')).toBeTruthy()
+    expect(screen.queryByText('candidate-premature')).toBeNull()
+  })
+
+  it('stops polling after the bounded wait and reports that the Workflow is still running', async () => {
+    let previewReads = 0
+    let notifyPollLimitReached!: () => void
+    const pollLimitReached = new Promise<void>((resolve) => { notifyPollLimitReached = resolve })
+    const running = { runId: 'preview-timeout', workflowType: 'raw_document_knowledge_preview_v04', objective: 'Preview source', status: 'running', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:00.000Z' }
+    mockV04UploadRuntime(async (input) => {
+      const path = String(input)
+      if (path === '/api/attachments') return json({ attachment: { attachmentId: 'attachment-timeout', filename: 'timeout.pdf', mediaType: 'application/pdf', size: 16, sha256: 'f'.repeat(64), createdAt: '2026-10-02T00:00:00.000Z' } }, 201)
+      if (path === '/api/production/raw-document-preview-v04') return json({ accepted: true, runId: 'preview-timeout', committable: false, workflow: running }, 202)
+      if (path === '/api/production/raw-document-preview-v04/preview-timeout') { previewReads += 1; if (previewReads === 120) notifyPollLimitReached(); return json({ runId: 'preview-timeout', committable: false }) }
+      if (path === '/api/workflows/preview-timeout') return json({ ...running, status: 'completed' })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    })
+    render(<App />)
+    const message = await screen.findByRole('textbox', { name: 'Message' })
+    fireEvent.paste(message, { clipboardData: { files: [new File(['source'], 'timeout.pdf', { type: 'application/pdf' })] } })
+    await screen.findByText('timeout.pdf')
+    fireEvent.click(screen.getByRole('button', { name: 'Write Knowledge' }))
+    fireEvent.change(screen.getByLabelText('Source title'), { target: { value: 'Timeout source' } })
+    fireEvent.change(screen.getByLabelText(/Policy basis/), { target: { value: 'User supplied rights basis' } })
+
+    const realSetTimeout = window.setTimeout.bind(window)
+    const timerSpy = vi.spyOn(window, 'setTimeout').mockImplementation(((handler: TimerHandler, timeout?: number, ...args: unknown[]) => realSetTimeout(handler, timeout === 1000 ? 0 : timeout, ...args)) as typeof window.setTimeout)
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Extract candidates for review' }))
+      await pollLimitReached
+      await new Promise((resolve) => realSetTimeout(resolve, 0))
+      expect(previewReads).toBe(120)
+      expect(document.body.textContent).toContain('Preview is still running. Check the Workflow panel for its current status.')
+    } finally {
+      timerSpy.mockRestore()
+    }
+  })
+
+  it('accepts document drops on the Chat composer and rejects unsupported files', async () => {
+    const mock = vi.fn(async (input: RequestInfo | URL) => String(input) === '/api/attachments'
+      ? json({ attachment: { attachmentId: 'attachment-2', filename: 'notes.md', mediaType: 'text/markdown', size: 18, sha256: 'd'.repeat(64), createdAt: '2026-10-02T00:00:00.000Z' } }, 201)
+      : json({ code: 'not_found', error: 'not found' }, 404))
+    mockV04UploadRuntime(mock)
+    render(<App />)
+    await screen.findByRole('textbox', { name: 'Message' })
+    const composer = document.querySelector('.composer-wrap')
+    if (!composer) throw new Error('Composer not found')
+    fireEvent.drop(composer, { dataTransfer: { files: [new File(['notes'], 'notes.md', { type: 'text/markdown' })], types: ['Files'] } })
+    expect(await screen.findByText('notes.md')).toBeTruthy()
+    fireEvent.drop(composer, { dataTransfer: { files: [new File(['binary'], 'archive.zip', { type: 'application/zip' })], types: ['Files'] } })
+    expect(await screen.findByText(/Unsupported file/)).toBeTruthy()
+    expect(mock).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects files above the upload limit before staging them', async () => {
+    const mock = vi.fn(async () => json({ code: 'not_found', error: 'not found' }, 404))
+    mockV04UploadRuntime(mock)
+    render(<App />)
+    await screen.findByRole('textbox', { name: 'Message' })
+    const oversized = new File(['x'], 'large.pdf', { type: 'application/pdf' })
+    Object.defineProperty(oversized, 'size', { value: 100 * 1024 * 1024 + 1 })
+    fireEvent.change(screen.getByLabelText('Add document'), { target: { files: [oversized] } })
+    expect(await screen.findByText('File exceeds the 100 MB upload limit.')).toBeTruthy()
+    expect(mock).not.toHaveBeenCalled()
+  })
+
+  it('uses the compact composer picker, preserves staged files when cancelled, and clears explicitly', async () => {
+    const uploaded = vi.fn(async () => json({ attachment: { attachmentId: 'attachment-picker', filename: 'picked.pdf', mediaType: 'application/pdf', size: 12, sha256: 'e'.repeat(64), createdAt: '2026-10-02T00:00:00.000Z' } }, 201))
+    mockV04UploadRuntime(async (input) => String(input) === '/api/attachments' ? uploaded() : json({ code: 'not_found', error: 'not found' }, 404))
+    render(<App />)
+    await screen.findByRole('textbox', { name: 'Message' })
+    expect(screen.queryByRole('region', { name: 'Knowledge upload' })).toBeNull()
+    const picker = screen.getByLabelText('Add document') as HTMLInputElement
+    fireEvent.change(picker, { target: { files: [new File(['pdf'], 'picked.pdf', { type: 'application/pdf' })] } })
+    expect(await screen.findByText('picked.pdf')).toBeTruthy()
+    fireEvent.change(picker, { target: { files: [] } })
+    expect(screen.getByText('picked.pdf')).toBeTruthy()
+    expect(uploaded).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove attachment' }))
+    expect(screen.queryByText('picked.pdf')).toBeNull()
+    expect(screen.getByLabelText('Add document')).toBeTruthy()
+  })
+
+  it('keeps an uploaded file staged in no-KB mode and disables governed write', async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeError: { code: 'no_kb_mounted', error: 'not mounted' } })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/attachments') return json({ attachment: { attachmentId: 'attachment-no-kb', filename: 'no-kb.pdf', mediaType: 'application/pdf', size: 12, sha256: 'f'.repeat(64), createdAt: '2026-10-02T00:00:00.000Z' } }, 201)
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByLabelText('Add document'), { target: { files: [new File(['pdf'], 'no-kb.pdf', { type: 'application/pdf' })] } })
+    expect(await screen.findByText('no-kb.pdf')).toBeTruthy()
+    expect(screen.getByText('Mount a Knowledge Base to prepare a governed Schema 0.4 preview.')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Write Knowledge' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('resets source rights and ignores a late preview when replacing a file, then locks replacement during acceptance', async () => {
+    let resolvePreviewA: (response: Response) => void = () => undefined
+    let notifyPreviewAStarted: () => void = () => undefined
+    const previewAStarted = new Promise<void>((resolve) => { notifyPreviewAStarted = resolve })
+    let resolveAcceptance: (response: Response) => void = () => undefined
+    let notifyAcceptanceStarted: () => void = () => undefined
+    const acceptanceStarted = new Promise<void>((resolve) => { notifyAcceptanceStarted = resolve })
+    const uploadedFiles: string[] = []
+    mockV04UploadRuntime(async (input, init) => {
+      const path = String(input)
+      if (path === '/api/attachments') {
+        const form = init?.body as FormData
+        const file = form.get('file') as File
+        uploadedFiles.push(file.name)
+        return json({ attachment: { attachmentId: file.name === 'source-a.pdf' ? 'attachment-a' : 'attachment-b', filename: file.name, mediaType: file.type, size: file.size, sha256: file.name === 'source-a.pdf' ? 'a'.repeat(64) : 'b'.repeat(64), createdAt: '2026-10-02T00:00:00.000Z' } }, 201)
+      }
+      if (path === '/api/production/raw-document-preview-v04') {
+        const body = JSON.parse(String(init?.body)) as { attachmentId: string }
+        const runId = body.attachmentId === 'attachment-a' ? 'preview-a' : 'preview-b'
+        return json({ accepted: true, runId, committable: false, workflow: { runId, workflowType: 'raw_document_knowledge_v04', objective: 'Preview source', status: 'running', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:00.000Z' } }, 202)
+      }
+      if (path === '/api/production/raw-document-preview-v04/preview-a') {
+        notifyPreviewAStarted()
+        return new Promise<Response>((resolve) => { resolvePreviewA = resolve })
+      }
+      if (path === '/api/production/raw-document-preview-v04/preview-b') return json({ runId: 'preview-b', workflow: { runId: 'preview-b', workflowType: 'raw_document_knowledge_v04', objective: 'Preview source', status: 'completed', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:01.000Z' }, preview: { ...v04Preview, runId: 'preview-b', status: 'preview_partial', extractionCompleteness: 'partial', statusNote: 'The durable preview persisted after the workflow was cancelled and passed read-back verification.', incompleteUnits: [{ unitId: 'unit-failed', proposedUnitId: 'section:risks', status: 'failed', errorSummary: 'Extraction failed for this section.' }] }, committable: true })
+      if (path === '/api/production/raw-document-preview-v04/accept') {
+        notifyAcceptanceStarted()
+        return new Promise<Response>((resolve) => { resolveAcceptance = resolve })
+      }
+      if (path === '/api/workflows/preview-a' || path === '/api/workflows/preview-b') {
+        const runId = path.endsWith('preview-a') ? 'preview-a' : 'preview-b'
+        return json({ runId, workflowType: 'raw_document_knowledge_v04', objective: 'Preview source', status: runId === 'preview-b' ? 'completed' : 'running', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:01.000Z' })
+      }
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    })
+    render(<App />)
+    await screen.findByRole('textbox', { name: 'Message' })
+    const composer = document.querySelector('.composer-wrap')
+    if (!composer) throw new Error('Composer not found')
+    fireEvent.drop(composer, { dataTransfer: { files: [new File(['a'], 'source-a.pdf', { type: 'application/pdf' })], types: ['Files'] } })
+    expect(await screen.findByText('source-a.pdf')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Write Knowledge' }))
+    fireEvent.change(screen.getByLabelText('Source title'), { target: { value: 'Metadata from A' } })
+    fireEvent.change(screen.getByLabelText(/Policy basis/), { target: { value: 'Rights basis from A' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'AI processing is allowed' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Extract candidates for review' }))
+    await previewAStarted
+
+    fireEvent.drop(composer, { dataTransfer: { files: [new File(['b'], 'source-b.pdf', { type: 'application/pdf' })], types: ['Files'] } })
+    expect(await screen.findByText('source-b.pdf')).toBeTruthy()
+    expect(screen.queryByText('candidate-claim-1')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Write Knowledge' }))
+    expect((screen.getByLabelText('Source title') as HTMLInputElement).value).toBe('')
+    expect((screen.getByLabelText(/Policy basis/) as HTMLTextAreaElement).value).toBe('')
+    expect((screen.getByRole('checkbox', { name: 'AI processing is allowed' }) as HTMLInputElement).checked).toBe(false)
+
+    resolvePreviewA(json({ runId: 'preview-a', workflow: { runId: 'preview-a', workflowType: 'raw_document_knowledge_v04', objective: 'Preview A', status: 'completed', startedAt: '2026-10-02T00:00:00.000Z', updatedAt: '2026-10-02T00:00:01.000Z' }, preview: { ...v04Preview, runId: 'preview-a', candidateGroups: [{ ...v04Preview.candidateGroups[0]!, candidateId: 'candidate-from-A' }] }, committable: true }))
+    await waitFor(() => expect(screen.queryByText('candidate-from-A')).toBeNull())
+
+    fireEvent.change(screen.getByLabelText('Source title'), { target: { value: 'Metadata from B' } })
+    fireEvent.change(screen.getByLabelText(/Policy basis/), { target: { value: 'Rights basis from B' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Extract candidates for review' }))
+    expect(await screen.findByText(/1 extraction unit\(s\) failed or were cancelled/)).toBeTruthy()
+    expect(screen.getByText(/durable preview persisted after the workflow was cancelled/)).toBeTruthy()
+    expect(document.querySelector('.incomplete-units')?.textContent).toContain('Extraction failed for this section.')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select claim candidate' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Accept 1 selected' }))
+    await acceptanceStarted
+    fireEvent.drop(composer, { dataTransfer: { files: [new File(['c'], 'source-c.pdf', { type: 'application/pdf' })], types: ['Files'] } })
+    expect(await screen.findByText('Wait for candidate acceptance to finish before replacing this file.')).toBeTruthy()
+    expect(uploadedFiles).toEqual(['source-a.pdf', 'source-b.pdf'])
+    resolveAcceptance(json({ status: 'committed', knowledgeBaseId: 'kb-1', knowledgeBaseRevision: 8, baseRevision: 7, previewWorkflowRunId: 'preview-b', extractionCompleteness: 'partial', acceptedCandidateIds: ['candidate-claim-1'], createdIds: ['claim:example'], updatedIds: [], errors: [] }))
+    expect(await screen.findByText('committed')).toBeTruthy()
   })
 
   it('renders registry-backed Workflow and safe research policy defaults', async () => {
@@ -61,9 +560,10 @@ describe('Homepage shell', () => {
     expect(screen.getByRole('link', { name: 'Reports' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Run Research' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Reviews' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('link', { name: 'Knowledge Graph' }))
-    expect(await screen.findByRole('heading', { name: 'Knowledge Graph' })).toBeTruthy()
-    expect(screen.getByText('Mount a canonical Knowledge Base to browse the Directory and explore a rooted graph.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '中文' }))
+    fireEvent.click(screen.getByRole('link', { name: '知识图谱' }))
+    expect(await screen.findByRole('heading', { name: '主题工作台' })).toBeTruthy()
+    expect(screen.getByText('没有已挂载的 Knowledge Base')).toBeTruthy()
     expect(screen.queryByRole('canvas')).toBeNull()
     expect(screen.queryByText('Search Knowledge')).toBeNull()
   })
@@ -254,5 +754,47 @@ describe('Homepage shell', () => {
     const confirmCall = calls.find((call) => call.path.endsWith('/criteria/confirm'))
     expect(JSON.parse(String(confirmCall?.init?.body))).toMatchObject({ previewHash: 'preview-hash', expectedKnowledgeBaseRevision: 7, workflowRunId: expect.stringMatching(/^criterion-/) })
     expect(await screen.findByText(/active · margin-floor v1/)).toBeTruthy()
+  })
+
+  it('shows durable Theme scope proposals in Chat and refreshes after a human decision', async () => {
+    const receiptKey = 'a'.repeat(64)
+    const proposalId = `theme-scope-impact:${'b'.repeat(40)}`
+    let decisionSaved = false
+    const proposal = { proposalId, themeRef: 'entity:theme-ai', candidate: { kind: 'industry', name: 'PCB' }, candidateFingerprint: `sha256:${'b'.repeat(64)}`, changeKind: 'new_theme_node', rationale: 'New research evidence identifies PCB as a relevant upstream industry.', evidenceRefs: ['source:annual-report'], changedRefs: ['entity:pcb'], basedOnRevision: 8, status: decisionSaved ? 'accepted' : 'pending', ...(decisionSaved ? { decision: 'include' } : {}) }
+    const record = { receiptKey, knowledgeBaseId: 'kb-1', baseRevision: 7, committedRevision: 8, status: 'ready', proposals: [proposal], diagnostics: [] }
+    const calls: { path: string; init?: RequestInit }[] = []
+    let failRefresh = false
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input); calls.push({ path, init })
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 8, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
+      if (path === '/api/theme-scope-impact?limit=50') return failRefresh ? json({ code: 'failed', error: 'Runtime unavailable' }, 500) : json({ items: [{ ...record, status: decisionSaved ? 'stale' : 'ready', proposals: [{ ...proposal, status: decisionSaved ? 'accepted' : 'pending', ...(decisionSaved ? { decision: 'include' } : {}) }] }], total: 1, truncated: false })
+      if (path.endsWith('/decisions')) { decisionSaved = true; return json({ ...record, proposals: [{ ...proposal, status: 'accepted', decision: 'include' }] }) }
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Theme scope changes' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'PCB' })).toBeTruthy()
+    expect(screen.getByText('New research evidence identifies PCB as a relevant upstream industry.')).toBeTruthy()
+    expect(screen.getByText((_, element) => element?.textContent === '1 evidence refs')).toBeTruthy()
+    expect(document.body.textContent).not.toContain('rawRef')
+    fireEvent.click(screen.getByRole('button', { name: 'Include' }))
+    expect(calls.some((call) => call.path.endsWith('/decisions'))).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Save decisions for 1 proposal' }))
+    await waitFor(() => expect(screen.getByText('Decision saved · include')).toBeTruthy())
+    const decisionCall = calls.find((call) => call.path.endsWith('/decisions'))
+    expect(JSON.parse(String(decisionCall?.init?.body))).toMatchObject({ workflowRunId: expect.stringMatching(/^scope-impact-/), decisions: [{ proposalId, decision: 'include' }] })
+    expect(JSON.parse(String(decisionCall?.init?.body))).not.toHaveProperty('evidenceRefs')
+    expect(new Headers(decisionCall?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('b'.repeat(64))
+    expect(await screen.findByText('Stale')).toBeTruthy()
+    failRefresh = true
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh proposals' }))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(screen.getByText('Scope inbox could not be refreshed')).toBeTruthy()
   })
 })

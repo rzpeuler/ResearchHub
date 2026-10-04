@@ -1,5 +1,9 @@
 import type { EntityTypeV03, RelationTypeV03 } from '../../knowledge/schema/domain.ts'
 import type { IndustryOperatingObservation, IndustryOperatingObservationStatus } from '../../plugins/research-acquisition/industry-operating-observations.ts'
+import type { RawDocumentMetadataV04, RawDocumentRightsV04 } from '../../knowledge/production/raw-document-gateway-v04.ts'
+import type { RawDocumentCandidateGroupV04, RawDocumentPreviewWorkflowResultV04 } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts'
+import type { RawDocumentV04CandidateAcceptanceResult } from '../../workflows/raw-document-knowledge-ingestion/v04-candidate-acceptance.ts'
+import type { RawDocumentV04IncompleteExtractionUnit } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-store.ts'
 
 export type ApplicationErrorCode = 'not_found' | 'invalid_input' | 'cancelled' | 'failed' | 'conflict' | 'no_kb_mounted' | 'unauthorized_runtime_token'
 
@@ -179,6 +183,35 @@ export interface IngestDocumentInput {
   readonly instructions?: string
   readonly sourceMetadata?: { readonly title?: string | null; readonly institution?: string | null; readonly author?: string | null; readonly publishedAt?: string | null; readonly sourceUrl?: string | null }
 }
+export interface RawDocumentPreviewV04Input {
+  readonly workflowRunId: string
+  readonly text?: string
+  readonly workspaceFile?: string
+  readonly originalFilename?: string
+  readonly mediaType?: string
+  readonly instructions?: string
+  readonly sourceMetadata: RawDocumentMetadataV04
+  readonly rights: RawDocumentRightsV04
+}
+export interface ApplicationRawDocumentPreviewV04 {
+  readonly runId: string
+  readonly status: RawDocumentPreviewWorkflowResultV04['status'] | 'stale_revision'
+  readonly knowledgeBaseId?: string
+  readonly sourceRef?: string
+  readonly rawRef?: string
+  readonly documentId?: string
+  readonly candidateGroups: readonly RawDocumentCandidateGroupV04[]
+  readonly committable: boolean
+  readonly errorSummary?: string
+  readonly statusNote?: string
+  readonly extractionCompleteness?: 'complete' | 'partial'
+  readonly incompleteUnits?: readonly RawDocumentV04IncompleteExtractionUnit[]
+}
+export interface ApplicationRawDocumentPreviewAcceptanceInput {
+  readonly previewWorkflowRunId: string
+  readonly acceptedCandidateIds: readonly string[]
+}
+export type ApplicationRawDocumentPreviewAcceptanceResult = RawDocumentV04CandidateAcceptanceResult
 export interface ApplicationProductionResult {
   readonly runId: string
   readonly status: WorkflowStatus

@@ -5,6 +5,19 @@ import type { DocumentBlock, DocumentParser, DocumentParserInput, DocumentSectio
 
 type MutableSection = Omit<DocumentSection, 'blockRefs'> & { blockRefs: string[] }
 
+const HTML_BLOCK_BOUNDARY_TAGS = 'p|div|section|article|li|tr|h[1-6]|br'
+
+function normalizeHtmlText(value: string): string {
+  return value
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' ')
+    .replace(new RegExp(`<\\s*\\/?\\s*(?:${HTML_BLOCK_BOUNDARY_TAGS})\\b[^>]*>`, 'gi'), '\n\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+}
+
 export class PlainTextDocumentParser implements DocumentParser {
   readonly id = 'plain-text'
   supports(input: Pick<DocumentParserInput, 'filename' | 'mediaType'>): boolean { return input.mediaType.startsWith('text/') || /\.(csv|html?|json|md|text|txt|xml)$/i.test(input.filename) }
@@ -12,7 +25,7 @@ export class PlainTextDocumentParser implements DocumentParser {
   async parse(input: DocumentParserInput): Promise<StructuredDocument> {
     const html = input.mediaType.includes('html') || /\.html?$/i.test(input.filename)
     const decoded = new TextDecoder().decode(input.bytes)
-    const text = (html ? decoded.replace(/<script\b[\s\S]*?<\/script>/gi, ' ').replace(/<style\b[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/[ \t]+/g, ' ') : decoded).replace(/\r\n?/g, '\n').trim()
+    const text = (html ? normalizeHtmlText(decoded) : decoded).replace(/\r\n?/g, '\n').trim()
     if (!text) throw new DocumentPluginError('document_text_extraction_insufficient', 'document_text_extraction_insufficient: text input is empty', this.id)
     const sections: MutableSection[] = []
     const blocks: DocumentBlock[] = []

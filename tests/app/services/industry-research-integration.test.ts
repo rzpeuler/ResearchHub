@@ -13,6 +13,7 @@ import type { ReasoningCapabilities, ReasoningExecutor, ReasoningRequest, Reason
 import type { NormalizedResearchSource, ResearchAcquisitionPlugin, ResearchFetchedSource, ResearchSourceCandidate } from '../../../plugins/research-acquisition/contracts.ts'
 import { sha256 } from '../../../plugins/research-acquisition/hash.ts'
 import { createIndustryOperatingObservation } from '../../../plugins/research-acquisition/industry-operating-observations.ts'
+import type { ThemeScopeImpactChecker } from '../../../workflows/theme-scope-impact-check/post-write.ts'
 
 const capabilities: ReasoningCapabilities = { maxContextTokens: 100_000, maxOutputTokens: 10_000, structuredOutputSupport: true, maxConcurrency: 4 }
 const design = { definitionHypothesis: 'Fixture PCB Industry', targetKind: 'industry', scope: { included: ['PCB'], excluded: ['theme'] }, moduleQuestions: Object.fromEntries(INDUSTRY_MODULES.map((module) => [module, module])), keyMetrics: ['capacity'], evidenceRequirements: ['official'], searchTerms: ['PCB'], knownGaps: [], verificationCandidates: [] }
@@ -57,13 +58,13 @@ function fixturePlugin(sequence: readonly NormalizedResearchSource[] = [source('
   }
 }
 
-async function fixture(options: { readonly executor?: IndustryExecutor; readonly plugins?: readonly ResearchAcquisitionPlugin[] } = {}) {
+async function fixture(options: { readonly executor?: IndustryExecutor; readonly plugins?: readonly ResearchAcquisitionPlugin[]; readonly impactChecker?: ThemeScopeImpactChecker } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'rhl-app-industry-'))
   const reports = await mkdtemp(join(tmpdir(), 'rhl-app-industry-reports-'))
   await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-app-industry', now: '2026-09-08T00:00:00.000Z' })
   const workflowService = new WorkflowService()
   const executor = options.executor ?? new IndustryExecutor()
-  const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, workflowService, reasoningExecutor: executor, acquisitionPlugins: options.plugins ?? [fixturePlugin()] })
+  const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, workflowService, reasoningExecutor: executor, acquisitionPlugins: options.plugins ?? [fixturePlugin()], ...(options.impactChecker === undefined ? {} : { themeScopeImpactChecker: options.impactChecker }) })
   return { root, reports, workflowService, service, executor }
 }
 
@@ -96,6 +97,21 @@ test('Application Industry research projects canonical graph and replays semanti
     assert.deepEqual(countsAfter, countsBefore)
     const projectedAgain = await graph.getGraphProjection({ rootRef: industry.id, depth: 2 })
     assert.deepEqual(projectedAgain.nodes.map((node) => node.ref), projected.nodes.map((node) => node.ref)); assert.deepEqual(projectedAgain.edges.map((edge) => edge.ref), projected.edges.map((edge) => edge.ref))
+  } finally { await rm(f.root, { recursive: true, force: true }); await rm(f.reports, { recursive: true, force: true }) }
+})
+
+test('Application Industry research sends verified canonical changes to the scope impact inbox', async () => {
+  const receipts: unknown[] = []
+  const f = await fixture({ impactChecker: { check: async (receipt) => { receipts.push(receipt); return { receiptKey: 'a'.repeat(64), knowledgeBaseId: 'kb-app-industry', baseRevision: 0, committedRevision: 1, status: 'ready', proposals: [], diagnostics: [] } } } })
+  try {
+    const result = await f.service.startIndustryResearch({ workflowRunId: 'industry-impact-trigger', name: 'Fixture PCB Industry', maxSources: 4, maxEvidencePerModule: 2 }).completion
+    assert.equal(result.status, 'completed')
+    assert.equal(result.themeScopeImpact.status, 'ready')
+    assert.equal(receipts.length, 1)
+    const receipt = receipts[0] as { writerRunId: string; knowledgeBaseId: string; createdRefs: readonly string[]; updatedRefs: readonly string[] }
+    assert.equal(receipt.writerRunId, 'industry-impact-trigger')
+    assert.equal(receipt.knowledgeBaseId, 'kb-app-industry')
+    assert.deepEqual(new Set([...receipt.createdRefs, ...receipt.updatedRefs]), new Set(result.committedIds))
   } finally { await rm(f.root, { recursive: true, force: true }); await rm(f.reports, { recursive: true, force: true }) }
 })
 

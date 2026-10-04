@@ -23,6 +23,7 @@ import type { ManagementCommunicationAcquisitionSources } from '../../workflows/
 import type { IndustryOperatingObservationAcquisitionPort } from '../../plugins/research-acquisition/industry-operating-observations.ts'
 import { ThesisLifecycleService, type ThesisLifecycleRefreshInput, type ApplicationThesisLifecycleResult, type ThesisLifecycleDecisionReportInput, type ThesisLifecycleDecisionReportResult } from './thesis-lifecycle-service.ts'
 import { ThesisCreateService, type ThesisCreateInput, type ThesisCreateServiceResult } from './thesis-create-service.ts'
+import { triggerThemeScopeImpactPostWrite, type ThemeScopeImpactChecker, type ThemeScopeImpactTriggerResult } from '../../workflows/theme-scope-impact-check/post-write.ts'
 
 export type ThesisLifecycleCreateInput = ThesisCreateInput
 export interface ApplicationThesisLifecycleCreateResult extends ThesisCreateServiceResult {
@@ -87,6 +88,7 @@ export interface ResearchServiceOptions {
   readonly managementCommunicationSources?: ManagementCommunicationAcquisitionSources
   readonly industryReasoningExecutorFactory?: () => Promise<ReasoningExecutor>
   readonly industryOperatingObservationAcquisition?: IndustryOperatingObservationAcquisitionPort
+  readonly themeScopeImpactChecker?: ThemeScopeImpactChecker
 }
 
 export class ResearchService {
@@ -173,7 +175,7 @@ export class ResearchService {
     return this.thesisLifecycleService.updateDecisionReport(input)
   }
 
-  startResearchCompany(input: ResearchCompanyInput, callerSignal?: AbortSignal): { readonly runId: string; readonly completion: Promise<ApplicationResearchResult> } {
+  startResearchCompany(input: ResearchCompanyInput, callerSignal?: AbortSignal): { readonly runId: string; readonly completion: Promise<ApplicationResearchResult & { readonly themeScopeImpact: ThemeScopeImpactTriggerResult }> } {
     if (!input || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(input.workflowRunId) || !/^\d{6}$/.test(input.symbol)) {
       throw new ApplicationServiceError('invalid_input', 'workflowRunId and A-share symbol are invalid')
     }
@@ -219,7 +221,11 @@ export class ResearchService {
         signal.removeEventListener('abort', abort)
         callerSignal?.removeEventListener('abort', abort)
       }
-    }).then((outcome) => ({
+    }).then(async (outcome) => {
+      const impact = outcome.workflow.status === 'completed' && (outcome.workflow.createdIds.length + outcome.workflow.updatedIds.length > 0)
+        ? await triggerThemeScopeImpactPostWrite({ mountedKnowledgeBaseRoot: resolve(this.options.mountedKnowledgeBaseRoot), writerRunId: input.workflowRunId, expectedKnowledgeBaseId: outcome.workflow.knowledgeBaseId, ...(outcome.workflow.knowledgeBaseRevision === undefined ? {} : { expectedCommittedRevision: outcome.workflow.knowledgeBaseRevision }), expectedCreatedIds: outcome.workflow.createdIds, expectedUpdatedIds: outcome.workflow.updatedIds, checker: this.options.themeScopeImpactChecker })
+        : { status: 'not_triggered' as const, diagnostics: [outcome.workflow.status !== 'completed' ? 'Company Research did not complete successfully.' : 'Company Research completed without canonical writes.'] }
+      return ({
       runId: input.workflowRunId,
       status: outcome.status,
       knowledgeBaseId: outcome.workflow.knowledgeBaseId,
@@ -232,12 +238,14 @@ export class ResearchService {
       proposalCount: outcome.workflow.proposalIds.length,
       summary: outcome.summary,
       ...(outcome.errorSummary ? { errorSummary: outcome.errorSummary } : {}),
-    }))
+      themeScopeImpact: impact,
+    })
+    })
     completion.catch(() => undefined)
     return { runId: input.workflowRunId, completion }
   }
 
-  startIndustryResearch(input: IndustryResearchInput, callerSignal?: AbortSignal): { readonly runId: string; readonly completion: Promise<ApplicationIndustryResearchResult> } {
+  startIndustryResearch(input: IndustryResearchInput, callerSignal?: AbortSignal): { readonly runId: string; readonly completion: Promise<ApplicationIndustryResearchResult & { readonly themeScopeImpact: ThemeScopeImpactTriggerResult }> } {
     if (!input || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(input.workflowRunId) || typeof input.name !== 'string' || input.name.trim() === '' || input.name.length > 200) throw new ApplicationServiceError('invalid_input', 'workflowRunId and Industry name are invalid')
     if (input.canonicalRef !== undefined && !/^entity:[A-Za-z0-9._-]+$/.test(input.canonicalRef)) throw new ApplicationServiceError('invalid_input', 'canonicalRef is invalid')
     if (input.aliases !== undefined && (!Array.isArray(input.aliases) || input.aliases.length > 8 || input.aliases.some((x) => typeof x !== 'string' || !x.trim() || x.length > 120))) throw new ApplicationServiceError('invalid_input', 'aliases are invalid')
@@ -255,7 +263,12 @@ export class ResearchService {
     const completion = this.options.workflowService.start(input.workflowRunId, async (signal) => {
       const combined = new AbortController(); const abort = () => combined.abort(); signal.addEventListener('abort', abort, { once: true }); callerSignal?.addEventListener('abort', abort, { once: true }); let diagnostics: readonly string[] = []; let outcomes: readonly ResearchProviderOutcome[] = []
       try { const reasoningExecutor = withSourceLibraryContext(await industryReasoningExecutorFactory(), input.sourceLibraryContext); const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runIndustryDeepResearch({ workflowRunId: input.workflowRunId, handle, target, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), reasoningExecutor: reasoningExecutor!, maxSources: input.maxSources, maxEvidencePerModule: input.maxEvidencePerModule, writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal, operatingObservationAcquisition: this.options.industryOperatingObservationAcquisition, acquisitionWave: async (request) => { const baseSearchTerms = input.searchTerms ?? request.searchTerms; const searchTerms = request.wave === 1 ? baseSearchTerms : [...new Set([...request.searchTerms, ...baseSearchTerms])].slice(0, 8); const acquired = await composition.acquire({ ...request, searchTerms }); diagnostics = [...diagnostics, ...acquired.diagnostics].slice(0, 32); const prior = new Map<string, ResearchProviderOutcome>(outcomes.map((outcome) => [outcome.provider, outcome])); for (const outcome of acquired.outcomes) { const previous = prior.get(outcome.provider); prior.set(outcome.provider, previous === undefined ? outcome : { provider: previous.provider, providerAttempted: previous.providerAttempted || outcome.providerAttempted, providerSucceeded: previous.providerSucceeded || outcome.providerSucceeded, providerEmpty: previous.providerEmpty && outcome.providerEmpty, providerFailed: previous.providerFailed || outcome.providerFailed, usableSourceCount: Math.min(24, previous.usableSourceCount + outcome.usableSourceCount) }) } outcomes = [...prior.values()].slice(0, 8); return acquired.sources } }); return { status: result.status, workflow: result, diagnostics, outcomes } } finally { signal.removeEventListener('abort', abort); callerSignal?.removeEventListener('abort', abort) }
-    }).then((outcome) => ({ runId: input.workflowRunId, status: outcome.status, knowledgeBaseId: outcome.workflow.knowledgeBaseId, ...(outcome.workflow.report === undefined ? {} : { reportId: outcome.workflow.report.reportId, reportPath: `${outcome.workflow.report.reportId}.md` }), committedIds: outcome.workflow.committedIds, proposalCount: outcome.workflow.proposalIds.length, summary: outcome.workflow.status === 'completed' ? `Industry research completed for ${target.name}` : `Industry research ${outcome.workflow.status} for ${target.name}`, ...(outcome.workflow.errors.length ? { errorSummary: outcome.workflow.errors.join('; ').slice(0, 500) } : {}), providerOutcomes: outcome.outcomes, acquisitionDiagnostics: outcome.diagnostics, operatingObservations: outcome.workflow.operatingObservations, operatingObservationStatus: outcome.workflow.operatingObservationStatus, operatingObservationDiagnostics: outcome.workflow.operatingObservationDiagnostics }))
+    }).then(async (outcome) => {
+      const impact = outcome.workflow.status === 'completed' && (outcome.workflow.createdIds.length + outcome.workflow.updatedIds.length > 0)
+        ? await triggerThemeScopeImpactPostWrite({ mountedKnowledgeBaseRoot: resolve(this.options.mountedKnowledgeBaseRoot), writerRunId: input.workflowRunId, expectedKnowledgeBaseId: outcome.workflow.knowledgeBaseId, expectedCommittedRevision: outcome.workflow.knowledgeBaseRevision, expectedCreatedIds: outcome.workflow.createdIds, expectedUpdatedIds: outcome.workflow.updatedIds, checker: this.options.themeScopeImpactChecker })
+        : { status: 'not_triggered' as const, diagnostics: [outcome.workflow.status !== 'completed' ? 'Industry Research did not complete successfully.' : 'Industry Research completed without canonical writes.'] }
+      return { runId: input.workflowRunId, status: outcome.status, knowledgeBaseId: outcome.workflow.knowledgeBaseId, ...(outcome.workflow.report === undefined ? {} : { reportId: outcome.workflow.report.reportId, reportPath: `${outcome.workflow.report.reportId}.md` }), committedIds: outcome.workflow.committedIds, proposalCount: outcome.workflow.proposalIds.length, summary: outcome.workflow.status === 'completed' ? `Industry research completed for ${target.name}` : `Industry research ${outcome.workflow.status} for ${target.name}`, ...(outcome.workflow.errors.length ? { errorSummary: outcome.workflow.errors.join('; ').slice(0, 500) } : {}), providerOutcomes: outcome.outcomes, acquisitionDiagnostics: outcome.diagnostics, operatingObservations: outcome.workflow.operatingObservations, operatingObservationStatus: outcome.workflow.operatingObservationStatus, operatingObservationDiagnostics: outcome.workflow.operatingObservationDiagnostics, themeScopeImpact: impact }
+    })
     completion.catch(() => undefined); return { runId: input.workflowRunId, completion }
   }
 

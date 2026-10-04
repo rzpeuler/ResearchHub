@@ -43,6 +43,50 @@ describe('RuntimeClient', () => {
     await expect(unauthorized.bootstrap()).rejects.toMatchObject({ message: 'ResearchHub Runtime authorization expired. Reload the page.' })
   })
 
+  it('preserves structured V0.4 stale revision conflicts from candidate acceptance', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => fetchMock.mock.calls.length === 1
+      ? json(bootstrap)
+      : json({ status: 'stale_revision', knowledgeBaseId: 'kb-1', knowledgeBaseRevision: 8, baseRevision: 7, previewWorkflowRunId: 'preview-1', acceptedCandidateIds: [], createdIds: [], updatedIds: [], errors: [{ code: 'STALE_REVISION', message: 'Knowledge Base revision changed' }] }, 409))
+    const client = new RuntimeClient(fetchMock)
+    await client.bootstrap()
+    const result = await client.acceptRawDocumentPreviewV04('preview-1', ['candidate-1'])
+    expect(result.status).toBe('stale_revision')
+    expect(result.errors[0]?.message).toBe('Knowledge Base revision changed')
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe('/api/production/raw-document-preview-v04/accept')
+  })
+
+  it('authorizes Theme Framework review reads and posts only explicit decision maps', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ path: String(input), init })
+      if (calls.length === 1) return json(bootstrap)
+      if (String(input).endsWith('/refresh')) return json({ status: 'awaiting_review', workflowRunId: 'fresh-run', refreshedFromRunId: 'old-run', basedOnRevision: 8 })
+      if (String(input).endsWith('/accept')) return json({ status: 'committed', workflowRunId: 'run / 1' })
+      if (String(input).endsWith('/reject')) return json({ status: 'rejected', workflowRunId: 'run / 1' })
+      return json({ status: 'running', workflowRunId: 'run / 1' })
+    })
+    const client = new RuntimeClient(fetchMock)
+    await client.bootstrap()
+    expect((await client.getThemeFrameworkRun('run / 1')).status).toBe('running')
+    const refresh = await client.refreshThemeFrameworkRun('old/run')
+    expect(refresh.workflowRunId).toBe('fresh-run')
+    await client.acceptThemeFrameworkRun('run / 1', { 'industry-a': 'include', 'relation-a': 'pending' }, { 'relation-a': 'Keep this connection open for review.' })
+    await client.rejectThemeFrameworkRun('run / 1')
+    expect(calls.map((call) => call.path)).toEqual([
+      '/api/bootstrap',
+      '/api/theme-framework/runs/run%20%2F%201',
+      '/api/theme-framework/runs/old%2Frun/refresh',
+      '/api/theme-framework/runs/run%20%2F%201/accept',
+      '/api/theme-framework/runs/run%20%2F%201/reject',
+    ])
+    expect(new Headers(calls[1]?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('a'.repeat(64))
+    expect(new Headers(calls[2]?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('a'.repeat(64))
+    expect(calls[2]?.init?.method).toBe('POST')
+    expect(JSON.parse(String(calls[2]?.init?.body))).toEqual({})
+    expect(JSON.parse(String(calls[3]?.init?.body))).toEqual({ decisions: { 'industry-a': 'include', 'relation-a': 'pending' }, decisionRationales: { 'relation-a': 'Keep this connection open for review.' } })
+    expect(JSON.parse(String(calls[4]?.init?.body))).toEqual({})
+  })
+
   it('encodes Graph read contracts and never adds a mutation token', async () => {
     const paths: string[] = []; const headers: Headers[] = []
     const client = new RuntimeClient(async (input, init) => { paths.push(String(input)); headers.push(new Headers(init?.headers)); return json({ themeGroups: [], industries: { items: [], total: 0, limit: 30, truncated: false }, companies: { items: [], total: 0, limit: 30, truncated: false }, products: { items: [], total: 0, limit: 30, truncated: false }, technologies: { items: [], total: 0, limit: 30, truncated: false } }) })
@@ -50,6 +94,20 @@ describe('RuntimeClient', () => {
     await client.getKnowledgeGraph({ rootRef: 'entity:company/acme', depth: 2, maxNodes: 10, maxEdges: 20 })
     expect(paths[0]).toBe('/api/knowledge/directory')
     expect(paths[1]).toBe('/api/knowledge/graph?rootRef=entity%3Acompany%2Facme&depth=2&maxNodes=10&maxEdges=20')
+    expect(headers.every((value) => value.has('X-ResearchHub-Runtime-Token') === false)).toBe(true)
+  })
+
+  it('reads Theme workspace projections with encoded canonical refs and revision/volume bounds', async () => {
+    const paths: string[] = []; const headers: Headers[] = []
+    const client = new RuntimeClient(async (input, init) => { paths.push(String(input)); headers.push(new Headers(init?.headers)); return json({ status: 'available' }) })
+    await client.getThemeWorkspaceOverview('entity:theme-a', { expectedRevision: 8, maxNodes: 60, maxEdges: 120, maxResponseBytes: 1_000_000 })
+    await client.getThemeWorkspaceIndustry('entity:theme-a', 'entity:industry-b', { expectedRevision: 8, maxItemsPerSection: 30, maxCompaniesPerIndustry: 40 })
+    await client.getThemeWorkspaceCompany('entity:theme-a', 'entity:industry-b', 'entity:company-c', { expectedRevision: 8, maxItemsPerSection: 30 })
+    expect(paths).toEqual([
+      '/api/knowledge/themes/entity%3Atheme-a/overview?expectedRevision=8&maxNodes=60&maxEdges=120&maxResponseBytes=1000000',
+      '/api/knowledge/themes/entity%3Atheme-a/industries/entity%3Aindustry-b?expectedRevision=8&maxItemsPerSection=30&maxCompaniesPerIndustry=40',
+      '/api/knowledge/themes/entity%3Atheme-a/industries/entity%3Aindustry-b/companies/entity%3Acompany-c?expectedRevision=8&maxItemsPerSection=30',
+    ])
     expect(headers.every((value) => value.has('X-ResearchHub-Runtime-Token') === false)).toBe(true)
   })
 

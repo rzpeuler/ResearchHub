@@ -9,6 +9,7 @@ import { KnowledgeCurationSkill } from '../../../skills/knowledge-curation/skill
 import { KnowledgeCurationError } from '../../../skills/knowledge-curation/errors.ts'
 import { MockReasoningExecutor } from '../../../plugins/reasoning/mock/executor.ts'
 import { normalizeCompanyCandidateIdentity } from '../../../skills/knowledge-curation/identity/company-identity.ts'
+import { projectExtractKnowledgeModelInput, projectUnderstandAndPlanModelInput } from '../../../skills/knowledge-curation/model/model-input.ts'
 
 const capabilities = { maxContextTokens: 1000, maxOutputTokens: 500, structuredOutputSupport: true, maxConcurrency: 1 }
 const document: StructuredDocument = {
@@ -57,6 +58,55 @@ test('understandAndPlan validates typed document references and projects the ful
   const prepared = executor.calls[0]?.input as { capabilities: typeof capabilities; schemaContext: { slice: string } }
   assert.deepEqual(prepared.capabilities, capabilities)
   assert.equal(prepared.schemaContext.slice, 'understand_and_plan')
+})
+
+test('understandAndPlan removes only reconstructible document duplicates and leaves extraction provenance intact', () => {
+  const tableMarkdown = '| Metric | Value |\n| --- | --- |\n| Capacity | 10 |'
+  const sourceDocument: StructuredDocument = {
+    ...structuredClone(document),
+    documentId: 'doc-projection',
+    metadata: { originalFilename: 'source.pdf', mediaType: 'application/pdf', title: 'Source title', parserMetadata: { publisher: 'publisher' } },
+    normalizedText: `Title\n\n${tableMarkdown}\n\nTail`,
+    sections: [{ sectionId: 'section-projection', title: 'Title', level: 1, parentSectionRef: null, blockRefs: ['block-title', 'block-table', 'block-tail'], pageStart: 1, pageEnd: 2 }],
+    blocks: [
+      { blockId: 'block-tail', type: 'paragraph', text: 'Tail', sectionRef: 'section-projection', page: 2, locator: { page: 2, parserItemRef: 'item-tail', sectionPath: ['Title'], sourceOrder: 3, boundingBox: { left: 1, top: 2, right: 3, bottom: 4 } }, order: 2, metadata: { originalIndex: 3 } },
+      { blockId: 'block-title', type: 'heading', text: 'Title', sectionRef: 'section-projection', page: 1, locator: { page: 1, parserItemRef: 'item-title', sectionPath: ['Title'], sourceOrder: 1, boundingBox: { left: 5, top: 6, right: 7, bottom: 8 } }, order: 0 },
+      { blockId: 'block-table', type: 'table', text: tableMarkdown, sectionRef: 'section-projection', page: 1, locator: { page: 1, parserItemRef: 'item-table', sectionPath: ['Title'], sourceOrder: 2 }, order: 1, structuredContent: { kind: 'table', markdown: tableMarkdown } },
+    ],
+    stats: { pageCount: 2, sectionCount: 1, blockCount: 3, normalizedCharacters: `Title\n\n${tableMarkdown}\n\nTail`.length, tableCount: 1, headingCount: 1, listCount: 0, captionCount: 0 },
+  }
+  const originalSnapshot = structuredClone(sourceDocument)
+  const projected = projectUnderstandAndPlanModelInput({ document: sourceDocument, capabilities, schemaContext: buildCurationSchemaContext('understand_and_plan') }) as { document: Record<string, unknown> }
+  const planningDocument = projected.document as { normalizedText?: string; metadata: unknown; sections: unknown; blocks: Array<Record<string, unknown>>; stats: unknown; warnings: unknown }
+
+  assert.equal('normalizedText' in planningDocument, false)
+  assert.deepEqual(planningDocument.metadata, sourceDocument.metadata)
+  assert.deepEqual(planningDocument.sections, sourceDocument.sections)
+  assert.deepEqual(planningDocument.stats, sourceDocument.stats)
+  assert.deepEqual(planningDocument.warnings, sourceDocument.warnings)
+  assert.deepEqual(planningDocument.blocks.map(({ blockId, text, type, sectionRef, page, order }) => ({ blockId, text, type, sectionRef, page, order })), sourceDocument.blocks.map(({ blockId, text, type, sectionRef, page, order }) => ({ blockId, text, type, sectionRef, page, order })))
+  assert.deepEqual(planningDocument.blocks[0]?.locator, { page: 2, sectionPath: ['Title'], sourceOrder: 3 })
+  assert.deepEqual(planningDocument.blocks[0]?.metadata, { originalIndex: 3 })
+  assert.equal('structuredContent' in (planningDocument.blocks[2] ?? {}), false)
+  assert.ok(Buffer.byteLength(JSON.stringify(planningDocument), 'utf8') < Buffer.byteLength(JSON.stringify(sourceDocument), 'utf8'))
+
+  const extractionInput = projectExtractKnowledgeModelInput({ document: sourceDocument, reportMap, unit: { ...unit, primaryRefs: [{ kind: 'block', blockId: 'block-table' }], contextRefs: [{ kind: 'block', blockId: 'block-title' }] }, schemaContext: buildCurationSchemaContext('knowledge_extraction') }) as { blocks: Array<Record<string, unknown>> }
+  assert.deepEqual(extractionInput.blocks, [
+    { ...sourceDocument.blocks[1], role: 'context' },
+    { ...sourceDocument.blocks[2], role: 'primary' },
+  ])
+  assert.deepEqual(sourceDocument, originalSnapshot)
+})
+
+test('understandAndPlan preserves normalized text and nonduplicate table content when exact reconstruction fails', () => {
+  const sourceDocument: StructuredDocument = {
+    ...structuredClone(document),
+    normalizedText: 'Leading source text',
+    blocks: [{ ...document.blocks[0]!, type: 'table', structuredContent: { kind: 'table', markdown: 'different rendering', rows: [['A', 'B']] } }],
+  }
+  const projected = projectUnderstandAndPlanModelInput({ document: sourceDocument, capabilities, schemaContext: buildCurationSchemaContext('understand_and_plan') }) as { document: { normalizedText?: string; blocks: Array<Record<string, unknown>> } }
+  assert.equal(projected.document.normalizedText, sourceDocument.normalizedText)
+  assert.deepEqual(projected.document.blocks[0]?.structuredContent, sourceDocument.blocks[0]?.structuredContent)
 })
 
 test('understandAndPlan requires exhaustive excludedRefs and accepts an empty list', async () => {

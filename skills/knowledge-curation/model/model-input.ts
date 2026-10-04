@@ -1,6 +1,7 @@
 import type { ReasoningCapabilities } from '../../../plugins/reasoning/contracts.ts'
 import type { ExtractKnowledgeInput, ResolveSemanticCaseInput, UnderstandAndPlanInput, DocumentContentRef } from '../contracts.ts'
 import type { CurationSchemaContext } from './schema-context-types.ts'
+import type { DocumentBlock, StructuredDocument } from '../../../plugins/document/contracts.ts'
 
 export interface PreparedUnderstandAndPlanInput extends UnderstandAndPlanInput {
   readonly capabilities: ReasoningCapabilities
@@ -13,12 +14,51 @@ export interface PreparedResolveSemanticCaseInput extends ResolveSemanticCaseInp
 
 export function projectUnderstandAndPlanModelInput(input: PreparedUnderstandAndPlanInput): unknown {
   return {
-    document: structuredClone(input.document),
+    document: projectUnderstandAndPlanDocument(input.document),
     capabilities: structuredClone(input.capabilities),
     schemaContext: structuredClone(input.schemaContext),
     ...(input.instructions === undefined ? {} : { instructions: input.instructions }),
     ...(input.planRepair === undefined ? {} : { planRepair: structuredClone(input.planRepair) }),
   }
+}
+
+function projectUnderstandAndPlanDocument(document: StructuredDocument): unknown {
+  const orderedText = [...document.blocks].sort((a, b) => a.order - b.order).map((block) => block.text).join('\n\n').trim()
+  const omitNormalizedText = document.normalizedText === orderedText
+  return {
+    documentId: document.documentId,
+    parser: structuredClone(document.parser),
+    metadata: structuredClone(document.metadata),
+    ...(omitNormalizedText ? {} : { normalizedText: document.normalizedText }),
+    sections: structuredClone(document.sections),
+    blocks: document.blocks.map(projectUnderstandAndPlanBlock),
+    stats: structuredClone(document.stats),
+    warnings: structuredClone(document.warnings),
+  }
+}
+
+function projectUnderstandAndPlanBlock(block: DocumentBlock): unknown {
+  const omitStructuredContent = block.type === 'table' && isDuplicateTableContent(block.structuredContent, block.text)
+  return {
+    blockId: block.blockId,
+    type: block.type,
+    text: block.text,
+    sectionRef: block.sectionRef,
+    page: block.page,
+    locator: Object.fromEntries(Object.entries(block.locator).filter(([key]) => key !== 'boundingBox' && key !== 'parserItemRef')),
+    order: block.order,
+    ...(block.metadata === undefined ? {} : { metadata: structuredClone(block.metadata) }),
+    ...(block.structuredContent === undefined || omitStructuredContent ? {} : { structuredContent: structuredClone(block.structuredContent) }),
+  }
+}
+
+function isDuplicateTableContent(content: DocumentBlock['structuredContent'], text: string): boolean {
+  return content !== undefined
+    && content.kind === 'table'
+    && content.markdown === text
+    && Object.keys(content).length === 2
+    && Object.hasOwn(content, 'kind')
+    && Object.hasOwn(content, 'markdown')
 }
 
 export function projectExtractKnowledgeModelInput(input: PreparedExtractKnowledgeInput): unknown {

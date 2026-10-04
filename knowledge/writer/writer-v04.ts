@@ -9,7 +9,8 @@ import { withKnowledgeBaseMutationLock } from '../storage/mutation-lock.ts'
 import { recoverKnowledgeBaseRoot, runKnowledgeRootTransaction } from '../storage/root-transaction.ts'
 import { KnowledgeBaseRegistry } from '../registry/registry.ts'
 import { assertKnowledgeV04Objects } from '../validation/v04-validator.ts'
-import { isValidatorIssuedV04Receipt, validateKnowledgeBaseV04State } from '../validation/v04-change-set-validator.ts'
+import { inspectThemeScopeContextV04, isValidatorIssuedV04Receipt, validateKnowledgeBaseV04State } from '../validation/v04-change-set-validator.ts'
+import { advanceThemeScopeReverseIndexV04, loadOrRebuildThemeScopeReverseIndexV04, persistThemeScopeReverseIndexV04, themeScopeDecisionsFromContextV04 } from '../governance/theme-scope-reverse-index-v04.ts'
 import { allocateKnowledgeStorageRefV04, kindForKnowledgeV04 } from './path-allocation-v04.ts'
 import type { KnowledgeBaseHandle } from '../storage/handle.ts'
 
@@ -34,6 +35,86 @@ function registryMap(objects: readonly { value: KnowledgeAssetV04; storageRef: s
 function idempotencyHash(changeSet: KnowledgeChangeSetV04): string {
   const { expectedBaseRevision: _expectedBaseRevision, ...stableChangeSet } = changeSet
   return hashKnowledgeObject(stableChangeSet)
+}
+
+function operationIds(changeSet: KnowledgeChangeSetV04, type: 'create' | 'update'): readonly string[] {
+  if (type === 'create') return changeSet.operations.flatMap((operation) => operation.type === 'create' ? [operation.object.id] : [])
+  return changeSet.operations.flatMap((operation) => operation.type === 'update' ? [operation.knowledgeId] : [])
+}
+
+function sameStringArray(value: unknown, expected: readonly string[]): boolean {
+  return Array.isArray(value) && value.length === expected.length && value.every((item, index) => item === expected[index])
+}
+
+async function verifyPriorExecutionState(
+  root: string,
+  manifest: Awaited<ReturnType<typeof loadKnowledgeBaseManifest>>,
+  changeSet: KnowledgeChangeSetV04,
+  prior: Dict,
+): Promise<{ readonly valid: true } | { readonly valid: false; readonly code: 'idempotency_conflict' | 'stale_target'; readonly message: string }> {
+  let contextMatches = false
+  try {
+    const expectedContextHash = changeSet.ingestionContext === undefined ? undefined : hashKnowledgeObject(changeSet.ingestionContext)
+    const priorContextHash = prior.ingestionContext === undefined ? undefined : hashKnowledgeObject(prior.ingestionContext)
+    contextMatches = expectedContextHash === priorContextHash
+  } catch {
+    contextMatches = false
+  }
+  const scopeContext = inspectThemeScopeContextV04(changeSet)
+  const hasCommittedChanges = changeSet.operations.length > 0 || scopeContext.present
+  const expectedWriteStatus = hasCommittedChanges ? 'committed' : 'no_changes'
+  const expectedCommittedRevision = changeSet.expectedBaseRevision + (hasCommittedChanges ? 1 : 0)
+  if (prior.workflowRunId !== changeSet.workflowRunId
+    || prior.changeSetId !== changeSet.changeSetId
+    || prior.knowledgeBaseId !== manifest.knowledgeBaseId
+    || prior.schemaVersionAtExecution !== '0.4'
+    || prior.status !== 'completed'
+    || !contextMatches
+    || scopeContext.error !== undefined
+    || !Number.isSafeInteger(changeSet.expectedBaseRevision)
+    || changeSet.expectedBaseRevision < 0
+    || prior.writeStatus !== expectedWriteStatus
+    || !Number.isSafeInteger(prior.committedRevision)
+    || Number(prior.committedRevision) !== expectedCommittedRevision
+    || Number(prior.committedRevision) > manifest.revision) {
+    return { valid: false, code: 'idempotency_conflict', message: 'Prior Writer receipt is malformed or inconsistent with the submitted ChangeSet or current Knowledge Base.' }
+  }
+  const changes = typeof prior.changes === 'object' && prior.changes !== null && !Array.isArray(prior.changes) ? prior.changes as Dict : undefined
+  const createdIds = operationIds(changeSet, 'create')
+  const updatedIds = operationIds(changeSet, 'update')
+  if (!changes
+    || !sameStringArray(changes.createdIds, createdIds)
+    || !sameStringArray(changes.updatedIds, updatedIds)) {
+    return { valid: false, code: 'idempotency_conflict', message: 'Prior Writer receipt change IDs do not match the submitted ChangeSet operations.' }
+  }
+
+  const finalObjects = new Map<string, KnowledgeAssetV04>()
+  for (const operation of changeSet.operations) {
+    const id = operation.type === 'create' ? operation.object.id : operation.knowledgeId
+    finalObjects.set(id, operation.object)
+  }
+  if (finalObjects.size === 0) return { valid: true }
+
+  let loaded: Awaited<ReturnType<typeof readCanonicalV04Assets>>
+  try {
+    loaded = await readCanonicalV04Assets(root)
+  } catch {
+    return { valid: false, code: 'stale_target', message: 'Canonical registry or assets could not be verified for idempotent replay.' }
+  }
+  const assetsById = new Map<string, typeof loaded.objects[number]>(loaded.objects.map((item) => [item.value.id, item]))
+  const registryById = new Map<string, typeof loaded.registry[number]>(loaded.registry.map((item) => [item.id, item]))
+  for (const [id, expected] of finalObjects) {
+    const asset = assetsById.get(id)
+    const entry = registryById.get(id)
+    const expectedKind = kindForKnowledgeV04(expected)
+    if (!asset || !entry) {
+      return { valid: false, code: 'stale_target', message: `Canonical target is missing during idempotent replay: ${id}` }
+    }
+    if (asset.kind !== expectedKind || entry.type !== expectedKind || hashKnowledgeObject(asset.value) !== hashKnowledgeObject(expected)) {
+      return { valid: false, code: 'stale_target', message: `Canonical target no longer matches the final ChangeSet object: ${id}` }
+    }
+  }
+  return { valid: true }
 }
 
 async function existingExecution(root: string, changeSet: KnowledgeChangeSetV04): Promise<Dict | undefined> {
@@ -70,18 +151,50 @@ export async function writeKnowledgeBaseV04(
   registry: KnowledgeBaseRegistry,
   clock: () => string = () => new Date().toISOString(),
 ): Promise<KnowledgeWriteResultV04> {
-  const changeSet = receipt && typeof receipt === 'object' && 'changeSet' in receipt ? (receipt as ValidatedKnowledgeChangeSetV04).changeSet : { changeSetId: 'invalid-receipt', workflowRunId: 'invalid-receipt', knowledgeBaseId: handle.knowledgeBaseId } as unknown as KnowledgeChangeSetV04
+  const submittedChangeSet = receipt && typeof receipt === 'object' && 'changeSet' in receipt ? (receipt as ValidatedKnowledgeChangeSetV04).changeSet : { changeSetId: 'invalid-receipt', workflowRunId: 'invalid-receipt', knowledgeBaseId: handle.knowledgeBaseId } as unknown as KnowledgeChangeSetV04
+  const fallback = result(submittedChangeSet, handle)
+  if (!isValidatorIssuedV04Receipt(receipt)) return { ...fallback, error: { code: 'validation_required', message: 'Schema 0.4 Writer accepts only a runtime Validator-issued receipt' } }
+  const submittedScopeContext = inspectThemeScopeContextV04(submittedChangeSet)
+  if (submittedScopeContext.error) return { ...fallback, error: { code: 'receipt_mismatch', message: submittedScopeContext.error } }
+  let changeSet: KnowledgeChangeSetV04
+  try {
+    changeSet = structuredClone(submittedChangeSet)
+  } catch (error) {
+    return { ...fallback, error: { code: 'receipt_mismatch', message: error instanceof Error ? error.message : String(error) } }
+  }
   const base = result(changeSet, handle)
-  if (!isValidatorIssuedV04Receipt(receipt)) return { ...base, error: { code: 'validation_required', message: 'Schema 0.4 Writer accepts only a runtime Validator-issued receipt' } }
+  const scopeContext = inspectThemeScopeContextV04(changeSet)
+  if (scopeContext.error) return { ...base, error: { code: 'receipt_mismatch', message: scopeContext.error } }
+  let currentChangeSetHash: string
+  try {
+    currentChangeSetHash = hashKnowledgeObject(changeSet)
+  } catch (error) {
+    return { ...base, error: { code: 'receipt_mismatch', message: error instanceof Error ? error.message : String(error) } }
+  }
   if (
     receipt.knowledgeBaseId !== handle.knowledgeBaseId ||
     changeSet.knowledgeBaseId !== handle.knowledgeBaseId ||
     handle.schemaVersion !== '0.4' ||
     changeSet.schemaVersion !== '0.4' ||
     receipt.baseRevision !== changeSet.expectedBaseRevision ||
-    receipt.changeSetHash !== hashKnowledgeObject(changeSet)
+    receipt.changeSetHash !== currentChangeSetHash
   ) {
     return { ...base, error: { code: 'receipt_mismatch', message: 'Validated Schema 0.4 receipt does not match handle or ChangeSet' } }
+  }
+
+  // Preserve established replay/stale outcomes before consulting the derived
+  // index. In the normal path, load a matching index or rebuild from A4 logs.
+  let reverseIndexResult: Awaited<ReturnType<typeof loadOrRebuildThemeScopeReverseIndexV04>> | undefined
+  const priorBeforeLock = await existingExecution(handle.rootRef, changeSet)
+  const manifestBeforeLock = await loadKnowledgeBaseManifest(handle.rootRef)
+  if (!priorBeforeLock && manifestBeforeLock.revision !== changeSet.expectedBaseRevision) {
+    return { ...base, error: { code: 'stale_revision', message: `Expected ${changeSet.expectedBaseRevision}, current ${manifestBeforeLock.revision}` } }
+  }
+  if (!priorBeforeLock) {
+    reverseIndexResult = await loadOrRebuildThemeScopeReverseIndexV04(handle)
+    if (reverseIndexResult.status !== 'available') {
+      return { ...base, error: { code: 'commit_failed', message: `Theme scope reverse index unavailable: ${reverseIndexResult.message}` } }
+    }
   }
 
   try {
@@ -98,7 +211,9 @@ export async function writeKnowledgeBaseV04(
         if (prior.changeSetHash !== stableHash && prior.changeSetHash !== hashKnowledgeObject(changeSet)) {
           return { ...base, error: { code: 'idempotency_conflict', message: 'Workflow run was already used with a different ChangeSet' } }
         }
-        const changes = typeof prior.changes === 'object' && prior.changes !== null ? prior.changes as Dict : {}
+        const verified = await verifyPriorExecutionState(root, manifest, changeSet, prior)
+        if (!verified.valid) return { ...base, error: { code: verified.code, message: verified.message } }
+        const changes = prior.changes as Dict
         return {
           ...base,
           status: 'already_committed',
@@ -109,6 +224,9 @@ export async function writeKnowledgeBaseV04(
       }
       if (manifest.revision !== changeSet.expectedBaseRevision) {
         return { ...base, error: { code: 'stale_revision', message: `Expected ${changeSet.expectedBaseRevision}, current ${manifest.revision}` } }
+      }
+      if (reverseIndexResult?.status !== 'available') {
+        return { ...base, error: { code: 'commit_failed', message: 'Theme scope reverse index was not prepared for the current revision' } }
       }
 
       const loaded = await readCanonicalV04Assets(root)
@@ -131,8 +249,16 @@ export async function writeKnowledgeBaseV04(
         }
       }
       assertKnowledgeV04Objects([...objects.values()])
-      const nextRevision = created.length + updated.length > 0 ? manifest.revision + 1 : manifest.revision
-      const nextManifest = { ...manifest, revision: nextRevision, updatedAt: created.length + updated.length > 0 ? clock() : manifest.updatedAt }
+      const hasCommittedChanges = created.length + updated.length > 0 || scopeContext.present
+      const nextRevision = hasCommittedChanges ? manifest.revision + 1 : manifest.revision
+      const reverseIndex = advanceThemeScopeReverseIndexV04(reverseIndexResult.index, {
+        knowledgeBaseId: manifest.knowledgeBaseId,
+        previousRevision: manifest.revision,
+        nextRevision,
+        workflowRunId: changeSet.workflowRunId,
+        decisions: themeScopeDecisionsFromContextV04(changeSet.ingestionContext),
+      })
+      const nextManifest = { ...manifest, revision: nextRevision, updatedAt: hasCommittedChanges ? clock() : manifest.updatedAt }
       const logRef = `logs/research/${changeSet.workflowRunId}.yaml`
       const log = {
         workflowRunId: changeSet.workflowRunId,
@@ -141,8 +267,9 @@ export async function writeKnowledgeBaseV04(
         knowledgeBaseId: manifest.knowledgeBaseId,
         schemaVersionAtExecution: '0.4',
         status: 'completed',
-        writeStatus: created.length + updated.length > 0 ? 'committed' : 'no_changes',
+        writeStatus: hasCommittedChanges ? 'committed' : 'no_changes',
         committedRevision: nextRevision,
+        themeScopeReverseIndexChecksum: reverseIndex.checksum,
         changes: { createdIds: created, updatedIds: updated },
         ingestionContext: changeSet.ingestionContext,
       }
@@ -160,6 +287,7 @@ export async function writeKnowledgeBaseV04(
           await writeState(staging, nextManifest, registryEntries, objects)
           await mkdir(dirname(join(staging, logRef)), { recursive: true })
           await writeFile(join(staging, logRef), yaml(log))
+          await persistThemeScopeReverseIndexV04(staging, reverseIndex)
         },
         validate: async (staging) => {
           const staged = await validateKnowledgeBaseV04State(staging)
@@ -167,7 +295,7 @@ export async function writeKnowledgeBaseV04(
         },
       })
       await registry.refresh(root)
-      return { ...base, status: created.length + updated.length > 0 ? 'committed' : 'no_changes', committedRevision: nextRevision, createdIds: created, updatedIds: updated }
+      return { ...base, status: hasCommittedChanges ? 'committed' : 'no_changes', committedRevision: nextRevision, createdIds: created, updatedIds: updated }
     })
   } catch (error) {
     return { ...base, status: 'failed', error: { code: 'commit_failed', message: error instanceof Error ? error.message : String(error) } }

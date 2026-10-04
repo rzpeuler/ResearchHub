@@ -1,7 +1,8 @@
 import { KNOWLEDGE_SCHEMA_V04 } from '../schema/executable-schema-v04.ts'
 import { getMetricDefinitionV04 } from '../schema/metric-registry.ts'
-import type { ClaimTypeV04, KillCriterionOriginV04, KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeEntityV04, KnowledgeEventV04, KnowledgeObservationV04, KnowledgeReasoningEdgeV04, KnowledgeRelationV04, KnowledgeSourceV04, KnowledgeThesisV04 } from '../schema/domain-v04.ts'
+import type { ClaimTypeV04, KillCriterionOriginV04, KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeEntityV04, KnowledgeEventV04, KnowledgeObservationV04, KnowledgeReasoningEdgeV04, KnowledgeRelationV04, KnowledgeSourceV04, KnowledgeThemeGroupV04, KnowledgeThesisV04 } from '../schema/domain-v04.ts'
 import { hashKillCriterionDefinitionV04, isBoundedSafeKillCriterionJsonV04, KILL_CRITERION_V04_LIMITS } from '../schema/kill-criterion-v04.ts'
+import { COMPETITION_MODULE_V1_LIMITS, isSupportedBaseCurrencyCodeV1, validateCompetitionModuleV1 } from '../schema/competition-module-v04.ts'
 import { validateRelationAttributesV03 } from './v03-validation-core.ts'
 
 export interface KnowledgeV04Diagnostic { readonly code: string; readonly message: string; readonly assetId?: string }
@@ -15,9 +16,20 @@ const EVENT_TYPES = new Set(KNOWLEDGE_SCHEMA_V04.event.types)
 const OBSERVATION_TYPES = new Set(KNOWLEDGE_SCHEMA_V04.observation.types)
 const THESIS_STATUSES = new Set(KNOWLEDGE_SCHEMA_V04.thesis.statuses)
 const EDGE_TYPES = new Set(KNOWLEDGE_SCHEMA_V04.reasoningEdge.types)
+const CANONICAL_ID_PREFIXES = Object.values(KNOWLEDGE_SCHEMA_V04.canonicalNamespaces)
 const RAW_PATTERN = /^raw-sha256-[0-9a-f]{64}$/
 const HASH_PATTERN = /^[0-9a-f]{64}$/
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+const THEME_V04_LIMITS = Object.freeze({
+  maxIdLength: 256,
+  maxNameLength: 256,
+  maxAliases: 128,
+  maxAliasLength: 256,
+  maxDescriptionLength: 4096,
+  maxDefinitionLength: 8192,
+  maxCriteria: 64,
+  maxCriterionLength: 2048,
+})
 type Dict = Record<string, unknown>
 const record = (value: unknown): value is Dict => typeof value === 'object' && value !== null && !Array.isArray(value)
 const date = (value: unknown): boolean => typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Date.parse(value))
@@ -26,6 +38,72 @@ const inRange = (value: unknown): boolean => typeof value === 'number' && Number
 const ref = (value: unknown, prefix: string): value is string => typeof value === 'string' && value.startsWith(prefix) && SAFE_ID.test(value.slice(prefix.length))
 const arrayOfRefs = (value: unknown, prefix: string): value is string[] => Array.isArray(value) && value.every((item) => ref(item, prefix)) && new Set(value).size === value.length
 function add(errors: KnowledgeV04Diagnostic[], code: string, message: string, assetId?: string): void { errors.push({ code, message, ...(assetId === undefined ? {} : { assetId }) }) }
+
+function boundedStringArray(value: unknown, maxItems: number, maxItemLength: number): value is string[] {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return false
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length')
+  if (!lengthDescriptor || !('value' in lengthDescriptor) || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value > maxItems) return false
+  const length = lengthDescriptor.value as number
+  if (Object.getOwnPropertySymbols(value).length > 0) return false
+
+  for (const key of Object.getOwnPropertyNames(value)) {
+    if (key === 'length') continue
+    const index = Number(key)
+    if (!Number.isInteger(index) || index < 0 || index >= length || String(index) !== key) return false
+  }
+
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
+    if (!descriptor || !('value' in descriptor) || !descriptor.enumerable) return false
+    const item = descriptor.value
+    if (typeof item !== 'string' || item.trim() === '' || item.length > maxItemLength) return false
+  }
+  return true
+}
+
+function validateThemeLifecycle(value: unknown, errors: KnowledgeV04Diagnostic[], id: string, label: string): void {
+  const allowedFields = ['status', 'validFrom', 'validUntil']
+  if (!record(value)
+    || Object.keys(value).some((field) => !allowedFields.includes(field))
+    || !KNOWLEDGE_SCHEMA_V04.lifecycle.values.includes(value.status as never)
+    || !nullableDate(value.validFrom)
+    || !nullableDate(value.validUntil)) {
+    add(errors, 'V04_THEME_LIFECYCLE', `${label} lifecycle requires a declared status and only validFrom/validUntil date fields`, id)
+  }
+}
+
+function validateThemeGroup(group: KnowledgeThemeGroupV04, errors: KnowledgeV04Diagnostic[]): void {
+  const value = group as unknown as Dict
+  const id = typeof value.id === 'string' ? value.id : undefined
+  if (!ref(value.id, 'theme-group:') || value.id.length > THEME_V04_LIMITS.maxIdLength) add(errors, 'V04_THEME_GROUP_ID', 'ThemeGroup id must use a bounded theme-group: namespace', id)
+  if (typeof value.name !== 'string' || value.name.trim() === '' || value.name.length > THEME_V04_LIMITS.maxNameLength) add(errors, 'V04_THEME_GROUP_NAME', `ThemeGroup name must be non-empty and at most ${THEME_V04_LIMITS.maxNameLength} characters`, id)
+  if (!boundedStringArray(value.aliases, THEME_V04_LIMITS.maxAliases, THEME_V04_LIMITS.maxAliasLength)) add(errors, 'V04_THEME_GROUP_ALIASES', `ThemeGroup aliases must be a string array with at most ${THEME_V04_LIMITS.maxAliases} non-empty values of at most ${THEME_V04_LIMITS.maxAliasLength} characters`, id)
+  validateThemeLifecycle(value.lifecycle, errors, id ?? '', 'ThemeGroup')
+  if (value.description !== undefined && value.description !== null && (typeof value.description !== 'string' || value.description.length > THEME_V04_LIMITS.maxDescriptionLength)) add(errors, 'V04_THEME_GROUP_DESCRIPTION', `ThemeGroup description must be a string or null with at most ${THEME_V04_LIMITS.maxDescriptionLength} characters`, id)
+  if (value.sortOrder !== undefined && value.sortOrder !== null && (typeof value.sortOrder !== 'number' || !Number.isFinite(value.sortOrder))) add(errors, 'V04_THEME_GROUP_SORT_ORDER', 'ThemeGroup sortOrder must be a finite number or null', id)
+}
+
+function validateInvestmentTheme(theme: KnowledgeEntityV04, themeGroups: ReadonlyMap<string, KnowledgeThemeGroupV04>, errors: KnowledgeV04Diagnostic[]): void {
+  const value = theme as unknown as Dict
+  const id = theme.id
+  if (typeof value.name !== 'string' || value.name.trim() === '' || value.name.length > THEME_V04_LIMITS.maxNameLength) add(errors, 'V04_THEME_NAME', `InvestmentTheme name must be non-empty and at most ${THEME_V04_LIMITS.maxNameLength} characters`, id)
+  if (value.aliases !== undefined && !boundedStringArray(value.aliases, THEME_V04_LIMITS.maxAliases, THEME_V04_LIMITS.maxAliasLength)) add(errors, 'V04_THEME_ALIASES', `InvestmentTheme aliases must contain at most ${THEME_V04_LIMITS.maxAliases} non-empty strings of at most ${THEME_V04_LIMITS.maxAliasLength} characters`, id)
+  validateThemeLifecycle(value.lifecycle, errors, id, 'InvestmentTheme')
+
+  const groupRef = value.themeGroupRef
+  if (!ref(groupRef, 'theme-group:') || groupRef.length > THEME_V04_LIMITS.maxIdLength || !themeGroups.has(groupRef)) {
+    add(errors, 'V04_THEME_GROUP_REF_INVALID', 'InvestmentTheme themeGroupRef must use theme-group: and resolve to an existing ThemeGroup', id)
+  } else if (record(value.lifecycle) && value.lifecycle.status === 'active') {
+    const groupLifecycle = themeGroups.get(groupRef)?.lifecycle
+    if (!record(groupLifecycle) || groupLifecycle.status !== 'active') add(errors, 'V04_THEME_GROUP_NOT_ACTIVE', 'An active InvestmentTheme must reference an active ThemeGroup', id)
+  }
+
+  if (value.definition !== undefined && value.definition !== null && (typeof value.definition !== 'string' || value.definition.trim() === '' || value.definition.length > THEME_V04_LIMITS.maxDefinitionLength)) add(errors, 'V04_THEME_DEFINITION', `InvestmentTheme definition must be a non-empty string or null with at most ${THEME_V04_LIMITS.maxDefinitionLength} characters`, id)
+  for (const field of ['inclusionCriteria', 'exclusionCriteria'] as const) {
+    const criteria = value[field]
+    if (criteria !== undefined && !boundedStringArray(criteria, THEME_V04_LIMITS.maxCriteria, THEME_V04_LIMITS.maxCriterionLength)) add(errors, 'V04_THEME_CRITERIA', `InvestmentTheme ${field} must contain at most ${THEME_V04_LIMITS.maxCriteria} non-empty strings of at most ${THEME_V04_LIMITS.maxCriterionLength} characters`, id)
+  }
+}
 
 function validateExternalIdentifiers(value: unknown, sources: ReadonlySet<string>, errors: KnowledgeV04Diagnostic[], id: string): void {
   if (value === undefined) return
@@ -50,13 +128,14 @@ function validateSource(source: KnowledgeSourceV04, errors: KnowledgeV04Diagnost
   if (source.rawRefs !== undefined && (!Array.isArray(source.rawRefs) || source.rawRefs.some((item) => !RAW_PATTERN.test(item)))) add(errors, 'V04_RAW_REF', 'Source rawRefs must be valid RawRef values', id)
 }
 
-function validateEntity(entity: KnowledgeEntityV04, sources: ReadonlySet<string>, errors: KnowledgeV04Diagnostic[]): void {
+function validateEntity(entity: KnowledgeEntityV04, sources: ReadonlySet<string>, themeGroups: ReadonlyMap<string, KnowledgeThemeGroupV04>, errors: KnowledgeV04Diagnostic[]): void {
   const id = entity.id
   if (!ref(id, 'entity:')) add(errors, 'V04_ENTITY_ID', 'Entity id must use entity: namespace', id)
   if (!ENTITY_TYPES.has(entity.type)) add(errors, 'V04_ENTITY_TYPE', 'Entity type is invalid', id)
   if (typeof entity.name !== 'string' || entity.name.trim() === '') add(errors, 'V04_REQUIRED_FIELD', 'Entity name is required', id)
   if (!record(entity.lifecycle) || typeof entity.lifecycle.status !== 'string') add(errors, 'V04_LIFECYCLE', 'Entity lifecycle is required', id)
   validateExternalIdentifiers((entity as unknown as Dict).externalIdentifiers, sources, errors, id)
+  if (entity.type === 'investment_theme') validateInvestmentTheme(entity, themeGroups, errors)
   if (entity.type === 'security') { const security = entity as Extract<KnowledgeEntityV04, { type: 'security' }>; if (typeof security.ticker !== 'string' || security.ticker.trim() === '' || typeof security.exchange !== 'string' || security.exchange.trim() === '' || !['equity', 'bond', 'fund', 'adr', 'other'].includes(security.securityType)) add(errors, 'V04_SECURITY_IDENTITY', 'Security requires ticker, exchange, and securityType', id) }
   if (entity.type === 'institution' && (entity as Extract<KnowledgeEntityV04, { type: 'institution' }>).institutionType !== undefined && !['broker', 'investment_bank', 'fund', 'regulator', 'industry_association', 'research_institution', 'media_organization', 'other'].includes(String((entity as unknown as Dict).institutionType))) add(errors, 'V04_INSTITUTION_TYPE', 'Institution type is invalid', id)
 }
@@ -210,8 +289,323 @@ function validateReasoningEdge(edge: KnowledgeReasoningEdgeV04, objects: Readonl
 
 function validateCycles(claims: ReadonlyMap<string, KnowledgeClaimV04>, errors: KnowledgeV04Diagnostic[]): void { const indegree = new Map([...claims.keys()].map((id) => [id, 0])); const outgoing = new Map([...claims.keys()].map((id) => [id, [] as string[]])); for (const [id, claim] of claims) for (const target of [...claim.supportsClaimRefs ?? [], ...claim.dependsOnClaimRefs ?? [], ...claim.contradictsClaimRefs ?? []]) if (claims.has(target)) { outgoing.get(target)!.push(id); indegree.set(id, indegree.get(id)! + 1) } const queue = [...indegree.entries()].filter(([, degree]) => degree === 0).map(([id]) => id).sort(); let visited = 0; while (queue.length) { const id = queue.shift()!; visited += 1; for (const next of outgoing.get(id)!.sort()) { const degree = indegree.get(next)! - 1; indegree.set(next, degree); if (degree === 0) queue.push(next) } } if (visited !== claims.size) add(errors, 'V04_DEPENDENCY_CYCLE', 'Claim dependency graph contains a deterministic cycle') }
 
- export function validateKnowledgeV04Objects(objects: readonly KnowledgeAssetV04[]): KnowledgeV04ValidationReport { const errors: KnowledgeV04Diagnostic[] = []; const ids = new Set<string>(); const sources = new Map<string, KnowledgeSourceV04>(); const claims = new Map<string, KnowledgeClaimV04>(); const relations = new Map<string, KnowledgeRelationV04>(); const entities = new Map<string, string>(); const events = new Map<string, KnowledgeEventV04>(); const observations = new Map<string, KnowledgeObservationV04>(); const theses = new Map<string, KnowledgeThesisV04>(); const edges = new Map<string, KnowledgeReasoningEdgeV04>(); for (const object of objects) { if (!record(object) || typeof object.id !== 'string') { add(errors, 'V04_OBJECT', 'Canonical object must have a string id'); continue } if (ids.has(object.id)) add(errors, 'V04_DUPLICATE_ID', `Duplicate canonical id: ${object.id}`, object.id); ids.add(object.id); if (object.id.startsWith('source:')) sources.set(object.id, object as unknown as KnowledgeSourceV04); else if (object.id.startsWith('claim:')) claims.set(object.id, object as unknown as KnowledgeClaimV04); else if (object.id.startsWith('relation:')) relations.set(object.id, object as unknown as KnowledgeRelationV04); else if (object.id.startsWith('entity:')) entities.set(object.id, String((object as Dict).type)); else if (object.id.startsWith('event:')) events.set(object.id, object as unknown as KnowledgeEventV04); else if (object.id.startsWith('observation:')) observations.set(object.id, object as unknown as KnowledgeObservationV04); else if (object.id.startsWith('thesis:')) theses.set(object.id, object as unknown as KnowledgeThesisV04); else if (object.id.startsWith('reasoning-edge:')) edges.set(object.id, object as unknown as KnowledgeReasoningEdgeV04) }
-   const sourceIds = new Set(sources.keys()); const claimIds = new Set(claims.keys()); const objectMap = new Map(objects.map((object) => [object.id, object])); for (const object of objects) if (object.id.startsWith('entity:')) validateEntity(object as KnowledgeEntityV04, sourceIds, errors); for (const source of sources.values()) validateSource(source, errors); for (const claim of claims.values()) validateClaim(claim, sourceIds, claimIds, errors); for (const relation of relations.values()) { const definition = typeof relation.type === 'string' ? KNOWLEDGE_SCHEMA_V04.relation.definitions[relation.type as keyof typeof KNOWLEDGE_SCHEMA_V04.relation.definitions] : undefined; const sourceType = entities.get(relation.sourceRef); const targetType = entities.get(relation.targetRef); if (!definition || !KNOWLEDGE_SCHEMA_V04.relation.types.includes(relation.type as never)) add(errors, 'V04_RELATION_TYPE', 'Relation type is not declared by Schema 0.4', relation.id); if (!sourceType || !targetType) add(errors, 'V04_RELATION_ENDPOINT', 'Relation endpoints must resolve to Entity objects', relation.id); if (definition && sourceType && targetType && (!(definition.sourceTypes as readonly string[]).includes(sourceType) || !(definition.targetTypes as readonly string[]).includes(targetType) || ('endpointConstraint' in definition && definition.endpointConstraint === 'same_entity_type_on_both_sides' && sourceType !== targetType))) add(errors, 'V04_RELATION_SEMANTICS', 'Relation endpoint types violate the Schema 0.4 semantic definition', relation.id); if (relation.sourceRefs?.some((item) => !sourceIds.has(item))) add(errors, 'V04_RELATION_SOURCE_REF', 'Relation sourceRefs must resolve to Source objects', relation.id); if (relation.supportingClaimRefs?.some((item) => !claimIds.has(item))) add(errors, 'V04_RELATION_CLAIM_REF', 'Relation supportingClaimRefs must resolve to Claim objects', relation.id); if (!validateRelationAttributesV03(relation.type, relation.attributes).valid) add(errors, 'V04_RELATION_ATTRIBUTES', 'Relation attributes are not admissible for Schema 0.4', relation.id) }
-   for (const event of events.values()) validateEvent(event, ids, sourceIds, errors); for (const observation of observations.values()) validateObservation(observation, objectMap, ids, sourceIds, observations, errors); for (const thesis of theses.values()) validateThesis(thesis, ids, claims, sources, edges, errors); for (const edge of edges.values()) validateReasoningEdge(edge, objectMap, sourceIds, errors); validateCycles(claims, errors); return { status: errors.length === 0 ? 'passed' : 'failed', errors } }
+function active(value: unknown): boolean {
+  return record(value) && record(value.lifecycle) && value.lifecycle.status === 'active'
+}
+
+function competitionKnowledgeRelevant(value: Dict, kind: string, companyRef: string, relations: ReadonlyMap<string, KnowledgeRelationV04>): boolean {
+  if (kind === 'claim') {
+    if (!Array.isArray(value.subjectRefs)) return false
+    return value.subjectRefs.some((subjectRef) => {
+      if (subjectRef === companyRef) return true
+      if (typeof subjectRef !== 'string' || !subjectRef.startsWith('relation:')) return false
+      const relation = relations.get(subjectRef)
+      return relation?.sourceRef === companyRef || relation?.targetRef === companyRef
+    })
+  }
+  if (kind === 'observation') return value.subjectRef === companyRef
+  if (kind === 'relation') return value.sourceRef === companyRef || value.targetRef === companyRef
+  return false
+}
+
+function hasVerifiableRelationEvidence(
+  relation: KnowledgeRelationV04,
+  sources: ReadonlySet<string>,
+  claims: ReadonlyMap<string, KnowledgeClaimV04>,
+): boolean {
+  const hasSource = Array.isArray(relation.sourceRefs)
+    && relation.sourceRefs.some((sourceRef) => typeof sourceRef === 'string' && sources.has(sourceRef))
+  if (hasSource) return true
+  return Array.isArray(relation.supportingClaimRefs)
+    && relation.supportingClaimRefs.some((claimRef) => {
+      const claim = claims.get(claimRef)
+      return claim !== undefined
+        && Array.isArray(claim.subjectRefs)
+        && claim.subjectRefs.includes(relation.id)
+        && Array.isArray(claim.sourceRefs)
+        && claim.sourceRefs.some((sourceRef) => typeof sourceRef === 'string' && sources.has(sourceRef))
+    })
+}
+
+interface CompetitionNumericFact {
+  readonly ref: string
+  readonly value: unknown
+  readonly unit: unknown
+  readonly exactAmount?: boolean
+  readonly asOf?: unknown
+  readonly fiscalPeriod?: unknown
+}
+
+function isCanonicalCompetitionDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+}
+
+function annualFiscalYear(period: unknown): number | undefined {
+  if (typeof period !== 'string' || !/^FY\d{4}$/.test(period)) return undefined
+  const year = Number(period.slice(2))
+  return Number.isInteger(year) && year >= 1900 && year <= 9999 ? year : undefined
+}
+
+function validateCompetitionNumericCell(
+  cell: Dict,
+  role: 'market_cap' | 'annual_revenue',
+  knowledgeRefs: readonly unknown[],
+  claims: ReadonlyMap<string, KnowledgeClaimV04>,
+  observations: ReadonlyMap<string, KnowledgeObservationV04>,
+  moduleId: string,
+  rowIndex: number,
+  cellId: string,
+  errors: KnowledgeV04Diagnostic[],
+): void {
+  const metricRef = role === 'market_cap' ? 'metric:market_cap' : 'metric:revenue'
+  const facts: CompetitionNumericFact[] = []
+  for (const refValue of knowledgeRefs) {
+    if (typeof refValue !== 'string') continue
+    if (refValue.startsWith('claim:')) {
+      const claim = claims.get(refValue)
+      const structured = claim && record(claim.structuredValue) ? claim.structuredValue as unknown as Dict : undefined
+      if (structured?.metric !== metricRef) continue
+      facts.push({
+        ref: refValue,
+        value: structured.value,
+        unit: structured.unit,
+        exactAmount: claim?.claimType === 'fact' && structured.comparator === 'eq',
+        ...(role === 'market_cap' ? { asOf: record(claim?.temporal) ? claim.temporal.asOf : undefined } : { fiscalPeriod: structured.fiscalPeriod }),
+      })
+      continue
+    }
+    if (!refValue.startsWith('observation:')) continue
+    const observation = observations.get(refValue)
+    if (observation?.observationType !== 'metric' || observation.metricRef !== metricRef) continue
+    facts.push({
+      ref: refValue,
+      value: observation.value,
+      unit: observation.unit,
+      ...(role === 'market_cap' ? { asOf: observation.asOf } : { fiscalPeriod: observation.period }),
+    })
+  }
+
+  const location = `Competition row ${rowIndex} ${cellId} cell`
+  if (facts.length === 0) {
+    add(errors, 'V04_COMPETITION_MODULE_NUMERIC_FACT_REQUIRED', `${location} requires a matching numeric ${metricRef} Claim or metric Observation`, moduleId)
+    return
+  }
+
+  const factsWithValues = facts.filter((fact) => typeof fact.value === 'number' && Number.isFinite(fact.value) && fact.exactAmount !== false)
+  if (factsWithValues.length !== facts.length) {
+    add(errors, 'V04_COMPETITION_MODULE_NUMERIC_FACT_INVALID', `${location} references a matching ${metricRef} fact that is not an exact finite numeric fact`, moduleId)
+  }
+
+  const displayValue = cell.displayValue
+  const cellUnit = cell.unit
+  const cellCurrency = cell.currency
+  if (!isSupportedBaseCurrencyCodeV1(cellUnit) || cellCurrency !== cellUnit) {
+    add(errors, 'V04_COMPETITION_MODULE_NUMERIC_UNIT', `${location} unit and currency must both be a supported base ISO currency code`, moduleId)
+  }
+
+  for (const fact of facts) {
+    if (!isSupportedBaseCurrencyCodeV1(fact.unit)) {
+      add(errors, 'V04_COMPETITION_MODULE_NUMERIC_UNIT', `${location} reference ${fact.ref} must store its value in a supported base ISO currency unit`, moduleId)
+    } else if (fact.unit !== cellUnit || fact.unit !== cellCurrency) {
+      add(errors, 'V04_COMPETITION_MODULE_NUMERIC_UNIT', `${location} unit and currency must match the cited fact unit ${fact.unit}`, moduleId)
+    }
+
+    if (role === 'market_cap') {
+      if (!isCanonicalCompetitionDate(fact.asOf)) {
+        add(errors, 'V04_COMPETITION_MODULE_NUMERIC_AS_OF', `${location} reference ${fact.ref} must have an explicit YYYY-MM-DD asOf`, moduleId)
+      } else if (fact.asOf !== cell.asOf) {
+        add(errors, 'V04_COMPETITION_MODULE_NUMERIC_AS_OF', `${location} asOf must match the cited fact asOf ${fact.asOf}`, moduleId)
+      }
+    } else {
+      const year = annualFiscalYear(fact.fiscalPeriod)
+      if (year === undefined) {
+        add(errors, 'V04_COMPETITION_MODULE_NUMERIC_FISCAL_PERIOD', `${location} reference ${fact.ref} must have an explicit annual FYyyyy fiscal period`, moduleId)
+      } else if (year !== cell.fiscalYear) {
+        add(errors, 'V04_COMPETITION_MODULE_NUMERIC_FISCAL_PERIOD', `${location} fiscalYear must match the cited fact fiscal period ${fact.fiscalPeriod}`, moduleId)
+      }
+    }
+  }
+
+  const first = factsWithValues[0]
+  if (first && typeof displayValue === 'string' && displayValue !== String(first.value)) {
+    add(errors, 'V04_COMPETITION_MODULE_NUMERIC_DISPLAY', `${location} displayValue must equal String(${String(first.value)}) from cited numeric fact ${first.ref}`, moduleId)
+  }
+  if (first && factsWithValues.some((fact) => fact.value !== first.value || fact.unit !== first.unit
+    || (role === 'market_cap' ? fact.asOf !== first.asOf : fact.fiscalPeriod !== first.fiscalPeriod))) {
+    add(errors, 'V04_COMPETITION_MODULE_NUMERIC_FACT_CONFLICT', `${location} matching numeric fact references must agree on value, currency unit, and period`, moduleId)
+  }
+}
+
+function validateCompetitionModule(
+  module: Dict,
+  moduleId: string,
+  entities: ReadonlyMap<string, Dict>,
+  sources: ReadonlySet<string>,
+  claims: ReadonlyMap<string, KnowledgeClaimV04>,
+  observations: ReadonlyMap<string, KnowledgeObservationV04>,
+  relations: ReadonlyMap<string, KnowledgeRelationV04>,
+  businessExposurePairs: ReadonlySet<string>,
+  errors: KnowledgeV04Diagnostic[],
+): void {
+  const structural = validateCompetitionModuleV1(module)
+  for (const issue of structural.issues) {
+    add(errors, 'V04_COMPETITION_MODULE_SCHEMA', `${issue.path}: ${issue.message} (${issue.code})`, moduleId)
+  }
+
+  const targetEntity = typeof module.targetEntity === 'string' ? entities.get(module.targetEntity) : undefined
+  const targetIsIndustry = targetEntity?.type === 'industry' && active(targetEntity)
+  if (!targetIsIndustry) {
+    add(errors, 'V04_COMPETITION_MODULE_TARGET', 'Competition targetEntity must resolve to an active Industry Entity', moduleId)
+  }
+
+  if (Array.isArray(module.sourceRefs)) {
+    const inspectedSourceRefs = Math.min(module.sourceRefs.length, COMPETITION_MODULE_V1_LIMITS.maxSourceRefs)
+    for (let index = 0; index < inspectedSourceRefs; index += 1) {
+      const sourceRef = module.sourceRefs[index]
+      if (typeof sourceRef === 'string' && !sources.has(sourceRef)) {
+        add(errors, 'V04_COMPETITION_MODULE_SOURCE_REF', `Competition sourceRef does not resolve to a Source: ${sourceRef}`, moduleId)
+      }
+    }
+  }
+
+  if (!Array.isArray(module.rows)) return
+  const inspectedRows = Math.min(module.rows.length, COMPETITION_MODULE_V1_LIMITS.maxRows)
+  const cellColumns: Array<{ id: string; role: string }> = []
+  if (Array.isArray(module.columns)) {
+    const inspectedColumns = Math.min(module.columns.length, COMPETITION_MODULE_V1_LIMITS.maxColumns)
+    for (let columnIndex = 0; columnIndex < inspectedColumns; columnIndex += 1) {
+      const column = module.columns[columnIndex]
+      if (record(column) && column.role !== 'company' && typeof column.id === 'string' && typeof column.role === 'string') cellColumns.push({ id: column.id, role: column.role })
+    }
+  }
+  for (let rowIndex = 0; rowIndex < inspectedRows; rowIndex += 1) {
+    const rowValue = module.rows[rowIndex]
+    if (!record(rowValue)) continue
+    const companyRef = typeof rowValue.companyRef === 'string' ? rowValue.companyRef : undefined
+    const company = companyRef === undefined ? undefined : entities.get(companyRef)
+    const companyIsActive = company?.type === 'company' && active(company)
+    if (!companyIsActive) {
+      add(errors, 'V04_COMPETITION_MODULE_COMPANY', `Competition row ${rowIndex} companyRef must resolve to an active Company Entity`, moduleId)
+    }
+
+    if (companyIsActive && targetIsIndustry) {
+      const hasBusinessExposure = businessExposurePairs.has(`${companyRef}\u0000${String(module.targetEntity)}`)
+      if (!hasBusinessExposure) {
+        add(errors, 'V04_COMPETITION_MODULE_BUSINESS_EXPOSURE', `Competition row ${rowIndex} requires an active, evidence-backed business_exposure Relation from its Company to the target Industry`, moduleId)
+      }
+    }
+
+    if (!record(rowValue.cells)) continue
+    for (const { id: cellId, role } of cellColumns) {
+      const cellValue = rowValue.cells[cellId]
+      if (!record(cellValue) || cellValue.status !== 'available' || !Array.isArray(cellValue.knowledgeRefs)) continue
+      const inspectedKnowledgeRefs = Math.min(cellValue.knowledgeRefs.length, COMPETITION_MODULE_V1_LIMITS.maxCellKnowledgeRefs)
+      for (let index = 0; index < inspectedKnowledgeRefs; index += 1) {
+        const knowledgeRef = cellValue.knowledgeRefs[index]
+        if (typeof knowledgeRef !== 'string') continue
+        const [kind] = knowledgeRef.split(':', 1)
+        const resolved = kind === 'claim' ? claims.get(knowledgeRef)
+          : kind === 'observation' ? observations.get(knowledgeRef)
+            : kind === 'relation' ? relations.get(knowledgeRef)
+              : undefined
+        if (!resolved) {
+          add(errors, 'V04_COMPETITION_MODULE_KNOWLEDGE_REF', `Competition cell knowledgeRef does not resolve to a Claim, Observation, or Relation: ${knowledgeRef}`, moduleId)
+          continue
+        }
+        if (companyIsActive && !competitionKnowledgeRelevant(resolved as unknown as Dict, kind, companyRef!, relations)) {
+          add(errors, 'V04_COMPETITION_MODULE_KNOWLEDGE_RELEVANCE', `Competition cell knowledgeRef is not relevant to row Company ${companyRef}: ${knowledgeRef}`, moduleId)
+        }
+      }
+      if (role === 'market_cap' || role === 'annual_revenue') {
+        validateCompetitionNumericCell(cellValue, role, cellValue.knowledgeRefs, claims, observations, moduleId, rowIndex, cellId, errors)
+      }
+    }
+  }
+}
+
+export function validateKnowledgeV04Objects(objects: readonly KnowledgeAssetV04[]): KnowledgeV04ValidationReport {
+  const errors: KnowledgeV04Diagnostic[] = []
+  const candidates: readonly unknown[] = Array.isArray(objects) ? objects : []
+  if (!Array.isArray(objects)) add(errors, 'V04_OBJECTS', 'Canonical objects must be an array')
+
+  const ids = new Set<string>()
+  const sources = new Map<string, KnowledgeSourceV04>()
+  const claims = new Map<string, KnowledgeClaimV04>()
+  const relations = new Map<string, KnowledgeRelationV04>()
+  const entities = new Map<string, string>()
+  const entityObjects = new Map<string, Dict>()
+  const modules = new Map<string, Dict>()
+  const events = new Map<string, KnowledgeEventV04>()
+  const observations = new Map<string, KnowledgeObservationV04>()
+  const theses = new Map<string, KnowledgeThesisV04>()
+  const edges = new Map<string, KnowledgeReasoningEdgeV04>()
+  const objectMap = new Map<string, KnowledgeAssetV04>()
+  const themeGroups = new Map<string, KnowledgeThemeGroupV04>()
+
+  for (const object of candidates) {
+    if (!record(object) || typeof object.id !== 'string') {
+      add(errors, 'V04_OBJECT', 'Canonical object must have a string id')
+      continue
+    }
+    const id = object.id
+    if (ids.has(id)) add(errors, 'V04_DUPLICATE_ID', `Duplicate canonical id: ${id}`, id)
+    ids.add(id)
+    objectMap.set(id, object as unknown as KnowledgeAssetV04)
+    if (!CANONICAL_ID_PREFIXES.some((prefix) => id.startsWith(prefix))) add(errors, 'V04_UNKNOWN_OBJECT_NAMESPACE', 'Canonical object id must use a declared Schema 0.4 namespace', id)
+    if (id.startsWith('theme-group:')) {
+      themeGroups.set(id, object as unknown as KnowledgeThemeGroupV04)
+    }
+    if (id.startsWith('source:')) sources.set(id, object as unknown as KnowledgeSourceV04)
+    else if (id.startsWith('claim:')) claims.set(id, object as unknown as KnowledgeClaimV04)
+    else if (id.startsWith('relation:')) relations.set(id, object as unknown as KnowledgeRelationV04)
+    else if (id.startsWith('entity:')) {
+      entities.set(id, String(object.type))
+      entityObjects.set(id, object)
+    } else if (id.startsWith('module:')) modules.set(id, object)
+    else if (id.startsWith('event:')) events.set(id, object as unknown as KnowledgeEventV04)
+    else if (id.startsWith('observation:')) observations.set(id, object as unknown as KnowledgeObservationV04)
+    else if (id.startsWith('thesis:')) theses.set(id, object as unknown as KnowledgeThesisV04)
+    else if (id.startsWith('reasoning-edge:')) edges.set(id, object as unknown as KnowledgeReasoningEdgeV04)
+  }
+
+  for (const group of themeGroups.values()) validateThemeGroup(group, errors)
+
+  const sourceIds = new Set(sources.keys())
+  const claimIds = new Set(claims.keys())
+  for (const object of candidates) {
+    if (!record(object) || typeof object.id !== 'string') continue
+    if (object.id.startsWith('entity:')) validateEntity(object as unknown as KnowledgeEntityV04, sourceIds, themeGroups, errors)
+  }
+  for (const source of sources.values()) validateSource(source, errors)
+  for (const claim of claims.values()) validateClaim(claim, sourceIds, claimIds, errors)
+  for (const relation of relations.values()) {
+    const definition = typeof relation.type === 'string' ? KNOWLEDGE_SCHEMA_V04.relation.definitions[relation.type as keyof typeof KNOWLEDGE_SCHEMA_V04.relation.definitions] : undefined
+    const sourceType = entities.get(relation.sourceRef)
+    const targetType = entities.get(relation.targetRef)
+    if (!definition || !KNOWLEDGE_SCHEMA_V04.relation.types.includes(relation.type as never)) add(errors, 'V04_RELATION_TYPE', 'Relation type is not declared by Schema 0.4', relation.id)
+    if (!sourceType || !targetType) add(errors, 'V04_RELATION_ENDPOINT', 'Relation endpoints must resolve to Entity objects', relation.id)
+    if (definition && sourceType && targetType && (!(definition.sourceTypes as readonly string[]).includes(sourceType) || !(definition.targetTypes as readonly string[]).includes(targetType) || ('endpointConstraint' in definition && definition.endpointConstraint === 'same_entity_type_on_both_sides' && sourceType !== targetType))) add(errors, 'V04_RELATION_SEMANTICS', 'Relation endpoint types violate the Schema 0.4 semantic definition', relation.id)
+    if (relation.sourceRefs?.some((item) => !sourceIds.has(item))) add(errors, 'V04_RELATION_SOURCE_REF', 'Relation sourceRefs must resolve to Source objects', relation.id)
+    if (relation.supportingClaimRefs?.some((item) => !claimIds.has(item))) add(errors, 'V04_RELATION_CLAIM_REF', 'Relation supportingClaimRefs must resolve to Claim objects', relation.id)
+    if (!validateRelationAttributesV03(relation.type, relation.attributes).valid) add(errors, 'V04_RELATION_ATTRIBUTES', 'Relation attributes are not admissible for Schema 0.4', relation.id)
+  }
+  const businessExposurePairs = new Set<string>()
+  for (const relation of relations.values()) {
+    if (relation.type !== 'business_exposure' || !active(relation) || !hasVerifiableRelationEvidence(relation, sourceIds, claims)) continue
+    if (typeof relation.sourceRef !== 'string' || typeof relation.targetRef !== 'string') continue
+    businessExposurePairs.add(`${relation.sourceRef}\u0000${relation.targetRef}`)
+  }
+  for (const event of events.values()) validateEvent(event, ids, sourceIds, errors)
+  for (const observation of observations.values()) validateObservation(observation, objectMap, ids, sourceIds, observations, errors)
+  for (const thesis of theses.values()) validateThesis(thesis, ids, claims, sources, edges, errors)
+  for (const edge of edges.values()) validateReasoningEdge(edge, objectMap, sourceIds, errors)
+  for (const [id, module] of modules) if (module.type === 'competition') {
+    validateCompetitionModule(module, id, entityObjects, sourceIds, claims, observations, relations, businessExposurePairs, errors)
+  }
+  validateCycles(claims, errors)
+  return { status: errors.length === 0 ? 'passed' : 'failed', errors }
+}
 export function assertKnowledgeV04Objects(objects: readonly KnowledgeAssetV04[]): void { const report = validateKnowledgeV04Objects(objects); if (report.status === 'failed') throw new Error(report.errors.map((error) => `${error.code}: ${error.message}`).join('; ')) }
 export function isKnowledgeV04RawRef(value: unknown): value is string { return typeof value === 'string' && RAW_PATTERN.test(value) }

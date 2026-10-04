@@ -4,12 +4,47 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createFreshKnowledgeBaseV04 } from '../../../knowledge/storage/create-v04.ts'
+import type { ThemeScopeImpactChecker } from '../../../workflows/theme-scope-impact-check/post-write.ts'
+import type { ThemeScopeImpactWriteReceipt } from '../../../app/services/theme-scope-impact-service.ts'
 import { ResearchService } from '../../../app/services/research-service.ts'
 import { writeResearchReport, type ResearchReport } from '../../../app/services/research-report.ts'
 import { WorkflowService } from '../../../app/services/workflow-service.ts'
 import type { ResearchAcquisitionPlugin } from '../../../plugins/research-acquisition/contracts.ts'
 
 test('Application Service exposes research_company through one Workflow path', async () => { const root = await mkdtemp(join(tmpdir(), 'researchhub-service-kb-')); const reports = await mkdtemp(join(tmpdir(), 'researchhub-service-reports-')); try { await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-service' }); const plugin: ResearchAcquisitionPlugin = { name: 'fixture-official', discover: async () => [], fetch: async (candidate) => ({ candidate, retrievedAt: new Date().toISOString(), content: '' }), normalize: async (source) => ({ candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: source.content, contentHash: 'a'.repeat(64), publisher: source.candidate.provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }) }; const workflowService = new WorkflowService(); const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [plugin], workflowService }); const started = service.startResearchCompany({ workflowRunId: 'service-run', symbol: '600519' }); const result = await started.completion; assert.equal(result.status, 'completed'); assert.equal(workflowService.getWorkflowStatus('service-run')?.status, 'completed'); assert.match(result.reportId ?? '', /600519/); assert.equal((await service.getResearchReport(result.reportId!)).reportId, result.reportId) } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) } })
+
+test('Company Deep Research triggers scope impact only after its committed Writer log is verified', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-company-impact-kb-'))
+  const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-impact-reports-'))
+  const receipts: ThemeScopeImpactWriteReceipt[] = []
+  try {
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-company-impact' })
+    const plugin: ResearchAcquisitionPlugin = {
+      name: 'fixture-official',
+      discover: async () => [{ candidateId: 'company-impact-source', kind: 'official_disclosure', tier: 1, title: 'Company fixture filing', provider: 'fixture', publishedAt: '2026-09-07T00:00:00.000Z', metadata: { companySymbol: '600519' } }],
+      fetch: async (candidate) => ({ candidate, retrievedAt: '2026-09-08T00:00:00.000Z', content: 'The company reported stable revenue.', contentHash: 'b'.repeat(64) }),
+      normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, publisher: 'Fixture Official', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
+    }
+    const checker: ThemeScopeImpactChecker = { check: async (input) => {
+      const receipt = input as ThemeScopeImpactWriteReceipt
+      receipts.push(receipt)
+      return { receiptKey: 'c'.repeat(64), knowledgeBaseId: receipt.knowledgeBaseId, baseRevision: receipt.baseRevision, committedRevision: receipt.committedRevision, status: 'ready', proposals: [], diagnostics: [] }
+    } }
+    const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [plugin], workflowService: new WorkflowService(), themeScopeImpactChecker: checker })
+    const result = await service.startResearchCompany({ workflowRunId: 'company-impact-run', symbol: '600519', name: 'Fixture Company' }).completion
+    assert.equal(result.status, 'completed')
+    assert.ok(result.committedIds.length > 0)
+    assert.equal(result.themeScopeImpact.status, 'ready')
+    assert.equal(receipts.length, 1)
+    assert.equal(receipts[0]?.writerRunId, 'company-impact-run')
+    assert.equal(receipts[0]?.knowledgeBaseId, 'kb-company-impact')
+    assert.deepEqual(new Set([...receipts[0]!.createdRefs, ...receipts[0]!.updatedRefs]), new Set(result.committedIds))
+    const withoutWrite = await service.startResearchCompany({ workflowRunId: 'company-impact-no-write', symbol: '600519', name: 'Fixture Company', writeKnowledge: false }).completion
+    assert.equal(withoutWrite.status, 'completed')
+    assert.equal(withoutWrite.themeScopeImpact.status, 'not_triggered')
+    assert.equal(receipts.length, 1)
+  } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) }
+})
 
 test('Application Service exposes event_research with telemetry and provider outcome mapping', async () => { const root = await mkdtemp(join(tmpdir(), 'researchhub-event-service-kb-')); const reports = await mkdtemp(join(tmpdir(), 'researchhub-event-service-reports-')); try { await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-event-service' }); const workflowService = new WorkflowService(); const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [], workflowService }); const started = service.startEventResearch({ workflowRunId: 'event-service-run', symbol: '600519', anchor: { kind: 'user_event', title: 'Fixture event', description: 'A bounded fixture event.' } }); assert.equal(workflowService.getWorkflowStatus(started.runId)?.workflowType, 'event_research'); const result = await started.completion; assert.equal(result.status, 'blocked'); assert.equal(result.telemetry !== undefined, true); assert.deepEqual(result.providerOutcome, []); assert.equal(result.reportId, undefined); assert.equal(result.reportPath, undefined) } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) } })
 

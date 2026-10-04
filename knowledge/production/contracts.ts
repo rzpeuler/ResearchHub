@@ -1,6 +1,8 @@
 import type { KnowledgeBaseHandle } from '../storage/handle.ts'
 import type { NormalizedResearchSource } from '../../plugins/research-acquisition/contracts.ts'
-import type { CanonicalKnowledgeRefV04, EventTypeV04, ObservationTypeV04, ReasoningEdgeTypeV04, ThesisStatusV04, ExternalIdentifierV04, KillCriterionV04 } from '../schema/domain-v04.ts'
+import type { CanonicalKnowledgeRefV04, EntityRefV04, EventTypeV04, ObservationTypeV04, ReasoningEdgeTypeV04, RelationRefV04, ThesisStatusV04, ExternalIdentifierV04, KillCriterionV04 } from '../schema/domain-v04.ts'
+import type { CompetitionAvailableCellV1, CompetitionCellKnowledgeRefV1, CompetitionColumnV1, CompetitionMarketCapCellV1, CompetitionAnnualRevenueCellV1, CompetitionUnavailableCellV1 } from '../schema/competition-module-v04.ts'
+import { COMPETITION_MODULE_SCHEMA_ID_V1 } from '../schema/competition-module-v04.ts'
 
 export type SemanticProductionClaimType = 'fact' | 'forecast' | 'viewpoint' | 'trend' | 'risk' | 'assumption' | 'thesis' | 'catalyst'
 
@@ -72,6 +74,47 @@ export type SemanticProductionInputProposal =
   | ReasoningEdgeProductionProposal
   | (Omit<SemanticProductionProposal, 'kind' | 'subjectKey'> & { readonly kind: Exclude<SemanticProductionProposal['kind'], 'reasoning_edge'>; readonly subjectKey: string })
 
+/** A local selector keeps producer IDs out of canonical Knowledge until Gateway resolution. */
+export type CompetitionModuleEntitySelectorV1 =
+  | { readonly localKey: string; readonly existingRef?: never }
+  | { readonly existingRef: EntityRefV04; readonly localKey?: never }
+
+export type CompetitionModuleRelationSelectorV1 =
+  | { readonly proposalId: string; readonly existingRef?: never }
+  | { readonly existingRef: RelationRefV04; readonly proposalId?: never }
+
+export type CompetitionModuleKnowledgeSelectorV1 =
+  | { readonly proposalId: string; readonly existingRef?: never }
+  | { readonly existingRef: CompetitionCellKnowledgeRefV1; readonly proposalId?: never }
+
+export type CompetitionModuleAvailableCellV1 =
+  | (Omit<CompetitionAvailableCellV1, 'knowledgeRefs'> & { readonly knowledgeRefs: readonly CompetitionModuleKnowledgeSelectorV1[] })
+  | (Omit<CompetitionMarketCapCellV1, 'knowledgeRefs'> & { readonly knowledgeRefs: readonly CompetitionModuleKnowledgeSelectorV1[] })
+  | (Omit<CompetitionAnnualRevenueCellV1, 'knowledgeRefs'> & { readonly knowledgeRefs: readonly CompetitionModuleKnowledgeSelectorV1[] })
+
+export type CompetitionModuleCellProposalV1 = CompetitionModuleAvailableCellV1 | CompetitionUnavailableCellV1
+
+export interface CompetitionModuleRowProposalV1 {
+  readonly company: CompetitionModuleEntitySelectorV1
+  readonly businessExposure: CompetitionModuleRelationSelectorV1
+  readonly cells: Readonly<Record<string, CompetitionModuleCellProposalV1>>
+}
+
+/** Producer-facing, closed-shape input for a canonical competition Module. */
+export interface CompetitionModuleProductionProposal {
+  readonly proposalId: string
+  readonly kind: 'module'
+  readonly targetIndustry: CompetitionModuleEntitySelectorV1
+  readonly schemaId: typeof COMPETITION_MODULE_SCHEMA_ID_V1
+  readonly columns: readonly CompetitionColumnV1[]
+  readonly rows: readonly CompetitionModuleRowProposalV1[]
+  /** Optional direct evidence; canonical sourceRefs are also derived from referenced Knowledge. */
+  readonly sourceCandidateIds?: readonly string[]
+  readonly existingEvidenceBindings?: readonly { readonly sourceRef: `source:${string}`; readonly rawRef: `raw-sha256-${string}`; readonly locator?: string }[]
+}
+
+export type KnowledgeProductionProposal = SemanticProductionInputProposal | CompetitionModuleProductionProposal
+
 export interface SemanticResolutionDecision {
   readonly outcome: 'equivalent' | 'supersedes' | 'contradicts' | 'uncertain'
   readonly reason: string
@@ -109,7 +152,7 @@ export interface KnowledgeProductionInput {
   readonly producerRunId: string
   readonly schemaProfile: { readonly schemaVersion: '0.4'; readonly storageFormatVersion: '1'; readonly requiresRawProvenance: true }
   readonly entity: ProductionEntityInput
-  readonly proposals: readonly SemanticProductionInputProposal[]
+  readonly proposals: readonly KnowledgeProductionProposal[]
   readonly evidenceBindings: readonly ProductionEvidenceBinding[]
   readonly asOf?: string
   readonly now?: () => string
@@ -117,6 +160,8 @@ export interface KnowledgeProductionInput {
   readonly reviewProducerType?: string
   /** Resolve proposals without changing canonical Knowledge when false. */
   readonly writeKnowledge?: boolean
+  /** Block the whole run before ReviewCase or Writer side effects if any intent is unresolved. */
+  readonly requireAllResolved?: boolean
 }
 
 export interface ResolutionIntentSummary {
@@ -141,6 +186,8 @@ export interface KnowledgeProductionOutcome {
   readonly entityRefsByLocalKey: Readonly<Record<string, string>>
   /** Every terminal Gateway outcome exposes the producer proposal to canonical Relation mapping. */
   readonly relationRefsByProposalId: Readonly<Record<string, string>>
+  /** Gateway emits this mapping for every terminal outcome; it is optional on hand-built compatibility outcomes. */
+  readonly moduleRefsByProposalId?: Readonly<Record<string, string>>
   readonly eventRefsByProposalId?: Readonly<Record<string, string>>
   readonly observationRefsByProposalId?: Readonly<Record<string, string>>
   readonly thesisRefsByProposalId?: Readonly<Record<string, string>>

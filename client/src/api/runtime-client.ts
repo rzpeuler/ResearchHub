@@ -27,6 +27,17 @@ export interface KnowledgeGraphProjection { readonly rootRef: string; readonly p
 export interface KnowledgeDirectoryItem { readonly ref: string; readonly name: string }
 export interface KnowledgeDirectorySection { readonly items: readonly KnowledgeDirectoryItem[]; readonly total: number; readonly limit: number; readonly truncated: boolean }
 export interface KnowledgeDirectoryProjection { readonly themeGroups: readonly { readonly ref: string; readonly name: string; readonly themes: readonly KnowledgeDirectoryItem[] }[]; readonly industries: KnowledgeDirectorySection; readonly companies: KnowledgeDirectorySection; readonly products: KnowledgeDirectorySection; readonly technologies: KnowledgeDirectorySection }
+export interface ThemeWorkspaceProjectionInput { readonly expectedRevision?: number; readonly asOf?: string; readonly maxNodes?: number; readonly maxEdges?: number; readonly maxItemsPerSection?: number; readonly maxCompaniesPerIndustry?: number; readonly maxResponseBytes?: number }
+export interface ThemeWorkspaceResponseBounds { readonly maxBytes: number; readonly serializedBytes: number; readonly truncated: boolean }
+export interface ThemeWorkspaceFact { readonly ref: string; readonly kind: 'claim' | 'observation' | 'event'; readonly semanticType: string; readonly title: string; readonly statement?: string; readonly value?: string | number | boolean | null; readonly unit?: string; readonly period?: string; readonly confidence?: number; readonly probability?: number }
+export interface ThemeWorkspaceTimelineItem { readonly ref: string; readonly title: string; readonly date?: string; readonly dateBasis: string; readonly dateLabel: string }
+export type ThemeWorkspaceCompetitionValue = { readonly status: 'available'; readonly displayValue: string; readonly asOf?: string; readonly fiscalYear?: number; readonly currency?: string; readonly unit?: string } | { readonly status: 'unavailable' | 'not_comparable'; readonly reason: string }
+export interface ThemeWorkspaceCompetitionCell { readonly columnId: string; readonly value: ThemeWorkspaceCompetitionValue; readonly notComparable: boolean; readonly comparabilityNote?: string }
+export interface ThemeWorkspaceCompetitionTable { readonly ref: string; readonly schemaId: string; readonly columns: readonly { readonly id: string; readonly label: string; readonly role: string }[]; readonly rows: readonly { readonly companyRef: string; readonly cells: readonly ThemeWorkspaceCompetitionCell[] }[]; readonly rowTotal: number; readonly truncated: boolean; readonly note?: string }
+export interface ThemeWorkspaceContentProjection { readonly factsByType: Readonly<Record<string, readonly ThemeWorkspaceFact[]>>; readonly sectionCatalog: readonly { readonly id: string; readonly title: string }[]; readonly factsBySection: Readonly<Record<string, readonly ThemeWorkspaceFact[]>>; readonly unclassifiedFacts: readonly ThemeWorkspaceFact[]; readonly classification: { readonly status: 'classified' | 'partial' | 'llm_unavailable' | 'llm_failed' | 'invalid_output' | 'bounded_fallback'; readonly method: 'reasoning_executor' | 'deterministic_fallback' | 'not_needed'; readonly revision: number; readonly classifiedCount: number; readonly unclassifiedCount: number; readonly reason?: string; readonly truncated?: boolean }; readonly modules: readonly { readonly ref: string; readonly moduleType: string; readonly schemaId?: string; readonly targetRef: string }[]; readonly competition?: ThemeWorkspaceCompetitionTable; readonly coreViews: { readonly items: readonly ThemeWorkspaceFact[]; readonly defaultCount: 3; readonly total: number; readonly truncated: boolean }; readonly timeline: { readonly historicalEvents: readonly ThemeWorkspaceTimelineItem[]; readonly futureCatalysts: readonly ThemeWorkspaceTimelineItem[]; readonly eventsLimit: { readonly total: number; readonly limit: number; readonly truncated: boolean }; readonly catalystsLimit: { readonly total: number; readonly limit: number; readonly truncated: boolean } }; readonly limited: Readonly<Record<string, { readonly total: number; readonly limit: number; readonly truncated: boolean }>>; readonly omittedRestrictedCount: number }
+export interface ThemeWorkspaceProjection { readonly status: 'available'; readonly knowledgeBaseId: string; readonly schemaVersion: '0.4'; readonly revision: number; readonly theme: { readonly ref: string; readonly name: string; readonly themeGroupRef: string; readonly definition?: string }; readonly graph: { readonly nodes: readonly { readonly ref: string; readonly name: string; readonly importance?: 'core' | 'material' | 'adjacent' }[]; readonly edges: readonly { readonly ref: string; readonly relationType: 'upstream_of' | 'depends_on'; readonly sourceRef: string; readonly targetRef: string }[]; readonly nodeTotal: number; readonly edgeTotal: number; readonly nodeLimit: number; readonly edgeLimit: number; readonly truncated: boolean }; readonly scope: { readonly includedIndustryCount: number; readonly includedRelationCount: number; readonly pendingCount: number; readonly excludedCount: number; readonly basedOnRevision: number }; readonly responseBounds: ThemeWorkspaceResponseBounds }
+export interface ThemeWorkspaceIndustryProjection { readonly knowledgeBaseId: string; readonly revision: number; readonly themeRef: string; readonly industry: { readonly ref: string; readonly name: string; readonly description?: string; readonly importance?: 'core' | 'material' | 'adjacent' }; readonly sections: ThemeWorkspaceContentProjection; readonly companies: readonly { readonly ref: string; readonly name: string; readonly ticker?: string; readonly exchange?: string }[]; readonly companiesLimit: { readonly total: number; readonly limit: number; readonly truncated: boolean }; readonly responseBounds: ThemeWorkspaceResponseBounds }
+export interface ThemeWorkspaceCompanyProjection { readonly knowledgeBaseId: string; readonly revision: number; readonly themeRef: string; readonly industryRef: string; readonly company: { readonly ref: string; readonly name: string; readonly ticker?: string; readonly exchange?: string }; readonly sections: ThemeWorkspaceContentProjection; readonly responseBounds: ThemeWorkspaceResponseBounds }
 export type KnowledgeTopicKind = 'relation' | 'claim' | 'observation' | 'event' | 'thesis' | 'module' | 'source' | 'reasoning_edge'
 export type KnowledgeTopicScope = 'direct' | 'connected'
 export type KnowledgeTopicLifecycleFilter = 'active' | 'all'
@@ -62,6 +73,12 @@ export interface ThesisCriterionConfirmResult { readonly status: 'confirmed' | '
 export type ThesisDecision = 'ACCEPT' | 'REJECT' | 'DEFER'
 export interface ThesisDecisionResult { readonly status: string; readonly reviewCaseId: string; readonly decisionState?: string; readonly replay?: boolean; readonly knowledgeBaseRevision?: number; readonly committedRevision?: number; readonly writerRunId?: string; readonly errors: readonly string[] }
 export interface AttachmentRef { readonly attachmentId: string; readonly filename: string; readonly mediaType: string; readonly size: number; readonly sha256: string; readonly createdAt: string }
+export interface RawDocumentCandidateGroupV04 { readonly candidateId: string; readonly kind: 'entity' | 'relation' | 'claim'; readonly candidate: Readonly<Record<string, unknown>>; readonly provenanceRefs: { readonly sourceRef: string; readonly rawRef: string; readonly evidenceBlockRefs: readonly string[] } }
+export type RawDocumentPreviewStatusV04 = 'preview_ready' | 'preview_partial' | 'source_only' | 'blocked' | 'cancelled' | 'incompatible_schema' | 'stale_revision'
+export interface RawDocumentIncompleteUnitV04 { readonly unitId: string; readonly proposedUnitId: string; readonly status: 'failed' | 'cancelled'; readonly errorSummary: string }
+export interface RawDocumentPreviewV04 { readonly runId: string; readonly status: RawDocumentPreviewStatusV04; readonly knowledgeBaseId?: string; readonly sourceRef?: string; readonly rawRef?: string; readonly documentId?: string; readonly candidateGroups: readonly RawDocumentCandidateGroupV04[]; readonly committable: boolean; readonly errorSummary?: string; readonly statusNote?: string; readonly extractionCompleteness?: 'complete' | 'partial'; readonly incompleteUnits?: readonly RawDocumentIncompleteUnitV04[] }
+export interface RawDocumentPreviewPollV04 { readonly runId: string; readonly workflow?: WorkflowRun; readonly preview: RawDocumentPreviewV04 | null; readonly committable: boolean }
+export interface RawDocumentAcceptanceV04 { readonly status: string; readonly knowledgeBaseId: string; readonly knowledgeBaseRevision: number; readonly baseRevision: number; readonly previewWorkflowRunId: string; readonly extractionCompleteness?: 'complete' | 'partial'; readonly acceptedCandidateIds: readonly string[]; readonly createdIds: readonly string[]; readonly updatedIds: readonly string[]; readonly errors: readonly { readonly code: string; readonly message: string }[] }
 export interface ClientEvent { readonly eventId: string; readonly conversationId: string; readonly timestamp: string; readonly type: string; readonly role?: 'user' | 'assistant'; readonly summary?: string; readonly status?: string; readonly toolCallId?: string; readonly name?: string; readonly isError?: boolean; readonly steeringCount?: number; readonly followUpCount?: number; readonly code?: string }
 export interface BootstrapResponse { readonly runtime: { readonly origin: string; readonly runtimeToken: string }; readonly origin: string; readonly session: SessionState; readonly conversations: readonly ConversationSummary[]; readonly knowledgeBase?: KnowledgeBaseStatus; readonly openReviewCases?: number; readonly knowledgeError?: RuntimeErrorBody }
 export interface DailyBriefSummary { readonly reportId: string; readonly briefType: 'morning' | 'evening'; readonly tradeDate: string; readonly generatedAt: string; readonly quality: { readonly topCount: number; readonly reportItemWithSourceRatio: number; readonly reportItemCount?: number; readonly claimCount?: number }; readonly sections: readonly { readonly title: string; readonly unavailable?: boolean }[] }
@@ -71,6 +88,95 @@ export interface ResearchReportSummary { readonly reportId: string; readonly rep
 export interface ResearchReport extends ResearchReportSummary { readonly sourceRefs: readonly string[]; readonly claimRefs: readonly string[]; readonly sections: readonly { readonly id: string; readonly title: string; readonly markdown: string; readonly sourceRefs?: readonly string[]; readonly claimRefs?: readonly string[]; readonly relationRefs?: readonly string[]; readonly signalRefs?: readonly string[]; readonly evidenceLinks?: readonly string[] }[] }
 export interface ResearchStartResponse { readonly accepted: boolean; readonly runId: string; readonly workflow?: WorkflowRun }
 export interface WorkflowDefinition { readonly id: string; readonly label: string; readonly intentDescription: string; readonly inputSchema: Readonly<Record<string, unknown>>; readonly requiredInputs: readonly string[]; readonly outputContract: string; readonly knowledgeEffects: readonly string[] }
+export type ThemeFrameworkDecision = 'include' | 'exclude' | 'pending'
+export type ThemeFrameworkReviewStatus = 'running' | 'awaiting_review' | 'rejected' | 'committed' | 'stale' | 'blocked' | 'failed'
+export interface ThemeFrameworkReviewItem {
+  readonly candidateId: string
+  readonly kind: 'industry' | 'relation'
+  readonly recommendation: ThemeFrameworkDecision
+  readonly name?: string
+  readonly description?: string
+  readonly sourceIndustryRef?: string
+  readonly targetIndustryRef?: string
+  readonly relationType?: string
+  readonly topologyRole?: 'main_chain' | 'cross_chain'
+  readonly boundaryRationale: string
+  readonly relevanceRationale: string
+  readonly directionRationale?: string
+  readonly evidenceRefs: readonly string[]
+  readonly coverageGaps: readonly string[]
+}
+export interface ThemeFrameworkReviewCandidate {
+  readonly knowledgeBaseId: string
+  readonly basedOnRevision: number
+  readonly refresh?: {
+    readonly refreshedFromRunId: string
+    readonly sourceBasedOnRevision: number
+    readonly targetRevision: number
+    readonly validationSummary: { readonly writerReceipts: number; readonly sourceIds: readonly string[]; readonly evidenceBindings: number }
+    readonly refreshedAt: string
+  }
+  readonly theme: { readonly name: string; readonly definition?: string }
+  readonly framework: {
+    readonly proposedDefinition: { readonly statement: string; readonly status: 'supported' | 'provisional' }
+    readonly inclusionPrinciples: readonly string[]
+    readonly exclusionPrinciples: readonly string[]
+    readonly industryCandidates: readonly ThemeFrameworkReviewItem[]
+    readonly relationCandidates: readonly ThemeFrameworkReviewItem[]
+    readonly coverageGaps: readonly { readonly gapId: string; readonly question: string; readonly reason: string; readonly affectedCandidateIds: readonly string[] }[]
+  }
+  readonly acquisitionStatus: string
+  readonly diagnostics: readonly string[]
+  readonly evidence: readonly { readonly evidenceId: string; readonly summary: string; readonly sourceRef: string }[]
+}
+export interface ThemeFrameworkReviewResponse {
+  readonly status: ThemeFrameworkReviewStatus
+  readonly workflowRunId: string
+  readonly candidate?: ThemeFrameworkReviewCandidate
+  readonly receipt?: { readonly themeRef: string; readonly committedRevision: number; readonly decisionCount: number }
+}
+export interface ThemeFrameworkReviewSummary { readonly runId: string; readonly themeName: string; readonly basedOnRevision: number; readonly status: 'awaiting_review' | 'stale' | 'committed' }
+export interface ThemeFrameworkReviewListResponse { readonly items: readonly ThemeFrameworkReviewSummary[]; readonly total: number; readonly truncated: boolean }
+export type ThemeScopeImpactDecision = 'include' | 'exclude' | 'pending' | 'dismiss'
+export interface ThemeScopeImpactProposal {
+  readonly proposalId: string
+  readonly themeRef: string
+  readonly candidate: { readonly kind: 'industry'; readonly name: string; readonly identityContext?: string; readonly canonicalRef?: string } | { readonly kind: 'relation'; readonly relationType: string; readonly sourceFingerprint: string; readonly targetFingerprint: string; readonly canonicalRef?: string }
+  readonly candidateFingerprint: string
+  readonly changeKind: string
+  readonly priorDecision?: { readonly id: string; readonly decision: 'include' | 'exclude' | 'pending' }
+  readonly rationale: string
+  readonly evidenceRefs: readonly string[]
+  readonly changedRefs: readonly string[]
+  readonly basedOnRevision: number
+  readonly status: 'pending' | 'accepted' | 'rejected'
+  readonly decision?: 'include' | 'exclude' | 'pending' | 'dismiss'
+}
+export interface ThemeScopeImpactInboxRecord {
+  readonly receiptKey: string
+  readonly knowledgeBaseId: string
+  readonly baseRevision: number
+  readonly committedRevision: number
+  readonly status: 'ready' | 'no_changes' | 'stale'
+  readonly proposals: readonly ThemeScopeImpactProposal[]
+  readonly diagnostics: readonly string[]
+}
+export interface ThemeScopeImpactInboxResponse { readonly items: readonly ThemeScopeImpactInboxRecord[]; readonly total: number; readonly truncated: boolean }
+export interface ThemeFrameworkActionResponse {
+  readonly status: string
+  readonly workflowRunId: string
+  readonly themeRef?: string
+  readonly committedRevision?: number
+  readonly decisionCount?: number
+  readonly diagnostics?: readonly string[]
+}
+export interface ThemeFrameworkRefreshResult {
+  readonly status: 'awaiting_review' | 'already_refreshed' | 'conflict' | 'blocked'
+  readonly workflowRunId: string
+  readonly refreshedFromRunId: string
+  readonly basedOnRevision?: number
+  readonly diagnostics?: readonly string[]
+}
 export interface ResearchRequest { readonly query: string; readonly mode?: { readonly type: 'free_research' } | { readonly type: 'workflow'; readonly workflowId: string }; readonly contextPolicy?: { readonly structuredKnowledge: boolean; readonly sourceLibrary: boolean }; readonly persistencePolicy?: { readonly writeKnowledge: boolean }; readonly attachments?: readonly string[] }
 export interface ResearchDispatchDecision { readonly mode: 'workflow' | 'skill_plan' | 'free_research'; readonly workflow?: { readonly id: string; readonly confidence: number; readonly arguments: Readonly<Record<string, unknown>> }; readonly skills: readonly { readonly id: string; readonly purpose: string }[]; readonly entities: readonly { readonly type: string; readonly value: string; readonly confidence: number }[]; readonly missingRequiredInputs: readonly string[]; readonly contextPolicy: { readonly structuredKnowledge: boolean; readonly sourceLibrary: boolean }; readonly persistencePolicy: { readonly writeKnowledge: boolean }; readonly rationale: string }
 export interface ResearchExecutionSummary { readonly mode: 'Free Research' | 'Explicit Workflow'; readonly workflowId?: string; readonly workflowLabel?: string; readonly selectedSkillIds: readonly string[]; readonly argumentsStatus: 'not_required' | 'extracted' | 'missing'; readonly argumentKeys: readonly string[]; readonly contextPolicy: { readonly structuredKnowledge: boolean; readonly sourceLibrary: boolean }; readonly persistencePolicy: { readonly writeKnowledge: boolean } }
@@ -156,7 +262,7 @@ export class RuntimeClient {
 
   constructor(fetchImpl: FetchLike = defaultFetch) { this.fetchImpl = fetchImpl }
 
-  private async request<T>(path: string, init: RequestInit = {}, mutation = false): Promise<T> {
+  private async request<T>(path: string, init: RequestInit = {}, mutation = false, acceptedStatuses: readonly number[] = []): Promise<T> {
     const headers = createHeaders(init.headers)
     headers.set('Accept', 'application/json')
     if (mutation) {
@@ -168,7 +274,7 @@ export class RuntimeClient {
     const response = await this.fetchImpl(path, { ...init, headers: headers as unknown as HeadersInit })
     let body: unknown
     try { body = await response.json() } catch { body = undefined }
-    if (!response.ok) {
+    if (!response.ok && !acceptedStatuses.includes(response.status)) {
       const error = isRecord(body) ? body as unknown as RuntimeErrorBody : undefined
       const message = response.status === 401 ? 'ResearchHub Runtime authorization expired. Reload the page.' : safeErrorMessage(error?.error)
       throw new RuntimeClientError(error?.code ?? 'failed', message, response.status)
@@ -189,6 +295,38 @@ export class RuntimeClient {
   async getKnowledgeObject(ref: string): Promise<KnowledgeObjectResponse> { return this.request(`/api/knowledge/object?${new URLSearchParams({ ref }).toString()}`) }
   async getKnowledgeDirectory(): Promise<KnowledgeDirectoryProjection> { return this.request('/api/knowledge/directory') }
   async getKnowledgeGraph(input: { readonly rootRef: string; readonly depth?: 1 | 2; readonly maxNodes?: number; readonly maxEdges?: number }): Promise<KnowledgeGraphProjection> { const params = new URLSearchParams({ rootRef: input.rootRef }); if (input.depth !== undefined) params.set('depth', String(input.depth)); if (input.maxNodes !== undefined) params.set('maxNodes', String(input.maxNodes)); if (input.maxEdges !== undefined) params.set('maxEdges', String(input.maxEdges)); return this.request(`/api/knowledge/graph?${params.toString()}`) }
+  async getThemeWorkspaceOverview(themeRef: string, input: Omit<ThemeWorkspaceProjectionInput, 'themeRef'> = {}): Promise<ThemeWorkspaceProjection> {
+    if (!isSafeTopicThemeRef(themeRef)) throw new RuntimeClientError('invalid_input', 'A canonical InvestmentTheme ref is required', 400)
+    const params = new URLSearchParams()
+    if (input.expectedRevision !== undefined) params.set('expectedRevision', String(input.expectedRevision))
+    if (input.asOf !== undefined) params.set('asOf', input.asOf)
+    if (input.maxNodes !== undefined) params.set('maxNodes', String(input.maxNodes))
+    if (input.maxEdges !== undefined) params.set('maxEdges', String(input.maxEdges))
+    if (input.maxResponseBytes !== undefined) params.set('maxResponseBytes', String(input.maxResponseBytes))
+    const query = params.size > 0 ? `?${params.toString()}` : ''
+    return this.request(`/api/knowledge/themes/${encodeURIComponent(themeRef)}/overview${query}`)
+  }
+  async getThemeWorkspaceIndustry(themeRef: string, industryRef: string, input: Omit<ThemeWorkspaceProjectionInput, 'themeRef'> = {}): Promise<ThemeWorkspaceIndustryProjection> {
+    if (!isSafeTopicThemeRef(themeRef) || !isSafeTopicThemeRef(industryRef)) throw new RuntimeClientError('invalid_input', 'Canonical Theme and Industry refs are required', 400)
+    const params = new URLSearchParams()
+    if (input.expectedRevision !== undefined) params.set('expectedRevision', String(input.expectedRevision))
+    if (input.asOf !== undefined) params.set('asOf', input.asOf)
+    if (input.maxItemsPerSection !== undefined) params.set('maxItemsPerSection', String(input.maxItemsPerSection))
+    if (input.maxCompaniesPerIndustry !== undefined) params.set('maxCompaniesPerIndustry', String(input.maxCompaniesPerIndustry))
+    if (input.maxResponseBytes !== undefined) params.set('maxResponseBytes', String(input.maxResponseBytes))
+    const query = params.size > 0 ? `?${params.toString()}` : ''
+    return this.request(`/api/knowledge/themes/${encodeURIComponent(themeRef)}/industries/${encodeURIComponent(industryRef)}${query}`)
+  }
+  async getThemeWorkspaceCompany(themeRef: string, industryRef: string, companyRef: string, input: Omit<ThemeWorkspaceProjectionInput, 'themeRef'> = {}): Promise<ThemeWorkspaceCompanyProjection> {
+    if (!isSafeTopicThemeRef(themeRef) || !isSafeTopicThemeRef(industryRef) || !isSafeTopicThemeRef(companyRef)) throw new RuntimeClientError('invalid_input', 'Canonical Theme, Industry, and Company refs are required', 400)
+    const params = new URLSearchParams()
+    if (input.expectedRevision !== undefined) params.set('expectedRevision', String(input.expectedRevision))
+    if (input.asOf !== undefined) params.set('asOf', input.asOf)
+    if (input.maxItemsPerSection !== undefined) params.set('maxItemsPerSection', String(input.maxItemsPerSection))
+    if (input.maxResponseBytes !== undefined) params.set('maxResponseBytes', String(input.maxResponseBytes))
+    const query = params.size > 0 ? `?${params.toString()}` : ''
+    return this.request(`/api/knowledge/themes/${encodeURIComponent(themeRef)}/industries/${encodeURIComponent(industryRef)}/companies/${encodeURIComponent(companyRef)}${query}`)
+  }
   async getTopicSummary(themeRef: string, depth: 1 | 2 = 1): Promise<KnowledgeTopicSummary> { if (!isSafeTopicThemeRef(themeRef)) throw new RuntimeClientError('invalid_input', 'A canonical InvestmentTheme ref is required', 400); return this.request(`/api/knowledge/topics/${encodeURIComponent(themeRef)}/summary?depth=${depth}`) }
   async listTopicItems(input: KnowledgeTopicPageInput): Promise<KnowledgeTopicItemPage> {
     if (!isSafeTopicThemeRef(input.themeRef)) throw new RuntimeClientError('invalid_input', 'A canonical InvestmentTheme ref is required', 400)
@@ -216,12 +354,35 @@ export class RuntimeClient {
   async cancelWorkflow(runId: string): Promise<unknown> { return this.mutate('/api/workflows/cancel', { runId }) }
   async uploadAttachment(file: File): Promise<AttachmentRef> { const form = new FormData(); form.append('file', file, file.name); const value = await this.request<{ attachment: AttachmentRef }>('/api/attachments', { method: 'POST', body: form }, true); return value.attachment }
   async startProduction(attachmentId: string): Promise<{ readonly accepted: boolean; readonly runId: string; readonly workflow?: WorkflowRun }> { return this.mutate('/api/production/ingest', { attachmentId }) }
+  async startRawDocumentPreviewV04(input: { readonly attachmentId: string; readonly sourceMetadata: Readonly<Record<string, unknown>>; readonly rights: Readonly<Record<string, unknown>> }): Promise<{ readonly accepted: boolean; readonly runId: string; readonly committable: false; readonly workflow?: WorkflowRun }> { return this.mutate('/api/production/raw-document-preview-v04', input) }
+  async getRawDocumentPreviewV04(runId: string): Promise<RawDocumentPreviewPollV04> { return this.request(`/api/production/raw-document-preview-v04/${encodeURIComponent(runId)}`) }
+  async acceptRawDocumentPreviewV04(previewWorkflowRunId: string, acceptedCandidateIds: readonly string[]): Promise<RawDocumentAcceptanceV04> {
+    const value = await this.request<unknown>('/api/production/raw-document-preview-v04/accept', { method: 'POST', body: JSON.stringify({ previewWorkflowRunId, acceptedCandidateIds }) }, true, [409, 422])
+    if (isRecord(value) && typeof value.status === 'string') return value as unknown as RawDocumentAcceptanceV04
+    if (isRecord(value)) throw new RuntimeClientError(typeof value.code === 'string' ? value.code : 'failed', safeErrorMessage(value.error), 422)
+    throw new RuntimeClientError('failed', 'Candidate acceptance returned an invalid response', 422)
+  }
   async listDailyBriefs(limit = 10): Promise<readonly DailyBriefSummary[]> { return (await this.request<{ briefs: readonly DailyBriefSummary[] }>(`/api/daily-briefs?limit=${limit}`)).briefs }
   async getDailyBrief(reportId: string): Promise<DailyBriefReport> { return this.request(`/api/daily-briefs/${encodeURIComponent(reportId)}`) }
   async listResearchReports(limit = 20): Promise<readonly ResearchReportSummary[]> { return (await this.request<{ reports: readonly ResearchReportSummary[] }>(`/api/research-reports?limit=${limit}`)).reports }
   async getResearchReport(reportId: string): Promise<ResearchReport> { return this.request(`/api/research-reports/${encodeURIComponent(reportId)}`) }
   async listWorkflowDefinitions(): Promise<readonly WorkflowDefinition[]> { return (await this.request<{ workflows: readonly WorkflowDefinition[] }>('/api/research/workflows')).workflows }
   async dispatchResearch(input: ResearchRequest): Promise<ResearchDispatchResponse> { return this.mutate('/api/research/dispatch', input) }
+  async getThemeFrameworkRun(runId: string): Promise<ThemeFrameworkReviewResponse> { return this.request(`/api/theme-framework/runs/${encodeURIComponent(runId)}`, {}, true) }
+  async listThemeFrameworkReviews(limit = 50): Promise<ThemeFrameworkReviewListResponse> { return this.request(`/api/theme-framework/reviews?limit=${encodeURIComponent(String(limit))}`, {}, true) }
+  async refreshThemeFrameworkRun(runId: string): Promise<ThemeFrameworkRefreshResult> { return this.request(`/api/theme-framework/runs/${encodeURIComponent(runId)}/refresh`, { method: 'POST', body: '{}' }, true, [409, 422]) }
+  async acceptThemeFrameworkRun(runId: string, decisions: Readonly<Record<string, ThemeFrameworkDecision>>, decisionRationales?: Readonly<Record<string, string>>): Promise<ThemeFrameworkActionResponse> {
+    return this.mutate(`/api/theme-framework/runs/${encodeURIComponent(runId)}/accept`, { decisions, ...(decisionRationales ? { decisionRationales } : {}) })
+  }
+  async rejectThemeFrameworkRun(runId: string): Promise<ThemeFrameworkActionResponse> { return this.mutate(`/api/theme-framework/runs/${encodeURIComponent(runId)}/reject`, {}) }
+  async listThemeScopeImpactInbox(limit = 50): Promise<ThemeScopeImpactInboxResponse> { return this.request(`/api/theme-scope-impact?limit=${encodeURIComponent(String(limit))}`, {}, true) }
+  async getThemeScopeImpactRecord(receiptKey: string): Promise<ThemeScopeImpactInboxRecord> { return this.request(`/api/theme-scope-impact/records/${encodeURIComponent(receiptKey)}`, {}, true) }
+  async decideThemeScopeImpactBatch(input: { readonly receiptKey: string; readonly workflowRunId: string; readonly decisions: readonly { readonly proposalId: string; readonly decision: Exclude<ThemeScopeImpactDecision, 'dismiss'>; readonly rationale?: string }[] }): Promise<ThemeScopeImpactInboxRecord> {
+    return this.mutate(`/api/theme-scope-impact/records/${encodeURIComponent(input.receiptKey)}/decisions`, { workflowRunId: input.workflowRunId, decisions: input.decisions })
+  }
+  async dismissThemeScopeImpact(input: { readonly receiptKey: string; readonly proposalId: string; readonly workflowRunId: string }): Promise<ThemeScopeImpactProposal> {
+    return this.mutate(`/api/theme-scope-impact/records/${encodeURIComponent(input.receiptKey)}/proposals/${encodeURIComponent(input.proposalId)}/dismiss`, { workflowRunId: input.workflowRunId })
+  }
   async listResearchBundles(limit = 20): Promise<readonly ResearchBundleSummary[]> { return (await this.request<{ bundles: readonly ResearchBundleSummary[] }>(`/api/research/bundles?limit=${limit}`)).bundles }
   async getResearchBundle(bundleId: string): Promise<ResearchBundleSummary & { readonly structuredResult: unknown; readonly sourceLibraryHits: readonly SourceLibraryHit[] }> { return this.request(`/api/research/bundles/${encodeURIComponent(bundleId)}`) }
   async searchSourceLibrary(query: string, sourceLibrary = true): Promise<{ readonly enabled: boolean; readonly hits: readonly SourceLibraryHit[] }> { return this.mutate('/api/research/source-library/search', { query, contextPolicy: { sourceLibrary } }) }

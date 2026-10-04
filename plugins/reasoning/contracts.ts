@@ -22,6 +22,8 @@ export const REASONING_OPERATIONS = [
   'industry_research_design',
   'industry_module_analysis',
   'industry_cross_module_synthesis',
+  'theme_workspace_section_classification',
+  'theme_framework_semantic',
 ] as const
 
 export type ReasoningOperation = (typeof REASONING_OPERATIONS)[number]
@@ -52,5 +54,5 @@ export interface ReasoningResult {
 
 export interface ReasoningExecutor {
   capabilities(): ReasoningCapabilities
-  execute(request: ReasoningRequest): Promise<ReasoningResult>
+  execute(request: ReasoningRequest, signal?: AbortSignal): Promise<ReasoningResult>
 }

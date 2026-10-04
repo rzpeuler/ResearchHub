@@ -3,6 +3,7 @@ import type { Api, Model } from '@earendil-works/pi-ai'
 import type { KnowledgeService } from '../services/knowledge-service.ts'
 import type { KnowledgeGraphService } from '../services/knowledge-graph-service.ts'
 import type { KnowledgeTopicProjectionService } from '../services/knowledge-topic-projection.ts'
+import type { ThemeWorkspaceProjectionService } from '../services/theme-workspace-projection.ts'
 import type { ProductionService } from '../services/production-service.ts'
 import type { ReviewService } from '../services/review-service.ts'
 import type { WorkflowService } from '../services/workflow-service.ts'
@@ -17,6 +18,8 @@ import type { IndustryOperatingObservationAcquisitionPort } from '../../plugins/
 import type { ThesisQueryService } from '../services/thesis-query-service.ts'
 import type { ThesisDecisionService } from '../services/thesis-decision-service.ts'
 import type { ThesisCriterionService } from '../services/thesis-criterion-service.ts'
+import type { ThemeFrameworkService } from '../services/theme-framework-service.ts'
+import type { ThemeScopeImpactService } from '../services/theme-scope-impact-service.ts'
 
 export interface SafeConversationSummary {
   readonly conversationId: string
@@ -49,6 +52,8 @@ export interface ResearchHubApplicationServices {
   readonly knowledgeGraphService: KnowledgeGraphService
   /** Read-only Schema 0.4 topic projection; absent only in legacy test/session adapters. */
   readonly knowledgeTopicProjectionService?: KnowledgeTopicProjectionService
+  /** Read-only Theme Graph workspace projection; absent only in legacy adapters. */
+  readonly themeWorkspaceProjectionService?: ThemeWorkspaceProjectionService
   readonly reviewService: ReviewService
   readonly workflowService: WorkflowService
   readonly researchDispatchService?: ResearchDispatchService
@@ -60,6 +65,10 @@ export interface ResearchHubApplicationServices {
   readonly thesisDecisionService?: ThesisDecisionService
   /** Human-only HTTP criterion authoring; deliberately excluded from the Pi session context. */
   readonly thesisCriterionService?: ThesisCriterionService
+  /** Explicitly reviewed Theme Framework construction; canonical writes occur only on accept. */
+  readonly themeFrameworkService?: ThemeFrameworkService
+  /** Read and review the durable post-write Theme scope impact proposal inbox. */
+  readonly themeScopeImpactService?: ThemeScopeImpactService
   readonly dailyIntelligenceService?: DailyIntelligenceService
 }
 
@@ -95,6 +104,7 @@ export interface ResearchHubApplicationRuntimeOptions {
   readonly resourceLoader?: DefaultResourceLoader
   readonly researchService?: ResearchService
   readonly industryAcquisitionPlugins?: readonly ResearchAcquisitionPlugin[]
+  readonly themeFrameworkService?: ThemeFrameworkService
   readonly industryOperatingObservationAcquisition?: IndustryOperatingObservationAcquisitionPort
   readonly dailyIntelligenceService?: DailyIntelligenceService
 }

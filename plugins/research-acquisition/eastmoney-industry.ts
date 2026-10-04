@@ -15,6 +15,14 @@ const MAX_CANDIDATES = 12
 const GENERIC = new Set(['industry', 'manufacturing', 'industrymanufacturing', '行业', '制造'])
 const CODE = /^[A-Z0-9]{2,16}$/i
 
+/** A sanitized failure category for the public Eastmoney JSON endpoint. */
+export class EastmoneyRequestError extends Error {
+  constructor(readonly category: 'transport' | 'http' | 'payload' | 'response', message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'EastmoneyRequestError'
+  }
+}
+
 const normalize = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/\s+/g, ' ').trim()
 const tokens = (value: string) => [...new Set((normalize(value).match(/[a-z0-9]+|[\u3400-\u9fff]+/g) ?? []).filter((x) => !GENERIC.has(x) && x.length >= 2))]
 const validCode = (value: unknown): value is string => typeof value === 'string' && CODE.test(value.trim())
@@ -56,7 +64,23 @@ export class EastmoneyIndustryResearchPlugin implements ResearchAcquisitionPlugi
   private async request(params: Record<string, string>, signal?: AbortSignal): Promise<unknown> {
     const url = new URL(this.endpoint); for (const [key, value] of Object.entries({ ...params, ut: PUBLIC_UT, np: '1', fltt: '2', invt: '2' })) url.searchParams.set(key, value)
     const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), this.timeoutMs); const abort = () => controller.abort(); signal?.addEventListener('abort', abort, { once: true })
-    try { const response = await this.fetchImpl(url.toString(), { headers: { accept: 'application/json' }, signal: controller.signal }); if (!response.ok) throw new Error(`Eastmoney request failed with HTTP ${response.status}`); const text = await response.text(); if (Buffer.byteLength(text, 'utf8') > this.maxPayloadBytes) throw new Error('Eastmoney payload exceeds bound'); try { return JSON.parse(text) } catch { throw new Error('Eastmoney response is not JSON') } } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort) }
+    try {
+      let response: Response
+      try {
+        response = await this.fetchImpl(url.toString(), { headers: { accept: 'application/json' }, signal: controller.signal })
+      } catch (cause) {
+        const details = asRecord((cause as { cause?: unknown } | null)?.cause)
+        const code = typeof details?.code === 'string' && /^[A-Z0-9_]{1,40}$/u.test(details.code) ? details.code : undefined
+        const timedOut = !signal?.aborted && controller.signal.aborted
+        const detail = timedOut ? 'request timed out' : code === 'UND_ERR_SOCKET' ? 'remote socket closed (UND_ERR_SOCKET)' : cause instanceof TypeError ? 'fetch failed (TypeError)' : 'request transport failed'
+        throw new EastmoneyRequestError('transport', `Eastmoney ${detail}`, { cause })
+      }
+      if (!response.ok) throw new EastmoneyRequestError('http', `Eastmoney request failed with HTTP ${response.status}`)
+      let text: string
+      try { text = await response.text() } catch (cause) { throw new EastmoneyRequestError('transport', 'Eastmoney response body could not be read', { cause }) }
+      if (Buffer.byteLength(text, 'utf8') > this.maxPayloadBytes) throw new EastmoneyRequestError('payload', 'Eastmoney payload exceeds bound')
+      try { return JSON.parse(text) } catch (cause) { throw new EastmoneyRequestError('response', 'Eastmoney response is not JSON', { cause }) }
+    } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort) }
   }
   private async boards(type: Board['type']): Promise<readonly Board[]> { const cached = this.boardCache.get(type); if (cached) return cached; const all: Board[] = []; for (let page = 1; page <= BOARD_PAGE_CAP; page++) { const fs = type === 'industry' ? 'm:90+t:2' : 'm:90+t:3'; const projected = projectBoards(await this.request({ pn: String(page), pz: String(PAGE_SIZE), fs, fields: 'f12,f14' }), type); all.push(...projected.boards); if (all.length >= projected.total) break } const stable = [...new Map(all.map((x) => [`${x.type}:${x.code}`, x])).values()]; this.boardCache.set(type, stable); return stable }
   async discover(request: ResearchAcquisitionRequest): Promise<readonly ResearchSourceCandidate[]> { if ('company' in request) return []; const boards = [...await this.boards('industry'), ...await this.boards('concept')]; const matches = matchEastmoneyBoards(request, boards); const limit = Math.min(MAX_CANDIDATES, Math.max(0, request.limitPerKind ?? 6)); return matches.slice(0, limit).map((board) => ({ candidateId: `eastmoney-${board.type}-${board.code}`, kind: 'structured_data', tier: 2, title: `${board.name} board membership`, provider: 'eastmoney', url: `${this.endpoint}?fs=b:${encodeURIComponent(board.code)}&fields=f12,f13,f14`, metadata: { boardCode: board.code, boardName: board.name, boardType: board.type, matching: 'deterministic_board_name_terms' } })) }
