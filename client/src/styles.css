@@ -661,3 +661,153 @@ body { min-width: 0; }
   .composer-wrap { padding: 12px; }
   .app-main { overflow: hidden; }
 }
+
+/* Research conversation workspace: independent rails and a viewport-bound composer. */
+.workspace-grid {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  grid-template-columns: minmax(185px, 235px) minmax(0, 1fr) minmax(245px, 300px);
+  overflow: hidden;
+}
+.conversation-rail, .conversation-pane, .context-rail { min-width: 0; min-height: 0; }
+.conversation-rail { display: flex; flex-direction: column; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+.conversation-list { min-height: 0; }
+.conversation-pane { height: 100%; overflow: hidden; }
+.conversation-heading { flex: 0 0 auto; min-width: 0; }
+.conversation-heading h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.messages { flex: 1 1 auto; min-height: 0; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.composer-wrap {
+  flex: 0 0 auto;
+  max-height: 55dvh;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px 20px max(12px, env(safe-area-inset-bottom));
+  background: #0d141b;
+  overscroll-behavior: contain;
+}
+.research-composer-content { width: min(760px, 100%); min-width: 0; margin: 0 auto; }
+.composer-wrap .research-controls,
+.composer-wrap .execution-summary,
+.composer-wrap textarea,
+.composer-wrap .composer-attachment-row,
+.composer-wrap .attachment-review,
+.composer-wrap .composer-footer,
+.conversation-pane > .inline-error {
+  width: 100%;
+  max-width: 760px;
+  min-width: 0;
+  margin-right: auto;
+  margin-left: auto;
+}
+.research-controls {
+  gap: 8px 12px;
+  margin-top: 0;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-color: #2f444b;
+  border-radius: 7px;
+  color: #b9cbd0;
+  background: #111d24;
+  font-size: 11px;
+}
+.research-controls > label:first-child { gap: 7px; font-size: 11px; }
+.research-controls select {
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 27px 6px 8px;
+  border-color: #3b555a;
+  border-radius: 5px;
+  color: #d9e7e9;
+  background-color: #14242a;
+  color-scheme: dark;
+  font-size: 11px;
+}
+.research-controls .check-field { gap: 5px; font-size: 10px; }
+.research-controls input[type="checkbox"] { accent-color: #72d2c4; }
+.execution-summary {
+  gap: 5px 10px;
+  margin-top: 0;
+  margin-bottom: 8px;
+  padding: 7px 10px;
+  border: 1px solid #2c4949;
+  border-left: 3px solid #72d2c4;
+  border-radius: 5px;
+  color: #a9c2c3;
+  background: #10201f;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.execution-summary strong { color: #d5eae6; }
+.composer-wrap textarea {
+  min-height: 62px;
+  max-height: 18vh;
+  resize: vertical;
+  border-color: #3a5058;
+  border-radius: 7px;
+  color: #e4edf2;
+  background: #121d25;
+  color-scheme: dark;
+}
+.composer-wrap textarea:focus { border-color: #57968e; }
+.composer-attachment-row { flex-wrap: wrap; gap: 7px 10px; margin-top: 7px; }
+.attachment-review { max-height: min(14vh, 112px); overscroll-behavior: contain; scrollbar-gutter: stable; }
+.attachment-review .staged-attachment + .staged-attachment { margin-top: 5px; }
+.conversation-pane > .inline-error {
+  flex: 0 0 auto;
+  max-height: 74px;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  margin-top: 0;
+  margin-bottom: 0;
+  border-color: #70464a;
+  scrollbar-gutter: stable;
+}
+.composer-footer { position: sticky; bottom: -12px; z-index: 1; margin-top: 8px; padding: 6px 0; gap: 8px 12px; color: #80939d; background: #0d141b; }
+.composer-footer > span { min-width: 0; overflow-wrap: anywhere; }
+.composer-actions { flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; }
+.context-rail { overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; overflow-wrap: anywhere; }
+.research-reviews-link { display: block; width: 100%; }
+
+.reviews-sections { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
+.reviews-sections > button { min-width: 0; overflow-wrap: anywhere; }
+.reviews-section { min-width: 0; padding: 14px; border: 1px solid #2c4148; border-radius: 9px; background: #101a21; }
+.reviews-section > .section-title { margin: 0 0 10px; }
+.reviews-section > h2 { margin: 0 0 10px; color: #d5e5e7; font-size: 15px; }
+.review-page { min-width: 0; overflow-x: hidden; }
+
+@media (max-width: 1060px) {
+  .workspace-grid { grid-template-columns: minmax(190px, 220px) minmax(0, 1fr); }
+  .context-rail { display: none; }
+}
+@media (max-width: 900px) {
+  .workspace-grid { grid-template-columns: minmax(180px, 210px) minmax(0, 1fr); }
+}
+@media (max-width: 620px) {
+  .workspace-grid { display: flex; height: 100dvh; min-height: 0; flex-direction: column; }
+  .conversation-rail { flex: 0 0 auto; max-height: 160px; overflow-x: hidden; overflow-y: auto; }
+  .conversation-list { grid-template-columns: repeat(auto-fill, minmax(min(130px, 100%), 1fr)); }
+  .conversation-pane { flex: 1 1 auto; min-height: 0; }
+  .conversation-heading { min-height: 58px; padding: 10px 14px; }
+  .messages { min-height: 0; padding: 14px 12px; }
+  .empty-conversation { margin: 5vh auto; }
+  .composer-wrap { max-height: 48dvh; overflow-y: auto; padding: 9px 10px max(9px, env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+  .research-controls { align-items: flex-start; gap: 7px 10px; }
+  .research-controls > label:first-child { flex: 1 1 100%; }
+  .research-controls select { flex: 1 1 auto; }
+  .composer-wrap textarea { min-height: 54px; max-height: 12vh; }
+  .attachment-review { max-height: 10vh; }
+  .composer-footer { align-items: flex-start; flex-wrap: wrap; }
+  .composer-footer > span { flex: 1 1 100%; }
+  .composer-actions { width: 100%; }
+  .reviews-sections { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .reviews-sections > button { padding: 7px 2px; font-size: 9px; white-space: normal; }
+}
+@media (max-height: 760px) and (min-width: 621px) {
+  .conversation-heading { min-height: 64px; padding-top: 12px; padding-bottom: 12px; }
+  .composer-wrap { padding-top: 8px; padding-bottom: 8px; }
+  .composer-wrap textarea { min-height: 50px; max-height: 13vh; }
+  .attachment-review { max-height: 9vh; }
+}

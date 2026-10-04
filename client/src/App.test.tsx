@@ -4,6 +4,11 @@ import App from './App'
 
 function json(body: unknown, status = 200): Response { return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }) }
 
+async function openReviewsSection(name: string): Promise<void> {
+  fireEvent.click(await screen.findByRole('link', { name: 'Reviews' }))
+  fireEvent.click(await screen.findByRole('button', { name }))
+}
+
 function mockV04UploadRuntime(fetchMock: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): void {
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input)
@@ -99,9 +104,25 @@ describe('Homepage shell', () => {
 
   it('loads conversation UI in no-KB mode without rendering the runtime token', async () => {
     render(<App />)
-    expect(await screen.findByText('Research conversation')).toBeTruthy()
-    expect(screen.getByText('No Knowledge Base mounted')).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Research conversation', level: 1 })).toBeTruthy()
+    expect(screen.getAllByText(/No Knowledge Base mounted/).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('region', { name: 'Daily Intelligence' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Theme scope changes' })).toBeNull()
     expect(document.body.textContent).not.toContain('b'.repeat(64))
+  })
+
+  it('keeps the Research draft while Reviews owns the review sections', async () => {
+    render(<App />)
+    const composer = await screen.findByRole('textbox', { name: 'Message' })
+    fireEvent.change(composer, { target: { value: 'Keep this draft across routes' } })
+    fireEvent.click(screen.getByRole('link', { name: 'Reviews' }))
+    expect(await screen.findByRole('heading', { name: 'Review Inbox' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Review cases' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Theme Framework reviews' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Theme scope changes' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('link', { name: 'Research' }))
+    expect((await screen.findByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).value).toBe('Keep this draft across routes')
+    expect(screen.queryByRole('heading', { name: 'Theme scope changes' })).toBeNull()
   })
 
   it('dispatches a named Theme Framework workflow and reviews only server candidates', async () => {
@@ -136,6 +157,8 @@ describe('Homepage shell', () => {
     fireEvent.change(await screen.findByRole('combobox', { name: 'Workflow' }), { target: { value: 'theme_framework' } })
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'AI 算力' } })
     fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    expect(screen.queryByRole('heading', { name: 'Industry framework' })).toBeNull()
+    await openReviewsSection('Theme Framework reviews')
     expect(await screen.findByRole('heading', { name: 'Industry framework' })).toBeTruthy()
     expect(await screen.findByText('PCB')).toBeTruthy()
     expect(screen.getByText(/Should copper foil be included/)).toBeTruthy()
@@ -187,6 +210,7 @@ describe('Homepage shell', () => {
     fireEvent.change(await screen.findByRole('combobox', { name: 'Workflow' }), { target: { value: 'theme_framework' } })
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'Initialize AI Compute' } })
     fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    await openReviewsSection('Theme Framework reviews')
     expect(await screen.findByText('PCB')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Exclude' }))
     const reason = await screen.findByRole('textbox', { name: 'Reason for changing recommendation for PCB' })
@@ -223,6 +247,7 @@ describe('Homepage shell', () => {
     render(<App />)
     fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), { target: { value: 'Initialize the AI compute theme' } })
     fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    await openReviewsSection('Theme Framework reviews')
     expect(await screen.findByRole('heading', { name: 'Industry framework' })).toBeTruthy()
     expect(await screen.findByRole('heading', { name: 'AI Compute' })).toBeTruthy()
     expect(screen.getByText('Accepting these decisions will write the Theme framework to the Knowledge Base.')).toBeTruthy()
@@ -259,6 +284,7 @@ describe('Homepage shell', () => {
     fireEvent.change(await screen.findByRole('combobox', { name: 'Workflow' }), { target: { value: 'theme_framework' } })
     fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), { target: { value: 'initialize compute theme' } })
     fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    await openReviewsSection('Theme Framework reviews')
     expect((await screen.findAllByText('stale')).length).toBeGreaterThan(0)
     fireEvent.click(await screen.findByRole('button', { name: 'Refresh to current revision' }))
     expect(await screen.findByText(/From run stale-run · Knowledge revision 7 → 8/)).toBeTruthy()
@@ -291,6 +317,8 @@ describe('Homepage shell', () => {
       return json({ code: 'not_found', error: 'not found' }, 404)
     }) as typeof fetch
     render(<App />)
+    fireEvent.click(await screen.findByRole('link', { name: 'Reviews' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Theme Framework reviews' }))
     await waitFor(() => expect(screen.getByRole('region', { name: 'Theme Framework review history' }).textContent).toContain('theme-run-3'))
     const reviewList = screen.getByRole('region', { name: 'Theme Framework review history' }).textContent ?? ''
     expect(reviewList).toContain('theme-run-2')
@@ -578,7 +606,7 @@ describe('Homepage shell', () => {
 
   it('keeps Review read-only and does not render decision controls', async () => {
     render(<App />)
-    await waitFor(() => expect(screen.getByText('Research conversation')).toBeTruthy())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Research conversation', level: 1 })).toBeTruthy())
     expect(screen.queryByText('Resolve')).toBeNull()
     expect(screen.queryByText('Approve')).toBeNull()
     expect(screen.queryByText('Reject')).toBeNull()
@@ -632,7 +660,7 @@ describe('Homepage shell', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Reviews' }))
     expect(await screen.findByRole('heading', { name: 'Review Inbox' })).toBeTruthy()
     expect(screen.getByText('Read-only')).toBeTruthy()
-    expect(screen.getByText('No Knowledge Base mounted')).toBeTruthy()
+    expect(screen.getAllByText(/No Knowledge Base mounted/).length).toBeGreaterThan(0)
     expect(screen.queryByText('Resolve')).toBeNull()
     expect(screen.queryByText('Approve')).toBeNull()
     expect(screen.queryByText('Reject')).toBeNull()
@@ -811,6 +839,7 @@ describe('Homepage shell', () => {
     }) as typeof fetch
 
     render(<App />)
+    await openReviewsSection('Theme scope changes')
     expect(await screen.findByRole('heading', { name: 'Theme scope changes' })).toBeTruthy()
     expect(await screen.findByRole('heading', { name: 'PCB' })).toBeTruthy()
     expect(screen.getByText('New research evidence identifies PCB as a relevant upstream industry.')).toBeTruthy()
