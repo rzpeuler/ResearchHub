@@ -1,6 +1,7 @@
 import { createAgentSessionRuntime, SessionManager, type AgentSession, type AgentSessionRuntime as PiAgentSessionRuntime, type CreateAgentSessionRuntimeFactory } from '@earendil-works/pi-coding-agent'
 import { ApplicationServiceError } from '../services/contracts.ts'
 import { createResearchHubPiSession } from '../pi/session.ts'
+import type { Api, Model } from '@earendil-works/pi-ai'
 import { ClientEventAdapter, safeSummary, type ClientEventListener } from './client-events.ts'
 import type { CurrentSessionState, ResearchHubSessionRuntimeOptions, SafeConversationMessage, SafeConversationSummary } from './contracts.ts'
 import type { ResearchHubPolicyContext, ResearchHubRequestPolicy } from '../pi/tools.ts'
@@ -86,7 +87,7 @@ export class ResearchHubSessionRuntime {
   private replacementTail: Promise<void> = Promise.resolve()
   private readonly clientEventAdapters = new Set<ClientEventAdapter>()
 
-  private constructor(piRuntime: PiAgentSessionRuntime, private readonly policyContext: ResearchHubPolicyContext) {
+  private constructor(piRuntime: PiAgentSessionRuntime, private readonly policyContext: ResearchHubPolicyContext, private readonly selectedModel?: Model<Api>) {
     this.piRuntime = piRuntime
     this.piRuntime.setRebindSession(async (session) => {
       for (const adapter of this.clientEventAdapters) adapter.rebind(session)
@@ -116,7 +117,9 @@ export class ResearchHubSessionRuntime {
       return { session: created.session, extensionsResult: created.extensionsResult, modelFallbackMessage: created.modelFallbackMessage, services: created.services, diagnostics: created.services.diagnostics }
     }
     const piRuntime = await createAgentSessionRuntime(createRuntime, { cwd: options.cwd, agentDir: options.agentDir, sessionManager: options.sessionManager })
-    return new ResearchHubSessionRuntime(piRuntime, policyContext)
+    const runtime = new ResearchHubSessionRuntime(piRuntime, policyContext, options.model)
+    await runtime.enforceSelectedModel()
+    return runtime
   }
 
   get isDisposed(): boolean { return this.disposed }
@@ -172,6 +175,7 @@ export class ResearchHubSessionRuntime {
       if (trimmedName !== undefined && trimmedName.length > MAX_SESSION_NAME_LENGTH) throw new ApplicationServiceError('invalid_input', 'conversation name is too long')
       const safeName = safeSessionName(trimmedName)
       await this.piRuntime.newSession({ setup: safeName ? async (manager) => { manager.appendSessionInfo(safeName) } : undefined })
+      await this.enforceSelectedModel()
       return this.getCurrentState()
     })
   }
@@ -184,6 +188,7 @@ export class ResearchHubSessionRuntime {
       const selected = sessions.find((info) => info.id === conversationId)
       if (!selected) throw new ApplicationServiceError('not_found', `Conversation not found: ${conversationId}`)
       await this.piRuntime.switchSession(selected.path)
+      await this.enforceSelectedModel()
       return this.getCurrentState()
     })
   }
@@ -191,6 +196,7 @@ export class ResearchHubSessionRuntime {
   async resumeConversation(conversationId: string): Promise<CurrentSessionState> { return this.switchConversation(conversationId) }
   startPrompt(text: string, policy?: ResearchHubRequestPolicy, researchContext?: ResearchSessionContext): StartedPrompt {
     this.ensureOpen()
+    this.assertSelectedModel()
     const previousPolicy = this.policyContext.current
     this.policyContext.current = policy
     let acceptedSettled = false
@@ -226,8 +232,8 @@ export class ResearchHubSessionRuntime {
     await started.accepted
     await started.completion
   }
-  async steer(text: string): Promise<void> { this.ensureOpen(); return this.currentSession.steer(text) }
-  async followUp(text: string): Promise<void> { this.ensureOpen(); return this.currentSession.followUp(text) }
+  async steer(text: string): Promise<void> { this.ensureOpen(); this.assertSelectedModel(); return this.currentSession.steer(text) }
+  async followUp(text: string): Promise<void> { this.ensureOpen(); this.assertSelectedModel(); return this.currentSession.followUp(text) }
   async abort(): Promise<void> { this.ensureOpen(); return this.currentSession.abort() }
 
   async dispose(): Promise<void> {
@@ -251,6 +257,21 @@ export class ResearchHubSessionRuntime {
   }
 
   private ensureOpen(): void { if (this.disposed || this.disposing) throw new ApplicationServiceError('failed', 'Application runtime is closed') }
+
+  private assertSelectedModel(): void {
+    if (this.selectedModel === undefined) return
+    const current = this.currentSession.model
+    if (current?.provider !== this.selectedModel.provider || current.id !== this.selectedModel.id) {
+      throw new ApplicationServiceError('conflict', 'The Pi session model differs from the global Runtime model')
+    }
+  }
+
+  private async enforceSelectedModel(): Promise<void> {
+    if (this.selectedModel === undefined) return
+    const current = this.currentSession.model
+    if (current?.provider === this.selectedModel.provider && current.id === this.selectedModel.id) return
+    await this.currentSession.setModel(this.selectedModel, { persist: false })
+  }
 }
 
 export async function createResearchHubSessionRuntime(options: ResearchHubSessionRuntimeOptions): Promise<ResearchHubSessionRuntime> { return ResearchHubSessionRuntime.create(options) }

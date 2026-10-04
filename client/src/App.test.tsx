@@ -48,6 +48,7 @@ describe('Homepage shell', () => {
     render(<App />)
     expect(await screen.findByRole('heading', { name: '从一个研究问题开始' })).toBeTruthy()
     expect(document.documentElement.lang).toBe('zh-CN')
+    fireEvent.click(screen.getByRole('button', { name: '设置' }))
     fireEvent.click(screen.getByRole('button', { name: 'EN' }))
     expect(await screen.findByRole('heading', { name: 'Start with a research question' })).toBeTruthy()
     expect(window.localStorage.getItem('researchhub.language')).toBe('en')
@@ -59,10 +60,39 @@ describe('Homepage shell', () => {
     const storageWrite = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage disabled') })
     render(<App />)
     expect(await screen.findByRole('heading', { name: '从一个研究问题开始' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '设置' }))
     expect(() => fireEvent.click(screen.getByRole('button', { name: 'EN' }))).not.toThrow()
     expect(await screen.findByRole('heading', { name: 'Start with a research question' })).toBeTruthy()
     expect(document.documentElement.lang).toBe('en')
     storageWrite.mockRestore()
+  })
+
+  it('changes the global model and mounted Knowledge Base, then refreshes bootstrap state', async () => {
+    let chosenModel = { provider: 'zhipu-openapi', modelId: 'glm-5.3-flash' }
+    let chosenKb: string | undefined = 'kb-old'
+    const calls: string[] = []
+    const currentSettings = () => ({ revision: calls.filter((path) => path.startsWith('POST /api/settings')).length + 1, model: chosenModel, models: [{ provider: 'zhipu-openapi', modelId: 'glm-5.3-flash', name: 'GLM 5.3 Flash', available: true }, { provider: 'openai-codex', modelId: 'gpt-6-luna', name: 'GPT-6 Luna', available: true }], ...(chosenKb ? { knowledgeBase: { knowledgeBaseId: chosenKb, rootRef: 'root:kb', revision: 4, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } } : {}), knowledgeBases: ['kb-old', 'kb-new'].map((knowledgeBaseId) => ({ knowledgeBaseId, schemaVersion: '0.4', status: 'active', revision: 4 })) })
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input); const method = init?.method ?? 'GET'; calls.push(`${method} ${path}`)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], ...(chosenKb ? { knowledgeBase: { knowledgeBaseId: chosenKb, rootRef: 'root:kb', revision: 4, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } } : {}) })
+      if (path === '/api/settings' && method === 'GET') return json(currentSettings())
+      if (path === '/api/settings/model') { chosenModel = JSON.parse(String(init?.body)) as typeof chosenModel; return json(currentSettings()) }
+      if (path === '/api/settings/knowledge-base') { chosenKb = (JSON.parse(String(init?.body)) as { knowledgeBaseId?: string }).knowledgeBaseId; return json(currentSettings()) }
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    const modelSelect = await screen.findByRole('combobox', { name: 'Global model' })
+    fireEvent.change(modelSelect, { target: { value: 'openai-codex/gpt-6-luna' } })
+    await waitFor(() => expect((screen.getByRole('combobox', { name: 'Global model' }) as HTMLSelectElement).value).toBe('openai-codex/gpt-6-luna'))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Mounted Knowledge Base' }), { target: { value: 'kb-new' } })
+    await waitFor(() => expect(document.body.textContent).toContain('kb-new'))
+    expect(calls.filter((path) => path === 'GET /api/bootstrap')).toHaveLength(3)
+    expect(calls).toContain('POST /api/settings/model')
+    expect(calls).toContain('POST /api/settings/knowledge-base')
   })
 
   it('loads conversation UI in no-KB mode without rendering the runtime token', async () => {
@@ -406,11 +436,11 @@ describe('Homepage shell', () => {
     expect(await screen.findByText('notes.md')).toBeTruthy()
     fireEvent.drop(composer, { dataTransfer: { files: [new File(['binary'], 'archive.zip', { type: 'application/zip' })], types: ['Files'] } })
     expect(await screen.findByText(/Unsupported file/)).toBeTruthy()
-    expect(mock).toHaveBeenCalledTimes(1)
+    expect(mock.mock.calls.filter(([input]) => String(input) !== '/api/settings')).toHaveLength(1)
   })
 
   it('rejects files above the upload limit before staging them', async () => {
-    const mock = vi.fn(async () => json({ code: 'not_found', error: 'not found' }, 404))
+    const mock = vi.fn(async (_input: RequestInfo | URL) => json({ code: 'not_found', error: 'not found' }, 404))
     mockV04UploadRuntime(mock)
     render(<App />)
     await screen.findByRole('textbox', { name: 'Message' })
@@ -418,7 +448,7 @@ describe('Homepage shell', () => {
     Object.defineProperty(oversized, 'size', { value: 100 * 1024 * 1024 + 1 })
     fireEvent.change(screen.getByLabelText('Add document'), { target: { files: [oversized] } })
     expect(await screen.findByText('File exceeds the 100 MB upload limit.')).toBeTruthy()
-    expect(mock).not.toHaveBeenCalled()
+    expect(mock.mock.calls.filter(([input]) => String(input) !== '/api/settings')).toHaveLength(0)
   })
 
   it('uses the compact composer picker, preserves staged files when cancelled, and clears explicitly', async () => {
@@ -560,6 +590,7 @@ describe('Homepage shell', () => {
     expect(screen.getByRole('link', { name: 'Reports' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Run Research' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Reviews' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     fireEvent.click(screen.getByRole('button', { name: '中文' }))
     fireEvent.click(screen.getByRole('link', { name: '知识图谱' }))
     expect(await screen.findByRole('heading', { name: '主题工作台' })).toBeTruthy()

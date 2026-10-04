@@ -17,6 +17,9 @@ export interface ConversationSummary { readonly conversationId: string; readonly
 export interface SessionState { readonly conversationId: string; readonly name?: string; readonly isStreaming: boolean; readonly isIdle: boolean; readonly pendingMessageCount: number; readonly thinkingLevel: string; readonly model?: { readonly provider: string; readonly modelId: string } }
 export interface ConversationMessage { readonly role: 'user' | 'assistant' | 'tool'; readonly content: string; readonly timestamp?: string; readonly toolName?: string; readonly isError?: boolean }
 export interface KnowledgeBaseStatus { readonly knowledgeBaseId: string; readonly rootRef: string; readonly revision: number; readonly status: string; readonly schemaVersion: string; readonly storageFormatVersion: string; readonly counts: Readonly<Record<string, number>> }
+export interface RuntimeModelOption { readonly provider: string; readonly modelId: string; readonly name: string; readonly available: boolean; readonly unavailableReason?: string }
+export interface RuntimeKnowledgeBaseOption { readonly knowledgeBaseId: string; readonly schemaVersion: string; readonly status: string; readonly revision: number }
+export interface RuntimeSettings { readonly revision: number; readonly model: { readonly provider: string; readonly modelId: string }; readonly modelError?: string; readonly models: readonly RuntimeModelOption[]; readonly knowledgeBase?: KnowledgeBaseStatus; readonly knowledgeBaseError?: string; readonly knowledgeBases: readonly RuntimeKnowledgeBaseOption[] }
 export interface KnowledgeSearchResult { readonly ref: string; readonly kind: string; readonly semanticType?: string; readonly displayName?: string; readonly summary?: string }
 export interface KnowledgeSearchResponse { readonly results: readonly KnowledgeSearchResult[]; readonly total: number; readonly limit: number; readonly truncated: boolean }
 export interface KnowledgeObjectResponse { readonly ref: string; readonly kind: string; readonly object: unknown; readonly relatedRelations?: readonly unknown[]; readonly relatedClaims?: readonly unknown[]; readonly supportingSources?: readonly unknown[]; readonly relatedEntities?: readonly unknown[]; readonly truncation?: Readonly<Record<string, { readonly limit: number; readonly total: number; readonly truncated: boolean }>> }
@@ -283,6 +286,9 @@ export class RuntimeClient {
   }
 
   async bootstrap(): Promise<BootstrapResponse> { const value = await this.request<BootstrapResponse>('/api/bootstrap'); this.runtimeToken = value.runtime.runtimeToken; return value }
+  async getSettings(): Promise<RuntimeSettings> { return this.request('/api/settings') }
+  async setModel(provider: string, modelId: string): Promise<RuntimeSettings> { return this.mutate('/api/settings/model', { provider, modelId }) }
+  async setKnowledgeBase(knowledgeBaseId?: string): Promise<RuntimeSettings> { return this.mutate('/api/settings/knowledge-base', knowledgeBaseId === undefined ? {} : { knowledgeBaseId }) }
   clearToken(): void { this.runtimeToken = undefined }
   async listConversations(): Promise<readonly ConversationSummary[]> { return (await this.request<{ conversations: readonly ConversationSummary[] }>('/api/conversations')).conversations }
   async currentSession(): Promise<SessionState> { return this.request<SessionState>('/api/conversations/current') }

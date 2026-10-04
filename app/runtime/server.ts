@@ -17,8 +17,12 @@ import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { THEME_SCOPE_V04_LIMITS } from '../../knowledge/governance/theme-scope-v04.ts'
 import { normalizeResearchRequest } from '../services/research-dispatch-contracts.ts'
 import type { ResearchHubRequestPolicy } from '../pi/tools.ts'
+import type { ReasoningCapabilities, ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import type { ThesisCriterionConfirmInput, ThesisCriterionPrepareInput, ThesisCriterionPreview } from '../services/thesis-criterion-service.ts'
 import type { KnowledgeTopicFilters, KnowledgeTopicKind, KnowledgeTopicPageInput, KnowledgeTopicScope } from '../services/knowledge-topic-contracts.ts'
+import { configuredKnowledgeBaseCatalogRoot, discoverKnowledgeBases, requireKnowledgeBaseChoice, resolveInitialKnowledgeBase, type ResolvedKnowledgeBase } from './knowledge-selection.ts'
+import { readRuntimeSettings, writeRuntimeSettings, type RuntimeSettings } from './runtime-settings.ts'
+import { listReasoningModelCandidates, ReasoningModelSelectionError, validateReasoningModelSelection } from '../pi/model-selection.ts'
 import type { ThemeWorkspaceProjectionInput } from '../services/theme-workspace-projection-contracts.ts'
 import type { RawDocumentMetadataV04, RawDocumentRightsV04 } from '../../knowledge/production/raw-document-gateway-v04.ts'
 
@@ -30,6 +34,11 @@ const MAX_SSE_PENDING_FRAMES = 64
 const MAX_BACKGROUND_OPERATIONS = 128
 const CLIENT_MIME_TYPES: Readonly<Record<string, string>> = { '.css': 'text/css; charset=utf-8', '.gif': 'image/gif', '.html': 'text/html; charset=utf-8', '.ico': 'image/x-icon', '.jpeg': 'image/jpeg', '.jpg': 'image/jpeg', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.map': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8', '.webp': 'image/webp', '.woff': 'font/woff', '.woff2': 'font/woff2' }
 const THESIS_CRITERION_PREVIEW_FIELDS = ['knowledgeBaseId', 'expectedKnowledgeBaseRevision', 'thesisRef', 'conditionId', 'revision', 'type', 'definitionVersion', 'definition', 'targetClaimRefs', 'origin', 'definitionHash', 'previewHash'] as const
+const DISABLED_MODEL_CAPABILITIES: ReasoningCapabilities = { maxContextTokens: 1, maxOutputTokens: 1, structuredOutputSupport: false, maxConcurrency: 1 }
+
+function disabledModelExecutor(): ReasoningExecutor {
+  return { capabilities: () => DISABLED_MODEL_CAPABILITIES, async execute() { throw new ApplicationServiceError('conflict', 'The saved Pi model is unavailable. Select an available model before running semantic operations.') } }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value) }
 function assertExactFields(value: Record<string, unknown>, required: readonly string[], optional: readonly string[] = [], label: string): void {
@@ -84,6 +93,9 @@ export interface ResearchHubRuntimeServerOptions extends Omit<ResearchHubApplica
   readonly clientRoot?: string
   readonly attachmentService?: AttachmentService
   readonly maxSseSubscribers?: number
+  readonly knowledgeBaseCatalogRoot?: string
+  /** Allows deterministic tests to disable the automatic scheduler. */
+  readonly startDailyScheduler?: boolean
 }
 
 export interface RuntimeServerInfo {
@@ -248,6 +260,12 @@ export class ResearchHubRuntimeServer {
   private readonly sseClients = new Set<SseClient>()
   private readonly backgroundOperations = new Set<BackgroundOperation>()
   private lifecycle: RuntimeServerLifecycle = 'idle'
+  private settings: RuntimeSettings = { revision: 0 }
+  private knowledgeBaseCatalog: readonly ResolvedKnowledgeBase[] = []
+  private knowledgeBaseSelectionError?: string
+  private settingsChanging = false
+  private inFlightApiRequests = 0
+  private modelSelectionError?: string
 
   constructor(options: ResearchHubRuntimeServerOptions) {
     this.options = options
@@ -298,9 +316,28 @@ export class ResearchHubRuntimeServer {
   }
 
   private async startInternal(): Promise<RuntimeServerInfo> {
+    const cwd = this.options.cwd ?? process.cwd()
+    this.settings = await readRuntimeSettings(cwd)
     if (!this.runtime) {
-      this.runtime = await createResearchHubApplicationRuntime({ cwd: this.options.cwd ?? process.cwd(), agentDir: this.options.agentDir, sessionDir: this.options.sessionDir, mountedKnowledgeBaseRoot: this.options.mountedKnowledgeBaseRoot, workspaceRoot: this.options.workspaceRoot, modelRuntime: this.options.modelRuntime, sessionManager: this.options.sessionManager, model: this.options.model, reasoningExecutor: this.options.reasoningExecutor, settingsManager: this.options.settingsManager, resourceLoader: this.options.resourceLoader, researchService: this.options.researchService })
+      const workspaceRoot = resolve(this.options.workspaceRoot ?? join(cwd, 'workspace'))
+      const initial = await resolveInitialKnowledgeBase({ cwd, workspaceRoot, configuredRoot: this.options.knowledgeBaseCatalogRoot ?? configuredKnowledgeBaseCatalogRoot(cwd), initialKnowledgeBaseRoot: this.options.mountedKnowledgeBaseRoot, persistedKnowledgeBaseId: this.settings.knowledgeBaseId })
+      this.knowledgeBaseCatalog = initial.catalog
+      this.knowledgeBaseSelectionError = initial.selectionError
+      try {
+        this.runtime = await this.createApplicationRuntime(initial.mounted?.root, undefined, this.settings.model, this.options.startDailyScheduler !== false)
+      } catch (error) {
+        if (!(error instanceof ReasoningModelSelectionError) || error.code !== 'model_unavailable' || this.settings.model === undefined) throw error
+        this.modelSelectionError = 'The saved model is unavailable. Choose an available model in Runtime settings.'
+        this.runtime = await this.createApplicationRuntime(initial.mounted?.root, undefined, null, false)
+      }
       this.ownsRuntime = true
+    } else {
+      this.knowledgeBaseCatalog = await discoverKnowledgeBases({ cwd, workspaceRoot: this.runtime.workspaceRoot, configuredRoot: this.options.knowledgeBaseCatalogRoot ?? configuredKnowledgeBaseCatalogRoot(cwd), explicitlyMountedRoot: this.explicitlyConfiguredKnowledgeBaseRoot() })
+      // Injected runtimes are caller-owned; settings cannot silently replace their bound services.
+      const mountedRoot = this.runtime.mountedKnowledgeBaseRoot === undefined ? undefined : await realpath(this.runtime.mountedKnowledgeBaseRoot).catch(() => resolve(this.runtime!.mountedKnowledgeBaseRoot!))
+      if (this.settings.knowledgeBaseId !== undefined && this.settings.knowledgeBaseId !== (mountedRoot ? this.knowledgeBaseCatalog.find((item) => item.root.toLocaleLowerCase() === mountedRoot.toLocaleLowerCase())?.knowledgeBaseId : null)) {
+        throw new ApplicationServiceError('conflict', 'Persisted Knowledge Base selection cannot be applied to an injected Runtime')
+      }
     }
     this.assertClientRootBoundary()
     this.attachmentService ??= new AttachmentService({ workspaceRoot: this.runtime.workspaceRoot, forbiddenRoot: this.runtime.mountedKnowledgeBaseRoot, maxBytes: DEFAULT_MAX_ATTACHMENT_BYTES })
@@ -334,6 +371,16 @@ export class ResearchHubRuntimeServer {
       }
       throw combineErrors([error, ...cleanupErrors], 'Runtime server startup and cleanup failed')
     }
+  }
+
+  private async createApplicationRuntime(mountedKnowledgeBaseRoot?: string, model = this.options.model, modelSelectionOverride: RuntimeSettings['model'] | null = this.settings.model, startDailyScheduler = false, recoverModel = false): Promise<ResearchHubApplicationRuntime> {
+    const reasoningExecutor = this.modelSelectionError !== undefined && !recoverModel ? disabledModelExecutor() : this.options.reasoningExecutor
+    const modelSelection = modelSelectionOverride ?? undefined
+    return createResearchHubApplicationRuntime({ cwd: this.options.cwd ?? process.cwd(), agentDir: this.options.agentDir, sessionDir: this.options.sessionDir, mountedKnowledgeBaseRoot, workspaceRoot: this.options.workspaceRoot, modelRuntime: this.options.modelRuntime, sessionManager: this.options.sessionManager, model, ...(modelSelection === undefined ? {} : { modelSelection }), startDailyScheduler, reasoningExecutor, settingsManager: this.options.settingsManager, resourceLoader: this.options.resourceLoader, researchService: this.options.researchService })
+  }
+
+  private explicitlyConfiguredKnowledgeBaseRoot(): string | undefined {
+    return this.options.mountedKnowledgeBaseRoot ?? this.runtime?.mountedKnowledgeBaseRoot
   }
 
   private assertClientRootBoundary(): void {
@@ -418,18 +465,31 @@ export class ResearchHubRuntimeServer {
   }
 
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    let countedRequest = false
+    let reservedKnowledgeSwitch = false
     try {
       if (this.lifecycle !== 'running') throw new ApplicationServiceError(this.lifecycle === 'closing' ? 'conflict' : 'failed', this.lifecycle === 'closing' ? 'Runtime server is closing' : 'Runtime server is not ready')
       const security = this.runtimeSecurity
       if (!security || !this.runtime || !this.runtimeInfo) throw new ApplicationServiceError('failed', 'Runtime server is not ready')
       const url = new URL(request.url ?? '/', `http://${request.headers.host ?? '127.0.0.1'}`)
       if (request.method === 'OPTIONS') { this.validateRead(request); this.sendEmpty(response, 204); return }
-      if (url.pathname === '/api/bootstrap') { this.validateBootstrap(request); await this.bootstrap(response); return }
+      if (request.method === 'POST' && (url.pathname === '/api/settings/knowledge-base' || url.pathname === '/api/settings/model')) {
+        this.validateMutation(request)
+        if (this.settingsChanging) throw new ApplicationServiceError('conflict', 'A Runtime settings change is already in progress')
+        this.settingsChanging = true
+        reservedKnowledgeSwitch = true
+      } else if (url.pathname.startsWith('/api/') && url.pathname !== '/api/events') {
+        this.inFlightApiRequests += 1
+        countedRequest = true
+      }
+      if (url.pathname === '/api/bootstrap') { this.validateBootstrap(request); if (this.settingsChanging) throw new ApplicationServiceError('conflict', 'Runtime settings are changing; retry the request'); await this.bootstrap(response); return }
       if (url.pathname === '/api/events' && request.method === 'GET') { this.validateRead(request); this.openEvents(response); return }
       const tokenProtectedRead = request.method === 'GET' && (/^\/api\/theme-framework\/reviews$/.test(url.pathname) || /^\/api\/theme-framework\/runs\/[^/]+$/.test(url.pathname) || /^\/api\/theme-scope-impact(?:\/.*)?$/.test(url.pathname))
       if (this.isMutation(request.method, url.pathname)) this.validateMutation(request)
       else if (tokenProtectedRead) this.validateTokenProtectedRead(request)
       else this.validateRead(request)
+      if (this.settingsChanging && !reservedKnowledgeSwitch) throw new ApplicationServiceError('conflict', 'Runtime settings are changing; retry the request')
+      if (this.modelSelectionError !== undefined && request.method === 'POST' && this.isModelDependentCommand(url.pathname)) throw new ApplicationServiceError('conflict', this.modelSelectionError)
       if (url.pathname !== '/api' && !url.pathname.startsWith('/api/')) {
         if (await this.serveClient(request, response, url)) return
       }
@@ -437,12 +497,28 @@ export class ResearchHubRuntimeServer {
     } catch (error) {
       if (response.headersSent) { response.destroy(); return }
       this.sendError(response, error)
+    } finally {
+      if (countedRequest) this.inFlightApiRequests -= 1
+      if (reservedKnowledgeSwitch) this.settingsChanging = false
     }
   }
 
   private isMutation(method: string | undefined, pathname: string): boolean {
     if (method !== 'POST' && method !== 'PUT' && method !== 'PATCH' && method !== 'DELETE') return false
     return pathname.startsWith('/api/')
+  }
+
+  private isModelDependentCommand(pathname: string): boolean {
+    const safeCommands = new Set([
+      '/api/settings', '/api/settings/model', '/api/settings/knowledge-base',
+      '/api/conversations/new', '/api/conversation/new', '/api/conversations/switch', '/api/conversation/switch',
+      '/api/conversations/abort', '/api/conversation/abort',
+      '/api/attachments', '/api/attachments/upload',
+      '/api/knowledge/search', '/api/search-knowledge', '/api/knowledge/object', '/api/knowledge/get',
+      '/api/research/source-library/search', '/api/workflows/cancel',
+    ])
+    if (safeCommands.has(pathname) || /^\/api\/workflows\/[^/]+\/cancel$/.test(pathname)) return false
+    return true
   }
 
   private async serveClient(request: IncomingMessage, response: ServerResponse, url: URL): Promise<boolean> {
@@ -501,6 +577,9 @@ export class ResearchHubRuntimeServer {
   private async route(request: IncomingMessage, response: ServerResponse, url: URL): Promise<void> {
     const method = request.method ?? 'GET'
     const path = url.pathname
+    if (method === 'GET' && path === '/api/settings') { await this.sendJson(response, 200, await this.settingsResponse()); return }
+    if (method === 'POST' && path === '/api/settings/knowledge-base') { await this.changeKnowledgeBase(request, response); return }
+    if (method === 'POST' && path === '/api/settings/model') { await this.changeModel(request, response); return }
     if (method === 'GET' && (path === '/api/researchhub/status' || path === '/api/status')) { await this.sendJson(response, 200, await this.status()) ; return }
     if (method === 'GET' && path === '/api/theme-framework/reviews') {
       if ([...url.searchParams.keys()].some((key) => key !== 'limit')) throw new ApplicationServiceError('invalid_input', 'Theme Framework reviews query contains unsupported fields')
@@ -788,6 +867,139 @@ export class ResearchHubRuntimeServer {
     let knowledgeError: { readonly code: string; readonly error: string } | undefined
     try { knowledgeBase = await this.runtime!.knowledgeService.status(); openReviewCases = await this.runtime!.reviewService.countOpenReviewCases() } catch (error) { knowledgeError = safeError(error) }
     await this.sendJson(response, 200, { runtime: this.runtimeInfo, origin: this.runtimeInfo!.origin, runtimeToken: this.runtimeInfo!.runtimeToken, session, conversations, ...(knowledgeBase === undefined ? {} : { knowledgeBase }), ...(openReviewCases === undefined ? {} : { openReviewCases }), ...(knowledgeError === undefined ? {} : { knowledgeError }) })
+  }
+
+  private async settingsResponse(): Promise<unknown> {
+    const cwd = this.options.cwd ?? process.cwd()
+    this.knowledgeBaseCatalog = await discoverKnowledgeBases({ cwd, workspaceRoot: this.runtime!.workspaceRoot, configuredRoot: this.options.knowledgeBaseCatalogRoot ?? configuredKnowledgeBaseCatalogRoot(cwd), explicitlyMountedRoot: this.explicitlyConfiguredKnowledgeBaseRoot() })
+    const sessionModel = this.settings.model ?? this.sessionState().model
+    const model = sessionModel ?? { provider: '', modelId: '' }
+    const knowledgeBase = this.runtime!.mountedKnowledgeBaseRoot === undefined ? undefined : await this.runtime!.knowledgeService.status().catch(() => undefined)
+    const models = await listReasoningModelCandidates(this.runtime!.modelRuntime)
+    return {
+      revision: this.settings.revision,
+      model,
+      models,
+      ...(knowledgeBase === undefined ? {} : { knowledgeBase }),
+      knowledgeBases: this.knowledgeBaseCatalog.map((choice) => this.publicKnowledgeBase(choice)),
+      ...(this.knowledgeBaseSelectionError === undefined ? {} : { knowledgeBaseError: this.knowledgeBaseSelectionError }),
+      ...(this.modelSelectionError === undefined ? {} : { modelError: this.modelSelectionError }),
+    }
+  }
+
+  private publicKnowledgeBase(choice: ResolvedKnowledgeBase): { readonly knowledgeBaseId: string; readonly schemaVersion: string; readonly status: string; readonly revision: number } {
+    return { knowledgeBaseId: choice.knowledgeBaseId, schemaVersion: choice.schemaVersion, status: choice.status, revision: choice.revision }
+  }
+
+  private async changeKnowledgeBase(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const body = await this.readJson(request)
+    if (Object.keys(body).some((field) => field !== 'knowledgeBaseId')) throw new ApplicationServiceError('invalid_input', 'Knowledge Base settings accept only knowledgeBaseId')
+    const requestedId = Object.prototype.hasOwnProperty.call(body, 'knowledgeBaseId') ? body.knowledgeBaseId : null
+    if (requestedId !== null && typeof requestedId !== 'string') throw new ApplicationServiceError('invalid_input', 'knowledgeBaseId must be a catalog identifier or null')
+    if (!this.ownsRuntime) throw new ApplicationServiceError('conflict', 'Knowledge Base selection is unavailable for a caller-owned Runtime')
+    this.assertSettingsChangeAllowed('Knowledge Base')
+
+    const cwd = this.options.cwd ?? process.cwd()
+    const catalog = await discoverKnowledgeBases({ cwd, workspaceRoot: this.runtime!.workspaceRoot, configuredRoot: this.options.knowledgeBaseCatalogRoot ?? configuredKnowledgeBaseCatalogRoot(cwd), explicitlyMountedRoot: this.explicitlyConfiguredKnowledgeBaseRoot() })
+    const target = requireKnowledgeBaseChoice(catalog, requestedId)
+    const currentRoot = this.runtime!.mountedKnowledgeBaseRoot
+    const canonicalCurrentRoot = currentRoot === undefined ? undefined : await realpath(currentRoot).catch(() => resolve(currentRoot))
+    if (target?.root.toLocaleLowerCase() === canonicalCurrentRoot?.toLocaleLowerCase() || (target === undefined && currentRoot === undefined)) {
+      const persisted = await writeRuntimeSettings(cwd, { ...this.settings, revision: this.settings.revision + 1, knowledgeBaseId: requestedId as string | null })
+      this.settings = persisted
+      this.knowledgeBaseCatalog = catalog
+      this.knowledgeBaseSelectionError = undefined
+      await this.sendJson(response, 200, await this.settingsResponse())
+      return
+    }
+
+    const currentRuntime = this.runtime!
+    const selected = this.modelSelectionError ? null : this.settings.model
+    let activeModel = this.options.model
+    if (selected === undefined && this.modelSelectionError === undefined) {
+      const currentSelection = this.sessionState().model
+      if (currentSelection) activeModel = currentRuntime.modelRuntime.getModel(currentSelection.provider, currentSelection.modelId)
+    }
+    let candidateRuntime: ResearchHubApplicationRuntime | undefined
+    let candidateUnsubscribe: (() => void) | undefined
+    try {
+      candidateRuntime = await this.createApplicationRuntime(target?.root, activeModel, selected ?? null, false)
+      const nextAttachmentService = new AttachmentService({ workspaceRoot: candidateRuntime.workspaceRoot, forbiddenRoot: candidateRuntime.mountedKnowledgeBaseRoot, maxBytes: DEFAULT_MAX_ATTACHMENT_BYTES })
+      if (candidateRuntime.mountedKnowledgeBaseRoot !== undefined) await nextAttachmentService.assertCompatibleWithKnowledgeBase(candidateRuntime.mountedKnowledgeBaseRoot)
+      const stagedRuntime = candidateRuntime
+      candidateUnsubscribe = stagedRuntime.sessionRuntime.subscribeClientEvents((event) => { if (this.runtime === stagedRuntime) this.eventStream.publish(event) })
+      const persisted = await writeRuntimeSettings(cwd, { ...this.settings, revision: this.settings.revision + 1, knowledgeBaseId: requestedId as string | null })
+
+      try { this.unsubscribeSessionEvents?.() } catch { /* the staged subscription is already ready */ }
+      this.runtime = candidateRuntime
+      candidateRuntime = undefined
+      this.attachmentService = nextAttachmentService
+      this.knowledgeBaseCatalog = catalog
+      this.knowledgeBaseSelectionError = undefined
+      this.settings = persisted
+      this.unsubscribeSessionEvents = candidateUnsubscribe
+      candidateUnsubscribe = undefined
+      try { await currentRuntime.close() } catch { /* The replacement Runtime is active; preserve the completed mount change. */ }
+      if (this.options.startDailyScheduler !== false) { try { this.runtime.startDailyScheduler() } catch { /* the committed Runtime remains active; scheduler failure does not roll back settings */ } }
+    } catch (error) {
+      try { candidateUnsubscribe?.() } catch { /* preserve the original replacement error */ }
+      if (candidateRuntime) {
+        try { await candidateRuntime.close() } catch { /* preserve the original replacement error */ }
+      }
+      throw error
+    }
+    await this.sendJson(response, 200, await this.settingsResponse())
+  }
+
+  private assertSettingsChangeAllowed(label: string): void {
+    if (!this.ownsRuntime) throw new ApplicationServiceError('conflict', `${label} selection is unavailable for a caller-owned Runtime`)
+    if (this.inFlightApiRequests > 0 || this.backgroundOperations.size > 0 || this.runtime!.workflowService.hasActiveRuns()) throw new ApplicationServiceError('conflict', `${label} cannot change while a request or workflow is active`)
+    const session = this.sessionState()
+    if (session.isStreaming || session.pendingMessageCount > 0) throw new ApplicationServiceError('conflict', `${label} cannot change while a conversation is active`)
+  }
+
+  private async changeModel(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const body = await this.readJson(request)
+    if (Object.keys(body).some((field) => !['provider', 'modelId'].includes(field)) || typeof body.provider !== 'string' || typeof body.modelId !== 'string') throw new ApplicationServiceError('invalid_input', 'Model settings require provider and modelId')
+    this.assertSettingsChangeAllowed('Model')
+    const selection = { provider: body.provider, modelId: body.modelId }
+    let model
+    try { model = await validateReasoningModelSelection(this.runtime!.modelRuntime, selection) }
+    catch (error) {
+      if (error instanceof ReasoningModelSelectionError) throw new ApplicationServiceError(error.code === 'invalid_input' ? 'invalid_input' : 'conflict', error.message)
+      throw error
+    }
+    if (!this.ownsRuntime) throw new ApplicationServiceError('conflict', 'Model selection is unavailable for a caller-owned Runtime')
+    const currentRuntime = this.runtime!
+    const same = this.modelSelectionError === undefined && this.settings.model?.provider === selection.provider && this.settings.model.modelId === selection.modelId && this.sessionState().model?.provider === selection.provider && this.sessionState().model?.modelId === selection.modelId
+    if (same) {
+      this.settings = await writeRuntimeSettings(this.options.cwd ?? process.cwd(), { ...this.settings, revision: this.settings.revision + 1, model: selection })
+      this.modelSelectionError = undefined
+      await this.sendJson(response, 200, await this.settingsResponse())
+      return
+    }
+    let candidateRuntime: ResearchHubApplicationRuntime | undefined
+    let candidateUnsubscribe: (() => void) | undefined
+    try {
+      candidateRuntime = await this.createApplicationRuntime(currentRuntime.mountedKnowledgeBaseRoot, model, selection, false, true)
+      const stagedRuntime = candidateRuntime
+      candidateUnsubscribe = stagedRuntime.sessionRuntime.subscribeClientEvents((event) => { if (this.runtime === stagedRuntime) this.eventStream.publish(event) })
+      const persisted = await writeRuntimeSettings(this.options.cwd ?? process.cwd(), { ...this.settings, revision: this.settings.revision + 1, model: selection })
+      try { this.unsubscribeSessionEvents?.() } catch { /* the staged subscription is ready */ }
+      this.runtime = candidateRuntime
+      candidateRuntime = undefined
+      this.unsubscribeSessionEvents = candidateUnsubscribe
+      candidateUnsubscribe = undefined
+      this.settings = persisted
+      this.modelSelectionError = undefined
+      try { await currentRuntime.close() } catch { /* the new model runtime is active */ }
+      if (this.options.startDailyScheduler !== false) { try { this.runtime.startDailyScheduler() } catch { /* the committed Runtime remains active; scheduler failure does not roll back settings */ } }
+    } catch (error) {
+      try { candidateUnsubscribe?.() } catch { /* preserve the original error */ }
+      if (candidateRuntime) { try { await candidateRuntime.close() } catch { /* preserve the original error */ } }
+      throw error
+    }
+    await this.sendJson(response, 200, await this.settingsResponse())
   }
 
   private async status(): Promise<unknown> { return { knowledgeBase: await this.runtime!.knowledgeService.status(), openReviewCases: await this.runtime!.reviewService.countOpenReviewCases() } }

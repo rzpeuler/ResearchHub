@@ -15,6 +15,24 @@ describe('RuntimeClient', () => {
     expect(JSON.stringify(document.body)).not.toContain('a'.repeat(64))
   })
 
+  it('reads and updates app settings through the token-protected settings API', async () => {
+    const settings = { revision: 3, model: { provider: 'openai-codex', modelId: 'gpt-6-luna' }, models: [{ provider: 'openai-codex', modelId: 'gpt-6-luna', name: 'GPT-6 Luna', available: true }], knowledgeBases: [{ knowledgeBaseId: 'kb-1', schemaVersion: '0.4', status: 'active', revision: 7 }] }
+    const calls: { path: string; init?: RequestInit }[] = []
+    const client = new RuntimeClient(async (input, init) => {
+      calls.push({ path: String(input), init })
+      return calls.length === 1 ? json(bootstrap) : json(settings)
+    })
+    await client.bootstrap()
+    expect(await client.getSettings()).toEqual(settings)
+    expect(await client.setModel('openai-codex', 'gpt-6-luna')).toEqual(settings)
+    expect(await client.setKnowledgeBase('kb-1')).toEqual(settings)
+    expect(calls.map(({ path }) => path)).toEqual(['/api/bootstrap', '/api/settings', '/api/settings/model', '/api/settings/knowledge-base'])
+    expect(JSON.parse(String(calls[2]?.init?.body))).toEqual({ provider: 'openai-codex', modelId: 'gpt-6-luna' })
+    expect(JSON.parse(String(calls[3]?.init?.body))).toEqual({ knowledgeBaseId: 'kb-1' })
+    expect(new Headers(calls[2]?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('a'.repeat(64))
+    expect(new Headers(calls[3]?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('a'.repeat(64))
+  })
+
   it('projects only normalized SSE event fields and ignores raw payloads', () => {
     const event = parseClientEvent(JSON.stringify({ eventId: 'e1', conversationId: 'c1', timestamp: 'now', type: 'tool.updated', name: 'search_knowledge', summary: 'Knowledge search', args: { secret: 'hidden' }, result: 'raw' }))
     expect(event).toEqual({ eventId: 'e1', conversationId: 'c1', timestamp: 'now', type: 'tool.updated', name: 'search_knowledge', summary: 'Knowledge search' })

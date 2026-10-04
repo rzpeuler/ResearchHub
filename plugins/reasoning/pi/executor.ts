@@ -1,6 +1,7 @@
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import type { Api, AssistantMessage, Context, Model } from '@earendil-works/pi-ai'
 import { randomUUID } from 'node:crypto'
+import { Ajv, type ValidateFunction } from 'ajv'
 import { ReasoningExecutorError } from '../errors.ts'
 import { validateReasoningCapabilities } from '../capabilities.ts'
 import type {
@@ -13,12 +14,14 @@ import type {
 
 const DEFAULT_TIMEOUT_MS = 60_000
 const DEFAULT_OUTPUT_LIMIT = 256_000
+const MAX_OUTPUT_SCHEMA_BYTES = 64_000
 const DEFAULT_CAPABILITIES: ReasoningCapabilities = Object.freeze({
   maxContextTokens: 128_000,
   maxOutputTokens: 16_384,
   structuredOutputSupport: true,
   maxConcurrency: 4,
 })
+const outputSchemaValidator = new Ajv({ allErrors: true, strict: false, validateFormats: false })
 
 export interface PiCompletionOptions {
   readonly signal: AbortSignal
@@ -143,6 +146,7 @@ export class PiReasoningExecutor implements ReasoningExecutor {
         })
       }
       const output = parseJsonOutput(rawOutput, request.operation, operationId)
+      validateOutputContract(output, request.outputContract, request.operation, operationId)
       return { operation: request.operation, operationId, output, rawOutput, durationMs: Date.now() - started }
     } catch (error) {
       if (error instanceof ReasoningExecutorError) throw error
@@ -277,6 +281,49 @@ function parseJsonOutput(rawOutput: string, operation: ReasoningOperation, opera
       cause: error,
     })
   }
+}
+
+function validateOutputContract(output: unknown, outputContract: unknown, operation: ReasoningOperation, operationId: string): void {
+  // JSON Schema contracts are validated locally after JSON parsing. Legacy
+  // prose-shaped contracts remain prompt guidance and retain their existing
+  // operation-specific Workflow validators; runtime metadata does not claim a
+  // provider-enforced constraint for either path.
+  let schema: Record<string, unknown> | undefined
+  try {
+    schema = jsonSchemaFromContract(outputContract)
+    if (schema === undefined) return
+    const serialized = JSON.stringify(schema)
+    if (serialized === undefined || Buffer.byteLength(serialized, 'utf8') > MAX_OUTPUT_SCHEMA_BYTES) throw new Error('JSON Schema exceeds the configured size limit')
+    const validator: ValidateFunction = outputSchemaValidator.compile(schema)
+    if (validator(output)) return
+    const issueCount = validator.errors?.length ?? 1
+    throw new ReasoningExecutorError('reasoning_output_invalid', `Pi reasoning output did not satisfy its JSON Schema contract (${issueCount} validation issue${issueCount === 1 ? '' : 's'})`, { operation, operationId })
+  } catch (error) {
+    if (error instanceof ReasoningExecutorError) throw error
+    throw new ReasoningExecutorError('reasoning_configuration_invalid', 'Pi reasoning output contract is not a supported JSON Schema', { operation, operationId, cause: error })
+  }
+}
+
+function jsonSchemaFromContract(contract: unknown): Record<string, unknown> | undefined {
+  if (!isPlainRecord(contract)) return undefined
+  const keys = Object.keys(contract)
+  let schema: unknown = contract
+  if (contract.format !== undefined || contract.root !== undefined || contract.schema !== undefined) {
+    if (keys.length !== 4 || keys.some((key) => !['format', 'root', 'additionalProperties', 'schema'].includes(key)) || contract.format !== 'json' || contract.root !== 'object' || contract.additionalProperties !== false || !isPlainRecord(contract.schema)) {
+      throw new Error('structured output wrapper is invalid')
+    }
+    schema = contract.schema
+  }
+  if (!isPlainRecord(schema)) return undefined
+  const schemaRecord = schema as Record<string, unknown>
+  const looksLikeSchema = typeof schemaRecord.type === 'string' || Array.isArray(schemaRecord.type) || schemaRecord.properties !== undefined || schemaRecord.items !== undefined || schemaRecord.enum !== undefined || schemaRecord.const !== undefined || schemaRecord.anyOf !== undefined || schemaRecord.oneOf !== undefined
+  return looksLikeSchema ? schemaRecord : undefined
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
 }
 
 function stringifyForPrompt(value: unknown, label: string): string {

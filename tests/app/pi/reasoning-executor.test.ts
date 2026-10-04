@@ -61,6 +61,18 @@ test('PiReasoningExecutor parses fenced structured JSON for all three operations
   }
 })
 
+test('PiReasoningExecutor fails closed when parsed JSON violates a JSON Schema output contract', async () => {
+  const schema = { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'], additionalProperties: false }
+  const valid = new PiReasoningExecutor({ capabilities, completion: async () => '{"ok":true}' })
+  assert.deepEqual((await valid.execute({ operation: 'extractKnowledge', instruction: 'valid', input: {}, outputContract: schema })).output, { ok: true })
+
+  const invalid = new PiReasoningExecutor({ capabilities, completion: async () => '{"other":true}' })
+  await assert.rejects(
+    () => invalid.execute({ operation: 'extractKnowledge', instruction: 'invalid schema result', input: {}, outputContract: schema }),
+    (error: unknown) => error instanceof ReasoningExecutorError && error.code === 'reasoning_output_invalid',
+  )
+})
+
 test('PiReasoningExecutor maps completion failures, invalid JSON, and timeout to typed errors', async () => {
   const failure = new PiReasoningExecutor({ capabilities, completion: async () => { throw new Error('fixture failure') } })
   await assert.rejects(

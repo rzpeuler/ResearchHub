@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactElement } from 'react'
-import { RuntimeClient, RuntimeClientError, type AttachmentRef, type ClientEvent, type ConversationMessage, type ConversationSummary, type DailyBriefReport, type DailyBriefSummary, type KnowledgeBaseStatus, type KnowledgeDirectoryItem, type RawDocumentAcceptanceV04, type RawDocumentCandidateGroupV04, type RawDocumentPreviewV04, type RawDocumentPreviewPollV04, type ResearchBundleSummary, type ResearchDispatchResponse, type ResearchExecutionSummary, type ResearchReport, type ResearchReportSummary, type ResearchStartResponse, type ReviewDetail, type ReviewListResponse, type SessionState, type SourceLibraryHit, type ThesisCriterionConfirmResult, type ThesisCriterionOrigin, type ThesisCriterionPreview, type ThesisDecision, type ThesisQueryDetail, type ThesisQuerySummary, type ThesisReviewScope, type ThemeFrameworkDecision, type ThemeFrameworkRefreshResult, type ThemeFrameworkReviewCandidate, type ThemeFrameworkReviewResponse, type ThemeFrameworkReviewSummary, type ThemeScopeImpactInboxRecord, type ThemeScopeImpactProposal, type WorkflowDefinition, type WorkflowRun } from './api/runtime-client'
+import { RuntimeClient, RuntimeClientError, type AttachmentRef, type ClientEvent, type ConversationMessage, type ConversationSummary, type DailyBriefReport, type DailyBriefSummary, type KnowledgeBaseStatus, type KnowledgeDirectoryItem, type RawDocumentAcceptanceV04, type RawDocumentCandidateGroupV04, type RawDocumentPreviewV04, type RawDocumentPreviewPollV04, type ResearchBundleSummary, type ResearchDispatchResponse, type ResearchExecutionSummary, type ResearchReport, type ResearchReportSummary, type ResearchStartResponse, type ReviewDetail, type ReviewListResponse, type RuntimeSettings, type SessionState, type SourceLibraryHit, type ThesisCriterionConfirmResult, type ThesisCriterionOrigin, type ThesisCriterionPreview, type ThesisDecision, type ThesisQueryDetail, type ThesisQuerySummary, type ThesisReviewScope, type ThemeFrameworkDecision, type ThemeFrameworkRefreshResult, type ThemeFrameworkReviewCandidate, type ThemeFrameworkReviewResponse, type ThemeFrameworkReviewSummary, type ThemeScopeImpactInboxRecord, type ThemeScopeImpactProposal, type WorkflowDefinition, type WorkflowRun } from './api/runtime-client'
 import { startWorkflowPolling, terminalWorkflowStatuses } from './app/workflow-polling'
 import { KnowledgeGraphPage } from './app/graph/KnowledgeGraphPage'
 import { ResearchRunPage } from './app/run/ResearchRunPage'
@@ -38,11 +38,27 @@ function safeStructured(value: unknown, depth = 0): string {
   return '[unavailable]'
 }
 
-interface TopBarProps { readonly route: Route; readonly knowledgeBase?: KnowledgeBaseStatus; readonly onNavigate: (route: Route) => void }
-function TopBar({ route, knowledgeBase, onNavigate }: TopBarProps): ReactElement {
+interface ApplicationSidebarProps { readonly route: Route; readonly knowledgeBase?: KnowledgeBaseStatus; readonly settings?: RuntimeSettings; readonly settingsError?: string; readonly settingsBusy: boolean; readonly interactionsDisabled: boolean; readonly onNavigate: (route: Route) => void; readonly onLoadSettings: () => void; readonly onModelChange: (value: string) => void; readonly onKnowledgeBaseChange: (value: string) => void }
+function ApplicationSidebar({ route, knowledgeBase, settings, settingsError, settingsBusy, interactionsDisabled, onNavigate, onLoadSettings, onModelChange, onKnowledgeBaseChange }: ApplicationSidebarProps): ReactElement {
   const { language, setLanguage, t } = useLanguage()
-  const links: readonly [Route, string, string][] = [['research', '研究', 'Research'], ['briefs', '每日简报', 'Daily Briefs'], ['reports', '研究报告', 'Reports'], ['bundles', '研究资料包', 'Research Bundles'], ['run', '运行研究', 'Run Research'], ['graph', '知识图谱', 'Knowledge Graph'], ['theses', '投资论点', 'Theses'], ['reviews', '审核', 'Reviews']]
-  return <header className="topbar"><div className="topbar-left"><div className="brand"><span className="brand-mark">RH</span><span className="brand-name">ResearchHub</span></div><nav className="primary-nav" aria-label={t('主导航', 'Primary navigation')}><ul>{links.map(([item, zh, en]) => <li key={item}><a className={route === item ? 'nav-link active' : 'nav-link'} href={routePath(item)} aria-current={route === item ? 'page' : undefined} onClick={(event) => { event.preventDefault(); onNavigate(item) }}>{t(zh, en)}</a></li>)}</ul></nav></div><div className="topbar-tools"><div className="runtime-status"><span className="status-dot" /> <span>{t('本地运行时', 'Local Runtime')}</span><span className="status-sub">{knowledgeBase ? t('知识库已挂载', 'KB mounted') : t('未挂载知识库', 'No KB mounted')}</span></div><div className="language-switch" role="group" aria-label={t('界面语言', 'Interface language')}><button type="button" aria-pressed={language === 'zh-CN'} onClick={() => setLanguage('zh-CN')}>中文</button><button type="button" aria-pressed={language === 'en'} onClick={() => setLanguage('en')}>EN</button></div></div></header>
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 900px)').matches)
+  const links: readonly [Route, string, string, string][] = [['research', '研究', 'Research', 'R'], ['briefs', '每日简报', 'Daily Briefs', 'B'], ['reports', '研究报告', 'Reports', 'P'], ['bundles', '研究资料包', 'Research Bundles', 'D'], ['run', '运行研究', 'Run Research', '▶'], ['graph', '知识图谱', 'Knowledge Graph', 'G'], ['theses', '投资论点', 'Theses', 'T'], ['reviews', '审核', 'Reviews', '✓']]
+  const currentModelValue = settings?.model.provider && settings.model.modelId ? `${settings.model.provider}/${settings.model.modelId}` : ''
+  const currentModelListed = Boolean(currentModelValue && settings?.models.some((model) => `${model.provider}/${model.modelId}` === currentModelValue))
+  const ensureSettings = (): void => { if (!settings && !settingsBusy) onLoadSettings() }
+  return <aside className={`app-sidebar ${collapsed ? 'collapsed' : ''}`} aria-label={t('应用侧栏', 'Application sidebar')}>
+    <div className="sidebar-brand"><a className="brand" href="/research" onClick={(event) => { event.preventDefault(); onNavigate('research') }} aria-label="ResearchHub"><span className="brand-mark">RH</span><span className="brand-name">ResearchHub</span></a><button className="sidebar-collapse" type="button" aria-label={collapsed ? t('展开导航', 'Expand navigation') : t('折叠导航', 'Collapse navigation')} aria-expanded={!collapsed} onClick={() => setCollapsed((value) => !value)}>{collapsed ? '»' : '«'}</button></div>
+    <nav className="primary-nav" aria-label={t('主导航', 'Primary navigation')}><ul>{links.map(([item, zh, en, icon]) => <li key={item}><a className={route === item ? 'nav-link active' : 'nav-link'} href={routePath(item)} title={t(zh, en)} aria-label={t(zh, en)} aria-current={route === item ? 'page' : undefined} onClick={(event) => { event.preventDefault(); onNavigate(item) }}><span className="nav-icon" aria-hidden="true">{icon}</span><span className="nav-label">{t(zh, en)}</span></a></li>)}</ul></nav>
+    <div className="sidebar-bottom">
+      <div className="sidebar-control"><label htmlFor="global-model-select">{t('全局模型', 'Global model')}</label><select id="global-model-select" aria-label={t('全局模型', 'Global model')} value={currentModelValue} disabled={!settings || settingsBusy || interactionsDisabled} onFocus={ensureSettings} onChange={(event) => onModelChange(event.target.value)}>{!settings ? <option value="">{settingsBusy ? t('正在加载…', 'Loading…') : t('加载模型…', 'Load models…')}</option> : null}{settings && !currentModelValue ? <option value="" disabled>{t('当前模型未配置', 'No model is configured')}</option> : null}{settings && currentModelValue && !currentModelListed ? <option value={currentModelValue} disabled>{t('当前模型不在目录中', 'Current model missing from catalog')} · {settings.model.provider}/{settings.model.modelId}</option> : null}{settings?.models.map((model) => { const value = `${model.provider}/${model.modelId}`; return <option key={value} value={value} disabled={!model.available} title={model.unavailableReason}>{model.name} · {model.provider}{model.available ? '' : ` — ${model.unavailableReason ?? t('不可用', 'Unavailable')}`}</option> })}</select>{settings?.model.provider && settings.model.modelId ? <small title={`${settings.model.provider}/${settings.model.modelId}`}>{settings.model.provider} · {settings.model.modelId}</small> : null}{settings?.modelError ? <small className="sidebar-settings-error" role="status">{settings.modelError}</small> : null}</div>
+      <div className="sidebar-control"><label htmlFor="knowledge-base-select">{t('知识库', 'Knowledge Base')}</label><select id="knowledge-base-select" aria-label={t('挂载知识库', 'Mounted Knowledge Base')} value={settings?.knowledgeBase?.knowledgeBaseId ?? ''} disabled={!settings || settingsBusy || interactionsDisabled} onFocus={ensureSettings} onChange={(event) => onKnowledgeBaseChange(event.target.value)}><option value="">{t('未挂载', 'Not mounted')}</option>{settings?.knowledgeBases.map((item) => <option key={item.knowledgeBaseId} value={item.knowledgeBaseId}>{item.knowledgeBaseId} · v{item.schemaVersion} · r{item.revision}</option>)}</select><small>{knowledgeBase ? `${t('已挂载', 'Mounted')} · ${knowledgeBase.knowledgeBaseId}` : t('当前无知识库', 'No Knowledge Base')}</small>{settings?.knowledgeBaseError ? <small className="sidebar-settings-error" role="alert">{settings.knowledgeBaseError}</small> : null}</div>
+      {(settingsError || settingsBusy) ? <p className={settingsError ? 'sidebar-settings-error' : 'sidebar-settings-hint'} role="status">{settingsError ?? t('正在加载配置…', 'Loading settings…')}</p> : null}
+      <button className={`sidebar-settings-button ${settingsOpen ? 'active' : ''}`} type="button" aria-expanded={settingsOpen} onClick={() => { const next = !settingsOpen; setSettingsOpen(next); if (next) ensureSettings() }}><span className="nav-icon" aria-hidden="true">⚙</span><span>{t('设置', 'Settings')}</span></button>
+      {settingsOpen ? <section className="sidebar-language" aria-label={t('设置', 'Settings')}><span>{t('界面语言', 'Interface language')}</span><div className="language-switch" role="group" aria-label={t('界面语言', 'Interface language')}><button type="button" aria-pressed={language === 'zh-CN'} onClick={() => setLanguage('zh-CN')}>中文</button><button type="button" aria-pressed={language === 'en'} onClick={() => setLanguage('en')}>EN</button></div></section> : null}
+      <div className="runtime-status"><span className="status-dot" /><span>{t('本地运行时', 'Local Runtime')}</span><span className="status-sub">{knowledgeBase ? t('知识库已挂载', 'KB mounted') : t('未挂载知识库', 'No KB mounted')}</span></div>
+    </div>
+  </aside>
 }
 
 interface ReviewsPageProps { readonly knowledgeBase?: KnowledgeBaseStatus; readonly reviews?: ReviewListResponse; readonly reviewDetail?: ReviewDetail; readonly reviewsBusy: boolean; readonly onSelect: (reviewCaseId: string) => void; readonly onCloseDetail: () => void }
@@ -770,6 +786,9 @@ function AppContent(): ReactElement {
   const [conversations, setConversations] = useState<readonly ConversationSummary[]>([])
   const [messages, setMessages] = useState<readonly ConversationMessage[]>([])
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseStatus>()
+  const [settings, setSettings] = useState<RuntimeSettings>()
+  const [settingsError, setSettingsError] = useState('')
+  const [settingsBusy, setSettingsBusy] = useState(false)
   const [openReviewCases, setOpenReviewCases] = useState(0)
   const [streaming, setStreaming] = useState(false)
   const [streamText, setStreamText] = useState('')
@@ -819,9 +838,12 @@ function AppContent(): ReactElement {
   const previewGeneration = useRef(0)
   const workflowRef = useRef<WorkflowRun | undefined>(undefined)
   workflowRef.current = workflow
+  const requestEpoch = useRef(0)
 
   const syncCurrent = useCallback(async (): Promise<void> => {
+    const epoch = requestEpoch.current
     const [current, messageResult, list] = await Promise.all([client.currentSession(), client.messages(), client.listConversations()])
+    if (epoch !== requestEpoch.current) return
     latestConversation.current = current.conversationId
     setSession(current)
     setMessages(messageResult.messages)
@@ -837,8 +859,10 @@ function AppContent(): ReactElement {
     let cancelled = false
     void (async () => {
       try {
-        const [bootstrap, definitions] = await Promise.all([client.bootstrap(), client.listWorkflowDefinitions()])
+        const bootstrap = await client.bootstrap()
+        const [definitions, loadedSettings] = await Promise.all([client.listWorkflowDefinitions(), client.getSettings().catch((caught: unknown) => { if (!cancelled) setSettingsError(errorText(caught)); return undefined })])
         if (cancelled) return
+        setSettings(loadedSettings)
         setWorkflowDefinitions(definitions)
         setSession(bootstrap.session); latestConversation.current = bootstrap.session.conversationId; setConversations(bootstrap.conversations); setKnowledgeBase(bootstrap.knowledgeBase); setOpenReviewCases(bootstrap.openReviewCases ?? 0)
         await syncCurrent()
@@ -848,28 +872,74 @@ function AppContent(): ReactElement {
     return () => { cancelled = true; client.clearToken() }
   }, [client, syncCurrent])
 
+  const loadSettings = async (): Promise<void> => {
+    setSettingsBusy(true); setSettingsError('')
+    try { setSettings(await client.getSettings()) } catch (caught) { setSettingsError(errorText(caught)) }
+    finally { setSettingsBusy(false) }
+  }
+
+  const clearKnowledgeScopedState = (): void => {
+    requestEpoch.current += 1; previewGeneration.current += 1
+    latestConversation.current = ''
+    setKnowledgeBase(undefined); setOpenReviewCases(0); setSession(undefined); setConversations([]); setMessages([]); setStreaming(false); setThinking(false); setStreamText(''); setToolEvents([]); setQueue({ steering: 0, followUp: 0 }); setComposer('')
+    setAttachment(undefined); setAttachmentBusy(false); setAttachmentUiVersion((version) => version + 1); setPreview(undefined); setPreviewBusy(false); setAcceptanceBusy(false); setSelectedCandidates(new Set()); setAcceptance(undefined); setRightsForm(defaultRightsForm); setSourceForm(defaultSourceForm); setUploadStatus('')
+    setWorkflowRunId(''); setThemeFrameworkRunId(''); setThemeFrameworkRefreshInfo(undefined); setThemeFrameworkReviewRevision(0); setWorkflow(undefined); setReviews(undefined); setReviewDetail(undefined); setReviewsBusy(false); setBriefs(undefined); setSelectedBrief(undefined); setBriefsBusy(false); setReports(undefined); setSelectedReport(undefined); setReportsBusy(false); setBundles(undefined); setSelectedBundle(undefined); setBundlesBusy(false); setSourceHits([]); setSourceBusy(false); setExecutionSummary(undefined); setError('')
+  }
+
+  const refreshAfterSettingsChange = async (nextSettings: RuntimeSettings): Promise<void> => {
+    setSettings(nextSettings); setSettingsError(''); clearKnowledgeScopedState(); setLoadState('loading')
+    try {
+      const bootstrap = await client.bootstrap()
+      const [definitions, refreshedSettings] = await Promise.all([client.listWorkflowDefinitions(), client.getSettings()])
+      setSettings(refreshedSettings); setWorkflowDefinitions(definitions); setSession(bootstrap.session); latestConversation.current = bootstrap.session.conversationId; setConversations(bootstrap.conversations); setKnowledgeBase(bootstrap.knowledgeBase); setOpenReviewCases(bootstrap.openReviewCases ?? 0)
+      await syncCurrent(); setLoadState('ready')
+    } catch (caught) { setLoadError(errorText(caught)); setLoadState('error') }
+  }
+
+  const changeModel = async (value: string): Promise<void> => {
+    if (!settings || settingsBusy || busy || streaming || attachmentBusy || previewBusy || acceptanceBusy || sourceBusy || Boolean(workflowRunId && (!workflow || !terminalWorkflowStatuses.has(workflow.status)))) return
+    const slash = value.indexOf('/')
+    if (slash < 1) return
+    setSettingsBusy(true); setSettingsError('')
+    try { await refreshAfterSettingsChange(await client.setModel(value.slice(0, slash), value.slice(slash + 1))) }
+    catch (caught) { setSettingsError(errorText(caught)) }
+    finally { setSettingsBusy(false) }
+  }
+
+  const changeKnowledgeBase = async (knowledgeBaseId: string): Promise<void> => {
+    if (!settings || settingsBusy || busy || streaming || attachmentBusy || previewBusy || acceptanceBusy || sourceBusy || Boolean(workflowRunId && (!workflow || !terminalWorkflowStatuses.has(workflow.status)))) return
+    setSettingsBusy(true); setSettingsError('')
+    try { await refreshAfterSettingsChange(await client.setKnowledgeBase(knowledgeBaseId || undefined)) }
+    catch (caught) { setSettingsError(errorText(caught)) }
+    finally { setSettingsBusy(false) }
+  }
+
   useEffect(() => {
     if (loadState !== 'ready' || route !== 'reviews' || !knowledgeBase) { setReviews(undefined); setReviewDetail(undefined); return }
+    const epoch = requestEpoch.current
     setReviewsBusy(true)
-    void client.listReviews().then(setReviews).catch((caught) => setError(errorText(caught))).finally(() => setReviewsBusy(false))
+    void client.listReviews().then((items) => { if (epoch === requestEpoch.current) setReviews(items) }).catch((caught) => { if (epoch === requestEpoch.current) setError(errorText(caught)) }).finally(() => { if (epoch === requestEpoch.current) setReviewsBusy(false) })
   }, [client, knowledgeBase, loadState, route])
 
   useEffect(() => {
     if (loadState !== 'ready' || route !== 'bundles') { setBundles(undefined); setSelectedBundle(undefined); setSourceHits([]); return }
+    const epoch = requestEpoch.current
     setBundlesBusy(true); setError('')
-    void client.listResearchBundles(20).then((items) => { setBundles(items); setSelectedBundle(undefined) }).catch((caught) => setError(errorText(caught))).finally(() => setBundlesBusy(false))
+    void client.listResearchBundles(20).then((items) => { if (epoch === requestEpoch.current) { setBundles(items); setSelectedBundle(undefined) } }).catch((caught) => { if (epoch === requestEpoch.current) setError(errorText(caught)) }).finally(() => { if (epoch === requestEpoch.current) setBundlesBusy(false) })
   }, [client, loadState, route])
 
   useEffect(() => {
     if (loadState !== 'ready' || route !== 'briefs') { setBriefs(undefined); setSelectedBrief(undefined); return }
+    const epoch = requestEpoch.current
     setBriefsBusy(true); setError('')
-    void client.listDailyBriefs(20).then((items) => { setBriefs(items); setSelectedBrief(undefined) }).catch((caught) => setError(errorText(caught))).finally(() => setBriefsBusy(false))
+    void client.listDailyBriefs(20).then((items) => { if (epoch === requestEpoch.current) { setBriefs(items); setSelectedBrief(undefined) } }).catch((caught) => { if (epoch === requestEpoch.current) setError(errorText(caught)) }).finally(() => { if (epoch === requestEpoch.current) setBriefsBusy(false) })
   }, [client, loadState, route])
 
   useEffect(() => {
     if (loadState !== 'ready' || route !== 'reports') { setReports(undefined); setSelectedReport(undefined); return }
+    const epoch = requestEpoch.current
     setReportsBusy(true); setError('')
-    void client.listResearchReports(20).then((items) => { setReports(items); setSelectedReport(undefined) }).catch((caught) => setError(errorText(caught))).finally(() => setReportsBusy(false))
+    void client.listResearchReports(20).then((items) => { if (epoch === requestEpoch.current) { setReports(items); setSelectedReport(undefined) } }).catch((caught) => { if (epoch === requestEpoch.current) setError(errorText(caught)) }).finally(() => { if (epoch === requestEpoch.current) setReportsBusy(false) })
   }, [client, loadState, route])
 
   const handleEvent = useCallback((event: ClientEvent): void => {
@@ -957,15 +1027,16 @@ function AppContent(): ReactElement {
   const toggleCandidate = (candidateId: string): void => setSelectedCandidates((previous) => { const next = new Set(previous); if (next.has(candidateId)) next.delete(candidateId); else next.add(candidateId); return next })
   const clearAttachment = (): void => { if (acceptanceBusy) return; previewGeneration.current += 1; setAttachment(undefined); setPreview(undefined); setAcceptance(undefined); setSelectedCandidates(new Set()); setPreviewBusy(false); setWorkflowRunId(''); setWorkflow(undefined); setUploadStatus(''); setRightsForm(defaultRightsForm); setSourceForm(defaultSourceForm); setAttachmentUiVersion((version) => version + 1) }
   const cancelWorkflow = async (): Promise<void> => { if (!workflowRunId) return; setBusy(true); try { await client.cancelWorkflow(workflowRunId); setWorkflow(await client.workflow(workflowRunId)) } catch (caught) { setError(errorText(caught)) } finally { setBusy(false) } }
-  const selectReview = async (reviewCaseId: string): Promise<void> => { try { setReviewDetail(await client.getReview(reviewCaseId)) } catch (caught) { setError(errorText(caught)) } }
-  const selectBrief = async (reportId: string): Promise<void> => { try { setSelectedBrief(await client.getDailyBrief(reportId)) } catch (caught) { setError(errorText(caught)) } }
-  const selectReport = async (reportId: string): Promise<void> => { try { setSelectedReport(await client.getResearchReport(reportId)) } catch (caught) { setError(errorText(caught)) } }
-  const selectBundle = async (bundleId: string): Promise<void> => { try { setSelectedBundle(await client.getResearchBundle(bundleId)) } catch (caught) { setError(errorText(caught)) } }
-  const searchSources = async (query: string): Promise<void> => { setSourceBusy(true); setError(''); try { const result = await client.searchSourceLibrary(query, true); setSourceHits(result.hits) } catch (caught) { setError(errorText(caught)) } finally { setSourceBusy(false) } }
+  const selectReview = async (reviewCaseId: string): Promise<void> => { const epoch = requestEpoch.current; try { const result = await client.getReview(reviewCaseId); if (epoch === requestEpoch.current) setReviewDetail(result) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } }
+  const selectBrief = async (reportId: string): Promise<void> => { const epoch = requestEpoch.current; try { const result = await client.getDailyBrief(reportId); if (epoch === requestEpoch.current) setSelectedBrief(result) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } }
+  const selectReport = async (reportId: string): Promise<void> => { const epoch = requestEpoch.current; try { const result = await client.getResearchReport(reportId); if (epoch === requestEpoch.current) setSelectedReport(result) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } }
+  const selectBundle = async (bundleId: string): Promise<void> => { const epoch = requestEpoch.current; try { const result = await client.getResearchBundle(bundleId); if (epoch === requestEpoch.current) setSelectedBundle(result) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } }
+  const searchSources = async (query: string): Promise<void> => { const epoch = requestEpoch.current; setSourceBusy(true); setError(''); try { const result = await client.searchSourceLibrary(query, true); if (epoch === requestEpoch.current) setSourceHits(result.hits) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } finally { if (epoch === requestEpoch.current) setSourceBusy(false) } }
 
   if (loadState === 'loading') return <main className="state-screen"><div className="state-card"><span className="eyebrow">RESEARCHHUB RUNTIME</span><h1>{t('正在加载工作区', 'Loading workspace')}</h1><p>{t('正在连接本地应用运行时…', 'Connecting to the local application runtime…')}</p><div className="loader" /></div></main>
   if (loadState === 'error') return <main className="state-screen"><div className="state-card"><span className="eyebrow">RUNTIME UNAVAILABLE</span><h1>{t('ResearchHub 无法启动', 'ResearchHub could not start')}</h1><p>{loadError}</p><button onClick={() => window.location.reload()}>{t('重新加载页面', 'Reload page')}</button></div></main>
-  return <div className="app-shell"><TopBar route={route} knowledgeBase={knowledgeBase} onNavigate={navigate} />{route === 'research' ? <ResearchPage session={session} conversations={conversations} messages={messages} streaming={streaming} thinking={thinking} streamText={streamText} toolEvents={toolEvents} queue={queue} composer={composer} busy={busy} error={error} attachment={attachment} attachmentUiVersion={attachmentUiVersion} attachmentBusy={attachmentBusy} preview={preview} previewBusy={previewBusy} acceptanceBusy={acceptanceBusy} selectedCandidates={selectedCandidates} acceptance={acceptance} rightsForm={rightsForm} sourceForm={sourceForm} uploadStatus={uploadStatus} workflowRunId={workflowRunId} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} client={client} workflow={workflow} knowledgeBase={knowledgeBase} openReviewCases={openReviewCases} contextPanel={contextPanel} workflowDefinitions={workflowDefinitions} selectedWorkflowId={selectedWorkflowId} setSelectedWorkflowId={setSelectedWorkflowId} contextPolicy={contextPolicy} persistencePolicy={persistencePolicy} setContextPolicy={setContextPolicy} setPersistencePolicy={setPersistencePolicy} executionSummary={executionSummary} setComposer={setComposer} setContextPanel={setContextPanel} newConversation={() => void newConversation()} switchConversation={(id) => void switchConversation(id)} runCommand={(operation) => void runCommand(operation)} abort={() => void abort()} upload={(file) => void upload(file)} toggleCandidate={toggleCandidate} setRightsForm={setRightsForm} setSourceForm={setSourceForm} startPreview={() => void startRawDocumentPreview()} acceptCandidates={() => void acceptRawDocumentCandidates()} clearAttachment={clearAttachment} cancelWorkflow={() => void cancelWorkflow()} dismissError={() => setError('')} onNavigate={navigate} /> : route === 'briefs' ? <BriefsPage briefs={briefs} selected={selectedBrief} busy={briefsBusy} error={error} onSelect={(id) => void selectBrief(id)} /> : route === 'reports' ? <ReportsPage reports={reports} selected={selectedReport} busy={reportsBusy} error={error} onSelect={(id) => void selectReport(id)} /> : route === 'bundles' ? <ResearchBundlesPage bundles={bundles} selected={selectedBundle} busy={bundlesBusy} error={error} onSelect={(id) => void selectBundle(id)} sourceHits={sourceHits} sourceBusy={sourceBusy} onSearchSources={(query) => void searchSources(query)} /> : route === 'run' ? <ResearchRunPage client={client} onLaunched={onResearchLaunched} /> : route === 'graph' ? <KnowledgeGraphPage knowledgeBase={knowledgeBase} client={client} /> : route === 'theses' ? <ThesisLifecyclePage client={client} knowledgeBase={knowledgeBase} /> : <ReviewsPage knowledgeBase={knowledgeBase} reviews={reviews} reviewDetail={reviewDetail} reviewsBusy={reviewsBusy} onSelect={(id) => void selectReview(id)} onCloseDetail={() => setReviewDetail(undefined)} />}</div>
+  const configurationBlocked = busy || streaming || attachmentBusy || previewBusy || acceptanceBusy || sourceBusy || Boolean(workflowRunId && (!workflow || !terminalWorkflowStatuses.has(workflow.status)))
+  return <div className="app-shell"><ApplicationSidebar route={route} knowledgeBase={knowledgeBase} settings={settings} settingsError={settingsError} settingsBusy={settingsBusy} interactionsDisabled={configurationBlocked} onNavigate={navigate} onLoadSettings={() => void loadSettings()} onModelChange={(value) => void changeModel(value)} onKnowledgeBaseChange={(value) => void changeKnowledgeBase(value)} /><div className="app-main">{route === 'research' ? <ResearchPage session={session} conversations={conversations} messages={messages} streaming={streaming} thinking={thinking} streamText={streamText} toolEvents={toolEvents} queue={queue} composer={composer} busy={busy} error={error} attachment={attachment} attachmentUiVersion={attachmentUiVersion} attachmentBusy={attachmentBusy} preview={preview} previewBusy={previewBusy} acceptanceBusy={acceptanceBusy} selectedCandidates={selectedCandidates} acceptance={acceptance} rightsForm={rightsForm} sourceForm={sourceForm} uploadStatus={uploadStatus} workflowRunId={workflowRunId} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} client={client} workflow={workflow} knowledgeBase={knowledgeBase} openReviewCases={openReviewCases} contextPanel={contextPanel} workflowDefinitions={workflowDefinitions} selectedWorkflowId={selectedWorkflowId} setSelectedWorkflowId={setSelectedWorkflowId} contextPolicy={contextPolicy} persistencePolicy={persistencePolicy} setContextPolicy={setContextPolicy} setPersistencePolicy={setPersistencePolicy} executionSummary={executionSummary} setComposer={setComposer} setContextPanel={setContextPanel} newConversation={() => void newConversation()} switchConversation={(id) => void switchConversation(id)} runCommand={(operation) => void runCommand(operation)} abort={() => void abort()} upload={(file) => void upload(file)} toggleCandidate={toggleCandidate} setRightsForm={setRightsForm} setSourceForm={setSourceForm} startPreview={() => void startRawDocumentPreview()} acceptCandidates={() => void acceptRawDocumentCandidates()} clearAttachment={clearAttachment} cancelWorkflow={() => void cancelWorkflow()} dismissError={() => setError('')} onNavigate={navigate} /> : route === 'briefs' ? <BriefsPage briefs={briefs} selected={selectedBrief} busy={briefsBusy} error={error} onSelect={(id) => void selectBrief(id)} /> : route === 'reports' ? <ReportsPage reports={reports} selected={selectedReport} busy={reportsBusy} error={error} onSelect={(id) => void selectReport(id)} /> : route === 'bundles' ? <ResearchBundlesPage bundles={bundles} selected={selectedBundle} busy={bundlesBusy} error={error} onSelect={(id) => void selectBundle(id)} sourceHits={sourceHits} sourceBusy={sourceBusy} onSearchSources={(query) => void searchSources(query)} /> : route === 'run' ? <ResearchRunPage client={client} onLaunched={onResearchLaunched} /> : route === 'graph' ? <KnowledgeGraphPage knowledgeBase={knowledgeBase} client={client} /> : route === 'theses' ? <ThesisLifecyclePage client={client} knowledgeBase={knowledgeBase} /> : <ReviewsPage knowledgeBase={knowledgeBase} reviews={reviews} reviewDetail={reviewDetail} reviewsBusy={reviewsBusy} onSelect={(id) => void selectReview(id)} onCloseDetail={() => setReviewDetail(undefined)} />}</div></div>
 }
 
 export default function App(): ReactElement {

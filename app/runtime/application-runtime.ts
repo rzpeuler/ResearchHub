@@ -1,7 +1,7 @@
 import { join, resolve } from 'node:path'
 import { getAgentDir, ModelRuntime, SessionManager } from '@earendil-works/pi-coding-agent'
 import { PiReasoningExecutor } from '../../plugins/reasoning/pi/executor.ts'
-import { createIndustryProductionReasoningExecutor, createRawDocumentPreviewProductionReasoningExecutor, createThemeFrameworkProductionReasoningExecutor, selectProductionReasoningModel } from '../pi/model-selection.ts'
+import { RAW_DOCUMENT_PREVIEW_PRODUCTION_REASONING_TIMEOUT_MS, THEME_FRAMEWORK_PRODUCTION_REASONING_TIMEOUT_MS, selectProductionReasoningModel, validateReasoningModelSelection } from '../pi/model-selection.ts'
 import { KnowledgeService } from '../services/knowledge-service.ts'
 import { KnowledgeGraphService } from '../services/knowledge-graph-service.ts'
 import { KnowledgeTopicProjectionService } from '../services/knowledge-topic-projection.ts'
@@ -28,7 +28,6 @@ import type { ResearchHubApplicationRuntimeOptions, ResearchHubApplicationServic
 import { createDailyIntelligenceComposition } from '../services/daily-intelligence-composition.ts'
 import { DailyBriefScheduler } from '../../plugins/daily-intelligence/scheduler.ts'
 import { TradingCalendarService } from '../../plugins/daily-intelligence/calendar.ts'
-import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import { ResearchDispatchService } from '../services/research-dispatch-service.ts'
 import { FileResearchBundleStore } from '../services/research-bundle.ts'
 import { SourceLibraryService } from '../services/source-library.ts'
@@ -90,7 +89,7 @@ export class ResearchHubApplicationRuntime {
   readonly sessionRuntime: ResearchHubSessionRuntime
   private readonly ownsModelRuntime: boolean
   private readonly dailyScheduler?: DailyBriefScheduler
-  private readonly dailySchedulerTimer?: NodeJS.Timeout
+  private dailySchedulerTimer?: NodeJS.Timeout
   private closed = false
 
   private constructor(input: {
@@ -104,7 +103,6 @@ export class ResearchHubApplicationRuntime {
     readonly sessionRuntime: ResearchHubSessionRuntime
     readonly ownsModelRuntime: boolean
     readonly dailyScheduler?: DailyBriefScheduler
-    readonly dailySchedulerTimer?: NodeJS.Timeout
   }) {
     this.cwd = input.cwd
     this.agentDir = input.agentDir
@@ -116,7 +114,6 @@ export class ResearchHubApplicationRuntime {
     this.sessionRuntime = input.sessionRuntime
     this.ownsModelRuntime = input.ownsModelRuntime
     this.dailyScheduler = input.dailyScheduler
-    this.dailySchedulerTimer = input.dailySchedulerTimer
   }
 
   static async create(options: ResearchHubApplicationRuntimeOptions): Promise<ResearchHubApplicationRuntime> {
@@ -127,18 +124,26 @@ export class ResearchHubApplicationRuntime {
     if (mountedKnowledgeBaseRoot !== undefined) await validateStorageRoots(workspaceRoot, mountedKnowledgeBaseRoot)
     const ownsModelRuntime = options.modelRuntime === undefined
     const modelRuntime = options.modelRuntime ?? await ModelRuntime.create({ authPath: join(agentDir, 'auth.json'), modelsPath: join(agentDir, 'models.json'), allowModelNetwork: false, refreshOnCreate: false })
-    const selectedModel = options.model ?? (options.modelRuntime === undefined ? selectProductionReasoningModel(modelRuntime) : undefined)
+    let selectedModel: import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api> | undefined
+    try {
+      if (options.modelSelection !== undefined && options.model !== undefined && (options.modelSelection.provider !== options.model.provider || options.modelSelection.modelId !== options.model.id)) throw new Error('model and modelSelection specify different models')
+      selectedModel = options.modelSelection === undefined ? options.model : await validateReasoningModelSelection(modelRuntime, options.modelSelection)
+      if (selectedModel === undefined && options.modelRuntime === undefined) selectedModel = selectProductionReasoningModel(modelRuntime)
+    } catch (error) {
+      if (ownsModelRuntime) await disposeModelRuntime(modelRuntime)
+      throw error
+    }
     const reasoningExecutor = options.reasoningExecutor ?? new PiReasoningExecutor({ modelRuntime, model: selectedModel })
     const knowledgeService = new KnowledgeService(mountedKnowledgeBaseRoot)
     const knowledgeGraphService = new KnowledgeGraphService(mountedKnowledgeBaseRoot)
     const knowledgeTopicProjectionService = new KnowledgeTopicProjectionService(mountedKnowledgeBaseRoot)
     const themeWorkspaceProjectionService = new ThemeWorkspaceProjectionService(mountedKnowledgeBaseRoot, undefined, reasoningExecutor)
     const reviewService = new ReviewService(mountedKnowledgeBaseRoot)
+    let isSchema04KnowledgeBase = false
     let thesisQueryService: ThesisQueryService | undefined
     let thesisDecisionService: ThesisDecisionService | undefined
     let thesisCriterionService: ThesisCriterionService | undefined
     let themeScopeImpactService: ThemeScopeImpactService | undefined
-    let isSchema04KnowledgeBase = false
     if (mountedKnowledgeBaseRoot !== undefined) {
       try {
         const manifest = await loadKnowledgeBaseManifest(mountedKnowledgeBaseRoot)
@@ -155,18 +160,14 @@ export class ResearchHubApplicationRuntime {
     }
     const workflowService = new WorkflowService()
     const rawDocumentPreviewReasoningExecutorFactory = isSchema04KnowledgeBase && options.reasoningExecutor === undefined
-      ? () => createRawDocumentPreviewProductionReasoningExecutor({ capabilities: reasoningExecutor.capabilities() })
+      ? async () => new PiReasoningExecutor({ modelRuntime, model: selectedModel, capabilities: reasoningExecutor.capabilities(), timeoutMs: RAW_DOCUMENT_PREVIEW_PRODUCTION_REASONING_TIMEOUT_MS })
       : undefined
     const productionService = new ProductionService({ mountedKnowledgeBaseRoot, workspaceRoot, cwd, reasoningExecutor, workflowService, ...(rawDocumentPreviewReasoningExecutorFactory === undefined ? {} : { rawDocumentPreviewReasoningExecutorFactory }), ...(themeScopeImpactService === undefined ? {} : { themeScopeImpactChecker: themeScopeImpactService }) })
     let researchService = options.researchService
     let themeFrameworkService = options.themeFrameworkService
     const akshare = new AkshareDataAdapter()
     const industryAcquisitionPlugins = options.industryAcquisitionPlugins ?? [new MiitIndustryResearchPlugin(), new GovCnIndustryResearchPlugin(), new EastmoneyIndustryResearchPlugin(), new CpcaIndustryResearchPlugin()]
-    let industryReasoningExecutorFactory = options.industryReasoningExecutorFactory
-    if (industryReasoningExecutorFactory === undefined && options.reasoningExecutor === undefined) {
-      let industryExecutorPromise: Promise<ReasoningExecutor> | undefined
-      industryReasoningExecutorFactory = () => industryExecutorPromise ??= createIndustryProductionReasoningExecutor({ capabilities: reasoningExecutor.capabilities() })
-    }
+    const industryReasoningExecutorFactory = options.industryReasoningExecutorFactory
     const dailyComposition = options.dailyIntelligenceService === undefined ? await createDailyIntelligenceComposition({ cwd, workflowService, reasoningExecutor, modelRuntime, mountedKnowledgeBaseRoot, industryOperatingObservationAcquisition: options.industryOperatingObservationAcquisition }) : undefined
     const dailyIntelligenceService = options.dailyIntelligenceService ?? dailyComposition!.service
     if (researchService === undefined && mountedKnowledgeBaseRoot !== undefined) {
@@ -176,11 +177,10 @@ export class ResearchHubApplicationRuntime {
       try {
         const manifest = await loadKnowledgeBaseManifest(mountedKnowledgeBaseRoot)
         if (manifest.schemaVersion === '0.4' && manifest.storageFormatVersion === '1' && manifest.status === 'active') {
-          const themeFrameworkReasoningExecutor = options.reasoningExecutor ?? await createThemeFrameworkProductionReasoningExecutor({ capabilities: reasoningExecutor.capabilities() })
           themeFrameworkService = new ThemeFrameworkService({
             mountedKnowledgeBaseRoot,
             workflowService,
-            reasoningExecutor: themeFrameworkReasoningExecutor,
+            reasoningExecutor: options.reasoningExecutor ?? new PiReasoningExecutor({ modelRuntime, model: selectedModel, capabilities: reasoningExecutor.capabilities(), timeoutMs: THEME_FRAMEWORK_PRODUCTION_REASONING_TIMEOUT_MS }),
             acquisition: new ThemeFrameworkAcquisitionAdapter({ knowledgeBaseRoot: mountedKnowledgeBaseRoot, plugins: [...industryAcquisitionPlugins, new AkshareIndustryResearchPlugin(akshare)] }),
           })
         }
@@ -198,8 +198,9 @@ export class ResearchHubApplicationRuntime {
     try {
       const sessionRuntime = await createResearchHubSessionRuntime({ cwd, agentDir, modelRuntime, sessionManager, applicationServices: piApplicationServices, mountedKnowledgeBaseRoot, workspaceRoot, model: selectedModel, reasoningExecutor, settingsManager: options.settingsManager, resourceLoader: options.resourceLoader, researchService, dailyIntelligenceService })
       const dailyScheduler = new DailyBriefScheduler({ statePath: join(cwd, 'runtime-data', 'daily-scheduler.json'), calendar: dailyComposition?.calendar ?? dailyIntelligenceService.calendar ?? new TradingCalendarService({ cachePath: join(cwd, 'runtime-data', 'trading-calendar.json') }), run: async (briefType, tradeDate) => { const run = dailyIntelligenceService.startBrief({ workflowRunId: `scheduled-${briefType}-${tradeDate}`, briefType, tradeDate }); const result = await run.completion; return { status: result.status } } })
-      const dailySchedulerTimer = setInterval(() => { void dailyScheduler.tick(new Date()).catch(() => undefined) }, 60_000); dailySchedulerTimer.unref?.(); void dailyScheduler.tick(new Date()).catch(() => undefined)
-      return new ResearchHubApplicationRuntime({ cwd, agentDir, workspaceRoot, mountedKnowledgeBaseRoot, modelRuntime, sessionManager, services, sessionRuntime, ownsModelRuntime, dailyScheduler, dailySchedulerTimer })
+      const runtime = new ResearchHubApplicationRuntime({ cwd, agentDir, workspaceRoot, mountedKnowledgeBaseRoot, modelRuntime, sessionManager, services, sessionRuntime, ownsModelRuntime, dailyScheduler })
+      if (options.startDailyScheduler !== false) runtime.startDailyScheduler()
+      return runtime
     } catch (error) {
       if (ownsModelRuntime) await disposeModelRuntime(modelRuntime)
       throw error
@@ -215,6 +216,14 @@ export class ResearchHubApplicationRuntime {
   get researchService() { return this.services.researchService }
   get dailyIntelligenceService() { return this.services.dailyIntelligenceService }
   get scheduler(): DailyBriefScheduler | undefined { return this.dailyScheduler }
+
+  startDailyScheduler(): void {
+    if (this.closed) throw new Error('Application runtime is closed')
+    if (this.dailyScheduler === undefined || this.dailySchedulerTimer !== undefined) return
+    this.dailySchedulerTimer = setInterval(() => { void this.dailyScheduler!.tick(new Date()).catch(() => undefined) }, 60_000)
+    this.dailySchedulerTimer.unref?.()
+    void this.dailyScheduler.tick(new Date()).catch(() => undefined)
+  }
 
   async close(): Promise<void> {
     if (this.closed) return

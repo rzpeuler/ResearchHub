@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { tmpdir } from 'node:os'
-import { fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai'
+import { fauxAssistantMessage, fauxProvider, fauxToolCall, type JsonObject } from '@earendil-works/pi-ai'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { createResearchHubPiSession } from '../../../app/pi/session.ts'
 import { selectProductionReasoningModel } from '../../../app/pi/model-selection.ts'
@@ -204,7 +204,7 @@ test('Pi research_industry is configuration-gated and delegates the validated Ap
 test('Pi tool-call boundary rejects direct write, edit, and explicit-path bash mutation attempts', async () => {
   const root = await createKnowledgeBase({ knowledgeBaseId: 'kb-pi-protected' })
   try {
-    const attempts: Array<{ name: string; arguments: Record<string, unknown> }> = [
+    const attempts: Array<{ name: string; arguments: JsonObject }> = [
       { name: 'write', arguments: { path: join(root, 'manifest.yaml'), content: 'manual' } },
       { name: 'write', arguments: { path: 'manifest.yaml', content: 'manual' } },
       { name: 'edit', arguments: { path: join(root, 'manifest.yaml'), edits: [{ oldText: 'active', newText: 'archived' }] } },
@@ -312,7 +312,7 @@ test('nested canonical Knowledge Base blocks absolute and cwd-relative write/edi
     const faux = fauxProvider({ provider: 'researchhub-nested-protected', models: [{ id: 'fixture-model' }] })
     const runtime = await ModelRuntime.create({ authPath: join(agentDirPath, 'auth.json'), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false })
     runtime.registerNativeProvider(faux.provider)
-    const attempts: Array<{ name: string; arguments: Record<string, unknown> }> = [
+    const attempts: Array<{ name: string; arguments: JsonObject }> = [
       { name: 'write', arguments: { path: join(knowledgeBaseRoot, 'manifest.yaml'), content: 'manual' } },
       { name: 'write', arguments: { path: relativeManifest, content: 'manual' } },
       { name: 'edit', arguments: { path: join(knowledgeBaseRoot, 'manifest.yaml'), edits: [{ oldText: 'active', newText: 'archived' }] } },

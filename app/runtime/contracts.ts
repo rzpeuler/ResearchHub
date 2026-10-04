@@ -97,8 +97,12 @@ export interface ResearchHubApplicationRuntimeOptions {
   readonly modelRuntime?: ModelRuntime
   readonly sessionManager?: SessionManager
   readonly model?: Model<Api>
+  /** Persisted app-wide selection, resolved and auth-checked by the Application Runtime. */
+  readonly modelSelection?: { readonly provider: string; readonly modelId: string }
+  /** Disable the initial/immediate scheduler tick while staging a replacement runtime. */
+  readonly startDailyScheduler?: boolean
   readonly reasoningExecutor?: ReasoningExecutor
-  /** Lazy, Industry-only production executor selection. It is never a fallback. */
+  /** Explicit executor seam for tests/isolated callers; normal Runtime uses the selected shared executor. */
   readonly industryReasoningExecutorFactory?: () => Promise<ReasoningExecutor>
   readonly settingsManager?: SettingsManager
   readonly resourceLoader?: DefaultResourceLoader

@@ -7,7 +7,7 @@ import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { fauxProvider } from '@earendil-works/pi-ai'
 import { createFreshKnowledgeBaseV04 } from '../../../knowledge/storage/index.ts'
 import { createResearchHubApplicationRuntime } from '../../../app/runtime/application-runtime.ts'
-import { createThemeFrameworkProductionReasoningExecutor, THEME_FRAMEWORK_PRODUCTION_REASONING_TIMEOUT_MS } from '../../../app/pi/model-selection.ts'
+import { createThemeFrameworkProductionReasoningExecutor, RAW_DOCUMENT_PREVIEW_PRODUCTION_REASONING_TIMEOUT_MS, THEME_FRAMEWORK_PRODUCTION_REASONING_TIMEOUT_MS } from '../../../app/pi/model-selection.ts'
 import { CodexCliReasoningExecutor } from '../../../plugins/reasoning/codex-cli/executor.ts'
 import type { ReasoningExecutor } from '../../../plugins/reasoning/contracts.ts'
 
@@ -65,10 +65,6 @@ test('Application Runtime wires the Theme Framework executor explicitly and pres
   const cwd = join(root, 'cwd'); const workspaceRoot = join(root, 'workspace'); const agentDir = join(root, 'agent'); const knowledgeBaseRoot = join(root, 'kb')
   await Promise.all([mkdir(cwd), mkdir(workspaceRoot), mkdir(agentDir)])
   await createFreshKnowledgeBaseV04(knowledgeBaseRoot, { knowledgeBaseId: `kb-theme-framework-reasoning-${Date.now()}` })
-  const executable = join(root, 'codex.cmd')
-  await writeFile(executable, '')
-  const previousCodexExecutable = process.env.CODEX_EXECUTABLE
-  process.env.CODEX_EXECUTABLE = executable
   const modelRuntime = await ModelRuntime.create({ authPath: join(agentDir, 'auth.json'), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false })
   const faux = fauxProvider({ provider: `theme-framework-reasoning-${Date.now()}-${Math.random()}`, models: [{ id: 'fixture-model' }] })
   modelRuntime.registerNativeProvider(faux.provider)
@@ -80,20 +76,15 @@ test('Application Runtime wires the Theme Framework executor explicitly and pres
     assert.ok(productionRuntime.services.themeScopeImpactService, 'active Schema 0.4 runtime should expose the Theme scope impact inbox service')
     assert.equal((productionRuntime.productionService as unknown as { options: { themeScopeImpactChecker: unknown } }).options.themeScopeImpactChecker, productionRuntime.services.themeScopeImpactService)
     const productionMetadata = (themeFrameworkExecutor(productionRuntime) as unknown as { runtimeMetadata(): Record<string, unknown> }).runtimeMetadata()
-    assert.equal(productionMetadata.backend, 'codex-cli')
-    assert.equal(productionMetadata.requestedModel, 'gpt-6-luna')
-    assert.equal(productionMetadata.requestedReasoningEffort, 'high')
-    assert.equal(productionMetadata.structuredOutputEnabled, true)
+    assert.deepEqual(productionMetadata, { provider: 'pi-coding-agent', requestedModel: `${faux.getModel().provider}/${faux.getModel().id}` })
+    assert.equal((themeFrameworkExecutor(productionRuntime) as unknown as { timeoutMs: number }).timeoutMs, THEME_FRAMEWORK_PRODUCTION_REASONING_TIMEOUT_MS)
 
     const rawPreviewExecutor = await rawDocumentPreviewExecutorFactory(productionRuntime)()
     assert.deepEqual((rawPreviewExecutor as ReasoningExecutor & { runtimeMetadata(): Record<string, unknown> }).runtimeMetadata(), {
       provider: 'pi-coding-agent',
-      backend: 'codex-cli',
-      requestedModel: 'gpt-6-luna',
-      requestedReasoningEffort: 'high',
-      invocationMode: 'exec-stdin-json-output-read-only',
-      structuredOutputEnabled: true,
+      requestedModel: `${faux.getModel().provider}/${faux.getModel().id}`,
     })
+    assert.equal((rawPreviewExecutor as unknown as { timeoutMs: number }).timeoutMs, RAW_DOCUMENT_PREVIEW_PRODUCTION_REASONING_TIMEOUT_MS)
 
     await productionRuntime.close()
     productionRuntime = undefined
@@ -106,8 +97,6 @@ test('Application Runtime wires the Theme Framework executor explicitly and pres
     await injectedRuntime?.close()
     await productionRuntime?.close()
     await Promise.resolve((modelRuntime as unknown as { dispose?: () => void | Promise<void> }).dispose?.())
-    if (previousCodexExecutable === undefined) delete process.env.CODEX_EXECUTABLE
-    else process.env.CODEX_EXECUTABLE = previousCodexExecutable
     await rm(root, { recursive: true, force: true })
   }
 })

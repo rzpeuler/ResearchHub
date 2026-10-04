@@ -68,6 +68,8 @@ export class WorkflowService {
     this.runs.set(runId, next); return this.view(next)
   }
   getWorkflowStatus(runId: string): WorkflowRunView | undefined { const value = this.runs.get(runId); return value === undefined ? undefined : this.view(value) }
+  /** Includes pending runs so Runtime configuration cannot change between registration and execution. */
+  hasActiveRuns(): boolean { return [...this.runs.values()].some((record) => !record.terminal) }
   cancelWorkflow(runId: string): WorkflowCancelResult {
     const current = this.runs.get(runId)
     if (!current) throw new ApplicationServiceError('not_found', `Workflow run not found: ${runId}`)
