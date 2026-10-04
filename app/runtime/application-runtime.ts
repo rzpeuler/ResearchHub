@@ -1,5 +1,6 @@
 import { join, resolve } from 'node:path'
 import { getAgentDir, ModelRuntime, SessionManager } from '@earendil-works/pi-coding-agent'
+import { registerModelConnections } from './model-connections.ts'
 import { PiReasoningExecutor } from '../../plugins/reasoning/pi/executor.ts'
 import { RAW_DOCUMENT_PREVIEW_PRODUCTION_REASONING_TIMEOUT_MS, THEME_FRAMEWORK_PRODUCTION_REASONING_TIMEOUT_MS, selectProductionReasoningModel, validateReasoningModelSelection } from '../pi/model-selection.ts'
 import { KnowledgeService } from '../services/knowledge-service.ts'
@@ -126,6 +127,7 @@ export class ResearchHubApplicationRuntime {
     const modelRuntime = options.modelRuntime ?? await ModelRuntime.create({ authPath: join(agentDir, 'auth.json'), modelsPath: join(agentDir, 'models.json'), allowModelNetwork: false, refreshOnCreate: false })
     let selectedModel: import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-ai').Api> | undefined
     try {
+      if (ownsModelRuntime) await registerModelConnections(modelRuntime, cwd)
       if (options.modelSelection !== undefined && options.model !== undefined && (options.modelSelection.provider !== options.model.provider || options.modelSelection.modelId !== options.model.id)) throw new Error('model and modelSelection specify different models')
       selectedModel = options.modelSelection === undefined ? options.model : await validateReasoningModelSelection(modelRuntime, options.modelSelection)
       if (selectedModel === undefined && options.modelRuntime === undefined) selectedModel = selectProductionReasoningModel(modelRuntime)

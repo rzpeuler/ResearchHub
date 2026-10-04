@@ -3,6 +3,7 @@ import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { loadKnowledgeBaseManifest } from '../../knowledge/storage/manifest-loader.ts'
 import { ApplicationServiceError } from '../services/contracts.ts'
 import { validateStorageRoots } from './storage-boundary.ts'
+import { listRegisteredKnowledgeBases } from './knowledge-registration.ts'
 
 export interface KnowledgeBaseChoice {
   readonly knowledgeBaseId: string
@@ -82,6 +83,9 @@ export async function discoverKnowledgeBases(options: KnowledgeBaseCatalogOption
   if (explicitlyMountedRoot) {
     const explicit = await inspectKnowledgeBase(resolve(explicitlyMountedRoot), options.workspaceRoot)
     if (explicit) addUnambiguous(explicit)
+  }
+  for (const registered of await listRegisteredKnowledgeBases(options.cwd, options.workspaceRoot)) {
+    if (registered.available) addUnambiguous({ root: registered.root, knowledgeBaseId: registered.knowledgeBaseId, schemaVersion: registered.schemaVersion, status: registered.status, revision: registered.revision })
   }
   return [...byId.values()].sort((left, right) => left.knowledgeBaseId.localeCompare(right.knowledgeBaseId))
 }

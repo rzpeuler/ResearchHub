@@ -22,6 +22,9 @@ import type { ThesisCriterionConfirmInput, ThesisCriterionPrepareInput, ThesisCr
 import type { KnowledgeTopicFilters, KnowledgeTopicKind, KnowledgeTopicPageInput, KnowledgeTopicScope } from '../services/knowledge-topic-contracts.ts'
 import { configuredKnowledgeBaseCatalogRoot, discoverKnowledgeBases, requireKnowledgeBaseChoice, resolveInitialKnowledgeBase, type ResolvedKnowledgeBase } from './knowledge-selection.ts'
 import { readRuntimeSettings, writeRuntimeSettings, type RuntimeSettings } from './runtime-settings.ts'
+import { ModelLoginFlowManager } from './model-login-flow.ts'
+import { addModelConnection, listSafeModelConnectionStatus, loadModelConnections, saveModelProviderApiKey } from './model-connections.ts'
+import { addRegisteredKnowledgeBase, listRegisteredKnowledgeBases, removeRegisteredKnowledgeBase, validateKnowledgeBaseDirectory, type RegisteredKnowledgeBase } from './knowledge-registration.ts'
 import { listReasoningModelCandidates, ReasoningModelSelectionError, validateReasoningModelSelection } from '../pi/model-selection.ts'
 import type { ThemeWorkspaceProjectionInput } from '../services/theme-workspace-projection-contracts.ts'
 import type { RawDocumentMetadataV04, RawDocumentRightsV04 } from '../../knowledge/production/raw-document-gateway-v04.ts'
@@ -266,6 +269,7 @@ export class ResearchHubRuntimeServer {
   private settingsChanging = false
   private inFlightApiRequests = 0
   private modelSelectionError?: string
+  private readonly modelLoginFlows = new ModelLoginFlowManager()
 
   constructor(options: ResearchHubRuntimeServerOptions) {
     this.options = options
@@ -404,6 +408,7 @@ export class ResearchHubRuntimeServer {
   }
 
   private async closeInternal(): Promise<void> {
+    this.modelLoginFlows.close()
     const cleanupErrors: unknown[] = []
     if (this.startPromise) {
       try { await this.startPromise } catch (error) { cleanupErrors.push(error) }
@@ -473,7 +478,7 @@ export class ResearchHubRuntimeServer {
       if (!security || !this.runtime || !this.runtimeInfo) throw new ApplicationServiceError('failed', 'Runtime server is not ready')
       const url = new URL(request.url ?? '/', `http://${request.headers.host ?? '127.0.0.1'}`)
       if (request.method === 'OPTIONS') { this.validateRead(request); this.sendEmpty(response, 204); return }
-      if (request.method === 'POST' && (url.pathname === '/api/settings/knowledge-base' || url.pathname === '/api/settings/model')) {
+      if (request.method === 'POST' && (url.pathname === '/api/settings/knowledge-base' || url.pathname === '/api/settings/model' || url.pathname === '/api/settings/model-login' || url.pathname === '/api/settings/model-key' || url.pathname === '/api/settings/model-logout' || url.pathname === '/api/settings/model-connection' || url.pathname === '/api/settings/knowledge-directory/register' || url.pathname === '/api/settings/knowledge-directory/remove')) {
         this.validateMutation(request)
         if (this.settingsChanging) throw new ApplicationServiceError('conflict', 'A Runtime settings change is already in progress')
         this.settingsChanging = true
@@ -484,12 +489,13 @@ export class ResearchHubRuntimeServer {
       }
       if (url.pathname === '/api/bootstrap') { this.validateBootstrap(request); if (this.settingsChanging) throw new ApplicationServiceError('conflict', 'Runtime settings are changing; retry the request'); await this.bootstrap(response); return }
       if (url.pathname === '/api/events' && request.method === 'GET') { this.validateRead(request); this.openEvents(response); return }
-      const tokenProtectedRead = request.method === 'GET' && (/^\/api\/theme-framework\/reviews$/.test(url.pathname) || /^\/api\/theme-framework\/runs\/[^/]+$/.test(url.pathname) || /^\/api\/theme-scope-impact(?:\/.*)?$/.test(url.pathname))
+      const tokenProtectedRead = request.method === 'GET' && (/^\/api\/theme-framework\/reviews$/.test(url.pathname) || /^\/api\/theme-framework\/runs\/[^/]+$/.test(url.pathname) || /^\/api\/theme-scope-impact(?:\/.*)?$/.test(url.pathname) || /^\/api\/settings\/model-login\/[0-9a-f-]+$/.test(url.pathname))
       if (this.isMutation(request.method, url.pathname)) this.validateMutation(request)
       else if (tokenProtectedRead) this.validateTokenProtectedRead(request)
       else this.validateRead(request)
       if (this.settingsChanging && !reservedKnowledgeSwitch) throw new ApplicationServiceError('conflict', 'Runtime settings are changing; retry the request')
       if (this.modelSelectionError !== undefined && request.method === 'POST' && this.isModelDependentCommand(url.pathname)) throw new ApplicationServiceError('conflict', this.modelSelectionError)
+      if (this.modelLoginFlows.hasActiveFlow() && request.method === 'POST' && this.isModelDependentCommand(url.pathname)) throw new ApplicationServiceError('conflict', 'Model login is in progress')
       if (url.pathname !== '/api' && !url.pathname.startsWith('/api/')) {
         if (await this.serveClient(request, response, url)) return
       }
@@ -510,14 +516,14 @@ export class ResearchHubRuntimeServer {
 
   private isModelDependentCommand(pathname: string): boolean {
     const safeCommands = new Set([
-      '/api/settings', '/api/settings/model', '/api/settings/knowledge-base',
+      '/api/settings', '/api/settings/model', '/api/settings/knowledge-base', '/api/settings/model-login', '/api/settings/model-key', '/api/settings/model-connection', '/api/settings/model-test', '/api/settings/model-logout', '/api/settings/knowledge-directory/verify', '/api/settings/knowledge-directory/register', '/api/settings/knowledge-directory/remove',
       '/api/conversations/new', '/api/conversation/new', '/api/conversations/switch', '/api/conversation/switch',
       '/api/conversations/abort', '/api/conversation/abort',
       '/api/attachments', '/api/attachments/upload',
       '/api/knowledge/search', '/api/search-knowledge', '/api/knowledge/object', '/api/knowledge/get',
       '/api/research/source-library/search', '/api/workflows/cancel',
     ])
-    if (safeCommands.has(pathname) || /^\/api\/workflows\/[^/]+\/cancel$/.test(pathname)) return false
+    if (safeCommands.has(pathname) || /^\/api\/settings\/model-login\/[0-9a-f-]+\/(answer|cancel)$/.test(pathname) || /^\/api\/workflows\/[^/]+\/cancel$/.test(pathname)) return false
     return true
   }
 
@@ -580,6 +586,102 @@ export class ResearchHubRuntimeServer {
     if (method === 'GET' && path === '/api/settings') { await this.sendJson(response, 200, await this.settingsResponse()); return }
     if (method === 'POST' && path === '/api/settings/knowledge-base') { await this.changeKnowledgeBase(request, response); return }
     if (method === 'POST' && path === '/api/settings/model') { await this.changeModel(request, response); return }
+    if (method === 'POST' && path === '/api/settings/model-key') {
+      const body = await this.readJson(request, 20_000)
+      if (Object.keys(body).length !== 2 || typeof body.providerId !== 'string' || typeof body.apiKey !== 'string') throw new ApplicationServiceError('invalid_input', 'Provider ID and API Key are required')
+      this.assertSettingsChangeAllowed('Model authentication')
+      try { await saveModelProviderApiKey(this.runtime!.modelRuntime, body.providerId, body.apiKey) }
+      catch { throw new ApplicationServiceError('invalid_input', 'Pi could not save authentication for this provider') }
+      await this.sendJson(response, 200, await this.settingsResponse()); return
+    }
+    if (method === 'POST' && path === '/api/settings/model-logout') {
+      const body = await this.readJson(request, 1024)
+      if (Object.keys(body).length !== 1 || typeof body.providerId !== 'string') throw new ApplicationServiceError('invalid_input', 'Provider ID is required')
+      this.assertSettingsChangeAllowed('Model authentication')
+      if (this.settings.model?.provider === body.providerId || this.sessionState().model?.provider === body.providerId) throw new ApplicationServiceError('conflict', 'Choose another global model before removing these credentials')
+      if (!this.runtime!.modelRuntime.getProvider(body.providerId)) throw new ApplicationServiceError('invalid_input', 'Provider is not configured')
+      try { await this.runtime!.modelRuntime.logout(body.providerId) }
+      catch { throw new ApplicationServiceError('failed', 'Pi could not remove provider authentication') }
+      await this.sendJson(response, 200, await this.settingsResponse()); return
+    }
+    if (method === 'POST' && path === '/api/settings/model-connection') {
+      const body = await this.readJson(request, 4096)
+      this.assertSettingsChangeAllowed('Model connection')
+      const cwd = this.options.cwd ?? process.cwd()
+      try {
+        await addModelConnection(this.runtime!.modelRuntime, cwd, body as unknown as Parameters<typeof addModelConnection>[2])
+        await this.sendJson(response, 200, await this.settingsResponse()); return
+      } catch (error) {
+        throw new ApplicationServiceError('invalid_input', error instanceof Error ? error.message : 'Model connection is invalid')
+      }
+    }
+    if (method === 'POST' && path === '/api/settings/model-test') {
+      const body = await this.readJson(request, 1024)
+      if (Object.keys(body).length !== 2 || typeof body.provider !== 'string' || typeof body.modelId !== 'string') throw new ApplicationServiceError('invalid_input', 'Provider and model ID are required')
+      let model
+      try { model = await validateReasoningModelSelection(this.runtime!.modelRuntime, { provider: body.provider, modelId: body.modelId }) }
+      catch { throw new ApplicationServiceError('conflict', 'Model is unavailable or lacks required capabilities') }
+      try {
+        const result = await this.runtime!.modelRuntime.completeSimple(model, { messages: [{ role: 'user', content: 'Reply with OK.', timestamp: Date.now() }] }, { maxTokens: 12, timeoutMs: 20_000, maxRetries: 0, signal: AbortSignal.timeout(20_000) })
+        if (result.stopReason === 'error') throw new Error('Provider returned an error')
+      } catch { throw new ApplicationServiceError('failed', 'Model connection test failed') }
+      await this.sendJson(response, 200, { ok: true }); return
+    }
+    if (method === 'POST' && path === '/api/settings/knowledge-directory/verify') {
+      const body = await this.readJson(request, 4096)
+      if (Object.keys(body).length !== 1 || typeof body.path !== 'string') throw new ApplicationServiceError('invalid_input', 'A Knowledge Base directory path is required')
+      const candidate = await validateKnowledgeBaseDirectory(this.runtime!.workspaceRoot, body.path)
+      await this.sendJson(response, 200, this.publicRegistration(candidate)); return
+    }
+    if (method === 'POST' && path === '/api/settings/knowledge-directory/register') {
+      const body = await this.readJson(request, 4096)
+      if (Object.keys(body).length !== 1 || typeof body.path !== 'string') throw new ApplicationServiceError('invalid_input', 'A Knowledge Base directory path is required')
+      this.assertSettingsChangeAllowed('Knowledge Base registration')
+      const cwd = this.options.cwd ?? process.cwd()
+      const catalog = await discoverKnowledgeBases({ cwd, workspaceRoot: this.runtime!.workspaceRoot, configuredRoot: this.options.knowledgeBaseCatalogRoot ?? configuredKnowledgeBaseCatalogRoot(cwd), explicitlyMountedRoot: this.explicitlyConfiguredKnowledgeBaseRoot() })
+      await addRegisteredKnowledgeBase(cwd, this.runtime!.workspaceRoot, body.path, catalog)
+      await this.sendJson(response, 200, await this.settingsResponse()); return
+    }
+    if (method === 'POST' && path === '/api/settings/knowledge-directory/remove') {
+      const body = await this.readJson(request, 1024)
+      if (Object.keys(body).length !== 1 || typeof body.knowledgeBaseId !== 'string') throw new ApplicationServiceError('invalid_input', 'Knowledge Base identifier is required')
+      this.assertSettingsChangeAllowed('Knowledge Base registration')
+      const mountedRoot = this.runtime!.mountedKnowledgeBaseRoot
+      const mountedId = mountedRoot === undefined ? undefined : this.knowledgeBaseCatalog.find((item) => item.root.toLocaleLowerCase() === mountedRoot.toLocaleLowerCase())?.knowledgeBaseId
+      if (mountedId === body.knowledgeBaseId) throw new ApplicationServiceError('conflict', 'Unmount or switch this Knowledge Base before removing its registration')
+      await removeRegisteredKnowledgeBase(this.options.cwd ?? process.cwd(), body.knowledgeBaseId)
+      await this.sendJson(response, 200, await this.settingsResponse()); return
+    }
+    if (method === 'POST' && path === '/api/settings/model-login') {
+      const body = await this.readJson(request, 1024)
+      if (Object.keys(body).length !== 1 || typeof body.provider !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(body.provider)) throw new ApplicationServiceError('invalid_input', 'A supported provider is required')
+      if (body.provider !== 'openai-codex') throw new ApplicationServiceError('invalid_input', 'Only the OpenAI Codex subscription flow is enabled')
+      this.assertSettingsChangeAllowed('Model login')
+      try { await this.sendJson(response, 202, this.modelLoginFlows.start(this.runtime!.modelRuntime, body.provider)) }
+      catch { throw new ApplicationServiceError('conflict', 'Provider subscription login is unavailable or already in progress') }
+      return
+    }
+    const loginMatch = /^\/api\/settings\/model-login\/([0-9a-f-]+)(?:\/(answer|cancel))?$/.exec(path)
+    if (loginMatch) {
+      const [, id, action] = loginMatch
+      if (method === 'GET' && !action) {
+        const flow = this.modelLoginFlows.get(id)
+        if (!flow) throw new ApplicationServiceError('not_found', 'Model login was not found')
+        await this.sendJson(response, 200, flow); return
+      }
+      if (method === 'POST' && action === 'answer') {
+        const body = await this.readJson(request, 5_000)
+        if (Object.keys(body).length !== 1 || typeof body.answer !== 'string') throw new ApplicationServiceError('invalid_input', 'Login answer is required')
+        try { await this.sendJson(response, 200, this.modelLoginFlows.answer(id, body.answer)) }
+        catch { throw new ApplicationServiceError('invalid_input', 'No pending login prompt accepts this answer') }
+        return
+      }
+      if (method === 'POST' && action === 'cancel') {
+        const flow = this.modelLoginFlows.cancel(id)
+        if (!flow) throw new ApplicationServiceError('not_found', 'Model login was not found')
+        await this.sendJson(response, 200, flow); return
+      }
+    }
     if (method === 'GET' && (path === '/api/researchhub/status' || path === '/api/status')) { await this.sendJson(response, 200, await this.status()) ; return }
     if (method === 'GET' && path === '/api/theme-framework/reviews') {
       if ([...url.searchParams.keys()].some((key) => key !== 'limit')) throw new ApplicationServiceError('invalid_input', 'Theme Framework reviews query contains unsupported fields')
@@ -872,6 +974,8 @@ export class ResearchHubRuntimeServer {
   private async settingsResponse(): Promise<unknown> {
     const cwd = this.options.cwd ?? process.cwd()
     this.knowledgeBaseCatalog = await discoverKnowledgeBases({ cwd, workspaceRoot: this.runtime!.workspaceRoot, configuredRoot: this.options.knowledgeBaseCatalogRoot ?? configuredKnowledgeBaseCatalogRoot(cwd), explicitlyMountedRoot: this.explicitlyConfiguredKnowledgeBaseRoot() })
+    const registeredKnowledgeBases = await listRegisteredKnowledgeBases(cwd, this.runtime!.workspaceRoot)
+    const appManagedProviderIds = new Set((await loadModelConnections(cwd)).map((connection) => connection.providerId))
     const sessionModel = this.settings.model ?? this.sessionState().model
     const model = sessionModel ?? { provider: '', modelId: '' }
     const knowledgeBase = this.runtime!.mountedKnowledgeBaseRoot === undefined ? undefined : await this.runtime!.knowledgeService.status().catch(() => undefined)
@@ -880,8 +984,10 @@ export class ResearchHubRuntimeServer {
       revision: this.settings.revision,
       model,
       models,
+      modelProviders: listSafeModelConnectionStatus(this.runtime!.modelRuntime, appManagedProviderIds),
       ...(knowledgeBase === undefined ? {} : { knowledgeBase }),
       knowledgeBases: this.knowledgeBaseCatalog.map((choice) => this.publicKnowledgeBase(choice)),
+      registeredKnowledgeBases: registeredKnowledgeBases.map((choice) => this.publicRegistration(choice)),
       ...(this.knowledgeBaseSelectionError === undefined ? {} : { knowledgeBaseError: this.knowledgeBaseSelectionError }),
       ...(this.modelSelectionError === undefined ? {} : { modelError: this.modelSelectionError }),
     }
@@ -889,6 +995,10 @@ export class ResearchHubRuntimeServer {
 
   private publicKnowledgeBase(choice: ResolvedKnowledgeBase): { readonly knowledgeBaseId: string; readonly schemaVersion: string; readonly status: string; readonly revision: number } {
     return { knowledgeBaseId: choice.knowledgeBaseId, schemaVersion: choice.schemaVersion, status: choice.status, revision: choice.revision }
+  }
+
+  private publicRegistration(choice: RegisteredKnowledgeBase): { readonly knowledgeBaseId: string; readonly label: string; readonly schemaVersion: string; readonly status: string; readonly revision: number; readonly available: boolean } {
+    return { knowledgeBaseId: choice.knowledgeBaseId, label: choice.label, schemaVersion: choice.schemaVersion, status: choice.status, revision: choice.revision, available: choice.available }
   }
 
   private async changeKnowledgeBase(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -953,6 +1063,7 @@ export class ResearchHubRuntimeServer {
 
   private assertSettingsChangeAllowed(label: string): void {
     if (!this.ownsRuntime) throw new ApplicationServiceError('conflict', `${label} selection is unavailable for a caller-owned Runtime`)
+    if (this.modelLoginFlows.hasActiveFlow()) throw new ApplicationServiceError('conflict', 'Model login is in progress')
     if (this.inFlightApiRequests > 0 || this.backgroundOperations.size > 0 || this.runtime!.workflowService.hasActiveRuns()) throw new ApplicationServiceError('conflict', `${label} cannot change while a request or workflow is active`)
     const session = this.sessionState()
     if (session.isStreaming || session.pendingMessageCount > 0) throw new ApplicationServiceError('conflict', `${label} cannot change while a conversation is active`)

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactElement } from 'react'
-import { RuntimeClient, RuntimeClientError, type AttachmentRef, type ClientEvent, type ConversationMessage, type ConversationSummary, type DailyBriefReport, type DailyBriefSummary, type KnowledgeBaseStatus, type KnowledgeDirectoryItem, type RawDocumentAcceptanceV04, type RawDocumentCandidateGroupV04, type RawDocumentPreviewV04, type RawDocumentPreviewPollV04, type ResearchBundleSummary, type ResearchDispatchResponse, type ResearchExecutionSummary, type ResearchReport, type ResearchReportSummary, type ResearchStartResponse, type ReviewDetail, type ReviewListResponse, type RuntimeSettings, type SessionState, type SourceLibraryHit, type ThesisCriterionConfirmResult, type ThesisCriterionOrigin, type ThesisCriterionPreview, type ThesisDecision, type ThesisQueryDetail, type ThesisQuerySummary, type ThesisReviewScope, type ThemeFrameworkDecision, type ThemeFrameworkRefreshResult, type ThemeFrameworkReviewCandidate, type ThemeFrameworkReviewResponse, type ThemeFrameworkReviewSummary, type ThemeScopeImpactInboxRecord, type ThemeScopeImpactProposal, type WorkflowDefinition, type WorkflowRun } from './api/runtime-client'
+import { RuntimeClient, RuntimeClientError, type AttachmentRef, type ClientEvent, type ConversationMessage, type ConversationSummary, type DailyBriefReport, type DailyBriefSummary, type KnowledgeBaseStatus, type KnowledgeDirectoryItem, type RawDocumentAcceptanceV04, type RawDocumentCandidateGroupV04, type RawDocumentPreviewV04, type RawDocumentPreviewPollV04, type ResearchBundleSummary, type ResearchDispatchResponse, type ResearchExecutionSummary, type ResearchReport, type ResearchReportSummary, type ResearchStartResponse, type ReviewDetail, type ReviewListResponse, type RuntimeModelLoginFlow, type RuntimeSettings, type SessionState, type SourceLibraryHit, type ThesisCriterionConfirmResult, type ThesisCriterionOrigin, type ThesisCriterionPreview, type ThesisDecision, type ThesisQueryDetail, type ThesisQuerySummary, type ThesisReviewScope, type ThemeFrameworkDecision, type ThemeFrameworkRefreshResult, type ThemeFrameworkReviewCandidate, type ThemeFrameworkReviewResponse, type ThemeFrameworkReviewSummary, type ThemeScopeImpactInboxRecord, type ThemeScopeImpactProposal, type WorkflowDefinition, type WorkflowRun } from './api/runtime-client'
+import { SettingsPanel, type CompatibleEndpointInput, type SettingsPanelProps } from './app/settings/SettingsPanel'
 import { startWorkflowPolling, terminalWorkflowStatuses } from './app/workflow-polling'
 import { KnowledgeGraphPage } from './app/graph/KnowledgeGraphPage'
 import { ResearchRunPage } from './app/run/ResearchRunPage'
@@ -38,10 +39,9 @@ function safeStructured(value: unknown, depth = 0): string {
   return '[unavailable]'
 }
 
-interface ApplicationSidebarProps { readonly route: Route; readonly knowledgeBase?: KnowledgeBaseStatus; readonly settings?: RuntimeSettings; readonly settingsError?: string; readonly settingsBusy: boolean; readonly interactionsDisabled: boolean; readonly onNavigate: (route: Route) => void; readonly onLoadSettings: () => void; readonly onModelChange: (value: string) => void; readonly onKnowledgeBaseChange: (value: string) => void }
-function ApplicationSidebar({ route, knowledgeBase, settings, settingsError, settingsBusy, interactionsDisabled, onNavigate, onLoadSettings, onModelChange, onKnowledgeBaseChange }: ApplicationSidebarProps): ReactElement {
-  const { language, setLanguage, t } = useLanguage()
-  const [settingsOpen, setSettingsOpen] = useState(false)
+interface ApplicationSidebarProps { readonly route: Route; readonly knowledgeBase?: KnowledgeBaseStatus; readonly settings?: RuntimeSettings; readonly settingsError?: string; readonly settingsBusy: boolean; readonly interactionsDisabled: boolean; readonly settingsPanelProps: SettingsPanelProps; readonly onNavigate: (route: Route) => void; readonly onLoadSettings: () => void; readonly onModelChange: (value: string) => void }
+function ApplicationSidebar({ route, knowledgeBase, settings, settingsError, settingsBusy, interactionsDisabled, settingsPanelProps, onNavigate, onLoadSettings, onModelChange }: ApplicationSidebarProps): ReactElement {
+  const { t } = useLanguage()
   const [collapsed, setCollapsed] = useState(() => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 900px)').matches)
   const links: readonly [Route, string, string, string][] = [['research', '研究', 'Research', 'R'], ['briefs', '每日简报', 'Daily Briefs', 'B'], ['reports', '研究报告', 'Reports', 'P'], ['bundles', '研究资料包', 'Research Bundles', 'D'], ['run', '运行研究', 'Run Research', '▶'], ['graph', '知识图谱', 'Knowledge Graph', 'G'], ['theses', '投资论点', 'Theses', 'T'], ['reviews', '审核', 'Reviews', '✓']]
   const currentModelValue = settings?.model.provider && settings.model.modelId ? `${settings.model.provider}/${settings.model.modelId}` : ''
@@ -52,10 +52,8 @@ function ApplicationSidebar({ route, knowledgeBase, settings, settingsError, set
     <nav className="primary-nav" aria-label={t('主导航', 'Primary navigation')}><ul>{links.map(([item, zh, en, icon]) => <li key={item}><a className={route === item ? 'nav-link active' : 'nav-link'} href={routePath(item)} title={t(zh, en)} aria-label={t(zh, en)} aria-current={route === item ? 'page' : undefined} onClick={(event) => { event.preventDefault(); onNavigate(item) }}><span className="nav-icon" aria-hidden="true">{icon}</span><span className="nav-label">{t(zh, en)}</span></a></li>)}</ul></nav>
     <div className="sidebar-bottom">
       <div className="sidebar-control"><label htmlFor="global-model-select">{t('全局模型', 'Global model')}</label><select id="global-model-select" aria-label={t('全局模型', 'Global model')} value={currentModelValue} disabled={!settings || settingsBusy || interactionsDisabled} onFocus={ensureSettings} onChange={(event) => onModelChange(event.target.value)}>{!settings ? <option value="">{settingsBusy ? t('正在加载…', 'Loading…') : t('加载模型…', 'Load models…')}</option> : null}{settings && !currentModelValue ? <option value="" disabled>{t('当前模型未配置', 'No model is configured')}</option> : null}{settings && currentModelValue && !currentModelListed ? <option value={currentModelValue} disabled>{t('当前模型不在目录中', 'Current model missing from catalog')} · {settings.model.provider}/{settings.model.modelId}</option> : null}{settings?.models.map((model) => { const value = `${model.provider}/${model.modelId}`; return <option key={value} value={value} disabled={!model.available} title={model.unavailableReason}>{model.name} · {model.provider}{model.available ? '' : ` — ${model.unavailableReason ?? t('不可用', 'Unavailable')}`}</option> })}</select>{settings?.model.provider && settings.model.modelId ? <small title={`${settings.model.provider}/${settings.model.modelId}`}>{settings.model.provider} · {settings.model.modelId}</small> : null}{settings?.modelError ? <small className="sidebar-settings-error" role="status">{settings.modelError}</small> : null}</div>
-      <div className="sidebar-control"><label htmlFor="knowledge-base-select">{t('知识库', 'Knowledge Base')}</label><select id="knowledge-base-select" aria-label={t('挂载知识库', 'Mounted Knowledge Base')} value={settings?.knowledgeBase?.knowledgeBaseId ?? ''} disabled={!settings || settingsBusy || interactionsDisabled} onFocus={ensureSettings} onChange={(event) => onKnowledgeBaseChange(event.target.value)}><option value="">{t('未挂载', 'Not mounted')}</option>{settings?.knowledgeBases.map((item) => <option key={item.knowledgeBaseId} value={item.knowledgeBaseId}>{item.knowledgeBaseId} · v{item.schemaVersion} · r{item.revision}</option>)}</select><small>{knowledgeBase ? `${t('已挂载', 'Mounted')} · ${knowledgeBase.knowledgeBaseId}` : t('当前无知识库', 'No Knowledge Base')}</small>{settings?.knowledgeBaseError ? <small className="sidebar-settings-error" role="alert">{settings.knowledgeBaseError}</small> : null}</div>
       {(settingsError || settingsBusy) ? <p className={settingsError ? 'sidebar-settings-error' : 'sidebar-settings-hint'} role="status">{settingsError ?? t('正在加载配置…', 'Loading settings…')}</p> : null}
-      <button className={`sidebar-settings-button ${settingsOpen ? 'active' : ''}`} type="button" aria-expanded={settingsOpen} onClick={() => { const next = !settingsOpen; setSettingsOpen(next); if (next) ensureSettings() }}><span className="nav-icon" aria-hidden="true">⚙</span><span>{t('设置', 'Settings')}</span></button>
-      {settingsOpen ? <section className="sidebar-language" aria-label={t('设置', 'Settings')}><span>{t('界面语言', 'Interface language')}</span><div className="language-switch" role="group" aria-label={t('界面语言', 'Interface language')}><button type="button" aria-pressed={language === 'zh-CN'} onClick={() => setLanguage('zh-CN')}>中文</button><button type="button" aria-pressed={language === 'en'} onClick={() => setLanguage('en')}>EN</button></div></section> : null}
+      <SettingsPanel {...settingsPanelProps} />
       <div className="runtime-status"><span className="status-dot" /><span>{t('本地运行时', 'Local Runtime')}</span><span className="status-sub">{knowledgeBase ? t('知识库已挂载', 'KB mounted') : t('未挂载知识库', 'No KB mounted')}</span></div>
     </div>
   </aside>
@@ -789,6 +787,9 @@ function AppContent(): ReactElement {
   const [settings, setSettings] = useState<RuntimeSettings>()
   const [settingsError, setSettingsError] = useState('')
   const [settingsBusy, setSettingsBusy] = useState(false)
+  const [knowledgeDirectoryVerification, setKnowledgeDirectoryVerification] = useState<{ readonly valid: boolean; readonly message: string }>()
+  const [modelLoginFlow, setModelLoginFlow] = useState<RuntimeModelLoginFlow>()
+  const [modelTestMessage, setModelTestMessage] = useState('')
   const [openReviewCases, setOpenReviewCases] = useState(0)
   const [streaming, setStreaming] = useState(false)
   const [streamText, setStreamText] = useState('')
@@ -877,6 +878,27 @@ function AppContent(): ReactElement {
     try { setSettings(await client.getSettings()) } catch (caught) { setSettingsError(errorText(caught)) }
     finally { setSettingsBusy(false) }
   }
+
+  useEffect(() => {
+    if (!modelLoginFlow?.id || ['complete', 'failed', 'cancelled'].includes(modelLoginFlow.state)) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async (): Promise<void> => {
+      try {
+        const flow = await client.modelLoginStatus(modelLoginFlow.id)
+        if (cancelled) return
+        setModelLoginFlow(flow)
+        if (flow.state === 'complete') { void loadSettings(); return }
+        if (flow.state === 'failed' || flow.state === 'cancelled') return
+      } catch (caught) {
+        if (cancelled) return
+        setSettingsError(errorText(caught))
+      }
+      timer = setTimeout(() => void poll(), 1200)
+    }
+    timer = setTimeout(() => void poll(), 1200)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [client, modelLoginFlow?.id, modelLoginFlow?.state])
 
   const clearKnowledgeScopedState = (): void => {
     requestEpoch.current += 1; previewGeneration.current += 1
@@ -1033,10 +1055,86 @@ function AppContent(): ReactElement {
   const selectBundle = async (bundleId: string): Promise<void> => { const epoch = requestEpoch.current; try { const result = await client.getResearchBundle(bundleId); if (epoch === requestEpoch.current) setSelectedBundle(result) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } }
   const searchSources = async (query: string): Promise<void> => { const epoch = requestEpoch.current; setSourceBusy(true); setError(''); try { const result = await client.searchSourceLibrary(query, true); if (epoch === requestEpoch.current) setSourceHits(result.hits) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } finally { if (epoch === requestEpoch.current) setSourceBusy(false) } }
 
+  const updateSettings = async (action: () => Promise<RuntimeSettings>): Promise<void> => {
+    setSettingsBusy(true); setSettingsError('')
+    try { setSettings(await action()) }
+    catch (caught) { setSettingsError(errorText(caught)); throw caught }
+    finally { setSettingsBusy(false) }
+  }
+  const beginSubscriptionLogin = async (): Promise<void> => {
+    setSettingsBusy(true); setSettingsError('')
+    try { setModelLoginFlow(await client.startModelLogin()) }
+    catch (caught) { setSettingsError(errorText(caught)) }
+    finally { setSettingsBusy(false) }
+  }
+  const answerSubscriptionLogin = async (answer: string): Promise<void> => {
+    if (!modelLoginFlow) return
+    setSettingsBusy(true); setSettingsError('')
+    try { setModelLoginFlow(await client.answerModelLogin(modelLoginFlow.id, answer)) }
+    catch (caught) { setSettingsError(errorText(caught)); throw caught }
+    finally { setSettingsBusy(false) }
+  }
+  const cancelSubscriptionLogin = async (): Promise<void> => {
+    if (!modelLoginFlow) return
+    try { setModelLoginFlow(await client.cancelModelLogin(modelLoginFlow.id)) }
+    catch (caught) { setSettingsError(errorText(caught)) }
+  }
+  const saveApiKey = (providerId: string, apiKey: string): Promise<void> => updateSettings(() => client.saveModelApiKey(providerId, apiKey))
+  const saveCompatibleEndpoint = async (endpoint: CompatibleEndpointInput): Promise<void> => {
+    await updateSettings(() => client.saveModelConnection({ name: endpoint.name, providerId: endpoint.providerId, api: endpoint.protocol === 'openai' ? 'openai-completions' : 'anthropic-messages', baseUrl: endpoint.baseUrl, modelId: endpoint.modelId, modelName: endpoint.name, contextWindow: endpoint.contextWindow, maxTokens: endpoint.maxOutputTokens }))
+    if (endpoint.apiKey.trim()) await saveApiKey(endpoint.providerId, endpoint.apiKey)
+  }
+  const verifyKnowledgeDirectory = async (path: string): Promise<void> => {
+    setSettingsBusy(true); setSettingsError(''); setKnowledgeDirectoryVerification(undefined)
+    try { const result = await client.verifyKnowledgeDirectory(path); setKnowledgeDirectoryVerification({ valid: true, message: `${result.knowledgeBaseId} · Schema ${result.schemaVersion} · r${result.revision}` }) }
+    catch (caught) { setKnowledgeDirectoryVerification({ valid: false, message: errorText(caught) }) }
+    finally { setSettingsBusy(false) }
+  }
+  const testModelConnection = async (provider: string, modelId: string): Promise<void> => {
+    setSettingsBusy(true); setSettingsError(''); setModelTestMessage('')
+    try { await client.testModelConnection(provider, modelId); setModelTestMessage(t('连接测试成功', 'Connection test succeeded')) }
+    catch (caught) { setSettingsError(errorText(caught)) }
+    finally { setSettingsBusy(false) }
+  }
+
   if (loadState === 'loading') return <main className="state-screen"><div className="state-card"><span className="eyebrow">RESEARCHHUB RUNTIME</span><h1>{t('正在加载工作区', 'Loading workspace')}</h1><p>{t('正在连接本地应用运行时…', 'Connecting to the local application runtime…')}</p><div className="loader" /></div></main>
   if (loadState === 'error') return <main className="state-screen"><div className="state-card"><span className="eyebrow">RUNTIME UNAVAILABLE</span><h1>{t('ResearchHub 无法启动', 'ResearchHub could not start')}</h1><p>{loadError}</p><button onClick={() => window.location.reload()}>{t('重新加载页面', 'Reload page')}</button></div></main>
   const configurationBlocked = busy || streaming || attachmentBusy || previewBusy || acceptanceBusy || sourceBusy || Boolean(workflowRunId && (!workflow || !terminalWorkflowStatuses.has(workflow.status)))
-  return <div className="app-shell"><ApplicationSidebar route={route} knowledgeBase={knowledgeBase} settings={settings} settingsError={settingsError} settingsBusy={settingsBusy} interactionsDisabled={configurationBlocked} onNavigate={navigate} onLoadSettings={() => void loadSettings()} onModelChange={(value) => void changeModel(value)} onKnowledgeBaseChange={(value) => void changeKnowledgeBase(value)} /><div className="app-main">{route === 'research' ? <ResearchPage session={session} conversations={conversations} messages={messages} streaming={streaming} thinking={thinking} streamText={streamText} toolEvents={toolEvents} queue={queue} composer={composer} busy={busy} error={error} attachment={attachment} attachmentUiVersion={attachmentUiVersion} attachmentBusy={attachmentBusy} preview={preview} previewBusy={previewBusy} acceptanceBusy={acceptanceBusy} selectedCandidates={selectedCandidates} acceptance={acceptance} rightsForm={rightsForm} sourceForm={sourceForm} uploadStatus={uploadStatus} workflowRunId={workflowRunId} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} client={client} workflow={workflow} knowledgeBase={knowledgeBase} openReviewCases={openReviewCases} contextPanel={contextPanel} workflowDefinitions={workflowDefinitions} selectedWorkflowId={selectedWorkflowId} setSelectedWorkflowId={setSelectedWorkflowId} contextPolicy={contextPolicy} persistencePolicy={persistencePolicy} setContextPolicy={setContextPolicy} setPersistencePolicy={setPersistencePolicy} executionSummary={executionSummary} setComposer={setComposer} setContextPanel={setContextPanel} newConversation={() => void newConversation()} switchConversation={(id) => void switchConversation(id)} runCommand={(operation) => void runCommand(operation)} abort={() => void abort()} upload={(file) => void upload(file)} toggleCandidate={toggleCandidate} setRightsForm={setRightsForm} setSourceForm={setSourceForm} startPreview={() => void startRawDocumentPreview()} acceptCandidates={() => void acceptRawDocumentCandidates()} clearAttachment={clearAttachment} cancelWorkflow={() => void cancelWorkflow()} dismissError={() => setError('')} onNavigate={navigate} /> : route === 'briefs' ? <BriefsPage briefs={briefs} selected={selectedBrief} busy={briefsBusy} error={error} onSelect={(id) => void selectBrief(id)} /> : route === 'reports' ? <ReportsPage reports={reports} selected={selectedReport} busy={reportsBusy} error={error} onSelect={(id) => void selectReport(id)} /> : route === 'bundles' ? <ResearchBundlesPage bundles={bundles} selected={selectedBundle} busy={bundlesBusy} error={error} onSelect={(id) => void selectBundle(id)} sourceHits={sourceHits} sourceBusy={sourceBusy} onSearchSources={(query) => void searchSources(query)} /> : route === 'run' ? <ResearchRunPage client={client} onLaunched={onResearchLaunched} /> : route === 'graph' ? <KnowledgeGraphPage knowledgeBase={knowledgeBase} client={client} /> : route === 'theses' ? <ThesisLifecyclePage client={client} knowledgeBase={knowledgeBase} /> : <ReviewsPage knowledgeBase={knowledgeBase} reviews={reviews} reviewDetail={reviewDetail} reviewsBusy={reviewsBusy} onSelect={(id) => void selectReview(id)} onCloseDetail={() => setReviewDetail(undefined)} />}</div></div>
+  const registrationById = new Map((settings?.registeredKnowledgeBases ?? []).map((item) => [item.knowledgeBaseId, item]))
+  const mountedId = settings?.knowledgeBase?.knowledgeBaseId
+  const knowledgeCandidates = [
+    ...(settings?.knowledgeBases ?? []).map((item) => ({ id: item.knowledgeBaseId, schemaVersion: item.schemaVersion, revision: item.revision, mounted: item.knowledgeBaseId === mountedId, registered: registrationById.has(item.knowledgeBaseId), available: true })),
+    ...(settings?.registeredKnowledgeBases ?? []).filter((item) => !item.available && !settings?.knowledgeBases.some((choice) => choice.knowledgeBaseId === item.knowledgeBaseId)).map((item) => ({ id: item.knowledgeBaseId, schemaVersion: item.schemaVersion, revision: item.revision, mounted: false, registered: true, available: false })),
+  ]
+  const authorizationEvent = [...(modelLoginFlow?.events ?? [])].reverse().find((event) => event.type === 'auth_url' || event.type === 'device_code')
+  const settingsPanelProps: SettingsPanelProps = {
+    model: {
+      selected: settings?.model.provider ? settings.model : undefined,
+      availableCount: settings?.models.filter((item) => item.available).length ?? 0,
+      options: settings?.models.filter((item) => item.available || (item.provider === settings.model.provider && item.modelId === settings.model.modelId)),
+      connections: (settings?.modelProviders ?? []).filter((item) => item.configured || item.appManaged || ['openai-codex', 'openai', 'anthropic', 'google', 'openrouter'].includes(item.providerId)).map((item) => ({ providerId: item.providerId, name: item.name, status: item.configured ? 'connected' as const : item.supportsApiKey ? 'needs_api_key' as const : 'needs_auth' as const, apiKeySupported: item.supportsApiKey, detail: item.providerId === 'openai-codex' ? t('使用上方订阅登录；Codex CLI 登录状态不会自动复用。', 'Use subscription sign-in above; Codex CLI credentials are not reused automatically.') : undefined })),
+      subscriptionLogin: modelLoginFlow ? { status: modelLoginFlow.state === 'complete' ? 'connected' : modelLoginFlow.state === 'failed' || modelLoginFlow.state === 'cancelled' ? 'failed' : authorizationEvent || modelLoginFlow.prompt ? 'awaiting_user' : 'pending', ...(authorizationEvent?.type === 'auth_url' ? { verificationUri: authorizationEvent.url } : {}), ...(authorizationEvent?.type === 'device_code' ? { verificationUri: authorizationEvent.verificationUri, userCode: authorizationEvent.userCode } : {}), ...(modelLoginFlow.prompt ? { message: modelLoginFlow.prompt.message, prompt: modelLoginFlow.prompt.message } : {}), ...(modelLoginFlow.error ? { message: modelLoginFlow.error } : {}) } : undefined,
+    },
+    knowledge: { mounted: settings?.knowledgeBase ? { id: settings.knowledgeBase.knowledgeBaseId, schemaVersion: settings.knowledgeBase.schemaVersion, revision: settings.knowledgeBase.revision, mounted: true, registered: registrationById.has(settings.knowledgeBase.knowledgeBaseId) } : undefined, candidates: knowledgeCandidates, discoverySummary: t('默认扫描 ResearchHubData/knowledge-bases，也可登记已有知识库目录。', 'The default catalog is ResearchHubData/knowledge-bases; you can also register an existing directory.'), verification: knowledgeDirectoryVerification },
+    busy: settingsBusy,
+    error: settingsError || settings?.knowledgeBaseError || settings?.modelError,
+    modelTestMessage,
+    onRefresh: loadSettings,
+    onBeginSubscriptionLogin: beginSubscriptionLogin,
+    onSubmitSubscriptionAnswer: answerSubscriptionLogin,
+    onCancelSubscriptionLogin: cancelSubscriptionLogin,
+    onSaveApiKey: saveApiKey,
+    onRemoveCredentials: (providerId) => { void updateSettings(() => client.removeModelCredentials(providerId)).catch(() => undefined) },
+    onSaveCompatibleEndpoint: saveCompatibleEndpoint,
+    onTestConnection: (providerId, modelId) => { void testModelConnection(providerId, modelId) },
+    onVerifyKnowledgeDirectory: verifyKnowledgeDirectory,
+    onRegisterKnowledgeDirectory: (path) => { void updateSettings(() => client.registerKnowledgeDirectory(path)).then(() => setKnowledgeDirectoryVerification(undefined)).catch(() => undefined) },
+    onRemoveKnowledgeBase: (knowledgeBaseId) => { void updateSettings(() => client.removeKnowledgeRegistration(knowledgeBaseId)).catch(() => undefined) },
+    onRefreshKnowledgeBases: loadSettings,
+    onMountKnowledgeBase: (knowledgeBaseId) => { void changeKnowledgeBase(knowledgeBaseId) },
+    onUnmountKnowledgeBase: () => { void changeKnowledgeBase('') },
+  }
+  return <div className="app-shell"><ApplicationSidebar route={route} knowledgeBase={knowledgeBase} settings={settings} settingsError={settingsError} settingsBusy={settingsBusy} interactionsDisabled={configurationBlocked} onNavigate={navigate} onLoadSettings={() => void loadSettings()} onModelChange={(value) => void changeModel(value)} settingsPanelProps={settingsPanelProps} /><div className="app-main">{route === 'research' ? <ResearchPage session={session} conversations={conversations} messages={messages} streaming={streaming} thinking={thinking} streamText={streamText} toolEvents={toolEvents} queue={queue} composer={composer} busy={busy} error={error} attachment={attachment} attachmentUiVersion={attachmentUiVersion} attachmentBusy={attachmentBusy} preview={preview} previewBusy={previewBusy} acceptanceBusy={acceptanceBusy} selectedCandidates={selectedCandidates} acceptance={acceptance} rightsForm={rightsForm} sourceForm={sourceForm} uploadStatus={uploadStatus} workflowRunId={workflowRunId} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} client={client} workflow={workflow} knowledgeBase={knowledgeBase} openReviewCases={openReviewCases} contextPanel={contextPanel} workflowDefinitions={workflowDefinitions} selectedWorkflowId={selectedWorkflowId} setSelectedWorkflowId={setSelectedWorkflowId} contextPolicy={contextPolicy} persistencePolicy={persistencePolicy} setContextPolicy={setContextPolicy} setPersistencePolicy={setPersistencePolicy} executionSummary={executionSummary} setComposer={setComposer} setContextPanel={setContextPanel} newConversation={() => void newConversation()} switchConversation={(id) => void switchConversation(id)} runCommand={(operation) => void runCommand(operation)} abort={() => void abort()} upload={(file) => void upload(file)} toggleCandidate={toggleCandidate} setRightsForm={setRightsForm} setSourceForm={setSourceForm} startPreview={() => void startRawDocumentPreview()} acceptCandidates={() => void acceptRawDocumentCandidates()} clearAttachment={clearAttachment} cancelWorkflow={() => void cancelWorkflow()} dismissError={() => setError('')} onNavigate={navigate} /> : route === 'briefs' ? <BriefsPage briefs={briefs} selected={selectedBrief} busy={briefsBusy} error={error} onSelect={(id) => void selectBrief(id)} /> : route === 'reports' ? <ReportsPage reports={reports} selected={selectedReport} busy={reportsBusy} error={error} onSelect={(id) => void selectReport(id)} /> : route === 'bundles' ? <ResearchBundlesPage bundles={bundles} selected={selectedBundle} busy={bundlesBusy} error={error} onSelect={(id) => void selectBundle(id)} sourceHits={sourceHits} sourceBusy={sourceBusy} onSearchSources={(query) => void searchSources(query)} /> : route === 'run' ? <ResearchRunPage client={client} onLaunched={onResearchLaunched} /> : route === 'graph' ? <KnowledgeGraphPage knowledgeBase={knowledgeBase} client={client} /> : route === 'theses' ? <ThesisLifecyclePage client={client} knowledgeBase={knowledgeBase} /> : <ReviewsPage knowledgeBase={knowledgeBase} reviews={reviews} reviewDetail={reviewDetail} reviewsBusy={reviewsBusy} onSelect={(id) => void selectReview(id)} onCloseDetail={() => setReviewDetail(undefined)} />}</div></div>
 }
 
 export default function App(): ReactElement {
