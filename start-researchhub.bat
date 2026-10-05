@@ -45,10 +45,12 @@ if not exist "%~dp0node_modules" (
 
 echo Building the frontend and starting the local Runtime...
 echo Keep this window open while using ResearchHub Lite.
-echo The Runtime will print the browser URL below.
+echo The Runtime will open the browser after startup and print its URL below.
 echo.
+set "RESEARCHHUB_OPEN_BROWSER=1"
 call npm run researchhub
 set "EXIT_CODE=%ERRORLEVEL%"
+set "RESEARCHHUB_OPEN_BROWSER="
 
 if not "%EXIT_CODE%"=="0" (
   echo.
