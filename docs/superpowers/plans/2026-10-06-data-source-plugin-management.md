@@ -198,7 +198,7 @@ common credential-like text such as Bearer tokens and `api_key=`, `token=`,
 - Consumes: adapter definitions passed explicitly to the service; a credential-store port; a test-summary store.
 - Produces: `DataSourceAdministrationService` as defined above; `MemoryDataSourceTestStore` for isolated tests and a file-backed store for Runtime.
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Add tests named:
 
@@ -220,12 +220,12 @@ one callback, caller cancellation reaches the adapter, raw provider output is
 absent from returned/persisted results, and the latest summary contains only
 the fields in `DataSourceTestSummary`.
 
-- [ ] **Step 2: Run the focused test and verify it fails**
+- [x] **Step 2: Run the focused test and verify it fails**
 
 Run: `node --import tsx --test tests/app/services/data-source-administration.test.ts`
 Expected: FAIL because the service contracts and implementation do not exist.
 
-- [ ] **Step 3: Implement contracts, service, error mapping, and summary store**
+- [x] **Step 3: Implement contracts, service, error mapping, and summary store**
 
 Implement the exact interfaces above. Reject duplicate or invalid integration
 IDs and invalid/duplicate credential field IDs before exposing any definition.
@@ -240,12 +240,12 @@ one latest result per integration and test slot: one connection slot, plus one
 capability-sample slot per declared capability ID. Updating one capability's
 result must not overwrite another capability's latest result.
 
-- [ ] **Step 4: Run the focused test and verify it passes**
+- [x] **Step 4: Run the focused test and verify it passes**
 
 Run: `node --import tsx --test tests/app/services/data-source-administration.test.ts`
-Expected: PASS with all seven named cases.
+Expected: PASS with all ten named cases.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/services/data-source-administration-contracts.ts app/services/data-source-administration.ts app/services/data-source-test-store.ts tests/app/services/data-source-administration.test.ts
@@ -267,7 +267,7 @@ git commit -m "feat: add data source administration service"
   `delete(integrationId)`; Windows implementation backed by Windows Credential
   Manager.
 
-- [ ] **Step 1: Write failing credential-store tests**
+- [x] **Step 1: Write failing credential-store tests**
 
 Add tests named:
 
@@ -287,12 +287,12 @@ administration service validates credential field IDs against the selected
 integration definition and requires all mandatory fields before replacing a
 stored credential map.
 
-- [ ] **Step 2: Run the focused test and verify it fails**
+- [x] **Step 2: Run the focused test and verify it fails**
 
 Run: `node --import tsx --test tests/app/runtime/source-credential-store.test.ts`
 Expected: FAIL because the credential-store port and implementation do not exist.
 
-- [ ] **Step 3: Implement the Windows Credential Manager adapter**
+- [x] **Step 3: Implement the Windows Credential Manager adapter**
 
 Add `@napi-rs/keyring` 2.1.0 and its lockfile entry. Use the package's native
 Windows credential backend behind an injectable driver. Store one bounded,
@@ -301,12 +301,12 @@ or vault failure, return a safe unavailable error; do not fall back to files,
 environment mutation, or browser storage. Keep native imports out of tests by
 injecting the driver.
 
-- [ ] **Step 4: Run the focused test and verify it passes**
+- [x] **Step 4: Run the focused test and verify it passes**
 
 Run: `node --import tsx --test tests/app/runtime/source-credential-store.test.ts`
 Expected: PASS with all four named cases.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add package.json package-lock.json app/runtime/source-credential-store.ts tests/app/runtime/source-credential-store.test.ts
@@ -327,7 +327,7 @@ git commit -m "feat: store data source credentials in OS vault"
 - Produces: `services.dataSourceAdministrationService` constructed from the
   same concrete source dependencies used by Runtime compositions.
 
-- [ ] **Step 1: Write failing composition tests**
+- [x] **Step 1: Write failing composition tests**
 
 Add tests named:
 
@@ -342,12 +342,12 @@ test('enforces each integration test timeout and forwards cancellation to provid
 Assert descriptor IDs match actual injected composition dependencies; assert no
 catalog-only source becomes testable.
 
-- [ ] **Step 2: Run the focused test and verify it fails**
+- [x] **Step 2: Run the focused test and verify it fails**
 
 Run: `node --import tsx --test tests/app/services/data-source-integrations.test.ts`
 Expected: FAIL because no explicit integration descriptors are produced.
 
-- [ ] **Step 3: Build descriptors alongside concrete Runtime instances**
+- [x] **Step 3: Build descriptors alongside concrete Runtime instances**
 
 Add a narrow explicit descriptor builder. Reuse the AKShare, CNINFO, GDELT,
 RSS, and industry-source objects created by Runtime compositions; do not scan
@@ -360,7 +360,7 @@ and honors cancellation when the underlying transport supports it. The
 administration service enforces each definition's declared `testTimeoutMs` and
 forwards the resulting cancellation signal.
 
-- [ ] **Step 4: Run focused tests and Runtime typecheck**
+- [x] **Step 4: Run focused tests and Runtime typecheck**
 
 Run: `node --import tsx --test tests/app/services/data-source-integrations.test.ts`
 Expected: PASS with all five named cases.
@@ -368,7 +368,7 @@ Expected: PASS with all five named cases.
 Run: `npm run typecheck`
 Expected: PASS with no TypeScript errors.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/services/data-source-integrations.ts app/services/daily-intelligence-composition.ts app/runtime/application-runtime.ts app/runtime/contracts.ts tests/app/services/data-source-integrations.test.ts
@@ -386,7 +386,7 @@ git commit -m "feat: expose explicit runtime source integrations"
 - Produces: `DataSourceOnboardingService` with `list`, `create`, `update`,
   `markReady`, and runtime-derived adapter-available/verified display state.
 
-- [ ] **Step 1: Write failing onboarding tests**
+- [x] **Step 1: Write failing onboarding tests**
 
 Add tests named:
 
@@ -405,12 +405,12 @@ and secret-like keys are rejected. Require HTTPS documentation/terms URLs and
 reject URL username, password, fragment, and credential-like query components.
 Check free-text bounds and common credential-like strings before persistence.
 
-- [ ] **Step 2: Run the focused test and verify it fails**
+- [x] **Step 2: Run the focused test and verify it fails**
 
 Run: `node --import tsx --test tests/app/services/data-source-onboarding-store.test.ts`
 Expected: FAIL because the store and service do not exist.
 
-- [ ] **Step 3: Implement validation, persistence, and lifecycle**
+- [x] **Step 3: Implement validation, persistence, and lifecycle**
 
 Persist validated draft records under `runtime-data/source-onboarding/` using
 atomic writes consistent with existing file-backed application stores.
@@ -430,12 +430,12 @@ one supported test slot exists, and a passed latest summary exists for every
 supported slot. No API operation can set `verified` directly. Do not provide
 an enable/disable operation.
 
-- [ ] **Step 4: Run the focused test and verify it passes**
+- [x] **Step 4: Run the focused test and verify it passes**
 
 Run: `node --import tsx --test tests/app/services/data-source-onboarding-store.test.ts`
 Expected: PASS with all six named cases.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/services/data-source-onboarding-store.ts tests/app/services/data-source-onboarding-store.test.ts
@@ -470,7 +470,7 @@ the two action shapes above; it never accepts caller-supplied lifecycle state.
 Mutations use `validateMutation`, reads use `validateRead`, and no route invokes
 Knowledge mutation.
 
-- [ ] **Step 1: Write failing HTTP route tests**
+- [x] **Step 1: Write failing HTTP route tests**
 
 Add tests named:
 
@@ -481,17 +481,18 @@ test('saves and removes credentials without echoing secret values')
 test('returns bounded sanitized test results and rejects unknown integrations')
 test('aborts a running connector test when the HTTP client disconnects')
 test('persists drafts without changing the source-policy catalog or Knowledge revision')
+test('rejects malformed credential requests without misreporting vault failures')
 ```
 
 Use injected fake services, assert exact JSON shapes and status codes, and
 verify no Knowledge service or Writer method is called.
 
-- [ ] **Step 2: Run the focused test and verify it fails**
+- [x] **Step 2: Run the focused test and verify it fails**
 
 Run: `node --import tsx --test tests/app/runtime/data-source-admin-routes.test.ts`
 Expected: FAIL because the routes and service wiring do not exist.
 
-- [ ] **Step 3: Wire services and implement route validation**
+- [x] **Step 3: Wire services and implement route validation**
 
 Expose the services through `ResearchHubApplicationServices`. Route every
 credential write, test request, and draft mutation through
@@ -500,15 +501,15 @@ Use `validateRead` only for descriptor/draft reads. Return only safe DTOs and
 map missing integrations, unsupported tests, and vault failures to stable
 Runtime errors.
 
-- [ ] **Step 4: Run the focused test and Runtime typecheck**
+- [x] **Step 4: Run the focused test and Runtime typecheck**
 
 Run: `node --import tsx --test tests/app/runtime/data-source-admin-routes.test.ts`
-Expected: PASS with all six named cases.
+Expected: PASS with all seven named cases.
 
 Run: `npm run typecheck`
 Expected: PASS with no TypeScript errors.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/runtime/contracts.ts app/runtime/application-runtime.ts app/runtime/server.ts tests/app/runtime/data-source-admin-routes.test.ts
@@ -532,7 +533,7 @@ git commit -m "feat: add data source administration routes"
   `createDataSourceOnboardingDraft`, `updateDataSourceOnboardingDraft`, and
   `markDataSourceOnboardingDraftReady`.
 
-- [ ] **Step 1: Write failing RuntimeClient tests**
+- [x] **Step 1: Write failing RuntimeClient tests**
 
 Add tests named:
 
@@ -545,12 +546,12 @@ it('encodes integration and draft IDs and posts only supported test fields')
 Assert exact paths, methods, bodies, and presence/absence of
 `X-ResearchHub-Runtime-Token`.
 
-- [ ] **Step 2: Run the focused client test and verify it fails**
+- [x] **Step 2: Run the focused client test and verify it fails**
 
 Run: `npm run client:test -- client/src/api/runtime-client.test.ts`
 Expected: FAIL because the typed methods do not exist.
 
-- [ ] **Step 3: Add RuntimeClient methods and page UI**
+- [x] **Step 3: Add RuntimeClient methods and page UI**
 
 Keep the existing source-policy table intact under the first tab. Add the
 three-tab layout selected in brainstorming. The integration tab shows actual
@@ -564,7 +565,7 @@ supports the supported-connector path and the validated local-draft path; it
 does not accept executable code or arbitrary test endpoints. Display
 “已验证 / 待 SourcePolicy 接入” rather than a runtime enable toggle.
 
-- [ ] **Step 4: Write and run page tests**
+- [x] **Step 4: Write and run page tests**
 
 Add tests named:
 
@@ -574,13 +575,15 @@ it('distinguishes adapter/configuration state from test state')
 it('clears credential inputs after save and never renders returned secret values')
 it('renders supported tests and safe failure categories only')
 it('cancels a running test and restores its idle state')
+it('keeps one global test cancellable after switching integrations and tabs')
 it('creates and edits a local onboarding draft without offering arbitrary code or URL tests')
+it('shows credential management only for integrations with credential fields')
 ```
 
 Run: `npm run client:test -- client/src/api/runtime-client.test.ts client/src/app/data-sources/DataSourcesPage.test.tsx`
 Expected: PASS with all listed client/page cases.
 
-- [ ] **Step 5: Run client typecheck and commit**
+- [x] **Step 5: Run client typecheck and commit**
 
 Run: `npm run client:typecheck`
 Expected: PASS with no TypeScript errors.
@@ -601,7 +604,7 @@ git commit -m "feat: manage source integrations from data sources page"
 - Consumes: all service, route, credential, draft, and UI interfaces from Tasks 1–6.
 - Produces: a verified vertical slice with no source-policy or Knowledge mutation.
 
-- [ ] **Step 1: Run focused node and client suites**
+- [x] **Step 1: Run focused node and client suites**
 
 Run: `npm run test:node`
 Expected: PASS across the repository's Node test suite.
@@ -609,7 +612,7 @@ Expected: PASS across the repository's Node test suite.
 Run: `npm run client:test`
 Expected: PASS across the client test suite.
 
-- [ ] **Step 2: Run both typechecks and production client build**
+- [x] **Step 2: Run both typechecks and production client build**
 
 Run: `npm run typecheck`
 Expected: PASS.
@@ -620,14 +623,27 @@ Expected: PASS.
 Run: `npm run client:build`
 Expected: PASS and produce the normal client build output.
 
-- [ ] **Step 3: Review security and workflow boundaries**
+Final verification on 2026-10-06: `npm run client:test` passed 97 tests across
+9 files; both `npm run typecheck` and `npm run client:typecheck` passed; and
+`npm run client:build` passed. Vite reported the existing bundle-size advisory
+for a minified chunk over 500 kB. `npm run test:node` completed with 1,946 of
+1,971 tests passing and 25 failing; the 25 failing test names exactly match
+the pre-feature baseline (1,899 of 1,924 passing). No new Node test failure
+was introduced by this feature.
+
+Residual risk: individual drafts are bounded to 16 KiB, but the local draft
+store has no aggregate count or size cap. The routes require the local Runtime
+mutation token; add an aggregate retention bound if this store is later used
+for a large draft catalog.
+
+- [x] **Step 3: Review security and workflow boundaries**
 
 Inspect the final diff for credential value leakage, arbitrary URL/script
 execution, unbounded provider calls, Knowledge writes, and source-policy
 changes. Confirm the integration list is built from real explicit composition
 objects and not metadata-only catalog entries.
 
-- [ ] **Step 4: Commit any final corrections**
+- [x] **Step 4: Commit any final corrections**
 
 ```bash
 git add <only-reviewed-correction-files>
