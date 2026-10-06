@@ -21,7 +21,8 @@ import { DailyIntelligenceService } from './daily-intelligence-service.ts'
 import { WorkflowService } from './workflow-service.ts'
 import { parseYaml } from '../../knowledge/storage/yaml.ts'
 import type { DataSourceIntegrationDefinition } from './data-source-administration-contracts.ts'
-import { industryOperatingIntegration, sourceIntegration } from './data-source-integrations.ts'
+import { industryOperatingIntegration, mergeSourceIntegrations, sourceIntegration } from './data-source-integrations.ts'
+import { sha256 } from '../../plugins/research-acquisition/hash.ts'
 
 export interface DailyIntelligenceCompositionOptions {
   readonly cwd: string
@@ -57,22 +58,22 @@ export async function createDailyIntelligenceComposition(options: DailyIntellige
     Promise.resolve(options.akshare ?? new AkshareDataAdapter()),
   ])
   const active = catalog.filter((entry) => entry.operationalStatus === 'active')
-  const institutional = active
+  const institutionalEntries = active
     .filter((entry) => entry.category === 'institution' || entry.category === 'analyst' || entry.category === 'industry_expert')
     .filter((entry) => entry.discoveryUrl || entry.evidenceUrl)
     .slice(0, 8)
-    .map((entry) => new PublicInstitutionalViewAcquisition({
+  const institutional = institutionalEntries.map((entry) => new PublicInstitutionalViewAcquisition({
       provider: entry.platform,
       accountRef: `${entry.platform}:${entry.accountId}`,
       urls: [entry.discoveryUrl ?? entry.evidenceUrl],
       tier: entry.reliabilityTier,
       scope: 'broad',
     }))
-  const community = active
+  const communityEntries = active
     .filter((entry) => entry.category === 'community' && entry.platform !== 'xueqiu')
     .filter((entry) => entry.discoveryUrl || entry.evidenceUrl)
     .slice(0, 4)
-    .map((entry) => new CommunitySignalAcquisition({
+  const community = communityEntries.map((entry) => new CommunitySignalAcquisition({
       provider: entry.platform,
       accountRef: `${entry.platform}:${entry.accountId}`,
       urls: [entry.discoveryUrl ?? entry.evidenceUrl],
@@ -107,6 +108,16 @@ export async function createDailyIntelligenceComposition(options: DailyIntellige
   const industryOperating = options.industryOperatingObservationAcquisition ?? new IndustryOperatingObservationAcquisition()
   breadth.push(new DailyIndustryObservationAcquisition(industryOperating))
   integrationDefinitions.push(industryOperatingIntegration(industryOperating))
+  for (const entry of institutionalEntries) integrationDefinitions.push(sourceIntegration({
+    id: `web-${sha256(entry.platform).slice(0, 16)}`,
+    name: entry.platform,
+    capabilities: [{ id: 'public-institutional-views', label: 'Public institutional views', metricIds: [] }],
+  }))
+  for (const entry of communityEntries) integrationDefinitions.push(sourceIntegration({
+    id: `web-${sha256(entry.platform).slice(0, 16)}`,
+    name: entry.platform,
+    capabilities: [{ id: 'community-signals', label: 'Community signals', metricIds: [] }],
+  }))
   const providers: readonly ResearchAcquisitionPlugin[] = [...core, ...breadth, ...institutional, ...community]
   const overrides = await readCalendarOverrides(join(cwd, 'config', 'trading-calendar-overrides.yaml'))
   const calendar = options.calendar ?? new TradingCalendarService({
@@ -133,7 +144,7 @@ export async function createDailyIntelligenceComposition(options: DailyIntellige
     runtimeRoot,
     calendar,
   })
-  return { service, calendar, providers, integrationDefinitions, watchlistPath, catalogPath, catalog }
+  return { service, calendar, providers, integrationDefinitions: mergeSourceIntegrations(integrationDefinitions), watchlistPath, catalogPath, catalog }
 }
 
 interface CalendarOverrides { readonly manualHolidays: readonly string[]; readonly manualTradingDays: readonly string[] }

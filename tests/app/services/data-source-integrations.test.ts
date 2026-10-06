@@ -15,10 +15,10 @@ import type { IndustryOperatingObservationAcquisitionPort } from '../../../plugi
 
 const emptyIndustry: IndustryOperatingObservationAcquisitionPort = { acquire: async () => ({ status: 'SCOPE_UNSUPPORTED', observations: [], sources: [], diagnostics: [] }) }
 
-async function daily(platforms: readonly { platform: string; status: 'active' | 'metadata_only' }[], industry = emptyIndustry) {
+async function daily(platforms: readonly { platform: string; status: 'active' | 'metadata_only'; category?: string; accountId?: string }[], industry = emptyIndustry) {
   const root = await mkdtemp(join(tmpdir(), 'data-source-integrations-'))
   const catalogPath = join(root, 'catalog.yaml')
-  await writeFile(catalogPath, JSON.stringify(platforms.map(({ platform, status }) => ({ platform, accountId: platform, category: 'official', acquisitionMode: 'api', catalogRole: 'active_feed', operationalStatus: status, enabled: status === 'active' }))), 'utf8')
+  await writeFile(catalogPath, JSON.stringify(platforms.map(({ platform, status, category, accountId }) => ({ platform, accountId: accountId ?? platform, category: category ?? 'official', acquisitionMode: 'api', catalogRole: 'active_feed', operationalStatus: status, enabled: status === 'active', discoveryUrl: 'https://example.com/feed' }))), 'utf8')
   try {
     return await createDailyIntelligenceComposition({ cwd: process.cwd(), catalogPath, runtimeRoot: root, workflowService: new WorkflowService(), industryOperatingObservationAcquisition: industry })
   } finally { await rm(root, { recursive: true, force: true }) }
@@ -41,6 +41,18 @@ test('does not list metadata-only Daily catalog entries as executable integratio
   const composition = await daily([{ platform: 'xueqiu', status: 'metadata_only' }, { platform: 'akshare', status: 'metadata_only' }, { platform: 'cninfo', status: 'metadata_only' }])
   assert.deepEqual(composition.integrationDefinitions.map((definition) => definition.descriptor.integrationId), ['industry-operating'])
   assert.deepEqual(composition.providers.map((provider) => provider.name), ['d4-daily-industry-observations'])
+})
+
+test('describes active institutional and community providers grouped by platform', async () => {
+  const composition = await daily([
+    { platform: 'institution-site', status: 'active', category: 'institution', accountId: 'one' },
+    { platform: 'institution-site', status: 'active', category: 'institution', accountId: 'two' },
+    { platform: 'community-site', status: 'active', category: 'community' },
+    { platform: 'metadata-site', status: 'metadata_only', category: 'community' },
+  ])
+  assert.deepEqual(composition.providers.map((provider) => provider.name), ['d4-daily-industry-observations', 'web-research-institution-site', 'web-research-institution-site', 'web-research-community-site'])
+  assert.deepEqual(composition.integrationDefinitions.map((definition) => definition.descriptor.displayName), ['Industry operating observations', 'institution-site', 'community-site'])
+  assert.deepEqual(composition.integrationDefinitions.find((definition) => definition.descriptor.displayName === 'institution-site')?.descriptor.capabilities.map((capability) => capability.id), ['public-institutional-views'])
 })
 
 test('declares test support only when a bounded adapter callback exists', async () => {
