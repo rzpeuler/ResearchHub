@@ -1,4 +1,2 @@
-export * from './contracts.ts'
-export * from './source-policy.ts'
-export * from './validation.ts'
-export * from './workflow.ts'
+/** @deprecated Import generic research data contracts and runtime from `data/index.ts`. */
+export * from '../../data/index.ts'

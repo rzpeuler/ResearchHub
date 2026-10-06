@@ -1,4 +1,5 @@
-import type { DataRequirement, SourceCandidate, SourcePolicy } from '../../workflows/research-data-acquisition/contracts.ts'
+import type { DataRequirement, SourceCandidate, SourcePolicy } from '../../data/contracts.ts'
+import { getCommonDataDefinition } from '../../data/common-catalog.ts'
 import { EARNINGS_EXPECTATION_METRICS, earningsExpectationSourcePolicy } from '../../workflows/earnings-review/expectations-acquisition.ts'
 import { VALUATION_DATA_REQUIREMENTS, VALUATION_SOURCE_POLICIES } from '../../workflows/valuation/basis-evidence.ts'
 import { EXCHANGE_QA_SSE_CAPABILITY, EXCHANGE_QA_SSE_METRIC_ID, EXCHANGE_QA_SZSE_CAPABILITY, EXCHANGE_QA_SZSE_METRIC_ID, MANAGEMENT_COMMUNICATION_DOCUMENT_CAPABILITY, MANAGEMENT_COMMUNICATION_DOCUMENT_METRIC_ID, exchangeQAPolicy, managementCommunicationDocumentPolicy } from '../../workflows/management-communication-acquisition/source-policies.ts'
@@ -52,10 +53,6 @@ function requirement(input: Pick<DataRequirement, 'id' | 'consumer' | 'dataKind'
 
 function definitions(): readonly CatalogDefinition[] {
   const earningsPolicy = earningsExpectationSourcePolicy()
-  const earningsMeanings: Readonly<Record<(typeof EARNINGS_EXPECTATION_METRICS)[number]['metricId'], string>> = {
-    earnings_expectation_eps: '分析师预测每股收益（EPS）',
-    earnings_expectation_net_profit: '分析师预测净利润',
-  }
   const management = [
     {
       metricId: MANAGEMENT_COMMUNICATION_DOCUMENT_METRIC_ID,
@@ -83,12 +80,7 @@ function definitions(): readonly CatalogDefinition[] {
   return [
     ...VALUATION_DATA_REQUIREMENTS.map((item) => ({
       requirement: item,
-      chineseMeaning: ( {
-        valuation_market_price: '估值用交易日收盘价',
-        valuation_eps: '估值用年度每股收益（EPS）',
-        valuation_bvps: '估值用年度每股净资产（BVPS）',
-        valuation_annual_report_publication: '年度报告正式披露日期',
-      } as const)[item.metricId as 'valuation_market_price' | 'valuation_eps' | 'valuation_bvps' | 'valuation_annual_report_publication'],
+      chineseMeaning: getCommonDataDefinition(item.metricId!)?.meaning ?? '',
       policy: VALUATION_SOURCE_POLICIES.find((policy) => policy.requirementMatch.metricId === item.metricId)!,
     })),
     ...EARNINGS_EXPECTATION_METRICS.map((item) => ({
@@ -100,7 +92,7 @@ function definitions(): readonly CatalogDefinition[] {
         determinismClass: 'AUTHORITATIVE_NUMERIC',
         minimumAuthority: 'S3_AGGREGATOR',
       }),
-      chineseMeaning: earningsMeanings[item.metricId],
+      chineseMeaning: getCommonDataDefinition(item.metricId)?.meaning ?? '',
       policy: {
         ...earningsPolicy,
         requirementMatch: { ...earningsPolicy.requirementMatch, metricId: item.metricId },
@@ -115,7 +107,7 @@ function definitions(): readonly CatalogDefinition[] {
         metricId: item.metricId,
         determinismClass: 'SEMANTIC_QUALITATIVE',
       }),
-      chineseMeaning: item.chineseMeaning,
+      chineseMeaning: getCommonDataDefinition(item.metricId)?.meaning ?? '',
       policy: item.policy,
     })),
   ]
@@ -132,6 +124,7 @@ export function getDataSourceCatalog(): DataSourceCatalogResponse {
   for (const entry of entries) {
     const id = entry.requirement.metricId
     if (!id) throw new Error(`DATA_SOURCE_CATALOG_REQUIREMENT_MISSING_METRIC_ID:${entry.requirement.id}`)
+    if (!getCommonDataDefinition(id)) throw new Error(`DATA_SOURCE_CATALOG_COMMON_DEFINITION_MISSING:${id}`)
     if (seen.has(id)) throw new Error(`DATA_SOURCE_CATALOG_DUPLICATE_METRIC_ID:${id}`)
     seen.add(id)
   }

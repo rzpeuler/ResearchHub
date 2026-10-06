@@ -1,0 +1,234 @@
+import type {
+  AcquisitionAttempt,
+  AcquisitionExecutor,
+  AcquisitionObservation,
+  AcquisitionResult,
+  AcquisitionSourceMetadata,
+  DataRequirement,
+  SourceCandidate,
+  SourceExecutionResult,
+  SourcePolicy,
+} from './contracts.ts'
+import { candidateEligibility, orderCandidates, resolveSourcePolicy } from './source-policy.ts'
+import { assertValidDataRequirement, validateAcquisitionData } from './validation.ts'
+
+export interface ResearchDataAcquisitionOptions<T> {
+  readonly requirement: DataRequirement
+  readonly policies: readonly SourcePolicy[]
+  readonly executor: AcquisitionExecutor<T>
+  readonly now?: () => string
+  readonly signal?: AbortSignal
+}
+
+export async function runResearchDataAcquisition<T>(options: ResearchDataAcquisitionOptions<T>): Promise<AcquisitionResult<T>> {
+  assertValidDataRequirement(options.requirement)
+  const now = options.now ?? (() => new Date().toISOString())
+  const resolution = resolveSourcePolicy(options.requirement, options.policies)
+  if (resolution.status === 'NO_REGISTERED_POLICY' || resolution.status === 'AMBIGUOUS_POLICY' || !resolution.policy) {
+    return {
+      requirementId: options.requirement.id,
+      status: 'UNAVAILABLE',
+      source: null,
+      quality: { pointInTimeSafe: false, complete: false, crossChecked: false },
+      attempts: [],
+      unavailableReason: resolution.status === 'MATCHED' ? 'NO_REGISTERED_POLICY' : resolution.status,
+    }
+  }
+
+  const policy = resolution.policy
+  const candidates = orderCandidates(policy.candidates)
+  const eligibility = candidates.map((candidate) => ({ candidate, result: candidateEligibility(options.requirement, candidate) }))
+  const eligibleCandidates = eligibility.filter((item) => item.result.eligible).map((item) => item.candidate)
+  if (eligibleCandidates.length === 0) {
+    const hadAuthorityFailure = eligibility.some((item) => item.result.reason === 'INSUFFICIENT_AUTHORITY')
+    return {
+      requirementId: options.requirement.id,
+      status: 'UNAVAILABLE',
+      source: null,
+      quality: { pointInTimeSafe: false, complete: false, crossChecked: false },
+      attempts: [],
+      unavailableReason: hadAuthorityFailure ? 'INSUFFICIENT_AUTHORITY' : 'ALL_FALLBACKS_EXHAUSTED',
+      policyId: policy.policyId,
+    }
+  }
+
+  if (policy.selectionMode === 'FIRST_VALID') return runFirstValid(options.requirement, policy.policyId, eligibleCandidates, options.executor, now, options.signal)
+  return runMultiSource(options.requirement, policy.policyId, policy.selectionMode, eligibleCandidates, options.executor, now, options.signal)
+}
+
+export const executeResearchDataAcquisition = runResearchDataAcquisition
+
+async function runFirstValid<T>(
+  requirement: DataRequirement,
+  policyId: string,
+  candidates: readonly SourceCandidate[],
+  executor: AcquisitionExecutor<T>,
+  now: () => string,
+  signal?: AbortSignal,
+): Promise<AcquisitionResult<T>> {
+  const attempts: AcquisitionAttempt[] = []
+  const failureStatuses: string[] = []
+  for (const candidate of candidates) {
+    if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
+    const startedAt = now()
+    let execution: SourceExecutionResult<T>
+    try {
+      execution = await executor(requirement, candidate)
+    } catch (error) {
+      if (signal?.aborted || (error instanceof Error && error.message === 'WORKFLOW_CANCELLED')) throw error
+      execution = { status: 'UNSUPPORTED', diagnostic: `EXECUTOR_THROWN: ${boundedError(error)}` }
+    }
+    if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
+    const completedAt = now()
+    const evaluated = evaluateExecution(requirement, candidate, execution, completedAt)
+    attempts.push({ sourceId: candidate.sourceId, fallbackLevel: candidate.fallbackLevel, status: evaluated.status, startedAt, completedAt, ...(evaluated.diagnostic ? { diagnostic: evaluated.diagnostic } : {}) })
+    if (evaluated.status === 'SUCCESS' && evaluated.observation) {
+      return {
+        requirementId: requirement.id,
+        status: 'AVAILABLE',
+        data: evaluated.observation.data,
+        source: evaluated.observation.source,
+        sources: [evaluated.observation.source],
+        observations: [evaluated.observation],
+        quality: { pointInTimeSafe: true, complete: true, crossChecked: false },
+        attempts,
+        ...(failureStatuses.length > 0 ? { fallbackReason: failureStatuses.join('|') } : {}),
+        policyId,
+      }
+    }
+    failureStatuses.push(`${candidate.fallbackLevel}_${evaluated.status}`)
+  }
+  return {
+    requirementId: requirement.id,
+    status: 'UNAVAILABLE',
+    source: null,
+    quality: { pointInTimeSafe: false, complete: false, crossChecked: false },
+    attempts,
+    unavailableReason: terminalUnavailableReason(attempts),
+    ...(failureStatuses.length > 0 ? { fallbackReason: failureStatuses.join('|') } : {}),
+    policyId,
+  }
+}
+
+async function runMultiSource<T>(
+  requirement: DataRequirement,
+  policyId: string,
+  mode: 'CROSS_CHECK' | 'COLLECT_DIVERSE',
+  candidates: readonly SourceCandidate[],
+  executor: AcquisitionExecutor<T>,
+  now: () => string,
+  signal?: AbortSignal,
+): Promise<AcquisitionResult<T>> {
+  const attempts: AcquisitionAttempt[] = []
+  const observations: AcquisitionObservation<T>[] = []
+  for (const candidate of candidates) {
+    if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
+    const startedAt = now()
+    let execution: SourceExecutionResult<T>
+    try {
+      execution = await executor(requirement, candidate)
+    } catch (error) {
+      if (signal?.aborted || (error instanceof Error && error.message === 'WORKFLOW_CANCELLED')) throw error
+      execution = { status: 'UNSUPPORTED', diagnostic: `EXECUTOR_THROWN: ${boundedError(error)}` }
+    }
+    if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
+    const completedAt = now()
+    const evaluated = evaluateExecution(requirement, candidate, execution, completedAt)
+    attempts.push({ sourceId: candidate.sourceId, fallbackLevel: candidate.fallbackLevel, status: evaluated.status, startedAt, completedAt, ...(evaluated.diagnostic ? { diagnostic: evaluated.diagnostic } : {}) })
+    if (evaluated.observation) observations.push(evaluated.observation)
+  }
+
+  const sources = observations.map((observation) => observation.source)
+  if (observations.length === 0) {
+    return {
+      requirementId: requirement.id,
+      status: 'UNAVAILABLE',
+      source: null,
+      quality: { pointInTimeSafe: false, complete: false, crossChecked: false },
+      attempts,
+      unavailableReason: terminalUnavailableReason(attempts),
+      policyId,
+    }
+  }
+  if (mode === 'COLLECT_DIVERSE') {
+    return {
+      requirementId: requirement.id,
+      status: observations.length === candidates.length ? 'AVAILABLE' : 'PARTIAL',
+      source: sources[0] ?? null,
+      sources,
+      observations,
+      quality: { pointInTimeSafe: true, complete: observations.length === candidates.length, crossChecked: false },
+      attempts,
+      policyId,
+    }
+  }
+
+  const crossCheckStatus = observations.length < 2
+    ? 'INSUFFICIENT_CROSS_CHECK'
+    : observations.every((observation) => stableSerialize(observation.data) === stableSerialize(observations[0]!.data))
+      ? 'CONSISTENT'
+      : 'CONFLICT'
+  return {
+    requirementId: requirement.id,
+    status: crossCheckStatus === 'CONFLICT' || observations.length < candidates.length ? 'PARTIAL' : 'AVAILABLE',
+    data: observations[0]!.data,
+    source: observations[0]!.source,
+    sources,
+    observations,
+    quality: { pointInTimeSafe: true, complete: observations.length === candidates.length, crossChecked: observations.length >= 2 },
+    attempts,
+    ...(crossCheckStatus === 'CONFLICT' ? { unavailableReason: 'SOURCE_CONFLICT' as const } : {}),
+    crossCheckStatus,
+    policyId,
+  }
+}
+
+function evaluateExecution<T>(
+  requirement: DataRequirement,
+  candidate: SourceCandidate,
+  execution: SourceExecutionResult<T>,
+  completedAt: string,
+): { readonly status: AcquisitionAttempt['status']; readonly observation?: AcquisitionObservation<T>; readonly diagnostic?: string } {
+  if (execution.status !== 'SUCCESS') return { status: execution.status, ...(execution.diagnostic ? { diagnostic: execution.diagnostic } : {}) }
+  const fieldErrors = validateAcquisitionData(requirement, execution.data)
+  if (fieldErrors.length > 0) return { status: 'VALIDATION_ERROR', diagnostic: `INCOMPLETE_REQUIRED_FIELDS: ${fieldErrors.join(',')}` }
+  if (candidate.fallbackLevel === 'LLM_WEB' && requirement.llmWebFallback === 'EXTRACT_WITH_PROVENANCE') {
+    const provenance = execution.source
+    if (!provenance?.originPublisher || !provenance.sourceUrl || !provenance.publishedAt || !provenance.retrievedAt || Number.isNaN(Date.parse(provenance.publishedAt)) || Number.isNaN(Date.parse(provenance.retrievedAt))) return { status: 'VALIDATION_ERROR', diagnostic: 'LLM_WEB_PROVENANCE_REQUIRED: originPublisher, sourceUrl, publishedAt, and retrievedAt are required' }
+  }
+  const publishedAt = execution.source?.publishedAt
+  if (publishedAt !== undefined && Date.parse(publishedAt) > Date.parse(requirement.asOf)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `publishedAt ${publishedAt} is after asOf ${requirement.asOf}` }
+  const source: AcquisitionSourceMetadata = {
+    sourceId: candidate.sourceId,
+    fallbackLevel: candidate.fallbackLevel,
+    originAuthority: candidate.originAuthority,
+    ...(execution.source?.originPublisher ?? candidate.originPublisher ? { originPublisher: execution.source?.originPublisher ?? candidate.originPublisher } : {}),
+    ...(execution.source?.retrievalProvider ? { retrievalProvider: execution.source.retrievalProvider } : {}),
+    ...(execution.source?.sourceUrl ? { sourceUrl: execution.source.sourceUrl } : {}),
+    ...(publishedAt ? { publishedAt } : {}),
+    retrievedAt: execution.source?.retrievedAt ?? completedAt,
+  }
+  return { status: 'SUCCESS', observation: { data: execution.data, source } }
+}
+
+function terminalUnavailableReason(attempts: readonly AcquisitionAttempt[]): AcquisitionResult<unknown>['unavailableReason'] {
+  if (attempts.length === 0) return 'ALL_FALLBACKS_EXHAUSTED'
+  const diagnostics = attempts.map((attempt) => attempt.diagnostic ?? '')
+  if (diagnostics.some((diagnostic) => diagnostic.includes('NO_ELIGIBLE_POINT_IN_TIME_DATA')) || attempts.every((attempt) => attempt.status === 'POINT_IN_TIME_INVALID')) return 'NO_ELIGIBLE_POINT_IN_TIME_DATA'
+  if (diagnostics.some((diagnostic) => diagnostic.includes('INCOMPLETE_REQUIRED_FIELDS')) || attempts.every((attempt) => attempt.status === 'VALIDATION_ERROR')) return 'INCOMPLETE_REQUIRED_FIELDS'
+  if (attempts.every((attempt) => attempt.status === 'NO_DATA')) return 'DATA_NOT_PUBLISHED'
+  return 'ALL_FALLBACKS_EXHAUSTED'
+}
+
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((item) => stableSerialize(item)).join(',')}]`
+  if (typeof value === 'object' && value !== null) {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableSerialize((value as Record<string, unknown>)[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+function boundedError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.replace(/[\r\n]+/g, ' ').slice(0, 240)
+}

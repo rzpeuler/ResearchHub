@@ -17,6 +17,7 @@ import { analyzeIndustrySupplyDemandCycle } from '../../skills/industry_supply_d
 import { analyzeCompetitiveMarketMap } from '../../skills/competitive_market_map/calculations.ts'
 import { analyzeExpectationGap } from '../../skills/expectation_gap/calculations.ts'
 import { canonicalResearchSkillMdPath, CANONICAL_RESEARCH_SKILL_IDS, getCanonicalResearchSkill, REQUIRED_RESEARCH_SKILL_SECTIONS, RUNTIME_CANONICAL_RESEARCH_SKILLS, type ResearchSkillCatalogStatus, type ResearchSkillExecutionClass } from './research-skill-catalog.ts'
+import type { SkillDataRequirement } from '../../data/requirements.ts'
 
 export type ResearchHubSkillKind = 'research' | 'knowledge' | 'utility'
 export type ResearchSkillOrigin = 'canonical' | 'external'
@@ -44,6 +45,7 @@ export interface ResearchSkillDefinition {
   readonly catalogStatus?: ResearchSkillCatalogStatus
   readonly executionClass?: ResearchSkillExecutionClass
   readonly runtimeBinding?: string
+  readonly dataRequirements?: readonly SkillDataRequirement[]
   readonly runtimeExecutor?: ResearchSkillRuntimeExecutor
   readonly origin?: ResearchSkillOrigin
   readonly enabled: boolean
@@ -71,6 +73,7 @@ function canonicalDefinition(id: string): ResearchSkillDefinition {
     catalogStatus: metadata.status,
     executionClass: metadata.executionClass,
     runtimeBinding: metadata.runtimeBinding,
+    dataRequirements: metadata.dataRequirements,
     ...(runtimeExecutor === undefined ? {} : { runtimeExecutor }),
     origin: 'canonical',
     enabled: true,

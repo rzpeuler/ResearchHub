@@ -67,6 +67,7 @@ purpose
 invocationMatch
 inputs
 produces
+dataRequirements (provider-neutral Data requirement templates)
 skillMdPath / methodologySource
 executionClass / runtimeBinding
 runtimeExecutor for deterministic entries
@@ -117,6 +118,13 @@ Point-in-time, source class, period alignment, and provenance requirements are
 declared by each Skill. Missing is never silently converted to zero, an
 estimate, or an inference. A Skill may return `unavailable`,
 `insufficient_data`, or an explicit research gap.
+
+Data requirement templates are declarative metadata only. Workflow supplies
+company/industry identity, `asOf`, period, and consumer identity when it
+materializes a request. Static Common data IDs and generic Industry semantic
+roles are represented without provider names. Skills do not perform Data
+Layer I/O; see `RESEARCHHUB_DATA_LAYER_ARCHITECTURE_V1.md` for the catalog and
+resolver contracts.
 
 Skill results are research-domain results. Durable semantic state is governed
 by the existing Workflow -> Knowledge Production Gateway -> validation ->

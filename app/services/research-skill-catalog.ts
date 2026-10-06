@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import { join, resolve } from 'node:path'
+import type { SkillDataRequirement } from '../../data/requirements.ts'
 
 export type ResearchSkillCatalogStatus = 'IMPLEMENTED' | 'PARTIAL' | 'PLANNED'
 export type ResearchSkillExecutionClass = 'SEMANTIC_EXECUTABLE' | 'DETERMINISTIC_EXECUTABLE' | 'NOT_INDEPENDENTLY_EXECUTABLE'
@@ -19,6 +20,7 @@ export interface ResearchSkillCatalogEntry {
   readonly notes: string
   readonly executionClass?: ResearchSkillExecutionClass
   readonly runtimeBinding?: string
+  readonly dataRequirements: readonly SkillDataRequirement[]
 }
 
 export const REQUIRED_RESEARCH_SKILL_SECTIONS = [
@@ -101,9 +103,9 @@ const entry = (
   currentOwner: string,
   migrationAction: string,
   notes: string,
-): ResearchSkillCatalogEntry => ({ canonicalSkillId, domain, purpose, invocationMatch, inputs, produces, status, runtimeRegistered, currentSource, currentOwner, migrationAction, notes, executionClass: EXECUTION_CLASS_BY_ID[canonicalSkillId], runtimeBinding: RUNTIME_BINDING_BY_ID[canonicalSkillId] })
+): ResearchSkillCatalogEntry => ({ canonicalSkillId, domain, purpose, invocationMatch, inputs, produces, status, runtimeRegistered, currentSource, currentOwner, migrationAction, notes, executionClass: EXECUTION_CLASS_BY_ID[canonicalSkillId], runtimeBinding: RUNTIME_BINDING_BY_ID[canonicalSkillId], dataRequirements: [] })
 
-export const CANONICAL_RESEARCH_SKILL_CATALOG: readonly ResearchSkillCatalogEntry[] = [
+const RESEARCH_SKILL_CATALOG_ENTRIES: readonly ResearchSkillCatalogEntry[] = [
   entry('document_change_analysis', 'Evidence', 'Identify attributable changes between two documents.', 'Use only when two comparable, attributable document versions are supplied; do not infer changes from one document.', ['prior document', 'current document', 'asOf', 'source refs'], ['change set', 'unchanged regions', 'gaps'], 'PLANNED', false, 'None', 'Future Wave', 'Implement a point-in-time document-diff method.', 'No runtime registration.'),
   entry('business_model_map', 'Company Economics', 'Explain how a company makes money and how its segments fit together.', 'Use for how-the-company-makes-money questions; do not use for consolidated driver attribution or unit economics.', ['company identity', 'segments/products', 'source refs', 'asOf'], ['business model map', 'segment relationships', 'source refs'], 'IMPLEMENTED', true, 'Company Research Business Model section', 'Company Research Workflow', 'Register the extracted bounded methodology.', 'The standalone contract preserves the existing evidence-only section boundary.'),
   entry('business_driver_analysis', 'Company Economics', 'Attribute consolidated revenue and profit changes to supplied business drivers.', 'Use for volume/price/mix/segment driver questions; do not use for a generic business model description.', ['period-aligned financials', 'segment/KPI data', 'source refs'], ['driver decomposition', 'contribution diagnostics', 'gaps'], 'IMPLEMENTED', true, 'skills/business_driver_analysis/calculations.ts', 'Company Research Workflow', 'Register the independently callable deterministic driver implementation.', 'Code owns period alignment, supported multiplicative pairs, additive contributions, and residuals.'),
@@ -131,6 +133,32 @@ export const CANONICAL_RESEARCH_SKILL_CATALOG: readonly ResearchSkillCatalogEntr
   entry('catalyst_map', 'Thesis', 'Map attributable events that could change a thesis.', 'Use for catalyst questions with explicit attributable event evidence; do not infer catalysts from generic news or stock direction.', ['formalized thesis propositions', 'expectation gaps', 'attributable event evidence', 'dates/status', 'source refs'], ['proposition-linked catalysts', 'timing/status', 'resolution mechanisms', 'gaps'], 'IMPLEMENTED', true, 'skills/catalyst_map/semantic.ts plus calculations.ts', 'Thesis Lifecycle Workflow', 'Invoke bounded event-to-proposition semantic mapping and retain deterministic validation.', 'Reasoning proposes mappings; code validates proposition/gap refs, timing provenance, status, and uncertainty.'),
   entry('thesis_refresh', 'Thesis', 'Assess what changed in an existing thesis since its prior review.', 'Use only with a prior thesis snapshot and new point-in-time evidence; do not formalize a new thesis or rewrite unaffected propositions.', ['prior thesis snapshot', 'new evidence without labels', 'priorAsOf/currentAsOf', 'kill criteria', 'source refs'], ['targeted proposition deltas', 'candidate transition', 'kill assessments', 'gaps'], 'IMPLEMENTED', true, 'skills/thesis_refresh/semantic.ts plus calculations.ts', 'Thesis Lifecycle Workflow', 'Invoke bounded evidence classification and retain deterministic PIT/no-drift/kill logic.', 'Reasoning classifies target and relation; code owns PIT filtering, targeted deltas, unchanged preservation, and sourced kill predicates.'),
 ]
+
+const DATA_REQUIREMENTS_BY_SKILL: Readonly<Record<string, readonly SkillDataRequirement[]>> = {
+  consensus_expectations_analysis: [
+    { id: 'eps-estimate', kind: 'STATIC', metricId: 'earnings_expectation_eps', dataKind: 'estimate', determinismClass: 'AUTHORITATIVE_NUMERIC', minimumAuthority: 'S3_AGGREGATOR', required: true },
+    { id: 'net-profit-estimate', kind: 'STATIC', metricId: 'earnings_expectation_net_profit', dataKind: 'estimate', determinismClass: 'AUTHORITATIVE_NUMERIC', minimumAuthority: 'S3_AGGREGATOR', required: true },
+  ],
+  estimate_revision_analysis: [
+    { id: 'eps-estimate-revisions', kind: 'STATIC', metricId: 'earnings_expectation_eps', dataKind: 'estimate', determinismClass: 'AUTHORITATIVE_NUMERIC', minimumAuthority: 'S3_AGGREGATOR', required: true },
+    { id: 'net-profit-estimate-revisions', kind: 'STATIC', metricId: 'earnings_expectation_net_profit', dataKind: 'estimate', determinismClass: 'AUTHORITATIVE_NUMERIC', minimumAuthority: 'S3_AGGREGATOR', required: true },
+  ],
+  reverse_dcf_expectation_decode: [
+    { id: 'market-price', kind: 'STATIC', metricId: 'valuation_market_price', dataKind: 'timeseries', determinismClass: 'AUTHORITATIVE_NUMERIC', minimumAuthority: 'S3_AGGREGATOR', requiredFields: ['date', 'close'], required: true },
+  ],
+  industry_supply_demand_cycle: [
+    { id: 'capacity-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'supply', metricFamily: 'capacity', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
+    { id: 'demand-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'demand', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
+    { id: 'inventory-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'inventory', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
+    { id: 'pricing-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'pricing', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
+    { id: 'utilization-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'utilization', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
+  ],
+}
+
+export const CANONICAL_RESEARCH_SKILL_CATALOG: readonly ResearchSkillCatalogEntry[] = RESEARCH_SKILL_CATALOG_ENTRIES.map((item) => ({
+  ...item,
+  dataRequirements: DATA_REQUIREMENTS_BY_SKILL[item.canonicalSkillId] ?? [],
+}))
 
 export const CANONICAL_RESEARCH_SKILL_IDS = new Set(CANONICAL_RESEARCH_SKILL_CATALOG.map((item) => item.canonicalSkillId))
 export const RUNTIME_CANONICAL_RESEARCH_SKILLS = CANONICAL_RESEARCH_SKILL_CATALOG.filter((item) => item.runtimeRegistered)
