@@ -26,6 +26,8 @@ import { ModelLoginFlowManager } from './model-login-flow.ts'
 import { addModelConnection, listSafeModelConnectionStatus, loadModelConnections, saveModelProviderApiKey } from './model-connections.ts'
 import { addRegisteredKnowledgeBase, listRegisteredKnowledgeBases, removeRegisteredKnowledgeBase, validateKnowledgeBaseDirectory, type RegisteredKnowledgeBase } from './knowledge-registration.ts'
 import { getDataSourceCatalog } from '../services/data-source-catalog.ts'
+import { DataSourceAdministrationError } from '../services/data-source-administration.ts'
+import type { DataSourceOnboardingDraftInput } from '../services/data-source-onboarding-store.ts'
 import { listReasoningModelCandidates, ReasoningModelSelectionError, validateReasoningModelSelection } from '../pi/model-selection.ts'
 import type { ThemeWorkspaceProjectionInput } from '../services/theme-workspace-projection-contracts.ts'
 import type { RawDocumentMetadataV04, RawDocumentRightsV04 } from '../../knowledge/production/raw-document-gateway-v04.ts'
@@ -126,6 +128,8 @@ function httpStatus(code: string): number {
   if (code === 'unauthorized_runtime_token') return 401
   if (code === 'not_found') return 404
   if (code === 'no_kb_mounted') return 503
+  if (code === 'credential_store_unavailable') return 503
+  if (code === 'unsupported_test') return 422
   if (code === 'conflict' || code === 'cancelled') return 409
   return 500
 }
@@ -137,11 +141,44 @@ function errorCode(error: unknown): string {
 }
 
 function safeError(error: unknown): { readonly code: string; readonly error: string } {
+  if (error instanceof DataSourceRouteError) return { code: error.code, error: error.message }
   const code = errorCode(error)
   if (code === 'unauthorized_runtime_token') return { code, error: 'Runtime request authorization failed' }
   if (error instanceof ApplicationServiceError) return { code, error: safeSummary(error.message, 300) || 'Application operation failed' }
   if (code === 'not_found') return { code, error: 'Resource not found' }
   return { code, error: 'ResearchHub runtime operation failed' }
+}
+
+class DataSourceRouteError extends Error {
+  constructor(readonly code: 'unsupported_test' | 'credential_store_unavailable', message: string) { super(message) }
+}
+
+const DATA_SOURCE_DRAFT_FIELDS = ['integrationId', 'displayName', 'documentationUrl', 'accessMode', 'publisher', 'proposedAuthority', 'capabilityIds', 'metricIds', 'authenticationMode', 'termsUrl', 'rightsNotes', 'rateLimitNotes', 'timeBoundaryNotes', 'providerTermsReviewed'] as const
+
+function onboardingInput(value: unknown): DataSourceOnboardingDraftInput {
+  if (!isRecord(value)) throw new ApplicationServiceError('invalid_input', 'Data source draft input is invalid')
+  assertExactFields(value, DATA_SOURCE_DRAFT_FIELDS.filter((field) => field !== 'termsUrl'), ['termsUrl'], 'data source draft')
+  if (Buffer.byteLength(JSON.stringify(value), 'utf8') > 16 * 1024) throw new ApplicationServiceError('invalid_input', 'Data source draft input is too large')
+  return value as unknown as DataSourceOnboardingDraftInput
+}
+
+function safeIntegrationView(value: Awaited<ReturnType<NonNullable<ResearchHubApplicationRuntime['services']['dataSourceAdministrationService']>['listIntegrations']>>[number]) {
+  const integration = value.integration
+  return {
+    integration: {
+      integrationId: integration.integrationId, displayName: integration.displayName,
+      sourceIds: [...integration.sourceIds],
+      credentialFields: integration.credentialFields.map(({ id, label, required }) => ({ id, label, required })),
+      capabilities: integration.capabilities.map(({ id, label, metricIds }) => ({ id, label, metricIds: [...metricIds] })),
+      supportedTests: { connection: integration.supportedTests.connection, capabilitySamples: [...integration.supportedTests.capabilitySamples] },
+    },
+    credentialState: value.credentialState, policyLinked: value.policyLinked,
+    latestTests: value.latestTests.map((summary) => ({ integrationId: summary.integrationId, kind: summary.kind, ...(summary.capabilityId === undefined ? {} : { capabilityId: summary.capabilityId }), status: summary.status, startedAt: summary.startedAt, completedAt: summary.completedAt, ...(summary.errorCode === undefined ? {} : { errorCode: summary.errorCode }) })),
+  }
+}
+
+function safeOnboardingDraft(value: Awaited<ReturnType<NonNullable<ResearchHubApplicationRuntime['services']['dataSourceOnboardingService']>['list']>>[number]) {
+  return { requestId: value.requestId, input: value.input, status: value.status, createdAt: value.createdAt, updatedAt: value.updatedAt }
 }
 
 function combineErrors(errors: readonly unknown[], message: string): unknown {
@@ -585,6 +622,76 @@ export class ResearchHubRuntimeServer {
     const method = request.method ?? 'GET'
     const path = url.pathname
     if (method === 'GET' && path === '/api/data-sources/policies') { await this.sendJson(response, 200, getDataSourceCatalog()); return }
+    if (method === 'GET' && path === '/api/data-sources/integrations') {
+      const service = this.runtime!.services.dataSourceAdministrationService
+      if (!service) throw new ApplicationServiceError('failed', 'Data source administration is unavailable')
+      await this.sendJson(response, 200, { integrations: (await service.listIntegrations()).map(safeIntegrationView) }); return
+    }
+    const credentialRoute = /^\/api\/data-sources\/integrations\/([^/]+)\/credentials$/.exec(path)
+    if (credentialRoute && (method === 'POST' || method === 'DELETE')) {
+      const service = this.runtime!.services.dataSourceAdministrationService
+      if (!service) throw new ApplicationServiceError('failed', 'Data source administration is unavailable')
+      const integrationId = decodeSegment(credentialRoute[1]!)
+      try {
+        if (method === 'POST') {
+          const body = await this.readJson(request, 20_000)
+          assertExactFields(body, ['values'], [], 'credential request')
+          if (!isRecord(body.values) || Object.keys(body.values).length > 64 || Object.values(body.values).some((value) => typeof value !== 'string' || value.length > 8_192)) throw new ApplicationServiceError('invalid_input', 'Credential values are invalid or oversized')
+          await service.saveCredentials(integrationId, body.values as Record<string, string>)
+          await this.sendJson(response, 200, { saved: true }); return
+        }
+        await service.removeCredentials(integrationId)
+        await this.sendJson(response, 200, { removed: true }); return
+      } catch (error) { throw this.dataSourceRouteFailure(error, 'credential') }
+    }
+    const testRoute = /^\/api\/data-sources\/integrations\/([^/]+)\/tests$/.exec(path)
+    if (method === 'POST' && testRoute) {
+      const service = this.runtime!.services.dataSourceAdministrationService
+      if (!service) throw new ApplicationServiceError('failed', 'Data source administration is unavailable')
+      const integrationId = decodeSegment(testRoute[1]!)
+      const body = await this.readJson(request, 4_096)
+      assertExactFields(body, ['kind'], ['capabilityId'], 'data source test request')
+      if (body.kind !== 'connection' && body.kind !== 'capability_sample') throw new ApplicationServiceError('invalid_input', 'Data source test kind is invalid')
+      if (body.capabilityId !== undefined && (typeof body.capabilityId !== 'string' || body.capabilityId.length === 0 || body.capabilityId.length > 64)) throw new ApplicationServiceError('invalid_input', 'Data source capability ID is invalid')
+      const controller = new AbortController()
+      const onClose = () => { if (!response.writableEnded) controller.abort() }
+      response.once('close', onClose)
+      try {
+        const summary = await service.runTest({ integrationId, kind: body.kind, ...(body.capabilityId === undefined ? {} : { capabilityId: body.capabilityId as string }) }, controller.signal)
+        if (response.destroyed) return
+        await this.sendJson(response, 200, { integrationId: summary.integrationId, kind: summary.kind, ...(summary.capabilityId === undefined ? {} : { capabilityId: summary.capabilityId }), status: summary.status, startedAt: summary.startedAt, completedAt: summary.completedAt, ...(summary.errorCode === undefined ? {} : { errorCode: summary.errorCode }) })
+        return
+      } catch (error) { throw this.dataSourceRouteFailure(error, 'test') }
+      finally { response.removeListener('close', onClose) }
+    }
+    if (path === '/api/data-sources/onboarding' && method === 'GET') {
+      const service = this.runtime!.services.dataSourceOnboardingService
+      if (!service) throw new ApplicationServiceError('failed', 'Data source onboarding is unavailable')
+      await this.sendJson(response, 200, { drafts: (await service.list()).map(safeOnboardingDraft) }); return
+    }
+    if (path === '/api/data-sources/onboarding' && method === 'POST') {
+      const service = this.runtime!.services.dataSourceOnboardingService
+      if (!service) throw new ApplicationServiceError('failed', 'Data source onboarding is unavailable')
+      const body = await this.readJson(request, 20_000)
+      const draft = await this.runDataSourceOnboarding(() => service.create(onboardingInput(body)))
+      await this.sendJson(response, 201, { draft: safeOnboardingDraft(draft) }); return
+    }
+    const onboardingRoute = /^\/api\/data-sources\/onboarding\/([^/]+)$/.exec(path)
+    if (method === 'PATCH' && onboardingRoute) {
+      const service = this.runtime!.services.dataSourceOnboardingService
+      if (!service) throw new ApplicationServiceError('failed', 'Data source onboarding is unavailable')
+      const requestId = decodeSegment(onboardingRoute[1]!)
+      const body = await this.readJson(request, 20_000)
+      let draft
+      if (body.action === 'update') {
+        assertExactFields(body, ['action', 'input'], [], 'onboarding update request')
+        draft = await this.runDataSourceOnboarding(() => service.update(requestId, onboardingInput(body.input)))
+      } else if (body.action === 'mark_ready') {
+        assertExactFields(body, ['action'], [], 'onboarding ready request')
+        draft = await this.runDataSourceOnboarding(() => service.markReady(requestId))
+      } else throw new ApplicationServiceError('invalid_input', 'Onboarding action is invalid')
+      await this.sendJson(response, 200, { draft: safeOnboardingDraft(draft) }); return
+    }
     if (method === 'GET' && path === '/api/settings') { await this.sendJson(response, 200, await this.settingsResponse()); return }
     if (method === 'POST' && path === '/api/settings/knowledge-base') { await this.changeKnowledgeBase(request, response); return }
     if (method === 'POST' && path === '/api/settings/model') { await this.changeModel(request, response); return }
@@ -1357,6 +1464,22 @@ export class ResearchHubRuntimeServer {
   private publishRuntimeError(error: unknown): void { if (this.lifecycle === 'closing' || this.lifecycle === 'closed') return; const conversationId = (() => { try { return (this.sessionState() as { conversationId: string }).conversationId } catch { return 'conversation' } })(); const code = errorCode(error) === 'cancelled' ? 'agent_aborted' : 'agent_error'; this.eventStream.publish({ eventId: `runtime:${randomUUID()}`, conversationId: safeIdentifier(conversationId, 'conversation'), timestamp: new Date().toISOString(), type: 'error', code, summary: code === 'agent_aborted' ? 'Agent request aborted' : 'Agent request failed' } satisfies ClientEvent) }
 
   private async readJson(request: IncomingMessage, maxBytes = MAX_JSON_BYTES): Promise<Record<string, unknown>> { const length = Number(request.headers['content-length']); if (Number.isFinite(length) && length > maxBytes) throw new ApplicationServiceError('invalid_input', 'JSON request is too large'); const chunks: Buffer[] = []; let total = 0; for await (const input of request) { const chunk = Buffer.isBuffer(input) ? input : Buffer.from(input); total += chunk.length; if (total > maxBytes) throw new ApplicationServiceError('invalid_input', 'JSON request is too large'); chunks.push(chunk) } if (total === 0) return {}; try { const value: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('object required'); return value as Record<string, unknown> } catch (error) { throw new ApplicationServiceError('invalid_input', 'JSON request is invalid', { cause: error }) } }
+  private dataSourceRouteFailure(error: unknown, operation: 'credential' | 'test'): unknown {
+    if (error instanceof DataSourceAdministrationError) {
+      if (error.code === 'unknown_integration') return new ApplicationServiceError('not_found', 'Data source integration was not found')
+      if (error.code === 'unsupported_test') return new DataSourceRouteError('unsupported_test', 'This integration does not support the requested test')
+      return new ApplicationServiceError('invalid_input', 'Credential values are invalid')
+    }
+    if (operation === 'credential') return new DataSourceRouteError('credential_store_unavailable', 'Credential storage is unavailable')
+    return error
+  }
+  private async runDataSourceOnboarding<T>(operation: () => Promise<T>): Promise<T> {
+    try { return await operation() }
+    catch (error) {
+      if (error instanceof Error && error.message === 'Invalid data source onboarding draft') throw new ApplicationServiceError('invalid_input', 'Data source draft is invalid or unavailable')
+      throw error
+    }
+  }
   private stringField(body: Record<string, unknown>, field: string, maxLength = 2_000_000): string { const value = body[field]; if (typeof value !== 'string' || value.length > maxLength) throw new ApplicationServiceError('invalid_input', `${field} is invalid`); return value }
   private optionalString(body: Record<string, unknown>, field: string, maxLength: number): string | undefined { const value = body[field]; if (value === undefined || value === null) return undefined; if (typeof value !== 'string' || value.length > maxLength) throw new ApplicationServiceError('invalid_input', `${field} is invalid`); return value }
   private stringArray(body: Record<string, unknown>, field: string, maxItems: number, maxLength: number): string[] { const value = body[field]; if (!Array.isArray(value) || value.length > maxItems || value.some((x) => typeof x !== 'string' || !x.trim() || x.length > maxLength)) throw new ApplicationServiceError('invalid_input', `${field} is invalid`); return value as string[] }
@@ -1436,8 +1559,8 @@ export class ResearchHubRuntimeServer {
     await pipeline(createReadStream(opened.path), response)
   }
 
-  private async sendJson(response: ServerResponse, status: number, value: unknown): Promise<void> { if (response.writableEnded) return; response.writeHead(status, { ...this.runtimeSecurity!.corsHeaders(), 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' }); response.end(JSON.stringify(value)) }
-  private sendEmpty(response: ServerResponse, status: number): void { response.writeHead(status, { ...this.runtimeSecurity!.corsHeaders(), 'Cache-Control': 'no-store', Allow: 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': `Content-Type, ${TOKEN_HEADER}`, 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }); response.end() }
+  private async sendJson(response: ServerResponse, status: number, value: unknown): Promise<void> { if (response.destroyed || response.writableEnded) return; response.writeHead(status, { ...this.runtimeSecurity!.corsHeaders(), 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' }); response.end(JSON.stringify(value)) }
+  private sendEmpty(response: ServerResponse, status: number): void { response.writeHead(status, { ...this.runtimeSecurity!.corsHeaders(), 'Cache-Control': 'no-store', Allow: 'GET,POST,PATCH,DELETE,OPTIONS', 'Access-Control-Allow-Headers': `Content-Type, ${TOKEN_HEADER}`, 'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS' }); response.end() }
   private sendError(response: ServerResponse, error: unknown): void { const safe = safeError(error); response.writeHead(httpStatus(safe.code), { ...this.runtimeSecurity?.corsHeaders(), 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' }); response.end(JSON.stringify(safe)) }
 }
 

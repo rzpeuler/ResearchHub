@@ -21,6 +21,7 @@ import type { ThesisCriterionService } from '../services/thesis-criterion-servic
 import type { ThemeFrameworkService } from '../services/theme-framework-service.ts'
 import type { ThemeScopeImpactService } from '../services/theme-scope-impact-service.ts'
 import type { DataSourceAdministrationService } from '../services/data-source-administration-contracts.ts'
+import type { DataSourceOnboardingService } from '../services/data-source-onboarding-store.ts'
 
 export interface SafeConversationSummary {
   readonly conversationId: string
@@ -73,6 +74,8 @@ export interface ResearchHubApplicationServices {
   readonly dailyIntelligenceService?: DailyIntelligenceService
   /** Human-facing inventory of explicitly assembled data source integrations. */
   readonly dataSourceAdministrationService?: DataSourceAdministrationService
+  /** Local, non-Knowledge onboarding drafts for sources without a Runtime adapter. */
+  readonly dataSourceOnboardingService?: DataSourceOnboardingService
 }
 
 export interface ResearchHubSessionRuntimeOptions {
