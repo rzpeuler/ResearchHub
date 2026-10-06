@@ -17,6 +17,7 @@ export interface ResearchDataAcquisitionOptions<T> {
   readonly policies: readonly SourcePolicy[]
   readonly executor: AcquisitionExecutor<T>
   readonly now?: () => string
+  readonly signal?: AbortSignal
 }
 
 export async function runResearchDataAcquisition<T>(options: ResearchDataAcquisitionOptions<T>): Promise<AcquisitionResult<T>> {
@@ -51,8 +52,8 @@ export async function runResearchDataAcquisition<T>(options: ResearchDataAcquisi
     }
   }
 
-  if (policy.selectionMode === 'FIRST_VALID') return runFirstValid(options.requirement, policy.policyId, eligibleCandidates, options.executor, now)
-  return runMultiSource(options.requirement, policy.policyId, policy.selectionMode, eligibleCandidates, options.executor, now)
+  if (policy.selectionMode === 'FIRST_VALID') return runFirstValid(options.requirement, policy.policyId, eligibleCandidates, options.executor, now, options.signal)
+  return runMultiSource(options.requirement, policy.policyId, policy.selectionMode, eligibleCandidates, options.executor, now, options.signal)
 }
 
 export const executeResearchDataAcquisition = runResearchDataAcquisition
@@ -63,17 +64,21 @@ async function runFirstValid<T>(
   candidates: readonly SourceCandidate[],
   executor: AcquisitionExecutor<T>,
   now: () => string,
+  signal?: AbortSignal,
 ): Promise<AcquisitionResult<T>> {
   const attempts: AcquisitionAttempt[] = []
   const failureStatuses: string[] = []
   for (const candidate of candidates) {
+    if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
     const startedAt = now()
     let execution: SourceExecutionResult<T>
     try {
       execution = await executor(requirement, candidate)
     } catch (error) {
+      if (signal?.aborted || (error instanceof Error && error.message === 'WORKFLOW_CANCELLED')) throw error
       execution = { status: 'UNSUPPORTED', diagnostic: `EXECUTOR_THROWN: ${boundedError(error)}` }
     }
+    if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
     const completedAt = now()
     const evaluated = evaluateExecution(requirement, candidate, execution, completedAt)
     attempts.push({ sourceId: candidate.sourceId, fallbackLevel: candidate.fallbackLevel, status: evaluated.status, startedAt, completedAt, ...(evaluated.diagnostic ? { diagnostic: evaluated.diagnostic } : {}) })
@@ -112,17 +117,21 @@ async function runMultiSource<T>(
   candidates: readonly SourceCandidate[],
   executor: AcquisitionExecutor<T>,
   now: () => string,
+  signal?: AbortSignal,
 ): Promise<AcquisitionResult<T>> {
   const attempts: AcquisitionAttempt[] = []
   const observations: AcquisitionObservation<T>[] = []
   for (const candidate of candidates) {
+    if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
     const startedAt = now()
     let execution: SourceExecutionResult<T>
     try {
       execution = await executor(requirement, candidate)
     } catch (error) {
+      if (signal?.aborted || (error instanceof Error && error.message === 'WORKFLOW_CANCELLED')) throw error
       execution = { status: 'UNSUPPORTED', diagnostic: `EXECUTOR_THROWN: ${boundedError(error)}` }
     }
+    if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
     const completedAt = now()
     const evaluated = evaluateExecution(requirement, candidate, execution, completedAt)
     attempts.push({ sourceId: candidate.sourceId, fallbackLevel: candidate.fallbackLevel, status: evaluated.status, startedAt, completedAt, ...(evaluated.diagnostic ? { diagnostic: evaluated.diagnostic } : {}) })

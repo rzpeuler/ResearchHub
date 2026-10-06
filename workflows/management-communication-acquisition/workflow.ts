@@ -7,12 +7,13 @@ import type { AkshareDataClient } from '../../plugins/research-acquisition/aksha
 import type { ExchangeQAPair, ManagementCommunicationAcquisitionRequest, ManagementCommunicationAcquisitionSources, ManagementCommunicationDocument, ManagementCommunicationExchange, ManagementCommunicationWorkflowResult } from './contracts.ts'
 import { dedupeDocuments, dedupeExchangeQa } from './dedupe.ts'
 import { normalizeCninfoDocuments, normalizeExchangeQaRows } from './normalization.ts'
-import { EXCHANGE_QA_SSE_CAPABILITY, EXCHANGE_QA_SZSE_CAPABILITY, MANAGEMENT_COMMUNICATION_DOCUMENT_CAPABILITY, exchangeQAPolicy, managementCommunicationDocumentPolicy } from './source-policies.ts'
+import { EXCHANGE_QA_SSE_CAPABILITY, EXCHANGE_QA_SSE_METRIC_ID, EXCHANGE_QA_SZSE_CAPABILITY, EXCHANGE_QA_SZSE_METRIC_ID, MANAGEMENT_COMMUNICATION_DOCUMENT_CAPABILITY, MANAGEMENT_COMMUNICATION_DOCUMENT_METRIC_ID, exchangeQAPolicy, managementCommunicationDocumentPolicy } from './source-policies.ts'
 
 export interface ManagementCommunicationWorkflowOptions {
   readonly request: ManagementCommunicationAcquisitionRequest
   readonly sources: ManagementCommunicationAcquisitionSources
   readonly now?: () => string
+  readonly signal?: AbortSignal
 }
 
 export async function runManagementCommunicationDocuments(options: ManagementCommunicationWorkflowOptions): Promise<ManagementCommunicationWorkflowResult<ManagementCommunicationDocument>> {
@@ -25,6 +26,7 @@ export async function runManagementCommunicationDocuments(options: ManagementCom
     consumer: { workflow: 'management-communication-acquisition', capability: MANAGEMENT_COMMUNICATION_DOCUMENT_CAPABILITY },
     subject: { ticker: request.ticker },
     dataKind: 'document',
+    metricId: MANAGEMENT_COMMUNICATION_DOCUMENT_METRIC_ID,
     asOf: request.asOf,
     determinismClass: 'SEMANTIC_QUALITATIVE',
     llmWebFallback: 'FORBIDDEN',
@@ -33,6 +35,7 @@ export async function runManagementCommunicationDocuments(options: ManagementCom
     requirement,
     policies: [managementCommunicationDocumentPolicy()],
     now,
+    signal: options.signal,
     executor: async (_requirement, candidate) => executeDocumentCandidate(candidate, sourceRequest, options.sources, request, now, diagnostics),
   })
   return workflowResult(acquisition, diagnostics)
@@ -51,6 +54,7 @@ export async function runExchangeQa(options: ManagementCommunicationWorkflowOpti
     consumer: { workflow: 'management-communication-acquisition', capability },
     subject: { ticker: request.ticker },
     dataKind: 'evidence',
+    metricId: exchange === 'SZSE' ? EXCHANGE_QA_SZSE_METRIC_ID : EXCHANGE_QA_SSE_METRIC_ID,
     asOf: request.asOf,
     determinismClass: 'SEMANTIC_QUALITATIVE',
     llmWebFallback: 'FORBIDDEN',
@@ -59,6 +63,7 @@ export async function runExchangeQa(options: ManagementCommunicationWorkflowOpti
     requirement,
     policies: [exchangeQAPolicy(exchange)],
     now,
+    signal: options.signal,
     executor: async (_requirement, candidate) => executeQaCandidate(candidate, sourceRequest, options.sources, request, exchange, now, diagnostics),
   })
   return workflowResult(acquisition, diagnostics)

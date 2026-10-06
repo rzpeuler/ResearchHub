@@ -1,7 +1,7 @@
 # Data Source Policy Catalog Design
 
 **Date:** 2026-10-06  
-**Status:** Design approved in conversation; awaiting specification review  
+**Status:** Design approved; implementation in progress
 **Scope:** Read-only data-source catalog and Workflow-owned source routing for non-industry generic data requirements.
 
 ## Context

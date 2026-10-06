@@ -180,7 +180,7 @@ export async function resolveEarningsExpectations(input: { readonly workflow: Ea
   const expectationsSource = input.workflow.earningsExpectationsSource ?? (input.workflow.akshare !== undefined && hasAkshareExpectationsCapability(input.workflow.akshare) ? createAkshareEarningsExpectationsSource({ akshare: input.workflow.akshare, now: input.workflow.now }) : undefined)
   if (expectationsSource !== undefined) {
     try {
-      const acquisition = await expectationsSource.acquire({ company: input.company, asOf: input.analysisAsOf, targetFiscalYear: input.workflow.fiscalYear })
+      const acquisition = await expectationsSource.acquire({ company: input.company, asOf: input.analysisAsOf, targetFiscalYear: input.workflow.fiscalYear, signal: input.workflow.signal })
       const assembly = assembleAutomaticEarningsExpectations({ projection: acquisition.projection, targetFiscalYear: input.workflow.fiscalYear, analysisAsOf: input.analysisAsOf, ...(input.resultPublishedAt === undefined ? {} : { resultPublishedAt: input.resultPublishedAt }) })
       const diagnostics = uniqueSorted([...acquisition.diagnostics, ...assembly.diagnostics, ...(assembly.bundle === undefined ? ['automatic_expectations_unavailable'] : [])])
       const outcomes = acquisition.providerOutcomes

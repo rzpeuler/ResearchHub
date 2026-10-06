@@ -68,6 +68,7 @@ export type SourceSelectionMode = 'FIRST_VALID' | 'CROSS_CHECK' | 'COLLECT_DIVER
 export interface SourcePolicy {
   readonly policyId: string
   readonly requirementMatch: {
+    readonly workflow?: string
     readonly dataKind?: DataRequirementKind
     readonly metricId?: string
     readonly metricFamily?: string

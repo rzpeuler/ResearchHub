@@ -14,7 +14,8 @@ export function resolveSourcePolicy(requirement: DataRequirement, policies: read
 
 export function policyMatches(requirement: DataRequirement, policy: SourcePolicy): boolean {
   const match = policy.requirementMatch
-  return (match.dataKind === undefined || match.dataKind === requirement.dataKind)
+  return (match.workflow === undefined || match.workflow === requirement.consumer.workflow)
+    && (match.dataKind === undefined || match.dataKind === requirement.dataKind)
     && (match.metricId === undefined || match.metricId === requirement.metricId)
     && (match.metricFamily === undefined || match.metricFamily === requirement.metricFamily)
     && (match.capability === undefined || match.capability === requirement.consumer.capability)
@@ -22,7 +23,8 @@ export function policyMatches(requirement: DataRequirement, policy: SourcePolicy
 
 export function policySpecificity(policy: SourcePolicy): number {
   const match = policy.requirementMatch
-  return (match.metricId === undefined ? 0 : 100)
+  return (match.workflow === undefined ? 0 : 200)
+    + (match.metricId === undefined ? 0 : 100)
     + (match.metricFamily === undefined ? 0 : 50)
     + (match.dataKind === undefined ? 0 : 10)
     + (match.capability === undefined ? 0 : 5)

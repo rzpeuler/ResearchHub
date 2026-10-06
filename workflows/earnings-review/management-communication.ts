@@ -195,8 +195,8 @@ async function automaticallyExtract(input: ResolveManagementCommunicationInput, 
   if (input.sources === undefined) return { sources: [], documentCount: 0, qaCount: 0, attempted: false }
   const request = { ticker: input.company.symbol, companyName: input.company.name, exchange: input.company.exchange as 'SSE' | 'SZSE' | 'BSE' | undefined, asOf: input.analysisAsOf, lookbackDays: input.lookbackDays }
   const [documents, qa] = await Promise.all([
-    runManagementCommunicationDocuments({ request, sources: input.sources, now: input.now }),
-    runExchangeQa({ request, sources: input.sources, now: input.now }),
+    runManagementCommunicationDocuments({ request, sources: input.sources, now: input.now, signal: input.signal }),
+    runExchangeQa({ request, sources: input.sources, now: input.now, signal: input.signal }),
   ])
   diagnostics.push(...documents.diagnostics, ...qa.diagnostics)
   const sourceObjects = [...documents.data.map(sourceFromDocument), ...qa.data.map(sourceFromQa), ...input.officialSources]

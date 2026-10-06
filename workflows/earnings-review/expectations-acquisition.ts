@@ -10,12 +10,16 @@ import type { EstimateProjectionResult } from './expectation-source-eastmoney.ts
 const EASTMONEY_SOURCE_ID = 'eastmoney-individual-research-report'
 const THS_SOURCE_ID = 'ths-institution-forecast'
 const PROVIDER_LADDER = 'earnings-expectations-source-ladder'
-const METRICS = ['eps', 'net_profit'] as const
+export const EARNINGS_EXPECTATION_METRICS = [
+  { metric: 'eps', metricId: 'earnings_expectation_eps' },
+  { metric: 'net_profit', metricId: 'earnings_expectation_net_profit' },
+] as const
 
 export interface EarningsExpectationAcquisitionRequest {
   readonly company: ResearchCompanyIdentity
   readonly asOf: string
   readonly targetFiscalYear: number
+  readonly signal?: AbortSignal
 }
 
 export interface EarningsExpectationAcquisitionResult {
@@ -42,9 +46,9 @@ export interface AkshareEarningsExpectationsSourceOptions {
 
 export function earningsExpectationSourcePolicy(): SourcePolicy {
   const supports = { dataKinds: ['estimate'] as const }
-  const ths: SourceCandidate = { sourceId: THS_SOURCE_ID, fallbackLevel: 'PRIMARY', originAuthority: 'S3_AGGREGATOR', originPublisher: 'Tonghuashun / 同花顺', operationId: 'akshare.stock_profit_forecast_ths', supports: { ...supports, metricIds: ['eps', 'net_profit'] } }
-  const eastmoney: SourceCandidate = { sourceId: EASTMONEY_SOURCE_ID, fallbackLevel: 'FALLBACK_1', originAuthority: 'S3_AGGREGATOR', originPublisher: 'EastMoney', operationId: 'akshare.stock_research_report_em', supports: { ...supports, metricIds: ['eps'] } }
-  return { policyId: 'earnings-expectations-source-ladder-v0.1', requirementMatch: { dataKind: 'estimate', capability: 'earnings_expectations' }, selectionMode: 'FIRST_VALID', candidates: [ths, eastmoney] }
+  const ths: SourceCandidate = { sourceId: THS_SOURCE_ID, fallbackLevel: 'PRIMARY', originAuthority: 'S3_AGGREGATOR', originPublisher: 'Tonghuashun / 同花顺', operationId: 'akshare.stock_profit_forecast_ths', supports: { ...supports, metricIds: ['earnings_expectation_eps', 'earnings_expectation_net_profit'] } }
+  const eastmoney: SourceCandidate = { sourceId: EASTMONEY_SOURCE_ID, fallbackLevel: 'FALLBACK_1', originAuthority: 'S3_AGGREGATOR', originPublisher: 'EastMoney', operationId: 'akshare.stock_research_report_em', supports: { ...supports, metricIds: ['earnings_expectation_eps'] } }
+  return { policyId: 'earnings-expectations-source-ladder-v0.1', requirementMatch: { workflow: 'earnings-review', dataKind: 'estimate', capability: 'earnings_expectations' }, selectionMode: 'FIRST_VALID', candidates: [ths, eastmoney] }
 }
 
 function uniqueSorted(values: readonly string[]): readonly string[] { return [...new Set(values)].sort((left, right) => left.localeCompare(right)) }
@@ -70,10 +74,10 @@ export class AkshareEarningsExpectationsSource implements EarningsExpectationsAc
   async acquire(request: EarningsExpectationAcquisitionRequest): Promise<EarningsExpectationAcquisitionResult> {
     const results: AcquisitionResult<{ readonly projection: EstimateProjectionResult }>[] = []
     const diagnostics: string[] = []
-    for (const metric of METRICS) {
-      const requirement: DataRequirement = { id: `earnings-expectation-${request.company.symbol}-${request.targetFiscalYear}-${metric}`, consumer: { workflow: 'earnings-review', capability: 'earnings_expectations' }, subject: { ticker: request.company.symbol, companyId: request.company.name }, dataKind: 'estimate', metricId: metric, asOf: request.asOf, determinismClass: 'AUTHORITATIVE_NUMERIC', minimumAuthority: 'S3_AGGREGATOR', llmWebFallback: 'FORBIDDEN' }
+    for (const { metric, metricId } of EARNINGS_EXPECTATION_METRICS) {
+      const requirement: DataRequirement = { id: `earnings-expectation-${request.company.symbol}-${request.targetFiscalYear}-${metric}`, consumer: { workflow: 'earnings-review', capability: 'earnings_expectations' }, subject: { ticker: request.company.symbol, companyId: request.company.name }, dataKind: 'estimate', metricId, asOf: request.asOf, determinismClass: 'AUTHORITATIVE_NUMERIC', minimumAuthority: 'S3_AGGREGATOR', llmWebFallback: 'FORBIDDEN' }
       this.options.onRequirement?.(requirement)
-      const result = await runResearchDataAcquisition({ requirement, policies: [earningsExpectationSourcePolicy()], executor: async (_requirement, candidate) => {
+      const result = await runResearchDataAcquisition({ requirement, policies: [earningsExpectationSourcePolicy()], signal: request.signal, executor: async (_requirement, candidate) => {
         if (candidate.sourceId === THS_SOURCE_ID) {
           if (this.options.akshare.profitForecastThs === undefined) throw new Error('AKSHARE_THS_ROUTE_UNAVAILABLE')
           const raw = await this.options.akshare.profitForecastThs({ symbol: request.company.symbol, indicator: THS_INSTITUTION_FORECAST_INDICATOR })

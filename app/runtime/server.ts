@@ -25,6 +25,7 @@ import { readRuntimeSettings, writeRuntimeSettings, type RuntimeSettings } from 
 import { ModelLoginFlowManager } from './model-login-flow.ts'
 import { addModelConnection, listSafeModelConnectionStatus, loadModelConnections, saveModelProviderApiKey } from './model-connections.ts'
 import { addRegisteredKnowledgeBase, listRegisteredKnowledgeBases, removeRegisteredKnowledgeBase, validateKnowledgeBaseDirectory, type RegisteredKnowledgeBase } from './knowledge-registration.ts'
+import { getDataSourceCatalog } from '../services/data-source-catalog.ts'
 import { listReasoningModelCandidates, ReasoningModelSelectionError, validateReasoningModelSelection } from '../pi/model-selection.ts'
 import type { ThemeWorkspaceProjectionInput } from '../services/theme-workspace-projection-contracts.ts'
 import type { RawDocumentMetadataV04, RawDocumentRightsV04 } from '../../knowledge/production/raw-document-gateway-v04.ts'
@@ -583,6 +584,7 @@ export class ResearchHubRuntimeServer {
   private async route(request: IncomingMessage, response: ServerResponse, url: URL): Promise<void> {
     const method = request.method ?? 'GET'
     const path = url.pathname
+    if (method === 'GET' && path === '/api/data-sources/policies') { await this.sendJson(response, 200, getDataSourceCatalog()); return }
     if (method === 'GET' && path === '/api/settings') { await this.sendJson(response, 200, await this.settingsResponse()); return }
     if (method === 'POST' && path === '/api/settings/knowledge-base') { await this.changeKnowledgeBase(request, response); return }
     if (method === 'POST' && path === '/api/settings/model') { await this.changeModel(request, response); return }

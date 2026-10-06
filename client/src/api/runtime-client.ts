@@ -189,6 +189,8 @@ export interface ResearchExecutionSummary { readonly mode: 'Free Research' | 'Ex
 export interface ResearchDispatchResponse { readonly accepted: boolean; readonly status: 'started' | 'missing_input' | 'free_research' | 'skill_plan'; readonly request: Required<Pick<ResearchRequest, 'query' | 'mode' | 'contextPolicy' | 'persistencePolicy'>> & ResearchRequest; readonly decision: ResearchDispatchDecision; readonly summary: ResearchExecutionSummary; readonly runId?: string; readonly workflow?: WorkflowRun }
 export interface ResearchBundleSummary { readonly bundleId: string; readonly workflowRunId: string; readonly createdAt: string; readonly status: string; readonly report?: { readonly reportId: string; readonly reportPath?: string }; readonly proposals: readonly { readonly proposalId: string; readonly kind?: string }[]; readonly sourceLibraryHits?: readonly SourceLibraryHit[] }
 export interface SourceLibraryHit { readonly sourceLibraryRef: string; readonly rawRef: string; readonly title: string; readonly excerpt: string; readonly contentHash: string; readonly chunkIndex: number; readonly provenance: { readonly rawRef: string } }
+export interface DataSourceCatalogRow { readonly metricId: string; readonly chineseMeaning: string; readonly capability: string; readonly workflowId: string; readonly defaultSource: string | null; readonly fallback1: string | null; readonly fallback2: string | null; readonly finalFallback: string | null; readonly coverageComplete: boolean }
+export interface DataSourceCatalogResponse { readonly rows: DataSourceCatalogRow[]; readonly coverageComplete: boolean }
 export type ResearchEventAnchor = { readonly kind: 'daily_signal'; readonly signalId: string } | { readonly kind: 'article' | 'url'; readonly url: string; readonly title?: string; readonly publishedAt?: string; readonly content?: string } | { readonly kind: 'user_event'; readonly title: string; readonly description: string; readonly eventDate?: string }
 
 type FetchResponseLike = Pick<Response, 'ok' | 'status' | 'json'>
@@ -361,6 +363,7 @@ export class RuntimeClient {
     return this.request(`/api/knowledge/topics/${encodeURIComponent(input.themeRef)}/items?${params.toString()}`)
   }
   async listReviews(): Promise<ReviewListResponse> { return this.request('/api/reviews') }
+  async getDataSourceCatalog(): Promise<DataSourceCatalogResponse> { return this.request('/api/data-sources/policies') }
   async getReview(reviewCaseId: string): Promise<ReviewDetail> { return this.request(`/api/reviews/${encodeURIComponent(reviewCaseId)}`) }
   async listTheses(limit = 20): Promise<ThesisQueryListResult> { return this.request(`/api/knowledge/theses?limit=${encodeURIComponent(String(limit))}`) }
   async getThesis(thesisRef: string): Promise<ThesisQueryDetail> { return this.request(`/api/knowledge/theses/${encodeURIComponent(thesisRef)}`) }

@@ -1,0 +1,14 @@
+.data-sources-page .data-sources-coverage { margin-top: 24px; }
+.data-sources-page .data-sources-coverage p { margin: 8px 0 0; }
+.data-sources-table-wrap { max-width: 100%; margin-top: 32px; overflow: auto; border: 1px solid #2c4148; border-radius: 12px; }
+.data-sources-table { width: 100%; min-width: 980px; border-collapse: collapse; font-size: 13px; }
+.data-sources-table caption { padding: 14px 16px; color: #a5b8c0; text-align: left; }
+.data-sources-table th, .data-sources-table td { padding: 13px 14px; border-top: 1px solid #2c4148; text-align: left; vertical-align: top; }
+.data-sources-table thead th { color: #abd1cb; background: #17292c; font-weight: 600; }
+.data-sources-table tbody th { color: #e5eef1; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-weight: 500; }
+.data-sources-table tbody td { color: #bfced1; }
+.data-sources-table .data-sources-empty { padding: 24px; color: #a5b8c0; text-align: center; }
+.data-sources-coverage-count { margin-top: 12px !important; color: #d2b978 !important; font-size: 13px !important; }
+@media (max-width: 900px) {
+  .data-sources-page.page-frame { padding: 36px 22px; }
+}
