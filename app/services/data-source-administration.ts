@@ -98,30 +98,6 @@ export function createDataSourceAdministrationService(options: DataSourceAdminis
       }
       if (!callback) throw new DataSourceAdministrationError('unsupported_test')
 
-      const descriptorFields = definition.descriptor.credentialFields
-      let credentials: Readonly<Record<string, string>> = Object.freeze({})
-      if (descriptorFields.length > 0) {
-        let stored: Readonly<Record<string, string>> | undefined
-        try { stored = await options.credentials.read(input.integrationId) }
-        catch { throw new DataSourceAdministrationError('credential_store_unavailable') }
-        const projected: Record<string, string> = {}
-        for (const field of descriptorFields) {
-          const value = stored?.[field.id]
-          if (typeof value === 'string') projected[field.id] = value
-        }
-        credentials = Object.freeze(projected)
-        if (descriptorFields.some((field) => field.required && !credentials[field.id])) {
-          const startedAt = new Date().toISOString()
-          const summary: DataSourceTestSummary = {
-            integrationId: input.integrationId, kind: input.kind as DataSourceTestKind,
-            ...(input.capabilityId === undefined ? {} : { capabilityId: input.capabilityId }),
-            status: 'failed', startedAt, completedAt: new Date().toISOString(), errorCode: 'missing_configuration',
-          }
-          await options.tests.put(summary)
-          return summary
-        }
-      }
-
       const startedAt = new Date().toISOString()
       const result = (status: DataSourceTestSummary['status'], code?: DataSourceTestErrorCode): DataSourceTestSummary => ({
         integrationId: input.integrationId, kind: input.kind as DataSourceTestKind,
@@ -135,17 +111,42 @@ export function createDataSourceAdministrationService(options: DataSourceAdminis
       if (signal?.aborted) abortFromCaller()
       else signal?.addEventListener('abort', abortFromCaller, { once: true })
       const timeout = setTimeout(() => { if (!controller.signal.aborted) { endedBy = 'timeout'; controller.abort() } }, definition.testTimeoutMs)
+      const aborted = new Promise<never>((_, reject) => {
+        if (controller.signal.aborted) reject(new Error('aborted'))
+        else controller.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+      })
+
+      const descriptorFields = definition.descriptor.credentialFields
+      let credentials: Readonly<Record<string, string>> = Object.freeze({})
       try {
-        const aborted = new Promise<never>((_, reject) => {
-          if (controller.signal.aborted) reject(new Error('aborted'))
-          else controller.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
-        })
+        if (descriptorFields.length > 0) {
+          let stored: Readonly<Record<string, string>> | undefined
+          try {
+            if (controller.signal.aborted) await aborted
+            stored = await Promise.race([Promise.resolve().then(() => options.credentials.read(input.integrationId)), aborted])
+          } catch (error) {
+            if (endedBy) throw error
+            throw new DataSourceAdministrationError('credential_store_unavailable')
+          }
+          const projected: Record<string, string> = {}
+          for (const field of descriptorFields) {
+            const value = stored?.[field.id]
+            if (typeof value === 'string') projected[field.id] = value
+          }
+          credentials = Object.freeze(projected)
+          if (descriptorFields.some((field) => field.required && !credentials[field.id])) {
+            const summary = result('failed', 'missing_configuration')
+            await options.tests.put(summary)
+            return summary
+          }
+        }
         const operation = controller.signal.aborted ? aborted : Promise.resolve().then(() => callback(controller.signal, credentials))
         await Promise.race([operation, aborted])
         const summary = result('passed')
         await options.tests.put(summary)
         return summary
       } catch (error) {
+        if (error instanceof DataSourceAdministrationError && error.code === 'credential_store_unavailable') throw error
         const summary = endedBy === 'caller' ? result('cancelled') : result('failed', endedBy === 'timeout' ? 'timeout' : errorCode(error))
         await options.tests.put(summary)
         return summary

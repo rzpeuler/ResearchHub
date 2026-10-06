@@ -170,6 +170,42 @@ test('fails safely when the credential vault cannot be read for a test', async (
   assert.equal(calls, 0)
 })
 
+test('caller cancellation interrupts a pending vault read and records cancelled', async () => {
+  const tests = new MemoryDataSourceTestStore()
+  const credentials = { ...credentialStore(), async read() { return new Promise<Readonly<Record<string, string>> | undefined>(() => {}) } }
+  let calls = 0
+  const service = createDataSourceAdministrationService({ definitions: [definition({ testConnection: async () => { calls++ } })], credentials, tests })
+  const controller = new AbortController()
+  const pending = service.runTest({ integrationId: 'alpha', kind: 'connection' }, controller.signal)
+  setTimeout(() => controller.abort(), 0)
+  const summary = await Promise.race([
+    pending,
+    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 50)),
+  ])
+  assert.ok(summary)
+  assert.equal(summary.status, 'cancelled')
+  assert.equal(calls, 0)
+  assert.deepEqual(await tests.list('alpha'), [summary])
+})
+
+test('test timeout interrupts a pending vault read and records timeout', async () => {
+  const tests = new MemoryDataSourceTestStore()
+  const credentials = { ...credentialStore(), async read() { return new Promise<Readonly<Record<string, string>> | undefined>(() => {}) } }
+  let calls = 0
+  const service = createDataSourceAdministrationService({
+    definitions: [definition({ testTimeoutMs: 5, testConnection: async () => { calls++ } })], credentials, tests,
+  })
+  const summary = await Promise.race([
+    service.runTest({ integrationId: 'alpha', kind: 'connection' }),
+    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 50)),
+  ])
+  assert.ok(summary)
+  assert.equal(summary.status, 'failed')
+  assert.equal(summary.errorCode, 'timeout')
+  assert.equal(calls, 0)
+  assert.deepEqual(await tests.list('alpha'), [summary])
+})
+
 test('aborts a supported adapter operation when the caller cancels', async () => {
   const controller = new AbortController()
   let received: AbortSignal | undefined
