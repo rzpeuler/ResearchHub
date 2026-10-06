@@ -111,9 +111,12 @@ export function createDataSourceAdministrationService(options: DataSourceAdminis
       if (signal?.aborted) abortFromCaller()
       else signal?.addEventListener('abort', abortFromCaller, { once: true })
       const timeout = setTimeout(() => { if (!controller.signal.aborted) { endedBy = 'timeout'; controller.abort() } }, definition.testTimeoutMs)
+      let rejectAborted: (reason?: unknown) => void = () => undefined
+      const abortTest = () => rejectAborted(new Error('aborted'))
       const aborted = new Promise<never>((_, reject) => {
+        rejectAborted = reject
         if (controller.signal.aborted) reject(new Error('aborted'))
-        else controller.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+        else controller.signal.addEventListener('abort', abortTest, { once: true })
       })
 
       const descriptorFields = definition.descriptor.credentialFields
@@ -152,6 +155,7 @@ export function createDataSourceAdministrationService(options: DataSourceAdminis
         return summary
       } finally {
         clearTimeout(timeout)
+        controller.signal.removeEventListener('abort', abortTest)
         signal?.removeEventListener('abort', abortFromCaller)
       }
     },
