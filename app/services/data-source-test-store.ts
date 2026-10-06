@@ -30,7 +30,9 @@ function sanitize(value: DataSourceTestSummary): DataSourceTestSummary {
 }
 
 function upsert(items: readonly DataSourceTestSummary[], summary: DataSourceTestSummary): DataSourceTestSummary[] {
-  return [...items.filter((item) => item.integrationId !== summary.integrationId || item.kind !== summary.kind), sanitize(summary)]
+  const safeSummary = sanitize(summary)
+  return [...items.filter((item) => item.integrationId !== safeSummary.integrationId || item.kind !== safeSummary.kind ||
+    (safeSummary.kind === 'capability_sample' && item.capabilityId !== safeSummary.capabilityId)), safeSummary]
 }
 
 export class MemoryDataSourceTestStore implements DataSourceTestStore {

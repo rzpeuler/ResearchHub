@@ -144,3 +144,20 @@ test('persists only sanitized latest test summaries', async () => {
   const disk = await readFile(join(root, 'data-source-test-summaries.json'), 'utf8')
   assert.equal(disk.includes('raw provider body'), false)
 })
+
+test('keeps independent latest capability summaries across memory and file stores', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'data-source-slots-'))
+  for (const store of [new MemoryDataSourceTestStore(), new FileDataSourceTestStore(root)]) {
+    const common = { integrationId: 'alpha', kind: 'capability_sample' as const, startedAt: '2026-10-06T00:00:00.000Z', completedAt: '2026-10-06T00:00:01.000Z' }
+    const contaminated = { ...common, capabilityId: 'valuation', status: 'failed' as const, errorCode: 'no_data' as const, providerBody: 'secret provider body' }
+    await store.put(contaminated)
+    await store.put({ ...common, capabilityId: 'news', status: 'passed' })
+    await store.put({ ...common, capabilityId: 'valuation', status: 'passed' })
+    const latest = await store.list('alpha')
+    assert.deepEqual(latest.map((item) => [item.capabilityId, item.status]), [['news', 'passed'], ['valuation', 'passed']])
+    assert.equal(JSON.stringify(latest).includes('secret provider body'), false)
+  }
+  const reloaded = await new FileDataSourceTestStore(root).list('alpha')
+  assert.deepEqual(reloaded.map((item) => [item.capabilityId, item.status]), [['news', 'passed'], ['valuation', 'passed']])
+  assert.equal((await readFile(join(root, 'data-source-test-summaries.json'), 'utf8')).includes('providerBody'), false)
+})
