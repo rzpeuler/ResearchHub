@@ -449,9 +449,17 @@ git commit -m "feat: persist data source onboarding drafts"
   - `DELETE /api/data-sources/integrations/:id/credentials`
   - `POST /api/data-sources/integrations/:id/tests` (accepts an abortable bounded test request)
   - `GET|POST /api/data-sources/onboarding`
-  - `PATCH /api/data-sources/onboarding/:requestId` with either exact action
-    `{ "action": "update", "input": <DataSourceOnboardingDraftInput> }` or
-    `{ "action": "mark_ready" }`; lifecycle status is never caller-set.
+- `PATCH /api/data-sources/onboarding/:requestId` with either exact action
+  `{ "action": "update", "input": <DataSourceOnboardingDraftInput> }` or
+  `{ "action": "mark_ready" }`; lifecycle status is never caller-set.
+
+For a long-running test request, attach disconnect cancellation to the response
+socket `close` event and abort only if `response.writableEnded` is false. The
+incoming request `close` event can fire normally after the body is consumed and
+must not be treated alone as a client disconnect. Draft PATCH accepts exactly
+the two action shapes above; it never accepts caller-supplied lifecycle state.
+Mutations use `validateMutation`, reads use `validateRead`, and no route invokes
+Knowledge mutation.
 
 - [ ] **Step 1: Write failing HTTP route tests**
 
