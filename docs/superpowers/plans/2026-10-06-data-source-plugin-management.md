@@ -72,18 +72,24 @@ export interface DataSourceTestSummary {
   readonly errorCode?: DataSourceTestErrorCode
 }
 
-export interface DataSourceIntegrationDefinition {
+export interface DataSourceIntegrationDescriptor {
   readonly integrationId: string
   readonly displayName: string
   readonly sourceIds: readonly string[]
   readonly credentialFields: readonly { readonly id: string; readonly label: string; readonly required: boolean }[]
   readonly capabilities: readonly { readonly id: string; readonly label: string; readonly metricIds: readonly string[] }[]
+  readonly supportedTests: { readonly connection: boolean; readonly capabilitySamples: readonly string[] }
+}
+
+export interface DataSourceIntegrationDefinition {
+  readonly descriptor: DataSourceIntegrationDescriptor
+  readonly testTimeoutMs: number
   readonly testConnection?: (signal: AbortSignal) => Promise<void>
   readonly capabilitySamples?: Readonly<Record<string, (signal: AbortSignal) => Promise<void>>>
 }
 
 export interface DataSourceIntegrationView {
-  readonly integration: DataSourceIntegrationDefinition
+  readonly integration: DataSourceIntegrationDescriptor
   readonly credentialState: 'not_required' | 'missing' | 'configured' | 'vault_unavailable'
   readonly policyLinked: boolean
   readonly latestTests: readonly DataSourceTestSummary[]
@@ -178,7 +184,10 @@ Expected: FAIL because the service contracts and implementation do not exist.
 - [ ] **Step 3: Implement contracts, service, error mapping, and summary store**
 
 Implement the exact interfaces above. Require a declared callback for the
-requested test kind; map timeout, rate limit, access denial, no data, contract
+requested test kind; validate credential field IDs and mandatory fields against
+the selected integration definition before vault writes. Enforce each
+definition's `testTimeoutMs` by combining timeout and caller cancellation into
+an abort signal. Map timeout, rate limit, access denial, no data, contract
 mismatch, and unknown provider failure to stable codes. Strip credential-like
 strings and never keep provider response bodies. Bound summary-store entries to
 one latest result per integration and test kind.
@@ -222,9 +231,11 @@ test('never exposes stored values from credential-presence queries or errors')
 ```
 
 Use an injected fake vault driver. Assert that no filesystem secret fallback
-is created and that every error is safe to serialize. Validate credential
-field IDs against the selected integration definition and require all
-mandatory fields before replacing a stored credential map.
+is created and that every error is safe to serialize. Validate stable
+integration IDs and credential-map size/value bounds in the store. The
+administration service validates credential field IDs against the selected
+integration definition and requires all mandatory fields before replacing a
+stored credential map.
 
 - [ ] **Step 2: Run the focused test and verify it fails**
 
@@ -275,7 +286,7 @@ test('describes only explicitly assembled source integrations')
 test('groups operations for the same upstream integration and unions capabilities')
 test('does not list metadata-only Daily catalog entries as executable integrations')
 test('declares test support only when a bounded adapter callback exists')
-test('passes a timeout and AbortSignal to provider-specific test operations')
+test('enforces each integration test timeout and forwards cancellation to provider operations')
 ```
 
 Assert descriptor IDs match actual injected composition dependencies; assert no
@@ -295,7 +306,9 @@ Return Daily integration descriptors beside `DailyIntelligenceComposition`
 providers and assemble the final service in `application-runtime.ts`. Include
 capability-sample callbacks only for operations with bounded read-only inputs;
 otherwise mark that test unsupported. Every callback accepts an `AbortSignal`
-and honors cancellation when the underlying transport supports it.
+and honors cancellation when the underlying transport supports it. The
+administration service enforces each definition's declared `testTimeoutMs` and
+forwards the resulting cancellation signal.
 
 - [ ] **Step 4: Run focused tests and Runtime typecheck**
 
@@ -353,9 +366,11 @@ Validate `integrationId` as a unique lowercase kebab-case ID (maximum 64
 characters) and freeze it at `markReady`. Require documentation/terms URLs to
 use HTTPS and reject embedded credentials or fragments; never fetch them.
 Allow only `draft → ready_for_adapter`; derive `adapter_available` from an exact
-stable-ID match in the explicit integration inventory. Mark `verified` only
-when rights/authority/time metadata is complete and required tests have
-passed. Do not provide an enable/disable operation.
+stable-ID match in the explicit integration inventory. Derive `verified` only
+when required publisher/authority/rights/time metadata is complete, at least
+one applicable supported test exists, and every applicable supported test has
+passed. No API operation can set `verified` directly. Do not provide an
+enable/disable operation.
 
 - [ ] **Step 4: Run the focused test and verify it passes**
 
