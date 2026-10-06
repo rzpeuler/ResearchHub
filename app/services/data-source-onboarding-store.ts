@@ -48,8 +48,9 @@ const accessModes = ['api', 'rss', 'web', 'python_bridge', 'other']
 const authorities = ['S0_STATUTORY', 'S1_OFFICIAL', 'S2_PROFESSIONAL', 'S3_AGGREGATOR', 'S4_COMMUNITY', 'unknown']
 const authenticationModes = ['none', 'api_key', 'oauth', 'other']
 const idPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const credentialText = /\bbearer\s+\S+|\b(?:api_key|token|secret|password)\s*[:=]\s*\S+/i
-const sensitiveKey = /^(?:key|api_key|token|secret|password)$/i
+const credentialText = /\bbearer\s+\S+|\b(?:api[._\-\s]*key|access[._\-\s]*token|refresh[._\-\s]*token|id[._\-\s]*token|client[._\-\s]*secret|token|secret|password|key)\s*[:=]\s*\S+/i
+const sensitiveKeys = new Set(['key', 'apikey', 'token', 'accesstoken', 'refreshtoken', 'idtoken', 'secret', 'clientsecret', 'password'])
+const sensitiveKey = (key: string): boolean => sensitiveKeys.has(key.toLowerCase().replace(/[._\-\s]/g, ''))
 
 function invalid(): never { throw new Error('Invalid data source onboarding draft') }
 
@@ -63,7 +64,7 @@ function safeUrl(value: unknown, allowBlank: boolean): value is string {
   try {
     const url = new URL(value)
     return url.protocol === 'https:' && !!url.hostname && !url.username && !url.password && !url.hash &&
-      [...url.searchParams.keys()].every((key) => !sensitiveKey.test(key))
+      [...url.searchParams.keys()].every((key) => !sensitiveKey(key))
   } catch { return false }
 }
 

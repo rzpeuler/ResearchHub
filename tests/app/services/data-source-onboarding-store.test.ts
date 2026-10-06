@@ -77,13 +77,19 @@ test('rejects secret-like values in notes and credential-bearing URL parameters'
   const { root, cleanup } = await fixture()
   try {
     const service = createDataSourceOnboardingService({ root })
-    for (const note of ['Bearer abcdefghijklmnop', 'api_key=abc', 'token = abc', 'secret: abc', 'password=abc']) {
+    for (const note of ['Bearer abcdefghijklmnop', 'api_key=abc', 'token = abc', 'secret: abc', 'password=abc',
+      'access_token=abc', 'client_secret: abc', 'api-key = abc', 'APIKEY=abc', 'Access.Token=abc']) {
       await assert.rejects(service.create({ ...valid, rightsNotes: note }))
     }
-    for (const key of ['key', 'api_key', 'token', 'secret', 'password']) {
+    for (const key of ['key', 'api_key', 'token', 'secret', 'password', 'access_token', 'client_secret', 'apikey',
+      'access-token', 'Client.Secret', 'API-Key']) {
       await assert.rejects(service.create({ ...valid, documentationUrl: `https://provider.example/docs?${key}=abc` }))
+      await assert.rejects(service.create({ ...valid, termsUrl: `https://provider.example/terms?${key}=abc` }))
     }
     assert.deepEqual(await service.list(), [])
+    const ordinary = await service.create({ ...valid, integrationId: 'ordinary-words', rightsNotes: 'The monkey habitat is public; monkey=abc',
+      documentationUrl: 'https://provider.example/docs?monkey=abc' })
+    assert.equal(ordinary.status, 'draft')
   } finally { await cleanup() }
 })
 
