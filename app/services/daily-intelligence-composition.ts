@@ -43,6 +43,7 @@ export interface DailyIntelligenceComposition {
   readonly calendar: TradingCalendarService
   readonly providers: readonly ResearchAcquisitionPlugin[]
   readonly integrationDefinitions: readonly DataSourceIntegrationDefinition[]
+  readonly industryOperatingObservationAcquisition: IndustryOperatingObservationAcquisitionPort
   readonly watchlistPath: string
   readonly catalogPath: string
   readonly catalog: Awaited<ReturnType<typeof loadSourceCatalog>>
@@ -93,7 +94,7 @@ export async function createDailyIntelligenceComposition(options: DailyIntellige
   }
   if (activePlatforms.has('gov.cn')) {
     core.push(new RssResearchPlugin({ feedUrls: ['https://www.gov.cn/rss/zhengce.xml'] }))
-    integrationDefinitions.push(sourceIntegration({ id: 'gov-cn-rss', name: 'Gov.cn RSS', capabilities: [{ id: 'policy-feed', label: 'Policy feed', metricIds: [] }] }))
+    integrationDefinitions.push(sourceIntegration({ id: 'gov-cn', name: 'Gov.cn', capabilities: [{ id: 'policy-feed', label: 'Policy feed', metricIds: [] }] }))
   }
   if (akshareActive) core.push(new AkshareDailyMarketAcquisition(akshare))
   const breadth: ResearchAcquisitionPlugin[] = []
@@ -107,7 +108,7 @@ export async function createDailyIntelligenceComposition(options: DailyIntellige
   }
   const industryOperating = options.industryOperatingObservationAcquisition ?? new IndustryOperatingObservationAcquisition()
   breadth.push(new DailyIndustryObservationAcquisition(industryOperating))
-  integrationDefinitions.push(industryOperatingIntegration(industryOperating))
+  integrationDefinitions.push(industryOperatingIntegration(industryOperating, options.industryOperatingObservationAcquisition === undefined))
   for (const entry of institutionalEntries) integrationDefinitions.push(sourceIntegration({
     id: `web-${sha256(entry.platform).slice(0, 16)}`,
     name: entry.platform,
@@ -144,7 +145,7 @@ export async function createDailyIntelligenceComposition(options: DailyIntellige
     runtimeRoot,
     calendar,
   })
-  return { service, calendar, providers, integrationDefinitions: mergeSourceIntegrations(integrationDefinitions), watchlistPath, catalogPath, catalog }
+  return { service, calendar, providers, integrationDefinitions: mergeSourceIntegrations(integrationDefinitions), industryOperatingObservationAcquisition: industryOperating, watchlistPath, catalogPath, catalog }
 }
 
 interface CalendarOverrides { readonly manualHolidays: readonly string[]; readonly manualTradingDays: readonly string[] }

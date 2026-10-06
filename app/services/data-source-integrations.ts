@@ -56,12 +56,12 @@ export function mergeSourceIntegrations(definitions: readonly DataSourceIntegrat
   return [...merged.values()]
 }
 
-export function industryOperatingIntegration(acquisition: IndustryOperatingObservationAcquisitionPort): DataSourceIntegrationDefinition {
+export function industryOperatingIntegration(acquisition: IndustryOperatingObservationAcquisitionPort, boundedSampleAvailable = false): DataSourceIntegrationDefinition {
   return sourceIntegration({
     id: 'industry-operating',
     name: 'Industry operating observations',
     capabilities: [{ id: 'industry-operating-observations', label: 'Industry operating observations', metricIds: [] }],
-    capabilitySamples: {
+    ...(boundedSampleAvailable ? { capabilitySamples: {
       'industry-operating-observations': async (signal) => {
         const now = new Date().toISOString()
         const result = await acquisition.acquire({ target: { name: 'lithium battery' }, asOf: '2026-01-01T00:00:00.000Z', now: () => now, signal })
@@ -75,6 +75,6 @@ export function industryOperatingIntegration(acquisition: IndustryOperatingObser
           !Number.isFinite(Date.parse(item.periodEnd)) ||
           item.publishedAt > '2026-01-01T00:00:00.000Z')) throw new Error('contract_mismatch')
       },
-    },
+    } } : {}),
   })
 }
