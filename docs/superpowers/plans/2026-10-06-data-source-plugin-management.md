@@ -35,7 +35,7 @@
 
 - `app/services/data-source-administration-contracts.ts` — typed integration, capability, credential-field, test-result, and sanitized-summary contracts.
 - `app/services/data-source-administration.ts` — validates integration/test requests, resolves credentials server-side, maps failures, and persists only sanitized summaries.
-- `app/services/data-source-test-store.ts` — bounded local persistence for the latest safe test summary per integration/test kind.
+- `app/services/data-source-test-store.ts` — bounded local persistence for the latest safe test summary per integration/test slot.
 - `app/runtime/source-credential-store.ts` — credential-store port and Windows OS-vault implementation.
 - `app/services/data-source-onboarding-store.ts` — validated local onboarding drafts and lifecycle transitions.
 - `app/runtime/contracts.ts` — adds the application service to the Runtime service contract.
@@ -163,8 +163,9 @@ only before `markReady`. It owns the exact `list()`, `create(input)`,
 persisted state is only `draft` or `ready_for_adapter`; `adapter_available`
 and `verified` are derived at read time from the explicit integration view and
 latest tests. Verification requires complete publisher/authority/rights/time
-metadata, at least one supported test, and every applicable supported test to
-have passed. There is no `enable()` operation. Integration IDs use
+metadata, at least one supported test, and a passed latest summary for every
+supported test slot (connection once and each declared capability sample).
+There is no `enable()` operation. Integration IDs use
 `^[a-z0-9]+(?:-[a-z0-9]+)*$`, are limited to 64 characters, and freeze when
 `markReady` is called. Credential-field IDs use
 `^[A-Za-z][A-Za-z0-9_-]{0,63}$`. Documentation and terms URLs must use HTTPS,
@@ -195,7 +196,7 @@ test('runs exactly one bounded adapter test without source fallback')
 test('aborts a supported adapter operation when the caller cancels')
 test('maps timeout, rate limit, access denial, no data, and contract mismatch to stable codes')
 test('redacts secrets and provider bodies from failed test summaries')
-test('persists only sanitized latest test summaries')
+test('persists only sanitized latest summaries per test slot')
 ```
 
 Assert that unknown integrations invoke no callback, a test invokes exactly
@@ -219,7 +220,9 @@ definition's `testTimeoutMs` by combining timeout and caller cancellation into
 an abort signal. Map timeout, rate limit, access denial, no data, contract
 mismatch, and unknown provider failure to stable codes. Strip credential-like
 strings and never keep provider response bodies. Bound summary-store entries to
-one latest result per integration and test kind.
+one latest result per integration and test slot: one connection slot, plus one
+capability-sample slot per declared capability ID. Updating one capability's
+result must not overwrite another capability's latest result.
 
 - [ ] **Step 4: Run the focused test and verify it passes**
 
