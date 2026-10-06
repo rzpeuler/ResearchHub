@@ -134,6 +134,11 @@ adapter-owned connection/sample callbacks. `DataSourceIntegrationView`
 includes credential presence, whether current source policies reference the
 integration, and sanitized latest test results. `SourceCredentialStore` uses
 the exact methods shown above.
+Runtime integration IDs use unique lowercase kebab-case
+`^[a-z0-9]+(?:-[a-z0-9]+)*$` values of at most 64 characters. Credential
+field IDs use unique `^[A-Za-z][A-Za-z0-9_-]{0,63}$` values within each
+integration. Validate these constraints while constructing the administration
+service, matching the constraints enforced by the credential store.
 `DataSourceOnboardingService`
 owns `list()`, `create(input)`, `update(requestId, input)`, and
 `markReady(requestId)`; its statuses are `draft`, `ready_for_adapter`,
@@ -183,7 +188,9 @@ Expected: FAIL because the service contracts and implementation do not exist.
 
 - [ ] **Step 3: Implement contracts, service, error mapping, and summary store**
 
-Implement the exact interfaces above. Require a declared callback for the
+Implement the exact interfaces above. Reject duplicate or invalid integration
+IDs and invalid/duplicate credential field IDs before exposing any definition.
+Require a declared callback for the
 requested test kind; validate credential field IDs and mandatory fields against
 the selected integration definition before vault writes. Enforce each
 definition's `testTimeoutMs` by combining timeout and caller cancellation into
@@ -232,7 +239,9 @@ test('never exposes stored values from credential-presence queries or errors')
 
 Use an injected fake vault driver. Assert that no filesystem secret fallback
 is created and that every error is safe to serialize. Validate stable
-integration IDs and credential-map size/value bounds in the store. The
+integration IDs using the same strict lowercase kebab-case constraint as the
+administration service, plus credential-field ID and credential-map
+size/value bounds in the store. The
 administration service validates credential field IDs against the selected
 integration definition and requires all mandatory fields before replacing a
 stored credential map.
