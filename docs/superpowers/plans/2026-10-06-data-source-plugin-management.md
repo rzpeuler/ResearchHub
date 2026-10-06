@@ -84,8 +84,8 @@ export interface DataSourceIntegrationDescriptor {
 export interface DataSourceIntegrationDefinition {
   readonly descriptor: DataSourceIntegrationDescriptor
   readonly testTimeoutMs: number
-  readonly testConnection?: (signal: AbortSignal) => Promise<void>
-  readonly capabilitySamples?: Readonly<Record<string, (signal: AbortSignal) => Promise<void>>>
+  readonly testConnection?: (signal: AbortSignal, credentials: Readonly<Record<string, string>>) => Promise<void>
+  readonly capabilitySamples?: Readonly<Record<string, (signal: AbortSignal, credentials: Readonly<Record<string, string>>) => Promise<void>>>
 }
 
 export interface DataSourceIntegrationView {
@@ -147,7 +147,13 @@ export interface DataSourceOnboardingDraftInput {
 `DataSourceIntegrationDefinition` includes a stable ID, matching
 `SourceCandidate.sourceId` values, display metadata, credential field
 labels/required flags, capability and metric descriptors, and optional
-adapter-owned connection/sample callbacks. `DataSourceIntegrationView`
+adapter-owned connection/sample callbacks. Before invoking a callback, the
+administration service reads credentials from the OS vault, projects only the
+declared descriptor fields, and passes that immutable map as a server-side
+callback argument alongside the abort signal. Missing required values produce
+a sanitized `missing_configuration` summary without calling the adapter; a
+vault failure fails closed with a safe Runtime error. Credential values never
+cross the HTTP response boundary or enter test summaries. `DataSourceIntegrationView`
 includes credential presence, whether current source policies reference the
 integration, and sanitized latest test results. `SourceCredentialStore` uses
 the exact methods shown above.
@@ -201,6 +207,9 @@ test('lists only supplied Runtime integrations and reports credential presence')
 test('rejects unknown integrations and unsupported test kinds before calling adapters')
 test('runs exactly one bounded adapter test without source fallback')
 test('aborts a supported adapter operation when the caller cancels')
+test('passes declared saved credentials only to the server-side test callback')
+test('records missing_configuration and skips the callback when required credentials are absent')
+test('bounds and cancels a pending credential-vault read')
 test('maps timeout, rate limit, access denial, no data, and contract mismatch to stable codes')
 test('redacts secrets and provider bodies from failed test summaries')
 test('persists only sanitized latest summaries per test slot')
