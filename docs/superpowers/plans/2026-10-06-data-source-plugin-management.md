@@ -407,18 +407,24 @@ Persist validated draft records under `runtime-data/source-onboarding/` using
 atomic writes consistent with existing file-backed application stores.
 Validate `integrationId` as a unique lowercase kebab-case ID (maximum 64
 characters) and freeze it at `markReady`. Require documentation/terms URLs to
-use HTTPS and reject embedded credentials or fragments; never fetch them.
+use HTTPS and reject embedded credentials, fragments, or sensitive query keys;
+never fetch them. Reject credential-like free-text patterns and enforce the
+per-field and total record bounds in the Interfaces section. `markReady`
+requires a non-empty display name, valid documentation URL, access and
+authentication modes, publisher, known authority level, at least one
+capability or metric, confirmed terms review, non-empty rights notes,
+rate-limit notes, and time-boundary notes.
 Allow only `draft → ready_for_adapter`; derive `adapter_available` from an exact
 stable-ID match in the explicit integration inventory. Derive `verified` only
 when required publisher/authority/rights/time metadata is complete, at least
-one applicable supported test exists, and every applicable supported test has
-passed. No API operation can set `verified` directly. Do not provide an
-enable/disable operation.
+one supported test slot exists, and a passed latest summary exists for every
+supported slot. No API operation can set `verified` directly. Do not provide
+an enable/disable operation.
 
 - [ ] **Step 4: Run the focused test and verify it passes**
 
 Run: `node --import tsx --test tests/app/services/data-source-onboarding-store.test.ts`
-Expected: PASS with all five named cases.
+Expected: PASS with all six named cases.
 
 - [ ] **Step 5: Commit**
 
