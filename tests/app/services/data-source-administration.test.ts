@@ -16,6 +16,28 @@ function definition(overrides: Partial<DataSourceIntegrationDefinition> = {}): D
   return { descriptor: { integrationId: 'alpha', displayName: 'Alpha', sourceIds: ['source-alpha'], credentialFields: [{ id: 'token', label: 'Token', required: true }], capabilities: [{ id: 'quote', label: 'Quote', metricIds: ['price'] }], supportedTests: { connection: true, capabilitySamples: ['quote'] } }, testTimeoutMs: 100, testConnection: async () => {}, capabilitySamples: { quote: async () => {} }, ...overrides }
 }
 
+test('rejects malformed integration and credential field IDs before list or test operations', () => {
+  const base = definition()
+  const credentials = credentialStore()
+  let adapterCalls = 0
+  const make = (descriptor: DataSourceIntegrationDefinition['descriptor']) => () =>
+    createDataSourceAdministrationService({
+      definitions: [definition({ descriptor, testConnection: async () => { adapterCalls++ } })],
+      credentials, tests: new MemoryDataSourceTestStore(),
+    })
+  for (const integrationId of ['alpha-', 'alpha--beta', 'Alpha', 'a'.repeat(65)]) {
+    assert.throws(make({ ...base.descriptor, integrationId }), /Invalid data source integration definition/)
+  }
+  for (const fieldIds of [['api.key'], ['api:key'], ['_token'], ['token', 'token']]) {
+    assert.throws(make({
+      ...base.descriptor,
+      credentialFields: fieldIds.map((id) => ({ id, label: id, required: true })),
+    }), /Invalid data source integration definition/)
+  }
+  assert.equal(credentials.writes, 0)
+  assert.equal(adapterCalls, 0)
+})
+
 test('lists only supplied Runtime integrations and reports credential presence', async () => {
   const credentials = credentialStore()
   const service = createDataSourceAdministrationService({ definitions: [definition()], credentials, tests: new MemoryDataSourceTestStore(), policySourceIds: ['source-alpha'] })

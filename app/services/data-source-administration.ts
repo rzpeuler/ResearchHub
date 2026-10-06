@@ -43,7 +43,10 @@ export function createDataSourceAdministrationService(options: DataSourceAdminis
   const definitions = new Map<string, DataSourceIntegrationDefinition>()
   for (const definition of options.definitions) {
     const id = definition.descriptor.integrationId
-    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(id) || definitions.has(id) ||
+    const fieldIds = definition.descriptor.credentialFields.map((field) => field.id)
+    if (typeof id !== 'string' || id.length > 64 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) ||
+      definitions.has(id) || fieldIds.some((fieldId) => !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(fieldId)) ||
+      new Set(fieldIds).size !== fieldIds.length ||
       !Number.isSafeInteger(definition.testTimeoutMs) || definition.testTimeoutMs <= 0) {
       throw new Error('Invalid data source integration definition')
     }

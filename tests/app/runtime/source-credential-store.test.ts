@@ -31,7 +31,7 @@ test('round-trips a multi-field integration credential through the injected vaul
 
 test('rejects invalid IDs, empty secrets, control characters, and oversized values', async () => {
   const store = createSourceCredentialStore(fakeVault())
-  for (const id of ['', 'Bad-ID', 'bad/id', '-bad', 'a'.repeat(65)]) {
+  for (const id of ['', 'Bad-ID', 'bad/id', '-bad', 'bad-', 'bad--id', 'a'.repeat(65)]) {
     await assert.rejects(store.has(id), { code: 'INVALID_SOURCE_CREDENTIAL' })
   }
   for (const values of [
@@ -43,8 +43,14 @@ test('rejects invalid IDs, empty secrets, control characters, and oversized valu
     { first: 'a'.repeat(1100), second: 'b'.repeat(1100) },
     Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`key${i}`, 'x'])),
     { token: 'é'.repeat(9000) },
+    { 'api.key': 'secret-123' },
+    { 'api:key': 'secret-123' },
   ]) {
-    await assert.rejects(store.write('market-data', values), { code: 'INVALID_SOURCE_CREDENTIAL' })
+    await assert.rejects(store.write('market-data', values), error => {
+      assert.equal((error as { code?: string }).code, 'INVALID_SOURCE_CREDENTIAL')
+      assert.doesNotMatch(JSON.stringify(error), /secret-123/)
+      return true
+    })
   }
 })
 
