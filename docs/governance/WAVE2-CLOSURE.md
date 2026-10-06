@@ -1,4 +1,4 @@
-# ResearchHub Lite — Wave 2 Governance State
+# ResearchHub — Wave 2 Governance State
 
 Updated: 2026-09-21
 

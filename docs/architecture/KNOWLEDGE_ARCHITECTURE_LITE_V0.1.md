@@ -1,4 +1,4 @@
-# ResearchHub_Lite — Knowledge Architecture v0.1
+# ResearchHub — Knowledge Architecture v0.1
 
 ## Status
 

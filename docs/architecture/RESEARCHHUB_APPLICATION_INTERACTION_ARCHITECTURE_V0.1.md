@@ -838,7 +838,7 @@ Knowledge Schema, Writer internals, Resolution algorithms, and large governance 
 The application-oriented top-level direction is:
 
 ```text
-ResearchHub_Lite/
+ResearchHub/
 ├── app/
 │   ├── pi/
 │   └── services/

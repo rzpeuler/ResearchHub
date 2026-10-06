@@ -10,7 +10,7 @@ import { ApplicationServiceError } from '../../../app/services/contracts.ts'
 
 test('Knowledge Base catalog lists only direct supported real children and prevents id-to-path input', async () => {
   const root = await mkdtemp(join(tmpdir(), 'rhl-kb-selection-'))
-  const cwd = join(root, 'ResearchHub_Lite')
+  const cwd = join(root, 'ResearchHub')
   const workspaceRoot = join(cwd, 'workspace')
   const catalogRoot = join(root, 'ResearchHubData', 'knowledge-bases')
   const first = join(catalogRoot, 'first')

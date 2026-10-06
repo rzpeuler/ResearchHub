@@ -1,10 +1,10 @@
-# ResearchHub_Lite — Knowledge Resolution Architecture v0.1
+# ResearchHub — Knowledge Resolution Architecture v0.1
 
 ## Status
 
 **Frozen**
 
-This document defines the normative Knowledge Resolution architecture for ResearchHub_Lite.
+This document defines the normative Knowledge Resolution architecture for ResearchHub.
 
 It replaces the previous architectural assumption that every consolidated Candidate must pass through one full-candidate-set LLM Reconciliation call.
 

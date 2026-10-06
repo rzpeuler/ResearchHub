@@ -314,7 +314,7 @@ export class EastmoneyReportClient {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.timeoutMs)
     try {
-      const response = await this.fetchImpl(url.toString(), { headers: { Accept: 'application/json', Referer: 'https://data.eastmoney.com/', 'User-Agent': 'ResearchHub-Lite/expectation-source-001a' }, signal: controller.signal })
+      const response = await this.fetchImpl(url.toString(), { headers: { Accept: 'application/json', Referer: 'https://data.eastmoney.com/', 'User-Agent': 'ResearchHub/expectation-source-001a' }, signal: controller.signal })
       const finalUrl = response.url || url.toString()
       if (!endpointIsAllowed(finalUrl)) throw new Error('eastmoney_redirect_crossed_host')
       if (!response.ok) throw new Error(`eastmoney_http_${response.status}`)

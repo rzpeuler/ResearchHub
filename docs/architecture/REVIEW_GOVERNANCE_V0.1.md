@@ -693,7 +693,7 @@ The Review system does not require a separate free-form reasoning step merely to
 
 ## 38. Storage Characteristics
 
-Review persistence should remain consistent with ResearchHub_Lite's local, deterministic, portable storage model.
+Review persistence should remain consistent with ResearchHub's local, deterministic, portable storage model.
 
 Review Governance v0.1 does not require SQL, vector database, graph database, or external event store.
 

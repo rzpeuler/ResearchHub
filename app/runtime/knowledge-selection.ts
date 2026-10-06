@@ -47,7 +47,7 @@ async function inspectKnowledgeBase(root: string, workspaceRoot: string): Promis
   }
 }
 
-function defaultCatalogRoot(cwd: string): string { return resolve(cwd, '..', 'ResearchHubData', 'knowledge-bases') }
+function defaultCatalogRoot(cwd: string): string { return resolve(cwd, 'ResearchHubData', 'knowledge-bases') }
 
 export async function discoverKnowledgeBases(options: KnowledgeBaseCatalogOptions): Promise<readonly ResolvedKnowledgeBase[]> {
   const configuredRoot = options.configuredRoot?.trim()

@@ -5,7 +5,7 @@ Scope: first A-share Company Deep Research foundation
 
 ## Decision summary
 
-ResearchHub Lite keeps its current Workflow / Skill / Plugin / Knowledge boundaries. The original ResearchHub assets were audited locally under `C:/Users/Administrator/Desktop/ResearchHub/packages`; external repositories were checked for license and maintenance signals. No legacy `packages/` tree or DSH/Capability/Provider framework is copied.
+ResearchHub keeps its current Workflow / Skill / Plugin / Knowledge boundaries. The original ResearchHub assets were audited locally under `C:/Users/Administrator/Desktop/ResearchHub/packages`; external repositories were checked for license and maintenance signals. No legacy `packages/` tree or DSH/Capability/Provider framework is copied.
 
 | Asset | Decision | Rationale |
 | --- | --- | --- |

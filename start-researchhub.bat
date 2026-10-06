@@ -2,11 +2,11 @@
 setlocal EnableExtensions
 
 cd /d "%~dp0"
-title ResearchHub Lite
+title ResearchHub
 
 echo.
 echo ========================================
-echo        ResearchHub Lite
+echo        ResearchHub
 echo ========================================
 echo.
 
@@ -28,7 +28,7 @@ if errorlevel 1 (
 
 if not exist "%~dp0package.json" (
   echo [ERROR] package.json was not found.
-  echo This file must remain in the ResearchHub_Lite project root.
+  echo This file must remain in the ResearchHub project root.
   pause
   exit /b 1
 )
@@ -44,7 +44,7 @@ if not exist "%~dp0node_modules" (
 )
 
 echo Building the frontend and starting the local Runtime...
-echo Keep this window open while using ResearchHub Lite.
+echo Keep this window open while using ResearchHub.
 echo The Runtime will open the browser after startup and print its URL below.
 echo.
 set "RESEARCHHUB_OPEN_BROWSER=1"
@@ -54,7 +54,7 @@ set "RESEARCHHUB_OPEN_BROWSER="
 
 if not "%EXIT_CODE%"=="0" (
   echo.
-  echo [ERROR] ResearchHub Lite stopped with exit code %EXIT_CODE%.
+  echo [ERROR] ResearchHub stopped with exit code %EXIT_CODE%.
   pause
 )
 

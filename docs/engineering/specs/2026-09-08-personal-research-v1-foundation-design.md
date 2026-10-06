@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved for implementation on 2026-09-08. This design scopes the first Personal Research v1 production slice to A-share Company Deep Research while preserving the frozen ResearchHub Lite boundaries.
+Approved for implementation on 2026-09-08. This design scopes the first Personal Research v1 production slice to A-share Company Deep Research while preserving the frozen ResearchHub boundaries.
 
 ## Objective and non-goals
 

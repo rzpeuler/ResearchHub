@@ -1,9 +1,9 @@
-# ResearchHub_Lite
+# ResearchHub
 
-ResearchHub_Lite is the clean foundation for the ResearchHub Agent-first
-investment research application. It is built on the Pi Coding Agent and
-preserves the deterministic Knowledge architecture needed for safe durable
-research. Codex owns repository engineering work directly.
+ResearchHub is the Agent-first investment research application. It is built on
+the Pi Coding Agent and preserves the deterministic Knowledge architecture
+needed for safe durable research. Codex owns repository engineering work
+directly.
 
 ## Product model
 
@@ -57,7 +57,7 @@ The Runtime prints its loopback URL. Open it in a browser; the client is served 
 
 The fixed left sidebar contains navigation, the global model selector, and Settings. Click Settings for direct Chinese/English switching, then open the centered Model connections or Knowledge Base management dialog. The selected Pi provider/model is shared by chat and production Workflow reasoning. Model connections guide Pi-backed Codex subscription sign-in, provider API keys, and compatible API endpoints; credentials stay in Pi's private auth store, while custom endpoint definitions without keys stay in ignored `runtime-data/model-connections.json`. Claude Code subscription credentials and WorkBuddy agent access are not treated as Pi model connections. A model appears as selectable only when the Pi catalog and auth checks allow it; a real provider call occurs only when the user explicitly tests a connection or uses the model.
 
-Knowledge Base discovery, directory registration, mount switching, and unmounting are all in the Settings dialog. The default catalog lists supported direct children of `../ResearchHubData/knowledge-bases`; set `RESEARCHHUB_KNOWLEDGE_BASES_ROOT` to use another catalog directory. A registered existing directory is validated by the server and remembered in ignored `runtime-data/knowledge-base-registrations.json`. Removing its registration never deletes Knowledge Base files. `RESEARCHHUB_KNOWLEDGE_BASE_ROOT` still supplies an initial mount when no selection has been saved. Model and Knowledge Base choices are saved in ignored `runtime-data/application-settings.json` and restored after restart; an explicit unmount stays unmounted. Changing active settings requires conversations, requests, and Workflows to be idle. The launcher `start-researchhub.bat` builds the client, starts this Runtime, and opens its URL in the default browser after the server begins listening.
+Knowledge Base discovery, directory registration, mount switching, and unmounting are all in the Settings dialog. The default catalog lists supported direct children of `ResearchHubData/knowledge-bases` under the project root; set `RESEARCHHUB_KNOWLEDGE_BASES_ROOT` to use another catalog directory. A registered existing directory is validated by the server and remembered in ignored `runtime-data/knowledge-base-registrations.json`. Removing its registration never deletes Knowledge Base files. `RESEARCHHUB_KNOWLEDGE_BASE_ROOT` still supplies an initial mount when no selection has been saved. Model and Knowledge Base choices are saved in ignored `runtime-data/application-settings.json` and restored after restart; an explicit unmount stays unmounted. Changing active settings requires conversations, requests, and Workflows to be idle. The launcher `start-researchhub.bat` builds the client, starts this Runtime, and opens its URL in the default browser after the server begins listening.
 
 ReasoningExecutor remains the Workflow semantic-operation boundary and deterministic testing seam. It is not a product-level host-portability architecture. Conversation context and Workflow semantic context remain separate even when they share Pi ModelRuntime.
 
@@ -109,4 +109,5 @@ context:
 - Review Governance v0.1
 
 Task reports and engineering notes record repository history and validation
-evidence. ResearchHub_Lite is not a clone of the original ResearchHub.
+evidence. This repository is the current ResearchHub application, built on its
+approved Pi-hosted architecture and current product requirements.

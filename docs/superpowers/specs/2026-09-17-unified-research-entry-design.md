@@ -2,7 +2,7 @@
 
 **Status:** Design checkpoint  
 **Date:** 2026-09-17  
-**Scope:** ResearchHub_Lite unified research mission
+**Scope:** ResearchHub unified research mission
 
 ## 1. Purpose and boundaries
 

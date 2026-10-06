@@ -1,15 +1,15 @@
-# ResearchHub Lite Repository Layout v1
+# ResearchHub Repository Layout v1
 
 **Status:** FROZEN / CTO decision
 **Version:** v1.0
-**Baseline:** ResearchHub Lite Production Baseline v1
+**Baseline:** ResearchHub Production Baseline v1
 **Purpose:** Repository physical layout and ownership governance
 
 ---
 
 ## 1. Purpose
 
-本规范定义 ResearchHub Lite 的长期仓库物理目录结构、模块 ownership、依赖方向、测试布局和文档分类。
+本规范定义 ResearchHub 的长期仓库物理目录结构、模块 ownership、依赖方向、测试布局和文档分类。
 
 本规范解决的是：
 
@@ -37,10 +37,10 @@ Repository Layout 是现有架构的物理映射，而不是新的架构层。
 
 # 2. Root Layout
 
-ResearchHub Lite 一级目录冻结为：
+ResearchHub 一级目录冻结为：
 
 ```text
-ResearchHub_Lite/
+ResearchHub/
 │
 ├── app/
 ├── client/
@@ -1034,7 +1034,7 @@ Repository Layout v1 的核心原则是：
 
 # 22. Frozen Decision
 
-ResearchHub Lite Repository Layout v1 冻结以下决策：
+ResearchHub Repository Layout v1 冻结以下决策：
 
 1. 保留现有八个一级目录：
 
@@ -1071,4 +1071,4 @@ ResearchHub Lite Repository Layout v1 冻结以下决策：
 
 ---
 
-**End of ResearchHub Lite Repository Layout v1**
+**End of ResearchHub Repository Layout v1**

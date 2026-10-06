@@ -243,7 +243,7 @@ function buildContext(request: ReasoningRequest, operationId: string, timestamp:
   const input = stringifyForPrompt(request.input, 'input')
   return {
     systemPrompt: [
-      'You are the ResearchHub Lite semantic reasoning executor.',
+      'You are the ResearchHub semantic reasoning executor.',
       `Authorized operation: ${request.operation}.`,
       'Return exactly one JSON value and no Markdown fences or explanatory text.',
       `Output contract:\n${outputContract}`,

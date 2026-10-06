@@ -1,10 +1,10 @@
-# ResearchHub_Lite — Knowledge Architecture v0.2
+# ResearchHub — Knowledge Architecture v0.2
 
 ## Status
 
 **Frozen**
 
-Upon approval, this document supersedes `KNOWLEDGE_ARCHITECTURE_LITE_V0.1.md` as the normative Knowledge architecture baseline for ResearchHub_Lite.
+Upon approval, this document supersedes `KNOWLEDGE_ARCHITECTURE_LITE_V0.1.md` as the normative Knowledge architecture baseline for ResearchHub.
 
 The v0.1 document remains preserved as historical architecture.
 
@@ -14,7 +14,7 @@ This version incorporates `KNOWLEDGE_RESOLUTION_ARCHITECTURE_V0.1.md`.
 
 ## 1. Purpose
 
-ResearchHub_Lite converts research material into durable, queryable, provenance-backed canonical Knowledge.
+ResearchHub converts research material into durable, queryable, provenance-backed canonical Knowledge.
 
 The system is intentionally split between:
 
@@ -826,7 +826,7 @@ with:
 
 ## 28. Architectural Conclusion
 
-ResearchHub_Lite v0.2 treats canonical Knowledge ingestion as:
+ResearchHub v0.2 treats canonical Knowledge ingestion as:
 
 > document semantics first, deterministic Knowledge resolution second, bounded semantic uncertainty resolution only when necessary, and canonical mutation last.
 

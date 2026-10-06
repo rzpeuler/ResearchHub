@@ -1,4 +1,4 @@
-# ResearchHub Lite — Personal Research v1 Research Coverage Architecture v0.1
+# ResearchHub — Personal Research v1 Research Coverage Architecture v0.1
 
 Status: PASS / FROZEN by CTO decision
 Date: 2026-09-08

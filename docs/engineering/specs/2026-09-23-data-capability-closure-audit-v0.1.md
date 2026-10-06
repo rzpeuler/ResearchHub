@@ -10,7 +10,7 @@ Scope: source-level audit and design proposal only. No D3 implementation is incl
 
 ### Decision summary
 
-ResearchHub Lite has a real Workflow/Skill/Plugin/Knowledge foundation for the requested research products. The D0–D2 work is not a “no data” system and old gap matrices are not current product truth. The current position is:
+ResearchHub has a real Workflow/Skill/Plugin/Knowledge foundation for the requested research products. The D0–D2 work is not a “no data” system and old gap matrices are not current product truth. The current position is:
 
 - D0 is implemented as a Workflow-owned acquisition, fallback, provenance, authority, numeric-truth, and point-in-time contract in workflows/research-data-acquisition/ and docs/engineering/specs/2026-09-22-data-source-governance-foundation-v0.1.md.
 - D1 Earnings Expectations is the strongest current data closure. Its normal resolver path has a documented real AKShare/THS acceptance with ten usable sources, ten institutions, twenty fiscal-year points, and one EPS consensus snapshot. See docs/governance/EXPECTATION-SOURCE-001-CLOSURE.md and docs/engineering/specs/2026-09-22-earnings-expectations-acquisition-v0.1.md.

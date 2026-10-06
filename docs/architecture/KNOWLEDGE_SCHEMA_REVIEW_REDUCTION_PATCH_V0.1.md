@@ -1,4 +1,4 @@
-# ResearchHub_Lite — Knowledge Schema / Review-Reduction Patch v0.1
+# ResearchHub — Knowledge Schema / Review-Reduction Patch v0.1
 
 ## Status
 

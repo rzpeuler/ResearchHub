@@ -50,7 +50,7 @@ test('GET settings returns the current KB status and safe catalog under runtime 
 
 test('KB settings switch, persist, restore on restart, and preserve explicit unmount', async () => {
   const root = await mkdtemp(join(tmpdir(), 'rhl-settings-switch-'))
-  const cwd = join(root, 'ResearchHub_Lite')
+  const cwd = join(root, 'ResearchHub')
   const agentDir = join(root, 'agent')
   const catalogRoot = join(root, 'ResearchHubData', 'knowledge-bases')
   const kbA = join(catalogRoot, 'a')
@@ -109,7 +109,7 @@ test('KB settings switch, persist, restore on restart, and preserve explicit unm
 
 test('settings registers and mounts a local Knowledge Base without exposing or deleting its path', async () => {
   const root = await mkdtemp(join(tmpdir(), 'rhl-settings-register-'))
-  const cwd = join(root, 'ResearchHub_Lite')
+  const cwd = join(root, 'ResearchHub')
   const agentDir = join(root, 'agent')
   const kb = join(root, 'external-kb')
   const knowledgeBaseId = `registered-${Date.now()}`

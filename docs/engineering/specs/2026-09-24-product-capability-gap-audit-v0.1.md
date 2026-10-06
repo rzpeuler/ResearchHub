@@ -15,7 +15,7 @@ provider is available.
 
 ## Executive Summary
 
-ResearchHub Lite has a substantial bounded research product: the application
+ResearchHub has a substantial bounded research product: the application
 runtime, HTTP/SSE and Pi-host path, company/industry/earnings/valuation/event
 workflows, Daily morning/evening pipeline, report and bundle persistence,
 provenance, and the Gateway → validated ChangeSet → Writer → reload boundary

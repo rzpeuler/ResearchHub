@@ -1,4 +1,4 @@
-# ResearchHub Lite — Research Skill Architecture v1
+# ResearchHub — Research Skill Architecture v1
 
 Status: `IMPLEMENTED / SOL ACCEPTANCE PENDING` when the RHL-SKILL-ARCH-001
 branch satisfies the validation and delivery gates.  

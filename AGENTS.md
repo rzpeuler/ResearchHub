@@ -1,13 +1,13 @@
-# ResearchHub Lite — Direct Codex Guide
+# ResearchHub — Direct Codex Guide
 
 Codex is the repository engineering owner: interpret the requested change,
 inspect the current checkout, implement within scope, run validation, and
 report the factual result. Preserve unrelated working-tree changes and stop
 for unresolved product, architecture, security, or data-loss decisions.
 
-ResearchHub_Lite is the clean foundation for the ResearchHub Agent-first
-investment research application. It is focused on Free Research, Knowledge
-Query, Knowledge Production, provenance, validation, and canonical persistence.
+ResearchHub is the Agent-first investment research application. It is focused on
+Free Research, Knowledge Query, Knowledge Production, provenance, validation,
+and canonical persistence.
 
 Before changing code, inspect the current Git state, the approved task, and the
 relevant documents under docs/architecture/ and docs/engineering/. Use source,
@@ -42,12 +42,10 @@ approved task, and the applicable architecture documents.
 
 ## Codex engineering delegation
 
-For work in this repository, use `gpt-6-sol` with high reasoning effort as the
-primary agent for requirements analysis, product and architecture decisions,
-task planning, scope control, and final acceptance. Use `gpt-6-luna` with high
-reasoning effort as a subagent for bounded implementation, debugging, test
-execution, and test repair. Specify the subagent model and effort explicitly
-when spawning it; do not rely on model inheritance.
+For work in this repository, the primary agent owns requirements analysis,
+product and architecture decisions, task planning, scope control, and final
+acceptance. Use subagents for bounded implementation, debugging, test
+execution, or test repair when that work can be delegated independently.
 
 The primary agent should give the subagent a concrete task, relevant contracts,
 allowed files, and validation expectations. The primary agent reviews the

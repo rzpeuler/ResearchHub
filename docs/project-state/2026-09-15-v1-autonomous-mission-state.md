@@ -1,4 +1,4 @@
-# ResearchHub_Lite V1 Autonomous Mission State
+# ResearchHub V1 Autonomous Mission State
 
 Updated: 2026-09-16
 

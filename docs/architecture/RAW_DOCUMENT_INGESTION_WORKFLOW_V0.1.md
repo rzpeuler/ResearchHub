@@ -1,4 +1,4 @@
-# ResearchHub_Lite — Raw Document Ingestion Workflow v0.1
+# ResearchHub — Raw Document Ingestion Workflow v0.1
 
 ## Status
 

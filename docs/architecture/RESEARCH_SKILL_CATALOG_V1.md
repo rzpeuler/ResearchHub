@@ -1,4 +1,4 @@
-# ResearchHub Lite — Research Skill Catalog v1
+# ResearchHub — Research Skill Catalog v1
 
 This is the canonical roadmap for the single-level Research Skill architecture.
 `Runtime` means currently executable and registered. `PARTIAL` and `PLANNED`

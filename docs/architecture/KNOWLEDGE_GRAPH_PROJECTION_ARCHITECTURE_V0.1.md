@@ -1,4 +1,4 @@
-# ResearchHub Lite — Knowledge Graph Projection Architecture v0.1
+# ResearchHub — Knowledge Graph Projection Architecture v0.1
 
 **Status:** FROZEN / NORMATIVE  
 **Version:** v0.1  
@@ -10,7 +10,7 @@
 
 ## 1. Purpose
 
-This document freezes the v0.1 architecture for the ResearchHub Lite Knowledge Graph experience.
+This document freezes the v0.1 architecture for the ResearchHub Knowledge Graph experience.
 
 The Knowledge Graph is a **read-only application projection of canonical Knowledge**. It exists to help users browse, understand, and navigate the relationships already present in a mounted canonical Knowledge Base. It is not a second Knowledge store, not a graph database, not a Knowledge authoring surface, and not a research workflow.
 

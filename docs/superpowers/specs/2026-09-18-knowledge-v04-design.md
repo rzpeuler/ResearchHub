@@ -5,7 +5,7 @@ Status: approved execution baseline; implemented and acceptance-verified
 
 ## Context and boundaries
 
-ResearchHub Lite already has a file-backed Knowledge Base, an explicit
+ResearchHub already has a file-backed Knowledge Base, an explicit
 Knowledge Production Gateway, validated ChangeSets, an atomic Writer, durable
 ReviewCases, and a partially extended Schema 0.4. The mission completes the
 missing v0.4 semantic surface without introducing a second storage system,

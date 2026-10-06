@@ -775,9 +775,9 @@ Knowledge Production Architecture v0.1 does not define:
 
 These require separate future designs.
 
-## 32. Compatibility with Current ResearchHub_Lite
+## 32. Compatibility with Current ResearchHub
 
-Current ResearchHub_Lite remains valid.
+Current ResearchHub remains valid.
 
 The existing architecture already preserves several required boundaries:
 

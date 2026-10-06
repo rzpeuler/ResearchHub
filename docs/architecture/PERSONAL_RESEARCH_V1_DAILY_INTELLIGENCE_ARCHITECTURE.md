@@ -1,4 +1,4 @@
-# ResearchHub Lite — Personal Research v1 Daily Intelligence Architecture
+# ResearchHub — Personal Research v1 Daily Intelligence Architecture
 
 Status: FROZEN for M2 implementation; PASS / CLOSED by CTO acceptance at `218280579cdd7b6cfdf67506150cfa82cef4322e`
 Date: 2026-09-08

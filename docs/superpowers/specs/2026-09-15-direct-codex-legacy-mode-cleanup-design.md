@@ -6,7 +6,7 @@ Proposed design for user review. This document authorizes neither deletion nor i
 
 ## Goal
 
-Make ResearchHub_Lite a directly managed project: Codex owns task interpretation, planning, implementation, testing, review, commit, and repository synchronization. Remove repository assets whose purpose was to support the former Sol/Web-Chat2Codex/W2C/Luna task-handoff workflow while preserving the ResearchHub product and its original architecture.
+Make ResearchHub a directly managed project: Codex owns task interpretation, planning, implementation, testing, review, commit, and repository synchronization. Remove repository assets whose purpose was to support the former Sol/Web-Chat2Codex/W2C/Luna task-handoff workflow while preserving the ResearchHub product and its original architecture.
 
 ## Ownership model
 

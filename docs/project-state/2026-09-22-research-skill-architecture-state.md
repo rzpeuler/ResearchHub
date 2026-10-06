@@ -1,4 +1,4 @@
-# ResearchHub Lite — Wave 5 Architecture State
+# ResearchHub — Wave 5 Architecture State
 
 Date: 2026-09-22  
 Task: `RHL-W5-001`  

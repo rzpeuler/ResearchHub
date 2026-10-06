@@ -40,7 +40,7 @@ export class DoclingDocumentParser implements DocumentParser {
 
   async parse(input: DocumentParserInput): Promise<StructuredDocument> {
     if (!await executableExists(this.pythonExecutable)) throw new DocumentPluginError('document_parser_environment_not_ready', 'document_parser_environment_not_ready: managed Python interpreter was not found', this.id)
-    const directory = await mkdtemp(resolve(tmpdir(), 'researchhub-lite-docling-'))
+    const directory = await mkdtemp(resolve(tmpdir(), 'researchhub-docling-'))
     const sourcePath = resolve(directory, input.filename.toLowerCase().endsWith('.pdf') ? 'document.pdf' : 'document.bin')
     try {
       await writeFile(sourcePath, input.bytes)

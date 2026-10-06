@@ -7,7 +7,7 @@ Branch: `codex/skill-arch-001-single-level-research-skills`
 
 ## 1. Goal and non-goals
 
-ResearchHub Lite will expose one flat layer of independently callable Research
+ResearchHub will expose one flat layer of independently callable Research
 Skills. Composite research missions remain Workflows. Helpers and deterministic
 calculations remain implementation details of a Skill or a narrow shared pure
 function; they are not separately registered Skills.
