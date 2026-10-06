@@ -5,6 +5,65 @@ function json(body: unknown, status = 200): Response { return new Response(JSON.
 const bootstrap = { runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'a'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [] }
 
 describe('RuntimeClient', () => {
+  it('uses read authorization for integration and onboarding lists', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    const client = new RuntimeClient(async (input, init) => {
+      calls.push({ path: String(input), init })
+      return json(calls.length === 1 ? bootstrap : calls.at(-1)?.path.endsWith('/onboarding') ? { drafts: [] } : { integrations: [] })
+    })
+    await client.bootstrap()
+    await client.listDataSourceIntegrations()
+    await client.listDataSourceOnboardingDrafts()
+    expect(calls.map((call) => call.path)).toEqual(['/api/bootstrap', '/api/data-sources/integrations', '/api/data-sources/onboarding'])
+    expect(calls.slice(1).every((call) => new Headers(call.init?.headers).get('X-ResearchHub-Runtime-Token') === null)).toBe(true)
+  })
+
+  it('uses mutation authorization for credentials, source tests, and draft changes', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    const onboardingInput = { integrationId: 'draft-source', displayName: 'Draft Source', documentationUrl: 'https://example.test/docs', accessMode: 'api' as const, publisher: 'Example', proposedAuthority: 'unknown' as const, capabilityIds: [], metricIds: [], authenticationMode: 'none' as const, rightsNotes: 'Reviewed', rateLimitNotes: '100/min', timeBoundaryNotes: 'Daily', providerTermsReviewed: true }
+    const client = new RuntimeClient(async (input, init) => {
+      calls.push({ path: String(input), init })
+      return json(calls.length === 1 ? bootstrap : {})
+    })
+    await client.bootstrap()
+    await client.saveDataSourceCredentials('vendor one', { api_key: 'secret' })
+    await client.removeDataSourceCredentials('vendor one')
+    await client.testDataSourceIntegration('vendor one', { kind: 'connection' })
+    await client.createDataSourceOnboardingDraft(onboardingInput)
+    await client.updateDataSourceOnboardingDraft('draft/request', onboardingInput)
+    await client.markDataSourceOnboardingDraftReady('draft/request')
+    expect(calls.slice(1).map((call) => [call.path, call.init?.method ?? 'GET'])).toEqual([
+      ['/api/data-sources/integrations/vendor%20one/credentials', 'POST'],
+      ['/api/data-sources/integrations/vendor%20one/credentials', 'DELETE'],
+      ['/api/data-sources/integrations/vendor%20one/tests', 'POST'],
+      ['/api/data-sources/onboarding', 'POST'],
+      ['/api/data-sources/onboarding/draft%2Frequest', 'PATCH'],
+      ['/api/data-sources/onboarding/draft%2Frequest', 'PATCH'],
+    ])
+    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({ values: { api_key: 'secret' } })
+    expect(JSON.parse(String(calls[3]?.init?.body))).toEqual({ kind: 'connection' })
+    expect(JSON.parse(String(calls[4]?.init?.body))).toEqual(onboardingInput)
+    expect(JSON.parse(String(calls[5]?.init?.body))).toEqual({ action: 'update', input: onboardingInput })
+    expect(JSON.parse(String(calls[6]?.init?.body))).toEqual({ action: 'mark_ready' })
+    expect(calls.slice(1).every((call) => new Headers(call.init?.headers).get('X-ResearchHub-Runtime-Token') === 'a'.repeat(64))).toBe(true)
+  })
+
+  it('encodes integration and draft IDs and posts only supported test fields', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    const client = new RuntimeClient(async (input, init) => {
+      calls.push({ path: String(input), init })
+      return json(calls.length === 1 ? bootstrap : { integrationId: 'source / 1', kind: 'capability_sample', capabilityId: 'quotes', status: 'unsupported', startedAt: 'now', completedAt: 'now' })
+    })
+    await client.bootstrap()
+    await client.testDataSourceIntegration('source / 1', { kind: 'capability_sample', capabilityId: 'quotes' }, new AbortController().signal)
+    await client.markDataSourceOnboardingDraftReady('draft / 1')
+    expect(calls[1]?.path).toBe('/api/data-sources/integrations/source%20%2F%201/tests')
+    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({ kind: 'capability_sample', capabilityId: 'quotes' })
+    expect(calls[1]?.init?.signal).toBeInstanceOf(AbortSignal)
+    expect(calls[2]?.path).toBe('/api/data-sources/onboarding/draft%20%2F%201')
+    expect(JSON.parse(String(calls[2]?.init?.body))).toEqual({ action: 'mark_ready' })
+  })
+
   it('keeps the bootstrap token in the client and adds it only to mutations', async () => {
     const calls: RequestInit[] = []
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => { calls.push(init ?? {}); return calls.length === 1 ? json(bootstrap) : json({ accepted: true, aborted: true }) })
