@@ -7,6 +7,7 @@ import {
   DataResolver,
   industryMetricId,
   materializeSkillDataRequirements,
+  resolveSourcePolicy,
   type AcquisitionAttempt,
   type AcquisitionResult,
   type DataRequirement,
@@ -16,6 +17,8 @@ import {
 } from '../../data/index.ts'
 import { getDataSourceCatalog } from '../../app/services/data-source-catalog.ts'
 import { getCanonicalResearchSkill } from '../../app/services/research-skill-catalog.ts'
+import { createResearchSkillRegistry } from '../../app/services/skill-registry.ts'
+import { earningsExpectationSourcePolicy } from '../../workflows/earnings-review/expectations-acquisition.ts'
 
 const AS_OF = '2026-10-01T00:00:00.000Z'
 
@@ -108,6 +111,7 @@ test('Data Sources catalog consumes canonical Common definitions and keeps hones
   assert.equal(response.rows.length, COMMON_DATA_CATALOG.length)
   assert.equal(response.coverageComplete, false)
   for (const row of response.rows) {
+    assert.notEqual(row.capability.trim(), '')
     assert.equal(COMMON_DATA_CATALOG.some((definition) => definition.metricId === row.metricId && definition.meaning === row.chineseMeaning), true)
     assert.equal(row.finalFallback, '公网搜索（待接入）')
     assert.equal(row.coverageComplete, false)
@@ -118,14 +122,53 @@ test('Skill catalog preserves readable inputs and publishes bounded provider-neu
   const consensus = getCanonicalResearchSkill('consensus_expectations_analysis')
   assert.ok(consensus)
   assert.ok(consensus.inputs.length > 0)
-  assert.deepEqual(consensus.dataRequirements.map((item) => item.kind), ['STATIC', 'STATIC'])
-  assert.deepEqual(consensus.dataRequirements.map((item) => 'metricId' in item ? item.metricId : null), ['earnings_expectation_eps', 'earnings_expectation_net_profit'])
+  assert.deepEqual(consensus.dataRequirements, [], 'one-metric-per-invocation method has no fixed paired requirements')
+  assert.equal(consensus.requirementCoverage, 'PARTIAL')
+  const revisions = getCanonicalResearchSkill('estimate_revision_analysis')
+  assert.ok(revisions)
+  assert.deepEqual(revisions.dataRequirements, [], 'old/new estimate inputs are selected for one compatible metric per invocation')
+  assert.equal(revisions.requirementCoverage, 'PARTIAL')
 
   const industry = getCanonicalResearchSkill('industry_supply_demand_cycle')
   assert.ok(industry)
   assert.deepEqual(industry.dataRequirements.map((item) => item.kind), ['DOMAIN', 'DOMAIN', 'DOMAIN', 'DOMAIN', 'DOMAIN'])
+  assert.equal(industry.requirementCoverage, 'PARTIAL')
   assert.ok(industry.dataRequirements.every((item) => !('metricId' in item)))
   assert.ok(industry.dataRequirements.every((item) => !JSON.stringify(item).match(/AKShare|CNINFO|EastMoney|THS|SSE|SZSE/i)))
+})
+
+test('materialized Earnings Common requirements use Data-owned legacy routing metadata', () => {
+  const skillLocalId = 'skill-local-eps-id'
+  const materialized = materializeSkillDataRequirements('consensus_expectations_analysis', [{
+    id: skillLocalId, kind: 'STATIC', metricId: 'earnings_expectation_eps', dataKind: 'estimate',
+    determinismClass: 'AUTHORITATIVE_NUMERIC', required: true,
+  }], { workflowId: 'earnings-review', asOf: AS_OF })
+  const req = materialized.requirements[0]
+  assert.ok(req)
+  assert.notEqual(req.consumer.capability, skillLocalId)
+  assert.equal(req.consumer.capability, 'earnings_expectations')
+  const resolution = resolveSourcePolicy(req, [earningsExpectationSourcePolicy()])
+  assert.equal(resolution.status, 'MATCHED')
+  assert.equal(resolution.policy?.policyId, 'earnings-expectations-source-ladder-v0.1')
+})
+
+test('canonical Skill requirement coverage is explicit and registry clones deeply isolate requirements', () => {
+  const all = ['NONE', 'PARTIAL', 'COMPLETE']
+  const skills = createResearchSkillRegistry()
+  assert.equal(all.includes(skills.get('consensus_expectations_analysis')?.requirementCoverage ?? ''), true)
+  const first = skills.get('reverse_dcf_expectation_decode')
+  assert.ok(first?.dataRequirements?.[0])
+  assert.equal(first.requirementCoverage, 'PARTIAL')
+  const requirementCopy = first.dataRequirements[0]
+  assert.ok(Object.isFrozen(first.dataRequirements))
+  assert.ok(Object.isFrozen(requirementCopy))
+  assert.equal(Reflect.set(requirementCopy, 'metricId', 'mutated'), false)
+  const subsequentRequirement = skills.get('reverse_dcf_expectation_decode')?.dataRequirements?.[0]
+  assert.ok(subsequentRequirement && 'metricId' in subsequentRequirement)
+  assert.equal(subsequentRequirement.metricId, 'valuation_market_price')
+  const listed = skills.list().find((item) => item.id === 'reverse_dcf_expectation_decode')
+  assert.ok(listed?.dataRequirements?.[0])
+  assert.notEqual(listed?.dataRequirements?.[0], first.dataRequirements[0])
 })
 
 test('Industry catalog enforces namespaces, policy association, lifecycle evidence, and explicit canonical promotion', () => {
@@ -196,9 +239,28 @@ test('skill requirement materialization carries runtime context and resolves onl
   assert.equal(domainRequirement.metricFamily, 'shipments')
   assert.equal(domainRequirement.required, false)
   assert.equal(domainRequirement.dataKind, 'timeseries')
+  assert.equal(domainRequirement.consumer.capability, undefined, 'Industry Skills must not route with their local template ID')
   assert.deepEqual(materializeSkillDataRequirements('industry-skill', [templates[1]], { ...context, subject: {} }, catalog).unresolved, [
     { templateId: 'demand', required: false, reason: 'INDUSTRY_ID_REQUIRED' },
   ])
+})
+
+test('Industry DOMAIN requirements reject mismatched kinds and only materialize compatible definitions', () => {
+  const evidence = { validatedAt: AS_OF, validator: 'reviewer', methodology: 'reviewed', sourceabilityEvidence: ['source URL'] }
+  const catalog = createIndustryDataCatalog([
+    industryDefinition({ lifecycleStatus: 'CANONICAL', validation: evidence }),
+    industryDefinition({ metricId: industryMetricId('pcb', 'monthly-shipment-value'), dataKind: 'metric', lifecycleStatus: 'CANONICAL', validation: evidence }),
+  ])
+  const template = { kind: 'DOMAIN', domain: 'industry', id: 'demand', semanticRole: 'demand', metricFamily: 'shipments', required: false, dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC' } as const
+  const result = materializeSkillDataRequirements('industry-skill', [template], { workflowId: 'industry-deep-research', asOf: AS_OF, subject: { industryId: 'pcb' } }, catalog)
+  assert.deepEqual(result.requirements.map((item) => item.metricId), [industryMetricId('pcb', 'monthly-shipment')])
+  assert.equal(result.requirements[0]?.dataKind, 'timeseries')
+  assert.deepEqual(result.unresolved, [{ templateId: 'demand', required: false, reason: 'INDUSTRY_DATA_KIND_MISMATCH' }])
+
+  const allMismatched = createIndustryDataCatalog([industryDefinition({ dataKind: 'metric', lifecycleStatus: 'CANONICAL', validation: evidence })])
+  const mismatch = materializeSkillDataRequirements('industry-skill', [template], { workflowId: 'industry-deep-research', asOf: AS_OF, subject: { industryId: 'pcb' } }, allMismatched)
+  assert.deepEqual(mismatch.requirements, [])
+  assert.deepEqual(mismatch.unresolved, [{ templateId: 'demand', required: false, reason: 'INDUSTRY_DATA_KIND_MISMATCH' }])
 })
 
 test('DataResolver preserves an available zero, source authority, provenance, period, and attempts', async () => {
@@ -346,6 +408,70 @@ test('DataResolver reports unresolved required catalog needs and resolves canoni
   })
   assert.equal(noIndustry.completeness, 'UNAVAILABLE')
   assert.deepEqual(noIndustry.unresolvedRequirements, [{ templateId: 'demand', required: true, reason: 'INDUSTRY_ID_REQUIRED' }])
+})
+
+test('DataResolver marks unresolved optional Industry needs PARTIAL even when the bundle is empty', async () => {
+  const skill = getCanonicalResearchSkill('industry_supply_demand_cycle')
+  assert.ok(skill)
+  const result = await new DataResolver<number>({
+    policies: [], executor: async () => ({ status: 'UNSUPPORTED' }),
+  }).resolveSkillRequirements(skill.canonicalSkillId, skill.dataRequirements, {
+    workflowId: 'industry-deep-research', asOf: AS_OF, subject: { industryId: 'pcb' },
+  })
+  assert.equal(result.items.length, 0)
+  assert.equal(result.unresolvedRequirements.length, 5)
+  assert.ok(result.unresolvedRequirements.every((item) => item.required === false))
+  assert.equal(result.completeness, 'PARTIAL')
+
+  const requiredAcquisitionFailure = await new DataResolver<number>({
+    policies: [], executor: async () => ({ status: 'UNSUPPORTED' }),
+    resolveAcquisition: async (item) => acquired({
+      requirementId: item.id, status: 'UNAVAILABLE', source: null,
+      quality: { pointInTimeSafe: false, complete: false, crossChecked: false }, attempts: [],
+      unavailableReason: 'DATA_NOT_PUBLISHED',
+    }),
+  }).resolveSkillRequirements('industry_skill', [
+    { kind: 'STATIC', id: 'required-price', metricId: 'valuation_market_price', dataKind: 'timeseries', required: true, determinismClass: 'AUTHORITATIVE_NUMERIC' },
+    ...skill.dataRequirements,
+  ], { workflowId: 'valuation', asOf: AS_OF, subject: { industryId: 'pcb' } })
+  assert.equal(requiredAcquisitionFailure.completeness, 'UNAVAILABLE')
+  assert.equal(requiredAcquisitionFailure.unresolvedRequirements.length, 5)
+
+  const requiredTemplate = [{ kind: 'DOMAIN', domain: 'industry', id: 'required-demand', semanticRole: 'demand', dataKind: 'timeseries', required: true, determinismClass: 'EVIDENCE_BACKED_NUMERIC' }] as const
+  const noBasis = await new DataResolver<number>({ policies: [], executor: async () => ({ status: 'UNSUPPORTED' }) }).resolveSkillRequirements(
+    'industry-skill', requiredTemplate, { workflowId: 'industry-deep-research', asOf: AS_OF, subject: { industryId: 'pcb' } },
+  )
+  assert.equal(noBasis.completeness, 'UNAVAILABLE')
+  assert.equal(noBasis.unresolvedRequirements[0]?.required, true)
+
+  const partialBasis = await new DataResolver<number>({
+    policies: [], executor: async () => ({ status: 'UNSUPPORTED' }), resolveAcquisition: async () => acquired({ data: 7 }),
+  }).resolveSkillRequirements('industry-skill', [
+    { kind: 'STATIC', id: 'price', metricId: 'valuation_market_price', dataKind: 'timeseries', required: true, determinismClass: 'AUTHORITATIVE_NUMERIC' },
+    ...requiredTemplate,
+  ], { workflowId: 'valuation', asOf: AS_OF })
+  assert.equal(partialBasis.items[0]?.status, 'AVAILABLE')
+  assert.equal(partialBasis.completeness, 'PARTIAL')
+  assert.deepEqual(partialBasis.unresolvedRequirements, [{ templateId: 'required-demand', required: true, reason: 'INDUSTRY_ID_REQUIRED' }])
+
+  const requiredGapAndResolvedInput = [
+    { kind: 'STATIC', id: 'price', metricId: 'valuation_market_price', dataKind: 'timeseries', required: true, determinismClass: 'AUTHORITATIVE_NUMERIC' },
+    ...requiredTemplate,
+  ] as const
+  const noValue = await new DataResolver<number>({
+    policies: [], executor: async () => ({ status: 'UNSUPPORTED' }),
+    resolveAcquisition: async (item) => acquired<number>({ requirementId: item.id, data: undefined }),
+  }).resolveSkillRequirements('industry-skill', requiredGapAndResolvedInput, { workflowId: 'valuation', asOf: AS_OF })
+  assert.equal(noValue.items[0]?.status, 'AVAILABLE')
+  assert.equal(noValue.items[0]?.value, undefined)
+  assert.equal(noValue.completeness, 'UNAVAILABLE', 'an AVAILABLE status without a value is not an execution basis')
+
+  const zeroValue = await new DataResolver<number>({
+    policies: [], executor: async () => ({ status: 'UNSUPPORTED' }),
+    resolveAcquisition: async (item) => acquired({ requirementId: item.id, data: 0 }),
+  }).resolveSkillRequirements('industry-skill', requiredGapAndResolvedInput, { workflowId: 'valuation', asOf: AS_OF })
+  assert.equal(zeroValue.items[0]?.value, 0)
+  assert.equal(zeroValue.completeness, 'PARTIAL', 'numeric zero is a present usable result')
 })
 
 test('DataResolver limits an Industry metric to its catalog-associated source policy', async () => {

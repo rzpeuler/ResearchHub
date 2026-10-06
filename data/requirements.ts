@@ -38,7 +38,7 @@ export interface MaterializedDataRequirements {
   readonly unresolved: readonly {
     readonly templateId: string
     readonly required: boolean
-    readonly reason: 'COMMON_DATA_DEFINITION_REQUIRED' | 'COMMON_DATA_KIND_MISMATCH' | 'INDUSTRY_ID_REQUIRED' | 'NO_CANONICAL_INDUSTRY_METRIC'
+    readonly reason: 'COMMON_DATA_DEFINITION_REQUIRED' | 'COMMON_DATA_KIND_MISMATCH' | 'INDUSTRY_ID_REQUIRED' | 'NO_CANONICAL_INDUSTRY_METRIC' | 'INDUSTRY_DATA_KIND_MISMATCH'
   }[]
 }
 
@@ -54,7 +54,7 @@ export function materializeSkillDataRequirements(
 
   for (const template of templates) {
     const base = {
-      consumer: { workflow: context.workflowId, skill: skillId, capability: template.id },
+      consumer: { workflow: context.workflowId, skill: skillId },
       subject: context.subject ?? {},
       dataKind: template.dataKind,
       required: template.required,
@@ -75,7 +75,13 @@ export function materializeSkillDataRequirements(
         unresolved.push({ templateId: template.id, required: template.required, reason: 'COMMON_DATA_KIND_MISMATCH' })
         continue
       }
-      requirements.push({ ...base, id: `${skillId}:${template.id}`, metricId: template.metricId })
+      const compatibilityCapability = definition.compatibilityCapabilityByWorkflow?.[context.workflowId]
+      requirements.push({
+        ...base,
+        consumer: { ...base.consumer, ...(compatibilityCapability ? { capability: compatibilityCapability } : {}) },
+        id: `${skillId}:${template.id}`,
+        metricId: template.metricId,
+      })
       continue
     }
 
@@ -89,11 +95,19 @@ export function materializeSkillDataRequirements(
       unresolved.push({ templateId: template.id, required: template.required, reason: 'NO_CANONICAL_INDUSTRY_METRIC' })
       continue
     }
-    for (const definition of matches) {
+    const compatibleMatches = matches.filter((definition) => definition.dataKind === template.dataKind)
+    if (compatibleMatches.length === 0) {
+      unresolved.push({ templateId: template.id, required: template.required, reason: 'INDUSTRY_DATA_KIND_MISMATCH' })
+      continue
+    }
+    if (compatibleMatches.length !== matches.length) {
+      unresolved.push({ templateId: template.id, required: template.required, reason: 'INDUSTRY_DATA_KIND_MISMATCH' })
+    }
+    for (const definition of compatibleMatches) {
       requirements.push({
         ...base,
         id: `${skillId}:${template.id}:${definition.metricId}`,
-        dataKind: definition.dataKind,
+        dataKind: template.dataKind,
         metricId: definition.metricId,
         metricFamily: definition.metricFamily,
       })

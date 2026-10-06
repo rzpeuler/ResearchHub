@@ -85,9 +85,15 @@ export class DataResolver<T> {
     const materialized = materializeSkillDataRequirements(skillId, templates, context, this.options.industryCatalog, this.commonCatalog)
     const bundle = await this.resolve(materialized.requirements)
     const hasRequiredCatalogGap = materialized.unresolved.some((item) => item.required)
-    const completeness = !hasRequiredCatalogGap
-      ? bundle.completeness
-      : (bundle.items.length === 0 || bundle.completeness === 'UNAVAILABLE' ? 'UNAVAILABLE' : 'PARTIAL')
+    const hasOptionalCatalogGap = materialized.unresolved.some((item) => !item.required)
+    const hasUsableResolvedData = bundle.items.some((item) =>
+      (item.status === 'AVAILABLE' || item.status === 'PARTIAL')
+      && (item.value !== undefined || item.acquisition.observations?.some((observation) => observation.data !== undefined) === true))
+    const completeness = hasRequiredCatalogGap
+      ? (hasUsableResolvedData ? 'PARTIAL' : 'UNAVAILABLE')
+      : (bundle.completeness === 'UNAVAILABLE'
+        ? 'UNAVAILABLE'
+        : (hasOptionalCatalogGap ? 'PARTIAL' : bundle.completeness))
     return { ...bundle, completeness, unresolvedRequirements: materialized.unresolved }
   }
 }

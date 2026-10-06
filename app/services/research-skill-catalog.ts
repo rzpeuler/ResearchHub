@@ -4,6 +4,17 @@ import type { SkillDataRequirement } from '../../data/requirements.ts'
 
 export type ResearchSkillCatalogStatus = 'IMPLEMENTED' | 'PARTIAL' | 'PLANNED'
 export type ResearchSkillExecutionClass = 'SEMANTIC_EXECUTABLE' | 'DETERMINISTIC_EXECUTABLE' | 'NOT_INDEPENDENTLY_EXECUTABLE'
+/**
+ * NONE: no requirements are declared or mapped; PARTIAL: known inputs are
+ * deferred/unmapped or templates cover only a subset; COMPLETE: every external
+ * data input for the method is represented.
+ */
+/**
+ * NONE: no requirements are declared or mapped; PARTIAL: known inputs are
+ * deferred/unmapped or templates cover only a subset; COMPLETE: every external
+ * data input for the method is represented.
+ */
+export type SkillRequirementCoverage = 'NONE' | 'PARTIAL' | 'COMPLETE'
 
 export interface ResearchSkillCatalogEntry {
   readonly canonicalSkillId: string
@@ -18,6 +29,7 @@ export interface ResearchSkillCatalogEntry {
   readonly currentOwner: string
   readonly migrationAction: string
   readonly notes: string
+  readonly requirementCoverage: SkillRequirementCoverage
   readonly executionClass?: ResearchSkillExecutionClass
   readonly runtimeBinding?: string
   readonly dataRequirements: readonly SkillDataRequirement[]
@@ -90,6 +102,13 @@ const RUNTIME_BINDING_BY_ID: Readonly<Partial<Record<string, string>>> = {
   thesis_refresh: 'skills/thesis_refresh/semantic.ts:executeThesisRefresh -> calculations.ts:refreshThesis',
 }
 
+const REQUIREMENT_COVERAGE_BY_ID: Readonly<Partial<Record<string, SkillRequirementCoverage>>> = {
+  consensus_expectations_analysis: 'PARTIAL',
+  estimate_revision_analysis: 'PARTIAL',
+  reverse_dcf_expectation_decode: 'PARTIAL',
+  industry_supply_demand_cycle: 'PARTIAL',
+}
+
 const entry = (
   canonicalSkillId: string,
   domain: string,
@@ -103,7 +122,7 @@ const entry = (
   currentOwner: string,
   migrationAction: string,
   notes: string,
-): ResearchSkillCatalogEntry => ({ canonicalSkillId, domain, purpose, invocationMatch, inputs, produces, status, runtimeRegistered, currentSource, currentOwner, migrationAction, notes, executionClass: EXECUTION_CLASS_BY_ID[canonicalSkillId], runtimeBinding: RUNTIME_BINDING_BY_ID[canonicalSkillId], dataRequirements: [] })
+): ResearchSkillCatalogEntry => ({ canonicalSkillId, domain, purpose, invocationMatch, inputs, produces, status, runtimeRegistered, currentSource, currentOwner, migrationAction, notes, executionClass: EXECUTION_CLASS_BY_ID[canonicalSkillId], runtimeBinding: RUNTIME_BINDING_BY_ID[canonicalSkillId], requirementCoverage: REQUIREMENT_COVERAGE_BY_ID[canonicalSkillId] ?? 'NONE', dataRequirements: [] })
 
 const RESEARCH_SKILL_CATALOG_ENTRIES: readonly ResearchSkillCatalogEntry[] = [
   entry('document_change_analysis', 'Evidence', 'Identify attributable changes between two documents.', 'Use only when two comparable, attributable document versions are supplied; do not infer changes from one document.', ['prior document', 'current document', 'asOf', 'source refs'], ['change set', 'unchanged regions', 'gaps'], 'PLANNED', false, 'None', 'Future Wave', 'Implement a point-in-time document-diff method.', 'No runtime registration.'),
@@ -135,14 +154,6 @@ const RESEARCH_SKILL_CATALOG_ENTRIES: readonly ResearchSkillCatalogEntry[] = [
 ]
 
 const DATA_REQUIREMENTS_BY_SKILL: Readonly<Record<string, readonly SkillDataRequirement[]>> = {
-  consensus_expectations_analysis: [
-    { id: 'eps-estimate', kind: 'STATIC', metricId: 'earnings_expectation_eps', dataKind: 'estimate', determinismClass: 'AUTHORITATIVE_NUMERIC', minimumAuthority: 'S3_AGGREGATOR', required: true },
-    { id: 'net-profit-estimate', kind: 'STATIC', metricId: 'earnings_expectation_net_profit', dataKind: 'estimate', determinismClass: 'AUTHORITATIVE_NUMERIC', minimumAuthority: 'S3_AGGREGATOR', required: true },
-  ],
-  estimate_revision_analysis: [
-    { id: 'eps-estimate-revisions', kind: 'STATIC', metricId: 'earnings_expectation_eps', dataKind: 'estimate', determinismClass: 'AUTHORITATIVE_NUMERIC', minimumAuthority: 'S3_AGGREGATOR', required: true },
-    { id: 'net-profit-estimate-revisions', kind: 'STATIC', metricId: 'earnings_expectation_net_profit', dataKind: 'estimate', determinismClass: 'AUTHORITATIVE_NUMERIC', minimumAuthority: 'S3_AGGREGATOR', required: true },
-  ],
   reverse_dcf_expectation_decode: [
     { id: 'market-price', kind: 'STATIC', metricId: 'valuation_market_price', dataKind: 'timeseries', determinismClass: 'AUTHORITATIVE_NUMERIC', minimumAuthority: 'S3_AGGREGATOR', requiredFields: ['date', 'close'], required: true },
   ],
@@ -157,7 +168,7 @@ const DATA_REQUIREMENTS_BY_SKILL: Readonly<Record<string, readonly SkillDataRequ
 
 export const CANONICAL_RESEARCH_SKILL_CATALOG: readonly ResearchSkillCatalogEntry[] = RESEARCH_SKILL_CATALOG_ENTRIES.map((item) => ({
   ...item,
-  dataRequirements: DATA_REQUIREMENTS_BY_SKILL[item.canonicalSkillId] ?? [],
+  dataRequirements: Object.freeze((DATA_REQUIREMENTS_BY_SKILL[item.canonicalSkillId] ?? []).map((requirement) => Object.freeze({ ...requirement, ...(requirement.requiredFields ? { requiredFields: Object.freeze([...requirement.requiredFields]) } : {}) }))),
 }))
 
 export const CANONICAL_RESEARCH_SKILL_IDS = new Set(CANONICAL_RESEARCH_SKILL_CATALOG.map((item) => item.canonicalSkillId))

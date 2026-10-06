@@ -20,7 +20,7 @@ export function validateDataRequirement(requirement: DataRequirement): readonly 
   const errors: string[] = []
   if (!isRecord(requirement) || typeof requirement.id !== 'string' || requirement.id.trim() === '') errors.push('id is required')
   if (!isRecord(requirement?.consumer) || typeof requirement.consumer.workflow !== 'string' || requirement.consumer.workflow.trim() === '') errors.push('consumer.workflow is required')
-  if (!isRecord(requirement?.consumer) || typeof requirement.consumer.capability !== 'string' || requirement.consumer.capability.trim() === '') errors.push('consumer.capability is required')
+  if (isRecord(requirement?.consumer) && requirement.consumer.capability !== undefined && (typeof requirement.consumer.capability !== 'string' || requirement.consumer.capability.trim() === '')) errors.push('consumer.capability must be a non-empty string when provided')
   if (typeof requirement?.asOf !== 'string' || Number.isNaN(Date.parse(requirement.asOf))) errors.push('asOf must be a valid date')
   if (requirement?.dataKind === 'metric' && !requirement.metricId && !requirement.metricFamily) errors.push('metric requirements need metricId or metricFamily')
   if (requirement?.determinismClass === 'AUTHORITATIVE_NUMERIC' && requirement.llmWebFallback === 'FULL_EVIDENCE_RESEARCH') errors.push('AUTHORITATIVE_NUMERIC cannot use FULL_EVIDENCE_RESEARCH')

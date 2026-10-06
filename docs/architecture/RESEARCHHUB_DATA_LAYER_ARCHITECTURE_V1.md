@@ -99,11 +99,17 @@ The research Skill catalog retains its human-readable `inputs` and adds typed
 
 Templates include data kind, determinism class, authority floor when known,
 required fields, and required/optional status. They contain no provider names.
-The initial Common mappings are deliberately bounded to implemented Skills
-with existing source semantics: consensus expectations, estimate revisions,
-and reverse DCF market price. The Industry cycle Skill expresses semantic
-needs only; it does not enumerate PCB, semiconductor, shipping, or other
-industry-specific metrics.
+The initial Common mapping covers reverse DCF market price. Consensus
+expectations and estimate revision mappings are deferred because each method
+invocation selects one metric (and revision additionally requires a compatible
+old/new observation pair); fixed EPS-plus-net-profit declarations would
+misstate those contracts. The Industry cycle Skill expresses semantic needs
+only; it does not enumerate PCB, semiconductor, shipping, or other
+industry-specific metrics. Each canonical Skill exposes `requirementCoverage`:
+`NONE` means no requirements are declared or mapped; `PARTIAL` means known
+inputs are deferred/unmapped or templates cover only a subset; `COMPLETE` means
+all external data inputs for the method are represented. This makes absent or
+intentionally deferred requirements visible to consumers.
 
 Workflow supplies company/industry identity, `asOf`, period, and consumer
 identity at materialization time. These runtime values are not embedded in

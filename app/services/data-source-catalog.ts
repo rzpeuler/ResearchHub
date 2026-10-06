@@ -130,6 +130,10 @@ export function getDataSourceCatalog(): DataSourceCatalogResponse {
   }
 
   const rows = entries.map(({ requirement: item, chineseMeaning, policy }): DataSourceCatalogRow => {
+    const capability = item.consumer.capability
+    if (typeof capability !== 'string' || capability.trim() === '') {
+      throw new Error(`DATA_SOURCE_CATALOG_REQUIREMENT_CAPABILITY_MISSING:${item.metricId ?? item.id}`)
+    }
     const candidates = policy.candidates
     const primary = candidates.find((candidate) => candidate.fallbackLevel === 'PRIMARY')
     const fallback1 = candidates.find((candidate) => candidate.fallbackLevel === 'FALLBACK_1')
@@ -144,7 +148,7 @@ export function getDataSourceCatalog(): DataSourceCatalogResponse {
     return {
       metricId: item.metricId!,
       chineseMeaning,
-      capability: item.consumer.capability,
+      capability,
       workflowId: item.consumer.workflow,
       defaultSource,
       fallback1: firstFallback,

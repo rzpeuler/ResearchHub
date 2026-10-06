@@ -18,6 +18,7 @@ import { analyzeCompetitiveMarketMap } from '../../skills/competitive_market_map
 import { analyzeExpectationGap } from '../../skills/expectation_gap/calculations.ts'
 import { canonicalResearchSkillMdPath, CANONICAL_RESEARCH_SKILL_IDS, getCanonicalResearchSkill, REQUIRED_RESEARCH_SKILL_SECTIONS, RUNTIME_CANONICAL_RESEARCH_SKILLS, type ResearchSkillCatalogStatus, type ResearchSkillExecutionClass } from './research-skill-catalog.ts'
 import type { SkillDataRequirement } from '../../data/requirements.ts'
+import type { SkillRequirementCoverage } from './research-skill-catalog.ts'
 
 export type ResearchHubSkillKind = 'research' | 'knowledge' | 'utility'
 export type ResearchSkillOrigin = 'canonical' | 'external'
@@ -45,6 +46,7 @@ export interface ResearchSkillDefinition {
   readonly catalogStatus?: ResearchSkillCatalogStatus
   readonly executionClass?: ResearchSkillExecutionClass
   readonly runtimeBinding?: string
+  readonly requirementCoverage?: SkillRequirementCoverage
   readonly dataRequirements?: readonly SkillDataRequirement[]
   readonly runtimeExecutor?: ResearchSkillRuntimeExecutor
   readonly origin?: ResearchSkillOrigin
@@ -73,6 +75,7 @@ function canonicalDefinition(id: string): ResearchSkillDefinition {
     catalogStatus: metadata.status,
     executionClass: metadata.executionClass,
     runtimeBinding: metadata.runtimeBinding,
+    requirementCoverage: metadata.requirementCoverage,
     dataRequirements: metadata.dataRequirements,
     ...(runtimeExecutor === undefined ? {} : { runtimeExecutor }),
     origin: 'canonical',
@@ -113,8 +116,16 @@ const CORE_SKILLS: readonly ResearchSkillDefinition[] = [
   { id: 'knowledge-curation', kind: 'knowledge', intentDescription: 'Knowledge extraction and semantic resolution.', whenToUse: 'Use only inside governed Knowledge Production.', outputContract: 'Validated Knowledge candidates', enabled: true, scope: 'researchhub' },
 ]
 
+function cloneDataRequirements(requirements: readonly SkillDataRequirement[] | undefined): readonly SkillDataRequirement[] | undefined {
+  if (requirements === undefined) return undefined
+  return Object.freeze(requirements.map((requirement) => Object.freeze({
+    ...requirement,
+    ...(requirement.requiredFields === undefined ? {} : { requiredFields: Object.freeze([...requirement.requiredFields]) }),
+  })))
+}
+
 function clone(definition: ResearchSkillDefinition): ResearchSkillDefinition {
-  return { ...definition, ...(definition.inputs === undefined ? {} : { inputs: [...definition.inputs] }), ...(definition.produces === undefined ? {} : { produces: [...definition.produces] }), ...(definition.inputSchema === undefined ? {} : { inputSchema: JSON.parse(JSON.stringify(definition.inputSchema)) as Readonly<Record<string, unknown>> }) }
+  return { ...definition, ...(definition.inputs === undefined ? {} : { inputs: [...definition.inputs] }), ...(definition.produces === undefined ? {} : { produces: [...definition.produces] }), ...(definition.dataRequirements === undefined ? {} : { dataRequirements: cloneDataRequirements(definition.dataRequirements) }), ...(definition.inputSchema === undefined ? {} : { inputSchema: JSON.parse(JSON.stringify(definition.inputSchema)) as Readonly<Record<string, unknown>> }) }
 }
 
 function normalize(definition: ResearchSkillDefinition): ResearchSkillDefinition {
@@ -123,7 +134,7 @@ function normalize(definition: ResearchSkillDefinition): ResearchSkillDefinition
   const invocationMatch = definition.invocationMatch?.trim() || definition.whenToUse.trim()
   const inputs = definition.inputs === undefined ? Object.keys(definition.inputSchema ?? {}).sort() : [...definition.inputs]
   const produces = definition.produces === undefined ? [definition.outputContract?.trim() || 'ResearchBundle'] : [...definition.produces]
-  return { ...definition, purpose, invocationMatch, inputs, produces, origin, ...(origin === 'canonical' ? { skillMdPath: definition.skillMdPath ?? definition.methodologySource?.path } : {}) }
+  return { ...definition, purpose, invocationMatch, inputs, produces, ...(definition.dataRequirements === undefined ? {} : { dataRequirements: cloneDataRequirements(definition.dataRequirements) }), origin, ...(origin === 'canonical' ? { skillMdPath: definition.skillMdPath ?? definition.methodologySource?.path } : {}) }
 }
 
 function contractDiagnostics(definition: ResearchSkillDefinition): readonly string[] {

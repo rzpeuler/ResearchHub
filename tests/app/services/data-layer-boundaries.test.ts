@@ -6,6 +6,8 @@ import ts from 'typescript'
 
 const repositoryRoot = resolve(import.meta.dirname, '../../..')
 const skillsRoot = join(repositoryRoot, 'skills')
+const workflowsRoot = join(repositoryRoot, 'workflows')
+const appServicesRoot = join(repositoryRoot, 'app/services')
 
 interface ModuleReference {
   readonly specifier: string
@@ -62,7 +64,7 @@ const allowedAcquisitionSchemaImports = new Map<string, ReadonlySet<string>>([
 
 function isBlockedDataModule(specifier: string): boolean {
   const normalized = specifier.replaceAll('\\', '/')
-  return /(?:^|\/)data\/(?:resolver|workflow|index)\.ts$/.test(normalized)
+  return /(?:^|\/)data\/(?:resolver|workflow|index)(?:\.ts|\.js)?$/.test(normalized)
     || /(?:^|\/)workflows\/research-data-acquisition\//.test(normalized)
 }
 
@@ -70,6 +72,107 @@ function isConcreteProviderModule(specifier: string): boolean {
   const normalized = specifier.replaceAll('\\', '/').toLowerCase()
   return normalized.includes('plugins/research-acquisition/')
     || /(?:^|[/@_.-])(?:akshare|cninfo|eastmoney|ths|sse|szse)(?:[/@_.-]|$)/.test(normalized)
+}
+
+// Explicit current Workflow/application dependencies on concrete Plugin
+// adapters, including deferred acquisition paths. Keep this path-to-module
+// list exact: a new dependency requires an explicit architecture decision.
+const allowedWorkflowAcquisitionDependencies = new Map<string, ReadonlySet<string>>([
+  ['workflows/company-deep-research/contracts.ts', new Set(['../../plugins/research-acquisition/akshare.ts'])],
+  ['workflows/daily-intelligence/workflow.ts', new Set([
+    '../../plugins/daily-intelligence/brief-store.ts',
+    '../../plugins/daily-intelligence/signal-intelligence.ts',
+  ])],
+  ['workflows/earnings-review/contracts.ts', new Set(['../../plugins/research-acquisition/akshare.ts'])],
+  ['workflows/earnings-review/expectations-acquisition.ts', new Set(['../../plugins/research-acquisition/akshare.ts'])],
+  ['workflows/earnings-review/expectations-eastmoney-akshare.ts', new Set(['../../plugins/research-acquisition/expectations/eastmoney-report.ts'])],
+  ['workflows/earnings-review/expectations-ths.ts', new Set(['../../plugins/research-acquisition/expectations/eastmoney-report.ts'])],
+  ['workflows/industry-deep-research/contracts.ts', new Set(['../../plugins/research-acquisition/industry-operating-observations.ts'])],
+  ['workflows/industry-deep-research/workflow.ts', new Set(['../../plugins/research-acquisition/industry-operating-observations.ts'])],
+  ['workflows/management-communication-acquisition/contracts.ts', new Set(['../../plugins/research-acquisition/management-communication.ts'])],
+  ['workflows/management-communication-acquisition/normalization.ts', new Set(['../../plugins/research-acquisition/management-communication.ts'])],
+  ['workflows/management-communication-acquisition/workflow.ts', new Set([
+    '../../plugins/research-acquisition/management-communication.ts',
+    '../../plugins/research-acquisition/official.ts',
+    '../../plugins/research-acquisition/akshare.ts',
+  ])],
+  ['workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts', new Set(['../../plugins/document/input-resolver.ts'])],
+  ['workflows/raw-document-knowledge-ingestion/workflow.ts', new Set(['../../plugins/document/input-resolver.ts'])],
+  ['workflows/thesis-lifecycle/kill-criterion-evaluator.ts', new Set(['../../plugins/document/input-resolver.ts'])],
+  ['workflows/valuation/automatic-comps.ts', new Set([
+    '../../plugins/research-acquisition/akshare.ts',
+    '../../plugins/research-acquisition/official.ts',
+  ])],
+  ['workflows/valuation/basis-evidence.ts', new Set(['../../plugins/research-acquisition/official.ts'])],
+  ['workflows/valuation/contracts.ts', new Set([
+    '../../plugins/research-acquisition/akshare.ts',
+    '../../plugins/research-acquisition/official.ts',
+  ])],
+  ['workflows/valuation/workflow.ts', new Set(['../../plugins/research-acquisition/official.ts'])],
+  ['app/services/daily-intelligence-composition.ts', new Set([
+    '../../plugins/research-acquisition/akshare.ts',
+    '../../plugins/research-acquisition/official.ts',
+    '../../plugins/research-acquisition/gdelt.ts',
+    '../../plugins/research-acquisition/rss.ts',
+    '../../plugins/research-acquisition/industry-operating-observations.ts',
+    '../../plugins/daily-intelligence/market.ts',
+    '../../plugins/daily-intelligence/expectations.ts',
+    '../../plugins/daily-intelligence/institutional.ts',
+    '../../plugins/daily-intelligence/industry.ts',
+    '../../plugins/daily-intelligence/acquisition.ts',
+    '../../plugins/daily-intelligence/config.ts',
+    '../../plugins/daily-intelligence/calendar.ts',
+  ])],
+  ['app/services/daily-intelligence-service.ts', new Set([
+    '../../plugins/research-acquisition/akshare.ts',
+    '../../plugins/daily-intelligence/config.ts',
+    '../../plugins/daily-intelligence/signal-store.ts',
+    '../../plugins/daily-intelligence/brief-store.ts',
+    '../../plugins/daily-intelligence/calendar.ts',
+  ])],
+  ['app/services/contracts.ts', new Set(['../../plugins/research-acquisition/industry-operating-observations.ts'])],
+  ['app/services/data-source-integrations.ts', new Set(['../../plugins/research-acquisition/industry-operating-observations.ts'])],
+  ['app/services/research-service.ts', new Set([
+    '../../plugins/research-acquisition/akshare.ts',
+    '../../plugins/research-acquisition/official.ts',
+    '../../plugins/research-acquisition/industry.ts',
+    '../../plugins/research-acquisition/industry-composition.ts',
+    '../../plugins/research-acquisition/industry-operating-observations.ts',
+  ])],
+  ['app/services/theme-framework-service.ts', new Set(['../../plugins/document/input-resolver.ts'])],
+])
+
+function isConcreteWorkflowPluginDependency(specifier: string): boolean {
+  const normalized = specifier.replaceAll('\\', '/').toLowerCase()
+  if (/(?:^|\/)plugins\//.test(normalized)) {
+    // Exact current neutral contracts and generic helper module targets only.
+    // Other Plugin modules, including nested provider contracts, stay guarded.
+    const neutralPluginModuleSuffixes = [
+      '/plugins/research-acquisition/contracts.ts',
+      '/plugins/research-acquisition/expectations/contracts.ts',
+      '/plugins/research-acquisition/hash.ts',
+      '/plugins/research-acquisition/payload-validation.ts',
+      '/plugins/reasoning/contracts.ts',
+      '/plugins/daily-intelligence/contracts.ts',
+      '/plugins/document/contracts.ts',
+    ]
+    return !neutralPluginModuleSuffixes.some((suffix) => normalized.endsWith(suffix))
+  }
+  if (normalized.startsWith('.') || normalized.startsWith('/')) return false
+  return /(?:^|[/@_.-])(?:akshare|cninfo|eastmoney|ths|sse|szse|gdelt|rss)(?:[/@_.-]|$)/.test(normalized)
+}
+
+interface WorkflowAcquisitionDependency {
+  readonly relativePath: string
+  readonly reference: ModuleReference
+}
+
+function unbaselinedWorkflowAcquisitionDependencies(dependencies: readonly WorkflowAcquisitionDependency[]): string[] {
+  return dependencies.flatMap(({ relativePath, reference }) => {
+    if (!isConcreteWorkflowPluginDependency(reference.specifier)) return []
+    if (allowedWorkflowAcquisitionDependencies.get(relativePath)?.has(reference.specifier)) return []
+    return [`${relativePath} imports unbaselined acquisition module ${reference.specifier}`]
+  })
 }
 
 test('provider module detector recognizes adapter paths and direct provider packages', () => {
@@ -85,6 +188,17 @@ test('provider module detector recognizes adapter paths and direct provider pack
   for (const specifier of ['node:fs', '../../plugins/reasoning/contracts.ts', 'lodash']) {
     assert.equal(isConcreteProviderModule(specifier), false, `${specifier} is not a concrete data provider`)
   }
+})
+
+test('Skill runtime boundary detects resolver modules with TypeScript, JavaScript, or extensionless specifiers', () => {
+  for (const specifier of [
+    '../../data/resolver.ts',
+    '../../data/resolver.js',
+    '../../data/resolver',
+    '../../data/workflow.js',
+    '../../data/index',
+  ]) assert.equal(isBlockedDataModule(specifier), true, `${specifier} must be blocked`)
+  assert.equal(isBlockedDataModule('../../data/contracts.ts'), false)
 })
 
 test('Skills do not import concrete acquisition providers or perform acquisition I/O', async () => {
@@ -112,6 +226,60 @@ test('Skills do not import concrete acquisition providers or perform acquisition
     }
   }
   assert.deepEqual(violations, [], violations.join('\n'))
+})
+
+test('Workflow and application Plugin dependencies match the explicit deferred-debt baseline', async () => {
+  const dependencies: WorkflowAcquisitionDependency[] = []
+  for (const root of [workflowsRoot, appServicesRoot]) {
+    for (const path of await sourceFiles(root)) {
+      const relativePath = relative(repositoryRoot, path).split(sep).join('/')
+      for (const reference of moduleReferences(path, await readFile(path, 'utf8'))) {
+        dependencies.push({ relativePath, reference })
+      }
+    }
+  }
+  const violations = unbaselinedWorkflowAcquisitionDependencies(dependencies)
+  assert.deepEqual(violations, [], violations.join('\n'))
+})
+
+test('a new concrete Workflow acquisition dependency fails without an explicit baseline entry', () => {
+  const violations = unbaselinedWorkflowAcquisitionDependencies([{
+    relativePath: 'workflows/new-research/workflow.ts',
+    reference: { specifier: '../../plugins/research-acquisition/new-provider.ts', typeOnly: false },
+  }])
+  assert.deepEqual(violations, [
+    'workflows/new-research/workflow.ts imports unbaselined acquisition module ../../plugins/research-acquisition/new-provider.ts',
+  ])
+})
+
+test('a new type-only import from a provider module with co-located I/O fails without an explicit baseline entry', () => {
+  const violations = unbaselinedWorkflowAcquisitionDependencies([{
+    relativePath: 'app/services/new-service.ts',
+    reference: { specifier: '../../plugins/research-acquisition/industry-operating-observations.ts', typeOnly: true },
+  }])
+  assert.deepEqual(violations, [
+    'app/services/new-service.ts imports unbaselined acquisition module ../../plugins/research-acquisition/industry-operating-observations.ts',
+  ])
+})
+
+test('a new relative concrete Plugin adapter import fails without an explicit baseline entry', () => {
+  const violations = unbaselinedWorkflowAcquisitionDependencies([{
+    relativePath: 'workflows/new-research/workflow.ts',
+    reference: { specifier: '../../plugins/acme-feed/client.ts', typeOnly: false },
+  }])
+  assert.deepEqual(violations, [
+    'workflows/new-research/workflow.ts imports unbaselined acquisition module ../../plugins/acme-feed/client.ts',
+  ])
+})
+
+test('a nested provider contracts import fails without an explicit baseline entry', () => {
+  const violations = unbaselinedWorkflowAcquisitionDependencies([{
+    relativePath: 'workflows/new-research/workflow.ts',
+    reference: { specifier: '../../plugins/research-acquisition/new-provider/contracts.ts', typeOnly: true },
+  }])
+  assert.deepEqual(violations, [
+    'workflows/new-research/workflow.ts imports unbaselined acquisition module ../../plugins/research-acquisition/new-provider/contracts.ts',
+  ])
 })
 
 test('canonical data implementation exists and legacy acquisition paths only re-export it', async () => {

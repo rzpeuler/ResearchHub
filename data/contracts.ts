@@ -16,7 +16,8 @@ export interface DataRequirement {
   readonly consumer: {
     readonly workflow: string
     readonly skill?: string
-    readonly capability: string
+    /** Optional compatibility field for matching legacy workflow SourcePolicies. */
+    readonly capability?: string
   }
   readonly subject: {
     readonly companyId?: string
