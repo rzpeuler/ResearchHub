@@ -17,7 +17,7 @@ This report records implementation evidence for Data Layer Phase 1. It does not 
 | Goal branch | `codex/dl-goal-001-data-layer-foundation` |
 | Goal worktree | `C:\Users\Administrator\Desktop\ResearchHub_worktrees\DL_GOAL_001` |
 | FIX-001 implementation commit | `c6b433ff664210b670a25e7884bee6ee47e61857` |
-| Final HEAD | Report-only commit immediately follows FIX-001 implementation commit; exact final branch HEAD is in delivery response |
+| Final HEAD | Report-only commit immediately follows FIX-001 implementation commit; its SHA is supplied in the delivery response because a commit cannot contain its own hash |
 | Remote branch HEAD | Verified equal to local final HEAD after push |
 | Worktree cleanliness | Clean after commit and push |
 | `main` | Unchanged; implementation was isolated in the Goal worktree |
@@ -41,7 +41,7 @@ The Goal branch was created from fetched `origin/main`; it was not merged. The i
 | Skill methodology files changed | 0 |
 | Skill catalog/contract files changed | `app/services/research-skill-catalog.ts`, `app/services/skill-registry.ts` |
 | Provider-specific Skill imports added | 0 |
-| Skills with machine-readable requirements added | `consensus_expectations_analysis`, `estimate_revision_analysis`, `reverse_dcf_expectation_decode`, `industry_supply_demand_cycle` |
+| Skills with machine-readable requirements added or retained | `reverse_dcf_expectation_decode`, `industry_supply_demand_cycle` |
 
 Existing human-readable `inputs` remain. Industry Skill requirements describe generic semantic needs (supply/capacity, demand, inventory, pricing, utilization) and do not name providers or specific industry metrics. The initial mappings are bounded and are not a claim of complete Skill coverage.
 
@@ -146,7 +146,7 @@ No source above is automatically approved as authoritative by its presence in th
 | `npm run client:build` | PASS; main JavaScript bundle 628.73 kB with the >500 kB chunk-size advisory |
 | `git diff --check` | PASS; only Git line-ending conversion warnings |
 
-`npm test` exits 1 because of those 25 Node failures; client tests pass. The FIX branch adds 25 passing Node cases relative to current `main`, including 12 FIX-001 test cases, and introduces no new full-suite failure.
+`npm test` exits 1 because of those 25 Node failures; client tests pass. The FIX branch adds 25 passing Node cases relative to current `main`; the FIX-001 diff adds 10 top-level regression tests. It introduces no new full-suite failure.
 
 The 25 Node failures are also compared against the same `origin/main` commit in a detached baseline worktree without ignored runtime data. Both branches have exactly the same 25 failing test identifiers. They occur in: `tests/app/services/industry-research-integration.test.ts` (1), `tests/app/services/registries.test.ts` (1), `tests/app/services/research-skill-architecture.test.ts` (1), `tests/app/services/theme-workspace-projection.test.ts` (6), `tests/knowledge/production/competition-module-gateway.test.ts` (12), `tests/validation/codex-module-remaining-schema-deltas.test.ts` (1), `tests/validation/codex-production-industry-schema-compatibility.test.ts` (1), and `tests/workflows/valuation.test.ts` (2). The repeated competition-module failures share a canonical Company fixture rejection; remaining failures are existing assertion/fixture expectation mismatches. No failures were suppressed or rewritten.
 
@@ -215,6 +215,7 @@ The test also proves that a synthetic new concrete Workflow provider dependency,
 | Client tests (part of `npm test`) | 9 files, 97/97 passed | 9 files, 97/97 passed |
 | Node tests (part of `npm test`) | 1,996 total; 1,971 passed, 25 failed | 1,971 total; 1,946 passed, 25 failed |
 | Failed Node test identifiers | 25 | Same 25; exact identifier sets compared and identical |
+| FIX-001 top-level regression tests added | 10 | — |
 | New test failures from FIX-001 | 0 | — |
 | `npm run typecheck` | PASS | — |
 | `npm run client:typecheck` | PASS | — |
