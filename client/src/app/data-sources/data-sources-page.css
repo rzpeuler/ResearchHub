@@ -4,6 +4,7 @@
 .data-sources-tabs { display: flex; gap: 8px; margin: 26px 0 20px; border-bottom: 1px solid #2c4148; }
 .data-sources-tabs button { border-radius: 8px 8px 0 0; border-bottom-color: transparent; }
 .data-sources-tabs button[aria-selected="true"] { background: #254044; color: #b9e2d9; border-color: #54877e; }
+.data-source-active-test { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 18px; border: 1px solid #54877e; border-radius: 10px; background: #172f30; padding: 12px 14px; color: #c9e8dc; }
 .data-source-integrations, .data-source-onboarding { display: grid; gap: 16px; }
 .data-source-integration-card, .data-source-draft-card { border: 1px solid #2c4148; border-radius: 12px; background: #122124; padding: 18px; color: #bfced1; }
 .data-source-integration-card header, .data-source-draft-card > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; }

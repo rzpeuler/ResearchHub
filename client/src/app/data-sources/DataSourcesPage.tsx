@@ -23,6 +23,7 @@ export function DataSourcesPage({ client }: Props): ReactElement {
   const [credentialMessage, setCredentialMessage] = useState('')
   const [busyCredential, setBusyCredential] = useState(false)
   const [runningTest, setRunningTest] = useState<string>()
+  const [runningTestLabel, setRunningTestLabel] = useState('')
   const [testMessage, setTestMessage] = useState<Record<string, string>>({})
   const [draftInput, setDraftInput] = useState<DataSourceOnboardingDraftInput>(emptyDraft)
   const [editingRequestId, setEditingRequestId] = useState<string>()
@@ -43,14 +44,15 @@ export function DataSourcesPage({ client }: Props): ReactElement {
   const displaySource = (source: string | null): string => source?.trim() || t('待接入', 'Not connected')
   const rows = catalog ? [...catalog.rows].sort((a, b) => a.metricId.localeCompare(b.metricId) || a.workflowId.localeCompare(b.workflowId)) : []
   const runTest = async (view: DataSourceIntegrationView, kind: 'connection' | 'capability_sample', capabilityId?: string): Promise<void> => {
+    if (activeTestController.current) return
     const key = `${view.integration.integrationId}:${kind}:${capabilityId ?? ''}`
-    const controller = new AbortController(); activeTestController.current = controller; setRunningTest(key); setTestMessage((current) => ({ ...current, [key]: '' }))
+    const controller = new AbortController(); activeTestController.current = controller; setRunningTest(key); setRunningTestLabel(`${view.integration.displayName} · ${kind === 'connection' ? t('连接测试', 'connection test') : t('能力抽样', 'capability sample')}`); setTestMessage((current) => ({ ...current, [key]: '' }))
     try {
       const summary = await client.testDataSourceIntegration(view.integration.integrationId, { kind, ...(capabilityId ? { capabilityId } : {}) }, controller.signal)
       setTestMessage((current) => ({ ...current, [key]: testSummaryText(summary, t) }))
       await refresh()
     } catch (cause) { if (controller.signal.aborted || (cause instanceof DOMException && cause.name === 'AbortError')) setTestMessage((current) => ({ ...current, [key]: t('测试已取消', 'Test cancelled') })); else setTestMessage((current) => ({ ...current, [key]: t('测试失败，未显示原始错误信息', 'Test failed; raw provider details are hidden') })) }
-    finally { if (activeTestController.current === controller) activeTestController.current = undefined; setRunningTest((current) => current === key ? undefined : current) }
+    finally { if (activeTestController.current === controller) activeTestController.current = undefined; setRunningTest((current) => current === key ? undefined : current); setRunningTestLabel('') }
   }
   const cancelTest = (): void => { activeTestController.current?.abort() }
 
@@ -82,6 +84,7 @@ export function DataSourcesPage({ client }: Props): ReactElement {
       <button role="tab" aria-selected={tab === 'integrations'} onClick={() => setTab('integrations')}>{t('已配置集成', 'Configured integrations')}</button>
       <button role="tab" aria-selected={tab === 'onboarding'} onClick={() => setTab('onboarding')}>{t('接入新数据源', 'Add a data source')}</button>
     </div>
+    {runningTest ? <div className="data-source-active-test" role="status"><span>{t('正在测试', 'Testing')} {runningTestLabel}</span><button onClick={cancelTest}>{t('取消测试', 'Cancel test')}</button></div> : null}
     {error ? <div className="notice" role="alert"><strong>{t('数据源配置不可用', 'Data source configuration unavailable')}</strong><p>{error}</p></div> : null}
     {loading ? <p className="muted" role="status">{t('正在加载数据源配置…', 'Loading data source configuration…')}</p> : null}
     {!loading && tab === 'policies' && catalog ? <section role="tabpanel" aria-label={t('来源策略', 'Source policies')}>
@@ -92,7 +95,7 @@ export function DataSourcesPage({ client }: Props): ReactElement {
       </tbody></table></div>{rows.length > 0 && !catalog.coverageComplete ? <p className="data-sources-coverage-count">{t('不完整覆盖的指标：', 'Metrics with incomplete coverage: ')}{rows.filter((row) => !row.coverageComplete).length}</p> : null}
     </section> : null}
     {!loading && tab === 'integrations' ? <section role="tabpanel" aria-label={t('已配置集成', 'Configured integrations')} className="data-source-integrations">
-      {integrations.length === 0 ? <p className="muted">{t('当前没有已配置的数据源集成。', 'No configured data source integrations are available.')}</p> : integrations.map((view) => <IntegrationCard key={view.integration.integrationId} view={view} runningTest={runningTest} testMessage={testMessage} onTest={runTest} onCredentials={() => { setCredentialTarget(view); setCredentialValues({}); setCredentialMessage('') }} onCancel={cancelTest} t={t} />)}
+      {integrations.length === 0 ? <p className="muted">{t('当前没有已配置的数据源集成。', 'No configured data source integrations are available.')}</p> : integrations.map((view) => <IntegrationCard key={view.integration.integrationId} view={view} runningTest={runningTest} testMessage={testMessage} onTest={runTest} onCredentials={() => { setCredentialTarget(view); setCredentialValues({}); setCredentialMessage('') }} t={t} />)}
     </section> : null}
     {!loading && tab === 'onboarding' ? <section role="tabpanel" aria-label={t('接入新数据源', 'Add a data source')} className="data-source-onboarding">
       <h2>{t('新增数据源', 'Add a data source')}</h2><p>{t('受支持的适配器可配置凭据；尚未支持的来源会保存为本地草稿，完成后端适配和验收后才能进入集成目录。', 'Configure a supported adapter, or save a local draft for a source that needs backend implementation and acceptance.')}</p>
@@ -122,17 +125,17 @@ export function DataSourcesPage({ client }: Props): ReactElement {
 function splitList(values: readonly string[]): string[] { return values.flatMap((value) => value.split(',')).map((value) => value.trim()).filter(Boolean) }
 function testSummaryText(summary: DataSourceTestSummary, t: (zh: string, en: string) => string): string { if (summary.status === 'passed') return t('测试通过', 'Test passed'); if (summary.status === 'cancelled') return t('测试已取消', 'Test cancelled'); if (summary.status === 'unsupported') return t('此测试不受支持', 'This test is unsupported'); return safeFailure[summary.errorCode ?? ''] ? `${t('测试失败', 'Test failed')}：${t(safeFailure[summary.errorCode ?? '']!, safeFailure[summary.errorCode ?? '']!)}` : t('测试失败', 'Test failed') }
 
-function IntegrationCard({ view, runningTest, testMessage, onTest, onCredentials, onCancel, t }: { readonly view: DataSourceIntegrationView; readonly runningTest?: string; readonly testMessage: Readonly<Record<string, string>>; readonly onTest: (view: DataSourceIntegrationView, kind: 'connection' | 'capability_sample', capabilityId?: string) => Promise<void>; readonly onCredentials: () => void; readonly onCancel: () => void; readonly t: (zh: string, en: string) => string }): ReactElement {
+function IntegrationCard({ view, runningTest, testMessage, onTest, onCredentials, t }: { readonly view: DataSourceIntegrationView; readonly runningTest?: string; readonly testMessage: Readonly<Record<string, string>>; readonly onTest: (view: DataSourceIntegrationView, kind: 'connection' | 'capability_sample', capabilityId?: string) => Promise<void>; readonly onCredentials: () => void; readonly t: (zh: string, en: string) => string }): ReactElement {
   const id = view.integration.integrationId
   const tests = view.latestTests.map((summary) => ({ summary, key: `${id}:${summary.kind}:${summary.capabilityId ?? ''}` }))
-  const active = runningTest?.startsWith(`${id}:`) ?? false
+  const active = Boolean(runningTest)
   const requiredSlots = [...(view.integration.supportedTests.connection ? ['connection'] : []), ...view.integration.supportedTests.capabilitySamples.map((capabilityId) => `capability_sample:${capabilityId}`)]
   const verified = requiredSlots.length > 0 && requiredSlots.every((slot) => view.latestTests.some((summary) => `${summary.kind}${summary.capabilityId ? `:${summary.capabilityId}` : ''}` === slot && summary.status === 'passed'))
   return <article className="data-source-integration-card"><header><div><h2>{view.integration.displayName}</h2><code>{id}</code></div><span className="data-source-state">{t('适配器已配置', 'Adapter configured')}</span></header>
     <p>{verified ? <><strong>{t('已验证', 'Verified')}</strong> / {view.policyLinked ? t('SourcePolicy 已接入', 'SourcePolicy linked') : t('待 SourcePolicy 接入', 'Pending SourcePolicy linkage')}</> : <>{t('适配器已配置', 'Adapter configured')} / {t('待验证', 'Pending verification')}</>}</p>
     <p>{view.credentialState === 'configured' ? t('连接凭据已配置', 'Connection credentials configured') : view.credentialState === 'missing' ? t('缺少连接凭据', 'Connection credentials missing') : view.credentialState === 'vault_unavailable' ? t('系统凭据库不可用', 'System credential vault unavailable') : t('无需凭据', 'Credentials not required')}</p>
     <div><h3>{t('能力', 'Capabilities')}</h3>{view.integration.capabilities.map((capability) => <p key={capability.id}>{capability.label} <code>{capability.id}</code> · {capability.metricIds.join(', ')}</p>)}</div>
-    <div className="data-source-test-actions">{view.integration.supportedTests.connection ? <button disabled={active} onClick={() => void onTest(view, 'connection')}>{t('测试连接', 'Test connection')}</button> : null}{view.integration.capabilities.filter((capability) => view.integration.supportedTests.capabilitySamples.includes(capability.id)).map((capability) => <button key={capability.id} disabled={active} onClick={() => void onTest(view, 'capability_sample', capability.id)}>{t('抽样测试', 'Sample test')} · {capability.label}</button>)}{active ? <button onClick={onCancel}>{t('取消测试', 'Cancel test')}</button> : null}<button onClick={onCredentials}>{t('管理凭据', 'Manage credentials')}</button></div>
+    <div className="data-source-test-actions">{view.integration.supportedTests.connection ? <button disabled={active} onClick={() => void onTest(view, 'connection')}>{t('测试连接', 'Test connection')}</button> : null}{view.integration.capabilities.filter((capability) => view.integration.supportedTests.capabilitySamples.includes(capability.id)).map((capability) => <button key={capability.id} disabled={active} onClick={() => void onTest(view, 'capability_sample', capability.id)}>{t('抽样测试', 'Sample test')} · {capability.label}</button>)}<button onClick={onCredentials}>{t('管理凭据', 'Manage credentials')}</button></div>
     {tests.map(({ summary, key }) => <p key={key} className="data-source-test-result">{summary.kind === 'connection' ? t('连接测试', 'Connection test') : t('能力抽样', 'Capability sample')}{summary.capabilityId ? ` · ${summary.capabilityId}` : ''}：{testSummaryText(summary, t)}</p>)}
     {Object.entries(testMessage).filter(([key]) => key.startsWith(`${id}:`)).map(([key, message]) => message ? <p role="status" key={key} className="data-source-test-result">{message}</p> : null)}
   </article>

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeClient } from '../../api/runtime-client'
 import { LanguageProvider } from '../../i18n'
@@ -78,6 +78,30 @@ describe('DataSourcesPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '取消测试' }))
     await waitFor(() => expect(signal?.aborted).toBe(true))
     expect(await screen.findByRole('button', { name: '测试连接' })).toBeTruthy()
+  })
+
+  it('keeps one global test cancellable after switching integrations and tabs', async () => {
+    let firstSignal: AbortSignal | undefined
+    const second = { ...integration, integration: { ...integration.integration, integrationId: 'quotes-two', displayName: 'Quotes Two' }, latestTests: [] }
+    const client = setup({
+      listDataSourceIntegrations: vi.fn().mockResolvedValue([integration, second]),
+      testDataSourceIntegration: vi.fn((_id: string, _input: unknown, signal: AbortSignal) => {
+        firstSignal = signal
+        return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))))
+      }),
+    })
+    fireEvent.click(screen.getByRole('tab', { name: '已配置集成' }))
+    const firstCard = await screen.findByRole('heading', { name: 'Quotes One' })
+    fireEvent.click(within(firstCard.closest('article')!).getByRole('button', { name: '测试连接' }))
+    await waitFor(() => expect(firstSignal).toBeInstanceOf(AbortSignal))
+    expect(screen.getAllByRole('button', { name: '测试连接' }).every((button) => (button as HTMLButtonElement).disabled)).toBe(true)
+    fireEvent.click(screen.getByRole('tab', { name: '接入新数据源' }))
+    expect(await screen.findByText(/正在测试 Quotes One/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '取消测试' }))
+    await waitFor(() => expect(firstSignal?.aborted).toBe(true))
+    fireEvent.click(screen.getByRole('tab', { name: '已配置集成' }))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: '测试连接' }).every((button) => !(button as HTMLButtonElement).disabled)).toBe(true))
+    expect(client.testDataSourceIntegration).toHaveBeenCalledTimes(1)
   })
 
   it('creates and edits a local onboarding draft without offering arbitrary code or URL tests', async () => {
