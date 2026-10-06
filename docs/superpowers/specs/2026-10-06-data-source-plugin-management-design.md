@@ -2,8 +2,8 @@
 
 ## Status
 
-Design approved for specification review on 2026-10-06. Implementation has not
-started.
+Design confirmed for implementation planning on 2026-10-06. Implementation has
+not started.
 
 ## Objective
 
@@ -42,14 +42,17 @@ The Data Sources page has three tabs:
    adapter, or save an onboarding draft for a source that needs code changes.
 
 The visual direction selected is the three-tab layout. Integration rows show
-integration ID and name, enabled/configuration status, declared capabilities
-and metrics, supported test types, and latest sanitized test summary. Related
-operations from one upstream provider may be grouped into one integration row
-with multiple capability entries.
+integration ID and name, Runtime assembly and credential-configuration status,
+declared capabilities and metrics, linkage to current source policies,
+supported test types, and latest sanitized test summary. Related operations
+from one upstream provider may be grouped into one integration row with
+multiple capability entries.
 
-Configuration and test state are separate. The UI must distinguish:
+Runtime assembly, credential configuration, and test state are separate. The
+UI must distinguish:
 
-- Adapter assembled / missing configuration / disabled.
+- Adapter assembled / credentials missing / credentials configured / OS vault
+  unavailable.
 - Never tested / testing / connection passed or failed / capability sample
   passed or failed / test unsupported.
 
@@ -118,17 +121,17 @@ Drafts are local runtime application data under `runtime-data`, not source
 code, model context, or Knowledge. Drafts never contain secrets and cannot be
 tested or selected by research Workflows. Draft lifecycle:
 
-`draft → ready_for_adapter → adapter_available → verified → enabled`
+`draft → ready_for_adapter → adapter_available → verified`
 
 `ready_for_adapter` means the request metadata is complete; it is a local
 workflow state and does not submit data to an external service. The application
 matches the draft's stable integration ID to an explicitly composed adapter to
 reach `adapter_available`. `verified` requires supported tests to pass and
 required publisher, authority, rights, and time-boundary metadata to be
-confirmed. `enabled` requires an explicit user action. Enabling only makes the
-adapter available to policies that already reference it; it does not add or
-change any `SourcePolicy` candidate, authority, or fallback level. Workflow
-policy updates remain code-reviewed changes.
+confirmed. The page has no runtime enable/disable switch. After verification,
+making a new source available to a Workflow still requires an explicit,
+code-reviewed `SourcePolicy` update; no candidate, authority, or fallback level
+is added or changed by the onboarding UI.
 
 There is no arbitrary plugin upload, package installation, JavaScript/Python
 script editor, dynamic module import, or user-defined outbound test endpoint.
