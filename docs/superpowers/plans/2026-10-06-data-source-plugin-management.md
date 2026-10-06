@@ -109,6 +109,23 @@ export interface DataSourceAdministrationService {
   runTest(input: { readonly integrationId: string; readonly kind: DataSourceTestKind; readonly capabilityId?: string }, signal?: AbortSignal): Promise<DataSourceTestSummary>
 }
 
+export type DataSourceOnboardingStatus = 'draft' | 'ready_for_adapter' | 'adapter_available' | 'verified'
+
+export interface DataSourceOnboardingDraft {
+  readonly requestId: string
+  readonly input: DataSourceOnboardingDraftInput
+  readonly status: DataSourceOnboardingStatus
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+export interface DataSourceOnboardingService {
+  list(): Promise<readonly DataSourceOnboardingDraft[]>
+  create(input: DataSourceOnboardingDraftInput): Promise<DataSourceOnboardingDraft>
+  update(requestId: string, input: DataSourceOnboardingDraftInput): Promise<DataSourceOnboardingDraft>
+  markReady(requestId: string): Promise<DataSourceOnboardingDraft>
+}
+
 export interface DataSourceOnboardingDraftInput {
   readonly integrationId: string
   readonly displayName: string
@@ -139,14 +156,19 @@ Runtime integration IDs use unique lowercase kebab-case
 field IDs use unique `^[A-Za-z][A-Za-z0-9_-]{0,63}$` values within each
 integration. Validate these constraints while constructing the administration
 service, matching the constraints enforced by the credential store.
-`DataSourceOnboardingService`
-owns `list()`, `create(input)`, `update(requestId, input)`, and
-`markReady(requestId)`; its statuses are `draft`, `ready_for_adapter`,
-`adapter_available`, and `verified`. It has no `enable()` operation.
-IDs use `^[a-z0-9]+(?:-[a-z0-9]+)*$`, are limited to 64 characters, unique
-among drafts, and freeze when `markReady` is called. Documentation and terms
-URLs must use HTTPS, reject username/password/fragments, and are never fetched
-by the application.
+`DataSourceOnboardingService` uses an immutable generated `requestId` as the
+draft route key, while `integrationId` is unique among drafts and can be edited
+only before `markReady`. It owns the exact `list()`, `create(input)`,
+`update(requestId, input)`, and `markReady(requestId)` methods above. The
+persisted state is only `draft` or `ready_for_adapter`; `adapter_available`
+and `verified` are derived at read time from the explicit integration view and
+latest tests. Verification requires complete publisher/authority/rights/time
+metadata, at least one supported test, and every applicable supported test to
+have passed. There is no `enable()` operation. Integration IDs use
+`^[a-z0-9]+(?:-[a-z0-9]+)*$`, are limited to 64 characters, and freeze when
+`markReady` is called. Credential-field IDs use
+`^[A-Za-z][A-Za-z0-9_-]{0,63}$`. Documentation and terms URLs must use HTTPS,
+reject username/password/fragments, and are never fetched by the application.
 
 ---
 
@@ -409,7 +431,9 @@ git commit -m "feat: persist data source onboarding drafts"
   - `DELETE /api/data-sources/integrations/:id/credentials`
   - `POST /api/data-sources/integrations/:id/tests` (accepts an abortable bounded test request)
   - `GET|POST /api/data-sources/onboarding`
-  - `PATCH /api/data-sources/onboarding/:id`
+  - `PATCH /api/data-sources/onboarding/:requestId` with either exact action
+    `{ "action": "update", "input": <DataSourceOnboardingDraftInput> }` or
+    `{ "action": "mark_ready" }`; lifecycle status is never caller-set.
 
 - [ ] **Step 1: Write failing HTTP route tests**
 
