@@ -43,6 +43,14 @@ import { ThemeFrameworkAcquisitionAdapter } from '../../plugins/research-acquisi
 import { AkshareIndustryResearchPlugin } from '../../plugins/research-acquisition/industry.ts'
 import { loadReviewCase } from '../../knowledge/review/store.ts'
 import { loadReviewDecision } from '../../knowledge/review/decision-store.ts'
+import { createDataSourceAdministrationService } from '../services/data-source-administration.ts'
+import { FileDataSourceTestStore } from '../services/data-source-test-store.ts'
+import { createSourceCredentialStore } from './source-credential-store.ts'
+import { mergeSourceIntegrations, sourceIntegration } from '../services/data-source-integrations.ts'
+import type { DataSourceIntegrationDefinition } from '../services/data-source-administration-contracts.ts'
+import { VALUATION_SOURCE_POLICIES } from '../../workflows/valuation/basis-evidence.ts'
+import { earningsExpectationSourcePolicy } from '../../workflows/earnings-review/expectations-acquisition.ts'
+import { exchangeQAPolicy, managementCommunicationDocumentPolicy } from '../../workflows/management-communication-acquisition/source-policies.ts'
 
 const DURABLE_THESIS_DECISION_STATES = new Set(['ACCEPTED', 'REJECTED', 'DEFERRED', 'STALE'])
 type DurableThesisDecisionState = 'ACCEPTED' | 'REJECTED' | 'DEFERRED' | 'STALE'
@@ -169,11 +177,18 @@ export class ResearchHubApplicationRuntime {
     let themeFrameworkService = options.themeFrameworkService
     const akshare = new AkshareDataAdapter()
     const industryAcquisitionPlugins = options.industryAcquisitionPlugins ?? [new MiitIndustryResearchPlugin(), new GovCnIndustryResearchPlugin(), new EastmoneyIndustryResearchPlugin(), new CpcaIndustryResearchPlugin()]
+    const industryOperatingObservationAcquisition = options.industryOperatingObservationAcquisition ?? new IndustryOperatingObservationAcquisition()
+    const researchIntegrationDefinitions: DataSourceIntegrationDefinition[] = []
+    let industryProvidersAssembled = false
     const industryReasoningExecutorFactory = options.industryReasoningExecutorFactory
-    const dailyComposition = options.dailyIntelligenceService === undefined ? await createDailyIntelligenceComposition({ cwd, workflowService, reasoningExecutor, modelRuntime, mountedKnowledgeBaseRoot, industryOperatingObservationAcquisition: options.industryOperatingObservationAcquisition }) : undefined
+    const dailyComposition = options.dailyIntelligenceService === undefined ? await createDailyIntelligenceComposition({ cwd, workflowService, reasoningExecutor, modelRuntime, mountedKnowledgeBaseRoot, industryOperatingObservationAcquisition, akshare }) : undefined
     const dailyIntelligenceService = options.dailyIntelligenceService ?? dailyComposition!.service
     if (researchService === undefined && mountedKnowledgeBaseRoot !== undefined) {
-      try { const manifest = await loadKnowledgeBaseManifest(mountedKnowledgeBaseRoot); if (manifest.schemaVersion === '0.4' && manifest.storageFormatVersion === '1') { const dailySignalStore = new FileDailySignalStore(join(cwd, 'runtime-data', 'daily-signals.jsonl')); const cninfo = new CninfoOfficialDisclosureClient(); researchService = new ResearchService({ mountedKnowledgeBaseRoot, cwd, workflowService, reasoningExecutor, industryReasoningExecutorFactory, industryOperatingObservationAcquisition: options.industryOperatingObservationAcquisition ?? new IndustryOperatingObservationAcquisition(), signalStore: new FileResearchSignalStore(join(cwd, 'runtime-data', 'research-signals.jsonl')), dailySignalStore, acquisitionPlugins: [new OfficialDisclosureResearchPlugin(cninfo), new GdeltResearchPlugin()], industryAcquisitionPlugins, akshare, officialDisclosure: cninfo, managementCommunicationSources: createManagementCommunicationSources(cninfo, akshare), ...(themeScopeImpactService === undefined ? {} : { themeScopeImpactChecker: themeScopeImpactService }) }) } } catch { /* the normal v0.3 runtime remains available without Company Research */ }
+      try { const manifest = await loadKnowledgeBaseManifest(mountedKnowledgeBaseRoot); if (manifest.schemaVersion === '0.4' && manifest.storageFormatVersion === '1') { const dailySignalStore = new FileDailySignalStore(join(cwd, 'runtime-data', 'daily-signals.jsonl')); const cninfo = new CninfoOfficialDisclosureClient(); const official = new OfficialDisclosureResearchPlugin(cninfo); const gdelt = new GdeltResearchPlugin(); researchService = new ResearchService({ mountedKnowledgeBaseRoot, cwd, workflowService, reasoningExecutor, industryReasoningExecutorFactory, industryOperatingObservationAcquisition, signalStore: new FileResearchSignalStore(join(cwd, 'runtime-data', 'research-signals.jsonl')), dailySignalStore, acquisitionPlugins: [official, gdelt], industryAcquisitionPlugins, akshare, officialDisclosure: cninfo, managementCommunicationSources: createManagementCommunicationSources(cninfo, akshare), ...(themeScopeImpactService === undefined ? {} : { themeScopeImpactChecker: themeScopeImpactService }) }); industryProvidersAssembled = true; researchIntegrationDefinitions.push(
+        sourceIntegration({ id: 'cninfo', name: 'CNINFO', sourceIds: ['cninfo-annual-report-publication', 'cninfo-official-ir'], capabilities: [{ id: 'company-disclosures', label: 'Company disclosures', metricIds: ['valuation_annual_report_publication', 'management_communication_documents'] }] }),
+        sourceIntegration({ id: 'gdelt', name: 'GDELT', capabilities: [{ id: 'company-news', label: 'Company news', metricIds: [] }] }),
+        sourceIntegration({ id: 'akshare', name: 'AKShare', sourceIds: ['akshare-historical-market-data', 'akshare-valuation-financial-indicators-eps', 'akshare-valuation-financial-indicators-bvps', 'ths-institution-forecast', 'eastmoney-individual-research-report', 'sse-einteraction', 'szse-hudongyi'], capabilities: [{ id: 'company-market-and-financials', label: 'Company market and financial data', metricIds: ['valuation_market_price', 'valuation_eps', 'valuation_bvps'] }, { id: 'company-expectations', label: 'Company expectations', metricIds: ['earnings_expectation_eps', 'earnings_expectation_net_profit'] }, { id: 'exchange-qa', label: 'Exchange investor Q&A', metricIds: ['exchange_qa_sse', 'exchange_qa_szse'] }] }),
+      ) } } catch { /* the normal v0.3 runtime remains available without Company Research */ }
     }
     if (themeFrameworkService === undefined && mountedKnowledgeBaseRoot !== undefined) {
       try {
@@ -185,17 +200,28 @@ export class ResearchHubApplicationRuntime {
             reasoningExecutor: options.reasoningExecutor ?? new PiReasoningExecutor({ modelRuntime, model: selectedModel, capabilities: reasoningExecutor.capabilities(), timeoutMs: THEME_FRAMEWORK_PRODUCTION_REASONING_TIMEOUT_MS }),
             acquisition: new ThemeFrameworkAcquisitionAdapter({ knowledgeBaseRoot: mountedKnowledgeBaseRoot, plugins: [...industryAcquisitionPlugins, new AkshareIndustryResearchPlugin(akshare)] }),
           })
+          industryProvidersAssembled = true
+          researchIntegrationDefinitions.push(sourceIntegration({ id: 'akshare', name: 'AKShare', capabilities: [{ id: 'industry-structured-data', label: 'Industry structured data', metricIds: [] }] }))
         }
       } catch { /* Theme Framework requires a readable active Schema 0.4 Knowledge Base. */ }
     }
     if (thesisDecisionService !== undefined && mountedKnowledgeBaseRoot !== undefined) thesisDecisionService = withThesisDecisionReportSync(thesisDecisionService, researchService, mountedKnowledgeBaseRoot)
+    if (industryProvidersAssembled && options.industryAcquisitionPlugins === undefined) researchIntegrationDefinitions.push(
+      sourceIntegration({ id: 'miit', name: 'MIIT', capabilities: [{ id: 'industry-official-research', label: 'Industry official research', metricIds: [] }] }),
+      sourceIntegration({ id: 'gov-cn', name: 'Gov.cn', capabilities: [{ id: 'industry-policy-research', label: 'Industry policy research', metricIds: [] }] }),
+      sourceIntegration({ id: 'eastmoney-industry', name: 'EastMoney industry', capabilities: [{ id: 'industry-board-data', label: 'Industry board data', metricIds: [] }] }),
+      sourceIntegration({ id: 'cpca', name: 'CPCA', capabilities: [{ id: 'industry-association-research', label: 'Industry association research', metricIds: [] }] }),
+    )
     const skillRegistry = createResearchSkillRegistry(); for (const definition of await loadOnboardedResearchSkillDefinitions(join(cwd, 'runtime-data', 'skill-onboarding'))) { try { skillRegistry.register(definition) } catch { /* duplicate or invalid external records remain excluded */ } }
     const sourceLibraryService = new SourceLibraryService(join(cwd, 'runtime-data', 'source-library'))
     const skillOnboardingService = new SkillOnboardingService(join(cwd, 'runtime-data', 'skill-onboarding', 'installed'), join(cwd, 'runtime-data', 'skill-onboarding'))
     const researchDispatchService = new ResearchDispatchService({ researchService, dailyIntelligenceService, workflowService, skillRegistry, bundleStore: new FileResearchBundleStore(join(cwd, 'runtime-data', 'research-bundles')), sourceLibraryService, mountedKnowledgeBaseRoot, reasoningExecutor, ...(themeFrameworkService === undefined ? {} : { themeFrameworkService }) })
-    const services = { knowledgeService, knowledgeGraphService, knowledgeTopicProjectionService, themeWorkspaceProjectionService, reviewService, workflowService, productionService, researchDispatchService, sourceLibraryService, skillOnboardingService, ...(researchService === undefined ? {} : { researchService }), ...(themeFrameworkService === undefined ? {} : { themeFrameworkService }), ...(themeScopeImpactService === undefined ? {} : { themeScopeImpactService }), ...(thesisQueryService === undefined ? {} : { thesisQueryService }), ...(thesisDecisionService === undefined ? {} : { thesisDecisionService }), ...(thesisCriterionService === undefined ? {} : { thesisCriterionService }), dailyIntelligenceService }
-    const { thesisCriterionService: _humanOnlyCriterionService, ...piApplicationServices } = services
+    const policySourceIds = [...VALUATION_SOURCE_POLICIES, earningsExpectationSourcePolicy(), managementCommunicationDocumentPolicy(), exchangeQAPolicy('SSE'), exchangeQAPolicy('SZSE')].flatMap((policy) => policy.candidates.map((candidate) => candidate.sourceId))
+    const dataSourceAdministrationService = createDataSourceAdministrationService({ definitions: mergeSourceIntegrations([...(dailyComposition?.integrationDefinitions ?? []), ...researchIntegrationDefinitions]), credentials: createSourceCredentialStore(), tests: new FileDataSourceTestStore(join(cwd, 'runtime-data', 'data-source-tests')), policySourceIds })
+    const services = { knowledgeService, knowledgeGraphService, knowledgeTopicProjectionService, themeWorkspaceProjectionService, reviewService, workflowService, productionService, researchDispatchService, sourceLibraryService, skillOnboardingService, dataSourceAdministrationService, ...(researchService === undefined ? {} : { researchService }), ...(themeFrameworkService === undefined ? {} : { themeFrameworkService }), ...(themeScopeImpactService === undefined ? {} : { themeScopeImpactService }), ...(thesisQueryService === undefined ? {} : { thesisQueryService }), ...(thesisDecisionService === undefined ? {} : { thesisDecisionService }), ...(thesisCriterionService === undefined ? {} : { thesisCriterionService }), dailyIntelligenceService }
+    const { thesisCriterionService: _humanOnlyCriterionService, dataSourceAdministrationService: _humanOnlyDataSourceService, ...piApplicationServices } = services
     void _humanOnlyCriterionService
+    void _humanOnlyDataSourceService
     const sessionManager = options.sessionManager ?? SessionManager.create(cwd, options.sessionDir)
     try {
       const sessionRuntime = await createResearchHubSessionRuntime({ cwd, agentDir, modelRuntime, sessionManager, applicationServices: piApplicationServices, mountedKnowledgeBaseRoot, workspaceRoot, model: selectedModel, reasoningExecutor, settingsManager: options.settingsManager, resourceLoader: options.resourceLoader, researchService, dailyIntelligenceService })

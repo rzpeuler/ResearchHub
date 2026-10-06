@@ -20,6 +20,7 @@ import type { ThesisDecisionService } from '../services/thesis-decision-service.
 import type { ThesisCriterionService } from '../services/thesis-criterion-service.ts'
 import type { ThemeFrameworkService } from '../services/theme-framework-service.ts'
 import type { ThemeScopeImpactService } from '../services/theme-scope-impact-service.ts'
+import type { DataSourceAdministrationService } from '../services/data-source-administration-contracts.ts'
 
 export interface SafeConversationSummary {
   readonly conversationId: string
@@ -70,6 +71,8 @@ export interface ResearchHubApplicationServices {
   /** Read and review the durable post-write Theme scope impact proposal inbox. */
   readonly themeScopeImpactService?: ThemeScopeImpactService
   readonly dailyIntelligenceService?: DailyIntelligenceService
+  /** Human-facing inventory of explicitly assembled data source integrations. */
+  readonly dataSourceAdministrationService?: DataSourceAdministrationService
 }
 
 export interface ResearchHubSessionRuntimeOptions {

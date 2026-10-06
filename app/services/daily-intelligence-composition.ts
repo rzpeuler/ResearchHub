@@ -20,6 +20,8 @@ import { TradingCalendarService } from '../../plugins/daily-intelligence/calenda
 import { DailyIntelligenceService } from './daily-intelligence-service.ts'
 import { WorkflowService } from './workflow-service.ts'
 import { parseYaml } from '../../knowledge/storage/yaml.ts'
+import type { DataSourceIntegrationDefinition } from './data-source-administration-contracts.ts'
+import { industryOperatingIntegration, sourceIntegration } from './data-source-integrations.ts'
 
 export interface DailyIntelligenceCompositionOptions {
   readonly cwd: string
@@ -39,6 +41,7 @@ export interface DailyIntelligenceComposition {
   readonly service: DailyIntelligenceService
   readonly calendar: TradingCalendarService
   readonly providers: readonly ResearchAcquisitionPlugin[]
+  readonly integrationDefinitions: readonly DataSourceIntegrationDefinition[]
   readonly watchlistPath: string
   readonly catalogPath: string
   readonly catalog: Awaited<ReturnType<typeof loadSourceCatalog>>
@@ -78,15 +81,32 @@ export async function createDailyIntelligenceComposition(options: DailyIntellige
   const activePlatforms = new Set(active.map((entry) => entry.platform))
   const akshareActive = activePlatforms.has('akshare')
   const core: ResearchAcquisitionPlugin[] = []
-  if (activePlatforms.has('cninfo')) core.push(new OfficialDisclosureResearchPlugin(new CninfoOfficialDisclosureClient()))
-  if (activePlatforms.has('gdelt')) core.push(new GdeltResearchPlugin())
-  if (activePlatforms.has('gov.cn')) core.push(new RssResearchPlugin({ feedUrls: ['https://www.gov.cn/rss/zhengce.xml'] }))
+  const integrationDefinitions: DataSourceIntegrationDefinition[] = []
+  if (activePlatforms.has('cninfo')) {
+    core.push(new OfficialDisclosureResearchPlugin(new CninfoOfficialDisclosureClient()))
+    integrationDefinitions.push(sourceIntegration({ id: 'cninfo', name: 'CNINFO', capabilities: [{ id: 'official-disclosures', label: 'Official disclosures', metricIds: [] }] }))
+  }
+  if (activePlatforms.has('gdelt')) {
+    core.push(new GdeltResearchPlugin())
+    integrationDefinitions.push(sourceIntegration({ id: 'gdelt', name: 'GDELT', capabilities: [{ id: 'news-discovery', label: 'News discovery', metricIds: [] }] }))
+  }
+  if (activePlatforms.has('gov.cn')) {
+    core.push(new RssResearchPlugin({ feedUrls: ['https://www.gov.cn/rss/zhengce.xml'] }))
+    integrationDefinitions.push(sourceIntegration({ id: 'gov-cn-rss', name: 'Gov.cn RSS', capabilities: [{ id: 'policy-feed', label: 'Policy feed', metricIds: [] }] }))
+  }
   if (akshareActive) core.push(new AkshareDailyMarketAcquisition(akshare))
   const breadth: ResearchAcquisitionPlugin[] = []
   if (akshareActive) {
     breadth.push(new DailyExpectationRevisionAcquisition(new AkshareEarningsExpectationsSource({ akshare })), new AkshareInstitutionalActivityAcquisition(akshare))
+    integrationDefinitions.push(sourceIntegration({ id: 'akshare', name: 'AKShare', capabilities: [
+      { id: 'daily-market', label: 'Daily market observations', metricIds: [] },
+      { id: 'expectation-revisions', label: 'Expectation revisions', metricIds: ['earnings_expectation_eps', 'earnings_expectation_net_profit'] },
+      { id: 'institutional-activity', label: 'Institutional activity', metricIds: [] },
+    ] }))
   }
-  breadth.push(new DailyIndustryObservationAcquisition(options.industryOperatingObservationAcquisition ?? new IndustryOperatingObservationAcquisition()))
+  const industryOperating = options.industryOperatingObservationAcquisition ?? new IndustryOperatingObservationAcquisition()
+  breadth.push(new DailyIndustryObservationAcquisition(industryOperating))
+  integrationDefinitions.push(industryOperatingIntegration(industryOperating))
   const providers: readonly ResearchAcquisitionPlugin[] = [...core, ...breadth, ...institutional, ...community]
   const overrides = await readCalendarOverrides(join(cwd, 'config', 'trading-calendar-overrides.yaml'))
   const calendar = options.calendar ?? new TradingCalendarService({
@@ -113,7 +133,7 @@ export async function createDailyIntelligenceComposition(options: DailyIntellige
     runtimeRoot,
     calendar,
   })
-  return { service, calendar, providers, watchlistPath, catalogPath, catalog }
+  return { service, calendar, providers, integrationDefinitions, watchlistPath, catalogPath, catalog }
 }
 
 interface CalendarOverrides { readonly manualHolidays: readonly string[]; readonly manualTradingDays: readonly string[] }
