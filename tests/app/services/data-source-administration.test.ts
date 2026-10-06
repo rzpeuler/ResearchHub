@@ -37,6 +37,36 @@ test('rejects unknown integrations and unsupported test kinds before calling ada
   assert.equal(calls, 0)
 })
 
+test('rejects an inherited capability callback that the adapter did not declare', async () => {
+  const base = definition()
+  const service = createDataSourceAdministrationService({
+    definitions: [definition({
+      descriptor: { ...base.descriptor, supportedTests: { connection: false, capabilitySamples: ['constructor'] } },
+      capabilitySamples: {},
+    })],
+    credentials: credentialStore(), tests: new MemoryDataSourceTestStore(),
+  })
+  await assert.rejects(service.runTest({ integrationId: 'alpha', kind: 'capability_sample', capabilityId: 'constructor' }), { code: 'unsupported_test' })
+})
+
+test('returns and persists a declared capability sample with an underscore ID', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'data-source-capability-'))
+  let calls = 0
+  const base = definition()
+  const service = createDataSourceAdministrationService({
+    definitions: [definition({
+      descriptor: { ...base.descriptor, supportedTests: { connection: false, capabilitySamples: ['quote_v1'] } },
+      capabilitySamples: { quote_v1: async () => { calls++ } },
+    })],
+    credentials: credentialStore(), tests: new FileDataSourceTestStore(root),
+  })
+  const summary = await service.runTest({ integrationId: 'alpha', kind: 'capability_sample', capabilityId: 'quote_v1' })
+  assert.equal(summary.status, 'passed')
+  assert.equal(summary.capabilityId, 'quote_v1')
+  assert.equal(calls, 1)
+  assert.equal((await new FileDataSourceTestStore(root).list('alpha'))[0]?.capabilityId, 'quote_v1')
+})
+
 test('runs exactly one bounded adapter test without source fallback', async () => {
   let connectionCalls = 0; let sampleCalls = 0
   const service = createDataSourceAdministrationService({ definitions: [definition({ testConnection: async () => { connectionCalls++ }, capabilitySamples: { quote: async () => { sampleCalls++ } } })], credentials: credentialStore(), tests: new MemoryDataSourceTestStore() })

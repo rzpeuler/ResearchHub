@@ -89,7 +89,10 @@ export function createDataSourceAdministrationService(options: DataSourceAdminis
       let callback: ((signal: AbortSignal) => Promise<void>) | undefined
       if (input.kind === 'connection' && input.capabilityId === undefined && definition.descriptor.supportedTests.connection) callback = definition.testConnection
       if (input.kind === 'capability_sample' && input.capabilityId &&
-        definition.descriptor.supportedTests.capabilitySamples.includes(input.capabilityId)) callback = definition.capabilitySamples?.[input.capabilityId]
+        definition.descriptor.supportedTests.capabilitySamples.includes(input.capabilityId) &&
+        definition.capabilitySamples && Object.hasOwn(definition.capabilitySamples, input.capabilityId)) {
+        callback = definition.capabilitySamples[input.capabilityId]
+      }
       if (!callback) throw new DataSourceAdministrationError('unsupported_test')
 
       const startedAt = new Date().toISOString()

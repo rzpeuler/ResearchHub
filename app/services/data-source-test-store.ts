@@ -12,10 +12,11 @@ const kinds: readonly DataSourceTestKind[] = ['connection', 'capability_sample']
 const statuses: readonly DataSourceTestStatus[] = ['passed', 'failed', 'cancelled', 'unsupported']
 const codes: readonly DataSourceTestErrorCode[] = ['missing_configuration', 'authentication_failed', 'timeout', 'rate_limited', 'access_denied', 'no_data', 'contract_mismatch', 'provider_failed']
 const safeId = (value: unknown): value is string => typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,63}$/.test(value)
+const safeCapabilityId = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(value)
 
 function sanitize(value: DataSourceTestSummary): DataSourceTestSummary {
   if (!safeId(value.integrationId) || !kinds.includes(value.kind) || !statuses.includes(value.status) ||
-    (value.capabilityId !== undefined && !safeId(value.capabilityId)) ||
+    (value.capabilityId !== undefined && !safeCapabilityId(value.capabilityId)) ||
     (value.errorCode !== undefined && !codes.includes(value.errorCode)) ||
     !Number.isFinite(Date.parse(value.startedAt)) || !Number.isFinite(Date.parse(value.completedAt))) {
     throw new Error('Invalid data source test summary')
