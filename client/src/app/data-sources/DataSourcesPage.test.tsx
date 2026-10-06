@@ -48,6 +48,16 @@ describe('DataSourcesPage', () => {
     expect(screen.getByText((_text, element) => element?.tagName === 'P' && element.textContent?.includes('连接测试：测试通过') === true)).toBeTruthy()
   })
 
+  it('shows credential management only for integrations with credential fields', async () => {
+    const noCredentials = { ...integration, integration: { ...integration.integration, integrationId: 'public-feed', displayName: 'Public Feed', credentialFields: [] }, credentialState: 'not_required' as const, latestTests: [] }
+    setup({ listDataSourceIntegrations: vi.fn().mockResolvedValue([integration, noCredentials]) })
+    fireEvent.click(screen.getByRole('tab', { name: '已配置集成' }))
+    const credentialCard = (await screen.findByRole('heading', { name: 'Quotes One' })).closest('article')!
+    const publicCard = screen.getByRole('heading', { name: 'Public Feed' }).closest('article')!
+    expect(within(credentialCard).getByRole('button', { name: '管理凭据' })).toBeTruthy()
+    expect(within(publicCard).queryByRole('button', { name: '管理凭据' })).toBeNull()
+  })
+
   it('clears credential inputs after save and never renders returned secret values', async () => {
     const client = setup({ saveDataSourceCredentials: vi.fn().mockResolvedValue({ secret: 'returned-secret' }) })
     fireEvent.click(screen.getByRole('tab', { name: '已配置集成' }))
