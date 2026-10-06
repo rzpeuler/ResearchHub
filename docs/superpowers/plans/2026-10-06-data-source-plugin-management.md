@@ -17,7 +17,7 @@
 - Do not add a general plugin loader, discovery registry, provider framework, or service locator.
 - The UI cannot supply arbitrary URLs, code, shell commands, or plugin packages.
 - Drafts are local runtime application data under `runtime-data`, not source code, model context, or Knowledge.
-- The browser, source catalog, onboarding drafts, API responses, logs, and test diagnostics must never store or return secret values.
+- The browser, source catalog, onboarding drafts, API responses, logs, and test diagnostics must never store or return secret values. Reject common credential-like values in draft notes and sensitive URL query keys.
 - Tests must not invoke the Knowledge Production Gateway, ChangeSet, Writer, or canonical Knowledge mutation path.
 - The page has no runtime enable/disable switch; new Workflow use requires a code-reviewed `SourcePolicy` update.
 
@@ -168,8 +168,15 @@ supported test slot (connection once and each declared capability sample).
 There is no `enable()` operation. Integration IDs use
 `^[a-z0-9]+(?:-[a-z0-9]+)*$`, are limited to 64 characters, and freeze when
 `markReady` is called. Credential-field IDs use
-`^[A-Za-z][A-Za-z0-9_-]{0,63}$`. Documentation and terms URLs must use HTTPS,
-reject username/password/fragments, and are never fetched by the application.
+`^[A-Za-z][A-Za-z0-9_-]{0,63}$`. Documentation and terms URLs are at most
+2,048 characters, must use HTTPS, reject username/password, fragments, and
+sensitive query keys (`key`, `api_key`, `token`, `secret`, or `password`), and
+are never fetched by the application. Bound each serialized draft to 16 KiB,
+display name to 120 characters, publisher to 200 characters, each
+rights/rate-limit/time-boundary note to 2,000 characters, and each
+capability/metric ID list to 32 unique IDs of at most 64 characters. Reject
+common credential-like text such as Bearer tokens and `api_key=`, `token=`,
+`secret=`, or `password=` assignments in free-text fields.
 
 ---
 
@@ -377,6 +384,7 @@ Add tests named:
 ```ts
 test('creates and reloads a draft using local runtime-data storage')
 test('rejects credentials, arbitrary executable fields, and invalid documentation URLs')
+test('rejects secret-like values in notes and credential-bearing URL parameters')
 test('keeps an unsupported draft out of Runtime integration listings and tests')
 test('derives adapter availability only from a matching explicit integration ID')
 test('does not mark a draft verified before metadata and supported tests pass')
@@ -385,7 +393,8 @@ test('does not mark a draft verified before metadata and supported tests pass')
 Assert drafts survive store reconstruction; no request callback or network fetch
 is invoked for the documentation URL; invalid/duplicate IDs, unknown fields,
 and secret-like keys are rejected. Require HTTPS documentation/terms URLs and
-reject URL username, password, and fragment components.
+reject URL username, password, fragment, and credential-like query components.
+Check free-text bounds and common credential-like strings before persistence.
 
 - [ ] **Step 2: Run the focused test and verify it fails**
 
