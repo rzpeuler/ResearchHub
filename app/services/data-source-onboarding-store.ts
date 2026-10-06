@@ -48,8 +48,8 @@ const accessModes = ['api', 'rss', 'web', 'python_bridge', 'other']
 const authorities = ['S0_STATUTORY', 'S1_OFFICIAL', 'S2_PROFESSIONAL', 'S3_AGGREGATOR', 'S4_COMMUNITY', 'unknown']
 const authenticationModes = ['none', 'api_key', 'oauth', 'other']
 const idPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const credentialText = /\bbearer\s+\S+|\b(?:api[._\-\s]*key|access[._\-\s]*token|refresh[._\-\s]*token|id[._\-\s]*token|client[._\-\s]*secret|token|secret|password|key)\s*[:=]\s*\S+/i
-const sensitiveKeys = new Set(['key', 'apikey', 'token', 'accesstoken', 'refreshtoken', 'idtoken', 'secret', 'clientsecret', 'password'])
+const credentialText = /\bbearer\s+\S+|\b(?:api[._\-\s]*key|access[._\-\s]*token|refresh[._\-\s]*token|id[._\-\s]*token|client[._\-\s]*secret|auth[._\-\s]*orization|auth|creden[._\-\s]*tials?|token|secret|password|key)\s*[:=]\s*\S+/i
+const sensitiveKeys = new Set(['key', 'apikey', 'token', 'accesstoken', 'refreshtoken', 'idtoken', 'secret', 'clientsecret', 'auth', 'authorization', 'credential', 'credentials', 'password'])
 const sensitiveKey = (key: string): boolean => sensitiveKeys.has(key.toLowerCase().replace(/[._\-\s]/g, ''))
 
 function invalid(): never { throw new Error('Invalid data source onboarding draft') }
