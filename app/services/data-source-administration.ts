@@ -12,7 +12,7 @@ export interface DataSourceAdministrationOptions {
 }
 
 export class DataSourceAdministrationError extends Error {
-  constructor(readonly code: 'unknown_integration' | 'unsupported_test' | 'invalid_credentials') {
+  constructor(readonly code: 'unknown_integration' | 'unsupported_test' | 'invalid_credentials' | 'credential_store_unavailable') {
     super(code)
   }
 }
@@ -89,7 +89,7 @@ export function createDataSourceAdministrationService(options: DataSourceAdminis
     },
     async runTest(input, signal): Promise<DataSourceTestSummary> {
       const definition = requireDefinition(input.integrationId)
-      let callback: ((signal: AbortSignal) => Promise<void>) | undefined
+      let callback: ((signal: AbortSignal, credentials: Readonly<Record<string, string>>) => Promise<void>) | undefined
       if (input.kind === 'connection' && input.capabilityId === undefined && definition.descriptor.supportedTests.connection) callback = definition.testConnection
       if (input.kind === 'capability_sample' && input.capabilityId &&
         definition.descriptor.supportedTests.capabilitySamples.includes(input.capabilityId) &&
@@ -97,6 +97,30 @@ export function createDataSourceAdministrationService(options: DataSourceAdminis
         callback = definition.capabilitySamples[input.capabilityId]
       }
       if (!callback) throw new DataSourceAdministrationError('unsupported_test')
+
+      const descriptorFields = definition.descriptor.credentialFields
+      let credentials: Readonly<Record<string, string>> = Object.freeze({})
+      if (descriptorFields.length > 0) {
+        let stored: Readonly<Record<string, string>> | undefined
+        try { stored = await options.credentials.read(input.integrationId) }
+        catch { throw new DataSourceAdministrationError('credential_store_unavailable') }
+        const projected: Record<string, string> = {}
+        for (const field of descriptorFields) {
+          const value = stored?.[field.id]
+          if (typeof value === 'string') projected[field.id] = value
+        }
+        credentials = Object.freeze(projected)
+        if (descriptorFields.some((field) => field.required && !credentials[field.id])) {
+          const startedAt = new Date().toISOString()
+          const summary: DataSourceTestSummary = {
+            integrationId: input.integrationId, kind: input.kind as DataSourceTestKind,
+            ...(input.capabilityId === undefined ? {} : { capabilityId: input.capabilityId }),
+            status: 'failed', startedAt, completedAt: new Date().toISOString(), errorCode: 'missing_configuration',
+          }
+          await options.tests.put(summary)
+          return summary
+        }
+      }
 
       const startedAt = new Date().toISOString()
       const result = (status: DataSourceTestSummary['status'], code?: DataSourceTestErrorCode): DataSourceTestSummary => ({
@@ -116,7 +140,7 @@ export function createDataSourceAdministrationService(options: DataSourceAdminis
           if (controller.signal.aborted) reject(new Error('aborted'))
           else controller.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
         })
-        const operation = controller.signal.aborted ? aborted : Promise.resolve().then(() => callback(controller.signal))
+        const operation = controller.signal.aborted ? aborted : Promise.resolve().then(() => callback(controller.signal, credentials))
         await Promise.race([operation, aborted])
         const summary = result('passed')
         await options.tests.put(summary)

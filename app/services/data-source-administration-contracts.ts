@@ -26,8 +26,8 @@ export interface DataSourceIntegrationDescriptor {
 export interface DataSourceIntegrationDefinition {
   readonly descriptor: DataSourceIntegrationDescriptor
   readonly testTimeoutMs: number
-  readonly testConnection?: (signal: AbortSignal) => Promise<void>
-  readonly capabilitySamples?: Readonly<Record<string, (signal: AbortSignal) => Promise<void>>>
+  readonly testConnection?: (signal: AbortSignal, credentials: Readonly<Record<string, string>>) => Promise<void>
+  readonly capabilitySamples?: Readonly<Record<string, (signal: AbortSignal, credentials: Readonly<Record<string, string>>) => Promise<void>>>
 }
 
 export interface DataSourceIntegrationView {

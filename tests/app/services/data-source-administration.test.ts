@@ -12,6 +12,12 @@ function credentialStore(): SourceCredentialStore & { values: Map<string, Readon
   return { values, writes: 0, async read(id) { return values.get(id) }, async has(id) { return values.has(id) }, async write(id, credentials) { this.writes++; values.set(id, credentials) }, async delete(id) { values.delete(id) } }
 }
 
+function configuredCredentialStore(): ReturnType<typeof credentialStore> {
+  const credentials = credentialStore()
+  credentials.values.set('alpha', { token: 'configured-token' })
+  return credentials
+}
+
 function definition(overrides: Partial<DataSourceIntegrationDefinition> = {}): DataSourceIntegrationDefinition {
   return { descriptor: { integrationId: 'alpha', displayName: 'Alpha', sourceIds: ['source-alpha'], credentialFields: [{ id: 'token', label: 'Token', required: true }], capabilities: [{ id: 'quote', label: 'Quote', metricIds: ['price'] }], supportedTests: { connection: true, capabilitySamples: ['quote'] } }, testTimeoutMs: 100, testConnection: async () => {}, capabilitySamples: { quote: async () => {} }, ...overrides }
 }
@@ -80,7 +86,7 @@ test('returns and persists a declared capability sample with an underscore ID', 
       descriptor: { ...base.descriptor, supportedTests: { connection: false, capabilitySamples: ['quote_v1'] } },
       capabilitySamples: { quote_v1: async () => { calls++ } },
     })],
-    credentials: credentialStore(), tests: new FileDataSourceTestStore(root),
+    credentials: configuredCredentialStore(), tests: new FileDataSourceTestStore(root),
   })
   const summary = await service.runTest({ integrationId: 'alpha', kind: 'capability_sample', capabilityId: 'quote_v1' })
   assert.equal(summary.status, 'passed')
@@ -91,7 +97,7 @@ test('returns and persists a declared capability sample with an underscore ID', 
 
 test('runs exactly one bounded adapter test without source fallback', async () => {
   let connectionCalls = 0; let sampleCalls = 0
-  const service = createDataSourceAdministrationService({ definitions: [definition({ testConnection: async () => { connectionCalls++ }, capabilitySamples: { quote: async () => { sampleCalls++ } } })], credentials: credentialStore(), tests: new MemoryDataSourceTestStore() })
+  const service = createDataSourceAdministrationService({ definitions: [definition({ testConnection: async () => { connectionCalls++ }, capabilitySamples: { quote: async () => { sampleCalls++ } } })], credentials: configuredCredentialStore(), tests: new MemoryDataSourceTestStore() })
   const result = await service.runTest({ integrationId: 'alpha', kind: 'connection' })
   assert.equal(result.status, 'passed')
   assert.equal(connectionCalls, 1)
@@ -99,10 +105,75 @@ test('runs exactly one bounded adapter test without source fallback', async () =
   assert.deepEqual(Object.keys(result).sort(), ['completedAt', 'integrationId', 'kind', 'startedAt', 'status'])
 })
 
+test('passes only saved descriptor credentials to the server-side adapter callback', async () => {
+  const credentials = credentialStore()
+  credentials.values.set('alpha', { token: 'saved-secret', undeclared: 'must-not-pass' })
+  let received: Readonly<Record<string, string>> | undefined
+  let frozen = false
+  const service = createDataSourceAdministrationService({
+    definitions: [definition({ testConnection: async (_signal, values) => { received = values; frozen = Object.isFrozen(values) } })],
+    credentials, tests: new MemoryDataSourceTestStore(),
+  })
+  const summary = await service.runTest({ integrationId: 'alpha', kind: 'connection' })
+  assert.equal(summary.status, 'passed')
+  assert.deepEqual(received, { token: 'saved-secret' })
+  assert.equal(frozen, true)
+  assert.equal(JSON.stringify(summary).includes('saved-secret'), false)
+})
+
+test('records missing_configuration and skips adapter when a required credential is absent', async () => {
+  const credentials = credentialStore()
+  credentials.values.set('alpha', { optional: 'value' })
+  const tests = new MemoryDataSourceTestStore()
+  let calls = 0
+  const service = createDataSourceAdministrationService({
+    definitions: [definition({ testConnection: async () => { calls++ } })], credentials, tests,
+  })
+  const summary = await service.runTest({ integrationId: 'alpha', kind: 'connection' })
+  assert.equal(calls, 0)
+  assert.equal(summary.status, 'failed')
+  assert.equal(summary.errorCode, 'missing_configuration')
+  assert.deepEqual(await tests.list('alpha'), [summary])
+})
+
+test('does not read the vault for integrations without credential fields', async () => {
+  let reads = 0
+  let received: Readonly<Record<string, string>> | undefined
+  const credentials = credentialStore()
+  const service = createDataSourceAdministrationService({
+    definitions: [definition({
+      descriptor: { ...definition().descriptor, credentialFields: [] },
+      testConnection: async (_signal, values) => { received = values },
+    })],
+    credentials: { ...credentials, async read(id) { reads++; return credentials.read(id) } },
+    tests: new MemoryDataSourceTestStore(),
+  })
+  const summary = await service.runTest({ integrationId: 'alpha', kind: 'connection' })
+  assert.equal(summary.status, 'passed')
+  assert.equal(reads, 0)
+  assert.deepEqual(received, {})
+  assert.equal(Object.isFrozen(received), true)
+})
+
+test('fails safely when the credential vault cannot be read for a test', async () => {
+  let calls = 0
+  const service = createDataSourceAdministrationService({
+    definitions: [definition({ testConnection: async () => { calls++ } })],
+    credentials: { ...credentialStore(), async read() { throw new Error('sensitive vault internals') } },
+    tests: new MemoryDataSourceTestStore(),
+  })
+  await assert.rejects(service.runTest({ integrationId: 'alpha', kind: 'connection' }), (error: unknown) => {
+    assert.equal((error as { code?: string }).code, 'credential_store_unavailable')
+    assert.equal((error as Error).message.includes('sensitive'), false)
+    return true
+  })
+  assert.equal(calls, 0)
+})
+
 test('aborts a supported adapter operation when the caller cancels', async () => {
   const controller = new AbortController()
   let received: AbortSignal | undefined
-  const service = createDataSourceAdministrationService({ definitions: [definition({ testConnection: async (signal) => { received = signal; await new Promise<void>(() => {}) } })], credentials: credentialStore(), tests: new MemoryDataSourceTestStore() })
+  const service = createDataSourceAdministrationService({ definitions: [definition({ testConnection: async (signal) => { received = signal; await new Promise<void>(() => {}) } })], credentials: configuredCredentialStore(), tests: new MemoryDataSourceTestStore() })
   const pending = service.runTest({ integrationId: 'alpha', kind: 'connection' }, controller.signal)
   await new Promise((resolve) => setTimeout(resolve, 0))
   controller.abort()
@@ -113,10 +184,10 @@ test('aborts a supported adapter operation when the caller cancels', async () =>
 
 test('maps timeout, rate limit, access denial, no data, and contract mismatch to stable codes', async () => {
   for (const [message, code] of [['missing configuration', 'missing_configuration'], ['rate limit 429', 'rate_limited'], ['403 forbidden', 'access_denied'], ['empty response', 'no_data'], ['invalid schema', 'contract_mismatch'], ['401 unauthorized', 'authentication_failed'], ['opaque failure', 'provider_failed']] as const) {
-    const service = createDataSourceAdministrationService({ definitions: [definition({ testConnection: async () => { throw new Error(message) } })], credentials: credentialStore(), tests: new MemoryDataSourceTestStore() })
+    const service = createDataSourceAdministrationService({ definitions: [definition({ testConnection: async () => { throw new Error(message) } })], credentials: configuredCredentialStore(), tests: new MemoryDataSourceTestStore() })
     assert.equal((await service.runTest({ integrationId: 'alpha', kind: 'connection' })).errorCode, code)
   }
-  const timeoutService = createDataSourceAdministrationService({ definitions: [definition({ testTimeoutMs: 5, testConnection: async () => new Promise<void>(() => {}) })], credentials: credentialStore(), tests: new MemoryDataSourceTestStore() })
+  const timeoutService = createDataSourceAdministrationService({ definitions: [definition({ testTimeoutMs: 5, testConnection: async () => new Promise<void>(() => {}) })], credentials: configuredCredentialStore(), tests: new MemoryDataSourceTestStore() })
   assert.equal((await timeoutService.runTest({ integrationId: 'alpha', kind: 'connection' })).errorCode, 'timeout')
 })
 
@@ -136,7 +207,7 @@ test('persists only sanitized latest test summaries', async () => {
   const root = await mkdtemp(join(tmpdir(), 'data-source-tests-'))
   const tests = new FileDataSourceTestStore(root)
   let calls = 0
-  const service = createDataSourceAdministrationService({ definitions: [definition({ testConnection: async () => { calls++; if (calls === 1) throw new Error('raw provider body') } })], credentials: credentialStore(), tests })
+  const service = createDataSourceAdministrationService({ definitions: [definition({ testConnection: async () => { calls++; if (calls === 1) throw new Error('raw provider body') } })], credentials: configuredCredentialStore(), tests })
   await service.runTest({ integrationId: 'alpha', kind: 'connection' })
   await service.runTest({ integrationId: 'alpha', kind: 'connection' })
   assert.equal((await new FileDataSourceTestStore(root).list('alpha')).length, 1)

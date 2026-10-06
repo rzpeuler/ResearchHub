@@ -1468,6 +1468,7 @@ export class ResearchHubRuntimeServer {
     if (error instanceof DataSourceAdministrationError) {
       if (error.code === 'unknown_integration') return new ApplicationServiceError('not_found', 'Data source integration was not found')
       if (error.code === 'unsupported_test') return new DataSourceRouteError('unsupported_test', 'This integration does not support the requested test')
+      if (error.code === 'credential_store_unavailable') return new DataSourceRouteError('credential_store_unavailable', 'Credential storage is unavailable')
       return new ApplicationServiceError('invalid_input', 'Credential values are invalid')
     }
     if (operation === 'credential') return new DataSourceRouteError('credential_store_unavailable', 'Credential storage is unavailable')
