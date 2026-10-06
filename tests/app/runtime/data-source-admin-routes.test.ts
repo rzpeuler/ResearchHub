@@ -111,6 +111,27 @@ test('saves and removes credentials without echoing secret values', async () => 
   } finally { await close(f) }
 })
 
+test('rejects malformed credential requests as client errors', async () => {
+  const f = await fixture()
+  try {
+    const malformed = await fetch(`${f.info.origin}/api/data-sources/integrations/fixture-source/credentials`, { method: 'POST', headers: f.headers, body: '{' })
+    const extraFields = await fetch(`${f.info.origin}/api/data-sources/integrations/fixture-source/credentials`, { method: 'POST', headers: f.headers, body: JSON.stringify({ values: { apiKey: 'value' }, unexpected: true }) })
+    const invalidShape = await fetch(`${f.info.origin}/api/data-sources/integrations/fixture-source/credentials`, { method: 'POST', headers: f.headers, body: JSON.stringify({ values: [] }) })
+    for (const response of [malformed, extraFields, invalidShape]) {
+      assert.equal(response.status, 400)
+      assert.equal((await response.json() as { code: string }).code, 'invalid_input')
+    }
+    const services = f.runtime.services as unknown as Record<string, { saveCredentials: () => Promise<void> }>
+    services.dataSourceAdministrationService!.saveCredentials = async () => { throw new Error('vault detail must not escape') }
+    const vaultFailure = await fetch(`${f.info.origin}/api/data-sources/integrations/fixture-source/credentials`, { method: 'POST', headers: f.headers, body: JSON.stringify({ values: { apiKey: 'value' } }) })
+    assert.equal(vaultFailure.status, 503)
+    const vaultFailureText = await vaultFailure.text()
+    assert.deepEqual(JSON.parse(vaultFailureText), { code: 'credential_store_unavailable', error: 'Credential storage is unavailable' })
+    assert.equal(vaultFailureText.includes('vault detail must not escape'), false)
+    assert.deepEqual(f.calls, [])
+  } finally { await close(f) }
+})
+
 test('returns bounded sanitized test results and rejects unknown integrations', async () => {
   const f = await fixture()
   try {

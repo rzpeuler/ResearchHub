@@ -632,17 +632,17 @@ export class ResearchHubRuntimeServer {
       const service = this.runtime!.services.dataSourceAdministrationService
       if (!service) throw new ApplicationServiceError('failed', 'Data source administration is unavailable')
       const integrationId = decodeSegment(credentialRoute[1]!)
-      try {
-        if (method === 'POST') {
-          const body = await this.readJson(request, 20_000)
-          assertExactFields(body, ['values'], [], 'credential request')
-          if (!isRecord(body.values) || Object.keys(body.values).length > 64 || Object.values(body.values).some((value) => typeof value !== 'string' || value.length > 8_192)) throw new ApplicationServiceError('invalid_input', 'Credential values are invalid or oversized')
-          await service.saveCredentials(integrationId, body.values as Record<string, string>)
-          await this.sendJson(response, 200, { saved: true }); return
-        }
-        await service.removeCredentials(integrationId)
-        await this.sendJson(response, 200, { removed: true }); return
-      } catch (error) { throw this.dataSourceRouteFailure(error, 'credential') }
+      if (method === 'POST') {
+        const body = await this.readJson(request, 20_000)
+        assertExactFields(body, ['values'], [], 'credential request')
+        if (!isRecord(body.values) || Object.keys(body.values).length > 64 || Object.values(body.values).some((value) => typeof value !== 'string' || value.length > 8_192)) throw new ApplicationServiceError('invalid_input', 'Credential values are invalid or oversized')
+        try { await service.saveCredentials(integrationId, body.values as Record<string, string>) }
+        catch (error) { throw this.dataSourceRouteFailure(error, 'credential') }
+        await this.sendJson(response, 200, { saved: true }); return
+      }
+      try { await service.removeCredentials(integrationId) }
+      catch (error) { throw this.dataSourceRouteFailure(error, 'credential') }
+      await this.sendJson(response, 200, { removed: true }); return
     }
     const testRoute = /^\/api\/data-sources\/integrations\/([^/]+)\/tests$/.exec(path)
     if (method === 'POST' && testRoute) {
