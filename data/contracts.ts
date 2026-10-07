@@ -118,6 +118,8 @@ export interface AcquisitionSourceMetadata {
   readonly retrievedAt: string
   /** Timestamp of the selected market observation, independent of retrieval. */
   readonly observedAt?: string
+  /** When the selected observation became available, independent of its date and publication. */
+  readonly observationAvailableAt?: string
   readonly valueVersion?: NumericValueVersionEvidence
 }
 
@@ -173,6 +175,7 @@ export interface SourceExecutionSourceMetadata {
   readonly publishedAt?: string
   readonly retrievedAt?: string
   readonly observedAt?: string
+  readonly observationAvailableAt?: string
   readonly valueVersion?: NumericValueVersionEvidence
 }
 

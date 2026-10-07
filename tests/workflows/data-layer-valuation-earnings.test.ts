@@ -78,15 +78,66 @@ test('market observation date is validated independently from retrieval and requ
   const marketPolicy: SourcePolicy = { policyId: 'market', requirementMatch: { metricId: 'valuation_market_price' }, selectionMode: 'FIRST_VALID', candidates: [
     { sourceId: 'market', fallbackLevel: 'PRIMARY', originAuthority: 'S3_AGGREGATOR', operationId: 'market', supports: { dataKinds: ['timeseries'], metricIds: ['valuation_market_price'] } },
   ] }
-  const safe = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-03-30', retrievedAt: '2026-10-07' } }) })
+  const safe = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-03-30', observationAvailableAt: '2025-03-30T07:00:00.000Z', retrievedAt: '2026-10-07' } }) })
   assert.equal(safe.status, 'AVAILABLE')
   assert.equal(safe.quality.pointInTimeSafe, true)
   assert.equal(safe.source?.retrievedAt, '2026-10-07')
-  const future = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-04-01', retrievedAt: '2026-10-07' } }) })
+  assert.equal(safe.source?.observedAt, '2025-03-30')
+  assert.equal(safe.source?.observationAvailableAt, '2025-03-30T07:00:00.000Z')
+  const future = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-04-01', observationAvailableAt: '2025-04-01T07:00:00.000Z', retrievedAt: '2026-10-07' } }) })
   assert.equal(future.status, 'UNAVAILABLE')
   assert.equal(future.attempts[0]?.status, 'POINT_IN_TIME_INVALID')
-  const afterRequestedPeriod = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-03-31', retrievedAt: '2026-10-07' } }) })
+  const afterRequestedPeriod = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-03-31', observationAvailableAt: '2025-03-31T07:00:00.000Z', retrievedAt: '2026-10-07' } }) })
   assert.equal(afterRequestedPeriod.status, 'UNAVAILABLE')
+})
+
+test('market PIT fails closed for publication-only, missing observation availability, or missing requested period', async () => {
+  const market: DataRequirement = { ...financialRequirement, dataKind: 'timeseries', metricId: 'valuation_market_price', requireValueVersionProof: false, period: { end: '2025-03-30' } }
+  const marketPolicy: SourcePolicy = { policyId: 'market', requirementMatch: { metricId: 'valuation_market_price' }, selectionMode: 'FIRST_VALID', candidates: [
+    { sourceId: 'market', fallbackLevel: 'PRIMARY', originAuthority: 'S3_AGGREGATOR', operationId: 'market', supports: { dataKinds: ['timeseries'], metricIds: ['valuation_market_price'] } },
+  ] }
+  const run = (requirement: DataRequirement, source: Record<string, string>) => runResearchDataAcquisition({ requirement, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS' as const, data: { close: 9 }, source }) })
+  for (const [req, source] of [
+    [market, { publishedAt: '2025-03-01', retrievedAt: '2026-10-07' }],
+    [market, { publishedAt: '2025-03-01', observedAt: '2025-03-30', retrievedAt: '2026-10-07' }],
+    [{ ...market, period: undefined }, { observedAt: '2025-03-30', observationAvailableAt: '2025-03-30T07:00:00.000Z', retrievedAt: '2026-10-07' }],
+  ] as const) {
+    const result = await run(req, source)
+    assert.equal(result.status, 'UNAVAILABLE')
+    assert.equal(result.quality.pointInTimeSafe, false)
+    assert.equal(result.attempts[0]?.status, 'POINT_IN_TIME_INVALID')
+  }
+})
+
+test('same-day market close is ineligible before 15:00 Asia/Shanghai and eligible afterward', async () => {
+  const market: DataRequirement = { ...financialRequirement, dataKind: 'timeseries', metricId: 'valuation_market_price', requireValueVersionProof: false, period: { end: '2025-03-31' } }
+  const marketPolicy: SourcePolicy = { policyId: 'market', requirementMatch: { metricId: 'valuation_market_price' }, selectionMode: 'FIRST_VALID', candidates: [
+    { sourceId: 'market', fallbackLevel: 'PRIMARY', originAuthority: 'S3_AGGREGATOR', operationId: 'market', supports: { dataKinds: ['timeseries'], metricIds: ['valuation_market_price'] } },
+  ] }
+  const run = (asOf: string, observationAvailableAt: string) => runResearchDataAcquisition({ requirement: { ...market, asOf, analysisAsOf: asOf }, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS' as const, data: { close: 9 }, source: { observedAt: '2025-03-31', observationAvailableAt, publishedAt: '2025-03-30', retrievedAt: '2026-10-07' } }) })
+  const before = await run('2025-03-31T06:59:59.000Z', '2025-03-31T07:00:00.000Z')
+  assert.equal(before.status, 'UNAVAILABLE')
+  const forgedEarly = await run('2025-03-31T06:59:59.000Z', '2025-03-31T06:00:00.000Z')
+  assert.equal(forgedEarly.status, 'UNAVAILABLE')
+  const after = await run('2025-03-31T07:00:00.000Z', '2025-03-31T07:00:00.000Z')
+  assert.equal(after.status, 'AVAILABLE')
+  assert.equal(after.quality.pointInTimeSafe, true)
+  assert.equal(after.source?.publishedAt, '2025-03-30')
+  assert.equal(after.source?.observedAt, '2025-03-31')
+  assert.equal(after.source?.observationAvailableAt, '2025-03-31T07:00:00.000Z')
+  assert.equal(after.source?.retrievedAt, '2026-10-07')
+})
+
+test('a full timeseries observation timestamp on a date-only requested end remains eligible', async () => {
+  const requirement: DataRequirement = { ...financialRequirement, dataKind: 'timeseries', metricId: 'fixture_timeseries', period: { end: '2025-03-31' }, asOf: '2025-03-31T08:00:00.000Z', analysisAsOf: '2025-03-31T08:00:00.000Z', requireValueVersionProof: false }
+  const sourcePolicy: SourcePolicy = { policyId: 'fixture-timeseries', requirementMatch: { metricId: 'fixture_timeseries' }, selectionMode: 'FIRST_VALID', candidates: [
+    { sourceId: 'fixture-timeseries', fallbackLevel: 'PRIMARY', originAuthority: 'S3_AGGREGATOR', operationId: 'fixture.timeseries', supports: { dataKinds: ['timeseries'], metricIds: ['fixture_timeseries'] } },
+  ] }
+  const result = await runResearchDataAcquisition({ requirement, policies: [sourcePolicy], executor: async () => ({ status: 'SUCCESS', data: { value: 1 }, source: { observedAt: '2025-03-31T07:00:00.000Z', observationAvailableAt: '2025-03-31T07:05:00.000Z', retrievedAt: '2026-10-07T00:00:00.000Z' } }) })
+  assert.equal(result.status, 'AVAILABLE')
+  assert.equal(result.quality.pointInTimeSafe, true)
+  assert.equal(result.source?.observedAt, '2025-03-31T07:00:00.000Z')
+  assert.equal(result.source?.observationAvailableAt, '2025-03-31T07:05:00.000Z')
 })
 
 test('materialization binds one selected estimate metric with exact issuer, FY and optionality', () => {

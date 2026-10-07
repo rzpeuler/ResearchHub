@@ -201,8 +201,15 @@ function evaluateExecution<T>(
   if (publishedAt !== undefined && (!validDate(publishedAt) || Date.parse(publishedAt) > Date.parse(cutoff))) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `publishedAt ${publishedAt} is invalid or after analysisAsOf ${cutoff}` }
   const valueVersion = execution.source?.valueVersion
   const observedAt = execution.source?.observedAt
+  const observationAvailableAt = execution.source?.observationAvailableAt
+  if (requirement.metricId === 'valuation_market_price') {
+    if (!requirement.period?.end || !observedAt || !observationAvailableAt || !validMarketDate(observedAt) || !validDate(observationAvailableAt)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'NO_ELIGIBLE_POINT_IN_TIME_DATA: market period, observation date, and close availability are required' }
+    const dailyClose = Date.parse(`${observedAt}T15:00:00+08:00`)
+    if (Date.parse(observationAvailableAt) < dailyClose) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `observationAvailableAt ${observationAvailableAt} precedes the daily close for ${observedAt}` }
+  }
   if (observedAt !== undefined && (!validDate(observedAt) || Date.parse(observedAt) > Date.parse(cutoff))) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `observedAt ${observedAt} is invalid or after analysisAsOf ${cutoff}` }
-  if (observedAt !== undefined && requirement.period?.end !== undefined && Date.parse(observedAt) > Date.parse(requirement.period.end)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `observedAt ${observedAt} is after requested period ${requirement.period.end}` }
+  if (observedAt !== undefined && requirement.period?.end !== undefined && afterRequestedPeriod(observedAt, requirement.period.end)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `observedAt ${observedAt} is after requested period ${requirement.period.end}` }
+  if (observationAvailableAt !== undefined && (!validDate(observationAvailableAt) || Date.parse(observationAvailableAt) > Date.parse(cutoff))) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `observationAvailableAt ${observationAvailableAt} is invalid or after analysisAsOf ${cutoff}` }
   if (valueVersion?.status === 'VERIFIED' && (!valueVersion.versionId.trim() || !validDate(valueVersion.availableAt) || Date.parse(valueVersion.availableAt) > Date.parse(cutoff))) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `valueVersion is invalid or after analysisAsOf ${cutoff}` }
   if (requirement.requireValueVersionProof && requirement.dataKind === 'metric' && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE' && (valueVersion?.status !== 'VERIFIED' || publishedAt === undefined)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'NO_ELIGIBLE_POINT_IN_TIME_DATA: numeric value version or publication unverified' }
   const source: AcquisitionSourceMetadata = {
@@ -215,12 +222,24 @@ function evaluateExecution<T>(
     ...(publishedAt ? { publishedAt } : {}),
     retrievedAt: execution.source?.retrievedAt ?? completedAt,
     ...(observedAt ? { observedAt } : {}),
+    ...(observationAvailableAt ? { observationAvailableAt } : {}),
     ...(valueVersion ? { valueVersion } : {}),
   }
   return { status: 'SUCCESS', observation: { data: execution.data, source } }
 }
 
 function validDate(value: string): boolean { return !Number.isNaN(Date.parse(value)) }
+
+function afterRequestedPeriod(observedAt: string, periodEnd: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(periodEnd)
+    ? observedAt.slice(0, 10) > periodEnd
+    : Date.parse(observedAt) > Date.parse(periodEnd)
+}
+
+function validMarketDate(value: string): boolean {
+  const date = new Date(`${value}T00:00:00.000Z`)
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+}
 
 function unavailableQuality(requirement: DataRequirement): AcquisitionResult<unknown>['quality'] {
   const numericMetric = requirement.dataKind === 'metric' && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
@@ -230,8 +249,10 @@ function unavailableQuality(requirement: DataRequirement): AcquisitionResult<unk
 function acquisitionQuality<T>(requirement: DataRequirement, observations: readonly AcquisitionObservation<T>[], complete: boolean, crossChecked: boolean): AcquisitionResult<T>['quality'] {
   const numericMetric = requirement.dataKind === 'metric' && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
   const versionVerified = numericMetric && observations.length > 0 && observations.every((observation) => observation.source.valueVersion?.status === 'VERIFIED')
-  const publicationOrMarketDate = observations.length > 0 && observations.every((observation) => observation.source.publishedAt !== undefined || requirement.dataKind === 'timeseries' && observation.source.observedAt !== undefined)
-  const pointInTimeSafe = numericMetric ? versionVerified && publicationOrMarketDate : publicationOrMarketDate
+  const temporalEvidence = observations.length > 0 && observations.every((observation) => requirement.dataKind === 'timeseries'
+    ? observation.source.observedAt !== undefined && observation.source.observationAvailableAt !== undefined && requirement.period?.end !== undefined
+    : observation.source.publishedAt !== undefined)
+  const pointInTimeSafe = numericMetric ? versionVerified && temporalEvidence : temporalEvidence
   return {
     pointInTimeSafe,
     complete,
