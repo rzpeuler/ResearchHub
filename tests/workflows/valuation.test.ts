@@ -128,6 +128,39 @@ test('Valuation workflow sends issuer and comparable requirements through its in
     assert.equal(result.providerOutcome.basisPitStatus, 'CURRENT_VALUE_ONLY')
   } finally { await f.close() }
 })
+test('Valuation basis uses only the resolver-selected FY row when a raw snapshot also contains future publication', async () => {
+  const f = await fixture({ financial: [{ REPORT_DATE: '2024-12-31', 公告日期: '2025-03-30', EPSJB: 8, BPS: 18 }] })
+  try {
+    const actual = createValuationDataResolver({ akshare: f.akshare, officialDisclosure: f.officialDisclosure, company: { symbol: '600519', name: 'Fixture Company', exchange: 'SSE' }, valuationDate: NOW, now: () => NOW })
+    const future = normalizeValuationFinancialData([{ REPORT_DATE: '2025-12-31', 公告日期: '2026-10-01', EPSJB: 99, BPS: 99 }]).rows[0]!
+    const dataResolver = {
+      resolve: async (requirements: readonly DataRequirement[]) => {
+        const bundle = await actual.resolve(requirements)
+        return { ...bundle, items: bundle.items.map((item) => item.value?.kind === 'financial' ? { ...item, value: { ...item.value, rows: [future, ...item.value.rows] } } : item) }
+      },
+      resolveOne: (requirement: DataRequirement) => actual.resolveOne(requirement),
+    } as unknown as DataResolver<ValuationDataPayload>
+    const result = await runFixture(f, { dataResolver })
+    assert.equal(result.basis?.basisFiscalYear, 2024)
+    assert.equal(result.basisEvidence?.reportDate, '2024-12-31')
+    assert.equal(result.basisEvidence?.eps?.officialPublication?.reportTitle, '2024年年度报告')
+  } finally { await f.close() }
+})
+test('Valuation combines independently resolved EPS and BVPS with separate source lineage', async () => {
+  const f = await fixture()
+  try {
+    const akshare: AkshareDataClient = { ...f.akshare, valuationFinancialIndicators: async () => [{ REPORT_DATE: '2025-12-31', EPSJB: 10 }], financialData: async () => [{ REPORT_DATE: '2025-12-31', BPS: 20 }] }
+    const result = await runFixture(f, { akshare })
+    assert.equal(result.basis?.eps, 10)
+    assert.equal(result.basis?.bvps, 20)
+    assert.equal(result.providerOutcome.peEligible, true)
+    assert.equal(result.providerOutcome.pbEligible, true)
+    const design = fixtureExecutor(f).requests.find((item) => item.operation === 'valuation_assumption_design')
+    const ids = (design?.input as Dict).allowedSourceCandidateIds as string[]
+    assert.ok(ids.some((id) => id.includes('financial-eps-')))
+    assert.ok(ids.some((id) => id.includes('financial-bvps-')))
+  } finally { await f.close() }
+})
 test('Fixed historical Valuation cutoff keeps annual numbers visible but excludes unversioned basis from calculation', async () => {
   const f = await fixture()
   try {

@@ -6,7 +6,7 @@ import { createValuationDataResolver, valuationPeerIdentity as identityOf, valua
 import { materializePhase2CommonRequirement } from '../../data/requirements.ts'
 import type { DataResolver } from '../../data/resolver.ts'
 import { executeEquityMultipleComps, type AutomaticComparablePeer, type AutomaticComparableSubject, type AutomaticEquityCompsResult, type AutomaticFamilyStatus, type AutomaticPeerComparisonFamily, type AutomaticPeerCohortMembership, type AutomaticPeerScaleProfile, type AutomaticRejectedPeer } from '../../skills/comps_valuation/index.ts'
-import { resolveValuationBasisEvidence } from './basis-evidence.ts'
+import { mapResolvedValuationFinancialBasis, resolveValuationBasisEvidence } from './basis-evidence.ts'
 
 type Dict = Record<string, unknown>
 type AutoFamily = AutomaticPeerComparisonFamily
@@ -45,6 +45,12 @@ function abort(signal: AbortSignal | undefined): void { if (signal?.aborted) thr
 function profile(candidate: CandidateAggregate): ReturnType<typeof valuationPeerProfile> { return valuationPeerProfile(candidate.rows.GROWTH, candidate.rows.DUPONT) }
 function hasProfile(value: ReturnType<typeof profile>): boolean { return value.growth !== undefined || value.profitability !== undefined }
 function familyStatus(family: AutoFamily, status: AutomaticFamilyStatus['status'], diagnostics: readonly string[] = []): AutomaticFamilyStatus { return { family, status, diagnostics: [...diagnostics] } }
+function sameFinancialAcquisition(eps?: { readonly sourceId?: string; readonly retrievedAt: string; readonly sourceUrl?: string } | null, bvps?: { readonly sourceId?: string; readonly retrievedAt: string; readonly sourceUrl?: string } | null): boolean {
+  if (!eps || !bvps) return true
+  if (eps.retrievedAt !== bvps.retrievedAt || eps.sourceUrl !== bvps.sourceUrl) return false
+  const route = (sourceId: string | undefined) => sourceId?.replace(/-(?:eps|bvps)$/, '')
+  return eps.sourceId === undefined || bvps.sourceId === undefined || route(eps.sourceId) === route(bvps.sourceId)
+}
 
 export async function resolveAutomaticComps(input: AutomaticCompsResolutionInput): Promise<AutomaticCompsResolution> {
   const resolver = input.dataResolver ?? createValuationDataResolver({ akshare: input.akshare, officialDisclosure: input.officialDisclosure, now: input.clock ?? (() => input.retrievedAt), signal: input.signal, valuationDate: input.valuationDate, company: input.company })
@@ -74,7 +80,58 @@ export async function resolveAutomaticComps(input: AutomaticCompsResolutionInput
   const cheap = scaled.filter((item) => { if (!hasProfile(profile(item.candidate))) { rejected.push({ identity: item.candidate.identity, reasonCodes: ['INSUFFICIENT_PROFILE_EVIDENCE'], sourceRefs: [...new Set(item.candidate.sourceRefs)] }); return false } return true })
   cheap.sort((left, right) => { const familyDelta = new Set(right.candidate.memberships.map((item) => item.family)).size - new Set(left.candidate.memberships.map((item) => item.family)).size; if (familyDelta) return familyDelta; const distance = Math.abs(Math.log(left.scale.marketCapToSubject ?? 1)) - Math.abs(Math.log(right.scale.marketCapToSubject ?? 1)); return distance || left.candidate.identity.ticker.localeCompare(right.candidate.identity.ticker) })
   const valid: AutomaticComparablePeer[] = []
-  for (const item of cheap.slice(0, MAX_EXPENSIVE_VALIDATIONS)) { abort(input.signal); const candidate = item.candidate; const peerCompany: ResearchCompanyIdentity = { symbol: candidate.identity.ticker, ...(candidate.identity.name === undefined ? {} : { name: candidate.identity.name }), exchange: candidate.identity.exchange === 'SH' ? 'SSE' : candidate.identity.exchange === 'SZ' ? 'SZSE' : candidate.identity.exchange }; const peerRefs = [...new Set([...candidate.sourceRefs, item.sourceRef])]; try { const marketResult = await peerFact('valuation_market_price', candidate.identity.ticker, candidate.identity.name); abort(input.signal); const marketPayload = marketResult.value; if (marketResult.status !== 'AVAILABLE' || marketPayload?.kind !== 'market') throw new Error('PEER_MARKET_UNAVAILABLE'); const market = { observation: marketPayload.observation }; const financialResults = await resolver.resolve([materializePhase2CommonRequirement('valuation_eps', { workflowId: 'valuation', ticker: candidate.identity.ticker, companyId: candidate.identity.name, asOf: input.valuationDate, period: { end: input.valuationDate, fiscalYear: input.basisFiscalYear }, required: false }), materializePhase2CommonRequirement('valuation_bvps', { workflowId: 'valuation', ticker: candidate.identity.ticker, companyId: candidate.identity.name, asOf: input.valuationDate, period: { end: input.valuationDate, fiscalYear: input.basisFiscalYear }, required: false })]); abort(input.signal); const financialPayload = financialResults.items.find((result) => result.value?.kind === 'financial')?.value; if (financialPayload?.kind !== 'financial') throw new Error('PEER_FINANCIAL_BASIS_UNAVAILABLE'); const row = financialPayload.row; const publicationResult = await peerFact('valuation_annual_report_publication', candidate.identity.ticker, candidate.identity.name); abort(input.signal); const publicationPayload = publicationResult.value; if (publicationResult.status !== 'AVAILABLE' || publicationPayload?.kind !== 'publication') throw new Error('PEER_BASIS_PUBLICATION_UNAVAILABLE'); const publication = publicationPayload.proof; const evidence = resolveValuationBasisEvidence({ market: market.observation, financialRows: [row], publication, valuationDate: input.valuationDate, now: input.now, retrievedAt: financialPayload.retrievedAt, marketRetrievedAt: marketPayload.retrievedAt, marketSourceUrl: 'https://push2his.eastmoney.com/api/qt/kline/get', financialSourceUrl: 'https://datacenter.eastmoney.com/securities/api/data/get' }); if (!evidence.basis || evidence.evidence.basisFiscalYear !== input.basisFiscalYear) throw new Error('PEER_BASIS_PERIOD_MISMATCH'); const marketRef = `eastmoney-auto-comps-market-${candidate.identity.ticker}-${market.observation.priceDate}`; const financialRef = `eastmoney-auto-comps-financial-${candidate.identity.ticker}-${input.basisFiscalYear}`; const publicationRef = `cninfo-auto-comps-annual-report-${candidate.identity.ticker}-${input.basisFiscalYear}`; sources.push(source(marketRef, `EastMoney automatic comparable market ${candidate.identity.ticker}`, market.observation, peerCompany, marketPayload.retrievedAt, { dataKind: 'automatic-comps-market', valuationEvidenceRole: 'market', basisFiscalYear: input.basisFiscalYear }, { provider: 'AKShare', sourceUrl: 'https://push2his.eastmoney.com/api/qt/kline/get' })); sources.push(source(financialRef, `EastMoney automatic comparable financial ${candidate.identity.ticker}`, row, peerCompany, financialPayload.retrievedAt, { dataKind: 'automatic-comps-financial', valuationEvidenceRole: 'financial', basisFiscalYear: input.basisFiscalYear, reportDate: row.reportDate }, { provider: 'AKShare', sourceUrl: 'https://datacenter.eastmoney.com/securities/api/data/get' })); sources.push(source(publicationRef, publication.reportTitle, publication, peerCompany, publication.retrievedAt, { dataKind: 'automatic-comps-annual-report', valuationEvidenceRole: 'financial', basisFiscalYear: input.basisFiscalYear }, { kind: 'official_disclosure', publisher: 'CNINFO', provider: 'CNINFO', sourceUrl: publication.sourceUrl, publishedAt: publication.officialPublishedAt, authority: 'S0_STATUTORY' })); const profiles = profile(candidate); valid.push({ identity: candidate.identity, cohortFamilyCount: new Set(candidate.memberships.map((membership) => membership.family)).size, cohortMembership: candidate.memberships, scale: item.scale, ...(profiles.growth === undefined ? {} : { growth: profiles.growth }), ...(profiles.profitability === undefined ? {} : { profitability: profiles.profitability }), marketPrice: market.observation.close, marketPriceDate: market.observation.priceDate, ...(row.eps === undefined ? {} : { eps: row.eps }), ...(row.bvps === undefined ? {} : { bvps: row.bvps }), multipleBasisFiscalYear: input.basisFiscalYear, sourceRefs: [...new Set([...peerRefs, marketRef, financialRef, publicationRef])], diagnostics: evidence.diagnostics }) } catch (error) { if (error instanceof Error && error.message === 'WORKFLOW_CANCELLED') throw error; const reason = error instanceof Error ? error.message : String(error); rejected.push({ identity: candidate.identity, reasonCodes: [reason.startsWith('PEER_') ? reason : 'PEER_VALIDATION_FAILED'], sourceRefs: peerRefs }) } }
+  for (const item of cheap.slice(0, MAX_EXPENSIVE_VALIDATIONS)) {
+    abort(input.signal)
+    const candidate = item.candidate
+    const peerCompany: ResearchCompanyIdentity = { symbol: candidate.identity.ticker, ...(candidate.identity.name === undefined ? {} : { name: candidate.identity.name }), exchange: candidate.identity.exchange === 'SH' ? 'SSE' : candidate.identity.exchange === 'SZ' ? 'SZSE' : candidate.identity.exchange }
+    const peerRefs = [...new Set([...candidate.sourceRefs, item.sourceRef])]
+    try {
+      const marketResult = await peerFact('valuation_market_price', candidate.identity.ticker, candidate.identity.name)
+      abort(input.signal)
+      const marketPayload = marketResult.value
+      if (marketResult.status !== 'AVAILABLE' || marketPayload?.kind !== 'market') throw new Error('PEER_MARKET_UNAVAILABLE')
+      const financialResults = await resolver.resolve([
+        materializePhase2CommonRequirement('valuation_eps', { workflowId: 'valuation', ticker: candidate.identity.ticker, companyId: candidate.identity.name, asOf: input.valuationDate, period: { end: input.valuationDate, fiscalYear: input.basisFiscalYear }, required: false }),
+        materializePhase2CommonRequirement('valuation_bvps', { workflowId: 'valuation', ticker: candidate.identity.ticker, companyId: candidate.identity.name, asOf: input.valuationDate, period: { end: input.valuationDate, fiscalYear: input.basisFiscalYear }, required: false }),
+      ])
+      abort(input.signal)
+      const mapped = mapResolvedValuationFinancialBasis(input.basisFiscalYear, financialResults.items[0], financialResults.items[1])
+      const row = mapped.row
+      if (!row) throw new Error(mapped.diagnostic ?? 'PEER_FINANCIAL_BASIS_UNAVAILABLE')
+      const publicationResult = await peerFact('valuation_annual_report_publication', candidate.identity.ticker, candidate.identity.name)
+      abort(input.signal)
+      const publicationPayload = publicationResult.value
+      if (publicationResult.status !== 'AVAILABLE' || publicationPayload?.kind !== 'publication') throw new Error('PEER_BASIS_PUBLICATION_UNAVAILABLE')
+      const publication = publicationPayload.proof
+      if (publication.fiscalYear !== row.basisFiscalYear) throw new Error('PEER_BASIS_PERIOD_MISMATCH')
+      const epsSource = mapped.epsItem?.source
+      const bvpsSource = mapped.bvpsItem?.source
+      const evidence = resolveValuationBasisEvidence({ market: marketPayload.observation, financialRows: [row], publication, valuationDate: input.valuationDate, now: input.now, retrievedAt: epsSource?.retrievedAt ?? bvpsSource?.retrievedAt ?? input.retrievedAt, marketRetrievedAt: marketPayload.retrievedAt, ...(epsSource ? { epsSource } : {}), ...(bvpsSource ? { bvpsSource } : {}), marketSourceUrl: marketResult.source?.sourceUrl, financialSourceUrl: epsSource?.sourceUrl ?? bvpsSource?.sourceUrl })
+      if (!evidence.basis || evidence.evidence.basisFiscalYear !== input.basisFiscalYear) throw new Error('PEER_BASIS_PERIOD_MISMATCH')
+      const marketRef = `eastmoney-auto-comps-market-${candidate.identity.ticker}-${marketPayload.observation.priceDate}`
+      const publicationRef = `cninfo-auto-comps-annual-report-${candidate.identity.ticker}-${input.basisFiscalYear}`
+      sources.push(source(marketRef, `EastMoney automatic comparable market ${candidate.identity.ticker}`, marketPayload.observation, peerCompany, marketPayload.retrievedAt, { dataKind: 'automatic-comps-market', valuationEvidenceRole: 'market', basisFiscalYear: input.basisFiscalYear }, { provider: 'AKShare', sourceUrl: marketResult.source?.sourceUrl }))
+      const financialRefs: string[] = []
+      const sharedFinancialSource = sameFinancialAcquisition(epsSource, bvpsSource)
+      if (sharedFinancialSource) {
+        const financialRef = `eastmoney-auto-comps-financial-${candidate.identity.ticker}-${input.basisFiscalYear}`
+        financialRefs.push(financialRef)
+        sources.push(source(financialRef, `EastMoney automatic comparable financial ${candidate.identity.ticker}`, row, peerCompany, epsSource?.retrievedAt ?? bvpsSource?.retrievedAt ?? input.retrievedAt, { dataKind: 'automatic-comps-financial', valuationEvidenceRole: 'financial', basisFiscalYear: input.basisFiscalYear, reportDate: row.reportDate, dataPolicySourceId: (epsSource ?? bvpsSource)?.sourceId }, { provider: 'AKShare', sourceUrl: epsSource?.sourceUrl ?? bvpsSource?.sourceUrl }))
+      } else for (const [metric, metricItem, value] of [['eps', mapped.epsItem, row.eps], ['bvps', mapped.bvpsItem, row.bvps]] as const) {
+        if (!metricItem?.source || value === undefined) continue
+        const financialRef = `eastmoney-auto-comps-financial-${metric}-${candidate.identity.ticker}-${input.basisFiscalYear}`
+        financialRefs.push(financialRef)
+        sources.push(source(financialRef, `EastMoney automatic comparable ${metric.toUpperCase()} ${candidate.identity.ticker}`, { basisFiscalYear: row.basisFiscalYear, reportDate: row.reportDate, [metric]: value }, peerCompany, metricItem.source.retrievedAt, { dataKind: 'automatic-comps-financial', valuationEvidenceRole: 'financial', basisFiscalYear: input.basisFiscalYear, reportDate: row.reportDate, dataPolicySourceId: metricItem.source.sourceId }, { provider: 'AKShare', sourceUrl: metricItem.source.sourceUrl }))
+      }
+      sources.push(source(publicationRef, publication.reportTitle, publication, peerCompany, publication.retrievedAt, { dataKind: 'automatic-comps-annual-report', valuationEvidenceRole: 'financial', basisFiscalYear: input.basisFiscalYear }, { kind: 'official_disclosure', publisher: 'CNINFO', provider: 'CNINFO', sourceUrl: publication.sourceUrl, publishedAt: publication.officialPublishedAt, authority: 'S0_STATUTORY' }))
+      const profiles = profile(candidate)
+      valid.push({ identity: candidate.identity, cohortFamilyCount: new Set(candidate.memberships.map((membership) => membership.family)).size, cohortMembership: candidate.memberships, scale: item.scale, ...(profiles.growth === undefined ? {} : { growth: profiles.growth }), ...(profiles.profitability === undefined ? {} : { profitability: profiles.profitability }), marketPrice: marketPayload.observation.close, marketPriceDate: marketPayload.observation.priceDate, ...(row.eps === undefined ? {} : { eps: row.eps }), ...(row.bvps === undefined ? {} : { bvps: row.bvps }), multipleBasisFiscalYear: input.basisFiscalYear, sourceRefs: [...new Set([...peerRefs, marketRef, ...financialRefs, publicationRef])], diagnostics: evidence.diagnostics })
+    } catch (error) {
+      if (error instanceof Error && error.message === 'WORKFLOW_CANCELLED') throw error
+      const reason = error instanceof Error ? error.message : String(error)
+      rejected.push({ identity: candidate.identity, reasonCodes: [reason.startsWith('PEER_') ? reason : 'PEER_VALIDATION_FAILED'], sourceRefs: peerRefs })
+    }
+  }
   const result = executeEquityMultipleComps({ subject, selectedMethod: input.selectedMethod, multipleBasisFiscalYear: input.basisFiscalYear, targetFiscalYear: input.targetFiscalYear, valuationDate: input.valuationDate, targetForecastMetric: input.targetForecastMetric, peers: valid, rejectedPeers: rejected, sourceRefs: [...input.targetSourceRefs, targetScaleSourceId], diagnosticSourceRefs: [...input.targetSourceRefs, ...sources.map((item) => item.candidate.candidateId)] })
   return { result: { ...result, candidatePeerCount: aggregates.size, expensiveValidationCount: Math.min(cheap.length, MAX_EXPENSIVE_VALIDATIONS), familyStatuses, diagnostics: [...new Set([...result.diagnostics, ...(targetScaleDiagnostic === undefined ? [] : [targetScaleDiagnostic]), ...(cheap.length === 0 ? ['INSUFFICIENT_VALID_PEERS'] : [])])] }, sources }
 }
