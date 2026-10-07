@@ -92,6 +92,7 @@ export type AcquisitionAttemptStatus =
   | 'TIMEOUT'
   | 'RATE_LIMITED'
   | 'ACCESS_DENIED'
+  | 'SOURCE_ERROR'
   | 'PARSE_ERROR'
   | 'VALIDATION_ERROR'
   | 'STALE'

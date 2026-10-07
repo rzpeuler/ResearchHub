@@ -1,5 +1,5 @@
 import { earningsPeriodSpec, type EarningsPeriodSpec } from '../../skills/earnings-review/financials.ts'
-import { normalizeAksharePeriod } from './earnings-financial-normalization.ts'
+import { normalizeAksharePeriod, selectAkshareFinancialRow } from './earnings-financial-normalization.ts'
 import type { FinancialQualityPeriodFacts, NormalizedFinancialQualityData } from '../../skills/earnings-review/financial-quality/contracts.ts'
 
 const PERIOD_FIELDS = ['报告期', '报告日期', '报告期末', '日期', 'date', 'end_date', 'report_date', 'period', 'fiscal_period'] as const
@@ -40,14 +40,10 @@ function parseAmount(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
-function stableRowKey(row: Record<string, unknown>): string {
-  return JSON.stringify(Object.entries(row).sort(([left], [right]) => left.localeCompare(right)))
-}
-
 function rowForDate(rows: readonly Record<string, unknown>[], date: string, diagnostics: string[], label: string): Record<string, unknown> | undefined {
-  const matching = rows.filter((row) => normalizeAksharePeriod(valueFor(row, PERIOD_FIELDS)) === date).sort((left, right) => stableRowKey(left).localeCompare(stableRowKey(right)))
+  const matching = rows.filter((row) => normalizeAksharePeriod(valueFor(row, PERIOD_FIELDS)) === date)
   if (matching.length > 1) diagnostics.push(`Multiple exact ${label} rows found for ${date}; selected deterministic row`)
-  return matching[0]
+  return selectAkshareFinancialRow(matching, date)
 }
 
 function daysInPeriod(fiscalYear: number, period: EarningsPeriodSpec['period']): number {

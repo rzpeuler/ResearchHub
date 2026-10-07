@@ -195,4 +195,26 @@ test('ER46 only accepted per-metric actuals enter Earnings calculation and reaso
     assert.equal(reasoningInput.deterministicFinancialMetrics?.some((item) => item.metric === 'revenue'), true)
   } finally { await f.close() }
 })
+test('ER47 rejected revenue, net-profit, and cash-flow actuals cannot enter financial-quality checks', async () => {
+  const rows = qualityRows().map((row) => row['报告期'] === '2026-06-30' ? { ...row, 基本每股收益: 1.2, 销售毛利率: 45 } : row)
+  const f = await fixture({ rows })
+  try {
+    const actual = createEarningsDataResolver({ company: { symbol: '600519', name: '贵州茅台', exchange: 'SSE' }, fiscalYear: 2026, period: 'H1', asOf: NOW, now: () => NOW, acquisitionPlugins: [f.plugin], akshare: f.akshare, selectFilings: (candidates, year, period, cutoff) => selectOfficialEarningsFilings(candidates, { fiscalYear: year, period }, cutoff) })
+    const rejected = new Set(['earnings_actual_revenue', 'earnings_actual_net_profit', 'earnings_actual_operating_cash_flow'])
+    const dataResolver = {
+      resolveOne: (requirement: DataRequirement) => actual.resolveOne(requirement),
+      resolve: async (requirements: readonly DataRequirement[]) => {
+        const bundle = await actual.resolve(requirements)
+        return { ...bundle, items: bundle.items.map((item) => rejected.has(item.metricId ?? '') ? { ...item, status: 'UNAVAILABLE' as const, value: undefined } : item) }
+      },
+    } as unknown as DataResolver<EarningsDataPayload>
+    const result = await runFixture(f, new FixtureExecutor(validOutput('official-2026-h1')), { dataResolver })
+    assert.equal(result.status, 'completed')
+    const cash = result.sections?.find((section) => section.title === 'Cash Flow / Working Capital')?.markdown ?? ''
+    const quality = result.sections?.find((section) => section.title === 'Earnings Quality')?.markdown ?? ''
+    assert.match(cash, /DSO: unavailable/)
+    assert.match(cash, /CFO \/ Net Income: unavailable/)
+    assert.match(quality, /Accrual ratio: unavailable/)
+  } finally { await f.close() }
+})
 test('D2-003 offline product path activates management research inside normal Earnings Review', async () => { const f = await fixture({ akshare: false }); try { const sources: ManagementCommunicationAcquisitionSources = { cninfoIr: async () => [{ ticker: '600519', title: '投资者关系活动记录表', publishedAt: '2026-09-01T00:00:00.000Z', retrievedAt: NOW, content: 'revenue 12元 increase', sourceUrl: 'https://static.cninfo.com.cn/finalpage/2026-09-01/fixture.PDF', originPublisher: 'Fixture Company' }], exchangeQaSzse: async () => [], exchangeQaSse: async () => [] }; const executor: ReasoningExecutor = { capabilities: () => ({ maxContextTokens: 100_000, maxOutputTokens: 10_000, structuredOutputSupport: true, maxConcurrency: 2 }), execute: async (request) => { if (request.operation === 'management_communication_extract') { const input = request.input as { readonly sourceObjects: readonly Record<string, unknown>[] }; const sourceObjectId = String(input.sourceObjects[0]?.sourceObjectId); return { operation: request.operation, output: { formalGuidanceCandidates: [], managementOutlookCandidates: [{ topic: 'demand', metric: 'revenue', direction: 'increase', rawTimeHorizon: 'H1', rawNumericValue: '12', rawUnit: '元', rawFiscalPeriodText: '2026-H1', evidence: { sourceObjectId, startOffset: 0, endOffset: 20, exactText: 'revenue 12元 increase' } }], kpiCandidates: [], structuredQaCandidates: [] } }; } return { operation: request.operation, output: validOutput('official-2026-h1') } } }; const result = await runFixture(f, executor, { managementCommunicationSources: sources }); assert.equal(result.status, 'completed'); assert.equal(result.telemetry.managementCommunicationAcquisitionAttempted, true); assert.equal(result.telemetry.managementCommentaryDeltaCount, 1); assert.match(result.sections?.find((section) => section.title === 'Management Guidance')?.markdown ?? '', /Management commentary delta/); } finally { await f.close() } })

@@ -7,6 +7,7 @@ import { projectAkshareEastmoneyResearchReports } from '../../workflows/earnings
 import { resolveEarningsExpectations } from '../../workflows/earnings-review/automatic-expectations.ts'
 import type { EarningsReviewWorkflowInput } from '../../workflows/earnings-review/contracts.ts'
 import type { AkshareDataClient } from '../../plugins/research-acquisition/akshare.ts'
+import { createEarningsDataResolver } from '../../plugins/research-acquisition/earnings-data.ts'
 
 const AS_OF = '2026-09-22T00:00:00.000Z'
 const RETRIEVED = '2026-09-22T01:00:00.000Z'
@@ -82,7 +83,8 @@ test('THS success prevents EastMoney fallback calls', async () => {
   assert.equal(thsCalls, 2)
   assert.equal(emCalls, 0)
   assert.equal(result.status, 'available')
-  assert.equal(result.projection.estimates.filter((item) => item.metric === 'net_profit').length, 6)
+  assert.equal(result.projection.estimates.filter((item) => item.metric === 'net_profit').length, 2)
+  assert.ok(result.projection.estimates.filter((item) => item.metric === 'net_profit').every((item) => item.fiscalPeriod === '2026-FY'))
   assert.equal(result.providerOutcomes.find((item) => item.provider === 'eastmoney-individual-research-report')?.providerAttempted, false)
 })
 
@@ -97,7 +99,8 @@ test('THS empty and transport failure fall through to individual EastMoney repor
   const result = await source.acquire({ company: COMPANY, asOf: AS_OF, targetFiscalYear: 2026 })
   assert.equal(emCalls, 1)
   assert.equal(aggregateCalls, 0)
-  assert.equal(result.projection.estimates.filter((item) => item.metric === 'eps').length, 6)
+  assert.equal(result.projection.estimates.filter((item) => item.metric === 'eps').length, 2)
+  assert.ok(result.projection.estimates.filter((item) => item.metric === 'eps').every((item) => item.fiscalPeriod === '2026-FY'))
   assert.equal(result.projection.estimates.some((item) => item.value === 999), false)
   assert.ok(result.diagnostics.some((item) => item.includes('eps:PRIMARY_UNSUPPORTED')))
 })
@@ -152,6 +155,16 @@ test('automatic D0 requirements are authoritative numeric and prohibit LLM Web f
   const source = new AkshareEarningsExpectationsSource({ akshare: client({ profitForecastThs: async () => [] }), now: () => RETRIEVED, onRequirement: (requirement) => requirements.push(requirement) })
   await source.acquire({ company: COMPANY, asOf: AS_OF, targetFiscalYear: 2026 })
   assert.deepEqual(requirements.map((requirement) => [requirement.determinismClass, requirement.llmWebFallback]), [['AUTHORITATIVE_NUMERIC', 'FORBIDDEN'], ['AUTHORITATIVE_NUMERIC', 'FORBIDDEN']])
+})
+
+test('resolver-only expectations injection activates automatic acquisition without provider handles', async () => {
+  let thsCalls = 0
+  const dataResolver = createEarningsDataResolver({ company: COMPANY, fiscalYear: 2026, period: 'FY', asOf: AS_OF, now: () => RETRIEVED, acquisitionPlugins: [], akshare: client({ profitForecastThs: async () => { thsCalls += 1; return [thsRow('诚通证券', '2026-09-18')] } }) })
+  const workflow = { fiscalYear: 2026 } as EarningsReviewWorkflowInput
+  const result = await resolveEarningsExpectations({ workflow, company: COMPANY, analysisAsOf: AS_OF, dataResolver })
+  assert.equal(result.mode, 'automatic')
+  assert.equal(thsCalls, 2)
+  assert.ok((result.bundle?.estimates?.length ?? 0) > 0)
 })
 
 test('single EPS question materializes only EPS and preserves the THS institution estimate', async () => {

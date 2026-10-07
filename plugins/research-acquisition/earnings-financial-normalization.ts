@@ -1,4 +1,5 @@
 import type { EarningsMetricUnit, EarningsPeriodSpec, FinancialPeriodSnapshot, NormalizedFinancialData, VerifiedFinancialMetric } from '../../skills/earnings-review/financials.ts'
+import { normalizeEastmoneyTimestamp } from './expectations/eastmoney-report.ts'
 
 const FIELD_ALIASES: Readonly<Record<'revenue' | 'net_profit' | 'gross_margin' | 'operating_cash_flow' | 'eps', readonly string[]>> = {
   revenue: ['营业总收入', '营业收入', 'total_operating_revenue', 'operating_revenue', 'revenue'],
@@ -28,6 +29,18 @@ function rowsOf(value: unknown): readonly Record<string, unknown>[] {
   return []
 }
 function valueFor(row: Record<string, unknown>, aliases: readonly string[]): unknown { for (const alias of aliases) if (Object.prototype.hasOwnProperty.call(row, alias)) return row[alias]; return undefined }
+export function akshareFinancialRowPublication(row: Record<string, unknown>): string | undefined {
+  return normalizeEastmoneyTimestamp(valueFor(row, ['公告日期', '公告日', 'NOTICE_DATE', 'noticeDate', 'publishedAt']))?.iso
+}
+function stableRowKey(row: Record<string, unknown>): string { return JSON.stringify(Object.entries(row).sort(([left], [right]) => left.localeCompare(right))) }
+/** All financial projections use the same exact-period, correction-aware row. */
+export function selectAkshareFinancialRow(value: unknown, endDate: string): Record<string, unknown> | undefined {
+  return rowsOf(value).filter((row) => normalizeAksharePeriod(valueFor(row, PERIOD_FIELDS)) === endDate).sort((left, right) => {
+    const leftPublication = akshareFinancialRowPublication(left) ?? ''
+    const rightPublication = akshareFinancialRowPublication(right) ?? ''
+    return rightPublication.localeCompare(leftPublication) || stableRowKey(left).localeCompare(stableRowKey(right))
+  })[0]
+}
 function numberValue(value: unknown): number | undefined {
   if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
   if (typeof value !== 'string' || value.trim() === '') return undefined
@@ -48,12 +61,8 @@ function snapshot(row: Record<string, unknown>, period: string, sourceCandidateI
 }
 
 export function normalizeAkshareFinancialData(value: unknown, requested: EarningsPeriodSpec, sourceCandidateId = `akshare-earnings-${requested.key}`): NormalizedFinancialData {
-  const rows = rowsOf(value); const diagnostics: string[] = []; const wanted = new Map<string, Record<string, unknown>>(); const currentDate = requested.endDate; const priorDate = `${requested.fiscalYear - 1}${requested.endDate.slice(4)}`
-  for (const row of rows) {
-    const date = normalizeAksharePeriod(valueFor(row, PERIOD_FIELDS))
-    if (date === currentDate || date === priorDate) wanted.set(date, row)
-  }
-  const currentRow = wanted.get(currentDate); const priorRow = wanted.get(priorDate)
+  const diagnostics: string[] = []; const currentDate = requested.endDate; const priorDate = `${requested.fiscalYear - 1}${requested.endDate.slice(4)}`
+  const currentRow = selectAkshareFinancialRow(value, currentDate); const priorRow = selectAkshareFinancialRow(value, priorDate)
   if (!currentRow) diagnostics.push(`Exact financial period ${requested.key} was not found`)
   const current = currentRow === undefined ? undefined : snapshot(currentRow, requested.key, sourceCandidateId, diagnostics)
   const priorYear = priorRow === undefined ? undefined : snapshot(priorRow, `${requested.fiscalYear - 1}-${requested.period}`, sourceCandidateId, diagnostics)

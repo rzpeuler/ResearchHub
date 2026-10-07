@@ -173,7 +173,7 @@ export async function resolveEarningsExpectations(input: { readonly workflow: Ea
     const counts = callerCounts(caller)
     return { mode: 'caller', bundle: caller, diagnostics: [], acquisitionDiagnostics: [], acquisitionStatus: 'not_attempted', ...counts }
   }
-  const expectationsSource = input.workflow.earningsExpectationsSource ?? (hasConfiguredEarningsExpectationOperation({ akshare: input.workflow.akshare, legacyEastmoney: input.workflow.eastmoneyExpectationSource }) ? createAkshareEarningsExpectationsSource({ akshare: input.workflow.akshare, legacyEastmoney: input.workflow.eastmoneyExpectationSource, now: input.workflow.now, dataResolver: input.dataResolver }) : undefined)
+  const expectationsSource = input.workflow.earningsExpectationsSource ?? (input.dataResolver !== undefined || hasConfiguredEarningsExpectationOperation({ akshare: input.workflow.akshare, legacyEastmoney: input.workflow.eastmoneyExpectationSource }) ? createAkshareEarningsExpectationsSource({ akshare: input.workflow.akshare, legacyEastmoney: input.workflow.eastmoneyExpectationSource, now: input.workflow.now, dataResolver: input.dataResolver }) : undefined)
   if (expectationsSource !== undefined) {
     try {
       const acquisition = await expectationsSource.acquire({ company: input.company, asOf: input.analysisAsOf, targetFiscalYear: input.workflow.fiscalYear, signal: input.workflow.signal })

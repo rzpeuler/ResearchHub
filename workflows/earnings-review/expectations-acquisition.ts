@@ -61,7 +61,7 @@ function toLegacyResult(item: ResolvedDataItem<EarningsDataPayload>): Acquisitio
 }
 
 function failedAttempt(attempt: AcquisitionAttempt): boolean {
-  return (attempt.status === 'UNSUPPORTED' || attempt.status === 'PARSE_ERROR') && !(attempt.sourceId === LEGACY_SOURCE_ID && attempt.diagnostic?.includes('LEGACY_REPORT_ROUTE_UNAVAILABLE'))
+  return (attempt.status === 'UNSUPPORTED' || attempt.status === 'SOURCE_ERROR' || attempt.status === 'PARSE_ERROR' || attempt.status === 'TIMEOUT' || attempt.status === 'RATE_LIMITED' || attempt.status === 'ACCESS_DENIED') && !(attempt.sourceId === LEGACY_SOURCE_ID && attempt.diagnostic?.includes('LEGACY_REPORT_ROUTE_UNAVAILABLE'))
 }
 
 function providerOutcome(sourceId: string, items: readonly ResolvedDataItem<EarningsDataPayload>[]): ResearchProviderOutcome {

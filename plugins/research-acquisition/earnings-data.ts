@@ -3,9 +3,8 @@ import type { SourceExecutionResult } from '../../data/contracts.ts'
 import { PHASE2_COMMON_SOURCE_POLICIES } from '../../data/valuation-earnings-policies.ts'
 import { earningsPeriodSpec, hasUsableExactPeriod, type EarningsPeriod, type NormalizedFinancialData } from '../../skills/earnings-review/financials.ts'
 import type { NormalizedFinancialQualityData } from '../../skills/earnings-review/financial-quality/contracts.ts'
-import { normalizeAkshareFinancialData, normalizeAksharePeriod } from './earnings-financial-normalization.ts'
+import { akshareFinancialRowPublication, normalizeAkshareFinancialData, selectAkshareFinancialRow } from './earnings-financial-normalization.ts'
 import { normalizeFinancialQualityData } from './earnings-financial-quality-normalization.ts'
-import { normalizeEastmoneyTimestamp } from './expectations/eastmoney-report.ts'
 import { validateUsableAcquisitionPayload } from './payload-validation.ts'
 import type { AkshareDataClient } from './akshare.ts'
 import type { NormalizedResearchSource, ResearchAcquisitionDiagnostic, ResearchAcquisitionPlugin, ResearchCompanyIdentity, ResearchSourceCandidate } from './contracts.ts'
@@ -54,20 +53,18 @@ const actualMetricNames = {
   earnings_actual_eps: 'eps',
 } as const
 
-function rawRows(value: unknown): readonly Record<string, unknown>[] {
-  if (Array.isArray(value)) return value.filter((row): row is Record<string, unknown> => row !== null && typeof row === 'object' && !Array.isArray(row))
-  if (value !== null && typeof value === 'object' && Array.isArray((value as { data?: unknown }).data)) return rawRows((value as { data: unknown }).data)
-  return []
+function publicationForSelectedFinancialRows(value: unknown, fiscalYear: number, period: EarningsPeriod): string | undefined {
+  const requested = earningsPeriodSpec(fiscalYear, period)
+  const relevantDates = [requested.endDate, earningsPeriodSpec(fiscalYear - 1, period).endDate, earningsPeriodSpec(fiscalYear - 1, 'FY').endDate]
+  return relevantDates.flatMap((endDate) => {
+    const selected = selectAkshareFinancialRow(value, endDate)
+    const publication = selected ? akshareFinancialRowPublication(selected) : undefined
+    return publication ? [publication] : []
+  }).sort().at(-1)
 }
 
-function publicationForPeriod(value: unknown, endDate: string): string | undefined {
-  const row = rawRows(value).find((item) => normalizeAksharePeriod(item['报告期'] ?? item['报告日期'] ?? item['报告期末'] ?? item['日期'] ?? item.date ?? item.end_date ?? item.report_date ?? item.period) === endDate)
-  if (!row) return undefined
-  return normalizeEastmoneyTimestamp(row['公告日期'] ?? row['公告日'] ?? row.NOTICE_DATE ?? row.noticeDate ?? row.publishedAt)?.iso
-}
-
-function filterProjection(projection: EstimateProjectionResult, metric: 'eps' | 'net_profit'): EstimateProjectionResult {
-  const estimates = projection.estimates.filter((estimate) => estimate.metric === metric)
+function filterProjection(projection: EstimateProjectionResult, metric: 'eps' | 'net_profit', fiscalYear: number): EstimateProjectionResult {
+  const estimates = projection.estimates.filter((estimate) => estimate.metric === metric && estimate.fiscalPeriod === `${fiscalYear}-FY`)
   const sourceIds = new Set(estimates.flatMap((estimate) => estimate.sourceCandidateIds))
   return { ...projection, estimates, sources: projection.sources.filter((source) => sourceIds.has(source.candidate.candidateId)) }
 }
@@ -86,7 +83,7 @@ export function createEarningsDataResolver(options: EarningsDataCompositionOptio
     const requested = earningsPeriodSpec(options.fiscalYear, options.period)
     const normalized = normalizeAkshareFinancialData(raw, requested, `akshare-earnings-${options.company.symbol}-${requested.key}`)
     const financialQualityData = normalizeFinancialQualityData(raw, requested, `akshare-earnings-${options.company.symbol}-${requested.key}`)
-    const publishedAt = publicationForPeriod(raw, requested.endDate)
+    const publishedAt = publicationForSelectedFinancialRows(raw, options.fiscalYear, options.period)
     return { raw, normalized, financialQualityData, retrievedAt, ...(publishedAt ? { publishedAt } : {}) }
   })()
   const loadThs = async () => {
@@ -119,7 +116,11 @@ export function createEarningsDataResolver(options: EarningsDataCompositionOptio
             diagnostics.push({ provider: item.provider, candidateId: item.candidateId, kind: item.kind, status: 'failed', reason: error instanceof Error ? error.message : String(error) })
           }
         }
-        if (sources.length === 0) return { status: 'NO_DATA', diagnostic: selection.futureFilteredCount > 0 ? `EARNINGS_FUTURE_FILINGS:${selection.futureFilteredCount}` : selection.diagnostics.join('|') || diagnostics.map((item) => item.reason).join('|') || 'earnings_official_filing_unavailable' }
+        if (sources.length === 0) {
+          const failed = diagnostics.filter((item) => item.status === 'failed')
+          if (failed.length > 0) return { status: 'SOURCE_ERROR', diagnostic: failed.map((item) => `${item.candidateId ?? item.provider}:${item.reason}`).join('|') }
+          return { status: 'NO_DATA', diagnostic: selection.futureFilteredCount > 0 ? `EARNINGS_FUTURE_FILINGS:${selection.futureFilteredCount}` : selection.diagnostics.join('|') || diagnostics.map((item) => item.reason).join('|') || 'earnings_official_filing_unavailable' }
+        }
         const publishedAt = sources.map((item) => item.candidate.publishedAt).filter((item): item is string => item !== undefined).sort().at(-1)
         return { status: 'SUCCESS', data: { kind: 'filing', discovered, selection, sources, diagnostics }, source: { originPublisher: 'CNINFO', retrievalProvider: plugin.name, retrievedAt: options.now(), ...(publishedAt ? { publishedAt } : {}) } }
       }
@@ -141,15 +142,15 @@ export function createEarningsDataResolver(options: EarningsDataCompositionOptio
         if (candidate.operationId === 'akshare.stock_profit_forecast_ths') {
           if (!options.akshare?.profitForecastThs) return { status: 'UNSUPPORTED', diagnostic: 'AKSHARE_THS_ROUTE_UNAVAILABLE' }
           const snapshot = await loadThs(); retrievedAt = snapshot.retrievedAt; provider = 'AKShare'
-          projection = filterProjection(projectThsInstitutionForecasts({ payload: snapshot.raw, company: options.company, asOf: requirement.asOf, retrievedAt }), metric)
+          projection = filterProjection(projectThsInstitutionForecasts({ payload: snapshot.raw, company: options.company, asOf: requirement.asOf, retrievedAt }), metric, requirement.period.fiscalYear)
         } else if (candidate.operationId === 'akshare.stock_research_report_em') {
           if (!options.akshare?.researchReportEm) return { status: 'UNSUPPORTED', diagnostic: 'AKSHARE_EASTMONEY_RESEARCH_REPORT_ROUTE_UNAVAILABLE' }
           const raw = await options.akshare.researchReportEm({ symbol: options.company.symbol }); retrievedAt = options.now(); provider = 'AKShare'
-          projection = filterProjection(projectAkshareEastmoneyResearchReports({ payload: raw, company: options.company, asOf: requirement.asOf, retrievedAt }), metric)
+          projection = filterProjection(projectAkshareEastmoneyResearchReports({ payload: raw, company: options.company, asOf: requirement.asOf, retrievedAt }), metric, requirement.period.fiscalYear)
         } else {
           if (!options.legacyEastmoney) return { status: 'UNSUPPORTED', diagnostic: 'EASTMONEY_LEGACY_REPORT_ROUTE_UNAVAILABLE' }
           const acquisition = await options.legacyEastmoney.acquire({ company: options.company, asOf: requirement.asOf, targetFiscalYear: requirement.period.fiscalYear }); retrievedAt = options.now(); provider = 'legacy-eastmoney-reportapi'
-          projection = filterProjection(projectEastmoneyEstimatePoints({ acquisition, targetFiscalYear: requirement.period.fiscalYear }), metric)
+          projection = filterProjection(projectEastmoneyEstimatePoints({ acquisition, targetFiscalYear: requirement.period.fiscalYear }), metric, requirement.period.fiscalYear)
         }
         if (projection.estimates.length === 0) return { status: 'NO_DATA', diagnostic: projection.diagnostics.join('|') || `${metric}_no_usable_estimates` }
         return { status: 'SUCCESS', data: { kind: 'expectation', projection }, source: { originPublisher: candidate.originPublisher, retrievalProvider: provider, retrievedAt, ...(latestPublication(projection) ? { publishedAt: latestPublication(projection) } : {}) } }

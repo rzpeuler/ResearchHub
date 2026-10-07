@@ -5,7 +5,7 @@ import type { KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeEntityV04, Knowledg
 import type { KnowledgeProductionOutcome } from '../../knowledge/production/contracts.ts'
 import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
 import type { NormalizedResearchSource, ResearchAcquisitionDiagnostic, ResearchCompanyIdentity, ResearchProviderOutcome, ResearchSourceCandidate } from '../../plugins/research-acquisition/contracts.ts'
-import { createEarningsDataResolver, type EarningsDataPayload } from '../../plugins/research-acquisition/earnings-data.ts'
+import { createEarningsDataResolver, hasConfiguredEarningsExpectationOperation, type EarningsDataPayload } from '../../plugins/research-acquisition/earnings-data.ts'
 import { sha256 } from '../../plugins/research-acquisition/hash.ts'
 import type { DataResolver } from '../../data/resolver.ts'
 import { materializePhase2CommonRequirement } from '../../data/requirements.ts'
@@ -13,6 +13,7 @@ import { normalizeCompanyCandidateIdentity } from '../../skills/knowledge-curati
 import { EarningsReviewSkill, EarningsReviewSemanticError } from '../../skills/earnings-review/skill.ts'
 import { computeEarningsMetrics, earningsPeriodSpec, metricStructuredValues, type EarningsPeriod, type EarningsPeriodSpec, type EarningsComputation, type NormalizedFinancialData } from '../../skills/earnings-review/financials.ts'
 import { enrichEarningsReviewSections, type EarningsFinancialQualitySummary } from '../../skills/earnings-review/financial-quality/index.ts'
+import type { FinancialQualityPeriodFacts, NormalizedFinancialQualityData } from '../../skills/earnings-review/financial-quality/contracts.ts'
 import { calculateFinancialQualityAnalysis } from '../../skills/financial_quality_analysis/calculations.ts'
 import { validateResearchReport, writeResearchReport, type ResearchReport } from '../../app/services/research-report.ts'
 import type { EarningsImpactAssessment, EarningsReviewProposal, EarningsReviewSection } from '../../skills/earnings-review/contracts.ts'
@@ -95,7 +96,7 @@ async function acquireStructured(resolver: DataResolver<EarningsDataPayload>, co
   const actual = resolved?.value?.kind === 'actual' ? resolved.value : undefined
   const attempts = bundle.items.flatMap((item) => item.attempts)
   const attempted = attempts.some((attempt) => attempt.status !== 'UNSUPPORTED' || !attempt.diagnostic?.includes('client is unavailable'))
-  const failed = attempts.some((attempt) => ['UNSUPPORTED', 'PARSE_ERROR', 'TIMEOUT', 'ACCESS_DENIED'].includes(attempt.status)) && actual === undefined
+  const failed = attempts.some((attempt) => ['UNSUPPORTED', 'SOURCE_ERROR', 'PARSE_ERROR', 'TIMEOUT', 'RATE_LIMITED', 'ACCESS_DENIED'].includes(attempt.status)) && actual === undefined
   const outcome: ResearchProviderOutcome = { provider: 'akshare', providerAttempted: attempted, providerSucceeded: actual !== undefined, providerEmpty: attempted && actual === undefined && !failed, providerFailed: failed, usableSourceCount: actual === undefined ? 0 : 1 }
   const candidateId = `akshare-earnings-${company.symbol}-${period.key}`
   if (actual === undefined) {
@@ -114,7 +115,17 @@ async function acquireStructured(resolver: DataResolver<EarningsDataPayload>, co
   }
   const normalized: NormalizedFinancialData = { ...actual.normalized, current: { period: period.key, metrics: currentMetrics }, ...(actual.normalized.priorYear ? { priorYear: { ...actual.normalized.priorYear, metrics: priorMetrics } } : {}) }
   const computation = computeEarningsMetrics(normalized)
-  const financialQuality = calculateFinancialQualityAnalysis({ data: actual.financialQualityData, revenueRecognitionDivergenceThreshold: REVENUE_RECOGNITION_DIVERGENCE_THRESHOLD }).summary
+  const acceptedMetrics = new Set(accepted.flatMap((item) => item.value?.kind === 'actual' ? [item.value.metric] : []))
+  const qualityFacts = (facts: FinancialQualityPeriodFacts | undefined): FinancialQualityPeriodFacts | undefined => {
+    if (facts === undefined) return undefined
+    const { revenue, netIncome, cashFromOperations, ...other } = facts
+    return { ...other, ...(acceptedMetrics.has('revenue') && revenue !== undefined ? { revenue } : {}), ...(acceptedMetrics.has('net_profit') && netIncome !== undefined ? { netIncome } : {}), ...(acceptedMetrics.has('operating_cash_flow') && cashFromOperations !== undefined ? { cashFromOperations } : {}) }
+  }
+  const qualityCurrent = qualityFacts(actual.financialQualityData.current)
+  const qualityOpening = qualityFacts(actual.financialQualityData.opening)
+  const qualityPriorComparable = qualityFacts(actual.financialQualityData.priorComparable)
+  const qualityData: NormalizedFinancialQualityData = { sourceCandidateId: actual.financialQualityData.sourceCandidateId, diagnostics: actual.financialQualityData.diagnostics, ...(qualityCurrent ? { current: qualityCurrent } : {}), ...(qualityOpening ? { opening: qualityOpening } : {}), ...(qualityPriorComparable ? { priorComparable: qualityPriorComparable } : {}) }
+  const financialQuality = calculateFinancialQualityAnalysis({ data: qualityData, revenueRecognitionDivergenceThreshold: REVENUE_RECOGNITION_DIVERGENCE_THRESHOLD }).summary
   const snapshot = { requested: period, current: normalized.current ?? null, priorYear: normalized.priorYear ?? null, verifiedMetrics: metricStructuredValues(computation), unavailable: computation.unavailable, financialQuality }
   const content = JSON.stringify(snapshot)
   const candidate: ResearchSourceCandidate = { candidateId, kind: 'structured_data', tier: 2, title: `AKShare earnings financial snapshot ${period.key}`, provider: 'akshare', metadata: { companySymbol: company.symbol, dataKind: 'earnings_financial', period: period.key } }
@@ -209,7 +220,7 @@ export async function runEarningsReview(input: EarningsReviewWorkflowInput): Pro
     try { semantic = await skill.synthesize(skillInput, computation) } catch (error) { const reason = error instanceof EarningsReviewSemanticError ? error.message : 'semantic reasoning failed'; semantic = skill.fallback(skillInput, computation, reason) }
     const managementCommunication = await resolveManagementCommunication({ company, analysisAsOf: asOf, fiscalYear: input.fiscalYear, period: input.period, signal: input.signal, now, reasoningExecutor: input.reasoningExecutor, officialSources: official.sources, caller: input.managementCommunication, sources: input.managementCommunicationSources, dataResolverFactory: input.managementCommunicationDataResolverFactory, lookbackDays: input.managementCommunicationLookbackDays });
     if (managementCommunication.diagnostics.length > 0) acquisitionDiagnostics = [...acquisitionDiagnostics, ...managementCommunication.diagnostics.map((reason) => ({ provider: 'management-communication', status: managementCommunication.status === 'failed' ? 'failed' as const : managementCommunication.status === 'available' ? 'usable' as const : 'empty' as const, reason }))];
-    const resolvedExpectations = await resolveEarningsExpectations({ workflow: input, company, analysisAsOf: asOf, resultPublishedAt: official.selection.candidates[0]?.publishedAt, dataResolver });
+    const resolvedExpectations = await resolveEarningsExpectations({ workflow: input, company, analysisAsOf: asOf, resultPublishedAt: official.selection.candidates[0]?.publishedAt, ...(input.dataResolver !== undefined || input.dataResolverFactory !== undefined || hasConfiguredEarningsExpectationOperation({ akshare: input.akshare, legacyEastmoney: input.eastmoneyExpectationSource }) ? { dataResolver } : {}) });
     acquisitionDiagnostics = [...acquisitionDiagnostics, ...resolvedExpectations.acquisitionDiagnostics];
     const callerOrAutomaticExpectations = resolvedExpectations.bundle;
     const managementExpectationFields = managementCommunication.guidance !== undefined || managementCommunication.segmentKpiComparisons !== undefined;
