@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { AkshareDataAdapter } from '../../plugins/research-acquisition/akshare.ts'
+import { createManagementCommunicationDataResolver, type ManagementCommunicationDataPayload } from '../../plugins/research-acquisition/management-communication-data.ts'
+import type { DataResolver } from '../../data/resolver.ts'
+import type { DataRequirement } from '../../data/contracts.ts'
 import { dedupeDocuments, managementCommunicationDocumentPolicy, mapDocumentType, normalizeExchangeQaRows, normalizeSourceTimestamp, runExchangeQa, runManagementCommunicationDocuments, resolveExchange, type CommunicationProvenance, type ManagementCommunicationAcquisitionSources, type ManagementCommunicationDocument } from '../../workflows/management-communication-acquisition/index.ts'
 
 const AS_OF = '2026-09-22T00:00:00.000Z'
@@ -40,6 +43,20 @@ function qaRow(overrides: Record<string, unknown> = {}) {
     ...overrides,
   }
 }
+
+test('management documents and exchange Q&A use DataResolver Common policies', async () => {
+  const request = { ticker: '600519', companyName: '贵州茅台', exchange: 'SSE' as const, asOf: AS_OF }
+  const boundSources = sources({ cninfoIr: async () => [cninfoRecord()], exchangeQaSse: async () => [qaRow()] })
+  const actual = createManagementCommunicationDataResolver({ request, sources: boundSources, now: () => RETRIEVED })
+  const seen: DataRequirement[] = []
+  const dataResolver = { resolveOne: (requirement: DataRequirement) => { seen.push(requirement); return actual.resolveOne(requirement) }, resolve: (requirements: readonly DataRequirement[]) => actual.resolve(requirements) } as DataResolver<ManagementCommunicationDataPayload>
+  const documents = await runManagementCommunicationDocuments({ request, sources: boundSources, now: () => RETRIEVED, dataResolver })
+  const qa = await runExchangeQa({ request, sources: boundSources, now: () => RETRIEVED, dataResolver })
+  assert.equal(documents.status, 'AVAILABLE')
+  assert.equal(qa.status, 'AVAILABLE')
+  assert.deepEqual(seen.map((item) => item.metricId), ['management_communication_documents', 'exchange_qa_sse'])
+  assert.deepEqual([documents.acquisition.policyId, qa.acquisition.policyId], ['d2-001-management-communication-documents', 'd2-001-sse-exchange-qa'])
+})
 
 test('document contract requires independent publication and retrieval times', async () => {
   const result = await runManagementCommunicationDocuments({ request: { ticker: '600519', companyName: '贵州茅台', asOf: AS_OF }, sources: sources({ cninfoIr: async () => [cninfoRecord()] }), now: () => RETRIEVED })

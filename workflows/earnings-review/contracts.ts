@@ -12,6 +12,9 @@ import type { ResearchQualityGateResult } from '../research-quality-gate.ts'
 import type { EarningsExpectationsAcquisitionSource } from './expectations-acquisition.ts'
 import type { ManagementCommunicationAcquisitionSources } from '../management-communication-acquisition/contracts.ts'
 import type { ManagementCommunicationResearchInput, ManagementCommunicationResearchResult } from './management-communication.ts'
+import type { DataResolver } from '../../data/resolver.ts'
+import type { EarningsDataPayload } from '../../plugins/research-acquisition/earnings-data.ts'
+import type { ManagementCommunicationDataCompositionOptions, ManagementCommunicationDataPayload } from '../../plugins/research-acquisition/management-communication-data.ts'
 
 export interface EstimateRevisionLink { readonly oldEstimateId: string; readonly newEstimateId: string }
 
@@ -42,6 +45,8 @@ export interface EarningsReviewWorkflowInput {
   readonly reportRoot: string
   readonly acquisitionPlugins: readonly ResearchAcquisitionPlugin[]
   readonly akshare?: AkshareDataClient
+  readonly dataResolver?: DataResolver<EarningsDataPayload>
+  readonly dataResolverFactory?: (context: { readonly company: ResearchCompanyIdentity; readonly fiscalYear: number; readonly period: EarningsPeriod; readonly asOf: string; readonly now: () => string; readonly signal?: AbortSignal }) => DataResolver<EarningsDataPayload>
   readonly reasoningExecutor?: ReasoningExecutor
   readonly signal?: AbortSignal
   readonly now?: () => string
@@ -55,6 +60,7 @@ export interface EarningsReviewWorkflowInput {
   readonly earningsExpectationsSource?: EarningsExpectationsAcquisitionSource
   /** Existing D2-001 source seam; the normal application runtime supplies it. */
   readonly managementCommunicationSources?: ManagementCommunicationAcquisitionSources
+  readonly managementCommunicationDataResolverFactory?: (options: ManagementCommunicationDataCompositionOptions) => DataResolver<ManagementCommunicationDataPayload>
   readonly managementCommunication?: ManagementCommunicationResearchInput
   readonly managementCommunicationLookbackDays?: number
 }

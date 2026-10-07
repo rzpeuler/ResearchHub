@@ -5,6 +5,7 @@ import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { runCompanyDeepResearch } from '../../workflows/company-deep-research/workflow.ts'
 import { runIndustryDeepResearch } from '../../workflows/industry-deep-research/workflow.ts'
 import { runEarningsReview } from '../../workflows/earnings-review/workflow.ts'
+import type { EarningsReviewWorkflowInput } from '../../workflows/earnings-review/contracts.ts'
 import { runValuation } from '../../workflows/valuation/workflow.ts'
 import type { ValuationWorkflowInput } from '../../workflows/valuation/contracts.ts'
 import { runEventResearch } from '../../workflows/event-research/workflow.ts'
@@ -82,6 +83,8 @@ export interface ResearchServiceOptions {
   readonly akshare?: AkshareDataClient
   readonly officialDisclosure?: OfficialDisclosureClient
   readonly valuationDataResolverFactory?: ValuationWorkflowInput['dataResolverFactory']
+  readonly earningsDataResolverFactory?: EarningsReviewWorkflowInput['dataResolverFactory']
+  readonly managementCommunicationDataResolverFactory?: EarningsReviewWorkflowInput['managementCommunicationDataResolverFactory']
   readonly signalStore?: ResearchSignalStore
   readonly dailySignalStore?: EventResearchSignalStore
   readonly workflowService: WorkflowService
@@ -281,7 +284,7 @@ export class ResearchService {
     const completion = this.options.workflowService.start(input.workflowRunId, async (signal) => {
       const combined = new AbortController(); const abort = () => combined.abort(); signal.addEventListener('abort', abort, { once: true }); callerSignal?.addEventListener('abort', abort, { once: true })
       try {
-        const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runEarningsReview({ workflowRunId: input.workflowRunId, handle, company, fiscalYear: input.fiscalYear, period: input.period, asOf: input.asOf, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), acquisitionPlugins: this.options.acquisitionPlugins, akshare: this.options.akshare, managementCommunicationSources: this.options.managementCommunicationSources, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
+        const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runEarningsReview({ workflowRunId: input.workflowRunId, handle, company, fiscalYear: input.fiscalYear, period: input.period, asOf: input.asOf, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), acquisitionPlugins: this.options.acquisitionPlugins, akshare: this.options.akshare, dataResolverFactory: this.options.earningsDataResolverFactory, managementCommunicationSources: this.options.managementCommunicationSources, managementCommunicationDataResolverFactory: this.options.managementCommunicationDataResolverFactory, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
         return { runId: input.workflowRunId, status: result.status, knowledgeBaseId: result.knowledgeBaseId, ...(result.report === undefined ? {} : { reportId: result.report.reportId, reportPath: `${result.report.reportId}.md` }), committedIds: result.committedIds, proposalCount: result.proposalIds.length, summary: result.status === 'completed' ? `Earnings review completed for ${input.symbol} ${input.fiscalYear}-${input.period}` : `Earnings review ${result.status} for ${input.symbol}`, ...(result.errors.length ? { errorSummary: result.errors.join('; ').slice(0, 500) } : {}), telemetry: result.telemetry, ...(result.blockedReason === undefined ? {} : { blockedReason: result.blockedReason }) }
       } finally { signal.removeEventListener('abort', abort); callerSignal?.removeEventListener('abort', abort) }
     }).then((outcome) => outcome as ApplicationEarningsReviewResult)

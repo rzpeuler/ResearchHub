@@ -10,6 +10,9 @@ import { verifyRaw } from '../../knowledge/raw/raw-archive.ts'
 import type { ReasoningExecutor, ReasoningRequest, ReasoningResult } from '../../plugins/reasoning/contracts.ts'
 import type { NormalizedResearchSource, ResearchAcquisitionPlugin, ResearchFetchedSource, ResearchSourceCandidate } from '../../plugins/research-acquisition/contracts.ts'
 import type { AkshareDataClient } from '../../plugins/research-acquisition/akshare.ts'
+import { createEarningsDataResolver, type EarningsDataPayload } from '../../plugins/research-acquisition/earnings-data.ts'
+import type { DataResolver } from '../../data/resolver.ts'
+import type { DataRequirement } from '../../data/contracts.ts'
 import { sha256 } from '../../plugins/research-acquisition/hash.ts'
 import { computeEarningsMetrics, earningsPeriodSpec, normalizeAkshareFinancialData } from '../../skills/earnings-review/financials.ts'
 import { EARNINGS_REVIEW_SECTIONS, type EarningsImpactAssessment, type EarningsReviewProposal } from '../../skills/earnings-review/contracts.ts'
@@ -125,4 +128,71 @@ test('ER39 financial-quality results do not create new durable financial-quality
 test('ER40 financial-quality structuredValue names remain outside the durable Earnings allowlist', async () => { const f = await fixture({ rows: qualityRows() }); try { const output = validOutput('official-2026-h1', 'fact', { structuredValue: { metric: 'accrual_ratio', value: 0.1, unit: 'ratio', period: '2026-H1', comparator: 'eq' } }); const result = await runFixture(f, new FixtureExecutor(output)); assert.equal(result.status, 'completed'); assert.equal(result.telemetry.reasoning.fallbackUsed, true); assert.equal(result.telemetry.acceptedProposalCount, 0); assert.equal(result.claimIds.length, 0) } finally { await f.close() } })
 test('ER41 missing optional financial-quality inputs do not block Earnings Review', async () => { const f = await fixture(); try { const result = await runFixture(f, new FixtureExecutor(validOutput('official-2026-h1'))); assert.equal(result.status, 'completed'); assert.equal(result.sections?.length, 14); assert.match(result.sections?.find((section) => section.title === 'Cash Flow / Working Capital')?.markdown ?? '', /unavailable/i) } finally { await f.close() } })
 test('ER42 financial-quality integration reuses exactly one AKShare financialData call', async () => { const f = await fixture({ rows: qualityRows() }); try { let calls = 0; const base = f.akshare!; const akshare = { ...base, financialData: async (request: Parameters<typeof base.financialData>[0]) => { calls += 1; return base.financialData(request) } }; const result = await runFixture(f, new FixtureExecutor(validOutput('official-2026-h1')), { akshare }); assert.equal(result.status, 'completed'); assert.equal(calls, 1) } finally { await f.close() } })
+
+test('ER43 ordinary Earnings Review resolves filing and actual metrics through DataResolver', async () => {
+  const f = await fixture()
+  try {
+    const seen: DataRequirement[] = []
+    const actual = createEarningsDataResolver({ company: { symbol: '600519', name: '贵州茅台', exchange: 'SSE' }, fiscalYear: 2026, period: 'H1', asOf: NOW, now: () => NOW, acquisitionPlugins: [f.plugin], akshare: f.akshare, selectFilings: (candidates, year, period, cutoff) => selectOfficialEarningsFilings(candidates, { fiscalYear: year, period }, cutoff) })
+    const dataResolver = { resolve: (requirements: readonly DataRequirement[]) => { seen.push(...requirements); return actual.resolve(requirements) }, resolveOne: (requirement: DataRequirement) => { seen.push(requirement); return actual.resolveOne(requirement) } } as DataResolver<EarningsDataPayload>
+    const result = await runFixture(f, new FixtureExecutor(validOutput('official-2026-h1')), { dataResolver })
+    assert.equal(result.status, 'completed')
+    assert.equal(seen.some((item) => item.metricId === 'earnings_official_filing'), true)
+    assert.deepEqual(seen.filter((item) => item.metricId?.startsWith('earnings_actual_')).map((item) => item.metricId).sort(), ['earnings_actual_eps', 'earnings_actual_gross_margin', 'earnings_actual_net_profit', 'earnings_actual_operating_cash_flow', 'earnings_actual_revenue'])
+    assert.equal(seen.every((item) => item.subject.ticker === '600519' && item.asOf === NOW), true)
+    assert.equal(result.sections?.length, 14)
+    assert.equal(result.telemetry.acceptedProposalCount, 1)
+    assert.equal(result.claimIds.length, 1)
+    assert.ok(result.sourceIds.length > 0)
+    const report = await readFile(result.report!.outputPath, 'utf8')
+    assert.match(report, /Verified earnings evidence/)
+    const metadata = JSON.parse(await readFile(`${result.report!.outputPath}.json`, 'utf8')) as { claimRefs: readonly string[]; sourceRefs: readonly string[] }
+    assert.deepEqual(metadata.claimRefs, result.claimIds)
+    const assets = await readCanonicalV04Assets(f.root)
+    assert.equal(assets.objects.filter((item) => item.kind === 'claim').length, 2)
+  } finally { await f.close() }
+})
+
+test('ER44 future-only official filing remains blocked and visible in telemetry', async () => {
+  const f = await fixture({ official: [officialCandidate('future-h1', '2026年半年度报告', '2026-10-01T00:00:00.000Z')], akshare: false })
+  try {
+    const result = await runFixture(f, new FixtureExecutor({}))
+    assert.equal(result.status, 'blocked')
+    assert.equal(result.blockedReason, 'EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE')
+    assert.equal(result.telemetry.officialEvidenceStatus, 'future_filtered')
+    assert.equal(result.providerOutcomes[0]?.providerSucceeded, false)
+  } finally { await f.close() }
+})
+
+test('ER45 explicit historical asOf cannot treat current aggregator actuals as verified history', async () => {
+  const f = await fixture()
+  try {
+    const executor = new FixtureExecutor(validOutput('official-2026-h1'))
+    const result = await runFixture(f, executor, { asOf: NOW })
+    assert.equal(result.status, 'completed')
+    assert.equal(result.telemetry.structuredFinancialEvidenceStatus, 'unavailable')
+    assert.equal(result.providerOutcomes.find((item) => item.provider === 'akshare')?.usableSourceCount, 0)
+    const reasoningInput = executor.requests[0]?.input as { deterministicFinancialMetrics?: readonly unknown[] }
+    assert.deepEqual(reasoningInput.deterministicFinancialMetrics, [])
+  } finally { await f.close() }
+})
+test('ER46 only accepted per-metric actuals enter Earnings calculation and reasoning', async () => {
+  const f = await fixture()
+  try {
+    const actual = createEarningsDataResolver({ company: { symbol: '600519', name: '贵州茅台', exchange: 'SSE' }, fiscalYear: 2026, period: 'H1', asOf: NOW, now: () => NOW, acquisitionPlugins: [f.plugin], akshare: f.akshare, selectFilings: (candidates, year, period, cutoff) => selectOfficialEarningsFilings(candidates, { fiscalYear: year, period }, cutoff) })
+    const dataResolver = {
+      resolveOne: (requirement: DataRequirement) => actual.resolveOne(requirement),
+      resolve: async (requirements: readonly DataRequirement[]) => {
+        const bundle = await actual.resolve(requirements)
+        return { ...bundle, items: bundle.items.map((item) => item.metricId === 'earnings_actual_eps' ? { ...item, status: 'UNAVAILABLE' as const, value: undefined } : item) }
+      },
+    } as unknown as DataResolver<EarningsDataPayload>
+    const executor = new FixtureExecutor(validOutput('official-2026-h1'))
+    const result = await runFixture(f, executor, { dataResolver })
+    const reasoningInput = executor.requests[0]?.input as { deterministicFinancialMetrics?: readonly { metric?: string }[] }
+    assert.equal(result.status, 'completed')
+    assert.equal(reasoningInput.deterministicFinancialMetrics?.some((item) => item.metric === 'eps'), false)
+    assert.equal(reasoningInput.deterministicFinancialMetrics?.some((item) => item.metric === 'revenue'), true)
+  } finally { await f.close() }
+})
 test('D2-003 offline product path activates management research inside normal Earnings Review', async () => { const f = await fixture({ akshare: false }); try { const sources: ManagementCommunicationAcquisitionSources = { cninfoIr: async () => [{ ticker: '600519', title: '投资者关系活动记录表', publishedAt: '2026-09-01T00:00:00.000Z', retrievedAt: NOW, content: 'revenue 12元 increase', sourceUrl: 'https://static.cninfo.com.cn/finalpage/2026-09-01/fixture.PDF', originPublisher: 'Fixture Company' }], exchangeQaSzse: async () => [], exchangeQaSse: async () => [] }; const executor: ReasoningExecutor = { capabilities: () => ({ maxContextTokens: 100_000, maxOutputTokens: 10_000, structuredOutputSupport: true, maxConcurrency: 2 }), execute: async (request) => { if (request.operation === 'management_communication_extract') { const input = request.input as { readonly sourceObjects: readonly Record<string, unknown>[] }; const sourceObjectId = String(input.sourceObjects[0]?.sourceObjectId); return { operation: request.operation, output: { formalGuidanceCandidates: [], managementOutlookCandidates: [{ topic: 'demand', metric: 'revenue', direction: 'increase', rawTimeHorizon: 'H1', rawNumericValue: '12', rawUnit: '元', rawFiscalPeriodText: '2026-H1', evidence: { sourceObjectId, startOffset: 0, endOffset: 20, exactText: 'revenue 12元 increase' } }], kpiCandidates: [], structuredQaCandidates: [] } }; } return { operation: request.operation, output: validOutput('official-2026-h1') } } }; const result = await runFixture(f, executor, { managementCommunicationSources: sources }); assert.equal(result.status, 'completed'); assert.equal(result.telemetry.managementCommunicationAcquisitionAttempted, true); assert.equal(result.telemetry.managementCommentaryDeltaCount, 1); assert.match(result.sections?.find((section) => section.title === 'Management Guidance')?.markdown ?? '', /Management commentary delta/); } finally { await f.close() } })

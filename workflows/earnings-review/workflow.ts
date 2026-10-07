@@ -5,12 +5,14 @@ import type { KnowledgeAssetV04, KnowledgeClaimV04, KnowledgeEntityV04, Knowledg
 import type { KnowledgeProductionOutcome } from '../../knowledge/production/contracts.ts'
 import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
 import type { NormalizedResearchSource, ResearchAcquisitionDiagnostic, ResearchCompanyIdentity, ResearchProviderOutcome, ResearchSourceCandidate } from '../../plugins/research-acquisition/contracts.ts'
-import { validateUsableAcquisitionPayload } from '../../plugins/research-acquisition/payload-validation.ts'
+import { createEarningsDataResolver, type EarningsDataPayload } from '../../plugins/research-acquisition/earnings-data.ts'
 import { sha256 } from '../../plugins/research-acquisition/hash.ts'
+import type { DataResolver } from '../../data/resolver.ts'
+import { materializePhase2CommonRequirement } from '../../data/requirements.ts'
 import { normalizeCompanyCandidateIdentity } from '../../skills/knowledge-curation/identity/company-identity.ts'
 import { EarningsReviewSkill, EarningsReviewSemanticError } from '../../skills/earnings-review/skill.ts'
-import { computeEarningsMetrics, earningsPeriodSpec, hasUsableExactPeriod, metricStructuredValues, normalizeAkshareFinancialData, type EarningsPeriod, type EarningsPeriodSpec, type EarningsComputation } from '../../skills/earnings-review/financials.ts'
-import { enrichEarningsReviewSections, normalizeFinancialQualityData, type EarningsFinancialQualitySummary } from '../../skills/earnings-review/financial-quality/index.ts'
+import { computeEarningsMetrics, earningsPeriodSpec, metricStructuredValues, type EarningsPeriod, type EarningsPeriodSpec, type EarningsComputation, type NormalizedFinancialData } from '../../skills/earnings-review/financials.ts'
+import { enrichEarningsReviewSections, type EarningsFinancialQualitySummary } from '../../skills/earnings-review/financial-quality/index.ts'
 import { calculateFinancialQualityAnalysis } from '../../skills/financial_quality_analysis/calculations.ts'
 import { validateResearchReport, writeResearchReport, type ResearchReport } from '../../app/services/research-report.ts'
 import type { EarningsImpactAssessment, EarningsReviewProposal, EarningsReviewSection } from '../../skills/earnings-review/contracts.ts'
@@ -72,28 +74,51 @@ export function selectOfficialEarningsFilings(candidates: readonly ResearchSourc
   return { candidates: selected, diagnostics, exactPeriodMatched: selected.length > 0, futureFilteredCount }
 }
 
-async function acquireOfficial(input: EarningsReviewWorkflowInput, company: ResearchCompanyIdentity, period: EarningsPeriodSpec, asOf: string): Promise<{ sources: readonly NormalizedResearchSource[]; selection: EarningsFilingSelection; diagnostics: readonly ResearchAcquisitionDiagnostic[]; outcome: ResearchProviderOutcome }> {
-  const plugin = input.acquisitionPlugins.find((item) => item.name.toLowerCase().includes('official'))
-  if (!plugin) return { sources: [], selection: { candidates: [], diagnostics: ['Official disclosure plugin is not configured'], exactPeriodMatched: false, futureFilteredCount: 0 }, diagnostics: [{ provider: 'cninfo', status: 'failed', reason: 'Official disclosure plugin is not configured' }], outcome: { provider: 'cninfo', providerAttempted: false, providerSucceeded: false, providerEmpty: false, providerFailed: true, usableSourceCount: 0 } }
-  const diagnostics: ResearchAcquisitionDiagnostic[] = []; let discovered: readonly ResearchSourceCandidate[] = []
-  try { discovered = await plugin.discover({ company, asOf, limitPerKind: Math.min(input.maxSources ?? 20, 20) }) } catch (error) { const reason = error instanceof Error ? error.message : String(error); return { sources: [], selection: { candidates: [], diagnostics: [reason], exactPeriodMatched: false, futureFilteredCount: 0 }, diagnostics: [{ provider: 'cninfo', status: 'failed', reason }], outcome: { provider: 'cninfo', providerAttempted: true, providerSucceeded: false, providerEmpty: false, providerFailed: true, usableSourceCount: 0 } } }
-  const selection = selectOfficialEarningsFilings(discovered, period, asOf); const sources: NormalizedResearchSource[] = []
-  for (const candidate of selection.candidates) {
-    abortIfNeeded(input.signal)
-    try { const fetched = await plugin.fetch(candidate); const payload = validateUsableAcquisitionPayload(fetched.content); if (payload.status !== 'usable') { diagnostics.push({ provider: candidate.provider, candidateId: candidate.candidateId, kind: candidate.kind, status: payload.status, reason: payload.reason }); continue }; sources.push(await plugin.normalize(fetched)) } catch (error) { diagnostics.push({ provider: candidate.provider, candidateId: candidate.candidateId, kind: candidate.kind, status: 'failed', reason: error instanceof Error ? error.message : String(error) }) }
-  }
-  return { sources, selection, diagnostics, outcome: { provider: 'cninfo', providerAttempted: true, providerSucceeded: sources.length > 0, providerEmpty: discovered.length === 0 || (selection.candidates.length === 0 && diagnostics.length === 0), providerFailed: diagnostics.some((item) => item.status === 'failed'), usableSourceCount: sources.length } }
+async function acquireOfficial(resolver: DataResolver<EarningsDataPayload>, company: ResearchCompanyIdentity, period: EarningsPeriodSpec, asOf: string): Promise<{ sources: readonly NormalizedResearchSource[]; selection: EarningsFilingSelection; diagnostics: readonly ResearchAcquisitionDiagnostic[]; outcome: ResearchProviderOutcome }> {
+  const requirement = materializePhase2CommonRequirement('earnings_official_filing', { workflowId: 'earnings-review', ticker: company.symbol, companyId: company.name, asOf, period: { fiscalYear: period.fiscalYear, fiscalPeriod: period.key, end: period.endDate }, required: false })
+  const result = await resolver.resolveOne(requirement)
+  const value = result.value?.kind === 'filing' ? result.value : undefined
+  const sources = value?.sources ?? []
+  const futureCount = result.attempts.flatMap((attempt) => [...(attempt.diagnostic ?? '').matchAll(/EARNINGS_FUTURE_FILINGS:(\d+)/g)].map((match) => Number(match[1]))).reduce((sum, count) => sum + count, 0)
+  const selection: EarningsFilingSelection = value?.selection ?? { candidates: [], diagnostics: result.attempts.flatMap((attempt) => attempt.diagnostic ? [attempt.diagnostic] : []).slice(0, 4), exactPeriodMatched: false, futureFilteredCount: futureCount }
+  const diagnostics = value?.diagnostics ?? result.attempts.flatMap((attempt): ResearchAcquisitionDiagnostic[] => attempt.diagnostic ? [{ provider: 'cninfo', status: attempt.status === 'NO_DATA' ? 'empty' : 'failed', reason: attempt.diagnostic }] : [])
+  const attempted = result.attempts.some((attempt) => attempt.status !== 'UNSUPPORTED' || !attempt.diagnostic?.includes('not configured'))
+  return { sources, selection, diagnostics, outcome: { provider: 'cninfo', providerAttempted: attempted, providerSucceeded: sources.length > 0, providerEmpty: attempted && sources.length === 0 && result.attempts.every((attempt) => attempt.status === 'NO_DATA'), providerFailed: diagnostics.some((item) => item.status === 'failed'), usableSourceCount: sources.length } }
 }
 
-async function acquireStructured(input: EarningsReviewWorkflowInput, company: ResearchCompanyIdentity, period: EarningsPeriodSpec): Promise<{ source?: NormalizedResearchSource; computation?: EarningsComputation; financialQuality?: EarningsFinancialQualitySummary; outcome: ResearchProviderOutcome; diagnostic?: ResearchAcquisitionDiagnostic }> {
-  if (!input.akshare) return { outcome: { provider: 'akshare', providerAttempted: false, providerSucceeded: false, providerEmpty: false, providerFailed: false, usableSourceCount: 0 } }
-  try {
-    const raw = await input.akshare.financialData({ symbol: company.symbol }); const candidateId = `akshare-earnings-${company.symbol}-${period.key}`; const normalized = normalizeAkshareFinancialData(raw, period, candidateId); const computation = computeEarningsMetrics(normalized); const financialQuality = calculateFinancialQualityAnalysis({ data: normalizeFinancialQualityData(raw, period, candidateId), revenueRecognitionDivergenceThreshold: REVENUE_RECOGNITION_DIVERGENCE_THRESHOLD }).summary
-    if (!hasUsableExactPeriod(normalized)) return { computation, outcome: { provider: 'akshare', providerAttempted: true, providerSucceeded: false, providerEmpty: true, providerFailed: false, usableSourceCount: 0 }, diagnostic: { provider: 'akshare', candidateId, kind: 'structured_data', status: 'empty', reason: normalized.diagnostics.join('; ') || `No usable exact-period financial data for ${period.key}` } }
-    const snapshot = { requested: period, current: normalized.current ?? null, priorYear: normalized.priorYear ?? null, verifiedMetrics: metricStructuredValues(computation), unavailable: computation.unavailable, financialQuality }
-    const content = JSON.stringify(snapshot); const candidate: ResearchSourceCandidate = { candidateId, kind: 'structured_data', tier: 2, title: `AKShare earnings financial snapshot ${period.key}`, provider: 'akshare', metadata: { companySymbol: company.symbol, dataKind: 'earnings_financial', period: period.key } }
-    return { source: { candidate, retrievedAt: (input.now ?? (() => new Date().toISOString()))(), title: candidate.title, content, contentHash: sha256(content), publisher: 'AKShare', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }, computation, financialQuality, outcome: { provider: 'akshare', providerAttempted: true, providerSucceeded: true, providerEmpty: false, providerFailed: false, usableSourceCount: 1 } }
-  } catch (error) { return { outcome: { provider: 'akshare', providerAttempted: true, providerSucceeded: false, providerEmpty: false, providerFailed: true, usableSourceCount: 0 }, diagnostic: { provider: 'akshare', kind: 'structured_data', status: 'failed', reason: error instanceof Error ? error.message : String(error) } } }
+async function acquireStructured(resolver: DataResolver<EarningsDataPayload>, company: ResearchCompanyIdentity, period: EarningsPeriodSpec, asOf: string, historicalNumeric: boolean): Promise<{ source?: NormalizedResearchSource; computation?: EarningsComputation; financialQuality?: EarningsFinancialQualitySummary; outcome: ResearchProviderOutcome; diagnostic?: ResearchAcquisitionDiagnostic }> {
+  const metricIds = ['earnings_actual_revenue', 'earnings_actual_net_profit', 'earnings_actual_gross_margin', 'earnings_actual_operating_cash_flow', 'earnings_actual_eps'] as const
+  const requirements = metricIds.map((metricId) => materializePhase2CommonRequirement(metricId, { workflowId: 'earnings-review', ticker: company.symbol, companyId: company.name, asOf, period: { fiscalYear: period.fiscalYear, fiscalPeriod: period.key, end: period.endDate }, required: false, historicalNumeric }))
+  const bundle = await resolver.resolve(requirements)
+  const accepted = bundle.items.filter((item) => item.status === 'AVAILABLE' && item.value?.kind === 'actual' && item.value.normalized.current?.metrics[item.value.metric]?.period === period.key)
+  const resolved = accepted[0]
+  const actual = resolved?.value?.kind === 'actual' ? resolved.value : undefined
+  const attempts = bundle.items.flatMap((item) => item.attempts)
+  const attempted = attempts.some((attempt) => attempt.status !== 'UNSUPPORTED' || !attempt.diagnostic?.includes('client is unavailable'))
+  const failed = attempts.some((attempt) => ['UNSUPPORTED', 'PARSE_ERROR', 'TIMEOUT', 'ACCESS_DENIED'].includes(attempt.status)) && actual === undefined
+  const outcome: ResearchProviderOutcome = { provider: 'akshare', providerAttempted: attempted, providerSucceeded: actual !== undefined, providerEmpty: attempted && actual === undefined && !failed, providerFailed: failed, usableSourceCount: actual === undefined ? 0 : 1 }
+  const candidateId = `akshare-earnings-${company.symbol}-${period.key}`
+  if (actual === undefined) {
+    const reason = bundle.items.flatMap((item) => item.attempts.map((attempt) => attempt.diagnostic)).find((item): item is string => Boolean(item)) ?? `No usable exact-period financial data for ${period.key}`
+    return { outcome, ...(attempted ? { diagnostic: { provider: 'akshare', candidateId, kind: 'structured_data', status: failed ? 'failed' : 'empty', reason } } : {}) }
+  }
+  const currentMetrics: Record<string, NonNullable<NormalizedFinancialData['current']>['metrics'][keyof NonNullable<NormalizedFinancialData['current']>['metrics']]> = {}
+  const priorMetrics: Record<string, NonNullable<NormalizedFinancialData['priorYear']>['metrics'][keyof NonNullable<NormalizedFinancialData['priorYear']>['metrics']]> = {}
+  for (const item of accepted) {
+    if (item.value?.kind !== 'actual') continue
+    const metric = item.value.metric
+    const current = item.value.normalized.current?.metrics[metric]
+    const prior = item.value.normalized.priorYear?.metrics[metric]
+    if (current?.period === period.key && current.metric === metric) currentMetrics[metric] = current
+    if (prior?.metric === metric && prior.period === `${period.fiscalYear - 1}-${period.period}`) priorMetrics[metric] = prior
+  }
+  const normalized: NormalizedFinancialData = { ...actual.normalized, current: { period: period.key, metrics: currentMetrics }, ...(actual.normalized.priorYear ? { priorYear: { ...actual.normalized.priorYear, metrics: priorMetrics } } : {}) }
+  const computation = computeEarningsMetrics(normalized)
+  const financialQuality = calculateFinancialQualityAnalysis({ data: actual.financialQualityData, revenueRecognitionDivergenceThreshold: REVENUE_RECOGNITION_DIVERGENCE_THRESHOLD }).summary
+  const snapshot = { requested: period, current: normalized.current ?? null, priorYear: normalized.priorYear ?? null, verifiedMetrics: metricStructuredValues(computation), unavailable: computation.unavailable, financialQuality }
+  const content = JSON.stringify(snapshot)
+  const candidate: ResearchSourceCandidate = { candidateId, kind: 'structured_data', tier: 2, title: `AKShare earnings financial snapshot ${period.key}`, provider: 'akshare', metadata: { companySymbol: company.symbol, dataKind: 'earnings_financial', period: period.key } }
+  return { source: { candidate, retrievedAt: resolved!.source?.retrievedAt ?? actual.retrievedAt, title: candidate.title, content, contentHash: sha256(content), publisher: 'AKShare', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }, computation, financialQuality, outcome }
 }
 
 function isCompany(object: KnowledgeAssetV04, company: ResearchCompanyIdentity): object is KnowledgeEntityV04 { if (!object.id.startsWith('entity:')) return false; const value = object as KnowledgeEntityV04; return value.type === 'company' && normalizedText(value.ticker) === normalizedText(company.symbol) && normalizedText(value.exchange) === normalizedText(company.exchange) }
@@ -175,15 +200,16 @@ export async function runEarningsReview(input: EarningsReviewWorkflowInput): Pro
   try {
     check(input); const company = normalizeCompany(input.company); const now = nowOf(input); const asOf = input.asOf ?? now(); const period = earningsPeriodSpec(input.fiscalYear, input.period); abortIfNeeded(input.signal)
     const coverage = await existingCoverage(input, company); if (coverage.reason) return { ...resultBase(input, 'blocked', telemetry), blockedReason: coverage.reason, errors: [coverage.reason === 'COMPANY_COVERAGE_NOT_FOUND' ? 'Existing canonical Company coverage was not found; run research_company first.' : 'Multiple canonical Company matches were found; Earnings Review is blocked until coverage is unambiguous.'] }
-    const official = await acquireOfficial(input, company, period, asOf); const structured = await acquireStructured(input, company, period); const sources = [...official.sources, ...(structured.source === undefined ? [] : [structured.source])]; const selectionDiagnostics = official.selection.diagnostics; let acquisitionDiagnostics = [...official.diagnostics, ...(structured.diagnostic === undefined ? [] : [structured.diagnostic])]; telemetry = { ...telemetry, officialEvidenceStatus: official.selection.futureFilteredCount > 0 && official.sources.length === 0 ? 'future_filtered' : official.sources.length > 0 ? 'available' : 'unavailable', structuredFinancialEvidenceStatus: structured.source === undefined ? 'unavailable' : 'available' }
+    const dataResolver = input.dataResolver ?? input.dataResolverFactory?.({ company, fiscalYear: input.fiscalYear, period: input.period, asOf, now, signal: input.signal }) ?? createEarningsDataResolver({ company, fiscalYear: input.fiscalYear, period: input.period, asOf, now, signal: input.signal, maxSources: input.maxSources, acquisitionPlugins: input.acquisitionPlugins, akshare: input.akshare, legacyEastmoney: input.eastmoneyExpectationSource, selectFilings: (candidates, fiscalYear, filingPeriod, cutoff) => selectOfficialEarningsFilings(candidates, { fiscalYear, period: filingPeriod }, cutoff) })
+    const official = await acquireOfficial(dataResolver, company, period, asOf); const structured = await acquireStructured(dataResolver, company, period, asOf, input.asOf !== undefined); const sources = [...official.sources, ...(structured.source === undefined ? [] : [structured.source])]; const selectionDiagnostics = official.selection.diagnostics; let acquisitionDiagnostics = [...official.diagnostics, ...(structured.diagnostic === undefined ? [] : [structured.diagnostic])]; telemetry = { ...telemetry, officialEvidenceStatus: official.selection.futureFilteredCount > 0 && official.sources.length === 0 ? 'future_filtered' : official.sources.length > 0 ? 'available' : 'unavailable', structuredFinancialEvidenceStatus: structured.source === undefined ? 'unavailable' : 'available' }
     if (sources.length === 0) return { ...resultBase(input, 'blocked', telemetry), blockedReason: 'EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE', errors: ['EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE: no exact-period official filing or usable exact-period structured financial evidence was available.'], providerOutcomes: [official.outcome, structured.outcome], selectionDiagnostics, acquisitionDiagnostics, telemetry }
     abortIfNeeded(input.signal)
     const computation = structured.computation ?? { metrics: [], byMetric: {}, unavailable: ['all structured financial metrics'] }; const skillInput = { company, period, officialSources: official.sources.map((source) => ({ candidateId: source.candidate.candidateId, title: source.title, publishedAt: source.candidate.publishedAt, content: source.content, url: source.candidate.url })), financialMetrics: { verified: metricStructuredValues(computation) }, existingKnowledgeClaims: coverage.claims }
     const skill = new EarningsReviewSkill(now, input.reasoningExecutor); let semantic
     try { semantic = await skill.synthesize(skillInput, computation) } catch (error) { const reason = error instanceof EarningsReviewSemanticError ? error.message : 'semantic reasoning failed'; semantic = skill.fallback(skillInput, computation, reason) }
-    const managementCommunication = await resolveManagementCommunication({ company, analysisAsOf: asOf, fiscalYear: input.fiscalYear, period: input.period, signal: input.signal, now, reasoningExecutor: input.reasoningExecutor, officialSources: official.sources, caller: input.managementCommunication, sources: input.managementCommunicationSources, lookbackDays: input.managementCommunicationLookbackDays });
+    const managementCommunication = await resolveManagementCommunication({ company, analysisAsOf: asOf, fiscalYear: input.fiscalYear, period: input.period, signal: input.signal, now, reasoningExecutor: input.reasoningExecutor, officialSources: official.sources, caller: input.managementCommunication, sources: input.managementCommunicationSources, dataResolverFactory: input.managementCommunicationDataResolverFactory, lookbackDays: input.managementCommunicationLookbackDays });
     if (managementCommunication.diagnostics.length > 0) acquisitionDiagnostics = [...acquisitionDiagnostics, ...managementCommunication.diagnostics.map((reason) => ({ provider: 'management-communication', status: managementCommunication.status === 'failed' ? 'failed' as const : managementCommunication.status === 'available' ? 'usable' as const : 'empty' as const, reason }))];
-    const resolvedExpectations = await resolveEarningsExpectations({ workflow: input, company, analysisAsOf: asOf, resultPublishedAt: official.selection.candidates[0]?.publishedAt });
+    const resolvedExpectations = await resolveEarningsExpectations({ workflow: input, company, analysisAsOf: asOf, resultPublishedAt: official.selection.candidates[0]?.publishedAt, dataResolver });
     acquisitionDiagnostics = [...acquisitionDiagnostics, ...resolvedExpectations.acquisitionDiagnostics];
     const callerOrAutomaticExpectations = resolvedExpectations.bundle;
     const managementExpectationFields = managementCommunication.guidance !== undefined || managementCommunication.segmentKpiComparisons !== undefined;

@@ -1,11 +1,12 @@
 import type { ResearchAcquisitionDiagnostic, ResearchCompanyIdentity, ResearchProviderOutcome, NormalizedResearchSource } from '../../plugins/research-acquisition/contracts.ts'
-import type { EastmoneyEstimateSourceRequest } from '../../plugins/research-acquisition/expectations/contracts.ts'
-import { projectEastmoneyEstimatePoints, type EstimateProjectionResult } from './expectation-source-eastmoney.ts'
+import type { EstimateProjectionResult } from './expectation-source-eastmoney.ts'
 import { buildConsensusSnapshot } from '../../skills/earnings-review/expectations/consensus.ts'
 import { validateEstimatePoint } from '../../skills/earnings-review/expectations/matching.ts'
 import type { EstimatePoint } from '../../skills/earnings-review/expectations/contracts.ts'
-import type { EarningsEastmoneyExpectationSource, EarningsReviewExpectationsBundle, EarningsReviewWorkflowInput, EstimateRevisionLink } from './contracts.ts'
+import type { EarningsReviewExpectationsBundle, EarningsReviewWorkflowInput, EstimateRevisionLink } from './contracts.ts'
 import { createAkshareEarningsExpectationsSource } from './expectations-acquisition.ts'
+import type { DataResolver } from '../../data/resolver.ts'
+import { hasConfiguredEarningsExpectationOperation, type EarningsDataPayload } from '../../plugins/research-acquisition/earnings-data.ts'
 
 export interface AutomaticExpectationAssemblyInput {
   readonly projection: EstimateProjectionResult
@@ -43,7 +44,6 @@ interface SourceRegistry {
   readonly rejected: ReadonlySet<string>
 }
 
-const EASTMONEY_PROVIDER = 'eastmoney-reportapi'
 const MAX_ACQUISITION_DIAGNOSTICS = 32
 
 function text(value: unknown): value is string { return typeof value === 'string' && value.trim() !== '' }
@@ -167,17 +167,13 @@ function acquisitionDiagnosticsForProviders(diagnostics: readonly string[], outc
   return outcomes.filter((outcome) => outcome.providerAttempted).flatMap((outcome) => acquisitionDiagnostics(diagnostics, outcome, estimateCount)).slice(0, MAX_ACQUISITION_DIAGNOSTICS)
 }
 
-function hasAkshareExpectationsCapability(client: NonNullable<EarningsReviewWorkflowInput['akshare']>): boolean {
-  return client.profitForecastThs !== undefined || client.researchReportEm !== undefined
-}
-
-export async function resolveEarningsExpectations(input: { readonly workflow: EarningsReviewWorkflowInput; readonly company: ResearchCompanyIdentity; readonly analysisAsOf: string; readonly resultPublishedAt?: string }): Promise<ResolvedEarningsExpectations> {
+export async function resolveEarningsExpectations(input: { readonly workflow: EarningsReviewWorkflowInput; readonly company: ResearchCompanyIdentity; readonly analysisAsOf: string; readonly resultPublishedAt?: string; readonly dataResolver?: DataResolver<EarningsDataPayload> }): Promise<ResolvedEarningsExpectations> {
   const caller = input.workflow.expectations
   if (caller !== undefined) {
     const counts = callerCounts(caller)
     return { mode: 'caller', bundle: caller, diagnostics: [], acquisitionDiagnostics: [], acquisitionStatus: 'not_attempted', ...counts }
   }
-  const expectationsSource = input.workflow.earningsExpectationsSource ?? (input.workflow.akshare !== undefined && hasAkshareExpectationsCapability(input.workflow.akshare) ? createAkshareEarningsExpectationsSource({ akshare: input.workflow.akshare, now: input.workflow.now }) : undefined)
+  const expectationsSource = input.workflow.earningsExpectationsSource ?? (hasConfiguredEarningsExpectationOperation({ akshare: input.workflow.akshare, legacyEastmoney: input.workflow.eastmoneyExpectationSource }) ? createAkshareEarningsExpectationsSource({ akshare: input.workflow.akshare, legacyEastmoney: input.workflow.eastmoneyExpectationSource, now: input.workflow.now, dataResolver: input.dataResolver }) : undefined)
   if (expectationsSource !== undefined) {
     try {
       const acquisition = await expectationsSource.acquire({ company: input.company, asOf: input.analysisAsOf, targetFiscalYear: input.workflow.fiscalYear, signal: input.workflow.signal })
@@ -195,20 +191,5 @@ export async function resolveEarningsExpectations(input: { readonly workflow: Ea
       return { mode: 'automatic', diagnostics, acquisitionDiagnostics: acquisitionDiagnostics(diagnostics, providerOutcome, 0), providerOutcome, providerOutcomes: [providerOutcome], acquisitionStatus: 'failed', estimateCount: 0, institutionCount: 0, consensusSnapshotCount: 0, revisionLinkCount: 0 }
     }
   }
-  const source: EarningsEastmoneyExpectationSource | undefined = input.workflow.eastmoneyExpectationSource
-  if (source === undefined) return { mode: 'none', diagnostics: [], acquisitionDiagnostics: [], acquisitionStatus: 'not_attempted', estimateCount: 0, institutionCount: 0, consensusSnapshotCount: 0, revisionLinkCount: 0 }
-  const request: EastmoneyEstimateSourceRequest = { company: input.company, asOf: input.analysisAsOf, targetFiscalYear: input.workflow.fiscalYear }
-  try {
-    const acquisition = await source.acquire(request)
-    const projection = projectEastmoneyEstimatePoints({ acquisition, targetFiscalYear: input.workflow.fiscalYear })
-    const assembly = assembleAutomaticEarningsExpectations({ projection, targetFiscalYear: input.workflow.fiscalYear, analysisAsOf: input.analysisAsOf, ...(input.resultPublishedAt === undefined ? {} : { resultPublishedAt: input.resultPublishedAt }) })
-    const diagnostics = uniqueSorted([...assembly.diagnostics, ...(assembly.bundle === undefined ? ['automatic_expectations_unavailable'] : [])])
-    const acquisitionStatus = acquisition.providerOutcome.providerFailed ? 'failed' : assembly.bundle === undefined ? 'unavailable' : acquisition.truncated || diagnostics.length > 0 ? 'partial' : 'available'
-    return { mode: 'automatic', ...(assembly.bundle === undefined ? {} : { bundle: assembly.bundle }), diagnostics, acquisitionDiagnostics: acquisitionDiagnostics(diagnostics, acquisition.providerOutcome, assembly.estimateCount), providerOutcome: acquisition.providerOutcome, providerOutcomes: [acquisition.providerOutcome], acquisitionStatus, estimateCount: assembly.estimateCount, institutionCount: assembly.institutionCount, consensusSnapshotCount: assembly.consensusSnapshotCount, revisionLinkCount: assembly.revisionLinkCount }
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error)
-    const providerOutcome: ResearchProviderOutcome = { provider: EASTMONEY_PROVIDER, providerAttempted: true, providerSucceeded: false, providerEmpty: false, providerFailed: true, usableSourceCount: 0 }
-    const diagnostics = [`automatic_expectation_source_exception:${reason}`]
-    return { mode: 'automatic', diagnostics, acquisitionDiagnostics: acquisitionDiagnostics(diagnostics, providerOutcome, 0), providerOutcome, providerOutcomes: [providerOutcome], acquisitionStatus: 'failed', estimateCount: 0, institutionCount: 0, consensusSnapshotCount: 0, revisionLinkCount: 0 }
-  }
+  return { mode: 'none', diagnostics: [], acquisitionDiagnostics: [], acquisitionStatus: 'not_attempted', estimateCount: 0, institutionCount: 0, consensusSnapshotCount: 0, revisionLinkCount: 0 }
 }

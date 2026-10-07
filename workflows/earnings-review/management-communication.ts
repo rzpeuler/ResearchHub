@@ -9,6 +9,8 @@ import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import { assessManagementExecution, type ManagementCommitment, type ManagementExecutionResult, type ManagementOutcome } from '../../skills/management_execution/index.ts'
 import { comparableFiscalPeriod } from '../../skills/earnings-review/expectations/segment-kpi.ts'
 import type { EarningsPeriod } from '../../skills/earnings-review/index.ts'
+import type { ManagementCommunicationDataCompositionOptions, ManagementCommunicationDataPayload } from '../../plugins/research-acquisition/management-communication-data.ts'
+import type { DataResolver } from '../../data/resolver.ts'
 import { parseNumericRange, parseNumericToken } from '../management-communication-extraction/numeric-parsing.ts'
 import { resolveUnit } from '../management-communication-extraction/unit-normalization.ts'
 import { resolveFiscalPeriod } from '../management-communication-extraction/period-normalization.ts'
@@ -96,6 +98,7 @@ export interface ResolveManagementCommunicationInput {
   readonly officialSources: readonly NormalizedResearchSource[]
   readonly caller?: ManagementCommunicationResearchInput
   readonly sources?: ManagementCommunicationAcquisitionSources
+  readonly dataResolverFactory?: (options: ManagementCommunicationDataCompositionOptions) => DataResolver<ManagementCommunicationDataPayload>
   readonly lookbackDays?: number
 }
 
@@ -194,9 +197,10 @@ function mergeExtractions(values: readonly ManagementCommunicationExtractionResu
 async function automaticallyExtract(input: ResolveManagementCommunicationInput, diagnostics: string[]): Promise<{ readonly extraction?: ManagementCommunicationExtractionResult; readonly sources: readonly NormalizedResearchSource[]; readonly documentCount: number; readonly qaCount: number; readonly attempted: boolean }> {
   if (input.sources === undefined) return { sources: [], documentCount: 0, qaCount: 0, attempted: false }
   const request = { ticker: input.company.symbol, companyName: input.company.name, exchange: input.company.exchange as 'SSE' | 'SZSE' | 'BSE' | undefined, asOf: input.analysisAsOf, lookbackDays: input.lookbackDays }
+  const dataResolver = input.dataResolverFactory?.({ request, sources: input.sources, now: input.now ?? (() => new Date().toISOString()), signal: input.signal, diagnostics })
   const [documents, qa] = await Promise.all([
-    runManagementCommunicationDocuments({ request, sources: input.sources, now: input.now, signal: input.signal }),
-    runExchangeQa({ request, sources: input.sources, now: input.now, signal: input.signal }),
+    runManagementCommunicationDocuments({ request, sources: input.sources, now: input.now, signal: input.signal, dataResolver }),
+    runExchangeQa({ request, sources: input.sources, now: input.now, signal: input.signal, dataResolver }),
   ])
   diagnostics.push(...documents.diagnostics, ...qa.diagnostics)
   const sourceObjects = [...documents.data.map(sourceFromDocument), ...qa.data.map(sourceFromQa), ...input.officialSources]

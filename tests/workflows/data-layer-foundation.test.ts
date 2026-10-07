@@ -149,7 +149,7 @@ test('materialized Earnings Common requirements use Data-owned legacy routing me
   assert.equal(req.consumer.capability, 'earnings_expectations')
   const resolution = resolveSourcePolicy(req, [earningsExpectationSourcePolicy()])
   assert.equal(resolution.status, 'MATCHED')
-  assert.equal(resolution.policy?.policyId, 'earnings-expectations-source-ladder-v0.1')
+  assert.equal(resolution.policy?.policyId, 'earnings-expectations-eps-source-ladder-v0.1')
 })
 
 test('canonical Skill requirement coverage is explicit and registry clones deeply isolate requirements', () => {

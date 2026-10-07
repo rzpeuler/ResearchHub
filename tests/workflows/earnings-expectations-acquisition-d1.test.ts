@@ -154,6 +154,17 @@ test('automatic D0 requirements are authoritative numeric and prohibit LLM Web f
   assert.deepEqual(requirements.map((requirement) => [requirement.determinismClass, requirement.llmWebFallback]), [['AUTHORITATIVE_NUMERIC', 'FORBIDDEN'], ['AUTHORITATIVE_NUMERIC', 'FORBIDDEN']])
 })
 
+test('single EPS question materializes only EPS and preserves the THS institution estimate', async () => {
+  const requirements: Array<{ readonly metricId?: string }> = []
+  let calls = 0
+  const source = new AkshareEarningsExpectationsSource({ akshare: client({ profitForecastThs: async () => { calls += 1; return [thsRow('诚通证券', '2026-09-18')] } }), now: () => RETRIEVED, onRequirement: (item) => requirements.push(item) })
+  const result = await source.acquire({ company: COMPANY, asOf: AS_OF, targetFiscalYear: 2026, metric: 'eps' })
+  assert.deepEqual(requirements.map((item) => item.metricId), ['earnings_expectation_eps'])
+  assert.equal(result.results.length, 1)
+  assert.equal(calls, 1)
+  assert.equal(result.projection.estimates.every((item) => item.metric === 'eps'), true)
+})
+
 test('automatic diagnostics attribute THS and EastMoney to their actual providers', async () => {
   const workflow = { fiscalYear: 2026, akshare: client({ profitForecastThs: async () => [], researchReportEm: async () => [] }) } as unknown as EarningsReviewWorkflowInput
   const result = await resolveEarningsExpectations({ workflow, company: COMPANY, analysisAsOf: AS_OF })

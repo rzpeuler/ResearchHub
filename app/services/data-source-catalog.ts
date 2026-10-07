@@ -1,8 +1,8 @@
 import type { DataRequirement, SourceCandidate, SourcePolicy } from '../../data/contracts.ts'
 import { getCommonDataDefinition } from '../../data/common-catalog.ts'
 import { PHASE2_COMMON_SOURCE_POLICIES } from '../../data/valuation-earnings-policies.ts'
-import { EARNINGS_EXPECTATION_METRICS, earningsExpectationSourcePolicy } from '../../workflows/earnings-review/expectations-acquisition.ts'
-import { EXCHANGE_QA_SSE_CAPABILITY, EXCHANGE_QA_SSE_METRIC_ID, EXCHANGE_QA_SZSE_CAPABILITY, EXCHANGE_QA_SZSE_METRIC_ID, MANAGEMENT_COMMUNICATION_DOCUMENT_CAPABILITY, MANAGEMENT_COMMUNICATION_DOCUMENT_METRIC_ID, exchangeQAPolicy, managementCommunicationDocumentPolicy } from '../../workflows/management-communication-acquisition/source-policies.ts'
+import { EARNINGS_EXPECTATION_METRICS } from '../../workflows/earnings-review/expectations-acquisition.ts'
+import { EXCHANGE_QA_SSE_CAPABILITY, EXCHANGE_QA_SSE_METRIC_ID, EXCHANGE_QA_SZSE_CAPABILITY, EXCHANGE_QA_SZSE_METRIC_ID, MANAGEMENT_COMMUNICATION_DOCUMENT_CAPABILITY, MANAGEMENT_COMMUNICATION_DOCUMENT_METRIC_ID } from '../../workflows/management-communication-acquisition/source-policies.ts'
 
 const CATALOG_AS_OF = '1970-01-01T00:00:00.000Z'
 const PUBLIC_WEB_SEARCH_OPERATION_AVAILABLE = false
@@ -53,28 +53,28 @@ function requirement(input: Pick<DataRequirement, 'id' | 'consumer' | 'dataKind'
 }
 
 function definitions(): readonly CatalogDefinition[] {
-  const earningsPolicy = earningsExpectationSourcePolicy()
+  const commonPolicy = (metricId: string): SourcePolicy => PHASE2_COMMON_SOURCE_POLICIES.find((item) => item.requirementMatch.metricId === metricId)!
   const management = [
     {
       metricId: MANAGEMENT_COMMUNICATION_DOCUMENT_METRIC_ID,
       chineseMeaning: '上市公司管理层交流披露',
       capability: MANAGEMENT_COMMUNICATION_DOCUMENT_CAPABILITY,
       dataKind: 'document' as const,
-      policy: managementCommunicationDocumentPolicy(),
+      policy: commonPolicy(MANAGEMENT_COMMUNICATION_DOCUMENT_METRIC_ID),
     },
     {
       metricId: EXCHANGE_QA_SSE_METRIC_ID,
       chineseMeaning: '上交所投资者问答',
       capability: EXCHANGE_QA_SSE_CAPABILITY,
       dataKind: 'evidence' as const,
-      policy: exchangeQAPolicy('SSE'),
+      policy: commonPolicy(EXCHANGE_QA_SSE_METRIC_ID),
     },
     {
       metricId: EXCHANGE_QA_SZSE_METRIC_ID,
       chineseMeaning: '深交所投资者互动问答',
       capability: EXCHANGE_QA_SZSE_CAPABILITY,
       dataKind: 'evidence' as const,
-      policy: exchangeQAPolicy('SZSE'),
+      policy: commonPolicy(EXCHANGE_QA_SZSE_METRIC_ID),
     },
   ] as const
 
@@ -94,11 +94,7 @@ function definitions(): readonly CatalogDefinition[] {
         minimumAuthority: 'S3_AGGREGATOR',
       }),
       chineseMeaning: getCommonDataDefinition(item.metricId)?.meaning ?? '',
-      policy: {
-        ...earningsPolicy,
-        requirementMatch: { ...earningsPolicy.requirementMatch, metricId: item.metricId },
-        candidates: earningsPolicy.candidates.filter((candidate) => candidate.supports.metricIds?.includes(item.metricId)),
-      },
+      policy: commonPolicy(item.metricId),
     })),
     ...management.map((item) => ({
       requirement: requirement({
