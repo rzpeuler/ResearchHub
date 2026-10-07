@@ -10,7 +10,7 @@ import type {
   SourcePolicy,
 } from './contracts.ts'
 import { candidateEligibility, orderCandidates, resolveSourcePolicy } from './source-policy.ts'
-import { assertValidDataRequirement, validateAcquisitionData } from './validation.ts'
+import { assertValidDataRequirement, validateAcquisitionData, validateDataRequirement } from './validation.ts'
 
 export interface ResearchDataAcquisitionOptions<T> {
   readonly requirement: DataRequirement
@@ -21,6 +21,19 @@ export interface ResearchDataAcquisitionOptions<T> {
 }
 
 export async function runResearchDataAcquisition<T>(options: ResearchDataAcquisitionOptions<T>): Promise<AcquisitionResult<T>> {
+  const marketEnd = options.requirement.period?.end
+  if (options.requirement.metricId === 'valuation_market_price' && marketEnd !== undefined && !validMarketPeriodEnd(marketEnd)) {
+    const otherErrors = validateDataRequirement(options.requirement).filter((error) => error !== 'period.end must be a valid date')
+    if (otherErrors.length > 0) throw new Error(`INVALID_DATA_REQUIREMENT: ${otherErrors.join('; ')}`)
+    return {
+      requirementId: options.requirement.id,
+      status: 'UNAVAILABLE',
+      source: null,
+      quality: { ...unavailableQuality(options.requirement), pitDiagnostic: `POINT_IN_TIME_INVALID: invalid market period.end ${marketEnd}` },
+      attempts: [],
+      unavailableReason: 'NO_ELIGIBLE_POINT_IN_TIME_DATA',
+    }
+  }
   assertValidDataRequirement(options.requirement)
   const now = options.now ?? (() => new Date().toISOString())
   const resolution = resolveSourcePolicy(options.requirement, options.policies)
@@ -203,7 +216,7 @@ function evaluateExecution<T>(
   const observedAt = execution.source?.observedAt
   const observationAvailableAt = execution.source?.observationAvailableAt
   if (requirement.metricId === 'valuation_market_price') {
-    if (!requirement.period?.end || !observedAt || !observationAvailableAt || !validMarketDate(observedAt) || !validDate(observationAvailableAt)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'NO_ELIGIBLE_POINT_IN_TIME_DATA: market period, observation date, and close availability are required' }
+    if (!requirement.period?.end || !validMarketPeriodEnd(requirement.period.end) || !observedAt || !observationAvailableAt || !validMarketDate(observedAt) || !validDate(observationAvailableAt)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'NO_ELIGIBLE_POINT_IN_TIME_DATA: valid market period, observation date, and close availability are required' }
     const dailyClose = Date.parse(`${observedAt}T15:00:00+08:00`)
     if (Date.parse(observationAvailableAt) < dailyClose) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `observationAvailableAt ${observationAvailableAt} precedes the daily close for ${observedAt}` }
   }
@@ -239,6 +252,10 @@ function afterRequestedPeriod(observedAt: string, periodEnd: string): boolean {
 function validMarketDate(value: string): boolean {
   const date = new Date(`${value}T00:00:00.000Z`)
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+}
+
+function validMarketPeriodEnd(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}(?:T.+)?$/.test(value) && validMarketDate(value.slice(0, 10)) && validDate(value)
 }
 
 function unavailableQuality(requirement: DataRequirement): AcquisitionResult<unknown>['quality'] {

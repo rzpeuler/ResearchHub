@@ -109,6 +109,26 @@ test('market PIT fails closed for publication-only, missing observation availabi
   }
 })
 
+test('malformed market period ends are unavailable before source execution', async () => {
+  const market: DataRequirement = { ...financialRequirement, dataKind: 'timeseries', metricId: 'valuation_market_price', requireValueVersionProof: false }
+  const marketPolicy: SourcePolicy = { policyId: 'market', requirementMatch: { metricId: 'valuation_market_price' }, selectionMode: 'FIRST_VALID', candidates: [
+    { sourceId: 'market', fallbackLevel: 'PRIMARY', originAuthority: 'S3_AGGREGATOR', operationId: 'market', supports: { dataKinds: ['timeseries'], metricIds: ['valuation_market_price'] } },
+  ] }
+  let executed = 0
+  for (const end of ['nonsense', '2025-02-30']) {
+    const result = await runResearchDataAcquisition({ requirement: { ...market, period: { end } }, policies: [marketPolicy], executor: async () => {
+      executed += 1
+      return { status: 'SUCCESS' as const, data: { close: 9 }, source: { observedAt: '2025-02-28', observationAvailableAt: '2025-02-28T07:00:00.000Z', retrievedAt: '2026-10-07' } }
+    } })
+    assert.equal(result.status, 'UNAVAILABLE')
+    assert.equal(result.unavailableReason, 'NO_ELIGIBLE_POINT_IN_TIME_DATA')
+    assert.equal(result.quality.pointInTimeSafe, false)
+    assert.match(result.quality.pitDiagnostic ?? '', /POINT_IN_TIME_INVALID/)
+    assert.deepEqual(result.attempts, [])
+  }
+  assert.equal(executed, 0)
+})
+
 test('same-day market close is ineligible before 15:00 Asia/Shanghai and eligible afterward', async () => {
   const market: DataRequirement = { ...financialRequirement, dataKind: 'timeseries', metricId: 'valuation_market_price', requireValueVersionProof: false, period: { end: '2025-03-31' } }
   const marketPolicy: SourcePolicy = { policyId: 'market', requirementMatch: { metricId: 'valuation_market_price' }, selectionMode: 'FIRST_VALID', candidates: [
