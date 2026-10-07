@@ -4,7 +4,7 @@ import { earningsPeriodSpec } from '../../../skills/earnings-review/financials.t
 import { EARNINGS_REVIEW_SECTIONS } from '../../../skills/earnings-review/contracts.ts'
 import { calculateAccrualQuality } from '../../../skills/earnings-review/financial-quality/accrual-quality.ts'
 import { calculateCashConversion } from '../../../skills/earnings-review/financial-quality/cash-conversion.ts'
-import { normalizeFinancialQualityData } from '../../../skills/earnings-review/financial-quality/normalization.ts'
+import { normalizeFinancialQualityData } from '../../../plugins/research-acquisition/earnings-financial-quality-normalization.ts'
 import { analyzeRevenueRecognition } from '../../../skills/earnings-review/financial-quality/revenue-recognition.ts'
 import { calculateEarningsFinancialQualitySummary, enrichEarningsReviewSections } from '../../../skills/earnings-review/financial-quality/summary.ts'
 import type { FinancialQualityPeriodFacts } from '../../../skills/earnings-review/financial-quality/contracts.ts'

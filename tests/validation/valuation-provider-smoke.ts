@@ -2,7 +2,8 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { AkshareDataAdapter } from '../../plugins/research-acquisition/akshare.ts'
 import { validateUsableAcquisitionPayload } from '../../plugins/research-acquisition/payload-validation.ts'
-import { normalizeValuationFinancialData, normalizeValuationMarketData, selectValuationBasis } from '../../skills/valuation/financials.ts'
+import { selectValuationBasis } from '../../skills/valuation/financials.ts'
+import { normalizeValuationFinancialData, normalizeValuationMarketData } from '../../plugins/research-acquisition/valuation-normalization.ts'
 
 const repoRoot = resolve(import.meta.dirname, '../..'); const evidenceDir = resolve(repoRoot, 'tests/validation/evidence'); const evidencePath = resolve(evidenceDir, 'RHL_M3A_VALUATION_V1_PROVIDER_SMOKE.json'); const now = '2026-09-09T00:00:00.000Z'; const adapter = new AkshareDataAdapter({ timeoutMs: 60_000 }); const calls = ['companyBasic', 'financialData', 'historicalMarketData'] as const; const results: Record<string, unknown> = {}; const payloads: Record<string, unknown> = {}
 for (const method of calls) { const started = Date.now(); try { const payload = await adapter[method]({ symbol: '600519', ...(method === 'historicalMarketData' ? { endDate: '2026-09-09' } : {}) }); payloads[method] = payload; const usable = validateUsableAcquisitionPayload(payload); results[method] = { transport: 'PASS', usability: usable.status, reason: usable.reason, rowCount: Array.isArray(payload) ? payload.length : null, latencyMs: Date.now() - started } } catch (error) { const message = error instanceof Error ? error.message : String(error); results[method] = { transport: 'FAIL', usability: 'UNAVAILABLE', error: message.slice(0, 1_000), latencyMs: Date.now() - started } } }

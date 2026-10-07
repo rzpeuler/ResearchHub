@@ -1,4 +1,5 @@
 import type { ValuationFinancialRow, ValuationMarketObservation } from '../../skills/valuation/financials.ts'
+import { dailyCloseAvailableAt } from '../../data/point-in-time.ts'
 
 type Dict = Record<string, unknown>
 const DATE_ALIASES = ['报告期', '报告日期', '报告期末', '日期', 'date', 'end_date', 'report_date', 'REPORT_DATE', 'period', 'fiscal_period'] as const
@@ -35,7 +36,6 @@ export function normalizeValuationDate(value: unknown): string | undefined {
 }
 function dateOf(row: Dict, aliases: readonly string[]): string | undefined { return normalizeValuationDate(first(row, aliases)) }
 
-export function dailyCloseAvailableAt(priceDate: string): string { return new Date(`${priceDate}T15:00:00+08:00`).toISOString() }
 export function normalizeValuationMarketData(value: unknown, valuationDate: string, fixedAsOf?: string): { readonly observation?: ValuationMarketObservation; readonly diagnostics: readonly string[] } {
   const diagnostics: string[] = []; const candidates = rowsOf(value).map((row) => ({ date: dateOf(row, MARKET_DATE_ALIASES), close: numberValue(first(row, CLOSE_ALIASES)) })).filter((item): item is { date: string; close: number } => item.date !== undefined && item.close !== undefined && item.close > 0 && Number.isFinite(item.close) && (fixedAsOf === undefined ? item.date <= valuationDate : Date.parse(dailyCloseAvailableAt(item.date)) <= Date.parse(fixedAsOf))).sort((left, right) => left.date.localeCompare(right.date))
   if (candidates.length === 0) { diagnostics.push('VALUATION_MARKET_PRICE_UNAVAILABLE'); return { diagnostics } }

@@ -1,7 +1,7 @@
 # ResearchHub Data Layer Architecture v1
 
-Status: `IMPLEMENTED / SOL ACCEPTANCE PENDING` after the Phase 1 Goal passes its
-validation and delivery gates.
+Status: Phase 1 foundation accepted; Phase 2 Valuation and Earnings migration
+is implemented on its isolated branch and remains `SOL ACCEPTANCE PENDING`.
 
 ## Purpose and boundaries
 
@@ -51,9 +51,9 @@ set covers valuation basis, earnings estimates, management communication, and
 exchange Q&A already represented in the Data Sources surface.
 
 The Common Catalog is strict and globally identifiable.
-`app/services/data-source-catalog.ts` reads meanings from these definitions while continuing to
-compose its active source routes from the existing valuation, earnings, and
-management policies. `sourcePolicyStatus: CONFIGURED` means a policy exists;
+`app/services/data-source-catalog.ts` reads meanings from these definitions
+and composes active source routes from Data-owned policy definitions.
+`sourcePolicyStatus: CONFIGURED` means a policy exists;
 it does not certify that the source is complete, authoritative for every
 question, or quality-approved. The current Data Sources API and UI stay intact.
 
@@ -99,13 +99,14 @@ The research Skill catalog retains its human-readable `inputs` and adds typed
 
 Templates include data kind, determinism class, authority floor when known,
 required fields, and required/optional status. They contain no provider names.
-The initial Common mapping covers reverse DCF market price. Consensus
-expectations and estimate revision mappings are deferred because each method
-invocation selects one metric (and revision additionally requires a compatible
-old/new observation pair); fixed EPS-plus-net-profit declarations would
-misstate those contracts. The Industry cycle Skill expresses semantic needs
-only; it does not enumerate PCB, semiconductor, shipping, or other
-industry-specific metrics. Each canonical Skill exposes `requirementCoverage`:
+The Skill catalog's initial static mapping covers reverse DCF market price.
+Phase 2 also materializes per-invocation Valuation and Earnings Common
+requirements in Workflow because expectation calls select one metric and
+revision analysis requires a compatible old/new observation pair; fixed
+EPS-plus-net-profit declarations would misstate those contracts. The Industry
+cycle Skill expresses semantic needs only; it does not enumerate PCB,
+semiconductor, shipping, or other industry-specific metrics. Each canonical
+Skill exposes `requirementCoverage`:
 `NONE` means no requirements are declared or mapped; `PARTIAL` means known
 inputs are deferred/unmapped or templates cover only a subset; `COMPLETE` means
 all external data inputs for the method are represented. This makes absent or
@@ -171,26 +172,34 @@ perform network acquisition or call `DataResolver`.
 
 ## Migration inventory
 
-Phase 1 establishes contracts and compatibility only. Remaining direct or
-partially composed acquisition paths are scheduled as follows:
+Phase 2 is implemented on `codex/dl-goal-002-valuation-earnings-migration`.
+Its migration keeps source policy and adapter execution behind DataResolver;
+Workflow retains domain requirement materialization, exact filing/correction
+selection, typed mapping, calculations, and report/Knowledge orchestration.
+Provider wire parsing is in Plugin adapters, while Shanghai daily-close
+availability is a Data PIT rule in `data/point-in-time.ts`.
 
-### Phase 2 — Valuation and Earnings
+### Phase 2 — Valuation and Earnings (implemented; acceptance pending)
 
-- `workflows/valuation/workflow.ts`, `workflows/valuation/contracts.ts`,
-  `workflows/valuation/automatic-comps.ts`, and
-  `workflows/valuation/basis-evidence.ts`: direct/injected market, financial,
-  peer, and annual-publication acquisition remains alongside the generic
-  requirement/policy path.
-- `workflows/earnings-review/workflow.ts`,
-  `workflows/earnings-review/expectations-acquisition.ts`,
-  `workflows/earnings-review/expectations-ths.ts`,
-  `workflows/earnings-review/expectations-eastmoney-akshare.ts`, and
-  `workflows/earnings-review/expectation-source-eastmoney.ts`: filing and
-  financial acquisition remains direct or provider-specific; estimates already
-  use the generic policy engine but retain concrete executors and projections.
-- `workflows/management-communication-acquisition/`: its distinct runtime
-  policy/acquisition path remains to be composed through DataResolver where
-  appropriate.
+- `data/valuation-earnings-policies.ts` owns Common source policies;
+  `data/requirements.ts` materializes exact metric, fiscal-period, subject, and
+  cutoff identities.
+- `plugins/research-acquisition/valuation-data.ts` and
+  `plugins/research-acquisition/earnings-data.ts` bind source operations and
+  provider parsing to DataResolver. `app/runtime/application-runtime.ts`
+  supplies explicit resolver factories for the normal application path.
+- `workflows/valuation/workflow.ts` and
+  `workflows/valuation/automatic-comps.ts` resolve issuer and peer market,
+  financial, publication, and peer evidence through DataResolver. Peer cohort,
+  scale, cap, eligibility, and cross-check methodology remains domain logic.
+- `workflows/earnings-review/workflow.ts` resolves official filings and exact
+  actual metrics; `expectations-acquisition.ts` resolves per-metric estimates;
+  `management-communication-acquisition/workflow.ts` resolves documents and
+  exchange Q&A. Workflow retains correction-aware filing selection, per-metric
+  mapping, research calculations, and report/Knowledge behavior.
+- Caller-injected legacy client fields remain as compatibility composition
+  seams. They do not define policy order; acquisition attempts and fallback
+  outcomes are produced by DataResolver.
 
 ### Phase 3 — Company, Event, and Thesis
 
@@ -220,16 +229,18 @@ partially composed acquisition paths are scheduled as follows:
 outside Data Layer. Monitoring, source registry, subscriptions, and signal
 storage require a separate Intelligence design.
 
-Existing type-only Skill references into plugin acquisition contracts, and the
+Existing type-only Skill references into Plugin acquisition contracts, and the
 Industry operating-observation contract co-located with its implementation,
-are recorded as migration debt. No new concrete provider import is introduced
-into a Skill by this Goal.
+remain migration debt. Provider-specific financial parsing is owned by Plugin;
+Skills import no concrete acquisition parser or resolver and perform no
+acquisition I/O.
 
 ## Compatibility and quality boundary
 
-Phase 1 does not intentionally change business research behavior. Existing
-Data Sources routes remain assembled from the same policy definitions, current
-Industry composition remains operational, and Daily Intelligence stays
-separate. Existing Industry providers and authority labels are not promoted to
-approved Common or Industry source policy; source quality and field semantics
-remain for future domain-specific review.
+Phase 2 makes no intentional change to research methodology, report structure,
+or Knowledge persistence. Fixed historical numeric inputs without value-version
+evidence remain unavailable or explicitly unverified. Existing Data Sources
+routes remain available, current Industry composition remains operational, and
+Daily Intelligence stays separate. Existing Industry providers and authority
+labels are not promoted to approved Common or Industry source policy; source
+quality and field semantics remain for future domain-specific review.

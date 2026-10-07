@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { AkshareDataAdapter } from '../plugins/research-acquisition/akshare.ts'
 import { CninfoOfficialDisclosureClient, cninfoShanghaiCalendarDate } from '../plugins/research-acquisition/official.ts'
 import { validateUsableAcquisitionPayload } from '../plugins/research-acquisition/payload-validation.ts'
-import { normalizeValuationFinancialData, normalizeValuationMarketData } from '../skills/valuation/financials.ts'
+import { normalizeValuationFinancialData, normalizeValuationMarketData } from '../plugins/research-acquisition/valuation-normalization.ts'
 import { resolveValuationBasisEvidence } from '../workflows/valuation/basis-evidence.ts'
 
 const enabled = process.env.RESEARCHHUB_RUN_REAL_VALUATION_BASIS === '1'

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { CninfoOfficialDisclosureClient, selectCninfoAnnualReportRecord, type AnnualReportPublicationProof, type OfficialDisclosureRecord } from '../../plugins/research-acquisition/official.ts'
-import { normalizeValuationFinancialData, normalizeValuationMarketData, type ValuationFinancialRow } from '../../skills/valuation/financials.ts'
+import { type ValuationFinancialRow } from '../../skills/valuation/financials.ts'
+import { normalizeValuationFinancialData, normalizeValuationMarketData } from '../../plugins/research-acquisition/valuation-normalization.ts'
 import { compareValuationNumericObservations, resolveValuationBasisEvidence } from '../../workflows/valuation/basis-evidence.ts'
 
 const NOW = '2026-09-23T00:00:00.000Z'

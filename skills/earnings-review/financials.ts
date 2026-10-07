@@ -20,8 +20,6 @@ export function earningsPeriodSpec(fiscalYear: number, period: EarningsPeriod): 
 export function periodKey(fiscalYear: number, period: EarningsPeriod): string { return earningsPeriodSpec(fiscalYear, period).key }
 export function periodTitleAliases(period: EarningsPeriod): readonly string[] { return PERIOD_ALIASES[period] }
 
-export { normalizeAksharePeriod, normalizeAkshareFinancialData } from '../../plugins/research-acquisition/earnings-financial-normalization.ts'
-
 function derived(metric: EarningsMetricName, value: number, unit: EarningsMetricUnit, period: string, sourceCandidateId: string): VerifiedFinancialMetric { return { metric, value, unit, period, comparator: 'eq', calculation: 'derived', sourceCandidateIds: [sourceCandidateId] } }
 function yoy(current: VerifiedFinancialMetric | undefined, prior: VerifiedFinancialMetric | undefined, metric: EarningsMetricName, period: string, sourceCandidateId: string): VerifiedFinancialMetric | undefined { if (!current || !prior || current.unit !== prior.unit || prior.value === 0) return undefined; const value = (current.value - prior.value) / Math.abs(prior.value) * 100; return Number.isFinite(value) ? derived(metric, value, 'percent', period, sourceCandidateId) : undefined }
 

@@ -83,15 +83,32 @@ const allowedWorkflowAcquisitionDependencies = new Map<string, ReadonlySet<strin
     '../../plugins/daily-intelligence/brief-store.ts',
     '../../plugins/daily-intelligence/signal-intelligence.ts',
   ])],
-  ['workflows/earnings-review/contracts.ts', new Set(['../../plugins/research-acquisition/akshare.ts'])],
-  ['workflows/earnings-review/expectations-acquisition.ts', new Set(['../../plugins/research-acquisition/akshare.ts'])],
-  ['workflows/earnings-review/expectations-eastmoney-akshare.ts', new Set(['../../plugins/research-acquisition/expectations/eastmoney-report.ts'])],
-  ['workflows/earnings-review/expectations-ths.ts', new Set(['../../plugins/research-acquisition/expectations/eastmoney-report.ts'])],
+  ['workflows/earnings-review/automatic-expectations.ts', new Set(['../../plugins/research-acquisition/earnings-data.ts'])],
+  ['workflows/earnings-review/contracts.ts', new Set([
+    '../../plugins/research-acquisition/akshare.ts',
+    '../../plugins/research-acquisition/earnings-data.ts',
+    '../../plugins/research-acquisition/management-communication-data.ts',
+  ])],
+  ['workflows/earnings-review/expectation-source-eastmoney.ts', new Set(['../../plugins/research-acquisition/earnings-expectation-source-eastmoney.ts'])],
+  ['workflows/earnings-review/expectations-acquisition.ts', new Set([
+    '../../plugins/research-acquisition/akshare.ts',
+    '../../plugins/research-acquisition/earnings-data.ts',
+  ])],
+  ['workflows/earnings-review/expectations-eastmoney-akshare.ts', new Set([
+    '../../plugins/research-acquisition/earnings-expectations-eastmoney-akshare.ts',
+  ])],
+  ['workflows/earnings-review/expectations-ths.ts', new Set([
+    '../../plugins/research-acquisition/earnings-expectations-ths.ts',
+  ])],
+  ['workflows/earnings-review/workflow.ts', new Set(['../../plugins/research-acquisition/earnings-data.ts'])],
+  ['workflows/earnings-review/management-communication.ts', new Set(['../../plugins/research-acquisition/management-communication-data.ts'])],
   ['workflows/industry-deep-research/contracts.ts', new Set(['../../plugins/research-acquisition/industry-operating-observations.ts'])],
   ['workflows/industry-deep-research/workflow.ts', new Set(['../../plugins/research-acquisition/industry-operating-observations.ts'])],
-  ['workflows/management-communication-acquisition/contracts.ts', new Set(['../../plugins/research-acquisition/management-communication.ts'])],
-  ['workflows/management-communication-acquisition/normalization.ts', new Set(['../../plugins/research-acquisition/management-communication.ts'])],
+  ['workflows/management-communication-acquisition/contracts.ts', new Set(['../../plugins/research-acquisition/management-communication-contracts.ts'])],
+  ['workflows/management-communication-acquisition/dedupe.ts', new Set(['../../plugins/research-acquisition/management-dedupe.ts'])],
+  ['workflows/management-communication-acquisition/normalization.ts', new Set(['../../plugins/research-acquisition/management-normalization.ts'])],
   ['workflows/management-communication-acquisition/workflow.ts', new Set([
+    '../../plugins/research-acquisition/management-communication-data.ts',
     '../../plugins/research-acquisition/management-communication.ts',
     '../../plugins/research-acquisition/official.ts',
     '../../plugins/research-acquisition/akshare.ts',
@@ -102,13 +119,21 @@ const allowedWorkflowAcquisitionDependencies = new Map<string, ReadonlySet<strin
   ['workflows/valuation/automatic-comps.ts', new Set([
     '../../plugins/research-acquisition/akshare.ts',
     '../../plugins/research-acquisition/official.ts',
+    '../../plugins/research-acquisition/valuation-data.ts',
   ])],
-  ['workflows/valuation/basis-evidence.ts', new Set(['../../plugins/research-acquisition/official.ts'])],
+  ['workflows/valuation/basis-evidence.ts', new Set([
+    '../../plugins/research-acquisition/official.ts',
+    '../../plugins/research-acquisition/valuation-data.ts',
+  ])],
   ['workflows/valuation/contracts.ts', new Set([
     '../../plugins/research-acquisition/akshare.ts',
     '../../plugins/research-acquisition/official.ts',
+    '../../plugins/research-acquisition/valuation-data.ts',
   ])],
-  ['workflows/valuation/workflow.ts', new Set(['../../plugins/research-acquisition/official.ts'])],
+  ['workflows/valuation/workflow.ts', new Set([
+    '../../plugins/research-acquisition/official.ts',
+    '../../plugins/research-acquisition/valuation-data.ts',
+  ])],
   ['app/services/daily-intelligence-composition.ts', new Set([
     '../../plugins/research-acquisition/akshare.ts',
     '../../plugins/research-acquisition/official.ts',
@@ -240,6 +265,38 @@ test('Workflow and application Plugin dependencies match the explicit deferred-d
   }
   const violations = unbaselinedWorkflowAcquisitionDependencies(dependencies)
   assert.deepEqual(violations, [], violations.join('\n'))
+
+  const phase2Paths = new Set([
+    'workflows/earnings-review/automatic-expectations.ts',
+    'workflows/earnings-review/contracts.ts',
+    'workflows/earnings-review/expectation-source-eastmoney.ts',
+    'workflows/earnings-review/expectations-acquisition.ts',
+    'workflows/earnings-review/expectations-eastmoney-akshare.ts',
+    'workflows/earnings-review/expectations-ths.ts',
+    'workflows/earnings-review/workflow.ts',
+    'workflows/earnings-review/management-communication.ts',
+    'workflows/management-communication-acquisition/contracts.ts',
+    'workflows/management-communication-acquisition/dedupe.ts',
+    'workflows/management-communication-acquisition/normalization.ts',
+    'workflows/management-communication-acquisition/workflow.ts',
+    'workflows/valuation/automatic-comps.ts',
+    'workflows/valuation/basis-evidence.ts',
+    'workflows/valuation/contracts.ts',
+    'workflows/valuation/workflow.ts',
+  ])
+  const actualByPath = new Map<string, Set<string>>()
+  for (const { relativePath, reference } of dependencies) {
+    if (!phase2Paths.has(relativePath) || !isConcreteWorkflowPluginDependency(reference.specifier)) continue
+    const actual = actualByPath.get(relativePath) ?? new Set<string>()
+    actual.add(reference.specifier)
+    actualByPath.set(relativePath, actual)
+  }
+  const staleEntries = [...allowedWorkflowAcquisitionDependencies]
+    .filter(([relativePath]) => phase2Paths.has(relativePath))
+    .flatMap(([relativePath, allowed]) => [...allowed]
+      .filter((specifier) => !actualByPath.get(relativePath)?.has(specifier))
+      .map((specifier) => `${relativePath} allows stale acquisition module ${specifier}`))
+  assert.deepEqual(staleEntries, [], staleEntries.join('\n'))
 })
 
 test('a new concrete Workflow acquisition dependency fails without an explicit baseline entry', () => {

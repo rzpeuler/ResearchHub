@@ -1,17 +1,13 @@
 import type { ValuationBasis, ValuationComputation, ValuationMethod, ValuationMethodEligibility, ValuationScenarioAssumption, ValuationScenarioId, ValuationScenarioResult, ValuationSensitivityCell } from './contracts.ts'
-import { normalizeValuationDate, normalizeValuationMarketData, normalizeValuationFinancialData } from '../../plugins/research-acquisition/valuation-normalization.ts'
-export { dailyCloseAvailableAt, normalizeValuationDate, normalizeValuationMarketData, normalizeValuationFinancialData } from '../../plugins/research-acquisition/valuation-normalization.ts'
 
 const METHOD_SET = new Set<ValuationMethod>(['PE', 'PB', 'EV_EBITDA'])
 const SCENARIOS: readonly ValuationScenarioId[] = ['bear', 'base', 'bull']
 
 export interface ValuationMarketObservation { readonly priceDate: string; readonly close: number }
 export interface ValuationFinancialRow { readonly basisFiscalYear: number; readonly reportDate: string; readonly publicationDate?: string; readonly aggregatorNoticeDate?: string; readonly eps?: number; readonly bvps?: number; readonly ebitda?: number; readonly netDebt?: number; readonly shares?: number }
-export interface NormalizedValuationData { readonly market?: ValuationMarketObservation; readonly financialRows: readonly ValuationFinancialRow[]; readonly diagnostics: readonly string[] }
-
 
 export function selectValuationBasis(rows: readonly ValuationFinancialRow[], valuationDate: string, asOf?: string): { readonly basis?: ValuationFinancialRow; readonly publicationStatus?: ValuationBasis['publicationStatus']; readonly pointInTimeVerified: boolean; readonly diagnostics: readonly string[] } {
-  const diagnostics: string[] = []; const historical = asOf !== undefined; const valuationCutoff = normalizeValuationDate(valuationDate) ?? valuationDate.slice(0, 10); const publicationCutoff = asOf ?? valuationCutoff; const datedRows = rows.filter((row) => row.reportDate <= valuationCutoff); const eligible = datedRows.filter((row) => { if (row.publicationDate === undefined) return !historical; return row.publicationDate <= publicationCutoff });
+  const diagnostics: string[] = []; const historical = asOf !== undefined; const valuationCutoff = valuationDate.slice(0, 10); const publicationCutoff = asOf ?? valuationCutoff; const datedRows = rows.filter((row) => row.reportDate <= valuationCutoff); const eligible = datedRows.filter((row) => { if (row.publicationDate === undefined) return !historical; return row.publicationDate <= publicationCutoff });
   if (datedRows.some((row) => row.publicationDate === undefined || row.publicationDate > publicationCutoff)) diagnostics.push('POINT_IN_TIME_PUBLICATION_UNVERIFIED')
   const basis = eligible[0]
   if (basis === undefined) { if (diagnostics.length === 0) diagnostics.push('POINT_IN_TIME_PUBLICATION_UNVERIFIED'); return { pointInTimeVerified: false, diagnostics } }
@@ -20,10 +16,6 @@ export function selectValuationBasis(rows: readonly ValuationFinancialRow[], val
 
 export function buildValuationBasis(market: ValuationMarketObservation, financial: ValuationFinancialRow, valuationDate: string, publicationStatus: ValuationBasis['publicationStatus']): ValuationBasis {
   return { valuationDate, priceDate: market.priceDate, marketPrice: market.close, marketPriceUnit: 'CNY/share', basisFiscalYear: financial.basisFiscalYear, reportDate: financial.reportDate, publicationStatus, ...(financial.eps === undefined ? {} : { eps: financial.eps }), ...(financial.bvps === undefined ? {} : { bvps: financial.bvps }), ...(financial.ebitda === undefined ? {} : { ebitda: financial.ebitda }), ...(financial.netDebt === undefined ? {} : { netDebt: financial.netDebt }), ...(financial.shares === undefined ? {} : { shares: financial.shares }), units: { marketPrice: 'CNY/share', eps: 'CNY/share', bvps: 'CNY/share', ebitda: 'CNY', netDebt: 'CNY', shares: 'shares' } }
-}
-
-export function normalizeValuationData(marketValue: unknown, financialValue: unknown, valuationDate: string, asOf?: string): NormalizedValuationData {
-  const market = normalizeValuationMarketData(marketValue, valuationDate); const financial = normalizeValuationFinancialData(financialValue); return { ...(market.observation === undefined ? {} : { market: market.observation }), financialRows: financial.rows, diagnostics: [...market.diagnostics, ...financial.diagnostics, ...selectValuationBasis(financial.rows, valuationDate, asOf).diagnostics] }
 }
 
 export function methodEligibility(basis: ValuationBasis): readonly ValuationMethodEligibility[] {
