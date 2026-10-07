@@ -6,6 +6,7 @@ import { runCompanyDeepResearch } from '../../workflows/company-deep-research/wo
 import { runIndustryDeepResearch } from '../../workflows/industry-deep-research/workflow.ts'
 import { runEarningsReview } from '../../workflows/earnings-review/workflow.ts'
 import { runValuation } from '../../workflows/valuation/workflow.ts'
+import type { ValuationWorkflowInput } from '../../workflows/valuation/contracts.ts'
 import { runEventResearch } from '../../workflows/event-research/workflow.ts'
 import { runThesisRedTeam } from '../../workflows/thesis-red-team/workflow.ts'
 import type { EventResearchSignalStore } from '../../plugins/daily-intelligence/contracts.ts'
@@ -80,6 +81,7 @@ export interface ResearchServiceOptions {
   readonly industryAcquisitionPlugins?: readonly ResearchAcquisitionPlugin[]
   readonly akshare?: AkshareDataClient
   readonly officialDisclosure?: OfficialDisclosureClient
+  readonly valuationDataResolverFactory?: ValuationWorkflowInput['dataResolverFactory']
   readonly signalStore?: ResearchSignalStore
   readonly dailySignalStore?: EventResearchSignalStore
   readonly workflowService: WorkflowService
@@ -294,7 +296,7 @@ export class ResearchService {
     const completion = this.options.workflowService.start(input.workflowRunId, async (signal) => {
       const combined = new AbortController(); const abort = () => combined.abort(); signal.addEventListener('abort', abort, { once: true }); callerSignal?.addEventListener('abort', abort, { once: true })
       try {
-        const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runValuation({ workflowRunId: input.workflowRunId, handle, company, asOf: input.asOf, methods: input.methods, targetFiscalYear: input.targetFiscalYear, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), akshare: this.options.akshare, officialDisclosure: this.options.officialDisclosure, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
+        const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runValuation({ workflowRunId: input.workflowRunId, handle, company, asOf: input.asOf, methods: input.methods, targetFiscalYear: input.targetFiscalYear, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), akshare: this.options.akshare, officialDisclosure: this.options.officialDisclosure, dataResolverFactory: this.options.valuationDataResolverFactory, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
         return { runId: input.workflowRunId, status: result.status, knowledgeBaseId: result.knowledgeBaseId, ...(result.report === undefined ? {} : { reportId: result.report.reportId, reportPath: `${result.report.reportId}.md` }), committedIds: result.committedIds, proposalCount: result.proposalIds.length, summary: result.status === 'completed' ? `Valuation completed for ${input.symbol}` : `Valuation ${result.status} for ${input.symbol}`, ...(result.errors.length ? { errorSummary: result.errors.join('; ').slice(0, 500) } : {}), telemetry: result.telemetry, providerOutcome: result.providerOutcome, ...(result.automaticCompsResult === undefined ? {} : { automaticCompsResult: result.automaticCompsResult }), ...(result.crosscheck === undefined ? {} : { crosscheck: result.crosscheck }), ...(result.blockedReason === undefined ? {} : { blockedReason: result.blockedReason }) }
       } finally { signal.removeEventListener('abort', abort); callerSignal?.removeEventListener('abort', abort) }
     }).then((outcome) => outcome as ApplicationValuationResult)

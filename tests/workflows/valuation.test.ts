@@ -9,6 +9,9 @@ import { KnowledgeProductionGateway } from '../../knowledge/production/gateway.t
 import type { ReasoningExecutor, ReasoningRequest, ReasoningResult } from '../../plugins/reasoning/contracts.ts'
 import type { AkshareDataClient } from '../../plugins/research-acquisition/akshare.ts'
 import type { OfficialDisclosureClient } from '../../plugins/research-acquisition/official.ts'
+import { createValuationDataResolver, type ValuationDataPayload } from '../../plugins/research-acquisition/valuation-data.ts'
+import type { DataResolver } from '../../data/resolver.ts'
+import type { DataRequirement } from '../../data/contracts.ts'
 import { VALUATION_REPORT_SECTIONS } from '../../skills/valuation/contracts.ts'
 import { buildValuationBasis, calculateTargetPrice, calculateValuation, methodEligibility, normalizeValuationFinancialData, normalizeValuationMarketData, referenceMultiples, selectValuationBasis, validateScenarioAssumptions } from '../../skills/valuation/financials.ts'
 import { canonicalizeValuationViewpointStatement, expectedValuationAssumptionStructuredValue, ValuationAssumptionDesignSkill, ValuationSynthesisSkill, validateValuationStructuredValue } from '../../skills/valuation/skill.ts'
@@ -113,6 +116,40 @@ test('V36 missing Company coverage blocks before acquisition', async () => { con
 test('V37 ambiguous exact Company coverage blocks', async () => { const f = await fixture(); try { const assets = JSON.parse(await readFile(join(f.root, 'registry', 'assets.yaml'), 'utf8')) as Dict; assets['entity:duplicate-company'] = { type: 'entity', storageRef: 'entities/duplicate-company.yaml' }; await writeFile(join(f.root, 'registry', 'assets.yaml'), `${JSON.stringify(assets)}\n`); await writeFile(join(f.root, 'entities', 'duplicate-company.yaml'), `${JSON.stringify({ id: 'entity:duplicate-company', type: 'company', name: 'Duplicate', aliases: [], ticker: '600519', exchange: 'SH', lifecycle: { status: 'active' } })}\n`); const r = await runFixture({ ...f, handle: await new KnowledgeBaseRegistry().mount(f.root) }); assert.equal(r.blockedReason, 'COMPANY_COVERAGE_AMBIGUOUS') } finally { await f.close() } })
 test('V38 unavailable market data blocks', async () => { const f = await fixture({ market: [] }); try { const r = await runFixture(f); assert.equal(r.blockedReason, 'VALUATION_MARKET_PRICE_UNAVAILABLE') } finally { await f.close() } })
 test('V39 acquisition calls all three AKShare methods', async () => { const f = await fixture(); try { await runFixture(f); assert.deepEqual(f.akshare.calls, ['companyBasic', 'financialData', 'historicalMarketData']) } finally { await f.close() } })
+test('Valuation workflow sends issuer and comparable requirements through its injected DataResolver', async () => {
+  const f = await fixture()
+  try {
+    const actual = createValuationDataResolver({ akshare: f.akshare, officialDisclosure: f.officialDisclosure, company: { symbol: '600519', name: 'Fixture Company', exchange: 'SSE' }, valuationDate: NOW, now: () => NOW })
+    const observed: string[] = []
+    const dataResolver = { resolve: (requirements: readonly DataRequirement[]) => { observed.push(...requirements.map((item) => item.metricId ?? '')); return actual.resolve(requirements) }, resolveOne: (requirement: DataRequirement) => { observed.push(requirement.metricId ?? ''); return actual.resolveOne(requirement) } } as DataResolver<ValuationDataPayload>
+    const result = await runFixture(f, { dataResolver })
+    assert.equal(result.status, 'completed')
+    for (const metric of ['valuation_market_price', 'valuation_eps', 'valuation_bvps', 'valuation_annual_report_publication', 'valuation_peer_candidate_evidence']) assert.ok(observed.includes(metric), metric)
+    assert.equal(result.providerOutcome.basisPitStatus, 'CURRENT_VALUE_ONLY')
+  } finally { await f.close() }
+})
+test('Fixed historical Valuation cutoff keeps annual numbers visible but excludes unversioned basis from calculation', async () => {
+  const f = await fixture()
+  try {
+    const cutoff = '2026-09-08T00:00:00.000Z'
+    const result = await runFixture(f, { asOf: cutoff })
+    assert.equal(result.basis, undefined)
+    assert.equal(result.providerOutcome.basisPitStatus, 'PUBLICATION_VERIFIED_VALUE_VERSION_UNVERIFIED')
+    assert.equal(result.basisEvidence?.market.priceDate, '2026-01-02')
+    assert.equal(result.basisEvidence?.eps?.pitStatus, 'PUBLICATION_VERIFIED_VALUE_VERSION_UNVERIFIED')
+    assert.notEqual(result.basisEvidence?.eps?.numericSource.retrievedAt, cutoff)
+    assert.ok(result.diagnostics.some((item) => item.includes('numeric value version')))
+  } finally { await f.close() }
+})
+test('Future official annual publication cannot support a fixed Valuation cutoff', async () => {
+  const f = await fixture()
+  try {
+    const result = await runFixture(f, { asOf: '2026-03-01T00:00:00.000Z' })
+    assert.equal(result.basis, undefined)
+    assert.equal(result.providerOutcome.basisPitStatus, 'UNAVAILABLE')
+    assert.ok(result.diagnostics.some((item) => item.includes('publishedAt') && item.includes('after analysisAsOf')))
+  } finally { await f.close() }
+})
 test('V40 writes a valuation ResearchReport', async () => { const f = await fixture(); try { const r = await runFixture(f); const report = JSON.parse(await readFile(join(f.reports, `${r.report?.reportId}.md.json`), 'utf8')) as Dict; assert.equal(report.reportType, 'valuation') } finally { await f.close() } })
 test('V41 uses exactly sixteen fixed report sections', async () => { const f = await fixture(); try { const r = await runFixture(f); const report = JSON.parse(await readFile(join(f.reports, `${r.report?.reportId}.md.json`), 'utf8')) as { sections: readonly { title: string }[] }; assert.deepEqual(report.sections.map((item) => item.title), [...VALUATION_REPORT_SECTIONS]) } finally { await f.close() } })
 test('V42 states consensus is unavailable', async () => { const f = await fixture(); try { const r = await runFixture(f); const report = await readFile(join(f.reports, `${r.report?.reportId}.md`), 'utf8'); assert.match(report, /Consensus unavailable/) } finally { await f.close() } })

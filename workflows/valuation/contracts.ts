@@ -3,6 +3,8 @@ import type { AkshareDataClient } from '../../plugins/research-acquisition/aksha
 import type { OfficialDisclosureClient } from '../../plugins/research-acquisition/official.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import type { ResearchCompanyIdentity } from '../../plugins/research-acquisition/contracts.ts'
+import type { DataResolver } from '../../data/resolver.ts'
+import type { ValuationDataPayload } from '../../plugins/research-acquisition/valuation-data.ts'
 import type { ValuationComputation, ValuationAssumptionPlan, ValuationMethod, ValuationReasoningTelemetry, ValuationSynthesisOutput } from '../../skills/valuation/index.ts'
 import type { AutomaticEquityCompsResult, CompsValuationInput, CompsValuationResult } from '../../skills/comps_valuation/index.ts'
 import type { ResearchQualityGateResult } from '../research-quality-gate.ts'
@@ -18,6 +20,8 @@ export interface ValuationWorkflowInput {
   readonly reportRoot: string
   readonly akshare?: AkshareDataClient
   readonly officialDisclosure?: OfficialDisclosureClient
+  readonly dataResolver?: DataResolver<ValuationDataPayload>
+  readonly dataResolverFactory?: (context: { readonly company: ResearchCompanyIdentity; readonly valuationDate: string; readonly asOf?: string; readonly now: () => string; readonly signal?: AbortSignal }) => DataResolver<ValuationDataPayload>
   readonly reasoningExecutor?: ReasoningExecutor
   readonly signal?: AbortSignal
   readonly now?: () => string

@@ -1,11 +1,12 @@
 import type { DataRequirement, SourceCandidate, SourcePolicy } from '../../data/contracts.ts'
 import { getCommonDataDefinition } from '../../data/common-catalog.ts'
+import { PHASE2_COMMON_SOURCE_POLICIES } from '../../data/valuation-earnings-policies.ts'
 import { EARNINGS_EXPECTATION_METRICS, earningsExpectationSourcePolicy } from '../../workflows/earnings-review/expectations-acquisition.ts'
-import { VALUATION_DATA_REQUIREMENTS, VALUATION_SOURCE_POLICIES } from '../../workflows/valuation/basis-evidence.ts'
 import { EXCHANGE_QA_SSE_CAPABILITY, EXCHANGE_QA_SSE_METRIC_ID, EXCHANGE_QA_SZSE_CAPABILITY, EXCHANGE_QA_SZSE_METRIC_ID, MANAGEMENT_COMMUNICATION_DOCUMENT_CAPABILITY, MANAGEMENT_COMMUNICATION_DOCUMENT_METRIC_ID, exchangeQAPolicy, managementCommunicationDocumentPolicy } from '../../workflows/management-communication-acquisition/source-policies.ts'
 
 const CATALOG_AS_OF = '1970-01-01T00:00:00.000Z'
 const PUBLIC_WEB_SEARCH_OPERATION_AVAILABLE = false
+const valuationMetricIds = ['valuation_market_price', 'valuation_eps', 'valuation_bvps', 'valuation_annual_report_publication'] as const
 
 export interface DataSourceCatalogRow {
   readonly metricId: string
@@ -78,11 +79,11 @@ function definitions(): readonly CatalogDefinition[] {
   ] as const
 
   return [
-    ...VALUATION_DATA_REQUIREMENTS.map((item) => ({
-      requirement: item,
-      chineseMeaning: getCommonDataDefinition(item.metricId!)?.meaning ?? '',
-      policy: VALUATION_SOURCE_POLICIES.find((policy) => policy.requirementMatch.metricId === item.metricId)!,
-    })),
+    ...valuationMetricIds.map((metricId) => {
+      const definition = getCommonDataDefinition(metricId)!
+      const policy = PHASE2_COMMON_SOURCE_POLICIES.find((item) => item.requirementMatch.workflow === 'valuation' && item.requirementMatch.metricId === metricId)!
+      return { requirement: requirement({ id: metricId, consumer: { workflow: 'valuation', capability: definition.compatibilityCapabilityByWorkflow?.valuation }, dataKind: definition.dataKind, metricId, determinismClass: metricId === 'valuation_annual_report_publication' ? 'EVIDENCE_BACKED_NUMERIC' : 'AUTHORITATIVE_NUMERIC', minimumAuthority: policy.candidates[0]!.originAuthority }), chineseMeaning: definition.meaning, policy }
+    }),
     ...EARNINGS_EXPECTATION_METRICS.map((item) => ({
       requirement: requirement({
         id: `earnings-expectations-catalog-${item.metricId}`,

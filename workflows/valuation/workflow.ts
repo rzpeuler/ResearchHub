@@ -6,8 +6,10 @@ import type { KnowledgeProductionOutcome } from '../../knowledge/production/cont
 import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
 import type { NormalizedResearchSource, ResearchCompanyIdentity } from '../../plugins/research-acquisition/contracts.ts'
 import type { AnnualReportPublicationProof } from '../../plugins/research-acquisition/official.ts'
-import type { DataRequirement, SourceExecutionResult } from '../research-data-acquisition/contracts.ts'
-import { runResearchDataAcquisition } from '../research-data-acquisition/workflow.ts'
+import type { DataRequirement } from '../../data/contracts.ts'
+import { materializePhase2CommonRequirement } from '../../data/requirements.ts'
+import type { DataResolver } from '../../data/resolver.ts'
+import { createValuationDataResolver, valuationCompanyBasicTelemetry, type ValuationDataPayload } from '../../plugins/research-acquisition/valuation-data.ts'
 import { sha256 } from '../../plugins/research-acquisition/hash.ts'
 import { normalizeExchange } from '../../skills/knowledge-curation/identity/company-identity.ts'
 import { canonicalizeValuationViewpointStatement, deterministicValuationAssumptionStatement, deterministicValuationEvidence, expectedValuationAssumptionStructuredValue, expectedValuationViewpointStructuredValue, validateValuationStructuredValue, ValuationAssumptionDesignSkill, ValuationSynthesisSkill } from '../../skills/valuation/skill.ts'
@@ -17,7 +19,7 @@ import { validateResearchReport, writeResearchReport, type ResearchReport, type 
 import { executeCompsValuation, type AutomaticEquityCompsResult, type CompsValuationResult } from '../../skills/comps_valuation/index.ts'
 import { runResearchQualityGate, type ResearchQualityGateResult } from '../research-quality-gate.ts'
 import type { ValuationProviderOutcome, ValuationTelemetrySnapshot, ValuationWorkflowInput, ValuationWorkflowResult } from './contracts.ts'
-import { resolveValuationBasisEvidence, VALUATION_DATA_REQUIREMENTS, VALUATION_SOURCE_POLICIES, type ValuationBasisEvidence, type ValuationEvidencePitStatus } from './basis-evidence.ts'
+import { resolveValuationBasisEvidence, type ValuationBasisEvidence, type ValuationEvidencePitStatus } from './basis-evidence.ts'
 import { buildValuationCrosscheck } from './crosscheck.ts'
 import { resolveAutomaticComps, unavailableAutomaticComps } from './automatic-comps.ts'
 
@@ -35,91 +37,52 @@ function companyMatch(value: Dict, company: ResearchCompanyIdentity): boolean { 
 async function existingCompany(input: ValuationWorkflowInput, company: ResearchCompanyIdentity): Promise<{ readonly ref?: string; readonly claims: readonly Dict[]; readonly reason?: ValuationWorkflowResult['blockedReason'] }> { if (input.useStructuredKnowledge === false) return { reason: 'COMPANY_COVERAGE_NOT_FOUND', claims: [] }; const assets = await readCanonicalV04Assets(input.handle.rootRef); const matches = assets.objects.filter((item) => companyMatch(item.value as unknown as Dict, company)); if (matches.length === 0) return { reason: 'COMPANY_COVERAGE_NOT_FOUND', claims: [] }; if (matches.length > 1) return { reason: 'COMPANY_COVERAGE_AMBIGUOUS', claims: [] }; const gateway = new KnowledgeProductionGateway(new KnowledgeBaseRegistry()); const projection = await gateway.projectExistingKnowledge(input.handle, company); return { ref: matches[0]!.value.id, claims: projection.filter((item) => item.kind === 'claim' && Array.isArray(item.subjectRefs) && item.subjectRefs.includes(matches[0]!.value.id)).slice(0, 40) }
 }
 function makeSource(candidateId: string, title: string, data: unknown, company: ResearchCompanyIdentity, retrievedAt: string, metadata: Readonly<Record<string, unknown>>, options: { readonly kind?: 'structured_data' | 'official_disclosure'; readonly provider?: string; readonly publisher?: string; readonly publishedAt?: string; readonly sourceUrl?: string; readonly originAuthority?: string } = {}): NormalizedResearchSource { const content = JSON.stringify(data); return { candidate: { candidateId, kind: options.kind ?? 'structured_data', tier: options.kind === 'official_disclosure' ? 1 : 2, title, provider: options.provider ?? 'akshare', ...(options.publishedAt === undefined ? {} : { publishedAt: options.publishedAt }), metadata: { companySymbol: company.symbol, originPublisher: options.publisher ?? 'EastMoney', originAuthority: options.originAuthority ?? 'S3_AGGREGATOR', retrievalProvider: options.provider ?? 'AKShare', ...(options.sourceUrl === undefined ? {} : { sourceUrl: options.sourceUrl }), ...metadata } }, retrievedAt, title, content, ...(options.sourceUrl === undefined ? {} : { canonicalUrl: options.sourceUrl }), contentHash: sha256(content), publisher: options.publisher ?? 'EastMoney', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } } }
-type ValuationAcquisitionPayload = { readonly payload: unknown; readonly retrievedAt: string; readonly date?: string; readonly close?: number; readonly REPORT_DATE?: string; readonly EPSJB?: number; readonly BPS?: number }
-type ValuationFinancialSnapshot = { readonly value: unknown; readonly retrievedAt: string; readonly rows: ReturnType<typeof normalizeValuationFinancialData>['rows']; readonly selectedRow?: ReturnType<typeof normalizeValuationFinancialData>['rows'][number] }
-function valuationRequirement(metricId: string, company: ResearchCompanyIdentity, asOf: string): DataRequirement {
-  const template = VALUATION_DATA_REQUIREMENTS.find((item) => item.metricId === metricId)
-  if (!template) throw new Error(`VALUATION_REQUIREMENT_NOT_REGISTERED:${metricId}`)
-  return { ...template, id: `${template.id}:${company.symbol}`, subject: { ticker: company.symbol, companyId: company.name }, asOf }
-}
 
-async function acquire(input: ValuationWorkflowInput, company: ResearchCompanyIdentity, valuationDate: string, asOf: string | undefined, clock: () => string): Promise<{ readonly marketValue: unknown; readonly financialValue: unknown; readonly basicValue: unknown; readonly financialRows: ReturnType<typeof normalizeValuationFinancialData>['rows']; readonly market?: ReturnType<typeof normalizeValuationMarketData>['observation']; readonly financialRetrievedAt?: string; readonly marketRetrievedAt?: string; readonly publication?: AnnualReportPublicationProof; readonly sources: readonly NormalizedResearchSource[]; readonly providerOutcome: ValuationProviderOutcome; readonly diagnostics: readonly string[] }> {
-  if (!input.akshare) return { marketValue: [], financialValue: [], basicValue: [], financialRows: [], sources: [], providerOutcome: emptyProvider(), diagnostics: ['AKShare client is unavailable'] }
-  let basicValue: unknown = []
-  let financialSnapshotPromise: Promise<ValuationFinancialSnapshot> | undefined
-  const loadFinancialSnapshot = (): Promise<ValuationFinancialSnapshot> => financialSnapshotPromise ??= (async () => {
-    const value = input.akshare!.valuationFinancialIndicators ? await input.akshare!.valuationFinancialIndicators({ symbol: company.symbol }) : await input.akshare!.financialData({ symbol: company.symbol })
-    abortIfNeeded(input.signal)
-    const rows = normalizeValuationFinancialData(value).rows
-    return { value, retrievedAt: clock(), rows, ...(rows.find((row) => row.reportDate <= valuationDate) ? { selectedRow: rows.find((row) => row.reportDate <= valuationDate)! } : {}) }
-  })()
+async function acquire(input: ValuationWorkflowInput, company: ResearchCompanyIdentity, valuationDate: string, asOf: string | undefined, clock: () => string): Promise<{ readonly dataResolver?: DataResolver<ValuationDataPayload>; readonly marketValue: unknown; readonly financialValue: unknown; readonly financialRows: ReturnType<typeof normalizeValuationFinancialData>['rows']; readonly market?: ReturnType<typeof normalizeValuationMarketData>['observation']; readonly financialRetrievedAt?: string; readonly marketRetrievedAt?: string; readonly publication?: AnnualReportPublicationProof; readonly sources: readonly NormalizedResearchSource[]; readonly providerOutcome: ValuationProviderOutcome; readonly diagnostics: readonly string[] }> {
+  if (!input.akshare && !input.dataResolver && !input.dataResolverFactory) return { marketValue: [], financialValue: [], financialRows: [], sources: [], providerOutcome: emptyProvider(), diagnostics: ['AKShare client is unavailable'] }
+  const resolver = input.dataResolver ?? input.dataResolverFactory?.({ company, valuationDate, ...(asOf ? { asOf } : {}), now: clock, signal: input.signal }) ?? createValuationDataResolver({ akshare: input.akshare, officialDisclosure: input.officialDisclosure, company, valuationDate, ...(asOf ? { historicalAsOf: asOf } : {}), now: clock, signal: input.signal })
   const diagnostics: string[] = []
-  let basicTransportSucceeded = true
-  try { basicValue = await input.akshare.companyBasic({ symbol: company.symbol }) } catch (error) { if (error instanceof Error && error.message === 'WORKFLOW_CANCELLED') throw error; basicTransportSucceeded = false; diagnostics.push(`companyBasic: ${error instanceof Error ? error.message : String(error)}`) }
+  const basic = await valuationCompanyBasicTelemetry(input.akshare, company.symbol)
+  if (basic.error) diagnostics.push(`companyBasic: ${basic.error}`)
   abortIfNeeded(input.signal)
-
-  const runRequirement = (metricId: string) => runResearchDataAcquisition<ValuationAcquisitionPayload>({
-    requirement: valuationRequirement(metricId, company, asOf ?? valuationDate),
-    policies: VALUATION_SOURCE_POLICIES,
-    signal: input.signal,
-    now: clock,
-    executor: async (_requirement, candidate): Promise<SourceExecutionResult<ValuationAcquisitionPayload>> => {
-      abortIfNeeded(input.signal)
-      if (candidate.operationId === 'akshare.historicalMarketData') {
-        const payload = await input.akshare!.historicalMarketData({ symbol: company.symbol })
-        const normalized = normalizeValuationMarketData(payload, valuationDate, asOf)
-        const observation = normalized.observation
-        if (!observation) return { status: 'NO_DATA', diagnostic: normalized.diagnostics.join('|') || 'valuation_market_data_unavailable' }
-        return { status: 'SUCCESS', data: { payload, retrievedAt: clock(), date: observation.priceDate, close: observation.close }, source: { originPublisher: 'EastMoney', retrievalProvider: 'AKShare', sourceUrl: 'https://push2his.eastmoney.com/api/qt/kline/get', retrievedAt: clock() } }
-      }
-      if (candidate.operationId === 'akshare.valuationFinancialIndicators') {
-        const snapshot = await loadFinancialSnapshot()
-        const row = snapshot.selectedRow
-        if (!row) return { status: 'NO_DATA', diagnostic: 'valuation_annual_financial_basis_unavailable' }
-        const field = metricId === 'valuation_eps' ? 'EPSJB' : 'BPS'
-        const value = metricId === 'valuation_eps' ? row.eps : row.bvps
-        if (value === undefined) return { status: 'NO_DATA', diagnostic: `valuation_${field.toLocaleLowerCase('en-US')}_unavailable` }
-        return { status: 'SUCCESS', data: { payload: snapshot.value, retrievedAt: snapshot.retrievedAt, REPORT_DATE: row.reportDate, ...(field === 'EPSJB' ? { EPSJB: value } : { BPS: value }) }, source: { originPublisher: 'EastMoney', retrievalProvider: 'AKShare', sourceUrl: 'https://datacenter.eastmoney.com/securities/api/data/get', retrievedAt: snapshot.retrievedAt } }
-      }
-      if (candidate.operationId === 'cninfo.resolveAnnualReportPublication') {
-        const snapshot = await loadFinancialSnapshot()
-        if (!snapshot.selectedRow || !input.officialDisclosure?.resolveAnnualReportPublication) return { status: 'NO_DATA', diagnostic: 'cninfo_annual_report_publication_unavailable' }
-        const proof = await input.officialDisclosure.resolveAnnualReportPublication({ company, fiscalYear: snapshot.selectedRow.basisFiscalYear, ...(asOf === undefined ? {} : { asOf }) })
-        if (!proof) return { status: 'NO_DATA', diagnostic: 'cninfo_annual_report_publication_not_found' }
-        return { status: 'SUCCESS', data: { payload: proof, retrievedAt: proof.retrievedAt, sourceUrl: proof.sourceUrl, fiscalYear: proof.fiscalYear, officialPublishedAt: proof.officialPublishedAt } as ValuationAcquisitionPayload, source: { originPublisher: 'CNINFO', retrievalProvider: 'CNINFO', sourceUrl: proof.sourceUrl, publishedAt: proof.officialPublishedAt, retrievedAt: proof.retrievedAt } }
-      }
-      return { status: 'UNSUPPORTED', diagnostic: `VALUATION_UNKNOWN_SOURCE_OPERATION:${candidate.operationId}` }
-    },
-  })
-
-  const [marketResult, epsResult, bvpsResult] = await Promise.all([
-    runRequirement('valuation_market_price'),
-    runRequirement('valuation_eps'),
-    runRequirement('valuation_bvps'),
-  ])
-  abortIfNeeded(input.signal)
-  const financialSnapshot = financialSnapshotPromise ? await financialSnapshotPromise.catch(() => undefined) : undefined
-  const financialValue = financialSnapshot?.value ?? []
-  const financial = normalizeValuationFinancialData(financialValue)
-  const selectedRow = financialSnapshot?.selectedRow
-  const marketValue = marketResult.data?.payload ?? []
-  const market = normalizeValuationMarketData(marketValue, valuationDate, asOf)
-  const marketRetrievedAt = marketResult.data?.retrievedAt
-  const financialRetrievedAt = epsResult.data?.retrievedAt ?? bvpsResult.data?.retrievedAt ?? financialSnapshot?.retrievedAt
-  let publication: AnnualReportPublicationProof | undefined
-  if (selectedRow) {
-    const publicationResult = await runRequirement('valuation_annual_report_publication')
-    publication = publicationResult.data?.payload as AnnualReportPublicationProof | undefined
-    for (const attempt of publicationResult.attempts) if (attempt.diagnostic) diagnostics.push(`CNINFO annual publication: ${attempt.diagnostic}`)
+  const requirement = (metricId: string, fiscalYear?: number): DataRequirement => {
+    const discovery = fiscalYear === undefined && metricId !== 'valuation_market_price'
+    const materialized = materializePhase2CommonRequirement(metricId, { workflowId: 'valuation', ticker: company.symbol, companyId: company.name, asOf: valuationDate, period: { end: valuationDate, ...(metricId === 'valuation_market_price' ? {} : { fiscalYear: fiscalYear ?? Number(valuationDate.slice(0, 4)) - 1 }) }, required: metricId === 'valuation_market_price', historicalNumeric: asOf !== undefined && fiscalYear !== undefined && (metricId === 'valuation_eps' || metricId === 'valuation_bvps') })
+    return discovery ? { ...materialized, id: `${materialized.id}:basis-discovery`, period: { end: valuationDate } } : materialized
   }
-  const failedTransport = [marketResult, epsResult, bvpsResult].flatMap((result) => result.attempts).some((attempt) => ['TIMEOUT', 'RATE_LIMITED', 'ACCESS_DENIED', 'PARSE_ERROR', 'UNSUPPORTED'].includes(attempt.status))
-  for (const [name, result] of [['market', marketResult], ['eps', epsResult], ['bvps', bvpsResult]] as const) for (const attempt of result.attempts) if (attempt.diagnostic) diagnostics.push(`${name}: ${attempt.diagnostic}`)
+  // Discover the latest annual row through Data before binding the exact fiscal-year requirements.
+  // The executor caches one financial response for both metric identities.
+  const first = await resolver.resolve([requirement('valuation_eps'), requirement('valuation_bvps'), requirement('valuation_market_price')])
+  abortIfNeeded(input.signal)
+  const [epsDiscovery, bvpsDiscovery, marketResult] = first.items
+  const financialDiscovery = [epsDiscovery, bvpsDiscovery].find((item) => item?.value?.kind === 'financial')?.value
+  const selectedRow = financialDiscovery?.kind === 'financial' ? financialDiscovery.row : undefined
+  const fiscalYear = selectedRow?.basisFiscalYear
+  const exact = fiscalYear === undefined ? undefined : await resolver.resolve([
+    requirement('valuation_eps', fiscalYear),
+    requirement('valuation_bvps', fiscalYear),
+    requirement('valuation_annual_report_publication', fiscalYear),
+  ])
+  const [epsResult, bvpsResult, publicationResult] = exact?.items ?? [epsDiscovery, bvpsDiscovery, undefined]
+  const financialPayload = [epsResult, bvpsResult, epsDiscovery, bvpsDiscovery].find((item) => item?.value?.kind === 'financial')?.value
+  const financialValue = financialPayload?.kind === 'financial' ? financialPayload.raw : []
+  const financialRows = financialPayload?.kind === 'financial' ? financialPayload.rows : []
+  const marketPayload = marketResult?.value
+  const market = marketPayload?.kind === 'market' ? marketPayload.observation : undefined
+  const marketValue = marketPayload?.kind === 'market' ? marketPayload.raw : []
+  const financialRetrievedAt = [epsResult, bvpsResult, epsDiscovery, bvpsDiscovery].find((item) => item?.source?.retrievedAt)?.source?.retrievedAt
+  const marketRetrievedAt = marketResult?.source?.retrievedAt
+  const publicationPayload = publicationResult?.value
+  const publication = publicationPayload?.kind === 'publication' ? publicationPayload.proof : undefined
+  const acquisitions = [['market', marketResult], ['eps', epsResult], ['bvps', bvpsResult], ['CNINFO annual publication', publicationResult]] as const
+  for (const [name, result] of acquisitions) for (const attempt of result?.attempts ?? []) if (attempt.diagnostic) diagnostics.push(`${name}: ${attempt.diagnostic}`)
+  const failedTransport = acquisitions.some(([, result]) => result?.attempts.some((attempt) => ['TIMEOUT', 'RATE_LIMITED', 'ACCESS_DENIED', 'PARSE_ERROR'].includes(attempt.status)))
   const sources: NormalizedResearchSource[] = []
-  if (market.observation && marketRetrievedAt) sources.push(makeSource(`akshare-valuation-market-${company.symbol}-${market.observation.priceDate}`, 'EastMoney valuation market snapshot', { symbol: company.symbol, priceDate: market.observation.priceDate, close: market.observation.close, currency: 'CNY/share' }, company, marketRetrievedAt, { dataKind: 'valuation-market', valuationEvidenceRole: 'market', priceDate: market.observation.priceDate, sourceField: 'close' }, { publisher: 'EastMoney', originAuthority: 'S3_AGGREGATOR', provider: 'AKShare', sourceUrl: 'https://push2his.eastmoney.com/api/qt/kline/get' }))
-  if (selectedRow && financialRetrievedAt) sources.push(makeSource(`akshare-valuation-financial-${company.symbol}-${selectedRow.basisFiscalYear}`, 'EastMoney valuation financial basis snapshot', selectedRow, company, financialRetrievedAt, { dataKind: 'valuation-financial', valuationEvidenceRole: 'financial', basisFiscalYear: selectedRow.basisFiscalYear, sourceFields: ['REPORT_DATE', 'NOTICE_DATE', 'EPSJB', 'BPS'], aggregatorNoticeDate: selectedRow.aggregatorNoticeDate }, { publisher: 'EastMoney', originAuthority: 'S3_AGGREGATOR', provider: 'AKShare', sourceUrl: 'https://datacenter.eastmoney.com/securities/api/data/get' }))
+  if (market && marketRetrievedAt) sources.push(makeSource(`akshare-valuation-market-${company.symbol}-${market.priceDate}`, 'EastMoney valuation market snapshot', { symbol: company.symbol, priceDate: market.priceDate, close: market.close, currency: 'CNY/share' }, company, marketRetrievedAt, { dataKind: 'valuation-market', valuationEvidenceRole: 'market', priceDate: market.priceDate, sourceField: 'close' }, { publisher: 'EastMoney', originAuthority: 'S3_AGGREGATOR', provider: 'AKShare', sourceUrl: marketResult?.source?.sourceUrl }))
+  if (selectedRow && financialRetrievedAt) sources.push(makeSource(`akshare-valuation-financial-${company.symbol}-${selectedRow.basisFiscalYear}`, 'EastMoney valuation financial basis snapshot', selectedRow, company, financialRetrievedAt, { dataKind: 'valuation-financial', valuationEvidenceRole: 'financial', basisFiscalYear: selectedRow.basisFiscalYear, sourceFields: ['REPORT_DATE', 'NOTICE_DATE', 'EPSJB', 'BPS'], aggregatorNoticeDate: selectedRow.aggregatorNoticeDate }, { publisher: 'EastMoney', originAuthority: 'S3_AGGREGATOR', provider: 'AKShare', sourceUrl: epsResult?.source?.sourceUrl ?? bvpsResult?.source?.sourceUrl }))
   if (publication) sources.push(makeSource(`cninfo-valuation-annual-report-${company.symbol}-${publication.fiscalYear}`, publication.reportTitle, publication, company, publication.retrievedAt, { dataKind: 'valuation-annual-report-publication', valuationEvidenceRole: 'financial', basisFiscalYear: publication.fiscalYear, sourceField: 'officialPublishedAt' }, { kind: 'official_disclosure', publisher: 'CNINFO', originAuthority: 'S0_STATUTORY', provider: 'CNINFO', publishedAt: publication.officialPublishedAt, sourceUrl: publication.sourceUrl }))
-  const outcome: ValuationProviderOutcome = { providerAttempted: true, transportSucceeded: basicTransportSucceeded && !failedTransport, companyBasicRowCount: rowsOf(basicValue).length, financialRowCount: rowsOf(financialValue).length, marketRowCount: rowsOf(marketValue).length, marketPriceFound: market.observation !== undefined, fiscalYearBasisFound: selectedRow !== undefined, peEligible: selectedRow?.eps !== undefined && selectedRow.eps > 0, pbEligible: selectedRow?.bvps !== undefined && selectedRow.bvps > 0, evEbitdaEligible: false, usableForValuation: market.observation !== undefined && selectedRow !== undefined }
-  return { marketValue, financialValue, basicValue, financialRows: financial.rows, ...(market.observation === undefined ? {} : { market: market.observation }), ...(financialRetrievedAt === undefined ? {} : { financialRetrievedAt }), ...(marketRetrievedAt === undefined ? {} : { marketRetrievedAt }), ...(publication === undefined ? {} : { publication }), sources, providerOutcome: outcome, diagnostics: [...diagnostics, ...market.diagnostics, ...financial.diagnostics] }
+  const outcome: ValuationProviderOutcome = { providerAttempted: true, transportSucceeded: basic.error === undefined && !failedTransport, companyBasicRowCount: basic.rowCount, financialRowCount: rowsOf(financialValue).length, marketRowCount: rowsOf(marketValue).length, marketPriceFound: market !== undefined, fiscalYearBasisFound: selectedRow !== undefined, peEligible: selectedRow?.eps !== undefined && selectedRow.eps > 0, pbEligible: selectedRow?.bvps !== undefined && selectedRow.bvps > 0, evEbitdaEligible: false, usableForValuation: market !== undefined && selectedRow !== undefined }
+  return { dataResolver: resolver, marketValue, financialValue, financialRows, ...(market ? { market } : {}), ...(financialRetrievedAt ? { financialRetrievedAt } : {}), ...(marketRetrievedAt ? { marketRetrievedAt } : {}), ...(publication ? { publication } : {}), sources, providerOutcome: outcome, diagnostics: [...diagnostics, ...(market ? [] : ['VALUATION_MARKET_PRICE_UNAVAILABLE']), ...(financialRows.length ? [] : ['VALUATION_FINANCIAL_BASIS_UNAVAILABLE'])] }
 }
 function requestedMethods(input: ValuationWorkflowInput, eligible: readonly ValuationMethod[]): readonly ValuationMethod[] { if (input.methods === undefined) return eligible; return [...new Set(input.methods)].filter((method) => eligible.includes(method)) }
 export function validProposal(proposal: ValuationSynthesisProposal, plan: ValuationAssumptionPlan, computation: ValuationComputation, sourceIds: ReadonlySet<string>, claimRefs: ReadonlySet<string>): boolean {
@@ -196,7 +159,7 @@ export async function runValuation(input: ValuationWorkflowInput): Promise<Valua
     const valuationDate = input.asOf ?? now
     const acquired = await acquire(input, company, valuationDate, input.asOf, clock)
     abortIfNeeded(input.signal)
-    const market = normalizeValuationMarketData(acquired.marketValue, valuationDate, input.asOf)
+    const market = { observation: acquired.market }
     if (!market.observation) return { workflowRunId: input.workflowRunId, status: 'blocked', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: input.handle.revision, proposalIds: [], committedIds: [], sourceIds: [], claimIds: [], errors: [], blockedReason: 'VALUATION_MARKET_PRICE_UNAVAILABLE', diagnostics: acquired.diagnostics, providerOutcome: acquired.providerOutcome, telemetry: baseTelemetry({ companyCoverageResolved: true }) }
 
     const financial = { rows: acquired.financialRows, diagnostics: [] as readonly string[] }
@@ -255,9 +218,9 @@ export async function runValuation(input: ValuationWorkflowInput): Promise<Valua
       if (input.asOf !== undefined) automaticCompsResult = unavailableAutomaticComps({ company, valuationDate, basisFiscalYear: basis?.basisFiscalYear ?? 0, targetFiscalYear, selectedMethod: plan?.primaryMethod === 'PB' ? 'PB' : 'PE', targetForecastMetric: baseScenario?.forecastMetric ?? Number.NaN, targetSourceRefs: plan?.scenarios.find((item) => item.scenarioId === 'base')?.sourceCandidateIds ?? [] }, ['AUTO_COMPS_HISTORICAL_UNAVAILABLE'])
       else if (!targetMetricUsable || basis === undefined || plan === undefined || baseScenario === undefined) automaticCompsResult = unavailableAutomaticComps({ company, valuationDate, basisFiscalYear: basis?.basisFiscalYear ?? 0, targetFiscalYear, selectedMethod: plan?.primaryMethod === 'PB' ? 'PB' : 'PE', targetForecastMetric: baseScenario?.forecastMetric ?? Number.NaN, targetSourceRefs: plan?.scenarios.find((item) => item.scenarioId === 'base')?.sourceCandidateIds ?? [] }, ['AUTO_COMPS_TARGET_METRIC_UNAVAILABLE'])
       else if (plan.primaryMethod !== 'PE' && plan.primaryMethod !== 'PB') automaticCompsResult = unavailableAutomaticComps({ company, valuationDate, basisFiscalYear: basis.basisFiscalYear, targetFiscalYear, selectedMethod: 'PE', targetForecastMetric: baseScenario.forecastMetric, targetSourceRefs: plan.scenarios.find((item) => item.scenarioId === 'base')?.sourceCandidateIds ?? [] }, ['AUTO_COMPS_PRIMARY_METHOD_UNSUPPORTED'])
-      else if (input.akshare === undefined) automaticCompsResult = unavailableAutomaticComps({ company, valuationDate, basisFiscalYear: basis.basisFiscalYear, targetFiscalYear: plan.targetFiscalYear, selectedMethod: plan.primaryMethod, targetForecastMetric: baseScenario.forecastMetric, targetSourceRefs: plan.scenarios.find((item) => item.scenarioId === 'base')?.sourceCandidateIds ?? [] }, ['AUTO_COMPS_PEER_COMPARISON_UNAVAILABLE'])
+      else if (acquired.dataResolver === undefined) automaticCompsResult = unavailableAutomaticComps({ company, valuationDate, basisFiscalYear: basis.basisFiscalYear, targetFiscalYear: plan.targetFiscalYear, selectedMethod: plan.primaryMethod, targetForecastMetric: baseScenario.forecastMetric, targetSourceRefs: plan.scenarios.find((item) => item.scenarioId === 'base')?.sourceCandidateIds ?? [] }, ['AUTO_COMPS_PEER_COMPARISON_UNAVAILABLE'])
       else {
-        const automatic = await resolveAutomaticComps({ company, valuationDate, basisFiscalYear: basis.basisFiscalYear, targetFiscalYear: plan.targetFiscalYear, selectedMethod: plan.primaryMethod, targetForecastMetric: baseScenario.forecastMetric, targetSourceRefs: [...new Set([...acquired.sources.map((source) => source.candidate.candidateId), ...(plan.scenarios.find((item) => item.scenarioId === 'base')?.sourceCandidateIds ?? [])])], akshare: input.akshare, ...(input.officialDisclosure === undefined ? {} : { officialDisclosure: input.officialDisclosure }), retrievedAt: now, signal: input.signal, now })
+        const automatic = await resolveAutomaticComps({ company, valuationDate, basisFiscalYear: basis.basisFiscalYear, targetFiscalYear: plan.targetFiscalYear, selectedMethod: plan.primaryMethod, targetForecastMetric: baseScenario.forecastMetric, targetSourceRefs: [...new Set([...acquired.sources.map((source) => source.candidate.candidateId), ...(plan.scenarios.find((item) => item.scenarioId === 'base')?.sourceCandidateIds ?? [])])], akshare: input.akshare, ...(input.officialDisclosure === undefined ? {} : { officialDisclosure: input.officialDisclosure }), ...(acquired.dataResolver === undefined ? {} : { dataResolver: acquired.dataResolver }), retrievedAt: now, clock, signal: input.signal, now })
         automaticCompsResult = automatic.result
         automaticCompsSources = automatic.sources
       }
