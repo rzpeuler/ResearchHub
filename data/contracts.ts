@@ -34,8 +34,13 @@ export interface DataRequirement {
     readonly start?: string
     readonly end?: string
     readonly fiscalPeriod?: string
+    readonly fiscalYear?: number
   }
   readonly asOf: string
+  /** Explicit consumer cutoff; mirrors legacy asOf when supplied. */
+  readonly analysisAsOf?: string
+  /** Historical numeric inputs require an identified version available by the cutoff. */
+  readonly requireValueVersionProof?: boolean
   readonly determinismClass: DataDeterminismClass
   readonly requiredFields?: readonly string[]
   readonly minimumAuthority?: SourceAuthority
@@ -111,12 +116,21 @@ export interface AcquisitionSourceMetadata {
   readonly sourceUrl?: string
   readonly publishedAt?: string
   readonly retrievedAt: string
+  /** Timestamp of the selected market observation, independent of retrieval. */
+  readonly observedAt?: string
+  readonly valueVersion?: NumericValueVersionEvidence
 }
+
+export type NumericValueVersionEvidence =
+  | { readonly status: 'VERIFIED'; readonly versionId: string; readonly availableAt: string }
+  | { readonly status: 'UNVERIFIED'; readonly reason?: string }
 
 export interface AcquisitionQuality {
   readonly pointInTimeSafe: boolean
   readonly complete: boolean
   readonly crossChecked: boolean
+  readonly valueVersionStatus?: NumericValueVersionEvidence['status']
+  readonly pitDiagnostic?: string
 }
 
 export interface AcquisitionObservation<T> {
@@ -158,6 +172,8 @@ export interface SourceExecutionSourceMetadata {
   readonly sourceUrl?: string
   readonly publishedAt?: string
   readonly retrievedAt?: string
+  readonly observedAt?: string
+  readonly valueVersion?: NumericValueVersionEvidence
 }
 
 export type SourceExecutionFailureStatus = Exclude<AcquisitionAttemptStatus, 'SUCCESS' | 'VALIDATION_ERROR' | 'POINT_IN_TIME_INVALID'>

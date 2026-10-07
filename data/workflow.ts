@@ -29,7 +29,7 @@ export async function runResearchDataAcquisition<T>(options: ResearchDataAcquisi
       requirementId: options.requirement.id,
       status: 'UNAVAILABLE',
       source: null,
-      quality: { pointInTimeSafe: false, complete: false, crossChecked: false },
+      quality: unavailableQuality(options.requirement),
       attempts: [],
       unavailableReason: resolution.status === 'MATCHED' ? 'NO_REGISTERED_POLICY' : resolution.status,
     }
@@ -45,7 +45,7 @@ export async function runResearchDataAcquisition<T>(options: ResearchDataAcquisi
       requirementId: options.requirement.id,
       status: 'UNAVAILABLE',
       source: null,
-      quality: { pointInTimeSafe: false, complete: false, crossChecked: false },
+      quality: unavailableQuality(options.requirement),
       attempts: [],
       unavailableReason: hadAuthorityFailure ? 'INSUFFICIENT_AUTHORITY' : 'ALL_FALLBACKS_EXHAUSTED',
       policyId: policy.policyId,
@@ -90,7 +90,7 @@ async function runFirstValid<T>(
         source: evaluated.observation.source,
         sources: [evaluated.observation.source],
         observations: [evaluated.observation],
-        quality: { pointInTimeSafe: true, complete: true, crossChecked: false },
+        quality: acquisitionQuality(requirement, [evaluated.observation], true, false),
         attempts,
         ...(failureStatuses.length > 0 ? { fallbackReason: failureStatuses.join('|') } : {}),
         policyId,
@@ -102,7 +102,7 @@ async function runFirstValid<T>(
     requirementId: requirement.id,
     status: 'UNAVAILABLE',
     source: null,
-    quality: { pointInTimeSafe: false, complete: false, crossChecked: false },
+    quality: unavailableQuality(requirement),
     attempts,
     unavailableReason: terminalUnavailableReason(attempts),
     ...(failureStatuses.length > 0 ? { fallbackReason: failureStatuses.join('|') } : {}),
@@ -144,7 +144,7 @@ async function runMultiSource<T>(
       requirementId: requirement.id,
       status: 'UNAVAILABLE',
       source: null,
-      quality: { pointInTimeSafe: false, complete: false, crossChecked: false },
+      quality: unavailableQuality(requirement),
       attempts,
       unavailableReason: terminalUnavailableReason(attempts),
       policyId,
@@ -157,7 +157,7 @@ async function runMultiSource<T>(
       source: sources[0] ?? null,
       sources,
       observations,
-      quality: { pointInTimeSafe: true, complete: observations.length === candidates.length, crossChecked: false },
+      quality: acquisitionQuality(requirement, observations, observations.length === candidates.length, false),
       attempts,
       policyId,
     }
@@ -175,7 +175,7 @@ async function runMultiSource<T>(
     source: observations[0]!.source,
     sources,
     observations,
-    quality: { pointInTimeSafe: true, complete: observations.length === candidates.length, crossChecked: observations.length >= 2 },
+    quality: acquisitionQuality(requirement, observations, observations.length === candidates.length, observations.length >= 2),
     attempts,
     ...(crossCheckStatus === 'CONFLICT' ? { unavailableReason: 'SOURCE_CONFLICT' as const } : {}),
     crossCheckStatus,
@@ -197,7 +197,14 @@ function evaluateExecution<T>(
     if (!provenance?.originPublisher || !provenance.sourceUrl || !provenance.publishedAt || !provenance.retrievedAt || Number.isNaN(Date.parse(provenance.publishedAt)) || Number.isNaN(Date.parse(provenance.retrievedAt))) return { status: 'VALIDATION_ERROR', diagnostic: 'LLM_WEB_PROVENANCE_REQUIRED: originPublisher, sourceUrl, publishedAt, and retrievedAt are required' }
   }
   const publishedAt = execution.source?.publishedAt
-  if (publishedAt !== undefined && Date.parse(publishedAt) > Date.parse(requirement.asOf)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `publishedAt ${publishedAt} is after asOf ${requirement.asOf}` }
+  const cutoff = requirement.analysisAsOf ?? requirement.asOf
+  if (publishedAt !== undefined && (!validDate(publishedAt) || Date.parse(publishedAt) > Date.parse(cutoff))) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `publishedAt ${publishedAt} is invalid or after analysisAsOf ${cutoff}` }
+  const valueVersion = execution.source?.valueVersion
+  const observedAt = execution.source?.observedAt
+  if (observedAt !== undefined && (!validDate(observedAt) || Date.parse(observedAt) > Date.parse(cutoff))) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `observedAt ${observedAt} is invalid or after analysisAsOf ${cutoff}` }
+  if (observedAt !== undefined && requirement.period?.end !== undefined && Date.parse(observedAt) > Date.parse(requirement.period.end)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `observedAt ${observedAt} is after requested period ${requirement.period.end}` }
+  if (valueVersion?.status === 'VERIFIED' && (!valueVersion.versionId.trim() || !validDate(valueVersion.availableAt) || Date.parse(valueVersion.availableAt) > Date.parse(cutoff))) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `valueVersion is invalid or after analysisAsOf ${cutoff}` }
+  if (requirement.requireValueVersionProof && requirement.dataKind === 'metric' && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE' && (valueVersion?.status !== 'VERIFIED' || publishedAt === undefined)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'NO_ELIGIBLE_POINT_IN_TIME_DATA: numeric value version or publication unverified' }
   const source: AcquisitionSourceMetadata = {
     sourceId: candidate.sourceId,
     fallbackLevel: candidate.fallbackLevel,
@@ -207,8 +214,31 @@ function evaluateExecution<T>(
     ...(execution.source?.sourceUrl ? { sourceUrl: execution.source.sourceUrl } : {}),
     ...(publishedAt ? { publishedAt } : {}),
     retrievedAt: execution.source?.retrievedAt ?? completedAt,
+    ...(observedAt ? { observedAt } : {}),
+    ...(valueVersion ? { valueVersion } : {}),
   }
   return { status: 'SUCCESS', observation: { data: execution.data, source } }
+}
+
+function validDate(value: string): boolean { return !Number.isNaN(Date.parse(value)) }
+
+function unavailableQuality(requirement: DataRequirement): AcquisitionResult<unknown>['quality'] {
+  const numericMetric = requirement.dataKind === 'metric' && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
+  return { pointInTimeSafe: false, complete: false, crossChecked: false, ...(numericMetric ? { valueVersionStatus: 'UNVERIFIED' as const, pitDiagnostic: 'NUMERIC_VALUE_VERSION_UNVERIFIED_OR_PUBLICATION_MISSING' } : {}) }
+}
+
+function acquisitionQuality<T>(requirement: DataRequirement, observations: readonly AcquisitionObservation<T>[], complete: boolean, crossChecked: boolean): AcquisitionResult<T>['quality'] {
+  const numericMetric = requirement.dataKind === 'metric' && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
+  const versionVerified = numericMetric && observations.length > 0 && observations.every((observation) => observation.source.valueVersion?.status === 'VERIFIED')
+  const publicationOrMarketDate = observations.length > 0 && observations.every((observation) => observation.source.publishedAt !== undefined || requirement.dataKind === 'timeseries' && observation.source.observedAt !== undefined)
+  const pointInTimeSafe = numericMetric ? versionVerified && publicationOrMarketDate : publicationOrMarketDate
+  return {
+    pointInTimeSafe,
+    complete,
+    crossChecked,
+    ...(numericMetric ? { valueVersionStatus: versionVerified ? 'VERIFIED' as const : 'UNVERIFIED' as const } : {}),
+    ...(!pointInTimeSafe ? { pitDiagnostic: numericMetric ? 'NUMERIC_VALUE_VERSION_UNVERIFIED_OR_PUBLICATION_MISSING' : 'PUBLICATION_OR_MARKET_PERIOD_UNVERIFIED' } : {}),
+  }
 }
 
 function terminalUnavailableReason(attempts: readonly AcquisitionAttempt[]): AcquisitionResult<unknown>['unavailableReason'] {

@@ -108,7 +108,7 @@ test('Common Data Catalog rejects duplicate IDs and retains immutable metadata',
 
 test('Data Sources catalog consumes canonical Common definitions and keeps honest coverage metadata', () => {
   const response = getDataSourceCatalog()
-  assert.equal(response.rows.length, COMMON_DATA_CATALOG.length)
+  assert.equal(response.rows.length, COMMON_DATA_CATALOG.filter((definition) => definition.compatibilityCapabilityByWorkflow !== undefined).length, 'legacy administration rows stay stable until Runtime composition adopts new Common policies')
   assert.equal(response.coverageComplete, false)
   for (const row of response.rows) {
     assert.notEqual(row.capability.trim(), '')

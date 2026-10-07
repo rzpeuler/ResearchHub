@@ -9,6 +9,7 @@ export interface ResolvedDataItem<T> {
   readonly dataKind: DataRequirement['dataKind']
   readonly metricId?: string
   readonly period?: DataRequirement['period']
+  readonly analysisAsOf?: string
   readonly status: AcquisitionResult<T>['status']
   readonly value?: T
   readonly source: AcquisitionResult<T>['source']
@@ -104,6 +105,7 @@ function toResolvedDataItem<T>(requirement: DataRequirement, acquisition: Acquis
     dataKind: requirement.dataKind,
     ...(requirement.metricId ? { metricId: requirement.metricId } : {}),
     ...(requirement.period ? { period: requirement.period } : {}),
+    analysisAsOf: requirement.analysisAsOf ?? requirement.asOf,
     required: requirement.required ?? true,
     status: acquisition.status,
     ...(acquisition.data !== undefined ? { value: acquisition.data } : {}),
