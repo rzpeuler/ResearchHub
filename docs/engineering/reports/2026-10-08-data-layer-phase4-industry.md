@@ -6,7 +6,11 @@
 
 Phase 4 routes generic Industry evidence and eligible structured metrics through
 DataResolver at the normal Application entrypoint. Sol architecture acceptance
-is still pending. This delivery does not merge Phase 4 to `main`.
+is still pending. The 2026-10-09 continuation made no merge. At its start,
+`main`, `origin/main`, and the existing Phase 4 branch all pointed to
+`9424d3b01185d8df8310c224cffa8e81622e69b6`, which already contains the Phase 4
+commit history; this current ref state supersedes earlier historical statements
+that Phase 4 was not yet on `main`.
 
 ## Repository and promotion verification
 
@@ -20,10 +24,17 @@ is still pending. This delivery does not merge Phase 4 to `main`.
 | Phase 3 promotion verification | Phase 3 delivered head is an ancestor of current `main`; current `main` and `origin/main` match. The Phase 3 report's “not merged” paragraph describes its earlier delivery snapshot. |
 | Phase 4 source commits | `5d4bdd8`, `2f0428b`, and `41a1820` were present at start of this continuation; implementation commit: `649a3faaa8431ae94ecbea571253a355a7e0166a`; evidence commit: `0ef9111d7a02b9aabd89641e33e2e16fa7a512dd`. |
 | Final Phase 4 branch head | Plan-closure commit follows the evidence commit; exact SHA is recorded in the delivery response and remote verification. |
-| Merge state | Phase 4 is not merged to `main`. |
+| Merge state at original delivery | Phase 4 was not merged to `main`. |
+
+The table above records the original Phase 4 delivery snapshot. On the
+2026-10-09 continuation, `main`, `origin/main`, and the existing Phase 4 branch
+were all at `9424d3b01185d8df8310c224cffa8e81622e69b6`. No ref was reset and no
+merge was performed in this continuation. The Phase 3 delivered commit
+`7cc569667327dba0afe02bf503ba885b0803b1a7` remains an ancestor of `main`.
 
 The verified Phase 3 base includes the later Phase 3 safety/PIT corrections and
-is the Phase 4 starting revision. No Phase 4 changes were applied to `main`.
+was the Phase 4 starting revision. At the original delivery snapshot no Phase 4
+changes had been applied to `main`.
 
 ## Implementation
 
@@ -247,3 +258,55 @@ dimensions; each point still retains its original qualifier. Post-fix Phase 4
 focused tests passed 167/167 and the exact Node baseline comparison remained
 0 newly failing identifiers. No Critical or Minor review findings were
 reported.
+
+## Native continuation — 2026-10-09
+
+### Plan review and production-path verification
+
+The Phase 4 plan was rechecked against the user's execution decision, the
+repository `AGENTS.md`, the Phase 4 spec, and the prior review record. The
+review confirmed required coverage for DOMAIN materialization at the Industry
+Workflow boundary, exact canonical metric matching, explicit gaps, the
+production/capacity and export/demand semantic boundaries, and the real
+Application → ResearchService → Industry Workflow → DataResolver → catalog /
+SourcePolicy → Plugin → Skill-input path. `writing-plans` and
+`executing-plans` were not present in the installed skill directories during
+this continuation; the existing repository plan and its review record were
+used for the manual review. The production call-chain claims were verified by
+the passing Application integration and fixture E2E tests below.
+
+### Runtime test isolation correction
+
+The first full-suite attempt showed 45 additional HTTP/Runtime failures because
+injected temporary runtimes read the repository root's persisted Knowledge
+Base selection. `ResearchHubRuntimeServer` now uses an explicit `cwd` when
+provided, otherwise the injected runtime's own `cwd`, before falling back to
+the process working directory. This keeps settings bound to the runtime being
+served and allows test fixtures to remain isolated without changing local
+settings. The rerun removed all 45 environment-induced failures.
+
+### Validation and live-source rerun
+
+| Command or evidence | 2026-10-09 result |
+| --- | --- |
+| Application Industry service + HTTP routes + fixture E2E | 15/15 passed; includes typed production gaps and exact canonical fixture traversal through Plugin and Skill input. |
+| Scoped Data / Valuation-Earnings / Company-Event-Thesis / Industry-Application-guard-E2E matrix | 281/283 passed; only baseline V39 and V65 failed. |
+| `npm test` | Client 97/97 passed; Node 2,102 total, 2,078 passed, 24 failed. |
+| Exact Node baseline identifier comparison | Baseline 25; current 24; 0 new identifiers. The prior Industry replay failure is the sole baseline failure that now passes. |
+| `npm run typecheck` | Passed. |
+| `npm run client:typecheck` | Passed. |
+| `npm run client:build` | Passed; existing 628.73 kB chunk advisory remains. |
+| Real-source Application acceptance | 64 requests; MIIT 12 HTTP 200, Gov.cn search 8 HTTP 200, Gov.cn 16 HTTP 200, CPCA 24 HTTP 200, Eastmoney 4 transport errors. Both targets completed 16-section reports with PARTIAL coverage, 8 explicit noncanonical metric gaps, and 0 structured observations. |
+| Real-source timestamps | `startedAt=2026-10-08T19:50:15.785Z`, `asOf=2026-10-08T19:50:15.785Z`, `generatedAt=2026-10-08T19:50:42.093Z`. |
+
+The real-source attempt used the normal resolver composition and an empty
+production Industry Catalog. It did not activate metric-specific operations,
+promote a metric, or treat transport success as metric acceptance. Production
+remains honestly partial while canonical definitions are absent.
+
+### Continuation delivery boundary
+
+The continuation remains `IMPLEMENTED / SOL ACCEPTANCE PENDING`. It does not
+claim Sol acceptance and does not perform a merge. The entry refs already
+contained the Phase 4 history as recorded above; the continuation's changes are
+committed only to the existing Phase 4 branch.

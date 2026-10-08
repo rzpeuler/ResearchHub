@@ -358,7 +358,7 @@ export class ResearchHubRuntimeServer {
   }
 
   private async startInternal(): Promise<RuntimeServerInfo> {
-    const cwd = this.options.cwd ?? process.cwd()
+    const cwd = this.options.cwd ?? this.runtime?.cwd ?? process.cwd()
     this.settings = await readRuntimeSettings(cwd)
     if (!this.runtime) {
       const workspaceRoot = resolve(this.options.workspaceRoot ?? join(cwd, 'workspace'))
