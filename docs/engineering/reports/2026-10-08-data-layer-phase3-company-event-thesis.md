@@ -4,8 +4,9 @@
 
 `IMPLEMENTED / SOL ACCEPTANCE PENDING`
 
-This report records Task 6 fixture and provider-acquisition evidence. It does
-not claim Sol architecture acceptance. Phase 3 remains on its isolated branch.
+This report records Phase 3 delivery evidence, including the FIX-001 Sol
+acceptance corrections. It does not claim Sol architecture acceptance. Phase 3
+remains on its isolated branch.
 
 ## Repository state
 
@@ -15,18 +16,16 @@ not claim Sol architecture acceptance. Phase 3 remains on its isolated branch.
 | Branch | `codex/dl-goal-003-company-event-thesis-migration` |
 | Phase 3 base | `7648507243819b22a327b68fed4b5fb540f8ff30` |
 | Phase 2 accepted `main` / `origin/main` | `7648507243819b22a327b68fed4b5fb540f8ff30` |
-| Task 6 starting HEAD | `e0673ce6d226cf315deb8273f2f62221033ee695` |
-| Final implementation HEAD at full validation | `3deb06824653ed2e12f4f0108a6c1fe8cf1d508f` |
-| First pushed Phase 3 HEAD | `7cc569667327dba0afe02bf503ba885b0803b1a7` |
-| Remote branch HEAD after push | `7cc569667327dba0afe02bf503ba885b0803b1a7` (matched local) |
-| Worktree at first delivery | Clean |
+| FIX-001 validated code HEAD | `236095e435b66333dccfbf7c37594c49ab5413ff` |
+| Final documentation HEAD | Report-only commit after the validated code HEAD; exact SHA recorded in the immutable delivery note referenced below |
+| Remote branch HEAD at delivery | Verified against local final documentation HEAD; exact SHA recorded in the immutable delivery note referenced below |
+| Worktree at delivery | Clean after push |
 | Merge state | Phase 3 is not merged to `main` |
-| Push state | Pushed and verified; no merge performed |
+| Push state | FIX-001 branch push and remote verification are part of this delivery; no merge performed |
 
 `main` and `origin/main` still point to the accepted Phase 2 SHA. Task 6
-changes are committed on the Phase 3 branch only. A separate Thesis contract
-commit already exists earlier on this branch and is not part of the Task 6
-commit.
+and FIX-001 changes remain committed on the Phase 3 branch only. A separate
+Thesis contract commit already exists earlier on this branch.
 
 ## Architecture status update
 
@@ -110,19 +109,20 @@ items.
 | Check | Result |
 |---|---|
 | `npm test` client suite | PASS, 97/97 tests |
-| `npm test` full rerun after the positive Thesis Gateway fixture fix, on HEAD `ef271bc1223c06671a46a451525aa8a3b04331c2` | Client 97/97 passed; Node 2,065 total, 2,040 passed, 25 failed |
-| Exact baseline failure set from that rerun | PASS comparison: baseline 25, current 25, added 0, missing 0 |
-| `npm run typecheck` | PASS |
-| `npm run client:typecheck` | PASS |
+| FIX-001 focused Company/Event/Thesis/Data/architecture command | PASS, 70/70 tests |
+| FIX-001 `npm test` on validated code HEAD `236095e435b66333dccfbf7c37594c49ab5413ff` | Client 97/97 passed; Node 2,071 total, 2,046 passed, 25 failed |
+| Phase 2 baseline `npm test` at `7648507243819b22a327b68fed4b5fb540f8ff30` | Client 97/97 passed; Node 2,036 total, 2,011 passed, 25 failed |
+| Exact baseline failure set comparison | PASS: 25 baseline, 25 current, 0 added, 0 missing |
+| `npm run typecheck` | PASS after FIX-001 changes |
+| `npm run client:typecheck` | PASS after FIX-001 changes |
 | `npm run client:build` | PASS; Vite emitted the existing large-chunk advisory |
 | `git diff --check` | PASS; only Windows line-ending normalization notices |
 | Live scripts without opt-in | PASS safety check: all five skipped before runtime/temp/network side effects |
 
 The expected baseline identifier list was read from the ignored SDD workspace
 file `.superpowers/sdd/2026-10-08-data-layer-phase3-company-event-thesis-migration/baseline-failed-identifiers.txt`
-and left unchanged. The full `npm test` rerun occurred after the positive Thesis
-Gateway fixture fix and on HEAD `ef271bc1223c06671a46a451525aa8a3b04331c2`.
-That Node run had exactly these same 25 failing identifiers:
+and left unchanged. The FIX-001 Node run had exactly these same 25 failing
+identifiers as the detached Phase 2 baseline:
 
 ```text
 Application Industry research projects canonical graph and replays semantic objects without duplication
@@ -159,18 +159,21 @@ Writer rejection does not report success or overwrite the prior Module
   requested window. GDELT fetch failed in all three consumers. AKShare profile
   and market legs failed, while the financial leg returned structured data.
 - Full Node tests remain red on the same 25 pre-existing failure identifiers
-  as the Phase 3 baseline. No new deterministic failure was identified.
+  as the accepted Phase 2 baseline. No new deterministic failure was identified.
 - The live probes validate DataResolver/provider outcomes, not end-to-end live
   model reasoning or production Knowledge persistence.
 - Legacy Company PI/real-source smoke opt-in cleanup was reviewed: their
   Knowledge, evidence, report, and signal outputs now live only below a unique
   temporary root removed by `finally`; this cleanup does not extend to other
   historical smoke scripts.
-- Phase 3 has not been pushed or merged. Final Git delivery is pending the
-  controller's scoped review and push decision; `main` remains at accepted
-  Phase 2.
+- Phase 3 remains isolated and is not merged. FIX-001 received independent
+  scoped review approval; final local and remote branch SHAs are recorded in
+  the immutable delivery note referenced below.
 
 ## Final review fix wave (2026-10-08)
+
+The following review validation is retained as historical Phase 3 evidence;
+FIX-001 results below are authoritative for final delivery.
 
 The final review fixes preserve the Data-to-Skill-to-Gateway provenance path without changing Knowledge Production Gateway behavior. Company, Event, and Thesis Workflows now transform each qualified Data document with `sourceWithDataEvidenceProvenance` before Skill/Gateway use. The normalized source carries the per-document origin authority, retrieval provider, source URL, publication date, date qualification, and PIT flag in `candidate.metadata.dataProvenance`; its existing top-level `retrievedAt` and `contentHash` remain the canonical values consumed by the Gateway. Company fixture asserts canonical publisher/provider separation and data provenance metadata; Event and Thesis fixtures also assert top-level hash/retrieval fields. Event Skill projections preserve only allowlisted bounded provenance fields for Stage A and Stage B.
 
@@ -186,3 +189,42 @@ The live acceptance runner now counts only records in `acquisition.observations[
 - Final controller `npm test` rerun on `3deb06824653ed2e12f4f0108a6c1fe8cf1d508f`: client 97/97; Node 2,065 total / 2,040 pass / 25 fail. Phase 2 baseline rerun: client 97/97; Node 2,036 total / 2,011 pass / 25 fail. The exact failing Node test identifiers matched: 25 baseline, 25 current, 0 added, 0 missing. The baseline client retry passed after one earlier transient UI timeout.
 - The scoped Phase 3/guard suite passed 99/99 after the final runner hardening. Root and client typechecks, client build, and `git diff --check` passed. Client build reports the existing large-chunk advisory.
 - No Gateway, provider, or Thesis lifecycle semantics changed. Independent final review approved the provenance and live-runner fixes. The isolated Phase 3 branch was pushed and its remote HEAD matched the local HEAD at `7cc569667327dba0afe02bf503ba885b0803b1a7`; `main` and `origin/main` remain at accepted Phase 2 SHA `7648507243819b22a327b68fed4b5fb540f8ff30`.
+
+## FIX-001 acceptance corrections (2026-10-08)
+
+- Company requirements now preserve explicit current versus historical mode.
+  Current profile, financial, and market snapshots are labeled
+  `CURRENT_VALUE_ONLY`; they are not described as historically PIT-verified.
+- Historical profile and financial snapshots without snapshot/value-version
+  proof remain Skill context and are excluded from durable sources and Gateway
+  evidence bindings. Historical market rows use the existing
+  `dailyCloseAvailableAt` rule; only rows available by `analysisAsOf` can be
+  durable. Zero numeric values remain present and separate from missing data.
+- Company Skill now rejects a whole proposal if any citation is not durable,
+  removes proposals linked to rejected proposals, and removes stale section
+  proposal links. Duplicate model proposal IDs fail closed. A Workflow/Gateway
+  fixture proves a claim citing both an unversioned historical EPS value and a
+  dated filing is not canonicalized, while qualified filing evidence remains
+  available.
+- Company maps an explicit `POINT_IN_TIME_INVALID` attempt to empty/unusable,
+  not provider failure. The regression asserts attempted=true, succeeded=false,
+  empty=true, failed=false, and usableSourceCount=0.
+- Event and Thesis provider flags follow usable normalized evidence, while
+  transport and fetch success remain separate. Partial usable evidence plus a
+  failed candidate reports success and failure without empty; zero usable data
+  is empty only when no operational failure occurred. Event research
+  methodology, Thesis lifecycle semantics, and the Daily Signal boundary are
+  unchanged.
+- Independent FIX-001 review approved the combined changes. The focused suite
+  passed 70/70. Full Node failures matched the accepted Phase 2 baseline exactly
+  (25/25 identifiers; 0 added, 0 missing), and client tests passed 97/97.
+  Root/client typechecks and client build passed; build output retains the
+  existing large-chunk advisory.
+- The implementation code validated before this report-only commit is
+  `236095e435b66333dccfbf7c37594c49ab5413ff`. The final documentation commit
+  advances the branch afterward. Its exact SHA and the verified remote branch
+  SHA are recorded in the immutable local delivery note:
+  `.superpowers/sdd/2026-10-08-data-layer-phase3-company-event-thesis-migration/fix001-delivery-note.md`.
+- `main` and `origin/main` remain at
+  `7648507243819b22a327b68fed4b5fb540f8ff30`; Phase 3 remains isolated and
+  unmerged.
