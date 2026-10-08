@@ -18,8 +18,8 @@ is still pending. This delivery does not merge Phase 4 to `main`.
 | `main` / `origin/main` after `git fetch origin` | `ef3634e70e193a1f2a37172738253d3c014d9c8a` |
 | Phase 3 delivered head | `7cc569667327dba0afe02bf503ba885b0803b1a7` |
 | Phase 3 promotion verification | Phase 3 delivered head is an ancestor of current `main`; current `main` and `origin/main` match. The Phase 3 report's “not merged” paragraph describes its earlier delivery snapshot. |
-| Phase 4 source commits | `5d4bdd8`, `2f0428b`, and `41a1820` were present at start of this continuation; implementation commit: `649a3faaa8431ae94ecbea571253a355a7e0166a`. |
-| Final Phase 4 branch head | Evidence commit is the final branch head; exact SHA is recorded in the delivery response and remote verification. |
+| Phase 4 source commits | `5d4bdd8`, `2f0428b`, and `41a1820` were present at start of this continuation; implementation commit: `649a3faaa8431ae94ecbea571253a355a7e0166a`; evidence commit: `0ef9111d7a02b9aabd89641e33e2e16fa7a512dd`. |
+| Final Phase 4 branch head | Plan-closure commit follows the evidence commit; exact SHA is recorded in the delivery response and remote verification. |
 | Merge state | Phase 4 is not merged to `main`. |
 
 The verified Phase 3 base includes the later Phase 3 safety/PIT corrections and
