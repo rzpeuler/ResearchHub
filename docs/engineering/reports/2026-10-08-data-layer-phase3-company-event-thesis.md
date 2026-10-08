@@ -106,8 +106,8 @@ items.
 | Check | Result |
 |---|---|
 | `npm test` client suite | PASS, 97/97 tests |
-| `npm test` Node suite | 2,064 tests discovered; 2,039 passed; 25 failed |
-| Exact baseline failure set | PASS comparison: baseline 25, current 25, added 0, missing 0 |
+| `npm test` full rerun after the positive Thesis Gateway fixture fix, on HEAD `ef271bc1223c06671a46a451525aa8a3b04331c2` | Client 97/97 passed; Node 2,065 total, 2,040 passed, 25 failed |
+| Exact baseline failure set from that rerun | PASS comparison: baseline 25, current 25, added 0, missing 0 |
 | `npm run typecheck` | PASS |
 | `npm run client:typecheck` | PASS |
 | `npm run client:build` | PASS; Vite emitted the existing large-chunk advisory |
@@ -116,8 +116,9 @@ items.
 
 The expected baseline identifier list was read from the ignored SDD workspace
 file `.superpowers/sdd/2026-10-08-data-layer-phase3-company-event-thesis-migration/baseline-failed-identifiers.txt`
-and left unchanged. The current full Node run had exactly these same 25 failing
-identifiers:
+and left unchanged. The full `npm test` rerun occurred after the positive Thesis
+Gateway fixture fix and on HEAD `ef271bc1223c06671a46a451525aa8a3b04331c2`.
+That Node run had exactly these same 25 failing identifiers:
 
 ```text
 Application Industry research projects canonical graph and replays semantic objects without duplication
