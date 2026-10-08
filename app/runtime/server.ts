@@ -26,8 +26,14 @@ import { ModelLoginFlowManager } from './model-login-flow.ts'
 import { addModelConnection, listSafeModelConnectionStatus, loadModelConnections, saveModelProviderApiKey } from './model-connections.ts'
 import { addRegisteredKnowledgeBase, listRegisteredKnowledgeBases, removeRegisteredKnowledgeBase, validateKnowledgeBaseDirectory, type RegisteredKnowledgeBase } from './knowledge-registration.ts'
 import { getDataSourceCatalog } from '../services/data-source-catalog.ts'
+import { projectCommonDataCatalog, projectIndustryDataCatalog } from '../services/data-catalog-projection.ts'
 import { DataSourceAdministrationError } from '../services/data-source-administration.ts'
 import type { DataSourceOnboardingDraftInput } from '../services/data-source-onboarding-store.ts'
+import { COMMON_DATA_CATALOG } from '../../data/common-catalog.ts'
+import { INDUSTRY_IDENTITIES } from '../../data/industry-catalog.ts'
+import { INDUSTRY_DATA_SOURCE_POLICIES } from '../../data/industry-policies.ts'
+import { PHASE2_COMMON_SOURCE_POLICIES } from '../../data/valuation-earnings-policies.ts'
+import { PHASE3_COMMON_SOURCE_POLICIES } from '../../data/company-research-policies.ts'
 import { listReasoningModelCandidates, ReasoningModelSelectionError, validateReasoningModelSelection } from '../pi/model-selection.ts'
 import type { ThemeWorkspaceProjectionInput } from '../services/theme-workspace-projection-contracts.ts'
 import type { RawDocumentMetadataV04, RawDocumentRightsV04 } from '../../knowledge/production/raw-document-gateway-v04.ts'
@@ -418,7 +424,7 @@ export class ResearchHubRuntimeServer {
   private async createApplicationRuntime(mountedKnowledgeBaseRoot?: string, model = this.options.model, modelSelectionOverride: RuntimeSettings['model'] | null = this.settings.model, startDailyScheduler = false, recoverModel = false): Promise<ResearchHubApplicationRuntime> {
     const reasoningExecutor = this.modelSelectionError !== undefined && !recoverModel ? disabledModelExecutor() : this.options.reasoningExecutor
     const modelSelection = modelSelectionOverride ?? undefined
-    return createResearchHubApplicationRuntime({ cwd: this.options.cwd ?? process.cwd(), agentDir: this.options.agentDir, sessionDir: this.options.sessionDir, mountedKnowledgeBaseRoot, workspaceRoot: this.options.workspaceRoot, modelRuntime: this.options.modelRuntime, sessionManager: this.options.sessionManager, model, ...(modelSelection === undefined ? {} : { modelSelection }), startDailyScheduler, reasoningExecutor, settingsManager: this.options.settingsManager, resourceLoader: this.options.resourceLoader, researchService: this.options.researchService })
+    return createResearchHubApplicationRuntime({ cwd: this.options.cwd ?? process.cwd(), agentDir: this.options.agentDir, sessionDir: this.options.sessionDir, mountedKnowledgeBaseRoot, workspaceRoot: this.options.workspaceRoot, modelRuntime: this.options.modelRuntime, sessionManager: this.options.sessionManager, model, ...(modelSelection === undefined ? {} : { modelSelection }), startDailyScheduler, reasoningExecutor, settingsManager: this.options.settingsManager, resourceLoader: this.options.resourceLoader, researchService: this.options.researchService, ...(this.options.industryDataCatalog === undefined ? {} : { industryDataCatalog: this.options.industryDataCatalog }) })
   }
 
   private explicitlyConfiguredKnowledgeBaseRoot(): string | undefined {
@@ -622,6 +628,17 @@ export class ResearchHubRuntimeServer {
     const method = request.method ?? 'GET'
     const path = url.pathname
     if (method === 'GET' && path === '/api/data-sources/policies') { await this.sendJson(response, 200, getDataSourceCatalog()); return }
+    if (method === 'GET' && path === '/api/data-sources/catalog/common') {
+      const service = this.runtime!.services.dataSourceAdministrationService
+      const integrations = service === undefined ? [] : await service.listIntegrations()
+      const policies = [...PHASE2_COMMON_SOURCE_POLICIES, ...PHASE3_COMMON_SOURCE_POLICIES, ...INDUSTRY_DATA_SOURCE_POLICIES]
+      await this.sendJson(response, 200, projectCommonDataCatalog({ definitions: COMMON_DATA_CATALOG, policies, integrations })); return
+    }
+    if (method === 'GET' && path === '/api/data-sources/catalog/industry') {
+      const service = this.runtime!.services.dataSourceAdministrationService
+      const integrations = service === undefined ? [] : await service.listIntegrations()
+      await this.sendJson(response, 200, projectIndustryDataCatalog({ catalog: this.runtime!.industryDataCatalog, identities: INDUSTRY_IDENTITIES, policies: INDUSTRY_DATA_SOURCE_POLICIES, integrations })); return
+    }
     if (method === 'GET' && path === '/api/data-sources/integrations') {
       const service = this.runtime!.services.dataSourceAdministrationService
       if (!service) throw new ApplicationServiceError('failed', 'Data source administration is unavailable')
