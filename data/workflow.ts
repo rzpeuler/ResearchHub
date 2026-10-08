@@ -117,7 +117,7 @@ async function runFirstValid<T>(
     source: null,
     quality: unavailableQuality(requirement),
     attempts,
-    unavailableReason: terminalUnavailableReason(attempts),
+    unavailableReason: terminalUnavailableReason(requirement, attempts),
     ...(failureStatuses.length > 0 ? { fallbackReason: failureStatuses.join('|') } : {}),
     policyId,
   }
@@ -159,7 +159,7 @@ async function runMultiSource<T>(
       source: null,
       quality: unavailableQuality(requirement),
       attempts,
-      unavailableReason: terminalUnavailableReason(attempts),
+      unavailableReason: terminalUnavailableReason(requirement, attempts),
       policyId,
     }
   }
@@ -224,9 +224,11 @@ function evaluateExecution<T>(
   if (observedAt !== undefined && requirement.period?.end !== undefined && afterRequestedPeriod(observedAt, requirement.period.end)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `observedAt ${observedAt} is after requested period ${requirement.period.end}` }
   if (observationAvailableAt !== undefined && (!validDate(observationAvailableAt) || Date.parse(observationAvailableAt) > Date.parse(cutoff))) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `observationAvailableAt ${observationAvailableAt} is invalid or after analysisAsOf ${cutoff}` }
   if (valueVersion?.status === 'VERIFIED' && (!valueVersion.versionId.trim() || !validDate(valueVersion.availableAt) || Date.parse(valueVersion.availableAt) > Date.parse(cutoff))) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `valueVersion is invalid or after analysisAsOf ${cutoff}` }
-  const industryNumericSeries = requirement.dataKind === 'timeseries' && requirement.metricId?.startsWith('industry:') === true
-  const numericMetric = (requirement.dataKind === 'metric' || industryNumericSeries) && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
-  if ((requirement.requireValueVersionProof || (industryNumericSeries && requirement.asOfMode === 'HISTORICAL')) && numericMetric && (valueVersion?.status !== 'VERIFIED' || publishedAt === undefined)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'NO_ELIGIBLE_POINT_IN_TIME_DATA: numeric value version or publication unverified' }
+  const industryNumeric = requirement.metricId?.startsWith('industry:') === true
+    && ['metric', 'estimate', 'timeseries'].includes(requirement.dataKind)
+    && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
+  const numericMetric = (requirement.dataKind === 'metric' || (industryNumeric && ['estimate', 'timeseries'].includes(requirement.dataKind))) && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
+  if ((requirement.requireValueVersionProof || (industryNumeric && requirement.asOfMode === 'HISTORICAL')) && numericMetric && (valueVersion?.status !== 'VERIFIED' || publishedAt === undefined)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'NO_ELIGIBLE_POINT_IN_TIME_DATA: numeric value version or publication unverified' }
   const source: AcquisitionSourceMetadata = {
     sourceId: candidate.sourceId,
     fallbackLevel: candidate.fallbackLevel,
@@ -261,12 +263,12 @@ function validMarketPeriodEnd(value: string): boolean {
 }
 
 function unavailableQuality(requirement: DataRequirement): AcquisitionResult<unknown>['quality'] {
-  const numericMetric = (requirement.dataKind === 'metric' || (requirement.dataKind === 'timeseries' && requirement.metricId?.startsWith('industry:') === true)) && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
+  const numericMetric = (requirement.dataKind === 'metric' || (requirement.dataKind === 'estimate' && requirement.metricId?.startsWith('industry:') === true) || (requirement.dataKind === 'timeseries' && requirement.metricId?.startsWith('industry:') === true)) && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
   return { pointInTimeSafe: false, complete: false, crossChecked: false, ...(numericMetric ? { valueVersionStatus: 'UNVERIFIED' as const, pitDiagnostic: 'NUMERIC_VALUE_VERSION_UNVERIFIED_OR_PUBLICATION_MISSING' } : {}) }
 }
 
 function acquisitionQuality<T>(requirement: DataRequirement, observations: readonly AcquisitionObservation<T>[], complete: boolean, crossChecked: boolean): AcquisitionResult<T>['quality'] {
-  const numericMetric = (requirement.dataKind === 'metric' || (requirement.dataKind === 'timeseries' && requirement.metricId?.startsWith('industry:') === true)) && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
+  const numericMetric = (requirement.dataKind === 'metric' || (requirement.dataKind === 'estimate' && requirement.metricId?.startsWith('industry:') === true) || (requirement.dataKind === 'timeseries' && requirement.metricId?.startsWith('industry:') === true)) && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
   const versionVerified = numericMetric && observations.length > 0 && observations.every((observation) => observation.source.valueVersion?.status === 'VERIFIED')
   const temporalEvidence = observations.length > 0 && observations.every((observation) => requirement.dataKind === 'timeseries'
     ? observation.source.observedAt !== undefined && observation.source.observationAvailableAt !== undefined && requirement.period?.end !== undefined
@@ -281,9 +283,12 @@ function acquisitionQuality<T>(requirement: DataRequirement, observations: reado
   }
 }
 
-function terminalUnavailableReason(attempts: readonly AcquisitionAttempt[]): AcquisitionResult<unknown>['unavailableReason'] {
+function terminalUnavailableReason(requirement: DataRequirement, attempts: readonly AcquisitionAttempt[]): AcquisitionResult<unknown>['unavailableReason'] {
   if (attempts.length === 0) return 'ALL_FALLBACKS_EXHAUSTED'
   const diagnostics = attempts.map((attempt) => attempt.diagnostic ?? '')
+  const industryRequirement = requirement.metricId === 'industry_research_evidence' || requirement.metricId?.startsWith('industry:') === true
+  if (industryRequirement && attempts.some((attempt) => attempt.status === 'ACCESS_DENIED')) return 'RIGHTS_REJECTED'
+  if (industryRequirement && attempts.every((attempt) => ['SOURCE_ERROR', 'TIMEOUT', 'RATE_LIMITED', 'ACCESS_DENIED'].includes(attempt.status))) return 'SOURCE_UNAVAILABLE'
   if (diagnostics.some((diagnostic) => diagnostic.includes('NO_ELIGIBLE_POINT_IN_TIME_DATA')) || attempts.every((attempt) => attempt.status === 'POINT_IN_TIME_INVALID')) return 'NO_ELIGIBLE_POINT_IN_TIME_DATA'
   if (diagnostics.some((diagnostic) => diagnostic.includes('INCOMPLETE_REQUIRED_FIELDS')) || attempts.every((attempt) => attempt.status === 'VALIDATION_ERROR')) return 'INCOMPLETE_REQUIRED_FIELDS'
   if (attempts.every((attempt) => attempt.status === 'NO_DATA')) return 'DATA_NOT_PUBLISHED'

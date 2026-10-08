@@ -33,6 +33,7 @@ export type SkillDataRequirement = StaticSkillDataRequirement | IndustryDomainDa
 export interface DataRequirementRuntimeContext {
   readonly workflowId: string
   readonly asOf: string
+  readonly asOfMode?: 'CURRENT_VALUE_ONLY' | 'HISTORICAL'
   readonly subject?: DataRequirement['subject']
   readonly period?: DataRequirement['period']
 }
@@ -52,6 +53,7 @@ export interface IndustryEvidenceRequirementContext {
   readonly searchTerms: readonly string[]
   readonly purpose: string
   readonly asOf: string
+  readonly asOfMode?: 'CURRENT_VALUE_ONLY' | 'HISTORICAL'
   readonly subject?: DataRequirement['subject']
   readonly period?: DataRequirement['period']
   readonly required?: boolean
@@ -75,6 +77,7 @@ export function materializeIndustryEvidenceRequirement(context: IndustryEvidence
     industryEvidenceQueryContext: queryContext,
     asOf: context.asOf,
     analysisAsOf: context.asOf,
+    ...(context.asOfMode ? { asOfMode: context.asOfMode } : {}),
     determinismClass: 'SEMANTIC_QUALITATIVE',
     required: context.required ?? false,
     llmWebFallback: 'FORBIDDEN',
@@ -195,6 +198,7 @@ export function materializeSkillDataRequirements(
       ...(template.requireValueVersionProof ? { requireValueVersionProof: true } : {}),
       asOf: context.asOf,
       analysisAsOf: context.asOf,
+      ...(context.asOfMode ? { asOfMode: context.asOfMode } : {}),
       determinismClass: template.determinismClass,
       ...(template.minimumAuthority ? { minimumAuthority: template.minimumAuthority } : {}),
       llmWebFallback: 'FORBIDDEN' as const,

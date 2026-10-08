@@ -61,7 +61,7 @@ export class DataResolver<T> {
       // their attached policy IDs. The injected generic test seam cannot
       // override that catalog boundary.
       const acquisition = await runResearchDataAcquisition({ ...acquisitionOptions, policies, requirement })
-      return toResolvedDataItem(requirement, acquisition)
+      return toResolvedDataItem(requirement, normalizeIndustryNumericAvailability(requirement, acquisition))
     }
     const acquisition = await (resolveAcquisition?.(requirement)
       ?? runResearchDataAcquisition({ ...acquisitionOptions, requirement }))
@@ -96,6 +96,44 @@ export class DataResolver<T> {
         ? 'UNAVAILABLE'
         : (hasOptionalCatalogGap ? 'PARTIAL' : bundle.completeness))
     return { ...bundle, completeness, unresolvedRequirements: materialized.unresolved }
+  }
+}
+
+function normalizeIndustryNumericAvailability<T>(requirement: DataRequirement, acquisition: AcquisitionResult<T>): AcquisitionResult<T> {
+  if (!requirement.metricId?.startsWith('industry:')
+    || !['metric', 'estimate', 'timeseries'].includes(requirement.dataKind)
+    || requirement.determinismClass === 'SEMANTIC_QUALITATIVE') return acquisition
+  const payloads = [
+    ...(acquisition.data === undefined ? [] : [acquisition.data]),
+    ...(acquisition.observations ?? []).map((observation) => observation.data),
+  ]
+  const points = payloads.flatMap((payload) => {
+    if (typeof payload !== 'object' || payload === null || !('observationPoints' in payload)) return []
+    const values = (payload as { readonly observationPoints?: unknown }).observationPoints
+    return Array.isArray(values) ? values : []
+  })
+  const directPoints = payloads.filter((payload) => typeof payload === 'object' && payload !== null
+    && 'metricId' in payload && 'canonicalUnit' in payload && 'periodStart' in payload && 'periodEnd' in payload && 'sourceIdentity' in payload)
+  const diagnostics = payloads.flatMap((payload) => {
+    if (typeof payload !== 'object' || payload === null) return []
+    const value = payload as { readonly observationDiagnostics?: unknown; readonly diagnostics?: unknown }
+    return [value.observationDiagnostics, value.diagnostics].flatMap((items) => Array.isArray(items) ? items.filter((item): item is string => typeof item === 'string') : [])
+  })
+  if (points.length + directPoints.length > 0) {
+    if (diagnostics.length > 0 && acquisition.status === 'AVAILABLE') return { ...acquisition, status: 'PARTIAL', quality: { ...acquisition.quality, complete: false } }
+    return acquisition
+  }
+  if (payloads.length === 0) return acquisition
+  const reason = diagnostics.some((item) => /PIT|VALUE_VERSION|PUBLICATION/i.test(item)) ? 'PIT_INVALID'
+    : diagnostics.some((item) => /UNIT/i.test(item)) ? 'UNIT_INVALID'
+      : diagnostics.some((item) => /PERIOD/i.test(item)) ? 'PERIOD_MISMATCH'
+        : diagnostics.some((item) => /SOURCE|TRANSPORT|HTTP_|TIMEOUT|RIGHTS/i.test(item)) ? 'SOURCE_UNAVAILABLE'
+          : 'PARSER_UNAVAILABLE'
+  return {
+    ...acquisition,
+    status: 'UNAVAILABLE',
+    unavailableReason: reason,
+    quality: { ...acquisition.quality, pointInTimeSafe: false, complete: false, valueVersionStatus: 'UNVERIFIED', pitDiagnostic: diagnostics[0] ?? reason },
   }
 }
 

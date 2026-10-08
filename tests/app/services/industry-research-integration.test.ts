@@ -16,7 +16,7 @@ import { INDUSTRY_RESEARCH_EVIDENCE_POLICY, INDUSTRY_DATA_SOURCE_POLICIES } from
 import { createIndustryDataCatalog, industryMetricId } from '../../../data/industry-catalog.ts'
 import { createIndustryDataResolver } from '../../../app/services/industry-data-resolver.ts'
 import type { IndustryDataResolverFactory } from '../../../workflows/industry-deep-research/contracts.ts'
-import { createIndustryEvidenceOperation, createIndustryMetricOperation } from '../../../plugins/research-acquisition/industry-data-operations.ts'
+import { createIndustryEvidenceOperation, createIndustryMetricOperation, normalizeIndustryObservationCandidate } from '../../../plugins/research-acquisition/industry-data-operations.ts'
 import { createIndustryOperatingObservation, type IndustryOperatingObservationAcquisitionResult } from '../../../plugins/research-acquisition/industry-operating-observations.ts'
 import type { IndustryMetricDefinition } from '../../../data/industry-catalog.ts'
 import type { ThemeScopeImpactChecker } from '../../../workflows/theme-scope-impact-check/post-write.ts'
@@ -76,7 +76,7 @@ async function fixture(options: { readonly executor?: IndustryExecutor; readonly
   return { root, reports, workflowService, service, executor }
 }
 
-function canonicalProductionFixture(): { readonly catalog: ReturnType<typeof createIndustryDataCatalog>; readonly acquisition: { acquire: () => Promise<IndustryOperatingObservationAcquisitionResult>; acquireNamed: (_request: unknown, metricId: string) => Promise<IndustryOperatingObservationAcquisitionResult> }; readonly pointMetricId: string; readonly exportMetricId: string } {
+function canonicalProductionFixture(): { readonly catalog: ReturnType<typeof createIndustryDataCatalog>; readonly acquisition: { acquire: () => Promise<IndustryOperatingObservationAcquisitionResult>; acquireNamed: (_request: unknown, metricId: string) => Promise<IndustryOperatingObservationAcquisitionResult> }; readonly pointMetricId: string; readonly exportMetricId: string; readonly productionObservation: ReturnType<typeof createIndustryOperatingObservation>; readonly productionSource: NormalizedResearchSource; readonly exportSource: NormalizedResearchSource } {
   const metricId = industryMetricId('household_air_conditioner', 'room-air-conditioner-production')
   const exportMetricId = industryMetricId('household_air_conditioner', 'air-conditioner-export-volume')
   const policyId = `industry-metric:${metricId}`
@@ -94,7 +94,7 @@ function canonicalProductionFixture(): { readonly catalog: ReturnType<typeof cre
   const exportObservation = createIndustryOperatingObservation({ metricKey: 'air_conditioner.export_volume', observationClass: 'TRADE', value: 4039692, qualifier: 'EXACT', unit: '台', originalValue: '4039692', originalUnit: '台', periodStart: '2024-09-01T00:00:00.000Z', periodEnd: '2024-09-30T23:59:59.999Z', frequency: 'MONTHLY', aggregation: 'PERIOD', geography: 'China national exports', productOrSegment: '家用空调器', publishedAt: '2024-11-08T15:59:59.999Z', retrievedAt: '2026-09-02T00:00:00.000Z', originPublisher: 'CHEAA', hostPlatform: 'fixture.test', retrievalProvider: 'fixture CHEAA operation', sourceAuthority: 'S2_PROFESSIONAL', determinismClass: 'EVIDENCE_BACKED_NUMERIC', sourceCandidateId: exportSource.candidate.candidateId, sourceRef: `url:${exportUrl}`, publicationPit: 'VERIFIED', valueVersionPit: 'UNVERIFIED', metadata: { canonicalUrl: exportUrl } })
   const productionResult: IndustryOperatingObservationAcquisitionResult = { status: 'COMPLETED', observations: [productionObservation], sources: [productionSource], diagnostics: [] }
   const exportResult: IndustryOperatingObservationAcquisitionResult = { status: 'COMPLETED', observations: [exportObservation], sources: [exportSource], diagnostics: [] }
-  return { catalog: createIndustryDataCatalog([productionDefinition, exportDefinition]), acquisition: { acquire: async () => productionResult, acquireNamed: async (_request, selectedMetricId) => selectedMetricId === metricId ? productionResult : selectedMetricId === exportMetricId ? exportResult : { status: 'SCOPE_UNSUPPORTED', observations: [], sources: [], diagnostics: ['FIXTURE_METRIC_ID_MISMATCH'] } }, pointMetricId: metricId, exportMetricId }
+  return { catalog: createIndustryDataCatalog([productionDefinition, exportDefinition]), acquisition: { acquire: async () => productionResult, acquireNamed: async (_request, selectedMetricId) => selectedMetricId === metricId ? productionResult : selectedMetricId === exportMetricId ? exportResult : { status: 'SCOPE_UNSUPPORTED', observations: [], sources: [], diagnostics: ['FIXTURE_METRIC_ID_MISMATCH'] } }, pointMetricId: metricId, exportMetricId, productionObservation, productionSource, exportSource }
 }
 
 test('Application Industry research projects canonical graph and replays semantic objects without duplication', async () => {
@@ -201,8 +201,146 @@ test('Application Industry invocation selects the exact canonical production met
     assert.equal(pointsFor('supply_demand_analysis').find((point) => point.metricId === canonical.pointMetricId)?.unit, '万台')
     assert.equal(pointsFor('supply_demand_analysis').find((point) => point.metricId === canonical.exportMetricId)?.unit, '台')
     assert.match(pointsFor('supply_demand_analysis').find((point) => point.metricId === canonical.pointMetricId)?.sourceIdentity ?? '', /^url:https:\/\/fixture\.test\/nbs/)
+    const knowledge = (await readCanonicalV04Assets(f.root)).objects.map((item) => item.value as { id: string; canonicalUrl?: string; rawRefs?: readonly string[] })
+    const sources = knowledge.filter((item) => item.id.startsWith('source:'))
+    const metricSourceRefs = new Set<string>()
+    for (const observation of result.operatingObservations) {
+      const url = observation.sourceIdentity.replace(/^url:/, '')
+      const matches = sources.filter((item) => item.canonicalUrl === url)
+      assert.equal(matches.length, 1, `one canonical Source must bind ${observation.sourceIdentity}`)
+      assert.equal(matches[0]?.rawRefs?.length, 1, 'the canonical Source must retain its Raw binding')
+      metricSourceRefs.add(matches[0]!.id)
+    }
+    const report = JSON.parse(await readFile(join(f.reports, `${result.reportPath!}.json`), 'utf8')) as { sections: Array<{ title: string; markdown: string; sourceRefs?: string[] }> }
+    const metricReportSection = report.sections.find((section) => section.title === 'Key Metrics & Monitoring')!
+    for (const sourceRef of metricSourceRefs) assert.ok(metricReportSection.sourceRefs?.includes(sourceRef), `report must cite bound Source ${sourceRef}`)
+    assert.doesNotMatch(metricReportSection.markdown, /\| url:https:\/\//, 'report must not present an unbound URL identity as a canonical citation')
     assert.equal(result.requirementCoverage, 'PARTIAL')
     assert.ok(result.dataRequirementGaps.some((gap) => gap.startsWith('capacity-evidence:NO_CANONICAL_INDUSTRY_METRIC')))
     assert.ok(result.dataRequirementGaps.some((gap) => gap.startsWith('demand-evidence:NO_CANONICAL_INDUSTRY_METRIC')))
+  } finally { await rm(f.root, { recursive: true, force: true }); await rm(f.reports, { recursive: true, force: true }) }
+})
+
+test('Application Industry keeps an unbound canonical metric out of Skill input and reports an explicit provenance gap', async () => {
+  const canonical = canonicalProductionFixture()
+  let pluginCalls = 0
+  const plugin = fixturePlugin()
+  const tracedPlugin: ResearchAcquisitionPlugin = {
+    name: plugin.name,
+    async discover(request, signal) { pluginCalls++; return plugin.discover(request, signal) },
+    async fetch(candidate, signal) { return plugin.fetch(candidate, signal) },
+    async normalize(fetched, signal) { return plugin.normalize(fetched, signal) },
+  }
+  const factory: IndustryDataResolverFactory = (context) => createIndustryDataResolver({
+    catalog: canonical.catalog,
+    policies: INDUSTRY_DATA_SOURCE_POLICIES,
+    operations: {
+      'industry.evidence.miit': createIndustryEvidenceOperation('industry.evidence.miit', tracedPlugin),
+      'industry.metric.nbs.room-air-conditioner-production': async ({ requirement, candidate, now }) => {
+        const observationCandidate = normalizeIndustryObservationCandidate(canonical.productionObservation, requirement, candidate.operationId)
+        return {
+          status: 'SUCCESS',
+          data: { documents: [], observationCandidates: observationCandidate ? [observationCandidate] : [], diagnostics: [], outcome: { transportSucceeded: true, fetchSucceeded: true, discovered: 1, fetched: 0, failed: 0, empty: 0, rejected: 0, deduplicated: 0 } },
+          source: { originAuthority: candidate.originAuthority, retrievalProvider: 'fixture metric operation', retrievedAt: now() },
+        }
+      },
+    },
+  }, context)
+  const f = await fixture({ plugins: [tracedPlugin], industryDataResolverFactory: factory })
+  try {
+    const result = await f.service.startIndustryResearch({ workflowRunId: 'industry-unbound-metric', name: '家用空调', maxSources: 4, maxEvidencePerModule: 2 }).completion
+    assert.equal(result.status, 'completed', result.errorSummary)
+    const observation = result.operatingObservations.find((point) => point.metricId === canonical.pointMetricId)
+    assert.ok(observation, 'the resolver may retain a valid metric for report context')
+    assert.ok(observation.diagnostics.includes('INDUSTRY_METRIC_PROVENANCE_GAP'))
+    const moduleCalls = (f.executor as IndustryExecutor).calls.filter((call) => call.operation === 'industry_module_analysis')
+    const pointInputs = moduleCalls.flatMap((call) => (call.input as { operatingObservations: readonly { sourceIdentity: string }[] }).operatingObservations)
+    assert.equal(pointInputs.some((point) => point.sourceIdentity === observation.sourceIdentity), false)
+    assert.ok(result.dataRequirementGaps.some((gap) => gap === `${canonical.pointMetricId}:PROVENANCE_GAP`))
+    assert.equal(result.requirementCoverage, 'PARTIAL')
+    assert.ok(pluginCalls > 0, 'the test traverses the Application evidence plugin path as well as the metric operation')
+    const report = JSON.parse(await readFile(join(f.reports, `${result.reportPath!}.json`), 'utf8')) as { sections: Array<{ title: string; markdown: string }> }
+    assert.match(report.sections.find((section) => section.title === 'Key Metrics & Monitoring')!.markdown, /context\/report only/)
+    const values = (await readCanonicalV04Assets(f.root)).objects.map((item) => item.value as { id: string; canonicalUrl?: string })
+    assert.equal(values.some((value) => value.id.startsWith('source:') && value.canonicalUrl === canonical.productionSource.canonicalUrl), false)
+  } finally { await rm(f.root, { recursive: true, force: true }); await rm(f.reports, { recursive: true, force: true }) }
+})
+
+test('Application explicit historical asOf reaches numeric Industry DataRequirements and rejects unversioned values', async () => {
+  const canonical = canonicalProductionFixture()
+  const observed: Array<{ readonly metricId?: string; readonly asOf: string; readonly asOfMode?: string }> = []
+  const factory: IndustryDataResolverFactory = (context) => {
+    const metricOperation = createIndustryMetricOperation(canonical.acquisition)
+    const capture = async (request: Parameters<typeof metricOperation>[0]) => {
+      observed.push({ metricId: request.requirement.metricId, asOf: request.requirement.analysisAsOf ?? request.requirement.asOf, asOfMode: request.requirement.asOfMode })
+      return metricOperation(request)
+    }
+    return createIndustryDataResolver({ catalog: canonical.catalog, policies: INDUSTRY_DATA_SOURCE_POLICIES, operations: {
+      'industry.evidence.miit': createIndustryEvidenceOperation('industry.evidence.miit', fixturePlugin()),
+      'industry.metric.nbs.room-air-conditioner-production': capture,
+      'industry.metric.cheaa.air-conditioner-export-volume': capture,
+    } }, context)
+  }
+  const f = await fixture({ industryDataResolverFactory: factory })
+  try {
+    const cutoff = '2026-09-08T00:00:00.000Z'
+    const result = await f.service.startIndustryResearch({ workflowRunId: 'industry-historical-asof', name: '家用空调', asOf: cutoff, maxSources: 4, maxEvidencePerModule: 2 }).completion
+    assert.equal(result.status, 'completed', result.errorSummary)
+    assert.ok(observed.length >= 2)
+    assert.ok(observed.every((item) => item.asOf === cutoff && item.asOfMode === 'HISTORICAL'))
+    assert.equal(result.operatingObservations.length, 0)
+    assert.ok(result.dataRequirementGaps.some((gap) => gap.endsWith(':NO_ELIGIBLE_POINT_IN_TIME_DATA')))
+  } finally { await rm(f.root, { recursive: true, force: true }); await rm(f.reports, { recursive: true, force: true }) }
+})
+
+test('Generic and metric paths for the same official document share one canonical Source and Raw', async () => {
+  const canonical = canonicalProductionFixture()
+  const factory: IndustryDataResolverFactory = (context) => createIndustryDataResolver({
+    catalog: canonical.catalog,
+    policies: INDUSTRY_DATA_SOURCE_POLICIES,
+    operations: {
+      'industry.evidence.miit': createIndustryEvidenceOperation('industry.evidence.miit', fixturePlugin([canonical.productionSource])),
+      'industry.metric.nbs.room-air-conditioner-production': createIndustryMetricOperation(canonical.acquisition),
+      'industry.metric.cheaa.air-conditioner-export-volume': createIndustryMetricOperation(canonical.acquisition),
+    },
+  }, context)
+  const f = await fixture({ industryDataResolverFactory: factory })
+  try {
+    const result = await f.service.startIndustryResearch({ workflowRunId: 'industry-shared-metric-source', name: '家用空调', maxSources: 4, maxEvidencePerModule: 2 }).completion
+    assert.equal(result.status, 'completed', result.errorSummary)
+    const sources = (await readCanonicalV04Assets(f.root)).objects.map((item) => item.value as { id: string; canonicalUrl?: string; rawRefs?: readonly string[] }).filter((item) => item.id.startsWith('source:'))
+    const shared = sources.filter((item) => item.canonicalUrl === canonical.productionSource.canonicalUrl)
+    assert.equal(shared.length, 1)
+    assert.equal(shared[0]?.rawRefs?.length, 1)
+    const report = JSON.parse(await readFile(join(f.reports, `${result.reportPath!}.json`), 'utf8')) as { sections: Array<{ title: string; sourceRefs?: string[] }> }
+    const section = report.sections.find((item) => item.title === 'Key Metrics & Monitoring')!
+    assert.ok(section.sourceRefs?.includes(shared[0]!.id))
+    assert.equal(sources.filter((item) => item.canonicalUrl === canonical.productionSource.canonicalUrl).length, 1, 'same document identity must not create duplicate Sources')
+  } finally { await rm(f.root, { recursive: true, force: true }); await rm(f.reports, { recursive: true, force: true }) }
+})
+
+test('Rights-denied metric sources never reach Skill input or canonical Source/Raw', async () => {
+  const canonical = canonicalProductionFixture()
+  const deniedSource: NormalizedResearchSource = { ...canonical.productionSource, rights: { ...canonical.productionSource.rights, derivativeKnowledgeAllowed: false } }
+  const acquisition = {
+    ...canonical.acquisition,
+    acquireNamed: async (request: unknown, metricId: string) => {
+      const result = await canonical.acquisition.acquireNamed(request, metricId)
+      return metricId === canonical.pointMetricId ? { ...result, sources: [deniedSource] } : result
+    },
+  }
+  const factory: IndustryDataResolverFactory = (context) => createIndustryDataResolver({ catalog: canonical.catalog, policies: INDUSTRY_DATA_SOURCE_POLICIES, operations: {
+    'industry.evidence.miit': createIndustryEvidenceOperation('industry.evidence.miit', fixturePlugin()),
+    'industry.metric.nbs.room-air-conditioner-production': createIndustryMetricOperation(acquisition),
+    'industry.metric.cheaa.air-conditioner-export-volume': createIndustryMetricOperation(acquisition),
+  } }, context)
+  const f = await fixture({ industryDataResolverFactory: factory })
+  try {
+    const result = await f.service.startIndustryResearch({ workflowRunId: 'industry-rights-denied-metric', name: '家用空调', maxSources: 4, maxEvidencePerModule: 2 }).completion
+    assert.equal(result.status, 'completed', result.errorSummary)
+    assert.equal(result.operatingObservations.some((item) => item.metricId === canonical.pointMetricId), false)
+    assert.ok(result.dataRequirementGaps.some((gap) => gap.endsWith(':RIGHTS_REJECTED')))
+    const sources = (await readCanonicalV04Assets(f.root)).objects.map((item) => item.value as { id: string; canonicalUrl?: string }).filter((item) => item.id.startsWith('source:'))
+    assert.equal(sources.some((item) => item.canonicalUrl === canonical.productionSource.canonicalUrl), false)
   } finally { await rm(f.root, { recursive: true, force: true }); await rm(f.reports, { recursive: true, force: true }) }
 })

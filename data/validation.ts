@@ -23,6 +23,7 @@ export function validateDataRequirement(requirement: DataRequirement): readonly 
   if (isRecord(requirement?.consumer) && requirement.consumer.capability !== undefined && (typeof requirement.consumer.capability !== 'string' || requirement.consumer.capability.trim() === '')) errors.push('consumer.capability must be a non-empty string when provided')
   if (typeof requirement?.asOf !== 'string' || Number.isNaN(Date.parse(requirement.asOf))) errors.push('asOf must be a valid date')
   if (requirement?.analysisAsOf !== undefined && (Number.isNaN(Date.parse(requirement.analysisAsOf)) || requirement.analysisAsOf !== requirement.asOf)) errors.push('analysisAsOf must match asOf')
+  if (requirement?.asOfMode !== undefined && !['CURRENT_VALUE_ONLY', 'HISTORICAL'].includes(requirement.asOfMode)) errors.push('asOfMode must be CURRENT_VALUE_ONLY or HISTORICAL')
   if (requirement?.period?.fiscalYear !== undefined && (!Number.isInteger(requirement.period.fiscalYear) || requirement.period.fiscalYear < 1900)) errors.push('period.fiscalYear must be a valid year')
   if (requirement?.period?.start !== undefined && Number.isNaN(Date.parse(requirement.period.start))) errors.push('period.start must be a valid date')
   if (requirement?.period?.end !== undefined && Number.isNaN(Date.parse(requirement.period.end))) errors.push('period.end must be a valid date')

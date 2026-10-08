@@ -293,7 +293,7 @@ export class ResearchService {
   }
 
   startIndustryResearch(input: IndustryResearchInput, callerSignal?: AbortSignal): { readonly runId: string; readonly completion: Promise<ApplicationIndustryResearchResult & { readonly themeScopeImpact: ThemeScopeImpactTriggerResult }> } {
-    if (!input || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(input.workflowRunId) || typeof input.name !== 'string' || input.name.trim() === '' || input.name.length > 200) throw new ApplicationServiceError('invalid_input', 'workflowRunId and Industry name are invalid')
+    if (!input || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(input.workflowRunId) || typeof input.name !== 'string' || input.name.trim() === '' || input.name.length > 200 || (input.asOf !== undefined && !Number.isFinite(Date.parse(input.asOf)))) throw new ApplicationServiceError('invalid_input', 'workflowRunId, Industry name, and optional asOf are invalid')
     if (input.canonicalRef !== undefined && !/^entity:[A-Za-z0-9._-]+$/.test(input.canonicalRef)) throw new ApplicationServiceError('invalid_input', 'canonicalRef is invalid')
     if (input.aliases !== undefined && (!Array.isArray(input.aliases) || input.aliases.length > 8 || input.aliases.some((x) => typeof x !== 'string' || !x.trim() || x.length > 120))) throw new ApplicationServiceError('invalid_input', 'aliases are invalid')
     if (input.searchTerms !== undefined && (!Array.isArray(input.searchTerms) || input.searchTerms.length > 8 || input.searchTerms.some((x) => typeof x !== 'string' || !x.trim() || x.length > 120))) throw new ApplicationServiceError('invalid_input', 'searchTerms are invalid')
@@ -301,6 +301,7 @@ export class ResearchService {
     if (input.maxEvidencePerModule !== undefined && (!Number.isSafeInteger(input.maxEvidencePerModule) || input.maxEvidencePerModule < 1 || input.maxEvidencePerModule > 12)) throw new ApplicationServiceError('invalid_input', 'maxEvidencePerModule is invalid')
     if (input.useStructuredKnowledge === false) throw new ApplicationServiceError('conflict', 'Industry Research requires structured Knowledge context and cannot run with it disabled')
     const target = { name: input.name.trim(), ...(input.aliases === undefined ? {} : { aliases: input.aliases.map((x) => x.trim()) }), ...(input.canonicalRef === undefined ? {} : { canonicalRef: input.canonicalRef }), ...(input.asOf === undefined ? {} : { asOf: input.asOf }) }
+    const asOfMode = input.asOfMode ?? (input.asOf === undefined ? 'CURRENT_VALUE_ONLY' : 'HISTORICAL')
     const industryReasoningExecutorFactory = this.options.industryReasoningExecutorFactory
       ?? (this.options.reasoningExecutor === undefined ? undefined : async () => this.options.reasoningExecutor!)
     if (!industryReasoningExecutorFactory) throw new ApplicationServiceError('failed', 'Industry Research requires a configured ReasoningExecutor')
@@ -313,7 +314,7 @@ export class ResearchService {
       try {
         const reasoningExecutor = withSourceLibraryContext(await industryReasoningExecutorFactory(), input.sourceLibraryContext)
         const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot))
-        const result = await runIndustryDeepResearch({ workflowRunId: input.workflowRunId, handle, target, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), reasoningExecutor: reasoningExecutor!, dataResolverFactory, skillDataRequirements, ...(input.searchTerms ? { searchTerms: input.searchTerms } : {}), maxSources: input.maxSources, maxEvidencePerModule: input.maxEvidencePerModule, writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
+        const result = await runIndustryDeepResearch({ workflowRunId: input.workflowRunId, handle, target, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), reasoningExecutor: reasoningExecutor!, dataResolverFactory, skillDataRequirements, ...(input.searchTerms ? { searchTerms: input.searchTerms } : {}), ...(input.asOf === undefined ? {} : { asOf: input.asOf }), asOfMode, maxSources: input.maxSources, maxEvidencePerModule: input.maxEvidencePerModule, writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
         return { status: result.status, workflow: result, diagnostics: result.diagnostics, outcomes: [] as readonly ResearchProviderOutcome[] }
       } finally { signal.removeEventListener('abort', abort); callerSignal?.removeEventListener('abort', abort) }
     }).then(async (outcome) => {

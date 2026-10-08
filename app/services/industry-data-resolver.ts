@@ -2,7 +2,8 @@ import { DataResolver } from '../../data/resolver.ts'
 import type { DataRequirement, SourcePolicy, SourceExecutionResult } from '../../data/contracts.ts'
 import type { IndustryDataCatalog } from '../../data/industry-catalog.ts'
 import { validateIndustryObservation } from '../../data/industry-observations.ts'
-import type { IndustryDataOperation, IndustryDataOperationPayload } from '../../plugins/research-acquisition/industry-data-operations.ts'
+import type { IndustryDataOperationPayload } from '../../data/industry-observations.ts'
+import type { IndustryDataOperation } from '../../plugins/research-acquisition/industry-data-operations.ts'
 import type { IndustryTargetInput } from '../../skills/industry-research/contracts.ts'
 
 export interface IndustryDataResolverContext {

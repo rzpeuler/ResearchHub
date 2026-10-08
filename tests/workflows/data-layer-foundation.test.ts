@@ -531,9 +531,10 @@ test('DataResolver reports unresolved required catalog needs and resolves canoni
       supports: { dataKinds: ['timeseries'], metricIds: [industryMetricId('pcb', 'monthly-shipment')] },
     }],
   }
-  const resolver = new DataResolver<number>({
+  const metricPayload = { observationPoints: [{ metricId: industryMetricId('pcb', 'monthly-shipment'), canonicalUnit: 'million units', periodStart: '2026-01-01', periodEnd: '2026-03-31', sourceIdentity: 'url:https://fixture.test/series' }] }
+  const resolver = new DataResolver<typeof metricPayload>({
     policies: [policy],
-    executor: async () => ({ status: 'SUCCESS', data: 5, source: source('fixture-industry-source') }),
+    executor: async () => ({ status: 'SUCCESS', data: metricPayload, source: source('fixture-industry-source') }),
     industryCatalog,
   })
   const templates = [{
@@ -636,10 +637,11 @@ test('DataResolver limits an Industry metric to its catalog-associated source po
       supports: { dataKinds: ['timeseries'], metricIds: [metricId] },
     }],
   })
-  const resolver = new DataResolver<{ readonly value: number }>({
+  const metricPayload = { value: 12, observationPoints: [{ metricId, canonicalUnit: 'million units', periodStart: '2026-01-01', periodEnd: '2026-03-31', sourceIdentity: 'url:https://fixture.test/series' }] }
+  const resolver = new DataResolver<typeof metricPayload>({
     policies: [makePolicy('pcb-shipment-policy', 'associated-source'), makePolicy('unassociated-policy', 'other-source')],
     industryCatalog,
-    executor: async (_requirement, _candidate) => ({ status: 'SUCCESS', data: { value: 42 }, source: { publishedAt: '2026-09-30T00:00:00.000Z', retrievedAt: AS_OF } }),
+    executor: async (_requirement, _candidate) => ({ status: 'SUCCESS', data: metricPayload, source: { publishedAt: '2026-09-30T00:00:00.000Z', retrievedAt: AS_OF } }),
   })
   const result = await resolver.resolveOne(requirement({ metricId, metricFamily: 'shipments', dataKind: 'timeseries' }))
   assert.equal(result.status, 'AVAILABLE')
@@ -693,4 +695,59 @@ test('DataResolver blocks historical unversioned Industry values and keeps curre
   const historical = await resolver.resolveOne(requirement({ metricId, dataKind: 'timeseries', consumer: { workflow: 'fixture-workflow' }, asOfMode: 'HISTORICAL' }))
   assert.equal(historical.status, 'UNAVAILABLE')
   assert.match(historical.attempts[0]?.diagnostic ?? '', /INDUSTRY_VALUE_VERSION_UNVERIFIED/)
+})
+
+test('DataResolver enforces historical value-version availability on the requirement path', async () => {
+  const metricId = industryMetricId('pcb', 'monthly-shipment')
+  const catalog = createIndustryDataCatalog([industryDefinition({ metricId, lifecycleStatus: 'CANONICAL', validation: industryValidation() })])
+  const policy: SourcePolicy = {
+    policyId: 'pcb-shipment-policy', requirementMatch: { metricId, dataKind: 'timeseries' }, selectionMode: 'FIRST_VALID',
+    candidates: [{ sourceId: 'pcb-monthly-source', fallbackLevel: 'PRIMARY', originAuthority: 'S1_OFFICIAL', operationId: 'fixture.industry.metric', supports: { dataKinds: ['timeseries'], metricIds: [metricId] } }],
+  }
+  let version: { readonly status: 'VERIFIED'; readonly versionId: string; readonly availableAt: string } | { readonly status: 'UNVERIFIED' } = { status: 'UNVERIFIED' }
+  const resolver = new DataResolver({ policies: [policy], industryCatalog: catalog, executor: async () => ({
+    status: 'SUCCESS' as const,
+    data: { value: 0, metricId, canonicalUnit: 'million units', periodStart: '2026-01-01', periodEnd: '2026-03-31', sourceIdentity: 'url:https://official.example/series' },
+    source: { ...source('pcb-monthly-source'), publishedAt: '2026-09-30T00:00:00.000Z', observedAt: '2026-03-31', observationAvailableAt: '2026-03-31T16:00:00.000Z', valueVersion: version },
+  }) })
+  const current = await resolver.resolveOne(requirement({ metricId, dataKind: 'timeseries', asOfMode: 'CURRENT_VALUE_ONLY' }))
+  assert.equal(current.status, 'AVAILABLE', 'zero is a present observation, even if the current version cannot be archived')
+  assert.equal(current.quality.valueVersionStatus, 'UNVERIFIED')
+  const historicalUnverified = await resolver.resolveOne(requirement({ metricId, dataKind: 'timeseries', asOfMode: 'HISTORICAL' }))
+  assert.equal(historicalUnverified.status, 'UNAVAILABLE')
+  assert.match(historicalUnverified.attempts[0]?.diagnostic ?? '', /value version or publication unverified/)
+  version = { status: 'VERIFIED', versionId: 'series-v1', availableAt: '2026-09-30T12:00:00.000Z' }
+  const historicalAvailable = await resolver.resolveOne(requirement({ metricId, dataKind: 'timeseries', asOfMode: 'HISTORICAL' }))
+  assert.equal(historicalAvailable.status, 'AVAILABLE')
+  version = { status: 'VERIFIED', versionId: 'series-v2', availableAt: '2026-10-02T00:00:00.000Z' }
+  const versionAfterCutoff = await resolver.resolveOne(requirement({ metricId, dataKind: 'timeseries', asOfMode: 'HISTORICAL' }))
+  assert.equal(versionAfterCutoff.status, 'UNAVAILABLE')
+  assert.match(versionAfterCutoff.attempts[0]?.diagnostic ?? '', /valueVersion is invalid or after analysisAsOf/)
+})
+
+test('DataResolver makes Industry numeric availability depend on valid observations, not document fetch success', async () => {
+  const metricId = industryMetricId('pcb', 'monthly-shipment')
+  const catalog = createIndustryDataCatalog([industryDefinition({ metricId, lifecycleStatus: 'CANONICAL', validation: industryValidation() })])
+  const policy: SourcePolicy = {
+    policyId: 'pcb-shipment-policy', requirementMatch: { metricId, dataKind: 'timeseries' }, selectionMode: 'FIRST_VALID',
+    candidates: [{ sourceId: 'pcb-monthly-source', fallbackLevel: 'PRIMARY', originAuthority: 'S1_OFFICIAL', operationId: 'fixture.industry.metric', supports: { dataKinds: ['timeseries'], metricIds: [metricId] } }],
+  }
+  let payload: { readonly value: number; readonly documents: readonly unknown[]; readonly observationPoints: readonly unknown[]; readonly observationDiagnostics: readonly string[] } = { value: 1, documents: [{}], observationPoints: [], observationDiagnostics: ['INDUSTRY:UNSUPPORTED_INDUSTRY_UNIT'] }
+  const resolver = new DataResolver({ policies: [policy], industryCatalog: catalog, executor: async () => ({ status: 'SUCCESS' as const, data: payload, source: { ...source('pcb-monthly-source'), publishedAt: '2026-09-30T00:00:00.000Z' } }) })
+  const invalidUnit = await resolver.resolveOne(requirement({ metricId, dataKind: 'timeseries' }))
+  assert.equal(invalidUnit.status, 'UNAVAILABLE')
+  assert.equal(invalidUnit.unavailableReason, 'UNIT_INVALID')
+  assert.equal(invalidUnit.value?.documents.length, 1, 'qualified document evidence remains available alongside the numeric gap')
+  payload = { value: 1, documents: [{}], observationPoints: [], observationDiagnostics: [] }
+  const parserReturnedNoMetric = await resolver.resolveOne(requirement({ metricId, dataKind: 'timeseries' }))
+  assert.equal(parserReturnedNoMetric.status, 'UNAVAILABLE')
+  assert.equal(parserReturnedNoMetric.unavailableReason, 'PARSER_UNAVAILABLE')
+  payload = { value: 0, documents: [{}], observationPoints: [{ value: 0, metricId, canonicalUnit: 'million units', periodStart: '2026-01-01', periodEnd: '2026-03-31', sourceIdentity: 'url:https://official.example/series' }], observationDiagnostics: [] }
+  const qualifiedZero = await resolver.resolveOne(requirement({ metricId, dataKind: 'timeseries' }))
+  assert.equal(qualifiedZero.status, 'AVAILABLE')
+  assert.equal(qualifiedZero.value?.observationPoints[0] && (qualifiedZero.value.observationPoints[0] as { value: number }).value, 0)
+  payload = { value: 2, documents: [{}], observationPoints: [{ value: 2, metricId, canonicalUnit: 'million units', periodStart: '2026-01-01', periodEnd: '2026-03-31', sourceIdentity: 'url:https://official.example/series' }], observationDiagnostics: ['INDUSTRY_METRIC_CONFLICT:series'] }
+  const partialConflict = await resolver.resolveOne(requirement({ metricId, dataKind: 'timeseries' }))
+  assert.equal(partialConflict.status, 'PARTIAL')
+  assert.match(partialConflict.value?.observationDiagnostics[0] ?? '', /CONFLICT/)
 })

@@ -159,6 +159,11 @@ export type AcquisitionCrossCheckStatus = 'CONSISTENT' | 'CONFLICT' | 'INSUFFICI
 
 export type AcquisitionUnavailableReason =
   | 'SOURCE_UNAVAILABLE'
+  | 'PARSER_UNAVAILABLE'
+  | 'PIT_INVALID'
+  | 'UNIT_INVALID'
+  | 'PERIOD_MISMATCH'
+  | 'RIGHTS_REJECTED'
   | 'DATA_NOT_PUBLISHED'
   | 'NO_ELIGIBLE_POINT_IN_TIME_DATA'
   | 'INSUFFICIENT_AUTHORITY'

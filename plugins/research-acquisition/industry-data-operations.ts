@@ -1,6 +1,5 @@
 import type { DataRequirement, SourceCandidate, SourceExecutionResult } from '../../data/contracts.ts'
-import type { IndustryObservationCandidate, IndustryObservationPoint } from '../../data/industry-observations.ts'
-import type { ResearchEvidenceInput } from '../../data/research-evidence.ts'
+import type { IndustryDataOperationPayload, IndustryObservationCandidate, IndustryOperationDocument } from '../../data/industry-observations.ts'
 import type { ResearchAcquisitionPlugin, NormalizedResearchSource } from './contracts.ts'
 import type { IndustryOperatingObservation } from './industry-operating-observations.ts'
 import type { IndustryOperatingObservationAcquisitionPort, IndustryOperatingObservationAcquisitionResult, IndustryOperatingObservationRequest } from './industry-operating-observations.ts'
@@ -79,31 +78,10 @@ export interface IndustryDataOperationRequest {
   readonly target?: IndustryTargetInput
 }
 
-export interface IndustryOperationDocument extends ResearchEvidenceInput<unknown> {
-  readonly rights: NonNullable<ResearchEvidenceInput<unknown>['rights']>
-}
+export type { IndustryDataOperationPayload, IndustryOperationDocument } from '../../data/industry-observations.ts'
 
 export function industrySourceIdentity(sourceUrl: string | undefined, contentHash: string): string {
   return sourceUrl ? `url:${sourceUrl}` : `hash:${contentHash.trim().toLowerCase()}`
-}
-
-export interface IndustryDataOperationPayload {
-  readonly documents: readonly IndustryOperationDocument[]
-  readonly observationCandidates: readonly IndustryObservationCandidate[]
-  /** Populated by the application Data operation boundary after catalog validation. */
-  readonly observationPoints?: readonly IndustryObservationPoint[]
-  readonly observationDiagnostics?: readonly string[]
-  readonly diagnostics: readonly string[]
-  readonly outcome: {
-    readonly transportSucceeded: boolean
-    readonly fetchSucceeded: boolean
-    readonly discovered: number
-    readonly fetched: number
-    readonly failed: number
-    readonly empty: number
-    readonly rejected: number
-    readonly deduplicated: number
-  }
 }
 
 export type IndustryDataOperation = (request: IndustryDataOperationRequest) => Promise<SourceExecutionResult<IndustryDataOperationPayload>>

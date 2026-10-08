@@ -216,6 +216,36 @@ test('Workflow exact semantic duplicates merge deterministically, preserve linka
 
 test('Workflow explicit contradiction retains both governed Claims while unsupported same-slot conflict is excluded', async () => { const contradictory = [{ proposalId: 'product', kind: 'entity', subjectKey: 'product', entityType: 'product', entityName: 'Product' }, { proposalId: 'c1', kind: 'claim', subjectKey: 'product', claimType: 'fact', statement: 'one', sourceCandidateIds: ['evidence-s1'], structuredValue: { metric: 'm', value: 1, unit: 'u', comparator: 'eq', period: '2026' }, contradictsProposalIds: ['c2'] }, { proposalId: 'c2', kind: 'claim', subjectKey: 'product', claimType: 'fact', statement: 'two', sourceCandidateIds: ['evidence-s1'], structuredValue: { metric: 'm', value: 2, unit: 'u', comparator: 'eq', period: '2026' } }]; const x = await fixtureRun({ reasoningExecutor: proposalExecutor(contradictory) }); try { assert.equal(x.result.status, 'completed', x.result.errors.join('; ')); assert.equal(Object.keys(x.result.claimRefs).length, 2) } finally { await cleanup(x) } })
 
+test('Workflow keeps unknown-date evidence context-only and rejects mixed-source proposals before Gateway binding', async () => {
+  const unknown = { ...source('unknown-date-context'), candidate: { ...source('unknown-date-context').candidate, publishedAt: undefined } }
+  const qualified = source('s1')
+  const proposals = [
+    ...baseEntities(),
+    { proposalId: 'mixed-source-claim', kind: 'claim', subjectKey: 'product', claimType: 'fact', statement: 'A fact supported by mixed-date evidence.', sourceCandidateIds: ['evidence-unknown-date-context', 'evidence-s1'] },
+    { proposalId: 'qualified-claim', kind: 'claim', subjectKey: 'product', claimType: 'risk', statement: 'A risk supported by qualified evidence.', sourceCandidateIds: ['evidence-s1'], supportsProposalIds: ['mixed-source-claim'] },
+  ]
+  const delegate = proposalExecutor(proposals)
+  const seen: string[][] = []
+  const reasoning: ReasoningExecutor = { ...delegate, execute: async (request) => {
+    if (String(request.operation) === 'industry_module_analysis') seen.push(((request.input as { evidence: Array<{ evidenceId: string }> }).evidence ?? []).map((item) => item.evidenceId))
+    return delegate.execute(request)
+  } }
+  const x = await fixtureRun({ reasoningExecutor: reasoning, acquisitionWave: async () => [unknown, qualified] })
+  try {
+    assert.equal(x.result.status, 'completed', x.result.errors.join('; '))
+    assert.ok(seen.some((ids) => ids.includes('evidence-unknown-date-context')), 'unknown-date documents remain available as analytical context')
+    assert.ok(x.result.claimRefs['qualified-claim'])
+    assert.equal(x.result.claimRefs['mixed-source-claim'], undefined, 'one unknown citation invalidates the whole mixed-source proposal')
+    assert.deepEqual(Object.keys(x.result.sourceRefs), ['evidence-s1'], 'only the publication-qualified document may receive a canonical Source/Raw binding')
+    const values = await canonicalValues(x.root)
+    const sources = values.filter((item) => String(item.id).startsWith('source:'))
+    assert.equal(sources.length, 1)
+    assert.equal(sources[0]?.title, 's1')
+    assert.equal((sources[0]?.rawRefs as readonly string[] | undefined)?.length, 1)
+    assert.match(x.result.diagnostics.join('\n'), /Claim rejected: mixed-source-claim/)
+  } finally { await cleanup(x) }
+})
+
 test('Workflow shuffled-order fixture stages Entity, Relation, and Relation-subject Claim independent of model output order', async () => { const shuffled = [{ proposalId: 'claim', kind: 'claim', subjectKey: 'offers', claimType: 'fact', statement: 'Company offers Product.', sourceCandidateIds: ['evidence-s1'] }, { proposalId: 'offers', kind: 'relation', subjectKey: 'company', targetKey: 'product', relationType: 'offers_product', sourceCandidateIds: ['evidence-s1'] }, { proposalId: 'company', kind: 'entity', subjectKey: 'company', entityType: 'company', entityName: 'Fixture Company' }, { proposalId: 'product', kind: 'entity', subjectKey: 'product', entityType: 'product', entityName: 'Fixture Product' }]; const x = await fixtureRun({ reasoningExecutor: proposalExecutor(shuffled) }); try { assert.equal(x.result.status, 'completed', x.result.errors.join('; ')); assert.ok(x.result.entityRefs.industry); assert.ok(x.result.entityRefs.product); assert.ok(x.result.entityRefs.company); assert.ok(x.result.relationRefs.offers); assert.ok(x.result.claimRefs.claim); assert.equal(x.result.gatewaySubmitCount, 1); assert.ok(x.result.knowledgeBaseRevision <= 1); const canonical = new Set((await readCanonicalV04Assets(x.root)).objects.map((o) => o.value.id)); for (const ref of [...Object.values(x.result.entityRefs), ...Object.values(x.result.relationRefs), ...Object.values(x.result.claimRefs), ...Object.values(x.result.sourceRefs)]) assert.ok(canonical.has(ref as never)) } finally { await cleanup(x) } })
 
 test('Workflow exposes bounded plausible Industry candidates without first-candidate binding', async () => { const x = await fixtureRun(); try { const secondReports = await mkdtemp(join(tmpdir(), 'rhl-industry-candidate-')); let designKnowledge = 0; try { const second = await runIndustryDeepResearch({ workflowRunId: 'candidate-second', handle: await new KnowledgeBaseRegistry().mount(x.root), target: { name: 'Second Industry' }, reportRoot: secondReports, reasoningExecutor: proposalExecutor([]), acquisitionWave: async () => [source('s2')], now: () => '2026-09-03T00:00:00.000Z' }); assert.equal(second.status, 'completed', second.errors.join('; ')); const third = await runIndustryDeepResearch({ workflowRunId: 'candidate-third', handle: await new KnowledgeBaseRegistry().mount(x.root), target: { name: 'Fixture Industry', aliases: ['Second Industry'] }, reportRoot: secondReports, reasoningExecutor: { ...proposalExecutor([]), execute: async (r) => { if (String(r.operation) === 'industry_research_design') designKnowledge = (r.input as { existingKnowledge: unknown[] }).existingKnowledge.length; return proposalExecutor([]).execute(r) } }, acquisitionWave: async () => [source('s3')], now: () => '2026-09-04T00:00:00.000Z' }); assert.equal(third.status, 'blocked'); assert.equal(third.entityRefs.industry, undefined); assert.equal(designKnowledge > 0, true) } finally { await rm(secondReports, { recursive: true, force: true }) } } finally { await cleanup(x) } })

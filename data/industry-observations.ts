@@ -1,5 +1,6 @@
 import type { DataRequirement, NumericValueVersionEvidence, SourceAuthority } from './contracts.ts'
 import type { IndustryMetricDefinition, IndustryPeriodBasis, IndustryMetricQualifier } from './industry-catalog.ts'
+import type { ResearchEvidenceInput } from './research-evidence.ts'
 
 export type IndustryObservationAggregation = 'SUM' | 'AVERAGE' | 'END_OF_PERIOD' | 'NONE'
 export type IndustryPublicationPit = 'VERIFIED' | 'UNVERIFIED' | 'NOT_APPLICABLE'
@@ -40,6 +41,29 @@ export interface IndustryObservationPoint extends Omit<IndustryObservationCandid
   readonly canonicalUnit: string
   readonly originalUnit: string
   readonly diagnostics: readonly string[]
+}
+
+export interface IndustryOperationDocument extends ResearchEvidenceInput<unknown> {
+  readonly rights: NonNullable<ResearchEvidenceInput<unknown>['rights']>
+}
+
+export interface IndustryDataOperationPayload {
+  readonly documents: readonly IndustryOperationDocument[]
+  readonly observationCandidates: readonly IndustryObservationCandidate[]
+  /** Populated by the application Data operation boundary after catalog validation. */
+  readonly observationPoints?: readonly IndustryObservationPoint[]
+  readonly observationDiagnostics?: readonly string[]
+  readonly diagnostics: readonly string[]
+  readonly outcome: {
+    readonly transportSucceeded: boolean
+    readonly fetchSucceeded: boolean
+    readonly discovered: number
+    readonly fetched: number
+    readonly failed: number
+    readonly empty: number
+    readonly rejected: number
+    readonly deduplicated: number
+  }
 }
 
 export interface IndustryObservationValidationResult {
