@@ -33,21 +33,6 @@
 
 ---
 
-### Task 5: Real application-to-page contract test
-
-**Files:**
-- Create or extend: `client/src/app/data-sources/DataSourcesPage.integration.test.tsx`
-- Reuse: `tests/app/runtime/data-source-admin-routes.test.ts` fixture patterns as appropriate.
-
-**Interfaces:**
-- Consumes: the real `ResearchHubApplicationRuntime`, `ResearchHubRuntimeServer`, `RuntimeClient`, and `DataSourcesPage`; a test-only injected Industry Catalog must never modify production definitions.
-- Produces: deterministic evidence for `Application Runtime → projection → HTTP API → RuntimeClient → DataSourcesPage` for both Common and Industry responses.
-
-- [ ] **Step 1: Write the integration test** with an actual local runtime HTTP server and `RuntimeClient`; render the real page against the live HTTP origin and verify Common definitions and an injected Industry test metric are displayed from server responses.
-- [ ] **Step 2: Add assertions** that the Industry definition shown by the UI is the same definition returned by the runtime's injected Catalog, while production Catalog state stays empty and no provider call occurs.
-- [ ] **Step 3: Run the integration test** under the client Vitest/jsdom configuration; if cross-root Node imports are unsupported, place the UI mount in an existing Node/jsdom integration harness without replacing the real HTTP and RuntimeClient legs with static JSON mocks.
-- [ ] **Step 4: Commit** the deterministic cross-layer test.
-
 ### Task 6: Documentation, full validation, and remote delivery
 
 **Files:**
