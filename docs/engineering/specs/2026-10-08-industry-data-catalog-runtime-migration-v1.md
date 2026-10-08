@@ -20,7 +20,7 @@ Workflow continues to choose research questions, Wave 1/Wave 2, module routing, 
 The companion audit is authoritative for the current source/field findings. Key constraints for design:
 
 - No current metric key has an Industry Catalog definition or a Data lifecycle state; the existing implementation is an audit input.
-- The five current metric keys route only to `market_size_growth` and `supply_demand_analysis` in the Industry Research Skill. The separate supply-demand-cycle Skill is methodology-only, and neither Skill nor Workflow currently declares or materializes Data `DOMAIN` requirements.
+- The five current metric keys route only to `market_size_growth` and `supply_demand_analysis` in the Industry Research Workflow. The canonical Skill catalog already declares five optional, generic `DOMAIN` templates for the separate supply-demand-cycle Skill (`supply/capacity`, demand, inventory, pricing, utilization), but no production Industry invocation currently resolves those templates through `DataResolver`. Preserve these semantic templates and methodology; connect resolution only at the layer that owns an actual Skill invocation.
 - A live probe fetched NBS, two MIIT, and two CHEAA source documents through the D4 path. It found a real MIIT paired-price defect: both H1 prices parse as 16.3 although the official article says 16.3 and 15.3.
 - The current D4 path reports publication PIT but leaves value-version PIT unverified. Do not backfill current web/PDF contents into past `asOf` requests.
 - Generic provider attempts found one Eastmoney board snapshot, no MIIT/Gov.cn/CPCA document for the two test searches, and no Eastmoney match for lithium. These outcomes do not justify widening source authority or treating a board snapshot as an operating series.
@@ -112,7 +112,7 @@ design/gaps → bounded evidence requirement → DataResolver → Skill analysis
 
 Workflow materializes metric needs and calls DataResolver for canonical definitions. Only relevant resolved observations go to `market_size_growth` and `supply_demand_analysis`; other modules receive only relevant document evidence. The Workflow may request data again after Wave 1 but must not decide provider order.
 
-The migration must inspect existing `industry_supply_demand_cycle` contracts before adding any Data bridge. Keep its methodology generic and unchanged. Add declarative semantic requirements only at the layer that owns the actual invocation; do not claim this Skill currently declares DOMAIN requirements. Missing capacity, effective capacity, utilization, inventory history, orders/backlog, shipment, demand, and spot price remain gaps unless a separately audited canonical metric matches them.
+The migration must inspect existing `industry_supply_demand_cycle` contracts and its five optional templates in `app/services/research-skill-catalog.ts` before adding a Data bridge. Keep its methodology generic and unchanged. Materialize its existing semantic requirements only at the layer that owns an actual Skill invocation; the templates are currently declared but not wired to a production resolver call. Missing capacity, effective capacity, utilization, inventory history, orders/backlog, shipment, demand, and spot price remain gaps unless a separately audited canonical metric matches them.
 
 ## 9. Compatibility and Knowledge boundary
 
