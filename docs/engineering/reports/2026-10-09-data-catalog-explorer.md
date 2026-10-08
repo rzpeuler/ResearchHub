@@ -79,3 +79,48 @@ The Node baseline is `C:\Users\Administrator\Desktop\ResearchHub_worktrees\_arch
 - The existing production bundle exceeds Vite's 500 kB advisory threshold; this UI task did not add persistence, caching, or a new provider framework.
 
 No Data Layer v1 normative contract change was needed.
+
+## Remote delivery verification — 2026-10-09
+
+The fresh whole-branch review found the Explorer implementation in the existing
+six commits and additional task-scoped safety/state-isolation changes in the
+worktree. Those changes were reviewed and included in this delivery:
+
+- Industry projection now uses an allowlisted DTO and sanitizes Industry
+  free-text validation/provenance fields before returning HTTP JSON.
+- Runtime adapter state uses the exact resolver-composition operation IDs;
+  missing binding inventory is `UNKNOWN`, a complete absent binding is
+  `UNBOUND`, and a present matching operation is `BOUND`.
+- Catalog GET loading is independent from the existing configuration load, so
+  a pending catalog response does not block credential or integration actions.
+- HTTP/UI regressions cover response redaction, default operation binding,
+  unknown adapter states, and credential save/removal/test completion while
+  Catalog requests remain pending.
+
+Fresh validation on the final source tree:
+
+| Validation | Result |
+| --- | --- |
+| Projection, HTTP, rendered Application-to-page E2E, and source administration | 17/17 passed |
+| RuntimeClient and DataSourcesPage focused tests | 43/43 passed |
+| Full client suite | 112/112 passed |
+| Full Node suite | 2,112 total; 2,088 passed; 24 failed |
+| Exact Node baseline comparison | 25 baseline failures; 24 current failures; 0 new identifiers; 1 fixed Industry replay identifier |
+| Root typecheck | Passed |
+| Client typecheck | Passed |
+| Client build | Passed; 643.92 kB JavaScript chunk advisory remains |
+| `git diff --check` | Passed; only expected LF-to-CRLF notices |
+
+The first `npm test` attempt stopped in its client stage on an unrelated
+`src/App.test.tsx` Thesis CREATE assertion (111/112). A fresh full `npm test`
+then passed the complete client stage (112/112) and ran Node to completion:
+2,112 tests, 2,088 passed, and 24 baseline failures. The exact Node identifier
+comparison above found zero new failures. `npm test` exits nonzero because of
+those 24 existing Node failures, so the full gate is recorded as
+baseline-limited rather than green.
+
+The remote branch was absent before delivery. The implementation and these
+verification updates were committed and pushed to
+`codex/dl-ui-001-data-catalog-explorer`. Final local and remote branch SHAs,
+the commit URL, clean worktree, and unchanged `main` are recorded in the
+delivery response. No merge was performed.

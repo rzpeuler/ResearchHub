@@ -10,7 +10,7 @@ beforeEach(() => window.localStorage.setItem('researchhub.language', 'zh-CN'))
 const integration = { integration: { integrationId: 'quotes-one', displayName: 'Quotes One', sourceIds: ['quotes-one'], credentialFields: [{ id: 'api_key', label: 'API Key', required: true }], capabilities: [{ id: 'quotes', label: 'Quotes', metricIds: ['price.close'] }], supportedTests: { connection: true, capabilitySamples: ['quotes'] } }, credentialState: 'configured', policyLinked: false, latestTests: [{ integrationId: 'quotes-one', kind: 'connection', status: 'passed', startedAt: '2026-10-06', completedAt: '2026-10-06' }, { integrationId: 'quotes-one', kind: 'capability_sample', capabilityId: 'quotes', status: 'passed', startedAt: '2026-10-06', completedAt: '2026-10-06' }] }
 const draft = { requestId: 'req-1', input: { integrationId: 'draft-source', displayName: 'Draft Source', documentationUrl: 'https://example.test/docs', accessMode: 'api', publisher: 'Example', proposedAuthority: 'S1_OFFICIAL', capabilityIds: ['quotes'], metricIds: ['price.close'], authenticationMode: 'api_key', rightsNotes: 'Reviewed', rateLimitNotes: '100/min', timeBoundaryNotes: 'Daily', providerTermsReviewed: true }, status: 'draft', createdAt: 'now', updatedAt: 'now' }
 const commonCatalog = { definitions: [
-  { metricId: 'revenue', meaning: 'Revenue', dataKind: 'metric', consumers: ['valuation', 'company-research'], sourcePolicyStatus: 'CONFIGURED', sourceMappingStatus: 'MAPPED', sourcePolicies: [{ policyId: 'revenue-policy', selectionMode: 'FIRST_VALID', requirementMatch: { metricId: 'revenue' }, candidates: [{ sourceId: 'nbs', fallbackLevel: 'PRIMARY', originAuthority: 'S1_OFFICIAL', operationId: 'nbs.revenue', supports: {}, runtimeAdapterStatus: 'UNBOUND', connectionTestStatus: 'NOT_TESTED', capabilitySampleStatus: 'NOT_TESTED', historicalPitStatus: 'NOT_VERIFIED', integrations: [] }] }] },
+  { metricId: 'revenue', meaning: 'Revenue', dataKind: 'metric', consumers: ['valuation', 'company-research'], sourcePolicyStatus: 'CONFIGURED', sourceMappingStatus: 'MAPPED', sourcePolicies: [{ policyId: 'revenue-policy', selectionMode: 'FIRST_VALID', requirementMatch: { metricId: 'revenue' }, candidates: [{ sourceId: 'nbs', fallbackLevel: 'PRIMARY', originAuthority: 'S1_OFFICIAL', operationId: 'nbs.revenue', supports: {}, runtimeAdapterStatus: 'UNKNOWN', connectionTestStatus: 'NOT_TESTED', capabilitySampleStatus: 'NOT_TESTED', historicalPitStatus: 'NOT_VERIFIED', integrations: [] }] }] },
   { metricId: 'revenue_growth', meaning: '营收增长', dataKind: 'derived_metric', consumers: ['valuation'], sourcePolicyStatus: 'NOT_CONFIGURED', sourceMappingStatus: 'UNMAPPED', sourcePolicies: [] },
 ], definitionCount: 2 }
 const industryCatalog = { identities: [{ industryId: 'lithium_battery', aliases: ['锂电池'] }, { industryId: 'household_air_conditioner', aliases: ['家用空调'] }], definitions: [
@@ -107,7 +107,7 @@ describe('DataSourcesPage', () => {
     fireEvent.click(await screen.findByRole('tab', { name: '数据字段' }))
     fireEvent.click(await screen.findByRole('button', { name: /^revenue$/ }))
     expect(screen.getAllByText('已配置').length).toBeGreaterThan(0)
-    expect(screen.getByText('未绑定')).toBeTruthy()
+    expect(screen.getByText('状态未知')).toBeTruthy()
     expect(within(screen.getByRole('complementary', { name: '字段详情' })).getAllByText('未测试').length).toBeGreaterThan(0)
     expect(screen.getByText('未验证')).toBeTruthy()
     window.localStorage.setItem('researchhub.language', 'en')
@@ -116,9 +116,22 @@ describe('DataSourcesPage', () => {
     fireEvent.click(await screen.findByRole('tab', { name: 'Data Fields' }))
     fireEvent.click(await screen.findByRole('button', { name: /^revenue$/ }))
     expect(within(screen.getByRole('complementary', { name: 'Field details' })).getAllByText('Configured').length).toBeGreaterThan(0)
-    expect(screen.getByText('Unbound')).toBeTruthy()
+    expect(screen.getByText('Unknown')).toBeTruthy()
     expect(within(screen.getByRole('complementary', { name: 'Field details' })).getAllByText('Not tested').length).toBeGreaterThan(0)
     expect(screen.getByText('Not verified')).toBeTruthy()
+  })
+
+  it('renders unknown adapter status in Chinese and English', async () => {
+    setup()
+    fireEvent.click(await screen.findByRole('tab', { name: '数据字段' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^revenue$/ }))
+    expect(screen.getByText('状态未知')).toBeTruthy()
+    window.localStorage.setItem('researchhub.language', 'en')
+    cleanup()
+    setup()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Data Fields' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^revenue$/ }))
+    expect(screen.getByText('Unknown')).toBeTruthy()
   })
 
   it('shows empty production Industry catalog without fixtures', async () => {
@@ -147,6 +160,56 @@ describe('DataSourcesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '刷新' }))
     await waitFor(() => expect(client.getCommonDataCatalog).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(client.getIndustryDataCatalog).toHaveBeenCalledTimes(2))
+  })
+
+  it('finishes credential saves while catalog refresh requests remain pending', async () => {
+    const commonResolvers: Array<(value: typeof commonCatalog) => void> = []
+    const industryResolvers: Array<(value: typeof industryCatalog) => void> = []
+    const client = setup({
+      getCommonDataCatalog: vi.fn(() => new Promise((resolve) => commonResolvers.push(resolve))),
+      getIndustryDataCatalog: vi.fn(() => new Promise((resolve) => industryResolvers.push(resolve))),
+    })
+    fireEvent.click(await screen.findByRole('tab', { name: '已配置集成' }))
+    fireEvent.click(await screen.findByRole('button', { name: '管理凭据' }))
+    fireEvent.change(screen.getByLabelText(/^API Key/), { target: { value: 'typed-secret' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存凭据' }))
+    expect(await screen.findByText('凭据已保存到系统凭据库。')).toBeTruthy()
+    expect((screen.getByRole('button', { name: '移除凭据' }) as HTMLButtonElement).disabled).toBe(false)
+    commonResolvers.forEach((resolve) => resolve(commonCatalog))
+    industryResolvers.forEach((resolve) => resolve(industryCatalog))
+    expect(client.saveDataSourceCredentials).toHaveBeenCalledTimes(1)
+  })
+
+  it('finishes credential removal while catalog refresh requests remain pending', async () => {
+    const commonResolvers: Array<(value: typeof commonCatalog) => void> = []
+    const industryResolvers: Array<(value: typeof industryCatalog) => void> = []
+    const client = setup({
+      getCommonDataCatalog: vi.fn(() => new Promise((resolve) => commonResolvers.push(resolve))),
+      getIndustryDataCatalog: vi.fn(() => new Promise((resolve) => industryResolvers.push(resolve))),
+    })
+    fireEvent.click(await screen.findByRole('tab', { name: '已配置集成' }))
+    fireEvent.click(await screen.findByRole('button', { name: '管理凭据' }))
+    fireEvent.click(screen.getByRole('button', { name: '移除凭据' }))
+    expect(await screen.findByText('凭据已移除。')).toBeTruthy()
+    expect((screen.getByRole('button', { name: '移除凭据' }) as HTMLButtonElement).disabled).toBe(false)
+    commonResolvers.forEach((resolve) => resolve(commonCatalog))
+    industryResolvers.forEach((resolve) => resolve(industryCatalog))
+    expect(client.removeDataSourceCredentials).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears a completed test while catalog refresh requests remain pending', async () => {
+    const commonResolvers: Array<(value: typeof commonCatalog) => void> = []
+    const industryResolvers: Array<(value: typeof industryCatalog) => void> = []
+    const client = setup({
+      getCommonDataCatalog: vi.fn(() => new Promise((resolve) => commonResolvers.push(resolve))),
+      getIndustryDataCatalog: vi.fn(() => new Promise((resolve) => industryResolvers.push(resolve))),
+    })
+    fireEvent.click(await screen.findByRole('tab', { name: '已配置集成' }))
+    fireEvent.click(await screen.findByRole('button', { name: '测试连接' }))
+    expect(await screen.findByRole('button', { name: '测试连接' })).toBeTruthy()
+    commonResolvers.forEach((resolve) => resolve(commonCatalog))
+    industryResolvers.forEach((resolve) => resolve(industryCatalog))
+    expect(client.testDataSourceIntegration).toHaveBeenCalledTimes(1)
   })
 
   it('shows catalog loading while projections are pending', async () => {

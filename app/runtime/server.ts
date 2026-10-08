@@ -632,12 +632,12 @@ export class ResearchHubRuntimeServer {
       const service = this.runtime!.services.dataSourceAdministrationService
       const integrations = service === undefined ? [] : await service.listIntegrations()
       const policies = [...PHASE2_COMMON_SOURCE_POLICIES, ...PHASE3_COMMON_SOURCE_POLICIES, ...INDUSTRY_DATA_SOURCE_POLICIES]
-      await this.sendJson(response, 200, projectCommonDataCatalog({ definitions: COMMON_DATA_CATALOG, policies, integrations })); return
+      await this.sendJson(response, 200, projectCommonDataCatalog({ definitions: COMMON_DATA_CATALOG, policies, integrations, boundOperationIds: this.runtime!.industryDataBoundOperationIds })); return
     }
     if (method === 'GET' && path === '/api/data-sources/catalog/industry') {
       const service = this.runtime!.services.dataSourceAdministrationService
       const integrations = service === undefined ? [] : await service.listIntegrations()
-      await this.sendJson(response, 200, projectIndustryDataCatalog({ catalog: this.runtime!.industryDataCatalog, identities: INDUSTRY_IDENTITIES, policies: INDUSTRY_DATA_SOURCE_POLICIES, integrations })); return
+      await this.sendJson(response, 200, projectIndustryDataCatalog({ catalog: this.runtime!.industryDataCatalog, identities: INDUSTRY_IDENTITIES, policies: INDUSTRY_DATA_SOURCE_POLICIES, integrations, boundOperationIds: this.runtime!.industryDataBoundOperationIds })); return
     }
     if (method === 'GET' && path === '/api/data-sources/integrations') {
       const service = this.runtime!.services.dataSourceAdministrationService

@@ -11,8 +11,8 @@ import type { SourcePolicy } from '../../../data/contracts.ts'
 const modulePath: string = '../../../app/services/data-catalog-projection.ts'
 const projectionModule = await import(modulePath).catch(() => ({})) as Record<string, unknown>
 
-type CommonProjectionInput = { definitions: readonly CommonDataDefinition[]; policies: readonly SourcePolicy[]; integrations: readonly DataSourceIntegrationView[] }
-type IndustryProjectionInput = { catalog: ReturnType<typeof createIndustryDataCatalog>; identities: typeof INDUSTRY_IDENTITIES; policies: readonly SourcePolicy[]; integrations: readonly DataSourceIntegrationView[] }
+type CommonProjectionInput = { definitions: readonly CommonDataDefinition[]; policies: readonly SourcePolicy[]; integrations: readonly DataSourceIntegrationView[]; boundOperationIds?: readonly string[] }
+type IndustryProjectionInput = { catalog: ReturnType<typeof createIndustryDataCatalog>; identities: typeof INDUSTRY_IDENTITIES; policies: readonly SourcePolicy[]; integrations: readonly DataSourceIntegrationView[]; boundOperationIds?: readonly string[] }
 
 function projectCommon(input: CommonProjectionInput): Record<string, unknown> {
   const project = projectionModule.projectCommonDataCatalog
@@ -103,7 +103,7 @@ test('policy configuration does not imply adapter, test, or PIT acceptance', () 
   const [candidate] = unbound!.candidates as readonly Record<string, unknown>[]
   assert.equal((withoutAdapter.definitions as readonly Record<string, unknown>[])[0]?.sourcePolicyStatus, 'CONFIGURED')
   assert.equal((withoutAdapter.definitions as readonly Record<string, unknown>[])[0]?.sourceMappingStatus, 'MAPPED')
-  assert.equal(candidate?.runtimeAdapterStatus, 'UNBOUND')
+  assert.equal(candidate?.runtimeAdapterStatus, 'UNKNOWN')
   assert.equal(candidate?.connectionTestStatus, 'NOT_TESTED')
   assert.equal(candidate?.capabilitySampleStatus, 'NOT_TESTED')
   assert.equal(candidate?.historicalPitStatus, 'NOT_VERIFIED')
@@ -117,6 +117,24 @@ test('policy configuration does not imply adapter, test, or PIT acceptance', () 
   assert.equal(mappedCandidate?.connectionTestStatus, 'PASSED')
   assert.equal(mappedCandidate?.capabilitySampleStatus, 'PASSED')
   assert.equal(mappedCandidate?.historicalPitStatus, 'NOT_VERIFIED')
+
+  const knownUnbound = projectCommon({ definitions: [definition], policies: allPolicies, integrations: [], boundOperationIds: [] })
+  const [knownUnboundDefinition] = knownUnbound.definitions as readonly Record<string, unknown>[]
+  const [knownUnboundPolicy] = knownUnboundDefinition!.sourcePolicies as readonly Record<string, unknown>[]
+  const [knownUnboundCandidate] = knownUnboundPolicy!.candidates as readonly Record<string, unknown>[]
+  assert.equal(knownUnboundCandidate?.runtimeAdapterStatus, 'UNBOUND')
+})
+
+test('unknown Industry source mappings are not reported as unbound adapters', () => {
+  const policy = INDUSTRY_DATA_SOURCE_POLICIES.find((item) => item.policyId === 'industry-research-evidence-v1')!
+  const projected = projectCommon({
+    definitions: [COMMON_DATA_CATALOG.find((item) => item.metricId === 'industry_research_evidence')!],
+    policies: [policy],
+    integrations: [],
+  })
+  const definition = (projected.definitions as readonly Record<string, unknown>[])[0]!
+  const candidates = ((definition.sourcePolicies as readonly Record<string, unknown>[])[0]!.candidates) as readonly Record<string, unknown>[]
+  assert.ok(candidates.every((candidate) => candidate.runtimeAdapterStatus === 'UNKNOWN'))
 })
 
 test('empty Industry projection preserves identities and reports zero definitions', () => {

@@ -80,6 +80,11 @@ test('GET common catalog projects complete definitions without provider calls', 
     assert.equal(body.definitions.length, COMMON_DATA_CATALOG.length)
     assert.equal(new Set(body.definitions.map((item) => item.metricId)).size, COMMON_DATA_CATALOG.length)
     assert.deepEqual(body.definitions.map((item) => [item.metricId, item.meaning, item.dataKind, item.consumers]), [...COMMON_DATA_CATALOG].sort((a, b) => a.metricId.localeCompare(b.metricId)).map((item) => [item.metricId, item.meaning, item.dataKind, item.consumers]))
+    const evidence = body.definitions.find((item) => item.metricId === 'industry_research_evidence')!
+    const candidates = (evidence.sourcePolicies as readonly { candidates: readonly { runtimeAdapterStatus: string; operationId: string }[] }[]).flatMap((policy) => policy.candidates)
+    assert.equal(candidates.length, 4)
+    assert.ok(candidates.every((candidate) => candidate.runtimeAdapterStatus === 'BOUND'))
+    assert.ok(candidates.every((candidate) => f.runtime.industryDataBoundOperationIds?.includes(candidate.operationId)))
     assert.equal(f.acquisitionCalls, 0)
   } finally { await close(f) }
 })
@@ -105,14 +110,27 @@ test('GET industry catalog reads the runtime injected instance', async () => {
 })
 
 test('catalog projection routes are read-only and redact local/provider details', async () => {
-  const catalog = createIndustryDataCatalog([discoveredMetric()])
+  const catalog = createIndustryDataCatalog([{
+    ...discoveredMetric(),
+    discoveredFrom: 'C:\\Users\\Administrator\\private\\audit.pdf apiKey=provider-secret-sentinel',
+    validation: {
+      validatedAt: '2026-10-01T00:00:00.000Z',
+      validator: 'fixture validator',
+      methodology: 'See /home/administrator/private/validation.txt; Bearer route-secret-sentinel',
+      sourceabilityEvidence: ['C:\\Users\\Administrator\\private\\source.csv password=validation-secret-sentinel'],
+      checks: { SEMANTIC: ['apiKey=provider-secret-sentinel'] },
+    },
+    credentialValue: 'extra-secret-sentinel',
+  } as IndustryMetricDefinition & { readonly credentialValue: string }])
   const before = catalog.list()
   const f = await fixture(catalog)
   try {
     const common = await fetch(`${f.info.origin}/api/data-sources/catalog/common`, { headers: { origin: f.info.origin } })
     const industry = await fetch(`${f.info.origin}/api/data-sources/catalog/industry`, { headers: { origin: f.info.origin } })
     const serialized = `${await common.text()} ${await industry.text()}`
-    assert.doesNotMatch(serialized, /provider-secret|apiKey|credentialValue|runtimeToken|C:\\\\Users\\\\|C:\/Users\//iu)
+    assert.doesNotMatch(serialized, /provider-secret|credentialValue|runtimeToken|C:\\\\Users\\\\|C:\/Users\//iu, `sensitive serialized match: ${serialized.match(/provider-secret|credentialValue|runtimeToken|C:\\\\Users\\\\|C:\/Users\//iu)?.[0] ?? 'none'}`)
+    assert.doesNotMatch(serialized, /Administrator|audit\.pdf|validation\.txt|source\.csv|route-secret-sentinel|validation-secret-sentinel|extra-secret-sentinel/iu)
+    assert.match(serialized, /\[redacted/iu)
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
       const response = await fetch(`${f.info.origin}/api/data-sources/catalog/industry`, { method, headers: f.headers, body: method === 'DELETE' ? undefined : '{}' })
       assert.ok(response.status < 200 || response.status >= 300, `${method} must not be accepted`)
