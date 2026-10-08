@@ -219,10 +219,10 @@ async function acquireEventSources(input: EventResearchWorkflowInput, company: R
       const symbol = candidate.metadata?.companySymbol
       return (typeof symbol !== 'string' || symbol === company.symbol) && (candidate.url === undefined || canonicalUrl(candidate.url) !== undefined)
     }),
-  }) ?? input.dataResolver
+  })
   if (!resolver) {
     for (const provider of PROVIDERS) {
-      outcomes.push({ provider, providerAttempted: false, providerSucceeded: false, providerEmpty: false, providerFailed: false, usableSourceCount: 0, transportSucceeded: false, fetchSucceeded: false })
+      outcomes.push({ provider, providerAttempted: false, providerSucceeded: false, providerEmpty: true, providerFailed: false, usableSourceCount: 0, transportSucceeded: false, fetchSucceeded: false })
       diagnostics.push({ provider, status: 'empty', reason: 'company_research_evidence DataResolver is unavailable' })
     }
     return { sources: acquired, outcomes, diagnostics, discoveredCount: 0, selectedCount: 0, futureFilteredCount: 0, outsideWindowFilteredCount: 0, unknownDateCount: 0, deduplicatedCount: 0 }
@@ -268,11 +268,12 @@ async function acquireEventSources(input: EventResearchWorkflowInput, company: R
     if (!provider) continue
     const observation = observations.find((item) => item.source.sourceId === attempt.sourceId)
     const outcome = observation?.data.kind === 'evidence' ? observation.data.outcome : undefined
+    const unsupported = attempt.status === 'UNSUPPORTED'
     const transportSucceeded = outcome?.transportSucceeded ?? (attempt.status === 'SUCCESS' || attempt.status === 'NO_DATA' || attempt.status === 'POINT_IN_TIME_INVALID')
     const fetchSucceeded = outcome?.fetchSucceeded ?? ((outcome?.fetched ?? 0) + (outcome?.empty ?? 0) + (outcome?.failed ?? 0) > 0)
     const usableSourceCount = acquired.filter(({ source }) => providerKey(source.candidate.provider) === provider).length
-    const failed = !transportSucceeded || (outcome?.failed ?? 0) > 0
-    outcomes.push({ provider, providerAttempted: true, providerSucceeded: transportSucceeded && !failed, providerEmpty: transportSucceeded && usableSourceCount === 0 && !failed, providerFailed: failed, usableSourceCount, transportSucceeded, fetchSucceeded })
+    const failed = !unsupported && (!transportSucceeded || (outcome?.failed ?? 0) > 0)
+    outcomes.push({ provider, providerAttempted: !unsupported, providerSucceeded: !unsupported && transportSucceeded && !failed, providerEmpty: unsupported || (transportSucceeded && usableSourceCount === 0 && !failed), providerFailed: failed, usableSourceCount, transportSucceeded, fetchSucceeded })
     if (!observation && attempt.diagnostic) diagnostics.push({ provider, status: failed ? 'failed' : 'empty', reason: attempt.diagnostic })
   }
   for (const provider of PROVIDERS) {

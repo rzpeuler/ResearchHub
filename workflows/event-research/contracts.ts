@@ -37,8 +37,6 @@ export interface EventResearchWorkflowInput {
   readonly company: ResearchCompanyIdentity
   readonly anchor: EventAnchor
   readonly acquisitionPlugins: readonly ResearchAcquisitionPlugin[]
-  /** Explicit Data Layer path; supplied by runtime composition. */
-  readonly dataResolver?: DataResolver<CompanyResearchDataPayload>
   /** Builds a per-run resolver so Event-owned candidate guards run before fetch. */
   readonly dataResolverFactory?: (context: EventResearchDataResolverContext) => DataResolver<CompanyResearchDataPayload>
   readonly signalStore?: EventResearchSignalStore
