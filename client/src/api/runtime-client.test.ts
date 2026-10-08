@@ -5,6 +5,38 @@ function json(body: unknown, status = 200): Response { return new Response(JSON.
 const bootstrap = { runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'a'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [] }
 
 describe('RuntimeClient', () => {
+  it('RuntimeClient reads the common catalog projection', async () => {
+    const paths: string[] = []
+    const methods: string[] = []
+    const common = { definitions: [{ metricId: 'revenue', meaning: 'Revenue', dataKind: 'metric', consumers: ['valuation'], sourcePolicyStatus: 'NOT_CONFIGURED', sourceMappingStatus: 'UNMAPPED', sourcePolicies: [] }], definitionCount: 1 }
+    const client = new RuntimeClient(async (input, init) => {
+      paths.push(String(input)); methods.push(init?.method ?? 'GET')
+      return json(common)
+    })
+    await expect(client.getCommonDataCatalog()).resolves.toEqual(common)
+    expect(paths).toEqual(['/api/data-sources/catalog/common'])
+    expect(methods).toEqual(['GET'])
+
+    const rejected = new RuntimeClient(async () => json({ code: 'failed', error: 'Catalog unavailable' }, 503))
+    await expect(rejected.getCommonDataCatalog()).rejects.toMatchObject({ code: 'failed', status: 503, message: 'Catalog unavailable' })
+  })
+
+  it('RuntimeClient reads the industry catalog projection', async () => {
+    const paths: string[] = []
+    const methods: string[] = []
+    const industry = { identities: [], definitions: [], registeredIndustryCount: 0, definitionCount: 0, canonicalCount: 0 }
+    const client = new RuntimeClient(async (input, init) => {
+      paths.push(String(input)); methods.push(init?.method ?? 'GET')
+      return json(industry)
+    })
+    await expect(client.getIndustryDataCatalog()).resolves.toEqual(industry)
+    expect(paths).toEqual(['/api/data-sources/catalog/industry'])
+    expect(methods).toEqual(['GET'])
+
+    const rejected = new RuntimeClient(async () => json({ code: 'failed', error: 'Catalog unavailable' }, 503))
+    await expect(rejected.getIndustryDataCatalog()).rejects.toMatchObject({ code: 'failed', status: 503, message: 'Catalog unavailable' })
+  })
+
   it('uses read authorization for integration and onboarding lists', async () => {
     const calls: { path: string; init?: RequestInit }[] = []
     const client = new RuntimeClient(async (input, init) => {

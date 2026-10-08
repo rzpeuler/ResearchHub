@@ -33,22 +33,6 @@
 
 ---
 
-### Task 3: RuntimeClient read methods
-
-**Files:**
-- Modify: `client/src/api/runtime-client.ts`
-- Test: `client/src/api/runtime-client.test.ts`
-
-**Interfaces:**
-- Consumes: Task 1 Common and Industry projection response types/contracts.
-- Produces: typed `getCommonDataCatalog()` and `getIndustryDataCatalog()` methods for the two GET endpoints; no mutation methods.
-
-- [ ] **Step 1: Write failing client tests** named `RuntimeClient reads the common catalog projection` and `RuntimeClient reads the industry catalog projection`; assert exact endpoint paths, GET method, response shape, and safe error propagation.
-- [ ] **Step 2: Run** `npm run client:test -- src/api/runtime-client.test.ts` and confirm the new methods/assertions fail.
-- [ ] **Step 3: Add the projection response types and GET methods** without changing existing data-source methods.
-- [ ] **Step 4: Run** `npm run client:test -- src/api/runtime-client.test.ts` and confirm the tests pass.
-- [ ] **Step 5: Commit** RuntimeClient types, methods, and tests.
-
 ### Task 4: Data Fields tab and catalog explorer UI
 
 **Files:**

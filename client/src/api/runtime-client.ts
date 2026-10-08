@@ -1,3 +1,5 @@
+import type { CommonDataCatalogProjection, IndustryDataCatalogProjection } from '../../../app/services/data-catalog-projection.ts'
+
 export type RuntimeErrorCode = 'invalid_input' | 'not_found' | 'cancelled' | 'failed' | 'conflict' | 'no_kb_mounted' | 'unauthorized_runtime_token'
 
 export interface RuntimeErrorBody { readonly code: RuntimeErrorCode | string; readonly error: string }
@@ -370,6 +372,8 @@ export class RuntimeClient {
   }
   async listReviews(): Promise<ReviewListResponse> { return this.request('/api/reviews') }
   async getDataSourceCatalog(): Promise<DataSourceCatalogResponse> { return this.request('/api/data-sources/policies') }
+  async getCommonDataCatalog(): Promise<CommonDataCatalogProjection> { return this.request('/api/data-sources/catalog/common') }
+  async getIndustryDataCatalog(): Promise<IndustryDataCatalogProjection> { return this.request('/api/data-sources/catalog/industry') }
   async listDataSourceIntegrations(): Promise<readonly DataSourceIntegrationView[]> { return (await this.request<{ readonly integrations: readonly DataSourceIntegrationView[] }>('/api/data-sources/integrations')).integrations }
   async saveDataSourceCredentials(integrationId: string, values: Readonly<Record<string, string>>): Promise<{ readonly saved: boolean }> { return this.mutate(`/api/data-sources/integrations/${encodeURIComponent(integrationId)}/credentials`, { values }) }
   async removeDataSourceCredentials(integrationId: string): Promise<{ readonly removed: boolean }> { return this.request(`/api/data-sources/integrations/${encodeURIComponent(integrationId)}/credentials`, { method: 'DELETE' }, true) }
