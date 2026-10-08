@@ -110,7 +110,7 @@ items.
 |---|---|
 | `npm test` client suite | PASS, 97/97 tests |
 | FIX-001 focused Company/Event/Thesis/Data/architecture command | PASS, 70/70 tests |
-| FIX-001 `npm test` on validated code HEAD `236095e435b66333dccfbf7c37594c49ab5413ff` | Client 97/97 passed; Node 2,071 total, 2,046 passed, 25 failed |
+| FIX-001 `npm test` against the implementation tree committed as `236095e435b66333dccfbf7c37594c49ab5413ff` | Client 97/97 passed; Node 2,071 total, 2,046 passed, 25 failed |
 | Phase 2 baseline `npm test` at `7648507243819b22a327b68fed4b5fb540f8ff30` | Client 97/97 passed; Node 2,036 total, 2,011 passed, 25 failed |
 | Exact baseline failure set comparison | PASS: 25 baseline, 25 current, 0 added, 0 missing |
 | `npm run typecheck` | PASS after FIX-001 changes |
