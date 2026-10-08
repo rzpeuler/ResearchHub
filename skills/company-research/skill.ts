@@ -10,10 +10,11 @@ export class CompanyResearchSkill {
   /** Offline-safe deterministic baseline retained for tests and provider-degraded runs. */
   run(input: CompanyResearchInput): CompanyResearchResult {
     const proposals: SemanticKnowledgeProposal[] = [{ proposalId: 'proposal-company', kind: 'entity', subjectKey: 'company', entityType: 'company', entityName: input.company.name ?? input.company.symbol }]
+    const durableIds = new Set(input.durableSourceCandidateIds ?? input.sources.map((source) => source.candidate.candidateId))
     const sections = COMPANY_RESEARCH_SECTIONS.map((title) => {
       const relevant = input.sources.filter((source) => title === 'Company Overview' || source.content.toLowerCase().includes(title.split(' ')[0]!.toLowerCase())).slice(0, 3)
-      const text = relevant.length ? relevant.map((source) => `- ${source.content.slice(0, 500)}`).join('\n') : gap(title)
-      return { id: sectionId(title), title, markdown: text, sourceCandidateIds: relevant.map((source) => source.candidate.candidateId), proposalIds: proposals.filter((proposal) => proposal.sourceCandidateIds?.some((id) => relevant.some((source) => source.candidate.candidateId === id))).map((proposal) => proposal.proposalId) }
+      const text = relevant.length ? relevant.map((source) => `- ${durableIds.has(source.candidate.candidateId) ? '' : '[Context only; publication date is unknown and this source cannot support a durable claim] '}${source.content.slice(0, 500)}`).join('\n') : gap(title)
+      return { id: sectionId(title), title, markdown: text, sourceCandidateIds: relevant.map((source) => source.candidate.candidateId).filter((id) => durableIds.has(id)), proposalIds: proposals.filter((proposal) => proposal.sourceCandidateIds?.some((id) => relevant.some((source) => source.candidate.candidateId === id))).map((proposal) => proposal.proposalId) }
     })
     return finalizeResearch(input, { sections, proposals }, this.now())
   }
@@ -22,12 +23,12 @@ export class CompanyResearchSkill {
     if (!this.executor) return this.run(input)
     const response = await this.executor.execute({
       operation: 'company_research_synthesis',
-      instruction: 'Synthesize the bounded company research into the exact local proposal contract. Use only supplied evidence and structured data. Emit explicit gaps. Never emit canonical IDs, ChangeSets, storage refs, or mutation actions.',
+      instruction: 'Synthesize the bounded company research into the exact local proposal contract. Use only supplied evidence and structured data. Treat sources with citationEligible false as context only; do not cite them or use them to support factual claims. Emit explicit gaps. Never emit canonical IDs, ChangeSets, storage refs, or mutation actions.',
       input: {
         company: input.company,
         objective: `A-share company deep research for ${input.company.symbol}`,
         asOf: input.asOf,
-        boundedSources: input.sources.slice(0, 20).map((source) => ({ candidateId: source.candidate.candidateId, kind: source.candidate.kind, tier: source.candidate.tier, title: source.title, publisher: source.publisher, publishedAt: source.candidate.publishedAt ?? null, content: source.content.slice(0, 1_200) })),
+        boundedSources: input.sources.slice(0, 20).map((source) => ({ candidateId: source.candidate.candidateId, kind: source.candidate.kind, tier: source.candidate.tier, title: source.title, publisher: source.publisher, publishedAt: source.candidate.publishedAt ?? null, provenance: source.candidate.metadata?.dataProvenance ?? null, citationEligible: input.durableSourceCandidateIds === undefined || input.durableSourceCandidateIds.includes(source.candidate.candidateId), content: source.content.slice(0, 1_200) })),
         structuredProfileData: input.profileData ?? null,
         structuredFinancialData: input.financialData ?? null,
         structuredMarketData: input.marketData ?? null,
@@ -52,7 +53,8 @@ function parseOutput(value: unknown): Record<string, unknown> {
 }
 
 function validateSynthesis(value: Record<string, unknown>, input: CompanyResearchInput): { sections: CompanyResearchResult['sections']; proposals: readonly SemanticKnowledgeProposal[] } {
-  const sourceIds = new Set(input.sources.map((source) => source.candidate.candidateId))
+  const allSourceIds = new Set(input.sources.map((source) => source.candidate.candidateId))
+  const sourceIds = new Set(input.durableSourceCandidateIds ?? allSourceIds)
   const rawProposals = Array.isArray(value.proposals) ? value.proposals : []
   const proposals = rawProposals.map((item, index) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`Invalid company research proposal at index ${index}`)
@@ -63,8 +65,9 @@ function validateSynthesis(value: Record<string, unknown>, input: CompanyResearc
     if (typeof proposal.proposalId !== 'string' || !LOCAL_ID.test(proposal.proposalId) || /^(?:entity|relation|claim|source|raw):/.test(proposal.proposalId)) throw new Error('Company research proposal IDs must remain local and non-canonical')
     if (typeof proposal.subjectKey !== 'string' || !LOCAL_ID.test(proposal.subjectKey)) throw new Error('Company research proposal subjectKey must remain local')
     if (!['entity', 'claim', 'relation'].includes(proposal.kind)) throw new Error(`Unsupported company research proposal kind: ${proposal.kind}`)
-    for (const sourceId of proposal.sourceCandidateIds ?? []) if (!sourceIds.has(sourceId)) throw new Error(`Proposal references unknown source candidate: ${sourceId}`)
-    return proposal
+    for (const sourceId of proposal.sourceCandidateIds ?? []) if (!allSourceIds.has(sourceId)) throw new Error(`Proposal references unknown source candidate: ${sourceId}`)
+    const safeProposal = { ...proposal, sourceCandidateIds: (proposal.sourceCandidateIds ?? []).filter((sourceId) => sourceIds.has(sourceId)) }
+    return safeProposal
   })
   const proposalIds = new Set(proposals.map((proposal) => proposal.proposalId))
   for (const proposal of proposals) for (const ref of [...proposal.supportsProposalIds ?? [], ...proposal.dependsOnProposalIds ?? [], ...proposal.contradictsProposalIds ?? []]) if (!proposalIds.has(ref)) throw new Error(`Proposal link does not resolve locally: ${ref}`)
@@ -76,8 +79,8 @@ function validateSynthesis(value: Record<string, unknown>, input: CompanyResearc
     const value = section as Record<string, unknown>
     const sourceCandidateIds = Array.isArray(value.sourceCandidateIds) ? value.sourceCandidateIds.filter((id): id is string => typeof id === 'string') : []
     const linkedProposalIds = Array.isArray(value.proposalIds) ? value.proposalIds.filter((id): id is string => typeof id === 'string') : []
-    if (sourceCandidateIds.some((id) => !sourceIds.has(id)) || linkedProposalIds.some((id) => !proposalIds.has(id))) throw new Error(`Section ${title} has unresolved local references`)
-    return { id: sectionId(title), title, markdown: typeof value.markdown === 'string' && value.markdown.trim() ? value.markdown.trim() : gap(title), sourceCandidateIds, proposalIds: linkedProposalIds }
+    if (sourceCandidateIds.some((id) => !allSourceIds.has(id)) || linkedProposalIds.some((id) => !proposalIds.has(id))) throw new Error(`Section ${title} has unresolved local references`)
+    return { id: sectionId(title), title, markdown: typeof value.markdown === 'string' && value.markdown.trim() ? value.markdown.trim() : gap(title), sourceCandidateIds: sourceCandidateIds.filter((id) => sourceIds.has(id)), proposalIds: linkedProposalIds }
   })
   return { sections, proposals }
 }
@@ -92,7 +95,8 @@ function finalizeResearch(input: CompanyResearchInput, partial: { sections: Comp
       ? 'No verified structured earnings metric was supplied, and no implied relative valuation is produced without attributable peer data.'
       : 'No implied relative valuation is produced without attributable peer data.',
   }
-  return { company: input.company, generatedAt, asOf: input.asOf, sections: partial.sections, proposals: partial.proposals, sourceCandidateIds: input.sources.map((source) => source.candidate.candidateId), valuation }
+  const durableIds = new Set(input.durableSourceCandidateIds ?? input.sources.map((source) => source.candidate.candidateId))
+  return { company: input.company, generatedAt, asOf: input.asOf, sections: partial.sections, proposals: partial.proposals, sourceCandidateIds: input.sources.map((source) => source.candidate.candidateId).filter((id) => durableIds.has(id)), contextOnlySourceCandidateIds: input.sources.map((source) => source.candidate.candidateId).filter((id) => !durableIds.has(id)), valuation }
 }
 function sectionId(title: string): string { return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') }
 function gap(title: string): string { return `Research gap: no bounded evidence was supplied for ${title}; no conclusion is asserted.` }

@@ -155,14 +155,53 @@ test('Company resolves neutral structured data and keeps signal append between d
     assert.equal(valuation.status, 'insufficient_data')
     assert.equal(valuation.missingFields.includes('verified earnings metric'), false, 'zero is a present financial metric')
     assert.deepEqual(fetched.sort(), ['news-qualified', 'news-unknown-date', 'official-unknown-date'])
-    assert.ok(result.research?.sourceCandidateIds.includes('official-unknown-date'), 'unknown-date evidence remains available as non-PIT-safe context')
+    assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('official-unknown-date'), 'unknown-date evidence remains visible as non-PIT-safe context')
     assert.equal(result.research?.sourceCandidateIds.includes('news-future'), false, 'future evidence must not reach the Skill')
     assert.ok(result.research?.sourceCandidateIds.includes('news-qualified'))
+    assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('official-unknown-date'))
+    assert.equal(result.research?.sourceCandidateIds.includes('official-unknown-date'), false, 'unknown-date evidence is available as context but cannot be cited durably')
+    assert.ok(result.research?.sections.every((section) => !section.sourceCandidateIds.includes('official-unknown-date')))
+    assert.ok(result.research?.sections.some((section) => section.markdown.includes('Context only; publication date is unknown')))
     assert.equal(signals.length, 3, 'signal compatibility projection retains the existing as-of, dedup, and cap rules before fetch')
     assert.equal(signals.some((signal) => signal.signalId === 'signal-news-future'), false)
     assert.ok(result.providerOutcomes?.some((outcome) => outcome.provider === 'gdelt' && outcome.providerSucceeded && outcome.providerFailed))
     assert.ok(result.providerOutcomes?.some((outcome) => outcome.provider === 'akshare' && outcome.providerSucceeded))
     assert.ok(result.acquisitionDiagnostics?.some((diagnostic) => diagnostic.provider === 'gdelt' && diagnostic.status === 'failed'))
+    assert.equal(result.qualityGate?.eligibleForGateway, true)
+    const canonical = await readCanonicalV04Assets(root)
+    const structuredProvenance = canonical.objects.filter((item) => item.kind === 'source').map((item) => (item.value as any).metadata?.dataProvenance).filter((record) => record?.metricId)
+    assert.deepEqual(structuredProvenance.map((record) => record.metricId).sort(), ['company_basic_profile', 'company_financial_history', 'company_market_history'])
+    assert.ok(structuredProvenance.every((record) => record.sourceId && record.originAuthority && record.retrievalProvider === 'AKShare' && record.attempts.length > 0 && record.quality))
+    assert.equal(canonical.objects.some((item) => item.kind === 'source' && 'title' in item.value && item.value.title === 'Official filing'), false, 'unknown-date source must not be written to Knowledge Gateway')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+    await rm(reports, { recursive: true, force: true })
+  }
+})
+
+test('Company maxSources is a global cap when both or only one evidence provider returns candidates', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-company-cap-'))
+  const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-cap-reports-'))
+  try {
+    const asOf = '2026-09-08T00:00:00.000Z'
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-company-cap-test', now: asOf })
+    const plugin = (name: string, provider: string, ids: readonly string[]): ResearchAcquisitionPlugin => ({
+      name,
+      discover: async () => ids.map((candidateId) => ({ candidateId, kind: provider === 'cninfo' ? 'official_disclosure' as const : 'news' as const, tier: provider === 'cninfo' ? 1 as const : 3 as const, title: candidateId, url: `https://example.com/${candidateId}`, provider, publishedAt: '2026-09-07T00:00:00.000Z' })),
+      fetch: async (candidate) => ({ candidate, retrievedAt: asOf, content: `Evidence ${candidate.candidateId}`, contentHash: candidate.candidateId.padEnd(64, '0') }),
+      normalize: async (source) => ({ candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: source.content, contentHash: source.contentHash!, canonicalUrl: source.candidate.url, publisher: provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
+    })
+    const official = plugin('fixture-official', 'cninfo', ['official-a', 'official-b'])
+    const news = plugin('fixture-gdelt', 'gdelt', ['news-a', 'news-b'])
+    const partialAkshare: AkshareDataClient = { companyBasic: async () => [{ item: 'name', value: 'Fixture Company' }], financialData: async () => [], historicalMarketData: async () => [{ date: '2026-09-08', close: 1 }] }
+    const both = await runCompanyDeepResearch({ workflowRunId: 'company-cap-both', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([official, news], partialAkshare), reportRoot: reports, maxSources: 1, asOf, now: () => asOf })
+    assert.equal(both.research?.sourceCandidateIds.filter((id) => !id.startsWith('akshare-')).length, 1)
+    assert.ok(both.providerOutcomes?.some((outcome) => outcome.provider === 'akshare' && outcome.providerSucceeded && !outcome.providerEmpty))
+
+    const single = await runCompanyDeepResearch({ workflowRunId: 'company-cap-single', handle: await new Registry().mount(root), company: { symbol: '000858', name: 'Fixture Company B' }, dataResolverFactory: resolverFactory([official, { ...news, discover: async () => [] }]), reportRoot: reports, maxSources: 1, asOf, now: () => asOf })
+    assert.equal(single.research?.sourceCandidateIds.filter((id) => !id.startsWith('akshare-')).length, 1)
+    assert.ok(single.providerOutcomes?.some((outcome) => outcome.provider === 'cninfo' && outcome.providerSucceeded && !outcome.providerEmpty))
+    assert.ok(single.providerOutcomes?.some((outcome) => outcome.provider === 'gdelt' && !outcome.providerSucceeded && outcome.providerEmpty))
   } finally {
     await rm(root, { recursive: true, force: true })
     await rm(reports, { recursive: true, force: true })

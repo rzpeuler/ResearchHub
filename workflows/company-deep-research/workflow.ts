@@ -4,6 +4,7 @@ import { KnowledgeProductionGateway } from '../../knowledge/production/gateway.t
 import { CompanyResearchSkill } from '../../skills/company-research/skill.ts'
 import type { NormalizedResearchSource, ResearchAcquisitionDiagnostic, ResearchProviderOutcome } from '../../plugins/research-acquisition/contracts.ts'
 import type { CompanyResearchDataPayload, CompanyResearchEvidenceBatch, CompanyProfileSnapshot, CompanyFinancialHistory, CompanyMarketHistory } from '../../plugins/research-acquisition/company-research-data.ts'
+import { sha256 } from '../../plugins/research-acquisition/hash.ts'
 import { materializePhase3CommonRequirement } from '../../data/requirements.ts'
 import type { DataResolver, ResolvedDataItem } from '../../data/resolver.ts'
 import { normalizeCompanyCandidateIdentity } from '../../skills/knowledge-curation/identity/company-identity.ts'
@@ -13,7 +14,7 @@ import { runResearchQualityGate } from '../research-quality-gate.ts'
 import { calculateCompanyIndustryExposureBridge, renderCompanyIndustryExposureBridge } from './industry-exposure-bridge.ts'
 
 const safeId = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
-type AcquiredResearch = { readonly sources: readonly NormalizedResearchSource[]; readonly profileData?: CompanyProfileSnapshot; readonly financialData?: CompanyFinancialHistory['rows']; readonly marketData?: CompanyMarketHistory['rows']; readonly diagnostics: readonly ResearchAcquisitionDiagnostic[]; readonly providerOutcomes: readonly ResearchProviderOutcome[] }
+type AcquiredResearch = { readonly sources: readonly NormalizedResearchSource[]; readonly durableSources: readonly NormalizedResearchSource[]; readonly durableSourceCandidateIds: readonly string[]; readonly profileData?: CompanyProfileSnapshot; readonly financialData?: CompanyFinancialHistory['rows']; readonly marketData?: CompanyMarketHistory['rows']; readonly diagnostics: readonly ResearchAcquisitionDiagnostic[]; readonly providerOutcomes: readonly ResearchProviderOutcome[] }
 
 function check(input: CompanyDeepResearchInput): void {
   if (!safeId.test(input.workflowRunId)) throw new Error('workflowRunId must be safe')
@@ -43,13 +44,37 @@ function resolvedValues<T extends CompanyResearchDataPayload>(item: ResolvedData
 
 function providerForSource(sourceId: string): string { return sourceId.startsWith('cninfo-') ? 'cninfo' : sourceId.startsWith('gdelt-') ? 'gdelt' : sourceId.startsWith('akshare-') ? 'akshare' : sourceId }
 
+function structuredSource(metricId: string, item: ResolvedDataItem<CompanyResearchDataPayload>, value: CompanyResearchDataPayload, company: CompanyDeepResearchInput['company']): NormalizedResearchSource | undefined {
+  const source = item.source ?? item.acquisition.observations?.[0]?.source
+  if (!source) return undefined
+  const dataKind = metricId === 'company_basic_profile' ? 'basic' : metricId === 'company_financial_history' ? 'financial' : 'market'
+  const title = metricId === 'company_basic_profile' ? 'Company basic profile' : metricId === 'company_financial_history' ? 'Company financial history' : 'Company market history'
+  const metadata = {
+    dataKind, metricId, sourceId: source.sourceId, fallbackLevel: source.fallbackLevel,
+    originAuthority: source.originAuthority, originPublisher: source.originPublisher,
+    retrievalProvider: source.retrievalProvider, sourceUrl: source.sourceUrl,
+    publishedAt: source.publishedAt, retrievedAt: source.retrievedAt,
+    observedAt: source.observedAt, observationAvailableAt: source.observationAvailableAt,
+    valueVersion: source.valueVersion, quality: item.quality, attempts: item.attempts,
+  }
+  const content = JSON.stringify(value)
+  const publishedAt = source.publishedAt ?? (metricId === 'company_market_history' ? source.observedAt : undefined)
+  return {
+    candidate: { candidateId: `akshare-${dataKind}-${company.symbol}`, kind: 'structured_data', tier: 2, title, provider: source.retrievalProvider ?? 'AKShare', ...(publishedAt ? { publishedAt } : {}), metadata: { companySymbol: company.symbol, dataProvenance: metadata } },
+    retrievedAt: source.retrievedAt, title, content, contentHash: sha256(content),
+    ...(source.sourceUrl ? { canonicalUrl: source.sourceUrl } : {}),
+    publisher: source.originPublisher ?? 'Unknown original publisher (retrieval via AKShare)',
+    rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false },
+  }
+}
+
 async function acquire(input: CompanyDeepResearchInput, company: CompanyDeepResearchInput['company'], asOf: string): Promise<AcquiredResearch> {
   const limit = Math.max(1, Math.min(input.maxSources ?? 20, 50))
   const now = input.now ?? (() => new Date().toISOString())
   const discoveredCandidateIds = new Set<string>()
   let consideredCandidateCount = 0
   const dataResolver: DataResolver<CompanyResearchDataPayload> = input.dataResolverFactory({
-    company, asOf, now, signal: input.signal, limitPerSource: Math.min(10, Math.floor(limit / 2)),
+    company, asOf, now, signal: input.signal, limitPerSource: Math.min(10, limit),
     onCandidatesDiscovered: async ({ candidates }) => {
       if (!input.signalStore) return
       for (const candidate of candidates) {
@@ -83,7 +108,16 @@ async function acquire(input: CompanyDeepResearchInput, company: CompanyDeepRese
   const financialData = financialItem && resolvedValue<CompanyFinancialHistory>(financialItem, 'financial')
   const marketData = marketItem && resolvedValue<CompanyMarketHistory>(marketItem, 'market')
   const evidenceBatches = evidenceItem ? resolvedValues<CompanyResearchEvidenceBatch>(evidenceItem, 'evidence') : []
-  const sources = [...new Map(evidenceBatches.flatMap((batch) => batch.documents).map((document) => [document.record.candidate.candidateId, document.record])).values()].slice(0, limit)
+  const externalDocuments = evidenceBatches.flatMap((batch) => batch.documents)
+  const externalSources = [...new Map(externalDocuments.map((document) => [document.record.candidate.candidateId, document.record])).values()].slice(0, limit)
+  const dataValues = [
+    ...(profileItem && profileData ? [structuredSource('company_basic_profile', profileItem, profileData, company)] : []),
+    ...(financialItem && financialData ? [structuredSource('company_financial_history', financialItem, financialData, company)] : []),
+    ...(marketItem && marketData ? [structuredSource('company_market_history', marketItem, marketData, company)] : []),
+  ].filter((source): source is NormalizedResearchSource => source !== undefined)
+  const sources = [...externalSources, ...dataValues]
+  const durableSourceCandidateIds = [...dataValues.map((source) => source.candidate.candidateId), ...externalDocuments.filter((document) => document.pointInTimeSafe).map((document) => document.record.candidate.candidateId)]
+  const durableSources = sources.filter((source) => durableSourceCandidateIds.includes(source.candidate.candidateId))
   const diagnostics: ResearchAcquisitionDiagnostic[] = []
   const outcomes = new Map<string, ResearchProviderOutcome>()
   for (const item of bundle.items) for (const attempt of item.acquisition.attempts) {
@@ -101,7 +135,8 @@ async function acquire(input: CompanyDeepResearchInput, company: CompanyDeepRese
     outcomes.set(provider, { ...prior, providerSucceeded: prior.providerSucceeded || succeeded, providerEmpty: prior.providerEmpty || (!succeeded && hasEmpty), providerFailed: prior.providerFailed || hasFailure, usableSourceCount: prior.usableSourceCount + (succeeded ? provider === 'akshare' ? 1 : evidenceCount : 0) })
   }
   for (const [provider, outcome] of outcomes) outcomes.set(provider, { ...outcome, providerSucceeded: outcome.usableSourceCount > 0 })
-  return { sources, profileData, financialData: financialData?.rows, marketData: marketData?.rows, diagnostics, providerOutcomes: [...outcomes.values()].sort((a, b) => a.provider.localeCompare(b.provider)) }
+  const providerOutcomes = [...outcomes.values()].map((outcome) => ({ ...outcome, providerEmpty: outcome.providerSucceeded ? false : outcome.providerEmpty })).sort((a, b) => a.provider.localeCompare(b.provider))
+  return { sources, durableSources, durableSourceCandidateIds, profileData, financialData: financialData?.rows, marketData: marketData?.rows, diagnostics, providerOutcomes }
 }
 
 export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): Promise<CompanyDeepResearchResult> {
@@ -115,12 +150,12 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     abortIfNeeded(input.signal)
     const gateway = new KnowledgeProductionGateway(new KnowledgeBaseRegistry())
     const existingKnowledgeProjection = input.useStructuredKnowledge === false ? [] : await gateway.projectExistingKnowledge(input.handle, company)
-    const research = await new CompanyResearchSkill(now, input.reasoningExecutor).synthesize({ company, asOf, sources: acquired.sources, profileData: acquired.profileData, financialData: acquired.financialData, marketData: acquired.marketData, existingKnowledgeProjection })
+    const research = await new CompanyResearchSkill(now, input.reasoningExecutor).synthesize({ company, asOf, sources: acquired.sources, durableSourceCandidateIds: acquired.durableSourceCandidateIds, profileData: acquired.profileData, financialData: acquired.financialData, marketData: acquired.marketData, existingKnowledgeProjection })
     const industryExposure = input.industryExposure === undefined ? undefined : calculateCompanyIndustryExposureBridge(input.industryExposure)
     const reportResearch = industryExposure === undefined ? research : { ...research, sections: research.sections.map((section) => section.title === 'Industry Exposure' ? { ...section, markdown: `${section.markdown}\n\n${renderCompanyIndustryExposureBridge(industryExposure)}`, sourceCandidateIds: [...new Set([...section.sourceCandidateIds, ...industryExposure.items.flatMap((item) => [...item.driver.sourceRefs, ...item.exposure.sourceRefs, ...(item.sensitivity?.sourceRefs ?? [])])])] } : section) }
     const qualityGate = runResearchQualityGate({ profile: 'company', asOf, sources: acquired.sources, referencedSourceCandidateIds: reportResearch.sections.flatMap((section) => section.sourceCandidateIds), proposalSourceCandidateIds: research.proposals.flatMap((proposal) => proposal.sourceCandidateIds ?? []), reportSourceCandidateIds: reportResearch.sections.flatMap((section) => section.sourceCandidateIds) })
     if (!qualityGate.eligibleForGateway) return { workflowRunId: input.workflowRunId, status: 'blocked', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: input.handle.revision, proposalIds: research.proposals.map((proposal) => proposal.proposalId), createdIds: [], updatedIds: [], committedIds: [], sourceIds: [], claimIds: [], errors: qualityGate.diagnostics.filter((item) => item.severity === 'ERROR').map((item) => item.code), research: reportResearch, industryExposure, acquisitionDiagnostics: acquired.diagnostics, providerOutcomes: acquired.providerOutcomes, qualityGate }
-    const outcome = await gateway.submit({ handle: input.handle, producerType: 'company_deep_research', producerRunId: input.workflowRunId, schemaProfile: { schemaVersion: '0.4', storageFormatVersion: '1', requiresRawProvenance: true }, entity: { localKey: 'company', entityType: 'company', name: company.name ?? company.symbol, aliases: [company.symbol], semanticFields: { ticker: company.symbol, exchange: company.exchange } }, proposals: research.proposals, evidenceBindings: acquired.sources.map((source) => ({ localSourceId: source.candidate.candidateId, source })), asOf, now, writeKnowledge: input.writeKnowledge })
+    const outcome = await gateway.submit({ handle: input.handle, producerType: 'company_deep_research', producerRunId: input.workflowRunId, schemaProfile: { schemaVersion: '0.4', storageFormatVersion: '1', requiresRawProvenance: true }, entity: { localKey: 'company', entityType: 'company', name: company.name ?? company.symbol, aliases: [company.symbol], semanticFields: { ticker: company.symbol, exchange: company.exchange } }, proposals: research.proposals, evidenceBindings: acquired.durableSources.map((source) => ({ localSourceId: source.candidate.candidateId, source })), asOf, now, writeKnowledge: input.writeKnowledge })
     if (outcome.status === 'blocked' || outcome.status === 'failed') return { workflowRunId: input.workflowRunId, status: 'blocked', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: outcome.knowledgeBaseRevision, proposalIds: research.proposals.map((proposal) => proposal.proposalId), createdIds: [], updatedIds: [], committedIds: [], sourceIds: Object.values(outcome.sourceRefsByLocalId), claimIds: Object.values(outcome.claimRefsByProposalId), errors: outcome.errors, research, resolutionIntents: outcome.resolutionIntents, acquisitionDiagnostics: acquired.diagnostics, providerOutcomes: acquired.providerOutcomes, qualityGate }
     const companyRef = outcome.entityRefsByLocalKey.company
     const reportId = `company-research-${company.symbol.toLowerCase()}-${input.workflowRunId}`
