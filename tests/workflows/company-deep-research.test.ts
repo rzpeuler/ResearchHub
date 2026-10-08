@@ -7,9 +7,13 @@ import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { createFreshKnowledgeBaseV04, readCanonicalV04Assets } from '../../knowledge/storage/index.ts'
 import { runCompanyDeepResearch } from '../../workflows/company-deep-research/index.ts'
 import { createCompanyResearchDataResolver } from '../../plugins/research-acquisition/company-research-data.ts'
+import { DataResolver } from '../../data/resolver.ts'
+import type { AcquisitionResult } from '../../data/contracts.ts'
+import type { CompanyResearchDataPayload } from '../../plugins/research-acquisition/company-research-data.ts'
 import type { CompanyDeepResearchResolverOptions } from '../../workflows/company-deep-research/contracts.ts'
 import type { ResearchAcquisitionPlugin, ResearchSignal, ResearchSignalStore, ResearchSourceCandidate } from '../../plugins/research-acquisition/contracts.ts'
 import type { AkshareDataClient } from '../../plugins/research-acquisition/akshare.ts'
+import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import { writeKnowledgeBase } from '../../knowledge/writer/writer.ts'
 import { KnowledgeBaseRegistry as Registry } from '../../knowledge/registry/registry.ts'
 
@@ -240,7 +244,11 @@ test('historical unversioned profile and financial snapshots stay context-only a
       fetch: async (candidate) => ({ candidate, retrievedAt: asOf, content: 'A verified filing.', contentHash: 'a'.repeat(64) }),
       normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: 'CNINFO', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
     }
-    const result = await runCompanyDeepResearch({ workflowRunId: 'company-historical-data', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([filing], akshare), reportRoot: reports, asOf, now: () => asOf })
+    const reasoningExecutor = {
+      capabilities: () => ({}),
+      execute: async () => ({ operation: 'company_research_synthesis', output: { sections: [{ title: 'Company Overview', markdown: 'A mixed-source historical claim.', sourceCandidateIds: ['akshare-financial-600519', 'dated-filing'], proposalIds: ['historical-mixed-claim'] }], proposals: [{ proposalId: 'historical-mixed-claim', kind: 'claim', subjectKey: 'company', claimType: 'fact', statement: 'An unversioned historical EPS claim.', sourceCandidateIds: ['akshare-financial-600519', 'dated-filing'] }] } }),
+    } as unknown as ReasoningExecutor
+    const result = await runCompanyDeepResearch({ workflowRunId: 'company-historical-data', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([filing], akshare), reportRoot: reports, asOf, now: () => asOf, reasoningExecutor })
     assert.equal(result.status, 'completed', result.errors.join('; '))
     assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('akshare-basic-600519'))
     assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('akshare-financial-600519'))
@@ -251,6 +259,7 @@ test('historical unversioned profile and financial snapshots stay context-only a
     assert.equal(sourceTitles.includes('Company basic profile'), false)
     assert.equal(sourceTitles.includes('Company financial history'), false)
     assert.equal(sourceTitles.includes('Company market history'), true)
+    assert.equal(canonical.objects.some((item) => item.kind === 'claim' && 'statement' in item.value && item.value.statement === 'An unversioned historical EPS claim.'), false, 'a mixed-source proposal citing unversioned financial data must be rejected before Gateway')
     const market = canonical.objects.find((item) => item.kind === 'source' && (item.value as { title?: string }).title === 'Company market history')?.value as { metadata?: { dataProvenance?: Record<string, unknown> } } | undefined
     assert.equal(market?.metadata?.dataProvenance?.pointInTimeStatus, 'PIT_VERIFIED')
     assert.equal(market?.metadata?.dataProvenance?.valueVersionStatus, 'UNVERIFIED')
@@ -277,6 +286,30 @@ test('Company provider outcome flags never combine empty with failure and unsupp
     assert.deepEqual(news && [news.providerSucceeded, news.providerEmpty, news.providerFailed], [false, false, true])
     assert.ok(outcomes.every((outcome) => !(outcome.providerEmpty && outcome.providerFailed)))
     assert.ok(outcomes.every((outcome) => outcome.providerSucceeded === (outcome.usableSourceCount > 0)))
+  } finally {
+    await rm(root, { recursive: true, force: true })
+    await rm(reports, { recursive: true, force: true })
+  }
+})
+
+test('POINT_IN_TIME_INVALID Company market attempt is empty rather than a provider failure', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-company-market-cutoff-'))
+  const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-market-cutoff-reports-'))
+  try {
+    const asOf = '2026-10-08T06:00:00.000Z'
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-company-market-cutoff-test', now: asOf })
+    const dataResolverFactory = () => new DataResolver<CompanyResearchDataPayload>({
+      policies: [], executor: async () => ({ status: 'UNSUPPORTED' }),
+      resolveAcquisition: async (requirement): Promise<AcquisitionResult<CompanyResearchDataPayload>> => ({
+        requirementId: requirement.id, status: 'UNAVAILABLE', source: null,
+        quality: { pointInTimeSafe: false, complete: false, crossChecked: false, pitDiagnostic: 'NO_ELIGIBLE_POINT_IN_TIME_DATA' },
+        attempts: requirement.metricId === 'company_market_history' ? [{ sourceId: 'akshare-marketHistory', fallbackLevel: 'PRIMARY', status: 'POINT_IN_TIME_INVALID', startedAt: asOf, completedAt: asOf, diagnostic: 'daily close was after analysisAsOf' }] : [],
+        unavailableReason: requirement.metricId === 'company_market_history' ? 'NO_ELIGIBLE_POINT_IN_TIME_DATA' : 'SOURCE_UNAVAILABLE',
+      }),
+    })
+    const result = await runCompanyDeepResearch({ workflowRunId: 'company-market-cutoff', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory, reportRoot: reports, asOf, now: () => asOf })
+    const market = result.providerOutcomes?.find((outcome) => outcome.provider === 'akshare')
+    assert.deepEqual(market && [market.providerAttempted, market.providerSucceeded, market.providerEmpty, market.providerFailed, market.usableSourceCount], [true, false, true, false, 0])
   } finally {
     await rm(root, { recursive: true, force: true })
     await rm(reports, { recursive: true, force: true })

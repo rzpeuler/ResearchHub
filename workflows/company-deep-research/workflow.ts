@@ -134,7 +134,7 @@ async function acquire(input: CompanyDeepResearchInput, company: CompanyDeepRese
   for (const item of bundle.items) for (const attempt of item.acquisition.attempts) {
     const provider = providerForSource(attempt.sourceId)
     const unsupported = attempt.status === 'UNSUPPORTED'
-    const status = attempt.status === 'SUCCESS' ? 'usable' : attempt.status === 'NO_DATA' ? 'empty' : 'failed'
+    const status = attempt.status === 'SUCCESS' ? 'usable' : attempt.status === 'NO_DATA' || attempt.status === 'POINT_IN_TIME_INVALID' ? 'empty' : 'failed'
     const prior = outcomes.get(provider) ?? { provider, providerAttempted: false, providerSucceeded: false, providerEmpty: false, providerFailed: false, usableSourceCount: 0 }
     const observation = item.acquisition.observations?.find((entry) => entry.source.sourceId === attempt.sourceId)
     const evidenceCount = observation?.data.kind === 'evidence' ? observation.data.documents.length : 0

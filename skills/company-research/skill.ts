@@ -56,7 +56,7 @@ function validateSynthesis(value: Record<string, unknown>, input: CompanyResearc
   const allSourceIds = new Set(input.sources.map((source) => source.candidate.candidateId))
   const sourceIds = new Set(input.durableSourceCandidateIds ?? [])
   const rawProposals = Array.isArray(value.proposals) ? value.proposals : []
-  const proposals = rawProposals.map((item, index) => {
+  const candidates = rawProposals.map((item, index) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`Invalid company research proposal at index ${index}`)
     const raw = item as Record<string, unknown>
     const suppliedId = typeof raw.proposalId === 'string' ? raw.proposalId : typeof raw.id === 'string' ? raw.id : `model-proposal-${index + 1}`
@@ -66,11 +66,23 @@ function validateSynthesis(value: Record<string, unknown>, input: CompanyResearc
     if (typeof proposal.subjectKey !== 'string' || !LOCAL_ID.test(proposal.subjectKey)) throw new Error('Company research proposal subjectKey must remain local')
     if (!['entity', 'claim', 'relation'].includes(proposal.kind)) throw new Error(`Unsupported company research proposal kind: ${proposal.kind}`)
     for (const sourceId of proposal.sourceCandidateIds ?? []) if (!allSourceIds.has(sourceId)) throw new Error(`Proposal references unknown source candidate: ${sourceId}`)
-    const safeProposal = { ...proposal, sourceCandidateIds: (proposal.sourceCandidateIds ?? []).filter((sourceId) => sourceIds.has(sourceId)) }
-    return safeProposal
+    return proposal
   })
+  const candidateIds = new Set(candidates.map((proposal) => proposal.proposalId))
+  if (candidateIds.size !== candidates.length) throw new Error('Company research proposal IDs must be unique')
+  for (const proposal of candidates) for (const ref of [...proposal.supportsProposalIds ?? [], ...proposal.dependsOnProposalIds ?? [], ...proposal.contradictsProposalIds ?? []]) if (!candidateIds.has(ref)) throw new Error(`Proposal link does not resolve locally: ${ref}`)
+  const eligibleIds = new Set(candidates.filter((proposal) => (proposal.sourceCandidateIds ?? []).every((sourceId) => sourceIds.has(sourceId))).map((proposal) => proposal.proposalId))
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const proposal of candidates) {
+      if (!eligibleIds.has(proposal.proposalId)) continue
+      const linkedIds = [...proposal.supportsProposalIds ?? [], ...proposal.dependsOnProposalIds ?? [], ...proposal.contradictsProposalIds ?? []]
+      if (linkedIds.some((id) => !eligibleIds.has(id))) { eligibleIds.delete(proposal.proposalId); changed = true }
+    }
+  }
+  const proposals = candidates.filter((proposal) => eligibleIds.has(proposal.proposalId))
   const proposalIds = new Set(proposals.map((proposal) => proposal.proposalId))
-  for (const proposal of proposals) for (const ref of [...proposal.supportsProposalIds ?? [], ...proposal.dependsOnProposalIds ?? [], ...proposal.contradictsProposalIds ?? []]) if (!proposalIds.has(ref)) throw new Error(`Proposal link does not resolve locally: ${ref}`)
   const rawSections = Array.isArray(value.sections) ? value.sections : []
   const byTitle = new Map(rawSections.map((section) => [typeof section === 'object' && section !== null && !Array.isArray(section) && typeof (section as Record<string, unknown>).title === 'string' ? (section as Record<string, unknown>).title : '', section]))
   const sections = COMPANY_RESEARCH_SECTIONS.map((title) => {
@@ -78,9 +90,9 @@ function validateSynthesis(value: Record<string, unknown>, input: CompanyResearc
     if (!section || typeof section !== 'object' || Array.isArray(section)) return { id: sectionId(title), title, markdown: gap(title), sourceCandidateIds: [], proposalIds: [] }
     const value = section as Record<string, unknown>
     const sourceCandidateIds = Array.isArray(value.sourceCandidateIds) ? value.sourceCandidateIds.filter((id): id is string => typeof id === 'string') : []
-    const linkedProposalIds = Array.isArray(value.proposalIds) ? value.proposalIds.filter((id): id is string => typeof id === 'string') : []
-    if (sourceCandidateIds.some((id) => !allSourceIds.has(id)) || linkedProposalIds.some((id) => !proposalIds.has(id))) throw new Error(`Section ${title} has unresolved local references`)
-    return { id: sectionId(title), title, markdown: typeof value.markdown === 'string' && value.markdown.trim() ? value.markdown.trim() : gap(title), sourceCandidateIds: sourceCandidateIds.filter((id) => sourceIds.has(id)), proposalIds: linkedProposalIds }
+    const requestedProposalIds = Array.isArray(value.proposalIds) ? value.proposalIds.filter((id): id is string => typeof id === 'string') : []
+    if (sourceCandidateIds.some((id) => !allSourceIds.has(id)) || requestedProposalIds.some((id) => !candidateIds.has(id))) throw new Error(`Section ${title} has unresolved local references`)
+    return { id: sectionId(title), title, markdown: typeof value.markdown === 'string' && value.markdown.trim() ? value.markdown.trim() : gap(title), sourceCandidateIds: sourceCandidateIds.filter((id) => sourceIds.has(id)), proposalIds: requestedProposalIds.filter((id) => proposalIds.has(id)) }
   })
   return { sections, proposals }
 }

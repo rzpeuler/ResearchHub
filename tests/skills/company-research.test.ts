@@ -29,7 +29,7 @@ test('Company Skill receives all structured inputs with their acquisition proven
   let seen: Record<string, unknown> | undefined
   const executor = {
     capabilities: () => ({}),
-    execute: async (request: { readonly input: unknown }) => { seen = request.input as Record<string, unknown>; return { operation: 'company_research_synthesis', output: { sections: [{ title: 'Company Overview', markdown: 'Unverified historical context', sourceCandidateIds: ['unknown-context', 'akshare-1'], proposalIds: ['proposal-1'] }], proposals: [{ proposalId: 'proposal-1', kind: 'claim', subjectKey: 'company', claimType: 'fact', statement: 'Context claim', sourceCandidateIds: ['unknown-context', 'akshare-1'] }] } } },
+    execute: async (request: { readonly input: unknown }) => { seen = request.input as Record<string, unknown>; return { operation: 'company_research_synthesis', output: { sections: [{ title: 'Company Overview', markdown: 'Unverified historical context', sourceCandidateIds: ['unknown-context', 'akshare-1'], proposalIds: ['proposal-1'] }], proposals: [{ proposalId: 'proposal-1', kind: 'claim', subjectKey: 'company', claimType: 'fact', statement: 'Context claim', sourceCandidateIds: ['unknown-context', 'akshare-0'] }] } } },
   } as unknown as ReasoningExecutor
   const structuredSources = ['company_basic_profile', 'company_financial_history', 'company_market_history'].map((metricId, index) => ({
     ...source,
@@ -56,6 +56,7 @@ test('Company Skill receives all structured inputs with their acquisition proven
   assert.equal(result.sourceCandidateIds.includes('unknown-context'), false)
   assert.equal(result.sections[0]?.sourceCandidateIds.includes('unknown-context'), false)
   assert.equal(result.sections[0]?.sourceCandidateIds.includes('akshare-1'), false)
-  assert.deepEqual(result.proposals[0]?.sourceCandidateIds, [])
+  assert.deepEqual(result.proposals, [], 'a proposal citing any context-only source is rejected even if it also cites durable evidence')
+  assert.deepEqual(result.sections[0]?.proposalIds, [])
 })
 test('valuation utilities are deterministic and probability-weighted', () => { assert.deepEqual(relativeValuation({ metric: 10, peerMultiples: [20, 10, 15] }), { multiple: 15, impliedValue: 150, peerCount: 3 }); assert.equal(scenarioValuation([{ name: 'bull', earnings: 2, multiple: 10, probability: 0.5 }, { name: 'bear', earnings: 1, multiple: 10, probability: 0.5 }]).expectedValue, 15) })
