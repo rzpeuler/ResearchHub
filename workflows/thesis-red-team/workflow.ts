@@ -64,7 +64,7 @@ export async function acquireThesisRedTeamEvidence(input: ThesisRedTeamWorkflowI
     const failed = !unsupported && (attempt.status !== 'SUCCESS' && attempt.status !== 'NO_DATA' && attempt.status !== 'POINT_IN_TIME_INVALID' || (evidence?.outcome.failed ?? 0) > 0)
     const transportSucceeded = evidence?.outcome.transportSucceeded ?? (!unsupported && (attempt.status === 'SUCCESS' || attempt.status === 'NO_DATA' || attempt.status === 'POINT_IN_TIME_INVALID'))
     const fetchSucceeded = evidence?.outcome.fetchSucceeded ?? false
-    return [{ provider, providerAttempted: !unsupported, providerSucceeded: !unsupported && usableSourceCount > 0 && !failed, providerEmpty: unsupported || (transportSucceeded && usableSourceCount === 0 && !failed), providerFailed: failed, usableSourceCount, transportSucceeded, fetchSucceeded }]
+    return [{ provider, providerAttempted: !unsupported, providerSucceeded: !unsupported && usableSourceCount > 0, providerEmpty: unsupported || (usableSourceCount === 0 && !failed), providerFailed: failed, usableSourceCount, transportSucceeded, fetchSucceeded }]
   })
   for (const provider of ['CNINFO', 'GDELT'] as const) if (!outcomes.some((item) => item.provider === provider)) outcomes.push({ provider, providerAttempted: false, providerSucceeded: false, providerEmpty: true, providerFailed: false, usableSourceCount: 0, transportSucceeded: false, fetchSucceeded: false })
   return { sources, outcomes, discovered, outside, future, unknown, deduplicated }

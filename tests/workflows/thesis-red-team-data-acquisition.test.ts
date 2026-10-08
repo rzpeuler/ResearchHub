@@ -73,3 +73,24 @@ test('Thesis Red Team does not fall back to direct acquisition plugins when reso
   assert.deepEqual(result.sources, [])
   assert.equal(result.outcomes.every((item) => !item.providerAttempted && item.providerEmpty && !item.providerFailed), true)
 })
+
+test('Thesis provider outcomes separate usable evidence from transport, fetch, empty, and failure status', async () => {
+  const acquired = record('cninfo-usable', '2026-09-01T00:00:00.000Z')
+  const metadata = sourceMetadata('cninfo-company-research-evidence', 'CNINFO')
+  const usableDocument = { record: acquired, publishedAt: acquired.candidate.publishedAt, retrievedAt: NOW, sourceUrl: acquired.canonicalUrl, contentHash: acquired.contentHash, retrievalProvider: 'CNINFO', provenance: metadata, dateStatus: 'QUALIFIED', pointInTimeSafe: true } as const
+  const resolveOutcome = async (config: { readonly attemptStatus: AcquisitionAttempt['status']; readonly documents: readonly typeof usableDocument[]; readonly transportSucceeded: boolean; readonly fetchSucceeded: boolean; readonly fetched: number; readonly failed: number; readonly empty: number }) => {
+    const data = { kind: 'evidence', documents: config.documents, outcome: { transportSucceeded: config.transportSucceeded, fetchSucceeded: config.fetchSucceeded, discovered: config.fetched + config.failed + config.empty, fetched: config.fetched, failed: config.failed, empty: config.empty, rejected: 0, deduplicated: 0, diagnostics: [] } }
+    const resolver = { resolveOne: async () => ({ acquisition: { status: 'PARTIAL', source: metadata, attempts: [attempt('cninfo-company-research-evidence', config.attemptStatus)], observations: [{ data, source: metadata }] } }) }
+    const input = { company: { symbol: '600519' }, acquisitionPlugins: [], dataResolverFactory: () => resolver } as unknown as ThesisRedTeamWorkflowInput
+    return (await acquireThesisRedTeamEvidence(input, NOW, 365)).outcomes.find((item) => item.provider === 'CNINFO')
+  }
+
+  const partial = await resolveOutcome({ attemptStatus: 'SUCCESS', documents: [usableDocument], transportSucceeded: true, fetchSucceeded: true, fetched: 1, failed: 1, empty: 0 })
+  assert.deepEqual([partial?.providerSucceeded, partial?.providerEmpty, partial?.providerFailed, partial?.usableSourceCount, partial?.transportSucceeded, partial?.fetchSucceeded], [true, false, true, 1, true, true])
+
+  const empty = await resolveOutcome({ attemptStatus: 'NO_DATA', documents: [], transportSucceeded: true, fetchSucceeded: false, fetched: 0, failed: 0, empty: 1 })
+  assert.deepEqual([empty?.providerSucceeded, empty?.providerEmpty, empty?.providerFailed, empty?.usableSourceCount, empty?.transportSucceeded, empty?.fetchSucceeded], [false, true, false, 0, true, false])
+
+  const failed = await resolveOutcome({ attemptStatus: 'SOURCE_ERROR', documents: [], transportSucceeded: false, fetchSucceeded: false, fetched: 0, failed: 1, empty: 1 })
+  assert.deepEqual([failed?.providerSucceeded, failed?.providerEmpty, failed?.providerFailed, failed?.usableSourceCount, failed?.transportSucceeded, failed?.fetchSucceeded], [false, false, true, 0, false, false])
+})
