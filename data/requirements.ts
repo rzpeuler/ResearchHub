@@ -23,8 +23,8 @@ export interface StaticSkillDataRequirement extends SkillDataRequirementBase {
 export interface IndustryDomainDataRequirement extends SkillDataRequirementBase {
   readonly kind: 'DOMAIN'
   readonly domain: 'industry'
-  readonly semanticRole?: string
-  readonly metricFamily?: string
+  readonly semanticRole: string
+  readonly metricFamily: string
 }
 
 export type SkillDataRequirement = StaticSkillDataRequirement | IndustryDomainDataRequirement
@@ -42,7 +42,7 @@ export interface MaterializedDataRequirements {
   readonly unresolved: readonly {
     readonly templateId: string
     readonly required: boolean
-    readonly reason: 'COMMON_DATA_DEFINITION_REQUIRED' | 'COMMON_DATA_KIND_MISMATCH' | 'INDUSTRY_ID_REQUIRED' | 'NO_CANONICAL_INDUSTRY_METRIC' | 'INDUSTRY_DATA_KIND_MISMATCH'
+    readonly reason: 'COMMON_DATA_DEFINITION_REQUIRED' | 'COMMON_DATA_KIND_MISMATCH' | 'INDUSTRY_ID_REQUIRED' | 'NO_CANONICAL_INDUSTRY_METRIC' | 'INDUSTRY_DATA_KIND_MISMATCH' | 'AMBIGUOUS_CANONICAL_INDUSTRY_METRIC'
   }[]
 }
 
@@ -188,28 +188,32 @@ export function materializeSkillDataRequirements(
       unresolved.push({ templateId: template.id, required: template.required, reason: 'INDUSTRY_ID_REQUIRED' })
       continue
     }
-    const matches = industryCatalog?.resolve(industryId, template.semanticRole, template.metricFamily) ?? []
-    if (matches.length === 0) {
+    const resolution = industryCatalog?.resolveExact(industryId, template.semanticRole, template.metricFamily, template.dataKind)
+      ?? { status: 'NO_CANONICAL_INDUSTRY_METRIC' as const }
+    if (resolution.status === 'NO_CANONICAL_INDUSTRY_METRIC') {
       unresolved.push({ templateId: template.id, required: template.required, reason: 'NO_CANONICAL_INDUSTRY_METRIC' })
       continue
     }
-    const compatibleMatches = matches.filter((definition) => definition.dataKind === template.dataKind)
-    if (compatibleMatches.length === 0) {
+    if (resolution.status === 'INDUSTRY_DATA_KIND_MISMATCH') {
       unresolved.push({ templateId: template.id, required: template.required, reason: 'INDUSTRY_DATA_KIND_MISMATCH' })
       continue
     }
-    if (compatibleMatches.length !== matches.length) {
-      unresolved.push({ templateId: template.id, required: template.required, reason: 'INDUSTRY_DATA_KIND_MISMATCH' })
+    if (resolution.status === 'AMBIGUOUS_CANONICAL_INDUSTRY_METRIC') {
+      unresolved.push({ templateId: template.id, required: template.required, reason: 'AMBIGUOUS_CANONICAL_INDUSTRY_METRIC' })
+      continue
     }
-    for (const definition of compatibleMatches) {
-      requirements.push({
-        ...base,
-        id: `${skillId}:${template.id}:${definition.metricId}`,
-        dataKind: template.dataKind,
-        metricId: definition.metricId,
-        metricFamily: definition.metricFamily,
-      })
-    }
+    requirements.push({
+      ...base,
+      id: `${skillId}:${template.id}:${resolution.definition.metricId}`,
+      dataKind: template.dataKind,
+      metricId: resolution.definition.metricId,
+      metricFamily: resolution.definition.metricFamily,
+    })
+    if (resolution.incompatibleMetricIds?.length) unresolved.push({
+      templateId: template.id,
+      required: template.required,
+      reason: 'INDUSTRY_DATA_KIND_MISMATCH',
+    })
   }
   return { requirements, unresolved }
 }

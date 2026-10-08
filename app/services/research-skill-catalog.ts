@@ -159,10 +159,10 @@ const DATA_REQUIREMENTS_BY_SKILL: Readonly<Record<string, readonly SkillDataRequ
   ],
   industry_supply_demand_cycle: [
     { id: 'capacity-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'supply', metricFamily: 'capacity', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
-    { id: 'demand-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'demand', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
-    { id: 'inventory-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'inventory', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
-    { id: 'pricing-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'pricing', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
-    { id: 'utilization-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'utilization', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
+    { id: 'demand-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'demand', metricFamily: 'demand', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
+    { id: 'inventory-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'inventory', metricFamily: 'inventory', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
+    { id: 'pricing-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'pricing', metricFamily: 'pricing', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
+    { id: 'utilization-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'utilization', metricFamily: 'utilization', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
   ],
 }
 

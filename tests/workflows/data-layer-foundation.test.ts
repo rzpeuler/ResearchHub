@@ -12,6 +12,7 @@ import {
   type AcquisitionResult,
   type DataRequirement,
   type IndustryMetricDefinition,
+  type IndustryMetricValidation,
   type SourceCandidate,
   type SourcePolicy,
 } from '../../data/index.ts'
@@ -21,6 +22,26 @@ import { createResearchSkillRegistry } from '../../app/services/skill-registry.t
 import { earningsExpectationSourcePolicy } from '../../workflows/earnings-review/expectations-acquisition.ts'
 
 const AS_OF = '2026-10-01T00:00:00.000Z'
+
+function industryValidation(overrides: Partial<IndustryMetricValidation> = {}): IndustryMetricValidation {
+  const checks = {
+    SEMANTIC: ['reported shipment quantity'],
+    UNIT: ['million units'],
+    PERIOD: ['monthly period total'],
+    SCOPE: ['China, household PCB shipments'],
+    PIT: ['publication time recorded; value-version status explicit'],
+    EXTRACTION: ['deterministic parser fixture'],
+    ACCEPTANCE: ['real-source acceptance record'],
+  }
+  return {
+    validatedAt: AS_OF,
+    validator: 'domain-reviewer',
+    methodology: 'Compare the source field and its historical semantics to the registered definition.',
+    sourceabilityEvidence: ['official source URL', 'documented retrieval route'],
+    ...overrides,
+    checks: { ...checks, ...overrides.checks },
+  }
+}
 
 function industryDefinition(overrides: Partial<IndustryMetricDefinition> = {}): IndustryMetricDefinition {
   return {
@@ -33,9 +54,20 @@ function industryDefinition(overrides: Partial<IndustryMetricDefinition> = {}): 
     dataKind: 'timeseries',
     unit: 'million units',
     periodicity: 'monthly',
+    canonicalUnit: 'million units',
+    acceptedSourceUnits: ['million units'],
+    unitConversions: [],
+    frequency: 'MONTHLY',
+    periodBasis: 'PERIOD',
+    aggregation: 'SUM',
+    geography: 'China',
+    applicability: 'Household PCB shipment volume',
+    requiredQualifiers: ['EXACT'],
+    pitPolicy: { publicationPit: 'REQUIRED', valueVersionPit: 'REQUIRED_FOR_HISTORICAL' },
     lifecycleStatus: 'DISCOVERED',
     sourcePolicies: [{ policyId: 'pcb-shipment-policy', metricFamily: 'shipments' }],
     ...overrides,
+    ...(overrides.validation ? { validation: industryValidation(overrides.validation) } : {}),
   }
 }
 
@@ -134,6 +166,7 @@ test('Skill catalog preserves readable inputs and publishes bounded provider-neu
   assert.deepEqual(industry.dataRequirements.map((item) => item.kind), ['DOMAIN', 'DOMAIN', 'DOMAIN', 'DOMAIN', 'DOMAIN'])
   assert.equal(industry.requirementCoverage, 'PARTIAL')
   assert.ok(industry.dataRequirements.every((item) => !('metricId' in item)))
+  assert.ok(industry.dataRequirements.every((item) => item.kind !== 'DOMAIN' || (item.semanticRole !== undefined && item.metricFamily !== undefined)), 'each generic DOMAIN need must specify exact semantic role and family')
   assert.ok(industry.dataRequirements.every((item) => !JSON.stringify(item).match(/AKShare|CNINFO|EastMoney|THS|SSE|SZSE/i)))
 })
 
@@ -183,12 +216,10 @@ test('Industry catalog enforces namespaces, policy association, lifecycle eviden
   assert.deepEqual(catalog.resolve('pcb', 'demand', 'shipments'), [], 'registration must not promote a discovered metric')
   assert.throws(() => catalog.registerDiscovered(industryDefinition({ metricId: industryMetricId('pcb', 'other'), lifecycleStatus: 'VALIDATED' })), /INDUSTRY_REGISTRATION_MUST_START_DISCOVERED/)
 
-  const evidence = {
-    validatedAt: AS_OF,
-    validator: 'domain-reviewer',
+  const evidence = industryValidation({
     methodology: 'Compare reported shipment totals against source publication and unit definitions.',
     sourceabilityEvidence: ['official monthly release URL', 'historical series available'],
-  }
+  })
   assert.throws(() => catalog.transition(discovered.metricId, 'VALIDATED'), /INDUSTRY_TRANSITION_REQUIRES_VALIDATION_EVIDENCE_AND_POLICY/)
   const associated = catalog.associateSourcePolicy(discovered.metricId, { policyId: 'pcb-shipment-policy', metricFamily: 'shipments' })
   assert.deepEqual(associated.sourcePolicies, [{ policyId: 'pcb-shipment-policy', metricFamily: 'shipments' }])
@@ -220,7 +251,7 @@ test('skill requirement materialization carries runtime context and resolves onl
   assert.equal(beforePromotion.requirements.length, 1)
   assert.deepEqual(beforePromotion.unresolved, [{ templateId: 'demand', required: false, reason: 'NO_CANONICAL_INDUSTRY_METRIC' }])
 
-  const evidence = { validatedAt: AS_OF, validator: 'reviewer', methodology: 'reviewed source series', sourceabilityEvidence: ['source URL'] }
+  const evidence = industryValidation({ methodology: 'reviewed source series', sourceabilityEvidence: ['source URL'] })
   catalog.transition(industryMetricId('pcb', 'monthly-shipment'), 'VALIDATED', evidence)
   catalog.transition(industryMetricId('pcb', 'monthly-shipment'), 'CANONICAL', evidence)
   const result = materializeSkillDataRequirements('industry-skill', templates, context, catalog)
@@ -246,7 +277,7 @@ test('skill requirement materialization carries runtime context and resolves onl
 })
 
 test('Industry DOMAIN requirements reject mismatched kinds and only materialize compatible definitions', () => {
-  const evidence = { validatedAt: AS_OF, validator: 'reviewer', methodology: 'reviewed', sourceabilityEvidence: ['source URL'] }
+  const evidence = industryValidation({ methodology: 'reviewed', sourceabilityEvidence: ['source URL'] })
   const catalog = createIndustryDataCatalog([
     industryDefinition({ lifecycleStatus: 'CANONICAL', validation: evidence }),
     industryDefinition({ metricId: industryMetricId('pcb', 'monthly-shipment-value'), dataKind: 'metric', lifecycleStatus: 'CANONICAL', validation: evidence }),
@@ -261,6 +292,53 @@ test('Industry DOMAIN requirements reject mismatched kinds and only materialize 
   const mismatch = materializeSkillDataRequirements('industry-skill', [template], { workflowId: 'industry-deep-research', asOf: AS_OF, subject: { industryId: 'pcb' } }, allMismatched)
   assert.deepEqual(mismatch.requirements, [])
   assert.deepEqual(mismatch.unresolved, [{ templateId: 'demand', required: false, reason: 'INDUSTRY_DATA_KIND_MISMATCH' }])
+})
+
+test('Industry identity resolves only registered exact aliases', async () => {
+  const { resolveIndustryIdentity } = await import('../../data/industry-catalog.ts')
+  assert.equal(typeof resolveIndustryIdentity, 'function')
+  if (typeof resolveIndustryIdentity !== 'function') return
+  assert.deepEqual(resolveIndustryIdentity('  锂离子电池  '), { status: 'RESOLVED', industryId: 'lithium_battery' })
+  assert.deepEqual(resolveIndustryIdentity('ROOM AIR CONDITIONER'), { status: 'RESOLVED', industryId: 'household_air_conditioner' })
+  assert.deepEqual(resolveIndustryIdentity('steel'), { status: 'UNRESOLVED', input: 'steel', candidateIndustryIds: [] })
+  assert.deepEqual(resolveIndustryIdentity('lithium battery!'), { status: 'UNRESOLVED', input: 'lithium battery!', candidateIndustryIds: [] })
+})
+
+test('Industry identity reports ambiguous aliases without selecting an ID', async () => {
+  const { resolveIndustryIdentity } = await import('../../data/industry-catalog.ts')
+  assert.equal(typeof resolveIndustryIdentity, 'function')
+  if (typeof resolveIndustryIdentity !== 'function') return
+  assert.deepEqual(resolveIndustryIdentity('shared alias', [
+    { industryId: 'zeta', aliases: ['Shared Alias'] },
+    { industryId: 'alpha', aliases: ['shared alias'] },
+  ]), { status: 'AMBIGUOUS', input: 'shared alias', candidateIndustryIds: ['alpha', 'zeta'] })
+})
+
+test('Industry DOMAIN materialization reports multiple exact canonical matches as ambiguous', () => {
+  const evidence = industryValidation({ methodology: 'reviewed', sourceabilityEvidence: ['official series'] })
+  const catalog = createIndustryDataCatalog([
+    industryDefinition({ lifecycleStatus: 'CANONICAL', validation: evidence }),
+    industryDefinition({ metricId: industryMetricId('pcb', 'monthly-shipment-alternative'), lifecycleStatus: 'CANONICAL', validation: evidence }),
+  ])
+  const template = { kind: 'DOMAIN', domain: 'industry', id: 'demand', semanticRole: 'demand', metricFamily: 'shipments', required: false, dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC' } as const
+  const result = materializeSkillDataRequirements('industry-skill', [template], { workflowId: 'industry-deep-research', asOf: AS_OF, subject: { industryId: 'pcb' } }, catalog)
+  assert.deepEqual(result.requirements, [])
+  assert.deepEqual(result.unresolved, [{ templateId: 'demand', required: false, reason: 'AMBIGUOUS_CANONICAL_INDUSTRY_METRIC' }])
+})
+
+test('Industry metric cannot become canonical without policy semantic unit scope extraction and PIT evidence', () => {
+  const validation = { validatedAt: AS_OF, validator: 'reviewer', methodology: 'reviewed', sourceabilityEvidence: ['official series'] }
+  const incomplete = industryDefinition({ lifecycleStatus: 'VALIDATED', validation })
+  const catalog = createIndustryDataCatalog([incomplete])
+  assert.throws(() => catalog.transition(incomplete.metricId, 'CANONICAL', validation), /INDUSTRY_CANONICAL_REQUIRES_COMPLETE_DEFINITION_AND_EVIDENCE/)
+})
+
+test('Industry canonical definition preserves unverified value-version limitation', () => {
+  const definition = industryDefinition({
+    pitPolicy: { publicationPit: 'REQUIRED', valueVersionPit: 'UNVERIFIED_CURRENT_VALUE_ONLY' },
+  } as Partial<IndustryMetricDefinition>)
+  const catalog = createIndustryDataCatalog([definition])
+  assert.deepEqual(catalog.get(definition.metricId)?.pitPolicy, { publicationPit: 'REQUIRED', valueVersionPit: 'UNVERIFIED_CURRENT_VALUE_ONLY' })
 })
 
 test('DataResolver preserves an available zero, source authority, provenance, period, and attempts', async () => {
@@ -373,7 +451,7 @@ test('DataResolver propagates cancellation from acquisition', async () => {
 test('DataResolver reports unresolved required catalog needs and resolves canonical domain definitions', async () => {
   const industryCatalog = createIndustryDataCatalog([industryDefinition({
     lifecycleStatus: 'CANONICAL',
-    validation: { validatedAt: AS_OF, validator: 'reviewer', methodology: 'reviewed', sourceabilityEvidence: ['source URL'] },
+    validation: industryValidation(),
   })])
   const policy: SourcePolicy = {
     policyId: 'pcb-shipment-policy',
@@ -437,7 +515,7 @@ test('DataResolver marks unresolved optional Industry needs PARTIAL even when th
   assert.equal(requiredAcquisitionFailure.completeness, 'UNAVAILABLE')
   assert.equal(requiredAcquisitionFailure.unresolvedRequirements.length, 5)
 
-  const requiredTemplate = [{ kind: 'DOMAIN', domain: 'industry', id: 'required-demand', semanticRole: 'demand', dataKind: 'timeseries', required: true, determinismClass: 'EVIDENCE_BACKED_NUMERIC' }] as const
+  const requiredTemplate = [{ kind: 'DOMAIN', domain: 'industry', id: 'required-demand', semanticRole: 'demand', metricFamily: 'demand', dataKind: 'timeseries', required: true, determinismClass: 'EVIDENCE_BACKED_NUMERIC' }] as const
   const noBasis = await new DataResolver<number>({ policies: [], executor: async () => ({ status: 'UNSUPPORTED' }) }).resolveSkillRequirements(
     'industry-skill', requiredTemplate, { workflowId: 'industry-deep-research', asOf: AS_OF, subject: { industryId: 'pcb' } },
   )
@@ -478,7 +556,7 @@ test('DataResolver limits an Industry metric to its catalog-associated source po
   const metricId = industryMetricId('pcb', 'monthly-shipment')
   const industryCatalog = createIndustryDataCatalog([industryDefinition({
     lifecycleStatus: 'CANONICAL',
-    validation: { validatedAt: AS_OF, validator: 'reviewer', methodology: 'reviewed', sourceabilityEvidence: ['source URL'] },
+    validation: industryValidation(),
   })])
   const makePolicy = (policyId: string, sourceId: string): SourcePolicy => ({
     policyId,
