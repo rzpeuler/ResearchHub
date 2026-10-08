@@ -13,6 +13,7 @@ import { runThesisRedTeam } from '../../workflows/thesis-red-team/workflow.ts'
 import type { EventResearchSignalStore } from '../../plugins/daily-intelligence/contracts.ts'
 import type { ResearchAcquisitionPlugin, ResearchCompanyIdentity, ResearchProviderOutcome, ResearchSignalStore } from '../../plugins/research-acquisition/contracts.ts'
 import type { AkshareDataClient } from '../../plugins/research-acquisition/akshare.ts'
+import { createCompanyResearchDataResolver } from '../../plugins/research-acquisition/company-research-data.ts'
 import type { OfficialDisclosureClient } from '../../plugins/research-acquisition/official.ts'
 import { AkshareIndustryResearchPlugin } from '../../plugins/research-acquisition/industry.ts'
 import { IndustryAcquisitionComposition } from '../../plugins/research-acquisition/industry-composition.ts'
@@ -26,6 +27,11 @@ import type { IndustryOperatingObservationAcquisitionPort } from '../../plugins/
 import { ThesisLifecycleService, type ThesisLifecycleRefreshInput, type ApplicationThesisLifecycleResult, type ThesisLifecycleDecisionReportInput, type ThesisLifecycleDecisionReportResult } from './thesis-lifecycle-service.ts'
 import { ThesisCreateService, type ThesisCreateInput, type ThesisCreateServiceResult } from './thesis-create-service.ts'
 import { triggerThemeScopeImpactPostWrite, type ThemeScopeImpactChecker, type ThemeScopeImpactTriggerResult } from '../../workflows/theme-scope-impact-check/post-write.ts'
+import type { CompanyDeepResearchResolverOptions } from '../../workflows/company-deep-research/contracts.ts'
+import type { EventResearchDataResolverContext } from '../../workflows/event-research/contracts.ts'
+import type { ThesisRedTeamDataResolverContext } from '../../workflows/thesis-red-team/contracts.ts'
+import type { CompanyResearchDataPayload } from '../../plugins/research-acquisition/company-research-data.ts'
+import type { DataResolver } from '../../data/resolver.ts'
 
 export type ThesisLifecycleCreateInput = ThesisCreateInput
 export interface ApplicationThesisLifecycleCreateResult extends ThesisCreateServiceResult {
@@ -82,6 +88,8 @@ export interface ResearchServiceOptions {
   readonly industryAcquisitionPlugins?: readonly ResearchAcquisitionPlugin[]
   readonly akshare?: AkshareDataClient
   readonly officialDisclosure?: OfficialDisclosureClient
+  /** Explicit research-evidence routes; Plugin names are not used for routing. */
+  readonly researchEvidenceProviders?: { readonly cninfo?: ResearchAcquisitionPlugin; readonly gdelt?: ResearchAcquisitionPlugin }
   readonly valuationDataResolverFactory?: ValuationWorkflowInput['dataResolverFactory']
   readonly earningsDataResolverFactory?: EarningsReviewWorkflowInput['dataResolverFactory']
   readonly managementCommunicationDataResolverFactory?: EarningsReviewWorkflowInput['managementCommunicationDataResolverFactory']
@@ -105,6 +113,36 @@ export class ResearchService {
   constructor(private readonly options: ResearchServiceOptions) {
     this.thesisLifecycleService = new ThesisLifecycleService({ mountedKnowledgeBaseRoot: options.mountedKnowledgeBaseRoot, reportRoot: options.reportRoot, cwd: options.cwd, workflowService: options.workflowService, reasoningExecutor: options.reasoningExecutor })
     this.thesisCreateService = new ThesisCreateService({ mountedKnowledgeBaseRoot: options.mountedKnowledgeBaseRoot, reasoningExecutor: options.reasoningExecutor })
+  }
+
+  private createResearchEvidenceResolver(context: { readonly company: ResearchCompanyIdentity; readonly asOf: string; readonly signal?: AbortSignal; readonly limitPerSource?: number }, onCandidatesDiscovered?: (event: { readonly provider: 'CNINFO' | 'GDELT'; readonly candidates: readonly import('../../plugins/research-acquisition/contracts.ts').ResearchSourceCandidate[]; readonly requirement: import('../../data/contracts.ts').DataRequirement }) => Promise<void | readonly import('../../plugins/research-acquisition/contracts.ts').ResearchSourceCandidate[]> | void | readonly import('../../plugins/research-acquisition/contracts.ts').ResearchSourceCandidate[]): DataResolver<CompanyResearchDataPayload> {
+    return createCompanyResearchDataResolver({
+      company: context.company,
+      ...(this.options.akshare ? { akshare: this.options.akshare } : {}),
+      ...(this.options.researchEvidenceProviders?.cninfo ? { officialDisclosure: this.options.researchEvidenceProviders.cninfo } : {}),
+      ...(this.options.researchEvidenceProviders?.gdelt ? { gdelt: this.options.researchEvidenceProviders.gdelt } : {}),
+      now: () => new Date().toISOString(),
+      ...(context.signal ? { signal: context.signal } : {}),
+      ...(context.limitPerSource === undefined ? {} : { limitPerSource: context.limitPerSource }),
+      ...(onCandidatesDiscovered ? { onCandidatesDiscovered } : {}),
+    })
+  }
+
+  private createCompanyDataResolverFactory(): (context: CompanyDeepResearchResolverOptions) => DataResolver<CompanyResearchDataPayload> {
+    return (context) => this.createResearchEvidenceResolver(context, context.onCandidatesDiscovered)
+  }
+
+  private createEventDataResolverFactory(): (context: EventResearchDataResolverContext) => DataResolver<CompanyResearchDataPayload> {
+    return (context) => this.createResearchEvidenceResolver(context, ({ provider, candidates, requirement }) => {
+      const allowed = context.onCandidatesDiscovered({ provider, candidates, requirement })
+      const allowedCandidates = new Set(allowed)
+      // Return the original candidates so Data's pre-fetch filter preserves identity.
+      return candidates.filter((candidate) => allowedCandidates.has(candidate))
+    })
+  }
+
+  private createThesisDataResolverFactory(): (context: ThesisRedTeamDataResolverContext) => DataResolver<CompanyResearchDataPayload> {
+    return (context) => this.createResearchEvidenceResolver(context)
   }
 
   startThesisLifecycleRefresh(input: ThesisLifecycleRefreshInput, callerSignal?: AbortSignal): { readonly runId: string; readonly completion: Promise<ApplicationThesisLifecycleResult> } {
@@ -205,8 +243,7 @@ export class ResearchService {
           workflowRunId: input.workflowRunId,
           handle,
           company,
-          acquisitionPlugins: this.options.acquisitionPlugins,
-          akshare: this.options.akshare,
+          dataResolverFactory: this.createCompanyDataResolverFactory(),
           asOf: input.asOf,
           reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')),
           signal: combined.signal,
@@ -313,7 +350,7 @@ export class ResearchService {
     const completion = this.options.workflowService.start(input.workflowRunId, async (signal) => {
       const combined = new AbortController(); const abort = () => combined.abort(); signal.addEventListener('abort', abort, { once: true }); callerSignal?.addEventListener('abort', abort, { once: true })
       try {
-        const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runEventResearch({ workflowRunId: input.workflowRunId, handle, company, anchor: input.anchor, asOf: input.asOf, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), acquisitionPlugins: this.options.acquisitionPlugins, dailySignalStore: this.options.dailySignalStore, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
+        const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runEventResearch({ workflowRunId: input.workflowRunId, handle, company, anchor: input.anchor, asOf: input.asOf, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), acquisitionPlugins: this.options.acquisitionPlugins, dataResolverFactory: this.createEventDataResolverFactory(), dailySignalStore: this.options.dailySignalStore, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
         return { runId: input.workflowRunId, status: result.status, knowledgeBaseId: result.knowledgeBaseId, ...(result.report === undefined ? {} : { reportId: result.report.reportId, reportPath: `${result.report.reportId}.md` }), committedIds: result.committedIds, proposalCount: result.proposalIds.length, summary: result.status === 'completed' ? `Event research completed for ${input.symbol}` : `Event research ${result.status} for ${input.symbol}`, ...(result.errors.length ? { errorSummary: result.errors.join('; ').slice(0, 500) } : {}), telemetry: result.telemetry, providerOutcome: result.providerOutcomes, ...(result.blockedReason === undefined ? {} : { blockedReason: result.blockedReason }) }
       } finally { signal.removeEventListener('abort', abort); callerSignal?.removeEventListener('abort', abort) }
     }).then((outcome) => outcome as ApplicationEventResearchResult & { readonly providerOutcome?: unknown })
@@ -327,7 +364,7 @@ export class ResearchService {
     this.options.workflowService.register({ runId: input.workflowRunId, workflowType: 'thesis_red_team', objective: `Thesis Red Team ${input.symbol}` })
     const completion = this.options.workflowService.start(input.workflowRunId, async (signal) => {
       const combined = new AbortController(); const abort = () => combined.abort(); signal.addEventListener('abort', abort, { once: true }); callerSignal?.addEventListener('abort', abort, { once: true })
-      try { const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runThesisRedTeam({ workflowRunId: input.workflowRunId, handle, company, thesisRef: input.thesisRef, lookbackDays: input.lookbackDays, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), acquisitionPlugins: this.options.acquisitionPlugins, dailySignalStore: this.options.dailySignalStore, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, signal: combined.signal }); return { runId: input.workflowRunId, status: result.status, knowledgeBaseId: result.knowledgeBaseId, ...(result.report === undefined ? {} : { reportId: result.report.reportId, reportPath: `${result.report.reportId}.md` }), committedIds: result.committedIds, proposalCount: result.proposalIds.length, summary: result.status === 'completed' ? `Thesis Red Team completed for ${input.symbol}` : `Thesis Red Team ${result.status} for ${input.symbol}`, ...(result.errors.length ? { errorSummary: result.errors.join('; ').slice(0, 500) } : {}), telemetry: result.telemetry }
+      try { const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runThesisRedTeam({ workflowRunId: input.workflowRunId, handle, company, thesisRef: input.thesisRef, lookbackDays: input.lookbackDays, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), acquisitionPlugins: this.options.acquisitionPlugins, dataResolverFactory: this.createThesisDataResolverFactory(), dailySignalStore: this.options.dailySignalStore, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, signal: combined.signal }); return { runId: input.workflowRunId, status: result.status, knowledgeBaseId: result.knowledgeBaseId, ...(result.report === undefined ? {} : { reportId: result.report.reportId, reportPath: `${result.report.reportId}.md` }), committedIds: result.committedIds, proposalCount: result.proposalIds.length, summary: result.status === 'completed' ? `Thesis Red Team completed for ${input.symbol}` : `Thesis Red Team ${result.status} for ${input.symbol}`, ...(result.errors.length ? { errorSummary: result.errors.join('; ').slice(0, 500) } : {}), telemetry: result.telemetry }
       } finally { signal.removeEventListener('abort', abort); callerSignal?.removeEventListener('abort', abort) }
     }).then((outcome) => outcome as ApplicationThesisRedTeamResult)
     completion.catch(() => undefined); return { runId: input.workflowRunId, completion }
