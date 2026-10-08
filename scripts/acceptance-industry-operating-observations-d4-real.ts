@@ -3,18 +3,30 @@ import { fileURLToPath } from 'node:url'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createFreshKnowledgeBaseV04 } from '../knowledge/storage/create-v04.ts'
-import { IndustryOperatingObservationAcquisition, type IndustryOperatingObservation, type IndustryOperatingObservationAcquisitionPort } from '../plugins/research-acquisition/industry-operating-observations.ts'
+import { createIndustryDataCatalog } from '../data/industry-catalog.ts'
+import type { IndustryDataResolverFactory } from '../workflows/industry-deep-research/contracts.ts'
+import { IndustryOperatingObservationAcquisition } from '../plugins/research-acquisition/industry-operating-observations.ts'
+import { MiitIndustryResearchPlugin } from '../plugins/research-acquisition/miit-industry.ts'
+import { GovCnIndustryResearchPlugin } from '../plugins/research-acquisition/govcn-industry.ts'
+import { CpcaIndustryResearchPlugin } from '../plugins/research-acquisition/cpca-industry.ts'
+import { EastmoneyIndustryResearchPlugin } from '../plugins/research-acquisition/eastmoney-industry.ts'
 import type { ReasoningCapabilities, ReasoningExecutor, ReasoningRequest, ReasoningResult } from '../plugins/reasoning/contracts.ts'
+import type { ResearchAcquisitionPlugin } from '../plugins/research-acquisition/contracts.ts'
+import { createRuntimeIndustryDataResolverFactory } from '../app/services/industry-data-resolver-factory.ts'
 import { ResearchService } from '../app/services/research-service.ts'
 import { WorkflowService } from '../app/services/workflow-service.ts'
 
-const enabled = process.env.RESEARCHHUB_RUN_REAL_INDUSTRY_OBSERVATIONS === '1'
-const now = '2026-09-23T00:00:00.000Z'
 type Dict = Record<string, unknown>
-type ReportDocument = { readonly sections?: readonly { readonly title?: string; readonly markdown?: string; readonly sourceRefs?: readonly string[] }[]; readonly sourceRefs?: readonly string[] }
+const enabled = process.env.RESEARCHHUB_RUN_REAL_INDUSTRY_OBSERVATIONS === '1'
+const requestedAsOf = process.env.RESEARCHHUB_INDUSTRY_ANALYSIS_AS_OF
+const capabilities: ReasoningCapabilities = { maxContextTokens: 100_000, maxOutputTokens: 20_000, structuredOutputSupport: true, maxConcurrency: 2 }
+
+export function industryAcceptanceTimestamps(startedAt: string, explicitAsOf?: string): { readonly startedAt: string; readonly asOf: string } {
+  return { startedAt, asOf: explicitAsOf ?? startedAt }
+}
 
 class DeterministicIndustryReasoningExecutor implements ReasoningExecutor {
-  capabilities(): ReasoningCapabilities { return { maxContextTokens: 100_000, maxOutputTokens: 20_000, structuredOutputSupport: true, maxConcurrency: 2 } }
+  capabilities(): ReasoningCapabilities { return capabilities }
   async execute(request: ReasoningRequest): Promise<ReasoningResult> {
     const input = request.input as Dict
     if (request.operation === 'industry_research_design') {
@@ -22,64 +34,73 @@ class DeterministicIndustryReasoningExecutor implements ReasoningExecutor {
       return { operation: request.operation, output: { definitionHypothesis: target, targetKind: 'industry', scope: { included: [target], excluded: [] }, moduleQuestions: { industry_definition: 'Define the industry.', market_size_growth: 'Measure market size and growth.', supply_demand_analysis: 'Assess supply, demand, and operating metrics.', industry_chain_analysis: 'Map the chain.', competitive_landscape: 'Assess competition.', technology_evolution: 'Assess technology.', company_mapping: 'Map companies.', risk_analysis: 'Assess risks.' }, keyMetrics: ['production', 'trade', 'price'], evidenceRequirements: ['official operating evidence'], searchTerms: [target], knownGaps: [], verificationCandidates: [] } }
     }
     const evidence = Array.isArray(input.evidence) ? input.evidence.filter((item): item is Dict => typeof item === 'object' && item !== null).map((item) => String(item.evidenceId)).filter(Boolean) : []
-    if (request.operation === 'industry_module_analysis') {
-      return { operation: request.operation, output: { module: String(input.module), status: evidence.length ? 'supported' : 'partial', analysis: 'Deterministic real-source acceptance reasoning; numeric truth remains code-owned.', evidenceIds: evidence, proposals: [], gaps: evidence.length ? [] : [{ gapId: `${String(input.module)}-missing-evidence`, module: String(input.module), question: 'What source evidence is available?', reason: 'No qualified source was available.', actionable: false }], reportMaterial: { markdown: evidence.length ? 'Qualified source evidence was supplied.' : 'No qualified source evidence was available.', evidenceIds: evidence, proposalIds: [] } } }
-    }
-    return { operation: request.operation, output: { executiveView: 'Deterministic product-path acceptance view.', analysis: 'Operating observations were supplied by the D4 acquisition seam.', evidenceIds: evidence, proposals: [], gaps: [], alternativeViews: [], reportMaterial: { markdown: 'D4 real product-path acceptance synthesis.', evidenceIds: evidence, proposalIds: [] } } }
+    if (request.operation === 'industry_module_analysis') return { operation: request.operation, output: { module: String(input.module), status: evidence.length ? 'supported' : 'partial', analysis: 'Deterministic live-source acceptance reasoning; numeric truth remains code-owned.', evidenceIds: evidence, proposals: [], gaps: evidence.length ? [] : [{ gapId: `${String(input.module)}-missing-evidence`, module: String(input.module), question: 'What source evidence is available?', reason: 'No qualified source was available.', actionable: false }], reportMaterial: { markdown: evidence.length ? 'Qualified source evidence was supplied.' : 'No qualified source evidence was available.', evidenceIds: evidence, proposalIds: [] } } }
+    return { operation: request.operation, output: { executiveView: 'Deterministic product-path acceptance view.', analysis: 'This run uses only normal resolver outputs.', evidenceIds: evidence, proposals: [], gaps: [], alternativeViews: [], reportMaterial: { markdown: 'Industry Data Layer live acceptance.', evidenceIds: evidence, proposalIds: [] } } }
   }
 }
 
-function observationSummary(items: readonly IndustryOperatingObservation[]): Dict {
-  return { count: items.length, items: items.map((item) => ({ observationId: item.observationId, metricKey: item.metricKey, class: item.observationClass, value: item.value, qualifier: item.qualifier, unit: item.unit, period: [item.periodStart, item.periodEnd], aggregation: item.aggregation, product: item.productOrSegment, geography: item.geography, publisher: item.originPublisher, hostPlatform: item.hostPlatform, retrievalProvider: item.retrievalProvider, authority: item.sourceAuthority, determinismClass: item.determinismClass, sourceCandidateId: item.sourceCandidateId, sourceRef: item.sourceRef, publicationPit: item.publicationPit, valueVersionPit: item.valueVersionPit, upstreamDataSource: item.metadata.upstreamDataSource ?? null })) }
-}
-
 function errorText(error: unknown): string { return (error instanceof Error ? error.message : String(error)).slice(0, 500) }
-function stageFrom(result: Dict): Dict {
-  const observations = Array.isArray(result.operatingObservations) ? result.operatingObservations as IndustryOperatingObservation[] : []
-  return { status: result.status, operatingObservationStatus: result.operatingObservationStatus, operatingObservationDiagnostics: result.operatingObservationDiagnostics ?? [], observations: observationSummary(observations), reportId: result.reportId ?? null }
-}
-function hasObservation(items: readonly IndustryOperatingObservation[], predicate: (item: IndustryOperatingObservation) => boolean): boolean { return items.some(predicate) }
-function canonicalObservation(item: IndustryOperatingObservation): boolean { return item.sourceRef?.startsWith('source:') === true && item.publicationPit === 'VERIFIED' && item.valueVersionPit === 'UNVERIFIED' }
-async function reportEvidence(reports: string, result: Dict, target: 'lithium' | 'airConditioner'): Promise<Dict> {
-  const reportId = typeof result.reportId === 'string' ? result.reportId : ''
-  if (!reportId) return { verified: false, reason: 'REPORT_ID_MISSING' }
-  const report = JSON.parse(await readFile(join(reports, `${reportId}.md.json`), 'utf8')) as ReportDocument
-  const sections = report.sections ?? []; const markdown = sections.map((section) => `${section.title ?? ''}\n${section.markdown ?? ''}`).join('\n')
-  const sourceRefs = [...new Set(sections.flatMap((section) => section.sourceRefs ?? []).concat(report.sourceRefs ?? []))]
-  const canonical = sourceRefs.length > 0 && sourceRefs.every((ref) => ref.startsWith('source:'))
-  const required = target === 'lithium'
-    ? ['lithium_battery.total_output', 'lithium_battery.lithium_carbonate_average_price', 'MIIT', 'source:']
-    : ['room_air_conditioner.production', 'air_conditioner.export_volume', 'CHEAA', 'GACC', 'ResearchHub direct HTTPS', 'source:']
-  return { verified: canonical && required.every((term) => markdown.includes(term)), canonicalSourceRefs: canonical, requiredTerms: required }
-}
-
-async function runTarget(root: string, reports: string, name: string, acquisition: IndustryOperatingObservationAcquisitionPort): Promise<Dict> {
-  const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [], workflowService: new WorkflowService(), reasoningExecutor: new DeterministicIndustryReasoningExecutor(), industryOperatingObservationAcquisition: acquisition })
-  try {
-    const result = await service.startIndustryResearch({ workflowRunId: `d4-real-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, name, asOf: now }).completion as unknown as Dict
-    const stage = stageFrom(result); const observations = Array.isArray(result.operatingObservations) ? result.operatingObservations as IndustryOperatingObservation[] : []; const report = await reportEvidence(reports, result, name.includes('Lithium') ? 'lithium' : 'airConditioner')
-    stage.report = report
-    stage.acceptance = name.includes('Lithium')
-      ? { production: hasObservation(observations, (item) => canonicalObservation(item) && item.metricKey === 'lithium_battery.total_output' && item.observationClass === 'PRODUCTION' && ['EXACT', 'LOWER_BOUND'].includes(item.qualifier)), productionQualifierTruth: observations.filter((item) => item.metricKey === 'lithium_battery.total_output').every((item) => item.qualifier === (item.sourceCandidateId.includes('miit-h1') ? 'LOWER_BOUND' : item.sourceCandidateId.includes('miit-annual') ? 'EXACT' : item.qualifier)), price: hasObservation(observations, (item) => canonicalObservation(item) && item.metricKey === 'lithium_battery.lithium_carbonate_average_price' && item.observationClass === 'PRICE' && item.aggregation === 'PERIOD' && item.frequency === 'H1') }
-      : { production: hasObservation(observations, (item) => canonicalObservation(item) && item.metricKey === 'room_air_conditioner.production' && item.originPublisher === 'National Bureau of Statistics'), trade: hasObservation(observations, (item) => canonicalObservation(item) && item.metricKey === 'air_conditioner.export_volume' && item.productOrSegment === '家用空调器' && item.originPublisher === 'CHEAA' && item.sourceAuthority === 'S2_PROFESSIONAL' && item.metadata.upstreamDataSource === 'GACC') }
-    return stage
-  } catch (error) { return { status: 'UNAVAILABLE', error: errorText(error) } }
-}
 
 async function main(): Promise<void> {
-  if (!enabled) { console.log(JSON.stringify({ classification: 'REAL_D4_OPERATING_OBSERVATIONS_NOT_RUN', reason: 'Set RESEARCHHUB_RUN_REAL_INDUSTRY_OBSERVATIONS=1 to enable external transport.', networkCalls: 0 })); return }
-  const root = await mkdtemp(join(tmpdir(), 'rhl-d4-real-')); const reports = join(root, 'reports'); const calls: string[] = []
+  const { startedAt, asOf } = industryAcceptanceTimestamps(new Date().toISOString(), requestedAsOf)
+  if (!enabled) {
+    console.log(JSON.stringify({ classification: 'REAL_INDUSTRY_ACCEPTANCE_NOT_RUN', reason: 'Set RESEARCHHUB_RUN_REAL_INDUSTRY_OBSERVATIONS=1 to enable external transport.', networkCalls: 0, startedAt, asOf, generatedAt: new Date().toISOString() }))
+    return
+  }
+  const root = await mkdtemp(join(tmpdir(), 'rhl-d4-real-'))
+  const reports = join(root, 'reports')
+  const network: Array<{ host: string; status: number | 'ERROR'; elapsedMs: number }> = []
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const start = Date.now()
+    let host = 'invalid-url'
+    try { host = new URL(String(input)).hostname } catch { /* keep bounded diagnostic */ }
+    try {
+      const response = await fetch(input, init)
+      network.push({ host, status: response.status, elapsedMs: Date.now() - start })
+      return response
+    } catch (error) {
+      network.push({ host, status: 'ERROR', elapsedMs: Date.now() - start })
+      throw error
+    }
+  }
   try {
-    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-d4-real-acceptance', now })
-    const fetchImpl: typeof fetch = async (input, init) => { calls.push(String(input)); return fetch(input, init) }
-    const acquisition = new IndustryOperatingObservationAcquisition({ fetchImpl, now: () => now, timeoutMs: 30_000 })
-    const lithium = await runTarget(root, reports, 'Lithium battery industry', acquisition)
-    const airConditioner = await runTarget(root, reports, 'Household air conditioner industry', acquisition)
-    const lithiumAcceptance = lithium.acceptance as Dict | undefined; const airAcceptance = airConditioner.acceptance as Dict | undefined
-    const lithiumMiitGate = (lithium.operatingObservationDiagnostics as string[] | undefined)?.some((item) => item.includes('HTTP_403_ACCESS_GATE')) === true
-    const bothPassed = lithium.status === 'completed' && airConditioner.status === 'completed' && lithium.operatingObservationStatus === 'COMPLETED' && airConditioner.operatingObservationStatus === 'COMPLETED' && lithiumAcceptance?.production === true && lithiumAcceptance?.productionQualifierTruth === true && lithiumAcceptance?.price === true && airAcceptance?.production === true && airAcceptance?.trade === true && (lithium.report as Dict | undefined)?.verified === true && (airConditioner.report as Dict | undefined)?.verified === true
-    const classification = bothPassed ? 'D4_INDUSTRY_OPERATING_REAL_PRODUCT_PATH_VERIFIED' : lithiumMiitGate ? 'REAL_MIIT_HTTP_403_ACCESS_GATE' : calls.length === 0 ? 'REAL_D4_OPERATING_TRANSPORT_UNAVAILABLE' : 'REAL_D4_INDUSTRY_OPERATING_PARTIAL'
-    console.log(JSON.stringify({ classification, generatedAt: now, networkCalls: calls.length, targets: { lithium, airConditioner }, successCriteria: { lithium: ['PRODUCTION', 'PRICE'], householdAirConditioner: ['NBS PRODUCTION', 'CHEAA TRADE'] }, secretsIncluded: false, rawBodiesIncluded: false }, null, 2))
+    const plugins: ResearchAcquisitionPlugin[] = [
+      new MiitIndustryResearchPlugin({ fetchImpl }),
+      new GovCnIndustryResearchPlugin({ fetchImpl }),
+      new CpcaIndustryResearchPlugin({ fetchImpl }),
+      new EastmoneyIndustryResearchPlugin({ fetchImpl }),
+    ]
+    const metricAcquisition = new IndustryOperatingObservationAcquisition({ fetchImpl, now: () => new Date().toISOString(), timeoutMs: 30_000 })
+    const industryDataResolverFactory: IndustryDataResolverFactory = createRuntimeIndustryDataResolverFactory({ plugins, metricAcquisition, catalog: createIndustryDataCatalog() })
+    const targets = ['锂电池', '家用空调']
+    const results: Dict[] = []
+    for (const [index, name] of targets.entries()) {
+      try {
+        const targetRoot = join(root, `kb-${index + 1}`)
+        const targetReports = join(reports, `target-${index + 1}`)
+        await createFreshKnowledgeBaseV04(targetRoot, { knowledgeBaseId: `kb-d4-real-${index + 1}`, now: startedAt })
+        const service = new ResearchService({ mountedKnowledgeBaseRoot: targetRoot, reportRoot: targetReports, acquisitionPlugins: plugins, workflowService: new WorkflowService(), reasoningExecutor: new DeterministicIndustryReasoningExecutor(), industryDataResolverFactory })
+        const result = await service.startIndustryResearch({ workflowRunId: `d4-real-${index + 1}`, name, asOf, maxSources: 8, maxEvidencePerModule: 2 }).completion
+        let reportSummary: Dict = { sourceRefs: 0, sections: 0 }
+        if (result.reportPath) {
+          const report = JSON.parse(await readFile(join(targetReports, `${result.reportPath}.json`), 'utf8')) as { sections?: readonly { sourceRefs?: readonly string[] }[]; sourceRefs?: readonly string[] }
+          const sourceRefs = [...new Set((report.sections ?? []).flatMap((section) => section.sourceRefs ?? []).concat(report.sourceRefs ?? []))]
+          reportSummary = { sourceRefs: sourceRefs.length, canonicalSourceRefs: sourceRefs.every((ref) => ref.startsWith('source:')), sections: report.sections?.length ?? 0 }
+        }
+        results.push({ target: name, status: result.status, errorSummary: result.errorSummary ?? null, requirementCoverage: result.requirementCoverage, dataRequirementGaps: result.dataRequirementGaps, acquisitionDiagnostics: result.acquisitionDiagnostics.slice(0, 32), reportId: result.reportId ?? null, report: reportSummary, operatingObservationCount: result.operatingObservations.length })
+      } catch (error) { results.push({ target: name, status: 'UNAVAILABLE', error: errorText(error) }) }
+    }
+    const metricGapsOnly = results.length === 2 && results.every((result) => Array.isArray(result.dataRequirementGaps) && result.dataRequirementGaps.length > 0)
+    const classification = results.every((result) => result.status === 'completed') && metricGapsOnly
+      ? 'REAL_APPLICATION_RESOLVER_PATH_COMPLETED_WITH_EXPLICIT_NONCANONICAL_METRIC_GAPS'
+      : network.length === 0 ? 'REAL_INDUSTRY_TRANSPORT_UNAVAILABLE' : 'REAL_APPLICATION_RESOLVER_PATH_PARTIAL'
+    const networkSummary: Record<string, { calls: number; elapsedMs: number }> = {}
+    for (const item of network) {
+      const key = `${item.host}:${item.status}`
+      const previous = networkSummary[key] ?? { calls: 0, elapsedMs: 0 }
+      networkSummary[key] = { calls: previous.calls + 1, elapsedMs: previous.elapsedMs + item.elapsedMs }
+    }
+    console.log(JSON.stringify({ classification, startedAt, generatedAt: new Date().toISOString(), asOf, networkCalls: network.length, networkSummary, metricCatalog: 'empty production catalog; no audited metric is promoted by this acceptance run', targets: results, secretsIncluded: false, rawBodiesIncluded: false }, null, 2))
   } finally { await rm(root, { recursive: true, force: true }) }
 }
 

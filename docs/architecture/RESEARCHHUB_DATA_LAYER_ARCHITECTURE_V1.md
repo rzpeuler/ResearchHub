@@ -227,15 +227,26 @@ availability is a Data PIT rule in `data/point-in-time.ts`.
 
 ### Phase 4 — Industry
 
-- `workflows/industry-deep-research/workflow.ts` owns acquisition-wave evidence
-  filtering and materialization; `app/services/research-service.ts` composes
-  `IndustryAcquisitionComposition` and current plugins.
-- `plugins/research-acquisition/industry-composition.ts` and the industry
-  provider plugins remain current runtime paths until field-by-field catalog,
-  source-policy, and resolver migration is governed.
-- `plugins/research-acquisition/industry-operating-observations.ts` contains
-  dedicated NBS, MIIT, and CHEAA observation paths and is a candidate for
-  field-level mapping after semantics and source quality are reviewed.
+- Implemented on `codex/dl-goal-004-industry-data-migration`; Sol acceptance is
+  pending. `ResearchService` supplies a per-run resolver factory. The Industry
+  Workflow materializes each generic document wave and the
+  `industry_supply_demand_cycle` DOMAIN templates, then invokes DataResolver.
+- Data selects exact registered Industry identities, canonical metric
+  definitions, and matching SourcePolicies. Unknown identities continue with
+  generic evidence and explicit identity gaps. Missing, ambiguous, noncanonical,
+  or incompatible metrics remain typed gaps; the production Catalog currently
+  has zero canonical Industry metrics.
+- Named MIIT, Gov.cn, CPCA, and Eastmoney document operations and structured
+  observation operations remain Plugin-owned. Workflow passes only resolved
+  documents and Data-owned observation points to Skills. Production observations
+  and export volume route to their reviewed modules; neither is treated as
+  capacity or domestic demand.
+- The existing two-wave lifecycle, eight modules, 16-section report, quality
+  gate, Knowledge Production Gateway, and Writer boundary remain in place. The
+  architecture guard rejects direct Industry acquisition calls from Workflow.
+- Test-only canonical catalog fixtures verify exact production/export metric
+  selection and Skill mapping. They do not promote those metrics in the
+  production Catalog or represent live-source acceptance.
 
 ### Future Intelligence
 
@@ -244,9 +255,8 @@ availability is a Data PIT rule in `data/point-in-time.ts`.
 outside Data Layer. Monitoring, source registry, subscriptions, and signal
 storage require a separate Intelligence design.
 
-Existing type-only Skill references into Plugin acquisition contracts, and the
-Industry operating-observation contract co-located with its implementation,
-remain migration debt. Provider-specific financial parsing is owned by Plugin;
+Some unrelated existing type-only Workflow references into Plugin acquisition
+contracts remain migration debt. Provider-specific parsing is owned by Plugin;
 Skills import no concrete acquisition parser or resolver and perform no
 acquisition I/O.
 
@@ -255,7 +265,6 @@ acquisition I/O.
 Phase 2 makes no intentional change to research methodology, report structure,
 or Knowledge persistence. Fixed historical numeric inputs without value-version
 evidence remain unavailable or explicitly unverified. Existing Data Sources
-routes remain available, current Industry composition remains operational, and
-Daily Intelligence stays separate. Existing Industry providers and authority
-labels are not promoted to approved Common or Industry source policy; source
-quality and field semantics remain for future domain-specific review.
+routes remain available and Daily Intelligence stays separate. Industry source
+operations are bound only through explicit Industry SourcePolicies; source
+quality and field semantics still govern whether any metric may be promoted.

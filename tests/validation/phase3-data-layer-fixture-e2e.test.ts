@@ -187,6 +187,7 @@ test('Thesis Red Team fixture E2E acquires through Data while preserving target 
     assert.ok(writtenSource.contentHash)
     assert.deepEqual(writtenSource.metadata?.dataProvenance, {
       originAuthority: 'S0_STATUTORY', retrievalProvider: 'CNINFO', sourceUrl: 'https://example.test/qualified-dated-relevant-official',
+      sourceIdentity: 'url:https://example.test/qualified-dated-relevant-official',
       publishedAt: writtenSource.publishedAt,
       dateStatus: 'QUALIFIED', pointInTimeSafe: true,
     })

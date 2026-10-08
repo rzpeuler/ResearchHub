@@ -58,6 +58,7 @@ test('Company Deep Research produces atomic canonical Knowledge and a linked rep
     assert.equal(canonicalSource.publisher, 'CNINFO')
     assert.deepEqual(canonicalSource.metadata?.dataProvenance, {
       originAuthority: 'S0_STATUTORY', retrievalProvider: 'CNINFO', sourceUrl: 'https://example.com/filing',
+      sourceIdentity: 'url:https://example.com/filing',
       publishedAt: '2026-09-07T00:00:00.000Z',
       dateStatus: 'QUALIFIED', pointInTimeSafe: true,
     })

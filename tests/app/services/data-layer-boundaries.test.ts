@@ -101,8 +101,6 @@ const allowedWorkflowAcquisitionDependencies = new Map<string, ReadonlySet<strin
   ])],
   ['workflows/earnings-review/workflow.ts', new Set(['../../plugins/research-acquisition/earnings-data.ts'])],
   ['workflows/earnings-review/management-communication.ts', new Set(['../../plugins/research-acquisition/management-communication-data.ts'])],
-  ['workflows/industry-deep-research/contracts.ts', new Set(['../../plugins/research-acquisition/industry-operating-observations.ts'])],
-  ['workflows/industry-deep-research/workflow.ts', new Set(['../../plugins/research-acquisition/industry-operating-observations.ts'])],
   ['workflows/management-communication-acquisition/contracts.ts', new Set(['../../plugins/research-acquisition/management-communication-contracts.ts'])],
   ['workflows/management-communication-acquisition/dedupe.ts', new Set(['../../plugins/research-acquisition/management-dedupe.ts'])],
   ['workflows/management-communication-acquisition/normalization.ts', new Set(['../../plugins/research-acquisition/management-normalization.ts'])],
@@ -161,9 +159,13 @@ const allowedWorkflowAcquisitionDependencies = new Map<string, ReadonlySet<strin
     '../../plugins/research-acquisition/company-research-data.ts',
     '../../plugins/research-acquisition/gdelt.ts',
     '../../plugins/research-acquisition/official.ts',
-    '../../plugins/research-acquisition/industry.ts',
-    '../../plugins/research-acquisition/industry-composition.ts',
-    '../../plugins/research-acquisition/industry-operating-observations.ts',
+  ])],
+  ['app/services/industry-data-resolver-factory.ts', new Set([
+    '../../plugins/research-acquisition/industry-data-operations.ts',
+    '../../plugins/research-acquisition/miit-industry.ts',
+    '../../plugins/research-acquisition/govcn-industry.ts',
+    '../../plugins/research-acquisition/cpca-industry.ts',
+    '../../plugins/research-acquisition/eastmoney-industry.ts',
   ])],
   ['app/services/theme-framework-service.ts', new Set(['../../plugins/document/input-resolver.ts'])],
 ])
@@ -206,19 +208,22 @@ const migratedAcquisitionWorkflowPaths = new Set([
   'workflows/company-deep-research',
   'workflows/event-research',
   'workflows/thesis-red-team',
+  'workflows/industry-deep-research',
 ])
 
 const allowedWorkflowDataTypeImports = new Map<string, ReadonlySet<string>>([
   ['workflows/company-deep-research/contracts.ts', new Set(['../../plugins/research-acquisition/company-research-data.ts'])],
   ['workflows/company-deep-research/workflow.ts', new Set(['../../plugins/research-acquisition/company-research-data.ts'])],
   ['workflows/event-research/contracts.ts', new Set(['../../plugins/research-acquisition/company-research-data.ts'])],
+  ['workflows/industry-deep-research/contracts.ts', new Set(['../../plugins/research-acquisition/industry-data-operations.ts'])],
+  ['app/services/industry-data-resolver.ts', new Set(['../../plugins/research-acquisition/industry-data-operations.ts'])],
 ])
 
 function directWorkflowAcquisitionCalls(relativePath: string, text: string): string[] {
   if (![...migratedAcquisitionWorkflowPaths].some((root) => relativePath.startsWith(`${root}/`))) return []
   const source = ts.createSourceFile(relativePath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
   const violations: string[] = []
-  const methods = new Set(['discover', 'fetch', 'normalize'])
+  const methods = new Set(['discover', 'fetch', 'normalize', 'acquire', 'acquireNamed'])
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && methods.has(node.expression.name.text)
       && !(node.expression.name.text === 'normalize' && node.arguments.length === 1 && ts.isStringLiteral(node.arguments[0]) && /^NFK[CD]$|^NF[CD]$/.test(node.arguments[0].text))) {
@@ -385,28 +390,34 @@ test('a nested provider contracts import fails without an explicit baseline entr
   ])
 })
 
-test('migrated Company, Event, and Thesis Workflows reject direct provider modules and acquisition calls', () => {
+test('migrated Company, Event, Thesis, and Industry Workflows reject direct provider modules and acquisition calls', () => {
   const dependencies = [
     { relativePath: 'workflows/company-deep-research/workflow.ts', reference: { specifier: '../../plugins/research-acquisition/akshare.ts', typeOnly: false } },
     { relativePath: 'workflows/event-research/workflow.ts', reference: { specifier: '../../plugins/research-acquisition/gdelt.ts', typeOnly: false } },
     { relativePath: 'workflows/thesis-red-team/workflow.ts', reference: { specifier: '../../plugins/research-acquisition/official.ts', typeOnly: true } },
     { relativePath: 'workflows/event-research/contracts.ts', reference: { specifier: '../../plugins/research-acquisition/contracts.ts', typeOnly: true } },
+    { relativePath: 'workflows/industry-deep-research/workflow.ts', reference: { specifier: '../../plugins/research-acquisition/industry-operating-observations.ts', typeOnly: true } },
   ] satisfies WorkflowAcquisitionDependency[]
   const imports = unbaselinedMigratedWorkflowProviderImports(dependencies)
   assert.deepEqual(unbaselinedWorkflowAcquisitionDependencies(dependencies), [
     'workflows/company-deep-research/workflow.ts imports unbaselined acquisition module ../../plugins/research-acquisition/akshare.ts',
     'workflows/event-research/workflow.ts imports unbaselined acquisition module ../../plugins/research-acquisition/gdelt.ts',
     'workflows/thesis-red-team/workflow.ts imports unbaselined acquisition module ../../plugins/research-acquisition/official.ts',
+    'workflows/industry-deep-research/workflow.ts imports unbaselined acquisition module ../../plugins/research-acquisition/industry-operating-observations.ts',
   ])
   assert.deepEqual(imports, [
     'workflows/company-deep-research/workflow.ts imports concrete acquisition module ../../plugins/research-acquisition/akshare.ts',
     'workflows/event-research/workflow.ts imports concrete acquisition module ../../plugins/research-acquisition/gdelt.ts',
     'workflows/thesis-red-team/workflow.ts imports concrete acquisition module ../../plugins/research-acquisition/official.ts',
+    'workflows/industry-deep-research/workflow.ts imports concrete acquisition module ../../plugins/research-acquisition/industry-operating-observations.ts',
   ])
   for (const method of ['discover', 'fetch', 'normalize']) {
     assert.deepEqual(directWorkflowAcquisitionCalls('workflows/company-deep-research/workflow.ts', `plugin.${method}(value)`), [`workflows/company-deep-research/workflow.ts directly calls .${method}()`])
     assert.deepEqual(directWorkflowAcquisitionCalls('workflows/event-research/workflow.ts', `acquisitionPlugin.${method}(candidate)`), [`workflows/event-research/workflow.ts directly calls .${method}()`])
     assert.deepEqual(directWorkflowAcquisitionCalls('workflows/thesis-red-team/workflow.ts', `input.plugin.${method}(candidate)`), [`workflows/thesis-red-team/workflow.ts directly calls .${method}()`])
+  }
+  for (const method of ['acquire', 'acquireNamed', 'discover', 'fetch', 'normalize']) {
+    assert.deepEqual(directWorkflowAcquisitionCalls('workflows/industry-deep-research/workflow.ts', `input.acquisition.${method}(request)`), [`workflows/industry-deep-research/workflow.ts directly calls .${method}()`])
   }
   assert.deepEqual(directWorkflowAcquisitionCalls('workflows/valuation/workflow.ts', 'plugin.fetch(value)'), [])
 })

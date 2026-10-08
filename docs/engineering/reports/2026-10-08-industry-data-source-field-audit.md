@@ -1,10 +1,10 @@
 # Industry Data Source and Field Audit
 
-**Status:** Fresh source audit complete; migration design review pending. No canonical Industry metric or source policy was promoted by this audit.
+**Status:** Phase 4 runtime migration implemented; no production Industry metric was promoted. This audit retains the field-level source findings and records the final runtime attempt below.
 
 **Checkout baseline:** `ef3634e70e193a1f2a37172738253d3c014d9c8a` (`codex/dl-goal-004-industry-data-migration`).
 
-**Live probe:** 2026-10-08. The existing D4 opt-in acceptance path made five direct HTTPS requests and completed its temporary-Knowledge-Base product-path run. Its baked-in `asOf` and `generatedAt` are `2026-09-23`, so those fields are not a current-run timestamp; all tested publications predate that cutoff. The run did not write to a mounted Knowledge Base. Generic provider composition was also invoked directly for lithium and household air conditioner targets.
+**Baseline live probe:** 2026-10-08. The pre-migration D4 opt-in path made five direct HTTPS requests and completed a temporary-Knowledge-Base product-path run. Its baked-in `asOf` and `generatedAt` were `2026-09-23`, so they did not represent the actual run time. The run did not write to a mounted Knowledge Base. Generic provider composition was also invoked directly for lithium and household air conditioner targets.
 
 ## Field-level source findings
 
@@ -79,4 +79,54 @@ Recommended migration boundary for review:
 4. Preserve the existing normal report and Knowledge Gateway/Writer behavior. Keep unsupported metrics as explicit gaps and retain current direct-acquisition seams only as compatibility fixtures during migration, then remove them when call sites are migrated.
 5. Treat the MIIT duplicate-price defect and acceptance timestamp drift as prerequisites to claiming a clean real-source acceptance. Re-run MIIT, NBS, and CHEAA plus generic provider attempts on the final normal path. Keep the result partial wherever value-version PIT, series history, scope, transport, or parser behavior fails.
 
-This is a proposal only. No implementation or catalog promotion has been performed in this audit.
+## Phase 4 Implementation and final source attempt
+
+The normal ResearchService → Industry Workflow path now materializes generic
+evidence requirements for both acquisition waves and resolves the canonical
+`industry_supply_demand_cycle` DOMAIN templates through the per-run DataResolver.
+The Workflow sends only finalized resolver documents and validated,
+provider-neutral `IndustryObservationPoint` values to the Skill. The production
+Industry Catalog remains empty: test-only canonical fixtures exercise exact
+matching and source operations but do not count as source acceptance or metric
+promotion.
+
+The existing five optional DOMAIN needs remain distinct: capacity, demand,
+inventory, pricing, and utilization. Three minimal needs were added for the
+audited production, export-volume, and raw-material-price research roles. Exact
+semantic matching keeps production separate from capacity and export volume
+separate from domestic demand. No gap is filled by inference or by a
+DISCOVERED/VALIDATED metric.
+
+The final opt-in run used the normal Application path on 2026-10-08. It recorded
+`startedAt=2026-10-08T14:37:45.722Z`,
+`generatedAt=2026-10-08T14:38:02.828Z`, and a separately explicit analysis
+cutoff `asOf=2026-10-08T14:37:45.721Z`. It made 64 network calls: 12 MIIT, 8
+Gov.cn search, 16 Gov.cn document, and 24 CPCA requests returned HTTP 200; 4
+Eastmoney requests failed at transport. The deterministic document pipeline
+produced a completed 16-section report with 8 canonical source refs for lithium
+and a completed 16-section report with 0 source refs for household air
+conditioners. This demonstrates request, document parsing, resolver, Skill, and
+report completion for the first target; the second target had no admitted source
+documents. The four Eastmoney errors and second-target absence remain visible
+source gaps.
+
+Neither run emitted a structured metric point. Both reported all eight optional
+DOMAIN requirements as `NO_CANONICAL_INDUSTRY_METRIC`; the production catalog
+contains no eligible canonical metric definitions, so named metric providers
+were not automatically used. The run therefore confirms fail-closed catalog
+behavior, not live metric parser acceptance. Historical value-version PIT,
+publication PIT, units, period, and source conflict checks remain covered by
+deterministic Industry observation tests and the fixture E2E. A fresh post-fix
+live numeric parser run through canonical metric selection is still pending
+because no metric has been accepted into the production Catalog.
+
+Final per-metric dispositions remain `VALIDATED_NOT_CANONICAL` for NBS room-air
+conditioner production, CHEAA household air-conditioner export volume, MIIT
+lithium total output, MIIT lithium carbonate average price, and MIIT lithium
+hydroxide micropowder average price after deterministic parser repair. The
+hydroxide parser repair is covered by paired-label/grade tests; its live
+post-repair operation was not activated. MIIT export value remains `REJECTED`
+as an export-volume mapping. Eastmoney board membership remains
+`DISCOVERED_ONLY`; capacity, domestic demand, inventory, utilization, and other
+unsupported source fields remain `DISCOVERED_ONLY` or unavailable. No production
+metric is canonical.
