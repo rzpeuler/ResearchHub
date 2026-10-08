@@ -12,6 +12,10 @@ export interface CommonDataDefinition {
 }
 
 export const COMMON_DATA_CATALOG: readonly CommonDataDefinition[] = [
+  { metricId: 'company_basic_profile', meaning: 'Current structured company profile snapshot', dataKind: 'evidence', consumers: ['company-deep-research'], sourcePolicyStatus: 'CONFIGURED' },
+  { metricId: 'company_financial_history', meaning: 'Dated company financial indicator dataset', dataKind: 'evidence', consumers: ['company-deep-research'], sourcePolicyStatus: 'CONFIGURED' },
+  { metricId: 'company_market_history', meaning: 'Dated company market observations', dataKind: 'timeseries', consumers: ['company-deep-research'], sourcePolicyStatus: 'CONFIGURED' },
+  { metricId: 'company_research_evidence', meaning: 'Company-scoped external research documents and news', dataKind: 'evidence', consumers: ['company-deep-research', 'event-research', 'thesis-red-team'], sourcePolicyStatus: 'CONFIGURED' },
   { metricId: 'valuation_market_price', meaning: '估值用交易日收盘价', dataKind: 'timeseries', consumers: ['valuation'], compatibilityCapabilityByWorkflow: { valuation: 'market_price' }, sourcePolicyStatus: 'CONFIGURED' },
   { metricId: 'valuation_eps', meaning: '估值用年度每股收益（EPS）', dataKind: 'metric', consumers: ['valuation'], compatibilityCapabilityByWorkflow: { valuation: 'annual_financial_basis' }, sourcePolicyStatus: 'CONFIGURED' },
   { metricId: 'valuation_bvps', meaning: '估值用年度每股净资产（BVPS）', dataKind: 'metric', consumers: ['valuation'], compatibilityCapabilityByWorkflow: { valuation: 'annual_financial_basis' }, sourcePolicyStatus: 'CONFIGURED' },

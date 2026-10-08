@@ -2,6 +2,7 @@ import type { DataDeterminismClass, DataRequirement, DataRequirementKind, Source
 import { COMMON_DATA_CATALOG, createCommonDataCatalog, type CommonDataDefinition } from './common-catalog.ts'
 import type { IndustryDataCatalog } from './industry-catalog.ts'
 import { PHASE2_COMMON_SOURCE_POLICIES } from './valuation-earnings-policies.ts'
+import { PHASE3_COMMON_SOURCE_POLICIES } from './company-research-policies.ts'
 import { assertValidDataRequirement } from './validation.ts'
 
 interface SkillDataRequirementBase {
@@ -54,6 +55,37 @@ export interface Phase2CommonRequirementContext {
   readonly required: boolean
   readonly historicalNumeric?: boolean
   readonly id?: string
+}
+
+export interface Phase3CommonRequirementContext {
+  readonly workflowId: 'company-deep-research' | 'event-research' | 'thesis-red-team'
+  readonly ticker: string
+  readonly companyId?: string
+  readonly asOf: string
+  readonly period?: DataRequirement['period']
+  readonly required?: boolean
+  readonly id?: string
+}
+
+/** Materialize only audited Company inputs; the requested period belongs to the consumer. */
+export function materializePhase3CommonRequirement(metricId: string, context: Phase3CommonRequirementContext): DataRequirement {
+  const definition = COMMON_DATA_CATALOG.find((item) => item.metricId === metricId)
+  if (!definition || !['company_basic_profile', 'company_financial_history', 'company_market_history', 'company_research_evidence'].includes(metricId)) throw new Error(`COMMON_DATA_DEFINITION_REQUIRED:${metricId}`)
+  if (!definition.consumers.includes(context.workflowId)) throw new Error(`COMMON_DATA_CONSUMER_MISMATCH:${metricId}:${context.workflowId}`)
+  if (!context.ticker.trim()) throw new Error(`COMMON_DATA_TICKER_REQUIRED:${metricId}`)
+  if (metricId === 'company_market_history' && !context.period?.end) throw new Error(`COMMON_DATA_MARKET_PERIOD_REQUIRED:${metricId}`)
+  const policy = PHASE3_COMMON_SOURCE_POLICIES.find((item) => item.requirementMatch.metricId === metricId && item.requirementMatch.workflow === context.workflowId)
+  if (!policy) throw new Error(`COMMON_DATA_POLICY_REQUIRED:${metricId}`)
+  const requirement: DataRequirement = {
+    id: context.id ?? `${context.workflowId}:${metricId}:${context.ticker}:${context.period?.start ?? 'none'}:${context.period?.end ?? 'none'}`,
+    consumer: { workflow: context.workflowId }, subject: { ticker: context.ticker, ...(context.companyId ? { companyId: context.companyId } : {}) },
+    dataKind: definition.dataKind, metricId, ...(context.period ? { period: context.period } : {}),
+    asOf: context.asOf, analysisAsOf: context.asOf,
+    determinismClass: metricId === 'company_market_history' ? 'EVIDENCE_BACKED_NUMERIC' : 'SEMANTIC_QUALITATIVE',
+    required: context.required ?? true, llmWebFallback: 'FORBIDDEN',
+  }
+  assertValidDataRequirement(requirement)
+  return requirement
 }
 
 const phase2PeriodRequired = new Set([
