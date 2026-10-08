@@ -97,4 +97,4 @@
 - [x] Run `npm test`, both typechecks, client build, and exact baseline identifier comparison.
 - [x] Record baseline, APIs, counts, mapping semantics, runtime identity, UI, security, tests, and limitations in the report.
 - [x] Review changed files for copied Catalog state, promotion, providers, persistence, mutation routes, sensitive data, and regressions.
-- [ ] Complete fresh whole-branch review, commit/push the branch, and verify remote SHA, clean worktree, and unchanged `main`.
+- [x] Complete fresh whole-branch review, commit/push the branch, and verify remote SHA, clean worktree, and unchanged `main`. The final review included the task-scoped projection redaction, exact resolver binding state, and independent Catalog refresh fixes; implementation and report were pushed as `c3f50a8` before this plan-closure update. Final tip SHA is recorded in the delivery response after remote verification.
