@@ -274,7 +274,7 @@ async function acquireEventSources(input: EventResearchWorkflowInput, company: R
     const fetchSucceeded = outcome?.fetchSucceeded ?? ((outcome?.fetched ?? 0) + (outcome?.empty ?? 0) + (outcome?.failed ?? 0) > 0)
     const usableSourceCount = acquired.filter(({ source }) => providerKey(source.candidate.provider) === provider).length
     const failed = !unsupported && (!transportSucceeded || (outcome?.failed ?? 0) > 0)
-    outcomes.push({ provider, providerAttempted: !unsupported, providerSucceeded: !unsupported && transportSucceeded && !failed, providerEmpty: unsupported || (transportSucceeded && usableSourceCount === 0 && !failed), providerFailed: failed, usableSourceCount, transportSucceeded, fetchSucceeded })
+    outcomes.push({ provider, providerAttempted: !unsupported, providerSucceeded: !unsupported && usableSourceCount > 0, providerEmpty: unsupported || (usableSourceCount === 0 && !failed), providerFailed: failed, usableSourceCount, transportSucceeded, fetchSucceeded })
     if (!observation && attempt.diagnostic) diagnostics.push({ provider, status: failed ? 'failed' : 'empty', reason: attempt.diagnostic })
   }
   for (const provider of PROVIDERS) {
