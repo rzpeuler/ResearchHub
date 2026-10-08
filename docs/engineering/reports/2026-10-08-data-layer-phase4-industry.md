@@ -219,6 +219,10 @@ task, branch, or worktree was created.
 | `git diff --check` | Passed; only expected CRLF normalization notices |
 | Real-source acceptance, 2026-10-08 | 64 requests; MIIT 12 HTTP 200, Gov.cn search 8 HTTP 200, Gov.cn 16 HTTP 200, CPCA 24 HTTP 200, Eastmoney 4 transport errors |
 
+The FIX-001 live run timestamps were `startedAt=2026-10-08T15:51:01.681Z`,
+`asOf=2026-10-08T15:51:01.681Z`, and
+`generatedAt=2026-10-08T15:51:14.721Z`. The direct opt-in script exited 0.
+
 The real-source run used Application Runtime and an empty production metric
 catalog. Both `锂电池` and `家用空调` completed their 16-section reports with
 `PARTIAL` requirement coverage, eight explicit `NO_CANONICAL_INDUSTRY_METRIC`
@@ -231,3 +235,15 @@ operation was activated and no metric was promoted.
 The continuation remains `IMPLEMENTED / SOL ACCEPTANCE PENDING`. Commit and
 remote SHA, clean worktree, and unchanged `main` are recorded in the final
 delivery response. Phase 4 remains unmerged pending Sol acceptance.
+
+### Independent final review closure
+
+The read-only whole-branch review identified that qualifier differences were
+part of Industry observation slot identity, which could hide same-slot value
+conflicts. The regression `Industry observation preserves same-slot conflicts`
+failed before the fix (`0 !== 1`) and passed after the fix. Slot identity now
+uses the metric, period, frequency, aggregation, geography, and product/grade
+dimensions; each point still retains its original qualifier. Post-fix Phase 4
+focused tests passed 167/167 and the exact Node baseline comparison remained
+0 newly failing identifiers. No Critical or Minor review findings were
+reported.
