@@ -40,6 +40,17 @@ test('MIIT annual parser accepts the official alias and paired price sentence', 
   const production = observations.find((item) => item.metricKey === 'lithium_battery.total_output')!; assert.equal(production.frequency, 'ANNUAL'); assert.equal(production.qualifier, 'EXACT')
 })
 
+test('MIIT H1 paired prices bind each value to its labeled grade', () => {
+  const text = '2026年上半年锂离子电池行业运行情况。电池级碳酸锂和氢氧化锂（微粉级）均价分别为16.3万元/吨和15.3万元/吨。'
+  const observations = parseMiitLithiumOperatingObservations(text, context('miit-h1-paired-fixture'))
+  const carbonate = observations.find((item) => item.metricKey.endsWith('carbonate_average_price'))
+  const hydroxide = observations.find((item) => item.metricKey.endsWith('hydroxide_average_price'))
+  assert.equal(carbonate?.value, 16.3)
+  assert.match(carbonate?.productOrSegment ?? '', /碳酸锂/)
+  assert.equal(hydroxide?.value, 15.3)
+  assert.match(hydroxide?.productOrSegment ?? '', /微粉级/)
+})
+
 test('MIIT price parser preserves a source-reported yuan-per-tonne unit', () => {
   const observations = parseMiitLithiumOperatingObservations('2026年上半年，锂离子电池产量超过1240 GWh。电池级碳酸锂平均价格为163000元/吨。', context('miit-unit-fixture'))
   const price = observations.find((item) => item.metricKey.endsWith('carbonate_average_price'))!

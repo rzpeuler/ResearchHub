@@ -265,16 +265,16 @@ export function parseMiitLithiumOperatingObservations(text: string, context?: Ob
   if (production) output.push(base(ctx, { metricKey: 'lithium_battery.total_output', observationClass: 'PRODUCTION', value: production.value, qualifier: production.qualifier, unit: 'GWh', originalValue: production.raw, originalUnit: 'GWh', ...period, geography: 'China national', productOrSegment: '锂离子电池', metadata: { ...(ctx.metadata ?? {}), sourceMethod: 'MIIT official article', qualifierText: 'article-reported output threshold' } }))
   const price = (label: RegExp, metricKey: string, productOrSegment: string): IndustryOperatingObservation | undefined => {
     let match = label.exec(text); let raw = match?.[1]; let matchedText = match?.[0] ?? ''
-    if (period.frequency === 'ANNUAL') {
-      const pair = /(?:电池级)?碳酸锂和氢氧化锂[\s\S]{0,80}?均价分别为\s*([0-9][0-9,.]*)\s*(万元\/吨|元\/吨)[\s\S]{0,30}?和\s*([0-9][0-9,.]*)\s*(万元\/吨|元\/吨)/i.exec(text)
-      const selected = pair && metricKey.endsWith('carbonate_average_price') ? [pair[1], pair[2]] : pair ? [pair[3], pair[4]] : undefined
-      if (selected) { raw = selected[0]; matchedText = `${selected[0]}${selected[1]}` }
-    }
+    const pair = /(?:电池级)?碳酸锂和氢氧化锂\s*[（(]?\s*(微粉级)?\s*[）)]?[\s\S]{0,32}?(?:均价|平均价格)分别为\s*([0-9][0-9,.]*)\s*(万元\/吨|元\/吨)[\s\S]{0,30}?和\s*([0-9][0-9,.]*)\s*(万元\/吨|元\/吨)/i.exec(text)
+    const carbonateMetric = metricKey.endsWith('carbonate_average_price')
+    const selected = pair ? carbonateMetric ? [pair[2], pair[3]] : [pair[4], pair[5]] : undefined
+    if (selected) { raw = selected[0]; matchedText = `${selected[0]}${selected[1]}` }
     if (!raw) return undefined
     const numeric = parseNumber(raw); if (numeric === undefined) return undefined
     const unit = /万元\/吨|10,?000 yuan\/tonne|10000 yuan\/tonne/i.test(matchedText) ? '万元/吨' : /元\/吨|yuan\/tonne/i.test(matchedText) ? '元/吨' : undefined
     if (!unit) return undefined
-    return base(contextWith(ctx, { priceMethod: 'article-period average price', priceNot: ['spot', 'futures', 'ASP', 'daily'] }), { metricKey, observationClass: 'PRICE', value: numeric, qualifier: 'EXACT', unit, originalValue: raw, originalUnit: unit, periodStart: period.periodStart, periodEnd: period.periodEnd, frequency: period.frequency, aggregation: 'PERIOD', geography: 'China national', productOrSegment })
+    const pairedProduct = pair ? carbonateMetric ? '电池级碳酸锂' : `氢氧化锂${pair[1] ? `（${pair[1]}）` : ''}` : productOrSegment
+    return base(contextWith(ctx, { priceMethod: 'article-period average price', priceNot: ['spot', 'futures', 'ASP', 'daily'] }), { metricKey, observationClass: 'PRICE', value: numeric, qualifier: 'EXACT', unit, originalValue: raw, originalUnit: unit, periodStart: period.periodStart, periodEnd: period.periodEnd, frequency: period.frequency, aggregation: 'PERIOD', geography: 'China national', productOrSegment: pairedProduct })
   }
   const carbonate = price(/(?:电池级)?(?:碳酸锂|lithium carbonate)[\s\S]{0,180}?(?:平均价格|均价|average price)[^\d]{0,30}([0-9][0-9,.]*)\s*(万元\/吨|元\/吨|10,?000 yuan\/tonne|yuan\/tonne)/i, 'lithium_battery.lithium_carbonate_average_price', 'battery-grade lithium carbonate')
   const hydroxide = price(/(?:氢氧化锂|lithium hydroxide)[\s\S]{0,180}?(?:平均价格|均价|average price)[^\d]{0,30}([0-9][0-9,.]*)\s*(万元\/吨|元\/吨|10,?000 yuan\/tonne|yuan\/tonne)/i, 'lithium_battery.lithium_hydroxide_average_price', 'lithium hydroxide')

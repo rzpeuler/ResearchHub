@@ -1,5 +1,5 @@
 import type { NormalizedResearchSource } from "../../plugins/research-acquisition/contracts.ts";
-import type { IndustryOperatingObservation } from "../../plugins/research-acquisition/industry-operating-observations.ts";
+import type { IndustryObservationPoint } from "../../data/industry-observations.ts";
 import type { SemanticProductionProposal } from "../../knowledge/production/contracts.ts";
 import type { CompetitionColumnV1 } from "../../knowledge/schema/competition-module-v04.ts";
 import { KNOWLEDGE_SCHEMA_V04 } from "../../knowledge/schema/executable-schema-v04.ts";
@@ -169,7 +169,7 @@ export interface IndustryResearchSkillInput {
   readonly target: IndustryTargetInput;
   readonly designContext?: unknown;
   readonly evidence: readonly ModuleEvidence[];
-  readonly operatingObservations?: readonly IndustryOperatingObservation[];
+  readonly operatingObservations?: readonly IndustryObservationPoint[];
   readonly existingKnowledge: readonly unknown[];
   readonly localReferences: readonly string[];
 }

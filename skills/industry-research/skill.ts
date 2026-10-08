@@ -5,7 +5,7 @@ import type {
 } from "../../plugins/reasoning/contracts.ts";
 import type { SemanticProductionProposal } from "../../knowledge/production/contracts.ts";
 import { isSupportedBaseCurrencyCodeV1 } from "../../knowledge/schema/competition-module-v04.ts";
-import type { IndustryOperatingObservation } from "../../plugins/research-acquisition/industry-operating-observations.ts";
+import type { IndustryObservationPoint } from "../../data/industry-observations.ts";
 import {
   INDUSTRY_MODULES,
   INDUSTRY_CLAIM_TYPES,
@@ -631,51 +631,58 @@ function evidence(
     excerpt: excerptFor(e.excerpt ?? e.source.content, module),
   }));
 }
-function operatingObservationProjection(observations: readonly IndustryOperatingObservation[] | undefined): readonly Record<string, unknown>[] {
-  return (observations ?? []).slice(0, 12).sort((a, b) => a.observationId.localeCompare(b.observationId)).map((observation) => ({
-    observationId: observation.observationId,
-    semanticKey: `observation:${observation.observationId}`,
-    metricKey: observation.metricKey,
-    class: observation.observationClass,
+export function industryObservationIdentity(observation: IndustryObservationPoint): string {
+  return `observation:${observation.metricId}:${encodeURIComponent(observation.sourceIdentity)}:${observation.periodStart}:${observation.periodEnd}:${observation.periodBasis}`
+}
+function operatingObservationProjection(observations: readonly IndustryObservationPoint[] | undefined): readonly Record<string, unknown>[] {
+  return (observations ?? []).slice(0, 12).sort((a, b) => industryObservationIdentity(a).localeCompare(industryObservationIdentity(b))).map((observation) => ({
+    observationId: industryObservationIdentity(observation),
+    semanticKey: industryObservationIdentity(observation),
+    metricId: observation.metricId,
     value: observation.value,
     qualifier: observation.qualifier,
-    unit: observation.unit,
+    unit: observation.canonicalUnit,
     period: { start: observation.periodStart, end: observation.periodEnd },
+    periodBasis: observation.periodBasis,
     aggregation: observation.aggregation,
     geography: observation.geography,
-    product: observation.productOrSegment,
-    sourceEvidenceId: `evidence-${observation.sourceCandidateId}`,
-    authority: observation.sourceAuthority,
+    product: observation.product,
+    segment: observation.segment,
+    grade: observation.grade,
+    sourceIdentity: observation.sourceIdentity,
+    authority: observation.authority,
+    publicationPit: observation.publicationPit,
+    valueVersion: observation.valueVersion,
   }))
 }
-function observationPeriodTags(observation: IndustryOperatingObservation): Set<string> {
-  return new Set([observation.periodStart.slice(0, 4), observation.periodStart.slice(0, 7), observation.periodStart.slice(0, 10), String(observation.metadata.period ?? ''), `${observation.periodStart.slice(0, 4)}-${observation.frequency}`].filter(Boolean))
+function observationPeriodTags(observation: IndustryObservationPoint): Set<string> {
+  return new Set([observation.periodStart.slice(0, 4), observation.periodStart.slice(0, 7), observation.periodStart.slice(0, 10), `${observation.periodStart.slice(0, 4)}-${observation.frequency}`].filter(Boolean))
 }
 const observationComparatorByQualifier = {
   EXACT: 'eq',
   LOWER_BOUND: 'gte',
   UPPER_BOUND: 'lte',
 } as const
-export function observationBackedProposalIsDeterministic(proposal: SemanticProductionProposal, observations: readonly IndustryOperatingObservation[]): boolean {
+export function observationBackedProposalIsDeterministic(proposal: SemanticProductionProposal, observations: readonly IndustryObservationPoint[]): boolean {
   const structured = proposal.structuredValue as Record<string, unknown> | undefined
   const semanticKey = typeof structured?.semanticKey === 'string' ? structured.semanticKey : undefined
   if (semanticKey === undefined || !semanticKey.startsWith('observation:')) return true
-  const observation = observations.find((item) => semanticKey === `observation:${item.observationId}`)
-  if (!observation || structured?.metric !== observation.metricKey || structured?.unit !== observation.unit || structured?.value !== observation.value) return false
+  const observation = observations.find((item) => semanticKey === industryObservationIdentity(item))
+  if (!observation || structured?.metric !== observation.metricId || structured?.unit !== observation.canonicalUnit || structured?.value !== observation.value) return false
   const period = typeof structured.period === 'string' ? structured.period : typeof structured.fiscalPeriod === 'string' ? structured.fiscalPeriod : undefined
   if (period === undefined || !observationPeriodTags(observation).has(period)) return false
   const sourceIds = proposal.sourceCandidateIds ?? []
-  if (!sourceIds.includes(observation.sourceCandidateId) && !sourceIds.includes(`evidence-${observation.sourceCandidateId}`)) return false
+  if (!sourceIds.includes(observation.sourceIdentity) && !sourceIds.includes(`evidence-${observation.sourceIdentity}`)) return false
   const expectedComparator = observationComparatorByQualifier[observation.qualifier]
   return INDUSTRY_STRUCTURED_VALUE_COMPARATORS.includes(expectedComparator) && structured.comparator === expectedComparator
 }
-function enforceObservationClaims(result: IndustryModuleResult, observations: readonly IndustryOperatingObservation[] | undefined): IndustryModuleResult {
+function enforceObservationClaims(result: IndustryModuleResult, observations: readonly IndustryObservationPoint[] | undefined): IndustryModuleResult {
   if (!observations?.length) return result
   const accepted = result.proposals.filter((proposal) => observationBackedProposalIsDeterministic(proposal, observations)).map((proposal) => {
     const structured = proposal.structuredValue as Record<string, unknown> | undefined
-    const observation = typeof structured?.semanticKey === 'string' ? observations.find((item) => structured.semanticKey === `observation:${item.observationId}`) : undefined
-    if (!observation || !proposal.sourceCandidateIds?.includes(observation.sourceCandidateId)) return proposal
-    return { ...proposal, sourceCandidateIds: proposal.sourceCandidateIds.map((id) => id === observation.sourceCandidateId ? `evidence-${id}` : id) }
+    const observation = typeof structured?.semanticKey === 'string' ? observations.find((item) => structured.semanticKey === industryObservationIdentity(item)) : undefined
+    if (!observation || !proposal.sourceCandidateIds?.includes(observation.sourceIdentity)) return proposal
+    return { ...proposal, sourceCandidateIds: proposal.sourceCandidateIds.map((id) => id === observation.sourceIdentity ? `evidence-${id}` : id) }
   })
   return accepted.length === result.proposals.length && accepted.every((proposal, index) => proposal === result.proposals[index]) ? result : { ...result, proposals: accepted }
 }
@@ -830,7 +837,7 @@ export class IndustryResearchSkill {
   async synthesize(input: {
     modules: readonly IndustryModuleResult[];
     evidence: readonly IndustryResearchSkillInput["evidence"][number][];
-    operatingObservations?: readonly IndustryOperatingObservation[];
+    operatingObservations?: readonly IndustryObservationPoint[];
     existingKnowledge?: readonly unknown[];
   }) {
     const bound = {

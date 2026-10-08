@@ -19,7 +19,8 @@ import {
   INDUSTRY_LOCAL_ID_MAX_LENGTH,
   isValidIndustryLocalId,
 } from "../../../skills/industry-research/contracts.ts";
-import { createIndustryOperatingObservation } from "../../../plugins/research-acquisition/industry-operating-observations.ts";
+import type { IndustryObservationPoint } from "../../../data/industry-observations.ts";
+import { industryObservationIdentity } from "../../../skills/industry-research/skill.ts";
 const design = {
   definitionHypothesis: "A bounded manufacturing industry.",
   targetKind: "industry",
@@ -93,33 +94,32 @@ function moduleOutput(module: (typeof INDUSTRY_MODULES)[number]) {
   };
 }
 
-function comparatorObservation(qualifier: "EXACT" | "LOWER_BOUND" | "UPPER_BOUND", value: number) {
-  return createIndustryOperatingObservation({
-    metricKey: "lithium_battery.total_output",
-    observationClass: "PRODUCTION",
+function comparatorObservation(qualifier: "EXACT" | "LOWER_BOUND" | "UPPER_BOUND", value: number): IndustryObservationPoint {
+  return {
+    metricId: "industry:lithium_battery:total-output",
     value,
     qualifier,
-    unit: "GWh",
+    canonicalUnit: "GWh",
     originalValue: String(value),
     originalUnit: "GWh",
     periodStart: "2024-01-01T00:00:00.000Z",
     periodEnd: "2024-12-31T23:59:59.999Z",
     frequency: "ANNUAL",
-    aggregation: "PERIOD",
+    periodBasis: "PERIOD",
+    aggregation: "SUM",
     geography: "China national",
-    productOrSegment: "锂离子电池",
+    product: "锂离子电池",
     publishedAt: "2025-02-27T15:06:00.000Z",
     retrievedAt: "2026-09-23T00:00:00.000Z",
     originPublisher: "MIIT",
     hostPlatform: "MIIT official web",
     retrievalProvider: "ResearchHub direct HTTPS",
-    sourceAuthority: "S1_OFFICIAL",
-    determinismClass: "EVIDENCE_BACKED_NUMERIC",
-    sourceCandidateId: "s1",
+    authority: "S1_OFFICIAL",
     publicationPit: "VERIFIED",
-    valueVersionPit: "UNVERIFIED",
-    metadata: { period: "2024" },
-  });
+    valueVersion: { status: "UNVERIFIED", reason: "No version archive." },
+    sourceIdentity: "s1",
+    diagnostics: [],
+  };
 }
 
 function comparatorProposal(observation: ReturnType<typeof comparatorObservation>, comparator: string) {
@@ -129,14 +129,14 @@ function comparatorProposal(observation: ReturnType<typeof comparatorObservation
     subjectKey: "local",
     claimType: "fact" as const,
     statement: "The observation is true.",
-    sourceCandidateIds: [`evidence-${observation.sourceCandidateId}`],
+    sourceCandidateIds: [`evidence-${observation.sourceIdentity}`],
     structuredValue: {
-      metric: observation.metricKey,
+      metric: observation.metricId,
       value: observation.value,
-      unit: observation.unit,
+      unit: observation.canonicalUnit,
       comparator,
       period: "2024",
-      semanticKey: `observation:${observation.observationId}`,
+      semanticKey: industryObservationIdentity(observation),
     },
   };
 }
@@ -151,6 +151,28 @@ test("Observation-backed structured claims require the exact Schema comparator f
   for (const comparator of ["eq", "gt", "lte", "lt", "approx"]) assert.equal(observationBackedProposalIsDeterministic(comparatorProposal(lower, comparator), [lower]), false);
   assert.equal(observationBackedProposalIsDeterministic(comparatorProposal(upper, "lte"), [upper]), true);
   for (const comparator of ["eq", "gt", "gte", "lt", "approx"]) assert.equal(observationBackedProposalIsDeterministic(comparatorProposal(upper, comparator), [upper]), false);
+});
+
+test("Industry Skill receives catalog metric identity from the provider-neutral Data point", async () => {
+  const observation = comparatorObservation("EXACT", 1170);
+  let received: Record<string, unknown> | undefined;
+  const skill = new IndustryResearchSkill({
+    ...executor(moduleOutput("supply_demand_analysis")),
+    execute: async (request) => {
+      received = request.input as Record<string, unknown>;
+      return { operation: request.operation, output: moduleOutput("supply_demand_analysis") };
+    },
+  });
+  await skill.analyze("supply_demand_analysis", {
+    target: { name: "Fixture" }, evidence: [{ evidenceId: "evidence-s1", source }],
+    operatingObservations: [observation], existingKnowledge: [], localReferences: [],
+  });
+  const projected = (received?.operatingObservations as Record<string, unknown>[])[0]!;
+  assert.equal(projected.metricId, observation.metricId);
+  assert.equal(projected.unit, observation.canonicalUnit);
+  assert.equal(projected.sourceIdentity, observation.sourceIdentity);
+  assert.equal("metricKey" in projected, false);
+  assert.equal("sourceCandidateId" in projected, false);
 });
 
 test("Industry module rejects an observation-backed comparator mismatch without repair", async () => {
