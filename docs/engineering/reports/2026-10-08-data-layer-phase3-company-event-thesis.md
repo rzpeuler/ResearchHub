@@ -17,9 +17,11 @@ not claim Sol architecture acceptance. Phase 3 remains on its isolated branch.
 | Phase 2 accepted `main` / `origin/main` | `7648507243819b22a327b68fed4b5fb540f8ff30` |
 | Task 6 starting HEAD | `e0673ce6d226cf315deb8273f2f62221033ee695` |
 | Final implementation HEAD at full validation | `3deb06824653ed2e12f4f0108a6c1fe8cf1d508f` |
-| Phase 3 remote branch before delivery | Not present after `git fetch origin` |
+| First pushed Phase 3 HEAD | `7cc569667327dba0afe02bf503ba885b0803b1a7` |
+| Remote branch HEAD after push | `7cc569667327dba0afe02bf503ba885b0803b1a7` (matched local) |
+| Worktree at first delivery | Clean |
 | Merge state | Phase 3 is not merged to `main` |
-| Push state | Independent final review approved; push remains pending |
+| Push state | Pushed and verified; no merge performed |
 
 `main` and `origin/main` still point to the accepted Phase 2 SHA. Task 6
 changes are committed on the Phase 3 branch only. A separate Thesis contract
@@ -183,4 +185,4 @@ The live acceptance runner now counts only records in `acquisition.observations[
 - `git diff --check`: PASS (Git reports only expected Windows line-ending normalization notices).
 - Final controller `npm test` rerun on `3deb06824653ed2e12f4f0108a6c1fe8cf1d508f`: client 97/97; Node 2,065 total / 2,040 pass / 25 fail. Phase 2 baseline rerun: client 97/97; Node 2,036 total / 2,011 pass / 25 fail. The exact failing Node test identifiers matched: 25 baseline, 25 current, 0 added, 0 missing. The baseline client retry passed after one earlier transient UI timeout.
 - The scoped Phase 3/guard suite passed 99/99 after the final runner hardening. Root and client typechecks, client build, and `git diff --check` passed. Client build reports the existing large-chunk advisory.
-- No Gateway, provider, or Thesis lifecycle semantics changed. Phase 3 remains local; independent final review approved the provenance and live-runner fixes. Push is pending; no merge was performed.
+- No Gateway, provider, or Thesis lifecycle semantics changed. Independent final review approved the provenance and live-runner fixes. The isolated Phase 3 branch was pushed and its remote HEAD matched the local HEAD at `7cc569667327dba0afe02bf503ba885b0803b1a7`; `main` and `origin/main` remain at accepted Phase 2 SHA `7648507243819b22a327b68fed4b5fb540f8ff30`.
