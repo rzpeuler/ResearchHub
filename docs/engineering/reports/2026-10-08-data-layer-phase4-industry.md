@@ -156,7 +156,78 @@ Industry direct-acquisition architecture guard.
 ## Delivery boundary
 
 Final status remains `IMPLEMENTED / SOL ACCEPTANCE PENDING`. The branch is
-intended for push and remote-SHA verification only; Phase 4 must not be merged
-to `main` without the later promotion decision. No Intelligence work, Knowledge
-Schema redesign, generic planning framework, or new capability/provider
-framework was introduced.
+pushed and remote-SHA verification is recorded in the FIX-001 supplement below;
+Phase 4 is not merged to `main` and must not be promoted without the later
+decision. No Intelligence work, Knowledge Schema redesign, generic planning
+framework, or new capability/provider framework was introduced.
+
+## FIX-001 — PIT, evidence provenance, and numeric availability closure
+
+This continuation was completed on the same Phase 4 branch. The source of
+truth is the `RHL-DL-GOAL-004-FIX-001` attachment read at execution time; no new
+task, branch, or worktree was created.
+
+### Safety and architecture review
+
+- Phase 3 delivered commit `7cc569667327dba0afe02bf503ba885b0803b1a7` is an
+  ancestor of both `origin/main` and the Phase 4 head.
+- `main` and `origin/main` were both
+  `ef3634e70e193a1f2a37172738253d3c014d9c8a` before this continuation. The
+  Phase 4 branch was not merged to `main`.
+- The five optional `industry_supply_demand_cycle` DOMAIN templates are only
+  declarations until the product invocation materializes and resolves them.
+  Acceptance evidence remains the real Application → ResearchService →
+  Industry Workflow → DataResolver → Industry Catalog/SourcePolicy → Plugin →
+  Skill chain in `industry-research-integration.test.ts`; no standalone
+  DataRequirement fixture is used to claim runtime migration.
+- `IndustryDataOperationPayload` and its document contract now live in the
+  Data layer. Workflow consumes the Data contract and no longer imports the
+  concrete Plugin operation module.
+
+### FIX-001 behavior
+
+- Application `asOf` propagates an explicit `HISTORICAL` mode to Industry
+  metric requirements; requests without a cutoff use `CURRENT_VALUE_ONLY`.
+  Historical numeric facts require both publication and value-version proof.
+- Unknown-date documents may remain in research context and reports, but are
+  excluded from durable proposals and Gateway bindings. Future and invalid
+  publications remain rejected.
+- Metric-operation documents pass through the same rights/PIT qualification as
+  generic evidence. Matching document and metric paths share one canonical
+  Source and Raw binding. An unbound observation is excluded from Skill inputs,
+  marked `INDUSTRY_METRIC_PROVENANCE_GAP`, and shown as context/report-only.
+- Fetched documents do not make a numeric metric `AVAILABLE` by themselves.
+  No valid point yields typed parser, unit, period, PIT, or source unavailability
+  while preserving the document for generic evidence qualification. Numeric
+  zero remains valid; conflicts remain explicit `PARTIAL` results.
+- These checks leave production and capacity, and export and domestic demand,
+  as distinct semantic roles. `DISCOVERED` and `VALIDATED` metrics remain
+  ineligible for runtime use. The production catalog still has zero canonical
+  Industry metrics.
+
+### FIX-001 validation
+
+| Command or evidence | Result |
+| --- | --- |
+| Phase 4 Industry/Application/Data/Plugin/route/guard/E2E focused matrix | 167/167 passed |
+| Phase 1–3 related focused matrix | 619/621 passed; only baseline `V39 acquisition calls all three AKShare methods` and `V65 source acquisition time is distinct from historical valuation context` failed |
+| `npm test` | Client 97/97 passed; Node 2,102 total, 2,078 passed, 24 failed |
+| Exact Phase 4 Node baseline identifier comparison | 25 baseline failures, 24 current failures, 0 new failures; the prior Industry replay failure now passes |
+| `npm run typecheck` | Passed |
+| `npm run client:typecheck` | Passed |
+| `npm run client:build` | Passed; existing 628.73 kB chunk-size advisory remains |
+| `git diff --check` | Passed; only expected CRLF normalization notices |
+| Real-source acceptance, 2026-10-08 | 64 requests; MIIT 12 HTTP 200, Gov.cn search 8 HTTP 200, Gov.cn 16 HTTP 200, CPCA 24 HTTP 200, Eastmoney 4 transport errors |
+
+The real-source run used Application Runtime and an empty production metric
+catalog. Both `锂电池` and `家用空调` completed their 16-section reports with
+`PARTIAL` requirement coverage, eight explicit `NO_CANONICAL_INDUSTRY_METRIC`
+gaps, zero observations, and zero canonical report Source refs. This is
+transport and generic evidence-path evidence only; no structured metric
+operation was activated and no metric was promoted.
+
+### FIX-001 delivery
+
+The continuation remains `IMPLEMENTED / SOL ACCEPTANCE PENDING`. Commit and
+remote SHA, clean worktree, and unchanged `main` are recorded in the final
+delivery response. Phase 4 remains unmerged pending Sol acceptance.
