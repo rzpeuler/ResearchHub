@@ -14,6 +14,8 @@ import type { EventResearchSignalStore } from '../../plugins/daily-intelligence/
 import type { ResearchAcquisitionPlugin, ResearchCompanyIdentity, ResearchProviderOutcome, ResearchSignalStore } from '../../plugins/research-acquisition/contracts.ts'
 import type { AkshareDataClient } from '../../plugins/research-acquisition/akshare.ts'
 import { createCompanyResearchDataResolver } from '../../plugins/research-acquisition/company-research-data.ts'
+import { OfficialDisclosureResearchPlugin } from '../../plugins/research-acquisition/official.ts'
+import { GdeltResearchPlugin } from '../../plugins/research-acquisition/gdelt.ts'
 import type { OfficialDisclosureClient } from '../../plugins/research-acquisition/official.ts'
 import { AkshareIndustryResearchPlugin } from '../../plugins/research-acquisition/industry.ts'
 import { IndustryAcquisitionComposition } from '../../plugins/research-acquisition/industry-composition.ts'
@@ -116,11 +118,15 @@ export class ResearchService {
   }
 
   private createResearchEvidenceResolver(context: { readonly company: ResearchCompanyIdentity; readonly asOf: string; readonly signal?: AbortSignal; readonly limitPerSource?: number }, onCandidatesDiscovered?: (event: { readonly provider: 'CNINFO' | 'GDELT'; readonly candidates: readonly import('../../plugins/research-acquisition/contracts.ts').ResearchSourceCandidate[]; readonly requirement: import('../../data/contracts.ts').DataRequirement }) => Promise<void | readonly import('../../plugins/research-acquisition/contracts.ts').ResearchSourceCandidate[]> | void | readonly import('../../plugins/research-acquisition/contracts.ts').ResearchSourceCandidate[]): DataResolver<CompanyResearchDataPayload> {
+    const providers = this.options.researchEvidenceProviders ?? {
+      cninfo: this.options.acquisitionPlugins.find((plugin) => plugin instanceof OfficialDisclosureResearchPlugin),
+      gdelt: this.options.acquisitionPlugins.find((plugin) => plugin instanceof GdeltResearchPlugin),
+    }
     return createCompanyResearchDataResolver({
       company: context.company,
       ...(this.options.akshare ? { akshare: this.options.akshare } : {}),
-      ...(this.options.researchEvidenceProviders?.cninfo ? { officialDisclosure: this.options.researchEvidenceProviders.cninfo } : {}),
-      ...(this.options.researchEvidenceProviders?.gdelt ? { gdelt: this.options.researchEvidenceProviders.gdelt } : {}),
+      ...(providers.cninfo ? { officialDisclosure: providers.cninfo } : {}),
+      ...(providers.gdelt ? { gdelt: providers.gdelt } : {}),
       now: () => new Date().toISOString(),
       ...(context.signal ? { signal: context.signal } : {}),
       ...(context.limitPerSource === undefined ? {} : { limitPerSource: context.limitPerSource }),

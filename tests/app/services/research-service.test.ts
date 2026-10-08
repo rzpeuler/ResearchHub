@@ -9,9 +9,61 @@ import type { ThemeScopeImpactWriteReceipt } from '../../../app/services/theme-s
 import { ResearchService } from '../../../app/services/research-service.ts'
 import { writeResearchReport, type ResearchReport } from '../../../app/services/research-report.ts'
 import { WorkflowService } from '../../../app/services/workflow-service.ts'
-import type { ResearchAcquisitionPlugin } from '../../../plugins/research-acquisition/contracts.ts'
+import type { ResearchAcquisitionPlugin, ResearchSourceCandidate, ResearchSignal, ResearchSignalStore } from '../../../plugins/research-acquisition/contracts.ts'
+import { OfficialDisclosureResearchPlugin, type OfficialDisclosureClient } from '../../../plugins/research-acquisition/official.ts'
+import { GdeltResearchPlugin } from '../../../plugins/research-acquisition/gdelt.ts'
+
+function fixtureEvidenceAdapter(route: 'cninfo' | 'gdelt', calls: { discovered: number; fetched: number; normalized: number }): Pick<ResearchAcquisitionPlugin, 'discover' | 'fetch' | 'normalize'> {
+  const candidate: ResearchSourceCandidate = {
+    candidateId: `legacy-${route}-candidate`, kind: route === 'cninfo' ? 'official_disclosure' : 'news', tier: route === 'cninfo' ? 1 : 3,
+    title: `${route} legacy route fixture`, url: `https://${route}.example.test/article`, provider: route,
+    publishedAt: new Date().toISOString(), metadata: { companySymbol: '600519' },
+  }
+  return {
+    discover: async () => { calls.discovered += 1; return [candidate] },
+    fetch: async (sourceCandidate) => { calls.fetched += 1; return { candidate: sourceCandidate, retrievedAt: new Date().toISOString(), content: `${route} evidence`, contentHash: (route === 'cninfo' ? 'c' : 'd').repeat(64) } },
+    normalize: async (fetched) => { calls.normalized += 1; return { candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, publisher: route, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } } },
+  }
+}
+
+class CapturingResearchSignalStore implements ResearchSignalStore {
+  readonly providers: string[] = []
+  async append(signal: ResearchSignal): Promise<void> { this.providers.push(signal.source.provider) }
+  async listForCompany(): Promise<readonly ResearchSignal[]> { return [] }
+}
 
 test('Application Service exposes research_company through one Workflow path', async () => { const root = await mkdtemp(join(tmpdir(), 'researchhub-service-kb-')); const reports = await mkdtemp(join(tmpdir(), 'researchhub-service-reports-')); try { await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-service' }); const plugin: ResearchAcquisitionPlugin = { name: 'fixture-official', discover: async () => [], fetch: async (candidate) => ({ candidate, retrievedAt: new Date().toISOString(), content: '' }), normalize: async (source) => ({ candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: source.content, contentHash: 'a'.repeat(64), publisher: source.candidate.provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }) }; const workflowService = new WorkflowService(); const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [plugin], workflowService }); const started = service.startResearchCompany({ workflowRunId: 'service-run', symbol: '600519' }); const result = await started.completion; assert.equal(result.status, 'completed'); assert.equal(workflowService.getWorkflowStatus('service-run')?.status, 'completed'); assert.match(result.reportId ?? '', /600519/); assert.equal((await service.getResearchReport(result.reportId!)).reportId, result.reportId) } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) } })
+
+test('legacy ResearchService constructor routes explicit CNINFO and GDELT adapter instances through Data', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-legacy-evidence-kb-'))
+  const reports = await mkdtemp(join(tmpdir(), 'researchhub-legacy-evidence-reports-'))
+  const calls = { cninfo: { discovered: 0, fetched: 0, normalized: 0 }, gdelt: { discovered: 0, fetched: 0, normalized: 0 } }
+  const signalStore = new CapturingResearchSignalStore()
+  try {
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-legacy-evidence' })
+    const cninfo = Object.assign(new OfficialDisclosureResearchPlugin({} as OfficialDisclosureClient), fixtureEvidenceAdapter('cninfo', calls.cninfo))
+    const gdelt = Object.assign(new GdeltResearchPlugin(), fixtureEvidenceAdapter('gdelt', calls.gdelt))
+    assert.equal(cninfo.name, 'official-disclosure-research-acquisition')
+    const service = new ResearchService({
+      mountedKnowledgeBaseRoot: root,
+      reportRoot: reports,
+      // This is the pre-Phase-3 constructor shape; no researchEvidenceProviders option.
+      acquisitionPlugins: [cninfo, gdelt],
+      signalStore,
+      workflowService: new WorkflowService(),
+    })
+    const result = await service.startResearchCompany({ workflowRunId: 'legacy-evidence-run', symbol: '600519', name: 'Fixture Company', writeKnowledge: false }).completion
+    assert.equal(result.status, 'completed')
+    assert.deepEqual(calls, {
+      cninfo: { discovered: 1, fetched: 1, normalized: 1 },
+      gdelt: { discovered: 1, fetched: 1, normalized: 1 },
+    })
+    assert.deepEqual(new Set(signalStore.providers), new Set(['cninfo', 'gdelt']))
+  } finally {
+    await rm(root, { recursive: true, force: true })
+    await rm(reports, { recursive: true, force: true })
+  }
+})
 
 test('Company Deep Research triggers scope impact only after its committed Writer log is verified', async () => {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-company-impact-kb-'))

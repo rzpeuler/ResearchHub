@@ -159,6 +159,7 @@ const allowedWorkflowAcquisitionDependencies = new Map<string, ReadonlySet<strin
   ['app/services/research-service.ts', new Set([
     '../../plugins/research-acquisition/akshare.ts',
     '../../plugins/research-acquisition/company-research-data.ts',
+    '../../plugins/research-acquisition/gdelt.ts',
     '../../plugins/research-acquisition/official.ts',
     '../../plugins/research-acquisition/industry.ts',
     '../../plugins/research-acquisition/industry-composition.ts',
@@ -234,6 +235,7 @@ function unbaselinedMigratedWorkflowProviderImports(dependencies: readonly Workf
   return dependencies.flatMap(({ relativePath, reference }) => {
     if (![...migratedAcquisitionWorkflowPaths].some((root) => relativePath.startsWith(`${root}/`))) return []
     if (!isConcreteWorkflowPluginDependency(reference.specifier)) return []
+    if (reference.typeOnly && allowedWorkflowDataTypeImports.get(relativePath)?.has(reference.specifier)) return []
     return [`${relativePath} imports concrete acquisition module ${reference.specifier}`]
   })
 }
@@ -306,6 +308,8 @@ test('Workflow and application Plugin dependencies match the explicit deferred-d
   }
   const violations = unbaselinedWorkflowAcquisitionDependencies(dependencies)
   assert.deepEqual(violations, [], violations.join('\n'))
+  const migratedProviderImports = unbaselinedMigratedWorkflowProviderImports(dependencies)
+  assert.deepEqual(migratedProviderImports, [], migratedProviderImports.join('\n'))
   assert.deepEqual(directCalls, [], directCalls.join('\n'))
 
   const phase2Paths = new Set([
@@ -382,11 +386,17 @@ test('a nested provider contracts import fails without an explicit baseline entr
 })
 
 test('migrated Company, Event, and Thesis Workflows reject direct provider modules and acquisition calls', () => {
-  const imports = unbaselinedMigratedWorkflowProviderImports([
+  const dependencies = [
     { relativePath: 'workflows/company-deep-research/workflow.ts', reference: { specifier: '../../plugins/research-acquisition/akshare.ts', typeOnly: false } },
     { relativePath: 'workflows/event-research/workflow.ts', reference: { specifier: '../../plugins/research-acquisition/gdelt.ts', typeOnly: false } },
     { relativePath: 'workflows/thesis-red-team/workflow.ts', reference: { specifier: '../../plugins/research-acquisition/official.ts', typeOnly: true } },
     { relativePath: 'workflows/event-research/contracts.ts', reference: { specifier: '../../plugins/research-acquisition/contracts.ts', typeOnly: true } },
+  ] satisfies WorkflowAcquisitionDependency[]
+  const imports = unbaselinedMigratedWorkflowProviderImports(dependencies)
+  assert.deepEqual(unbaselinedWorkflowAcquisitionDependencies(dependencies), [
+    'workflows/company-deep-research/workflow.ts imports unbaselined acquisition module ../../plugins/research-acquisition/akshare.ts',
+    'workflows/event-research/workflow.ts imports unbaselined acquisition module ../../plugins/research-acquisition/gdelt.ts',
+    'workflows/thesis-red-team/workflow.ts imports unbaselined acquisition module ../../plugins/research-acquisition/official.ts',
   ])
   assert.deepEqual(imports, [
     'workflows/company-deep-research/workflow.ts imports concrete acquisition module ../../plugins/research-acquisition/akshare.ts',
