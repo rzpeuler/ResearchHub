@@ -11,6 +11,14 @@ export type LlmWebFallbackMode =
 
 export type DataRequirementKind = 'metric' | 'estimate' | 'document' | 'event' | 'timeseries' | 'evidence'
 
+export interface IndustryEvidenceQueryContext {
+  readonly displayTarget: string
+  readonly searchTerms: readonly string[]
+  readonly purpose: string
+  readonly start?: string
+  readonly end?: string
+}
+
 export interface DataRequirement {
   readonly id: string
   readonly consumer: {
@@ -30,6 +38,8 @@ export interface DataRequirement {
   readonly dataKind: DataRequirementKind
   readonly metricId?: string
   readonly metricFamily?: string
+  /** Bounded provider-neutral query for cross-industry Industry document evidence. */
+  readonly industryEvidenceQueryContext?: IndustryEvidenceQueryContext
   readonly period?: {
     readonly start?: string
     readonly end?: string
@@ -114,6 +124,8 @@ export interface AcquisitionSourceMetadata {
   readonly sourceId: string
   readonly fallbackLevel: FallbackLevel
   readonly originPublisher?: string
+  /** The public host/platform serving the source, distinct from publisher and retriever. */
+  readonly hostPlatform?: string
   readonly originAuthority: SourceAuthority
   readonly retrievalProvider?: string
   readonly sourceUrl?: string
@@ -177,6 +189,7 @@ export interface SourceExecutionSourceMetadata {
   readonly sourceUrl?: string
   readonly publishedAt?: string
   readonly retrievedAt?: string
+  readonly hostPlatform?: string
   readonly observedAt?: string
   readonly observationAvailableAt?: string
   readonly valueVersion?: NumericValueVersionEvidence

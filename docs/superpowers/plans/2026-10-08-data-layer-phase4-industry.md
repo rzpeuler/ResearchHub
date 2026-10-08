@@ -88,7 +88,7 @@
 - [x] **Step 3: Implement** the Data-owned interfaces and deterministic validator; apply only declared conversions and retain original values, units, labels, and source identity. Change the Skill contract/consumer to metricId and the neutral Data payload.
 - [x] **Step 4: Correct** the MIIT paired-price parser so H1 lithium carbonate `16.3` and lithium hydroxide micropowder `15.3` bind to their own labels; retain both values as separate qualified points.
 - [x] **Step 5: Run** the listed focused tests; `49/49` passed with no failures.
-- [ ] **Step 6: Commit** as `feat(data): define validated Industry observation contract`.
+- [x] **Step 6: Commit** as `feat(data): define validated Industry observation contract` (`2f0428b`).
 
 ## Task 3: Common bounded Industry evidence and metric-scoped Data policies
 
@@ -104,11 +104,11 @@
 - Metric policies select named operation IDs per `metricId`/metric family. Plugin operations accept `DataRequirement` plus the named operation candidate and return attempts, normalized points/documents, permitted source identity, rights, parser diagnostics, publication PIT, and value-version evidence.
 - No metric policy is canonical unless a passing source acceptance is recorded; MIIT H1 hydroxide remains rejected pending corrected scope/evidence.
 
-- [ ] **Step 1: Add failing tests** named `Industry evidence query context enforces bounds and rejects provider-specific keys`, `industry_research_evidence is a Common evidence identity with COLLECT_DIVERSE`, `Industry metric policies match exact metric IDs and preserve operation ordering`, `Industry acquisition exposes separate publisher host and retrieval provider`, `Industry source rights rejection yields no usable point`, `Industry DataResolver blocks historical numeric result without verified value version`, `Industry DataResolver marks current value only as version unverified`, `Industry DataResolver rejects future and out of period points`, `Industry DataResolver exposes provider partial success and cancellation`, and `Industry document and metric resolution retain one source identity`.
-- [ ] **Step 2: Run** `node --import tsx --test tests/workflows/data-layer-foundation.test.ts tests/plugins/research-acquisition/industry.test.ts tests/plugins/research-acquisition/miit-industry.test.ts tests/plugins/research-acquisition/govcn-industry.test.ts tests/plugins/research-acquisition/eastmoney-industry.test.ts tests/plugins/research-acquisition/cpca-industry.test.ts`; expect new context, policy, and result contract failures.
-- [ ] **Step 3: Implement** context validation, Common identity, explicit source policies, and bounded named Plugin operations; do not add a provider registry or route selection to Plugin.
-- [ ] **Step 4: Run** the listed focused tests; verify publication PIT and value-version PIT remain independent and failed provider legs do not erase successful independent results.
-- [ ] **Step 5: Commit** as `feat(data): add Industry evidence and metric policies`.
+- [x] **Step 1: Add failing tests** named `Industry evidence query context enforces bounds and rejects provider-specific keys`, `industry_research_evidence is a Common evidence identity with COLLECT_DIVERSE`, `Industry metric policies match exact metric IDs and preserve operation ordering`, `Industry acquisition exposes separate publisher host and retrieval provider`, `Industry source rights rejection yields no usable point`, `Industry DataResolver blocks historical numeric result without verified value version`, `Industry DataResolver marks current value only as version unverified`, `Industry DataResolver rejects future and out of period points`, `Industry DataResolver exposes provider partial success and cancellation`, and `Industry document and metric resolution retain one source identity`.
+- [x] **Step 2: Run** the listed foundation and plugin suites; initial RED was observed for missing named operation contracts. Final focused run passed `119/119` tests; subsequent PIT and source-identity additions passed `48/48` tests plus typecheck.
+- [x] **Step 3: Implement** context validation, Common identity, explicit source policies, and bounded named Plugin operations; no provider registry or route selection was added to Plugin.
+- [x] **Step 4: Run** focused tests; publication PIT and value-version PIT remain independent, rights-rejected documents are unusable, and DataResolver blocks historical unversioned time-series values.
+- [x] **Step 5: Commit** as `feat(data): add Industry evidence and metric policies`.
 
 ## Task 4: Migrate Industry Workflow and ResearchService to resolver factories
 

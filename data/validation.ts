@@ -27,6 +27,17 @@ export function validateDataRequirement(requirement: DataRequirement): readonly 
   if (requirement?.period?.start !== undefined && Number.isNaN(Date.parse(requirement.period.start))) errors.push('period.start must be a valid date')
   if (requirement?.period?.end !== undefined && Number.isNaN(Date.parse(requirement.period.end))) errors.push('period.end must be a valid date')
   if (requirement?.dataKind === 'metric' && !requirement.metricId && !requirement.metricFamily) errors.push('metric requirements need metricId or metricFamily')
+  if (requirement?.industryEvidenceQueryContext !== undefined) {
+    const context = requirement.industryEvidenceQueryContext as unknown as Record<string, unknown>
+    const allowedKeys = new Set(['displayTarget', 'searchTerms', 'purpose', 'start', 'end'])
+    if (requirement.metricId !== 'industry_research_evidence' || requirement.dataKind !== 'evidence') errors.push('industryEvidenceQueryContext is only valid for industry_research_evidence evidence requirements')
+    if (Object.keys(context).some((key) => !allowedKeys.has(key))) errors.push('industryEvidenceQueryContext contains provider-specific or unknown fields')
+    if (typeof context.displayTarget !== 'string' || context.displayTarget.trim() === '' || context.displayTarget.length > 160) errors.push('industryEvidenceQueryContext.displayTarget must be 1-160 characters')
+    if (typeof context.purpose !== 'string' || context.purpose.trim() === '' || context.purpose.length > 240) errors.push('industryEvidenceQueryContext.purpose must be 1-240 characters')
+    if (!Array.isArray(context.searchTerms) || context.searchTerms.length < 1 || context.searchTerms.length > 8 || context.searchTerms.some((term) => typeof term !== 'string' || term.trim() === '' || term.length > 120)) errors.push('industryEvidenceQueryContext.searchTerms must contain 1-8 strings of at most 120 characters')
+    for (const field of ['start', 'end'] as const) if (context[field] !== undefined && (typeof context[field] !== 'string' || Number.isNaN(Date.parse(context[field] as string)))) errors.push(`industryEvidenceQueryContext.${field} must be a valid date`)
+    if (typeof context.start === 'string' && typeof context.end === 'string' && Date.parse(context.start) > Date.parse(context.end)) errors.push('industryEvidenceQueryContext.end must not precede start')
+  }
   if (requirement?.determinismClass === 'AUTHORITATIVE_NUMERIC' && requirement.llmWebFallback === 'FULL_EVIDENCE_RESEARCH') errors.push('AUTHORITATIVE_NUMERIC cannot use FULL_EVIDENCE_RESEARCH')
   return errors
 }

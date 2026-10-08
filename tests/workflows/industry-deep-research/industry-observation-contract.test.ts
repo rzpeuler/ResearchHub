@@ -106,6 +106,9 @@ test('Industry observation rejects ambiguous unit and period semantics', async (
   const wrongBasis = contract.validateIndustryObservation(candidate({ periodBasis: 'PERIOD' }), metricDefinition(), requirement())
   assert.equal(wrongBasis.status, 'INVALID')
   assert.ok(wrongBasis.diagnostics.includes('INDUSTRY_PERIOD_SEMANTICS_MISMATCH'))
+  const outsidePeriod = contract.validateIndustryObservation(candidate(), metricDefinition(), requirement({ period: { start: '2026-07-01', end: '2026-12-31' } }))
+  assert.equal(outsidePeriod.status, 'INVALID')
+  assert.ok(outsidePeriod.diagnostics.includes('INDUSTRY_PERIOD_START_MISMATCH'))
 })
 
 test('Industry observation rejects catalog kind, industry, and authority mismatches', async () => {

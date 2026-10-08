@@ -1,4 +1,4 @@
-import type { DataDeterminismClass, DataRequirement, DataRequirementKind, SourceAuthority } from './contracts.ts'
+import type { DataDeterminismClass, DataRequirement, DataRequirementKind, IndustryEvidenceQueryContext, SourceAuthority } from './contracts.ts'
 import { COMMON_DATA_CATALOG, createCommonDataCatalog, type CommonDataDefinition } from './common-catalog.ts'
 import type { IndustryDataCatalog } from './industry-catalog.ts'
 import { PHASE2_COMMON_SOURCE_POLICIES } from './valuation-earnings-policies.ts'
@@ -44,6 +44,43 @@ export interface MaterializedDataRequirements {
     readonly required: boolean
     readonly reason: 'COMMON_DATA_DEFINITION_REQUIRED' | 'COMMON_DATA_KIND_MISMATCH' | 'INDUSTRY_ID_REQUIRED' | 'NO_CANONICAL_INDUSTRY_METRIC' | 'INDUSTRY_DATA_KIND_MISMATCH' | 'AMBIGUOUS_CANONICAL_INDUSTRY_METRIC'
   }[]
+}
+
+export interface IndustryEvidenceRequirementContext {
+  readonly id: string
+  readonly displayTarget: string
+  readonly searchTerms: readonly string[]
+  readonly purpose: string
+  readonly asOf: string
+  readonly subject?: DataRequirement['subject']
+  readonly period?: DataRequirement['period']
+  readonly required?: boolean
+}
+
+export function materializeIndustryEvidenceRequirement(context: IndustryEvidenceRequirementContext): DataRequirement {
+  const queryContext: IndustryEvidenceQueryContext = Object.freeze({
+    displayTarget: context.displayTarget,
+    searchTerms: Object.freeze([...context.searchTerms]),
+    purpose: context.purpose,
+    ...(context.period?.start ? { start: context.period.start } : {}),
+    ...(context.period?.end ? { end: context.period.end } : {}),
+  })
+  const requirement: DataRequirement = {
+    id: context.id,
+    consumer: { workflow: 'industry-deep-research' },
+    subject: context.subject ?? {},
+    dataKind: 'evidence',
+    metricId: 'industry_research_evidence',
+    ...(context.period ? { period: context.period } : {}),
+    industryEvidenceQueryContext: queryContext,
+    asOf: context.asOf,
+    analysisAsOf: context.asOf,
+    determinismClass: 'SEMANTIC_QUALITATIVE',
+    required: context.required ?? false,
+    llmWebFallback: 'FORBIDDEN',
+  }
+  assertValidDataRequirement(requirement)
+  return requirement
 }
 
 export interface Phase2CommonRequirementContext {

@@ -8,8 +8,17 @@ export interface ResearchEvidenceInput<T> {
   readonly retrievedAt: string
   readonly sourceUrl?: string
   readonly contentHash?: string
+  readonly sourceIdentity?: string
   readonly originPublisher?: string
+  readonly hostPlatform?: string
   readonly retrievalProvider: string
+  readonly rights?: {
+    readonly accessScope: 'public' | 'authenticated' | 'restricted' | 'unknown'
+    readonly retentionAllowed: boolean
+    readonly aiProcessingAllowed: boolean
+    readonly derivativeKnowledgeAllowed: boolean
+    readonly redistributionAllowed: boolean
+  }
 }
 
 export interface QualifiedResearchEvidence<T> extends ResearchEvidenceInput<T> {
@@ -68,8 +77,10 @@ export function sourceWithDataEvidenceProvenance<T extends ProvenanceAwareSource
   const publishedAt = document.publishedAt ?? document.provenance.publishedAt ?? source.candidate.publishedAt
   const dataProvenance = {
     originAuthority: document.provenance.originAuthority,
+    ...(document.hostPlatform ?? document.provenance.hostPlatform ? { hostPlatform: document.hostPlatform ?? document.provenance.hostPlatform } : {}),
     retrievalProvider,
     ...(sourceUrl ? { sourceUrl } : {}),
+    ...(document.sourceIdentity ? { sourceIdentity: document.sourceIdentity } : sourceUrl ? { sourceIdentity: `url:${sourceUrl}` } : document.contentHash ? { sourceIdentity: `hash:${document.contentHash}` } : {}),
     ...(publishedAt ? { publishedAt } : {}),
     dateStatus: document.dateStatus,
     pointInTimeSafe: document.pointInTimeSafe,
@@ -110,6 +121,13 @@ export function finalizeResearchEvidence<T>(
     let deduplicated = 0
     const diagnostics = [...observation.data.outcome.diagnostics]
     for (const document of observation.data.documents) {
+      if (requirement.metricId === 'industry_research_evidence'
+        && (!document.rights || document.rights.accessScope !== 'public' || !document.rights.retentionAllowed || !document.rights.aiProcessingAllowed || !document.rights.derivativeKnowledgeAllowed)) {
+        rejected += 1
+        anyRejected = true
+        diagnostics.push('industry_evidence_rights_rejected')
+        continue
+      }
       const dateStatus = qualifyResearchEvidenceDate(document.publishedAt, requirement)
       if (dateStatus === 'FUTURE' || dateStatus === 'INVALID' || dateStatus === 'OUTSIDE_PERIOD') {
         rejected += 1
@@ -137,6 +155,7 @@ export function finalizeResearchEvidence<T>(
       const provenance: QualifiedResearchEvidence<T>['provenance'] = {
         ...observation.source,
         ...(document.originPublisher ? { originPublisher: document.originPublisher } : { originPublisher: undefined }),
+        ...(document.hostPlatform ? { hostPlatform: document.hostPlatform } : {}),
         retrievalProvider: document.retrievalProvider,
         ...(sourceUrl ? { sourceUrl } : {}),
         ...(document.publishedAt ? { publishedAt: document.publishedAt } : {}),

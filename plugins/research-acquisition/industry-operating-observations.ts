@@ -47,6 +47,8 @@ export interface IndustryOperatingObservation {
 export interface IndustryOperatingObservationRequest {
   readonly target: IndustryTargetInput
   readonly asOf: string
+  readonly metricId?: string
+  readonly period?: { readonly start?: string; readonly end?: string; readonly fiscalYear?: number }
   readonly now: () => string
   readonly signal?: AbortSignal
 }
@@ -377,19 +379,50 @@ export class IndustryOperatingObservationAcquisition implements IndustryOperatin
     }
   }
   async acquire(request: IndustryOperatingObservationRequest): Promise<IndustryOperatingObservationAcquisitionResult> {
-    const diagnostics: string[] = []; const sources: NormalizedResearchSource[] = []; const observations: IndustryOperatingObservation[] = []; const specs = this.specs(request.target)
+    const diagnostics: string[] = []; const sources: NormalizedResearchSource[] = []; const observations: IndustryOperatingObservation[] = []
+    const legacyKeys: Readonly<Record<string, string>> = {
+      'industry:household_air_conditioner:room-air-conditioner-production': 'room_air_conditioner.production',
+      'industry:household_air_conditioner:air-conditioner-export-volume': 'air_conditioner.export_volume',
+      'industry:lithium_battery:lithium-battery-total-output': 'lithium_battery.total_output',
+      'industry:lithium_battery:lithium-carbonate-period-average-price': 'lithium_battery.lithium_carbonate_average_price',
+      'industry:lithium_battery:lithium-hydroxide-period-average-price': 'lithium_battery.lithium_hydroxide_average_price',
+    }
+    const legacyMetric = request.metricId ? legacyKeys[request.metricId] : undefined
+    if (request.metricId && !legacyMetric) return { status: 'SCOPE_UNSUPPORTED', observations: [], sources: [], diagnostics: ['NO_CANONICAL_METRIC'] }
+    const targetSpecs = this.specs(request.target)
+    const specKeys = legacyMetric === 'room_air_conditioner.production' ? new Set(['nbs'])
+      : legacyMetric === 'air_conditioner.export_volume' ? new Set(['cheaaSeptember2024', 'cheaaJuly2025'])
+        : legacyMetric ? new Set(['miitH1', 'miitAnnual']) : undefined
+    let specs = targetSpecs.filter((spec) => !specKeys || specKeys.has(spec.key))
+    if (request.period?.start && request.period?.end) {
+      const wantedStart = request.period.start.slice(0, 10); const wantedEnd = request.period.end.slice(0, 10)
+      specs = specs.filter((spec) => {
+        const hint = spec.period ?? String(spec.candidate.metadata?.period ?? '')
+        if (/^\d{4}-\d{2}$/.test(hint)) return `${hint}-01` === wantedStart && new Date(`${hint}-01T00:00:00.000Z`).getUTCMonth() + 1 === Number(wantedEnd.slice(5, 7)) && wantedEnd.startsWith(hint.slice(0, 4))
+        if (hint === '2026-H1') return wantedStart === '2026-01-01' && wantedEnd === '2026-06-30'
+        if (/^\d{4}$/.test(hint)) return wantedStart === `${hint}-01-01` && wantedEnd === `${hint}-12-31`
+        return true
+      })
+    }
     if (!specs.length) return { status: 'SCOPE_UNSUPPORTED', observations: [], sources: [], diagnostics: ['SCOPE_UNSUPPORTED'] }
     for (const spec of specs.slice(0, 6)) {
       abortIfNeeded(request.signal); if (spec.candidate.publishedAt && !isPublishedBy(spec.candidate.publishedAt, request.asOf)) { diagnostics.push(`PIT_SOURCE_NOT_FETCHED:${spec.candidate.candidateId}`); continue }
       try {
         const fetchedSource = await this.fetchSource(spec, request.signal); const text = await this.documentText(fetchedSource, spec.expected); const source = { ...fetchedSource, content: text }; sources.push(source); const ctx: ObservationParserContext = { sourceCandidateId: source.candidate.candidateId, publishedAt: source.candidate.publishedAt ?? request.now(), retrievedAt: source.retrievedAt, originPublisher: spec.originPublisher, hostPlatform: spec.hostPlatform, retrievalProvider: 'ResearchHub direct HTTPS', sourceAuthority: spec.sourceAuthority, determinismClass: spec.determinismClass, metadata: { ...(source.candidate.metadata ?? {}), canonicalUrl: source.canonicalUrl } }
         const parsed = spec.key === 'nbs' ? (parseNbsAnnualAirConditionerProduction(text, ctx) ? [parseNbsAnnualAirConditionerProduction(text, ctx)!] : []) : spec.key.startsWith('miit') ? parseMiitLithiumOperatingObservations(text, ctx) : (parseCheaaHouseholdAirConditionerExport(text, ctx, spec.period) ? [parseCheaaHouseholdAirConditionerExport(text, ctx, spec.period)!] : [])
-        if (!parsed.length) diagnostics.push(`PARSER_SCHEMA_DRIFT:${source.candidate.candidateId}`); observations.push(...parsed)
+        const selected = parsed.filter((item) => (!legacyMetric || item.metricKey === legacyMetric)
+          && (!request.period?.start || item.periodStart.slice(0, 10) === request.period.start.slice(0, 10))
+          && (!request.period?.end || item.periodEnd.slice(0, 10) === request.period.end.slice(0, 10)))
+        if (!selected.length) diagnostics.push(`PARSER_SCHEMA_DRIFT_OR_PERIOD_GAP:${source.candidate.candidateId}`); observations.push(...selected)
       } catch (error) { const message = error instanceof Error ? error.message : String(error); diagnostics.push(`${spec.candidate.candidateId}:${message}`); if (message === 'WORKFLOW_CANCELLED') throw error }
     }
     const merged = mergeIndustryOperatingObservations(observations); diagnostics.push(...merged.diagnostics)
     const hasTransport = diagnostics.some((item) => /HTTP_|ACCESS_GATE|TRANSPORT|TIMEOUT|HOST_NOT_ALLOWED|CONTENT_TYPE/.test(item)); const hasParser = diagnostics.some((item) => /PARSER/.test(item)); const status: IndustryOperatingObservationStatus = merged.observations.length ? (diagnostics.length ? 'PARTIAL' : 'COMPLETED') : hasTransport ? 'TRANSPORT_UNAVAILABLE' : hasParser ? 'PARSER_UNAVAILABLE' : 'SOURCE_UNAVAILABLE'
     return { status, observations: merged.observations, sources, diagnostics: [...new Set(diagnostics)].slice(0, 64) }
+  }
+  async acquireNamed(request: IndustryOperatingObservationRequest, metricId: string): Promise<IndustryOperatingObservationAcquisitionResult> {
+    if (request.metricId !== metricId) return { status: 'SCOPE_UNSUPPORTED', observations: [], sources: [], diagnostics: ['INDUSTRY_OPERATION_METRIC_MISMATCH'] }
+    return this.acquire(request)
   }
 }
 

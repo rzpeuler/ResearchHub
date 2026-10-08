@@ -7,7 +7,12 @@ import {
   DataResolver,
   industryMetricId,
   materializeSkillDataRequirements,
+  materializeIndustryEvidenceRequirement,
   resolveSourcePolicy,
+  validateDataRequirement,
+  INDUSTRY_DATA_SOURCE_POLICIES,
+  INDUSTRY_RESEARCH_EVIDENCE_POLICY,
+  validateIndustryObservation,
   type AcquisitionAttempt,
   type AcquisitionResult,
   type DataRequirement,
@@ -20,6 +25,7 @@ import { getDataSourceCatalog } from '../../app/services/data-source-catalog.ts'
 import { getCanonicalResearchSkill } from '../../app/services/research-skill-catalog.ts'
 import { createResearchSkillRegistry } from '../../app/services/skill-registry.ts'
 import { earningsExpectationSourcePolicy } from '../../workflows/earnings-review/expectations-acquisition.ts'
+import { finalizeResearchEvidence } from '../../data/research-evidence.ts'
 
 const AS_OF = '2026-10-01T00:00:00.000Z'
 
@@ -292,6 +298,65 @@ test('Industry DOMAIN requirements reject mismatched kinds and only materialize 
   const mismatch = materializeSkillDataRequirements('industry-skill', [template], { workflowId: 'industry-deep-research', asOf: AS_OF, subject: { industryId: 'pcb' } }, allMismatched)
   assert.deepEqual(mismatch.requirements, [])
   assert.deepEqual(mismatch.unresolved, [{ templateId: 'demand', required: false, reason: 'INDUSTRY_DATA_KIND_MISMATCH' }])
+})
+
+test('Industry evidence query context enforces bounds and rejects provider-specific keys', () => {
+  const base = requirement({
+    consumer: { workflow: 'industry-deep-research' }, subject: { industryId: 'unregistered-industry' },
+    metricId: 'industry_research_evidence', dataKind: 'evidence', determinismClass: 'SEMANTIC_QUALITATIVE',
+    industryEvidenceQueryContext: { displayTarget: 'Rare-earth magnets', searchTerms: ['capacity', 'pricing'], purpose: 'Locate dated public evidence', start: '2024-01-01', end: '2025-12-31' },
+  })
+  assert.deepEqual(validateDataRequirement(base), [])
+  assert.ok(validateDataRequirement({ ...base, industryEvidenceQueryContext: { ...base.industryEvidenceQueryContext!, searchTerms: Array.from({ length: 9 }, (_, index) => `term-${index}`) } }).some((error) => error.includes('1-8')))
+  assert.ok(validateDataRequirement({ ...base, industryEvidenceQueryContext: { ...base.industryEvidenceQueryContext!, provider: 'MIIT' } as never }).some((error) => error.includes('provider-specific')))
+  assert.ok(validateDataRequirement({ ...base, industryEvidenceQueryContext: { ...base.industryEvidenceQueryContext!, start: '2026-01-01', end: '2025-01-01' } }).some((error) => error.includes('must not precede')))
+  assert.equal(COMMON_DATA_CATALOG.find((item) => item.metricId === 'industry_research_evidence')?.dataKind, 'evidence')
+})
+
+test('Industry evidence requirements materialize through the Common identity for any target', () => {
+  const materialized = materializeIndustryEvidenceRequirement({
+    id: 'industry-wave-1', displayTarget: 'Unregistered industrial activity', searchTerms: ['production', 'orders'],
+    purpose: 'Find dated source documents for the research question', asOf: AS_OF,
+    subject: { industryId: 'unregistered_industry' }, period: { start: '2024-01-01', end: '2025-12-31' },
+  })
+  assert.equal(materialized.metricId, 'industry_research_evidence')
+  assert.equal(materialized.dataKind, 'evidence')
+  assert.equal(materialized.industryEvidenceQueryContext?.searchTerms.length, 2)
+  assert.equal(materialized.industryEvidenceQueryContext?.start, '2024-01-01')
+  assert.equal(materialized.required, false)
+})
+
+test('Industry evidence preserves publisher host and retriever separately and rejects denied rights', () => {
+  const requirementValue = materializeIndustryEvidenceRequirement({
+    id: 'industry-evidence-rights', displayTarget: 'Lithium battery', searchTerms: ['production'],
+    purpose: 'Find dated source documents', asOf: AS_OF, subject: { industryId: 'lithium_battery' },
+  })
+  const deniedDocument = {
+    record: { candidate: { candidateId: 'doc-1', kind: 'official_disclosure' as const, tier: 1 as const, title: 'Article', provider: 'miit-adapter', publishedAt: '2026-09-15' }, retrievedAt: AS_OF, title: 'Article', content: 'bounded source content', contentHash: 'a'.repeat(64), publisher: 'MIIT', rights: { accessScope: 'public' as const, retentionAllowed: false, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } },
+    publishedAt: '2026-09-15', retrievedAt: AS_OF, sourceUrl: 'https://miit.gov.cn/article', contentHash: 'a'.repeat(64),
+    originPublisher: 'MIIT', hostPlatform: 'MIIT official web', retrievalProvider: 'ResearchHub direct HTTPS',
+    rights: { accessScope: 'public' as const, retentionAllowed: false, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false },
+  }
+  const finalized = finalizeResearchEvidence(requirementValue, acquired({
+    data: { kind: 'evidence' as const, documents: [], outcome: { transportSucceeded: true, fetchSucceeded: true, discovered: 1, fetched: 1, failed: 0, empty: 0, rejected: 0, deduplicated: 0, diagnostics: [] } },
+    observations: [{ data: { kind: 'evidence' as const, documents: [deniedDocument], outcome: { transportSucceeded: true, fetchSucceeded: true, discovered: 1, fetched: 1, failed: 0, empty: 0, rejected: 0, deduplicated: 0, diagnostics: [] } }, source: { ...source('miit-evidence'), hostPlatform: 'MIIT official web' } }],
+  }))
+  assert.equal(finalized.status, 'UNAVAILABLE')
+  assert.equal(finalized.observations?.[0]?.data.documents.length, 0)
+  assert.ok(finalized.observations?.[0]?.data.outcome.diagnostics.includes('industry_evidence_rights_rejected'))
+  assert.equal(finalized.observations?.[0]?.source.hostPlatform, 'MIIT official web')
+})
+
+test('Industry policies match exact metric identities and preserve configured operation order', () => {
+  assert.equal(INDUSTRY_RESEARCH_EVIDENCE_POLICY.selectionMode, 'COLLECT_DIVERSE')
+  assert.deepEqual(INDUSTRY_RESEARCH_EVIDENCE_POLICY.candidates.map((item) => item.operationId), [
+    'industry.evidence.miit', 'industry.evidence.govcn', 'industry.evidence.cpca', 'industry.evidence.eastmoney-board',
+  ])
+  const metricPolicy = INDUSTRY_DATA_SOURCE_POLICIES.find((item) => item.requirementMatch.metricId === 'industry:lithium_battery:lithium-carbonate-period-average-price')!
+  const exactRequirement = requirement({ consumer: { workflow: 'industry-deep-research' }, metricId: metricPolicy.requirementMatch.metricId, dataKind: 'timeseries' })
+  assert.equal(resolveSourcePolicy(exactRequirement, [metricPolicy]).status, 'MATCHED')
+  assert.equal(resolveSourcePolicy({ ...exactRequirement, metricId: 'industry:lithium_battery:lithium-hydroxide-period-average-price' }, [metricPolicy]).status, 'NO_REGISTERED_POLICY')
+  assert.equal(metricPolicy.candidates[0]?.operationId, 'industry.metric.miit.lithium-carbonate-average-price')
 })
 
 test('Industry identity resolves only registered exact aliases', async () => {
@@ -597,4 +662,34 @@ test('DataResolver fails closed for Industry identities without a canonical cata
   assert.equal(result.unavailableReason, 'NO_REGISTERED_POLICY')
   assert.equal(injectedCalls, 0)
   assert.equal(executorCalls, 0)
+})
+
+test('DataResolver blocks historical unversioned Industry values and keeps current-only uncertainty visible', async () => {
+  const metricId = industryMetricId('pcb', 'monthly-shipment')
+  const validation = industryValidation({ methodology: 'deterministic current-only fixture', sourceabilityEvidence: ['fixture source'] })
+  const catalog = createIndustryDataCatalog([industryDefinition({ metricId, lifecycleStatus: 'CANONICAL', validation })])
+  const policy: SourcePolicy = {
+    policyId: 'pcb-shipment-policy', requirementMatch: { workflow: 'fixture-workflow', metricId, dataKind: 'timeseries' }, selectionMode: 'FIRST_VALID',
+    candidates: [{ sourceId: 'pcb-monthly-source', fallbackLevel: 'PRIMARY', originAuthority: 'S1_OFFICIAL', operationId: 'fixture.industry.metric', supports: { dataKinds: ['timeseries'], metricIds: [metricId] } }],
+  }
+  const executor = async (dataRequirement: DataRequirement) => {
+    const observation = {
+      metricId, value: 12, qualifier: 'EXACT' as const, unit: 'million units', originalValue: '12',
+      periodStart: '2026-01-01T00:00:00.000Z', periodEnd: '2026-03-31T23:59:59.999Z', frequency: 'MONTHLY', periodBasis: 'PERIOD' as const, aggregation: 'SUM' as const,
+      geography: 'China', product: 'Household PCB', publishedAt: '2026-03-31T00:00:00.000Z', retrievedAt: AS_OF,
+      originPublisher: 'Official publisher', hostPlatform: 'official.example', retrievalProvider: 'fixture-retriever', authority: 'S1_OFFICIAL' as const,
+      publicationPit: 'VERIFIED' as const, valueVersion: { status: 'UNVERIFIED' as const, reason: 'Fixture does not archive revisions.' }, sourceIdentity: 'url:https://official.example/series',
+    }
+    const validated = validateIndustryObservation(observation, catalog.get(metricId)!, dataRequirement)
+    return validated.status === 'VALID'
+      ? { status: 'SUCCESS' as const, data: validated.point!, source: { originAuthority: 'S1_OFFICIAL' as const, originPublisher: 'Official publisher', hostPlatform: 'official.example', retrievalProvider: 'fixture-retriever', sourceUrl: 'https://official.example/series', publishedAt: observation.publishedAt, retrievedAt: AS_OF, valueVersion: observation.valueVersion } }
+      : { status: 'STALE' as const, diagnostic: validated.diagnostics.join('|'), source: { originAuthority: 'S1_OFFICIAL' as const, originPublisher: 'Official publisher', hostPlatform: 'official.example', retrievalProvider: 'fixture-retriever', sourceUrl: 'https://official.example/series', publishedAt: observation.publishedAt, retrievedAt: AS_OF, valueVersion: observation.valueVersion } }
+  }
+  const resolver = new DataResolver({ policies: [policy], executor, industryCatalog: catalog })
+  const current = await resolver.resolveOne(requirement({ metricId, dataKind: 'timeseries', consumer: { workflow: 'fixture-workflow' }, asOfMode: 'CURRENT_VALUE_ONLY' }))
+  assert.equal(current.status, 'AVAILABLE')
+  assert.equal(current.acquisition.quality.valueVersionStatus, 'UNVERIFIED')
+  const historical = await resolver.resolveOne(requirement({ metricId, dataKind: 'timeseries', consumer: { workflow: 'fixture-workflow' }, asOfMode: 'HISTORICAL' }))
+  assert.equal(historical.status, 'UNAVAILABLE')
+  assert.match(historical.attempts[0]?.diagnostic ?? '', /INDUSTRY_VALUE_VERSION_UNVERIFIED/)
 })
