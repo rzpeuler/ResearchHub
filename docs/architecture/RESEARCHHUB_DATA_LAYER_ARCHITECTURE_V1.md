@@ -1,7 +1,8 @@
 # ResearchHub Data Layer Architecture v1
 
-Status: Phase 1 foundation accepted; Phase 2 Valuation and Earnings migration
-is implemented on its isolated branch and remains `SOL ACCEPTANCE PENDING`.
+Status: Phase 1 foundation and Phase 2 Valuation and Earnings migration are
+accepted. Phase 3 Company, Event, and Thesis migration is implemented on its
+isolated branch and remains `SOL ACCEPTANCE PENDING`.
 
 ## Purpose and boundaries
 
@@ -172,14 +173,14 @@ perform network acquisition or call `DataResolver`.
 
 ## Migration inventory
 
-Phase 2 is implemented on `codex/dl-goal-002-valuation-earnings-migration`.
+Phase 2 is accepted on `main` at `7648507243819b22a327b68fed4b5fb540f8ff30`.
 Its migration keeps source policy and adapter execution behind DataResolver;
 Workflow retains domain requirement materialization, exact filing/correction
 selection, typed mapping, calculations, and report/Knowledge orchestration.
 Provider wire parsing is in Plugin adapters, while Shanghai daily-close
 availability is a Data PIT rule in `data/point-in-time.ts`.
 
-### Phase 2 — Valuation and Earnings (implemented; acceptance pending)
+### Phase 2 — Valuation and Earnings (accepted)
 
 - `data/valuation-earnings-policies.ts` owns Common source policies;
   `data/requirements.ts` materializes exact metric, fiscal-period, subject, and
@@ -203,12 +204,26 @@ availability is a Data PIT rule in `data/point-in-time.ts`.
 
 ### Phase 3 — Company, Event, and Thesis
 
-- `workflows/company-deep-research/workflow.ts`: direct AKShare reads and source
-  record construction remain.
-- `workflows/event-research/workflow.ts`: Workflow-owned plugin discovery,
-  fetch/normalize selection, and event evidence filtering remain.
-- `workflows/thesis-red-team/workflow.ts`: Workflow-owned source plugin loop
-  and source materialization remain.
+- Implemented on `codex/dl-goal-003-company-event-thesis-migration`; Sol
+  acceptance remains pending. `workflows/company-deep-research/workflow.ts`
+  materializes profile, financial, market, and research-evidence requirements
+  and maps provider-neutral resolved inputs into the existing Skill/Gateway
+  flow. The existing signal-store projection remains Workflow-owned.
+- `workflows/event-research/workflow.ts` keeps anchor resolution, Daily Signal
+  context, source roles, verification, and event semantics. CNINFO/GDELT
+  external evidence uses the shared `company_research_evidence` identity via
+  DataResolver; Data owns generic URL/hash dedup, provenance, source attempts,
+  and publication-window/PIT qualification.
+- `workflows/thesis-red-team/workflow.ts` keeps Stage A/B, Daily Signal
+  context, evidence qualification, and Gateway behavior. External evidence is
+  resolved through the same Common identity, with target Thesis and Company
+  integrity checks retained. Signal, irrelevant, and unknown-date evidence is
+  not automatically canonicalized.
+- Data-owned `COLLECT_DIVERSE` policies attempt CNINFO and GDELT independently;
+  CNINFO remains statutory origin authority and GDELT remains an aggregation
+  route unless original publisher provenance is explicit. Runtime composition
+  supplies per-run resolver factories. The architecture guard removes only
+  the migrated Company/Event/Thesis direct-acquisition debt.
 
 ### Phase 4 — Industry
 

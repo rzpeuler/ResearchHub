@@ -9,6 +9,12 @@ import { AkshareDataAdapter } from '../../plugins/research-acquisition/akshare.t
 import { FileResearchSignalStore } from '../../plugins/research-acquisition/signal-store.ts'
 import { runCompanyDeepResearch } from '../../workflows/company-deep-research/workflow.ts'
 import type { ResearchProviderOutcome } from '../../plugins/research-acquisition/contracts.ts'
+import { createCompanyResearchDataResolver } from '../../plugins/research-acquisition/company-research-data.ts'
+
+if (process.env.RESEARCHHUB_PHASE3_LIVE !== '1') {
+  console.log(JSON.stringify({ status: 'SKIPPED', reason: 'Set RESEARCHHUB_PHASE3_LIVE=1 to opt in; no network or Knowledge writes were performed.' }))
+  process.exit(0)
+}
 
 const smokeId = new Date().toISOString().replace(/[:.]/g, '-')
 const root = resolve('runtime-data', `personal-research-real-smoke-${smokeId}`, 'kb')
@@ -27,7 +33,7 @@ const results: Array<{ workflowRunId: string; symbol: string; status: string; be
 for (const request of runs) {
   const handle = await new KnowledgeBaseRegistry().mount(root)
   const beforeRevision = handle.revision
-  const result = await runCompanyDeepResearch({ workflowRunId: request.workflowRunId, handle, company: request, acquisitionPlugins: providers, akshare: new AkshareDataAdapter(), reportRoot, signalStore: new FileResearchSignalStore(signalPath), maxSources: 6, now })
+  const result = await runCompanyDeepResearch({ workflowRunId: request.workflowRunId, handle, company: request, dataResolverFactory: (options) => createCompanyResearchDataResolver({ ...options, akshare: new AkshareDataAdapter(), officialDisclosure: providers.find((plugin) => /official|cninfo/i.test(plugin.name)), gdelt: providers.find((plugin) => /gdelt/i.test(plugin.name)) }), reportRoot, signalStore: new FileResearchSignalStore(signalPath), maxSources: 6, now })
   results.push({ workflowRunId: request.workflowRunId, symbol: request.symbol, status: result.status, beforeRevision, afterRevision: result.knowledgeBaseRevision, reportId: result.report?.reportId ?? null, committedIds: result.committedIds, updatedIds: result.updatedIds ?? [], sourceCount: result.sourceIds.length, claimCount: result.claimIds.length, errors: result.errors, acquisitionDiagnostics: result.acquisitionDiagnostics ?? [], providerOutcomes: result.providerOutcomes ?? [], resolutionIntents: (result.resolutionIntents ?? []).map((item) => ({ disposition: item.disposition, reason: item.reason, proposalId: item.proposalId ?? null, localKey: item.localKey ?? null })) })
 }
 const assets = await readCanonicalV04Assets(root)

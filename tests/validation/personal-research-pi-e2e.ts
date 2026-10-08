@@ -10,6 +10,12 @@ import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { runCompanyDeepResearch } from '../../workflows/company-deep-research/workflow.ts'
 import type { ResearchAcquisitionPlugin } from '../../plugins/research-acquisition/contracts.ts'
 import { sha256 } from '../../plugins/research-acquisition/hash.ts'
+import { createCompanyResearchDataResolver } from '../../plugins/research-acquisition/company-research-data.ts'
+
+if (process.env.RESEARCHHUB_PHASE3_LIVE !== '1') {
+  console.log(JSON.stringify({ status: 'SKIPPED', reason: 'Set RESEARCHHUB_PHASE3_LIVE=1 to opt in; no network or Knowledge writes were performed.' }))
+  process.exit(0)
+}
 
 const repoRoot = resolve(import.meta.dirname, '../..')
 const runId = `pi-e2e-${new Date().toISOString().replace(/[:.]/g, '-')}`
@@ -26,7 +32,7 @@ try {
   const model = selectProductionReasoningModel(modelRuntime)
   const executor = new PiReasoningExecutor({ modelRuntime, model: model as Model<Api>, timeoutMs: 900_000, maxOutputChars: 400_000 })
   const kbRoot = join(root, 'kb'); await createFreshKnowledgeBaseV04(kbRoot, { knowledgeBaseId: 'kb-personal-pi-e2e', now: '2026-09-08T23:59:59.000Z' })
-  const result = await runCompanyDeepResearch({ workflowRunId: runId, handle: await new KnowledgeBaseRegistry().mount(kbRoot), company: { symbol: '600519', name: '贵州茅台' }, acquisitionPlugins: [plugin], reportRoot: reports, reasoningExecutor: executor, now: () => '2026-09-08T23:59:59.000Z' })
+  const result = await runCompanyDeepResearch({ workflowRunId: runId, handle: await new KnowledgeBaseRegistry().mount(kbRoot), company: { symbol: '600519', name: '贵州茅台' }, dataResolverFactory: (options) => createCompanyResearchDataResolver({ ...options, officialDisclosure: plugin }), reportRoot: reports, reasoningExecutor: executor, now: () => '2026-09-08T23:59:59.000Z' })
   const assets = await readCanonicalV04Assets(kbRoot)
   const report = result.report ? JSON.parse(await readFile(join(reports, `${result.report.reportId}.md.json`), 'utf8')) as { sections?: unknown[] } : undefined
   const evidence = { classification: result.status === 'completed' ? 'EXECUTED' : 'PRODUCT_OR_ENVIRONMENT_BLOCKED', host: executor.runtimeMetadata(), operation: 'company_research_synthesis', realPiReasoningExecutor: true, run: { status: result.status, reportId: result.report?.reportId ?? null, sections: report?.sections?.length ?? 0, proposalCount: result.proposalIds.length, claimCount: result.claimIds.length, knowledgeRevision: result.knowledgeBaseRevision, errors: result.errors }, canonicalCounts: { entities: assets.objects.filter((item) => item.kind === 'entity').length, sources: assets.objects.filter((item) => item.kind === 'source').length, claims: assets.objects.filter((item) => item.kind === 'claim').length, relations: assets.objects.filter((item) => item.kind === 'relation').length }, secretsIncluded: false, rawBodiesIncluded: false }
