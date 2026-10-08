@@ -6,9 +6,21 @@ import { tmpdir } from 'node:os'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { createFreshKnowledgeBaseV04, readCanonicalV04Assets } from '../../knowledge/storage/index.ts'
 import { runCompanyDeepResearch } from '../../workflows/company-deep-research/index.ts'
-import type { ResearchAcquisitionPlugin, ResearchSignal, ResearchSignalStore } from '../../plugins/research-acquisition/contracts.ts'
+import { createCompanyResearchDataResolver } from '../../plugins/research-acquisition/company-research-data.ts'
+import type { CompanyDeepResearchResolverOptions } from '../../workflows/company-deep-research/contracts.ts'
+import type { ResearchAcquisitionPlugin, ResearchSignal, ResearchSignalStore, ResearchSourceCandidate } from '../../plugins/research-acquisition/contracts.ts'
+import type { AkshareDataClient } from '../../plugins/research-acquisition/akshare.ts'
 import { writeKnowledgeBase } from '../../knowledge/writer/writer.ts'
 import { KnowledgeBaseRegistry as Registry } from '../../knowledge/registry/registry.ts'
+
+function resolverFactory(plugins: readonly ResearchAcquisitionPlugin[], akshare?: AkshareDataClient) {
+  return (options: CompanyDeepResearchResolverOptions) => createCompanyResearchDataResolver({
+    ...options,
+    ...(akshare ? { akshare } : {}),
+    officialDisclosure: plugins.find((plugin) => /official|cninfo/i.test(plugin.name)),
+    gdelt: plugins.find((plugin) => /gdelt/i.test(plugin.name)),
+  })
+}
 
 test('Company Deep Research produces atomic canonical Knowledge and a linked report', async () => {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-company-'))
@@ -25,7 +37,7 @@ test('Company Deep Research produces atomic canonical Knowledge and a linked rep
       fetch: async (candidate) => ({ candidate, retrievedAt: '2026-09-08T00:00:00.000Z', content, contentHash: content.includes('improved') ? 'c'.repeat(64) : 'b'.repeat(64) }),
       normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: fetched.candidate.provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
     }
-    const input = { workflowRunId: 'company-run-1', handle, company: { symbol: '600519', name: 'Fixture Company' }, acquisitionPlugins: [plugin], signalStore, reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z' }
+    const input = { workflowRunId: 'company-run-1', handle, company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([plugin]), signalStore, reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z' }
     const result = await runCompanyDeepResearch(input)
     assert.equal(result.status, 'completed', result.errors.join('; '))
     assert.ok(result.report?.outputPath)
@@ -66,9 +78,9 @@ test('Company Deep Research binds two companies deterministically and is stable 
       fetch: async (candidate) => ({ candidate, retrievedAt: '2026-09-08T00:00:00.000Z', content: `${candidate.candidateId} reported stable revenue.`, contentHash: candidate.candidateId.includes('600519') ? 'c'.repeat(64) : 'd'.repeat(64) }),
       normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: fetched.candidate.provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
     }
-    const first = await runCompanyDeepResearch({ workflowRunId: 'multi-600519-1', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Company A' }, acquisitionPlugins: [plugin], reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z' })
-    const second = await runCompanyDeepResearch({ workflowRunId: 'multi-000858-1', handle: await new Registry().mount(root), company: { symbol: '000858', name: 'Company B' }, acquisitionPlugins: [plugin], reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z' })
-    const third = await runCompanyDeepResearch({ workflowRunId: 'multi-600519-2', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Company A' }, acquisitionPlugins: [plugin], reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z' })
+    const first = await runCompanyDeepResearch({ workflowRunId: 'multi-600519-1', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Company A' }, dataResolverFactory: resolverFactory([plugin]), reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z' })
+    const second = await runCompanyDeepResearch({ workflowRunId: 'multi-000858-1', handle: await new Registry().mount(root), company: { symbol: '000858', name: 'Company B' }, dataResolverFactory: resolverFactory([plugin]), reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z' })
+    const third = await runCompanyDeepResearch({ workflowRunId: 'multi-600519-2', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Company A' }, dataResolverFactory: resolverFactory([plugin]), reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z' })
     assert.equal(first.status, 'completed', first.errors.join('; '))
     assert.equal(second.status, 'completed', second.errors.join('; '))
     assert.equal(third.status, 'completed', third.errors.join('; '))
@@ -102,5 +114,75 @@ test('Schema 0.4 shared Writer rejects a forged receipt without Validator runtim
     assert.equal(imitationResult.error?.code, 'validation_required')
   } finally {
     await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('Company resolves neutral structured data and keeps signal append between discovery and fetch', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-company-data-'))
+  const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-data-reports-'))
+  try {
+    const asOf = '2026-09-08T00:00:00.000Z'
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-company-data-test', now: asOf })
+    const signals: ResearchSignal[] = []
+    const signalStore: ResearchSignalStore = { append: async (signal) => { signals.push(signal) }, listForCompany: async () => signals }
+    const akshare: AkshareDataClient = {
+      companyBasic: async () => [{ item: 'name', value: 'Fixture Company' }],
+      financialData: async () => [{ report_date: '2026-06-30', publication_date: '2026-08-01', metric: 0 }],
+      historicalMarketData: async () => [{ date: '2026-09-08', close: 0 }],
+    }
+    const fetched: string[] = []
+    const makePlugin = (name: string, provider: string, candidate: ResearchSourceCandidate): ResearchAcquisitionPlugin => ({
+      name,
+      discover: async () => [candidate],
+      fetch: async (source) => {
+        assert.equal(signals.some((signal) => signal.signalId === `signal-${source.candidateId}`), true, 'signal append must finish before fetch starts')
+        fetched.push(source.candidateId)
+        if (provider === 'gdelt' && source.candidateId === 'news-unknown-date') throw new Error('fixture GDELT fetch failure')
+        return { candidate: source, retrievedAt: asOf, content: 'Official company filing.', contentHash: provider === 'gdelt' ? 'c'.repeat(64) : 'a'.repeat(64) }
+      },
+      normalize: async (source) => ({ candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: source.content, contentHash: source.contentHash!, canonicalUrl: source.candidate.url, publisher: provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
+    })
+    const officialCandidate: ResearchSourceCandidate = { candidateId: 'official-unknown-date', kind: 'official_disclosure', tier: 1, title: 'Official filing', url: 'https://example.com/filing', provider: 'cninfo' }
+    const futureCandidate: ResearchSourceCandidate = { candidateId: 'news-future', kind: 'news', tier: 3, title: 'Future news', url: 'https://example.com/future', provider: 'gdelt', publishedAt: '2026-09-09T00:00:00.000Z' }
+    const qualifiedCandidate: ResearchSourceCandidate = { candidateId: 'news-qualified', kind: 'news', tier: 3, title: 'Dated news', url: 'https://example.com/dated', provider: 'gdelt', publishedAt: '2026-09-07T00:00:00.000Z' }
+    const official = makePlugin('fixture-official', 'cninfo', officialCandidate)
+    const news: ResearchAcquisitionPlugin = {
+      ...makePlugin('fixture-gdelt', 'gdelt', futureCandidate),
+      discover: async () => [futureCandidate, { ...futureCandidate, candidateId: 'news-unknown-date', url: 'https://example.com/unknown', publishedAt: undefined }, qualifiedCandidate],
+    }
+    const result = await runCompanyDeepResearch({ workflowRunId: 'company-data-run', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([official, news], akshare), signalStore, reportRoot: reports, asOf, now: () => asOf })
+    const valuation = result.research?.valuation as { readonly status: string; readonly missingFields: readonly string[] }
+    assert.equal(valuation.status, 'insufficient_data')
+    assert.equal(valuation.missingFields.includes('verified earnings metric'), false, 'zero is a present financial metric')
+    assert.deepEqual(fetched.sort(), ['news-qualified', 'news-unknown-date', 'official-unknown-date'])
+    assert.ok(result.research?.sourceCandidateIds.includes('official-unknown-date'), 'unknown-date evidence remains available as non-PIT-safe context')
+    assert.equal(result.research?.sourceCandidateIds.includes('news-future'), false, 'future evidence must not reach the Skill')
+    assert.ok(result.research?.sourceCandidateIds.includes('news-qualified'))
+    assert.equal(signals.length, 3, 'signal compatibility projection retains the existing as-of, dedup, and cap rules before fetch')
+    assert.equal(signals.some((signal) => signal.signalId === 'signal-news-future'), false)
+    assert.ok(result.providerOutcomes?.some((outcome) => outcome.provider === 'gdelt' && outcome.providerSucceeded && outcome.providerFailed))
+    assert.ok(result.providerOutcomes?.some((outcome) => outcome.provider === 'akshare' && outcome.providerSucceeded))
+    assert.ok(result.acquisitionDiagnostics?.some((diagnostic) => diagnostic.provider === 'gdelt' && diagnostic.status === 'failed'))
+  } finally {
+    await rm(root, { recursive: true, force: true })
+    await rm(reports, { recursive: true, force: true })
+  }
+})
+
+test('Company Deep Research observes cancellation before acquisition', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-company-cancel-'))
+  const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-cancel-reports-'))
+  try {
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-company-cancel-test', now: '2026-09-08T00:00:00.000Z' })
+    const controller = new AbortController()
+    controller.abort()
+    let called = false
+    const plugin: ResearchAcquisitionPlugin = { name: 'fixture-gdelt', discover: async () => { called = true; return [] }, fetch: async (candidate) => ({ candidate, retrievedAt: '2026-09-08T00:00:00.000Z', content: '' }), normalize: async () => { throw new Error('must not normalize') } }
+    const result = await runCompanyDeepResearch({ workflowRunId: 'company-cancel-run', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([plugin]), reportRoot: reports, signal: controller.signal })
+    assert.equal(result.status, 'cancelled')
+    assert.equal(called, false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+    await rm(reports, { recursive: true, force: true })
   }
 })

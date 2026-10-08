@@ -1,18 +1,29 @@
 import type { KnowledgeBaseHandle } from '../../knowledge/storage/handle.ts'
 import type { CompanyResearchResult } from '../../skills/company-research/contracts.ts'
-import type { ResearchAcquisitionPlugin, ResearchCompanyIdentity, ResearchSignalStore, ResearchAcquisitionDiagnostic, ResearchProviderOutcome } from '../../plugins/research-acquisition/contracts.ts'
-import type { AkshareDataClient } from '../../plugins/research-acquisition/akshare.ts'
+import type { ResearchCompanyIdentity, ResearchSignalStore, ResearchAcquisitionDiagnostic, ResearchProviderOutcome, ResearchSourceCandidate } from '../../plugins/research-acquisition/contracts.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import type { ResolutionIntentSummary } from '../../knowledge/production/contracts.ts'
 import type { CompanyIndustryExposureInput, IndustryExposureBridgeResult } from './industry-exposure-bridge.ts'
 import type { ResearchQualityGateResult } from '../research-quality-gate.ts'
+import type { DataResolver } from '../../data/resolver.ts'
+import type { CompanyResearchDataPayload } from '../../plugins/research-acquisition/company-research-data.ts'
+import type { DataRequirement } from '../../data/contracts.ts'
+
+export interface CompanyDeepResearchResolverOptions {
+  readonly company: ResearchCompanyIdentity
+  readonly asOf: string
+  readonly now: () => string
+  readonly signal?: AbortSignal
+  readonly limitPerSource: number
+  readonly onCandidatesDiscovered: (event: { readonly provider: 'CNINFO' | 'GDELT'; readonly candidates: readonly ResearchSourceCandidate[]; readonly requirement: DataRequirement }) => Promise<void> | void
+}
+export type CompanyDeepResearchDataResolverFactory = (options: CompanyDeepResearchResolverOptions) => DataResolver<CompanyResearchDataPayload>
 
 export interface CompanyDeepResearchInput {
   readonly workflowRunId: string
   readonly handle: KnowledgeBaseHandle
   readonly company: ResearchCompanyIdentity
-  readonly acquisitionPlugins: readonly ResearchAcquisitionPlugin[]
-  readonly akshare?: AkshareDataClient
+  readonly dataResolverFactory: CompanyDeepResearchDataResolverFactory
   readonly asOf?: string
   readonly reportRoot: string
   readonly signalStore?: ResearchSignalStore

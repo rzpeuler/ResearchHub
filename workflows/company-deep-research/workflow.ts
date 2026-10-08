@@ -2,9 +2,10 @@ import { resolve } from 'node:path'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { KnowledgeProductionGateway } from '../../knowledge/production/gateway.ts'
 import { CompanyResearchSkill } from '../../skills/company-research/skill.ts'
-import type { NormalizedResearchSource, ResearchSourceCandidate, ResearchAcquisitionDiagnostic, ResearchProviderOutcome } from '../../plugins/research-acquisition/contracts.ts'
-import { sha256 } from '../../plugins/research-acquisition/hash.ts'
-import { validateUsableAcquisitionPayload } from '../../plugins/research-acquisition/payload-validation.ts'
+import type { NormalizedResearchSource, ResearchAcquisitionDiagnostic, ResearchProviderOutcome } from '../../plugins/research-acquisition/contracts.ts'
+import type { CompanyResearchDataPayload, CompanyResearchEvidenceBatch, CompanyProfileSnapshot, CompanyFinancialHistory, CompanyMarketHistory } from '../../plugins/research-acquisition/company-research-data.ts'
+import { materializePhase3CommonRequirement } from '../../data/requirements.ts'
+import type { DataResolver, ResolvedDataItem } from '../../data/resolver.ts'
 import { normalizeCompanyCandidateIdentity } from '../../skills/knowledge-curation/identity/company-identity.ts'
 import { validateResearchReport, writeResearchReport, type ResearchReport } from '../../app/services/research-report.ts'
 import type { CompanyDeepResearchInput, CompanyDeepResearchResult } from './contracts.ts'
@@ -12,7 +13,7 @@ import { runResearchQualityGate } from '../research-quality-gate.ts'
 import { calculateCompanyIndustryExposureBridge, renderCompanyIndustryExposureBridge } from './industry-exposure-bridge.ts'
 
 const safeId = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
-type AcquiredResearch = { readonly sources: readonly NormalizedResearchSource[]; readonly financialData?: unknown; readonly marketData?: unknown; readonly diagnostics: readonly ResearchAcquisitionDiagnostic[]; readonly providerOutcomes: readonly ResearchProviderOutcome[] }
+type AcquiredResearch = { readonly sources: readonly NormalizedResearchSource[]; readonly profileData?: CompanyProfileSnapshot; readonly financialData?: CompanyFinancialHistory['rows']; readonly marketData?: CompanyMarketHistory['rows']; readonly diagnostics: readonly ResearchAcquisitionDiagnostic[]; readonly providerOutcomes: readonly ResearchProviderOutcome[] }
 
 function check(input: CompanyDeepResearchInput): void {
   if (!safeId.test(input.workflowRunId)) throw new Error('workflowRunId must be safe')
@@ -21,7 +22,6 @@ function check(input: CompanyDeepResearchInput): void {
 }
 
 function abortIfNeeded(signal: AbortSignal | undefined): void { if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED') }
-function withinAsOf(publishedAt: string | undefined, asOf: string): boolean { return publishedAt === undefined || Number.isNaN(Date.parse(publishedAt)) || Date.parse(publishedAt) <= Date.parse(asOf) }
 function normalizeResearchCompany(company: CompanyDeepResearchInput['company']): CompanyDeepResearchInput['company'] {
   const normalized = normalizeCompanyCandidateIdentity({ candidateId: 'research-company', entityType: 'company', name: company.name ?? company.symbol, semanticFields: { ticker: company.symbol, ...(company.exchange === undefined ? {} : { exchange: company.exchange }) }, evidenceBlockRefs: [], reason: 'Research input identity normalization' })
   if (normalized.diagnostics.length > 0) throw new Error(`Company identity is unresolved: ${normalized.diagnostics.map((item) => item.message).join('; ')}`)
@@ -30,67 +30,78 @@ function normalizeResearchCompany(company: CompanyDeepResearchInput['company']):
   return { symbol: String(fields.ticker ?? company.symbol), name: normalized.candidate.name, exchange }
 }
 
-async function acquireStructuredData(input: CompanyDeepResearchInput): Promise<AcquiredResearch> {
-  if (!input.akshare) return { sources: [], diagnostics: [], providerOutcomes: [] }
-  const now = input.now ?? (() => new Date().toISOString())
-  const entries: Array<{ readonly key: string; readonly title: string; readonly value: unknown }> = []
-  const diagnostics: ResearchAcquisitionDiagnostic[] = []
-  let usableSourceCount = 0
-  let emptyCount = 0
-  let failedCount = 0
-  const readers = [['basic', 'AKShare company basic information', input.akshare.companyBasic.bind(input.akshare)], ['financial', 'AKShare financial data', input.akshare.financialData.bind(input.akshare)], ['market', 'AKShare historical market data', input.akshare.historicalMarketData.bind(input.akshare)]] as const
-  for (const [key, title, read] of readers) {
-    try {
-      const value = await read({ symbol: input.company.symbol })
-      const status = validateUsableAcquisitionPayload(value)
-      if (status.status === 'usable') { entries.push({ key, title, value }); usableSourceCount += 1 }
-      else { diagnostics.push({ provider: 'akshare', candidateId: `akshare-${key}-${input.company.symbol}`, kind: 'structured_data', status: status.status, reason: status.reason }); if (status.status === 'empty') emptyCount += 1; else failedCount += 1 }
-    } catch (error) { failedCount += 1; diagnostics.push({ provider: 'akshare', candidateId: `akshare-${key}-${input.company.symbol}`, kind: 'structured_data', status: 'failed', reason: error instanceof Error ? error.message : String(error) }) }
-  }
-  const sources = entries.map((entry): NormalizedResearchSource => {
-    const content = JSON.stringify(entry.value)
-    const candidate: ResearchSourceCandidate = { candidateId: `akshare-${entry.key}-${input.company.symbol}`, kind: 'structured_data', tier: 2, title: entry.title, provider: 'akshare', metadata: { companySymbol: input.company.symbol, dataKind: entry.key } }
-    return { candidate, retrievedAt: now(), title: entry.title, content, contentHash: sha256(content), publisher: 'AKShare', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }
-  })
-  return { sources, financialData: entries.find((entry) => entry.key === 'financial')?.value, marketData: entries.find((entry) => entry.key === 'market')?.value, diagnostics, providerOutcomes: [{ provider: 'akshare', providerAttempted: true, providerSucceeded: usableSourceCount > 0, providerEmpty: emptyCount > 0 && usableSourceCount === 0, providerFailed: failedCount > 0, usableSourceCount }] }
+function resolvedValue<T extends CompanyResearchDataPayload>(item: ResolvedDataItem<CompanyResearchDataPayload>, kind: T['kind']): T | undefined {
+  if (item.value?.kind === kind) return item.value as T
+  for (const observation of item.acquisition.observations ?? []) if (observation.data.kind === kind) return observation.data as T
+  return undefined
 }
 
-async function acquire(input: CompanyDeepResearchInput, asOf: string): Promise<AcquiredResearch> {
+function resolvedValues<T extends CompanyResearchDataPayload>(item: ResolvedDataItem<CompanyResearchDataPayload>, kind: T['kind']): readonly T[] {
+  const values = [item.value, ...(item.acquisition.observations ?? []).map((observation) => observation.data)]
+  return [...new Set(values.filter((value): value is CompanyResearchDataPayload => value?.kind === kind))] as T[]
+}
+
+function providerForSource(sourceId: string): string { return sourceId.startsWith('cninfo-') ? 'cninfo' : sourceId.startsWith('gdelt-') ? 'gdelt' : sourceId.startsWith('akshare-') ? 'akshare' : sourceId }
+
+async function acquire(input: CompanyDeepResearchInput, company: CompanyDeepResearchInput['company'], asOf: string): Promise<AcquiredResearch> {
   const limit = Math.max(1, Math.min(input.maxSources ?? 20, 50))
-  const discovered: ResearchSourceCandidate[] = []
-  const diagnostics: ResearchAcquisitionDiagnostic[] = []
-  const providerMap = new Map<string, ResearchProviderOutcome>()
-  for (const plugin of input.acquisitionPlugins) {
-    abortIfNeeded(input.signal)
-    const provider = plugin.name.includes('official') ? 'cninfo' : plugin.name.includes('gdelt') ? 'gdelt' : plugin.name
-    try {
-      const candidates = await plugin.discover({ company: input.company, asOf, limitPerKind: Math.min(10, limit) })
-      discovered.push(...candidates)
-      providerMap.set(provider, { provider, providerAttempted: true, providerSucceeded: candidates.length > 0, providerEmpty: candidates.length === 0, providerFailed: false, usableSourceCount: 0 })
-      if (candidates.length === 0) diagnostics.push({ provider, status: 'empty', reason: 'provider returned no source candidates' })
-    } catch (error) { diagnostics.push({ provider, status: 'failed', reason: error instanceof Error ? error.message : String(error) }); providerMap.set(provider, { provider, providerAttempted: true, providerSucceeded: false, providerEmpty: false, providerFailed: true, usableSourceCount: 0 }) }
-  }
-  const unique = [...new Map(discovered.filter((candidate) => withinAsOf(candidate.publishedAt, asOf)).map((item) => [item.candidateId, item])).values()].slice(0, limit)
   const now = input.now ?? (() => new Date().toISOString())
-  for (const candidate of unique) if (input.signalStore && ['news', 'official_disclosure', 'rss'].includes(candidate.kind)) await input.signalStore.append({ signalId: `signal-${candidate.candidateId}`, kind: candidate.kind === 'official_disclosure' ? 'announcement' : 'news', source: candidate, publishedAt: candidate.publishedAt, discoveredAt: now(), contentReference: candidate.url })
-  const normalized: NormalizedResearchSource[] = []
-  for (const candidate of unique) {
-    abortIfNeeded(input.signal)
-    const plugin = input.acquisitionPlugins.find((item) => item.name.includes(candidate.kind === 'official_disclosure' ? 'official' : candidate.kind === 'rss' ? 'rss' : candidate.kind === 'news' ? 'gdelt' : '')) ?? input.acquisitionPlugins[0]
-    if (!plugin) continue
-    try {
-      const fetched = await plugin.fetch(candidate)
-      const payload = validateUsableAcquisitionPayload(fetched.content)
-      if (payload.status !== 'usable') { diagnostics.push({ provider: candidate.provider, candidateId: candidate.candidateId, kind: candidate.kind, status: payload.status, reason: payload.reason }); continue }
-      normalized.push(await plugin.normalize(fetched))
-      const prior = providerMap.get(candidate.provider) ?? { provider: candidate.provider, providerAttempted: true, providerSucceeded: false, providerEmpty: false, providerFailed: false, usableSourceCount: 0 }
-      providerMap.set(candidate.provider, { ...prior, providerSucceeded: true, providerEmpty: false, usableSourceCount: prior.usableSourceCount + 1 })
-    } catch (error) { diagnostics.push({ provider: candidate.provider, candidateId: candidate.candidateId, kind: candidate.kind, status: 'failed', reason: error instanceof Error ? error.message : String(error) }); const prior = providerMap.get(candidate.provider); if (prior) providerMap.set(candidate.provider, { ...prior, providerFailed: true }) }
+  const discoveredCandidateIds = new Set<string>()
+  let consideredCandidateCount = 0
+  const dataResolver: DataResolver<CompanyResearchDataPayload> = input.dataResolverFactory({
+    company, asOf, now, signal: input.signal, limitPerSource: Math.min(10, Math.floor(limit / 2)),
+    onCandidatesDiscovered: async ({ candidates }) => {
+      if (!input.signalStore) return
+      for (const candidate of candidates) {
+        abortIfNeeded(input.signal)
+        if (discoveredCandidateIds.has(candidate.candidateId)) continue
+        discoveredCandidateIds.add(candidate.candidateId)
+        const publishedAt = candidate.publishedAt === undefined ? Number.NaN : Date.parse(candidate.publishedAt)
+        if (!Number.isNaN(publishedAt) && publishedAt > Date.parse(asOf)) continue
+        if (consideredCandidateCount >= limit) continue
+        consideredCandidateCount += 1
+        if (!['news', 'official_disclosure', 'rss'].includes(candidate.kind)) continue
+        await input.signalStore.append({ signalId: `signal-${candidate.candidateId}`, kind: candidate.kind === 'official_disclosure' ? 'announcement' : 'news', source: candidate, publishedAt: candidate.publishedAt, discoveredAt: now(), contentReference: candidate.url })
+      }
+    },
+  })
+  const context = { workflowId: 'company-deep-research' as const, ticker: company.symbol, companyId: company.name, asOf }
+  const requirements = [
+    materializePhase3CommonRequirement('company_basic_profile', context),
+    materializePhase3CommonRequirement('company_financial_history', context),
+    materializePhase3CommonRequirement('company_market_history', { ...context, period: { end: asOf } }),
+    materializePhase3CommonRequirement('company_research_evidence', context),
+  ]
+  abortIfNeeded(input.signal)
+  const bundle = await dataResolver.resolve(requirements)
+  abortIfNeeded(input.signal)
+  const profileItem = bundle.items.find((item) => item.metricId === 'company_basic_profile')
+  const financialItem = bundle.items.find((item) => item.metricId === 'company_financial_history')
+  const marketItem = bundle.items.find((item) => item.metricId === 'company_market_history')
+  const evidenceItem = bundle.items.find((item) => item.metricId === 'company_research_evidence')
+  const profileData = profileItem && resolvedValue<CompanyProfileSnapshot>(profileItem, 'profile')
+  const financialData = financialItem && resolvedValue<CompanyFinancialHistory>(financialItem, 'financial')
+  const marketData = marketItem && resolvedValue<CompanyMarketHistory>(marketItem, 'market')
+  const evidenceBatches = evidenceItem ? resolvedValues<CompanyResearchEvidenceBatch>(evidenceItem, 'evidence') : []
+  const sources = [...new Map(evidenceBatches.flatMap((batch) => batch.documents).map((document) => [document.record.candidate.candidateId, document.record])).values()].slice(0, limit)
+  const diagnostics: ResearchAcquisitionDiagnostic[] = []
+  const outcomes = new Map<string, ResearchProviderOutcome>()
+  for (const item of bundle.items) for (const attempt of item.acquisition.attempts) {
+    const provider = providerForSource(attempt.sourceId)
+    const status = attempt.status === 'SUCCESS' ? 'usable' : attempt.status === 'NO_DATA' ? 'empty' : 'failed'
+    const prior = outcomes.get(provider) ?? { provider, providerAttempted: true, providerSucceeded: false, providerEmpty: false, providerFailed: false, usableSourceCount: 0 }
+    const observation = item.acquisition.observations?.find((entry) => entry.source.sourceId === attempt.sourceId)
+    const evidenceCount = observation?.data.kind === 'evidence' ? observation.data.documents.length : 0
+    const evidenceOutcome = observation?.data.kind === 'evidence' ? observation.data.outcome : undefined
+    const hasFailure = status === 'failed' || (evidenceOutcome?.failed ?? 0) > 0
+    const hasEmpty = status === 'empty' || (evidenceOutcome?.empty ?? 0) > 0
+    if (status !== 'usable') diagnostics.push({ provider, status, reason: attempt.diagnostic ?? attempt.status })
+    if (evidenceOutcome?.diagnostics.length) diagnostics.push({ provider, status: evidenceOutcome.failed > 0 ? 'failed' : 'empty', reason: evidenceOutcome.diagnostics.join('; ').slice(0, 500) })
+    const succeeded = status === 'usable' && (provider === 'akshare' ? item.value !== undefined : evidenceCount > 0)
+    outcomes.set(provider, { ...prior, providerSucceeded: prior.providerSucceeded || succeeded, providerEmpty: prior.providerEmpty || (!succeeded && hasEmpty), providerFailed: prior.providerFailed || hasFailure, usableSourceCount: prior.usableSourceCount + (succeeded ? provider === 'akshare' ? 1 : evidenceCount : 0) })
   }
-  const structured = await acquireStructuredData(input)
-  diagnostics.push(...structured.diagnostics); for (const outcome of structured.providerOutcomes) { const prior = providerMap.get(outcome.provider); providerMap.set(outcome.provider, prior ? { ...prior, providerSucceeded: prior.providerSucceeded || outcome.providerSucceeded, providerEmpty: prior.providerEmpty && outcome.providerEmpty, providerFailed: prior.providerFailed || outcome.providerFailed, usableSourceCount: prior.usableSourceCount + outcome.usableSourceCount } : outcome) }
-  const outcomes = [...providerMap.values()].map((outcome) => ({ ...outcome, providerSucceeded: outcome.usableSourceCount > 0, providerEmpty: outcome.usableSourceCount === 0 && diagnostics.some((item) => item.provider === outcome.provider && item.status === 'empty') })).sort((left, right) => left.provider.localeCompare(right.provider))
-  return { sources: [...normalized.filter((source) => withinAsOf(source.candidate.publishedAt, asOf)), ...structured.sources].slice(0, limit), financialData: structured.financialData, marketData: structured.marketData, diagnostics, providerOutcomes: outcomes }
+  for (const [provider, outcome] of outcomes) outcomes.set(provider, { ...outcome, providerSucceeded: outcome.usableSourceCount > 0 })
+  return { sources, profileData, financialData: financialData?.rows, marketData: marketData?.rows, diagnostics, providerOutcomes: [...outcomes.values()].sort((a, b) => a.provider.localeCompare(b.provider)) }
 }
 
 export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): Promise<CompanyDeepResearchResult> {
@@ -100,11 +111,11 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     abortIfNeeded(input.signal)
     const now = input.now ?? (() => new Date().toISOString())
     const asOf = input.asOf ?? now()
-    const acquired = await acquire({ ...input, company }, asOf)
+    const acquired = await acquire(input, company, asOf)
     abortIfNeeded(input.signal)
     const gateway = new KnowledgeProductionGateway(new KnowledgeBaseRegistry())
     const existingKnowledgeProjection = input.useStructuredKnowledge === false ? [] : await gateway.projectExistingKnowledge(input.handle, company)
-    const research = await new CompanyResearchSkill(now, input.reasoningExecutor).synthesize({ company, asOf, sources: acquired.sources, financialData: acquired.financialData, marketData: acquired.marketData, existingKnowledgeProjection })
+    const research = await new CompanyResearchSkill(now, input.reasoningExecutor).synthesize({ company, asOf, sources: acquired.sources, profileData: acquired.profileData, financialData: acquired.financialData, marketData: acquired.marketData, existingKnowledgeProjection })
     const industryExposure = input.industryExposure === undefined ? undefined : calculateCompanyIndustryExposureBridge(input.industryExposure)
     const reportResearch = industryExposure === undefined ? research : { ...research, sections: research.sections.map((section) => section.title === 'Industry Exposure' ? { ...section, markdown: `${section.markdown}\n\n${renderCompanyIndustryExposureBridge(industryExposure)}`, sourceCandidateIds: [...new Set([...section.sourceCandidateIds, ...industryExposure.items.flatMap((item) => [...item.driver.sourceRefs, ...item.exposure.sourceRefs, ...(item.sensitivity?.sourceRefs ?? [])])])] } : section) }
     const qualityGate = runResearchQualityGate({ profile: 'company', asOf, sources: acquired.sources, referencedSourceCandidateIds: reportResearch.sections.flatMap((section) => section.sourceCandidateIds), proposalSourceCandidateIds: research.proposals.flatMap((proposal) => proposal.sourceCandidateIds ?? []), reportSourceCandidateIds: reportResearch.sections.flatMap((section) => section.sourceCandidateIds) })

@@ -1,5 +1,5 @@
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
-import type { CompanyResearchInput, CompanyResearchResult, SemanticKnowledgeProposal } from './contracts.ts'
+import type { CompanyResearchFinancialObservation, CompanyResearchInput, CompanyResearchResult, SemanticKnowledgeProposal } from './contracts.ts'
 
 export const COMPANY_RESEARCH_SECTIONS = ['Company Overview', 'Business Model', 'Business Segments', 'Revenue / Profit Drivers', 'Products', 'Technologies', 'Industry Exposure', 'Supply Chain', 'Competition', 'Financial Quality', 'Growth Drivers', 'Management / Capital Allocation', 'Catalysts', 'Risks', 'Valuation', 'Bull / Base / Bear', 'Variant Perception', 'Investment Thesis', 'Monitoring Checklist'] as const
 const LOCAL_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
@@ -28,6 +28,7 @@ export class CompanyResearchSkill {
         objective: `A-share company deep research for ${input.company.symbol}`,
         asOf: input.asOf,
         boundedSources: input.sources.slice(0, 20).map((source) => ({ candidateId: source.candidate.candidateId, kind: source.candidate.kind, tier: source.candidate.tier, title: source.title, publisher: source.publisher, publishedAt: source.candidate.publishedAt ?? null, content: source.content.slice(0, 1_200) })),
+        structuredProfileData: input.profileData ?? null,
         structuredFinancialData: input.financialData ?? null,
         structuredMarketData: input.marketData ?? null,
         existingKnowledgeProjection: input.existingKnowledgeProjection ?? [],
@@ -95,4 +96,4 @@ function finalizeResearch(input: CompanyResearchInput, partial: { sections: Comp
 }
 function sectionId(title: string): string { return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') }
 function gap(title: string): string { return `Research gap: no bounded evidence was supplied for ${title}; no conclusion is asserted.` }
-function extractMetric(value: unknown): number | undefined { if (!Array.isArray(value) || value.length === 0) return undefined; const first = value[0]; if (!first || typeof first !== 'object' || Array.isArray(first)) return undefined; const candidate = (first as Record<string, unknown>).metric ?? (first as Record<string, unknown>).value; return typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 0 ? candidate : undefined }
+function extractMetric(value: readonly CompanyResearchFinancialObservation[] | undefined): number | undefined { const candidate = value?.[0]?.metrics.metric; return typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 0 ? candidate : undefined }

@@ -16,7 +16,7 @@ test('Company Research without a verified metric fails closed and keeps the 19-s
   assert.match(valuation.note, /no implied relative valuation is produced without attributable peer data/i)
 })
 test('Company Research with a verified metric still requires attributable peer inputs', () => {
-  const result = new CompanyResearchSkill(() => '2026-09-08T00:00:00.000Z').run({ company: { symbol: '600519', name: 'Fixture Co' }, asOf: '2026-09-08T00:00:00.000Z', sources: [source], financialData: [{ metric: 10 }] })
+  const result = new CompanyResearchSkill(() => '2026-09-08T00:00:00.000Z').run({ company: { symbol: '600519', name: 'Fixture Co' }, asOf: '2026-09-08T00:00:00.000Z', sources: [source], financialData: [{ metrics: { metric: 10 }, pointInTimeSafe: false }] })
   const valuation = result.valuation as { readonly status: string; readonly missingFields: readonly string[]; readonly note: string; readonly result?: unknown }
   assert.equal(valuation.status, 'insufficient_data')
   assert.deepEqual(valuation.missingFields, ['attributable peer valuation inputs'])
