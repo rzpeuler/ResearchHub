@@ -310,3 +310,55 @@ The continuation remains `IMPLEMENTED / SOL ACCEPTANCE PENDING`. It does not
 claim Sol acceptance and does not perform a merge. The entry refs already
 contained the Phase 4 history as recorded above; the continuation's changes are
 committed only to the existing Phase 4 branch.
+
+### Fresh verification after the approved native decision
+
+The repository was rechecked from `C:\Users\Administrator\Desktop\ResearchHub`
+on 2026-10-09. The current refs are:
+
+| Ref | Verified SHA | State |
+| --- | --- | --- |
+| Phase 3 delivered commit | `7cc569667327dba0afe02bf503ba885b0803b1a7` | Ancestor of `main` and current Phase 4 HEAD |
+| `main` / `origin/main` | `9424d3b01185d8df8310c224cffa8e81622e69b6` | Equal; unchanged by this work |
+| Phase 4 local / upstream branch | `ac2709923ae166469bb9ac66b3967b5525cbbdaa` | Equal; remains outside `main` |
+| Worktree | — | Clean before this report update |
+
+This supersedes the earlier continuation's entry-ref snapshot. No branch,
+worktree, or task was created, and no merge or ref rewrite was performed.
+
+The production-path command
+`node --import tsx --test tests/app/services/industry-research-integration.test.ts tests/validation/phase4-industry-data-fixture-e2e.test.ts tests/workflows/data-layer-foundation.test.ts tests/workflows/industry-deep-research/industry-deep-research-workflow.test.ts`
+passed **87/87**. It includes the Application-invoked production Industry
+Workflow resolving the declared DOMAIN needs through DataResolver and the exact
+Catalog/SourcePolicy/Plugin/Skill chain; the test-only canonical path exercises
+eligible structured observations while production remains noncanonical.
+`npm run client:test` passed 97/97, root and client typechecks passed, and
+`npm run client:build` passed with the existing 628.73 kB chunk advisory.
+
+The fresh `npm run test:node` run reported 2,102 tests: 2,078 passed and 24
+failed. Comparing normalized failing test identifiers with the committed Phase
+4 baseline found **25 baseline failures, 24 current failures, zero new
+identifiers, and one fixed identifier** (`Application Industry research
+projects canonical graph and replays semantic objects without duplication`).
+The first concurrent `npm test` run transiently reported the valuation HTTP
+route test as running instead of blocked; its isolated rerun passed, and the
+subsequent full Node rerun also passed that test. The full suite still exits
+nonzero because the 24 remaining identifiers are pre-existing baseline
+failures.
+
+A fresh real-source Application acceptance completed at
+`startedAt=2026-10-08T20:04:34.533Z`,
+`asOf=2026-10-08T20:04:34.533Z`, and
+`generatedAt=2026-10-08T20:04:50.678Z` (UTC). It made 64 network requests:
+MIIT 12 HTTP 200, Gov.cn search 8 HTTP 200, Gov.cn 16 HTTP 200, CPCA 24 HTTP
+200, and Eastmoney 4 transport errors. Both targets completed 16-section
+reports with `PARTIAL` coverage, eight `NO_CANONICAL_INDUSTRY_METRIC` gaps,
+zero structured observations, and zero report source refs on this attempt. The
+production Catalog was empty; no metric-specific operation ran and no metric
+was promoted. This records a real generic-evidence path attempt, not numeric
+metric acceptance or value-version PIT proof.
+
+The named `writing-plans` skill was not installed in the available skill
+directories. The existing plan was manually re-reviewed against the approved
+taskbook constraints, Phase 4 spec, repository guidance, actual source path,
+and test evidence. Its review conclusion remains approved for native delivery.
