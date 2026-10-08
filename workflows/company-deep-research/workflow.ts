@@ -50,13 +50,16 @@ function structuredSource(metricId: string, item: ResolvedDataItem<CompanyResear
   if (!source) return undefined
   const dataKind = metricId === 'company_basic_profile' ? 'basic' : metricId === 'company_financial_history' ? 'financial' : 'market'
   const title = metricId === 'company_basic_profile' ? 'Company basic profile' : metricId === 'company_financial_history' ? 'Company financial history' : 'Company market history'
+  const pointInTimeStatus = value.kind === 'evidence' ? 'UNVERIFIED' : value.pointInTimeStatus
   const metadata = {
     dataKind, metricId, sourceId: source.sourceId, fallbackLevel: source.fallbackLevel,
     originAuthority: source.originAuthority, originPublisher: source.originPublisher,
     retrievalProvider: source.retrievalProvider, sourceUrl: source.sourceUrl,
     publishedAt: source.publishedAt, retrievedAt: source.retrievedAt,
     observedAt: source.observedAt, observationAvailableAt: source.observationAvailableAt,
-    valueVersion: source.valueVersion, quality: item.quality, attempts: item.attempts,
+    valueVersion: source.valueVersion ?? { status: 'UNVERIFIED', reason: metricId === 'company_basic_profile' ? 'Profile snapshot has no identified historical value version' : 'Historical numeric value version is not identified' },
+    valueVersionStatus: source.valueVersion?.status ?? 'UNVERIFIED', quality: item.quality, attempts: item.attempts,
+    pointInTimeStatus, qualityStatus: pointInTimeStatus,
   }
   const content = JSON.stringify(value)
   const publishedAt = source.publishedAt ?? (metricId === 'company_market_history' ? source.observedAt : undefined)
@@ -75,7 +78,7 @@ async function acquire(input: CompanyDeepResearchInput, company: CompanyDeepRese
   const discoveredCandidateIds = new Set<string>()
   let consideredCandidateCount = 0
   const dataResolver: DataResolver<CompanyResearchDataPayload> = input.dataResolverFactory({
-    company, asOf, now, signal: input.signal, limitPerSource: Math.min(10, limit),
+    company, asOf, asOfMode: input.asOf === undefined ? 'CURRENT_VALUE_ONLY' : 'HISTORICAL', now, signal: input.signal, limitPerSource: Math.min(10, limit),
     onCandidatesDiscovered: async ({ candidates }) => {
       if (!input.signalStore) return
       for (const candidate of candidates) {
@@ -91,7 +94,7 @@ async function acquire(input: CompanyDeepResearchInput, company: CompanyDeepRese
       }
     },
   })
-  const context = { workflowId: 'company-deep-research' as const, ticker: company.symbol, companyId: company.name, asOf }
+  const context = { workflowId: 'company-deep-research' as const, ticker: company.symbol, companyId: company.name, asOf, asOfMode: input.asOf === undefined ? 'CURRENT_VALUE_ONLY' as const : 'HISTORICAL' as const }
   const requirements = [
     materializePhase3CommonRequirement('company_basic_profile', context),
     materializePhase3CommonRequirement('company_financial_history', context),
@@ -118,26 +121,37 @@ async function acquire(input: CompanyDeepResearchInput, company: CompanyDeepRese
     ...(marketItem && marketData ? [structuredSource('company_market_history', marketItem, marketData, company)] : []),
   ].filter((source): source is NormalizedResearchSource => source !== undefined)
   const sources = [...externalSources, ...dataValues]
-  const durableSourceCandidateIds = [...dataValues.map((source) => source.candidate.candidateId), ...selectedExternalDocuments.filter((document) => document.dateStatus === 'QUALIFIED' && document.pointInTimeSafe).map((document) => document.record.candidate.candidateId)]
+  const durableDataSourceIds = dataValues.filter((source) => {
+    const status = source.candidate.metadata?.dataProvenance && typeof source.candidate.metadata.dataProvenance === 'object'
+      ? (source.candidate.metadata.dataProvenance as Record<string, unknown>).pointInTimeStatus
+      : undefined
+    return status === 'CURRENT_VALUE_ONLY' || status === 'PIT_VERIFIED'
+  }).map((source) => source.candidate.candidateId)
+  const durableSourceCandidateIds = [...durableDataSourceIds, ...selectedExternalDocuments.filter((document) => document.dateStatus === 'QUALIFIED' && document.pointInTimeSafe).map((document) => document.record.candidate.candidateId)]
   const durableSources = sources.filter((source) => durableSourceCandidateIds.includes(source.candidate.candidateId))
   const diagnostics: ResearchAcquisitionDiagnostic[] = []
   const outcomes = new Map<string, ResearchProviderOutcome>()
   for (const item of bundle.items) for (const attempt of item.acquisition.attempts) {
     const provider = providerForSource(attempt.sourceId)
+    const unsupported = attempt.status === 'UNSUPPORTED'
     const status = attempt.status === 'SUCCESS' ? 'usable' : attempt.status === 'NO_DATA' ? 'empty' : 'failed'
-    const prior = outcomes.get(provider) ?? { provider, providerAttempted: true, providerSucceeded: false, providerEmpty: false, providerFailed: false, usableSourceCount: 0 }
+    const prior = outcomes.get(provider) ?? { provider, providerAttempted: false, providerSucceeded: false, providerEmpty: false, providerFailed: false, usableSourceCount: 0 }
     const observation = item.acquisition.observations?.find((entry) => entry.source.sourceId === attempt.sourceId)
     const evidenceCount = observation?.data.kind === 'evidence' ? observation.data.documents.length : 0
     const evidenceOutcome = observation?.data.kind === 'evidence' ? observation.data.outcome : undefined
-    const hasFailure = status === 'failed' || (evidenceOutcome?.failed ?? 0) > 0
-    const hasEmpty = status === 'empty' || (evidenceOutcome?.empty ?? 0) > 0
+    const hasFailure = (status === 'failed' && !unsupported) || (evidenceOutcome?.failed ?? 0) > 0
+    const hasEmpty = status === 'empty' || unsupported || (evidenceOutcome?.empty ?? 0) > 0
     if (status !== 'usable') diagnostics.push({ provider, status, reason: attempt.diagnostic ?? attempt.status })
     if (evidenceOutcome?.diagnostics.length) diagnostics.push({ provider, status: evidenceOutcome.failed > 0 ? 'failed' : 'empty', reason: evidenceOutcome.diagnostics.join('; ').slice(0, 500) })
     const succeeded = status === 'usable' && (provider === 'akshare' ? item.value !== undefined : evidenceCount > 0)
-    outcomes.set(provider, { ...prior, providerSucceeded: prior.providerSucceeded || succeeded, providerEmpty: prior.providerEmpty || (!succeeded && hasEmpty), providerFailed: prior.providerFailed || hasFailure, usableSourceCount: prior.usableSourceCount + (succeeded ? provider === 'akshare' ? 1 : evidenceCount : 0) })
+    outcomes.set(provider, { ...prior, providerAttempted: prior.providerAttempted || !unsupported, providerSucceeded: prior.providerSucceeded || succeeded, providerEmpty: prior.providerEmpty || (!succeeded && hasEmpty), providerFailed: prior.providerFailed || hasFailure, usableSourceCount: prior.usableSourceCount + (succeeded ? provider === 'akshare' ? 1 : evidenceCount : 0) })
   }
-  for (const [provider, outcome] of outcomes) outcomes.set(provider, { ...outcome, providerSucceeded: outcome.usableSourceCount > 0 })
-  const providerOutcomes = [...outcomes.values()].map((outcome) => ({ ...outcome, providerEmpty: outcome.providerSucceeded ? false : outcome.providerEmpty })).sort((a, b) => a.provider.localeCompare(b.provider))
+  for (const [provider, outcome] of outcomes) outcomes.set(provider, {
+    ...outcome,
+    providerSucceeded: outcome.usableSourceCount > 0,
+    providerEmpty: outcome.usableSourceCount === 0 && !outcome.providerFailed,
+  })
+  const providerOutcomes = [...outcomes.values()].sort((a, b) => a.provider.localeCompare(b.provider))
   return { sources, durableSources, durableSourceCandidateIds, profileData, financialData: financialData?.rows, marketData: marketData?.rows, diagnostics, providerOutcomes }
 }
 

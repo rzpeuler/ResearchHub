@@ -65,6 +65,7 @@ export interface Phase3CommonRequirementContext {
   readonly period?: DataRequirement['period']
   readonly required?: boolean
   readonly id?: string
+  readonly asOfMode?: 'CURRENT_VALUE_ONLY' | 'HISTORICAL'
 }
 
 /** Materialize only audited Company inputs; the requested period belongs to the consumer. */
@@ -81,6 +82,7 @@ export function materializePhase3CommonRequirement(metricId: string, context: Ph
     consumer: { workflow: context.workflowId }, subject: { ticker: context.ticker, ...(context.companyId ? { companyId: context.companyId } : {}) },
     dataKind: definition.dataKind, metricId, ...(context.period ? { period: context.period } : {}),
     asOf: context.asOf, analysisAsOf: context.asOf,
+    ...(context.asOfMode ? { asOfMode: context.asOfMode } : {}),
     determinismClass: metricId === 'company_market_history' ? 'EVIDENCE_BACKED_NUMERIC' : 'SEMANTIC_QUALITATIVE',
     required: context.required ?? true, llmWebFallback: 'FORBIDDEN',
   }

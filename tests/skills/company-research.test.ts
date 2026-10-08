@@ -17,7 +17,7 @@ test('Company Research without a verified metric fails closed and keeps the 19-s
   assert.match(valuation.note, /no implied relative valuation is produced without attributable peer data/i)
 })
 test('Company Research with a verified metric still requires attributable peer inputs', () => {
-  const result = new CompanyResearchSkill(() => '2026-09-08T00:00:00.000Z').run({ company: { symbol: '600519', name: 'Fixture Co' }, asOf: '2026-09-08T00:00:00.000Z', sources: [source], financialData: [{ metrics: { metric: 10 }, pointInTimeSafe: false }] })
+  const result = new CompanyResearchSkill(() => '2026-09-08T00:00:00.000Z').run({ company: { symbol: '600519', name: 'Fixture Co' }, asOf: '2026-09-08T00:00:00.000Z', sources: [source], financialData: [{ metrics: { metric: 10 }, pointInTimeSafe: false, pointInTimeStatus: 'CURRENT_VALUE_ONLY' }] })
   const valuation = result.valuation as { readonly status: string; readonly missingFields: readonly string[]; readonly note: string; readonly result?: unknown }
   assert.equal(valuation.status, 'insufficient_data')
   assert.deepEqual(valuation.missingFields, ['attributable peer valuation inputs'])
@@ -29,21 +29,21 @@ test('Company Skill receives all structured inputs with their acquisition proven
   let seen: Record<string, unknown> | undefined
   const executor = {
     capabilities: () => ({}),
-    execute: async (request: { readonly input: unknown }) => { seen = request.input as Record<string, unknown>; return { operation: 'company_research_synthesis', output: { sections: [{ title: 'Company Overview', markdown: 'Unknown-date context', sourceCandidateIds: ['unknown-context'], proposalIds: ['proposal-1'] }], proposals: [{ proposalId: 'proposal-1', kind: 'claim', subjectKey: 'company', claimType: 'fact', statement: 'Context claim', sourceCandidateIds: ['unknown-context'] }] } } },
+    execute: async (request: { readonly input: unknown }) => { seen = request.input as Record<string, unknown>; return { operation: 'company_research_synthesis', output: { sections: [{ title: 'Company Overview', markdown: 'Unverified historical context', sourceCandidateIds: ['unknown-context', 'akshare-1'], proposalIds: ['proposal-1'] }], proposals: [{ proposalId: 'proposal-1', kind: 'claim', subjectKey: 'company', claimType: 'fact', statement: 'Context claim', sourceCandidateIds: ['unknown-context', 'akshare-1'] }] } } },
   } as unknown as ReasoningExecutor
   const structuredSources = ['company_basic_profile', 'company_financial_history', 'company_market_history'].map((metricId, index) => ({
     ...source,
-    candidate: { ...source.candidate, candidateId: `akshare-${index}`, kind: 'structured_data' as const, metadata: { dataProvenance: { metricId, sourceId: `source-${index}`, originAuthority: 'S3_AGGREGATOR', retrievalProvider: 'AKShare', valueVersion: { status: 'UNVERIFIED' } } } },
+    candidate: { ...source.candidate, candidateId: `akshare-${index}`, kind: 'structured_data' as const, metadata: { dataProvenance: { metricId, sourceId: `source-${index}`, originAuthority: 'S3_AGGREGATOR', retrievalProvider: 'AKShare', valueVersion: { status: 'UNVERIFIED' }, pointInTimeStatus: index === 0 ? 'CURRENT_VALUE_ONLY' : index === 1 ? 'UNVERIFIED' : 'PIT_VERIFIED' } } },
   }))
   const unknownContext = { ...source, publisher: 'Unknown original publisher', candidate: { ...source.candidate, candidateId: 'unknown-context', provider: 'gdelt', metadata: { dataProvenance: { originAuthority: 'S3_AGGREGATOR', retrievalProvider: 'GDELT', sourceUrl: 'https://example.com/report', publishedAt: '2026-09-07T00:00:00.000Z', dateStatus: 'QUALIFIED', pointInTimeSafe: true } } } }
   const result = await new CompanyResearchSkill(() => '2026-09-08T00:00:00.000Z', executor).synthesize({
     company: { symbol: '600519', name: 'Fixture Co' }, asOf: '2026-09-08T00:00:00.000Z', sources: [...structuredSources, unknownContext],
-    durableSourceCandidateIds: structuredSources.map((item) => item.candidate.candidateId),
-    profileData: { fields: [{ name: 'name', value: 'Fixture Co' }] },
-    financialData: [{ metrics: { metric: 0 }, pointInTimeSafe: false }],
-    marketData: [{ observedAt: '2026-09-08', close: 0, pointInTimeSafe: false }],
+    durableSourceCandidateIds: ['akshare-0', 'akshare-2'],
+    profileData: { fields: [{ name: 'name', value: 'Fixture Co' }], pointInTimeStatus: 'CURRENT_VALUE_ONLY' },
+    financialData: [{ metrics: { metric: 0 }, pointInTimeSafe: false, pointInTimeStatus: 'UNVERIFIED' }],
+    marketData: [{ observedAt: '2026-09-08', close: 0, pointInTimeSafe: true, pointInTimeStatus: 'PIT_VERIFIED' }],
   })
-  assert.deepEqual((seen?.structuredProfileData as { fields: unknown[] }).fields, [{ name: 'name', value: 'Fixture Co' }])
+  assert.deepEqual((seen?.structuredProfileData as { fields: unknown[]; pointInTimeStatus: string }).fields, [{ name: 'name', value: 'Fixture Co' }])
   assert.deepEqual((seen?.structuredFinancialData as Array<{ metrics: { metric: number } }>)[0]?.metrics, { metric: 0 })
   assert.deepEqual((seen?.structuredMarketData as Array<{ close: number }>)[0]?.close, 0)
   const bounded = seen?.boundedSources as Array<{ provider: string; publisher: string; provenance: { metricId?: string; originAuthority?: string; retrievalProvider?: string; dateStatus?: string; pointInTimeSafe?: boolean; retrievedAt?: string; contentHash?: string } | null }>
@@ -52,8 +52,10 @@ test('Company Skill receives all structured inputs with their acquisition proven
   assert.equal(external?.publisher, 'Unknown original publisher')
   assert.deepEqual(external?.provenance, { originAuthority: 'S3_AGGREGATOR', retrievalProvider: 'GDELT', sourceUrl: 'https://example.com/report', publishedAt: '2026-09-07T00:00:00.000Z', retrievedAt: source.retrievedAt, contentHash: source.contentHash, dateStatus: 'QUALIFIED', pointInTimeSafe: true })
   assert.ok(result.contextOnlySourceCandidateIds?.includes('unknown-context'))
+  assert.ok(result.contextOnlySourceCandidateIds?.includes('akshare-1'))
   assert.equal(result.sourceCandidateIds.includes('unknown-context'), false)
   assert.equal(result.sections[0]?.sourceCandidateIds.includes('unknown-context'), false)
+  assert.equal(result.sections[0]?.sourceCandidateIds.includes('akshare-1'), false)
   assert.deepEqual(result.proposals[0]?.sourceCandidateIds, [])
 })
 test('valuation utilities are deterministic and probability-weighted', () => { assert.deepEqual(relativeValuation({ metric: 10, peerMultiples: [20, 10, 15] }), { multiple: 15, impliedValue: 150, peerCount: 3 }); assert.equal(scenarioValuation([{ name: 'bull', earnings: 2, multiple: 10, probability: 0.5 }, { name: 'bear', earnings: 1, multiple: 10, probability: 0.5 }]).expectedValue, 15) })

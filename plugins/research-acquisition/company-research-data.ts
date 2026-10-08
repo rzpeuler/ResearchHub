@@ -1,6 +1,7 @@
 import type { AcquisitionResult, DataRequirement, SourceExecutionResult } from '../../data/contracts.ts'
 import { PHASE3_COMMON_SOURCE_POLICIES } from '../../data/company-research-policies.ts'
 import { DataResolver } from '../../data/resolver.ts'
+import { dailyCloseAvailableAt } from '../../data/point-in-time.ts'
 import { finalizeResearchEvidence, qualifyResearchEvidenceDate, type ResearchEvidenceBatch, type ResearchEvidenceInput, type UnqualifiedResearchEvidenceBatch } from '../../data/research-evidence.ts'
 import { runResearchDataAcquisition } from '../../data/workflow.ts'
 import type { AkshareDataClient } from './akshare.ts'
@@ -11,7 +12,7 @@ export interface CompanyProfileSnapshot {
   readonly kind: 'profile'
   readonly fields: readonly { readonly name: string; readonly value: string | number | boolean }[]
   readonly retrievedAt: string
-  readonly historicalAvailability: 'UNVERIFIED'
+  readonly pointInTimeStatus: 'CURRENT_VALUE_ONLY' | 'UNVERIFIED'
 }
 
 export interface CompanyFinancialObservation {
@@ -19,12 +20,13 @@ export interface CompanyFinancialObservation {
   readonly publishedAt?: string
   readonly metrics: Readonly<{ revenue?: number; netProfit?: number; grossMargin?: number; basicEps?: number; metric?: number }>
   readonly pointInTimeSafe: boolean
+  readonly pointInTimeStatus: 'CURRENT_VALUE_ONLY' | 'UNVERIFIED'
 }
 export interface CompanyFinancialHistory {
   readonly kind: 'financial'
   readonly rows: readonly CompanyFinancialObservation[]
   readonly retrievedAt: string
-  readonly historicalAvailability: 'UNVERIFIED'
+  readonly pointInTimeStatus: 'CURRENT_VALUE_ONLY' | 'UNVERIFIED'
 }
 
 export interface CompanyMarketObservation {
@@ -34,13 +36,14 @@ export interface CompanyMarketObservation {
   readonly low?: number
   readonly close?: number
   readonly volume?: number
-  readonly pointInTimeSafe: false
+  readonly pointInTimeSafe: boolean
+  readonly pointInTimeStatus: 'CURRENT_VALUE_ONLY' | 'PIT_VERIFIED'
 }
 export interface CompanyMarketHistory {
   readonly kind: 'market'
   readonly rows: readonly CompanyMarketObservation[]
   readonly retrievedAt: string
-  readonly historicalAvailability: 'UNVERIFIED'
+  readonly pointInTimeStatus: 'CURRENT_VALUE_ONLY' | 'PIT_VERIFIED'
 }
 
 export type CompanyResearchEvidenceBatch = ResearchEvidenceBatch<NormalizedResearchSource>
@@ -83,12 +86,16 @@ export function createCompanyResearchDataResolver(options: CompanyResearchDataRe
       const retrievedAt = options.now()
       const rows = dataRows(raw)
       if (rows.length === 0) return { status: 'NO_DATA', diagnostic: 'AKShare returned no structured rows' }
-      const data = operationId === 'akshare.companyBasic' ? normalizeProfile(rows, retrievedAt)
+      const data = operationId === 'akshare.companyBasic' ? normalizeProfile(rows, retrievedAt, requirement.asOfMode)
         : operationId === 'akshare.financialData' ? normalizeFinancial(rows, requirement, retrievedAt)
           : normalizeMarket(rows, requirement, retrievedAt)
       if (data.kind !== 'profile' && data.rows.length === 0) return { status: 'NO_DATA', diagnostic: 'No eligible structured observations' }
       if (data.kind === 'profile' && data.fields.length === 0) return { status: 'NO_DATA', diagnostic: 'No usable company profile fields' }
-      return { status: 'SUCCESS', data, source: { retrievalProvider: 'AKShare', retrievedAt, ...(data.kind === 'market' ? { observedAt: data.rows.at(-1)?.observedAt, valueVersion: { status: 'UNVERIFIED', reason: 'Market observation availability is not versioned' } as const } : {}), ...(data.kind === 'financial' ? { valueVersion: { status: 'UNVERIFIED', reason: 'Historical financial value version is not identified' } as const } : {}) } }
+      const source = { retrievalProvider: 'AKShare', retrievedAt,
+        ...(data.kind === 'market' && requirement.asOfMode === 'HISTORICAL' && data.rows.at(-1) ? { observedAt: data.rows.at(-1)!.observedAt, observationAvailableAt: dailyCloseAvailableAt(data.rows.at(-1)!.observedAt) } : {}),
+        ...(data.kind === 'market' && requirement.asOfMode !== 'HISTORICAL' ? { valueVersion: { status: 'UNVERIFIED', reason: 'Current market snapshot has no historical value-version proof' } as const } : {}),
+        ...(data.kind === 'financial' ? { valueVersion: { status: 'UNVERIFIED', reason: 'Historical financial value version is not identified' } as const } : {}) }
+      return { status: 'SUCCESS', data, source }
     }
     if (operationId === 'cninfo.discoverFetchNormalizeCompanyEvidence' || operationId === 'gdelt.discoverFetchNormalizeCompanyEvidence') {
       const plugin = operationId.startsWith('cninfo.') ? options.officialDisclosure : options.gdelt
@@ -185,7 +192,7 @@ function dataRows(raw: unknown): readonly Record<string, unknown>[] {
   return []
 }
 
-function normalizeProfile(rows: readonly Record<string, unknown>[], retrievedAt: string): CompanyProfileSnapshot {
+function normalizeProfile(rows: readonly Record<string, unknown>[], retrievedAt: string, asOfMode: DataRequirement['asOfMode']): CompanyProfileSnapshot {
   const fields: { name: string; value: string | number | boolean }[] = []
   for (const row of rows) {
     const namedRow = ['item', '字段', 'value', '值'].some((key) => Object.prototype.hasOwnProperty.call(row, key))
@@ -200,7 +207,7 @@ function normalizeProfile(rows: readonly Record<string, unknown>[], retrievedAt:
       if (value !== undefined) fields.push({ name, value })
     }
   }
-  return { kind: 'profile', fields, retrievedAt, historicalAvailability: 'UNVERIFIED' }
+  return { kind: 'profile', fields, retrievedAt, pointInTimeStatus: asOfMode === 'CURRENT_VALUE_ONLY' ? 'CURRENT_VALUE_ONLY' : 'UNVERIFIED' }
 }
 
 function normalizeFinancial(rows: readonly Record<string, unknown>[], requirement: DataRequirement, retrievedAt: string): CompanyFinancialHistory {
@@ -212,21 +219,25 @@ function normalizeFinancial(rows: readonly Record<string, unknown>[], requiremen
     if (periodEnd && !['QUALIFIED', 'UNKNOWN'].includes(qualifyResearchEvidenceDate(periodEnd, requirement))) continue
     const metrics = { revenue: numeric(row.operating_revenue ?? row.TOTALOPERATEREVE), netProfit: numeric(row.net_profit ?? row.PARENTNETPROFIT), grossMargin: numeric(row.gross_margin ?? row.XSMLL), basicEps: numeric(row.basic_eps ?? row.EPSJB), metric: numeric(row.metric ?? row.value) }
     if (Object.values(metrics).every((value) => value === undefined)) continue
-    observations.push({ ...(periodEnd ? { periodEnd } : {}), ...(publishedAt ? { publishedAt } : {}), metrics, pointInTimeSafe: false })
+    observations.push({ ...(periodEnd ? { periodEnd } : {}), ...(publishedAt ? { publishedAt } : {}), metrics, pointInTimeSafe: false, pointInTimeStatus: requirement.asOfMode === 'CURRENT_VALUE_ONLY' ? 'CURRENT_VALUE_ONLY' : 'UNVERIFIED' })
   }
-  return { kind: 'financial', rows: observations, retrievedAt, historicalAvailability: 'UNVERIFIED' }
+  return { kind: 'financial', rows: observations, retrievedAt, pointInTimeStatus: requirement.asOfMode === 'CURRENT_VALUE_ONLY' ? 'CURRENT_VALUE_ONLY' : 'UNVERIFIED' }
 }
 
 function normalizeMarket(rows: readonly Record<string, unknown>[], requirement: DataRequirement, retrievedAt: string): CompanyMarketHistory {
   const observations: CompanyMarketObservation[] = []
+  const cutoff = requirement.analysisAsOf ?? requirement.asOf
+  const historical = requirement.asOfMode === 'HISTORICAL'
   for (const row of rows) {
     const observedAt = normalizeProviderDate(row.date ?? row.日期 ?? row.trade_date ?? row.交易日期, true)
     if (!observedAt || qualifyResearchEvidenceDate(observedAt, requirement) !== 'QUALIFIED') continue
+    if (historical && Date.parse(dailyCloseAvailableAt(observedAt)) > Date.parse(cutoff)) continue
     const values = { open: numeric(row.open ?? row.开盘), high: numeric(row.high ?? row.最高), low: numeric(row.low ?? row.最低), close: numeric(row.close ?? row.收盘), volume: numeric(row.volume ?? row.成交量) }
     if (Object.values(values).every((value) => value === undefined)) continue
-    observations.push({ observedAt, ...values, pointInTimeSafe: false })
+    observations.push({ observedAt, ...values, pointInTimeSafe: historical, pointInTimeStatus: historical ? 'PIT_VERIFIED' : 'CURRENT_VALUE_ONLY' })
   }
-  return { kind: 'market', rows: observations.sort((a, b) => a.observedAt.localeCompare(b.observedAt)), retrievedAt, historicalAvailability: 'UNVERIFIED' }
+  const ordered = observations.sort((a, b) => a.observedAt.localeCompare(b.observedAt))
+  return { kind: 'market', rows: ordered, retrievedAt, pointInTimeStatus: historical ? 'PIT_VERIFIED' : 'CURRENT_VALUE_ONLY' }
 }
 
 function text(value: unknown): string | undefined { return typeof value === 'string' && value.trim() ? value.trim() : undefined }

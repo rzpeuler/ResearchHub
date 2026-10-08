@@ -3,6 +3,7 @@ import test from 'node:test'
 import { COMMON_DATA_CATALOG } from '../../data/common-catalog.ts'
 import { PHASE3_COMMON_SOURCE_POLICIES } from '../../data/company-research-policies.ts'
 import { materializePhase3CommonRequirement } from '../../data/requirements.ts'
+import { dailyCloseAvailableAt } from '../../data/point-in-time.ts'
 import { resolveSourcePolicy } from '../../data/source-policy.ts'
 import { createCompanyResearchDataResolver, type CompanyResearchEvidenceBatch } from '../../plugins/research-acquisition/company-research-data.ts'
 import { GdeltResearchPlugin } from '../../plugins/research-acquisition/gdelt.ts'
@@ -188,7 +189,7 @@ test('discovery hook can reject unsafe candidates before fetch without losing pr
   if (batch?.kind === 'evidence') assert.deepEqual([batch.outcome.discovered, batch.outcome.rejected, batch.documents.length], [2, 1, 1])
 })
 
-test('AKShare structured operations retain numeric zero, reject empty payloads, and do not assert historical version proof', async () => {
+test('AKShare historical profile and financial snapshots stay explicitly unverified while market rows use daily-close PIT', async () => {
   const calls: string[] = []
   const akshare: AkshareDataClient = {
     async companyBasic() { calls.push('basic'); return [{ item: 'employees', value: 0 }] },
@@ -196,17 +197,52 @@ test('AKShare structured operations retain numeric zero, reject empty payloads, 
     async historicalMarketData() { calls.push('market'); return [{ date: '2026-10-07', close: 0 }, { date: '2026-10-09', close: 5 }] },
   }
   const resolver = createCompanyResearchDataResolver({ company, akshare, now })
-  const forCompany = (metricId: string) => materializePhase3CommonRequirement(metricId, { ...context, workflowId: 'company-deep-research' })
+  const forCompany = (metricId: string) => materializePhase3CommonRequirement(metricId, { ...context, workflowId: 'company-deep-research', asOfMode: 'HISTORICAL' })
   const [profile, financial, market] = await Promise.all([resolver.resolveOne(forCompany('company_basic_profile')), resolver.resolveOne(forCompany('company_financial_history')), resolver.resolveOne(forCompany('company_market_history'))])
   assert.deepEqual(calls.sort(), ['basic', 'financial', 'market'])
   assert.equal(profile.value?.kind, 'profile')
-  if (profile.value?.kind === 'profile') assert.deepEqual(profile.value.fields, [{ name: 'employees', value: 0 }])
-  if (financial.value?.kind === 'financial') { assert.equal(financial.value.rows[0]?.metrics.basicEps, 0); assert.equal(financial.value.rows[0]?.pointInTimeSafe, false) }
-  if (market.value?.kind === 'market') { assert.deepEqual(market.value.rows.map((row) => row.observedAt), ['2026-10-07']); assert.equal(market.value.rows[0]?.close, 0) }
+  if (profile.value?.kind === 'profile') { assert.deepEqual(profile.value.fields, [{ name: 'employees', value: 0 }]); assert.equal(profile.value.pointInTimeStatus, 'UNVERIFIED') }
+  if (financial.value?.kind === 'financial') { assert.equal(financial.value.rows[0]?.metrics.basicEps, 0); assert.equal(financial.value.rows[0]?.pointInTimeSafe, false); assert.equal(financial.value.pointInTimeStatus, 'UNVERIFIED') }
+  if (market.value?.kind === 'market') { assert.deepEqual(market.value.rows.map((row) => row.observedAt), ['2026-10-07']); assert.equal(market.value.rows[0]?.close, 0); assert.equal(market.value.rows[0]?.pointInTimeSafe, true); assert.equal(market.value.pointInTimeStatus, 'PIT_VERIFIED') }
   assert.equal(financial.quality.pointInTimeSafe, false)
-  assert.equal(market.quality.pointInTimeSafe, false)
+  assert.equal(market.quality.pointInTimeSafe, true)
   const empty = createCompanyResearchDataResolver({ company, akshare: { ...akshare, companyBasic: async () => [] }, now })
   assert.equal((await empty.resolveOne(forCompany('company_basic_profile'))).attempts[0]?.status, 'NO_DATA')
+})
+
+test('current Company snapshots remain usable and carry CURRENT_VALUE_ONLY without claiming historical PIT', async () => {
+  const akshare: AkshareDataClient = {
+    async companyBasic() { return [{ item: 'employees', value: 0 }] },
+    async financialData() { return [{ report_date: '2025-12-31', basic_eps: 0 }] },
+    async historicalMarketData() { return [{ date: '2026-10-08', close: 0 }] },
+  }
+  const resolver = createCompanyResearchDataResolver({ company, akshare, now })
+  const requirement = (metricId: string) => materializePhase3CommonRequirement(metricId, { ...context, ...(metricId === 'company_market_history' ? {} : { period: undefined }), workflowId: 'company-deep-research', asOfMode: 'CURRENT_VALUE_ONLY' })
+  const [profile, financial, market] = await Promise.all(['company_basic_profile', 'company_financial_history', 'company_market_history'].map((id) => resolver.resolveOne(requirement(id))))
+  assert.equal(profile.value?.kind, 'profile')
+  if (profile.value?.kind === 'profile') { assert.equal(profile.value.pointInTimeStatus, 'CURRENT_VALUE_ONLY'); assert.deepEqual(profile.value.fields, [{ name: 'employees', value: 0 }]) }
+  assert.equal(financial.value?.kind, 'financial')
+  if (financial.value?.kind === 'financial') { assert.equal(financial.value.pointInTimeStatus, 'CURRENT_VALUE_ONLY'); assert.equal(financial.value.rows[0]?.metrics.basicEps, 0); assert.equal(financial.value.rows[0]?.pointInTimeSafe, false) }
+  assert.equal(market.value?.kind, 'market')
+  if (market.value?.kind === 'market') { assert.equal(market.value.pointInTimeStatus, 'CURRENT_VALUE_ONLY'); assert.equal(market.value.rows[0]?.pointInTimeStatus, 'CURRENT_VALUE_ONLY'); assert.equal(market.value.rows[0]?.pointInTimeSafe, false); assert.equal(market.value.rows[0]?.close, 0) }
+  assert.equal(market.quality.pointInTimeSafe, false)
+})
+
+test('historical market observations honor dailyCloseAvailableAt at the analysis cutoff and retain valid closes', async () => {
+  const akshare: AkshareDataClient = { companyBasic: async () => [], financialData: async () => [], historicalMarketData: async () => [{ date: '2026-10-08', close: 8 }, { date: '2026-10-07', close: 7 }] }
+  const resolveMarket = async (asOf: string) => {
+    const requirement = materializePhase3CommonRequirement('company_market_history', { workflowId: 'company-deep-research', ticker: company.symbol, asOf, asOfMode: 'HISTORICAL', period: { end: asOf } })
+    return createCompanyResearchDataResolver({ company, akshare, now }).resolveOne(requirement)
+  }
+  const beforeClose = await resolveMarket('2026-10-08T06:00:00.000Z')
+  assert.equal(beforeClose.status, 'AVAILABLE')
+  assert.deepEqual(beforeClose.value?.kind === 'market' ? beforeClose.value.rows.map((row) => row.observedAt) : [], ['2026-10-07'])
+  const afterClose = await resolveMarket('2026-10-08T07:01:00.000Z')
+  assert.equal(afterClose.status, 'AVAILABLE')
+  assert.deepEqual(afterClose.value?.kind === 'market' ? afterClose.value.rows.map((row) => row.observedAt) : [], ['2026-10-07', '2026-10-08'])
+  assert.equal(afterClose.source?.observedAt, '2026-10-08')
+  assert.equal(afterClose.source?.observationAvailableAt, dailyCloseAvailableAt('2026-10-08'))
+  assert.equal(afterClose.quality.pointInTimeSafe, true)
 })
 
 test('AKShare named profile rows with missing values cannot fabricate fields from item keys', async () => {

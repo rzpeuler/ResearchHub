@@ -40,6 +40,8 @@ test('Company Deep Research produces atomic canonical Knowledge and a linked rep
     const input = { workflowRunId: 'company-run-1', handle, company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([plugin]), signalStore, reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z' }
     const result = await runCompanyDeepResearch(input)
     assert.equal(result.status, 'completed', result.errors.join('; '))
+    const unsupportedGdelt = result.providerOutcomes?.find((outcome) => outcome.provider === 'gdelt')
+    assert.deepEqual(unsupportedGdelt && [unsupportedGdelt.providerAttempted, unsupportedGdelt.providerSucceeded, unsupportedGdelt.providerEmpty, unsupportedGdelt.providerFailed], [false, false, true, false])
     assert.ok(result.report?.outputPath)
     assert.ok(result.committedIds.length >= 2)
     assert.equal(signals.length, 1)
@@ -159,7 +161,7 @@ test('Company resolves neutral structured data and keeps signal append between d
       ...makePlugin('fixture-gdelt', 'gdelt', futureCandidate),
       discover: async () => [futureCandidate, { ...futureCandidate, candidateId: 'news-unknown-date', url: 'https://example.com/unknown', publishedAt: undefined }, qualifiedCandidate],
     }
-    const result = await runCompanyDeepResearch({ workflowRunId: 'company-data-run', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([official, news], akshare), signalStore, reportRoot: reports, asOf, now: () => asOf })
+    const result = await runCompanyDeepResearch({ workflowRunId: 'company-data-run', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([official, news], akshare), signalStore, reportRoot: reports, now: () => asOf })
     const valuation = result.research?.valuation as { readonly status: string; readonly missingFields: readonly string[] }
     assert.equal(valuation.status, 'insufficient_data')
     assert.equal(valuation.missingFields.includes('verified earnings metric'), false, 'zero is a present financial metric')
@@ -170,10 +172,13 @@ test('Company resolves neutral structured data and keeps signal append between d
     assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('official-unknown-date'))
     assert.equal(result.research?.sourceCandidateIds.includes('official-unknown-date'), false, 'unknown-date evidence is available as context but cannot be cited durably')
     assert.ok(result.research?.sections.every((section) => !section.sourceCandidateIds.includes('official-unknown-date')))
-    assert.ok(result.research?.sections.some((section) => section.markdown.includes('Context only; publication date is unknown')))
+    assert.ok(result.research?.sections.some((section) => section.markdown.includes('Context only; this source is not eligible for durable citation')))
     assert.equal(signals.length, 3, 'signal compatibility projection retains the existing as-of, dedup, and cap rules before fetch')
     assert.equal(signals.some((signal) => signal.signalId === 'signal-news-future'), false)
     assert.ok(result.providerOutcomes?.some((outcome) => outcome.provider === 'gdelt' && outcome.providerSucceeded && outcome.providerFailed))
+    assert.equal(result.providerOutcomes?.find((outcome) => outcome.provider === 'gdelt')?.providerEmpty, false)
+    const akshareOutcome = result.providerOutcomes?.find((outcome) => outcome.provider === 'akshare')
+    assert.deepEqual(akshareOutcome && [akshareOutcome.providerSucceeded, akshareOutcome.providerEmpty, akshareOutcome.providerFailed], [true, false, false])
     assert.ok(result.providerOutcomes?.some((outcome) => outcome.provider === 'akshare' && outcome.providerSucceeded))
     assert.ok(result.acquisitionDiagnostics?.some((diagnostic) => diagnostic.provider === 'gdelt' && diagnostic.status === 'failed'))
     assert.equal(result.qualityGate?.eligibleForGateway, true)
@@ -181,6 +186,7 @@ test('Company resolves neutral structured data and keeps signal append between d
     const structuredProvenance = canonical.objects.filter((item) => item.kind === 'source').map((item) => (item.value as any).metadata?.dataProvenance).filter((record) => record?.metricId)
     assert.deepEqual(structuredProvenance.map((record) => record.metricId).sort(), ['company_basic_profile', 'company_financial_history', 'company_market_history'])
     assert.ok(structuredProvenance.every((record) => record.sourceId && record.originAuthority && record.retrievalProvider === 'AKShare' && record.attempts.length > 0 && record.quality))
+    assert.ok(structuredProvenance.every((record) => record.pointInTimeStatus === 'CURRENT_VALUE_ONLY' && record.qualityStatus === 'CURRENT_VALUE_ONLY' && record.valueVersionStatus === 'UNVERIFIED' && record.valueVersion?.status === 'UNVERIFIED'))
     assert.equal(canonical.objects.some((item) => item.kind === 'source' && 'title' in item.value && item.value.title === 'Official filing'), false, 'unknown-date source must not be written to Knowledge Gateway')
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -211,6 +217,66 @@ test('Company maxSources is a global cap when both or only one evidence provider
     assert.equal(single.research?.sourceCandidateIds.filter((id) => !id.startsWith('akshare-')).length, 1)
     assert.ok(single.providerOutcomes?.some((outcome) => outcome.provider === 'cninfo' && outcome.providerSucceeded && !outcome.providerEmpty))
     assert.ok(single.providerOutcomes?.some((outcome) => outcome.provider === 'gdelt' && !outcome.providerSucceeded && outcome.providerEmpty))
+  } finally {
+    await rm(root, { recursive: true, force: true })
+    await rm(reports, { recursive: true, force: true })
+  }
+})
+
+test('historical unversioned profile and financial snapshots stay context-only and never bind through Gateway', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-company-historical-data-'))
+  const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-historical-data-reports-'))
+  try {
+    const asOf = '2026-10-08T07:01:00.000Z'
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-company-historical-data-test', now: asOf })
+    const akshare: AkshareDataClient = {
+      companyBasic: async () => [{ item: 'employees', value: 0 }],
+      financialData: async () => [{ report_date: '2025-12-31', publication_date: '2026-03-01', basic_eps: 0 }],
+      historicalMarketData: async () => [{ date: '2026-10-07', close: 7 }, { date: '2026-10-08', close: 8 }],
+    }
+    const filing: ResearchAcquisitionPlugin = {
+      name: 'fixture-official',
+      discover: async () => [{ candidateId: 'dated-filing', kind: 'official_disclosure', tier: 1, title: 'Dated filing', url: 'https://example.com/dated-filing', provider: 'cninfo', publishedAt: '2026-10-07T12:00:00.000Z' }],
+      fetch: async (candidate) => ({ candidate, retrievedAt: asOf, content: 'A verified filing.', contentHash: 'a'.repeat(64) }),
+      normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: 'CNINFO', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
+    }
+    const result = await runCompanyDeepResearch({ workflowRunId: 'company-historical-data', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([filing], akshare), reportRoot: reports, asOf, now: () => asOf })
+    assert.equal(result.status, 'completed', result.errors.join('; '))
+    assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('akshare-basic-600519'))
+    assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('akshare-financial-600519'))
+    assert.ok(result.research?.sourceCandidateIds.includes('akshare-market-600519'))
+    assert.ok(result.research?.sourceCandidateIds.includes('dated-filing'))
+    const canonical = await readCanonicalV04Assets(root)
+    const sourceTitles = canonical.objects.filter((item) => item.kind === 'source').map((item) => (item.value as { title?: string }).title)
+    assert.equal(sourceTitles.includes('Company basic profile'), false)
+    assert.equal(sourceTitles.includes('Company financial history'), false)
+    assert.equal(sourceTitles.includes('Company market history'), true)
+    const market = canonical.objects.find((item) => item.kind === 'source' && (item.value as { title?: string }).title === 'Company market history')?.value as { metadata?: { dataProvenance?: Record<string, unknown> } } | undefined
+    assert.equal(market?.metadata?.dataProvenance?.pointInTimeStatus, 'PIT_VERIFIED')
+    assert.equal(market?.metadata?.dataProvenance?.valueVersionStatus, 'UNVERIFIED')
+    assert.equal(market?.metadata?.dataProvenance?.retrievalProvider, 'AKShare')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+    await rm(reports, { recursive: true, force: true })
+  }
+})
+
+test('Company provider outcome flags never combine empty with failure and unsupported remains empty', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-company-outcome-flags-'))
+  const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-outcome-flags-reports-'))
+  try {
+    const asOf = '2026-10-08T12:00:00.000Z'
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-company-outcome-flags-test', now: asOf })
+    const official: ResearchAcquisitionPlugin = { name: 'fixture-official', discover: async () => [], fetch: async (candidate) => ({ candidate, retrievedAt: asOf, content: '' }), normalize: async () => { throw new Error('must not normalize') } }
+    const gdelt: ResearchAcquisitionPlugin = { name: 'fixture-gdelt', discover: async () => { throw new Error('fixture discovery failure') }, fetch: async (candidate) => ({ candidate, retrievedAt: asOf, content: '' }), normalize: async () => { throw new Error('must not normalize') } }
+    const result = await runCompanyDeepResearch({ workflowRunId: 'company-outcome-flags', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([official, gdelt]), reportRoot: reports, asOf, now: () => asOf })
+    const outcomes = result.providerOutcomes ?? []
+    const cninfo = outcomes.find((outcome) => outcome.provider === 'cninfo')
+    const news = outcomes.find((outcome) => outcome.provider === 'gdelt')
+    assert.deepEqual(cninfo && [cninfo.providerSucceeded, cninfo.providerEmpty, cninfo.providerFailed], [false, true, false])
+    assert.deepEqual(news && [news.providerSucceeded, news.providerEmpty, news.providerFailed], [false, false, true])
+    assert.ok(outcomes.every((outcome) => !(outcome.providerEmpty && outcome.providerFailed)))
+    assert.ok(outcomes.every((outcome) => outcome.providerSucceeded === (outcome.usableSourceCount > 0)))
   } finally {
     await rm(root, { recursive: true, force: true })
     await rm(reports, { recursive: true, force: true })

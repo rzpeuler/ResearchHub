@@ -39,6 +39,8 @@ export interface DataRequirement {
   readonly asOf: string
   /** Explicit consumer cutoff; mirrors legacy asOf when supplied. */
   readonly analysisAsOf?: string
+  /** Distinguishes an unqualified live snapshot from a historical reconstruction request. */
+  readonly asOfMode?: 'CURRENT_VALUE_ONLY' | 'HISTORICAL'
   /** Historical numeric inputs require an identified version available by the cutoff. */
   readonly requireValueVersionProof?: boolean
   readonly determinismClass: DataDeterminismClass

@@ -12,6 +12,7 @@ import type { DataRequirement } from '../../data/contracts.ts'
 export interface CompanyDeepResearchResolverOptions {
   readonly company: ResearchCompanyIdentity
   readonly asOf: string
+  readonly asOfMode: 'CURRENT_VALUE_ONLY' | 'HISTORICAL'
   readonly now: () => string
   readonly signal?: AbortSignal
   readonly limitPerSource: number

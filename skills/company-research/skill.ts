@@ -10,10 +10,10 @@ export class CompanyResearchSkill {
   /** Offline-safe deterministic baseline retained for tests and provider-degraded runs. */
   run(input: CompanyResearchInput): CompanyResearchResult {
     const proposals: SemanticKnowledgeProposal[] = [{ proposalId: 'proposal-company', kind: 'entity', subjectKey: 'company', entityType: 'company', entityName: input.company.name ?? input.company.symbol }]
-    const durableIds = new Set(input.durableSourceCandidateIds ?? input.sources.map((source) => source.candidate.candidateId))
+    const durableIds = new Set(input.durableSourceCandidateIds ?? [])
     const sections = COMPANY_RESEARCH_SECTIONS.map((title) => {
       const relevant = input.sources.filter((source) => title === 'Company Overview' || source.content.toLowerCase().includes(title.split(' ')[0]!.toLowerCase())).slice(0, 3)
-      const text = relevant.length ? relevant.map((source) => `- ${durableIds.has(source.candidate.candidateId) ? '' : '[Context only; publication date is unknown and this source cannot support a durable claim] '}${source.content.slice(0, 500)}`).join('\n') : gap(title)
+      const text = relevant.length ? relevant.map((source) => `- ${durableIds.has(source.candidate.candidateId) ? '' : '[Context only; this source is not eligible for durable citation] '}${source.content.slice(0, 500)}`).join('\n') : gap(title)
       return { id: sectionId(title), title, markdown: text, sourceCandidateIds: relevant.map((source) => source.candidate.candidateId).filter((id) => durableIds.has(id)), proposalIds: proposals.filter((proposal) => proposal.sourceCandidateIds?.some((id) => relevant.some((source) => source.candidate.candidateId === id))).map((proposal) => proposal.proposalId) }
     })
     return finalizeResearch(input, { sections, proposals }, this.now())
@@ -28,7 +28,7 @@ export class CompanyResearchSkill {
         company: input.company,
         objective: `A-share company deep research for ${input.company.symbol}`,
         asOf: input.asOf,
-        boundedSources: input.sources.slice(0, 20).map((source) => ({ candidateId: source.candidate.candidateId, kind: source.candidate.kind, tier: source.candidate.tier, title: source.title, provider: source.candidate.provider, publisher: source.publisher, publishedAt: source.candidate.publishedAt ?? null, provenance: source.candidate.metadata?.dataProvenance ? { ...source.candidate.metadata.dataProvenance, retrievedAt: source.retrievedAt, contentHash: source.contentHash } : null, citationEligible: input.durableSourceCandidateIds === undefined || input.durableSourceCandidateIds.includes(source.candidate.candidateId), content: source.content.slice(0, 1_200) })),
+        boundedSources: input.sources.slice(0, 20).map((source) => ({ candidateId: source.candidate.candidateId, kind: source.candidate.kind, tier: source.candidate.tier, title: source.title, provider: source.candidate.provider, publisher: source.publisher, publishedAt: source.candidate.publishedAt ?? null, provenance: source.candidate.metadata?.dataProvenance ? { ...source.candidate.metadata.dataProvenance, retrievedAt: source.retrievedAt, contentHash: source.contentHash } : null, citationEligible: input.durableSourceCandidateIds?.includes(source.candidate.candidateId) ?? false, content: source.content.slice(0, 1_200) })),
         structuredProfileData: input.profileData ?? null,
         structuredFinancialData: input.financialData ?? null,
         structuredMarketData: input.marketData ?? null,
@@ -54,7 +54,7 @@ function parseOutput(value: unknown): Record<string, unknown> {
 
 function validateSynthesis(value: Record<string, unknown>, input: CompanyResearchInput): { sections: CompanyResearchResult['sections']; proposals: readonly SemanticKnowledgeProposal[] } {
   const allSourceIds = new Set(input.sources.map((source) => source.candidate.candidateId))
-  const sourceIds = new Set(input.durableSourceCandidateIds ?? allSourceIds)
+  const sourceIds = new Set(input.durableSourceCandidateIds ?? [])
   const rawProposals = Array.isArray(value.proposals) ? value.proposals : []
   const proposals = rawProposals.map((item, index) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`Invalid company research proposal at index ${index}`)
@@ -95,7 +95,7 @@ function finalizeResearch(input: CompanyResearchInput, partial: { sections: Comp
       ? 'No verified structured earnings metric was supplied, and no implied relative valuation is produced without attributable peer data.'
       : 'No implied relative valuation is produced without attributable peer data.',
   }
-  const durableIds = new Set(input.durableSourceCandidateIds ?? input.sources.map((source) => source.candidate.candidateId))
+  const durableIds = new Set(input.durableSourceCandidateIds ?? [])
   return { company: input.company, generatedAt, asOf: input.asOf, sections: partial.sections, proposals: partial.proposals, sourceCandidateIds: input.sources.map((source) => source.candidate.candidateId).filter((id) => durableIds.has(id)), contextOnlySourceCandidateIds: input.sources.map((source) => source.candidate.candidateId).filter((id) => !durableIds.has(id)), valuation }
 }
 function sectionId(title: string): string { return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') }
