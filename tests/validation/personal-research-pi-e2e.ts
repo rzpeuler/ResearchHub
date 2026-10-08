@@ -1,5 +1,5 @@
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { ModelRuntime, getAgentDir } from '@earendil-works/pi-coding-agent'
 import type { Api, Model } from '@earendil-works/pi-ai'
@@ -17,11 +17,10 @@ if (process.env.RESEARCHHUB_PHASE3_LIVE !== '1') {
   process.exit(0)
 }
 
-const repoRoot = resolve(import.meta.dirname, '../..')
 const runId = `pi-e2e-${new Date().toISOString().replace(/[:.]/g, '-')}`
 const root = await mkdtemp(join(tmpdir(), 'rhl-personal-pi-e2e-'))
 const reports = join(root, 'reports')
-const evidencePath = resolve(repoRoot, 'tests/validation/evidence/RHL_PERSONAL_RESEARCH_V1_FOUNDATION_FIX_002_PI_E2E.json')
+const evidencePath = join(root, 'evidence.json')
 const sourceText = '贵州茅台（600519）reported stable premium spirits demand, resilient gross margin, and continued investment in channel quality.'
 const plugin: ResearchAcquisitionPlugin = { name: 'fixture-official', discover: async () => [{ candidateId: 'pi-fixture-600519', kind: 'official_disclosure', tier: 1, title: 'Official retained fixture', provider: 'cninfo', publishedAt: '2026-09-07T00:00:00.000Z', metadata: { companySymbol: '600519', fixture: true } }], fetch: async (candidate) => ({ candidate, retrievedAt: '2026-09-08T00:00:00.000Z', content: sourceText, contentHash: sha256(sourceText) }), normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, publisher: fetched.candidate.provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }) }
 
@@ -43,4 +42,5 @@ try {
   await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, 'utf8'); console.error(JSON.stringify(evidence, null, 2)); process.exitCode = 1
 } finally {
   if (modelRuntime) await Promise.resolve((modelRuntime as unknown as { dispose?: () => void | Promise<void> }).dispose?.()).catch(() => undefined)
+  await rm(root, { recursive: true, force: true })
 }

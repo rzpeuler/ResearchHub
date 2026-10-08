@@ -14,6 +14,7 @@ import type { NormalizedResearchSource, ResearchAcquisitionPlugin, ResearchSourc
 import type { DailyResearchSignal } from '../../plugins/daily-intelligence/contracts.ts'
 import type { ReasoningExecutor, ReasoningRequest, ReasoningResult } from '../../plugins/reasoning/contracts.ts'
 import { hashKnowledgeObject } from '../../knowledge/storage/canonical-hash.ts'
+import { classifyPhase3ConsumerEvidence } from './phase3-live-acceptance-runner.ts'
 
 const NOW = '2026-09-10T00:00:00.000Z'
 const rights = { accessScope: 'public' as const, retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false }
@@ -26,7 +27,12 @@ function plugin(name: string, values: readonly ResearchSourceCandidate[]): Resea
   return {
     name,
     discover: async () => values,
-    fetch: async (value) => ({ candidate: value, retrievedAt: NOW, content: `Evidence for ${value.candidateId}`, contentHash: sha256(`Evidence for ${value.candidateId}`) }),
+    fetch: async (value) => {
+      const content = value.candidateId === 'qualified-dated-relevant-official'
+        ? 'Dated official disclosure: premium-channel shipment volume declined year over year, while dealer inventory rose.'
+        : `Evidence for ${value.candidateId}`
+      return { candidate: value, retrievedAt: NOW, content, contentHash: sha256(content) }
+    },
     normalize: async (fetched): Promise<NormalizedResearchSource> => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash ?? sha256(fetched.content), canonicalUrl: fetched.candidate.url, publisher: fetched.candidate.provider, rights }),
   }
 }
@@ -48,16 +54,20 @@ class FixtureThesisExecutor implements ReasoningExecutor {
     } }
     return { operation: request.operation, output: {
       evidenceAssessments: [
+        { sourceCandidateId: 'qualified-dated-relevant-official', attackVectorRefs: ['vector-fixture'], relation: 'disconfirms', strength: 'high', rationale: 'The dated official filing directly reports declining premium-channel demand, challenging the durable demand leadership thesis.' },
         { sourceCandidateId: 'unknown-date-official', attackVectorRefs: ['vector-fixture'], relation: 'irrelevant', strength: 'high', rationale: 'The unknown-date fixture is irrelevant and cannot support the Thesis.' },
         { sourceCandidateId: 'irrelevant-office-document', attackVectorRefs: ['vector-fixture'], relation: 'irrelevant', strength: 'high', rationale: 'This dated fixture is irrelevant to the Thesis.' },
       ],
       challengeAssessments: [
+        { challengeId: 'c-qualified', challengeType: 'thesis_contradiction', basis: 'verified_evidence', status: 'supported', severity: 'high', timeHorizon: 'near_term', targetExistingClaimRefs: [this.thesisRef], attackVectorRefs: ['vector-fixture'], sourceCandidateIds: ['qualified-dated-relevant-official'], causalChain: 'Premium-channel demand falls -> durable demand leadership weakens.', rationale: 'The official dated filing directly supports the challenge.' },
         { challengeId: 'c1', challengeType: 'thesis_contradiction', basis: 'hypothesis', status: 'unresolved', severity: 'medium', timeHorizon: 'near_term', targetExistingClaimRefs: [this.thesisRef], attackVectorRefs: ['vector-fixture'], sourceCandidateIds: [], causalChain: 'Demand weakens -> growth slows.', rationale: 'No qualified contradiction.' },
         { challengeId: 'c2', challengeType: 'alternative_explanation', basis: 'inference', status: 'unresolved', severity: 'low', timeHorizon: 'medium_term', targetExistingClaimRefs: [], attackVectorRefs: ['vector-fixture'], sourceCandidateIds: [], causalChain: 'Mix changes -> growth changes.', rationale: 'No alternative is evidenced.' },
         { challengeId: 'c3', challengeType: 'failure_case', basis: 'hypothesis', status: 'unresolved', severity: 'medium', timeHorizon: 'long_term', targetExistingClaimRefs: [], attackVectorRefs: ['vector-fixture'], sourceCandidateIds: [], causalChain: 'Competition rises -> margins fall.', rationale: 'This remains a scenario.' },
         { challengeId: 'c4', challengeType: 'invalidation_condition', basis: 'hypothesis', status: 'not_supported', severity: 'high', timeHorizon: 'near_term', targetExistingClaimRefs: [this.thesisRef], attackVectorRefs: ['vector-fixture'], sourceCandidateIds: [], conditionRef: 'condition-fixture', causalChain: 'Demand collapse -> thesis failure.', rationale: 'No qualifying evidence shows this condition.' },
       ],
-      thesisVerdict: 'inconclusive', interpretations: [], proposals: [],
+      thesisVerdict: 'materially_challenged', interpretations: [], proposals: [
+        { proposalId: 'fixture-risk-proposal', kind: 'claim', claimType: 'risk', subjectKey: 'company', statement: 'Premium-channel demand deterioration may weaken durable demand leadership.', sourceCandidateIds: ['qualified-dated-relevant-official'], challengeRefs: ['c-qualified'], structuredValue: { metric: 'fixture_demand_risk', value: true, unit: 'assessment', comparator: 'eq', period: 'current' } },
+      ],
     } }
   }
 }
@@ -67,6 +77,11 @@ test('Phase 3 fixture E2E preserves the single external-evidence identity and ke
   assert.equal(evidence.length, 1)
   assert.deepEqual(evidence[0]?.consumers, ['company-deep-research', 'event-research', 'thesis-red-team'])
   assert.equal(COMMON_DATA_CATALOG.some((item) => /daily.?signal|event_verified|thesis_disconfirming/i.test(item.metricId)), false)
+})
+
+test('Phase 3 live evidence classification separates provider diagnostics from consumer acceptance', () => {
+  assert.equal(classifyPhase3ConsumerEvidence(0), 'REAL_SOURCE_BLOCKED')
+  assert.equal(classifyPhase3ConsumerEvidence(1), 'REAL_SOURCE_AVAILABLE_WORKFLOW_NOT_EXECUTED')
 })
 
 test('Thesis Red Team fixture E2E acquires through Data while preserving target Thesis, Company, and signal durability boundaries', async () => {
@@ -104,7 +119,7 @@ test('Thesis Red Team fixture E2E acquires through Data while preserving target 
     const thesisBefore = before.objects.find((item) => item.value.id === thesisRef)!.value
     const companyBefore = before.objects.find((item) => item.value.id === companyRef)!.value
     const plugins = [
-      plugin('fixture-official-cninfo', [candidate('unknown-date-official', 'cninfo'), candidate('irrelevant-office-document', 'cninfo', '2026-09-07T00:00:00.000Z')]),
+      plugin('fixture-official-cninfo', [candidate('qualified-dated-relevant-official', 'cninfo', '2026-09-07T00:00:00.000Z'), candidate('unknown-date-official', 'cninfo'), candidate('irrelevant-office-document', 'cninfo', '2026-09-07T00:00:00.000Z')]),
       plugin('fixture-gdelt', [candidate('dated-news-context', 'gdelt', '2026-09-08T00:00:00.000Z')]),
     ]
     const signalValue = signal()
@@ -128,13 +143,33 @@ test('Thesis Red Team fixture E2E acquires through Data while preserving target 
     assert.equal(result.telemetry.targetThesisChanged, false)
     assert.equal(result.telemetry.targetThesisHashBefore, result.telemetry.targetThesisHashAfter)
     assert.equal(result.telemetry.targetThesisLifecycleBefore, result.telemetry.targetThesisLifecycleAfter)
+    assert.equal((thesisAfter as { id?: string }).id, thesisRef)
+    assert.deepEqual((thesisAfter as { lifecycle?: unknown }).lifecycle, (thesisBefore as { lifecycle?: unknown }).lifecycle)
+    assert.deepEqual((thesisAfter as { sourceRefs?: unknown }).sourceRefs ?? [], (thesisBefore as { sourceRefs?: unknown }).sourceRefs ?? [])
     assert.equal(hashKnowledgeObject((thesisBefore as { sourceRefs?: unknown }).sourceRefs ?? []), hashKnowledgeObject((thesisAfter as { sourceRefs?: unknown }).sourceRefs ?? []))
     assert.equal(hashKnowledgeObject(thesisBefore), hashKnowledgeObject(thesisAfter))
     assert.equal(hashKnowledgeObject(companyBefore), hashKnowledgeObject(companyAfter))
     assert.equal(result.telemetry.signalCanonicalized, false)
     assert.equal(result.telemetry.unknownDateCanonicalized, false)
     assert.equal(result.telemetry.irrelevantSourceCanonicalized, false)
-    assert.equal(after.objects.filter((item) => item.kind === 'source').length, before.objects.filter((item) => item.kind === 'source').length)
+    assert.equal(after.objects.filter((item) => item.kind === 'source').length, before.objects.filter((item) => item.kind === 'source').length + 1, 'Only the qualified evidence source should be canonicalized')
+    assert.equal(result.telemetry.qualifiedDisconfirmingEvidenceCount, 1)
+    assert.equal(result.telemetry.verdictConsistency?.valid, true)
+    assert.equal(result.telemetry.thesisVerdict, 'materially_challenged')
+    assert.equal(result.telemetry.gatewayCreatedClaimCount, 2, 'Gateway should commit a deterministic verdict and the valid Stage B risk proposal')
+    assert.equal(result.telemetry.durableAppliedProposalCount, 2)
+    assert.ok(result.sourceIds.length >= 1)
+    assert.ok(result.claimIds.length >= 1)
+    const writtenSourceRefs = result.sourceIds
+    const writtenClaims = after.objects.filter((item) => result.claimIds.includes(String(item.value.id)))
+    assert.equal(writtenClaims.length, 2)
+    assert.ok(writtenClaims.some((item) => (item.value as { statement?: string }).statement?.includes('Premium-channel demand deterioration')))
+    assert.ok(writtenClaims.every((item) => (item.value as { sourceRefs?: string[] }).sourceRefs?.some((ref) => writtenSourceRefs.includes(ref))))
+    const writtenSource = after.objects.find((item) => item.kind === 'source' && result.sourceIds.includes(String(item.value.id)))?.value as { publishedAt?: string; contentHash?: string } | undefined
+    assert.ok(writtenSource)
+    assert.equal(writtenSource.publishedAt, '2026-09-07T00:00:00.000Z')
+    assert.ok(writtenSource.contentHash)
+    assert.equal(after.objects.some((item) => item.kind === 'source' && ['unknown-date-official', 'irrelevant-office-document', 'dated-news-context', 'daily-signal-context'].some((candidateId) => JSON.stringify(item.value).includes(candidateId))), false)
     assert.deepEqual(result.providerOutcomes.map((item) => [item.provider, item.providerAttempted]), [['CNINFO', true], ['GDELT', true]])
   } finally {
     await rm(root, { recursive: true, force: true })

@@ -41,13 +41,13 @@ the direct-acquisition architecture guard.
 | Company preserves provenance and provider-neutral Skill inputs | `tests/workflows/company-deep-research.test.ts` — structured source provenance and Gateway assertions; `tests/skills/company-research.test.ts` — “Company Skill receives all structured inputs with their acquisition provenance”; `tests/app/services/data-layer-boundaries.test.ts` — Skill import and I/O guard |
 | Event anchors remain Workflow-owned and Daily Signals remain outside Common Catalog | `tests/workflows/event-research.test.ts` — “E6-E8 Daily Signal is exact, company-bound, and missing signals block”; “E70-E75 manual article, URL, and user-event anchors stay Workflow context…”; `tests/validation/phase3-data-layer-fixture-e2e.test.ts` — one shared evidence identity and no Daily Signal identity |
 | Event time window, PIT, unsafe URL, generic dedup, partial outcome, and contradiction behavior | `tests/workflows/event-research.test.ts` — “E81 anchor point-in-time checks…”; “E83 anchor fields and source URLs are bounded and unsafe URL targets are rejected before fetch”; “E84 provider outcome flags…”; “E26-E33 future/out-of-window/URL/content duplicates…”; “Unknown publication dates remain contextual…”; “E42b Stage B receives exact bounded supporting and contradicting excerpts…”; “E53-E58 weak or conflicted verification…” |
-| Thesis Stage A/B order and target invariants | `tests/validation/phase3-data-layer-fixture-e2e.test.ts` — “Thesis Red Team fixture E2E acquires through Data while preserving target Thesis, Company, and signal durability boundaries”; test asserts Stage A precedes resolver creation, Stage B follows acquisition, Thesis ID/lifecycle/sourceRefs/hash are unchanged, Company hash is unchanged, and signal/unknown-date/irrelevant sources are not canonicalized |
+| Thesis Stage A/B order, positive durable write, and target invariants | `tests/validation/phase3-data-layer-fixture-e2e.test.ts` — “Thesis Red Team fixture E2E acquires through Data while preserving target Thesis, Company, and signal durability boundaries”; test supplies a dated, relevant CNINFO fixture, validates high-strength disconfirming evidence, and confirms the real Gateway commits the qualified source plus deterministic and Stage B claims. It asserts target Thesis ID/lifecycle/sourceRefs/hash and Company hash remain unchanged, while signal/unknown-date/irrelevant sources remain noncanonical |
 | Thesis requirements, bounded lookback, and fail-closed no-resolver path | `tests/workflows/thesis-red-team-data-acquisition.test.ts` — both Thesis acquisition tests |
 | Multi-source attempts, provenance, PIT, publisher identity, and partial outcomes | `tests/workflows/company-research-data.test.ts` — “COLLECT_DIVERSE attempts CNINFO and GDELT…”; “one provider failure and partial fetch…”; “strict date window…”; “hash dedup works across distinct URLs…”; “fetch telemetry distinguishes transport…” |
 | No new direct acquisition debt | `tests/app/services/data-layer-boundaries.test.ts` — “migrated Company, Event, and Thesis Workflows reject direct provider modules and acquisition calls”; exact dependency baseline tests |
-| Phase 2 regressions | `tests/workflows/valuation.test.ts` and `tests/workflows/earnings-review.test.ts` were included in the focused run and full Node suite. The two Valuation failures (`V39`, `V65`) are in the baseline list; all other focused cases passed. |
+| Phase 2 regressions | `tests/workflows/valuation.test.ts` and `tests/workflows/earnings-review.test.ts` ran in the full Node suite, not the focused Phase 3 command. Failures `V39` and `V65` are present in the exact unchanged baseline failure list. |
 
-The scoped Phase 3 command passed **73/73** tests:
+The scoped Phase 3 command passed **74/74** tests after the Task 6 review fix:
 
 ```text
 node --import tsx --test tests/validation/phase3-data-layer-fixture-e2e.test.ts tests/workflows/company-deep-research.test.ts tests/workflows/event-research.test.ts tests/workflows/thesis-red-team-data-acquisition.test.ts tests/app/services/data-layer-boundaries.test.ts tests/workflows/company-research-data.test.ts tests/plugins/research-acquisition.test.ts tests/skills/company-research.test.ts
@@ -57,13 +57,15 @@ node --import tsx --test tests/validation/phase3-data-layer-fixture-e2e.test.ts 
 
 The three Phase 3 resolver probes and the existing Company PI/real-source smoke
 scripts require `RESEARCHHUB_PHASE3_LIVE=1`; without it they print `SKIPPED`
-and make no network calls. The existing Company callers now inject the
-Phase 3 resolver composition. The opt-in run created a fresh Knowledge
-Base under a unique OS temporary directory for each consumer and removed each
-directory on completion. The probe calls the real DataResolver acquisition
-composition and records per-source attempts and evidence outcomes. It does not
-run Pi reasoning or make a full research proposal. No credentials or raw
-provider bodies were included.
+before creating temporary files, initializing Pi, or making network calls. The
+existing Company callers now inject the Phase 3 resolver composition. Their
+opt-in Knowledge, reports, signal files, and evidence files are all under a
+unique OS temporary directory and removed in `finally`. The Phase 3 probes
+likewise create a fresh disposable Knowledge Base per consumer and remove it
+in `finally`. The probes call the real DataResolver acquisition composition and
+record each provider leg; they do not run consumer Workflow reasoning or
+produce a consumer acceptance result. No credentials or raw provider bodies
+were included.
 
 Commands:
 
@@ -73,24 +75,31 @@ node --import tsx tests/validation/phase3-event-live-acceptance.ts
 node --import tsx tests/validation/phase3-thesis-live-acceptance.ts
 ```
 
-Results from the opt-in run on 2026-10-08, company `600519`:
+Results from the opt-in run on 2026-10-08 03:10 UTC, company `600519`:
 
 | Consumer / provider leg | Transport / discovery | Fetch / data result |
 |---|---|---|
-| Company / AKShare profile | Attempted | `SOURCE_ERROR`; Python helper subprocess failed |
-| Company / AKShare financial history | Attempted | `SUCCESS`; data available |
-| Company / AKShare market history | Attempted | `NO_DATA`; empty provider payload |
-| Company / CNINFO | Transport succeeded; 6 candidates discovered | All 6 document parses failed because the managed Python document-parser environment was unavailable; no usable fetch |
-| Company / GDELT | Discovery request failed with HTTP 429 | No candidate fetch |
-| Event / CNINFO | Transport succeeded; 6 candidates discovered | All 6 rejected as outside the requested 7-day event window; no candidate fetch |
-| Event / GDELT | Discovery request failed with HTTP 429 | No candidate fetch |
-| Thesis / CNINFO | Transport succeeded; 6 candidates discovered | All 6 document parses failed because the managed Python document-parser environment was unavailable; no usable fetch |
-| Thesis / GDELT | Discovery request failed with HTTP 429 | No candidate fetch |
+| Company / AKShare profile | `UNAVAILABLE`; `SOURCE_ERROR` | External helper process failed |
+| Company / AKShare financial history | `AVAILABLE`; `SUCCESS` | Structured data available |
+| Company / AKShare market history | `UNAVAILABLE`; `SOURCE_ERROR` | External helper process failed |
+| Company / CNINFO | `UNAVAILABLE`; transport succeeded, 6 candidates discovered | All 6 document parses failed because the managed Python document-parser environment was unavailable |
+| Company / GDELT | `UNAVAILABLE`; `SOURCE_ERROR` | Fetch failed; no usable evidence |
+| Event / CNINFO | `UNAVAILABLE`; transport succeeded, 6 candidates discovered | All 6 rejected as outside the requested 7-day event window; no candidate fetch |
+| Event / GDELT | `UNAVAILABLE`; `SOURCE_ERROR` | Fetch failed; no usable evidence |
+| Thesis / CNINFO | `UNAVAILABLE`; transport succeeded, 6 candidates discovered | All 6 document parses failed because the managed Python document-parser environment was unavailable |
+| Thesis / GDELT | `UNAVAILABLE`; `SOURCE_ERROR` | Fetch failed; no usable evidence |
 
-The live scripts are provider-acquisition diagnostics only. Their results show
-partial runtime availability and do not establish successful live research or
-Knowledge persistence. Provider access, parser setup, rate limits, and empty
-results remain operational follow-up items.
+All three consumers are classified `REAL_SOURCE_BLOCKED`, with zero qualified
+external documents usable for an acceptance run. This is separate from the
+provider-leg status: CNINFO transport and discovery succeeded in all three
+consumer probes, but document parsing or date qualification blocked use. The
+Company structured financial leg was available, but the acceptance decision
+requires usable external research evidence. A positive document count would be
+classified `REAL_SOURCE_AVAILABLE_WORKFLOW_NOT_EXECUTED`, because these probes
+do not execute the consumer Workflow or claim acceptance. The three unique
+temporary Knowledge roots were checked after execution and no longer existed.
+Provider access, parser setup, and fetch failures remain operational follow-up
+items.
 
 ## Full validation
 
@@ -103,7 +112,7 @@ results remain operational follow-up items.
 | `npm run client:typecheck` | PASS |
 | `npm run client:build` | PASS; Vite emitted the existing large-chunk advisory |
 | `git diff --check` | PASS; only Windows line-ending normalization notices |
-| Live scripts without opt-in | PASS safety check: all three skipped without network |
+| Live scripts without opt-in | PASS safety check: all five skipped before runtime/temp/network side effects |
 
 The expected baseline identifier list was read from the ignored SDD workspace
 file `.superpowers/sdd/2026-10-08-data-layer-phase3-company-event-thesis-migration/baseline-failed-identifiers.txt`
@@ -141,12 +150,17 @@ Writer rejection does not report success or overwrite the prior Module
 ## Remaining risks and handoff
 
 - Live CNINFO document normalization needs its managed parser runtime; GDELT
-  discovery was rate-limited during this run. AKShare profile and market legs
-  did not return usable values, while the financial leg did.
+  parsing failed for Company/Thesis and all Event candidates were outside the
+  requested window; GDELT fetch failed in all consumers. AKShare profile and
+  market legs failed, while the financial leg returned structured data.
 - Full Node tests remain red on the same 25 pre-existing failure identifiers
   as the Phase 3 baseline. No new deterministic failure was identified.
 - The live probes validate DataResolver/provider outcomes, not end-to-end live
   model reasoning or production Knowledge persistence.
+- Legacy Company PI/real-source smoke opt-in cleanup was reviewed: their
+  Knowledge, evidence, report, and signal outputs now live only below a unique
+  temporary root removed by `finally`; this cleanup does not extend to other
+  historical smoke scripts.
 - Phase 3 has not been pushed or merged. Final Git delivery is pending the
   controller's scoped review and push decision; `main` remains at accepted
   Phase 2.

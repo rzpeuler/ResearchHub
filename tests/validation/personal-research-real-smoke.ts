@@ -1,5 +1,6 @@
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { createFreshKnowledgeBaseV04, readCanonicalV04Assets } from '../../knowledge/storage/index.ts'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { verifyRaw } from '../../knowledge/raw/raw-archive.ts'
@@ -16,14 +17,15 @@ if (process.env.RESEARCHHUB_PHASE3_LIVE !== '1') {
   process.exit(0)
 }
 
-const smokeId = new Date().toISOString().replace(/[:.]/g, '-')
-const root = resolve('runtime-data', `personal-research-real-smoke-${smokeId}`, 'kb')
-const reportRoot = resolve('runtime-data', `personal-research-real-smoke-${smokeId}`, 'reports')
-const signalPath = resolve('runtime-data', `personal-research-real-smoke-${smokeId}`, 'signals.jsonl')
+const isolatedRoot = await mkdtemp(join(tmpdir(), 'researchhub-company-real-smoke-'))
+const root = join(isolatedRoot, 'kb')
+const reportRoot = join(isolatedRoot, 'reports')
+const signalPath = join(isolatedRoot, 'signals.jsonl')
 const now = () => '2026-09-08T23:59:59.000Z'
+try {
 const providers = [new OfficialDisclosureResearchPlugin(new CninfoOfficialDisclosureClient()), new GdeltResearchPlugin()]
 await mkdir(reportRoot, { recursive: true })
-await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-real-smoke-personal-v1', name: 'Personal Research real-network smoke', now: now() })
+await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: `kb-real-smoke-${Date.now()}`, name: 'Personal Research real-network smoke', now: now() })
 const runs = [
   { workflowRunId: 'real-smoke-600519-1', symbol: '600519', name: '贵州茅台', exchange: 'SSE' },
   { workflowRunId: 'real-smoke-000858-1', symbol: '000858', name: '五粮液', exchange: 'SZSE' },
@@ -46,3 +48,6 @@ const evidence = { generatedAt: new Date().toISOString(), scenario: 'real-networ
 const evidencePath = join(reportRoot, 'smoke-evidence.json')
 await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, 'utf8')
 console.log(JSON.stringify({ ...evidence, evidencePath }, null, 2))
+} finally {
+  await rm(isolatedRoot, { recursive: true, force: true })
+}
