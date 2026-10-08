@@ -2,6 +2,9 @@ import type { KnowledgeBaseHandle } from '../../knowledge/storage/handle.ts'
 import type { ResolutionIntentSummary } from '../../knowledge/production/contracts.ts'
 import type { EventResearchSignalStore } from '../../plugins/daily-intelligence/contracts.ts'
 import type { ResearchAcquisitionPlugin, ResearchCompanyIdentity, ResearchProviderOutcome, NormalizedResearchSource } from '../../plugins/research-acquisition/contracts.ts'
+import type { DataResolver } from '../../data/resolver.ts'
+import type { AcquisitionSourceMetadata, DataRequirement } from '../../data/contracts.ts'
+import type { CompanyResearchDataPayload } from '../../plugins/research-acquisition/company-research-data.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import type { EventAnchor } from '../../app/services/contracts.ts'
 import type { EventEvidenceAssessmentOutput, EventImpactAssessment, EventResearchSection, EventResearchSynthesisOutput, EventResearchReasoningTelemetry, EventVerificationResult } from '../../skills/event-research/contracts.ts'
@@ -23,6 +26,9 @@ export interface EventResearchProviderOutcome extends ResearchProviderOutcome {
 export interface EventAcquiredSource {
   readonly source: NormalizedResearchSource
   readonly role: EventSourceRole
+  readonly provenance: AcquisitionSourceMetadata & { readonly contentHash?: string }
+  readonly dateStatus: 'QUALIFIED' | 'UNKNOWN'
+  readonly pointInTimeSafe: boolean
 }
 
 export interface EventResearchWorkflowInput {
@@ -31,6 +37,10 @@ export interface EventResearchWorkflowInput {
   readonly company: ResearchCompanyIdentity
   readonly anchor: EventAnchor
   readonly acquisitionPlugins: readonly ResearchAcquisitionPlugin[]
+  /** Explicit Data Layer path; supplied by runtime composition. */
+  readonly dataResolver?: DataResolver<CompanyResearchDataPayload>
+  /** Builds a per-run resolver so Event-owned candidate guards run before fetch. */
+  readonly dataResolverFactory?: (context: EventResearchDataResolverContext) => DataResolver<CompanyResearchDataPayload>
   readonly signalStore?: EventResearchSignalStore
   readonly dailySignalStore?: EventResearchSignalStore
   readonly reportRoot: string
@@ -41,6 +51,24 @@ export interface EventResearchWorkflowInput {
   readonly eventWindowDays?: number
   readonly writeKnowledge?: boolean
   readonly useStructuredKnowledge?: boolean
+}
+
+export interface EventResearchCandidateReference {
+  readonly candidateId: string
+  readonly url?: string
+  readonly metadata?: Readonly<Record<string, unknown>>
+}
+
+export interface EventResearchDataResolverContext {
+  readonly company: ResearchCompanyIdentity
+  readonly asOf: string
+  readonly period?: DataRequirement['period']
+  readonly signal?: AbortSignal
+  readonly onCandidatesDiscovered: (event: {
+    readonly provider: 'CNINFO' | 'GDELT'
+    readonly candidates: readonly EventResearchCandidateReference[]
+    readonly requirement: DataRequirement
+  }) => readonly EventResearchCandidateReference[]
 }
 
 export interface EventResearchTelemetry {

@@ -5,8 +5,8 @@ import type { KnowledgeAssetV04, KnowledgeEntityV04 } from '../../knowledge/sche
 import type { KnowledgeProductionOutcome, ResolutionIntentSummary, SemanticProductionProposal } from '../../knowledge/production/contracts.ts'
 import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
 import type { DailyResearchSignal, EventResearchSignalStore } from '../../plugins/daily-intelligence/contracts.ts'
-import type { ResearchAcquisitionDiagnostic, ResearchAcquisitionPlugin, ResearchCompanyIdentity, ResearchSourceCandidate } from '../../plugins/research-acquisition/contracts.ts'
-import { validateUsableAcquisitionPayload } from '../../plugins/research-acquisition/payload-validation.ts'
+import type { ResearchAcquisitionDiagnostic, ResearchCompanyIdentity, ResearchSourceCandidate } from '../../plugins/research-acquisition/contracts.ts'
+import { materializePhase3CommonRequirement } from '../../data/requirements.ts'
 import { sha256 } from '../../plugins/research-acquisition/hash.ts'
 import { normalizeExchange } from '../../skills/knowledge-curation/identity/company-identity.ts'
 import { EventEvidenceAssessmentSkill, EventResearchSynthesisSkill, eventOccurrenceStructuredValue, eventResearchSectionId, filterEventResearchProposalsWithDiagnostics, toEventResearchGatewayProposal } from '../../skills/event-research/index.ts'
@@ -191,53 +191,94 @@ async function resolveExistingCoverage(input: EventResearchWorkflowInput, compan
   return { rootRef, claims }
 }
 
-function providerName(plugin: ResearchAcquisitionPlugin): 'cninfo' | 'gdelt' | undefined { const name = plugin.name.toLocaleLowerCase('en-US'); if (/^(?:official-disclosure-research-acquisition|official-cninfo|cninfo-official)$/.test(name)) return 'cninfo'; if (/^(?:gdelt-research-acquisition|gdelt-news)$/.test(name)) return 'gdelt'; return undefined }
-function emptyProvider(provider: string, reason: string): { readonly outcome: EventResearchProviderOutcome; readonly diagnostic: ResearchAcquisitionDiagnostic } { return { outcome: { provider, providerAttempted: false, providerSucceeded: false, providerEmpty: true, providerFailed: false, usableSourceCount: 0, transportSucceeded: false, fetchSucceeded: false }, diagnostic: { provider, status: 'empty', reason } } }
 function candidateDate(candidate: ResearchSourceCandidate): string | undefined { return candidate.publishedAt === undefined ? undefined : isoDate(candidate.publishedAt) }
-function candidateSort(left: ResearchSourceCandidate, right: ResearchSourceCandidate): number { const l = Date.parse(left.publishedAt ?? ''); const r = Date.parse(right.publishedAt ?? ''); return (Number.isNaN(r) ? -1 : r) - (Number.isNaN(l) ? -1 : l) || left.candidateId.localeCompare(right.candidateId) }
 
 interface AcquisitionResult { readonly sources: readonly EventAcquiredSource[]; readonly outcomes: readonly EventResearchProviderOutcome[]; readonly diagnostics: readonly ResearchAcquisitionDiagnostic[]; readonly discoveredCount: number; readonly selectedCount: number; readonly futureFilteredCount: number; readonly outsideWindowFilteredCount: number; readonly unknownDateCount: number; readonly deduplicatedCount: number }
 interface AcquisitionProgress { readonly sources: EventAcquiredSource[]; readonly outcomes: EventResearchProviderOutcome[]; readonly diagnostics: ResearchAcquisitionDiagnostic[]; discoveredCount: number; selectedCount: number; futureFilteredCount: number; outsideWindowFilteredCount: number; unknownDateCount: number; deduplicatedCount: number }
 function emptyAcquisitionProgress(): AcquisitionProgress { return { sources: [], outcomes: [], diagnostics: [], discoveredCount: 0, selectedCount: 0, futureFilteredCount: 0, outsideWindowFilteredCount: 0, unknownDateCount: 0, deduplicatedCount: 0 } }
 
+function shiftDate(value: string, days: number): string {
+  return new Date(dayNumber(value) + days * 86_400_000).toISOString().slice(0, 10)
+}
+
+function providerKey(value: string | undefined): 'cninfo' | 'gdelt' | undefined {
+  const normalizedProvider = value?.toLocaleLowerCase('en-US') ?? ''
+  if (normalizedProvider.includes('cninfo') || normalizedProvider.includes('official')) return 'cninfo'
+  if (normalizedProvider.includes('gdelt')) return 'gdelt'
+  return undefined
+}
+
 async function acquireEventSources(input: EventResearchWorkflowInput, company: ResearchCompanyIdentity, context: EventResearchAnchorContext, asOf: string, windowDays: number, progress: AcquisitionProgress = emptyAcquisitionProgress()): Promise<AcquisitionResult> {
-  const { diagnostics, outcomes, sources: acquired } = progress; const urls = new Set<string>(); const hashes = new Set<string>()
-  for (const provider of PROVIDERS) {
-    abortIfNeeded(input.signal)
-    const plugin = input.acquisitionPlugins.find((candidate) => providerName(candidate) === provider)
-    if (!plugin) { const missing = emptyProvider(provider, `${provider} acquisition plugin is not configured`); outcomes.push(missing.outcome); diagnostics.push(missing.diagnostic); continue }
-    let discovered: readonly ResearchSourceCandidate[] = []
-    let discoverySucceeded = false
-    try { discovered = await plugin.discover({ company, asOf, limitPerKind: 6 }); discoverySucceeded = true; progress.discoveredCount += discovered.length } catch (error) { const reason = error instanceof Error ? error.message : String(error); outcomes.push({ provider, providerAttempted: true, providerSucceeded: false, providerEmpty: false, providerFailed: true, usableSourceCount: 0, transportSucceeded: false, fetchSucceeded: false }); diagnostics.push({ provider, status: 'failed', reason }); continue }
-    const candidates: ResearchSourceCandidate[] = []
-    for (const candidate of [...discovered].filter((item) => item.provider.toLocaleLowerCase('en-US') === provider).sort(candidateSort)) {
+  const { diagnostics, outcomes, sources: acquired } = progress
+  abortIfNeeded(input.signal)
+  const period = context.eventDate === undefined ? undefined : { start: shiftDate(context.eventDate, -windowDays), end: shiftDate(context.eventDate, windowDays) }
+  const requirement = materializePhase3CommonRequirement('company_research_evidence', { workflowId: 'event-research', ticker: company.symbol, asOf, ...(period ? { period } : {}), required: false })
+  const resolver = input.dataResolverFactory?.({
+    company, asOf, ...(period ? { period } : {}), ...(input.signal ? { signal: input.signal } : {}),
+    onCandidatesDiscovered: ({ candidates }) => candidates.filter((candidate) => {
       const symbol = candidate.metadata?.companySymbol
-      if (typeof symbol === 'string' && symbol !== company.symbol) continue
-      const published = candidateDate(candidate)
-      if (candidate.publishedAt !== undefined && published === undefined) { diagnostics.push({ provider, candidateId: candidate.candidateId, kind: candidate.kind, status: 'empty', reason: 'invalid publication date' }); continue }
-      if (candidate.publishedAt !== undefined && pointInTime(candidate.publishedAt) > pointInTime(asOf)) { progress.futureFilteredCount++; continue }
-      if (published === undefined) progress.unknownDateCount++
-      if (published !== undefined && context.eventDate !== undefined && dayDistance(published, context.eventDate) > windowDays) { progress.outsideWindowFilteredCount++; continue }
-      if (candidate.url !== undefined && canonicalUrl(candidate.url) === undefined) { diagnostics.push({ provider, candidateId: candidate.candidateId, kind: candidate.kind, status: 'empty', reason: 'unsafe source URL' }); continue }
-      candidates.push(candidate)
-      if (candidates.length >= 6) break
+      return (typeof symbol !== 'string' || symbol === company.symbol) && (candidate.url === undefined || canonicalUrl(candidate.url) !== undefined)
+    }),
+  }) ?? input.dataResolver
+  if (!resolver) {
+    for (const provider of PROVIDERS) {
+      outcomes.push({ provider, providerAttempted: false, providerSucceeded: false, providerEmpty: false, providerFailed: false, usableSourceCount: 0, transportSucceeded: false, fetchSucceeded: false })
+      diagnostics.push({ provider, status: 'empty', reason: 'company_research_evidence DataResolver is unavailable' })
     }
-    progress.selectedCount += candidates.length
-    let usable = 0; let failed = false; let fetchSucceeded = false
-    for (const candidate of candidates) {
+    return { sources: acquired, outcomes, diagnostics, discoveredCount: 0, selectedCount: 0, futureFilteredCount: 0, outsideWindowFilteredCount: 0, unknownDateCount: 0, deduplicatedCount: 0 }
+  }
+  const resolved = await resolver.resolveOne(requirement)
+  abortIfNeeded(input.signal)
+  const attempts = resolved.attempts
+  progress.discoveredCount = resolved.acquisition.observations?.reduce((count, item) => count + (item.data.kind === 'evidence' ? item.data.outcome.discovered : 0), 0) ?? 0
+  const observations = resolved.acquisition.observations ?? []
+  for (const observation of observations) {
+    const data = observation.data
+    if (data.kind !== 'evidence') continue
+    const provider = providerKey(observation.source.retrievalProvider ?? observation.source.sourceId)
+    const outcome = data.outcome
+    if (provider) {
+      progress.selectedCount += outcome.fetched + outcome.failed + outcome.empty
+      progress.futureFilteredCount += outcome.diagnostics.filter((item) => /(?:document_future|:FUTURE)$/.test(item)).length
+      progress.outsideWindowFilteredCount += outcome.diagnostics.filter((item) => /(?:document_outside_period|:OUTSIDE_PERIOD)$/.test(item)).length
+      progress.unknownDateCount += data.documents.filter((item) => item.dateStatus === 'UNKNOWN').length
+      progress.deduplicatedCount += outcome.deduplicated
+    }
+    for (const document of data.documents) {
       if (acquired.length >= MAX_ACQUIRED_SOURCES) break
-      abortIfNeeded(input.signal)
-      try {
-        const fetched = await plugin.fetch(candidate); fetchSucceeded = true; const payload = validateUsableAcquisitionPayload(fetched.content); if (payload.status !== 'usable') { if (payload.status === 'failed') failed = true; diagnostics.push({ provider, candidateId: candidate.candidateId, kind: candidate.kind, status: payload.status, reason: payload.reason }); continue }
-        const source = await plugin.normalize(fetched); const normalizedPayload = validateUsableAcquisitionPayload(source.content); if (normalizedPayload.status !== 'usable') { if (normalizedPayload.status === 'failed') failed = true; diagnostics.push({ provider, candidateId: candidate.candidateId, kind: candidate.kind, status: normalizedPayload.status, reason: `normalized source ${normalizedPayload.reason}` }); continue } const sourceUrlValue = source.canonicalUrl ?? source.candidate.url; const url = canonicalUrl(sourceUrlValue); if (sourceUrlValue !== undefined && url === undefined) { diagnostics.push({ provider, candidateId: candidate.candidateId, kind: candidate.kind, status: 'empty', reason: 'unsafe normalized source URL' }); continue } const hash = source.contentHash || sha256(source.content)
-        if ((url !== undefined && urls.has(url)) || hashes.has(hash)) { progress.deduplicatedCount++; continue }
-        if (url !== undefined) urls.add(url); hashes.add(hash); usable++
-        const role: EventSourceRole = url !== undefined && context.url !== undefined && url === canonicalUrl(context.url) ? 'anchor_context' : provider === 'cninfo' ? 'verification' : 'supporting'
-        acquired.push({ source: source.contentHash === hash ? source : { ...source, contentHash: hash }, role })
-      } catch (error) { failed = true; diagnostics.push({ provider, candidateId: candidate.candidateId, kind: candidate.kind, status: 'failed', reason: error instanceof Error ? error.message : String(error) }) }
+      const source = document.record
+      const sourceUrlValue = source.canonicalUrl ?? source.candidate.url
+      const url = canonicalUrl(sourceUrlValue)
+      const route = providerKey(document.provenance.retrievalProvider ?? observation.source.sourceId)
+      if (!route) continue
+      if (sourceUrlValue !== undefined && url === undefined) {
+        diagnostics.push({ provider: route, candidateId: source.candidate.candidateId, kind: source.candidate.kind, status: 'empty', reason: 'unsafe normalized source URL' })
+        continue
+      }
+      const role: EventSourceRole = url !== undefined && context.url !== undefined && url === canonicalUrl(context.url) ? 'anchor_context' : route === 'cninfo' ? 'verification' : 'supporting'
+      acquired.push({ source, role, provenance: document.provenance, dateStatus: document.dateStatus, pointInTimeSafe: document.pointInTimeSafe })
     }
-    const providerSucceeded = discoverySucceeded && !failed
-    outcomes.push({ provider, providerAttempted: true, providerSucceeded, providerEmpty: discovered.length === 0 || (usable === 0 && !failed), providerFailed: !providerSucceeded, usableSourceCount: usable, transportSucceeded: discoverySucceeded, fetchSucceeded })
+    for (const diagnostic of outcome.diagnostics) {
+      const route = provider ?? 'research-evidence'
+      diagnostics.push({ provider: route, status: 'empty', reason: diagnostic })
+    }
+  }
+  for (const attempt of attempts) {
+    const provider = providerKey(attempt.sourceId)
+    if (!provider) continue
+    const observation = observations.find((item) => item.source.sourceId === attempt.sourceId)
+    const outcome = observation?.data.kind === 'evidence' ? observation.data.outcome : undefined
+    const transportSucceeded = outcome?.transportSucceeded ?? (attempt.status === 'SUCCESS' || attempt.status === 'NO_DATA' || attempt.status === 'POINT_IN_TIME_INVALID')
+    const fetchSucceeded = outcome?.fetchSucceeded ?? ((outcome?.fetched ?? 0) + (outcome?.empty ?? 0) + (outcome?.failed ?? 0) > 0)
+    const usableSourceCount = acquired.filter(({ source }) => providerKey(source.candidate.provider) === provider).length
+    const failed = !transportSucceeded || (outcome?.failed ?? 0) > 0
+    outcomes.push({ provider, providerAttempted: true, providerSucceeded: transportSucceeded && !failed, providerEmpty: transportSucceeded && usableSourceCount === 0 && !failed, providerFailed: failed, usableSourceCount, transportSucceeded, fetchSucceeded })
+    if (!observation && attempt.diagnostic) diagnostics.push({ provider, status: failed ? 'failed' : 'empty', reason: attempt.diagnostic })
+  }
+  for (const provider of PROVIDERS) {
+    if (!outcomes.some((item) => item.provider === provider)) {
+      outcomes.push({ provider, providerAttempted: false, providerSucceeded: false, providerEmpty: true, providerFailed: false, usableSourceCount: 0, transportSucceeded: false, fetchSucceeded: false })
+    }
   }
   return { sources: acquired, outcomes, diagnostics, discoveredCount: progress.discoveredCount, selectedCount: progress.selectedCount, futureFilteredCount: progress.futureFilteredCount, outsideWindowFilteredCount: progress.outsideWindowFilteredCount, unknownDateCount: progress.unknownDateCount, deduplicatedCount: progress.deduplicatedCount }
 }
