@@ -16,8 +16,10 @@ not claim Sol architecture acceptance. Phase 3 remains on its isolated branch.
 | Phase 3 base | `7648507243819b22a327b68fed4b5fb540f8ff30` |
 | Phase 2 accepted `main` / `origin/main` | `7648507243819b22a327b68fed4b5fb540f8ff30` |
 | Task 6 starting HEAD | `e0673ce6d226cf315deb8273f2f62221033ee695` |
+| Final implementation HEAD at full validation | `3deb06824653ed2e12f4f0108a6c1fe8cf1d508f` |
+| Phase 3 remote branch before delivery | Not present after `git fetch origin` |
 | Merge state | Phase 3 is not merged to `main` |
-| Push state | Task 6 controller requested local commit only; push remains pending final review |
+| Push state | Independent final review approved; push remains pending |
 
 `main` and `origin/main` still point to the accepted Phase 2 SHA. Task 6
 changes are committed on the Phase 3 branch only. A separate Thesis contract
@@ -179,5 +181,6 @@ The live acceptance runner now counts only records in `acquisition.observations[
 - `npm run client:typecheck`: PASS.
 - Company/Event/Thesis Phase 3 live scripts without opt-in: all three printed `SKIPPED` before side effects. The earlier Task 6 check covered all five scripts, including the two legacy Company smoke scripts.
 - `git diff --check`: PASS (Git reports only expected Windows line-ending normalization notices).
-- Controller's full `npm test` rerun remains the evidence recorded above: it ran after the positive Thesis Gateway fixture fix on HEAD `ef271bc1223c06671a46a451525aa8a3b04331c2`; client 97/97, Node 2,065 total / 2,040 pass / 25 fail, with exact baseline/current identifiers 25 / 25, added 0, missing 0. That full rerun preceded this final provenance/aggregation fix wave; the scoped validation above was run after this wave.
-- No Gateway, provider, or Thesis lifecycle semantics changed. Phase 3 remains local; push/merge and controller delivery review are pending.
+- Final controller `npm test` rerun on `3deb06824653ed2e12f4f0108a6c1fe8cf1d508f`: client 97/97; Node 2,065 total / 2,040 pass / 25 fail. Phase 2 baseline rerun: client 97/97; Node 2,036 total / 2,011 pass / 25 fail. The exact failing Node test identifiers matched: 25 baseline, 25 current, 0 added, 0 missing. The baseline client retry passed after one earlier transient UI timeout.
+- The scoped Phase 3/guard suite passed 99/99 after the final runner hardening. Root and client typechecks, client build, and `git diff --check` passed. Client build reports the existing large-chunk advisory.
+- No Gateway, provider, or Thesis lifecycle semantics changed. Phase 3 remains local; independent final review approved the provenance and live-runner fixes. Push is pending; no merge was performed.
