@@ -169,7 +169,8 @@ test('Skill catalog preserves readable inputs and publishes bounded provider-neu
 
   const industry = getCanonicalResearchSkill('industry_supply_demand_cycle')
   assert.ok(industry)
-  assert.deepEqual(industry.dataRequirements.map((item) => item.kind), ['DOMAIN', 'DOMAIN', 'DOMAIN', 'DOMAIN', 'DOMAIN'])
+  assert.deepEqual(industry.dataRequirements.map((item) => item.id), ['production-output-evidence', 'export-volume-evidence', 'raw-material-price-evidence', 'capacity-evidence', 'demand-evidence', 'inventory-evidence', 'pricing-evidence', 'utilization-evidence'])
+  assert.ok(industry.dataRequirements.every((item) => item.kind === 'DOMAIN'))
   assert.equal(industry.requirementCoverage, 'PARTIAL')
   assert.ok(industry.dataRequirements.every((item) => !('metricId' in item)))
   assert.ok(industry.dataRequirements.every((item) => item.kind !== 'DOMAIN' || (item.semanticRole !== undefined && item.metricFamily !== undefined)), 'each generic DOMAIN need must specify exact semantic role and family')
@@ -562,7 +563,7 @@ test('DataResolver marks unresolved optional Industry needs PARTIAL even when th
     workflowId: 'industry-deep-research', asOf: AS_OF, subject: { industryId: 'pcb' },
   })
   assert.equal(result.items.length, 0)
-  assert.equal(result.unresolvedRequirements.length, 5)
+  assert.equal(result.unresolvedRequirements.length, 8)
   assert.ok(result.unresolvedRequirements.every((item) => item.required === false))
   assert.equal(result.completeness, 'PARTIAL')
 
@@ -578,7 +579,7 @@ test('DataResolver marks unresolved optional Industry needs PARTIAL even when th
     ...skill.dataRequirements,
   ], { workflowId: 'valuation', asOf: AS_OF, subject: { industryId: 'pcb' } })
   assert.equal(requiredAcquisitionFailure.completeness, 'UNAVAILABLE')
-  assert.equal(requiredAcquisitionFailure.unresolvedRequirements.length, 5)
+  assert.equal(requiredAcquisitionFailure.unresolvedRequirements.length, 8)
 
   const requiredTemplate = [{ kind: 'DOMAIN', domain: 'industry', id: 'required-demand', semanticRole: 'demand', metricFamily: 'demand', dataKind: 'timeseries', required: true, determinismClass: 'EVIDENCE_BACKED_NUMERIC' }] as const
   const noBasis = await new DataResolver<number>({ policies: [], executor: async () => ({ status: 'UNSUPPORTED' }) }).resolveSkillRequirements(

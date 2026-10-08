@@ -8,6 +8,8 @@ import { runIndustryDeepResearch } from '../../workflows/industry-deep-research/
 import { INDUSTRY_MODULES } from '../../skills/industry-research/index.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import { sha256 } from '../../plugins/research-acquisition/hash.ts'
+import { getCanonicalResearchSkill } from '../../app/services/research-skill-catalog.ts'
+import { createIndustryWorkflowResolverFixture } from '../support/industry-workflow-resolver-fixture.ts'
 
 const repoRoot = resolve(import.meta.dirname, '../..')
 const evidencePath = join(repoRoot, 'tests/validation/evidence/RHL_M3B_INDUSTRY_SECOND_TARGET_GENERALITY.json')
@@ -34,7 +36,7 @@ function executor(includeCompanyMapping = true): ReasoningExecutor {
   } }
 }
 
-const input = (reports: string, canonicalRef?: string, workflowRunId = 'industry-second-target-generality', includeCompanyMapping = true) => ({ workflowRunId, handle: undefined as never, target: canonicalRef ? { ...target, canonicalRef } : target, reportRoot: reports, reasoningExecutor: executor(includeCompanyMapping), acquisitionWave: async ({ wave }: { wave: 1 | 2 }) => wave === 1 ? [source] : [], now: () => '2026-09-15T01:00:00.000Z', maxSources: 2, maxEvidencePerModule: 2 })
+const input = (reports: string, canonicalRef?: string, workflowRunId = 'industry-second-target-generality', includeCompanyMapping = true) => { const now = () => '2026-09-15T01:00:00.000Z'; return { workflowRunId, handle: undefined as never, target: canonicalRef ? { ...target, canonicalRef } : target, reportRoot: reports, reasoningExecutor: executor(includeCompanyMapping), dataResolverFactory: createIndustryWorkflowResolverFixture(async () => [source], now), skillDataRequirements: getCanonicalResearchSkill('industry_supply_demand_cycle')!.dataRequirements, now, maxSources: 2, maxEvidencePerModule: 2 } }
 
 async function main(): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'rhl-industry-second-target-'))

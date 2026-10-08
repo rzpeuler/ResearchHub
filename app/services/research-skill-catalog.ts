@@ -157,8 +157,11 @@ const DATA_REQUIREMENTS_BY_SKILL: Readonly<Record<string, readonly SkillDataRequ
   reverse_dcf_expectation_decode: [
     { id: 'market-price', kind: 'STATIC', metricId: 'valuation_market_price', dataKind: 'timeseries', determinismClass: 'AUTHORITATIVE_NUMERIC', minimumAuthority: 'S3_AGGREGATOR', requiredFields: ['date', 'close'], required: true },
   ],
-  industry_supply_demand_cycle: [
-    { id: 'capacity-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'supply', metricFamily: 'capacity', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
+    industry_supply_demand_cycle: [
+      { id: 'production-output-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'production', metricFamily: 'operating_output', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
+      { id: 'export-volume-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'export_volume', metricFamily: 'trade_volume', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
+      { id: 'raw-material-price-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'pricing', metricFamily: 'raw_material_price', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
+      { id: 'capacity-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'supply', metricFamily: 'capacity', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
     { id: 'demand-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'demand', metricFamily: 'demand', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
     { id: 'inventory-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'inventory', metricFamily: 'inventory', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },
     { id: 'pricing-evidence', kind: 'DOMAIN', domain: 'industry', semanticRole: 'pricing', metricFamily: 'pricing', dataKind: 'timeseries', determinismClass: 'EVIDENCE_BACKED_NUMERIC', required: false },

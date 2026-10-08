@@ -9,6 +9,8 @@ import { WorkflowService } from '../../app/services/workflow-service.ts'
 import { ReasoningExecutorError } from '../../plugins/reasoning/errors.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import { createIndustryProductionReasoningExecutor, INDUSTRY_PRODUCTION_REASONING_SELECTION, PRIMARY_PRODUCTION_REASONING_MODEL } from '../../app/pi/model-selection.ts'
+import { createIndustryDataResolver } from '../../app/services/industry-data-resolver.ts'
+import { createIndustryDataCatalog } from '../../data/industry-catalog.ts'
 
 const capabilities = { maxContextTokens: 4_000, maxOutputTokens: 1_000, structuredOutputSupport: true, maxConcurrency: 1 } as const
 const failing = (failureClass: 'safety_or_policy' | 'transport_or_service'): ReasoningExecutor => ({
@@ -20,7 +22,7 @@ async function serviceFixture(factory: () => Promise<ReasoningExecutor>, general
   const root = await mkdtemp(join(tmpdir(), 'industry-selection-'))
   const reports = join(root, 'reports'); await mkdir(reports); await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-industry-selection' })
   const workflowService = new WorkflowService()
-  const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [], workflowService, reasoningExecutor: general, industryReasoningExecutorFactory: factory })
+  const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [], workflowService, reasoningExecutor: general, industryReasoningExecutorFactory: factory, industryDataResolverFactory: (context) => createIndustryDataResolver({ catalog: createIndustryDataCatalog(), policies: [], operations: {} }, context) })
   return { root, service, workflowService }
 }
 

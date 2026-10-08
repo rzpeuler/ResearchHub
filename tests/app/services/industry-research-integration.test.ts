@@ -12,7 +12,13 @@ import { INDUSTRY_MODULES } from '../../../skills/industry-research/index.ts'
 import type { ReasoningCapabilities, ReasoningExecutor, ReasoningRequest, ReasoningResult } from '../../../plugins/reasoning/contracts.ts'
 import type { NormalizedResearchSource, ResearchAcquisitionPlugin, ResearchFetchedSource, ResearchSourceCandidate } from '../../../plugins/research-acquisition/contracts.ts'
 import { sha256 } from '../../../plugins/research-acquisition/hash.ts'
-import { createIndustryOperatingObservation } from '../../../plugins/research-acquisition/industry-operating-observations.ts'
+import { INDUSTRY_RESEARCH_EVIDENCE_POLICY, INDUSTRY_DATA_SOURCE_POLICIES } from '../../../data/industry-policies.ts'
+import { createIndustryDataCatalog, industryMetricId } from '../../../data/industry-catalog.ts'
+import { createIndustryDataResolver } from '../../../app/services/industry-data-resolver.ts'
+import type { IndustryDataResolverFactory } from '../../../workflows/industry-deep-research/contracts.ts'
+import { createIndustryEvidenceOperation, createIndustryMetricOperation } from '../../../plugins/research-acquisition/industry-data-operations.ts'
+import { createIndustryOperatingObservation, type IndustryOperatingObservationAcquisitionResult } from '../../../plugins/research-acquisition/industry-operating-observations.ts'
+import type { IndustryMetricDefinition } from '../../../data/industry-catalog.ts'
 import type { ThemeScopeImpactChecker } from '../../../workflows/theme-scope-impact-check/post-write.ts'
 
 const capabilities: ReasoningCapabilities = { maxContextTokens: 100_000, maxOutputTokens: 10_000, structuredOutputSupport: true, maxConcurrency: 4 }
@@ -35,7 +41,7 @@ class IndustryExecutor implements ReasoningExecutor {
       const evidenceIds = input.evidence.map((item) => item.evidenceId)
       const proposals = input.module === 'company_mapping' ? [
         { proposalId: 'product', kind: 'entity' as const, subjectKey: 'product', entityType: 'product' as const, entityName: 'Fixture PCB Product' },
-        { proposalId: 'company', kind: 'entity' as const, subjectKey: 'company', entityType: 'company' as const, entityName: 'Fixture PCB Company' },
+        { proposalId: 'company', kind: 'entity' as const, subjectKey: 'company', entityType: 'company' as const, entityName: 'Fixture PCB Company', structuredValue: { ticker: '000001', exchange: 'SZSE' } },
         { proposalId: 'product-industry', kind: 'relation' as const, subjectKey: 'product', targetKey: 'industry', relationType: 'belongs_to_industry' as const, sourceCandidateIds: evidenceIds },
         { proposalId: 'company-industry', kind: 'relation' as const, subjectKey: 'company', targetKey: 'industry', relationType: 'business_exposure' as const, sourceCandidateIds: evidenceIds },
         { proposalId: 'industry-claim', kind: 'claim' as const, subjectKey: 'industry', claimType: 'fact' as const, statement: 'Fixture PCB industry includes the fixture product and company.', sourceCandidateIds: evidenceIds },
@@ -58,23 +64,46 @@ function fixturePlugin(sequence: readonly NormalizedResearchSource[] = [source('
   }
 }
 
-async function fixture(options: { readonly executor?: IndustryExecutor; readonly plugins?: readonly ResearchAcquisitionPlugin[]; readonly impactChecker?: ThemeScopeImpactChecker } = {}) {
+async function fixture(options: { readonly executor?: IndustryExecutor; readonly plugins?: readonly ResearchAcquisitionPlugin[]; readonly impactChecker?: ThemeScopeImpactChecker; readonly industryDataResolverFactory?: IndustryDataResolverFactory } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'rhl-app-industry-'))
   const reports = await mkdtemp(join(tmpdir(), 'rhl-app-industry-reports-'))
   await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-app-industry', now: '2026-09-08T00:00:00.000Z' })
   const workflowService = new WorkflowService()
   const executor = options.executor ?? new IndustryExecutor()
-  const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, workflowService, reasoningExecutor: executor, acquisitionPlugins: options.plugins ?? [fixturePlugin()], ...(options.impactChecker === undefined ? {} : { themeScopeImpactChecker: options.impactChecker }) })
+  const plugin = options.plugins?.[0] ?? fixturePlugin()
+  const industryDataResolverFactory: IndustryDataResolverFactory = options.industryDataResolverFactory ?? ((context) => createIndustryDataResolver({ catalog: createIndustryDataCatalog(), policies: [{ ...INDUSTRY_RESEARCH_EVIDENCE_POLICY, candidates: [INDUSTRY_RESEARCH_EVIDENCE_POLICY.candidates[0]!] }], operations: { 'industry.evidence.miit': createIndustryEvidenceOperation('industry.evidence.miit', plugin) } }, context))
+  const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, workflowService, reasoningExecutor: executor, industryDataResolverFactory, acquisitionPlugins: [], ...(options.impactChecker === undefined ? {} : { themeScopeImpactChecker: options.impactChecker }) })
   return { root, reports, workflowService, service, executor }
+}
+
+function canonicalProductionFixture(): { readonly catalog: ReturnType<typeof createIndustryDataCatalog>; readonly acquisition: { acquire: () => Promise<IndustryOperatingObservationAcquisitionResult>; acquireNamed: (_request: unknown, metricId: string) => Promise<IndustryOperatingObservationAcquisitionResult> }; readonly pointMetricId: string; readonly exportMetricId: string } {
+  const metricId = industryMetricId('household_air_conditioner', 'room-air-conditioner-production')
+  const exportMetricId = industryMetricId('household_air_conditioner', 'air-conditioner-export-volume')
+  const policyId = `industry-metric:${metricId}`
+  const exportPolicyId = `industry-metric:${exportMetricId}`
+  const checks = { SEMANTIC: ['official definition'], UNIT: ['source unit reviewed'], PERIOD: ['period semantics reviewed'], SCOPE: ['geography and product reviewed'], PIT: ['publication PIT verified'], EXTRACTION: ['deterministic parser'], ACCEPTANCE: ['fixture operation acceptance'] }
+  const canonical = (definition: Omit<IndustryMetricDefinition, 'lifecycleStatus' | 'sourcePolicies' | 'validation'>, policy: string): IndustryMetricDefinition => ({ ...definition, lifecycleStatus: 'CANONICAL', sourcePolicies: [{ policyId: policy }], validation: { validatedAt: '2026-10-08T00:00:00.000Z', validator: 'Phase 4 deterministic fixture', methodology: 'Fixture proves exact runtime matching only; it is not live-source acceptance.', sourceabilityEvidence: ['Test-only named operation'], checks } })
+  const productionDefinition = canonical({ metricId, industryId: 'household_air_conditioner', metricFamily: 'operating_output', semanticRole: 'production', name: 'Room air conditioner production', description: 'Annual room air conditioner production in China.', dataKind: 'timeseries', canonicalUnit: '万台', acceptedSourceUnits: ['万台'], frequency: 'ANNUAL', periodBasis: 'PERIOD', aggregation: 'SUM', geography: 'China national', applicability: 'Room air conditioner production', product: '房间空气调节器', requiredQualifiers: ['EXACT'], pitPolicy: { publicationPit: 'REQUIRED', valueVersionPit: 'UNVERIFIED_CURRENT_VALUE_ONLY' } }, policyId)
+  const exportDefinition = canonical({ metricId: exportMetricId, industryId: 'household_air_conditioner', metricFamily: 'trade_volume', semanticRole: 'export_volume', name: 'Household air conditioner export volume', description: 'Monthly household air conditioner export volume.', dataKind: 'timeseries', canonicalUnit: '台', acceptedSourceUnits: ['台'], frequency: 'MONTHLY', periodBasis: 'PERIOD', aggregation: 'SUM', geography: 'China national exports', applicability: 'Household air conditioner exports', product: '家用空调器', requiredQualifiers: ['EXACT'], pitPolicy: { publicationPit: 'REQUIRED', valueVersionPit: 'UNVERIFIED_CURRENT_VALUE_ONLY' } }, exportPolicyId)
+  const normalized = source('fixture-nbs-production')
+  const productionUrl = 'https://fixture.test/nbs/room-air-conditioner-production'
+  const productionSource: NormalizedResearchSource = { ...normalized, canonicalUrl: productionUrl, candidate: { ...normalized.candidate, url: productionUrl, publishedAt: '2026-03-02T15:59:59.999Z' }, retrievedAt: '2026-09-02T00:00:00.000Z', publisher: 'National Bureau of Statistics' }
+  const productionObservation = createIndustryOperatingObservation({ metricKey: 'room_air_conditioner.production', observationClass: 'PRODUCTION', value: 26697.5, qualifier: 'EXACT', unit: '万台', originalValue: '26697.5', originalUnit: '万台', periodStart: '2025-01-01T00:00:00.000Z', periodEnd: '2025-12-31T23:59:59.999Z', frequency: 'ANNUAL', aggregation: 'PERIOD', geography: 'China national', productOrSegment: '房间空气调节器', publishedAt: '2026-03-02T15:59:59.999Z', retrievedAt: '2026-09-02T00:00:00.000Z', originPublisher: 'National Bureau of Statistics', hostPlatform: 'fixture.test', retrievalProvider: 'fixture NBS operation', sourceAuthority: 'S0_STATUTORY', determinismClass: 'EVIDENCE_BACKED_NUMERIC', sourceCandidateId: productionSource.candidate.candidateId, sourceRef: `url:${productionUrl}`, publicationPit: 'VERIFIED', valueVersionPit: 'UNVERIFIED', metadata: { canonicalUrl: productionUrl } })
+  const exportUrl = 'https://fixture.test/cheaa/air-conditioner-export-volume'
+  const exportSource: NormalizedResearchSource = { ...source('fixture-cheaa-export'), canonicalUrl: exportUrl, candidate: { ...source('fixture-cheaa-export').candidate, url: exportUrl, publishedAt: '2024-11-08T15:59:59.999Z' }, publisher: 'CHEAA' }
+  const exportObservation = createIndustryOperatingObservation({ metricKey: 'air_conditioner.export_volume', observationClass: 'TRADE', value: 4039692, qualifier: 'EXACT', unit: '台', originalValue: '4039692', originalUnit: '台', periodStart: '2024-09-01T00:00:00.000Z', periodEnd: '2024-09-30T23:59:59.999Z', frequency: 'MONTHLY', aggregation: 'PERIOD', geography: 'China national exports', productOrSegment: '家用空调器', publishedAt: '2024-11-08T15:59:59.999Z', retrievedAt: '2026-09-02T00:00:00.000Z', originPublisher: 'CHEAA', hostPlatform: 'fixture.test', retrievalProvider: 'fixture CHEAA operation', sourceAuthority: 'S2_PROFESSIONAL', determinismClass: 'EVIDENCE_BACKED_NUMERIC', sourceCandidateId: exportSource.candidate.candidateId, sourceRef: `url:${exportUrl}`, publicationPit: 'VERIFIED', valueVersionPit: 'UNVERIFIED', metadata: { canonicalUrl: exportUrl } })
+  const productionResult: IndustryOperatingObservationAcquisitionResult = { status: 'COMPLETED', observations: [productionObservation], sources: [productionSource], diagnostics: [] }
+  const exportResult: IndustryOperatingObservationAcquisitionResult = { status: 'COMPLETED', observations: [exportObservation], sources: [exportSource], diagnostics: [] }
+  return { catalog: createIndustryDataCatalog([productionDefinition, exportDefinition]), acquisition: { acquire: async () => productionResult, acquireNamed: async (_request, selectedMetricId) => selectedMetricId === metricId ? productionResult : selectedMetricId === exportMetricId ? exportResult : { status: 'SCOPE_UNSUPPORTED', observations: [], sources: [], diagnostics: ['FIXTURE_METRIC_ID_MISMATCH'] } }, pointMetricId: metricId, exportMetricId }
 }
 
 test('Application Industry research projects canonical graph and replays semantic objects without duplication', async () => {
   const f = await fixture()
   try {
     const first = await f.service.startIndustryResearch({ workflowRunId: 'industry-app-first', name: 'Fixture PCB Industry', maxSources: 4, maxEvidencePerModule: 2 }).completion
-    assert.equal(first.status, 'completed')
+    assert.equal(first.status, 'completed', first.errorSummary)
     assert.match(first.reportPath ?? '', /^[A-Za-z0-9._-]+\.md$/)
-    assert.equal(first.providerOutcomes.length, 1); assert.ok(first.providerOutcomes[0])
+    assert.equal(first.providerOutcomes.length, 0)
     assert.ok(first.acquisitionDiagnostics.length <= 32)
     const report = JSON.parse(await readFile(join(f.reports, `${first.reportPath!}.json`), 'utf8')) as { sections: unknown[] }
     assert.equal(report.sections.length, 16)
@@ -105,7 +134,7 @@ test('Application Industry research sends verified canonical changes to the scop
   const f = await fixture({ impactChecker: { check: async (receipt) => { receipts.push(receipt); return { receiptKey: 'a'.repeat(64), knowledgeBaseId: 'kb-app-industry', baseRevision: 0, committedRevision: 1, status: 'ready', proposals: [], diagnostics: [] } } } })
   try {
     const result = await f.service.startIndustryResearch({ workflowRunId: 'industry-impact-trigger', name: 'Fixture PCB Industry', maxSources: 4, maxEvidencePerModule: 2 }).completion
-    assert.equal(result.status, 'completed')
+    assert.equal(result.status, 'completed', result.errorSummary)
     assert.equal(result.themeScopeImpact.status, 'ready')
     assert.equal(receipts.length, 1)
     const receipt = receipts[0] as { writerRunId: string; knowledgeBaseId: string; createdRefs: readonly string[]; updatedRefs: readonly string[] }
@@ -121,20 +150,59 @@ test('Application Industry research aggregates bounded provider evidence across 
   const f = await fixture({ executor, plugins: [fixturePlugin([source('wave-one'), source('wave-two', 'Official capacity-gap evidence for the PCB industry.')], observedSearchTerms)] })
   try {
     const result = await f.service.startIndustryResearch({ workflowRunId: 'industry-app-two-wave', name: 'Fixture PCB Industry', searchTerms: ['base-search-term'], maxSources: 4 }).completion
-    assert.equal(result.status, 'completed'); assert.ok(result.providerOutcomes[0])
-    const outcome = result.providerOutcomes[0] as { usableSourceCount: number; providerSucceeded: boolean; providerAttempted: boolean }
-    assert.equal(outcome.providerAttempted, true); assert.equal(outcome.providerSucceeded, true); assert.equal(outcome.usableSourceCount, 2); assert.deepEqual(observedSearchTerms, [['base-search-term'], ['capacity-gap', 'base-search-term']]); assert.ok(result.acquisitionDiagnostics.length <= 32)
+    assert.equal(result.status, 'completed', result.errorSummary); assert.equal(result.providerOutcomes.length, 0)
+    assert.deepEqual(observedSearchTerms, [['base-search-term'], ['capacity-gap', 'base-search-term']]); assert.ok(result.acquisitionDiagnostics.length <= 32)
   } finally { await rm(f.root, { recursive: true, force: true }); await rm(f.reports, { recursive: true, force: true }) }
 })
 
-test('Application Service normal Industry path accepts a fake D4 port without network access', async () => {
-  let d4Calls = 0
-  const d4Source = source('fixture-d4')
-  const observation = createIndustryOperatingObservation({ metricKey: 'fixture.metric', observationClass: 'PRODUCTION', value: 42, qualifier: 'EXACT', unit: 'units', originalValue: 42, originalUnit: 'units', periodStart: '2025-01-01T00:00:00.000Z', periodEnd: '2025-12-31T23:59:59.999Z', frequency: 'ANNUAL', aggregation: 'PERIOD', geography: 'China national', productOrSegment: 'Fixture PCB', publishedAt: '2026-01-01T00:00:00.000Z', retrievedAt: '2026-01-02T00:00:00.000Z', originPublisher: 'Fixture Official', hostPlatform: 'Fixture', retrievalProvider: 'Fixture D4', sourceAuthority: 'S1_OFFICIAL', determinismClass: 'EVIDENCE_BACKED_NUMERIC', sourceCandidateId: 'fixture-d4', publicationPit: 'VERIFIED', valueVersionPit: 'UNVERIFIED', metadata: {} })
-  const f = await fixture()
+test('Application Industry invocation traverses Workflow, DataResolver, catalog policy, Plugin operation, and Skill with honest metric gaps', async () => {
+  const calls = { discover: 0, fetch: 0, normalize: 0 }
+  const plugin = fixturePlugin()
+  const tracedPlugin: ResearchAcquisitionPlugin = { name: plugin.name, async discover(request, signal) { calls.discover++; return plugin.discover(request, signal) }, async fetch(candidate, signal) { calls.fetch++; return plugin.fetch(candidate, signal) }, async normalize(fetched, signal) { calls.normalize++; return plugin.normalize(fetched, signal) } }
+  const f = await fixture({ plugins: [tracedPlugin] })
   try {
-    const service = new ResearchService({ mountedKnowledgeBaseRoot: f.root, reportRoot: f.reports, workflowService: f.workflowService, reasoningExecutor: f.executor, acquisitionPlugins: [fixturePlugin()], industryOperatingObservationAcquisition: { acquire: async () => { d4Calls++; return { status: 'COMPLETED', observations: [observation], sources: [d4Source], diagnostics: [] } } } })
-    const result = await service.startIndustryResearch({ workflowRunId: 'industry-app-d4-port', name: 'Fixture PCB Industry', maxSources: 4, maxEvidencePerModule: 2 }).completion
-    assert.equal(result.status, 'completed'); assert.equal(d4Calls, 1); assert.equal(result.operatingObservationStatus, 'COMPLETED'); assert.equal(result.operatingObservations.length, 1); assert.match(result.operatingObservations[0]?.sourceRef ?? '', /^source:/)
+    const result = await f.service.startIndustryResearch({ workflowRunId: 'industry-app-data-resolver', name: 'Fixture PCB Industry', maxSources: 4, maxEvidencePerModule: 2 }).completion
+    assert.equal(result.status, 'completed', result.errorSummary)
+    assert.ok(calls.discover > 0); assert.ok(calls.fetch > 0); assert.ok(calls.normalize > 0)
+    assert.equal(result.operatingObservations.length, 0)
+    assert.equal(result.requirementCoverage, 'PARTIAL')
+    assert.ok(result.dataRequirementGaps.some((gap) => gap.endsWith(':INDUSTRY_ID_REQUIRED')))
+    const report = JSON.parse(await readFile(join(f.reports, `${result.reportPath!}.json`), 'utf8')) as { sections: Array<{ title: string; markdown: string }> }
+    assert.match(report.sections.find((section) => section.title === 'Key Metrics & Monitoring')!.markdown, /no canonical Industry metric resolved/i)
+  } finally { await rm(f.root, { recursive: true, force: true }); await rm(f.reports, { recursive: true, force: true }) }
+})
+
+test('Application Industry invocation selects the exact canonical production metric and gives provider-neutral points to relevant Skills', async () => {
+  const canonical = canonicalProductionFixture()
+  const plugin = fixturePlugin()
+  const factory: IndustryDataResolverFactory = (context) => createIndustryDataResolver({
+    catalog: canonical.catalog,
+    policies: INDUSTRY_DATA_SOURCE_POLICIES,
+    operations: {
+      'industry.evidence.miit': createIndustryEvidenceOperation('industry.evidence.miit', plugin),
+      'industry.metric.nbs.room-air-conditioner-production': createIndustryMetricOperation(canonical.acquisition),
+      'industry.metric.cheaa.air-conditioner-export-volume': createIndustryMetricOperation(canonical.acquisition),
+    },
+  }, context)
+  const f = await fixture({ industryDataResolverFactory: factory })
+  try {
+    const result = await f.service.startIndustryResearch({ workflowRunId: 'industry-app-canonical-production', name: '家用空调', maxSources: 4, maxEvidencePerModule: 2 }).completion
+    assert.equal(result.status, 'completed', result.errorSummary)
+    assert.equal(result.operatingObservations.length, 2)
+    assert.equal(result.operatingObservations[0]?.metricId, canonical.pointMetricId)
+    assert.equal(result.operatingObservations[0]?.canonicalUnit, '万台')
+    assert.equal(result.operatingObservations[0]?.value, 26697.5)
+    const moduleCalls = (f.executor as IndustryExecutor).calls.filter((call) => call.operation === 'industry_module_analysis')
+    const pointsFor = (module: string) => (moduleCalls.find((call) => (call.input as { module: string }).module === module)?.input as { operatingObservations: readonly { metricId: string; unit: string; sourceIdentity: string }[] } | undefined)?.operatingObservations ?? []
+    assert.equal(pointsFor('market_size_growth').length, 1)
+    assert.equal(pointsFor('supply_demand_analysis').length, 2)
+    assert.equal(pointsFor('technology_evolution').length, 0)
+    assert.deepEqual(new Set(pointsFor('supply_demand_analysis').map((point) => point.metricId)), new Set([canonical.pointMetricId, canonical.exportMetricId]))
+    assert.equal(pointsFor('supply_demand_analysis').find((point) => point.metricId === canonical.pointMetricId)?.unit, '万台')
+    assert.equal(pointsFor('supply_demand_analysis').find((point) => point.metricId === canonical.exportMetricId)?.unit, '台')
+    assert.match(pointsFor('supply_demand_analysis').find((point) => point.metricId === canonical.pointMetricId)?.sourceIdentity ?? '', /^url:https:\/\/fixture\.test\/nbs/)
+    assert.equal(result.requirementCoverage, 'PARTIAL')
+    assert.ok(result.dataRequirementGaps.some((gap) => gap.startsWith('capacity-evidence:NO_CANONICAL_INDUSTRY_METRIC')))
+    assert.ok(result.dataRequirementGaps.some((gap) => gap.startsWith('demand-evidence:NO_CANONICAL_INDUSTRY_METRIC')))
   } finally { await rm(f.root, { recursive: true, force: true }); await rm(f.reports, { recursive: true, force: true }) }
 })

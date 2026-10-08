@@ -17,15 +17,14 @@ import { createCompanyResearchDataResolver } from '../../plugins/research-acquis
 import { OfficialDisclosureResearchPlugin } from '../../plugins/research-acquisition/official.ts'
 import { GdeltResearchPlugin } from '../../plugins/research-acquisition/gdelt.ts'
 import type { OfficialDisclosureClient } from '../../plugins/research-acquisition/official.ts'
-import { AkshareIndustryResearchPlugin } from '../../plugins/research-acquisition/industry.ts'
-import { IndustryAcquisitionComposition } from '../../plugins/research-acquisition/industry-composition.ts'
 import { ApplicationServiceError, type ApplicationEarningsReviewResult, type ApplicationEventResearchResult, type ApplicationResearchResult, type ApplicationValuationResult, type ApplicationThesisRedTeamResult, type ApplicationIndustryResearchResult, type EarningsReviewInput, type EventResearchInput, type IndustryResearchInput, type ResearchCompanyInput, type ThesisRedTeamInput, type ValuationInput } from './contracts.ts'
 import { WorkflowService } from './workflow-service.ts'
 import { readResearchReport, summarizeResearchReport, validateResearchReport, writeResearchReport, type ResearchReport, type ResearchReportSummary } from './research-report.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import { withSourceLibraryContext } from './reasoning-context.ts'
 import type { ManagementCommunicationAcquisitionSources } from '../../workflows/management-communication-acquisition/contracts.ts'
-import type { IndustryOperatingObservationAcquisitionPort } from '../../plugins/research-acquisition/industry-operating-observations.ts'
+import type { IndustryDataResolverFactory } from '../../workflows/industry-deep-research/contracts.ts'
+import { getCanonicalResearchSkill } from './research-skill-catalog.ts'
 import { ThesisLifecycleService, type ThesisLifecycleRefreshInput, type ApplicationThesisLifecycleResult, type ThesisLifecycleDecisionReportInput, type ThesisLifecycleDecisionReportResult } from './thesis-lifecycle-service.ts'
 import { ThesisCreateService, type ThesisCreateInput, type ThesisCreateServiceResult } from './thesis-create-service.ts'
 import { triggerThemeScopeImpactPostWrite, type ThemeScopeImpactChecker, type ThemeScopeImpactTriggerResult } from '../../workflows/theme-scope-impact-check/post-write.ts'
@@ -102,7 +101,7 @@ export interface ResearchServiceOptions {
   readonly reasoningExecutor?: ReasoningExecutor
   readonly managementCommunicationSources?: ManagementCommunicationAcquisitionSources
   readonly industryReasoningExecutorFactory?: () => Promise<ReasoningExecutor>
-  readonly industryOperatingObservationAcquisition?: IndustryOperatingObservationAcquisitionPort
+  readonly industryDataResolverFactory?: IndustryDataResolverFactory
   readonly themeScopeImpactChecker?: ThemeScopeImpactChecker
 }
 
@@ -305,17 +304,23 @@ export class ResearchService {
     const industryReasoningExecutorFactory = this.options.industryReasoningExecutorFactory
       ?? (this.options.reasoningExecutor === undefined ? undefined : async () => this.options.reasoningExecutor!)
     if (!industryReasoningExecutorFactory) throw new ApplicationServiceError('failed', 'Industry Research requires a configured ReasoningExecutor')
-    const plugins = [...this.options.acquisitionPlugins, ...(this.options.industryAcquisitionPlugins ?? [])]; if (this.options.akshare) plugins.push(new AkshareIndustryResearchPlugin(this.options.akshare))
-    const composition = new IndustryAcquisitionComposition(plugins)
+    const dataResolverFactory = this.options.industryDataResolverFactory
+    if (!dataResolverFactory) throw new ApplicationServiceError('failed', 'Industry Research requires a configured DataResolver factory')
+    const skillDataRequirements = getCanonicalResearchSkill('industry_supply_demand_cycle')?.dataRequirements ?? []
     this.options.workflowService.register({ runId: input.workflowRunId, workflowType: 'industry_deep_research', objective: `Industry research ${target.name}` })
     const completion = this.options.workflowService.start(input.workflowRunId, async (signal) => {
-      const combined = new AbortController(); const abort = () => combined.abort(); signal.addEventListener('abort', abort, { once: true }); callerSignal?.addEventListener('abort', abort, { once: true }); let diagnostics: readonly string[] = []; let outcomes: readonly ResearchProviderOutcome[] = []
-      try { const reasoningExecutor = withSourceLibraryContext(await industryReasoningExecutorFactory(), input.sourceLibraryContext); const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runIndustryDeepResearch({ workflowRunId: input.workflowRunId, handle, target, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), reasoningExecutor: reasoningExecutor!, maxSources: input.maxSources, maxEvidencePerModule: input.maxEvidencePerModule, writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal, operatingObservationAcquisition: this.options.industryOperatingObservationAcquisition, acquisitionWave: async (request) => { const baseSearchTerms = input.searchTerms ?? request.searchTerms; const searchTerms = request.wave === 1 ? baseSearchTerms : [...new Set([...request.searchTerms, ...baseSearchTerms])].slice(0, 8); const acquired = await composition.acquire({ ...request, searchTerms }); diagnostics = [...diagnostics, ...acquired.diagnostics].slice(0, 32); const prior = new Map<string, ResearchProviderOutcome>(outcomes.map((outcome) => [outcome.provider, outcome])); for (const outcome of acquired.outcomes) { const previous = prior.get(outcome.provider); prior.set(outcome.provider, previous === undefined ? outcome : { provider: previous.provider, providerAttempted: previous.providerAttempted || outcome.providerAttempted, providerSucceeded: previous.providerSucceeded || outcome.providerSucceeded, providerEmpty: previous.providerEmpty && outcome.providerEmpty, providerFailed: previous.providerFailed || outcome.providerFailed, usableSourceCount: Math.min(24, previous.usableSourceCount + outcome.usableSourceCount) }) } outcomes = [...prior.values()].slice(0, 8); return acquired.sources } }); return { status: result.status, workflow: result, diagnostics, outcomes } } finally { signal.removeEventListener('abort', abort); callerSignal?.removeEventListener('abort', abort) }
+      const combined = new AbortController(); const abort = () => combined.abort(); signal.addEventListener('abort', abort, { once: true }); callerSignal?.addEventListener('abort', abort, { once: true })
+      try {
+        const reasoningExecutor = withSourceLibraryContext(await industryReasoningExecutorFactory(), input.sourceLibraryContext)
+        const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot))
+        const result = await runIndustryDeepResearch({ workflowRunId: input.workflowRunId, handle, target, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), reasoningExecutor: reasoningExecutor!, dataResolverFactory, skillDataRequirements, ...(input.searchTerms ? { searchTerms: input.searchTerms } : {}), maxSources: input.maxSources, maxEvidencePerModule: input.maxEvidencePerModule, writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
+        return { status: result.status, workflow: result, diagnostics: result.diagnostics, outcomes: [] as readonly ResearchProviderOutcome[] }
+      } finally { signal.removeEventListener('abort', abort); callerSignal?.removeEventListener('abort', abort) }
     }).then(async (outcome) => {
       const impact = outcome.workflow.status === 'completed' && (outcome.workflow.createdIds.length + outcome.workflow.updatedIds.length > 0)
         ? await triggerThemeScopeImpactPostWrite({ mountedKnowledgeBaseRoot: resolve(this.options.mountedKnowledgeBaseRoot), writerRunId: input.workflowRunId, expectedKnowledgeBaseId: outcome.workflow.knowledgeBaseId, expectedCommittedRevision: outcome.workflow.knowledgeBaseRevision, expectedCreatedIds: outcome.workflow.createdIds, expectedUpdatedIds: outcome.workflow.updatedIds, checker: this.options.themeScopeImpactChecker })
         : { status: 'not_triggered' as const, diagnostics: [outcome.workflow.status !== 'completed' ? 'Industry Research did not complete successfully.' : 'Industry Research completed without canonical writes.'] }
-      return { runId: input.workflowRunId, status: outcome.status, knowledgeBaseId: outcome.workflow.knowledgeBaseId, ...(outcome.workflow.report === undefined ? {} : { reportId: outcome.workflow.report.reportId, reportPath: `${outcome.workflow.report.reportId}.md` }), committedIds: outcome.workflow.committedIds, proposalCount: outcome.workflow.proposalIds.length, summary: outcome.workflow.status === 'completed' ? `Industry research completed for ${target.name}` : `Industry research ${outcome.workflow.status} for ${target.name}`, ...(outcome.workflow.errors.length ? { errorSummary: outcome.workflow.errors.join('; ').slice(0, 500) } : {}), providerOutcomes: outcome.outcomes, acquisitionDiagnostics: outcome.diagnostics, operatingObservations: outcome.workflow.operatingObservations, operatingObservationStatus: outcome.workflow.operatingObservationStatus, operatingObservationDiagnostics: outcome.workflow.operatingObservationDiagnostics, themeScopeImpact: impact }
+      return { runId: input.workflowRunId, status: outcome.status, knowledgeBaseId: outcome.workflow.knowledgeBaseId, ...(outcome.workflow.report === undefined ? {} : { reportId: outcome.workflow.report.reportId, reportPath: `${outcome.workflow.report.reportId}.md` }), committedIds: outcome.workflow.committedIds, proposalCount: outcome.workflow.proposalIds.length, summary: outcome.workflow.status === 'completed' ? `Industry research completed for ${target.name}` : `Industry research ${outcome.workflow.status} for ${target.name}`, ...(outcome.workflow.errors.length ? { errorSummary: outcome.workflow.errors.join('; ').slice(0, 500) } : {}), providerOutcomes: outcome.outcomes, acquisitionDiagnostics: outcome.diagnostics, operatingObservations: outcome.workflow.operatingObservations, operatingObservationStatus: outcome.workflow.operatingObservationStatus, operatingObservationDiagnostics: outcome.workflow.operatingObservationDiagnostics, dataRequirementGaps: outcome.workflow.dataRequirementGaps, requirementCoverage: outcome.workflow.requirementCoverage, themeScopeImpact: impact }
     })
     completion.catch(() => undefined); return { runId: input.workflowRunId, completion }
   }

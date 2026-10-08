@@ -15,6 +15,8 @@ import type { ResearchDispatchService } from '../services/research-dispatch-serv
 import type { SourceLibraryService } from '../services/source-library.ts'
 import type { SkillOnboardingService } from '../services/skill-onboarding.ts'
 import type { IndustryOperatingObservationAcquisitionPort } from '../../plugins/research-acquisition/industry-operating-observations.ts'
+import type { IndustryDataResolverFactory } from '../../workflows/industry-deep-research/contracts.ts'
+import type { IndustryDataCatalog } from '../../data/industry-catalog.ts'
 import type { ThesisQueryService } from '../services/thesis-query-service.ts'
 import type { ThesisDecisionService } from '../services/thesis-decision-service.ts'
 import type { ThesisCriterionService } from '../services/thesis-criterion-service.ts'
@@ -116,5 +118,7 @@ export interface ResearchHubApplicationRuntimeOptions {
   readonly industryAcquisitionPlugins?: readonly ResearchAcquisitionPlugin[]
   readonly themeFrameworkService?: ThemeFrameworkService
   readonly industryOperatingObservationAcquisition?: IndustryOperatingObservationAcquisitionPort
+  readonly industryDataResolverFactory?: IndustryDataResolverFactory
+  readonly industryDataCatalog?: IndustryDataCatalog
   readonly dailyIntelligenceService?: DailyIntelligenceService
 }

@@ -224,8 +224,9 @@ function evaluateExecution<T>(
   if (observedAt !== undefined && requirement.period?.end !== undefined && afterRequestedPeriod(observedAt, requirement.period.end)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `observedAt ${observedAt} is after requested period ${requirement.period.end}` }
   if (observationAvailableAt !== undefined && (!validDate(observationAvailableAt) || Date.parse(observationAvailableAt) > Date.parse(cutoff))) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `observationAvailableAt ${observationAvailableAt} is invalid or after analysisAsOf ${cutoff}` }
   if (valueVersion?.status === 'VERIFIED' && (!valueVersion.versionId.trim() || !validDate(valueVersion.availableAt) || Date.parse(valueVersion.availableAt) > Date.parse(cutoff))) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `valueVersion is invalid or after analysisAsOf ${cutoff}` }
-  const numericMetric = (requirement.dataKind === 'metric' || requirement.dataKind === 'timeseries') && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
-  if ((requirement.requireValueVersionProof || requirement.asOfMode === 'HISTORICAL') && numericMetric && (valueVersion?.status !== 'VERIFIED' || publishedAt === undefined)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'NO_ELIGIBLE_POINT_IN_TIME_DATA: numeric value version or publication unverified' }
+  const industryNumericSeries = requirement.dataKind === 'timeseries' && requirement.metricId?.startsWith('industry:') === true
+  const numericMetric = (requirement.dataKind === 'metric' || industryNumericSeries) && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
+  if ((requirement.requireValueVersionProof || (industryNumericSeries && requirement.asOfMode === 'HISTORICAL')) && numericMetric && (valueVersion?.status !== 'VERIFIED' || publishedAt === undefined)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'NO_ELIGIBLE_POINT_IN_TIME_DATA: numeric value version or publication unverified' }
   const source: AcquisitionSourceMetadata = {
     sourceId: candidate.sourceId,
     fallbackLevel: candidate.fallbackLevel,
@@ -260,12 +261,12 @@ function validMarketPeriodEnd(value: string): boolean {
 }
 
 function unavailableQuality(requirement: DataRequirement): AcquisitionResult<unknown>['quality'] {
-  const numericMetric = (requirement.dataKind === 'metric' || requirement.dataKind === 'timeseries') && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
+  const numericMetric = (requirement.dataKind === 'metric' || (requirement.dataKind === 'timeseries' && requirement.metricId?.startsWith('industry:') === true)) && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
   return { pointInTimeSafe: false, complete: false, crossChecked: false, ...(numericMetric ? { valueVersionStatus: 'UNVERIFIED' as const, pitDiagnostic: 'NUMERIC_VALUE_VERSION_UNVERIFIED_OR_PUBLICATION_MISSING' } : {}) }
 }
 
 function acquisitionQuality<T>(requirement: DataRequirement, observations: readonly AcquisitionObservation<T>[], complete: boolean, crossChecked: boolean): AcquisitionResult<T>['quality'] {
-  const numericMetric = (requirement.dataKind === 'metric' || requirement.dataKind === 'timeseries') && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
+  const numericMetric = (requirement.dataKind === 'metric' || (requirement.dataKind === 'timeseries' && requirement.metricId?.startsWith('industry:') === true)) && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
   const versionVerified = numericMetric && observations.length > 0 && observations.every((observation) => observation.source.valueVersion?.status === 'VERIFIED')
   const temporalEvidence = observations.length > 0 && observations.every((observation) => requirement.dataKind === 'timeseries'
     ? observation.source.observedAt !== undefined && observation.source.observationAvailableAt !== undefined && requirement.period?.end !== undefined

@@ -1,47 +1,50 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import test from 'node:test'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createFreshKnowledgeBaseV04 } from '../../../knowledge/storage/index.ts'
 import { KnowledgeBaseRegistry } from '../../../knowledge/registry/registry.ts'
 import { INDUSTRY_MODULES } from '../../../skills/industry-research/contracts.ts'
-import { createIndustryOperatingObservation, type IndustryOperatingObservationAcquisitionPort } from '../../../plugins/research-acquisition/industry-operating-observations.ts'
 import type { NormalizedResearchSource } from '../../../plugins/research-acquisition/contracts.ts'
 import type { ReasoningExecutor } from '../../../plugins/reasoning/contracts.ts'
 import { runIndustryDeepResearch } from '../../../workflows/industry-deep-research/index.ts'
+import { getCanonicalResearchSkill } from '../../../app/services/research-skill-catalog.ts'
+import { createIndustryWorkflowResolverFixture } from '../../support/industry-workflow-resolver-fixture.ts'
+import { sha256 } from '../../../plugins/research-acquisition/hash.ts'
 
-const source: NormalizedResearchSource = { candidate: { candidateId: 'd4-fixture-source', kind: 'official_disclosure', tier: 1, title: 'D4 fixture source', provider: 'd4-fixture', publishedAt: '2026-09-01T00:00:00.000Z' }, retrievedAt: '2026-09-02T00:00:00.000Z', title: 'D4 fixture source', content: 'Official industry definition and operating evidence.', contentHash: 'a'.repeat(64), publisher: 'D4 fixture', canonicalUrl: 'https://fixture.test/d4', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }
-const observation = createIndustryOperatingObservation({ metricKey: 'room_air_conditioner.production', observationClass: 'PRODUCTION', value: 26697.5, qualifier: 'EXACT', unit: '万台', originalValue: '26697.5', originalUnit: '万台', periodStart: '2025-01-01T00:00:00.000Z', periodEnd: '2025-12-31T23:59:59.999Z', frequency: 'ANNUAL', aggregation: 'PERIOD', geography: 'China national', productOrSegment: '房间空气调节器', publishedAt: '2026-03-02T15:59:59.999Z', retrievedAt: '2026-09-02T00:00:00.000Z', originPublisher: 'National Bureau of Statistics', hostPlatform: 'NBS official web/PDF host', retrievalProvider: 'ResearchHub direct HTTPS', sourceAuthority: 'S0_STATUTORY', determinismClass: 'EVIDENCE_BACKED_NUMERIC', sourceCandidateId: source.candidate.candidateId, publicationPit: 'VERIFIED', valueVersionPit: 'UNVERIFIED', metadata: {} })
-const cheaaObservation = createIndustryOperatingObservation({ metricKey: 'air_conditioner.export_volume', observationClass: 'TRADE', value: 4039692, qualifier: 'EXACT', unit: '台', originalValue: '4039692', originalUnit: '台', periodStart: '2024-09-01T00:00:00.000Z', periodEnd: '2024-09-30T23:59:59.999Z', frequency: 'MONTHLY', aggregation: 'PERIOD', geography: 'China national exports', productOrSegment: '家用空调器', publishedAt: '2024-11-08T15:59:59.999Z', retrievedAt: '2026-09-02T00:00:00.000Z', originPublisher: 'CHEAA', hostPlatform: 'CHEAA official web/PDF host', retrievalProvider: 'ResearchHub direct HTTPS', sourceAuthority: 'S2_PROFESSIONAL', determinismClass: 'EVIDENCE_BACKED_NUMERIC', sourceCandidateId: source.candidate.candidateId, publicationPit: 'VERIFIED', valueVersionPit: 'UNVERIFIED', metadata: { upstreamDataSource: 'GACC' } })
-const design = { definitionHypothesis: 'Fixture Industry', targetKind: 'industry' as const, scope: { included: ['fixture'], excluded: [] }, moduleQuestions: Object.fromEntries(INDUSTRY_MODULES.map((module) => [module, module])), keyMetrics: ['production'], evidenceRequirements: ['official'], searchTerms: ['fixture'], knownGaps: [], verificationCandidates: [] }
+const source: NormalizedResearchSource = { candidate: { candidateId: 'resolver-fixture-source', kind: 'official_disclosure', tier: 1, title: 'Resolver fixture source', provider: 'fixture', publishedAt: '2026-09-01T00:00:00.000Z' }, retrievedAt: '2026-09-02T00:00:00.000Z', title: 'Resolver fixture source', content: 'Official industry definition and operating evidence.', contentHash: sha256('Official industry definition and operating evidence.'), publisher: 'Fixture official source', canonicalUrl: 'https://fixture.test/industry', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }
+const design = { definitionHypothesis: 'household air conditioner industry', targetKind: 'industry' as const, scope: { included: ['fixture'], excluded: [] }, moduleQuestions: Object.fromEntries(INDUSTRY_MODULES.map((module) => [module, module])), keyMetrics: ['production'], evidenceRequirements: ['official'], searchTerms: ['fixture'], knownGaps: [], verificationCandidates: [] }
 function executor(seen: Array<{ module: string; observations: unknown[] }>): ReasoningExecutor { return { capabilities: () => ({ maxContextTokens: 10000, maxOutputTokens: 10000, structuredOutputSupport: true, maxConcurrency: 8 }), execute: async (request) => { const operation = String(request.operation); if (operation === 'industry_research_design') return { operation: request.operation, output: design }; if (operation === 'industry_module_analysis') { const input = request.input as { module: string; evidence: Array<{ evidenceId: string }>; operatingObservations?: unknown[] }; seen.push({ module: input.module, observations: input.operatingObservations ?? [] }); const ids = input.evidence.map((item) => item.evidenceId); return { operation: request.operation, output: { module: input.module, status: 'supported', analysis: 'fixture', evidenceIds: ids, proposals: [], gaps: [], reportMaterial: { markdown: 'fixture', evidenceIds: ids, proposalIds: [] } } } } const input = request.input as { evidence: Array<{ evidenceId: string }> }; const ids = input.evidence.map((item) => item.evidenceId); return { operation: request.operation, output: { executiveView: 'fixture', analysis: 'fixture', evidenceIds: ids, proposals: [], gaps: [], alternativeViews: [], reportMaterial: { markdown: 'fixture', evidenceIds: ids, proposalIds: [] } } } } } }
 
-test('D4 observations route only to market/supply modules and render through the existing report section', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'rhl-d4-workflow-')); const reports = await mkdtemp(join(tmpdir(), 'rhl-d4-workflow-reports-')); const seen: Array<{ module: string; observations: unknown[] }> = []
+test('Industry Workflow materializes DOMAIN requirements and reports missing canonical metrics as partial gaps', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-industry-domain-resolution-')); const reports = await mkdtemp(join(tmpdir(), 'rhl-industry-domain-resolution-reports-')); const seen: Array<{ module: string; observations: unknown[] }> = []
   try {
-    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-d4-workflow', now: '2026-09-01T00:00:00.000Z' }); const acquisition: IndustryOperatingObservationAcquisitionPort = { acquire: async () => ({ status: 'COMPLETED', observations: [observation, cheaaObservation], sources: [source], diagnostics: [] }) }
-    const result = await runIndustryDeepResearch({ workflowRunId: 'd4-workflow', handle: await new KnowledgeBaseRegistry().mount(root), target: { name: 'Fixture Industry' }, reportRoot: reports, reasoningExecutor: executor(seen), acquisitionWave: async () => [source], operatingObservationAcquisition: acquisition, asOf: '2026-09-23', now: () => '2026-09-23T00:00:00.000Z' })
-    assert.equal(result.status, 'completed', result.errors.join('; ')); assert.equal(result.operatingObservations.length, 2); assert.ok(result.operatingObservations.every((item) => item.sourceRef === result.sourceRefs['evidence-d4-fixture-source'])); assert.match(result.operatingObservations[0]?.sourceRef ?? '', /^source:/); assert.equal(result.sourceIds.length, 1)
-    assert.ok(seen.find((item) => item.module === 'market_size_growth')?.observations.length === 2); assert.ok(seen.find((item) => item.module === 'supply_demand_analysis')?.observations.length === 2); assert.equal(seen.find((item) => item.module === 'technology_evolution')?.observations.length, 0)
-    const report = JSON.parse(await readFile(`${result.report!.outputPath}.json`, 'utf8')) as { sections: Array<{ title: string; markdown: string }> }; const section = report.sections.find((item) => item.title === 'Key Metrics & Monitoring')!; assert.match(section.markdown, /room_air_conditioner\.production/); assert.match(section.markdown, /National Bureau of Statistics/); assert.match(section.markdown, /CHEAA/); assert.match(section.markdown, /S2_PROFESSIONAL/); assert.match(section.markdown, /GACC/); assert.match(section.markdown, /ResearchHub direct HTTPS/); assert.match(section.markdown, /source:/)
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-industry-domain-resolution', now: '2026-09-01T00:00:00.000Z' })
+    const now = () => '2026-09-23T00:00:00.000Z'
+    const result = await runIndustryDeepResearch({ workflowRunId: 'industry-domain-resolution', handle: await new KnowledgeBaseRegistry().mount(root), target: { name: '家用空调' }, reportRoot: reports, reasoningExecutor: executor(seen), dataResolverFactory: createIndustryWorkflowResolverFixture(async () => [source], now), skillDataRequirements: getCanonicalResearchSkill('industry_supply_demand_cycle')!.dataRequirements, asOf: '2026-09-23', now, writeKnowledge: false })
+    assert.equal(result.status, 'completed', result.errors.join('; '))
+    assert.equal(result.requirementCoverage, 'PARTIAL')
+    assert.ok(result.dataRequirementGaps.some((gap) => gap.startsWith('production-output-evidence:NO_CANONICAL_INDUSTRY_METRIC')))
+    assert.ok(result.dataRequirementGaps.some((gap) => gap.startsWith('capacity-evidence:NO_CANONICAL_INDUSTRY_METRIC')))
+    assert.deepEqual(result.operatingObservations, [])
+    assert.ok(result.acquisitionWaves >= 1)
+    assert.equal(seen.find((item) => item.module === 'market_size_growth')?.observations.length, 0)
+    assert.equal(seen.find((item) => item.module === 'supply_demand_analysis')?.observations.length, 0)
+    assert.equal(seen.find((item) => item.module === 'technology_evolution')?.observations.length, 0)
   } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) }
 })
 
-test('Workflow rejects an observation whose D4 source was not admitted', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'rhl-d4-source-admission-')); const reports = await mkdtemp(join(tmpdir(), 'rhl-d4-source-admission-reports-')); const seen: Array<{ module: string; observations: unknown[] }> = []
+test('Unregistered Industry identity keeps generic evidence resolution available and surfaces the identity gap', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-industry-unregistered-')); const reports = await mkdtemp(join(tmpdir(), 'rhl-industry-unregistered-reports-')); const seen: Array<{ module: string; observations: unknown[] }> = []
   try {
-    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-d4-source-admission', now: '2026-09-01T00:00:00.000Z' }); const acquisition: IndustryOperatingObservationAcquisitionPort = { acquire: async () => ({ status: 'COMPLETED', observations: [observation], sources: [], diagnostics: [] }) }
-    const result = await runIndustryDeepResearch({ workflowRunId: 'd4-source-admission', handle: await new KnowledgeBaseRegistry().mount(root), target: { name: 'Fixture Industry' }, reportRoot: reports, reasoningExecutor: executor(seen), acquisitionWave: async () => [source], operatingObservationAcquisition: acquisition, asOf: '2026-09-23', now: () => '2026-09-23T00:00:00.000Z' })
-    assert.equal(result.status, 'completed'); assert.deepEqual(result.operatingObservations, []); assert.ok(result.operatingObservationDiagnostics.some((item) => item.startsWith('OBSERVATION_SOURCE_NOT_ADMITTED:'))); assert.equal(seen.find((item) => item.module === 'market_size_growth')?.observations.length, 0)
-  } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) }
-})
-
-test('Workflow rejects an injected future observation and invalid PIT status', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'rhl-d4-pit-')); const reports = await mkdtemp(join(tmpdir(), 'rhl-d4-pit-reports-')); const seen: Array<{ module: string; observations: unknown[] }> = []
-  try {
-    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-d4-pit', now: '2026-09-01T00:00:00.000Z' }); const future = { ...observation, publishedAt: '2026-10-01T00:00:00.000Z', publicationPit: 'UNVERIFIED' as const }; const acquisition: IndustryOperatingObservationAcquisitionPort = { acquire: async () => ({ status: 'COMPLETED', observations: [future], sources: [source], diagnostics: [] }) }
-    const result = await runIndustryDeepResearch({ workflowRunId: 'd4-pit', handle: await new KnowledgeBaseRegistry().mount(root), target: { name: 'Fixture Industry' }, reportRoot: reports, reasoningExecutor: executor(seen), acquisitionWave: async () => [source], operatingObservationAcquisition: acquisition, asOf: '2026-09-23', now: () => '2026-09-23T00:00:00.000Z' })
-    assert.equal(result.status, 'completed'); assert.deepEqual(result.operatingObservations, []); assert.ok(result.operatingObservationDiagnostics.some((item) => item.startsWith('OBSERVATION_PIT_REJECTED:')))
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-industry-unregistered', now: '2026-09-01T00:00:00.000Z' })
+    const now = () => '2026-09-23T00:00:00.000Z'
+    const result = await runIndustryDeepResearch({ workflowRunId: 'industry-unregistered', handle: await new KnowledgeBaseRegistry().mount(root), target: { name: 'Unregistered Specialty Industry' }, reportRoot: reports, reasoningExecutor: executor(seen), dataResolverFactory: createIndustryWorkflowResolverFixture(async () => [source], now), skillDataRequirements: getCanonicalResearchSkill('industry_supply_demand_cycle')!.dataRequirements, asOf: '2026-09-23', now, writeKnowledge: false })
+    assert.equal(result.status, 'completed', result.errors.join('; '))
+    assert.equal(result.evidence.length, 1)
+    assert.ok(result.diagnostics.some((item) => item.startsWith('INDUSTRY_IDENTITY_UNRESOLVED:')))
+    assert.ok(result.dataRequirementGaps.some((item) => item.endsWith(':INDUSTRY_ID_REQUIRED')))
+    assert.equal(result.requirementCoverage, 'PARTIAL')
   } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) }
 })

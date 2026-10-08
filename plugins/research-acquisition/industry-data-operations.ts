@@ -1,5 +1,5 @@
 import type { DataRequirement, SourceCandidate, SourceExecutionResult } from '../../data/contracts.ts'
-import type { IndustryObservationCandidate } from '../../data/industry-observations.ts'
+import type { IndustryObservationCandidate, IndustryObservationPoint } from '../../data/industry-observations.ts'
 import type { ResearchEvidenceInput } from '../../data/research-evidence.ts'
 import type { ResearchAcquisitionPlugin, NormalizedResearchSource } from './contracts.ts'
 import type { IndustryOperatingObservation } from './industry-operating-observations.ts'
@@ -90,6 +90,9 @@ export function industrySourceIdentity(sourceUrl: string | undefined, contentHas
 export interface IndustryDataOperationPayload {
   readonly documents: readonly IndustryOperationDocument[]
   readonly observationCandidates: readonly IndustryObservationCandidate[]
+  /** Populated by the application Data operation boundary after catalog validation. */
+  readonly observationPoints?: readonly IndustryObservationPoint[]
+  readonly observationDiagnostics?: readonly string[]
   readonly diagnostics: readonly string[]
   readonly outcome: {
     readonly transportSucceeded: boolean
