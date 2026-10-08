@@ -71,21 +71,23 @@
 
 **Files:**
 - Create: `data/industry-observations.ts`
-- Modify: `data/contracts.ts`, `plugins/research-acquisition/industry-operating-observations.ts`
-- Test: `tests/workflows/industry-deep-research/industry-operating-observations.test.ts`
+- Modify: `data/index.ts`, `skills/industry-research/contracts.ts`, `skills/industry-research/skill.ts`, `plugins/research-acquisition/industry-operating-observations.ts`
+- Test: `tests/workflows/industry-deep-research/industry-observation-contract.test.ts`
 - Test: `tests/plugins/research-acquisition/industry-operating-observations.test.ts`
+- Test: `tests/skills/industry-research/industry-research-skill.test.ts`
 
 **Interfaces:**
-- Define `IndustryObservationPoint` in Data with `metricId`, `value`, `qualifier`, `canonicalUnit`, `originalValue`, `originalUnit`, `periodStart`, `periodEnd`, `frequency`, `aggregation`, `geography`, `product`, `segment`, `grade`, `publishedAt`, `retrievedAt`, `originPublisher`, `hostPlatform`, `retrievalProvider`, `authority`, `publicationPit`, `valueVersion`, `sourceIdentity`, and diagnostics/conflict state.
-- Define `validateIndustryObservation(point, definition, requirement): { status: 'VALID'|'INVALID'; point?: IndustryObservationPoint; diagnostics: readonly string[] }`; conversions are explicit code-owned conversion IDs from the definition.
+- Define `IndustryObservationPoint` in Data with `metricId`, `value`, `qualifier`, `canonicalUnit`, `originalValue`, `originalUnit`, `periodStart`, `periodEnd`, `frequency`, `periodBasis`, `aggregation`, `geography`, `product`, `segment`, `grade`, `publishedAt`, `retrievedAt`, `originPublisher`, `hostPlatform`, `retrievalProvider`, `authority`, `publicationPit`, `valueVersion`, `sourceIdentity`, and diagnostics/conflict state.
+- Define provider-neutral `IndustryObservationCandidate` separately from canonical-unit `IndustryObservationPoint`. `validateIndustryObservation(candidate, definition, requirement)` checks exact metric/industry/kind, scope, unit conversion ID, period semantics, authority, publication PIT, and value-version PIT; conversions are explicit code-owned conversion IDs from the definition.
+- Define `mergeIndustryObservationPoints(points)` to retain all same-slot points and return explicit conflict records; no winner is selected.
 - Define missing reasons `MISSING`, `NOT_REPORTED`, `NOT_APPLICABLE`, `SOURCE_UNAVAILABLE`, `TRANSPORT_UNAVAILABLE`, `PARSER_UNAVAILABLE`, and `NO_CANONICAL_METRIC`.
-- Keep only a compatibility type re-export from the Plugin module until all callers migrate.
+- Move the Skill's `operatingObservations` input and claim-boundary checks to the Data-owned `IndustryObservationPoint`/`metricId`; keep provider-parser candidate types inside Plugin. No Skill type or implementation imports the concrete Plugin acquisition contract.
 
-- [ ] **Step 1: Add failing tests** named `Industry observation validation preserves qualifiers and original units`, `Industry observation rejects ambiguous unit and period semantics`, `Industry observation distinguishes PERIOD YTD and POINT_IN_TIME slots`, `Industry observation preserves same-slot conflicts`, `Industry missingness never becomes numeric zero`, and `MIIT H1 paired prices bind each value to its labeled grade`.
-- [ ] **Step 2: Run** `node --import tsx --test tests/workflows/industry-deep-research/industry-operating-observations.test.ts tests/plugins/research-acquisition/industry-operating-observations.test.ts`; expect contract/validation failures.
-- [ ] **Step 3: Implement** the Data-owned interfaces and deterministic validator; apply only declared conversions and retain original values, units, labels, and source identity.
+- [ ] **Step 1: Add failing tests** named `Industry observation validation preserves qualifiers and original units`, `Industry observation rejects ambiguous unit and period semantics`, `Industry observation distinguishes PERIOD YTD and POINT_IN_TIME slots`, `Industry observation preserves same-slot conflicts`, `Industry missingness never becomes numeric zero`, `MIIT H1 paired prices bind each value to its labeled grade`, and `Industry Skill receives catalog metric identity without Plugin-owned type`.
+- [ ] **Step 2: Run** `node --import tsx --test tests/workflows/industry-deep-research/industry-observation-contract.test.ts tests/plugins/research-acquisition/industry-operating-observations.test.ts tests/skills/industry-research/industry-research-skill.test.ts`; expect contract/validation/import-boundary failures.
+- [ ] **Step 3: Implement** the Data-owned interfaces and deterministic validator; apply only declared conversions and retain original values, units, labels, and source identity. Change the Skill contract/consumer to metricId and the neutral Data payload.
 - [ ] **Step 4: Correct** the MIIT paired-price parser so H1 lithium carbonate `16.3` and lithium hydroxide micropowder `15.3` bind to their own labels; retain both values as separate qualified points.
-- [ ] **Step 5: Run** the listed focused tests; expect all new payload and parser tests to pass.
+- [ ] **Step 5: Run** the listed focused tests; expect all new payload, Skill-contract, and parser tests to pass.
 - [ ] **Step 6: Commit** as `feat(data): define validated Industry observation contract`.
 
 ## Task 3: Common bounded Industry evidence and metric-scoped Data policies
