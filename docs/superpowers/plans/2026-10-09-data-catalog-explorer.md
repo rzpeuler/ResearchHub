@@ -33,25 +33,6 @@
 
 ---
 
-### Task 4: Data Fields tab and catalog explorer UI
-
-**Files:**
-- Modify: `client/src/app/data-sources/DataSourcesPage.tsx`
-- Modify: `client/src/app/data-sources/data-sources-page.css`
-- Test: `client/src/app/data-sources/DataSourcesPage.test.tsx`
-
-**Interfaces:**
-- Consumes: Task 3 RuntimeClient methods plus existing integration, onboarding, and policy methods.
-- Produces: a first-position `数据字段` tab with separate `通用字段` and `行业字段` views; Common and Industry search/filter, visible counts, selectable detail panels, explicit status meanings, and loading/error/empty/no-match states in Chinese and English.
-
-- [ ] **Step 1: Add failing component tests** named `shows Data Fields before the three preserved tabs`, `searches and filters Common definitions`, `filters Industry metrics by identity family and lifecycle`, `shows complete metric details with undefined optional metadata`, and `separates policy configuration from adapter and test state`; assert both Chinese and English labels.
-- [ ] **Step 2: Add failing empty/error/refresh tests** named `shows empty production Industry catalog without fixtures`, `isolates catalog load errors from integrations and onboarding`, and `refresh reloads both catalog projections`; cover zero definitions/Canonical metrics, identity-only state, loading, API failure, and no-match results.
-- [ ] **Step 3: Isolate Catalog loading state** from integration/onboarding errors so one failed GET does not hide credential controls or existing tabs; render only response data and never add client-side catalog fixtures.
-- [ ] **Step 4: Implement the Data Fields tab** using the existing page style, accessible tab/selection semantics, local search and filters, expandable/detail content, and i18n. Common filters are data kind and consumer; Industry filters are industry, metric family, and lifecycle. Show all six registration/policy/adapter/connection/sample/PIT states distinctly. Keep status text explicit: policy configured is not adapter/test/PIT acceptance.
-- [ ] **Step 5: Render optional Industry fields as `未定义` / `Undefined`** and use the approved production-empty explanation when there are identities but zero production Canonical metrics; do not create display fixtures.
-- [ ] **Step 6: Run** `npm run client:test -- src/app/data-sources/DataSourcesPage.test.tsx` and verify the complete existing credential secrecy, test cancellation, integration, and onboarding tests still pass.
-- [ ] **Step 7: Commit** the page, styles, and component tests.
-
 ### Task 5: Real application-to-page contract test
 
 **Files:**

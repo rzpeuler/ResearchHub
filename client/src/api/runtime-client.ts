@@ -1,4 +1,5 @@
 import type { CommonDataCatalogProjection, IndustryDataCatalogProjection } from '../../../app/services/data-catalog-projection.ts'
+export type { CommonDataCatalogProjection, IndustryDataCatalogProjection } from '../../../app/services/data-catalog-projection.ts'
 
 export type RuntimeErrorCode = 'invalid_input' | 'not_found' | 'cancelled' | 'failed' | 'conflict' | 'no_kb_mounted' | 'unauthorized_runtime_token'
 
