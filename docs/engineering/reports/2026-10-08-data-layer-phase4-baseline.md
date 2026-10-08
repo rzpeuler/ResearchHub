@@ -15,6 +15,7 @@
 | `npm test` | Exit code 1 because the baseline Node suite has 25 failures |
 | `npm run typecheck` | Passed (`tsc --noEmit`) |
 | `npm run client:typecheck` | Passed (`tsc --noEmit -p client/tsconfig.json`) |
+| `npm run client:build -- --outDir <archive path>` | Passed; output isolated under the local archive. Vite emitted its existing warning for a 628.73 kB JavaScript chunk. |
 
 The full captured Node output is retained locally at `C:\Users\Administrator\Desktop\ResearchHub_worktrees\_archive\DL_GOAL_004-baseline-node-2026-10-08.log`.
 
@@ -48,4 +49,4 @@ The full captured Node output is retained locally at `C:\Users\Administrator\Des
 
 The baseline comparison must use these exact names, not just a failure count. Failures in Industry projection and Competition Gateway overlap the Phase 4 surface and therefore require review even though they predate Phase 4 implementation. The remaining failures are also retained in the comparison set; they are not presumed harmless or ignored without checking final results.
 
-Client build and focused suites were not run as part of this baseline capture.
+Focused suites were not run separately; the full Node and client suites were captured above.
