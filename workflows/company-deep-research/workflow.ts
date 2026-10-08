@@ -109,14 +109,15 @@ async function acquire(input: CompanyDeepResearchInput, company: CompanyDeepRese
   const marketData = marketItem && resolvedValue<CompanyMarketHistory>(marketItem, 'market')
   const evidenceBatches = evidenceItem ? resolvedValues<CompanyResearchEvidenceBatch>(evidenceItem, 'evidence') : []
   const externalDocuments = evidenceBatches.flatMap((batch) => batch.documents)
-  const externalSources = [...new Map(externalDocuments.map((document) => [document.record.candidate.candidateId, document.record])).values()].slice(0, limit)
+  const selectedExternalDocuments = [...new Map(externalDocuments.map((document) => [document.record.candidate.candidateId, document])).values()].slice(0, limit)
+  const externalSources = selectedExternalDocuments.map((document) => document.record)
   const dataValues = [
     ...(profileItem && profileData ? [structuredSource('company_basic_profile', profileItem, profileData, company)] : []),
     ...(financialItem && financialData ? [structuredSource('company_financial_history', financialItem, financialData, company)] : []),
     ...(marketItem && marketData ? [structuredSource('company_market_history', marketItem, marketData, company)] : []),
   ].filter((source): source is NormalizedResearchSource => source !== undefined)
   const sources = [...externalSources, ...dataValues]
-  const durableSourceCandidateIds = [...dataValues.map((source) => source.candidate.candidateId), ...externalDocuments.filter((document) => document.pointInTimeSafe).map((document) => document.record.candidate.candidateId)]
+  const durableSourceCandidateIds = [...dataValues.map((source) => source.candidate.candidateId), ...selectedExternalDocuments.filter((document) => document.dateStatus === 'QUALIFIED' && document.pointInTimeSafe).map((document) => document.record.candidate.candidateId)]
   const durableSources = sources.filter((source) => durableSourceCandidateIds.includes(source.candidate.candidateId))
   const diagnostics: ResearchAcquisitionDiagnostic[] = []
   const outcomes = new Map<string, ResearchProviderOutcome>()

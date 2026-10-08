@@ -208,6 +208,33 @@ test('Company maxSources is a global cap when both or only one evidence provider
   }
 })
 
+test('Company dedup never promotes an unknown-date duplicate candidate to a durable source', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-company-duplicate-pit-'))
+  const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-duplicate-pit-reports-'))
+  try {
+    const asOf = '2026-09-08T00:00:00.000Z'
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-company-duplicate-pit-test', now: asOf })
+    const plugin = (name: string, provider: string, publishedAt: string | undefined, url: string): ResearchAcquisitionPlugin => ({
+      name,
+      discover: async () => [{ candidateId: 'shared-candidate', kind: provider === 'cninfo' ? 'official_disclosure' : 'news', tier: provider === 'cninfo' ? 1 : 3, title: provider === 'cninfo' ? 'Dated filing' : 'Unknown-date duplicate', url, provider, ...(publishedAt ? { publishedAt } : {}) }],
+      fetch: async (candidate) => ({ candidate, retrievedAt: asOf, content: `${provider} unique content`, contentHash: provider === 'cninfo' ? '1'.repeat(64) : '2'.repeat(64) }),
+      normalize: async (source) => ({ candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: source.content, contentHash: source.contentHash!, canonicalUrl: source.candidate.url, publisher: provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
+    })
+    const dated = plugin('fixture-official', 'cninfo', '2026-09-07T00:00:00.000Z', 'https://example.com/dated-shared')
+    const unknown = plugin('fixture-gdelt', 'gdelt', undefined, 'https://example.com/unknown-shared')
+    const result = await runCompanyDeepResearch({ workflowRunId: 'company-duplicate-pit', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([dated, unknown]), reportRoot: reports, asOf, now: () => asOf })
+    assert.equal(result.status, 'completed', result.errors.join('; '))
+    assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('shared-candidate'))
+    assert.equal(result.research?.sourceCandidateIds.includes('shared-candidate'), false)
+    const canonical = await readCanonicalV04Assets(root)
+    assert.equal(canonical.objects.some((item) => item.kind === 'source' && 'url' in item.value && item.value.url === 'https://example.com/unknown-shared'), false)
+    assert.equal(canonical.objects.some((item) => item.kind === 'source' && 'url' in item.value && item.value.url === 'https://example.com/dated-shared'), false, 'last-record candidate-id dedup selects unknown context, so neither conflicting record is durable')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+    await rm(reports, { recursive: true, force: true })
+  }
+})
+
 test('Company Deep Research observes cancellation before acquisition', async () => {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-company-cancel-'))
   const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-cancel-reports-'))
