@@ -144,7 +144,7 @@ export interface IndustryObservationMergeResult {
   readonly conflicts: readonly IndustryObservationConflict[]
 }
 function slotIdentity(point: IndustryObservationPoint): string {
-  return JSON.stringify([point.metricId, point.periodStart, point.periodEnd, point.periodBasis, point.frequency, point.aggregation, point.geography, point.product ?? '', point.segment ?? '', point.grade ?? '', point.qualifier])
+  return JSON.stringify([point.metricId, point.periodStart, point.periodEnd, point.periodBasis, point.frequency, point.aggregation, point.geography, point.product ?? '', point.segment ?? '', point.grade ?? ''])
 }
 export function mergeIndustryObservationPoints(points: readonly IndustryObservationPoint[]): IndustryObservationMergeResult {
   const slots = new Map<string, IndustryObservationPoint[]>()

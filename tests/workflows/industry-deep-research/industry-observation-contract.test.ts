@@ -154,10 +154,11 @@ test('Industry observation PIT keeps current-only uncertainty visible and reject
 
 test('Industry observation preserves same-slot conflicts', async () => {
   const contract = await observationContract()
-  const first = contract.validateIndustryObservation(candidate(), metricDefinition(), requirement())
-  const second = contract.validateIndustryObservation(candidate({ value: 15.3, originalValue: '15.3', sourceIdentity: 'url:https://other.example.test/lithium-h1' }), metricDefinition(), requirement())
+  const first = contract.validateIndustryObservation(candidate({ qualifier: 'EXACT' }), metricDefinition(), requirement())
+  const second = contract.validateIndustryObservation(candidate({ qualifier: 'LOWER_BOUND', value: 15.3, originalValue: '15.3', sourceIdentity: 'url:https://other.example.test/lithium-h1' }), metricDefinition(), requirement())
   const merged = contract.mergeIndustryObservationPoints([first.point!, second.point!])
   assert.equal(merged.points.length, 2)
+  assert.deepEqual(merged.points.map((point) => point.qualifier), ['EXACT', 'LOWER_BOUND'])
   assert.equal(merged.conflicts.length, 1)
   assert.deepEqual(merged.conflicts[0]?.values, [153000, 163000])
 })
