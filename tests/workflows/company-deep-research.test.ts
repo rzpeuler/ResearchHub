@@ -46,6 +46,15 @@ test('Company Deep Research produces atomic canonical Knowledge and a linked rep
     const loaded = await readCanonicalV04Assets(root)
     assert.ok(loaded.objects.some((item) => item.value.id === 'entity:company-600519'))
     assert.ok(loaded.objects.some((item) => item.value.id.startsWith('source:research-')))
+    const canonicalSource = loaded.objects.find((item) => item.value.id === result.sourceIds[0])?.value as { provider?: string; publisher?: string; metadata?: { dataProvenance?: Record<string, unknown> } } | undefined
+    assert.ok(canonicalSource)
+    assert.equal(canonicalSource.provider, 'cninfo')
+    assert.equal(canonicalSource.publisher, 'CNINFO')
+    assert.deepEqual(canonicalSource.metadata?.dataProvenance, {
+      originAuthority: 'S0_STATUTORY', retrievalProvider: 'CNINFO', sourceUrl: 'https://example.com/filing',
+      publishedAt: '2026-09-07T00:00:00.000Z',
+      dateStatus: 'QUALIFIED', pointInTimeSafe: true,
+    })
     assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('claim:research-')).length, 0)
     assert.equal(result.knowledgeBaseRevision, 1)
     assert.ok(result.createdIds.includes('entity:company-600519'))

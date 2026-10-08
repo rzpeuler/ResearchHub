@@ -14,7 +14,7 @@ import type { NormalizedResearchSource, ResearchAcquisitionPlugin, ResearchSourc
 import type { DailyResearchSignal } from '../../plugins/daily-intelligence/contracts.ts'
 import type { ReasoningExecutor, ReasoningRequest, ReasoningResult } from '../../plugins/reasoning/contracts.ts'
 import { hashKnowledgeObject } from '../../knowledge/storage/canonical-hash.ts'
-import { classifyPhase3ConsumerEvidence } from './phase3-live-acceptance-runner.ts'
+import { classifyPhase3ConsumerEvidence, countQualifiedPitSafeEvidenceDocuments } from './phase3-live-acceptance-runner.ts'
 
 const NOW = '2026-09-10T00:00:00.000Z'
 const rights = { accessScope: 'public' as const, retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false }
@@ -44,10 +44,12 @@ function signal(): DailyResearchSignal {
 
 class FixtureThesisExecutor implements ReasoningExecutor {
   readonly operations: string[] = []
+  readonly requests: ReasoningRequest[] = []
   constructor(private readonly thesisRef: string) {}
   capabilities() { return { maxContextTokens: 10_000, maxOutputTokens: 4_000, structuredOutputSupport: true, maxConcurrency: 1 } }
   async execute(request: ReasoningRequest): Promise<ReasoningResult> {
     this.operations.push(request.operation)
+    this.requests.push(request)
     if (request.operation === 'thesis_attack_design') return { operation: request.operation, output: {
       attackVectors: [{ vectorId: 'vector-fixture', vectorType: 'assumption_failure', priority: 'high', targetExistingClaimRefs: [this.thesisRef], falsificationQuestion: 'What would falsify demand resilience?', failureMechanism: 'Demand weakens.', evidenceNeeded: 'Dated external evidence.', searchTerms: ['demand'] }],
       implicitAssumptions: [], invalidationConditions: [{ conditionId: 'condition-fixture', statement: 'Demand collapses.', severity: 'high', targetExistingClaimRefs: [this.thesisRef] }],
@@ -80,8 +82,13 @@ test('Phase 3 fixture E2E preserves the single external-evidence identity and ke
 })
 
 test('Phase 3 live evidence classification separates provider diagnostics from consumer acceptance', () => {
-  assert.equal(classifyPhase3ConsumerEvidence(0), 'REAL_SOURCE_BLOCKED')
-  assert.equal(classifyPhase3ConsumerEvidence(1), 'REAL_SOURCE_AVAILABLE_WORKFLOW_NOT_EXECUTED')
+  const availableEvidenceAcquisition = { observations: [{ data: { kind: 'evidence', documents: [{ record: { candidate: { candidateId: 'qualified-source' } }, dateStatus: 'QUALIFIED', pointInTimeSafe: true }] } }] }
+  const unknownDateAcquisition = { observations: [{ data: { kind: 'evidence', documents: [{ record: {}, dateStatus: 'UNKNOWN', pointInTimeSafe: false }] } }] }
+  const availableCount = countQualifiedPitSafeEvidenceDocuments(availableEvidenceAcquisition)
+  assert.equal(availableCount, 1)
+  assert.equal(classifyPhase3ConsumerEvidence(availableCount), 'REAL_SOURCE_AVAILABLE_WORKFLOW_NOT_EXECUTED')
+  assert.equal(countQualifiedPitSafeEvidenceDocuments(unknownDateAcquisition), 0)
+  assert.equal(classifyPhase3ConsumerEvidence(countQualifiedPitSafeEvidenceDocuments({ observations: [] })), 'REAL_SOURCE_BLOCKED')
 })
 
 test('Thesis Red Team fixture E2E acquires through Data while preserving target Thesis, Company, and signal durability boundaries', async () => {
@@ -156,6 +163,8 @@ test('Thesis Red Team fixture E2E acquires through Data while preserving target 
     assert.equal(result.telemetry.qualifiedDisconfirmingEvidenceCount, 1)
     assert.equal(result.telemetry.verdictConsistency?.valid, true)
     assert.equal(result.telemetry.thesisVerdict, 'materially_challenged')
+    const stageBSources = (reasoningExecutor.requests[1]!.input as { sources: { provider: string; dataProvenance?: Record<string, unknown> }[] }).sources
+    assert.ok(stageBSources.some((item) => item.provider === 'cninfo' && item.dataProvenance?.originAuthority === 'S0_STATUTORY' && item.dataProvenance?.pointInTimeSafe === true && item.dataProvenance?.retrievedAt === NOW && typeof item.dataProvenance?.contentHash === 'string'))
     assert.equal(result.telemetry.gatewayCreatedClaimCount, 2, 'Gateway should commit a deterministic verdict and the valid Stage B risk proposal')
     assert.equal(result.telemetry.durableAppliedProposalCount, 2)
     assert.ok(result.sourceIds.length >= 1)
@@ -165,10 +174,18 @@ test('Thesis Red Team fixture E2E acquires through Data while preserving target 
     assert.equal(writtenClaims.length, 2)
     assert.ok(writtenClaims.some((item) => (item.value as { statement?: string }).statement?.includes('Premium-channel demand deterioration')))
     assert.ok(writtenClaims.every((item) => (item.value as { sourceRefs?: string[] }).sourceRefs?.some((ref) => writtenSourceRefs.includes(ref))))
-    const writtenSource = after.objects.find((item) => item.kind === 'source' && result.sourceIds.includes(String(item.value.id)))?.value as { publishedAt?: string; contentHash?: string } | undefined
+    const writtenSource = after.objects.find((item) => item.kind === 'source' && result.sourceIds.includes(String(item.value.id)))?.value as { provider?: string; publisher?: string; canonicalUrl?: string; publishedAt?: string; retrievedAt?: string; contentHash?: string; metadata?: { dataProvenance?: Record<string, unknown> } } | undefined
     assert.ok(writtenSource)
+    assert.equal(writtenSource.provider, 'cninfo')
+    assert.equal(writtenSource.publisher, 'CNINFO')
     assert.equal(writtenSource.publishedAt, '2026-09-07T00:00:00.000Z')
     assert.ok(writtenSource.contentHash)
+    assert.deepEqual(writtenSource.metadata?.dataProvenance, {
+      originAuthority: 'S0_STATUTORY', retrievalProvider: 'CNINFO', sourceUrl: 'https://example.test/qualified-dated-relevant-official',
+      publishedAt: writtenSource.publishedAt,
+      dateStatus: 'QUALIFIED', pointInTimeSafe: true,
+    })
+    assert.equal(writtenSource.retrievedAt, NOW)
     assert.equal(after.objects.some((item) => item.kind === 'source' && ['unknown-date-official', 'irrelevant-office-document', 'dated-news-context', 'daily-signal-context'].some((candidateId) => JSON.stringify(item.value).includes(candidateId))), false)
     assert.deepEqual(result.providerOutcomes.map((item) => [item.provider, item.providerAttempted]), [['CNINFO', true], ['GDELT', true]])
   } finally {

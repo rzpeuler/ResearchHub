@@ -37,6 +37,14 @@ export function classifyPhase3ConsumerEvidence(usableExternalEvidenceCount: numb
   return usableExternalEvidenceCount > 0 ? 'REAL_SOURCE_AVAILABLE_WORKFLOW_NOT_EXECUTED' : 'REAL_SOURCE_BLOCKED'
 }
 
+export function countQualifiedPitSafeEvidenceDocuments(acquisition: { readonly observations?: readonly { readonly data?: unknown }[] }): number {
+  return (acquisition.observations ?? []).reduce((total, observation) => {
+    const data = observation.data as { readonly kind?: string; readonly documents?: readonly { readonly record?: unknown; readonly dateStatus?: string; readonly pointInTimeSafe?: boolean }[] } | undefined
+    if (data?.kind !== 'evidence' || !Array.isArray(data.documents)) return total
+    return total + data.documents.filter((document) => document.record !== undefined && document.dateStatus === 'QUALIFIED' && document.pointInTimeSafe === true).length
+  }, 0)
+}
+
 export async function runPhase3LiveAcceptance(consumer: Consumer): Promise<void> {
   if (process.env.RESEARCHHUB_PHASE3_LIVE !== '1') {
     console.log(JSON.stringify({ consumer, status: 'SKIPPED', reason: 'Set RESEARCHHUB_PHASE3_LIVE=1 to opt in; no network was used.' }))
@@ -74,16 +82,16 @@ export async function runPhase3LiveAcceptance(consumer: Consumer): Promise<void>
     for (const requirement of requirements) {
       try {
         const item = await resolver.resolveOne(requirement)
-        const documents = requirement.metricId === 'company_research_evidence'
-          ? ((item.value as { documents?: readonly { dateStatus?: string; record?: unknown }[] } | undefined)?.documents ?? []).filter((document) => document.dateStatus === 'QUALIFIED' && document.record !== undefined)
-          : []
-        if (requirement.metricId === 'company_research_evidence') consumerEvidenceCount += documents.length
+        const usableExternalEvidenceCount = requirement.metricId === 'company_research_evidence'
+          ? countQualifiedPitSafeEvidenceDocuments(item.acquisition)
+          : 0
+        if (requirement.metricId === 'company_research_evidence') consumerEvidenceCount += usableExternalEvidenceCount
         const attempts = item.attempts.map((attempt) => ({ sourceId: attempt.sourceId, status: attempt.status, diagnostic: attempt.diagnostic ? safeError(attempt.diagnostic) : undefined }))
         const observations = (item.acquisition.observations ?? []).map((observation) => {
           const data = observation.data as { outcome?: { transportSucceeded?: boolean; fetchSucceeded?: boolean; discovered?: number; fetched?: number; failed?: number; empty?: number; rejected?: number; deduplicated?: number } } | undefined
           return { sourceId: observation.source.sourceId, outcome: data?.outcome }
         })
-        legs.push({ requirementId: requirement.id, metricId: requirement.metricId, providerLegStatus: item.status, usableExternalEvidenceCount: documents.length, attempts, observations })
+        legs.push({ requirementId: requirement.id, metricId: requirement.metricId, providerLegStatus: item.status, usableExternalEvidenceCount, attempts, observations })
       } catch (error) {
         legs.push({ requirementId: requirement.id, metricId: requirement.metricId, providerLegStatus: 'ERROR', usableExternalEvidenceCount: 0, error: safeError(error) })
       }

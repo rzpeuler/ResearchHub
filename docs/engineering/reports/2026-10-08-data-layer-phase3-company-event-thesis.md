@@ -165,3 +165,19 @@ Writer rejection does not report success or overwrite the prior Module
 - Phase 3 has not been pushed or merged. Final Git delivery is pending the
   controller's scoped review and push decision; `main` remains at accepted
   Phase 2.
+
+## Final review fix wave (2026-10-08)
+
+The final review fixes preserve the Data-to-Skill-to-Gateway provenance path without changing Knowledge Production Gateway behavior. Company, Event, and Thesis Workflows now transform each qualified Data document with `sourceWithDataEvidenceProvenance` before Skill/Gateway use. The normalized source carries the per-document origin authority, retrieval provider, source URL, publication date, date qualification, and PIT flag in `candidate.metadata.dataProvenance`; its existing top-level `retrievedAt` and `contentHash` remain the canonical values consumed by the Gateway and are also included in bounded Skill provenance payloads. Company, Event, and Thesis fixtures assert canonical publisher/provider separation, source metadata, and the top-level hash/retrieval fields. Event Skill projections preserve only allowlisted bounded provenance fields for Stage A and Stage B.
+
+The live acceptance runner now counts only records in `acquisition.observations[].data.documents` that have a record, `dateStatus === QUALIFIED`, and `pointInTimeSafe === true`. It no longer reads `item.value` for `COLLECT_DIVERSE`. The deterministic fixture exercises that same aggregator with both positive qualified/PIT-safe documents and blocked/unsafe evidence, proving positive evidence cannot be misclassified as `REAL_SOURCE_BLOCKED`. Existing live probes still truthfully classify all three consumers as `REAL_SOURCE_BLOCKED` with zero usable documents; provider transport/discovery/fetch diagnostics remain separate from consumer acceptance.
+
+### Final review validation
+
+- Scoped cross-workflow/Data/fixture suite: 74/74 passed, including Company Gateway persistence, Event provenance passthrough, positive/blocked live aggregation, and Thesis Gateway fixture.
+- `npm run typecheck`: PASS.
+- `npm run client:typecheck`: PASS.
+- Company/Event/Thesis Phase 3 live scripts without opt-in: all three printed `SKIPPED` before side effects. The earlier Task 6 check covered all five scripts, including the two legacy Company smoke scripts.
+- `git diff --check`: PASS (Git reports only expected Windows line-ending normalization notices).
+- Controller's full `npm test` rerun remains the evidence recorded above: it ran after the positive Thesis Gateway fixture fix on HEAD `ef271bc1223c06671a46a451525aa8a3b04331c2`; client 97/97, Node 2,065 total / 2,040 pass / 25 fail, with exact baseline/current identifiers 25 / 25, added 0, missing 0. That full rerun preceded this final provenance/aggregation fix wave; the scoped validation above was run after this wave.
+- No Gateway, provider, or Thesis lifecycle semantics changed. Phase 3 remains local; push/merge and controller delivery review are pending.

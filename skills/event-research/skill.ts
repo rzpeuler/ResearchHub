@@ -153,12 +153,19 @@ function repairInput(priorInvalidStructuredOutput: unknown, validatorDiagnostics
 }
 
 function modelSources(sources: readonly EventEvidenceSource[]): readonly Record<string, unknown>[] {
-  return boundedUniqueSources(sources).map((source) => boundedValue({ candidateId: source.candidateId.slice(0, 160), title: source.title.slice(0, 600), provider: source.provider.slice(0, 160), kind: source.kind?.slice(0, 80), publishedAt: source.publishedAt?.slice(0, 80), url: source.url?.slice(0, 2_000), excerpt: source.excerpt.slice(0, MAX_SOURCE_EXCERPT), ...(source.official === undefined ? {} : { official: source.official }) }) as Record<string, unknown>)
+  return boundedUniqueSources(sources).map((source) => boundedValue({ candidateId: source.candidateId.slice(0, 160), title: source.title.slice(0, 600), provider: source.provider.slice(0, 160), kind: source.kind?.slice(0, 80), publishedAt: source.publishedAt?.slice(0, 80), url: source.url?.slice(0, 2_000), excerpt: source.excerpt.slice(0, MAX_SOURCE_EXCERPT), ...(source.official === undefined ? {} : { official: source.official }), ...(source.dataProvenance ? { dataProvenance: modelDataProvenance(source.dataProvenance) } : {}) }) as Record<string, unknown>)
 }
 
 function modelCompany(company: EventEvidenceAssessmentInput['company'] | EventResearchSynthesisInput['company']): Record<string, unknown> { return boundedValue({ symbol: company.symbol.slice(0, 32), name: company.name?.slice(0, 200), exchange: company.exchange?.slice(0, 32) }) as Record<string, unknown> }
 function modelAnchor(anchor: EventEvidenceAssessmentInput['anchor'] | EventResearchSynthesisInput['anchor']): Record<string, unknown> { return boundedValue({ kind: anchor.kind, title: anchor.title.slice(0, 600), description: anchor.description?.slice(0, 1_500), signalId: anchor.signalId?.slice(0, 160), clusterKey: anchor.clusterKey?.slice(0, 160), url: anchor.url?.slice(0, 2_000), publishedAt: anchor.publishedAt?.slice(0, 80), eventDate: anchor.eventDate?.slice(0, 32) }) as Record<string, unknown> }
-function modelExcerpt(source: EventEvidenceSource): Record<string, unknown> { return { candidateId: source.candidateId, title: source.title.slice(0, 600), provider: source.provider.slice(0, 160), publishedAt: source.publishedAt?.slice(0, 80), url: source.url?.slice(0, 2_000), excerpt: source.excerpt.slice(0, MAX_SOURCE_EXCERPT) } }
+function modelDataProvenance(provenance: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const allowed = ['originAuthority', 'retrievalProvider', 'sourceUrl', 'publishedAt', 'retrievedAt', 'contentHash', 'dateStatus']
+  const result: Record<string, unknown> = {}
+  for (const key of allowed) if (typeof provenance[key] === 'string') result[key] = (provenance[key] as string).slice(0, key === 'contentHash' ? 128 : 2_000)
+  if (typeof provenance.pointInTimeSafe === 'boolean') result.pointInTimeSafe = provenance.pointInTimeSafe
+  return result
+}
+function modelExcerpt(source: EventEvidenceSource): Record<string, unknown> { return { candidateId: source.candidateId, title: source.title.slice(0, 600), provider: source.provider.slice(0, 160), publishedAt: source.publishedAt?.slice(0, 80), url: source.url?.slice(0, 2_000), excerpt: source.excerpt.slice(0, MAX_SOURCE_EXCERPT), ...(source.dataProvenance ? { dataProvenance: modelDataProvenance(source.dataProvenance) } : {}) } }
 function selectedExcerpts(input: EventResearchSynthesisInput, ids: readonly string[], supplied: readonly EventEvidenceSource[] | undefined): readonly Record<string, unknown>[] {
   const allowed = new Set(ids)
   return (supplied ?? input.sources ?? []).slice(0, MAX_SOURCE_ASSESSMENTS).filter((source) => allowed.has(source.candidateId)).map(modelExcerpt)

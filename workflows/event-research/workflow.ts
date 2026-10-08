@@ -1,6 +1,7 @@
 import { isIP } from 'node:net'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { KnowledgeProductionGateway } from '../../knowledge/production/gateway.ts'
+import { sourceWithDataEvidenceProvenance } from '../../data/research-evidence.ts'
 import type { KnowledgeAssetV04, KnowledgeEntityV04 } from '../../knowledge/schema/domain-v04.ts'
 import type { KnowledgeProductionOutcome, ResolutionIntentSummary, SemanticProductionProposal } from '../../knowledge/production/contracts.ts'
 import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
@@ -246,7 +247,7 @@ async function acquireEventSources(input: EventResearchWorkflowInput, company: R
     }
     for (const document of data.documents) {
       if (acquired.length >= MAX_ACQUIRED_SOURCES) break
-      const source = document.record
+      const source = sourceWithDataEvidenceProvenance(document)
       const sourceUrlValue = source.canonicalUrl ?? source.candidate.url
       const url = canonicalUrl(sourceUrlValue)
       const route = providerKey(document.provenance.retrievalProvider ?? observation.source.sourceId)
@@ -284,7 +285,7 @@ async function acquireEventSources(input: EventResearchWorkflowInput, company: R
   return { sources: acquired, outcomes, diagnostics, discoveredCount: progress.discoveredCount, selectedCount: progress.selectedCount, futureFilteredCount: progress.futureFilteredCount, outsideWindowFilteredCount: progress.outsideWindowFilteredCount, unknownDateCount: progress.unknownDateCount, deduplicatedCount: progress.deduplicatedCount }
 }
 
-function sourceContext(acquired: readonly EventAcquiredSource[]): readonly EventEvidenceSource[] { return acquired.map(({ source }) => ({ candidateId: source.candidate.candidateId, title: source.title, provider: source.candidate.provider, kind: source.candidate.kind, url: canonicalUrl(source.canonicalUrl ?? source.candidate.url), publishedAt: source.candidate.publishedAt, excerpt: source.content.slice(0, 1_500), official: source.candidate.kind === 'official_disclosure' || source.candidate.provider.toLocaleLowerCase('en-US') === 'cninfo' })) }
+function sourceContext(acquired: readonly EventAcquiredSource[]): readonly EventEvidenceSource[] { return acquired.map(({ source }) => ({ candidateId: source.candidate.candidateId, title: source.title, provider: source.candidate.provider, kind: source.candidate.kind, url: canonicalUrl(source.canonicalUrl ?? source.candidate.url), publishedAt: source.candidate.publishedAt, excerpt: source.content.slice(0, 1_500), official: source.candidate.kind === 'official_disclosure' || source.candidate.provider.toLocaleLowerCase('en-US') === 'cninfo', ...(isRecord(source.candidate.metadata?.dataProvenance) ? { dataProvenance: { ...(source.candidate.metadata.dataProvenance as Record<string, unknown>), retrievedAt: source.retrievedAt, contentHash: source.contentHash } } : {}) })) }
 function roleCounts(acquired: readonly EventAcquiredSource[]): Readonly<Record<EventSourceRole, number>> { const counts: Record<EventSourceRole, number> = { anchor_context: 0, verification: 0, supporting: 0, contradicting: 0, background: 0 }; for (const item of acquired) counts[item.role] += 1; return counts }
 
 function assertOutputRefs(value: unknown, allowed: ReadonlySet<string>, label: string, max = MAX_REFERENCE_ITEMS): asserts value is readonly string[] {

@@ -35,7 +35,7 @@ test('Company Skill receives all structured inputs with their acquisition proven
     ...source,
     candidate: { ...source.candidate, candidateId: `akshare-${index}`, kind: 'structured_data' as const, metadata: { dataProvenance: { metricId, sourceId: `source-${index}`, originAuthority: 'S3_AGGREGATOR', retrievalProvider: 'AKShare', valueVersion: { status: 'UNVERIFIED' } } } },
   }))
-  const unknownContext = { ...source, candidate: { ...source.candidate, candidateId: 'unknown-context' } }
+  const unknownContext = { ...source, publisher: 'Unknown original publisher', candidate: { ...source.candidate, candidateId: 'unknown-context', provider: 'gdelt', metadata: { dataProvenance: { originAuthority: 'S3_AGGREGATOR', retrievalProvider: 'GDELT', sourceUrl: 'https://example.com/report', publishedAt: '2026-09-07T00:00:00.000Z', dateStatus: 'QUALIFIED', pointInTimeSafe: true } } } }
   const result = await new CompanyResearchSkill(() => '2026-09-08T00:00:00.000Z', executor).synthesize({
     company: { symbol: '600519', name: 'Fixture Co' }, asOf: '2026-09-08T00:00:00.000Z', sources: [...structuredSources, unknownContext],
     durableSourceCandidateIds: structuredSources.map((item) => item.candidate.candidateId),
@@ -46,8 +46,11 @@ test('Company Skill receives all structured inputs with their acquisition proven
   assert.deepEqual((seen?.structuredProfileData as { fields: unknown[] }).fields, [{ name: 'name', value: 'Fixture Co' }])
   assert.deepEqual((seen?.structuredFinancialData as Array<{ metrics: { metric: number } }>)[0]?.metrics, { metric: 0 })
   assert.deepEqual((seen?.structuredMarketData as Array<{ close: number }>)[0]?.close, 0)
-  const bounded = seen?.boundedSources as Array<{ provenance: { metricId: string } | null }>
-  assert.deepEqual(bounded.flatMap((item) => item.provenance ? [item.provenance.metricId] : []), ['company_basic_profile', 'company_financial_history', 'company_market_history'])
+  const bounded = seen?.boundedSources as Array<{ provider: string; publisher: string; provenance: { metricId?: string; originAuthority?: string; retrievalProvider?: string; dateStatus?: string; pointInTimeSafe?: boolean; retrievedAt?: string; contentHash?: string } | null }>
+  assert.deepEqual(bounded.flatMap((item) => item.provenance?.metricId ? [item.provenance.metricId] : []), ['company_basic_profile', 'company_financial_history', 'company_market_history'])
+  const external = bounded.find((item) => item.provider === 'gdelt')
+  assert.equal(external?.publisher, 'Unknown original publisher')
+  assert.deepEqual(external?.provenance, { originAuthority: 'S3_AGGREGATOR', retrievalProvider: 'GDELT', sourceUrl: 'https://example.com/report', publishedAt: '2026-09-07T00:00:00.000Z', retrievedAt: source.retrievedAt, contentHash: source.contentHash, dateStatus: 'QUALIFIED', pointInTimeSafe: true })
   assert.ok(result.contextOnlySourceCandidateIds?.includes('unknown-context'))
   assert.equal(result.sourceCandidateIds.includes('unknown-context'), false)
   assert.equal(result.sections[0]?.sourceCandidateIds.includes('unknown-context'), false)

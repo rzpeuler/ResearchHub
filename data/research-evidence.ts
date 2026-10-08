@@ -42,6 +42,58 @@ export interface ResearchEvidenceBatch<T> {
   readonly outcome: ResearchEvidenceOutcome
 }
 
+type ProvenanceAwareSource = {
+  readonly candidate: {
+    readonly url?: string
+    readonly publishedAt?: string
+    readonly metadata?: Readonly<Record<string, unknown>>
+  }
+  readonly retrievedAt: string
+  readonly canonicalUrl?: string
+  readonly contentHash: string
+  readonly publisher: string
+}
+
+/** Attach a qualified document's Data lineage to the normalized source before
+ * it is passed to Skills and the Knowledge Production Gateway. Volatile
+ * retrieval time and content hash remain on the source's existing top-level
+ * fields, keeping source identity metadata stable across content updates.
+ */
+export function sourceWithDataEvidenceProvenance<T extends ProvenanceAwareSource>(document: QualifiedResearchEvidence<T>): T {
+  const source = document.record
+  const retrievalProvider = document.provenance.retrievalProvider ?? document.retrievalProvider
+  const explicitPublisher = document.originPublisher ?? document.provenance.originPublisher
+  const publisher = reliableOriginPublisher(explicitPublisher) ?? 'Unknown original publisher'
+  const sourceUrl = document.sourceUrl ?? document.provenance.sourceUrl ?? source.canonicalUrl ?? source.candidate.url
+  const publishedAt = document.publishedAt ?? document.provenance.publishedAt ?? source.candidate.publishedAt
+  const dataProvenance = {
+    originAuthority: document.provenance.originAuthority,
+    retrievalProvider,
+    ...(sourceUrl ? { sourceUrl } : {}),
+    ...(publishedAt ? { publishedAt } : {}),
+    dateStatus: document.dateStatus,
+    pointInTimeSafe: document.pointInTimeSafe,
+  }
+  return {
+    ...source,
+    publisher,
+    retrievedAt: document.retrievedAt,
+    contentHash: document.contentHash ?? source.contentHash,
+    ...(sourceUrl ? { canonicalUrl: sourceUrl } : {}),
+    candidate: {
+      ...source.candidate,
+      ...(publishedAt ? { publishedAt } : {}),
+      metadata: { ...source.candidate.metadata, dataProvenance },
+    },
+  } as T
+}
+
+function reliableOriginPublisher(value: string | undefined): string | undefined {
+  const publisher = value?.trim()
+  if (!publisher || /^unknown(?:\s|$)/i.test(publisher) || /^gdelt$/i.test(publisher)) return undefined
+  return publisher
+}
+
 /** Strictly qualify document dates and deduplicate across all configured sources. */
 export function finalizeResearchEvidence<T>(
   requirement: DataRequirement,

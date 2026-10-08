@@ -28,7 +28,7 @@ export class CompanyResearchSkill {
         company: input.company,
         objective: `A-share company deep research for ${input.company.symbol}`,
         asOf: input.asOf,
-        boundedSources: input.sources.slice(0, 20).map((source) => ({ candidateId: source.candidate.candidateId, kind: source.candidate.kind, tier: source.candidate.tier, title: source.title, publisher: source.publisher, publishedAt: source.candidate.publishedAt ?? null, provenance: source.candidate.metadata?.dataProvenance ?? null, citationEligible: input.durableSourceCandidateIds === undefined || input.durableSourceCandidateIds.includes(source.candidate.candidateId), content: source.content.slice(0, 1_200) })),
+        boundedSources: input.sources.slice(0, 20).map((source) => ({ candidateId: source.candidate.candidateId, kind: source.candidate.kind, tier: source.candidate.tier, title: source.title, provider: source.candidate.provider, publisher: source.publisher, publishedAt: source.candidate.publishedAt ?? null, provenance: source.candidate.metadata?.dataProvenance ? { ...source.candidate.metadata.dataProvenance, retrievedAt: source.retrievedAt, contentHash: source.contentHash } : null, citationEligible: input.durableSourceCandidateIds === undefined || input.durableSourceCandidateIds.includes(source.candidate.candidateId), content: source.content.slice(0, 1_200) })),
         structuredProfileData: input.profileData ?? null,
         structuredFinancialData: input.financialData ?? null,
         structuredMarketData: input.marketData ?? null,

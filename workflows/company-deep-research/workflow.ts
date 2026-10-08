@@ -6,6 +6,7 @@ import type { NormalizedResearchSource, ResearchAcquisitionDiagnostic, ResearchP
 import type { CompanyResearchDataPayload, CompanyResearchEvidenceBatch, CompanyProfileSnapshot, CompanyFinancialHistory, CompanyMarketHistory } from '../../plugins/research-acquisition/company-research-data.ts'
 import { sha256 } from '../../plugins/research-acquisition/hash.ts'
 import { materializePhase3CommonRequirement } from '../../data/requirements.ts'
+import { sourceWithDataEvidenceProvenance } from '../../data/research-evidence.ts'
 import type { DataResolver, ResolvedDataItem } from '../../data/resolver.ts'
 import { normalizeCompanyCandidateIdentity } from '../../skills/knowledge-curation/identity/company-identity.ts'
 import { validateResearchReport, writeResearchReport, type ResearchReport } from '../../app/services/research-report.ts'
@@ -110,7 +111,7 @@ async function acquire(input: CompanyDeepResearchInput, company: CompanyDeepRese
   const evidenceBatches = evidenceItem ? resolvedValues<CompanyResearchEvidenceBatch>(evidenceItem, 'evidence') : []
   const externalDocuments = evidenceBatches.flatMap((batch) => batch.documents)
   const selectedExternalDocuments = [...new Map(externalDocuments.map((document) => [document.record.candidate.candidateId, document])).values()].slice(0, limit)
-  const externalSources = selectedExternalDocuments.map((document) => document.record)
+  const externalSources = selectedExternalDocuments.map(sourceWithDataEvidenceProvenance)
   const dataValues = [
     ...(profileItem && profileData ? [structuredSource('company_basic_profile', profileItem, profileData, company)] : []),
     ...(financialItem && financialData ? [structuredSource('company_financial_history', financialItem, financialData, company)] : []),

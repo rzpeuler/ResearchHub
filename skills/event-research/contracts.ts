@@ -71,6 +71,7 @@ export interface EventEvidenceSource {
   readonly publishedAt?: string
   readonly excerpt: string
   readonly official?: boolean
+  readonly dataProvenance?: Readonly<Record<string, unknown>>
 }
 
 export interface EventExistingKnowledgeClaim {
