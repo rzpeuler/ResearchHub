@@ -5,6 +5,7 @@ import { PHASE3_COMMON_SOURCE_POLICIES } from '../../data/company-research-polic
 import { materializePhase3CommonRequirement } from '../../data/requirements.ts'
 import { resolveSourcePolicy } from '../../data/source-policy.ts'
 import { createCompanyResearchDataResolver, type CompanyResearchEvidenceBatch } from '../../plugins/research-acquisition/company-research-data.ts'
+import { GdeltResearchPlugin } from '../../plugins/research-acquisition/gdelt.ts'
 import type { AkshareDataClient } from '../../plugins/research-acquisition/akshare.ts'
 import type { NormalizedResearchSource, ResearchAcquisitionPlugin, ResearchSourceCandidate } from '../../plugins/research-acquisition/contracts.ts'
 
@@ -103,6 +104,24 @@ test('strict date window rejects future, malformed, and outside evidence; unknow
   if (batch?.kind === 'evidence') assert.equal(batch.outcome.rejected, 3)
 })
 
+test('GDELT first-seen timestamp preserves same-day cutoff precision', async () => {
+  const gdelt = new GdeltResearchPlugin({ fetchImpl: async () => new Response(JSON.stringify({ articles: [
+    { url: 'https://example.com/before', title: 'Before cutoff', seendate: '20261008T110000Z' },
+    { url: 'https://example.com/after', title: 'After cutoff', seendate: '20261008T130000Z' },
+    { url: 'https://example.com/invalid', title: 'Invalid time', seendate: '20261008T250000Z' },
+  ] }), { status: 200 }) })
+  const discovered = await gdelt.discover({ company, asOf: AS_OF })
+  assert.deepEqual(discovered.map((entry) => entry.publishedAt), ['2026-10-08T11:00:00.000Z', '2026-10-08T13:00:00.000Z', undefined])
+  const news = plugin('gdelt', discovered)
+  const item = await createCompanyResearchDataResolver({ company, officialDisclosure: plugin('cninfo', []), gdelt: news, now }).resolveOne(req())
+  assert.deepEqual(news.calls, ['discover', `fetch:${discovered[0]?.candidateId}`, `normalize:${discovered[0]?.candidateId}`])
+  assert.equal(evidence(item).length, 1)
+  assert.equal(evidence(item)[0]?.pointInTimeSafe, true)
+  assert.equal(evidence(item)[0]?.provenance.publishedAt, '2026-10-08T11:00:00.000Z')
+  const outcome = item.acquisition.observations?.find((observation) => observation.source.retrievalProvider === 'GDELT')?.data
+  if (outcome?.kind === 'evidence') assert.equal(outcome.outcome.rejected, 2)
+})
+
 test('generic canonical URL and content hash dedup retain first statutory document', async () => {
   const official = plugin('cninfo', [candidate('cninfo', 'official', '2026-10-07T00:00:00.000Z', 'https://EXAMPLE.com/a/?utm_source=x')])
   const news = plugin('gdelt', [candidate('gdelt', 'same-url', '2026-10-07T00:00:00.000Z', 'https://example.com/a'), candidate('gdelt', 'other', '2026-10-07T00:00:00.000Z', 'https://example.com/other')])
@@ -188,6 +207,22 @@ test('AKShare structured operations retain numeric zero, reject empty payloads, 
   assert.equal(market.quality.pointInTimeSafe, false)
   const empty = createCompanyResearchDataResolver({ company, akshare: { ...akshare, companyBasic: async () => [] }, now })
   assert.equal((await empty.resolveOne(forCompany('company_basic_profile'))).attempts[0]?.status, 'NO_DATA')
+})
+
+test('AKShare named profile rows with missing values cannot fabricate fields from item keys', async () => {
+  const akshare: AkshareDataClient = {
+    async companyBasic() { return [{ item: 'missing', value: undefined }, { item: 'also-missing' }, { item: 'employees', value: 0 }] },
+    async financialData() { return [] },
+    async historicalMarketData() { return [] },
+  }
+  const profileRequirement = materializePhase3CommonRequirement('company_basic_profile', { ...context, workflowId: 'company-deep-research' })
+  const item = await createCompanyResearchDataResolver({ company, akshare, now }).resolveOne(profileRequirement)
+  assert.equal(item.status, 'AVAILABLE')
+  if (item.value?.kind === 'profile') assert.deepEqual(item.value.fields, [{ name: 'employees', value: 0 }])
+  const allMissing = createCompanyResearchDataResolver({ company, akshare: { ...akshare, companyBasic: async () => [{ item: 'missing', value: undefined }] }, now })
+  const unavailable = await allMissing.resolveOne(profileRequirement)
+  assert.equal(unavailable.status, 'UNAVAILABLE')
+  assert.equal(unavailable.attempts[0]?.status, 'NO_DATA')
 })
 
 test('cancellation stops source attempts before they continue', async () => {

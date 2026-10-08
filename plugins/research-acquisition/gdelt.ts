@@ -32,4 +32,11 @@ export class GdeltResearchPlugin implements ResearchAcquisitionPlugin {
   async fetch(candidate: ResearchSourceCandidate): Promise<ResearchFetchedSource> { if (!candidate.url) throw new Error('GDELT candidate has no URL'); const response = await this.fetchImpl(candidate.url); if (!response.ok) throw new Error(`Article request failed with HTTP ${response.status}`); const rawBytes = new Uint8Array(await response.arrayBuffer()); const content = new TextDecoder().decode(rawBytes); return { candidate, retrievedAt: this.now(), content, rawBytes, contentType: response.headers.get('content-type') ?? undefined, contentHash: sha256(content) } }
   async normalize(source: ResearchFetchedSource): Promise<NormalizedResearchSource> { const bytes = source.rawBytes ?? new TextEncoder().encode(source.content); const document = await this.resolver.parse({ bytes, filename: 'gdelt-article.html', mediaType: 'text/html' }); return { candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: document.normalizedText, canonicalUrl: source.candidate.url, contentHash: source.contentHash ?? sha256(source.content), rawBytes: bytes, publisher: source.candidate.provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } } }
 }
-function normalizeDate(value: unknown): string | undefined { if (typeof value !== 'string') return undefined; const match = /^(\d{4})(\d{2})(\d{2})/.exec(value); return match ? `${match[1]}-${match[2]}-${match[3]}T00:00:00.000Z` : undefined }
+function normalizeDate(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(value)
+  if (!match) return undefined
+  const iso = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}.000Z`
+  const date = new Date(iso)
+  return !Number.isNaN(date.getTime()) && date.toISOString() === iso ? iso : undefined
+}

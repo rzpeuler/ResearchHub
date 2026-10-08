@@ -188,10 +188,14 @@ function dataRows(raw: unknown): readonly Record<string, unknown>[] {
 function normalizeProfile(rows: readonly Record<string, unknown>[], retrievedAt: string): CompanyProfileSnapshot {
   const fields: { name: string; value: string | number | boolean }[] = []
   for (const row of rows) {
+    const namedRow = ['item', '字段', 'value', '值'].some((key) => Object.prototype.hasOwnProperty.call(row, key))
     const fieldName = text(row.item) ?? text(row.name) ?? text(row.字段)
     const fieldValue = scalar(row.value ?? row.值)
-    if (fieldName && fieldValue !== undefined) fields.push({ name: fieldName, value: fieldValue })
-    else for (const [name, raw] of Object.entries(row)) {
+    if (namedRow) {
+      if (fieldName && fieldValue !== undefined) fields.push({ name: fieldName, value: fieldValue })
+      continue
+    }
+    for (const [name, raw] of Object.entries(row)) {
       const value = scalar(raw)
       if (value !== undefined) fields.push({ name, value })
     }
