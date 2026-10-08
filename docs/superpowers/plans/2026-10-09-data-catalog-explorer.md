@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript, Node HTTP runtime, React, Vitest/jsdom, Node test runner.
 
-**Spec:** User-provided RHL-DL-UI-001 taskbook at `C:\Users\Administrator\.codex\attachments\b3115fa5-77d9-44e8-9e2f-78f6875dc6c4\pasted-text-1.txt`; supporting repository contract: `docs/engineering/specs/2026-09-22-data-source-governance-foundation-v0.1.md`.
+**Spec:** User-provided RHL-DL-UI-001 taskbook at `C:\Users\Administrator\.codex\attachments\933cb3c5-aaa1-46e8-b69a-1a61b74773e1\pasted-text-1.txt`; supporting repository contract: `docs/engineering/specs/2026-09-22-data-source-governance-foundation-v0.1.md`.
 
 ## Global Constraints
 
@@ -33,14 +33,68 @@
 
 ---
 
-### Task 6: Documentation, full validation, and remote delivery
+### Task 1: Read-only Catalog projection contracts
 
-**Files:**
-- Create: `docs/engineering/reports/2026-10-09-data-catalog-explorer.md`
-- Modify architecture documentation only if review finds a normative runtime contract needs an additive clarification; do not change Data Layer v1 core constraints.
+**Files:** Create `app/services/data-catalog-projection.ts`; test `tests/app/services/data-catalog-projection.test.ts`.
 
-- [ ] **Step 1: Run all Data Sources focused tests** plus the new projection and HTTP tests.
-- [ ] **Step 2: Run** `npm test`, `npm run typecheck`, `npm run client:typecheck`, `npm run client:build`, and `git diff --check`. Compare exact failing Node test identifiers to the current accepted baseline; require zero new deterministic failures.
-- [ ] **Step 3: Record** baseline and Phase 4 promotion HEAD, API contracts and data sources, exact policy mapping behavior, real counts from both catalogs, shared-runtime-instance proof, UI interactions, security review, test results, limitations, validated code HEAD, and final delivery HEAD in the engineering report.
-- [ ] **Step 4: Review the final diff** for forbidden catalog copies, candidate promotion, provider/network calls, persistence, mutation routes, sensitive data, and regressions to existing Data Sources behavior.
-- [ ] **Step 5: Commit and push** `codex/dl-ui-001-data-catalog-explorer`; verify remote HEAD equals local HEAD, the worktree is clean, and `main` remains at the Phase 4 promotion commit.
+**Produces:** Typed Common and Industry response projections. Common matching uses exact metric/policy identifiers and keeps policy status distinct from source binding, tests, and PIT. Industry projection reads `IndustryDataCatalog.list()` without mutation.
+
+- [x] Add dynamic-count, exact/unmapped Common, policy-vs-adapter, empty Industry, lifecycle, and policy metadata tests.
+- [x] Run the focused projection tests and observe RED before implementation.
+- [x] Implement pure projections with no guessed mapping or Catalog mutation.
+- [x] Verify focused projection tests pass (5/5) and root typecheck passes.
+- [x] Commit `16aea19`.
+
+### Task 2: Runtime binding and read-only HTTP routes
+
+**Files:** Modify `app/runtime/application-runtime.ts` and `app/runtime/server.ts`; test `tests/app/runtime/data-catalog-projection-routes.test.ts`.
+
+**Produces:** `GET /api/data-sources/catalog/common` and `GET /api/data-sources/catalog/industry`; one Industry catalog instance is shared by resolver composition and route projection.
+
+- [x] Add failing real HTTP tests for dynamic Common definitions, injected Industry Catalog identity, read-only behavior, and response redaction.
+- [x] Bind the default or injected catalog once; project only actual policy and safe integration summaries.
+- [x] Run projection routes plus existing Data Source administration routes (10/10).
+- [x] Run root typecheck and commit `a9f4fbd`.
+
+### Task 3: RuntimeClient read methods
+
+**Files:** Modify `client/src/api/runtime-client.ts` and `client/src/api/runtime-client.test.ts`.
+
+**Produces:** Typed `getCommonDataCatalog()` and `getIndustryDataCatalog()` GET methods with standard safe error handling and no mutation methods.
+
+- [x] Add failing endpoint/method/shape/error-propagation tests and observe RED.
+- [x] Add typed GET methods using the projection response contracts.
+- [x] Run RuntimeClient tests (22/22) and client typecheck.
+- [x] Commit `8489361`.
+
+### Task 4: Data Fields tab and Catalog Explorer UI
+
+**Files:** Modify `client/src/app/data-sources/DataSourcesPage.tsx`, `client/src/app/data-sources/data-sources-page.css`, and `client/src/app/data-sources/DataSourcesPage.test.tsx`.
+
+**Produces:** First-position Data Fields tab with separate Common and Industry views, live counts, search, filters, details, explicit state semantics, and independent loading/errors. Preserve existing three tabs and their credential, test, onboarding, refresh, and cancellation behavior.
+
+- [x] Add failing tests for tabs, both catalogs, search/filter, details, status distinctions, empty/error/loading/no-match, and refresh.
+- [x] Implement the read-only UI with existing i18n and no production fixtures.
+- [x] Run DataSourcesPage tests (17/17) and client typecheck.
+- [x] Commit `2431659`.
+
+### Task 5: Real Application-to-page contract test
+
+**Files:** Create `tests/app/runtime/data-catalog-projection-ui-e2e.test.ts` and test-only `tests/app/runtime/css-loader.mjs`.
+
+**Produces:** A Node/jsdom integration test that runs the real Application Runtime, HTTP server, RuntimeClient, and DataSourcesPage against both catalog endpoints.
+
+- [x] Use an injected test-only Industry Catalog; assert Common definitions and the same injected Industry definition reach the UI.
+- [x] Assert the production empty catalog remains empty and no provider call occurs.
+- [x] Run `node --import tsx --test tests/app/runtime/data-catalog-projection-ui-e2e.test.ts` (1/1).
+- [x] Commit `f2163da`.
+
+### Task 6: Report, full validation, review, and remote delivery
+
+**Files:** Create `docs/engineering/reports/2026-10-09-data-catalog-explorer.md`.
+
+- [x] Run all focused Data Sources, projection, HTTP, RuntimeClient, UI, and cross-layer tests.
+- [x] Run `npm test`, both typechecks, client build, and exact baseline identifier comparison.
+- [x] Record baseline, APIs, counts, mapping semantics, runtime identity, UI, security, tests, and limitations in the report.
+- [x] Review changed files for copied Catalog state, promotion, providers, persistence, mutation routes, sensitive data, and regressions.
+- [ ] Complete fresh whole-branch review, commit/push the branch, and verify remote SHA, clean worktree, and unchanged `main`.
