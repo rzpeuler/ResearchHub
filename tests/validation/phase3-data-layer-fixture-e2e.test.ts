@@ -88,6 +88,11 @@ test('Phase 3 live evidence classification separates provider diagnostics from c
   assert.equal(availableCount, 1)
   assert.equal(classifyPhase3ConsumerEvidence(availableCount), 'REAL_SOURCE_AVAILABLE_WORKFLOW_NOT_EXECUTED')
   assert.equal(countQualifiedPitSafeEvidenceDocuments(unknownDateAcquisition), 0)
+  assert.equal(countQualifiedPitSafeEvidenceDocuments({ observations: [{ data: { kind: 'evidence', documents: [
+    { record: null, dateStatus: 'QUALIFIED', pointInTimeSafe: true },
+    { record: 'not-a-record', dateStatus: 'QUALIFIED', pointInTimeSafe: true },
+    { record: [], dateStatus: 'QUALIFIED', pointInTimeSafe: true },
+  ] } }] }), 0)
   assert.equal(classifyPhase3ConsumerEvidence(countQualifiedPitSafeEvidenceDocuments({ observations: [] })), 'REAL_SOURCE_BLOCKED')
 })
 

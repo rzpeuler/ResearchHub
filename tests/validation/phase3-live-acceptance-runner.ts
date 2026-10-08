@@ -41,7 +41,7 @@ export function countQualifiedPitSafeEvidenceDocuments(acquisition: { readonly o
   return (acquisition.observations ?? []).reduce((total, observation) => {
     const data = observation.data as { readonly kind?: string; readonly documents?: readonly { readonly record?: unknown; readonly dateStatus?: string; readonly pointInTimeSafe?: boolean }[] } | undefined
     if (data?.kind !== 'evidence' || !Array.isArray(data.documents)) return total
-    return total + data.documents.filter((document) => document.record !== undefined && document.dateStatus === 'QUALIFIED' && document.pointInTimeSafe === true).length
+    return total + data.documents.filter((document) => document.record !== null && typeof document.record === 'object' && !Array.isArray(document.record) && document.dateStatus === 'QUALIFIED' && document.pointInTimeSafe === true).length
   }, 0)
 }
 

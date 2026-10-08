@@ -150,10 +150,10 @@ Writer rejection does not report success or overwrite the prior Module
 
 ## Remaining risks and handoff
 
-- Live CNINFO document normalization needs its managed parser runtime; GDELT
-  parsing failed for Company/Thesis and all Event candidates were outside the
-  requested window; GDELT fetch failed in all consumers. AKShare profile and
-  market legs failed, while the financial leg returned structured data.
+- Live CNINFO document normalization needs its managed parser runtime for the
+  Company and Thesis probes; all Event CNINFO candidates were outside the
+  requested window. GDELT fetch failed in all three consumers. AKShare profile
+  and market legs failed, while the financial leg returned structured data.
 - Full Node tests remain red on the same 25 pre-existing failure identifiers
   as the Phase 3 baseline. No new deterministic failure was identified.
 - The live probes validate DataResolver/provider outcomes, not end-to-end live
@@ -168,7 +168,7 @@ Writer rejection does not report success or overwrite the prior Module
 
 ## Final review fix wave (2026-10-08)
 
-The final review fixes preserve the Data-to-Skill-to-Gateway provenance path without changing Knowledge Production Gateway behavior. Company, Event, and Thesis Workflows now transform each qualified Data document with `sourceWithDataEvidenceProvenance` before Skill/Gateway use. The normalized source carries the per-document origin authority, retrieval provider, source URL, publication date, date qualification, and PIT flag in `candidate.metadata.dataProvenance`; its existing top-level `retrievedAt` and `contentHash` remain the canonical values consumed by the Gateway and are also included in bounded Skill provenance payloads. Company, Event, and Thesis fixtures assert canonical publisher/provider separation, source metadata, and the top-level hash/retrieval fields. Event Skill projections preserve only allowlisted bounded provenance fields for Stage A and Stage B.
+The final review fixes preserve the Data-to-Skill-to-Gateway provenance path without changing Knowledge Production Gateway behavior. Company, Event, and Thesis Workflows now transform each qualified Data document with `sourceWithDataEvidenceProvenance` before Skill/Gateway use. The normalized source carries the per-document origin authority, retrieval provider, source URL, publication date, date qualification, and PIT flag in `candidate.metadata.dataProvenance`; its existing top-level `retrievedAt` and `contentHash` remain the canonical values consumed by the Gateway. Company fixture asserts canonical publisher/provider separation and data provenance metadata; Event and Thesis fixtures also assert top-level hash/retrieval fields. Event Skill projections preserve only allowlisted bounded provenance fields for Stage A and Stage B.
 
 The live acceptance runner now counts only records in `acquisition.observations[].data.documents` that have a record, `dateStatus === QUALIFIED`, and `pointInTimeSafe === true`. It no longer reads `item.value` for `COLLECT_DIVERSE`. The deterministic fixture exercises that same aggregator with both positive qualified/PIT-safe documents and blocked/unsafe evidence, proving positive evidence cannot be misclassified as `REAL_SOURCE_BLOCKED`. Existing live probes still truthfully classify all three consumers as `REAL_SOURCE_BLOCKED` with zero usable documents; provider transport/discovery/fetch diagnostics remain separate from consumer acceptance.
 
