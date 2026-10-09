@@ -20,7 +20,8 @@ import { validateWorkflowInputSchema } from './workflow-input-contract.ts'
 import { normalizeCompanyCandidateIdentity, normalizeExchange } from '../../skills/knowledge-curation/identity/company-identity.ts'
 import { projectResearchExecutionResult } from './research-execution-result.ts'
 import type { ReviewService } from './review-service.ts'
-import type { SecurityIdentityResolver } from './security-identity-resolver.ts'
+import type { SecurityIdentityResolver, VerifiedSecurityIdentity } from './security-identity-resolver.ts'
+import { createVerifiedSecurityIdentityHandoff, type VerifiedSecurityIdentityHandoff } from './verified-security-identity-handoff.ts'
 
 export interface ResearchSessionContext {
   readonly selectedSkills: readonly LoadedResearchSkill[]
@@ -72,6 +73,8 @@ export interface WorkflowExecutionBindingContext {
   readonly writeKnowledge: boolean
   readonly useStructuredKnowledge: boolean
   readonly sourceLibraryHits: readonly SourceLibraryHit[]
+  /** Internal in-process result from the Dispatch identity gate; never read from Workflow arguments. */
+  readonly verifiedIdentityHandoff?: VerifiedSecurityIdentityHandoff
 }
 export type WorkflowExecutionBinding = (context: WorkflowExecutionBindingContext) => Promise<unknown>
 
@@ -395,25 +398,25 @@ export class ResearchDispatchService {
     this.workflowRegistry = options.workflowRegistry ?? createWorkflowDefinitionRegistry()
     this.skillRegistry = options.skillRegistry ?? createResearchSkillRegistry()
     const bindings = new Map<string, WorkflowExecutionBinding>([
-      ['company_research', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
+      ['company_research', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits, verifiedIdentityHandoff }) => {
         const service = this.options.researchService
         if (!service) throw new ApplicationServiceError('executor_unavailable', 'Company Research execution service is not configured')
-        return service.startResearchCompany({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
+        return service.startResearchCompany({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal, verifiedIdentityHandoff).completion
       }],
       ['industry_research', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
         const service = this.options.researchService
         if (!service) throw new ApplicationServiceError('executor_unavailable', 'Industry Research execution service is not configured')
         return service.startIndustryResearch({ workflowRunId: runId, name: args.name as string, aliases: args.aliases as readonly string[] | undefined, asOf: args.asOf as string | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
       }],
-      ['earnings_review', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
+      ['earnings_review', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits, verifiedIdentityHandoff }) => {
         const service = this.options.researchService
         if (!service) throw new ApplicationServiceError('executor_unavailable', 'Earnings Review execution service is not configured')
-        return service.startEarningsReview({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, fiscalYear: args.fiscalYear as number, period: args.period as EarningsReviewPeriod, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
+        return service.startEarningsReview({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, fiscalYear: args.fiscalYear as number, period: args.period as EarningsReviewPeriod, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal, verifiedIdentityHandoff).completion
       }],
-      ['valuation', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
+      ['valuation', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits, verifiedIdentityHandoff }) => {
         const service = this.options.researchService
         if (!service) throw new ApplicationServiceError('executor_unavailable', 'Valuation execution service is not configured')
-        return service.startValuation({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, methods: args.methods as readonly ValuationMethod[] | undefined, targetFiscalYear: args.targetFiscalYear as number | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
+        return service.startValuation({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, methods: args.methods as readonly ValuationMethod[] | undefined, targetFiscalYear: args.targetFiscalYear as number | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal, verifiedIdentityHandoff).completion
       }],
       ['event_research', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
         const service = this.options.researchService
@@ -569,10 +572,10 @@ export class ResearchDispatchService {
     if (verified.feedback !== undefined) return { ...resolved, status: verified.failureStatus ?? 'unresolved_reference', feedback: verified.feedback }
     const decision = verified.decision ?? resolved.decision
     const summary = this.summary(resolved.request, decision, decision.workflow === undefined ? undefined : this.workflowRegistry.get(decision.workflow.id))
-    return this.startResolved({ ...resolved, decision, summary }, callerSignal, resolved.sourceLibraryHits, resolved.resolution)
+    return this.startResolved({ ...resolved, decision, summary }, callerSignal, resolved.sourceLibraryHits, resolved.resolution, verified.verifiedIdentity)
   }
 
-  private async verifyWorkflowReferences(request: ResearchRequest, decision: ResearchDispatchDecision): Promise<{ readonly decision?: ResearchDispatchDecision; readonly feedback?: ResearchDispatchFeedback; readonly failureStatus?: 'invalid_input' }> {
+  private async verifyWorkflowReferences(request: ResearchRequest, decision: ResearchDispatchDecision): Promise<{ readonly decision?: ResearchDispatchDecision; readonly feedback?: ResearchDispatchFeedback; readonly failureStatus?: 'invalid_input'; readonly verifiedIdentity?: VerifiedSecurityIdentity }> {
     if (decision.mode !== 'workflow' || decision.workflow === undefined) return {}
     const definition = this.workflowRegistry.get(decision.workflow.id)
     if (definition === undefined) return {}
@@ -615,31 +618,37 @@ export class ResearchDispatchService {
       normalizedArgs.name = trustedIdentity.identity.verifiedName
       normalizedArgs.exchange = trustedIdentity.identity.exchange
     }
-    if (typeof args.exchange === 'string') normalizedArgs.exchange = normalizeExchange(args.exchange)
-    const userProvidedExchange = companyResearch && referenceCandidates.length === 0 ? explicitUserCompanyExchange(request.query, normalizedArgs) : undefined
-    if (companyResearch && userProvidedExchange !== undefined) normalizedArgs.exchange = userProvidedExchange
+    if (trustedIdentity?.status !== 'VERIFIED' && typeof args.exchange === 'string') normalizedArgs.exchange = normalizeExchange(args.exchange)
+    const userProvidedExchange = trustedIdentity?.status !== 'VERIFIED' && companyResearch && referenceCandidates.length === 0 ? explicitUserCompanyExchange(request.query, normalizedArgs) : undefined
+    if (trustedIdentity?.status !== 'VERIFIED' && companyResearch && userProvidedExchange !== undefined) normalizedArgs.exchange = userProvidedExchange
     const finalizeArguments = (candidateArgs: Readonly<Record<string, unknown>>) => {
       const finalValidation = validateWorkflowInputSchema(definition.inputSchema, candidateArgs)
       if (!finalValidation.valid) return { feedback: feedbackFor('INVALID_INPUT', definition, candidateArgs, finalValidation.errors.join('; ')), failureStatus: 'invalid_input' as const }
       return { decision: validateResearchDispatchDecision({ ...decision, workflow: { ...decision.workflow!, arguments: candidateArgs }, missingRequiredInputs: normalizedMissingFields(definition, candidateArgs) }) }
     }
-    if (trustedIdentity?.status === 'VERIFIED' && referenceCandidates.length === 0) return finalizeArguments(normalizedArgs)
-    if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined && !request.contextPolicy.structuredKnowledge) return finalizeArguments(normalizedArgs)
+    const finalizeVerifiedArguments = (candidateArgs: Readonly<Record<string, unknown>>) => {
+      const finalized = finalizeArguments(candidateArgs)
+      return trustedIdentity?.status === 'VERIFIED' && finalized.decision !== undefined
+        ? { ...finalized, verifiedIdentity: trustedIdentity.identity }
+        : finalized
+    }
+    if (trustedIdentity?.status === 'VERIFIED' && referenceCandidates.length === 0) return finalizeVerifiedArguments(normalizedArgs)
+    if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined && !request.contextPolicy.structuredKnowledge) return finalizeVerifiedArguments(normalizedArgs)
     if (!request.contextPolicy.structuredKnowledge) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, 'This Workflow requires trusted Knowledge context to verify the company or canonical references, but structured Knowledge access is disabled.') }
     if (this.options.mountedKnowledgeBaseRoot === undefined) {
-      if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined) return finalizeArguments(normalizedArgs)
+      if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined) return finalizeVerifiedArguments(normalizedArgs)
       return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, 'No mounted Knowledge Base is available to verify the requested company or canonical references.') }
     }
     let assets: Awaited<ReturnType<typeof readCanonicalV04Assets>>
     try {
       const handle = await new KnowledgeBaseRegistry().mount(this.options.mountedKnowledgeBaseRoot)
       if (handle.schemaVersion !== '0.4') {
-        if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined) return finalizeArguments(normalizedArgs)
+        if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined) return finalizeVerifiedArguments(normalizedArgs)
         return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, 'Trusted dispatch identity checks currently require a mounted Schema 0.4 Knowledge Base.') }
       }
       assets = await readCanonicalV04Assets(handle.rootRef)
     } catch (error) {
-      if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined) return finalizeArguments(normalizedArgs)
+      if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined) return finalizeVerifiedArguments(normalizedArgs)
       return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, `Mounted Knowledge could not be read for verification (${error instanceof Error ? error.name : 'read failed'}).`) }
     }
     const objects = assets.objects.map((item) => item.value as unknown as Record<string, unknown>)
@@ -658,7 +667,7 @@ export class ResearchDispatchService {
           return (name === undefined ? symbol !== undefined : names.includes(name)) && (mentionedCompanies.length === 0 || mentionedCompanies.some((mentioned) => mentioned.id === item.id))
         })
       if (companyMatches.length !== 1) {
-        if (companyResearch && userProvidedExchange !== undefined && companyMatches.length === 0 && mentionedCompanies.length === 0 && !companies.some((item) => item.ticker === symbol)) return finalizeArguments(normalizedArgs)
+        if (companyResearch && userProvidedExchange !== undefined && companyMatches.length === 0 && mentionedCompanies.length === 0 && !companies.some((item) => item.ticker === symbol)) return finalizeVerifiedArguments(normalizedArgs)
         const reason = companyMatches.length > 1 ? 'Company identity is ambiguous in canonical Knowledge.' : 'Company name or symbol has no exact canonical Company identity match.'
         return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, reason, ['symbol']) }
       }
@@ -669,16 +678,16 @@ export class ResearchDispatchService {
       if (badRefs.length > 0) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, verifiedArgs, `Canonical reference not found: ${badRefs.join(', ')}`) }
       const inactiveRefs = referenceCandidates.filter((ref) => !canonicalObjectIsActive(byId.get(ref)!, identityAsOf))
       if (inactiveRefs.length > 0) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, verifiedArgs, `Canonical reference is inactive or outside its lifecycle window: ${inactiveRefs.join(', ')}`, inactiveRefs) }
-      return finalizeArguments(verifiedArgs)
+      return finalizeVerifiedArguments(verifiedArgs)
     }
     const badRefs = referenceCandidates.filter((ref) => byId.get(ref) === undefined)
     if (badRefs.length > 0) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, args, `Canonical reference not found: ${badRefs.join(', ')}`, badRefs) }
     const inactiveRefs = referenceCandidates.filter((ref) => !canonicalObjectIsActive(byId.get(ref)!, identityAsOf))
     if (inactiveRefs.length > 0) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, args, `Canonical reference is inactive or outside its lifecycle window: ${inactiveRefs.join(', ')}`, inactiveRefs) }
-    return finalizeArguments(normalizedArgs)
+    return finalizeVerifiedArguments(normalizedArgs)
   }
 
-  private startResolved(resolved: { readonly request: ResearchRequest; readonly decision: ResearchDispatchDecision; readonly summary: ResearchExecutionSummary }, callerSignal: AbortSignal | undefined, sourceLibraryHits: readonly SourceLibraryHit[], resolution: ResearchDispatchResolution): ResearchDispatchStart {
+  private startResolved(resolved: { readonly request: ResearchRequest; readonly decision: ResearchDispatchDecision; readonly summary: ResearchExecutionSummary }, callerSignal: AbortSignal | undefined, sourceLibraryHits: readonly SourceLibraryHit[], resolution: ResearchDispatchResolution, verifiedIdentity?: VerifiedSecurityIdentity): ResearchDispatchStart {
     const { decision } = resolved
     if (decision.mode === 'workflow' && decision.workflow !== undefined) {
       const definition = this.workflowRegistry.get(decision.workflow.id)
@@ -712,7 +721,14 @@ export class ResearchDispatchService {
     let started: Promise<unknown>
     const runId = randomUUID()
     try {
-      started = this.startWorkflow({ workflowId: definition.id, args: workflow.arguments, runId, ...(callerSignal === undefined ? {} : { callerSignal }), writeKnowledge: resolved.request.persistencePolicy.writeKnowledge, useStructuredKnowledge: resolved.request.contextPolicy.structuredKnowledge, sourceLibraryHits })
+      const identityHandoff = verifiedIdentity === undefined ? undefined : createVerifiedSecurityIdentityHandoff({
+        workflowId: definition.id as 'company_research' | 'valuation' | 'earnings_review',
+        runId,
+        ...(typeof workflow.arguments.asOf === 'string' ? { asOf: workflow.arguments.asOf } : {}),
+        structuredKnowledge: resolved.request.contextPolicy.structuredKnowledge,
+        identity: verifiedIdentity,
+      })
+      started = this.startWorkflow({ workflowId: definition.id, args: workflow.arguments, runId, ...(callerSignal === undefined ? {} : { callerSignal }), writeKnowledge: resolved.request.persistencePolicy.writeKnowledge, useStructuredKnowledge: resolved.request.contextPolicy.structuredKnowledge, sourceLibraryHits, ...(identityHandoff === undefined ? {} : { verifiedIdentityHandoff: identityHandoff }) })
     } catch (error) {
       if (error instanceof ApplicationServiceError && error.code === 'executor_unavailable') {
         const feedback = feedbackFor('EXECUTOR_UNAVAILABLE', definition, workflow.arguments, error.message)

@@ -137,4 +137,46 @@ The fixed baseline identifier is `V39 acquisition calls all three AKShare method
 
 ## Git delivery
 
-Implementation and report are ready for commit and push on `codex/exec-003-a-001-security-identity`. Final local/remote SHA and clean worktree will be recorded after delivery. `main` is not merged or modified by this task.
+The initial A-001 delivery was committed before FIX-001. Its delivery state is superseded by the FIX-001 section below; the final implementation/report commit, remote SHA, and clean worktree are recorded after this update. `main` is not merged or modified by this task.
+
+## FIX-001 — Verified Identity Integrity & Single-Run Reuse
+
+### Root causes
+
+1. `verifyWorkflowReferences()` copied the verified `symbol`, `name`, and `exchange` into normalized arguments, then later unconditionally normalized and reapplied the reasoning result's `args.exchange`. A user query that identified `002487.SZ` could therefore end with an unverified reasoning value of `SH`.
+2. Dispatch verified a name-only request, but the production ResearchService received enriched `name + symbol + exchange` arguments. Resolver cache keys include those identity fields, so the second request had a different key and could repeat the external directory call.
+3. The direct Valuation caller-cancellation path aborted the local signal but did not mark the authoritative Workflow run cancelled. An in-flight directory response could consequently leave that run failed.
+
+### Identity handoff design
+
+- Dispatch now gives a successfully verified identity final authority over all three identity arguments. Reasoning output and exchange aliases are considered only before successful verification; final arguments are checked again against the selected Workflow input schema.
+- A verified identity is passed separately from decision arguments through the built-in in-process production binding. The opaque handoff is held in a module-private `WeakSet`, frozen, and consumed once. It is bound to the target Workflow, generated `runId`, symbol, verified name, normalized exchange, optional `asOf`, and `structuredKnowledge` permission. Caller-supplied or replayed objects and any context mismatch fail closed.
+- ResearchService consumes the handoff before identity resolution only for that matching run. Calls without a trusted handoff continue through their own resolver. The existing resolver still checks Canonical Company identity/conflicts and its cache remains identity-keyed; the handoff does not change `writeKnowledge` or permit Company creation.
+- Valuation cancellation now mirrors the existing Company/Earnings behavior: caller abort cancels the Workflow run, aborts the resolver signal, handles an already-aborted signal, and removes listeners on completion.
+
+### Required FIX-001 evidence
+
+- Exchange-integrity regression covers Company Research, Valuation, and Earnings Review with query `002487.SZ` and reasoning output `exchange=SH`. Each Workflow either receives only verified `002487 / 大金重工 / SZ` in the final decision and execution binding, or is explicitly rejected before execution.
+- Production-path single-call test uses the default Dispatch production binding, actual ResearchService, actual Valuation Workflow, and actual Valuation DataResolver. The directory succeeds once and is configured to fail on a second call. The run reaches financial and market acquisition, then correctly blocks with `VALUATION_MARKET_PRICE_UNAVAILABLE`; directory call count is exactly one and no Canonical Company is written.
+- Independent direct ResearchService test proves that a run without a handoff performs its own directory verification. A second symbol with the same name triggers a second provider call; its controlled provider failure is rejected rather than receiving the first security's identity from cache.
+- Cancellation regression holds the identity provider call open, aborts the direct request, and confirms the promise rejects as cancelled and the authoritative Workflow status is `cancelled`.
+- Handoff unit tests prove one-use consumption, reject caller-created objects, and reject cross-run, cross-Workflow, permission, symbol, exchange, name, and cutoff mismatches. Existing conflict, historical cutoff, structured-Knowledge-off, read-only, and unrelated canonical-reference checks remain covered.
+
+### FIX-001 validation
+
+| Validation | Result |
+| --- | --- |
+| Focused Dispatch, production-binding, direct-service, cancellation, and handoff tests | 14/14 passed |
+| `npm run typecheck` | Passed |
+| `npm test` client | 122/122 passed |
+| `npm run client:typecheck` | Passed |
+| `npm run client:build` | Passed; existing 638.08 kB chunk advisory remains |
+| `git diff --check` | Passed after final report update |
+| Full Node suite within `npm test` | 2,169 total; 2,147 passed; 22 failed (exit 1 from known baseline failures) |
+| Exact failure-identifier comparison against clean-main baseline | Baseline: 2,134 total / 23 failed; FIX-001: 2,169 total / 22 failed; 0 new identifiers; `V39 acquisition calls all three AKShare methods` fixed |
+
+Full test log: `%TEMP%\rhl-exec003-a-001-fix001-npm-test.log`. The full suite is not reported as green; all 22 current failing identifiers were present in the clean-main baseline. Existing A-002/A-003 provider and PIT blockers above remain unchanged and out of FIX-001 scope.
+
+### Delivery
+
+FIX-001 is implemented on the original isolated worktree and branch `codex/exec-003-a-001-security-identity`. The report and code are committed and pushed as recorded in the final delivery response. Local and remote branch HEADs match, the worktree is clean, and `main` is not merged or modified.
