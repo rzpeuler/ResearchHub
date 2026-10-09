@@ -38,22 +38,84 @@ function setup(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 describe('DataSourcesPage', () => {
-  it('shows Data Fields before the three preserved tabs', async () => {
-    setup()
-    const tabs = await screen.findAllByRole('tab')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['数据字段', '来源策略', '已配置集成', '接入新数据源'])
-    fireEvent.click(tabs[0]!)
-    expect(screen.getByRole('tab', { name: '通用字段' })).toBeTruthy()
+  it('keeps only the three top-level tabs and nests both catalogs under Source policies', async () => {
+    const client = setup()
+    const tabs = within(screen.getByRole('tablist', { name: '数据源管理' })).getAllByRole('tab')
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['来源策略', '已配置集成', '接入新数据源'])
+    expect(screen.queryByRole('tab', { name: '数据字段' })).toBeNull()
+    expect(await screen.findByRole('tab', { name: '通用字段' })).toBeTruthy()
     expect(screen.getByRole('tab', { name: '行业字段' })).toBeTruthy()
+    expect(client.getDataSourceCatalog).not.toHaveBeenCalled()
     window.localStorage.setItem('researchhub.language', 'en')
     cleanup()
     setup()
-    expect(await screen.findByRole('tab', { name: 'Data Fields' })).toBeTruthy()
+    expect(await screen.findByRole('tab', { name: 'Source policies' })).toBeTruthy()
+    expect(screen.queryByRole('tab', { name: 'Data Fields' })).toBeNull()
+    expect(screen.getByRole('tab', { name: 'Common fields' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'Industry fields' })).toBeTruthy()
+  })
+
+  it('uses the same seven headers for Common and Industry and labels the ID Field ID', async () => {
+    setup()
+    const expected = ['字段标识', '中文含义', '消费者', '默认源', '一级备用源', '二级备用源', '兜底备用源']
+    expect(within(await screen.findByRole('table')).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(expected)
+    expect(screen.queryByText('capability', { selector: 'th' })).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: '行业字段' }))
+    expect(within(await screen.findByRole('table')).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(expected)
+    window.localStorage.setItem('researchhub.language', 'en')
+    cleanup()
+    setup()
+    const englishHeaders = ['Field ID', 'Meaning', 'Consumers', 'Default source', 'Fallback 1', 'Fallback 2', 'Final fallback']
+    expect(within(await screen.findByRole('table')).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(englishHeaders)
+    fireEvent.click(await screen.findByRole('tab', { name: 'Industry fields' }))
+    expect(within(await screen.findByRole('table')).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(englishHeaders)
+  })
+
+  it('keeps Common SourcePolicy boundaries, groups every source level, and omits unbound LLM_WEB', async () => {
+    const candidate = (sourceId: string, fallbackLevel: string, runtimeAdapterStatus = 'BOUND') => ({ sourceId, fallbackLevel, originAuthority: 'S1_OFFICIAL', operationId: `${sourceId}.read`, supports: {}, runtimeAdapterStatus, connectionTestStatus: 'NOT_TESTED', capabilitySampleStatus: 'NOT_TESTED', historicalPitStatus: 'NOT_VERIFIED', integrations: [] })
+    const definition = commonCatalog.definitions[0]!
+    const projection = { definitions: [{ ...definition, sourcePolicies: [
+      { policyId: 'valuation-policy', selectionMode: 'CROSS_CHECK', requirementMatch: { workflow: 'valuation', metricId: 'revenue' }, candidates: [candidate('nbs', 'PRIMARY'), candidate('cninfo', 'PRIMARY'), candidate('eastmoney', 'FALLBACK_1'), candidate('vendor-b', 'FALLBACK_2'), candidate('public-search', 'LLM_WEB', 'UNBOUND')] },
+      { policyId: 'company-policy', selectionMode: 'FIRST_VALID', requirementMatch: { workflow: 'company-research', metricId: 'revenue' }, candidates: [candidate('company-api', 'PRIMARY')] },
+    ] }], definitionCount: 1 }
+    const legacyPolicies = vi.fn().mockResolvedValue({ rows: [{ metricId: 'revenue', finalFallback: '公网搜索' }], coverageComplete: true })
+    const client = setup({ getCommonDataCatalog: vi.fn().mockResolvedValue(projection), getDataSourceCatalog: legacyPolicies })
+    const rows = Array.from((await screen.findByRole('table')).querySelectorAll('tbody tr'))
+    expect(rows).toHaveLength(2)
+    const values = rows.map((row) => Array.from(row.querySelectorAll('th, td')).map((cell) => cell.textContent?.trim()))
+    expect(values[0]).toEqual(['revenue', 'Revenue', 'valuation, company-research', 'nbs, cninfo', 'eastmoney', 'vendor-b', '—'])
+    expect(values[1]).toEqual(['revenue', 'Revenue', 'valuation, company-research', 'company-api', '—', '—', '—'])
+    expect(client.getDataSourceCatalog).not.toHaveBeenCalled()
+    expect(screen.queryByText('公网搜索')).toBeNull()
+    fireEvent.click(screen.getAllByRole('button', { name: /^revenue$/ })[0]!)
+    expect(await screen.findByText('valuation-policy')).toBeTruthy()
+    expect(screen.getByText('company-policy')).toBeTruthy()
+  })
+
+  it('maps Industry consumers from each attached policy and labels unknown consumers', async () => {
+    const candidate = { sourceId: 'miit', fallbackLevel: 'PRIMARY', originAuthority: 'S1_OFFICIAL', operationId: 'miit.metric', supports: {}, runtimeAdapterStatus: 'BOUND', connectionTestStatus: 'NOT_TESTED', capabilitySampleStatus: 'NOT_TESTED', historicalPitStatus: 'NOT_VERIFIED', integrations: [] }
+    const definition = industryCatalog.definitions[0]!
+    const projection = { ...industryCatalog, definitions: [{ ...definition, sourcePolicies: [
+      { policyId: 'industry-workflow-policy', mappingStatus: 'MAPPED', policy: { policyId: 'industry-workflow-policy', selectionMode: 'FIRST_VALID', requirementMatch: { workflow: 'industry-deep-research', metricId: definition.metricId }, candidates: [candidate] } },
+      { policyId: 'workflow-not-declared', mappingStatus: 'MAPPED', policy: { policyId: 'workflow-not-declared', selectionMode: 'FIRST_VALID', requirementMatch: { metricId: definition.metricId }, candidates: [candidate] } },
+      { policyId: 'policy-not-registered', mappingStatus: 'UNMAPPED' },
+    ] }], definitionCount: 1, canonicalCount: 0 }
+    setup({ getIndustryDataCatalog: vi.fn().mockResolvedValue(projection) })
+    fireEvent.click(await screen.findByRole('tab', { name: '行业字段' }))
+    const table = await screen.findByRole('table')
+    const rows = Array.from(table.querySelectorAll<HTMLTableRowElement>('tbody tr'))
+    expect(rows).toHaveLength(3)
+    expect(rows.map((row) => row.cells[2]?.textContent)).toEqual(['industry-deep-research', '未明确映射', '未明确映射'])
+    expect(rows.map((row) => row.cells[3]?.textContent)).toEqual(['miit', 'miit', '—'])
+    fireEvent.click(within(rows[0]!).getByRole('button'))
+    expect(await screen.findByText('industry-workflow-policy')).toBeTruthy()
+    expect(screen.getByText('workflow-not-declared')).toBeTruthy()
+    expect(screen.getByText('policy-not-registered')).toBeTruthy()
   })
 
   it('searches and filters Common definitions', async () => {
     setup()
-    fireEvent.click(await screen.findByRole('tab', { name: '数据字段' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '来源策略' }))
     expect(await screen.findByRole('button', { name: /^revenue$/ })).toBeTruthy()
     fireEvent.change(screen.getByRole('textbox', { name: '搜索字段' }), { target: { value: 'revenue' } })
     expect(screen.getByRole('button', { name: /^revenue$/ })).toBeTruthy()
@@ -71,7 +133,7 @@ describe('DataSourcesPage', () => {
 
   it('filters Industry metrics by identity family and lifecycle', async () => {
     setup()
-    fireEvent.click(await screen.findByRole('tab', { name: '数据字段' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '来源策略' }))
     fireEvent.click(screen.getByRole('tab', { name: '行业字段' }))
     expect(await screen.findByRole('button', { name: /battery_output/ })).toBeTruthy()
     fireEvent.change(screen.getByRole('combobox', { name: '行业' }), { target: { value: 'household_air_conditioner' } })
@@ -93,7 +155,7 @@ describe('DataSourcesPage', () => {
 
   it('shows complete metric details with undefined optional metadata', async () => {
     setup()
-    fireEvent.click(await screen.findByRole('tab', { name: '数据字段' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '来源策略' }))
     fireEvent.click(screen.getByRole('tab', { name: '行业字段' }))
     fireEvent.click(await screen.findByRole('button', { name: /battery_output/ }))
     expect(screen.getAllByText('GWh').length).toBeGreaterThan(0)
@@ -104,7 +166,7 @@ describe('DataSourcesPage', () => {
 
   it('separates policy configuration from adapter and test state', async () => {
     setup()
-    fireEvent.click(await screen.findByRole('tab', { name: '数据字段' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '来源策略' }))
     fireEvent.click(await screen.findByRole('button', { name: /^revenue$/ }))
     expect(screen.getAllByText('已配置').length).toBeGreaterThan(0)
     expect(screen.getByText('状态未知')).toBeTruthy()
@@ -113,7 +175,7 @@ describe('DataSourcesPage', () => {
     window.localStorage.setItem('researchhub.language', 'en')
     cleanup()
     setup()
-    fireEvent.click(await screen.findByRole('tab', { name: 'Data Fields' }))
+    fireEvent.click(await screen.findByRole('tab', { name: 'Source policies' }))
     fireEvent.click(await screen.findByRole('button', { name: /^revenue$/ }))
     expect(within(screen.getByRole('complementary', { name: 'Field details' })).getAllByText('Configured').length).toBeGreaterThan(0)
     expect(screen.getByText('Unknown')).toBeTruthy()
@@ -123,38 +185,40 @@ describe('DataSourcesPage', () => {
 
   it('renders unknown adapter status in Chinese and English', async () => {
     setup()
-    fireEvent.click(await screen.findByRole('tab', { name: '数据字段' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '来源策略' }))
     fireEvent.click(await screen.findByRole('button', { name: /^revenue$/ }))
     expect(screen.getByText('状态未知')).toBeTruthy()
     window.localStorage.setItem('researchhub.language', 'en')
     cleanup()
     setup()
-    fireEvent.click(await screen.findByRole('tab', { name: 'Data Fields' }))
+    fireEvent.click(await screen.findByRole('tab', { name: 'Source policies' }))
     fireEvent.click(await screen.findByRole('button', { name: /^revenue$/ }))
     expect(screen.getByText('Unknown')).toBeTruthy()
   })
 
   it('shows empty production Industry catalog without fixtures', async () => {
     setup({ getIndustryDataCatalog: vi.fn().mockResolvedValue({ identities: industryCatalog.identities, definitions: [], registeredIndustryCount: 2, definitionCount: 0, canonicalCount: 0 }) })
-    fireEvent.click(await screen.findByRole('tab', { name: '数据字段' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '来源策略' }))
     fireEvent.click(screen.getByRole('tab', { name: '行业字段' }))
-    expect(await screen.findByText(/当前没有已注册的生产 Canonical 行业指标/)).toBeTruthy()
-    expect(screen.getByText(/已注册行业身份：2/)).toBeTruthy()
+    expect(await screen.findByText('当前没有已注册的行业数据字段。')).toBeTruthy()
+    expect(screen.getAllByText(/已注册行业身份：2/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/正式 Canonical 指标：0/).length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: /battery_output|ac_inventory/ })).toBeNull()
+    expect(within(await screen.findByRole('table')).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['字段标识', '中文含义', '消费者', '默认源', '一级备用源', '二级备用源', '兜底备用源'])
   })
 
   it('isolates catalog load errors from integrations and onboarding', async () => {
     setup({ getCommonDataCatalog: vi.fn().mockRejectedValue(new Error('projection failed')) })
     fireEvent.click(await screen.findByRole('tab', { name: '已配置集成' }))
     expect(await screen.findByText('Quotes One')).toBeTruthy()
-    fireEvent.click(screen.getByRole('tab', { name: '数据字段' }))
+    fireEvent.click(screen.getByRole('tab', { name: '来源策略' }))
     expect(await screen.findByRole('alert')).toBeTruthy()
     expect(screen.queryByText('projection failed')).toBeNull()
   })
 
   it('refresh reloads both catalog projections', async () => {
     const client = setup()
-    fireEvent.click(await screen.findByRole('tab', { name: '数据字段' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '来源策略' }))
     await waitFor(() => expect(client.getCommonDataCatalog).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(client.getIndustryDataCatalog).toHaveBeenCalledTimes(1))
     fireEvent.click(screen.getByRole('button', { name: '刷新' }))
@@ -219,7 +283,7 @@ describe('DataSourcesPage', () => {
       getCommonDataCatalog: vi.fn(() => new Promise((resolve) => { resolveCommon = resolve })),
       getIndustryDataCatalog: vi.fn(() => new Promise((resolve) => { resolveIndustry = resolve })),
     })
-    fireEvent.click(await screen.findByRole('tab', { name: '数据字段' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '来源策略' }))
     expect(await screen.findByText('正在加载字段目录…')).toBeTruthy()
     resolveCommon(commonCatalog); resolveIndustry(industryCatalog)
     await waitFor(() => expect(client.getCommonDataCatalog).toHaveBeenCalledTimes(1))
@@ -228,7 +292,7 @@ describe('DataSourcesPage', () => {
 
   it('keeps source policies, integrations, and onboarding in separate tabs', async () => {
     setup()
-    await screen.findByText('收盘价')
+    await screen.findByRole('button', { name: /^revenue$/ })
     expect(screen.getByRole('tab', { name: '来源策略' })).toBeTruthy()
     fireEvent.click(screen.getByRole('tab', { name: '已配置集成' }))
     expect(await screen.findByText('Quotes One')).toBeTruthy()

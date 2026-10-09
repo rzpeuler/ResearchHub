@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactElement } from 'react'
-import type { CommonDataCatalogProjection, DataSourceCatalogResponse, DataSourceIntegrationView, DataSourceOnboardingDraft, DataSourceOnboardingDraftInput, DataSourceTestSummary, IndustryDataCatalogProjection, RuntimeClient } from '../../api/runtime-client'
+import type { CommonDataCatalogProjection, DataSourceIntegrationView, DataSourceOnboardingDraft, DataSourceOnboardingDraftInput, DataSourceTestSummary, IndustryDataCatalogProjection, RuntimeClient } from '../../api/runtime-client'
+import { commonCatalogTableRows, industryCatalogTableRows } from './catalog-table-model'
 import { useLanguage } from '../../i18n'
 import './data-sources-page.css'
 
-type Tab = 'fields' | 'policies' | 'integrations' | 'onboarding'
+type Tab = 'policies' | 'integrations' | 'onboarding'
 type CatalogKind = 'common' | 'industry'
 const safeFailure: Readonly<Record<string, string>> = { missing_configuration: '缺少配置', authentication_failed: '认证失败', timeout: '请求超时', rate_limited: '触发限流', access_denied: '访问被拒绝', no_data: '没有可用数据', contract_mismatch: '返回数据不符合要求', provider_failed: '数据源服务失败' }
 const emptyDraft: DataSourceOnboardingDraftInput = { integrationId: '', displayName: '', documentationUrl: '', accessMode: 'api', publisher: '', proposedAuthority: 'unknown', capabilityIds: [], metricIds: [], authenticationMode: 'none', rightsNotes: '', rateLimitNotes: '', timeBoundaryNotes: '', providerTermsReviewed: false }
@@ -13,7 +14,6 @@ interface Props { readonly client: RuntimeClient }
 
 export function DataSourcesPage({ client }: Props): ReactElement {
   const { t } = useLanguage()
-  const [catalog, setCatalog] = useState<DataSourceCatalogResponse>()
   const [commonCatalog, setCommonCatalog] = useState<CommonDataCatalogProjection>()
   const [industryCatalog, setIndustryCatalog] = useState<IndustryDataCatalogProjection>()
   const [integrations, setIntegrations] = useState<readonly DataSourceIntegrationView[]>([])
@@ -46,15 +46,13 @@ export function DataSourcesPage({ client }: Props): ReactElement {
   const load = useCallback(async (isActive: () => boolean = () => true): Promise<void> => {
     setLoading(true); setCatalogLoading(true); setError(''); setCatalogError('')
     const configurationLoad = Promise.allSettled([
-      client.getDataSourceCatalog(),
       client.listDataSourceIntegrations(),
       client.listDataSourceOnboardingDrafts(),
-    ]).then(([policyResult, integrationResult, draftResult]) => {
+    ]).then(([integrationResult, draftResult]) => {
       if (!isActive()) return
-      if (policyResult.status === 'fulfilled') setCatalog(policyResult.value)
       if (integrationResult.status === 'fulfilled') setIntegrations(integrationResult.value)
       if (draftResult.status === 'fulfilled') setDrafts(draftResult.value)
-      if ([policyResult, integrationResult, draftResult].some((result) => result.status === 'rejected')) setError(t('部分数据源配置加载失败。', 'Some data source settings could not be loaded.'))
+      if ([integrationResult, draftResult].some((result) => result.status === 'rejected')) setError(t('部分数据源配置加载失败。', 'Some data source settings could not be loaded.'))
       setLoading(false)
     })
     const catalogLoad = Promise.allSettled([client.getCommonDataCatalog(), client.getIndustryDataCatalog()]).then(([commonResult, industryResult]) => {
@@ -71,8 +69,6 @@ export function DataSourcesPage({ client }: Props): ReactElement {
   const refresh = (): Promise<void> => load()
   useEffect(() => { let active = true; void load(() => active); return () => { active = false } }, [load])
 
-  const displaySource = (source: string | null): string => source?.trim() || t('待接入', 'Not connected')
-  const rows = catalog ? [...catalog.rows].sort((a, b) => a.metricId.localeCompare(b.metricId) || a.workflowId.localeCompare(b.workflowId)) : []
   const commonDefinitions = commonCatalog?.definitions ?? []
   const industryDefinitions = industryCatalog?.definitions ?? []
   const commonKinds = [...new Set(commonDefinitions.map((definition) => definition.dataKind))].sort()
@@ -88,6 +84,8 @@ export function DataSourcesPage({ client }: Props): ReactElement {
     const matchesQuery = !query || [definition.industryId, definition.metricId, definition.name, definition.description, definition.metricFamily, definition.semanticRole].filter((value): value is string => typeof value === 'string').some((value) => value.toLocaleLowerCase().includes(query))
     return matchesQuery && (!industryFilter || definition.industryId === industryFilter) && (!familyFilter || definition.metricFamily === familyFilter) && (lifecycleFilter === 'ALL' || definition.lifecycleStatus === lifecycleFilter)
   }), [industryDefinitions, catalogQuery, industryFilter, familyFilter, lifecycleFilter])
+  const commonRows = commonCatalogTableRows(filteredCommon)
+  const industryRows = industryCatalogTableRows(filteredIndustry)
   const selectedCommon = filteredCommon.find((definition) => definition.metricId === selectedMetricId)
   const selectedIndustry = filteredIndustry.find((definition) => definition.metricId === selectedMetricId)
   const runTest = async (view: DataSourceIntegrationView, kind: 'connection' | 'capability_sample', capabilityId?: string): Promise<void> => {
@@ -127,7 +125,6 @@ export function DataSourcesPage({ client }: Props): ReactElement {
     <div className="page-heading"><div><span className="eyebrow">{t('数据治理', 'DATA GOVERNANCE')}</span><h1 id="data-sources-title">{t('数据源', 'Data Sources')}</h1></div><button className="data-sources-refresh" onClick={() => void refresh()}>{t('刷新', 'Refresh')}</button></div>
     <p>{t('查看指标来源策略、已配置的数据源连接，并提交新来源适配申请。', 'Review source policies and configured integrations, or submit an adapter request for a new source.')}</p>
     <div role="tablist" aria-label={t('数据源管理', 'Data source management')} className="data-sources-tabs">
-      <button role="tab" aria-selected={tab === 'fields'} onClick={() => setTab('fields')}>{t('数据字段', 'Data Fields')}</button>
       <button role="tab" aria-selected={tab === 'policies'} onClick={() => setTab('policies')}>{t('来源策略', 'Source policies')}</button>
       <button role="tab" aria-selected={tab === 'integrations'} onClick={() => setTab('integrations')}>{t('已配置集成', 'Configured integrations')}</button>
       <button role="tab" aria-selected={tab === 'onboarding'} onClick={() => setTab('onboarding')}>{t('接入新数据源', 'Add a data source')}</button>
@@ -135,7 +132,7 @@ export function DataSourcesPage({ client }: Props): ReactElement {
     {runningTest ? <div className="data-source-active-test" role="status"><span>{t('正在测试', 'Testing')} {runningTestLabel}</span><button onClick={cancelTest}>{t('取消测试', 'Cancel test')}</button></div> : null}
     {error ? <div className="notice" role="alert"><strong>{t('数据源配置不可用', 'Data source configuration unavailable')}</strong><p>{error}</p></div> : null}
     {loading ? <p className="muted" role="status">{t('正在加载数据源配置…', 'Loading data source configuration…')}</p> : null}
-    {!loading && tab === 'fields' ? <section role="tabpanel" aria-label={t('数据字段', 'Data Fields')} className="data-catalog-explorer">
+    {!loading && tab === 'policies' ? <section role="tabpanel" aria-label={t('来源策略', 'Source policies')} className="data-catalog-explorer">
       <div role="tablist" aria-label={t('字段目录类型', 'Catalog type')} className="data-catalog-tabs">
         <button role="tab" aria-selected={catalogKind === 'common'} onClick={() => { setCatalogKind('common'); setCatalogQuery(''); setSelectedMetricId('') }}>{t('通用字段', 'Common fields')}</button>
         <button role="tab" aria-selected={catalogKind === 'industry'} onClick={() => { setCatalogKind('industry'); setCatalogQuery(''); setSelectedMetricId('') }}>{t('行业字段', 'Industry fields')}</button>
@@ -150,8 +147,8 @@ export function DataSourcesPage({ client }: Props): ReactElement {
           <span className="data-catalog-count">{t('显示', 'Showing')} {filteredCommon.length} / {commonCatalog.definitionCount} {t('项', 'fields')}</span>
         </div>
         {commonCatalog.definitionCount === 0 ? <p className="data-catalog-empty">{t('当前 Common Data Catalog 没有已注册字段。', 'The Common Data Catalog has no registered fields.')}</p> : filteredCommon.length === 0 ? <p className="data-catalog-empty">{t('没有匹配的字段', 'No matching fields')}</p> : <div className="data-catalog-layout">
-          <div className="data-catalog-table-wrap"><table className="data-catalog-table"><caption>{t('通用字段目录', 'Common data catalog')}</caption><thead><tr><th>metricId</th><th>{t('含义', 'Meaning')}</th><th>dataKind</th><th>{t('消费者', 'Consumers')}</th><th>{t('SourcePolicy', 'SourcePolicy')}</th></tr></thead><tbody>
-            {filteredCommon.map((definition) => <tr key={definition.metricId} aria-selected={selectedMetricId === definition.metricId}><th scope="row"><button className="data-catalog-select" onClick={() => setSelectedMetricId(definition.metricId)}>{definition.metricId}</button></th><td>{definition.meaning}</td><td>{definition.dataKind}</td><td>{definition.consumers.join(', ')}</td><td>{definition.sourcePolicyStatus === 'CONFIGURED' ? t('已配置', 'Configured') : t('未配置', 'Not configured')}</td></tr>)}
+          <div className="data-catalog-table-wrap"><table className="data-catalog-table data-catalog-policy-table"><caption>{t('通用字段来源策略', 'Common field source policies')}</caption><thead><tr><th>{t('字段标识', 'Field ID')}</th><th>{t('中文含义', 'Meaning')}</th><th>{t('消费者', 'Consumers')}</th><th>{t('默认源', 'Default source')}</th><th>{t('一级备用源', 'Fallback 1')}</th><th>{t('二级备用源', 'Fallback 2')}</th><th>{t('兜底备用源', 'Final fallback')}</th></tr></thead><tbody>
+            {commonRows.map((row) => <tr key={row.key} aria-selected={selectedMetricId === row.metricId}><th scope="row"><button className="data-catalog-select" onClick={() => setSelectedMetricId(row.metricId)}>{row.metricId}</button></th><td>{row.meaning}</td><td>{row.consumers}</td><td>{row.defaultSource ?? '—'}</td><td>{row.fallback1 ?? '—'}</td><td>{row.fallback2 ?? '—'}</td><td>{row.finalFallback ?? '—'}</td></tr>)}
           </tbody></table></div>
           {selectedCommon ? <aside className="data-catalog-detail" aria-label={t('字段详情', 'Field details')}><h2>{selectedCommon.metricId}</h2><p>{selectedCommon.meaning}</p>
             <dl><MetadataRow label="metricId" value={selectedCommon.metricId} t={t} /><MetadataRow label={t('数据类型', 'Data kind')} value={selectedCommon.dataKind} t={t} /><MetadataRow label={t('消费者', 'Consumers')} value={selectedCommon.consumers} t={t} />
@@ -172,25 +169,19 @@ export function DataSourcesPage({ client }: Props): ReactElement {
           <label>{t('生命周期', 'Lifecycle')}<select aria-label={t('生命周期', 'Lifecycle')} value={lifecycleFilter} onChange={(event) => setLifecycleFilter(event.target.value)}>{['ALL', 'DISCOVERED', 'VALIDATED', 'CANONICAL'].map((status) => <option key={status} value={status}>{status === 'ALL' ? t('全部', 'All') : status}</option>)}</select></label>
           <span className="data-catalog-count">{t('显示', 'Showing')} {filteredIndustry.length} / {industryCatalog.definitionCount} {t('项', 'metrics')}</span>
         </div>
-        <p className="data-catalog-count-summary">{t('已注册行业身份：', 'Registered industries: ')}{industryCatalog.registeredIndustryCount} · {t('生产定义：', 'Definitions: ')}{industryCatalog.definitionCount} · {t('Canonical：', 'Canonical: ')}{industryCatalog.canonicalCount}</p>
-        {industryCatalog.definitionCount === 0 ? <div className="data-catalog-empty"><strong>{t('当前没有已注册的生产 Canonical 行业指标。', 'There are no registered production Canonical Industry metrics.')}</strong><p>{t('行业身份已建立，但数值字段仍需经过 Source、语义、单位、期间、PIT 和运行验证。', 'Industry identities are registered, but numeric fields still require source, semantic, unit, period, PIT, and runtime validation.')}</p></div> : filteredIndustry.length === 0 ? <p className="data-catalog-empty">{t('没有匹配的字段', 'No matching fields')}</p> : <div className="data-catalog-layout">
-          <div className="data-catalog-table-wrap"><table className="data-catalog-table"><caption>{t('行业字段目录', 'Industry data catalog')}</caption><thead><tr><th>industryId</th><th>metricId</th><th>{t('名称', 'Name')}</th><th>metricFamily</th><th>semanticRole</th><th>dataKind</th><th>lifecycleStatus</th></tr></thead><tbody>
-            {filteredIndustry.map((definition) => <tr key={definition.metricId} aria-selected={selectedMetricId === definition.metricId}><td>{definition.industryId}</td><th scope="row"><button className="data-catalog-select" onClick={() => setSelectedMetricId(definition.metricId)}>{definition.metricId}</button></th><td>{definition.name}</td><td>{metadataText(definition.metricFamily, t)}</td><td>{metadataText(definition.semanticRole, t)}</td><td>{definition.dataKind}</td><td>{definition.lifecycleStatus}</td></tr>)}
+        <p className="data-catalog-count-summary">{t('已注册行业身份：', 'Registered industry identities: ')}{industryCatalog.registeredIndustryCount} · {t('正式 Canonical 指标：', 'Canonical metrics: ')}{industryCatalog.canonicalCount}</p>
+        {industryCatalog.definitionCount === 0 ? <div className="data-catalog-empty"><strong>{t('当前没有已注册的行业数据字段。', 'There are no registered Industry data fields.')}</strong><p>{t('已注册行业身份：', 'Registered industry identities: ')}{industryCatalog.registeredIndustryCount}</p><p>{t('正式 Canonical 指标：', 'Canonical metrics: ')}{industryCatalog.canonicalCount}</p></div> : filteredIndustry.length === 0 ? <p className="data-catalog-empty">{t('没有匹配的字段', 'No matching fields')}</p> : null}
+        <div className="data-catalog-layout">
+          <div className="data-catalog-table-wrap"><table className="data-catalog-table data-catalog-policy-table"><caption>{t('行业字段来源策略', 'Industry field source policies')}</caption><thead><tr><th>{t('字段标识', 'Field ID')}</th><th>{t('中文含义', 'Meaning')}</th><th>{t('消费者', 'Consumers')}</th><th>{t('默认源', 'Default source')}</th><th>{t('一级备用源', 'Fallback 1')}</th><th>{t('二级备用源', 'Fallback 2')}</th><th>{t('兜底备用源', 'Final fallback')}</th></tr></thead><tbody>
+            {industryRows.map((row) => <tr key={row.key} aria-selected={selectedMetricId === row.metricId}><th scope="row"><button className="data-catalog-select" onClick={() => setSelectedMetricId(row.metricId)}>{row.metricId}</button></th><td>{row.meaning}</td><td>{row.consumers}</td><td>{row.defaultSource ?? '—'}</td><td>{row.fallback1 ?? '—'}</td><td>{row.fallback2 ?? '—'}</td><td>{row.finalFallback ?? '—'}</td></tr>)}
           </tbody></table></div>
           {selectedIndustry ? <aside className="data-catalog-detail" aria-label={t('字段详情', 'Field details')}><h2>{selectedIndustry.name}</h2><p>{selectedIndustry.description}</p><dl>
-            <MetadataRow label="industryId" value={selectedIndustry.industryId} t={t} /><MetadataRow label="metricId" value={selectedIndustry.metricId} t={t} /><MetadataRow label="metricFamily" value={selectedIndustry.metricFamily} t={t} /><MetadataRow label="semanticRole" value={selectedIndustry.semanticRole} t={t} /><MetadataRow label="dataKind" value={selectedIndustry.dataKind} t={t} /><MetadataRow label="lifecycleStatus" value={selectedIndustry.lifecycleStatus} t={t} />
+            <MetadataRow label="industryId" value={selectedIndustry.industryId} t={t} /><MetadataRow label="metricId" value={selectedIndustry.metricId} t={t} /><MetadataRow label={t('消费者', 'Consumers')} value={[...new Set(selectedIndustry.sourcePolicies.map((reference) => reference.policy?.requirementMatch.workflow).filter((workflow): workflow is string => Boolean(workflow)))].join(', ') || t('未明确映射', 'Unmapped')} t={t} /><MetadataRow label="metricFamily" value={selectedIndustry.metricFamily} t={t} /><MetadataRow label="semanticRole" value={selectedIndustry.semanticRole} t={t} /><MetadataRow label="dataKind" value={selectedIndustry.dataKind} t={t} /><MetadataRow label="lifecycleStatus" value={selectedIndustry.lifecycleStatus} t={t} />
             {(['canonicalUnit', 'acceptedSourceUnits', 'frequency', 'periodBasis', 'aggregation', 'geography', 'product', 'segment', 'grade', 'requiredQualifiers'] as const).map((key) => <MetadataRow key={key} label={key} value={selectedIndustry[key]} t={t} />)}
             <MetadataRow label={t('publication PIT', 'Publication PIT')} value={selectedIndustry.pitPolicy?.publicationPit} t={t} /><MetadataRow label={t('value-version PIT', 'Value-version PIT')} value={selectedIndustry.pitPolicy?.valueVersionPit} t={t} /><MetadataRow label={t('验证信息', 'Validation metadata')} value={selectedIndustry.validation ? JSON.stringify(selectedIndustry.validation) : undefined} t={t} /><MetadataRow label={t('发现来源', 'Discovery provenance')} value={selectedIndustry.discoveredFrom} t={t} />
           </dl><h3>SourcePolicy</h3>{selectedIndustry.sourcePolicies.length === 0 ? <p>{t('未定义', 'Undefined')}</p> : selectedIndustry.sourcePolicies.map((reference) => <article className="data-catalog-policy" key={reference.policyId}><h4>{reference.policyId}</h4><MetadataRow label={t('策略映射', 'Policy mapping')} value={reference.mappingStatus} t={t} />{reference.policy ? <><MetadataRow label={t('选择模式', 'Selection mode')} value={reference.policy.selectionMode} t={t} />{reference.policy.candidates.map((candidate) => <div className="data-catalog-candidate" key={candidate.sourceId}><strong>{fallbackLevelText(candidate.fallbackLevel, t)} · {candidate.sourceId}</strong><MetadataRow label={t('来源权威', 'Origin authority')} value={candidate.originAuthority} t={t} /><MetadataRow label={t('来源发布方', 'Origin publisher')} value={candidate.originPublisher} t={t} /><MetadataRow label="operationId" value={candidate.operationId} t={t} /><MetadataRow label={t('运行适配器', 'Runtime adapter')} value={candidate.runtimeAdapterStatus === 'BOUND' ? t('已绑定', 'Bound') : candidate.runtimeAdapterStatus === 'UNBOUND' ? t('未绑定', 'Unbound') : t('状态未知', 'Unknown')} t={t} /><MetadataRow label={t('连接测试', 'Connection test')} value={testStatusText(candidate.connectionTestStatus, t)} t={t} /><MetadataRow label={t('能力抽样', 'Capability sample')} value={testStatusText(candidate.capabilitySampleStatus, t)} t={t} /><MetadataRow label={t('历史 PIT', 'Historical PIT')} value={t('未验证', 'Not verified')} t={t} />{candidate.integrations.length ? <ul className="data-catalog-integration-list">{candidate.integrations.map((integration) => <li key={integration.integrationId}>{integration.displayName} · {t('连接', 'Connection')}: {testStatusText(integration.connectionTestStatus, t)} · {t('能力抽样', 'Capability sample')}: {testStatusText(integration.capabilitySampleStatus, t)}</li>)}</ul> : null}</div>)}</> : null}</article>)}</aside> : null}
-        </div>}
+        </div>
       </> : null}
-    </section> : null}
-    {!loading && tab === 'policies' && catalog ? <section role="tabpanel" aria-label={t('来源策略', 'Source policies')}>
-      {!catalog.coverageComplete ? <div className="notice data-sources-coverage" role="status"><strong>{t('来源覆盖尚未完整', 'Source coverage is incomplete')}</strong><p>{t('标为“待接入”的来源尚未配置可执行适配器。', 'Sources marked “Not connected” do not yet have an executable adapter configured.')}</p></div> : null}
-      <div className="data-sources-table-wrap"><table className="data-sources-table"><caption>{t('通用指标及其来源顺序', 'Generic metrics and their source order')}</caption><thead><tr><th scope="col">metricId</th><th scope="col">{t('中文含义', 'Chinese meaning')}</th><th scope="col">capability</th><th scope="col">{t('默认源', 'Default source')}</th><th scope="col">{t('一级备用源', 'Fallback 1')}</th><th scope="col">{t('二级备用源', 'Fallback 2')}</th><th scope="col">{t('兜底备用源', 'Final fallback')}</th></tr></thead><tbody>
-        {rows.map((row) => <tr key={`${row.workflowId}:${row.capability}:${row.metricId}`}><th scope="row">{row.metricId}</th><td>{row.chineseMeaning || t('待补充', 'Pending')}</td><td>{row.capability}</td><td>{displaySource(row.defaultSource)}</td><td>{displaySource(row.fallback1)}</td><td>{displaySource(row.fallback2)}</td><td>{displaySource(row.finalFallback)}</td></tr>)}
-        {rows.length === 0 ? <tr><td colSpan={7} className="data-sources-empty">{t('当前没有可展示的通用指标来源策略。', 'No generic metric source policies are available.')}</td></tr> : null}
-      </tbody></table></div>{rows.length > 0 && !catalog.coverageComplete ? <p className="data-sources-coverage-count">{t('不完整覆盖的指标：', 'Metrics with incomplete coverage: ')}{rows.filter((row) => !row.coverageComplete).length}</p> : null}
     </section> : null}
     {!loading && tab === 'integrations' ? <section role="tabpanel" aria-label={t('已配置集成', 'Configured integrations')} className="data-source-integrations">
       {integrations.length === 0 ? <p className="muted">{t('当前没有已配置的数据源集成。', 'No configured data source integrations are available.')}</p> : integrations.map((view) => <IntegrationCard key={view.integration.integrationId} view={view} runningTest={runningTest} testMessage={testMessage} onTest={runTest} onCredentials={() => { setCredentialTarget(view); setCredentialValues({}); setCredentialMessage('') }} t={t} />)}
