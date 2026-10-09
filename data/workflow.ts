@@ -10,6 +10,7 @@ import type {
   SourcePolicy,
 } from './contracts.ts'
 import { candidateEligibility, orderCandidates, resolveSourcePolicy } from './source-policy.ts'
+import { validateMarketCloseFreshnessMetadata } from './point-in-time.ts'
 import { assertValidDataRequirement, validateAcquisitionData, validateDataRequirement } from './validation.ts'
 
 export interface ResearchDataAcquisitionOptions<T> {
@@ -218,9 +219,12 @@ function evaluateExecution<T>(
   if (requirement.metricId === 'valuation_market_price') {
     const freshness = execution.source?.marketFreshness
     if (!freshness) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'MARKET_FRESHNESS_UNVERIFIABLE' }
+    if (!requirement.period?.end || !observedAt || !observationAvailableAt || !validMarketDate(observedAt) || !validDate(observationAvailableAt)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'NO_ELIGIBLE_POINT_IN_TIME_DATA: valid market period, observation date, and close availability are required' }
+    const freshnessDiagnostic = validateMarketCloseFreshnessMetadata({ freshness, observedAt, observationAvailableAt, analysisAsOf: cutoff, requestedPeriodEnd: requirement.period.end })
+    if (freshnessDiagnostic) return { status: 'POINT_IN_TIME_INVALID', diagnostic: freshnessDiagnostic }
     if (freshness.status === 'STALE') return { status: 'STALE', diagnostic: freshness.diagnostic ?? 'MARKET_PRICE_STALE' }
     if (freshness.status !== 'FRESH') return { status: 'POINT_IN_TIME_INVALID', diagnostic: freshness.diagnostic ?? 'MARKET_FRESHNESS_UNVERIFIABLE' }
-    if (!requirement.period?.end || !validMarketPeriodEnd(requirement.period.end) || !observedAt || !observationAvailableAt || !validMarketDate(observedAt) || !validDate(observationAvailableAt)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'NO_ELIGIBLE_POINT_IN_TIME_DATA: valid market period, observation date, and close availability are required' }
+    if (!validMarketPeriodEnd(requirement.period.end)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'NO_ELIGIBLE_POINT_IN_TIME_DATA: valid market period, observation date, and close availability are required' }
     const dailyClose = Date.parse(`${observedAt}T15:00:00+08:00`)
     if (Date.parse(observationAvailableAt) < dailyClose) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `observationAvailableAt ${observationAvailableAt} precedes the daily close for ${observedAt}` }
   }

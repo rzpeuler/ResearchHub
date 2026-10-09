@@ -12,6 +12,15 @@ const CALENDAR_WEEK = [
   { trade_date: '2026-10-12' },
 ]
 
+function calendarInput(rows: readonly Record<string, unknown>[], requestedStartDate = '2026-09-09', requestedEndDate = '2026-10-09') {
+  const dates = rows.map((row) => String(row.trade_date)).sort()
+  return { rows, requestedStartDate, requestedEndDate, returnedStartDate: dates[0]!, returnedEndDate: dates[dates.length - 1]! }
+}
+
+function coverage(returnedStartDate: string, returnedEndDate: string, requestedStartDate = '2026-09-09', requestedEndDate = '2026-10-09') {
+  return { requestedStartDate, requestedEndDate, returnedStartDate, returnedEndDate }
+}
+
 function marketRequirement(asOf = '2026-10-09T07:00:00.000Z') {
   return materializePhase2CommonRequirement('valuation_market_price', { workflowId: 'valuation', ticker: '600519', asOf, period: { end: '2026-10-09' }, required: true })
 }
@@ -30,7 +39,7 @@ test('market selection excludes an unfinished current-session close before 15:00
   const result = normalizeValuationMarketData([
     { date: '2026-10-08', close: 100 },
     { date: '2026-10-09', close: 105 },
-  ], '2026-10-09', '2026-10-09T06:00:00.000Z', CALENDAR_WEEK)
+  ], '2026-10-09', '2026-10-09T06:00:00.000Z', calendarInput(CALENDAR_WEEK))
   assert.deepEqual(result.observation, { priceDate: '2026-10-08', close: 100 })
   assert.equal(result.freshness?.status, 'FRESH')
 })
@@ -39,24 +48,49 @@ test('market selection permits the same-session close at and after 15:00 Shangha
   const result = normalizeValuationMarketData([
     { date: '2026-10-08', close: 100 },
     { date: '2026-10-09', close: 105 },
-  ], '2026-10-09', '2026-10-09T07:00:00.000Z', CALENDAR_WEEK)
+  ], '2026-10-09', '2026-10-09T07:00:00.000Z', calendarInput(CALENDAR_WEEK))
   assert.deepEqual(result.observation, { priceDate: '2026-10-09', close: 105 })
 })
 
-test('a Friday close remains fresh over a normal weekend', () => {
-  const result = assessMarketCloseFreshness({ priceDate: '2026-10-09', analysisAsOf: '2026-10-11T12:00:00.000Z', tradingDates: CALENDAR_WEEK.map((row) => row.trade_date) })
+test('a Friday close remains fresh over a normal weekend without a calendar', () => {
+  const result = assessMarketCloseFreshness({ priceDate: '2026-10-09', analysisAsOf: '2026-10-11T12:00:00.000Z' })
   assert.equal(result.status, 'FRESH')
   assert.equal(result.completedSessionsSincePrice, 0)
 })
 
-test('exchange holidays do not count as missed trading sessions', () => {
-  const result = assessMarketCloseFreshness({ priceDate: '2026-10-09', analysisAsOf: '2026-10-14T06:00:00.000Z', tradingDates: ['2026-10-09', '2026-10-14', '2026-10-15'] })
+test('without a calendar, Tuesday through Friday is unverifiable rather than fresh', () => {
+  assert.equal(assessMarketCloseFreshness({ priceDate: '2026-10-06', analysisAsOf: '2026-10-09T08:00:00.000Z' }).status, 'UNVERIFIABLE')
+  assert.equal(assessMarketCloseFreshness({ priceDate: '2026-10-07', analysisAsOf: '2026-10-09T08:00:00.000Z' }).status, 'UNVERIFIABLE')
+})
+
+test('without a calendar, no more than one possible completed session is accepted', () => {
+  const fridayToMonday = assessMarketCloseFreshness({ priceDate: '2026-10-09', analysisAsOf: '2026-10-12T08:00:00.000Z' })
+  const thursdayToMonday = assessMarketCloseFreshness({ priceDate: '2026-10-08', analysisAsOf: '2026-10-12T08:00:00.000Z' })
+  assert.equal(fridayToMonday.status, 'FRESH')
+  assert.equal(fridayToMonday.completedSessionsSincePrice, 1)
+  assert.equal(thursdayToMonday.status, 'UNVERIFIABLE')
+})
+
+test('a complete calendar covers exchange holidays and the analysis cutoff', () => {
+  const dates = ['2026-09-30', '2026-10-09', '2026-10-12']
+  const result = assessMarketCloseFreshness({ priceDate: '2026-09-30', analysisAsOf: '2026-10-09T08:00:00.000Z', tradingDates: dates, calendarCoverage: coverage('2026-09-30', '2026-10-12', '2026-09-01', '2026-10-09') })
   assert.equal(result.status, 'FRESH')
-  assert.equal(result.completedSessionsSincePrice, 0)
+  assert.equal(result.completedSessionsSincePrice, 1)
+})
+
+test('a calendar that only includes the old quote date does not prove cutoff coverage', () => {
+  const result = assessMarketCloseFreshness({ priceDate: '2026-10-08', analysisAsOf: '2026-10-09T08:00:00.000Z', tradingDates: ['2026-10-08'], calendarCoverage: coverage('2026-10-08', '2026-10-08', '2026-09-09', '2026-10-08') })
+  assert.equal(result.status, 'UNVERIFIABLE')
+})
+
+test('an incomplete calendar request range cannot prove freshness', () => {
+  const result = assessMarketCloseFreshness({ priceDate: '2026-10-08', analysisAsOf: '2026-10-09T08:00:00.000Z', tradingDates: ['2026-10-08', '2026-10-09'], calendarCoverage: coverage('2026-10-08', '2026-10-09', '2026-10-09', '2026-10-09') })
+  assert.equal(result.status, 'UNVERIFIABLE')
 })
 
 test('a long suspension or stale feed is rejected after two completed sessions', () => {
-  const result = assessMarketCloseFreshness({ priceDate: '2026-10-05', analysisAsOf: '2026-10-09T08:00:00.000Z', tradingDates: ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'] })
+  const dates = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-12']
+  const result = assessMarketCloseFreshness({ priceDate: '2026-10-05', analysisAsOf: '2026-10-09T08:00:00.000Z', tradingDates: dates, calendarCoverage: coverage('2026-10-05', '2026-10-12') })
   assert.equal(result.status, 'STALE')
   assert.equal(result.completedSessionsSincePrice, 4)
   assert.equal(result.diagnostic, 'MARKET_PRICE_STALE')
@@ -69,13 +103,13 @@ test('an extended gap without a usable exchange calendar is unverifiable, not fa
 })
 
 test('a same-day bar before close has an explicit not-yet-closed diagnostic', () => {
-  const result = normalizeValuationMarketData([{ date: '2026-10-09', close: 105 }], '2026-10-09', '2026-10-09T06:00:00.000Z', CALENDAR_WEEK)
+  const result = normalizeValuationMarketData([{ date: '2026-10-09', close: 105 }], '2026-10-09', '2026-10-09T06:00:00.000Z', calendarInput(CALENDAR_WEEK))
   assert.equal(result.observation, undefined)
   assert.ok(result.diagnostics.includes('MARKET_NOT_YET_CLOSED'))
 })
 
 test('future market rows are rejected with a PIT diagnostic', () => {
-  const result = normalizeValuationMarketData([{ date: '2026-10-10', close: 105 }], '2026-10-09', '2026-10-09T08:00:00.000Z', CALENDAR_WEEK)
+  const result = normalizeValuationMarketData([{ date: '2026-10-10', close: 105 }], '2026-10-09', '2026-10-09T08:00:00.000Z', calendarInput(CALENDAR_WEEK))
   assert.equal(result.observation, undefined)
   assert.ok(result.diagnostics.includes('MARKET_PIT_REJECTED'))
 })
@@ -84,7 +118,7 @@ test('fixed historical asOf selects only a close available at that cutoff', () =
   const result = normalizeValuationMarketData([
     { date: '2026-10-08', close: 100 },
     { date: '2026-10-09', close: 105 },
-  ], '2026-10-09', '2026-10-09T06:00:00.000Z', CALENDAR_WEEK)
+  ], '2026-10-09', '2026-10-09T06:00:00.000Z', calendarInput(CALENDAR_WEEK))
   assert.deepEqual(result.observation, { priceDate: '2026-10-08', close: 100 })
 })
 
@@ -96,11 +130,18 @@ test('DataResolver accepts the EastMoney primary when its close is fresh', async
   assert.deepEqual(calls, ['EastMoney'])
 })
 
+test('DataResolver blocks when the returned calendar ends before the analysis date', async () => {
+  const { resolver } = marketResolver({ calendar: [{ trade_date: '2026-10-08' }] })
+  const result = await resolver.resolve([marketRequirement()])
+  assert.equal(result.items[0]?.status, 'UNAVAILABLE')
+  assert.deepEqual(result.items[0]?.attempts.map((attempt) => attempt.diagnostic), ['MARKET_FRESHNESS_UNVERIFIABLE', 'MARKET_FRESHNESS_UNVERIFIABLE'])
+})
+
 test('DataResolver rejects a stale primary and selects a fresh Tencent fallback', async () => {
   const { resolver } = marketResolver({
     eastmoney: [{ date: '2026-10-05', close: 99 }],
     tencent: [{ date: '2026-10-09', close: 105 }],
-    calendar: ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'].map((trade_date) => ({ trade_date })),
+    calendar: ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-12'].map((trade_date) => ({ trade_date })),
   })
   const result = await resolver.resolve([marketRequirement()])
   assert.equal(result.items[0]?.status, 'AVAILABLE')
@@ -110,7 +151,7 @@ test('DataResolver rejects a stale primary and selects a fresh Tencent fallback'
 
 test('DataResolver rejects stale primary and fallback quotes with an explicit diagnostic', async () => {
   const staleRows = [{ date: '2026-10-05', close: 99 }]
-  const { resolver } = marketResolver({ eastmoney: staleRows, tencent: staleRows, calendar: ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'].map((trade_date) => ({ trade_date })) })
+  const { resolver } = marketResolver({ eastmoney: staleRows, tencent: staleRows, calendar: ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-12'].map((trade_date) => ({ trade_date })) })
   const result = await resolver.resolve([marketRequirement()])
   assert.equal(result.items[0]?.status, 'UNAVAILABLE')
   assert.equal(result.items[0]?.unavailableReason, 'PIT_INVALID')

@@ -3,7 +3,7 @@ import type { DataRequirement, SourceExecutionResult } from '../../data/contract
 import { PHASE2_COMMON_SOURCE_POLICIES } from '../../data/valuation-earnings-policies.ts'
 import type { ValuationFinancialRow, ValuationMarketObservation } from '../../skills/valuation/financials.ts'
 import { dailyCloseAvailableAt, type MarketCloseFreshness } from '../../data/point-in-time.ts'
-import { normalizeValuationFinancialData, normalizeValuationMarketData } from './valuation-normalization.ts'
+import { normalizeValuationFinancialData, normalizeValuationMarketData, type MarketTradingCalendarInput } from './valuation-normalization.ts'
 import type { ResearchCompanyIdentity } from './contracts.ts'
 import type { AkshareDataClient, AksharePeerComparisonFamily } from './akshare.ts'
 import type { AnnualReportPublicationProof, OfficialDisclosureClient } from './official.ts'
@@ -123,10 +123,15 @@ export async function valuationCompanyBasicTelemetry(client: AkshareDataClient |
 /** Explicit operation bindings for the Valuation DataResolver. */
 export function createValuationDataResolver(options: ValuationDataCompositionOptions): DataResolver<ValuationDataPayload> {
   const financial = new Map<string, Promise<{ readonly raw: unknown; readonly rows: readonly ValuationFinancialRow[]; readonly retrievedAt: string }>>()
-  let marketCalendar: Promise<unknown | undefined> | undefined
+  let marketCalendar: Promise<MarketTradingCalendarInput | undefined> | undefined
   const loadMarketCalendar = () => {
     if (!marketCalendar) marketCalendar = (async () => {
-      try { return await options.akshare?.tradingCalendar?.({ symbol: 'calendar', startDate: marketHistoryWindowEnd(options.valuationDate).startDate, endDate: options.valuationDate.replace(/-/g, '') }) }
+      const range = marketHistoryWindowEnd(options.valuationDate)
+      try {
+        const rows = await options.akshare?.tradingCalendar?.({ symbol: 'calendar', startDate: range.startDate, endDate: range.endDate })
+        const toIsoDay = (value: string) => `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`
+        return rows === undefined ? undefined : { rows, requestedStartDate: toIsoDay(range.startDate), requestedEndDate: toIsoDay(range.endDate) }
+      }
       catch { return undefined }
     })()
     return marketCalendar

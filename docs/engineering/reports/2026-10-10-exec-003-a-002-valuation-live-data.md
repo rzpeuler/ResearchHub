@@ -159,6 +159,36 @@ Both Application results completed. In both reports, JSON `workflowRunId`, Resea
 - EPS/BVPS numeric value-version remains unverified even though FY and official publication evidence are present. Reports are correctly labeled `CURRENT_VALUE_ONLY`; fixed historical valuation cannot treat CNINFO publication metadata as numeric-version proof.
 - No merge to `main` is part of this task. Sol acceptance remains pending.
 
+## RHL-EXEC-003-A-002-FIX-002 — Market Freshness Proof Correction
+
+**状态：** IMPLEMENTED / SOL ACCEPTANCE PENDING
+
+**范围：** 修正 FIX-001 对交易日历覆盖和无日历行情 freshness 的判定，并在 DataResolver 再核对行情与 PIT 元数据。
+
+### Root cause and correction
+
+- FIX-001 曾将无日历时最多三日的日历间隔直接视为新鲜；这会把周中缺失的多个可能交易时段误判为 FRESH。
+- 无日历时现在只排除确定的周末日期；未知工作日不推定为假期。最多一个可能完成的工作日时段可标记 FRESH，两个及以上返回 UNVERIFIABLE。周五至周日仍可通过周末规则；周五至下周一收盘后只有一个可能时段。
+- Sina/AKShare 日历必须覆盖报价日和上海时区分析日期：请求区间及实际返回区间都必须覆盖两端。旧日历、截断响应和范围不足不能证明 freshness，返回明确 gap。
+- DataResolver 核对 freshness 的 `priceDate`、`analysisAsOf`、`completedSessionDates`/计数、`source.observedAt`、`source.observationAvailableAt`、daily close availability、`requirement.analysisAsOf` 与 `requirement.period.end`。不一致的成功元数据拒绝入选；明确的 UNVERIFIABLE 状态作为 gap 传递。
+- AKShare/Sina 的数值型 `trade_date` 按毫秒 epoch 解析，避免误按秒解析成远未来日期；紧凑日期查询边界转换成 ISO 日期后记录请求/返回覆盖。
+
+### Regression evidence
+
+定向套件覆盖了：收盘前/后和未完成当日 bar、周末、缺日历下多工作日间隔、完整/旧/截断/请求区间不足的日历、两个及以上已完成交易时段、固定历史时点及未来行、EastMoney 主源、陈旧主源回退至新鲜 Tencent、主备都陈旧时阻断，以及 freshness 与 observedAt、availableAt、analysisAsOf 和 period.end 的交叉校验。最终定向测试：**143/143 通过**。
+
+真实来源尝试使用生产 DataResolver 与现有 AKShare 插件：EastMoney 行情请求遇到代理连接错误后，按既有 SourcePolicy 选择 Tencent 行情；Tencent 返回 `2026-10-09` 日线。AKShare/Sina 日历返回范围 `1990-12-19` 至 `2026-12-31`，覆盖请求区间 `2026-09-10` 至 `2026-10-10`；在 `2026-10-10` 上海时点，DataResolver 将报价判为 FRESH，0 个已完成交易时段漏更。没有新增行情 Provider。
+
+### Final validation
+
+- `npm run typecheck`：通过。
+- `npm run client:typecheck`：通过。
+- `npm run client:build`：通过；保留现有主 JS chunk 大于 500 kB 的 Vite 提示。
+- `git diff --check`：通过。
+- `npm test`：客户端 122/122 通过；Node 2,180 项中 2,159 通过、21 失败。对同一干净 `origin/main` 基线的失败 test ID 做精确集合比较：基线 2,169 项、2,146 通过、23 失败；本分支独有失败 **0**。基线有两项失败在本分支未复现；其余 21 个失败 ID 与基线完全相同。日志位于本机临时目录，不纳入仓库。
+
+FIX-002 不合入 `main`。提交后需核对远端任务分支 HEAD 与最终 SHA 一致，并保持 Sol acceptance pending。
+
 ### FIX-001 delivery
 
 Source, regression tests, real E2E runner, and this report are to be committed and pushed to `codex/exec-003-a-002-valuation-live-data`. Final branch SHA and clean worktree are recorded after push below.

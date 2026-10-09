@@ -78,17 +78,29 @@ test('market observation date is validated independently from retrieval and requ
   const marketPolicy: SourcePolicy = { policyId: 'market', requirementMatch: { metricId: 'valuation_market_price' }, selectionMode: 'FIRST_VALID', candidates: [
     { sourceId: 'market', fallbackLevel: 'PRIMARY', originAuthority: 'S3_AGGREGATOR', operationId: 'market', supports: { dataKinds: ['timeseries'], metricIds: ['valuation_market_price'] } },
   ] }
-  const safe = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-03-30', observationAvailableAt: '2025-03-30T07:00:00.000Z', retrievedAt: '2026-10-07', marketFreshness: { priceDate: '2025-03-30', analysisAsOf: cutoff, status: 'FRESH', maximumMissedSessions: 1, calendarSource: 'SHORT_GAP_FALLBACK' } } }) })
+  const safe = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-03-30', observationAvailableAt: '2025-03-30T07:00:00.000Z', retrievedAt: '2026-10-07', marketFreshness: { priceDate: '2025-03-30', analysisAsOf: cutoff, status: 'FRESH', completedSessionsSincePrice: 0, completedSessionDates: [], maximumMissedSessions: 1, calendarSource: 'SHORT_GAP_FALLBACK' } } }) })
   assert.equal(safe.status, 'AVAILABLE')
   assert.equal(safe.quality.pointInTimeSafe, true)
   assert.equal(safe.source?.retrievedAt, '2026-10-07')
   assert.equal(safe.source?.observedAt, '2025-03-30')
   assert.equal(safe.source?.observationAvailableAt, '2025-03-30T07:00:00.000Z')
-  const future = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-04-01', observationAvailableAt: '2025-04-01T07:00:00.000Z', retrievedAt: '2026-10-07', marketFreshness: { priceDate: '2025-04-01', analysisAsOf: cutoff, status: 'FRESH', maximumMissedSessions: 1, calendarSource: 'SHORT_GAP_FALLBACK' } } }) })
+  const future = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-04-01', observationAvailableAt: '2025-04-01T07:00:00.000Z', retrievedAt: '2026-10-07', marketFreshness: { priceDate: '2025-04-01', analysisAsOf: cutoff, status: 'FRESH', completedSessionsSincePrice: 0, completedSessionDates: [], maximumMissedSessions: 1, calendarSource: 'SHORT_GAP_FALLBACK' } } }) })
   assert.equal(future.status, 'UNAVAILABLE')
   assert.equal(future.attempts[0]?.status, 'POINT_IN_TIME_INVALID')
-  const afterRequestedPeriod = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-03-31', observationAvailableAt: '2025-03-31T07:00:00.000Z', retrievedAt: '2026-10-07', marketFreshness: { priceDate: '2025-03-31', analysisAsOf: cutoff, status: 'FRESH', maximumMissedSessions: 1, calendarSource: 'SHORT_GAP_FALLBACK' } } }) })
+  const afterRequestedPeriod = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-03-31', observationAvailableAt: '2025-03-31T07:00:00.000Z', retrievedAt: '2026-10-07', marketFreshness: { priceDate: '2025-03-31', analysisAsOf: cutoff, status: 'FRESH', completedSessionsSincePrice: 0, completedSessionDates: [], maximumMissedSessions: 1, calendarSource: 'SHORT_GAP_FALLBACK' } } }) })
   assert.equal(afterRequestedPeriod.status, 'UNAVAILABLE')
+  const inconsistentFreshness = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-03-28', observationAvailableAt: '2025-03-28T07:00:00.000Z', retrievedAt: '2026-10-07', marketFreshness: { priceDate: '2025-03-27', analysisAsOf: cutoff, status: 'FRESH', completedSessionsSincePrice: 0, completedSessionDates: [], maximumMissedSessions: 1, calendarSource: 'SHORT_GAP_FALLBACK' } } }) })
+  assert.equal(inconsistentFreshness.status, 'UNAVAILABLE')
+  assert.equal(inconsistentFreshness.attempts[0]?.diagnostic, 'MARKET_FRESHNESS_METADATA_MISMATCH')
+  const cutoffMismatch = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-03-28', observationAvailableAt: '2025-03-28T07:00:00.000Z', retrievedAt: '2026-10-07', marketFreshness: { priceDate: '2025-03-28', analysisAsOf: '2025-03-30T00:00:00.000Z', status: 'FRESH', completedSessionsSincePrice: 0, completedSessionDates: [], maximumMissedSessions: 1, calendarSource: 'SHORT_GAP_FALLBACK' } } }) })
+  assert.equal(cutoffMismatch.status, 'UNAVAILABLE')
+  assert.equal(cutoffMismatch.attempts[0]?.diagnostic, 'MARKET_FRESHNESS_METADATA_MISMATCH')
+  const closeAvailabilityMismatch = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-03-28', observationAvailableAt: '2025-03-28T06:59:59.999Z', retrievedAt: '2026-10-07', marketFreshness: { priceDate: '2025-03-28', analysisAsOf: cutoff, status: 'FRESH', completedSessionsSincePrice: 0, completedSessionDates: [], maximumMissedSessions: 1, calendarSource: 'SHORT_GAP_FALLBACK' } } }) })
+  assert.equal(closeAvailabilityMismatch.status, 'UNAVAILABLE')
+  assert.equal(closeAvailabilityMismatch.attempts[0]?.diagnostic, 'MARKET_FRESHNESS_METADATA_MISMATCH')
+  const periodEndMismatch = await runResearchDataAcquisition({ requirement: market, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS', data: { close: 9 }, source: { observedAt: '2025-03-31', observationAvailableAt: '2025-03-31T07:00:00.000Z', retrievedAt: '2026-10-07', marketFreshness: { priceDate: '2025-03-31', analysisAsOf: cutoff, status: 'FRESH', completedSessionsSincePrice: 0, completedSessionDates: [], maximumMissedSessions: 1, calendarSource: 'SHORT_GAP_FALLBACK' } } }) })
+  assert.equal(periodEndMismatch.status, 'UNAVAILABLE')
+  assert.equal(periodEndMismatch.attempts[0]?.diagnostic, 'MARKET_FRESHNESS_METADATA_MISMATCH')
 })
 
 test('market PIT fails closed for publication-only, missing observation availability, or missing requested period', async () => {
@@ -134,7 +146,7 @@ test('same-day market close is ineligible before 15:00 Asia/Shanghai and eligibl
   const marketPolicy: SourcePolicy = { policyId: 'market', requirementMatch: { metricId: 'valuation_market_price' }, selectionMode: 'FIRST_VALID', candidates: [
     { sourceId: 'market', fallbackLevel: 'PRIMARY', originAuthority: 'S3_AGGREGATOR', operationId: 'market', supports: { dataKinds: ['timeseries'], metricIds: ['valuation_market_price'] } },
   ] }
-  const run = (asOf: string, observationAvailableAt: string) => runResearchDataAcquisition({ requirement: { ...market, asOf, analysisAsOf: asOf }, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS' as const, data: { close: 9 }, source: { observedAt: '2025-03-31', observationAvailableAt, publishedAt: '2025-03-30', retrievedAt: '2026-10-07', marketFreshness: { priceDate: '2025-03-31', analysisAsOf: asOf, status: 'FRESH' as const, maximumMissedSessions: 1 as const, calendarSource: 'SHORT_GAP_FALLBACK' as const } } }) })
+  const run = (asOf: string, observationAvailableAt: string) => runResearchDataAcquisition({ requirement: { ...market, asOf, analysisAsOf: asOf }, policies: [marketPolicy], executor: async () => ({ status: 'SUCCESS' as const, data: { close: 9 }, source: { observedAt: '2025-03-31', observationAvailableAt, publishedAt: '2025-03-30', retrievedAt: '2026-10-07', marketFreshness: { priceDate: '2025-03-31', analysisAsOf: asOf, status: 'FRESH' as const, completedSessionsSincePrice: 0, completedSessionDates: [], maximumMissedSessions: 1 as const, calendarSource: 'SHORT_GAP_FALLBACK' as const } } }) })
   const before = await run('2025-03-31T06:59:59.000Z', '2025-03-31T07:00:00.000Z')
   assert.equal(before.status, 'UNAVAILABLE')
   const forgedEarly = await run('2025-03-31T06:59:59.000Z', '2025-03-31T06:00:00.000Z')

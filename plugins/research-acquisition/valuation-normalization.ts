@@ -1,5 +1,5 @@
 import type { ValuationFinancialRow, ValuationMarketObservation } from '../../skills/valuation/financials.ts'
-import { assessMarketCloseFreshness, dailyCloseAvailableAt, type MarketCloseFreshness } from '../../data/point-in-time.ts'
+import { assessMarketCloseFreshness, dailyCloseAvailableAt, type MarketCloseFreshness, type MarketTradingCalendarCoverage } from '../../data/point-in-time.ts'
 
 type Dict = Record<string, unknown>
 const DATE_ALIASES = ['报告期', '报告日期', '报告期末', '日期', 'date', 'end_date', 'report_date', 'REPORT_DATE', 'period', 'fiscal_period'] as const
@@ -47,16 +47,36 @@ export function normalizeValuationDate(value: unknown): string | undefined {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 function dateOf(row: Dict, aliases: readonly string[]): string | undefined { return normalizeValuationDate(first(row, aliases)) }
+function marketCalendarDateOf(row: Dict): string | undefined {
+  const value = first(row, CALENDAR_DATE_ALIASES)
+  const numeric = typeof value === 'number' ? value : typeof value === 'string' && /^\d{12,13}$/.test(value) ? Number(value) : undefined
+  if (numeric !== undefined && Number.isFinite(numeric) && Math.abs(numeric) >= 100_000_000_000) {
+    const date = new Date(numeric)
+    return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : undefined
+  }
+  return normalizeValuationDate(value)
+}
+function validCalendarDay(date: string | undefined): date is string {
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false
+  const parsed = new Date(`${date}T00:00:00.000Z`)
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date
+}
 
 export function normalizeMarketTradingDates(value: unknown): readonly string[] {
-  return [...new Set(rowsOf(value).map((row) => dateOf(row, CALENDAR_DATE_ALIASES)).filter((date): date is string => date !== undefined))].sort()
+  return [...new Set(rowsOf(value).map(marketCalendarDateOf).filter(validCalendarDay))].sort()
+}
+
+export interface MarketTradingCalendarInput {
+  readonly rows: unknown
+  readonly requestedStartDate: string
+  readonly requestedEndDate: string
 }
 
 export function normalizeValuationMarketData(
   value: unknown,
   requestedPeriodEnd: string,
   analysisAsOf = requestedPeriodEnd,
-  tradingCalendar?: unknown,
+  tradingCalendar?: MarketTradingCalendarInput,
 ): { readonly observation?: ValuationMarketObservation; readonly diagnostics: readonly string[]; readonly freshness?: MarketCloseFreshness } {
   const diagnostics: string[] = []
   const periodEnd = requestedPeriodEnd.slice(0, 10)
@@ -73,7 +93,13 @@ export function normalizeValuationMarketData(
     return { diagnostics }
   }
   const selected = candidates[candidates.length - 1]!
-  const freshness = assessMarketCloseFreshness({ priceDate: selected.date, analysisAsOf, tradingDates: normalizeMarketTradingDates(tradingCalendar) })
+  const tradingDates = tradingCalendar ? normalizeMarketTradingDates(tradingCalendar.rows) : undefined
+  const calendarCoverage: MarketTradingCalendarCoverage | undefined = tradingCalendar && tradingDates && tradingDates.length > 0
+    ? { requestedStartDate: tradingCalendar.requestedStartDate, requestedEndDate: tradingCalendar.requestedEndDate, returnedStartDate: tradingDates[0]!, returnedEndDate: tradingDates[tradingDates.length - 1]! }
+    : undefined
+  const calendarRows = tradingCalendar ? rowsOf(tradingCalendar.rows) : []
+  const invalidCalendarRows = tradingCalendar !== undefined && (calendarRows.length === 0 || calendarRows.some((row) => !validCalendarDay(marketCalendarDateOf(row))))
+  const freshness = assessMarketCloseFreshness({ priceDate: selected.date, analysisAsOf, ...(tradingCalendar === undefined ? {} : { calendarAttempted: true }), ...(tradingDates === undefined ? {} : { tradingDates }), ...(calendarCoverage === undefined ? {} : { calendarCoverage }), ...(invalidCalendarRows ? { calendarAttempted: true, tradingDates: [] } : {}) })
   if (freshness.diagnostic) diagnostics.push(freshness.diagnostic)
   return { observation: { priceDate: selected.date, close: selected.close }, diagnostics, freshness }
 }
