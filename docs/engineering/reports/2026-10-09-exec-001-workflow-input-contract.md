@@ -13,7 +13,7 @@
 | Baseline (`origin/main`) | `9424d3b01185d8df8310c224cffa8e81622e69b6` |
 | Branch | `codex/exec-001-workflow-input-contract` |
 | Implementation HEAD | `4555d4c45a24f7146b37d754bb7bf999488c9e4f` |
-| Final delivery HEAD | Report commit at branch tip; exact SHA is recorded in the delivery response |
+| Final delivery HEAD | FIX-001 report commit at branch tip; exact SHA is recorded in the delivery response |
 | Main merge | None |
 
 The implementation uses the existing `ResearchDispatchService`,
@@ -56,11 +56,14 @@ silently copied to an adapter.
 
 The LLM interprets user language into business inputs such as company or
 industry names, reporting period, event anchor, analysis methods, and thesis
-content. The LLM does not establish canonical identity. Company symbols and
-canonical entity, claim, thesis, source, and observation references are checked
-against active canonical objects in the mounted Schema 0.4 Knowledge Base.
-Missing, ambiguous, inactive, or out-of-window references return
-`UNRESOLVED_REFERENCE`; no adapter starts on that result.
+content. The LLM does not establish canonical identity. Existing-company
+Workflows and canonical entity, claim, thesis, source, and observation
+references are checked against active canonical objects in the mounted Schema
+0.4 Knowledge Base. Company Research has a separate first-research path: an
+explicit, valid user-supplied A-share code may enter its existing source and
+Knowledge Production validation path without a pre-existing Company. A model
+proposed code without that user evidence remains unresolved. This path does not
+create or assert a Canonical Company at dispatch time.
 
 Synchronous compatibility dispatch cannot perform that trusted Knowledge
 lookup, so it now returns `UNRESOLVED_REFERENCE` before invoking an adapter
@@ -78,10 +81,12 @@ Knowledge-write permission is enabled by the resolver.
 An injected clock is used for deterministic dispatch context and current Thesis
 Lifecycle timestamps. Current Valuation keeps `asOf` undefined; Runtime time
 does not turn a current request into historical analysis. An explicit valid
-past cutoff is normalized to a timezone-aware ISO timestamp. Invalid-calendar
-and future cutoffs return `INVALID_INPUT` before adapter execution. A timezone
-input such as `2025-06-30T15:00:00+08:00` is normalized to
-`2025-06-30T07:00:00.000Z`.
+past cutoff is normalized to a timezone-aware ISO timestamp. Date-only A-share
+cutoffs use the `Asia/Shanghai` local day end; for example, `2025-06-30`
+becomes `2025-06-30T15:59:59.999Z`. Explicit-offset timestamps preserve their
+instant: `2025-06-30T15:00:00+08:00` becomes `2025-06-30T07:00:00.000Z`.
+Invalid-calendar and future or equal-to-runtime cutoffs return `INVALID_INPUT`
+before adapter execution.
 
 ## Missing input, repair, and client feedback
 
@@ -194,6 +199,84 @@ performed: `REAL_MODEL_E2E_NOT_VERIFIED`.
   workflow-specific semantic extraction tests under EXEC-002 without changing
   the shared contract mechanism.
 - No authenticated real-model E2E was run.
+
+## FIX-001 — Workflow identity and temporal contract correction
+
+Reviewed EXEC-001 HEAD: `db268e07735c9336829cd764ad7009623fb78c6b`. The fixes
+preserve the shared LLM, AJV, structured-feedback, and Workflow Registry
+mechanism; they do not add EXEC-002/003 business features.
+
+### FIX-A — Company Research first entry
+
+Dispatch now distinguishes a verified security candidate, a Company already
+stored in Knowledge, and a Workflow requiring an existing Canonical object.
+For `company_research` only, a single user-supplied six-digit A-share code that
+matches the semantic proposal is classified using the existing Company
+identity normalizer. Its exchange suffix and any proposed exchange must agree
+with that deterministic classification. The canonical `SH`/`SZ`/`BJ` exchange
+is then passed through final Workflow schema validation. This permits an empty
+Schema 0.4 Knowledge Base and `structuredKnowledge=false` to proceed with
+`writeKnowledge=false`; it does not allocate a canonical ID or bypass the
+Company Workflow's source and Knowledge Production checks. Name-only requests
+with a model-guessed ticker remain `UNRESOLVED_REFERENCE`. Other company
+Workflows retain the active Canonical Company requirement.
+
+Regression evidence: the dispatch test mounts a newly created empty Schema 0.4
+Knowledge Base, submits `300750.SZ` in the user's query, disables structured
+Knowledge access, and verifies `ResearchDispatch → Company Research adapter`,
+canonical `SZ` input, and unchanged `writeKnowledge=false`. A parallel name-only
+case proves the guessed code cannot start the adapter.
+
+### FIX-B — Exchange normalization
+
+The four company-bound Workflow schemas now accept both canonical
+`SH`/`SZ`/`BJ` and the existing aliases `SSE`/`SZSE`/`BSE`. Dispatch normalizes
+aliases with `company-identity.ts` before comparing them with Canonical
+Knowledge, retains the persisted canonical value, then validates the final
+arguments against the registered Schema before adapter entry. Canonical
+Knowledge serialization remains `SH`/`SZ`/`BJ`.
+
+Regression evidence: realistic Schema 0.4 fixture Companies use persisted
+`SH`, `SZ`, and `BJ`. A 24-case matrix covers both spellings for all three
+exchanges across Valuation, Earnings Review, Event Research, and Thesis Red
+Team. Each case starts its existing adapter and verifies the decision and
+adapter receive the canonical exchange.
+
+### FIX-C — Shanghai-local date cutoff
+
+Date-only ISO, Chinese calendar dates, and year-end expressions now resolve to
+23:59:59.999 in the A-share `Asia/Shanghai` date, represented as a UTC
+timestamp. `2025-06-30` therefore resolves to
+`2025-06-30T15:59:59.999Z`. Explicit timezone offsets continue to preserve their
+instant, including a cross-date `+09:00` case. Current Value mode still leaves
+`asOf` undefined. Invalid dates and future/equal-to-runtime cutoffs remain
+blocked before an adapter starts.
+
+### FIX-001 validation
+
+| Validation | Result |
+| --- | --- |
+| Dispatch service focused tests | 29/29 passed |
+| Clean baseline `npm test` at `origin/main` `9424d3b01185d8df8310c224cffa8e81622e69b6` | Client 97/97; Node 2,102 total, 2,078 passed, 24 failed |
+| FIX-001 `npm test` | Client 98/98; Node 2,115 total, 2,092 passed, 23 failed |
+| Exact Node failure-identifier comparison | 0 new failures; 1 baseline-only identifier now passes |
+| `npm run typecheck` | Passed |
+| `npm run client:typecheck` | Passed |
+| `npm run client:build` | Passed; existing 631.32 kB bundle advisory remains |
+| `git diff --check` | Passed |
+
+The Node suite remains non-green because 23 existing identifiers from the
+clean main baseline still fail; `Workflow Definition Registry exposes the
+current executable research set` is the baseline-only failure that now passes.
+No live provider/model E2E or external issuer lookup was run. Evidence proves
+the user-supplied-code route through the existing adapter boundary, not that a
+provider has independently verified the issuer. Semantic resolver tests use
+controlled substitutes: `MOCK_REASONING_ACCEPTED` and
+`REAL_MODEL_E2E_NOT_VERIFIED`.
+
+The fix changes only dispatch, Workflow input schemas, and dispatch tests. No
+Workflow internals, Knowledge schema, or data-resolver implementation were
+changed.
 
 ## Scope and review
 

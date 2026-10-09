@@ -15,13 +15,23 @@ async function identityKnowledgeBase(): Promise<string> {
   await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: `exec-001-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, now: NOW })
   const assets = {
     'entity:fixture-company': { type: 'entity', storageRef: 'entities/fixture-company.yaml' },
+    'entity:fixture-company-sz': { type: 'entity', storageRef: 'entities/fixture-company-sz.yaml' },
+    'entity:fixture-company-bj': { type: 'entity', storageRef: 'entities/fixture-company-bj.yaml' },
     'claim:fixture-claim': { type: 'claim', storageRef: 'claims/fixture-claim.yaml' },
     'thesis:fixture-thesis': { type: 'thesis', storageRef: 'theses/fixture-thesis.yaml' },
   }
-  await writeFile(join(root, 'entities', 'fixture-company.yaml'), JSON.stringify({ id: 'entity:fixture-company', type: 'company', name: '贵州茅台', aliases: ['茅台'], ticker: '600519', exchange: 'SSE', lifecycle: { status: 'active' } }) + '\n')
+  await writeFile(join(root, 'entities', 'fixture-company.yaml'), JSON.stringify({ id: 'entity:fixture-company', type: 'company', name: '贵州茅台', aliases: ['茅台'], ticker: '600519', exchange: 'SH', lifecycle: { status: 'active' } }) + '\n')
+  await writeFile(join(root, 'entities', 'fixture-company-sz.yaml'), JSON.stringify({ id: 'entity:fixture-company-sz', type: 'company', name: '平安银行', aliases: ['平安'], ticker: '000001', exchange: 'SZ', lifecycle: { status: 'active' } }) + '\n')
+  await writeFile(join(root, 'entities', 'fixture-company-bj.yaml'), JSON.stringify({ id: 'entity:fixture-company-bj', type: 'company', name: '北交所样例公司', aliases: ['北交所样例'], ticker: '430001', exchange: 'BJ', lifecycle: { status: 'active' } }) + '\n')
   await writeFile(join(root, 'claims', 'fixture-claim.yaml'), JSON.stringify({ id: 'claim:fixture-claim', claimType: 'fact', statement: 'Fixture canonical claim.', subjectRefs: ['entity:fixture-company'], sourceRefs: [], lifecycle: { status: 'active' } }) + '\n')
   await writeFile(join(root, 'theses', 'fixture-thesis.yaml'), JSON.stringify({ id: 'thesis:fixture-thesis', title: 'Fixture thesis', lifecycle: { status: 'active' } }) + '\n')
   await writeFile(join(root, 'registry', 'assets.yaml'), JSON.stringify(assets) + '\n')
+  return root
+}
+
+async function emptyKnowledgeBase(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-exec-001-empty-dispatch-kb-'))
+  await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: `exec-001-empty-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, now: NOW })
   return root
 }
 
@@ -271,7 +281,7 @@ test('Registered Workflow argument schemas reject unknown fields and get one bou
   assert.equal(result.decision.workflow?.arguments.period, 'H1')
 })
 
-test('Valuation current and historical dispatch use an injected clock without inventing an asOf', async () => {
+test('Valuation current and historical dispatch use injected time and Shanghai-local date cutoffs', async () => {
   const knowledgeBase = await identityKnowledgeBase()
   try {
     const inputs: Record<string, unknown>[] = []
@@ -287,11 +297,20 @@ test('Valuation current and historical dispatch use an injected clock without in
     assert.deepEqual((requests[0]!.runtimeContext as Record<string, unknown>).persistencePolicy, { writeKnowledge: false })
     const historical = await service.startAsync({ query: '请按截至2025-06-30时点估值贵州茅台', mode: { type: 'workflow', workflowId: 'valuation' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false } })
     assert.equal(historical.status, 'started')
-    assert.equal(inputs[1]!.asOf, '2025-06-30T23:59:59.999Z')
+    assert.equal(inputs[1]!.asOf, '2025-06-30T15:59:59.999Z')
     assert.equal(await historical.completion instanceof Object, true)
     const zoned = await service.startAsync({ query: '请按截至2025-06-30T15:00:00+08:00时点估值贵州茅台', mode: { type: 'workflow', workflowId: 'valuation' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false } })
     assert.equal(zoned.status, 'started')
     assert.equal(inputs[2]!.asOf, '2025-06-30T07:00:00.000Z')
+    const crossDateZone = await service.startAsync({ query: '请按截至2025-07-01T00:30:00+09:00时点估值贵州茅台', mode: { type: 'workflow', workflowId: 'valuation' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false } })
+    assert.equal(crossDateZone.status, 'started')
+    assert.equal(inputs[3]!.asOf, '2025-06-30T15:30:00.000Z')
+    const chineseDate = await service.startAsync({ query: '请按截至2025年6月30日时点估值贵州茅台', mode: { type: 'workflow', workflowId: 'valuation' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false } })
+    assert.equal(chineseDate.status, 'started')
+    assert.equal(inputs[4]!.asOf, '2025-06-30T15:59:59.999Z')
+    const yearEnd = await service.startAsync({ query: '请按截至2025年末时点估值贵州茅台', mode: { type: 'workflow', workflowId: 'valuation' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false } })
+    assert.equal(yearEnd.status, 'started')
+    assert.equal(inputs[5]!.asOf, '2025-12-31T15:59:59.999Z')
     const future = await service.startAsync({ query: '请按截至2026-10-10时点估值贵州茅台', mode: { type: 'workflow', workflowId: 'valuation' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false } })
     assert.equal(future.status, 'invalid_input')
     assert.equal(future.feedback?.status, 'INVALID_INPUT')
@@ -299,7 +318,86 @@ test('Valuation current and historical dispatch use an injected clock without in
     const invalidDate = await service.startAsync({ query: '请按截至2025-02-30时点估值贵州茅台', mode: { type: 'workflow', workflowId: 'valuation' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false } })
     assert.equal(invalidDate.status, 'invalid_input')
     assert.match(invalidDate.feedback?.reason ?? '', /valid calendar date/)
-    assert.equal(inputs.length, 3)
+    assert.equal(inputs.length, 6)
+
+    const boundaryResearch = { startValuation(input: Record<string, unknown>) { inputs.push(input); return { completion: Promise.resolve({ status: 'completed' }) } } }
+    const boundaryInput = { query: '请按截至2025-06-30时点估值贵州茅台', mode: { type: 'workflow' as const, workflowId: 'valuation' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false } }
+    const atCutoff = new ResearchDispatchService({ mountedKnowledgeBaseRoot: knowledgeBase, reasoningExecutor: semanticExecutor(output), researchService: boundaryResearch as never, clock: () => new Date('2025-06-30T15:59:59.999Z') })
+    assert.equal((await atCutoff.startAsync(boundaryInput)).status, 'invalid_input', 'a cutoff equal to Runtime time is not historical')
+    const afterCutoff = new ResearchDispatchService({ mountedKnowledgeBaseRoot: knowledgeBase, reasoningExecutor: semanticExecutor(output), researchService: boundaryResearch as never, clock: () => new Date('2025-06-30T16:00:00.000Z') })
+    const atMarketClose = await afterCutoff.startAsync(boundaryInput)
+    assert.equal(atMarketClose.status, 'started')
+    assert.equal(inputs[6]!.asOf, '2025-06-30T15:59:59.999Z')
+  } finally { await rm(knowledgeBase, { recursive: true, force: true }) }
+})
+
+test('Company Research admits an explicitly supplied A-share identity without requiring a Canonical Company or Knowledge query', async () => {
+  const knowledgeBase = await emptyKnowledgeBase()
+  try {
+    let adapterInput: Record<string, unknown> | undefined
+    const output = { mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: { symbol: '300750', name: '宁德时代', exchange: 'SZSE' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: false, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'User supplied a company ticker.' }
+    const service = new ResearchDispatchService({
+      mountedKnowledgeBaseRoot: knowledgeBase,
+      reasoningExecutor: semanticExecutor(output),
+      researchService: ({ startResearchCompany: (input: Record<string, unknown>) => { adapterInput = input; return { completion: Promise.resolve({ status: 'completed' }) } } } as never),
+    })
+    const result = await service.startAsync({
+      query: '请研究宁德时代（300750.SZ）的业务与竞争力',
+      mode: { type: 'workflow', workflowId: 'company_research' },
+      contextPolicy: { structuredKnowledge: false, sourceLibrary: true },
+      persistencePolicy: { writeKnowledge: false },
+    })
+    assert.equal(result.status, 'started')
+    assert.equal(adapterInput?.symbol, '300750')
+    assert.equal(adapterInput?.exchange, 'SZ')
+    assert.equal(adapterInput?.writeKnowledge, false)
+    assert.equal(adapterInput?.useStructuredKnowledge, false)
+    assert.equal(await result.completion instanceof Object, true)
+  } finally { await rm(knowledgeBase, { recursive: true, force: true }) }
+})
+
+test('Company Research does not trust a model-guessed ticker when the user supplied only a company name', async () => {
+  const knowledgeBase = await emptyKnowledgeBase()
+  try {
+    let starts = 0
+    const output = { mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: { symbol: '300750', name: '宁德时代' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Model-proposed company identity.' }
+    const service = new ResearchDispatchService({ mountedKnowledgeBaseRoot: knowledgeBase, reasoningExecutor: semanticExecutor(output), researchService: ({ startResearchCompany: () => { starts += 1; return { completion: Promise.resolve({ status: 'completed' }) } } } as never) })
+    const result = await service.startAsync({ query: '请研究宁德时代的业务与竞争力', mode: { type: 'workflow', workflowId: 'company_research' }, persistencePolicy: { writeKnowledge: false } })
+    assert.equal(result.status, 'unresolved_reference')
+    assert.equal(result.feedback?.status, 'UNRESOLVED_REFERENCE')
+    assert.equal(result.feedback?.workflowId, 'company_research')
+    assert.equal(starts, 0)
+  } finally { await rm(knowledgeBase, { recursive: true, force: true }) }
+})
+
+test('Canonical exchange aliases resolve consistently for existing Company Workflows and return canonical exchange values', async () => {
+  const knowledgeBase = await identityKnowledgeBase()
+  try {
+    const companies = [
+      { name: '贵州茅台', symbol: '600519', canonical: 'SH', aliases: ['SH', 'SSE'] },
+      { name: '平安银行', symbol: '000001', canonical: 'SZ', aliases: ['SZ', 'SZSE'] },
+      { name: '北交所样例公司', symbol: '430001', canonical: 'BJ', aliases: ['BJ', 'BSE'] },
+    ] as const
+    const workflows = [
+      { id: 'valuation', method: 'startValuation', extra: {} },
+      { id: 'earnings_review', method: 'startEarningsReview', extra: { fiscalYear: 2026, period: 'H1' } },
+      { id: 'event_research', method: 'startEventResearch', extra: { anchor: { kind: 'user_event', title: 'Test event', description: 'User-provided test event.' } } },
+      { id: 'thesis_red_team', method: 'startThesisRedTeam', extra: { thesisRef: 'claim:fixture-claim' } },
+    ] as const
+    for (const company of companies) {
+      for (const exchange of company.aliases) {
+        for (const workflow of workflows) {
+          let adapterInput: Record<string, unknown> | undefined
+          const output = { mode: 'workflow', workflow: { id: workflow.id, confidence: 1, arguments: { symbol: company.symbol, name: company.name, exchange, ...workflow.extra } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false }, rationale: 'Canonical company alias fixture.' }
+          const research = { [workflow.method]: (input: Record<string, unknown>) => { adapterInput = input; return { completion: Promise.resolve({ status: 'completed' }) } } }
+          const service = new ResearchDispatchService({ mountedKnowledgeBaseRoot: knowledgeBase, reasoningExecutor: semanticExecutor(output), researchService: research as never, clock: () => new Date(NOW) })
+          const result = await service.startAsync({ query: `请研究${company.name}（${company.symbol}.${exchange}）`, mode: { type: 'workflow', workflowId: workflow.id }, contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false } })
+          assert.equal(result.status, 'started', `${workflow.id} ${company.symbol}.${exchange}: ${result.feedback?.reason ?? ''}`)
+          assert.equal(result.decision.workflow?.arguments.exchange, company.canonical, `${workflow.id} decision should use canonical exchange`)
+          assert.equal(adapterInput?.exchange, company.canonical, `${workflow.id} adapter should receive canonical exchange`)
+        }
+      }
+    }
   } finally { await rm(knowledgeBase, { recursive: true, force: true }) }
 })
 

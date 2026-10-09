@@ -17,6 +17,7 @@ import type { ReasoningExecutor, ReasoningRequest } from '../../plugins/reasonin
 import { runThesisLifecycle } from '../../workflows/thesis-lifecycle/workflow.ts'
 import type { ThesisLifecycleInput } from '../../workflows/thesis-lifecycle/contracts.ts'
 import { validateWorkflowInputSchema } from './workflow-input-contract.ts'
+import { normalizeCompanyCandidateIdentity, normalizeExchange } from '../../skills/knowledge-curation/identity/company-identity.ts'
 
 export interface ResearchSessionContext {
   readonly selectedSkills: readonly LoadedResearchSkill[]
@@ -265,11 +266,11 @@ function requestedHistoricalCutoff(query: string): string | undefined {
   const match = iso ?? chinese
   if (match !== null) {
     const [, y, m, d] = match
-    const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), 23, 59, 59, 999))
+    const date = new Date(`${y}-${m!.padStart(2, '0')}-${d!.padStart(2, '0')}T23:59:59.999+08:00`)
     if (date.getUTCFullYear() !== Number(y) || date.getUTCMonth() !== Number(m) - 1 || date.getUTCDate() !== Number(d)) return undefined
     return date.toISOString()
   }
-  if (yearEnd !== null) return `${yearEnd[1]}-12-31T23:59:59.999Z`
+  if (yearEnd !== null) return new Date(`${yearEnd[1]}-12-31T23:59:59.999+08:00`).toISOString()
   return undefined
 }
 
@@ -314,6 +315,30 @@ function canonicalObjectIsActive(value: Readonly<Record<string, unknown>>, asOf:
   if (validFrom !== undefined && validFrom !== null && (typeof validFrom !== 'string' || !Number.isFinite(Date.parse(validFrom)) || Date.parse(validFrom) > Date.parse(asOf))) return false
   if (validUntil !== undefined && validUntil !== null && (typeof validUntil !== 'string' || !Number.isFinite(Date.parse(validUntil)) || Date.parse(validUntil) <= Date.parse(asOf))) return false
   return true
+}
+
+function explicitUserCompanyExchange(query: string, args: Readonly<Record<string, unknown>>): string | undefined {
+  const matches = [...query.matchAll(/(?<!\d)(\d{6})(?:\.(SSE|SH|SZSE|SZ|BSE|BJ))?(?!\d)/giu)]
+  if (matches.length === 0 || matches.some((match) => match[1] !== args.symbol)) return undefined
+  const inferredExchanges = new Set<string>()
+  for (const match of matches) {
+    const ticker = match[1]!
+    const normalized = normalizeCompanyCandidateIdentity({
+      candidateId: 'dispatch-user-provided-company',
+      entityType: 'company',
+      name: typeof args.name === 'string' ? args.name : ticker,
+      evidenceBlockRefs: [],
+      reason: 'Explicit security code supplied by the user.',
+      semanticFields: { ticker },
+    })
+    const inferred = normalized.candidate.semanticFields?.exchange
+    if (normalized.diagnostics.length > 0 || typeof inferred !== 'string') return undefined
+    const suffix = match[2]
+    if (suffix !== undefined && normalizeExchange(suffix) !== inferred) return undefined
+    if (typeof args.exchange === 'string' && normalizeExchange(args.exchange) !== inferred) return undefined
+    inferredExchanges.add(inferred)
+  }
+  return inferredExchanges.size === 1 ? [...inferredExchanges][0] : undefined
 }
 function collectCanonicalReferences(value: unknown, refs = new Set<string>()): readonly string[] {
   if (typeof value === 'string' && /^(?:entity|claim|thesis|source|observation):[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(value)) refs.add(value)
@@ -459,13 +484,13 @@ export class ResearchDispatchService {
     }
     const resolved = await this.resolveAsync(input, callerSignal)
     const verified = await this.verifyWorkflowReferences(resolved.request, resolved.decision)
-    if (verified.feedback !== undefined) return { ...resolved, status: 'unresolved_reference', feedback: verified.feedback }
+    if (verified.feedback !== undefined) return { ...resolved, status: verified.failureStatus ?? 'unresolved_reference', feedback: verified.feedback }
     const decision = verified.decision ?? resolved.decision
     const summary = this.summary(resolved.request, decision, decision.workflow === undefined ? undefined : this.workflowRegistry.get(decision.workflow.id))
     return this.startResolved({ ...resolved, decision, summary }, callerSignal, resolved.sourceLibraryHits, resolved.resolution)
   }
 
-  private async verifyWorkflowReferences(request: ResearchRequest, decision: ResearchDispatchDecision): Promise<{ readonly decision?: ResearchDispatchDecision; readonly feedback?: ResearchDispatchFeedback }> {
+  private async verifyWorkflowReferences(request: ResearchRequest, decision: ResearchDispatchDecision): Promise<{ readonly decision?: ResearchDispatchDecision; readonly feedback?: ResearchDispatchFeedback; readonly failureStatus?: 'invalid_input' }> {
     if (decision.mode !== 'workflow' || decision.workflow === undefined) return {}
     const definition = this.workflowRegistry.get(decision.workflow.id)
     if (definition === undefined) return {}
@@ -475,49 +500,68 @@ export class ResearchDispatchService {
     const referenceCandidates = collectCanonicalReferences(args)
     const hasCompany = Object.hasOwn(inputProperties(definition), 'symbol')
     if (!hasCompany && referenceCandidates.length === 0) return {}
-    if (!request.contextPolicy.structuredKnowledge) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, args, 'This Workflow requires trusted Knowledge context to verify the company or canonical references, but structured Knowledge access is disabled.') }
-    if (this.options.mountedKnowledgeBaseRoot === undefined) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, args, 'No mounted Knowledge Base is available to verify the requested company or canonical references.') }
+    const companyResearch = definition.id === 'company_research'
+    const normalizedArgs: Record<string, unknown> = { ...args }
+    if (typeof args.exchange === 'string') normalizedArgs.exchange = normalizeExchange(args.exchange)
+    const userProvidedExchange = companyResearch && referenceCandidates.length === 0 ? explicitUserCompanyExchange(request.query, normalizedArgs) : undefined
+    if (companyResearch && userProvidedExchange !== undefined) normalizedArgs.exchange = userProvidedExchange
+    const finalizeArguments = (candidateArgs: Readonly<Record<string, unknown>>) => {
+      const finalValidation = validateWorkflowInputSchema(definition.inputSchema, candidateArgs)
+      if (!finalValidation.valid) return { feedback: feedbackFor('INVALID_INPUT', definition, candidateArgs, finalValidation.errors.join('; ')), failureStatus: 'invalid_input' as const }
+      return { decision: validateResearchDispatchDecision({ ...decision, workflow: { ...decision.workflow!, arguments: candidateArgs }, missingRequiredInputs: normalizedMissingFields(definition, candidateArgs) }) }
+    }
+    if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined && !request.contextPolicy.structuredKnowledge) return finalizeArguments(normalizedArgs)
+    if (!request.contextPolicy.structuredKnowledge) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, 'This Workflow requires trusted Knowledge context to verify the company or canonical references, but structured Knowledge access is disabled.') }
+    if (this.options.mountedKnowledgeBaseRoot === undefined) {
+      if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined) return finalizeArguments(normalizedArgs)
+      return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, 'No mounted Knowledge Base is available to verify the requested company or canonical references.') }
+    }
     let assets: Awaited<ReturnType<typeof readCanonicalV04Assets>>
     try {
       const handle = await new KnowledgeBaseRegistry().mount(this.options.mountedKnowledgeBaseRoot)
-      if (handle.schemaVersion !== '0.4') return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, args, 'Trusted dispatch identity checks currently require a mounted Schema 0.4 Knowledge Base.') }
+      if (handle.schemaVersion !== '0.4') {
+        if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined) return finalizeArguments(normalizedArgs)
+        return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, 'Trusted dispatch identity checks currently require a mounted Schema 0.4 Knowledge Base.') }
+      }
       assets = await readCanonicalV04Assets(handle.rootRef)
     } catch (error) {
-      return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, args, `Mounted Knowledge could not be read for verification (${error instanceof Error ? error.name : 'read failed'}).`) }
+      if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined) return finalizeArguments(normalizedArgs)
+      return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, `Mounted Knowledge could not be read for verification (${error instanceof Error ? error.name : 'read failed'}).`) }
     }
     const objects = assets.objects.map((item) => item.value as unknown as Record<string, unknown>)
     const byId = new Map(objects.filter((item) => typeof item.id === 'string').map((item) => [item.id as string, item]))
     const identityAsOf = this.runtimeTimestamp()
     if (hasCompany) {
-      const symbol = typeof args.symbol === 'string' ? args.symbol : undefined
-      const name = typeof args.name === 'string' ? args.name.trim().toLocaleLowerCase() : undefined
+      const symbol = typeof normalizedArgs.symbol === 'string' ? normalizedArgs.symbol : undefined
+      const name = typeof normalizedArgs.name === 'string' ? normalizedArgs.name.trim().toLocaleLowerCase() : undefined
       const query = request.query.toLocaleLowerCase()
       const companies = objects.filter((item) => item.type === 'company' && canonicalObjectIsActive(item, identityAsOf))
       const mentionedCompanies = companies.filter((item) => [item.name, ...(Array.isArray(item.aliases) ? item.aliases : [])].some((candidate) => typeof candidate === 'string' && candidate.trim().length > 1 && query.includes(candidate.trim().toLocaleLowerCase())))
       const companyMatches = companies
-        .filter((item) => (symbol === undefined || item.ticker === symbol) && (args.exchange === undefined || item.exchange === args.exchange))
+        .filter((item) => (symbol === undefined || item.ticker === symbol) && (normalizedArgs.exchange === undefined || (typeof item.exchange === 'string' && normalizeExchange(item.exchange) === normalizedArgs.exchange)))
         .filter((item) => {
           const names = [item.name, ...(Array.isArray(item.aliases) ? item.aliases : [])].filter((value): value is string => typeof value === 'string').map((value) => value.trim().toLocaleLowerCase())
           return (name === undefined ? symbol !== undefined : names.includes(name)) && (mentionedCompanies.length === 0 || mentionedCompanies.some((mentioned) => mentioned.id === item.id))
         })
       if (companyMatches.length !== 1) {
+        if (companyResearch && userProvidedExchange !== undefined && companyMatches.length === 0 && mentionedCompanies.length === 0 && !companies.some((item) => item.ticker === symbol)) return finalizeArguments(normalizedArgs)
         const reason = companyMatches.length > 1 ? 'Company identity is ambiguous in canonical Knowledge.' : 'Company name or symbol has no exact canonical Company identity match.'
-        return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, args, reason, ['symbol']) }
+        return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, reason, ['symbol']) }
       }
       const company = companyMatches[0]!
       const canonicalName = typeof company.name === 'string' ? company.name : undefined
-      const verifiedArgs = { ...args, symbol: company.ticker, ...(canonicalName === undefined ? {} : { name: canonicalName }), ...(typeof company.exchange === 'string' ? { exchange: company.exchange } : {}) }
+      const verifiedArgs = { ...normalizedArgs, symbol: company.ticker, ...(canonicalName === undefined ? {} : { name: canonicalName }), ...(typeof company.exchange === 'string' ? { exchange: normalizeExchange(company.exchange) } : {}) }
       const badRefs = referenceCandidates.filter((ref) => byId.get(ref) === undefined)
       if (badRefs.length > 0) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, verifiedArgs, `Canonical reference not found: ${badRefs.join(', ')}`) }
       const inactiveRefs = referenceCandidates.filter((ref) => !canonicalObjectIsActive(byId.get(ref)!, identityAsOf))
       if (inactiveRefs.length > 0) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, verifiedArgs, `Canonical reference is inactive or outside its lifecycle window: ${inactiveRefs.join(', ')}`, inactiveRefs) }
-      return { decision: validateResearchDispatchDecision({ ...decision, workflow: { ...decision.workflow, arguments: verifiedArgs }, missingRequiredInputs: normalizedMissingFields(definition, verifiedArgs) }) }
+      return finalizeArguments(verifiedArgs)
     }
     const badRefs = referenceCandidates.filter((ref) => byId.get(ref) === undefined)
     if (badRefs.length > 0) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, args, `Canonical reference not found: ${badRefs.join(', ')}`, badRefs) }
     const inactiveRefs = referenceCandidates.filter((ref) => !canonicalObjectIsActive(byId.get(ref)!, identityAsOf))
     if (inactiveRefs.length > 0) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, args, `Canonical reference is inactive or outside its lifecycle window: ${inactiveRefs.join(', ')}`, inactiveRefs) }
-    return {}
+    return finalizeArguments(normalizedArgs)
   }
 
   private startResolved(resolved: { readonly request: ResearchRequest; readonly decision: ResearchDispatchDecision; readonly summary: ResearchExecutionSummary }, callerSignal: AbortSignal | undefined, sourceLibraryHits: readonly SourceLibraryHit[], resolution: ResearchDispatchResolution): ResearchDispatchStart {
