@@ -19,7 +19,7 @@ export function DataSourcesPage({ client }: Props): ReactElement {
   const [integrations, setIntegrations] = useState<readonly DataSourceIntegrationView[]>([])
   const [drafts, setDrafts] = useState<readonly DataSourceOnboardingDraft[]>([])
   const [tab, setTab] = useState<Tab>('policies')
-  const [catalogKind, setCatalogKind] = useState<CatalogKind>('common')
+  const [catalogKind, setCatalogKind] = useState<CatalogKind>('industry')
   const [catalogQuery, setCatalogQuery] = useState('')
   const [commonKindFilter, setCommonKindFilter] = useState('')
   const [commonConsumerFilter, setCommonConsumerFilter] = useState('')

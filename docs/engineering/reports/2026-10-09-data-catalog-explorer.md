@@ -202,3 +202,28 @@ production acceptance.
 The Node suite remains baseline-limited and exits nonzero on its 24 existing
 failures. The root Phase 4 branch is pushed separately from `main`; the final
 root and remote SHA are recorded in the integration delivery response.
+
+## Industry catalog first-view correction — 2026-10-09
+
+The root service contained the Industry projection, but `/sources` initially
+selected the Common catalog. The first view now selects Industry so the
+industry-specific definitions are visible on entry; Common remains available
+as a sibling catalog tab. This changes only the initial view and does not
+promote lifecycle states or invent SourcePolicy mappings.
+
+Fresh root-runtime verification at `http://127.0.0.1:54862/sources` returned
+21 Common definitions, 2 Industry identities, 5 Industry definitions, and 0
+Canonical definitions. The rendered page opened with Industry selected and
+showed all five audited definitions, each still `DISCOVERED`, with unmapped
+consumers and no executable source fallback. The former ambient browser URL
+on port 57815 was not listening; the root checkout service was launched on
+its actual dynamically assigned port.
+
+| Validation | Result |
+| --- | --- |
+| DataSourcesPage focused tests | 24/24 passed |
+| Full client suite | 115/115 passed |
+| Client typecheck | Passed |
+| Client build | Passed; existing 643.06 kB bundle advisory remains |
+| Root Application Runtime catalog routes | 21 Common / 5 Industry / 0 Canonical |
+| Rendered root `/sources` | Industry selected; five Industry rows visible |

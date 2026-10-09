@@ -45,6 +45,9 @@ describe('DataSourcesPage', () => {
     expect(screen.queryByRole('tab', { name: '数据字段' })).toBeNull()
     expect(await screen.findByRole('tab', { name: '通用字段' })).toBeTruthy()
     expect(screen.getByRole('tab', { name: '行业字段' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: '行业字段' }).getAttribute('aria-selected')).toBe('true')
+    expect(await screen.findByRole('table', { name: '行业字段来源策略' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'battery_output' })).toBeTruthy()
     expect(client.getDataSourceCatalog).not.toHaveBeenCalled()
     window.localStorage.setItem('researchhub.language', 'en')
     cleanup()
@@ -53,6 +56,8 @@ describe('DataSourcesPage', () => {
     expect(screen.queryByRole('tab', { name: 'Data Fields' })).toBeNull()
     expect(screen.getByRole('tab', { name: 'Common fields' })).toBeTruthy()
     expect(screen.getByRole('tab', { name: 'Industry fields' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'Industry fields' }).getAttribute('aria-selected')).toBe('true')
+    expect(await screen.findByRole('table', { name: 'Industry field source policies' })).toBeTruthy()
   })
 
   it('uses the same seven headers for Common and Industry and labels the ID Field ID', async () => {
@@ -80,6 +85,7 @@ describe('DataSourcesPage', () => {
     ] }], definitionCount: 1 }
     const legacyPolicies = vi.fn().mockResolvedValue({ rows: [{ metricId: 'revenue', finalFallback: '公网搜索' }], coverageComplete: true })
     const client = setup({ getCommonDataCatalog: vi.fn().mockResolvedValue(projection), getDataSourceCatalog: legacyPolicies })
+    fireEvent.click(await screen.findByRole('tab', { name: '通用字段' }))
     const rows = Array.from((await screen.findByRole('table')).querySelectorAll('tbody tr'))
     expect(rows).toHaveLength(2)
     const values = rows.map((row) => Array.from(row.querySelectorAll('th, td')).map((cell) => cell.textContent?.trim()))
@@ -116,6 +122,7 @@ describe('DataSourcesPage', () => {
   it('searches and filters Common definitions', async () => {
     setup()
     fireEvent.click(await screen.findByRole('tab', { name: '来源策略' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '通用字段' }))
     expect(await screen.findByRole('button', { name: /^revenue$/ })).toBeTruthy()
     fireEvent.change(screen.getByRole('textbox', { name: '搜索字段' }), { target: { value: 'revenue' } })
     expect(screen.getByRole('button', { name: /^revenue$/ })).toBeTruthy()
@@ -167,6 +174,7 @@ describe('DataSourcesPage', () => {
   it('separates policy configuration from adapter and test state', async () => {
     setup()
     fireEvent.click(await screen.findByRole('tab', { name: '来源策略' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '通用字段' }))
     fireEvent.click(await screen.findByRole('button', { name: /^revenue$/ }))
     expect(screen.getAllByText('已配置').length).toBeGreaterThan(0)
     expect(screen.getByText('状态未知')).toBeTruthy()
@@ -176,6 +184,7 @@ describe('DataSourcesPage', () => {
     cleanup()
     setup()
     fireEvent.click(await screen.findByRole('tab', { name: 'Source policies' }))
+    fireEvent.click(await screen.findByRole('tab', { name: 'Common fields' }))
     fireEvent.click(await screen.findByRole('button', { name: /^revenue$/ }))
     expect(within(screen.getByRole('complementary', { name: 'Field details' })).getAllByText('Configured').length).toBeGreaterThan(0)
     expect(screen.getByText('Unknown')).toBeTruthy()
@@ -186,12 +195,14 @@ describe('DataSourcesPage', () => {
   it('renders unknown adapter status in Chinese and English', async () => {
     setup()
     fireEvent.click(await screen.findByRole('tab', { name: '来源策略' }))
+    fireEvent.click(await screen.findByRole('tab', { name: '通用字段' }))
     fireEvent.click(await screen.findByRole('button', { name: /^revenue$/ }))
     expect(screen.getByText('状态未知')).toBeTruthy()
     window.localStorage.setItem('researchhub.language', 'en')
     cleanup()
     setup()
     fireEvent.click(await screen.findByRole('tab', { name: 'Source policies' }))
+    fireEvent.click(await screen.findByRole('tab', { name: 'Common fields' }))
     fireEvent.click(await screen.findByRole('button', { name: /^revenue$/ }))
     expect(screen.getByText('Unknown')).toBeTruthy()
   })
@@ -292,6 +303,7 @@ describe('DataSourcesPage', () => {
 
   it('keeps source policies, integrations, and onboarding in separate tabs', async () => {
     setup()
+    fireEvent.click(await screen.findByRole('tab', { name: '通用字段' }))
     await screen.findByRole('button', { name: /^revenue$/ })
     expect(screen.getByRole('tab', { name: '来源策略' })).toBeTruthy()
     fireEvent.click(screen.getByRole('tab', { name: '已配置集成' }))
