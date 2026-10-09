@@ -1,8 +1,14 @@
-import { ApplicationServiceError, type TerminalWorkflowStatus, type WorkflowCancelResult, type WorkflowRunView, type WorkflowStatus } from './contracts.ts'
+import { ApplicationServiceError, type TerminalWorkflowStatus, type WorkflowCancelResult, type WorkflowExecutionResultProjection, type WorkflowRunView, type WorkflowStatus } from './contracts.ts'
 
 interface RunRecord extends WorkflowRunView { readonly controller?: AbortController; readonly terminal: boolean }
 const TERMINAL = new Set<WorkflowStatus>(['completed', 'completed_with_review', 'blocked', 'cancelled', 'failed'])
 function now(): string { return new Date().toISOString() }
+function safeFailureSummary(error: unknown): string {
+  const message = error instanceof ApplicationServiceError && error.code === 'cancelled' ? error.message : error instanceof Error ? error.message : String(error)
+  const firstLine = message.split(/\r?\n/u, 1)[0]?.trim() ?? ''
+  if (/(?:[A-Za-z]:\\|\\\\|\/(?:Users|home|private|var|tmp)\/|\bBearer\s+\S+|(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|secret|authorization)\s*[:=]\s*\S+)/iu.test(firstLine)) return 'Workflow execution failed; sensitive details were omitted.'
+  return (firstLine || 'Workflow failed').slice(0, 500)
+}
 
 export interface WorkflowRegistration { readonly runId: string; readonly workflowType: string; readonly objective: string }
 export interface WorkflowOutcome { readonly status: TerminalWorkflowStatus; readonly summary?: string; readonly reviewCount?: number; readonly errorSummary?: string }
@@ -63,11 +69,23 @@ export class WorkflowService {
   markFailure(runId: string, error: unknown): WorkflowRunView {
     const current = this.require(runId)
     if (current.terminal) return this.view(current)
-    const timestamp = now(); const message = error instanceof ApplicationServiceError && error.code === 'cancelled' ? error.message : error instanceof Error ? error.message : String(error)
+    const timestamp = now(); const message = safeFailureSummary(error)
     const next: RunRecord = { ...current, status: 'failed', updatedAt: timestamp, completedAt: timestamp, terminal: true, errorSummary: message.slice(0, 500), progressSummary: 'Workflow failed' }
     this.runs.set(runId, next); return this.view(next)
   }
   getWorkflowStatus(runId: string): WorkflowRunView | undefined { const value = this.runs.get(runId); return value === undefined ? undefined : this.view(value) }
+  /** Attaches the safe ResearchDispatch result projection to the authoritative in-memory run record. */
+  setExecutionResult(runId: string, result: WorkflowExecutionResultProjection): WorkflowRunView {
+    if (result.runId !== runId || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(result.workflowId)) throw new ApplicationServiceError('invalid_input', 'Execution result identity does not match its Workflow run')
+    const current = this.require(runId)
+    const terminalStatus = TERMINAL.has(current.status) ? current.status as TerminalWorkflowStatus : undefined
+    const executionResult: WorkflowExecutionResultProjection = current.status === 'cancelled'
+      ? { runId, workflowId: result.workflowId, executionStatus: 'cancelled', terminalStatus: 'cancelled', summary: 'Workflow was cancelled.', ...(result.bundleRef !== undefined && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(result.bundleRef) ? { bundleRef: result.bundleRef } : {}), diagnostics: [], bundleStatus: result.bundleStatus }
+      : { ...result, executionStatus: current.status, ...(terminalStatus === undefined ? { terminalStatus: undefined } : { terminalStatus }) }
+    const next = { ...current, executionResult, updatedAt: now() }
+    this.runs.set(runId, next)
+    return this.view(next)
+  }
   /** Includes pending runs so Runtime configuration cannot change between registration and execution. */
   hasActiveRuns(): boolean { return [...this.runs.values()].some((record) => !record.terminal) }
   cancelWorkflow(runId: string): WorkflowCancelResult {

@@ -6,7 +6,7 @@ import { ApplicationServiceError } from './contracts.ts'
 import { createResearchSkillRegistry, loadResearchSkillMethodology, type LoadedResearchSkill, type ResearchSkillDefinition, type ResearchSkillRegistry } from './skill-registry.ts'
 import { createWorkflowDefinitionRegistry, type WorkflowDefinition, type WorkflowDefinitionRegistry } from './workflow-registry.ts'
 import { normalizeResearchRequest, validateResearchDispatchDecision, type ResearchDispatchDecision, type ResearchExecutionSummary, type ResearchRequest } from './research-dispatch-contracts.ts'
-import type { EventAnchor, EarningsReviewPeriod, ValuationMethod } from './contracts.ts'
+import type { EventAnchor, EarningsReviewPeriod, ValuationMethod, WorkflowRunView } from './contracts.ts'
 import type { ResearchBundle, ResearchBundleStore, ResearchSessionResult } from './research-bundle.ts'
 import { createResearchBundle } from './research-bundle.ts'
 import type { SourceLibraryService, SourceLibraryHit } from './source-library.ts'
@@ -18,6 +18,8 @@ import { runThesisLifecycle } from '../../workflows/thesis-lifecycle/workflow.ts
 import type { ThesisLifecycleInput } from '../../workflows/thesis-lifecycle/contracts.ts'
 import { validateWorkflowInputSchema } from './workflow-input-contract.ts'
 import { normalizeCompanyCandidateIdentity, normalizeExchange } from '../../skills/knowledge-curation/identity/company-identity.ts'
+import { projectResearchExecutionResult } from './research-execution-result.ts'
+import type { ReviewService } from './review-service.ts'
 
 export interface ResearchSessionContext {
   readonly selectedSkills: readonly LoadedResearchSkill[]
@@ -37,9 +39,9 @@ export interface ResearchDispatchStart {
   readonly request: ResearchRequest
   readonly decision: ResearchDispatchDecision
   readonly summary: ResearchExecutionSummary
-  readonly status: 'started' | 'needs_input' | 'invalid_input' | 'unresolved_reference' | 'free_research' | 'skill_plan'
+  readonly status: 'started' | 'needs_input' | 'invalid_input' | 'unresolved_reference' | 'executor_unavailable' | 'free_research' | 'skill_plan'
   readonly runId?: string
-  readonly workflow?: unknown
+  readonly workflow?: WorkflowRunView
   readonly completion?: Promise<unknown>
   readonly sourceLibraryHits?: readonly SourceLibraryHit[]
   readonly resolution?: ResearchDispatchResolution
@@ -47,7 +49,7 @@ export interface ResearchDispatchStart {
 }
 
 export interface ResearchDispatchFeedback {
-  readonly status: 'NEEDS_INPUT' | 'INVALID_INPUT' | 'UNRESOLVED_REFERENCE'
+  readonly status: 'NEEDS_INPUT' | 'INVALID_INPUT' | 'UNRESOLVED_REFERENCE' | 'EXECUTOR_UNAVAILABLE'
   readonly workflowId: string
   readonly missingFields: readonly string[]
   readonly validatedArguments: Readonly<Record<string, unknown>>
@@ -61,15 +63,29 @@ export interface ResearchDispatchResolution {
   readonly diagnostics: readonly string[]
 }
 
+export interface WorkflowExecutionBindingContext {
+  readonly workflowId: string
+  readonly args: Readonly<Record<string, unknown>>
+  readonly runId: string
+  readonly callerSignal?: AbortSignal
+  readonly writeKnowledge: boolean
+  readonly useStructuredKnowledge: boolean
+  readonly sourceLibraryHits: readonly SourceLibraryHit[]
+}
+export type WorkflowExecutionBinding = (context: WorkflowExecutionBindingContext) => Promise<unknown>
+
 export interface ResearchDispatchServiceOptions {
   readonly researchService?: ResearchService
   readonly dailyIntelligenceService?: DailyIntelligenceService
   readonly workflowRegistry?: WorkflowDefinitionRegistry
   readonly skillRegistry?: ResearchSkillRegistry
   readonly workflowService?: WorkflowService
+  readonly reviewService?: Pick<ReviewService, 'getReviewCase'>
   readonly bundleStore?: ResearchBundleStore
   readonly sourceLibraryService?: SourceLibraryService
   readonly themeFrameworkService?: ThemeFrameworkService
+  /** Explicit execution seams for test-only registry entries; production IDs use the built-in bindings. */
+  readonly executionBindings?: ReadonlyMap<string, WorkflowExecutionBinding>
   readonly mountedKnowledgeBaseRoot?: string
   readonly reasoningExecutor?: ReasoningExecutor
   readonly clock?: () => Date
@@ -297,6 +313,8 @@ function feedbackFor(status: ResearchDispatchFeedback['status'], definition: Wor
   const fieldText = missingFields.map((field) => labels[field] ?? field).join('、')
   const suggestedQuestion = status === 'UNRESOLVED_REFERENCE'
     ? '请提供已有知识库中可核验的规范引用，或先启用对应知识库上下文。'
+    : status === 'EXECUTOR_UNAVAILABLE'
+      ? '该 Workflow 当前没有可用的执行服务，请稍后重试或联系维护者。'
     : fieldText === ''
       ? '请检查输入并补充可验证的信息。'
       : `请补充${fieldText}。`
@@ -368,9 +386,68 @@ export class ResearchDispatchService {
   readonly workflowRegistry: WorkflowDefinitionRegistry
   readonly skillRegistry: ResearchSkillRegistry
   private readonly pendingBundleWrites = new Map<string, Promise<void>>()
+  private readonly executionBindings: ReadonlyMap<string, WorkflowExecutionBinding>
   constructor(private readonly options: ResearchDispatchServiceOptions = {}) {
     this.workflowRegistry = options.workflowRegistry ?? createWorkflowDefinitionRegistry()
     this.skillRegistry = options.skillRegistry ?? createResearchSkillRegistry()
+    const bindings = new Map<string, WorkflowExecutionBinding>([
+      ['company_research', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
+        const service = this.options.researchService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Company Research execution service is not configured')
+        return service.startResearchCompany({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
+      }],
+      ['industry_research', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
+        const service = this.options.researchService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Industry Research execution service is not configured')
+        return service.startIndustryResearch({ workflowRunId: runId, name: args.name as string, aliases: args.aliases as readonly string[] | undefined, asOf: args.asOf as string | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
+      }],
+      ['earnings_review', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
+        const service = this.options.researchService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Earnings Review execution service is not configured')
+        return service.startEarningsReview({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, fiscalYear: args.fiscalYear as number, period: args.period as EarningsReviewPeriod, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
+      }],
+      ['valuation', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
+        const service = this.options.researchService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Valuation execution service is not configured')
+        return service.startValuation({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, methods: args.methods as readonly ValuationMethod[] | undefined, targetFiscalYear: args.targetFiscalYear as number | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
+      }],
+      ['event_research', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
+        const service = this.options.researchService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Event Research execution service is not configured')
+        return service.startEventResearch({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, anchor: args.anchor as EventAnchor, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
+      }],
+      ['thesis_red_team', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
+        const service = this.options.researchService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Thesis Red Team execution service is not configured')
+        return service.startThesisRedTeam({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, thesisRef: args.thesisRef as string, lookbackDays: args.lookbackDays as number | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
+      }],
+      ['daily_intelligence', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
+        const service = this.options.dailyIntelligenceService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Daily Intelligence execution service is not configured')
+        return service.startBrief({ workflowRunId: runId, briefType: args.briefType as 'morning' | 'evening', tradeDate: args.tradeDate as string, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
+      }],
+      ['theme_framework', ({ args, runId, callerSignal }) => {
+        const service = this.options.themeFrameworkService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Theme Framework execution service is not configured')
+        const started = service.start({ workflowRunId: runId, name: args.name as string, ...(typeof args.definition === 'string' ? { definition: args.definition } : {}) }, callerSignal)
+        // Keep construction internals private; dispatch results use the same safe candidate projection as the API.
+        return started.completion.then(() => service.getReviewCandidate(runId))
+      }],
+      ['thesis_lifecycle', ({ args, runId, callerSignal }) => {
+        const service = this.options.workflowService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Workflow status service is not configured for Thesis Lifecycle')
+        service.register({ runId, workflowType: 'thesis_lifecycle', objective: `Thesis Lifecycle ${String(args.mode ?? 'research')}` })
+        const onAbort = () => { try { service.cancelWorkflow(runId) } catch { /* the run may already be terminal */ } }
+        callerSignal?.addEventListener('abort', onAbort, { once: true })
+        const completion = service.start(runId, async (signal) => {
+          if (signal.aborted || callerSignal?.aborted) throw new ApplicationServiceError('cancelled', `Thesis Lifecycle cancelled: ${runId}`)
+          return runThesisLifecycle(args as unknown as ThesisLifecycleInput)
+        })
+        return completion.finally(() => callerSignal?.removeEventListener('abort', onAbort))
+      }],
+    ])
+    for (const [workflowId, binding] of options.executionBindings ?? []) bindings.set(workflowId, binding)
+    this.executionBindings = bindings
   }
 
   listWorkflowDefinitions(): readonly WorkflowDefinition[] { return this.workflowRegistry.list() }
@@ -405,7 +482,8 @@ export class ResearchDispatchService {
     if (decision.mode !== 'workflow' || decision.workflow === undefined) return decision
     const definition = this.workflowRegistry.get(decision.workflow.id)
     if (definition === undefined) return decision
-    const args: Record<string, unknown> = { ...decision.workflow.arguments }
+    const prior = request.workflowArgumentContext?.workflowId === decision.workflow.id ? request.workflowArgumentContext.arguments : undefined
+    const args: Record<string, unknown> = { ...(prior ?? {}), ...decision.workflow.arguments }
     const properties = inputProperties(definition)
     const cutoff = requestedHistoricalCutoff(request.query)
     if (Object.hasOwn(properties, 'asOf')) {
@@ -588,24 +666,51 @@ export class ResearchDispatchService {
     if (workflow === undefined) throw new ApplicationServiceError('failed', 'Validated workflow decision did not include a workflow')
     const definition = this.workflowRegistry.get(workflow.id)
     if (definition === undefined) throw new ApplicationServiceError('not_found', `Workflow definition not found: ${workflow.id}`)
+    if (!this.executionBindings.has(definition.id) || this.options.workflowService === undefined) {
+      const reason = !this.executionBindings.has(definition.id)
+        ? `Workflow ${definition.id} is registered but has no execution binding.`
+        : 'Workflow status tracking is not configured for this runtime.'
+      const feedback = feedbackFor('EXECUTOR_UNAVAILABLE', definition, workflow.arguments, reason)
+      return { ...resolved, status: 'executor_unavailable', feedback, sourceLibraryHits, resolution }
+    }
     let started: Promise<unknown>
     const runId = randomUUID()
     try {
-      started = this.startWorkflow(definition.id, workflow.arguments, runId, callerSignal, resolved.request.persistencePolicy.writeKnowledge, resolved.request.contextPolicy.structuredKnowledge, sourceLibraryHits)
+      started = this.startWorkflow({ workflowId: definition.id, args: workflow.arguments, runId, ...(callerSignal === undefined ? {} : { callerSignal }), writeKnowledge: resolved.request.persistencePolicy.writeKnowledge, useStructuredKnowledge: resolved.request.contextPolicy.structuredKnowledge, sourceLibraryHits })
     } catch (error) {
-      if (error instanceof ApplicationServiceError && error.code === 'not_found' && error.message.includes('no adapter')) {
-        const feedback = feedbackFor('INVALID_INPUT', definition, workflow.arguments, `Workflow ${definition.id} is registered but has no execution adapter.`)
-        return { ...resolved, status: 'invalid_input', feedback, sourceLibraryHits, resolution }
+      if (error instanceof ApplicationServiceError && error.code === 'executor_unavailable') {
+        const feedback = feedbackFor('EXECUTOR_UNAVAILABLE', definition, workflow.arguments, error.message)
+        return { ...resolved, status: 'executor_unavailable', feedback, sourceLibraryHits, resolution }
       }
-      throw error
+      const existing = this.options.workflowService.getWorkflowStatus(runId)
+      if (existing === undefined) {
+        this.options.workflowService.register({ runId, workflowType: definition.id, objective: definition.label })
+        this.options.workflowService.markFailure(runId, 'Workflow failed during execution startup.')
+      }
+      started = Promise.reject(error)
     }
-    const completion = started.then(async (result) => { await this.persistBundle(resolved.request, decision, resolved.summary, runId, result, sourceLibraryHits); return result })
+    const workflowView = this.options.workflowService.getWorkflowStatus(runId)
+    if (workflowView !== undefined) {
+      this.options.workflowService.setExecutionResult(runId, projectResearchExecutionResult({ workflowId: definition.id, workflow: workflowView, bundleStatus: this.options.bundleStore === undefined ? 'unavailable' : 'pending' }))
+    }
+    const completion = started.then(async (result) => {
+      await this.persistDispatchResult(resolved.request, decision, resolved.summary, definition.id, runId, result, sourceLibraryHits)
+      return result
+    }, async (error) => {
+      await this.persistDispatchFailure(resolved.request, decision, resolved.summary, definition.id, runId, error, sourceLibraryHits)
+      throw error
+    })
     completion.catch(() => undefined)
-    return { ...resolved, status: 'started', runId, sourceLibraryHits, resolution, ...(this.options.workflowService?.getWorkflowStatus(runId) === undefined ? {} : { workflow: this.options.workflowService.getWorkflowStatus(runId) }), completion }
+    return { ...resolved, status: 'started', runId, sourceLibraryHits, resolution, ...(this.options.workflowService.getWorkflowStatus(runId) === undefined ? {} : { workflow: this.options.workflowService.getWorkflowStatus(runId) }), completion }
   }
 
   async getBundle(bundleId: string): Promise<ResearchBundle | undefined> { return this.options.bundleStore?.get(bundleId) }
   async listBundles(limit?: number): Promise<readonly ResearchBundle[]> { return this.options.bundleStore?.list(limit) ?? [] }
+  async getBundleForRun(runId: string): Promise<ResearchBundle | undefined> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(runId)) throw new ApplicationServiceError('invalid_input', 'runId is invalid')
+    await this.pendingBundleWrites.get(runId)
+    return this.getBundle(`research-bundle-${runId}`)
+  }
 
   async getSessionResearchContext(runId: string): Promise<ResearchSessionContext | undefined> {
     await this.pendingBundleWrites.get(runId)
@@ -696,6 +801,84 @@ export class ResearchDispatchService {
     return { decision: prepared, resolution: { source: 'deterministic_fallback', attempts: 2, diagnostics: [...diagnostics, 'semantic_resolution_fallback'] } }
   }
 
+  private reportIdFromResult(result: unknown): string | undefined {
+    if (typeof result !== 'object' || result === null || Array.isArray(result)) return undefined
+    const value = result as Record<string, unknown>
+    const nested = typeof value.report === 'object' && value.report !== null && !Array.isArray(value.report) ? value.report as Record<string, unknown> : undefined
+    const brief = typeof value.brief === 'object' && value.brief !== null && !Array.isArray(value.brief) ? value.brief as Record<string, unknown> : undefined
+    const candidate = [nested?.reportId, value.reportId, brief?.reportId].find((item): item is string => typeof item === 'string')
+    return candidate !== undefined && /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/.test(candidate) ? candidate : undefined
+  }
+
+  private async verifiedReportId(result: unknown, workflowRunId: string): Promise<string | undefined> {
+    const reportId = this.reportIdFromResult(result)
+    if (reportId === undefined) return undefined
+    try {
+      const report = await this.options.researchService?.getResearchReport(reportId)
+      if (report !== undefined && report.workflowRunId === workflowRunId) return reportId
+    } catch { /* an unresolvable report is not exposed as an artifact link */ }
+    try {
+      const brief = await this.options.dailyIntelligenceService?.getBrief(reportId)
+      if (brief !== undefined && brief.workflowRunId === workflowRunId) return reportId
+    } catch { /* keep missing and unreadable report references out of the public projection */ }
+    return undefined
+  }
+
+  private async verifiedReviewCaseId(result: unknown, workflowRunId: string): Promise<string | undefined> {
+    if (typeof result !== 'object' || result === null || Array.isArray(result)) return undefined
+    const candidate = (result as Record<string, unknown>).reviewCaseId
+    if (typeof candidate !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/.test(candidate) || !this.options.reviewService) return undefined
+    try {
+      const reviewCase = await this.options.reviewService.getReviewCase(candidate)
+      return reviewCase.producerRunId === workflowRunId && reviewCase.reviewCaseId === candidate ? candidate : undefined
+    } catch { return undefined }
+  }
+
+  private async persistDispatchResult(request: ResearchRequest, decision: ResearchDispatchDecision, summary: ResearchExecutionSummary, workflowId: string, workflowRunId: string, result: unknown, sourceLibraryHits: readonly SourceLibraryHit[]): Promise<void> {
+    const workflowService = this.options.workflowService
+    if (workflowService === undefined) return
+    const workflow = workflowService.getWorkflowStatus(workflowRunId)
+    if (workflow === undefined) return
+    const cancelled = workflow.status === 'cancelled'
+    const effectiveResult = cancelled ? { status: 'cancelled', workflowRunId, summary: 'Workflow was cancelled.' } : result
+    const reportRef = cancelled ? undefined : await this.verifiedReportId(effectiveResult, workflowRunId)
+    const reviewRef = cancelled ? undefined : await this.verifiedReviewCaseId(effectiveResult, workflowRunId)
+    const bundleId = `research-bundle-${workflowRunId}`
+    let executionResult = projectResearchExecutionResult({ workflowId, workflow, domainResult: effectiveResult, bundleStatus: this.options.bundleStore === undefined ? 'unavailable' : 'available', ...(this.options.bundleStore === undefined ? {} : { bundleRef: bundleId }), ...(reportRef === undefined ? {} : { verifiedReportId: reportRef }), ...(reviewRef === undefined ? {} : { verifiedReviewCaseId: reviewRef }) })
+    if (this.options.bundleStore !== undefined) {
+      try {
+        await this.options.bundleStore.put(createResearchBundle({ request, decision, summary, workflowRunId, result: effectiveResult, executionResult, ...(reportRef === undefined ? {} : { verifiedReportId: reportRef }), sourceLibraryHits }))
+      } catch {
+        executionResult = projectResearchExecutionResult({ workflowId, workflow, domainResult: effectiveResult, bundleStatus: 'failed', ...(reportRef === undefined ? {} : { verifiedReportId: reportRef }), ...(reviewRef === undefined ? {} : { verifiedReviewCaseId: reviewRef }), extraDiagnostics: ['BUNDLE_PERSIST_FAILED'] })
+      }
+    }
+    workflowService.setExecutionResult(workflowRunId, executionResult)
+  }
+
+  private async persistDispatchFailure(request: ResearchRequest, decision: ResearchDispatchDecision, summary: ResearchExecutionSummary, workflowId: string, workflowRunId: string, error: unknown, sourceLibraryHits: readonly SourceLibraryHit[]): Promise<void> {
+    const workflowService = this.options.workflowService
+    if (workflowService === undefined) return
+    let workflow = workflowService.getWorkflowStatus(workflowRunId)
+    if (workflow === undefined) {
+      workflowService.register({ runId: workflowRunId, workflowType: workflowId, objective: `${workflowId} execution` })
+      workflowService.markFailure(workflowRunId, 'Workflow execution failed before lifecycle registration completed.')
+      workflow = workflowService.getWorkflowStatus(workflowRunId)
+    } else if (workflow.status === 'pending' || workflow.status === 'running') {
+      workflowService.markFailure(workflowRunId, 'Workflow execution failed.')
+      workflow = workflowService.getWorkflowStatus(workflowRunId)
+    }
+    if (workflow === undefined) return
+    const errorCode = error instanceof ApplicationServiceError && error.code === 'cancelled' ? 'WORKFLOW_CANCELLED' : 'WORKFLOW_EXECUTION_FAILED'
+    const result = { workflowRunId, status: workflow.status === 'cancelled' ? 'cancelled' : 'failed', diagnostics: [errorCode], summary: workflow.status === 'cancelled' ? 'Workflow was cancelled.' : 'Workflow execution failed.' }
+    const bundleId = `research-bundle-${workflowRunId}`
+    let executionResult = projectResearchExecutionResult({ workflowId, workflow, domainResult: result, bundleStatus: this.options.bundleStore === undefined ? 'unavailable' : 'available', ...(this.options.bundleStore === undefined ? {} : { bundleRef: bundleId }) })
+    if (this.options.bundleStore !== undefined) {
+      try { await this.options.bundleStore.put(createResearchBundle({ request, decision, summary, workflowRunId, result, executionResult, sourceLibraryHits })) }
+      catch { executionResult = projectResearchExecutionResult({ workflowId, workflow, domainResult: result, bundleStatus: 'failed', extraDiagnostics: ['BUNDLE_PERSIST_FAILED'] }) }
+    }
+    workflowService.setExecutionResult(workflowRunId, executionResult)
+  }
+
   private async persistBundle(request: ResearchRequest, decision: ResearchDispatchDecision, summary: ResearchExecutionSummary, workflowRunId: string, result: unknown, sourceLibraryHits: readonly SourceLibraryHit[] = []): Promise<void> {
     if (!this.options.bundleStore) return
     await this.options.bundleStore.put(createResearchBundle({ request, decision, summary, workflowRunId, result, sourceLibraryHits }))
@@ -758,28 +941,9 @@ export class ResearchDispatchService {
     return { mode: request.mode.type === 'workflow' ? 'Explicit Workflow' : 'Free Research', ...(workflow === undefined ? {} : { workflowId: workflow.id, workflowLabel: definition?.label }), selectedSkillIds: decision.skills.map((skill) => skill.id), argumentsStatus: decision.missingRequiredInputs.length > 0 ? 'missing' : workflow === undefined ? 'not_required' : 'extracted', argumentKeys: workflow === undefined ? [] : Object.keys(workflow.arguments).sort(), contextPolicy: request.contextPolicy, persistencePolicy: request.persistencePolicy }
   }
 
-  private startWorkflow(workflowId: string, args: Readonly<Record<string, unknown>>, runId: string, callerSignal?: AbortSignal, writeKnowledge = false, useStructuredKnowledge = true, sourceLibraryHits: readonly SourceLibraryHit[] = []): Promise<unknown> {
-    const research = this.options.researchService
-    if (workflowId === 'theme_framework') {
-      const service = this.options.themeFrameworkService
-      if (service === undefined) throw new ApplicationServiceError('failed', 'Theme Framework service is not configured')
-      const started = service.start({ workflowRunId: runId, name: args.name as string, ...(typeof args.definition === 'string' ? { definition: args.definition } : {}) }, callerSignal)
-      // Never expose or persist the internal construction result: it contains
-      // provenance bindings. Chat receives the same safe projection as the API.
-      return started.completion.then(() => service.getReviewCandidate(runId))
-    }
-    if (workflowId === 'daily_intelligence') {
-      const daily = this.options.dailyIntelligenceService
-      if (daily === undefined) throw new ApplicationServiceError('failed', 'Daily Intelligence service is not configured')
-      return daily.startBrief({ workflowRunId: runId, briefType: args.briefType as 'morning' | 'evening', tradeDate: args.tradeDate as string, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
-    }
-    if (workflowId === 'thesis_lifecycle') return Promise.resolve(runThesisLifecycle(args as unknown as ThesisLifecycleInput))
-    if (workflowId === 'company_research') { if (!research) throw new ApplicationServiceError('failed', 'Research service is not configured'); return research.startResearchCompany({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion }
-    if (workflowId === 'industry_research') { if (!research) throw new ApplicationServiceError('failed', 'Research service is not configured'); return research.startIndustryResearch({ workflowRunId: runId, name: args.name as string, aliases: args.aliases as readonly string[] | undefined, asOf: args.asOf as string | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion }
-    if (workflowId === 'earnings_review') { if (!research) throw new ApplicationServiceError('failed', 'Research service is not configured'); return research.startEarningsReview({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, fiscalYear: args.fiscalYear as number, period: args.period as EarningsReviewPeriod, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion }
-    if (workflowId === 'valuation') { if (!research) throw new ApplicationServiceError('failed', 'Research service is not configured'); return research.startValuation({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, methods: args.methods as readonly ValuationMethod[] | undefined, targetFiscalYear: args.targetFiscalYear as number | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion }
-    if (workflowId === 'event_research') { if (!research) throw new ApplicationServiceError('failed', 'Research service is not configured'); return research.startEventResearch({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, anchor: args.anchor as EventAnchor, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion }
-    if (workflowId === 'thesis_red_team') { if (!research) throw new ApplicationServiceError('failed', 'Research service is not configured'); return research.startThesisRedTeam({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, thesisRef: args.thesisRef as string, lookbackDays: args.lookbackDays as number | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion }
-    throw new ApplicationServiceError('not_found', `Workflow definition has no adapter: ${workflowId}`)
+  private startWorkflow(context: WorkflowExecutionBindingContext): Promise<unknown> {
+    const binding = this.executionBindings.get(context.workflowId)
+    if (binding === undefined) throw new ApplicationServiceError('executor_unavailable', `Workflow ${context.workflowId} has no execution binding`)
+    return binding(context)
   }
 }

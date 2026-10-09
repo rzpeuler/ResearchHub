@@ -19,6 +19,7 @@ export interface ResearchRequest {
   readonly contextPolicy: ResearchContextPolicy
   readonly persistencePolicy: ResearchPersistencePolicy
   readonly attachments?: readonly string[]
+  readonly workflowArgumentContext?: { readonly workflowId: string; readonly arguments: Readonly<Record<string, unknown>> }
 }
 
 export interface ResearchDispatchEntity {
@@ -125,7 +126,18 @@ export function normalizeResearchRequest(input: unknown): ResearchRequest {
     if (!Array.isArray(value.attachments) || value.attachments.length > 20) throw invalid('attachments must be an array of at most 20 IDs')
     attachments = value.attachments.map((item, index) => safeId(item, `attachments[${index}]`))
   }
-  return { query, mode, contextPolicy, persistencePolicy, ...(attachments === undefined ? {} : { attachments }) }
+  let workflowArgumentContext: ResearchRequest['workflowArgumentContext']
+  if (value.workflowArgumentContext !== undefined) {
+    if (mode.type !== 'workflow') throw invalid('workflowArgumentContext requires an explicit Workflow mode')
+    const context = record(value.workflowArgumentContext, 'workflowArgumentContext')
+    const workflowId = safeId(context.workflowId, 'workflowArgumentContext.workflowId')
+    if (workflowId !== mode.workflowId) throw invalid('workflowArgumentContext.workflowId must match mode.workflowId')
+    const args = record(context.arguments, 'workflowArgumentContext.arguments')
+    const keys = Object.keys(args)
+    if (keys.length > 30 || keys.some((key) => !/^[A-Za-z][A-Za-z0-9._-]*$/.test(key))) throw invalid('workflowArgumentContext.arguments contains unsafe keys')
+    workflowArgumentContext = { workflowId, arguments: { ...args } }
+  }
+  return { query, mode, contextPolicy, persistencePolicy, ...(attachments === undefined ? {} : { attachments }), ...(workflowArgumentContext === undefined ? {} : { workflowArgumentContext }) }
 }
 
 function dispatchSkill(value: unknown, index: number): ResearchDispatchSkill {

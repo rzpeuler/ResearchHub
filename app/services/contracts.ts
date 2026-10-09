@@ -5,7 +5,7 @@ import type { RawDocumentCandidateGroupV04, RawDocumentPreviewWorkflowResultV04 
 import type { RawDocumentV04CandidateAcceptanceResult } from '../../workflows/raw-document-knowledge-ingestion/v04-candidate-acceptance.ts'
 import type { RawDocumentV04IncompleteExtractionUnit } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-store.ts'
 
-export type ApplicationErrorCode = 'not_found' | 'invalid_input' | 'cancelled' | 'failed' | 'conflict' | 'no_kb_mounted' | 'unauthorized_runtime_token'
+export type ApplicationErrorCode = 'not_found' | 'invalid_input' | 'cancelled' | 'failed' | 'conflict' | 'executor_unavailable' | 'no_kb_mounted' | 'unauthorized_runtime_token'
 
 export class ApplicationServiceError extends Error {
   readonly code: ApplicationErrorCode
@@ -88,6 +88,22 @@ export interface KnowledgeDirectoryProjection {
 
 export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'completed_with_review' | 'blocked' | 'cancelled' | 'failed'
 export type TerminalWorkflowStatus = Exclude<WorkflowStatus, 'pending' | 'running'>
+export type WorkflowBundleStatus = 'pending' | 'available' | 'failed' | 'unavailable'
+export interface WorkflowExecutionResultProjection {
+  readonly runId: string
+  /** Canonical ResearchDispatch registry ID, independent of a service's internal workflowType alias. */
+  readonly workflowId: string
+  readonly executionStatus: WorkflowStatus
+  readonly terminalStatus?: TerminalWorkflowStatus
+  readonly summary?: string
+  readonly reportRef?: string
+  readonly bundleRef?: string
+  readonly reviewRef?: { readonly kind: 'review_case' | 'theme_framework_candidate' | 'daily_brief'; readonly id: string }
+  readonly blockedReason?: string
+  /** Safe diagnostic codes only. Raw errors, stack traces, credentials, and paths are excluded. */
+  readonly diagnostics: readonly string[]
+  readonly bundleStatus: WorkflowBundleStatus
+}
 export interface WorkflowRunView {
   readonly runId: string
   readonly workflowType: string
@@ -100,6 +116,7 @@ export interface WorkflowRunView {
   readonly completedAt?: string
   readonly reviewCount?: number
   readonly errorSummary?: string
+  readonly executionResult?: WorkflowExecutionResultProjection
 }
 export interface WorkflowCancelResult {
   readonly runId: string

@@ -12,6 +12,7 @@ import './styles.css'
 type Route = 'research' | 'briefs' | 'reports' | 'bundles' | 'run' | 'graph' | 'reviews' | 'theses' | 'sources'
 type ReviewsSection = 'review-cases' | 'theme-framework' | 'theme-scope'
 type LoadState = 'loading' | 'ready' | 'error'
+type WorkflowArtifactTarget = { readonly kind: 'report' | 'bundle' | 'review_case' | 'theme_framework_candidate' | 'daily_brief'; readonly id: string; readonly runId: string }
 type V04RightsForm = { accessScope: 'public' | 'authenticated' | 'restricted' | 'unknown'; providerTermsKnown: boolean; retentionAllowed: boolean; aiProcessingAllowed: boolean; derivativeKnowledgeAllowed: boolean; redistributionAllowed: boolean; policyBasis: string; expiresAt: string; entitlementRef: string }
 type V04SourceForm = { title: string; sourceType: string; sourceReliability: string; publisher: string; institution: string; author: string; publishedAt: string; canonicalUrl: string }
 const defaultRightsForm: V04RightsForm = { accessScope: 'unknown', providerTermsKnown: false, retentionAllowed: false, aiProcessingAllowed: false, derivativeKnowledgeAllowed: false, redistributionAllowed: false, policyBasis: '', expiresAt: '', entitlementRef: '' }
@@ -510,6 +511,8 @@ interface ResearchPageProps {
   readonly executionSummary?: ResearchExecutionSummary
   readonly dispatchFeedback?: ResearchDispatchFeedback
   readonly dispatchResolution?: ResearchDispatchResolution
+  readonly verifiedWorkflowBundleId?: string
+  readonly workflowPollNotice: string
   readonly setComposer: (value: string) => void
   readonly newConversation: () => void
   readonly switchConversation: (conversationId: string) => void
@@ -523,18 +526,60 @@ interface ResearchPageProps {
   readonly acceptCandidates: () => void
   readonly clearAttachment: () => void
   readonly cancelWorkflow: () => void
+  readonly openWorkflowReport: (reportId: string) => void
+  readonly openWorkflowBundle: (bundleId: string) => void
+  readonly openWorkflowReview: (kind: NonNullable<NonNullable<WorkflowRun['executionResult']>['reviewRef']>['kind'], id: string) => void
   readonly dismissError: () => void
   readonly onNavigate: (route: Route) => void
 }
 
 function DispatchFeedbackPanel({ feedback }: { readonly feedback: ResearchDispatchFeedback }): ReactElement {
   const { t } = useLanguage()
+  const statusCopy: Readonly<Record<ResearchDispatchFeedback['status'], { readonly zh: string; readonly en: string }>> = {
+    NEEDS_INPUT: { zh: '需要补充工作流输入', en: 'Workflow needs additional input' },
+    INVALID_INPUT: { zh: '输入未通过工作流校验', en: 'Workflow input did not pass validation' },
+    UNRESOLVED_REFERENCE: { zh: '无法解析所需引用', en: 'A required reference could not be resolved' },
+    EXECUTOR_UNAVAILABLE: { zh: '当前工作流执行器不可用', en: 'This Workflow executor is unavailable' },
+  }
   return <section className="execution-summary" aria-label={t('Workflow 输入反馈', 'Workflow input feedback')} role="status">
-    <strong>{feedback.workflowId} · {feedback.status}</strong>
-    <span>{feedback.reason}</span>
+    <strong>{feedback.workflowId} · {t(statusCopy[feedback.status].zh, statusCopy[feedback.status].en)}</strong>
+    <span>{feedback.status === 'NEEDS_INPUT' ? feedback.reason : t(statusCopy[feedback.status].zh, statusCopy[feedback.status].en)}</span>
     {feedback.missingFields.length ? <span>{t('缺失字段：', 'Missing fields: ')}{feedback.missingFields.join(', ')}</span> : null}
     <span>{t('已解析参数：', 'Resolved arguments: ')}{Object.keys(feedback.validatedArguments).length ? JSON.stringify(feedback.validatedArguments) : t('无', 'none')}</span>
     <span>{t('建议补充：', 'Suggested question: ')}{feedback.suggestedQuestion}</span>
+  </section>
+}
+
+function WorkflowResultFeedback({ workflow, verifiedBundleId, onOpenReport, onOpenBundle, onOpenReview }: {
+  readonly workflow: WorkflowRun
+  readonly verifiedBundleId?: string
+  readonly onOpenReport: (reportId: string) => void
+  readonly onOpenBundle: (bundleId: string) => void
+  readonly onOpenReview: (kind: NonNullable<NonNullable<WorkflowRun['executionResult']>['reviewRef']>['kind'], id: string) => void
+}): ReactElement | null {
+  const { t } = useLanguage()
+  if (!terminalWorkflowStatuses.has(workflow.status)) return null
+  const result = workflow.executionResult
+  const stateCopy: Readonly<Record<WorkflowRun['status'], { readonly zh: string; readonly en: string }>> = {
+    pending: { zh: '等待执行', en: 'Waiting to execute' },
+    running: { zh: '正在执行', en: 'Running' },
+    completed: { zh: '工作流已完成', en: 'Workflow completed' },
+    completed_with_review: { zh: '工作流完成，等待审核', en: 'Workflow completed and requires review' },
+    blocked: { zh: '工作流受阻', en: 'Workflow is blocked' },
+    cancelled: { zh: '工作流已取消', en: 'Workflow was cancelled' },
+    failed: { zh: '工作流未能完成', en: 'Workflow failed' },
+  }
+  const state = stateCopy[workflow.status]
+  return <section className={`workflow-result-feedback workflow-result-${workflow.status}`} aria-label={t('工作流结果', 'Workflow result')} role="status">
+    <strong>{t(state.zh, state.en)}</strong>
+    {result?.summary ? <p>{result.summary}</p> : workflow.progressSummary ? <p>{workflow.progressSummary}</p> : null}
+    {result?.blockedReason ? <p>{t('阻断原因：', 'Blocked because: ')}{result.blockedReason}</p> : null}
+    {result?.diagnostics.length ? <small>{t('诊断代码：', 'Diagnostics: ')}{result.diagnostics.join(', ')}</small> : null}
+    <div className="workflow-result-links">
+      {result?.reportRef ? <button type="button" className="secondary-action" onClick={() => onOpenReport(result.reportRef!)}>{workflow.workflowType === 'daily_intelligence' ? t('打开每日简报', 'Open Daily Brief') : t('打开研究报告', 'Open Research Report')}</button> : null}
+      {result?.bundleRef && verifiedBundleId === result.bundleRef ? <button type="button" className="secondary-action" onClick={() => onOpenBundle(result.bundleRef!)}>{t('打开研究资料包', 'Open Research Bundle')}</button> : result?.bundleStatus === 'pending' ? <span>{t('正在同步研究资料包…', 'Syncing Research Bundle…')}</span> : null}
+      {result?.reviewRef ? <button type="button" className="secondary-action" onClick={() => onOpenReview(result.reviewRef!.kind, result.reviewRef!.id)}>{t('打开审核结果', 'Open review result')}</button> : null}
+    </div>
   </section>
 }
 
@@ -851,7 +896,7 @@ function ResearchPageBody(props: ResearchPageProps): ReactElement {
   <div className="context-heading"><div><span className="eyebrow">{t('研究背景', 'RESEARCH CONTEXT')}</span><span className="context-count">{props.streaming ? t('生成中', 'Streaming') : t('空闲', 'Idle')}</span></div></div>
   <section className="context-section" aria-label={t('会话状态', 'Session status')}><div className="section-title"><div><span className="eyebrow">{t('会话', 'SESSION')}</span><h2>{props.session?.name || t('研究对话', 'Research conversation')}</h2></div></div><p className="muted">{props.streaming ? t('Agent 正在响应。', 'The Agent is responding.') : t('会话已就绪。', 'Session is ready.')}</p></section>
   <section className="context-section" aria-label={t('消息队列', 'Message queue')}><div className="section-title"><div><span className="eyebrow">{t('队列', 'QUEUE')}</span><h2>{t('待处理消息', 'Pending messages')}</h2></div></div><p>{props.queue.steering} {t('条指导', 'steering')} · {props.queue.followUp} {t('条后续问题', 'follow-up')}</p></section>
-  <section className="context-section" aria-label={t('工作流状态', 'Workflow status')}><div className="section-title"><div><span className="eyebrow">{t('生产', 'PRODUCTION')}</span><h2>{t('工作流', 'Workflow')}</h2></div></div>{noKnowledge ? <p className="muted">{t('未挂载知识库。', 'No Knowledge Base mounted.')}</p> : null}{!props.workflowRunId ? <div className="notice"><strong>{t('没有运行中的工作流', 'No active Workflow')}</strong><p>{t('运行状态会在启动工作流后显示在这里。', 'Workflow status appears here after a run starts.')}</p></div> : props.workflow ? <div className="workflow-card"><div className="workflow-status"><span className={`status-dot ${terminalWorkflowStatuses.has(props.workflow.status) ? 'terminal' : ''}`} />{props.workflow.status.replaceAll('_', ' ')}</div><h3>{props.workflow.objective}</h3><dl><dt>{t('阶段', 'Stage')}</dt><dd>{props.workflow.currentStage || t('暂无报告', 'Not reported')}</dd><dt>{t('进度', 'Progress')}</dt><dd>{props.workflow.progressSummary || t('暂无报告', 'Not reported')}</dd></dl>{props.workflow.errorSummary ? <div className="inline-error">{props.workflow.errorSummary}</div> : null}{props.workflow.status === 'completed_with_review' && (props.workflow.reviewCount ?? 0) > 0 ? <button className="secondary-action full" onClick={() => props.onNavigate('reviews')}>{t('查看审核', 'View Reviews')}</button> : null}{!terminalWorkflowStatuses.has(props.workflow.status) ? <button className="stop-action full" onClick={props.cancelWorkflow} disabled={props.busy}>{t('取消工作流', 'Cancel Workflow')}</button> : null}</div> : <p className="muted">{t('正在加载工作流状态…', 'Loading Workflow status…')}</p>}</section>
+  <section className="context-section" aria-label={t('工作流状态', 'Workflow status')}><div className="section-title"><div><span className="eyebrow">{t('生产', 'PRODUCTION')}</span><h2>{t('工作流', 'Workflow')}</h2></div></div>{noKnowledge ? <p className="muted">{t('未挂载知识库。', 'No Knowledge Base mounted.')}</p> : null}{!props.workflowRunId ? <div className="notice"><strong>{t('没有运行中的工作流', 'No active Workflow')}</strong><p>{t('运行状态会在启动工作流后显示在这里。', 'Workflow status appears here after a run starts.')}</p></div> : props.workflow ? <div className="workflow-card"><div className="workflow-status"><span className={`status-dot ${terminalWorkflowStatuses.has(props.workflow.status) ? 'terminal' : ''}`} />{props.workflow.status.replaceAll('_', ' ')}</div><h3>{props.workflow.objective}</h3><dl><dt>{t('阶段', 'Stage')}</dt><dd>{props.workflow.currentStage || t('暂无报告', 'Not reported')}</dd><dt>{t('进度', 'Progress')}</dt><dd>{props.workflow.executionResult?.summary || props.workflow.progressSummary || t('暂无报告', 'Not reported')}</dd></dl>{props.workflowPollNotice ? <p role="status">{props.workflowPollNotice}</p> : null}<WorkflowResultFeedback workflow={props.workflow} verifiedBundleId={props.verifiedWorkflowBundleId} onOpenReport={props.openWorkflowReport} onOpenBundle={props.openWorkflowBundle} onOpenReview={props.openWorkflowReview} />{props.workflow.status === 'completed_with_review' && !props.workflow.executionResult?.reviewRef && (props.workflow.reviewCount ?? 0) > 0 ? <button className="secondary-action full" onClick={() => props.onNavigate('reviews')}>{t('查看审核', 'View Reviews')}</button> : null}{!terminalWorkflowStatuses.has(props.workflow.status) ? <button className="stop-action full" onClick={props.cancelWorkflow} disabled={props.busy}>{t('取消工作流', 'Cancel Workflow')}</button> : null}</div> : <p className="muted">{t('正在加载工作流状态…', 'Loading Workflow status…')}</p>}</section>
   <a className="secondary-action full research-reviews-link" href="/reviews" onClick={(event) => { event.preventDefault(); props.onNavigate('reviews') }}>{t('打开审核', 'Open Reviews')}{props.openReviewCases > 0 ? ` · ${props.openReviewCases}` : ''}</a>
 </aside></main>
 }
@@ -899,6 +944,10 @@ function AppContent(): ReactElement {
   const [themeFrameworkRefreshInfo, setThemeFrameworkRefreshInfo] = useState<ResearchPageProps['themeFrameworkRefreshInfo']>()
   const [themeFrameworkReviewRevision, setThemeFrameworkReviewRevision] = useState(0)
   const [workflow, setWorkflow] = useState<WorkflowRun>()
+  const [verifiedWorkflowBundleId, setVerifiedWorkflowBundleId] = useState('')
+  const [workflowPollNotice, setWorkflowPollNotice] = useState('')
+  const [workflowCanceling, setWorkflowCanceling] = useState(false)
+  const [workflowArtifactTarget, setWorkflowArtifactTarget] = useState<WorkflowArtifactTarget>()
   const [reviews, setReviews] = useState<ReviewListResponse>()
   const [reviewDetail, setReviewDetail] = useState<ReviewDetail>()
   const [reviewsBusy, setReviewsBusy] = useState(false)
@@ -1046,8 +1095,37 @@ function AppContent(): ReactElement {
     if (loadState !== 'ready' || route !== 'reports') { setReports(undefined); setSelectedReport(undefined); return }
     const epoch = requestEpoch.current
     setReportsBusy(true); setError('')
-    void client.listResearchReports(20).then((items) => { if (epoch === requestEpoch.current) { setReports(items); setSelectedReport(undefined) } }).catch((caught) => { if (epoch === requestEpoch.current) setError(errorText(caught)) }).finally(() => { if (epoch === requestEpoch.current) setReportsBusy(false) })
+    void client.listResearchReports(20).then((items) => { if (epoch === requestEpoch.current) setReports(items) }).catch((caught) => { if (epoch === requestEpoch.current) setError(errorText(caught)) }).finally(() => { if (epoch === requestEpoch.current) setReportsBusy(false) })
   }, [client, loadState, route])
+
+  useEffect(() => {
+    const target = workflowArtifactTarget
+    if (!target || route !== (target.kind === 'report' ? 'reports' : target.kind === 'bundle' ? 'bundles' : target.kind === 'daily_brief' ? 'briefs' : 'reviews')) return undefined
+    let cancelled = false
+    const open = async (): Promise<void> => {
+      try {
+        if (target.kind === 'report') {
+          const item = await client.getResearchReport(target.id)
+          if (!cancelled && item.workflowRunId === target.runId) setSelectedReport(item)
+        } else if (target.kind === 'bundle') {
+          const item = await client.getResearchBundle(target.id)
+          if (!cancelled && item.workflowRunId === target.runId) setSelectedBundle(item)
+        } else if (target.kind === 'review_case') {
+          const item = await client.getReview(target.id)
+          if (!cancelled && item.producerRunId === target.runId) setReviewDetail(item)
+        } else if (target.kind === 'daily_brief') {
+          const item = await client.getDailyBrief(target.id)
+          if (!cancelled && item.workflowRunId === target.runId) setSelectedBrief(item)
+        } else {
+          const item = await client.getThemeFrameworkRun(target.id)
+          if (!cancelled && item.workflowRunId === target.runId) setThemeFrameworkRunId(item.workflowRunId)
+        }
+      } catch { /* artifact links are shown only after a matching persisted artifact is loaded */ }
+      if (!cancelled) setWorkflowArtifactTarget(undefined)
+    }
+    void open()
+    return () => { cancelled = true }
+  }, [client, route, workflowArtifactTarget])
 
   const handleEvent = useCallback((event: ClientEvent): void => {
     if (event.conversationId !== latestConversation.current && event.type !== 'session.changed') return
@@ -1064,9 +1142,37 @@ function AppContent(): ReactElement {
 
   useEffect(() => {
     const knownWorkflow = workflowRef.current
-    if (!workflowRunId || !knowledgeBase || (knownWorkflow?.runId === workflowRunId && terminalWorkflowStatuses.has(knownWorkflow.status))) return undefined
-    return startWorkflowPolling({ runId: workflowRunId, fetchWorkflow: (runId) => client.workflow(runId), onUpdate: setWorkflow, onError: (caught) => setError(errorText(caught)) })
-  }, [client, knowledgeBase, workflowRunId])
+    if (route !== 'research' || workflowCanceling || !workflowRunId || !knowledgeBase || (knownWorkflow?.runId === workflowRunId && terminalWorkflowStatuses.has(knownWorkflow.status))) return undefined
+    setWorkflowPollNotice('')
+    return startWorkflowPolling({ runId: workflowRunId, fetchWorkflow: (runId) => client.workflow(runId), onUpdate: (next) => { setWorkflow(next); setWorkflowPollNotice('') }, onError: () => undefined, onExhausted: () => setWorkflowPollNotice('Workflow status could not be synchronized after several attempts.') })
+  }, [client, knowledgeBase, route, workflowCanceling, workflowRunId])
+
+  useEffect(() => {
+    const result = workflow?.executionResult
+    if (route !== 'research' || !workflowRunId || workflow?.runId !== workflowRunId || !terminalWorkflowStatuses.has(workflow.status) || !result?.bundleRef) {
+      setVerifiedWorkflowBundleId('')
+      return undefined
+    }
+    let cancelled = false
+    let timer: number | undefined
+    let attempts = 0
+    setVerifiedWorkflowBundleId('')
+    const sync = async (): Promise<void> => {
+      if (cancelled || attempts >= 4) return
+      attempts += 1
+      try {
+        const bundle = await client.getResearchBundleForRun(workflowRunId)
+        if (cancelled) return
+        if (bundle.bundleId === result.bundleRef && bundle.workflowRunId === workflowRunId) {
+          setVerifiedWorkflowBundleId(bundle.bundleId)
+          return
+        }
+      } catch { /* bounded retries below; no raw transport error is shown */ }
+      if (!cancelled && attempts < 4 && result.bundleStatus === 'pending') timer = window.setTimeout(() => void sync(), 700)
+    }
+    void sync()
+    return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer) }
+  }, [client, route, workflow, workflowRunId])
 
   const runCommand = async (operation: 'prompt' | 'steer' | 'follow_up'): Promise<void> => {
     const text = composer.trim()
@@ -1075,12 +1181,21 @@ function AppContent(): ReactElement {
     let preserveComposer = false
     try {
       if (operation === 'prompt') {
-        const result: ResearchDispatchResponse = await client.dispatchResearch({ query: text, mode: selectedWorkflowId ? { type: 'workflow', workflowId: selectedWorkflowId } : { type: 'free_research' }, contextPolicy, persistencePolicy })
+        const requestMode = selectedWorkflowId ? { type: 'workflow' as const, workflowId: selectedWorkflowId } : { type: 'free_research' as const }
+        const priorFeedback = dispatchFeedback
+        const workflowArgumentContext = requestMode.type === 'workflow' && priorFeedback?.status === 'NEEDS_INPUT' && priorFeedback.workflowId === requestMode.workflowId
+          ? { workflowId: priorFeedback.workflowId, arguments: priorFeedback.validatedArguments }
+          : undefined
+        const result: ResearchDispatchResponse = await client.dispatchResearch({ query: text, mode: requestMode, contextPolicy, persistencePolicy, ...(workflowArgumentContext === undefined ? {} : { workflowArgumentContext }) })
         setExecutionSummary(result.summary)
         setDispatchResolution(result.resolution)
         if (result.feedback || result.status === 'needs_input') {
           preserveComposer = true
-          setDispatchFeedback(result.feedback)
+          if (result.feedback) {
+            const previousFeedback = dispatchFeedback
+            const keepValidatedValues = previousFeedback?.status === 'NEEDS_INPUT' && previousFeedback.workflowId === result.feedback.workflowId
+            setDispatchFeedback({ ...result.feedback, validatedArguments: keepValidatedValues ? { ...previousFeedback.validatedArguments, ...result.feedback.validatedArguments } : result.feedback.validatedArguments })
+          } else setDispatchFeedback(undefined)
           if (result.feedback?.workflowId) setSelectedWorkflowId(result.feedback.workflowId)
           if (!result.feedback) setError('Workflow needs input, but the dispatch response did not include feedback details.')
         } else if (result.status === 'started') {
@@ -1166,11 +1281,24 @@ function AppContent(): ReactElement {
   }
   const toggleCandidate = (candidateId: string): void => setSelectedCandidates((previous) => { const next = new Set(previous); if (next.has(candidateId)) next.delete(candidateId); else next.add(candidateId); return next })
   const clearAttachment = (): void => { if (acceptanceBusy) return; previewGeneration.current += 1; setAttachment(undefined); setPreview(undefined); setAcceptance(undefined); setSelectedCandidates(new Set()); setPreviewBusy(false); setWorkflowRunId(''); setWorkflow(undefined); setUploadStatus(''); setRightsForm(defaultRightsForm); setSourceForm(defaultSourceForm); setAttachmentUiVersion((version) => version + 1) }
-  const cancelWorkflow = async (): Promise<void> => { if (!workflowRunId) return; setBusy(true); try { await client.cancelWorkflow(workflowRunId); setWorkflow(await client.workflow(workflowRunId)) } catch (caught) { setError(errorText(caught)) } finally { setBusy(false) } }
+  const cancelWorkflow = async (): Promise<void> => { if (!workflowRunId) return; setBusy(true); setWorkflowCanceling(true); setError(''); try { await client.cancelWorkflow(workflowRunId); setWorkflow(await client.workflow(workflowRunId)) } catch { setWorkflowPollNotice('Cancellation could not be confirmed. Workflow status will continue to synchronize.') } finally { setWorkflowCanceling(false); setBusy(false) } }
   const selectReview = async (reviewCaseId: string): Promise<void> => { const epoch = requestEpoch.current; try { const result = await client.getReview(reviewCaseId); if (epoch === requestEpoch.current) setReviewDetail(result) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } }
   const selectBrief = async (reportId: string): Promise<void> => { const epoch = requestEpoch.current; try { const result = await client.getDailyBrief(reportId); if (epoch === requestEpoch.current) setSelectedBrief(result) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } }
   const selectReport = async (reportId: string): Promise<void> => { const epoch = requestEpoch.current; try { const result = await client.getResearchReport(reportId); if (epoch === requestEpoch.current) setSelectedReport(result) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } }
   const selectBundle = async (bundleId: string): Promise<void> => { const epoch = requestEpoch.current; try { const result = await client.getResearchBundle(bundleId); if (epoch === requestEpoch.current) setSelectedBundle(result) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } }
+  const openWorkflowReport = (id: string): void => {
+    if (!workflowRunId) return
+    const dailyBrief = workflow?.workflowType === 'daily_intelligence'
+    setWorkflowArtifactTarget({ kind: dailyBrief ? 'daily_brief' : 'report', id, runId: workflowRunId })
+    navigate(dailyBrief ? 'briefs' : 'reports')
+  }
+  const openWorkflowBundle = (id: string): void => { if (!workflowRunId) return; setWorkflowArtifactTarget({ kind: 'bundle', id, runId: workflowRunId }); navigate('bundles') }
+  const openWorkflowReview = (kind: NonNullable<NonNullable<WorkflowRun['executionResult']>['reviewRef']>['kind'], id: string): void => {
+    if (!workflowRunId) return
+    const targetKind = kind === 'review_case' ? 'review_case' : kind === 'daily_brief' ? 'daily_brief' : 'theme_framework_candidate'
+    setWorkflowArtifactTarget({ kind: targetKind, id, runId: workflowRunId })
+    navigate(kind === 'daily_brief' ? 'briefs' : 'reviews')
+  }
   const searchSources = async (query: string): Promise<void> => { const epoch = requestEpoch.current; setSourceBusy(true); setError(''); try { const result = await client.searchSourceLibrary(query, true); if (epoch === requestEpoch.current) setSourceHits(result.hits) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } finally { if (epoch === requestEpoch.current) setSourceBusy(false) } }
 
   const updateSettings = async (action: () => Promise<RuntimeSettings>): Promise<void> => {
@@ -1252,7 +1380,7 @@ function AppContent(): ReactElement {
     onMountKnowledgeBase: (knowledgeBaseId) => { void changeKnowledgeBase(knowledgeBaseId) },
     onUnmountKnowledgeBase: () => { void changeKnowledgeBase('') },
   }
-  return <div className="app-shell"><ApplicationSidebar route={route} knowledgeBase={knowledgeBase} settings={settings} settingsError={settingsError} settingsBusy={settingsBusy} interactionsDisabled={configurationBlocked} onNavigate={navigate} onLoadSettings={() => void loadSettings()} onModelChange={(value) => void changeModel(value)} settingsPanelProps={settingsPanelProps} /><div className="app-main">{route === 'research' ? <ResearchPage session={session} conversations={conversations} messages={messages} streaming={streaming} thinking={thinking} streamText={streamText} toolEvents={toolEvents} queue={queue} composer={composer} busy={busy} error={error} attachment={attachment} attachmentUiVersion={attachmentUiVersion} attachmentBusy={attachmentBusy} preview={preview} previewBusy={previewBusy} acceptanceBusy={acceptanceBusy} selectedCandidates={selectedCandidates} acceptance={acceptance} rightsForm={rightsForm} sourceForm={sourceForm} uploadStatus={uploadStatus} workflowRunId={workflowRunId} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} client={client} workflow={workflow} knowledgeBase={knowledgeBase} openReviewCases={openReviewCases} workflowDefinitions={workflowDefinitions} selectedWorkflowId={selectedWorkflowId} setSelectedWorkflowId={setSelectedWorkflowId} contextPolicy={contextPolicy} persistencePolicy={persistencePolicy} setContextPolicy={setContextPolicy} setPersistencePolicy={setPersistencePolicy} executionSummary={executionSummary} dispatchFeedback={dispatchFeedback} dispatchResolution={dispatchResolution} setComposer={setComposer} newConversation={() => void newConversation()} switchConversation={(id) => void switchConversation(id)} runCommand={(operation) => void runCommand(operation)} abort={() => void abort()} upload={(file) => void upload(file)} toggleCandidate={toggleCandidate} setRightsForm={setRightsForm} setSourceForm={setSourceForm} startPreview={() => void startRawDocumentPreview()} acceptCandidates={() => void acceptRawDocumentCandidates()} clearAttachment={clearAttachment} cancelWorkflow={() => void cancelWorkflow()} dismissError={() => setError('')} onNavigate={navigate} /> : route === 'briefs' ? <BriefsPage briefs={briefs} selected={selectedBrief} busy={briefsBusy} error={error} onSelect={(id) => void selectBrief(id)} /> : route === 'reports' ? <ReportsPage reports={reports} selected={selectedReport} busy={reportsBusy} error={error} onSelect={(id) => void selectReport(id)} /> : route === 'bundles' ? <ResearchBundlesPage bundles={bundles} selected={selectedBundle} busy={bundlesBusy} error={error} onSelect={(id) => void selectBundle(id)} sourceHits={sourceHits} sourceBusy={sourceBusy} onSearchSources={(query) => void searchSources(query)} /> : route === 'run' ? <ResearchRunPage client={client} onLaunched={onResearchLaunched} /> : route === 'graph' ? <KnowledgeGraphPage knowledgeBase={knowledgeBase} client={client} /> : route === 'sources' ? <DataSourcesPage client={client} /> : route === 'theses' ? <ThesisLifecyclePage client={client} knowledgeBase={knowledgeBase} /> : <ReviewsPage client={client} knowledgeBase={knowledgeBase} reviews={reviews} reviewDetail={reviewDetail} reviewsBusy={reviewsBusy} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} acceptance={acceptance} workflowRunId={workflowRunId} workflow={workflow} onSelect={(id) => void selectReview(id)} onCloseDetail={() => setReviewDetail(undefined)} />}</div></div>
+  return <div className="app-shell"><ApplicationSidebar route={route} knowledgeBase={knowledgeBase} settings={settings} settingsError={settingsError} settingsBusy={settingsBusy} interactionsDisabled={configurationBlocked} onNavigate={navigate} onLoadSettings={() => void loadSettings()} onModelChange={(value) => void changeModel(value)} settingsPanelProps={settingsPanelProps} /><div className="app-main">{route === 'research' ? <ResearchPage session={session} conversations={conversations} messages={messages} streaming={streaming} thinking={thinking} streamText={streamText} toolEvents={toolEvents} queue={queue} composer={composer} busy={busy} error={error} attachment={attachment} attachmentUiVersion={attachmentUiVersion} attachmentBusy={attachmentBusy} preview={preview} previewBusy={previewBusy} acceptanceBusy={acceptanceBusy} selectedCandidates={selectedCandidates} acceptance={acceptance} rightsForm={rightsForm} sourceForm={sourceForm} uploadStatus={uploadStatus} workflowRunId={workflowRunId} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} client={client} workflow={workflow} knowledgeBase={knowledgeBase} openReviewCases={openReviewCases} workflowDefinitions={workflowDefinitions} selectedWorkflowId={selectedWorkflowId} setSelectedWorkflowId={setSelectedWorkflowId} contextPolicy={contextPolicy} persistencePolicy={persistencePolicy} setContextPolicy={setContextPolicy} setPersistencePolicy={setPersistencePolicy} executionSummary={executionSummary} dispatchFeedback={dispatchFeedback} dispatchResolution={dispatchResolution} verifiedWorkflowBundleId={verifiedWorkflowBundleId} workflowPollNotice={workflowPollNotice} setComposer={setComposer} newConversation={() => void newConversation()} switchConversation={(id) => void switchConversation(id)} runCommand={(operation) => void runCommand(operation)} abort={() => void abort()} upload={(file) => void upload(file)} toggleCandidate={toggleCandidate} setRightsForm={setRightsForm} setSourceForm={setSourceForm} startPreview={() => void startRawDocumentPreview()} acceptCandidates={() => void acceptRawDocumentCandidates()} clearAttachment={clearAttachment} cancelWorkflow={() => void cancelWorkflow()} openWorkflowReport={openWorkflowReport} openWorkflowBundle={openWorkflowBundle} openWorkflowReview={openWorkflowReview} dismissError={() => setError('')} onNavigate={navigate} /> : route === 'briefs' ? <BriefsPage briefs={briefs} selected={selectedBrief} busy={briefsBusy} error={error} onSelect={(id) => void selectBrief(id)} /> : route === 'reports' ? <ReportsPage reports={reports} selected={selectedReport} busy={reportsBusy} error={error} onSelect={(id) => void selectReport(id)} /> : route === 'bundles' ? <ResearchBundlesPage bundles={bundles} selected={selectedBundle} busy={bundlesBusy} error={error} onSelect={(id) => void selectBundle(id)} sourceHits={sourceHits} sourceBusy={sourceBusy} onSearchSources={(query) => void searchSources(query)} /> : route === 'run' ? <ResearchRunPage client={client} onLaunched={onResearchLaunched} /> : route === 'graph' ? <KnowledgeGraphPage knowledgeBase={knowledgeBase} client={client} /> : route === 'sources' ? <DataSourcesPage client={client} /> : route === 'theses' ? <ThesisLifecyclePage client={client} knowledgeBase={knowledgeBase} /> : <ReviewsPage client={client} knowledgeBase={knowledgeBase} reviews={reviews} reviewDetail={reviewDetail} reviewsBusy={reviewsBusy} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} acceptance={acceptance} workflowRunId={workflowRunId} workflow={workflow} onSelect={(id) => void selectReview(id)} onCloseDetail={() => setReviewDetail(undefined)} />}</div></div>
 }
 
 export default function App(): ReactElement {

@@ -1,8 +1,10 @@
+import { createServer } from 'node:http'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
 function json(body: unknown, status = 200): Response { return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }) }
+const nativeHttpFetch = globalThis.fetch.bind(globalThis)
 
 async function openReviewsSection(name: string): Promise<void> {
   fireEvent.click(await screen.findByRole('link', { name: 'Reviews' }))
@@ -50,6 +52,8 @@ describe('Homepage shell', () => {
 
   it('keeps workflow input feedback visible without falling back to ordinary chat', async () => {
     const calls: string[] = []
+    const dispatchRequests: unknown[] = []
+    let dispatchCount = 0
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input)
       calls.push(`${init?.method ?? 'GET'} ${path}`)
@@ -60,14 +64,20 @@ describe('Homepage shell', () => {
       if (path === '/api/conversations') return json({ conversations: [] })
       if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
       if (path === '/api/research-reports?limit=20') return json({ reports: [] })
-      if (path === '/api/research/dispatch') return json({
-        accepted: true, status: 'needs_input',
-        request: { query: 'Review this quarter', mode: { type: 'workflow', workflowId: 'earnings_review' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } },
-        decision: { mode: 'workflow', workflow: { id: 'earnings_review', confidence: 1, arguments: { symbol: 'NVDA', fiscalYear: 2026 } }, skills: [], entities: [], missingRequiredInputs: ['period'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Period is required' },
-        summary: { mode: 'Explicit Workflow', workflowId: 'earnings_review', workflowLabel: 'Earnings Review', selectedSkillIds: [], argumentsStatus: 'missing', argumentKeys: ['symbol', 'fiscalYear'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } },
-        feedback: { status: 'NEEDS_INPUT', workflowId: 'earnings_review', missingFields: ['period'], validatedArguments: { symbol: 'NVDA', fiscalYear: 2026 }, reason: 'The fiscal period is required.', suggestedQuestion: 'Which quarter should I review?' },
-        resolution: { source: 'bounded_repair', attempts: 2, diagnostics: ['invalid_semantic_output_repaired'] },
-      })
+      if (path === '/api/research/dispatch') {
+        dispatchRequests.push(JSON.parse(String(init?.body)))
+        const followUp = dispatchCount++ > 0
+        return json({
+          accepted: true, status: 'needs_input',
+          request: { query: followUp ? 'Q1' : 'Review this quarter', mode: { type: 'workflow', workflowId: 'earnings_review' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } },
+          decision: { mode: 'workflow', workflow: { id: 'earnings_review', confidence: 1, arguments: followUp ? { period: 'Q1' } : { symbol: 'NVDA', fiscalYear: 2026 } }, skills: [], entities: [], missingRequiredInputs: followUp ? ['fiscalYear'] : ['period'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'A required value is missing' },
+          summary: { mode: 'Explicit Workflow', workflowId: 'earnings_review', workflowLabel: 'Earnings Review', selectedSkillIds: [], argumentsStatus: 'missing', argumentKeys: followUp ? ['period'] : ['symbol', 'fiscalYear'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } },
+          feedback: followUp
+            ? { status: 'NEEDS_INPUT', workflowId: 'earnings_review', missingFields: ['fiscalYear'], validatedArguments: { period: 'Q1' }, reason: 'The fiscal year is required.', suggestedQuestion: 'Which fiscal year should I review?' }
+            : { status: 'NEEDS_INPUT', workflowId: 'earnings_review', missingFields: ['period'], validatedArguments: { symbol: 'NVDA', fiscalYear: 2026 }, reason: 'The fiscal period is required.', suggestedQuestion: 'Which quarter should I review?' },
+          resolution: { source: 'bounded_repair', attempts: 2, diagnostics: ['invalid_semantic_output_repaired'] },
+        })
+      }
       return json({ code: 'not_found', error: 'not found' }, 404)
     }) as typeof fetch
     render(<App />)
@@ -84,6 +94,180 @@ describe('Homepage shell', () => {
     expect((screen.getByRole('combobox', { name: 'Workflow' }) as HTMLSelectElement).value).toBe('earnings_review')
     expect(calls).toContain('POST /api/research/dispatch')
     expect(calls).not.toContain('POST /api/conversations/prompt')
+
+    fireEvent.change(composer, { target: { value: 'Q1' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    expect(await screen.findByText('Missing fields: fiscalYear')).toBeTruthy()
+    expect(screen.getByText(/Resolved arguments:.*NVDA.*2026.*Q1/)).toBeTruthy()
+    expect((screen.getByRole('combobox', { name: 'Workflow' }) as HTMLSelectElement).value).toBe('earnings_review')
+    expect(dispatchRequests[1]).toMatchObject({ workflowArgumentContext: { workflowId: 'earnings_review', arguments: { symbol: 'NVDA', fiscalYear: 2026 } } })
+  })
+
+  it('shows terminal Workflow results and only opens persisted artifacts linked to that run', async () => {
+    const calls: string[] = []
+    const workflow = { runId: 'run-result-1', workflowType: 'earnings_review', objective: 'Review NVDA earnings', status: 'completed_with_review', startedAt: '2026-10-09T00:00:00.000Z', updatedAt: '2026-10-09T00:01:00.000Z', completedAt: '2026-10-09T00:01:00.000Z', executionResult: { runId: 'run-result-1', workflowId: 'earnings_review', executionStatus: 'completed_with_review', terminalStatus: 'completed_with_review', summary: 'Review completed with one open review case.', reportRef: 'report-nvda-fy26-q1', bundleRef: 'bundle-run-result-1', reviewRef: { kind: 'review_case', id: 'review-case-1' }, diagnostics: [], bundleStatus: 'available' } }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input); calls.push(`${init?.method ?? 'GET'} ${path}`)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 1, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'Review NVDA earnings', mode: { type: 'workflow', workflowId: 'earnings_review' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'earnings_review', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'earnings_review', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'run-result-1', workflow })
+      if (path === '/api/research/bundles/by-run/run-result-1') return json({ bundleId: 'bundle-run-result-1', workflowRunId: 'run-result-1', createdAt: '2026-10-09T00:01:00.000Z', status: 'completed_with_review', proposals: [], sourceLibraryHits: [], structuredResult: {} })
+      if (path === '/api/research-reports/report-nvda-fy26-q1') return json({ reportId: 'report-nvda-fy26-q1', reportType: 'earnings_review', subjectRefs: ['entity:NVDA'], generatedAt: '2026-10-09T00:01:00.000Z', asOf: '2026-10-09T00:00:00.000Z', workflowRunId: 'run-result-1', knowledgeBaseRevision: 1, sourceRefs: [], claimRefs: [], methodology: 'bounded', sections: [] })
+      if (path === '/api/research-reports?limit=20') return json({ reports: [{ reportId: 'report-nvda-fy26-q1', reportType: 'earnings_review', subjectRefs: ['entity:NVDA'], generatedAt: '2026-10-09T00:01:00.000Z', knowledgeBaseRevision: 1, sectionCount: 0, sourceCount: 0, workflowRunId: 'run-result-1' }] })
+      if (path === '/api/reviews/review-case-1') return json({ reviewCaseId: 'review-case-1', producerRunId: 'run-result-1', producerType: 'earnings_review', createdAt: '2026-10-09T00:01:00.000Z', classification: {}, rootProposal: {}, evidenceBindings: [], existingKnowledgeProjections: [], impact: {}, state: {}, totalDependentProposals: 0, dependentProposalSamples: [], dependentProposals: [], dependentsTruncated: false })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), { target: { value: 'Review NVDA earnings' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+
+    expect(await screen.findByText('Workflow completed and requires review')).toBeTruthy()
+    expect(screen.getAllByText('Review completed with one open review case.').length).toBeGreaterThan(0)
+    expect(await screen.findByRole('button', { name: 'Open Research Bundle' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open Research Report' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open review result' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Open Research Report' }))
+    await waitFor(() => expect(calls).toContain('GET /api/research-reports/report-nvda-fy26-q1'))
+    expect(await screen.findByRole('heading', { name: 'report-nvda-fy26-q1' })).toBeTruthy()
+  })
+
+  it('renders dispatch executor gaps as bounded feedback without raw errors', async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 1, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/research/dispatch') return json({ accepted: false, status: 'executor_unavailable', request: { query: 'Research XYZ', mode: { type: 'workflow', workflowId: 'company_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'No binding' }, summary: { mode: 'Explicit Workflow', workflowId: 'company_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, feedback: { status: 'EXECUTOR_UNAVAILABLE', workflowId: 'company_research', missingFields: [], validatedArguments: {}, reason: 'private stack trace must not appear', suggestedQuestion: '' } })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), { target: { value: 'Research XYZ' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    expect(await screen.findByText('This Workflow executor is unavailable')).toBeTruthy()
+    expect(screen.queryByText('private stack trace must not appear')).toBeNull()
+  })
+
+  it.each([
+    ['invalid_input', 'INVALID_INPUT', 'Workflow input did not pass validation'],
+    ['unresolved_reference', 'UNRESOLVED_REFERENCE', 'A required reference could not be resolved'],
+  ] as const)('renders %s dispatch feedback without exposing transport details', async (status, feedbackStatus, label) => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 1, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/research/dispatch') return json({ accepted: false, status, request: { query: 'Research XYZ', mode: { type: 'workflow', workflowId: 'company_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Input could not be dispatched' }, summary: { mode: 'Explicit Workflow', workflowId: 'company_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, feedback: { status: feedbackStatus, workflowId: 'company_research', missingFields: [], validatedArguments: {}, reason: 'private transport detail', suggestedQuestion: '' } })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), { target: { value: 'Research XYZ' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    expect(await screen.findByText(label)).toBeTruthy()
+    expect(screen.queryByText('private transport detail')).toBeNull()
+    cleanup()
+  })
+
+  it('renders a Workflow result fetched through RuntimeClient from a real local HTTP endpoint', async () => {
+    const run = { runId: 'http-run-1', workflowType: 'company_research', objective: 'Research Example Co', status: 'blocked', startedAt: '2026-10-09T00:00:00.000Z', updatedAt: '2026-10-09T00:01:00.000Z', executionResult: { runId: 'http-run-1', workflowId: 'company_research', executionStatus: 'blocked', terminalStatus: 'blocked', summary: 'No accepted filing source was available.', blockedReason: 'SOURCE_UNAVAILABLE', diagnostics: [], bundleStatus: 'unavailable' } }
+    let serverOrigin = ''
+    const requestPaths: string[] = []
+    const server = createServer((request, response) => {
+      const path = request.url ?? ''
+      requestPaths.push(path)
+      const payload = path === '/api/bootstrap'
+        ? { runtime: { origin: serverOrigin, runtimeToken: 'b'.repeat(64) }, origin: serverOrigin, session: { conversationId: 'http-c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'http-kb', rootRef: 'root:kb', revision: 1, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } }
+        : path === '/api/research/workflows' ? { workflows: [] }
+          : path === '/api/conversations/current' ? { conversationId: 'http-c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }
+            : path === '/api/conversations/messages' ? { conversationId: 'http-c1', messages: [] }
+              : path === '/api/conversations' ? { conversations: [] }
+                : path === '/api/theme-framework/reviews?limit=50' ? { items: [], total: 0, truncated: false }
+                  : path === '/api/theme-scope-impact?limit=50' ? { items: [], total: 0, truncated: false }
+                    : path === '/api/research/dispatch' ? { accepted: true, status: 'started', request: { query: 'Research Example Co', mode: { type: 'workflow', workflowId: 'company_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'company_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: run.runId, workflow: run }
+                      : path === `/api/workflows/${run.runId}` ? run
+                        : { code: 'not_found', error: 'not found' }
+      response.statusCode = path.startsWith('/api/') && payload && 'code' in payload ? 404 : path === '/api/research/dispatch' ? 202 : 200
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify(payload))
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('Local test server did not bind to a TCP port')
+    serverOrigin = `http://127.0.0.1:${address.port}`
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => nativeHttpFetch(new URL(String(input), serverOrigin), init)) as typeof fetch
+    try {
+      render(<App />)
+      let composer: HTMLElement
+      try { composer = await screen.findByRole('textbox', { name: 'Message' }) } catch { throw new Error(`Local HTTP requests: ${requestPaths.join(', ')}`) }
+      fireEvent.change(composer, { target: { value: 'Research Example Co' } })
+      fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+      expect(await screen.findByText('Workflow is blocked')).toBeTruthy()
+      expect(screen.getAllByText('No accepted filing source was available.').length).toBeGreaterThan(0)
+      expect(screen.getByText('Blocked because: SOURCE_UNAVAILABLE')).toBeTruthy()
+    } finally {
+      cleanup()
+      globalThis.fetch = originalFetch
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+    }
+  })
+
+  it('opens a Daily Intelligence reportRef in the Daily Brief viewer', async () => {
+    const brief = { reportId: 'morning-2026-10-09', briefType: 'morning', tradeDate: '2026-10-09', generatedAt: '2026-10-09T00:01:00.000Z', asOf: '2026-10-09T00:00:00.000Z', timezone: 'Asia/Shanghai', revision: 1, workflowRunId: 'brief-run-1', quality: { topCount: 0, reportItemWithSourceRatio: 1 }, sections: [], consensusStatement: 'No actionable signals.', committedKnowledgeRefs: [], reviewCaseCount: 0, calendarConfidence: 'bounded' }
+    const report = { reportId: brief.reportId, reportType: 'daily_intelligence', subjectRefs: [], generatedAt: brief.generatedAt, asOf: brief.asOf, workflowRunId: brief.workflowRunId, knowledgeBaseRevision: 1, sourceRefs: [], claimRefs: [], methodology: 'bounded', sections: [] }
+    const calls: string[] = []
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input); calls.push(path)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 1, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/daily-briefs?limit=20') return json({ briefs: [brief] })
+      if (path === '/api/research-reports?limit=20') return json({ reports: [report] })
+      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'Generate morning brief', mode: { type: 'workflow', workflowId: 'daily_intelligence' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'daily_intelligence', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'daily_intelligence', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: brief.workflowRunId, workflow: { runId: brief.workflowRunId, workflowType: 'daily_intelligence', objective: 'Generate morning brief', status: 'completed', startedAt: brief.generatedAt, updatedAt: brief.generatedAt, completedAt: brief.generatedAt, executionResult: { runId: brief.workflowRunId, workflowId: 'daily_intelligence', executionStatus: 'completed', terminalStatus: 'completed', summary: 'Morning brief is ready.', reportRef: brief.reportId, diagnostics: [], bundleStatus: 'unavailable' } } })
+      if (path === `/api/daily-briefs/${brief.reportId}`) return json(brief)
+      if (path === '/api/theme-framework/reviews?limit=50') return json({ items: [], total: 0, truncated: false })
+      if (path === '/api/theme-scope-impact?limit=50') return json({ items: [], total: 0, truncated: false })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), { target: { value: 'Generate morning brief' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Daily Brief' }))
+    await waitFor(() => expect(calls).toContain(`/api/daily-briefs/${brief.reportId}`))
+    expect(await screen.findByRole('heading', { name: brief.tradeDate })).toBeTruthy()
+  })
+
+  it.each([
+    ['completed', 'Workflow completed'],
+    ['blocked', 'Workflow is blocked'],
+    ['failed', 'Workflow failed'],
+    ['cancelled', 'Workflow was cancelled'],
+  ] as const)('shows an explicit %s terminal result without raw error summaries', async (status, label) => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 1, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'Research XYZ', mode: { type: 'workflow', workflowId: 'company_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'company_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'terminal-run', workflow: { runId: 'terminal-run', workflowType: 'company_research', objective: 'Research XYZ', status, startedAt: '2026-10-09T00:00:00.000Z', updatedAt: '2026-10-09T00:01:00.000Z', errorSummary: 'private stack trace', executionResult: { runId: 'terminal-run', workflowId: 'company_research', executionStatus: status, terminalStatus: status, blockedReason: status === 'blocked' ? 'NO_CANONICAL_DATA' : undefined, diagnostics: [], bundleStatus: 'unavailable' } } })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), { target: { value: 'Research XYZ' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    expect(await screen.findByText(label)).toBeTruthy()
+    expect(screen.queryByText('private stack trace')).toBeNull()
+    if (status === 'blocked') expect(screen.getByText('Blocked because: NO_CANONICAL_DATA')).toBeTruthy()
+    cleanup()
   })
 
   it('defaults to Chinese and switches visible App text with persistent language selection', async () => {
