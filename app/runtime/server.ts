@@ -12,7 +12,7 @@ import { ClientEventStream } from './event-stream.ts'
 import { RuntimeSecurity, RuntimeSecurityError, assertLoopbackBindAddress, type LoopbackBindAddress } from './security.ts'
 import type { CurrentSessionState, ResearchHubApplicationRuntimeOptions } from './contracts.ts'
 import { safeIdentifier, safeSummary, type ClientEvent } from './client-events.ts'
-import type { ResearchDispatchService } from '../services/research-dispatch-service.ts'
+import type { ResearchDispatchResolution, ResearchDispatchService } from '../services/research-dispatch-service.ts'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { THEME_SCOPE_V04_LIMITS } from '../../knowledge/governance/theme-scope-v04.ts'
 import { normalizeResearchRequest } from '../services/research-dispatch-contracts.ts'
@@ -39,6 +39,18 @@ const TOKEN_HEADER = 'x-researchhub-runtime-token'
 const MAX_SSE_PENDING_FRAMES = 64
 const MAX_BACKGROUND_OPERATIONS = 128
 const CLIENT_MIME_TYPES: Readonly<Record<string, string>> = { '.css': 'text/css; charset=utf-8', '.gif': 'image/gif', '.html': 'text/html; charset=utf-8', '.ico': 'image/x-icon', '.jpeg': 'image/jpeg', '.jpg': 'image/jpeg', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.map': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8', '.webp': 'image/webp', '.woff': 'font/woff', '.woff2': 'font/woff2' }
+
+function publicDispatchResolution(resolution: ResearchDispatchResolution | undefined): ResearchDispatchResolution | undefined {
+  if (resolution === undefined) return undefined
+  const diagnostics = new Set<string>()
+  if (resolution.source === 'bounded_repair') diagnostics.add('invalid_semantic_output_repaired')
+  if (resolution.source === 'deterministic_fallback') {
+    if (resolution.diagnostics.includes('reasoning_executor_unconfigured')) diagnostics.add('reasoning_executor_unconfigured')
+    else diagnostics.add('semantic_output_rejected')
+    diagnostics.add('deterministic_fallback_used')
+  }
+  return { source: resolution.source, attempts: resolution.attempts, diagnostics: [...diagnostics] }
+}
 const THESIS_CRITERION_PREVIEW_FIELDS = ['knowledgeBaseId', 'expectedKnowledgeBaseRevision', 'thesisRef', 'conditionId', 'revision', 'type', 'definitionVersion', 'definition', 'targetClaimRefs', 'origin', 'definitionHash', 'previewHash'] as const
 const DISABLED_MODEL_CAPABILITIES: ReasoningCapabilities = { maxContextTokens: 1, maxOutputTokens: 1, structuredOutputSupport: false, maxConcurrency: 1 }
 
@@ -1408,7 +1420,7 @@ export class ResearchHubRuntimeServer {
         }
       })
     }
-    await this.sendJson(response, started.status === 'started' ? 202 : 200, { accepted: started.status === 'started', status: started.status, request: started.request, decision: started.decision, summary: started.summary, ...(started.runId === undefined ? {} : { runId: started.runId }), ...(started.workflow === undefined ? {} : { workflow: started.workflow }) })
+    await this.sendJson(response, started.status === 'started' ? 202 : 200, { accepted: started.status === 'started', status: started.status, request: started.request, decision: started.decision, summary: started.summary, ...(started.feedback === undefined ? {} : { feedback: started.feedback }), ...(started.resolution === undefined ? {} : { resolution: publicDispatchResolution(started.resolution) }), ...(started.runId === undefined ? {} : { runId: started.runId }), ...(started.workflow === undefined ? {} : { workflow: started.workflow }) })
   }
 
   private sourceMetadata(value: Record<string, unknown>): IngestDocumentInput['sourceMetadata'] | undefined { const raw = value.sourceMetadata; if (raw === undefined) return undefined; if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ApplicationServiceError('invalid_input', 'sourceMetadata must be an object'); const input = raw as Record<string, unknown>; return { ...(this.optionalString(input, 'title', 500) === undefined ? {} : { title: this.optionalString(input, 'title', 500) }), ...(this.optionalString(input, 'institution', 500) === undefined ? {} : { institution: this.optionalString(input, 'institution', 500) }), ...(this.optionalString(input, 'author', 500) === undefined ? {} : { author: this.optionalString(input, 'author', 500) }), ...(this.optionalString(input, 'publishedAt', 100) === undefined ? {} : { publishedAt: this.optionalString(input, 'publishedAt', 100) }), ...(this.optionalString(input, 'sourceUrl', 2_000) === undefined ? {} : { sourceUrl: this.optionalString(input, 'sourceUrl', 2_000) }) } }

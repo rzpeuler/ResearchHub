@@ -121,4 +121,6 @@ export interface ResearchHubApplicationRuntimeOptions {
   readonly industryDataResolverFactory?: IndustryDataResolverFactory
   readonly industryDataCatalog?: IndustryDataCatalog
   readonly dailyIntelligenceService?: DailyIntelligenceService
+  /** Injectable wall clock for deterministic Workflow input context tests. */
+  readonly clock?: () => Date
 }

@@ -48,6 +48,44 @@ describe('Homepage shell', () => {
   })
   afterEach(() => { cleanup(); window.history.replaceState({}, '', '/'); globalThis.fetch = originalFetch; globalThis.EventSource = originalEventSource; Object.defineProperty(window, 'EventSource', { configurable: true, value: originalEventSource }) })
 
+  it('keeps workflow input feedback visible without falling back to ordinary chat', async () => {
+    const calls: string[] = []
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input)
+      calls.push(`${init?.method ?? 'GET'} ${path}`)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeError: { code: 'no_kb_mounted', error: 'not mounted' } })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'earnings_review', label: 'Earnings Review', intentDescription: 'Review earnings', inputSchema: {}, requiredInputs: ['symbol', 'fiscalYear', 'period'], outputContract: 'ResearchReport', knowledgeEffects: ['Claim'] }] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
+      if (path === '/api/research-reports?limit=20') return json({ reports: [] })
+      if (path === '/api/research/dispatch') return json({
+        accepted: true, status: 'needs_input',
+        request: { query: 'Review this quarter', mode: { type: 'workflow', workflowId: 'earnings_review' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } },
+        decision: { mode: 'workflow', workflow: { id: 'earnings_review', confidence: 1, arguments: { symbol: 'NVDA', fiscalYear: 2026 } }, skills: [], entities: [], missingRequiredInputs: ['period'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Period is required' },
+        summary: { mode: 'Explicit Workflow', workflowId: 'earnings_review', workflowLabel: 'Earnings Review', selectedSkillIds: [], argumentsStatus: 'missing', argumentKeys: ['symbol', 'fiscalYear'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } },
+        feedback: { status: 'NEEDS_INPUT', workflowId: 'earnings_review', missingFields: ['period'], validatedArguments: { symbol: 'NVDA', fiscalYear: 2026 }, reason: 'The fiscal period is required.', suggestedQuestion: 'Which quarter should I review?' },
+        resolution: { source: 'bounded_repair', attempts: 2, diagnostics: ['invalid_semantic_output_repaired'] },
+      })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    const composer = await screen.findByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement
+    fireEvent.change(composer, { target: { value: 'Review this quarter' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+
+    expect(await screen.findByText('The fiscal period is required.')).toBeTruthy()
+    expect(screen.getByText('Missing fields: period')).toBeTruthy()
+    expect(screen.getByText(/Resolved arguments:.*NVDA.*2026/)).toBeTruthy()
+    expect(screen.getByText('Suggested question: Which quarter should I review?')).toBeTruthy()
+    expect(screen.getByText('One bounded argument repair was used')).toBeTruthy()
+    expect((screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).value).toBe('Review this quarter')
+    expect((screen.getByRole('combobox', { name: 'Workflow' }) as HTMLSelectElement).value).toBe('earnings_review')
+    expect(calls).toContain('POST /api/research/dispatch')
+    expect(calls).not.toContain('POST /api/conversations/prompt')
+  })
+
   it('defaults to Chinese and switches visible App text with persistent language selection', async () => {
     window.localStorage.removeItem('researchhub.language')
     render(<App />)

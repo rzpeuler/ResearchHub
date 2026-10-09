@@ -143,17 +143,6 @@ function dispatchWorkflow(value: unknown): ResearchDispatchWorkflow {
   const args = record(input.arguments, 'workflow.arguments')
   const keys = Object.keys(args)
   if (keys.length > 30 || keys.some((key) => !/^[A-Za-z][A-Za-z0-9._-]*$/.test(key))) throw invalid('workflow.arguments contains unsafe keys')
-  for (const [key, item] of Object.entries(args)) {
-    if (key === 'symbol' && (typeof item !== 'string' || !/^\d{6}$/.test(item))) throw invalid('workflow.arguments.symbol must be a six-digit symbol')
-    if (['name', 'exchange', 'thesisRef'].includes(key) && typeof item !== 'string') throw invalid(`workflow.arguments.${key} must be a string`)
-    if (['fiscalYear', 'targetFiscalYear'].includes(key) && (!Number.isSafeInteger(item) || (item as number) < 1900 || (item as number) > 2200)) throw invalid(`workflow.arguments.${key} must be a valid fiscal year`)
-    if (key === 'period' && (item !== 'Q1' && item !== 'H1' && item !== 'Q3' && item !== 'FY')) throw invalid('workflow.arguments.period is invalid')
-    if (key === 'methods' && (!Array.isArray(item) || item.length > 3 || item.some((method) => method !== 'PE' && method !== 'PB' && method !== 'EV_EBITDA'))) throw invalid('workflow.arguments.methods is invalid')
-    if (key === 'briefType' && item !== 'morning' && item !== 'evening') throw invalid('workflow.arguments.briefType is invalid')
-    if (key === 'tradeDate' && (typeof item !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(item))) throw invalid('workflow.arguments.tradeDate is invalid')
-    if (key === 'thesisRef' && (typeof item !== 'string' || !/^claim:[A-Za-z0-9._-]+$/.test(item))) throw invalid('workflow.arguments.thesisRef is invalid')
-    if (key === 'anchor' && (item === null || typeof item !== 'object' || Array.isArray(item))) throw invalid('workflow.arguments.anchor must be an object')
-  }
   return { id: safeId(input.id, 'workflow.id'), confidence: confidence(input.confidence, 'workflow.confidence'), arguments: { ...args } }
 }
 

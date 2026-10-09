@@ -1,8 +1,36 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { ResearchDispatchService, extractWorkflowArguments } from '../../../app/services/research-dispatch-service.ts'
 import { createWorkflowDefinitionRegistry } from '../../../app/services/workflow-registry.ts'
 import { ResearchSkillRegistry } from '../../../app/services/skill-registry.ts'
+import { createFreshKnowledgeBaseV04 } from '../../../knowledge/storage/index.ts'
+import type { ReasoningRequest } from '../../../plugins/reasoning/contracts.ts'
+
+const NOW = '2026-10-09T08:00:00.000Z'
+async function identityKnowledgeBase(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-exec-001-dispatch-kb-'))
+  await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: `exec-001-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, now: NOW })
+  const assets = {
+    'entity:fixture-company': { type: 'entity', storageRef: 'entities/fixture-company.yaml' },
+    'claim:fixture-claim': { type: 'claim', storageRef: 'claims/fixture-claim.yaml' },
+    'thesis:fixture-thesis': { type: 'thesis', storageRef: 'theses/fixture-thesis.yaml' },
+  }
+  await writeFile(join(root, 'entities', 'fixture-company.yaml'), JSON.stringify({ id: 'entity:fixture-company', type: 'company', name: '贵州茅台', aliases: ['茅台'], ticker: '600519', exchange: 'SSE', lifecycle: { status: 'active' } }) + '\n')
+  await writeFile(join(root, 'claims', 'fixture-claim.yaml'), JSON.stringify({ id: 'claim:fixture-claim', claimType: 'fact', statement: 'Fixture canonical claim.', subjectRefs: ['entity:fixture-company'], sourceRefs: [], lifecycle: { status: 'active' } }) + '\n')
+  await writeFile(join(root, 'theses', 'fixture-thesis.yaml'), JSON.stringify({ id: 'thesis:fixture-thesis', title: 'Fixture thesis', lifecycle: { status: 'active' } }) + '\n')
+  await writeFile(join(root, 'registry', 'assets.yaml'), JSON.stringify(assets) + '\n')
+  return root
+}
+
+function semanticExecutor(output: unknown, onRequest?: (request: ReasoningRequest) => void) {
+  return {
+    capabilities: () => ({ maxContextTokens: 100_000, maxOutputTokens: 10_000, structuredOutputSupport: true, maxConcurrency: 1 }),
+    async execute(request: ReasoningRequest) { onRequest?.(request); return { operation: request.operation, output } },
+  }
+}
 
 test('explicit Earnings Review extracts company, fiscal year, and half-year period', () => {
   const registry = createWorkflowDefinitionRegistry()
@@ -109,15 +137,19 @@ test('Theme Framework dispatch returns only the safe review candidate projection
 })
 
 test('started dispatch persists one ResearchBundle from the workflow result and forwards policy', async () => {
+  const knowledgeBase = await identityKnowledgeBase()
   const calls: unknown[] = []
   const store = new (class { readonly values = new Map<string, unknown>(); async put(bundle: { bundleId: string }) { this.values.set(bundle.bundleId, bundle) }; async get(id: string) { return this.values.get(id) }; async list() { return [...this.values.values()] } })()
   const research = ({ startEarningsReview: (input: unknown) => { calls.push(input); return { completion: Promise.resolve({ status: 'completed', report: { reportId: 'earnings-report', outputPath: 'earnings-report.md' }, research: { proposals: [{ proposalId: 'earnings-proposal', kind: 'claim' }] } }) } } } as never)
-  const service = new ResearchDispatchService({ researchService: research, bundleStore: store as never })
-  const started = service.start({ query: '600519 2026 年半年报', mode: { type: 'workflow', workflowId: 'earnings_review' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } })
-  await started.completion
-  assert.equal((calls[0] as { writeKnowledge: boolean }).writeKnowledge, false)
-  const bundle = await service.getBundle(`research-bundle-${started.runId!}`) as { report?: { reportId: string }; proposals: readonly { proposalId: string }[] }
-  assert.equal(bundle.report?.reportId, 'earnings-report'); assert.deepEqual(bundle.proposals.map((item) => item.proposalId), ['earnings-proposal'])
+  try {
+    const service = new ResearchDispatchService({ researchService: research, bundleStore: store as never, mountedKnowledgeBaseRoot: knowledgeBase })
+    const started = await service.startAsync({ query: '600519 2026 年半年报', mode: { type: 'workflow', workflowId: 'earnings_review' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } })
+    assert.equal(started.status, 'started')
+    await started.completion
+    assert.equal((calls[0] as { writeKnowledge: boolean }).writeKnowledge, false)
+    const bundle = await service.getBundle(`research-bundle-${started.runId!}`) as { report?: { reportId: string }; proposals: readonly { proposalId: string }[] }
+    assert.equal(bundle.report?.reportId, 'earnings-report'); assert.deepEqual(bundle.proposals.map((item) => item.proposalId), ['earnings-proposal'])
+  } finally { await rm(knowledgeBase, { recursive: true, force: true }) }
 })
 
 test('session-bound ResearchBundle is finalized from the captured assistant output', async () => {
@@ -130,6 +162,16 @@ test('session-bound ResearchBundle is finalized from the captured assistant outp
 test('Name-only company mentions are unresolved without Knowledge or semantic identity evidence', () => {
   const resolved = new ResearchDispatchService().resolve({ query: '研究贵州茅台 2026 年半年报', mode: { type: 'workflow', workflowId: 'earnings_review' } })
   assert.equal(resolved.decision.missingRequiredInputs.includes('symbol'), true)
+})
+
+test('synchronous compatibility dispatch rejects unverified company references before invoking an adapter', () => {
+  let starts = 0
+  const service = new ResearchDispatchService({ researchService: ({ startValuation: () => { starts += 1; return { completion: Promise.resolve({ status: 'completed' }) } } } as never) })
+  const result = service.start({ query: '当前 600519 的估值水平如何？', mode: { type: 'workflow', workflowId: 'valuation' } })
+  assert.equal(result.status, 'unresolved_reference')
+  assert.equal(result.runId, undefined)
+  assert.equal(result.feedback?.status, 'UNRESOLVED_REFERENCE')
+  assert.equal(starts, 0)
 })
 
 test('semantic resolver uses the ReasoningExecutor boundary and repairs one invalid output', async () => {
@@ -201,4 +243,133 @@ test('industry depth queries route to the narrow executable canonical Skill', ()
     assert.equal(result.decision.mode, 'skill_plan', query)
     assert.deepEqual(result.decision.skills.map((item) => item.id), [expected], query)
   }
+})
+
+test('Workflow contract missing inputs return structured NEEDS_INPUT and never call an adapter', async () => {
+  let starts = 0
+  const output = { mode: 'workflow', workflow: { id: 'earnings_review', confidence: 0.98, arguments: { symbol: '600519', name: '贵州茅台', fiscalYear: 2026 } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Annual report review.' }
+  const service = new ResearchDispatchService({ reasoningExecutor: semanticExecutor(output), researchService: ({ startEarningsReview: () => { starts += 1; return { completion: Promise.resolve({ status: 'completed' }) } } } as never) })
+  const result = await service.startAsync({ query: '研究贵州茅台 2026 年半年报', mode: { type: 'workflow', workflowId: 'earnings_review' } })
+  assert.equal(result.status, 'needs_input')
+  assert.equal(result.feedback?.status, 'NEEDS_INPUT')
+  assert.deepEqual(result.feedback?.missingFields, ['period'])
+  assert.deepEqual(result.feedback?.validatedArguments, { symbol: '600519', name: '贵州茅台', fiscalYear: 2026 })
+  assert.match(result.feedback?.suggestedQuestion ?? '', /报告期间/)
+  assert.deepEqual(result.decision.missingRequiredInputs, ['period'])
+  assert.equal(starts, 0)
+})
+
+test('Registered Workflow argument schemas reject unknown fields and get one bounded repair attempt', async () => {
+  const calls: unknown[] = []
+  const invalid = { mode: 'workflow', workflow: { id: 'earnings_review', confidence: 1, arguments: { symbol: '600519', fiscalYear: 2026, period: 'Q4', invented: 'value' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Invalid period and field.' }
+  const service = new ResearchDispatchService({ reasoningExecutor: semanticExecutor(invalid, (request) => calls.push(request.input)) })
+  const result = await service.resolveAsync({ query: '研究 600519 2026 年半年报', mode: { type: 'workflow', workflowId: 'earnings_review' } })
+  assert.equal(calls.length, 2)
+  assert.equal(result.resolution.source, 'deterministic_fallback')
+  assert.ok(result.resolution.diagnostics.some((item) => item.includes('invented')))
+  assert.equal(result.decision.workflow?.arguments.invented, undefined)
+  assert.equal(result.decision.workflow?.arguments.period, 'H1')
+})
+
+test('Valuation current and historical dispatch use an injected clock without inventing an asOf', async () => {
+  const knowledgeBase = await identityKnowledgeBase()
+  try {
+    const inputs: Record<string, unknown>[] = []
+    const requests: Record<string, unknown>[] = []
+    const research = { startValuation(input: Record<string, unknown>) { inputs.push(input); return { completion: Promise.resolve({ status: 'blocked', blockedReason: 'COMPANY_COVERAGE_NOT_FOUND' }) } } }
+    const output = { mode: 'workflow', workflow: { id: 'valuation', confidence: 1, arguments: { symbol: '600519', name: '贵州茅台' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false }, rationale: 'Current valuation.' }
+    const service = new ResearchDispatchService({ mountedKnowledgeBaseRoot: knowledgeBase, reasoningExecutor: semanticExecutor(output, (request) => requests.push(request.input as Record<string, unknown>)), researchService: research as never, clock: () => new Date(NOW) })
+    const current = await service.startAsync({ query: '当前贵州茅台的估值水平如何？', mode: { type: 'workflow', workflowId: 'valuation' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false } })
+    assert.equal(current.status, 'started')
+    assert.equal(Object.hasOwn(inputs[0]!, 'asOf'), true)
+    assert.equal(inputs[0]!.asOf, undefined)
+    assert.equal(((requests[0]!.runtimeContext as Record<string, unknown>).requestTimestamp), NOW)
+    assert.deepEqual((requests[0]!.runtimeContext as Record<string, unknown>).persistencePolicy, { writeKnowledge: false })
+    const historical = await service.startAsync({ query: '请按截至2025-06-30时点估值贵州茅台', mode: { type: 'workflow', workflowId: 'valuation' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false } })
+    assert.equal(historical.status, 'started')
+    assert.equal(inputs[1]!.asOf, '2025-06-30T23:59:59.999Z')
+    assert.equal(await historical.completion instanceof Object, true)
+    const zoned = await service.startAsync({ query: '请按截至2025-06-30T15:00:00+08:00时点估值贵州茅台', mode: { type: 'workflow', workflowId: 'valuation' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false } })
+    assert.equal(zoned.status, 'started')
+    assert.equal(inputs[2]!.asOf, '2025-06-30T07:00:00.000Z')
+    const future = await service.startAsync({ query: '请按截至2026-10-10时点估值贵州茅台', mode: { type: 'workflow', workflowId: 'valuation' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false } })
+    assert.equal(future.status, 'invalid_input')
+    assert.equal(future.feedback?.status, 'INVALID_INPUT')
+    assert.match(future.feedback?.reason ?? '', /earlier than the injected Runtime clock/)
+    const invalidDate = await service.startAsync({ query: '请按截至2025-02-30时点估值贵州茅台', mode: { type: 'workflow', workflowId: 'valuation' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false } })
+    assert.equal(invalidDate.status, 'invalid_input')
+    assert.match(invalidDate.feedback?.reason ?? '', /valid calendar date/)
+    assert.equal(inputs.length, 3)
+  } finally { await rm(knowledgeBase, { recursive: true, force: true }) }
+})
+
+test('Unverified company identity and canonical references are returned as explicit gaps', async () => {
+  let starts = 0
+  const output = { mode: 'workflow', workflow: { id: 'valuation', confidence: 1, arguments: { symbol: '600519', name: '贵州茅台' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Candidate company.' }
+  const service = new ResearchDispatchService({ reasoningExecutor: semanticExecutor(output), researchService: ({ startValuation: () => { starts += 1; return { completion: Promise.resolve({ status: 'completed' }) } } } as never) })
+  const company = await service.startAsync({ query: '当前贵州茅台估值', mode: { type: 'workflow', workflowId: 'valuation' } })
+  assert.equal(company.status, 'unresolved_reference')
+  assert.equal(company.feedback?.status, 'UNRESOLVED_REFERENCE')
+  assert.match(company.feedback?.reason ?? '', /mounted Knowledge Base/)
+  assert.equal(starts, 0)
+  const thesis = await service.startAsync({ query: 'red team claim:invented', mode: { type: 'workflow', workflowId: 'thesis_red_team' } })
+  assert.equal(thesis.status, 'needs_input')
+  assert.deepEqual(thesis.feedback?.missingFields, ['symbol'])
+  assert.equal(starts, 0)
+})
+
+test('Industry Research passes a semantic industry name without requiring a fabricated canonical ID', async () => {
+  let input: Record<string, unknown> | undefined
+  const output = { mode: 'workflow', workflow: { id: 'industry_research', confidence: 1, arguments: { name: '锂电池', aliases: ['动力电池'] } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Industry supply and demand.' }
+  const service = new ResearchDispatchService({ reasoningExecutor: semanticExecutor(output), researchService: ({ startIndustryResearch: (value: Record<string, unknown>) => { input = value; return { completion: Promise.resolve({ status: 'blocked', blockedReason: 'INDUSTRY_COVERAGE_NOT_FOUND' }) } } } as never) })
+  const result = await service.startAsync({ query: '分析一下锂电池行业的供需变化', mode: { type: 'workflow', workflowId: 'industry_research' } })
+  assert.equal(result.status, 'started')
+  assert.equal(input?.name, '锂电池')
+  assert.deepEqual(input?.aliases, ['动力电池'])
+  assert.equal(Object.hasOwn(input ?? {}, 'canonicalRef'), false)
+})
+
+test('Test-only Workflow definitions validate new fields without a dispatch parser and cannot claim start without an adapter', async () => {
+  const registry = new (await import('../../../app/services/workflow-registry.ts')).WorkflowDefinitionRegistry([])
+  const inputSchema = { type: 'object', properties: { benchmark: { type: 'string' }, holdings: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, weight: { type: 'number' } }, required: ['symbol', 'weight'], additionalProperties: false } }, reviewPeriod: { type: 'string', enum: ['MONTH', 'QUARTER'] } }, required: ['benchmark', 'holdings', 'reviewPeriod'], additionalProperties: false }
+  const base = { id: 'test_portfolio_review', label: 'Test Portfolio Review', intentDescription: 'A dynamically registered portfolio review.', inputSchema, requiredInputs: ['benchmark', 'holdings', 'reviewPeriod'], skillIds: [], outputContract: 'Test result only', knowledgeEffects: [] }
+  registry.register(base)
+  const executor = semanticExecutor({ mode: 'workflow', workflow: { id: base.id, confidence: 1, arguments: { benchmark: 'CSI300', holdings: [{ symbol: '600519', weight: 0.2 }], reviewPeriod: 'QUARTER' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Test-only Workflow.' })
+  const service = new ResearchDispatchService({ workflowRegistry: registry, reasoningExecutor: executor })
+  const resolved = await service.resolveAsync({ query: 'review portfolio', mode: { type: 'workflow', workflowId: base.id } })
+  assert.deepEqual(resolved.decision.workflow?.arguments, { benchmark: 'CSI300', holdings: [{ symbol: '600519', weight: 0.2 }], reviewPeriod: 'QUARTER' })
+  const start = await service.startAsync({ query: 'review portfolio', mode: { type: 'workflow', workflowId: base.id } })
+  assert.equal(start.status, 'invalid_input')
+  assert.match(start.feedback?.reason ?? '', /no execution adapter/)
+  registry.replace({ ...base, inputSchema: { ...inputSchema, properties: { ...inputSchema.properties, reportingCurrency: { type: 'string', enum: ['CNY', 'USD'] } } } as never })
+  assert.equal(registry.list().length, 1)
+  assert.equal(registry.remove(base.id), true)
+  assert.equal(registry.get(base.id), undefined)
+})
+
+test('Thesis Lifecycle CREATE/REFRESH contracts and canonical Thesis refs are gated before execution', async () => {
+  const missingService = new ResearchDispatchService({ reasoningExecutor: semanticExecutor({ mode: 'workflow', workflow: { id: 'thesis_lifecycle', confidence: 1, arguments: { mode: 'CREATE' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Create a thesis.' }) })
+  const missing = await missingService.startAsync({ query: 'CREATE a thesis', mode: { type: 'workflow', workflowId: 'thesis_lifecycle' } })
+  assert.equal(missing.status, 'needs_input')
+  assert.deepEqual(missing.feedback?.missingFields, ['formalization'])
+
+  const knowledgeBase = await identityKnowledgeBase()
+  try {
+    const output = { mode: 'workflow', workflow: { id: 'thesis_lifecycle', confidence: 1, arguments: { mode: 'REFRESH', refresh: { priorSnapshot: { thesisId: 'thesis:fixture-thesis', priorAsOf: '2026-09-01T00:00:00.000Z', propositions: [{ propositionId: 'claim:fixture-claim', statement: 'Fixture claim.' }] }, evidence: [] } } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Refresh the canonical thesis.' }
+    const service = new ResearchDispatchService({ mountedKnowledgeBaseRoot: knowledgeBase, reasoningExecutor: semanticExecutor(output), clock: () => new Date(NOW) })
+    const result = await service.startAsync({ query: 'Refresh thesis:fixture-thesis', mode: { type: 'workflow', workflowId: 'thesis_lifecycle' } })
+    assert.equal(result.status, 'started')
+    const completion = await result.completion as { mode?: string; status?: string }
+    assert.equal(completion.mode, 'REFRESH')
+    const injected = result.decision.workflow?.arguments.refresh as Record<string, unknown>
+    assert.equal(injected.currentAsOf, NOW)
+    const unknownRefOutput = JSON.parse(JSON.stringify(output).replace('thesis:fixture-thesis', 'thesis:missing')) as unknown
+    const unknownRef = await new ResearchDispatchService({ mountedKnowledgeBaseRoot: knowledgeBase, reasoningExecutor: semanticExecutor(unknownRefOutput), clock: () => new Date(NOW) }).startAsync({ query: 'Refresh thesis:missing', mode: { type: 'workflow', workflowId: 'thesis_lifecycle' } })
+    assert.equal(unknownRef.status, 'unresolved_reference')
+    assert.match(unknownRef.feedback?.reason ?? '', /Canonical reference not found: thesis:missing/)
+    await writeFile(join(knowledgeBase, 'claims', 'fixture-claim.yaml'), JSON.stringify({ id: 'claim:fixture-claim', claimType: 'fact', statement: 'Fixture canonical claim.', subjectRefs: ['entity:fixture-company'], sourceRefs: [], lifecycle: { status: 'superseded' } }) + '\n')
+    const inactiveRef = await service.startAsync({ query: 'Refresh thesis:fixture-thesis', mode: { type: 'workflow', workflowId: 'thesis_lifecycle' } })
+    assert.equal(inactiveRef.status, 'unresolved_reference')
+    assert.match(inactiveRef.feedback?.reason ?? '', /inactive or outside its lifecycle window/)
+  } finally { await rm(knowledgeBase, { recursive: true, force: true }) }
 })
