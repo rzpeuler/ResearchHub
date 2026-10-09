@@ -47,13 +47,21 @@ function normalizeCompany(company: ResearchCompanyIdentity): ResearchCompanyIden
   return { symbol: ticker, name: normalized.candidate.name, exchange }
 }
 function normalizedText(value: unknown): string { return typeof value === 'string' ? value.normalize('NFKC').trim().toLowerCase() : '' }
-function publishedBefore(candidate: ResearchSourceCandidate, asOf: string): boolean { if (!candidate.publishedAt) return true; const published = Date.parse(candidate.publishedAt); return !Number.isNaN(published) && published <= Date.parse(asOf) }
-function metadataMatches(candidate: ResearchSourceCandidate, period: EarningsPeriodSpec): boolean {
+function normalizedExchange(value: unknown): string { const exchange = normalizedText(value); return exchange === 'sh' || exchange === 'sse' || exchange === 'xshg' ? 'sse' : exchange === 'sz' || exchange === 'szse' || exchange === 'xshe' ? 'szse' : exchange }
+function publishedBefore(candidate: ResearchSourceCandidate, asOf: string): boolean { if (!candidate.publishedAt) return false; const published = Date.parse(candidate.publishedAt); return Number.isFinite(published) && published <= Date.parse(asOf) }
+function metadataMatches(candidate: ResearchSourceCandidate, period: EarningsPeriodSpec, identity?: ResearchCompanyIdentity): boolean {
   const metadata = candidate.metadata ?? {}; const fiscalYear = metadata.fiscalYear ?? metadata.year; const rawPeriod = metadata.period ?? metadata.fiscalPeriod; const yearOkay = fiscalYear === undefined || Number(fiscalYear) === period.fiscalYear; const periodOkay = rawPeriod === undefined || normalizedText(rawPeriod) === normalizedText(period.period) || normalizedText(rawPeriod) === normalizedText(period.key)
-  return yearOkay && periodOkay
+  const candidateSymbol = metadata.companySymbol ?? metadata.ticker ?? metadata.secCode
+  const symbolOkay = identity === undefined || candidateSymbol === identity.symbol
+  const candidateExchange = metadata.exchange
+  const exchangeOkay = identity === undefined || candidateExchange === undefined || normalizedExchange(candidateExchange) === normalizedExchange(identity.exchange)
+  const issuer = metadata.issuer
+  const expectedName = normalizedText(identity?.name)
+  const issuerOkay = identity === undefined || issuer === undefined || expectedName === normalizedText(identity.symbol) || normalizedText(issuer) === expectedName || normalizedText(issuer).includes(expectedName) || expectedName.includes(normalizedText(issuer))
+  return yearOkay && periodOkay && symbolOkay && exchangeOkay && issuerOkay
 }
-function titleMatches(candidate: ResearchSourceCandidate, period: EarningsPeriodSpec): boolean {
-  const title = candidate.title.normalize('NFKC'); const year = String(period.fiscalYear); if (!title.includes(year) || !metadataMatches(candidate, period)) return false
+function titleMatches(candidate: ResearchSourceCandidate, period: EarningsPeriodSpec, identity?: ResearchCompanyIdentity): boolean {
+  const title = candidate.title.normalize('NFKC'); const year = String(period.fiscalYear); if (!title.includes(year) || !metadataMatches(candidate, period, identity)) return false
   const aliases: Readonly<Record<EarningsPeriod, readonly string[]>> = { Q1: ['第一季度报告', '一季度报告', '一季度'], H1: ['半年度报告', '半年报', '中期报告'], Q3: ['第三季度报告', '三季度报告', '三季度'], FY: ['年度报告', '年报'] }
   return aliases[period.period].some((alias) => title.includes(alias))
 }
@@ -62,17 +70,30 @@ function kindForFiling(candidate: ResearchSourceCandidate): 'full' | 'summary' |
 }
 function candidateSort(left: ResearchSourceCandidate, right: ResearchSourceCandidate): number { const leftTime = Date.parse(left.publishedAt ?? ''); const rightTime = Date.parse(right.publishedAt ?? ''); return (Number.isNaN(rightTime) ? 0 : rightTime) - (Number.isNaN(leftTime) ? 0 : leftTime) || left.candidateId.localeCompare(right.candidateId) }
 
-export function selectOfficialEarningsFilings(candidates: readonly ResearchSourceCandidate[], requestedInput: EarningsPeriodSpec | { readonly fiscalYear: number; readonly period: EarningsPeriod }, asOf: string): EarningsFilingSelection {
+export function selectOfficialEarningsFilings(candidates: readonly ResearchSourceCandidate[], requestedInput: EarningsPeriodSpec | { readonly fiscalYear: number; readonly period: EarningsPeriod }, asOf: string, identity?: ResearchCompanyIdentity): EarningsFilingSelection {
   const requested = 'key' in requestedInput ? requestedInput : earningsPeriodSpec(requestedInput.fiscalYear, requestedInput.period)
   const diagnostics: string[] = []; let futureFilteredCount = 0; const eligible: ResearchSourceCandidate[] = []
-  for (const candidate of candidates) { if (candidate.kind !== 'official_disclosure') continue; if (!publishedBefore(candidate, asOf)) { futureFilteredCount += 1; continue } if (titleMatches(candidate, requested)) eligible.push(candidate) }
+  for (const candidate of candidates) { if (candidate.kind !== 'official_disclosure') continue; if (!publishedBefore(candidate, asOf)) { futureFilteredCount += 1; continue } if (titleMatches(candidate, requested, identity)) eligible.push(candidate) }
   const unique = [...new Map(eligible.map((candidate) => [candidate.candidateId, candidate])).values()]; const full = unique.filter((candidate) => kindForFiling(candidate) === 'full').sort(candidateSort); const corrections = unique.filter((candidate) => kindForFiling(candidate) === 'correction').sort(candidateSort); const summaries = unique.filter((candidate) => kindForFiling(candidate) === 'summary').sort(candidateSort)
   let selected: ResearchSourceCandidate[] = []
-  if (full.length > 0) selected = [full[0]!, ...corrections.slice(0, 2)]
+  if (full.length > 0) {
+    const newestTime = full[0]!.publishedAt
+    const newest = full.filter((candidate) => candidate.publishedAt === newestTime)
+    if (newest.length > 1) diagnostics.push(`Ambiguous exact-period official filing versions at ${newestTime}`)
+    else {
+      const base = newest[0]!
+      const relatedCorrections = corrections.filter((candidate) => {
+        const relation = candidate.metadata?.correctionOf ?? candidate.metadata?.correctsAnnouncementId
+        return typeof relation === 'string' && relation !== '' && relation === base.metadata?.announcementId
+      }).sort(candidateSort)
+      selected = [base, ...relatedCorrections.slice(0, 2)]
+      if (corrections.length > relatedCorrections.length) diagnostics.push('Unlinked correction candidate(s) were not applied because their relationship to the selected filing is unproven')
+    }
+  }
   else if (summaries.length > 0) { selected = [summaries[0]!]; diagnostics.push('Full exact-period filing unavailable; selected deterministic summary fallback') }
   else diagnostics.push(`No exact official filing matched ${requested.key}`)
   if (futureFilteredCount > 0) diagnostics.push(`Excluded ${futureFilteredCount} future-published filing candidate(s)`)
-  return { candidates: selected, diagnostics, exactPeriodMatched: selected.length > 0, futureFilteredCount }
+  return { candidates: selected, diagnostics, exactPeriodMatched: selected.length > 0 && kindForFiling(selected[0]!) !== 'summary', futureFilteredCount }
 }
 
 async function acquireOfficial(resolver: DataResolver<EarningsDataPayload>, company: ResearchCompanyIdentity, period: EarningsPeriodSpec, asOf: string): Promise<{ sources: readonly NormalizedResearchSource[]; selection: EarningsFilingSelection; diagnostics: readonly ResearchAcquisitionDiagnostic[]; outcome: ResearchProviderOutcome }> {
@@ -128,8 +149,11 @@ async function acquireStructured(resolver: DataResolver<EarningsDataPayload>, co
   const financialQuality = calculateFinancialQualityAnalysis({ data: qualityData, revenueRecognitionDivergenceThreshold: REVENUE_RECOGNITION_DIVERGENCE_THRESHOLD }).summary
   const snapshot = { requested: period, current: normalized.current ?? null, priorYear: normalized.priorYear ?? null, verifiedMetrics: metricStructuredValues(computation), unavailable: computation.unavailable, financialQuality }
   const content = JSON.stringify(snapshot)
-  const candidate: ResearchSourceCandidate = { candidateId, kind: 'structured_data', tier: 2, title: `AKShare earnings financial snapshot ${period.key}`, provider: 'akshare', metadata: { companySymbol: company.symbol, dataKind: 'earnings_financial', period: period.key } }
-  return { source: { candidate, retrievedAt: resolved!.source?.retrievedAt ?? actual.retrievedAt, title: candidate.title, content, contentHash: sha256(content), publisher: 'AKShare', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }, computation, financialQuality, outcome }
+  const originalPublisher = resolved!.source?.originPublisher ?? 'EastMoney'
+  const retrievalProvider = resolved!.source?.retrievalProvider ?? 'AKShare'
+  const valueVersion = resolved!.source?.valueVersion ?? { status: 'UNVERIFIED', reason: 'Aggregator financial numeric revision is not identified' }
+  const candidate: ResearchSourceCandidate = { candidateId, kind: 'structured_data', tier: 2, title: `${originalPublisher} earnings financial snapshot ${period.key}`, provider: 'akshare', metadata: { companySymbol: company.symbol, dataKind: 'earnings_financial', period: period.key, fiscalYear: period.fiscalYear, fiscalPeriod: period.key, originPublisher: originalPublisher, retrievalProvider, retrievedAt: resolved!.source?.retrievedAt ?? actual.retrievedAt, ...(resolved!.source?.publishedAt ? { publishedAt: resolved!.source.publishedAt } : {}), valueVersion } }
+  return { source: { candidate, retrievedAt: resolved!.source?.retrievedAt ?? actual.retrievedAt, title: candidate.title, content, contentHash: sha256(content), publisher: originalPublisher, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }, computation, financialQuality, outcome }
 }
 
 function isCompany(object: KnowledgeAssetV04, company: ResearchCompanyIdentity): object is KnowledgeEntityV04 { if (!object.id.startsWith('entity:')) return false; const value = object as KnowledgeEntityV04; return value.type === 'company' && normalizedText(value.ticker) === normalizedText(company.symbol) && normalizedText(value.exchange) === normalizedText(company.exchange) }
@@ -202,7 +226,21 @@ function reportSections(sections: readonly EarningsReviewSection[], proposals: r
   return sections.map((section) => {
     const sectionAssessmentRefs = new Set(section.assessmentRefs)
     const sectionProposalIds = proposals.filter((proposal) => proposal.assessmentRefs.some((assessmentRef) => sectionAssessmentRefs.has(assessmentRef))).map((proposal) => proposal.proposalId)
-    return { id: section.id, title: section.title, markdown: section.markdown, sourceRefs: section.sourceCandidateIds.map((id) => outcomeSources[id]).filter((id): id is string => id !== undefined), claimRefs: sectionProposalIds.map((proposalId) => outcomeClaims[proposalId]).filter((id): id is string => id !== undefined), evidenceLinks: section.sourceCandidateIds.flatMap((id) => { const source = sources.find((item) => item.candidate.candidateId === id); return source?.candidate.url ? [source.candidate.url] : [`evidence:${id}`] }) }
+    const provenance = section.title === 'Earnings Snapshot' ? sources.map((source) => {
+      const metadata = source.candidate.metadata ?? {}
+      if (source.candidate.kind === 'official_disclosure') return `- Official filing: ${source.title}; issuer ${String(metadata.issuer ?? 'not supplied')}; ticker ${String(metadata.companySymbol ?? 'not supplied')}; period ${String(metadata.fiscalPeriod ?? metadata.period ?? 'title-matched')}; announcement ${String(metadata.announcementId ?? 'not supplied')}; published ${source.candidate.publishedAt ?? 'unavailable'}; retrieved ${source.retrievedAt}; publisher CNINFO; URL ${source.candidate.url ?? 'unavailable'}.`
+      if (source.candidate.kind === 'structured_data' && metadata.dataKind === 'earnings_financial') {
+        let metricLines = ''
+        try {
+          const snapshot = JSON.parse(source.content) as { verifiedMetrics?: readonly { metric?: unknown; value?: unknown; unit?: unknown; period?: unknown }[] }
+          metricLines = (snapshot.verifiedMetrics ?? []).map((metric) => `  - ${String(metric.metric)}: ${String(metric.value)} ${String(metric.unit)} (${String(metric.period)})`).join('\n')
+        } catch { metricLines = '  - Structured actual details could not be rendered from the normalized snapshot.' }
+        const version = metadata.valueVersion as { status?: unknown; reason?: unknown } | undefined
+        return `- Structured actuals: publisher ${String(metadata.originPublisher ?? source.publisher)}; retrieved by ${String(metadata.retrievalProvider ?? 'unknown')}; retrieved ${String(metadata.retrievedAt ?? source.retrievedAt)}; published ${String(metadata.publishedAt ?? 'unavailable')}; value version ${String(version?.status ?? 'UNVERIFIED')}${version?.reason ? ` (${String(version.reason)})` : ''}; period ${String(metadata.fiscalPeriod ?? metadata.period ?? 'unavailable')}\n${metricLines}`
+      }
+      return undefined
+    }).filter((line): line is string => line !== undefined).join('\n') : ''
+    return { id: section.id, title: section.title, markdown: `${section.markdown}${provenance ? `\n\n#### Source and period provenance\n${provenance}` : ''}`, sourceRefs: section.sourceCandidateIds.map((id) => outcomeSources[id]).filter((id): id is string => id !== undefined), claimRefs: sectionProposalIds.map((proposalId) => outcomeClaims[proposalId]).filter((id): id is string => id !== undefined), evidenceLinks: section.sourceCandidateIds.flatMap((id) => { const source = sources.find((item) => item.candidate.candidateId === id); return source?.candidate.url ? [source.candidate.url] : [] }) }
   })
 }
 
@@ -211,9 +249,13 @@ export async function runEarningsReview(input: EarningsReviewWorkflowInput): Pro
   try {
     check(input); const company = normalizeCompany(input.company); const now = nowOf(input); const asOf = input.asOf ?? now(); const period = earningsPeriodSpec(input.fiscalYear, input.period); abortIfNeeded(input.signal)
     const coverage = await existingCoverage(input, company); if (coverage.reason) return { ...resultBase(input, 'blocked', telemetry), blockedReason: coverage.reason, errors: [coverage.reason === 'COMPANY_COVERAGE_NOT_FOUND' ? 'Existing canonical Company coverage was not found; run research_company first.' : 'Multiple canonical Company matches were found; Earnings Review is blocked until coverage is unambiguous.'] }
-    const dataResolver = input.dataResolver ?? input.dataResolverFactory?.({ company, fiscalYear: input.fiscalYear, period: input.period, asOf, now, signal: input.signal }) ?? createEarningsDataResolver({ company, fiscalYear: input.fiscalYear, period: input.period, asOf, now, signal: input.signal, maxSources: input.maxSources, acquisitionPlugins: input.acquisitionPlugins, akshare: input.akshare, legacyEastmoney: input.eastmoneyExpectationSource, selectFilings: (candidates, fiscalYear, filingPeriod, cutoff) => selectOfficialEarningsFilings(candidates, { fiscalYear, period: filingPeriod }, cutoff) })
+    const dataResolver = input.dataResolver ?? input.dataResolverFactory?.({ company, fiscalYear: input.fiscalYear, period: input.period, asOf, now, signal: input.signal }) ?? createEarningsDataResolver({ company, fiscalYear: input.fiscalYear, period: input.period, asOf, now, signal: input.signal, maxSources: input.maxSources, acquisitionPlugins: input.acquisitionPlugins, akshare: input.akshare, legacyEastmoney: input.eastmoneyExpectationSource, selectFilings: (candidates, fiscalYear, filingPeriod, cutoff) => selectOfficialEarningsFilings(candidates, { fiscalYear, period: filingPeriod }, cutoff, company) })
     const official = await acquireOfficial(dataResolver, company, period, asOf); const structured = await acquireStructured(dataResolver, company, period, asOf, input.asOf !== undefined); const sources = [...official.sources, ...(structured.source === undefined ? [] : [structured.source])]; const selectionDiagnostics = official.selection.diagnostics; let acquisitionDiagnostics = [...official.diagnostics, ...(structured.diagnostic === undefined ? [] : [structured.diagnostic])]; telemetry = { ...telemetry, officialEvidenceStatus: official.selection.futureFilteredCount > 0 && official.sources.length === 0 ? 'future_filtered' : official.sources.length > 0 ? 'available' : 'unavailable', structuredFinancialEvidenceStatus: structured.source === undefined ? 'unavailable' : 'available' }
-    if (sources.length === 0) return { ...resultBase(input, 'blocked', telemetry), blockedReason: 'EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE', errors: ['EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE: no exact-period official filing or usable exact-period structured financial evidence was available.'], providerOutcomes: [official.outcome, structured.outcome], selectionDiagnostics, acquisitionDiagnostics, telemetry }
+    const hasUsableActual = structured.computation !== undefined && structured.computation.metrics.some((metric) => metric.period === period.key && Number.isFinite(metric.value))
+    if (official.sources.length === 0 || !hasUsableActual) {
+      const reason = [official.sources.length === 0 ? 'no exact-period usable CNINFO filing is available' : undefined, !hasUsableActual ? 'no exact-period finite structured actual metric is available' : undefined].filter(Boolean).join('; ')
+      return { ...resultBase(input, 'blocked', telemetry), blockedReason: 'EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE', errors: [`EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE: ${reason}.`], providerOutcomes: [official.outcome, structured.outcome], selectionDiagnostics, acquisitionDiagnostics, telemetry }
+    }
     abortIfNeeded(input.signal)
     const computation = structured.computation ?? { metrics: [], byMetric: {}, unavailable: ['all structured financial metrics'] }; const skillInput = { company, period, officialSources: official.sources.map((source) => ({ candidateId: source.candidate.candidateId, title: source.title, publishedAt: source.candidate.publishedAt, content: source.content, url: source.candidate.url })), financialMetrics: { verified: metricStructuredValues(computation) }, existingKnowledgeClaims: coverage.claims }
     const skill = new EarningsReviewSkill(now, input.reasoningExecutor); let semantic

@@ -1,0 +1,78 @@
+{
+  "task": "RHL-EXEC-003-A-003",
+  "capturedAt": "2026-10-10",
+  "baseline": {
+    "commit": "015d41431775953523ffd4d3dd753581fdf5e2fe",
+    "tests": 2180,
+    "passed": 2159,
+    "failed": 21
+  },
+  "current": {
+    "tests": 2186,
+    "passed": 2165,
+    "failed": 21
+  },
+  "failureIdComparison": {
+    "baselineDistinct": 21,
+    "currentDistinct": 21,
+    "baselineOnly": [],
+    "currentOnly": [],
+    "sameFailureSet": true,
+    "baselineFailures": [
+      "ChangeSet validation rejects denied or missing Raw evidence listed by a competition Module",
+      "company projection is readable through a canonical business exposure without adding a company graph node",
+      "composition is source-immutable, deterministic and idempotent",
+      "current restricted or expired source rights suppress company exposures and dependent competition data",
+      "different rows may retain different currencies and a changed column schema blocks for review",
+      "evidence-backed cell update commits, and an unavailable update preserves the prior usable value",
+      "FIX-015 offline evidence inputs preserve authoritative contracts and expected source sizes",
+      "Gateway blocks numeric Module cells that disagree with their canonical facts",
+      "Gateway creates a competition Module and maps its local proposal ID",
+      "Industry projection returns bounded facts, deterministic core views, publication-labeled dates, future catalysts and competition units",
+      "Module blocks the whole submit when a cell reference cannot resolve",
+      "Module blocks unusable Source evidence inherited from an existing business_exposure Relation",
+      "Module blocks when the row Source payload is unusable",
+      "new Claim provenance alone cannot justify a contradictory same-reference display value",
+      "same Claim may support a canonical numeric display update after new provenance is admitted",
+      "same Industry table replays idempotently with the same canonical Module ref",
+      "semantic section classification receives only readable facts and cannot block the base projection",
+      "stale expected revision and a corrupt scope ledger fail closed",
+      "Theme graph includes only human-confirmed scope refs, preserves direction, and never expands global edges",
+      "Workflow metadata composes canonical peers without registering composite Skill IDs",
+      "Writer rejection does not report success or overwrite the prior Module"
+    ],
+    "currentFailures": [
+      "ChangeSet validation rejects denied or missing Raw evidence listed by a competition Module",
+      "company projection is readable through a canonical business exposure without adding a company graph node",
+      "composition is source-immutable, deterministic and idempotent",
+      "current restricted or expired source rights suppress company exposures and dependent competition data",
+      "different rows may retain different currencies and a changed column schema blocks for review",
+      "evidence-backed cell update commits, and an unavailable update preserves the prior usable value",
+      "FIX-015 offline evidence inputs preserve authoritative contracts and expected source sizes",
+      "Gateway blocks numeric Module cells that disagree with their canonical facts",
+      "Gateway creates a competition Module and maps its local proposal ID",
+      "Industry projection returns bounded facts, deterministic core views, publication-labeled dates, future catalysts and competition units",
+      "Module blocks the whole submit when a cell reference cannot resolve",
+      "Module blocks unusable Source evidence inherited from an existing business_exposure Relation",
+      "Module blocks when the row Source payload is unusable",
+      "new Claim provenance alone cannot justify a contradictory same-reference display value",
+      "same Claim may support a canonical numeric display update after new provenance is admitted",
+      "same Industry table replays idempotently with the same canonical Module ref",
+      "semantic section classification receives only readable facts and cannot block the base projection",
+      "stale expected revision and a corrupt scope ledger fail closed",
+      "Theme graph includes only human-confirmed scope refs, preserves direction, and never expands global edges",
+      "Workflow metadata composes canonical peers without registering composite Skill IDs",
+      "Writer rejection does not report success or overwrite the prior Module"
+    ]
+  },
+  "focused": {
+    "command": "node --import tsx --test tests/workflows/earnings-review.test.ts tests/workflows/earnings-data-resolver.test.ts tests/workflows/earnings-expectations-integration.test.ts",
+    "tests": 82,
+    "passed": 82,
+    "failed": 0
+  },
+  "typecheck": "PASS",
+  "clientTypecheck": "PASS",
+  "clientBuild": "PASS with existing >500kB chunk warning",
+  "diffCheck": "PASS"
+}

@@ -92,17 +92,19 @@ test('W2-004-FIX-001 an authoritative official cutoff overrides a later bundle f
   assert.equal(result.diagnostics.includes('resultPublishedAt_after_analysisAsOf'), false)
 })
 
-test('W2-004-FIX-001 live Workflow keeps a future fallback non-blocking and preserves Consensus unavailable', async () => {
-  const fixture = await liveFixture(false)
+test('W2-004-FIX-001 live Workflow uses the exact official cutoff instead of a future fallback timestamp', async () => {
+  const fixture = await liveFixture()
   try {
     const result = await runEarningsReview({ workflowRunId: 'w2-004-fix-001-live-future', handle: fixture.handle, company: { symbol: '600519', name: '贵州茅台', exchange: 'SSE' }, fiscalYear: 2026, period: 'H1', reportRoot: fixture.reports, acquisitionPlugins: [fixture.plugin], akshare: fixture.akshare, reasoningExecutor: new NoopExecutor(), now: () => AS_OF, expectations: validBundle({ resultPublishedAt: '2026-10-01T00:00:00.000Z' }) })
     assert.equal(result.status, 'completed')
-    assert.equal(result.telemetry.consensusStatus, 'unavailable')
-    assert.ok(['unavailable', 'partial'].includes(result.telemetry.expectationStatus))
-    assert.equal(result.expectationAnalysis?.actualVsConsensus.length, 0)
+    assert.equal(result.telemetry.officialEvidenceStatus, 'available')
+    assert.equal(result.telemetry.structuredFinancialEvidenceStatus, 'available')
+    assert.equal(result.telemetry.consensusStatus, 'available')
+    assert.equal(result.telemetry.expectationStatus, 'available')
+    assert.equal(result.expectationAnalysis?.actualVsConsensus.length, 1)
     assert.equal(result.expectationAnalysis?.actualVsPriorEstimate.length, 0)
     const report = await readFile(result.report!.outputPath, 'utf8')
-    assert.match(report, /Consensus unavailable/)
+    assert.match(report, /actual=120; PIT consensus=105/)
     assert.equal(result.sourceIds.some((id) => id.includes('estimate-a-source') || id.includes('estimate-b-source')), false)
   } finally { await fixture.close() }
 })

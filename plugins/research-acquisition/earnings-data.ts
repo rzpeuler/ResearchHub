@@ -101,7 +101,7 @@ export function createEarningsDataResolver(options: EarningsDataCompositionOptio
         const plugin = options.officialDisclosurePlugin ?? options.acquisitionPlugins.find((item) => item.name.toLowerCase().includes('official'))
         if (!plugin) return { status: 'UNSUPPORTED', diagnostic: 'Official disclosure plugin is not configured' }
         if (!options.selectFilings) return { status: 'UNSUPPORTED', diagnostic: 'Earnings filing selector is not configured' }
-        const discovered = await plugin.discover({ company: options.company, asOf: requirement.asOf, limitPerKind: Math.min(options.maxSources ?? 20, 20) }, options.signal)
+        const discovered = await plugin.discover({ company: options.company, asOf: requirement.asOf, limitPerKind: Math.min(options.maxSources ?? 20, 20), filingPeriod: { fiscalYear: options.fiscalYear, fiscalPeriod: options.period } }, options.signal)
         const selection = options.selectFilings(discovered, options.fiscalYear, options.period, requirement.asOf)
         const diagnostics: ResearchAcquisitionDiagnostic[] = []
         const sources: NormalizedResearchSource[] = []
