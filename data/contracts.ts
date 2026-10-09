@@ -1,3 +1,5 @@
+import type { MarketCloseFreshness } from './point-in-time.ts'
+
 export type DataDeterminismClass =
   | 'AUTHORITATIVE_NUMERIC'
   | 'EVIDENCE_BACKED_NUMERIC'
@@ -145,6 +147,8 @@ export interface AcquisitionSourceMetadata {
   /** When the selected observation became available, independent of its date and publication. */
   readonly observationAvailableAt?: string
   readonly valueVersion?: NumericValueVersionEvidence
+  /** Data-owned market freshness decision carried from trusted acquisition. */
+  readonly marketFreshness?: MarketCloseFreshness
 }
 
 export type NumericValueVersionEvidence =
@@ -207,6 +211,7 @@ export interface SourceExecutionSourceMetadata {
   readonly observedAt?: string
   readonly observationAvailableAt?: string
   readonly valueVersion?: NumericValueVersionEvidence
+  readonly marketFreshness?: MarketCloseFreshness
 }
 
 export type SourceExecutionFailureStatus = Exclude<AcquisitionAttemptStatus, 'SUCCESS' | 'VALIDATION_ERROR' | 'POINT_IN_TIME_INVALID'>

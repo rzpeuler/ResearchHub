@@ -2,7 +2,7 @@ import { DataResolver } from '../../data/resolver.ts'
 import type { DataRequirement, SourceExecutionResult } from '../../data/contracts.ts'
 import { PHASE2_COMMON_SOURCE_POLICIES } from '../../data/valuation-earnings-policies.ts'
 import type { ValuationFinancialRow, ValuationMarketObservation } from '../../skills/valuation/financials.ts'
-import { dailyCloseAvailableAt } from '../../data/point-in-time.ts'
+import { dailyCloseAvailableAt, type MarketCloseFreshness } from '../../data/point-in-time.ts'
 import { normalizeValuationFinancialData, normalizeValuationMarketData } from './valuation-normalization.ts'
 import type { ResearchCompanyIdentity } from './contracts.ts'
 import type { AkshareDataClient, AksharePeerComparisonFamily } from './akshare.ts'
@@ -23,6 +23,7 @@ export interface ValuationMarketPayload {
   readonly sourceUrl: string
   readonly retrievedAt: string
   readonly observationAvailableAt: string
+  readonly marketFreshness?: MarketCloseFreshness
 }
 
 export type ValuationDataPayload =
@@ -122,6 +123,14 @@ export async function valuationCompanyBasicTelemetry(client: AkshareDataClient |
 /** Explicit operation bindings for the Valuation DataResolver. */
 export function createValuationDataResolver(options: ValuationDataCompositionOptions): DataResolver<ValuationDataPayload> {
   const financial = new Map<string, Promise<{ readonly raw: unknown; readonly rows: readonly ValuationFinancialRow[]; readonly retrievedAt: string }>>()
+  let marketCalendar: Promise<unknown | undefined> | undefined
+  const loadMarketCalendar = () => {
+    if (!marketCalendar) marketCalendar = (async () => {
+      try { return await options.akshare?.tradingCalendar?.({ symbol: 'calendar', startDate: marketHistoryWindowEnd(options.valuationDate).startDate, endDate: options.valuationDate.replace(/-/g, '') }) }
+      catch { return undefined }
+    })()
+    return marketCalendar
+  }
   const loadFinancial = (symbol: string, operation: 'akshare.valuationFinancialIndicators' | 'akshare.financialData') => {
     const key = `${operation}:${symbol}`
     let pending = financial.get(key)
@@ -161,7 +170,8 @@ export function createValuationDataResolver(options: ValuationDataCompositionOpt
           return marketProviderFailure(error)
         }
         const retrievedAt = options.now()
-        const normalized = normalizeValuationMarketData(raw, endDate, requirement.analysisAsOf)
+        const calendar = await loadMarketCalendar()
+        const normalized = normalizeValuationMarketData(raw, endDate, requirement.analysisAsOf ?? requirement.asOf, calendar)
         if (!normalized.observation) return { status: 'NO_DATA', diagnostic: normalized.diagnostics.join('|') || 'valuation_market_data_unavailable' }
         const observation = normalized.observation
         const isTencent = candidate.operationId === 'akshare.historicalMarketDataTencent'
@@ -170,8 +180,8 @@ export function createValuationDataResolver(options: ValuationDataCompositionOpt
         const sourceUrl = isTencent && ticker ? `https://gu.qq.com/${isShanghai ? 'sh' : 'sz'}${ticker}/zs` : 'https://push2his.eastmoney.com/api/qt/kline/get'
         const originPublisher = isTencent ? 'Tencent' : 'EastMoney'
         const observationAvailableAt = dailyCloseAvailableAt(observation.priceDate)
-        const marketPayload: ValuationMarketPayload = { kind: 'market', raw, observation, symbol: ticker ?? symbol, exchange: isShanghai ? 'SH' : 'SZ', currency: 'CNY', adjustmentMethod: 'UNADJUSTED', sourceId: candidate.sourceId, originPublisher, retrievalProvider: 'AKShare', sourceUrl, retrievedAt, observationAvailableAt }
-        return { status: 'SUCCESS', data: marketPayload, source: { originPublisher, retrievalProvider: 'AKShare', sourceUrl, retrievedAt, observedAt: observation.priceDate, observationAvailableAt } }
+        const marketPayload: ValuationMarketPayload = { kind: 'market', raw, observation, symbol: ticker ?? symbol, exchange: isShanghai ? 'SH' : 'SZ', currency: 'CNY', adjustmentMethod: 'UNADJUSTED', sourceId: candidate.sourceId, originPublisher, retrievalProvider: 'AKShare', sourceUrl, retrievedAt, observationAvailableAt, ...(normalized.freshness === undefined ? {} : { marketFreshness: normalized.freshness }) }
+        return { status: 'SUCCESS', data: marketPayload, source: { originPublisher, retrievalProvider: 'AKShare', sourceUrl, retrievedAt, observedAt: observation.priceDate, observationAvailableAt, ...(normalized.freshness === undefined ? {} : { marketFreshness: normalized.freshness }) } }
       }
       if (candidate.operationId === 'akshare.valuationFinancialIndicators' || candidate.operationId === 'akshare.financialData') {
         if (!akshare || (candidate.operationId === 'akshare.valuationFinancialIndicators' && !akshare.valuationFinancialIndicators)) return { status: 'UNSUPPORTED', diagnostic: 'valuation_financial_operation_unavailable' }

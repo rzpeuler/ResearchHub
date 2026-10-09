@@ -216,6 +216,10 @@ function evaluateExecution<T>(
   const observedAt = execution.source?.observedAt
   const observationAvailableAt = execution.source?.observationAvailableAt
   if (requirement.metricId === 'valuation_market_price') {
+    const freshness = execution.source?.marketFreshness
+    if (!freshness) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'MARKET_FRESHNESS_UNVERIFIABLE' }
+    if (freshness.status === 'STALE') return { status: 'STALE', diagnostic: freshness.diagnostic ?? 'MARKET_PRICE_STALE' }
+    if (freshness.status !== 'FRESH') return { status: 'POINT_IN_TIME_INVALID', diagnostic: freshness.diagnostic ?? 'MARKET_FRESHNESS_UNVERIFIABLE' }
     if (!requirement.period?.end || !validMarketPeriodEnd(requirement.period.end) || !observedAt || !observationAvailableAt || !validMarketDate(observedAt) || !validDate(observationAvailableAt)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'NO_ELIGIBLE_POINT_IN_TIME_DATA: valid market period, observation date, and close availability are required' }
     const dailyClose = Date.parse(`${observedAt}T15:00:00+08:00`)
     if (Date.parse(observationAvailableAt) < dailyClose) return { status: 'POINT_IN_TIME_INVALID', diagnostic: `observationAvailableAt ${observationAvailableAt} precedes the daily close for ${observedAt}` }
@@ -241,6 +245,7 @@ function evaluateExecution<T>(
     ...(observedAt ? { observedAt } : {}),
     ...(observationAvailableAt ? { observationAvailableAt } : {}),
     ...(valueVersion ? { valueVersion } : {}),
+    ...(execution.source?.marketFreshness === undefined ? {} : { marketFreshness: execution.source.marketFreshness }),
   }
   return { status: 'SUCCESS', observation: { data: execution.data, source } }
 }
@@ -289,6 +294,7 @@ function terminalUnavailableReason(requirement: DataRequirement, attempts: reado
   const industryRequirement = requirement.metricId === 'industry_research_evidence' || requirement.metricId?.startsWith('industry:') === true
   if (industryRequirement && attempts.some((attempt) => attempt.status === 'ACCESS_DENIED')) return 'RIGHTS_REJECTED'
   if (industryRequirement && attempts.every((attempt) => ['SOURCE_ERROR', 'TIMEOUT', 'RATE_LIMITED', 'ACCESS_DENIED'].includes(attempt.status))) return 'SOURCE_UNAVAILABLE'
+  if (diagnostics.some((diagnostic) => diagnostic.includes('MARKET_PRICE_STALE'))) return 'PIT_INVALID'
   if (diagnostics.some((diagnostic) => diagnostic.includes('NO_ELIGIBLE_POINT_IN_TIME_DATA')) || attempts.every((attempt) => attempt.status === 'POINT_IN_TIME_INVALID')) return 'NO_ELIGIBLE_POINT_IN_TIME_DATA'
   if (diagnostics.some((diagnostic) => diagnostic.includes('INCOMPLETE_REQUIRED_FIELDS')) || attempts.every((attempt) => attempt.status === 'VALIDATION_ERROR')) return 'INCOMPLETE_REQUIRED_FIELDS'
   if (attempts.every((attempt) => attempt.status === 'NO_DATA')) return 'DATA_NOT_PUBLISHED'

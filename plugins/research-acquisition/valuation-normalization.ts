@@ -1,11 +1,12 @@
 import type { ValuationFinancialRow, ValuationMarketObservation } from '../../skills/valuation/financials.ts'
-import { dailyCloseAvailableAt } from '../../data/point-in-time.ts'
+import { assessMarketCloseFreshness, dailyCloseAvailableAt, type MarketCloseFreshness } from '../../data/point-in-time.ts'
 
 type Dict = Record<string, unknown>
 const DATE_ALIASES = ['报告期', '报告日期', '报告期末', '日期', 'date', 'end_date', 'report_date', 'REPORT_DATE', 'period', 'fiscal_period'] as const
 const PUBLICATION_ALIASES = ['公告日期', '公告日', '公告时间', 'publicationDate', 'publication_date', 'announcementDate', 'announcement_date', 'publish_date'] as const
 const AGGREGATOR_NOTICE_ALIASES = ['aggregatorNoticeDate', 'aggregator_notice_date', 'NOTICE_DATE'] as const
 const MARKET_DATE_ALIASES = ['日期', 'date', 'trade_date', '交易日期'] as const
+const CALENDAR_DATE_ALIASES = ['trade_date', 'tradeDate', '交易日期', '交易日', '日期', 'date'] as const
 const CLOSE_ALIASES = ['收盘', '收盘价', 'close', 'Close', '收盘价(元)'] as const
 const EPS_ALIASES = ['基本每股收益', '基本每股收益(元)', 'EPS', 'eps', 'basic_eps', 'eps_jb', 'EPSJB'] as const
 const BVPS_ALIASES = ['每股净资产', '每股净资产(元)', 'BVPS', 'bvps', 'book_value_per_share', 'BPS'] as const
@@ -47,10 +48,34 @@ export function normalizeValuationDate(value: unknown): string | undefined {
 }
 function dateOf(row: Dict, aliases: readonly string[]): string | undefined { return normalizeValuationDate(first(row, aliases)) }
 
-export function normalizeValuationMarketData(value: unknown, valuationDate: string, fixedAsOf?: string): { readonly observation?: ValuationMarketObservation; readonly diagnostics: readonly string[] } {
-  const diagnostics: string[] = []; const candidates = rowsOf(value).map((row) => ({ date: dateOf(row, MARKET_DATE_ALIASES), close: numberValue(first(row, CLOSE_ALIASES)) })).filter((item): item is { date: string; close: number } => item.date !== undefined && item.close !== undefined && item.close > 0 && Number.isFinite(item.close) && (fixedAsOf === undefined ? item.date <= valuationDate : Date.parse(dailyCloseAvailableAt(item.date)) <= Date.parse(fixedAsOf))).sort((left, right) => left.date.localeCompare(right.date))
-  if (candidates.length === 0) { diagnostics.push('VALUATION_MARKET_PRICE_UNAVAILABLE'); return { diagnostics } }
-  const selected = candidates[candidates.length - 1]!; return { observation: { priceDate: selected.date, close: selected.close }, diagnostics }
+export function normalizeMarketTradingDates(value: unknown): readonly string[] {
+  return [...new Set(rowsOf(value).map((row) => dateOf(row, CALENDAR_DATE_ALIASES)).filter((date): date is string => date !== undefined))].sort()
+}
+
+export function normalizeValuationMarketData(
+  value: unknown,
+  requestedPeriodEnd: string,
+  analysisAsOf = requestedPeriodEnd,
+  tradingCalendar?: unknown,
+): { readonly observation?: ValuationMarketObservation; readonly diagnostics: readonly string[]; readonly freshness?: MarketCloseFreshness } {
+  const diagnostics: string[] = []
+  const periodEnd = requestedPeriodEnd.slice(0, 10)
+  const rows = rowsOf(value).map((row) => ({ date: dateOf(row, MARKET_DATE_ALIASES), close: numberValue(first(row, CLOSE_ALIASES)) }))
+  const candidates = rows
+    .filter((item): item is { date: string; close: number } => item.date !== undefined && item.close !== undefined && item.close > 0 && Number.isFinite(item.close))
+    .filter((item) => item.date <= periodEnd && Date.parse(dailyCloseAvailableAt(item.date)) <= Date.parse(analysisAsOf))
+    .sort((left, right) => left.date.localeCompare(right.date))
+  if (candidates.length === 0) {
+    if (rows.some((item) => item.date === periodEnd && item.close !== undefined && item.close > 0 && Date.parse(dailyCloseAvailableAt(periodEnd)) > Date.parse(analysisAsOf))) diagnostics.push('MARKET_NOT_YET_CLOSED')
+    else if (rows.some((item) => item.date !== undefined && item.date > periodEnd && item.close !== undefined && item.close > 0)) diagnostics.push('MARKET_PIT_REJECTED')
+    else diagnostics.push('MARKET_NO_ELIGIBLE_CLOSE')
+    diagnostics.push('VALUATION_MARKET_PRICE_UNAVAILABLE')
+    return { diagnostics }
+  }
+  const selected = candidates[candidates.length - 1]!
+  const freshness = assessMarketCloseFreshness({ priceDate: selected.date, analysisAsOf, tradingDates: normalizeMarketTradingDates(tradingCalendar) })
+  if (freshness.diagnostic) diagnostics.push(freshness.diagnostic)
+  return { observation: { priceDate: selected.date, close: selected.close }, diagnostics, freshness }
 }
 
 export function normalizeValuationFinancialData(value: unknown): { readonly rows: readonly ValuationFinancialRow[]; readonly diagnostics: readonly string[] } {
