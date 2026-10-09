@@ -392,6 +392,8 @@ not trigger provider acquisition.
 | Follow-up validation | Result |
 | --- | --- |
 | Industry projection route + rendered catalog UI + projection unit tests | 11/11 passed |
+| Full `npm test` after projection follow-up | Client 112/112 passed; Node 2,113 total, 2,089 passed, 24 baseline failures |
+| Exact Node baseline failure comparison | Baseline 25; current 24; 0 new identifiers; 1 fixed Industry replay identifier |
 | `npm run typecheck` | Passed |
 | `npm run client:typecheck` | Passed |
 | `npm run client:build` | Passed; existing 643.92 kB chunk advisory remains |

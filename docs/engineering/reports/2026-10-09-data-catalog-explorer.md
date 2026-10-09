@@ -63,8 +63,8 @@ Security checks verify GET projections, rejected POST/PUT/PATCH/DELETE requests,
 | Focused projection and HTTP tests, including rendered cross-layer E2E | 16/16 passed |
 | Default Runtime candidate projection + route + rendered UI focused regression (2026-10-09 follow-up) | 11/11 passed |
 | `npm test` Client | 108/108 passed |
-| `npm test` Node | 2,111 total; 2,087 passed; 24 failed |
-| Exact Node failure identifier comparison | Baseline: 25 failures; current: 24 failures; every current failure is in the baseline set; 0 new failing identifiers |
+| `npm test` Node (2026-10-09 Industry projection follow-up) | 2,113 total; 2,089 passed; 24 failed |
+| Exact Node failure identifier comparison | Baseline: 25 failures; current: 24 failures; every current failure is in the baseline set; 0 new failing identifiers; 1 fixed |
 | `npm run typecheck` | Passed |
 | `npm run client:typecheck` | Passed |
 | `npm run client:build` | Passed; Vite reports a 643.79 kB minified chunk above its 500 kB advisory threshold |
