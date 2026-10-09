@@ -14,8 +14,8 @@
 | `main` and `origin/main` | `9424d3b01185d8df8310c224cffa8e81622e69b6` |
 | Branch | `codex/dl-ui-001-data-catalog-explorer` |
 | Validated code HEAD before this report | `f2163da00b084f1a08b86fb3c647ca7fc63259b0` |
-| Final delivery HEAD | Recorded in the final delivery response after the report commit |
-| Merge state | UI branch remains unmerged; main remains at the Phase 4 promotion HEAD |
+| Final delivery HEAD | UI delivery branch `f2163da00b084f1a08b86fb3c647ca7fc63259b0`; root integration recorded below |
+| Merge state | UI branch was initially delivered separately, then merged into the Phase 4 root branch; main remains at the Phase 4 promotion HEAD |
 
 ## API contracts and data sources
 
@@ -144,15 +144,15 @@ level and repeated per SourcePolicy. Unbound or unknown `LLM_WEB` candidates
 are omitted from the executable fallback column. Industry consumers come from
 the associated SourcePolicy workflow or display `Unmapped`.
 
-The direct application service on port 57815 remains attached to the root
-Phase 4 checkout, so it continues to serve that checkout's older page until the
-UI branch is adopted there. The corrected page was separately started from the
-UI worktree on a dynamically assigned local port. Its real catalog responses
-were 21 Common definitions, 2 Industry identities, 0 Industry definitions, and
-0 Canonical Industry definitions. The Industry empty state preserves those
-counts. The cross-layer integration test additionally injects one test-only
-Industry definition and verifies it flows through Application Runtime, HTTP,
-RuntimeClient, and the rendered Industry table without a provider call.
+At the time of the UI correction re-review, the direct application service on
+port 57815 still served the root Phase 4 checkout's older page. The corrected
+page was separately started from the UI worktree on a dynamically assigned
+local port. Its real catalog responses were 21 Common definitions, 2 Industry
+identities, 0 Industry definitions, and 0 Canonical Industry definitions. The
+Industry empty state preserved those counts. The cross-layer integration test
+also injected one test-only Industry definition and verified it flowed through
+Application Runtime, HTTP, RuntimeClient, and the rendered Industry table
+without a provider call. Subsequent root-service integration is recorded below.
 
 ### Re-review validation
 
@@ -169,3 +169,36 @@ RuntimeClient, and the rendered Industry table without a provider call.
 | `git diff --check` | Passed |
 
 The full suite log is `C:\Users\Administrator\AppData\Local\Temp\rhl-dl-ui-001-fix-001-npm-test.log`.
+
+## Root service integration — 2026-10-09
+
+The UI delivery branch `codex/dl-ui-001-data-catalog-explorer` at
+`fe2ec4deffcf067af3ca46a8df3b152bf9589541` was merged without conflicts into
+the root checkout's existing `codex/dl-goal-004-industry-data-migration`
+branch. The merge commit is
+`e1b7655e1d8cbf5d87a1b02bdc9b96a0e54f03c4`. This integration does not merge
+Phase 4 into `main`.
+
+The root service on `http://127.0.0.1:51676/sources` serves the rebuilt page.
+Browser verification confirmed the three existing top-level tabs, nested
+Common/Industry catalog views, and the seven-column table. The live root
+Industry catalog returned 2 registered identities and 5 definitions; all five
+are `DISCOVERED`, with zero Canonical definitions. The page renders the five
+candidates while showing no policy-backed consumers or executable source
+fallbacks for them. This preserves the distinction between discovery and
+production acceptance.
+
+| Root integration validation | Result |
+| --- | --- |
+| Rendered Application/HTTP catalog response | 21 Common definitions; 2 Industry identities; 5 Industry definitions; 0 Canonical |
+| Client suite (`npm run client:test`, via `npm test`) | 115/115 passed |
+| Node suite (`npm test`) | 2,113 total; 2,089 passed; 24 failed |
+| Node baseline | The 24 current failure identifiers match the known baseline set; no new failure reported by the existing exact-identifier comparison |
+| `npm run typecheck` | Passed |
+| `npm run client:typecheck` | Passed |
+| `npm run client:build` | Passed; Vite reports the existing 643.06 kB bundle advisory |
+| `git diff --check` | Passed before this report-only update |
+
+The Node suite remains baseline-limited and exits nonzero on its 24 existing
+failures. The root Phase 4 branch is pushed separately from `main`; the final
+root and remote SHA are recorded in the integration delivery response.
