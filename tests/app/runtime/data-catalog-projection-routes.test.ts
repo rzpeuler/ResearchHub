@@ -7,6 +7,7 @@ import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { fauxProvider } from '@earendil-works/pi-ai'
 import { COMMON_DATA_CATALOG } from '../../../data/common-catalog.ts'
 import { INDUSTRY_IDENTITIES, createIndustryDataCatalog, industryMetricId, type IndustryMetricDefinition } from '../../../data/industry-catalog.ts'
+import { AUDITED_INDUSTRY_FIELD_CANDIDATES } from '../../../data/industry-audited-candidates.ts'
 import { createResearchHubApplicationRuntime } from '../../../app/runtime/application-runtime.ts'
 import { ResearchHubRuntimeServer } from '../../../app/runtime/server.ts'
 
@@ -26,7 +27,7 @@ function discoveredMetric(): IndustryMetricDefinition {
   }
 }
 
-async function fixture(industryDataCatalog = createIndustryDataCatalog()) {
+async function fixture(industryDataCatalog?: ReturnType<typeof createIndustryDataCatalog>) {
   const root = await mkdtemp(join(tmpdir(), 'data-catalog-routes-'))
   const cwd = join(root, 'cwd'), workspace = join(root, 'workspace'), agentDir = join(root, 'agent')
   await Promise.all([mkdir(cwd), mkdir(workspace), mkdir(agentDir)])
@@ -41,7 +42,7 @@ async function fixture(industryDataCatalog = createIndustryDataCatalog()) {
     modelRuntime,
     model: provider.getModel(),
     startDailyScheduler: false,
-    industryDataCatalog,
+    ...(industryDataCatalog === undefined ? {} : { industryDataCatalog }),
     industryOperatingObservationAcquisition: {
       async acquire() {
         acquisitionCalls += 1
@@ -105,6 +106,23 @@ test('GET industry catalog reads the runtime injected instance', async () => {
     assert.equal(body.definitions[0]?.metricId, before[0]?.metricId)
     assert.equal(body.definitions[0]?.lifecycleStatus, 'DISCOVERED')
     assert.deepEqual(catalog.list(), before)
+    assert.equal(f.acquisitionCalls, 0)
+  } finally { await close(f) }
+})
+
+test('default Application Runtime projects audited Industry candidates without making them resolvable', async () => {
+  const f = await fixture()
+  try {
+    const response = await fetch(`${f.info.origin}/api/data-sources/catalog/industry`, { headers: { origin: f.info.origin } })
+    assert.equal(response.status, 200)
+    const body = await response.json() as { definitions: readonly Record<string, unknown>[]; registeredIndustryCount: number; definitionCount: number; canonicalCount: number }
+    assert.equal(body.registeredIndustryCount, INDUSTRY_IDENTITIES.length)
+    assert.equal(body.definitionCount, AUDITED_INDUSTRY_FIELD_CANDIDATES.length)
+    assert.equal(body.canonicalCount, 0)
+    assert.deepEqual(body.definitions.map((definition) => definition.metricId), AUDITED_INDUSTRY_FIELD_CANDIDATES.map((definition) => definition.metricId).sort())
+    assert.ok(body.definitions.every((definition) => definition.lifecycleStatus === 'DISCOVERED' && (definition.sourcePolicies as unknown[]).length === 0))
+    assert.equal(f.runtime.industryDataCatalog.resolveExact('household_air_conditioner', 'production', 'operating_output', 'timeseries').status, 'NO_CANONICAL_INDUSTRY_METRIC')
+    assert.equal(f.runtime.industryDataCatalog.resolveExact('household_air_conditioner', 'capacity', 'operating_output', 'timeseries').status, 'NO_CANONICAL_INDUSTRY_METRIC')
     assert.equal(f.acquisitionCalls, 0)
   } finally { await close(f) }
 })

@@ -32,10 +32,10 @@
 | Common definitions with exact SourcePolicy mapping | Phase 2 + Phase 3 + Industry policies | 21 |
 | Common exact SourcePolicies / candidates | Runtime projection inputs | 23 / 33 |
 | Registered Industry identities | `INDUSTRY_IDENTITIES` | 2 |
-| Industry definitions | Runtime `IndustryDataCatalog.list()` | 0 |
+| Industry audited field candidates | Default Application Runtime Industry catalog | 5 (`DISCOVERED`, no SourcePolicy association) |
 | Industry Canonical definitions | Runtime `IndustryDataCatalog.list()` | 0 |
 
-The Common projection reports policy presence separately from sourceId-to-integration binding, connection testing, capability sample testing, and historical PIT. Unit projection tests with no integration views produce unbound/untested states; the HTTP projection uses only safe current integration summaries. Provider calls remain zero in route tests. Historical PIT is always `NOT_VERIFIED` by this projection. The UI never promotes audited candidates into Catalog definitions.
+The Common projection reports policy presence separately from sourceId-to-integration binding, connection testing, capability sample testing, and historical PIT. Unit projection tests with no integration views produce unbound/untested states; the HTTP projection uses only safe current integration summaries. Provider calls remain zero in route tests. Historical PIT is always `NOT_VERIFIED` by this projection. Industry candidates remain `DISCOVERED`, have no attached SourcePolicy, and cannot be promoted by the UI.
 
 ## UI behavior
 
@@ -44,14 +44,14 @@ The first Data Sources tab is `数据字段 / Data Fields`; the original Source 
 - Common search covers metric ID, meaning, and consumers; filters cover data kind and consumer.
 - Industry search covers identity, metric ID, name, description, family, and semantic role; filters cover identity, family, and lifecycle.
 - Both views show live response counts, no-match and empty states, and selectable details. Industry details render absent optional metadata as `未定义 / Undefined`.
-- Industry identities with zero definitions show the production empty state and the counts `2 registered industries / 0 definitions / 0 Canonical`.
+- The default Application Runtime shows five audited Industry field candidates, `2 registered industries / 5 definitions / 0 Canonical`.
 - Detail panels distinguish Catalog registration, SourcePolicy presence/mapping, adapter binding, connection tests, capability sample tests, and historical PIT. Configured policy is explicitly not described as provider acceptance.
 - Catalog loading and errors are independent from the existing integration, credential, policy, and onboarding state. Catalog failure does not hide credential controls.
 - Chinese and English labels use the existing `useLanguage` mechanism.
 
 ## Runtime identity and security review
 
-The deterministic cross-layer test starts an actual Application Runtime and local HTTP server, then uses the real RuntimeClient and DataSourcesPage. It verifies that every Common definition arrives over HTTP and is displayed, and that the exact test-only Industry definition from the Runtime-injected catalog is returned and displayed. A separate empty production catalog remains empty; no provider call occurs.
+The deterministic cross-layer test starts an actual Application Runtime and local HTTP server, then uses the real RuntimeClient and DataSourcesPage. It verifies that every Common definition arrives over HTTP and is displayed, and that an Industry definition from the Runtime-injected catalog is returned and displayed. The default Runtime route test verifies the five audited Industry candidates are projected while `canonicalCount` remains zero and no provider call occurs.
 
 Security checks verify GET projections, rejected POST/PUT/PATCH/DELETE requests, unchanged Catalog contents, no provider acquisition, no credential/token or local path in serialized responses, and no Knowledge mutation. Existing credential secrecy and active-test cancellation coverage remains in the Data Sources component and Runtime route suites.
 
@@ -61,6 +61,7 @@ Security checks verify GET projections, rejected POST/PUT/PATCH/DELETE requests,
 | --- | --- |
 | Focused Data Sources client tests (`RuntimeClient` + `DataSourcesPage`) | 39/39 passed |
 | Focused projection and HTTP tests, including rendered cross-layer E2E | 16/16 passed |
+| Default Runtime candidate projection + route + rendered UI focused regression (2026-10-09 follow-up) | 11/11 passed |
 | `npm test` Client | 108/108 passed |
 | `npm test` Node | 2,111 total; 2,087 passed; 24 failed |
 | Exact Node failure identifier comparison | Baseline: 25 failures; current: 24 failures; every current failure is in the baseline set; 0 new failing identifiers |
@@ -73,7 +74,7 @@ The Node baseline is `C:\Users\Administrator\Desktop\ResearchHub_worktrees\_arch
 
 ## Known limitations
 
-- Industry source quality and production availability remain represented only by the current Runtime catalog and actual SourcePolicy/integration summaries. The UI does not register fields or expose audited non-canonical candidates.
+- Industry candidates and source-quality gaps remain explicit. The UI is read-only and does not register, promote, or activate candidates.
 - Historical PIT cannot be inferred from connection or capability tests and remains `NOT_VERIFIED`.
 - Catalog display is read-only; lifecycle operations, policy editing, and provider onboarding continue through the existing separate flows.
 - The existing production bundle exceeds Vite's 500 kB advisory threshold; this UI task did not add persistence, caching, or a new provider framework.

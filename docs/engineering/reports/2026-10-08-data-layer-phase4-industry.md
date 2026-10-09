@@ -362,3 +362,39 @@ The named `writing-plans` skill was not installed in the available skill
 directories. The existing plan was manually re-reviewed against the approved
 taskbook constraints, Phase 4 spec, repository guidance, actual source path,
 and test evidence. Its review conclusion remains approved for native delivery.
+
+### Industry Catalog projection follow-up — 2026-10-09
+
+The default Application Runtime previously created an empty Industry Catalog,
+so the Data Fields UI could only show the populated Common catalog. The
+Runtime now seeds the Industry Catalog with five audited field candidates:
+room-air-conditioner annual production, household-air-conditioner monthly
+export volume, lithium-ion battery H1 output lower bound, battery-grade lithium
+carbonate H1 period-average price, and lithium hydroxide micropowder H1
+period-average price. Their semantics, units, periods, geography, and
+product/grade boundaries are grounded in the Industry source audit.
+
+These records enter the formal Catalog as `DISCOVERED`, with no SourcePolicy
+association. They are visible for review but cannot trigger structured
+acquisition or be passed as numeric Skill inputs because DataResolver selects
+only `CANONICAL` metrics. The default production catalog now has five
+definitions and zero Canonical metrics. Capacity, domestic demand, inventory,
+utilization, and orders remain explicit gaps; production and export volume
+remain distinct from capacity and domestic demand.
+
+The live root Runtime was rebuilt and restarted at its dynamically assigned
+local address. `GET /api/data-sources/catalog/industry` returned two identities,
+five `DISCOVERED` definitions, and `canonicalCount: 0`; the Common endpoint
+continued to return 21 definitions. The Industry tab renders those candidates,
+their lifecycle, and the absence of SourcePolicy associations. Projection did
+not trigger provider acquisition.
+
+| Follow-up validation | Result |
+| --- | --- |
+| Industry projection route + rendered catalog UI + projection unit tests | 11/11 passed |
+| `npm run typecheck` | Passed |
+| `npm run client:typecheck` | Passed |
+| `npm run client:build` | Passed; existing 643.92 kB chunk advisory remains |
+
+This projection follow-up does not promote any metric or change the Phase 4
+acceptance boundary. Status remains `IMPLEMENTED / SOL ACCEPTANCE PENDING`.

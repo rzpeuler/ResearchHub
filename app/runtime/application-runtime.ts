@@ -43,7 +43,8 @@ import { ThemeScopeImpactService } from '../services/theme-scope-impact-service.
 import { ThemeFrameworkAcquisitionAdapter } from '../../plugins/research-acquisition/theme-framework-acquisition.ts'
 import { AkshareIndustryResearchPlugin } from '../../plugins/research-acquisition/industry.ts'
 import { loadReviewCase } from '../../knowledge/review/store.ts'
-import { createIndustryDataCatalog, type IndustryDataCatalog } from '../../data/industry-catalog.ts'
+import type { IndustryDataCatalog } from '../../data/industry-catalog.ts'
+import { createAuditedIndustryFieldCatalog } from '../../data/industry-audited-candidates.ts'
 import { loadReviewDecision } from '../../knowledge/review/decision-store.ts'
 import { createDataSourceAdministrationService } from '../services/data-source-administration.ts'
 import { FileDataSourceTestStore } from '../services/data-source-test-store.ts'
@@ -193,7 +194,7 @@ export class ResearchHubApplicationRuntime {
     const industryReasoningExecutorFactory = options.industryReasoningExecutorFactory
     const dailyComposition = options.dailyIntelligenceService === undefined ? await createDailyIntelligenceComposition({ cwd, workflowService, reasoningExecutor, modelRuntime, mountedKnowledgeBaseRoot, industryOperatingObservationAcquisition: options.industryOperatingObservationAcquisition, akshare }) : undefined
     const industryOperatingObservationAcquisition = options.industryOperatingObservationAcquisition ?? dailyComposition?.industryOperatingObservationAcquisition ?? new IndustryOperatingObservationAcquisition()
-    const industryDataCatalog = options.industryDataCatalog ?? createIndustryDataCatalog()
+    const industryDataCatalog = options.industryDataCatalog ?? createAuditedIndustryFieldCatalog()
     const industryDataResolverComposition = options.industryDataResolverFactory === undefined
       ? createRuntimeIndustryDataResolverComposition({ plugins: industryAcquisitionPlugins, metricAcquisition: industryOperatingObservationAcquisition as never, catalog: industryDataCatalog })
       : undefined
