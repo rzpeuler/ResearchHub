@@ -19,6 +19,13 @@ export interface IndustryEvidenceQueryContext {
   readonly end?: string
 }
 
+/** Exact, bounded identity candidates supplied to the trusted security directory lookup. */
+export interface SecurityIdentityQueryContext {
+  readonly requestedName?: string
+  readonly requestedSymbol?: string
+  readonly requestedExchange?: string
+}
+
 export interface DataRequirement {
   readonly id: string
   readonly consumer: {
@@ -40,6 +47,8 @@ export interface DataRequirement {
   readonly metricFamily?: string
   /** Bounded provider-neutral query for cross-industry Industry document evidence. */
   readonly industryEvidenceQueryContext?: IndustryEvidenceQueryContext
+  /** Bounded identity candidates; provider routing remains in SourcePolicy. */
+  readonly securityIdentityQueryContext?: SecurityIdentityQueryContext
   readonly period?: {
     readonly start?: string
     readonly end?: string

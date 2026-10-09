@@ -1,5 +1,6 @@
 import { resolve } from 'node:path'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
+import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
 import { KnowledgeProductionGateway } from '../../knowledge/production/gateway.ts'
 import { CompanyResearchSkill } from '../../skills/company-research/skill.ts'
 import type { NormalizedResearchSource, ResearchAcquisitionDiagnostic, ResearchProviderOutcome } from '../../plugins/research-acquisition/contracts.ts'
@@ -8,7 +9,7 @@ import { sha256 } from '../../plugins/research-acquisition/hash.ts'
 import { materializePhase3CommonRequirement } from '../../data/requirements.ts'
 import { sourceWithDataEvidenceProvenance } from '../../data/research-evidence.ts'
 import type { DataResolver, ResolvedDataItem } from '../../data/resolver.ts'
-import { normalizeCompanyCandidateIdentity } from '../../skills/knowledge-curation/identity/company-identity.ts'
+import { normalizeCompanyCandidateIdentity, normalizeExchange } from '../../skills/knowledge-curation/identity/company-identity.ts'
 import { validateResearchReport, writeResearchReport, type ResearchReport } from '../../app/services/research-report.ts'
 import type { CompanyDeepResearchInput, CompanyDeepResearchResult } from './contracts.ts'
 import { runResearchQualityGate } from '../research-quality-gate.ts'
@@ -24,6 +25,16 @@ function check(input: CompanyDeepResearchInput): void {
 }
 
 function abortIfNeeded(signal: AbortSignal | undefined): void { if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED') }
+async function canonicalCompanyRef(handle: CompanyDeepResearchInput['handle'], company: CompanyDeepResearchInput['company']): Promise<string | undefined> {
+  const expectedExchange = normalizeExchange(company.exchange!)
+  const matches = (await readCanonicalV04Assets(handle.rootRef)).objects.filter((item) => {
+    if (item.kind !== 'entity') return false
+    const value = item.value as Readonly<Record<string, unknown>>
+    if (value.type !== 'company' || value.ticker !== company.symbol || typeof value.exchange !== 'string') return false
+    try { return normalizeExchange(value.exchange) === expectedExchange } catch { return false }
+  })
+  return matches.length === 1 ? matches[0]!.value.id : undefined
+}
 function normalizeResearchCompany(company: CompanyDeepResearchInput['company']): CompanyDeepResearchInput['company'] {
   const normalized = normalizeCompanyCandidateIdentity({ candidateId: 'research-company', entityType: 'company', name: company.name ?? company.symbol, semanticFields: { ticker: company.symbol, ...(company.exchange === undefined ? {} : { exchange: company.exchange }) }, evidenceBlockRefs: [], reason: 'Research input identity normalization' })
   if (normalized.diagnostics.length > 0) throw new Error(`Company identity is unresolved: ${normalized.diagnostics.map((item) => item.message).join('; ')}`)
@@ -173,9 +184,11 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     if (!qualityGate.eligibleForGateway) return { workflowRunId: input.workflowRunId, status: 'blocked', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: input.handle.revision, proposalIds: research.proposals.map((proposal) => proposal.proposalId), createdIds: [], updatedIds: [], committedIds: [], sourceIds: [], claimIds: [], errors: qualityGate.diagnostics.filter((item) => item.severity === 'ERROR').map((item) => item.code), research: reportResearch, industryExposure, acquisitionDiagnostics: acquired.diagnostics, providerOutcomes: acquired.providerOutcomes, qualityGate }
     const outcome = await gateway.submit({ handle: input.handle, producerType: 'company_deep_research', producerRunId: input.workflowRunId, schemaProfile: { schemaVersion: '0.4', storageFormatVersion: '1', requiresRawProvenance: true }, entity: { localKey: 'company', entityType: 'company', name: company.name ?? company.symbol, aliases: [company.symbol], semanticFields: { ticker: company.symbol, exchange: company.exchange } }, proposals: research.proposals, evidenceBindings: acquired.durableSources.map((source) => ({ localSourceId: source.candidate.candidateId, source })), asOf, now, writeKnowledge: input.writeKnowledge })
     if (outcome.status === 'blocked' || outcome.status === 'failed') return { workflowRunId: input.workflowRunId, status: 'blocked', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: outcome.knowledgeBaseRevision, proposalIds: research.proposals.map((proposal) => proposal.proposalId), createdIds: [], updatedIds: [], committedIds: [], sourceIds: Object.values(outcome.sourceRefsByLocalId), claimIds: Object.values(outcome.claimRefsByProposalId), errors: outcome.errors, research, resolutionIntents: outcome.resolutionIntents, acquisitionDiagnostics: acquired.diagnostics, providerOutcomes: acquired.providerOutcomes, qualityGate }
-    const companyRef = outcome.entityRefsByLocalKey.company
+    // Gateway dry-runs may return a planned entity ref even when writeKnowledge
+    // is false. Only attach a ref backed by an entity actually present in the KB.
+    const companyRef = await canonicalCompanyRef(input.handle, company)
     const reportId = `company-research-${company.symbol.toLowerCase()}-${input.workflowRunId}`
-    const report: ResearchReport = validateResearchReport({ reportId, reportType: 'company_research', subjectRefs: companyRef ? [companyRef] : [], generatedAt: research.generatedAt, asOf, workflowRunId: input.workflowRunId, knowledgeBaseRevision: outcome.knowledgeBaseRevision, sourceRefs: Object.values(outcome.sourceRefsByLocalId), claimRefs: Object.values(outcome.claimRefsByProposalId), methodology: 'Bounded acquisition -> semantic proposal -> deterministic canonical binding -> validated ChangeSet -> shared Writer.', sections: reportResearch.sections.map((section) => ({ id: section.id, title: section.title, markdown: section.markdown, sourceRefs: section.sourceCandidateIds.map((id) => outcome.sourceRefsByLocalId[id]).filter((id): id is string => id !== undefined), claimRefs: section.proposalIds.map((id) => outcome.claimRefsByProposalId[id]).filter((id): id is string => id !== undefined) })), outputPath: `${reportId}.md` })
+    const report: ResearchReport = validateResearchReport({ reportId, reportType: 'company_research', subjectRefs: companyRef ? [companyRef] : [], ...(input.securityIdentity === undefined ? {} : { verifiedSecurityIdentity: input.securityIdentity }), generatedAt: research.generatedAt, asOf, workflowRunId: input.workflowRunId, knowledgeBaseRevision: outcome.knowledgeBaseRevision, sourceRefs: Object.values(outcome.sourceRefsByLocalId), claimRefs: Object.values(outcome.claimRefsByProposalId), methodology: 'Bounded acquisition -> semantic proposal -> deterministic canonical binding -> validated ChangeSet -> shared Writer.', sections: reportResearch.sections.map((section) => ({ id: section.id, title: section.title, markdown: section.markdown, sourceRefs: section.sourceCandidateIds.map((id) => outcome.sourceRefsByLocalId[id]).filter((id): id is string => id !== undefined), claimRefs: section.proposalIds.map((id) => outcome.claimRefsByProposalId[id]).filter((id): id is string => id !== undefined) })), outputPath: `${reportId}.md` })
     const outputPath = await writeResearchReport(report, resolve(input.reportRoot))
     return { workflowRunId: input.workflowRunId, status: 'completed', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: outcome.knowledgeBaseRevision, report: { reportId, outputPath }, proposalIds: research.proposals.map((proposal) => proposal.proposalId), createdIds: outcome.createdIds, updatedIds: outcome.updatedIds, committedIds: [...outcome.createdIds, ...outcome.updatedIds], sourceIds: Object.values(outcome.sourceRefsByLocalId), claimIds: Object.values(outcome.claimRefsByProposalId), errors: [], research: reportResearch, industryExposure, resolutionIntents: outcome.resolutionIntents, acquisitionDiagnostics: acquired.diagnostics, providerOutcomes: acquired.providerOutcomes, qualityGate }
   } catch (error) {

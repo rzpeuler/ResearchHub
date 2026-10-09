@@ -7,11 +7,13 @@ import { createFreshKnowledgeBaseV04 } from '../../../knowledge/storage/create-v
 import type { ThemeScopeImpactChecker } from '../../../workflows/theme-scope-impact-check/post-write.ts'
 import type { ThemeScopeImpactWriteReceipt } from '../../../app/services/theme-scope-impact-service.ts'
 import { ResearchService } from '../../../app/services/research-service.ts'
+import { SecurityIdentityResolver } from '../../../app/services/security-identity-resolver.ts'
 import { writeResearchReport, type ResearchReport } from '../../../app/services/research-report.ts'
 import { WorkflowService } from '../../../app/services/workflow-service.ts'
 import type { ResearchAcquisitionPlugin, ResearchSourceCandidate, ResearchSignal, ResearchSignalStore } from '../../../plugins/research-acquisition/contracts.ts'
 import { OfficialDisclosureResearchPlugin, type OfficialDisclosureClient } from '../../../plugins/research-acquisition/official.ts'
 import { GdeltResearchPlugin } from '../../../plugins/research-acquisition/gdelt.ts'
+import { createSecurityIdentityDataResolver, type AkshareSecurityDirectoryClient } from '../../../plugins/research-acquisition/security-identity-data.ts'
 
 function fixtureEvidenceAdapter(route: 'cninfo' | 'gdelt', calls: { discovered: number; fetched: number; normalized: number }): Pick<ResearchAcquisitionPlugin, 'discover' | 'fetch' | 'normalize'> {
   const candidate: ResearchSourceCandidate = {
@@ -44,6 +46,8 @@ test('legacy ResearchService constructor routes explicit CNINFO and GDELT adapte
     const cninfo = Object.assign(new OfficialDisclosureResearchPlugin({} as OfficialDisclosureClient), fixtureEvidenceAdapter('cninfo', calls.cninfo))
     const gdelt = Object.assign(new GdeltResearchPlugin(), fixtureEvidenceAdapter('gdelt', calls.gdelt))
     assert.equal(cninfo.name, 'official-disclosure-research-acquisition')
+    const directory = { async securityDirectory() { return [{ symbol: '600519', name: 'Fixture Company', exchange: 'SH' }] } } as unknown as AkshareSecurityDirectoryClient
+    const securityIdentityResolver = new SecurityIdentityResolver({ mountedKnowledgeBaseRoot: root, dataResolverFactory: ({ now, signal }) => createSecurityIdentityDataResolver({ akshare: directory, now, ...(signal ? { signal } : {}) }) })
     const service = new ResearchService({
       mountedKnowledgeBaseRoot: root,
       reportRoot: reports,
@@ -51,6 +55,7 @@ test('legacy ResearchService constructor routes explicit CNINFO and GDELT adapte
       acquisitionPlugins: [cninfo, gdelt],
       signalStore,
       workflowService: new WorkflowService(),
+      securityIdentityResolver,
     })
     const result = await service.startResearchCompany({ workflowRunId: 'legacy-evidence-run', symbol: '600519', name: 'Fixture Company', writeKnowledge: false }).completion
     assert.equal(result.status, 'completed')

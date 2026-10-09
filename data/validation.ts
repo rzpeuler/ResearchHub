@@ -39,6 +39,16 @@ export function validateDataRequirement(requirement: DataRequirement): readonly 
     for (const field of ['start', 'end'] as const) if (context[field] !== undefined && (typeof context[field] !== 'string' || Number.isNaN(Date.parse(context[field] as string)))) errors.push(`industryEvidenceQueryContext.${field} must be a valid date`)
     if (typeof context.start === 'string' && typeof context.end === 'string' && Date.parse(context.start) > Date.parse(context.end)) errors.push('industryEvidenceQueryContext.end must not precede start')
   }
+  if (requirement?.securityIdentityQueryContext !== undefined) {
+    const context = requirement.securityIdentityQueryContext as unknown as Record<string, unknown>
+    const allowedKeys = new Set(['requestedName', 'requestedSymbol', 'requestedExchange'])
+    if (requirement.metricId !== 'security_identity_directory' || requirement.dataKind !== 'evidence') errors.push('securityIdentityQueryContext is only valid for security_identity_directory evidence requirements')
+    if (Object.keys(context).some((key) => !allowedKeys.has(key))) errors.push('securityIdentityQueryContext contains provider-specific or unknown fields')
+    if (context.requestedName !== undefined && (typeof context.requestedName !== 'string' || context.requestedName.trim() === '' || context.requestedName.length > 120)) errors.push('securityIdentityQueryContext.requestedName must be 1-120 characters')
+    if (context.requestedSymbol !== undefined && (typeof context.requestedSymbol !== 'string' || !/^\d{6}$/u.test(context.requestedSymbol))) errors.push('securityIdentityQueryContext.requestedSymbol must be a six-digit security code')
+    if (context.requestedExchange !== undefined && (typeof context.requestedExchange !== 'string' || !/^(?:SH|SZ|BJ)$/u.test(context.requestedExchange))) errors.push('securityIdentityQueryContext.requestedExchange must be SH, SZ, or BJ')
+    if (context.requestedName === undefined && context.requestedSymbol === undefined) errors.push('securityIdentityQueryContext requires a name or symbol candidate')
+  }
   if (requirement?.determinismClass === 'AUTHORITATIVE_NUMERIC' && requirement.llmWebFallback === 'FULL_EVIDENCE_RESEARCH') errors.push('AUTHORITATIVE_NUMERIC cannot use FULL_EVIDENCE_RESEARCH')
   return errors
 }

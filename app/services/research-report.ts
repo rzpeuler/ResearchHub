@@ -2,6 +2,17 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 
 export interface ResearchReportSection { readonly id: string; readonly title: string; readonly markdown: string; readonly sourceRefs?: readonly string[]; readonly claimRefs?: readonly string[]; readonly relationRefs?: readonly string[]; readonly signalRefs?: readonly string[]; readonly evidenceLinks?: readonly string[] }
+export interface VerifiedSecurityIdentityReportMetadata {
+  readonly symbol: string
+  readonly exchange: 'SH' | 'SZ' | 'BJ'
+  readonly verifiedName: string
+  readonly verificationSource: 'canonical_knowledge' | 'akshare_security_directory'
+  readonly originAuthority: 'S3_AGGREGATOR' | 'CANONICAL_KNOWLEDGE'
+  readonly verifiedAt: string
+  readonly sourceId?: string
+  readonly sourceUrl?: string
+  readonly canonicalCompanyRef?: string
+}
 export interface ResearchReport {
   readonly reportId: string
   readonly reportType: 'company_research' | 'daily_brief' | 'earnings_review' | 'valuation' | 'event_research' | 'thesis_red_team' | 'industry_research' | 'thesis_lifecycle'
@@ -13,6 +24,7 @@ export interface ResearchReport {
   readonly sourceRefs: readonly string[]
   readonly claimRefs: readonly string[]
   readonly methodology: string
+  readonly verifiedSecurityIdentity?: VerifiedSecurityIdentityReportMetadata
   readonly sections: readonly ResearchReportSection[]
   readonly outputPath: string
 }
@@ -39,7 +51,14 @@ export function validateResearchReport(report: ResearchReport): ResearchReport {
   if (!report || typeof report !== 'object') throw new TypeError('ResearchReport must be an object')
   if (!safeId.test(report.reportId)) throw new TypeError('reportId must be a safe deterministic identifier')
   if (report.reportType !== 'company_research' && report.reportType !== 'daily_brief' && report.reportType !== 'earnings_review' && report.reportType !== 'valuation' && report.reportType !== 'event_research' && report.reportType !== 'thesis_red_team' && report.reportType !== 'industry_research' && report.reportType !== 'thesis_lifecycle') throw new TypeError('Unsupported reportType')
-  if (!Array.isArray(report.subjectRefs) || (report.reportType !== 'daily_brief' && report.subjectRefs.length === 0) || report.subjectRefs.some((item) => thesisRef(item) ? report.reportType !== 'thesis_lifecycle' : !ref(item))) throw new TypeError('subjectRefs must contain canonical references valid for the report type')
+  const identity = report.verifiedSecurityIdentity
+  if (identity !== undefined) {
+    if (!['company_research', 'valuation', 'earnings_review'].includes(report.reportType) || !/^\d{6}$/.test(identity.symbol) || !['SH', 'SZ', 'BJ'].includes(identity.exchange) || typeof identity.verifiedName !== 'string' || identity.verifiedName.trim() === '' || identity.verifiedName.length > 200 || Number.isNaN(Date.parse(identity.verifiedAt))) throw new TypeError('verifiedSecurityIdentity is invalid for this report type')
+    if ((identity.verificationSource === 'canonical_knowledge') !== (identity.originAuthority === 'CANONICAL_KNOWLEDGE')) throw new TypeError('verifiedSecurityIdentity authority does not match its verification source')
+    if (identity.verificationSource === 'akshare_security_directory' && (typeof identity.sourceId !== 'string' || identity.sourceId.trim() === '' || typeof identity.sourceUrl !== 'string' || !/^https?:\/\//i.test(identity.sourceUrl))) throw new TypeError('external verifiedSecurityIdentity requires source attribution')
+    if (identity.verificationSource === 'canonical_knowledge' && (typeof identity.canonicalCompanyRef !== 'string' || !/^entity:[^\s]+$/.test(identity.canonicalCompanyRef))) throw new TypeError('canonical verifiedSecurityIdentity requires a canonical Company reference')
+  }
+  if (!Array.isArray(report.subjectRefs) || (report.reportType !== 'daily_brief' && report.subjectRefs.length === 0 && identity === undefined) || report.subjectRefs.some((item) => thesisRef(item) ? report.reportType !== 'thesis_lifecycle' : !ref(item))) throw new TypeError('subjectRefs must contain canonical references valid for the report type or a verified security identity')
   if (Number.isNaN(Date.parse(report.generatedAt)) || Number.isNaN(Date.parse(report.asOf))) throw new TypeError('generatedAt and asOf must be valid dates')
   if (!safeId.test(report.workflowRunId) || !Number.isInteger(report.knowledgeBaseRevision) || report.knowledgeBaseRevision < 0) throw new TypeError('Invalid workflow/revision metadata')
   if (!report.sourceRefs || report.sourceRefs.some((item: string) => !/^source:[^\s]+$/.test(item))) throw new TypeError('sourceRefs must contain Source references')

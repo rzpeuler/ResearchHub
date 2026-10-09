@@ -33,6 +33,7 @@ import type { EventResearchDataResolverContext } from '../../workflows/event-res
 import type { ThesisRedTeamDataResolverContext } from '../../workflows/thesis-red-team/contracts.ts'
 import type { CompanyResearchDataPayload } from '../../plugins/research-acquisition/company-research-data.ts'
 import type { DataResolver } from '../../data/resolver.ts'
+import type { SecurityIdentityResolver, VerifiedSecurityIdentity, SecurityIdentityWorkflow } from './security-identity-resolver.ts'
 
 export type ThesisLifecycleCreateInput = ThesisCreateInput
 export interface ApplicationThesisLifecycleCreateResult extends ThesisCreateServiceResult {
@@ -102,6 +103,7 @@ export interface ResearchServiceOptions {
   readonly managementCommunicationSources?: ManagementCommunicationAcquisitionSources
   readonly industryReasoningExecutorFactory?: () => Promise<ReasoningExecutor>
   readonly industryDataResolverFactory?: IndustryDataResolverFactory
+  readonly securityIdentityResolver?: SecurityIdentityResolver
   readonly themeScopeImpactChecker?: ThemeScopeImpactChecker
 }
 
@@ -114,6 +116,14 @@ export class ResearchService {
   constructor(private readonly options: ResearchServiceOptions) {
     this.thesisLifecycleService = new ThesisLifecycleService({ mountedKnowledgeBaseRoot: options.mountedKnowledgeBaseRoot, reportRoot: options.reportRoot, cwd: options.cwd, workflowService: options.workflowService, reasoningExecutor: options.reasoningExecutor })
     this.thesisCreateService = new ThesisCreateService({ mountedKnowledgeBaseRoot: options.mountedKnowledgeBaseRoot, reasoningExecutor: options.reasoningExecutor })
+  }
+
+  private async resolveSecurityIdentity(workflowId: SecurityIdentityWorkflow, input: { readonly symbol: string; readonly name?: string; readonly exchange?: string; readonly asOf?: string; readonly useStructuredKnowledge?: boolean }, signal?: AbortSignal): Promise<VerifiedSecurityIdentity | undefined> {
+    const resolver = this.options.securityIdentityResolver
+    if (resolver === undefined) return undefined
+    const resolution = await resolver.resolve({ workflowId, symbol: input.symbol, ...(input.name === undefined ? {} : { name: input.name }), ...(input.exchange === undefined ? {} : { exchange: input.exchange }), asOf: input.asOf ?? new Date().toISOString(), historical: input.asOf !== undefined, allowKnowledgeLookup: input.useStructuredKnowledge !== false }, signal)
+    if (resolution.status !== 'VERIFIED') throw new ApplicationServiceError('conflict', `UNRESOLVED_REFERENCE: ${resolution.status}: ${resolution.reason} ${resolution.diagnostics.join(' ')}`.trim())
+    return resolution.identity
   }
 
   private createResearchEvidenceResolver(context: { readonly company: ResearchCompanyIdentity; readonly asOf: string; readonly signal?: AbortSignal; readonly limitPerSource?: number }, onCandidatesDiscovered?: (event: { readonly provider: 'CNINFO' | 'GDELT'; readonly candidates: readonly import('../../plugins/research-acquisition/contracts.ts').ResearchSourceCandidate[]; readonly requirement: import('../../data/contracts.ts').DataRequirement }) => Promise<void | readonly import('../../plugins/research-acquisition/contracts.ts').ResearchSourceCandidate[]> | void | readonly import('../../plugins/research-acquisition/contracts.ts').ResearchSourceCandidate[]): DataResolver<CompanyResearchDataPayload> {
@@ -243,11 +253,14 @@ export class ResearchService {
       signal.addEventListener('abort', abort, { once: true })
       callerSignal?.addEventListener('abort', abort, { once: true })
       try {
+        const securityIdentity = await this.resolveSecurityIdentity('company_research', input, combined.signal)
+        const resolvedCompany: ResearchCompanyIdentity = securityIdentity ? { symbol: securityIdentity.symbol, name: securityIdentity.verifiedName, exchange: securityIdentity.exchange } : company
         const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot))
         const result = await runCompanyDeepResearch({
           workflowRunId: input.workflowRunId,
           handle,
-          company,
+          company: resolvedCompany,
+          ...(securityIdentity === undefined ? {} : { securityIdentity }),
           dataResolverFactory: this.createCompanyDataResolverFactory(),
           asOf: input.asOf,
           reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')),
@@ -333,7 +346,9 @@ export class ResearchService {
     const completion = this.options.workflowService.start(input.workflowRunId, async (signal) => {
       const combined = new AbortController(); const abort = () => combined.abort(); signal.addEventListener('abort', abort, { once: true }); callerSignal?.addEventListener('abort', abort, { once: true })
       try {
-        const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runEarningsReview({ workflowRunId: input.workflowRunId, handle, company, fiscalYear: input.fiscalYear, period: input.period, asOf: input.asOf, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), acquisitionPlugins: this.options.acquisitionPlugins, akshare: this.options.akshare, dataResolverFactory: this.options.earningsDataResolverFactory, managementCommunicationSources: this.options.managementCommunicationSources, managementCommunicationDataResolverFactory: this.options.managementCommunicationDataResolverFactory, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
+        const securityIdentity = await this.resolveSecurityIdentity('earnings_review', input, combined.signal)
+        const resolvedCompany: ResearchCompanyIdentity = securityIdentity ? { symbol: securityIdentity.symbol, name: securityIdentity.verifiedName, exchange: securityIdentity.exchange } : company
+        const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runEarningsReview({ workflowRunId: input.workflowRunId, handle, company: resolvedCompany, ...(securityIdentity === undefined ? {} : { securityIdentity }), fiscalYear: input.fiscalYear, period: input.period, asOf: input.asOf, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), acquisitionPlugins: this.options.acquisitionPlugins, akshare: this.options.akshare, dataResolverFactory: this.options.earningsDataResolverFactory, managementCommunicationSources: this.options.managementCommunicationSources, managementCommunicationDataResolverFactory: this.options.managementCommunicationDataResolverFactory, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
         return { runId: input.workflowRunId, status: result.status, knowledgeBaseId: result.knowledgeBaseId, ...(result.report === undefined ? {} : { reportId: result.report.reportId, reportPath: `${result.report.reportId}.md` }), committedIds: result.committedIds, proposalCount: result.proposalIds.length, summary: result.status === 'completed' ? `Earnings review completed for ${input.symbol} ${input.fiscalYear}-${input.period}` : `Earnings review ${result.status} for ${input.symbol}`, ...(result.errors.length ? { errorSummary: result.errors.join('; ').slice(0, 500) } : {}), telemetry: result.telemetry, ...(result.blockedReason === undefined ? {} : { blockedReason: result.blockedReason }) }
       } finally { signal.removeEventListener('abort', abort); callerSignal?.removeEventListener('abort', abort) }
     }).then((outcome) => outcome as ApplicationEarningsReviewResult)
@@ -348,7 +363,9 @@ export class ResearchService {
     const completion = this.options.workflowService.start(input.workflowRunId, async (signal) => {
       const combined = new AbortController(); const abort = () => combined.abort(); signal.addEventListener('abort', abort, { once: true }); callerSignal?.addEventListener('abort', abort, { once: true })
       try {
-        const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runValuation({ workflowRunId: input.workflowRunId, handle, company, asOf: input.asOf, methods: input.methods, targetFiscalYear: input.targetFiscalYear, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), akshare: this.options.akshare, officialDisclosure: this.options.officialDisclosure, dataResolverFactory: this.options.valuationDataResolverFactory, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
+        const securityIdentity = await this.resolveSecurityIdentity('valuation', input, combined.signal)
+        const resolvedCompany: ResearchCompanyIdentity = securityIdentity ? { symbol: securityIdentity.symbol, name: securityIdentity.verifiedName, exchange: securityIdentity.exchange } : company
+        const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runValuation({ workflowRunId: input.workflowRunId, handle, company: resolvedCompany, ...(securityIdentity === undefined ? {} : { securityIdentity }), asOf: input.asOf, methods: input.methods, targetFiscalYear: input.targetFiscalYear, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), akshare: this.options.akshare, officialDisclosure: this.options.officialDisclosure, dataResolverFactory: this.options.valuationDataResolverFactory, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
         return { runId: input.workflowRunId, status: result.status, knowledgeBaseId: result.knowledgeBaseId, ...(result.report === undefined ? {} : { reportId: result.report.reportId, reportPath: `${result.report.reportId}.md` }), committedIds: result.committedIds, proposalCount: result.proposalIds.length, summary: result.status === 'completed' ? `Valuation completed for ${input.symbol}` : `Valuation ${result.status} for ${input.symbol}`, ...(result.errors.length ? { errorSummary: result.errors.join('; ').slice(0, 500) } : {}), telemetry: result.telemetry, providerOutcome: result.providerOutcome, ...(result.automaticCompsResult === undefined ? {} : { automaticCompsResult: result.automaticCompsResult }), ...(result.crosscheck === undefined ? {} : { crosscheck: result.crosscheck }), ...(result.blockedReason === undefined ? {} : { blockedReason: result.blockedReason }) }
       } finally { signal.removeEventListener('abort', abort); callerSignal?.removeEventListener('abort', abort) }
     }).then((outcome) => outcome as ApplicationValuationResult)

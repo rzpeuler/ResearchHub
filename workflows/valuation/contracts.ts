@@ -1,4 +1,5 @@
 import type { KnowledgeBaseHandle } from '../../knowledge/storage/handle.ts'
+import type { VerifiedSecurityIdentity } from '../../data/security-identity-contracts.ts'
 import type { AkshareDataClient } from '../../plugins/research-acquisition/akshare.ts'
 import type { OfficialDisclosureClient } from '../../plugins/research-acquisition/official.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
@@ -14,6 +15,7 @@ export interface ValuationWorkflowInput {
   readonly workflowRunId: string
   readonly handle: KnowledgeBaseHandle
   readonly company: ResearchCompanyIdentity
+  readonly securityIdentity?: VerifiedSecurityIdentity
   readonly asOf?: string
   readonly methods?: readonly ValuationMethod[]
   readonly targetFiscalYear?: number

@@ -1,4 +1,5 @@
 import type { KnowledgeBaseHandle } from '../../knowledge/storage/handle.ts'
+import type { VerifiedSecurityIdentity } from '../../data/security-identity-contracts.ts'
 import type { NormalizedResearchSource, ResearchAcquisitionPlugin, ResearchCompanyIdentity, ResearchProviderOutcome } from '../../plugins/research-acquisition/contracts.ts'
 import type { AkshareDataClient } from '../../plugins/research-acquisition/akshare.ts'
 import type { EastmoneyEstimateSourceRequest, EastmoneyReportAcquisitionResult } from '../../plugins/research-acquisition/expectations/contracts.ts'
@@ -39,6 +40,7 @@ export interface EarningsReviewWorkflowInput {
   readonly workflowRunId: string
   readonly handle: KnowledgeBaseHandle
   readonly company: ResearchCompanyIdentity
+  readonly securityIdentity?: VerifiedSecurityIdentity
   readonly fiscalYear: number
   readonly period: EarningsPeriod
   readonly asOf?: string

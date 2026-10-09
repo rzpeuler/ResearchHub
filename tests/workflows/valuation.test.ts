@@ -12,6 +12,10 @@ import type { OfficialDisclosureClient } from '../../plugins/research-acquisitio
 import { createValuationDataResolver, type ValuationDataPayload } from '../../plugins/research-acquisition/valuation-data.ts'
 import type { DataResolver } from '../../data/resolver.ts'
 import type { DataRequirement } from '../../data/contracts.ts'
+import type { VerifiedSecurityIdentity } from '../../data/security-identity-contracts.ts'
+import type { ValuationProviderOutcome, ValuationTelemetrySnapshot } from '../../workflows/valuation/contracts.ts'
+import { SecurityIdentityResolver } from '../../app/services/security-identity-resolver.ts'
+import { createSecurityIdentityDataResolver, type AkshareSecurityDirectoryClient } from '../../plugins/research-acquisition/security-identity-data.ts'
 import { VALUATION_REPORT_SECTIONS } from '../../skills/valuation/contracts.ts'
 import { buildValuationBasis, calculateTargetPrice, calculateValuation, methodEligibility, referenceMultiples, selectValuationBasis, validateScenarioAssumptions } from '../../skills/valuation/financials.ts'
 import { normalizeValuationFinancialData, normalizeValuationMarketData } from '../../plugins/research-acquisition/valuation-normalization.ts'
@@ -114,9 +118,61 @@ test('V33 filters requested methods to eligible methods', async () => { const f 
 test('V34 keeps the method set bounded to PE PB EV_EBITDA', () => assert.deepEqual(methodEligibility(basis()).map((item) => item.method), ['PE', 'PB', 'EV_EBITDA']))
 test('V35 completes with one exact canonical Company', async () => { const f = await fixture(); try { const r = await runFixture(f); assert.equal(r.status, 'completed'); assert.equal(r.telemetry.companyCoverageResolved, true) } finally { await f.close() } })
 test('V36 missing Company coverage blocks before acquisition', async () => { const root = await mkdtemp(join(tmpdir(), 'rhl-valuation-missing-')); try { await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'missing', now: NOW }); let calls = 0; const ak = akshareFixture(); const wrapped = { ...ak, companyBasic: async () => { calls++; return [] } }; const r = await runValuation({ workflowRunId: 'v36', handle: await new KnowledgeBaseRegistry().mount(root), company: { symbol: '600519', exchange: 'SSE' }, reportRoot: join(root, 'reports'), akshare: wrapped }); assert.equal(r.blockedReason, 'COMPANY_COVERAGE_NOT_FOUND'); assert.equal(calls, 0) } finally { await rm(root, { recursive: true, force: true }) } })
+test('V79 verified identity enters real valuation acquisition with empty Knowledge and no writes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-valuation-first-research-'))
+  const reportRoot = join(root, 'reports')
+  try {
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-valuation-first-research', now: NOW })
+    const registry = new KnowledgeBaseRegistry()
+    const akshare = akshareFixture()
+    const securityIdentity: VerifiedSecurityIdentity = { symbol: '600519', exchange: 'SH', verifiedName: 'Fixture Company', verificationSource: 'akshare_security_directory', originAuthority: 'S3_AGGREGATOR', verifiedAt: NOW, sourceId: 'akshare-security-identity-directory', sourceUrl: 'https://github.com/akfamily/akshare' }
+    const result = await runValuation({ workflowRunId: 'v79-first-research', handle: await registry.mount(root), company: { symbol: securityIdentity.symbol, name: securityIdentity.verifiedName, exchange: securityIdentity.exchange }, securityIdentity, reportRoot, akshare, officialDisclosure: {
+      list: async () => [], fetch: async () => '', resolveAnnualReportPublication: async ({ fiscalYear }) => ({ issuer: 'Fixture Company', fiscalYear, reportTitle: `${fiscalYear}年年度报告`, officialPublishedAt: `${fiscalYear + 1}-04-01T08:00:00.000Z`, rawPublishedAt: `${fiscalYear + 1}-04-01 16:00:00`, sourceUrl: `https://static.cninfo.com.cn/fixture-${fiscalYear}.pdf`, originPublisher: 'CNINFO', originAuthority: 'S0_STATUTORY', retrievalProvider: 'CNINFO', retrievedAt: NOW }),
+    }, reasoningExecutor: new FixtureExecutor(), now: () => NOW, writeKnowledge: false, useStructuredKnowledge: false })
+    assert.equal(result.status, 'completed', result.errors.join('; '))
+    assert.equal(result.telemetry.companyCoverageResolved, false)
+    assert.equal(result.providerOutcome.usableForValuation, true)
+    assert.deepEqual(akshare.calls, ['companyBasic', 'historicalMarketData', 'financialData'])
+    assert.ok(result.basis && result.computation)
+    assert.ok(result.report)
+    const report = JSON.parse(await readFile(join(reportRoot, `${result.report!.reportId}.md.json`), 'utf8')) as { subjectRefs: string[]; verifiedSecurityIdentity?: VerifiedSecurityIdentity }
+    assert.deepEqual(report.subjectRefs, [])
+    assert.equal(report.verifiedSecurityIdentity?.symbol, '600519')
+    const assets = await readCanonicalV04Assets(root)
+    assert.equal(assets.objects.filter((item) => item.kind === 'entity').length, 0)
+    assert.equal(assets.objects.filter((item) => item.kind === 'source' || item.kind === 'claim').length, 0)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+test('V80 ResearchService verifies identity then runs first valuation through its production resolver path', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-valuation-service-first-research-'))
+  const reportRoot = join(root, 'reports')
+  try {
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-valuation-service-first-research', now: NOW })
+    const directoryCalls: unknown[] = []
+    const directory = { async securityDirectory(request: unknown) { directoryCalls.push(request); return [{ symbol: '600519', name: 'Fixture Company', exchange: 'SH' }] } } as unknown as AkshareSecurityDirectoryClient
+    const securityIdentityResolver = new SecurityIdentityResolver({ mountedKnowledgeBaseRoot: root, now: () => new Date(NOW), dataResolverFactory: ({ now, signal }) => createSecurityIdentityDataResolver({ akshare: directory, now, ...(signal ? { signal } : {}) }) })
+    const akshare = akshareFixture()
+    const officialDisclosure: OfficialDisclosureClient = { list: async () => [], fetch: async () => '', resolveAnnualReportPublication: async ({ fiscalYear }) => ({ issuer: 'Fixture Company', fiscalYear, reportTitle: `${fiscalYear}年年度报告`, officialPublishedAt: `${fiscalYear + 1}-04-01T08:00:00.000Z`, rawPublishedAt: `${fiscalYear + 1}-04-01 16:00:00`, sourceUrl: `https://static.cninfo.com.cn/fixture-${fiscalYear}.pdf`, originPublisher: 'CNINFO', originAuthority: 'S0_STATUTORY', retrievalProvider: 'CNINFO', retrievedAt: NOW }) }
+    const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot, acquisitionPlugins: [], akshare, officialDisclosure, workflowService: new WorkflowService(), reasoningExecutor: new FixtureExecutor(), securityIdentityResolver })
+    const result = await service.startValuation({ workflowRunId: 'v80-service-first-research', symbol: '600519', name: 'Fixture Company', exchange: 'SH', writeKnowledge: false, useStructuredKnowledge: false }).completion
+    const telemetry = result.telemetry as ValuationTelemetrySnapshot
+    const providerOutcome = result.providerOutcome as ValuationProviderOutcome | undefined
+    assert.equal(result.status, 'completed', result.errorSummary)
+    assert.equal(directoryCalls.length, 1)
+    assert.equal(telemetry.companyCoverageResolved, false)
+    assert.equal(providerOutcome?.usableForValuation, true)
+    assert.deepEqual(akshare.calls, ['companyBasic', 'historicalMarketData', 'financialData'])
+    assert.ok(result.reportId)
+    const report = await service.getResearchReport(result.reportId!)
+    assert.deepEqual(report.subjectRefs, [])
+    assert.equal(report.verifiedSecurityIdentity?.sourceId, 'akshare-security-identity-directory')
+    const assets = await readCanonicalV04Assets(root)
+    assert.equal(assets.objects.filter((item) => item.kind === 'entity' || item.kind === 'source' || item.kind === 'claim').length, 0)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
 test('V37 ambiguous exact Company coverage blocks', async () => { const f = await fixture(); try { const assets = JSON.parse(await readFile(join(f.root, 'registry', 'assets.yaml'), 'utf8')) as Dict; assets['entity:duplicate-company'] = { type: 'entity', storageRef: 'entities/duplicate-company.yaml' }; await writeFile(join(f.root, 'registry', 'assets.yaml'), `${JSON.stringify(assets)}\n`); await writeFile(join(f.root, 'entities', 'duplicate-company.yaml'), `${JSON.stringify({ id: 'entity:duplicate-company', type: 'company', name: 'Duplicate', aliases: [], ticker: '600519', exchange: 'SH', lifecycle: { status: 'active' } })}\n`); const r = await runFixture({ ...f, handle: await new KnowledgeBaseRegistry().mount(f.root) }); assert.equal(r.blockedReason, 'COMPANY_COVERAGE_AMBIGUOUS') } finally { await f.close() } })
 test('V38 unavailable market data blocks', async () => { const f = await fixture({ market: [] }); try { const r = await runFixture(f); assert.equal(r.blockedReason, 'VALUATION_MARKET_PRICE_UNAVAILABLE') } finally { await f.close() } })
-test('V39 acquisition calls all three AKShare methods', async () => { const f = await fixture(); try { await runFixture(f); assert.deepEqual(f.akshare.calls, ['companyBasic', 'financialData', 'historicalMarketData']) } finally { await f.close() } })
+test('V39 acquisition calls all three AKShare methods', async () => { const f = await fixture(); try { await runFixture(f); assert.deepEqual([...f.akshare.calls].sort(), ['companyBasic', 'financialData', 'historicalMarketData'].sort()) } finally { await f.close() } })
 test('Valuation workflow sends issuer and comparable requirements through its injected DataResolver', async () => {
   const f = await fixture()
   try {

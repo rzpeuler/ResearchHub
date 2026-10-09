@@ -13,6 +13,10 @@ import type { AkshareDataClient } from '../../plugins/research-acquisition/aksha
 import { createEarningsDataResolver, type EarningsDataPayload } from '../../plugins/research-acquisition/earnings-data.ts'
 import type { DataResolver } from '../../data/resolver.ts'
 import type { DataRequirement } from '../../data/contracts.ts'
+import type { VerifiedSecurityIdentity } from '../../data/security-identity-contracts.ts'
+import type { EarningsReviewTelemetry } from '../../workflows/earnings-review/contracts.ts'
+import { SecurityIdentityResolver } from '../../app/services/security-identity-resolver.ts'
+import { createSecurityIdentityDataResolver, type AkshareSecurityDirectoryClient } from '../../plugins/research-acquisition/security-identity-data.ts'
 import { sha256 } from '../../plugins/research-acquisition/hash.ts'
 import { computeEarningsMetrics, earningsPeriodSpec } from '../../skills/earnings-review/financials.ts'
 import { normalizeAkshareFinancialData } from '../../plugins/research-acquisition/earnings-financial-normalization.ts'
@@ -80,6 +84,74 @@ test('ER6 prior-year comparable period is selected', () => { const result = norm
 test('ER7 derived earnings calculations are deterministic', () => { const result = computeEarningsMetrics(normalizeAkshareFinancialData(defaultRows(), PERIOD)); assert.equal(result.byMetric.revenue_yoy?.value, 33.33333333333333); assert.equal(result.byMetric.gross_margin_delta_bps?.value, 500); assert.equal(result.byMetric.operating_cash_flow_to_net_profit?.value, 20 / 15) })
 test('ER8 divide-by-zero and missing values remain unavailable', () => { const result = computeEarningsMetrics(normalizeAkshareFinancialData([{ 报告期: '2026-06-30', 净利润: 0, 经营活动产生的现金流量净额: 2 }, { 报告期: '2025-06-30', 净利润: 0 }], PERIOD)); assert.equal(result.byMetric.operating_cash_flow_to_net_profit, undefined); assert.equal(result.byMetric.revenue_yoy, undefined); assert.ok(result.unavailable.includes('revenue_yoy')) })
 test('ER9 missing Company coverage blocks before reasoning and Gateway', async () => { const root = await mkdtemp(join(tmpdir(), 'rhl-earnings-missing-')); const reports = join(root, 'reports'); await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-missing', now: NOW }); let called = 0; const plugin = fixturePlugin([]); const original = plugin.discover; const wrapped = { ...plugin, discover: async (...args: Parameters<typeof original>) => { called += 1; return original(...args) } }; const result = await runEarningsReview({ workflowRunId: 'er9', handle: await new KnowledgeBaseRegistry().mount(root), company: { symbol: '600519', exchange: 'SSE' }, fiscalYear: 2026, period: 'H1', reportRoot: reports, acquisitionPlugins: [wrapped], reasoningExecutor: new FixtureExecutor({}), now: () => NOW }); assert.equal(result.status, 'blocked'); assert.equal(result.blockedReason, 'COMPANY_COVERAGE_NOT_FOUND'); assert.equal(called, 0); await rm(root, { recursive: true, force: true }) })
+test('ER48 verified identity enters real filing and actual-data resolution with empty Knowledge and no writes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-earnings-first-research-'))
+  const reports = join(root, 'reports')
+  try {
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-earnings-first-research', now: NOW })
+    const pluginCalls: string[] = []
+    const plugin = fixturePlugin([officialCandidate()])
+    const originalDiscover = plugin.discover
+    const originalFetch = plugin.fetch
+    const wrapped: ResearchAcquisitionPlugin = {
+      ...plugin,
+      discover: async (...args) => { pluginCalls.push('discover'); return originalDiscover(...args) },
+      fetch: async (...args) => { pluginCalls.push('fetch'); return originalFetch(...args) },
+    }
+    let actualCalls = 0
+    const akshare: AkshareDataClient = { ...fixtureAkshare(defaultRows()), financialData: async () => { actualCalls++; return defaultRows() } }
+    const securityIdentity: VerifiedSecurityIdentity = { symbol: '600519', exchange: 'SH', verifiedName: '贵州茅台', verificationSource: 'akshare_security_directory', originAuthority: 'S3_AGGREGATOR', verifiedAt: NOW, sourceId: 'akshare-security-identity-directory', sourceUrl: 'https://github.com/akfamily/akshare' }
+    const result = await runEarningsReview({ workflowRunId: 'er48-first-research', handle: await new KnowledgeBaseRegistry().mount(root), company: { symbol: securityIdentity.symbol, name: securityIdentity.verifiedName, exchange: securityIdentity.exchange }, securityIdentity, fiscalYear: 2026, period: 'H1', reportRoot: reports, acquisitionPlugins: [wrapped], akshare, reasoningExecutor: new FixtureExecutor(validOutput('official-2026-h1')), now: () => NOW, writeKnowledge: false, useStructuredKnowledge: false })
+    assert.equal(result.status, 'completed', result.errors.join('; '))
+    assert.deepEqual(pluginCalls, ['discover', 'fetch'])
+    assert.equal(actualCalls, 1)
+    assert.equal(result.telemetry.officialEvidenceStatus, 'available')
+    assert.equal(result.telemetry.structuredFinancialEvidenceStatus, 'available')
+    assert.ok(result.valuationImpactAnalysis)
+    assert.equal(result.valuationImpactAnalysis.thesisContextStatus, 'unavailable')
+    assert.ok(result.sections && result.sections.length > 0)
+    assert.ok(result.report)
+    const report = JSON.parse(await readFile(join(reports, `${result.report!.reportId}.md.json`), 'utf8')) as { subjectRefs: string[]; verifiedSecurityIdentity?: VerifiedSecurityIdentity }
+    assert.deepEqual(report.subjectRefs, [])
+    assert.equal(report.verifiedSecurityIdentity?.symbol, '600519')
+    const assets = await readCanonicalV04Assets(root)
+    assert.equal(assets.objects.filter((item) => item.kind === 'entity').length, 0)
+    assert.equal(assets.objects.filter((item) => item.kind === 'source' || item.kind === 'claim').length, 0)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+test('ER49 ResearchService verifies identity then runs first Earnings Review through production resolvers', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-earnings-service-first-research-'))
+  const reports = join(root, 'reports')
+  try {
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-earnings-service-first-research', now: NOW })
+    const directoryCalls: unknown[] = []
+    const directory = { async securityDirectory(request: unknown) { directoryCalls.push(request); return [{ symbol: '600519', name: '贵州茅台', exchange: 'SH' }] } } as unknown as AkshareSecurityDirectoryClient
+    const securityIdentityResolver = new SecurityIdentityResolver({ mountedKnowledgeBaseRoot: root, now: () => new Date(NOW), dataResolverFactory: ({ now, signal }) => createSecurityIdentityDataResolver({ akshare: directory, now, ...(signal ? { signal } : {}) }) })
+    const plugin = fixturePlugin([officialCandidate()])
+    const pluginCalls: string[] = []
+    const originalDiscover = plugin.discover
+    const originalFetch = plugin.fetch
+    const wrapped: ResearchAcquisitionPlugin = { ...plugin, discover: async (...args) => { pluginCalls.push('discover'); return originalDiscover(...args) }, fetch: async (...args) => { pluginCalls.push('fetch'); return originalFetch(...args) } }
+    let actualCalls = 0
+    const akshare: AkshareDataClient = { ...fixtureAkshare(defaultRows()), financialData: async () => { actualCalls++; return defaultRows() } }
+    const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [wrapped], akshare, workflowService: new WorkflowService(), reasoningExecutor: new FixtureExecutor(validOutput('official-2026-h1')), securityIdentityResolver })
+    const result = await service.startEarningsReview({ workflowRunId: 'er49-service-first-research', symbol: '600519', name: '贵州茅台', exchange: 'SH', fiscalYear: 2026, period: 'H1', writeKnowledge: false, useStructuredKnowledge: false }).completion
+    const telemetry = result.telemetry as EarningsReviewTelemetry
+    assert.equal(result.status, 'completed', result.errorSummary)
+    assert.equal(directoryCalls.length, 1)
+    assert.deepEqual(pluginCalls, ['discover', 'fetch'])
+    assert.equal(actualCalls, 1)
+    assert.equal(telemetry.officialEvidenceStatus, 'available')
+    assert.equal(telemetry.structuredFinancialEvidenceStatus, 'available')
+    assert.ok(result.reportId)
+    const report = await service.getResearchReport(result.reportId!)
+    assert.deepEqual(report.subjectRefs, [])
+    assert.equal(report.verifiedSecurityIdentity?.sourceId, 'akshare-security-identity-directory')
+    assert.equal(telemetry.thesisContextStatus, 'unavailable')
+    const assets = await readCanonicalV04Assets(root)
+    assert.equal(assets.objects.filter((item) => item.kind === 'entity' || item.kind === 'source' || item.kind === 'claim').length, 0)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
 test('ER10 ambiguous Company coverage blocks', async () => { const f = await fixture(); try { const registry = new KnowledgeBaseRegistry(); const assets = JSON.parse(await readFile(join(f.root, 'registry', 'assets.yaml'), 'utf8')) as Record<string, unknown>; assets['entity:duplicate-company'] = { type: 'entity', storageRef: 'entities/duplicate-company.yaml' }; await writeFile(join(f.root, 'registry', 'assets.yaml'), `${JSON.stringify(assets)}\n`); await writeFile(join(f.root, 'entities', 'duplicate-company.yaml'), `${JSON.stringify({ id: 'entity:duplicate-company', type: 'company', name: 'Duplicate', aliases: [], ticker: '600519', exchange: 'SH', lifecycle: { status: 'active' } })}\n`); const result = await runEarningsReview({ workflowRunId: 'er10', handle: await registry.mount(f.root), company: { symbol: '600519', exchange: 'SSE' }, fiscalYear: 2026, period: 'H1', reportRoot: f.reports, acquisitionPlugins: [f.plugin], akshare: f.akshare, reasoningExecutor: new FixtureExecutor({}), now: () => NOW }); assert.equal(result.status, 'blocked'); assert.equal(result.blockedReason, 'COMPANY_COVERAGE_AMBIGUOUS') } finally { await f.close() } })
 test('ER11 impact refs outside covered Company are rejected', () => { const sources = [source(officialCandidate())]; const outcome = validateEarningsImpactAssessments([{ assessmentId: 'a', disposition: 'supports_existing', existingKnowledgeRefs: ['claim:other-company'], sourceCandidateIds: ['official-2026-h1'], rationale: 'x' }], [{ canonicalRef: 'claim:own', claimType: 'thesis' }], sources); assert.equal(outcome.valid.length, 0) })
 test('ER12 forged canonical Claim refs are rejected', () => { const outcome = validateEarningsImpactAssessments([{ assessmentId: 'a', disposition: 'changes_assumption', existingKnowledgeRefs: ['claim:invented'], sourceCandidateIds: ['official-2026-h1'], rationale: 'x' }], [{ canonicalRef: 'claim:seed-assumption', claimType: 'assumption' }], [source(officialCandidate())]); assert.equal(outcome.valid.length, 0) })

@@ -20,6 +20,7 @@ import { validateWorkflowInputSchema } from './workflow-input-contract.ts'
 import { normalizeCompanyCandidateIdentity, normalizeExchange } from '../../skills/knowledge-curation/identity/company-identity.ts'
 import { projectResearchExecutionResult } from './research-execution-result.ts'
 import type { ReviewService } from './review-service.ts'
+import type { SecurityIdentityResolver } from './security-identity-resolver.ts'
 
 export interface ResearchSessionContext {
   readonly selectedSkills: readonly LoadedResearchSkill[]
@@ -87,6 +88,7 @@ export interface ResearchDispatchServiceOptions {
   /** Explicit execution seams for test-only registry entries; production IDs use the built-in bindings. */
   readonly executionBindings?: ReadonlyMap<string, WorkflowExecutionBinding>
   readonly mountedKnowledgeBaseRoot?: string
+  readonly securityIdentityResolver?: SecurityIdentityResolver
   readonly reasoningExecutor?: ReasoningExecutor
   readonly clock?: () => Date
 }
@@ -110,9 +112,10 @@ function containsTerm(text: string, term: string): boolean {
   return text.includes(normalized)
 }
 
-function extractSymbol(query: string): { readonly symbol?: string; readonly name?: string } {
-  const symbol = query.match(/\b\d{6}\b/)?.[0]
-  return symbol === undefined ? {} : { symbol }
+function extractSymbol(query: string): { readonly symbol?: string; readonly name?: string; readonly exchange?: string } {
+  const match = query.match(/(?<!\d)(\d{6})(?:\.(SSE|SH|SZSE|SZ|BSE|BJ))?(?!\d)/iu)
+  if (match === null) return {}
+  return { symbol: match[1], ...(match[2] === undefined ? {} : { exchange: match[2].toUpperCase() }) }
 }
 
 function extractFiscalYear(query: string): number | undefined {
@@ -182,6 +185,7 @@ export function extractWorkflowArguments(definition: WorkflowDefinition, query: 
   const diagnostics: string[] = []
   const identity = extractSymbol(query)
   if (identity.symbol !== undefined) args.symbol = identity.symbol
+  if (identity.exchange !== undefined) args.exchange = identity.exchange
   if (identity.name !== undefined) args.name = identity.name
   if (definition.id === 'industry_research') {
     const name = extractIndustryName(query)
@@ -573,13 +577,44 @@ export class ResearchDispatchService {
     const definition = this.workflowRegistry.get(decision.workflow.id)
     if (definition === undefined) return {}
     const args = decision.workflow.arguments
+    const targetIdentityWorkflow = ['company_research', 'valuation', 'earnings_review'].includes(definition.id)
+    let trustedIdentity: Awaited<ReturnType<SecurityIdentityResolver['resolve']>> | undefined
+    if (targetIdentityWorkflow && this.options.securityIdentityResolver !== undefined) {
+      const extractedIdentity = extractSymbol(request.query)
+      const candidateName = typeof args.name === 'string' ? args.name : undefined
+      const candidateSymbol = extractedIdentity.symbol ?? (typeof args.symbol === 'string' ? args.symbol : undefined)
+      const candidateExchange = extractedIdentity.exchange ?? (typeof args.exchange === 'string' ? args.exchange : undefined)
+      const identityAsOf = typeof args.asOf === 'string' ? args.asOf : this.runtimeTimestamp()
+      trustedIdentity = await this.options.securityIdentityResolver.resolve({
+        workflowId: definition.id as 'company_research' | 'valuation' | 'earnings_review',
+        ...(candidateName === undefined ? {} : { name: candidateName }),
+        ...(candidateSymbol === undefined ? {} : { symbol: candidateSymbol }),
+        ...(candidateExchange === undefined ? {} : { exchange: candidateExchange }),
+        asOf: identityAsOf,
+        historical: args.asOf !== undefined || containsExplicitHistoricalDate(request.query),
+        query: request.query,
+        allowKnowledgeLookup: request.contextPolicy.structuredKnowledge,
+      }, undefined)
+      if (trustedIdentity.status !== 'VERIFIED') {
+        const reason = `${trustedIdentity.status}: ${trustedIdentity.reason} ${trustedIdentity.diagnostics.join(' ')}`.trim()
+        const validationArgs = { ...args, ...(candidateSymbol === undefined ? {} : { symbol: candidateSymbol }) }
+        return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, validationArgs, reason, candidateSymbol === undefined ? ['symbol'] : []) }
+      }
+    }
     const validation = validateWorkflowInputSchema(definition.inputSchema, args)
-    if (!validation.valid || normalizedMissingFields(definition, args).length > 0) return {}
+    if (!validation.valid || normalizedMissingFields(definition, args).length > 0) {
+      if (!trustedIdentity) return {}
+    }
     const referenceCandidates = collectCanonicalReferences(args)
     const hasCompany = Object.hasOwn(inputProperties(definition), 'symbol')
     if (!hasCompany && referenceCandidates.length === 0) return {}
     const companyResearch = definition.id === 'company_research'
     const normalizedArgs: Record<string, unknown> = { ...args }
+    if (trustedIdentity?.status === 'VERIFIED') {
+      normalizedArgs.symbol = trustedIdentity.identity.symbol
+      normalizedArgs.name = trustedIdentity.identity.verifiedName
+      normalizedArgs.exchange = trustedIdentity.identity.exchange
+    }
     if (typeof args.exchange === 'string') normalizedArgs.exchange = normalizeExchange(args.exchange)
     const userProvidedExchange = companyResearch && referenceCandidates.length === 0 ? explicitUserCompanyExchange(request.query, normalizedArgs) : undefined
     if (companyResearch && userProvidedExchange !== undefined) normalizedArgs.exchange = userProvidedExchange
@@ -588,6 +623,7 @@ export class ResearchDispatchService {
       if (!finalValidation.valid) return { feedback: feedbackFor('INVALID_INPUT', definition, candidateArgs, finalValidation.errors.join('; ')), failureStatus: 'invalid_input' as const }
       return { decision: validateResearchDispatchDecision({ ...decision, workflow: { ...decision.workflow!, arguments: candidateArgs }, missingRequiredInputs: normalizedMissingFields(definition, candidateArgs) }) }
     }
+    if (trustedIdentity?.status === 'VERIFIED' && referenceCandidates.length === 0) return finalizeArguments(normalizedArgs)
     if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined && !request.contextPolicy.structuredKnowledge) return finalizeArguments(normalizedArgs)
     if (!request.contextPolicy.structuredKnowledge) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, 'This Workflow requires trusted Knowledge context to verify the company or canonical references, but structured Knowledge access is disabled.') }
     if (this.options.mountedKnowledgeBaseRoot === undefined) {
