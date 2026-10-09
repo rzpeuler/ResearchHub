@@ -81,7 +81,9 @@ test('Application Runtime → HTTP → RuntimeClient → DataSourcesPage renders
       await waitFor(() => assert.equal(pendingRequests.length, 4))
       await act(async () => { await Promise.all(pendingRequests) })
       fireEvent.click(await screen.findByRole('tab', { name: '来源策略' }))
-      assert.ok(await screen.findByRole('tab', { name: '通用字段' }))
+      const commonTab = await screen.findByRole('tab', { name: '通用字段' })
+      fireEvent.click(commonTab)
+      await waitFor(() => assert.equal(commonTab.getAttribute('aria-selected'), 'true'))
       const commonProjection = await client.getCommonDataCatalog()
       assert.equal(commonProjection.definitionCount, COMMON_DATA_CATALOG.length)
       for (const definition of COMMON_DATA_CATALOG) assert.ok((await screen.findAllByRole('button', { name: definition.metricId })).length > 0)
@@ -91,6 +93,9 @@ test('Application Runtime → HTTP → RuntimeClient → DataSourcesPage renders
       }
 
       fireEvent.click(screen.getByRole('tab', { name: '行业字段' }))
+      for (const header of ['industryId', 'metricId', '名称', '描述', 'metricFamily', 'semanticRole', 'dataKind', 'lifecycleStatus']) {
+        assert.ok(await screen.findByRole('columnheader', { name: header }))
+      }
       fireEvent.change(screen.getByRole('textbox', { name: '搜索字段' }), { target: { value: metricId } })
       assert.ok(await screen.findByRole('button', { name: metricId }))
       fireEvent.click(screen.getByRole('button', { name: metricId }))

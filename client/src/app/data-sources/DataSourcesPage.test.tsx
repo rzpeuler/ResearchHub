@@ -46,7 +46,7 @@ describe('DataSourcesPage', () => {
     expect(await screen.findByRole('tab', { name: '通用字段' })).toBeTruthy()
     expect(screen.getByRole('tab', { name: '行业字段' })).toBeTruthy()
     expect(screen.getByRole('tab', { name: '行业字段' }).getAttribute('aria-selected')).toBe('true')
-    expect(await screen.findByRole('table', { name: '行业字段来源策略' })).toBeTruthy()
+    expect(await screen.findByRole('table', { name: '行业指标目录' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'battery_output' })).toBeTruthy()
     expect(client.getDataSourceCatalog).not.toHaveBeenCalled()
     window.localStorage.setItem('researchhub.language', 'en')
@@ -57,23 +57,27 @@ describe('DataSourcesPage', () => {
     expect(screen.getByRole('tab', { name: 'Common fields' })).toBeTruthy()
     expect(screen.getByRole('tab', { name: 'Industry fields' })).toBeTruthy()
     expect(screen.getByRole('tab', { name: 'Industry fields' }).getAttribute('aria-selected')).toBe('true')
-    expect(await screen.findByRole('table', { name: 'Industry field source policies' })).toBeTruthy()
+    expect(await screen.findByRole('table', { name: 'Industry metric catalog' })).toBeTruthy()
   })
 
-  it('uses the same seven headers for Common and Industry and labels the ID Field ID', async () => {
+  it('keeps the Common source-policy columns and projects Industry metric semantics in its list', async () => {
     setup()
-    const expected = ['字段标识', '中文含义', '消费者', '默认源', '一级备用源', '二级备用源', '兜底备用源']
-    expect(within(await screen.findByRole('table')).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(expected)
+    const commonHeaders = ['字段标识', '中文含义', '消费者', '默认源', '一级备用源', '二级备用源', '兜底备用源']
+    fireEvent.click(await screen.findByRole('tab', { name: '通用字段' }))
+    expect(within(await screen.findByRole('table')).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(commonHeaders)
     expect(screen.queryByText('capability', { selector: 'th' })).toBeNull()
     fireEvent.click(screen.getByRole('tab', { name: '行业字段' }))
-    expect(within(await screen.findByRole('table')).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(expected)
+    const industryTable = await screen.findByRole('table', { name: '行业指标目录' })
+    expect(within(industryTable).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['industryId', 'metricId', '名称', '描述', 'metricFamily', 'semanticRole', 'dataKind', 'lifecycleStatus'])
+    expect(Array.from(industryTable.querySelectorAll<HTMLTableRowElement>('tbody tr')[0]!.cells).map((cell) => cell.textContent)).toEqual(['lithium_battery', 'battery_output', 'Battery output', 'Lithium battery output', 'supply', 'production', 'timeseries', 'VALIDATED'])
     window.localStorage.setItem('researchhub.language', 'en')
     cleanup()
     setup()
     const englishHeaders = ['Field ID', 'Meaning', 'Consumers', 'Default source', 'Fallback 1', 'Fallback 2', 'Final fallback']
+    fireEvent.click(await screen.findByRole('tab', { name: 'Common fields' }))
     expect(within(await screen.findByRole('table')).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(englishHeaders)
     fireEvent.click(await screen.findByRole('tab', { name: 'Industry fields' }))
-    expect(within(await screen.findByRole('table')).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(englishHeaders)
+    expect(within(await screen.findByRole('table', { name: 'Industry metric catalog' })).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['industryId', 'metricId', 'Name', 'Description', 'metricFamily', 'semanticRole', 'dataKind', 'lifecycleStatus'])
   })
 
   it('keeps Common SourcePolicy boundaries, groups every source level, and omits unbound LLM_WEB', async () => {
@@ -98,7 +102,7 @@ describe('DataSourcesPage', () => {
     expect(screen.getByText('company-policy')).toBeTruthy()
   })
 
-  it('maps Industry consumers from each attached policy and labels unknown consumers', async () => {
+  it('keeps Industry rows metric-scoped and exposes policy consumers and mappings in details', async () => {
     const candidate = { sourceId: 'miit', fallbackLevel: 'PRIMARY', originAuthority: 'S1_OFFICIAL', operationId: 'miit.metric', supports: {}, runtimeAdapterStatus: 'BOUND', connectionTestStatus: 'NOT_TESTED', capabilitySampleStatus: 'NOT_TESTED', historicalPitStatus: 'NOT_VERIFIED', integrations: [] }
     const definition = industryCatalog.definitions[0]!
     const projection = { ...industryCatalog, definitions: [{ ...definition, sourcePolicies: [
@@ -108,15 +112,17 @@ describe('DataSourcesPage', () => {
     ] }], definitionCount: 1, canonicalCount: 0 }
     setup({ getIndustryDataCatalog: vi.fn().mockResolvedValue(projection) })
     fireEvent.click(await screen.findByRole('tab', { name: '行业字段' }))
-    const table = await screen.findByRole('table')
+    const table = await screen.findByRole('table', { name: '行业指标目录' })
     const rows = Array.from(table.querySelectorAll<HTMLTableRowElement>('tbody tr'))
-    expect(rows).toHaveLength(3)
-    expect(rows.map((row) => row.cells[2]?.textContent)).toEqual(['industry-deep-research', '未明确映射', '未明确映射'])
-    expect(rows.map((row) => row.cells[3]?.textContent)).toEqual(['miit', 'miit', '—'])
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.cells[4]?.textContent).toBe(definition.metricFamily)
+    expect(rows[0]!.cells[5]?.textContent).toBe(definition.semanticRole)
     fireEvent.click(within(rows[0]!).getByRole('button'))
     expect(await screen.findByText('industry-workflow-policy')).toBeTruthy()
     expect(screen.getByText('workflow-not-declared')).toBeTruthy()
     expect(screen.getByText('policy-not-registered')).toBeTruthy()
+    expect(within(screen.getByRole('complementary', { name: '字段详情' })).getByText('industry-deep-research')).toBeTruthy()
+    expect(within(screen.getByRole('complementary', { name: '字段详情' })).getByText('UNMAPPED')).toBeTruthy()
   })
 
   it('searches and filters Common definitions', async () => {
@@ -215,7 +221,7 @@ describe('DataSourcesPage', () => {
     expect(screen.getAllByText(/已注册行业身份：2/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/正式 Canonical 指标：0/).length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: /battery_output|ac_inventory/ })).toBeNull()
-    expect(within(await screen.findByRole('table')).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['字段标识', '中文含义', '消费者', '默认源', '一级备用源', '二级备用源', '兜底备用源'])
+    expect(within(await screen.findByRole('table', { name: '行业指标目录' })).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['industryId', 'metricId', '名称', '描述', 'metricFamily', 'semanticRole', 'dataKind', 'lifecycleStatus'])
   })
 
   it('isolates catalog load errors from integrations and onboarding', async () => {

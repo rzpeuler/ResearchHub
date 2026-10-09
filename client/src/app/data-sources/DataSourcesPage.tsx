@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactElement } from 'react'
 import type { CommonDataCatalogProjection, DataSourceIntegrationView, DataSourceOnboardingDraft, DataSourceOnboardingDraftInput, DataSourceTestSummary, IndustryDataCatalogProjection, RuntimeClient } from '../../api/runtime-client'
-import { commonCatalogTableRows, industryCatalogTableRows } from './catalog-table-model'
+import { commonCatalogTableRows } from './catalog-table-model'
 import { useLanguage } from '../../i18n'
 import './data-sources-page.css'
 
@@ -85,7 +85,6 @@ export function DataSourcesPage({ client }: Props): ReactElement {
     return matchesQuery && (!industryFilter || definition.industryId === industryFilter) && (!familyFilter || definition.metricFamily === familyFilter) && (lifecycleFilter === 'ALL' || definition.lifecycleStatus === lifecycleFilter)
   }), [industryDefinitions, catalogQuery, industryFilter, familyFilter, lifecycleFilter])
   const commonRows = commonCatalogTableRows(filteredCommon)
-  const industryRows = industryCatalogTableRows(filteredIndustry)
   const selectedCommon = filteredCommon.find((definition) => definition.metricId === selectedMetricId)
   const selectedIndustry = filteredIndustry.find((definition) => definition.metricId === selectedMetricId)
   const runTest = async (view: DataSourceIntegrationView, kind: 'connection' | 'capability_sample', capabilityId?: string): Promise<void> => {
@@ -172,8 +171,8 @@ export function DataSourcesPage({ client }: Props): ReactElement {
         <p className="data-catalog-count-summary">{t('已注册行业身份：', 'Registered industry identities: ')}{industryCatalog.registeredIndustryCount} · {t('正式 Canonical 指标：', 'Canonical metrics: ')}{industryCatalog.canonicalCount}</p>
         {industryCatalog.definitionCount === 0 ? <div className="data-catalog-empty"><strong>{t('当前没有已注册的行业数据字段。', 'There are no registered Industry data fields.')}</strong><p>{t('已注册行业身份：', 'Registered industry identities: ')}{industryCatalog.registeredIndustryCount}</p><p>{t('正式 Canonical 指标：', 'Canonical metrics: ')}{industryCatalog.canonicalCount}</p></div> : filteredIndustry.length === 0 ? <p className="data-catalog-empty">{t('没有匹配的字段', 'No matching fields')}</p> : null}
         <div className="data-catalog-layout">
-          <div className="data-catalog-table-wrap"><table className="data-catalog-table data-catalog-policy-table"><caption>{t('行业字段来源策略', 'Industry field source policies')}</caption><thead><tr><th>{t('字段标识', 'Field ID')}</th><th>{t('中文含义', 'Meaning')}</th><th>{t('消费者', 'Consumers')}</th><th>{t('默认源', 'Default source')}</th><th>{t('一级备用源', 'Fallback 1')}</th><th>{t('二级备用源', 'Fallback 2')}</th><th>{t('兜底备用源', 'Final fallback')}</th></tr></thead><tbody>
-            {industryRows.map((row) => <tr key={row.key} aria-selected={selectedMetricId === row.metricId}><th scope="row"><button className="data-catalog-select" onClick={() => setSelectedMetricId(row.metricId)}>{row.metricId}</button></th><td>{row.meaning}</td><td>{row.consumers}</td><td>{row.defaultSource ?? '—'}</td><td>{row.fallback1 ?? '—'}</td><td>{row.fallback2 ?? '—'}</td><td>{row.finalFallback ?? '—'}</td></tr>)}
+          <div className="data-catalog-table-wrap"><table className="data-catalog-table data-catalog-industry-table"><caption>{t('行业指标目录', 'Industry metric catalog')}</caption><thead><tr><th>industryId</th><th>metricId</th><th>{t('名称', 'Name')}</th><th>{t('描述', 'Description')}</th><th>metricFamily</th><th>semanticRole</th><th>dataKind</th><th>lifecycleStatus</th></tr></thead><tbody>
+            {filteredIndustry.map((definition) => <tr key={definition.metricId} aria-selected={selectedMetricId === definition.metricId}><td>{definition.industryId}</td><th scope="row"><button className="data-catalog-select" onClick={() => setSelectedMetricId(definition.metricId)}>{definition.metricId}</button></th><td>{definition.name}</td><td>{definition.description}</td><td>{definition.metricFamily}</td><td>{definition.semanticRole}</td><td>{definition.dataKind}</td><td>{definition.lifecycleStatus}</td></tr>)}
           </tbody></table></div>
           {selectedIndustry ? <aside className="data-catalog-detail" aria-label={t('字段详情', 'Field details')}><h2>{selectedIndustry.name}</h2><p>{selectedIndustry.description}</p><dl>
             <MetadataRow label="industryId" value={selectedIndustry.industryId} t={t} /><MetadataRow label="metricId" value={selectedIndustry.metricId} t={t} /><MetadataRow label={t('消费者', 'Consumers')} value={[...new Set(selectedIndustry.sourcePolicies.map((reference) => reference.policy?.requirementMatch.workflow).filter((workflow): workflow is string => Boolean(workflow)))].join(', ') || t('未明确映射', 'Unmapped')} t={t} /><MetadataRow label="metricFamily" value={selectedIndustry.metricFamily} t={t} /><MetadataRow label="semanticRole" value={selectedIndustry.semanticRole} t={t} /><MetadataRow label="dataKind" value={selectedIndustry.dataKind} t={t} /><MetadataRow label="lifecycleStatus" value={selectedIndustry.lifecycleStatus} t={t} />

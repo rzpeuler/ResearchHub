@@ -15,6 +15,7 @@
 - Keep the feature read-only; do not add Catalog lifecycle, DataResolver, Knowledge Schema, or provider-test mutations.
 - `COMMON_DATA_CATALOG` is the complete Common Catalog source; do not infer its contents from `getDataSourceCatalog().rows` or hardcode its current item count.
 - `IndustryDataCatalog.list()` and `INDUSTRY_IDENTITIES` are the only production Industry definition and identity sources.
+- Common and Industry are different catalog contracts: Common rows show its source-policy columns; Industry rows show `industryId`, `metricId`, `name`, `description`, `metricFamily`, `semanticRole`, `dataKind`, and `lifecycleStatus`. Do not project Industry metrics through the Common fallback-source table.
 - The Industry projection must read the same catalog instance bound to the runtime resolver, including when a test catalog is injected.
 - Match SourcePolicies and sources by stable policy/source identifiers; never infer a mapping from display labels or similar names.
 - A configured SourcePolicy does not prove a bound runtime adapter, passed connection test, passed capability sample, or historical PIT safety.
@@ -71,12 +72,20 @@
 
 **Files:** Modify `client/src/app/data-sources/DataSourcesPage.tsx`, `client/src/app/data-sources/data-sources-page.css`, and `client/src/app/data-sources/DataSourcesPage.test.tsx`.
 
-**Produces:** First-position Data Fields tab with separate Common and Industry views, live counts, search, filters, details, explicit state semantics, and independent loading/errors. Preserve existing three tabs and their credential, test, onboarding, refresh, and cancellation behavior.
+**Produces:** Separate Common and Industry catalog views nested under the existing Source policies tab, with live counts, search, filters, details, explicit state semantics, and independent loading/errors. Preserve the three top-level tabs and their credential, test, onboarding, refresh, and cancellation behavior.
 
 - [x] Add failing tests for tabs, both catalogs, search/filter, details, status distinctions, empty/error/loading/no-match, and refresh.
 - [x] Implement the read-only UI with existing i18n and no production fixtures.
 - [x] Run DataSourcesPage tests (17/17) and client typecheck.
 - [x] Commit `2431659`.
+
+#### Root integration correction — Industry-specific list projection
+
+The initial UI review missed the taskbook's Industry metric-list contract and reused the Common seven-column source-policy projection for Industry. The root-integrated page now renders the eight Industry definition fields listed above as one row per metric; source-policy and provider details remain in the metric detail panel.
+
+- [x] Add rendered-table assertions for all eight Industry fields in Chinese and English, including injected Application → HTTP → RuntimeClient → UI data.
+- [x] Verify one table row per Industry metric even when a metric has multiple SourcePolicy references.
+- [x] Verify the Common seven-column source-policy table is unchanged.
 
 ### Task 5: Real Application-to-page contract test
 

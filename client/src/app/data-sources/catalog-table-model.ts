@@ -1,7 +1,6 @@
-import type { CommonDataCatalogProjection, IndustryDataCatalogProjection } from '../../api/runtime-client'
+import type { CommonDataCatalogProjection } from '../../api/runtime-client'
 
 type CommonDataCatalogDefinition = CommonDataCatalogProjection['definitions'][number]
-type IndustryDataCatalogDefinition = IndustryDataCatalogProjection['definitions'][number]
 
 export interface CatalogTableRow {
   readonly key: string
@@ -54,18 +53,4 @@ export function commonCatalogTableRows(definitions: readonly CommonDataCatalogDe
     consumers: definition.consumers.length ? definition.consumers.join(', ') : '未明确映射',
     policies: definition.sourcePolicies,
   }))
-}
-
-export function industryCatalogTableRows(definitions: readonly IndustryDataCatalogDefinition[]): CatalogTableRow[] {
-  return definitions.flatMap((definition) => {
-    if (definition.sourcePolicies.length === 0) return policyRows({
-      metricId: definition.metricId, meaning: definition.name, consumers: '未明确映射', policies: [],
-    })
-    return definition.sourcePolicies.flatMap((reference) => policyRows({
-      metricId: definition.metricId,
-      meaning: definition.name,
-      consumers: reference.policy?.requirementMatch.workflow ?? '未明确映射',
-      policies: [{ policyId: reference.policyId, candidates: reference.policy?.candidates ?? [] }],
-    }))
-  })
 }

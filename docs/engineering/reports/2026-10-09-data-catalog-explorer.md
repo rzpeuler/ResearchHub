@@ -132,10 +132,11 @@ The service review showed that the active root-checkout page still rendered the
 legacy Common-only policy table (`metricId` and `capability` columns). The UI
 branch now places both catalog projections inside Source policies, with only
 the three existing top-level tabs: Source policies, Configured integrations,
-and Add a data source. Common and Industry are nested tabs. Both catalog tables
-use the same seven columns: Field ID, Meaning, Consumers, Default source,
-Fallback 1, Fallback 2, and Final fallback. The Field ID header is the UI label
-for the unchanged `metricId` value.
+and Add a data source. Common and Industry are nested tabs. The Common source
+policy table uses seven source columns. The initial Industry list reused that
+generic projection; the later root integration correction below replaces it
+with Industry-specific metric fields while retaining policy/provider details in
+the metric detail panel.
 
 The rows are derived from the Common and Industry catalog projection responses;
 the page no longer calls the legacy `/api/data-sources/policies` endpoint to
@@ -215,7 +216,7 @@ Fresh root-runtime verification at `http://127.0.0.1:54862/sources` returned
 21 Common definitions, 2 Industry identities, 5 Industry definitions, and 0
 Canonical definitions. The rendered page opened with Industry selected and
 showed all five audited definitions, each still `DISCOVERED`, with unmapped
-consumers and no executable source fallback. The former ambient browser URL
+policy references and no executable source fallback. The former ambient browser URL
 on port 57815 was not listening; the root checkout service was launched on
 its actual dynamically assigned port.
 
@@ -227,3 +228,29 @@ its actual dynamically assigned port.
 | Client build | Passed; existing 643.06 kB bundle advisory remains |
 | Root Application Runtime catalog routes | 21 Common / 5 Industry / 0 Canonical |
 | Rendered root `/sources` | Industry selected; five Industry rows visible |
+
+## Root service Industry field projection correction — 2026-10-09
+
+The follow-up root-service review confirmed the Industry frontend still showed
+the generic Common source-policy columns. The root page now renders one row per
+Industry metric with the actual domain definition fields:
+`industryId`, `metricId`, `name`, `description`, `metricFamily`,
+`semanticRole`, `dataKind`, and `lifecycleStatus`. SourcePolicy mappings,
+provider bindings, connection tests, capability tests, and PIT status remain in
+the selected metric's detail panel. Multiple SourcePolicy references no longer
+duplicate a metric row. The Common seven-column view is unchanged.
+
+The root checkout was rebuilt and started directly on the dynamically assigned
+local Runtime URL `http://127.0.0.1:58669/sources`. Its live routes returned
+HTTP 200: 21 Common definitions and 2 Industry identities with 5 definitions,
+0 Canonical. Browser inspection showed the Industry-specific headers and all 5
+registered definitions; each remains `DISCOVERED`.
+
+| Validation | Result |
+| --- | --- |
+| DataSourcesPage tests | 24/24 passed |
+| Full client suite | 115/115 passed |
+| Client typecheck | Passed |
+| Client build | Passed; existing 642.64 kB bundle advisory remains |
+| Application → HTTP → RuntimeClient → rendered UI contract | 1/1 passed; injected Industry fields reached the table, no provider calls |
+| Root service Common/Industry catalog routes | HTTP 200; 21 Common / 5 Industry / 0 Canonical |
