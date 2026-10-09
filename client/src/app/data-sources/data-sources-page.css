@@ -59,6 +59,7 @@
 .data-catalog-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr); gap: 16px; align-items: start; }
 .data-catalog-table-wrap { min-width: 0; overflow: auto; border: 1px solid #2c4148; border-radius: 10px; }
 .data-catalog-table { width: 100%; min-width: 720px; border-collapse: collapse; font-size: 12px; }
+.data-catalog-policy-table { min-width: 980px; }
 .data-catalog-table caption { padding: 12px; color: #a5b8c0; text-align: left; }
 .data-catalog-table th, .data-catalog-table td { padding: 10px 11px; border-top: 1px solid #2c4148; color: #bfced1; text-align: left; vertical-align: top; }
 .data-catalog-table thead th { background: #17292c; color: #abd1cb; }

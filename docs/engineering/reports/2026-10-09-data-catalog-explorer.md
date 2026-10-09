@@ -124,3 +124,47 @@ verification updates were committed and pushed to
 `codex/dl-ui-001-data-catalog-explorer`. Final local and remote branch SHAs,
 the commit URL, clean worktree, and unchanged `main` are recorded in the
 delivery response. No merge was performed.
+
+## UI correction re-review — 2026-10-09
+
+The service review showed that the active root-checkout page still rendered the
+legacy Common-only policy table (`metricId` and `capability` columns). The UI
+branch now places both catalog projections inside Source policies, with only
+the three existing top-level tabs: Source policies, Configured integrations,
+and Add a data source. Common and Industry are nested tabs. Both catalog tables
+use the same seven columns: Field ID, Meaning, Consumers, Default source,
+Fallback 1, Fallback 2, and Final fallback. The Field ID header is the UI label
+for the unchanged `metricId` value.
+
+The rows are derived from the Common and Industry catalog projection responses;
+the page no longer calls the legacy `/api/data-sources/policies` endpoint to
+create a duplicate table. Source candidates are grouped by their exact fallback
+level and repeated per SourcePolicy. Unbound or unknown `LLM_WEB` candidates
+are omitted from the executable fallback column. Industry consumers come from
+the associated SourcePolicy workflow or display `Unmapped`.
+
+The direct application service on port 57815 remains attached to the root
+Phase 4 checkout, so it continues to serve that checkout's older page until the
+UI branch is adopted there. The corrected page was separately started from the
+UI worktree on a dynamically assigned local port. Its real catalog responses
+were 21 Common definitions, 2 Industry identities, 0 Industry definitions, and
+0 Canonical Industry definitions. The Industry empty state preserves those
+counts. The cross-layer integration test additionally injects one test-only
+Industry definition and verifies it flows through Application Runtime, HTTP,
+RuntimeClient, and the rendered Industry table without a provider call.
+
+### Re-review validation
+
+| Validation | Result |
+| --- | --- |
+| DataSourcesPage focused tests | 24/24 passed |
+| Full client suite | 115/115 passed |
+| Application Runtime → HTTP → RuntimeClient → DataSourcesPage Industry integration | 1/1 passed |
+| Full Node suite | 2,112 total; 2,088 passed; 24 failed |
+| Existing Node failure comparison | The 24 failures match the known baseline set; no new failure from this correction |
+| Root typecheck | Passed |
+| Client typecheck | Passed |
+| Client build | Passed; existing 643.06 kB JavaScript chunk advisory remains |
+| `git diff --check` | Passed |
+
+The full suite log is `C:\Users\Administrator\AppData\Local\Temp\rhl-dl-ui-001-fix-001-npm-test.log`.
