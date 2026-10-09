@@ -2,6 +2,15 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
+function safeBridgeError(error: unknown): Error {
+  if (!(error instanceof Error)) return new Error('AKSHARE_BRIDGE_FAILED')
+  const details = error as NodeJS.ErrnoException & { readonly killed?: boolean; readonly signal?: string | null; readonly stderr?: string | Buffer }
+  if (details.killed || details.code === 'ETIMEDOUT' || details.signal === 'SIGTERM') return new Error('AKSHARE_BRIDGE_TIMEOUT')
+  const stderr = typeof details.stderr === 'string' ? details.stderr : details.stderr?.toString('utf8') ?? ''
+  const detail = stderr.split(/\r?\n/u).map((line) => line.trim()).filter((line) => line && !/^\d{1,3}%\|/u.test(line)).at(-1)?.slice(0, 180)
+  const code = typeof details.code === 'number' ? `EXIT_${details.code}` : typeof details.code === 'string' ? details.code : 'ERROR'
+  return new Error(`AKSHARE_BRIDGE_${code}${detail ? `:${detail}` : ''}`)
+}
 export interface AkshareDataRequest { readonly symbol: string; readonly startDate?: string; readonly endDate?: string }
 export interface AkshareSecurityDirectoryRequest { readonly symbol?: string; readonly name?: string; readonly exchange?: string; readonly limit?: number }
 export interface AkshareSecurityDirectoryEntry { readonly symbol: string; readonly name: string; readonly exchange: 'SH' | 'SZ' | 'BJ' }
@@ -9,7 +18,7 @@ export type AksharePeerComparisonFamily = 'growth' | 'valuation' | 'dupont' | 's
 export interface AksharePeerComparisonRequest { readonly symbol: string; readonly family: AksharePeerComparisonFamily; readonly correlatedSymbol?: string }
 export interface AkshareForecastRequest extends AkshareDataRequest { readonly indicator?: string }
 export interface AkshareInstitutionalResearchRequest { readonly date: string }
-export interface AkshareDataClient { companyBasic(request: AkshareDataRequest): Promise<unknown>; financialData(request: AkshareDataRequest): Promise<unknown>; valuationFinancialIndicators?(request: AkshareDataRequest): Promise<unknown>; historicalMarketData(request: AkshareDataRequest): Promise<unknown>; securityDirectory?(request: AkshareSecurityDirectoryRequest): Promise<unknown>; peerComparison?(request: AksharePeerComparisonRequest): Promise<unknown>; profitForecastThs?(request: AkshareForecastRequest): Promise<unknown>; researchReportEm?(request: AkshareDataRequest): Promise<unknown>; profitForecastEm?(request?: AkshareDataRequest): Promise<unknown>; indexDaily?(request: AkshareDataRequest): Promise<unknown>; sectorPerformance?(request: AkshareDataRequest): Promise<unknown>; tradingCalendar?(request: AkshareDataRequest): Promise<unknown>; exchangeQaSzse?(request: AkshareDataRequest): Promise<unknown>; exchangeQaSzseAnswer?(request: AkshareDataRequest): Promise<unknown>; exchangeQaSse?(request: AkshareDataRequest): Promise<unknown>; institutionalResearchDetail?(request: AkshareInstitutionalResearchRequest): Promise<unknown> }
+export interface AkshareDataClient { companyBasic(request: AkshareDataRequest): Promise<unknown>; financialData(request: AkshareDataRequest): Promise<unknown>; valuationFinancialIndicators?(request: AkshareDataRequest): Promise<unknown>; historicalMarketData(request: AkshareDataRequest): Promise<unknown>; historicalMarketDataTencent?(request: AkshareDataRequest): Promise<unknown>; securityDirectory?(request: AkshareSecurityDirectoryRequest): Promise<unknown>; peerComparison?(request: AksharePeerComparisonRequest): Promise<unknown>; profitForecastThs?(request: AkshareForecastRequest): Promise<unknown>; researchReportEm?(request: AkshareDataRequest): Promise<unknown>; profitForecastEm?(request?: AkshareDataRequest): Promise<unknown>; indexDaily?(request: AkshareDataRequest): Promise<unknown>; sectorPerformance?(request: AkshareDataRequest): Promise<unknown>; tradingCalendar?(request: AkshareDataRequest): Promise<unknown>; exchangeQaSzse?(request: AkshareDataRequest): Promise<unknown>; exchangeQaSzseAnswer?(request: AkshareDataRequest): Promise<unknown>; exchangeQaSse?(request: AkshareDataRequest): Promise<unknown>; institutionalResearchDetail?(request: AkshareInstitutionalResearchRequest): Promise<unknown> }
 export interface AkshareClientOptions { readonly pythonCommand?: string; readonly timeoutMs?: number; readonly runner?: (script: string, args: readonly string[], timeoutMs?: number) => Promise<string>; readonly onCall?: (kind: string, args: readonly string[]) => void }
 
 const BRIDGE = `import json,sys,akshare as ak
@@ -53,6 +62,21 @@ elif kind=='security-directory':
         if len(code)==6 and code.isdigit() and name and exchange and (not query_exchange or exchange==query_exchange):
             result.append({'symbol':code,'name':name,'exchange':exchange})
     value=result
+elif kind=='market-tencent':
+    ticker=symbol.strip().upper()
+    if '.' in ticker:
+        code,exchange=ticker.split('.',1)
+        if exchange not in ('SH','SZ'): raise ValueError('Tencent historical market data supports only SH/SZ tickers')
+        if (code.startswith('6') and exchange!='SH') or (code.startswith(('0','3')) and exchange!='SZ') or not code.isdigit() or len(code)!=6: raise ValueError('Tencent market ticker exchange does not match its six-digit code')
+    else:
+        code=ticker
+        if not code.isdigit() or len(code)!=6 or not code.startswith(('0','3','6')): raise ValueError('Tencent historical market data requires a six-digit SH/SZ ticker')
+        exchange='SH' if code.startswith('6') else 'SZ'
+    value=ak.stock_zh_a_hist_tx(symbol=('sh' if exchange=='SH' else 'sz')+code,start_date=start_date or None,end_date=end_date or None,adjust='')
+elif kind=='market':
+    ticker=symbol.strip().upper().split('.')[0]
+    if not ticker.isdigit() or len(ticker)!=6: raise ValueError('EastMoney historical market data requires a six-digit ticker')
+    value=ak.stock_zh_a_hist(symbol=ticker,period='daily',start_date=start_date or None,end_date=end_date or None,adjust='')
 else: value=ak.stock_zh_a_hist(symbol=symbol,period='daily',start_date=start_date or None,end_date=end_date or None,adjust='')
 print(json.dumps(value,ensure_ascii=False) if isinstance(value,list) else value.to_json(orient='records',force_ascii=False))`
 
@@ -64,6 +88,7 @@ export class AkshareDataAdapter implements AkshareDataClient {
   financialData(request: AkshareDataRequest): Promise<unknown> { return this.run('financial', request) }
   valuationFinancialIndicators(request: AkshareDataRequest): Promise<unknown> { return this.run('valuation-financial', request) }
   historicalMarketData(request: AkshareDataRequest): Promise<unknown> { return this.run('market', request) }
+  historicalMarketDataTencent(request: AkshareDataRequest): Promise<unknown> { return this.run('market-tencent', request) }
   async securityDirectory(request: AkshareSecurityDirectoryRequest): Promise<readonly AkshareSecurityDirectoryEntry[]> {
     const symbol = request.symbol?.trim().toUpperCase()
     const name = request.name?.trim()
@@ -76,7 +101,7 @@ export class AkshareDataAdapter implements AkshareDataClient {
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new Error('AKShare security directory limit must be an integer from 1 to 50')
     const args = ['security-directory', symbol ?? '', '', name ?? '', String(limit), exchange ?? '']
     this.onCall?.('security-directory', args)
-    const output = await this.runWithArgs(BRIDGE, args, 15_000)
+    const output = await this.runWithArgs(BRIDGE, args, 30_000)
     if (!Array.isArray(output) || output.length > limit) throw new Error('AKShare security directory returned an invalid or oversized result')
     return output.map((entry): AkshareSecurityDirectoryEntry => {
       if (typeof entry !== 'object' || entry === null) throw new Error('AKShare security directory returned an invalid entry')
@@ -119,5 +144,5 @@ export class AkshareDataAdapter implements AkshareDataClient {
   tradingCalendar(request: AkshareDataRequest): Promise<unknown> { return this.run('calendar', request) }
   private readonly timeoutMs: number
   private async run(kind: string, request: AkshareDataRequest, indicator?: string): Promise<unknown> { const args = [kind, request.symbol, request.startDate ?? '', request.endDate ?? '', ...(indicator === undefined ? [] : [indicator])]; this.onCall?.(kind, args); return this.runWithArgs(BRIDGE, args) }
-  private async runWithArgs(script: string, args: readonly string[], timeoutMs = this.timeoutMs): Promise<unknown> { const output = await this.runner(script, args, timeoutMs); try { return JSON.parse(output) as unknown } catch (error) { throw new Error(`AKShare bridge returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`) } }
+  private async runWithArgs(script: string, args: readonly string[], timeoutMs = this.timeoutMs): Promise<unknown> { let output: string; try { output = await this.runner(script, args, timeoutMs) } catch (error) { throw safeBridgeError(error) } try { return JSON.parse(output) as unknown } catch { throw new Error('AKSHARE_BRIDGE_INVALID_JSON') } }
 }

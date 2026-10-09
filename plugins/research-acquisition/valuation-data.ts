@@ -9,8 +9,24 @@ import type { AkshareDataClient, AksharePeerComparisonFamily } from './akshare.t
 import type { AnnualReportPublicationProof, OfficialDisclosureClient } from './official.ts'
 import type { AutomaticPeerGrowthProfile, AutomaticPeerProfitabilityProfile } from '../../skills/comps_valuation/index.ts'
 
+export interface ValuationMarketPayload {
+  readonly kind: 'market'
+  readonly raw: unknown
+  readonly observation: ValuationMarketObservation
+  readonly symbol: string
+  readonly exchange: 'SH' | 'SZ'
+  readonly currency: 'CNY'
+  readonly adjustmentMethod: 'UNADJUSTED'
+  readonly sourceId: string
+  readonly originPublisher: string
+  readonly retrievalProvider: 'AKShare'
+  readonly sourceUrl: string
+  readonly retrievedAt: string
+  readonly observationAvailableAt: string
+}
+
 export type ValuationDataPayload =
-  | { readonly kind: 'market'; readonly raw: unknown; readonly observation: ValuationMarketObservation; readonly retrievedAt: string }
+  | ValuationMarketPayload
   | { readonly kind: 'financial'; readonly raw: unknown; readonly rows: readonly ValuationFinancialRow[]; readonly row: ValuationFinancialRow; readonly retrievedAt: string }
   | { readonly kind: 'publication'; readonly proof: AnnualReportPublicationProof; readonly retrievedAt: string }
   | { readonly kind: 'peer'; readonly raw: unknown; readonly rows: readonly Record<string, unknown>[]; readonly retrievedAt: string }
@@ -29,6 +45,27 @@ export interface ValuationDataCompositionOptions {
   readonly valuationDate: string
   readonly historicalAsOf?: string
   readonly company: ResearchCompanyIdentity
+}
+
+function marketHistoryWindowEnd(date: string): { readonly startDate: string; readonly endDate: string } {
+  const normalizedEndDate = date.slice(0, 10)
+  const end = new Date(`${normalizedEndDate}T00:00:00.000Z`)
+  const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000)
+  return { startDate: start.toISOString().slice(0, 10).replace(/-/g, ''), endDate: normalizedEndDate.replace(/-/g, '') }
+}
+
+function marketProviderFailure(error: unknown): SourceExecutionResult<ValuationDataPayload> {
+  const message = error instanceof Error ? error.message : String(error)
+  const status: 'TIMEOUT' | 'RATE_LIMITED' | 'ACCESS_DENIED' | 'PARSE_ERROR' | 'SOURCE_ERROR' = /timeout|timed out|ETIMEDOUT|AbortError/i.test(message)
+    ? 'TIMEOUT'
+    : /429|rate.?limit|too many requests/i.test(message)
+      ? 'RATE_LIMITED'
+      : /403|401|forbidden|access denied/i.test(message)
+        ? 'ACCESS_DENIED'
+        : /invalid json|json decode|parse error/i.test(message)
+          ? 'PARSE_ERROR'
+          : 'SOURCE_ERROR'
+  return { status, diagnostic: `VALUATION_MARKET_PROVIDER_${status}:${message.slice(0, 240)}` }
 }
 
 export function valuationPeerRows(value: unknown): readonly Record<string, unknown>[] {
@@ -109,14 +146,32 @@ export function createValuationDataResolver(options: ValuationDataCompositionOpt
       const symbol = requirement.subject.ticker
       if (!symbol) return { status: 'UNSUPPORTED', diagnostic: 'VALUATION_TICKER_REQUIRED' }
       const akshare = options.akshare
-      if (candidate.operationId === 'akshare.historicalMarketData') {
+      if (candidate.operationId === 'akshare.historicalMarketData' || candidate.operationId === 'akshare.historicalMarketDataTencent') {
         if (!akshare) return { status: 'UNSUPPORTED', diagnostic: 'AKShare client is unavailable' }
-        const raw = await akshare.historicalMarketData({ symbol })
+        const endDate = requirement.period?.end ?? options.valuationDate
+        const range = marketHistoryWindowEnd(endDate)
+        let raw: unknown
+        try {
+          if (candidate.operationId === 'akshare.historicalMarketDataTencent') {
+            if (!akshare.historicalMarketDataTencent) return { status: 'UNSUPPORTED', diagnostic: 'Tencent historical market operation is unavailable' }
+            raw = await akshare.historicalMarketDataTencent({ symbol, ...range })
+          } else raw = await akshare.historicalMarketData({ symbol, ...range })
+        } catch (error) {
+          if (options.signal?.aborted || (error instanceof Error && error.message === 'WORKFLOW_CANCELLED')) throw error
+          return marketProviderFailure(error)
+        }
         const retrievedAt = options.now()
-        const normalized = normalizeValuationMarketData(raw, requirement.period?.end ?? options.valuationDate, requirement.analysisAsOf)
+        const normalized = normalizeValuationMarketData(raw, endDate, requirement.analysisAsOf)
         if (!normalized.observation) return { status: 'NO_DATA', diagnostic: normalized.diagnostics.join('|') || 'valuation_market_data_unavailable' }
         const observation = normalized.observation
-        return { status: 'SUCCESS', data: { kind: 'market', raw, observation, retrievedAt }, source: { originPublisher: 'EastMoney', retrievalProvider: 'AKShare', sourceUrl: 'https://push2his.eastmoney.com/api/qt/kline/get', retrievedAt, observedAt: observation.priceDate, observationAvailableAt: dailyCloseAvailableAt(observation.priceDate) } }
+        const isTencent = candidate.operationId === 'akshare.historicalMarketDataTencent'
+        const ticker = symbol.match(/\d{6}/)?.[0]
+        const isShanghai = symbol.includes('.SH') || ticker?.startsWith('6')
+        const sourceUrl = isTencent && ticker ? `https://gu.qq.com/${isShanghai ? 'sh' : 'sz'}${ticker}/zs` : 'https://push2his.eastmoney.com/api/qt/kline/get'
+        const originPublisher = isTencent ? 'Tencent' : 'EastMoney'
+        const observationAvailableAt = dailyCloseAvailableAt(observation.priceDate)
+        const marketPayload: ValuationMarketPayload = { kind: 'market', raw, observation, symbol: ticker ?? symbol, exchange: isShanghai ? 'SH' : 'SZ', currency: 'CNY', adjustmentMethod: 'UNADJUSTED', sourceId: candidate.sourceId, originPublisher, retrievalProvider: 'AKShare', sourceUrl, retrievedAt, observationAvailableAt }
+        return { status: 'SUCCESS', data: marketPayload, source: { originPublisher, retrievalProvider: 'AKShare', sourceUrl, retrievedAt, observedAt: observation.priceDate, observationAvailableAt } }
       }
       if (candidate.operationId === 'akshare.valuationFinancialIndicators' || candidate.operationId === 'akshare.financialData') {
         if (!akshare || (candidate.operationId === 'akshare.valuationFinancialIndicators' && !akshare.valuationFinancialIndicators)) return { status: 'UNSUPPORTED', diagnostic: 'valuation_financial_operation_unavailable' }
@@ -127,7 +182,7 @@ export function createValuationDataResolver(options: ValuationDataCompositionOpt
         if (!row) return { status: 'NO_DATA', diagnostic: 'valuation_annual_financial_basis_unavailable' }
         const value = requirement.metricId === 'valuation_eps' ? row.eps : row.bvps
         if (value === undefined) return { status: 'NO_DATA', diagnostic: `valuation_${requirement.metricId === 'valuation_eps' ? 'epsjb' : 'bps'}_unavailable` }
-        return { status: 'SUCCESS', data: { kind: 'financial', raw: snapshot.raw, rows: snapshot.rows, row, retrievedAt: snapshot.retrievedAt }, source: { originPublisher: 'EastMoney', retrievalProvider: 'AKShare', sourceUrl: 'https://datacenter.eastmoney.com/securities/api/data/get', retrievedAt: snapshot.retrievedAt, ...(row.publicationDate ? { publishedAt: `${row.publicationDate}T00:00:00.000Z` } : {}), valueVersion: { status: 'UNVERIFIED', reason: 'Aggregator historical numeric revision is not identified' } } }
+        return { status: 'SUCCESS', data: { kind: 'financial', raw: snapshot.raw, rows: snapshot.rows, row, retrievedAt: snapshot.retrievedAt }, source: { originPublisher: 'EastMoney', retrievalProvider: 'AKShare', sourceUrl: 'https://datacenter.eastmoney.com/securities/api/data/get', retrievedAt: snapshot.retrievedAt, valueVersion: { status: 'UNVERIFIED', reason: 'Aggregator historical numeric revision is not identified' } } }
       }
       if (candidate.operationId === 'cninfo.resolveAnnualReportPublication') {
         const resolver = options.officialDisclosure?.resolveAnnualReportPublication

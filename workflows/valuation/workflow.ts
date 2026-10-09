@@ -6,7 +6,7 @@ import type { KnowledgeProductionOutcome } from '../../knowledge/production/cont
 import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
 import type { NormalizedResearchSource, ResearchCompanyIdentity } from '../../plugins/research-acquisition/contracts.ts'
 import type { AnnualReportPublicationProof } from '../../plugins/research-acquisition/official.ts'
-import type { DataRequirement } from '../../data/contracts.ts'
+import type { AcquisitionSourceMetadata, DataRequirement } from '../../data/contracts.ts'
 import { materializePhase2CommonRequirement } from '../../data/requirements.ts'
 import type { DataResolver } from '../../data/resolver.ts'
 import { createValuationDataResolver, valuationCompanyBasicTelemetry, type ValuationDataPayload } from '../../plugins/research-acquisition/valuation-data.ts'
@@ -33,7 +33,7 @@ function abortIfNeeded(signal: AbortSignal | undefined): void { if (signal?.abor
 function rowsOf(value: unknown): readonly Dict[] { if (Array.isArray(value)) return value.filter((item): item is Dict => Boolean(item) && typeof item === 'object' && !Array.isArray(item)); if (value && typeof value === 'object' && !Array.isArray(value) && Array.isArray((value as Dict).data)) return rowsOf((value as Dict).data); return [] }
 function normalizedCompany(company: ResearchCompanyIdentity): ResearchCompanyIdentity { const exchange = normalizeExchange(company.exchange ?? DEFAULT_EXCHANGE(company.symbol) ?? ''); return { symbol: company.symbol, name: company.name ?? company.symbol, exchange } }
 function baseTelemetry(overrides: Partial<ValuationTelemetrySnapshot> = {}): ValuationTelemetrySnapshot { return { companyCoverageResolved: false, marketDataUsable: false, financialBasisUsable: false, pointInTimeVerified: false, eligibleMethods: [], assumptionDesign: { called: false, validated: false, applied: false, fallbackUsed: false, repairAttempts: 0, operation: 'valuation_assumption_design' }, computation: { scenarioCount: 0, calculatedScenarioCount: 0, sensitivityCellCount: 0, deterministicRecomputeStatus: 'unavailable' }, synthesis: { called: false, validated: false, applied: false, fallbackUsed: false, repairAttempts: 0, operation: 'valuation_synthesis' }, modelDerivedInterpretiveSectionCount: 0, proposalCandidateCount: 0, acceptedProposalCount: 0, canonicalSourceCount: 0, canonicalClaimCount: 0, ...overrides } }
-function emptyProvider(): ValuationProviderOutcome { return { providerAttempted: false, transportSucceeded: false, companyBasicRowCount: 0, financialRowCount: 0, marketRowCount: 0, marketPriceFound: false, fiscalYearBasisFound: false, peEligible: false, pbEligible: false, evEbitdaEligible: false, usableForValuation: false } }
+function emptyProvider(): ValuationProviderOutcome { return { providerAttempted: false, transportSucceeded: false, marketTransportSucceeded: false, financialTransportSucceeded: false, officialPublicationVerified: false, companyBasicRowCount: 0, financialRowCount: 0, marketRowCount: 0, marketPriceFound: false, fiscalYearBasisFound: false, peEligible: false, pbEligible: false, evEbitdaEligible: false, usableForValuation: false } }
 function sameFinancialAcquisition(eps?: { readonly sourceId?: string; readonly retrievedAt: string; readonly sourceUrl?: string } | null, bvps?: { readonly sourceId?: string; readonly retrievedAt: string; readonly sourceUrl?: string } | null): boolean {
   if (!eps || !bvps) return true
   if (eps.retrievedAt !== bvps.retrievedAt || eps.sourceUrl !== bvps.sourceUrl) return false
@@ -45,7 +45,7 @@ async function existingCompany(input: ValuationWorkflowInput, company: ResearchC
 }
 function makeSource(candidateId: string, title: string, data: unknown, company: ResearchCompanyIdentity, retrievedAt: string, metadata: Readonly<Record<string, unknown>>, options: { readonly kind?: 'structured_data' | 'official_disclosure'; readonly provider?: string; readonly publisher?: string; readonly publishedAt?: string; readonly sourceUrl?: string; readonly originAuthority?: string } = {}): NormalizedResearchSource { const content = JSON.stringify(data); return { candidate: { candidateId, kind: options.kind ?? 'structured_data', tier: options.kind === 'official_disclosure' ? 1 : 2, title, provider: options.provider ?? 'akshare', ...(options.publishedAt === undefined ? {} : { publishedAt: options.publishedAt }), metadata: { companySymbol: company.symbol, originPublisher: options.publisher ?? 'EastMoney', originAuthority: options.originAuthority ?? 'S3_AGGREGATOR', retrievalProvider: options.provider ?? 'AKShare', ...(options.sourceUrl === undefined ? {} : { sourceUrl: options.sourceUrl }), ...metadata } }, retrievedAt, title, content, ...(options.sourceUrl === undefined ? {} : { canonicalUrl: options.sourceUrl }), contentHash: sha256(content), publisher: options.publisher ?? 'EastMoney', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } } }
 
-async function acquire(input: ValuationWorkflowInput, company: ResearchCompanyIdentity, valuationDate: string, asOf: string | undefined, clock: () => string): Promise<{ readonly dataResolver?: DataResolver<ValuationDataPayload>; readonly marketValue: unknown; readonly financialValue: unknown; readonly financialRows: readonly ValuationFinancialRow[]; readonly market?: ValuationMarketObservation; readonly financialRetrievedAt?: string; readonly marketRetrievedAt?: string; readonly epsSource?: { readonly sourceId?: string; readonly retrievedAt: string; readonly sourceUrl?: string }; readonly bvpsSource?: { readonly sourceId?: string; readonly retrievedAt: string; readonly sourceUrl?: string }; readonly publication?: AnnualReportPublicationProof; readonly sources: readonly NormalizedResearchSource[]; readonly providerOutcome: ValuationProviderOutcome; readonly diagnostics: readonly string[] }> {
+async function acquire(input: ValuationWorkflowInput, company: ResearchCompanyIdentity, valuationDate: string, asOf: string | undefined, clock: () => string): Promise<{ readonly dataResolver?: DataResolver<ValuationDataPayload>; readonly marketValue: unknown; readonly financialValue: unknown; readonly financialRows: readonly ValuationFinancialRow[]; readonly market?: ValuationMarketObservation; readonly financialRetrievedAt?: string; readonly marketRetrievedAt?: string; readonly marketSource?: AcquisitionSourceMetadata; readonly epsSource?: { readonly sourceId?: string; readonly retrievedAt: string; readonly sourceUrl?: string }; readonly bvpsSource?: { readonly sourceId?: string; readonly retrievedAt: string; readonly sourceUrl?: string }; readonly publication?: AnnualReportPublicationProof; readonly sources: readonly NormalizedResearchSource[]; readonly providerOutcome: ValuationProviderOutcome; readonly diagnostics: readonly string[] }> {
   if (!input.akshare && !input.dataResolver && !input.dataResolverFactory) return { marketValue: [], financialValue: [], financialRows: [], sources: [], providerOutcome: emptyProvider(), diagnostics: ['AKShare client is unavailable'] }
   const resolver = input.dataResolver ?? input.dataResolverFactory?.({ company, valuationDate, ...(asOf ? { asOf } : {}), now: clock, signal: input.signal }) ?? createValuationDataResolver({ akshare: input.akshare, officialDisclosure: input.officialDisclosure, company, valuationDate, ...(asOf ? { historicalAsOf: asOf } : {}), now: clock, signal: input.signal })
   const diagnostics: string[] = []
@@ -62,18 +62,41 @@ async function acquire(input: ValuationWorkflowInput, company: ResearchCompanyId
   const first = await resolver.resolve([requirement('valuation_eps'), requirement('valuation_bvps'), requirement('valuation_market_price')])
   abortIfNeeded(input.signal)
   const [epsDiscovery, bvpsDiscovery, marketResult] = first.items
-  const fiscalYears = [epsDiscovery, bvpsDiscovery].flatMap((item) => item?.status === 'AVAILABLE' && item.value?.kind === 'financial' ? [item.value.row.basisFiscalYear] : [])
-  const fiscalYear = fiscalYears.length ? Math.max(...fiscalYears) : undefined
-  const exact = fiscalYear === undefined ? undefined : await resolver.resolve([
-    requirement('valuation_eps', fiscalYear),
-    requirement('valuation_bvps', fiscalYear),
-    requirement('valuation_annual_report_publication', fiscalYear),
-  ])
-  const [epsResult, bvpsResult, publicationResult] = exact?.items ?? [epsDiscovery, bvpsDiscovery, undefined]
-  const versionRejected = (item: typeof epsResult) => asOf !== undefined && item?.status === 'UNAVAILABLE' && item.attempts.some((attempt) => attempt.status === 'POINT_IN_TIME_INVALID' && attempt.diagnostic?.includes('numeric value version'))
-  const selectedEps = versionRejected(epsResult) ? epsDiscovery : epsResult
-  const selectedBvps = versionRejected(bvpsResult) ? bvpsDiscovery : bvpsResult
-  const mapped: ReturnType<typeof mapResolvedValuationFinancialBasis> = fiscalYear === undefined ? {} : mapResolvedValuationFinancialBasis(fiscalYear, selectedEps, selectedBvps)
+  const discoveredRows = [epsDiscovery, bvpsDiscovery].flatMap((item) => item?.status === 'AVAILABLE' && item.value?.kind === 'financial' ? item.value.rows : [])
+  const candidateFiscalYears = [...new Set(discoveredRows.filter((row) => row.reportDate <= valuationDate.slice(0, 10)).map((row) => row.basisFiscalYear))].sort((left, right) => right - left).slice(0, 2)
+  const versionRejected = (item: typeof epsDiscovery) => asOf !== undefined && item?.status === 'UNAVAILABLE' && item.attempts.some((attempt) => attempt.status === 'POINT_IN_TIME_INVALID' && attempt.diagnostic?.includes('numeric value version'))
+  const discoveryForYear = (item: typeof epsDiscovery, fiscalYear: number) => {
+    const row = item?.status === 'AVAILABLE' && item.value?.kind === 'financial' ? item.value.rows.find((candidate) => candidate.basisFiscalYear === fiscalYear) : undefined
+    return row && item.value?.kind === 'financial' ? { ...item, period: { ...item.period, fiscalYear }, value: { ...item.value, row } } : item
+  }
+  const basisAttempts: Array<{ readonly fiscalYear: number; readonly epsResult: typeof epsDiscovery; readonly bvpsResult: typeof bvpsDiscovery; readonly epsAcquisition: typeof epsDiscovery; readonly bvpsAcquisition: typeof bvpsDiscovery; readonly publicationResult: (typeof first.items)[number] }> = []
+  let selectedAttempt: (typeof basisAttempts)[number] | undefined
+  for (const candidateFiscalYear of candidateFiscalYears) {
+    const exact = await resolver.resolve([
+      requirement('valuation_eps', candidateFiscalYear),
+      requirement('valuation_bvps', candidateFiscalYear),
+      requirement('valuation_annual_report_publication', candidateFiscalYear),
+    ])
+    const [exactEps, exactBvps, exactPublication] = exact.items
+    const attempt = {
+      fiscalYear: candidateFiscalYear,
+      epsResult: (versionRejected(exactEps) ? discoveryForYear(epsDiscovery, candidateFiscalYear) : exactEps) as typeof epsDiscovery,
+      bvpsResult: (versionRejected(exactBvps) ? discoveryForYear(bvpsDiscovery, candidateFiscalYear) : exactBvps) as typeof bvpsDiscovery,
+      epsAcquisition: exactEps,
+      bvpsAcquisition: exactBvps,
+      publicationResult: exactPublication,
+    }
+    basisAttempts.push(attempt)
+    const mappedCandidate = mapResolvedValuationFinancialBasis(candidateFiscalYear, attempt.epsResult, attempt.bvpsResult)
+    const proof = exactPublication?.status === 'AVAILABLE' && exactPublication.value?.kind === 'publication' && exactPublication.value.proof.fiscalYear === candidateFiscalYear ? exactPublication.value.proof : undefined
+    if (mappedCandidate.row && selectedAttempt === undefined) selectedAttempt = attempt
+    if (mappedCandidate.row && proof && Date.parse(proof.officialPublishedAt) <= Date.parse(asOf ?? valuationDate)) { selectedAttempt = attempt; break }
+  }
+  const selectedFiscalYear = selectedAttempt?.fiscalYear
+  const epsResult = selectedAttempt?.epsResult ?? epsDiscovery
+  const bvpsResult = selectedAttempt?.bvpsResult ?? bvpsDiscovery
+  const publicationResult = selectedAttempt?.publicationResult
+  const mapped: ReturnType<typeof mapResolvedValuationFinancialBasis> = selectedFiscalYear === undefined ? {} : mapResolvedValuationFinancialBasis(selectedFiscalYear, epsResult, bvpsResult)
   if (mapped.diagnostic) diagnostics.push(mapped.diagnostic)
   const selectedRow = mapped.row
   const financialRows = selectedRow ? [selectedRow] : []
@@ -84,14 +107,17 @@ async function acquire(input: ValuationWorkflowInput, company: ResearchCompanyId
   const marketValue = marketPayload?.kind === 'market' ? marketPayload.raw : []
   const financialRetrievedAt = mapped.epsItem?.source?.retrievedAt ?? mapped.bvpsItem?.source?.retrievedAt
   const marketRetrievedAt = marketResult?.source?.retrievedAt
+  const marketSource = marketResult?.source
   const publicationPayload = publicationResult?.value
   const publication = publicationPayload?.kind === 'publication' && publicationPayload.proof.fiscalYear === selectedRow?.basisFiscalYear ? publicationPayload.proof : undefined
   if (publicationPayload?.kind === 'publication' && !publication) diagnostics.push('VALUATION_BASIS_PUBLICATION_PERIOD_MISMATCH')
-  const acquisitions = [['market', marketResult], ['eps', epsResult], ['bvps', bvpsResult], ['CNINFO annual publication', publicationResult]] as const
+  const acquisitions = [['market', marketResult], ...basisAttempts.flatMap((attempt) => [['eps', attempt.epsAcquisition], ['bvps', attempt.bvpsAcquisition], ['CNINFO annual publication', attempt.publicationResult]] as const)] as const
   for (const [name, result] of acquisitions) for (const attempt of result?.attempts ?? []) if (attempt.diagnostic) diagnostics.push(`${name}: ${attempt.diagnostic}`)
-  const failedTransport = acquisitions.some(([, result]) => result?.attempts.some((attempt) => ['TIMEOUT', 'RATE_LIMITED', 'ACCESS_DENIED', 'PARSE_ERROR'].includes(attempt.status)))
   const sources: NormalizedResearchSource[] = []
-  if (market && marketRetrievedAt) sources.push(makeSource(`akshare-valuation-market-${company.symbol}-${market.priceDate}`, 'EastMoney valuation market snapshot', { symbol: company.symbol, priceDate: market.priceDate, close: market.close, currency: 'CNY/share' }, company, marketRetrievedAt, { dataKind: 'valuation-market', valuationEvidenceRole: 'market', priceDate: market.priceDate, sourceField: 'close' }, { publisher: 'EastMoney', originAuthority: 'S3_AGGREGATOR', provider: 'AKShare', sourceUrl: marketResult?.source?.sourceUrl }))
+  if (market && marketRetrievedAt) {
+    const publisher = marketSource?.originPublisher ?? 'EastMoney'
+    sources.push(makeSource(`akshare-valuation-market-${company.symbol}-${market.priceDate}`, `${publisher} valuation market snapshot`, { symbol: company.symbol, priceDate: market.priceDate, close: market.close, currency: 'CNY/share' }, company, marketRetrievedAt, { dataKind: 'valuation-market', valuationEvidenceRole: 'market', priceDate: market.priceDate, sourceField: 'close', ...(marketSource?.sourceId ? { dataPolicySourceId: marketSource.sourceId } : {}) }, { publisher, originAuthority: marketSource?.originAuthority ?? 'S3_AGGREGATOR', provider: marketSource?.retrievalProvider ?? 'AKShare', sourceUrl: marketSource?.sourceUrl }))
+  }
   if (selectedRow && financialRetrievedAt) {
     const epsSource = mapped.epsItem?.source
     const bvpsSource = mapped.bvpsItem?.source
@@ -103,8 +129,11 @@ async function acquire(input: ValuationWorkflowInput, company: ResearchCompanyId
     }
   }
   if (publication) sources.push(makeSource(`cninfo-valuation-annual-report-${company.symbol}-${publication.fiscalYear}`, publication.reportTitle, publication, company, publication.retrievedAt, { dataKind: 'valuation-annual-report-publication', valuationEvidenceRole: 'financial', basisFiscalYear: publication.fiscalYear, sourceField: 'officialPublishedAt' }, { kind: 'official_disclosure', publisher: 'CNINFO', originAuthority: 'S0_STATUTORY', provider: 'CNINFO', publishedAt: publication.officialPublishedAt, sourceUrl: publication.sourceUrl }))
-  const outcome: ValuationProviderOutcome = { providerAttempted: true, transportSucceeded: basic.error === undefined && !failedTransport, companyBasicRowCount: basic.rowCount, financialRowCount: rowsOf(financialValue).length, marketRowCount: rowsOf(marketValue).length, marketPriceFound: market !== undefined, fiscalYearBasisFound: selectedRow !== undefined, peEligible: selectedRow?.eps !== undefined && selectedRow.eps > 0, pbEligible: selectedRow?.bvps !== undefined && selectedRow.bvps > 0, evEbitdaEligible: false, usableForValuation: market !== undefined && selectedRow !== undefined }
-  return { dataResolver: resolver, marketValue, financialValue, financialRows, ...(market ? { market } : {}), ...(financialRetrievedAt ? { financialRetrievedAt } : {}), ...(marketRetrievedAt ? { marketRetrievedAt } : {}), ...(mapped.epsItem?.source ? { epsSource: mapped.epsItem.source } : {}), ...(mapped.bvpsItem?.source ? { bvpsSource: mapped.bvpsItem.source } : {}), ...(publication ? { publication } : {}), sources, providerOutcome: outcome, diagnostics: [...diagnostics, ...(market ? [] : ['VALUATION_MARKET_PRICE_UNAVAILABLE']), ...(financialRows.length ? [] : ['VALUATION_FINANCIAL_BASIS_UNAVAILABLE'])] }
+  const marketTransportSucceeded = marketResult?.status === 'AVAILABLE'
+  const financialTransportSucceeded = selectedRow !== undefined
+  const officialPublicationVerified = publication !== undefined
+  const outcome: ValuationProviderOutcome = { providerAttempted: true, transportSucceeded: marketTransportSucceeded || financialTransportSucceeded || officialPublicationVerified, marketTransportSucceeded, financialTransportSucceeded, officialPublicationVerified, companyBasicRowCount: basic.rowCount, financialRowCount: rowsOf(financialValue).length, marketRowCount: rowsOf(marketValue).length, marketPriceFound: market !== undefined, fiscalYearBasisFound: selectedRow !== undefined, peEligible: selectedRow?.eps !== undefined && selectedRow.eps > 0, pbEligible: selectedRow?.bvps !== undefined && selectedRow.bvps > 0, evEbitdaEligible: false, usableForValuation: market !== undefined && selectedRow !== undefined }
+  return { dataResolver: resolver, marketValue, financialValue, financialRows, ...(market ? { market } : {}), ...(financialRetrievedAt ? { financialRetrievedAt } : {}), ...(marketRetrievedAt ? { marketRetrievedAt } : {}), ...(marketSource ? { marketSource } : {}), ...(mapped.epsItem?.source ? { epsSource: mapped.epsItem.source } : {}), ...(mapped.bvpsItem?.source ? { bvpsSource: mapped.bvpsItem.source } : {}), ...(publication ? { publication } : {}), sources, providerOutcome: outcome, diagnostics: [...diagnostics, ...(market ? [] : ['VALUATION_MARKET_PRICE_UNAVAILABLE']), ...(financialRows.length ? [] : ['VALUATION_FINANCIAL_BASIS_UNAVAILABLE'])] }
 }
 function requestedMethods(input: ValuationWorkflowInput, eligible: readonly ValuationMethod[]): readonly ValuationMethod[] { if (input.methods === undefined) return eligible; return [...new Set(input.methods)].filter((method) => eligible.includes(method)) }
 export function validProposal(proposal: ValuationSynthesisProposal, plan: ValuationAssumptionPlan, computation: ValuationComputation, sourceIds: ReadonlySet<string>, claimRefs: ReadonlySet<string>): boolean {
@@ -187,7 +216,7 @@ export async function runValuation(input: ValuationWorkflowInput): Promise<Valua
 
     const financial = { rows: acquired.financialRows, diagnostics: [] as readonly string[] }
     const evidenceResolution = acquired.market && acquired.financialRetrievedAt && acquired.marketRetrievedAt
-      ? resolveValuationBasisEvidence({ market: acquired.market, financialRows: financial.rows, ...(acquired.publication === undefined ? {} : { publication: acquired.publication }), valuationDate, ...(input.asOf === undefined ? {} : { asOf: input.asOf }), now, retrievedAt: acquired.financialRetrievedAt, marketRetrievedAt: acquired.marketRetrievedAt, ...(acquired.epsSource === undefined ? {} : { epsSource: acquired.epsSource }), ...(acquired.bvpsSource === undefined ? {} : { bvpsSource: acquired.bvpsSource }), marketSourceUrl: 'https://push2his.eastmoney.com/api/qt/kline/get', financialSourceUrl: 'https://datacenter.eastmoney.com/securities/api/data/get' })
+      ? resolveValuationBasisEvidence({ market: acquired.market, financialRows: financial.rows, ...(acquired.publication === undefined ? {} : { publication: acquired.publication }), valuationDate, ...(input.asOf === undefined ? {} : { asOf: input.asOf }), now, retrievedAt: acquired.financialRetrievedAt, marketRetrievedAt: acquired.marketRetrievedAt, ...(acquired.marketSource === undefined ? {} : { marketSource: acquired.marketSource }), ...(acquired.epsSource === undefined ? {} : { epsSource: acquired.epsSource }), ...(acquired.bvpsSource === undefined ? {} : { bvpsSource: acquired.bvpsSource }), marketSourceUrl: acquired.marketSource?.sourceUrl, financialSourceUrl: 'https://datacenter.eastmoney.com/securities/api/data/get' })
       : undefined
     const basisEvidence: ValuationBasisEvidence | undefined = evidenceResolution?.evidence
     const pitStatus: ValuationEvidencePitStatus = evidenceResolution?.pitStatus ?? 'UNAVAILABLE'
@@ -268,7 +297,7 @@ export async function runValuation(input: ValuationWorkflowInput): Promise<Valua
     }
 
     const reportId = `valuation-${company.symbol}-${targetFiscalYear}-${input.workflowRunId}`
-    const report: ResearchReport = validateResearchReport({ reportId, reportType: 'valuation', subjectRefs: coverage.ref ? [coverage.ref] : [], ...(input.securityIdentity === undefined ? {} : { verifiedSecurityIdentity: input.securityIdentity }), generatedAt: now, asOf: valuationDate, workflowRunId: input.workflowRunId, knowledgeBaseRevision: outcome.knowledgeBaseRevision, sourceRefs: Object.values(outcome.sourceRefsByLocalId), claimRefs: Object.values(outcome.claimRefsByProposalId), methodology: 'EastMoney structured valuation basis with CNINFO publication crosswalk, deterministic method eligibility and calculations, bounded two-stage Pi interpretation, and Gateway-mediated canonical mutation.', sections: preciseReportSections(withAutomaticCompsReportSection(reportSections(company, basis, basisEvidence, pitStatus, eligible, plan, computation, synthesisOutput, [...acquired.diagnostics, ...basisDiagnostics]), automaticCompsResult), deterministicValuationEvidence(acquired.sources), coverage.claims, synthesisOutput, outcome.sourceRefsByLocalId, outcome.claimRefsByProposalId, plan), outputPath: `${reportId}.md` })
+    const report: ResearchReport = validateResearchReport({ reportId, reportType: 'valuation', subjectRefs: coverage.ref ? [coverage.ref] : [], ...(input.securityIdentity === undefined ? {} : { verifiedSecurityIdentity: input.securityIdentity }), generatedAt: now, asOf: valuationDate, workflowRunId: input.workflowRunId, knowledgeBaseRevision: outcome.knowledgeBaseRevision, sourceRefs: Object.values(outcome.sourceRefsByLocalId), claimRefs: Object.values(outcome.claimRefsByProposalId), methodology: 'DataResolver-selected unadjusted daily market close and structured annual financial basis with CNINFO publication crosswalk, deterministic method eligibility and calculations, bounded two-stage Pi interpretation, and Gateway-mediated canonical mutation.', sections: preciseReportSections(withAutomaticCompsReportSection(reportSections(company, basis, basisEvidence, pitStatus, eligible, plan, computation, synthesisOutput, [...acquired.diagnostics, ...basisDiagnostics]), automaticCompsResult), deterministicValuationEvidence(acquired.sources), coverage.claims, synthesisOutput, outcome.sourceRefsByLocalId, outcome.claimRefsByProposalId, plan), outputPath: `${reportId}.md` })
     const outputPath = await writeResearchReport({ ...report, sections: report.sections.map((section) => ({ ...section, markdown: section.markdown.replace('DCF: unavailable / deferred in v1', 'DCF: Unavailable / deferred in v1') })) }, resolve(input.reportRoot))
     telemetry = { ...telemetry, acceptedProposalCount: Object.keys(outcome.claimRefsByProposalId).length, canonicalSourceCount: Object.keys(outcome.sourceRefsByLocalId).length, canonicalClaimCount: Object.keys(outcome.claimRefsByProposalId).length }
     return { workflowRunId: input.workflowRunId, status: 'completed', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: outcome.knowledgeBaseRevision, report: { reportId, outputPath }, proposalIds: proposals.map((proposal) => proposal.proposalId), committedIds: [...outcome.createdIds, ...outcome.updatedIds], sourceIds: Object.values(outcome.sourceRefsByLocalId), claimIds: Object.values(outcome.claimRefsByProposalId), errors: [], diagnostics: [...acquired.diagnostics, ...basisDiagnostics], providerOutcome, basis, ...(basisEvidence === undefined ? {} : { basisEvidence }), plan, computation, synthesis: synthesisOutput, telemetry, ...(compsResult === undefined ? {} : { compsResult }), ...(automaticCompsResult === undefined ? {} : { automaticCompsResult }), qualityGate, crosscheck }

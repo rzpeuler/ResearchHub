@@ -6,6 +6,21 @@ function response(body: string, status = 200): Response { return new Response(bo
 test('RSS discovery is fixture-driven and deduplicable', async () => { const plugin = new RssResearchPlugin({ feedUrls: ['https://feed.test/rss'], fetchImpl: async (input) => String(input).includes('/rss') ? response('<rss><channel><item><title>Test</title><link>https://example.com/a</link><pubDate>Mon, 08 Sep 2026 00:00:00 GMT</pubDate></item></channel></rss>') : response('<html><body>Article body</body></html>') }); const items = await plugin.discover({ company: { symbol: '600519', name: 'Test' }, limitPerKind: 5 }); assert.equal(items.length, 1); const normalized = await plugin.normalize(await plugin.fetch(items[0]!)); assert.equal(normalized.content, 'Article body'); assert.equal(normalized.rights.redistributionAllowed, false) })
 test('GDELT adapter validates only usable article candidates', async () => { const plugin = new GdeltResearchPlugin({ fetchImpl: async () => response(JSON.stringify({ articles: [{ url: 'https://example.com/a', title: 'News', seendate: '20260908T000000Z' }] }), 200) }); const items = await plugin.discover({ company: { symbol: '600519', name: 'Test' }, limitPerKind: 5 }); assert.equal(items[0]?.candidateId.startsWith('gdelt-'), true); assert.equal(items[0]?.publishedAt, '2026-09-08T00:00:00.000Z') })
 test('AKShare adapter uses injected runner without requiring Python in offline tests', async () => { const { AkshareDataAdapter } = await import('../../plugins/research-acquisition/akshare.ts'); const calls: Array<{ script: string; args: string[] }> = []; const adapter = new AkshareDataAdapter({ runner: async (script, args) => { calls.push({ script, args: [...args] }); return '[{"value":1}]' } }); assert.deepEqual(await adapter.companyBasic({ symbol: '600519' }), [{ value: 1 }]); assert.deepEqual(await adapter.historicalMarketData({ symbol: '600519' }), [{ value: 1 }]); assert.deepEqual(await adapter.financialData({ symbol: '600519' }), [{ value: 1 }]); assert.equal(calls.length, 3); const financial = calls.find((call) => call.args[0] === 'financial'); assert.ok(financial); assert.match(financial!.script, /stock_financial_analysis_indicator_em/); assert.match(financial!.script, /symbol\.startswith\('6'\)/) })
+test('AKShare adapter sanitizes child-process failures without echoing the bridge command', async () => {
+  const { AkshareDataAdapter } = await import('../../plugins/research-acquisition/akshare.ts')
+  const failure = Object.assign(new Error('Command failed: python -c sensitive-bridge-script'), { code: 1, stderr: 'Traceback\nrequests.exceptions.ProxyError: proxy denied' })
+  const adapter = new AkshareDataAdapter({ runner: async () => { throw failure } })
+  await assert.rejects(adapter.historicalMarketData({ symbol: '002487', startDate: '20261001', endDate: '20261009' }), (error: unknown) => error instanceof Error && error.message === 'AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: proxy denied' && !error.message.includes('sensitive-bridge-script'))
+})
+test('AKShare Tencent historical market adapter bounds the query and normalizes SH/SZ identity', async () => {
+  const { AkshareDataAdapter } = await import('../../plugins/research-acquisition/akshare.ts')
+  const calls: Array<{ script: string; args: string[] }> = []
+  const adapter = new AkshareDataAdapter({ runner: async (script, args) => { calls.push({ script, args: [...args] }); return '[{"date":"2026-10-09","close":43.75}]' } })
+  assert.deepEqual(await adapter.historicalMarketDataTencent!({ symbol: '002487.SZ', startDate: '20261001', endDate: '20261009' }), [{ date: '2026-10-09', close: 43.75 }])
+  assert.deepEqual(calls[0]?.args, ['market-tencent', '002487.SZ', '20261001', '20261009'])
+  assert.match(calls[0]!.script, /stock_zh_a_hist_tx\(symbol=\('sh' if exchange=='SH' else 'sz'\)\+code/)
+  assert.match(calls[0]!.script, /six-digit SH\/SZ ticker/)
+})
 test('AKShare security directory performs bounded exact A-share lookup and normalizes exchange codes', async () => {
   const { AkshareDataAdapter } = await import('../../plugins/research-acquisition/akshare.ts')
   const calls: Array<{ script: string; args: string[]; timeoutMs?: number }> = []
@@ -16,7 +31,7 @@ test('AKShare security directory performs bounded exact A-share lookup and norma
   assert.match(calls[0]!.script, /'symbol':code,'name':name,'exchange':exchange/)
   assert.match(calls[0]!.script, /if len\(rows\)>limit: raise ValueError/)
   assert.match(calls[0]!.script, /for _,row in rows\.iterrows\(\):/)
-  assert.equal(calls[0]!.timeoutMs, 15_000)
+  assert.equal(calls[0]!.timeoutMs, 30_000)
   assert.equal(calls[0]!.script.includes('exchange official'), false)
 })
 test('AKShare security directory rejects unbounded or non-exact queries', async () => {

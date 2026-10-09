@@ -28,10 +28,21 @@ function numberValue(value: unknown): number | undefined {
 export function normalizeValuationDate(value: unknown): string | undefined {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10)
   if (typeof value !== 'string' && typeof value !== 'number') return undefined
-  const match = /^(\d{4})(?:-|年)?(\d{1,2})(?:-|月)?(\d{1,2})(?:日)?/.exec(String(value).trim().replace(/[/.]/g, '-'))
+  const raw = String(value).trim()
+  const epoch = typeof value === 'number'
+    ? Number.isFinite(value) && Number.isInteger(value) && Math.abs(value) >= 1_000_000_000 ? value : undefined
+    : /^-?\d{10}(?:\d{3})?$/.test(raw) ? Number(raw) : undefined
+  if (epoch !== undefined) {
+    const milliseconds = Math.abs(epoch) >= 1_000_000_000_000 ? epoch : epoch * 1_000
+    const timestamp = new Date(milliseconds)
+    return Number.isNaN(timestamp.getTime()) ? undefined : timestamp.toISOString().slice(0, 10)
+  }
+  const match = /^(\d{4})(?:-|年)?(\d{1,2})(?:-|月)?(\d{1,2})(?:日)?/.exec(raw.replace(/[/.]/g, '-'))
   if (!match) return undefined
   const year = Number(match[1]); const month = Number(match[2]); const day = Number(match[3])
   if (month < 1 || month > 12 || day < 1 || day > 31) return undefined
+  const calendarDate = new Date(Date.UTC(year, month - 1, day))
+  if (calendarDate.getUTCFullYear() !== year || calendarDate.getUTCMonth() !== month - 1 || calendarDate.getUTCDate() !== day) return undefined
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 function dateOf(row: Dict, aliases: readonly string[]): string | undefined { return normalizeValuationDate(first(row, aliases)) }

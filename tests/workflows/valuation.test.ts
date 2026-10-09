@@ -18,7 +18,7 @@ import { SecurityIdentityResolver } from '../../app/services/security-identity-r
 import { createSecurityIdentityDataResolver, type AkshareSecurityDirectoryClient } from '../../plugins/research-acquisition/security-identity-data.ts'
 import { VALUATION_REPORT_SECTIONS } from '../../skills/valuation/contracts.ts'
 import { buildValuationBasis, calculateTargetPrice, calculateValuation, methodEligibility, referenceMultiples, selectValuationBasis, validateScenarioAssumptions } from '../../skills/valuation/financials.ts'
-import { normalizeValuationFinancialData, normalizeValuationMarketData } from '../../plugins/research-acquisition/valuation-normalization.ts'
+import { normalizeValuationDate, normalizeValuationFinancialData, normalizeValuationMarketData } from '../../plugins/research-acquisition/valuation-normalization.ts'
 import { canonicalizeValuationViewpointStatement, expectedValuationAssumptionStructuredValue, ValuationAssumptionDesignSkill, ValuationSynthesisSkill, validateValuationStructuredValue } from '../../skills/valuation/skill.ts'
 import { createResearchHubTools } from '../../app/pi/tools.ts'
 import type { KnowledgeService } from '../../app/services/knowledge-service.ts'
@@ -84,6 +84,12 @@ function plan() { return { primaryMethod: 'PE' as const, secondaryMethods: ['PB'
 
 test('V1 normalizes dashed dates', () => assert.equal(normalizeValuationMarketData([{ date: '2026-09-08', close: 1 }], NOW).observation?.priceDate, '2026-09-08'))
 test('V2 normalizes Chinese dates', () => assert.equal(normalizeValuationMarketData([{ date: '2026年9月8日', close: 1 }], NOW).observation?.priceDate, '2026-09-08'))
+test('V2a normalizes Tencent epoch-millisecond dates and rejects epoch-prefix false dates', () => {
+  assert.equal(normalizeValuationDate(1790121600000), '2026-09-23')
+  assert.equal(normalizeValuationDate('1788912000000'), '2026-09-09')
+  assert.equal(normalizeValuationMarketData([{ date: 1788912000000, close: 32.57 }], NOW).observation?.priceDate, '2026-09-09')
+  assert.equal(normalizeValuationDate('2026-02-31'), undefined)
+})
 test('V3 selects the latest usable market close', () => assert.equal(normalizeValuationMarketData(marketRows(), NOW).observation?.close, 150))
 test('V4 excludes future market rows', () => assert.equal(normalizeValuationMarketData([{ 日期: '2026-12-31', 收盘: 999 }], NOW).observation, undefined))
 test('V5 rejects non-positive market closes', () => assert.equal(normalizeValuationMarketData([{ 日期: '2026-09-08', 收盘: 0 }], NOW).observation, undefined))
@@ -173,6 +179,19 @@ test('V80 ResearchService verifies identity then runs first valuation through it
 test('V37 ambiguous exact Company coverage blocks', async () => { const f = await fixture(); try { const assets = JSON.parse(await readFile(join(f.root, 'registry', 'assets.yaml'), 'utf8')) as Dict; assets['entity:duplicate-company'] = { type: 'entity', storageRef: 'entities/duplicate-company.yaml' }; await writeFile(join(f.root, 'registry', 'assets.yaml'), `${JSON.stringify(assets)}\n`); await writeFile(join(f.root, 'entities', 'duplicate-company.yaml'), `${JSON.stringify({ id: 'entity:duplicate-company', type: 'company', name: 'Duplicate', aliases: [], ticker: '600519', exchange: 'SH', lifecycle: { status: 'active' } })}\n`); const r = await runFixture({ ...f, handle: await new KnowledgeBaseRegistry().mount(f.root) }); assert.equal(r.blockedReason, 'COMPANY_COVERAGE_AMBIGUOUS') } finally { await f.close() } })
 test('V38 unavailable market data blocks', async () => { const f = await fixture({ market: [] }); try { const r = await runFixture(f); assert.equal(r.blockedReason, 'VALUATION_MARKET_PRICE_UNAVAILABLE') } finally { await f.close() } })
 test('V39 acquisition calls all three AKShare methods', async () => { const f = await fixture(); try { await runFixture(f); assert.deepEqual([...f.akshare.calls].sort(), ['companyBasic', 'financialData', 'historicalMarketData'].sort()) } finally { await f.close() } })
+test('Valuation reports selected market and financial transports separately from companyBasic telemetry', async () => {
+  const f = await fixture()
+  try {
+    const akshare = { ...f.akshare, companyBasic: async () => { throw new Error('AKSHARE_BRIDGE_EXIT_1:ProxyError') } }
+    const result = await runFixture(f, { akshare })
+    assert.equal(result.providerOutcome.transportSucceeded, true)
+    assert.equal(result.providerOutcome.marketTransportSucceeded, true)
+    assert.equal(result.providerOutcome.financialTransportSucceeded, true)
+    assert.equal(result.providerOutcome.officialPublicationVerified, true)
+    assert.equal(result.providerOutcome.usableForValuation, true)
+    assert.ok(result.diagnostics.some((item) => item === 'companyBasic: AKSHARE_BRIDGE_EXIT_1:ProxyError'))
+  } finally { await f.close() }
+})
 test('Valuation workflow sends issuer and comparable requirements through its injected DataResolver', async () => {
   const f = await fixture()
   try {
@@ -201,6 +220,22 @@ test('Valuation basis uses only the resolver-selected FY row when a raw snapshot
     assert.equal(result.basis?.basisFiscalYear, 2024)
     assert.equal(result.basisEvidence?.reportDate, '2024-12-31')
     assert.equal(result.basisEvidence?.eps?.officialPublication?.reportTitle, '2024年年度报告')
+  } finally { await f.close() }
+})
+test('Valuation uses the nearest prior published annual basis when the newest FY has no official report proof', async () => {
+  const f = await fixture()
+  try {
+    const officialDisclosure: OfficialDisclosureClient = {
+      list: async () => [], fetch: async () => '',
+      resolveAnnualReportPublication: async ({ fiscalYear }) => fiscalYear === 2025 ? undefined : ({ issuer: 'Fixture Company', fiscalYear, reportTitle: `${fiscalYear}年年度报告`, officialPublishedAt: `${fiscalYear + 1}-04-01T08:00:00.000Z`, rawPublishedAt: `${fiscalYear + 1}-04-01 16:00:00`, sourceUrl: `https://static.cninfo.com.cn/fixture-${fiscalYear}.pdf`, originPublisher: 'CNINFO', originAuthority: 'S0_STATUTORY', retrievalProvider: 'CNINFO', retrievedAt: NOW }),
+    }
+    const result = await runFixture(f, { officialDisclosure })
+    assert.equal(result.status, 'completed', result.blockedReason)
+    assert.equal(result.basis?.basisFiscalYear, 2024)
+    assert.equal(result.basisEvidence?.basisFiscalYear, 2024)
+    assert.equal(result.basisEvidence?.reportDate, '2024-12-31')
+    assert.equal(result.basisEvidence?.eps?.officialPublication?.reportTitle, '2024年年度报告')
+    assert.ok(result.diagnostics.some((item) => item.includes('CNINFO annual publication')))
   } finally { await f.close() }
 })
 test('Valuation combines independently resolved EPS and BVPS with separate source lineage', async () => {
@@ -236,8 +271,8 @@ test('Future official annual publication cannot support a fixed Valuation cutoff
   try {
     const result = await runFixture(f, { asOf: '2026-03-01T00:00:00.000Z' })
     assert.equal(result.basis, undefined)
-    assert.equal(result.providerOutcome.basisPitStatus, 'UNAVAILABLE')
-    assert.ok(result.diagnostics.some((item) => item.includes('publishedAt') && item.includes('after analysisAsOf')))
+    assert.equal(result.providerOutcome.basisPitStatus, 'PUBLICATION_VERIFIED_VALUE_VERSION_UNVERIFIED')
+    assert.ok(result.diagnostics.some((item) => item.includes('publishedAt') && item.includes('after analysisAsOf')), JSON.stringify(result.diagnostics))
   } finally { await f.close() }
 })
 test('V40 writes a valuation ResearchReport', async () => { const f = await fixture(); try { const r = await runFixture(f); const report = JSON.parse(await readFile(join(f.reports, `${r.report?.reportId}.md.json`), 'utf8')) as Dict; assert.equal(report.reportType, 'valuation') } finally { await f.close() } })
@@ -265,7 +300,7 @@ test('D3 normal ResearchService path auto-activates PE/PB evidence closure', asy
 test('V62 valuation does not create a canonical Valuation object', async () => { const f = await fixture(); try { await runFixture(f); const assets = await readCanonicalV04Assets(f.root); assert.equal(assets.objects.some((item) => (item.value as unknown as Dict).type === 'valuation'), false) } finally { await f.close() } })
 test('V63 report contains the three scenario sections and sensitivity', async () => { const f = await fixture(); try { const r = await runFixture(f); const report = await readFile(join(f.reports, `${r.report?.reportId}.md`), 'utf8'); for (const title of ['Bear Scenario', 'Base Scenario', 'Bull Scenario', 'Sensitivity Analysis']) assert.match(report, new RegExp(title)); } finally { await f.close() } })
 test('V64 companyBasic telemetry is never durable evidence', async () => { const f = await fixture(); try { const r = await runFixture(f); const assets = await readCanonicalV04Assets(f.root); const sources = assets.objects.filter((item) => item.kind === 'source').map((item) => item.value as unknown as Dict); assert.equal(r.providerOutcome.companyBasicRowCount, 1); assert.equal(sources.some((source) => source.metadata && (source.metadata as Dict).dataKind === 'company-basic'), false); assert.equal(sources.some((source) => source.metadata && 'valuationDate' in (source.metadata as Dict)), false) } finally { await f.close() } })
-test('V65 source acquisition time is distinct from historical valuation context', async () => { const f = await fixture(); try { const times = ['2026-09-09T01:00:00.000Z', '2026-09-09T01:01:00.000Z', '2026-09-09T01:02:00.000Z']; let index = 0; const r = await runFixture(f, { asOf: '2026-09-08T00:00:00.000Z', now: () => times[Math.min(index++, times.length - 1)]! }); assert.equal(r.basis, undefined); assert.equal(r.basisEvidence?.reportDate, '2025-12-31'); assert.equal(r.basisEvidence?.eps?.numericSource.retrievedAt, times[1]); assert.notEqual(r.basisEvidence?.eps?.numericSource.retrievedAt, '2026-09-08T00:00:00.000Z') } finally { await f.close() } })
+test('V65 source acquisition time is distinct from historical valuation context', async () => { const f = await fixture(); try { const times = ['2026-09-09T01:00:00.000Z', '2026-09-09T01:01:00.000Z', '2026-09-09T01:02:00.000Z']; let index = 0; const r = await runFixture(f, { asOf: '2026-09-08T00:00:00.000Z', now: () => times[Math.min(index++, times.length - 1)]! }); assert.equal(r.basis, undefined); assert.equal(r.basisEvidence?.reportDate, '2025-12-31'); assert.equal(r.basisEvidence?.eps?.numericSource.retrievedAt, times[2]); assert.notEqual(r.basisEvidence?.eps?.numericSource.retrievedAt, '2026-09-08T00:00:00.000Z') } finally { await f.close() } })
 test('V66 exact structured values reject model-supplied drift and numeric text is canonicalized', () => { const p = plan(); const c = calculateValuation(basis(), p, ['PE', 'PB']); const expected = expectedValuationAssumptionStructuredValue(p, 'base-growth'); assert.equal(validateValuationStructuredValue({ ...expected, value: expected.value + 1 }, expected), false); for (const statement of ['Target price 999 CNY/share and implied return 999%.', 'Base case is 999 CNY/share.']) { const canonical = canonicalizeValuationViewpointStatement(statement, p, c); assert.match(canonical, /132/); assert.doesNotMatch(canonical, /999/) } })
 test('V67 report section evidence is precise and retains official lineage', async () => { const f = await fixture(); try { const r = await runFixture(f); const report = JSON.parse(await readFile(join(f.reports, `${r.report?.reportId}.md.json`), 'utf8')) as { sections: readonly { id: string; sourceRefs: readonly string[]; claimRefs: readonly string[] }[] }; const basisSection = report.sections.find((section) => section.id === 'data-basis-point-in-time-status')!; const methodSection = report.sections.find((section) => section.id === 'method-eligibility')!; const primarySection = report.sections.find((section) => section.id === 'primary-method-selection')!; const risk = report.sections.find((section) => section.id === 'risks-limitations-research-gaps')!; assert.equal(basisSection.sourceRefs.length, 3); assert.equal(methodSection.sourceRefs.length, 3); assert.equal(primarySection.sourceRefs.length, 3); assert.equal(risk.sourceRefs.length, 0); assert.notDeepEqual(basisSection.sourceRefs, report.sections.find((section) => section.id === 'valuation-snapshot')!.sourceRefs) } finally { await f.close() } })
 test('V68 zero accepted proposals do not canonicalize acquired evidence', async () => { const f = await fixture({ executor: new (class extends FixtureExecutor { override async execute(request: ReasoningRequest): Promise<ReasoningResult> { const result = await super.execute(request); if (request.operation !== 'valuation_synthesis') return result; return { ...result, output: { ...(result.output as Dict), proposals: [] } } } })() }); try { const r = await runFixture(f); const assets = await readCanonicalV04Assets(f.root); assert.equal(r.proposalIds.length, 0); assert.equal(r.sourceIds.length, 0); assert.equal(r.claimIds.length, 0); assert.equal(assets.objects.filter((item) => item.kind === 'source').length, 1) } finally { await f.close() } })

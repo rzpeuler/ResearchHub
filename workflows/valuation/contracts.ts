@@ -35,6 +35,9 @@ export interface ValuationWorkflowInput {
 export interface ValuationProviderOutcome {
   readonly providerAttempted: boolean
   readonly transportSucceeded: boolean
+  readonly marketTransportSucceeded: boolean
+  readonly financialTransportSucceeded: boolean
+  readonly officialPublicationVerified: boolean
   readonly companyBasicRowCount: number
   readonly financialRowCount: number
   readonly marketRowCount: number
