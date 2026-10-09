@@ -32,6 +32,23 @@ function validBundle(overrides: Partial<NonNullable<Parameters<typeof buildEarni
   return { sources: [source('estimate-a-source'), source('estimate-b-source')], estimates, consensusSnapshots: [consensus], ...overrides }
 }
 
+test('expectation report preserves available institution forecasts and explains period or result-cutoff gaps', () => {
+  const forecastSource = { ...source('estimate-a-source', '2026-09-01T00:00:00.000Z'), candidate: { ...source('estimate-a-source').candidate, url: 'https://example.test/forecast.pdf' } }
+  const forecast = estimate({ metric: 'eps', fiscalPeriod: '2026-FY', unit: 'CNY_per_share', value: 5.25, publishedAt: '2026-09-01T00:00:00.000Z' })
+  const bundle = { sources: [forecastSource], estimates: [forecast], consensusSnapshots: [] }
+  const analysis = buildEarningsExpectationAnalysis({ analysisAsOf: AS_OF, resultPublishedAt: RESULT, actualMetrics: actual(), expectations: bundle })
+  const sections = EARNINGS_REVIEW_SECTIONS.map((title) => ({ id: title.toLowerCase().replace(/\W+/gu, '-'), title, markdown: 'Research Gap / Unavailable: no bounded evidence supports this section.', sourceCandidateIds: [], assessmentRefs: [] }))
+  const enriched = enrichEarningsReviewSectionsWithExpectations(sections, analysis, { requestedFiscalPeriod: '2026-H1', analysisAsOf: AS_OF, resultPublishedAt: RESULT, mode: 'automatic', acquisitionStatus: 'partial', estimateCount: 1, institutionCount: 1, consensusSnapshotCount: 0, revisionLinkCount: 0, providerOutcomes: [{ provider: 'ths-institution-forecast', providerAttempted: true, providerSucceeded: true, providerEmpty: false, providerFailed: false, usableSourceCount: 1 }], diagnostics: [], bundle })
+  const snapshot = enriched.find((section) => section.title === 'Earnings Snapshot')!
+  assert.match(snapshot.markdown, /Requested actual period: 2026-H1/)
+  assert.match(snapshot.markdown, /official result cutoff 2026-08-30/)
+  assert.match(snapshot.markdown, /institution forecasts \(1\)/)
+  assert.match(snapshot.markdown, /eps 2026-FY 5\.25 CNY_per_share/)
+  assert.match(snapshot.markdown, /publisher fixture; retrieved by fixture at 2026-09-01T00:00:00\.000Z; URL https:\/\/example\.test\/forecast\.pdf/)
+  assert.match(snapshot.markdown, /No same-metric, same-unit, same-period, pre-result consensus qualified/)
+  assert.deepEqual(snapshot.sourceCandidateIds, ['estimate-a-source'])
+})
+
 class NoopExecutor implements ReasoningExecutor {
   capabilities() { return { maxContextTokens: 100_000, maxOutputTokens: 10_000, structuredOutputSupport: true, maxConcurrency: 1 } }
   async execute(request: ReasoningRequest): Promise<ReasoningResult> { return { operation: request.operation, operationId: 'w2-004-noop', output: {} } }

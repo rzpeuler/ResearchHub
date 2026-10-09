@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createResearchHubApplicationRuntime } from '../app/runtime/application-runtime.ts'
@@ -25,6 +25,21 @@ const activeRuns = selectedRunIndexText === undefined ? runs : (() => {
 const now = () => new Date().toISOString()
 function record(value: unknown): RecordValue { return value && typeof value === 'object' && !Array.isArray(value) ? value as RecordValue : {} }
 function digest(value: unknown): string { return createHash('sha256').update(JSON.stringify(value)).digest('hex') }
+function array(value: unknown): readonly unknown[] { return Array.isArray(value) ? value : [] }
+function financialQualityStatus(value: unknown): 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE' {
+  const summary = record(value)
+  if (Object.keys(summary).length === 0) return 'UNAVAILABLE'
+  const unavailable = [
+    ...array(record(summary.workingCapital).unavailableFields),
+    ...array(record(summary.accrualQuality).unavailableFields),
+    ...array(record(summary.cashConversion).unavailableFields),
+    ...array(record(summary.revenueRecognition).unavailableComparisons),
+  ]
+  return unavailable.length > 0 ? 'PARTIAL' : 'AVAILABLE'
+}
+function reportMetrics(markdown: string): readonly RecordValue[] {
+  return [...markdown.matchAll(/^\s{2}- ([a-z_]+): ([^\s]+) ([^\s]+) \(([^)]+)\)$/gmu)].map((match) => ({ metric: match[1], value: Number(match[2]), unit: match[3], period: match[4] }))
+}
 function resultSummary(value: unknown): RecordValue {
   const result = record(value); const telemetry = record(result.telemetry)
   return {
@@ -46,6 +61,7 @@ function resultSummary(value: unknown): RecordValue {
     },
     expectationAnalysis: result.expectationAnalysis ?? null,
     financialQuality: result.financialQuality ?? null,
+    qualityGateStatus: result.qualityGateStatus ?? null,
     report: result.report ?? (typeof result.reportId === 'string' ? { reportId: result.reportId } : null),
     reportPath: result.reportPath ?? null,
   }
@@ -66,6 +82,8 @@ try {
   if (!dispatch) throw new Error('APPLICATION_RESEARCH_DISPATCH_UNAVAILABLE')
 
   for (const target of activeRuns) {
+    const beforeRun = await readCanonicalV04Assets(kbRoot)
+    const beforeRunDigest = digest(beforeRun.objects.map((item) => item.value))
     const workflowRunId = `a003-live-${target.symbol}-${target.fiscalYear}-${target.period.toLowerCase()}`
     console.log(JSON.stringify({ event: 'RUN_START', target, at: now() }))
     const workflowArguments = { symbol: target.symbol, name: target.name, exchange: target.exchange, fiscalYear: target.fiscalYear, period: target.period }
@@ -82,6 +100,7 @@ try {
     const bundleRecord = record(bundle) as ResearchBundle
     const summary = resultSummary(execution)
     let reportReloaded = false
+    let reportMarkdownReloaded = false
     let reportTitleCount = 0
     const reportRef = record(summary.report)
     const reportId = typeof reportRef.reportId === 'string' ? reportRef.reportId : typeof bundleRecord?.report?.reportId === 'string' ? bundleRecord.report.reportId : undefined
@@ -91,10 +110,11 @@ try {
         const report = await readResearchReport(join(cwd, 'runtime-data', 'reports', `${reportId}.md.json`))
         reportReloaded = report.reportId === reportId
         reportTitleCount = report.sections.length
-        const evidenceTitles = new Set(['Earnings Snapshot', 'Revenue / Profit Growth', 'Margin Analysis', 'Cash Flow / Working Capital', 'Valuation Implications', 'Research Gaps / Monitoring'])
-        const selectedSections = report.sections.filter((section) => evidenceTitles.has(section.title)).map((section) => ({
+        const markdown = await readFile(join(cwd, 'runtime-data', 'reports', `${reportId}.md`), 'utf8')
+        reportMarkdownReloaded = markdown.includes(report.reportId) && markdown.length > 0
+        const selectedSections = report.sections.map((section) => ({
           title: section.title,
-          markdown: section.markdown.slice(0, 2_500),
+          markdown: section.markdown.slice(0, section.title === 'Earnings Snapshot' ? 12_000 : 6_000),
           evidenceLinks: [...new Set(section.evidenceLinks ?? [])].slice(0, 12),
         }))
         reportEvidence = {
@@ -104,17 +124,54 @@ try {
           verifiedSecurityIdentity: report.verifiedSecurityIdentity ?? null,
           sourceRefCount: report.sourceRefs.length,
           claimRefCount: report.claimRefs.length,
+          reportMarkdownReloaded,
+          actualMetrics: reportMetrics(report.sections.find((section) => section.title === 'Earnings Snapshot')?.markdown ?? ''),
           selectedSections,
         }
       } catch { /* summarized as unreadable below */ }
     }
+    const afterRun = await readCanonicalV04Assets(kbRoot)
+    const afterRunDigest = digest(afterRun.objects.map((item) => item.value))
+    const telemetry = record(summary.telemetry)
+    const verifiedIdentity = record(record(reportEvidence).verifiedSecurityIdentity)
+    const outcomesForRun = array(summary.providerOutcomes).map(record)
+    const officialOutcome = outcomesForRun.find((item) => String(item.provider).toLowerCase().includes('cninfo'))
+    const actualOutcome = outcomesForRun.find((item) => item.provider === 'akshare')
+    const primaryOutcome = outcomesForRun.find((item) => item.provider === 'ths-institution-forecast')
+    const fallbackOutcomes = outcomesForRun.filter((item) => item.provider === 'eastmoney-individual-research-report' || item.provider === 'eastmoney-legacy-report')
+    const snapshotText = String((record(reportEvidence).selectedSections as readonly RecordValue[] | undefined)?.find((section) => section.title === 'Earnings Snapshot')?.markdown ?? '')
+    const forecastText = snapshotText.split('### Available institution forecasts')[1]?.split('\n### ')[0] ?? ''
+    const forecastPeriods = [...new Set([...forecastText.matchAll(/\b(?:revenue|net_profit|eps|gross_margin) (\d{4}-(?:FY|H1|Q1|Q3))\b/gmu)].map((match) => match[1]!))].sort()
     outcomes.push({
       target, dispatchStatus: started.status, runId: started.runId ?? null,
       dispatchResolution: started.resolution ?? null,
       dispatchFeedback: started.feedback ?? null,
       execution: summary,
       bundle: bundle ? { bundleId: bundle.bundleId, workflowRunId: bundle.workflowRunId, status: bundle.status, report: bundle.report ?? null, reloadedFromStore: true } : null,
-      reportReloaded, reportSectionCount: reportTitleCount, reportEvidence,
+      reportReloaded, reportMarkdownReloaded, reportSectionCount: reportTitleCount, reportEvidence,
+      acceptance: {
+        identityVerified: verifiedIdentity.symbol === target.symbol && verifiedIdentity.exchange !== undefined,
+        officialFilingAttempted: officialOutcome?.providerAttempted === true,
+        officialFilingUsable: telemetry.officialEvidenceStatus === 'available',
+        actualFinancialAttempted: actualOutcome?.providerAttempted === true,
+        actualMetricsUsable: telemetry.structuredFinancialEvidenceStatus === 'available' && array(record(reportEvidence).actualMetrics).length > 0,
+        numericVersionStatus: String((record(reportEvidence).selectedSections as readonly RecordValue[] | undefined)?.find((section) => section.title === 'Earnings Snapshot')?.markdown ?? '').match(/value version (VERIFIED|UNVERIFIED)/u)?.[1] ?? 'UNAVAILABLE',
+        expectationPrimaryAttempted: primaryOutcome?.providerAttempted === true,
+        expectationFallbackAttempted: fallbackOutcomes.some((item) => item.providerAttempted === true),
+        estimateCount: telemetry.expectationEstimateCount ?? 0,
+        institutionCount: telemetry.expectationInstitutionCount ?? 0,
+        consensusSnapshotCount: telemetry.expectationConsensusSnapshotCount ?? 0,
+        actualVsConsensusCount: telemetry.actualConsensusComparisonCount ?? 0,
+        estimateRevisionCount: telemetry.estimateRevisionCount ?? 0,
+        forecastPeriods,
+        financialQualityStatus: financialQualityStatus(summary.financialQuality),
+        reasoningStatus: record(telemetry.reasoning),
+        qualityGateStatus: summary.qualityGateStatus ?? 'NOT_REPORTED',
+        workflowStatus: summary.status ?? 'missing',
+        reportPersisted: reportReloaded && reportMarkdownReloaded,
+        bundlePersisted: bundleRecord?.status === 'completed' && bundle?.workflowRunId === started.runId,
+        canonicalDelta: { beforeCount: beforeRun.objects.length, afterCount: afterRun.objects.length, unchanged: beforeRunDigest === afterRunDigest },
+      },
     })
     console.log(JSON.stringify({ event: 'RUN_END', target, runId: started.runId ?? null, dispatchStatus: started.status, workflowStatus: record(execution).status ?? null, reportReloaded, reportSectionCount: reportTitleCount, at: now() }))
   }

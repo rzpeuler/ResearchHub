@@ -4,6 +4,9 @@ import type { RawDocumentMetadataV04, RawDocumentRightsV04 } from '../../knowled
 import type { RawDocumentCandidateGroupV04, RawDocumentPreviewWorkflowResultV04 } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts'
 import type { RawDocumentV04CandidateAcceptanceResult } from '../../workflows/raw-document-knowledge-ingestion/v04-candidate-acceptance.ts'
 import type { RawDocumentV04IncompleteExtractionUnit } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-store.ts'
+import type { EarningsFinancialQualitySummary } from '../../skills/earnings-review/financial-quality/contracts.ts'
+import type { EarningsExpectationAnalysis } from '../../workflows/earnings-review/expectations-contracts.ts'
+import type { ResearchQualityGateStatus } from '../../workflows/research-quality-gate.ts'
 
 export type ApplicationErrorCode = 'not_found' | 'invalid_input' | 'cancelled' | 'failed' | 'conflict' | 'executor_unavailable' | 'no_kb_mounted' | 'unauthorized_runtime_token'
 
@@ -249,7 +252,7 @@ export interface IndustryResearchInput { readonly workflowRunId: string; readonl
 export interface ApplicationIndustryResearchResult extends ApplicationResearchResult { readonly providerOutcomes: readonly unknown[]; readonly acquisitionDiagnostics: readonly string[]; readonly operatingObservations: readonly IndustryObservationPoint[]; readonly operatingObservationStatus: 'COMPLETED' | 'PARTIAL' | 'SCOPE_UNSUPPORTED' | 'UNAVAILABLE' | 'SOURCE_UNAVAILABLE' | 'TRANSPORT_UNAVAILABLE' | 'PARSER_UNAVAILABLE'; readonly operatingObservationDiagnostics: readonly string[]; readonly dataRequirementGaps: readonly string[]; readonly requirementCoverage: 'COMPLETE' | 'PARTIAL' }
 export type EarningsReviewPeriod = 'Q1' | 'H1' | 'Q3' | 'FY'
 export interface EarningsReviewInput { readonly workflowRunId: string; readonly symbol: string; readonly name?: string; readonly exchange?: string; readonly fiscalYear: number; readonly period: EarningsReviewPeriod; readonly asOf?: string; readonly writeKnowledge?: boolean; readonly useStructuredKnowledge?: boolean; readonly sourceLibraryContext?: readonly import('./source-library.ts').SourceLibraryHit[] }
-export interface ApplicationEarningsReviewResult extends ApplicationResearchResult { readonly telemetry: unknown; readonly blockedReason?: string; readonly providerOutcomes: readonly unknown[]; readonly acquisitionDiagnostics: readonly unknown[]; readonly selectionDiagnostics: readonly string[] }
+export interface ApplicationEarningsReviewResult extends ApplicationResearchResult { readonly telemetry: unknown; readonly blockedReason?: string; readonly providerOutcomes: readonly unknown[]; readonly acquisitionDiagnostics: readonly unknown[]; readonly selectionDiagnostics: readonly string[]; readonly financialQuality?: EarningsFinancialQualitySummary; readonly expectationAnalysis?: EarningsExpectationAnalysis; readonly qualityGateStatus?: ResearchQualityGateStatus }
 export type ValuationMethod = 'PE' | 'PB' | 'EV_EBITDA'
 export interface ValuationInput { readonly workflowRunId: string; readonly symbol: string; readonly name?: string; readonly exchange?: string; readonly asOf?: string; readonly methods?: readonly ValuationMethod[]; readonly targetFiscalYear?: number; readonly writeKnowledge?: boolean; readonly useStructuredKnowledge?: boolean; readonly sourceLibraryContext?: readonly import('./source-library.ts').SourceLibraryHit[] }
 export interface ApplicationValuationResult extends ApplicationResearchResult { readonly telemetry: unknown; readonly blockedReason?: string; readonly providerOutcome?: unknown; readonly automaticCompsResult?: unknown; readonly crosscheck?: unknown }

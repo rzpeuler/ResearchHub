@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CninfoOfficialDisclosureClient, cninfoShanghaiCalendarDate } from '../../../plugins/research-acquisition/official.ts'
+import { CninfoOfficialDisclosureClient, OfficialDisclosureResearchPlugin, cninfoShanghaiCalendarDate } from '../../../plugins/research-acquisition/official.ts'
 
 test('CNINFO PDF fetch preserves bytes and obtains normalized text only through the Document seam', async () => {
   const bytes = Uint8Array.from([37, 80, 68, 70, 45, 49, 46, 55])
@@ -54,6 +54,16 @@ test('CNINFO topSearch rejects wrong-code rows and missing orgId', async () => {
     const client = new CninfoOfficialDisclosureClient({ fetchImpl: async () => new Response(JSON.stringify(payload), { status: 200 }) })
     await assert.rejects(() => client.resolveOrganizationId('600519'), /CNINFO_ORG_ID_NOT_FOUND:600519/)
   }
+})
+
+test('CNINFO research candidates preserve an explicit correction-to-announcement relation', async () => {
+  const client = new CninfoOfficialDisclosureClient({ fetchImpl: async (input) => String(input).includes('/topSearch/')
+    ? new Response(JSON.stringify([{ code: '600519', orgId: 'gssh0600519', zwjc: '贵州茅台' }]), { status: 200 })
+    : new Response(JSON.stringify({ announcements: [{ announcementTitle: '贵州茅台2026年半年度报告更正公告', adjunctUrl: '/finalpage/2026-09-01/correction.pdf', announcementTime: '2026-09-01T00:00:00.000Z', announcementId: 'correction-2', correctionOf: 'filing-1', secName: '贵州茅台' }] }), { status: 200 }) })
+  const plugin = new OfficialDisclosureResearchPlugin(client)
+  const candidates = await plugin.discover({ company: { symbol: '600519', name: '贵州茅台', exchange: 'SSE' }, asOf: '2026-09-08T00:00:00.000Z', limitPerKind: 1, filingPeriod: { fiscalYear: 2026, fiscalPeriod: 'H1' } })
+  assert.equal(candidates[0]?.metadata?.announcementId, 'correction-2')
+  assert.equal(candidates[0]?.metadata?.correctionOf, 'filing-1')
 })
 
 test('CNINFO management communication query paginates, deduplicates, and returns page-2 history', async () => {

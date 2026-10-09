@@ -5,6 +5,7 @@ import type { AkshareDataClient } from '../../plugins/research-acquisition/aksha
 import type { EastmoneyEstimateSourceRequest, EastmoneyReportAcquisitionResult } from '../../plugins/research-acquisition/expectations/contracts.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import type { EarningsPeriod, EarningsReviewReasoningTelemetry, EarningsReviewSection, EarningsImpactAssessment } from '../../skills/earnings-review/index.ts'
+import type { EarningsFinancialQualitySummary } from '../../skills/earnings-review/financial-quality/contracts.ts'
 import type { ExternalIdentifierV04 } from '../../knowledge/schema/domain-v04.ts'
 import type { ConsensusSnapshot, EstimatePoint, GuidanceRange, SegmentKpiDeltaInput } from '../../skills/earnings-review/expectations/contracts.ts'
 import type { EarningsExpectationAnalysis } from './expectations-contracts.ts'
@@ -135,6 +136,7 @@ export interface EarningsReviewWorkflowResult {
   readonly assessments?: readonly EarningsImpactAssessment[]
   readonly telemetry: EarningsReviewTelemetry
   readonly providerOutcomes: readonly ResearchProviderOutcome[]
+  readonly financialQuality?: EarningsFinancialQualitySummary
   readonly expectationAnalysis?: EarningsExpectationAnalysis
   readonly managementCommunication?: ManagementCommunicationResearchResult
   readonly valuationImpactAnalysis?: EarningsValuationImpactAnalysis

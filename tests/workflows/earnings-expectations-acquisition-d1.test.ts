@@ -56,6 +56,8 @@ test('THS projection normalizes explicit Chinese money, date-only EOD, and rejec
   assert.ok(projection.diagnostics.some((item) => item.startsWith('ths_value_invalid:0:预测年报净利润2026预测')))
   assert.equal(projection.estimates[0]?.publishedAt, '2026-09-18T15:59:59.999Z')
   assert.equal(projection.estimates.find((item) => item.metric === 'eps' && item.fiscalPeriod === '2026-FY')?.unit, 'CNY_per_share')
+  assert.equal(projection.sources[0]?.candidate.url, 'https://basic.10jqka.com.cn/600519/worth.html')
+  assert.equal(projection.sources[0]?.candidate.metadata?.sourceUrl, 'https://basic.10jqka.com.cn/600519/worth.html')
 })
 
 test('future-only provider rows are excluded and marked point-in-time unavailable', () => {

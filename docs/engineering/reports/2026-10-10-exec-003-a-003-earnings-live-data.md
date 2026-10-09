@@ -4,7 +4,7 @@
 **Date:** 2026-10-10
 **Branch:** `codex/exec-003-a-003-earnings-live-data`
 **Baseline:** `origin/main` at `015d41431775953523ffd4d3dd753581fdf5e2fe`
-**Implementation commit:** `cb4eec7` (`feat(earnings): close live actual data workflow`).
+**Implementation commit:** `cb4eec7` (`feat(earnings): close live actual data workflow`), followed by the audited report/runtime contract fixes recorded in the final delivery commit.
 
 ## 1. Baseline & Git State
 
@@ -25,7 +25,7 @@ All four target-period attempts retrieved an issuer-matched CNINFO filing with a
 | 600519.SH, FY2025 | 贵州茅台2025年年度报告 | 1225114741 | 2026-04-16 16:00 | Available |
 | 600519.SH, H1 2026 | 贵州茅台2026年半年度报告 | 1225475868 | 2026-08-14 16:00 | Available |
 
-The exact official URLs and retrieval timestamps are preserved in the per-run evidence. No adjacent period or issuer was substituted. Filing selection requires identity, fiscal year, period, publication time, and the formal filing preference; future filings and unlinked corrections fail closed.
+The exact official URLs, retrieval timestamps, formal document types, and correction relations are preserved in the per-run evidence. All four final dispatches verified the requested issuer and exact period; no adjacent period or issuer was substituted. Filing selection requires identity, fiscal year, period, publication time, and the formal filing preference; future filings and unlinked corrections fail closed.
 
 ## 4. Actual Financial Data Probe
 
@@ -50,11 +50,11 @@ Current-view reports may display sourced aggregator actuals with `CURRENT_VALUE_
 
 ## 7. Expectations Source Ladder
 
-The production SourcePolicy retains THS forecasts as primary, EastMoney individual research reports as fallback 1, and the already-registered legacy EastMoney route as fallback 2. FY2025 runs attempted THS and EastMoney and returned no usable expectations. H1 runs returned 20 THS estimates from 10 institutions; fallback was not selected after the primary returned estimates. Provider attempts, empty/error reasons, and source counts are in the real E2E JSON.
+The production SourcePolicy retains THS forecasts as primary, EastMoney individual research reports as fallback 1, and the already-registered legacy EastMoney route as fallback 2. FY2025 runs attempted THS and EastMoney and returned no usable expectations. H1 runs returned 20 THS estimates from 10 institutions; fallback was not selected after the primary returned estimates. Each estimate keeps institution, analyst, metric, fiscal period, unit, value, publication time, source candidate, original publisher, retrieval provider/time, and the issuer page for THS's institution forecast table (`https://basic.10jqka.com.cn/<ticker>/worth.html`) in the Earnings Snapshot. Provider attempts, empty/error reasons, and source counts are in the real E2E JSON. The final current-code H1 run verifies this source URL is rendered; the source candidate does not contain a per-report PDF URL, so the report links to the official company forecast table and preserves its individual source candidate ID.
 
 ## 8. Consensus & Revisions
 
-No run produced a qualified consensus snapshot or a linked same-institution estimate revision. The 2026 H1 THS rows concern forecast fiscal years, so they do not constitute H1 consensus. The FY2025 samples had no usable estimate rows. Consensus and revision counts are therefore zero; no estimate was synthesized or averaged.
+No run produced a qualified consensus snapshot or a linked same-institution estimate revision. The 2026 H1 THS rows concern FY2026 and were published after the official H1 result cutoffs, so they do not constitute H1 consensus. The FY2025 samples had no usable estimate rows. Consensus and revision counts are therefore zero; no estimate was synthesized or averaged.
 
 ## 9. Actual vs Consensus Qualification
 
@@ -74,28 +74,28 @@ No verified consensus or expectation finding mapped to valuation inputs, so the 
 
 ## 13. ResearchReport & Bundle
 
-Completed Workflow runs persisted and reloaded a 14-section ResearchReport and its ResearchBundle. Reports include verified security identity, period, filing metadata, financial publisher and retrieval provider, exact actuals, value-version status, evidence URLs, derived metrics, and explicit data gaps. Only real HTTPS filing URLs are emitted; no synthetic canonical refs are added.
+Completed Workflow runs persisted and reloaded a 14-section ResearchReport and its ResearchBundle. Reports include verified security identity, period, filing metadata, financial publisher and retrieval provider, exact actuals, value-version status, evidence URLs, derived metrics, expectation source ladder and available forecasts, and explicit data gaps. Earnings Workflow results now retain financial-quality, expectation-analysis, and quality-gate status through the Application service boundary. Only real HTTPS evidence URLs are emitted; no synthetic canonical refs are added.
 
 ## 14. Real 002487 E2E
 
-The initial FY2025 dispatch was `unresolved_reference` and produced no Workflow run. The verified-identity retry completed with CNINFO and AKShare sources, report and Bundle reload, zero consensus, and zero Knowledge delta. The H1 2026 run completed with 20 THS estimates / 10 institutions, no H1 consensus, report and Bundle reload, and zero Knowledge delta. The FY retry Skill fallback rendered supported actual metrics rather than a generic unavailable section.
+The final acceptance run completed both FY2025 and H1 2026 through `ResearchDispatchService.startAsync`. Both returned verified identity, exact CNINFO filings, usable structured actuals, 14-section report reloads, persisted Bundles, and unchanged isolated Knowledge. FY2025 expectation providers returned no usable forecasts; the H1 run produced 20 FY2026 forecasts from 10 institutions, with no period/cutoff-qualified H1 consensus. An earlier unresolved-identity dispatch remains documented in the original live artifact; it is not counted as a successful acceptance run.
 
 ## 15. Real 600519 E2E
 
-FY2025 completed with CNINFO/AKShare actuals; THS and EastMoney returned no usable forecasts. H1 2026 completed with exact-period CNINFO and AKShare actuals; THS returned 20 estimates / 10 institutions but no H1 consensus. Both reports and Bundles reloaded. For H1, the captured Markdown renders the gross-margin movement in bps; its evidence was captured before the structured unit correction in section 4, which is covered by the deterministic regression test.
+The final acceptance run completed both FY2025 and H1 2026 with exact-period CNINFO filings and EastMoney financial values retrieved through AKShare. Both reports and Bundles reloaded. FY2025 expectation providers returned no usable forecasts. H1 returned 20 FY2026 forecasts from 10 institutions, with no qualified H1 consensus because the rows are annual and post-result. Financial reports mark numeric value versions `UNVERIFIED`; gross-margin movement is rendered in basis points.
 
 ## 16. Real Pi ModelRuntime
 
-The normal application invoked `zhipu-openapi/glm-5.3-flash` for earnings synthesis. The calls timed out; output was not validated or applied, and the deterministic Skill fallback was used. This is a real ModelRuntime attempt with fallback, not a claim that model synthesis succeeded.
+The normal application invoked `zhipu-openapi/glm-5.3-flash` for earnings synthesis in all four production runs. Both FY2025 outputs were validated and applied. Both H1 model calls timed out and were not applied; the deterministic Skill fallback completed the base review. This records both successful model synthesis and actual timeout/fallback behavior without attributing unsupported conclusions to the model.
 
 ## 17. Knowledge Read-only Validation
 
-Every live run used an isolated Schema 0.4 Knowledge Base and `writeKnowledge=false`. The before/after canonical object count remained 0, the digest remained unchanged, and report source/claim refs were empty. No user's mounted Knowledge Base was modified.
+Every final live run used an isolated Schema 0.4 Knowledge Base and `writeKnowledge=false`. The before/after canonical object count remained 0, the digest remained unchanged, and report source/claim refs were empty. The final artifact records four persisted Bundles and zero canonical delta for each run. No user's mounted Knowledge Base was modified.
 
 ## 18. Full Test Results
 
-- Focused Earnings/DataResolver/W2 suite: **82/82 passed**.
-- `npm test`: **2,165 passed, 21 failed of 2,186**. Against the A-002 baseline (**2,159 passed, 21 failed of 2,180**), exact normalized failing test names are identical: **0 new failures, 0 baseline failures cleared**. Full identifiers are committed in `tests/validation/evidence/RHL-EXEC-003-A-003-test-comparison.json`.
+- Focused Earnings/DataResolver/W2, THS acquisition/source URL, and official-disclosure suite after the final runtime/report fixes: **133/133 passed**.
+- `npm test`: **2,167 passed, 21 failed of 2,188**. Against the A-002 baseline (**2,159 passed, 21 failed of 2,180**), exact normalized failing test names are identical: **0 new failures, 0 baseline failures cleared**. Full identifiers are committed in `tests/validation/evidence/RHL-EXEC-003-A-003-test-comparison.json`.
 - `npm run typecheck`: PASS.
 - `npm run client:typecheck`: PASS.
 - `npm run client:build`: PASS; existing Vite warning reports a 638 kB minified client chunk.
@@ -107,9 +107,9 @@ Every live run used an isolated Schema 0.4 Knowledge Base and `writeKnowledge=fa
 - Aggregator numeric historical versions remain unverified; fixed historical PIT use is blocked.
 - Operating cash flow and inputs for working-capital/FCF quality are unavailable.
 - Management-communication data was not accepted for these samples.
-- Pi synthesis timed out and deterministic fallback supplied the report narrative.
-- The first 002487 FY identity attempt failed; a verified exchange-qualified retry completed successfully.
+- H1 Pi synthesis timed out and deterministic fallback supplied the report narrative; both FY synthesis calls were validated and applied.
+- H1 actual-versus-consensus remains a genuine source/period/cutoff gap; the annual forecasts are preserved and explicitly not compared with H1 actuals.
 
 ## 20. Final Commit & Delivery Status
 
-Status remains **IMPLEMENTED / SOL ACCEPTANCE PENDING**. Implementation commit `cb4eec7` contains the runtime, tests, and live evidence. This report is the follow-on delivery record. A-003 is delivered on `codex/exec-003-a-003-earnings-live-data`; it is not merged into `main`. The final branch SHA, pushed remote SHA, and clean worktree are verified after commit and push and included in the delivery handoff. E2E artifacts are under `tests/validation/evidence/`.
+Status remains **IMPLEMENTED / SOL ACCEPTANCE PENDING**. The final four-run live artifact is `tests/validation/evidence/RHL-EXEC-003-A-003-final-live-e2e.json`; the final current-code H1 source-provenance artifact is `tests/validation/evidence/RHL-EXEC-003-A-003-final-provenance-600519-h1.json`. A-003 is delivered on `codex/exec-003-a-003-earnings-live-data`; it is not merged into `main`. The final branch SHA, pushed remote SHA, and clean worktree are verified after commit and push and included in the delivery handoff. E2E artifacts are under `tests/validation/evidence/`.

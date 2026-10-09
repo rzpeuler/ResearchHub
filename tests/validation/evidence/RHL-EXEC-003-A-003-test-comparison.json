@@ -8,8 +8,8 @@
     "failed": 21
   },
   "current": {
-    "tests": 2186,
-    "passed": 2165,
+    "tests": 2188,
+    "passed": 2167,
     "failed": 21
   },
   "failureIdComparison": {
@@ -66,9 +66,9 @@
     ]
   },
   "focused": {
-    "command": "node --import tsx --test tests/workflows/earnings-review.test.ts tests/workflows/earnings-data-resolver.test.ts tests/workflows/earnings-expectations-integration.test.ts",
-    "tests": 82,
-    "passed": 82,
+    "command": "node --import tsx --test tests/workflows/earnings-expectations-integration.test.ts tests/workflows/earnings-automatic-expectations.test.ts tests/workflows/earnings-review.test.ts tests/workflows/earnings-expectations-acquisition-d1.test.ts tests/plugins/research-acquisition/official-fix.test.ts tests/workflows/earnings-data-resolver.test.ts",
+    "tests": 133,
+    "passed": 133,
     "failed": 0
   },
   "typecheck": "PASS",
