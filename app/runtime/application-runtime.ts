@@ -27,7 +27,7 @@ import { createResearchHubSessionRuntime, ResearchHubSessionRuntime } from './se
 import { validateStorageRoots } from './storage-boundary.ts'
 import type { ResearchHubApplicationRuntimeOptions, ResearchHubApplicationServices } from './contracts.ts'
 import { createDailyIntelligenceComposition } from '../services/daily-intelligence-composition.ts'
-import { createRuntimeIndustryDataResolverFactory } from '../services/industry-data-resolver-factory.ts'
+import { createRuntimeIndustryDataResolverComposition } from '../services/industry-data-resolver-factory.ts'
 import { DailyBriefScheduler } from '../../plugins/daily-intelligence/scheduler.ts'
 import { TradingCalendarService } from '../../plugins/daily-intelligence/calendar.ts'
 import { ResearchDispatchService } from '../services/research-dispatch-service.ts'
@@ -43,6 +43,7 @@ import { ThemeScopeImpactService } from '../services/theme-scope-impact-service.
 import { ThemeFrameworkAcquisitionAdapter } from '../../plugins/research-acquisition/theme-framework-acquisition.ts'
 import { AkshareIndustryResearchPlugin } from '../../plugins/research-acquisition/industry.ts'
 import { loadReviewCase } from '../../knowledge/review/store.ts'
+import { createIndustryDataCatalog, type IndustryDataCatalog } from '../../data/industry-catalog.ts'
 import { loadReviewDecision } from '../../knowledge/review/decision-store.ts'
 import { createDataSourceAdministrationService } from '../services/data-source-administration.ts'
 import { FileDataSourceTestStore } from '../services/data-source-test-store.ts'
@@ -100,6 +101,8 @@ export class ResearchHubApplicationRuntime {
   readonly sessionManager: SessionManager
   readonly services: ResearchHubApplicationServices
   readonly sessionRuntime: ResearchHubSessionRuntime
+  readonly industryDataCatalog: IndustryDataCatalog
+  readonly industryDataBoundOperationIds?: readonly string[]
   private readonly ownsModelRuntime: boolean
   private readonly dailyScheduler?: DailyBriefScheduler
   private dailySchedulerTimer?: NodeJS.Timeout
@@ -114,6 +117,8 @@ export class ResearchHubApplicationRuntime {
     readonly sessionManager: SessionManager
     readonly services: ResearchHubApplicationServices
     readonly sessionRuntime: ResearchHubSessionRuntime
+    readonly industryDataCatalog: IndustryDataCatalog
+    readonly industryDataBoundOperationIds?: readonly string[]
     readonly ownsModelRuntime: boolean
     readonly dailyScheduler?: DailyBriefScheduler
   }) {
@@ -125,6 +130,8 @@ export class ResearchHubApplicationRuntime {
     this.sessionManager = input.sessionManager
     this.services = input.services
     this.sessionRuntime = input.sessionRuntime
+    this.industryDataCatalog = input.industryDataCatalog
+    this.industryDataBoundOperationIds = input.industryDataBoundOperationIds
     this.ownsModelRuntime = input.ownsModelRuntime
     this.dailyScheduler = input.dailyScheduler
   }
@@ -186,7 +193,11 @@ export class ResearchHubApplicationRuntime {
     const industryReasoningExecutorFactory = options.industryReasoningExecutorFactory
     const dailyComposition = options.dailyIntelligenceService === undefined ? await createDailyIntelligenceComposition({ cwd, workflowService, reasoningExecutor, modelRuntime, mountedKnowledgeBaseRoot, industryOperatingObservationAcquisition: options.industryOperatingObservationAcquisition, akshare }) : undefined
     const industryOperatingObservationAcquisition = options.industryOperatingObservationAcquisition ?? dailyComposition?.industryOperatingObservationAcquisition ?? new IndustryOperatingObservationAcquisition()
-    const industryDataResolverFactory = options.industryDataResolverFactory ?? createRuntimeIndustryDataResolverFactory({ plugins: industryAcquisitionPlugins, metricAcquisition: industryOperatingObservationAcquisition as never, ...(options.industryDataCatalog ? { catalog: options.industryDataCatalog } : {}) })
+    const industryDataCatalog = options.industryDataCatalog ?? createIndustryDataCatalog()
+    const industryDataResolverComposition = options.industryDataResolverFactory === undefined
+      ? createRuntimeIndustryDataResolverComposition({ plugins: industryAcquisitionPlugins, metricAcquisition: industryOperatingObservationAcquisition as never, catalog: industryDataCatalog })
+      : undefined
+    const industryDataResolverFactory = options.industryDataResolverFactory ?? industryDataResolverComposition!.factory
     const dailyIntelligenceService = options.dailyIntelligenceService ?? dailyComposition!.service
     if (researchService === undefined && mountedKnowledgeBaseRoot !== undefined) {
       try { const manifest = await loadKnowledgeBaseManifest(mountedKnowledgeBaseRoot); if (manifest.schemaVersion === '0.4' && manifest.storageFormatVersion === '1') { const dailySignalStore = new FileDailySignalStore(join(cwd, 'runtime-data', 'daily-signals.jsonl')); const cninfo = new CninfoOfficialDisclosureClient(); const official = new OfficialDisclosureResearchPlugin(cninfo); const gdelt = new GdeltResearchPlugin(); researchService = new ResearchService({ mountedKnowledgeBaseRoot, cwd, workflowService, reasoningExecutor, industryReasoningExecutorFactory, industryDataResolverFactory, signalStore: new FileResearchSignalStore(join(cwd, 'runtime-data', 'research-signals.jsonl')), dailySignalStore, acquisitionPlugins: [official, gdelt], researchEvidenceProviders: { cninfo: official, gdelt }, industryAcquisitionPlugins, akshare, officialDisclosure: cninfo, valuationDataResolverFactory: ({ company, valuationDate, asOf, now, signal }) => createValuationDataResolver({ akshare, officialDisclosure: cninfo, company, valuationDate, ...(asOf ? { historicalAsOf: asOf } : {}), now, signal }), earningsDataResolverFactory: ({ company, fiscalYear, period, asOf, now, signal }) => createEarningsDataResolver({ company, fiscalYear, period, asOf, now, signal, acquisitionPlugins: [official], officialDisclosurePlugin: official, akshare, selectFilings: (candidates, year, filingPeriod, cutoff) => selectOfficialEarningsFilings(candidates, { fiscalYear: year, period: filingPeriod }, cutoff) }), managementCommunicationSources: createManagementCommunicationSources(cninfo, akshare), managementCommunicationDataResolverFactory: (options) => createManagementCommunicationDataResolver(options), ...(themeScopeImpactService === undefined ? {} : { themeScopeImpactChecker: themeScopeImpactService }) }); industryProvidersAssembled = true; researchIntegrationDefinitions.push(
@@ -232,7 +243,7 @@ export class ResearchHubApplicationRuntime {
     try {
       const sessionRuntime = await createResearchHubSessionRuntime({ cwd, agentDir, modelRuntime, sessionManager, applicationServices: piApplicationServices, mountedKnowledgeBaseRoot, workspaceRoot, model: selectedModel, reasoningExecutor, settingsManager: options.settingsManager, resourceLoader: options.resourceLoader, researchService, dailyIntelligenceService })
       const dailyScheduler = new DailyBriefScheduler({ statePath: join(cwd, 'runtime-data', 'daily-scheduler.json'), calendar: dailyComposition?.calendar ?? dailyIntelligenceService.calendar ?? new TradingCalendarService({ cachePath: join(cwd, 'runtime-data', 'trading-calendar.json') }), run: async (briefType, tradeDate) => { const run = dailyIntelligenceService.startBrief({ workflowRunId: `scheduled-${briefType}-${tradeDate}`, briefType, tradeDate }); const result = await run.completion; return { status: result.status } } })
-      const runtime = new ResearchHubApplicationRuntime({ cwd, agentDir, workspaceRoot, mountedKnowledgeBaseRoot, modelRuntime, sessionManager, services, sessionRuntime, ownsModelRuntime, dailyScheduler })
+      const runtime = new ResearchHubApplicationRuntime({ cwd, agentDir, workspaceRoot, mountedKnowledgeBaseRoot, modelRuntime, sessionManager, services, sessionRuntime, industryDataCatalog, ...(industryDataResolverComposition === undefined ? {} : { industryDataBoundOperationIds: industryDataResolverComposition.boundOperationIds }), ownsModelRuntime, dailyScheduler })
       if (options.startDailyScheduler !== false) runtime.startDailyScheduler()
       return runtime
     } catch (error) {

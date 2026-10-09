@@ -15,8 +15,13 @@ export interface RuntimeIndustryDataResolverOptions {
   readonly catalog?: IndustryDataCatalog
 }
 
+export interface RuntimeIndustryDataResolverComposition {
+  readonly factory: IndustryDataResolverFactory
+  readonly boundOperationIds: readonly string[]
+}
+
 /** Runtime binds named, reviewed source operations to the existing Industry policies. */
-export function createRuntimeIndustryDataResolverFactory(options: RuntimeIndustryDataResolverOptions): IndustryDataResolverFactory {
+export function createRuntimeIndustryDataResolverComposition(options: RuntimeIndustryDataResolverOptions): RuntimeIndustryDataResolverComposition {
   const catalog = options.catalog ?? createIndustryDataCatalog()
   const miit = options.plugins.find((plugin) => plugin instanceof MiitIndustryResearchPlugin)
   const govcn = options.plugins.find((plugin) => plugin instanceof GovCnIndustryResearchPlugin)
@@ -33,5 +38,13 @@ export function createRuntimeIndustryDataResolverFactory(options: RuntimeIndustr
     'industry.metric.miit.lithium-carbonate-average-price': createIndustryMetricOperation(options.metricAcquisition),
     'industry.metric.miit.lithium-hydroxide-average-price': createIndustryMetricOperation(options.metricAcquisition),
   })
-  return (context) => createIndustryDataResolver({ catalog, policies: INDUSTRY_DATA_SOURCE_POLICIES, operations }, context)
+  const boundOperationIds = Object.freeze(Object.entries(operations).filter(([, operation]) => operation !== undefined).map(([operationId]) => operationId))
+  return {
+    factory: (context) => createIndustryDataResolver({ catalog, policies: INDUSTRY_DATA_SOURCE_POLICIES, operations }, context),
+    boundOperationIds,
+  }
+}
+
+export function createRuntimeIndustryDataResolverFactory(options: RuntimeIndustryDataResolverOptions): IndustryDataResolverFactory {
+  return createRuntimeIndustryDataResolverComposition(options).factory
 }
