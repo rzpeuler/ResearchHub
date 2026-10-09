@@ -134,6 +134,61 @@ describe('Homepage shell', () => {
     expect(await screen.findByRole('heading', { name: 'report-nvda-fy26-q1' })).toBeTruthy()
   })
 
+  it('shows delayed terminal result and Bundle without requiring a mounted Knowledge Base', async () => {
+    const calls: string[] = []
+    let poll = 0
+    const blockedResult = { runId: 'run-delayed', workflowId: 'industry_research', executionStatus: 'blocked', terminalStatus: 'blocked', summary: 'Industry evidence is unavailable.', blockedReason: 'NO_CANONICAL_INDUSTRY_METRIC', bundleRef: 'research-bundle-run-delayed', diagnostics: [], bundleStatus: 'available' }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input); calls.push(`${init?.method ?? 'GET'} ${path}`)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeError: { code: 'no_kb_mounted', error: 'not mounted' } })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'industry_research', label: 'Industry Research', intentDescription: 'Research an industry', inputSchema: {}, requiredInputs: ['name'], outputContract: 'IndustryReport', knowledgeEffects: [] }] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'Research lithium battery industry', mode: { type: 'workflow', workflowId: 'industry_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'industry_research', confidence: 1, arguments: { name: 'Lithium battery' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'industry_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'run-delayed' }, 202)
+      if (path === '/api/workflows/run-delayed') {
+        poll += 1
+        if (poll === 1) return json({ runId: 'run-delayed', workflowType: 'industry_research', objective: 'Research lithium battery industry', status: 'running', startedAt: 'now', updatedAt: 'now' })
+        if (poll === 2) return json({ runId: 'run-delayed', workflowType: 'industry_research', objective: 'Research lithium battery industry', status: 'blocked', startedAt: 'now', updatedAt: 'now' })
+        return json({ runId: 'run-delayed', workflowType: 'industry_research', objective: 'Research lithium battery industry', status: 'blocked', startedAt: 'now', updatedAt: 'now', executionResult: blockedResult })
+      }
+      if (path === '/api/research/bundles/by-run/run-delayed') return json({ bundleId: 'research-bundle-run-delayed', workflowRunId: 'run-delayed', createdAt: 'now', status: 'blocked', proposals: [], sourceLibraryHits: [], structuredResult: {} })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), { target: { value: 'Research lithium battery industry' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    expect(await screen.findByText('Blocked because: NO_CANONICAL_INDUSTRY_METRIC', {}, { timeout: 5000 })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Open Research Bundle' })).toBeTruthy()
+    expect(poll).toBe(3)
+    expect(calls.filter((call) => call === 'GET /api/workflows/run-delayed')).toHaveLength(3)
+    expect(calls).toContain('GET /api/research/bundles/by-run/run-delayed')
+  })
+
+  it('shows a retry action when terminal result synchronization reaches its bound', async () => {
+    let polls = 0
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeError: { code: 'no_kb_mounted', error: 'not mounted' } })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'industry_research', label: 'Industry Research', intentDescription: 'Research an industry', inputSchema: {}, requiredInputs: ['name'], outputContract: 'IndustryReport', knowledgeEffects: [] }] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
+      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'Research lithium battery industry', mode: { type: 'workflow', workflowId: 'industry_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'industry_research', confidence: 1, arguments: { name: 'Lithium battery' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'industry_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'run-timeout' }, 202)
+      if (path === '/api/workflows/run-timeout') { polls += 1; return json({ runId: 'run-timeout', workflowType: 'industry_research', objective: 'Research lithium battery industry', status: 'blocked', startedAt: 'now', updatedAt: 'now' }) }
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    render(<App />)
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), { target: { value: 'Research lithium battery industry' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    expect(await screen.findByRole('button', { name: 'Retry synchronization' }, { timeout: 12_000 })).toBeTruthy()
+    expect(screen.getByText('Final result synchronization timed out or failed. You can retry.')).toBeTruthy()
+    const beforeRetry = polls
+    fireEvent.click(screen.getByRole('button', { name: 'Retry synchronization' }))
+    await waitFor(() => expect(polls).toBeGreaterThan(beforeRetry), { timeout: 2_000 })
+    expect(screen.queryByText('Loading final result forever')).toBeNull()
+  }, 12_000)
+
   it('renders dispatch executor gaps as bounded feedback without raw errors', async () => {
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input)

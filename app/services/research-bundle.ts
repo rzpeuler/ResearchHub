@@ -1,4 +1,5 @@
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { link, mkdir, open, readdir, readFile, rename, rm } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import type { ResearchDispatchDecision, ResearchExecutionSummary, ResearchRequest } from './research-dispatch-contracts.ts'
@@ -87,28 +88,86 @@ function bundleEquivalent(left: ResearchBundle, right: ResearchBundle): boolean 
   return isDeepStrictEqual(leftValue, rightValue)
 }
 
+function isSessionPendingStatus(value: string): value is 'free_research_pending' | 'skill_plan_pending' { return value === 'free_research_pending' || value === 'skill_plan_pending' }
+
+function isSessionCompletion(existing: ResearchBundle, incoming: ResearchBundle): boolean {
+  if (!isSessionPendingStatus(existing.status) || (incoming.status !== 'completed' && incoming.status !== 'failed')) return false
+  const prior = record(existing.structuredResult) ? existing.structuredResult : undefined
+  const result = record(incoming.structuredResult) ? incoming.structuredResult : undefined
+  if (!prior || !result || prior.status !== existing.status || prior.executionBoundary !== 'session') return false
+  if (result.status !== incoming.status || result.executionBoundary !== 'session') return false
+  const expectedMode = existing.status === 'free_research_pending' ? 'free_research' : 'skill_plan'
+  if (existing.decision.mode !== expectedMode) return false
+
+  const expectedKeys = ['executionBoundary', 'status', 'selectedSkills', 'sourceLibraryHits', 'entities', 'evidenceRefs', 'proposalCandidates']
+  const terminalKeys = incoming.status === 'completed' ? [...expectedKeys, 'answer'] : [...expectedKeys, 'error']
+  if (Object.keys(result).some((key) => !terminalKeys.includes(key))) return false
+  if (incoming.status === 'completed') {
+    if (typeof result.answer !== 'string' || result.answer.length === 0 || result.answer.length > 50_000 || 'error' in result) return false
+  } else if (result.error !== 'No assistant output was captured for the Free Research session.' || 'answer' in result) return false
+
+  const evidenceRefs = existing.sourceLibraryHits.map((hit) => hit.sourceLibraryRef)
+  if (!isDeepStrictEqual(result.selectedSkills, existing.decision.skills)
+    || !isDeepStrictEqual(result.sourceLibraryHits, existing.sourceLibraryHits)
+    || !isDeepStrictEqual(result.entities, existing.decision.entities)
+    || !isDeepStrictEqual(result.evidenceRefs, evidenceRefs)
+    || !isDeepStrictEqual(result.proposalCandidates, existing.proposals)) return false
+
+  const { status: _existingStatus, structuredResult: _existingResult, ...existingIdentity } = existing
+  const { status: _incomingStatus, structuredResult: _incomingResult, ...incomingIdentity } = incoming
+  return isDeepStrictEqual(existingIdentity, incomingIdentity)
+}
+
 export class FileResearchBundleStore implements ResearchBundleStore {
+  private static readonly writeTails = new Map<string, Promise<void>>()
   private readonly root: string
   constructor(root: string) { this.root = resolve(root) }
   async put(bundle: ResearchBundle): Promise<void> {
     validateBundle(bundle)
     await mkdir(this.root, { recursive: true })
     const target = join(this.root, `${bundle.bundleId}.json`)
-    try {
-      const existing = validateBundle(JSON.parse(await readFile(target, 'utf8')))
-      if (!bundleEquivalent(existing, bundle)) throw new Error(`ResearchBundle run identity conflict: ${bundle.workflowRunId}`)
-      return
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    }
-    try { await writeFile(target, `${JSON.stringify(bundle, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' }) }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    await this.withWriteLock(target, async () => {
       const existing = await this.get(bundle.bundleId)
-      if (existing !== undefined && bundleEquivalent(existing, bundle)) return
-      throw new ApplicationServiceError('conflict', `ResearchBundle run identity conflict: ${bundle.workflowRunId}`, { cause: error })
-    }
+      if (existing !== undefined) {
+        if (bundleEquivalent(existing, bundle)) return
+        if (!isSessionCompletion(existing, bundle)) throw new ApplicationServiceError('conflict', `ResearchBundle run identity conflict: ${bundle.workflowRunId}`)
+        await this.writeAtomic(target, bundle, true)
+        return
+      }
+      await this.writeAtomic(target, bundle, false)
+    })
   }
   async get(bundleId: string): Promise<ResearchBundle | undefined> { safeId(bundleId, 'bundleId'); try { return validateBundle(JSON.parse(await readFile(join(this.root, `${bundleId}.json`), 'utf8'))) } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error } }
   async list(limit = 50): Promise<readonly ResearchBundle[]> { const bounded = Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 200) : 50; let names: string[] = []; try { names = await readdir(this.root) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; return [] } const bundles: ResearchBundle[] = []; for (const name of names.filter((item) => item.endsWith('.json')).sort().reverse().slice(0, bounded)) { try { bundles.push(validateBundle(JSON.parse(await readFile(join(this.root, name), 'utf8')))) } catch { /* malformed derived records are skipped; raw workflow output remains authoritative */ } } return bundles.sort((a, b) => b.createdAt.localeCompare(a.createdAt)) }
+
+  private async withWriteLock<T>(target: string, operation: () => Promise<T>): Promise<T> {
+    const previous = FileResearchBundleStore.writeTails.get(target) ?? Promise.resolve()
+    let release!: () => void
+    const current = new Promise<void>((resolveCurrent) => { release = resolveCurrent })
+    const tail = previous.catch(() => undefined).then(() => current)
+    FileResearchBundleStore.writeTails.set(target, tail)
+    await previous.catch(() => undefined)
+    try { return await operation() }
+    finally {
+      release()
+      if (FileResearchBundleStore.writeTails.get(target) === tail) FileResearchBundleStore.writeTails.delete(target)
+    }
+  }
+
+  protected async writeAtomic(target: string, bundle: ResearchBundle, replace: boolean): Promise<void> {
+    const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`
+    let handle: Awaited<ReturnType<typeof open>> | undefined
+    try {
+      handle = await open(temporary, 'wx')
+      await handle.writeFile(`${JSON.stringify(bundle, null, 2)}\n`, 'utf8')
+      await handle.sync()
+      await handle.close()
+      handle = undefined
+      if (replace) await rename(temporary, target)
+      else await link(temporary, target)
+    } finally {
+      if (handle !== undefined) await handle.close().catch(() => undefined)
+      await rm(temporary, { force: true }).catch(() => undefined)
+    }
+  }
 }

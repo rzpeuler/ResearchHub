@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { ResearchDispatchService, extractWorkflowArguments } from '../../../app/services/research-dispatch-service.ts'
+import { FileResearchBundleStore } from '../../../app/services/research-bundle.ts'
 import { createWorkflowDefinitionRegistry } from '../../../app/services/workflow-registry.ts'
 import { ResearchSkillRegistry } from '../../../app/services/skill-registry.ts'
 import { WorkflowService } from '../../../app/services/workflow-service.ts'
@@ -194,11 +195,36 @@ test('started dispatch persists one ResearchBundle from the workflow result and 
   } finally { await rm(knowledgeBase, { recursive: true, force: true }) }
 })
 
-test('session-bound ResearchBundle is finalized from the captured assistant output', async () => {
-  const values = new Map<string, any>(); const store = { async put(bundle: any) { values.set(bundle.bundleId, bundle) }, async get(id: string) { return values.get(id) }, async list() { return [...values.values()] } }
-  const service = new ResearchDispatchService({ bundleStore: store as never }); const started = service.start({ query: '整理一个泛化研究问题' }); assert.equal(started.status, 'free_research'); assert.ok(started.runId)
-  await service.completeSessionResearch(started.runId!, 'captured assistant answer')
-  const bundle = values.get(`research-bundle-${started.runId!}`); assert.equal(bundle.status, 'completed'); assert.deepEqual(bundle.structuredResult, { status: 'completed', executionBoundary: 'session', answer: 'captured assistant answer', selectedSkills: [], sourceLibraryHits: [], entities: [], evidenceRefs: [], proposalCandidates: [] })
+test('Free Research and Skill Plan complete through FileResearchBundleStore and survive reload', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-exec-002-session-file-store-'))
+  try {
+    const registry = new ResearchSkillRegistry([{ id: 'custom-methodology', kind: 'research', researchCapability: 'custom_research', intentDescription: 'Custom methodology', whenToUse: 'custom-methodology', enabled: true, scope: 'researchhub' }])
+    const store = new FileResearchBundleStore(root)
+    const service = new ResearchDispatchService({ bundleStore: store, skillRegistry: registry })
+    const cases = [
+      { query: '整理一个泛化研究问题', mode: 'free_research', runPrefix: 'free-', answer: 'Captured Free Research assistant answer.' },
+      { query: 'custom-methodology', mode: 'skill_plan', runPrefix: 'skill-', answer: 'Captured Skill Plan assistant answer.' },
+    ] as const
+    for (const item of cases) {
+      const started = service.start({ query: item.query })
+      assert.equal(started.status, item.mode)
+      assert.ok(started.runId?.startsWith(item.runPrefix))
+      const pending = await service.getBundleForRun(started.runId!)
+      assert.equal(pending?.status, `${item.mode}_pending`)
+      await service.completeSessionResearch(started.runId!, item.answer)
+      const reopened = new FileResearchBundleStore(root)
+      const completed = await reopened.get(`research-bundle-${started.runId}`)
+      assert.equal(completed?.status, 'completed')
+      assert.equal((completed?.structuredResult as { answer?: string }).answer, item.answer)
+      assert.deepEqual(completed?.request, pending?.request)
+      assert.deepEqual(completed?.decision, pending?.decision)
+      assert.deepEqual(completed?.request.contextPolicy, pending?.request.contextPolicy)
+      assert.deepEqual(completed?.request.persistencePolicy, pending?.request.persistencePolicy)
+      await service.completeSessionResearch(started.runId!, item.answer)
+      await assert.rejects(service.completeSessionResearch(started.runId!, `${item.answer} Changed.`), /identity conflict/u)
+      assert.equal(((await reopened.get(`research-bundle-${started.runId}`))?.structuredResult as { answer?: string }).answer, item.answer)
+    }
+  } finally { await rm(root, { recursive: true, force: true }) }
 })
 
 test('Name-only company mentions are unresolved without Knowledge or semantic identity evidence', () => {

@@ -212,3 +212,65 @@ projection, Bundle association, the existing Bundle read API, homepage result
 feedback, and tests for those paths. No domain Workflow behavior, Knowledge
 write authority, review gate, Provider architecture, or schema was changed.
 The branch is delivered separately and is not merged into `main`.
+
+## FIX-001 — ResearchBundle lifecycle and terminal result synchronization
+
+### Root causes and fix boundary
+
+`FileResearchBundleStore.put()` treated every same-run Bundle as immutable.
+That correctly protected Workflow terminal Bundles, but also rejected the
+existing Session Research lifecycle that first writes a pending Bundle and
+later completes or fails it. The store now allows only
+`free_research_pending` / `skill_plan_pending` to `completed` / `failed`
+transitions at the Session boundary. It verifies that the request, dispatch
+decision, permissions, source/evidence references, proposals, and all other
+identity fields remain unchanged. Workflow terminal Bundle writes remain
+idempotent only when equivalent and reject conflicting content.
+
+Session replacement is written to a unique same-directory temporary file,
+flushed, and atomically renamed over the pending record. Initial creation uses
+an exclusive hard link so a concurrent create cannot replace an existing
+record. A per-path write queue serializes compare-and-write operations across
+store instances in the Runtime process. Failed replacement leaves the pending
+record readable.
+
+The homepage previously treated a terminal Workflow status as proof that its
+`executionResult` had also been projected. Polling now considers a result
+synchronized only when it belongs to the same `runId`, matches both terminal
+status fields, and its Bundle is no longer `pending`. It continues polling that
+run for a bounded number of attempts, then shows an explicit retry action.
+Knowledge Base mounting is no longer a prerequisite for ordinary Workflow
+status polling. Stopped polling instances and run identity checks prevent late
+responses from replacing another run's state.
+
+### Focused acceptance evidence
+
+| Requirement | Evidence |
+| --- | --- |
+| Real Session Bundle persistence | `research-dispatch-service.test.ts` runs both Free Research and Skill Plan through `completeSessionResearch()` using `FileResearchBundleStore`; it reloads through a new store instance and verifies the assistant answer, terminal status, preserved request/decision/permissions, idempotent duplicate completion, and rejection of a changed answer. |
+| Constrained atomic store transition | `research-bundle.test.ts` verifies pending-to-completed and pending-to-failed transitions, concurrent equivalent completion across real store instances, policy-change rejection, disk read-back, and preservation of pending data when atomic replacement fails. |
+| Terminal/result race | `workflow-polling.test.ts` covers running → blocked without result → blocked with result, plus delayed `completed`, `completed_with_review` review reference, cancellation remaining authoritative, and `failed` with Bundle persistence failure. It also checks wrong-run results and pending Bundles do not terminate synchronization. |
+| Homepage without Knowledge | `App.test.tsx` drives the real client against the dispatch and Workflow routes without a mounted Knowledge Base, then verifies the blocked reason and same-run Bundle entry after result synchronization. Timeout coverage verifies the user can retry. |
+
+### FIX-001 validation
+
+| Validation | Result |
+| --- | --- |
+| Focused File Bundle and dispatch service tests | 35/35 passed |
+| Workflow binding/state and Bundle regression set | 50/50 passed, including all 9 production Workflow bindings |
+| Focused homepage and polling tests | 59/59 passed |
+| Full Client suite (`npm test`) | 122/122 passed |
+| Full Node suite (`npm test`) | 2,134 tests; 2,111 passed; 23 failed |
+| Exact Node failure-ID comparison against clean-main baseline | Baseline 23; current 23; 0 new IDs; 0 fixed IDs |
+| `npm run typecheck` | Passed |
+| `npm run client:typecheck` | Passed |
+| `npm run client:build` | Passed; existing 638.08 kB minified JavaScript chunk advisory remains |
+| `git diff --check` | Passed; Git reports expected LF-to-CRLF normalization notices |
+
+The full suite exits nonzero on the same 23 clean-main baseline failures listed
+above. The current full-suite log is retained at
+`%TEMP%\rhl-exec-002-fix001-final-npm-test.log`; exact identifier comparison
+against `%TEMP%\rhl-exec-002-baseline-main-npm-test.log` found no new or fixed
+failure IDs. The full Client stage passed. No live model or external-provider
+E2E was run. FIX-001 remains separate from `main` and is delivered as
+`IMPLEMENTED / SOL ACCEPTANCE PENDING`.
