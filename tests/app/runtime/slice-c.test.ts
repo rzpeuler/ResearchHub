@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 import { Readable } from 'node:stream'
 import { createServer as createHttpServer } from 'node:http'
 import { EventEmitter } from 'node:events'
-import { fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai'
+import { fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { AttachmentService, type AttachmentRef } from '../../../app/runtime/attachment-service.ts'
 import { createResearchHubApplicationRuntime } from '../../../app/runtime/application-runtime.ts'
@@ -44,14 +44,14 @@ async function makeRuntimeFixture() {
   return { root, cwd, agentDir, sessionDir, modelRuntime, runtime, faux }
 }
 
-async function makeMountedRuntimeFixture() {
+async function makeMountedRuntimeFixture(researchService?: import('../../../app/services/research-service.ts').ResearchService) {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-runtime-mounted-c-'))
   const cwd = join(root, 'cwd'); const agentDir = join(root, 'agent'); const sessionDir = join(root, 'sessions'); const workspaceRoot = join(root, 'workspace'); const mountedKnowledgeBaseRoot = await createKnowledgeBase({ knowledgeBaseId: `kb-mounted-${Date.now()}-${Math.random()}` })
   await mkdir(cwd, { recursive: true }); await mkdir(agentDir, { recursive: true })
   const modelRuntime = await ModelRuntime.create({ authPath: join(agentDir, 'auth.json'), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false })
   const faux = fauxProvider({ provider: `researchhub-runtime-mounted-${Date.now()}-${Math.random()}`, models: [{ id: 'fixture-model' }] })
   modelRuntime.registerNativeProvider(faux.provider)
-  const runtime = await createResearchHubApplicationRuntime({ cwd, agentDir, sessionDir, mountedKnowledgeBaseRoot, workspaceRoot, modelRuntime, model: faux.getModel(), reasoningExecutor: new FixtureExecutor() })
+  const runtime = await createResearchHubApplicationRuntime({ cwd, agentDir, sessionDir, mountedKnowledgeBaseRoot, workspaceRoot, modelRuntime, model: faux.getModel(), reasoningExecutor: new FixtureExecutor(), ...(researchService === undefined ? {} : { researchService }) })
   return { root, cwd, agentDir, sessionDir, workspaceRoot, mountedKnowledgeBaseRoot, modelRuntime, runtime, faux }
 }
 
@@ -254,6 +254,49 @@ test('Slice C HTTP server provides bootstrap/security/202/product APIs, no-KB ma
     const attachmentRead = await fetch(`${info.origin}/api/attachments/${uploadedJson.attachment.attachmentId}`); assert.equal(attachmentRead.status, 200); assert.equal((await attachmentRead.json()).attachment.attachmentId, uploadedJson.attachment.attachmentId)
   } finally { await server.close(); await fixture.runtime.close(); await rm(fixture.root, { recursive: true, force: true }) }
   assert.equal(server.address, undefined); await assert.rejects(() => fetch(`${info!.origin}/api/bootstrap`))
+})
+
+test('Pi conversation defaults research persistence to deny, honors explicit policy, and does not retain authorization for follow-up', async () => {
+  const received: Record<string, unknown>[] = []
+  let releaseAuthorized!: () => void
+  const researchService = { startResearchCompany(input: Record<string, unknown>) { received.push(input); const completion = input.writeKnowledge === true ? new Promise((resolve) => { releaseAuthorized = () => resolve({ status: 'completed', runId: input.workflowRunId, summary: 'authorized fixture' }) }) : Promise.resolve({ status: 'completed', runId: input.workflowRunId, summary: 'read-only fixture' }); return { completion } } } as never
+  const fixture = await makeMountedRuntimeFixture(researchService)
+  const server = new ResearchHubRuntimeServer({ runtime: fixture.runtime, port: 0 })
+  const toolResponse = (runId: string) => [fauxAssistantMessage(fauxToolCall('research_company', { workflowRunId: runId, symbol: '600519' }, { id: `${runId}-tool` })), fauxAssistantMessage('Research completed.')]
+  const waitForResearchCall = async (count: number) => { for (let attempt = 0; attempt < 100 && received.length < count; attempt += 1) await new Promise<void>((resolve) => setTimeout(resolve, 10)); assert.ok(received.length >= count, `expected ${count} ResearchService call(s), received ${received.length}`) }
+  try {
+    const info = await server.start(); const headers = { 'content-type': 'application/json', origin: info.origin, 'x-researchhub-runtime-token': info.runtimeToken }
+    fixture.faux.setResponses(toolResponse('http-default'))
+    const noPolicy = await fetch(`${info.origin}/api/conversations/prompt`, { method: 'POST', headers, body: JSON.stringify({ text: 'Research company without a persistence policy.' }) })
+    assert.equal(noPolicy.status, 202)
+    await waitForResearchCall(1)
+    assert.equal(received[0]?.writeKnowledge, false)
+    assert.equal(received[0]?.useStructuredKnowledge, true)
+
+    fixture.faux.setResponses(toolResponse('http-readonly'))
+    const readonly = await fetch(`${info.origin}/api/conversations/prompt`, { method: 'POST', headers, body: JSON.stringify({ text: 'Read-only research.', researchPolicy: { contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } } }) })
+    assert.equal(readonly.status, 202)
+    await waitForResearchCall(2)
+    assert.equal(received[1]?.writeKnowledge, false)
+
+    fixture.faux.setResponses(toolResponse('http-authorized'))
+    const authorized = await fetch(`${info.origin}/api/conversations/prompt`, { method: 'POST', headers, body: JSON.stringify({ text: 'Authorized Knowledge production.', researchPolicy: { contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: true } } }) })
+    assert.equal(authorized.status, 202)
+    for (let attempt = 0; attempt < 30 && received.length < 3; attempt += 1) await new Promise<void>((resolve) => setTimeout(resolve, 10))
+    assert.equal(received[2]?.writeKnowledge, true)
+
+    const followUp = await fetch(`${info.origin}/api/conversations/follow_up`, { method: 'POST', headers, body: JSON.stringify({ text: 'Try to continue the authorized write.' }) })
+    assert.equal(followUp.status, 409)
+    releaseAuthorized()
+    for (let attempt = 0; attempt < 100 && !fixture.runtime.sessionRuntime.getCurrentState().isIdle; attempt += 1) await new Promise<void>((resolve) => setTimeout(resolve, 10))
+    fixture.faux.setResponses(toolResponse('followup-readonly'))
+    await fixture.runtime.sessionRuntime.prompt('Continue the conversation in a new ordinary turn.')
+    await waitForResearchCall(4)
+    assert.equal(received[3]?.writeKnowledge, false)
+  } finally {
+    releaseAuthorized?.()
+    await server.close(); await fixture.runtime.close(); await rm(fixture.root, { recursive: true, force: true }); await removeKnowledgeBase(fixture.mountedKnowledgeBaseRoot)
+  }
 })
 
 test('Slice C HTTP conversation commands honor Pi preflight and preserve queue paths', async () => {

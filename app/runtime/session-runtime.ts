@@ -6,6 +6,7 @@ import { ClientEventAdapter, safeSummary, type ClientEventListener } from './cli
 import type { CurrentSessionState, ResearchHubSessionRuntimeOptions, SafeConversationMessage, SafeConversationSummary } from './contracts.ts'
 import type { ResearchHubPolicyContext, ResearchHubRequestPolicy } from '../pi/tools.ts'
 import type { ResearchSessionContext } from '../services/research-dispatch-service.ts'
+import { defaultResearchContextPolicy, defaultResearchPersistencePolicy } from '../services/research-dispatch-contracts.ts'
 
 const MAX_MESSAGE_TEXT = 50_000
 const MAX_SESSION_NAME_LENGTH = 200
@@ -84,6 +85,7 @@ export class ResearchHubSessionRuntime {
   private readonly piRuntime: PiAgentSessionRuntime
   private disposed = false
   private disposing = false
+  private writeAuthorizedPromptActive = false
   private replacementTail: Promise<void> = Promise.resolve()
   private readonly clientEventAdapters = new Set<ClientEventAdapter>()
 
@@ -197,8 +199,13 @@ export class ResearchHubSessionRuntime {
   startPrompt(text: string, policy?: ResearchHubRequestPolicy, researchContext?: ResearchSessionContext): StartedPrompt {
     this.ensureOpen()
     this.assertSelectedModel()
+    if (this.policyContext.current?.writeKnowledge === true || (policy?.writeKnowledge === true && !this.currentSession.isIdle)) throw new ApplicationServiceError('conflict', 'A Knowledge-write-authorized prompt cannot overlap another conversation operation')
     const previousPolicy = this.policyContext.current
-    this.policyContext.current = policy
+    const defaultPolicy: ResearchHubRequestPolicy = { ...defaultResearchContextPolicy(), ...defaultResearchPersistencePolicy() }
+    const effectivePolicy: ResearchHubRequestPolicy = { structuredKnowledge: policy?.structuredKnowledge ?? defaultPolicy.structuredKnowledge, sourceLibrary: policy?.sourceLibrary ?? defaultPolicy.sourceLibrary, writeKnowledge: policy?.writeKnowledge === true && policy.structuredKnowledge !== false }
+    this.policyContext.current = effectivePolicy
+    const isWriteAuthorizedPrompt = effectivePolicy.writeKnowledge
+    if (isWriteAuthorizedPrompt) this.writeAuthorizedPromptActive = true
     let acceptedSettled = false
     let resolveAccepted!: () => void
     let rejectAccepted!: (error: unknown) => void
@@ -214,10 +221,11 @@ export class ResearchHubSessionRuntime {
     }
     let completion: Promise<void>
     try {
-      completion = Promise.resolve(this.currentSession.prompt(`${text}${researchContextPrompt(researchContext)}`, { preflightResult: settleAccepted })).finally(() => { if (this.policyContext.current === policy) this.policyContext.current = previousPolicy })
+      completion = Promise.resolve(this.currentSession.prompt(`${text}${researchContextPrompt(researchContext)}`, { preflightResult: settleAccepted })).finally(() => { if (this.policyContext.current === effectivePolicy) this.policyContext.current = previousPolicy; if (isWriteAuthorizedPrompt) this.writeAuthorizedPromptActive = false })
     } catch (error) {
       completion = Promise.reject(error)
       this.policyContext.current = previousPolicy
+      if (isWriteAuthorizedPrompt) this.writeAuthorizedPromptActive = false
     }
     void completion.catch((error) => {
       if (!acceptedSettled) {
@@ -232,8 +240,8 @@ export class ResearchHubSessionRuntime {
     await started.accepted
     await started.completion
   }
-  async steer(text: string): Promise<void> { this.ensureOpen(); this.assertSelectedModel(); return this.currentSession.steer(text) }
-  async followUp(text: string): Promise<void> { this.ensureOpen(); this.assertSelectedModel(); return this.currentSession.followUp(text) }
+  async steer(text: string): Promise<void> { this.ensureOpen(); this.assertSelectedModel(); if (this.writeAuthorizedPromptActive || this.policyContext.current?.writeKnowledge === true) throw new ApplicationServiceError('conflict', 'Steering is disabled while a Knowledge-write-authorized prompt is active'); return this.currentSession.steer(text) }
+  async followUp(text: string): Promise<void> { this.ensureOpen(); this.assertSelectedModel(); if (this.writeAuthorizedPromptActive || this.policyContext.current?.writeKnowledge === true) throw new ApplicationServiceError('conflict', 'Follow-up is disabled while a Knowledge-write-authorized prompt is active'); return this.currentSession.followUp(text) }
   async abort(): Promise<void> { this.ensureOpen(); return this.currentSession.abort() }
 
   async dispose(): Promise<void> {

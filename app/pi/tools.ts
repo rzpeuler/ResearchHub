@@ -15,6 +15,7 @@ import type { ResearchDispatchService } from '../services/research-dispatch-serv
 import type { ResourceLoader } from '@earendil-works/pi-coding-agent'
 import type { ThesisQueryService } from '../services/thesis-query-service.ts'
 import type { ThesisDecisionService } from '../services/thesis-decision-service.ts'
+import { defaultResearchContextPolicy, defaultResearchPersistencePolicy } from '../services/research-dispatch-contracts.ts'
 
 export interface ResearchHubRequestPolicy { readonly structuredKnowledge: boolean; readonly sourceLibrary: boolean; readonly writeKnowledge: boolean }
 export interface ResearchHubPolicyContext { current?: ResearchHubRequestPolicy }
@@ -55,9 +56,34 @@ function scopedReadService<T extends object>(service: T, policyContext: Research
 }
 
 function scopedResearchService<T extends object>(service: T | undefined, policyContext: ResearchHubPolicyContext | undefined): T | undefined {
-  if (service === undefined || policyContext === undefined) return service
-  const methods = new Set(['startResearchCompany', 'startIndustryResearch', 'startEarningsReview', 'startValuation', 'startEventResearch', 'startThesisRedTeam', 'startThesisLifecycleRefresh', 'startThesisLifecycleCreate'])
-  return new Proxy(service, { get(target, property, receiver) { const value = Reflect.get(target, property, receiver); if (typeof property !== 'string' || !methods.has(property) || typeof value !== 'function') return value; return (...args: unknown[]) => { const current = policyContext.current; if (current === undefined) return Reflect.apply(value, target, args); const input = args[0]; if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApplicationServiceError('invalid_input', 'Research tool input must be an object'); if (property === 'startThesisLifecycleRefresh') { if (current.structuredKnowledge === false) throw new ApplicationServiceError('conflict', 'Thesis lifecycle refresh is disabled for this ResearchRequest'); if (current.writeKnowledge === false) throw new ApplicationServiceError('conflict', 'Thesis lifecycle refresh is disabled when Knowledge writes are disabled for this ResearchRequest'); return Reflect.apply(value, target, args) } if (property === 'startThesisLifecycleCreate') { if (current.structuredKnowledge === false || current.writeKnowledge === false) throw new ApplicationServiceError('conflict', 'Thesis lifecycle CREATE is disabled for this ResearchRequest'); return Reflect.apply(value, target, args) } return Reflect.apply(value, target, [{ ...(input as Record<string, unknown>), writeKnowledge: current.writeKnowledge, useStructuredKnowledge: current.structuredKnowledge }, ...args.slice(1)]) } } })
+  if (service === undefined) return service
+  const methods = new Set(['startResearchCompany', 'startEarningsReview', 'startValuation', 'startThesisLifecycleRefresh', 'startThesisLifecycleCreate'])
+  return new Proxy(service, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver)
+      if (typeof property !== 'string' || !methods.has(property) || typeof value !== 'function') return value
+      return (...args: unknown[]) => {
+        const supplied = policyContext?.current
+        if (property === 'startThesisLifecycleRefresh' || property === 'startThesisLifecycleCreate') {
+          if (supplied === undefined) return Reflect.apply(value, target, args)
+          if (property === 'startThesisLifecycleRefresh' && supplied.structuredKnowledge === false) throw new ApplicationServiceError('conflict', 'Thesis lifecycle refresh is disabled for this ResearchRequest')
+          if (property === 'startThesisLifecycleCreate' && supplied.structuredKnowledge === false) throw new ApplicationServiceError('conflict', 'Thesis lifecycle CREATE is disabled for this ResearchRequest')
+          if (supplied.writeKnowledge === false) throw new ApplicationServiceError('conflict', `Thesis lifecycle ${property === 'startThesisLifecycleCreate' ? 'CREATE' : 'refresh'} is disabled when Knowledge writes are disabled for this ResearchRequest`)
+          return Reflect.apply(value, target, args)
+        }
+        const defaultContext = defaultResearchContextPolicy()
+        const defaultPersistence = defaultResearchPersistencePolicy()
+        const current: ResearchHubRequestPolicy = {
+          structuredKnowledge: supplied?.structuredKnowledge ?? defaultContext.structuredKnowledge,
+          sourceLibrary: supplied?.sourceLibrary ?? defaultContext.sourceLibrary,
+          writeKnowledge: (supplied?.writeKnowledge ?? defaultPersistence.writeKnowledge) === true && supplied?.structuredKnowledge !== false,
+        }
+        const input = args[0]
+        if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApplicationServiceError('invalid_input', 'Research tool input must be an object')
+        return Reflect.apply(value, target, [{ ...(input as Record<string, unknown>), writeKnowledge: current.writeKnowledge, useStructuredKnowledge: current.structuredKnowledge }, ...args.slice(1)])
+      }
+    },
+  })
 }
 
 function scopedDailyService<T extends object>(service: T | undefined, policyContext: ResearchHubPolicyContext | undefined): T | undefined {

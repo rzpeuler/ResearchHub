@@ -43,6 +43,28 @@ test('Pi session ResearchRequest policy gates Knowledge and forwards persistence
   await tools.find((tool) => tool.name === 'research_company')!.execute('policy-research', { workflowRunId: 'policy-research', symbol: '600519' }, undefined, undefined, {} as never); assert.equal(received[0]!.writeKnowledge, false); assert.equal(received[0]!.useStructuredKnowledge, false)
 })
 
+test('Pi research tools default-deny when policy context is absent or inactive and allow only explicit authorization', async () => {
+  const received: Record<string, unknown>[] = []
+  const capture = (value: Record<string, unknown>) => { received.push(value); return { completion: Promise.resolve({ status: 'blocked' }) } }
+  const researchService = { startResearchCompany: capture, startEarningsReview: capture, startValuation: capture } as never
+  const inputs = [
+    { tool: 'research_company', args: { workflowRunId: 'policy-default-deny', symbol: '600519' } },
+    { tool: 'review_earnings', args: { workflowRunId: 'policy-default-deny-earnings', symbol: '600519', fiscalYear: 2025, period: 'FY' } },
+    { tool: 'analyze_valuation', args: { workflowRunId: 'policy-default-deny-valuation', symbol: '600519' } },
+  ] as const
+  const invoke = async (input: typeof inputs[number], policyContext?: { current?: { structuredKnowledge: boolean; sourceLibrary: boolean; writeKnowledge: boolean } }) => {
+    const tools = createResearchHubTools({ knowledgeService: {} as never, reviewService: {} as never, productionService: {} as never, workflowService: new WorkflowService(), researchService, ...(policyContext === undefined ? {} : { policyContext }) })
+    return tools.find((tool) => tool.name === input.tool)!.execute(`call-${input.tool}`, { ...input.args, writeKnowledge: true }, undefined, undefined, {} as never)
+  }
+  for (const input of inputs) await invoke(input)
+  for (const input of inputs) await invoke(input, {})
+  for (const input of inputs) await invoke(input, { current: { structuredKnowledge: true, sourceLibrary: true, writeKnowledge: false } })
+  assert.equal(received.length, 9)
+  assert.ok(received.slice(0, 9).every((input) => input.writeKnowledge === false && input.useStructuredKnowledge === true))
+  for (const input of inputs) await invoke(input, { current: { structuredKnowledge: true, sourceLibrary: true, writeKnowledge: true } })
+  assert.ok(received.slice(9).every((input) => input.writeKnowledge === true && input.useStructuredKnowledge === true))
+})
+
 class FixtureExecutor implements ReasoningExecutor {
   readonly calls: ReasoningRequest[] = []
   capabilities(): ReasoningCapabilities { return capabilities }

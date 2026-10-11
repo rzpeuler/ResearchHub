@@ -138,3 +138,43 @@ Other final validations: server `npm run typecheck` passed after the added integ
 ## 21. Final Commit and Branch State
 
 This report and implementation are delivered on `codex/exec-003-a-004-unified-product-e2e`; final delivery verifies the pushed branch HEAD against the commit containing this report and confirms a clean worktree. The exact full SHA is included in the task delivery. This task does not merge A-004 to `main`.
+
+## 22. RHL-EXEC-003-A-004-FIX-001 — Pi Research Tool Default-Deny Knowledge Persistence
+
+**Status: IMPLEMENTED / SOL ACCEPTANCE PENDING.** No merge to `main` is included.
+
+### Root cause and implementation
+
+`scopedResearchService` previously returned the unwrapped ResearchService when its policy context was absent. With a context object whose current policy was unset, it also passed the original tool input through unchanged. The Company, Valuation, and Earnings Workflows treat `writeKnowledge !== false` as permission to persist when existing Company coverage is present, so an omitted policy could reach the Gateway and Writer as an implicit authorization.
+
+The Pi Application Tool boundary now applies `defaultResearchContextPolicy()` and `defaultResearchPersistencePolicy()` to `research_company`, `review_earnings`, and `analyze_valuation`. It sets `writeKnowledge` only when the active request explicitly carries `true`, and replaces any tool-supplied persistence flag. The validated policy is materialized into the service input at tool invocation, so later asynchronous policy cleanup cannot change the decision. Existing direct `ResearchService` production calls remain available, and existing Thesis lifecycle gates and HTTP ResearchRunPage read-only behavior are preserved.
+
+`ResearchHubSessionRuntime.startPrompt` now installs the default read-only policy when callers omit one. A write-authorized prompt cannot overlap another prompt; steer and follow-up are rejected while such a prompt is active. Once it completes, the next ordinary prompt returns to the default read-only policy. This avoids granting queued session text the previous prompt's write authorization.
+
+### Existing Company and authorized-write regression
+
+The real Pi Application Tool test mounts an isolated Schema 0.4 Knowledge Base, persists `entity:company-600519`, and runs the Company Research Workflow with a controlled evidence plugin and a Skill executor that returns two valid evidence-bound proposals. Under both an omitted policy and explicit `writeKnowledge=false`, the Workflow completes and creates a reloadable ResearchReport; the existing Company subject resolves, while source and claim refs for unpersisted proposals remain empty. The SHA-256 of the complete Knowledge tree—including Canonical registry, Raw data, and ReviewCase files—remains `8f382097fa1352c31b256288a739fd121318bfec2e54e30a58ac1ea7f07ea887` before and after each read-only run.
+
+With explicit `writeKnowledge=true`, the same Company/evidence fixture completes through the existing Gateway/Writer path, commits evidence Sources and both valid Claims, and reloads a report whose canonical references all resolve through the persisted Registry. Existing workflow tests continue to verify that missing identity or evidence and invalid proposals do not bypass governance. The controlled test fixture is not represented as a real-source acceptance.
+
+Machine-readable details, run/report IDs, proposal IDs, reference resolution, and before/after tree hashes are recorded in [FIX-001 Pi default-deny evidence](../../../tests/validation/evidence/RHL-EXEC-003-A-004-FIX-001-pi-default-deny.json).
+
+### Pi, HTTP, and workflow regression coverage
+
+- A policy matrix checks all three affected Pi tools with no policy context, an inactive context, explicit read-only, and explicit authorization. Missing/inactive/read-only policies all reach ResearchService with `writeKnowledge=false`; only explicit authorization reaches it as `true`.
+- A live faux-Pi HTTP session calls the ResearchService tool through `/api/conversations/prompt` with policy omitted, explicit read-only, and explicit authorization. The omitted and read-only requests both pass `false`; authorization passes `true`. Follow-up during the authorized request returns a conflict, and the next ordinary prompt passes `false`.
+- Company, Valuation, and Earnings workflow regressions pass; the HTTP ResearchRunPage path remains explicitly read-only. No Workflow or Knowledge Schema was rewritten.
+- Focused test run: **209/209 passed** across the Pi host, Thesis compatibility, HTTP session, Company, Valuation, and Earnings suites.
+
+### Full regression and remaining product readiness
+
+| Run | Client | Node | Exact baseline comparison |
+|---|---:|---:|---|
+| Clean `origin/main` `87f55224c1c7389dba75b41b6e6ec39bc1f986bc` | 122 passed / 0 failed | 2,169 passed / 21 failed | Baseline recorded in `tests/validation/evidence/RHL-EXEC-003-A-004-baseline.json` |
+| FIX-001 working tree | 124 passed / 0 failed | 2,180 passed / 21 failed | 0 new failures; all 21 failure `(file, test title)` IDs match main |
+
+`npm run typecheck`, `npm run client:typecheck`, `npm run client:build`, and `git diff --check` passed. The build retains the previously documented client-bundle size warning. Product readiness remains separate from this security fix: the live EastMoney market transport and CNINFO PDF parsing timeouts recorded in Sections 19–20 are still blockers, and no Company/Valuation/Earnings completed live triplet is claimed.
+
+### Delivery
+
+FIX-001 is committed and pushed to `codex/exec-003-a-004-unified-product-e2e`. The pushed commit is the delivery SHA; the remote HEAD equality and clean-worktree result are verified for delivery. SOL acceptance remains pending, and this task does not merge to `main`.

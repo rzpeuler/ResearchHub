@@ -264,7 +264,7 @@ test('ER33 Pi tool routes review_earnings to startEarningsReview with exact inpu
   assert.equal(first?.type, 'text')
   if (first?.type !== 'text') throw new Error('Pi tool did not return text')
   assert.equal((JSON.parse(first.text) as { summary: string }).summary, 'fixture')
-  assert.deepEqual(received, [{ workflowRunId: 'er33-routing', symbol: '600519', exchange: 'SSE', fiscalYear: 2026, period: 'H1', asOf: NOW }])
+  assert.deepEqual(received, [{ workflowRunId: 'er33-routing', symbol: '600519', exchange: 'SSE', fiscalYear: 2026, period: 'H1', asOf: NOW, writeKnowledge: false, useStructuredKnowledge: true }])
 })
 test('ER34 HTTP product route is part of the runtime route contract', async () => { const text = await readFile(join(process.cwd(), 'app/runtime/server.ts'), 'utf8'); assert.match(text, /\/api\/production\/review-earnings/); assert.match(text, /\/api\/review-earnings/) })
 test('ER35 cancellation is respected before acquisition', async () => { const f = await fixture({ akshare: true }); try { const controller = new AbortController(); controller.abort(); const result = await runFixture(f, new FixtureExecutor({}), { signal: controller.signal }); assert.equal(result.status, 'cancelled') } finally { await f.close() } })
