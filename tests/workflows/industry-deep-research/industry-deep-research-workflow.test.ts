@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdtemp, rm, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'; import { tmpdir } from 'node:os'
 import { createFreshKnowledgeBaseV04 } from '../../../knowledge/storage/index.ts'; import { KnowledgeBaseRegistry } from '../../../knowledge/registry/registry.ts'; import { readCanonicalV04Assets } from '../../../knowledge/storage/canonical-v04-loader.ts'
+import { KnowledgeProductionGateway } from '../../../knowledge/production/gateway.ts'
 import { runIndustryDeepResearch as executeIndustryDeepResearch } from '../../../workflows/industry-deep-research/index.ts'; import type { IndustryDeepResearchInput, IndustryAcquisitionWave } from '../../../workflows/industry-deep-research/contracts.ts'; import { INDUSTRY_MODULES } from '../../../skills/industry-research/index.ts'; import type { ReasoningExecutor } from '../../../plugins/reasoning/contracts.ts'; import { sha256 } from '../../../plugins/research-acquisition/hash.ts'; import { getCanonicalResearchSkill } from '../../../app/services/research-skill-catalog.ts'; import { createIndustryWorkflowResolverFixture } from '../../support/industry-workflow-resolver-fixture.ts'
 import { validateKnowledgeV04Objects } from '../../../knowledge/validation/v04-validator.ts'
 const source = (id: string) => { const content = `Official industry supplier capacity evidence for ${id}.`; return { candidate: { candidateId: id, kind: 'official_disclosure' as const, tier: 1 as const, title: id, provider: 'fixture', publishedAt: '2026-09-01' }, retrievedAt: '2026-09-01', title: id, content, contentHash: sha256(content), publisher: 'Fixture', rights: { accessScope: 'public' as const, retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } } }
@@ -14,6 +16,7 @@ type WorkflowFixtureInput = Omit<IndustryDeepResearchInput, 'dataResolverFactory
 function runIndustryDeepResearch(input: WorkflowFixtureInput) { const { acquisitionWave, ...workflowInput } = input; const now = input.now ?? (() => new Date().toISOString()); return executeIndustryDeepResearch({ ...workflowInput, dataResolverFactory: input.dataResolverFactory ?? createIndustryWorkflowResolverFixture(acquisitionWave ?? (async () => []), now), skillDataRequirements: input.skillDataRequirements ?? getCanonicalResearchSkill('industry_supply_demand_cycle')!.dataRequirements }) }
 async function fixtureRun(overrides: Partial<WorkflowFixtureInput> = {}) { const root = await mkdtemp(join(tmpdir(), 'rhl-industry-matrix-')); const reports = await mkdtemp(join(tmpdir(), 'rhl-industry-matrix-reports-')); await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: `kb-${Date.now()}-${Math.random().toString(16).slice(2)}`, now: '2026-09-01T00:00:00.000Z' }); const handle = await new KnowledgeBaseRegistry().mount(root); const input = { workflowRunId: `matrix-${Math.random().toString(16).slice(2)}`, handle, target: { name: 'Fixture Industry' }, reportRoot: reports, reasoningExecutor: exec(), acquisitionWave: async ({ wave }: { wave: 1 | 2 }) => wave === 1 ? [source('s1')] : [], now: () => '2026-09-02T00:00:00.000Z', ...overrides } as WorkflowFixtureInput; const result = await runIndustryDeepResearch(input); return { root, reports, handle, result } }
 async function cleanup(x: { root: string; reports: string }) { await rm(x.root, { recursive: true, force: true }); await rm(x.reports, { recursive: true, force: true }) }
+async function treeSnapshot(root: string): Promise<readonly string[]> { const entries: string[] = []; const visit = async (directory: string): Promise<void> => { for (const entry of await readdir(directory, { withFileTypes: true })) { const absolute = join(directory, entry.name); if (entry.isDirectory()) { entries.push(`dir:${absolute.slice(root.length)}`); await visit(absolute) } else if (entry.isFile()) entries.push(`file:${absolute.slice(root.length)}:${createHash('sha256').update(await readFile(absolute)).digest('hex')}`) } }; await visit(root); return entries.sort() }
 function proposalExecutor(proposals: readonly Record<string, unknown>[]) { return { capabilities: () => ({ maxContextTokens: 10000, maxOutputTokens: 10000, structuredOutputSupport: true, maxConcurrency: 8 }), execute: async (r: any) => { const op = String(r.operation); if (op === 'industry_research_design') return { operation: r.operation, output: design }; if (op === 'industry_module_analysis') { const x = r.input as { module: string; evidence: Array<{ evidenceId: string }> }; const ps = x.module === 'company_mapping' ? proposals.map((p) => p.kind === 'entity' && p.entityType === 'company' && !p.structuredValue ? { ...p, sourceCandidateIds: ['evidence-s1'], structuredValue: { ticker: '000001', exchange: 'SZSE' } } : p) : []; const ids = x.evidence.map((e) => e.evidenceId); return { operation: r.operation, output: { module: x.module, status: 'supported', analysis: 'fixture', evidenceIds: ids, proposals: ps, gaps: [], reportMaterial: { markdown: 'fixture module', evidenceIds: ids, proposalIds: ps.map((p) => p.proposalId), relationProposalIds: ps.filter((p) => p.kind === 'relation').map((p) => p.proposalId) }, ...(x.module === 'competitive_landscape' ? { competitionTable: { columns: [{ id: 'company', label: 'Company', role: 'company' }, { id: 'products', label: 'Main products', role: 'main_products' }, { id: 'market_cap', label: 'Market cap', role: 'market_cap' }, { id: 'annual_revenue', label: 'Annual revenue', role: 'annual_revenue' }], rows: [] } } : {}) } } } const i = r.input as { evidence: Array<{ evidenceId: string }> }; const ids = i.evidence.map((e) => e.evidenceId); return { operation: r.operation, output: { executiveView: 'fixture view', analysis: 'fixture synthesis', evidenceIds: ids, proposals: [], gaps: [], alternativeViews: ['fixture alternative'], reportMaterial: { markdown: 'fixture synthesis', evidenceIds: ids, proposalIds: [] } } } } } }
 function exec(): ReasoningExecutor {
   return {
@@ -36,7 +39,64 @@ function exec(): ReasoningExecutor {
   }
 }
 test('Industry workflow rejects disabled structured Knowledge before reading or acquiring', async () => { const root = await mkdtemp(join(tmpdir(), 'rhl-industry-structured-off-')); const reports = await mkdtemp(join(tmpdir(), 'rhl-industry-structured-off-reports-')); try { await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-industry-structured-off', now: '2026-09-01T00:00:00.000Z' }); const result = await runIndustryDeepResearch({ workflowRunId: 'industry-structured-off', handle: await new KnowledgeBaseRegistry().mount(root), target: { name: 'Fixture Industry' }, reportRoot: reports, reasoningExecutor: exec(), useStructuredKnowledge: false, acquisitionWave: async () => { throw new Error('acquisition must not run') } }); assert.equal(result.status, 'blocked'); assert.equal(result.gatewaySubmitCount, 0); assert.equal(result.acquisitionWaves, 0); assert.match(result.errors.join('; '), /structured Knowledge context/i); assert.deepEqual(await readdir(reports), []) } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) } })
-test('Industry workflow runs eight modules, skips Wave 2 on no-gap flow, and persists sixteen sections', async () => { const root = await mkdtemp(join(tmpdir(), 'rhl-industry-')); const reports = await mkdtemp(join(tmpdir(), 'rhl-industry-reports-')); try { await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-industry', now: '2026-09-01T00:00:00.000Z' }); let waves = 0; const result = await runIndustryDeepResearch({ workflowRunId: 'industry-run', handle: await new KnowledgeBaseRegistry().mount(root), target: { name: 'Fixture Industry' }, reportRoot: reports, reasoningExecutor: exec(), acquisitionWave: async ({ wave }) => { waves++; return wave === 1 ? [source('s1')] : [] }, now: () => '2026-09-02T00:00:00.000Z' }); assert.equal(result.status, 'completed', result.errors.join('; ')); assert.equal(waves, 1); assert.equal(result.modules.length, 8); assert.equal(result.gatewaySubmitCount, 1); assert.equal(result.acquisitionWaves, 1); const json = JSON.parse(await readFile(`${result.report?.outputPath}.json`, 'utf8')); assert.equal(json.sections.length, 16) } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) } })
+test('Industry workflow runs eight modules, skips Wave 2 on no-gap flow, and persists sixteen sections', async () => { const root = await mkdtemp(join(tmpdir(), 'rhl-industry-')); const reports = await mkdtemp(join(tmpdir(), 'rhl-industry-reports-')); try { await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-industry', now: '2026-09-01T00:00:00.000Z' }); let waves = 0; const result = await runIndustryDeepResearch({ workflowRunId: 'industry-run', handle: await new KnowledgeBaseRegistry().mount(root), target: { name: 'Fixture Industry' }, reportRoot: reports, reasoningExecutor: exec(), acquisitionWave: async ({ wave }) => { waves++; return wave === 1 ? [source('s1')] : [] }, now: () => '2026-09-02T00:00:00.000Z' }); assert.equal(result.status, 'completed', result.errors.join('; ')); assert.equal(waves, 1); assert.equal(result.modules.length, 8); assert.equal(result.gatewaySubmitCount, 1); assert.equal(result.acquisitionWaves, 1); const json = JSON.parse(await readFile(`${result.report?.outputPath}.json`, 'utf8')); assert.equal(json.sections.length, 16); const assets = await readCanonicalV04Assets(root); const canonical = new Set(assets.registry.map((item) => item.id)); assert.ok(json.subjectRefs.length > 0 && json.subjectRefs.every((ref: string) => canonical.has(ref))); assert.ok(json.sourceRefs.every((ref: string) => canonical.has(ref))); assert.ok(json.claimRefs.every((ref: string) => canonical.has(ref))); for (const section of json.sections) { assert.ok((section.sourceRefs ?? []).every((ref: string) => canonical.has(ref))); assert.ok((section.claimRefs ?? []).every((ref: string) => canonical.has(ref))); assert.ok((section.relationRefs ?? []).every((ref: string) => canonical.has(ref))) } } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) } })
+
+test('Industry read-only Gateway dry-run keeps only resolvable references and preserves the Knowledge tree', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-industry-readonly-'))
+  const reports = await mkdtemp(join(tmpdir(), 'rhl-industry-readonly-reports-'))
+  try {
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-industry-readonly', now: '2026-09-01T00:00:00.000Z' })
+    const registry = new KnowledgeBaseRegistry()
+    const seeded = await new KnowledgeProductionGateway(registry).submit({ handle: await registry.mount(root), producerType: 'fixture_seed', producerRunId: 'industry-readonly-root', schemaProfile: { schemaVersion: '0.4', storageFormatVersion: '1', requiresRawProvenance: true }, entity: { localKey: 'industry', entityType: 'industry', name: 'Fixture Industry' }, proposals: [], evidenceBindings: [], now: () => '2026-09-01T00:00:00.000Z' })
+    assert.equal(seeded.status, 'committed')
+    const canonicalRef = seeded.entityRefsByLocalKey.industry!
+    const before = await treeSnapshot(root)
+    const proposals = [
+      { proposalId: 'readonly-company', kind: 'entity', subjectKey: 'readonly-company', entityType: 'company', entityName: 'Fixture Company' },
+      { proposalId: 'readonly-exposure', kind: 'relation', subjectKey: 'readonly-company', targetKey: 'industry', relationType: 'business_exposure', sourceCandidateIds: ['evidence-s1'] },
+      { proposalId: 'readonly-claim', kind: 'claim', subjectKey: 'readonly-company', claimType: 'fact', statement: 'The company participates in the fixture industry.', sourceCandidateIds: ['evidence-s1'] },
+    ]
+    const result = await runIndustryDeepResearch({ workflowRunId: 'industry-readonly-run', handle: await registry.mount(root), target: { name: 'Fixture Industry', canonicalRef }, reportRoot: reports, reasoningExecutor: proposalExecutor(proposals) as unknown as ReasoningExecutor, acquisitionWave: async () => [source('s1')], writeKnowledge: false, now: () => '2026-09-02T00:00:00.000Z' })
+    assert.equal(result.status, 'completed', result.errors.join('; '))
+    assert.equal(result.gatewaySubmitCount, 1)
+    const after = await treeSnapshot(root)
+    assert.deepEqual(after, before)
+    const assets = await readCanonicalV04Assets(root)
+    const canonical = new Set(assets.registry.map((item) => item.id))
+    const report = JSON.parse(await readFile(`${result.report?.outputPath}.json`, 'utf8'))
+    assert.deepEqual(report.subjectRefs, [canonicalRef])
+    assert.ok(report.subjectRefs.every((ref: string) => canonical.has(ref)))
+    assert.ok(report.sourceRefs.every((ref: string) => canonical.has(ref)))
+    assert.ok(report.claimRefs.every((ref: string) => canonical.has(ref)))
+    for (const section of report.sections) {
+      assert.ok((section.sourceRefs ?? []).every((ref: string) => canonical.has(ref)))
+      assert.ok((section.claimRefs ?? []).every((ref: string) => canonical.has(ref)))
+      assert.ok((section.relationRefs ?? []).every((ref: string) => canonical.has(ref)))
+    }
+    assert.deepEqual(result.sourceIds, [])
+    assert.deepEqual(result.claimIds, [])
+    assert.deepEqual(result.relationIds, [])
+    assert.deepEqual(result.createdIds, [])
+    assert.deepEqual(result.updatedIds, [])
+    assert.deepEqual(result.committedIds, [])
+    assert.ok(result.resolutionIntents.every((intent) => intent.targetRef === undefined || canonical.has(intent.targetRef)))
+    assert.deepEqual(Object.values(result.entityRefs), [canonicalRef])
+    assert.ok([...Object.values(result.entityRefs), ...Object.values(result.relationRefs), ...Object.values(result.claimRefs), ...Object.values(result.sourceRefs)].every((ref) => canonical.has(ref)))
+    const beforeTreeSha256 = createHash('sha256').update(JSON.stringify(before)).digest('hex')
+    const afterTreeSha256 = createHash('sha256').update(JSON.stringify(after)).digest('hex')
+    await writeFile(join(process.cwd(), 'tests', 'validation', 'evidence', 'RHL-EXEC-003-A-004-FIX-003-industry-readonly.json'), `${JSON.stringify({ taskId: 'RHL-EXEC-003-A-004-FIX-003', generatedAt: new Date().toISOString(), workflowRunId: result.workflowRunId, status: result.status, writeKnowledge: false, gatewaySubmitCount: result.gatewaySubmitCount, canonicalIndustryRoot: canonicalRef, report: { subjectRefs: report.subjectRefs, sourceRefs: report.sourceRefs, claimRefs: report.claimRefs, sections: report.sections.map((section: { id: string; sourceRefs?: string[]; claimRefs?: string[]; relationRefs?: string[] }) => ({ id: section.id, sourceRefs: section.sourceRefs ?? [], claimRefs: section.claimRefs ?? [], relationRefs: section.relationRefs ?? [] })), allReferencesResolve: true }, publicReferenceFields: { entityRefs: result.entityRefs, relationRefs: result.relationRefs, claimRefs: result.claimRefs, sourceRefs: result.sourceRefs, sourceIds: result.sourceIds, relationIds: result.relationIds, claimIds: result.claimIds, committedIds: result.committedIds }, beforeTreeSha256, afterTreeSha256, secretsIncluded: false }, null, 2)}\n`, 'utf8')
+  } finally { await cleanup({ root, reports }) }
+})
+
+test('Industry read-only Gateway dry-run refuses to fabricate a missing Industry subject', async () => {
+  const x = await fixtureRun({ writeKnowledge: false })
+  try {
+    assert.equal(x.result.status, 'blocked')
+    assert.ok(x.result.errors.some((item) => item.includes('INDUSTRY_ROOT_NOT_PERSISTED')))
+    assert.deepEqual(await readdir(x.reports), [])
+    assert.equal((await readCanonicalV04Assets(x.root)).objects.some((item) => item.kind === 'entity' && (item.value as { type?: string }).type === 'industry'), false)
+  } finally { await cleanup(x) }
+})
 
 test('Industry rerun preserves canonical refs and exposes updated IDs with the committed revision', async () => {
   const root = await mkdtemp(join(tmpdir(), 'rhl-industry-refresh-'))

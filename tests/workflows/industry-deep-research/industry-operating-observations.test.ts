@@ -17,13 +17,14 @@ const source: NormalizedResearchSource = { candidate: { candidateId: 'resolver-f
 const design = { definitionHypothesis: 'household air conditioner industry', targetKind: 'industry' as const, scope: { included: ['fixture'], excluded: [] }, moduleQuestions: Object.fromEntries(INDUSTRY_MODULES.map((module) => [module, module])), keyMetrics: ['production'], evidenceRequirements: ['official'], searchTerms: ['fixture'], knownGaps: [], verificationCandidates: [] }
 function executor(seen: Array<{ module: string; observations: unknown[] }>): ReasoningExecutor { return { capabilities: () => ({ maxContextTokens: 10000, maxOutputTokens: 10000, structuredOutputSupport: true, maxConcurrency: 8 }), execute: async (request) => { const operation = String(request.operation); if (operation === 'industry_research_design') return { operation: request.operation, output: design }; if (operation === 'industry_module_analysis') { const input = request.input as { module: string; evidence: Array<{ evidenceId: string }>; operatingObservations?: unknown[] }; seen.push({ module: input.module, observations: input.operatingObservations ?? [] }); const ids = input.evidence.map((item) => item.evidenceId); return { operation: request.operation, output: { module: input.module, status: 'supported', analysis: 'fixture', evidenceIds: ids, proposals: [], gaps: [], reportMaterial: { markdown: 'fixture', evidenceIds: ids, proposalIds: [] } } } } const input = request.input as { evidence: Array<{ evidenceId: string }> }; const ids = input.evidence.map((item) => item.evidenceId); return { operation: request.operation, output: { executiveView: 'fixture', analysis: 'fixture', evidenceIds: ids, proposals: [], gaps: [], alternativeViews: [], reportMaterial: { markdown: 'fixture', evidenceIds: ids, proposalIds: [] } } } } } }
 
-test('Industry Workflow materializes DOMAIN requirements and reports missing canonical metrics as partial gaps', async () => {
+test('Industry Workflow materializes DOMAIN requirements, reports gaps, and blocks a report without a canonical Industry root', async () => {
   const root = await mkdtemp(join(tmpdir(), 'rhl-industry-domain-resolution-')); const reports = await mkdtemp(join(tmpdir(), 'rhl-industry-domain-resolution-reports-')); const seen: Array<{ module: string; observations: unknown[] }> = []
   try {
     await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-industry-domain-resolution', now: '2026-09-01T00:00:00.000Z' })
     const now = () => '2026-09-23T00:00:00.000Z'
     const result = await runIndustryDeepResearch({ workflowRunId: 'industry-domain-resolution', handle: await new KnowledgeBaseRegistry().mount(root), target: { name: '家用空调' }, reportRoot: reports, reasoningExecutor: executor(seen), dataResolverFactory: createIndustryWorkflowResolverFixture(async () => [source], now), skillDataRequirements: getCanonicalResearchSkill('industry_supply_demand_cycle')!.dataRequirements, asOf: '2026-09-23', now, writeKnowledge: false })
-    assert.equal(result.status, 'completed', result.errors.join('; '))
+    assert.equal(result.status, 'blocked', result.errors.join('; '))
+    assert.ok(result.errors.some((error) => error.includes('INDUSTRY_ROOT_NOT_PERSISTED')))
     assert.equal(result.requirementCoverage, 'PARTIAL')
     assert.ok(result.dataRequirementGaps.some((gap) => gap.startsWith('production-output-evidence:NO_CANONICAL_INDUSTRY_METRIC')))
     assert.ok(result.dataRequirementGaps.some((gap) => gap.startsWith('capacity-evidence:NO_CANONICAL_INDUSTRY_METRIC')))
@@ -35,13 +36,14 @@ test('Industry Workflow materializes DOMAIN requirements and reports missing can
   } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) }
 })
 
-test('Unregistered Industry identity keeps generic evidence resolution available and surfaces the identity gap', async () => {
+test('Unregistered Industry identity keeps generic evidence resolution available and blocks a report without a canonical root', async () => {
   const root = await mkdtemp(join(tmpdir(), 'rhl-industry-unregistered-')); const reports = await mkdtemp(join(tmpdir(), 'rhl-industry-unregistered-reports-')); const seen: Array<{ module: string; observations: unknown[] }> = []
   try {
     await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-industry-unregistered', now: '2026-09-01T00:00:00.000Z' })
     const now = () => '2026-09-23T00:00:00.000Z'
     const result = await runIndustryDeepResearch({ workflowRunId: 'industry-unregistered', handle: await new KnowledgeBaseRegistry().mount(root), target: { name: 'Unregistered Specialty Industry' }, reportRoot: reports, reasoningExecutor: executor(seen), dataResolverFactory: createIndustryWorkflowResolverFixture(async () => [source], now), skillDataRequirements: getCanonicalResearchSkill('industry_supply_demand_cycle')!.dataRequirements, asOf: '2026-09-23', now, writeKnowledge: false })
-    assert.equal(result.status, 'completed', result.errors.join('; '))
+    assert.equal(result.status, 'blocked', result.errors.join('; '))
+    assert.ok(result.errors.some((error) => error.includes('INDUSTRY_ROOT_NOT_PERSISTED')))
     assert.equal(result.evidence.length, 1)
     assert.ok(result.diagnostics.some((item) => item.startsWith('INDUSTRY_IDENTITY_UNRESOLVED:')))
     assert.ok(result.dataRequirementGaps.some((item) => item.endsWith(':INDUSTRY_ID_REQUIRED')))

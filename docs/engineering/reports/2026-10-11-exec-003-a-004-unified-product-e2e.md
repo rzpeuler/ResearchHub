@@ -224,3 +224,49 @@ Focused policy, HTTP, Company, Thesis, Event, Gateway, Valuation, and Earnings t
 ### Delivery
 
 FIX-002 is delivered on the original branch `codex/exec-003-a-004-unified-product-e2e` and original `EXEC_003_A_004` worktree. The pushed remote branch HEAD, final full SHA, clean worktree, and ancestry status are verified in the delivery record. No merge to `main` is included. Status remains **IMPLEMENTED / SOL ACCEPTANCE PENDING**.
+
+## 24. RHL-EXEC-003-A-004-FIX-003 — Read-only Research Report Reference Integrity
+
+**Status: IMPLEMENTED / SOL ACCEPTANCE PENDING.** The three targeted Workflows now resolve report references against the loaded Schema 0.4 Canonical Registry after Gateway evaluation and before report persistence. Gateway dry-run planning behavior, Schema, and research algorithms are unchanged.
+
+### Root cause and correction
+
+The Gateway intentionally returns proposal-to-reference mappings during `writeKnowledge=false` evaluation. Event and Thesis Red Team copied those planned mappings directly into report fields, while Industry filtered some Section refs but still exposed unfiltered top-level refs, public reference maps, and a possibly virtual Industry subject. A syntactically valid `source:` or `claim:` string therefore could appear Canonical even though it was absent from the actual Registry.
+
+`workflows/canonical-report-refs.ts` now derives the allowlist from `readCanonicalV04Assets(...).registry` and filters report subject/source/claim refs plus Section source/claim/relation refs. It also supports filtering public Workflow ref maps and Gateway intent targets. The Registry loader validates each registered object and its storage before the IDs are used.
+
+- **Event Research** reads the Registry after the real Gateway call, requires the existing Company subject to remain registered, filters report and public source/claim/commitment refs, and removes synthetic `evidence:<candidate>` links. External links are retained only when they are valid HTTPS evidence URLs.
+- **Industry Deep Research** validates the reloaded subject is an actual registered Industry Entity, filters top-level/Section refs and public entity/relation/claim/source maps, ID lists, and intent targets. A read-only run without a persisted Industry root returns `blocked` before writing a report; it never invents a subject ref.
+- **Thesis Red Team** loads the Registry before both blocked and successful report writes, filters every report/public source and claim ref, and preserves valid existing Company/Thesis refs. Authorized Gateway writes are reloaded and retained when present in the Registry.
+- Findings, Proposal IDs, provider results, and other noncanonical research outputs remain available as research results. No Knowledge Schema, Gateway dry-run contract, or research algorithm changed.
+
+### Read-only and authorized production-path evidence
+
+| Workflow | Read-only proof | Reference and persistence result |
+|---|---|---|
+| Event | `ResearchRequest(writeKnowledge=false) → Pi research_event Tool → ResearchService → Event Workflow → actual KnowledgeProductionGateway dry-run`; existing `entity:company-600519`; two valid accepted Proposals | No Source/Claim writes or committed IDs; every report and Section canonical ref resolves; all external evidence links are HTTPS; full Knowledge-tree SHA-256 is unchanged: `3f5111903948ae08fbda7e930f169048dd5de6e3ea9f3182e96fd97059660d5c` before and after. |
+| Industry | Industry Workflow with an existing canonical Industry root and an actual Gateway dry-run | Only the persisted Industry root remains in public Entity refs; top-level and all 16 Section refs resolve; no canonical files change: `080b11c6c9b0494a4acfc18b39fd1331864e7f9778266004e2bd738abd52dc3a` before and after. A separate no-root read-only run is safely blocked without writing a report. |
+| Thesis Red Team | Thesis Red Team Workflow, existing persisted Company/Thesis, valid evidence and proposals, `writeKnowledge=false` | Existing subject and Section Claim refs resolve; planned Source/Claim refs are absent; full Knowledge-tree SHA-256 is unchanged: `841b0e96d1d3afcb3316b60e6c21212cf4e93175071636df4f010d07b9067b24` before and after. |
+
+The authorized Thesis Red Team run in the same regression fixture completes through Gateway/Writer, persists one Source and two Claims, and verifies every report ref against the reloaded Registry. Existing authorized Industry coverage also verifies a persisted Industry root and resolvable report refs. Detailed ref lists and hashes are recorded in [Event read-only evidence](../../../tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-event-readonly.json), [Industry read-only evidence](../../../tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-industry-readonly.json), and [Thesis read-only/authorized evidence](../../../tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-thesis-references.json).
+
+### Retained policy and application coverage
+
+FIX-001/FIX-002 Pi default-deny matrices, synchronous policy snapshots, authorized Thesis CREATE/REFRESH, raw-free Gateway dry-runs, Company/Valuation/Earnings allow/block behavior, HTTP user paths, asynchronous long-task state, and Run/Bundle reconciliation remain in the full regression suite. The Event case above exercises the actual Application-to-Workflow-to-Gateway chain; Industry and Thesis tests exercise their actual Workflows and Gateway against isolated Schema 0.4 Knowledge Bases.
+
+### Validation
+
+Focused tests passed: Event Pi Application integration **1/1**, Industry Deep Research Workflow **51/51**, Industry DOMAIN/identity root gates **2/2**, and Thesis Red Team fixture **3/3**. The Industry no-root cases now explicitly verify that useful data gaps/evidence are retained while report persistence is blocked.
+
+Full validation used a clean `origin/main` worktree at `87f55224c1c7389dba75b41b6e6ec39bc1f986bc` and the FIX-003 working tree based on `135a98bcd2e91aae9ec3811ebaa4518f34362f96`:
+
+| Run | Client | Node | Failure comparison |
+|---|---:|---:|---|
+| Clean `origin/main` | 122/122 passed | 2,169 passed / 21 failed (2,190 total) | Exact baseline failure set |
+| FIX-003 working tree | 124/124 passed | 2,185 passed / 21 failed (2,206 total) | The exact same 21 failure identifiers; 0 new failures and 0 baseline failures missing |
+
+The per-identifier comparison is preserved in [FIX-003 full regression evidence](../../../tests/validation/evidence/RHL-EXEC-003-A-004-FIX-003-full-regression.json). `npm test` exits nonzero because those 21 pre-existing failures remain. `npm run typecheck`, `npm run client:typecheck`, `npm run client:build`, and `git diff --check` pass. Vite continues to report the existing client bundle over 500 kB.
+
+### Delivery
+
+FIX-003 is committed and pushed to the original `codex/exec-003-a-004-unified-product-e2e` branch. It is not merged to `main`. SOL acceptance remains pending.

@@ -1,0 +1,129 @@
+{
+  "taskId": "RHL-EXEC-003-A-004-FIX-003",
+  "generatedAt": "2026-10-11T06:36:18.495Z",
+  "readOnly": {
+    "workflowRunId": "phase3-thesis-e2e-readonly",
+    "status": "completed",
+    "writeKnowledge": false,
+    "report": {
+      "subjectRefs": [
+        "entity:company-600519",
+        "claim:fixture-thesis"
+      ],
+      "sourceRefs": [],
+      "claimRefs": [],
+      "sections": [
+        {
+          "id": "thesis-snapshot",
+          "sourceRefs": [],
+          "claimRefs": [
+            "claim:fixture-thesis"
+          ]
+        },
+        {
+          "id": "dependency-map",
+          "sourceRefs": [],
+          "claimRefs": [
+            "claim:fixture-thesis"
+          ]
+        },
+        {
+          "id": "critical-assumptions",
+          "sourceRefs": [],
+          "claimRefs": [
+            "claim:fixture-thesis"
+          ]
+        },
+        {
+          "id": "attack-surface",
+          "sourceRefs": [],
+          "claimRefs": [
+            "claim:fixture-thesis"
+          ]
+        },
+        {
+          "id": "disconfirming-evidence",
+          "sourceRefs": [],
+          "claimRefs": []
+        },
+        {
+          "id": "supporting-evidence",
+          "sourceRefs": [],
+          "claimRefs": []
+        },
+        {
+          "id": "alternative-explanations",
+          "sourceRefs": [],
+          "claimRefs": []
+        },
+        {
+          "id": "bear-failure-cases",
+          "sourceRefs": [],
+          "claimRefs": []
+        },
+        {
+          "id": "invalidation-conditions",
+          "sourceRefs": [],
+          "claimRefs": [
+            "claim:fixture-thesis"
+          ]
+        },
+        {
+          "id": "challenge-assessments",
+          "sourceRefs": [],
+          "claimRefs": [
+            "claim:fixture-thesis"
+          ]
+        },
+        {
+          "id": "thesis-verdict",
+          "sourceRefs": [],
+          "claimRefs": [
+            "claim:fixture-thesis"
+          ]
+        },
+        {
+          "id": "resilience-assessment",
+          "sourceRefs": [],
+          "claimRefs": []
+        },
+        {
+          "id": "risk-updates",
+          "sourceRefs": [],
+          "claimRefs": []
+        },
+        {
+          "id": "knowledge-update-proposals",
+          "sourceRefs": [],
+          "claimRefs": []
+        },
+        {
+          "id": "research-gaps",
+          "sourceRefs": [],
+          "claimRefs": []
+        },
+        {
+          "id": "methodology-provenance",
+          "sourceRefs": [],
+          "claimRefs": []
+        }
+      ],
+      "allReferencesResolve": true
+    },
+    "beforeTreeSha256": "841b0e96d1d3afcb3316b60e6c21212cf4e93175071636df4f010d07b9067b24",
+    "afterTreeSha256": "841b0e96d1d3afcb3316b60e6c21212cf4e93175071636df4f010d07b9067b24"
+  },
+  "authorizedWrite": {
+    "workflowRunId": "phase3-thesis-e2e-run",
+    "status": "completed",
+    "createdSourceRefs": [
+      "source:research-d6416dcefa0aa554"
+    ],
+    "createdClaimRefs": [
+      "claim:research-84ea45d4a266eee4",
+      "claim:research-6547795418582399"
+    ],
+    "reportReferencesResolve": true
+  },
+  "secretsIncluded": false
+}
