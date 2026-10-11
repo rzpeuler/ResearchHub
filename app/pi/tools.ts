@@ -57,7 +57,7 @@ function scopedReadService<T extends object>(service: T, policyContext: Research
 
 function scopedResearchService<T extends object>(service: T | undefined, policyContext: ResearchHubPolicyContext | undefined): T | undefined {
   if (service === undefined) return service
-  const methods = new Set(['startResearchCompany', 'startEarningsReview', 'startValuation', 'startThesisLifecycleRefresh', 'startThesisLifecycleCreate'])
+  const methods = new Set(['startResearchCompany', 'startIndustryResearch', 'startEarningsReview', 'startValuation', 'startEventResearch', 'startThesisRedTeam', 'startThesisLifecycleRefresh', 'startThesisLifecycleCreate'])
   return new Proxy(service, {
     get(target, property, receiver) {
       const value = Reflect.get(target, property, receiver)
@@ -65,10 +65,7 @@ function scopedResearchService<T extends object>(service: T | undefined, policyC
       return (...args: unknown[]) => {
         const supplied = policyContext?.current
         if (property === 'startThesisLifecycleRefresh' || property === 'startThesisLifecycleCreate') {
-          if (supplied === undefined) return Reflect.apply(value, target, args)
-          if (property === 'startThesisLifecycleRefresh' && supplied.structuredKnowledge === false) throw new ApplicationServiceError('conflict', 'Thesis lifecycle refresh is disabled for this ResearchRequest')
-          if (property === 'startThesisLifecycleCreate' && supplied.structuredKnowledge === false) throw new ApplicationServiceError('conflict', 'Thesis lifecycle CREATE is disabled for this ResearchRequest')
-          if (supplied.writeKnowledge === false) throw new ApplicationServiceError('conflict', `Thesis lifecycle ${property === 'startThesisLifecycleCreate' ? 'CREATE' : 'refresh'} is disabled when Knowledge writes are disabled for this ResearchRequest`)
+          if (supplied?.writeKnowledge !== true || supplied.structuredKnowledge !== true) throw new ApplicationServiceError('conflict', `Thesis lifecycle ${property === 'startThesisLifecycleCreate' ? 'CREATE' : 'refresh'} requires explicit Knowledge-write authorization and structured Knowledge access`)
           return Reflect.apply(value, target, args)
         }
         const defaultContext = defaultResearchContextPolicy()
@@ -76,7 +73,7 @@ function scopedResearchService<T extends object>(service: T | undefined, policyC
         const current: ResearchHubRequestPolicy = {
           structuredKnowledge: supplied?.structuredKnowledge ?? defaultContext.structuredKnowledge,
           sourceLibrary: supplied?.sourceLibrary ?? defaultContext.sourceLibrary,
-          writeKnowledge: (supplied?.writeKnowledge ?? defaultPersistence.writeKnowledge) === true && supplied?.structuredKnowledge !== false,
+          writeKnowledge: (supplied?.writeKnowledge ?? defaultPersistence.writeKnowledge) === true,
         }
         const input = args[0]
         if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApplicationServiceError('invalid_input', 'Research tool input must be an object')

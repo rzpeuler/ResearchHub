@@ -256,13 +256,14 @@ test('Slice C HTTP server provides bootstrap/security/202/product APIs, no-KB ma
   assert.equal(server.address, undefined); await assert.rejects(() => fetch(`${info!.origin}/api/bootstrap`))
 })
 
-test('Pi conversation defaults research persistence to deny, honors explicit policy, and does not retain authorization for follow-up', async () => {
+test('Pi conversation defaults research persistence to deny, honors explicit policy, rejects authorized follow-up, and does not leak permission across tools', async () => {
   const received: Record<string, unknown>[] = []
   let releaseAuthorized!: () => void
-  const researchService = { startResearchCompany(input: Record<string, unknown>) { received.push(input); const completion = input.writeKnowledge === true ? new Promise((resolve) => { releaseAuthorized = () => resolve({ status: 'completed', runId: input.workflowRunId, summary: 'authorized fixture' }) }) : Promise.resolve({ status: 'completed', runId: input.workflowRunId, summary: 'read-only fixture' }); return { completion } } } as never
+  const start = (input: Record<string, unknown>) => { received.push(input); const completion = input.writeKnowledge === true ? new Promise((resolve) => { releaseAuthorized = () => resolve({ status: 'completed', runId: input.workflowRunId, summary: 'authorized fixture' }) }) : Promise.resolve({ status: 'completed', runId: input.workflowRunId, summary: 'read-only fixture' }); return { completion } }
+  const researchService = { startResearchCompany: start, startEventResearch: start } as never
   const fixture = await makeMountedRuntimeFixture(researchService)
   const server = new ResearchHubRuntimeServer({ runtime: fixture.runtime, port: 0 })
-  const toolResponse = (runId: string) => [fauxAssistantMessage(fauxToolCall('research_company', { workflowRunId: runId, symbol: '600519' }, { id: `${runId}-tool` })), fauxAssistantMessage('Research completed.')]
+  const toolResponse = (runId: string, toolName = 'research_company') => [fauxAssistantMessage(fauxToolCall(toolName, toolName === 'research_event' ? { workflowRunId: runId, symbol: '600519', anchor: { kind: 'user_event', title: 'Fixture', description: 'Ordinary follow-up', eventDate: '2026-09-08' } } : { workflowRunId: runId, symbol: '600519' }, { id: `${runId}-tool` })), fauxAssistantMessage('Research completed.')]
   const waitForResearchCall = async (count: number) => { for (let attempt = 0; attempt < 100 && received.length < count; attempt += 1) await new Promise<void>((resolve) => setTimeout(resolve, 10)); assert.ok(received.length >= count, `expected ${count} ResearchService call(s), received ${received.length}`) }
   try {
     const info = await server.start(); const headers = { 'content-type': 'application/json', origin: info.origin, 'x-researchhub-runtime-token': info.runtimeToken }
@@ -289,7 +290,7 @@ test('Pi conversation defaults research persistence to deny, honors explicit pol
     assert.equal(followUp.status, 409)
     releaseAuthorized()
     for (let attempt = 0; attempt < 100 && !fixture.runtime.sessionRuntime.getCurrentState().isIdle; attempt += 1) await new Promise<void>((resolve) => setTimeout(resolve, 10))
-    fixture.faux.setResponses(toolResponse('followup-readonly'))
+    fixture.faux.setResponses(toolResponse('followup-readonly-event', 'research_event'))
     await fixture.runtime.sessionRuntime.prompt('Continue the conversation in a new ordinary turn.')
     await waitForResearchCall(4)
     assert.equal(received[3]?.writeKnowledge, false)

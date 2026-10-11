@@ -178,3 +178,49 @@ Machine-readable details, run/report IDs, proposal IDs, reference resolution, an
 ### Delivery
 
 FIX-001 is committed and pushed to `codex/exec-003-a-004-unified-product-e2e`. The pushed commit is the delivery SHA; the remote HEAD equality and clean-worktree result are verified for delivery. SOL acceptance remains pending, and this task does not merge to `main`.
+
+## 23. RHL-EXEC-003-A-004-FIX-002 — Complete Pi Research Tool Policy Coverage
+
+**Status: IMPLEMENTED / SOL ACCEPTANCE PENDING.** The FIX-002 change is confined to Pi ResearchService policy enforcement, read-only Gateway evaluation, regression tests, and evidence. No Workflow, Knowledge Schema, DataResolver, Provider, or research algorithm was redesigned.
+
+### Root cause and correction
+
+FIX-001's `scopedResearchService()` proxy listed only Company, Earnings, Valuation, and the two Thesis Lifecycle methods. Industry, Event, and Thesis Red Team therefore reached `ResearchService` without materializing `ResearchRequest` permissions. Thesis CREATE/REFRESH also had a no-policy pass-through that treated an absent policy as permission.
+
+The proxy now covers all eight production methods and snapshots effective flags synchronously before invoking `ResearchService`:
+
+`startResearchCompany`, `startIndustryResearch`, `startEarningsReview`, `startValuation`, `startEventResearch`, `startThesisRedTeam`, `startThesisLifecycleRefresh`, and `startThesisLifecycleCreate`.
+
+For the first six methods, `writeKnowledge` is true only when the active policy explicitly sets it true; absent and inactive policies default to false. Tool arguments cannot forge or override it. `useStructuredKnowledge` continues to follow the context policy independently. The explicit `writeKnowledge=true` / `structuredKnowledge=false` combination preserves the request's write permission while disabling structured Knowledge context, as required by the two independent policy controls.
+
+Thesis CREATE and REFRESH now require both active `writeKnowledge=true` and `structuredKnowledge=true`; missing policy, `current: undefined`, read-only policy, or structured Knowledge disabled all reject before the lifecycle service is called.
+
+Production Event testing uncovered a second read-only side effect: `KnowledgeProductionGateway` archived newly acquired Raw evidence before its `writeKnowledge=false` early return. Read-only evaluation now uses a virtual content-addressed Raw ref and does not create Raw files or update `registry/raw.yaml`. Authorized Gateway/Writer behavior is unchanged.
+
+### Policy matrix and authorized behavior
+
+The six read-only-capable Pi methods are exercised across five cases: missing policy context; present but inactive context (`current` undefined); explicit read-only; explicit authorized write; and structured Knowledge disabled. Every case supplies forged `writeKnowledge=true` in the tool input. Captured ResearchService inputs verify default-deny, explicit authorization, independent `useStructuredKnowledge`, and flag replacement. A separate deferred-completion test mutates the shared policy object after tool invocation and verifies the already-captured service input remains unchanged.
+
+Thesis tests cover both CREATE and REFRESH under missing, inactive, explicit read-only, and structured-disabled policies, and verify no lifecycle call occurs. The authorized tool test runs real Thesis Formalize through `ResearchService`, `KnowledgeProductionGateway`, and Writer, committing the Thesis and resolving its admitted Claim evidence. Existing FIX-001 Company integration still proves explicit authorized Sources/Claims reach the same Gateway/Writer path.
+
+### Canonical Company and non-core production evidence
+
+The existing isolated Canonical Company fixture from FIX-001 continues to prove default and explicit read-only Company runs preserve the complete Knowledge tree, with the authorized case persisting validated evidence and Claims.
+
+FIX-002 adds a real `ResearchRequest(writeKnowledge=false) → research_event Pi Tool → ResearchService → Event Research Workflow → KnowledgeProductionGateway` test over an isolated Schema 0.4 Knowledge Base containing canonical `entity:company-600519`. The Skill accepts two evidence-backed Proposals. A forged tool `writeKnowledge=true` is replaced by `false`; both proposals reach the actual Gateway dry-run, zero IDs are committed, and the full tree SHA-256 remains unchanged (`3f5111903948ae08fbda7e930f169048dd5de6e3ea9f3182e96fd97059660d5c` before and after). The Gateway regression separately asserts that dry-run leaves `registry/raw.yaml` and the Raw archive untouched.
+
+Evidence: [Event read-only production chain](../../../tests/validation/evidence/RHL-EXEC-003-A-004-FIX-002-event-readonly.json), [authorized Thesis CREATE](../../../tests/validation/evidence/RHL-EXEC-003-A-004-FIX-002-thesis-authorized.json), and [FIX-001 Company evidence](../../../tests/validation/evidence/RHL-EXEC-003-A-004-FIX-001-pi-default-deny.json).
+
+### HTTP and session coverage
+
+The faux-Pi HTTP session test retains omitted-policy, explicit read-only, and explicit-authorized prompts; confirms follow-up during an authorized prompt returns HTTP 409; and confirms the next ordinary prompt is read-only. That final prompt invokes `research_event`, a different tool from the authorized `research_company` call, and still reaches ResearchService with `writeKnowledge=false`.
+
+### Full regression and remaining product readiness blockers
+
+Focused policy, HTTP, Company, Thesis, Event, Gateway, Valuation, and Earnings tests passed. The final required full regression reported Client **124/124 passed** and Node **2,183 passed / 21 failed** (2,204 total). The 21 failing `(file path, test title)` identifiers exactly match the 21 recorded at clean `origin/main` `87f55224c1c7389dba75b41b6e6ec39bc1f986bc`: **0 new failures, 0 baseline failures missing**. `npm test` therefore exits nonzero on the repository's existing baseline failures. An earlier Client run had one transient Thesis UI wait failure; the isolated rerun and final full rerun both passed all 124 client tests.
+
+`npm run typecheck`, `npm run client:typecheck`, `npm run client:build`, and `git diff --check` passed. Vite still reports the existing client bundle over 500 kB. The product readiness blockers from Sections 19–20 remain: external live-source availability and parsing prevent a same-symbol Company/Valuation/Earnings completed triplet, and the Pi model result remains classified as deterministic fallback after timeout. This policy fix does not claim CORE_PRODUCT_READY or Sol acceptance.
+
+### Delivery
+
+FIX-002 is delivered on the original branch `codex/exec-003-a-004-unified-product-e2e` and original `EXEC_003_A_004` worktree. The pushed remote branch HEAD, final full SHA, clean worktree, and ancestry status are verified in the delivery record. No merge to `main` is included. Status remains **IMPLEMENTED / SOL ACCEPTANCE PENDING**.
