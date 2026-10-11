@@ -1,0 +1,47 @@
+{
+  "taskId": "RHL-EXEC-004-001",
+  "phase": "initial pre-fix full-document Docling attempts",
+  "generatedFrom": "live P0-A diagnostic run before instrumentation correction",
+  "parser": "Docling 2.116.0 / Torch 2.14 CPU",
+  "configuredTimeoutMs": 150000,
+  "attempts": [
+    {
+      "ticker": "002487",
+      "fiscalPeriod": "2025-FY",
+      "announcementId": "1224997956",
+      "fileSizeBytes": 1842153,
+      "doclingElapsedMs": 156295,
+      "outcome": "NO_RESULT_WITHIN_150000_MS",
+      "stageNotInstrumented": true
+    },
+    {
+      "ticker": "002487",
+      "fiscalPeriod": "2026-H1",
+      "announcementId": "1225489611",
+      "fileSizeBytes": 1674105,
+      "doclingElapsedMs": null,
+      "outcome": "NO_RESULT_WITHIN_150000_MS",
+      "stageNotInstrumented": true
+    },
+    {
+      "ticker": "600519",
+      "fiscalPeriod": "2025-FY",
+      "announcementId": "1225114741",
+      "fileSizeBytes": 1082847,
+      "doclingElapsedMs": null,
+      "outcome": "NO_RESULT_WITHIN_150000_MS",
+      "stageNotInstrumented": true
+    },
+    {
+      "ticker": "600519",
+      "fiscalPeriod": "2026-H1",
+      "announcementId": "1225475868",
+      "fileSizeBytes": 832321,
+      "doclingElapsedMs": null,
+      "outcome": "NO_RESULT_WITHIN_150000_MS",
+      "stageNotInstrumented": true
+    }
+  ],
+  "errorClassificationKnownUnreliable": true,
+  "note": "Captured as timing evidence only. A later instrumented probe identifies the live stage; the prior helper conflated timeout text with content-invalid."
+}

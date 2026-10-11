@@ -108,3 +108,17 @@ test('official filing fetch outage is a provider failure with candidate diagnost
   assert.equal(result.attempts[0]?.status, 'SOURCE_ERROR')
   assert.match(result.attempts[0]?.diagnostic ?? '', /full-503.*HTTP 503/)
 })
+
+test('official PDF body must contain enough exact-period financial statement text before it becomes filing evidence', async () => {
+  const candidate = { candidateId: 'pdf-fy', kind: 'official_disclosure' as const, tier: 1 as const, title: '2026年半年度报告', provider: 'cninfo', publishedAt: '2026-08-30T00:00:00.000Z', url: 'https://static.cninfo.com.cn/2026-h1.pdf', metadata: { companySymbol: company.symbol, exchange: company.exchange, fiscalYear: 2026, period: 'H1' } }
+  const filingText = `2026年半年度报告 ${'经营情况说明及管理层分析。'.repeat(200)} 资产负债表 合并利润表 现金流量表`
+  const makeResolver = (content: string) => createEarningsDataResolver({ company, fiscalYear: 2026, period: 'H1', asOf, now, acquisitionPlugins: [{ name: 'fixture-official-disclosure', discover: async () => [candidate], fetch: async () => ({ candidate, retrievedAt: now(), content, mediaType: 'application/pdf' }), normalize: async (source) => ({ candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: source.content, mediaType: source.mediaType, contentHash: sha256(source.content), publisher: 'CNINFO', rights: { accessScope: 'public' as const, retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }) }], selectFilings: (discovered, year, filingPeriod, cutoff) => selectOfficialEarningsFilings(discovered, { fiscalYear: year, period: filingPeriod }, cutoff) })
+  const complete = await makeResolver(filingText).resolveOne(requirement('earnings_official_filing'))
+  assert.equal(complete.status, 'AVAILABLE')
+  const insufficient = await makeResolver('2026年半年度报告 标题文字').resolveOne(requirement('earnings_official_filing'))
+  assert.equal(insufficient.status, 'UNAVAILABLE')
+  assert.match(insufficient.attempts[0]?.diagnostic ?? '', /DOCUMENT_TEXT_INSUFFICIENT/)
+  const wrongPeriod = await makeResolver(`2025年年度报告 ${'经营情况说明及管理层分析。'.repeat(200)} 资产负债表 合并利润表 现金流量表`).resolveOne(requirement('earnings_official_filing'))
+  assert.equal(wrongPeriod.status, 'UNAVAILABLE')
+  assert.match(wrongPeriod.attempts[0]?.diagnostic ?? '', /FILING_PERIOD_MISMATCH/)
+})

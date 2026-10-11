@@ -1,0 +1,455 @@
+{
+  "taskId": "RHL-EXEC-004-001",
+  "phase": "P0-A pre-fix CNINFO/PDF diagnostics",
+  "generatedAt": "2026-10-11T08:44:37.962Z",
+  "baselineMain": "46c53a1a15845a44b28ccbbfc87e9c776c8a6842",
+  "parserRuntime": {
+    "workspaceDefault": "MANAGED_PYTHON_MISSING",
+    "sharedRoot": "[workspace-drive]\\Users\\Administrator\\Desktop\\ResearchHub",
+    "status": "READY",
+    "environment": {
+      "status": "READY",
+      "python": {
+        "python": "3.12.10",
+        "docling": "2.116.0",
+        "torch": "2.14.0",
+        "torchvision": "0.29.0"
+      },
+      "artifactsDirectoryExists": true
+    },
+    "artifactsConfigured": true,
+    "ocrEnabled": false,
+    "tableStructureEnabled": true,
+    "pythonValuesRecorded": false
+  },
+  "announcementDiscovery": [
+    {
+      "ticker": "002487",
+      "fiscalPeriod": "2025-FY",
+      "requestedAsOf": "2026-10-11T08:44:38.107Z",
+      "status": "EXACT_PERIOD_CANDIDATE_FOUND",
+      "elapsedMs": 282,
+      "recordCount": 2,
+      "exactPeriodCandidateCount": 1,
+      "candidates": [
+        {
+          "title": "2025年年度报告",
+          "publishedAt": "2026-03-05T16:00:00.000Z",
+          "announcementId": "1224997956",
+          "url": "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF",
+          "exactPeriodMatch": true,
+          "hasCorrectionMarker": false
+        },
+        {
+          "title": "2025年年度报告摘要",
+          "publishedAt": "2026-03-05T16:00:00.000Z",
+          "announcementId": "1224997955",
+          "url": "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997955.PDF",
+          "exactPeriodMatch": false,
+          "hasCorrectionMarker": false
+        }
+      ]
+    },
+    {
+      "ticker": "002487",
+      "fiscalPeriod": "2026-H1",
+      "requestedAsOf": "2026-10-11T08:44:44.707Z",
+      "status": "EXACT_PERIOD_CANDIDATE_FOUND",
+      "elapsedMs": 222,
+      "recordCount": 2,
+      "exactPeriodCandidateCount": 1,
+      "candidates": [
+        {
+          "title": "2026年半年度报告",
+          "publishedAt": "2026-08-21T16:00:00.000Z",
+          "announcementId": "1225489611",
+          "url": "https://static.cninfo.com.cn/finalpage/2026-08-22/1225489611.PDF",
+          "exactPeriodMatch": true,
+          "hasCorrectionMarker": false
+        },
+        {
+          "title": "2026年半年度报告摘要",
+          "publishedAt": "2026-08-21T16:00:00.000Z",
+          "announcementId": "1225489610",
+          "url": "https://static.cninfo.com.cn/finalpage/2026-08-22/1225489610.PDF",
+          "exactPeriodMatch": false,
+          "hasCorrectionMarker": false
+        }
+      ]
+    },
+    {
+      "ticker": "600519",
+      "fiscalPeriod": "2025-FY",
+      "requestedAsOf": "2026-10-11T08:44:50.336Z",
+      "status": "EXACT_PERIOD_CANDIDATE_FOUND",
+      "elapsedMs": 241,
+      "recordCount": 3,
+      "exactPeriodCandidateCount": 2,
+      "candidates": [
+        {
+          "title": "贵州茅台2025年年度报告",
+          "publishedAt": "2026-04-16T16:00:00.000Z",
+          "announcementId": "1225114741",
+          "url": "https://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF",
+          "exactPeriodMatch": true,
+          "hasCorrectionMarker": false
+        },
+        {
+          "title": "贵州茅台2025年年度报告（英文版）",
+          "publishedAt": "2026-04-16T16:00:00.000Z",
+          "announcementId": "1225114733",
+          "url": "https://static.cninfo.com.cn/finalpage/2026-04-17/1225114733.PDF",
+          "exactPeriodMatch": true,
+          "hasCorrectionMarker": false
+        },
+        {
+          "title": "贵州茅台2025年年度报告摘要",
+          "publishedAt": "2026-04-16T16:00:00.000Z",
+          "announcementId": "1225114731",
+          "url": "https://static.cninfo.com.cn/finalpage/2026-04-17/1225114731.PDF",
+          "exactPeriodMatch": false,
+          "hasCorrectionMarker": false
+        }
+      ]
+    },
+    {
+      "ticker": "600519",
+      "fiscalPeriod": "2026-H1",
+      "requestedAsOf": "2026-10-11T08:44:55.506Z",
+      "status": "EXACT_PERIOD_CANDIDATE_FOUND",
+      "elapsedMs": 223,
+      "recordCount": 2,
+      "exactPeriodCandidateCount": 1,
+      "candidates": [
+        {
+          "title": "贵州茅台2026年半年度报告",
+          "publishedAt": "2026-08-14T16:00:00.000Z",
+          "announcementId": "1225475868",
+          "url": "https://static.cninfo.com.cn/finalpage/2026-08-15/1225475868.PDF",
+          "exactPeriodMatch": true,
+          "hasCorrectionMarker": false
+        },
+        {
+          "title": "贵州茅台2026年半年度报告摘要",
+          "publishedAt": "2026-08-14T16:00:00.000Z",
+          "announcementId": "1225475860",
+          "url": "https://static.cninfo.com.cn/finalpage/2026-08-15/1225475860.PDF",
+          "exactPeriodMatch": false,
+          "hasCorrectionMarker": false
+        }
+      ]
+    }
+  ],
+  "httpAttempts": [
+    {
+      "stage": "CNINFO_ORGANIZATION_LOOKUP",
+      "host": "www.cninfo.com.cn",
+      "path": "/new/information/topSearch/query",
+      "method": "POST",
+      "httpStatus": 200,
+      "transportStatus": "SUCCEEDED",
+      "contentType": "application/json;charset=UTF-8",
+      "contentLengthBytes": null,
+      "startedAt": "2026-10-11T08:44:38.107Z",
+      "retrievedAt": "2026-10-11T08:44:38.265Z",
+      "elapsedMs": 158
+    },
+    {
+      "stage": "CNINFO_ANNOUNCEMENT_QUERY",
+      "host": "www.cninfo.com.cn",
+      "path": "/new/hisAnnouncement/query",
+      "method": "POST",
+      "httpStatus": 200,
+      "transportStatus": "SUCCEEDED",
+      "contentType": "application/json;charset=UTF-8",
+      "contentLengthBytes": null,
+      "startedAt": "2026-10-11T08:44:38.281Z",
+      "retrievedAt": "2026-10-11T08:44:38.388Z",
+      "elapsedMs": 107
+    },
+    {
+      "stage": "CNINFO_ORGANIZATION_LOOKUP",
+      "host": "www.cninfo.com.cn",
+      "path": "/new/information/topSearch/query",
+      "method": "POST",
+      "httpStatus": 200,
+      "transportStatus": "SUCCEEDED",
+      "contentType": "application/json;charset=UTF-8",
+      "contentLengthBytes": null,
+      "startedAt": "2026-10-11T08:44:44.707Z",
+      "retrievedAt": "2026-10-11T08:44:44.830Z",
+      "elapsedMs": 123
+    },
+    {
+      "stage": "CNINFO_ANNOUNCEMENT_QUERY",
+      "host": "www.cninfo.com.cn",
+      "path": "/new/hisAnnouncement/query",
+      "method": "POST",
+      "httpStatus": 200,
+      "transportStatus": "SUCCEEDED",
+      "contentType": "application/json;charset=UTF-8",
+      "contentLengthBytes": null,
+      "startedAt": "2026-10-11T08:44:44.831Z",
+      "retrievedAt": "2026-10-11T08:44:44.929Z",
+      "elapsedMs": 98
+    },
+    {
+      "stage": "CNINFO_ORGANIZATION_LOOKUP",
+      "host": "www.cninfo.com.cn",
+      "path": "/new/information/topSearch/query",
+      "method": "POST",
+      "httpStatus": 200,
+      "transportStatus": "SUCCEEDED",
+      "contentType": "application/json;charset=UTF-8",
+      "contentLengthBytes": null,
+      "startedAt": "2026-10-11T08:44:50.336Z",
+      "retrievedAt": "2026-10-11T08:44:50.451Z",
+      "elapsedMs": 115
+    },
+    {
+      "stage": "CNINFO_ANNOUNCEMENT_QUERY",
+      "host": "www.cninfo.com.cn",
+      "path": "/new/hisAnnouncement/query",
+      "method": "POST",
+      "httpStatus": 200,
+      "transportStatus": "SUCCEEDED",
+      "contentType": "application/json;charset=UTF-8",
+      "contentLengthBytes": null,
+      "startedAt": "2026-10-11T08:44:50.452Z",
+      "retrievedAt": "2026-10-11T08:44:50.577Z",
+      "elapsedMs": 124
+    },
+    {
+      "stage": "CNINFO_ORGANIZATION_LOOKUP",
+      "host": "www.cninfo.com.cn",
+      "path": "/new/information/topSearch/query",
+      "method": "POST",
+      "httpStatus": 200,
+      "transportStatus": "SUCCEEDED",
+      "contentType": "application/json;charset=UTF-8",
+      "contentLengthBytes": null,
+      "startedAt": "2026-10-11T08:44:55.506Z",
+      "retrievedAt": "2026-10-11T08:44:55.607Z",
+      "elapsedMs": 101
+    },
+    {
+      "stage": "CNINFO_ANNOUNCEMENT_QUERY",
+      "host": "www.cninfo.com.cn",
+      "path": "/new/hisAnnouncement/query",
+      "method": "POST",
+      "httpStatus": 200,
+      "transportStatus": "SUCCEEDED",
+      "contentType": "application/json;charset=UTF-8",
+      "contentLengthBytes": null,
+      "startedAt": "2026-10-11T08:44:55.608Z",
+      "retrievedAt": "2026-10-11T08:44:55.729Z",
+      "elapsedMs": 121
+    }
+  ],
+  "documents": [
+    {
+      "ticker": "002487",
+      "announcementId": "1224997956",
+      "officialUrl": "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF",
+      "title": "2025年年度报告",
+      "publishedAt": "2026-03-05T16:00:00.000Z",
+      "fiscalPeriod": "2025-FY",
+      "downloadStatus": "SUCCEEDED",
+      "httpStatus": 200,
+      "contentType": "application/pdf",
+      "declaredLengthBytes": 1842153,
+      "downloadStartedAt": "2026-10-11T08:44:38.389Z",
+      "downloadMs": 50,
+      "pdfIntegrity": {
+        "byteLength": 1842153,
+        "sha256": "be11f9d8a30b23c2b4710120a851f839820242785e50fd6193e44c168e005241",
+        "startsWithPdfMagic": true,
+        "containsEofMarker": true
+      },
+      "lightweightTextProbe": {
+        "status": "COMPLETED",
+        "parserVersion": "6.12.1",
+        "pageCount": 210,
+        "extractedCharacterCount": 206594,
+        "nonEmptyPageCount": 210,
+        "textBearingPageCoverage": 1,
+        "firstPageCharacters": 77,
+        "lastPageCharacters": 373,
+        "financialStructureTermCounts": {
+          "目录": 6,
+          "资产负债表": 33,
+          "利润表": 5,
+          "现金流量表": 6,
+          "主要会计数据": 1,
+          "营业收入": 35,
+          "归属于上市公司股东的净利润": 0,
+          "半年度报告": 1,
+          "年度报告": 223
+        },
+        "encrypted": false
+      },
+      "parser": {
+        "status": "NOT_ATTEMPTED",
+        "reason": "Text-layer quality probe only; the prior diagnostic already measured the production-style Docling conversion bound."
+      },
+      "parserPageLocationCoverage": null
+    },
+    {
+      "ticker": "002487",
+      "announcementId": "1225489611",
+      "officialUrl": "https://static.cninfo.com.cn/finalpage/2026-08-22/1225489611.PDF",
+      "title": "2026年半年度报告",
+      "publishedAt": "2026-08-21T16:00:00.000Z",
+      "fiscalPeriod": "2026-H1",
+      "downloadStatus": "SUCCEEDED",
+      "httpStatus": 200,
+      "contentType": "application/pdf",
+      "declaredLengthBytes": 1674105,
+      "downloadStartedAt": "2026-10-11T08:44:44.929Z",
+      "downloadMs": 39,
+      "pdfIntegrity": {
+        "byteLength": 1674105,
+        "sha256": "701996f63a1a518111882726ef5ac44b498431ad2b23e42489621c0f3adb81fc",
+        "startsWithPdfMagic": true,
+        "containsEofMarker": true
+      },
+      "lightweightTextProbe": {
+        "status": "COMPLETED",
+        "parserVersion": "6.12.1",
+        "pageCount": 179,
+        "extractedCharacterCount": 164082,
+        "nonEmptyPageCount": 179,
+        "textBearingPageCoverage": 1,
+        "firstPageCharacters": 60,
+        "lastPageCharacters": 282,
+        "financialStructureTermCounts": {
+          "目录": 7,
+          "资产负债表": 31,
+          "利润表": 4,
+          "现金流量表": 5,
+          "主要会计数据": 1,
+          "营业收入": 27,
+          "归属于上市公司股东的净利润": 1,
+          "半年度报告": 186,
+          "年度报告": 187
+        },
+        "encrypted": false
+      },
+      "parser": {
+        "status": "NOT_ATTEMPTED",
+        "reason": "Text-layer quality probe only; the prior diagnostic already measured the production-style Docling conversion bound."
+      },
+      "parserPageLocationCoverage": null
+    },
+    {
+      "ticker": "600519",
+      "announcementId": "1225114741",
+      "officialUrl": "https://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF",
+      "title": "贵州茅台2025年年度报告",
+      "publishedAt": "2026-04-16T16:00:00.000Z",
+      "fiscalPeriod": "2025-FY",
+      "downloadStatus": "SUCCEEDED",
+      "httpStatus": 200,
+      "contentType": "application/pdf",
+      "declaredLengthBytes": 1082847,
+      "downloadStartedAt": "2026-10-11T08:44:50.577Z",
+      "downloadMs": 79,
+      "pdfIntegrity": {
+        "byteLength": 1082847,
+        "sha256": "474905deeaf0f875fc0a1b097a626c0c7852c427faadc5d7fc7816cbf45ea288",
+        "startsWithPdfMagic": true,
+        "containsEofMarker": true
+      },
+      "lightweightTextProbe": {
+        "status": "COMPLETED",
+        "parserVersion": "6.12.1",
+        "pageCount": 143,
+        "extractedCharacterCount": 155690,
+        "nonEmptyPageCount": 143,
+        "textBearingPageCoverage": 1,
+        "firstPageCharacters": 74,
+        "lastPageCharacters": 385,
+        "financialStructureTermCounts": {
+          "目录": 2,
+          "资产负债表": 24,
+          "利润表": 5,
+          "现金流量表": 7,
+          "主要会计数据": 4,
+          "营业收入": 39,
+          "归属于上市公司股东的净利润": 1,
+          "半年度报告": 1,
+          "年度报告": 158
+        },
+        "encrypted": false
+      },
+      "parser": {
+        "status": "NOT_ATTEMPTED",
+        "reason": "Text-layer quality probe only; the prior diagnostic already measured the production-style Docling conversion bound."
+      },
+      "parserPageLocationCoverage": null
+    },
+    {
+      "ticker": "600519",
+      "announcementId": "1225475868",
+      "officialUrl": "https://static.cninfo.com.cn/finalpage/2026-08-15/1225475868.PDF",
+      "title": "贵州茅台2026年半年度报告",
+      "publishedAt": "2026-08-14T16:00:00.000Z",
+      "fiscalPeriod": "2026-H1",
+      "downloadStatus": "SUCCEEDED",
+      "httpStatus": 200,
+      "contentType": "application/pdf",
+      "declaredLengthBytes": 832321,
+      "downloadStartedAt": "2026-10-11T08:44:55.729Z",
+      "downloadMs": 54,
+      "pdfIntegrity": {
+        "byteLength": 832321,
+        "sha256": "0e10aa26be46b1cf3cd03f06e834c7fb98d5dd0d661b96f8fddd4af7e846a4f6",
+        "startsWithPdfMagic": true,
+        "containsEofMarker": true
+      },
+      "lightweightTextProbe": {
+        "status": "COMPLETED",
+        "parserVersion": "6.12.1",
+        "pageCount": 110,
+        "extractedCharacterCount": 118726,
+        "nonEmptyPageCount": 110,
+        "textBearingPageCoverage": 1,
+        "firstPageCharacters": 76,
+        "lastPageCharacters": 108,
+        "financialStructureTermCounts": {
+          "目录": 2,
+          "资产负债表": 21,
+          "利润表": 3,
+          "现金流量表": 6,
+          "主要会计数据": 4,
+          "营业收入": 17,
+          "归属于上市公司股东的净利润": 1,
+          "半年度报告": 118,
+          "年度报告": 120
+        },
+        "encrypted": false
+      },
+      "parser": {
+        "status": "NOT_ATTEMPTED",
+        "reason": "Text-layer quality probe only; the prior diagnostic already measured the production-style Docling conversion bound."
+      },
+      "parserPageLocationCoverage": null
+    }
+  ],
+  "deduplication": {
+    "documentsAttempted": 4,
+    "uniqueOfficialUrls": 4,
+    "sameDocumentParsedMoreThanOnce": false
+  },
+  "temporaryFiles": {
+    "diagnosticPdfCountBeforeOwnedCleanup": 4,
+    "ownedTemporaryRootRemoved": true,
+    "parserTemporaryTreeLeakMeasured": false
+  },
+  "evidenceIntegrity": {
+    "pdfBodiesStored": false,
+    "extractedPdfTextStored": false,
+    "parserRawOutputStored": false,
+    "credentialsStored": false
+  }
+}

@@ -1,0 +1,2171 @@
+{
+  "taskId": "RHL-EXEC-004-001",
+  "generatedAt": "2026-10-11T09:18:05.753Z",
+  "execution": "ResearchRunPage HTTP API -> ResearchDispatchService explicit Workflow -> verified identity -> ResearchService -> Workflow -> real AKShare/CNINFO/GDELT providers -> DataResolver -> Skill -> ResearchReport/ResearchBundle",
+  "providerMode": "real provider / deterministic semantic fallback; Pi ModelRuntime tested separately",
+  "knowledgeBaseSchema": "0.4",
+  "writeKnowledge": false,
+  "targets": [
+    {
+      "symbol": "002487",
+      "exchange": "SZSE",
+      "name": "大金重工",
+      "fiscalRuns": [
+        {
+          "fiscalYear": 2025,
+          "period": "FY"
+        },
+        {
+          "fiscalYear": 2026,
+          "period": "H1"
+        }
+      ]
+    },
+    {
+      "symbol": "600519",
+      "exchange": "SSE",
+      "name": "贵州茅台",
+      "fiscalRuns": [
+        {
+          "fiscalYear": 2025,
+          "period": "FY"
+        },
+        {
+          "fiscalYear": 2026,
+          "period": "H1"
+        }
+      ]
+    }
+  ],
+  "requestedOperation": "all",
+  "expectedRunCount": 8,
+  "runs": [
+    {
+      "target": {
+        "symbol": "002487",
+        "exchange": "SZSE",
+        "verifiedName": "大金重工",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-11T09:14:45.451Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "company",
+      "label": "Company Research",
+      "request": {
+        "symbol": "002487",
+        "name": "大金重工",
+        "exchange": "SZSE",
+        "maxSources": 2
+      },
+      "runId": "426e331c-d505-43af-976f-73e2062c1ca7",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "completed",
+        "executionStatus": "completed",
+        "terminalStatus": "completed",
+        "bundleStatus": "available",
+        "reportRef": "company-research-002487-426e331c-d505-43af-976f-73e2062c1ca7",
+        "bundleRef": "research-bundle-426e331c-d505-43af-976f-73e2062c1ca7",
+        "diagnostics": []
+      },
+      "providerOutcomes": [
+        {
+          "provider": "akshare",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": true,
+          "usableSourceCount": 1,
+          "diagnostics": []
+        },
+        {
+          "provider": "cninfo",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 2,
+          "diagnostics": []
+        },
+        {
+          "provider": "gdelt",
+          "attempted": true,
+          "succeeded": false,
+          "empty": false,
+          "failed": true,
+          "usableSourceCount": 0,
+          "diagnostics": []
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_COMPLETED",
+      "report": {
+        "reportId": "company-research-002487-426e331c-d505-43af-976f-73e2062c1ca7",
+        "reportType": "company_research",
+        "workflowRunId": "426e331c-d505-43af-976f-73e2062c1ca7",
+        "asOf": "2026-10-11T09:14:45.515Z",
+        "sections": [
+          {
+            "title": "Company Overview",
+            "substantive": true,
+            "excerpt": "Verified security identity: 大金重工 (002487, SZ).\n\nResearch cutoff: 2026-10-11T09:14:45.515Z.\n\nCompany profile data gap: no usable business profile fields were returned; no business facts are asserted.\n\n### Bounded evidence supplied to research\n- 关于注销募集资金专户的公告: 证券代码:002487     证券简称:大金重工        公告编号:2026-071\n\n\n              大金重工股份有限公司\n            关于注销募集资金专户的公告\n\n",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://static.cninfo.com.cn/finalpage/2026-09-22/1225575461.PDF",
+              "https://static.cninfo.com.cn/finalpage/2026-09-16/1225565805.PDF",
+              "https://quote.eastmoney.com/sz002487.html"
+            ]
+          },
+          {
+            "title": "Business Model",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Business Model; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Business Segments",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Business Segments; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Revenue / Profit Drivers",
+            "substantive": true,
+            "excerpt": "Retrieved structured financial observations (provider-reported values; units and historical value versions are not inferred):\n- Period end: 2026-06-30; published: 2026-08-22T00:00:00+08:00; revenue: 3252515191.59; net profit: 600567001.92; gross margin: unreported; basic EPS: 0.94; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2026-03-31; published: 2026-",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://quote.eastmoney.com/sz002487.html"
+            ]
+          },
+          {
+            "title": "Products",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Products; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Technologies",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Technologies; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Industry Exposure",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Industry Exposure; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Supply Chain",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Supply Chain; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Competition",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Competition; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Financial Quality",
+            "substantive": true,
+            "excerpt": "Retrieved structured financial observations (provider-reported values; units and historical value versions are not inferred):\n- Period end: 2026-06-30; published: 2026-08-22T00:00:00+08:00; revenue: 3252515191.59; net profit: 600567001.92; gross margin: unreported; basic EPS: 0.94; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2026-03-31; published: 2026-",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://quote.eastmoney.com/sz002487.html"
+            ]
+          },
+          {
+            "title": "Growth Drivers",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Growth Drivers; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Management / Capital Allocation",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Management / Capital Allocation; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Catalysts",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Catalysts; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Risks",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Risks; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Valuation",
+            "substantive": true,
+            "excerpt": "Market data gap: no eligible market observations were returned; no current price, PE, or PB is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Bull / Base / Bear",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Bull / Base / Bear; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Variant Perception",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Variant Perception; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Investment Thesis",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Investment Thesis; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Monitoring Checklist",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Monitoring Checklist; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          }
+        ],
+        "evidenceLinkCount": 5,
+        "canonicalRefCount": 0,
+        "canonicalRefsResolve": true,
+        "reportReloaded": true
+      },
+      "domainOutcome": {
+        "blockedReason": null,
+        "errorSummary": null,
+        "diagnostics": [],
+        "selectionDiagnostics": [],
+        "telemetry": null,
+        "acquisitionDiagnostics": []
+      },
+      "bundle": {
+        "bundleId": "research-bundle-426e331c-d505-43af-976f-73e2062c1ca7",
+        "workflowRunId": "426e331c-d505-43af-976f-73e2062c1ca7",
+        "reportId": "company-research-002487-426e331c-d505-43af-976f-73e2062c1ca7",
+        "status": "completed",
+        "reloaded": true,
+        "terminalStatus": "completed"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83",
+        "afterDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83"
+      }
+    },
+    {
+      "target": {
+        "symbol": "002487",
+        "exchange": "SZSE",
+        "verifiedName": "大金重工",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-11T09:15:16.827Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "valuation",
+      "label": "Valuation",
+      "request": {
+        "symbol": "002487",
+        "name": "大金重工",
+        "exchange": "SZSE",
+        "methods": [
+          "PE",
+          "PB"
+        ],
+        "targetFiscalYear": 2026
+      },
+      "runId": "97f449bc-314a-42ba-ac44-3215ff311a25",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "completed",
+        "executionStatus": "completed",
+        "terminalStatus": "completed",
+        "bundleStatus": "available",
+        "reportRef": "valuation-002487-2026-97f449bc-314a-42ba-ac44-3215ff311a25",
+        "bundleRef": "research-bundle-97f449bc-314a-42ba-ac44-3215ff311a25",
+        "diagnostics": []
+      },
+      "providerOutcomes": [
+        {
+          "provider": null,
+          "attempted": true,
+          "succeeded": true,
+          "empty": null,
+          "failed": null,
+          "usableSourceCount": null,
+          "diagnostics": [],
+          "marketTransportSucceeded": true,
+          "financialTransportSucceeded": true,
+          "officialPublicationVerified": true,
+          "companyBasicRowCount": 0,
+          "financialRowCount": 70,
+          "marketRowCount": 15,
+          "marketPriceFound": true,
+          "fiscalYearBasisFound": true,
+          "usableForValuation": true
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_COMPLETED",
+      "report": {
+        "reportId": "valuation-002487-2026-97f449bc-314a-42ba-ac44-3215ff311a25",
+        "reportType": "valuation",
+        "workflowRunId": "97f449bc-314a-42ba-ac44-3215ff311a25",
+        "asOf": "2026-10-11T09:15:16.851Z",
+        "sections": [
+          {
+            "title": "Valuation Snapshot",
+            "substantive": true,
+            "excerpt": "Verified company name: 大金重工.\n\nVerified ticker / exchange: 002487.SZ.\n\nValuation timestamp: 2026-10-11T09:15:16.851Z; valuation date: 2026-10-11T09:15:16.851Z.\n\nSelected market close: 43.75 CNY/share for 2026-10-09. Currency: CNY. Adjustment: UNADJUSTED.\n\nMarket publisher: Tencent; retrieval provider: AKShare; source ID: akshare-tencent-historical-market-data",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://gu.qq.com/sz002487/zs",
+              "https://github.com/akfamily/akshare"
+            ]
+          },
+          {
+            "title": "Data Basis & Point-in-Time Status",
+            "substantive": true,
+            "excerpt": "Annual financial basis: FY2025, period 2025-12-31.\n\nEPS: 1.73 CNY/share; publisher: EastMoney; retrieval provider: AKShare; source ID: akshare-valuation-financial-indicators-eps; URL: https://datacenter.eastmoney.com/securities/api/data/get.\n\nBVPS: 12.9836121393 CNY/share; publisher: EastMoney; retrieval provider: AKShare; source ID: akshare-valuation-financ",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://gu.qq.com/sz002487/zs",
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF",
+              "https://github.com/akfamily/akshare"
+            ]
+          },
+          {
+            "title": "Existing Research Context",
+            "substantive": true,
+            "excerpt": "Existing canonical Company research context for 002487 is bounded and company-only.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Method Eligibility",
+            "substantive": true,
+            "excerpt": "PE: eligible; PB: eligible",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://gu.qq.com/sz002487/zs",
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF"
+            ]
+          },
+          {
+            "title": "FY-Based Reference Multiples",
+            "substantive": true,
+            "excerpt": "Current PE: 25.289017341040463 (selected close / FY2025 EPS); current PB: 3.3696323897086735 (selected close / FY2025 BVPS). These are deterministic current reference multiples, not forecast target multiples. EV/EBITDA: Unavailable.",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://gu.qq.com/sz002487/zs",
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF"
+            ]
+          },
+          {
+            "title": "Primary Method Selection",
+            "substantive": true,
+            "excerpt": "No forecast method selected; scenario assumptions unavailable.",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://gu.qq.com/sz002487/zs",
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF"
+            ]
+          },
+          {
+            "title": "Assumption Framework",
+            "substantive": true,
+            "excerpt": "No validated assumption plan is available; no scenario or target price is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Bear Scenario",
+            "substantive": true,
+            "excerpt": "Unavailable; no validated assumption plan.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Base Scenario",
+            "substantive": true,
+            "excerpt": "Unavailable; no validated assumption plan.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Bull Scenario",
+            "substantive": true,
+            "excerpt": "Unavailable; no validated assumption plan.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Target Price Range",
+            "substantive": true,
+            "excerpt": "Unavailable; forecast scenarios were not produced.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Sensitivity Analysis",
+            "substantive": true,
+            "excerpt": "Unavailable; forecast scenarios were not produced.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Secondary Method Cross-checks",
+            "substantive": true,
+            "excerpt": "Unavailable without a validated assumption plan.\n\nAutomatic comparable cross-check: availability=unavailable; selected method=PE; selected peers=0 [Unavailable]; peer median=Unavailable; multiple basis=FY2025; target period=FY2026; target forecast metric=NaN; implied target price=Unavailable; runtime evidence candidate IDs=Unavailable; canonical peer sources",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Changes vs Existing Research",
+            "substantive": true,
+            "excerpt": "Valuation is a reproducible view over existing Company research; no unsupported canonical change is assumed.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Valuation View",
+            "substantive": true,
+            "excerpt": "Deterministic outputs are authoritative; qualitative interpretation is bounded to supplied evidence.\n\nConsensus unavailable",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Risks / Limitations / Research Gaps",
+            "substantive": true,
+            "excerpt": "companyBasic: AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/get?fltt=2&invt=2&fields=f120%2Cf121%2Cf122%; market: VALUATION_MARKET_PROVIDER_PROXY_ERROR:AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2his.eastmon",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          }
+        ],
+        "evidenceLinkCount": 15,
+        "canonicalRefCount": 0,
+        "canonicalRefsResolve": true,
+        "reportReloaded": true
+      },
+      "domainOutcome": {
+        "blockedReason": null,
+        "errorSummary": null,
+        "diagnostics": [
+          "companyBasic: AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/get?fltt=2&invt=2&fields=f120%2Cf121%2Cf122%",
+          "market: VALUATION_MARKET_PROVIDER_PROXY_ERROR:AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/kline/get?fields1=f1%2Cf2%2Cf3%2C"
+        ],
+        "selectionDiagnostics": [],
+        "telemetry": {
+          "marketDataUsable": true,
+          "financialBasisUsable": true,
+          "canonicalSourceCount": 0,
+          "canonicalClaimCount": 0,
+          "pointInTimeVerified": false,
+          "eligibleMethods": [
+            "PE",
+            "PB"
+          ]
+        },
+        "acquisitionDiagnostics": []
+      },
+      "bundle": {
+        "bundleId": "research-bundle-97f449bc-314a-42ba-ac44-3215ff311a25",
+        "workflowRunId": "97f449bc-314a-42ba-ac44-3215ff311a25",
+        "reportId": "valuation-002487-2026-97f449bc-314a-42ba-ac44-3215ff311a25",
+        "status": "completed",
+        "reloaded": true,
+        "terminalStatus": "completed"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83",
+        "afterDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83"
+      }
+    },
+    {
+      "target": {
+        "symbol": "002487",
+        "exchange": "SZSE",
+        "verifiedName": "大金重工",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-11T09:15:40.503Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "earnings",
+      "label": "Earnings Review FY 2025",
+      "request": {
+        "symbol": "002487",
+        "name": "大金重工",
+        "exchange": "SZSE",
+        "fiscalYear": 2025,
+        "period": "FY"
+      },
+      "runId": "2c177160-b1dc-47f4-a9f1-17554ba188bd",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "completed",
+        "executionStatus": "completed",
+        "terminalStatus": "completed",
+        "bundleStatus": "available",
+        "reportRef": "earnings-review-002487-2025-FY-2c177160-b1dc-47f4-a9f1-17554ba188bd",
+        "bundleRef": "research-bundle-2c177160-b1dc-47f4-a9f1-17554ba188bd",
+        "diagnostics": []
+      },
+      "providerOutcomes": [
+        {
+          "provider": "cninfo",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 1,
+          "diagnostics": []
+        },
+        {
+          "provider": "akshare",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 1,
+          "diagnostics": []
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "attempted": true,
+          "succeeded": false,
+          "empty": true,
+          "failed": false,
+          "usableSourceCount": 0,
+          "diagnostics": []
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "attempted": true,
+          "succeeded": false,
+          "empty": true,
+          "failed": false,
+          "usableSourceCount": 0,
+          "diagnostics": []
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_COMPLETED",
+      "report": {
+        "reportId": "earnings-review-002487-2025-FY-2c177160-b1dc-47f4-a9f1-17554ba188bd",
+        "reportType": "earnings_review",
+        "workflowRunId": "2c177160-b1dc-47f4-a9f1-17554ba188bd",
+        "asOf": "2026-10-11T09:15:40.528Z",
+        "sections": [
+          {
+            "title": "Earnings Snapshot",
+            "substantive": true,
+            "excerpt": "Structured actuals returned for 002487 (2025-FY):\n- Revenue: 6,173,550,246.46 CNY (2025-FY; observed).\n- Net profit: 1,103,297,424.75 CNY (2025-FY; observed).\n- Gross margin: 31.1839 percent (2025-FY; observed).\n- EPS: 1.73 CNY/share (2025-FY; observed).\n\n### Expectations source ladder and period qualification\nRequested actual period: 2025-FY; analysis asOf ",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF"
+            ]
+          },
+          {
+            "title": "Revenue / Profit Growth",
+            "substantive": true,
+            "excerpt": "- Revenue YoY: 63.3365 percent (2025-FY; derived).\n- Net profit YoY: 132.8246 percent (2025-FY; derived).",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Segment Performance",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Segment Performance.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Margin Analysis",
+            "substantive": true,
+            "excerpt": "- Gross margin: 31.1839 percent (2025-FY; observed).\n- Gross margin change vs prior-year period: 135.5961 bps (2025-FY; derived).",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Cash Flow / Working Capital",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Cash Flow / Working Capital. Operating cash flow and cash-conversion inputs are unavailable.\n\n### Deterministic financial-quality checks\n- DSO: unavailable\n- DIO: unavailable\n- DPO: unavailable\n- Cash Conversion Cycle: unavailable\n- CFO / Net Income: unavailable\n- FCF: unavailable\n- FC",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Earnings Quality",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Earnings Quality. Cash conversion and accrual-quality inputs are incomplete; no earnings-quality conclusion is made.\n\n### Deterministic financial-quality checks\n- Accrual ratio: unavailable\n- Revenue-recognition follow-up flags: none\n- Unavailable components: unavailable (opening.total",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Management Guidance",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Management Guidance.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "One-offs / Accounting Effects",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for One-offs / Accounting Effects.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Changes vs Prior Research",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Changes vs Prior Research.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Assumption Impact",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Assumption Impact.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Thesis Impact",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Thesis Impact.\n\nNo expectation findings were available for Thesis filtering.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Catalyst / Risk Changes",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Catalyst / Risk Changes.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Valuation Implications",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Valuation Implications. Consensus unavailable; no actual-versus-consensus or valuation conclusion is made.\n\nNo verified expectation finding mapped to a valuation input.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Research Gaps / Monitoring",
+            "substantive": true,
+            "excerpt": "Unavailable metrics for 002487: operating_cash_flow, operating_cash_flow_to_net_profit. Deterministic diagnostics: impactAssessments_array_valid_false; impactAssessments_array_valid_false.\n\n### Management communication monitoring\n- diagnostic: cninfo_ir_no_accepted_records\n- diagnostic: formalGuidanceCandidates_MUST_BE_ARRAY\n- diagnostic: kpiCandidates_MUST_",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF"
+            ]
+          }
+        ],
+        "evidenceLinkCount": 8,
+        "canonicalRefCount": 0,
+        "canonicalRefsResolve": true,
+        "reportReloaded": true
+      },
+      "domainOutcome": {
+        "blockedReason": null,
+        "errorSummary": null,
+        "diagnostics": [],
+        "selectionDiagnostics": [],
+        "telemetry": {
+          "officialEvidenceStatus": "available",
+          "structuredFinancialEvidenceStatus": "available",
+          "expectationStatus": "unavailable",
+          "expectationEstimateCount": 0,
+          "expectationInstitutionCount": 0,
+          "expectationConsensusSnapshotCount": 0,
+          "canonicalSourceCount": 0,
+          "canonicalClaimCount": 0
+        },
+        "acquisitionDiagnostics": [
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "cninfo_ir_no_accepted_records"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "formalGuidanceCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "kpiCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "managementOutlookCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "RAW_OUTPUT_SCHEMA_INVALID"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "structuredQaCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "unsupported_exchange:SZ"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "automatic_expectations_unavailable"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "eps:eastmoney_akshare_eps_invalid:13:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:14:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:15:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:16:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:17:2028-盈利预测-收益|eastmo"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "eps:EASTMONEY_LEGACY_REPORT_ROUTE_UNAVAILABLE"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "eps:eps_no_usable_estimates"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "eps:PRIMARY_NO_DATA|FALLBACK_1_NO_DATA|FALLBACK_2_UNSUPPORTED"
+          }
+        ]
+      },
+      "bundle": {
+        "bundleId": "research-bundle-2c177160-b1dc-47f4-a9f1-17554ba188bd",
+        "workflowRunId": "2c177160-b1dc-47f4-a9f1-17554ba188bd",
+        "reportId": "earnings-review-002487-2025-FY-2c177160-b1dc-47f4-a9f1-17554ba188bd",
+        "status": "completed",
+        "reloaded": true,
+        "terminalStatus": "completed"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83",
+        "afterDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83"
+      }
+    },
+    {
+      "target": {
+        "symbol": "002487",
+        "exchange": "SZSE",
+        "verifiedName": "大金重工",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-11T09:15:40.503Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "earnings",
+      "label": "Earnings Review H1 2026",
+      "request": {
+        "symbol": "002487",
+        "name": "大金重工",
+        "exchange": "SZSE",
+        "fiscalYear": 2026,
+        "period": "H1"
+      },
+      "runId": "e470af49-f47e-411f-b5b4-32c8a900e849",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "completed",
+        "executionStatus": "completed",
+        "terminalStatus": "completed",
+        "bundleStatus": "available",
+        "reportRef": "earnings-review-002487-2026-H1-e470af49-f47e-411f-b5b4-32c8a900e849",
+        "bundleRef": "research-bundle-e470af49-f47e-411f-b5b4-32c8a900e849",
+        "diagnostics": []
+      },
+      "providerOutcomes": [
+        {
+          "provider": "cninfo",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 1,
+          "diagnostics": []
+        },
+        {
+          "provider": "akshare",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 1,
+          "diagnostics": []
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 10,
+          "diagnostics": []
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "attempted": false,
+          "succeeded": false,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 0,
+          "diagnostics": []
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_COMPLETED",
+      "report": {
+        "reportId": "earnings-review-002487-2026-H1-e470af49-f47e-411f-b5b4-32c8a900e849",
+        "reportType": "earnings_review",
+        "workflowRunId": "e470af49-f47e-411f-b5b4-32c8a900e849",
+        "asOf": "2026-10-11T09:15:54.761Z",
+        "sections": [
+          {
+            "title": "Earnings Snapshot",
+            "substantive": true,
+            "excerpt": "Structured actuals returned for 002487 (2026-H1):\n- Revenue: 3,252,515,191.59 CNY (2026-H1; observed).\n- Net profit: 600,567,001.92 CNY (2026-H1; observed).\n- Gross margin: 37.5255 percent (2026-H1; observed).\n- EPS: 0.94 CNY/share (2026-H1; observed).\n\n### Expectations source ladder and period qualification\nRequested actual period: 2026-H1; analysis asOf 20",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-08-22/1225489611.PDF",
+              "https://basic.10jqka.com.cn/002487/worth.html",
+              "https://basic.10jqka.com.cn/002487/worth.html",
+              "https://basic.10jqka.com.cn/002487/worth.html",
+              "https://basic.10jqka.com.cn/002487/worth.html",
+              "https://basic.10jqka.com.cn/002487/worth.html",
+              "https://basic.10jqka.com.cn/002487/worth.html",
+              "https://basic.10jqka.com.cn/002487/worth.html",
+              "https://basic.10jqka.com.cn/002487/worth.html",
+              "https://basic.10jqka.com.cn/002487/worth.html",
+              "https://basic.10jqka.com.cn/002487/worth.html"
+            ]
+          },
+          {
+            "title": "Revenue / Profit Growth",
+            "substantive": true,
+            "excerpt": "- Revenue YoY: 14.4793 percent (2026-H1; derived).\n- Net profit YoY: 9.8902 percent (2026-H1; derived).",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Segment Performance",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Segment Performance.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Margin Analysis",
+            "substantive": true,
+            "excerpt": "- Gross margin: 37.5255 percent (2026-H1; observed).\n- Gross margin change vs prior-year period: 935.5819 bps (2026-H1; derived).",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Cash Flow / Working Capital",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Cash Flow / Working Capital. Operating cash flow and cash-conversion inputs are unavailable.\n\n### Deterministic financial-quality checks\n- DSO: unavailable\n- DIO: unavailable\n- DPO: unavailable\n- Cash Conversion Cycle: unavailable\n- CFO / Net Income: unavailable\n- FCF: unavailable\n- FC",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Earnings Quality",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Earnings Quality. Cash conversion and accrual-quality inputs are incomplete; no earnings-quality conclusion is made.\n\n### Deterministic financial-quality checks\n- Accrual ratio: unavailable\n- Revenue-recognition follow-up flags: none\n- Unavailable components: unavailable (opening.total",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Management Guidance",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Management Guidance.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "One-offs / Accounting Effects",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for One-offs / Accounting Effects.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Changes vs Prior Research",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Changes vs Prior Research.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Assumption Impact",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Assumption Impact.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Thesis Impact",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Thesis Impact.\n\nNo expectation findings were available for Thesis filtering.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Catalyst / Risk Changes",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Catalyst / Risk Changes.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Valuation Implications",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Valuation Implications. Consensus unavailable; no actual-versus-consensus or valuation conclusion is made.\n\nNo verified expectation finding mapped to a valuation input.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Research Gaps / Monitoring",
+            "substantive": true,
+            "excerpt": "Unavailable metrics for 002487: operating_cash_flow, operating_cash_flow_to_net_profit. Deterministic diagnostics: impactAssessments_array_valid_false; impactAssessments_array_valid_false.\n\n### Management communication monitoring\n- diagnostic: cninfo_ir_no_accepted_records\n- diagnostic: formalGuidanceCandidates_MUST_BE_ARRAY\n- diagnostic: kpiCandidates_MUST_",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-08-22/1225489611.PDF"
+            ]
+          }
+        ],
+        "evidenceLinkCount": 18,
+        "canonicalRefCount": 0,
+        "canonicalRefsResolve": true,
+        "reportReloaded": true
+      },
+      "domainOutcome": {
+        "blockedReason": null,
+        "errorSummary": null,
+        "diagnostics": [],
+        "selectionDiagnostics": [],
+        "telemetry": {
+          "officialEvidenceStatus": "available",
+          "structuredFinancialEvidenceStatus": "available",
+          "expectationStatus": "unavailable",
+          "expectationEstimateCount": 20,
+          "expectationInstitutionCount": 10,
+          "expectationConsensusSnapshotCount": 0,
+          "canonicalSourceCount": 0,
+          "canonicalClaimCount": 0
+        },
+        "acquisitionDiagnostics": [
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "cninfo_ir_no_accepted_records"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "formalGuidanceCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "kpiCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "managementOutlookCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "RAW_OUTPUT_SCHEMA_INVALID"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "structuredQaCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "unsupported_exchange:SZ"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "candidateId": null,
+            "status": "usable",
+            "reason": "consensus_minimum_count_not_met"
+          }
+        ]
+      },
+      "bundle": {
+        "bundleId": "research-bundle-e470af49-f47e-411f-b5b4-32c8a900e849",
+        "workflowRunId": "e470af49-f47e-411f-b5b4-32c8a900e849",
+        "reportId": "earnings-review-002487-2026-H1-e470af49-f47e-411f-b5b4-32c8a900e849",
+        "status": "completed",
+        "reloaded": true,
+        "terminalStatus": "completed"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83",
+        "afterDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83"
+      }
+    },
+    {
+      "target": {
+        "symbol": "600519",
+        "exchange": "SSE",
+        "verifiedName": "贵州茅台",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-11T09:16:29.445Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "company",
+      "label": "Company Research",
+      "request": {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SSE",
+        "maxSources": 2
+      },
+      "runId": "31d0c650-fbda-4573-8a02-4f73401e74b9",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "completed",
+        "executionStatus": "completed",
+        "terminalStatus": "completed",
+        "bundleStatus": "available",
+        "reportRef": "company-research-600519-31d0c650-fbda-4573-8a02-4f73401e74b9",
+        "bundleRef": "research-bundle-31d0c650-fbda-4573-8a02-4f73401e74b9",
+        "diagnostics": []
+      },
+      "providerOutcomes": [
+        {
+          "provider": "akshare",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": true,
+          "usableSourceCount": 1,
+          "diagnostics": []
+        },
+        {
+          "provider": "cninfo",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 2,
+          "diagnostics": []
+        },
+        {
+          "provider": "gdelt",
+          "attempted": true,
+          "succeeded": false,
+          "empty": false,
+          "failed": true,
+          "usableSourceCount": 0,
+          "diagnostics": []
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_COMPLETED",
+      "report": {
+        "reportId": "company-research-600519-31d0c650-fbda-4573-8a02-4f73401e74b9",
+        "reportType": "company_research",
+        "workflowRunId": "31d0c650-fbda-4573-8a02-4f73401e74b9",
+        "asOf": "2026-10-11T09:16:29.471Z",
+        "sections": [
+          {
+            "title": "Company Overview",
+            "substantive": true,
+            "excerpt": "Verified security identity: 贵州茅台 (600519, SH).\n\nResearch cutoff: 2026-10-11T09:16:29.471Z.\n\nCompany profile data gap: no usable business profile fields were returned; no business facts are asserted.\n\n### Bounded evidence supplied to research\n- 贵州茅台2026年半年度报告: 贵州茅台酒股份有限公司2026年半年度报告\n\n\n\n公司代码:600519                     公司简称:贵州茅台\n\n\n\n\n\n          贵州茅台酒股份有限公司\n      ",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://static.cninfo.com.cn/finalpage/2026-08-15/1225475868.PDF",
+              "https://static.cninfo.com.cn/finalpage/2026-08-15/1225475864.PDF",
+              "https://quote.eastmoney.com/sh600519.html"
+            ]
+          },
+          {
+            "title": "Business Model",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Business Model; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Business Segments",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Business Segments; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Revenue / Profit Drivers",
+            "substantive": true,
+            "excerpt": "Retrieved structured financial observations (provider-reported values; units and historical value versions are not inferred):\n- Period end: 2026-06-30; published: 2026-08-15T00:00:00+08:00; revenue: 92278072083.21; net profit: 44516880421.86; gross margin: unreported; basic EPS: 35.57; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2026-03-31; published: 2",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://quote.eastmoney.com/sh600519.html"
+            ]
+          },
+          {
+            "title": "Products",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Products; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Technologies",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Technologies; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Industry Exposure",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Industry Exposure; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Supply Chain",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Supply Chain; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Competition",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Competition; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Financial Quality",
+            "substantive": true,
+            "excerpt": "Retrieved structured financial observations (provider-reported values; units and historical value versions are not inferred):\n- Period end: 2026-06-30; published: 2026-08-15T00:00:00+08:00; revenue: 92278072083.21; net profit: 44516880421.86; gross margin: unreported; basic EPS: 35.57; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2026-03-31; published: 2",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://quote.eastmoney.com/sh600519.html"
+            ]
+          },
+          {
+            "title": "Growth Drivers",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Growth Drivers; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Management / Capital Allocation",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Management / Capital Allocation; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Catalysts",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Catalysts; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Risks",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Risks; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Valuation",
+            "substantive": true,
+            "excerpt": "Market data gap: no eligible market observations were returned; no current price, PE, or PB is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Bull / Base / Bear",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Bull / Base / Bear; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Variant Perception",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Variant Perception; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Investment Thesis",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Investment Thesis; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Monitoring Checklist",
+            "substantive": false,
+            "excerpt": "Research gap: no bounded evidence was supplied for Monitoring Checklist; no conclusion is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          }
+        ],
+        "evidenceLinkCount": 5,
+        "canonicalRefCount": 0,
+        "canonicalRefsResolve": true,
+        "reportReloaded": true
+      },
+      "domainOutcome": {
+        "blockedReason": null,
+        "errorSummary": null,
+        "diagnostics": [],
+        "selectionDiagnostics": [],
+        "telemetry": null,
+        "acquisitionDiagnostics": []
+      },
+      "bundle": {
+        "bundleId": "research-bundle-31d0c650-fbda-4573-8a02-4f73401e74b9",
+        "workflowRunId": "31d0c650-fbda-4573-8a02-4f73401e74b9",
+        "reportId": "company-research-600519-31d0c650-fbda-4573-8a02-4f73401e74b9",
+        "status": "completed",
+        "reloaded": true,
+        "terminalStatus": "completed"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83",
+        "afterDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83"
+      }
+    },
+    {
+      "target": {
+        "symbol": "600519",
+        "exchange": "SSE",
+        "verifiedName": "贵州茅台",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-11T09:17:13.921Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "valuation",
+      "label": "Valuation",
+      "request": {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SSE",
+        "methods": [
+          "PE",
+          "PB"
+        ],
+        "targetFiscalYear": 2026
+      },
+      "runId": "b009b4c0-fadc-45eb-b065-1dc842e8a296",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "completed",
+        "executionStatus": "completed",
+        "terminalStatus": "completed",
+        "bundleStatus": "available",
+        "reportRef": "valuation-600519-2026-b009b4c0-fadc-45eb-b065-1dc842e8a296",
+        "bundleRef": "research-bundle-b009b4c0-fadc-45eb-b065-1dc842e8a296",
+        "diagnostics": []
+      },
+      "providerOutcomes": [
+        {
+          "provider": null,
+          "attempted": true,
+          "succeeded": true,
+          "empty": null,
+          "failed": null,
+          "usableSourceCount": null,
+          "diagnostics": [],
+          "marketTransportSucceeded": true,
+          "financialTransportSucceeded": true,
+          "officialPublicationVerified": true,
+          "companyBasicRowCount": 0,
+          "financialRowCount": 103,
+          "marketRowCount": 15,
+          "marketPriceFound": true,
+          "fiscalYearBasisFound": true,
+          "usableForValuation": true
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_COMPLETED",
+      "report": {
+        "reportId": "valuation-600519-2026-b009b4c0-fadc-45eb-b065-1dc842e8a296",
+        "reportType": "valuation",
+        "workflowRunId": "b009b4c0-fadc-45eb-b065-1dc842e8a296",
+        "asOf": "2026-10-11T09:17:13.929Z",
+        "sections": [
+          {
+            "title": "Valuation Snapshot",
+            "substantive": true,
+            "excerpt": "Verified company name: 贵州茅台.\n\nVerified ticker / exchange: 600519.SH.\n\nValuation timestamp: 2026-10-11T09:17:13.929Z; valuation date: 2026-10-11T09:17:13.929Z.\n\nSelected market close: 1263 CNY/share for 2026-10-09. Currency: CNY. Adjustment: UNADJUSTED.\n\nMarket publisher: Tencent; retrieval provider: AKShare; source ID: akshare-tencent-historical-market-data;",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://gu.qq.com/sh600519/zs",
+              "https://github.com/akfamily/akshare"
+            ]
+          },
+          {
+            "title": "Data Basis & Point-in-Time Status",
+            "substantive": true,
+            "excerpt": "Annual financial basis: FY2025, period 2025-12-31.\n\nEPS: 65.66 CNY/share; publisher: EastMoney; retrieval provider: AKShare; source ID: akshare-valuation-financial-indicators-eps; URL: https://datacenter.eastmoney.com/securities/api/data/get.\n\nBVPS: 195.3554497279 CNY/share; publisher: EastMoney; retrieval provider: AKShare; source ID: akshare-valuation-fina",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://gu.qq.com/sh600519/zs",
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF",
+              "https://github.com/akfamily/akshare"
+            ]
+          },
+          {
+            "title": "Existing Research Context",
+            "substantive": true,
+            "excerpt": "Existing canonical Company research context for 600519 is bounded and company-only.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Method Eligibility",
+            "substantive": true,
+            "excerpt": "PE: eligible; PB: eligible",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://gu.qq.com/sh600519/zs",
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF"
+            ]
+          },
+          {
+            "title": "FY-Based Reference Multiples",
+            "substantive": true,
+            "excerpt": "Current PE: 19.235455376180322 (selected close / FY2025 EPS); current PB: 6.465138299234365 (selected close / FY2025 BVPS). These are deterministic current reference multiples, not forecast target multiples. EV/EBITDA: Unavailable.",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://gu.qq.com/sh600519/zs",
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF"
+            ]
+          },
+          {
+            "title": "Primary Method Selection",
+            "substantive": true,
+            "excerpt": "No forecast method selected; scenario assumptions unavailable.",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://gu.qq.com/sh600519/zs",
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF"
+            ]
+          },
+          {
+            "title": "Assumption Framework",
+            "substantive": true,
+            "excerpt": "No validated assumption plan is available; no scenario or target price is asserted.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Bear Scenario",
+            "substantive": true,
+            "excerpt": "Unavailable; no validated assumption plan.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Base Scenario",
+            "substantive": true,
+            "excerpt": "Unavailable; no validated assumption plan.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Bull Scenario",
+            "substantive": true,
+            "excerpt": "Unavailable; no validated assumption plan.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Target Price Range",
+            "substantive": true,
+            "excerpt": "Unavailable; forecast scenarios were not produced.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Sensitivity Analysis",
+            "substantive": true,
+            "excerpt": "Unavailable; forecast scenarios were not produced.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Secondary Method Cross-checks",
+            "substantive": true,
+            "excerpt": "Unavailable without a validated assumption plan.\n\nAutomatic comparable cross-check: availability=unavailable; selected method=PE; selected peers=0 [Unavailable]; peer median=Unavailable; multiple basis=FY2025; target period=FY2026; target forecast metric=NaN; implied target price=Unavailable; runtime evidence candidate IDs=Unavailable; canonical peer sources",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Changes vs Existing Research",
+            "substantive": true,
+            "excerpt": "Valuation is a reproducible view over existing Company research; no unsupported canonical change is assumed.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Valuation View",
+            "substantive": true,
+            "excerpt": "Deterministic outputs are authoritative; qualitative interpretation is bounded to supplied evidence.\n\nConsensus unavailable",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Risks / Limitations / Research Gaps",
+            "substantive": true,
+            "excerpt": "companyBasic: AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/get?fltt=2&invt=2&fields=f120%2Cf121%2Cf122%; market: VALUATION_MARKET_PROVIDER_PROXY_ERROR:AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2his.eastmon",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          }
+        ],
+        "evidenceLinkCount": 15,
+        "canonicalRefCount": 0,
+        "canonicalRefsResolve": true,
+        "reportReloaded": true
+      },
+      "domainOutcome": {
+        "blockedReason": null,
+        "errorSummary": null,
+        "diagnostics": [
+          "companyBasic: AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/get?fltt=2&invt=2&fields=f120%2Cf121%2Cf122%",
+          "market: VALUATION_MARKET_PROVIDER_PROXY_ERROR:AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/kline/get?fields1=f1%2Cf2%2Cf3%2C"
+        ],
+        "selectionDiagnostics": [],
+        "telemetry": {
+          "marketDataUsable": true,
+          "financialBasisUsable": true,
+          "canonicalSourceCount": 0,
+          "canonicalClaimCount": 0,
+          "pointInTimeVerified": false,
+          "eligibleMethods": [
+            "PE",
+            "PB"
+          ]
+        },
+        "acquisitionDiagnostics": []
+      },
+      "bundle": {
+        "bundleId": "research-bundle-b009b4c0-fadc-45eb-b065-1dc842e8a296",
+        "workflowRunId": "b009b4c0-fadc-45eb-b065-1dc842e8a296",
+        "reportId": "valuation-600519-2026-b009b4c0-fadc-45eb-b065-1dc842e8a296",
+        "status": "completed",
+        "reloaded": true,
+        "terminalStatus": "completed"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83",
+        "afterDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83"
+      }
+    },
+    {
+      "target": {
+        "symbol": "600519",
+        "exchange": "SSE",
+        "verifiedName": "贵州茅台",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-11T09:17:40.321Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "earnings",
+      "label": "Earnings Review FY 2025",
+      "request": {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SSE",
+        "fiscalYear": 2025,
+        "period": "FY"
+      },
+      "runId": "9a794603-7e96-4154-b947-3d50744d10bd",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "completed",
+        "executionStatus": "completed",
+        "terminalStatus": "completed",
+        "bundleStatus": "available",
+        "reportRef": "earnings-review-600519-2025-FY-9a794603-7e96-4154-b947-3d50744d10bd",
+        "bundleRef": "research-bundle-9a794603-7e96-4154-b947-3d50744d10bd",
+        "diagnostics": []
+      },
+      "providerOutcomes": [
+        {
+          "provider": "cninfo",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 1,
+          "diagnostics": []
+        },
+        {
+          "provider": "akshare",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 1,
+          "diagnostics": []
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "attempted": true,
+          "succeeded": false,
+          "empty": true,
+          "failed": false,
+          "usableSourceCount": 0,
+          "diagnostics": []
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "attempted": true,
+          "succeeded": false,
+          "empty": true,
+          "failed": false,
+          "usableSourceCount": 0,
+          "diagnostics": []
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_COMPLETED",
+      "report": {
+        "reportId": "earnings-review-600519-2025-FY-9a794603-7e96-4154-b947-3d50744d10bd",
+        "reportType": "earnings_review",
+        "workflowRunId": "9a794603-7e96-4154-b947-3d50744d10bd",
+        "asOf": "2026-10-11T09:17:40.335Z",
+        "sections": [
+          {
+            "title": "Earnings Snapshot",
+            "substantive": true,
+            "excerpt": "Structured actuals returned for 600519 (2025-FY):\n- Revenue: 172,054,171,890.91 CNY (2025-FY; observed).\n- Net profit: 82,320,067,101.68 CNY (2025-FY; observed).\n- Gross margin: 91.1796 percent (2025-FY; observed).\n- EPS: 65.66 CNY/share (2025-FY; observed).\n\n### Expectations source ladder and period qualification\nRequested actual period: 2025-FY; analysis a",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF"
+            ]
+          },
+          {
+            "title": "Revenue / Profit Growth",
+            "substantive": true,
+            "excerpt": "- Revenue YoY: -1.2001 percent (2025-FY; derived).\n- Net profit YoY: -4.5323 percent (2025-FY; derived).",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Segment Performance",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Segment Performance.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Margin Analysis",
+            "substantive": true,
+            "excerpt": "- Gross margin: 91.1796 percent (2025-FY; observed).\n- Gross margin change vs prior-year period: -75.1665 bps (2025-FY; derived).",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Cash Flow / Working Capital",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Cash Flow / Working Capital. Operating cash flow and cash-conversion inputs are unavailable.\n\n### Deterministic financial-quality checks\n- DSO: unavailable\n- DIO: unavailable\n- DPO: unavailable\n- Cash Conversion Cycle: unavailable\n- CFO / Net Income: unavailable\n- FCF: unavailable\n- FC",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Earnings Quality",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Earnings Quality. Cash conversion and accrual-quality inputs are incomplete; no earnings-quality conclusion is made.\n\n### Deterministic financial-quality checks\n- Accrual ratio: unavailable\n- Revenue-recognition follow-up flags: none\n- Unavailable components: unavailable (opening.total",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Management Guidance",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Management Guidance.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "One-offs / Accounting Effects",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for One-offs / Accounting Effects.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Changes vs Prior Research",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Changes vs Prior Research.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Assumption Impact",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Assumption Impact.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Thesis Impact",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Thesis Impact.\n\nNo expectation findings were available for Thesis filtering.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Catalyst / Risk Changes",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Catalyst / Risk Changes.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Valuation Implications",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Valuation Implications. Consensus unavailable; no actual-versus-consensus or valuation conclusion is made.\n\nNo verified expectation finding mapped to a valuation input.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Research Gaps / Monitoring",
+            "substantive": true,
+            "excerpt": "Unavailable metrics for 600519: operating_cash_flow, operating_cash_flow_to_net_profit. Deterministic diagnostics: impactAssessments_array_valid_false; impactAssessments_array_valid_false.\n\n### Management communication monitoring\n- diagnostic: cninfo_ir_no_accepted_records\n- diagnostic: formalGuidanceCandidates_MUST_BE_ARRAY\n- diagnostic: kpiCandidates_MUST_",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF"
+            ]
+          }
+        ],
+        "evidenceLinkCount": 8,
+        "canonicalRefCount": 0,
+        "canonicalRefsResolve": true,
+        "reportReloaded": true
+      },
+      "domainOutcome": {
+        "blockedReason": null,
+        "errorSummary": null,
+        "diagnostics": [],
+        "selectionDiagnostics": [],
+        "telemetry": {
+          "officialEvidenceStatus": "available",
+          "structuredFinancialEvidenceStatus": "available",
+          "expectationStatus": "unavailable",
+          "expectationEstimateCount": 0,
+          "expectationInstitutionCount": 0,
+          "expectationConsensusSnapshotCount": 0,
+          "canonicalSourceCount": 0,
+          "canonicalClaimCount": 0
+        },
+        "acquisitionDiagnostics": [
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "cninfo_ir_no_accepted_records"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "formalGuidanceCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "kpiCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "managementOutlookCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "RAW_OUTPUT_SCHEMA_INVALID"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "structuredQaCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "unsupported_exchange:SH"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "automatic_expectations_unavailable"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "eps:eastmoney_akshare_eps_invalid:100:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:101:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:102:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:103:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:104:2028-盈利预测-收益|e"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "eps:EASTMONEY_LEGACY_REPORT_ROUTE_UNAVAILABLE"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "eps:eps_no_usable_estimates"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "eps:PRIMARY_NO_DATA|FALLBACK_1_NO_DATA|FALLBACK_2_UNSUPPORTED"
+          }
+        ]
+      },
+      "bundle": {
+        "bundleId": "research-bundle-9a794603-7e96-4154-b947-3d50744d10bd",
+        "workflowRunId": "9a794603-7e96-4154-b947-3d50744d10bd",
+        "reportId": "earnings-review-600519-2025-FY-9a794603-7e96-4154-b947-3d50744d10bd",
+        "status": "completed",
+        "reloaded": true,
+        "terminalStatus": "completed"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83",
+        "afterDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83"
+      }
+    },
+    {
+      "target": {
+        "symbol": "600519",
+        "exchange": "SSE",
+        "verifiedName": "贵州茅台",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-11T09:17:40.321Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "earnings",
+      "label": "Earnings Review H1 2026",
+      "request": {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SSE",
+        "fiscalYear": 2026,
+        "period": "H1"
+      },
+      "runId": "5bfcb238-a010-465f-8fe1-3dd2d0f3c9d7",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "completed",
+        "executionStatus": "completed",
+        "terminalStatus": "completed",
+        "bundleStatus": "available",
+        "reportRef": "earnings-review-600519-2026-H1-5bfcb238-a010-465f-8fe1-3dd2d0f3c9d7",
+        "bundleRef": "research-bundle-5bfcb238-a010-465f-8fe1-3dd2d0f3c9d7",
+        "diagnostics": []
+      },
+      "providerOutcomes": [
+        {
+          "provider": "cninfo",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 1,
+          "diagnostics": []
+        },
+        {
+          "provider": "akshare",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 1,
+          "diagnostics": []
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 10,
+          "diagnostics": []
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "attempted": false,
+          "succeeded": false,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 0,
+          "diagnostics": []
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_COMPLETED",
+      "report": {
+        "reportId": "earnings-review-600519-2026-H1-5bfcb238-a010-465f-8fe1-3dd2d0f3c9d7",
+        "reportType": "earnings_review",
+        "workflowRunId": "5bfcb238-a010-465f-8fe1-3dd2d0f3c9d7",
+        "asOf": "2026-10-11T09:17:55.605Z",
+        "sections": [
+          {
+            "title": "Earnings Snapshot",
+            "substantive": true,
+            "excerpt": "Structured actuals returned for 600519 (2026-H1):\n- Revenue: 92,278,072,083.21 CNY (2026-H1; observed).\n- Net profit: 44,516,880,421.86 CNY (2026-H1; observed).\n- Gross margin: 89.5552 percent (2026-H1; observed).\n- EPS: 35.57 CNY/share (2026-H1; observed).\n\n### Expectations source ladder and period qualification\nRequested actual period: 2026-H1; analysis as",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-08-15/1225475868.PDF",
+              "https://basic.10jqka.com.cn/600519/worth.html",
+              "https://basic.10jqka.com.cn/600519/worth.html",
+              "https://basic.10jqka.com.cn/600519/worth.html",
+              "https://basic.10jqka.com.cn/600519/worth.html",
+              "https://basic.10jqka.com.cn/600519/worth.html",
+              "https://basic.10jqka.com.cn/600519/worth.html",
+              "https://basic.10jqka.com.cn/600519/worth.html",
+              "https://basic.10jqka.com.cn/600519/worth.html",
+              "https://basic.10jqka.com.cn/600519/worth.html",
+              "https://basic.10jqka.com.cn/600519/worth.html"
+            ]
+          },
+          {
+            "title": "Revenue / Profit Growth",
+            "substantive": true,
+            "excerpt": "- Revenue YoY: 1.3001 percent (2026-H1; derived).\n- Net profit YoY: -1.9516 percent (2026-H1; derived).",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Segment Performance",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Segment Performance.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Margin Analysis",
+            "substantive": true,
+            "excerpt": "- Gross margin: 89.5552 percent (2026-H1; observed).\n- Gross margin change vs prior-year period: -174.4097 bps (2026-H1; derived).",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Cash Flow / Working Capital",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Cash Flow / Working Capital. Operating cash flow and cash-conversion inputs are unavailable.\n\n### Deterministic financial-quality checks\n- DSO: unavailable\n- DIO: unavailable\n- DPO: unavailable\n- Cash Conversion Cycle: unavailable\n- CFO / Net Income: unavailable\n- FCF: unavailable\n- FC",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Earnings Quality",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Earnings Quality. Cash conversion and accrual-quality inputs are incomplete; no earnings-quality conclusion is made.\n\n### Deterministic financial-quality checks\n- Accrual ratio: unavailable\n- Revenue-recognition follow-up flags: none\n- Unavailable components: unavailable (opening.total",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get"
+            ]
+          },
+          {
+            "title": "Management Guidance",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Management Guidance.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "One-offs / Accounting Effects",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for One-offs / Accounting Effects.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Changes vs Prior Research",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Changes vs Prior Research.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Assumption Impact",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Assumption Impact.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Thesis Impact",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Thesis Impact.\n\nNo expectation findings were available for Thesis filtering.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Catalyst / Risk Changes",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Catalyst / Risk Changes.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Valuation Implications",
+            "substantive": true,
+            "excerpt": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Valuation Implications. Consensus unavailable; no actual-versus-consensus or valuation conclusion is made.\n\nNo verified expectation finding mapped to a valuation input.",
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Research Gaps / Monitoring",
+            "substantive": true,
+            "excerpt": "Unavailable metrics for 600519: operating_cash_flow, operating_cash_flow_to_net_profit. Deterministic diagnostics: impactAssessments_array_valid_false; impactAssessments_array_valid_false.\n\n### Management communication monitoring\n- diagnostic: cninfo_ir_no_accepted_records\n- diagnostic: formalGuidanceCandidates_MUST_BE_ARRAY\n- diagnostic: kpiCandidates_MUST_",
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://datacenter.eastmoney.com/securities/api/data/get",
+              "https://static.cninfo.com.cn/finalpage/2026-08-15/1225475868.PDF"
+            ]
+          }
+        ],
+        "evidenceLinkCount": 18,
+        "canonicalRefCount": 0,
+        "canonicalRefsResolve": true,
+        "reportReloaded": true
+      },
+      "domainOutcome": {
+        "blockedReason": null,
+        "errorSummary": null,
+        "diagnostics": [],
+        "selectionDiagnostics": [],
+        "telemetry": {
+          "officialEvidenceStatus": "available",
+          "structuredFinancialEvidenceStatus": "available",
+          "expectationStatus": "unavailable",
+          "expectationEstimateCount": 20,
+          "expectationInstitutionCount": 10,
+          "expectationConsensusSnapshotCount": 0,
+          "canonicalSourceCount": 0,
+          "canonicalClaimCount": 0
+        },
+        "acquisitionDiagnostics": [
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "cninfo_ir_no_accepted_records"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "formalGuidanceCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "kpiCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "managementOutlookCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "RAW_OUTPUT_SCHEMA_INVALID"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "structuredQaCandidates_MUST_BE_ARRAY"
+          },
+          {
+            "provider": "management-communication",
+            "candidateId": null,
+            "status": "empty",
+            "reason": "unsupported_exchange:SH"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "candidateId": null,
+            "status": "usable",
+            "reason": "consensus_minimum_count_not_met"
+          }
+        ]
+      },
+      "bundle": {
+        "bundleId": "research-bundle-5bfcb238-a010-465f-8fe1-3dd2d0f3c9d7",
+        "workflowRunId": "5bfcb238-a010-465f-8fe1-3dd2d0f3c9d7",
+        "reportId": "earnings-review-600519-2026-H1-5bfcb238-a010-465f-8fe1-3dd2d0f3c9d7",
+        "status": "completed",
+        "reloaded": true,
+        "terminalStatus": "completed"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83",
+        "afterDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83"
+      }
+    }
+  ],
+  "allRunsSynchronized": true,
+  "allReportsAndBundlesReconciled": true,
+  "atLeastOneCompletedCompanyValuationEarningsTriplet": true,
+  "allReadOnlyTreesUnchanged": true,
+  "finalKnowledgeTreeUnchanged": true,
+  "finalKnowledgeDigest": "22968b97087cc3b34780483280cdfd7e14908316e0a299c00a9b975955d7ff83",
+  "secretsIncluded": false,
+  "rawProviderBodiesIncluded": false,
+  "hiddenReasoningIncluded": false
+}
