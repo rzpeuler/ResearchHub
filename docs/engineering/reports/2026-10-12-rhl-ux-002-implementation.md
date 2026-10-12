@@ -74,4 +74,4 @@ Full Node outputs used in comparison: `%TEMP%\ux002-node-final.txt` and `%TEMP%\
 
 ## G. Git delivery
 
-The implementation branch is isolated from `main`; no UX-003 work was started and no merge was performed by this task. The final report and acceptance evidence are part of the UX-002 branch delivery. Final commit SHA, remote branch HEAD, and clean worktree state are reported after commit/push verification.
+The implementation/evidence commit `15a86836b62c493bc6fca6df049edd548106b4d5` was pushed to `origin/codex/ux-002-realtime-agent-interaction`; fetch, local ref, and `git ls-remote` matched that SHA. A final documentation-only closure commit records the delivery result; its SHA and the post-push clean worktree check are included in the completion message. No PR merge or UX-003 work was performed; `origin/main` remains the UX-001 baseline.
