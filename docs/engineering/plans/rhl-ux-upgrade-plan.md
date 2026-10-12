@@ -6,6 +6,8 @@ Audit baseline: `origin/main` `46c53a1a15845a44b28ccbbfc87e9c776c8a6842`
 
 Source audit: [RHL-UX-000](../reports/2026-10-12-rhl-ux-000-audit.md)
 
+CTO decision source: audit Section H. The five decisions below are synchronized with that accepted decision record.
+
 ## CTO architecture decisions
 
 These decisions close the audit's five architecture questions and govern UX-001–004:
