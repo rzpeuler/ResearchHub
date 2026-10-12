@@ -78,6 +78,22 @@ const cninfo = new FixtureAcquisition('CNINFO', true)
 const gdelt = new FixtureAcquisition('GDELT')
 const identityResolver = new SecurityIdentityResolver({ mountedKnowledgeBaseRoot: knowledgeBaseRoot, dataResolverFactory: () => { throw new Error('Fixture canonical identity lookup should resolve before external directory access') } })
 const realResearchService = new ResearchService({ mountedKnowledgeBaseRoot: knowledgeBaseRoot, cwd, reportRoot: join(cwd, 'runtime-data', 'reports'), acquisitionPlugins: [cninfo, gdelt], researchEvidenceProviders: { cninfo, gdelt }, workflowService, reasoningExecutor: new FixtureExecutor(), securityIdentityResolver: identityResolver })
+const researchServiceInternals = realResearchService as unknown as Record<string, unknown>
+const originalCompanyResolverFactory = researchServiceInternals.createCompanyDataResolverFactory
+if (typeof originalCompanyResolverFactory !== 'function') throw new Error('Company Research DataResolver factory is unavailable in this fixture')
+researchServiceInternals.createCompanyDataResolverFactory = function () {
+  const factory = Reflect.apply(originalCompanyResolverFactory, realResearchService, []) as (context: unknown) => { resolve: (...args: unknown[]) => Promise<{ items: readonly { requirementId: string; status: string; attempts: readonly { sourceId: string; status: string }[] }[] }> }
+  return (context: unknown) => {
+    const resolver = factory(context)
+    const resolve = resolver.resolve.bind(resolver)
+    resolver.resolve = async (...args: unknown[]) => {
+      const bundle = await resolve(...args)
+      process.stdout.write(`DATA_RESOLVER_RESULT ${JSON.stringify({ items: bundle.items.map((item) => ({ requirementId: item.requirementId, status: item.status, attempts: item.attempts.map(({ sourceId, status }) => ({ sourceId, status })) })) })}\n`)
+      return bundle
+    }
+    return resolver
+  }
+}
 const originalListResearchReports = realResearchService.listResearchReports.bind(realResearchService)
 Object.assign(realResearchService, { listResearchReports: async (limit?: number) => { try { return await originalListResearchReports(limit) } catch (error) { process.stderr.write(`REPORT_SERVICE_ERROR ${JSON.stringify({ method: 'listResearchReports', error: error instanceof Error ? error.stack ?? error.message : String(error) })}\n`); throw error } } })
 const originalGetResearchReport = realResearchService.getResearchReport.bind(realResearchService)
@@ -95,6 +111,10 @@ realResearchService.startResearchCompany = ((input: import('../../app/services/c
   startInputs.push({ workflowRunId: input.workflowRunId, symbol: input.symbol, ...(input.name ? { name: input.name } : {}), writeKnowledge: input.writeKnowledge === true })
   const started = originalStartCompanyResearch(input, ...args)
   completionByRunId.set(input.workflowRunId, started.completion)
+  void started.completion.then((result) => {
+    const providerOutcomes = (result.providerOutcomes ?? []) as readonly { readonly provider: string; readonly providerAttempted: boolean; readonly providerSucceeded: boolean; readonly providerEmpty: boolean; readonly providerFailed: boolean; readonly usableSourceCount: number }[]
+    process.stdout.write(`COMPANY_PROVIDER_OUTCOMES ${JSON.stringify(providerOutcomes.map(({ provider, providerAttempted, providerSucceeded, providerEmpty, providerFailed, usableSourceCount }) => ({ provider, providerAttempted, providerSucceeded, providerEmpty, providerFailed, usableSourceCount }))) }\n`)
+  })
   process.stdout.write(`REAL_COMPANY_WORKFLOW_STARTED ${JSON.stringify(input)}\n`)
   return started
 }) as typeof realResearchService.startResearchCompany

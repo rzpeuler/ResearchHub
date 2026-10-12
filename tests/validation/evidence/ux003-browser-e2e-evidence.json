@@ -486,11 +486,79 @@
       },
       "source": "GET /api/workflows/a748b2cc-721c-4d1a-b469-f382503d5cf9 via fixture proxy 127.0.0.1:60137; accepted Activity from GET /api/conversations/messages; browser evidence via Microsoft Edge CDP 50848.",
       "result": "Selected workflow run, held-stage reload, terminal Activity/workflow reconciliation, report and bundle navigation observed. Isolated faux provider fixture only; no external provider/business acceptance claimed."
+    },
+    {
+      "id": "UX003-ACCEPTANCE-FIX-001-FIX-A-UNSUPPORTED-BROWSER-1b485d21",
+      "status": "PASS_FOR_OBSERVED_PATH",
+      "at": "2026-10-12T15:32:13Z",
+      "workflowRegistryId": "company_research",
+      "workflowRunId": "1b485d21-4bd7-440b-a691-81da77be137d",
+      "trigger": "Microsoft Edge production Client: selected 公司深度研究, entered 请对跨境通（002640）进行公司深度研究, and clicked visible 发送; no dispatch API was called.",
+      "runtime": {
+        "runtimeOrigin": "http://127.0.0.1:51035",
+        "clientOrigin": "http://127.0.0.1:51036",
+        "persistentPiSessionManager": true,
+        "modelNetwork": false,
+        "providerMode": "offline faux Provider fixture",
+        "requestWriteKnowledge": false
+      },
+      "dataResolver": {
+        "factory": "ResearchService.createCompanyDataResolverFactory -> createCompanyResearchDataResolver -> DataResolver.resolve",
+        "observedAtResolverBoundary": true,
+        "items": [
+          { "requirementId": "company-deep-research:company_basic_profile:002640:none:none", "status": "UNAVAILABLE", "attempts": [{ "sourceId": "akshare-company_basic_profile", "status": "UNSUPPORTED" }] },
+          { "requirementId": "company-deep-research:company_financial_history:002640:none:none", "status": "UNAVAILABLE", "attempts": [{ "sourceId": "akshare-company_financial_history", "status": "UNSUPPORTED" }] },
+          { "requirementId": "company-deep-research:company_market_history:002640:none:2026-10-12T15:32:13.099Z", "status": "UNAVAILABLE", "attempts": [{ "sourceId": "akshare-company_market_history", "status": "UNSUPPORTED" }] },
+          { "requirementId": "company-deep-research:company_research_evidence:002640:none:none", "status": "PARTIAL", "attempts": [{ "sourceId": "cninfo-company-research-evidence", "status": "SOURCE_ERROR" }, { "sourceId": "gdelt-company-research-evidence", "status": "SUCCESS" }] }
+        ]
+      },
+      "companyResultLog": {
+        "source": "ResearchService.startResearchCompany completion result",
+        "providerOutcomes": [
+          { "provider": "akshare", "providerAttempted": false, "providerSucceeded": false, "providerEmpty": true, "providerFailed": false, "usableSourceCount": 0 },
+          { "provider": "cninfo", "providerAttempted": true, "providerSucceeded": false, "providerEmpty": false, "providerFailed": true, "usableSourceCount": 0 },
+          { "provider": "gdelt", "providerAttempted": true, "providerSucceeded": true, "providerEmpty": false, "providerFailed": false, "usableSourceCount": 1 }
+        ]
+      },
+      "runtimeApi": {
+        "request": "GET /api/workflows/1b485d21-4bd7-440b-a691-81da77be137d",
+        "httpStatus": 200,
+        "status": "completed",
+        "observationRevision": 21,
+        "currentStageId": "report_persistence",
+        "stageStatuses": ["identity_validation:completed", "data_acquisition:completed", "research_synthesis:completed", "quality_gate:completed", "knowledge_gateway:skipped", "report_generation:completed", "report_persistence:completed"],
+        "providerObservations": [
+          { "providerId": "akshare", "status": "skipped", "diagnostics": ["PROVIDER_UNSUPPORTED", "PROVIDER_UNSUPPORTED", "PROVIDER_UNSUPPORTED"] },
+          { "providerId": "cninfo", "status": "failed", "diagnostics": ["PROVIDER_ATTEMPT_FAILED"] },
+          { "providerId": "gdelt", "status": "success", "recordCount": 1, "diagnostics": [] }
+        ],
+        "skillObservations": [{ "skillId": "company_research_synthesis", "status": "completed" }],
+        "terminalResult": "completed"
+      },
+      "browserDom": {
+        "selector": ".workflow-progress-panel [data-testid=workflow-progress-card]",
+        "runId": "1b485d21-4bd7-440b-a691-81da77be137d",
+        "workflowStatus": "已完成",
+        "subject": "跨境通",
+        "akshareProviderRowBeforeRefresh": "结构化数据 / 已跳过 / 当前数据需求不支持该数据源 × 3",
+        "akshareProviderRowAfterRefresh": "结构化数据已跳过0秒当前数据需求不支持该数据源当前数据需求不支持该数据源当前数据需求不支持该数据源",
+        "stageIdsAfterRefresh": ["identity_validation", "data_acquisition", "research_synthesis", "quality_gate", "knowledge_gateway", "report_generation", "report_persistence"],
+        "sameRunAndProviderStateAfterReload": true,
+        "rawProviderErrorOrStackVisible": false
+      },
+      "knowledgeBase": {
+        "revision": 0,
+        "writeKnowledge": false,
+        "rootSha256Before": "4106315fdcc91ec4db66deca9ad17dbcf334494870da3470a33255e5c3df54cf",
+        "rootSha256After": "4106315fdcc91ec4db66deca9ad17dbcf334494870da3470a33255e5c3df54cf",
+        "result": "UNCHANGED"
+      },
+      "result": "The DataResolver returned three actual UNSUPPORTED AKShare attempts. The full Company Research result recorded providerAttempted=false, providerFailed=false, and usableSourceCount=0 for AKShare. WorkflowService exposed AKShare as skipped with PROVIDER_UNSUPPORTED and no false failure code. The Workflow completed from available faux GDELT evidence despite a real faux CNINFO failure; unsupported operations did not determine the overall terminal status. Visible state and stage/diagnostic details remained the same after reload."
     }
   ],
   "limitations": [
     "The fixture used deterministic/offline faux providers; results prove runtime/UI wiring and state presentation, not live-source quality or provider acceptance.",
     "E2E-01 through E2E-09 are represented by the valid selected-workflow observations above; the earlier invalid selector-reset attempts are excluded.",
-    "The mixed-provider observation a748b2cc was captured before unsupported-attempt diagnostic classification was corrected. Its recorded values are historical evidence; the regression test now verifies PROVIDER_UNSUPPORTED for skipped adapter operations and preserves PROVIDER_ATTEMPT_FAILED for real failures."
+    "The mixed-provider observation a748b2cc was captured before unsupported-attempt diagnostic classification was corrected; the later UX003-ACCEPTANCE-FIX-001-FIX-A observation verifies the corrected classification in the production browser path."
   ]
 }

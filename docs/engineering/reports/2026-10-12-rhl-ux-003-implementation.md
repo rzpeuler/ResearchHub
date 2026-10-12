@@ -5,6 +5,7 @@
 - Baseline: `origin/main` at `2594fe01b4f282bfb4680c21c9135d3b05ffc3a4`, which contains the accepted UX-002 line.
 - Contract: [Workflow Observation Contract](../specs/2026-10-12-rhl-ux-003-workflow-observation-contract.md).
 - Browser evidence: [UX-003 browser E2E evidence](../../../tests/validation/evidence/ux003-browser-e2e-evidence.json).
+- Acceptance supplement: [RHL-UX-003-ACCEPTANCE-FIX-001](2026-10-12-rhl-ux-003-acceptance-fix-001.md).
 
 ## A. Git baseline
 
@@ -63,8 +64,9 @@ The evidence covers E2E-01 through E2E-09 across selected Company Research runs:
 | E2E-06 | `UX003-E2E06-SELECTED-WORKFLOW-CONVERSATION-ISOLATION-d5d94881` | A remained running while B was active and isolated; returning to A restored its run. |
 | E2E-07 | `UX003-E2E07-SELECTED-WORKFLOW-CANCEL-d5d94881`, `UX003-E2E07-SELECTED-WORKFLOW-BLOCKED-3e59026e` | Selected cancellation and selected blocked terminal state observed with accepted Activity reconciliation. |
 | E2E-09 | `UX003-EXPLICIT-WORKFLOW-RESTART-e7fb9d5a` | Runtime restart recovered the accepted association as interrupted, with no false running state. |
+| Acceptance FIX-A | `UX003-ACCEPTANCE-FIX-001-FIX-A-UNSUPPORTED-BROWSER-1b485d21` | Real DataResolver attempts returned `UNSUPPORTED`; API and refreshed Edge DOM showed AKShare `skipped` with only `PROVIDER_UNSUPPORTED`; Workflow completed from available faux GDELT evidence. |
 
-The mixed-provider browser run preceded the final diagnostic classification fix. It incorrectly exposed unsupported AKShare operations with `PROVIDER_ATTEMPT_FAILED`; the source fix now classifies them as `PROVIDER_UNSUPPORTED`, and a focused regression assertion verifies `skipped` plus no false failed diagnostic. The browser artifact preserves the original observed values and labels that observation as pre-fix; it does not rewrite historical evidence.
+The earlier mixed-provider browser run preceded the diagnostic classification fix and recorded false `PROVIDER_ATTEMPT_FAILED` codes for unsupported AKShare operations. Its original data is preserved as historical evidence; the later Acceptance FIX-A browser observation verifies the corrected behavior.
 
 These E2E paths use the isolated offline faux-provider fixture and establish Runtime/UI wiring, not authenticated Provider availability or live market-data quality. The historical invalid attempts remain explicitly excluded.
 
@@ -72,15 +74,14 @@ These E2E paths use the isolated offline faux-provider fixture and establish Run
 
 | Validation | Result |
 | --- | --- |
-| `npm run typecheck` | PASS; final execution recorded below before delivery. |
+| `npm run typecheck` | PASS. |
 | `npm run client:typecheck` | PASS. |
-| `npm run client:build` | PASS. Vite reports the existing advisory for a minified JS chunk over 500 kB. |
-| Focused Company Research workflow tests | PASS, 16/16. |
-| UX-001/UX-002 regressions | Included in the focused Runtime/Client suites and full test suite; exact final command results are recorded below. |
-| `npm test` | Exit 1: 2,243 Node tests; 2,222 passed and 21 failed. Failure set compared by `(filePath, testTitle)` with clean baseline: baseline 21, current 21, new 0, resolved 0. Client: 9 files, 139/139 passed. |
-| `npm run typecheck` / `npm run client:typecheck` | PASS / PASS. |
 | `npm run client:build` | PASS; 182 modules. Minified JS chunk is 664.38 kB (gzip 201.29 kB), above Vite's 500 kB advisory threshold. |
-| `node --import tsx --test tests/workflows/company-deep-research.test.ts` | PASS, 16/16, including unsupported-vs-failed Provider regression. |
+| `npm run client:test` | PASS, 9 files / 139 tests on UX-003; clean `origin/main` baseline: 9 files / 137 tests. |
+| Focused Company Research, Workflow Observability, active-run, ConversationStateStore, Runtime Slice A/B, UX-001 tests | PASS, 75/75. |
+| UX-003 `npm test` | Exit 1; Node 2,243 total, 2,222 passed, 21 failed. Client 139/139 passed. |
+| Clean `origin/main` `npm test` | Exit 1; Node 2,233 total, 2,212 passed, 21 failed. Client 137/137 passed. |
+| Full failure content comparison | `BASELINE_FAILURES_IDENTICAL`: 21 baseline, 21 UX-003; 0 new, 0 disappeared, 0 same-name content changes. Normalized record SHA-256 and per-failure details are in [acceptance comparison evidence](../../../tests/validation/evidence/ux003-acceptance-fix-001-node-failure-comparison.json). |
 | `git diff --check` | PASS. |
 
 ## I. UX-002 SSE session-switch check
