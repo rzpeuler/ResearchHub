@@ -93,8 +93,8 @@ describe('RuntimeClient', () => {
   })
 
   it('projects only normalized SSE event fields and ignores raw payloads', () => {
-    const event = parseClientEvent(JSON.stringify({ eventId: 'e1', conversationId: 'c1', timestamp: 'now', type: 'tool.updated', name: 'search_knowledge', summary: 'Knowledge search', args: { secret: 'hidden' }, result: 'raw' }))
-    expect(event).toEqual({ eventId: 'e1', conversationId: 'c1', timestamp: 'now', type: 'tool.updated', name: 'search_knowledge', summary: 'Knowledge search' })
+    const event = parseClientEvent(JSON.stringify({ eventId: 'e1', conversationId: 'c1', timestamp: 'now', type: 'tool.updated', name: 'search_knowledge', summary: 'Knowledge search', operationId: 'op-1', messageId: 'msg-1', args: { secret: 'hidden' }, result: 'raw' }))
+    expect(event).toEqual({ eventId: 'e1', conversationId: 'c1', timestamp: 'now', type: 'tool.updated', name: 'search_knowledge', summary: 'Knowledge search', operationId: 'op-1', messageId: 'msg-1' })
     expect(parseClientEvent(JSON.stringify({ eventId: 'e2', conversationId: 'c1', timestamp: 'now', type: 'raw.pi.event', args: 'secret' }))).toBeUndefined()
   })
 
@@ -102,9 +102,10 @@ describe('RuntimeClient', () => {
     const listeners = new Map<string, (event: MessageEvent<string>) => void>()
     const source = { onopen: null as ((event: Event) => void) | null, onerror: null as ((event: Event) => void) | null, close: vi.fn(), addEventListener: (type: string, listener: (event: MessageEvent<string>) => void) => { listeners.set(type, listener) }, removeEventListener: (type: string) => { listeners.delete(type) } }
     const client = new RuntimeClient(async () => json(bootstrap)); await client.bootstrap()
-    const received: string[] = []; const resync = vi.fn(); const dispose = client.openEvents((event) => received.push(event.type), resync, () => source)
+    const received: string[] = []; const resync = vi.fn(); const connection: string[] = []; const dispose = client.openEvents((event) => received.push(event.type), resync, () => source, (state) => connection.push(state))
     source.onopen?.(new Event('open')); listeners.get('message.delta')?.({ data: JSON.stringify({ eventId: 'e1', conversationId: 'c1', timestamp: 'now', type: 'message.delta', role: 'assistant', summary: 'safe' }) } as MessageEvent<string>)
-    expect(resync).toHaveBeenCalledOnce(); expect(received).toEqual(['message.delta']); dispose(); expect(source.close).toHaveBeenCalledOnce(); expect(listeners.size).toBe(0)
+    source.onerror?.(new Event('error')); source.onopen?.(new Event('open'))
+    expect(resync).toHaveBeenCalledTimes(2); expect(received).toEqual(['message.delta']); expect(connection).toEqual(['connected', 'disconnected', 'connected']); dispose(); expect(source.close).toHaveBeenCalledOnce(); expect(listeners.size).toBe(0)
   })
 
   it('uses explicit command endpoints and the safe authorization message', async () => {

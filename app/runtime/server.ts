@@ -1320,7 +1320,7 @@ export class ResearchHubRuntimeServer {
       }
       const beforeMessageCount = this.runtime!.sessionRuntime.getCurrentMessages().length
       const researchContext = bundleRunId === undefined ? undefined : await this.runtime!.services.researchDispatchService?.getSessionResearchContext(bundleRunId)
-      const started = this.runtime!.sessionRuntime.startPrompt(text, policy, researchContext)
+      const started = this.runtime!.sessionRuntime.startPrompt(text, policy, researchContext, operationId)
       await started.accepted
       await store.completeSubmission(conversationId, operationId, { kind: 'chat', outcome: 'started' })
       const completion = started.completion.then(async () => {
@@ -1330,7 +1330,7 @@ export class ResearchHubRuntimeServer {
       })
       this.trackBackground(completion, () => this.runtime!.sessionRuntime.abort())
     } else {
-      const command = operation === 'steer' ? this.runtime!.sessionRuntime.steer(text) : this.runtime!.sessionRuntime.followUp(text)
+      const command = operation === 'steer' ? this.runtime!.sessionRuntime.steer(text, operationId) : this.runtime!.sessionRuntime.followUp(text, operationId)
       await command
       await store.completeSubmission(conversationId, operationId, { kind: 'chat', outcome: 'started' })
       this.trackBackground(command, () => this.runtime!.sessionRuntime.abort())

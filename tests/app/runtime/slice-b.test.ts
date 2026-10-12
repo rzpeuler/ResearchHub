@@ -76,6 +76,33 @@ test('Slice B projects bounded safe events and never forwards thinking, tool pay
   assert.equal(events.every((event) => Object.keys(event as object).every((key) => !['args', 'result', 'partialResult', 'stack', 'delta'].includes(key))), true)
 })
 
+test('Slice B correlates a persisted Pi user SessionEntry by exact message object and accepted operation', () => {
+  const session = fakeSession('identity-session')
+  const persisted: Array<{ conversationId: string; operationId: string; piMessageId: string }> = []
+  const adapter = new ClientEventAdapter((conversationId, operationId, piMessageId) => persisted.push({ conversationId, operationId, piMessageId }))
+  const events: import('../../../app/runtime/client-events.ts').ClientEvent[] = []
+  adapter.subscribe((event) => events.push(event))
+  adapter.bind(session)
+
+  const firstMessage = { role: 'user', content: 'same text', timestamp: Date.now() }
+  adapter.setActiveOperationId('operation-one')
+  session.emit({ type: 'message_start', message: firstMessage } as unknown as AgentSessionEvent)
+  session.emit({ type: 'entry_appended', entry: { type: 'message', id: 'entry-one', parentId: null, timestamp: new Date().toISOString(), message: firstMessage } } as unknown as AgentSessionEvent)
+
+  const secondMessage = { role: 'user', content: 'same text', timestamp: Date.now() }
+  adapter.setActiveOperationId('operation-two')
+  session.emit({ type: 'message_start', message: secondMessage } as unknown as AgentSessionEvent)
+  session.emit({ type: 'entry_appended', entry: { type: 'message', id: 'entry-two', parentId: 'entry-one', timestamp: new Date().toISOString(), message: secondMessage } } as unknown as AgentSessionEvent)
+  session.emit({ type: 'entry_appended', entry: { type: 'message', id: 'unmatched-entry', parentId: 'entry-two', timestamp: new Date().toISOString(), message: { role: 'user', content: 'same text' } } } as unknown as AgentSessionEvent)
+
+  assert.deepEqual(persisted, [
+    { conversationId: 'identity-session', operationId: 'operation-one', piMessageId: 'entry-one' },
+    { conversationId: 'identity-session', operationId: 'operation-two', piMessageId: 'entry-two' },
+  ])
+  assert.equal(events.filter((event) => event.type === 'message.started').every((event) => event.operationId !== undefined), true)
+  adapter.dispose()
+})
+
 test('Slice B Adapter redacts bare Bearer credentials and bare commands in text summaries', () => {
   const session = fakeSession('adapter-summary-security')
   const adapter = new ClientEventAdapter()
@@ -225,6 +252,18 @@ test('Slice B event stream serializes normalized frames and cleans up subscriber
   assert.equal(boundedFrame.length < 16_384, true)
   assert.equal((JSON.parse(boundedFrame.split('data: ')[1].split('\n')[0]) as { summary: string }).summary.length <= 2_000, true)
   stream.clear()
+})
+
+test('Slice B SSE preserves safe message deltas longer than the summary limit and carries operation identity', () => {
+  const delta = ` streamed-word \n  ${'streamed-word '.repeat(38)}tail `
+  const frame = serializeClientEvent({ eventId: 'conversation:delta', conversationId: 'conversation', operationId: 'operation-123', timestamp: new Date(0).toISOString(), type: 'message.delta', role: 'assistant', summary: delta })
+  const data = JSON.parse(frame.split('data: ')[1]!.split('\n')[0]!) as { operationId?: string; summary?: string }
+  assert.equal(data.operationId, 'operation-123')
+  assert.equal(data.summary, delta)
+  assert.equal(data.summary!.length > 240, true)
+
+  const unsafe = serializeClientEvent({ eventId: 'conversation:unsafe-delta', conversationId: 'conversation', operationId: 'operation-124', timestamp: new Date(0).toISOString(), type: 'message.delta', role: 'assistant', summary: 'Authorization: Bearer TOP_SECRET' })
+  assert.equal(JSON.stringify(JSON.parse(unsafe.split('data: ')[1]!.split('\n')[0]!)).includes('TOP_SECRET'), false)
 })
 
 test('Slice B removes a failing subscriber while continuing delivery to healthy subscribers', () => {

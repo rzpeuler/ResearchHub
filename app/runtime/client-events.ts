@@ -17,6 +17,7 @@ export interface ClientEventBase {
   readonly eventId: string
   readonly conversationId: string
   readonly timestamp: string
+  readonly operationId?: string
 }
 
 export interface ClientAgentEvent extends ClientEventBase {
@@ -84,7 +85,7 @@ export function safeIdentifier(value: unknown, fallback: string): string {
   return sanitized || fallback
 }
 
-export function safeSummary(value: unknown, maxLength = MAX_SUMMARY_LENGTH): string {
+export function safeSummary(value: unknown, maxLength = MAX_SUMMARY_LENGTH, options: { readonly preserveWhitespace?: boolean } = {}): string {
   if (typeof value !== 'string') return '[redacted]'
   if (/(?:\bsk-[A-Za-z0-9][A-Za-z0-9._-]*|\bghp_[A-Za-z0-9_]+|\bAKIA[0-9A-Z]{16}\b|-----BEGIN(?: [A-Z0-9]+)* PRIVATE KEY-----|\bbearer\s+[^\s,;]+|\b(?:api[_-]?key|token|password|secret|authorization)\s*(?:[:=]|\bis\b)\s*[^\s,;]+)/i.test(value)
     || /\b(?:key|api[_-]?key|token|password|secret|authorization)\s*[:=]\s*[^\s,;]+/i.test(value)
@@ -93,16 +94,14 @@ export function safeSummary(value: unknown, maxLength = MAX_SUMMARY_LENGTH): str
     || /(^|[\s("'=:\[])(?:[A-Za-z0-9_.-]+[\\/])?(?:\.\.?[\\/])+(?:[^\s"'`,;)}\]]+)?/i.test(value)
     || /(^|[\s("'=:\[])[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+){1,}/i.test(value)
     || /(?:^|[\s;|])(?:rm|read|cat|type|del|erase|curl|wget|bash|sh|powershell|pwsh|chmod|cp|mv|mkdir|find|grep)\b(?:\s+|$)/i.test(value)) return '[redacted]'
-  return value
+  const sanitized = value
     .replace(/(?:[A-Za-z]:[\\/]|\\\\)[^\s"']+/g, '[path]')
     .replace(/(^|[\s("'=:\[])(?:\.\.?[\\/])+(?:[^\s"'`,;)}\]]+)?/g, '$1[path]')
     .replace(/(^|[\s("'=:\[])[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+){1,}/g, '$1[path]')
     .replace(/\/(?:[^\s/"'`,;)}\]]+\/)+[^\s/"'`,;)}\]]+/g, '[path]')
     .replace(/\b(?:command|cmd)\s*[:=]\s*[^\r\n]+/gi, '[redacted]')
     .replace(/\b(?:authorization\s*:\s*bearer|api[_-]?key|token|password|secret|authorization)\s*[:=]?\s*[^\s,;]+/gi, '[redacted]')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, maxLength)
+  return (options.preserveWhitespace ? sanitized : sanitized.replace(/\s+/g, ' ').trim()).slice(0, maxLength)
 }
 
 function messageRole(message: unknown): 'user' | 'assistant' | undefined {
@@ -131,6 +130,26 @@ export class ClientEventAdapter {
   private boundSession?: AgentSession
   private bindingGeneration = 0
   private sequence = 0
+  private activeOperationId?: string
+  private currentRunOperationId?: string
+  private readonly operationForUserMessage = new WeakMap<object, string>()
+  private readonly pendingUserOperations: Array<{ readonly operationId: string }> = []
+
+  constructor(private readonly onUserMessagePersisted?: (conversationId: string, operationId: string, piMessageId: string) => void) {}
+
+  setActiveOperationId(operationId?: string): void {
+    this.activeOperationId = operationId === undefined ? undefined : safeIdentifier(operationId, '') || undefined
+  }
+
+  queueUserOperation(operationId: string): () => void {
+    const pending = { operationId: safeIdentifier(operationId, '') }
+    if (pending.operationId === '') return () => undefined
+    this.pendingUserOperations.push(pending)
+    return () => {
+      const index = this.pendingUserOperations.indexOf(pending)
+      if (index >= 0) this.pendingUserOperations.splice(index, 1)
+    }
+  }
 
   subscribe(listener: ClientEventListener): () => void {
     this.listeners.add(listener)
@@ -161,6 +180,9 @@ export class ClientEventAdapter {
 
   private bindSession(session: AgentSession, emitChanged: boolean): void {
     this.unbind()
+    this.activeOperationId = undefined
+    this.currentRunOperationId = undefined
+    this.pendingUserOperations.length = 0
     const generation = this.bindingGeneration
     this.boundSession = session
     this.unsubscribeSession = session.subscribe((event) => {
@@ -175,7 +197,8 @@ export class ClientEventAdapter {
 
   private handle(event: AgentSessionEvent): void {
     const conversationId = safeIdentifier(this.boundSession?.sessionId, 'conversation')
-    const base = { eventId: `${conversationId}:${++this.sequence}`, conversationId, timestamp: now() }
+    const baseOperationId = this.activeOperationId ?? this.currentRunOperationId
+    const base = { eventId: `${conversationId}:${++this.sequence}`, conversationId, timestamp: now(), ...(baseOperationId === undefined ? {} : { operationId: baseOperationId }) }
 
     if (!event || typeof event !== 'object' || typeof (event as { readonly type?: unknown }).type !== 'string') return
 
@@ -194,11 +217,19 @@ export class ClientEventAdapter {
         const failure = assistantFailure(event.messages)
         this.emit({ ...base, type: 'agent.completed', ...(failure ? { status: failure } : { status: 'completed' }), summary: failure ? `Agent ${failure}` : 'Agent completed' })
         if (failure) this.emit({ ...base, eventId: `${conversationId}:${++this.sequence}`, type: 'error', code: failure === 'aborted' ? 'agent_aborted' : 'agent_error', summary: failure === 'aborted' ? 'Agent request aborted' : 'Agent request failed' })
+        this.currentRunOperationId = undefined
         return
       }
       case 'message_start': {
         const role = messageRole(event.message)
-        if (role) this.emit({ ...base, type: 'message.started', role })
+        if (role) {
+          const operation = role === 'user' ? this.pendingUserOperations.shift()?.operationId ?? this.activeOperationId ?? this.currentRunOperationId : this.currentRunOperationId ?? this.activeOperationId
+          if (role === 'user' && operation !== undefined) {
+            this.currentRunOperationId = operation
+            this.operationForUserMessage.set(event.message as object, operation)
+          }
+          this.emit({ ...base, ...(operation === undefined ? {} : { operationId: operation }), type: 'message.started', role })
+        }
         return
       }
       case 'message_update': {
@@ -212,7 +243,7 @@ export class ClientEventAdapter {
           return
         }
         if (updateType === 'text_delta' && typeof (event.assistantMessageEvent as { readonly delta?: unknown }).delta === 'string') {
-          const summary = safeSummary((event.assistantMessageEvent as { readonly delta: string }).delta, MAX_TEXT_DELTA_LENGTH)
+          const summary = safeSummary((event.assistantMessageEvent as { readonly delta: string }).delta, MAX_TEXT_DELTA_LENGTH, { preserveWhitespace: true })
           if (summary) this.emit({ ...base, type: 'message.delta', role: 'assistant', summary })
         }
         return
@@ -220,6 +251,7 @@ export class ClientEventAdapter {
       case 'message_end': {
         const role = messageRole(event.message)
         if (!role) return
+        if (role === 'user') this.persistUserMessageIdentity(event.message as object)
         this.emit({ ...base, type: 'message.completed', role })
         const stopReason = (event.message as { readonly stopReason?: unknown }).stopReason
         if (role === 'assistant' && (stopReason === 'error' || stopReason === 'aborted')) {
@@ -253,6 +285,13 @@ export class ClientEventAdapter {
       case 'auto_retry_end':
         if (!event.success) this.emit({ ...base, type: 'error', code: 'runtime_error', summary: 'Agent retry failed' })
         return
+      case 'entry_appended': {
+        const entry = event.entry
+        if (!entry || entry.type !== 'message' || entry.message.role !== 'user') return
+        const operationId = this.operationForUserMessage.get(entry.message as object)
+        if (operationId !== undefined && isSafePiMessageId(entry.id)) this.onUserMessagePersisted?.(conversationId, operationId, entry.id)
+        return
+      }
       default:
         return
     }
@@ -265,9 +304,26 @@ export class ClientEventAdapter {
     this.emit({ ...base, type: `tool.${status}`, toolCallId: safeIdentifier(toolCallId, 'tool-call'), name, status, ...(isError === undefined ? {} : { isError }), summary })
   }
 
+  private persistUserMessageIdentity(message: object): void {
+    const operationId = this.operationForUserMessage.get(message)
+    const session = this.boundSession
+    if (operationId === undefined || session === undefined) return
+    const conversationId = safeIdentifier(session.sessionId, 'conversation')
+    // Pi emits message_end before its public listener returns to appendMessage().
+    // Defer one microtask, then bind only through the exact public message object.
+    queueMicrotask(() => {
+      const entries = session.sessionManager.getEntries().filter((entry) => entry.type === 'message' && entry.message === message)
+      if (entries.length === 1 && isSafePiMessageId(entries[0]!.id)) this.onUserMessagePersisted?.(conversationId, operationId, entries[0]!.id)
+    })
+  }
+
   private emit(event: ClientEvent): void {
     for (const listener of [...this.listeners]) {
       try { listener(event) } catch { /* client observers must not affect Pi event delivery */ }
     }
   }
+}
+
+function isSafePiMessageId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(value)
 }

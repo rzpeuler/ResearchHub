@@ -174,6 +174,63 @@ test('operationId replay is idempotent only for an identical text and Workflow i
   } finally { await f.close() }
 })
 
+test('Pi message identities persist per accepted operation even when request text repeats', async () => {
+  const f = await fixture()
+  try {
+    await f.store.acceptRequest('identity-session', { kind: 'chat', operation: 'prompt', operationId: 'same-text-one', requestText: 'repeat this' })
+    await f.store.acceptRequest('identity-session', { kind: 'chat', operation: 'prompt', operationId: 'same-text-two', requestText: 'repeat this' })
+    await f.store.recordPiUserMessageId('identity-session', 'same-text-one', 'entry-11111111')
+    await f.store.recordPiUserMessageId('identity-session', 'same-text-two', 'entry-22222222')
+    const state = await f.store.get('identity-session')
+    assert.equal(state?.acceptedRequests[0]?.piMessageId, 'entry-11111111')
+    assert.equal(state?.acceptedRequests[1]?.piMessageId, 'entry-22222222')
+    await f.store.recordPiUserMessageId('identity-session', 'same-text-one', 'entry-11111111')
+    await assert.rejects(f.store.recordPiUserMessageId('identity-session', 'same-text-one', 'entry-33333333'), (error) => { expectStoreError(error, 'conflict'); return true })
+    await assert.rejects(f.store.recordPiUserMessageId('identity-session', 'same-text-one', '../entry'), (error) => { expectStoreError(error, 'invalid_input'); return true })
+  } finally { await f.close() }
+})
+
+test('chat execution terminal results persist exactly and unfinished chat is interrupted after restart', async () => {
+  const f = await fixture()
+  try {
+    await f.store.acceptRequest('chat-terminal-session', { operationId: 'chat-complete', requestText: 'complete this request' })
+    await f.store.claimChatCommand('chat-terminal-session', 'chat-complete')
+    await f.store.completeSubmission('chat-terminal-session', 'chat-complete', { kind: 'chat', outcome: 'started' })
+    const completed = await f.store.completeSubmission('chat-terminal-session', 'chat-complete', { kind: 'chat', outcome: 'completed' })
+    assert.equal(completed.acceptedRequests[0]?.lifecycle, 'completed')
+    assert.equal(completed.acceptedRequests[0]?.outcome, 'chat_completed')
+    assert.equal(typeof completed.acceptedRequests[0]?.startedAt, 'string')
+    assert.equal(typeof completed.acceptedRequests[0]?.finishedAt, 'string')
+    assert.equal((await f.store.completeSubmission('chat-terminal-session', 'chat-complete', { kind: 'chat', outcome: 'completed' })).revision, completed.revision)
+
+    await f.store.acceptRequest('chat-terminal-session', { operationId: 'chat-cancel', requestText: 'cancel this request' })
+    await f.store.claimChatCommand('chat-terminal-session', 'chat-cancel')
+    await f.store.completeSubmission('chat-terminal-session', 'chat-cancel', { kind: 'chat', outcome: 'started' })
+    const cancelled = await f.store.completeSubmission('chat-terminal-session', 'chat-cancel', { kind: 'chat', outcome: 'cancelled' })
+    assert.equal(cancelled.acceptedRequests[1]?.lifecycle, 'cancelled')
+    assert.equal(cancelled.acceptedRequests[1]?.outcome, 'chat_cancelled')
+
+    await f.store.acceptRequest('chat-terminal-session', { operationId: 'chat-fail', requestText: 'fail this request' })
+    await f.store.claimChatCommand('chat-terminal-session', 'chat-fail')
+    await f.store.completeSubmission('chat-terminal-session', 'chat-fail', { kind: 'chat', outcome: 'started' })
+    const failed = await f.store.completeSubmission('chat-terminal-session', 'chat-fail', { kind: 'chat', outcome: 'failed', failureCode: 'agent_error' })
+    assert.equal(failed.acceptedRequests[2]?.lifecycle, 'failed')
+    assert.equal(failed.acceptedRequests[2]?.failureCode, 'agent_error')
+    assert.equal(typeof failed.acceptedRequests[2]?.finishedAt, 'string')
+
+    await f.store.acceptRequest('chat-terminal-session', { operationId: 'chat-interrupted', requestText: 'interrupt on restart' })
+    await f.store.claimChatCommand('chat-terminal-session', 'chat-interrupted')
+    await f.store.completeSubmission('chat-terminal-session', 'chat-interrupted', { kind: 'chat', outcome: 'started' })
+    const recoveredCount = await f.store.recoverInterruptedDispatches()
+    assert.equal(recoveredCount, 1)
+    const recovered = await f.store.get('chat-terminal-session')
+    assert.equal(recovered?.acceptedRequests[3]?.lifecycle, 'interrupted')
+    assert.equal(recovered?.acceptedRequests[3]?.outcome, undefined)
+    assert.equal(typeof recovered?.acceptedRequests[3]?.startedAt, 'string')
+    assert.equal(typeof recovered?.acceptedRequests[3]?.finishedAt, 'string')
+  } finally { await f.close() }
+})
+
 test('concurrent per-session updates serialize without losing accepted requests', async () => {
   const f = await fixture()
   try {
