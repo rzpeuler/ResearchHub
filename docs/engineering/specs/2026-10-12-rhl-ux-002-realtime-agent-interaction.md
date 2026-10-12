@@ -1,7 +1,7 @@
 # RHL-UX-002 — Realtime Agent Interaction Contract
 
 - Task: `RHL-UX-002`
-- Status: `IMPLEMENTED; E2E-06 BLOCKED / CTO ARCHITECTURE DECISION REQUIRED`
+- Status: `DECISION IMPLEMENTED / CTO ACCEPTANCE PENDING`
 - Base: `origin/main` at `a5d02c8cd87c527db5a39c6e88ed49014ca6dafe` (UX-001 accepted merge)
 - Branch: `codex/ux-002-realtime-agent-interaction`
 - Governing architecture: [Application Runtime v0.1](../../architecture/application-runtime-v0.1.md) and [UX upgrade plan](../plans/rhl-ux-upgrade-plan.md)
@@ -14,6 +14,15 @@
 - The UX-001 conversation sidecar remains authoritative for accepted request Activity and its operation identity. When Runtime can prove a Pi SessionEntry is the user message for an operation, the sidecar records that entry ID to permit exact Activity/Transcript reconciliation.
 - Pi owns Agent execution events and tool lifecycle events. `WorkflowService` remains authoritative for Workflow status; Workflow requests are not represented as Pi Agent output.
 - SSE remains transient. The Runtime does not persist or replay an event journal. Native EventSource reconnect is followed by snapshot reconciliation.
+
+## Runtime concurrency boundary (RHL-UX-002-ADR-001)
+
+- The current product constraint is one active Pi `AgentSessionRuntime`.
+- Switching away from a conversation invokes Pi's supported abort and dispose lifecycle for its outgoing Agent session. That Agent is not guaranteed to continue after the switch.
+- The outgoing conversation's Transcript and Activity remain authoritative and restore its actual terminal state when selected again. B must not show A's stream, tools, errors, or running state; conversation identity guards late A events.
+- Workflow execution is independent of the active Pi Session and must continue when the Pi session changes. Pi abort and Workflow cancel remain distinct operations.
+- Concurrent Pi sessions, a background Agent manager, an Agent Orchestrator, a message queue/event center, and changes to Pi's session-switch lifecycle are outside UX-002 and require a future architecture upgrade.
+- **E2E-06-R — Single-Active-Session Isolation** replaces the former E2E-06 requirement. It is an acceptance scenario for the real `ResearchHubRuntimeServer` and persistent Pi `SessionManager` path.
 
 ## Request state and retry contract
 
@@ -61,3 +70,5 @@ Client network errors, Runtime rejection, Agent error/abort, Tool failure, Workf
 ## Verification contract
 
 Unit and Runtime tests cover operation/message identity, same-text independent requests, event allowlisting and delta projection, status transitions, delayed acceptance, preflight failure, Pi/Tool outcomes, lost responses, abort/cancel, SSE reconnect snapshot recovery, duplicate/out-of-order events, and cross-conversation isolation. Browser acceptance uses the production Client build and real Runtime HTTP/SSE with isolated Knowledge and faux provider/tool services. Faux-provider evidence is explicitly not authenticated-provider E2E.
+
+Browser performance evidence must contain at least 100 valid browser-internal Send-to-Pending-paint samples against the production Client build, with P50/P95/P99, a stated percentile method, and instrumentation overhead. CUA transport and accessibility-tree extraction are excluded. Acceptance target: P95 ≤100 ms.

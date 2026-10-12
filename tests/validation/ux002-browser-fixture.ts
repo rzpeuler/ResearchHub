@@ -45,7 +45,7 @@ class FixtureExecutor implements ReasoningExecutor {
 const modelRuntime = await ModelRuntime.create({ authPath: join(agentDir, 'auth.json'), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false })
 const faux = fauxProvider({ provider: `researchhub-ux002-browser-${Date.now()}`, models: [{ id: 'fixture-model' }], tokensPerSecond: 18, tokenSize: { min: 1, max: 3 } })
 modelRuntime.registerNativeProvider(faux.provider)
-faux.setResponses([fauxAssistantMessage('Fixture response.')])
+faux.setResponses(Array.from({ length: 256 }, (_, index) => fauxAssistantMessage(`Fixture response ${index + 1}.`)))
 
 let workflowService: WorkflowService | undefined
 const releaseByRunId = new Map<string, () => void>()
@@ -73,12 +73,59 @@ let serverPort = 0
 let proxyPort = 0
 let proxyServer: HttpServer | undefined
 const eventStreamResponses = new Set<ServerResponse>()
+const performanceSamples: Array<{ index: number; durationMs: number; handlerCostMs: number; observerCostMs: number }> = []
+const piLifecycleEvidence: Array<{ event: string; conversationId?: string; at: string }> = []
 let eventsUnavailableUntil = 0
 let dropNextDispatchResponse = false
 let acceptGate: { readonly promise: Promise<void>; readonly release: () => void } | undefined
 let activeAcceptGate: { readonly promise: Promise<void>; readonly release: () => void } | undefined
 let rejectNextAccept = false
 let closed = false
+
+const browserPerformanceProbe = `
+<script>
+(() => {
+  const pending = new Map();
+  let handlerCostMs = 0;
+  let observerCostMs = 0;
+  let completedSampleCount = 0;
+  const post = (sample) => fetch('/__fixture/performance-sample', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(sample), keepalive: true }).catch(() => {});
+  document.addEventListener('click', (event) => {
+    const started = performance.now();
+    const button = event.target instanceof Element ? event.target.closest('.composer-actions button') : null;
+    if (button && (button.textContent.includes('Send') || button.textContent.includes('发送'))) {
+      const textarea = document.querySelector('textarea[aria-label="Message"],textarea[aria-label="消息"]');
+      const text = textarea?.value || '';
+      if (text.startsWith('UX002 internal paint sample ')) pending.set(text, { index: Number(text.slice(-3)), startedAt: started, done: false, handlerCostMs: 0, observerBaseline: observerCostMs });
+    }
+    const cost = performance.now() - started;
+    handlerCostMs += cost;
+    const textarea = document.querySelector('textarea[aria-label="Message"],textarea[aria-label="消息"]');
+    const sample = pending.get(textarea?.value || '');
+    if (sample) sample.handlerCostMs = cost;
+  }, true);
+  const observer = new MutationObserver((records) => {
+    const started = performance.now();
+    for (const record of records) {
+      const target = record.target instanceof Element ? record.target : record.target.parentElement;
+      const row = target?.closest('.optimistic-request') || target?.querySelector?.('.optimistic-request') || [...record.addedNodes].map((node) => node instanceof Element ? node.matches('.optimistic-request') ? node : node.querySelector('.optimistic-request') : null).find(Boolean);
+      if (!row) continue;
+      const text = row.querySelector('.message-body')?.textContent || '';
+      const sample = pending.get(text);
+      if (!sample || sample.done) continue;
+      sample.done = true;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const durationMs = performance.now() - sample.startedAt;
+        completedSampleCount++;
+        post({ index: sample.index, durationMs, handlerCostMs: sample.handlerCostMs, observerCostMs: Math.max(0, observerCostMs - sample.observerBaseline) });
+      }));
+    }
+    observerCostMs += performance.now() - started;
+  });
+  window.__ux002PerformanceProbe = { get completedSampleCount() { return completedSampleCount; }, get handlerCostMs() { return handlerCostMs; }, get observerCostMs() { return observerCostMs; } };
+  observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+})();
+</script>`
 
 function deferred(): { readonly promise: Promise<void>; readonly release: () => void } { let release!: () => void; const promise = new Promise<void>((resolveGate) => { release = resolveGate }); return { promise, release } }
 
@@ -89,6 +136,26 @@ async function startServer(): Promise<void> {
   if (!proxyServer) {
     proxyServer = createHttpServer((incoming, outgoing) => {
       const path = incoming.url ?? '/'
+      const pathname = new URL(path, 'http://127.0.0.1').pathname
+      if (pathname === '/__fixture/performance-sample' && incoming.method === 'GET') {
+        outgoing.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+        outgoing.end(JSON.stringify(performanceSamples))
+        return
+      }
+      if (pathname === '/__fixture/performance-sample' && incoming.method === 'POST') {
+        const chunks: Buffer[] = []
+        incoming.on('data', (chunk: Buffer) => chunks.push(chunk))
+        incoming.on('end', () => {
+          try {
+            const value = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { index?: number; durationMs?: number; handlerCostMs?: number; observerCostMs?: number; done?: boolean; count?: number; error?: string }
+            if (value.done) process.stdout.write(`PERFORMANCE_DONE ${JSON.stringify(value)}\n`)
+            else if (value.error) process.stdout.write(`PERFORMANCE_ERROR ${JSON.stringify(value)}\n`)
+            else if (typeof value.index === 'number' && Number.isFinite(value.durationMs)) performanceSamples.push({ index: value.index, durationMs: value.durationMs!, handlerCostMs: value.handlerCostMs ?? 0, observerCostMs: value.observerCostMs ?? 0 })
+            outgoing.writeHead(204, { 'cache-control': 'no-store' }); outgoing.end()
+          } catch { outgoing.writeHead(400); outgoing.end() }
+        })
+        return
+      }
       if (path === '/api/events' && Date.now() < eventsUnavailableUntil) { outgoing.writeHead(503, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' }); outgoing.end('Fixture SSE interruption'); return }
       const dropDispatchResponse = dropNextDispatchResponse && path === '/api/research/dispatch' && incoming.method === 'POST'
       if (dropDispatchResponse) dropNextDispatchResponse = false
@@ -121,6 +188,16 @@ async function startServer(): Promise<void> {
           })
           return
         }
+        if ((upstreamResponse.headers['content-type'] ?? '').includes('text/html') && new URL(path, 'http://127.0.0.1').searchParams.has('ux002Perf')) {
+          const chunks: Buffer[] = []
+          upstreamResponse.on('data', (chunk: Buffer) => chunks.push(chunk))
+          upstreamResponse.on('end', () => {
+            const html = Buffer.concat(chunks).toString('utf8').replace('</head>', `${browserPerformanceProbe}</head>`)
+            const headers = { ...upstreamResponse.headers, 'content-length': Buffer.byteLength(html) }
+            outgoing.writeHead(upstreamResponse.statusCode ?? 200, headers); outgoing.end(html)
+          })
+          return
+        }
         outgoing.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers)
         upstreamResponse.pipe(outgoing)
       })
@@ -143,10 +220,35 @@ async function installAcceptControls(): Promise<void> {
   }
 }
 
+function instrumentPiSessionLifecycle(): void {
+  const sessionRuntime = runtime!.sessionRuntime as unknown as { piRuntime: { session: { sessionManager: { getSessionId(): string | undefined }; abort(): Promise<void>; dispose(): void }; switchSession(path: string): Promise<unknown>; newSession(...args: unknown[]): Promise<unknown> } }
+  const piRuntime = sessionRuntime.piRuntime
+  const instrumentOutgoing = (outgoing: typeof piRuntime.session) => {
+    const conversationId = outgoing.sessionManager.getSessionId()
+    const originalAbort = outgoing.abort.bind(outgoing)
+    const originalDispose = outgoing.dispose.bind(outgoing)
+    outgoing.abort = async () => { piLifecycleEvidence.push({ event: 'session.abort.begin', conversationId, at: new Date().toISOString() }); try { await originalAbort() } finally { piLifecycleEvidence.push({ event: 'session.abort.end', conversationId, at: new Date().toISOString() }) } }
+    outgoing.dispose = () => { piLifecycleEvidence.push({ event: 'session.dispose', conversationId, at: new Date().toISOString() }); return originalDispose() }
+    return conversationId
+  }
+  const originalSwitch = piRuntime.switchSession.bind(piRuntime)
+  piRuntime.switchSession = async (path: string) => {
+    const outgoing = piRuntime.session
+    instrumentOutgoing(outgoing)
+    try { return await originalSwitch(path) } finally { piLifecycleEvidence.push({ event: 'session.switch.complete', conversationId: piRuntime.session.sessionManager.getSessionId(), at: new Date().toISOString() }) }
+  }
+  const originalNewSession = piRuntime.newSession.bind(piRuntime)
+  piRuntime.newSession = async (...args: unknown[]) => {
+    instrumentOutgoing(piRuntime.session)
+    try { return await Reflect.apply(originalNewSession, piRuntime, args) } finally { piLifecycleEvidence.push({ event: 'session.new.complete', conversationId: piRuntime.session.sessionManager.getSessionId(), at: new Date().toISOString() }) }
+  }
+}
+
 async function start(): Promise<void> {
   runtime = await createResearchHubApplicationRuntime(options)
   workflowService = runtime.workflowService
   await installAcceptControls()
+  instrumentPiSessionLifecycle()
   await startServer()
 }
 
@@ -189,7 +291,7 @@ input.on('line', (line) => {
     if (command === 'bounce-events') { eventsUnavailableUntil = Date.now() + 2_500; for (const response of [...eventStreamResponses]) response.destroy(); process.stdout.write('EVENT_STREAM_INTERRUPTED\n'); return }
     if (command === 'release') { await releaseRuns(); process.stdout.write(`RELEASED ${JSON.stringify(startInputs)}\n`); return }
     if (command === 'stop') { await shutdown(true); input.close(); process.exitCode = 0; return }
-    if (command === 'snapshot') process.stdout.write(`SNAPSHOT ${JSON.stringify({ started: startInputs, knowledgeBaseSha256: await snapshotKnowledge() })}\n`)
+    if (command === 'snapshot') process.stdout.write(`SNAPSHOT ${JSON.stringify({ started: startInputs, knowledgeBaseSha256: await snapshotKnowledge(), piLifecycleEvidence, performanceSamples })}\n`)
   })().catch((error: unknown) => { process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`) })
 })
 process.on('SIGINT', () => { void shutdown(true).finally(() => process.exit(0)) })
