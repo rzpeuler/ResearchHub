@@ -1548,7 +1548,14 @@ export class ResearchHubRuntimeServer {
       }
     }
     if (started.completion !== undefined) {
-      this.trackBackground(started.completion, () => {
+      const reconcileWorkflowTerminal = async (): Promise<void> => {
+        if (!claimed || conversationId === undefined || operationId === undefined || started.runId === undefined) return
+        const workflow = this.runtime!.workflowService.getWorkflowStatus(started.runId)
+        if (!workflow || !['completed', 'completed_with_review', 'blocked', 'failed', 'cancelled'].includes(workflow.status)) return
+        await this.runtime!.sessionRuntime.conversationStateStore.completeWorkflowRequest(conversationId, operationId, workflow.status as 'completed' | 'completed_with_review' | 'blocked' | 'failed' | 'cancelled')
+      }
+      const completion = started.completion.then(async () => { await reconcileWorkflowTerminal() }, async (error: unknown) => { await reconcileWorkflowTerminal(); throw error })
+      this.trackBackground(completion, () => {
         controller.abort()
         if (started.runId !== undefined) {
           try { this.runtime!.workflowService.cancelWorkflow(started.runId) } catch { /* completion owns final state */ }
@@ -1579,6 +1586,9 @@ export class ResearchHubRuntimeServer {
       if (workflow !== undefined) { await this.sendJson(response, 202, { accepted: true, status: 'started', runId: record.workflowRunId, workflow, replayed: true }); return }
       await this.sendJson(response, 200, { accepted: false, status: 'interrupted', runId: record.workflowRunId, conversationId, replayed: true }); return
     }
+    if (record.kind === 'workflow' && record.lifecycle === 'completed' && record.outcome === 'workflow_completed') { await this.sendJson(response, 200, { accepted: false, status: 'completed', runId: record.workflowRunId, conversationId, operationId: record.operationId, replayed: true }); return }
+    if (record.kind === 'workflow' && record.lifecycle === 'cancelled' && record.outcome === 'workflow_cancelled') { await this.sendJson(response, 200, { accepted: false, status: 'cancelled', runId: record.workflowRunId, conversationId, operationId: record.operationId, replayed: true }); return }
+    if (record.kind === 'workflow' && record.lifecycle === 'failed' && (record.outcome === 'workflow_blocked' || record.outcome === 'workflow_failed')) { await this.sendJson(response, 200, { accepted: false, status: record.outcome === 'workflow_blocked' ? 'blocked' : 'failed', runId: record.workflowRunId, conversationId, operationId: record.operationId, replayed: true }); return }
     if (record.lifecycle === 'ready_for_chat') { await this.sendJson(response, 200, { accepted: false, status: record.dispatchStatus ?? 'free_research', conversationId, operationId: record.operationId, replayed: true }); return }
     if (record.lifecycle === 'not_started' || record.lifecycle === 'failed') { await this.sendJson(response, 200, { accepted: false, status: record.dispatchStatus ?? record.outcomeReasonCode ?? record.failureCode ?? 'not_started', conversationId, operationId: record.operationId, replayed: true }); return }
     if (record.lifecycle === 'interrupted') { const runId = record.workflowRunId ?? record.reservedWorkflowRunId; await this.sendJson(response, 200, { accepted: false, status: 'interrupted', conversationId, operationId: record.operationId, ...(runId === undefined ? {} : { runId }), replayed: true }); return }

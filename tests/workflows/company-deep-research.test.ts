@@ -71,7 +71,18 @@ test('Company Deep Research produces atomic canonical Knowledge and a linked rep
       normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: fetched.candidate.provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
     }
     const input = { workflowRunId: 'company-run-1', handle, company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([plugin]), signalStore, reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z' }
-    const result = await runCompanyDeepResearch(input)
+    const workflowService = new WorkflowService()
+    workflowService.register({ runId: input.workflowRunId, workflowType: 'company_research', objective: 'Company research 600519' })
+    const result = await workflowService.start(input.workflowRunId, (signal) => runCompanyDeepResearch({ ...input, signal, observations: workflowService.observationReporter(input.workflowRunId) }))
+    const observations = workflowService.getWorkflowStatus(input.workflowRunId)!
+    assert.equal(observations.status, 'completed')
+    assert.deepEqual(observations.stages.map((stage) => [stage.stageId, stage.status]), [
+      ['data_acquisition', 'completed'], ['research_synthesis', 'completed'], ['quality_gate', 'completed'],
+      ['knowledge_gateway', 'completed'], ['report_generation', 'completed'], ['report_persistence', 'completed'],
+    ])
+    assert.ok(observations.stages.every((stage) => (stage.durationMs ?? 0) >= 0))
+    assert.ok(observations.providerObservations.some((item) => item.providerId === 'cninfo' && item.status === 'success' && item.recordCount === 1))
+    assert.ok(observations.providerObservations.some((item) => item.providerId === 'gdelt' && item.status === 'skipped'))
     assert.equal(result.status, 'completed', result.errors.join('; '))
     const unsupportedGdelt = result.providerOutcomes?.find((outcome) => outcome.provider === 'gdelt')
     assert.deepEqual(unsupportedGdelt && [unsupportedGdelt.providerAttempted, unsupportedGdelt.providerSucceeded, unsupportedGdelt.providerEmpty, unsupportedGdelt.providerFailed], [false, false, true, false])
@@ -503,6 +514,36 @@ test('POINT_IN_TIME_INVALID Company market attempt is empty rather than a provid
     const result = await runCompanyDeepResearch({ workflowRunId: 'company-market-cutoff', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory, reportRoot: reports, asOf, now: () => asOf })
     const market = result.providerOutcomes?.find((outcome) => outcome.provider === 'akshare')
     assert.deepEqual(market && [market.providerAttempted, market.providerSucceeded, market.providerEmpty, market.providerFailed, market.usableSourceCount], [true, false, true, false, 0])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+    await rm(reports, { recursive: true, force: true })
+  }
+})
+
+test('UNSUPPORTED Company market operation is skipped and does not report provider failure', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-company-unsupported-market-'))
+  const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-unsupported-market-reports-'))
+  try {
+    const asOf = '2026-10-08T06:00:00.000Z'
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-company-unsupported-market-test', now: asOf })
+    await seedCanonicalCompany(root, '600519', 'Fixture Company', asOf)
+    const dataResolverFactory = () => new DataResolver<CompanyResearchDataPayload>({
+      policies: [], executor: async () => ({ status: 'UNSUPPORTED' }),
+      resolveAcquisition: async (requirement): Promise<AcquisitionResult<CompanyResearchDataPayload>> => ({
+        requirementId: requirement.id, status: 'UNAVAILABLE', source: null,
+        quality: { pointInTimeSafe: false, complete: false, crossChecked: false, pitDiagnostic: 'SOURCE_UNAVAILABLE' },
+        attempts: requirement.metricId === 'company_market_history' ? [{ sourceId: 'akshare-marketHistory', fallbackLevel: 'PRIMARY', status: 'UNSUPPORTED', startedAt: asOf, completedAt: asOf, diagnostic: 'AKShare client is unavailable' }] : [],
+        unavailableReason: 'SOURCE_UNAVAILABLE',
+      }),
+    })
+    const workflowService = new WorkflowService()
+    workflowService.register({ runId: 'company-unsupported-market', workflowType: 'company_research', objective: 'Company research 600519' })
+    const result = await workflowService.start('company-unsupported-market', async (signal) => runCompanyDeepResearch({ workflowRunId: 'company-unsupported-market', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory, reportRoot: reports, asOf, now: () => asOf, signal, observations: workflowService.observationReporter('company-unsupported-market') }))
+    const akshare = workflowService.getWorkflowStatus('company-unsupported-market')?.providerObservations.find((item) => item.providerId === 'akshare')
+    assert.deepEqual(akshare && [akshare.status, akshare.diagnostics.includes('PROVIDER_UNSUPPORTED'), akshare.diagnostics.includes('PROVIDER_ATTEMPT_FAILED')], ['skipped', true, false])
+    const outcome = result.providerOutcomes?.find((item) => item.provider === 'akshare')
+    assert.deepEqual(outcome && [outcome.providerAttempted, outcome.providerSucceeded, outcome.providerEmpty, outcome.providerFailed], [false, false, true, false])
+    assert.ok(result.acquisitionDiagnostics?.some((item) => item.provider === 'akshare' && item.status === 'unsupported'))
   } finally {
     await rm(root, { recursive: true, force: true })
     await rm(reports, { recursive: true, force: true })

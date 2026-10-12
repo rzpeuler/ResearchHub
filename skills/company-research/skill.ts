@@ -3,6 +3,7 @@ import type { CompanyResearchFinancialObservation, CompanyResearchInput, Company
 
 export const COMPANY_RESEARCH_SECTIONS = ['Company Overview', 'Business Model', 'Business Segments', 'Revenue / Profit Drivers', 'Products', 'Technologies', 'Industry Exposure', 'Supply Chain', 'Competition', 'Financial Quality', 'Growth Drivers', 'Management / Capital Allocation', 'Catalysts', 'Risks', 'Valuation', 'Bull / Base / Bear', 'Variant Perception', 'Investment Thesis', 'Monitoring Checklist'] as const
 const LOCAL_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+export type CompanyResearchSynthesisMode = 'reasoning_executor' | 'deterministic_fallback'
 
 export class CompanyResearchSkill {
   constructor(private readonly now: () => string = () => new Date().toISOString(), private readonly executor?: ReasoningExecutor) {}
@@ -42,8 +43,8 @@ export class CompanyResearchSkill {
     return finalizeResearch(input, { sections, proposals }, this.now())
   }
 
-  async synthesize(input: CompanyResearchInput): Promise<CompanyResearchResult> {
-    if (!this.executor) return this.run(input)
+  async synthesize(input: CompanyResearchInput, onMode?: (mode: CompanyResearchSynthesisMode) => void): Promise<CompanyResearchResult> {
+    if (!this.executor) { onMode?.('deterministic_fallback'); return this.run(input) }
     try {
       const response = await this.executor.execute({
         operation: 'company_research_synthesis',
@@ -65,9 +66,11 @@ export class CompanyResearchSkill {
       const parsed = parseOutput(response.output)
       const candidate = validateSynthesis(parsed, input)
       const hasSubstantiveOutput = candidate.sections.some((section) => !section.markdown.startsWith('Research gap: no bounded evidence was supplied'))
+      onMode?.(hasSubstantiveOutput ? 'reasoning_executor' : 'deterministic_fallback')
       return finalizeResearch(input, hasSubstantiveOutput ? candidate : this.run(input), this.now())
     } catch {
       // Model timeouts and invalid semantic output fall back only to the deterministic, evidence-bounded baseline.
+      onMode?.('deterministic_fallback')
       return this.run(input)
     }
   }

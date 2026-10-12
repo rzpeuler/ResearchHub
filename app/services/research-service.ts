@@ -266,6 +266,8 @@ export class ResearchService {
       objective: `Company research ${input.symbol}`,
     })
     const completion = this.options.workflowService.start(input.workflowRunId, async (signal) => {
+      const observations = this.options.workflowService.observationReporter(input.workflowRunId)
+      observations.startStage('identity_validation', '研究对象校验')
       const combined = new AbortController()
       const abort = () => combined.abort()
       const cancelForCaller = () => { combined.abort(); try { this.options.workflowService.cancelWorkflow(input.workflowRunId) } catch { /* the run may already be terminal */ } }
@@ -276,6 +278,7 @@ export class ResearchService {
         const securityIdentity = await this.resolveSecurityIdentity('company_research', input, combined.signal, identityHandoff)
         const resolvedCompany: ResearchCompanyIdentity = securityIdentity ? { symbol: securityIdentity.symbol, name: securityIdentity.verifiedName, exchange: securityIdentity.exchange } : company
         const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot))
+        observations.finishStage('identity_validation', 'completed', { summary: securityIdentity ? '已校验证券身份' : '使用结构化证券代码' })
         const result = await runCompanyDeepResearch({
           workflowRunId: input.workflowRunId,
           handle,
@@ -288,6 +291,7 @@ export class ResearchService {
           signalStore: this.options.signalStore,
           maxSources: input.maxSources,
           reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge,
+          observations,
         })
         if (result.status === 'completed') {
           this.options.workflowService.markAuthoritativeTerminal(input.workflowRunId, 'completed', { summary: `Company research completed for ${input.symbol}` })
