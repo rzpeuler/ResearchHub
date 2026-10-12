@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai'
@@ -122,6 +122,101 @@ test('Slice A serializes concurrent conversation replacement operations', async 
     assert.equal(results[0].name, 'first')
     assert.equal(results[1].name, 'second')
     assert.equal(runtime.sessionRuntime.getCurrentState().conversationId, results[1].conversationId)
+  } finally {
+    await runtime?.close()
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('sidecar-only Workflow conversations remain listable and switchable without a Pi transcript', async () => {
+  const fixture = await makeFixture()
+  let runtime: Awaited<ReturnType<typeof createResearchHubApplicationRuntime>> | undefined
+  try {
+    runtime = await createResearchHubApplicationRuntime({ cwd: fixture.cwd, agentDir: fixture.agentDir, sessionDir: fixture.sessionDir, modelRuntime: fixture.modelRuntime, model: fixture.faux.getModel(), reasoningExecutor: new FixtureExecutor() })
+    const conversationId = 'workflow-sidecar-only'
+    await runtime.sessionRuntime.conversationStateStore.acceptRequest(conversationId, { operationId: 'operation-sidecar-1', operation: 'prompt', requestText: '研究一个尚未进入 Pi transcript 的请求', workflowRegistryId: 'company.deep-research' })
+    await runtime.sessionRuntime.conversationStateStore.claimSubmission(conversationId, 'operation-sidecar-1', '75ba7d5a-49a4-4fa3-9dca-14626fa17d4e')
+    await runtime.sessionRuntime.conversationStateStore.markWorkflowStarted(conversationId, 'operation-sidecar-1', { workflowRegistryId: 'company.deep-research', workflowRunId: 'workflow-run-sidecar-1' })
+    const listed = await runtime.sessionRuntime.listConversations()
+    assert.equal(listed.filter((item) => item.conversationId === conversationId).length, 1)
+    assert.equal(listed.find((item) => item.conversationId === conversationId)?.latestWorkflowRunId, 'workflow-run-sidecar-1')
+    await runtime.sessionRuntime.switchConversation(conversationId)
+    assert.equal(runtime.sessionRuntime.getCurrentState().conversationId, conversationId)
+    assert.deepEqual(runtime.sessionRuntime.getCurrentMessages(), [])
+    const activities = await runtime.sessionRuntime.conversationActivities(conversationId)
+    assert.equal(activities[0]?.requestText, '研究一个尚未进入 Pi transcript 的请求')
+    assert.equal(activities[0]?.workflowRunId, 'workflow-run-sidecar-1')
+    assert.equal((await runtime.sessionRuntime.listConversations()).filter((item) => item.conversationId === conversationId).length, 1)
+  } finally {
+    await runtime?.close()
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('a deleted Pi transcript leaves its sidecar intact but cannot be listed or rebound as a new session', async () => {
+  const fixture = await makeFixture()
+  let runtime: Awaited<ReturnType<typeof createResearchHubApplicationRuntime>> | undefined
+  try {
+    runtime = await createResearchHubApplicationRuntime({ cwd: fixture.cwd, agentDir: fixture.agentDir, sessionDir: fixture.sessionDir, modelRuntime: fixture.modelRuntime, model: fixture.faux.getModel(), reasoningExecutor: new FixtureExecutor() })
+    fixture.faux.setResponses([fauxAssistantMessage('persisted transcript')])
+    await runtime.sessionRuntime.prompt('Persist this Pi transcript before deletion.')
+    const orphanId = runtime.sessionRuntime.getCurrentState().conversationId
+    const transcriptPath = runtime.sessionManager.getSessionFile()
+    assert.ok(transcriptPath)
+    await runtime.sessionRuntime.listConversations()
+    assert.equal((await runtime.sessionRuntime.conversationStateStore.get(orphanId))?.piTranscriptObserved, true)
+    await runtime.sessionRuntime.createConversation()
+    await unlink(transcriptPath)
+
+    const listed = await runtime.sessionRuntime.listConversations()
+    assert.equal(listed.some((item) => item.conversationId === orphanId), false)
+    await assert.rejects(runtime.sessionRuntime.switchConversation(orphanId), (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && error.code === 'not_found')
+    await assert.rejects(runtime.sessionRuntime.conversationActivities(orphanId), (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && error.code === 'not_found')
+    assert.equal((await runtime.sessionRuntime.conversationStateStore.get(orphanId))?.piTranscriptObserved, true, 'the orphaned metadata remains available for safe recovery or operator inspection')
+  } finally {
+    await runtime?.close()
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('latest Workflow summary follows actual startedAt when accepted operations finish out of order', async () => {
+  const fixture = await makeFixture()
+  let runtime: Awaited<ReturnType<typeof createResearchHubApplicationRuntime>> | undefined
+  try {
+    runtime = await createResearchHubApplicationRuntime({ cwd: fixture.cwd, agentDir: fixture.agentDir, sessionDir: fixture.sessionDir, modelRuntime: fixture.modelRuntime, model: fixture.faux.getModel(), reasoningExecutor: new FixtureExecutor() })
+    const conversationId = runtime.sessionRuntime.getCurrentState().conversationId
+    const store = runtime.sessionRuntime.conversationStateStore
+    await store.acceptRequest(conversationId, { operation: 'prompt', operationId: 'older-accepted-first', requestText: 'first accepted, started last', workflowRegistryId: 'company_research' })
+    await store.acceptRequest(conversationId, { operation: 'prompt', operationId: 'newer-accepted-second', requestText: 'second accepted, started first', workflowRegistryId: 'company_research' })
+    await store.claimSubmission(conversationId, 'older-accepted-first')
+    await store.markWorkflowStarted(conversationId, 'older-accepted-first', { workflowRegistryId: 'company_research', workflowRunId: 'workflow-actually-latest', startedAt: '2026-10-12T09:10:00.000Z' })
+    await store.claimSubmission(conversationId, 'newer-accepted-second')
+    await store.markWorkflowStarted(conversationId, 'newer-accepted-second', { workflowRegistryId: 'company_research', workflowRunId: 'workflow-started-first', startedAt: '2026-10-12T09:05:00.000Z' })
+    assert.equal((await runtime.sessionRuntime.getConversationSummary(conversationId)).latestWorkflowRunId, 'workflow-actually-latest')
+  } finally {
+    await runtime?.close()
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('Runtime startup marks an ambiguous accepted dispatch interrupted and keeps its sidecar conversation switchable', async () => {
+  const fixture = await makeFixture()
+  let runtime: Awaited<ReturnType<typeof createResearchHubApplicationRuntime>> | undefined
+  try {
+    const options = { cwd: fixture.cwd, agentDir: fixture.agentDir, sessionDir: fixture.sessionDir, modelRuntime: fixture.modelRuntime, model: fixture.faux.getModel(), reasoningExecutor: new FixtureExecutor() }
+    runtime = await createResearchHubApplicationRuntime(options)
+    await runtime.sessionRuntime.conversationStateStore.acceptRequest('restart-sidecar-only', { operationId: 'restart-operation-1', operation: 'prompt', requestText: 'Recover the accepted request after restart.', workflowRegistryId: 'company_research' })
+    await runtime.sessionRuntime.conversationStateStore.claimSubmission('restart-sidecar-only', 'restart-operation-1', '75ba7d5a-49a4-4fa3-9dca-14626fa17d4e')
+    await runtime.close(); runtime = undefined
+    runtime = await createResearchHubApplicationRuntime(options)
+    const recovered = await runtime.sessionRuntime.conversationStateStore.get('restart-sidecar-only')
+    assert.equal(recovered?.acceptedRequests[0]?.lifecycle, 'interrupted')
+    assert.equal((await runtime.sessionRuntime.listConversations()).filter((item) => item.conversationId === 'restart-sidecar-only').length, 1)
+    await runtime.sessionRuntime.switchConversation('restart-sidecar-only')
+    assert.equal(runtime.sessionRuntime.getCurrentState().conversationId, 'restart-sidecar-only')
+    const [activity] = await runtime.sessionRuntime.conversationActivities('restart-sidecar-only')
+    assert.equal(activity?.status, 'interrupted')
+    assert.equal(activity?.reservedWorkflowRunId, '75ba7d5a-49a4-4fa3-9dca-14626fa17d4e')
   } finally {
     await runtime?.close()
     await rm(fixture.root, { recursive: true, force: true })

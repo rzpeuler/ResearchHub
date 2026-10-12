@@ -3,10 +3,12 @@ import { ApplicationServiceError } from '../services/contracts.ts'
 import { createResearchHubPiSession } from '../pi/session.ts'
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { ClientEventAdapter, safeSummary, type ClientEventListener } from './client-events.ts'
-import type { CurrentSessionState, ResearchHubSessionRuntimeOptions, SafeConversationMessage, SafeConversationSummary } from './contracts.ts'
+import type { CurrentSessionState, ResearchHubSessionRuntimeOptions, SafeConversationActivity, SafeConversationMessage, SafeConversationSummary } from './contracts.ts'
+import { ConversationStateStore, normalizeConversationTitle, type ConversationState } from './conversation-state-store.ts'
 import type { ResearchHubPolicyContext, ResearchHubRequestPolicy } from '../pi/tools.ts'
 import type { ResearchSessionContext } from '../services/research-dispatch-service.ts'
 import { defaultResearchContextPolicy, defaultResearchPersistencePolicy } from '../services/research-dispatch-contracts.ts'
+import { join } from 'node:path'
 
 const MAX_MESSAGE_TEXT = 50_000
 const MAX_SESSION_NAME_LENGTH = 200
@@ -52,7 +54,8 @@ function timestamp(value: unknown): string | undefined {
 function safeSessionName(value: unknown): string | undefined {
   if (value === undefined) return undefined
   const projected = safeSummary(value, MAX_SESSION_NAME_LENGTH).trim()
-  return projected === '' ? undefined : projected
+  if (projected === '') return undefined
+  try { return normalizeConversationTitle(projected) } catch { return undefined }
 }
 
 export function researchContextPrompt(context: ResearchSessionContext | undefined): string {
@@ -75,9 +78,24 @@ export function toSafeConversationMessage(message: unknown): SafeConversationMes
   return undefined
 }
 
-function summary(info: Awaited<ReturnType<typeof SessionManager.list>>[number], activeId: string): SafeConversationSummary {
-  const name = safeSessionName(info.name)
-  return { conversationId: info.id, ...(name === undefined ? {} : { name }), updatedAt: info.modified.toISOString(), messageCount: info.messageCount, isActive: info.id === activeId }
+function summary(info: Awaited<ReturnType<typeof SessionManager.list>>[number] | undefined, state: ConversationState, activeId: string, activeMessageCount: number): SafeConversationSummary {
+  const name = safeSessionName(state.title) ?? safeSessionName(info?.name) ?? '新对话'
+  const piUpdated = info?.modified.getTime() ?? 0
+  const updatedAt = new Date(Math.max(piUpdated, Date.parse(state.updatedAt))).toISOString()
+  const latestWorkflowRun = state.acceptedRequests
+    .filter((request) => request.workflowRunId !== undefined)
+    .reduce<(typeof state.acceptedRequests)[number] | undefined>((latest, request) => {
+      if (latest === undefined) return request
+      // Keep the later ledger entry on equal millisecond timestamps.
+      return Date.parse(request.startedAt ?? request.acceptedAt) >= Date.parse(latest.startedAt ?? latest.acceptedAt) ? request : latest
+    }, undefined)
+  const latestWorkflowRunId = latestWorkflowRun?.workflowRunId
+  return { conversationId: state.conversationId, name, titleSource: state.titleSource.toLowerCase() as SafeConversationSummary['titleSource'], archived: state.archived, version: state.revision, ...(latestWorkflowRunId === undefined ? {} : { latestWorkflowRunId }), updatedAt, messageCount: info?.messageCount ?? activeMessageCount, isActive: state.conversationId === activeId }
+}
+
+/** Durable accepted work can authorize rebuilding a volatile Pi session without inventing a transcript. */
+function canRecoverSidecarOnlyConversation(state: ConversationState): boolean {
+  return !state.piTranscriptObserved && state.acceptedRequests.length > 0
 }
 
 /** Thin application adapter over Pi's public AgentSessionRuntime. */
@@ -87,9 +105,10 @@ export class ResearchHubSessionRuntime {
   private disposing = false
   private writeAuthorizedPromptActive = false
   private replacementTail: Promise<void> = Promise.resolve()
+  private transcriptObservationTail: Promise<void> = Promise.resolve()
   private readonly clientEventAdapters = new Set<ClientEventAdapter>()
 
-  private constructor(piRuntime: PiAgentSessionRuntime, private readonly policyContext: ResearchHubPolicyContext, private readonly selectedModel?: Model<Api>) {
+  private constructor(piRuntime: PiAgentSessionRuntime, private readonly policyContext: ResearchHubPolicyContext, private readonly selectedModel?: Model<Api>, readonly conversationStateStore = new ConversationStateStore({ rootDir: join(piRuntime.session.sessionManager.getCwd(), 'runtime-data', 'conversation-state') })) {
     this.piRuntime = piRuntime
     this.piRuntime.setRebindSession(async (session) => {
       for (const adapter of this.clientEventAdapters) adapter.rebind(session)
@@ -119,7 +138,30 @@ export class ResearchHubSessionRuntime {
       return { session: created.session, extensionsResult: created.extensionsResult, modelFallbackMessage: created.modelFallbackMessage, services: created.services, diagnostics: created.services.diagnostics }
     }
     const piRuntime = await createAgentSessionRuntime(createRuntime, { cwd: options.cwd, agentDir: options.agentDir, sessionManager: options.sessionManager })
-    const runtime = new ResearchHubSessionRuntime(piRuntime, policyContext, options.model)
+    const runtime = new ResearchHubSessionRuntime(piRuntime, policyContext, options.model, options.conversationStateStore)
+    await runtime.conversationStateStore.recoverInterruptedDispatches()
+    const infos = piRuntime.session.sessionManager.isPersisted() ? await SessionManager.list(options.cwd, piRuntime.session.sessionManager.getSessionDir()) : []
+    for (const info of infos) {
+      const existing = await runtime.conversationStateStore.get(info.id)
+      const fresh = await runtime.conversationStateStore.ensure(info.id, { piTranscriptObserved: true })
+      if (existing === undefined && safeSessionName(info.name) !== undefined) {
+        await runtime.conversationStateStore.renameConversation(info.id, safeSessionName(info.name)!, fresh.revision)
+      }
+    }
+    const savedActiveId = await runtime.conversationStateStore.getActiveConversationId()
+    if (savedActiveId !== undefined) {
+      const savedInfo = infos.find((info) => info.id === savedActiveId)
+      if (savedInfo !== undefined) {
+        await piRuntime.switchSession(savedInfo.path)
+      } else {
+        const savedState = await runtime.conversationStateStore.get(savedActiveId)
+        if (savedState !== undefined && canRecoverSidecarOnlyConversation(savedState)) {
+          const recovered = await piRuntime.newSession({ setup: async (manager) => { manager.newSession({ id: savedActiveId }) } })
+          if (recovered.cancelled) throw new ApplicationServiceError('conflict', 'Saved conversation could not be restored')
+        }
+      }
+    }
+    await runtime.conversationStateStore.setActiveConversationId(piRuntime.session.sessionId)
     await runtime.enforceSelectedModel()
     return runtime
   }
@@ -144,12 +186,60 @@ export class ResearchHubSessionRuntime {
     }
   }
 
-  async listConversations(): Promise<readonly SafeConversationSummary[]> {
+  async getCurrentStateWithConversationTitle(): Promise<CurrentSessionState> {
+    const current = this.getCurrentState()
+    const conversation = await this.getConversationSummary(current.conversationId)
+    return { ...current, name: conversation.name }
+  }
+
+  async listConversations(options: { readonly archived?: boolean; readonly search?: string } = {}): Promise<readonly SafeConversationSummary[]> {
     this.ensureOpen()
     const activeId = this.currentSession.sessionId
-    if (!this.currentSessionManager.isPersisted()) return [{ conversationId: activeId, updatedAt: new Date().toISOString(), messageCount: this.currentSession.messages.length, isActive: true }]
-    const sessions = await SessionManager.list(this.currentSessionManager.getCwd(), this.currentSessionManager.getSessionDir())
-    return sessions.sort((left, right) => right.modified.getTime() - left.modified.getTime() || left.id.localeCompare(right.id)).map((info) => summary(info, activeId))
+    const sessions = this.currentSessionManager.isPersisted() ? await SessionManager.list(this.currentSessionManager.getCwd(), this.currentSessionManager.getSessionDir()) : []
+    const byId = new Map<string, typeof sessions[number] | undefined>(sessions.map((info) => [info.id, info]))
+    for (const state of await this.conversationStateStore.list()) if (!byId.has(state.conversationId) && canRecoverSidecarOnlyConversation(state)) byId.set(state.conversationId, undefined)
+    if (!byId.has(activeId)) byId.set(activeId, undefined)
+    const summaries: SafeConversationSummary[] = []
+    for (const [id, info] of byId) {
+      let state = await this.conversationStateStore.get(id)
+      if (state === undefined) {
+        state = await this.conversationStateStore.ensure(id, { piTranscriptObserved: info !== undefined })
+        const legacyName = safeSessionName(info?.name) ?? (id === activeId ? safeSessionName(this.currentSession.sessionName) : undefined)
+        if (legacyName !== undefined) state = await this.conversationStateStore.renameConversation(id, legacyName, state.revision)
+      } else if (info !== undefined) {
+        state = await this.conversationStateStore.ensure(id, { piTranscriptObserved: true })
+      }
+      const item = summary(info, state, activeId, id === activeId ? this.currentSession.messages.length : 0)
+      if (options.archived !== undefined && item.archived !== options.archived) continue
+      if (options.search && !item.name.toLocaleLowerCase().includes(options.search.toLocaleLowerCase())) continue
+      summaries.push(item)
+    }
+    return summaries.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.conversationId.localeCompare(right.conversationId))
+  }
+
+  async conversationActivities(conversationId: string): Promise<readonly SafeConversationActivity[]> {
+    await this.assertConversationExists(conversationId)
+    const state = await this.conversationStateStore.get(conversationId)
+    return (state?.acceptedRequests ?? []).map((request) => ({ activityId: request.operationId, conversationId, operationId: request.operationId, kind: 'accepted_request', operation: request.operation ?? 'prompt', status: request.lifecycle, ...(request.outcome === undefined ? {} : { outcome: request.outcome }), requestText: request.requestText, createdAt: request.acceptedAt, ...(request.workflowRunId === undefined ? {} : { workflowRunId: request.workflowRunId }), ...(request.reservedWorkflowRunId === undefined ? {} : { reservedWorkflowRunId: request.reservedWorkflowRunId }), ...(request.workflowSubject === undefined ? {} : { workflowSubject: request.workflowSubject }), ...(request.workflowRegistryId === undefined ? {} : { workflowRegistryId: request.workflowRegistryId }), acceptedAt: request.acceptedAt, ...(request.startedAt === undefined ? {} : { startedAt: request.startedAt }) }))
+  }
+
+  async getConversationSummary(conversationId: string): Promise<SafeConversationSummary> {
+    const all = await this.listConversations()
+    const item = all.find((entry) => entry.conversationId === conversationId)
+    if (!item) throw new ApplicationServiceError('not_found', `Conversation not found: ${conversationId}`)
+    return item
+  }
+
+  private async assertConversationExists(conversationId: string): Promise<void> {
+    if (conversationId === this.currentSession.sessionId) return
+    const sessions = this.currentSessionManager.isPersisted() ? await SessionManager.list(this.currentSessionManager.getCwd(), this.currentSessionManager.getSessionDir()) : []
+    if (sessions.some((info) => info.id === conversationId)) {
+      await this.conversationStateStore.ensure(conversationId, { piTranscriptObserved: true })
+      return
+    }
+    const state = await this.conversationStateStore.get(conversationId)
+    if (state !== undefined && canRecoverSidecarOnlyConversation(state)) return
+    throw new ApplicationServiceError('not_found', `Conversation not found: ${conversationId}`)
   }
 
   getCurrentMessages(): readonly SafeConversationMessage[] {
@@ -175,23 +265,39 @@ export class ResearchHubSessionRuntime {
     return this.enqueueReplacement(async () => {
       const trimmedName = name?.trim()
       if (trimmedName !== undefined && trimmedName.length > MAX_SESSION_NAME_LENGTH) throw new ApplicationServiceError('invalid_input', 'conversation name is too long')
-      const safeName = safeSessionName(trimmedName)
+      let safeName: string | undefined
+      if (trimmedName !== undefined && trimmedName !== '') {
+        try { safeName = normalizeConversationTitle(trimmedName) } catch { safeName = '[redacted]' }
+      }
       await this.piRuntime.newSession({ setup: safeName ? async (manager) => { manager.appendSessionInfo(safeName) } : undefined })
+      await this.conversationStateStore.setActiveConversationId(this.currentSession.sessionId)
       await this.enforceSelectedModel()
-      return this.getCurrentState()
+      return this.getCurrentStateWithConversationTitle()
     })
   }
 
   async switchConversation(conversationId: string): Promise<CurrentSessionState> {
     return this.enqueueReplacement(async () => {
       if (typeof conversationId !== 'string' || conversationId.trim() === '') throw new ApplicationServiceError('invalid_input', 'conversationId is required')
-      if (!this.currentSessionManager.isPersisted()) throw new ApplicationServiceError('not_found', `Conversation not found: ${conversationId}`)
-      const sessions = await SessionManager.list(this.currentSessionManager.getCwd(), this.currentSessionManager.getSessionDir())
+      if (conversationId === this.currentSession.sessionId) {
+        await this.conversationStateStore.setActiveConversationId(conversationId)
+        return this.getCurrentStateWithConversationTitle()
+      }
+      const sessions = this.currentSessionManager.isPersisted() ? await SessionManager.list(this.currentSessionManager.getCwd(), this.currentSessionManager.getSessionDir()) : []
       const selected = sessions.find((info) => info.id === conversationId)
-      if (!selected) throw new ApplicationServiceError('not_found', `Conversation not found: ${conversationId}`)
-      await this.piRuntime.switchSession(selected.path)
+      if (selected) {
+        await this.conversationStateStore.ensure(conversationId, { piTranscriptObserved: true })
+        await this.piRuntime.switchSession(selected.path)
+      }
+      else {
+        const state = await this.conversationStateStore.get(conversationId)
+        if (state === undefined || !canRecoverSidecarOnlyConversation(state)) throw new ApplicationServiceError('not_found', `Conversation not found: ${conversationId}`)
+        const outcome = await this.piRuntime.newSession({ setup: async (manager) => { manager.newSession({ id: conversationId }) } })
+        if (outcome.cancelled) throw new ApplicationServiceError('conflict', 'Conversation switch was cancelled')
+      }
+      await this.conversationStateStore.setActiveConversationId(conversationId)
       await this.enforceSelectedModel()
-      return this.getCurrentState()
+      return this.getCurrentStateWithConversationTitle()
     })
   }
 
@@ -201,6 +307,7 @@ export class ResearchHubSessionRuntime {
     this.assertSelectedModel()
     if (this.policyContext.current?.writeKnowledge === true || (policy?.writeKnowledge === true && !this.currentSession.isIdle)) throw new ApplicationServiceError('conflict', 'A Knowledge-write-authorized prompt cannot overlap another conversation operation')
     const previousPolicy = this.policyContext.current
+    const promptedConversationId = this.currentSession.sessionId
     const defaultPolicy: ResearchHubRequestPolicy = { ...defaultResearchContextPolicy(), ...defaultResearchPersistencePolicy() }
     const effectivePolicy: ResearchHubRequestPolicy = { structuredKnowledge: policy?.structuredKnowledge ?? defaultPolicy.structuredKnowledge, sourceLibrary: policy?.sourceLibrary ?? defaultPolicy.sourceLibrary, writeKnowledge: policy?.writeKnowledge === true && policy.structuredKnowledge !== false }
     this.policyContext.current = effectivePolicy
@@ -233,6 +340,8 @@ export class ResearchHubSessionRuntime {
         rejectAccepted(error)
       }
     })
+    const observation = completion.then(() => this.observePiTranscript(promptedConversationId), () => this.observePiTranscript(promptedConversationId)).catch(() => undefined)
+    this.transcriptObservationTail = Promise.all([this.transcriptObservationTail, observation]).then(() => undefined)
     return { accepted, completion }
   }
   async prompt(text: string): Promise<void> {
@@ -250,6 +359,7 @@ export class ResearchHubSessionRuntime {
     this.disposing = true
     try {
       await this.piRuntime.dispose()
+      await this.transcriptObservationTail
       this.disposed = true
     } finally {
       for (const adapter of this.clientEventAdapters) adapter.dispose()
@@ -279,6 +389,12 @@ export class ResearchHubSessionRuntime {
     const current = this.currentSession.model
     if (current?.provider === this.selectedModel.provider && current.id === this.selectedModel.id) return
     await this.currentSession.setModel(this.selectedModel, { persist: false })
+  }
+
+  private async observePiTranscript(conversationId: string): Promise<void> {
+    if (!this.currentSessionManager.isPersisted()) return
+    const sessions = await SessionManager.list(this.currentSessionManager.getCwd(), this.currentSessionManager.getSessionDir())
+    if (sessions.some((session) => session.id === conversationId)) await this.conversationStateStore.ensure(conversationId, { piTranscriptObserved: true })
   }
 }
 

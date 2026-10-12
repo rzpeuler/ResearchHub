@@ -256,6 +256,114 @@ test('Slice C HTTP server provides bootstrap/security/202/product APIs, no-KB ma
   assert.equal(server.address, undefined); await assert.rejects(() => fetch(`${info!.origin}/api/bootstrap`))
 })
 
+test('conversation APIs persist accepted request activity, metadata, archive state, and replay prompt commands once', async () => {
+  const fixture = await makeRuntimeFixture(); const server = new ResearchHubRuntimeServer({ runtime: fixture.runtime, port: 0 })
+  try {
+    const info = await server.start(); const headers = { 'content-type': 'application/json', origin: info.origin, 'x-researchhub-runtime-token': info.runtimeToken }
+    const conversationId = fixture.runtime.sessionRuntime.getCurrentState().conversationId
+    const accepted = await fetch(`${info.origin}/api/conversations/requests/accept`, { method: 'POST', headers, body: JSON.stringify({ conversationId, operationId: 'web-operation-1', requestText: 'Persist this accepted prompt.', operation: 'prompt' }) })
+    assert.equal(accepted.status, 200)
+    const initialList = await fetch(`${info.origin}/api/conversations?archived=0`, { headers }); const initialSummary = (await initialList.json() as { conversations: { conversationId: string; version: number; name: string }[] }).conversations.find((item) => item.conversationId === conversationId)!
+    assert.ok(initialSummary)
+    fixture.faux.setResponses([fauxAssistantMessage('one response')])
+    const commandBody = JSON.stringify({ conversationId, operationId: 'web-operation-1', text: 'Persist this accepted prompt.' })
+    const command = await fetch(`${info.origin}/api/conversations/prompt`, { method: 'POST', headers, body: commandBody }); assert.equal(command.status, 202)
+    const userMessageCount = fixture.runtime.sessionRuntime.getCurrentMessages().filter((message) => message.role === 'user').length
+    const replay = await fetch(`${info.origin}/api/conversations/prompt`, { method: 'POST', headers, body: commandBody }); assert.equal(replay.status, 202)
+    assert.equal(fixture.runtime.sessionRuntime.getCurrentMessages().filter((message) => message.role === 'user').length, userMessageCount)
+    const messages = await fetch(`${info.origin}/api/conversations/messages`, { headers }); const messagesBody = await messages.json() as { conversationId: string; activities: { requestText: string; status: string; operation: string }[] }
+    assert.equal(messagesBody.conversationId, conversationId); assert.equal(messagesBody.activities[0]?.requestText, 'Persist this accepted prompt.'); assert.equal(messagesBody.activities[0]?.status, 'started')
+    const latestList = await fetch(`${info.origin}/api/conversations?archived=0`, { headers }); const latestVersion = ((await latestList.json() as { conversations: { conversationId: string; version: number }[] }).conversations.find((item) => item.conversationId === conversationId))!.version
+    const rename = await fetch(`${info.origin}/api/conversations/${encodeURIComponent(conversationId)}/metadata`, { method: 'PATCH', headers, body: JSON.stringify({ name: 'Explicit title', expectedVersion: latestVersion }) })
+    assert.equal(rename.status, 200); const renamed = await rename.json() as { name: string; titleSource: string; version: number }
+    assert.equal(renamed.name, 'Explicit title'); assert.equal(renamed.titleSource, 'user')
+    const current = await fetch(`${info.origin}/api/conversations/current`, { headers })
+    assert.equal((await current.json() as { name: string }).name, 'Explicit title')
+    const archived = await fetch(`${info.origin}/api/conversations/${encodeURIComponent(conversationId)}/archive`, { method: 'POST', headers, body: JSON.stringify({ expectedVersion: renamed.version }) })
+    assert.equal(archived.status, 200); assert.equal((await archived.json() as { archived: boolean }).archived, true)
+    const archivedList = await fetch(`${info.origin}/api/conversations?archived=1&search=Explicit`, { headers }); assert.equal((await archivedList.json() as { conversations: unknown[] }).conversations.length, 1)
+    const idSearch = await fetch(`${info.origin}/api/conversations?search=${encodeURIComponent(conversationId)}`, { headers }); assert.equal((await idSearch.json() as { conversations: unknown[] }).conversations.length, 0)
+    const restore = await fetch(`${info.origin}/api/conversations/${encodeURIComponent(conversationId)}/restore`, { method: 'POST', headers, body: JSON.stringify({ expectedVersion: renamed.version + 1 }) })
+    assert.equal(restore.status, 200); assert.equal((await restore.json() as { archived: boolean }).archived, false)
+    const activities = await fetch(`${info.origin}/api/conversations/${encodeURIComponent(conversationId)}/activities`, { headers }); assert.equal((await activities.json() as { activities: unknown[] }).activities.length, 1)
+  } finally { await server.close(); await fixture.runtime.close(); await rm(fixture.root, { recursive: true, force: true }) }
+})
+
+test('research dispatch requires an accepted association and reconciles a reserved run after association write failure', async () => {
+  const fixture = await makeRuntimeFixture(); const server = new ResearchHubRuntimeServer({ runtime: fixture.runtime, port: 0 })
+  const store = fixture.runtime.sessionRuntime.conversationStateStore
+  const originalMarkWorkflowStarted = store.markWorkflowStarted.bind(store)
+  let associationWrites = 0
+  Object.defineProperty(store, 'markWorkflowStarted', { configurable: true, value: async (...args: Parameters<typeof store.markWorkflowStarted>) => {
+    associationWrites += 1
+    if (associationWrites === 1) throw new Error('injected sidecar write failure')
+    return originalMarkWorkflowStarted(...args)
+  } })
+  let dispatchCalls = 0
+  const startedRunIds: string[] = []
+  Object.defineProperty(fixture.runtime.services.researchDispatchService!, 'startAsync', { configurable: true, value: async (_input: unknown, _signal: AbortSignal, serverOwnedRunId?: string) => {
+    dispatchCalls += 1
+    assert.ok(serverOwnedRunId)
+    startedRunIds.push(serverOwnedRunId)
+    const pending = fixture.runtime.workflowService.register({ runId: serverOwnedRunId, workflowType: 'company_research', objective: 'Research 002640' })
+    void fixture.runtime.workflowService.start(serverOwnedRunId, async () => new Promise<never>(() => {}))
+    return { status: 'started', runId: serverOwnedRunId, workflow: pending, decision: { workflow: { id: 'company_research', arguments: { symbol: '002640', name: 'Unverified Semantic Name' } } }, ...(dispatchCalls > 1 ? { verifiedSecurityIdentity: { symbol: '002640', exchange: 'SZ', verifiedName: 'Verified Company Name', verificationSource: 'akshare_security_directory', originAuthority: 'S3_AGGREGATOR', verifiedAt: new Date().toISOString() } } : {}) } as never
+  } })
+  try {
+    const info = await server.start(); const headers = { 'content-type': 'application/json', origin: info.origin, 'x-researchhub-runtime-token': info.runtimeToken }
+    const conversationId = fixture.runtime.sessionRuntime.getCurrentState().conversationId
+    const unassociated = await fetch(`${info.origin}/api/research/dispatch`, { method: 'POST', headers, body: JSON.stringify({ query: '研究 002640', mode: { type: 'workflow', workflowId: 'company_research' } }) })
+    assert.equal(unassociated.status, 400); assert.equal(dispatchCalls, 0)
+    const accepted = await fetch(`${info.origin}/api/conversations/requests/accept`, { method: 'POST', headers, body: JSON.stringify({ conversationId, operationId: 'workflow-operation-1', requestText: '研究 002640', operation: 'prompt', workflowRegistryId: 'company_research' }) })
+    assert.equal(accepted.status, 200)
+    const mismatched = await fetch(`${info.origin}/api/research/dispatch`, { method: 'POST', headers, body: JSON.stringify({ conversationId, operationId: 'workflow-operation-1', query: '研究 002640' }) })
+    assert.equal(mismatched.status, 409); assert.equal(dispatchCalls, 0)
+    const dispatchBody = { conversationId, operationId: 'workflow-operation-1', query: '研究 002640', mode: { type: 'workflow', workflowId: 'company_research' } }
+    const first = await fetch(`${info.origin}/api/research/dispatch`, { method: 'POST', headers, body: JSON.stringify(dispatchBody) })
+    assert.equal(first.status, 202); assert.equal(dispatchCalls, 1)
+    const firstBody = await first.json() as { runId: string }
+    const duringFailure = (await store.get(conversationId))!.acceptedRequests[0]!
+    assert.equal(duringFailure.lifecycle, 'submitting'); assert.equal(duringFailure.reservedWorkflowRunId, firstBody.runId)
+    const replay = await fetch(`${info.origin}/api/research/dispatch`, { method: 'POST', headers, body: JSON.stringify(dispatchBody) })
+    assert.equal(replay.status, 202); assert.equal(dispatchCalls, 1)
+    const replayBody = await replay.json() as { runId: string; replayed?: boolean }
+    assert.equal(replayBody.runId, firstBody.runId); assert.equal(replayBody.replayed, true)
+    const activity = (await store.get(conversationId))!.acceptedRequests[0]!
+    assert.equal(activity.lifecycle, 'started'); assert.equal(activity.workflowRunId, firstBody.runId); assert.equal(activity.workflowSubject, '002640')
+    const safeActivity = (await fixture.runtime.sessionRuntime.conversationActivities(conversationId))[0]!
+    assert.equal(safeActivity.workflowSubject, '002640'); assert.equal(safeActivity.workflowRunId, firstBody.runId)
+    assert.equal((await fixture.runtime.sessionRuntime.getConversationSummary(conversationId)).name, '002640 · 公司深度研究')
+    assert.equal(associationWrites, 2)
+    const secondOperationId = 'workflow-operation-2'
+    const secondAccepted = await fetch(`${info.origin}/api/conversations/requests/accept`, { method: 'POST', headers, body: JSON.stringify({ conversationId, operationId: secondOperationId, requestText: '研究 002640 again', operation: 'prompt', workflowRegistryId: 'company_research' }) })
+    assert.equal(secondAccepted.status, 200)
+    const verifiedDispatch = await fetch(`${info.origin}/api/research/dispatch`, { method: 'POST', headers, body: JSON.stringify({ conversationId, operationId: secondOperationId, query: '研究 002640 again', mode: { type: 'workflow', workflowId: 'company_research' } }) })
+    assert.equal(verifiedDispatch.status, 202)
+    assert.equal((await store.get(conversationId))!.acceptedRequests[1]?.workflowSubject, 'Verified Company Name')
+    assert.equal(dispatchCalls, 2)
+    const autoOperationId = 'workflow-operation-auto'
+    const autoQuery = '自动路由研究 002640'
+    const autoAccepted = await fetch(`${info.origin}/api/conversations/requests/accept`, { method: 'POST', headers, body: JSON.stringify({ conversationId, operationId: autoOperationId, requestText: autoQuery, operation: 'prompt' }) })
+    assert.equal(autoAccepted.status, 200)
+    const autoDispatchBody = { conversationId, operationId: autoOperationId, query: autoQuery }
+    const autoDispatch = await fetch(`${info.origin}/api/research/dispatch`, { method: 'POST', headers, body: JSON.stringify(autoDispatchBody) })
+    assert.equal(autoDispatch.status, 202)
+    const autoRunId = (await autoDispatch.json() as { runId: string }).runId
+    const autoReplay = await fetch(`${info.origin}/api/research/dispatch`, { method: 'POST', headers, body: JSON.stringify(autoDispatchBody) })
+    assert.equal(autoReplay.status, 202)
+    assert.equal((await autoReplay.json() as { runId: string; replayed: boolean }).runId, autoRunId)
+    assert.equal((await store.get(conversationId))!.acceptedRequests[2]?.acceptedWorkflowRegistryId, undefined)
+    assert.equal((await store.get(conversationId))!.acceptedRequests[2]?.workflowRegistryId, 'company_research')
+    const autoAcceptReplay = await fetch(`${info.origin}/api/conversations/requests/accept`, { method: 'POST', headers, body: JSON.stringify({ conversationId, operationId: autoOperationId, requestText: autoQuery, operation: 'prompt' }) })
+    assert.equal(autoAcceptReplay.status, 200)
+    assert.equal(dispatchCalls, 3)
+  } finally {
+    await server.close()
+    for (const runId of startedRunIds) fixture.runtime.workflowService.cancelWorkflow(runId)
+    await fixture.runtime.close(); await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
 test('Pi conversation defaults research persistence to deny, honors explicit policy, rejects authorized follow-up, and does not leak permission across tools', async () => {
   const received: Record<string, unknown>[] = []
   let releaseAuthorized!: () => void

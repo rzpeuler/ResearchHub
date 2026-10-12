@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactElement } from 'react'
-import { RuntimeClient, RuntimeClientError, type AttachmentRef, type ClientEvent, type ConversationMessage, type ConversationSummary, type DailyBriefReport, type DailyBriefSummary, type KnowledgeBaseStatus, type KnowledgeDirectoryItem, type RawDocumentAcceptanceV04, type RawDocumentCandidateGroupV04, type RawDocumentPreviewV04, type RawDocumentPreviewPollV04, type ResearchBundleSummary, type ResearchDispatchFeedback, type ResearchDispatchResolution, type ResearchDispatchResponse, type ResearchExecutionSummary, type ResearchReport, type ResearchReportSummary, type ResearchStartResponse, type ReviewDetail, type ReviewListResponse, type RuntimeModelLoginFlow, type RuntimeSettings, type SessionState, type SourceLibraryHit, type ThesisCriterionConfirmResult, type ThesisCriterionOrigin, type ThesisCriterionPreview, type ThesisDecision, type ThesisQueryDetail, type ThesisQuerySummary, type ThesisReviewScope, type ThemeFrameworkDecision, type ThemeFrameworkRefreshResult, type ThemeFrameworkReviewCandidate, type ThemeFrameworkReviewResponse, type ThemeFrameworkReviewSummary, type ThemeScopeImpactInboxRecord, type ThemeScopeImpactProposal, type WorkflowDefinition, type WorkflowRun } from './api/runtime-client'
+import { RuntimeClient, RuntimeClientError, type AttachmentRef, type ClientEvent, type ConversationActivity, type ConversationMessage, type ConversationSummary, type DailyBriefReport, type DailyBriefSummary, type KnowledgeBaseStatus, type KnowledgeDirectoryItem, type RawDocumentAcceptanceV04, type RawDocumentCandidateGroupV04, type RawDocumentPreviewV04, type RawDocumentPreviewPollV04, type ResearchBundleSummary, type ResearchDispatchFeedback, type ResearchDispatchResolution, type ResearchDispatchResponse, type ResearchExecutionSummary, type ResearchReport, type ResearchReportSummary, type ResearchStartResponse, type ReviewDetail, type ReviewListResponse, type RuntimeModelLoginFlow, type RuntimeSettings, type SessionState, type SourceLibraryHit, type ThesisCriterionConfirmResult, type ThesisCriterionOrigin, type ThesisCriterionPreview, type ThesisDecision, type ThesisQueryDetail, type ThesisQuerySummary, type ThesisReviewScope, type ThemeFrameworkDecision, type ThemeFrameworkRefreshResult, type ThemeFrameworkReviewCandidate, type ThemeFrameworkReviewResponse, type ThemeFrameworkReviewSummary, type ThemeScopeImpactInboxRecord, type ThemeScopeImpactProposal, type WorkflowDefinition, type WorkflowRun } from './api/runtime-client'
 import { SettingsPanel, type CompatibleEndpointInput, type SettingsPanelProps } from './app/settings/SettingsPanel'
 import { isWorkflowFinalResultSynchronized, startWorkflowPolling, terminalWorkflowStatuses } from './app/workflow-polling'
 import { KnowledgeGraphPage } from './app/graph/KnowledgeGraphPage'
@@ -29,9 +29,6 @@ function previewPollTerminalDisposition(result: RawDocumentPreviewPollV04): 'wai
 function routeForPath(pathname: string): Route { return pathname === '/briefs' ? 'briefs' : pathname === '/reports' ? 'reports' : pathname === '/bundles' ? 'bundles' : pathname === '/run' ? 'run' : pathname === '/graph' ? 'graph' : pathname === '/reviews' ? 'reviews' : pathname === '/theses' ? 'theses' : pathname === '/sources' ? 'sources' : 'research' }
 function routePath(route: Route): string { return route === 'research' ? '/research' : `/${route}` }
 const ACTIVE_RESEARCH_RUN_KEY = 'researchhub.active-research-run-id'
-function storedResearchRunId(): string {
-  try { return window.sessionStorage.getItem(ACTIVE_RESEARCH_RUN_KEY) ?? '' } catch { return '' }
-}
 function errorText(error: unknown): string { return error instanceof RuntimeClientError ? error.message : 'ResearchHub runtime operation failed' }
 function toolLabel(name: string | undefined): string { return name === undefined ? 'Tool execution' : knownTools[name] ?? 'Tool execution' }
 function formatSize(size: number): string { if (size < 1024) return `${size} B`; if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`; return `${(size / (1024 * 1024)).toFixed(1)} MB` }
@@ -473,7 +470,9 @@ function ResearchBundlesPage({ bundles, selected, busy, error, onSelect, sourceH
 
 interface ResearchPageProps {
   readonly session?: SessionState
+  readonly currentConversationSummary?: ConversationSummary
   readonly conversations: readonly ConversationSummary[]
+  readonly activities: readonly ConversationActivity[]
   readonly messages: readonly ConversationMessage[]
   readonly streaming: boolean
   readonly thinking: boolean
@@ -522,6 +521,13 @@ interface ResearchPageProps {
   readonly setComposer: (value: string) => void
   readonly newConversation: () => void
   readonly switchConversation: (conversationId: string) => void
+  readonly conversationSearch: string
+  readonly setConversationSearch: (value: string) => void
+  readonly showArchivedConversations: boolean
+  readonly setShowArchivedConversations: (value: boolean) => void
+  readonly renameConversation: (conversationId: string, name: string, expectedVersion: number) => void
+  readonly archiveConversation: (conversationId: string, expectedVersion: number) => void
+  readonly restoreConversation: (conversationId: string, expectedVersion: number) => void
   readonly runCommand: (operation: 'prompt' | 'steer' | 'follow_up') => void
   readonly abort: () => void
   readonly upload: (file: File | undefined) => void
@@ -900,9 +906,24 @@ function ThemeScopeImpactInbox({ props }: { readonly props: Pick<ResearchPagePro
 function ResearchPageBody(props: ResearchPageProps): ReactElement {
   const { t } = useLanguage()
   const noKnowledge = !props.knowledgeBase
-  return <main className="workspace-grid"><aside className="conversation-rail" aria-label={t('对话', 'Conversations')}><div className="rail-heading"><div><span className="eyebrow">WORKSPACE</span><h2>{t('对话', 'Conversations')}</h2></div><button className="icon-button" aria-label={t('新建对话', 'New conversation')} onClick={props.newConversation} disabled={props.busy}>＋</button></div><button className="new-conversation" onClick={props.newConversation} disabled={props.busy}>{t('＋ 新建对话', '＋ New conversation')}</button><div className="history-label">{t('历史记录', 'History')}</div><nav className="conversation-list" aria-label={t('对话历史', 'Conversation history')}>{props.conversations.map((conversation) => <button className={`conversation-item ${conversation.isActive ? 'active' : ''}`} key={conversation.conversationId} onClick={() => props.switchConversation(conversation.conversationId)} disabled={props.busy}><span>{conversation.name || t('未命名对话', 'Untitled conversation')}</span><small>{conversation.messageCount} {t('条消息', 'messages')}</small></button>)}</nav></aside><section className="conversation-pane" aria-label={t('对话', 'Conversation')}><div className="conversation-heading"><div><span className="eyebrow">{t('Agent 会话', 'AGENT SESSION')}</span><h1>{props.session?.name || t('研究对话', 'Research conversation')}</h1></div><span className={`session-pill ${props.streaming ? 'live' : ''}`}>{props.streaming ? t('生成中', 'Streaming') : t('空闲', 'Idle')}</span></div><div className="messages" aria-live="polite">{props.messages.length === 0 && !props.streaming ? <div className="empty-conversation"><div className="empty-orbit">✦</div><h2>{t('从一个研究问题开始', 'Start with a research question')}</h2><p>{t('请 Agent 探索研究背景，或协助规划下一步研究。', 'Ask the Agent to explore the research context or help shape your next research step.')}</p></div> : props.messages.map((message, index) => <article className={`message ${message.role}`} key={`${message.timestamp ?? 'message'}-${index}`}><div className="message-meta">{message.role === 'user' ? t('你', 'You') : message.role === 'tool' ? toolLabel(message.toolName) : 'Agent'}{message.timestamp ? <time>{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time> : null}</div><div className="message-body">{message.role === 'tool' ? <span className="tool-chip">{toolLabel(message.toolName)}</span> : message.content}</div></article>)}{props.streaming ? <article className="message assistant streaming-message"><div className="message-meta">Agent {props.thinking ? <span className="thinking-label">{t('正在思考…', 'Thinking…')}</span> : null}</div><div className="message-body">{props.streamText || (props.thinking ? t('正在思考…', 'Thinking…') : t('正在处理…', 'Working…'))}{props.streamText ? <span className="cursor" /> : null}</div>{props.toolEvents.length > 0 ? <div className="tool-trace">{props.toolEvents.map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}</div> : null}</article> : null}</div>{props.error ? <div className="inline-error" role="alert">{props.error}<button onClick={props.dismissError}>{t('忽略', 'Dismiss')}</button></div> : null}<div className="composer-wrap" onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) event.preventDefault() }} onDrop={(event) => { if (!event.dataTransfer.files.length) return; event.preventDefault(); props.upload(event.dataTransfer.files[0]) }}><div className="research-composer-content"><div className="research-controls" aria-label={t('研究执行控制', 'Research execution controls')}><label><span>Workflow</span><select aria-label="Workflow" value={props.selectedWorkflowId} onChange={(event) => props.setSelectedWorkflowId(event.target.value)}><option value="">{t('自由研究', 'Free Research')}</option>{props.workflowDefinitions.map((workflow) => <option value={workflow.id} key={workflow.id}>{workflow.label}</option>)}</select></label><label className="check-field"><input type="checkbox" checked={props.contextPolicy.structuredKnowledge} onChange={(event) => props.setContextPolicy({ ...props.contextPolicy, structuredKnowledge: event.target.checked })} />{t('查询知识', 'Query Knowledge')}</label><label className="check-field"><input type="checkbox" checked={props.contextPolicy.sourceLibrary} onChange={(event) => props.setContextPolicy({ ...props.contextPolicy, sourceLibrary: event.target.checked })} />{t('搜索来源资料库', 'Search Source Library')}</label><label className="check-field"><input type="checkbox" checked={props.persistencePolicy.writeKnowledge} onChange={(event) => props.setPersistencePolicy({ writeKnowledge: event.target.checked })} />{t('写入知识', 'Write Knowledge')}</label></div>{props.executionSummary ? <div className="execution-summary" aria-label={t('研究执行摘要', 'Research execution summary')}><strong>{props.executionSummary.mode}{props.executionSummary.workflowLabel ? ` · ${props.executionSummary.workflowLabel}` : ''}</strong><span>{t('知识库：', 'Knowledge: ')}{props.executionSummary.contextPolicy.structuredKnowledge ? t('读取', 'Read') : t('关闭', 'Off')}</span><span>{t('来源资料库：', 'Source Library: ')}{props.executionSummary.contextPolicy.sourceLibrary ? t('搜索', 'Search') : t('关闭', 'Off')}</span><span>{t('知识写入：', 'Knowledge Write: ')}{props.executionSummary.persistencePolicy.writeKnowledge ? t('开启', 'On') : t('关闭', 'Off')}</span>{props.executionSummary.argumentsStatus !== 'not_required' ? <span>{t('参数：', 'Arguments: ')}{props.executionSummary.argumentsStatus}</span> : null}</div> : null}{props.dispatchFeedback ? <DispatchFeedbackPanel feedback={props.dispatchFeedback} /> : null}{props.dispatchResolution ? <DispatchResolutionNotice resolution={props.dispatchResolution} /> : null}<textarea aria-label={t('消息', 'Message')} value={props.composer} onChange={(event) => props.setComposer(event.target.value)} onPaste={(event) => { const file = Array.from(event.clipboardData.files)[0]; if (file) { event.preventDefault(); props.upload(file) } }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !props.streaming) { event.preventDefault(); props.runCommand('prompt') } }} placeholder={props.streaming ? t('输入指导或后续问题…', 'Write a steering instruction or follow-up…') : t('询问 Agent 任何研究相关问题…', 'Ask the Agent anything about your research…')} rows={3} /><div className="composer-attachment-row"><label className="composer-file-picker" aria-label={t('附加文档', 'Attach a document')}>{props.attachmentBusy ? t('正在添加…', 'Adding…') : t('＋ 附加文件', '＋ Attach file')}<input aria-label={t('添加文档', 'Add document')} type="file" accept=".pdf,.csv,.htm,.html,.json,.md,.text,.txt,.xml" onChange={(event) => { props.upload(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} disabled={props.attachmentBusy || props.acceptanceBusy} /></label><span className="composer-file-hint">{t('PDF、CSV、HTML、JSON、Markdown、文本、XML · 最大 100 MB', 'PDF, CSV, HTML, JSON, Markdown, text, XML · up to 100 MB')}</span></div><KnowledgeUploadSection key={props.attachmentUiVersion} {...props} /><div className="composer-footer"><span>{t('Enter 发送 · Shift+Enter 换行 · 队列：', 'Enter to send · Shift+Enter for newline · queued: ')}{props.queue.steering} {t('条指导 /', ' steer / ')} {props.queue.followUp} {t('条后续问题', ' follow-up')}</span><div className="composer-actions">{props.streaming ? <><button className="secondary-action" onClick={() => props.runCommand('steer')} disabled={props.busy || !props.composer.trim()}>{t('指导', 'Steer')}</button><button className="secondary-action" onClick={() => props.runCommand('follow_up')} disabled={props.busy || !props.composer.trim()}>{t('继续追问', 'Follow up')}</button><button className="stop-action" onClick={props.abort} disabled={props.busy}>{t('停止', 'Stop')}</button></> : <button className="primary-action" onClick={() => props.runCommand('prompt')} disabled={props.busy || !props.composer.trim()}>{t('发送', 'Send')} <span>↗</span></button>}</div></div></div></div></section><aside className="context-rail" aria-label={t('研究背景', 'Research context')}>
+  const [editingConversationId, setEditingConversationId] = useState('')
+  const [renameValue, setRenameValue] = useState('')
+  const activeConversation = props.currentConversationSummary?.conversationId === props.session?.conversationId
+    ? props.currentConversationSummary
+    : props.conversations.find((item) => item.conversationId === props.session?.conversationId)
+  const title = activeConversation?.name || props.session?.name || t('研究对话', 'Research conversation')
+  return <main className="workspace-grid"><aside className="conversation-rail" aria-label={t('对话', 'Conversations')}>
+    <div className="rail-heading"><div><span className="eyebrow">WORKSPACE</span><h2>{t('对话', 'Conversations')}</h2></div><button className="icon-button" aria-label={t('新建对话', 'New conversation')} onClick={props.newConversation} disabled={props.busy}>＋</button></div>
+    <button className="new-conversation" onClick={props.newConversation} disabled={props.busy}>{t('＋ 新建对话', '＋ New conversation')}</button>
+    <div className="history-tools"><label htmlFor="conversation-search">{t('搜索标题', 'Search titles')}</label><input id="conversation-search" type="search" value={props.conversationSearch} onChange={(event) => props.setConversationSearch(event.target.value)} placeholder={t('搜索对话…', 'Search conversations…')} /><button type="button" className="history-filter" aria-pressed={props.showArchivedConversations} onClick={() => props.setShowArchivedConversations(!props.showArchivedConversations)}>{props.showArchivedConversations ? t('查看活动对话', 'Show active') : t('查看归档', 'Show archived')}</button></div>
+    <div className="history-label">{props.showArchivedConversations ? t('已归档', 'Archived') : t('历史记录', 'History')}</div>
+    <nav className="conversation-list" aria-label={t('对话历史', 'Conversation history')}>
+      {props.conversations.map((conversation) => <div className={`conversation-row ${conversation.isActive ? 'active' : ''}`} key={conversation.conversationId}>
+        {editingConversationId === conversation.conversationId ? <form className="conversation-rename" onSubmit={(event) => { event.preventDefault(); const value = renameValue.trim(); if (value && conversation.version !== undefined) props.renameConversation(conversation.conversationId, value, conversation.version); setEditingConversationId('') }}><input aria-label={t('对话标题', 'Conversation title')} value={renameValue} onChange={(event) => setRenameValue(event.target.value)} autoFocus /><button type="submit" disabled={!renameValue.trim() || conversation.version === undefined}>{t('保存', 'Save')}</button><button type="button" onClick={() => setEditingConversationId('')}>{t('取消', 'Cancel')}</button></form> : <><button className={`conversation-item ${conversation.isActive ? 'active' : ''}`} onClick={() => props.switchConversation(conversation.conversationId)} disabled={props.busy} aria-current={conversation.isActive ? 'page' : undefined}><span>{conversation.name || t('未命名对话', 'Untitled conversation')}</span><small>{conversation.messageCount} {t('条消息', 'messages')}{conversation.latestWorkflowRunId ? ` · Workflow ${conversation.latestWorkflowRunId}` : ''}</small></button><div className="conversation-actions"><button type="button" aria-label={`${t('重命名', 'Rename')} ${conversation.name ?? conversation.conversationId}`} onClick={() => { setRenameValue(conversation.name ?? ''); setEditingConversationId(conversation.conversationId) }} disabled={props.busy || conversation.version === undefined}>{t('重命名', 'Rename')}</button>{conversation.archived ? <button type="button" aria-label={`${t('恢复', 'Restore')} ${conversation.name ?? conversation.conversationId}`} onClick={() => props.restoreConversation(conversation.conversationId, conversation.version ?? 0)} disabled={props.busy || conversation.version === undefined}>{t('恢复', 'Restore')}</button> : <button type="button" aria-label={`${t('归档', 'Archive')} ${conversation.name ?? conversation.conversationId}`} onClick={() => props.archiveConversation(conversation.conversationId, conversation.version ?? 0)} disabled={props.busy || conversation.version === undefined}>{t('归档', 'Archive')}</button>}</div></>}
+      </div>)}
+    </nav></aside><section className="conversation-pane" aria-label={t('对话', 'Conversation')}><div className="conversation-heading"><div><span className="eyebrow">{t('Agent 会话', 'AGENT SESSION')}</span><h1>{title}</h1></div><span className={`session-pill ${props.streaming ? 'live' : ''}`}>{props.streaming ? t('生成中', 'Streaming') : t('空闲', 'Idle')}</span></div><div className="messages" aria-live="polite">{props.messages.length === 0 && !props.streaming ? <div className="empty-conversation"><div className="empty-orbit">✦</div><h2>{t('从一个研究问题开始', 'Start with a research question')}</h2><p>{t('请 Agent 探索研究背景，或协助规划下一步研究。', 'Ask the Agent to explore the research context or help shape your next research step.')}</p></div> : props.messages.map((message, index) => <article className={`message ${message.role}`} key={`${message.timestamp ?? 'message'}-${index}`}><div className="message-meta">{message.role === 'user' ? t('你', 'You') : message.role === 'tool' ? toolLabel(message.toolName) : 'Agent'}{message.timestamp ? <time>{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time> : null}</div><div className="message-body">{message.role === 'tool' ? <span className="tool-chip">{toolLabel(message.toolName)}</span> : message.content}</div></article>)}{props.streaming ? <article className="message assistant streaming-message"><div className="message-meta">Agent {props.thinking ? <span className="thinking-label">{t('正在思考…', 'Thinking…')}</span> : null}</div><div className="message-body">{props.streamText || (props.thinking ? t('正在思考…', 'Thinking…') : t('正在处理…', 'Working…'))}{props.streamText ? <span className="cursor" /> : null}</div>{props.toolEvents.length > 0 ? <div className="tool-trace">{props.toolEvents.map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}</div> : null}</article> : null}</div>{props.activities.length > 0 ? <section className="activity-feed" aria-label={t('工作流活动', 'Workflow activity')}><h2>{t('已接受的执行请求', 'Accepted workflow requests')}</h2><ul>{(() => { const seen = new Map<string, number>(); for (const message of props.messages) if (message.role === 'user') seen.set(message.content, (seen.get(message.content) ?? 0) + 1); return props.activities.filter((activity) => { const text = activity.requestText; if (!text) return true; const count = seen.get(text) ?? 0; if (count <= 0) return true; seen.set(text, count - 1); return false }).map((activity) => <li key={activity.activityId}><span className="activity-request-text">{activity.requestText ?? activity.operation}</span><small>{activity.status}{activity.outcome ? ` · ${activity.outcome}` : ''}{activity.workflowRunId ? ` · ${activity.workflowRunId}` : ''}</small></li>) })()}</ul></section> : null}{props.error ? <div className="inline-error" role="alert">{props.error}<button onClick={props.dismissError}>{t('忽略', 'Dismiss')}</button></div> : null}<div className="composer-wrap" onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) event.preventDefault() }} onDrop={(event) => { if (!event.dataTransfer.files.length) return; event.preventDefault(); props.upload(event.dataTransfer.files[0]) }}><div className="research-composer-content"><div className="research-controls" aria-label={t('研究执行控制', 'Research execution controls')}><label><span>Workflow</span><select aria-label="Workflow" value={props.selectedWorkflowId} onChange={(event) => props.setSelectedWorkflowId(event.target.value)}><option value="">{t('自由研究', 'Free Research')}</option>{props.workflowDefinitions.map((workflow) => <option value={workflow.id} key={workflow.id}>{workflow.label}</option>)}</select></label><label className="check-field"><input type="checkbox" checked={props.contextPolicy.structuredKnowledge} onChange={(event) => props.setContextPolicy({ ...props.contextPolicy, structuredKnowledge: event.target.checked })} />{t('查询知识', 'Query Knowledge')}</label><label className="check-field"><input type="checkbox" checked={props.contextPolicy.sourceLibrary} onChange={(event) => props.setContextPolicy({ ...props.contextPolicy, sourceLibrary: event.target.checked })} />{t('搜索来源资料库', 'Search Source Library')}</label><label className="check-field"><input type="checkbox" checked={props.persistencePolicy.writeKnowledge} onChange={(event) => props.setPersistencePolicy({ writeKnowledge: event.target.checked })} />{t('写入知识', 'Write Knowledge')}</label></div>{props.executionSummary ? <div className="execution-summary" aria-label={t('研究执行摘要', 'Research execution summary')}><strong>{props.executionSummary.mode}{props.executionSummary.workflowLabel ? ` · ${props.executionSummary.workflowLabel}` : ''}</strong><span>{t('知识库：', 'Knowledge: ')}{props.executionSummary.contextPolicy.structuredKnowledge ? t('读取', 'Read') : t('关闭', 'Off')}</span><span>{t('来源资料库：', 'Source Library: ')}{props.executionSummary.contextPolicy.sourceLibrary ? t('搜索', 'Search') : t('关闭', 'Off')}</span><span>{t('知识写入：', 'Knowledge Write: ')}{props.executionSummary.persistencePolicy.writeKnowledge ? t('开启', 'On') : t('关闭', 'Off')}</span>{props.executionSummary.argumentsStatus !== 'not_required' ? <span>{t('参数：', 'Arguments: ')}{props.executionSummary.argumentsStatus}</span> : null}</div> : null}{props.dispatchFeedback ? <DispatchFeedbackPanel feedback={props.dispatchFeedback} /> : null}{props.dispatchResolution ? <DispatchResolutionNotice resolution={props.dispatchResolution} /> : null}<textarea aria-label={t('消息', 'Message')} value={props.composer} onChange={(event) => props.setComposer(event.target.value)} onPaste={(event) => { const file = Array.from(event.clipboardData.files)[0]; if (file) { event.preventDefault(); props.upload(file) } }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !props.streaming && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); props.runCommand('prompt') } }} placeholder={props.streaming ? t('输入指导或后续问题…', 'Write a steering instruction or follow-up…') : t('询问 Agent 任何研究相关问题…', 'Ask the Agent anything about your research…')} rows={3} /><div className="composer-attachment-row"><label className="composer-file-picker" aria-label={t('附加文档', 'Attach a document')}>{props.attachmentBusy ? t('正在添加…', 'Adding…') : t('＋ 附加文件', '＋ Attach file')}<input aria-label={t('添加文档', 'Add document')} type="file" accept=".pdf,.csv,.htm,.html,.json,.md,.text,.txt,.xml" onChange={(event) => { props.upload(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} disabled={props.attachmentBusy || props.acceptanceBusy} /></label><span className="composer-file-hint">{t('PDF、CSV、HTML、JSON、Markdown、文本、XML · 最大 100 MB', 'PDF, CSV, HTML, JSON, Markdown, text, XML · up to 100 MB')}</span></div><KnowledgeUploadSection key={props.attachmentUiVersion} {...props} /><div className="composer-footer"><span>{t('Enter 发送 · Shift+Enter 换行 · 队列：', 'Enter to send · Shift+Enter for newline · queued: ')}{props.queue.steering} {t('条指导 /', ' steer / ')} {props.queue.followUp} {t('条后续问题', ' follow-up')}</span><div className="composer-actions">{props.streaming ? <><button className="secondary-action" onClick={() => props.runCommand('steer')} disabled={props.busy || !props.composer.trim()}>{t('指导', 'Steer')}</button><button className="secondary-action" onClick={() => props.runCommand('follow_up')} disabled={props.busy || !props.composer.trim()}>{t('继续追问', 'Follow up')}</button><button className="stop-action" onClick={props.abort} disabled={props.busy}>{t('停止', 'Stop')}</button></> : <button className="primary-action" onClick={() => props.runCommand('prompt')} disabled={props.busy || !props.composer.trim()}>{t('发送', 'Send')} <span>↗</span></button>}</div></div></div></div></section><aside className="context-rail" aria-label={t('研究背景', 'Research context')}>
   <div className="context-heading"><div><span className="eyebrow">{t('研究背景', 'RESEARCH CONTEXT')}</span><span className="context-count">{props.streaming ? t('生成中', 'Streaming') : t('空闲', 'Idle')}</span></div></div>
-  <section className="context-section" aria-label={t('会话状态', 'Session status')}><div className="section-title"><div><span className="eyebrow">{t('会话', 'SESSION')}</span><h2>{props.session?.name || t('研究对话', 'Research conversation')}</h2></div></div><p className="muted">{props.streaming ? t('Agent 正在响应。', 'The Agent is responding.') : t('会话已就绪。', 'Session is ready.')}</p></section>
+  <section className="context-section" aria-label={t('会话状态', 'Session status')}><div className="section-title"><div><span className="eyebrow">{t('会话', 'SESSION')}</span><h2>{activeConversation?.name || props.session?.name || t('研究对话', 'Research conversation')}</h2></div></div><p className="muted">{props.streaming ? t('Agent 正在响应。', 'The Agent is responding.') : t('会话已就绪。', 'Session is ready.')}</p></section>
   <section className="context-section" aria-label={t('消息队列', 'Message queue')}><div className="section-title"><div><span className="eyebrow">{t('队列', 'QUEUE')}</span><h2>{t('待处理消息', 'Pending messages')}</h2></div></div><p>{props.queue.steering} {t('条指导', 'steering')} · {props.queue.followUp} {t('条后续问题', 'follow-up')}</p></section>
   <section className="context-section" aria-label={t('工作流状态', 'Workflow status')}><div className="section-title"><div><span className="eyebrow">{t('生产', 'PRODUCTION')}</span><h2>{t('工作流', 'Workflow')}</h2></div></div>{noKnowledge ? <p className="muted">{t('未挂载知识库。', 'No Knowledge Base mounted.')}</p> : null}{!props.workflowRunId ? <div className="notice"><strong>{t('没有运行中的工作流', 'No active Workflow')}</strong><p>{t('运行状态会在启动工作流后显示在这里。', 'Workflow status appears here after a run starts.')}</p></div> : props.workflow ? <div className="workflow-card"><div className="workflow-status"><span className={`status-dot ${terminalWorkflowStatuses.has(props.workflow.status) ? 'terminal' : ''}`} />{props.workflow.status.replaceAll('_', ' ')}</div><h3>{props.workflow.objective}</h3><dl><dt>{t('阶段', 'Stage')}</dt><dd>{props.workflow.currentStage || t('暂无报告', 'Not reported')}</dd><dt>{t('进度', 'Progress')}</dt><dd>{(isWorkflowFinalResultSynchronized(props.workflow) ? props.workflow.executionResult?.summary : undefined) || props.workflow.progressSummary || t('暂无报告', 'Not reported')}</dd></dl>{props.workflowPollNotice ? <p role="status">{props.workflowPollNotice}</p> : null}{props.workflowPollNotice && props.workflowPollRetryable ? <button type="button" className="secondary-action full" onClick={props.retryWorkflowPolling}>{t('重试状态同步', 'Retry synchronization')}</button> : null}<WorkflowResultFeedback workflow={props.workflow} verifiedBundleId={props.verifiedWorkflowBundleId} onOpenReport={props.openWorkflowReport} onOpenBundle={props.openWorkflowBundle} onOpenReview={props.openWorkflowReview} />{props.workflow.status === 'completed_with_review' && !props.workflow.executionResult?.reviewRef && (props.workflow.reviewCount ?? 0) > 0 ? <button className="secondary-action full" onClick={() => props.onNavigate('reviews')}>{t('查看审核', 'View Reviews')}</button> : null}{!terminalWorkflowStatuses.has(props.workflow.status) ? <button className="stop-action full" onClick={props.cancelWorkflow} disabled={props.busy}>{t('取消工作流', 'Cancel Workflow')}</button> : null}</div> : <p className="muted">{t('正在加载工作流状态…', 'Loading Workflow status…')}</p>}</section>
   <a className="secondary-action full research-reviews-link" href="/reviews" onClick={(event) => { event.preventDefault(); props.onNavigate('reviews') }}>{t('打开审核', 'Open Reviews')}{props.openReviewCases > 0 ? ` · ${props.openReviewCases}` : ''}</a>
@@ -918,8 +939,12 @@ function AppContent(): ReactElement {
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [loadError, setLoadError] = useState('')
   const [session, setSession] = useState<SessionState>()
+  const [currentConversationSummary, setCurrentConversationSummary] = useState<ConversationSummary>()
   const [conversations, setConversations] = useState<readonly ConversationSummary[]>([])
   const [messages, setMessages] = useState<readonly ConversationMessage[]>([])
+  const [activities, setActivities] = useState<readonly ConversationActivity[]>([])
+  const [conversationSearch, setConversationSearch] = useState('')
+  const [showArchivedConversations, setShowArchivedConversations] = useState(false)
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseStatus>()
   const [settings, setSettings] = useState<RuntimeSettings>()
   const [settingsError, setSettingsError] = useState('')
@@ -947,7 +972,7 @@ function AppContent(): ReactElement {
   const [rightsForm, setRightsForm] = useState<V04RightsForm>(defaultRightsForm)
   const [sourceForm, setSourceForm] = useState<V04SourceForm>(defaultSourceForm)
   const [uploadStatus, setUploadStatus] = useState('')
-  const [workflowRunId, setWorkflowRunId] = useState(storedResearchRunId)
+  const [workflowRunId, setWorkflowRunId] = useState('')
   const [themeFrameworkRunId, setThemeFrameworkRunId] = useState('')
   const [themeFrameworkRefreshInfo, setThemeFrameworkRefreshInfo] = useState<ResearchPageProps['themeFrameworkRefreshInfo']>()
   const [themeFrameworkReviewRevision, setThemeFrameworkReviewRevision] = useState(0)
@@ -980,20 +1005,62 @@ function AppContent(): ReactElement {
   const [dispatchFeedback, setDispatchFeedback] = useState<ResearchDispatchFeedback>()
   const [dispatchResolution, setDispatchResolution] = useState<ResearchDispatchResolution>()
   const latestConversation = useRef('')
+  const historyEpoch = useRef(0)
+  const conversationSyncEpoch = useRef(0)
+  const pendingOperationIds = useRef(new Map<string, string>())
   const previewGeneration = useRef(0)
   const workflowRef = useRef<WorkflowRun | undefined>(undefined)
   workflowRef.current = workflow
   const requestEpoch = useRef(0)
 
+  const loadConversationHistory = useCallback(async (search: string, archived: boolean): Promise<void> => {
+    const epoch = ++historyEpoch.current
+    try {
+      const list = await client.listConversations({ search, archived })
+      if (epoch === historyEpoch.current) setConversations(list)
+    } catch (caught) { if (epoch === historyEpoch.current) setError(errorText(caught)) }
+  }, [client])
+
   const syncCurrent = useCallback(async (): Promise<void> => {
     const epoch = requestEpoch.current
+    const syncEpoch = ++conversationSyncEpoch.current
     const [current, messageResult, list] = await Promise.all([client.currentSession(), client.messages(), client.listConversations()])
-    if (epoch !== requestEpoch.current) return
+    if (epoch !== requestEpoch.current || syncEpoch !== conversationSyncEpoch.current) return
+    if (messageResult.conversationId !== current.conversationId) return
     latestConversation.current = current.conversationId
     setSession(current)
     setMessages(messageResult.messages)
-    setConversations(list)
-  }, [client])
+    setActivities(messageResult.activities ?? [])
+    let selected = list.find((item) => item.conversationId === current.conversationId)
+    if (!selected) {
+      try {
+        const archived = await client.listConversations({ archived: true })
+        if (epoch !== requestEpoch.current || syncEpoch !== conversationSyncEpoch.current) return
+        selected = archived.find((item) => item.conversationId === current.conversationId)
+      } catch { /* keep the last summary for this session if the archived list is unavailable */ }
+    }
+    if (epoch !== requestEpoch.current || syncEpoch !== conversationSyncEpoch.current) return
+    setCurrentConversationSummary((previous) => selected ?? (previous?.conversationId === current.conversationId ? previous : undefined))
+    const associatedRunId = selected?.latestWorkflowRunId ?? ''
+    if (selected) setWorkflowRunId(associatedRunId)
+    if (associatedRunId) {
+      try { const run = await client.workflow(associatedRunId); if (epoch === requestEpoch.current && syncEpoch === conversationSyncEpoch.current && latestConversation.current === current.conversationId && run.runId === associatedRunId) setWorkflow(run) }
+      catch (caught) {
+        if (epoch !== requestEpoch.current || syncEpoch !== conversationSyncEpoch.current || latestConversation.current !== current.conversationId) return
+        setWorkflow(undefined)
+        if (caught instanceof RuntimeClientError && caught.status === 404) {
+          setWorkflowRunId('')
+          setThemeFrameworkRunId('')
+          setWorkflowPollNotice('')
+          setWorkflowPollRetryable(false)
+        }
+      }
+    } else if (selected && syncEpoch === conversationSyncEpoch.current) setWorkflow(undefined)
+    if (epoch !== requestEpoch.current || syncEpoch !== conversationSyncEpoch.current) return
+    await loadConversationHistory(conversationSearch, showArchivedConversations)
+  }, [client, conversationSearch, loadConversationHistory, showArchivedConversations])
+
+  useEffect(() => { if (loadState === 'ready') void loadConversationHistory(conversationSearch, showArchivedConversations) }, [conversationSearch, loadConversationHistory, loadState, showArchivedConversations])
 
   const navigate = useCallback((nextRoute: Route): void => { const path = routePath(nextRoute); if (window.location.pathname !== path) window.history.pushState({}, '', path); setRoute(nextRoute) }, [])
   const onResearchLaunched = useCallback((result: ResearchStartResponse): void => {
@@ -1012,7 +1079,7 @@ function AppContent(): ReactElement {
         if (cancelled) return
         setSettings(loadedSettings)
         setWorkflowDefinitions(definitions)
-        setSession(bootstrap.session); latestConversation.current = bootstrap.session.conversationId; setConversations(bootstrap.conversations); setKnowledgeBase(bootstrap.knowledgeBase); setOpenReviewCases(bootstrap.openReviewCases ?? 0)
+        setSession(bootstrap.session); setCurrentConversationSummary(bootstrap.conversations.find((item) => item.conversationId === bootstrap.session.conversationId)); latestConversation.current = bootstrap.session.conversationId; setConversations(bootstrap.conversations); setKnowledgeBase(bootstrap.knowledgeBase); setOpenReviewCases(bootstrap.openReviewCases ?? 0)
         await syncCurrent()
         if (!cancelled) setLoadState('ready')
       } catch (caught) { if (!cancelled) { setLoadError(errorText(caught)); setLoadState('error') } }
@@ -1051,7 +1118,7 @@ function AppContent(): ReactElement {
     requestEpoch.current += 1; previewGeneration.current += 1
     try { window.sessionStorage.removeItem(ACTIVE_RESEARCH_RUN_KEY) } catch { /* storage can be unavailable in restricted browser contexts */ }
     latestConversation.current = ''
-    setKnowledgeBase(undefined); setOpenReviewCases(0); setSession(undefined); setConversations([]); setMessages([]); setStreaming(false); setThinking(false); setStreamText(''); setToolEvents([]); setQueue({ steering: 0, followUp: 0 }); setComposer('')
+    setKnowledgeBase(undefined); setOpenReviewCases(0); setSession(undefined); setCurrentConversationSummary(undefined); setConversations([]); setMessages([]); setActivities([]); setStreaming(false); setThinking(false); setStreamText(''); setToolEvents([]); setQueue({ steering: 0, followUp: 0 }); setComposer('')
     setAttachment(undefined); setAttachmentBusy(false); setAttachmentUiVersion((version) => version + 1); setPreview(undefined); setPreviewBusy(false); setAcceptanceBusy(false); setSelectedCandidates(new Set()); setAcceptance(undefined); setRightsForm(defaultRightsForm); setSourceForm(defaultSourceForm); setUploadStatus('')
     setWorkflowRunId(''); setThemeFrameworkRunId(''); setThemeFrameworkRefreshInfo(undefined); setThemeFrameworkReviewRevision(0); setWorkflow(undefined); setReviews(undefined); setReviewDetail(undefined); setReviewsBusy(false); setBriefs(undefined); setSelectedBrief(undefined); setBriefsBusy(false); setReports(undefined); setSelectedReport(undefined); setReportsBusy(false); setBundles(undefined); setSelectedBundle(undefined); setBundlesBusy(false); setSourceHits([]); setSourceBusy(false); setExecutionSummary(undefined); setError('')
   }
@@ -1061,7 +1128,7 @@ function AppContent(): ReactElement {
     try {
       const bootstrap = await client.bootstrap()
       const [definitions, refreshedSettings] = await Promise.all([client.listWorkflowDefinitions(), client.getSettings()])
-      setSettings(refreshedSettings); setWorkflowDefinitions(definitions); setSession(bootstrap.session); latestConversation.current = bootstrap.session.conversationId; setConversations(bootstrap.conversations); setKnowledgeBase(bootstrap.knowledgeBase); setOpenReviewCases(bootstrap.openReviewCases ?? 0)
+      setSettings(refreshedSettings); setWorkflowDefinitions(definitions); setSession(bootstrap.session); setCurrentConversationSummary(bootstrap.conversations.find((item) => item.conversationId === bootstrap.session.conversationId)); latestConversation.current = bootstrap.session.conversationId; setConversations(bootstrap.conversations); setKnowledgeBase(bootstrap.knowledgeBase); setOpenReviewCases(bootstrap.openReviewCases ?? 0)
       await syncCurrent(); setLoadState('ready')
     } catch (caught) { setLoadError(errorText(caught)); setLoadState('error') }
   }
@@ -1202,19 +1269,71 @@ function AppContent(): ReactElement {
     return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer) }
   }, [client, route, workflow, workflowRunId])
 
+  const operationLedgerKey = 'researchhub.pendingConversationOperations.v1'
+  const requestDigest = async (text: string): Promise<string> => {
+    const bytes = new TextEncoder().encode(text)
+    if (globalThis.crypto?.subtle) {
+      const hash = await globalThis.crypto.subtle.digest('SHA-256', bytes)
+      return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('')
+    }
+    // Deterministic non-plaintext fallback for browser contexts without SubtleCrypto.
+    let first = 0x811c9dc5, second = 0x9e3779b9
+    for (const byte of bytes) { first = Math.imul(first ^ byte, 0x01000193); second = Math.imul(second ^ byte, 0x85ebca6b) }
+    return `${(first >>> 0).toString(16)}${(second >>> 0).toString(16)}`
+  }
+  const readOperationLedger = (): { key: string; id: string }[] => {
+    try {
+      const parsed: unknown = JSON.parse(window.sessionStorage.getItem(operationLedgerKey) ?? '[]')
+      return Array.isArray(parsed) ? parsed.filter((entry): entry is { key: string; id: string } => typeof entry?.key === 'string' && typeof entry?.id === 'string').slice(-20) : []
+    } catch { return [] }
+  }
+  const writeOperationLedger = (entries: readonly { key: string; id: string }[]): void => {
+    try { window.sessionStorage.setItem(operationLedgerKey, JSON.stringify(entries.slice(-20))) } catch { /* session storage may be unavailable */ }
+  }
+  const operationIdFor = async (conversationId: string, operation: string, text: string, workflowRegistryId?: string): Promise<{ key: string; id: string }> => {
+    const digest = await requestDigest(JSON.stringify({ requestText: text, operation, workflowRegistryId: workflowRegistryId ?? '' }))
+    const key = `${conversationId}:${operation}:${workflowRegistryId ?? ''}:${digest}`
+    const existing = pendingOperationIds.current.get(key) ?? readOperationLedger().find((entry) => entry.key === key)?.id
+    if (existing) { pendingOperationIds.current.set(key, existing); return { key, id: existing } }
+    const id = globalThis.crypto?.randomUUID?.() ?? `op-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    pendingOperationIds.current.set(key, id)
+    while (pendingOperationIds.current.size > 20) pendingOperationIds.current.delete(pendingOperationIds.current.keys().next().value as string)
+    const ledger = readOperationLedger().filter((entry) => entry.key !== key)
+    ledger.push({ key, id }); writeOperationLedger(ledger)
+    return { key, id }
+  }
+  const clearOperationId = (key: string): void => {
+    pendingOperationIds.current.delete(key)
+    writeOperationLedger(readOperationLedger().filter((entry) => entry.key !== key))
+  }
+
   const runCommand = async (operation: 'prompt' | 'steer' | 'follow_up'): Promise<void> => {
     const text = composer.trim()
-    if (!text || busy || (operation === 'prompt' && streaming)) return
+    const conversationId = session?.conversationId
+    if (!conversationId || !text || busy || (operation === 'prompt' && streaming)) return
+    const pendingOperation = await operationIdFor(conversationId, operation, text, operation === 'prompt' ? selectedWorkflowId : undefined)
+    const { id: operationId, key: retryKey } = pendingOperation
     setBusy(true); setError('')
     let preserveComposer = false
     try {
+      const acceptedRequest = await client.acceptConversationRequest({ conversationId, operationId, requestText: text, operation, ...(operation === 'prompt' && selectedWorkflowId ? { workflowRegistryId: selectedWorkflowId } : {}) })
+      if (latestConversation.current !== conversationId) return
+      if (!acceptedRequest.accepted || (acceptedRequest.conversationId !== undefined && acceptedRequest.conversationId !== conversationId) || (acceptedRequest.operationId !== undefined && acceptedRequest.operationId !== operationId)) {
+        if (acceptedRequest.status === 'not_started') clearOperationId(retryKey)
+        preserveComposer = true
+        setError('The conversation request was not accepted. Retry to continue.')
+        return
+      }
+      await syncCurrent()
+      if (latestConversation.current !== conversationId) return
       if (operation === 'prompt') {
         const requestMode = selectedWorkflowId ? { type: 'workflow' as const, workflowId: selectedWorkflowId } : { type: 'free_research' as const }
         const priorFeedback = dispatchFeedback
         const workflowArgumentContext = requestMode.type === 'workflow' && priorFeedback?.status === 'NEEDS_INPUT' && priorFeedback.workflowId === requestMode.workflowId
           ? { workflowId: priorFeedback.workflowId, arguments: priorFeedback.validatedArguments }
           : undefined
-        const result: ResearchDispatchResponse = await client.dispatchResearch({ query: text, mode: requestMode, contextPolicy, persistencePolicy, ...(workflowArgumentContext === undefined ? {} : { workflowArgumentContext }) })
+        const result: ResearchDispatchResponse = await client.dispatchResearch({ query: text, conversationId, operationId, mode: requestMode, contextPolicy, persistencePolicy, ...(workflowArgumentContext === undefined ? {} : { workflowArgumentContext }) })
+        if (latestConversation.current !== conversationId) return
         setExecutionSummary(result.summary)
         setDispatchResolution(result.resolution)
         if (result.feedback || result.status === 'needs_input') {
@@ -1234,20 +1353,64 @@ function AppContent(): ReactElement {
           setWorkflow(result.workflow as WorkflowRun | undefined)
         } else {
           setDispatchFeedback(undefined)
-          await client.command('prompt', text, { researchBundleId: result.runId, researchPolicy: { contextPolicy, persistencePolicy } })
+          const accepted = await client.command('prompt', text, { conversationId, operationId, researchBundleId: result.runId, researchPolicy: { contextPolicy, persistencePolicy } })
+          if (latestConversation.current !== conversationId || accepted.conversationId !== conversationId) return
+          if (!accepted.accepted) { preserveComposer = true; setError('The chat request was not accepted. Retry to continue.'); return }
+          clearOperationId(retryKey)
           setStreaming(true); setThinking(false); setStreamText(''); setToolEvents([])
         }
+        if (result.status === 'started' || result.status === 'needs_input' || result.status === 'invalid_input' || result.status === 'unresolved_reference' || result.status === 'executor_unavailable') clearOperationId(retryKey)
+        void syncCurrent()
+        void loadConversationHistory(conversationSearch, showArchivedConversations)
       } else {
-        await client.command(operation, text)
+        const accepted = await client.command(operation, text, { conversationId, operationId })
+        if (latestConversation.current !== conversationId || accepted.conversationId !== conversationId) return
+        if (!accepted.accepted) { preserveComposer = true; setError('The conversation request was not accepted. Retry to continue.'); return }
+        clearOperationId(retryKey)
         setStreaming(true); setThinking(false); setStreamText(''); setToolEvents([])
       }
       if (!preserveComposer) setComposer('')
-    } catch (caught) { setError(errorText(caught)) }
+    } catch (caught) { if (latestConversation.current === conversationId) setError(errorText(caught)) }
     finally { setBusy(false) }
   }
+  const clearConversationView = (): void => {
+    setCurrentConversationSummary(undefined)
+    setMessages([]); setActivities([]); setWorkflowRunId(''); setWorkflow(undefined); setThemeFrameworkRunId('')
+    setWorkflowPollNotice(''); setWorkflowPollRetryable(false); setExecutionSummary(undefined); setDispatchFeedback(undefined); setDispatchResolution(undefined)
+    setStreaming(false); setStreamText(''); setThinking(false); setToolEvents([]); setQueue({ steering: 0, followUp: 0 })
+  }
   const abort = async (): Promise<void> => { setBusy(true); setError(''); try { await client.abort(); setStreaming(false); await syncCurrent() } catch (caught) { setError(errorText(caught)) } finally { setBusy(false) } }
-  const newConversation = async (): Promise<void> => { setBusy(true); setError(''); try { await client.newConversation(); setStreaming(false); setStreamText(''); await syncCurrent() } catch (caught) { setError(errorText(caught)) } finally { setBusy(false) } }
-  const switchConversation = async (conversationId: string): Promise<void> => { if (conversationId === session?.conversationId || busy) return; setBusy(true); setError(''); setStreaming(false); setStreamText(''); setThinking(false); setToolEvents([]); try { await client.switchConversation(conversationId); await syncCurrent() } catch (caught) { setError(errorText(caught)) } finally { setBusy(false) } }
+  const newConversation = async (): Promise<void> => {
+    setBusy(true); setError(''); const epoch = ++requestEpoch.current; latestConversation.current = ''
+    try { await client.newConversation(); if (epoch !== requestEpoch.current) return; clearConversationView(); await syncCurrent() }
+    catch (caught) {
+      if (epoch === requestEpoch.current) {
+        latestConversation.current = session?.conversationId ?? ''
+        setError(errorText(caught))
+        try { await syncCurrent() } catch { /* retain the last known session while the server is unavailable */ }
+      }
+    } finally { setBusy(false) }
+  }
+  const switchConversation = async (conversationId: string): Promise<void> => {
+    if (conversationId === session?.conversationId || busy) return
+    setBusy(true); setError(''); const epoch = ++requestEpoch.current; latestConversation.current = conversationId
+    try {
+      await client.switchConversation(conversationId)
+      if (epoch !== requestEpoch.current || latestConversation.current !== conversationId) return
+      clearConversationView()
+      await syncCurrent()
+    } catch (caught) {
+      if (epoch === requestEpoch.current) {
+        latestConversation.current = session?.conversationId ?? ''
+        setError(errorText(caught))
+        try { await syncCurrent() } catch { /* retain the last known session while the server is unavailable */ }
+      }
+    } finally { setBusy(false) }
+  }
+  const refreshConversationHistory = async (): Promise<void> => { await loadConversationHistory(conversationSearch, showArchivedConversations) }
+  const renameConversation = async (conversationId: string, name: string, expectedVersion: number): Promise<void> => { setBusy(true); setError(''); try { const summary = await client.updateConversationMetadata(conversationId, name, expectedVersion); if (session?.conversationId === conversationId) setCurrentConversationSummary(summary); await refreshConversationHistory(); if (session?.conversationId === conversationId) await syncCurrent() } catch (caught) { setError(errorText(caught)); await refreshConversationHistory() } finally { setBusy(false) } }
+  const archiveConversation = async (conversationId: string, expectedVersion: number): Promise<void> => { setBusy(true); setError(''); try { const summary = await client.archiveConversation(conversationId, expectedVersion); if (session?.conversationId === conversationId) setCurrentConversationSummary(summary); await refreshConversationHistory() } catch (caught) { setError(errorText(caught)); await refreshConversationHistory() } finally { setBusy(false) } }
+  const restoreConversation = async (conversationId: string, expectedVersion: number): Promise<void> => { setBusy(true); setError(''); try { const summary = await client.restoreConversation(conversationId, expectedVersion); if (session?.conversationId === conversationId) setCurrentConversationSummary(summary); await refreshConversationHistory() } catch (caught) { setError(errorText(caught)); await refreshConversationHistory() } finally { setBusy(false) } }
   const upload = async (file: File | undefined): Promise<void> => {
     if (!file) return
     if (!supportedDocumentExtension.test(file.name)) { setUploadStatus('Unsupported file. Choose a PDF, CSV, HTML, JSON, Markdown, text, or XML document.'); return }
@@ -1408,7 +1571,7 @@ function AppContent(): ReactElement {
     onMountKnowledgeBase: (knowledgeBaseId) => { void changeKnowledgeBase(knowledgeBaseId) },
     onUnmountKnowledgeBase: () => { void changeKnowledgeBase('') },
   }
-  return <div className="app-shell"><ApplicationSidebar route={route} knowledgeBase={knowledgeBase} settings={settings} settingsError={settingsError} settingsBusy={settingsBusy} interactionsDisabled={configurationBlocked} onNavigate={navigate} onLoadSettings={() => void loadSettings()} onModelChange={(value) => void changeModel(value)} settingsPanelProps={settingsPanelProps} /><div className="app-main">{route === 'research' ? <ResearchPage session={session} conversations={conversations} messages={messages} streaming={streaming} thinking={thinking} streamText={streamText} toolEvents={toolEvents} queue={queue} composer={composer} busy={busy} error={error} attachment={attachment} attachmentUiVersion={attachmentUiVersion} attachmentBusy={attachmentBusy} preview={preview} previewBusy={previewBusy} acceptanceBusy={acceptanceBusy} selectedCandidates={selectedCandidates} acceptance={acceptance} rightsForm={rightsForm} sourceForm={sourceForm} uploadStatus={uploadStatus} workflowRunId={workflowRunId} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} client={client} workflow={workflow} knowledgeBase={knowledgeBase} openReviewCases={openReviewCases} workflowDefinitions={workflowDefinitions} selectedWorkflowId={selectedWorkflowId} setSelectedWorkflowId={setSelectedWorkflowId} contextPolicy={contextPolicy} persistencePolicy={persistencePolicy} setContextPolicy={setContextPolicy} setPersistencePolicy={setPersistencePolicy} executionSummary={executionSummary} dispatchFeedback={dispatchFeedback} dispatchResolution={dispatchResolution} verifiedWorkflowBundleId={verifiedWorkflowBundleId} workflowPollNotice={workflowPollNotice} workflowPollRetryable={workflowPollRetryable} retryWorkflowPolling={() => { setWorkflowPollNotice(''); setWorkflowPollRetryable(false); setWorkflowPollAttempt((value) => value + 1) }} setComposer={setComposer} newConversation={() => void newConversation()} switchConversation={(id) => void switchConversation(id)} runCommand={(operation) => void runCommand(operation)} abort={() => void abort()} upload={(file) => void upload(file)} toggleCandidate={toggleCandidate} setRightsForm={setRightsForm} setSourceForm={setSourceForm} startPreview={() => void startRawDocumentPreview()} acceptCandidates={() => void acceptRawDocumentCandidates()} clearAttachment={clearAttachment} cancelWorkflow={() => void cancelWorkflow()} openWorkflowReport={openWorkflowReport} openWorkflowBundle={openWorkflowBundle} openWorkflowReview={openWorkflowReview} dismissError={() => setError('')} onNavigate={navigate} /> : route === 'briefs' ? <BriefsPage briefs={briefs} selected={selectedBrief} busy={briefsBusy} error={error} onSelect={(id) => void selectBrief(id)} /> : route === 'reports' ? <ReportsPage reports={reports} selected={selectedReport} busy={reportsBusy} error={error} onSelect={(id) => void selectReport(id)} /> : route === 'bundles' ? <ResearchBundlesPage bundles={bundles} selected={selectedBundle} busy={bundlesBusy} error={error} onSelect={(id) => void selectBundle(id)} sourceHits={sourceHits} sourceBusy={sourceBusy} onSearchSources={(query) => void searchSources(query)} /> : route === 'run' ? <ResearchRunPage client={client} onLaunched={onResearchLaunched} /> : route === 'graph' ? <KnowledgeGraphPage knowledgeBase={knowledgeBase} client={client} /> : route === 'sources' ? <DataSourcesPage client={client} /> : route === 'theses' ? <ThesisLifecyclePage client={client} knowledgeBase={knowledgeBase} /> : <ReviewsPage client={client} knowledgeBase={knowledgeBase} reviews={reviews} reviewDetail={reviewDetail} reviewsBusy={reviewsBusy} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} acceptance={acceptance} workflowRunId={workflowRunId} workflow={workflow} onSelect={(id) => void selectReview(id)} onCloseDetail={() => setReviewDetail(undefined)} />}</div></div>
+  return <div className="app-shell"><ApplicationSidebar route={route} knowledgeBase={knowledgeBase} settings={settings} settingsError={settingsError} settingsBusy={settingsBusy} interactionsDisabled={configurationBlocked} onNavigate={navigate} onLoadSettings={() => void loadSettings()} onModelChange={(value) => void changeModel(value)} settingsPanelProps={settingsPanelProps} /><div className="app-main">{route === 'research' ? <ResearchPage session={session} currentConversationSummary={currentConversationSummary} conversations={conversations} activities={activities} conversationSearch={conversationSearch} setConversationSearch={setConversationSearch} showArchivedConversations={showArchivedConversations} setShowArchivedConversations={setShowArchivedConversations} renameConversation={(id, name, version) => void renameConversation(id, name, version)} archiveConversation={(id, version) => void archiveConversation(id, version)} restoreConversation={(id, version) => void restoreConversation(id, version)} messages={messages} streaming={streaming} thinking={thinking} streamText={streamText} toolEvents={toolEvents} queue={queue} composer={composer} busy={busy} error={error} attachment={attachment} attachmentUiVersion={attachmentUiVersion} attachmentBusy={attachmentBusy} preview={preview} previewBusy={previewBusy} acceptanceBusy={acceptanceBusy} selectedCandidates={selectedCandidates} acceptance={acceptance} rightsForm={rightsForm} sourceForm={sourceForm} uploadStatus={uploadStatus} workflowRunId={workflowRunId} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} client={client} workflow={workflow} knowledgeBase={knowledgeBase} openReviewCases={openReviewCases} workflowDefinitions={workflowDefinitions} selectedWorkflowId={selectedWorkflowId} setSelectedWorkflowId={setSelectedWorkflowId} contextPolicy={contextPolicy} persistencePolicy={persistencePolicy} setContextPolicy={setContextPolicy} setPersistencePolicy={setPersistencePolicy} executionSummary={executionSummary} dispatchFeedback={dispatchFeedback} dispatchResolution={dispatchResolution} verifiedWorkflowBundleId={verifiedWorkflowBundleId} workflowPollNotice={workflowPollNotice} workflowPollRetryable={workflowPollRetryable} retryWorkflowPolling={() => { setWorkflowPollNotice(''); setWorkflowPollRetryable(false); setWorkflowPollAttempt((value) => value + 1) }} setComposer={setComposer} newConversation={() => void newConversation()} switchConversation={(id) => void switchConversation(id)} runCommand={(operation) => void runCommand(operation)} abort={() => void abort()} upload={(file) => void upload(file)} toggleCandidate={toggleCandidate} setRightsForm={setRightsForm} setSourceForm={setSourceForm} startPreview={() => void startRawDocumentPreview()} acceptCandidates={() => void acceptRawDocumentCandidates()} clearAttachment={clearAttachment} cancelWorkflow={() => void cancelWorkflow()} openWorkflowReport={openWorkflowReport} openWorkflowBundle={openWorkflowBundle} openWorkflowReview={openWorkflowReview} dismissError={() => setError('')} onNavigate={navigate} /> : route === 'briefs' ? <BriefsPage briefs={briefs} selected={selectedBrief} busy={briefsBusy} error={error} onSelect={(id) => void selectBrief(id)} /> : route === 'reports' ? <ReportsPage reports={reports} selected={selectedReport} busy={reportsBusy} error={error} onSelect={(id) => void selectReport(id)} /> : route === 'bundles' ? <ResearchBundlesPage bundles={bundles} selected={selectedBundle} busy={bundlesBusy} error={error} onSelect={(id) => void selectBundle(id)} sourceHits={sourceHits} sourceBusy={sourceBusy} onSearchSources={(query) => void searchSources(query)} /> : route === 'run' ? <ResearchRunPage client={client} onLaunched={onResearchLaunched} /> : route === 'graph' ? <KnowledgeGraphPage knowledgeBase={knowledgeBase} client={client} /> : route === 'sources' ? <DataSourcesPage client={client} /> : route === 'theses' ? <ThesisLifecyclePage client={client} knowledgeBase={knowledgeBase} /> : <ReviewsPage client={client} knowledgeBase={knowledgeBase} reviews={reviews} reviewDetail={reviewDetail} reviewsBusy={reviewsBusy} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} acceptance={acceptance} workflowRunId={workflowRunId} workflow={workflow} onSelect={(id) => void selectReview(id)} onCloseDetail={() => setReviewDetail(undefined)} />}</div></div>
 }
 
 export default function App(): ReactElement {

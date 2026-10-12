@@ -30,6 +30,14 @@ export interface ResearchSessionContext {
   readonly evidenceRefs: readonly string[]
 }
 
+const UUID_RUN_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
+
+function validateServerOwnedRunId(runId: string | undefined): void {
+  if (runId !== undefined && (typeof runId !== 'string' || runId.length > 36 || !UUID_RUN_ID_PATTERN.test(runId))) {
+    throw new ApplicationServiceError('invalid_input', 'serverOwnedRunId must be a valid UUID')
+  }
+}
+
 export interface ExtractedResearchArguments {
   readonly arguments: Readonly<Record<string, unknown>>
   readonly missingRequiredInputs: readonly string[]
@@ -552,7 +560,8 @@ export class ResearchDispatchService {
     return this.startResolved({ ...resolved, decision: prepared, summary }, callerSignal, [], resolution)
   }
 
-  async startAsync(input: unknown, callerSignal?: AbortSignal): Promise<ResearchDispatchStart> {
+  async startAsync(input: unknown, callerSignal?: AbortSignal, serverOwnedRunId?: string): Promise<ResearchDispatchStart> {
+    validateServerOwnedRunId(serverOwnedRunId)
     const request = normalizeResearchRequest(input)
     const selectedDefinition = request.mode.type === 'workflow' ? this.workflowRegistry.get(request.mode.workflowId) : this.bestWorkflow(request.query)
     if (selectedDefinition !== undefined && Object.hasOwn(inputProperties(selectedDefinition), 'asOf') && containsExplicitHistoricalDate(request.query)) {
@@ -574,7 +583,7 @@ export class ResearchDispatchService {
     if (verified.feedback !== undefined) return { ...resolved, status: verified.failureStatus ?? 'unresolved_reference', feedback: verified.feedback }
     const decision = verified.decision ?? resolved.decision
     const summary = this.summary(resolved.request, decision, decision.workflow === undefined ? undefined : this.workflowRegistry.get(decision.workflow.id))
-    return this.startResolved({ ...resolved, decision, summary }, callerSignal, resolved.sourceLibraryHits, resolved.resolution, verified.verifiedIdentity)
+    return this.startResolved({ ...resolved, decision, summary }, callerSignal, resolved.sourceLibraryHits, resolved.resolution, verified.verifiedIdentity, serverOwnedRunId)
   }
 
   /** Starts a product-form-selected Workflow with its explicit validated fields, without a semantic routing round-trip. */
@@ -709,7 +718,7 @@ export class ResearchDispatchService {
     return finalizeVerifiedArguments(normalizedArgs)
   }
 
-  private startResolved(resolved: { readonly request: ResearchRequest; readonly decision: ResearchDispatchDecision; readonly summary: ResearchExecutionSummary }, callerSignal: AbortSignal | undefined, sourceLibraryHits: readonly SourceLibraryHit[], resolution: ResearchDispatchResolution, verifiedIdentity?: VerifiedSecurityIdentity): ResearchDispatchStart {
+  private startResolved(resolved: { readonly request: ResearchRequest; readonly decision: ResearchDispatchDecision; readonly summary: ResearchExecutionSummary }, callerSignal: AbortSignal | undefined, sourceLibraryHits: readonly SourceLibraryHit[], resolution: ResearchDispatchResolution, verifiedIdentity?: VerifiedSecurityIdentity, serverOwnedRunId?: string): ResearchDispatchStart {
     const { decision } = resolved
     if (decision.mode === 'workflow' && decision.workflow !== undefined) {
       const definition = this.workflowRegistry.get(decision.workflow.id)
@@ -741,7 +750,7 @@ export class ResearchDispatchService {
       return { ...resolved, status: 'executor_unavailable', feedback, sourceLibraryHits, resolution }
     }
     let started: Promise<unknown>
-    const runId = randomUUID()
+    const runId = serverOwnedRunId ?? randomUUID()
     try {
       const identityHandoff = verifiedIdentity === undefined ? undefined : createVerifiedSecurityIdentityHandoff({
         workflowId: definition.id as 'company_research' | 'valuation' | 'earnings_review',

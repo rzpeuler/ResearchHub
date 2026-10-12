@@ -188,11 +188,31 @@ test('started dispatch persists one ResearchBundle from the workflow result and 
     const service = new ResearchDispatchService({ researchService: research, workflowService, bundleStore: store as never, mountedKnowledgeBaseRoot: knowledgeBase })
     const started = await service.startAsync({ query: '600519 2026 年半年报', mode: { type: 'workflow', workflowId: 'earnings_review' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } })
     assert.equal(started.status, 'started')
+    assert.match(started.runId!, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu)
     await started.completion
     assert.equal((calls[0] as { writeKnowledge: boolean }).writeKnowledge, false)
     const bundle = await service.getBundle(`research-bundle-${started.runId!}`) as { report?: { reportId: string }; proposals: readonly { proposalId: string }[] }
     assert.equal(bundle.report?.reportId, 'earnings-report'); assert.deepEqual(bundle.proposals.map((item) => item.proposalId), ['earnings-proposal'])
+
+    const requestedRunId = '86e59fd9-c800-4aa8-8ee3-bfbb95a65730'
+    const overridden = await service.startAsync({ query: '600519 2026 年半年报', mode: { type: 'workflow', workflowId: 'earnings_review' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, undefined, requestedRunId)
+    assert.equal(overridden.status, 'started')
+    assert.equal(overridden.runId, requestedRunId)
+    assert.equal((calls[1] as { workflowRunId: string }).workflowRunId, requestedRunId)
+    await overridden.completion
   } finally { await rm(knowledgeBase, { recursive: true, force: true }) }
+})
+
+test('malformed server-owned Workflow run IDs are rejected before semantic dispatch', async () => {
+  let reasoningCalls = 0
+  const service = new ResearchDispatchService({ reasoningExecutor: semanticExecutor({
+    mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: { symbol: '600519' } },
+    skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true },
+    persistencePolicy: { writeKnowledge: false }, rationale: 'Valid fixture decision.',
+  }, () => { reasoningCalls += 1 }) })
+
+  await assert.rejects(service.startAsync({ query: '研究 600519', mode: { type: 'workflow', workflowId: 'company_research' } }, undefined, '../invalid'), { code: 'invalid_input' })
+  assert.equal(reasoningCalls, 0)
 })
 
 test('Free Research and Skill Plan complete through FileResearchBundleStore and survive reload', async () => {
@@ -317,8 +337,10 @@ test('Workflow contract missing inputs return structured NEEDS_INPUT and never c
   let starts = 0
   const output = { mode: 'workflow', workflow: { id: 'earnings_review', confidence: 0.98, arguments: { symbol: '600519', name: '贵州茅台', fiscalYear: 2026 } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Annual report review.' }
   const service = new ResearchDispatchService({ reasoningExecutor: semanticExecutor(output), researchService: ({ startEarningsReview: () => { starts += 1; return { completion: Promise.resolve({ status: 'completed' }) } } } as never) })
-  const result = await service.startAsync({ query: '研究贵州茅台 2026 年半年报', mode: { type: 'workflow', workflowId: 'earnings_review' } })
+  const result = await service.startAsync({ query: '研究贵州茅台 2026 年半年报', mode: { type: 'workflow', workflowId: 'earnings_review' } }, undefined, '86e59fd9-c800-4aa8-8ee3-bfbb95a65730')
   assert.equal(result.status, 'needs_input')
+  assert.equal(result.runId, undefined)
+  assert.equal(starts, 0)
   assert.equal(result.feedback?.status, 'NEEDS_INPUT')
   assert.deepEqual(result.feedback?.missingFields, ['period'])
   assert.deepEqual(result.feedback?.validatedArguments, { symbol: '600519', name: '贵州茅台', fiscalYear: 2026 })

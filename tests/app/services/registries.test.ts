@@ -10,6 +10,7 @@ test('Workflow Definition Registry exposes the current executable research set',
   assert.deepEqual(ids, ['company_research', 'daily_intelligence', 'earnings_review', 'event_research', 'industry_research', 'theme_framework', 'thesis_lifecycle', 'thesis_red_team', 'valuation'])
   assert.deepEqual(registry.get('earnings_review')?.requiredInputs, ['symbol', 'fiscalYear', 'period'])
   const definition = registry.get('company_research')!
+  assert.equal(definition.displayNameZh, '公司深度研究')
   ;((definition.inputSchema.properties as Record<string, unknown>).symbol as Record<string, unknown>).type = 'number'
   assert.deepEqual((registry.get('company_research')?.inputSchema.properties as Record<string, unknown>).symbol, { type: 'string', description: 'Six-digit A-share symbol', pattern: '^\\d{6}$' })
   assert.equal((registry.get('company_research')?.inputSchema as { additionalProperties?: boolean }).additionalProperties, false)

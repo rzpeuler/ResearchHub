@@ -58,6 +58,7 @@ import { selectOfficialEarningsFilings } from '../../workflows/earnings-review/w
 import { SecurityIdentityResolver } from '../services/security-identity-resolver.ts'
 import { createSecurityIdentityDataResolver } from '../../plugins/research-acquisition/security-identity-data.ts'
 import { SECURITY_IDENTITY_SOURCE_POLICIES } from '../../data/security-identity-policies.ts'
+import { ConversationStateStore } from './conversation-state-store.ts'
 
 const DURABLE_THESIS_DECISION_STATES = new Set(['ACCEPTED', 'REJECTED', 'DEFERRED', 'STALE'])
 type DurableThesisDecisionState = 'ACCEPTED' | 'REJECTED' | 'DEFERRED' | 'STALE'
@@ -238,7 +239,8 @@ export class ResearchHubApplicationRuntime {
     void _humanOnlyDataSourceService
     const sessionManager = options.sessionManager ?? SessionManager.create(cwd, options.sessionDir)
     try {
-      const sessionRuntime = await createResearchHubSessionRuntime({ cwd, agentDir, modelRuntime, sessionManager, applicationServices: piApplicationServices, mountedKnowledgeBaseRoot, workspaceRoot, model: selectedModel, reasoningExecutor, settingsManager: options.settingsManager, resourceLoader: options.resourceLoader, researchService, dailyIntelligenceService })
+      const conversationStateStore = new ConversationStateStore({ rootDir: join(cwd, 'runtime-data', 'conversation-state') })
+      const sessionRuntime = await createResearchHubSessionRuntime({ cwd, agentDir, modelRuntime, sessionManager, applicationServices: piApplicationServices, conversationStateStore, mountedKnowledgeBaseRoot, workspaceRoot, model: selectedModel, reasoningExecutor, settingsManager: options.settingsManager, resourceLoader: options.resourceLoader, researchService, dailyIntelligenceService })
       const dailyScheduler = new DailyBriefScheduler({ statePath: join(cwd, 'runtime-data', 'daily-scheduler.json'), calendar: dailyComposition?.calendar ?? dailyIntelligenceService.calendar ?? new TradingCalendarService({ cachePath: join(cwd, 'runtime-data', 'trading-calendar.json') }), run: async (briefType, tradeDate) => { const run = dailyIntelligenceService.startBrief({ workflowRunId: `scheduled-${briefType}-${tradeDate}`, briefType, tradeDate }); const result = await run.completion; return { status: result.status } } })
       const runtime = new ResearchHubApplicationRuntime({ cwd, agentDir, workspaceRoot, mountedKnowledgeBaseRoot, modelRuntime, sessionManager, services, sessionRuntime, ownsModelRuntime, dailyScheduler })
       if (options.startDailyScheduler !== false) runtime.startDailyScheduler()

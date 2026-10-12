@@ -57,24 +57,78 @@ describe('Homepage shell', () => {
     window.history.replaceState({}, '', '/research')
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input); calls.push(path)
-      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 1, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [{ conversationId: 'c1', name: 'Stored title', titleSource: 'user', archived: false, version: 2, latestWorkflowRunId: 'restored-run-1', updatedAt: 'now', messageCount: 1, isActive: true }], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 1, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
       if (path === '/api/research/workflows') return json({ workflows: [] })
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
-      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/conversations') return json({ conversations: [{ conversationId: 'c1', name: 'Stored title', titleSource: 'user', archived: false, version: 2, latestWorkflowRunId: 'restored-run-1', updatedAt: 'now', messageCount: 1, isActive: true }] })
       if (path === '/api/workflows/restored-run-1') return json({ runId: 'restored-run-1', workflowType: 'company_research', objective: 'Research 002487.SZ', status: 'blocked', startedAt: 'now', updatedAt: 'now', executionResult: { runId: 'restored-run-1', workflowId: 'company_research', executionStatus: 'blocked', terminalStatus: 'blocked', summary: 'Provider evidence is unavailable.', diagnostics: [], bundleStatus: 'unavailable' } })
       return json({ code: 'not_found', error: 'not found' }, 404)
     }) as typeof fetch
     render(<App />)
+    expect(await screen.findByRole('heading', { level: 1, name: 'Stored title' })).toBeTruthy()
     expect(await screen.findByText('Workflow is blocked')).toBeTruthy()
     expect(screen.getAllByText('Provider evidence is unavailable.').length).toBeGreaterThan(0)
     expect(calls).toContain('/api/workflows/restored-run-1')
     expect(window.sessionStorage.getItem('researchhub.active-research-run-id')).toBe('restored-run-1')
   })
 
+  it('clears only the active UI Workflow when its persisted association is missing after restart', async () => {
+    const summary = { conversationId: 'c1', name: 'Stored title', titleSource: 'user', archived: false, version: 3, latestWorkflowRunId: 'old-run', updatedAt: 'now', messageCount: 1, isActive: true }
+    const dispatchRequests: unknown[] = []
+    const workflowReads: string[] = []
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [summary] })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/settings') return json({ revision: 1, model: {}, models: [], knowledgeBases: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', name: 'Stored title', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [], activities: [{ activityId: 'activity-old-run', conversationId: 'c1', operationId: 'op-old', kind: 'accepted_request', operation: 'prompt', status: 'started', outcome: 'workflow_started', requestText: 'Earlier research request', createdAt: 'now', workflowRunId: 'old-run' }] })
+      if (path === '/api/conversations' || path.startsWith('/api/conversations?')) return json({ conversations: [summary] })
+      if (path === '/api/workflows/old-run') { workflowReads.push(path); return json({ code: 'not_found', error: 'not found' }, 404) }
+      if (path === '/api/conversations/requests/accept') return json({ accepted: true, status: 'accepted' })
+      if (path === '/api/research/dispatch') { dispatchRequests.push(JSON.parse(String(init?.body))); return json({ accepted: false, status: 'invalid_input', request: {}, decision: {}, summary: { mode: 'Free Research', selectedSkillIds: [], argumentsStatus: 'not_required', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } } }) }
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    window.history.replaceState({}, '', '/research')
+    render(<App />)
+    expect(await screen.findByText('No active Workflow')).toBeTruthy()
+    expect(screen.getByText('Earlier research request')).toBeTruthy()
+    expect(summary.latestWorkflowRunId).toBe('old-run')
+    const composer = screen.getByRole('textbox', { name: 'Message' })
+    fireEvent.change(composer, { target: { value: 'Start a new request' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    await waitFor(() => expect(dispatchRequests).toHaveLength(1))
+    expect(workflowReads.length).toBeGreaterThan(0)
+    expect(screen.queryByText('Loading Workflow status…')).toBeNull()
+  })
+
+  it('does not submit Enter while a Chinese IME composition is active', async () => {
+    const calls: string[] = []
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input); calls.push(path)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [] })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/settings') return json({ revision: 1, model: {}, models: [], knowledgeBases: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [], activities: [] })
+      if (path === '/api/conversations' || path.startsWith('/api/conversations?')) return json({ conversations: [] })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    window.history.replaceState({}, '', '/research')
+    render(<App />)
+    const composer = await screen.findByRole('textbox', { name: 'Message' })
+    fireEvent.change(composer, { target: { value: '研究问题' } })
+    fireEvent.keyDown(composer, { key: 'Enter', code: 'Enter', keyCode: 229, isComposing: true })
+    await new Promise((resolve) => window.setTimeout(resolve, 20))
+    expect(calls.some((path) => path.includes('/api/conversations/requests/accept') || path === '/api/research/dispatch')).toBe(false)
+    expect((composer as HTMLTextAreaElement).value).toBe('研究问题')
+  })
+
   it('keeps workflow input feedback visible without falling back to ordinary chat', async () => {
     const calls: string[] = []
     const dispatchRequests: unknown[] = []
+    const acceptedOperationIds: string[] = []
     let dispatchCount = 0
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input)
@@ -86,6 +140,7 @@ describe('Homepage shell', () => {
       if (path === '/api/conversations') return json({ conversations: [] })
       if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
       if (path === '/api/research-reports?limit=20') return json({ reports: [] })
+      if (path === '/api/conversations/requests/accept') { acceptedOperationIds.push((JSON.parse(String(init?.body)) as { operationId: string }).operationId); return json({ accepted: true, status: 'accepted' }) }
       if (path === '/api/research/dispatch') {
         dispatchRequests.push(JSON.parse(String(init?.body)))
         const followUp = dispatchCount++ > 0
@@ -123,6 +178,9 @@ describe('Homepage shell', () => {
     expect(screen.getByText(/Resolved arguments:.*NVDA.*2026.*Q1/)).toBeTruthy()
     expect((screen.getByRole('combobox', { name: 'Workflow' }) as HTMLSelectElement).value).toBe('earnings_review')
     expect(dispatchRequests[1]).toMatchObject({ workflowArgumentContext: { workflowId: 'earnings_review', arguments: { symbol: 'NVDA', fiscalYear: 2026 } } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    await waitFor(() => expect(dispatchRequests).toHaveLength(3))
+    expect(acceptedOperationIds[2]).not.toBe(acceptedOperationIds[1])
   })
 
   it('shows terminal Workflow results and only opens persisted artifacts linked to that run', async () => {
@@ -135,6 +193,7 @@ describe('Homepage shell', () => {
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
       if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/conversations/requests/accept') return json({ accepted: true })
       if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'Review NVDA earnings', mode: { type: 'workflow', workflowId: 'earnings_review' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'earnings_review', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'earnings_review', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'run-result-1', workflow })
       if (path === '/api/research/bundles/by-run/run-result-1') return json({ bundleId: 'bundle-run-result-1', workflowRunId: 'run-result-1', createdAt: '2026-10-09T00:01:00.000Z', status: 'completed_with_review', proposals: [], sourceLibraryHits: [], structuredResult: {} })
       if (path === '/api/research-reports/report-nvda-fy26-q1') return json({ reportId: 'report-nvda-fy26-q1', reportType: 'earnings_review', subjectRefs: ['entity:NVDA'], generatedAt: '2026-10-09T00:01:00.000Z', asOf: '2026-10-09T00:00:00.000Z', workflowRunId: 'run-result-1', knowledgeBaseRevision: 1, sourceRefs: [], claimRefs: [], methodology: 'bounded', sections: [] })
@@ -167,6 +226,7 @@ describe('Homepage shell', () => {
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
       if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/conversations/requests/accept') return json({ accepted: true })
       if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'Research lithium battery industry', mode: { type: 'workflow', workflowId: 'industry_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'industry_research', confidence: 1, arguments: { name: 'Lithium battery' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'industry_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'run-delayed' }, 202)
       if (path === '/api/workflows/run-delayed') {
         poll += 1
@@ -196,6 +256,7 @@ describe('Homepage shell', () => {
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
       if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/conversations/requests/accept') return json({ accepted: true })
       if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'Research lithium battery industry', mode: { type: 'workflow', workflowId: 'industry_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'industry_research', confidence: 1, arguments: { name: 'Lithium battery' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'industry_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'run-timeout' }, 202)
       if (path === '/api/workflows/run-timeout') { polls += 1; return json({ runId: 'run-timeout', workflowType: 'industry_research', objective: 'Research lithium battery industry', status: 'blocked', startedAt: 'now', updatedAt: 'now' }) }
       return json({ code: 'not_found', error: 'not found' }, 404)
@@ -219,6 +280,7 @@ describe('Homepage shell', () => {
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
       if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/conversations/requests/accept') return json({ accepted: true })
       if (path === '/api/research/dispatch') return json({ accepted: false, status: 'executor_unavailable', request: { query: 'Research XYZ', mode: { type: 'workflow', workflowId: 'company_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'No binding' }, summary: { mode: 'Explicit Workflow', workflowId: 'company_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, feedback: { status: 'EXECUTOR_UNAVAILABLE', workflowId: 'company_research', missingFields: [], validatedArguments: {}, reason: 'private stack trace must not appear', suggestedQuestion: '' } })
       return json({ code: 'not_found', error: 'not found' }, 404)
     }) as typeof fetch
@@ -240,6 +302,7 @@ describe('Homepage shell', () => {
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
       if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/conversations/requests/accept') return json({ accepted: true })
       if (path === '/api/research/dispatch') return json({ accepted: false, status, request: { query: 'Research XYZ', mode: { type: 'workflow', workflowId: 'company_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Input could not be dispatched' }, summary: { mode: 'Explicit Workflow', workflowId: 'company_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, feedback: { status: feedbackStatus, workflowId: 'company_research', missingFields: [], validatedArguments: {}, reason: 'private transport detail', suggestedQuestion: '' } })
       return json({ code: 'not_found', error: 'not found' }, 404)
     }) as typeof fetch
@@ -266,7 +329,8 @@ describe('Homepage shell', () => {
               : path === '/api/conversations' ? { conversations: [] }
                 : path === '/api/theme-framework/reviews?limit=50' ? { items: [], total: 0, truncated: false }
                   : path === '/api/theme-scope-impact?limit=50' ? { items: [], total: 0, truncated: false }
-                    : path === '/api/research/dispatch' ? { accepted: true, status: 'started', request: { query: 'Research Example Co', mode: { type: 'workflow', workflowId: 'company_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'company_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: run.runId, workflow: run }
+                    : path === '/api/conversations/requests/accept' ? { accepted: true }
+                : path === '/api/research/dispatch' ? { accepted: true, status: 'started', request: { query: 'Research Example Co', mode: { type: 'workflow', workflowId: 'company_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'company_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: run.runId, workflow: run }
                       : path === `/api/workflows/${run.runId}` ? run
                         : { code: 'not_found', error: 'not found' }
       response.statusCode = path.startsWith('/api/') && payload && 'code' in payload ? 404 : path === '/api/research/dispatch' ? 202 : 200
@@ -308,6 +372,7 @@ describe('Homepage shell', () => {
       if (path === '/api/conversations') return json({ conversations: [] })
       if (path === '/api/daily-briefs?limit=20') return json({ briefs: [brief] })
       if (path === '/api/research-reports?limit=20') return json({ reports: [report] })
+      if (path === '/api/conversations/requests/accept') return json({ accepted: true })
       if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'Generate morning brief', mode: { type: 'workflow', workflowId: 'daily_intelligence' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'daily_intelligence', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'daily_intelligence', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: brief.workflowRunId, workflow: { runId: brief.workflowRunId, workflowType: 'daily_intelligence', objective: 'Generate morning brief', status: 'completed', startedAt: brief.generatedAt, updatedAt: brief.generatedAt, completedAt: brief.generatedAt, executionResult: { runId: brief.workflowRunId, workflowId: 'daily_intelligence', executionStatus: 'completed', terminalStatus: 'completed', summary: 'Morning brief is ready.', reportRef: brief.reportId, diagnostics: [], bundleStatus: 'unavailable' } } })
       if (path === `/api/daily-briefs/${brief.reportId}`) return json(brief)
       if (path === '/api/theme-framework/reviews?limit=50') return json({ items: [], total: 0, truncated: false })
@@ -335,6 +400,7 @@ describe('Homepage shell', () => {
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
       if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/conversations/requests/accept') return json({ accepted: true })
       if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'Research XYZ', mode: { type: 'workflow', workflowId: 'company_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'company_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'terminal-run', workflow: { runId: 'terminal-run', workflowType: 'company_research', objective: 'Research XYZ', status, startedAt: '2026-10-09T00:00:00.000Z', updatedAt: '2026-10-09T00:01:00.000Z', errorSummary: 'private stack trace', executionResult: { runId: 'terminal-run', workflowId: 'company_research', executionStatus: status, terminalStatus: status, blockedReason: status === 'blocked' ? 'NO_CANONICAL_DATA' : undefined, diagnostics: [], bundleStatus: 'unavailable' } } })
       return json({ code: 'not_found', error: 'not found' }, 404)
     }) as typeof fetch
@@ -446,6 +512,7 @@ describe('Homepage shell', () => {
       if (path === '/api/conversations') return json({ conversations: [] })
       if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
       if (path === '/api/research-reports?limit=20') return json({ reports: [] })
+      if (path === '/api/conversations/requests/accept') return json({ accepted: true })
       if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'AI 算力', mode: { type: 'workflow', workflowId: 'theme_framework' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'theme_framework', confidence: 1, arguments: { name: 'AI 算力' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit workflow selection' }, summary: { mode: 'Explicit Workflow', workflowId: 'theme_framework', workflowLabel: 'Theme Framework', selectedSkillIds: [], argumentsStatus: 'extracted', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'theme-run-1', workflow: { runId: 'theme-run-1', workflowType: 'theme_framework_construction', objective: 'Initialize AI 算力', status: 'running', startedAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:00.000Z' } }, 202)
       if (path === '/api/theme-framework/runs/theme-run-1') return json({ status: themeCommitted ? 'committed' : 'awaiting_review', workflowRunId: 'theme-run-1', candidate, ...(themeCommitted ? { receipt: { themeRef: 'entity:theme-ai-compute', committedRevision: 8, decisionCount: 2 } } : {}) })
       if (path === '/api/theme-framework/runs/theme-run-1/accept') { themeCommitted = true; return json({ status: 'committed', workflowRunId: 'theme-run-1', themeRef: 'entity:theme-ai-compute' }) }
@@ -466,14 +533,14 @@ describe('Homepage shell', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Exclude' })[0]!)
     fireEvent.click(screen.getByRole('button', { name: 'Accept framework decisions' }))
     expect(await screen.findByText(/Add a reason for every decision that differs from the recommendation/)).toBeTruthy()
-    expect(calls.some((call) => call.path.endsWith('/accept'))).toBe(false)
+    expect(calls.some((call) => call.path === '/api/theme-framework/runs/theme-run-1/accept')).toBe(false)
     fireEvent.change(screen.getByRole('textbox', { name: 'Reason for changing recommendation for PCB' }), { target: { value: 'Include wafer manufacturing when the evidence supports its role in the AI compute supply chain.' } })
     expect(screen.getByRole('textbox', { name: 'Reason for changing recommendation for PCB' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Accept framework decisions' }))
     await waitFor(() => expect(screen.getByText('Theme framework accepted and saved.')).toBeTruthy())
     const dispatch = calls.find((call) => call.path === '/api/research/dispatch')
     expect(JSON.parse(String(dispatch?.init?.body))).toMatchObject({ query: 'AI 算力', mode: { type: 'workflow', workflowId: 'theme_framework' } })
-    const accept = calls.find((call) => call.path.endsWith('/accept'))
+    const accept = calls.find((call) => call.path === '/api/theme-framework/runs/theme-run-1/accept')
     expect(JSON.parse(String(accept?.init?.body))).toEqual({ decisions: { pcb: 'exclude', 'pcb-server': 'pending' }, decisionRationales: { pcb: 'Include wafer manufacturing when the evidence supports its role in the AI compute supply chain.' } })
     expect(new Headers(calls.find((call) => call.path.includes('/theme-framework/runs/theme-run-1'))?.init?.headers).get('X-ResearchHub-Runtime-Token')).toBe('b'.repeat(64))
     expect(JSON.stringify(JSON.parse(String(dispatch?.init?.body)))).not.toContain('evidence')
@@ -502,6 +569,7 @@ describe('Homepage shell', () => {
       if (path === '/api/theme-framework/runs/current-run') return json({ status: 'awaiting_review', workflowRunId: 'current-run', candidate: currentCandidate })
       if (path === '/api/theme-framework/runs/saved-run') return json({ status: 'awaiting_review', workflowRunId: 'saved-run', candidate: savedCandidate })
       if (path === '/api/theme-scope-impact?limit=50') return json({ items: [], total: 0, truncated: false })
+      if (path === '/api/conversations/requests/accept') return json({ accepted: true })
       if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'AI Compute', mode: { type: 'workflow', workflowId: 'theme_framework' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'theme_framework', confidence: 1, arguments: { name: 'AI Compute' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit workflow selection' }, summary: { mode: 'Explicit Workflow', workflowId: 'theme_framework', workflowLabel: 'Theme Framework', selectedSkillIds: [], argumentsStatus: 'extracted', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'current-run', workflow: { runId: 'current-run', workflowType: 'theme_framework_construction', objective: 'Initialize AI Compute', status: 'running', startedAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:00.000Z' } }, 202)
       return json({ code: 'not_found', error: 'not found' }, 404)
     }) as typeof fetch
@@ -539,6 +607,7 @@ describe('Homepage shell', () => {
       if (path === '/api/conversations') return json({ conversations: [] })
       if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
       if (path === '/api/research-reports?limit=20') return json({ reports: [] })
+      if (path === '/api/conversations/requests/accept') return json({ accepted: true })
       if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'AI compute', mode: { type: 'free_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'theme_framework', confidence: 0.94, arguments: { name: 'AI Compute' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Detected a Theme initialization request' }, summary: { mode: 'Explicit Workflow', workflowId: 'theme_framework', workflowLabel: 'Theme Framework', selectedSkillIds: [], argumentsStatus: 'extracted', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'theme-auto-run', workflow: { runId: 'theme-auto-run', workflowType: 'theme_framework_construction', objective: 'Initialize AI Compute', status: 'running', startedAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:00.000Z' } }, 202)
       if (path === '/api/theme-framework/runs/theme-auto-run') return json({ status: 'awaiting_review', workflowRunId: 'theme-auto-run', candidate })
       return json({ code: 'not_found', error: 'not found' }, 404)
@@ -572,6 +641,7 @@ describe('Homepage shell', () => {
       if (path === '/api/research/workflows') return json({ workflows: [{ id: 'theme_framework', label: 'Theme Framework', intentDescription: 'Initialize an industry network', inputSchema: {}, requiredInputs: ['name'], outputContract: 'ThemeFrameworkReviewCandidate', knowledgeEffects: ['Theme', 'Industry', 'Relation'] }] })
       if (path === '/api/theme-framework/reviews?limit=50') return json({ items: [], total: 0, truncated: false })
       if (path === '/api/theme-scope-impact?limit=50') return json({ items: [], total: 0, truncated: false })
+      if (path === '/api/conversations/requests/accept') return json({ accepted: true })
       if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'AI Compute', mode: { type: 'workflow', workflowId: 'theme_framework' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'theme_framework', confidence: 1, arguments: { name: 'AI Compute' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit workflow selection' }, summary: { mode: 'Explicit Workflow', workflowId: 'theme_framework', workflowLabel: 'Theme Framework', selectedSkillIds: [], argumentsStatus: 'extracted', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'stale-run', workflow: { runId: 'stale-run', workflowType: 'theme_framework_construction', objective: 'Initialize AI Compute', status: 'running', startedAt: '2026-10-03T00:00:00.000Z', updatedAt: '2026-10-03T00:00:00.000Z' } }, 202)
       if (path === '/api/theme-framework/runs/stale-run') return json({ status: 'stale', workflowRunId: 'stale-run', candidate })
       if (path === '/api/theme-framework/runs/stale-run/refresh') return json({ status: 'awaiting_review', workflowRunId: 'fresh-run', refreshedFromRunId: 'stale-run', basedOnRevision: 8 })
@@ -590,7 +660,7 @@ describe('Homepage shell', () => {
     expect(screen.getByText(/does not include sources added after revision 7/)).toBeTruthy()
     expect(await screen.findByRole('heading', { name: 'AI Compute' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Accept framework decisions' })).toBeTruthy()
-    expect(calls.some((call) => call.path.endsWith('/accept'))).toBe(false)
+    expect(calls.some((call) => call.path === '/api/theme-framework/runs/stale-run/accept')).toBe(false)
     const refreshCall = calls.find((call) => call.path.endsWith('/stale-run/refresh'))
     expect(refreshCall?.init?.method).toBe('POST')
     expect(JSON.parse(String(refreshCall?.init?.body))).toEqual({})
@@ -765,7 +835,7 @@ describe('Homepage shell', () => {
     expect(await screen.findByText('notes.md')).toBeTruthy()
     fireEvent.drop(composer, { dataTransfer: { files: [new File(['binary'], 'archive.zip', { type: 'application/zip' })], types: ['Files'] } })
     expect(await screen.findByText(/Unsupported file/)).toBeTruthy()
-    expect(mock.mock.calls.filter(([input]) => String(input) !== '/api/settings')).toHaveLength(1)
+    expect(mock.mock.calls.filter(([input]) => String(input) !== '/api/settings' && !String(input).startsWith('/api/conversations'))).toHaveLength(1)
   })
 
   it('rejects files above the upload limit before staging them', async () => {
@@ -777,7 +847,7 @@ describe('Homepage shell', () => {
     Object.defineProperty(oversized, 'size', { value: 100 * 1024 * 1024 + 1 })
     fireEvent.change(screen.getByLabelText('Add document'), { target: { files: [oversized] } })
     expect(await screen.findByText('File exceeds the 100 MB upload limit.')).toBeTruthy()
-    expect(mock.mock.calls.filter(([input]) => String(input) !== '/api/settings')).toHaveLength(0)
+    expect(mock.mock.calls.filter(([input]) => String(input) !== '/api/settings' && !String(input).startsWith('/api/conversations'))).toHaveLength(0)
   })
 
   it('uses the compact composer picker, preserves staged files when cancelled, and clears explicitly', async () => {
@@ -1223,4 +1293,254 @@ describe('Homepage shell', () => {
     expect(await screen.findByRole('alert')).toBeTruthy()
     expect(screen.getByText('Scope inbox could not be refreshed')).toBeTruthy()
   })
-})
+
+  it('searches and filters server conversation titles and refreshes server-authoritative rename/archive state', async () => {
+    let records = [
+      { conversationId: 'c1', name: 'Alpha', titleSource: 'first_message', archived: false, version: 1, latestWorkflowRunId: '', updatedAt: 'now', messageCount: 1, isActive: true },
+      { conversationId: 'c2', name: 'Beta', titleSource: 'first_message', archived: false, version: 1, latestWorkflowRunId: '', updatedAt: 'now', messageCount: 2, isActive: false },
+      { conversationId: 'c3', name: 'Old archive', titleSource: 'user', archived: true, version: 2, latestWorkflowRunId: '', updatedAt: 'now', messageCount: 3, isActive: false },
+    ]
+    const paths: string[] = []
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input); paths.push(path)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: records.filter((item) => !item.archived) })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/settings') return json({ revision: 1, model: {}, models: [], knowledgeBases: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [], activities: [] })
+      if (path === '/api/conversations') return json({ conversations: records.filter((item) => !item.archived) })
+      if (path.startsWith('/api/conversations?')) { const query = new URL(path, 'http://local').searchParams; const archived = query.get('archived') === '1'; const search = (query.get('search') ?? '').toLowerCase(); return json({ conversations: records.filter((item) => item.archived === archived && item.name.toLowerCase().includes(search)) }) }
+      if (path.endsWith('/metadata')) { const body = JSON.parse(String(init?.body)) as { name: string; expectedVersion: number }; const id = path.split('/')[3]; records = records.map((item) => item.conversationId === id ? { ...item, name: body.name, titleSource: 'user', version: item.version + 1 } : item); return json(records.find((item) => item.conversationId === id)) }
+      if (path.endsWith('/archive') || path.endsWith('/restore')) { const id = path.split('/')[3]; const archived = path.endsWith('/archive'); records = records.map((item) => item.conversationId === id ? { ...item, archived, version: item.version + 1 } : item); return json(records.find((item) => item.conversationId === id)) }
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    window.history.replaceState({}, '', '/research')
+    render(<App />)
+    expect(await screen.findByRole('heading', { level: 1, name: 'Alpha' })).toBeTruthy()
+    const search = screen.getByRole('searchbox', { name: 'Search titles' })
+    fireEvent.change(search, { target: { value: 'Beta' } })
+    expect(await screen.findByText('Beta')).toBeTruthy()
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Alpha/ })).toBeNull())
+    expect(paths.some((path) => path.includes('archived=0') && path.includes('search=Beta'))).toBe(true)
+    fireEvent.change(search, { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Show archived' }))
+    expect(await screen.findByText('Old archive')).toBeTruthy()
+    expect(paths).toContain('/api/conversations?archived=1')
+    fireEvent.click(screen.getByRole('button', { name: 'Show active' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Alpha' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Rename Alpha' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Conversation title' }), { target: { value: 'User title' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'User title' })).toBeTruthy()
+    expect(records[0]).toMatchObject({ titleSource: 'user', version: 2 })
+    fireEvent.change(search, { target: { value: 'Beta' } })
+    expect(await screen.findByText('Beta')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'User title' })).toBeTruthy()
+    fireEvent.change(search, { target: { value: '' } })
+    await screen.findByRole('button', { name: /Archive User title/ })
+    fireEvent.click(screen.getByRole('button', { name: 'Archive User title' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Archive User title/ })).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'Show archived' }))
+    expect(await screen.findByRole('button', { name: 'Restore User title' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Restore User title' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Restore User title/ })).toBeNull())
+    expect(paths.some((path) => path.endsWith('/archive'))).toBe(true)
+    expect(paths.some((path) => path.endsWith('/restore'))).toBe(true)
+  })
+
+  it('refreshes first-message titles to the server Workflow title and sends conversation-scoped operation IDs', async () => {
+    let current = { conversationId: 'c1', name: 'First research question', titleSource: 'first_message', archived: false, version: 1, latestWorkflowRunId: '', updatedAt: 'now', messageCount: 1, isActive: true }
+    let dispatchBody: Record<string, unknown> | undefined
+    let acceptedBody: Record<string, unknown> | undefined
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [current] })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'company_research', label: 'Company Research', intentDescription: 'Research a company', inputSchema: {}, requiredInputs: [], outputContract: 'ResearchReport', knowledgeEffects: [] }] })
+      if (path === '/api/settings') return json({ revision: 1, model: {}, models: [], knowledgeBases: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', name: current.name, isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [], activities: [] })
+      if (path === '/api/conversations' || path.startsWith('/api/conversations?')) return json({ conversations: [current] })
+      if (path === '/api/conversations/requests/accept') { acceptedBody = JSON.parse(String(init?.body)) as Record<string, unknown>; return json({ accepted: true }) }
+      if (path === '/api/research/dispatch') { dispatchBody = JSON.parse(String(init?.body)) as Record<string, unknown>; current = { ...current, name: 'Acme · Company Research', titleSource: 'workflow', version: 2, latestWorkflowRunId: 'wf-c1' }; return json({ accepted: true, status: 'started', request: {}, decision: { workflow: { id: 'company_research', confidence: 1, arguments: {} } }, summary: { mode: 'Explicit Workflow', workflowId: 'company_research', workflowLabel: 'Company Research', selectedSkillIds: [], argumentsStatus: 'extracted', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'wf-c1', workflow: { runId: 'wf-c1', workflowType: 'company_research', objective: 'Research Acme', status: 'running', startedAt: 'now', updatedAt: 'now' } }) }
+      if (path === '/api/workflows/wf-c1') return json({ runId: 'wf-c1', workflowType: 'company_research', objective: 'Research Acme', status: 'running', startedAt: 'now', updatedAt: 'now' })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    window.history.replaceState({}, '', '/research')
+    render(<App />)
+    expect(await screen.findByRole('heading', { level: 1, name: 'First research question' })).toBeTruthy()
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Workflow' }), { target: { value: 'company_research' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'Research Acme' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Acme · Company Research' })).toBeTruthy()
+    expect(dispatchBody).toMatchObject({ conversationId: 'c1', operationId: expect.any(String) })
+    expect(acceptedBody).toMatchObject({ conversationId: 'c1', operationId: dispatchBody?.operationId, requestText: 'Research Acme', operation: 'prompt', workflowRegistryId: 'company_research' })
+  })
+
+  it('reuses the same operation ID after reload when dispatch response is lost and shows workflow-only activity text', async () => {
+    let dispatchCalls = 0
+    const acceptIds: string[] = []
+    const dispatchIds: string[] = []
+    const summary = { conversationId: 'c1', name: 'Research', titleSource: 'default', archived: false, version: 1, latestWorkflowRunId: '', updatedAt: 'now', messageCount: 0, isActive: true }
+    const activityRows = [
+      { activityId: 'a1', conversationId: 'c1', operationId: 'old-op', kind: 'accepted_request', operation: 'prompt', status: 'started', outcome: 'workflow_started', requestText: 'Retry safely', createdAt: 'now', workflowRunId: 'wf-1' },
+      { activityId: 'a2', conversationId: 'c1', operationId: 'workflow-only', kind: 'accepted_request', operation: 'prompt', status: 'not_started', outcome: 'not_started', requestText: 'Workflow only request', createdAt: 'now' },
+    ]
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [summary] })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/settings') return json({ revision: 1, model: {}, models: [], knowledgeBases: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', name: 'Research', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [{ role: 'user', content: 'Retry safely' }], activities: activityRows })
+      if (path === '/api/conversations' || path.startsWith('/api/conversations?')) return json({ conversations: [summary] })
+      if (path === '/api/conversations/requests/accept') { acceptIds.push((JSON.parse(String(init?.body)) as { operationId: string }).operationId); return json({ accepted: true, status: 'accepted' }) }
+      if (path === '/api/research/dispatch') {
+        dispatchIds.push((JSON.parse(String(init?.body)) as { operationId: string }).operationId)
+        dispatchCalls += 1
+        if (dispatchCalls === 1) return json({ code: 'failed', error: 'connection lost' }, 500)
+        return json({ accepted: true, status: 'started', request: {}, decision: {}, summary: { mode: 'Explicit Workflow', selectedSkillIds: [], argumentsStatus: 'not_required', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'wf-1' })
+      }
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    window.history.replaceState({}, '', '/research')
+    const first = render(<App />)
+    await screen.findByRole('heading', { level: 1, name: 'Research' })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'Retry safely' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    await screen.findByRole('alert')
+    const ledger = window.sessionStorage.getItem('researchhub.pendingConversationOperations.v1') ?? ''
+    expect(ledger).not.toContain('Retry safely')
+    first.unmount()
+    render(<App />)
+    await screen.findByRole('heading', { level: 1, name: 'Research' })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'Retry safely' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    await waitFor(() => expect(dispatchCalls).toBe(2))
+    expect(acceptIds[1]).toBe(acceptIds[0])
+    expect(dispatchIds[1]).toBe(dispatchIds[0])
+    await screen.findByText('Workflow only request')
+    expect(document.querySelectorAll('.message.user .message-body')).toHaveLength(1)
+    expect(screen.getByText('Workflow only request')).toBeTruthy()
+  })
+
+  it('refreshes accepted activity and title before a delayed Workflow dispatch resolves', async () => {
+    let summary: { conversationId: string; name: string; titleSource: 'default' | 'first_message'; archived: boolean; version: number; latestWorkflowRunId: string; updatedAt: string; messageCount: number; isActive: boolean } = { conversationId: 'c1', name: 'Initial title', titleSource: 'default', archived: false, version: 1, latestWorkflowRunId: '', updatedAt: 'now', messageCount: 0, isActive: true }
+    let activities: unknown[] = []
+    let dispatchStarted = false
+    let resolveDispatch: ((response: Response) => void) | undefined
+    const calls: string[] = []
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input)
+      calls.push(`${init?.method ?? 'GET'} ${path}`)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [summary] })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/settings') return json({ revision: 1, model: {}, models: [], knowledgeBases: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', name: summary.name, isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [], activities })
+      if (path === '/api/conversations' || path.startsWith('/api/conversations?')) return json({ conversations: [summary] })
+      if (path === '/api/conversations/requests/accept') {
+        const body = JSON.parse(String(init?.body)) as { operationId: string; requestText: string; operation: 'prompt' | 'steer' | 'follow_up' }
+        summary = { ...summary, name: body.requestText, titleSource: 'first_message', version: summary.version + 1, messageCount: 1 }
+        activities = [{ activityId: 'accepted-1', conversationId: 'c1', operationId: body.operationId, kind: 'accepted_request', operation: body.operation, status: 'accepted', outcome: undefined, requestText: body.requestText, createdAt: 'now' }]
+        return json({ accepted: true, conversationId: 'c1', operationId: body.operationId, status: 'accepted' })
+      }
+      if (path === '/api/research/dispatch') { dispatchStarted = true; return new Promise<Response>((resolve) => { resolveDispatch = resolve }) }
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    window.history.replaceState({}, '', '/research')
+    render(<App />)
+    expect(await screen.findByRole('heading', { level: 1, name: 'Initial title' })).toBeTruthy()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'Persisted accepted request' } })
+    fireEvent.click(screen.getByRole('button', { name: /Send/ }))
+    await waitFor(() => expect(dispatchStarted).toBe(true))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Persisted accepted request' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Workflow activity' }).querySelector('.activity-request-text')?.textContent).toBe('Persisted accepted request')
+    const acceptIndex = calls.lastIndexOf('POST /api/conversations/requests/accept')
+    const refreshedMessagesIndex = calls.findIndex((call, index) => index > acceptIndex && call === 'GET /api/conversations/messages')
+    const dispatchIndex = calls.indexOf('POST /api/research/dispatch')
+    expect(refreshedMessagesIndex).toBeGreaterThan(acceptIndex)
+    expect(dispatchIndex).toBeGreaterThan(refreshedMessagesIndex)
+    resolveDispatch?.(json({ accepted: true, status: 'started', request: {}, decision: {}, summary: { mode: 'Explicit Workflow', selectedSkillIds: [], argumentsStatus: 'not_required', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'delayed-run' }))
+    await waitFor(() => expect((screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).value).toBe(''))
+  })
+
+  it('restores the authoritative current session after a failed conversation switch', async () => {
+    let activeId = 'c1'
+    let messageReads = 0
+    const agentListeners = new Map<string, (event: MessageEvent<string>) => void>()
+    class CapturingEventSource {
+      onopen: ((event: Event) => void) | null = null
+      onerror: ((event: Event) => void) | null = null
+      close = vi.fn()
+      addEventListener(type: string, listener: EventListener): void { agentListeners.set(type, listener as (event: MessageEvent<string>) => void) }
+      removeEventListener(type: string): void { agentListeners.delete(type) }
+    }
+    globalThis.EventSource = CapturingEventSource as unknown as typeof EventSource
+    Object.defineProperty(window, 'EventSource', { configurable: true, value: CapturingEventSource })
+    const summaries = [
+      { conversationId: 'c1', name: 'Conversation one', titleSource: 'user', archived: false, version: 1, latestWorkflowRunId: '', updatedAt: 'now', messageCount: 1, isActive: true },
+      { conversationId: 'c2', name: 'Conversation two', titleSource: 'user', archived: false, version: 1, latestWorkflowRunId: '', updatedAt: 'now', messageCount: 1, isActive: false },
+    ]
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: summaries })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/settings') return json({ revision: 1, model: {}, models: [], knowledgeBases: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: activeId, isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') { messageReads += 1; return json({ conversationId: activeId, messages: [{ role: 'assistant', content: activeId === 'c1' ? 'Current one' : 'Current two' }], activities: [] }) }
+      if (path === '/api/conversations' || path.startsWith('/api/conversations?')) return json({ conversations: summaries.map((item) => ({ ...item, isActive: item.conversationId === activeId })) })
+      if (path === '/api/conversations/switch') return json({ code: 'failed', error: 'switch failed' }, 500)
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    window.history.replaceState({}, '', '/research')
+    render(<App />)
+    expect(await screen.findByText('Current one')).toBeTruthy()
+    fireEvent.click(screen.getByText('Conversation two').closest('button')!)
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(await screen.findByText('Current one')).toBeTruthy()
+    const beforeEvent = messageReads
+    agentListeners.get('agent.completed')?.({ data: JSON.stringify({ eventId: 'evt-after-failure', conversationId: 'c1', timestamp: 'now', type: 'agent.completed' }) } as MessageEvent<string>)
+    await waitFor(() => expect(messageReads).toBeGreaterThan(beforeEvent))
+    expect(screen.getByRole('heading', { level: 1, name: 'Conversation one' })).toBeTruthy()
+  })
+
+  it('ignores a delayed old-conversation response after switching sessions', async () => {
+    let activeId = 'c1'
+    let messageReads = 0
+    let releaseOldMessages: ((response: Response) => void) | undefined
+    const agentListeners = new Map<string, (event: MessageEvent<string>) => void>()
+    class CapturingEventSource {
+      onopen: ((event: Event) => void) | null = null
+      onerror: ((event: Event) => void) | null = null
+      close = vi.fn()
+      addEventListener(type: string, listener: EventListener): void { agentListeners.set(type, listener as (event: MessageEvent<string>) => void) }
+      removeEventListener(type: string): void { agentListeners.delete(type) }
+    }
+    globalThis.EventSource = CapturingEventSource as unknown as typeof EventSource
+    Object.defineProperty(window, 'EventSource', { configurable: true, value: CapturingEventSource })
+    const records = [
+      { conversationId: 'c1', name: 'Conversation one', titleSource: 'first_message', archived: false, version: 1, latestWorkflowRunId: '', updatedAt: 'now', messageCount: 1, isActive: true },
+      { conversationId: 'c2', name: 'Conversation two', titleSource: 'first_message', archived: false, version: 1, latestWorkflowRunId: '', updatedAt: 'now', messageCount: 1, isActive: false },
+    ]
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: records })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/settings') return json({ revision: 1, model: {}, models: [], knowledgeBases: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: activeId, isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') { messageReads += 1; if (messageReads === 2) return new Promise<Response>((resolve) => { releaseOldMessages = resolve }); return json({ conversationId: activeId, messages: [{ role: 'assistant', content: activeId === 'c1' ? 'Current one' : 'Current two' }], activities: [] }) }
+      if (path === '/api/conversations' || path.startsWith('/api/conversations?')) return json({ conversations: records.map((item) => ({ ...item, isActive: item.conversationId === activeId })) })
+      if (path === '/api/conversations/switch') { activeId = (JSON.parse(String(init?.body)) as { conversationId: string }).conversationId; return json({ conversationId: activeId, isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }) }
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    window.history.replaceState({}, '', '/research')
+    render(<App />)
+    expect(await screen.findByText('Current one')).toBeTruthy()
+    agentListeners.get('agent.completed')?.({ data: JSON.stringify({ eventId: 'evt-1', conversationId: 'c1', timestamp: 'now', type: 'agent.completed' }) } as MessageEvent<string>)
+    await waitFor(() => expect(releaseOldMessages).toBeTypeOf('function'))
+    fireEvent.click(screen.getByText('Conversation two').closest('button')!)
+    expect(await screen.findByText('Current two')).toBeTruthy()
+    releaseOldMessages?.(json({ conversationId: 'c1', messages: [{ role: 'assistant', content: 'Stale one' }], activities: [] }))
+    await waitFor(() => expect(screen.queryByText('Stale one')).toBeNull())
+    expect(screen.getByText('Current two')).toBeTruthy()
+  })})
