@@ -8,10 +8,12 @@ const MAX_FRAME_LENGTH = 16_384
 function safeBase(event: unknown): ClientEventBase {
   const candidate = event !== null && typeof event === 'object' ? event as Record<string, unknown> : {}
   const timestamp = typeof candidate.timestamp === 'string' && /^\d{4}-\d{2}-\d{2}T[^\s]+Z$/.test(candidate.timestamp) ? candidate.timestamp.slice(0, 40) : new Date(0).toISOString()
+  const operationId = typeof candidate.operationId === 'string' ? safeIdentifier(candidate.operationId, '') : ''
   return {
     eventId: safeIdentifier(candidate.eventId, 'event'),
     conversationId: safeIdentifier(candidate.conversationId, 'conversation'),
     timestamp,
+    ...(operationId === '' ? {} : { operationId }),
   }
 }
 
@@ -28,7 +30,7 @@ function normalizeClientEvent(event: unknown): ClientEvent {
     case 'message.completed':
     case 'message.delta': {
       const role = candidate.role === 'user' || candidate.role === 'assistant' ? candidate.role : 'assistant'
-      const summary = candidate.summary === undefined ? undefined : safeSummary(candidate.summary)
+      const summary = candidate.summary === undefined ? undefined : safeSummary(candidate.summary, candidate.type === 'message.delta' ? 2_000 : undefined, candidate.type === 'message.delta' ? { preserveWhitespace: true } : undefined)
       return { ...base, type: candidate.type, role, ...(summary === undefined ? {} : { summary }) }
     }
     case 'tool.started':

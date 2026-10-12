@@ -13,6 +13,12 @@ type Route = 'research' | 'briefs' | 'reports' | 'bundles' | 'run' | 'graph' | '
 type ReviewsSection = 'review-cases' | 'theme-framework' | 'theme-scope'
 type LoadState = 'loading' | 'ready' | 'error'
 type WorkflowArtifactTarget = { readonly kind: 'report' | 'bundle' | 'review_case' | 'theme_framework_candidate' | 'daily_brief'; readonly id: string; readonly runId: string }
+type RequestProgress = 'submitting' | 'accepted' | 'dispatching' | 'running' | 'completed' | 'cancelled' | 'interrupted' | 'failed'
+interface OptimisticConversationRequest { readonly conversationId: string; readonly operationId: string; readonly operation: 'prompt' | 'steer' | 'follow_up'; readonly requestText: string; readonly createdAt: string; readonly progress: RequestProgress; readonly error?: string }
+interface ToolLifecycle { readonly key: string; readonly name: string; readonly status: 'started' | 'updated' | 'completed' | 'failed'; readonly startedAt?: string; readonly updatedAt: string }
+type RuntimeConnectionState = 'connecting' | 'connected' | 'disconnected'
+interface ConversationViewState { readonly streaming: boolean; readonly streamText: string; readonly thinking: boolean; readonly streamStartedAt?: string; readonly toolEvents: readonly ToolLifecycle[]; readonly queue: { readonly steering: number; readonly followUp: number } }
+const emptyConversationView: ConversationViewState = { streaming: false, streamText: '', thinking: false, toolEvents: [], queue: { steering: 0, followUp: 0 } }
 type V04RightsForm = { accessScope: 'public' | 'authenticated' | 'restricted' | 'unknown'; providerTermsKnown: boolean; retentionAllowed: boolean; aiProcessingAllowed: boolean; derivativeKnowledgeAllowed: boolean; redistributionAllowed: boolean; policyBasis: string; expiresAt: string; entitlementRef: string }
 type V04SourceForm = { title: string; sourceType: string; sourceReliability: string; publisher: string; institution: string; author: string; publishedAt: string; canonicalUrl: string }
 const defaultRightsForm: V04RightsForm = { accessScope: 'unknown', providerTermsKnown: false, retentionAllowed: false, aiProcessingAllowed: false, derivativeKnowledgeAllowed: false, redistributionAllowed: false, policyBasis: '', expiresAt: '', entitlementRef: '' }
@@ -31,37 +37,75 @@ function routePath(route: Route): string { return route === 'research' ? '/resea
 const ACTIVE_RESEARCH_RUN_KEY = 'researchhub.active-research-run-id'
 function errorText(error: unknown): string { return error instanceof RuntimeClientError ? error.message : 'ResearchHub runtime operation failed' }
 function toolLabel(name: string | undefined): string { return name === undefined ? 'Tool execution' : knownTools[name] ?? 'Tool execution' }
-type ConversationTimelineEntry = { readonly kind: 'message'; readonly message: ConversationMessage; readonly order: number } | { readonly kind: 'activity'; readonly activity: ConversationActivity; readonly order: number }
-function conversationTimelineEntries(messages: readonly ConversationMessage[], activities: readonly ConversationActivity[]): readonly ConversationTimelineEntry[] {
-  const userTextCounts = new Map<string, number>()
-  for (const message of messages) if (message.role === 'user') userTextCounts.set(message.content, (userTextCounts.get(message.content) ?? 0) + 1)
-  const entries: ConversationTimelineEntry[] = messages.map((message, order) => ({ kind: 'message', message, order }))
+type ConversationTimelineEntry = { readonly kind: 'message'; readonly message: ConversationMessage; readonly order: number } | { readonly kind: 'activity'; readonly activity: ConversationActivity; readonly requestProgress?: RequestProgress; readonly requestError?: string; readonly order: number } | { readonly kind: 'optimistic'; readonly request: OptimisticConversationRequest; readonly order: number }
+function conversationTimelineEntries(messages: readonly ConversationMessage[], activities: readonly ConversationActivity[], optimisticRequests: readonly OptimisticConversationRequest[]): readonly ConversationTimelineEntry[] {
+  const activityOperationIds = new Set(activities.map((activity) => activity.operationId))
+  const boundMessageIds = new Set(activities.flatMap((activity) => activity.piMessageId ? [activity.piMessageId] : []))
+  const boundOperationIds = new Set(activities.map((activity) => activity.operationId))
+  const seenMessageIds = new Set<string>()
+  const entries: ConversationTimelineEntry[] = messages.flatMap((message, order) => {
+    if (message.piMessageId) { if (seenMessageIds.has(message.piMessageId)) return []; seenMessageIds.add(message.piMessageId) }
+    return message.role === 'user' && ((message.piMessageId && boundMessageIds.has(message.piMessageId)) || (message.operationId && boundOperationIds.has(message.operationId))) ? [] : [{ kind: 'message', message, order }]
+  })
   for (const [order, activity] of activities.entries()) {
-    const requestText = activity.requestText
-    const matchingCount = requestText === undefined ? 0 : userTextCounts.get(requestText) ?? 0
-    if (activity.outcome === 'chat_started' && requestText !== undefined && matchingCount > 0) {
-      userTextCounts.set(requestText, matchingCount - 1)
-      continue
-    }
-    entries.push({ kind: 'activity', activity, order: messages.length + order })
+    const optimistic = optimisticRequests.find((request) => request.operationId === activity.operationId && request.conversationId === activity.conversationId)
+    const serverTerminal = activity.status === 'completed' || activity.status === 'cancelled' || activity.status === 'not_started' || activity.status === 'failed' || activity.status === 'interrupted'
+    entries.push({ kind: 'activity', activity, ...(optimistic && !serverTerminal ? { requestProgress: optimistic.progress, ...(optimistic.error ? { requestError: optimistic.error } : {}) } : {}), order: messages.length + order })
   }
+  for (const [order, request] of optimisticRequests.entries()) if (!activityOperationIds.has(request.operationId)) entries.push({ kind: 'optimistic', request, order: messages.length + activities.length + order })
   return entries.sort((left, right) => {
-    const leftTime = Date.parse(left.kind === 'message' ? left.message.timestamp ?? '' : left.activity.createdAt)
-    const rightTime = Date.parse(right.kind === 'message' ? right.message.timestamp ?? '' : right.activity.createdAt)
+    const leftTime = Date.parse(left.kind === 'message' ? left.message.timestamp ?? '' : left.kind === 'activity' ? left.activity.createdAt : left.request.createdAt)
+    const rightTime = Date.parse(right.kind === 'message' ? right.message.timestamp ?? '' : right.kind === 'activity' ? right.activity.createdAt : right.request.createdAt)
     const leftValid = Number.isFinite(leftTime); const rightValid = Number.isFinite(rightTime)
     if (leftValid && rightValid && leftTime !== rightTime) return leftTime - rightTime
     if (leftValid !== rightValid) return leftValid ? -1 : 1
     return left.order - right.order
   })
 }
-interface ConversationTimelineProps { readonly messages: readonly ConversationMessage[]; readonly activities: readonly ConversationActivity[]; readonly streaming: boolean; readonly thinking: boolean; readonly streamText: string; readonly toolEvents: readonly string[] }
-function ConversationTimeline({ messages, activities, streaming, thinking, streamText, toolEvents }: ConversationTimelineProps): ReactElement {
+function elapsedMilliseconds(start: string | undefined, end: string | undefined): number | undefined {
+  if (start === undefined || end === undefined) return undefined
+  const difference = Date.parse(end) - Date.parse(start)
+  return Number.isFinite(difference) && difference >= 0 ? difference : undefined
+}
+function elapsedLabel(milliseconds: number): string { return milliseconds < 1_000 ? `${milliseconds} ms` : `${(milliseconds / 1_000).toFixed(1)} s` }
+interface ConversationTimelineProps { readonly messages: readonly ConversationMessage[]; readonly activities: readonly ConversationActivity[]; readonly optimisticRequests: readonly OptimisticConversationRequest[]; readonly streaming: boolean; readonly thinking: boolean; readonly streamText: string; readonly streamStartedAt?: string; readonly toolEvents: readonly ToolLifecycle[] }
+function ConversationTimeline({ messages, activities, optimisticRequests, streaming, thinking, streamText, streamStartedAt, toolEvents }: ConversationTimelineProps): ReactElement {
   const { t } = useLanguage()
-  const entries = conversationTimelineEntries(messages, activities)
-  const statusLabel = (status: ConversationActivity['status']): string => ({ accepted: t('已接受', 'Accepted'), submitting: t('正在启动', 'Starting'), ready_for_chat: t('已准备聊天', 'Ready for chat'), started: t('已启动', 'Started'), not_started: t('未启动', 'Not started'), failed: t('失败', 'Failed'), interrupted: t('已中断', 'Interrupted') })[status]
+  const [clockNow, setClockNow] = useState(() => Date.now())
+  const hasLiveActivityTimer = activities.some((activity) => activity.acceptedAt !== undefined && (activity.status === 'accepted' || activity.status === 'started'))
+  useEffect(() => {
+    if ((!streaming || !streamStartedAt) && !hasLiveActivityTimer) return undefined
+    setClockNow(Date.now())
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [hasLiveActivityTimer, streamStartedAt, streaming])
+  const entries = conversationTimelineEntries(messages, activities, optimisticRequests)
+  const statusLabel = (status: ConversationActivity['status']): string => ({ accepted: t('已接受', 'Accepted'), submitting: t('正在启动', 'Starting'), ready_for_chat: t('已准备聊天', 'Ready for chat'), started: t('已启动', 'Started'), completed: t('已完成', 'Completed'), cancelled: t('已取消', 'Cancelled'), not_started: t('未启动', 'Not started'), failed: t('失败', 'Failed'), interrupted: t('已中断', 'Interrupted') })[status]
+  const progressLabel = (progress: RequestProgress): string => ({ submitting: t('正在提交', 'Submitting'), accepted: t('已接受', 'Accepted'), dispatching: t('正在分派', 'Dispatching'), running: t('运行中', 'Running'), completed: t('已完成', 'Completed'), cancelled: t('已取消', 'Cancelled'), interrupted: t('已中断', 'Interrupted'), failed: t('失败，可重试', 'Failed · retry available') })[progress]
+  const entryStatus = (entry: Extract<ConversationTimelineEntry, { kind: 'activity' }>): string => entry.requestProgress ? progressLabel(entry.requestProgress) : statusLabel(entry.activity.status)
+  const activityTiming = (activity: ConversationActivity): string | undefined => {
+    const acceptedAt = activity.acceptedAt ?? activity.createdAt
+    if (activity.status === 'accepted' && activity.finishedAt === undefined) {
+      const waiting = elapsedMilliseconds(acceptedAt, new Date(clockNow).toISOString())
+      return waiting === undefined ? undefined : `${t('已等待', 'Waiting')} ${elapsedLabel(waiting)}`
+    }
+    if (activity.startedAt && activity.finishedAt) {
+      const wait = elapsedMilliseconds(acceptedAt, activity.startedAt)
+      const execution = elapsedMilliseconds(activity.startedAt, activity.finishedAt)
+      const total = elapsedMilliseconds(acceptedAt, activity.finishedAt)
+      return [wait === undefined ? undefined : `${t('等待', 'wait')} ${elapsedLabel(wait)}`, execution === undefined ? undefined : `${t('执行', 'run')} ${elapsedLabel(execution)}`, total === undefined ? undefined : `${t('总计', 'total')} ${elapsedLabel(total)}`].filter(Boolean).join(' · ')
+    }
+    if (activity.status === 'started' && activity.startedAt) {
+      const execution = elapsedMilliseconds(activity.startedAt, new Date(clockNow).toISOString())
+      return execution === undefined ? undefined : `${t('执行中', 'Running')} ${elapsedLabel(execution)}`
+    }
+    return undefined
+  }
+  const toolTrace = toolEvents.map((item) => <span key={item.key} data-tool-status={item.status}>{toolLabel(item.name)} · {item.status}{item.status === 'started' || item.status === 'updated' ? item.startedAt ? ` · running since ${new Date(item.startedAt).toLocaleTimeString()}` : ' · timing unknown' : ''}{item.status === 'completed' || item.status === 'failed' ? item.startedAt ? ` · ${Math.max(0, Date.parse(item.updatedAt) - Date.parse(item.startedAt))} ms` : ' · duration unknown' : ''}</span>)
   return <div className="messages" role="region" aria-label={t('对话时间线', 'Conversation timeline')} aria-live="polite">{entries.length === 0 && !streaming ? <div className="empty-conversation"><div className="empty-orbit">✦</div><h2>{t('从一个研究问题开始', 'Start with a research question')}</h2><p>{t('请 Agent 探索研究背景，或协助规划下一步研究。', 'Ask the Agent to explore the research context or help shape the next research step.')}</p></div> : entries.map((entry) => entry.kind === 'message'
     ? <article className={`message ${entry.message.role}`} key={`${entry.message.timestamp ?? 'message'}-${entry.order}`}><div className="message-meta">{entry.message.role === 'user' ? t('你', 'You') : entry.message.role === 'tool' ? toolLabel(entry.message.toolName) : 'Agent'}{entry.message.timestamp ? <time>{new Date(entry.message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time> : null}</div><div className="message-body">{entry.message.role === 'tool' ? <span className="tool-chip">{toolLabel(entry.message.toolName)}</span> : entry.message.content}</div></article>
-    : <article className="message user activity-request" data-activity-id={entry.activity.activityId} key={`activity-${entry.activity.activityId}`}><div className="message-meta">{t('你 · 已提交请求', 'You · Submitted request')}<time>{new Date(entry.activity.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div><div className="message-body">{entry.activity.requestText ?? t('未命名请求', 'Untitled request')}</div><div className="activity-meta"><span>{entry.activity.workflowRunId || entry.activity.outcome === 'workflow_started' ? t('工作流', 'Workflow') : t('请求活动', 'Request activity')} · {statusLabel(entry.activity.status)}{entry.activity.outcome ? ` · ${entry.activity.outcome}` : ''}</span>{entry.activity.workflowRunId ? <small>{entry.activity.workflowRunId}</small> : null}</div></article>)}{streaming ? <article className="message assistant streaming-message"><div className="message-meta">Agent {thinking ? <span className="thinking-label">{t('正在思考…', 'Thinking…')}</span> : null}</div><div className="message-body">{streamText || (thinking ? t('正在思考…', 'Thinking…') : t('正在处理…', 'Working…'))}{streamText ? <span className="cursor" /> : null}</div>{toolEvents.length > 0 ? <div className="tool-trace">{toolEvents.map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}</div> : null}</article> : null}</div>
+    : entry.kind === 'optimistic' ? <article className={`message user activity-request optimistic-request ${entry.request.progress === 'failed' ? 'request-failed' : ''}`} data-operation-id={entry.request.operationId} key={`request-${entry.request.operationId}`}><div className="message-meta">{t('你 · 已提交请求', 'You · Submitted request')}<time>{new Date(entry.request.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div><div className="message-body">{entry.request.requestText}</div><div className="activity-meta"><span>{progressLabel(entry.request.progress)}</span>{entry.request.error ? <small role="status">{entry.request.error}</small> : null}</div></article>
+    : <article className="message user activity-request" data-activity-id={entry.activity.activityId} data-operation-id={entry.activity.operationId} key={`activity-${entry.activity.activityId}`}><div className="message-meta">{t('你 · 已提交请求', 'You · Submitted request')}<time>{new Date(entry.activity.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div><div className="message-body">{entry.activity.requestText ?? t('未命名请求', 'Untitled request')}</div><div className="activity-meta"><span>{entry.activity.workflowRunId || entry.activity.outcome === 'workflow_started' ? t('工作流', 'Workflow') : t('请求活动', 'Request activity')} · {entryStatus(entry)}{entry.activity.outcome ? ` · ${entry.activity.outcome}` : ''}</span>{entry.activity.workflowRunId ? <small>{entry.activity.workflowRunId}</small> : null}{activityTiming(entry.activity) ? <small>{activityTiming(entry.activity)}</small> : null}{entry.requestError ? <small role="status">{entry.requestError}</small> : null}</div></article>)}{streaming ? <article className="message assistant streaming-message"><div className="message-meta">Agent {thinking ? <span className="thinking-label">{t('正在思考…', 'Thinking…')}</span> : null}<span className="elapsed-time">{streamStartedAt ? `Elapsed ${Math.floor(Math.max(0, clockNow - Date.parse(streamStartedAt)) / 1000)}s` : 'Elapsed unknown'}</span></div><div className="message-body">{streamText || (thinking ? t('正在思考…', 'Thinking…') : t('正在处理…', 'Working…'))}{streamText ? <span className="cursor" /> : null}</div>{toolEvents.length > 0 ? <div className="tool-trace">{toolTrace}</div> : null}</article> : toolEvents.length > 0 ? <div className="tool-trace tool-trace-history" role="region" aria-label={t('工具执行摘要', 'Tool execution summary')}>{toolTrace}</div> : null}</div>
 }
 function formatSize(size: number): string { if (size < 1024) return `${size} B`; if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`; return `${(size / (1024 * 1024)).toFixed(1)} MB` }
 function shortHash(value: string): string { return value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-8)}` : value }
@@ -505,11 +549,14 @@ interface ResearchPageProps {
   readonly currentConversationSummary?: ConversationSummary
   readonly conversations: readonly ConversationSummary[]
   readonly activities: readonly ConversationActivity[]
+  readonly optimisticRequests: readonly OptimisticConversationRequest[]
   readonly messages: readonly ConversationMessage[]
   readonly streaming: boolean
   readonly thinking: boolean
   readonly streamText: string
-  readonly toolEvents: readonly string[]
+  readonly streamStartedAt?: string
+  readonly toolEvents: readonly ToolLifecycle[]
+  readonly connectionState: RuntimeConnectionState
   readonly queue: { readonly steering: number; readonly followUp: number }
   readonly composer: string
   readonly busy: boolean
@@ -953,7 +1000,7 @@ function ResearchPageBody(props: ResearchPageProps): ReactElement {
       {props.conversations.map((conversation) => <div className={`conversation-row ${conversation.isActive ? 'active' : ''}`} key={conversation.conversationId}>
         {editingConversationId === conversation.conversationId ? <form className="conversation-rename" onSubmit={(event) => { event.preventDefault(); const value = renameValue.trim(); if (value && conversation.version !== undefined) props.renameConversation(conversation.conversationId, value, conversation.version); setEditingConversationId('') }}><input aria-label={t('对话标题', 'Conversation title')} value={renameValue} onChange={(event) => setRenameValue(event.target.value)} autoFocus /><button type="submit" disabled={!renameValue.trim() || conversation.version === undefined}>{t('保存', 'Save')}</button><button type="button" onClick={() => setEditingConversationId('')}>{t('取消', 'Cancel')}</button></form> : <><button className={`conversation-item ${conversation.isActive ? 'active' : ''}`} onClick={() => props.switchConversation(conversation.conversationId)} disabled={props.busy} aria-current={conversation.isActive ? 'page' : undefined}><span>{conversation.name || t('未命名对话', 'Untitled conversation')}</span><small>{conversation.messageCount} {t('条消息', 'messages')}{conversation.latestWorkflowRunId ? ` · Workflow ${conversation.latestWorkflowRunId}` : ''}</small></button><div className="conversation-actions"><button type="button" aria-label={`${t('重命名', 'Rename')} ${conversation.name ?? conversation.conversationId}`} onClick={() => { setRenameValue(conversation.name ?? ''); setEditingConversationId(conversation.conversationId) }} disabled={props.busy || conversation.version === undefined}>{t('重命名', 'Rename')}</button>{conversation.archived ? <button type="button" aria-label={`${t('恢复', 'Restore')} ${conversation.name ?? conversation.conversationId}`} onClick={() => props.restoreConversation(conversation.conversationId, conversation.version ?? 0)} disabled={props.busy || conversation.version === undefined}>{t('恢复', 'Restore')}</button> : <button type="button" aria-label={`${t('归档', 'Archive')} ${conversation.name ?? conversation.conversationId}`} onClick={() => props.archiveConversation(conversation.conversationId, conversation.version ?? 0)} disabled={props.busy || conversation.version === undefined}>{t('归档', 'Archive')}</button>}</div></>}
       </div>)}
-    </nav></aside><section className="conversation-pane" aria-label={t('对话', 'Conversation')}><div className="conversation-heading"><div><span className="eyebrow">{t('Agent 会话', 'AGENT SESSION')}</span><h1>{title}</h1></div><span className={`session-pill ${props.streaming ? 'live' : ''}`}>{props.streaming ? t('生成中', 'Streaming') : t('空闲', 'Idle')}</span></div><ConversationTimeline messages={props.messages} activities={props.activities} streaming={props.streaming} thinking={props.thinking} streamText={props.streamText} toolEvents={props.toolEvents} />{props.error ? <div className="inline-error" role="alert">{props.error}<button onClick={props.dismissError}>{t('忽略', 'Dismiss')}</button></div> : null}<div className="composer-wrap" onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) event.preventDefault() }} onDrop={(event) => { if (!event.dataTransfer.files.length) return; event.preventDefault(); props.upload(event.dataTransfer.files[0]) }}><div className="research-composer-content"><div className="research-controls" aria-label={t('研究执行控制', 'Research execution controls')}><label><span>Workflow</span><select aria-label="Workflow" value={props.selectedWorkflowId} onChange={(event) => props.setSelectedWorkflowId(event.target.value)}><option value="">{t('自由研究', 'Free Research')}</option>{props.workflowDefinitions.map((workflow) => <option value={workflow.id} key={workflow.id}>{workflow.label}</option>)}</select></label><label className="check-field"><input type="checkbox" checked={props.contextPolicy.structuredKnowledge} onChange={(event) => props.setContextPolicy({ ...props.contextPolicy, structuredKnowledge: event.target.checked })} />{t('查询知识', 'Query Knowledge')}</label><label className="check-field"><input type="checkbox" checked={props.contextPolicy.sourceLibrary} onChange={(event) => props.setContextPolicy({ ...props.contextPolicy, sourceLibrary: event.target.checked })} />{t('搜索来源资料库', 'Search Source Library')}</label><label className="check-field"><input type="checkbox" checked={props.persistencePolicy.writeKnowledge} onChange={(event) => props.setPersistencePolicy({ writeKnowledge: event.target.checked })} />{t('写入知识', 'Write Knowledge')}</label></div>{props.executionSummary ? <div className="execution-summary" aria-label={t('研究执行摘要', 'Research execution summary')}><strong>{props.executionSummary.mode}{props.executionSummary.workflowLabel ? ` · ${props.executionSummary.workflowLabel}` : ''}</strong><span>{t('知识库：', 'Knowledge: ')}{props.executionSummary.contextPolicy.structuredKnowledge ? t('读取', 'Read') : t('关闭', 'Off')}</span><span>{t('来源资料库：', 'Source Library: ')}{props.executionSummary.contextPolicy.sourceLibrary ? t('搜索', 'Search') : t('关闭', 'Off')}</span><span>{t('知识写入：', 'Knowledge Write: ')}{props.executionSummary.persistencePolicy.writeKnowledge ? t('开启', 'On') : t('关闭', 'Off')}</span>{props.executionSummary.argumentsStatus !== 'not_required' ? <span>{t('参数：', 'Arguments: ')}{props.executionSummary.argumentsStatus}</span> : null}</div> : null}{props.dispatchFeedback ? <DispatchFeedbackPanel feedback={props.dispatchFeedback} /> : null}{props.dispatchResolution ? <DispatchResolutionNotice resolution={props.dispatchResolution} /> : null}<textarea aria-label={t('消息', 'Message')} value={props.composer} onChange={(event) => props.setComposer(event.target.value)} onPaste={(event) => { const file = Array.from(event.clipboardData.files)[0]; if (file) { event.preventDefault(); props.upload(file) } }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !props.streaming && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); props.runCommand('prompt') } }} placeholder={props.streaming ? t('输入指导或后续问题…', 'Write a steering instruction or follow-up…') : t('询问 Agent 任何研究相关问题…', 'Ask the Agent anything about your research…')} rows={3} /><div className="composer-attachment-row"><label className="composer-file-picker" aria-label={t('附加文档', 'Attach a document')}>{props.attachmentBusy ? t('正在添加…', 'Adding…') : t('＋ 附加文件', '＋ Attach file')}<input aria-label={t('添加文档', 'Add document')} type="file" accept=".pdf,.csv,.htm,.html,.json,.md,.text,.txt,.xml" onChange={(event) => { props.upload(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} disabled={props.attachmentBusy || props.acceptanceBusy} /></label><span className="composer-file-hint">{t('PDF、CSV、HTML、JSON、Markdown、文本、XML · 最大 100 MB', 'PDF, CSV, HTML, JSON, Markdown, text, XML · up to 100 MB')}</span></div><KnowledgeUploadSection key={props.attachmentUiVersion} {...props} /><div className="composer-footer"><span>{t('Enter 发送 · Shift+Enter 换行 · 队列：', 'Enter to send · Shift+Enter for newline · queued: ')}{props.queue.steering} {t('条指导 /', ' steer / ')} {props.queue.followUp} {t('条后续问题', ' follow-up')}</span><div className="composer-actions">{props.streaming ? <><button className="secondary-action" onClick={() => props.runCommand('steer')} disabled={props.busy || !props.composer.trim()}>{t('指导', 'Steer')}</button><button className="secondary-action" onClick={() => props.runCommand('follow_up')} disabled={props.busy || !props.composer.trim()}>{t('继续追问', 'Follow up')}</button><button className="stop-action" onClick={props.abort} disabled={props.busy}>{t('停止', 'Stop')}</button></> : <button className="primary-action" onClick={() => props.runCommand('prompt')} disabled={props.busy || !props.composer.trim()}>{t('发送', 'Send')} <span>↗</span></button>}</div></div></div></div></section><aside className="context-rail" aria-label={t('研究背景', 'Research context')}>
+    </nav></aside><section className="conversation-pane" aria-label={t('对话', 'Conversation')}><div className="conversation-heading"><div><span className="eyebrow">{t('Agent 会话', 'AGENT SESSION')}</span><h1>{title}</h1></div><span className={`session-pill ${props.streaming ? 'live' : ''}`}>{props.streaming ? t('生成中', 'Streaming') : t('空闲', 'Idle')} · {props.connectionState}</span></div><ConversationTimeline messages={props.messages} activities={props.activities} optimisticRequests={props.optimisticRequests} streaming={props.streaming} thinking={props.thinking} streamText={props.streamText} streamStartedAt={props.streamStartedAt} toolEvents={props.toolEvents} />{props.error ? <div className="inline-error" role="alert">{props.error}<button onClick={props.dismissError}>{t('忽略', 'Dismiss')}</button></div> : null}<div className="composer-wrap" onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) event.preventDefault() }} onDrop={(event) => { if (!event.dataTransfer.files.length) return; event.preventDefault(); props.upload(event.dataTransfer.files[0]) }}><div className="research-composer-content"><div className="research-controls" aria-label={t('研究执行控制', 'Research execution controls')}><label><span>Workflow</span><select aria-label="Workflow" value={props.selectedWorkflowId} onChange={(event) => props.setSelectedWorkflowId(event.target.value)}><option value="">{t('自由研究', 'Free Research')}</option>{props.workflowDefinitions.map((workflow) => <option value={workflow.id} key={workflow.id}>{workflow.label}</option>)}</select></label><label className="check-field"><input type="checkbox" checked={props.contextPolicy.structuredKnowledge} onChange={(event) => props.setContextPolicy({ ...props.contextPolicy, structuredKnowledge: event.target.checked })} />{t('查询知识', 'Query Knowledge')}</label><label className="check-field"><input type="checkbox" checked={props.contextPolicy.sourceLibrary} onChange={(event) => props.setContextPolicy({ ...props.contextPolicy, sourceLibrary: event.target.checked })} />{t('搜索来源资料库', 'Search Source Library')}</label><label className="check-field"><input type="checkbox" checked={props.persistencePolicy.writeKnowledge} onChange={(event) => props.setPersistencePolicy({ writeKnowledge: event.target.checked })} />{t('写入知识', 'Write Knowledge')}</label></div>{props.executionSummary ? <div className="execution-summary" aria-label={t('研究执行摘要', 'Research execution summary')}><strong>{props.executionSummary.mode}{props.executionSummary.workflowLabel ? ` · ${props.executionSummary.workflowLabel}` : ''}</strong><span>{t('知识库：', 'Knowledge: ')}{props.executionSummary.contextPolicy.structuredKnowledge ? t('读取', 'Read') : t('关闭', 'Off')}</span><span>{t('来源资料库：', 'Source Library: ')}{props.executionSummary.contextPolicy.sourceLibrary ? t('搜索', 'Search') : t('关闭', 'Off')}</span><span>{t('知识写入：', 'Knowledge Write: ')}{props.executionSummary.persistencePolicy.writeKnowledge ? t('开启', 'On') : t('关闭', 'Off')}</span>{props.executionSummary.argumentsStatus !== 'not_required' ? <span>{t('参数：', 'Arguments: ')}{props.executionSummary.argumentsStatus}</span> : null}</div> : null}{props.dispatchFeedback ? <DispatchFeedbackPanel feedback={props.dispatchFeedback} /> : null}{props.dispatchResolution ? <DispatchResolutionNotice resolution={props.dispatchResolution} /> : null}<textarea aria-label={t('消息', 'Message')} value={props.composer} onChange={(event) => props.setComposer(event.target.value)} onPaste={(event) => { const file = Array.from(event.clipboardData.files)[0]; if (file) { event.preventDefault(); props.upload(file) } }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !props.streaming && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); props.runCommand('prompt') } }} placeholder={props.streaming ? t('输入指导或后续问题…', 'Write a steering instruction or follow-up…') : t('询问 Agent 任何研究相关问题…', 'Ask the Agent anything about your research…')} rows={3} /><div className="composer-attachment-row"><label className="composer-file-picker" aria-label={t('附加文档', 'Attach a document')}>{props.attachmentBusy ? t('正在添加…', 'Adding…') : t('＋ 附加文件', '＋ Attach file')}<input aria-label={t('添加文档', 'Add document')} type="file" accept=".pdf,.csv,.htm,.html,.json,.md,.text,.txt,.xml" onChange={(event) => { props.upload(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} disabled={props.attachmentBusy || props.acceptanceBusy} /></label><span className="composer-file-hint">{t('PDF、CSV、HTML、JSON、Markdown、文本、XML · 最大 100 MB', 'PDF, CSV, HTML, JSON, Markdown, text, XML · up to 100 MB')}</span></div><KnowledgeUploadSection key={props.attachmentUiVersion} {...props} /><div className="composer-footer"><span>{t('Enter 发送 · Shift+Enter 换行 · 队列：', 'Enter to send · Shift+Enter for newline · queued: ')}{props.queue.steering} {t('条指导 /', ' steer / ')} {props.queue.followUp} {t('条后续问题', ' follow-up')}</span><div className="composer-actions">{props.streaming ? <><button className="secondary-action" onClick={() => props.runCommand('steer')} disabled={props.busy || !props.composer.trim()}>{t('指导', 'Steer')}</button><button className="secondary-action" onClick={() => props.runCommand('follow_up')} disabled={props.busy || !props.composer.trim()}>{t('继续追问', 'Follow up')}</button><button className="stop-action" onClick={props.abort} disabled={props.busy}>{t('停止', 'Stop')}</button></> : <button className="primary-action" onClick={() => props.runCommand('prompt')} disabled={props.busy || !props.composer.trim()}>{t('发送', 'Send')} <span>↗</span></button>}</div></div></div></div></section><aside className="context-rail" aria-label={t('研究背景', 'Research context')}>
   <div className="context-heading"><div><span className="eyebrow">{t('研究背景', 'RESEARCH CONTEXT')}</span><span className="context-count">{props.streaming ? t('生成中', 'Streaming') : t('空闲', 'Idle')}</span></div></div>
   <section className="context-section" aria-label={t('会话状态', 'Session status')}><div className="section-title"><div><span className="eyebrow">{t('会话', 'SESSION')}</span><h2>{activeConversation?.name || props.session?.name || t('研究对话', 'Research conversation')}</h2></div></div><p className="muted">{props.streaming ? t('Agent 正在响应。', 'The Agent is responding.') : t('会话已就绪。', 'Session is ready.')}</p></section>
   <section className="context-section" aria-label={t('消息队列', 'Message queue')}><div className="section-title"><div><span className="eyebrow">{t('队列', 'QUEUE')}</span><h2>{t('待处理消息', 'Pending messages')}</h2></div></div><p>{props.queue.steering} {t('条指导', 'steering')} · {props.queue.followUp} {t('条后续问题', 'follow-up')}</p></section>
@@ -975,6 +1022,7 @@ function AppContent(): ReactElement {
   const [conversations, setConversations] = useState<readonly ConversationSummary[]>([])
   const [messages, setMessages] = useState<readonly ConversationMessage[]>([])
   const [activities, setActivities] = useState<readonly ConversationActivity[]>([])
+  const [optimisticRequests, setOptimisticRequests] = useState<readonly OptimisticConversationRequest[]>([])
   const [conversationSearch, setConversationSearch] = useState('')
   const [showArchivedConversations, setShowArchivedConversations] = useState(false)
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseStatus>()
@@ -985,11 +1033,8 @@ function AppContent(): ReactElement {
   const [modelLoginFlow, setModelLoginFlow] = useState<RuntimeModelLoginFlow>()
   const [modelTestMessage, setModelTestMessage] = useState('')
   const [openReviewCases, setOpenReviewCases] = useState(0)
-  const [streaming, setStreaming] = useState(false)
-  const [streamText, setStreamText] = useState('')
-  const [thinking, setThinking] = useState(false)
-  const [toolEvents, setToolEvents] = useState<readonly string[]>([])
-  const [queue, setQueue] = useState({ steering: 0, followUp: 0 })
+  const [conversationViews, setConversationViews] = useState<Readonly<Record<string, ConversationViewState>>>({})
+  const [connectionState, setConnectionState] = useState<RuntimeConnectionState>('connecting')
   const [composer, setComposer] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -1040,10 +1085,23 @@ function AppContent(): ReactElement {
   const historyEpoch = useRef(0)
   const conversationSyncEpoch = useRef(0)
   const pendingOperationIds = useRef(new Map<string, string>())
+  const seenEventIds = useRef(new Set<string>())
   const previewGeneration = useRef(0)
   const workflowRef = useRef<WorkflowRun | undefined>(undefined)
   workflowRef.current = workflow
   const requestEpoch = useRef(0)
+  const activeConversationId = session?.conversationId ?? ''
+  const activeConversationView = conversationViews[activeConversationId] ?? emptyConversationView
+  const { streaming, streamText, thinking, streamStartedAt, toolEvents, queue } = activeConversationView
+  const updateConversationView = (conversationId: string, update: (previous: ConversationViewState) => ConversationViewState): void => {
+    if (!conversationId) return
+    setConversationViews((previous) => ({ ...previous, [conversationId]: update(previous[conversationId] ?? emptyConversationView) }))
+  }
+  const mutateActiveConversationView = (update: (previous: ConversationViewState) => ConversationViewState): void => updateConversationView(latestConversation.current || activeConversationId, update)
+  const setStreaming = (value: boolean): void => mutateActiveConversationView((previous) => ({ ...previous, streaming: value }))
+  const setStreamText = (value: string | ((previous: string) => string)): void => mutateActiveConversationView((previous) => ({ ...previous, streamText: typeof value === 'function' ? value(previous.streamText) : value }))
+  const setThinking = (value: boolean): void => mutateActiveConversationView((previous) => ({ ...previous, thinking: value }))
+  const setToolEvents = (value: readonly ToolLifecycle[] | ((previous: readonly ToolLifecycle[]) => readonly ToolLifecycle[])): void => mutateActiveConversationView((previous) => ({ ...previous, toolEvents: typeof value === 'function' ? value(previous.toolEvents) : value }))
 
   const loadConversationHistory = useCallback(async (search: string, archived: boolean): Promise<void> => {
     const epoch = ++historyEpoch.current
@@ -1063,6 +1121,22 @@ function AppContent(): ReactElement {
     setSession(current)
     setMessages(messageResult.messages)
     setActivities(messageResult.activities ?? [])
+    updateConversationView(current.conversationId, (previous) => current.isStreaming
+      ? { ...previous, streaming: true }
+      : { ...previous, streaming: false, thinking: false, streamText: '', streamStartedAt: undefined })
+    const authoritativeOperations = new Map((messageResult.activities ?? []).map((activity) => [activity.operationId, activity]))
+    setOptimisticRequests((previous) => previous.map((request) => {
+      if (request.conversationId !== current.conversationId) return request
+      const activity = authoritativeOperations.get(request.operationId)
+      if (!activity) return request
+      const progress: RequestProgress = activity.status === 'failed' || activity.status === 'not_started' ? 'failed'
+        : activity.status === 'interrupted' ? 'interrupted'
+          : activity.status === 'cancelled' ? 'cancelled'
+            : activity.status === 'completed' ? 'completed'
+              : activity.status === 'ready_for_chat' || activity.status === 'submitting' ? 'dispatching'
+                : activity.status === 'started' ? 'running' : 'accepted'
+      return { ...request, progress }
+    }))
     let selected = list.find((item) => item.conversationId === current.conversationId)
     if (!selected) {
       try {
@@ -1076,7 +1150,17 @@ function AppContent(): ReactElement {
     const associatedRunId = selected?.latestWorkflowRunId ?? ''
     if (selected) setWorkflowRunId(associatedRunId)
     if (associatedRunId) {
-      try { const run = await client.workflow(associatedRunId); if (epoch === requestEpoch.current && syncEpoch === conversationSyncEpoch.current && latestConversation.current === current.conversationId && run.runId === associatedRunId) setWorkflow(run) }
+      try {
+        const run = await client.workflow(associatedRunId)
+        if (epoch === requestEpoch.current && syncEpoch === conversationSyncEpoch.current && latestConversation.current === current.conversationId && run.runId === associatedRunId) {
+          setWorkflow(run)
+          const runProgress: RequestProgress | undefined = run.status === 'completed' || run.status === 'completed_with_review' ? 'completed' : run.status === 'failed' || run.status === 'blocked' ? 'failed' : run.status === 'cancelled' ? 'cancelled' : 'running'
+          setOptimisticRequests((previous) => previous.map((request) => {
+            const activity = (messageResult.activities ?? []).find((item) => item.operationId === request.operationId && item.workflowRunId === run.runId)
+            return activity && request.conversationId === current.conversationId && runProgress ? { ...request, progress: runProgress, ...(runProgress === 'failed' ? { error: run.errorSummary ?? 'Workflow failed.' } : {}) } : request
+          }))
+        }
+      }
       catch (caught) {
         if (epoch !== requestEpoch.current || syncEpoch !== conversationSyncEpoch.current || latestConversation.current !== current.conversationId) return
         setWorkflow(undefined)
@@ -1150,7 +1234,7 @@ function AppContent(): ReactElement {
     requestEpoch.current += 1; previewGeneration.current += 1
     try { window.sessionStorage.removeItem(ACTIVE_RESEARCH_RUN_KEY) } catch { /* storage can be unavailable in restricted browser contexts */ }
     latestConversation.current = ''
-    setKnowledgeBase(undefined); setOpenReviewCases(0); setSession(undefined); setCurrentConversationSummary(undefined); setConversations([]); setMessages([]); setActivities([]); setStreaming(false); setThinking(false); setStreamText(''); setToolEvents([]); setQueue({ steering: 0, followUp: 0 }); setComposer('')
+    setKnowledgeBase(undefined); setOpenReviewCases(0); setSession(undefined); setCurrentConversationSummary(undefined); setConversations([]); setMessages([]); setActivities([]); setConversationViews({}); setOptimisticRequests([]); setComposer('')
     setAttachment(undefined); setAttachmentBusy(false); setAttachmentUiVersion((version) => version + 1); setPreview(undefined); setPreviewBusy(false); setAcceptanceBusy(false); setSelectedCandidates(new Set()); setAcceptance(undefined); setRightsForm(defaultRightsForm); setSourceForm(defaultSourceForm); setUploadStatus('')
     setWorkflowRunId(''); setThemeFrameworkRunId(''); setThemeFrameworkRefreshInfo(undefined); setThemeFrameworkReviewRevision(0); setWorkflow(undefined); setReviews(undefined); setReviewDetail(undefined); setReviewsBusy(false); setBriefs(undefined); setSelectedBrief(undefined); setBriefsBusy(false); setReports(undefined); setSelectedReport(undefined); setReportsBusy(false); setBundles(undefined); setSelectedBundle(undefined); setBundlesBusy(false); setSourceHits([]); setSourceBusy(false); setExecutionSummary(undefined); setError('')
   }
@@ -1241,17 +1325,44 @@ function AppContent(): ReactElement {
   }, [client, route, workflowArtifactTarget])
 
   const handleEvent = useCallback((event: ClientEvent): void => {
-    if (event.conversationId !== latestConversation.current && event.type !== 'session.changed') return
-    if (event.type === 'agent.started') { setStreaming(true); setThinking(false); setStreamText(''); setToolEvents([]) }
-    if (event.type === 'message.delta') { setStreaming(true); setThinking(false); setStreamText((old) => `${old}${event.summary ?? ''}`) }
-    if (event.type === 'thinking.status') { setStreaming(true); setThinking(true) }
-    if (event.type.startsWith('tool.')) setToolEvents((old) => [...old.slice(-3), `${event.type.replace('tool.', '')}: ${toolLabel(event.name)}`])
-    if (event.type === 'queue.updated') setQueue({ steering: event.steeringCount ?? 0, followUp: event.followUpCount ?? 0 })
-    if (event.type === 'agent.completed' || event.type === 'error') { setStreaming(false); setThinking(false); void syncCurrent().catch((caught) => setError(errorText(caught))) }
-    if (event.type === 'session.changed') { setStreaming(false); setStreamText(''); setThinking(false); void syncCurrent().catch((caught) => setError(errorText(caught))) }
+    if (seenEventIds.current.has(event.eventId)) return
+    seenEventIds.current.add(event.eventId)
+    if (seenEventIds.current.size > 512) seenEventIds.current.delete(seenEventIds.current.values().next().value as string)
+    const conversationId = event.conversationId
+    if (event.operationId) setOptimisticRequests((previous) => previous.map((request) => {
+      if (request.conversationId !== conversationId || request.operationId !== event.operationId) return request
+      const progress: RequestProgress = event.type === 'error'
+        ? event.code === 'agent_aborted' ? 'cancelled' : 'failed'
+        : event.type === 'agent.completed'
+          ? event.status === 'aborted' ? 'cancelled' : event.status === 'failed' ? 'failed' : 'completed'
+          : 'running'
+      return { ...request, progress, ...(progress === 'failed' ? { error: 'Runtime reported that this operation failed.' } : {}) }
+    }))
+    if (event.type === 'agent.started') updateConversationView(conversationId, (previous) => ({ ...previous, streaming: true, thinking: false, streamText: '', streamStartedAt: event.timestamp, toolEvents: [] }))
+    if (event.type === 'message.delta') updateConversationView(conversationId, (previous) => ({ ...previous, streaming: true, thinking: false, streamText: `${previous.streamText}${event.summary ?? ''}` }))
+    if (event.type === 'thinking.status') updateConversationView(conversationId, (previous) => ({ ...previous, streaming: true, thinking: true }))
+    if (event.type.startsWith('tool.')) {
+      const status = event.type === 'tool.started' ? 'started' : event.type === 'tool.completed' ? (event.isError ? 'failed' : 'completed') : 'updated'
+      const key = event.toolCallId ?? event.eventId
+      updateConversationView(conversationId, (previous) => {
+        const existing = previous.toolEvents.find((tool) => tool.key === key)
+        const tool: ToolLifecycle = { key, name: event.name ?? existing?.name ?? '', status, ...(existing?.startedAt || status === 'started' ? { startedAt: existing?.startedAt ?? event.timestamp } : {}), updatedAt: event.timestamp }
+        const toolEvents = existing ? previous.toolEvents.map((item) => item.key === key ? tool : item) : [...previous.toolEvents, tool].slice(-8)
+        return { ...previous, toolEvents }
+      })
+    }
+    if (event.type === 'queue.updated') updateConversationView(conversationId, (previous) => ({ ...previous, queue: { steering: event.steeringCount ?? 0, followUp: event.followUpCount ?? 0 } }))
+    if (event.type === 'agent.completed' || event.type === 'error') {
+      updateConversationView(conversationId, (previous) => ({ ...previous, streaming: false, thinking: false }))
+      if (conversationId === latestConversation.current) void syncCurrent().catch((caught) => setError(errorText(caught)))
+    }
+    if (event.type === 'session.changed') {
+      updateConversationView(conversationId, (previous) => ({ ...previous, streaming: false, streamText: '', streamStartedAt: undefined, thinking: false }))
+      void syncCurrent().catch((caught) => setError(errorText(caught)))
+    }
   }, [syncCurrent])
 
-  useEffect(() => { if (loadState !== 'ready') return undefined; return client.openEvents(handleEvent, () => { void syncCurrent().catch((caught) => setError(errorText(caught))) }) }, [client, handleEvent, loadState, syncCurrent])
+  useEffect(() => { if (loadState !== 'ready') return undefined; setConnectionState('connecting'); return client.openEvents(handleEvent, () => { void syncCurrent().catch((caught) => setError(errorText(caught))) }, undefined, setConnectionState) }, [client, handleEvent, loadState, syncCurrent])
 
   useEffect(() => {
     const knownWorkflow = workflowRef.current
@@ -1302,16 +1413,18 @@ function AppContent(): ReactElement {
   }, [client, route, workflow, workflowRunId])
 
   const operationLedgerKey = 'researchhub.pendingConversationOperations.v1'
-  const requestDigest = async (text: string): Promise<string> => {
+  const requestDigest = (text: string): string => {
     const bytes = new TextEncoder().encode(text)
-    if (globalThis.crypto?.subtle) {
-      const hash = await globalThis.crypto.subtle.digest('SHA-256', bytes)
-      return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('')
+    // Synchronous non-plaintext fingerprint keeps the submit path immediate and
+    // stable across reloads; the request text itself is never written to storage.
+    let first = 0x811c9dc5, second = 0x9e3779b9, third = 0x85ebca6b, fourth = 0xc2b2ae35
+    for (const byte of bytes) {
+      first = Math.imul(first ^ byte, 0x01000193)
+      second = Math.imul(second ^ byte, 0x85ebca6b)
+      third = Math.imul(third ^ byte, 0x27d4eb2d)
+      fourth = Math.imul(fourth ^ byte, 0x165667b1)
     }
-    // Deterministic non-plaintext fallback for browser contexts without SubtleCrypto.
-    let first = 0x811c9dc5, second = 0x9e3779b9
-    for (const byte of bytes) { first = Math.imul(first ^ byte, 0x01000193); second = Math.imul(second ^ byte, 0x85ebca6b) }
-    return `${(first >>> 0).toString(16)}${(second >>> 0).toString(16)}`
+    return [first, second, third, fourth].map((part) => (part >>> 0).toString(16).padStart(8, '0')).join('')
   }
   const readOperationLedger = (): { key: string; id: string }[] => {
     try {
@@ -1322,8 +1435,8 @@ function AppContent(): ReactElement {
   const writeOperationLedger = (entries: readonly { key: string; id: string }[]): void => {
     try { window.sessionStorage.setItem(operationLedgerKey, JSON.stringify(entries.slice(-20))) } catch { /* session storage may be unavailable */ }
   }
-  const operationIdFor = async (conversationId: string, operation: string, text: string, workflowRegistryId?: string): Promise<{ key: string; id: string }> => {
-    const digest = await requestDigest(JSON.stringify({ requestText: text, operation, workflowRegistryId: workflowRegistryId ?? '' }))
+  const operationIdFor = (conversationId: string, operation: string, text: string, workflowRegistryId?: string): { key: string; id: string } => {
+    const digest = requestDigest(JSON.stringify({ requestText: text, operation, workflowRegistryId: workflowRegistryId ?? '' }))
     const key = `${conversationId}:${operation}:${workflowRegistryId ?? ''}:${digest}`
     const existing = pendingOperationIds.current.get(key) ?? readOperationLedger().find((entry) => entry.key === key)?.id
     if (existing) { pendingOperationIds.current.set(key, existing); return { key, id: existing } }
@@ -1343,22 +1456,30 @@ function AppContent(): ReactElement {
     const text = composer.trim()
     const conversationId = session?.conversationId
     if (!conversationId || !text || busy || (operation === 'prompt' && streaming)) return
-    const pendingOperation = await operationIdFor(conversationId, operation, text, operation === 'prompt' ? selectedWorkflowId : undefined)
-    const { id: operationId, key: retryKey } = pendingOperation
     setBusy(true); setError('')
+    const pendingOperation = operationIdFor(conversationId, operation, text, operation === 'prompt' ? selectedWorkflowId : undefined)
+    const { id: operationId, key: retryKey } = pendingOperation
+    const markRequest = (progress: RequestProgress, message?: string): void => setOptimisticRequests((previous) => {
+      const existing = previous.find((request) => request.conversationId === conversationId && request.operationId === operationId)
+      const next: OptimisticConversationRequest = { conversationId, operationId, operation, requestText: text, createdAt: existing?.createdAt ?? new Date().toISOString(), progress, ...(message ? { error: message } : {}) }
+      return [...previous.filter((request) => request.operationId !== operationId || request.conversationId !== conversationId), next].slice(-100)
+    })
+    markRequest('submitting')
     let preserveComposer = false
     try {
       const acceptedRequest = await client.acceptConversationRequest({ conversationId, operationId, requestText: text, operation, ...(operation === 'prompt' && selectedWorkflowId ? { workflowRegistryId: selectedWorkflowId } : {}) })
       if (latestConversation.current !== conversationId) return
       if (!acceptedRequest.accepted || (acceptedRequest.conversationId !== undefined && acceptedRequest.conversationId !== conversationId) || (acceptedRequest.operationId !== undefined && acceptedRequest.operationId !== operationId)) {
-        if (acceptedRequest.status === 'not_started') clearOperationId(retryKey)
+        markRequest('failed', 'Runtime did not accept this request.')
         preserveComposer = true
         setError('The conversation request was not accepted. Retry to continue.')
         return
       }
+      markRequest('accepted')
       await syncCurrent()
       if (latestConversation.current !== conversationId) return
       if (operation === 'prompt') {
+        markRequest('dispatching')
         const requestMode = selectedWorkflowId ? { type: 'workflow' as const, workflowId: selectedWorkflowId } : { type: 'free_research' as const }
         const priorFeedback = dispatchFeedback
         const workflowArgumentContext = requestMode.type === 'workflow' && priorFeedback?.status === 'NEEDS_INPUT' && priorFeedback.workflowId === requestMode.workflowId
@@ -1378,6 +1499,7 @@ function AppContent(): ReactElement {
           if (result.feedback?.workflowId) setSelectedWorkflowId(result.feedback.workflowId)
           if (!result.feedback) setError('Workflow needs input, but the dispatch response did not include feedback details.')
         } else if (result.status === 'started') {
+          markRequest('running')
           setDispatchFeedback(undefined)
           setWorkflowRunId(result.runId ?? '')
           setThemeFrameworkRefreshInfo(undefined)
@@ -1387,7 +1509,8 @@ function AppContent(): ReactElement {
           setDispatchFeedback(undefined)
           const accepted = await client.command('prompt', text, { conversationId, operationId, researchBundleId: result.runId, researchPolicy: { contextPolicy, persistencePolicy } })
           if (latestConversation.current !== conversationId || accepted.conversationId !== conversationId) return
-          if (!accepted.accepted) { preserveComposer = true; setError('The chat request was not accepted. Retry to continue.'); return }
+          if (!accepted.accepted) { markRequest('failed', 'Runtime did not accept this request.'); preserveComposer = true; setError('The chat request was not accepted. Retry to continue.'); return }
+          markRequest('running')
           clearOperationId(retryKey)
           setStreaming(true); setThinking(false); setStreamText(''); setToolEvents([])
         }
@@ -1397,21 +1520,67 @@ function AppContent(): ReactElement {
       } else {
         const accepted = await client.command(operation, text, { conversationId, operationId })
         if (latestConversation.current !== conversationId || accepted.conversationId !== conversationId) return
-        if (!accepted.accepted) { preserveComposer = true; setError('The conversation request was not accepted. Retry to continue.'); return }
+        if (!accepted.accepted) { markRequest('failed', 'Runtime did not accept this request.'); preserveComposer = true; setError('The conversation request was not accepted. Retry to continue.'); return }
+        markRequest('running')
         clearOperationId(retryKey)
         setStreaming(true); setThinking(false); setStreamText(''); setToolEvents([])
       }
       if (!preserveComposer) setComposer('')
-    } catch (caught) { if (latestConversation.current === conversationId) setError(errorText(caught)) }
+    } catch (caught) {
+      let recovered = false
+      if (latestConversation.current === conversationId) {
+        try {
+          const authoritativeActivities = await client.conversationActivities(conversationId)
+          if (latestConversation.current !== conversationId) return
+          const acceptedActivity = authoritativeActivities.find((activity) => activity.conversationId === conversationId && activity.operationId === operationId && activity.status === 'started' && activity.outcome === 'workflow_started' && activity.workflowRunId)
+          if (acceptedActivity?.workflowRunId) {
+            const authoritativeWorkflow = await client.workflow(acceptedActivity.workflowRunId)
+            if (latestConversation.current !== conversationId || authoritativeWorkflow.runId !== acceptedActivity.workflowRunId) return
+            const recoveredProgress: RequestProgress = authoritativeWorkflow.status === 'completed' || authoritativeWorkflow.status === 'completed_with_review' ? 'completed'
+              : authoritativeWorkflow.status === 'cancelled' ? 'cancelled'
+                : authoritativeWorkflow.status === 'failed' || authoritativeWorkflow.status === 'blocked' ? 'failed' : 'running'
+            setActivities(authoritativeActivities)
+            setWorkflowRunId(authoritativeWorkflow.runId)
+            setWorkflow(authoritativeWorkflow)
+            markRequest(recoveredProgress, recoveredProgress === 'failed' ? authoritativeWorkflow.errorSummary ?? 'Workflow failed.' : undefined)
+            clearOperationId(retryKey)
+            setDispatchFeedback(undefined)
+            setError('')
+            setComposer('')
+            preserveComposer = false
+            recovered = true
+            void loadConversationHistory(conversationSearch, showArchivedConversations)
+          }
+        } catch {
+          // Keep the retryable failure state unless Runtime proves this exact operation started.
+        }
+      }
+      if (!recovered && latestConversation.current === conversationId) {
+        markRequest('failed', errorText(caught))
+        preserveComposer = true
+        setError(errorText(caught))
+      }
+    }
     finally { setBusy(false) }
   }
   const clearConversationView = (): void => {
+    setSession(undefined)
     setCurrentConversationSummary(undefined)
     setMessages([]); setActivities([]); setWorkflowRunId(''); setWorkflow(undefined); setThemeFrameworkRunId('')
     setWorkflowPollNotice(''); setWorkflowPollRetryable(false); setExecutionSummary(undefined); setDispatchFeedback(undefined); setDispatchResolution(undefined)
-    setStreaming(false); setStreamText(''); setThinking(false); setToolEvents([]); setQueue({ steering: 0, followUp: 0 })
   }
-  const abort = async (): Promise<void> => { setBusy(true); setError(''); try { await client.abort(); setStreaming(false); await syncCurrent() } catch (caught) { setError(errorText(caught)) } finally { setBusy(false) } }
+  const abort = async (): Promise<void> => {
+    const conversationId = session?.conversationId
+    setBusy(true); setError('')
+    try {
+      const result = await client.abort()
+      if (!result.accepted || !result.aborted) { setError('Runtime did not confirm that the active request stopped.'); return }
+      const current = await client.currentSession()
+      if (current.conversationId !== conversationId || current.isStreaming) { setError('Stop was accepted; Runtime still reports the request as active.') ; return }
+      updateConversationView(current.conversationId, (previous) => ({ ...previous, streaming: false, thinking: false, streamText: '' }))
+      await syncCurrent()
+    } catch (caught) { setError(errorText(caught)) } finally { setBusy(false) }
+  }
   const newConversation = async (): Promise<void> => {
     setBusy(true); setError(''); const epoch = ++requestEpoch.current; latestConversation.current = ''
     try { await client.newConversation(); if (epoch !== requestEpoch.current) return; clearConversationView(); await syncCurrent() }
@@ -1603,7 +1772,7 @@ function AppContent(): ReactElement {
     onMountKnowledgeBase: (knowledgeBaseId) => { void changeKnowledgeBase(knowledgeBaseId) },
     onUnmountKnowledgeBase: () => { void changeKnowledgeBase('') },
   }
-  return <div className="app-shell"><ApplicationSidebar route={route} knowledgeBase={knowledgeBase} settings={settings} settingsError={settingsError} settingsBusy={settingsBusy} interactionsDisabled={configurationBlocked} onNavigate={navigate} onLoadSettings={() => void loadSettings()} onModelChange={(value) => void changeModel(value)} settingsPanelProps={settingsPanelProps} /><div className="app-main">{route === 'research' ? <ResearchPage session={session} currentConversationSummary={currentConversationSummary} conversations={conversations} activities={activities} conversationSearch={conversationSearch} setConversationSearch={setConversationSearch} showArchivedConversations={showArchivedConversations} setShowArchivedConversations={setShowArchivedConversations} renameConversation={(id, name, version) => void renameConversation(id, name, version)} archiveConversation={(id, version) => void archiveConversation(id, version)} restoreConversation={(id, version) => void restoreConversation(id, version)} messages={messages} streaming={streaming} thinking={thinking} streamText={streamText} toolEvents={toolEvents} queue={queue} composer={composer} busy={busy} error={error} attachment={attachment} attachmentUiVersion={attachmentUiVersion} attachmentBusy={attachmentBusy} preview={preview} previewBusy={previewBusy} acceptanceBusy={acceptanceBusy} selectedCandidates={selectedCandidates} acceptance={acceptance} rightsForm={rightsForm} sourceForm={sourceForm} uploadStatus={uploadStatus} workflowRunId={workflowRunId} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} client={client} workflow={workflow} knowledgeBase={knowledgeBase} openReviewCases={openReviewCases} workflowDefinitions={workflowDefinitions} selectedWorkflowId={selectedWorkflowId} setSelectedWorkflowId={setSelectedWorkflowId} contextPolicy={contextPolicy} persistencePolicy={persistencePolicy} setContextPolicy={setContextPolicy} setPersistencePolicy={setPersistencePolicy} executionSummary={executionSummary} dispatchFeedback={dispatchFeedback} dispatchResolution={dispatchResolution} verifiedWorkflowBundleId={verifiedWorkflowBundleId} workflowPollNotice={workflowPollNotice} workflowPollRetryable={workflowPollRetryable} retryWorkflowPolling={() => { setWorkflowPollNotice(''); setWorkflowPollRetryable(false); setWorkflowPollAttempt((value) => value + 1) }} setComposer={setComposer} newConversation={() => void newConversation()} switchConversation={(id) => void switchConversation(id)} runCommand={(operation) => void runCommand(operation)} abort={() => void abort()} upload={(file) => void upload(file)} toggleCandidate={toggleCandidate} setRightsForm={setRightsForm} setSourceForm={setSourceForm} startPreview={() => void startRawDocumentPreview()} acceptCandidates={() => void acceptRawDocumentCandidates()} clearAttachment={clearAttachment} cancelWorkflow={() => void cancelWorkflow()} openWorkflowReport={openWorkflowReport} openWorkflowBundle={openWorkflowBundle} openWorkflowReview={openWorkflowReview} dismissError={() => setError('')} onNavigate={navigate} /> : route === 'briefs' ? <BriefsPage briefs={briefs} selected={selectedBrief} busy={briefsBusy} error={error} onSelect={(id) => void selectBrief(id)} /> : route === 'reports' ? <ReportsPage reports={reports} selected={selectedReport} busy={reportsBusy} error={error} onSelect={(id) => void selectReport(id)} /> : route === 'bundles' ? <ResearchBundlesPage bundles={bundles} selected={selectedBundle} busy={bundlesBusy} error={error} onSelect={(id) => void selectBundle(id)} sourceHits={sourceHits} sourceBusy={sourceBusy} onSearchSources={(query) => void searchSources(query)} /> : route === 'run' ? <ResearchRunPage client={client} onLaunched={onResearchLaunched} /> : route === 'graph' ? <KnowledgeGraphPage knowledgeBase={knowledgeBase} client={client} /> : route === 'sources' ? <DataSourcesPage client={client} /> : route === 'theses' ? <ThesisLifecyclePage client={client} knowledgeBase={knowledgeBase} /> : <ReviewsPage client={client} knowledgeBase={knowledgeBase} reviews={reviews} reviewDetail={reviewDetail} reviewsBusy={reviewsBusy} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} acceptance={acceptance} workflowRunId={workflowRunId} workflow={workflow} onSelect={(id) => void selectReview(id)} onCloseDetail={() => setReviewDetail(undefined)} />}</div></div>
+  return <div className="app-shell"><ApplicationSidebar route={route} knowledgeBase={knowledgeBase} settings={settings} settingsError={settingsError} settingsBusy={settingsBusy} interactionsDisabled={configurationBlocked} onNavigate={navigate} onLoadSettings={() => void loadSettings()} onModelChange={(value) => void changeModel(value)} settingsPanelProps={settingsPanelProps} /><div className="app-main">{route === 'research' ? <ResearchPage session={session} currentConversationSummary={currentConversationSummary} conversations={conversations} activities={activities} optimisticRequests={optimisticRequests.filter((request) => request.conversationId === session?.conversationId)} connectionState={connectionState} conversationSearch={conversationSearch} setConversationSearch={setConversationSearch} showArchivedConversations={showArchivedConversations} setShowArchivedConversations={setShowArchivedConversations} renameConversation={(id, name, version) => void renameConversation(id, name, version)} archiveConversation={(id, version) => void archiveConversation(id, version)} restoreConversation={(id, version) => void restoreConversation(id, version)} messages={messages} streaming={streaming} thinking={thinking} streamText={streamText} streamStartedAt={streamStartedAt} toolEvents={toolEvents} queue={queue} composer={composer} busy={busy} error={error} attachment={attachment} attachmentUiVersion={attachmentUiVersion} attachmentBusy={attachmentBusy} preview={preview} previewBusy={previewBusy} acceptanceBusy={acceptanceBusy} selectedCandidates={selectedCandidates} acceptance={acceptance} rightsForm={rightsForm} sourceForm={sourceForm} uploadStatus={uploadStatus} workflowRunId={workflowRunId} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} client={client} workflow={workflow} knowledgeBase={knowledgeBase} openReviewCases={openReviewCases} workflowDefinitions={workflowDefinitions} selectedWorkflowId={selectedWorkflowId} setSelectedWorkflowId={setSelectedWorkflowId} contextPolicy={contextPolicy} persistencePolicy={persistencePolicy} setContextPolicy={setContextPolicy} setPersistencePolicy={setPersistencePolicy} executionSummary={executionSummary} dispatchFeedback={dispatchFeedback} dispatchResolution={dispatchResolution} verifiedWorkflowBundleId={verifiedWorkflowBundleId} workflowPollNotice={workflowPollNotice} workflowPollRetryable={workflowPollRetryable} retryWorkflowPolling={() => { setWorkflowPollNotice(''); setWorkflowPollRetryable(false); setWorkflowPollAttempt((value) => value + 1) }} setComposer={setComposer} newConversation={() => void newConversation()} switchConversation={(id) => void switchConversation(id)} runCommand={(operation) => void runCommand(operation)} abort={() => void abort()} upload={(file) => void upload(file)} toggleCandidate={toggleCandidate} setRightsForm={setRightsForm} setSourceForm={setSourceForm} startPreview={() => void startRawDocumentPreview()} acceptCandidates={() => void acceptRawDocumentCandidates()} clearAttachment={clearAttachment} cancelWorkflow={() => void cancelWorkflow()} openWorkflowReport={openWorkflowReport} openWorkflowBundle={openWorkflowBundle} openWorkflowReview={openWorkflowReview} dismissError={() => setError('')} onNavigate={navigate} /> : route === 'briefs' ? <BriefsPage briefs={briefs} selected={selectedBrief} busy={briefsBusy} error={error} onSelect={(id) => void selectBrief(id)} /> : route === 'reports' ? <ReportsPage reports={reports} selected={selectedReport} busy={reportsBusy} error={error} onSelect={(id) => void selectReport(id)} /> : route === 'bundles' ? <ResearchBundlesPage bundles={bundles} selected={selectedBundle} busy={bundlesBusy} error={error} onSelect={(id) => void selectBundle(id)} sourceHits={sourceHits} sourceBusy={sourceBusy} onSearchSources={(query) => void searchSources(query)} /> : route === 'run' ? <ResearchRunPage client={client} onLaunched={onResearchLaunched} /> : route === 'graph' ? <KnowledgeGraphPage knowledgeBase={knowledgeBase} client={client} /> : route === 'sources' ? <DataSourcesPage client={client} /> : route === 'theses' ? <ThesisLifecyclePage client={client} knowledgeBase={knowledgeBase} /> : <ReviewsPage client={client} knowledgeBase={knowledgeBase} reviews={reviews} reviewDetail={reviewDetail} reviewsBusy={reviewsBusy} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} acceptance={acceptance} workflowRunId={workflowRunId} workflow={workflow} onSelect={(id) => void selectReview(id)} onCloseDetail={() => setReviewDetail(undefined)} />}</div></div>
 }
 
 export default function App(): ReactElement {

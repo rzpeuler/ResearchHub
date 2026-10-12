@@ -272,7 +272,7 @@ test('conversation APIs persist accepted request activity, metadata, archive sta
     const replay = await fetch(`${info.origin}/api/conversations/prompt`, { method: 'POST', headers, body: commandBody }); assert.equal(replay.status, 202)
     assert.equal(fixture.runtime.sessionRuntime.getCurrentMessages().filter((message) => message.role === 'user').length, userMessageCount)
     const messages = await fetch(`${info.origin}/api/conversations/messages`, { headers }); const messagesBody = await messages.json() as { conversationId: string; activities: { requestText: string; status: string; operation: string }[] }
-    assert.equal(messagesBody.conversationId, conversationId); assert.equal(messagesBody.activities[0]?.requestText, 'Persist this accepted prompt.'); assert.equal(messagesBody.activities[0]?.status, 'started')
+    assert.equal(messagesBody.conversationId, conversationId); assert.equal(messagesBody.activities[0]?.requestText, 'Persist this accepted prompt.'); assert.equal(messagesBody.activities[0]?.status, 'completed')
     const latestList = await fetch(`${info.origin}/api/conversations?archived=0`, { headers }); const latestVersion = ((await latestList.json() as { conversations: { conversationId: string; version: number }[] }).conversations.find((item) => item.conversationId === conversationId))!.version
     const rename = await fetch(`${info.origin}/api/conversations/${encodeURIComponent(conversationId)}/metadata`, { method: 'PATCH', headers, body: JSON.stringify({ name: 'Explicit title', expectedVersion: latestVersion }) })
     assert.equal(rename.status, 200); const renamed = await rename.json() as { name: string; titleSource: string; version: number }
@@ -411,6 +411,8 @@ test('Pi conversation defaults research persistence to deny, honors explicit pol
 test('Slice C HTTP conversation commands honor Pi preflight and preserve queue paths', async () => {
   const fixture = await makeRuntimeFixture(); const server = new ResearchHubRuntimeServer({ runtime: fixture.runtime, port: 0 }); let release!: () => void; let entered!: () => void
   const enteredPromise = new Promise<void>((resolve) => { entered = resolve }); const gate = new Promise<void>((resolve) => { release = resolve }); const unhandled: unknown[] = []; const onUnhandled = (reason: unknown) => { unhandled.push(reason) }
+  const piEvents: import('../../../app/runtime/client-events.ts').ClientEvent[] = []
+  const unsubscribeEvents = fixture.runtime.sessionRuntime.subscribeClientEvents((event) => piEvents.push(event))
   fixture.faux.setResponses([
     async () => { entered(); await gate; return fauxAssistantMessage('first completed') },
     fauxAssistantMessage('steer completed'),
@@ -434,8 +436,20 @@ test('Slice C HTTP conversation commands honor Pi preflight and preserve queue p
     await new Promise<void>((resolve) => setImmediate(resolve)); await new Promise<void>((resolve) => setImmediate(resolve))
     assert.equal(unhandled.length, 0)
     assert.equal(fixture.runtime.sessionRuntime.getCurrentMessages().some((message) => message.content === 'first prompt'), true)
+    const conversationId = fixture.runtime.sessionRuntime.getCurrentState().conversationId
+    const activities = await fixture.runtime.sessionRuntime.conversationActivities(conversationId)
+    const firstActivity = activities.find((activity) => activity.requestText === 'first prompt')
+    assert.ok(firstActivity?.piMessageId)
+    assert.equal(piEvents.some((event) => event.type === 'agent.started' && event.operationId === firstActivity.operationId), true)
+    assert.equal(fixture.runtime.sessionRuntime.getCurrentMessages().some((message) => message.piMessageId === firstActivity.piMessageId), true)
+    for (const requestText of ['steer while busy', 'follow up while busy']) {
+      const activity = activities.find((item) => item.requestText === requestText)
+      assert.ok(activity?.piMessageId)
+      assert.equal(fixture.runtime.sessionRuntime.getCurrentMessages().some((message) => message.piMessageId === activity.piMessageId), true)
+      assert.equal(piEvents.some((event) => event.type === 'message.started' && event.operationId === activity.operationId), true)
+    }
   } finally {
-    release(); process.off('unhandledRejection', onUnhandled); await server.close(); await fixture.runtime.close(); await rm(fixture.root, { recursive: true, force: true })
+    release(); unsubscribeEvents(); process.off('unhandledRejection', onUnhandled); await server.close(); await fixture.runtime.close(); await rm(fixture.root, { recursive: true, force: true })
   }
 })
 

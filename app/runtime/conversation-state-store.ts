@@ -30,9 +30,10 @@ const PII_TITLE_PATTERNS = [
 
 export type ConversationTitleSource = 'DEFAULT' | 'FIRST_MESSAGE' | 'WORKFLOW' | 'USER'
 export type ConversationRequestKind = 'chat' | 'workflow'
-export type AcceptedRequestLifecycle = 'accepted' | 'submitting' | 'ready_for_chat' | 'started' | 'not_started' | 'failed' | 'interrupted'
+export type AcceptedRequestLifecycle = 'accepted' | 'submitting' | 'ready_for_chat' | 'started' | 'completed' | 'cancelled' | 'not_started' | 'failed' | 'interrupted'
 export type ConversationSubmissionOutcome =
   | { readonly kind: 'chat'; readonly outcome: 'started' }
+  | { readonly kind: 'chat'; readonly outcome: 'completed' | 'cancelled' | 'failed'; readonly failureCode?: string }
   | { readonly kind: 'chat' | 'workflow'; readonly outcome: 'not_started'; readonly reasonCode: string }
 
 export interface AcceptedConversationRequest {
@@ -53,10 +54,11 @@ export interface AcceptedConversationRequest {
   readonly dispatchAttemptedAt?: string
   readonly startedAt?: string
   readonly failureCode?: string
-  readonly outcome?: 'chat_started' | 'workflow_started' | 'not_started'
+  readonly outcome?: 'chat_started' | 'chat_completed' | 'chat_cancelled' | 'workflow_started' | 'not_started'
   readonly outcomeReasonCode?: string
   readonly dispatchStatus?: 'started' | 'needs_input' | 'invalid_input' | 'unresolved_reference' | 'executor_unavailable' | 'free_research' | 'skill_plan'
   readonly finishedAt?: string
+  readonly piMessageId?: string
 }
 
 export interface ConversationStateFlags {
@@ -407,8 +409,23 @@ export class ConversationStateStore {
       if (outcome.kind !== request.kind && !(outcome.kind === 'workflow' && request.operation === 'prompt')) throw conflict('submission kind does not match the accepted request')
       if (outcome.kind === 'chat' && outcome.outcome === 'started') {
         if (request.lifecycle === 'started' && request.outcome === 'chat_started') return request
+        if (request.kind === 'chat' && ['completed', 'cancelled', 'failed', 'interrupted'].includes(request.lifecycle)) return request
         if (request.lifecycle !== 'submitting') throw conflict(`cannot complete ${request.lifecycle} request as started`)
         return { ...request, lifecycle: 'started', outcome: 'chat_started', startedAt: this.timestamp() }
+      }
+      if (outcome.kind === 'chat' && ['completed', 'cancelled', 'failed'].includes(outcome.outcome)) {
+        const lifecycle = outcome.outcome
+        const code = lifecycle === 'failed' ? validateFailureCode(outcome.failureCode ?? 'agent_error') : undefined
+        const matchingTerminal = (lifecycle === 'completed' && request.lifecycle === 'completed' && request.outcome === 'chat_completed')
+          || (lifecycle === 'cancelled' && request.lifecycle === 'cancelled' && request.outcome === 'chat_cancelled')
+          || (lifecycle === 'failed' && request.lifecycle === 'failed' && request.failureCode === code)
+        if (matchingTerminal) return request
+        if (request.kind !== 'chat' || request.lifecycle !== 'started' || request.outcome !== 'chat_started') throw conflict(`cannot complete ${request.lifecycle} request as ${lifecycle}`)
+        if (lifecycle === 'failed') {
+          const { outcome: _outcome, ...failedRequest } = request
+          return { ...failedRequest, lifecycle, failureCode: code!, finishedAt: this.timestamp() }
+        }
+        return { ...request, lifecycle, outcome: lifecycle === 'completed' ? 'chat_completed' : 'chat_cancelled', finishedAt: this.timestamp() }
       }
       if (outcome.outcome === 'not_started') {
         if (request.lifecycle === 'not_started' && request.outcomeReasonCode === reasonCode) return request
@@ -416,6 +433,18 @@ export class ConversationStateStore {
         return { ...request, lifecycle: 'not_started', outcome: 'not_started', outcomeReasonCode: reasonCode, finishedAt: this.timestamp() }
       }
       throw conflict('Workflow starts must be recorded through markWorkflowStarted')
+    })
+  }
+
+  /** Records a Pi user-message identity only after Runtime matched the public SessionEntry to its originating user event object. */
+  async recordPiUserMessageId(conversationId: string, operationId: string, piMessageId: string): Promise<ConversationState> {
+    const id = normalizeConversationId(conversationId)
+    const opId = normalizeOperationId(operationId)
+    const messageId = normalizePiMessageId(piMessageId)
+    return this.updateRequest(id, opId, (request) => {
+      if (request.piMessageId === messageId) return request
+      if (request.piMessageId !== undefined) throw conflict('operation is already associated with a different Pi message')
+      return { ...request, piMessageId: messageId }
     })
   }
 
@@ -489,12 +518,12 @@ export class ConversationStateStore {
     for (const listed of states) {
       const changed = await this.serialized(listed.conversationId, async () => {
         const current = await this.read(listed.conversationId)
-        if (!current || !current.acceptedRequests.some((request) => request.lifecycle === 'submitting' || (request.lifecycle === 'started' && request.outcome === 'workflow_started'))) return false
+        if (!current || !current.acceptedRequests.some((request) => request.lifecycle === 'submitting' || (request.lifecycle === 'started' && (request.outcome === 'workflow_started' || request.outcome === 'chat_started')))) return false
         const acceptedRequests = current.acceptedRequests.map((request) => {
-          if (request.lifecycle === 'submitting') return { ...request, lifecycle: 'interrupted' as const }
-          if (request.lifecycle === 'started' && request.outcome === 'workflow_started') {
+          if (request.lifecycle === 'submitting') return { ...request, lifecycle: 'interrupted' as const, finishedAt: this.timestamp() }
+          if (request.lifecycle === 'started' && (request.outcome === 'workflow_started' || request.outcome === 'chat_started')) {
             const { outcome: _outcome, ...interrupted } = request
-            return { ...interrupted, lifecycle: 'interrupted' as const }
+            return { ...interrupted, lifecycle: 'interrupted' as const, finishedAt: this.timestamp() }
           }
           return request
         })
@@ -677,7 +706,7 @@ function validateState(value: unknown, expectedId: string): asserts value is Con
 
 function validateRequest(value: unknown): asserts value is AcceptedConversationRequest {
   if (!plainObject(value)) throw corrupt('accepted request record must be an object')
-  exactKeys(value, ['kind', 'operation', 'operationId', 'requestDigest', 'requestText', 'acceptedAt', 'acceptedWorkflowRegistryId', 'workflowRegistryId', 'workflowRunId', 'reservedWorkflowRunId', 'workflowSubject', 'workflowTitleCandidate', 'lifecycle', 'dispatchAttemptedAt', 'startedAt', 'failureCode', 'outcome', 'outcomeReasonCode', 'dispatchStatus', 'finishedAt'], ['kind', 'operation', 'operationId', 'requestDigest', 'requestText', 'acceptedAt', 'lifecycle'])
+  exactKeys(value, ['kind', 'operation', 'operationId', 'requestDigest', 'requestText', 'acceptedAt', 'acceptedWorkflowRegistryId', 'workflowRegistryId', 'workflowRunId', 'reservedWorkflowRunId', 'workflowSubject', 'workflowTitleCandidate', 'lifecycle', 'dispatchAttemptedAt', 'startedAt', 'failureCode', 'outcome', 'outcomeReasonCode', 'dispatchStatus', 'finishedAt', 'piMessageId'], ['kind', 'operation', 'operationId', 'requestDigest', 'requestText', 'acceptedAt', 'lifecycle'])
   if (value.kind !== 'chat' && value.kind !== 'workflow') throw corrupt('accepted request kind is invalid')
   if (!['prompt', 'steer', 'follow_up'].includes(String(value.operation))) throw corrupt('accepted request operation is invalid')
   try { normalizeOperationId(value.operationId) } catch (error) { throw corrupt('accepted operationId is invalid', error) }
@@ -691,25 +720,32 @@ function validateRequest(value: unknown): asserts value is AcceptedConversationR
   if (value.reservedWorkflowRunId !== undefined) { try { normalizeReservedRunId(value.reservedWorkflowRunId) } catch (error) { throw corrupt('reservedWorkflowRunId is invalid', error) } }
   if (value.workflowSubject !== undefined) { try { if (normalizeConversationTitle(value.workflowSubject) !== value.workflowSubject) throw corrupt('workflowSubject is not normalized') } catch (error) { if (error instanceof ConversationStateStoreError && error.code === 'corrupt') throw error; throw corrupt('workflowSubject is invalid', error) } }
   if (value.workflowTitleCandidate !== undefined) { try { if (normalizeConversationTitle(value.workflowTitleCandidate) !== value.workflowTitleCandidate) throw corrupt('workflowTitleCandidate is not normalized') } catch (error) { if (error instanceof ConversationStateStoreError && error.code === 'corrupt') throw error; throw corrupt('workflowTitleCandidate is invalid', error) } }
-  if (!['accepted', 'submitting', 'ready_for_chat', 'started', 'not_started', 'failed', 'interrupted'].includes(String(value.lifecycle))) throw corrupt('accepted request lifecycle is invalid')
+  if (!['accepted', 'submitting', 'ready_for_chat', 'started', 'completed', 'cancelled', 'not_started', 'failed', 'interrupted'].includes(String(value.lifecycle))) throw corrupt('accepted request lifecycle is invalid')
   for (const field of ['acceptedAt', 'dispatchAttemptedAt', 'startedAt', 'finishedAt'] as const) if (value[field] !== undefined) checkedTimestamp(value[field], field)
   if (value.failureCode !== undefined) { try { validateFailureCode(value.failureCode) } catch (error) { throw corrupt('failureCode is invalid', error) } }
-  if (value.outcome !== undefined && !['chat_started', 'workflow_started', 'not_started'].includes(String(value.outcome))) throw corrupt('accepted request outcome is invalid')
+  if (value.outcome !== undefined && !['chat_started', 'chat_completed', 'chat_cancelled', 'workflow_started', 'not_started'].includes(String(value.outcome))) throw corrupt('accepted request outcome is invalid')
   if (value.outcomeReasonCode !== undefined) { try { validateFailureCode(value.outcomeReasonCode) } catch (error) { throw corrupt('outcomeReasonCode is invalid', error) } }
   if (value.dispatchStatus !== undefined && !['started', 'needs_input', 'invalid_input', 'unresolved_reference', 'executor_unavailable', 'free_research', 'skill_plan'].includes(String(value.dispatchStatus))) throw corrupt('dispatchStatus is invalid')
+  if (value.piMessageId !== undefined) { try { normalizePiMessageId(value.piMessageId) } catch (error) { throw corrupt('piMessageId is invalid', error) } }
   const state = value.lifecycle as AcceptedRequestLifecycle
   if (state === 'accepted' && (value.dispatchAttemptedAt !== undefined || value.workflowRunId !== undefined || value.reservedWorkflowRunId !== undefined || value.workflowSubject !== undefined || value.workflowTitleCandidate !== undefined || value.startedAt !== undefined || value.failureCode !== undefined || value.outcome !== undefined || value.outcomeReasonCode !== undefined || value.dispatchStatus !== undefined || value.finishedAt !== undefined)) throw corrupt('accepted request has invalid lifecycle fields')
   if (state === 'submitting' && (value.dispatchAttemptedAt === undefined || value.workflowRunId !== undefined || value.startedAt !== undefined || value.failureCode !== undefined || value.outcome !== undefined || value.outcomeReasonCode !== undefined || value.finishedAt !== undefined)) throw corrupt('submitting request has invalid lifecycle fields')
   if (state === 'ready_for_chat' && (value.operation !== 'prompt' || value.dispatchAttemptedAt === undefined || value.workflowRunId !== undefined || value.reservedWorkflowRunId !== undefined || value.startedAt !== undefined || value.failureCode !== undefined || value.outcome !== undefined || value.outcomeReasonCode !== undefined || !['free_research', 'skill_plan'].includes(String(value.dispatchStatus)) || value.finishedAt !== undefined)) throw corrupt('ready_for_chat request has invalid lifecycle fields')
   if (state === 'started' && (value.dispatchAttemptedAt === undefined || value.startedAt === undefined || value.failureCode !== undefined || value.finishedAt !== undefined || (value.kind === 'chat' && (value.outcome !== 'chat_started' || value.workflowRegistryId !== undefined || value.workflowRunId !== undefined || value.reservedWorkflowRunId !== undefined)) || (value.kind === 'workflow' && (value.outcome !== 'workflow_started' || value.workflowRegistryId === undefined || value.workflowRunId === undefined)))) throw corrupt('started request has invalid lifecycle fields')
+  if (state === 'completed' && (value.kind !== 'chat' || value.outcome !== 'chat_completed' || value.startedAt === undefined || value.finishedAt === undefined || value.failureCode !== undefined || value.workflowRegistryId !== undefined || value.workflowRunId !== undefined || value.reservedWorkflowRunId !== undefined)) throw corrupt('completed request has invalid lifecycle fields')
+  if (state === 'cancelled' && (value.kind !== 'chat' || value.outcome !== 'chat_cancelled' || value.startedAt === undefined || value.finishedAt === undefined || value.failureCode !== undefined || value.workflowRegistryId !== undefined || value.workflowRunId !== undefined || value.reservedWorkflowRunId !== undefined)) throw corrupt('cancelled request has invalid lifecycle fields')
   if (state === 'not_started' && (value.outcome !== 'not_started' || value.outcomeReasonCode === undefined || value.finishedAt === undefined || value.workflowRunId !== undefined || value.reservedWorkflowRunId !== undefined || value.startedAt !== undefined)) throw corrupt('not_started request has invalid lifecycle fields')
-  if (state === 'failed' && (value.failureCode === undefined || value.finishedAt === undefined || value.workflowRunId !== undefined || value.startedAt !== undefined || value.outcome !== undefined || value.outcomeReasonCode !== undefined)) throw corrupt('failed request has invalid lifecycle fields')
-  if (state === 'interrupted' && (value.dispatchAttemptedAt === undefined || value.failureCode !== undefined || value.outcome !== undefined || value.outcomeReasonCode !== undefined || value.finishedAt !== undefined || (value.startedAt !== undefined && value.workflowRunId === undefined) || (value.workflowRunId !== undefined && value.reservedWorkflowRunId !== undefined))) throw corrupt('interrupted request has invalid lifecycle fields')
+  if (state === 'failed' && (value.failureCode === undefined || value.finishedAt === undefined || value.workflowRunId !== undefined || (value.startedAt !== undefined && value.kind !== 'chat') || value.outcome !== undefined || value.outcomeReasonCode !== undefined)) throw corrupt('failed request has invalid lifecycle fields')
+  if (state === 'interrupted' && (value.dispatchAttemptedAt === undefined || value.failureCode !== undefined || value.outcome !== undefined || value.outcomeReasonCode !== undefined || (value.workflowRunId !== undefined && value.reservedWorkflowRunId !== undefined))) throw corrupt('interrupted request has invalid lifecycle fields')
   if (value.kind === 'chat' && value.workflowRegistryId !== undefined) throw corrupt('chat request cannot store a Workflow registry ID')
 }
 
 function normalizeOperationId(value: unknown): string {
   if (typeof value !== 'string' || !OPERATION_ID_PATTERN.test(value)) throw invalid('operationId is invalid')
+  return value
+}
+function normalizePiMessageId(value: unknown): string {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(value)) throw invalid('Pi message ID is invalid')
   return value
 }
 function normalizeReservedRunId(value: unknown): string {

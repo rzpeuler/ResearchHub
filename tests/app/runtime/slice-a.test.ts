@@ -57,6 +57,48 @@ test('Slice A uses persistent Pi sessions and restores a prior conversation', as
   }
 })
 
+test('Slice A binds accepted operations to exact persisted Pi user SessionEntry IDs', async () => {
+  const fixture = await makeFixture()
+  let runtime: Awaited<ReturnType<typeof createResearchHubApplicationRuntime>> | undefined
+  try {
+    runtime = await createResearchHubApplicationRuntime({ cwd: fixture.cwd, agentDir: fixture.agentDir, sessionDir: fixture.sessionDir, modelRuntime: fixture.modelRuntime, model: fixture.faux.getModel(), reasoningExecutor: new FixtureExecutor() })
+    const conversationId = runtime.sessionRuntime.getCurrentState().conversationId
+    const events: import('../../../app/runtime/client-events.ts').ClientEvent[] = []
+    runtime.sessionRuntime.subscribeClientEvents((event) => events.push(event))
+    const store = runtime.sessionRuntime.conversationStateStore
+    fixture.faux.setResponses([fauxAssistantMessage('first response'), fauxAssistantMessage('second response')])
+
+    const identities: string[] = []
+    for (const operationId of ['repeat-op-one', 'repeat-op-two']) {
+      await store.acceptRequest(conversationId, { kind: 'chat', operation: 'prompt', operationId, requestText: 'repeat this exact prompt' })
+      await store.claimChatCommand(conversationId, operationId)
+      const started = runtime.sessionRuntime.startPrompt('repeat this exact prompt', undefined, undefined, operationId)
+      await started.accepted
+      await store.completeSubmission(conversationId, operationId, { kind: 'chat', outcome: 'started' })
+      await started.completion
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const request = (await store.get(conversationId))?.acceptedRequests.find((entry) => entry.operationId === operationId)
+        if (request?.piMessageId !== undefined) { identities.push(request.piMessageId); break }
+        await new Promise<void>((resolve) => setImmediate(resolve))
+      }
+    }
+
+    assert.equal(identities.length, 2)
+    assert.notEqual(identities[0], identities[1])
+    const messages = runtime.sessionRuntime.getCurrentMessages()
+    const repeatedUsers = messages.filter((message) => message.role === 'user' && message.content === 'repeat this exact prompt')
+    assert.equal(repeatedUsers.length, 2)
+    assert.deepEqual(repeatedUsers.map((message) => message.piMessageId), identities)
+    assert.equal(events.some((event) => event.type === 'agent.started' && event.operationId === 'repeat-op-one'), true)
+    assert.equal(events.some((event) => event.type === 'message.delta' && event.operationId === 'repeat-op-two'), true)
+    const activities = await runtime.sessionRuntime.conversationActivities(conversationId)
+    assert.deepEqual(activities.map((activity) => activity.piMessageId), identities)
+  } finally {
+    await runtime?.close()
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
 test('Slice A replaces only the active Pi conversation and preserves services and Workflow runs', async () => {
   const fixture = await makeFixture()
   let runtime: Awaited<ReturnType<typeof createResearchHubApplicationRuntime>> | undefined
