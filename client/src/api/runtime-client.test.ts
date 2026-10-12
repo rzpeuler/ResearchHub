@@ -321,6 +321,7 @@ describe('RuntimeClient', () => {
       '/api/conversations/c%2F1/restore',
       '/api/conversations/c%2F1/activities',
     ])
+    expect(calls[3]?.init?.method).toBe('PATCH')
     expect(JSON.parse(String(calls[3]?.init?.body))).toEqual({ name: 'Renamed', expectedVersion: 3 })
     expect(JSON.parse(String(calls[4]?.init?.body))).toEqual({ expectedVersion: 4 })
     expect(JSON.parse(String(calls[5]?.init?.body))).toEqual({ expectedVersion: 5 })

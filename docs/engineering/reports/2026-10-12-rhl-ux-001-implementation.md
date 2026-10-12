@@ -1,6 +1,6 @@
 # RHL-UX-001 — Session Reliability and History Implementation Report
 
-- Status: `IMPLEMENTED / CTO ACCEPTANCE PENDING`
+- Status: `ACCEPTANCE_COMPLETE / CTO REVIEW PENDING`
 - Task: RHL-UX-001 — Session Reliability & History Management.
 - Baseline: `origin/main` at `8a7f49d43a01aefd23b72c5103481ad5bdac51aa`.
 - Branch: `codex/ux-001-session-reliability`.
@@ -33,17 +33,33 @@ Commands executed from the isolated UX-001 worktree:
 | `npm run client:test` | PASS — 9 files, 134 tests. |
 | `npm run typecheck -- --pretty false` | PASS. |
 | `npm run client:typecheck` | PASS. |
-| `npm run client:build` | PASS — 182 modules. Vite reports the existing 647.37 kB JavaScript chunk advisory (>500 kB). |
+| `npm run client:build` | PASS — 182 modules. Vite reports the 648.81 kB JavaScript chunk advisory (>500 kB). |
 | `git diff --check` | PASS. |
-| `npm test` | Client suite PASS — 9 files, 134 tests. Node suite exits 1 on one inherited FIX-015 assertion: generated schema JSON length is 6881, expected 6359. Re-running `npx tsx --test tests/validation/codex-production-industry-schema-compatibility.test.ts` in the clean `origin/main` worktree at the same baseline reproduces the same failure. UX-001's focused Node suite passes 105/105. |
+| Focused UX-001 Runtime suite | PASS — 105 tests, 0 failures. |
+| `npm run client:test` | PASS — 9 files, 134 tests. |
+| `npm test` on UX-001 branch | Client suite PASS — 9 files, 134 tests. Node suite: 2,206 passed, 21 failed (2,227 total). |
+| `npm test` on clean `origin/main` baseline | Client suite PASS — 9 files, 124 tests. Node suite: 2,185 passed, 21 failed (2,206 total). The exact 21 failing `(test file, test title)` pairs are identical on both branches; UX-001 adds 21 passing Node tests and no new full-suite failures. Baseline failures are in `research-skill-architecture`, `theme-workspace-projection`, `competition-module-gateway`, `codex-module-remaining-schema-deltas`, and `codex-production-industry-schema-compatibility`. The existing FIX-015 assertion expects generated schema JSON length 6,359 while both branches observe 6,881. |
 
 The UX lifecycle integration starts the actual ResearchHub Runtime HTTP server with a persistent Pi session manager, creates and hashes an isolated temporary Knowledge Base, exercises request acceptance, Workflow linkage, archive/search/restore, Pi transcript switching and Runtime restart, and verifies the Knowledge Base file hash snapshot remains unchanged. It uses a registered faux Pi provider and injected controlled Workflow adapter; no external model credential, authenticated provider request, or user's mounted Knowledge Base is used. This is not a claim of real provider E2E.
+
+### Browser and Runtime acceptance
+
+The production client build was served by the actual `ResearchHubRuntimeServer` on a dynamically assigned loopback port, backed by a fresh isolated Schema 0.4 Knowledge Base, persistent Pi SessionManager, faux Pi provider with model-network access disabled, and a controlled company-research adapter. No external model credentials or mounted user Knowledge Base were used. The fixture Knowledge Base SHA-256 was unchanged across Runtime restart.
+
+- B1 — Submitted `帮我研究002640`; the first-message title was retained. Switching to another conversation and back, then refreshing, restored the selected conversation and its activity.
+- B2 — Explicit Company Research resolved fixture entity `跨境通`; the accepted request and Workflow run ID were visible once each in the chronological Conversation timeline. Refresh retained both.
+- B3 — Initial UI rename exposed a real method mismatch: the client sent `POST` to a `PATCH` Runtime route. Changed the metadata client call to `PATCH`, added a method assertion, rebuilt, and retested rename through the browser. User title `新对话` remained locked after another Workflow start.
+- B4 — Archived the conversation while its Workflow was running, opened it in the archive list, and restored it. The run remained running throughout archive/restore; its accepted activities and run IDs remained visible.
+- B5 — Created and submitted a second conversation, then switched back. Its request stayed in its own timeline; the original conversation retained its own four accepted activities and Workflow IDs.
+- Runtime restart — The selected conversation, manual title, and all four activities restored in chronological order without duplicates. The three started Workflow runs were marked `interrupted` after restart, as specified for process-local Workflow execution; no active progress was fabricated.
+
+Browser fixture IDs observed during this run: conversation `01a12f90-33c4-7532-b8e2-7dc43b065faa`; Workflow runs `b5940a97-db18-404c-9d6c-005a012502e9`, `443e2002-c88c-49e7-8b81-9f332de8d632`, and `7087dc37-52fb-4a2f-a6a2-7fe97a73db8b`. These are isolated test data, not production records.
 
 ## D. Limits and risks
 
 - Live Workflow status is process-local in the existing Workflow service. After Runtime restart, a persisted run association is shown as interrupted; the task does not claim the volatile execution can continue or be reconstructed.
 - Title PII/credential checks are conservative pattern heuristics and cannot identify every sensitive phrase. The first-message title falls back to `新对话` when a recognized sensitive pattern is present; accepted request activity remains user content.
-- Client production build emits a Vite chunk-size advisory for the 647.37 kB JavaScript asset; the build itself passes.
+- Client production build emits a Vite chunk-size advisory for the 648.81 kB JavaScript asset; the build itself passes.
 
 ## E. Git delivery
 

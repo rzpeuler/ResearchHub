@@ -1382,8 +1382,9 @@ describe('Homepage shell', () => {
     const dispatchIds: string[] = []
     const summary = { conversationId: 'c1', name: 'Research', titleSource: 'default', archived: false, version: 1, latestWorkflowRunId: '', updatedAt: 'now', messageCount: 0, isActive: true }
     const activityRows = [
-      { activityId: 'a1', conversationId: 'c1', operationId: 'old-op', kind: 'accepted_request', operation: 'prompt', status: 'started', outcome: 'workflow_started', requestText: 'Retry safely', createdAt: 'now', workflowRunId: 'wf-1' },
-      { activityId: 'a2', conversationId: 'c1', operationId: 'workflow-only', kind: 'accepted_request', operation: 'prompt', status: 'not_started', outcome: 'not_started', requestText: 'Workflow only request', createdAt: 'now' },
+      { activityId: 'a1', conversationId: 'c1', operationId: 'old-op', kind: 'accepted_request', operation: 'prompt', status: 'started', outcome: 'chat_started', requestText: 'Retry safely', createdAt: '2026-01-01T10:00:10.000Z' },
+      { activityId: 'a2', conversationId: 'c1', operationId: 'workflow-op', kind: 'accepted_request', operation: 'prompt', status: 'started', outcome: 'workflow_started', requestText: 'Workflow started request', createdAt: '2026-01-01T10:01:30.000Z', workflowRunId: 'wf-1' },
+      { activityId: 'a3', conversationId: 'c1', operationId: 'workflow-only', kind: 'accepted_request', operation: 'prompt', status: 'not_started', outcome: 'not_started', requestText: 'Workflow only request', createdAt: '2026-01-01T10:02:00.000Z' },
     ]
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input)
@@ -1391,7 +1392,7 @@ describe('Homepage shell', () => {
       if (path === '/api/research/workflows') return json({ workflows: [] })
       if (path === '/api/settings') return json({ revision: 1, model: {}, models: [], knowledgeBases: [] })
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', name: 'Research', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
-      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [{ role: 'user', content: 'Retry safely' }], activities: activityRows })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [{ role: 'user', content: 'Retry safely', timestamp: '2026-01-01T10:00:00.000Z' }, { role: 'assistant', content: 'Prior answer', timestamp: '2026-01-01T10:01:00.000Z' }], activities: activityRows })
       if (path === '/api/conversations' || path.startsWith('/api/conversations?')) return json({ conversations: [summary] })
       if (path === '/api/conversations/requests/accept') { acceptIds.push((JSON.parse(String(init?.body)) as { operationId: string }).operationId); return json({ accepted: true, status: 'accepted' }) }
       if (path === '/api/research/dispatch') {
@@ -1419,8 +1420,12 @@ describe('Homepage shell', () => {
     expect(acceptIds[1]).toBe(acceptIds[0])
     expect(dispatchIds[1]).toBe(dispatchIds[0])
     await screen.findByText('Workflow only request')
-    expect(document.querySelectorAll('.message.user .message-body')).toHaveLength(1)
-    expect(screen.getByText('Workflow only request')).toBeTruthy()
+    const timeline = screen.getByRole('region', { name: 'Conversation timeline' })
+    const visibleRows = Array.from(timeline.querySelectorAll('.message-body')).map((node) => node.textContent)
+    expect(visibleRows).toEqual(['Retry safely', 'Prior answer', 'Workflow started request', 'Workflow only request'])
+    expect(timeline.querySelectorAll('[data-activity-id="a1"]')).toHaveLength(0)
+    expect(timeline.querySelector('[data-activity-id="a2"] .message-meta')?.textContent).toContain('Submitted request')
+    expect(timeline.querySelector('[data-activity-id="a2"] .activity-meta')?.textContent).toContain('wf-1')
   })
 
   it('refreshes accepted activity and title before a delayed Workflow dispatch resolves', async () => {
@@ -1454,7 +1459,10 @@ describe('Homepage shell', () => {
     fireEvent.click(screen.getByRole('button', { name: /Send/ }))
     await waitFor(() => expect(dispatchStarted).toBe(true))
     expect(await screen.findByRole('heading', { level: 1, name: 'Persisted accepted request' })).toBeTruthy()
-    expect(screen.getByRole('region', { name: 'Workflow activity' }).querySelector('.activity-request-text')?.textContent).toBe('Persisted accepted request')
+    const timeline = screen.getByRole('region', { name: 'Conversation timeline' })
+    expect(timeline.querySelector('[data-activity-id="accepted-1"] .message-body')?.textContent).toBe('Persisted accepted request')
+    expect(timeline.querySelector('[data-activity-id="accepted-1"] .message-meta')?.textContent).toContain('You · Submitted request')
+    expect(timeline.querySelector('[data-activity-id="accepted-1"] .activity-meta')?.textContent).toContain('Accepted')
     const acceptIndex = calls.lastIndexOf('POST /api/conversations/requests/accept')
     const refreshedMessagesIndex = calls.findIndex((call, index) => index > acceptIndex && call === 'GET /api/conversations/messages')
     const dispatchIndex = calls.indexOf('POST /api/research/dispatch')
