@@ -117,6 +117,41 @@ test('revision checks reject stale writes and archive/restore preserves all stat
   } finally { await f.close() }
 })
 
+test('concurrent rename and archive mutations sharing a revision commit one writer and reject the stale loser', async () => {
+  const renameFirst = await fixture()
+  try {
+    const initial = await renameFirst.store.ensure('rename-first-session')
+    const [rename, archive] = await Promise.allSettled([
+      renameFirst.store.renameConversation('rename-first-session', '用户标题', initial.revision),
+      renameFirst.store.archiveConversation('rename-first-session', true, initial.revision),
+    ])
+    assert.equal(rename.status, 'fulfilled')
+    assert.equal(archive.status, 'rejected')
+    if (archive.status === 'rejected') expectStoreError(archive.reason, 'conflict')
+    const renamed = await renameFirst.store.get('rename-first-session')
+    assert.equal(renamed?.title, '用户标题')
+    assert.equal(renamed?.titleSource, 'USER')
+    assert.equal(renamed?.archived, false)
+    assert.equal(renamed?.revision, initial.revision + 1)
+  } finally { await renameFirst.close() }
+
+  const archiveFirst = await fixture()
+  try {
+    const initial = await archiveFirst.store.ensure('archive-first-session')
+    const [archive, rename] = await Promise.allSettled([
+      archiveFirst.store.archiveConversation('archive-first-session', true, initial.revision),
+      archiveFirst.store.renameConversation('archive-first-session', '过期标题', initial.revision),
+    ])
+    assert.equal(archive.status, 'fulfilled')
+    assert.equal(rename.status, 'rejected')
+    if (rename.status === 'rejected') expectStoreError(rename.reason, 'conflict')
+    const final = await archiveFirst.store.get('archive-first-session')
+    assert.equal(final?.archived, true)
+    assert.equal(final?.title, DEFAULT_CONVERSATION_TITLE)
+    assert.equal(final?.revision, initial.revision + 1)
+  } finally { await archiveFirst.close() }
+})
+
 test('operationId replay is idempotent only for an identical text and Workflow intent', async () => {
   const f = await fixture()
   try {

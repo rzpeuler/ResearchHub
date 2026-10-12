@@ -29,16 +29,15 @@ Commands executed from the isolated UX-001 worktree:
 
 | Command | Result |
 |---|---|
-| `npx tsx --test tests/app/runtime/conversation-state-store.test.ts tests/app/runtime/slice-a.test.ts tests/app/runtime/slice-b.test.ts tests/app/runtime/slice-c.test.ts tests/app/runtime/homepage-smoke.test.ts tests/app/runtime/ux001-lifecycle.integration.test.ts tests/app/services/research-dispatch-service.test.ts tests/app/services/registries.test.ts` | PASS — 105 tests, 0 failures. |
+| `npx tsx --test tests/app/runtime/conversation-state-store.test.ts tests/app/runtime/slice-a.test.ts tests/app/runtime/slice-b.test.ts tests/app/runtime/slice-c.test.ts tests/app/runtime/homepage-smoke.test.ts tests/app/runtime/ux001-lifecycle.integration.test.ts tests/app/services/research-dispatch-service.test.ts tests/app/services/registries.test.ts` | PASS — 106 tests, 0 failures. |
 | `npm run client:test` | PASS — 9 files, 134 tests. |
 | `npm run typecheck -- --pretty false` | PASS. |
 | `npm run client:typecheck` | PASS. |
 | `npm run client:build` | PASS — 182 modules. Vite reports the 648.81 kB JavaScript chunk advisory (>500 kB). |
 | `git diff --check` | PASS. |
-| Focused UX-001 Runtime suite | PASS — 105 tests, 0 failures. |
-| `npm run client:test` | PASS — 9 files, 134 tests. |
-| `npm test` on UX-001 branch | Client suite PASS — 9 files, 134 tests. Node suite: 2,206 passed, 21 failed (2,227 total). |
-| `npm test` on clean `origin/main` baseline | Client suite PASS — 9 files, 124 tests. Node suite: 2,185 passed, 21 failed (2,206 total). The exact 21 failing `(test file, test title)` pairs are identical on both branches; UX-001 adds 21 passing Node tests and no new full-suite failures. Baseline failures are in `research-skill-architecture`, `theme-workspace-projection`, `competition-module-gateway`, `codex-module-remaining-schema-deltas`, and `codex-production-industry-schema-compatibility`. The existing FIX-015 assertion expects generated schema JSON length 6,359 while both branches observe 6,881. |
+| Focused UX-001 Runtime suite | PASS — 106 tests, 0 failures. |
+| `npm test` on UX-001 branch | Client suite PASS — 9 files, 134 tests. Node suite: 2,207 passed, 21 failed (2,228 total). |
+| `npm test` on clean `origin/main` baseline | Client suite PASS — 9 files, 124 tests. Node suite: 2,185 passed, 21 failed (2,206 total). Full error blocks—including actual/expected values, source positions, and stack frames—match after normalizing checkout paths and elapsed-time noise; SHA-256 is `bc52d9b732f93a6cd9cabfee672eed8be93423f8f0925f6b61cf4c573f58cb81` on both sides. UX-001 adds 22 passing Node tests and no new full-suite failures. The existing FIX-015 assertion expects generated schema JSON length 6,359 while both branches observe 6,881. Detailed comparison: [RHL-UX-001-ACCEPTANCE-001 Evidence](../../../tests/validation/evidence/RHL-UX-001-ACCEPTANCE-001.md). |
 
 The UX lifecycle integration starts the actual ResearchHub Runtime HTTP server with a persistent Pi session manager, creates and hashes an isolated temporary Knowledge Base, exercises request acceptance, Workflow linkage, archive/search/restore, Pi transcript switching and Runtime restart, and verifies the Knowledge Base file hash snapshot remains unchanged. It uses a registered faux Pi provider and injected controlled Workflow adapter; no external model credential, authenticated provider request, or user's mounted Knowledge Base is used. This is not a claim of real provider E2E.
 
@@ -53,19 +52,21 @@ The production client build was served by the actual `ResearchHubRuntimeServer` 
 - B5 — Created and submitted a second conversation, then switched back. Its request stayed in its own timeline; the original conversation retained its own four accepted activities and Workflow IDs.
 - Runtime restart — The selected conversation, manual title, and all four activities restored in chronological order without duplicates. The three started Workflow runs were marked `interrupted` after restart, as specified for process-local Workflow execution; no active progress was fabricated.
 
-Browser fixture IDs observed during this run: conversation `01a12f90-33c4-7532-b8e2-7dc43b065faa`; Workflow runs `b5940a97-db18-404c-9d6c-005a012502e9`, `443e2002-c88c-49e7-8b81-9f332de8d632`, and `7087dc37-52fb-4a2f-a6a2-7fe97a73db8b`. These are isolated test data, not production records.
+Browser fixture IDs, UI observations, API assertions, baseline failure comparison, and safety evidence are recorded in [RHL-UX-001-ACCEPTANCE-001 Evidence](../../../tests/validation/evidence/RHL-UX-001-ACCEPTANCE-001.md). Browser fixture IDs observed during the primary run: conversation `01a12f90-33c4-7532-b8e2-7dc43b065faa`; Workflow runs `b5940a97-db18-404c-9d6c-005a012502e9`, `443e2002-c88c-49e7-8b81-9f332de8d632`, and `7087dc37-52fb-4a2f-a6a2-7fe97a73db8b`. These are isolated test data, not production records.
 
 ## D. Limits and risks
 
 - Live Workflow status is process-local in the existing Workflow service. After Runtime restart, a persisted run association is shown as interrupted; the task does not claim the volatile execution can continue or be reconstructed.
 - Title PII/credential checks are conservative pattern heuristics and cannot identify every sensitive phrase. The first-message title falls back to `新对话` when a recognized sensitive pattern is present; accepted request activity remains user content.
 - Client production build emits a Vite chunk-size advisory for the 648.81 kB JavaScript asset; the build itself passes.
+- One isolated supplemental browser-fixture folder remains in `%TEMP%` after its listener and tab were closed; automatic command review rejected cleanup. It contains only faux Agent/session state and an isolated test Knowledge Base, not mounted user data.
 
 ## E. Git delivery
 
 | Item | Result |
 |---|---|
 | Branch | `codex/ux-001-session-reliability` |
-| Commit | Full SHA is included in the final delivery record. |
-| Remote | Pushed to `origin/codex/ux-001-session-reliability`; local and remote HEAD match (full SHA is in the final delivery record). |
+| Acceptance fix commit | `b6bcc1546c7fba61f017966efe6ace90047876d8`. |
+| Final branch HEAD | Full SHA is included in the final delivery record. |
+| Remote | Pushed to `origin/codex/ux-001-session-reliability`; local and remote HEAD match at final verification. |
 | Worktree | Isolated under `ResearchHub_worktrees/UX_001`; clean after commit and push verification. |
