@@ -198,7 +198,8 @@ test('UX-001 HTTP lifecycle persists a Company Research request, links its Workf
     const persistedWorkflowActivities = persistedActivities.filter((item) => item.workflowRunId !== undefined)
     assert.deepEqual(persistedWorkflowActivities.map((item) => item.requestText), [requestText, `${requestText} 再次研究`])
     assert.deepEqual(persistedWorkflowActivities.map((item) => item.workflowRunId), [firstRun.runId, secondRun.runId])
-    assert.deepEqual(persistedWorkflowActivities.map((item) => item.status), ['interrupted', 'interrupted'], 'Runtime restart preserves run association as interrupted without advertising it active')
+    assert.deepEqual(persistedWorkflowActivities.map((item) => item.status), ['completed', 'completed'], 'Runtime restart preserves the terminal outcomes already confirmed by WorkflowService')
+    assert.deepEqual(persistedWorkflowActivities.map((item) => item.outcome), ['workflow_completed', 'workflow_completed'])
     await runtimeAfterRestart.sessionRuntime.switchConversation(conversationId)
     assert.equal(runtimeAfterRestart.sessionRuntime.getCurrentMessages().some((message) => message.role === 'user' && message.content === 'Pi transcript persistence check.'), true)
     assert.equal(runtimeAfterRestart.sessionRuntime.getCurrentMessages().some((message) => message.role === 'assistant' && message.content === 'Persisted Pi transcript response.'), true)
@@ -206,7 +207,7 @@ test('UX-001 HTTP lifecycle persists a Company Research request, links its Workf
     assert.equal(missingOldRun.status, 404, 'Runtime restart does not fabricate active Workflow status')
     const interruptedReplay = await post(restarted.info.origin, restarted.headers, '/api/research/dispatch', { ...dispatchBody, operationId: operation2, query: `${requestText} 再次研究` })
     assert.equal(interruptedReplay.status, 200)
-    assert.equal((await interruptedReplay.json() as { status: string }).status, 'interrupted')
+    assert.equal((await interruptedReplay.json() as { status: string }).status, 'completed')
 
     const restore = await post(restarted.info.origin, restarted.headers, `/api/conversations/${encodeURIComponent(conversationId)}/restore`, { expectedVersion: afterRestart.version })
     assert.equal(restore.status, 200)

@@ -290,6 +290,35 @@ test('accepted prompt moves through workflow or ready_for_chat once and reserves
   } finally { await f.close() }
 })
 
+test('Workflow terminal ledger maps authoritative terminal outcomes and remains idempotent', async () => {
+  const f = await fixture()
+  try {
+    const cases = [
+      { status: 'completed' as const, lifecycle: 'completed', outcome: 'workflow_completed' },
+      { status: 'completed_with_review' as const, lifecycle: 'completed', outcome: 'workflow_completed' },
+      { status: 'blocked' as const, lifecycle: 'failed', outcome: 'workflow_blocked' },
+      { status: 'failed' as const, lifecycle: 'failed', outcome: 'workflow_failed' },
+      { status: 'cancelled' as const, lifecycle: 'cancelled', outcome: 'workflow_cancelled' },
+    ]
+    for (const [index, item] of cases.entries()) {
+      const conversationId = `workflow-terminal-${index}`
+      const operationId = `workflow-terminal-op-${index}`
+      const runId = `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`
+      await f.store.acceptRequest(conversationId, { operation: 'prompt', operationId, requestText: `Workflow terminal case ${index}`, workflowRegistryId: 'company_research' })
+      await f.store.claimSubmission(conversationId, operationId, runId)
+      await f.store.markWorkflowStarted(conversationId, operationId, { workflowRegistryId: 'company_research', workflowRunId: runId, startedAt: new Date(BASE_TIME).toISOString() })
+      const terminal = await f.store.completeWorkflowRequest(conversationId, operationId, item.status)
+      const request = terminal.acceptedRequests[0]
+      assert.equal(request?.lifecycle, item.lifecycle)
+      assert.equal(request?.outcome, item.outcome)
+      assert.equal(request?.workflowRunId, runId)
+      assert.equal(request?.reservedWorkflowRunId, undefined)
+      assert.ok(request?.finishedAt)
+      assert.equal((await f.store.completeWorkflowRequest(conversationId, operationId, item.status)).revision, terminal.revision)
+    }
+  } finally { await f.close() }
+})
+
 test('atomic sidecar writes reload complete private state', async () => {
   const f = await fixture()
   try {

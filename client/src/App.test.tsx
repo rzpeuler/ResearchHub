@@ -92,7 +92,9 @@ describe('Homepage shell', () => {
     }) as typeof fetch
     window.history.replaceState({}, '', '/research')
     render(<App />)
-    expect(await screen.findByText('No active Workflow')).toBeTruthy()
+    expect(await screen.findByTestId('workflow-interrupted')).toBeTruthy()
+    expect(screen.getByText('Runtime restarted or lost its in-memory run state. This Workflow will not resume automatically; check the conversation before starting another run.')).toBeTruthy()
+    expect(screen.queryByText('Running')).toBeNull()
     expect(screen.getByText('Earlier research request')).toBeTruthy()
     expect(summary.latestWorkflowRunId).toBe('old-run')
     const composer = screen.getByRole('textbox', { name: 'Message' })
@@ -101,6 +103,49 @@ describe('Homepage shell', () => {
     await waitFor(() => expect(dispatchRequests).toHaveLength(1))
     expect(workflowReads.length).toBeGreaterThan(0)
     expect(screen.queryByText('Loading Workflow status…')).toBeNull()
+  })
+
+  it('restores an interrupted explicitly selected Workflow from its reservation without showing it as running', async () => {
+    const summary = { conversationId: 'c1', name: 'Company research', titleSource: 'workflow', archived: false, version: 4, latestWorkflowRunId: 'reserved-run-1', updatedAt: 'now', messageCount: 1, isActive: true }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [summary] })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'company_research', label: 'Company Research', displayNameZh: '公司深度研究', intentDescription: 'Company research', inputSchema: {}, requiredInputs: ['symbol'], skillIds: [], knowledgeEffects: [], outputContract: 'Report' }] })
+      if (path === '/api/settings') return json({ revision: 1, model: {}, models: [], knowledgeBases: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', name: 'Company research', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [], activities: [{ activityId: 'activity-reserved-run', conversationId: 'c1', operationId: 'op-reserved-run', kind: 'accepted_request', operation: 'prompt', status: 'interrupted', requestText: 'Research 002640', createdAt: 'now', reservedWorkflowRunId: 'reserved-run-1', workflowRegistryId: 'company_research' }] })
+      if (path === '/api/conversations' || path.startsWith('/api/conversations?')) return json({ conversations: [summary] })
+      if (path === '/api/workflows/reserved-run-1') return json({ code: 'not_found', error: 'not found' }, 404)
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    window.history.replaceState({}, '', '/research')
+    render(<App />)
+    expect(await screen.findByTestId('workflow-interrupted')).toBeTruthy()
+    expect(screen.getAllByText('公司深度研究').length).toBeGreaterThan(0)
+    expect(screen.getByText('reserved-run-1')).toBeTruthy()
+    expect(screen.queryByText('Running')).toBeNull()
+  })
+
+  it('preserves a durable Workflow terminal outcome when Runtime restart removed its detail snapshot', async () => {
+    const summary = { conversationId: 'c1', name: 'Company research', titleSource: 'workflow', archived: false, version: 5, latestWorkflowRunId: 'completed-run-1', updatedAt: 'now', messageCount: 1, isActive: true }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [summary] })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'company_research', label: 'Company Research', displayNameZh: '公司深度研究', intentDescription: 'Company research', inputSchema: {}, requiredInputs: ['symbol'], skillIds: [], knowledgeEffects: [], outputContract: 'Report' }] })
+      if (path === '/api/settings') return json({ revision: 1, model: {}, models: [], knowledgeBases: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', name: 'Company research', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [], activities: [{ activityId: 'activity-completed-run', conversationId: 'c1', operationId: 'op-completed-run', kind: 'accepted_request', operation: 'prompt', status: 'completed', outcome: 'workflow_completed', requestText: 'Research 002640', createdAt: 'now', workflowRunId: 'completed-run-1', workflowRegistryId: 'company_research', workflowSubject: '跨境通' }] })
+      if (path === '/api/conversations' || path.startsWith('/api/conversations?')) return json({ conversations: [summary] })
+      if (path === '/api/workflows/completed-run-1') return json({ code: 'not_found', error: 'not found' }, 404)
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    window.history.replaceState({}, '', '/research')
+    render(<App />)
+    expect(await screen.findByTestId('workflow-terminal-history')).toBeTruthy()
+    expect(screen.getByText('Completed')).toBeTruthy()
+    expect(screen.getByText('Runtime durably recorded this terminal outcome; detailed stage history is unavailable after restart.')).toBeTruthy()
+    expect(screen.queryByTestId('workflow-interrupted')).toBeNull()
+    expect(screen.queryByText('Running')).toBeNull()
   })
 
   it('does not submit Enter while a Chinese IME composition is active', async () => {
@@ -185,6 +230,7 @@ describe('Homepage shell', () => {
 
   it('shows terminal Workflow results and only opens persisted artifacts linked to that run', async () => {
     const calls: string[] = []
+    let latestWorkflowRunId = ''
     const workflow = { runId: 'run-result-1', workflowType: 'earnings_review', objective: 'Review NVDA earnings', status: 'completed_with_review', startedAt: '2026-10-09T00:00:00.000Z', updatedAt: '2026-10-09T00:01:00.000Z', completedAt: '2026-10-09T00:01:00.000Z', executionResult: { runId: 'run-result-1', workflowId: 'earnings_review', executionStatus: 'completed_with_review', terminalStatus: 'completed_with_review', summary: 'Review completed with one open review case.', reportRef: 'report-nvda-fy26-q1', bundleRef: 'bundle-run-result-1', reviewRef: { kind: 'review_case', id: 'review-case-1' }, diagnostics: [], bundleStatus: 'available' } }
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input); calls.push(`${init?.method ?? 'GET'} ${path}`)
@@ -192,10 +238,11 @@ describe('Homepage shell', () => {
       if (path === '/api/research/workflows') return json({ workflows: [] })
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
-      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/conversations') return json({ conversations: latestWorkflowRunId ? [{ conversationId: 'c1', name: 'Conversation one', titleSource: 'workflow', archived: false, version: 1, updatedAt: 'now', messageCount: 1, isActive: true, latestWorkflowRunId }] : [] })
       if (path === '/api/conversations/requests/accept') return json({ accepted: true })
-      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'Review NVDA earnings', mode: { type: 'workflow', workflowId: 'earnings_review' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'earnings_review', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'earnings_review', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'run-result-1', workflow })
+      if (path === '/api/research/dispatch') { latestWorkflowRunId = workflow.runId; return json({ accepted: true, status: 'started', request: { query: 'Review NVDA earnings', mode: { type: 'workflow', workflowId: 'earnings_review' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'earnings_review', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'earnings_review', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'run-result-1', workflow }) }
       if (path === '/api/research/bundles/by-run/run-result-1') return json({ bundleId: 'bundle-run-result-1', workflowRunId: 'run-result-1', createdAt: '2026-10-09T00:01:00.000Z', status: 'completed_with_review', proposals: [], sourceLibraryHits: [], structuredResult: {} })
+      if (path === '/api/workflows/run-result-1') return json(workflow)
       if (path === '/api/research-reports/report-nvda-fy26-q1') return json({ reportId: 'report-nvda-fy26-q1', reportType: 'earnings_review', subjectRefs: ['entity:NVDA'], generatedAt: '2026-10-09T00:01:00.000Z', asOf: '2026-10-09T00:00:00.000Z', workflowRunId: 'run-result-1', knowledgeBaseRevision: 1, sourceRefs: [], claimRefs: [], methodology: 'bounded', sections: [] })
       if (path === '/api/research-reports?limit=20') return json({ reports: [{ reportId: 'report-nvda-fy26-q1', reportType: 'earnings_review', subjectRefs: ['entity:NVDA'], generatedAt: '2026-10-09T00:01:00.000Z', knowledgeBaseRevision: 1, sectionCount: 0, sourceCount: 0, workflowRunId: 'run-result-1' }] })
       if (path === '/api/reviews/review-case-1') return json({ reviewCaseId: 'review-case-1', producerRunId: 'run-result-1', producerType: 'earnings_review', createdAt: '2026-10-09T00:01:00.000Z', classification: {}, rootProposal: {}, evidenceBindings: [], existingKnowledgeProjections: [], impact: {}, state: {}, totalDependentProposals: 0, dependentProposalSamples: [], dependentProposals: [], dependentsTruncated: false })
@@ -218,6 +265,7 @@ describe('Homepage shell', () => {
   it('shows delayed terminal result and Bundle without requiring a mounted Knowledge Base', async () => {
     const calls: string[] = []
     let poll = 0
+    let latestWorkflowRunId = ''
     const blockedResult = { runId: 'run-delayed', workflowId: 'industry_research', executionStatus: 'blocked', terminalStatus: 'blocked', summary: 'Industry evidence is unavailable.', blockedReason: 'NO_CANONICAL_INDUSTRY_METRIC', bundleRef: 'research-bundle-run-delayed', diagnostics: [], bundleStatus: 'available' }
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input); calls.push(`${init?.method ?? 'GET'} ${path}`)
@@ -225,9 +273,9 @@ describe('Homepage shell', () => {
       if (path === '/api/research/workflows') return json({ workflows: [{ id: 'industry_research', label: 'Industry Research', intentDescription: 'Research an industry', inputSchema: {}, requiredInputs: ['name'], outputContract: 'IndustryReport', knowledgeEffects: [] }] })
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
-      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/conversations') return json({ conversations: latestWorkflowRunId ? [{ conversationId: 'c1', name: 'Conversation one', titleSource: 'workflow', archived: false, version: 1, updatedAt: 'now', messageCount: 1, isActive: true, latestWorkflowRunId }] : [] })
       if (path === '/api/conversations/requests/accept') return json({ accepted: true })
-      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'Research lithium battery industry', mode: { type: 'workflow', workflowId: 'industry_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'industry_research', confidence: 1, arguments: { name: 'Lithium battery' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'industry_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'run-delayed' }, 202)
+      if (path === '/api/research/dispatch') { latestWorkflowRunId = 'run-delayed'; return json({ accepted: true, status: 'started', request: { query: 'Research lithium battery industry', mode: { type: 'workflow', workflowId: 'industry_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'industry_research', confidence: 1, arguments: { name: 'Lithium battery' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'industry_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'run-delayed' }, 202) }
       if (path === '/api/workflows/run-delayed') {
         poll += 1
         if (poll === 1) return json({ runId: 'run-delayed', workflowType: 'industry_research', objective: 'Research lithium battery industry', status: 'running', startedAt: 'now', updatedAt: 'now' })
@@ -249,15 +297,16 @@ describe('Homepage shell', () => {
 
   it('shows a retry action when terminal result synchronization reaches its bound', async () => {
     let polls = 0
+    let latestWorkflowRunId = ''
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input)
       if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeError: { code: 'no_kb_mounted', error: 'not mounted' } })
       if (path === '/api/research/workflows') return json({ workflows: [{ id: 'industry_research', label: 'Industry Research', intentDescription: 'Research an industry', inputSchema: {}, requiredInputs: ['name'], outputContract: 'IndustryReport', knowledgeEffects: [] }] })
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
-      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/conversations') return json({ conversations: latestWorkflowRunId ? [{ conversationId: 'c1', name: 'Conversation one', titleSource: 'workflow', archived: false, version: 1, updatedAt: 'now', messageCount: 1, isActive: true, latestWorkflowRunId }] : [] })
       if (path === '/api/conversations/requests/accept') return json({ accepted: true })
-      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'Research lithium battery industry', mode: { type: 'workflow', workflowId: 'industry_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'industry_research', confidence: 1, arguments: { name: 'Lithium battery' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'industry_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'run-timeout' }, 202)
+      if (path === '/api/research/dispatch') { latestWorkflowRunId = 'run-timeout'; return json({ accepted: true, status: 'started', request: { query: 'Research lithium battery industry', mode: { type: 'workflow', workflowId: 'industry_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'industry_research', confidence: 1, arguments: { name: 'Lithium battery' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, summary: { mode: 'Explicit Workflow', workflowId: 'industry_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: ['name'], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'run-timeout' }, 202) }
       if (path === '/api/workflows/run-timeout') { polls += 1; return json({ runId: 'run-timeout', workflowType: 'industry_research', objective: 'Research lithium battery industry', status: 'blocked', startedAt: 'now', updatedAt: 'now' }) }
       return json({ code: 'not_found', error: 'not found' }, 404)
     }) as typeof fetch
@@ -363,18 +412,20 @@ describe('Homepage shell', () => {
     const brief = { reportId: 'morning-2026-10-09', briefType: 'morning', tradeDate: '2026-10-09', generatedAt: '2026-10-09T00:01:00.000Z', asOf: '2026-10-09T00:00:00.000Z', timezone: 'Asia/Shanghai', revision: 1, workflowRunId: 'brief-run-1', quality: { topCount: 0, reportItemWithSourceRatio: 1 }, sections: [], consensusStatement: 'No actionable signals.', committedKnowledgeRefs: [], reviewCaseCount: 0, calendarConfidence: 'bounded' }
     const report = { reportId: brief.reportId, reportType: 'daily_intelligence', subjectRefs: [], generatedAt: brief.generatedAt, asOf: brief.asOf, workflowRunId: brief.workflowRunId, knowledgeBaseRevision: 1, sourceRefs: [], claimRefs: [], methodology: 'bounded', sections: [] }
     const calls: string[] = []
+    let latestWorkflowRunId = ''
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input); calls.push(path)
       if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 1, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
       if (path === '/api/research/workflows') return json({ workflows: [] })
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
-      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/conversations') return json({ conversations: latestWorkflowRunId ? [{ conversationId: 'c1', name: 'Conversation one', titleSource: 'workflow', archived: false, version: 1, updatedAt: 'now', messageCount: 1, isActive: true, latestWorkflowRunId }] : [] })
       if (path === '/api/daily-briefs?limit=20') return json({ briefs: [brief] })
       if (path === '/api/research-reports?limit=20') return json({ reports: [report] })
       if (path === '/api/conversations/requests/accept') return json({ accepted: true })
-      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'Generate morning brief', mode: { type: 'workflow', workflowId: 'daily_intelligence' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'daily_intelligence', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'daily_intelligence', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: brief.workflowRunId, workflow: { runId: brief.workflowRunId, workflowType: 'daily_intelligence', objective: 'Generate morning brief', status: 'completed', startedAt: brief.generatedAt, updatedAt: brief.generatedAt, completedAt: brief.generatedAt, executionResult: { runId: brief.workflowRunId, workflowId: 'daily_intelligence', executionStatus: 'completed', terminalStatus: 'completed', summary: 'Morning brief is ready.', reportRef: brief.reportId, diagnostics: [], bundleStatus: 'unavailable' } } })
+      if (path === '/api/research/dispatch') { latestWorkflowRunId = brief.workflowRunId; return json({ accepted: true, status: 'started', request: { query: 'Generate morning brief', mode: { type: 'workflow', workflowId: 'daily_intelligence' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'daily_intelligence', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'daily_intelligence', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: brief.workflowRunId, workflow: { runId: brief.workflowRunId, workflowType: 'daily_intelligence', objective: 'Generate morning brief', status: 'completed', startedAt: brief.generatedAt, updatedAt: brief.generatedAt, completedAt: brief.generatedAt, executionResult: { runId: brief.workflowRunId, workflowId: 'daily_intelligence', executionStatus: 'completed', terminalStatus: 'completed', summary: 'Morning brief is ready.', reportRef: brief.reportId, diagnostics: [], bundleStatus: 'unavailable' } } }) }
       if (path === `/api/daily-briefs/${brief.reportId}`) return json(brief)
+      if (path === `/api/workflows/${brief.workflowRunId}`) return json({ runId: brief.workflowRunId, workflowType: 'daily_intelligence', objective: 'Generate morning brief', status: 'completed', startedAt: brief.generatedAt, updatedAt: brief.generatedAt, completedAt: brief.generatedAt, executionResult: { runId: brief.workflowRunId, workflowId: 'daily_intelligence', executionStatus: 'completed', terminalStatus: 'completed', summary: 'Morning brief is ready.', reportRef: brief.reportId, diagnostics: [], bundleStatus: 'unavailable' } })
       if (path === '/api/theme-framework/reviews?limit=50') return json({ items: [], total: 0, truncated: false })
       if (path === '/api/theme-scope-impact?limit=50') return json({ items: [], total: 0, truncated: false })
       return json({ code: 'not_found', error: 'not found' }, 404)
@@ -393,15 +444,17 @@ describe('Homepage shell', () => {
     ['failed', 'Workflow failed'],
     ['cancelled', 'Workflow was cancelled'],
   ] as const)('shows an explicit %s terminal result without raw error summaries', async (status, label) => {
+    let latestWorkflowRunId = ''
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input)
       if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 1, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
       if (path === '/api/research/workflows') return json({ workflows: [] })
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [] })
-      if (path === '/api/conversations') return json({ conversations: [] })
+      if (path === '/api/conversations') return json({ conversations: latestWorkflowRunId ? [{ conversationId: 'c1', name: 'Conversation one', titleSource: 'workflow', archived: false, version: 1, updatedAt: 'now', messageCount: 1, isActive: true, latestWorkflowRunId }] : [] })
       if (path === '/api/conversations/requests/accept') return json({ accepted: true })
-      if (path === '/api/research/dispatch') return json({ accepted: true, status: 'started', request: { query: 'Research XYZ', mode: { type: 'workflow', workflowId: 'company_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'company_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'terminal-run', workflow: { runId: 'terminal-run', workflowType: 'company_research', objective: 'Research XYZ', status, startedAt: '2026-10-09T00:00:00.000Z', updatedAt: '2026-10-09T00:01:00.000Z', errorSummary: 'private stack trace', executionResult: { runId: 'terminal-run', workflowId: 'company_research', executionStatus: status, terminalStatus: status, blockedReason: status === 'blocked' ? 'NO_CANONICAL_DATA' : undefined, diagnostics: [], bundleStatus: 'unavailable' } } })
+      if (path === '/api/research/dispatch') { latestWorkflowRunId = 'terminal-run'; return json({ accepted: true, status: 'started', request: { query: 'Research XYZ', mode: { type: 'workflow', workflowId: 'company_research' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, decision: { mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: {} }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit Workflow' }, summary: { mode: 'Explicit Workflow', workflowId: 'company_research', selectedSkillIds: [], argumentsStatus: 'complete', argumentKeys: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, runId: 'terminal-run', workflow: { runId: 'terminal-run', workflowType: 'company_research', objective: 'Research XYZ', status, startedAt: '2026-10-09T00:00:00.000Z', updatedAt: '2026-10-09T00:01:00.000Z', errorSummary: 'private stack trace', executionResult: { runId: 'terminal-run', workflowId: 'company_research', executionStatus: status, terminalStatus: status, blockedReason: status === 'blocked' ? 'NO_CANONICAL_DATA' : undefined, diagnostics: [], bundleStatus: 'unavailable' } } }) }
+      if (path === '/api/workflows/terminal-run') return json({ runId: 'terminal-run', workflowType: 'company_research', objective: 'Research XYZ', status, startedAt: '2026-10-09T00:00:00.000Z', updatedAt: '2026-10-09T00:01:00.000Z', errorSummary: 'private stack trace', executionResult: { runId: 'terminal-run', workflowId: 'company_research', executionStatus: status, terminalStatus: status, blockedReason: status === 'blocked' ? 'NO_CANONICAL_DATA' : undefined, diagnostics: [], bundleStatus: 'unavailable' } })
       return json({ code: 'not_found', error: 'not found' }, 404)
     }) as typeof fetch
     render(<App />)
@@ -1660,6 +1713,7 @@ describe('Homepage shell', () => {
 
   it('reconciles a lost Workflow dispatch response from the exact accepted Activity and run', async () => {
     let accepted = false
+    let latestWorkflowRunId = ''
     const operationIds: string[] = []
     const dispatchedOperationIds: string[] = []
     let dispatchAttempts = 0
@@ -1673,7 +1727,7 @@ describe('Homepage shell', () => {
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [], activities: accepted ? [activity()] : [] })
       if (path === '/api/conversations/c1/activities') return json({ activities: accepted ? [activity()] : [] })
-      if (path === '/api/conversations' || path.startsWith('/api/conversations?')) return json({ conversations: [] })
+      if (path === '/api/conversations' || path.startsWith('/api/conversations?')) return json({ conversations: latestWorkflowRunId ? [{ conversationId: 'c1', name: 'Conversation one', titleSource: 'workflow', archived: false, version: 1, updatedAt: startedAt, messageCount: 1, isActive: true, latestWorkflowRunId }] : [] })
       if (path === '/api/daily-briefs?limit=20') return json({ briefs: [] })
       if (path === '/api/research-reports?limit=20') return json({ reports: [] })
       if (path === '/api/conversations/requests/accept') {
@@ -1682,7 +1736,7 @@ describe('Homepage shell', () => {
         accepted = true
         return json({ accepted: true, operationId: body.operationId, conversationId: 'c1' })
       }
-      if (path === '/api/research/dispatch') { dispatchAttempts += 1; dispatchedOperationIds.push((JSON.parse(String(init?.body)) as { operationId: string }).operationId); throw new Error('connection reset after server accepted dispatch') }
+      if (path === '/api/research/dispatch') { dispatchAttempts += 1; dispatchedOperationIds.push((JSON.parse(String(init?.body)) as { operationId: string }).operationId); latestWorkflowRunId = 'accepted-run'; throw new Error('connection reset after server accepted dispatch') }
       if (path === '/api/workflows/accepted-run') return json({ runId: 'accepted-run', workflowType: 'company_research', objective: 'Research 002640', status: 'running', startedAt, updatedAt: startedAt })
       return json({ code: 'not_found', error: 'not found' }, 404)
     }) as typeof fetch
@@ -1694,7 +1748,7 @@ describe('Homepage shell', () => {
     fireEvent.click(screen.getByRole('button', { name: /Send/ }))
 
     expect(await screen.findByText(/Workflow · Running · workflow_started/)).toBeTruthy()
-    expect(screen.getByText('accepted-run')).toBeTruthy()
+    expect(screen.getAllByText('accepted-run').length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('ResearchHub runtime operation failed')).toBeNull()
     expect((screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).value).toBe('')
     expect(dispatchAttempts).toBe(1)

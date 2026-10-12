@@ -27,9 +27,19 @@ test('Workflow failure summary omits paths, credentials, and multiline stack det
   await assert.rejects(service.start('safe-failure', async () => { throw new Error('adapter failed at C:\\Users\\fixture\\private.ts Authorization: Bearer secret-value\n at invoke (C:\\Users\\fixture\\private.ts:1:1)') }))
   const status = service.getWorkflowStatus('safe-failure')
   assert.equal(status?.status, 'failed')
-  assert.equal(status?.errorSummary, 'Workflow execution failed; sensitive details were omitted.')
+  assert.equal(status?.errorSummary, 'Workflow execution failed; details were omitted.')
   assert.equal(JSON.stringify(status).includes('secret-value'), false)
   assert.equal(JSON.stringify(status).includes('private.ts'), false)
+})
+
+test('blocked Workflow errors use a generic safe projection for arbitrary provider text', async () => {
+  const service = new WorkflowService()
+  service.register({ runId: 'safe-blocked-error', workflowType: 'company_research', objective: 'blocked' })
+  await service.start('safe-blocked-error', async () => ({ status: 'blocked' as const, errorSummary: 'Provider rejected query for user@example.com: private portfolio is 100 shares' }))
+  const status = service.getWorkflowStatus('safe-blocked-error')
+  assert.equal(status?.errorSummary, 'Workflow execution failed; details were omitted.')
+  assert.equal(JSON.stringify(status).includes('user@example.com'), false)
+  assert.equal(JSON.stringify(status).includes('private portfolio'), false)
 })
 
 test('cancelled Workflow keeps a verified ResearchBundle link but suppresses report and review links', async () => {

@@ -45,7 +45,7 @@ export interface SafeConversationActivity {
   readonly kind: 'accepted_request'
   readonly operation: 'prompt' | 'steer' | 'follow_up'
   readonly status: 'accepted' | 'submitting' | 'ready_for_chat' | 'started' | 'completed' | 'cancelled' | 'not_started' | 'failed' | 'interrupted'
-  readonly outcome?: 'chat_started' | 'chat_completed' | 'chat_cancelled' | 'workflow_started' | 'not_started'
+  readonly outcome?: 'chat_started' | 'chat_completed' | 'chat_cancelled' | 'workflow_started' | 'workflow_completed' | 'workflow_blocked' | 'workflow_failed' | 'workflow_cancelled' | 'not_started'
   readonly requestText: string
   readonly createdAt: string
   readonly workflowRunId?: string

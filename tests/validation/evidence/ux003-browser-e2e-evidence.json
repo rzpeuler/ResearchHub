@@ -1,0 +1,496 @@
+{
+  "schema": "RHL-UX-003-browser-e2e-evidence-v1",
+  "capturedAt": "2026-10-12T15:02:00Z",
+  "scope": "Isolated fixture only; production Vite client dist/client in Microsoft Edge through CDP; actual ResearchHubRuntimeServer, WorkflowService, ResearchService, persistent Pi SessionManager; faux offline Pi provider and isolated Schema 0.4 Knowledge Base. No tracked product files changed by browser work.",
+  "commands": [
+    "npm run client:build",
+    "node --import tsx tests/validation/ux003-browser-fixture.ts",
+    "node tests/validation/ux003-cdp-driver.mjs 50848 <fixture-origin> [browser-expression]",
+    "GET /api/bootstrap",
+    "GET /api/workflows/<runId>"
+  ],
+  "browser": {
+    "name": "Microsoft Edge",
+    "mode": "headless with DevTools Protocol",
+    "cdpPort": 50848,
+    "client": "production dist/client",
+    "latestFixtureOrigin": "http://127.0.0.1:60137",
+    "runtimeOrigin": "http://127.0.0.1:60136"
+  },
+  "knowledgeBase": {
+    "knowledgeBaseId": "ux002-browser-1791814534589",
+    "revisionBeforeRestart": 0,
+    "revisionAfterRestart": 0,
+    "rootSha256BeforeRestart": "ccb04b78e3712d0988c1b23453a5b81fac40eb5a98b1594a526c8c7c5c3a5865",
+    "rootSha256AfterRestart": "ccb04b78e3712d0988c1b23453a5b81fac40eb5a98b1594a526c8c7c5c3a5865",
+    "writeKnowledge": false,
+    "result": "UNCHANGED"
+  },
+  "observations": [
+    {
+      "id": "UX003-BROWSER-COMPANY-COMPLETE-10350ceb",
+      "status": "PASS_FOR_OBSERVED_PATH",
+      "at": "2026-10-12T14:22Z",
+      "workflowRunId": "10350ceb-c32e-4247-942c-0e7d180c2b32",
+      "details": "Real UI submission completed company_deep_research through identity_validation, data_acquisition, research_synthesis, quality_gate, Knowledge Gateway skipped, report_generation, report_persistence. Runtime API and UI agreed on terminal result. The output was fixture-backed, not external-provider business evidence."
+    },
+    {
+      "id": "UX003-BROWSER-REPORT-OPEN-c980de67",
+      "status": "PASS_FOR_OBSERVED_PATH",
+      "at": "2026-10-12T14:22Z",
+      "workflowRunId": "10350ceb-c32e-4247-942c-0e7d180c2b32",
+      "reportId": "company-research-002640-c980de67-a027-4be8-b635-044635080d3d",
+      "details": "Report catalog and detail APIs returned the report bound to the run and subject entity:fixture-002640. The visible UI button 打开研究报告 opened /reports, rendering 19 report sections."
+    },
+    {
+      "id": "UX003-BROWSER-REFRESH-75ab5699",
+      "status": "PASS_FOR_OBSERVED_PATH",
+      "at": "2026-10-12T14:18Z",
+      "workflowRunId": "75ab5699-22d8-43f9-a383-78f4b5b5e82c",
+      "conversationId": "01a1307b-5e2a-72f2-bf3d-1dc9e2520258",
+      "details": "During a held real company workflow, browser reload restored the same conversation, run id, running status and data_acquisition stage. This is refresh persistence, separate from process-restart evidence below."
+    },
+    {
+      "id": "UX003-BROWSER-SESSION-SWITCH-SSE-01a1307c",
+      "status": "PASS_FOR_OBSERVED_PATH",
+      "at": "2026-10-12T14:23:13Z",
+      "conversationId": "01a1307c-46c6-72f2-bf3d-1dd0f490931c",
+      "details": "SessionManager instrumentation recorded session.abort.begin, session.abort.end, session.dispose for the previous conversation and session.new.complete for the next. After switching, production UI showed Connected and rendered the next faux Pi response plus chat_completed event. No cross-conversation streamed result was observed."
+    },
+    {
+      "id": "UX003-BROWSER-CANCEL-75ab5699",
+      "status": "PASS_CANCELLATION_PATH_SELECTION_UNVERIFIED",
+      "at": "2026-10-12T14:20:43.22Z",
+      "workflowRunId": "75ab5699-22d8-43f9-a383-78f4b5b5e82c",
+      "details": "Visible UI action 取消工作流 cancelled a workflow held in data_acquisition. GET /api/workflows/run returned status=cancelled, currentStageId=data_acquisition, observationRevision=7, completedAt=2026-10-12T14:20:43.220Z, no errorSummary. Controlled error-terminal was not run in this fixture instance.",
+      "triggerVerification": "The prior log does not preserve a same-page selected Workflow value at send. Do not count as selected-Workflow cancellation acceptance."
+    },
+    {
+      "id": "UX003-BROWSER-RUNTIME-RESTART-5a0a16dd",
+      "status": "NOT_VALID_FOR_WORKFLOW_RESTART_ACCEPTANCE",
+      "runStartedAt": "2026-10-12T14:23:17.837Z",
+      "conversationId": "01a1307f-0768-757e-8d91-2bf63b271f18",
+      "workflowRunId": "5a0a16dd-85fe-44f1-b5c5-840f1c1629d6",
+      "beforeRestart": {
+        "proxyOrigin": "http://127.0.0.1:53690",
+        "runtimeOrigin": "http://127.0.0.1:53689",
+        "runtimeNodePid": 7140,
+        "workflowStatus": "running",
+        "currentStageId": "data_acquisition",
+        "provider": "CNINFO",
+        "providerDiscoveryStartedAt": "2026-10-12T14:23:17.846Z"
+      },
+      "restart": {
+        "method": "Force-stop isolated fixture Node process hosting the whole Runtime and WorkflowService; relaunch same fixture against same RHL_UX003_FIXTURE_ROOT and same faux model provider.",
+        "newProxyOrigin": "http://127.0.0.1:64628",
+        "newRuntimeOrigin": "http://127.0.0.1:64627",
+        "readyKnowledgeBaseSha256": "ccb04b78e3712d0988c1b23453a5b81fac40eb5a98b1594a526c8c7c5c3a5865"
+      },
+      "afterRestart": {
+        "browserEvidence": "Edge production UI showed `<div class=\"activity-meta\"><span>请求活动 · 已中断</span></div>` and no running status. DOM had no workflow-interrupted card; `.workflow-progress-panel` rendered `<div class=\"notice\"><strong>没有运行中的工作流</strong><p>启动工作流后，实际运行状态会显示在这里。</p></div>`. Bootstrap showed the submitted conversation without latestWorkflowRunId; GET /api/workflows/run returned HTTP 404.",
+        "workflowApiResult": "HTTP 404 for GET /api/workflows/5a0a16dd-85fe-44f1-b5c5-840f1c1629d6 because the new in-memory WorkflowService has no old run.",
+        "knowledgeBaseRevision": 0,
+        "knowledgeBaseSha256": "ccb04b78e3712d0988c1b23453a5b81fac40eb5a98b1594a526c8c7c5c3a5865"
+      },
+      "details": "The initial process restart preserved generic Activity interruption/no false running, but this prior request used a direct DOM value/change and a separate Send driver invocation that navigated the page. The React-controlled selector reset before send; persisted request had no workflowRegistryId/latestWorkflowRunId. It is not valid for selected-Workflow E2E-09. Replaced by UX003-BROWSER-EXPLICIT-WORKFLOW-RESTART-e7fb9d5a."
+    },
+    {
+      "id": "UX003-BROWSER-ERROR-TERMINAL-38aee03c",
+      "status": "NOT_VALID_FOR_SELECTED_WORKFLOW_ACCEPTANCE",
+      "at": "2026-10-12T14:25:29Z",
+      "workflowRunId": "38aee03c-5536-4fe9-ab7a-38022b1fe90f",
+      "details": "Earlier all-provider-fail run 38aee03c was launched after selection and Send were in separate CDP invocations; the page navigation reset the controlled Workflow value before Send. It reached a Company Research API blocked result through the free-research path, but lacks acceptedRequest workflowRegistryId/workflowRunId. Superseded by UX003-BROWSER-EXPLICIT-WORKFLOW-BLOCKED below."
+    },
+    {
+      "id": "UX003-BROWSER-EXPLICIT-WORKFLOW-BLOCKED-c1ed3485",
+      "status": "PASS_API_AND_WORKFLOW_CARD_BLOCKED",
+      "at": "2026-10-12T14:36:49Z",
+      "conversationId": "01a1308a-8871-7529-8788-24c533167aac",
+      "operationId": "7880fefe-d77f-41f7-aec9-b189a07e286a",
+      "workflowRunId": "c1ed3485-2156-4b85-8b07-c39177b179e7",
+      "trigger": "One continuous Edge CDP interaction against visible production UI: chose visible Workflow control using pointer coordinates, ArrowDown and Enter; observed selected id company_research and label 公司深度研究; focused visible message textarea and typed the prompt; clicked visible primary Send button. No dispatch/API endpoint was called.",
+      "before": "GET /api/conversations/messages had no activities for this fresh conversation.",
+      "acceptedRequest": "status=started, outcome=workflow_started, workflowRegistryId=company_research, workflowRunId=c1ed3485-2156-4b85-8b07-c39177b179e7, operationId=7880fefe-d77f-41f7-aec9-b189a07e286a; conversation latestWorkflowRunId matched.",
+      "workflow": "API status blocked, observationRevision=19; quality_gate blocked with NO_COMPANY_RESEARCH_EVIDENCE; reportRef and bundleRef persisted. Browser card data-testid=workflow-progress-card showed terminal 受阻 and safe code. The Activity row still said 工作流 · 已启动 · workflow_started and 执行中 15.9 s after terminal, so Activity timing/status was stale.",
+      "knowledgeBaseSha256": "ccb04b78e3712d0988c1b23453a5b81fac40eb5a98b1594a526c8c7c5c3a5865",
+      "knowledgeBaseRevision": 0,
+      "details": "Before-send conversation had no accepted activity. The visible UI path persisted a started acceptedRequest with operationId 7880fefe-d77f-41f7-aec9-b189a07e286a, workflowRegistryId=company_research and workflowRunId c1ed3485-2156-4b85-8b07-c39177b179e7; latestWorkflowRunId matched. Run reached blocked at quality_gate, observationRevision 19, sole quality code NO_COMPANY_RESEARCH_EVIDENCE; report and bundle were persisted. Following a page reload, the production UI rendered data-testid=workflow-progress-card with terminal 受阻 and safe diagnostic text. Activity row still showed started/workflow_started and 执行中 15.9 s after terminal."
+    },
+    {
+      "id": "UX003-BROWSER-EXPLICIT-WORKFLOW-RESTART-e7fb9d5a",
+      "status": "PASS_INTERRUPTED_CARD_NO_FALSE_RUNNING",
+      "at": "2026-10-12T14:39:07Z",
+      "conversationId": "01a1308d-0502-7529-8788-24c788d194bd",
+      "operationId": "af594e30-35a2-44e1-9c1d-a332af8e8b3d",
+      "workflowRunId": "e7fb9d5a-8a40-43bd-bc49-09fe494c722c",
+      "trigger": "One continuous Edge UI sequence: clicked New Conversation, clicked visible Workflow control, ArrowDown and Enter from Free Research; confirmed company_research / 公司深度研究; focused message textarea; typed prompt with CDP Input.insertText; clicked visible Send button. No application dispatch API was called.",
+      "beforeRestart": {
+        "proxyOrigin": "http://127.0.0.1:64952",
+        "runtimeOrigin": "http://127.0.0.1:64951",
+        "runtimeNodePid": 36264,
+        "conversationRevision": 4,
+        "requestLifecycle": "started",
+        "requestOutcome": "workflow_started",
+        "workflowRegistryId": "company_research",
+        "workflowRunId": "e7fb9d5a-8a40-43bd-bc49-09fe494c722c",
+        "runStatus": "running",
+        "currentStageId": "data_acquisition",
+        "observationRevision": 5,
+        "startedAt": "2026-10-12T14:38:31.844Z",
+        "acquisitionHeld": true
+      },
+      "restart": {
+        "method": "Verified listener PID owned tests/validation/ux003-browser-fixture.ts; force-stopped full isolated Runtime process, then launched the fixture with same RHL_UX003_FIXTURE_ROOT and same faux provider; persisted SessionManager enabled.",
+        "fixtureRoot": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\researchhub-ux002-browser-eYWdYw",
+        "newProxyOrigin": "http://127.0.0.1:62023",
+        "newRuntimeOrigin": "http://127.0.0.1:62019",
+        "newRuntimeNodePid": 28288
+      },
+      "afterRestart": {
+        "conversationId": "01a1308d-0502-7529-8788-24c788d194bd",
+        "conversationLatestWorkflowRunId": "e7fb9d5a-8a40-43bd-bc49-09fe494c722c",
+        "requestLifecycle": "interrupted",
+        "requestWorkflowRegistryId": "company_research",
+        "requestWorkflowRunId": "e7fb9d5a-8a40-43bd-bc49-09fe494c722c",
+        "requestFinishedAt": "2026-10-12T14:39:07.37Z",
+        "workflowApi": "HTTP 404",
+        "browserActivityHtml": "<div class=\"activity-meta\"><span>工作流 · 已中断</span><small>e7fb9d5a-8a40-43bd-bc49-09fe494c722c</small><small>等待 142 ms · 执行 35.5 s · 总计 35.7 s</small></div>",
+        "workflowCardHtml": "<div class=\"workflow-card\" data-testid=\"workflow-interrupted\"><div class=\"workflow-status\"><span class=\"status-dot terminal\"></span>已中断</div><h3>公司深度研究</h3><p class=\"workflow-subject\">跨境通</p><p role=\"status\">Runtime 已重启或运行状态已丢失。该 Workflow 不会自动续跑；请根据会话记录确认后再重新启动。</p><small>e7fb9d5a-8a40-43bd-bc49-09fe494c722c</small></div>",
+        "runningLabelPresent": false,
+        "knowledgeBaseRevision": 0,
+        "knowledgeBaseSha256": "ccb04b78e3712d0988c1b23453a5b81fac40eb5a98b1594a526c8c7c5c3a5865"
+      },
+      "details": "Before-send active conversation 01a1308d-0502-7529-8788-24c788d194bd had no accepted activity. User-visible UI selected 公司深度研究 in one continuous Edge sequence, then entered the prompt and clicked Send; no dispatch API call. Before restart, the conversation record revision 4/latestWorkflowRunId, API activity, and workflow run all agreed; Workflow status running at data_acquisition. After PID 36264 process restart and relaunch against the same root, conversation latestWorkflowRunId and acceptedRequest registry/run association persisted; request became interrupted with finishedAt 2026-10-12T14:39:07.37Z, and old run endpoint returned HTTP 404. Browser DOM included data-testid=workflow-interrupted with terminal 已中断, Runtime restart explanation, and matching run ID; Activity DOM was 工作流 · 已中断 with the same run ID, no running label. Runtime server and Pi SessionManager were both relaunched; READY reported persistentPiSessionManager=true."
+    },
+    {
+      "id": "UX003-E2E07-SELECTED-WORKFLOW-BLOCKED-3e59026e",
+      "status": "PASS_ACTIVITY_LEDGER_TERMINAL_AND_TIMER_STOP",
+      "at": "2026-10-12T14:50:17Z",
+      "conversationId": "01a13097-c7f8-7494-bbc9-8084311d7192",
+      "operationId": "716605c2-04bd-4281-b5d1-2f9c1cff6e56",
+      "workflowRunId": "3e59026e-caff-4141-9855-091d31c2ef46",
+      "runtimeProcess": {
+        "pid": 31288,
+        "startedAtLocal": "2026-10-12 22:49:22 Asia/Shanghai",
+        "serverSourceLastWrite": "2026-10-12T14:40:13Z",
+        "productionClientBuildLastWrite": "2026-10-12T14:48:24Z",
+        "proxyOrigin": "http://127.0.0.1:63061",
+        "runtimeOrigin": "http://127.0.0.1:63060"
+      },
+      "trigger": "One continuous Edge visible UI interaction selected 公司深度研究 via mouse+ArrowDown+Enter, entered the prompt, clicked Send; no dispatch API. Fixture control fail-all-providers was armed before sending.",
+      "acceptedActivity": {
+        "status": "failed",
+        "outcome": "workflow_blocked",
+        "workflowRegistryId": "company_research",
+        "workflowRunId": "3e59026e-caff-4141-9855-091d31c2ef46",
+        "acceptedAt": "2026-10-12T14:50:16.829Z",
+        "startedAt": "2026-10-12T14:50:17.021Z",
+        "finishedAt": "2026-10-12T14:50:17.032Z"
+      },
+      "workflow": {
+        "status": "blocked",
+        "observationRevision": 19,
+        "completedAt": "2026-10-12T14:50:17.017Z",
+        "qualityGateCode": "NO_COMPANY_RESEARCH_EVIDENCE",
+        "reportRef": "company-research-002640-3e59026e-caff-4141-9855-091d31c2ef46",
+        "bundleRef": "research-bundle-3e59026e-caff-4141-9855-091d31c2ef46"
+      },
+      "browserAfterReload": {
+        "activity": "工作流 · 失败 · workflow_blocked",
+        "runId": "3e59026e-caff-4141-9855-091d31c2ef46",
+        "elapsed": "等待 192 ms · 执行 11 ms · 总计 203 ms",
+        "progressCardStatus": "受阻",
+        "safeError": "Workflow failed (NO_COMPANY_RESEARCH_EVIDENCE).",
+        "elapsedSample1At": "2026-10-12T14:50:17Z",
+        "elapsedSample2At": "2026-10-12T14:50:19Z",
+        "elapsedSample1": "等待 192 ms · 执行 11 ms · 总计 203 ms",
+        "elapsedSample2": "等待 192 ms · 执行 11 ms · 总计 203 ms"
+      },
+      "knowledgeBaseSha256": "ccb04b78e3712d0988c1b23453a5b81fac40eb5a98b1594a526c8c7c5c3a5865",
+      "knowledgeBaseRevision": 0
+    },
+    {
+      "id": "UX003-E2E07-SELECTED-WORKFLOW-CANCEL-d5d94881",
+      "status": "PASS_CANCEL_AND_ACTIVITY_TERMINAL",
+      "at": "2026-10-12T14:52:13Z",
+      "conversationId": "01a13098-e166-7494-bbc9-80871a6fd9c6",
+      "operationId": "6893f00c-e735-4233-b4e8-20222211b338",
+      "workflowRunId": "d5d94881-1fea-40d0-a1d3-7a34527566e9",
+      "trigger": "Fresh selected 公司深度研究 through visible UI in one continuous interaction; fixture default GDELT provider and hold-acquisition armed. Workflow held in data_acquisition; after UI return to A, clicked visible 取消工作流 button.",
+      "duringSwitchA": {
+        "status": "running",
+        "currentStageId": "data_acquisition",
+        "observationRevision": 5,
+        "conversationId": "01a13098-e166-7494-bbc9-80871a6fd9c6"
+      },
+      "afterCancel": {
+        "status": "cancelled",
+        "activityStatus": "cancelled",
+        "activityOutcome": "workflow_cancelled",
+        "finishedAt": "2026-10-12T14:52:13.603Z",
+        "stageId": "data_acquisition",
+        "stageDurationMs": 44630
+      },
+      "browserAfterReload": {
+        "activity": "工作流 · 已取消 · workflow_cancelled",
+        "elapsed": "等待 152 ms · 执行 44.6 s · 总计 44.8 s",
+        "panelStatus": "已取消",
+        "elapsedSample1": "等待 152 ms · 执行 44.6 s · 总计 44.8 s",
+        "elapsedSample2": "等待 152 ms · 执行 44.6 s · 总计 44.8 s",
+        "sampleGapMs": 1500
+      },
+      "knowledgeBaseSha256": "ccb04b78e3712d0988c1b23453a5b81fac40eb5a98b1594a526c8c7c5c3a5865",
+      "knowledgeBaseRevision": 0
+    },
+    {
+      "id": "UX003-E2E06-SELECTED-WORKFLOW-CONVERSATION-ISOLATION-d5d94881",
+      "status": "PASS_A_REMAINS_RUNNING_B_ISOLATED",
+      "conversationA": "01a13098-e166-7494-bbc9-80871a6fd9c6",
+      "conversationBId": "01a13099-0483-7494-bbc9-80894c505ac1",
+      "workflowRunIdA": "d5d94881-1fea-40d0-a1d3-7a34527566e9",
+      "workflowRegistryId": "company_research",
+      "workflowAWhileBActive": {
+        "apiStatus": "running",
+        "currentStageId": "data_acquisition",
+        "observationRevision": 5,
+        "conversationListOwner": "01a13098-e166-7494-bbc9-80871a6fd9c6",
+        "conversationAIsActive": false
+      },
+      "conversationBState": {
+        "isActive": true,
+        "title": "新对话",
+        "activities": [],
+        "workflowProgressPanel": "没有运行中的工作流"
+      },
+      "returnToA": "Clicked visible conversation sidebar button containing run ID; A resumed display of the same running run and Cancel button.",
+      "result": "After return to A, visible 取消工作流 cancelled run A; see UX003-E2E07-SELECTED-WORKFLOW-CANCEL-d5d94881."
+    },
+    {
+      "id": "UX003-AUTHORITATIVE-STAGE-PROVIDER-EVIDENCE-3e59026e",
+      "status": "RECORDED_FROM_GET_WORKFLOWS_API",
+      "workflowRunId": "3e59026e-caff-4141-9855-091d31c2ef46",
+      "source": "GET /api/workflows/3e59026e-caff-4141-9855-091d31c2ef46 on Runtime proxy http://127.0.0.1:63061, after explicit UI selection and terminal reconciliation.",
+      "stages": [
+        {
+          "stageId": "identity_validation",
+          "status": "completed",
+          "startedAt": "2026-10-12T14:50:16.998Z",
+          "completedAt": "2026-10-12T14:50:17.001Z",
+          "durationMs": 3
+        },
+        {
+          "stageId": "data_acquisition",
+          "status": "completed",
+          "startedAt": "2026-10-12T14:50:17.004Z",
+          "completedAt": "2026-10-12T14:50:17.009Z",
+          "durationMs": 5
+        },
+        {
+          "stageId": "research_synthesis",
+          "status": "completed",
+          "startedAt": "2026-10-12T14:50:17.011Z",
+          "completedAt": "2026-10-12T14:50:17.013Z",
+          "durationMs": 2
+        },
+        {
+          "stageId": "quality_gate",
+          "status": "blocked",
+          "startedAt": "2026-10-12T14:50:17.013Z",
+          "completedAt": "2026-10-12T14:50:17.013Z",
+          "durationMs": 0,
+          "diagnostics": [
+            "NO_COMPANY_RESEARCH_EVIDENCE"
+          ]
+        },
+        {
+          "stageId": "report_generation",
+          "status": "completed",
+          "startedAt": "2026-10-12T14:50:17.013Z",
+          "completedAt": "2026-10-12T14:50:17.014Z",
+          "durationMs": 1
+        },
+        {
+          "stageId": "report_persistence",
+          "status": "completed",
+          "startedAt": "2026-10-12T14:50:17.014Z",
+          "completedAt": "2026-10-12T14:50:17.016Z",
+          "durationMs": 2
+        }
+      ],
+      "providerObservations": [
+        {
+          "providerId": "akshare",
+          "status": "skipped",
+          "startedAt": "2026-10-12T14:50:17.006Z",
+          "completedAt": "2026-10-12T14:50:17.007Z",
+          "durationMs": 1,
+          "diagnostics": [
+            "PROVIDER_ATTEMPT_FAILED",
+            "PROVIDER_ATTEMPT_FAILED",
+            "PROVIDER_ATTEMPT_FAILED"
+          ]
+        },
+        {
+          "providerId": "cninfo",
+          "status": "failed",
+          "recordCount": 0,
+          "startedAt": "2026-10-12T14:50:17.006Z",
+          "completedAt": "2026-10-12T14:50:17.008Z",
+          "durationMs": 2,
+          "diagnostics": [
+            "PROVIDER_ATTEMPT_FAILED"
+          ]
+        },
+        {
+          "providerId": "gdelt",
+          "status": "failed",
+          "recordCount": 0,
+          "startedAt": "2026-10-12T14:50:17.008Z",
+          "completedAt": "2026-10-12T14:50:17.008Z",
+          "durationMs": 0,
+          "diagnostics": [
+            "PROVIDER_ATTEMPT_FAILED"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "UX003-SELECTED-COMPANY-REFRESH-MIXED-PROVIDER-REPORT-BUNDLE-a748b2cc",
+      "status": "PASS_FOR_OBSERVED_PATH",
+      "at": "2026-10-12T14:58:40.937Z",
+      "workflowRegistryId": "company_research",
+      "workflowRunId": "a748b2cc-721c-4d1a-b469-f382503d5cf9",
+      "conversationId": "01a1309f-78dd-70ed-b412-68791fa65df1",
+      "operationId": "f11ee32a-b92b-4c1a-b18c-bc86a994f5d9",
+      "trigger": "Visible production UI sequence: New Conversation; selected 公司深度研究 in Workflow control; entered prompt 请对跨境通（002640）进行公司深度研究; clicked visible 发送. No dispatch endpoint called.",
+      "heldRun": {
+        "stage": "data_acquisition",
+        "status": "running",
+        "verifiedBeforeAndAfterBrowserReload": true,
+        "release": "Fixture control release-acquisition",
+        "startedAt": "2026-10-12T14:58:41.242Z",
+        "uiAfterReload": "Same run ID a748b2cc-721c-4d1a-b469-f382503d5cf9, subject 跨境通, running state, 当前/最近阶段 数据获取; prior identity_validation shown completed."
+      },
+      "acceptedActivity": {
+        "finishedAt": "2026-10-12T14:59:54.273Z",
+        "status": "completed",
+        "workflowRunId": "a748b2cc-721c-4d1a-b469-f382503d5cf9",
+        "outcome": "workflow_completed",
+        "startedAt": "2026-10-12T14:58:41.263Z",
+        "acceptedAt": "2026-10-12T14:58:40.937Z"
+      },
+      "terminal": {
+        "bundleStatus": "available",
+        "reportRef": "company-research-002640-a748b2cc-721c-4d1a-b469-f382503d5cf9",
+        "status": "completed",
+        "completedAt": "2026-10-12T14:59:54.264Z",
+        "observationRevision": 21,
+        "bundleRef": "research-bundle-a748b2cc-721c-4d1a-b469-f382503d5cf9"
+      },
+      "stages": [
+        {
+          "stageId": "identity_validation",
+          "startedAt": "2026-10-12T14:58:41.230Z",
+          "durationMs": 6,
+          "status": "completed",
+          "completedAt": "2026-10-12T14:58:41.236Z"
+        },
+        {
+          "stageId": "data_acquisition",
+          "startedAt": "2026-10-12T14:58:41.242Z",
+          "durationMs": 73016,
+          "status": "completed",
+          "completedAt": "2026-10-12T14:59:54.258Z"
+        },
+        {
+          "stageId": "research_synthesis",
+          "startedAt": "2026-10-12T14:59:54.259Z",
+          "durationMs": 2,
+          "status": "completed",
+          "completedAt": "2026-10-12T14:59:54.261Z"
+        },
+        {
+          "stageId": "quality_gate",
+          "startedAt": "2026-10-12T14:59:54.261Z",
+          "durationMs": 0,
+          "status": "completed",
+          "completedAt": "2026-10-12T14:59:54.261Z"
+        },
+        {
+          "stageId": "knowledge_gateway",
+          "startedAt": "2026-10-12T14:59:54.261Z",
+          "durationMs": 0,
+          "status": "skipped",
+          "completedAt": "2026-10-12T14:59:54.261Z"
+        },
+        {
+          "stageId": "report_generation",
+          "startedAt": "2026-10-12T14:59:54.261Z",
+          "durationMs": 1,
+          "status": "completed",
+          "completedAt": "2026-10-12T14:59:54.262Z"
+        },
+        {
+          "stageId": "report_persistence",
+          "startedAt": "2026-10-12T14:59:54.262Z",
+          "durationMs": 2,
+          "status": "completed",
+          "completedAt": "2026-10-12T14:59:54.264Z"
+        }
+      ],
+      "providerObservations": [
+        {
+          "status": "skipped",
+          "completedAt": "2026-10-12T14:58:41.249Z",
+          "recordCount": null,
+          "providerId": "akshare",
+          "startedAt": "2026-10-12T14:58:41.246Z",
+          "durationMs": 3,
+          "diagnostics": [
+            "PROVIDER_ATTEMPT_FAILED",
+            "PROVIDER_ATTEMPT_FAILED",
+            "PROVIDER_ATTEMPT_FAILED"
+          ]
+        },
+        {
+          "status": "failed",
+          "completedAt": "2026-10-12T14:59:54.255Z",
+          "recordCount": 0,
+          "providerId": "cninfo",
+          "startedAt": "2026-10-12T14:58:41.246Z",
+          "durationMs": 73009,
+          "diagnostics": [
+            "PROVIDER_ATTEMPT_FAILED"
+          ]
+        },
+        {
+          "status": "success",
+          "completedAt": "2026-10-12T14:59:54.256Z",
+          "recordCount": 1,
+          "providerId": "gdelt",
+          "startedAt": "2026-10-12T14:59:54.255Z",
+          "durationMs": 1,
+          "diagnostics": []
+        }
+      ],
+      "uiResults": {
+        "report": "Clicked visible 打开研究报告; /reports listed matching report ID. Clicked that result row and rendered the report detail with 19 sections.",
+        "bundle": "Clicked visible 打开研究资料包; /bundles listed matching run. Clicked its result row and rendered bundle detail with same run/report IDs and provider outcomes.",
+        "terminalCard": "Visible run card showed completed Company Research, same run ID, elapsed 1m 13s, stages/providers and safe provider diagnostic codes."
+      },
+      "knowledgeBase": {
+        "revision": 0,
+        "writeKnowledge": false,
+        "rootSha256": "ccb04b78e3712d0988c1b23453a5b81fac40eb5a98b1594a526c8c7c5c3a5865",
+        "result": "UNCHANGED"
+      },
+      "source": "GET /api/workflows/a748b2cc-721c-4d1a-b469-f382503d5cf9 via fixture proxy 127.0.0.1:60137; accepted Activity from GET /api/conversations/messages; browser evidence via Microsoft Edge CDP 50848.",
+      "result": "Selected workflow run, held-stage reload, terminal Activity/workflow reconciliation, report and bundle navigation observed. Isolated faux provider fixture only; no external provider/business acceptance claimed."
+    }
+  ],
+  "limitations": [
+    "The fixture used deterministic/offline faux providers; results prove runtime/UI wiring and state presentation, not live-source quality or provider acceptance.",
+    "E2E-01 through E2E-09 are represented by the valid selected-workflow observations above; the earlier invalid selector-reset attempts are excluded.",
+    "The mixed-provider observation a748b2cc was captured before unsupported-attempt diagnostic classification was corrected. Its recorded values are historical evidence; the regression test now verifies PROVIDER_UNSUPPORTED for skipped adapter operations and preserves PROVIDER_ATTEMPT_FAILED for real failures."
+  ]
+}

@@ -83,13 +83,13 @@ function summary(info: Awaited<ReturnType<typeof SessionManager.list>>[number] |
   const piUpdated = info?.modified.getTime() ?? 0
   const updatedAt = new Date(Math.max(piUpdated, Date.parse(state.updatedAt))).toISOString()
   const latestWorkflowRun = state.acceptedRequests
-    .filter((request) => request.workflowRunId !== undefined)
+    .filter((request) => request.workflowRunId !== undefined || (request.lifecycle === 'interrupted' && request.acceptedWorkflowRegistryId !== undefined && request.reservedWorkflowRunId !== undefined))
     .reduce<(typeof state.acceptedRequests)[number] | undefined>((latest, request) => {
       if (latest === undefined) return request
       // Keep the later ledger entry on equal millisecond timestamps.
-      return Date.parse(request.startedAt ?? request.acceptedAt) >= Date.parse(latest.startedAt ?? latest.acceptedAt) ? request : latest
+      return Date.parse(request.startedAt ?? request.dispatchAttemptedAt ?? request.acceptedAt) >= Date.parse(latest.startedAt ?? latest.dispatchAttemptedAt ?? latest.acceptedAt) ? request : latest
     }, undefined)
-  const latestWorkflowRunId = latestWorkflowRun?.workflowRunId
+  const latestWorkflowRunId = latestWorkflowRun?.workflowRunId ?? latestWorkflowRun?.reservedWorkflowRunId
   return { conversationId: state.conversationId, name, titleSource: state.titleSource.toLowerCase() as SafeConversationSummary['titleSource'], archived: state.archived, version: state.revision, ...(latestWorkflowRunId === undefined ? {} : { latestWorkflowRunId }), updatedAt, messageCount: info?.messageCount ?? activeMessageCount, isActive: state.conversationId === activeId }
 }
 
@@ -236,7 +236,7 @@ export class ResearchHubSessionRuntime {
   async conversationActivities(conversationId: string): Promise<readonly SafeConversationActivity[]> {
     await this.assertConversationExists(conversationId)
     const state = await this.conversationStateStore.get(conversationId)
-    return (state?.acceptedRequests ?? []).map((request) => ({ activityId: request.operationId, conversationId, operationId: request.operationId, kind: 'accepted_request', operation: request.operation ?? 'prompt', status: request.lifecycle, ...(request.outcome === undefined ? {} : { outcome: request.outcome }), requestText: request.requestText, createdAt: request.acceptedAt, ...(request.workflowRunId === undefined ? {} : { workflowRunId: request.workflowRunId }), ...(request.reservedWorkflowRunId === undefined ? {} : { reservedWorkflowRunId: request.reservedWorkflowRunId }), ...(request.workflowSubject === undefined ? {} : { workflowSubject: request.workflowSubject }), ...(request.workflowRegistryId === undefined ? {} : { workflowRegistryId: request.workflowRegistryId }), acceptedAt: request.acceptedAt, ...(request.startedAt === undefined ? {} : { startedAt: request.startedAt }), ...(request.finishedAt === undefined ? {} : { finishedAt: request.finishedAt }), ...(request.piMessageId === undefined ? {} : { piMessageId: request.piMessageId }) }))
+    return (state?.acceptedRequests ?? []).map((request) => ({ activityId: request.operationId, conversationId, operationId: request.operationId, kind: 'accepted_request', operation: request.operation ?? 'prompt', status: request.lifecycle, ...(request.outcome === undefined ? {} : { outcome: request.outcome }), requestText: request.requestText, createdAt: request.acceptedAt, ...(request.workflowRunId === undefined ? {} : { workflowRunId: request.workflowRunId }), ...(request.reservedWorkflowRunId === undefined ? {} : { reservedWorkflowRunId: request.reservedWorkflowRunId }), ...(request.workflowSubject === undefined ? {} : { workflowSubject: request.workflowSubject }), ...((request.workflowRegistryId ?? request.acceptedWorkflowRegistryId) === undefined ? {} : { workflowRegistryId: request.workflowRegistryId ?? request.acceptedWorkflowRegistryId }), acceptedAt: request.acceptedAt, ...(request.startedAt === undefined ? {} : { startedAt: request.startedAt }), ...(request.finishedAt === undefined ? {} : { finishedAt: request.finishedAt }), ...(request.piMessageId === undefined ? {} : { piMessageId: request.piMessageId }) }))
   }
 
   async getConversationSummary(conversationId: string): Promise<SafeConversationSummary> {

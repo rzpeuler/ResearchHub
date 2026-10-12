@@ -85,12 +85,13 @@ export interface ResearchAcquisitionPlugin {
 }
 
 export type AcquisitionPayloadStatus = 'usable' | 'empty' | 'failed'
+export type ResearchAcquisitionDiagnosticStatus = AcquisitionPayloadStatus | 'unsupported'
 
 export interface ResearchAcquisitionDiagnostic {
   readonly provider: string
   readonly candidateId?: string
   readonly kind?: ResearchSourceKind
-  readonly status: AcquisitionPayloadStatus
+  readonly status: ResearchAcquisitionDiagnosticStatus
   readonly reason: string
 }
 
