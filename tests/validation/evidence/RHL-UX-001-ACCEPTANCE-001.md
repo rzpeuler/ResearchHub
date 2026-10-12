@@ -2,10 +2,10 @@
 
 Status: `ACCEPTANCE_COMPLETE / CTO REVIEW PENDING`
 
-Implementation branch: `codex/ux-001-session-reliability`  
-Baseline: `origin/main` `8a7f49d43a01aefd23b72c5103481ad5bdac51aa`  
-Accepted candidate before acceptance fixes: `d91397fb0398c3725ed8a3d71b80f9d2d4ef548d`  
-UI/Activity acceptance fix commit: `b6bcc1546c7fba61f017966efe6ace90047876d8`
+- Implementation branch: `codex/ux-001-session-reliability`
+- Baseline: `origin/main` `8a7f49d43a01aefd23b72c5103481ad5bdac51aa`
+- Accepted candidate before acceptance fixes: `d91397fb0398c3725ed8a3d71b80f9d2d4ef548d`
+- UI/Activity acceptance fix commit: `b6bcc1546c7fba61f017966efe6ace90047876d8`
 
 This record captures actual Edge browser state from the production React build served by `ResearchHubRuntimeServer`, plus direct read-only Runtime API observations. The fixture used a fresh Schema 0.4 Knowledge Base, persistent Pi `SessionManager`, faux Pi provider with model network disabled, and a controlled Company Research adapter. It did not use a mounted user Knowledge Base, external credentials, or authenticated model/provider traffic.
 
