@@ -1,10 +1,22 @@
 # ResearchHub UX Upgrade Plan — RHL-UX-001 to UX-004
 
-Status: `DRAFT FOR CTO REVIEW`
+Status: `CTO CONDITIONAL PASS / IMPLEMENTATION PLAN FROZEN; FINAL ACCEPTANCE PENDING`
 
 Audit baseline: `origin/main` `46c53a1a15845a44b28ccbbfc87e9c776c8a6842`
 
 Source audit: [RHL-UX-000](../reports/2026-10-12-rhl-ux-000-audit.md)
+
+## CTO architecture decisions
+
+These decisions close the audit's five architecture questions and govern UX-001–004:
+
+1. **Every Workflow request belongs to a recoverable Pi session.** UX-001 must resolve/create the server-owned session, preserve the accepted request, and persist its Workflow-run association. The frontend history list is not canonical state.
+2. **Use the current registry ID as internal identity.** The current Company Research ID is `company_research`; localized display text is separate metadata. Do not assume `company_deep_research` is a current registry ID.
+3. **Use Pi Session metadata for session title/provenance/archive state where supported.** Updates are server-owned and concurrency-safe. Do not add a separate transcript store or Knowledge Schema fields.
+4. **Refresh recovery is in scope; Runtime-restart Workflow recovery is not promised.** UX-003 restores a run after a page refresh while the owning Runtime process is alive. Durable recovery across Runtime restart requires a separately approved persistence extension.
+5. **Workflow producers own truthful progress and data-availability facts.** Publish only explicit stage transitions, timestamps, safe diagnostics, and provider availability outcomes. Stage counts and percentages are not inferred, and no generic Workflow engine or fixed stage model is introduced.
+
+The implementation must preserve the audit's `NOT_REPRODUCED` status for the historical `company_deep_research` report unless a separate authenticated reproduction establishes otherwise.
 
 ## Shared implementation rules
 
@@ -49,7 +61,7 @@ Source audit: [RHL-UX-000](../reports/2026-10-12-rhl-ux-000-audit.md)
 
 **Risks.** Pi session-info updates may be append-only; need a safe metadata fold/serialization strategy. Multi-tab requests share Runtime but can race; compare-and-set must be server-side. Avoid adding a second transcript store or converting an empty session into a duplicate on retries.
 
-**Done when.** Every prompt/Workflow run is traceable to one persisted conversation; list query agrees after refresh and Runtime restart as supported by chosen recovery contract; automatic naming follows exact priority/one-shot rules; manual rename and archive are durable; repeated requests do not duplicate records.
+**Done when.** Every prompt/Workflow run is traceable to one persisted conversation; session, transcript, and run association survive refresh and Runtime restart; live Workflow status is restored after page refresh only while the same Runtime remains alive; automatic naming follows exact priority/one-shot rules; manual rename and archive are durable; repeated requests do not duplicate records.
 
 ## RHL-UX-002 — Realtime Agent Interaction
 
@@ -92,14 +104,14 @@ Source audit: [RHL-UX-000](../reports/2026-10-12-rhl-ux-000-audit.md)
 1. Add localized display metadata to the registry and a safe subject projection built from normalized structured arguments or a verified Knowledge entity. Keep internal `workflowType`, external registry ID and display label distinct.
 2. Add an optional current stage snapshot and append-only stage history only where Workflow producers emit explicit stage-start/end transitions, timestamps, outcome and safe summary. Stages are producer-defined and may vary by Workflow.
 3. Add structured data/tool availability only at provider/plugin boundaries that know whether acquisition succeeded, was unavailable, partial or failed. Preserve source-bound error codes and user-safe diagnostics.
-4. Rehydrate Workflow status by server-owned conversation-run link. Decide and test same-Runtime refresh versus Runtime restart durability; if cross-restart is in scope, persist a bounded run snapshot under the existing workspace runtime data, separate from Knowledge.
+4. Rehydrate Workflow status by the server-owned conversation-run link after page refresh while the same Runtime process remains alive. Do not add Runtime-restart live-run durability in UX-003; terminal reports/bundles remain separately discoverable and must not be presented as active runs.
 5. Continue using actual run timestamps for total elapsed time, actual stage timestamps for stage durations, and existing report/bundle link verification. Never compute percent from text or number of stages.
 
 **Do not modify.** Product research algorithms, stage order purely to improve the UI, fixed stage counts, inferred tool calls, or new event infrastructure. Do not couple Pi conversation abort with Workflow cancellation; current architecture treats them independently.
 
-**Tests.** Unit: registry localized metadata; subject projection validation/fallback; stage transition/timing; safe diagnostic projection; no fabricated stage. Integration: company Workflow start, partial provider data, provider block/failure, cancel, result persistence, refresh and Runtime restart per chosen contract. E2E: start company research, observe only emitted stages and availability, refresh, cancel, verify result artifact belongs to run and session.
+**Tests.** Unit: registry localized metadata; subject projection validation/fallback; stage transition/timing; safe diagnostic projection; no fabricated stage. Integration: company Workflow start, partial provider data, provider block/failure, cancel, result persistence, and same-Runtime refresh restoration; verify session/request/run association persistence separately across Runtime restart without asserting live-run restoration. E2E: start company research, observe only emitted stages and availability, refresh, cancel, verify result artifact belongs to run and session.
 
-**Risks.** The taskbook's `company_deep_research` ID differs from current `company_research`. Stage instrumentation scope and durable run store are architecture decisions. Some existing reports survive process restart while live run records do not; UI must not present an artifact as an active run.
+**Risks.** The taskbook's `company_deep_research` label differs from current `company_research` registry ID; keep those identity/display concepts distinct. Some existing reports survive process restart while live run records do not; UI must not present an artifact as an active run. Stage instrumentation belongs to each Workflow producer and must use only real boundaries.
 
 **Done when.** Workflow and subject names come from trusted fields; displayed stage/timing/availability are producer-authored; errors and cancel state are honest; refresh recovers the selected run; verified reports/bundles open by matching run ID.
 
