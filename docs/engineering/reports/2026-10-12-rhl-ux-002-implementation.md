@@ -81,4 +81,4 @@ Full Node outputs used in comparison: `%TEMP%\ux002-node-adr001-final.txt`, `%TE
 
 ## H. Git delivery
 
-The ADR-001 implementation, performance evidence, and regression result are committed on this branch. The delivery commit was pushed to `origin/codex/ux-002-realtime-agent-interaction`; local HEAD and the fetched remote branch were verified equal, and the worktree was clean at closeout. No PR merge or UX-003 work was performed; `origin/main` remains the UX-001 baseline.
+The ADR-001 implementation, performance evidence, and regression result are committed on this branch. The implementation branch was subsequently merged through PR #3 at `2594fe01b4f282bfb4680c21c9135d3b05ffc3a4`; this closeout did not perform or alter that merge. The status-alignment follow-up and this Git-state clarification are pushed on `codex/ux-002-realtime-agent-interaction`. UX-003 implementation was not performed as part of UX-002.
