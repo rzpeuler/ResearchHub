@@ -57,3 +57,28 @@ Snapshot projection applies field allowlists and bounded safe-text/diagnostic pr
 ## J. Commit SHA and Git Delivery
 
 Delivery is limited to `codex/wf-persist-001-workflow-observation-snapshots`. The final commit SHA, matching remote branch HEAD, clean worktree result, and push confirmation are reported with the delivery handoff. This branch is not merged to `main` pending CTO acceptance. Stop after Task A; do not begin UX-IA-001.
+
+## Acceptance Fix Supplement
+
+Supplement status: `ACCEPTANCE_COMPLETE / CTO REVIEW PENDING`
+
+The final Node failure comparison was rerun against a fresh detached worktree at
+`origin/main` `5beaa675ef829e2a4dcae91a594e7604be97f3e6` and reviewed branch
+commit `3f005ab478c821c19db74b1b457f22599d86fc12`, with Node 24.16.0, npm
+11.13.0, identical lockfile SHA-256, and `npm ci` in both worktrees. The
+machine-readable comparison includes every normalized failure's error type,
+message, actual/expected values, source position, and call stack, plus
+classified differences and SHA-256 digests. It reports
+`BASELINE_FAILURES_IDENTICAL`: baseline 21 failures, branch 21 failures, zero
+new, zero disappeared, and zero same-named content changes. See
+[RHL-WF-PERSIST-001-ACCEPTANCE-FIX-001.json](../../../tests/validation/evidence/RHL-WF-PERSIST-001-ACCEPTANCE-FIX-001.json)
+and its reproducible parser/comparator
+[compare-node-test-failures.mjs](../../../tests/validation/compare-node-test-failures.mjs).
+
+Acceptance-fix focused regression also passed root and Client typechecks, the
+production Client build, Client tests (152/152), Workflow Observation Store
+and Persistence tests, the UX-001 Runtime restart integration test, and
+`git diff --check`. The production bundle retains the existing Vite >500 kB
+advisory. The first Client test invocation ran concurrently with Runtime tests
+and emitted one `ECONNRESET` unhandled rejection despite 152 passing tests; the
+standalone rerun passed all 152 tests with no errors.
