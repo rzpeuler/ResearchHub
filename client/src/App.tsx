@@ -735,6 +735,7 @@ function WorkflowResultFeedback({ workflow, verifiedBundleId, onOpenReport, onOp
   const stateCopy: Readonly<Record<WorkflowRun['status'], { readonly zh: string; readonly en: string }>> = {
     pending: { zh: '等待执行', en: 'Waiting to execute' },
     running: { zh: '正在执行', en: 'Running' },
+    interrupted: { zh: '工作流已中断', en: 'Workflow was interrupted' },
     completed: { zh: '工作流已完成', en: 'Workflow completed' },
     completed_with_review: { zh: '工作流完成，等待审核', en: 'Workflow completed and requires review' },
     blocked: { zh: '工作流受阻', en: 'Workflow is blocked' },
@@ -745,7 +746,7 @@ function WorkflowResultFeedback({ workflow, verifiedBundleId, onOpenReport, onOp
   return <section className={`workflow-result-feedback workflow-result-${workflow.status}`} aria-label={t('工作流结果', 'Workflow result')} role="status">
     <strong>{t(state.zh, state.en)}</strong>
     {isWorkflowFinalResultSynchronized(workflow) && result?.summary ? <p>{result.summary}</p> : workflow.progressSummary && !terminalWorkflowStatuses.has(workflow.status) ? <p>{workflow.progressSummary}</p> : null}
-    {!isWorkflowFinalResultSynchronized(workflow) ? <p>{t('工作流已终止，正在同步最终执行结果。', 'Workflow has ended; syncing the final execution result.')}</p> : null}
+    {workflow.status === 'interrupted' ? <p>{t('Runtime 停止时该 Workflow 尚未完成；不会自动续跑。', 'The Workflow had not finished when Runtime stopped and will not resume automatically.')}</p> : !isWorkflowFinalResultSynchronized(workflow) ? <p>{t('工作流已终止，正在同步最终执行结果。', 'Workflow has ended; syncing the final execution result.')}</p> : null}
     {result?.blockedReason ? <p>{t('阻断原因：', 'Blocked because: ')}{result.blockedReason}</p> : null}
     {result?.diagnostics.length ? <small>{t('诊断代码：', 'Diagnostics: ')}{result.diagnostics.join(', ')}</small> : null}
     <div className="workflow-result-links">
@@ -812,7 +813,7 @@ function WorkflowProgressPanel(props: Pick<ResearchPageProps, 'workflow' | 'work
     const label = labels[code]
     return label ? t(label.zh, label.en) : code
   }
-  const stageDuration = (stage: NonNullable<WorkflowRun['stages']>[number]): string => duration(stage.startedAt, stage.completedAt, stage.durationMs)
+  const stageDuration = (stage: NonNullable<WorkflowRun['stages']>[number]): string => duration(stage.startedAt, stage.completedAt ?? (workflow?.status === 'interrupted' && stage.status === 'interrupted' ? workflow.updatedAt : undefined), stage.durationMs)
   return <section className="workflow-progress-panel" aria-label={t('工作流进度', 'Workflow progress')}>
     {!props.knowledgeBase ? <p className="muted">{t('未挂载知识库。', 'No Knowledge Base mounted.')}</p> : null}
     {!props.workflowRunId ? <div className="notice"><strong>{t('没有运行中的工作流', 'No active Workflow')}</strong><p>{t('启动工作流后，实际运行状态会显示在这里。', 'Workflow status appears here after a run starts.')}</p></div>
@@ -823,7 +824,10 @@ function WorkflowProgressPanel(props: Pick<ResearchPageProps, 'workflow' | 'work
             <div className="workflow-status"><span className={`status-dot ${terminalWorkflowStatuses.has(workflow.status) ? 'terminal' : ''}`} />{statusLabel(workflow.status)}</div>
             <h3>{workflowName}</h3>
             {activity?.workflowSubject ? <p className="workflow-subject">{activity.workflowSubject}</p> : null}
-            <dl className="workflow-run-metrics"><dt>{t('运行耗时', 'Elapsed')}</dt><dd>{duration(workflow.startedAt, workflow.completedAt)}</dd><dt>{t('Run ID', 'Run ID')}</dt><dd><code>{workflow.runId}</code></dd></dl>
+            {workflow.observationSource === 'historical' ? <p className="workflow-history-source" data-testid="workflow-historical-snapshot" role="status">{t('历史 Workflow 快照', 'Historical Workflow snapshot')}</p> : null}
+            {workflow.recoveryState?.kind === 'interrupted' ? <p className="workflow-recovery-notice" data-testid="workflow-recovery-notice" role="status">{t(`Runtime 重启时该 Workflow 处于${workflow.recoveryState.lastObservedStatus === 'pending' ? '等待' : '运行'}状态；不会自动续跑。`, `This Workflow was ${workflow.recoveryState.lastObservedStatus} when Runtime stopped. It will not resume automatically.`)}</p> : null}
+            {workflow.historyPersistence?.status === 'failed' ? <p className="workflow-history-persistence-error" data-testid="workflow-history-persistence-failed" role="status">{t('Workflow 历史快照保存失败；当前运行状态仍来自 Runtime。', 'Workflow history snapshot could not be saved. The current run status remains authoritative from Runtime.')}</p> : null}
+            <dl className="workflow-run-metrics"><dt>{t('运行耗时', 'Elapsed')}</dt><dd>{duration(workflow.startedAt, workflow.completedAt ?? (workflow.status === 'interrupted' ? workflow.updatedAt : undefined))}</dd><dt>{t('Run ID', 'Run ID')}</dt><dd><code>{workflow.runId}</code></dd></dl>
             {workflow.currentStage ? <p className="workflow-current-stage"><strong>{t('当前/最近阶段：', 'Current/last stage: ')}</strong>{workflow.currentStage}</p> : null}
             {workflow.progressSummary ? <p className="workflow-progress-summary">{workflow.progressSummary}</p> : null}
             {stages.length ? <ol className="workflow-stage-timeline" aria-label={t('实际执行阶段', 'Observed execution stages')}>{stages.map((stage) => <li key={stage.stageId} className={`workflow-stage workflow-stage-${stage.status}`} data-stage-id={stage.stageId}><span className="workflow-stage-marker" aria-hidden="true" /><div className="workflow-stage-content"><strong>{stage.label}</strong><span className="workflow-stage-status">{statusLabel(stage.status)} · {stageDuration(stage)}</span>{stage.summary ? <small>{stage.summary}</small> : null}{stage.diagnostics?.length ? <small>{stage.diagnostics.map(diagnosticLabel).join(' · ')}</small> : null}</div></li>)}</ol> : <p className="muted">{t('该 Workflow 尚未报告细分阶段；仅显示权威整体状态。', 'This Workflow has not reported detailed stages; only authoritative run status is available.')}</p>}
@@ -1388,7 +1392,7 @@ function AppContent(): ReactElement {
         const run = await client.workflow(associatedRunId)
         if (epoch === requestEpoch.current && syncEpoch === conversationSyncEpoch.current && latestConversation.current === current.conversationId && run.runId === associatedRunId) {
           setWorkflow(run)
-          const runProgress: RequestProgress | undefined = run.status === 'completed' || run.status === 'completed_with_review' ? 'completed' : run.status === 'failed' || run.status === 'blocked' ? 'failed' : run.status === 'cancelled' ? 'cancelled' : 'running'
+          const runProgress: RequestProgress | undefined = run.status === 'completed' || run.status === 'completed_with_review' ? 'completed' : run.status === 'failed' || run.status === 'blocked' ? 'failed' : run.status === 'cancelled' ? 'cancelled' : run.status === 'interrupted' ? 'interrupted' : run.status === 'pending' ? 'accepted' : 'running'
           setOptimisticRequests((previous) => previous.map((request) => {
             const activity = (messageResult.activities ?? []).find((item) => item.operationId === request.operationId && item.workflowRunId === run.runId)
             return activity && request.conversationId === current.conversationId && runProgress ? { ...request, progress: runProgress, ...(runProgress === 'failed' ? { error: run.errorSummary ?? 'Workflow failed.' } : {}) } : request

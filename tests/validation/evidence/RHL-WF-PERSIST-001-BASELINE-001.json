@@ -1,0 +1,119 @@
+{
+  "taskId": "RHL-WF-PERSIST-001",
+  "baselineCommit": "5beaa675ef829e2a4dcae91a594e7604be97f3e6",
+  "baselineBranch": "codex/wf-persist-001-workflow-observation-snapshots",
+  "generatedAt": "2026-10-13T07:19:24.2529601Z",
+  "node": "v24.16.0",
+  "npm": "11.13.0",
+  "install": "npm ci",
+  "fullSuite": "npm test",
+  "clientTests": {
+    "passed": 150,
+    "failed": 0,
+    "total": 150
+  },
+  "nodeTests": {
+    "total": 2243,
+    "passed": 2222,
+    "failed": 21,
+    "failureIdentifiers": [
+      {
+        "source": "tests\\app\\services\\research-skill-architecture.test.ts:1:5577",
+        "title": "Workflow metadata composes canonical peers without registering composite Skill IDs"
+      },
+      {
+        "source": "tests\\app\\services\\theme-workspace-projection.test.ts:1:12952",
+        "title": "Theme graph includes only human-confirmed scope refs, preserves direction, and never expands global edges"
+      },
+      {
+        "source": "tests\\app\\services\\theme-workspace-projection.test.ts:1:13930",
+        "title": "Industry projection returns bounded facts, deterministic core views, publication-labeled dates, future catalysts and competition units"
+      },
+      {
+        "source": "tests\\app\\services\\theme-workspace-projection.test.ts:1:15855",
+        "title": "semantic section classification receives only readable facts and cannot block the base projection"
+      },
+      {
+        "source": "tests\\app\\services\\theme-workspace-projection.test.ts:1:17744",
+        "title": "current restricted or expired source rights suppress company exposures and dependent competition data"
+      },
+      {
+        "source": "tests\\app\\services\\theme-workspace-projection.test.ts:1:18732",
+        "title": "company projection is readable through a canonical business exposure without adding a company graph node"
+      },
+      {
+        "source": "tests\\app\\services\\theme-workspace-projection.test.ts:1:19176",
+        "title": "stale expected revision and a corrupt scope ledger fail closed"
+      },
+      {
+        "source": "tests\\knowledge\\production\\competition-module-gateway.test.ts:1:6226",
+        "title": "Gateway creates a competition Module and maps its local proposal ID"
+      },
+      {
+        "source": "tests\\knowledge\\production\\competition-module-gateway.test.ts:1:7336",
+        "title": "Gateway blocks numeric Module cells that disagree with their canonical facts"
+      },
+      {
+        "source": "tests\\knowledge\\production\\competition-module-gateway.test.ts:1:8564",
+        "title": "same Industry table replays idempotently with the same canonical Module ref"
+      },
+      {
+        "source": "tests\\knowledge\\production\\competition-module-gateway.test.ts:1:10643",
+        "title": "evidence-backed cell update commits, and an unavailable update preserves the prior usable value"
+      },
+      {
+        "source": "tests\\knowledge\\production\\competition-module-gateway.test.ts:1:12995",
+        "title": "same Claim may support a canonical numeric display update after new provenance is admitted"
+      },
+      {
+        "source": "tests\\knowledge\\production\\competition-module-gateway.test.ts:1:15436",
+        "title": "Module blocks the whole submit when a cell reference cannot resolve"
+      },
+      {
+        "source": "tests\\knowledge\\production\\competition-module-gateway.test.ts:1:16421",
+        "title": "ChangeSet validation rejects denied or missing Raw evidence listed by a competition Module"
+      },
+      {
+        "source": "tests\\knowledge\\production\\competition-module-gateway.test.ts:4:394",
+        "title": "Module blocks when the row Source payload is unusable"
+      },
+      {
+        "source": "tests\\knowledge\\production\\competition-module-gateway.test.ts:4:1165",
+        "title": "Module blocks unusable Source evidence inherited from an existing business_exposure Relation"
+      },
+      {
+        "source": "tests\\knowledge\\production\\competition-module-gateway.test.ts:6:728",
+        "title": "new Claim provenance alone cannot justify a contradictory same-reference display value"
+      },
+      {
+        "source": "tests\\knowledge\\production\\competition-module-gateway.test.ts:6:2516",
+        "title": "Writer rejection does not report success or overwrite the prior Module"
+      },
+      {
+        "source": "tests\\knowledge\\production\\competition-module-gateway.test.ts:6:4376",
+        "title": "different rows may retain different currencies and a changed column schema blocks for review"
+      },
+      {
+        "source": "tests\\validation\\codex-module-remaining-schema-deltas.test.ts:1:3030",
+        "title": "composition is source-immutable, deterministic and idempotent"
+      },
+      {
+        "source": "tests\\validation\\codex-production-industry-schema-compatibility.test.ts:1:1402",
+        "title": "FIX-015 offline evidence inputs preserve authoritative contracts and expected source sizes"
+      }
+    ]
+  },
+  "validations": {
+    "rootTypecheck": "PASS",
+    "clientTypecheck": "PASS",
+    "productionClientBuild": "PASS",
+    "buildJavascriptBytes": 672740,
+    "bundleAdvisory": "JavaScript chunk exceeds 500 kB"
+  },
+  "notes": [
+    "Baseline is clean origin/main 5beaa675ef829e2a4dcae91a594e7604be97f3e6 before task changes.",
+    "npm test exits nonzero due the 21 listed baseline failures.",
+    "The exact failing identifiers must be compared with the post-change full-suite run.",
+    "npm ci reported 5 dependency audit findings; no dependency changes were made."
+  ]
+}

@@ -66,8 +66,8 @@ const submitByButton = async (text) => {
 const selectCompanyWorkflow = async () => {
   const found = await evalInPage(`(()=>{const s=document.querySelector('select[aria-label="Workflow"]');if(!s)return false;s.focus();return true})()`)
   if (!found) throw new Error('Workflow select not present')
-  await key('ArrowDown')
-  await key('Enter')
+  const selected = await evalInPage(`document.querySelector('select[aria-label="Workflow"]')?.value==='company_research'`)
+  if (!selected) { await key('ArrowDown'); await key('Enter') }
   return await until(`document.querySelector('select[aria-label="Workflow"]')?.value==='company_research'`)
 }
 await cdp('Page.enable')
@@ -127,7 +127,11 @@ if (mode === 'chat') {
   evidence.checkpoints.push({ name: 'synthetic CompositionEvent guard (not native OS IME)', result: JSON.parse(composing), notNativeIme: true })
   void answer; void composer
 }
-if (mode === 'workflow') {
+if (mode === 'workflow' || mode === 'workflow-new') {
+  if (mode === 'workflow-new') {
+    await click('button.new-conversation')
+    await until(`document.querySelector('textarea[aria-label="消息"],textarea[aria-label="Message"]')&&document.querySelectorAll('.optimistic-request').length===0`)
+  }
   await selectCompanyWorkflow()
   const selected = await evalInPage(`JSON.stringify({selectedId:document.querySelector('select[aria-label="Workflow"]').value,selectedLabel:document.querySelector('select[aria-label="Workflow"] option:checked')?.textContent})`)
   const prompt = `请对跨境通（002640）进行公司深度研究 UX004 ${Date.now()}`
@@ -136,6 +140,16 @@ if (mode === 'workflow') {
   await wait(1000)
   evidence.checkpoints.push({ name: 'selected Workflow UI submit and runtime association', selection: JSON.parse(selected), visible: await evalInPage(`JSON.stringify({activity:[...document.querySelectorAll('[data-activity-id]')].map(e=>e.innerText),workflowCard:document.querySelector('[data-testid="workflow-progress-card"]')?.innerText,subject:document.querySelector('.workflow-subject')?.textContent,runId:document.querySelector('[data-testid="workflow-progress-card"]')?.getAttribute('data-run-id')})`) })
   void request
+}
+if (mode === 'recover') {
+  const runId = process.argv[5]
+  const expectedStatus = process.argv[6] ?? 'completed'
+  if (!runId) throw new Error('recover mode requires <runId> [expected-status]')
+  const api = await until(`fetch('/api/workflows/${encodeURIComponent(runId)}').then(async r=>r.ok?await r.json():null).then(value=>value&&value.runId===${JSON.stringify(runId)}?value:null)`, 20_000)
+  const recovery = JSON.parse(await evalInPage(`(async()=>JSON.stringify({api:await fetch('/api/workflows/${encodeURIComponent(runId)}').then(r=>r.json()),card:(()=>{const e=document.querySelector('[data-testid="workflow-progress-card"]');return e?{runId:e.getAttribute('data-run-id'),text:e.innerText,historical:!!e.querySelector('[data-testid="workflow-historical-snapshot"]'),recovery:!!e.querySelector('[data-testid="workflow-recovery-notice"]'),stages:[...e.querySelectorAll('.workflow-stage-timeline li')].map(x=>x.innerText)}:null})()}))()`))
+  if (!api || recovery.api.status !== expectedStatus || recovery.card?.runId !== runId || !recovery.card.historical) throw new Error(`Historical Workflow was not restored in the browser: ${JSON.stringify(recovery)}`)
+  if (expectedStatus === 'interrupted' && !recovery.card.recovery) throw new Error(`Interrupted recovery notice is missing: ${JSON.stringify(recovery.card)}`)
+  evidence.checkpoints.push({ name: 'real Runtime restart restores historical Workflow in the browser', result: recovery, passed: true })
 }
 if (mode === 'sse-monitor') {
   const samples = []

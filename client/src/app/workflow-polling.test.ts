@@ -36,6 +36,20 @@ describe('workflow polling', () => {
     stop()
   })
 
+  it('treats a recovered interrupted snapshot as terminal without waiting for a producer result', async () => {
+    vi.useFakeTimers()
+    const interrupted: WorkflowRun = { ...workflow('interrupted'), observationSource: 'historical', recoveryState: { kind: 'interrupted', lastObservedStatus: 'running' } }
+    const fetchWorkflow = vi.fn().mockResolvedValue(interrupted)
+    const onUpdate = vi.fn()
+    const stop = startWorkflowPolling({ runId: 'run-1', fetchWorkflow, onUpdate, onError: vi.fn() })
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(fetchWorkflow).toHaveBeenCalledTimes(1)
+    expect(onUpdate).toHaveBeenCalledWith(interrupted)
+    expect(isWorkflowFinalResultSynchronized(interrupted)).toBe(true)
+    stop()
+  })
+
   it('stops after a completed_with_review terminal response', async () => {
     vi.useFakeTimers()
     const completeWithReview = { ...workflow('completed_with_review'), executionResult: { runId: 'run-1', workflowId: 'theme_framework', executionStatus: 'completed_with_review' as const, terminalStatus: 'completed_with_review' as const, diagnostics: [], bundleStatus: 'available' as const } }

@@ -1,8 +1,11 @@
 import type { WorkflowRun } from '../api/runtime-client'
 
-export const terminalWorkflowStatuses: ReadonlySet<WorkflowRun['status']> = new Set(['completed', 'completed_with_review', 'blocked', 'cancelled', 'failed'])
+export const terminalWorkflowStatuses: ReadonlySet<WorkflowRun['status']> = new Set(['interrupted', 'completed', 'completed_with_review', 'blocked', 'cancelled', 'failed'])
 
 export function isWorkflowFinalResultSynchronized(workflow: WorkflowRun): boolean {
+  // A recovered interruption is a complete history state, not a run that is
+  // waiting for a producer terminal-result projection to arrive.
+  if (workflow.status === 'interrupted') return true
   const result = workflow.executionResult
   return terminalWorkflowStatuses.has(workflow.status)
     && result !== undefined

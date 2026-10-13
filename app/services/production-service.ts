@@ -50,6 +50,7 @@ export interface ProductionServiceOptions {
 export class ProductionService {
   private readonly registry = new KnowledgeBaseRegistry()
   private readonly rawDocumentPreviewResults = new Map<string, ApplicationRawDocumentPreviewV04>()
+  private readonly rawDocumentPreviewCompletions = new Map<string, Promise<ApplicationRawDocumentPreviewV04>>()
   private readonly workspaceRoot: string
   constructor(private readonly options: ProductionServiceOptions) { this.workspaceRoot = resolve(options.workspaceRoot ?? join(options.cwd ?? process.cwd(), 'workspace')) }
   startIngestDocument(input: IngestDocumentInput, callerSignal?: AbortSignal): { readonly runId: string; readonly completion: Promise<ApplicationProductionResult> } {
@@ -174,7 +175,7 @@ export class ProductionService {
       } finally { combined.dispose() }
       }).then(async ({ workflow }) => {
       const provisional = projectV04Preview(input.workflowRunId, workflow)
-      const verified = workflow.previewSnapshot.committable ? await this.readRawDocumentKnowledgePreviewV04(input.workflowRunId) : undefined
+      const verified = workflow.previewSnapshot.committable ? await this.readRawDocumentKnowledgePreviewV04(input.workflowRunId, false) : undefined
       const result = verified ?? (provisional.committable ? { ...provisional, committable: false, candidateGroups: [], statusNote: 'Durable preview verification was unavailable.' } : provisional)
       this.rawDocumentPreviewResults.set(input.workflowRunId, result)
       return result
@@ -188,13 +189,23 @@ export class ProductionService {
       })
     })().finally(() => callerSignal?.removeEventListener('abort', onCallerAbort))
     if (callerSignal?.aborted) this.options.workflowService.cancelWorkflow(input.workflowRunId)
+    this.rawDocumentPreviewCompletions.set(input.workflowRunId, completion)
+    void completion.finally(() => { if (this.rawDocumentPreviewCompletions.get(input.workflowRunId) === completion) this.rawDocumentPreviewCompletions.delete(input.workflowRunId) }).catch(() => undefined)
     completion.catch(() => undefined)
     return { runId: input.workflowRunId, completion }
   }
-  async readRawDocumentKnowledgePreviewV04(workflowRunId: string): Promise<ApplicationRawDocumentPreviewV04 | undefined> {
+  async readRawDocumentKnowledgePreviewV04(workflowRunId: string, waitForPendingCompletion = true): Promise<ApplicationRawDocumentPreviewV04 | undefined> {
     if (!this.options.mountedKnowledgeBaseRoot) throw new ApplicationServiceError('no_kb_mounted', 'No canonical Knowledge Base is mounted')
     if (!V04_RUN_ID.test(workflowRunId)) throw new ApplicationServiceError('invalid_input', 'workflowRunId is invalid')
-    const inMemoryResult = this.rawDocumentPreviewResults.get(workflowRunId)
+    let inMemoryResult = this.rawDocumentPreviewResults.get(workflowRunId)
+    const workflowStatus = this.options.workflowService.getWorkflowStatus(workflowRunId)?.status
+    const terminal = workflowStatus !== undefined && ['completed', 'completed_with_review', 'blocked', 'cancelled', 'failed'].includes(workflowStatus)
+    if (waitForPendingCompletion && terminal && inMemoryResult === undefined) {
+      const completion = this.rawDocumentPreviewCompletions.get(workflowRunId)
+      if (completion !== undefined) {
+        try { inMemoryResult = await completion } catch { /* Workflow status remains the authoritative failure record. */ }
+      }
+    }
     let handle: KnowledgeBaseHandle
     try { handle = await this.registry.refresh(this.options.mountedKnowledgeBaseRoot) }
     catch { return nonCommittablePreview(inMemoryResult, 'The mounted Knowledge Base could not be verified.') }
