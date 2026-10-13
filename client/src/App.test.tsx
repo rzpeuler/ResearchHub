@@ -164,7 +164,10 @@ describe('Homepage shell', () => {
     render(<App />)
     const composer = await screen.findByRole('textbox', { name: 'Message' })
     fireEvent.change(composer, { target: { value: '研究问题' } })
+    fireEvent.compositionStart(composer)
+    fireEvent.keyDown(composer, { key: 'Enter', code: 'Enter', keyCode: 13, isComposing: false })
     fireEvent.keyDown(composer, { key: 'Enter', code: 'Enter', keyCode: 229, isComposing: true })
+    fireEvent.compositionEnd(composer)
     await new Promise((resolve) => window.setTimeout(resolve, 20))
     expect(calls.some((path) => path.includes('/api/conversations/requests/accept') || path === '/api/research/dispatch')).toBe(false)
     expect((composer as HTMLTextAreaElement).value).toBe('研究问题')
@@ -1755,5 +1758,137 @@ describe('Homepage shell', () => {
     expect(operationIds).toHaveLength(1)
     expect(operationIds[0]).toBeTruthy()
     expect(dispatchedOperationIds).toEqual(operationIds)
+  })
+
+  it('uses one Enter submit path, preserves Shift+Enter and rejects blank or repeated submits', async () => {
+    const fallback = globalThis.fetch
+    let acceptCount = 0
+    let releaseAcceptance: ((response: Response) => void) | undefined
+    const acceptedGate = new Promise<Response>((resolve) => { releaseAcceptance = resolve })
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/conversations/requests/accept') { acceptCount += 1; return acceptedGate }
+      return fallback(input, init)
+    }) as typeof fetch
+    window.history.replaceState({}, '', '/research')
+    render(<App />)
+    const composer = await screen.findByRole('textbox', { name: 'Message' })
+    fireEvent.keyDown(composer, { key: 'Enter', code: 'Enter' })
+    fireEvent.change(composer, { target: { value: 'Keep this line' } })
+    fireEvent.keyDown(composer, { key: 'Enter', code: 'Enter', shiftKey: true })
+    expect(acceptCount).toBe(0)
+    expect((composer as HTMLTextAreaElement).value).toBe('Keep this line')
+
+    fireEvent.keyDown(composer, { key: 'Enter', code: 'Enter' })
+    fireEvent.keyDown(composer, { key: 'Enter', code: 'Enter' })
+    await waitFor(() => expect(acceptCount).toBe(1))
+    releaseAcceptance?.(json({ accepted: true, conversationId: 'c1', operationId: 'op-1' }))
+    expect(await screen.findByText('The conversation request was not accepted. Retry to continue.')).toBeTruthy()
+    expect(acceptCount).toBe(1)
+  })
+
+  it('opens the compact Workflow drawer with dialog semantics and restores focus on Escape', async () => {
+    window.history.replaceState({}, '', '/research')
+    render(<App />)
+    const toggle = await screen.findByRole('button', { name: 'Workflow status' })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(toggle)
+    const dialog = screen.getByRole('dialog', { name: 'Workflow status' })
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    const close = dialog.querySelector<HTMLButtonElement>('.workflow-panel-close')!
+    expect(document.activeElement).toBe(close)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => { expect(toggle.getAttribute('aria-expanded')).toBe('false'); expect(document.activeElement).toBe(toggle) })
+  })
+
+  it('shows no-results and history retry states, and keeps the clear-search control focused', async () => {
+    const fallback = globalThis.fetch
+    const activeSummary = { conversationId: 'c1', name: 'Research', titleSource: 'user', archived: false, version: 2, updatedAt: 'now', messageCount: 1, isActive: true }
+    let failSearch = true
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [activeSummary] })
+      if (path.includes('search=missing-title')) {
+        if (failSearch) return json({ error: 'history unavailable' }, 503)
+        return json({ conversations: [] })
+      }
+      return fallback(input, init)
+    }) as typeof fetch
+    window.history.replaceState({}, '', '/research')
+    render(<App />)
+    const search = await screen.findByRole('searchbox', { name: 'Search titles' })
+    fireEvent.change(search, { target: { value: 'missing-title' } })
+    expect(await screen.findByText('history unavailable')).toBeTruthy()
+    failSearch = false
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText('No conversation titles match this search.')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Research' })).toBeTruthy()
+    const clear = screen.getByRole('button', { name: 'Clear conversation search' })
+    fireEvent.click(clear)
+    await waitFor(() => expect((search as HTMLInputElement).value).toBe(''))
+    expect(document.activeElement).toBe(search)
+  })
+
+  it('keeps rename open after a version conflict and retries with the refreshed version', async () => {
+    let summary = { conversationId: 'c1', name: 'Research', titleSource: 'user', archived: false, version: 1, updatedAt: 'now', messageCount: 1, isActive: true }
+    const versions: number[] = []
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [summary] })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/settings') return json({ revision: 1, model: {}, models: [], knowledgeBases: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', name: summary.name, isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [], activities: [] })
+      if (path === '/api/conversations' || path.startsWith('/api/conversations?')) return json({ conversations: [summary] })
+      if (path === '/api/conversations/c1/metadata') {
+        const body = JSON.parse(String(init?.body)) as { name: string; expectedVersion: number }
+        versions.push(body.expectedVersion)
+        if (versions.length === 1) { summary = { ...summary, version: 2 }; return json({ code: 'version_conflict', error: 'A newer conversation version exists.' }, 409) }
+        summary = { ...summary, name: body.name, version: 3 }
+        return json(summary)
+      }
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    window.history.replaceState({}, '', '/research')
+    render(<App />)
+    await screen.findByRole('textbox', { name: 'Message' })
+    fireEvent.click(screen.getByRole('button', { name: 'Rename Research' }))
+    const titleInput = screen.getByRole('textbox', { name: 'Conversation title' })
+    fireEvent.change(titleInput, { target: { value: 'Updated research' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('A newer conversation version exists.')).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: 'Conversation title' })).toBeTruthy()
+    await waitFor(() => expect(versions).toEqual([1]))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Updated research' })).toBeTruthy()
+    expect(versions).toEqual([1, 2])
+  })
+
+  it('moves archived conversations into the archive view and restores them to active history', async () => {
+    let summary = { conversationId: 'c1', name: 'Research', titleSource: 'user', archived: false, version: 1, updatedAt: 'now', messageCount: 1, isActive: true }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [summary] })
+      if (path === '/api/research/workflows') return json({ workflows: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', name: summary.name, isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [], activities: [] })
+      if (path === '/api/conversations' || path.startsWith('/api/conversations?')) {
+        const archived = new URL(`http://runtime${path}`).searchParams.get('archived') === '1'
+        return json({ conversations: summary.archived === archived ? [summary] : [] })
+      }
+      if (path === '/api/conversations/c1/archive') { summary = { ...summary, archived: true, version: summary.version + 1 }; return json(summary) }
+      if (path === '/api/conversations/c1/restore') { summary = { ...summary, archived: false, version: summary.version + 1 }; return json(summary) }
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    window.history.replaceState({}, '', '/research')
+    render(<App />)
+    await screen.findByRole('textbox', { name: 'Message' })
+    fireEvent.click(screen.getByRole('button', { name: 'Archive Research' }))
+    expect(await screen.findByText('Conversation archived.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Show archived' }))
+    expect(await screen.findByRole('button', { name: 'Restore Research' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Restore Research' }))
+    expect(await screen.findByText('Conversation restored.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Show active' }))
+    expect(await screen.findByRole('button', { name: 'Archive Research' })).toBeTruthy()
   })
 })
