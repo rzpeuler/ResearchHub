@@ -2033,7 +2033,10 @@ function AppContent(): ReactElement {
 
   if (loadState === 'loading') return <main className="state-screen"><div className="state-card"><span className="eyebrow">RESEARCHHUB RUNTIME</span><h1>{t('正在加载工作区', 'Loading workspace')}</h1><p>{t('正在连接本地应用运行时…', 'Connecting to the local application runtime…')}</p><div className="loader" /></div></main>
   if (loadState === 'error') return <main className="state-screen"><div className="state-card"><span className="eyebrow">RUNTIME UNAVAILABLE</span><h1>{t('ResearchHub 无法启动', 'ResearchHub could not start')}</h1><p>{loadError}</p><button onClick={() => window.location.reload()}>{t('重新加载页面', 'Reload page')}</button></div></main>
-  const configurationBlocked = busy || streaming || attachmentBusy || previewBusy || acceptanceBusy || sourceBusy || Boolean(workflowRunId && (!workflow || !terminalWorkflowStatuses.has(workflow.status)))
+  const associatedWorkflowActivity = workflowRunId ? activities.find((activity) => activity.workflowRunId === workflowRunId) : undefined
+  const workflowTerminal = workflow?.runId === workflowRunId && terminalWorkflowStatuses.has(workflow.status)
+  const activityTerminal = associatedWorkflowActivity !== undefined && ['completed', 'cancelled', 'not_started', 'failed', 'interrupted'].includes(associatedWorkflowActivity.status)
+  const configurationBlocked = busy || streaming || attachmentBusy || previewBusy || acceptanceBusy || sourceBusy || Boolean(workflowRunId && !workflowTerminal && !activityTerminal)
   const registrationById = new Map((settings?.registeredKnowledgeBases ?? []).map((item) => [item.knowledgeBaseId, item]))
   const mountedId = settings?.knowledgeBase?.knowledgeBaseId
   const knowledgeCandidates = [
