@@ -30,7 +30,7 @@ export function projectResearchExecutionResult(input: {
   readonly extraDiagnostics?: readonly string[]
 }): WorkflowExecutionResultProjection {
   const result = isRecord(input.domainResult) ? input.domainResult : undefined
-  const terminal = input.workflow.status === 'pending' || input.workflow.status === 'running' ? undefined : input.workflow.status
+  const terminal = input.workflow.status === 'pending' || input.workflow.status === 'running' || input.workflow.status === 'interrupted' ? undefined : input.workflow.status
   const summary = safeText(result?.summary) ?? safeText(result?.executiveSummary) ?? safeText(result?.executiveView) ?? safeText(input.workflow.progressSummary)
   const rawBlockedReason = result?.blockedReason
   const blockedReason = typeof rawBlockedReason === 'string' && SAFE_CODE.test(rawBlockedReason) ? rawBlockedReason : undefined

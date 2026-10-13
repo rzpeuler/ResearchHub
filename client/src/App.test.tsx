@@ -73,6 +73,30 @@ describe('Homepage shell', () => {
     expect(window.sessionStorage.getItem('researchhub.active-research-run-id')).toBe('restored-run-1')
   })
 
+  it('shows a persisted historical interruption as stopped and labels its source', async () => {
+    const summary = { conversationId: 'c1', name: 'Stored company research', titleSource: 'workflow', archived: false, version: 2, latestWorkflowRunId: 'history-run-1', updatedAt: 'now', messageCount: 1, isActive: true }
+    window.sessionStorage.setItem('researchhub.active-research-run-id', 'history-run-1')
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/bootstrap') return json({ runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'b'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [summary], knowledgeBase: { knowledgeBaseId: 'kb-1', rootRef: 'root:kb', revision: 1, status: 'active', schemaVersion: '0.4', storageFormatVersion: '1', counts: {} } })
+      if (path === '/api/research/workflows') return json({ workflows: [{ id: 'company_research', label: 'Company Research', displayNameZh: '公司深度研究', intentDescription: 'Company research', inputSchema: {}, requiredInputs: ['symbol'], skillIds: [], knowledgeEffects: [], outputContract: 'Report' }] })
+      if (path === '/api/settings') return json({ revision: 1, model: {}, models: [], knowledgeBases: [] })
+      if (path === '/api/conversations/current') return json({ conversationId: 'c1', name: summary.name, isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
+      if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [], activities: [{ activityId: 'activity-history-run', conversationId: 'c1', operationId: 'op-history-run', kind: 'accepted_request', operation: 'prompt', status: 'interrupted', outcome: 'workflow_started', requestText: 'Research 002640', createdAt: 'now', workflowRunId: 'history-run-1', workflowRegistryId: 'company_research' }] })
+      if (path === '/api/conversations' || path.startsWith('/api/conversations?')) return json({ conversations: [summary] })
+      if (path === '/api/workflows/history-run-1') return json({ runId: 'history-run-1', workflowType: 'company_research', objective: 'Research 002640', status: 'interrupted', startedAt: '2026-10-12T10:00:00.000Z', updatedAt: '2026-10-12T10:02:00.000Z', observationSource: 'historical', recoveryState: { kind: 'interrupted', lastObservedStatus: 'running' }, stages: [{ stageId: 'company_profile', label: 'Company profile', status: 'interrupted', startedAt: '2026-10-12T10:00:00.000Z' }] })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    }) as typeof fetch
+    window.history.replaceState({}, '', '/research')
+    render(<App />)
+    expect(await screen.findByTestId('workflow-historical-snapshot')).toBeTruthy()
+    expect(screen.getByTestId('workflow-recovery-notice').textContent).toContain('will not resume automatically')
+    expect(screen.getByText('Interrupted')).toBeTruthy()
+    expect(document.querySelector('[data-stage-id="company_profile"] .workflow-stage-status')?.textContent).toContain('Interrupted · 2m 0s')
+    expect(screen.queryByText('Running')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Cancel Workflow' })).toBeNull()
+  })
+
   it('clears only the active UI Workflow when its persisted association is missing after restart', async () => {
     const summary = { conversationId: 'c1', name: 'Stored title', titleSource: 'user', archived: false, version: 3, latestWorkflowRunId: 'old-run', updatedAt: 'now', messageCount: 1, isActive: true }
     const dispatchRequests: unknown[] = []

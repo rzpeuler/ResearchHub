@@ -10,6 +10,7 @@ import { ThemeWorkspaceProjectionService } from '../services/theme-workspace-pro
 import { ProductionService } from '../services/production-service.ts'
 import { ReviewService } from '../services/review-service.ts'
 import { WorkflowService } from '../services/workflow-service.ts'
+import { WorkflowObservationStore } from './workflow-observation-store.ts'
 import { ResearchService } from '../services/research-service.ts'
 import { FileResearchSignalStore } from '../../plugins/research-acquisition/signal-store.ts'
 import { FileDailySignalStore } from '../../plugins/daily-intelligence/signal-store.ts'
@@ -111,6 +112,7 @@ export class ResearchHubApplicationRuntime {
   private readonly ownsModelRuntime: boolean
   private readonly dailyScheduler?: DailyBriefScheduler
   private dailySchedulerTimer?: NodeJS.Timeout
+  private dailySchedulerTick?: Promise<void>
   private closed = false
 
   private constructor(input: {
@@ -184,7 +186,8 @@ export class ResearchHubApplicationRuntime {
         }
       } catch { /* Thesis projections and decisions require a readable Schema 0.4 Knowledge Base. */ }
     }
-    const workflowService = options.workflowService ?? new WorkflowService()
+    const workflowService = options.workflowService ?? new WorkflowService({ observationStore: new WorkflowObservationStore({ rootDir: join(cwd, 'runtime-data', 'workflow-observations') }) })
+    await workflowService.initialize()
     const rawDocumentPreviewReasoningExecutorFactory = isSchema04KnowledgeBase && options.reasoningExecutor === undefined
       ? async () => new PiReasoningExecutor({ modelRuntime, model: selectedModel, capabilities: reasoningExecutor.capabilities(), timeoutMs: RAW_DOCUMENT_PREVIEW_PRODUCTION_REASONING_TIMEOUT_MS })
       : undefined
@@ -276,9 +279,16 @@ export class ResearchHubApplicationRuntime {
   startDailyScheduler(): void {
     if (this.closed) throw new Error('Application runtime is closed')
     if (this.dailyScheduler === undefined || this.dailySchedulerTimer !== undefined) return
-    this.dailySchedulerTimer = setInterval(() => { void this.dailyScheduler!.tick(new Date()).catch(() => undefined) }, 60_000)
+    this.dailySchedulerTimer = setInterval(() => { this.runDailySchedulerTick() }, 60_000)
     this.dailySchedulerTimer.unref?.()
-    void this.dailyScheduler.tick(new Date()).catch(() => undefined)
+    this.runDailySchedulerTick()
+  }
+
+  private runDailySchedulerTick(): void {
+    if (this.dailyScheduler === undefined || this.dailySchedulerTick !== undefined || this.closed) return
+    const tick = this.dailyScheduler.tick(new Date()).then(() => undefined, () => undefined)
+    this.dailySchedulerTick = tick
+    void tick.finally(() => { if (this.dailySchedulerTick === tick) this.dailySchedulerTick = undefined })
   }
 
   async close(): Promise<void> {
@@ -286,10 +296,15 @@ export class ResearchHubApplicationRuntime {
     let sessionError: unknown
     try {
       if (this.dailySchedulerTimer !== undefined) clearInterval(this.dailySchedulerTimer)
+      if (this.dailySchedulerTick !== undefined) await this.dailySchedulerTick
       await this.sessionRuntime.dispose()
     } catch (error) {
       sessionError = error
     } finally {
+      try { await this.workflowService.flushPersistence() } catch (error) {
+        if (sessionError === undefined) sessionError = error
+        else sessionError = new AggregateError([sessionError, error], 'Application runtime disposal failed')
+      }
       if (this.ownsModelRuntime) {
         try {
           await disposeModelRuntime(this.modelRuntime)

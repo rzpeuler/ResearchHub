@@ -10,6 +10,7 @@ import { createResearchHubApplicationRuntime } from '../../app/runtime/applicati
 import { ResearchHubRuntimeServer } from '../../app/runtime/server.ts'
 import { ApplicationServiceError } from '../../app/services/contracts.ts'
 import { WorkflowService } from '../../app/services/workflow-service.ts'
+import { WorkflowObservationStore } from '../../app/runtime/workflow-observation-store.ts'
 import { ResearchService } from '../../app/services/research-service.ts'
 import { createFreshKnowledgeBaseV04 } from '../../knowledge/storage/create-v04.ts'
 import type { ReasoningCapabilities, ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
@@ -23,7 +24,12 @@ const clientRoot = join(repositoryRoot, 'dist', 'client')
 const root = process.env.RHL_UX004_FIXTURE_ROOT ? resolve(process.env.RHL_UX004_FIXTURE_ROOT) : await mkdtemp(join(tmpdir(), 'researchhub-ux004-browser-'))
 const cwd = join(root, 'cwd'); const agentDir = join(root, 'agent'); const sessionDir = join(root, 'sessions'); const workspaceRoot = join(root, 'workspace'); const knowledgeBaseRoot = join(root, 'knowledge-base')
 await mkdir(cwd, { recursive: true }); await mkdir(agentDir, { recursive: true }); await mkdir(workspaceRoot, { recursive: true })
-if (!process.env.RHL_UX004_FIXTURE_ROOT) {
+let initializeKnowledgeBase = !process.env.RHL_UX004_FIXTURE_ROOT
+if (process.env.RHL_WF_PERSIST_ACCEPTANCE === '1') {
+  try { await readFile(join(knowledgeBaseRoot, 'registry', 'assets.yaml')); initializeKnowledgeBase = false }
+  catch { initializeKnowledgeBase = true }
+}
+if (initializeKnowledgeBase) {
   await createFreshKnowledgeBaseV04(knowledgeBaseRoot, { knowledgeBaseId: `ux004-browser-${Date.now()}` })
   await writeFile(join(knowledgeBaseRoot, 'entities', 'fixture-002640.yaml'), JSON.stringify({ id: 'entity:fixture-002640', type: 'company', name: '跨境通', aliases: ['跨境通'], ticker: '002640', exchange: 'SZSE', lifecycle: { status: 'active' } }) + '\n')
   await writeFile(join(knowledgeBaseRoot, 'registry', 'assets.yaml'), JSON.stringify({ 'entity:fixture-002640': { type: 'entity', storageRef: 'entities/fixture-002640.yaml' } }) + '\n')
@@ -73,7 +79,7 @@ class FixtureAcquisition implements ResearchAcquisitionPlugin {
   }
 }
 
-const workflowService = new WorkflowService()
+const workflowService = new WorkflowService({ observationStore: new WorkflowObservationStore({ rootDir: join(cwd, 'runtime-data', 'workflow-observations') }) })
 const cninfo = new FixtureAcquisition('CNINFO', true)
 const gdelt = new FixtureAcquisition('GDELT')
 const identityResolver = new SecurityIdentityResolver({ mountedKnowledgeBaseRoot: knowledgeBaseRoot, dataResolverFactory: () => { throw new Error('Fixture canonical identity lookup should resolve before external directory access') } })
@@ -130,6 +136,7 @@ const performanceSamples: Array<{ index: number; durationMs: number; handlerCost
 const piLifecycleEvidence: Array<{ event: string; conversationId?: string; at: string }> = []
 let eventsUnavailableUntil = 0
 let dropNextDispatchResponse = false
+let delayNextBundleResponse = false
 let acceptGate: { readonly promise: Promise<void>; readonly release: () => void } | undefined
 let activeAcceptGate: { readonly promise: Promise<void>; readonly release: () => void } | undefined
 let rejectNextAccept = false
@@ -213,6 +220,16 @@ async function startServer(): Promise<void> {
       const dropDispatchResponse = dropNextDispatchResponse && path === '/api/research/dispatch' && incoming.method === 'POST'
       if (dropDispatchResponse) dropNextDispatchResponse = false
       const upstream = httpRequest({ host: '127.0.0.1', port: serverPort, method: incoming.method, path, headers: { ...incoming.headers, host: `127.0.0.1:${serverPort}`, ...(incoming.headers.origin ? { origin: info.origin } : {}) } }, (upstreamResponse) => {
+        if (delayNextBundleResponse && pathname.startsWith('/api/research/bundles/by-run/')) {
+          delayNextBundleResponse = false
+          const chunks: Buffer[] = []
+          upstreamResponse.on('data', (chunk: Buffer) => chunks.push(chunk))
+          upstreamResponse.on('end', () => {
+            process.stdout.write('BUNDLE_RESPONSE_HELD\n')
+            setTimeout(() => { if (!outgoing.destroyed) { outgoing.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers); outgoing.end(Buffer.concat(chunks)) } }, 2_000)
+          })
+          return
+        }
         if (path === '/api/events' && upstreamResponse.statusCode === 200) {
           eventStreamResponses.add(outgoing)
           outgoing.once('close', () => { eventStreamResponses.delete(outgoing); upstream.destroy() })
@@ -260,7 +277,7 @@ async function startServer(): Promise<void> {
     await new Promise<void>((resolveListen, rejectListen) => { proxyServer!.once('error', rejectListen); proxyServer!.listen(0, '127.0.0.1', resolveListen) })
     proxyPort = Number((proxyServer.address() as import('node:net').AddressInfo).port)
   }
-  process.stdout.write(`READY ${JSON.stringify({ origin: `http://127.0.0.1:${proxyPort}`, runtimeOrigin: info.origin, persistentPiSessionManager: runtime!.sessionManager.isPersisted(), provider: 'faux', modelNetwork: false, knowledgeBaseSha256: await snapshotKnowledge() })}\n`)
+  process.stdout.write(`READY ${JSON.stringify({ origin: `http://127.0.0.1:${proxyPort}`, runtimeOrigin: info.origin, fixtureRoot: root, persistentPiSessionManager: runtime!.sessionManager.isPersisted(), provider: 'faux', modelNetwork: false, knowledgeBaseSha256: await snapshotKnowledge() })}\n`)
 }
 
 async function installAcceptControls(): Promise<void> {
@@ -327,7 +344,7 @@ async function shutdown(removeFixture: boolean): Promise<void> {
   await releaseRuns().catch(() => undefined)
   await stop().catch(() => undefined)
   if (proxyServer) { await new Promise<void>((resolveClose) => proxyServer!.close(() => resolveClose())); proxyServer = undefined }
-  if (removeFixture) await rm(root, { recursive: true, force: true }).catch(() => undefined)
+  if (removeFixture && !process.env.RHL_UX004_FIXTURE_ROOT) await rm(root, { recursive: true, force: true }).catch(() => undefined)
 }
 
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity })
@@ -342,6 +359,7 @@ input.on('line', (line) => {
     if (command === 'release-accept') { activeAcceptGate?.release(); activeAcceptGate = undefined; acceptGate?.release(); acceptGate = undefined; process.stdout.write('ACCEPT_RELEASED\n'); return }
     if (command === 'reject-next-accept') { rejectNextAccept = true; process.stdout.write('ACCEPT_REJECTION_ARMED\n'); return }
     if (command === 'lose-next-dispatch-response') { dropNextDispatchResponse = true; process.stdout.write('DISPATCH_RESPONSE_LOSS_ARMED\n'); return }
+    if (command === 'delay-next-bundle') { delayNextBundleResponse = true; process.stdout.write('BUNDLE_DELAY_ARMED\n'); return }
     if (command === 'reply-short') { faux.setResponses([fauxAssistantMessage('分段回复：第一段。第二段已到达。')]); return }
     if (command === 'reply-long') { faux.setResponses([fauxAssistantMessage(Array.from({ length: 200 }, (_, index) => `第${index + 1}段实时内容`).join('；'))]); return }
     if (command === 'reply-tool') { faux.setResponses([fauxAssistantMessage(fauxToolCall('researchhub_status', {}, { id: `ux002-tool-${Date.now()}` })), fauxAssistantMessage('工具检查已完成。')]); return }

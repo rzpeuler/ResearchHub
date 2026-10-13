@@ -49,6 +49,7 @@ export interface SafeConversationActivity {
   readonly requestText: string
   readonly createdAt: string
   readonly workflowRunId?: string
+  readonly researchBundleRunId?: string
   readonly reservedWorkflowRunId?: string
   readonly workflowSubject?: string
   readonly workflowRegistryId?: string

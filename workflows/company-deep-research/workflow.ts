@@ -179,7 +179,7 @@ async function acquire(input: CompanyDeepResearchInput, company: CompanyDeepRese
       : outcome.providerFailed ? 'failed' as const : outcome.providerAttempted ? 'unavailable' as const : 'skipped' as const
     return [{ ...metadata, status, ...(provider === 'akshare' ? {} : { recordCount: outcome.usableSourceCount }), ...(startedAt === undefined ? {} : { startedAt }), ...(completedAt === undefined ? {} : { completedAt }), diagnostics: diagnostics.filter((item) => item.provider === provider).map((item) => item.status === 'failed' ? 'PROVIDER_ATTEMPT_FAILED' : item.status === 'empty' ? 'PROVIDER_NO_USABLE_DATA' : item.status === 'unsupported' ? 'PROVIDER_UNSUPPORTED' : 'PROVIDER_DATA_AVAILABLE') }]
   })
-  input.observations?.providerObservations(providerObservations)
+  await input.observations?.providerObservations(providerObservations)
   return { sources, durableSources, durableSourceCandidateIds, profileData, financialData: financialData?.rows, marketData: marketData?.rows, diagnostics, providerOutcomes }
 }
 
@@ -194,64 +194,64 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     }
     const now = input.now ?? (() => new Date().toISOString())
     const asOf = input.asOf ?? now()
-    input.observations?.startStage('data_acquisition', '数据获取')
+    await input.observations?.startStage('data_acquisition', '数据获取')
     const acquired = await acquire(input, company, asOf)
     abortIfNeeded(input.signal)
-    input.observations?.finishStage('data_acquisition', 'completed', { summary: `已处理 ${acquired.providerOutcomes.length} 个可观察数据源` })
+    await input.observations?.finishStage('data_acquisition', 'completed', { summary: `已处理 ${acquired.providerOutcomes.length} 个可观察数据源` })
     const gateway = new KnowledgeProductionGateway(new KnowledgeBaseRegistry())
     const existingKnowledgeProjection = input.useStructuredKnowledge === false ? [] : await gateway.projectExistingKnowledge(input.handle, company)
-    input.observations?.startStage('research_synthesis', '研究综合分析')
+    await input.observations?.startStage('research_synthesis', '研究综合分析')
     let synthesisMode: 'reasoning_executor' | 'deterministic_fallback' | undefined
-    input.observations?.startSkill('company_research_synthesis', '公司研究综合分析')
+    await input.observations?.startSkill('company_research_synthesis', '公司研究综合分析')
     let research: Awaited<ReturnType<CompanyResearchSkill['synthesize']>>
     try {
       research = await new CompanyResearchSkill(now, input.reasoningExecutor).synthesize({ company, asOf, sources: acquired.sources, durableSourceCandidateIds: acquired.durableSourceCandidateIds, profileData: acquired.profileData, financialData: acquired.financialData, marketData: acquired.marketData, existingKnowledgeProjection }, (mode) => { synthesisMode = mode })
-      input.observations?.finishSkill('company_research_synthesis', 'completed', synthesisMode === 'reasoning_executor' ? '推理执行器综合分析已返回' : '采用确定性证据基线完成综合分析')
+      await input.observations?.finishSkill('company_research_synthesis', 'completed', synthesisMode === 'reasoning_executor' ? '推理执行器综合分析已返回' : '采用确定性证据基线完成综合分析')
     } catch (error) {
-      input.observations?.finishSkill('company_research_synthesis', 'failed', '研究综合分析失败')
+      await input.observations?.finishSkill('company_research_synthesis', 'failed', '研究综合分析失败')
       throw error
     }
-    input.observations?.finishStage('research_synthesis', 'completed', { summary: '研究综合分析已返回' })
+    await input.observations?.finishStage('research_synthesis', 'completed', { summary: '研究综合分析已返回' })
     const industryExposure = input.industryExposure === undefined ? undefined : calculateCompanyIndustryExposureBridge(input.industryExposure)
     const reportResearch = industryExposure === undefined ? research : { ...research, sections: research.sections.map((section) => section.title === 'Industry Exposure' ? { ...section, markdown: `${section.markdown}\n\n${renderCompanyIndustryExposureBridge(industryExposure)}`, sourceCandidateIds: [...new Set([...section.sourceCandidateIds, ...industryExposure.items.flatMap((item) => [...item.driver.sourceRefs, ...item.exposure.sourceRefs, ...(item.sensitivity?.sourceRefs ?? [])])])] } : section) }
-    input.observations?.startStage('quality_gate', '证据质量门')
+    await input.observations?.startStage('quality_gate', '证据质量门')
     const qualityGate = runResearchQualityGate({ profile: 'company', asOf, sources: acquired.sources, referencedSourceCandidateIds: reportResearch.sections.flatMap((section) => section.sourceCandidateIds), proposalSourceCandidateIds: research.proposals.flatMap((proposal) => proposal.sourceCandidateIds ?? []), reportSourceCandidateIds: reportResearch.sections.flatMap((section) => section.sourceCandidateIds) })
     const noAcquiredEvidence = acquired.sources.length === 0
-    input.observations?.finishStage('quality_gate', qualityGate.eligibleForGateway && !noAcquiredEvidence ? 'completed' : 'blocked', { summary: qualityGate.eligibleForGateway && !noAcquiredEvidence ? '证据质量门通过' : '证据不足，未进入 Knowledge Gateway', diagnostics: noAcquiredEvidence ? ['NO_COMPANY_RESEARCH_EVIDENCE'] : qualityGate.diagnostics.filter((item) => item.severity === 'ERROR').map((item) => item.code) })
+    await input.observations?.finishStage('quality_gate', qualityGate.eligibleForGateway && !noAcquiredEvidence ? 'completed' : 'blocked', { summary: qualityGate.eligibleForGateway && !noAcquiredEvidence ? '证据质量门通过' : '证据不足，未进入 Knowledge Gateway', diagnostics: noAcquiredEvidence ? ['NO_COMPANY_RESEARCH_EVIDENCE'] : qualityGate.diagnostics.filter((item) => item.severity === 'ERROR').map((item) => item.code) })
     if (!qualityGate.eligibleForGateway || noAcquiredEvidence) {
       const gapDiagnostics = [...qualityGate.diagnostics.filter((item) => item.severity === 'ERROR').map((item) => item.code), ...(noAcquiredEvidence ? ['NO_COMPANY_RESEARCH_EVIDENCE'] : [])]
       const blockedQualityGate = noAcquiredEvidence ? { ...qualityGate, status: 'FAIL' as const, eligibleForGateway: false, diagnostics: [...qualityGate.diagnostics, { code: 'NO_COMPANY_RESEARCH_EVIDENCE', severity: 'ERROR' as const, message: 'No usable Company profile, financial, market, or external research evidence was acquired.', affectedRefs: [] }] } : qualityGate
       const reportId = `company-research-${company.symbol.toLowerCase()}-${input.workflowRunId}`
-      input.observations?.startStage('report_generation', '研究报告生成')
+      await input.observations?.startStage('report_generation', '研究报告生成')
       const report = validateResearchReport({ reportId, reportType: 'company_research', subjectRefs: existingCompanyRef ? [existingCompanyRef] : [], ...(input.securityIdentity === undefined ? {} : { verifiedSecurityIdentity: input.securityIdentity }), generatedAt: research.generatedAt, asOf, workflowRunId: input.workflowRunId, knowledgeBaseRevision: input.handle.revision, sourceRefs: [], claimRefs: [], methodology: 'Evidence-gated Company Research. This run is blocked because usable research evidence was unavailable; no company conclusions or canonical writes are asserted.', sections: reportResearch.sections.map((section) => ({ id: section.id, title: section.title, markdown: section.markdown, sourceRefs: [], claimRefs: [], evidenceLinks: section.id === 'company-overview' && input.securityIdentity?.sourceUrl?.startsWith('https://') ? [input.securityIdentity.sourceUrl] : [] })), outputPath: `${reportId}.md` })
-      input.observations?.finishStage('report_generation', 'completed', { summary: '阻塞结果报告已生成' })
-      input.observations?.startStage('report_persistence', '报告保存')
+      await input.observations?.finishStage('report_generation', 'completed', { summary: '阻塞结果报告已生成' })
+      await input.observations?.startStage('report_persistence', '报告保存')
       const outputPath = await writeResearchReport(report, resolve(input.reportRoot))
-      input.observations?.finishStage('report_persistence', 'completed', { summary: '阻塞结果报告已保存' })
+      await input.observations?.finishStage('report_persistence', 'completed', { summary: '阻塞结果报告已保存' })
       return { workflowRunId: input.workflowRunId, status: 'blocked', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: input.handle.revision, report: { reportId, outputPath }, proposalIds: research.proposals.map((proposal) => proposal.proposalId), createdIds: [], updatedIds: [], committedIds: [], sourceIds: [], claimIds: [], errors: gapDiagnostics.length ? gapDiagnostics : ['COMPANY_RESEARCH_QUALITY_GATE_FAILED'], research: reportResearch, industryExposure, acquisitionDiagnostics: acquired.diagnostics, providerOutcomes: acquired.providerOutcomes, qualityGate: blockedQualityGate }
     }
     const effectiveWriteKnowledge = input.writeKnowledge !== false && existingCompanyRef !== undefined
     let outcome: KnowledgeProductionOutcome = { status: 'no_changes', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: input.handle.revision, baseRevision: input.handle.revision, createdIds: [], updatedIds: [], sourceRefsByLocalId: {}, claimRefsByProposalId: {}, entityRefsByLocalKey: {}, relationRefsByProposalId: {}, resolutionIntents: [], errors: [] }
-    input.observations?.startStage('knowledge_gateway', 'Knowledge Gateway')
+    await input.observations?.startStage('knowledge_gateway', 'Knowledge Gateway')
     if (effectiveWriteKnowledge) {
       outcome = await gateway.submit({ handle: input.handle, producerType: 'company_deep_research', producerRunId: input.workflowRunId, schemaProfile: { schemaVersion: '0.4', storageFormatVersion: '1', requiresRawProvenance: true }, entity: { localKey: 'company', entityType: 'company', name: company.name ?? company.symbol, aliases: [company.symbol], semanticFields: { ticker: company.symbol, exchange: company.exchange } }, proposals: research.proposals, evidenceBindings: acquired.durableSources.map((source) => ({ localSourceId: source.candidate.candidateId, source })), asOf, now, writeKnowledge: true })
       const persisted = new Set((await readCanonicalV04Assets(input.handle.rootRef)).registry.map((entry) => entry.id))
       const submittedRefs = [...Object.values(outcome.sourceRefsByLocalId), ...Object.values(outcome.claimRefsByProposalId), ...Object.values(outcome.entityRefsByLocalKey), ...Object.values(outcome.relationRefsByProposalId)]
       const unpersistedRefs = submittedRefs.filter((ref) => !persisted.has(ref))
-      if (unpersistedRefs.length > 0) { input.observations?.finishStage('knowledge_gateway', 'blocked', { summary: 'Knowledge Gateway 引用校验未通过', diagnostics: ['CANONICAL_REFERENCE_NOT_PERSISTED'] }); return { workflowRunId: input.workflowRunId, status: 'blocked', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: input.handle.revision, proposalIds: research.proposals.map((proposal) => proposal.proposalId), createdIds: [], updatedIds: [], committedIds: [], sourceIds: [], claimIds: [], errors: [`COMPANY_CANONICAL_REFERENCE_NOT_PERSISTED: ${[...new Set(unpersistedRefs)].sort().join(', ')}`], research: reportResearch, industryExposure, acquisitionDiagnostics: acquired.diagnostics, providerOutcomes: acquired.providerOutcomes, qualityGate } }
+      if (unpersistedRefs.length > 0) { await input.observations?.finishStage('knowledge_gateway', 'blocked', { summary: 'Knowledge Gateway 引用校验未通过', diagnostics: ['CANONICAL_REFERENCE_NOT_PERSISTED'] }); return { workflowRunId: input.workflowRunId, status: 'blocked', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: input.handle.revision, proposalIds: research.proposals.map((proposal) => proposal.proposalId), createdIds: [], updatedIds: [], committedIds: [], sourceIds: [], claimIds: [], errors: [`COMPANY_CANONICAL_REFERENCE_NOT_PERSISTED: ${[...new Set(unpersistedRefs)].sort().join(', ')}`], research: reportResearch, industryExposure, acquisitionDiagnostics: acquired.diagnostics, providerOutcomes: acquired.providerOutcomes, qualityGate } }
     }
-    input.observations?.finishStage('knowledge_gateway', outcome.status === 'blocked' || outcome.status === 'failed' ? 'blocked' : effectiveWriteKnowledge ? 'completed' : 'skipped', { summary: outcome.status === 'blocked' || outcome.status === 'failed' ? 'Knowledge Gateway 未完成写入' : effectiveWriteKnowledge ? 'Knowledge Gateway 已返回' : '本次未授权 Knowledge 写入', ...((outcome.status === 'blocked' || outcome.status === 'failed') ? { diagnostics: ['KNOWLEDGE_GATEWAY_BLOCKED'] } : {}) })
+    await input.observations?.finishStage('knowledge_gateway', outcome.status === 'blocked' || outcome.status === 'failed' ? 'blocked' : effectiveWriteKnowledge ? 'completed' : 'skipped', { summary: outcome.status === 'blocked' || outcome.status === 'failed' ? 'Knowledge Gateway 未完成写入' : effectiveWriteKnowledge ? 'Knowledge Gateway 已返回' : '本次未授权 Knowledge 写入', ...((outcome.status === 'blocked' || outcome.status === 'failed') ? { diagnostics: ['KNOWLEDGE_GATEWAY_BLOCKED'] } : {}) })
     if (outcome.status === 'blocked' || outcome.status === 'failed') return { workflowRunId: input.workflowRunId, status: 'blocked', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: outcome.knowledgeBaseRevision, proposalIds: research.proposals.map((proposal) => proposal.proposalId), createdIds: [], updatedIds: [], committedIds: [], sourceIds: Object.values(outcome.sourceRefsByLocalId), claimIds: Object.values(outcome.claimRefsByProposalId), errors: outcome.errors, research, resolutionIntents: outcome.resolutionIntents, acquisitionDiagnostics: acquired.diagnostics, providerOutcomes: acquired.providerOutcomes, qualityGate }
     // Gateway dry-runs may return a planned entity ref even when writeKnowledge
     // is false. Only attach a ref backed by an entity actually present in the KB.
     const companyRef = existingCompanyRef
     const reportId = `company-research-${company.symbol.toLowerCase()}-${input.workflowRunId}`
-    input.observations?.startStage('report_generation', '研究报告生成')
+    await input.observations?.startStage('report_generation', '研究报告生成')
     const report: ResearchReport = validateResearchReport({ reportId, reportType: 'company_research', subjectRefs: companyRef ? [companyRef] : [], ...(input.securityIdentity === undefined ? {} : { verifiedSecurityIdentity: input.securityIdentity }), generatedAt: research.generatedAt, asOf, workflowRunId: input.workflowRunId, knowledgeBaseRevision: outcome.knowledgeBaseRevision, sourceRefs: Object.values(outcome.sourceRefsByLocalId), claimRefs: Object.values(outcome.claimRefsByProposalId), methodology: 'Bounded acquisition -> semantic proposal -> deterministic canonical binding -> validated ChangeSet -> shared Writer.', sections: reportResearch.sections.map((section) => ({ id: section.id, title: section.title, markdown: section.markdown, sourceRefs: section.sourceCandidateIds.map((id) => outcome.sourceRefsByLocalId[id]).filter((id): id is string => id !== undefined), claimRefs: section.proposalIds.map((id) => outcome.claimRefsByProposalId[id]).filter((id): id is string => id !== undefined), evidenceLinks: [...new Set(section.sourceCandidateIds.flatMap((id) => { const source = acquired.sources.find((item) => item.candidate.candidateId === id); const url = source?.canonicalUrl ?? source?.candidate.url; return url && /^https:\/\//i.test(url) ? [url] : [] }))] })), outputPath: `${reportId}.md` })
-    input.observations?.finishStage('report_generation', 'completed', { summary: '研究报告已生成' })
-    input.observations?.startStage('report_persistence', '报告保存')
+    await input.observations?.finishStage('report_generation', 'completed', { summary: '研究报告已生成' })
+    await input.observations?.startStage('report_persistence', '报告保存')
     const outputPath = await writeResearchReport(report, resolve(input.reportRoot))
-    input.observations?.finishStage('report_persistence', 'completed', { summary: '研究报告已保存' })
+    await input.observations?.finishStage('report_persistence', 'completed', { summary: '研究报告已保存' })
     return { workflowRunId: input.workflowRunId, status: 'completed', knowledgeBaseId: input.handle.knowledgeBaseId, knowledgeBaseRevision: outcome.knowledgeBaseRevision, report: { reportId, outputPath }, proposalIds: research.proposals.map((proposal) => proposal.proposalId), createdIds: outcome.createdIds, updatedIds: outcome.updatedIds, committedIds: [...outcome.createdIds, ...outcome.updatedIds], sourceIds: Object.values(outcome.sourceRefsByLocalId), claimIds: Object.values(outcome.claimRefsByProposalId), errors: [], research: reportResearch, industryExposure, resolutionIntents: outcome.resolutionIntents, acquisitionDiagnostics: acquired.diagnostics, providerOutcomes: acquired.providerOutcomes, qualityGate }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

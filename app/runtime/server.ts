@@ -1045,7 +1045,7 @@ export class ResearchHubRuntimeServer {
       await this.sendJson(response, 200, await this.runtime!.knowledgeGraphService.getGraphProjection(input)); return
     }
     if (method === 'POST' && path === '/api/knowledge/object') { const input = await this.readJson(request); await this.sendJson(response, 200, await this.runtime!.knowledgeService.getKnowledgeObject(this.stringField(input, 'ref'), this.optionalPositive(input, 'relatedLimit'))); return }
-    if (method === 'GET' && path.startsWith('/api/workflows/')) { const runId = decodeSegment(path.split('/')[3] ?? ''); const value = this.runtime!.workflowService.getWorkflowStatus(runId); if (!value) throw new ApplicationServiceError('not_found', 'Workflow run not found'); await this.sendJson(response, 200, value); return }
+    if (method === 'GET' && path.startsWith('/api/workflows/')) { const runId = decodeSegment(path.split('/')[3] ?? ''); const value = await this.runtime!.workflowService.getWorkflowStatusWithHistory(runId); if (!value) throw new ApplicationServiceError('not_found', 'Workflow run not found'); await this.sendJson(response, 200, value); return }
     if (method === 'GET' && path.startsWith('/api/production/raw-document-preview-v04/')) {
       const runId = decodeSegment(path.split('/')[4] ?? '')
       const workflow = this.runtime!.workflowService.getWorkflowStatus(runId)
@@ -1063,7 +1063,7 @@ export class ResearchHubRuntimeServer {
     if (method === 'GET' && path.startsWith('/api/research-reports/')) { const reportId = decodeSegment(path.split('/')[3] ?? ''); const service = this.runtime!.researchService; if (!service) throw new ApplicationServiceError('not_found', 'Research Reports are not configured'); await this.sendJson(response, 200, await service.getResearchReport(reportId)); return }
     if (method === 'GET' && path === '/api/daily-briefs') { const service = this.runtime!.services.dailyIntelligenceService; if (!service) throw new ApplicationServiceError('not_found', 'Daily Intelligence is not configured'); await this.sendJson(response, 200, { briefs: await service.listBriefs(positiveInteger(url.searchParams.get('limit'))) }); return }
     if (method === 'GET' && path.startsWith('/api/daily-briefs/')) { const service = this.runtime!.services.dailyIntelligenceService; if (!service) throw new ApplicationServiceError('not_found', 'Daily Intelligence is not configured'); await this.sendJson(response, 200, await service.getBrief(decodeSegment(path.split('/')[3] ?? ''))); return }
-    if (method === 'POST' && (path === '/api/workflows/cancel' || /^\/api\/workflows\/[^/]+\/cancel$/.test(path))) { const body = await this.readJson(request); const runId = path === '/api/workflows/cancel' ? this.stringField(body, 'runId') : decodeSegment(path.split('/')[3]!); await this.sendJson(response, 200, this.runtime!.workflowService.cancelWorkflow(runId)); return }
+    if (method === 'POST' && (path === '/api/workflows/cancel' || /^\/api\/workflows\/[^/]+\/cancel$/.test(path))) { const body = await this.readJson(request); const runId = path === '/api/workflows/cancel' ? this.stringField(body, 'runId') : decodeSegment(path.split('/')[3]!); const result = this.runtime!.workflowService.cancelWorkflow(runId); await this.runtime!.workflowService.confirmPersistence(runId); await this.sendJson(response, 200, result); return }
     if (method === 'GET' && (path === '/api/reviews' || path === '/api/review-cases')) { await this.sendJson(response, 200, await this.runtime!.reviewService.listOpenReviewCases(this.reviewInputFromQuery(url))); return }
     if (method === 'GET' && (path.startsWith('/api/reviews/') || path.startsWith('/api/review-cases/'))) { const pieces = path.split('/'); await this.sendJson(response, 200, await this.runtime!.reviewService.getReviewCase(decodeSegment(pieces[3] ?? ''), positiveInteger(url.searchParams.get('dependentLimit')))); return }
     if (method === 'POST' && /^\/api\/review-cases\/[^/]+\/decision$/.test(path)) {
@@ -1314,6 +1314,9 @@ export class ResearchHubRuntimeServer {
     const store = this.runtime!.sessionRuntime.conversationStateStore
     const existing = await store.get(conversationId)
     const prior = existing?.acceptedRequests.find((item) => item.operationId === operationId)
+    const requestedBundleRunId = this.optionalString(body, 'researchBundleId', 160)
+    if (requestedBundleRunId !== undefined && (operation !== 'prompt' || prior?.researchBundleRunId !== requestedBundleRunId)) throw new ApplicationServiceError('conflict', 'ResearchBundle is not associated with this accepted conversation request')
+    const bundleRunId = operation === 'prompt' ? prior?.researchBundleRunId : undefined
     if (prior !== undefined) {
       if (prior.requestText !== text || prior.operation !== operationName) throw new ApplicationServiceError('conflict', 'operationId was accepted with a different payload')
     } else {
@@ -1327,7 +1330,6 @@ export class ResearchHubRuntimeServer {
     }
     const runId = operationId
     if (operation === 'prompt') {
-      const bundleRunId = this.optionalString(body, 'researchBundleId', 160)
       let policy: ResearchHubRequestPolicy | undefined
       if (body.researchPolicy !== undefined) {
         if (!body.researchPolicy || typeof body.researchPolicy !== 'object' || Array.isArray(body.researchPolicy)) throw new ApplicationServiceError('invalid_input', 'researchPolicy must be an object')
@@ -1372,6 +1374,7 @@ export class ResearchHubRuntimeServer {
     const controller = new AbortController()
     const started = this.runtime!.productionService.startIngestDocument(input, controller.signal)
     this.trackBackground(started.completion, () => { controller.abort() })
+    await this.runtime!.workflowService.confirmPersistence(started.runId)
     await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
   }
   private async startRawDocumentPreviewV04(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -1396,6 +1399,7 @@ export class ResearchHubRuntimeServer {
     const controller = new AbortController()
     const started = this.runtime!.productionService.startRawDocumentKnowledgePreviewV04(input, controller.signal)
     this.trackBackground(started.completion, () => { controller.abort(); try { this.runtime!.workflowService.cancelWorkflow(started.runId) } catch { /* workflow may already be terminal */ } })
+    await this.runtime!.workflowService.confirmPersistence(started.runId)
     await this.sendJson(response, 202, { accepted: true, runId: started.runId, committable: false, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
   }
   private async acceptRawDocumentPreviewV04(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -1425,6 +1429,7 @@ export class ResearchHubRuntimeServer {
     const controller = new AbortController()
     const started = service.startThesisLifecycleRefresh({ thesisRef, asOf, ...(evidenceRefs === undefined ? {} : { evidenceRefs }) }, controller.signal)
     this.trackBackground(started.completion, () => controller.abort())
+    await this.runtime!.workflowService.confirmPersistence(started.runId)
     await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
   }
   private async startThesisLifecycleCreate(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -1446,6 +1451,7 @@ export class ResearchHubRuntimeServer {
     const controller = new AbortController()
     const started = service.startThesisLifecycleCreate({ workflowRunId, companyRef: companyRef as `entity:${string}`, thesisTitle, narrative, evidenceRefs: evidenceRefs as (`claim:${string}` | `observation:${string}`)[], asOf }, controller.signal)
     this.trackBackground(started.completion, () => controller.abort())
+    await this.runtime!.workflowService.confirmPersistence(started.runId)
     await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
   }
   private async startCompanyResearch(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -1453,7 +1459,7 @@ export class ResearchHubRuntimeServer {
   }
   private async startIndustryResearch(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const service = this.runtime!.researchService; if (!service) throw new ApplicationServiceError('failed', 'Industry Research is not configured for this runtime')
-    const body = await this.readJson(request); this.ensureRunning(); const workflowRunId = this.optionalString(body, 'workflowRunId', 120) ?? randomUUID(); const name = this.stringField(body, 'name', 200); const aliases = body.aliases === undefined ? undefined : this.stringArray(body, 'aliases', 8, 120); const searchTerms = body.searchTerms === undefined ? undefined : this.stringArray(body, 'searchTerms', 8, 120); const canonicalRef = this.optionalString(body, 'canonicalRef', 200); const asOf = this.optionalString(body, 'asOf', 100); const maxSources = body.maxSources === undefined ? undefined : this.integerField(body, 'maxSources', 1, 50); const maxEvidencePerModule = body.maxEvidencePerModule === undefined ? undefined : this.integerField(body, 'maxEvidencePerModule', 1, 12); const input: IndustryResearchInput = { workflowRunId, name, ...(aliases === undefined ? {} : { aliases }), ...(searchTerms === undefined ? {} : { searchTerms }), ...(canonicalRef === undefined ? {} : { canonicalRef }), ...(asOf === undefined ? {} : { asOf }), ...(maxSources === undefined ? {} : { maxSources }), ...(maxEvidencePerModule === undefined ? {} : { maxEvidencePerModule }) }; const controller = new AbortController(); const started = service.startIndustryResearch(input, controller.signal); this.trackBackground(started.completion, () => controller.abort()); await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
+    const body = await this.readJson(request); this.ensureRunning(); const workflowRunId = this.optionalString(body, 'workflowRunId', 120) ?? randomUUID(); const name = this.stringField(body, 'name', 200); const aliases = body.aliases === undefined ? undefined : this.stringArray(body, 'aliases', 8, 120); const searchTerms = body.searchTerms === undefined ? undefined : this.stringArray(body, 'searchTerms', 8, 120); const canonicalRef = this.optionalString(body, 'canonicalRef', 200); const asOf = this.optionalString(body, 'asOf', 100); const maxSources = body.maxSources === undefined ? undefined : this.integerField(body, 'maxSources', 1, 50); const maxEvidencePerModule = body.maxEvidencePerModule === undefined ? undefined : this.integerField(body, 'maxEvidencePerModule', 1, 12); const input: IndustryResearchInput = { workflowRunId, name, ...(aliases === undefined ? {} : { aliases }), ...(searchTerms === undefined ? {} : { searchTerms }), ...(canonicalRef === undefined ? {} : { canonicalRef }), ...(asOf === undefined ? {} : { asOf }), ...(maxSources === undefined ? {} : { maxSources }), ...(maxEvidencePerModule === undefined ? {} : { maxEvidencePerModule }) }; const controller = new AbortController(); const started = service.startIndustryResearch(input, controller.signal); this.trackBackground(started.completion, () => controller.abort()); await this.runtime!.workflowService.confirmPersistence(started.runId); await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
   }
   private async startEarningsReview(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const body = await this.readJson(request); this.ensureRunning(); const symbol = this.stringField(body, 'symbol', 6); const name = this.optionalString(body, 'name', 500); const exchange = this.optionalString(body, 'exchange', 50); const asOf = this.optionalString(body, 'asOf', 100); const fiscalYear = this.integerField(body, 'fiscalYear', 1900, 2200); const period = this.stringField(body, 'period', 2) as EarningsReviewInput['period']; if (!['Q1', 'H1', 'Q3', 'FY'].includes(period)) throw new ApplicationServiceError('invalid_input', 'period must be Q1, H1, Q3, or FY'); const args = { symbol, fiscalYear, period, ...(name === undefined ? {} : { name }), ...(exchange === undefined ? {} : { exchange }), ...(asOf === undefined ? {} : { asOf }) }; await this.startExplicitResearchWorkflow(response, 'earnings_review', args, `Earnings Review ${name ?? symbol} (${symbol}${exchange ? `.${exchange}` : ''}) FY${fiscalYear} ${period}`)
@@ -1469,6 +1475,7 @@ export class ResearchHubRuntimeServer {
     const started = await dispatch.startExplicitWorkflow({ query, mode: { type: 'workflow', workflowId }, workflowArgumentContext: { workflowId, arguments: args }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, controller.signal)
     if (started.status !== 'started' || started.runId === undefined || started.completion === undefined) throw new ApplicationServiceError('invalid_input', started.feedback?.reason ?? `Unable to start ${workflowId}`)
     this.trackBackground(started.completion, () => controller.abort())
+    await this.runtime!.workflowService.confirmPersistence(started.runId)
     await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId), ...(started.verifiedSecurityIdentity === undefined ? {} : { verifiedSecurityIdentity: started.verifiedSecurityIdentity }) })
   }
     private async startEventResearch(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -1479,15 +1486,15 @@ export class ResearchHubRuntimeServer {
     else if (kind === 'article') inputAnchor = { kind, url: this.stringField(anchor, 'url', 2_048), ...(this.optionalString(anchor, 'title', 500) === undefined ? {} : { title: this.optionalString(anchor, 'title', 500) }), ...(this.optionalString(anchor, 'publishedAt', 100) === undefined ? {} : { publishedAt: this.optionalString(anchor, 'publishedAt', 100) }), ...(this.optionalString(anchor, 'content', 50_000) === undefined ? {} : { content: this.optionalString(anchor, 'content', 50_000) }) }
     else if (kind === 'url') inputAnchor = { kind, url: this.stringField(anchor, 'url', 2_048), ...(this.optionalString(anchor, 'title', 500) === undefined ? {} : { title: this.optionalString(anchor, 'title', 500) }), ...(this.optionalString(anchor, 'publishedAt', 100) === undefined ? {} : { publishedAt: this.optionalString(anchor, 'publishedAt', 100) }) }
     else inputAnchor = { kind, title: this.stringField(anchor, 'title', 500), description: this.stringField(anchor, 'description', 5_000), ...(this.optionalString(anchor, 'eventDate', 100) === undefined ? {} : { eventDate: this.optionalString(anchor, 'eventDate', 100) }) }
-    const input: EventResearchInput = { workflowRunId, symbol, anchor: inputAnchor, ...(name === undefined ? {} : { name }), ...(exchange === undefined ? {} : { exchange }), ...(asOf === undefined ? {} : { asOf }) }; const controller = new AbortController(); const started = service.startEventResearch(input, controller.signal); this.trackBackground(started.completion, () => controller.abort()); await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
+    const input: EventResearchInput = { workflowRunId, symbol, anchor: inputAnchor, ...(name === undefined ? {} : { name }), ...(exchange === undefined ? {} : { exchange }), ...(asOf === undefined ? {} : { asOf }) }; const controller = new AbortController(); const started = service.startEventResearch(input, controller.signal); this.trackBackground(started.completion, () => controller.abort()); await this.runtime!.workflowService.confirmPersistence(started.runId); await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
   }
   private async startThesisRedTeam(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const service = this.runtime!.researchService
     if (!service) throw new ApplicationServiceError('failed', 'Thesis Red Team is not configured for this runtime')
-    const body = await this.readJson(request); this.ensureRunning(); const symbol = this.stringField(body, 'symbol', 6); const name = this.optionalString(body, 'name', 500); const exchange = this.optionalString(body, 'exchange', 50); const thesisRef = this.stringField(body, 'thesisRef', 500); const workflowRunId = this.optionalString(body, 'workflowRunId', 120) ?? randomUUID(); const lookbackDays = body.lookbackDays === undefined ? undefined : this.integerField(body, 'lookbackDays', 30, 1095); const input: ThesisRedTeamInput = { workflowRunId, symbol, thesisRef, ...(name === undefined ? {} : { name }), ...(exchange === undefined ? {} : { exchange }), ...(lookbackDays === undefined ? {} : { lookbackDays }) }; const controller = new AbortController(); const started = service.startThesisRedTeam(input, controller.signal); this.trackBackground(started.completion, () => controller.abort()); await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
+    const body = await this.readJson(request); this.ensureRunning(); const symbol = this.stringField(body, 'symbol', 6); const name = this.optionalString(body, 'name', 500); const exchange = this.optionalString(body, 'exchange', 50); const thesisRef = this.stringField(body, 'thesisRef', 500); const workflowRunId = this.optionalString(body, 'workflowRunId', 120) ?? randomUUID(); const lookbackDays = body.lookbackDays === undefined ? undefined : this.integerField(body, 'lookbackDays', 30, 1095); const input: ThesisRedTeamInput = { workflowRunId, symbol, thesisRef, ...(name === undefined ? {} : { name }), ...(exchange === undefined ? {} : { exchange }), ...(lookbackDays === undefined ? {} : { lookbackDays }) }; const controller = new AbortController(); const started = service.startThesisRedTeam(input, controller.signal); this.trackBackground(started.completion, () => controller.abort()); await this.runtime!.workflowService.confirmPersistence(started.runId); await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
   }
   private async startDailyBrief(request: IncomingMessage, response: ServerResponse, briefType: DailyBriefType): Promise<void> {
-    const service = this.runtime!.services.dailyIntelligenceService; if (!service) throw new ApplicationServiceError('failed', 'Daily Intelligence is not configured for this runtime'); const body = await this.readJson(request); this.ensureRunning(); const tradeDate = this.stringField(body, 'tradeDate', 10); const asOf = this.optionalString(body, 'asOf', 100); const forceRefresh = body.forceRefresh === undefined ? undefined : body.forceRefresh === true; const controller = new AbortController(); const started = service.startBrief({ workflowRunId: randomUUID(), briefType, tradeDate, asOf, forceRefresh }, controller.signal); this.trackBackground(started.completion, () => controller.abort()); await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
+    const service = this.runtime!.services.dailyIntelligenceService; if (!service) throw new ApplicationServiceError('failed', 'Daily Intelligence is not configured for this runtime'); const body = await this.readJson(request); this.ensureRunning(); const tradeDate = this.stringField(body, 'tradeDate', 10); const asOf = this.optionalString(body, 'asOf', 100); const forceRefresh = body.forceRefresh === undefined ? undefined : body.forceRefresh === true; const controller = new AbortController(); const started = service.startBrief({ workflowRunId: randomUUID(), briefType, tradeDate, asOf, forceRefresh }, controller.signal); this.trackBackground(started.completion, () => controller.abort()); await this.runtime!.workflowService.confirmPersistence(started.runId); await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
   }
 
   private async dispatchResearch(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -1559,7 +1566,7 @@ export class ResearchHubRuntimeServer {
         }
         catch { /* The durable submitting reservation makes every retry fail closed. */ }
       } else if (started.status === 'free_research' || started.status === 'skill_plan') {
-        await store.markReadyForChat(conversationId!, operationId!, started.status)
+        await store.markReadyForChat(conversationId!, operationId!, started.status, started.runId)
       } else {
         await store.markNotStarted(conversationId!, operationId!, started.status as 'needs_input' | 'invalid_input' | 'unresolved_reference' | 'executor_unavailable')
       }
@@ -1579,7 +1586,9 @@ export class ResearchHubRuntimeServer {
         }
       })
     }
-    await this.sendJson(response, started.status === 'started' ? 202 : 200, { accepted: started.status === 'started', status: started.status, request: started.request, decision: started.decision, summary: started.summary, ...(started.feedback === undefined ? {} : { feedback: started.feedback }), ...(started.resolution === undefined ? {} : { resolution: publicDispatchResolution(started.resolution) }), ...(started.runId === undefined ? {} : { runId: started.runId }), ...(started.workflow === undefined ? {} : { workflow: started.workflow }) })
+    if (started.status === 'started' && started.runId !== undefined) await this.runtime!.workflowService.confirmPersistence(started.runId)
+    const workflow = started.runId === undefined ? started.workflow : this.runtime!.workflowService.getWorkflowStatus(started.runId)
+    await this.sendJson(response, started.status === 'started' ? 202 : 200, { accepted: started.status === 'started', status: started.status, request: started.request, decision: started.decision, summary: started.summary, ...(started.feedback === undefined ? {} : { feedback: started.feedback }), ...(started.resolution === undefined ? {} : { resolution: publicDispatchResolution(started.resolution) }), ...(started.runId === undefined ? {} : { runId: started.runId }), ...(workflow === undefined ? {} : { workflow }) })
   }
 
   private async sendDispatchReplay(response: ServerResponse, conversationId: string, record: import('./conversation-state-store.ts').AcceptedConversationRequest): Promise<void> {
@@ -1596,19 +1605,20 @@ export class ResearchHubRuntimeServer {
       }
     }
     if (record.lifecycle === 'started' && record.outcome === 'chat_started') {
-      await this.sendJson(response, 200, { accepted: false, status: record.dispatchStatus ?? 'free_research', conversationId, operationId: record.operationId, replayed: true }); return
+      await this.sendJson(response, 200, { accepted: false, status: record.dispatchStatus ?? 'free_research', ...(record.researchBundleRunId === undefined ? {} : { runId: record.researchBundleRunId }), conversationId, operationId: record.operationId, replayed: true }); return
     }
     if (record.lifecycle === 'started' && record.outcome === 'workflow_started' && record.workflowRunId !== undefined) {
       const workflow = this.runtime!.workflowService.getWorkflowStatus(record.workflowRunId)
       if (workflow !== undefined) { await this.sendJson(response, 202, { accepted: true, status: 'started', runId: record.workflowRunId, workflow, replayed: true }); return }
       await this.sendJson(response, 200, { accepted: false, status: 'interrupted', runId: record.workflowRunId, conversationId, replayed: true }); return
     }
+    if (record.kind === 'chat' && record.researchBundleRunId !== undefined && ['completed', 'cancelled', 'failed'].includes(record.lifecycle)) { await this.sendJson(response, 200, { accepted: false, status: record.lifecycle, runId: record.researchBundleRunId, conversationId, operationId: record.operationId, replayed: true }); return }
     if (record.kind === 'workflow' && record.lifecycle === 'completed' && record.outcome === 'workflow_completed') { await this.sendJson(response, 200, { accepted: false, status: 'completed', runId: record.workflowRunId, conversationId, operationId: record.operationId, replayed: true }); return }
     if (record.kind === 'workflow' && record.lifecycle === 'cancelled' && record.outcome === 'workflow_cancelled') { await this.sendJson(response, 200, { accepted: false, status: 'cancelled', runId: record.workflowRunId, conversationId, operationId: record.operationId, replayed: true }); return }
     if (record.kind === 'workflow' && record.lifecycle === 'failed' && (record.outcome === 'workflow_blocked' || record.outcome === 'workflow_failed')) { await this.sendJson(response, 200, { accepted: false, status: record.outcome === 'workflow_blocked' ? 'blocked' : 'failed', runId: record.workflowRunId, conversationId, operationId: record.operationId, replayed: true }); return }
-    if (record.lifecycle === 'ready_for_chat') { await this.sendJson(response, 200, { accepted: false, status: record.dispatchStatus ?? 'free_research', conversationId, operationId: record.operationId, replayed: true }); return }
+    if (record.lifecycle === 'ready_for_chat') { await this.sendJson(response, 200, { accepted: false, status: record.dispatchStatus ?? 'free_research', ...(record.researchBundleRunId === undefined ? {} : { runId: record.researchBundleRunId }), conversationId, operationId: record.operationId, replayed: true }); return }
     if (record.lifecycle === 'not_started' || record.lifecycle === 'failed') { await this.sendJson(response, 200, { accepted: false, status: record.dispatchStatus ?? record.outcomeReasonCode ?? record.failureCode ?? 'not_started', conversationId, operationId: record.operationId, replayed: true }); return }
-    if (record.lifecycle === 'interrupted') { const runId = record.workflowRunId ?? record.reservedWorkflowRunId; await this.sendJson(response, 200, { accepted: false, status: 'interrupted', conversationId, operationId: record.operationId, ...(runId === undefined ? {} : { runId }), replayed: true }); return }
+    if (record.lifecycle === 'interrupted') { const runId = record.workflowRunId ?? record.reservedWorkflowRunId ?? record.researchBundleRunId; await this.sendJson(response, 200, { accepted: false, status: 'interrupted', conversationId, operationId: record.operationId, ...(runId === undefined ? {} : { runId }), replayed: true }); return }
     await this.sendJson(response, 202, { accepted: false, status: 'pending', conversationId, operationId: record.operationId, ...(record.reservedWorkflowRunId === undefined ? {} : { runId: record.reservedWorkflowRunId }), replayed: true })
   }
 

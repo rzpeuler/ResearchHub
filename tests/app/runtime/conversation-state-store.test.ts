@@ -398,3 +398,32 @@ test('conversation sidecar root rejects a symlink destination', async () => {
     assert.deepEqual(await readdir(realRoot), [])
   } finally { await f.close() }
 })
+
+
+test('session Bundle linkage is durable, immutable, validated and retained through completion or restart', async () => {
+  const f = await fixture()
+  try {
+    const freeId = 'free-75ba7d5a-49a4-4fa3-9dca-14626fa17d4e'
+    await f.store.acceptRequest('session-bundle', { operationId: 'free-op', requestText: 'Free research' })
+    await f.store.claimSubmission('session-bundle', 'free-op')
+    const ready = await f.store.markReadyForChat('session-bundle', 'free-op', 'free_research', freeId)
+    assert.equal(ready.acceptedRequests[0]?.researchBundleRunId, freeId)
+    assert.equal((await f.store.markReadyForChat('session-bundle', 'free-op', 'free_research', freeId)).revision, ready.revision)
+    await assert.rejects(f.store.markReadyForChat('session-bundle', 'free-op', 'free_research', 'free-659a5bfd-66fb-478b-9a3a-26f10c071452'), /association cannot change/)
+    await assert.rejects(f.store.markReadyForChat('session-bundle', 'free-op', 'free_research', '../escape'), /dispatch mode/)
+    await assert.rejects(f.store.markReadyForChat('session-bundle', 'free-op', 'free_research', 'skill-75ba7d5a-49a4-4fa3-9dca-14626fa17d4e'), /dispatch mode/)
+    await f.store.claimChatCommand('session-bundle', 'free-op')
+    await f.store.completeSubmission('session-bundle', 'free-op', { kind: 'chat', outcome: 'started' })
+    await f.store.completeSubmission('session-bundle', 'free-op', { kind: 'chat', outcome: 'completed' })
+    const recovered = new ConversationStateStore({ rootDir: f.stateRoot })
+    assert.equal((await recovered.get('session-bundle'))?.acceptedRequests[0]?.researchBundleRunId, freeId)
+    await f.store.acceptRequest('session-bundle', { operationId: 'skill-op', requestText: 'Skill research' })
+    await f.store.claimSubmission('session-bundle', 'skill-op')
+    const skillId = 'skill-659a5bfd-66fb-478b-9a3a-26f10c071452'
+    await f.store.markReadyForChat('session-bundle', 'skill-op', 'skill_plan', skillId)
+    await f.store.claimChatCommand('session-bundle', 'skill-op')
+    await f.store.completeSubmission('session-bundle', 'skill-op', { kind: 'chat', outcome: 'started' })
+    await recovered.recoverInterruptedDispatches()
+    assert.equal((await recovered.get('session-bundle'))?.acceptedRequests[1]?.researchBundleRunId, skillId)
+  } finally { await f.close() }
+})

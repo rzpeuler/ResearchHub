@@ -1,0 +1,1031 @@
+{
+  "taskId": "RHL-UX-IA-001",
+  "status": "PASS",
+  "capturedAt": "2026-10-13T09:22:40.534Z",
+  "browser": "Microsoft Edge headless via CDP",
+  "productionClient": true,
+  "providerFixture": "Isolated CNINFO/GDELT and faux Pi provider; real Runtime services, Workflow, persisted Pi SessionManager, Report/Bundle stores and APIs",
+  "knowledgeBaseIsolation": true,
+  "runtimeProcesses": [
+    {
+      "phase": "before restart",
+      "pid": 12544,
+      "persistentPiSessionManager": true
+    },
+    {
+      "phase": "after graceful restart",
+      "pid": 34208,
+      "persistentPiSessionManager": true
+    }
+  ],
+  "artifacts": [
+    {
+      "runId": "794e4f92-0381-442d-b778-412b0a4218ca",
+      "reportId": "company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+      "bundleId": "research-bundle-794e4f92-0381-442d-b778-412b0a4218ca"
+    },
+    {
+      "runId": "71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "reportId": "company-research-002640-71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "bundleId": "research-bundle-71dd5cb9-ea29-47ad-b486-e05f2d40a3ce"
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "E2E-01",
+      "passed": true,
+      "runId": "794e4f92-0381-442d-b778-412b0a4218ca",
+      "reportId": "company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+      "bundleId": "research-bundle-794e4f92-0381-442d-b778-412b0a4218ca",
+      "workflow": {
+        "runId": "794e4f92-0381-442d-b778-412b0a4218ca",
+        "workflowType": "company_deep_research",
+        "objective": "Company research 002640",
+        "status": "completed",
+        "startedAt": "2026-10-13T09:22:44.788Z",
+        "updatedAt": "2026-10-13T09:22:44.917Z",
+        "observationRevision": 21,
+        "stages": [
+          {
+            "stageId": "identity_validation",
+            "label": "研究对象校验",
+            "status": "completed",
+            "startedAt": "2026-10-13T09:22:44.804Z",
+            "completedAt": "2026-10-13T09:22:44.812Z",
+            "durationMs": 8,
+            "summary": "已校验证券身份",
+            "diagnostics": []
+          },
+          {
+            "stageId": "data_acquisition",
+            "label": "数据获取",
+            "status": "completed",
+            "startedAt": "2026-10-13T09:22:44.820Z",
+            "completedAt": "2026-10-13T09:22:44.840Z",
+            "durationMs": 20,
+            "summary": "已处理 3 个可观察数据源",
+            "diagnostics": []
+          },
+          {
+            "stageId": "research_synthesis",
+            "label": "研究综合分析",
+            "status": "completed",
+            "startedAt": "2026-10-13T09:22:44.846Z",
+            "completedAt": "2026-10-13T09:22:44.862Z",
+            "durationMs": 16,
+            "summary": "研究综合分析已返回",
+            "diagnostics": []
+          },
+          {
+            "stageId": "quality_gate",
+            "label": "证据质量门",
+            "status": "completed",
+            "startedAt": "2026-10-13T09:22:44.866Z",
+            "completedAt": "2026-10-13T09:22:44.874Z",
+            "durationMs": 8,
+            "summary": "证据质量门通过",
+            "diagnostics": []
+          },
+          {
+            "stageId": "knowledge_gateway",
+            "label": "Knowledge Gateway",
+            "status": "skipped",
+            "startedAt": "2026-10-13T09:22:44.880Z",
+            "completedAt": "2026-10-13T09:22:44.884Z",
+            "durationMs": 4,
+            "summary": "本次未授权 Knowledge 写入",
+            "diagnostics": []
+          },
+          {
+            "stageId": "report_generation",
+            "label": "研究报告生成",
+            "status": "completed",
+            "startedAt": "2026-10-13T09:22:44.888Z",
+            "completedAt": "2026-10-13T09:22:44.892Z",
+            "durationMs": 4,
+            "summary": "研究报告已生成",
+            "diagnostics": []
+          },
+          {
+            "stageId": "report_persistence",
+            "label": "报告保存",
+            "status": "completed",
+            "startedAt": "2026-10-13T09:22:44.897Z",
+            "completedAt": "2026-10-13T09:22:44.902Z",
+            "durationMs": 5,
+            "summary": "研究报告已保存",
+            "diagnostics": []
+          }
+        ],
+        "providerObservations": [
+          {
+            "providerId": "akshare",
+            "label": "结构化数据",
+            "status": "skipped",
+            "startedAt": "2026-10-13T09:22:44.829Z",
+            "completedAt": "2026-10-13T09:22:44.830Z",
+            "durationMs": 1,
+            "diagnostics": [
+              "PROVIDER_UNSUPPORTED",
+              "PROVIDER_UNSUPPORTED",
+              "PROVIDER_UNSUPPORTED"
+            ]
+          },
+          {
+            "providerId": "cninfo",
+            "label": "上市公司公告",
+            "status": "failed",
+            "recordCount": 0,
+            "startedAt": "2026-10-13T09:22:44.830Z",
+            "completedAt": "2026-10-13T09:22:44.830Z",
+            "durationMs": 0,
+            "diagnostics": [
+              "PROVIDER_ATTEMPT_FAILED"
+            ]
+          },
+          {
+            "providerId": "gdelt",
+            "label": "新闻资料",
+            "status": "success",
+            "recordCount": 1,
+            "startedAt": "2026-10-13T09:22:44.830Z",
+            "completedAt": "2026-10-13T09:22:44.831Z",
+            "durationMs": 1,
+            "diagnostics": []
+          }
+        ],
+        "skillObservations": [
+          {
+            "skillId": "company_research_synthesis",
+            "label": "公司研究综合分析",
+            "status": "completed",
+            "startedAt": "2026-10-13T09:22:44.851Z",
+            "completedAt": "2026-10-13T09:22:44.857Z",
+            "durationMs": 6,
+            "summary": "采用确定性证据基线完成综合分析"
+          }
+        ],
+        "progressSummary": "Company research completed for 002640",
+        "executionResult": {
+          "runId": "794e4f92-0381-442d-b778-412b0a4218ca",
+          "workflowId": "company_research",
+          "executionStatus": "completed",
+          "terminalStatus": "completed",
+          "summary": "Company research completed for 002640",
+          "reportRef": "company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+          "bundleRef": "research-bundle-794e4f92-0381-442d-b778-412b0a4218ca",
+          "diagnostics": [],
+          "bundleStatus": "available"
+        },
+        "currentStageId": "report_persistence",
+        "currentStage": "报告保存",
+        "completedAt": "2026-10-13T09:22:44.907Z",
+        "observationSource": "live",
+        "historyPersistence": {
+          "status": "saved",
+          "persistedRevision": 21
+        }
+      },
+      "actualCompanyResearch": true
+    },
+    {
+      "id": "E2E-02",
+      "passed": true,
+      "reportId": "company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+      "runId": "794e4f92-0381-442d-b778-412b0a4218ca",
+      "dom": "结构化研究结果\n资料包执行状态\ncompleted\n结果摘要\nCompany research completed for 002640\nrunId\n794e4f92-0381-442d-b778-412b0a4218ca\n状态\ncompleted\nknowledgeBaseId\nux004-browser-1791883363659\n报告引用\ncompany-research-002640-794e4f92-0381-442d-b778-412b0a4218ca\ncommittedIds\n无条目\nproposalCount\n1\n结果摘要\nCompany research completed for 002640\nthemeScopeImpact\n状态\nnot_triggered\ndiagnostics\nCompany Research completed without canonical writes.\n提案\n\n暂无提案。\n\n查看受限结构化 JSON",
+      "jsonCollapsed": true
+    },
+    {
+      "id": "E2E-03",
+      "passed": true,
+      "sourceDom": "研究依据与数据来源\n\n暂无来源库命中。",
+      "proposalDom": "结构化研究结果\n资料包执行状态\ncompleted\n结果摘要\nCompany research completed for 002640\nrunId\n794e4f92-0381-442d-b778-412b0a4218ca\n状态\ncompleted\nknowledgeBaseId\nux004-browser-1791883363659\n报告引用\ncompany-research-002640-794e4f92-0381-442d-b778-412b0a4218ca\ncommittedIds\n无条目\nproposalCount\n1\n结果摘要\nCompany research completed for 002640\nthemeScopeImpact\n状态\nnot_triggered\ndiagnostics\nCompany Research completed without canonical writes.\n提案\n\n暂无提案。\n\n查看受限结构化 JSON",
+      "sourceHitCount": 0,
+      "proposalCount": 0
+    },
+    {
+      "id": "E2E-06",
+      "passed": true,
+      "kind": "missing",
+      "reportId": "company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+      "dom": "结构化研究结果\n\n该报告没有可用研究资料包。",
+      "reportBodyPreserved": true
+    },
+    {
+      "id": "E2E-06",
+      "passed": true,
+      "kind": "corrupt",
+      "reportId": "company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+      "dom": "结构化研究结果\n\n附录暂时无法读取或关联信息不一致。\n\n重试",
+      "reportBodyPreserved": true
+    },
+    {
+      "id": "E2E-08",
+      "passed": true,
+      "width": 375,
+      "scrollWidth": 375,
+      "keyboardCollapseAndExpand": true,
+      "retryAfterRealFileRepair": true
+    },
+    {
+      "id": "E2E-06",
+      "passed": true,
+      "kind": "transplanted",
+      "reportId": "company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+      "dom": "结构化研究结果\n\n附录暂时无法读取或关联信息不一致。\n\n重试",
+      "reportBodyPreserved": true
+    },
+    {
+      "id": "E2E-09",
+      "passed": true,
+      "delayedRun": "794e4f92-0381-442d-b778-412b0a4218ca",
+      "currentRun": "71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "delayMs": 2000,
+      "dom": "结构化研究结果\n资料包执行状态\ncompleted\n结果摘要\nCompany research completed for 002640\nrunId\n71dd5cb9-ea29-47ad-b486-e05f2d40a3ce\n状态\ncompleted\nknowledgeBaseId\nux004-browser-1791883363659\n报告引用\ncompany-research-002640-71dd5cb9-ea29-47ad-b486-e05f2d40a3ce\ncommittedIds\n无条目\nproposalCount\n1\n结果摘要\nCompany research completed for 002640\nthemeScopeImpact\n状态\nnot_triggered\ndiagnostics\nCompany Research completed without canonical writes.\n提案\n\n暂无提案。\n\n查看受限结构化 JSON",
+      "delayedActualBackendResponse": true
+    },
+    {
+      "id": "E2E-07",
+      "passed": true,
+      "legacyPath": "/bundles",
+      "dom": "研究资料\n研究资料包\n只读\n\n查看统一结构化结果、报告与提案链接，以及有 Raw 来源支持的资料库证据候选。\n\n历史记录\n2 个资料包\ncompleted\n0 个提案 · 0 条资料库结果\n2026/10/13 17:22:47 · 71dd5cb9-ea29-47ad-b486-e05f2d40a3ce\ncompleted\n0 个提案 · 0 条资料库结果\n2026/10/13 17:22:44 · 794e4f92-0381-442d-b778-412b0a4218ca\n选择一个研究资料包\n\n选择资料以查看派生输出和证据脉络。\n\nRAW-BACKED RETRIEVAL\n来源资料库搜索\n只读\n搜索\n\n搜索结果仅为证据候选，不会修改规范知识。",
+      "primaryNavigationCount": 8,
+      "topNavBundleAbsent": true
+    },
+    {
+      "id": "E2E-05",
+      "passed": true,
+      "runId": "774601b9-c49e-4e20-8882-2ec8998fb7fb",
+      "bundleId": "research-bundle-774601b9-c49e-4e20-8882-2ec8998fb7fb",
+      "reportAbsent": true,
+      "originalConversationActivity": true,
+      "dom": "结构化结果\nRESEARCH-BUNDLE-774601B9-C49E-4E20-8882-2EC8998FB7FB\nCANCELLED\n\n工作流运行： 774601b9-c49e-4e20-8882-2ec8998fb7fb\n\n0 proposals\n0 source hits\n知识提案\n由资料包生成\n\n没有记录提案。\n\n来源资料库证据\n基于 RAW\n\n此资料包未附带来源资料库结果。\n\n结构化结果\n范围受限的预览\n\nstatus: cancelled · workflowRunId: 774601b9-c49e-4e20-8882-2ec8998fb7fb · summary: Workflow was cancelled."
+    },
+    {
+      "id": "E2E-04",
+      "passed": true,
+      "runId": "794e4f92-0381-442d-b778-412b0a4218ca",
+      "reportId": "company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+      "bundleId": "research-bundle-794e4f92-0381-442d-b778-412b0a4218ca",
+      "historicalApi": {
+        "runId": "794e4f92-0381-442d-b778-412b0a4218ca",
+        "workflowType": "company_deep_research",
+        "objective": "Company research 002640",
+        "status": "completed",
+        "startedAt": "2026-10-13T09:22:44.788Z",
+        "updatedAt": "2026-10-13T09:22:44.917Z",
+        "observationRevision": 21,
+        "stages": [
+          {
+            "stageId": "identity_validation",
+            "label": "研究对象校验",
+            "status": "completed",
+            "startedAt": "2026-10-13T09:22:44.804Z",
+            "completedAt": "2026-10-13T09:22:44.812Z",
+            "durationMs": 8,
+            "summary": "已校验证券身份",
+            "diagnostics": []
+          },
+          {
+            "stageId": "data_acquisition",
+            "label": "数据获取",
+            "status": "completed",
+            "startedAt": "2026-10-13T09:22:44.820Z",
+            "completedAt": "2026-10-13T09:22:44.840Z",
+            "durationMs": 20,
+            "summary": "已处理 3 个可观察数据源",
+            "diagnostics": []
+          },
+          {
+            "stageId": "research_synthesis",
+            "label": "研究综合分析",
+            "status": "completed",
+            "startedAt": "2026-10-13T09:22:44.846Z",
+            "completedAt": "2026-10-13T09:22:44.862Z",
+            "durationMs": 16,
+            "summary": "研究综合分析已返回",
+            "diagnostics": []
+          },
+          {
+            "stageId": "quality_gate",
+            "label": "证据质量门",
+            "status": "completed",
+            "startedAt": "2026-10-13T09:22:44.866Z",
+            "completedAt": "2026-10-13T09:22:44.874Z",
+            "durationMs": 8,
+            "summary": "证据质量门通过",
+            "diagnostics": []
+          },
+          {
+            "stageId": "knowledge_gateway",
+            "label": "Knowledge Gateway",
+            "status": "skipped",
+            "startedAt": "2026-10-13T09:22:44.880Z",
+            "completedAt": "2026-10-13T09:22:44.884Z",
+            "durationMs": 4,
+            "summary": "本次未授权 Knowledge 写入",
+            "diagnostics": []
+          },
+          {
+            "stageId": "report_generation",
+            "label": "研究报告生成",
+            "status": "completed",
+            "startedAt": "2026-10-13T09:22:44.888Z",
+            "completedAt": "2026-10-13T09:22:44.892Z",
+            "durationMs": 4,
+            "summary": "研究报告已生成",
+            "diagnostics": []
+          },
+          {
+            "stageId": "report_persistence",
+            "label": "报告保存",
+            "status": "completed",
+            "startedAt": "2026-10-13T09:22:44.897Z",
+            "completedAt": "2026-10-13T09:22:44.902Z",
+            "durationMs": 5,
+            "summary": "研究报告已保存",
+            "diagnostics": []
+          }
+        ],
+        "providerObservations": [
+          {
+            "providerId": "akshare",
+            "label": "结构化数据",
+            "status": "skipped",
+            "startedAt": "2026-10-13T09:22:44.829Z",
+            "completedAt": "2026-10-13T09:22:44.830Z",
+            "durationMs": 1,
+            "diagnostics": [
+              "PROVIDER_UNSUPPORTED",
+              "PROVIDER_UNSUPPORTED",
+              "PROVIDER_UNSUPPORTED"
+            ]
+          },
+          {
+            "providerId": "cninfo",
+            "label": "上市公司公告",
+            "status": "failed",
+            "recordCount": 0,
+            "startedAt": "2026-10-13T09:22:44.830Z",
+            "completedAt": "2026-10-13T09:22:44.830Z",
+            "durationMs": 0,
+            "diagnostics": [
+              "PROVIDER_ATTEMPT_FAILED"
+            ]
+          },
+          {
+            "providerId": "gdelt",
+            "label": "新闻资料",
+            "status": "success",
+            "recordCount": 1,
+            "startedAt": "2026-10-13T09:22:44.830Z",
+            "completedAt": "2026-10-13T09:22:44.831Z",
+            "durationMs": 1,
+            "diagnostics": []
+          }
+        ],
+        "skillObservations": [
+          {
+            "skillId": "company_research_synthesis",
+            "label": "公司研究综合分析",
+            "status": "completed",
+            "startedAt": "2026-10-13T09:22:44.851Z",
+            "completedAt": "2026-10-13T09:22:44.857Z",
+            "durationMs": 6,
+            "summary": "采用确定性证据基线完成综合分析"
+          }
+        ],
+        "progressSummary": "Company research completed for 002640",
+        "executionResult": {
+          "runId": "794e4f92-0381-442d-b778-412b0a4218ca",
+          "workflowId": "company_research",
+          "executionStatus": "completed",
+          "terminalStatus": "completed",
+          "summary": "Company research completed for 002640",
+          "reportRef": "company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+          "bundleRef": "research-bundle-794e4f92-0381-442d-b778-412b0a4218ca",
+          "diagnostics": [],
+          "bundleStatus": "available"
+        },
+        "currentStageId": "report_persistence",
+        "currentStage": "报告保存",
+        "completedAt": "2026-10-13T09:22:44.907Z",
+        "observationSource": "historical",
+        "historyPersistence": {
+          "status": "saved",
+          "persistedRevision": 21
+        }
+      },
+      "dom": "Workflow 执行历史\nWorkflow\ncompany_deep_research\n执行状态\ncompleted\n记录来源\nhistorical · 历史快照\n开始时间\n2026-10-13T09:22:44.788Z\n完成时间\n2026-10-13T09:22:44.907Z\n已观测阶段\n研究对象校验 · completed · 开始 2026-10-13T09:22:44.804Z · 完成 2026-10-13T09:22:44.812Z · 8ms\n\n已校验证券身份\n\n数据获取 · completed · 开始 2026-10-13T09:22:44.820Z · 完成 2026-10-13T09:22:44.840Z · 20ms\n\n已处理 3 个可观察数据源\n\n研究综合分析 · completed · 开始 2026-10-13T09:22:44.846Z · 完成 2026-10-13T09:22:44.862Z · 16ms\n\n研究综合分析已返回\n\n证据质量门 · completed · 开始 2026-10-13T09:22:44.866Z · 完成 2026-10-13T09:22:44.874Z · 8ms\n\n证据质量门通过\n\nKnowledge Gateway · skipped · 开始 2026-10-13T09:22:44.880Z · 完成 2026-10-13T09:22:44.884Z · 4ms\n\n本次未授权 Knowledge 写入\n\n研究报告生成 · completed · 开始 2026-10-13T09:22:44.888Z · 完成 2026-10-13T09:22:44.892Z · 4ms\n\n研究报告已生成\n\n报告保存 · completed · 开始 2026-10-13T09:22:44.897Z · 完成 2026-10-13T09:22:44.902Z · 5ms\n\n研究报告已保存\n\nProvider 结果\n结构化数据 · skipped · 开始 2026-10-13T09:22:44.829Z · 完成 2026-10-13T09:22:44.830Z · 1ms\n\n诊断：PROVIDER_UNSUPPORTED\n\n诊断：PROVIDER_UNSUPPORTED\n\n诊断：PROVIDER_UNSUPPORTED\n\n上市公司公告 · failed · 开始 2026-10-13T09:22:44.830Z · 完成 2026-10-13T09:22:44.830Z · 0ms · 0 条记录\n\n诊断：PROVIDER_ATTEMPT_FAILED\n\n新闻资料 · success · 开始 2026-10-13T09:22:44.830Z · 完成 2026-10-13T09:22:44.831Z · 1ms · 1 条记录\nSkill 结果\n公司研究综合分析 · completed · 开始 2026-10-13T09:22:44.851Z · 完成 2026-10-13T09:22:44.857Z · 6ms\n\n采用确定性证据基线完成综合分析",
+      "noExecutionReplay": true,
+      "knowledgeBaseUnchanged": true
+    }
+  ],
+  "apiResponses": [
+    {
+      "path": "/api/bootstrap",
+      "status": 200
+    },
+    {
+      "path": "/api/research/workflows",
+      "status": 200
+    },
+    {
+      "path": "/api/settings",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/events",
+      "status": 200
+    },
+    {
+      "path": "/api/research-reports",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/research-reports/company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 200
+    },
+    {
+      "path": "/api/research/bundles/by-run/794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 200
+    },
+    {
+      "path": "/api/research/bundles/by-run/794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 200
+    },
+    {
+      "path": "/api/bootstrap",
+      "status": 200
+    },
+    {
+      "path": "/api/research/workflows",
+      "status": 200
+    },
+    {
+      "path": "/api/settings",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/events",
+      "status": 200
+    },
+    {
+      "path": "/api/research-reports",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/research-reports/company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 200
+    },
+    {
+      "path": "/api/bootstrap",
+      "status": 200
+    },
+    {
+      "path": "/api/research/workflows",
+      "status": 200
+    },
+    {
+      "path": "/api/settings",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/events",
+      "status": 200
+    },
+    {
+      "path": "/api/research-reports",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/research-reports/company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 200
+    },
+    {
+      "path": "/api/research/bundles/by-run/794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 404
+    },
+    {
+      "path": "/api/bootstrap",
+      "status": 200
+    },
+    {
+      "path": "/api/research/workflows",
+      "status": 200
+    },
+    {
+      "path": "/api/settings",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/events",
+      "status": 200
+    },
+    {
+      "path": "/api/research-reports",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/research-reports/company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 200
+    },
+    {
+      "path": "/api/research/bundles/by-run/794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 500
+    },
+    {
+      "path": "/api/research/bundles/by-run/794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 200
+    },
+    {
+      "path": "/api/bootstrap",
+      "status": 200
+    },
+    {
+      "path": "/api/research/workflows",
+      "status": 200
+    },
+    {
+      "path": "/api/settings",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/events",
+      "status": 200
+    },
+    {
+      "path": "/api/research-reports",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/research-reports/company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 200
+    },
+    {
+      "path": "/api/research/bundles/by-run/794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 500
+    },
+    {
+      "path": "/api/bootstrap",
+      "status": 200
+    },
+    {
+      "path": "/api/research/workflows",
+      "status": 200
+    },
+    {
+      "path": "/api/settings",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/events",
+      "status": 200
+    },
+    {
+      "path": "/api/research-reports",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/research-reports/company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 200
+    },
+    {
+      "path": "/api/research-reports/company-research-002640-71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "status": 200
+    },
+    {
+      "path": "/api/research/bundles/by-run/71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "status": 200
+    },
+    {
+      "path": "/api/research/bundles/by-run/794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 200
+    },
+    {
+      "path": "/api/bootstrap",
+      "status": 200
+    },
+    {
+      "path": "/api/research/workflows",
+      "status": 200
+    },
+    {
+      "path": "/api/settings",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/events",
+      "status": 200
+    },
+    {
+      "path": "/api/research/bundles",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/71dd5cb9-ea29-47ad-b486-e05f2d40a3ce",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/cancel",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/774601b9-c49e-4e20-8882-2ec8998fb7fb",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/774601b9-c49e-4e20-8882-2ec8998fb7fb",
+      "status": 200
+    },
+    {
+      "path": "/api/research/bundles/by-run/774601b9-c49e-4e20-8882-2ec8998fb7fb",
+      "status": 200
+    },
+    {
+      "path": "/api/research/bundles/research-bundle-774601b9-c49e-4e20-8882-2ec8998fb7fb",
+      "status": 200
+    },
+    {
+      "path": "/api/research/bundles",
+      "status": 200
+    },
+    {
+      "path": "/api/bootstrap",
+      "status": 200
+    },
+    {
+      "path": "/api/research/workflows",
+      "status": 200
+    },
+    {
+      "path": "/api/settings",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/774601b9-c49e-4e20-8882-2ec8998fb7fb",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/events",
+      "status": 200
+    },
+    {
+      "path": "/api/research-reports",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/messages",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations/current",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/774601b9-c49e-4e20-8882-2ec8998fb7fb",
+      "status": 200
+    },
+    {
+      "path": "/api/conversations",
+      "status": 200
+    },
+    {
+      "path": "/api/research-reports/company-research-002640-794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 200
+    },
+    {
+      "path": "/api/workflows/794e4f92-0381-442d-b778-412b0a4218ca",
+      "status": 200
+    }
+  ]
+}

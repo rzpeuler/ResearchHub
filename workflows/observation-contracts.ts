@@ -1,4 +1,4 @@
-export type WorkflowStageStatus = 'pending' | 'running' | 'completed' | 'skipped' | 'failed' | 'blocked' | 'cancelled'
+export type WorkflowStageStatus = 'pending' | 'running' | 'completed' | 'skipped' | 'failed' | 'blocked' | 'cancelled' | 'interrupted'
 export type WorkflowDataAvailabilityStatus = 'success' | 'partial' | 'unavailable' | 'failed' | 'skipped'
 export interface WorkflowStageView {
   readonly stageId: string
@@ -30,9 +30,9 @@ export interface WorkflowSkillObservation {
   readonly summary?: string
 }
 export interface WorkflowObservationReporter {
-  readonly startStage: (stageId: string, label: string, summary?: string) => void
-  readonly finishStage: (stageId: string, status: Exclude<WorkflowStageStatus, 'pending' | 'running'>, details?: { readonly summary?: string; readonly diagnostics?: readonly string[] }) => void
-  readonly providerObservations: (observations: readonly WorkflowProviderObservation[]) => void
-  readonly startSkill: (skillId: string, label: string, summary?: string) => void
-  readonly finishSkill: (skillId: string, status: WorkflowSkillObservation['status'], summary?: string) => void
+  readonly startStage: (stageId: string, label: string, summary?: string) => Promise<void>
+  readonly finishStage: (stageId: string, status: Exclude<WorkflowStageStatus, 'pending' | 'running' | 'interrupted'>, details?: { readonly summary?: string; readonly diagnostics?: readonly string[] }) => Promise<void>
+  readonly providerObservations: (observations: readonly WorkflowProviderObservation[]) => Promise<void>
+  readonly startSkill: (skillId: string, label: string, summary?: string) => Promise<void>
+  readonly finishSkill: (skillId: string, status: Exclude<WorkflowSkillObservation['status'], 'interrupted'>, summary?: string) => Promise<void>
 }
