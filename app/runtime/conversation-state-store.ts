@@ -47,6 +47,7 @@ export interface AcceptedConversationRequest {
   readonly acceptedWorkflowRegistryId?: string
   readonly workflowRegistryId?: string
   readonly workflowRunId?: string
+  readonly researchBundleRunId?: string
   readonly reservedWorkflowRunId?: string
   readonly workflowSubject?: string
   readonly workflowTitleCandidate?: string
@@ -348,13 +349,17 @@ export class ConversationStateStore {
   }
 
   /** A free-research/skill-plan dispatch may hand its accepted prompt to Pi exactly once. */
-  async markReadyForChat(conversationId: string, operationId: string, dispatchStatus: 'free_research' | 'skill_plan'): Promise<ConversationState> {
+  async markReadyForChat(conversationId: string, operationId: string, dispatchStatus: 'free_research' | 'skill_plan', researchBundleRunId?: string): Promise<ConversationState> {
+    const bundleRunId = researchBundleRunId === undefined ? undefined : sessionBundleRunId(researchBundleRunId, dispatchStatus)
     return this.updateRequest(normalizeConversationId(conversationId), normalizeOperationId(operationId), (request) => {
       if (request.operation !== 'prompt') throw conflict('only prompt requests can be handed to chat')
-      if (request.lifecycle === 'ready_for_chat') return request
+      if (request.lifecycle === 'ready_for_chat') {
+        if (request.dispatchStatus !== dispatchStatus || request.researchBundleRunId !== bundleRunId) throw conflict('session research association cannot change')
+        return request
+      }
       if (request.lifecycle !== 'submitting') throw conflict(`cannot hand ${request.lifecycle} request to chat`)
       const { reservedWorkflowRunId: _reservedWorkflowRunId, ...ready } = request
-      return { ...ready, lifecycle: 'ready_for_chat', dispatchStatus }
+      return { ...ready, lifecycle: 'ready_for_chat', dispatchStatus, ...(bundleRunId === undefined ? {} : { researchBundleRunId: bundleRunId }) }
     })
   }
 
@@ -719,7 +724,7 @@ function validateState(value: unknown, expectedId: string): asserts value is Con
 
 function validateRequest(value: unknown): asserts value is AcceptedConversationRequest {
   if (!plainObject(value)) throw corrupt('accepted request record must be an object')
-  exactKeys(value, ['kind', 'operation', 'operationId', 'requestDigest', 'requestText', 'acceptedAt', 'acceptedWorkflowRegistryId', 'workflowRegistryId', 'workflowRunId', 'reservedWorkflowRunId', 'workflowSubject', 'workflowTitleCandidate', 'lifecycle', 'dispatchAttemptedAt', 'startedAt', 'failureCode', 'outcome', 'outcomeReasonCode', 'dispatchStatus', 'finishedAt', 'piMessageId'], ['kind', 'operation', 'operationId', 'requestDigest', 'requestText', 'acceptedAt', 'lifecycle'])
+  exactKeys(value, ['kind', 'operation', 'operationId', 'requestDigest', 'requestText', 'acceptedAt', 'acceptedWorkflowRegistryId', 'workflowRegistryId', 'workflowRunId', 'researchBundleRunId', 'reservedWorkflowRunId', 'workflowSubject', 'workflowTitleCandidate', 'lifecycle', 'dispatchAttemptedAt', 'startedAt', 'failureCode', 'outcome', 'outcomeReasonCode', 'dispatchStatus', 'finishedAt', 'piMessageId'], ['kind', 'operation', 'operationId', 'requestDigest', 'requestText', 'acceptedAt', 'lifecycle'])
   if (value.kind !== 'chat' && value.kind !== 'workflow') throw corrupt('accepted request kind is invalid')
   if (!['prompt', 'steer', 'follow_up'].includes(String(value.operation))) throw corrupt('accepted request operation is invalid')
   try { normalizeOperationId(value.operationId) } catch (error) { throw corrupt('accepted operationId is invalid', error) }
@@ -730,6 +735,10 @@ function validateRequest(value: unknown): asserts value is AcceptedConversationR
   if (value.workflowRegistryId !== undefined) { try { workflowId(value.workflowRegistryId, 'workflowRegistryId') } catch (error) { throw corrupt('workflowRegistryId is invalid', error) } }
   if (value.acceptedWorkflowRegistryId !== undefined) { try { workflowId(value.acceptedWorkflowRegistryId, 'acceptedWorkflowRegistryId') } catch (error) { throw corrupt('acceptedWorkflowRegistryId is invalid', error) } }
   if (value.workflowRunId !== undefined) { try { workflowId(value.workflowRunId, 'workflowRunId') } catch (error) { throw corrupt('workflowRunId is invalid', error) } }
+  if (value.researchBundleRunId !== undefined) {
+    try { sessionBundleRunId(value.researchBundleRunId, value.dispatchStatus as 'free_research' | 'skill_plan') } catch (error) { throw corrupt('researchBundleRunId is invalid', error) }
+    if (value.kind !== 'chat' || value.operation !== 'prompt' || ['accepted', 'not_started'].includes(String(value.lifecycle)) || value.workflowRunId !== undefined || value.reservedWorkflowRunId !== undefined) throw corrupt('session research association has invalid lifecycle fields')
+  }
   if (value.reservedWorkflowRunId !== undefined) { try { normalizeReservedRunId(value.reservedWorkflowRunId) } catch (error) { throw corrupt('reservedWorkflowRunId is invalid', error) } }
   if (value.workflowSubject !== undefined) { try { if (normalizeConversationTitle(value.workflowSubject) !== value.workflowSubject) throw corrupt('workflowSubject is not normalized') } catch (error) { if (error instanceof ConversationStateStoreError && error.code === 'corrupt') throw error; throw corrupt('workflowSubject is invalid', error) } }
   if (value.workflowTitleCandidate !== undefined) { try { if (normalizeConversationTitle(value.workflowTitleCandidate) !== value.workflowTitleCandidate) throw corrupt('workflowTitleCandidate is not normalized') } catch (error) { if (error instanceof ConversationStateStoreError && error.code === 'corrupt') throw error; throw corrupt('workflowTitleCandidate is invalid', error) } }
@@ -759,6 +768,12 @@ function normalizeOperationId(value: unknown): string {
 }
 function normalizePiMessageId(value: unknown): string {
   if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(value)) throw invalid('Pi message ID is invalid')
+  return value
+}
+function sessionBundleRunId(value: unknown, mode: 'free_research' | 'skill_plan'): string {
+  const prefix = mode === 'free_research' ? 'free-' : mode === 'skill_plan' ? 'skill-' : undefined
+  if (prefix === undefined || typeof value !== 'string' || !value.startsWith(prefix)) throw invalid('researchBundleRunId does not match session dispatch mode')
+  normalizeReservedRunId(value.slice(prefix.length))
   return value
 }
 function normalizeReservedRunId(value: unknown): string {

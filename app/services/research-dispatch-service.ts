@@ -792,12 +792,13 @@ export class ResearchDispatchService {
   async getBundleForRun(runId: string): Promise<ResearchBundle | undefined> {
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(runId)) throw new ApplicationServiceError('invalid_input', 'runId is invalid')
     await this.pendingBundleWrites.get(runId)
-    return this.getBundle(`research-bundle-${runId}`)
+    const bundle = await this.getBundle(`research-bundle-${runId}`)
+    if (bundle !== undefined && (bundle.workflowRunId !== runId || bundle.bundleId !== `research-bundle-${runId}`)) throw new ApplicationServiceError('failed', 'ResearchBundle identity does not match the requested run')
+    return bundle
   }
 
   async getSessionResearchContext(runId: string): Promise<ResearchSessionContext | undefined> {
-    await this.pendingBundleWrites.get(runId)
-    const bundle = await this.getBundle(`research-bundle-${runId}`)
+    const bundle = await this.getBundleForRun(runId)
     if (bundle === undefined) return undefined
     const selectedSkills: LoadedResearchSkill[] = []
     for (const skill of bundle.decision.skills) {
