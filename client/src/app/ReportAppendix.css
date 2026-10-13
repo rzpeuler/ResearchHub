@@ -1,0 +1,9 @@
+.report-appendix { margin-top: 1.5rem; border-top: 1px solid var(--border, #d8dee8); padding-top: 1rem; min-width: 0; }
+.report-appendix > details { border: 1px solid var(--border, #d8dee8); border-radius: 8px; margin: .75rem 0; padding: .75rem; }
+.report-appendix summary { cursor: pointer; font-weight: 600; padding: .25rem; }
+.report-appendix summary:focus-visible { outline: 2px solid var(--accent, #386ac9); outline-offset: 3px; }
+.report-appendix dl, .report-appendix li { overflow-wrap: anywhere; }
+.report-appendix dt { font-weight: 600; margin-top: .5rem; }
+.report-appendix dd { margin-left: 0; }
+.report-appendix pre { max-height: 22rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; }
+@media (max-width: 600px) { .report-appendix > details { padding: .5rem; } .report-appendix ul { padding-left: 1.25rem; } }

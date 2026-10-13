@@ -96,7 +96,7 @@ const branchSummary = summary(branchLog, 'branch')
 const status = newFailures.length === 0 && disappearedFailures.length === 0 && changedFailures.length === 0 ? 'BASELINE_FAILURES_IDENTICAL' : 'FAILURE_SET_CHANGED'
 const comparison = {
   schemaVersion: 1,
-  taskId: 'RHL-WF-PERSIST-001-ACCEPTANCE-FIX-001',
+  taskId: argument('--task-id') ?? 'RHL-WF-PERSIST-001-ACCEPTANCE-FIX-001',
   capturedAt: new Date().toISOString(),
   status,
   testEnvironment: {

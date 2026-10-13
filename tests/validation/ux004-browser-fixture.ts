@@ -136,6 +136,7 @@ const performanceSamples: Array<{ index: number; durationMs: number; handlerCost
 const piLifecycleEvidence: Array<{ event: string; conversationId?: string; at: string }> = []
 let eventsUnavailableUntil = 0
 let dropNextDispatchResponse = false
+let delayNextBundleResponse = false
 let acceptGate: { readonly promise: Promise<void>; readonly release: () => void } | undefined
 let activeAcceptGate: { readonly promise: Promise<void>; readonly release: () => void } | undefined
 let rejectNextAccept = false
@@ -219,6 +220,16 @@ async function startServer(): Promise<void> {
       const dropDispatchResponse = dropNextDispatchResponse && path === '/api/research/dispatch' && incoming.method === 'POST'
       if (dropDispatchResponse) dropNextDispatchResponse = false
       const upstream = httpRequest({ host: '127.0.0.1', port: serverPort, method: incoming.method, path, headers: { ...incoming.headers, host: `127.0.0.1:${serverPort}`, ...(incoming.headers.origin ? { origin: info.origin } : {}) } }, (upstreamResponse) => {
+        if (delayNextBundleResponse && pathname.startsWith('/api/research/bundles/by-run/')) {
+          delayNextBundleResponse = false
+          const chunks: Buffer[] = []
+          upstreamResponse.on('data', (chunk: Buffer) => chunks.push(chunk))
+          upstreamResponse.on('end', () => {
+            process.stdout.write('BUNDLE_RESPONSE_HELD\n')
+            setTimeout(() => { if (!outgoing.destroyed) { outgoing.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers); outgoing.end(Buffer.concat(chunks)) } }, 2_000)
+          })
+          return
+        }
         if (path === '/api/events' && upstreamResponse.statusCode === 200) {
           eventStreamResponses.add(outgoing)
           outgoing.once('close', () => { eventStreamResponses.delete(outgoing); upstream.destroy() })
@@ -348,6 +359,7 @@ input.on('line', (line) => {
     if (command === 'release-accept') { activeAcceptGate?.release(); activeAcceptGate = undefined; acceptGate?.release(); acceptGate = undefined; process.stdout.write('ACCEPT_RELEASED\n'); return }
     if (command === 'reject-next-accept') { rejectNextAccept = true; process.stdout.write('ACCEPT_REJECTION_ARMED\n'); return }
     if (command === 'lose-next-dispatch-response') { dropNextDispatchResponse = true; process.stdout.write('DISPATCH_RESPONSE_LOSS_ARMED\n'); return }
+    if (command === 'delay-next-bundle') { delayNextBundleResponse = true; process.stdout.write('BUNDLE_DELAY_ARMED\n'); return }
     if (command === 'reply-short') { faux.setResponses([fauxAssistantMessage('分段回复：第一段。第二段已到达。')]); return }
     if (command === 'reply-long') { faux.setResponses([fauxAssistantMessage(Array.from({ length: 200 }, (_, index) => `第${index + 1}段实时内容`).join('；'))]); return }
     if (command === 'reply-tool') { faux.setResponses([fauxAssistantMessage(fauxToolCall('researchhub_status', {}, { id: `ux002-tool-${Date.now()}` })), fauxAssistantMessage('工具检查已完成。')]); return }

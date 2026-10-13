@@ -1,6 +1,7 @@
+import { ResearchDispatchService } from '../../../app/services/research-dispatch-service.ts'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createResearchBundle, FileResearchBundleStore, type ResearchBundle } from '../../../app/services/research-bundle.ts'
@@ -97,5 +98,21 @@ test('FileResearchBundleStore leaves the pending Session Bundle readable when an
     await assert.rejects(store.put(completedSession(pending, 'Answer is not committed.')), /controlled atomic replace failure/u)
     const reopened = new FileResearchBundleStore(root)
     assert.deepEqual(await reopened.get(pending.bundleId), pending)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+
+test('by-run refuses an internally valid Bundle transplanted under another run filename', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-bundle-run-integrity-'))
+  try {
+    const store = new FileResearchBundleStore(root)
+    const bundle = sessionBundle('free_research', 'free-actual-run')
+    await store.put(bundle)
+    await writeFile(join(root, 'research-bundle-requested-run.json'), JSON.stringify(bundle))
+    const dispatch = new ResearchDispatchService({ bundleStore: store })
+    await assert.rejects(dispatch.getBundleForRun('requested-run'), /identity does not match the requested run/)
+    await assert.rejects(dispatch.getSessionResearchContext('requested-run'), /identity does not match the requested run/)
+    assert.equal((await dispatch.getBundleForRun('free-actual-run'))?.workflowRunId, 'free-actual-run')
+    assert.equal(await dispatch.getBundleForRun('missing-run'), undefined)
   } finally { await rm(root, { recursive: true, force: true }) }
 })

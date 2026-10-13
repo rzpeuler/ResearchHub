@@ -1297,6 +1297,9 @@ export class ResearchHubRuntimeServer {
     const store = this.runtime!.sessionRuntime.conversationStateStore
     const existing = await store.get(conversationId)
     const prior = existing?.acceptedRequests.find((item) => item.operationId === operationId)
+    const requestedBundleRunId = this.optionalString(body, 'researchBundleId', 160)
+    if (requestedBundleRunId !== undefined && (operation !== 'prompt' || prior?.researchBundleRunId !== requestedBundleRunId)) throw new ApplicationServiceError('conflict', 'ResearchBundle is not associated with this accepted conversation request')
+    const bundleRunId = operation === 'prompt' ? prior?.researchBundleRunId : undefined
     if (prior !== undefined) {
       if (prior.requestText !== text || prior.operation !== operationName) throw new ApplicationServiceError('conflict', 'operationId was accepted with a different payload')
     } else {
@@ -1310,7 +1313,6 @@ export class ResearchHubRuntimeServer {
     }
     const runId = operationId
     if (operation === 'prompt') {
-      const bundleRunId = this.optionalString(body, 'researchBundleId', 160)
       let policy: ResearchHubRequestPolicy | undefined
       if (body.researchPolicy !== undefined) {
         if (!body.researchPolicy || typeof body.researchPolicy !== 'object' || Array.isArray(body.researchPolicy)) throw new ApplicationServiceError('invalid_input', 'researchPolicy must be an object')
@@ -1547,7 +1549,7 @@ export class ResearchHubRuntimeServer {
         }
         catch { /* The durable submitting reservation makes every retry fail closed. */ }
       } else if (started.status === 'free_research' || started.status === 'skill_plan') {
-        await store.markReadyForChat(conversationId!, operationId!, started.status)
+        await store.markReadyForChat(conversationId!, operationId!, started.status, started.runId)
       } else {
         await store.markNotStarted(conversationId!, operationId!, started.status as 'needs_input' | 'invalid_input' | 'unresolved_reference' | 'executor_unavailable')
       }
@@ -1586,19 +1588,20 @@ export class ResearchHubRuntimeServer {
       }
     }
     if (record.lifecycle === 'started' && record.outcome === 'chat_started') {
-      await this.sendJson(response, 200, { accepted: false, status: record.dispatchStatus ?? 'free_research', conversationId, operationId: record.operationId, replayed: true }); return
+      await this.sendJson(response, 200, { accepted: false, status: record.dispatchStatus ?? 'free_research', ...(record.researchBundleRunId === undefined ? {} : { runId: record.researchBundleRunId }), conversationId, operationId: record.operationId, replayed: true }); return
     }
     if (record.lifecycle === 'started' && record.outcome === 'workflow_started' && record.workflowRunId !== undefined) {
       const workflow = this.runtime!.workflowService.getWorkflowStatus(record.workflowRunId)
       if (workflow !== undefined) { await this.sendJson(response, 202, { accepted: true, status: 'started', runId: record.workflowRunId, workflow, replayed: true }); return }
       await this.sendJson(response, 200, { accepted: false, status: 'interrupted', runId: record.workflowRunId, conversationId, replayed: true }); return
     }
+    if (record.kind === 'chat' && record.researchBundleRunId !== undefined && ['completed', 'cancelled', 'failed'].includes(record.lifecycle)) { await this.sendJson(response, 200, { accepted: false, status: record.lifecycle, runId: record.researchBundleRunId, conversationId, operationId: record.operationId, replayed: true }); return }
     if (record.kind === 'workflow' && record.lifecycle === 'completed' && record.outcome === 'workflow_completed') { await this.sendJson(response, 200, { accepted: false, status: 'completed', runId: record.workflowRunId, conversationId, operationId: record.operationId, replayed: true }); return }
     if (record.kind === 'workflow' && record.lifecycle === 'cancelled' && record.outcome === 'workflow_cancelled') { await this.sendJson(response, 200, { accepted: false, status: 'cancelled', runId: record.workflowRunId, conversationId, operationId: record.operationId, replayed: true }); return }
     if (record.kind === 'workflow' && record.lifecycle === 'failed' && (record.outcome === 'workflow_blocked' || record.outcome === 'workflow_failed')) { await this.sendJson(response, 200, { accepted: false, status: record.outcome === 'workflow_blocked' ? 'blocked' : 'failed', runId: record.workflowRunId, conversationId, operationId: record.operationId, replayed: true }); return }
-    if (record.lifecycle === 'ready_for_chat') { await this.sendJson(response, 200, { accepted: false, status: record.dispatchStatus ?? 'free_research', conversationId, operationId: record.operationId, replayed: true }); return }
+    if (record.lifecycle === 'ready_for_chat') { await this.sendJson(response, 200, { accepted: false, status: record.dispatchStatus ?? 'free_research', ...(record.researchBundleRunId === undefined ? {} : { runId: record.researchBundleRunId }), conversationId, operationId: record.operationId, replayed: true }); return }
     if (record.lifecycle === 'not_started' || record.lifecycle === 'failed') { await this.sendJson(response, 200, { accepted: false, status: record.dispatchStatus ?? record.outcomeReasonCode ?? record.failureCode ?? 'not_started', conversationId, operationId: record.operationId, replayed: true }); return }
-    if (record.lifecycle === 'interrupted') { const runId = record.workflowRunId ?? record.reservedWorkflowRunId; await this.sendJson(response, 200, { accepted: false, status: 'interrupted', conversationId, operationId: record.operationId, ...(runId === undefined ? {} : { runId }), replayed: true }); return }
+    if (record.lifecycle === 'interrupted') { const runId = record.workflowRunId ?? record.reservedWorkflowRunId ?? record.researchBundleRunId; await this.sendJson(response, 200, { accepted: false, status: 'interrupted', conversationId, operationId: record.operationId, ...(runId === undefined ? {} : { runId }), replayed: true }); return }
     await this.sendJson(response, 202, { accepted: false, status: 'pending', conversationId, operationId: record.operationId, ...(record.reservedWorkflowRunId === undefined ? {} : { runId: record.reservedWorkflowRunId }), replayed: true })
   }
 
