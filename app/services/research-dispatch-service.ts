@@ -6,21 +6,36 @@ import { ApplicationServiceError } from './contracts.ts'
 import { createResearchSkillRegistry, loadResearchSkillMethodology, type LoadedResearchSkill, type ResearchSkillDefinition, type ResearchSkillRegistry } from './skill-registry.ts'
 import { createWorkflowDefinitionRegistry, type WorkflowDefinition, type WorkflowDefinitionRegistry } from './workflow-registry.ts'
 import { normalizeResearchRequest, validateResearchDispatchDecision, type ResearchDispatchDecision, type ResearchExecutionSummary, type ResearchRequest } from './research-dispatch-contracts.ts'
-import type { EventAnchor, EarningsReviewPeriod, ValuationMethod } from './contracts.ts'
+import type { EventAnchor, EarningsReviewPeriod, ValuationMethod, WorkflowRunView } from './contracts.ts'
 import type { ResearchBundle, ResearchBundleStore, ResearchSessionResult } from './research-bundle.ts'
 import { createResearchBundle } from './research-bundle.ts'
 import type { SourceLibraryService, SourceLibraryHit } from './source-library.ts'
 import type { ThemeFrameworkService } from './theme-framework-service.ts'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
+import { readCanonicalV04Assets } from '../../knowledge/storage/canonical-v04-loader.ts'
 import type { ReasoningExecutor, ReasoningRequest } from '../../plugins/reasoning/contracts.ts'
 import { runThesisLifecycle } from '../../workflows/thesis-lifecycle/workflow.ts'
 import type { ThesisLifecycleInput } from '../../workflows/thesis-lifecycle/contracts.ts'
+import { validateWorkflowInputSchema } from './workflow-input-contract.ts'
+import { normalizeCompanyCandidateIdentity, normalizeExchange } from '../../skills/knowledge-curation/identity/company-identity.ts'
+import { projectResearchExecutionResult } from './research-execution-result.ts'
+import type { ReviewService } from './review-service.ts'
+import type { SecurityIdentityResolver, VerifiedSecurityIdentity } from './security-identity-resolver.ts'
+import { createVerifiedSecurityIdentityHandoff, type VerifiedSecurityIdentityHandoff } from './verified-security-identity-handoff.ts'
 
 export interface ResearchSessionContext {
   readonly selectedSkills: readonly LoadedResearchSkill[]
   readonly sourceLibraryHits: readonly SourceLibraryHit[]
   readonly entities: readonly ResearchDispatchDecision['entities'][number][]
   readonly evidenceRefs: readonly string[]
+}
+
+const UUID_RUN_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
+
+function validateServerOwnedRunId(runId: string | undefined): void {
+  if (runId !== undefined && (typeof runId !== 'string' || runId.length > 36 || !UUID_RUN_ID_PATTERN.test(runId))) {
+    throw new ApplicationServiceError('invalid_input', 'serverOwnedRunId must be a valid UUID')
+  }
 }
 
 export interface ExtractedResearchArguments {
@@ -34,12 +49,24 @@ export interface ResearchDispatchStart {
   readonly request: ResearchRequest
   readonly decision: ResearchDispatchDecision
   readonly summary: ResearchExecutionSummary
-  readonly status: 'started' | 'missing_input' | 'free_research' | 'skill_plan'
+  readonly status: 'started' | 'needs_input' | 'invalid_input' | 'unresolved_reference' | 'executor_unavailable' | 'free_research' | 'skill_plan'
   readonly runId?: string
-  readonly workflow?: unknown
+  readonly workflow?: WorkflowRunView
   readonly completion?: Promise<unknown>
   readonly sourceLibraryHits?: readonly SourceLibraryHit[]
   readonly resolution?: ResearchDispatchResolution
+  readonly feedback?: ResearchDispatchFeedback
+  /** Public verification result for the explicit product start response; never accepted as caller input. */
+  readonly verifiedSecurityIdentity?: VerifiedSecurityIdentity
+}
+
+export interface ResearchDispatchFeedback {
+  readonly status: 'NEEDS_INPUT' | 'INVALID_INPUT' | 'UNRESOLVED_REFERENCE' | 'EXECUTOR_UNAVAILABLE'
+  readonly workflowId: string
+  readonly missingFields: readonly string[]
+  readonly validatedArguments: Readonly<Record<string, unknown>>
+  readonly reason: string
+  readonly suggestedQuestion: string
 }
 
 export interface ResearchDispatchResolution {
@@ -48,17 +75,35 @@ export interface ResearchDispatchResolution {
   readonly diagnostics: readonly string[]
 }
 
+export interface WorkflowExecutionBindingContext {
+  readonly workflowId: string
+  readonly args: Readonly<Record<string, unknown>>
+  readonly runId: string
+  readonly callerSignal?: AbortSignal
+  readonly writeKnowledge: boolean
+  readonly useStructuredKnowledge: boolean
+  readonly sourceLibraryHits: readonly SourceLibraryHit[]
+  /** Internal in-process result from the Dispatch identity gate; never read from Workflow arguments. */
+  readonly verifiedIdentityHandoff?: VerifiedSecurityIdentityHandoff
+}
+export type WorkflowExecutionBinding = (context: WorkflowExecutionBindingContext) => Promise<unknown>
+
 export interface ResearchDispatchServiceOptions {
   readonly researchService?: ResearchService
   readonly dailyIntelligenceService?: DailyIntelligenceService
   readonly workflowRegistry?: WorkflowDefinitionRegistry
   readonly skillRegistry?: ResearchSkillRegistry
   readonly workflowService?: WorkflowService
+  readonly reviewService?: Pick<ReviewService, 'getReviewCase'>
   readonly bundleStore?: ResearchBundleStore
   readonly sourceLibraryService?: SourceLibraryService
   readonly themeFrameworkService?: ThemeFrameworkService
+  /** Explicit execution seams for test-only registry entries; production IDs use the built-in bindings. */
+  readonly executionBindings?: ReadonlyMap<string, WorkflowExecutionBinding>
   readonly mountedKnowledgeBaseRoot?: string
+  readonly securityIdentityResolver?: SecurityIdentityResolver
   readonly reasoningExecutor?: ReasoningExecutor
+  readonly clock?: () => Date
 }
 
 const WORKFLOW_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
@@ -80,9 +125,10 @@ function containsTerm(text: string, term: string): boolean {
   return text.includes(normalized)
 }
 
-function extractSymbol(query: string): { readonly symbol?: string; readonly name?: string } {
-  const symbol = query.match(/\b\d{6}\b/)?.[0]
-  return symbol === undefined ? {} : { symbol }
+function extractSymbol(query: string): { readonly symbol?: string; readonly name?: string; readonly exchange?: string } {
+  const match = query.match(/(?<!\d)(\d{6})(?:\.(SSE|SH|SZSE|SZ|BSE|BJ))?(?!\d)/iu)
+  if (match === null) return {}
+  return { symbol: match[1], ...(match[2] === undefined ? {} : { exchange: match[2].toUpperCase() }) }
 }
 
 function extractFiscalYear(query: string): number | undefined {
@@ -152,6 +198,7 @@ export function extractWorkflowArguments(definition: WorkflowDefinition, query: 
   const diagnostics: string[] = []
   const identity = extractSymbol(query)
   if (identity.symbol !== undefined) args.symbol = identity.symbol
+  if (identity.exchange !== undefined) args.exchange = identity.exchange
   if (identity.name !== undefined) args.name = identity.name
   if (definition.id === 'industry_research') {
     const name = extractIndustryName(query)
@@ -221,7 +268,7 @@ const dispatchOutputContract = {
   required: ['mode', 'skills', 'entities', 'missingRequiredInputs', 'contextPolicy', 'persistencePolicy', 'rationale'],
   properties: {
     mode: { type: 'string', enum: ['workflow', 'skill_plan', 'free_research'] },
-    workflow: { type: 'object', description: 'Required only when mode is workflow.' },
+    workflow: { type: 'object', required: ['id', 'confidence', 'arguments'], additionalProperties: false, properties: { id: { type: 'string' }, confidence: { type: 'number', minimum: 0, maximum: 1 }, arguments: { type: 'object', description: 'Must conform exactly to the selected Workflow inputSchema.' } }, description: 'Required only when mode is workflow.' },
     skills: { type: 'array', description: 'Selected ResearchHub Research Skill IDs and purposes.' },
     entities: { type: 'array', description: 'Resolved entities, without canonical IDs.' },
     missingRequiredInputs: { type: 'array', items: { type: 'string' } },
@@ -235,6 +282,107 @@ function samePolicy(left: ResearchRequest, right: ResearchDispatchDecision): boo
   return left.contextPolicy.structuredKnowledge === right.contextPolicy.structuredKnowledge && left.contextPolicy.sourceLibrary === right.contextPolicy.sourceLibrary && left.persistencePolicy.writeKnowledge === right.persistencePolicy.writeKnowledge
 }
 
+function requestedHistoricalCutoff(query: string): string | undefined {
+  if (!/(截至|截止|as\s+of|at\s+the\s+end\s+of|历史|当时|截至当日)/iu.test(query)) return undefined
+  const dateTime = query.match(/\b(20\d{2}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2}))\b/iu)
+  if (dateTime !== null) {
+    const date = dateTime[1]!.slice(0, 10)
+    const [year, month, day] = date.split('-').map(Number)
+    const calendarDate = new Date(Date.UTC(year!, month! - 1, day!))
+    const timestamp = Date.parse(dateTime[1]!)
+    if (calendarDate.getUTCFullYear() !== year || calendarDate.getUTCMonth() !== month! - 1 || calendarDate.getUTCDate() !== day || !Number.isFinite(timestamp)) return undefined
+    return new Date(timestamp).toISOString()
+  }
+  const iso = query.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/u)
+  const chinese = query.match(/(20\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/u)
+  const yearEnd = query.match(/(20\d{2})\s*年\s*(?:底|末)/u)
+  const match = iso ?? chinese
+  if (match !== null) {
+    const [, y, m, d] = match
+    const date = new Date(`${y}-${m!.padStart(2, '0')}-${d!.padStart(2, '0')}T23:59:59.999+08:00`)
+    if (date.getUTCFullYear() !== Number(y) || date.getUTCMonth() !== Number(m) - 1 || date.getUTCDate() !== Number(d)) return undefined
+    return date.toISOString()
+  }
+  if (yearEnd !== null) return new Date(`${yearEnd[1]}-12-31T23:59:59.999+08:00`).toISOString()
+  return undefined
+}
+
+function containsExplicitHistoricalDate(query: string): boolean {
+  if (!/(截至|截止|as\s+of|at\s+the\s+end\s+of|历史|当时|截至当日)/iu.test(query)) return false
+  return /\b20\d{2}-\d{1,2}-\d{1,2}\b/u.test(query)
+    || /20\d{2}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日/u.test(query)
+    || /20\d{2}\s*年\s*(?:底|末)/u.test(query)
+}
+
+function inputProperties(definition: WorkflowDefinition): Readonly<Record<string, unknown>> {
+  return (definition.inputSchema.properties ?? {}) as Readonly<Record<string, unknown>>
+}
+
+function normalizedMissingFields(definition: WorkflowDefinition, args: Readonly<Record<string, unknown>>): readonly string[] {
+  const validation = validateWorkflowInputSchema(definition.inputSchema, args)
+  const rootRequired = definition.requiredInputs.filter((field) => args[field] === undefined)
+  const fromSchema = validation.missingFields.map((field) => field.split(/[/.]/u).filter(Boolean)[0] ?? field)
+  return [...new Set([...rootRequired, ...fromSchema])].sort()
+}
+
+function feedbackFor(status: ResearchDispatchFeedback['status'], definition: WorkflowDefinition, args: Readonly<Record<string, unknown>>, reason: string, missingFields: readonly string[] = []): ResearchDispatchFeedback {
+  const labels: Readonly<Record<string, string>> = { symbol: '证券代码', name: '公司或行业名称', fiscalYear: '财年', period: '报告期间', methods: '估值方法', targetFiscalYear: '目标财年', anchor: '事件锚点', thesisRef: '有效的论点引用', mode: 'CREATE 或 REFRESH', formalization: '完整的论点形式化内容', refresh: '论点刷新证据', briefType: '早盘或晚间类型', tradeDate: '交易日' }
+  const fieldText = missingFields.map((field) => labels[field] ?? field).join('、')
+  const suggestedQuestion = status === 'UNRESOLVED_REFERENCE'
+    ? '请提供已有知识库中可核验的规范引用，或先启用对应知识库上下文。'
+    : status === 'EXECUTOR_UNAVAILABLE'
+      ? '该 Workflow 当前没有可用的执行服务，请稍后重试或联系维护者。'
+    : fieldText === ''
+      ? '请检查输入并补充可验证的信息。'
+      : `请补充${fieldText}。`
+  return { status, workflowId: definition.id, missingFields, validatedArguments: { ...args }, reason, suggestedQuestion }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined { return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined }
+function canonicalObjectIsActive(value: Readonly<Record<string, unknown>>, asOf: string): boolean {
+  if (value.state === 'superseded' || value.status === 'superseded') return false
+  const supersededAt = value.supersededAt
+  if (supersededAt !== undefined && supersededAt !== null && (typeof supersededAt !== 'string' || !Number.isFinite(Date.parse(supersededAt)) || Date.parse(supersededAt) <= Date.parse(asOf))) return false
+  const lifecycle = asRecord(value.lifecycle)
+  if (lifecycle?.status !== 'active') return false
+  const validFrom = lifecycle.validFrom
+  const validUntil = lifecycle.validUntil
+  if (validFrom !== undefined && validFrom !== null && (typeof validFrom !== 'string' || !Number.isFinite(Date.parse(validFrom)) || Date.parse(validFrom) > Date.parse(asOf))) return false
+  if (validUntil !== undefined && validUntil !== null && (typeof validUntil !== 'string' || !Number.isFinite(Date.parse(validUntil)) || Date.parse(validUntil) <= Date.parse(asOf))) return false
+  return true
+}
+
+function explicitUserCompanyExchange(query: string, args: Readonly<Record<string, unknown>>): string | undefined {
+  const matches = [...query.matchAll(/(?<!\d)(\d{6})(?:\.(SSE|SH|SZSE|SZ|BSE|BJ))?(?!\d)/giu)]
+  if (matches.length === 0 || matches.some((match) => match[1] !== args.symbol)) return undefined
+  const inferredExchanges = new Set<string>()
+  for (const match of matches) {
+    const ticker = match[1]!
+    const normalized = normalizeCompanyCandidateIdentity({
+      candidateId: 'dispatch-user-provided-company',
+      entityType: 'company',
+      name: typeof args.name === 'string' ? args.name : ticker,
+      evidenceBlockRefs: [],
+      reason: 'Explicit security code supplied by the user.',
+      semanticFields: { ticker },
+    })
+    const inferred = normalized.candidate.semanticFields?.exchange
+    if (normalized.diagnostics.length > 0 || typeof inferred !== 'string') return undefined
+    const suffix = match[2]
+    if (suffix !== undefined && normalizeExchange(suffix) !== inferred) return undefined
+    if (typeof args.exchange === 'string' && normalizeExchange(args.exchange) !== inferred) return undefined
+    inferredExchanges.add(inferred)
+  }
+  return inferredExchanges.size === 1 ? [...inferredExchanges][0] : undefined
+}
+function collectCanonicalReferences(value: unknown, refs = new Set<string>()): readonly string[] {
+  if (typeof value === 'string' && /^(?:entity|claim|thesis|source|observation):[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(value)) refs.add(value)
+  else if (Array.isArray(value)) for (const item of value) collectCanonicalReferences(item, refs)
+  else if (typeof value === 'object' && value !== null) for (const item of Object.values(value)) collectCanonicalReferences(item, refs)
+  return [...refs].sort()
+}
+function hasCanonicalReference(value: unknown): boolean { return collectCanonicalReferences(value).length > 0 }
+
 function assertSemanticDecision(request: ResearchRequest, decision: ResearchDispatchDecision, workflowRegistry: WorkflowDefinitionRegistry, skillRegistry: ResearchSkillRegistry, explicitWorkflowId?: string): void {
   if (!samePolicy(request, decision)) throw new ApplicationServiceError('invalid_input', 'Semantic dispatch output cannot change ResearchRequest policy')
   if (explicitWorkflowId !== undefined && (decision.mode !== 'workflow' || decision.workflow?.id !== explicitWorkflowId)) throw new ApplicationServiceError('conflict', 'Semantic dispatch output cannot replace the explicit Workflow')
@@ -243,6 +391,9 @@ function assertSemanticDecision(request: ResearchRequest, decision: ResearchDisp
     const allowed = new Set(workflowRegistry.get(decision.workflow.id)!.skillIds)
     if (decision.skills.some((skill) => !allowed.has(skill.id))) throw new ApplicationServiceError('invalid_input', `Semantic dispatch selected a Skill that is not mapped to Workflow ${decision.workflow.id}`)
     if (decision.skills.some((skill) => !isExecutableResearchSkill(skillRegistry, skill.id))) throw new ApplicationServiceError('invalid_input', `Semantic dispatch selected an unavailable Research Skill for Workflow ${decision.workflow.id}`)
+    const definition = workflowRegistry.get(decision.workflow.id)!
+    const inputValidation = validateWorkflowInputSchema(definition.inputSchema, decision.workflow.arguments)
+    if (!inputValidation.valid) throw new ApplicationServiceError('invalid_input', `Workflow ${definition.id} arguments violate its registered inputSchema: ${inputValidation.errors.filter((message) => !message.includes('is required')).join('; ')}`)
   }
   if (decision.mode === 'skill_plan' && (decision.skills.length === 0 || decision.skills.some((skill) => !isExecutableResearchSkill(skillRegistry, skill.id)))) throw new ApplicationServiceError('invalid_input', 'Semantic dispatch selected an unavailable Research Skill')
   if (decision.mode === 'free_research' && decision.skills.length > 0) throw new ApplicationServiceError('invalid_input', 'Free Research cannot include selected Research Skills')
@@ -252,9 +403,68 @@ export class ResearchDispatchService {
   readonly workflowRegistry: WorkflowDefinitionRegistry
   readonly skillRegistry: ResearchSkillRegistry
   private readonly pendingBundleWrites = new Map<string, Promise<void>>()
+  private readonly executionBindings: ReadonlyMap<string, WorkflowExecutionBinding>
   constructor(private readonly options: ResearchDispatchServiceOptions = {}) {
     this.workflowRegistry = options.workflowRegistry ?? createWorkflowDefinitionRegistry()
     this.skillRegistry = options.skillRegistry ?? createResearchSkillRegistry()
+    const bindings = new Map<string, WorkflowExecutionBinding>([
+      ['company_research', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits, verifiedIdentityHandoff }) => {
+        const service = this.options.researchService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Company Research execution service is not configured')
+        return service.startResearchCompany({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, ...(args.maxSources === undefined ? {} : { maxSources: args.maxSources as number }), writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal, verifiedIdentityHandoff).completion
+      }],
+      ['industry_research', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
+        const service = this.options.researchService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Industry Research execution service is not configured')
+        return service.startIndustryResearch({ workflowRunId: runId, name: args.name as string, aliases: args.aliases as readonly string[] | undefined, asOf: args.asOf as string | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
+      }],
+      ['earnings_review', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits, verifiedIdentityHandoff }) => {
+        const service = this.options.researchService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Earnings Review execution service is not configured')
+        return service.startEarningsReview({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, fiscalYear: args.fiscalYear as number, period: args.period as EarningsReviewPeriod, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal, verifiedIdentityHandoff).completion
+      }],
+      ['valuation', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits, verifiedIdentityHandoff }) => {
+        const service = this.options.researchService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Valuation execution service is not configured')
+        return service.startValuation({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, methods: args.methods as readonly ValuationMethod[] | undefined, targetFiscalYear: args.targetFiscalYear as number | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal, verifiedIdentityHandoff).completion
+      }],
+      ['event_research', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
+        const service = this.options.researchService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Event Research execution service is not configured')
+        return service.startEventResearch({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, asOf: args.asOf as string | undefined, anchor: args.anchor as EventAnchor, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
+      }],
+      ['thesis_red_team', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
+        const service = this.options.researchService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Thesis Red Team execution service is not configured')
+        return service.startThesisRedTeam({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, exchange: args.exchange as string | undefined, thesisRef: args.thesisRef as string, lookbackDays: args.lookbackDays as number | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
+      }],
+      ['daily_intelligence', ({ args, runId, callerSignal, writeKnowledge, useStructuredKnowledge, sourceLibraryHits }) => {
+        const service = this.options.dailyIntelligenceService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Daily Intelligence execution service is not configured')
+        return service.startBrief({ workflowRunId: runId, briefType: args.briefType as 'morning' | 'evening', tradeDate: args.tradeDate as string, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
+      }],
+      ['theme_framework', ({ args, runId, callerSignal }) => {
+        const service = this.options.themeFrameworkService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Theme Framework execution service is not configured')
+        const started = service.start({ workflowRunId: runId, name: args.name as string, ...(typeof args.definition === 'string' ? { definition: args.definition } : {}) }, callerSignal)
+        // Keep construction internals private; dispatch results use the same safe candidate projection as the API.
+        return started.completion.then(() => service.getReviewCandidate(runId))
+      }],
+      ['thesis_lifecycle', ({ args, runId, callerSignal }) => {
+        const service = this.options.workflowService
+        if (!service) throw new ApplicationServiceError('executor_unavailable', 'Workflow status service is not configured for Thesis Lifecycle')
+        service.register({ runId, workflowType: 'thesis_lifecycle', objective: `Thesis Lifecycle ${String(args.mode ?? 'research')}` })
+        const onAbort = () => { try { service.cancelWorkflow(runId) } catch { /* the run may already be terminal */ } }
+        callerSignal?.addEventListener('abort', onAbort, { once: true })
+        const completion = service.start(runId, async (signal) => {
+          if (signal.aborted || callerSignal?.aborted) throw new ApplicationServiceError('cancelled', `Thesis Lifecycle cancelled: ${runId}`)
+          return runThesisLifecycle(args as unknown as ThesisLifecycleInput)
+        })
+        return completion.finally(() => callerSignal?.removeEventListener('abort', onAbort))
+      }],
+    ])
+    for (const [workflowId, binding] of options.executionBindings ?? []) bindings.set(workflowId, binding)
+    this.executionBindings = bindings
   }
 
   listWorkflowDefinitions(): readonly WorkflowDefinition[] { return this.workflowRegistry.list() }
@@ -262,17 +472,55 @@ export class ResearchDispatchService {
   async resolveAsync(input: unknown, callerSignal?: AbortSignal): Promise<{ readonly request: ResearchRequest; readonly decision: ResearchDispatchDecision; readonly summary: ResearchExecutionSummary; readonly sourceLibraryHits: readonly SourceLibraryHit[]; readonly resolution: ResearchDispatchResolution }> {
     const request = normalizeResearchRequest(input)
     const sourceLibraryHits = await this.retrieveSourceLibrary(request, callerSignal)
+    const runtimeTimestamp = this.runtimeTimestamp()
     const explicit = request.mode.type === 'workflow'
     const definition = explicit ? this.workflowRegistry.get(request.mode.workflowId) : undefined
     if (explicit && definition === undefined) throw new ApplicationServiceError('not_found', `Workflow definition not found: ${request.mode.workflowId}`)
     if (this.options.reasoningExecutor !== undefined) {
-      const semantic = await this.resolveWithReasoning(request, definition, sourceLibraryHits, callerSignal)
+      const semantic = await this.resolveWithReasoning(request, definition, sourceLibraryHits, runtimeTimestamp, callerSignal)
       await this.validateSkillMethodologies(semantic.decision)
       return { request, decision: semantic.decision, summary: this.summary(request, semantic.decision, definition), sourceLibraryHits, resolution: semantic.resolution }
     }
     const resolved = this.resolve(request)
     await this.validateSkillMethodologies(resolved.decision)
-    return { ...resolved, sourceLibraryHits, resolution: { source: 'deterministic_fallback', attempts: 0, diagnostics: ['reasoning_executor_unconfigured'] } }
+    let decision = resolved.decision
+    const diagnostics = ['reasoning_executor_unconfigured']
+    try { decision = this.prepareDecisionArguments(request, decision, runtimeTimestamp) } catch (error) { diagnostics.push(error instanceof Error ? error.message.slice(0, 240) : 'fallback_contract_invalid') }
+    return { request, decision, summary: this.summary(request, decision, definition), sourceLibraryHits, resolution: { source: 'deterministic_fallback', attempts: 0, diagnostics } }
+  }
+
+  private runtimeTimestamp(): string {
+    const now = this.options.clock?.() ?? new Date()
+    if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw new ApplicationServiceError('failed', 'Research dispatch Runtime clock returned an invalid timestamp')
+    return now.toISOString()
+  }
+
+  private prepareDecisionArguments(request: ResearchRequest, decision: ResearchDispatchDecision, runtimeTimestamp: string): ResearchDispatchDecision {
+    if (decision.mode !== 'workflow' || decision.workflow === undefined) return decision
+    const definition = this.workflowRegistry.get(decision.workflow.id)
+    if (definition === undefined) return decision
+    const prior = request.workflowArgumentContext?.workflowId === decision.workflow.id ? request.workflowArgumentContext.arguments : undefined
+    const args: Record<string, unknown> = { ...(prior ?? {}), ...decision.workflow.arguments }
+    const properties = inputProperties(definition)
+    const cutoff = requestedHistoricalCutoff(request.query)
+    if (Object.hasOwn(properties, 'asOf')) {
+      if (cutoff !== undefined) args.asOf = cutoff
+      else if (Object.hasOwn(args, 'asOf')) throw new ApplicationServiceError('invalid_input', 'A historical asOf value must come from an explicit user-requested cutoff; Runtime time does not imply historical analysis')
+    }
+    if (definition.id === 'thesis_lifecycle') {
+      const formalization = asRecord(args.formalization)
+      if (formalization !== undefined && formalization.asOf === undefined) args.formalization = { ...formalization, asOf: runtimeTimestamp }
+      const expectationGap = asRecord(args.expectationGap)
+      if (expectationGap !== undefined && expectationGap.asOf === undefined) args.expectationGap = { ...expectationGap, asOf: runtimeTimestamp }
+      const catalystMap = asRecord(args.catalystMap)
+      if (catalystMap !== undefined && catalystMap.asOf === undefined) args.catalystMap = { ...catalystMap, asOf: runtimeTimestamp }
+      const refresh = asRecord(args.refresh)
+      if (refresh !== undefined && refresh.currentAsOf === undefined) args.refresh = { ...refresh, currentAsOf: runtimeTimestamp }
+    }
+    const validation = validateWorkflowInputSchema(definition.inputSchema, args)
+    if (!validation.valid) throw new ApplicationServiceError('invalid_input', `Workflow ${definition.id} arguments violate its registered inputSchema: ${validation.errors.filter((message) => !message.includes('is required')).join('; ')}`)
+    const missingRequiredInputs = normalizedMissingFields(definition, args)
+    return validateResearchDispatchDecision({ ...decision, workflow: { ...decision.workflow, arguments: args }, missingRequiredInputs, rationale: decision.rationale })
   }
 
   resolve(input: unknown): { readonly request: ResearchRequest; readonly decision: ResearchDispatchDecision; readonly summary: ResearchExecutionSummary } {
@@ -300,32 +548,252 @@ export class ResearchDispatchService {
 
   start(input: unknown, callerSignal?: AbortSignal): ResearchDispatchStart {
     const resolved = this.resolve(input)
-    return this.startResolved(resolved, callerSignal, [], { source: 'deterministic_fallback', attempts: 0, diagnostics: ['synchronous_compatibility_path'] })
+    const prepared = this.prepareDecisionArguments(resolved.request, resolved.decision, this.runtimeTimestamp())
+    const summary = this.summary(resolved.request, prepared, prepared.workflow === undefined ? undefined : this.workflowRegistry.get(prepared.workflow.id))
+    const resolution = { source: 'deterministic_fallback' as const, attempts: 0, diagnostics: ['synchronous_compatibility_path'] }
+    if (prepared.mode === 'workflow' && prepared.workflow !== undefined) {
+      const definition = this.workflowRegistry.get(prepared.workflow.id)!
+      if (Object.hasOwn(inputProperties(definition), 'symbol') || hasCanonicalReference(prepared.workflow.arguments)) {
+        return { ...resolved, decision: prepared, summary, status: 'unresolved_reference', feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, prepared.workflow.arguments, 'Synchronous dispatch cannot verify company or canonical Knowledge references; use the asynchronous ResearchDispatch path.'), sourceLibraryHits: [], resolution }
+      }
+    }
+    return this.startResolved({ ...resolved, decision: prepared, summary }, callerSignal, [], resolution)
   }
 
-  async startAsync(input: unknown, callerSignal?: AbortSignal): Promise<ResearchDispatchStart> {
+  async startAsync(input: unknown, callerSignal?: AbortSignal, serverOwnedRunId?: string): Promise<ResearchDispatchStart> {
+    validateServerOwnedRunId(serverOwnedRunId)
+    const request = normalizeResearchRequest(input)
+    const selectedDefinition = request.mode.type === 'workflow' ? this.workflowRegistry.get(request.mode.workflowId) : this.bestWorkflow(request.query)
+    if (selectedDefinition !== undefined && Object.hasOwn(inputProperties(selectedDefinition), 'asOf') && containsExplicitHistoricalDate(request.query)) {
+      const cutoff = requestedHistoricalCutoff(request.query)
+      const runtimeTimestamp = this.runtimeTimestamp()
+      const invalidDate = cutoff === undefined || !Number.isFinite(Date.parse(cutoff))
+      const futureDate = cutoff !== undefined && Date.parse(cutoff) >= Date.parse(runtimeTimestamp)
+      if (invalidDate || futureDate) {
+        const resolved = this.resolve(request)
+        const reason = invalidDate
+          ? 'The explicit historical cutoff is not a valid calendar date.'
+          : 'The explicit historical cutoff must be earlier than the injected Runtime clock.'
+        const feedback = feedbackFor('INVALID_INPUT', selectedDefinition, resolved.decision.workflow?.arguments ?? {}, reason)
+        return { ...resolved, status: 'invalid_input', feedback, resolution: { source: 'deterministic_fallback', attempts: 0, diagnostics: [reason] } }
+      }
+    }
     const resolved = await this.resolveAsync(input, callerSignal)
-    return this.startResolved(resolved, callerSignal, resolved.sourceLibraryHits, resolved.resolution)
+    const verified = await this.verifyWorkflowReferences(resolved.request, resolved.decision)
+    if (verified.feedback !== undefined) return { ...resolved, status: verified.failureStatus ?? 'unresolved_reference', feedback: verified.feedback }
+    const decision = verified.decision ?? resolved.decision
+    const summary = this.summary(resolved.request, decision, decision.workflow === undefined ? undefined : this.workflowRegistry.get(decision.workflow.id))
+    return this.startResolved({ ...resolved, decision, summary }, callerSignal, resolved.sourceLibraryHits, resolved.resolution, verified.verifiedIdentity, serverOwnedRunId)
   }
 
-  private startResolved(resolved: { readonly request: ResearchRequest; readonly decision: ResearchDispatchDecision; readonly summary: ResearchExecutionSummary }, callerSignal: AbortSignal | undefined, sourceLibraryHits: readonly SourceLibraryHit[], resolution: ResearchDispatchResolution): ResearchDispatchStart {
+  /** Starts a product-form-selected Workflow with its explicit validated fields, without a semantic routing round-trip. */
+  async startExplicitWorkflow(input: unknown, callerSignal?: AbortSignal): Promise<ResearchDispatchStart> {
+    const request = normalizeResearchRequest(input)
+    if (request.mode.type !== 'workflow' || request.workflowArgumentContext?.workflowId !== request.mode.workflowId) throw new ApplicationServiceError('invalid_input', 'Explicit Workflow mode and argument context must identify the same Workflow')
+    const definition = this.workflowRegistry.get(request.mode.workflowId)
+    if (definition === undefined) throw new ApplicationServiceError('not_found', `Workflow definition not found: ${request.mode.workflowId}`)
+    const args = { ...request.workflowArgumentContext.arguments }
+    const validation = validateWorkflowInputSchema(definition.inputSchema, args)
+    if (!validation.valid) throw new ApplicationServiceError('invalid_input', `Workflow ${definition.id} arguments are invalid: ${validation.errors.filter((message) => !message.includes('is required')).join('; ') || 'required input is missing'}`)
+    const missingRequiredInputs = normalizedMissingFields(definition, args)
+    if (missingRequiredInputs.length > 0) throw new ApplicationServiceError('invalid_input', `Workflow ${definition.id} required inputs are missing: ${missingRequiredInputs.join(', ')}`)
+    await this.validateSkillMethodologies(validateResearchDispatchDecision({ mode: 'workflow', workflow: { id: definition.id, confidence: 1, arguments: args }, skills: selectedSkillIds(this.skillRegistry, definition).map((id) => ({ id, purpose: this.skillRegistry.get(id)?.purpose ?? 'selected by the authoritative Workflow definition' })), entities: this.entities(request.query), missingRequiredInputs: [], contextPolicy: request.contextPolicy, persistencePolicy: request.persistencePolicy, rationale: 'The user selected this registered Workflow and supplied its bounded product form inputs.' }))
+    const decision = validateResearchDispatchDecision({ mode: 'workflow', workflow: { id: definition.id, confidence: 1, arguments: args }, skills: selectedSkillIds(this.skillRegistry, definition).map((id) => ({ id, purpose: this.skillRegistry.get(id)?.purpose ?? 'selected by the authoritative Workflow definition' })), entities: this.entities(request.query), missingRequiredInputs: [], contextPolicy: request.contextPolicy, persistencePolicy: request.persistencePolicy, rationale: 'The user selected this registered Workflow and supplied its bounded product form inputs.' })
+    const verified = await this.verifyWorkflowReferences(request, decision)
+    if (verified.feedback !== undefined) return { request, decision, summary: this.summary(request, decision, definition), status: verified.failureStatus ?? 'unresolved_reference', feedback: verified.feedback, sourceLibraryHits: [], resolution: { source: 'deterministic_fallback', attempts: 0, diagnostics: [] } }
+    const verifiedDecision = verified.decision ?? decision
+    const summary = this.summary(request, verifiedDecision, definition)
+    return this.startResolved({ request, decision: verifiedDecision, summary }, callerSignal, [], { source: 'deterministic_fallback', attempts: 0, diagnostics: ['explicit_product_workflow_selection'] }, verified.verifiedIdentity)
+  }
+
+  private async verifyWorkflowReferences(request: ResearchRequest, decision: ResearchDispatchDecision): Promise<{ readonly decision?: ResearchDispatchDecision; readonly feedback?: ResearchDispatchFeedback; readonly failureStatus?: 'invalid_input'; readonly verifiedIdentity?: VerifiedSecurityIdentity }> {
+    if (decision.mode !== 'workflow' || decision.workflow === undefined) return {}
+    const definition = this.workflowRegistry.get(decision.workflow.id)
+    if (definition === undefined) return {}
+    const args = decision.workflow.arguments
+    const targetIdentityWorkflow = ['company_research', 'valuation', 'earnings_review'].includes(definition.id)
+    let trustedIdentity: Awaited<ReturnType<SecurityIdentityResolver['resolve']>> | undefined
+    if (targetIdentityWorkflow && this.options.securityIdentityResolver !== undefined) {
+      const extractedIdentity = extractSymbol(request.query)
+      const candidateName = typeof args.name === 'string' ? args.name : undefined
+      const candidateSymbol = extractedIdentity.symbol ?? (typeof args.symbol === 'string' ? args.symbol : undefined)
+      const candidateExchange = extractedIdentity.exchange ?? (typeof args.exchange === 'string' ? args.exchange : undefined)
+      const identityAsOf = typeof args.asOf === 'string' ? args.asOf : this.runtimeTimestamp()
+      trustedIdentity = await this.options.securityIdentityResolver.resolve({
+        workflowId: definition.id as 'company_research' | 'valuation' | 'earnings_review',
+        ...(candidateName === undefined ? {} : { name: candidateName }),
+        ...(candidateSymbol === undefined ? {} : { symbol: candidateSymbol }),
+        ...(candidateExchange === undefined ? {} : { exchange: candidateExchange }),
+        asOf: identityAsOf,
+        historical: args.asOf !== undefined || containsExplicitHistoricalDate(request.query),
+        query: request.query,
+        allowKnowledgeLookup: request.contextPolicy.structuredKnowledge,
+      }, undefined)
+      if (trustedIdentity.status !== 'VERIFIED') {
+        const reason = `${trustedIdentity.status}: ${trustedIdentity.reason} ${trustedIdentity.diagnostics.join(' ')}`.trim()
+        const validationArgs = { ...args, ...(candidateSymbol === undefined ? {} : { symbol: candidateSymbol }) }
+        return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, validationArgs, reason, candidateSymbol === undefined ? ['symbol'] : []) }
+      }
+    }
+    const validation = validateWorkflowInputSchema(definition.inputSchema, args)
+    if (!validation.valid || normalizedMissingFields(definition, args).length > 0) {
+      if (!trustedIdentity) return {}
+    }
+    const referenceCandidates = collectCanonicalReferences(args)
+    const hasCompany = Object.hasOwn(inputProperties(definition), 'symbol')
+    if (!hasCompany && referenceCandidates.length === 0) return {}
+    const companyResearch = definition.id === 'company_research'
+    const normalizedArgs: Record<string, unknown> = { ...args }
+    if (trustedIdentity?.status === 'VERIFIED') {
+      normalizedArgs.symbol = trustedIdentity.identity.symbol
+      normalizedArgs.name = trustedIdentity.identity.verifiedName
+      normalizedArgs.exchange = trustedIdentity.identity.exchange
+    }
+    if (trustedIdentity?.status !== 'VERIFIED' && typeof args.exchange === 'string') normalizedArgs.exchange = normalizeExchange(args.exchange)
+    const userProvidedExchange = trustedIdentity?.status !== 'VERIFIED' && companyResearch && referenceCandidates.length === 0 ? explicitUserCompanyExchange(request.query, normalizedArgs) : undefined
+    if (trustedIdentity?.status !== 'VERIFIED' && companyResearch && userProvidedExchange !== undefined) normalizedArgs.exchange = userProvidedExchange
+    const finalizeArguments = (candidateArgs: Readonly<Record<string, unknown>>) => {
+      const finalValidation = validateWorkflowInputSchema(definition.inputSchema, candidateArgs)
+      if (!finalValidation.valid) return { feedback: feedbackFor('INVALID_INPUT', definition, candidateArgs, finalValidation.errors.join('; ')), failureStatus: 'invalid_input' as const }
+      return { decision: validateResearchDispatchDecision({ ...decision, workflow: { ...decision.workflow!, arguments: candidateArgs }, missingRequiredInputs: normalizedMissingFields(definition, candidateArgs) }) }
+    }
+    const finalizeVerifiedArguments = (candidateArgs: Readonly<Record<string, unknown>>) => {
+      const finalized = finalizeArguments(candidateArgs)
+      return trustedIdentity?.status === 'VERIFIED' && finalized.decision !== undefined
+        ? { ...finalized, verifiedIdentity: trustedIdentity.identity }
+        : finalized
+    }
+    if (trustedIdentity?.status === 'VERIFIED' && referenceCandidates.length === 0) return finalizeVerifiedArguments(normalizedArgs)
+    if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined && !request.contextPolicy.structuredKnowledge) return finalizeVerifiedArguments(normalizedArgs)
+    if (!request.contextPolicy.structuredKnowledge) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, 'This Workflow requires trusted Knowledge context to verify the company or canonical references, but structured Knowledge access is disabled.') }
+    if (this.options.mountedKnowledgeBaseRoot === undefined) {
+      if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined) return finalizeVerifiedArguments(normalizedArgs)
+      return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, 'No mounted Knowledge Base is available to verify the requested company or canonical references.') }
+    }
+    let assets: Awaited<ReturnType<typeof readCanonicalV04Assets>>
+    try {
+      const handle = await new KnowledgeBaseRegistry().mount(this.options.mountedKnowledgeBaseRoot)
+      if (handle.schemaVersion !== '0.4') {
+        if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined) return finalizeVerifiedArguments(normalizedArgs)
+        return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, 'Trusted dispatch identity checks currently require a mounted Schema 0.4 Knowledge Base.') }
+      }
+      assets = await readCanonicalV04Assets(handle.rootRef)
+    } catch (error) {
+      if (companyResearch && referenceCandidates.length === 0 && userProvidedExchange !== undefined) return finalizeVerifiedArguments(normalizedArgs)
+      return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, `Mounted Knowledge could not be read for verification (${error instanceof Error ? error.name : 'read failed'}).`) }
+    }
+    const objects = assets.objects.map((item) => item.value as unknown as Record<string, unknown>)
+    const byId = new Map(objects.filter((item) => typeof item.id === 'string').map((item) => [item.id as string, item]))
+    const identityAsOf = this.runtimeTimestamp()
+    if (hasCompany) {
+      const symbol = typeof normalizedArgs.symbol === 'string' ? normalizedArgs.symbol : undefined
+      const name = typeof normalizedArgs.name === 'string' ? normalizedArgs.name.trim().toLocaleLowerCase() : undefined
+      const query = request.query.toLocaleLowerCase()
+      const companies = objects.filter((item) => item.type === 'company' && canonicalObjectIsActive(item, identityAsOf))
+      const mentionedCompanies = companies.filter((item) => [item.name, ...(Array.isArray(item.aliases) ? item.aliases : [])].some((candidate) => typeof candidate === 'string' && candidate.trim().length > 1 && query.includes(candidate.trim().toLocaleLowerCase())))
+      const companyMatches = companies
+        .filter((item) => (symbol === undefined || item.ticker === symbol) && (normalizedArgs.exchange === undefined || (typeof item.exchange === 'string' && normalizeExchange(item.exchange) === normalizedArgs.exchange)))
+        .filter((item) => {
+          const names = [item.name, ...(Array.isArray(item.aliases) ? item.aliases : [])].filter((value): value is string => typeof value === 'string').map((value) => value.trim().toLocaleLowerCase())
+          return (name === undefined ? symbol !== undefined : names.includes(name)) && (mentionedCompanies.length === 0 || mentionedCompanies.some((mentioned) => mentioned.id === item.id))
+        })
+      if (companyMatches.length !== 1) {
+        if (companyResearch && userProvidedExchange !== undefined && companyMatches.length === 0 && mentionedCompanies.length === 0 && !companies.some((item) => item.ticker === symbol)) return finalizeVerifiedArguments(normalizedArgs)
+        const reason = companyMatches.length > 1 ? 'Company identity is ambiguous in canonical Knowledge.' : 'Company name or symbol has no exact canonical Company identity match.'
+        return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, normalizedArgs, reason, ['symbol']) }
+      }
+      const company = companyMatches[0]!
+      const canonicalName = typeof company.name === 'string' ? company.name : undefined
+      const verifiedArgs = { ...normalizedArgs, symbol: company.ticker, ...(canonicalName === undefined ? {} : { name: canonicalName }), ...(typeof company.exchange === 'string' ? { exchange: normalizeExchange(company.exchange) } : {}) }
+      const badRefs = referenceCandidates.filter((ref) => byId.get(ref) === undefined)
+      if (badRefs.length > 0) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, verifiedArgs, `Canonical reference not found: ${badRefs.join(', ')}`) }
+      const inactiveRefs = referenceCandidates.filter((ref) => !canonicalObjectIsActive(byId.get(ref)!, identityAsOf))
+      if (inactiveRefs.length > 0) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, verifiedArgs, `Canonical reference is inactive or outside its lifecycle window: ${inactiveRefs.join(', ')}`, inactiveRefs) }
+      return finalizeVerifiedArguments(verifiedArgs)
+    }
+    const badRefs = referenceCandidates.filter((ref) => byId.get(ref) === undefined)
+    if (badRefs.length > 0) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, args, `Canonical reference not found: ${badRefs.join(', ')}`, badRefs) }
+    const inactiveRefs = referenceCandidates.filter((ref) => !canonicalObjectIsActive(byId.get(ref)!, identityAsOf))
+    if (inactiveRefs.length > 0) return { feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, args, `Canonical reference is inactive or outside its lifecycle window: ${inactiveRefs.join(', ')}`, inactiveRefs) }
+    return finalizeVerifiedArguments(normalizedArgs)
+  }
+
+  private startResolved(resolved: { readonly request: ResearchRequest; readonly decision: ResearchDispatchDecision; readonly summary: ResearchExecutionSummary }, callerSignal: AbortSignal | undefined, sourceLibraryHits: readonly SourceLibraryHit[], resolution: ResearchDispatchResolution, verifiedIdentity?: VerifiedSecurityIdentity, serverOwnedRunId?: string): ResearchDispatchStart {
     const { decision } = resolved
-    if (decision.missingRequiredInputs.length > 0) return { ...resolved, status: 'missing_input', sourceLibraryHits, resolution }
+    if (decision.mode === 'workflow' && decision.workflow !== undefined) {
+      const definition = this.workflowRegistry.get(decision.workflow.id)
+      if (definition === undefined) throw new ApplicationServiceError('not_found', `Workflow definition not found: ${decision.workflow.id}`)
+      const validation = validateWorkflowInputSchema(definition.inputSchema, decision.workflow.arguments)
+      const missingFields = normalizedMissingFields(definition, decision.workflow.arguments)
+      if (!validation.valid) {
+        const feedback = feedbackFor('INVALID_INPUT', definition, decision.workflow.arguments, validation.errors.filter((message) => !message.includes('is required')).join('; ') || 'Workflow arguments are invalid')
+        return { ...resolved, status: 'invalid_input', feedback, sourceLibraryHits, resolution }
+      }
+      if (missingFields.length > 0) {
+        const feedback = feedbackFor('NEEDS_INPUT', definition, decision.workflow.arguments, `Required fields are missing: ${missingFields.join(', ')}`, missingFields)
+        const updatedDecision = validateResearchDispatchDecision({ ...decision, missingRequiredInputs: missingFields })
+        const updatedSummary = this.summary(resolved.request, updatedDecision, definition)
+        return { ...resolved, decision: updatedDecision, summary: updatedSummary, status: 'needs_input', feedback, sourceLibraryHits, resolution }
+      }
+    }
     if (decision.mode === 'free_research') { const runId = `free-${randomUUID()}`; this.schedulePendingBundle(resolved.request, decision, resolved.summary, runId, { status: 'free_research_pending', executionBoundary: 'session', selectedSkills: [] }, sourceLibraryHits); return { ...resolved, status: 'free_research', runId, sourceLibraryHits, resolution } }
     if (decision.mode === 'skill_plan') { const runId = `skill-${randomUUID()}`; this.schedulePendingBundle(resolved.request, decision, resolved.summary, runId, { status: 'skill_plan_pending', executionBoundary: 'session', selectedSkills: decision.skills }, sourceLibraryHits); return { ...resolved, status: 'skill_plan', runId, sourceLibraryHits, resolution } }
     const workflow = decision.workflow
     if (workflow === undefined) throw new ApplicationServiceError('failed', 'Validated workflow decision did not include a workflow')
     const definition = this.workflowRegistry.get(workflow.id)
     if (definition === undefined) throw new ApplicationServiceError('not_found', `Workflow definition not found: ${workflow.id}`)
-    const runId = randomUUID()
-    const started = this.startWorkflow(definition.id, workflow.arguments, runId, callerSignal, resolved.request.persistencePolicy.writeKnowledge, resolved.request.contextPolicy.structuredKnowledge, sourceLibraryHits)
-    const completion = started.then(async (result) => { await this.persistBundle(resolved.request, decision, resolved.summary, runId, result, sourceLibraryHits); return result })
+    if (!this.executionBindings.has(definition.id) || this.options.workflowService === undefined) {
+      const reason = !this.executionBindings.has(definition.id)
+        ? `Workflow ${definition.id} is registered but has no execution binding.`
+        : 'Workflow status tracking is not configured for this runtime.'
+      const feedback = feedbackFor('EXECUTOR_UNAVAILABLE', definition, workflow.arguments, reason)
+      return { ...resolved, status: 'executor_unavailable', feedback, sourceLibraryHits, resolution }
+    }
+    let started: Promise<unknown>
+    const runId = serverOwnedRunId ?? randomUUID()
+    try {
+      const identityHandoff = verifiedIdentity === undefined ? undefined : createVerifiedSecurityIdentityHandoff({
+        workflowId: definition.id as 'company_research' | 'valuation' | 'earnings_review',
+        runId,
+        ...(typeof workflow.arguments.asOf === 'string' ? { asOf: workflow.arguments.asOf } : {}),
+        structuredKnowledge: resolved.request.contextPolicy.structuredKnowledge,
+        identity: verifiedIdentity,
+      })
+      started = this.startWorkflow({ workflowId: definition.id, args: workflow.arguments, runId, ...(callerSignal === undefined ? {} : { callerSignal }), writeKnowledge: resolved.request.persistencePolicy.writeKnowledge, useStructuredKnowledge: resolved.request.contextPolicy.structuredKnowledge, sourceLibraryHits, ...(identityHandoff === undefined ? {} : { verifiedIdentityHandoff: identityHandoff }) })
+    } catch (error) {
+      if (error instanceof ApplicationServiceError && error.code === 'executor_unavailable') {
+        const feedback = feedbackFor('EXECUTOR_UNAVAILABLE', definition, workflow.arguments, error.message)
+        return { ...resolved, status: 'executor_unavailable', feedback, sourceLibraryHits, resolution }
+      }
+      const existing = this.options.workflowService.getWorkflowStatus(runId)
+      if (existing === undefined) {
+        this.options.workflowService.register({ runId, workflowType: definition.id, objective: definition.label })
+        this.options.workflowService.markFailure(runId, 'Workflow failed during execution startup.')
+      }
+      started = Promise.reject(error)
+    }
+    const workflowView = this.options.workflowService.getWorkflowStatus(runId)
+    if (workflowView !== undefined) {
+      this.options.workflowService.setExecutionResult(runId, projectResearchExecutionResult({ workflowId: definition.id, workflow: workflowView, bundleStatus: this.options.bundleStore === undefined ? 'unavailable' : 'pending' }))
+    }
+    const completion = started.then(async (result) => {
+      await this.persistDispatchResult(resolved.request, decision, resolved.summary, definition.id, runId, result, sourceLibraryHits)
+      return result
+    }, async (error) => {
+      await this.persistDispatchFailure(resolved.request, decision, resolved.summary, definition.id, runId, error, sourceLibraryHits)
+      throw error
+    })
     completion.catch(() => undefined)
-    return { ...resolved, status: 'started', runId, sourceLibraryHits, resolution, ...(this.options.workflowService?.getWorkflowStatus(runId) === undefined ? {} : { workflow: this.options.workflowService.getWorkflowStatus(runId) }), completion }
+    return { ...resolved, status: 'started', runId, sourceLibraryHits, resolution, ...(verifiedIdentity === undefined ? {} : { verifiedSecurityIdentity: verifiedIdentity }), ...(this.options.workflowService.getWorkflowStatus(runId) === undefined ? {} : { workflow: this.options.workflowService.getWorkflowStatus(runId) }), completion }
   }
 
   async getBundle(bundleId: string): Promise<ResearchBundle | undefined> { return this.options.bundleStore?.get(bundleId) }
   async listBundles(limit?: number): Promise<readonly ResearchBundle[]> { return this.options.bundleStore?.list(limit) ?? [] }
+  async getBundleForRun(runId: string): Promise<ResearchBundle | undefined> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(runId)) throw new ApplicationServiceError('invalid_input', 'runId is invalid')
+    await this.pendingBundleWrites.get(runId)
+    return this.getBundle(`research-bundle-${runId}`)
+  }
 
   async getSessionResearchContext(runId: string): Promise<ResearchSessionContext | undefined> {
     await this.pendingBundleWrites.get(runId)
@@ -375,7 +843,7 @@ export class ResearchDispatchService {
     }
   }
 
-  private async resolveWithReasoning(request: ResearchRequest, explicitDefinition: WorkflowDefinition | undefined, sourceLibraryHits: readonly SourceLibraryHit[], callerSignal?: AbortSignal): Promise<{ readonly decision: ResearchDispatchDecision; readonly resolution: ResearchDispatchResolution }> {
+  private async resolveWithReasoning(request: ResearchRequest, explicitDefinition: WorkflowDefinition | undefined, sourceLibraryHits: readonly SourceLibraryHit[], runtimeTimestamp: string, callerSignal?: AbortSignal): Promise<{ readonly decision: ResearchDispatchDecision; readonly resolution: ResearchDispatchResolution }> {
     const executor = this.options.reasoningExecutor
     if (executor === undefined) throw new ApplicationServiceError('failed', 'Research dispatch semantic resolver is not configured')
     const explicit = request.mode.type === 'workflow'
@@ -388,7 +856,7 @@ export class ResearchDispatchService {
         instruction: explicit
           ? 'Extract arguments and entities for the user-selected Workflow. Never select or replace the Workflow; return mode workflow with the exact supplied workflow ID.'
           : 'Resolve the user research intent. Prefer one registered Workflow when its intent is clear, otherwise select eligible Research Skills, otherwise use Free Research. Do not invent canonical IDs or change request policies.',
-        input: { query: request.query, requestedMode: request.mode, explicitWorkflow: explicitDefinition, workflows: this.workflowRegistry.list(), researchSkills: this.skillRegistry.researchCandidates(), knowledgeSkillMetadata: this.skillRegistry.get('theme-framework') === undefined ? [] : [this.skillRegistry.get('theme-framework')], sourceLibraryHits, ...(previousOutput === undefined ? {} : { previousOutput, repairDiagnostics: diagnostics.slice(-16) }) },
+        input: { query: request.query, requestedMode: request.mode, explicitWorkflow: explicitDefinition, workflows: explicit ? explicitDefinition === undefined ? [] : [explicitDefinition] : this.workflowRegistry.list(), researchSkills: this.skillRegistry.researchCandidates(), knowledgeSkillMetadata: this.skillRegistry.get('theme-framework') === undefined ? [] : [this.skillRegistry.get('theme-framework')], sourceLibraryHits, runtimeContext: { requestTimestamp: runtimeTimestamp, effectiveRuntimeClock: runtimeTimestamp, contextPolicy: request.contextPolicy, persistencePolicy: request.persistencePolicy, userControlsKnowledgeWrite: true }, ...(previousOutput === undefined ? {} : { previousOutput, repairDiagnostics: diagnostics.slice(-16) }) },
         outputContract: dispatchOutputContract,
         metadata: { operationFamily: 'research-dispatch', attempt: String(attempt) },
       }
@@ -398,12 +866,12 @@ export class ResearchDispatchService {
         const decision = validateResearchDispatchDecision(result.output)
         assertSemanticDecision(request, decision, this.workflowRegistry, this.skillRegistry, explicit ? request.mode.workflowId : undefined)
         const definition = decision.workflow === undefined ? undefined : this.workflowRegistry.get(decision.workflow.id)
-        const required = definition?.requiredInputs ?? []
-        const missing = [...new Set([...decision.missingRequiredInputs, ...required.filter((key) => decision.workflow?.arguments[key] === undefined)])].sort()
+        const prepared = this.prepareDecisionArguments(request, decision, runtimeTimestamp)
+        const missing = prepared.mode === 'workflow' && prepared.workflow !== undefined ? normalizedMissingFields(definition!, prepared.workflow.arguments) : []
         const mappedSkills = decision.mode === 'workflow' && decision.workflow !== undefined && decision.skills.length === 0
           ? selectedSkillIds(this.skillRegistry, this.workflowRegistry.get(decision.workflow.id)!).map((id) => ({ id, purpose: this.skillRegistry.get(id)?.purpose ?? 'selected by the authoritative Workflow definition' }))
           : decision.skills
-        const normalized = validateResearchDispatchDecision({ ...decision, skills: mappedSkills, ...(missing.length === decision.missingRequiredInputs.length ? {} : { missingRequiredInputs: missing }) })
+        const normalized = validateResearchDispatchDecision({ ...prepared, skills: mappedSkills, missingRequiredInputs: missing })
         return { decision: normalized, resolution: { source: attempt === 1 ? 'reasoning_executor' : 'bounded_repair', attempts: attempt, diagnostics } }
       } catch (error) {
         diagnostics.push(error instanceof Error ? error.message.slice(0, 240) : 'semantic_resolution_invalid')
@@ -411,7 +879,87 @@ export class ResearchDispatchService {
       }
     }
     const fallback = this.resolve(request)
-    return { decision: fallback.decision, resolution: { source: 'deterministic_fallback', attempts: 2, diagnostics: [...diagnostics, 'semantic_resolution_fallback'] } }
+    let prepared = fallback.decision
+    try { prepared = this.prepareDecisionArguments(request, fallback.decision, runtimeTimestamp) } catch (error) { diagnostics.push(error instanceof Error ? error.message.slice(0, 240) : 'fallback_contract_invalid') }
+    return { decision: prepared, resolution: { source: 'deterministic_fallback', attempts: 2, diagnostics: [...diagnostics, 'semantic_resolution_fallback'] } }
+  }
+
+  private reportIdFromResult(result: unknown): string | undefined {
+    if (typeof result !== 'object' || result === null || Array.isArray(result)) return undefined
+    const value = result as Record<string, unknown>
+    const nested = typeof value.report === 'object' && value.report !== null && !Array.isArray(value.report) ? value.report as Record<string, unknown> : undefined
+    const brief = typeof value.brief === 'object' && value.brief !== null && !Array.isArray(value.brief) ? value.brief as Record<string, unknown> : undefined
+    const candidate = [nested?.reportId, value.reportId, brief?.reportId].find((item): item is string => typeof item === 'string')
+    return candidate !== undefined && /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/.test(candidate) ? candidate : undefined
+  }
+
+  private async verifiedReportId(result: unknown, workflowRunId: string): Promise<string | undefined> {
+    const reportId = this.reportIdFromResult(result)
+    if (reportId === undefined) return undefined
+    try {
+      const report = await this.options.researchService?.getResearchReport(reportId)
+      if (report !== undefined && report.workflowRunId === workflowRunId) return reportId
+    } catch { /* an unresolvable report is not exposed as an artifact link */ }
+    try {
+      const brief = await this.options.dailyIntelligenceService?.getBrief(reportId)
+      if (brief !== undefined && brief.workflowRunId === workflowRunId) return reportId
+    } catch { /* keep missing and unreadable report references out of the public projection */ }
+    return undefined
+  }
+
+  private async verifiedReviewCaseId(result: unknown, workflowRunId: string): Promise<string | undefined> {
+    if (typeof result !== 'object' || result === null || Array.isArray(result)) return undefined
+    const candidate = (result as Record<string, unknown>).reviewCaseId
+    if (typeof candidate !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/.test(candidate) || !this.options.reviewService) return undefined
+    try {
+      const reviewCase = await this.options.reviewService.getReviewCase(candidate)
+      return reviewCase.producerRunId === workflowRunId && reviewCase.reviewCaseId === candidate ? candidate : undefined
+    } catch { return undefined }
+  }
+
+  private async persistDispatchResult(request: ResearchRequest, decision: ResearchDispatchDecision, summary: ResearchExecutionSummary, workflowId: string, workflowRunId: string, result: unknown, sourceLibraryHits: readonly SourceLibraryHit[]): Promise<void> {
+    const workflowService = this.options.workflowService
+    if (workflowService === undefined) return
+    const workflow = workflowService.getWorkflowStatus(workflowRunId)
+    if (workflow === undefined) return
+    const cancelled = workflow.status === 'cancelled'
+    const effectiveResult = cancelled ? { status: 'cancelled', workflowRunId, summary: 'Workflow was cancelled.' } : result
+    const reportRef = cancelled ? undefined : await this.verifiedReportId(effectiveResult, workflowRunId)
+    const reviewRef = cancelled ? undefined : await this.verifiedReviewCaseId(effectiveResult, workflowRunId)
+    const bundleId = `research-bundle-${workflowRunId}`
+    let executionResult = projectResearchExecutionResult({ workflowId, workflow, domainResult: effectiveResult, bundleStatus: this.options.bundleStore === undefined ? 'unavailable' : 'available', ...(this.options.bundleStore === undefined ? {} : { bundleRef: bundleId }), ...(reportRef === undefined ? {} : { verifiedReportId: reportRef }), ...(reviewRef === undefined ? {} : { verifiedReviewCaseId: reviewRef }) })
+    if (this.options.bundleStore !== undefined) {
+      try {
+        await this.options.bundleStore.put(createResearchBundle({ request, decision, summary, workflowRunId, result: effectiveResult, executionResult, ...(reportRef === undefined ? {} : { verifiedReportId: reportRef }), sourceLibraryHits }))
+      } catch {
+        executionResult = projectResearchExecutionResult({ workflowId, workflow, domainResult: effectiveResult, bundleStatus: 'failed', ...(reportRef === undefined ? {} : { verifiedReportId: reportRef }), ...(reviewRef === undefined ? {} : { verifiedReviewCaseId: reviewRef }), extraDiagnostics: ['BUNDLE_PERSIST_FAILED'] })
+      }
+    }
+    workflowService.setExecutionResult(workflowRunId, executionResult)
+  }
+
+  private async persistDispatchFailure(request: ResearchRequest, decision: ResearchDispatchDecision, summary: ResearchExecutionSummary, workflowId: string, workflowRunId: string, error: unknown, sourceLibraryHits: readonly SourceLibraryHit[]): Promise<void> {
+    const workflowService = this.options.workflowService
+    if (workflowService === undefined) return
+    let workflow = workflowService.getWorkflowStatus(workflowRunId)
+    if (workflow === undefined) {
+      workflowService.register({ runId: workflowRunId, workflowType: workflowId, objective: `${workflowId} execution` })
+      workflowService.markFailure(workflowRunId, 'Workflow execution failed before lifecycle registration completed.')
+      workflow = workflowService.getWorkflowStatus(workflowRunId)
+    } else if (workflow.status === 'pending' || workflow.status === 'running') {
+      workflowService.markFailure(workflowRunId, 'Workflow execution failed.')
+      workflow = workflowService.getWorkflowStatus(workflowRunId)
+    }
+    if (workflow === undefined) return
+    const errorCode = error instanceof ApplicationServiceError && error.code === 'cancelled' ? 'WORKFLOW_CANCELLED' : 'WORKFLOW_EXECUTION_FAILED'
+    const result = { workflowRunId, status: workflow.status === 'cancelled' ? 'cancelled' : 'failed', diagnostics: [errorCode], summary: workflow.status === 'cancelled' ? 'Workflow was cancelled.' : 'Workflow execution failed.' }
+    const bundleId = `research-bundle-${workflowRunId}`
+    let executionResult = projectResearchExecutionResult({ workflowId, workflow, domainResult: result, bundleStatus: this.options.bundleStore === undefined ? 'unavailable' : 'available', ...(this.options.bundleStore === undefined ? {} : { bundleRef: bundleId }) })
+    if (this.options.bundleStore !== undefined) {
+      try { await this.options.bundleStore.put(createResearchBundle({ request, decision, summary, workflowRunId, result, executionResult, sourceLibraryHits })) }
+      catch { executionResult = projectResearchExecutionResult({ workflowId, workflow, domainResult: result, bundleStatus: 'failed', extraDiagnostics: ['BUNDLE_PERSIST_FAILED'] }) }
+    }
+    workflowService.setExecutionResult(workflowRunId, executionResult)
   }
 
   private async persistBundle(request: ResearchRequest, decision: ResearchDispatchDecision, summary: ResearchExecutionSummary, workflowRunId: string, result: unknown, sourceLibraryHits: readonly SourceLibraryHit[] = []): Promise<void> {
@@ -476,29 +1024,9 @@ export class ResearchDispatchService {
     return { mode: request.mode.type === 'workflow' ? 'Explicit Workflow' : 'Free Research', ...(workflow === undefined ? {} : { workflowId: workflow.id, workflowLabel: definition?.label }), selectedSkillIds: decision.skills.map((skill) => skill.id), argumentsStatus: decision.missingRequiredInputs.length > 0 ? 'missing' : workflow === undefined ? 'not_required' : 'extracted', argumentKeys: workflow === undefined ? [] : Object.keys(workflow.arguments).sort(), contextPolicy: request.contextPolicy, persistencePolicy: request.persistencePolicy }
   }
 
-  private startWorkflow(workflowId: string, args: Readonly<Record<string, unknown>>, runId: string, callerSignal?: AbortSignal, writeKnowledge = false, useStructuredKnowledge = true, sourceLibraryHits: readonly SourceLibraryHit[] = []): Promise<unknown> {
-    const research = this.options.researchService
-    if (workflowId === 'theme_framework') {
-      const service = this.options.themeFrameworkService
-      if (service === undefined) throw new ApplicationServiceError('failed', 'Theme Framework service is not configured')
-      const started = service.start({ workflowRunId: runId, name: args.name as string, ...(typeof args.definition === 'string' ? { definition: args.definition } : {}) }, callerSignal)
-      // Never expose or persist the internal construction result: it contains
-      // provenance bindings. Chat receives the same safe projection as the API.
-      return started.completion.then(() => service.getReviewCandidate(runId))
-    }
-    if (workflowId === 'daily_intelligence') {
-      const daily = this.options.dailyIntelligenceService
-      if (daily === undefined) throw new ApplicationServiceError('failed', 'Daily Intelligence service is not configured')
-      return daily.startBrief({ workflowRunId: runId, briefType: args.briefType as 'morning' | 'evening', tradeDate: args.tradeDate as string, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
-    }
-    if (workflowId === 'thesis_lifecycle') return Promise.resolve(runThesisLifecycle(args as unknown as ThesisLifecycleInput))
-    if (research === undefined) throw new ApplicationServiceError('failed', 'Research service is not configured')
-    if (workflowId === 'company_research') return research.startResearchCompany({ workflowRunId: runId, symbol: args.symbol as string, ...(typeof args.name === 'string' ? { name: args.name } : {}), writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
-    if (workflowId === 'industry_research') return research.startIndustryResearch({ workflowRunId: runId, name: args.name as string, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
-    if (workflowId === 'earnings_review') return research.startEarningsReview({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, fiscalYear: args.fiscalYear as number, period: args.period as EarningsReviewPeriod, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
-    if (workflowId === 'valuation') return research.startValuation({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, methods: args.methods as readonly ValuationMethod[] | undefined, targetFiscalYear: args.targetFiscalYear as number | undefined, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
-    if (workflowId === 'event_research') return research.startEventResearch({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, anchor: args.anchor as EventAnchor, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
-    if (workflowId === 'thesis_red_team') return research.startThesisRedTeam({ workflowRunId: runId, symbol: args.symbol as string, name: args.name as string | undefined, thesisRef: args.thesisRef as string, writeKnowledge, useStructuredKnowledge, sourceLibraryContext: sourceLibraryHits }, callerSignal).completion
-    throw new ApplicationServiceError('not_found', `Workflow definition has no adapter: ${workflowId}`)
+  private startWorkflow(context: WorkflowExecutionBindingContext): Promise<unknown> {
+    const binding = this.executionBindings.get(context.workflowId)
+    if (binding === undefined) throw new ApplicationServiceError('executor_unavailable', `Workflow ${context.workflowId} has no execution binding`)
+    return binding(context)
   }
 }

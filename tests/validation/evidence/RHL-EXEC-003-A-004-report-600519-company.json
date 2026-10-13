@@ -1,0 +1,183 @@
+{
+  "reportId": "company-research-600519-546a40b8-f6e4-4181-99ae-e7fee61b74e1",
+  "reportType": "company_research",
+  "subjectRefs": [],
+  "verifiedSecurityIdentity": {
+    "symbol": "600519",
+    "exchange": "SH",
+    "verifiedName": "贵州茅台",
+    "verificationSource": "akshare_security_directory",
+    "originAuthority": "S3_AGGREGATOR",
+    "verifiedAt": "2026-10-10T21:29:21.332Z",
+    "sourceId": "akshare-security-identity-directory",
+    "sourceUrl": "https://github.com/akfamily/akshare"
+  },
+  "generatedAt": "2026-10-10T21:39:30.871Z",
+  "asOf": "2026-10-10T21:29:21.368Z",
+  "workflowRunId": "546a40b8-f6e4-4181-99ae-e7fee61b74e1",
+  "knowledgeBaseRevision": 0,
+  "sourceRefs": [],
+  "claimRefs": [],
+  "methodology": "Bounded acquisition -> semantic proposal -> deterministic canonical binding -> validated ChangeSet -> shared Writer.",
+  "sections": [
+    {
+      "id": "company-overview",
+      "title": "Company Overview",
+      "markdown": "Verified security identity: 贵州茅台 (600519, SH).\n\nResearch cutoff: 2026-10-10T21:29:21.368Z.\n\nCompany profile data gap: no usable business profile fields were returned; no business facts are asserted.\n\n### Bounded evidence supplied to research\n- Company financial history: {\"kind\":\"financial\",\"rows\":[{\"periodEnd\":\"2026-06-30\",\"publishedAt\":\"2026-08-15T00:00:00+08:00\",\"metrics\":{\"revenue\":92278072083.21,\"netProfit\":44516880421.86,\"basicEps\":35.57},\"pointInTimeSafe\":false,\"pointInTimeStatus\":\"CURRENT_VALUE_ONLY\"},{\"periodEnd\":\"2026-03-31\",\"publishedAt\":\"2026-04-25T00:00:00+08:00\",\"metrics\":{\"revenue\":54702912385.23,\"netProfit\":27242512886.45,\"basicEps\":21.76},\"pointInTimeSafe\":false,\"pointInTimeStatus\":\"CURRENT_VALUE_ONLY\"},{\"periodEnd\":\"2025-12-31\",\"publishedAt\":\"2",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": [
+        "https://quote.eastmoney.com/sh600519.html"
+      ]
+    },
+    {
+      "id": "business-model",
+      "title": "Business Model",
+      "markdown": "Research gap: no bounded evidence was supplied for Business Model; no conclusion is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "business-segments",
+      "title": "Business Segments",
+      "markdown": "Research gap: no bounded evidence was supplied for Business Segments; no conclusion is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "revenue-profit-drivers",
+      "title": "Revenue / Profit Drivers",
+      "markdown": "Retrieved structured financial observations (provider-reported values; units and historical value versions are not inferred):\n- Period end: 2026-06-30; published: 2026-08-15T00:00:00+08:00; revenue: 92278072083.21; net profit: 44516880421.86; gross margin: unreported; basic EPS: 35.57; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2026-03-31; published: 2026-04-25T00:00:00+08:00; revenue: 54702912385.23; net profit: 27242512886.45; gross margin: unreported; basic EPS: 21.76; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2025-12-31; published: 2026-04-17T00:00:00+08:00; revenue: 172054171890.91; net profit: 82320067101.68; gross margin: unreported; basic EPS: 65.66; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2025-09-30; published: 2025-10-30T00:00:00+08:00; revenue: 130903889634.88; net profit: 64626746712.18; gross margin: unreported; basic EPS: 51.53; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2025-06-30; published: 2025-08-13T00:00:00+08:00; revenue: 91093762553.97; net profit: 45402962298.1; gross margin: unreported; basic EPS: 36.18; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2025-03-31; published: 2025-04-30T00:00:00+08:00; revenue: 51443450583.77; net profit: 26847474238.76; gross margin: unreported; basic EPS: 21.38; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2024-12-31; published: 2025-04-03T00:00:00+08:00; revenue: 174144069958.25; net profit: 86228146421.62; gross margin: unreported; basic EPS: 68.64; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2024-09-30; published: 2024-10-26T00:00:00+08:00; revenue: 123122542625.45; net profit: 60827552118.51; gross margin: unreported; basic EPS: 48.42; point-in-time: CURRENT_VALUE_ONLY.\n\nSource candidate: akshare-financial-600519.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": [
+        "https://quote.eastmoney.com/sh600519.html"
+      ]
+    },
+    {
+      "id": "products",
+      "title": "Products",
+      "markdown": "Research gap: no bounded evidence was supplied for Products; no conclusion is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "technologies",
+      "title": "Technologies",
+      "markdown": "Research gap: no bounded evidence was supplied for Technologies; no conclusion is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "industry-exposure",
+      "title": "Industry Exposure",
+      "markdown": "Research gap: no bounded evidence was supplied for Industry Exposure; no conclusion is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "supply-chain",
+      "title": "Supply Chain",
+      "markdown": "Research gap: no bounded evidence was supplied for Supply Chain; no conclusion is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "competition",
+      "title": "Competition",
+      "markdown": "Research gap: no bounded evidence was supplied for Competition; no conclusion is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "financial-quality",
+      "title": "Financial Quality",
+      "markdown": "Retrieved structured financial observations (provider-reported values; units and historical value versions are not inferred):\n- Period end: 2026-06-30; published: 2026-08-15T00:00:00+08:00; revenue: 92278072083.21; net profit: 44516880421.86; gross margin: unreported; basic EPS: 35.57; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2026-03-31; published: 2026-04-25T00:00:00+08:00; revenue: 54702912385.23; net profit: 27242512886.45; gross margin: unreported; basic EPS: 21.76; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2025-12-31; published: 2026-04-17T00:00:00+08:00; revenue: 172054171890.91; net profit: 82320067101.68; gross margin: unreported; basic EPS: 65.66; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2025-09-30; published: 2025-10-30T00:00:00+08:00; revenue: 130903889634.88; net profit: 64626746712.18; gross margin: unreported; basic EPS: 51.53; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2025-06-30; published: 2025-08-13T00:00:00+08:00; revenue: 91093762553.97; net profit: 45402962298.1; gross margin: unreported; basic EPS: 36.18; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2025-03-31; published: 2025-04-30T00:00:00+08:00; revenue: 51443450583.77; net profit: 26847474238.76; gross margin: unreported; basic EPS: 21.38; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2024-12-31; published: 2025-04-03T00:00:00+08:00; revenue: 174144069958.25; net profit: 86228146421.62; gross margin: unreported; basic EPS: 68.64; point-in-time: CURRENT_VALUE_ONLY.\n- Period end: 2024-09-30; published: 2024-10-26T00:00:00+08:00; revenue: 123122542625.45; net profit: 60827552118.51; gross margin: unreported; basic EPS: 48.42; point-in-time: CURRENT_VALUE_ONLY.\n\nSource candidate: akshare-financial-600519.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": [
+        "https://quote.eastmoney.com/sh600519.html"
+      ]
+    },
+    {
+      "id": "growth-drivers",
+      "title": "Growth Drivers",
+      "markdown": "Research gap: no bounded evidence was supplied for Growth Drivers; no conclusion is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "management-capital-allocation",
+      "title": "Management / Capital Allocation",
+      "markdown": "Research gap: no bounded evidence was supplied for Management / Capital Allocation; no conclusion is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "catalysts",
+      "title": "Catalysts",
+      "markdown": "Research gap: no bounded evidence was supplied for Catalysts; no conclusion is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "risks",
+      "title": "Risks",
+      "markdown": "Research gap: no bounded evidence was supplied for Risks; no conclusion is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "valuation",
+      "title": "Valuation",
+      "markdown": "Market data gap: no eligible market observations were returned; no current price, PE, or PB is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "bull-base-bear",
+      "title": "Bull / Base / Bear",
+      "markdown": "Research gap: no bounded evidence was supplied for Bull / Base / Bear; no conclusion is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "variant-perception",
+      "title": "Variant Perception",
+      "markdown": "Research gap: no bounded evidence was supplied for Variant Perception; no conclusion is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "investment-thesis",
+      "title": "Investment Thesis",
+      "markdown": "Research gap: no bounded evidence was supplied for Investment Thesis; no conclusion is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    },
+    {
+      "id": "monitoring-checklist",
+      "title": "Monitoring Checklist",
+      "markdown": "Research gap: no bounded evidence was supplied for Monitoring Checklist; no conclusion is asserted.",
+      "sourceRefs": [],
+      "claimRefs": [],
+      "evidenceLinks": []
+    }
+  ],
+  "outputPath": "company-research-600519-546a40b8-f6e4-4181-99ae-e7fee61b74e1.md"
+}

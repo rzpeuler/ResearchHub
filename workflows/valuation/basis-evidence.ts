@@ -66,6 +66,7 @@ export interface ResolveValuationBasisEvidenceInput {
   readonly now: string
   readonly retrievedAt: string
   readonly marketRetrievedAt: string
+  readonly marketSource?: { readonly sourceId?: string; readonly originPublisher?: string; readonly originAuthority?: SourceAuthority; readonly retrievalProvider?: string; readonly sourceUrl?: string }
   readonly marketSourceUrl?: string
   readonly financialSourceUrl?: string
   readonly epsSource?: { readonly sourceId?: string; readonly retrievedAt: string; readonly sourceUrl?: string }
@@ -107,14 +108,16 @@ function publicationValue(proof: AnnualReportPublicationProof | undefined): Valu
   return { originPublisher: proof.originPublisher, originAuthority: proof.originAuthority, publishedAt: proof.officialPublishedAt, sourceUrl: proof.sourceUrl, reportTitle: proof.reportTitle, ...(proof.announcementId === undefined ? {} : { announcementId: proof.announcementId }) }
 }
 
-function source(field: string, retrievedAt: string, sourceUrl: string | undefined, sourceId?: string): ValuationNumericSource {
-  return { originPublisher: 'EastMoney', originAuthority: 'S3_AGGREGATOR', retrievalProvider: 'AKShare', retrievedAt, sourceField: field, ...(sourceUrl === undefined ? {} : { sourceUrl }), ...(sourceId === undefined ? {} : { sourceId }) }
+function source(field: string, retrievedAt: string, sourceUrl: string | undefined, sourceId?: string, provenance?: ResolveValuationBasisEvidenceInput['marketSource']): ValuationNumericSource {
+  return { originPublisher: provenance?.originPublisher ?? 'EastMoney', originAuthority: provenance?.originAuthority ?? 'S3_AGGREGATOR', retrievalProvider: provenance?.retrievalProvider ?? 'AKShare', retrievedAt, sourceField: field, ...(sourceUrl === undefined ? {} : { sourceUrl }), ...(sourceId === undefined ? {} : { sourceId }) }
 }
 
 function metricEvidence(metric: ValuationEvidenceMetric, value: number, input: ResolveValuationBasisEvidenceInput, status: ValuationEvidencePitStatus, publication: ValuationOfficialPublication | undefined): ValuationMetricEvidence {
   const field = metric === 'marketPrice' ? 'close' : metric === 'eps' ? 'EPSJB' : 'BPS'
   const financialSource = metric === 'eps' ? input.epsSource : metric === 'bvps' ? input.bvpsSource : undefined
-  return { metric, value, unit: 'CNY/share', ...(metric === 'marketPrice' ? { priceDate: input.market.priceDate, dailyCloseAvailableAt: dailyCloseAvailableAt(input.market.priceDate) } : { reportDate: input.financialRows[0]?.reportDate }), numericSource: source(field, metric === 'marketPrice' ? input.marketRetrievedAt : financialSource?.retrievedAt ?? input.retrievedAt, metric === 'marketPrice' ? input.marketSourceUrl : financialSource?.sourceUrl ?? input.financialSourceUrl, financialSource?.sourceId), ...(publication === undefined || metric === 'marketPrice' ? {} : { officialPublication: publication }), pitStatus: status }
+  const isMarket = metric === 'marketPrice'
+  const provenance = isMarket ? input.marketSource : undefined
+  return { metric, value, unit: 'CNY/share', ...(isMarket ? { priceDate: input.market.priceDate, dailyCloseAvailableAt: dailyCloseAvailableAt(input.market.priceDate) } : { reportDate: input.financialRows[0]?.reportDate }), numericSource: source(field, isMarket ? input.marketRetrievedAt : financialSource?.retrievedAt ?? input.retrievedAt, isMarket ? input.marketSourceUrl ?? provenance?.sourceUrl : financialSource?.sourceUrl ?? input.financialSourceUrl, isMarket ? provenance?.sourceId : financialSource?.sourceId, provenance), ...(publication === undefined || isMarket ? {} : { officialPublication: publication }), pitStatus: status }
 }
 
 export function resolveValuationBasisEvidence(input: ResolveValuationBasisEvidenceInput): ValuationBasisResolution {

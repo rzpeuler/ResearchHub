@@ -1,0 +1,222 @@
+{
+  "taskId": "RHL-EXEC-003-A-004",
+  "generatedAt": "2026-10-10T21:21:12.727Z",
+  "execution": "ResearchRunPage HTTP API -> ResearchDispatchService explicit Workflow -> verified identity -> ResearchService -> Workflow -> real AKShare/CNINFO/GDELT providers -> DataResolver -> Skill -> ResearchReport/ResearchBundle",
+  "providerMode": "real provider / deterministic semantic fallback; Pi ModelRuntime tested separately",
+  "knowledgeBaseSchema": "0.4",
+  "targets": [
+    {
+      "symbol": "002487",
+      "exchange": "SZSE",
+      "name": "大金重工",
+      "fiscalRuns": [
+        {
+          "fiscalYear": 2025,
+          "period": "FY"
+        },
+        {
+          "fiscalYear": 2026,
+          "period": "H1"
+        }
+      ]
+    },
+    {
+      "symbol": "600519",
+      "exchange": "SSE",
+      "name": "贵州茅台",
+      "fiscalRuns": [
+        {
+          "fiscalYear": 2025,
+          "period": "FY"
+        },
+        {
+          "fiscalYear": 2026,
+          "period": "H1"
+        }
+      ]
+    }
+  ],
+  "requestedOperation": "valuation",
+  "expectedRunCount": 2,
+  "runs": [
+    {
+      "target": {
+        "symbol": "002487",
+        "exchange": "SZSE",
+        "verifiedName": "大金重工",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-10T21:20:27.878Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "valuation",
+      "label": "Valuation",
+      "request": {
+        "symbol": "002487",
+        "name": "大金重工",
+        "exchange": "SZSE",
+        "methods": [
+          "PE",
+          "PB"
+        ],
+        "targetFiscalYear": 2025
+      },
+      "runId": "5a6c6f3c-a472-4dbb-8eed-1cb23d2be5f4",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "blocked",
+        "executionStatus": "blocked",
+        "terminalStatus": "blocked",
+        "bundleStatus": "available",
+        "reportRef": null,
+        "bundleRef": "research-bundle-5a6c6f3c-a472-4dbb-8eed-1cb23d2be5f4",
+        "diagnostics": [
+          "VALUATION_MARKET_PRICE_UNAVAILABLE"
+        ]
+      },
+      "providerOutcomes": [
+        {
+          "provider": null,
+          "attempted": true,
+          "succeeded": true,
+          "empty": null,
+          "failed": null,
+          "usableSourceCount": null,
+          "diagnostics": [],
+          "marketTransportSucceeded": false,
+          "financialTransportSucceeded": true,
+          "officialPublicationVerified": true,
+          "companyBasicRowCount": 0,
+          "financialRowCount": 70,
+          "marketRowCount": 0,
+          "marketPriceFound": false,
+          "fiscalYearBasisFound": true,
+          "usableForValuation": false
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_BLOCKED",
+      "report": null,
+      "domainOutcome": {
+        "blockedReason": "VALUATION_MARKET_PRICE_UNAVAILABLE",
+        "errorSummary": null,
+        "diagnostics": [
+          "companyBasic: AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/get?fltt=2&invt=2&fields=f120%2Cf121%2Cf122%",
+          "market: VALUATION_MARKET_PROVIDER_SOURCE_ERROR:AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/kline/get?fields1=f1%2Cf2%2Cf3%2",
+          "market: MARKET_FRESHNESS_UNVERIFIABLE",
+          "VALUATION_MARKET_PRICE_UNAVAILABLE"
+        ],
+        "acquisitionDiagnostics": []
+      },
+      "bundle": {
+        "bundleId": "research-bundle-5a6c6f3c-a472-4dbb-8eed-1cb23d2be5f4",
+        "workflowRunId": "5a6c6f3c-a472-4dbb-8eed-1cb23d2be5f4",
+        "reportId": null,
+        "status": "blocked",
+        "reloaded": true,
+        "terminalStatus": "blocked"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "a7a1b8cc716e5eee16b0ab957b629acbc993a2f34bd410ad49c1b1df9fa3de61",
+        "afterDigest": "a7a1b8cc716e5eee16b0ab957b629acbc993a2f34bd410ad49c1b1df9fa3de61"
+      }
+    },
+    {
+      "target": {
+        "symbol": "600519",
+        "exchange": "SSE",
+        "verifiedName": "贵州茅台",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-10T21:21:00.573Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "valuation",
+      "label": "Valuation",
+      "request": {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SSE",
+        "methods": [
+          "PE",
+          "PB"
+        ],
+        "targetFiscalYear": 2025
+      },
+      "runId": "50a29f3b-ec57-4d28-a5ea-974154f285c0",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "blocked",
+        "executionStatus": "blocked",
+        "terminalStatus": "blocked",
+        "bundleStatus": "available",
+        "reportRef": null,
+        "bundleRef": "research-bundle-50a29f3b-ec57-4d28-a5ea-974154f285c0",
+        "diagnostics": [
+          "VALUATION_MARKET_PRICE_UNAVAILABLE"
+        ]
+      },
+      "providerOutcomes": [
+        {
+          "provider": null,
+          "attempted": true,
+          "succeeded": true,
+          "empty": null,
+          "failed": null,
+          "usableSourceCount": null,
+          "diagnostics": [],
+          "marketTransportSucceeded": false,
+          "financialTransportSucceeded": true,
+          "officialPublicationVerified": true,
+          "companyBasicRowCount": 0,
+          "financialRowCount": 103,
+          "marketRowCount": 0,
+          "marketPriceFound": false,
+          "fiscalYearBasisFound": true,
+          "usableForValuation": false
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_BLOCKED",
+      "report": null,
+      "domainOutcome": {
+        "blockedReason": "VALUATION_MARKET_PRICE_UNAVAILABLE",
+        "errorSummary": null,
+        "diagnostics": [
+          "companyBasic: AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/get?fltt=2&invt=2&fields=f120%2Cf121%2Cf122%",
+          "market: VALUATION_MARKET_PROVIDER_SOURCE_ERROR:AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/kline/get?fields1=f1%2Cf2%2Cf3%2",
+          "market: MARKET_FRESHNESS_UNVERIFIABLE",
+          "VALUATION_MARKET_PRICE_UNAVAILABLE"
+        ],
+        "acquisitionDiagnostics": []
+      },
+      "bundle": {
+        "bundleId": "research-bundle-50a29f3b-ec57-4d28-a5ea-974154f285c0",
+        "workflowRunId": "50a29f3b-ec57-4d28-a5ea-974154f285c0",
+        "reportId": null,
+        "status": "blocked",
+        "reloaded": true,
+        "terminalStatus": "blocked"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "a7a1b8cc716e5eee16b0ab957b629acbc993a2f34bd410ad49c1b1df9fa3de61",
+        "afterDigest": "a7a1b8cc716e5eee16b0ab957b629acbc993a2f34bd410ad49c1b1df9fa3de61"
+      }
+    }
+  ],
+  "allRunsSynchronized": true,
+  "allReportsAndBundlesReconciled": false,
+  "atLeastOneCompletedCompanyValuationEarningsTriplet": false,
+  "allReadOnlyTreesUnchanged": true,
+  "finalKnowledgeTreeUnchanged": true,
+  "finalKnowledgeDigest": "a7a1b8cc716e5eee16b0ab957b629acbc993a2f34bd410ad49c1b1df9fa3de61",
+  "secretsIncluded": false,
+  "rawProviderBodiesIncluded": false,
+  "hiddenReasoningIncluded": false
+}

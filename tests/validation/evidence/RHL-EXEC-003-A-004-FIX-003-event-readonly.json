@@ -1,0 +1,130 @@
+{
+  "taskId": "RHL-EXEC-003-A-004-FIX-003",
+  "generatedAt": "2026-10-11T06:35:15.429Z",
+  "execution": "ResearchRequest writeKnowledge=false -> Pi research_event Tool -> real ResearchService -> Event Research Workflow -> actual KnowledgeProductionGateway dry-run",
+  "existingCanonicalCompany": "entity:company-600519",
+  "researchRequestPolicy": {
+    "structuredKnowledge": true,
+    "sourceLibrary": true,
+    "writeKnowledge": false
+  },
+  "forgedToolWriteFlag": true,
+  "researchServiceInput": {
+    "writeKnowledge": false,
+    "useStructuredKnowledge": true
+  },
+  "workflowRunId": "pi-event-policy-run",
+  "status": "completed",
+  "proposalCount": 2,
+  "acceptedProposalCount": 2,
+  "gatewayCommittedIds": [],
+  "reportCanonicalRefs": {
+    "subjectRefs": [
+      "entity:company-600519"
+    ],
+    "sourceRefs": [],
+    "claimRefs": [],
+    "sections": [
+      {
+        "id": "event-definition",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "verification-status",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "source-evidence-map",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "verified-facts",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "conflicting-unverified-claims",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "existing-research-context",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "first-order-impact",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "second-order-impact",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "business-industry-transmission",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "financial-operating-implications",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "assumption-impact",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "thesis-impact",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "catalyst-changes",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "risk-changes",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "valuation-monitoring-implications",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "open-questions-research-gaps",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      }
+    ],
+    "allReferencesResolve": true
+  },
+  "beforeTreeSha256": "3f5111903948ae08fbda7e930f169048dd5de6e3ea9f3182e96fd97059660d5c",
+  "afterTreeSha256": "3f5111903948ae08fbda7e930f169048dd5de6e3ea9f3182e96fd97059660d5c",
+  "secretsIncluded": false
+}

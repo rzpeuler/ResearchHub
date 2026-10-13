@@ -34,7 +34,7 @@ test('Valuation Common requirements execute through explicit Data policies and o
   const resolver = createValuationDataResolver({ ...fixture, company, valuationDate: NOW, now: () => NOW })
   const result = await resolver.resolve([requirement('valuation_market_price'), requirement('valuation_eps'), requirement('valuation_bvps'), requirement('valuation_annual_report_publication')])
   assert.equal(result.completeness, 'COMPLETE')
-  assert.deepEqual(result.items.map((item) => item.acquisition.policyId), ['valuation-market-price-eastmoney', 'valuation-eps-eastmoney', 'valuation-bvps-eastmoney', 'valuation-annual-publication-cninfo'])
+  assert.deepEqual(result.items.map((item) => item.acquisition.policyId), ['valuation-market-price-eastmoney-tencent', 'valuation-eps-eastmoney', 'valuation-bvps-eastmoney', 'valuation-annual-publication-cninfo'])
   assert.equal(result.items[0]?.value?.kind, 'market')
   assert.equal(result.items[1]?.value?.kind, 'financial')
   assert.equal(result.items[2]?.value?.kind, 'financial')
@@ -46,6 +46,35 @@ test('Valuation Common requirements execute through explicit Data policies and o
   assert.ok(fixture.calls.includes('historicalMarketData'))
   assert.equal(fixture.calls.filter((item) => item === 'financialData').length, 1)
   assert.ok(fixture.calls.includes('resolveAnnualReportPublication:2025'))
+})
+
+test('Valuation market acquisition falls back to Tencent with bounded dates and truthful provenance', async () => {
+  const fixture = clients()
+  const calls: Array<{ readonly symbol: string; readonly startDate?: string; readonly endDate?: string }> = []
+  const akshare: AkshareDataClient = {
+    ...fixture.akshare,
+    historicalMarketData: async () => { throw new Error('ProxyError: EastMoney request failed') },
+    historicalMarketDataTencent: async (request) => { calls.push(request); return [{ date: '2026-09-08', close: 150 }, { date: '2026-09-09', close: 160 }] },
+  }
+  const resolver = createValuationDataResolver({ akshare, officialDisclosure: fixture.officialDisclosure, company, valuationDate: NOW, now: () => NOW })
+  const result = await resolver.resolveOne(requirement('valuation_market_price'))
+  assert.equal(result.status, 'AVAILABLE')
+  assert.deepEqual(result.attempts.map((attempt) => [attempt.sourceId, attempt.status]), [['akshare-historical-market-data', 'SOURCE_ERROR'], ['akshare-tencent-historical-market-data', 'SUCCESS']])
+  assert.equal(calls[0]?.symbol, company.symbol)
+  assert.equal(calls[0]?.startDate, '20260810')
+  assert.equal(calls[0]?.endDate, '20260909')
+  assert.equal(result.source?.originPublisher, 'Tencent')
+  assert.equal(result.source?.retrievalProvider, 'AKShare')
+  assert.equal(result.source?.sourceUrl, 'https://gu.qq.com/sh600519/zs')
+  assert.equal(result.value?.kind, 'market')
+  if (result.value?.kind === 'market') {
+    assert.equal(result.value.sourceId, 'akshare-tencent-historical-market-data')
+    assert.equal(result.value.currency, 'CNY')
+    assert.equal(result.value.adjustmentMethod, 'UNADJUSTED')
+    assert.equal(result.value.originPublisher, 'Tencent')
+  }
+  assert.equal(result.source?.observedAt, '2026-09-08')
+  assert.equal(result.source?.observationAvailableAt, '2026-09-08T07:00:00.000Z')
 })
 
 test('Historical numeric source stays unavailable without value-version proof after publication', async () => {

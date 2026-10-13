@@ -82,8 +82,8 @@ test('wrong-year THS estimates do not suppress exact-FY EastMoney fallback', asy
 test('official filing uses Data policy while Earnings owns exact-period correction selection', async () => {
   const candidates = [
     { candidateId: 'summary', kind: 'official_disclosure' as const, tier: 1 as const, title: '2026年半年度报告摘要', provider: 'cninfo', publishedAt: '2026-08-30T00:00:00.000Z' },
-    { candidateId: 'full', kind: 'official_disclosure' as const, tier: 1 as const, title: '2026年半年度报告', provider: 'cninfo', publishedAt: '2026-08-30T00:00:00.000Z' },
-    { candidateId: 'correction', kind: 'official_disclosure' as const, tier: 1 as const, title: '2026年半年度报告更正公告', provider: 'cninfo', publishedAt: '2026-09-01T00:00:00.000Z' },
+    { candidateId: 'full', kind: 'official_disclosure' as const, tier: 1 as const, title: '2026年半年度报告', provider: 'cninfo', publishedAt: '2026-08-30T00:00:00.000Z', metadata: { announcementId: 'a-full' } },
+    { candidateId: 'correction', kind: 'official_disclosure' as const, tier: 1 as const, title: '2026年半年度报告更正公告', provider: 'cninfo', publishedAt: '2026-09-01T00:00:00.000Z', metadata: { correctionOf: 'a-full' } },
     { candidateId: 'future', kind: 'official_disclosure' as const, tier: 1 as const, title: '2026年半年度报告更正公告', provider: 'cninfo', publishedAt: '2026-10-01T00:00:00.000Z' },
   ]
   const fetched: string[] = []

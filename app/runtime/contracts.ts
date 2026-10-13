@@ -24,16 +24,42 @@ import type { ThemeFrameworkService } from '../services/theme-framework-service.
 import type { ThemeScopeImpactService } from '../services/theme-scope-impact-service.ts'
 import type { DataSourceAdministrationService } from '../services/data-source-administration-contracts.ts'
 import type { DataSourceOnboardingService } from '../services/data-source-onboarding-store.ts'
+import type { SecurityIdentityResolver } from '../services/security-identity-resolver.ts'
 
 export interface SafeConversationSummary {
   readonly conversationId: string
-  readonly name?: string
+  readonly name: string
+  readonly titleSource: 'default' | 'first_message' | 'workflow' | 'user'
+  readonly archived: boolean
+  readonly version: number
+  readonly latestWorkflowRunId?: string
   readonly updatedAt: string
   readonly messageCount: number
   readonly isActive: boolean
 }
 
+export interface SafeConversationActivity {
+  readonly activityId: string
+  readonly conversationId: string
+  readonly operationId: string
+  readonly kind: 'accepted_request'
+  readonly operation: 'prompt' | 'steer' | 'follow_up'
+  readonly status: 'accepted' | 'submitting' | 'ready_for_chat' | 'started' | 'completed' | 'cancelled' | 'not_started' | 'failed' | 'interrupted'
+  readonly outcome?: 'chat_started' | 'chat_completed' | 'chat_cancelled' | 'workflow_started' | 'workflow_completed' | 'workflow_blocked' | 'workflow_failed' | 'workflow_cancelled' | 'not_started'
+  readonly requestText: string
+  readonly createdAt: string
+  readonly workflowRunId?: string
+  readonly reservedWorkflowRunId?: string
+  readonly workflowSubject?: string
+  readonly workflowRegistryId?: string
+  readonly acceptedAt: string
+  readonly startedAt?: string
+  readonly finishedAt?: string
+  readonly piMessageId?: string
+}
+
 export interface SafeConversationMessage {
+  readonly piMessageId?: string
   readonly role: 'user' | 'assistant' | 'tool'
   readonly content: string
   readonly timestamp?: string
@@ -86,6 +112,7 @@ export interface ResearchHubSessionRuntimeOptions {
   readonly modelRuntime: ModelRuntime
   readonly sessionManager: SessionManager
   readonly applicationServices: ResearchHubApplicationServices
+  readonly conversationStateStore?: import('./conversation-state-store.ts').ConversationStateStore
   readonly mountedKnowledgeBaseRoot?: string
   readonly workspaceRoot?: string
   readonly model?: Model<Api>
@@ -110,15 +137,21 @@ export interface ResearchHubApplicationRuntimeOptions {
   /** Disable the initial/immediate scheduler tick while staging a replacement runtime. */
   readonly startDailyScheduler?: boolean
   readonly reasoningExecutor?: ReasoningExecutor
+  /** Shared Workflow registry for isolated runtime integrations and deterministic end-to-end tests. */
+  readonly workflowService?: WorkflowService
   /** Explicit executor seam for tests/isolated callers; normal Runtime uses the selected shared executor. */
   readonly industryReasoningExecutorFactory?: () => Promise<ReasoningExecutor>
   readonly settingsManager?: SettingsManager
   readonly resourceLoader?: DefaultResourceLoader
   readonly researchService?: ResearchService
+  /** Shared identity resolver for Application and Dispatch paths; injectable for isolated runtime tests. */
+  readonly securityIdentityResolver?: SecurityIdentityResolver
   readonly industryAcquisitionPlugins?: readonly ResearchAcquisitionPlugin[]
   readonly themeFrameworkService?: ThemeFrameworkService
   readonly industryOperatingObservationAcquisition?: IndustryOperatingObservationAcquisitionPort
   readonly industryDataResolverFactory?: IndustryDataResolverFactory
   readonly industryDataCatalog?: IndustryDataCatalog
   readonly dailyIntelligenceService?: DailyIntelligenceService
+  /** Injectable wall clock for deterministic Workflow input context tests. */
+  readonly clock?: () => Date
 }

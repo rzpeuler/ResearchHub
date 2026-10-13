@@ -56,6 +56,7 @@ function fiscalFields(row: Dict, pattern: RegExp): readonly { readonly fiscalYea
 function rowSource(company: ResearchCompanyIdentity, row: Dict, institutionKey: string, publishedAt: string, retrievedAt: string): NormalizedResearchSource {
   const sourceId = `ths-institution-${sha256(stable({ symbol: company.symbol, institutionKey, publishedAt, row }))}`
   const title = `Tonghuashun institution forecast: ${institutionKey}`
+  const sourceUrl = `https://basic.10jqka.com.cn/${encodeURIComponent(company.symbol)}/worth.html`
   const content = JSON.stringify({ provider: THS_PROVIDER, symbol: company.symbol, institution: institutionKey, publishedAt, row })
   return {
     candidate: {
@@ -63,9 +64,10 @@ function rowSource(company: ResearchCompanyIdentity, row: Dict, institutionKey: 
       kind: 'structured_data',
       tier: 3,
       title,
+      url: sourceUrl,
       provider: THS_PROVIDER,
       publishedAt,
-      metadata: { originPublisher: 'Tonghuashun / 同花顺', retrievalProvider: 'AKShare', companySymbol: company.symbol, institutionName: institutionKey },
+      metadata: { originPublisher: 'Tonghuashun / 同花顺', retrievalProvider: 'AKShare', companySymbol: company.symbol, institutionName: institutionKey, sourceUrl, sourcePageType: 'institution_forecast_table' },
     },
     retrievedAt,
     title,

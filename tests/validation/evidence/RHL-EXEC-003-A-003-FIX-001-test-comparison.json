@@ -1,0 +1,58 @@
+{
+  "taskId": "RHL-EXEC-003-A-003-FIX-001",
+  "generatedAt": "2026-10-10T18:38:25.2632850Z",
+  "baseline": {
+    "ref": "origin/main",
+    "head": "015d41431775953523ffd4d3dd753581fdf5e2fe",
+    "nodeTests": 2180,
+    "passed": 2159,
+    "failed": 21
+  },
+  "candidate": {
+    "head": "f60bce30bcf94f483f4d7720f26c0b2a549c4743",
+    "nodeTests": 2190,
+    "passed": 2169,
+    "failed": 21
+  },
+  "client": {
+    "baselineTests": 122,
+    "baselinePassed": 122,
+    "candidateTests": 122,
+    "candidatePassed": 122
+  },
+  "comparison": {
+    "newFailureCount": 0,
+    "clearedBaselineFailureCount": 0,
+    "identicalFailureSet": true
+  },
+  "failureIdentifiers": [
+    "tests\\app\\services\\research-skill-architecture.test.ts :: Workflow metadata composes canonical peers without registering composite Skill IDs",
+    "tests\\app\\services\\theme-workspace-projection.test.ts :: company projection is readable through a canonical business exposure without adding a company graph node",
+    "tests\\app\\services\\theme-workspace-projection.test.ts :: current restricted or expired source rights suppress company exposures and dependent competition data",
+    "tests\\app\\services\\theme-workspace-projection.test.ts :: Industry projection returns bounded facts, deterministic core views, publication-labeled dates, future catalysts and competition units",
+    "tests\\app\\services\\theme-workspace-projection.test.ts :: semantic section classification receives only readable facts and cannot block the base projection",
+    "tests\\app\\services\\theme-workspace-projection.test.ts :: stale expected revision and a corrupt scope ledger fail closed",
+    "tests\\app\\services\\theme-workspace-projection.test.ts :: Theme graph includes only human-confirmed scope refs, preserves direction, and never expands global edges",
+    "tests\\knowledge\\production\\competition-module-gateway.test.ts :: ChangeSet validation rejects denied or missing Raw evidence listed by a competition Module",
+    "tests\\knowledge\\production\\competition-module-gateway.test.ts :: different rows may retain different currencies and a changed column schema blocks for review",
+    "tests\\knowledge\\production\\competition-module-gateway.test.ts :: evidence-backed cell update commits, and an unavailable update preserves the prior usable value",
+    "tests\\knowledge\\production\\competition-module-gateway.test.ts :: Gateway blocks numeric Module cells that disagree with their canonical facts",
+    "tests\\knowledge\\production\\competition-module-gateway.test.ts :: Gateway creates a competition Module and maps its local proposal ID",
+    "tests\\knowledge\\production\\competition-module-gateway.test.ts :: Module blocks the whole submit when a cell reference cannot resolve",
+    "tests\\knowledge\\production\\competition-module-gateway.test.ts :: Module blocks unusable Source evidence inherited from an existing business_exposure Relation",
+    "tests\\knowledge\\production\\competition-module-gateway.test.ts :: Module blocks when the row Source payload is unusable",
+    "tests\\knowledge\\production\\competition-module-gateway.test.ts :: new Claim provenance alone cannot justify a contradictory same-reference display value",
+    "tests\\knowledge\\production\\competition-module-gateway.test.ts :: same Claim may support a canonical numeric display update after new provenance is admitted",
+    "tests\\knowledge\\production\\competition-module-gateway.test.ts :: same Industry table replays idempotently with the same canonical Module ref",
+    "tests\\knowledge\\production\\competition-module-gateway.test.ts :: Writer rejection does not report success or overwrite the prior Module",
+    "tests\\validation\\codex-module-remaining-schema-deltas.test.ts :: composition is source-immutable, deterministic and idempotent",
+    "tests\\validation\\codex-production-industry-schema-compatibility.test.ts :: FIX-015 offline evidence inputs preserve authoritative contracts and expected source sizes"
+  ],
+  "newFailureIdentifiers": [],
+  "clearedBaselineFailureIdentifiers": [],
+  "sourceLogs": [
+    "%TEMP%\\rhl-a003-fix001-npm-test-final.log; full current test identifiers exactly compared against origin/main baseline"
+  ],
+  "secretsIncluded": false,
+  "rawSourceBodiesIncluded": false
+}

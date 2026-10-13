@@ -1,0 +1,54 @@
+{
+  "taskId": "RHL-EXEC-003-A-004-FIX-001",
+  "generatedAt": "2026-10-09T08:00:00.000Z",
+  "execution": "Pi research_company Application Tool -> ResearchService -> Company Research Workflow -> DataResolver -> Acquisition Plugin -> Skill -> Gateway/Writer when explicitly authorized",
+  "knowledgeBaseSchema": "0.4",
+  "existingCompanyRef": "entity:company-600519",
+  "modelGeneratedProposalIds": [
+    "revenue-proposal",
+    "risk-proposal"
+  ],
+  "defaultPolicy": {
+    "writeKnowledge": false,
+    "workflowStatus": "completed",
+    "reportId": "company-research-600519-pi-company-tool-run",
+    "sourceRefs": [],
+    "claimRefs": [],
+    "beforeTreeSha256": "8f382097fa1352c31b256288a739fd121318bfec2e54e30a58ac1ea7f07ea887",
+    "afterTreeSha256": "8f382097fa1352c31b256288a739fd121318bfec2e54e30a58ac1ea7f07ea887"
+  },
+  "explicitReadOnlyPolicy": {
+    "writeKnowledge": false,
+    "reportId": "company-research-600519-pi-company-tool-readonly",
+    "beforeTreeSha256": "8f382097fa1352c31b256288a739fd121318bfec2e54e30a58ac1ea7f07ea887",
+    "afterTreeSha256": "8f382097fa1352c31b256288a739fd121318bfec2e54e30a58ac1ea7f07ea887"
+  },
+  "explicitlyAuthorizedPolicy": {
+    "writeKnowledge": true,
+    "workflowStatus": "completed",
+    "reportId": "company-research-600519-pi-company-tool-authorized",
+    "committedIds": [
+      "source:research-56e2e76ac69cc71c",
+      "source:research-9421ad7e29d0f0df",
+      "source:research-d9412bdfeb70c44b",
+      "claim:research-72f92aa6697f7393",
+      "claim:research-4274331af20ce202"
+    ],
+    "registryResolvedReportRefs": [
+      "entity:company-600519",
+      "source:research-56e2e76ac69cc71c",
+      "source:research-9421ad7e29d0f0df",
+      "source:research-d9412bdfeb70c44b",
+      "claim:research-72f92aa6697f7393",
+      "claim:research-4274331af20ce202"
+    ]
+  },
+  "httpSessionPolicyInputs": {
+    "omitted": false,
+    "explicitReadOnly": false,
+    "explicitAuthorized": true,
+    "followUpDuringAuthorizedPrompt": "conflict",
+    "subsequentOrdinaryPrompt": false
+  },
+  "secretsIncluded": false
+}

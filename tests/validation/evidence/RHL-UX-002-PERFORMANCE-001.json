@@ -1,0 +1,633 @@
+{
+  "taskId": "RHL-UX-002-ADR-001",
+  "measuredAt": "2026-10-12T12:46:49.5453672Z",
+  "browser": "Microsoft Edge 155.0.4283.45, headless Chromium via DevTools Protocol",
+  "clientBuild": "Production Vite build (dist/client; 182 modules; JS 656.85 kB)",
+  "runtime": "ResearchHubRuntimeServer HTTP/SSE with persistent Pi SessionManager; isolated faux provider; model network disabled",
+  "measure": "Browser performance.now() at capturing Send click handler to two requestAnimationFrame callbacks after matching .optimistic-request row appears; excludes CUA transport and accessibility-tree extraction.",
+  "instrument": "Test-only HTML injection in isolated fixture; MutationObserver detects the matching pending row; instrumentation CPU is measured inside click and observer callbacks.",
+  "instrumentationOverheadAssessment": "Handler plus observer CPU cost remains below 1 ms per sample, less than 10 percent of the measured P50; immaterial at this resolution.",
+  "statistics": {
+    "sampleCount": 100,
+    "sampleIndexRange": [
+      1,
+      100
+    ],
+    "percentileMethod": "Nearest rank: sorted[ceil(p*n)-1]",
+    "durationMs": {
+      "p50": 13.799999952316284,
+      "p95": 17.200000047683716,
+      "p99": 18.200000047683716,
+      "min": 9.800000071525574,
+      "max": 21.100000023841858
+    },
+    "instrumentationCpuMs": {
+      "p50": 0.30000007152557373,
+      "p95": 0.5,
+      "p99": 0.6000000238418579,
+      "max": 0.6000000238418579
+    }
+  },
+  "samples": [
+    {
+      "index": 1,
+      "durationMs": 15.5,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 2,
+      "durationMs": 14.299999952316284,
+      "handlerCostMs": 0.3999999761581421,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 3,
+      "durationMs": 14.599999904632568,
+      "handlerCostMs": 0.19999992847442627,
+      "observerCostMs": 0
+    },
+    {
+      "index": 4,
+      "durationMs": 11.699999928474426,
+      "handlerCostMs": 0.19999992847442627,
+      "observerCostMs": 0.09999990463256836
+    },
+    {
+      "index": 5,
+      "durationMs": 15,
+      "handlerCostMs": 0.3999999761581421,
+      "observerCostMs": 0
+    },
+    {
+      "index": 6,
+      "durationMs": 9.800000071525574,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 7,
+      "durationMs": 14.600000023841858,
+      "handlerCostMs": 0.5,
+      "observerCostMs": 0
+    },
+    {
+      "index": 8,
+      "durationMs": 10.599999904632568,
+      "handlerCostMs": 0.19999992847442627,
+      "observerCostMs": 0
+    },
+    {
+      "index": 9,
+      "durationMs": 14.799999952316284,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0.20000004768371582
+    },
+    {
+      "index": 10,
+      "durationMs": 14.5,
+      "handlerCostMs": 0.10000002384185791,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 11,
+      "durationMs": 13.399999976158142,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 12,
+      "durationMs": 15.300000071525574,
+      "handlerCostMs": 0.10000002384185791,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 13,
+      "durationMs": 10.399999976158142,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 14,
+      "durationMs": 14.399999976158142,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 15,
+      "durationMs": 10.5,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    },
+    {
+      "index": 16,
+      "durationMs": 15.099999904632568,
+      "handlerCostMs": 0.2999999523162842,
+      "observerCostMs": 0
+    },
+    {
+      "index": 17,
+      "durationMs": 10.399999976158142,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 18,
+      "durationMs": 12.600000023841858,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    },
+    {
+      "index": 19,
+      "durationMs": 12.399999976158142,
+      "handlerCostMs": 0.19999992847442627,
+      "observerCostMs": 0
+    },
+    {
+      "index": 20,
+      "durationMs": 14.599999904632568,
+      "handlerCostMs": 0.2999999523162842,
+      "observerCostMs": 0
+    },
+    {
+      "index": 21,
+      "durationMs": 10.700000047683716,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    },
+    {
+      "index": 22,
+      "durationMs": 11.100000023841858,
+      "handlerCostMs": 0.3999999761581421,
+      "observerCostMs": 0
+    },
+    {
+      "index": 23,
+      "durationMs": 11.299999952316284,
+      "handlerCostMs": 0.09999990463256836,
+      "observerCostMs": 0.09999990463256836
+    },
+    {
+      "index": 24,
+      "durationMs": 11.899999976158142,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 25,
+      "durationMs": 11.599999904632568,
+      "handlerCostMs": 0.19999992847442627,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 26,
+      "durationMs": 11.899999976158142,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 27,
+      "durationMs": 16.399999976158142,
+      "handlerCostMs": 0.2999999523162842,
+      "observerCostMs": 0
+    },
+    {
+      "index": 28,
+      "durationMs": 10.899999976158142,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 29,
+      "durationMs": 12.800000071525574,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    },
+    {
+      "index": 30,
+      "durationMs": 10.799999952316284,
+      "handlerCostMs": 0.2999999523162842,
+      "observerCostMs": 0
+    },
+    {
+      "index": 31,
+      "durationMs": 11.899999976158142,
+      "handlerCostMs": 0.19999992847442627,
+      "observerCostMs": 0
+    },
+    {
+      "index": 32,
+      "durationMs": 12.5,
+      "handlerCostMs": 0.3999999761581421,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 33,
+      "durationMs": 17.299999952316284,
+      "handlerCostMs": 0.19999992847442627,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 34,
+      "durationMs": 11.899999976158142,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    },
+    {
+      "index": 35,
+      "durationMs": 12.100000023841858,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    },
+    {
+      "index": 36,
+      "durationMs": 12.200000047683716,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 37,
+      "durationMs": 11.400000095367432,
+      "handlerCostMs": 0.10000002384185791,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 38,
+      "durationMs": 12,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0.19999992847442627
+    },
+    {
+      "index": 39,
+      "durationMs": 11.5,
+      "handlerCostMs": 0.10000002384185791,
+      "observerCostMs": 0
+    },
+    {
+      "index": 40,
+      "durationMs": 11.800000071525574,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    },
+    {
+      "index": 41,
+      "durationMs": 10.800000071525574,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 42,
+      "durationMs": 12.299999952316284,
+      "handlerCostMs": 0.19999992847442627,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 43,
+      "durationMs": 11.699999928474426,
+      "handlerCostMs": 0.2999999523162842,
+      "observerCostMs": 0.20000004768371582
+    },
+    {
+      "index": 44,
+      "durationMs": 11.800000071525574,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    },
+    {
+      "index": 45,
+      "durationMs": 12.700000047683716,
+      "handlerCostMs": 0.10000002384185791,
+      "observerCostMs": 0
+    },
+    {
+      "index": 46,
+      "durationMs": 11.600000023841858,
+      "handlerCostMs": 0.3999999761581421,
+      "observerCostMs": 0
+    },
+    {
+      "index": 47,
+      "durationMs": 14,
+      "handlerCostMs": 0.19999992847442627,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 48,
+      "durationMs": 11.200000047683716,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 49,
+      "durationMs": 11.799999952316284,
+      "handlerCostMs": 0.19999992847442627,
+      "observerCostMs": 0.09999990463256836
+    },
+    {
+      "index": 50,
+      "durationMs": 12.299999952316284,
+      "handlerCostMs": 0.2999999523162842,
+      "observerCostMs": 0
+    },
+    {
+      "index": 51,
+      "durationMs": 12.600000023841858,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    },
+    {
+      "index": 52,
+      "durationMs": 12.299999952316284,
+      "handlerCostMs": 0.2999999523162842,
+      "observerCostMs": 0
+    },
+    {
+      "index": 53,
+      "durationMs": 18.200000047683716,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    },
+    {
+      "index": 54,
+      "durationMs": 13.5,
+      "handlerCostMs": 0.6000000238418579,
+      "observerCostMs": 0
+    },
+    {
+      "index": 55,
+      "durationMs": 12.899999976158142,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 56,
+      "durationMs": 13.5,
+      "handlerCostMs": 0.2999999523162842,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 57,
+      "durationMs": 14.799999952316284,
+      "handlerCostMs": 0.5,
+      "observerCostMs": 0
+    },
+    {
+      "index": 58,
+      "durationMs": 15.200000047683716,
+      "handlerCostMs": 0.2999999523162842,
+      "observerCostMs": 0
+    },
+    {
+      "index": 59,
+      "durationMs": 14.5,
+      "handlerCostMs": 0.40000009536743164,
+      "observerCostMs": 0
+    },
+    {
+      "index": 60,
+      "durationMs": 14.100000023841858,
+      "handlerCostMs": 0.3999999761581421,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 61,
+      "durationMs": 13.299999952316284,
+      "handlerCostMs": 0.19999992847442627,
+      "observerCostMs": 0
+    },
+    {
+      "index": 62,
+      "durationMs": 14.100000023841858,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 63,
+      "durationMs": 13.300000071525574,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    },
+    {
+      "index": 64,
+      "durationMs": 17.100000023841858,
+      "handlerCostMs": 0.3999999761581421,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 65,
+      "durationMs": 17.199999928474426,
+      "handlerCostMs": 0.2999999523162842,
+      "observerCostMs": 0
+    },
+    {
+      "index": 66,
+      "durationMs": 14.299999952316284,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 67,
+      "durationMs": 14.800000071525574,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 68,
+      "durationMs": 13.899999976158142,
+      "handlerCostMs": 0.19999992847442627,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 69,
+      "durationMs": 13.799999952316284,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 70,
+      "durationMs": 13.5,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 71,
+      "durationMs": 16.5,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 72,
+      "durationMs": 14.200000047683716,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    },
+    {
+      "index": 73,
+      "durationMs": 14.399999976158142,
+      "handlerCostMs": 0.5,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 74,
+      "durationMs": 14.600000023841858,
+      "handlerCostMs": 0.2999999523162842,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 75,
+      "durationMs": 14,
+      "handlerCostMs": 0.19999992847442627,
+      "observerCostMs": 0
+    },
+    {
+      "index": 76,
+      "durationMs": 13.899999976158142,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 77,
+      "durationMs": 13.899999976158142,
+      "handlerCostMs": 0.2999999523162842,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 78,
+      "durationMs": 13.400000095367432,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 79,
+      "durationMs": 13.600000023841858,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0.09999990463256836
+    },
+    {
+      "index": 80,
+      "durationMs": 21.100000023841858,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    },
+    {
+      "index": 81,
+      "durationMs": 12,
+      "handlerCostMs": 0.10000002384185791,
+      "observerCostMs": 0
+    },
+    {
+      "index": 82,
+      "durationMs": 15.600000023841858,
+      "handlerCostMs": 0.2999999523162842,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 83,
+      "durationMs": 13.400000095367432,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    },
+    {
+      "index": 84,
+      "durationMs": 13.600000023841858,
+      "handlerCostMs": 0.6000000238418579,
+      "observerCostMs": 0
+    },
+    {
+      "index": 85,
+      "durationMs": 16.5,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    },
+    {
+      "index": 86,
+      "durationMs": 16.700000047683716,
+      "handlerCostMs": 0.20000004768371582,
+      "observerCostMs": 0
+    },
+    {
+      "index": 87,
+      "durationMs": 17.200000047683716,
+      "handlerCostMs": 0.40000009536743164,
+      "observerCostMs": 0
+    },
+    {
+      "index": 88,
+      "durationMs": 16.399999976158142,
+      "handlerCostMs": 0.5,
+      "observerCostMs": 0
+    },
+    {
+      "index": 89,
+      "durationMs": 16.899999976158142,
+      "handlerCostMs": 0.5,
+      "observerCostMs": 0
+    },
+    {
+      "index": 90,
+      "durationMs": 16.600000023841858,
+      "handlerCostMs": 0.19999992847442627,
+      "observerCostMs": 0.09999990463256836
+    },
+    {
+      "index": 91,
+      "durationMs": 17.799999952316284,
+      "handlerCostMs": 0.5,
+      "observerCostMs": 0
+    },
+    {
+      "index": 92,
+      "durationMs": 16.600000023841858,
+      "handlerCostMs": 0.5,
+      "observerCostMs": 0
+    },
+    {
+      "index": 93,
+      "durationMs": 17.09999990463257,
+      "handlerCostMs": 0.3999999761581421,
+      "observerCostMs": 0
+    },
+    {
+      "index": 94,
+      "durationMs": 16,
+      "handlerCostMs": 0.40000009536743164,
+      "observerCostMs": 0
+    },
+    {
+      "index": 95,
+      "durationMs": 17.199999928474426,
+      "handlerCostMs": 0.5,
+      "observerCostMs": 0
+    },
+    {
+      "index": 96,
+      "durationMs": 16.399999976158142,
+      "handlerCostMs": 0.2999999523162842,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 97,
+      "durationMs": 16,
+      "handlerCostMs": 0.3999999761581421,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 98,
+      "durationMs": 17.399999976158142,
+      "handlerCostMs": 0.19999992847442627,
+      "observerCostMs": 0.10000002384185791
+    },
+    {
+      "index": 99,
+      "durationMs": 16.399999976158142,
+      "handlerCostMs": 0.3999999761581421,
+      "observerCostMs": 0
+    },
+    {
+      "index": 100,
+      "durationMs": 15.899999976158142,
+      "handlerCostMs": 0.30000007152557373,
+      "observerCostMs": 0
+    }
+  ]
+}

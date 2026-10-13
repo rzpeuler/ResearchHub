@@ -1,0 +1,139 @@
+{
+  "taskId": "RHL-EXEC-003-A-003-FIX-001",
+  "target": {
+    "symbol": "002487",
+    "exchange": "SZ",
+    "period": "2025-FY",
+    "name": "大金重工"
+  },
+  "runId": "8cd45aca-d958-42cf-9b98-9270e9af63e5",
+  "report": {
+    "reportId": "earnings-review-002487-2025-FY-8cd45aca-d958-42cf-9b98-9270e9af63e5",
+    "reloadedFromRuntimeStore": true,
+    "sectionCount": 14,
+    "sourceRefs": [],
+    "claimRefs": [],
+    "subjectRefs": [],
+    "sectionSourceRefCount": 0,
+    "sectionClaimRefCount": 0,
+    "evidenceLinks": [
+      "https://datacenter.eastmoney.com/securities/api/data/get",
+      "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF"
+    ],
+    "verifiedSecurityIdentity": {
+      "symbol": "002487",
+      "exchange": "SZ",
+      "verifiedName": "大金重工",
+      "verificationSource": "akshare_security_directory",
+      "originAuthority": "S3_AGGREGATOR",
+      "verifiedAt": "2026-10-10T04:10:14.857Z",
+      "sourceId": "akshare-security-identity-directory",
+      "sourceUrl": "https://github.com/akfamily/akshare"
+    },
+    "officialFiling": "- Official filing: 2025年年度报告; issuer 大金重工; ticker 002487; fiscal year 2025; fiscal period 2025-FY; document type formal_filing; correction relation none recorded; announcement 1224997956; published 2026-03-05T16:00:00.000Z; retrieved 2026-10-10T04:19:50.931Z; publisher CNINFO; URL https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF.",
+    "structuredFinancialSource": "- Structured actuals: publisher EastMoney; retrieved by AKShare; retrieved 2026-10-10T04:19:52.150Z; published unavailable; value version UNVERIFIED (Aggregator financial numeric revision is not identified); period 2025-FY; financial source URL https://datacenter.eastmoney.com/securities/api/data/get.",
+    "metrics": [
+      "  - revenue: 6173550246.46 CNY (2025-FY)",
+      "  - net_profit: 1103297424.75 CNY (2025-FY)",
+      "  - eps: 1.73 CNY_per_share (2025-FY)",
+      "  - revenue_yoy: 63.336534205515015 percent (2025-FY)",
+      "  - net_profit_yoy: 132.82463397880633 percent (2025-FY)"
+    ]
+  },
+  "bundle": {
+    "bundleId": "research-bundle-8cd45aca-d958-42cf-9b98-9270e9af63e5",
+    "status": "completed",
+    "reloadedFromRuntimeStore": true,
+    "writeKnowledge": false,
+    "model": {
+      "called": true,
+      "validated": true,
+      "applied": true,
+      "fallbackUsed": false,
+      "repairAttempts": 0,
+      "operation": "earnings_review_synthesis",
+      "model": "zhipu-openapi/glm-5.3-flash"
+    },
+    "proposalCount": 13,
+    "acceptedProposalCount": 6,
+    "committedIds": [],
+    "canonicalSourceCount": 0,
+    "canonicalClaimCount": 0,
+    "providerOutcomes": [
+      {
+        "provider": "cninfo",
+        "providerAttempted": true,
+        "providerSucceeded": true,
+        "providerEmpty": false,
+        "providerFailed": false,
+        "usableSourceCount": 1
+      },
+      {
+        "provider": "akshare",
+        "providerAttempted": true,
+        "providerSucceeded": true,
+        "providerEmpty": false,
+        "providerFailed": false,
+        "usableSourceCount": 1
+      },
+      {
+        "provider": "ths-institution-forecast",
+        "providerAttempted": true,
+        "providerSucceeded": false,
+        "providerEmpty": true,
+        "providerFailed": false,
+        "usableSourceCount": 0
+      },
+      {
+        "provider": "eastmoney-individual-research-report",
+        "providerAttempted": true,
+        "providerSucceeded": false,
+        "providerEmpty": true,
+        "providerFailed": false,
+        "usableSourceCount": 0
+      }
+    ]
+  },
+  "knowledgeBase": {
+    "schemaVersion": "0.4",
+    "revisionBefore": 0,
+    "revisionAfter": 0,
+    "canonicalObjectCountsBefore": {
+      "entity": 0,
+      "source": 0,
+      "claim": 0,
+      "observation": 0,
+      "revision": 0
+    },
+    "canonicalObjectCountsAfter": {
+      "entity": 0,
+      "source": 0,
+      "claim": 0,
+      "observation": 0,
+      "revision": 0
+    },
+    "fullTreeSnapshotUnchanged": true,
+    "fullTreeDigestBefore": "dc54052ddc8ac7dbc4641f79cc1b5dc88d7b77e5c5eac0ed011881c387d85ff9",
+    "fullTreeDigestAfter": "dc54052ddc8ac7dbc4641f79cc1b5dc88d7b77e5c5eac0ed011881c387d85ff9",
+    "rawArchive": {
+      "directoryPresent": true,
+      "entryCountBefore": 0,
+      "entryCountAfter": 0,
+      "unchanged": true
+    },
+    "rawRegistry": {
+      "existsBefore": true,
+      "existsAfter": true,
+      "lengthBytes": 3,
+      "sha256Before": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "sha256After": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    "manifest": {
+      "sha256Before": "4d445f193a10838aa3464a6fd73c32900d5ef3fdfe6b9b30e5463577b0492bbb",
+      "sha256After": "4d445f193a10838aa3464a6fd73c32900d5ef3fdfe6b9b30e5463577b0492bbb"
+    },
+    "sourceOfUnchangedClaim": "production E2E full path-and-file SHA-256 snapshot comparison"
+  },
+  "secretsIncluded": false,
+  "rawSourceBodiesIncluded": false
+}

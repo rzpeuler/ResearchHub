@@ -4,7 +4,7 @@ import { pipeline } from 'node:stream/promises'
 import { createReadStream } from 'node:fs'
 import { lstat, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
-import { ApplicationServiceError, type EarningsReviewInput, type EventAnchor, type EventResearchInput, type IndustryResearchInput, type IngestDocumentInput, type KnowledgeGraphProjectionInput, type KnowledgeSearchInput, type ReviewCaseListInput, type ResearchCompanyInput, type ThesisRedTeamInput, type ValuationInput, type ValuationMethod, type RawDocumentPreviewV04Input } from '../services/contracts.ts'
+import { ApplicationServiceError, type EarningsReviewInput, type EventAnchor, type EventResearchInput, type IndustryResearchInput, type IngestDocumentInput, type KnowledgeGraphProjectionInput, type KnowledgeSearchInput, type ReviewCaseListInput, type ThesisRedTeamInput, type ValuationMethod, type RawDocumentPreviewV04Input } from '../services/contracts.ts'
 import type { DailyBriefType } from '../../plugins/daily-intelligence/contracts.ts'
 import { createResearchHubApplicationRuntime, ResearchHubApplicationRuntime } from './application-runtime.ts'
 import { AttachmentService, DEFAULT_MAX_ATTACHMENT_BYTES } from './attachment-service.ts'
@@ -12,7 +12,7 @@ import { ClientEventStream } from './event-stream.ts'
 import { RuntimeSecurity, RuntimeSecurityError, assertLoopbackBindAddress, type LoopbackBindAddress } from './security.ts'
 import type { CurrentSessionState, ResearchHubApplicationRuntimeOptions } from './contracts.ts'
 import { safeIdentifier, safeSummary, type ClientEvent } from './client-events.ts'
-import type { ResearchDispatchService } from '../services/research-dispatch-service.ts'
+import type { ResearchDispatchResolution, ResearchDispatchService } from '../services/research-dispatch-service.ts'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { THEME_SCOPE_V04_LIMITS } from '../../knowledge/governance/theme-scope-v04.ts'
 import { normalizeResearchRequest } from '../services/research-dispatch-contracts.ts'
@@ -23,6 +23,7 @@ import type { KnowledgeTopicFilters, KnowledgeTopicKind, KnowledgeTopicPageInput
 import { configuredKnowledgeBaseCatalogRoot, discoverKnowledgeBases, requireKnowledgeBaseChoice, resolveInitialKnowledgeBase, type ResolvedKnowledgeBase } from './knowledge-selection.ts'
 import { readRuntimeSettings, writeRuntimeSettings, type RuntimeSettings } from './runtime-settings.ts'
 import { ModelLoginFlowManager } from './model-login-flow.ts'
+import { ConversationStateStoreError, normalizeConversationTitle } from './conversation-state-store.ts'
 import { addModelConnection, listSafeModelConnectionStatus, loadModelConnections, saveModelProviderApiKey } from './model-connections.ts'
 import { addRegisteredKnowledgeBase, listRegisteredKnowledgeBases, removeRegisteredKnowledgeBase, validateKnowledgeBaseDirectory, type RegisteredKnowledgeBase } from './knowledge-registration.ts'
 import { getDataSourceCatalog } from '../services/data-source-catalog.ts'
@@ -45,6 +46,18 @@ const TOKEN_HEADER = 'x-researchhub-runtime-token'
 const MAX_SSE_PENDING_FRAMES = 64
 const MAX_BACKGROUND_OPERATIONS = 128
 const CLIENT_MIME_TYPES: Readonly<Record<string, string>> = { '.css': 'text/css; charset=utf-8', '.gif': 'image/gif', '.html': 'text/html; charset=utf-8', '.ico': 'image/x-icon', '.jpeg': 'image/jpeg', '.jpg': 'image/jpeg', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.map': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8', '.webp': 'image/webp', '.woff': 'font/woff', '.woff2': 'font/woff2' }
+
+function publicDispatchResolution(resolution: ResearchDispatchResolution | undefined): ResearchDispatchResolution | undefined {
+  if (resolution === undefined) return undefined
+  const diagnostics = new Set<string>()
+  if (resolution.source === 'bounded_repair') diagnostics.add('invalid_semantic_output_repaired')
+  if (resolution.source === 'deterministic_fallback') {
+    if (resolution.diagnostics.includes('reasoning_executor_unconfigured')) diagnostics.add('reasoning_executor_unconfigured')
+    else diagnostics.add('semantic_output_rejected')
+    diagnostics.add('deterministic_fallback_used')
+  }
+  return { source: resolution.source, attempts: resolution.attempts, diagnostics: [...diagnostics] }
+}
 const THESIS_CRITERION_PREVIEW_FIELDS = ['knowledgeBaseId', 'expectedKnowledgeBaseRevision', 'thesisRef', 'conditionId', 'revision', 'type', 'definitionVersion', 'definition', 'targetClaimRefs', 'origin', 'definitionHash', 'previewHash'] as const
 const DISABLED_MODEL_CAPABILITIES: ReasoningCapabilities = { maxContextTokens: 1, maxOutputTokens: 1, structuredOutputSupport: false, maxConcurrency: 1 }
 
@@ -142,6 +155,7 @@ function httpStatus(code: string): number {
 
 function errorCode(error: unknown): string {
   if (error instanceof ApplicationServiceError) return error.code
+  if (error instanceof ConversationStateStoreError) return error.code
   if (error instanceof RuntimeSecurityError) return 'unauthorized_runtime_token'
   return 'failed'
 }
@@ -149,6 +163,7 @@ function errorCode(error: unknown): string {
 function safeError(error: unknown): { readonly code: string; readonly error: string } {
   if (error instanceof DataSourceRouteError) return { code: error.code, error: error.message }
   const code = errorCode(error)
+  if (error instanceof ConversationStateStoreError) return { code, error: safeSummary(error.message, 300) || 'Conversation operation failed' }
   if (code === 'unauthorized_runtime_token') return { code, error: 'Runtime request authorization failed' }
   if (error instanceof ApplicationServiceError) return { code, error: safeSummary(error.message, 300) || 'Application operation failed' }
   if (code === 'not_found') return { code, error: 'Resource not found' }
@@ -1041,6 +1056,7 @@ export class ResearchHubRuntimeServer {
     if (method === 'GET' && path === '/api/research-reports') { const service = this.runtime!.researchService; if (!service) throw new ApplicationServiceError('not_found', 'Research Reports are not configured'); await this.sendJson(response, 200, { reports: await service.listResearchReports(positiveInteger(url.searchParams.get('limit'))) }); return }
     if (method === 'GET' && path === '/api/research/workflows') { await this.sendJson(response, 200, { workflows: this.runtime!.services.researchDispatchService?.listWorkflowDefinitions() ?? [] }); return }
     if (method === 'GET' && path === '/api/research/bundles') { const service = this.runtime!.services.researchDispatchService; if (!service) throw new ApplicationServiceError('not_found', 'Research dispatch is not configured'); await this.sendJson(response, 200, { bundles: await service.listBundles(positiveInteger(url.searchParams.get('limit'))) }); return }
+    if (method === 'GET' && path.startsWith('/api/research/bundles/by-run/')) { const service = this.runtime!.services.researchDispatchService; if (!service) throw new ApplicationServiceError('not_found', 'Research dispatch is not configured'); const bundle = await service.getBundleForRun(decodeSegment(path.split('/')[5] ?? '')); if (bundle === undefined) throw new ApplicationServiceError('not_found', 'ResearchBundle not found for Workflow run'); await this.sendJson(response, 200, bundle); return }
     if (method === 'GET' && path.startsWith('/api/research/bundles/')) { const service = this.runtime!.services.researchDispatchService; if (!service) throw new ApplicationServiceError('not_found', 'Research dispatch is not configured'); const bundle = await service.getBundle(decodeSegment(path.split('/')[4] ?? '')); if (bundle === undefined) throw new ApplicationServiceError('not_found', 'ResearchBundle not found'); await this.sendJson(response, 200, bundle); return }
     if (method === 'POST' && path === '/api/research/source-library/search') { const body = await this.readJson(request); const context = body.contextPolicy as { readonly sourceLibrary?: unknown } | undefined; if (context !== undefined && context.sourceLibrary !== true) { await this.sendJson(response, 200, { enabled: false, hits: [] }); return } if (!this.runtime!.mountedKnowledgeBaseRoot || !this.runtime!.services.sourceLibraryService) throw new ApplicationServiceError('no_kb_mounted', 'Source Library requires a mounted Knowledge Base'); const query = this.stringField(body, 'query', 2_000); const handle = await new KnowledgeBaseRegistry().mount(this.runtime!.mountedKnowledgeBaseRoot); const hits = await this.runtime!.services.sourceLibraryService.search(handle, { query, limit: body.limit === undefined ? undefined : this.optionalPositive(body, 'limit') }); await this.sendJson(response, 200, { enabled: true, hits }); return }
     if (method === 'POST' && path === '/api/research/dispatch') { await this.dispatchResearch(request, response); return }
@@ -1061,9 +1077,18 @@ export class ResearchHubRuntimeServer {
       if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Thesis decisions require a mounted Schema 0.4 Knowledge Base')
       await this.sendJson(response, 200, await service.decide({ reviewCaseId, decision: decision as 'ACCEPT' | 'REJECT' | 'DEFER', ...(note === undefined ? {} : { note }) })); return
     }
-    if (method === 'GET' && (path === '/api/conversations' || path === '/api/conversation/list')) { await this.sendJson(response, 200, { conversations: await this.runtime!.sessionRuntime.listConversations() }); return }
-    if (method === 'GET' && (path === '/api/conversations/current' || path === '/api/conversation/current')) { await this.sendJson(response, 200, this.sessionState()); return }
-    if (method === 'GET' && (path === '/api/conversations/messages' || path === '/api/conversation/messages')) { await this.sendJson(response, 200, { conversationId: this.sessionState().conversationId, messages: this.runtime!.sessionRuntime.getCurrentMessages() }); return }
+    if (method === 'GET' && (path === '/api/conversations' || path === '/api/conversation/list')) {
+      const archivedValue = url.searchParams.get('archived')
+      if (archivedValue !== null && archivedValue !== '0' && archivedValue !== '1') throw new ApplicationServiceError('invalid_input', 'archived must be 0 or 1')
+      const search = url.searchParams.get('search') ?? undefined
+      await this.sendJson(response, 200, { conversations: await this.runtime!.sessionRuntime.listConversations({ ...(archivedValue === null ? {} : { archived: archivedValue === '1' }), ...(search === undefined ? {} : { search }) }) }); return
+    }
+    if (method === 'GET' && (path === '/api/conversations/current' || path === '/api/conversation/current')) { await this.sendJson(response, 200, await this.runtime!.sessionRuntime.getCurrentStateWithConversationTitle()); return }
+    if (method === 'GET' && (path === '/api/conversations/messages' || path === '/api/conversation/messages')) { const conversationId = this.sessionState().conversationId; await this.sendJson(response, 200, { conversationId, messages: this.runtime!.sessionRuntime.getCurrentMessages(), activities: await this.runtime!.sessionRuntime.conversationActivities(conversationId) }); return }
+    if (method === 'POST' && path === '/api/conversations/requests/accept') { await this.acceptConversationRequest(request, response); return }
+    if (method === 'GET' && /^\/api\/conversations\/[^/]+\/activities$/.test(path)) { const conversationId = decodeSegment(path.split('/')[3]!); await this.sendJson(response, 200, { conversationId, activities: await this.runtime!.sessionRuntime.conversationActivities(conversationId) }); return }
+    if (method === 'PATCH' && /^\/api\/conversations\/[^/]+\/metadata$/.test(path)) { await this.updateConversationMetadata(request, response, decodeSegment(path.split('/')[3]!)); return }
+    if (method === 'POST' && /^\/api\/conversations\/[^/]+\/(archive|restore)$/.test(path)) { const [, , , conversationId, action] = path.split('/'); await this.updateConversationArchive(request, response, decodeSegment(conversationId!), action === 'archive'); return }
     if (method === 'POST' && (path === '/api/conversations/new' || path === '/api/conversation/new')) { const body = await this.readJson(request); await this.sendJson(response, 200, await this.runtime!.sessionRuntime.createConversation(this.optionalString(body, 'name', MAX_SESSION_NAME_LENGTH))); return }
     if (method === 'POST' && (path === '/api/conversations/switch' || path === '/api/conversation/switch')) { const body = await this.readJson(request); await this.sendJson(response, 200, await this.runtime!.sessionRuntime.switchConversation(this.stringField(body, 'conversationId'))); return }
     if (method === 'POST' && (path === '/api/conversations/prompt' || path === '/api/conversation/prompt')) { await this.acceptConversationCommand(request, response, 'prompt'); return }
@@ -1088,8 +1113,8 @@ export class ResearchHubRuntimeServer {
   }
 
   private async bootstrap(response: ServerResponse): Promise<void> {
-    const session = this.sessionState()
     const conversations = await this.runtime!.sessionRuntime.listConversations()
+    const session = await this.runtime!.sessionRuntime.getCurrentStateWithConversationTitle()
     let knowledgeBase: unknown = undefined
     let openReviewCases: number | undefined
     let knowledgeError: { readonly code: string; readonly error: string } | undefined
@@ -1245,13 +1270,62 @@ export class ResearchHubRuntimeServer {
   private searchInputFromQuery(url: URL): { readonly query: string; readonly entityType?: string; readonly limit?: number } { const limit = positiveInteger(url.searchParams.get('limit')); return { query: url.searchParams.get('query') ?? '', ...(url.searchParams.has('entityType') ? { entityType: url.searchParams.get('entityType')! } : {}), ...(limit === undefined ? {} : { limit }) } }
   private reviewInputFromQuery(url: URL): ReviewCaseListInput { const limit = positiveInteger(url.searchParams.get('limit')); return { ...(limit === undefined ? {} : { limit }), ...(url.searchParams.has('actionability') ? { actionability: url.searchParams.get('actionability')! as ReviewCaseListInput['actionability'] } : {}), ...(url.searchParams.has('category') ? { category: url.searchParams.get('category')! } : {}), ...(url.searchParams.has('producerRunId') ? { producerRunId: url.searchParams.get('producerRunId')! } : {}) } }
 
+  private async acceptConversationRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const body = await this.readJson(request)
+    if (Object.keys(body).some((key) => !['conversationId', 'operationId', 'requestText', 'operation', 'workflowRegistryId'].includes(key))) throw new ApplicationServiceError('invalid_input', 'accepted request contains unsupported fields')
+    const conversationId = this.stringField(body, 'conversationId', 128)
+    const operationId = this.stringField(body, 'operationId', 128)
+    const requestText = this.stringField(body, 'requestText', MAX_MESSAGE_LENGTH)
+    const operation = this.stringField(body, 'operation', 20)
+    if (!['prompt', 'steer', 'follow_up'].includes(operation)) throw new ApplicationServiceError('invalid_input', 'operation must be prompt, steer, or follow_up')
+    const workflowRegistryId = this.optionalString(body, 'workflowRegistryId', 160)
+    if (workflowRegistryId !== undefined && operation !== 'prompt') throw new ApplicationServiceError('invalid_input', 'workflowRegistryId is only valid for prompt operations')
+    await this.runtime!.sessionRuntime.getConversationSummary(conversationId)
+    const result = await this.runtime!.sessionRuntime.conversationStateStore.acceptRequest(conversationId, { operationId, requestText, operation: operation as 'prompt' | 'steer' | 'follow_up', ...(workflowRegistryId === undefined ? {} : { workflowRegistryId }) })
+    await this.sendJson(response, 200, { accepted: true, conversationId, operationId, status: result.request.lifecycle, ...(result.request.workflowRunId === undefined ? {} : { workflowRunId: result.request.workflowRunId }) })
+  }
+
+  private async updateConversationMetadata(request: IncomingMessage, response: ServerResponse, conversationId: string): Promise<void> {
+    const body = await this.readJson(request)
+    if (Object.keys(body).some((key) => !['name', 'expectedVersion'].includes(key)) || typeof body.name !== 'string' || !Number.isSafeInteger(body.expectedVersion) || (body.expectedVersion as number) < 0) throw new ApplicationServiceError('invalid_input', 'metadata requires name and expectedVersion')
+    await this.runtime!.sessionRuntime.getConversationSummary(conversationId)
+    await this.runtime!.sessionRuntime.conversationStateStore.renameConversation(conversationId, body.name, body.expectedVersion as number)
+    await this.sendJson(response, 200, await this.runtime!.sessionRuntime.getConversationSummary(conversationId))
+  }
+
+  private async updateConversationArchive(request: IncomingMessage, response: ServerResponse, conversationId: string, archived: boolean): Promise<void> {
+    const body = await this.readJson(request)
+    if (Object.keys(body).some((key) => key !== 'expectedVersion') || !Number.isSafeInteger(body.expectedVersion) || (body.expectedVersion as number) < 0) throw new ApplicationServiceError('invalid_input', 'archive mutation requires expectedVersion')
+    await this.runtime!.sessionRuntime.getConversationSummary(conversationId)
+    await this.runtime!.sessionRuntime.conversationStateStore.archiveConversation(conversationId, archived, body.expectedVersion as number)
+    await this.sendJson(response, 200, await this.runtime!.sessionRuntime.getConversationSummary(conversationId))
+  }
+
   private async acceptConversationCommand(request: IncomingMessage, response: ServerResponse, operation: 'prompt' | 'steer' | 'followUp'): Promise<void> {
     const body = await this.readJson(request)
     const text = this.stringField(body, 'text', MAX_MESSAGE_LENGTH) || this.stringField(body, 'prompt', MAX_MESSAGE_LENGTH)
     if (text.trim() === '') throw new ApplicationServiceError('invalid_input', 'conversation text is required')
     this.ensureRunning()
-    const conversationId = this.runtime!.sessionRuntime.getCurrentState().conversationId
-    const runId = randomUUID()
+    const activeConversationId = this.runtime!.sessionRuntime.getCurrentState().conversationId
+    const conversationId = this.optionalString(body, 'conversationId', 128) ?? activeConversationId
+    if (conversationId !== activeConversationId) throw new ApplicationServiceError('conflict', 'conversation command must target the active Pi conversation')
+    const operationName = operation === 'followUp' ? 'follow_up' : operation
+    const operationId = this.optionalString(body, 'operationId', 128) ?? randomUUID()
+    const store = this.runtime!.sessionRuntime.conversationStateStore
+    const existing = await store.get(conversationId)
+    const prior = existing?.acceptedRequests.find((item) => item.operationId === operationId)
+    if (prior !== undefined) {
+      if (prior.requestText !== text || prior.operation !== operationName) throw new ApplicationServiceError('conflict', 'operationId was accepted with a different payload')
+    } else {
+      await store.acceptRequest(conversationId, { operationId, requestText: text, operation: operationName })
+    }
+    const claimed = await store.claimChatCommand(conversationId, operationId)
+    if (!claimed.mayDispatch) {
+      const record = claimed.state.acceptedRequests.find((item) => item.operationId === operationId)!
+      await this.sendJson(response, 202, { accepted: record.lifecycle === 'started', conversationId, run: { runId: operationId, operation }, ...(record.lifecycle === 'interrupted' ? { status: 'interrupted' } : record.lifecycle === 'submitting' ? { status: 'pending' } : {}) })
+      return
+    }
+    const runId = operationId
     if (operation === 'prompt') {
       const bundleRunId = this.optionalString(body, 'researchBundleId', 160)
       let policy: ResearchHubRequestPolicy | undefined
@@ -1263,8 +1337,9 @@ export class ResearchHubRuntimeServer {
       }
       const beforeMessageCount = this.runtime!.sessionRuntime.getCurrentMessages().length
       const researchContext = bundleRunId === undefined ? undefined : await this.runtime!.services.researchDispatchService?.getSessionResearchContext(bundleRunId)
-      const started = this.runtime!.sessionRuntime.startPrompt(text, policy, researchContext)
+      const started = this.runtime!.sessionRuntime.startPrompt(text, policy, researchContext, operationId)
       await started.accepted
+      await store.completeSubmission(conversationId, operationId, { kind: 'chat', outcome: 'started' })
       const completion = started.completion.then(async () => {
         if (bundleRunId === undefined) return
         const assistantText = this.runtime!.sessionRuntime.getCurrentMessages().slice(beforeMessageCount).filter((message) => message.role === 'assistant').map((message) => message.content).at(-1) ?? ''
@@ -1272,8 +1347,9 @@ export class ResearchHubRuntimeServer {
       })
       this.trackBackground(completion, () => this.runtime!.sessionRuntime.abort())
     } else {
-      const command = operation === 'steer' ? this.runtime!.sessionRuntime.steer(text) : this.runtime!.sessionRuntime.followUp(text)
+      const command = operation === 'steer' ? this.runtime!.sessionRuntime.steer(text, operationId) : this.runtime!.sessionRuntime.followUp(text, operationId)
       await command
+      await store.completeSubmission(conversationId, operationId, { kind: 'chat', outcome: 'started' })
       this.trackBackground(command, () => this.runtime!.sessionRuntime.abort())
     }
     await this.sendJson(response, 202, { accepted: true, conversationId, run: { runId, operation } })
@@ -1373,23 +1449,27 @@ export class ResearchHubRuntimeServer {
     await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
   }
   private async startCompanyResearch(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const service = this.runtime!.researchService
-    if (!service) throw new ApplicationServiceError('failed', 'Company Research is not configured for this runtime')
-    const body = await this.readJson(request); this.ensureRunning(); const symbol = this.stringField(body, 'symbol', 6); const name = this.optionalString(body, 'name', 500); const exchange = this.optionalString(body, 'exchange', 50); const asOf = this.optionalString(body, 'asOf', 100); const input: ResearchCompanyInput = { workflowRunId: randomUUID(), symbol, ...(name === undefined ? {} : { name }), ...(exchange === undefined ? {} : { exchange }), ...(asOf === undefined ? {} : { asOf }) }; const controller = new AbortController(); const started = service.startResearchCompany(input, controller.signal); this.trackBackground(started.completion, () => controller.abort()); await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
+    const body = await this.readJson(request); this.ensureRunning(); const symbol = this.stringField(body, 'symbol', 6); const name = this.optionalString(body, 'name', 500); const exchange = this.optionalString(body, 'exchange', 50); const asOf = this.optionalString(body, 'asOf', 100); const maxSources = body.maxSources === undefined ? undefined : this.integerField(body, 'maxSources', 1, 50); const args = { symbol, ...(name === undefined ? {} : { name }), ...(exchange === undefined ? {} : { exchange }), ...(asOf === undefined ? {} : { asOf }), ...(maxSources === undefined ? {} : { maxSources }) }; await this.startExplicitResearchWorkflow(response, 'company_research', args, `Company Research ${name ?? symbol} (${symbol}${exchange ? `.${exchange}` : ''})`)
   }
   private async startIndustryResearch(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const service = this.runtime!.researchService; if (!service) throw new ApplicationServiceError('failed', 'Industry Research is not configured for this runtime')
     const body = await this.readJson(request); this.ensureRunning(); const workflowRunId = this.optionalString(body, 'workflowRunId', 120) ?? randomUUID(); const name = this.stringField(body, 'name', 200); const aliases = body.aliases === undefined ? undefined : this.stringArray(body, 'aliases', 8, 120); const searchTerms = body.searchTerms === undefined ? undefined : this.stringArray(body, 'searchTerms', 8, 120); const canonicalRef = this.optionalString(body, 'canonicalRef', 200); const asOf = this.optionalString(body, 'asOf', 100); const maxSources = body.maxSources === undefined ? undefined : this.integerField(body, 'maxSources', 1, 50); const maxEvidencePerModule = body.maxEvidencePerModule === undefined ? undefined : this.integerField(body, 'maxEvidencePerModule', 1, 12); const input: IndustryResearchInput = { workflowRunId, name, ...(aliases === undefined ? {} : { aliases }), ...(searchTerms === undefined ? {} : { searchTerms }), ...(canonicalRef === undefined ? {} : { canonicalRef }), ...(asOf === undefined ? {} : { asOf }), ...(maxSources === undefined ? {} : { maxSources }), ...(maxEvidencePerModule === undefined ? {} : { maxEvidencePerModule }) }; const controller = new AbortController(); const started = service.startIndustryResearch(input, controller.signal); this.trackBackground(started.completion, () => controller.abort()); await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
   }
   private async startEarningsReview(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const service = this.runtime!.researchService
-    if (!service) throw new ApplicationServiceError('failed', 'Earnings Review is not configured for this runtime')
-    const body = await this.readJson(request); this.ensureRunning(); const symbol = this.stringField(body, 'symbol', 6); const name = this.optionalString(body, 'name', 500); const exchange = this.optionalString(body, 'exchange', 50); const asOf = this.optionalString(body, 'asOf', 100); const workflowRunId = this.optionalString(body, 'workflowRunId', 120) ?? randomUUID(); const fiscalYear = this.integerField(body, 'fiscalYear', 1900, 2200); const period = this.stringField(body, 'period', 2) as EarningsReviewInput['period']; const input: EarningsReviewInput = { workflowRunId, symbol, fiscalYear, period, ...(name === undefined ? {} : { name }), ...(exchange === undefined ? {} : { exchange }), ...(asOf === undefined ? {} : { asOf }) }; const controller = new AbortController(); const started = service.startEarningsReview(input, controller.signal); this.trackBackground(started.completion, () => controller.abort()); await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
+    const body = await this.readJson(request); this.ensureRunning(); const symbol = this.stringField(body, 'symbol', 6); const name = this.optionalString(body, 'name', 500); const exchange = this.optionalString(body, 'exchange', 50); const asOf = this.optionalString(body, 'asOf', 100); const fiscalYear = this.integerField(body, 'fiscalYear', 1900, 2200); const period = this.stringField(body, 'period', 2) as EarningsReviewInput['period']; if (!['Q1', 'H1', 'Q3', 'FY'].includes(period)) throw new ApplicationServiceError('invalid_input', 'period must be Q1, H1, Q3, or FY'); const args = { symbol, fiscalYear, period, ...(name === undefined ? {} : { name }), ...(exchange === undefined ? {} : { exchange }), ...(asOf === undefined ? {} : { asOf }) }; await this.startExplicitResearchWorkflow(response, 'earnings_review', args, `Earnings Review ${name ?? symbol} (${symbol}${exchange ? `.${exchange}` : ''}) FY${fiscalYear} ${period}`)
   }
   private async startValuation(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const service = this.runtime!.researchService
-    if (!service) throw new ApplicationServiceError('failed', 'Valuation is not configured for this runtime')
-    const body = await this.readJson(request); this.ensureRunning(); const symbol = this.stringField(body, 'symbol', 6); const name = this.optionalString(body, 'name', 500); const exchange = this.optionalString(body, 'exchange', 50); const asOf = this.optionalString(body, 'asOf', 100); const workflowRunId = this.optionalString(body, 'workflowRunId', 120) ?? randomUUID(); const targetFiscalYear = body.targetFiscalYear === undefined ? undefined : this.integerField(body, 'targetFiscalYear', 1900, 2200); const rawMethods = body.methods; if (rawMethods !== undefined && (!Array.isArray(rawMethods) || rawMethods.some((method) => typeof method !== 'string' || !['PE', 'PB', 'EV_EBITDA'].includes(method)))) throw new ApplicationServiceError('invalid_input', 'methods must contain only PE, PB, or EV_EBITDA'); const methods = rawMethods === undefined ? undefined : rawMethods as ValuationMethod[]; const input: ValuationInput = { workflowRunId, symbol, ...(name === undefined ? {} : { name }), ...(exchange === undefined ? {} : { exchange }), ...(asOf === undefined ? {} : { asOf }), ...(methods === undefined ? {} : { methods }), ...(targetFiscalYear === undefined ? {} : { targetFiscalYear }) }; const controller = new AbortController(); const started = service.startValuation(input, controller.signal); this.trackBackground(started.completion, () => controller.abort()); await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
+    const body = await this.readJson(request); this.ensureRunning(); const symbol = this.stringField(body, 'symbol', 6); const name = this.optionalString(body, 'name', 500); const exchange = this.optionalString(body, 'exchange', 50); const asOf = this.optionalString(body, 'asOf', 100); const targetFiscalYear = body.targetFiscalYear === undefined ? undefined : this.integerField(body, 'targetFiscalYear', 1900, 2200); const rawMethods = body.methods; if (rawMethods !== undefined && (!Array.isArray(rawMethods) || rawMethods.some((method) => typeof method !== 'string' || !['PE', 'PB', 'EV_EBITDA'].includes(method)))) throw new ApplicationServiceError('invalid_input', 'methods must contain only PE, PB, or EV_EBITDA'); const methods = rawMethods === undefined ? undefined : rawMethods as ValuationMethod[]; const args = { symbol, ...(name === undefined ? {} : { name }), ...(exchange === undefined ? {} : { exchange }), ...(asOf === undefined ? {} : { asOf }), ...(methods === undefined ? {} : { methods }), ...(targetFiscalYear === undefined ? {} : { targetFiscalYear }) }; await this.startExplicitResearchWorkflow(response, 'valuation', args, `Valuation ${name ?? symbol} (${symbol}${exchange ? `.${exchange}` : ''})`)
+  }
+
+  private async startExplicitResearchWorkflow(response: ServerResponse, workflowId: 'company_research' | 'valuation' | 'earnings_review', args: Readonly<Record<string, unknown>>, query: string): Promise<void> {
+    const dispatch = this.runtime?.services.researchDispatchService
+    if (!dispatch) throw new ApplicationServiceError('failed', `${workflowId} is not configured for this runtime`)
+    const controller = new AbortController()
+    const started = await dispatch.startExplicitWorkflow({ query, mode: { type: 'workflow', workflowId }, workflowArgumentContext: { workflowId, arguments: args }, contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } }, controller.signal)
+    if (started.status !== 'started' || started.runId === undefined || started.completion === undefined) throw new ApplicationServiceError('invalid_input', started.feedback?.reason ?? `Unable to start ${workflowId}`)
+    this.trackBackground(started.completion, () => controller.abort())
+    await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId), ...(started.verifiedSecurityIdentity === undefined ? {} : { verifiedSecurityIdentity: started.verifiedSecurityIdentity }) })
   }
     private async startEventResearch(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const service = this.runtime!.researchService
@@ -1416,16 +1496,120 @@ export class ResearchHubRuntimeServer {
     const body = await this.readJson(request)
     this.ensureRunning()
     const controller = new AbortController()
-    const started = await service.startAsync(body, controller.signal)
+    const conversationId = typeof body.conversationId === 'string' ? body.conversationId : undefined
+    const operationId = typeof body.operationId === 'string' ? body.operationId : undefined
+    let reservedRunId: string | undefined
+    let claimed = false
+    let acceptedRequest: import('./conversation-state-store.ts').AcceptedConversationRequest | undefined
+    {
+      if (conversationId === undefined || operationId === undefined || typeof body.query !== 'string') throw new ApplicationServiceError('invalid_input', 'conversationId, operationId, and query are required together')
+      await this.runtime!.sessionRuntime.getConversationSummary(conversationId)
+      const mode = isRecord(body.mode) && body.mode.type === 'workflow' && typeof body.mode.workflowId === 'string' ? body.mode.workflowId : undefined
+      const store = this.runtime!.sessionRuntime.conversationStateStore
+      let state = await store.get(conversationId)
+      acceptedRequest = state?.acceptedRequests.find((item) => item.operationId === operationId)
+      if (acceptedRequest === undefined) {
+        const accepted = await store.acceptRequest(conversationId, { operationId, requestText: body.query, operation: 'prompt', ...(mode === undefined ? {} : { workflowRegistryId: mode }) })
+        state = accepted.state; acceptedRequest = accepted.request
+      }
+      if (acceptedRequest.requestText !== body.query || acceptedRequest.operation !== 'prompt' || acceptedRequest.acceptedWorkflowRegistryId !== mode) throw new ApplicationServiceError('conflict', 'operationId was accepted with a different dispatch payload')
+      if (acceptedRequest.lifecycle !== 'accepted') {
+        await this.sendDispatchReplay(response, conversationId, acceptedRequest)
+        return
+      }
+      reservedRunId = randomUUID()
+      const claim = await store.claimSubmission(conversationId, operationId, reservedRunId)
+      if (!claim.mayDispatch) {
+        const record = claim.state.acceptedRequests.find((item) => item.operationId === operationId)!
+        await this.sendDispatchReplay(response, conversationId, record)
+        return
+      }
+      claimed = true
+    }
+    let started: Awaited<ReturnType<ResearchDispatchService['startAsync']>>
+    try {
+      started = await service.startAsync(body, controller.signal, reservedRunId)
+    } catch (error) {
+      if (claimed) await this.runtime!.sessionRuntime.conversationStateStore.markDispatchFailed(conversationId!, operationId!, 'dispatch_failed').catch(() => undefined)
+      throw error
+    }
+    if (claimed) {
+      const store = this.runtime!.sessionRuntime.conversationStateStore
+      if (started.status === 'started' && started.runId !== undefined) {
+        const workflowId = started.decision.workflow?.id ?? acceptedRequest?.workflowRegistryId ?? 'workflow'
+        const workflow = this.runtime!.services.researchDispatchService?.listWorkflowDefinitions().find((definition) => definition.id === workflowId)
+        const args = started.decision.workflow?.arguments ?? {}
+        const schemaProperties = workflow?.inputSchema.properties
+        const isSecurityWorkflow = ['company_research', 'valuation', 'earnings_review'].includes(workflowId)
+          || (isRecord(schemaProperties) && Object.hasOwn(schemaProperties, 'symbol'))
+        const normalizedSymbol = typeof args.symbol === 'string' && /^\d{6}$/.test(args.symbol.trim()) ? args.symbol.trim() : undefined
+        const verifiedName = started.verifiedSecurityIdentity?.verifiedName.trim()
+        const subject = isSecurityWorkflow
+          ? (verifiedName || started.verifiedSecurityIdentity?.symbol || normalizedSymbol)
+          : (typeof args.name === 'string' && args.name.trim() !== '' ? args.name.trim() : normalizedSymbol)
+        let titleCandidate: string | undefined
+        if (subject !== undefined && workflow?.displayNameZh) {
+          try { titleCandidate = normalizeConversationTitle(`${subject} · ${workflow.displayNameZh}`) } catch { titleCandidate = undefined }
+        }
+        let workflowSubject: string | undefined
+        if (subject !== undefined) { try { workflowSubject = normalizeConversationTitle(subject) } catch { workflowSubject = undefined } }
+        try {
+          await store.recordWorkflowCandidate(conversationId!, operationId!, { workflowRegistryId: workflowId, ...(workflowSubject === undefined ? {} : { workflowSubject }), ...(titleCandidate === undefined ? {} : { titleCandidate }) })
+          await store.markWorkflowStarted(conversationId!, operationId!, { workflowRegistryId: workflowId, workflowRunId: started.runId, ...(workflowSubject === undefined ? {} : { workflowSubject }), ...(titleCandidate === undefined ? {} : { titleCandidate }) })
+        }
+        catch { /* The durable submitting reservation makes every retry fail closed. */ }
+      } else if (started.status === 'free_research' || started.status === 'skill_plan') {
+        await store.markReadyForChat(conversationId!, operationId!, started.status)
+      } else {
+        await store.markNotStarted(conversationId!, operationId!, started.status as 'needs_input' | 'invalid_input' | 'unresolved_reference' | 'executor_unavailable')
+      }
+    }
     if (started.completion !== undefined) {
-      this.trackBackground(started.completion, () => {
+      const reconcileWorkflowTerminal = async (): Promise<void> => {
+        if (!claimed || conversationId === undefined || operationId === undefined || started.runId === undefined) return
+        const workflow = this.runtime!.workflowService.getWorkflowStatus(started.runId)
+        if (!workflow || !['completed', 'completed_with_review', 'blocked', 'failed', 'cancelled'].includes(workflow.status)) return
+        await this.runtime!.sessionRuntime.conversationStateStore.completeWorkflowRequest(conversationId, operationId, workflow.status as 'completed' | 'completed_with_review' | 'blocked' | 'failed' | 'cancelled')
+      }
+      const completion = started.completion.then(async () => { await reconcileWorkflowTerminal() }, async (error: unknown) => { await reconcileWorkflowTerminal(); throw error })
+      this.trackBackground(completion, () => {
         controller.abort()
         if (started.runId !== undefined) {
           try { this.runtime!.workflowService.cancelWorkflow(started.runId) } catch { /* completion owns final state */ }
         }
       })
     }
-    await this.sendJson(response, started.status === 'started' ? 202 : 200, { accepted: started.status === 'started', status: started.status, request: started.request, decision: started.decision, summary: started.summary, ...(started.runId === undefined ? {} : { runId: started.runId }), ...(started.workflow === undefined ? {} : { workflow: started.workflow }) })
+    await this.sendJson(response, started.status === 'started' ? 202 : 200, { accepted: started.status === 'started', status: started.status, request: started.request, decision: started.decision, summary: started.summary, ...(started.feedback === undefined ? {} : { feedback: started.feedback }), ...(started.resolution === undefined ? {} : { resolution: publicDispatchResolution(started.resolution) }), ...(started.runId === undefined ? {} : { runId: started.runId }), ...(started.workflow === undefined ? {} : { workflow: started.workflow }) })
+  }
+
+  private async sendDispatchReplay(response: ServerResponse, conversationId: string, record: import('./conversation-state-store.ts').AcceptedConversationRequest): Promise<void> {
+    if (record.lifecycle === 'submitting' && record.reservedWorkflowRunId !== undefined) {
+      const workflow = this.runtime!.workflowService.getWorkflowStatus(record.reservedWorkflowRunId)
+      const registryId = record.workflowRegistryId ?? workflow?.workflowType
+      const knownWorkflow = registryId === undefined ? undefined : this.runtime!.services.researchDispatchService?.listWorkflowDefinitions().find((definition) => definition.id === registryId)
+      if (workflow !== undefined && workflow.status !== 'pending' && registryId !== undefined && knownWorkflow !== undefined) {
+        try {
+          await this.runtime!.sessionRuntime.conversationStateStore.markWorkflowStarted(conversationId, record.operationId, { workflowRegistryId: registryId, workflowRunId: workflow.runId, ...(record.workflowSubject === undefined ? {} : { workflowSubject: record.workflowSubject }), ...(record.workflowTitleCandidate === undefined ? {} : { titleCandidate: record.workflowTitleCandidate }) })
+          const refreshed = (await this.runtime!.sessionRuntime.conversationStateStore.get(conversationId))?.acceptedRequests.find((item) => item.operationId === record.operationId)
+          if (refreshed !== undefined) { await this.sendDispatchReplay(response, conversationId, refreshed); return }
+        } catch { /* Preserve the reservation and report pending; never invoke dispatch a second time. */ }
+      }
+    }
+    if (record.lifecycle === 'started' && record.outcome === 'chat_started') {
+      await this.sendJson(response, 200, { accepted: false, status: record.dispatchStatus ?? 'free_research', conversationId, operationId: record.operationId, replayed: true }); return
+    }
+    if (record.lifecycle === 'started' && record.outcome === 'workflow_started' && record.workflowRunId !== undefined) {
+      const workflow = this.runtime!.workflowService.getWorkflowStatus(record.workflowRunId)
+      if (workflow !== undefined) { await this.sendJson(response, 202, { accepted: true, status: 'started', runId: record.workflowRunId, workflow, replayed: true }); return }
+      await this.sendJson(response, 200, { accepted: false, status: 'interrupted', runId: record.workflowRunId, conversationId, replayed: true }); return
+    }
+    if (record.kind === 'workflow' && record.lifecycle === 'completed' && record.outcome === 'workflow_completed') { await this.sendJson(response, 200, { accepted: false, status: 'completed', runId: record.workflowRunId, conversationId, operationId: record.operationId, replayed: true }); return }
+    if (record.kind === 'workflow' && record.lifecycle === 'cancelled' && record.outcome === 'workflow_cancelled') { await this.sendJson(response, 200, { accepted: false, status: 'cancelled', runId: record.workflowRunId, conversationId, operationId: record.operationId, replayed: true }); return }
+    if (record.kind === 'workflow' && record.lifecycle === 'failed' && (record.outcome === 'workflow_blocked' || record.outcome === 'workflow_failed')) { await this.sendJson(response, 200, { accepted: false, status: record.outcome === 'workflow_blocked' ? 'blocked' : 'failed', runId: record.workflowRunId, conversationId, operationId: record.operationId, replayed: true }); return }
+    if (record.lifecycle === 'ready_for_chat') { await this.sendJson(response, 200, { accepted: false, status: record.dispatchStatus ?? 'free_research', conversationId, operationId: record.operationId, replayed: true }); return }
+    if (record.lifecycle === 'not_started' || record.lifecycle === 'failed') { await this.sendJson(response, 200, { accepted: false, status: record.dispatchStatus ?? record.outcomeReasonCode ?? record.failureCode ?? 'not_started', conversationId, operationId: record.operationId, replayed: true }); return }
+    if (record.lifecycle === 'interrupted') { const runId = record.workflowRunId ?? record.reservedWorkflowRunId; await this.sendJson(response, 200, { accepted: false, status: 'interrupted', conversationId, operationId: record.operationId, ...(runId === undefined ? {} : { runId }), replayed: true }); return }
+    await this.sendJson(response, 202, { accepted: false, status: 'pending', conversationId, operationId: record.operationId, ...(record.reservedWorkflowRunId === undefined ? {} : { runId: record.reservedWorkflowRunId }), replayed: true })
   }
 
   private sourceMetadata(value: Record<string, unknown>): IngestDocumentInput['sourceMetadata'] | undefined { const raw = value.sourceMetadata; if (raw === undefined) return undefined; if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ApplicationServiceError('invalid_input', 'sourceMetadata must be an object'); const input = raw as Record<string, unknown>; return { ...(this.optionalString(input, 'title', 500) === undefined ? {} : { title: this.optionalString(input, 'title', 500) }), ...(this.optionalString(input, 'institution', 500) === undefined ? {} : { institution: this.optionalString(input, 'institution', 500) }), ...(this.optionalString(input, 'author', 500) === undefined ? {} : { author: this.optionalString(input, 'author', 500) }), ...(this.optionalString(input, 'publishedAt', 100) === undefined ? {} : { publishedAt: this.optionalString(input, 'publishedAt', 100) }), ...(this.optionalString(input, 'sourceUrl', 2_000) === undefined ? {} : { sourceUrl: this.optionalString(input, 'sourceUrl', 2_000) }) } }

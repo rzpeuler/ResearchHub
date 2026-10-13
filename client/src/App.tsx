@@ -1,17 +1,25 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent, ReactElement } from 'react'
-import { RuntimeClient, RuntimeClientError, type AttachmentRef, type ClientEvent, type ConversationMessage, type ConversationSummary, type DailyBriefReport, type DailyBriefSummary, type KnowledgeBaseStatus, type KnowledgeDirectoryItem, type RawDocumentAcceptanceV04, type RawDocumentCandidateGroupV04, type RawDocumentPreviewV04, type RawDocumentPreviewPollV04, type ResearchBundleSummary, type ResearchDispatchResponse, type ResearchExecutionSummary, type ResearchReport, type ResearchReportSummary, type ResearchStartResponse, type ReviewDetail, type ReviewListResponse, type RuntimeModelLoginFlow, type RuntimeSettings, type SessionState, type SourceLibraryHit, type ThesisCriterionConfirmResult, type ThesisCriterionOrigin, type ThesisCriterionPreview, type ThesisDecision, type ThesisQueryDetail, type ThesisQuerySummary, type ThesisReviewScope, type ThemeFrameworkDecision, type ThemeFrameworkRefreshResult, type ThemeFrameworkReviewCandidate, type ThemeFrameworkReviewResponse, type ThemeFrameworkReviewSummary, type ThemeScopeImpactInboxRecord, type ThemeScopeImpactProposal, type WorkflowDefinition, type WorkflowRun } from './api/runtime-client'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
+import { RuntimeClient, RuntimeClientError, type AttachmentRef, type ClientEvent, type ConversationActivity, type ConversationMessage, type ConversationSummary, type DailyBriefReport, type DailyBriefSummary, type KnowledgeBaseStatus, type KnowledgeDirectoryItem, type RawDocumentAcceptanceV04, type RawDocumentCandidateGroupV04, type RawDocumentPreviewV04, type RawDocumentPreviewPollV04, type ResearchBundleSummary, type ResearchDispatchFeedback, type ResearchDispatchResolution, type ResearchDispatchResponse, type ResearchExecutionSummary, type ResearchReport, type ResearchReportSummary, type ResearchStartResponse, type ReviewDetail, type ReviewListResponse, type RuntimeModelLoginFlow, type RuntimeSettings, type SessionState, type SourceLibraryHit, type ThesisCriterionConfirmResult, type ThesisCriterionOrigin, type ThesisCriterionPreview, type ThesisDecision, type ThesisQueryDetail, type ThesisQuerySummary, type ThesisReviewScope, type ThemeFrameworkDecision, type ThemeFrameworkRefreshResult, type ThemeFrameworkReviewCandidate, type ThemeFrameworkReviewResponse, type ThemeFrameworkReviewSummary, type ThemeScopeImpactInboxRecord, type ThemeScopeImpactProposal, type WorkflowDefinition, type WorkflowRun } from './api/runtime-client'
 import { SettingsPanel, type CompatibleEndpointInput, type SettingsPanelProps } from './app/settings/SettingsPanel'
-import { startWorkflowPolling, terminalWorkflowStatuses } from './app/workflow-polling'
+import { isWorkflowFinalResultSynchronized, startWorkflowPolling, terminalWorkflowStatuses } from './app/workflow-polling'
 import { KnowledgeGraphPage } from './app/graph/KnowledgeGraphPage'
 import { ResearchRunPage } from './app/run/ResearchRunPage'
 import { DataSourcesPage } from './app/data-sources/DataSourcesPage'
+import { CopyMessageButton } from './app/chat/CopyMessageButton'
 import { LanguageProvider, useLanguage } from './i18n'
 import './styles.css'
 
 type Route = 'research' | 'briefs' | 'reports' | 'bundles' | 'run' | 'graph' | 'reviews' | 'theses' | 'sources'
 type ReviewsSection = 'review-cases' | 'theme-framework' | 'theme-scope'
 type LoadState = 'loading' | 'ready' | 'error'
+type WorkflowArtifactTarget = { readonly kind: 'report' | 'bundle' | 'review_case' | 'theme_framework_candidate' | 'daily_brief'; readonly id: string; readonly runId: string }
+type RequestProgress = 'submitting' | 'accepted' | 'dispatching' | 'running' | 'completed' | 'cancelled' | 'interrupted' | 'failed'
+interface OptimisticConversationRequest { readonly conversationId: string; readonly operationId: string; readonly operation: 'prompt' | 'steer' | 'follow_up'; readonly requestText: string; readonly createdAt: string; readonly progress: RequestProgress; readonly error?: string }
+interface ToolLifecycle { readonly key: string; readonly name: string; readonly status: 'started' | 'updated' | 'completed' | 'failed'; readonly startedAt?: string; readonly updatedAt: string }
+type RuntimeConnectionState = 'connecting' | 'connected' | 'disconnected'
+interface ConversationViewState { readonly streaming: boolean; readonly streamText: string; readonly thinking: boolean; readonly streamStartedAt?: string; readonly toolEvents: readonly ToolLifecycle[]; readonly queue: { readonly steering: number; readonly followUp: number } }
+const emptyConversationView: ConversationViewState = { streaming: false, streamText: '', thinking: false, toolEvents: [], queue: { steering: 0, followUp: 0 } }
 type V04RightsForm = { accessScope: 'public' | 'authenticated' | 'restricted' | 'unknown'; providerTermsKnown: boolean; retentionAllowed: boolean; aiProcessingAllowed: boolean; derivativeKnowledgeAllowed: boolean; redistributionAllowed: boolean; policyBasis: string; expiresAt: string; entitlementRef: string }
 type V04SourceForm = { title: string; sourceType: string; sourceReliability: string; publisher: string; institution: string; author: string; publishedAt: string; canonicalUrl: string }
 const defaultRightsForm: V04RightsForm = { accessScope: 'unknown', providerTermsKnown: false, retentionAllowed: false, aiProcessingAllowed: false, derivativeKnowledgeAllowed: false, redistributionAllowed: false, policyBasis: '', expiresAt: '', entitlementRef: '' }
@@ -27,8 +35,154 @@ function previewPollTerminalDisposition(result: RawDocumentPreviewPollV04): 'wai
 
 function routeForPath(pathname: string): Route { return pathname === '/briefs' ? 'briefs' : pathname === '/reports' ? 'reports' : pathname === '/bundles' ? 'bundles' : pathname === '/run' ? 'run' : pathname === '/graph' ? 'graph' : pathname === '/reviews' ? 'reviews' : pathname === '/theses' ? 'theses' : pathname === '/sources' ? 'sources' : 'research' }
 function routePath(route: Route): string { return route === 'research' ? '/research' : `/${route}` }
+const ACTIVE_RESEARCH_RUN_KEY = 'researchhub.active-research-run-id'
 function errorText(error: unknown): string { return error instanceof RuntimeClientError ? error.message : 'ResearchHub runtime operation failed' }
 function toolLabel(name: string | undefined): string { return name === undefined ? 'Tool execution' : knownTools[name] ?? 'Tool execution' }
+type ConversationTimelineEntry = { readonly kind: 'message'; readonly message: ConversationMessage; readonly order: number } | { readonly kind: 'activity'; readonly activity: ConversationActivity; readonly requestProgress?: RequestProgress; readonly requestError?: string; readonly order: number } | { readonly kind: 'optimistic'; readonly request: OptimisticConversationRequest; readonly order: number }
+function conversationTimelineEntries(messages: readonly ConversationMessage[], activities: readonly ConversationActivity[], optimisticRequests: readonly OptimisticConversationRequest[]): readonly ConversationTimelineEntry[] {
+  const activityOperationIds = new Set(activities.map((activity) => activity.operationId))
+  const boundMessageIds = new Set(activities.flatMap((activity) => activity.piMessageId ? [activity.piMessageId] : []))
+  const boundOperationIds = new Set(activities.map((activity) => activity.operationId))
+  const seenMessageIds = new Set<string>()
+  const entries: ConversationTimelineEntry[] = messages.flatMap((message, order) => {
+    if (message.piMessageId) { if (seenMessageIds.has(message.piMessageId)) return []; seenMessageIds.add(message.piMessageId) }
+    return message.role === 'user' && ((message.piMessageId && boundMessageIds.has(message.piMessageId)) || (message.operationId && boundOperationIds.has(message.operationId))) ? [] : [{ kind: 'message', message, order }]
+  })
+  for (const [order, activity] of activities.entries()) {
+    const optimistic = optimisticRequests.find((request) => request.operationId === activity.operationId && request.conversationId === activity.conversationId)
+    const serverTerminal = activity.status === 'completed' || activity.status === 'cancelled' || activity.status === 'not_started' || activity.status === 'failed' || activity.status === 'interrupted'
+    entries.push({ kind: 'activity', activity, ...(optimistic && !serverTerminal ? { requestProgress: optimistic.progress, ...(optimistic.error ? { requestError: optimistic.error } : {}) } : {}), order: messages.length + order })
+  }
+  for (const [order, request] of optimisticRequests.entries()) if (!activityOperationIds.has(request.operationId)) entries.push({ kind: 'optimistic', request, order: messages.length + activities.length + order })
+  return entries.sort((left, right) => {
+    const leftTime = Date.parse(left.kind === 'message' ? left.message.timestamp ?? '' : left.kind === 'activity' ? left.activity.createdAt : left.request.createdAt)
+    const rightTime = Date.parse(right.kind === 'message' ? right.message.timestamp ?? '' : right.kind === 'activity' ? right.activity.createdAt : right.request.createdAt)
+    const leftValid = Number.isFinite(leftTime); const rightValid = Number.isFinite(rightTime)
+    if (leftValid && rightValid && leftTime !== rightTime) return leftTime - rightTime
+    if (leftValid !== rightValid) return leftValid ? -1 : 1
+    return left.order - right.order
+  })
+}
+function elapsedMilliseconds(start: string | undefined, end: string | undefined): number | undefined {
+  if (start === undefined || end === undefined) return undefined
+  const difference = Date.parse(end) - Date.parse(start)
+  return Number.isFinite(difference) && difference >= 0 ? difference : undefined
+}
+function elapsedLabel(milliseconds: number): string { return milliseconds < 1_000 ? `${milliseconds} ms` : `${(milliseconds / 1_000).toFixed(1)} s` }
+interface ConversationTimelineProps { readonly conversationId: string; readonly messages: readonly ConversationMessage[]; readonly activities: readonly ConversationActivity[]; readonly optimisticRequests: readonly OptimisticConversationRequest[]; readonly streaming: boolean; readonly thinking: boolean; readonly streamText: string; readonly streamStartedAt?: string; readonly toolEvents: readonly ToolLifecycle[] }
+export const ConversationTimeline = memo(function ConversationTimeline({ conversationId, messages, activities, optimisticRequests, streaming, thinking, streamText, streamStartedAt, toolEvents }: ConversationTimelineProps): ReactElement {
+  const { t } = useLanguage()
+  const [clockNow, setClockNow] = useState(() => Date.now())
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const activeConversationRef = useRef(conversationId)
+  const scrollPositions = useRef(new Map<string, { readonly top: number; readonly following: boolean }>())
+  const followingRef = useRef(true)
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false)
+  const [timelineAnnouncement, setTimelineAnnouncement] = useState('')
+  const priorStreamingRef = useRef({ conversationId, streaming })
+  const announcedAcceptedOperations = useRef(new Set<string>())
+  const contentRef = useRef<HTMLDivElement>(null)
+  const hasLiveActivityTimer = activities.some((activity) => activity.acceptedAt !== undefined && (activity.status === 'accepted' || activity.status === 'started'))
+  useEffect(() => {
+    if ((!streaming || !streamStartedAt) && !hasLiveActivityTimer) return undefined
+    setClockNow(Date.now())
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [hasLiveActivityTimer, streamStartedAt, streaming])
+  const rememberScrollPosition = (element: HTMLDivElement, following: boolean): void => {
+    scrollPositions.current.set(conversationId, { top: element.scrollTop, following })
+    while (scrollPositions.current.size > 100) scrollPositions.current.delete(scrollPositions.current.keys().next().value as string)
+  }
+  const updateScrollFollow = (): void => {
+    const element = scrollRef.current
+    if (!element) return
+    const following = element.scrollHeight - element.scrollTop - element.clientHeight <= 80
+    followingRef.current = following
+    rememberScrollPosition(element, following)
+    setShowJumpToLatest(!following && element.scrollHeight > element.clientHeight)
+  }
+  useLayoutEffect(() => {
+    const element = scrollRef.current
+    if (!element) return
+    const conversationChanged = activeConversationRef.current !== conversationId
+    if (conversationChanged) {
+      activeConversationRef.current = conversationId
+      const saved = scrollPositions.current.get(conversationId)
+      followingRef.current = saved?.following ?? true
+      if (saved) element.scrollTop = Math.min(saved.top, Math.max(0, element.scrollHeight - element.clientHeight))
+      else element.scrollTop = element.scrollHeight
+    } else if (followingRef.current) {
+      element.scrollTop = element.scrollHeight
+    } else {
+      const saved = scrollPositions.current.get(conversationId)
+      if (saved) element.scrollTop = Math.min(saved.top, Math.max(0, element.scrollHeight - element.clientHeight))
+    }
+    rememberScrollPosition(element, followingRef.current)
+    setShowJumpToLatest(!followingRef.current && element.scrollHeight - element.scrollTop - element.clientHeight > 80)
+  }, [activities, conversationId, messages, optimisticRequests, streamText, streaming, thinking, toolEvents])
+  useEffect(() => {
+    const element = scrollRef.current
+    const content = contentRef.current
+    if (!element || !content || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(() => {
+      if (followingRef.current) element.scrollTop = element.scrollHeight
+      rememberScrollPosition(element, followingRef.current)
+      setShowJumpToLatest(!followingRef.current && element.scrollHeight - element.scrollTop - element.clientHeight > 80)
+    })
+    observer.observe(element)
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [conversationId])
+  useEffect(() => {
+    const previous = priorStreamingRef.current
+    if (previous.conversationId !== conversationId) {
+      priorStreamingRef.current = { conversationId, streaming }
+      setTimelineAnnouncement('')
+      return
+    }
+    if (!previous.streaming && streaming) setTimelineAnnouncement(t('Agent 正在响应。', 'Agent is responding.'))
+    else if (previous.streaming && !streaming) setTimelineAnnouncement(t('Agent 回复已完成。', 'Agent response complete.'))
+    priorStreamingRef.current = { conversationId, streaming }
+  }, [conversationId, streaming, t])
+  useEffect(() => {
+    const accepted = optimisticRequests.find((request) => request.conversationId === conversationId && request.progress === 'accepted' && !announcedAcceptedOperations.current.has(request.operationId))
+    if (!accepted) return
+    announcedAcceptedOperations.current.add(accepted.operationId)
+    setTimelineAnnouncement(t('请求已接受。', 'Request accepted.'))
+  }, [conversationId, optimisticRequests, t])
+  const entries = conversationTimelineEntries(messages, activities, optimisticRequests)
+  const statusLabel = (status: ConversationActivity['status']): string => ({ accepted: t('已接受', 'Accepted'), submitting: t('正在启动', 'Starting'), ready_for_chat: t('已准备聊天', 'Ready for chat'), started: t('已启动', 'Started'), completed: t('已完成', 'Completed'), cancelled: t('已取消', 'Cancelled'), not_started: t('未启动', 'Not started'), failed: t('失败', 'Failed'), interrupted: t('已中断', 'Interrupted') })[status]
+  const progressLabel = (progress: RequestProgress): string => ({ submitting: t('正在提交', 'Submitting'), accepted: t('已接受', 'Accepted'), dispatching: t('正在分派', 'Dispatching'), running: t('运行中', 'Running'), completed: t('已完成', 'Completed'), cancelled: t('已取消', 'Cancelled'), interrupted: t('已中断', 'Interrupted'), failed: t('失败，可重试', 'Failed · retry available') })[progress]
+  const entryStatus = (entry: Extract<ConversationTimelineEntry, { kind: 'activity' }>): string => entry.requestProgress ? progressLabel(entry.requestProgress) : statusLabel(entry.activity.status)
+  const activityTiming = (activity: ConversationActivity): string | undefined => {
+    const acceptedAt = activity.acceptedAt ?? activity.createdAt
+    if (activity.status === 'accepted' && activity.finishedAt === undefined) {
+      const waiting = elapsedMilliseconds(acceptedAt, new Date(clockNow).toISOString())
+      return waiting === undefined ? undefined : `${t('已等待', 'Waiting')} ${elapsedLabel(waiting)}`
+    }
+    if (activity.startedAt && activity.finishedAt) {
+      const wait = elapsedMilliseconds(acceptedAt, activity.startedAt)
+      const execution = elapsedMilliseconds(activity.startedAt, activity.finishedAt)
+      const total = elapsedMilliseconds(acceptedAt, activity.finishedAt)
+      return [wait === undefined ? undefined : `${t('等待', 'wait')} ${elapsedLabel(wait)}`, execution === undefined ? undefined : `${t('执行', 'run')} ${elapsedLabel(execution)}`, total === undefined ? undefined : `${t('总计', 'total')} ${elapsedLabel(total)}`].filter(Boolean).join(' · ')
+    }
+    if (activity.status === 'started' && activity.startedAt) {
+      const execution = elapsedMilliseconds(activity.startedAt, new Date(clockNow).toISOString())
+      return execution === undefined ? undefined : `${t('执行中', 'Running')} ${elapsedLabel(execution)}`
+    }
+    return undefined
+  }
+  const toolTrace = <details className="tool-trace" open={streaming}><summary>{t('工具执行摘要', 'Tool activity')} · {toolEvents.length}</summary><div className="tool-trace-items">{toolEvents.map((item) => <span key={item.key} data-tool-status={item.status}>{toolLabel(item.name)} · {item.status}{item.status === 'started' || item.status === 'updated' ? item.startedAt ? ` · running since ${new Date(item.startedAt).toLocaleTimeString()}` : ' · timing unknown' : ''}{item.status === 'completed' || item.status === 'failed' ? item.startedAt ? ` · ${Math.max(0, Date.parse(item.updatedAt) - Date.parse(item.startedAt))} ms` : ' · duration unknown' : ''}</span>)}</div></details>
+  const copyLabels = { copy: t('复制消息', 'Copy message'), copyVisibleSoFar: t('复制当前可见内容', 'Copy visible content so far'), copied: t('已复制', 'Copied'), copyFailed: t('复制失败', 'Copy failed') }
+  const copyControl = (text: string, isStreaming = false): ReactElement => <div className="message-actions"><CopyMessageButton text={text} isStreaming={isStreaming} labels={copyLabels} /></div>
+  return <div className="conversation-timeline"><div ref={scrollRef} className="messages" role="region" aria-label={t('对话时间线', 'Conversation timeline')} aria-live="off" onScroll={updateScrollFollow}><div ref={contentRef} className="messages-content">
+    <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{timelineAnnouncement}</span>
+    {entries.length === 0 && !streaming ? <div className="empty-conversation"><div className="empty-orbit">✦</div><h2>{t('从一个研究问题开始', 'Start with a research question')}</h2><p>{t('请 Agent 探索研究背景，或协助规划下一步研究。', 'Ask the Agent to explore the research context or help shape the next research step.')}</p></div> : entries.map((entry) => entry.kind === 'message'
+      ? <article className={`message ${entry.message.role}`} key={`${entry.message.timestamp ?? 'message'}-${entry.order}`}><div className="message-meta">{entry.message.role === 'user' ? t('你', 'You') : entry.message.role === 'tool' ? toolLabel(entry.message.toolName) : 'Agent'}{entry.message.timestamp ? <time>{new Date(entry.message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time> : null}</div><div className="message-body">{entry.message.role === 'tool' ? <span className="tool-chip">{toolLabel(entry.message.toolName)}</span> : entry.message.content}</div>{entry.message.role === 'tool' ? null : copyControl(entry.message.content)}</article>
+      : entry.kind === 'optimistic' ? <article className={`message user activity-request optimistic-request ${entry.request.progress === 'failed' ? 'request-failed' : ''}`} data-operation-id={entry.request.operationId} key={`request-${entry.request.operationId}`}><div className="message-meta">{t('你 · 已提交请求', 'You · Submitted request')}<time>{new Date(entry.request.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div><div className="message-body">{entry.request.requestText}</div>{copyControl(entry.request.requestText)}<div className="activity-meta"><span>{progressLabel(entry.request.progress)}</span>{entry.request.error ? <small role="status">{entry.request.error}</small> : null}</div></article>
+      : <article className="message user activity-request" data-activity-id={entry.activity.activityId} data-operation-id={entry.activity.operationId} key={`activity-${entry.activity.activityId}`}><div className="message-meta">{t('你 · 已提交请求', 'You · Submitted request')}<time>{new Date(entry.activity.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div><div className="message-body">{entry.activity.requestText ?? t('未命名请求', 'Untitled request')}</div>{entry.activity.requestText ? copyControl(entry.activity.requestText) : null}<div className="activity-meta"><span>{entry.activity.workflowRunId || entry.activity.outcome === 'workflow_started' ? t('工作流', 'Workflow') : t('请求活动', 'Request activity')} · {entryStatus(entry)}{entry.activity.outcome ? ` · ${entry.activity.outcome}` : ''}</span>{entry.activity.workflowRunId ? <small>{entry.activity.workflowRunId}</small> : null}{activityTiming(entry.activity) ? <small>{activityTiming(entry.activity)}</small> : null}{entry.requestError ? <small role="status">{entry.requestError}</small> : null}</div></article>)}{streaming ? <article className="message assistant streaming-message"><div className="message-meta">Agent {thinking ? <span className="thinking-label">{t('正在思考…', 'Thinking…')}</span> : null}<span className="elapsed-time">{streamStartedAt ? `Elapsed ${Math.floor(Math.max(0, clockNow - Date.parse(streamStartedAt)) / 1000)}s` : 'Elapsed unknown'}</span></div><div className="message-body">{streamText || (thinking ? t('正在思考…', 'Thinking…') : t('正在处理…', 'Working…'))}{streamText ? <span className="cursor" /> : null}</div>{streamText ? copyControl(streamText, true) : null}{toolEvents.length > 0 ? toolTrace : null}</article> : toolEvents.length > 0 ? <div className="tool-trace tool-trace-history" role="region" aria-label={t('工具执行摘要', 'Tool execution summary')}>{toolTrace}</div> : null}
+  </div></div>{showJumpToLatest ? <button type="button" className="jump-to-latest" onClick={() => { const element = scrollRef.current; if (!element) return; followingRef.current = true; element.scrollTop = element.scrollHeight; rememberScrollPosition(element, true); setShowJumpToLatest(false) }}>{t('回到底部', 'Jump to latest')}</button> : null}</div>
+})
 function formatSize(size: number): string { if (size < 1024) return `${size} B`; if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`; return `${(size / (1024 * 1024)).toFixed(1)} MB` }
 function shortHash(value: string): string { return value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-8)}` : value }
 function safeStructured(value: unknown, depth = 0): string {
@@ -468,12 +622,20 @@ function ResearchBundlesPage({ bundles, selected, busy, error, onSelect, sourceH
 
 interface ResearchPageProps {
   readonly session?: SessionState
+  readonly currentConversationSummary?: ConversationSummary
   readonly conversations: readonly ConversationSummary[]
+  readonly historyLoading: boolean
+  readonly historyError: string
+  readonly retryHistory: () => void
+  readonly activities: readonly ConversationActivity[]
+  readonly optimisticRequests: readonly OptimisticConversationRequest[]
   readonly messages: readonly ConversationMessage[]
   readonly streaming: boolean
   readonly thinking: boolean
   readonly streamText: string
-  readonly toolEvents: readonly string[]
+  readonly streamStartedAt?: string
+  readonly toolEvents: readonly ToolLifecycle[]
+  readonly connectionState: RuntimeConnectionState
   readonly queue: { readonly steering: number; readonly followUp: number }
   readonly composer: string
   readonly busy: boolean
@@ -498,6 +660,7 @@ interface ResearchPageProps {
   readonly refreshThemeFrameworkReviews: () => void
   readonly client: RuntimeClient
   readonly workflow?: WorkflowRun
+  readonly workflowUnavailableRunId: string
   readonly knowledgeBase?: KnowledgeBaseStatus
   readonly openReviewCases: number
   readonly workflowDefinitions: readonly WorkflowDefinition[]
@@ -508,9 +671,22 @@ interface ResearchPageProps {
   readonly setContextPolicy: (value: { readonly structuredKnowledge: boolean; readonly sourceLibrary: boolean }) => void
   readonly setPersistencePolicy: (value: { readonly writeKnowledge: boolean }) => void
   readonly executionSummary?: ResearchExecutionSummary
+  readonly dispatchFeedback?: ResearchDispatchFeedback
+  readonly dispatchResolution?: ResearchDispatchResolution
+  readonly verifiedWorkflowBundleId?: string
+  readonly workflowPollNotice: string
+  readonly workflowPollRetryable: boolean
+  readonly retryWorkflowPolling: () => void
   readonly setComposer: (value: string) => void
-  readonly newConversation: () => void
-  readonly switchConversation: (conversationId: string) => void
+  readonly newConversation: () => Promise<void>
+  readonly switchConversation: (conversationId: string) => Promise<void>
+  readonly conversationSearch: string
+  readonly setConversationSearch: (value: string) => void
+  readonly showArchivedConversations: boolean
+  readonly setShowArchivedConversations: (value: boolean) => void
+  readonly renameConversation: (conversationId: string, name: string, expectedVersion: number) => Promise<boolean>
+  readonly archiveConversation: (conversationId: string, expectedVersion: number) => Promise<boolean>
+  readonly restoreConversation: (conversationId: string, expectedVersion: number) => Promise<boolean>
   readonly runCommand: (operation: 'prompt' | 'steer' | 'follow_up') => void
   readonly abort: () => void
   readonly upload: (file: File | undefined) => void
@@ -521,8 +697,164 @@ interface ResearchPageProps {
   readonly acceptCandidates: () => void
   readonly clearAttachment: () => void
   readonly cancelWorkflow: () => void
+  readonly openWorkflowReport: (reportId: string) => void
+  readonly openWorkflowBundle: (bundleId: string) => void
+  readonly openWorkflowReview: (kind: NonNullable<NonNullable<WorkflowRun['executionResult']>['reviewRef']>['kind'], id: string) => void
   readonly dismissError: () => void
   readonly onNavigate: (route: Route) => void
+}
+
+function DispatchFeedbackPanel({ feedback }: { readonly feedback: ResearchDispatchFeedback }): ReactElement {
+  const { t } = useLanguage()
+  const statusCopy: Readonly<Record<ResearchDispatchFeedback['status'], { readonly zh: string; readonly en: string }>> = {
+    NEEDS_INPUT: { zh: '需要补充工作流输入', en: 'Workflow needs additional input' },
+    INVALID_INPUT: { zh: '输入未通过工作流校验', en: 'Workflow input did not pass validation' },
+    UNRESOLVED_REFERENCE: { zh: '无法解析所需引用', en: 'A required reference could not be resolved' },
+    EXECUTOR_UNAVAILABLE: { zh: '当前工作流执行器不可用', en: 'This Workflow executor is unavailable' },
+  }
+  return <section className="execution-summary" aria-label={t('Workflow 输入反馈', 'Workflow input feedback')} role="status">
+    <strong>{feedback.workflowId} · {t(statusCopy[feedback.status].zh, statusCopy[feedback.status].en)}</strong>
+    <span>{feedback.status === 'NEEDS_INPUT' ? feedback.reason : t(statusCopy[feedback.status].zh, statusCopy[feedback.status].en)}</span>
+    {feedback.missingFields.length ? <span>{t('缺失字段：', 'Missing fields: ')}{feedback.missingFields.join(', ')}</span> : null}
+    <span>{t('已解析参数：', 'Resolved arguments: ')}{Object.keys(feedback.validatedArguments).length ? JSON.stringify(feedback.validatedArguments) : t('无', 'none')}</span>
+    <span>{t('建议补充：', 'Suggested question: ')}{feedback.suggestedQuestion}</span>
+  </section>
+}
+
+function WorkflowResultFeedback({ workflow, verifiedBundleId, onOpenReport, onOpenBundle, onOpenReview }: {
+  readonly workflow: WorkflowRun
+  readonly verifiedBundleId?: string
+  readonly onOpenReport: (reportId: string) => void
+  readonly onOpenBundle: (bundleId: string) => void
+  readonly onOpenReview: (kind: NonNullable<NonNullable<WorkflowRun['executionResult']>['reviewRef']>['kind'], id: string) => void
+}): ReactElement | null {
+  const { t } = useLanguage()
+  if (!terminalWorkflowStatuses.has(workflow.status)) return null
+  const resultCandidate = workflow.executionResult
+  const result = resultCandidate?.runId === workflow.runId && resultCandidate.executionStatus === workflow.status ? resultCandidate : undefined
+  const stateCopy: Readonly<Record<WorkflowRun['status'], { readonly zh: string; readonly en: string }>> = {
+    pending: { zh: '等待执行', en: 'Waiting to execute' },
+    running: { zh: '正在执行', en: 'Running' },
+    completed: { zh: '工作流已完成', en: 'Workflow completed' },
+    completed_with_review: { zh: '工作流完成，等待审核', en: 'Workflow completed and requires review' },
+    blocked: { zh: '工作流受阻', en: 'Workflow is blocked' },
+    cancelled: { zh: '工作流已取消', en: 'Workflow was cancelled' },
+    failed: { zh: '工作流未能完成', en: 'Workflow failed' },
+  }
+  const state = stateCopy[workflow.status]
+  return <section className={`workflow-result-feedback workflow-result-${workflow.status}`} aria-label={t('工作流结果', 'Workflow result')} role="status">
+    <strong>{t(state.zh, state.en)}</strong>
+    {isWorkflowFinalResultSynchronized(workflow) && result?.summary ? <p>{result.summary}</p> : workflow.progressSummary && !terminalWorkflowStatuses.has(workflow.status) ? <p>{workflow.progressSummary}</p> : null}
+    {!isWorkflowFinalResultSynchronized(workflow) ? <p>{t('工作流已终止，正在同步最终执行结果。', 'Workflow has ended; syncing the final execution result.')}</p> : null}
+    {result?.blockedReason ? <p>{t('阻断原因：', 'Blocked because: ')}{result.blockedReason}</p> : null}
+    {result?.diagnostics.length ? <small>{t('诊断代码：', 'Diagnostics: ')}{result.diagnostics.join(', ')}</small> : null}
+    <div className="workflow-result-links">
+      {result?.reportRef ? <button type="button" className="secondary-action" onClick={() => onOpenReport(result.reportRef!)}>{workflow.workflowType === 'daily_intelligence' ? t('打开每日简报', 'Open Daily Brief') : t('打开研究报告', 'Open Research Report')}</button> : null}
+      {result?.bundleRef && verifiedBundleId === result.bundleRef ? <button type="button" className="secondary-action" onClick={() => onOpenBundle(result.bundleRef!)}>{t('打开研究资料包', 'Open Research Bundle')}</button> : result?.bundleStatus === 'pending' ? <span>{t('正在同步研究资料包…', 'Syncing Research Bundle…')}</span> : null}
+      {result?.reviewRef ? <button type="button" className="secondary-action" onClick={() => onOpenReview(result.reviewRef!.kind, result.reviewRef!.id)}>{t('打开审核结果', 'Open review result')}</button> : null}
+    </div>
+  </section>
+}
+
+function WorkflowProgressPanel(props: Pick<ResearchPageProps, 'workflow' | 'workflowRunId' | 'activities' | 'workflowDefinitions' | 'workflowUnavailableRunId' | 'workflowPollNotice' | 'workflowPollRetryable' | 'retryWorkflowPolling' | 'verifiedWorkflowBundleId' | 'openWorkflowReport' | 'openWorkflowBundle' | 'openWorkflowReview' | 'cancelWorkflow' | 'busy' | 'onNavigate' | 'knowledgeBase'>): ReactElement {
+  const { t } = useLanguage()
+  const [clock, setClock] = useState(Date.now())
+  const workflow = props.workflow?.runId === props.workflowRunId ? props.workflow : undefined
+  const stages = workflow?.stages ?? []
+  const providers = workflow?.providerObservations ?? []
+  const skills = workflow?.skillObservations ?? []
+  const activity = props.activities.filter((item) => item.workflowRunId === props.workflowRunId || (item.status === 'interrupted' && item.reservedWorkflowRunId === props.workflowRunId)).sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]
+  const registryId = workflow?.executionResult?.workflowId ?? activity?.workflowRegistryId
+  const definition = props.workflowDefinitions.find((item) => item.id === registryId)
+  const workflowName = definition?.displayNameZh ?? definition?.label ?? registryId ?? workflow?.workflowType ?? t('未知工作流', 'Unknown Workflow')
+  const unavailable = activity?.status === 'interrupted' || props.workflowUnavailableRunId === props.workflowRunId
+  const durableTerminalStatus = activity?.kind === 'accepted_request' && activity.workflowRunId === props.workflowRunId
+    ? activity.outcome === 'workflow_blocked' ? 'blocked'
+      : activity.outcome === 'workflow_failed' ? 'failed'
+        : activity.outcome === 'workflow_cancelled' ? 'cancelled'
+          : activity.outcome === 'workflow_completed' ? 'completed' : undefined
+    : undefined
+  const safeErrorSummary = (value?: string): string | undefined => {
+    if (!value) return undefined
+    const line = value.trim().split(/\r?\n/u, 1)[0]?.trim() ?? ''
+    if (!line || /(?:[A-Za-z]:\\|\\\\|\/(?:Users|home|private|var|tmp)\/|\bBearer\s+\S+|\b(?:stack trace|TypeError|ReferenceError|SyntaxError)\b|(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|secret|authorization)\s*[:=]\s*\S+)/iu.test(line)) return undefined
+    return line.slice(0, 240)
+  }
+  useEffect(() => {
+    if (!workflow || workflow.status !== 'running') return undefined
+    const timer = window.setInterval(() => setClock(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [workflow?.runId, workflow?.status])
+  const duration = (start?: string, end?: string, provided?: number): string => {
+    const elapsed = Number.isFinite(provided) ? Math.max(0, provided!) : start ? Math.max(0, (end ? Date.parse(end) : clock) - Date.parse(start)) : undefined
+    if (elapsed === undefined || !Number.isFinite(elapsed)) return t('耗时未知', 'Duration unavailable')
+    const seconds = Math.floor(elapsed / 1000)
+    return seconds < 60 ? `${seconds}${t('秒', 's')}` : `${Math.floor(seconds / 60)}${t('分', 'm')} ${seconds % 60}${t('秒', 's')}`
+  }
+  const statusLabel = (status: string): string => {
+    const labels: Readonly<Record<string, { zh: string; en: string }>> = {
+      pending: { zh: '等待中', en: 'Pending' }, running: { zh: '进行中', en: 'Running' }, completed: { zh: '已完成', en: 'Completed' }, completed_with_review: { zh: '完成，待审核', en: 'Completed · review' },
+      skipped: { zh: '已跳过', en: 'Skipped' }, blocked: { zh: '受阻', en: 'Blocked' }, failed: { zh: '失败', en: 'Failed' }, cancelled: { zh: '已取消', en: 'Cancelled' }, interrupted: { zh: '已中断', en: 'Interrupted' },
+      success: { zh: '成功', en: 'Success' }, partial: { zh: '部分可用', en: 'Partial' }, unavailable: { zh: '不可用', en: 'Unavailable' },
+    }
+    const label = labels[status]
+    return label ? t(label.zh, label.en) : t('状态未知', 'Unknown status')
+  }
+  const diagnosticLabel = (code: string): string => {
+    const labels: Readonly<Record<string, { zh: string; en: string }>> = {
+      NO_COMPANY_RESEARCH_EVIDENCE: { zh: '未获取到可用公司研究资料', en: 'No usable company research evidence was acquired' },
+      COMPANY_RESEARCH_QUALITY_GATE_FAILED: { zh: '研究证据未通过质量门', en: 'Research evidence did not pass the quality gate' },
+      CANONICAL_REFERENCE_NOT_PERSISTED: { zh: 'Knowledge 引用持久化校验未通过', en: 'Knowledge reference persistence check failed' },
+      PROVIDER_ATTEMPT_FAILED: { zh: '数据源调用失败', en: 'Provider attempt failed' },
+      PROVIDER_NO_USABLE_DATA: { zh: '数据源未返回可用资料', en: 'Provider returned no usable data' },
+      PROVIDER_UNSUPPORTED: { zh: '当前数据需求不支持该数据源', en: 'Provider does not support this data requirement' },
+    }
+    const label = labels[code]
+    return label ? t(label.zh, label.en) : code
+  }
+  const stageDuration = (stage: NonNullable<WorkflowRun['stages']>[number]): string => duration(stage.startedAt, stage.completedAt, stage.durationMs)
+  return <section className="workflow-progress-panel" aria-label={t('工作流进度', 'Workflow progress')}>
+    {!props.knowledgeBase ? <p className="muted">{t('未挂载知识库。', 'No Knowledge Base mounted.')}</p> : null}
+    {!props.workflowRunId ? <div className="notice"><strong>{t('没有运行中的工作流', 'No active Workflow')}</strong><p>{t('启动工作流后，实际运行状态会显示在这里。', 'Workflow status appears here after a run starts.')}</p></div>
+      : unavailable && !workflow && durableTerminalStatus ? <div className="workflow-card" data-testid="workflow-terminal-history"><div className="workflow-status"><span className="status-dot terminal" />{statusLabel(durableTerminalStatus)}</div><h3>{workflowName}</h3>{activity?.workflowSubject ? <p className="workflow-subject">{activity.workflowSubject}</p> : null}<p role="status">{t('此终态已由 Runtime 持久记录；详细阶段快照因 Runtime 重启不可用。', 'Runtime durably recorded this terminal outcome; detailed stage history is unavailable after restart.')}</p><small>{props.workflowRunId}</small></div>
+        : unavailable && !workflow ? <div className="workflow-card" data-testid="workflow-interrupted"><div className="workflow-status"><span className="status-dot terminal" />{statusLabel('interrupted')}</div><h3>{workflowName}</h3>{activity?.workflowSubject ? <p className="workflow-subject">{activity.workflowSubject}</p> : null}<p role="status">{t('Runtime 已重启或运行状态已丢失。该 Workflow 不会自动续跑；请根据会话记录确认后再重新启动。', 'Runtime restarted or lost its in-memory run state. This Workflow will not resume automatically; check the conversation before starting another run.')}</p><small>{props.workflowRunId}</small></div>
+        : !workflow ? <p className="muted" role="status">{t('正在加载权威 Workflow 状态…', 'Loading authoritative Workflow status…')}</p>
+          : <div className="workflow-card" data-testid="workflow-progress-card" data-run-id={workflow.runId}>
+            <div className="workflow-status"><span className={`status-dot ${terminalWorkflowStatuses.has(workflow.status) ? 'terminal' : ''}`} />{statusLabel(workflow.status)}</div>
+            <h3>{workflowName}</h3>
+            {activity?.workflowSubject ? <p className="workflow-subject">{activity.workflowSubject}</p> : null}
+            <dl className="workflow-run-metrics"><dt>{t('运行耗时', 'Elapsed')}</dt><dd>{duration(workflow.startedAt, workflow.completedAt)}</dd><dt>{t('Run ID', 'Run ID')}</dt><dd><code>{workflow.runId}</code></dd></dl>
+            {workflow.currentStage ? <p className="workflow-current-stage"><strong>{t('当前/最近阶段：', 'Current/last stage: ')}</strong>{workflow.currentStage}</p> : null}
+            {workflow.progressSummary ? <p className="workflow-progress-summary">{workflow.progressSummary}</p> : null}
+            {stages.length ? <ol className="workflow-stage-timeline" aria-label={t('实际执行阶段', 'Observed execution stages')}>{stages.map((stage) => <li key={stage.stageId} className={`workflow-stage workflow-stage-${stage.status}`} data-stage-id={stage.stageId}><span className="workflow-stage-marker" aria-hidden="true" /><div className="workflow-stage-content"><strong>{stage.label}</strong><span className="workflow-stage-status">{statusLabel(stage.status)} · {stageDuration(stage)}</span>{stage.summary ? <small>{stage.summary}</small> : null}{stage.diagnostics?.length ? <small>{stage.diagnostics.map(diagnosticLabel).join(' · ')}</small> : null}</div></li>)}</ol> : <p className="muted">{t('该 Workflow 尚未报告细分阶段；仅显示权威整体状态。', 'This Workflow has not reported detailed stages; only authoritative run status is available.')}</p>}
+            {providers.length ? <section className="workflow-observations" aria-label={t('数据源状态', 'Provider status')}><h4>{t('数据源', 'Data sources')}</h4>{providers.map((provider) => <div className="workflow-observation-row" key={provider.providerId}><strong>{provider.label}</strong><span>{statusLabel(provider.status)}</span>{provider.recordCount !== undefined ? <small>{t('资料数：', 'Records: ')}{provider.recordCount}</small> : null}{provider.durationMs !== undefined ? <small>{duration(provider.startedAt, provider.completedAt, provider.durationMs)}</small> : null}{provider.diagnostics.map((code) => <small key={code}>{diagnosticLabel(code)}</small>)}</div>)}</section> : null}
+            {skills.length ? <section className="workflow-observations" aria-label={t('内部 Skill 状态', 'Workflow Skill status')}><h4>{t('Workflow 内部 Skill', 'Workflow Skills')}</h4>{skills.map((skill) => <div className="workflow-observation-row" key={skill.skillId}><strong>{skill.label}</strong><span>{statusLabel(skill.status)}</span>{skill.durationMs !== undefined ? <small>{duration(skill.startedAt, skill.completedAt, skill.durationMs)}</small> : null}{skill.summary ? <small>{skill.summary}</small> : null}</div>)}</section> : null}
+            {safeErrorSummary(workflow.errorSummary) ? <p className="workflow-safe-error" role="alert">{safeErrorSummary(workflow.errorSummary)}</p> : null}
+            {props.workflowPollNotice ? <p role="status">{props.workflowPollNotice}</p> : null}
+            {props.workflowPollNotice && props.workflowPollRetryable ? <button type="button" className="secondary-action full" onClick={props.retryWorkflowPolling}>{t('重试状态同步', 'Retry synchronization')}</button> : null}
+            <WorkflowResultFeedback workflow={workflow} verifiedBundleId={props.verifiedWorkflowBundleId} onOpenReport={props.openWorkflowReport} onOpenBundle={props.openWorkflowBundle} onOpenReview={props.openWorkflowReview} />
+            {workflow.status === 'completed_with_review' && !workflow.executionResult?.reviewRef && (workflow.reviewCount ?? 0) > 0 ? <button className="secondary-action full" onClick={() => props.onNavigate('reviews')}>{t('查看审核', 'View Reviews')}</button> : null}
+            {!terminalWorkflowStatuses.has(workflow.status) ? <button className="stop-action full" onClick={props.cancelWorkflow} disabled={props.busy}>{t('取消工作流', 'Cancel Workflow')}</button> : null}
+          </div>}
+  </section>
+}
+
+function DispatchResolutionNotice({ resolution }: { readonly resolution: ResearchDispatchResolution }): ReactElement | null {
+  const { t } = useLanguage()
+  if (resolution.source === 'reasoning_executor' && resolution.attempts === 1 && resolution.diagnostics.length === 0) return null
+  const source = resolution.source === 'bounded_repair'
+    ? t('已执行一次有界参数修复', 'One bounded argument repair was used')
+    : resolution.source === 'deterministic_fallback'
+      ? t('已使用确定性参数回退', 'Deterministic argument fallback was used')
+      : t('语义解析执行器不可用', 'Semantic resolver was unavailable')
+  const diagnostics: Readonly<Record<string, { readonly zh: string; readonly en: string }>> = {
+    invalid_semantic_output_repaired: { zh: '首次语义输出未通过输入契约，修复后通过校验。', en: 'The first semantic output failed the input contract and was repaired.' },
+    reasoning_executor_unconfigured: { zh: '未配置语义推理执行器。', en: 'No semantic reasoning executor is configured.' },
+    semantic_output_rejected: { zh: '语义输出未通过契约校验。', en: 'Semantic output failed contract validation.' },
+    deterministic_fallback_used: { zh: '回退参数仍经过同一 Workflow 输入契约校验。', en: 'Fallback arguments were validated against the same Workflow input contract.' },
+  }
+  const details = resolution.diagnostics.flatMap((code) => { const item = diagnostics[code]; return item ? [t(item.zh, item.en)] : [] })
+  return <section className="execution-summary" aria-label={t('Workflow 解析记录', 'Workflow resolution record')} role="status"><strong>{source}</strong><span>{t('尝试次数：', 'Attempts: ')}{resolution.attempts}</span>{details.map((detail) => <span key={detail}>{detail}</span>)}</section>
 }
 
 function KnowledgeUploadSection(props: ResearchPageProps): ReactElement | null {
@@ -815,12 +1147,88 @@ function ThemeScopeImpactInbox({ props }: { readonly props: Pick<ResearchPagePro
 
 function ResearchPageBody(props: ResearchPageProps): ReactElement {
   const { t } = useLanguage()
-  const noKnowledge = !props.knowledgeBase
-  return <main className="workspace-grid"><aside className="conversation-rail" aria-label={t('对话', 'Conversations')}><div className="rail-heading"><div><span className="eyebrow">WORKSPACE</span><h2>{t('对话', 'Conversations')}</h2></div><button className="icon-button" aria-label={t('新建对话', 'New conversation')} onClick={props.newConversation} disabled={props.busy}>＋</button></div><button className="new-conversation" onClick={props.newConversation} disabled={props.busy}>{t('＋ 新建对话', '＋ New conversation')}</button><div className="history-label">{t('历史记录', 'History')}</div><nav className="conversation-list" aria-label={t('对话历史', 'Conversation history')}>{props.conversations.map((conversation) => <button className={`conversation-item ${conversation.isActive ? 'active' : ''}`} key={conversation.conversationId} onClick={() => props.switchConversation(conversation.conversationId)} disabled={props.busy}><span>{conversation.name || t('未命名对话', 'Untitled conversation')}</span><small>{conversation.messageCount} {t('条消息', 'messages')}</small></button>)}</nav></aside><section className="conversation-pane" aria-label={t('对话', 'Conversation')}><div className="conversation-heading"><div><span className="eyebrow">{t('Agent 会话', 'AGENT SESSION')}</span><h1>{props.session?.name || t('研究对话', 'Research conversation')}</h1></div><span className={`session-pill ${props.streaming ? 'live' : ''}`}>{props.streaming ? t('生成中', 'Streaming') : t('空闲', 'Idle')}</span></div><div className="messages" aria-live="polite">{props.messages.length === 0 && !props.streaming ? <div className="empty-conversation"><div className="empty-orbit">✦</div><h2>{t('从一个研究问题开始', 'Start with a research question')}</h2><p>{t('请 Agent 探索研究背景，或协助规划下一步研究。', 'Ask the Agent to explore the research context or help shape your next research step.')}</p></div> : props.messages.map((message, index) => <article className={`message ${message.role}`} key={`${message.timestamp ?? 'message'}-${index}`}><div className="message-meta">{message.role === 'user' ? t('你', 'You') : message.role === 'tool' ? toolLabel(message.toolName) : 'Agent'}{message.timestamp ? <time>{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time> : null}</div><div className="message-body">{message.role === 'tool' ? <span className="tool-chip">{toolLabel(message.toolName)}</span> : message.content}</div></article>)}{props.streaming ? <article className="message assistant streaming-message"><div className="message-meta">Agent {props.thinking ? <span className="thinking-label">{t('正在思考…', 'Thinking…')}</span> : null}</div><div className="message-body">{props.streamText || (props.thinking ? t('正在思考…', 'Thinking…') : t('正在处理…', 'Working…'))}{props.streamText ? <span className="cursor" /> : null}</div>{props.toolEvents.length > 0 ? <div className="tool-trace">{props.toolEvents.map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}</div> : null}</article> : null}</div>{props.error ? <div className="inline-error" role="alert">{props.error}<button onClick={props.dismissError}>{t('忽略', 'Dismiss')}</button></div> : null}<div className="composer-wrap" onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) event.preventDefault() }} onDrop={(event) => { if (!event.dataTransfer.files.length) return; event.preventDefault(); props.upload(event.dataTransfer.files[0]) }}><div className="research-composer-content"><div className="research-controls" aria-label={t('研究执行控制', 'Research execution controls')}><label><span>Workflow</span><select aria-label="Workflow" value={props.selectedWorkflowId} onChange={(event) => props.setSelectedWorkflowId(event.target.value)}><option value="">{t('自由研究', 'Free Research')}</option>{props.workflowDefinitions.map((workflow) => <option value={workflow.id} key={workflow.id}>{workflow.label}</option>)}</select></label><label className="check-field"><input type="checkbox" checked={props.contextPolicy.structuredKnowledge} onChange={(event) => props.setContextPolicy({ ...props.contextPolicy, structuredKnowledge: event.target.checked })} />{t('查询知识', 'Query Knowledge')}</label><label className="check-field"><input type="checkbox" checked={props.contextPolicy.sourceLibrary} onChange={(event) => props.setContextPolicy({ ...props.contextPolicy, sourceLibrary: event.target.checked })} />{t('搜索来源资料库', 'Search Source Library')}</label><label className="check-field"><input type="checkbox" checked={props.persistencePolicy.writeKnowledge} onChange={(event) => props.setPersistencePolicy({ writeKnowledge: event.target.checked })} />{t('写入知识', 'Write Knowledge')}</label></div>{props.executionSummary ? <div className="execution-summary" aria-label={t('研究执行摘要', 'Research execution summary')}><strong>{props.executionSummary.mode}{props.executionSummary.workflowLabel ? ` · ${props.executionSummary.workflowLabel}` : ''}</strong><span>{t('知识库：', 'Knowledge: ')}{props.executionSummary.contextPolicy.structuredKnowledge ? t('读取', 'Read') : t('关闭', 'Off')}</span><span>{t('来源资料库：', 'Source Library: ')}{props.executionSummary.contextPolicy.sourceLibrary ? t('搜索', 'Search') : t('关闭', 'Off')}</span><span>{t('知识写入：', 'Knowledge Write: ')}{props.executionSummary.persistencePolicy.writeKnowledge ? t('开启', 'On') : t('关闭', 'Off')}</span>{props.executionSummary.argumentsStatus !== 'not_required' ? <span>{t('参数：', 'Arguments: ')}{props.executionSummary.argumentsStatus}</span> : null}</div> : null}<textarea aria-label={t('消息', 'Message')} value={props.composer} onChange={(event) => props.setComposer(event.target.value)} onPaste={(event) => { const file = Array.from(event.clipboardData.files)[0]; if (file) { event.preventDefault(); props.upload(file) } }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !props.streaming) { event.preventDefault(); props.runCommand('prompt') } }} placeholder={props.streaming ? t('输入指导或后续问题…', 'Write a steering instruction or follow-up…') : t('询问 Agent 任何研究相关问题…', 'Ask the Agent anything about your research…')} rows={3} /><div className="composer-attachment-row"><label className="composer-file-picker" aria-label={t('附加文档', 'Attach a document')}>{props.attachmentBusy ? t('正在添加…', 'Adding…') : t('＋ 附加文件', '＋ Attach file')}<input aria-label={t('添加文档', 'Add document')} type="file" accept=".pdf,.csv,.htm,.html,.json,.md,.text,.txt,.xml" onChange={(event) => { props.upload(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} disabled={props.attachmentBusy || props.acceptanceBusy} /></label><span className="composer-file-hint">{t('PDF、CSV、HTML、JSON、Markdown、文本、XML · 最大 100 MB', 'PDF, CSV, HTML, JSON, Markdown, text, XML · up to 100 MB')}</span></div><KnowledgeUploadSection key={props.attachmentUiVersion} {...props} /><div className="composer-footer"><span>{t('Enter 发送 · Shift+Enter 换行 · 队列：', 'Enter to send · Shift+Enter for newline · queued: ')}{props.queue.steering} {t('条指导 /', ' steer / ')} {props.queue.followUp} {t('条后续问题', ' follow-up')}</span><div className="composer-actions">{props.streaming ? <><button className="secondary-action" onClick={() => props.runCommand('steer')} disabled={props.busy || !props.composer.trim()}>{t('指导', 'Steer')}</button><button className="secondary-action" onClick={() => props.runCommand('follow_up')} disabled={props.busy || !props.composer.trim()}>{t('继续追问', 'Follow up')}</button><button className="stop-action" onClick={props.abort} disabled={props.busy}>{t('停止', 'Stop')}</button></> : <button className="primary-action" onClick={() => props.runCommand('prompt')} disabled={props.busy || !props.composer.trim()}>{t('发送', 'Send')} <span>↗</span></button>}</div></div></div></div></section><aside className="context-rail" aria-label={t('研究背景', 'Research context')}>
-  <div className="context-heading"><div><span className="eyebrow">{t('研究背景', 'RESEARCH CONTEXT')}</span><span className="context-count">{props.streaming ? t('生成中', 'Streaming') : t('空闲', 'Idle')}</span></div></div>
-  <section className="context-section" aria-label={t('会话状态', 'Session status')}><div className="section-title"><div><span className="eyebrow">{t('会话', 'SESSION')}</span><h2>{props.session?.name || t('研究对话', 'Research conversation')}</h2></div></div><p className="muted">{props.streaming ? t('Agent 正在响应。', 'The Agent is responding.') : t('会话已就绪。', 'Session is ready.')}</p></section>
+  const [editingConversationId, setEditingConversationId] = useState('')
+  const [renameValue, setRenameValue] = useState('')
+  const [renameError, setRenameError] = useState('')
+  const [historyActionNotice, setHistoryActionNotice] = useState('')
+  const [workflowPanelOpen, setWorkflowPanelOpen] = useState(false)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
+  const workflowPanelRef = useRef<HTMLElement>(null)
+  const workflowPanelToggleRef = useRef<HTMLButtonElement>(null)
+  const workflowPanelCloseRef = useRef<HTMLButtonElement>(null)
+  const workspaceRef = useRef<HTMLElement>(null)
+  const composingRef = useRef(false)
+  const focusComposer = (): void => { window.requestAnimationFrame(() => composerRef.current?.focus()) }
+  const closeWorkflowPanel = (): void => {
+    setWorkflowPanelOpen(false)
+    window.requestAnimationFrame(() => workflowPanelToggleRef.current?.focus())
+  }
+  useEffect(() => {
+    if (!workflowPanelOpen) return undefined
+    workflowPanelCloseRef.current?.focus()
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') { event.preventDefault(); closeWorkflowPanel(); return }
+      if (event.key !== 'Tab') return
+      const panel = workflowPanelRef.current
+      if (!panel) return
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+      if (!focusable.length) { event.preventDefault(); panel.focus(); return }
+      const first = focusable[0]!
+      const last = focusable[focusable.length - 1]!
+      if (event.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && (document.activeElement === last || !panel.contains(document.activeElement))) { event.preventDefault(); first.focus() }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [workflowPanelOpen])
+  useEffect(() => {
+    if (!workflowPanelOpen || !workspaceRef.current || !workflowPanelRef.current) return undefined
+    const siblings = Array.from(workspaceRef.current.children).filter((child) => child !== workflowPanelRef.current && !child.classList.contains('context-drawer-dismiss')) as HTMLElement[]
+    const prior = siblings.map((element) => ({ element, inert: element.inert }))
+    for (const { element } of prior) element.inert = true
+    return () => { for (const item of prior) item.element.inert = item.inert }
+  }, [workflowPanelOpen])
+  const startNewConversation = (): void => { void props.newConversation().then(focusComposer) }
+  const selectConversation = (conversationId: string): void => { void props.switchConversation(conversationId).then(focusComposer) }
+  const handleComposerKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
+    if (event.key !== 'Enter' || event.shiftKey) return
+    if (event.nativeEvent.isComposing || composingRef.current || event.nativeEvent.keyCode === 229) return
+    event.preventDefault()
+    if (!props.composer.trim() || props.busy) return
+    props.runCommand(props.streaming ? 'follow_up' : 'prompt')
+  }
+  const submitRename = async (event: FormEvent, conversation: ConversationSummary): Promise<void> => {
+    event.preventDefault()
+    const value = renameValue.trim()
+    if (!value || conversation.version === undefined) return
+    setRenameError('')
+    const saved = await props.renameConversation(conversation.conversationId, value, conversation.version)
+    if (saved) { setEditingConversationId(''); setRenameValue(''); setRenameError('') }
+    else setRenameError(t('保存失败；标题未确认更新，请检查错误提示后重试。', 'Save failed; the title was not confirmed. Review the error and try again.'))
+  }
+  const activeConversation = props.currentConversationSummary?.conversationId === props.session?.conversationId
+    ? props.currentConversationSummary
+    : props.conversations.find((item) => item.conversationId === props.session?.conversationId)
+  const title = activeConversation?.name || props.session?.name || t('研究对话', 'Research conversation')
+  return <main ref={workspaceRef} className={`workspace-grid ${workflowPanelOpen ? 'context-drawer-open' : ''}`}>{workflowPanelOpen ? <button type="button" className="context-drawer-dismiss" aria-label={t('关闭研究背景面板', 'Close Research context panel')} onClick={closeWorkflowPanel} /> : null}<aside className="conversation-rail" aria-label={t('对话', 'Conversations')}>
+    <div className="rail-heading"><div><span className="eyebrow">WORKSPACE</span><h2>{t('对话', 'Conversations')}</h2></div><button className="icon-button" aria-label={t('新建对话', 'New conversation')} onClick={startNewConversation} disabled={props.busy}>＋</button></div>
+    <button className="new-conversation" onClick={startNewConversation} disabled={props.busy}>{t('＋ 新建对话', '＋ New conversation')}</button>
+    <div className="history-tools"><label htmlFor="conversation-search">{t('搜索标题', 'Search titles')}</label><div className="history-search-field"><input ref={searchRef} id="conversation-search" type="search" value={props.conversationSearch} onChange={(event) => props.setConversationSearch(event.target.value)} placeholder={t('搜索对话…', 'Search conversations…')} />{props.conversationSearch ? <button type="button" className="clear-history-search" aria-label={t('清空会话搜索', 'Clear conversation search')} onClick={() => { props.setConversationSearch(''); searchRef.current?.focus() }}>×</button> : null}</div><button type="button" className="history-filter" aria-pressed={props.showArchivedConversations} onClick={() => props.setShowArchivedConversations(!props.showArchivedConversations)}>{props.showArchivedConversations ? t('查看活动对话', 'Show active') : t('查看归档', 'Show archived')}</button></div>
+    <div className="history-label">{props.showArchivedConversations ? t('已归档', 'Archived') : t('历史记录', 'History')}</div>
+    <nav className="conversation-list" aria-label={t('对话历史', 'Conversation history')} aria-busy={props.historyLoading}>
+      {historyActionNotice ? <p className="history-state" role="status">{historyActionNotice}</p> : null}
+      {props.historyError ? <div className="history-state notice" role="alert"><strong>{t('历史记录加载失败', 'Conversation history failed to load')}</strong><p>{props.historyError}</p><button type="button" className="secondary-action" onClick={props.retryHistory}>{t('重试', 'Retry')}</button></div> : null}
+      {props.historyLoading && !props.historyError ? <p className="history-state muted" role="status">{t('正在加载会话…', 'Loading conversations…')}</p> : null}
+      {!props.historyLoading && !props.historyError && props.conversations.length === 0 ? <p className="history-state muted" role="status">{props.conversationSearch.trim() ? t('没有匹配的会话标题。', 'No conversation titles match this search.') : props.showArchivedConversations ? t('没有已归档会话。', 'No archived conversations.') : t('还没有会话记录。', 'No conversation history yet.')}</p> : null}
+      {props.conversations.map((conversation) => <div className={`conversation-row ${conversation.isActive ? 'active' : ''}`} key={conversation.conversationId}>
+        {editingConversationId === conversation.conversationId ? <form className="conversation-rename" onSubmit={(event) => { void submitRename(event, conversation) }}><input aria-label={t('对话标题', 'Conversation title')} value={renameValue} onChange={(event) => { setRenameValue(event.target.value); setRenameError('') }} autoFocus disabled={props.busy} /><button type="submit" disabled={props.busy || !renameValue.trim() || conversation.version === undefined}>{t('保存', 'Save')}</button><button type="button" onClick={() => { setEditingConversationId(''); setRenameError('') }} disabled={props.busy}>{t('取消', 'Cancel')}</button>{renameError ? <small className="rename-error" role="status">{renameError}</small> : null}</form> : <><button className={`conversation-item ${conversation.isActive ? 'active' : ''}`} onClick={() => selectConversation(conversation.conversationId)} disabled={props.busy} aria-current={conversation.isActive ? 'page' : undefined}><span title={conversation.name || t('未命名对话', 'Untitled conversation')}>{conversation.name || t('未命名对话', 'Untitled conversation')}</span><small>{conversation.messageCount} {t('条消息', 'messages')}{conversation.latestWorkflowRunId ? ` · Workflow ${conversation.latestWorkflowRunId}` : ''}</small></button><div className="conversation-actions"><button type="button" aria-label={`${t('重命名', 'Rename')} ${conversation.name ?? conversation.conversationId}`} onClick={() => { setRenameValue(conversation.name ?? ''); setRenameError(''); setEditingConversationId(conversation.conversationId) }} disabled={props.busy || conversation.version === undefined}>{t('重命名', 'Rename')}</button>{conversation.archived ? <button type="button" aria-label={`${t('恢复', 'Restore')} ${conversation.name ?? conversation.conversationId}`} onClick={() => { setHistoryActionNotice(''); void props.restoreConversation(conversation.conversationId, conversation.version ?? 0).then((saved) => setHistoryActionNotice(saved ? t('对话已恢复。', 'Conversation restored.') : '')) }} disabled={props.busy || conversation.version === undefined}>{t('恢复', 'Restore')}</button> : <button type="button" aria-label={`${t('归档', 'Archive')} ${conversation.name ?? conversation.conversationId}`} onClick={() => { setHistoryActionNotice(''); void props.archiveConversation(conversation.conversationId, conversation.version ?? 0).then((saved) => setHistoryActionNotice(saved ? t('对话已归档。', 'Conversation archived.') : '')) }} disabled={props.busy || conversation.version === undefined}>{t('归档', 'Archive')}</button>}</div></>}
+      </div>)}
+    </nav></aside><section className="conversation-pane" aria-label={t('对话', 'Conversation')}><div className="conversation-heading"><div><span className="eyebrow">{t('Agent 会话', 'AGENT SESSION')}</span><h1>{title}</h1></div><button ref={workflowPanelToggleRef} type="button" className="workflow-panel-toggle" aria-expanded={workflowPanelOpen} aria-controls="research-context-panel" onClick={() => setWorkflowPanelOpen(true)}>{t('Workflow 状态', 'Workflow status')}</button><span className={`session-pill ${props.streaming ? 'live' : ''}`}>{props.streaming ? t('生成中', 'Streaming') : t('空闲', 'Idle')} · {props.connectionState}</span></div><ConversationTimeline conversationId={props.session?.conversationId ?? ''} messages={props.messages} activities={props.activities} optimisticRequests={props.optimisticRequests} streaming={props.streaming} thinking={props.thinking} streamText={props.streamText} streamStartedAt={props.streamStartedAt} toolEvents={props.toolEvents} />{props.error ? <div className="inline-error" role="alert">{props.error}<button onClick={props.dismissError}>{t('忽略', 'Dismiss')}</button></div> : null}<div className="composer-wrap" onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) event.preventDefault() }} onDrop={(event) => { if (!event.dataTransfer.files.length) return; event.preventDefault(); props.upload(event.dataTransfer.files[0]) }}><div className="research-composer-content"><div className="research-controls" aria-label={t('研究执行控制', 'Research execution controls')}><label><span>Workflow</span><select aria-label="Workflow" value={props.selectedWorkflowId} onChange={(event) => props.setSelectedWorkflowId(event.target.value)}><option value="">{t('自由研究', 'Free Research')}</option>{props.workflowDefinitions.map((workflow) => <option value={workflow.id} key={workflow.id}>{workflow.displayNameZh ?? workflow.label}</option>)}</select></label><label className="check-field"><input type="checkbox" checked={props.contextPolicy.structuredKnowledge} onChange={(event) => props.setContextPolicy({ ...props.contextPolicy, structuredKnowledge: event.target.checked })} />{t('查询知识', 'Query Knowledge')}</label><label className="check-field"><input type="checkbox" checked={props.contextPolicy.sourceLibrary} onChange={(event) => props.setContextPolicy({ ...props.contextPolicy, sourceLibrary: event.target.checked })} />{t('搜索来源资料库', 'Search Source Library')}</label><label className="check-field"><input type="checkbox" checked={props.persistencePolicy.writeKnowledge} onChange={(event) => props.setPersistencePolicy({ writeKnowledge: event.target.checked })} />{t('写入知识', 'Write Knowledge')}</label></div>{props.executionSummary ? <div className="execution-summary" aria-label={t('研究执行摘要', 'Research execution summary')}><strong>{props.executionSummary.mode}{props.executionSummary.workflowLabel ? ` · ${props.executionSummary.workflowLabel}` : ''}</strong><span>{t('知识库：', 'Knowledge: ')}{props.executionSummary.contextPolicy.structuredKnowledge ? t('读取', 'Read') : t('关闭', 'Off')}</span><span>{t('来源资料库：', 'Source Library: ')}{props.executionSummary.contextPolicy.sourceLibrary ? t('搜索', 'Search') : t('关闭', 'Off')}</span><span>{t('知识写入：', 'Knowledge Write: ')}{props.executionSummary.persistencePolicy.writeKnowledge ? t('开启', 'On') : t('关闭', 'Off')}</span>{props.executionSummary.argumentsStatus !== 'not_required' ? <span>{t('参数：', 'Arguments: ')}{props.executionSummary.argumentsStatus}</span> : null}</div> : null}{props.dispatchFeedback ? <DispatchFeedbackPanel feedback={props.dispatchFeedback} /> : null}{props.dispatchResolution ? <DispatchResolutionNotice resolution={props.dispatchResolution} /> : null}<textarea aria-label={t('消息', 'Message')} value={props.composer} onChange={(event) => props.setComposer(event.target.value)} onPaste={(event) => { const file = Array.from(event.clipboardData.files)[0]; if (file) { event.preventDefault(); props.upload(file) } }} ref={composerRef} onCompositionStart={() => { composingRef.current = true }} onCompositionEnd={() => { composingRef.current = false }} onKeyDown={handleComposerKeyDown} placeholder={props.streaming ? t('输入指导或后续问题…', 'Write a steering instruction or follow-up…') : t('询问 Agent 任何研究相关问题…', 'Ask the Agent anything about your research…')} rows={3} /><div className="composer-attachment-row"><label className="composer-file-picker" aria-label={t('附加文档', 'Attach a document')}>{props.attachmentBusy ? t('正在添加…', 'Adding…') : t('＋ 附加文件', '＋ Attach file')}<input aria-label={t('添加文档', 'Add document')} type="file" accept=".pdf,.csv,.htm,.html,.json,.md,.text,.txt,.xml" onChange={(event) => { props.upload(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} disabled={props.attachmentBusy || props.acceptanceBusy} /></label><span className="composer-file-hint">{t('PDF、CSV、HTML、JSON、Markdown、文本、XML · 最大 100 MB', 'PDF, CSV, HTML, JSON, Markdown, text, XML · up to 100 MB')}</span></div><KnowledgeUploadSection key={props.attachmentUiVersion} {...props} /><div className="composer-footer"><span>{t('Enter 发送 · Shift+Enter 换行 · 队列：', 'Enter to send · Shift+Enter for newline · queued: ')}{props.queue.steering} {t('条指导 /', ' steer / ')} {props.queue.followUp} {t('条后续问题', ' follow-up')}</span><div className="composer-actions">{props.streaming ? <><button className="secondary-action" onClick={() => props.runCommand('steer')} disabled={props.busy || !props.composer.trim()}>{t('指导', 'Steer')}</button><button className="secondary-action" onClick={() => props.runCommand('follow_up')} disabled={props.busy || !props.composer.trim()}>{t('继续追问', 'Follow up')}</button><button className="stop-action" onClick={props.abort} disabled={props.busy}>{t('停止', 'Stop')}</button></> : <button className="primary-action" onClick={() => props.runCommand('prompt')} disabled={props.busy || !props.composer.trim()}>{t('发送', 'Send')} <span>↗</span></button>}</div></div></div></div></section><aside ref={workflowPanelRef} id="research-context-panel" className={`context-rail ${workflowPanelOpen ? 'is-open' : ''}`} role={workflowPanelOpen ? 'dialog' : undefined} aria-modal={workflowPanelOpen ? true : undefined} aria-labelledby="research-context-heading" aria-label={t('研究背景', 'Research context')} tabIndex={-1}>
+  <div className="context-heading"><div><span className="eyebrow">{t('研究背景', 'RESEARCH CONTEXT')}</span><h2 id="research-context-heading">{t('Workflow 状态', 'Workflow status')}</h2><span className="context-count">{props.streaming ? t('生成中', 'Streaming') : t('空闲', 'Idle')}</span></div><button ref={workflowPanelCloseRef} type="button" className="workflow-panel-close" aria-label={t('关闭研究背景面板', 'Close Research context panel')} onClick={closeWorkflowPanel}>{t('关闭', 'Close')}</button></div>
+  <section className="context-section" aria-label={t('会话状态', 'Session status')}><div className="section-title"><div><span className="eyebrow">{t('会话', 'SESSION')}</span><h2>{activeConversation?.name || props.session?.name || t('研究对话', 'Research conversation')}</h2></div></div><p className="muted">{props.streaming ? t('Agent 正在响应。', 'The Agent is responding.') : t('会话已就绪。', 'Session is ready.')}</p></section>
   <section className="context-section" aria-label={t('消息队列', 'Message queue')}><div className="section-title"><div><span className="eyebrow">{t('队列', 'QUEUE')}</span><h2>{t('待处理消息', 'Pending messages')}</h2></div></div><p>{props.queue.steering} {t('条指导', 'steering')} · {props.queue.followUp} {t('条后续问题', 'follow-up')}</p></section>
-  <section className="context-section" aria-label={t('工作流状态', 'Workflow status')}><div className="section-title"><div><span className="eyebrow">{t('生产', 'PRODUCTION')}</span><h2>{t('工作流', 'Workflow')}</h2></div></div>{noKnowledge ? <p className="muted">{t('未挂载知识库。', 'No Knowledge Base mounted.')}</p> : null}{!props.workflowRunId ? <div className="notice"><strong>{t('没有运行中的工作流', 'No active Workflow')}</strong><p>{t('运行状态会在启动工作流后显示在这里。', 'Workflow status appears here after a run starts.')}</p></div> : props.workflow ? <div className="workflow-card"><div className="workflow-status"><span className={`status-dot ${terminalWorkflowStatuses.has(props.workflow.status) ? 'terminal' : ''}`} />{props.workflow.status.replaceAll('_', ' ')}</div><h3>{props.workflow.objective}</h3><dl><dt>{t('阶段', 'Stage')}</dt><dd>{props.workflow.currentStage || t('暂无报告', 'Not reported')}</dd><dt>{t('进度', 'Progress')}</dt><dd>{props.workflow.progressSummary || t('暂无报告', 'Not reported')}</dd></dl>{props.workflow.errorSummary ? <div className="inline-error">{props.workflow.errorSummary}</div> : null}{props.workflow.status === 'completed_with_review' && (props.workflow.reviewCount ?? 0) > 0 ? <button className="secondary-action full" onClick={() => props.onNavigate('reviews')}>{t('查看审核', 'View Reviews')}</button> : null}{!terminalWorkflowStatuses.has(props.workflow.status) ? <button className="stop-action full" onClick={props.cancelWorkflow} disabled={props.busy}>{t('取消工作流', 'Cancel Workflow')}</button> : null}</div> : <p className="muted">{t('正在加载工作流状态…', 'Loading Workflow status…')}</p>}</section>
+  <WorkflowProgressPanel workflow={props.workflow} workflowRunId={props.workflowRunId} activities={props.activities} workflowDefinitions={props.workflowDefinitions} workflowUnavailableRunId={props.workflowUnavailableRunId} workflowPollNotice={props.workflowPollNotice} workflowPollRetryable={props.workflowPollRetryable} retryWorkflowPolling={props.retryWorkflowPolling} verifiedWorkflowBundleId={props.verifiedWorkflowBundleId} openWorkflowReport={props.openWorkflowReport} openWorkflowBundle={props.openWorkflowBundle} openWorkflowReview={props.openWorkflowReview} cancelWorkflow={props.cancelWorkflow} busy={props.busy} onNavigate={props.onNavigate} knowledgeBase={props.knowledgeBase} />
   <a className="secondary-action full research-reviews-link" href="/reviews" onClick={(event) => { event.preventDefault(); props.onNavigate('reviews') }}>{t('打开审核', 'Open Reviews')}{props.openReviewCases > 0 ? ` · ${props.openReviewCases}` : ''}</a>
 </aside></main>
 }
@@ -834,8 +1242,15 @@ function AppContent(): ReactElement {
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [loadError, setLoadError] = useState('')
   const [session, setSession] = useState<SessionState>()
+  const [currentConversationSummary, setCurrentConversationSummary] = useState<ConversationSummary>()
   const [conversations, setConversations] = useState<readonly ConversationSummary[]>([])
   const [messages, setMessages] = useState<readonly ConversationMessage[]>([])
+  const [activities, setActivities] = useState<readonly ConversationActivity[]>([])
+  const [optimisticRequests, setOptimisticRequests] = useState<readonly OptimisticConversationRequest[]>([])
+  const [conversationSearch, setConversationSearch] = useState('')
+  const [showArchivedConversations, setShowArchivedConversations] = useState(false)
+  const [conversationHistoryLoading, setConversationHistoryLoading] = useState(false)
+  const [conversationHistoryError, setConversationHistoryError] = useState('')
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseStatus>()
   const [settings, setSettings] = useState<RuntimeSettings>()
   const [settingsError, setSettingsError] = useState('')
@@ -844,11 +1259,8 @@ function AppContent(): ReactElement {
   const [modelLoginFlow, setModelLoginFlow] = useState<RuntimeModelLoginFlow>()
   const [modelTestMessage, setModelTestMessage] = useState('')
   const [openReviewCases, setOpenReviewCases] = useState(0)
-  const [streaming, setStreaming] = useState(false)
-  const [streamText, setStreamText] = useState('')
-  const [thinking, setThinking] = useState(false)
-  const [toolEvents, setToolEvents] = useState<readonly string[]>([])
-  const [queue, setQueue] = useState({ steering: 0, followUp: 0 })
+  const [conversationViews, setConversationViews] = useState<Readonly<Record<string, ConversationViewState>>>({})
+  const [connectionState, setConnectionState] = useState<RuntimeConnectionState>('connecting')
   const [composer, setComposer] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -868,6 +1280,13 @@ function AppContent(): ReactElement {
   const [themeFrameworkRefreshInfo, setThemeFrameworkRefreshInfo] = useState<ResearchPageProps['themeFrameworkRefreshInfo']>()
   const [themeFrameworkReviewRevision, setThemeFrameworkReviewRevision] = useState(0)
   const [workflow, setWorkflow] = useState<WorkflowRun>()
+  const [workflowUnavailableRunId, setWorkflowUnavailableRunId] = useState('')
+  const [verifiedWorkflowBundleId, setVerifiedWorkflowBundleId] = useState('')
+  const [workflowPollNotice, setWorkflowPollNotice] = useState('')
+  const [workflowPollRetryable, setWorkflowPollRetryable] = useState(false)
+  const [workflowPollAttempt, setWorkflowPollAttempt] = useState(0)
+  const [workflowCanceling, setWorkflowCanceling] = useState(false)
+  const [workflowArtifactTarget, setWorkflowArtifactTarget] = useState<WorkflowArtifactTarget>()
   const [reviews, setReviews] = useState<ReviewListResponse>()
   const [reviewDetail, setReviewDetail] = useState<ReviewDetail>()
   const [reviewsBusy, setReviewsBusy] = useState(false)
@@ -887,24 +1306,117 @@ function AppContent(): ReactElement {
   const [contextPolicy, setContextPolicy] = useState({ structuredKnowledge: true, sourceLibrary: true })
   const [persistencePolicy, setPersistencePolicy] = useState({ writeKnowledge: false })
   const [executionSummary, setExecutionSummary] = useState<ResearchExecutionSummary>()
+  const [dispatchFeedback, setDispatchFeedback] = useState<ResearchDispatchFeedback>()
+  const [dispatchResolution, setDispatchResolution] = useState<ResearchDispatchResolution>()
   const latestConversation = useRef('')
+  const historyEpoch = useRef(0)
+  const conversationSyncEpoch = useRef(0)
+  const pendingOperationIds = useRef(new Map<string, string>())
+  const commandInFlight = useRef(false)
+  const conversationMutationInFlight = useRef(false)
+  const seenEventIds = useRef(new Set<string>())
   const previewGeneration = useRef(0)
   const workflowRef = useRef<WorkflowRun | undefined>(undefined)
   workflowRef.current = workflow
   const requestEpoch = useRef(0)
+  const activeConversationId = session?.conversationId ?? ''
+  const activeConversationView = conversationViews[activeConversationId] ?? emptyConversationView
+  const { streaming, streamText, thinking, streamStartedAt, toolEvents, queue } = activeConversationView
+  const updateConversationView = (conversationId: string, update: (previous: ConversationViewState) => ConversationViewState): void => {
+    if (!conversationId) return
+    setConversationViews((previous) => ({ ...previous, [conversationId]: update(previous[conversationId] ?? emptyConversationView) }))
+  }
+  const mutateActiveConversationView = (update: (previous: ConversationViewState) => ConversationViewState): void => updateConversationView(latestConversation.current || activeConversationId, update)
+  const setStreaming = (value: boolean): void => mutateActiveConversationView((previous) => ({ ...previous, streaming: value }))
+  const setStreamText = (value: string | ((previous: string) => string)): void => mutateActiveConversationView((previous) => ({ ...previous, streamText: typeof value === 'function' ? value(previous.streamText) : value }))
+  const setThinking = (value: boolean): void => mutateActiveConversationView((previous) => ({ ...previous, thinking: value }))
+  const setToolEvents = (value: readonly ToolLifecycle[] | ((previous: readonly ToolLifecycle[]) => readonly ToolLifecycle[])): void => mutateActiveConversationView((previous) => ({ ...previous, toolEvents: typeof value === 'function' ? value(previous.toolEvents) : value }))
+
+  const loadConversationHistory = useCallback(async (search: string, archived: boolean): Promise<void> => {
+    const epoch = ++historyEpoch.current
+    setConversationHistoryLoading(true)
+    setConversationHistoryError('')
+    try {
+      const list = await client.listConversations({ search, archived })
+      if (epoch === historyEpoch.current) setConversations(list)
+    } catch (caught) { if (epoch === historyEpoch.current) setConversationHistoryError(errorText(caught)) }
+    finally { if (epoch === historyEpoch.current) setConversationHistoryLoading(false) }
+  }, [client])
 
   const syncCurrent = useCallback(async (): Promise<void> => {
     const epoch = requestEpoch.current
+    const syncEpoch = ++conversationSyncEpoch.current
     const [current, messageResult, list] = await Promise.all([client.currentSession(), client.messages(), client.listConversations()])
-    if (epoch !== requestEpoch.current) return
+    if (epoch !== requestEpoch.current || syncEpoch !== conversationSyncEpoch.current) return
+    if (messageResult.conversationId !== current.conversationId) return
     latestConversation.current = current.conversationId
     setSession(current)
     setMessages(messageResult.messages)
-    setConversations(list)
-  }, [client])
+    setActivities(messageResult.activities ?? [])
+    updateConversationView(current.conversationId, (previous) => current.isStreaming
+      ? { ...previous, streaming: true }
+      : { ...previous, streaming: false, thinking: false, streamText: '', streamStartedAt: undefined })
+    const authoritativeOperations = new Map((messageResult.activities ?? []).map((activity) => [activity.operationId, activity]))
+    setOptimisticRequests((previous) => previous.map((request) => {
+      if (request.conversationId !== current.conversationId) return request
+      const activity = authoritativeOperations.get(request.operationId)
+      if (!activity) return request
+      const progress: RequestProgress = activity.status === 'failed' || activity.status === 'not_started' ? 'failed'
+        : activity.status === 'interrupted' ? 'interrupted'
+          : activity.status === 'cancelled' ? 'cancelled'
+            : activity.status === 'completed' ? 'completed'
+              : activity.status === 'ready_for_chat' || activity.status === 'submitting' ? 'dispatching'
+                : activity.status === 'started' ? 'running' : 'accepted'
+      return { ...request, progress }
+    }))
+    let selected = list.find((item) => item.conversationId === current.conversationId)
+    if (!selected) {
+      try {
+        const archived = await client.listConversations({ archived: true })
+        if (epoch !== requestEpoch.current || syncEpoch !== conversationSyncEpoch.current) return
+        selected = archived.find((item) => item.conversationId === current.conversationId)
+      } catch { /* keep the last summary for this session if the archived list is unavailable */ }
+    }
+    if (epoch !== requestEpoch.current || syncEpoch !== conversationSyncEpoch.current) return
+    setCurrentConversationSummary((previous) => selected ?? (previous?.conversationId === current.conversationId ? previous : undefined))
+    const associatedRunId = selected?.latestWorkflowRunId ?? ''
+    if (workflowRef.current?.runId !== associatedRunId) setWorkflow(undefined)
+    setWorkflowRunId(associatedRunId)
+    setWorkflowUnavailableRunId('')
+    if (associatedRunId) {
+      try {
+        const run = await client.workflow(associatedRunId)
+        if (epoch === requestEpoch.current && syncEpoch === conversationSyncEpoch.current && latestConversation.current === current.conversationId && run.runId === associatedRunId) {
+          setWorkflow(run)
+          const runProgress: RequestProgress | undefined = run.status === 'completed' || run.status === 'completed_with_review' ? 'completed' : run.status === 'failed' || run.status === 'blocked' ? 'failed' : run.status === 'cancelled' ? 'cancelled' : 'running'
+          setOptimisticRequests((previous) => previous.map((request) => {
+            const activity = (messageResult.activities ?? []).find((item) => item.operationId === request.operationId && item.workflowRunId === run.runId)
+            return activity && request.conversationId === current.conversationId && runProgress ? { ...request, progress: runProgress, ...(runProgress === 'failed' ? { error: run.errorSummary ?? 'Workflow failed.' } : {}) } : request
+          }))
+        }
+      }
+      catch (caught) {
+        if (epoch !== requestEpoch.current || syncEpoch !== conversationSyncEpoch.current || latestConversation.current !== current.conversationId) return
+        setWorkflow(undefined)
+        if (caught instanceof RuntimeClientError && caught.status === 404) {
+          setWorkflowUnavailableRunId(associatedRunId)
+          setThemeFrameworkRunId('')
+          setWorkflowPollNotice('')
+          setWorkflowPollRetryable(false)
+        }
+      }
+    } else if (syncEpoch === conversationSyncEpoch.current) setWorkflow(undefined)
+    if (epoch !== requestEpoch.current || syncEpoch !== conversationSyncEpoch.current) return
+    await loadConversationHistory(conversationSearch, showArchivedConversations)
+  }, [client, conversationSearch, loadConversationHistory, showArchivedConversations])
+
+  useEffect(() => { if (loadState === 'ready') void loadConversationHistory(conversationSearch, showArchivedConversations) }, [conversationSearch, loadConversationHistory, loadState, showArchivedConversations])
 
   const navigate = useCallback((nextRoute: Route): void => { const path = routePath(nextRoute); if (window.location.pathname !== path) window.history.pushState({}, '', path); setRoute(nextRoute) }, [])
-  const onResearchLaunched = useCallback((result: ResearchStartResponse): void => { setWorkflowRunId(result.runId); setWorkflow(result.workflow); navigate('research') }, [navigate])
+  const onResearchLaunched = useCallback((result: ResearchStartResponse): void => {
+    try { window.sessionStorage.setItem(ACTIVE_RESEARCH_RUN_KEY, result.runId) } catch { /* in-memory tracking remains available when session storage is disabled */ }
+    setWorkflowRunId(result.runId); setWorkflow(result.workflow); navigate('research')
+  }, [navigate])
 
   useEffect(() => { const onPopState = (): void => setRoute(routeForPath(window.location.pathname)); window.addEventListener('popstate', onPopState); return () => window.removeEventListener('popstate', onPopState) }, [])
 
@@ -917,7 +1429,7 @@ function AppContent(): ReactElement {
         if (cancelled) return
         setSettings(loadedSettings)
         setWorkflowDefinitions(definitions)
-        setSession(bootstrap.session); latestConversation.current = bootstrap.session.conversationId; setConversations(bootstrap.conversations); setKnowledgeBase(bootstrap.knowledgeBase); setOpenReviewCases(bootstrap.openReviewCases ?? 0)
+        setSession(bootstrap.session); setCurrentConversationSummary(bootstrap.conversations.find((item) => item.conversationId === bootstrap.session.conversationId)); latestConversation.current = bootstrap.session.conversationId; setConversations(bootstrap.conversations); setKnowledgeBase(bootstrap.knowledgeBase); setOpenReviewCases(bootstrap.openReviewCases ?? 0)
         await syncCurrent()
         if (!cancelled) setLoadState('ready')
       } catch (caught) { if (!cancelled) { setLoadError(errorText(caught)); setLoadState('error') } }
@@ -954,8 +1466,9 @@ function AppContent(): ReactElement {
 
   const clearKnowledgeScopedState = (): void => {
     requestEpoch.current += 1; previewGeneration.current += 1
+    try { window.sessionStorage.removeItem(ACTIVE_RESEARCH_RUN_KEY) } catch { /* storage can be unavailable in restricted browser contexts */ }
     latestConversation.current = ''
-    setKnowledgeBase(undefined); setOpenReviewCases(0); setSession(undefined); setConversations([]); setMessages([]); setStreaming(false); setThinking(false); setStreamText(''); setToolEvents([]); setQueue({ steering: 0, followUp: 0 }); setComposer('')
+    setKnowledgeBase(undefined); setOpenReviewCases(0); setSession(undefined); setCurrentConversationSummary(undefined); setConversations([]); setMessages([]); setActivities([]); setConversationViews({}); setOptimisticRequests([]); setComposer('')
     setAttachment(undefined); setAttachmentBusy(false); setAttachmentUiVersion((version) => version + 1); setPreview(undefined); setPreviewBusy(false); setAcceptanceBusy(false); setSelectedCandidates(new Set()); setAcceptance(undefined); setRightsForm(defaultRightsForm); setSourceForm(defaultSourceForm); setUploadStatus('')
     setWorkflowRunId(''); setThemeFrameworkRunId(''); setThemeFrameworkRefreshInfo(undefined); setThemeFrameworkReviewRevision(0); setWorkflow(undefined); setReviews(undefined); setReviewDetail(undefined); setReviewsBusy(false); setBriefs(undefined); setSelectedBrief(undefined); setBriefsBusy(false); setReports(undefined); setSelectedReport(undefined); setReportsBusy(false); setBundles(undefined); setSelectedBundle(undefined); setBundlesBusy(false); setSourceHits([]); setSourceBusy(false); setExecutionSummary(undefined); setError('')
   }
@@ -965,7 +1478,7 @@ function AppContent(): ReactElement {
     try {
       const bootstrap = await client.bootstrap()
       const [definitions, refreshedSettings] = await Promise.all([client.listWorkflowDefinitions(), client.getSettings()])
-      setSettings(refreshedSettings); setWorkflowDefinitions(definitions); setSession(bootstrap.session); latestConversation.current = bootstrap.session.conversationId; setConversations(bootstrap.conversations); setKnowledgeBase(bootstrap.knowledgeBase); setOpenReviewCases(bootstrap.openReviewCases ?? 0)
+      setSettings(refreshedSettings); setWorkflowDefinitions(definitions); setSession(bootstrap.session); setCurrentConversationSummary(bootstrap.conversations.find((item) => item.conversationId === bootstrap.session.conversationId)); latestConversation.current = bootstrap.session.conversationId; setConversations(bootstrap.conversations); setKnowledgeBase(bootstrap.knowledgeBase); setOpenReviewCases(bootstrap.openReviewCases ?? 0)
       await syncCurrent(); setLoadState('ready')
     } catch (caught) { setLoadError(errorText(caught)); setLoadState('error') }
   }
@@ -1013,32 +1526,349 @@ function AppContent(): ReactElement {
     if (loadState !== 'ready' || route !== 'reports') { setReports(undefined); setSelectedReport(undefined); return }
     const epoch = requestEpoch.current
     setReportsBusy(true); setError('')
-    void client.listResearchReports(20).then((items) => { if (epoch === requestEpoch.current) { setReports(items); setSelectedReport(undefined) } }).catch((caught) => { if (epoch === requestEpoch.current) setError(errorText(caught)) }).finally(() => { if (epoch === requestEpoch.current) setReportsBusy(false) })
+    void client.listResearchReports(20).then((items) => { if (epoch === requestEpoch.current) setReports(items) }).catch((caught) => { if (epoch === requestEpoch.current) setError(errorText(caught)) }).finally(() => { if (epoch === requestEpoch.current) setReportsBusy(false) })
   }, [client, loadState, route])
 
+  useEffect(() => {
+    const target = workflowArtifactTarget
+    if (!target || route !== (target.kind === 'report' ? 'reports' : target.kind === 'bundle' ? 'bundles' : target.kind === 'daily_brief' ? 'briefs' : 'reviews')) return undefined
+    let cancelled = false
+    const open = async (): Promise<void> => {
+      try {
+        if (target.kind === 'report') {
+          const item = await client.getResearchReport(target.id)
+          if (!cancelled && item.workflowRunId === target.runId) setSelectedReport(item)
+        } else if (target.kind === 'bundle') {
+          const item = await client.getResearchBundle(target.id)
+          if (!cancelled && item.workflowRunId === target.runId) setSelectedBundle(item)
+        } else if (target.kind === 'review_case') {
+          const item = await client.getReview(target.id)
+          if (!cancelled && item.producerRunId === target.runId) setReviewDetail(item)
+        } else if (target.kind === 'daily_brief') {
+          const item = await client.getDailyBrief(target.id)
+          if (!cancelled && item.workflowRunId === target.runId) setSelectedBrief(item)
+        } else {
+          const item = await client.getThemeFrameworkRun(target.id)
+          if (!cancelled && item.workflowRunId === target.runId) setThemeFrameworkRunId(item.workflowRunId)
+        }
+      } catch { /* artifact links are shown only after a matching persisted artifact is loaded */ }
+      if (!cancelled) setWorkflowArtifactTarget(undefined)
+    }
+    void open()
+    return () => { cancelled = true }
+  }, [client, route, workflowArtifactTarget])
+
   const handleEvent = useCallback((event: ClientEvent): void => {
-    if (event.conversationId !== latestConversation.current && event.type !== 'session.changed') return
-    if (event.type === 'agent.started') { setStreaming(true); setThinking(false); setStreamText(''); setToolEvents([]) }
-    if (event.type === 'message.delta') { setStreaming(true); setThinking(false); setStreamText((old) => `${old}${event.summary ?? ''}`) }
-    if (event.type === 'thinking.status') { setStreaming(true); setThinking(true) }
-    if (event.type.startsWith('tool.')) setToolEvents((old) => [...old.slice(-3), `${event.type.replace('tool.', '')}: ${toolLabel(event.name)}`])
-    if (event.type === 'queue.updated') setQueue({ steering: event.steeringCount ?? 0, followUp: event.followUpCount ?? 0 })
-    if (event.type === 'agent.completed' || event.type === 'error') { setStreaming(false); setThinking(false); void syncCurrent().catch((caught) => setError(errorText(caught))) }
-    if (event.type === 'session.changed') { setStreaming(false); setStreamText(''); setThinking(false); void syncCurrent().catch((caught) => setError(errorText(caught))) }
+    if (seenEventIds.current.has(event.eventId)) return
+    seenEventIds.current.add(event.eventId)
+    if (seenEventIds.current.size > 512) seenEventIds.current.delete(seenEventIds.current.values().next().value as string)
+    const conversationId = event.conversationId
+    if (event.operationId) setOptimisticRequests((previous) => previous.map((request) => {
+      if (request.conversationId !== conversationId || request.operationId !== event.operationId) return request
+      const progress: RequestProgress = event.type === 'error'
+        ? event.code === 'agent_aborted' ? 'cancelled' : 'failed'
+        : event.type === 'agent.completed'
+          ? event.status === 'aborted' ? 'cancelled' : event.status === 'failed' ? 'failed' : 'completed'
+          : 'running'
+      return { ...request, progress, ...(progress === 'failed' ? { error: 'Runtime reported that this operation failed.' } : {}) }
+    }))
+    if (event.type === 'agent.started') updateConversationView(conversationId, (previous) => ({ ...previous, streaming: true, thinking: false, streamText: '', streamStartedAt: event.timestamp, toolEvents: [] }))
+    if (event.type === 'message.delta') updateConversationView(conversationId, (previous) => ({ ...previous, streaming: true, thinking: false, streamText: `${previous.streamText}${event.summary ?? ''}` }))
+    if (event.type === 'thinking.status') updateConversationView(conversationId, (previous) => ({ ...previous, streaming: true, thinking: true }))
+    if (event.type.startsWith('tool.')) {
+      const status = event.type === 'tool.started' ? 'started' : event.type === 'tool.completed' ? (event.isError ? 'failed' : 'completed') : 'updated'
+      const key = event.toolCallId ?? event.eventId
+      updateConversationView(conversationId, (previous) => {
+        const existing = previous.toolEvents.find((tool) => tool.key === key)
+        const tool: ToolLifecycle = { key, name: event.name ?? existing?.name ?? '', status, ...(existing?.startedAt || status === 'started' ? { startedAt: existing?.startedAt ?? event.timestamp } : {}), updatedAt: event.timestamp }
+        const toolEvents = existing ? previous.toolEvents.map((item) => item.key === key ? tool : item) : [...previous.toolEvents, tool].slice(-8)
+        return { ...previous, toolEvents }
+      })
+    }
+    if (event.type === 'queue.updated') updateConversationView(conversationId, (previous) => ({ ...previous, queue: { steering: event.steeringCount ?? 0, followUp: event.followUpCount ?? 0 } }))
+    if (event.type === 'agent.completed' || event.type === 'error') {
+      updateConversationView(conversationId, (previous) => ({ ...previous, streaming: false, thinking: false }))
+      if (conversationId === latestConversation.current) void syncCurrent().catch((caught) => setError(errorText(caught)))
+    }
+    if (event.type === 'session.changed') {
+      updateConversationView(conversationId, (previous) => ({ ...previous, streaming: false, streamText: '', streamStartedAt: undefined, thinking: false }))
+      void syncCurrent().catch((caught) => setError(errorText(caught)))
+    }
   }, [syncCurrent])
 
-  useEffect(() => { if (loadState !== 'ready') return undefined; return client.openEvents(handleEvent, () => { void syncCurrent().catch((caught) => setError(errorText(caught))) }) }, [client, handleEvent, loadState, syncCurrent])
+  useEffect(() => { if (loadState !== 'ready') return undefined; setConnectionState('connecting'); return client.openEvents(handleEvent, () => { void syncCurrent().catch((caught) => setError(errorText(caught))) }, undefined, setConnectionState) }, [client, handleEvent, loadState, syncCurrent])
 
   useEffect(() => {
     const knownWorkflow = workflowRef.current
-    if (!workflowRunId || !knowledgeBase || (knownWorkflow?.runId === workflowRunId && terminalWorkflowStatuses.has(knownWorkflow.status))) return undefined
-    return startWorkflowPolling({ runId: workflowRunId, fetchWorkflow: (runId) => client.workflow(runId), onUpdate: setWorkflow, onError: (caught) => setError(errorText(caught)) })
-  }, [client, knowledgeBase, workflowRunId])
+    const associatedActivity = activities.find((activity) => activity.workflowRunId === workflowRunId)
+    if (route !== 'research' || workflowCanceling || !workflowRunId || workflowUnavailableRunId === workflowRunId || associatedActivity?.status === 'interrupted' || (knownWorkflow?.runId === workflowRunId && isWorkflowFinalResultSynchronized(knownWorkflow))) return undefined
+    setWorkflowPollNotice('')
+    setWorkflowPollRetryable(false)
+    return startWorkflowPolling({ runId: workflowRunId, fetchWorkflow: (runId) => client.workflow(runId), onUpdate: (next) => {
+      if (next.runId !== workflowRunId || (workflowRef.current?.runId === next.runId && (next.observationRevision ?? 0) < (workflowRef.current.observationRevision ?? 0))) return
+      setWorkflow(next)
+      const waitingForResult = terminalWorkflowStatuses.has(next.status) && !isWorkflowFinalResultSynchronized(next)
+      setWorkflowPollNotice(waitingForResult ? t('工作流已结束，最终结果尚未同步。', 'Workflow ended; the final result is still syncing.') : '')
+      setWorkflowPollRetryable(false)
+    }, onError: () => undefined, onExhausted: () => {
+      const latest = workflowRef.current
+      const terminal = latest?.runId === workflowRunId && terminalWorkflowStatuses.has(latest.status)
+      setWorkflowPollNotice(terminal
+        ? t('最终结果同步超时或失败，可重试。', 'Final result synchronization timed out or failed. You can retry.')
+        : t('工作流状态同步失败或超时，可重试。', 'Workflow status synchronization failed or timed out. You can retry.'))
+      setWorkflowPollRetryable(true)
+    } })
+  }, [activities, client, route, t, workflowCanceling, workflowPollAttempt, workflowRunId, workflowUnavailableRunId])
 
-  const runCommand = async (operation: 'prompt' | 'steer' | 'follow_up'): Promise<void> => { const text = composer.trim(); if (!text || busy || (operation === 'prompt' && streaming)) return; setBusy(true); setError(''); try { if (operation === 'prompt') { const result: ResearchDispatchResponse = await client.dispatchResearch({ query: text, mode: selectedWorkflowId ? { type: 'workflow', workflowId: selectedWorkflowId } : { type: 'free_research' }, contextPolicy, persistencePolicy }); setExecutionSummary(result.summary); if (result.status === 'started') { setWorkflowRunId(result.runId ?? ''); setThemeFrameworkRefreshInfo(undefined); setThemeFrameworkRunId(result.decision.workflow?.id === 'theme_framework' || result.summary.workflowId === 'theme_framework' ? (result.runId ?? '') : ''); setWorkflow(result.workflow as WorkflowRun | undefined); } else { await client.command('prompt', text, { researchBundleId: result.runId, researchPolicy: { contextPolicy, persistencePolicy } }); setStreaming(true); setThinking(false); setStreamText(''); setToolEvents([]) } } else { await client.command(operation, text); setStreaming(true); setThinking(false); setStreamText(''); setToolEvents([]) } setComposer('') } catch (caught) { setError(errorText(caught)) } finally { setBusy(false) } }
-  const abort = async (): Promise<void> => { setBusy(true); setError(''); try { await client.abort(); setStreaming(false); await syncCurrent() } catch (caught) { setError(errorText(caught)) } finally { setBusy(false) } }
-  const newConversation = async (): Promise<void> => { setBusy(true); setError(''); try { await client.newConversation(); setStreaming(false); setStreamText(''); await syncCurrent() } catch (caught) { setError(errorText(caught)) } finally { setBusy(false) } }
-  const switchConversation = async (conversationId: string): Promise<void> => { if (conversationId === session?.conversationId || busy) return; setBusy(true); setError(''); setStreaming(false); setStreamText(''); setThinking(false); setToolEvents([]); try { await client.switchConversation(conversationId); await syncCurrent() } catch (caught) { setError(errorText(caught)) } finally { setBusy(false) } }
+  useEffect(() => {
+    const result = workflow?.executionResult
+    if (route !== 'research' || !workflowRunId || workflow?.runId !== workflowRunId || !terminalWorkflowStatuses.has(workflow.status) || !result?.bundleRef) {
+      setVerifiedWorkflowBundleId('')
+      return undefined
+    }
+    let cancelled = false
+    let timer: number | undefined
+    let attempts = 0
+    setVerifiedWorkflowBundleId('')
+    const sync = async (): Promise<void> => {
+      if (cancelled || attempts >= 4) return
+      attempts += 1
+      try {
+        const bundle = await client.getResearchBundleForRun(workflowRunId)
+        if (cancelled) return
+        if (bundle.bundleId === result.bundleRef && bundle.workflowRunId === workflowRunId) {
+          setVerifiedWorkflowBundleId(bundle.bundleId)
+          return
+        }
+      } catch { /* bounded retries below; no raw transport error is shown */ }
+      if (!cancelled && attempts < 4 && result.bundleStatus === 'pending') timer = window.setTimeout(() => void sync(), 700)
+    }
+    void sync()
+    return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer) }
+  }, [client, route, workflow, workflowRunId])
+
+  const operationLedgerKey = 'researchhub.pendingConversationOperations.v1'
+  const requestDigest = (text: string): string => {
+    const bytes = new TextEncoder().encode(text)
+    // Synchronous non-plaintext fingerprint keeps the submit path immediate and
+    // stable across reloads; the request text itself is never written to storage.
+    let first = 0x811c9dc5, second = 0x9e3779b9, third = 0x85ebca6b, fourth = 0xc2b2ae35
+    for (const byte of bytes) {
+      first = Math.imul(first ^ byte, 0x01000193)
+      second = Math.imul(second ^ byte, 0x85ebca6b)
+      third = Math.imul(third ^ byte, 0x27d4eb2d)
+      fourth = Math.imul(fourth ^ byte, 0x165667b1)
+    }
+    return [first, second, third, fourth].map((part) => (part >>> 0).toString(16).padStart(8, '0')).join('')
+  }
+  const readOperationLedger = (): { key: string; id: string }[] => {
+    try {
+      const parsed: unknown = JSON.parse(window.sessionStorage.getItem(operationLedgerKey) ?? '[]')
+      return Array.isArray(parsed) ? parsed.filter((entry): entry is { key: string; id: string } => typeof entry?.key === 'string' && typeof entry?.id === 'string').slice(-20) : []
+    } catch { return [] }
+  }
+  const writeOperationLedger = (entries: readonly { key: string; id: string }[]): void => {
+    try { window.sessionStorage.setItem(operationLedgerKey, JSON.stringify(entries.slice(-20))) } catch { /* session storage may be unavailable */ }
+  }
+  const operationIdFor = (conversationId: string, operation: string, text: string, workflowRegistryId?: string): { key: string; id: string } => {
+    const digest = requestDigest(JSON.stringify({ requestText: text, operation, workflowRegistryId: workflowRegistryId ?? '' }))
+    const key = `${conversationId}:${operation}:${workflowRegistryId ?? ''}:${digest}`
+    const existing = pendingOperationIds.current.get(key) ?? readOperationLedger().find((entry) => entry.key === key)?.id
+    if (existing) { pendingOperationIds.current.set(key, existing); return { key, id: existing } }
+    const id = globalThis.crypto?.randomUUID?.() ?? `op-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    pendingOperationIds.current.set(key, id)
+    while (pendingOperationIds.current.size > 20) pendingOperationIds.current.delete(pendingOperationIds.current.keys().next().value as string)
+    const ledger = readOperationLedger().filter((entry) => entry.key !== key)
+    ledger.push({ key, id }); writeOperationLedger(ledger)
+    return { key, id }
+  }
+  const clearOperationId = (key: string): void => {
+    pendingOperationIds.current.delete(key)
+    writeOperationLedger(readOperationLedger().filter((entry) => entry.key !== key))
+  }
+
+  const runCommand = async (operation: 'prompt' | 'steer' | 'follow_up'): Promise<void> => {
+    const text = composer.trim()
+    const conversationId = session?.conversationId
+    if (!conversationId || !text || busy || commandInFlight.current || (operation === 'prompt' && streaming)) return
+    commandInFlight.current = true
+    setBusy(true); setError('')
+    const pendingOperation = operationIdFor(conversationId, operation, text, operation === 'prompt' ? selectedWorkflowId : undefined)
+    const { id: operationId, key: retryKey } = pendingOperation
+    const markRequest = (progress: RequestProgress, message?: string): void => setOptimisticRequests((previous) => {
+      const existing = previous.find((request) => request.conversationId === conversationId && request.operationId === operationId)
+      const next: OptimisticConversationRequest = { conversationId, operationId, operation, requestText: text, createdAt: existing?.createdAt ?? new Date().toISOString(), progress, ...(message ? { error: message } : {}) }
+      return [...previous.filter((request) => request.operationId !== operationId || request.conversationId !== conversationId), next].slice(-100)
+    })
+    markRequest('submitting')
+    let preserveComposer = false
+    try {
+      const acceptedRequest = await client.acceptConversationRequest({ conversationId, operationId, requestText: text, operation, ...(operation === 'prompt' && selectedWorkflowId ? { workflowRegistryId: selectedWorkflowId } : {}) })
+      if (latestConversation.current !== conversationId) return
+      if (!acceptedRequest.accepted || (acceptedRequest.conversationId !== undefined && acceptedRequest.conversationId !== conversationId) || (acceptedRequest.operationId !== undefined && acceptedRequest.operationId !== operationId)) {
+        markRequest('failed', 'Runtime did not accept this request.')
+        preserveComposer = true
+        setError('The conversation request was not accepted. Retry to continue.')
+        return
+      }
+      markRequest('accepted')
+      await syncCurrent()
+      if (latestConversation.current !== conversationId) return
+      if (operation === 'prompt') {
+        markRequest('dispatching')
+        const requestMode = selectedWorkflowId ? { type: 'workflow' as const, workflowId: selectedWorkflowId } : { type: 'free_research' as const }
+        const priorFeedback = dispatchFeedback
+        const workflowArgumentContext = requestMode.type === 'workflow' && priorFeedback?.status === 'NEEDS_INPUT' && priorFeedback.workflowId === requestMode.workflowId
+          ? { workflowId: priorFeedback.workflowId, arguments: priorFeedback.validatedArguments }
+          : undefined
+        const result: ResearchDispatchResponse = await client.dispatchResearch({ query: text, conversationId, operationId, mode: requestMode, contextPolicy, persistencePolicy, ...(workflowArgumentContext === undefined ? {} : { workflowArgumentContext }) })
+        if (latestConversation.current !== conversationId) return
+        setExecutionSummary(result.summary)
+        setDispatchResolution(result.resolution)
+        if (result.feedback || result.status === 'needs_input') {
+          preserveComposer = true
+          if (result.feedback) {
+            const previousFeedback = dispatchFeedback
+            const keepValidatedValues = previousFeedback?.status === 'NEEDS_INPUT' && previousFeedback.workflowId === result.feedback.workflowId
+            setDispatchFeedback({ ...result.feedback, validatedArguments: keepValidatedValues ? { ...previousFeedback.validatedArguments, ...result.feedback.validatedArguments } : result.feedback.validatedArguments })
+          } else setDispatchFeedback(undefined)
+          if (result.feedback?.workflowId) setSelectedWorkflowId(result.feedback.workflowId)
+          if (!result.feedback) setError('Workflow needs input, but the dispatch response did not include feedback details.')
+        } else if (result.status === 'started') {
+          markRequest('running')
+          setDispatchFeedback(undefined)
+          setWorkflowRunId(result.runId ?? '')
+          setThemeFrameworkRefreshInfo(undefined)
+          setThemeFrameworkRunId(result.decision.workflow?.id === 'theme_framework' || result.summary.workflowId === 'theme_framework' ? (result.runId ?? '') : '')
+          setWorkflow(result.workflow as WorkflowRun | undefined)
+        } else {
+          setDispatchFeedback(undefined)
+          const accepted = await client.command('prompt', text, { conversationId, operationId, researchBundleId: result.runId, researchPolicy: { contextPolicy, persistencePolicy } })
+          if (latestConversation.current !== conversationId || accepted.conversationId !== conversationId) return
+          if (!accepted.accepted) { markRequest('failed', 'Runtime did not accept this request.'); preserveComposer = true; setError('The chat request was not accepted. Retry to continue.'); return }
+          markRequest('running')
+          clearOperationId(retryKey)
+          setStreaming(true); setThinking(false); setStreamText(''); setToolEvents([])
+        }
+        if (result.status === 'started' || result.status === 'needs_input' || result.status === 'invalid_input' || result.status === 'unresolved_reference' || result.status === 'executor_unavailable') clearOperationId(retryKey)
+        void syncCurrent()
+        void loadConversationHistory(conversationSearch, showArchivedConversations)
+      } else {
+        const accepted = await client.command(operation, text, { conversationId, operationId })
+        if (latestConversation.current !== conversationId || accepted.conversationId !== conversationId) return
+        if (!accepted.accepted) { markRequest('failed', 'Runtime did not accept this request.'); preserveComposer = true; setError('The conversation request was not accepted. Retry to continue.'); return }
+        markRequest('running')
+        clearOperationId(retryKey)
+        setStreaming(true); setThinking(false); setStreamText(''); setToolEvents([])
+      }
+      if (!preserveComposer) setComposer('')
+    } catch (caught) {
+      let recovered = false
+      if (latestConversation.current === conversationId) {
+        try {
+          const authoritativeActivities = await client.conversationActivities(conversationId)
+          if (latestConversation.current !== conversationId) return
+          const acceptedActivity = authoritativeActivities.find((activity) => activity.conversationId === conversationId && activity.operationId === operationId && activity.status === 'started' && activity.outcome === 'workflow_started' && activity.workflowRunId)
+          if (acceptedActivity?.workflowRunId) {
+            const authoritativeWorkflow = await client.workflow(acceptedActivity.workflowRunId)
+            if (latestConversation.current !== conversationId || authoritativeWorkflow.runId !== acceptedActivity.workflowRunId) return
+            const recoveredProgress: RequestProgress = authoritativeWorkflow.status === 'completed' || authoritativeWorkflow.status === 'completed_with_review' ? 'completed'
+              : authoritativeWorkflow.status === 'cancelled' ? 'cancelled'
+                : authoritativeWorkflow.status === 'failed' || authoritativeWorkflow.status === 'blocked' ? 'failed' : 'running'
+            setActivities(authoritativeActivities)
+            setWorkflowRunId(authoritativeWorkflow.runId)
+            setWorkflow(authoritativeWorkflow)
+            markRequest(recoveredProgress, recoveredProgress === 'failed' ? authoritativeWorkflow.errorSummary ?? 'Workflow failed.' : undefined)
+            clearOperationId(retryKey)
+            setDispatchFeedback(undefined)
+            setError('')
+            setComposer('')
+            preserveComposer = false
+            recovered = true
+            void loadConversationHistory(conversationSearch, showArchivedConversations)
+          }
+        } catch {
+          // Keep the retryable failure state unless Runtime proves this exact operation started.
+        }
+      }
+      if (!recovered && latestConversation.current === conversationId) {
+        markRequest('failed', errorText(caught))
+        preserveComposer = true
+        setError(errorText(caught))
+      }
+    }
+    finally { commandInFlight.current = false; setBusy(false) }
+  }
+  const clearConversationView = (): void => {
+    setSession(undefined)
+    setCurrentConversationSummary(undefined)
+    setMessages([]); setActivities([]); setWorkflowRunId(''); setWorkflow(undefined); setThemeFrameworkRunId('')
+    setWorkflowPollNotice(''); setWorkflowPollRetryable(false); setExecutionSummary(undefined); setDispatchFeedback(undefined); setDispatchResolution(undefined)
+  }
+  const abort = async (): Promise<void> => {
+    const conversationId = session?.conversationId
+    setBusy(true); setError('')
+    try {
+      const result = await client.abort()
+      if (!result.accepted || !result.aborted) { setError('Runtime did not confirm that the active request stopped.'); return }
+      const current = await client.currentSession()
+      if (current.conversationId !== conversationId || current.isStreaming) { setError('Stop was accepted; Runtime still reports the request as active.') ; return }
+      updateConversationView(current.conversationId, (previous) => ({ ...previous, streaming: false, thinking: false, streamText: '' }))
+      await syncCurrent()
+    } catch (caught) { setError(errorText(caught)) } finally { setBusy(false) }
+  }
+  const newConversation = async (): Promise<void> => {
+    if (busy || conversationMutationInFlight.current) return
+    conversationMutationInFlight.current = true
+    setBusy(true); setError(''); const epoch = ++requestEpoch.current; latestConversation.current = ''
+    try { await client.newConversation(); if (epoch !== requestEpoch.current) return; clearConversationView(); await syncCurrent() }
+    catch (caught) {
+      if (epoch === requestEpoch.current) {
+        latestConversation.current = session?.conversationId ?? ''
+        setError(errorText(caught))
+        try { await syncCurrent() } catch { /* retain the last known session while the server is unavailable */ }
+      }
+    } finally { conversationMutationInFlight.current = false; setBusy(false) }
+  }
+  const switchConversation = async (conversationId: string): Promise<void> => {
+    if (conversationId === session?.conversationId || busy || conversationMutationInFlight.current) return
+    conversationMutationInFlight.current = true
+    setBusy(true); setError(''); const epoch = ++requestEpoch.current; latestConversation.current = conversationId
+    try {
+      await client.switchConversation(conversationId)
+      if (epoch !== requestEpoch.current || latestConversation.current !== conversationId) return
+      clearConversationView()
+      await syncCurrent()
+    } catch (caught) {
+      if (epoch === requestEpoch.current) {
+        latestConversation.current = session?.conversationId ?? ''
+        setError(errorText(caught))
+        try { await syncCurrent() } catch { /* retain the last known session while the server is unavailable */ }
+      }
+    } finally { conversationMutationInFlight.current = false; setBusy(false) }
+  }
+  const refreshConversationHistory = async (): Promise<void> => { await loadConversationHistory(conversationSearch, showArchivedConversations) }
+  const renameConversation = async (conversationId: string, name: string, expectedVersion: number): Promise<boolean> => {
+    if (busy || conversationMutationInFlight.current) return false
+    conversationMutationInFlight.current = true; setBusy(true); setError('')
+    try { const summary = await client.updateConversationMetadata(conversationId, name, expectedVersion); if (session?.conversationId === conversationId) setCurrentConversationSummary(summary); await refreshConversationHistory(); if (session?.conversationId === conversationId) await syncCurrent(); return true }
+    catch (caught) { setError(errorText(caught)); await refreshConversationHistory(); return false }
+    finally { conversationMutationInFlight.current = false; setBusy(false) }
+  }
+  const archiveConversation = async (conversationId: string, expectedVersion: number): Promise<boolean> => {
+    if (busy || conversationMutationInFlight.current) return false
+    conversationMutationInFlight.current = true; setBusy(true); setError('')
+    try { const summary = await client.archiveConversation(conversationId, expectedVersion); if (session?.conversationId === conversationId) setCurrentConversationSummary(summary); await refreshConversationHistory(); return true }
+    catch (caught) { setError(errorText(caught)); await refreshConversationHistory(); return false }
+    finally { conversationMutationInFlight.current = false; setBusy(false) }
+  }
+  const restoreConversation = async (conversationId: string, expectedVersion: number): Promise<boolean> => {
+    if (busy || conversationMutationInFlight.current) return false
+    conversationMutationInFlight.current = true; setBusy(true); setError('')
+    try { const summary = await client.restoreConversation(conversationId, expectedVersion); if (session?.conversationId === conversationId) setCurrentConversationSummary(summary); await refreshConversationHistory(); return true }
+    catch (caught) { setError(errorText(caught)); await refreshConversationHistory(); return false }
+    finally { conversationMutationInFlight.current = false; setBusy(false) }
+  }
   const upload = async (file: File | undefined): Promise<void> => {
     if (!file) return
     if (!supportedDocumentExtension.test(file.name)) { setUploadStatus('Unsupported file. Choose a PDF, CSV, HTML, JSON, Markdown, text, or XML document.'); return }
@@ -1100,11 +1930,24 @@ function AppContent(): ReactElement {
   }
   const toggleCandidate = (candidateId: string): void => setSelectedCandidates((previous) => { const next = new Set(previous); if (next.has(candidateId)) next.delete(candidateId); else next.add(candidateId); return next })
   const clearAttachment = (): void => { if (acceptanceBusy) return; previewGeneration.current += 1; setAttachment(undefined); setPreview(undefined); setAcceptance(undefined); setSelectedCandidates(new Set()); setPreviewBusy(false); setWorkflowRunId(''); setWorkflow(undefined); setUploadStatus(''); setRightsForm(defaultRightsForm); setSourceForm(defaultSourceForm); setAttachmentUiVersion((version) => version + 1) }
-  const cancelWorkflow = async (): Promise<void> => { if (!workflowRunId) return; setBusy(true); try { await client.cancelWorkflow(workflowRunId); setWorkflow(await client.workflow(workflowRunId)) } catch (caught) { setError(errorText(caught)) } finally { setBusy(false) } }
+  const cancelWorkflow = async (): Promise<void> => { if (!workflowRunId) return; setBusy(true); setWorkflowCanceling(true); setError(''); try { await client.cancelWorkflow(workflowRunId); setWorkflow(await client.workflow(workflowRunId)) } catch { setWorkflowPollNotice('Cancellation could not be confirmed. Workflow status will continue to synchronize.') } finally { setWorkflowCanceling(false); setBusy(false) } }
   const selectReview = async (reviewCaseId: string): Promise<void> => { const epoch = requestEpoch.current; try { const result = await client.getReview(reviewCaseId); if (epoch === requestEpoch.current) setReviewDetail(result) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } }
   const selectBrief = async (reportId: string): Promise<void> => { const epoch = requestEpoch.current; try { const result = await client.getDailyBrief(reportId); if (epoch === requestEpoch.current) setSelectedBrief(result) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } }
   const selectReport = async (reportId: string): Promise<void> => { const epoch = requestEpoch.current; try { const result = await client.getResearchReport(reportId); if (epoch === requestEpoch.current) setSelectedReport(result) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } }
   const selectBundle = async (bundleId: string): Promise<void> => { const epoch = requestEpoch.current; try { const result = await client.getResearchBundle(bundleId); if (epoch === requestEpoch.current) setSelectedBundle(result) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } }
+  const openWorkflowReport = (id: string): void => {
+    if (!workflowRunId) return
+    const dailyBrief = workflow?.workflowType === 'daily_intelligence'
+    setWorkflowArtifactTarget({ kind: dailyBrief ? 'daily_brief' : 'report', id, runId: workflowRunId })
+    navigate(dailyBrief ? 'briefs' : 'reports')
+  }
+  const openWorkflowBundle = (id: string): void => { if (!workflowRunId) return; setWorkflowArtifactTarget({ kind: 'bundle', id, runId: workflowRunId }); navigate('bundles') }
+  const openWorkflowReview = (kind: NonNullable<NonNullable<WorkflowRun['executionResult']>['reviewRef']>['kind'], id: string): void => {
+    if (!workflowRunId) return
+    const targetKind = kind === 'review_case' ? 'review_case' : kind === 'daily_brief' ? 'daily_brief' : 'theme_framework_candidate'
+    setWorkflowArtifactTarget({ kind: targetKind, id, runId: workflowRunId })
+    navigate(kind === 'daily_brief' ? 'briefs' : 'reviews')
+  }
   const searchSources = async (query: string): Promise<void> => { const epoch = requestEpoch.current; setSourceBusy(true); setError(''); try { const result = await client.searchSourceLibrary(query, true); if (epoch === requestEpoch.current) setSourceHits(result.hits) } catch (caught) { if (epoch === requestEpoch.current) setError(errorText(caught)) } finally { if (epoch === requestEpoch.current) setSourceBusy(false) } }
 
   const updateSettings = async (action: () => Promise<RuntimeSettings>): Promise<void> => {
@@ -1186,7 +2029,7 @@ function AppContent(): ReactElement {
     onMountKnowledgeBase: (knowledgeBaseId) => { void changeKnowledgeBase(knowledgeBaseId) },
     onUnmountKnowledgeBase: () => { void changeKnowledgeBase('') },
   }
-  return <div className="app-shell"><ApplicationSidebar route={route} knowledgeBase={knowledgeBase} settings={settings} settingsError={settingsError} settingsBusy={settingsBusy} interactionsDisabled={configurationBlocked} onNavigate={navigate} onLoadSettings={() => void loadSettings()} onModelChange={(value) => void changeModel(value)} settingsPanelProps={settingsPanelProps} /><div className="app-main">{route === 'research' ? <ResearchPage session={session} conversations={conversations} messages={messages} streaming={streaming} thinking={thinking} streamText={streamText} toolEvents={toolEvents} queue={queue} composer={composer} busy={busy} error={error} attachment={attachment} attachmentUiVersion={attachmentUiVersion} attachmentBusy={attachmentBusy} preview={preview} previewBusy={previewBusy} acceptanceBusy={acceptanceBusy} selectedCandidates={selectedCandidates} acceptance={acceptance} rightsForm={rightsForm} sourceForm={sourceForm} uploadStatus={uploadStatus} workflowRunId={workflowRunId} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} client={client} workflow={workflow} knowledgeBase={knowledgeBase} openReviewCases={openReviewCases} workflowDefinitions={workflowDefinitions} selectedWorkflowId={selectedWorkflowId} setSelectedWorkflowId={setSelectedWorkflowId} contextPolicy={contextPolicy} persistencePolicy={persistencePolicy} setContextPolicy={setContextPolicy} setPersistencePolicy={setPersistencePolicy} executionSummary={executionSummary} setComposer={setComposer} newConversation={() => void newConversation()} switchConversation={(id) => void switchConversation(id)} runCommand={(operation) => void runCommand(operation)} abort={() => void abort()} upload={(file) => void upload(file)} toggleCandidate={toggleCandidate} setRightsForm={setRightsForm} setSourceForm={setSourceForm} startPreview={() => void startRawDocumentPreview()} acceptCandidates={() => void acceptRawDocumentCandidates()} clearAttachment={clearAttachment} cancelWorkflow={() => void cancelWorkflow()} dismissError={() => setError('')} onNavigate={navigate} /> : route === 'briefs' ? <BriefsPage briefs={briefs} selected={selectedBrief} busy={briefsBusy} error={error} onSelect={(id) => void selectBrief(id)} /> : route === 'reports' ? <ReportsPage reports={reports} selected={selectedReport} busy={reportsBusy} error={error} onSelect={(id) => void selectReport(id)} /> : route === 'bundles' ? <ResearchBundlesPage bundles={bundles} selected={selectedBundle} busy={bundlesBusy} error={error} onSelect={(id) => void selectBundle(id)} sourceHits={sourceHits} sourceBusy={sourceBusy} onSearchSources={(query) => void searchSources(query)} /> : route === 'run' ? <ResearchRunPage client={client} onLaunched={onResearchLaunched} /> : route === 'graph' ? <KnowledgeGraphPage knowledgeBase={knowledgeBase} client={client} /> : route === 'sources' ? <DataSourcesPage client={client} /> : route === 'theses' ? <ThesisLifecyclePage client={client} knowledgeBase={knowledgeBase} /> : <ReviewsPage client={client} knowledgeBase={knowledgeBase} reviews={reviews} reviewDetail={reviewDetail} reviewsBusy={reviewsBusy} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} acceptance={acceptance} workflowRunId={workflowRunId} workflow={workflow} onSelect={(id) => void selectReview(id)} onCloseDetail={() => setReviewDetail(undefined)} />}</div></div>
+  return <div className="app-shell"><ApplicationSidebar route={route} knowledgeBase={knowledgeBase} settings={settings} settingsError={settingsError} settingsBusy={settingsBusy} interactionsDisabled={configurationBlocked} onNavigate={navigate} onLoadSettings={() => void loadSettings()} onModelChange={(value) => void changeModel(value)} settingsPanelProps={settingsPanelProps} /><div className="app-main">{route === 'research' ? <ResearchPage session={session} currentConversationSummary={currentConversationSummary} conversations={conversations} historyLoading={conversationHistoryLoading} historyError={conversationHistoryError} retryHistory={() => void loadConversationHistory(conversationSearch, showArchivedConversations)} activities={activities} optimisticRequests={optimisticRequests.filter((request) => request.conversationId === session?.conversationId)} connectionState={connectionState} conversationSearch={conversationSearch} setConversationSearch={setConversationSearch} showArchivedConversations={showArchivedConversations} setShowArchivedConversations={setShowArchivedConversations} renameConversation={renameConversation} archiveConversation={archiveConversation} restoreConversation={restoreConversation} messages={messages} streaming={streaming} thinking={thinking} streamText={streamText} streamStartedAt={streamStartedAt} toolEvents={toolEvents} queue={queue} composer={composer} busy={busy} error={error} attachment={attachment} attachmentUiVersion={attachmentUiVersion} attachmentBusy={attachmentBusy} preview={preview} previewBusy={previewBusy} acceptanceBusy={acceptanceBusy} selectedCandidates={selectedCandidates} acceptance={acceptance} rightsForm={rightsForm} sourceForm={sourceForm} uploadStatus={uploadStatus} workflowRunId={workflowRunId} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} client={client} workflow={workflow} workflowUnavailableRunId={workflowUnavailableRunId} knowledgeBase={knowledgeBase} openReviewCases={openReviewCases} workflowDefinitions={workflowDefinitions} selectedWorkflowId={selectedWorkflowId} setSelectedWorkflowId={setSelectedWorkflowId} contextPolicy={contextPolicy} persistencePolicy={persistencePolicy} setContextPolicy={setContextPolicy} setPersistencePolicy={setPersistencePolicy} executionSummary={executionSummary} dispatchFeedback={dispatchFeedback} dispatchResolution={dispatchResolution} verifiedWorkflowBundleId={verifiedWorkflowBundleId} workflowPollNotice={workflowPollNotice} workflowPollRetryable={workflowPollRetryable} retryWorkflowPolling={() => { setWorkflowPollNotice(''); setWorkflowPollRetryable(false); setWorkflowPollAttempt((value) => value + 1) }} setComposer={setComposer} newConversation={() => newConversation()} switchConversation={(id) => switchConversation(id) } runCommand={(operation) => void runCommand(operation)} abort={() => void abort()} upload={(file) => void upload(file)} toggleCandidate={toggleCandidate} setRightsForm={setRightsForm} setSourceForm={setSourceForm} startPreview={() => void startRawDocumentPreview()} acceptCandidates={() => void acceptRawDocumentCandidates()} clearAttachment={clearAttachment} cancelWorkflow={() => void cancelWorkflow()} openWorkflowReport={openWorkflowReport} openWorkflowBundle={openWorkflowBundle} openWorkflowReview={openWorkflowReview} dismissError={() => setError('')} onNavigate={navigate} /> : route === 'briefs' ? <BriefsPage briefs={briefs} selected={selectedBrief} busy={briefsBusy} error={error} onSelect={(id) => void selectBrief(id)} /> : route === 'reports' ? <ReportsPage reports={reports} selected={selectedReport} busy={reportsBusy} error={error} onSelect={(id) => void selectReport(id)} /> : route === 'bundles' ? <ResearchBundlesPage bundles={bundles} selected={selectedBundle} busy={bundlesBusy} error={error} onSelect={(id) => void selectBundle(id)} sourceHits={sourceHits} sourceBusy={sourceBusy} onSearchSources={(query) => void searchSources(query)} /> : route === 'run' ? <ResearchRunPage client={client} onLaunched={onResearchLaunched} /> : route === 'graph' ? <KnowledgeGraphPage knowledgeBase={knowledgeBase} client={client} /> : route === 'sources' ? <DataSourcesPage client={client} /> : route === 'theses' ? <ThesisLifecyclePage client={client} knowledgeBase={knowledgeBase} /> : <ReviewsPage client={client} knowledgeBase={knowledgeBase} reviews={reviews} reviewDetail={reviewDetail} reviewsBusy={reviewsBusy} themeFrameworkRunId={themeFrameworkRunId} setThemeFrameworkRunId={setThemeFrameworkRunId} themeFrameworkRefreshInfo={themeFrameworkRefreshInfo} setThemeFrameworkRefreshInfo={setThemeFrameworkRefreshInfo} themeFrameworkReviewRevision={themeFrameworkReviewRevision} refreshThemeFrameworkReviews={() => setThemeFrameworkReviewRevision((value) => value + 1)} acceptance={acceptance} workflowRunId={workflowRunId} workflow={workflow} onSelect={(id) => void selectReview(id)} onCloseDetail={() => setReviewDetail(undefined)} />}</div></div>
 }
 
 export default function App(): ReactElement {

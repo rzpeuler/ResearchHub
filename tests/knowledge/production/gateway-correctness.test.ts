@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { KnowledgeBaseRegistry } from '../../../knowledge/registry/registry.ts'
@@ -40,13 +40,15 @@ test('writeKnowledge false resolves proposals without changing canonical revisio
   try {
     await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-dry-run', now: clock() })
     const gateway = new KnowledgeProductionGateway()
-    const before = await readCanonicalV04Assets(root); const beforeManifest = await loadKnowledgeBaseManifest(root)
+    const before = await readCanonicalV04Assets(root); const beforeManifest = await loadKnowledgeBaseManifest(root); const rawRegistryBefore = await readFile(join(root, 'registry', 'raw.yaml'), 'utf8')
     const result = await gateway.submit({ ...(await input(root, 'dry-run')), proposals: [claim('dry-claim', 42)], writeKnowledge: false })
     const after = await readCanonicalV04Assets(root)
     assert.equal(result.status, 'no_changes')
     assert.equal(result.knowledgeBaseRevision, beforeManifest.revision)
     assert.equal((await loadKnowledgeBaseManifest(root)).revision, beforeManifest.revision)
     assert.deepEqual(after.objects.map((item) => item.value.id), before.objects.map((item) => item.value.id))
+    assert.equal(await readFile(join(root, 'registry', 'raw.yaml'), 'utf8'), rawRegistryBefore, 'read-only Gateway evaluation must not register Raw evidence')
+    assert.deepEqual(await readdir(join(root, 'raw')), [], 'read-only Gateway evaluation must not create Raw archive files')
     assert.deepEqual(await listReviewCases(root), [])
   } finally { await rm(root, { recursive: true, force: true }) }
 })

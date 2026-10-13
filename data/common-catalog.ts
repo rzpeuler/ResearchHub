@@ -12,6 +12,7 @@ export interface CommonDataDefinition {
 }
 
 export const COMMON_DATA_CATALOG: readonly CommonDataDefinition[] = [
+  { metricId: 'security_identity_directory', meaning: '证券代码与名称目录，用于核验证券身份', dataKind: 'evidence', consumers: ['company_research', 'valuation', 'earnings_review'], sourcePolicyStatus: 'CONFIGURED' },
   { metricId: 'company_basic_profile', meaning: 'Current structured company profile snapshot', dataKind: 'evidence', consumers: ['company-deep-research'], sourcePolicyStatus: 'CONFIGURED' },
   { metricId: 'company_financial_history', meaning: 'Dated company financial indicator dataset', dataKind: 'evidence', consumers: ['company-deep-research'], sourcePolicyStatus: 'CONFIGURED' },
   { metricId: 'company_market_history', meaning: 'Dated company market observations', dataKind: 'timeseries', consumers: ['company-deep-research'], sourcePolicyStatus: 'CONFIGURED' },

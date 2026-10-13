@@ -33,6 +33,8 @@ import type { EventResearchDataResolverContext } from '../../workflows/event-res
 import type { ThesisRedTeamDataResolverContext } from '../../workflows/thesis-red-team/contracts.ts'
 import type { CompanyResearchDataPayload } from '../../plugins/research-acquisition/company-research-data.ts'
 import type { DataResolver } from '../../data/resolver.ts'
+import type { SecurityIdentityResolver, VerifiedSecurityIdentity, SecurityIdentityWorkflow } from './security-identity-resolver.ts'
+import { consumeVerifiedSecurityIdentityHandoff, type VerifiedSecurityIdentityHandoff } from './verified-security-identity-handoff.ts'
 
 export type ThesisLifecycleCreateInput = ThesisCreateInput
 export interface ApplicationThesisLifecycleCreateResult extends ThesisCreateServiceResult {
@@ -102,6 +104,7 @@ export interface ResearchServiceOptions {
   readonly managementCommunicationSources?: ManagementCommunicationAcquisitionSources
   readonly industryReasoningExecutorFactory?: () => Promise<ReasoningExecutor>
   readonly industryDataResolverFactory?: IndustryDataResolverFactory
+  readonly securityIdentityResolver?: SecurityIdentityResolver
   readonly themeScopeImpactChecker?: ThemeScopeImpactChecker
 }
 
@@ -114,6 +117,30 @@ export class ResearchService {
   constructor(private readonly options: ResearchServiceOptions) {
     this.thesisLifecycleService = new ThesisLifecycleService({ mountedKnowledgeBaseRoot: options.mountedKnowledgeBaseRoot, reportRoot: options.reportRoot, cwd: options.cwd, workflowService: options.workflowService, reasoningExecutor: options.reasoningExecutor })
     this.thesisCreateService = new ThesisCreateService({ mountedKnowledgeBaseRoot: options.mountedKnowledgeBaseRoot, reasoningExecutor: options.reasoningExecutor })
+  }
+
+  private async resolveSecurityIdentity(workflowId: SecurityIdentityWorkflow, input: { readonly workflowRunId: string; readonly symbol: string; readonly name?: string; readonly exchange?: string; readonly asOf?: string; readonly useStructuredKnowledge?: boolean }, signal?: AbortSignal, handoff?: VerifiedSecurityIdentityHandoff): Promise<VerifiedSecurityIdentity | undefined> {
+    if (signal?.aborted) throw new ApplicationServiceError('cancelled', `Security identity resolution cancelled: ${input.workflowRunId}`)
+    if (handoff !== undefined) {
+      try {
+        return consumeVerifiedSecurityIdentityHandoff(handoff, {
+          workflowId,
+          runId: input.workflowRunId,
+          symbol: input.symbol,
+          ...(input.name === undefined ? {} : { name: input.name }),
+          ...(input.exchange === undefined ? {} : { exchange: input.exchange }),
+          ...(input.asOf === undefined ? {} : { asOf: input.asOf }),
+          structuredKnowledge: input.useStructuredKnowledge !== false,
+        })
+      } catch (error) {
+        throw new ApplicationServiceError('conflict', `Verified security identity handoff was rejected: ${error instanceof Error ? error.message : 'invalid context'}`)
+      }
+    }
+    const resolver = this.options.securityIdentityResolver
+    if (resolver === undefined) return undefined
+    const resolution = await resolver.resolve({ workflowId, symbol: input.symbol, ...(input.name === undefined ? {} : { name: input.name }), ...(input.exchange === undefined ? {} : { exchange: input.exchange }), asOf: input.asOf ?? new Date().toISOString(), historical: input.asOf !== undefined, allowKnowledgeLookup: input.useStructuredKnowledge !== false }, signal)
+    if (resolution.status !== 'VERIFIED') throw new ApplicationServiceError('conflict', `UNRESOLVED_REFERENCE: ${resolution.status}: ${resolution.reason} ${resolution.diagnostics.join(' ')}`.trim())
+    return resolution.identity
   }
 
   private createResearchEvidenceResolver(context: { readonly company: ResearchCompanyIdentity; readonly asOf: string; readonly signal?: AbortSignal; readonly limitPerSource?: number }, onCandidatesDiscovered?: (event: { readonly provider: 'CNINFO' | 'GDELT'; readonly candidates: readonly import('../../plugins/research-acquisition/contracts.ts').ResearchSourceCandidate[]; readonly requirement: import('../../data/contracts.ts').DataRequirement }) => Promise<void | readonly import('../../plugins/research-acquisition/contracts.ts').ResearchSourceCandidate[]> | void | readonly import('../../plugins/research-acquisition/contracts.ts').ResearchSourceCandidate[]): DataResolver<CompanyResearchDataPayload> {
@@ -223,10 +250,11 @@ export class ResearchService {
     return this.thesisLifecycleService.updateDecisionReport(input)
   }
 
-  startResearchCompany(input: ResearchCompanyInput, callerSignal?: AbortSignal): { readonly runId: string; readonly completion: Promise<ApplicationResearchResult & { readonly themeScopeImpact: ThemeScopeImpactTriggerResult }> } {
+  startResearchCompany(input: ResearchCompanyInput, callerSignal?: AbortSignal, identityHandoff?: VerifiedSecurityIdentityHandoff): { readonly runId: string; readonly completion: Promise<ApplicationResearchResult & { readonly themeScopeImpact: ThemeScopeImpactTriggerResult }> } {
     if (!input || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(input.workflowRunId) || !/^\d{6}$/.test(input.symbol)) {
       throw new ApplicationServiceError('invalid_input', 'workflowRunId and A-share symbol are invalid')
     }
+    if (input.maxSources !== undefined && (!Number.isSafeInteger(input.maxSources) || input.maxSources < 1 || input.maxSources > 50)) throw new ApplicationServiceError('invalid_input', 'maxSources must be an integer from 1 to 50')
     const company: ResearchCompanyIdentity = {
       symbol: input.symbol,
       ...(input.name === undefined ? {} : { name: input.name }),
@@ -238,22 +266,32 @@ export class ResearchService {
       objective: `Company research ${input.symbol}`,
     })
     const completion = this.options.workflowService.start(input.workflowRunId, async (signal) => {
+      const observations = this.options.workflowService.observationReporter(input.workflowRunId)
+      observations.startStage('identity_validation', '研究对象校验')
       const combined = new AbortController()
       const abort = () => combined.abort()
+      const cancelForCaller = () => { combined.abort(); try { this.options.workflowService.cancelWorkflow(input.workflowRunId) } catch { /* the run may already be terminal */ } }
       signal.addEventListener('abort', abort, { once: true })
-      callerSignal?.addEventListener('abort', abort, { once: true })
+      if (callerSignal?.aborted) cancelForCaller()
+      else callerSignal?.addEventListener('abort', cancelForCaller, { once: true })
       try {
+        const securityIdentity = await this.resolveSecurityIdentity('company_research', input, combined.signal, identityHandoff)
+        const resolvedCompany: ResearchCompanyIdentity = securityIdentity ? { symbol: securityIdentity.symbol, name: securityIdentity.verifiedName, exchange: securityIdentity.exchange } : company
         const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot))
+        observations.finishStage('identity_validation', 'completed', { summary: securityIdentity ? '已校验证券身份' : '使用结构化证券代码' })
         const result = await runCompanyDeepResearch({
           workflowRunId: input.workflowRunId,
           handle,
-          company,
+          company: resolvedCompany,
+          ...(securityIdentity === undefined ? {} : { securityIdentity }),
           dataResolverFactory: this.createCompanyDataResolverFactory(),
           asOf: input.asOf,
           reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')),
           signal: combined.signal,
           signalStore: this.options.signalStore,
+          maxSources: input.maxSources,
           reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge,
+          observations,
         })
         if (result.status === 'completed') {
           this.options.workflowService.markAuthoritativeTerminal(input.workflowRunId, 'completed', { summary: `Company research completed for ${input.symbol}` })
@@ -266,7 +304,7 @@ export class ResearchService {
         }
       } finally {
         signal.removeEventListener('abort', abort)
-        callerSignal?.removeEventListener('abort', abort)
+        callerSignal?.removeEventListener('abort', cancelForCaller)
       }
     }).then(async (outcome) => {
       const impact = outcome.workflow.status === 'completed' && (outcome.workflow.createdIds.length + outcome.workflow.updatedIds.length > 0)
@@ -284,6 +322,7 @@ export class ResearchService {
       committedIds: outcome.workflow.committedIds,
       proposalCount: outcome.workflow.proposalIds.length,
       summary: outcome.summary,
+      providerOutcomes: outcome.workflow.providerOutcomes,
       ...(outcome.errorSummary ? { errorSummary: outcome.errorSummary } : {}),
       themeScopeImpact: impact,
     })
@@ -310,13 +349,13 @@ export class ResearchService {
     const skillDataRequirements = getCanonicalResearchSkill('industry_supply_demand_cycle')?.dataRequirements ?? []
     this.options.workflowService.register({ runId: input.workflowRunId, workflowType: 'industry_deep_research', objective: `Industry research ${target.name}` })
     const completion = this.options.workflowService.start(input.workflowRunId, async (signal) => {
-      const combined = new AbortController(); const abort = () => combined.abort(); signal.addEventListener('abort', abort, { once: true }); callerSignal?.addEventListener('abort', abort, { once: true })
+      const combined = new AbortController(); const abort = () => combined.abort(); const cancelForCaller = () => { combined.abort(); try { this.options.workflowService.cancelWorkflow(input.workflowRunId) } catch { /* the run may already be terminal */ } }; signal.addEventListener('abort', abort, { once: true }); if (callerSignal?.aborted) cancelForCaller(); else callerSignal?.addEventListener('abort', cancelForCaller, { once: true })
       try {
         const reasoningExecutor = withSourceLibraryContext(await industryReasoningExecutorFactory(), input.sourceLibraryContext)
         const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot))
         const result = await runIndustryDeepResearch({ workflowRunId: input.workflowRunId, handle, target, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), reasoningExecutor: reasoningExecutor!, dataResolverFactory, skillDataRequirements, ...(input.searchTerms ? { searchTerms: input.searchTerms } : {}), ...(input.asOf === undefined ? {} : { asOf: input.asOf }), asOfMode, maxSources: input.maxSources, maxEvidencePerModule: input.maxEvidencePerModule, writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
         return { status: result.status, workflow: result, diagnostics: result.diagnostics, outcomes: [] as readonly ResearchProviderOutcome[] }
-      } finally { signal.removeEventListener('abort', abort); callerSignal?.removeEventListener('abort', abort) }
+      } finally { signal.removeEventListener('abort', abort); callerSignal?.removeEventListener('abort', cancelForCaller) }
     }).then(async (outcome) => {
       const impact = outcome.workflow.status === 'completed' && (outcome.workflow.createdIds.length + outcome.workflow.updatedIds.length > 0)
         ? await triggerThemeScopeImpactPostWrite({ mountedKnowledgeBaseRoot: resolve(this.options.mountedKnowledgeBaseRoot), writerRunId: input.workflowRunId, expectedKnowledgeBaseId: outcome.workflow.knowledgeBaseId, expectedCommittedRevision: outcome.workflow.knowledgeBaseRevision, expectedCreatedIds: outcome.workflow.createdIds, expectedUpdatedIds: outcome.workflow.updatedIds, checker: this.options.themeScopeImpactChecker })
@@ -326,31 +365,43 @@ export class ResearchService {
     completion.catch(() => undefined); return { runId: input.workflowRunId, completion }
   }
 
-  startEarningsReview(input: EarningsReviewInput, callerSignal?: AbortSignal): { readonly runId: string; readonly completion: Promise<ApplicationEarningsReviewResult> } {
+  startEarningsReview(input: EarningsReviewInput, callerSignal?: AbortSignal, identityHandoff?: VerifiedSecurityIdentityHandoff): { readonly runId: string; readonly completion: Promise<ApplicationEarningsReviewResult> } {
     if (!input || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(input.workflowRunId) || !/^\d{6}$/.test(input.symbol) || !Number.isInteger(input.fiscalYear) || !['Q1', 'H1', 'Q3', 'FY'].includes(input.period)) throw new ApplicationServiceError('invalid_input', 'workflowRunId, A-share symbol, fiscalYear, and period are invalid')
     const company: ResearchCompanyIdentity = { symbol: input.symbol, ...(input.name === undefined ? {} : { name: input.name }), ...(input.exchange === undefined ? {} : { exchange: input.exchange }) }
     this.options.workflowService.register({ runId: input.workflowRunId, workflowType: 'earnings_review', objective: `Earnings review ${input.symbol} ${input.fiscalYear}-${input.period}` })
     const completion = this.options.workflowService.start(input.workflowRunId, async (signal) => {
-      const combined = new AbortController(); const abort = () => combined.abort(); signal.addEventListener('abort', abort, { once: true }); callerSignal?.addEventListener('abort', abort, { once: true })
+      const combined = new AbortController(); const abort = () => combined.abort(); const cancelForCaller = () => { combined.abort(); try { this.options.workflowService.cancelWorkflow(input.workflowRunId) } catch { /* the run may already be terminal */ } }; signal.addEventListener('abort', abort, { once: true }); if (callerSignal?.aborted) cancelForCaller(); else callerSignal?.addEventListener('abort', cancelForCaller, { once: true })
       try {
-        const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runEarningsReview({ workflowRunId: input.workflowRunId, handle, company, fiscalYear: input.fiscalYear, period: input.period, asOf: input.asOf, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), acquisitionPlugins: this.options.acquisitionPlugins, akshare: this.options.akshare, dataResolverFactory: this.options.earningsDataResolverFactory, managementCommunicationSources: this.options.managementCommunicationSources, managementCommunicationDataResolverFactory: this.options.managementCommunicationDataResolverFactory, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
-        return { runId: input.workflowRunId, status: result.status, knowledgeBaseId: result.knowledgeBaseId, ...(result.report === undefined ? {} : { reportId: result.report.reportId, reportPath: `${result.report.reportId}.md` }), committedIds: result.committedIds, proposalCount: result.proposalIds.length, summary: result.status === 'completed' ? `Earnings review completed for ${input.symbol} ${input.fiscalYear}-${input.period}` : `Earnings review ${result.status} for ${input.symbol}`, ...(result.errors.length ? { errorSummary: result.errors.join('; ').slice(0, 500) } : {}), telemetry: result.telemetry, ...(result.blockedReason === undefined ? {} : { blockedReason: result.blockedReason }) }
-      } finally { signal.removeEventListener('abort', abort); callerSignal?.removeEventListener('abort', abort) }
+        const securityIdentity = await this.resolveSecurityIdentity('earnings_review', input, combined.signal, identityHandoff)
+        const resolvedCompany: ResearchCompanyIdentity = securityIdentity ? { symbol: securityIdentity.symbol, name: securityIdentity.verifiedName, exchange: securityIdentity.exchange } : company
+        const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runEarningsReview({ workflowRunId: input.workflowRunId, handle, company: resolvedCompany, ...(securityIdentity === undefined ? {} : { securityIdentity }), fiscalYear: input.fiscalYear, period: input.period, asOf: input.asOf, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), acquisitionPlugins: this.options.acquisitionPlugins, akshare: this.options.akshare, dataResolverFactory: this.options.earningsDataResolverFactory, managementCommunicationSources: this.options.managementCommunicationSources, managementCommunicationDataResolverFactory: this.options.managementCommunicationDataResolverFactory, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
+        return { runId: input.workflowRunId, status: result.status, knowledgeBaseId: result.knowledgeBaseId, ...(result.report === undefined ? {} : { reportId: result.report.reportId, reportPath: `${result.report.reportId}.md` }), committedIds: result.committedIds, proposalCount: result.proposalIds.length, summary: result.status === 'completed' ? `Earnings review completed for ${input.symbol} ${input.fiscalYear}-${input.period}` : `Earnings review ${result.status} for ${input.symbol}`, ...(result.errors.length ? { errorSummary: result.errors.join('; ').slice(0, 500) } : {}), telemetry: result.telemetry, providerOutcomes: result.providerOutcomes, acquisitionDiagnostics: result.acquisitionDiagnostics, selectionDiagnostics: result.selectionDiagnostics, ...(result.financialQuality === undefined ? {} : { financialQuality: result.financialQuality }), ...(result.expectationAnalysis === undefined ? {} : { expectationAnalysis: result.expectationAnalysis }), ...(result.qualityGate === undefined ? {} : { qualityGateStatus: result.qualityGate.status }), ...(result.blockedReason === undefined ? {} : { blockedReason: result.blockedReason }) }
+      } finally { signal.removeEventListener('abort', abort); callerSignal?.removeEventListener('abort', cancelForCaller) }
     }).then((outcome) => outcome as ApplicationEarningsReviewResult)
     completion.catch(() => undefined); return { runId: input.workflowRunId, completion }
   }
 
-  startValuation(input: ValuationInput, callerSignal?: AbortSignal): { readonly runId: string; readonly completion: Promise<ApplicationValuationResult> } {
+  startValuation(input: ValuationInput, callerSignal?: AbortSignal, identityHandoff?: VerifiedSecurityIdentityHandoff): { readonly runId: string; readonly completion: Promise<ApplicationValuationResult> } {
     if (!input || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(input.workflowRunId) || !/^\d{6}$/.test(input.symbol) || (input.methods !== undefined && (!Array.isArray(input.methods) || input.methods.some((method) => !['PE', 'PB', 'EV_EBITDA'].includes(method))))) throw new ApplicationServiceError('invalid_input', 'workflowRunId, A-share symbol, and valuation methods are invalid')
     if (input.targetFiscalYear !== undefined && !Number.isInteger(input.targetFiscalYear)) throw new ApplicationServiceError('invalid_input', 'targetFiscalYear must be an integer')
     const company: ResearchCompanyIdentity = { symbol: input.symbol, ...(input.name === undefined ? {} : { name: input.name }), ...(input.exchange === undefined ? {} : { exchange: input.exchange }) }
     this.options.workflowService.register({ runId: input.workflowRunId, workflowType: 'valuation', objective: `Valuation ${input.symbol}` })
     const completion = this.options.workflowService.start(input.workflowRunId, async (signal) => {
-      const combined = new AbortController(); const abort = () => combined.abort(); signal.addEventListener('abort', abort, { once: true }); callerSignal?.addEventListener('abort', abort, { once: true })
+      const combined = new AbortController()
+      const abort = () => combined.abort()
+      const cancelForCaller = () => { combined.abort(); try { this.options.workflowService.cancelWorkflow(input.workflowRunId) } catch { /* the run may already be terminal */ } }
+      signal.addEventListener('abort', abort, { once: true })
+      if (callerSignal?.aborted) cancelForCaller()
+      else callerSignal?.addEventListener('abort', cancelForCaller, { once: true })
       try {
-        const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runValuation({ workflowRunId: input.workflowRunId, handle, company, asOf: input.asOf, methods: input.methods, targetFiscalYear: input.targetFiscalYear, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), akshare: this.options.akshare, officialDisclosure: this.options.officialDisclosure, dataResolverFactory: this.options.valuationDataResolverFactory, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
-        return { runId: input.workflowRunId, status: result.status, knowledgeBaseId: result.knowledgeBaseId, ...(result.report === undefined ? {} : { reportId: result.report.reportId, reportPath: `${result.report.reportId}.md` }), committedIds: result.committedIds, proposalCount: result.proposalIds.length, summary: result.status === 'completed' ? `Valuation completed for ${input.symbol}` : `Valuation ${result.status} for ${input.symbol}`, ...(result.errors.length ? { errorSummary: result.errors.join('; ').slice(0, 500) } : {}), telemetry: result.telemetry, providerOutcome: result.providerOutcome, ...(result.automaticCompsResult === undefined ? {} : { automaticCompsResult: result.automaticCompsResult }), ...(result.crosscheck === undefined ? {} : { crosscheck: result.crosscheck }), ...(result.blockedReason === undefined ? {} : { blockedReason: result.blockedReason }) }
-      } finally { signal.removeEventListener('abort', abort); callerSignal?.removeEventListener('abort', abort) }
+        const securityIdentity = await this.resolveSecurityIdentity('valuation', input, combined.signal, identityHandoff)
+        const resolvedCompany: ResearchCompanyIdentity = securityIdentity ? { symbol: securityIdentity.symbol, name: securityIdentity.verifiedName, exchange: securityIdentity.exchange } : company
+        const handle = await this.registry.mount(resolve(this.options.mountedKnowledgeBaseRoot)); const result = await runValuation({ workflowRunId: input.workflowRunId, handle, company: resolvedCompany, ...(securityIdentity === undefined ? {} : { securityIdentity }), asOf: input.asOf, methods: input.methods, targetFiscalYear: input.targetFiscalYear, reportRoot: resolve(this.options.reportRoot ?? join(this.options.cwd ?? process.cwd(), 'runtime-data', 'reports')), akshare: this.options.akshare, officialDisclosure: this.options.officialDisclosure, dataResolverFactory: this.options.valuationDataResolverFactory, reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge, signal: combined.signal })
+        return { runId: input.workflowRunId, status: result.status, knowledgeBaseId: result.knowledgeBaseId, ...(result.report === undefined ? {} : { reportId: result.report.reportId, reportPath: `${result.report.reportId}.md` }), committedIds: result.committedIds, proposalCount: result.proposalIds.length, summary: result.status === 'completed' ? `Valuation completed for ${input.symbol}` : `Valuation ${result.status} for ${input.symbol}`, ...(result.errors.length ? { errorSummary: result.errors.join('; ').slice(0, 500) } : {}), telemetry: result.telemetry, diagnostics: result.diagnostics, providerOutcome: result.providerOutcome, ...(result.automaticCompsResult === undefined ? {} : { automaticCompsResult: result.automaticCompsResult }), ...(result.crosscheck === undefined ? {} : { crosscheck: result.crosscheck }), ...(result.blockedReason === undefined ? {} : { blockedReason: result.blockedReason }) }
+      } finally {
+        signal.removeEventListener('abort', abort)
+        callerSignal?.removeEventListener('abort', cancelForCaller)
+      }
     }).then((outcome) => outcome as ApplicationValuationResult)
     completion.catch(() => undefined); return { runId: input.workflowRunId, completion }
   }

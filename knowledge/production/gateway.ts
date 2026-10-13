@@ -355,7 +355,23 @@ export class KnowledgeProductionGateway {
         }
       }
       if (!entityRefs[input.entity.localKey]) return terminalOutcome('blocked', ['Root Entity binding requires review before dependent Knowledge can be committed'], intents, entityRefs, relationRefs, sourceRefs, claimRefs)
-      for (const b of input.evidenceBindings) { if (validateUsableAcquisitionPayload(b.source.content).status !== 'usable') continue; const bytes = b.source.rawBytes === undefined ? new TextEncoder().encode(b.source.content) : Uint8Array.from(b.source.rawBytes); const raw = await archiveRaw(input.handle, { bytes, originalFilename: b.originalFilename ?? `${b.localSourceId}.txt`, mediaType: b.mediaType ?? 'text/plain', suppliedMetadata: { title: b.source.title, institution: b.source.publisher, publishedAt: b.source.candidate.publishedAt ?? null, sourceUrl: b.source.canonicalUrl ?? b.source.candidate.url ?? null } }, { clock: now }); const rawRef = raw.manifest.rawRef as RawRef; rawBySource.set(b.localSourceId, rawRef); const hash = hashKnowledgeObject(sourceIdentity(b.source, f)); const old = [...objects.values()].find((o) => o.id.startsWith('source:') && (o as KnowledgeSourceV04).metadata?.researchSourceIdentity === hash) as KnowledgeSourceV04 | undefined; const s = sourceObject(b.source, old?.id ?? `source:research-${hash.slice(7, 23)}`, rawRef, f); const final = old ? mergeSource(old, s) : s; sourceRefs[b.localSourceId] = final.id; objects.set(final.id, final); if (!old) { operations.push({ operationId: `create-source-${operations.length + 1}`, type: 'create', object: final }); createdIds.push(final.id) } else if (hashKnowledgeObject(old) !== hashKnowledgeObject(final)) { operations.push({ operationId: `update-source-${operations.length + 1}`, type: 'update', knowledgeId: old.id, expectedBeforeHash: hashKnowledgeObject(old), object: final }); updatedIds.push(old.id) } }
+      for (const b of input.evidenceBindings) {
+        if (validateUsableAcquisitionPayload(b.source.content).status !== 'usable') continue
+        const bytes = b.source.rawBytes === undefined ? new TextEncoder().encode(b.source.content) : Uint8Array.from(b.source.rawBytes)
+        // Read-only Gateway evaluation uses a virtual content-addressed ref. It must not stage Raw files or mutate registry/raw.yaml.
+        const rawRef = input.writeKnowledge === false
+          ? `raw-sha256-${sha256(bytes)}` as RawRef
+          : (await archiveRaw(input.handle, { bytes, originalFilename: b.originalFilename ?? `${b.localSourceId}.txt`, mediaType: b.mediaType ?? 'text/plain', suppliedMetadata: { title: b.source.title, institution: b.source.publisher, publishedAt: b.source.candidate.publishedAt ?? null, sourceUrl: b.source.canonicalUrl ?? b.source.candidate.url ?? null } }, { clock: now })).manifest.rawRef as RawRef
+        rawBySource.set(b.localSourceId, rawRef)
+        const hash = hashKnowledgeObject(sourceIdentity(b.source, f))
+        const old = [...objects.values()].find((o) => o.id.startsWith('source:') && (o as KnowledgeSourceV04).metadata?.researchSourceIdentity === hash) as KnowledgeSourceV04 | undefined
+        const s = sourceObject(b.source, old?.id ?? `source:research-${hash.slice(7, 23)}`, rawRef, f)
+        const final = old ? mergeSource(old, s) : s
+        sourceRefs[b.localSourceId] = final.id
+        objects.set(final.id, final)
+        if (!old) { operations.push({ operationId: `create-source-${operations.length + 1}`, type: 'create', object: final }); createdIds.push(final.id) }
+        else if (hashKnowledgeObject(old) !== hashKnowledgeObject(final)) { operations.push({ operationId: `update-source-${operations.length + 1}`, type: 'update', knowledgeId: old.id, expectedBeforeHash: hashKnowledgeObject(old), object: final }); updatedIds.push(old.id) }
+      }
       const evidenceFor = (p: { readonly proposalId: string; readonly sourceCandidateIds?: readonly string[]; readonly existingEvidenceBindings?: readonly { readonly sourceRef: `source:${string}`; readonly rawRef: `raw-sha256-${string}`; readonly locator?: string }[] }): EvidenceRef[] => {
         const locatorBySource = new Map(input.evidenceBindings.map((binding) => [binding.localSourceId, binding.locator]))
         const submitted = uniqueSorted(p.sourceCandidateIds ?? []).flatMap((id): EvidenceRef[] => { const sourceRef = sourceRefs[id]; const rawRef = rawBySource.get(id); if (!sourceRef || !rawRef) return []; const locator = locatorBySource.get(id); return [{ sourceRef: sourceRef as `source:${string}`, rawRef, ...(locator === undefined ? {} : { locator }) }] })

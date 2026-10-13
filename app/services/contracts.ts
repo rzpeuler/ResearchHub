@@ -4,8 +4,13 @@ import type { RawDocumentMetadataV04, RawDocumentRightsV04 } from '../../knowled
 import type { RawDocumentCandidateGroupV04, RawDocumentPreviewWorkflowResultV04 } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-workflow.ts'
 import type { RawDocumentV04CandidateAcceptanceResult } from '../../workflows/raw-document-knowledge-ingestion/v04-candidate-acceptance.ts'
 import type { RawDocumentV04IncompleteExtractionUnit } from '../../workflows/raw-document-knowledge-ingestion/v04-preview-store.ts'
+import type { EarningsFinancialQualitySummary } from '../../skills/earnings-review/financial-quality/contracts.ts'
+import type { EarningsExpectationAnalysis } from '../../workflows/earnings-review/expectations-contracts.ts'
+import type { ResearchQualityGateStatus } from '../../workflows/research-quality-gate.ts'
+import type { WorkflowProviderObservation, WorkflowSkillObservation, WorkflowStageView } from '../../workflows/observation-contracts.ts'
+export type { WorkflowDataAvailabilityStatus, WorkflowObservationReporter, WorkflowProviderObservation, WorkflowSkillObservation, WorkflowStageStatus, WorkflowStageView } from '../../workflows/observation-contracts.ts'
 
-export type ApplicationErrorCode = 'not_found' | 'invalid_input' | 'cancelled' | 'failed' | 'conflict' | 'no_kb_mounted' | 'unauthorized_runtime_token'
+export type ApplicationErrorCode = 'not_found' | 'invalid_input' | 'cancelled' | 'failed' | 'conflict' | 'executor_unavailable' | 'no_kb_mounted' | 'unauthorized_runtime_token'
 
 export class ApplicationServiceError extends Error {
   readonly code: ApplicationErrorCode
@@ -88,18 +93,42 @@ export interface KnowledgeDirectoryProjection {
 
 export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'completed_with_review' | 'blocked' | 'cancelled' | 'failed'
 export type TerminalWorkflowStatus = Exclude<WorkflowStatus, 'pending' | 'running'>
+export type WorkflowBundleStatus = 'pending' | 'available' | 'failed' | 'unavailable'
+export interface WorkflowExecutionResultProjection {
+  readonly runId: string
+  /** Canonical ResearchDispatch registry ID, independent of a service's internal workflowType alias. */
+  readonly workflowId: string
+  readonly executionStatus: WorkflowStatus
+  readonly terminalStatus?: TerminalWorkflowStatus
+  readonly summary?: string
+  readonly reportRef?: string
+  readonly bundleRef?: string
+  readonly reviewRef?: { readonly kind: 'review_case' | 'theme_framework_candidate' | 'daily_brief'; readonly id: string }
+  readonly blockedReason?: string
+  /** Safe diagnostic codes only. Raw errors, stack traces, credentials, and paths are excluded. */
+  readonly diagnostics: readonly string[]
+  readonly bundleStatus: WorkflowBundleStatus
+}
 export interface WorkflowRunView {
   readonly runId: string
   readonly workflowType: string
   readonly objective: string
   readonly status: WorkflowStatus
   readonly currentStage?: string
+  readonly currentStageId?: string
   readonly progressSummary?: string
   readonly startedAt: string
   readonly updatedAt: string
   readonly completedAt?: string
+  /** Monotonic within the process-local WorkflowService run; snapshots with lower revisions are stale. */
+  readonly observationRevision: number
+  /** Only stages reported by real producer boundaries are present; this is not a global stage template. */
+  readonly stages: readonly WorkflowStageView[]
+  readonly providerObservations: readonly WorkflowProviderObservation[]
+  readonly skillObservations: readonly WorkflowSkillObservation[]
   readonly reviewCount?: number
   readonly errorSummary?: string
+  readonly executionResult?: WorkflowExecutionResultProjection
 }
 export interface WorkflowCancelResult {
   readonly runId: string
@@ -226,16 +255,16 @@ export interface ApplicationProductionResult {
   readonly summary: string
   readonly errorSummary?: string
 }
-export interface ResearchCompanyInput { readonly workflowRunId: string; readonly symbol: string; readonly name?: string; readonly exchange?: string; readonly asOf?: string; readonly writeKnowledge?: boolean; readonly useStructuredKnowledge?: boolean; readonly sourceLibraryContext?: readonly import('./source-library.ts').SourceLibraryHit[] }
-export interface ApplicationResearchResult { readonly runId: string; readonly status: WorkflowStatus; readonly knowledgeBaseId: string; readonly reportId?: string; readonly reportPath?: string; readonly committedIds: readonly string[]; readonly proposalCount: number; readonly summary: string; readonly errorSummary?: string }
+export interface ResearchCompanyInput { readonly workflowRunId: string; readonly symbol: string; readonly name?: string; readonly exchange?: string; readonly asOf?: string; readonly maxSources?: number; readonly writeKnowledge?: boolean; readonly useStructuredKnowledge?: boolean; readonly sourceLibraryContext?: readonly import('./source-library.ts').SourceLibraryHit[] }
+export interface ApplicationResearchResult { readonly runId: string; readonly status: WorkflowStatus; readonly knowledgeBaseId: string; readonly reportId?: string; readonly reportPath?: string; readonly committedIds: readonly string[]; readonly proposalCount: number; readonly summary: string; readonly errorSummary?: string; readonly providerOutcomes?: readonly unknown[] }
 export interface IndustryResearchInput { readonly workflowRunId: string; readonly name: string; readonly aliases?: readonly string[]; readonly canonicalRef?: string; readonly searchTerms?: readonly string[]; readonly asOf?: string; readonly asOfMode?: 'CURRENT_VALUE_ONLY' | 'HISTORICAL'; readonly maxSources?: number; readonly maxEvidencePerModule?: number; readonly writeKnowledge?: boolean; readonly useStructuredKnowledge?: boolean; readonly sourceLibraryContext?: readonly import('./source-library.ts').SourceLibraryHit[] }
 export interface ApplicationIndustryResearchResult extends ApplicationResearchResult { readonly providerOutcomes: readonly unknown[]; readonly acquisitionDiagnostics: readonly string[]; readonly operatingObservations: readonly IndustryObservationPoint[]; readonly operatingObservationStatus: 'COMPLETED' | 'PARTIAL' | 'SCOPE_UNSUPPORTED' | 'UNAVAILABLE' | 'SOURCE_UNAVAILABLE' | 'TRANSPORT_UNAVAILABLE' | 'PARSER_UNAVAILABLE'; readonly operatingObservationDiagnostics: readonly string[]; readonly dataRequirementGaps: readonly string[]; readonly requirementCoverage: 'COMPLETE' | 'PARTIAL' }
 export type EarningsReviewPeriod = 'Q1' | 'H1' | 'Q3' | 'FY'
 export interface EarningsReviewInput { readonly workflowRunId: string; readonly symbol: string; readonly name?: string; readonly exchange?: string; readonly fiscalYear: number; readonly period: EarningsReviewPeriod; readonly asOf?: string; readonly writeKnowledge?: boolean; readonly useStructuredKnowledge?: boolean; readonly sourceLibraryContext?: readonly import('./source-library.ts').SourceLibraryHit[] }
-export interface ApplicationEarningsReviewResult extends ApplicationResearchResult { readonly telemetry: unknown; readonly blockedReason?: string }
+export interface ApplicationEarningsReviewResult extends ApplicationResearchResult { readonly telemetry: unknown; readonly blockedReason?: string; readonly providerOutcomes: readonly unknown[]; readonly acquisitionDiagnostics: readonly unknown[]; readonly selectionDiagnostics: readonly string[]; readonly financialQuality?: EarningsFinancialQualitySummary; readonly expectationAnalysis?: EarningsExpectationAnalysis; readonly qualityGateStatus?: ResearchQualityGateStatus }
 export type ValuationMethod = 'PE' | 'PB' | 'EV_EBITDA'
 export interface ValuationInput { readonly workflowRunId: string; readonly symbol: string; readonly name?: string; readonly exchange?: string; readonly asOf?: string; readonly methods?: readonly ValuationMethod[]; readonly targetFiscalYear?: number; readonly writeKnowledge?: boolean; readonly useStructuredKnowledge?: boolean; readonly sourceLibraryContext?: readonly import('./source-library.ts').SourceLibraryHit[] }
-export interface ApplicationValuationResult extends ApplicationResearchResult { readonly telemetry: unknown; readonly blockedReason?: string; readonly providerOutcome?: unknown; readonly automaticCompsResult?: unknown; readonly crosscheck?: unknown }
+export interface ApplicationValuationResult extends ApplicationResearchResult { readonly telemetry: unknown; readonly blockedReason?: string; readonly diagnostics?: readonly string[]; readonly providerOutcome?: unknown; readonly automaticCompsResult?: unknown; readonly crosscheck?: unknown }
 export type EventAnchor =
   | { readonly kind: 'daily_signal'; readonly signalId: string }
   | { readonly kind: 'article'; readonly url: string; readonly title?: string; readonly publishedAt?: string; readonly content?: string }

@@ -1,0 +1,130 @@
+{
+  "taskId": "RHL-EXEC-003-A-004-FIX-003",
+  "generatedAt": "2026-10-11T06:36:24.475Z",
+  "workflowRunId": "industry-readonly-run",
+  "status": "completed",
+  "writeKnowledge": false,
+  "gatewaySubmitCount": 1,
+  "canonicalIndustryRoot": "entity:industry-fixture-industry",
+  "report": {
+    "subjectRefs": [
+      "entity:industry-fixture-industry"
+    ],
+    "sourceRefs": [],
+    "claimRefs": [],
+    "sections": [
+      {
+        "id": "section-1",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "section-2",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "section-3",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "section-4",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "section-5",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "section-6",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "section-7",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "section-8",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "section-9",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "section-10",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "section-11",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "section-12",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "section-13",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "section-14",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "section-15",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      },
+      {
+        "id": "section-16",
+        "sourceRefs": [],
+        "claimRefs": [],
+        "relationRefs": []
+      }
+    ],
+    "allReferencesResolve": true
+  },
+  "publicReferenceFields": {
+    "entityRefs": {
+      "industry": "entity:industry-fixture-industry"
+    },
+    "relationRefs": {},
+    "claimRefs": {},
+    "sourceRefs": {},
+    "sourceIds": [],
+    "relationIds": [],
+    "claimIds": [],
+    "committedIds": []
+  },
+  "beforeTreeSha256": "080b11c6c9b0494a4acfc18b39fd1331864e7f9778266004e2bd738abd52dc3a",
+  "afterTreeSha256": "080b11c6c9b0494a4acfc18b39fd1331864e7f9778266004e2bd738abd52dc3a",
+  "secretsIncluded": false
+}

@@ -1,0 +1,272 @@
+{
+  "taskId": "RHL-EXEC-003-A-003-FIX-001",
+  "generatedAt": "2026-10-10T11:40:02.133Z",
+  "productionPath": "ApplicationRuntime -> ResearchDispatchService.startAsync -> ResearchService -> Earnings Review Workflow -> DataResolver -> Catalog/SourcePolicy -> CNINFO/AKShare Plugins -> Earnings Review Skill",
+  "isolatedKnowledgeBaseSchema": "0.4",
+  "targets": [
+    {
+      "symbol": "002487",
+      "name": "大金重工",
+      "exchange": "SZ",
+      "fiscalYear": 2025,
+      "period": "FY"
+    }
+  ],
+  "reasoningCalls": [
+    {
+      "operation": "research_dispatch_resolution",
+      "operationId": "b5fceb6e-ae4d-43c4-89bc-360ffa49c963",
+      "startedAt": "2026-10-10T11:40:02.226Z",
+      "completedAt": "2026-10-10T11:40:12.426Z",
+      "durationMs": 10200,
+      "status": "completed"
+    },
+    {
+      "operation": "research_dispatch_resolution",
+      "operationId": "277c6088-faf5-416c-9a58-7f09ad97fa3a",
+      "startedAt": "2026-10-10T11:40:12.437Z",
+      "completedAt": "2026-10-10T11:40:30.027Z",
+      "durationMs": 17590,
+      "status": "completed"
+    },
+    {
+      "operation": "earnings_review_synthesis",
+      "operationId": "1a938597-3887-4bae-9361-a38234fd68f8",
+      "startedAt": "2026-10-10T11:51:20.000Z",
+      "completedAt": "2026-10-10T11:53:24.719Z",
+      "durationMs": 124719,
+      "status": "completed"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-583e63e33f1ba1f5-0",
+      "startedAt": "2026-10-10T11:53:25.365Z",
+      "completedAt": "2026-10-10T12:08:25.420Z",
+      "durationMs": 900055,
+      "status": "completed"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-583e63e33f1ba1f5-1",
+      "startedAt": "2026-10-10T12:08:25.419Z",
+      "completedAt": "2026-10-10T12:23:25.423Z",
+      "durationMs": 900004,
+      "status": "completed"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-583e63e33f1ba1f5-2",
+      "startedAt": "2026-10-10T12:23:25.422Z",
+      "completedAt": "2026-10-10T12:38:25.434Z",
+      "durationMs": 900012,
+      "status": "completed"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-583e63e33f1ba1f5-3",
+      "startedAt": "2026-10-10T12:38:25.434Z",
+      "completedAt": "2026-10-10T12:53:25.444Z",
+      "durationMs": 900010,
+      "status": "completed"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-583e63e33f1ba1f5-4",
+      "startedAt": "2026-10-10T12:53:25.444Z",
+      "completedAt": "2026-10-10T13:08:23.806Z",
+      "durationMs": 898362,
+      "status": "completed"
+    }
+  ],
+  "runs": [
+    {
+      "target": {
+        "symbol": "002487",
+        "name": "大金重工",
+        "exchange": "SZ",
+        "fiscalYear": 2025,
+        "period": "FY"
+      },
+      "runId": "b65b02f1-880d-490a-ac50-d201500e4c7e",
+      "dispatchStatus": "started",
+      "dispatchResolution": {
+        "source": "deterministic_fallback",
+        "attempts": 2,
+        "diagnostics": [
+          "entities[0].value must be a non-empty string of at most 500 characters",
+          "entities[0].confidence must be a finite number between 0 and 1",
+          "semantic_resolution_fallback"
+        ]
+      },
+      "workflowStatus": "completed",
+      "blockedReason": null,
+      "completed": true,
+      "errors": [],
+      "acquisitionDiagnostics": [
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "cninfo_ir_no_accepted_records"
+        },
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "Pi reasoning execution timed out"
+        },
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "REASONING_EXECUTION_FAILED"
+        },
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "unsupported_exchange:SZ"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "automatic_expectations_unavailable"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "eps:eastmoney_akshare_eps_invalid:13:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:14:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:15:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:16:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:17:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:18:2028-盈利预测-收益|eastmoney_akshare_ep"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "eps:EASTMONEY_LEGACY_REPORT_ROUTE_UNAVAILABLE"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "eps:eps_no_usable_estimates"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "eps:PRIMARY_NO_DATA|FALLBACK_1_NO_DATA|FALLBACK_2_UNSUPPORTED"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "net_profit:net_profit_no_usable_estimates"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "net_profit:PRIMARY_NO_DATA"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "automatic_expectations_unavailable"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "eps:eastmoney_akshare_eps_invalid:13:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:14:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:15:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:16:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:17:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:18:2028-盈利预测-收益|eastmoney_akshare_ep"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "eps:EASTMONEY_LEGACY_REPORT_ROUTE_UNAVAILABLE"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "eps:eps_no_usable_estimates"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "eps:PRIMARY_NO_DATA|FALLBACK_1_NO_DATA|FALLBACK_2_UNSUPPORTED"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "net_profit:net_profit_no_usable_estimates"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "net_profit:PRIMARY_NO_DATA"
+        }
+      ],
+      "selectionDiagnostics": [],
+      "reportReloaded": false,
+      "reportSectionCount": 0,
+      "reportWorkflowRunId": null,
+      "reportSourceRefs": [],
+      "reportClaimRefs": [],
+      "reportSubjectRefs": [],
+      "reportSectionReferenceCount": 0,
+      "reportUnresolvedCanonicalRefs": [],
+      "reportCanonicalRefsResolveInRegistry": true,
+      "reportEvidenceLinks": [],
+      "earningsSnapshotHasStructuredActual": false,
+      "metrics": [],
+      "reasoning": {
+        "called": true,
+        "validated": true,
+        "applied": true,
+        "fallbackUsed": false
+      },
+      "providers": [
+        {
+          "provider": "cninfo",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 1
+        },
+        {
+          "provider": "akshare",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 1
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "providerAttempted": true,
+          "providerSucceeded": false,
+          "providerEmpty": true,
+          "providerFailed": false,
+          "usableSourceCount": 0
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "providerAttempted": true,
+          "providerSucceeded": false,
+          "providerEmpty": true,
+          "providerFailed": false,
+          "usableSourceCount": 0
+        }
+      ],
+      "bundleId": "research-bundle-b65b02f1-880d-490a-ac50-d201500e4c7e",
+      "bundleReloaded": true,
+      "bundleWorkflowRunId": "b65b02f1-880d-490a-ac50-d201500e4c7e",
+      "canonicalEntityCount": 0,
+      "canonicalSourceCount": 0,
+      "canonicalClaimCount": 0,
+      "canonicalDelta": 0,
+      "knowledgeTreeUnchanged": true,
+      "knowledgeRevisionBefore": 0,
+      "knowledgeRevisionAfter": 0,
+      "rawRegistryPresentBefore": true,
+      "rawRegistryPresentAfter": true,
+      "rawRegistryExists": true
+    }
+  ],
+  "completedRunCount": 1,
+  "knowledgeCheckCount": 1,
+  "allKnowledgeUnchanged": true,
+  "reportReferenceCheckCount": 1,
+  "allReportCanonicalRefsResolve": true,
+  "secretsIncluded": false,
+  "rawBodiesIncluded": false
+}

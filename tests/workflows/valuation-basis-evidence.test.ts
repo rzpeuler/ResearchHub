@@ -28,6 +28,14 @@ test('D3 current mode retains EastMoney/CNINFO provenance and closes PE/PB only'
   assert.equal(result.basis?.shares, undefined)
 })
 
+test('fallback market evidence retains selected publisher, policy source ID, retrieval provider, and URL', () => {
+  const result = resolve({ marketSource: { sourceId: 'akshare-tencent-historical-market-data', originPublisher: 'Tencent', originAuthority: 'S3_AGGREGATOR', retrievalProvider: 'AKShare', sourceUrl: 'https://gu.qq.com/sh600519/zs' } })
+  assert.equal(result.evidence.market.numericSource.originPublisher, 'Tencent')
+  assert.equal(result.evidence.market.numericSource.sourceId, 'akshare-tencent-historical-market-data')
+  assert.equal(result.evidence.market.numericSource.retrievalProvider, 'AKShare')
+  assert.equal(result.evidence.market.numericSource.sourceUrl, 'https://gu.qq.com/sh600519/zs')
+})
+
 test('D3 missing publication proof fails closed', () => {
   const result = resolve({ publication: undefined })
   assert.equal(result.basis, undefined)

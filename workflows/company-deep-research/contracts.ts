@@ -8,6 +8,8 @@ import type { ResearchQualityGateResult } from '../research-quality-gate.ts'
 import type { DataResolver } from '../../data/resolver.ts'
 import type { CompanyResearchDataPayload } from '../../plugins/research-acquisition/company-research-data.ts'
 import type { DataRequirement } from '../../data/contracts.ts'
+import type { VerifiedSecurityIdentity } from '../../data/security-identity-contracts.ts'
+import type { WorkflowObservationReporter } from '../observation-contracts.ts'
 
 export interface CompanyDeepResearchResolverOptions {
   readonly company: ResearchCompanyIdentity
@@ -24,6 +26,7 @@ export interface CompanyDeepResearchInput {
   readonly workflowRunId: string
   readonly handle: KnowledgeBaseHandle
   readonly company: ResearchCompanyIdentity
+  readonly securityIdentity?: VerifiedSecurityIdentity
   readonly dataResolverFactory: CompanyDeepResearchDataResolverFactory
   readonly asOf?: string
   readonly reportRoot: string
@@ -35,6 +38,7 @@ export interface CompanyDeepResearchInput {
   readonly writeKnowledge?: boolean
   readonly useStructuredKnowledge?: boolean
   readonly industryExposure?: CompanyIndustryExposureInput
+  readonly observations?: WorkflowObservationReporter
 }
 export interface CompanyDeepResearchResult {
   readonly workflowRunId: string

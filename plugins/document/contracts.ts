@@ -77,6 +77,7 @@ export interface DocumentParserInput {
   readonly filename: string
   readonly mediaType: string
   readonly documentId?: string
+  readonly signal?: AbortSignal
 }
 
 export interface DocumentParser {

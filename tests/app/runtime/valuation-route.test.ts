@@ -9,8 +9,10 @@ import { createFreshKnowledgeBaseV04 } from '../../../knowledge/storage/create-v
 import { createResearchHubApplicationRuntime } from '../../../app/runtime/application-runtime.ts'
 import { ResearchHubRuntimeServer } from '../../../app/runtime/server.ts'
 import { ResearchService } from '../../../app/services/research-service.ts'
+import { SecurityIdentityResolver } from '../../../app/services/security-identity-resolver.ts'
 import { WorkflowService } from '../../../app/services/workflow-service.ts'
 import type { AkshareDataClient } from '../../../plugins/research-acquisition/akshare.ts'
+import { createSecurityIdentityDataResolver, type AkshareSecurityDirectoryClient } from '../../../plugins/research-acquisition/security-identity-data.ts'
 import type { ReasoningExecutor } from '../../../plugins/reasoning/contracts.ts'
 
 class FixtureExecutor implements ReasoningExecutor {
@@ -26,18 +28,37 @@ test('VAL-HTTP-001 HTTP valuation route starts authoritative Workflow', async ()
   const faux = fauxProvider({ provider: `valuation-route-${Date.now()}`, models: [{ id: 'fixture-model' }] }); modelRuntime.registerNativeProvider(faux.provider)
   const akshare: AkshareDataClient = { companyBasic: async () => [], financialData: async () => [], historicalMarketData: async () => [] }
   const workflowService = new WorkflowService()
-  const researchService = new ResearchService({ mountedKnowledgeBaseRoot: kb, reportRoot: join(root, 'reports'), acquisitionPlugins: [], akshare, workflowService, reasoningExecutor: new FixtureExecutor() })
-  const runtime = await createResearchHubApplicationRuntime({ cwd, agentDir, mountedKnowledgeBaseRoot: kb, workspaceRoot: workspace, modelRuntime, model: faux.getModel(), reasoningExecutor: new FixtureExecutor(), researchService })
+  const directory = { async securityDirectory() { return [{ symbol: '600519', name: 'Fixture Company', exchange: 'SH' }] } } as unknown as AkshareSecurityDirectoryClient
+  const securityIdentityResolver = new SecurityIdentityResolver({ mountedKnowledgeBaseRoot: kb, dataResolverFactory: ({ now, signal }) => createSecurityIdentityDataResolver({ akshare: directory, now, ...(signal ? { signal } : {}) }) })
+  const researchService = new ResearchService({ mountedKnowledgeBaseRoot: kb, reportRoot: join(root, 'reports'), acquisitionPlugins: [], akshare, workflowService, reasoningExecutor: new FixtureExecutor(), securityIdentityResolver })
+  const runtime = await createResearchHubApplicationRuntime({ cwd, agentDir, mountedKnowledgeBaseRoot: kb, workspaceRoot: workspace, modelRuntime, model: faux.getModel(), reasoningExecutor: new FixtureExecutor(), researchService, securityIdentityResolver, workflowService })
   const server = new ResearchHubRuntimeServer({ runtime, clientRoot: join(root, 'missing-client'), port: 0 })
   try {
     const info = await server.start()
-    const response = await fetch(`${info.origin}/api/production/analyze-valuation`, { method: 'POST', headers: { origin: info.origin, 'x-researchhub-runtime-token': info.runtimeToken, 'content-type': 'application/json' }, body: JSON.stringify({ symbol: '600519', exchange: 'SSE', asOf: '2026-09-08T23:59:59.000Z', methods: ['PE'], targetFiscalYear: 2026 }) })
+    const response = await fetch(`${info.origin}/api/production/analyze-valuation`, { method: 'POST', headers: { origin: info.origin, 'x-researchhub-runtime-token': info.runtimeToken, 'content-type': 'application/json' }, body: JSON.stringify({ symbol: '600519', exchange: 'SSE', methods: ['PE'], targetFiscalYear: 2026 }) })
     assert.equal(response.status, 202)
-    const body = await response.json() as { accepted: boolean; runId: string }
+    const body = await response.json() as { accepted: boolean; runId: string; verifiedSecurityIdentity?: { symbol: string; verifiedName: string; exchange: string; verificationSource: string } }
     assert.equal(body.accepted, true)
+    assert.deepEqual(body.verifiedSecurityIdentity && { symbol: body.verifiedSecurityIdentity.symbol, verifiedName: body.verifiedSecurityIdentity.verifiedName, exchange: body.verifiedSecurityIdentity.exchange, verificationSource: body.verifiedSecurityIdentity.verificationSource }, { symbol: '600519', verifiedName: 'Fixture Company', exchange: 'SH', verificationSource: 'akshare_security_directory' })
     assert.equal(workflowService.getWorkflowStatus(body.runId)?.workflowType, 'valuation')
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    assert.equal(workflowService.getWorkflowStatus(body.runId)?.status, 'blocked')
+    for (let attempt = 0; attempt < 1500; attempt++) {
+      const current = workflowService.getWorkflowStatus(body.runId)
+      if (current?.executionResult?.terminalStatus !== undefined && current.executionResult.bundleStatus !== 'pending') break
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+    const terminal = workflowService.getWorkflowStatus(body.runId)
+    assert.equal(terminal?.status, 'blocked')
+    assert.equal(terminal?.executionResult?.runId, body.runId)
+    assert.equal(terminal?.executionResult?.terminalStatus, 'blocked')
+    assert.equal(terminal?.executionResult?.bundleStatus, 'available')
+    const bundleResponse = await fetch(`${info.origin}/api/research/bundles/by-run/${encodeURIComponent(body.runId)}`, { headers: { origin: info.origin, 'x-researchhub-runtime-token': info.runtimeToken } })
+    assert.equal(bundleResponse.status, 200)
+    const bundle = await bundleResponse.json() as { workflowRunId: string; executionResult: { runId: string; terminalStatus: string }; structuredResult: { diagnostics?: readonly string[]; blockedReason?: string } }
+    assert.equal(bundle.workflowRunId, body.runId)
+    assert.equal(bundle.executionResult.runId, body.runId)
+    assert.equal(bundle.executionResult.terminalStatus, 'blocked')
+    assert.equal(bundle.structuredResult.blockedReason, 'VALUATION_MARKET_PRICE_UNAVAILABLE')
+    assert.ok(bundle.structuredResult.diagnostics?.some((item) => item.startsWith('market:')))
   } finally {
     await server.close(); await runtime.close(); await Promise.resolve((modelRuntime as unknown as { dispose?: () => void | Promise<void> }).dispose?.()).catch(() => undefined); await rm(root, { recursive: true, force: true })
   }

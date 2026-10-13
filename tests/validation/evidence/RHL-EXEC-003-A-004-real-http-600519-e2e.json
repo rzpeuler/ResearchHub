@@ -1,0 +1,498 @@
+{
+  "taskId": "RHL-EXEC-003-A-004",
+  "generatedAt": "2026-10-10T22:00:34.661Z",
+  "execution": "ResearchRunPage HTTP API -> ResearchDispatchService explicit Workflow -> verified identity -> ResearchService -> Workflow -> real AKShare/CNINFO/GDELT providers -> DataResolver -> Skill -> ResearchReport/ResearchBundle",
+  "providerMode": "real provider / deterministic semantic fallback; Pi ModelRuntime tested separately",
+  "knowledgeBaseSchema": "0.4",
+  "targets": [
+    {
+      "symbol": "600519",
+      "exchange": "SSE",
+      "name": "贵州茅台",
+      "fiscalRuns": [
+        {
+          "fiscalYear": 2025,
+          "period": "FY"
+        },
+        {
+          "fiscalYear": 2026,
+          "period": "H1"
+        }
+      ]
+    }
+  ],
+  "requestedOperation": "all",
+  "expectedRunCount": 4,
+  "runs": [
+    {
+      "target": {
+        "symbol": "600519",
+        "exchange": "SSE",
+        "verifiedName": "贵州茅台",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-10T21:29:21.332Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "company",
+      "label": "Company Research",
+      "request": {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SSE",
+        "maxSources": 1
+      },
+      "runId": "546a40b8-f6e4-4181-99ae-e7fee61b74e1",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "completed",
+        "executionStatus": "completed",
+        "terminalStatus": "completed",
+        "bundleStatus": "available",
+        "reportRef": "company-research-600519-546a40b8-f6e4-4181-99ae-e7fee61b74e1",
+        "bundleRef": "research-bundle-546a40b8-f6e4-4181-99ae-e7fee61b74e1",
+        "diagnostics": []
+      },
+      "providerOutcomes": [
+        {
+          "provider": "akshare",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": true,
+          "usableSourceCount": 1,
+          "diagnostics": []
+        },
+        {
+          "provider": "cninfo",
+          "attempted": true,
+          "succeeded": false,
+          "empty": false,
+          "failed": true,
+          "usableSourceCount": 0,
+          "diagnostics": []
+        },
+        {
+          "provider": "gdelt",
+          "attempted": true,
+          "succeeded": false,
+          "empty": false,
+          "failed": true,
+          "usableSourceCount": 0,
+          "diagnostics": []
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_COMPLETED",
+      "report": {
+        "reportId": "company-research-600519-546a40b8-f6e4-4181-99ae-e7fee61b74e1",
+        "reportType": "company_research",
+        "workflowRunId": "546a40b8-f6e4-4181-99ae-e7fee61b74e1",
+        "asOf": "2026-10-10T21:29:21.368Z",
+        "sections": [
+          {
+            "title": "Company Overview",
+            "substantive": true,
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://quote.eastmoney.com/sh600519.html"
+            ]
+          },
+          {
+            "title": "Business Model",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Business Segments",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Revenue / Profit Drivers",
+            "substantive": true,
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://quote.eastmoney.com/sh600519.html"
+            ]
+          },
+          {
+            "title": "Products",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Technologies",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Industry Exposure",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Supply Chain",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Competition",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Financial Quality",
+            "substantive": true,
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://quote.eastmoney.com/sh600519.html"
+            ]
+          },
+          {
+            "title": "Growth Drivers",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Management / Capital Allocation",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Catalysts",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Risks",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Valuation",
+            "substantive": true,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Bull / Base / Bear",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Variant Perception",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Investment Thesis",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Monitoring Checklist",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          }
+        ],
+        "evidenceLinkCount": 3,
+        "canonicalRefCount": 0,
+        "canonicalRefsResolve": true,
+        "reportReloaded": true
+      },
+      "domainOutcome": {
+        "blockedReason": null,
+        "errorSummary": null,
+        "diagnostics": [],
+        "acquisitionDiagnostics": []
+      },
+      "bundle": {
+        "bundleId": "research-bundle-546a40b8-f6e4-4181-99ae-e7fee61b74e1",
+        "workflowRunId": "546a40b8-f6e4-4181-99ae-e7fee61b74e1",
+        "reportId": "company-research-600519-546a40b8-f6e4-4181-99ae-e7fee61b74e1",
+        "status": "completed",
+        "reloaded": true,
+        "terminalStatus": "completed"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "567720e86634b5343579136dfce71b55918e15369027fe81c65f436533764219",
+        "afterDigest": "567720e86634b5343579136dfce71b55918e15369027fe81c65f436533764219"
+      }
+    },
+    {
+      "target": {
+        "symbol": "600519",
+        "exchange": "SSE",
+        "verifiedName": "贵州茅台",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-10T21:39:43.104Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "valuation",
+      "label": "Valuation",
+      "request": {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SSE",
+        "methods": [
+          "PE",
+          "PB"
+        ],
+        "targetFiscalYear": 2025
+      },
+      "runId": "17d64146-742d-471c-906e-e7aaf884a192",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "blocked",
+        "executionStatus": "blocked",
+        "terminalStatus": "blocked",
+        "bundleStatus": "available",
+        "reportRef": null,
+        "bundleRef": "research-bundle-17d64146-742d-471c-906e-e7aaf884a192",
+        "diagnostics": [
+          "VALUATION_MARKET_PRICE_UNAVAILABLE"
+        ]
+      },
+      "providerOutcomes": [
+        {
+          "provider": null,
+          "attempted": true,
+          "succeeded": true,
+          "empty": null,
+          "failed": null,
+          "usableSourceCount": null,
+          "diagnostics": [],
+          "marketTransportSucceeded": false,
+          "financialTransportSucceeded": true,
+          "officialPublicationVerified": true,
+          "companyBasicRowCount": 0,
+          "financialRowCount": 103,
+          "marketRowCount": 0,
+          "marketPriceFound": false,
+          "fiscalYearBasisFound": true,
+          "usableForValuation": false
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_BLOCKED",
+      "report": null,
+      "domainOutcome": {
+        "blockedReason": "VALUATION_MARKET_PRICE_UNAVAILABLE",
+        "errorSummary": null,
+        "diagnostics": [
+          "companyBasic: AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/get?fltt=2&invt=2&fields=f120%2Cf121%2Cf122%",
+          "market: VALUATION_MARKET_PROVIDER_SOURCE_ERROR:AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/kline/get?fields1=f1%2Cf2%2Cf3%2",
+          "market: MARKET_FRESHNESS_UNVERIFIABLE",
+          "VALUATION_MARKET_PRICE_UNAVAILABLE"
+        ],
+        "acquisitionDiagnostics": []
+      },
+      "bundle": {
+        "bundleId": "research-bundle-17d64146-742d-471c-906e-e7aaf884a192",
+        "workflowRunId": "17d64146-742d-471c-906e-e7aaf884a192",
+        "reportId": null,
+        "status": "blocked",
+        "reloaded": true,
+        "terminalStatus": "blocked"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "567720e86634b5343579136dfce71b55918e15369027fe81c65f436533764219",
+        "afterDigest": "567720e86634b5343579136dfce71b55918e15369027fe81c65f436533764219"
+      }
+    },
+    {
+      "target": {
+        "symbol": "600519",
+        "exchange": "SSE",
+        "verifiedName": "贵州茅台",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-10T21:40:05.131Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "earnings",
+      "label": "Earnings Review FY 2025",
+      "request": {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SSE",
+        "fiscalYear": 2025,
+        "period": "FY"
+      },
+      "runId": "eaa578ac-adfc-493a-8bbd-d2ddb48e2af6",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "blocked",
+        "executionStatus": "blocked",
+        "terminalStatus": "blocked",
+        "bundleStatus": "available",
+        "reportRef": null,
+        "bundleRef": "research-bundle-eaa578ac-adfc-493a-8bbd-d2ddb48e2af6",
+        "diagnostics": []
+      },
+      "providerOutcomes": [
+        {
+          "provider": "cninfo",
+          "attempted": true,
+          "succeeded": false,
+          "empty": false,
+          "failed": true,
+          "usableSourceCount": 0,
+          "diagnostics": []
+        },
+        {
+          "provider": "akshare",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 1,
+          "diagnostics": []
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_BLOCKED",
+      "report": null,
+      "domainOutcome": {
+        "blockedReason": "EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE",
+        "errorSummary": "EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE: no exact-period usable CNINFO filing is available.",
+        "diagnostics": [],
+        "acquisitionDiagnostics": [
+          {
+            "provider": "cninfo",
+            "status": "failed",
+            "reason": "official-99053aa1473228f7:document_parser_timeout: Docling exceeded 600000 ms"
+          }
+        ]
+      },
+      "bundle": {
+        "bundleId": "research-bundle-eaa578ac-adfc-493a-8bbd-d2ddb48e2af6",
+        "workflowRunId": "eaa578ac-adfc-493a-8bbd-d2ddb48e2af6",
+        "reportId": null,
+        "status": "blocked",
+        "reloaded": true,
+        "terminalStatus": "blocked"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "567720e86634b5343579136dfce71b55918e15369027fe81c65f436533764219",
+        "afterDigest": "567720e86634b5343579136dfce71b55918e15369027fe81c65f436533764219"
+      }
+    },
+    {
+      "target": {
+        "symbol": "600519",
+        "exchange": "SSE",
+        "verifiedName": "贵州茅台",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-10T21:50:32.171Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "earnings",
+      "label": "Earnings Review H1 2026",
+      "request": {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SSE",
+        "fiscalYear": 2026,
+        "period": "H1"
+      },
+      "runId": "224c4eaa-8d13-4163-b3aa-f83c72cb2c7d",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "blocked",
+        "executionStatus": "blocked",
+        "terminalStatus": "blocked",
+        "bundleStatus": "available",
+        "reportRef": null,
+        "bundleRef": "research-bundle-224c4eaa-8d13-4163-b3aa-f83c72cb2c7d",
+        "diagnostics": []
+      },
+      "providerOutcomes": [
+        {
+          "provider": "cninfo",
+          "attempted": true,
+          "succeeded": false,
+          "empty": false,
+          "failed": true,
+          "usableSourceCount": 0,
+          "diagnostics": []
+        },
+        {
+          "provider": "akshare",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 1,
+          "diagnostics": []
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_BLOCKED",
+      "report": null,
+      "domainOutcome": {
+        "blockedReason": "EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE",
+        "errorSummary": "EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE: no exact-period usable CNINFO filing is available.",
+        "diagnostics": [],
+        "acquisitionDiagnostics": [
+          {
+            "provider": "cninfo",
+            "status": "failed",
+            "reason": "official-74924d3eb1160b03:document_parser_timeout: Docling exceeded 600000 ms"
+          }
+        ]
+      },
+      "bundle": {
+        "bundleId": "research-bundle-224c4eaa-8d13-4163-b3aa-f83c72cb2c7d",
+        "workflowRunId": "224c4eaa-8d13-4163-b3aa-f83c72cb2c7d",
+        "reportId": null,
+        "status": "blocked",
+        "reloaded": true,
+        "terminalStatus": "blocked"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "567720e86634b5343579136dfce71b55918e15369027fe81c65f436533764219",
+        "afterDigest": "567720e86634b5343579136dfce71b55918e15369027fe81c65f436533764219"
+      }
+    }
+  ],
+  "allRunsSynchronized": true,
+  "allReportsAndBundlesReconciled": true,
+  "atLeastOneCompletedCompanyValuationEarningsTriplet": false,
+  "allReadOnlyTreesUnchanged": true,
+  "finalKnowledgeTreeUnchanged": true,
+  "finalKnowledgeDigest": "567720e86634b5343579136dfce71b55918e15369027fe81c65f436533764219",
+  "secretsIncluded": false,
+  "rawProviderBodiesIncluded": false,
+  "hiddenReasoningIncluded": false
+}

@@ -1,0 +1,51 @@
+{
+  "taskId": "RHL-EXEC-003-A-004",
+  "generatedAt": "2026-10-10T21:26:46.473Z",
+  "classification": "REAL_MODEL_FALLBACK",
+  "execution": "ResearchRunPage HTTP API -> Application Runtime -> ResearchDispatchService -> SecurityIdentityResolver -> ResearchService -> Company Research Workflow -> PiReasoningExecutor -> configured ModelRuntime",
+  "model": {
+    "provider": "zhipu-openapi",
+    "modelId": "glm-5.3-flash",
+    "piExecutor": true
+  },
+  "runId": "3ea5ae87-7d9c-4754-b2a1-abfb8be8253b",
+  "httpStartStatus": 202,
+  "workflow": {
+    "status": "completed",
+    "terminalStatus": "completed",
+    "bundleStatus": "available",
+    "reportRef": "company-research-002487-3ea5ae87-7d9c-4754-b2a1-abfb8be8253b",
+    "bundleRef": "research-bundle-3ea5ae87-7d9c-4754-b2a1-abfb8be8253b",
+    "diagnostics": []
+  },
+  "operationCalls": [
+    {
+      "operation": "company_research_synthesis",
+      "status": "error",
+      "elapsedMs": 180021,
+      "errorCategory": "timeout"
+    }
+  ],
+  "report": {
+    "reportId": "company-research-002487-3ea5ae87-7d9c-4754-b2a1-abfb8be8253b",
+    "workflowRunId": "3ea5ae87-7d9c-4754-b2a1-abfb8be8253b",
+    "reportType": "company_research",
+    "evidenceLinkCount": 4,
+    "canonicalRefCount": 0,
+    "reloaded": true
+  },
+  "bundle": {
+    "bundleId": "research-bundle-3ea5ae87-7d9c-4754-b2a1-abfb8be8253b",
+    "workflowRunId": "3ea5ae87-7d9c-4754-b2a1-abfb8be8253b",
+    "reloaded": true
+  },
+  "readOnlyKnowledge": {
+    "unchanged": true,
+    "beforePathCount": 3,
+    "afterPathCount": 3,
+    "digest": "8ee78e8a383e2f06ae97dfe7d78e414f157e482f98bf705c3fab46fded191412"
+  },
+  "secretsIncluded": false,
+  "rawProviderBodiesIncluded": false,
+  "hiddenReasoningIncluded": false
+}

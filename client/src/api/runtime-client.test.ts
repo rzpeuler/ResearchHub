@@ -125,8 +125,8 @@ describe('RuntimeClient', () => {
   })
 
   it('projects only normalized SSE event fields and ignores raw payloads', () => {
-    const event = parseClientEvent(JSON.stringify({ eventId: 'e1', conversationId: 'c1', timestamp: 'now', type: 'tool.updated', name: 'search_knowledge', summary: 'Knowledge search', args: { secret: 'hidden' }, result: 'raw' }))
-    expect(event).toEqual({ eventId: 'e1', conversationId: 'c1', timestamp: 'now', type: 'tool.updated', name: 'search_knowledge', summary: 'Knowledge search' })
+    const event = parseClientEvent(JSON.stringify({ eventId: 'e1', conversationId: 'c1', timestamp: 'now', type: 'tool.updated', name: 'search_knowledge', summary: 'Knowledge search', operationId: 'op-1', messageId: 'msg-1', args: { secret: 'hidden' }, result: 'raw' }))
+    expect(event).toEqual({ eventId: 'e1', conversationId: 'c1', timestamp: 'now', type: 'tool.updated', name: 'search_knowledge', summary: 'Knowledge search', operationId: 'op-1', messageId: 'msg-1' })
     expect(parseClientEvent(JSON.stringify({ eventId: 'e2', conversationId: 'c1', timestamp: 'now', type: 'raw.pi.event', args: 'secret' }))).toBeUndefined()
   })
 
@@ -134,9 +134,10 @@ describe('RuntimeClient', () => {
     const listeners = new Map<string, (event: MessageEvent<string>) => void>()
     const source = { onopen: null as ((event: Event) => void) | null, onerror: null as ((event: Event) => void) | null, close: vi.fn(), addEventListener: (type: string, listener: (event: MessageEvent<string>) => void) => { listeners.set(type, listener) }, removeEventListener: (type: string) => { listeners.delete(type) } }
     const client = new RuntimeClient(async () => json(bootstrap)); await client.bootstrap()
-    const received: string[] = []; const resync = vi.fn(); const dispose = client.openEvents((event) => received.push(event.type), resync, () => source)
+    const received: string[] = []; const resync = vi.fn(); const connection: string[] = []; const dispose = client.openEvents((event) => received.push(event.type), resync, () => source, (state) => connection.push(state))
     source.onopen?.(new Event('open')); listeners.get('message.delta')?.({ data: JSON.stringify({ eventId: 'e1', conversationId: 'c1', timestamp: 'now', type: 'message.delta', role: 'assistant', summary: 'safe' }) } as MessageEvent<string>)
-    expect(resync).toHaveBeenCalledOnce(); expect(received).toEqual(['message.delta']); dispose(); expect(source.close).toHaveBeenCalledOnce(); expect(listeners.size).toBe(0)
+    source.onerror?.(new Event('error')); source.onopen?.(new Event('open'))
+    expect(resync).toHaveBeenCalledTimes(2); expect(received).toEqual(['message.delta']); expect(connection).toEqual(['connected', 'disconnected', 'connected']); dispose(); expect(source.close).toHaveBeenCalledOnce(); expect(listeners.size).toBe(0)
   })
 
   it('uses explicit command endpoints and the safe authorization message', async () => {
@@ -326,5 +327,56 @@ describe('RuntimeClient', () => {
     await expect(rejected.getTopicSummary('entity:missing')).rejects.toMatchObject({ code: 'not_found', status: 404, message: 'Theme not found' })
     const unsafe = new RuntimeClient(async () => json({}))
     await expect(unsafe.getTopicSummary('../private')).rejects.toMatchObject({ code: 'invalid_input', status: 400 })
+  })
+
+  it('encodes conversation search, archive filters, metadata changes, and typed activity reads', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    const client = new RuntimeClient(async (input, init) => {
+      calls.push({ path: String(input), init })
+      if (calls.length === 1) return json(bootstrap)
+      if (String(input).includes('/activities')) return json({ activities: [{ activityId: 'a1', conversationId: 'c/1', operationId: 'op-1', kind: 'accepted_request', operation: 'research_dispatch', status: 'accepted', createdAt: 'now', workflowRunId: 'wf-1' }] })
+      if (String(input).includes('/metadata') || String(input).endsWith('/archive') || String(input).endsWith('/restore')) return json({ conversationId: 'c/1', name: 'Renamed', titleSource: 'user', archived: false, version: 4, latestWorkflowRunId: 'wf-1', updatedAt: 'now', messageCount: 2, isActive: false })
+      return json({ conversations: [] })
+    })
+    await client.bootstrap()
+    await client.listConversations({ archived: false, search: '跨境 通' })
+    await client.listConversations({ archived: true })
+    await client.updateConversationMetadata('c/1', 'Renamed', 3)
+    await client.archiveConversation('c/1', 4)
+    await client.restoreConversation('c/1', 5)
+    const activities = await client.conversationActivities('c/1')
+    expect(calls.map((call) => call.path)).toEqual([
+      '/api/bootstrap',
+      '/api/conversations?archived=0&search=%E8%B7%A8%E5%A2%83+%E9%80%9A',
+      '/api/conversations?archived=1',
+      '/api/conversations/c%2F1/metadata',
+      '/api/conversations/c%2F1/archive',
+      '/api/conversations/c%2F1/restore',
+      '/api/conversations/c%2F1/activities',
+    ])
+    expect(calls[3]?.init?.method).toBe('PATCH')
+    expect(JSON.parse(String(calls[3]?.init?.body))).toEqual({ name: 'Renamed', expectedVersion: 3 })
+    expect(JSON.parse(String(calls[4]?.init?.body))).toEqual({ expectedVersion: 4 })
+    expect(JSON.parse(String(calls[5]?.init?.body))).toEqual({ expectedVersion: 5 })
+    expect(activities[0]).toMatchObject({ operationId: 'op-1', kind: 'accepted_request', workflowRunId: 'wf-1' })
+  })
+
+  it('passes conversation scoped operation IDs through dispatch and Pi command requests', async () => {
+    const calls: { path: string; init?: RequestInit }[] = []
+    const client = new RuntimeClient(async (input, init) => {
+      calls.push({ path: String(input), init })
+      if (calls.length === 1) return json(bootstrap)
+      if (String(input) === '/api/conversations/requests/accept') return json({ accepted: true, conversationId: 'c1', operationId: 'op-c1-1', status: 'accepted' })
+      if (String(input) === '/api/research/dispatch') return json({ accepted: true, status: 'free_research', request: {}, decision: {}, summary: {} })
+      return json({ accepted: true, conversationId: 'c1', run: { runId: 'r1', operation: 'prompt' } }, 202)
+    })
+    await client.bootstrap()
+    await client.acceptConversationRequest({ conversationId: 'c1', operationId: 'op-c1-1', requestText: 'Research X', operation: 'prompt' })
+    await client.dispatchResearch({ query: 'Research X', conversationId: 'c1', operationId: 'op-c1-1' })
+    await client.command('prompt', 'Research X', { conversationId: 'c1', operationId: 'op-c1-1' })
+    expect(calls.map((call) => call.path)).toEqual(['/api/bootstrap', '/api/conversations/requests/accept', '/api/research/dispatch', '/api/conversations/prompt'])
+    expect(JSON.parse(String(calls[1]?.init?.body))).toMatchObject({ conversationId: 'c1', operationId: 'op-c1-1', requestText: 'Research X', operation: 'prompt' })
+    expect(JSON.parse(String(calls[2]?.init?.body))).toMatchObject({ conversationId: 'c1', operationId: 'op-c1-1' })
+    expect(JSON.parse(String(calls[3]?.init?.body))).toMatchObject({ conversationId: 'c1', operationId: 'op-c1-1' })
   })
 })

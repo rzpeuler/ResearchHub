@@ -1,0 +1,262 @@
+{
+  "taskId": "RHL-EXEC-003-A-004",
+  "generatedAt": "2026-10-10T20:30:46.460Z",
+  "classification": "REAL_HTTP_E2E_INCOMPLETE",
+  "completedRunCount": 2,
+  "runs": [
+    {
+      "target": {
+        "symbol": "002487",
+        "exchange": "SZSE",
+        "verifiedName": "大金重工",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-10T20:11:15.781Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "company",
+      "label": "Company Research",
+      "runId": "ada2222e-2564-465f-b144-14b18944c6e4",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "completed",
+        "executionStatus": "completed",
+        "terminalStatus": "completed",
+        "bundleStatus": "available",
+        "reportRef": "company-research-002487-ada2222e-2564-465f-b144-14b18944c6e4",
+        "bundleRef": "research-bundle-ada2222e-2564-465f-b144-14b18944c6e4",
+        "diagnostics": []
+      },
+      "providerOutcomes": [],
+      "providerClassification": "REAL_PROVIDER_COMPLETED",
+      "report": {
+        "reportId": "company-research-002487-ada2222e-2564-465f-b144-14b18944c6e4",
+        "reportType": "company_research",
+        "workflowRunId": "ada2222e-2564-465f-b144-14b18944c6e4",
+        "asOf": "2026-10-10T20:11:15.796Z",
+        "sections": [
+          {
+            "title": "Company Overview",
+            "substantive": true,
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://static.cninfo.com.cn/finalpage/2026-09-22/1225575461.PDF",
+              "https://static.cninfo.com.cn/finalpage/2026-09-16/1225565805.PDF",
+              "https://static.cninfo.com.cn/finalpage/2026-09-12/1225561164.PDF"
+            ]
+          },
+          {
+            "title": "Business Model",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Business Segments",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Revenue / Profit Drivers",
+            "substantive": true,
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://quote.eastmoney.com/sz002487.html"
+            ]
+          },
+          {
+            "title": "Products",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Technologies",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Industry Exposure",
+            "substantive": true,
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://static.cninfo.com.cn/finalpage/2026-09-12/1225561164.PDF"
+            ]
+          },
+          {
+            "title": "Supply Chain",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Competition",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Financial Quality",
+            "substantive": true,
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://quote.eastmoney.com/sz002487.html"
+            ]
+          },
+          {
+            "title": "Growth Drivers",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Management / Capital Allocation",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Catalysts",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Risks",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Valuation",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Bull / Base / Bear",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Variant Perception",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Investment Thesis",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Monitoring Checklist",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          }
+        ],
+        "evidenceLinkCount": 6,
+        "canonicalRefCount": 0,
+        "canonicalRefsResolve": true,
+        "reportReloaded": true
+      },
+      "domainOutcome": {
+        "blockedReason": null,
+        "errorSummary": null,
+        "acquisitionDiagnostics": []
+      },
+      "bundle": {
+        "bundleId": "research-bundle-ada2222e-2564-465f-b144-14b18944c6e4",
+        "workflowRunId": "ada2222e-2564-465f-b144-14b18944c6e4",
+        "reportId": "company-research-002487-ada2222e-2564-465f-b144-14b18944c6e4",
+        "status": "completed",
+        "reloaded": true,
+        "terminalStatus": "completed"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "fb3d6f0ce75e66980cdd741af4a85a06e575b1240cae9703de96971981cb7419",
+        "afterDigest": "fb3d6f0ce75e66980cdd741af4a85a06e575b1240cae9703de96971981cb7419"
+      }
+    },
+    {
+      "target": {
+        "symbol": "002487",
+        "exchange": "SZSE",
+        "verifiedName": "大金重工",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-10T20:15:18.393Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "valuation",
+      "label": "Valuation",
+      "runId": "d5205010-de0e-41e4-938e-0451a122f8b1",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "blocked",
+        "executionStatus": "blocked",
+        "terminalStatus": "blocked",
+        "bundleStatus": "available",
+        "reportRef": null,
+        "bundleRef": "research-bundle-d5205010-de0e-41e4-938e-0451a122f8b1",
+        "diagnostics": []
+      },
+      "providerOutcomes": [
+        {
+          "provider": null,
+          "attempted": true,
+          "succeeded": true,
+          "empty": null,
+          "failed": null,
+          "usableSourceCount": null,
+          "diagnostics": [],
+          "marketTransportSucceeded": false,
+          "financialTransportSucceeded": true,
+          "officialPublicationVerified": true,
+          "companyBasicRowCount": 0,
+          "financialRowCount": 70,
+          "marketRowCount": 0,
+          "marketPriceFound": false,
+          "fiscalYearBasisFound": true,
+          "usableForValuation": false
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_BLOCKED",
+      "report": null,
+      "domainOutcome": {
+        "blockedReason": "VALUATION_MARKET_PRICE_UNAVAILABLE",
+        "errorSummary": null,
+        "acquisitionDiagnostics": []
+      },
+      "bundle": {
+        "bundleId": "research-bundle-d5205010-de0e-41e4-938e-0451a122f8b1",
+        "workflowRunId": "d5205010-de0e-41e4-938e-0451a122f8b1",
+        "reportId": null,
+        "status": "blocked",
+        "reloaded": true,
+        "terminalStatus": "blocked"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "fb3d6f0ce75e66980cdd741af4a85a06e575b1240cae9703de96971981cb7419",
+        "afterDigest": "fb3d6f0ce75e66980cdd741af4a85a06e575b1240cae9703de96971981cb7419"
+      }
+    }
+  ],
+  "error": "Workflow 73217b0d-352d-4caf-830a-c9210590f4a1 did not reach a synchronized terminal status within 900000 ms",
+  "secretsIncluded": false,
+  "rawProviderBodiesIncluded": false,
+  "hiddenReasoningIncluded": false
+}

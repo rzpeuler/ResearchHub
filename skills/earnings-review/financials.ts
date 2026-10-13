@@ -1,6 +1,6 @@
 export type EarningsPeriod = 'Q1' | 'H1' | 'Q3' | 'FY'
 export type EarningsMetricName = 'revenue' | 'net_profit' | 'gross_margin' | 'operating_cash_flow' | 'eps' | 'revenue_yoy' | 'net_profit_yoy' | 'gross_margin_delta_bps' | 'operating_cash_flow_to_net_profit'
-export type EarningsMetricUnit = 'CNY' | 'percent' | 'CNY_per_share' | 'ratio'
+export type EarningsMetricUnit = 'CNY' | 'percent' | 'CNY_per_share' | 'basis_points' | 'ratio'
 
 export interface EarningsPeriodSpec { readonly fiscalYear: number; readonly period: EarningsPeriod; readonly key: string; readonly endDate: string }
 export interface VerifiedFinancialMetric { readonly metric: EarningsMetricName; readonly value: number; readonly unit: EarningsMetricUnit; readonly period: string; readonly comparator: 'eq' | 'approx'; readonly calculation: 'observed' | 'derived'; readonly sourceCandidateIds: readonly string[] }
@@ -28,7 +28,7 @@ export function computeEarningsMetrics(data: NormalizedFinancialData): EarningsC
   for (const name of ['revenue', 'net_profit', 'gross_margin', 'operating_cash_flow', 'eps'] as const) { const metric = current[name]; if (metric) metrics.push(metric); else unavailable.push(name) }
   const revenueYoy = yoy(current.revenue, prior.revenue, 'revenue_yoy', period, source); revenueYoy ? metrics.push(revenueYoy) : unavailable.push('revenue_yoy')
   const profitYoy = yoy(current.net_profit, prior.net_profit, 'net_profit_yoy', period, source); profitYoy ? metrics.push(profitYoy) : unavailable.push('net_profit_yoy')
-  if (current.gross_margin && prior.gross_margin && current.gross_margin.unit === 'percent' && prior.gross_margin.unit === 'percent') metrics.push(derived('gross_margin_delta_bps', (current.gross_margin.value - prior.gross_margin.value) * 100, 'ratio', period, source)); else unavailable.push('gross_margin_delta_bps')
+  if (current.gross_margin && prior.gross_margin && current.gross_margin.unit === 'percent' && prior.gross_margin.unit === 'percent') metrics.push(derived('gross_margin_delta_bps', (current.gross_margin.value - prior.gross_margin.value) * 100, 'basis_points', period, source)); else unavailable.push('gross_margin_delta_bps')
   if (current.operating_cash_flow && current.net_profit && current.operating_cash_flow.unit === 'CNY' && current.net_profit.unit === 'CNY' && current.net_profit.value !== 0) metrics.push(derived('operating_cash_flow_to_net_profit', current.operating_cash_flow.value / current.net_profit.value, 'ratio', period, source)); else unavailable.push('operating_cash_flow_to_net_profit')
   return { metrics, byMetric: Object.fromEntries(metrics.map((metric) => [metric.metric, metric])), unavailable }
 }

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import test from 'node:test'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { createHash } from 'node:crypto'
 import { createFreshKnowledgeBaseV04, readCanonicalV04Assets } from '../../knowledge/storage/index.ts'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { KnowledgeProductionGateway } from '../../knowledge/production/gateway.ts'
@@ -12,9 +13,13 @@ import type { OfficialDisclosureClient } from '../../plugins/research-acquisitio
 import { createValuationDataResolver, type ValuationDataPayload } from '../../plugins/research-acquisition/valuation-data.ts'
 import type { DataResolver } from '../../data/resolver.ts'
 import type { DataRequirement } from '../../data/contracts.ts'
+import type { VerifiedSecurityIdentity } from '../../data/security-identity-contracts.ts'
+import type { ValuationProviderOutcome, ValuationTelemetrySnapshot } from '../../workflows/valuation/contracts.ts'
+import { SecurityIdentityResolver } from '../../app/services/security-identity-resolver.ts'
+import { createSecurityIdentityDataResolver, type AkshareSecurityDirectoryClient } from '../../plugins/research-acquisition/security-identity-data.ts'
 import { VALUATION_REPORT_SECTIONS } from '../../skills/valuation/contracts.ts'
 import { buildValuationBasis, calculateTargetPrice, calculateValuation, methodEligibility, referenceMultiples, selectValuationBasis, validateScenarioAssumptions } from '../../skills/valuation/financials.ts'
-import { normalizeValuationFinancialData, normalizeValuationMarketData } from '../../plugins/research-acquisition/valuation-normalization.ts'
+import { normalizeValuationDate, normalizeValuationFinancialData, normalizeValuationMarketData } from '../../plugins/research-acquisition/valuation-normalization.ts'
 import { canonicalizeValuationViewpointStatement, expectedValuationAssumptionStructuredValue, ValuationAssumptionDesignSkill, ValuationSynthesisSkill, validateValuationStructuredValue } from '../../skills/valuation/skill.ts'
 import { createResearchHubTools } from '../../app/pi/tools.ts'
 import type { KnowledgeService } from '../../app/services/knowledge-service.ts'
@@ -23,6 +28,7 @@ import type { ReviewService } from '../../app/services/review-service.ts'
 import { runValuation, toGatewayProposals, validProposal } from '../../workflows/valuation/workflow.ts'
 import { ResearchService } from '../../app/services/research-service.ts'
 import { WorkflowService } from '../../app/services/workflow-service.ts'
+import { renderResearchReport, readResearchReport } from '../../app/services/research-report.ts'
 
 const NOW = '2026-09-09T00:00:00.000Z'
 const RIGHTS = { accessScope: 'public' as const, retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false }
@@ -63,7 +69,8 @@ function valuationSource(candidateId: string): Record<string, unknown> { return 
 function valuationSkillInput() { const b = basis(); return { company: { symbol: '600519', exchange: 'SH' }, valuationDate: NOW, basis: b, targetFiscalYear: 2026, eligibleMethods: ['PE', 'PB'] as const, referenceMultiples: referenceMultiples(b), existingKnowledge: [{ canonicalRef: 'claim:existing' }], sources: [valuationSource('financial-source')] as never } }
 
 function financialRows(): readonly Dict[] { return [{ 报告期: '2025-12-31', 公告日期: '2026-03-30', 基本每股收益: 10, 每股净资产: 20, EBITDA: 100000000, 净负债: 10000000, 总股本: 1000000 }, { 报告期: '2024-12-31', 公告日期: '2025-03-30', 基本每股收益: 8, 每股净资产: 18, EBITDA: 90000000, 净负债: 12000000, 总股本: 1000000 }, { 报告期: '2025-09-30', 公告日期: '2025-11-01', 基本每股收益: 7 }] }
-function marketRows(): readonly Dict[] { return [{ 日期: '2026-01-02', 收盘: 120 }, { 日期: '2026-09-08', 收盘: 150 }, { 日期: '2026-12-31', 收盘: 999 }] }
+function marketRows(): readonly Dict[] { return [{ 日期: '2026-01-02', 收盘: 120 }, { 日期: '2026-02-27', 收盘: 135 }, { 日期: '2026-09-07', 收盘: 145 }, { 日期: '2026-09-08', 收盘: 150 }, { 日期: '2026-12-31', 收盘: 999 }] }
+function recentMarketRows(): readonly Dict[] { const now = Date.now(); let day = new Date(now + 8 * 60 * 60 * 1_000).toISOString().slice(0, 10); if (Date.parse(`${day}T15:00:00+08:00`) > now) day = new Date(Date.parse(`${day}T00:00:00.000Z`) - 86_400_000).toISOString().slice(0, 10); while ([0, 6].includes(new Date(`${day}T00:00:00.000Z`).getUTCDay())) day = new Date(Date.parse(`${day}T00:00:00.000Z`) - 86_400_000).toISOString().slice(0, 10); return [{ 日期: day, 收盘: 150 }] }
 function akshareFixture(options: { readonly financial?: readonly Dict[]; readonly market?: readonly Dict[] } = {}): AkshareDataClient & { readonly calls: string[] } { const calls: string[] = []; return { calls, companyBasic: async () => { calls.push('companyBasic'); return [{ 公司名称: 'Fixture Company' }] }, financialData: async () => { calls.push('financialData'); return options.financial ?? financialRows() }, historicalMarketData: async () => { calls.push('historicalMarketData'); return options.market ?? marketRows() } } }
 async function fixture(options: { readonly financial?: readonly Dict[]; readonly market?: readonly Dict[]; readonly executor?: ReasoningExecutor } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'rhl-valuation-')); const reports = join(root, 'reports'); await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: `kb-valuation-${Date.now()}`, now: NOW }); const registry = new KnowledgeBaseRegistry(); let handle = await registry.mount(root)
@@ -73,6 +80,19 @@ async function fixture(options: { readonly financial?: readonly Dict[]; readonly
   const akshare = akshareFixture({ financial: options.financial, market: options.market }); const executor = options.executor ?? new FixtureExecutor(); const officialDisclosure: OfficialDisclosureClient = { list: async () => [], fetch: async () => '', resolveAnnualReportPublication: async ({ fiscalYear }) => ({ issuer: 'Fixture Company', fiscalYear, reportTitle: `${fiscalYear}年年度报告`, officialPublishedAt: `${fiscalYear + 1}-04-01T08:00:00.000Z`, rawPublishedAt: `${fiscalYear + 1}-04-01 16:00:00`, sourceUrl: `https://static.cninfo.com.cn/fixture-${fiscalYear}.pdf`, originPublisher: 'CNINFO', originAuthority: 'S0_STATUTORY', retrievalProvider: 'CNINFO', retrievedAt: NOW }) }
   return { root, reports, handle, akshare, executor, officialDisclosure, async remount() { handle = await registry.mount(root); return handle }, async close() { await rm(root, { recursive: true, force: true }) } }
 }
+async function snapshotKnowledgeTree(root: string): Promise<readonly string[]> {
+  const entries: string[] = []
+  const visit = async (directory: string): Promise<void> => {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      if (directory === root && entry.name === 'reports') continue
+      const absolute = join(directory, entry.name)
+      if (entry.isDirectory()) { entries.push(`dir:${absolute.slice(root.length)}`); await visit(absolute) }
+      else if (entry.isFile()) entries.push(`file:${absolute.slice(root.length)}:${createHash('sha256').update(await readFile(absolute)).digest('hex')}`)
+    }
+  }
+  await visit(root)
+  return entries.sort()
+}
 async function runFixture(f: Awaited<ReturnType<typeof fixture>>, overrides: Partial<Parameters<typeof runValuation>[0]> = {}) { return runValuation({ workflowRunId: `valuation-${Date.now()}-${Math.random().toString(16).slice(2)}`, handle: f.handle, company: { symbol: '600519', name: 'Fixture Company', exchange: 'SSE' }, reportRoot: f.reports, akshare: f.akshare, officialDisclosure: f.officialDisclosure, reasoningExecutor: f.executor, now: () => NOW, ...overrides }) }
 function fixtureExecutor(f: Awaited<ReturnType<typeof fixture>>): FixtureExecutor { return f.executor as FixtureExecutor }
 function basis() { const market = normalizeValuationMarketData(marketRows(), NOW).observation!; const row = normalizeValuationFinancialData(financialRows()).rows[0]!; return buildValuationBasis(market, row, NOW, 'verified') }
@@ -80,6 +100,12 @@ function plan() { return { primaryMethod: 'PE' as const, secondaryMethods: ['PB'
 
 test('V1 normalizes dashed dates', () => assert.equal(normalizeValuationMarketData([{ date: '2026-09-08', close: 1 }], NOW).observation?.priceDate, '2026-09-08'))
 test('V2 normalizes Chinese dates', () => assert.equal(normalizeValuationMarketData([{ date: '2026年9月8日', close: 1 }], NOW).observation?.priceDate, '2026-09-08'))
+test('V2a normalizes Tencent epoch-millisecond dates and rejects epoch-prefix false dates', () => {
+  assert.equal(normalizeValuationDate(1790121600000), '2026-09-23')
+  assert.equal(normalizeValuationDate('1788912000000'), '2026-09-09')
+  assert.equal(normalizeValuationMarketData([{ date: 1788912000000, close: 32.57 }], NOW, '2026-09-09T07:00:00.000Z').observation?.priceDate, '2026-09-09')
+  assert.equal(normalizeValuationDate('2026-02-31'), undefined)
+})
 test('V3 selects the latest usable market close', () => assert.equal(normalizeValuationMarketData(marketRows(), NOW).observation?.close, 150))
 test('V4 excludes future market rows', () => assert.equal(normalizeValuationMarketData([{ 日期: '2026-12-31', 收盘: 999 }], NOW).observation, undefined))
 test('V5 rejects non-positive market closes', () => assert.equal(normalizeValuationMarketData([{ 日期: '2026-09-08', 收盘: 0 }], NOW).observation, undefined))
@@ -114,9 +140,156 @@ test('V33 filters requested methods to eligible methods', async () => { const f 
 test('V34 keeps the method set bounded to PE PB EV_EBITDA', () => assert.deepEqual(methodEligibility(basis()).map((item) => item.method), ['PE', 'PB', 'EV_EBITDA']))
 test('V35 completes with one exact canonical Company', async () => { const f = await fixture(); try { const r = await runFixture(f); assert.equal(r.status, 'completed'); assert.equal(r.telemetry.companyCoverageResolved, true) } finally { await f.close() } })
 test('V36 missing Company coverage blocks before acquisition', async () => { const root = await mkdtemp(join(tmpdir(), 'rhl-valuation-missing-')); try { await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'missing', now: NOW }); let calls = 0; const ak = akshareFixture(); const wrapped = { ...ak, companyBasic: async () => { calls++; return [] } }; const r = await runValuation({ workflowRunId: 'v36', handle: await new KnowledgeBaseRegistry().mount(root), company: { symbol: '600519', exchange: 'SSE' }, reportRoot: join(root, 'reports'), akshare: wrapped }); assert.equal(r.blockedReason, 'COMPANY_COVERAGE_NOT_FOUND'); assert.equal(calls, 0) } finally { await rm(root, { recursive: true, force: true }) } })
+test('V79 verified identity enters real valuation acquisition with empty Knowledge and no writes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-valuation-first-research-'))
+  const reportRoot = join(root, 'reports')
+  try {
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-valuation-first-research', now: NOW })
+    const before = await snapshotKnowledgeTree(root)
+    const registry = new KnowledgeBaseRegistry()
+    const akshare = akshareFixture()
+    const securityIdentity: VerifiedSecurityIdentity = { symbol: '600519', exchange: 'SH', verifiedName: 'Fixture Company', verificationSource: 'akshare_security_directory', originAuthority: 'S3_AGGREGATOR', verifiedAt: NOW, sourceId: 'akshare-security-identity-directory', sourceUrl: 'https://github.com/akfamily/akshare' }
+    const result = await runValuation({ workflowRunId: 'v79-first-research', handle: await registry.mount(root), company: { symbol: securityIdentity.symbol, name: securityIdentity.verifiedName, exchange: securityIdentity.exchange }, securityIdentity, reportRoot, akshare, officialDisclosure: {
+      list: async () => [], fetch: async () => '', resolveAnnualReportPublication: async ({ fiscalYear }) => ({ issuer: 'Fixture Company', fiscalYear, reportTitle: `${fiscalYear}年年度报告`, officialPublishedAt: `${fiscalYear + 1}-04-01T08:00:00.000Z`, rawPublishedAt: `${fiscalYear + 1}-04-01 16:00:00`, sourceUrl: `https://static.cninfo.com.cn/fixture-${fiscalYear}.pdf`, originPublisher: 'CNINFO', originAuthority: 'S0_STATUTORY', retrievalProvider: 'CNINFO', retrievedAt: NOW }),
+    }, reasoningExecutor: new FixtureExecutor(), now: () => NOW, writeKnowledge: false, useStructuredKnowledge: false })
+    assert.equal(result.status, 'completed', result.errors.join('; '))
+    assert.equal(result.telemetry.companyCoverageResolved, false)
+    assert.equal(result.providerOutcome.usableForValuation, true)
+    assert.deepEqual(akshare.calls, ['companyBasic', 'historicalMarketData', 'financialData'])
+    assert.ok(result.basis && result.computation)
+    assert.ok(result.report)
+    const report = JSON.parse(await readFile(join(reportRoot, `${result.report!.reportId}.md.json`), 'utf8')) as { subjectRefs: string[]; sourceRefs: string[]; claimRefs: string[]; verifiedSecurityIdentity?: VerifiedSecurityIdentity; sections: { id: string; markdown: string; evidenceLinks?: string[] }[] }
+    assert.deepEqual(report.subjectRefs, [])
+    assert.deepEqual(report.sourceRefs, [])
+    assert.deepEqual(report.claimRefs, [])
+    assert.equal(report.verifiedSecurityIdentity?.symbol, '600519')
+    const snapshot = report.sections.find((section) => section.id === 'valuation-snapshot')!
+    const basisSection = report.sections.find((section) => section.id === 'data-basis-point-in-time-status')!
+    const multiples = report.sections.find((section) => section.id === 'fy-based-reference-multiples')!
+    assert.match(snapshot.markdown, /Verified company name: Fixture Company/)
+    assert.match(snapshot.markdown, /Verified ticker \/ exchange: 600519\.SH/)
+    assert.match(snapshot.markdown, /Valuation timestamp: 2026-09-09T00:00:00\.000Z/)
+    assert.match(snapshot.markdown, /150 CNY\/share for 2026-09-08/)
+    assert.match(snapshot.markdown, /Market publisher: EastMoney; retrieval provider: AKShare/)
+    assert.match(snapshot.markdown, /Market freshness: FRESH/)
+    assert.match(basisSection.markdown, /FY2025, period 2025-12-31/)
+    assert.match(basisSection.markdown, /EPS: 10 CNY\/share; publisher: EastMoney/)
+    assert.match(basisSection.markdown, /BVPS: 20 CNY\/share; publisher: EastMoney/)
+    assert.match(basisSection.markdown, /Official annual report: 2025年年度报告; publisher: CNINFO; published at: 2026-04-01T08:00:00\.000Z/)
+    assert.match(basisSection.markdown, /announcement ID: Unavailable/)
+    assert.match(basisSection.markdown, /PIT classification: CURRENT_VALUE_ONLY/)
+    assert.match(basisSection.markdown, /market numeric value-version status: UNVERIFIED/)
+    assert.match(basisSection.markdown, /EPS numeric value-version status: UNVERIFIED/)
+    assert.match(basisSection.markdown, /BVPS numeric value-version status: UNVERIFIED/)
+    assert.match(basisSection.markdown, /does not prove the aggregator's historical numeric value version/)
+    assert.match(multiples.markdown, /Current PE: 15 .*current PB: 7\.5/)
+    assert.ok((snapshot.evidenceLinks ?? []).every((url) => /^https:\/\//.test(url)))
+    const reloaded = await readResearchReport(join(reportRoot, `${result.report!.reportId}.md.json`))
+    assert.match(reloaded.sections.find((section) => section.id === 'data-basis-point-in-time-status')!.markdown, /EPS: 10 CNY\/share/)
+    const markdown = await readFile(join(reportRoot, `${result.report!.reportId}.md`), 'utf8')
+    assert.match(markdown, /External evidence:/)
+    assert.match(markdown, /https:\/\//)
+    const assets = await readCanonicalV04Assets(root)
+    assert.equal(assets.objects.filter((item) => item.kind === 'entity').length, 0)
+    assert.equal(assets.objects.filter((item) => item.kind === 'source' || item.kind === 'claim').length, 0)
+    assert.deepEqual(await snapshotKnowledgeTree(root), before)
+    const writeRequestedBefore = await snapshotKnowledgeTree(root)
+    const writeRequested = await runValuation({ workflowRunId: 'v79-first-research-write-request', handle: await registry.mount(root), company: { symbol: securityIdentity.symbol, name: securityIdentity.verifiedName, exchange: securityIdentity.exchange }, securityIdentity, reportRoot, akshare, officialDisclosure: { list: async () => [], fetch: async () => '', resolveAnnualReportPublication: async ({ fiscalYear }) => ({ issuer: 'Fixture Company', fiscalYear, reportTitle: `${fiscalYear}年年度报告`, officialPublishedAt: `${fiscalYear + 1}-04-01T08:00:00.000Z`, rawPublishedAt: `${fiscalYear + 1}-04-01 16:00:00`, sourceUrl: `https://static.cninfo.com.cn/fixture-${fiscalYear}.pdf`, originPublisher: 'CNINFO', originAuthority: 'S0_STATUTORY', retrievalProvider: 'CNINFO', retrievedAt: NOW }) }, reasoningExecutor: new FixtureExecutor(), now: () => NOW, writeKnowledge: true, useStructuredKnowledge: false })
+    assert.equal(writeRequested.status, 'completed', JSON.stringify(writeRequested))
+    assert.deepEqual(writeRequested.sourceIds, [])
+    assert.deepEqual(writeRequested.claimIds, [])
+    assert.deepEqual(writeRequested.committedIds, [])
+    assert.deepEqual(await snapshotKnowledgeTree(root), writeRequestedBefore)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+test('V80 ResearchService verifies identity then runs first valuation through its production resolver path', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rhl-valuation-service-first-research-'))
+  const reportRoot = join(root, 'reports')
+  try {
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-valuation-service-first-research', now: NOW })
+    const directoryCalls: unknown[] = []
+    const directory = { async securityDirectory(request: unknown) { directoryCalls.push(request); return [{ symbol: '600519', name: 'Fixture Company', exchange: 'SH' }] } } as unknown as AkshareSecurityDirectoryClient
+    const securityIdentityResolver = new SecurityIdentityResolver({ mountedKnowledgeBaseRoot: root, now: () => new Date(NOW), dataResolverFactory: ({ now, signal }) => createSecurityIdentityDataResolver({ akshare: directory, now, ...(signal ? { signal } : {}) }) })
+    const akshare = akshareFixture()
+    const officialDisclosure: OfficialDisclosureClient = { list: async () => [], fetch: async () => '', resolveAnnualReportPublication: async ({ fiscalYear }) => ({ issuer: 'Fixture Company', fiscalYear, reportTitle: `${fiscalYear}年年度报告`, officialPublishedAt: `${fiscalYear + 1}-04-01T08:00:00.000Z`, rawPublishedAt: `${fiscalYear + 1}-04-01 16:00:00`, sourceUrl: `https://static.cninfo.com.cn/fixture-${fiscalYear}.pdf`, originPublisher: 'CNINFO', originAuthority: 'S0_STATUTORY', retrievalProvider: 'CNINFO', retrievedAt: NOW }) }
+    akshare.historicalMarketData = async () => { akshare.calls.push('historicalMarketData'); return recentMarketRows() }
+    const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot, acquisitionPlugins: [], akshare, officialDisclosure, workflowService: new WorkflowService(), reasoningExecutor: new FixtureExecutor(), securityIdentityResolver })
+    const result = await service.startValuation({ workflowRunId: 'v80-service-first-research', symbol: '600519', name: 'Fixture Company', exchange: 'SH', writeKnowledge: false, useStructuredKnowledge: false }).completion
+    const telemetry = result.telemetry as ValuationTelemetrySnapshot
+    const providerOutcome = result.providerOutcome as ValuationProviderOutcome | undefined
+    assert.equal(result.status, 'completed', JSON.stringify(result))
+    assert.equal(directoryCalls.length, 1)
+    assert.equal(telemetry.companyCoverageResolved, false)
+    assert.equal(providerOutcome?.usableForValuation, true)
+    assert.deepEqual(akshare.calls, ['companyBasic', 'historicalMarketData', 'financialData'])
+    assert.ok(result.reportId)
+    const report = await service.getResearchReport(result.reportId!)
+    assert.deepEqual(report.subjectRefs, [])
+    assert.equal(report.verifiedSecurityIdentity?.sourceId, 'akshare-security-identity-directory')
+    const assets = await readCanonicalV04Assets(root)
+    assert.equal(assets.objects.filter((item) => item.kind === 'entity' || item.kind === 'source' || item.kind === 'claim').length, 0)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
 test('V37 ambiguous exact Company coverage blocks', async () => { const f = await fixture(); try { const assets = JSON.parse(await readFile(join(f.root, 'registry', 'assets.yaml'), 'utf8')) as Dict; assets['entity:duplicate-company'] = { type: 'entity', storageRef: 'entities/duplicate-company.yaml' }; await writeFile(join(f.root, 'registry', 'assets.yaml'), `${JSON.stringify(assets)}\n`); await writeFile(join(f.root, 'entities', 'duplicate-company.yaml'), `${JSON.stringify({ id: 'entity:duplicate-company', type: 'company', name: 'Duplicate', aliases: [], ticker: '600519', exchange: 'SH', lifecycle: { status: 'active' } })}\n`); const r = await runFixture({ ...f, handle: await new KnowledgeBaseRegistry().mount(f.root) }); assert.equal(r.blockedReason, 'COMPANY_COVERAGE_AMBIGUOUS') } finally { await f.close() } })
 test('V38 unavailable market data blocks', async () => { const f = await fixture({ market: [] }); try { const r = await runFixture(f); assert.equal(r.blockedReason, 'VALUATION_MARKET_PRICE_UNAVAILABLE') } finally { await f.close() } })
-test('V39 acquisition calls all three AKShare methods', async () => { const f = await fixture(); try { await runFixture(f); assert.deepEqual(f.akshare.calls, ['companyBasic', 'financialData', 'historicalMarketData']) } finally { await f.close() } })
+test('stale prices from both market sources block Valuation before a report is written', async () => { const f = await fixture(); try { const stale = [{ date: '2026-10-05', close: 99 }]; f.akshare.historicalMarketData = async () => stale; f.akshare.historicalMarketDataTencent = async () => stale; f.akshare.tradingCalendar = async () => ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'].map((trade_date) => ({ trade_date })); const result = await runFixture(f, { now: () => '2026-10-09T07:00:00.000Z' }); assert.equal(result.status, 'blocked'); assert.equal(result.blockedReason, 'VALUATION_MARKET_PRICE_UNAVAILABLE'); assert.ok(result.diagnostics.some((item) => item.includes('MARKET_PRICE_STALE'))); assert.equal(result.report, undefined) } finally { await f.close() } })
+test('V39 acquisition calls all three AKShare methods', async () => { const f = await fixture(); try { await runFixture(f); assert.deepEqual([...f.akshare.calls].sort(), ['companyBasic', 'financialData', 'historicalMarketData'].sort()) } finally { await f.close() } })
+test('Valuation reports selected market and financial transports separately from companyBasic telemetry', async () => {
+  const f = await fixture()
+  try {
+    const akshare = { ...f.akshare, companyBasic: async () => { throw new Error('AKSHARE_BRIDGE_EXIT_1:ProxyError') } }
+    const result = await runFixture(f, { akshare })
+    assert.equal(result.providerOutcome.transportSucceeded, true)
+    assert.equal(result.providerOutcome.marketTransportSucceeded, true)
+    assert.equal(result.providerOutcome.financialTransportSucceeded, true)
+    assert.equal(result.providerOutcome.officialPublicationVerified, true)
+    assert.equal(result.providerOutcome.usableForValuation, true)
+    assert.ok(result.diagnostics.some((item) => item === 'companyBasic: AKSHARE_BRIDGE_EXIT_1:ProxyError'))
+  } finally { await f.close() }
+})
+test('ResearchReport Markdown renders verified external evidence links for every research product', () => {
+  const markdown = renderResearchReport({ reportId: 'company-report', reportType: 'company_research', subjectRefs: ['entity:company'], generatedAt: NOW, asOf: NOW, workflowRunId: 'company-run', knowledgeBaseRevision: 1, sourceRefs: [], claimRefs: [], methodology: 'Fixture methodology', sections: [{ id: 'summary', title: 'Summary', markdown: 'Company summary.', evidenceLinks: ['https://example.com/evidence'] }], outputPath: 'company-report.md' })
+  assert.match(markdown, /Company summary/)
+  assert.match(markdown, /External evidence:/)
+  assert.match(markdown, /https:\/\/example.com\/evidence/)
+})
+test('valuation report reflects the selected Tencent market source without relabeling EastMoney financials', async () => {
+  const f = await fixture()
+  try {
+    const before = await snapshotKnowledgeTree(f.root)
+    f.akshare.historicalMarketData = async () => { throw new Error('EastMoney fixture unavailable') }
+    f.akshare.historicalMarketDataTencent = async () => [{ date: '2026-09-08', close: 150 }]
+    const result = await runFixture(f, { writeKnowledge: false })
+    assert.equal(result.status, 'completed', JSON.stringify(result))
+    const report = await readResearchReport(join(f.reports, `${result.report!.reportId}.md.json`))
+    const snapshot = report.sections.find((section) => section.id === 'valuation-snapshot')!
+    const basisSection = report.sections.find((section) => section.id === 'data-basis-point-in-time-status')!
+    assert.match(snapshot.markdown, /Market publisher: Tencent; retrieval provider: AKShare; source ID: akshare-tencent-historical-market-data/)
+    assert.match(snapshot.markdown, /Market freshness: FRESH/)
+    assert.match(snapshot.markdown, /https:\/\/gu\.qq\.com\/sh600519\/zs/)
+    assert.match(basisSection.markdown, /EPS: 10 CNY\/share; publisher: EastMoney/)
+    assert.match(basisSection.markdown, /BVPS: 20 CNY\/share; publisher: EastMoney/)
+    assert.ok(snapshot.evidenceLinks?.includes('https://gu.qq.com/sh600519/zs'))
+    assert.deepEqual(await snapshotKnowledgeTree(f.root), before)
+  } finally { await f.close() }
+})
+test('current PE/PB remain in the report when no validated scenario plan is available', async () => {
+  const f = await fixture({ executor: new SequenceExecutor([{}]) })
+  try {
+    const result = await runFixture(f, { writeKnowledge: false })
+    assert.equal(result.status, 'completed')
+    assert.equal(result.plan, undefined)
+    assert.equal(result.computation, undefined)
+    const report = await readResearchReport(join(f.reports, `${result.report!.reportId}.md.json`))
+    const multiples = report.sections.find((section) => section.id === 'fy-based-reference-multiples')!.markdown
+    assert.match(multiples, /Current PE: 15/)
+    assert.match(multiples, /current PB: 7\.5/)
+    assert.match(multiples, /not forecast target multiples/)
+    for (const sectionId of ['bear-scenario', 'base-scenario', 'bull-scenario', 'target-price-range']) assert.match(report.sections.find((section) => section.id === sectionId)!.markdown, /Unavailable/)
+    assert.deepEqual(report.sourceRefs, [])
+    assert.deepEqual(report.claimRefs, [])
+  } finally { await f.close() }
+})
 test('Valuation workflow sends issuer and comparable requirements through its injected DataResolver', async () => {
   const f = await fixture()
   try {
@@ -147,6 +320,22 @@ test('Valuation basis uses only the resolver-selected FY row when a raw snapshot
     assert.equal(result.basisEvidence?.eps?.officialPublication?.reportTitle, '2024年年度报告')
   } finally { await f.close() }
 })
+test('Valuation uses the nearest prior published annual basis when the newest FY has no official report proof', async () => {
+  const f = await fixture()
+  try {
+    const officialDisclosure: OfficialDisclosureClient = {
+      list: async () => [], fetch: async () => '',
+      resolveAnnualReportPublication: async ({ fiscalYear }) => fiscalYear === 2025 ? undefined : ({ issuer: 'Fixture Company', fiscalYear, reportTitle: `${fiscalYear}年年度报告`, officialPublishedAt: `${fiscalYear + 1}-04-01T08:00:00.000Z`, rawPublishedAt: `${fiscalYear + 1}-04-01 16:00:00`, sourceUrl: `https://static.cninfo.com.cn/fixture-${fiscalYear}.pdf`, originPublisher: 'CNINFO', originAuthority: 'S0_STATUTORY', retrievalProvider: 'CNINFO', retrievedAt: NOW }),
+    }
+    const result = await runFixture(f, { officialDisclosure })
+    assert.equal(result.status, 'completed', result.blockedReason)
+    assert.equal(result.basis?.basisFiscalYear, 2024)
+    assert.equal(result.basisEvidence?.basisFiscalYear, 2024)
+    assert.equal(result.basisEvidence?.reportDate, '2024-12-31')
+    assert.equal(result.basisEvidence?.eps?.officialPublication?.reportTitle, '2024年年度报告')
+    assert.ok(result.diagnostics.some((item) => item.includes('CNINFO annual publication')))
+  } finally { await f.close() }
+})
 test('Valuation combines independently resolved EPS and BVPS with separate source lineage', async () => {
   const f = await fixture()
   try {
@@ -169,7 +358,7 @@ test('Fixed historical Valuation cutoff keeps annual numbers visible but exclude
     const result = await runFixture(f, { asOf: cutoff })
     assert.equal(result.basis, undefined)
     assert.equal(result.providerOutcome.basisPitStatus, 'PUBLICATION_VERIFIED_VALUE_VERSION_UNVERIFIED')
-    assert.equal(result.basisEvidence?.market.priceDate, '2026-01-02')
+    assert.equal(result.basisEvidence?.market.priceDate, '2026-09-07')
     assert.equal(result.basisEvidence?.eps?.pitStatus, 'PUBLICATION_VERIFIED_VALUE_VERSION_UNVERIFIED')
     assert.notEqual(result.basisEvidence?.eps?.numericSource.retrievedAt, cutoff)
     assert.ok(result.diagnostics.some((item) => item.includes('numeric value version')))
@@ -180,8 +369,8 @@ test('Future official annual publication cannot support a fixed Valuation cutoff
   try {
     const result = await runFixture(f, { asOf: '2026-03-01T00:00:00.000Z' })
     assert.equal(result.basis, undefined)
-    assert.equal(result.providerOutcome.basisPitStatus, 'UNAVAILABLE')
-    assert.ok(result.diagnostics.some((item) => item.includes('publishedAt') && item.includes('after analysisAsOf')))
+    assert.equal(result.providerOutcome.basisPitStatus, 'PUBLICATION_VERIFIED_VALUE_VERSION_UNVERIFIED')
+    assert.ok(result.diagnostics.some((item) => item.includes('publishedAt') && item.includes('after analysisAsOf')), JSON.stringify(result.diagnostics))
   } finally { await f.close() }
 })
 test('V40 writes a valuation ResearchReport', async () => { const f = await fixture(); try { const r = await runFixture(f); const report = JSON.parse(await readFile(join(f.reports, `${r.report?.reportId}.md.json`), 'utf8')) as Dict; assert.equal(report.reportType, 'valuation') } finally { await f.close() } })
@@ -205,11 +394,11 @@ test('V57 ResearchService registers valuation workflow type', async () => { cons
 test('D3 missing official client fails closed without PE/PB basis', async () => { const f = await fixture({ financial: [{ REPORT_DATE: '2025-12-31', EPSJB: 10, BPS: 20 }] }); try { const r = await runFixture(f, { officialDisclosure: undefined }); assert.equal(r.basis, undefined); assert.equal(r.providerOutcome.basisPitStatus, 'UNAVAILABLE'); assert.equal(r.providerOutcome.peEligible, false); assert.equal(r.providerOutcome.pbEligible, false); assert.ok(r.diagnostics.includes('VALUATION_BASIS_PUBLICATION_UNAVAILABLE')); assert.equal(r.telemetry.pointInTimeVerified, false) } finally { await f.close() } })
 test('D3 official client without publication resolver fails closed identically', async () => { const f = await fixture({ financial: [{ REPORT_DATE: '2025-12-31', EPSJB: 10, BPS: 20 }] }); try { const officialDisclosure: OfficialDisclosureClient = { list: async () => [], fetch: async () => '' }; const r = await runFixture(f, { officialDisclosure }); assert.equal(r.basis, undefined); assert.equal(r.providerOutcome.basisPitStatus, 'UNAVAILABLE'); assert.equal(r.providerOutcome.peEligible, false); assert.equal(r.providerOutcome.pbEligible, false); assert.ok(r.diagnostics.includes('VALUATION_BASIS_PUBLICATION_UNAVAILABLE')) } finally { await f.close() } })
 test('D3 official client with no publication proof fails closed', async () => { const f = await fixture({ financial: [{ REPORT_DATE: '2025-12-31', EPSJB: 10, BPS: 20 }] }); try { const officialDisclosure: OfficialDisclosureClient = { list: async () => [], fetch: async () => '', resolveAnnualReportPublication: async () => undefined }; const r = await runFixture(f, { officialDisclosure }); assert.equal(r.basis, undefined); assert.equal(r.providerOutcome.basisPitStatus, 'UNAVAILABLE'); assert.equal(r.providerOutcome.peEligible, false); assert.equal(r.providerOutcome.pbEligible, false); assert.ok(r.diagnostics.includes('VALUATION_BASIS_PUBLICATION_UNAVAILABLE')) } finally { await f.close() } })
-test('D3 normal ResearchService path auto-activates PE/PB evidence closure', async () => { const f = await fixture(); try { const akshare = { ...f.akshare, valuationFinancialIndicators: async () => [{ REPORT_DATE: '2025-12-31', NOTICE_DATE: '2026-03-30', EPSJB: 10, BPS: 20 }] }; const officialDisclosure: OfficialDisclosureClient = { list: async () => [], fetch: async () => '', resolveAnnualReportPublication: async () => ({ issuer: 'Fixture Company', fiscalYear: 2025, reportTitle: '2025年年度报告', officialPublishedAt: '2026-04-03T08:00:00.000Z', rawPublishedAt: '2026-04-03 16:00:00', sourceUrl: 'https://static.cninfo.com.cn/fixture-2025.pdf', originPublisher: 'CNINFO', originAuthority: 'S0_STATUTORY', retrievalProvider: 'CNINFO', retrievedAt: NOW }) }; const workflows = new WorkflowService(); const service = new ResearchService({ mountedKnowledgeBaseRoot: f.root, reportRoot: f.reports, acquisitionPlugins: [], akshare, officialDisclosure, workflowService: workflows, reasoningExecutor: f.executor }); const started = service.startValuation({ workflowRunId: 'd3-normal-service', symbol: '600519', exchange: 'SSE', methods: ['PE', 'PB'] }); const result = await started.completion; const providerOutcome = result.providerOutcome as Dict; assert.equal(result.status, 'completed'); assert.equal(providerOutcome.basisPitStatus, 'CURRENT_VALUE_ONLY'); assert.equal(providerOutcome.peEligible, true); assert.equal(providerOutcome.pbEligible, true); assert.equal(providerOutcome.evEbitdaEligible, false); assert.equal(workflows.getWorkflowStatus(started.runId)?.workflowType, 'valuation') } finally { await f.close() } })
+test('D3 normal ResearchService path auto-activates PE/PB evidence closure', async () => { const f = await fixture(); try { const akshare = { ...f.akshare, historicalMarketData: async () => recentMarketRows(), valuationFinancialIndicators: async () => [{ REPORT_DATE: '2025-12-31', NOTICE_DATE: '2026-03-30', EPSJB: 10, BPS: 20 }] }; const officialDisclosure: OfficialDisclosureClient = { list: async () => [], fetch: async () => '', resolveAnnualReportPublication: async () => ({ issuer: 'Fixture Company', fiscalYear: 2025, reportTitle: '2025年年度报告', officialPublishedAt: '2026-04-03T08:00:00.000Z', rawPublishedAt: '2026-04-03 16:00:00', sourceUrl: 'https://static.cninfo.com.cn/fixture-2025.pdf', originPublisher: 'CNINFO', originAuthority: 'S0_STATUTORY', retrievalProvider: 'CNINFO', retrievedAt: NOW }) }; const workflows = new WorkflowService(); const service = new ResearchService({ mountedKnowledgeBaseRoot: f.root, reportRoot: f.reports, acquisitionPlugins: [], akshare, officialDisclosure, workflowService: workflows, reasoningExecutor: f.executor }); const started = service.startValuation({ workflowRunId: 'd3-normal-service', symbol: '600519', exchange: 'SSE', methods: ['PE', 'PB'] }); const result = await started.completion; const providerOutcome = result.providerOutcome as Dict; assert.equal(result.status, 'completed'); assert.equal(providerOutcome.basisPitStatus, 'CURRENT_VALUE_ONLY'); assert.equal(providerOutcome.peEligible, true); assert.equal(providerOutcome.pbEligible, true); assert.equal(providerOutcome.evEbitdaEligible, false); assert.equal(workflows.getWorkflowStatus(started.runId)?.workflowType, 'valuation') } finally { await f.close() } })
 test('V62 valuation does not create a canonical Valuation object', async () => { const f = await fixture(); try { await runFixture(f); const assets = await readCanonicalV04Assets(f.root); assert.equal(assets.objects.some((item) => (item.value as unknown as Dict).type === 'valuation'), false) } finally { await f.close() } })
 test('V63 report contains the three scenario sections and sensitivity', async () => { const f = await fixture(); try { const r = await runFixture(f); const report = await readFile(join(f.reports, `${r.report?.reportId}.md`), 'utf8'); for (const title of ['Bear Scenario', 'Base Scenario', 'Bull Scenario', 'Sensitivity Analysis']) assert.match(report, new RegExp(title)); } finally { await f.close() } })
 test('V64 companyBasic telemetry is never durable evidence', async () => { const f = await fixture(); try { const r = await runFixture(f); const assets = await readCanonicalV04Assets(f.root); const sources = assets.objects.filter((item) => item.kind === 'source').map((item) => item.value as unknown as Dict); assert.equal(r.providerOutcome.companyBasicRowCount, 1); assert.equal(sources.some((source) => source.metadata && (source.metadata as Dict).dataKind === 'company-basic'), false); assert.equal(sources.some((source) => source.metadata && 'valuationDate' in (source.metadata as Dict)), false) } finally { await f.close() } })
-test('V65 source acquisition time is distinct from historical valuation context', async () => { const f = await fixture(); try { const times = ['2026-09-09T01:00:00.000Z', '2026-09-09T01:01:00.000Z', '2026-09-09T01:02:00.000Z']; let index = 0; const r = await runFixture(f, { asOf: '2026-09-08T00:00:00.000Z', now: () => times[Math.min(index++, times.length - 1)]! }); assert.equal(r.basis, undefined); assert.equal(r.basisEvidence?.reportDate, '2025-12-31'); assert.equal(r.basisEvidence?.eps?.numericSource.retrievedAt, times[1]); assert.notEqual(r.basisEvidence?.eps?.numericSource.retrievedAt, '2026-09-08T00:00:00.000Z') } finally { await f.close() } })
+test('V65 source acquisition time is distinct from historical valuation context', async () => { const f = await fixture(); try { const times = ['2026-09-09T01:00:00.000Z', '2026-09-09T01:01:00.000Z', '2026-09-09T01:02:00.000Z']; let index = 0; const r = await runFixture(f, { asOf: '2026-09-08T00:00:00.000Z', now: () => times[Math.min(index++, times.length - 1)]! }); assert.equal(r.basis, undefined); assert.equal(r.basisEvidence?.reportDate, '2025-12-31'); assert.equal(r.basisEvidence?.eps?.numericSource.retrievedAt, times[2]); assert.notEqual(r.basisEvidence?.eps?.numericSource.retrievedAt, '2026-09-08T00:00:00.000Z') } finally { await f.close() } })
 test('V66 exact structured values reject model-supplied drift and numeric text is canonicalized', () => { const p = plan(); const c = calculateValuation(basis(), p, ['PE', 'PB']); const expected = expectedValuationAssumptionStructuredValue(p, 'base-growth'); assert.equal(validateValuationStructuredValue({ ...expected, value: expected.value + 1 }, expected), false); for (const statement of ['Target price 999 CNY/share and implied return 999%.', 'Base case is 999 CNY/share.']) { const canonical = canonicalizeValuationViewpointStatement(statement, p, c); assert.match(canonical, /132/); assert.doesNotMatch(canonical, /999/) } })
 test('V67 report section evidence is precise and retains official lineage', async () => { const f = await fixture(); try { const r = await runFixture(f); const report = JSON.parse(await readFile(join(f.reports, `${r.report?.reportId}.md.json`), 'utf8')) as { sections: readonly { id: string; sourceRefs: readonly string[]; claimRefs: readonly string[] }[] }; const basisSection = report.sections.find((section) => section.id === 'data-basis-point-in-time-status')!; const methodSection = report.sections.find((section) => section.id === 'method-eligibility')!; const primarySection = report.sections.find((section) => section.id === 'primary-method-selection')!; const risk = report.sections.find((section) => section.id === 'risks-limitations-research-gaps')!; assert.equal(basisSection.sourceRefs.length, 3); assert.equal(methodSection.sourceRefs.length, 3); assert.equal(primarySection.sourceRefs.length, 3); assert.equal(risk.sourceRefs.length, 0); assert.notDeepEqual(basisSection.sourceRefs, report.sections.find((section) => section.id === 'valuation-snapshot')!.sourceRefs) } finally { await f.close() } })
 test('V68 zero accepted proposals do not canonicalize acquired evidence', async () => { const f = await fixture({ executor: new (class extends FixtureExecutor { override async execute(request: ReasoningRequest): Promise<ReasoningResult> { const result = await super.execute(request); if (request.operation !== 'valuation_synthesis') return result; return { ...result, output: { ...(result.output as Dict), proposals: [] } } } })() }); try { const r = await runFixture(f); const assets = await readCanonicalV04Assets(f.root); assert.equal(r.proposalIds.length, 0); assert.equal(r.sourceIds.length, 0); assert.equal(r.claimIds.length, 0); assert.equal(assets.objects.filter((item) => item.kind === 'source').length, 1) } finally { await f.close() } })
@@ -220,11 +409,11 @@ test('V72 Stage A repair carries bounded invalid output and required allowlists'
 test('V73 Stage A rejects model-owned arithmetic fields fail closed', async () => { const invalid = { primaryMethod: 'PE', secondaryMethods: [], targetFiscalYear: 2026, scenarios: ['bear', 'base', 'bull'].map((scenarioId) => ({ scenarioId, primaryMethod: 'PE', targetFiscalYear: 2026, growthRate: 0.1, targetMultiple: 12, rationale: scenarioId, forecastMetric: 999, sourceCandidateIds: ['financial-source'], existingKnowledgeRefs: [] })) }; const result = await new ValuationAssumptionDesignSkill(new SequenceExecutor([invalid, invalid])).design(valuationSkillInput()); assert.equal(result.plan, undefined); assert.equal(result.reasoning.fallbackUsed, true); assert.equal(result.reasoning.repairAttempts, 1) })
 test('V74 forged Stage B result, claim, and source references fail closed', () => { const p = plan(); const c = calculateValuation(basis(), p, ['PE', 'PB']); const base = { proposalId: 'p', kind: 'claim' as const, claimType: 'viewpoint' as const, subjectKey: 'company', statement: 'bounded', sourceCandidateIds: ['s'], valuationAssumptionRefs: [], valuationResultRefs: ['result-base'], existingKnowledgeRefs: [] }; assert.equal(validProposal({ ...base, valuationResultRefs: ['result-forged'] }, p, c, new Set(['s']), new Set()), false); assert.equal(validProposal({ ...base, existingKnowledgeRefs: ['claim:forged'] }, p, c, new Set(['s']), new Set()), false); assert.equal(validProposal({ ...base, sourceCandidateIds: ['source-forged'] }, p, c, new Set(['s']), new Set()), false) })
 test('V75 Stage B strictly rejects more than three proposals', async () => { const p = plan(); const c = calculateValuation(basis(), p, ['PE', 'PB']); const tooMany = { sections: [], proposals: [0, 1, 2, 3].map((index) => ({ proposalId: `p-${index}` })) }; const result = await new ValuationSynthesisSkill(new SequenceExecutor([tooMany, tooMany])).synthesize({ ...valuationSkillInput(), plan: p, computation: c }); assert.equal(result.output.proposals.length, 0); assert.equal(result.reasoning.fallbackUsed, true); assert.equal(result.reasoning.repairAttempts, 1) })
-test('V76 Pi analyze_valuation routes the complete input to startValuation', async () => { const received: Record<string, unknown>[] = []; const researchService = { startValuation: (input: Record<string, unknown>) => { received.push(input); return { runId: input.workflowRunId, completion: Promise.resolve({ status: 'completed', runId: input.workflowRunId, knowledgeBaseId: 'kb-tool', committedIds: [], proposalCount: 1, summary: 'fixture', telemetry: {} }) } } } as never; const context = { knowledgeService: {} as KnowledgeService, productionService: {} as ProductionService, reviewService: {} as ReviewService, workflowService: new WorkflowService(), researchService }; const tool = createResearchHubTools(context).find((item) => item.name === 'analyze_valuation')!; const result = await tool.execute('v76-tool-call', { workflowRunId: 'v76-routing', symbol: '600519', exchange: 'SSE', asOf: '2026-09-08T23:59:59.000Z', methods: ['PE'], targetFiscalYear: 2026 }, undefined, undefined, {} as never); assert.equal(result.content[0]?.type, 'text'); assert.deepEqual(received, [{ workflowRunId: 'v76-routing', symbol: '600519', exchange: 'SSE', asOf: '2026-09-08T23:59:59.000Z', methods: ['PE'], targetFiscalYear: 2026 }]) })
+test('V76 Pi analyze_valuation routes the complete input to startValuation with default-deny persistence', async () => { const received: Record<string, unknown>[] = []; const researchService = { startValuation: (input: Record<string, unknown>) => { received.push(input); return { runId: input.workflowRunId, completion: Promise.resolve({ status: 'completed', runId: input.workflowRunId, knowledgeBaseId: 'kb-tool', committedIds: [], proposalCount: 1, summary: 'fixture', telemetry: {} }) } } } as never; const context = { knowledgeService: {} as KnowledgeService, productionService: {} as ProductionService, reviewService: {} as ReviewService, workflowService: new WorkflowService(), researchService }; const tool = createResearchHubTools(context).find((item) => item.name === 'analyze_valuation')!; const result = await tool.execute('v76-tool-call', { workflowRunId: 'v76-routing', symbol: '600519', exchange: 'SSE', asOf: '2026-09-08T23:59:59.000Z', methods: ['PE'], targetFiscalYear: 2026 }, undefined, undefined, {} as never); assert.equal(result.content[0]?.type, 'text'); assert.deepEqual(received, [{ workflowRunId: 'v76-routing', symbol: '600519', exchange: 'SSE', asOf: '2026-09-08T23:59:59.000Z', methods: ['PE'], targetFiscalYear: 2026, writeKnowledge: false, useStructuredKnowledge: true }]) })
 test('V77 viewpoint dependencies include only assumptions in the Gateway submission', () => { const p = plan(); const c = calculateValuation(basis(), p, ['PE', 'PB']); const assumption = { proposalId: 'accepted-assumption', kind: 'claim' as const, claimType: 'assumption' as const, subjectKey: 'company', statement: 'model text', sourceCandidateIds: ['s'], valuationAssumptionRefs: ['base-growth'], valuationResultRefs: [], existingKnowledgeRefs: [] }; const viewpoint = { proposalId: 'accepted-viewpoint', kind: 'claim' as const, claimType: 'viewpoint' as const, subjectKey: 'company', statement: 'bounded', sourceCandidateIds: ['s'], valuationAssumptionRefs: [], valuationResultRefs: ['result-base'], existingKnowledgeRefs: [], dependsOnProposalIds: ['forged-assumption'] }; const submitted = toGatewayProposals([viewpoint, assumption], p, c); assert.equal(submitted[0]?.claimType, 'assumption'); assert.deepEqual(submitted[1]?.dependsOnProposalIds, ['accepted-assumption']); const viewpointOnly = toGatewayProposals([viewpoint], p, c)[0] as unknown as Dict; assert.equal('dependsOnProposalIds' in viewpointOnly, false) })
 test('V78 model valuation-view numbers are canonicalized in the durable report section', async () => { const f = await fixture({ executor: new (class extends FixtureExecutor { override async execute(request: ReasoningRequest): Promise<ReasoningResult> { const result = await super.execute(request); if (request.operation !== 'valuation_synthesis') return result; const output = result.output as Dict; const base = (output.sections as Dict[])[0]!; return { ...result, output: { ...output, sections: [{ ...base, sectionId: 'valuation-view', markdown: 'Base case is 999 CNY/share.' }, { ...base, sectionId: 'existing-research-context', markdown: 'Valuation target price is 999 CNY/share.' }, { ...base, sectionId: 'changes-vs-existing-research', markdown: 'Base case is 999 CNY/share.' }] } } } })() }); try { const r = await runFixture(f); const report = JSON.parse(await readFile(join(f.reports, `${r.report?.reportId}.md.json`), 'utf8')) as { sections: readonly { id: string; markdown: string }[] }; for (const id of ['valuation-view', 'existing-research-context', 'changes-vs-existing-research']) { const section = report.sections.find((item) => item.id === id)!; assert.match(section.markdown, /132/); assert.doesNotMatch(section.markdown, /999/) } } finally { await f.close() } })
 
-test('D3-FIX-001 ResearchService normal product path exposes automatic comps and compatible crosscheck', async () => { const f = await fixture(); try { const cohort = (family: string, correlatedSymbol?: string) => { if (family === 'scale' && correlatedSymbol !== undefined) return { result: { data: [{ SECUCODE: `${correlatedSymbol}.${correlatedSymbol.startsWith('6') ? 'SH' : 'SZ'}`, SECURITY_CODE: correlatedSymbol, SECURITY_NAME_ABBR: `Peer ${correlatedSymbol}`, TOTAL_CAP: correlatedSymbol === '600519' ? 1000 : 900, FREECAP: 700, REPORT_TYPE: '2025年报' }] } }; const tickers = ['000001', '000002', '000003']; if (family === 'growth') return { result: { data: tickers.map((symbol) => ({ SECUCODE: `${symbol}.SZ`, SECURITY_CODE: symbol, SECURITY_NAME_ABBR: `Peer ${symbol}`, YYSR_3Y: 0.1, JLR_3Y: 0.1, MGSY_3Y: 0.1, REPORT_DATE: '2025-12-31' })) } }; if (family === 'dupont') return { result: { data: tickers.map((symbol) => ({ SECUCODE: `${symbol}.SZ`, SECURITY_CODE: symbol, SECURITY_NAME_ABBR: `Peer ${symbol}`, ROE_AVG: 0.1, XSJLL_AVG: 0.1, TOAZZL_AVG: 0.8, REPORT_DATE: '2025-12-31' })) } }; if (family === 'scale') return { result: { data: [{ SECUCODE: '600519.SH', SECURITY_CODE: '600519', TOTAL_CAP: 1000 }, ...tickers.map((symbol) => ({ SECUCODE: `${symbol}.SZ`, SECURITY_CODE: symbol, TOTAL_CAP: 900 }))] } }; return { result: { data: [] } } }; const akshare = { ...f.akshare, valuationFinancialIndicators: async () => [{ REPORT_DATE: '2025-12-31', NOTICE_DATE: '2026-03-30', EPSJB: 10, BPS: 20 }], peerComparison: async ({ family, correlatedSymbol }: { readonly family: string; readonly correlatedSymbol?: string }) => cohort(family, correlatedSymbol) } as never; const workflows = new WorkflowService(); const service = new ResearchService({ mountedKnowledgeBaseRoot: f.root, reportRoot: f.reports, acquisitionPlugins: [], akshare, officialDisclosure: f.officialDisclosure, workflowService: workflows, reasoningExecutor: f.executor }); const started = service.startValuation({ workflowRunId: 'd3-fix-001-service', symbol: '600519', exchange: 'SSE', methods: ['PE', 'PB'] }); const result = await started.completion as unknown as Dict; const automatic = result.automaticCompsResult as Dict; const crosscheck = result.crosscheck as Dict; assert.equal(result.status, 'completed'); assert.equal(automatic.availability, 'available'); assert.ok((automatic.multipleSummaries as Dict[]).find((item) => item.method === 'PE' && Number(item.validCount) >= 3)); assert.ok((crosscheck.availableMethods as string[]).includes('comps_valuation')); const compatibility = (crosscheck.basisCompatibility as Dict[]).find((item) => item.comparisonRef === 'scenario_base_vs_comps_valuation'); assert.equal(compatibility?.compatible, true); assert.equal(result.compsResult, undefined); const report = await readFile(join(f.reports, `${String(result.reportId)}.md`), 'utf8'); assert.match(report, /selected method=PE/); assert.match(report, /selected peers=3/); assert.match(report, /peer median=/); assert.match(report, /multiple basis=FY2025/); assert.match(report, /target period=FY2026/); assert.match(report, /target forecast metric=/); assert.match(report, /implied target price=/); assert.match(report, /runtime evidence candidate IDs=/); assert.doesNotMatch(report, /runtime lineage=/) } finally { await f.close() } })
+test('D3-FIX-001 ResearchService normal product path exposes automatic comps and compatible crosscheck', async () => { const f = await fixture(); try { const cohort = (family: string, correlatedSymbol?: string) => { if (family === 'scale' && correlatedSymbol !== undefined) return { result: { data: [{ SECUCODE: `${correlatedSymbol}.${correlatedSymbol.startsWith('6') ? 'SH' : 'SZ'}`, SECURITY_CODE: correlatedSymbol, SECURITY_NAME_ABBR: `Peer ${correlatedSymbol}`, TOTAL_CAP: correlatedSymbol === '600519' ? 1000 : 900, FREECAP: 700, REPORT_TYPE: '2025年报' }] } }; const tickers = ['000001', '000002', '000003']; if (family === 'growth') return { result: { data: tickers.map((symbol) => ({ SECUCODE: `${symbol}.SZ`, SECURITY_CODE: symbol, SECURITY_NAME_ABBR: `Peer ${symbol}`, YYSR_3Y: 0.1, JLR_3Y: 0.1, MGSY_3Y: 0.1, REPORT_DATE: '2025-12-31' })) } }; if (family === 'dupont') return { result: { data: tickers.map((symbol) => ({ SECUCODE: `${symbol}.SZ`, SECURITY_CODE: symbol, SECURITY_NAME_ABBR: `Peer ${symbol}`, ROE_AVG: 0.1, XSJLL_AVG: 0.1, TOAZZL_AVG: 0.8, REPORT_DATE: '2025-12-31' })) } }; if (family === 'scale') return { result: { data: [{ SECUCODE: '600519.SH', SECURITY_CODE: '600519', TOTAL_CAP: 1000 }, ...tickers.map((symbol) => ({ SECUCODE: `${symbol}.SZ`, SECURITY_CODE: symbol, TOTAL_CAP: 900 }))] } }; return { result: { data: [] } } }; const akshare = { ...f.akshare, historicalMarketData: async () => recentMarketRows(), valuationFinancialIndicators: async () => [{ REPORT_DATE: '2025-12-31', NOTICE_DATE: '2026-03-30', EPSJB: 10, BPS: 20 }], peerComparison: async ({ family, correlatedSymbol }: { readonly family: string; readonly correlatedSymbol?: string }) => cohort(family, correlatedSymbol) } as never; const workflows = new WorkflowService(); const service = new ResearchService({ mountedKnowledgeBaseRoot: f.root, reportRoot: f.reports, acquisitionPlugins: [], akshare, officialDisclosure: f.officialDisclosure, workflowService: workflows, reasoningExecutor: f.executor }); const started = service.startValuation({ workflowRunId: 'd3-fix-001-service', symbol: '600519', exchange: 'SSE', methods: ['PE', 'PB'] }); const result = await started.completion as unknown as Dict; const automatic = result.automaticCompsResult as Dict; const crosscheck = result.crosscheck as Dict; assert.equal(result.status, 'completed'); assert.equal(automatic.availability, 'available'); assert.ok((automatic.multipleSummaries as Dict[]).find((item) => item.method === 'PE' && Number(item.validCount) >= 3)); assert.ok((crosscheck.availableMethods as string[]).includes('comps_valuation')); const compatibility = (crosscheck.basisCompatibility as Dict[]).find((item) => item.comparisonRef === 'scenario_base_vs_comps_valuation'); assert.equal(compatibility?.compatible, true); assert.equal(result.compsResult, undefined); const report = await readFile(join(f.reports, `${String(result.reportId)}.md`), 'utf8'); assert.match(report, /selected method=PE/); assert.match(report, /selected peers=3/); assert.match(report, /peer median=/); assert.match(report, /multiple basis=FY2025/); assert.match(report, /target period=FY2026/); assert.match(report, /target forecast metric=/); assert.match(report, /implied target price=/); assert.match(report, /runtime evidence candidate IDs=/); assert.doesNotMatch(report, /runtime lineage=/) } finally { await f.close() } })
 
 test('D3-FIX-001 workflow gates skip automatic acquisition for caller comps and fixed asOf', async () => { const f = await fixture(); try { const calls: string[] = []; const akshare = { ...f.akshare, peerComparison: async () => { calls.push('peerComparison'); return { result: { data: [] } } } } as never; const callerComps = { subject: { identity: { companyId: 'target', ticker: '600519', exchange: 'SSE' }, period: { kind: 'FY', label: 'FY2025', fiscalYear: 2025 }, asOf: NOW, currency: 'CNY', metricUnits: {}, shareBasis: 'diluted', financials: {} }, asOf: NOW, candidatePeers: [], sources: [] }; await runValuation({ workflowRunId: 'd3-fix-001-caller-comps', handle: f.handle, company: { symbol: '600519', exchange: 'SSE' }, reportRoot: f.reports, akshare, officialDisclosure: f.officialDisclosure, reasoningExecutor: f.executor, now: () => NOW, comps: callerComps as never }); await runValuation({ workflowRunId: 'd3-fix-001-fixed-asof', handle: f.handle, company: { symbol: '600519', exchange: 'SSE' }, reportRoot: f.reports, akshare, officialDisclosure: f.officialDisclosure, reasoningExecutor: f.executor, asOf: '2026-09-08T23:59:59.000Z', now: () => NOW }); assert.deepEqual(calls, []) } finally { await f.close() } })
 

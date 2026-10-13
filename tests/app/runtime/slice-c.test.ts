@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 import { Readable } from 'node:stream'
 import { createServer as createHttpServer } from 'node:http'
 import { EventEmitter } from 'node:events'
-import { fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai'
+import { fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { AttachmentService, type AttachmentRef } from '../../../app/runtime/attachment-service.ts'
 import { createResearchHubApplicationRuntime } from '../../../app/runtime/application-runtime.ts'
@@ -44,14 +44,14 @@ async function makeRuntimeFixture() {
   return { root, cwd, agentDir, sessionDir, modelRuntime, runtime, faux }
 }
 
-async function makeMountedRuntimeFixture() {
+async function makeMountedRuntimeFixture(researchService?: import('../../../app/services/research-service.ts').ResearchService) {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-runtime-mounted-c-'))
   const cwd = join(root, 'cwd'); const agentDir = join(root, 'agent'); const sessionDir = join(root, 'sessions'); const workspaceRoot = join(root, 'workspace'); const mountedKnowledgeBaseRoot = await createKnowledgeBase({ knowledgeBaseId: `kb-mounted-${Date.now()}-${Math.random()}` })
   await mkdir(cwd, { recursive: true }); await mkdir(agentDir, { recursive: true })
   const modelRuntime = await ModelRuntime.create({ authPath: join(agentDir, 'auth.json'), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false })
   const faux = fauxProvider({ provider: `researchhub-runtime-mounted-${Date.now()}-${Math.random()}`, models: [{ id: 'fixture-model' }] })
   modelRuntime.registerNativeProvider(faux.provider)
-  const runtime = await createResearchHubApplicationRuntime({ cwd, agentDir, sessionDir, mountedKnowledgeBaseRoot, workspaceRoot, modelRuntime, model: faux.getModel(), reasoningExecutor: new FixtureExecutor() })
+  const runtime = await createResearchHubApplicationRuntime({ cwd, agentDir, sessionDir, mountedKnowledgeBaseRoot, workspaceRoot, modelRuntime, model: faux.getModel(), reasoningExecutor: new FixtureExecutor(), ...(researchService === undefined ? {} : { researchService }) })
   return { root, cwd, agentDir, sessionDir, workspaceRoot, mountedKnowledgeBaseRoot, modelRuntime, runtime, faux }
 }
 
@@ -256,9 +256,163 @@ test('Slice C HTTP server provides bootstrap/security/202/product APIs, no-KB ma
   assert.equal(server.address, undefined); await assert.rejects(() => fetch(`${info!.origin}/api/bootstrap`))
 })
 
+test('conversation APIs persist accepted request activity, metadata, archive state, and replay prompt commands once', async () => {
+  const fixture = await makeRuntimeFixture(); const server = new ResearchHubRuntimeServer({ runtime: fixture.runtime, port: 0 })
+  try {
+    const info = await server.start(); const headers = { 'content-type': 'application/json', origin: info.origin, 'x-researchhub-runtime-token': info.runtimeToken }
+    const conversationId = fixture.runtime.sessionRuntime.getCurrentState().conversationId
+    const accepted = await fetch(`${info.origin}/api/conversations/requests/accept`, { method: 'POST', headers, body: JSON.stringify({ conversationId, operationId: 'web-operation-1', requestText: 'Persist this accepted prompt.', operation: 'prompt' }) })
+    assert.equal(accepted.status, 200)
+    const initialList = await fetch(`${info.origin}/api/conversations?archived=0`, { headers }); const initialSummary = (await initialList.json() as { conversations: { conversationId: string; version: number; name: string }[] }).conversations.find((item) => item.conversationId === conversationId)!
+    assert.ok(initialSummary)
+    fixture.faux.setResponses([fauxAssistantMessage('one response')])
+    const commandBody = JSON.stringify({ conversationId, operationId: 'web-operation-1', text: 'Persist this accepted prompt.' })
+    const command = await fetch(`${info.origin}/api/conversations/prompt`, { method: 'POST', headers, body: commandBody }); assert.equal(command.status, 202)
+    const userMessageCount = fixture.runtime.sessionRuntime.getCurrentMessages().filter((message) => message.role === 'user').length
+    const replay = await fetch(`${info.origin}/api/conversations/prompt`, { method: 'POST', headers, body: commandBody }); assert.equal(replay.status, 202)
+    assert.equal(fixture.runtime.sessionRuntime.getCurrentMessages().filter((message) => message.role === 'user').length, userMessageCount)
+    const messages = await fetch(`${info.origin}/api/conversations/messages`, { headers }); const messagesBody = await messages.json() as { conversationId: string; activities: { requestText: string; status: string; operation: string }[] }
+    assert.equal(messagesBody.conversationId, conversationId); assert.equal(messagesBody.activities[0]?.requestText, 'Persist this accepted prompt.'); assert.equal(messagesBody.activities[0]?.status, 'completed')
+    const latestList = await fetch(`${info.origin}/api/conversations?archived=0`, { headers }); const latestVersion = ((await latestList.json() as { conversations: { conversationId: string; version: number }[] }).conversations.find((item) => item.conversationId === conversationId))!.version
+    const rename = await fetch(`${info.origin}/api/conversations/${encodeURIComponent(conversationId)}/metadata`, { method: 'PATCH', headers, body: JSON.stringify({ name: 'Explicit title', expectedVersion: latestVersion }) })
+    assert.equal(rename.status, 200); const renamed = await rename.json() as { name: string; titleSource: string; version: number }
+    assert.equal(renamed.name, 'Explicit title'); assert.equal(renamed.titleSource, 'user')
+    const current = await fetch(`${info.origin}/api/conversations/current`, { headers })
+    assert.equal((await current.json() as { name: string }).name, 'Explicit title')
+    const archived = await fetch(`${info.origin}/api/conversations/${encodeURIComponent(conversationId)}/archive`, { method: 'POST', headers, body: JSON.stringify({ expectedVersion: renamed.version }) })
+    assert.equal(archived.status, 200); assert.equal((await archived.json() as { archived: boolean }).archived, true)
+    const archivedList = await fetch(`${info.origin}/api/conversations?archived=1&search=Explicit`, { headers }); assert.equal((await archivedList.json() as { conversations: unknown[] }).conversations.length, 1)
+    const idSearch = await fetch(`${info.origin}/api/conversations?search=${encodeURIComponent(conversationId)}`, { headers }); assert.equal((await idSearch.json() as { conversations: unknown[] }).conversations.length, 0)
+    const restore = await fetch(`${info.origin}/api/conversations/${encodeURIComponent(conversationId)}/restore`, { method: 'POST', headers, body: JSON.stringify({ expectedVersion: renamed.version + 1 }) })
+    assert.equal(restore.status, 200); assert.equal((await restore.json() as { archived: boolean }).archived, false)
+    const activities = await fetch(`${info.origin}/api/conversations/${encodeURIComponent(conversationId)}/activities`, { headers }); assert.equal((await activities.json() as { activities: unknown[] }).activities.length, 1)
+  } finally { await server.close(); await fixture.runtime.close(); await rm(fixture.root, { recursive: true, force: true }) }
+})
+
+test('research dispatch requires an accepted association and reconciles a reserved run after association write failure', async () => {
+  const fixture = await makeRuntimeFixture(); const server = new ResearchHubRuntimeServer({ runtime: fixture.runtime, port: 0 })
+  const store = fixture.runtime.sessionRuntime.conversationStateStore
+  const originalMarkWorkflowStarted = store.markWorkflowStarted.bind(store)
+  let associationWrites = 0
+  Object.defineProperty(store, 'markWorkflowStarted', { configurable: true, value: async (...args: Parameters<typeof store.markWorkflowStarted>) => {
+    associationWrites += 1
+    if (associationWrites === 1) throw new Error('injected sidecar write failure')
+    return originalMarkWorkflowStarted(...args)
+  } })
+  let dispatchCalls = 0
+  const startedRunIds: string[] = []
+  Object.defineProperty(fixture.runtime.services.researchDispatchService!, 'startAsync', { configurable: true, value: async (_input: unknown, _signal: AbortSignal, serverOwnedRunId?: string) => {
+    dispatchCalls += 1
+    assert.ok(serverOwnedRunId)
+    startedRunIds.push(serverOwnedRunId)
+    const pending = fixture.runtime.workflowService.register({ runId: serverOwnedRunId, workflowType: 'company_research', objective: 'Research 002640' })
+    void fixture.runtime.workflowService.start(serverOwnedRunId, async () => new Promise<never>(() => {}))
+    return { status: 'started', runId: serverOwnedRunId, workflow: pending, decision: { workflow: { id: 'company_research', arguments: { symbol: '002640', name: 'Unverified Semantic Name' } } }, ...(dispatchCalls > 1 ? { verifiedSecurityIdentity: { symbol: '002640', exchange: 'SZ', verifiedName: 'Verified Company Name', verificationSource: 'akshare_security_directory', originAuthority: 'S3_AGGREGATOR', verifiedAt: new Date().toISOString() } } : {}) } as never
+  } })
+  try {
+    const info = await server.start(); const headers = { 'content-type': 'application/json', origin: info.origin, 'x-researchhub-runtime-token': info.runtimeToken }
+    const conversationId = fixture.runtime.sessionRuntime.getCurrentState().conversationId
+    const unassociated = await fetch(`${info.origin}/api/research/dispatch`, { method: 'POST', headers, body: JSON.stringify({ query: '研究 002640', mode: { type: 'workflow', workflowId: 'company_research' } }) })
+    assert.equal(unassociated.status, 400); assert.equal(dispatchCalls, 0)
+    const accepted = await fetch(`${info.origin}/api/conversations/requests/accept`, { method: 'POST', headers, body: JSON.stringify({ conversationId, operationId: 'workflow-operation-1', requestText: '研究 002640', operation: 'prompt', workflowRegistryId: 'company_research' }) })
+    assert.equal(accepted.status, 200)
+    const mismatched = await fetch(`${info.origin}/api/research/dispatch`, { method: 'POST', headers, body: JSON.stringify({ conversationId, operationId: 'workflow-operation-1', query: '研究 002640' }) })
+    assert.equal(mismatched.status, 409); assert.equal(dispatchCalls, 0)
+    const dispatchBody = { conversationId, operationId: 'workflow-operation-1', query: '研究 002640', mode: { type: 'workflow', workflowId: 'company_research' } }
+    const first = await fetch(`${info.origin}/api/research/dispatch`, { method: 'POST', headers, body: JSON.stringify(dispatchBody) })
+    assert.equal(first.status, 202); assert.equal(dispatchCalls, 1)
+    const firstBody = await first.json() as { runId: string }
+    const duringFailure = (await store.get(conversationId))!.acceptedRequests[0]!
+    assert.equal(duringFailure.lifecycle, 'submitting'); assert.equal(duringFailure.reservedWorkflowRunId, firstBody.runId)
+    const replay = await fetch(`${info.origin}/api/research/dispatch`, { method: 'POST', headers, body: JSON.stringify(dispatchBody) })
+    assert.equal(replay.status, 202); assert.equal(dispatchCalls, 1)
+    const replayBody = await replay.json() as { runId: string; replayed?: boolean }
+    assert.equal(replayBody.runId, firstBody.runId); assert.equal(replayBody.replayed, true)
+    const activity = (await store.get(conversationId))!.acceptedRequests[0]!
+    assert.equal(activity.lifecycle, 'started'); assert.equal(activity.workflowRunId, firstBody.runId); assert.equal(activity.workflowSubject, '002640')
+    const safeActivity = (await fixture.runtime.sessionRuntime.conversationActivities(conversationId))[0]!
+    assert.equal(safeActivity.workflowSubject, '002640'); assert.equal(safeActivity.workflowRunId, firstBody.runId)
+    assert.equal((await fixture.runtime.sessionRuntime.getConversationSummary(conversationId)).name, '002640 · 公司深度研究')
+    assert.equal(associationWrites, 2)
+    const secondOperationId = 'workflow-operation-2'
+    const secondAccepted = await fetch(`${info.origin}/api/conversations/requests/accept`, { method: 'POST', headers, body: JSON.stringify({ conversationId, operationId: secondOperationId, requestText: '研究 002640 again', operation: 'prompt', workflowRegistryId: 'company_research' }) })
+    assert.equal(secondAccepted.status, 200)
+    const verifiedDispatch = await fetch(`${info.origin}/api/research/dispatch`, { method: 'POST', headers, body: JSON.stringify({ conversationId, operationId: secondOperationId, query: '研究 002640 again', mode: { type: 'workflow', workflowId: 'company_research' } }) })
+    assert.equal(verifiedDispatch.status, 202)
+    assert.equal((await store.get(conversationId))!.acceptedRequests[1]?.workflowSubject, 'Verified Company Name')
+    assert.equal(dispatchCalls, 2)
+    const autoOperationId = 'workflow-operation-auto'
+    const autoQuery = '自动路由研究 002640'
+    const autoAccepted = await fetch(`${info.origin}/api/conversations/requests/accept`, { method: 'POST', headers, body: JSON.stringify({ conversationId, operationId: autoOperationId, requestText: autoQuery, operation: 'prompt' }) })
+    assert.equal(autoAccepted.status, 200)
+    const autoDispatchBody = { conversationId, operationId: autoOperationId, query: autoQuery }
+    const autoDispatch = await fetch(`${info.origin}/api/research/dispatch`, { method: 'POST', headers, body: JSON.stringify(autoDispatchBody) })
+    assert.equal(autoDispatch.status, 202)
+    const autoRunId = (await autoDispatch.json() as { runId: string }).runId
+    const autoReplay = await fetch(`${info.origin}/api/research/dispatch`, { method: 'POST', headers, body: JSON.stringify(autoDispatchBody) })
+    assert.equal(autoReplay.status, 202)
+    assert.equal((await autoReplay.json() as { runId: string; replayed: boolean }).runId, autoRunId)
+    assert.equal((await store.get(conversationId))!.acceptedRequests[2]?.acceptedWorkflowRegistryId, undefined)
+    assert.equal((await store.get(conversationId))!.acceptedRequests[2]?.workflowRegistryId, 'company_research')
+    const autoAcceptReplay = await fetch(`${info.origin}/api/conversations/requests/accept`, { method: 'POST', headers, body: JSON.stringify({ conversationId, operationId: autoOperationId, requestText: autoQuery, operation: 'prompt' }) })
+    assert.equal(autoAcceptReplay.status, 200)
+    assert.equal(dispatchCalls, 3)
+  } finally {
+    await server.close()
+    for (const runId of startedRunIds) fixture.runtime.workflowService.cancelWorkflow(runId)
+    await fixture.runtime.close(); await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('Pi conversation defaults research persistence to deny, honors explicit policy, rejects authorized follow-up, and does not leak permission across tools', async () => {
+  const received: Record<string, unknown>[] = []
+  let releaseAuthorized!: () => void
+  const start = (input: Record<string, unknown>) => { received.push(input); const completion = input.writeKnowledge === true ? new Promise((resolve) => { releaseAuthorized = () => resolve({ status: 'completed', runId: input.workflowRunId, summary: 'authorized fixture' }) }) : Promise.resolve({ status: 'completed', runId: input.workflowRunId, summary: 'read-only fixture' }); return { completion } }
+  const researchService = { startResearchCompany: start, startEventResearch: start } as never
+  const fixture = await makeMountedRuntimeFixture(researchService)
+  const server = new ResearchHubRuntimeServer({ runtime: fixture.runtime, port: 0 })
+  const toolResponse = (runId: string, toolName = 'research_company') => [fauxAssistantMessage(fauxToolCall(toolName, toolName === 'research_event' ? { workflowRunId: runId, symbol: '600519', anchor: { kind: 'user_event', title: 'Fixture', description: 'Ordinary follow-up', eventDate: '2026-09-08' } } : { workflowRunId: runId, symbol: '600519' }, { id: `${runId}-tool` })), fauxAssistantMessage('Research completed.')]
+  const waitForResearchCall = async (count: number) => { for (let attempt = 0; attempt < 100 && received.length < count; attempt += 1) await new Promise<void>((resolve) => setTimeout(resolve, 10)); assert.ok(received.length >= count, `expected ${count} ResearchService call(s), received ${received.length}`) }
+  try {
+    const info = await server.start(); const headers = { 'content-type': 'application/json', origin: info.origin, 'x-researchhub-runtime-token': info.runtimeToken }
+    fixture.faux.setResponses(toolResponse('http-default'))
+    const noPolicy = await fetch(`${info.origin}/api/conversations/prompt`, { method: 'POST', headers, body: JSON.stringify({ text: 'Research company without a persistence policy.' }) })
+    assert.equal(noPolicy.status, 202)
+    await waitForResearchCall(1)
+    assert.equal(received[0]?.writeKnowledge, false)
+    assert.equal(received[0]?.useStructuredKnowledge, true)
+
+    fixture.faux.setResponses(toolResponse('http-readonly'))
+    const readonly = await fetch(`${info.origin}/api/conversations/prompt`, { method: 'POST', headers, body: JSON.stringify({ text: 'Read-only research.', researchPolicy: { contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false } } }) })
+    assert.equal(readonly.status, 202)
+    await waitForResearchCall(2)
+    assert.equal(received[1]?.writeKnowledge, false)
+
+    fixture.faux.setResponses(toolResponse('http-authorized'))
+    const authorized = await fetch(`${info.origin}/api/conversations/prompt`, { method: 'POST', headers, body: JSON.stringify({ text: 'Authorized Knowledge production.', researchPolicy: { contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: true } } }) })
+    assert.equal(authorized.status, 202)
+    for (let attempt = 0; attempt < 30 && received.length < 3; attempt += 1) await new Promise<void>((resolve) => setTimeout(resolve, 10))
+    assert.equal(received[2]?.writeKnowledge, true)
+
+    const followUp = await fetch(`${info.origin}/api/conversations/follow_up`, { method: 'POST', headers, body: JSON.stringify({ text: 'Try to continue the authorized write.' }) })
+    assert.equal(followUp.status, 409)
+    releaseAuthorized()
+    for (let attempt = 0; attempt < 100 && !fixture.runtime.sessionRuntime.getCurrentState().isIdle; attempt += 1) await new Promise<void>((resolve) => setTimeout(resolve, 10))
+    fixture.faux.setResponses(toolResponse('followup-readonly-event', 'research_event'))
+    await fixture.runtime.sessionRuntime.prompt('Continue the conversation in a new ordinary turn.')
+    await waitForResearchCall(4)
+    assert.equal(received[3]?.writeKnowledge, false)
+  } finally {
+    releaseAuthorized?.()
+    await server.close(); await fixture.runtime.close(); await rm(fixture.root, { recursive: true, force: true }); await removeKnowledgeBase(fixture.mountedKnowledgeBaseRoot)
+  }
+})
+
 test('Slice C HTTP conversation commands honor Pi preflight and preserve queue paths', async () => {
   const fixture = await makeRuntimeFixture(); const server = new ResearchHubRuntimeServer({ runtime: fixture.runtime, port: 0 }); let release!: () => void; let entered!: () => void
   const enteredPromise = new Promise<void>((resolve) => { entered = resolve }); const gate = new Promise<void>((resolve) => { release = resolve }); const unhandled: unknown[] = []; const onUnhandled = (reason: unknown) => { unhandled.push(reason) }
+  const piEvents: import('../../../app/runtime/client-events.ts').ClientEvent[] = []
+  const unsubscribeEvents = fixture.runtime.sessionRuntime.subscribeClientEvents((event) => piEvents.push(event))
   fixture.faux.setResponses([
     async () => { entered(); await gate; return fauxAssistantMessage('first completed') },
     fauxAssistantMessage('steer completed'),
@@ -282,8 +436,20 @@ test('Slice C HTTP conversation commands honor Pi preflight and preserve queue p
     await new Promise<void>((resolve) => setImmediate(resolve)); await new Promise<void>((resolve) => setImmediate(resolve))
     assert.equal(unhandled.length, 0)
     assert.equal(fixture.runtime.sessionRuntime.getCurrentMessages().some((message) => message.content === 'first prompt'), true)
+    const conversationId = fixture.runtime.sessionRuntime.getCurrentState().conversationId
+    const activities = await fixture.runtime.sessionRuntime.conversationActivities(conversationId)
+    const firstActivity = activities.find((activity) => activity.requestText === 'first prompt')
+    assert.ok(firstActivity?.piMessageId)
+    assert.equal(piEvents.some((event) => event.type === 'agent.started' && event.operationId === firstActivity.operationId), true)
+    assert.equal(fixture.runtime.sessionRuntime.getCurrentMessages().some((message) => message.piMessageId === firstActivity.piMessageId), true)
+    for (const requestText of ['steer while busy', 'follow up while busy']) {
+      const activity = activities.find((item) => item.requestText === requestText)
+      assert.ok(activity?.piMessageId)
+      assert.equal(fixture.runtime.sessionRuntime.getCurrentMessages().some((message) => message.piMessageId === activity.piMessageId), true)
+      assert.equal(piEvents.some((event) => event.type === 'message.started' && event.operationId === activity.operationId), true)
+    }
   } finally {
-    release(); process.off('unhandledRejection', onUnhandled); await server.close(); await fixture.runtime.close(); await rm(fixture.root, { recursive: true, force: true })
+    release(); unsubscribeEvents(); process.off('unhandledRejection', onUnhandled); await server.close(); await fixture.runtime.close(); await rm(fixture.root, { recursive: true, force: true })
   }
 })
 

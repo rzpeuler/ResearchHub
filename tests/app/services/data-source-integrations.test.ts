@@ -161,7 +161,7 @@ test('Application Runtime groups Company and Theme operations by upstream integr
     assert.deepEqual(gov.integration.capabilities.map((capability) => capability.id), ['policy-feed', 'industry-policy-research'])
     assert.deepEqual(gov.integration.sourceIds, [])
     const akshare = views.find((view) => view.integration.integrationId === 'akshare')!
-    assert.deepEqual(akshare.integration.capabilities.map((capability) => capability.id), ['company-market-and-financials', 'company-expectations', 'exchange-qa', 'industry-structured-data'])
+    assert.deepEqual(akshare.integration.capabilities.map((capability) => capability.id), ['security-identity-directory', 'company-market-and-financials', 'company-expectations', 'exchange-qa', 'industry-structured-data'])
     assert.equal(akshare.policyLinked, true)
   } finally {
     await runtime?.close()

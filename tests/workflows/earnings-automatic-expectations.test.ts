@@ -327,7 +327,7 @@ test('workflow automatically acquires once, keeps estimates report-only, and exp
     const assets = await readCanonicalV04Assets(fixture.root)
     assert.equal(assets.objects.some((item) => JSON.stringify(item.value).includes('eastmoney-reportapi')), false)
     const report = await readFile(result.report!.outputPath, 'utf8')
-    assert.match(report, /automatically acquired Eastmoney report-level point-in-time EPS estimates/)
+    assert.match(report, /automatically acquired point-in-time institution forecasts from the registered source ladder/)
     assert.match(report, /ResearchHub deterministic institution-level consensus\/revision assembly/)
     const reportMetadata = await readFile(`${result.report!.outputPath}.json`, 'utf8')
     assert.match(reportMetadata, /https:\/\/data\.eastmoney\.com\/report\/stock\.jshtml/)
@@ -342,8 +342,8 @@ test('automatic partial acquisition is explicit in methodology and provider outc
     assert.equal(result.telemetry.expectationAcquisitionStatus, 'partial')
     assert.equal(result.providerOutcomes.filter((item) => item.provider === 'eastmoney-reportapi').length, 1)
     const report = await readFile(result.report!.outputPath, 'utf8')
-    assert.match(report, /partially acquired Eastmoney report-level point-in-time EPS estimates/)
-    assert.doesNotMatch(report, /automatically acquired Eastmoney report-level point-in-time EPS estimates/)
+    assert.match(report, /partially acquired point-in-time institution forecasts from the registered source ladder/)
+    assert.doesNotMatch(report, /automatically acquired point-in-time institution forecasts from the registered source ladder/)
   } finally { await fixture.close() }
 })
 
@@ -356,8 +356,8 @@ test('automatic unavailable acquisition does not claim successful acquisition', 
     assert.equal(result.telemetry.expectationStatus, 'unavailable')
     assert.equal(result.providerOutcomes.filter((item) => item.provider === 'eastmoney-reportapi').length, 1)
     const report = await readFile(result.report!.outputPath, 'utf8')
-    assert.match(report, /automatic Eastmoney expectation acquisition was attempted but produced no usable expectations/)
-    assert.doesNotMatch(report, /automatically acquired Eastmoney report-level point-in-time EPS estimates/)
+    assert.match(report, /automatic institution-forecast acquisition was attempted but produced no usable expectations/)
+    assert.doesNotMatch(report, /automatically acquired point-in-time institution forecasts from the registered source ladder/)
   } finally { await fixture.close() }
 })
 
@@ -400,7 +400,7 @@ test('automatic provider failure completes the base Earnings Review', async () =
     assert.equal(result.telemetry.expectationStatus, 'unavailable')
     assert.ok(result.acquisitionDiagnostics.some((item) => item.provider === 'eastmoney-reportapi' && item.status === 'failed'))
     const report = await readFile(result.report!.outputPath, 'utf8')
-    assert.match(report, /automatic Eastmoney expectation acquisition failed/)
-    assert.doesNotMatch(report, /automatically acquired Eastmoney report-level point-in-time EPS estimates/)
+    assert.match(report, /automatic institution-forecast acquisition failed/)
+    assert.doesNotMatch(report, /automatically acquired point-in-time institution forecasts from the registered source ladder/)
   } finally { await fixture.close() }
 })

@@ -101,7 +101,7 @@ export function createEarningsDataResolver(options: EarningsDataCompositionOptio
         const plugin = options.officialDisclosurePlugin ?? options.acquisitionPlugins.find((item) => item.name.toLowerCase().includes('official'))
         if (!plugin) return { status: 'UNSUPPORTED', diagnostic: 'Official disclosure plugin is not configured' }
         if (!options.selectFilings) return { status: 'UNSUPPORTED', diagnostic: 'Earnings filing selector is not configured' }
-        const discovered = await plugin.discover({ company: options.company, asOf: requirement.asOf, limitPerKind: Math.min(options.maxSources ?? 20, 20) }, options.signal)
+        const discovered = await plugin.discover({ company: options.company, asOf: requirement.asOf, limitPerKind: Math.min(options.maxSources ?? 20, 20), filingPeriod: { fiscalYear: options.fiscalYear, fiscalPeriod: options.period } }, options.signal)
         const selection = options.selectFilings(discovered, options.fiscalYear, options.period, requirement.asOf)
         const diagnostics: ResearchAcquisitionDiagnostic[] = []
         const sources: NormalizedResearchSource[] = []
@@ -131,7 +131,7 @@ export function createEarningsDataResolver(options: EarningsDataCompositionOptio
         if (!options.akshare) return { status: 'UNSUPPORTED', diagnostic: 'AKShare client is unavailable' }
         const snapshot = await loadFinancial()
         if (!hasUsableExactPeriod(snapshot.normalized) || snapshot.normalized.current?.metrics[metric] === undefined) return { status: 'NO_DATA', diagnostic: snapshot.normalized.diagnostics.join('|') || `earnings_${metric}_unavailable` }
-        return { status: 'SUCCESS', data: { kind: 'actual', raw: snapshot.raw, normalized: snapshot.normalized, financialQualityData: snapshot.financialQualityData, metric, retrievedAt: snapshot.retrievedAt }, source: { originPublisher: 'EastMoney', retrievalProvider: 'AKShare', retrievedAt: snapshot.retrievedAt, ...(snapshot.publishedAt ? { publishedAt: snapshot.publishedAt } : {}), valueVersion: { status: 'UNVERIFIED', reason: 'Aggregator financial numeric revision is not identified' } } }
+        return { status: 'SUCCESS', data: { kind: 'actual', raw: snapshot.raw, normalized: snapshot.normalized, financialQualityData: snapshot.financialQualityData, metric, retrievedAt: snapshot.retrievedAt }, source: { originPublisher: 'EastMoney', retrievalProvider: 'AKShare', sourceUrl: 'https://datacenter.eastmoney.com/securities/api/data/get', retrievedAt: snapshot.retrievedAt, ...(snapshot.publishedAt ? { publishedAt: snapshot.publishedAt } : {}), valueVersion: { status: 'UNVERIFIED', reason: 'Aggregator financial numeric revision is not identified' } } }
       }
       if (candidate.operationId === 'akshare.stock_profit_forecast_ths' || candidate.operationId === 'akshare.stock_research_report_em' || candidate.operationId === 'legacy.eastmoneyResearchReport') {
         const metric = requirement.metricId === 'earnings_expectation_eps' ? 'eps' : requirement.metricId === 'earnings_expectation_net_profit' ? 'net_profit' : undefined

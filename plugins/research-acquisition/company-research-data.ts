@@ -91,7 +91,7 @@ export function createCompanyResearchDataResolver(options: CompanyResearchDataRe
           : normalizeMarket(rows, requirement, retrievedAt)
       if (data.kind !== 'profile' && data.rows.length === 0) return { status: 'NO_DATA', diagnostic: 'No eligible structured observations' }
       if (data.kind === 'profile' && data.fields.length === 0) return { status: 'NO_DATA', diagnostic: 'No usable company profile fields' }
-      const source = { retrievalProvider: 'AKShare', retrievedAt,
+      const source = { retrievalProvider: 'AKShare', originPublisher: 'EastMoney', sourceUrl: eastmoneyCompanyUrl(options.company), retrievedAt,
         ...(data.kind === 'market' && requirement.asOfMode === 'HISTORICAL' && data.rows.at(-1) ? { observedAt: data.rows.at(-1)!.observedAt, observationAvailableAt: dailyCloseAvailableAt(data.rows.at(-1)!.observedAt) } : {}),
         ...(data.kind === 'market' && requirement.asOfMode !== 'HISTORICAL' ? { valueVersion: { status: 'UNVERIFIED', reason: 'Current market snapshot has no historical value-version proof' } as const } : {}),
         ...(data.kind === 'financial' ? { valueVersion: { status: 'UNVERIFIED', reason: 'Historical financial value version is not identified' } as const } : {}) }
@@ -241,6 +241,11 @@ function normalizeMarket(rows: readonly Record<string, unknown>[], requirement: 
 }
 
 function text(value: unknown): string | undefined { return typeof value === 'string' && value.trim() ? value.trim() : undefined }
+function eastmoneyCompanyUrl(company: ResearchCompanyIdentity): string {
+  const exchange = company.exchange?.toUpperCase()
+  const market = exchange === 'SH' || exchange === 'SSE' ? 'sh' : 'sz'
+  return `https://quote.eastmoney.com/${market}${encodeURIComponent(company.symbol)}.html`
+}
 function normalizeProviderDate(value: unknown, calendarOnly = false): string | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) {
     const date = new Date(value < 10_000_000_000 ? value * 1000 : value)

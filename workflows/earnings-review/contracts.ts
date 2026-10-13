@@ -1,9 +1,11 @@
 import type { KnowledgeBaseHandle } from '../../knowledge/storage/handle.ts'
+import type { VerifiedSecurityIdentity } from '../../data/security-identity-contracts.ts'
 import type { NormalizedResearchSource, ResearchAcquisitionPlugin, ResearchCompanyIdentity, ResearchProviderOutcome } from '../../plugins/research-acquisition/contracts.ts'
 import type { AkshareDataClient } from '../../plugins/research-acquisition/akshare.ts'
 import type { EastmoneyEstimateSourceRequest, EastmoneyReportAcquisitionResult } from '../../plugins/research-acquisition/expectations/contracts.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import type { EarningsPeriod, EarningsReviewReasoningTelemetry, EarningsReviewSection, EarningsImpactAssessment } from '../../skills/earnings-review/index.ts'
+import type { EarningsFinancialQualitySummary } from '../../skills/earnings-review/financial-quality/contracts.ts'
 import type { ExternalIdentifierV04 } from '../../knowledge/schema/domain-v04.ts'
 import type { ConsensusSnapshot, EstimatePoint, GuidanceRange, SegmentKpiDeltaInput } from '../../skills/earnings-review/expectations/contracts.ts'
 import type { EarningsExpectationAnalysis } from './expectations-contracts.ts'
@@ -39,6 +41,7 @@ export interface EarningsReviewWorkflowInput {
   readonly workflowRunId: string
   readonly handle: KnowledgeBaseHandle
   readonly company: ResearchCompanyIdentity
+  readonly securityIdentity?: VerifiedSecurityIdentity
   readonly fiscalYear: number
   readonly period: EarningsPeriod
   readonly asOf?: string
@@ -128,11 +131,12 @@ export interface EarningsReviewWorkflowResult {
   readonly errors: readonly string[]
   readonly selectionDiagnostics: readonly string[]
   readonly acquisitionDiagnostics: readonly { readonly provider: string; readonly candidateId?: string; readonly kind?: string; readonly status: string; readonly reason: string }[]
-  readonly blockedReason?: 'COMPANY_COVERAGE_NOT_FOUND' | 'COMPANY_COVERAGE_AMBIGUOUS' | 'EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE'
+  readonly blockedReason?: 'COMPANY_COVERAGE_NOT_FOUND' | 'COMPANY_COVERAGE_AMBIGUOUS' | 'EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE' | 'EARNINGS_CANONICAL_REFERENCE_NOT_PERSISTED'
   readonly sections?: readonly EarningsReviewSection[]
   readonly assessments?: readonly EarningsImpactAssessment[]
   readonly telemetry: EarningsReviewTelemetry
   readonly providerOutcomes: readonly ResearchProviderOutcome[]
+  readonly financialQuality?: EarningsFinancialQualitySummary
   readonly expectationAnalysis?: EarningsExpectationAnalysis
   readonly managementCommunication?: ManagementCommunicationResearchResult
   readonly valuationImpactAnalysis?: EarningsValuationImpactAnalysis

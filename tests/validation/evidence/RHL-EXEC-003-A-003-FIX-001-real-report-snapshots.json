@@ -1,0 +1,229 @@
+{
+  "taskId": "RHL-EXEC-003-A-003-FIX-001",
+  "generatedAt": "2026-10-10T15:12:46.0510455Z",
+  "source": "current-code Application E2E report reloads; final H1 actuals also independently normalized from live AKShare financialData",
+  "reports": [
+    {
+      "target": {
+        "symbol": "002487",
+        "name": "大金重工",
+        "exchange": "SZ",
+        "fiscalYear": 2025,
+        "period": "FY"
+      },
+      "runId": "2c75189b-4601-46f0-b9dc-2db2a33f3b2a",
+      "reportId": "earnings-review-002487-2025-FY-2c75189b-4601-46f0-b9dc-2db2a33f3b2a",
+      "reportReloaded": true,
+      "markdownReloaded": true,
+      "sectionTitle": "Earnings Snapshot",
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 6173550246.46,
+          "unit": "CNY"
+        },
+        {
+          "metric": "net_profit",
+          "value": 1103297424.75,
+          "unit": "CNY"
+        },
+        {
+          "metric": "gross_margin",
+          "value": 31.1839246732,
+          "unit": "percent"
+        },
+        {
+          "metric": "eps",
+          "value": 1.73,
+          "unit": "CNY_per_share"
+        },
+        {
+          "metric": "revenue_yoy",
+          "value": 63.336534205515015,
+          "unit": "percent"
+        },
+        {
+          "metric": "net_profit_yoy",
+          "value": 132.82463397880633,
+          "unit": "percent"
+        }
+      ],
+      "evidenceLinks": [
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF"
+      ],
+      "sourceRefs": [],
+      "claimRefs": [],
+      "sectionReferenceCount": 0,
+      "canonicalRefsResolveInRegistry": true,
+      "knowledgeTreeUnchanged": true,
+      "metricsSource": "reloaded ResearchReport Earnings Snapshot"
+    },
+    {
+      "target": {
+        "symbol": "002487",
+        "name": "大金重工",
+        "exchange": "SZ",
+        "fiscalYear": 2026,
+        "period": "H1"
+      },
+      "runId": "c36f33c5-9c01-4efb-b704-8e651bbc3133",
+      "reportId": "earnings-review-002487-2026-H1-c36f33c5-9c01-4efb-b704-8e651bbc3133",
+      "reportReloaded": true,
+      "markdownReloaded": true,
+      "sectionTitle": "Earnings Snapshot",
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 3252515191.59,
+          "unit": "CNY"
+        },
+        {
+          "metric": "net_profit",
+          "value": 600567001.92,
+          "unit": "CNY"
+        },
+        {
+          "metric": "gross_margin",
+          "value": 37.5254806411,
+          "unit": "percent"
+        },
+        {
+          "metric": "eps",
+          "value": 0.94,
+          "unit": "CNY_per_share"
+        },
+        {
+          "metric": "revenue_yoy",
+          "value": 14.479259590982041,
+          "unit": "percent"
+        },
+        {
+          "metric": "net_profit_yoy",
+          "value": 9.890222289984257,
+          "unit": "percent"
+        }
+      ],
+      "evidenceLinks": [
+        "https://basic.10jqka.com.cn/002487/worth.html",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://static.cninfo.com.cn/finalpage/2026-08-22/1225489611.PDF"
+      ],
+      "sourceRefs": [],
+      "claimRefs": [],
+      "sectionReferenceCount": 0,
+      "canonicalRefsResolveInRegistry": true,
+      "knowledgeTreeUnchanged": true,
+      "metricsSource": "reloaded ResearchReport Earnings Snapshot"
+    },
+    {
+      "target": {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SH",
+        "fiscalYear": 2025,
+        "period": "FY"
+      },
+      "runId": "5bc7601e-f9eb-44d9-9aca-78c1e9d7d4cd",
+      "reportId": "earnings-review-600519-2025-FY-5bc7601e-f9eb-44d9-9aca-78c1e9d7d4cd",
+      "reportReloaded": true,
+      "markdownReloaded": true,
+      "sectionTitle": "Earnings Snapshot",
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 172054171890.91,
+          "unit": "CNY"
+        },
+        {
+          "metric": "net_profit",
+          "value": 82320067101.68,
+          "unit": "CNY"
+        },
+        {
+          "metric": "gross_margin",
+          "value": 91.1795516835,
+          "unit": "percent"
+        },
+        {
+          "metric": "eps",
+          "value": 65.66,
+          "unit": "CNY_per_share"
+        },
+        {
+          "metric": "revenue_yoy",
+          "value": -1.2000971769185347,
+          "unit": "percent"
+        },
+        {
+          "metric": "net_profit_yoy",
+          "value": -4.532254817158089,
+          "unit": "percent"
+        }
+      ],
+      "evidenceLinks": [
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF"
+      ],
+      "sourceRefs": [],
+      "claimRefs": [],
+      "sectionReferenceCount": 0,
+      "canonicalRefsResolveInRegistry": true,
+      "knowledgeTreeUnchanged": true,
+      "metricsSource": "reloaded ResearchReport Earnings Snapshot"
+    },
+    {
+      "target": {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SH",
+        "fiscalYear": 2026,
+        "period": "H1"
+      },
+      "runId": "c9355e8d-8a1a-4499-9f6d-279be602d89f",
+      "reportId": "earnings-review-600519-2026-H1-c9355e8d-8a1a-4499-9f6d-279be602d89f",
+      "reportReloaded": true,
+      "markdownReloaded": true,
+      "sectionTitle": "Earnings Snapshot",
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 92278072083.21,
+          "unit": "CNY",
+          "period": "2026-H1"
+        },
+        {
+          "metric": "net_profit",
+          "value": 44516880421.86,
+          "unit": "CNY",
+          "period": "2026-H1"
+        },
+        {
+          "metric": "gross_margin",
+          "value": 89.5552128279,
+          "unit": "percent",
+          "period": "2026-H1"
+        },
+        {
+          "metric": "eps",
+          "value": 35.57,
+          "unit": "CNY_per_share",
+          "period": "2026-H1"
+        }
+      ],
+      "evidenceLinks": [
+        "https://basic.10jqka.com.cn/600519/worth.html",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://static.cninfo.com.cn/finalpage/2026-08-15/1225475868.PDF"
+      ],
+      "sourceRefs": [],
+      "claimRefs": [],
+      "sectionReferenceCount": 0,
+      "canonicalRefsResolveInRegistry": true,
+      "knowledgeTreeUnchanged": true,
+      "metricsSource": "AKShare live financialData normalized with current Earnings financial normalization contract"
+    }
+  ],
+  "secretsIncluded": false,
+  "rawSourceBodiesIncluded": false
+}

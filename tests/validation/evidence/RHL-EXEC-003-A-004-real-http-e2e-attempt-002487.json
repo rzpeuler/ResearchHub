@@ -1,0 +1,196 @@
+{
+  "taskId": "RHL-EXEC-003-A-004",
+  "generatedAt": "2026-10-10T21:15:47.5195954Z",
+  "classification": "REAL_HTTP_E2E_INCOMPLETE",
+  "reason": "Execution was stopped after evidence showed the initial server path ignored maxSources=2 and continued through excessive real CNINFO PDF candidates. Completed run records are preserved here; all were reported RUN_FINISHED by the HTTP runner after report/bundle and read-only checks.",
+  "execution": "ResearchRun HTTP API -> ResearchDispatchService -> verified identity -> ResearchService -> Workflow -> live AKShare/CNINFO/GDELT",
+  "target": "002487.SZ",
+  "runs": [
+    {
+      "runId": "08d231f6-ad1b-46d5-9ee7-144999620856",
+      "operation": "valuation",
+      "request": {
+        "exchange": "SZSE",
+        "symbol": "002487",
+        "targetFiscalYear": 2025,
+        "methods": [
+          "PE",
+          "PB"
+        ],
+        "name": "大金重工"
+      },
+      "workflowStatus": "blocked",
+      "terminalStatus": "blocked",
+      "bundleStatus": "blocked",
+      "blockedReason": "VALUATION_MARKET_PRICE_UNAVAILABLE",
+      "errorSummary": null,
+      "providerOutcomes": [
+        {
+          "providerAttempted": true,
+          "transportSucceeded": true,
+          "marketTransportSucceeded": false,
+          "financialTransportSucceeded": true,
+          "officialPublicationVerified": true,
+          "companyBasicRowCount": 0,
+          "financialRowCount": 70,
+          "marketRowCount": 0,
+          "marketPriceFound": false,
+          "fiscalYearBasisFound": true,
+          "peEligible": true,
+          "pbEligible": true,
+          "evEbitdaEligible": false,
+          "usableForValuation": false
+        }
+      ],
+      "diagnostics": [
+        null
+      ],
+      "report": null,
+      "bundleReloaded": true,
+      "readOnlyKnowledgeTreeUnchanged": true,
+      "completedE2EAssertions": true
+    },
+    {
+      "runId": "3a9b9279-6bde-4ced-91f5-b18f9920c6eb",
+      "operation": "company",
+      "request": {
+        "exchange": "SZSE",
+        "maxSources": 2,
+        "symbol": "002487",
+        "name": "大金重工"
+      },
+      "workflowStatus": "completed",
+      "terminalStatus": "completed",
+      "bundleStatus": "completed",
+      "blockedReason": null,
+      "errorSummary": null,
+      "providerOutcomes": [
+        {
+          "provider": "akshare",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": true,
+          "usableSourceCount": 1
+        },
+        {
+          "provider": "cninfo",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 10
+        },
+        {
+          "provider": "gdelt",
+          "providerAttempted": true,
+          "providerSucceeded": false,
+          "providerEmpty": false,
+          "providerFailed": true,
+          "usableSourceCount": 0
+        }
+      ],
+      "diagnostics": [
+        null
+      ],
+      "report": {
+        "reloaded": true,
+        "evidenceLinkCount": 6,
+        "sectionCount": 19,
+        "reportType": "company_research",
+        "canonicalRefCount": 0,
+        "reportId": "company-research-002487-3a9b9279-6bde-4ced-91f5-b18f9920c6eb",
+        "workflowRunId": "3a9b9279-6bde-4ced-91f5-b18f9920c6eb"
+      },
+      "bundleReloaded": true,
+      "readOnlyKnowledgeTreeUnchanged": true,
+      "completedE2EAssertions": true
+    },
+    {
+      "runId": "c349c1f2-fda8-4a48-98e2-7100468d3217",
+      "operation": "earnings_fy2025",
+      "request": {
+        "exchange": "SZSE",
+        "period": "FY",
+        "symbol": "002487",
+        "fiscalYear": 2025,
+        "name": "大金重工"
+      },
+      "workflowStatus": "blocked",
+      "terminalStatus": "blocked",
+      "bundleStatus": "blocked",
+      "blockedReason": "EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE",
+      "errorSummary": "EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE: no exact-period usable CNINFO filing is available.",
+      "providerOutcomes": [
+        {
+          "provider": "cninfo",
+          "providerAttempted": true,
+          "providerSucceeded": false,
+          "providerEmpty": false,
+          "providerFailed": true,
+          "usableSourceCount": 0
+        },
+        {
+          "provider": "akshare",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 1
+        }
+      ],
+      "diagnostics": [
+        "official-583e63e33f1ba1f5:document_parser_timeout: Docling exceeded 600000 ms"
+      ],
+      "report": null,
+      "bundleReloaded": true,
+      "readOnlyKnowledgeTreeUnchanged": true,
+      "completedE2EAssertions": true
+    },
+    {
+      "runId": "c878f2b7-2c8f-4d90-a292-f4d818573762",
+      "operation": "earnings_h1_2026",
+      "request": {
+        "exchange": "SZSE",
+        "period": "H1",
+        "symbol": "002487",
+        "fiscalYear": 2026,
+        "name": "大金重工"
+      },
+      "workflowStatus": "blocked",
+      "terminalStatus": "blocked",
+      "bundleStatus": "blocked",
+      "blockedReason": "EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE",
+      "errorSummary": "EARNINGS_PERIOD_EVIDENCE_UNAVAILABLE: no exact-period usable CNINFO filing is available.",
+      "providerOutcomes": [
+        {
+          "provider": "cninfo",
+          "providerAttempted": true,
+          "providerSucceeded": false,
+          "providerEmpty": false,
+          "providerFailed": true,
+          "usableSourceCount": 0
+        },
+        {
+          "provider": "akshare",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 1
+        }
+      ],
+      "diagnostics": [
+        "official-1910e7f6b851b237:document_parser_timeout: Docling exceeded 600000 ms"
+      ],
+      "report": null,
+      "bundleReloaded": true,
+      "readOnlyKnowledgeTreeUnchanged": true,
+      "completedE2EAssertions": true
+    }
+  ],
+  "completedRunCount": 4,
+  "knowledgeSchema": "0.4",
+  "secretsIncluded": false,
+  "rawProviderBodiesIncluded": false
+}

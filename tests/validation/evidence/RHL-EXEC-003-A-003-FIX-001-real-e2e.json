@@ -1,0 +1,1131 @@
+{
+  "taskId": "RHL-EXEC-003-A-003-FIX-001",
+  "generatedAt": "2026-10-10T13:10:02.25Z",
+  "reasoningMode": "deterministic-fallback",
+  "productionPath": "ApplicationRuntime -> ResearchDispatchService.startAsync -> ResearchService -> Earnings Review Workflow -> DataResolver -> Catalog/SourcePolicy -> CNINFO/AKShare Plugins -> Earnings Review Skill",
+  "isolatedKnowledgeBaseSchema": "0.4",
+  "targets": [
+    {
+      "symbol": "002487",
+      "name": "大金重工",
+      "exchange": "SZ",
+      "fiscalYear": 2025,
+      "period": "FY"
+    },
+    {
+      "symbol": "002487",
+      "name": "大金重工",
+      "exchange": "SZ",
+      "fiscalYear": 2026,
+      "period": "H1"
+    },
+    {
+      "symbol": "600519",
+      "name": "贵州茅台",
+      "exchange": "SH",
+      "fiscalYear": 2025,
+      "period": "FY"
+    },
+    {
+      "symbol": "600519",
+      "name": "贵州茅台",
+      "exchange": "SH",
+      "fiscalYear": 2026,
+      "period": "H1"
+    }
+  ],
+  "reasoningCalls": [
+    {
+      "operation": "research_dispatch_resolution",
+      "operationId": "7114ab67-122d-4951-91fd-fad11f3418fd",
+      "startedAt": "2026-10-10T13:10:02.354Z",
+      "completedAt": "2026-10-10T13:10:02.354Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "research_dispatch_resolution",
+      "operationId": "a4e1392c-d38e-415f-a621-f499eaeea06c",
+      "startedAt": "2026-10-10T13:10:02.363Z",
+      "completedAt": "2026-10-10T13:10:02.363Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "earnings_review_synthesis",
+      "operationId": "f2450fc6-7416-4966-9d02-ac71c2911163",
+      "startedAt": "2026-10-10T13:44:17.461Z",
+      "completedAt": "2026-10-10T13:44:17.461Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "earnings_review_synthesis",
+      "operationId": "09f535aa-4e98-41f0-8753-7063b5e89c16",
+      "startedAt": "2026-10-10T13:44:17.463Z",
+      "completedAt": "2026-10-10T13:44:17.463Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-583e63e33f1ba1f5-0",
+      "startedAt": "2026-10-10T13:44:18.084Z",
+      "completedAt": "2026-10-10T13:44:18.084Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-583e63e33f1ba1f5-1",
+      "startedAt": "2026-10-10T13:44:18.092Z",
+      "completedAt": "2026-10-10T13:44:18.092Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-583e63e33f1ba1f5-2",
+      "startedAt": "2026-10-10T13:44:18.092Z",
+      "completedAt": "2026-10-10T13:44:18.093Z",
+      "durationMs": 1,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-583e63e33f1ba1f5-3",
+      "startedAt": "2026-10-10T13:44:18.093Z",
+      "completedAt": "2026-10-10T13:44:18.094Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-583e63e33f1ba1f5-4",
+      "startedAt": "2026-10-10T13:44:18.095Z",
+      "completedAt": "2026-10-10T13:44:18.095Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "research_dispatch_resolution",
+      "operationId": "f23b8890-b03c-4256-937b-2d6139e650df",
+      "startedAt": "2026-10-10T13:44:22.954Z",
+      "completedAt": "2026-10-10T13:44:22.954Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "research_dispatch_resolution",
+      "operationId": "829fc4f4-133f-46f7-b22c-7dcd16e677cf",
+      "startedAt": "2026-10-10T13:44:22.955Z",
+      "completedAt": "2026-10-10T13:44:22.955Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "earnings_review_synthesis",
+      "operationId": "8df87214-2434-4216-8cfc-e3bbac363c20",
+      "startedAt": "2026-10-10T14:19:01.358Z",
+      "completedAt": "2026-10-10T14:19:01.358Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "earnings_review_synthesis",
+      "operationId": "f73c8c52-a3ca-43e3-8d82-478b6619b09b",
+      "startedAt": "2026-10-10T14:19:01.361Z",
+      "completedAt": "2026-10-10T14:19:01.361Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-1910e7f6b851b237-0",
+      "startedAt": "2026-10-10T14:19:01.976Z",
+      "completedAt": "2026-10-10T14:19:01.976Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-1910e7f6b851b237-1",
+      "startedAt": "2026-10-10T14:19:01.977Z",
+      "completedAt": "2026-10-10T14:19:01.977Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-1910e7f6b851b237-2",
+      "startedAt": "2026-10-10T14:19:01.979Z",
+      "completedAt": "2026-10-10T14:19:01.979Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-1910e7f6b851b237-3",
+      "startedAt": "2026-10-10T14:19:01.98Z",
+      "completedAt": "2026-10-10T14:19:01.98Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-1910e7f6b851b237-4",
+      "startedAt": "2026-10-10T14:19:01.98Z",
+      "completedAt": "2026-10-10T14:19:01.98Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "research_dispatch_resolution",
+      "operationId": "77e84b06-6b18-4def-9802-b039ae13f287",
+      "startedAt": "2026-10-10T14:19:04.878Z",
+      "completedAt": "2026-10-10T14:19:04.878Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "research_dispatch_resolution",
+      "operationId": "6e9eeae0-6077-416d-9c2c-3075c1e3d7f7",
+      "startedAt": "2026-10-10T14:19:04.879Z",
+      "completedAt": "2026-10-10T14:19:04.879Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "earnings_review_synthesis",
+      "operationId": "a4e5f3cf-14ab-4928-8be6-701bc61614e1",
+      "startedAt": "2026-10-10T14:51:59.514Z",
+      "completedAt": "2026-10-10T14:51:59.515Z",
+      "durationMs": 1,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "earnings_review_synthesis",
+      "operationId": "ef18dde6-eaff-4427-93e4-3b822f2b1989",
+      "startedAt": "2026-10-10T14:51:59.517Z",
+      "completedAt": "2026-10-10T14:51:59.517Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-99053aa1473228f7-0",
+      "startedAt": "2026-10-10T14:52:00.034Z",
+      "completedAt": "2026-10-10T14:52:00.034Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-99053aa1473228f7-1",
+      "startedAt": "2026-10-10T14:52:00.035Z",
+      "completedAt": "2026-10-10T14:52:00.035Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-99053aa1473228f7-2",
+      "startedAt": "2026-10-10T14:52:00.036Z",
+      "completedAt": "2026-10-10T14:52:00.036Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-99053aa1473228f7-3",
+      "startedAt": "2026-10-10T14:52:00.036Z",
+      "completedAt": "2026-10-10T14:52:00.036Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "research_dispatch_resolution",
+      "operationId": "ff8a4712-932e-4c91-ad2b-f1556e6c70f2",
+      "startedAt": "2026-10-10T14:52:07.518Z",
+      "completedAt": "2026-10-10T14:52:07.518Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "research_dispatch_resolution",
+      "operationId": "dd900c63-373b-4f3c-befb-c1f3818ac26f",
+      "startedAt": "2026-10-10T14:52:07.521Z",
+      "completedAt": "2026-10-10T14:52:07.521Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "earnings_review_synthesis",
+      "operationId": "65fe2638-95c1-4adf-bf7d-0faf699f6fe7",
+      "startedAt": "2026-10-10T15:10:29.441Z",
+      "completedAt": "2026-10-10T15:10:29.441Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "earnings_review_synthesis",
+      "operationId": "776bf9e1-f4c5-406a-9944-a11ca175d23f",
+      "startedAt": "2026-10-10T15:10:29.448Z",
+      "completedAt": "2026-10-10T15:10:29.448Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-74924d3eb1160b03-0",
+      "startedAt": "2026-10-10T15:10:30Z",
+      "completedAt": "2026-10-10T15:10:30.001Z",
+      "durationMs": 1,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-74924d3eb1160b03-1",
+      "startedAt": "2026-10-10T15:10:30.003Z",
+      "completedAt": "2026-10-10T15:10:30.003Z",
+      "durationMs": 0,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    },
+    {
+      "operation": "management_communication_extract",
+      "operationId": "d2-002-official-74924d3eb1160b03-2",
+      "startedAt": "2026-10-10T15:10:30.005Z",
+      "completedAt": "2026-10-10T15:10:30.006Z",
+      "durationMs": 1,
+      "callerSignalAborted": false,
+      "status": "deterministic_invalid_output"
+    }
+  ],
+  "runs": [
+    {
+      "target": {
+        "symbol": "002487",
+        "name": "大金重工",
+        "exchange": "SZ",
+        "fiscalYear": 2025,
+        "period": "FY"
+      },
+      "runId": "2c75189b-4601-46f0-b9dc-2db2a33f3b2a",
+      "dispatchStatus": "started",
+      "dispatchResolution": {
+        "source": "deterministic_fallback",
+        "attempts": 2,
+        "diagnostics": [
+          "Pi reasoning output did not satisfy its JSON Schema contract (7 validation issues)",
+          "Pi reasoning output did not satisfy its JSON Schema contract (7 validation issues)",
+          "semantic_resolution_fallback"
+        ]
+      },
+      "workflowStatus": "completed",
+      "blockedReason": null,
+      "completed": true,
+      "errors": [],
+      "acquisitionDiagnostics": [
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "cninfo_ir_no_accepted_records"
+        },
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "Pi reasoning output did not satisfy its JSON Schema contract (4 validation issues)"
+        },
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "REASONING_EXECUTION_FAILED"
+        },
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "unsupported_exchange:SZ"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "automatic_expectations_unavailable"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "eps:eastmoney_akshare_eps_invalid:13:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:14:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:15:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:16:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:17:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:18:2028-盈利预测-收益|eastmoney_akshare_ep"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "eps:EASTMONEY_LEGACY_REPORT_ROUTE_UNAVAILABLE"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "eps:eps_no_usable_estimates"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "eps:PRIMARY_NO_DATA|FALLBACK_1_NO_DATA|FALLBACK_2_UNSUPPORTED"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "net_profit:net_profit_no_usable_estimates"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "net_profit:PRIMARY_NO_DATA"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "automatic_expectations_unavailable"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "eps:eastmoney_akshare_eps_invalid:13:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:14:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:15:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:16:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:17:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:18:2028-盈利预测-收益|eastmoney_akshare_ep"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "eps:EASTMONEY_LEGACY_REPORT_ROUTE_UNAVAILABLE"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "eps:eps_no_usable_estimates"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "eps:PRIMARY_NO_DATA|FALLBACK_1_NO_DATA|FALLBACK_2_UNSUPPORTED"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "net_profit:net_profit_no_usable_estimates"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "net_profit:PRIMARY_NO_DATA"
+        }
+      ],
+      "selectionDiagnostics": [],
+      "reportId": "earnings-review-002487-2025-FY-2c75189b-4601-46f0-b9dc-2db2a33f3b2a",
+      "reportReloaded": true,
+      "reportMarkdownReloaded": true,
+      "reportSectionCount": 14,
+      "reportWorkflowRunId": "2c75189b-4601-46f0-b9dc-2db2a33f3b2a",
+      "reportSourceRefs": [],
+      "reportClaimRefs": [],
+      "reportSubjectRefs": [],
+      "reportSectionReferenceCount": 0,
+      "reportUnresolvedCanonicalRefs": [],
+      "reportCanonicalRefsResolveInRegistry": true,
+      "reportEvidenceLinks": [
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF"
+      ],
+      "earningsSnapshotHasStructuredActual": true,
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 6173550246.46,
+          "unit": "CNY"
+        },
+        {
+          "metric": "net_profit",
+          "value": 1103297424.75,
+          "unit": "CNY"
+        },
+        {
+          "metric": "gross_margin",
+          "value": 31.1839246732,
+          "unit": "percent"
+        },
+        {
+          "metric": "eps",
+          "value": 1.73,
+          "unit": "CNY_per_share"
+        },
+        {
+          "metric": "revenue_yoy",
+          "value": 63.336534205515015,
+          "unit": "percent"
+        },
+        {
+          "metric": "net_profit_yoy",
+          "value": 132.82463397880633,
+          "unit": "percent"
+        }
+      ],
+      "reasoning": {
+        "called": true,
+        "validated": false,
+        "applied": false,
+        "fallbackUsed": true
+      },
+      "providers": [
+        {
+          "provider": "cninfo",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 1
+        },
+        {
+          "provider": "akshare",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 1
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "providerAttempted": true,
+          "providerSucceeded": false,
+          "providerEmpty": true,
+          "providerFailed": false,
+          "usableSourceCount": 0
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "providerAttempted": true,
+          "providerSucceeded": false,
+          "providerEmpty": true,
+          "providerFailed": false,
+          "usableSourceCount": 0
+        }
+      ],
+      "bundleId": "research-bundle-2c75189b-4601-46f0-b9dc-2db2a33f3b2a",
+      "bundleReloaded": true,
+      "bundleWorkflowRunId": "2c75189b-4601-46f0-b9dc-2db2a33f3b2a",
+      "canonicalEntityCount": 0,
+      "canonicalSourceCount": 0,
+      "canonicalClaimCount": 0,
+      "canonicalDelta": 0,
+      "knowledgeTreeUnchanged": true,
+      "knowledgeRevisionBefore": 0,
+      "knowledgeRevisionAfter": 0,
+      "rawRegistryPresentBefore": true,
+      "rawRegistryPresentAfter": true,
+      "rawRegistryExists": true,
+      "metricsSource": "reloaded ResearchReport Earnings Snapshot"
+    },
+    {
+      "target": {
+        "symbol": "002487",
+        "name": "大金重工",
+        "exchange": "SZ",
+        "fiscalYear": 2026,
+        "period": "H1"
+      },
+      "runId": "c36f33c5-9c01-4efb-b704-8e651bbc3133",
+      "dispatchStatus": "started",
+      "dispatchResolution": {
+        "source": "deterministic_fallback",
+        "attempts": 2,
+        "diagnostics": [
+          "Pi reasoning output did not satisfy its JSON Schema contract (7 validation issues)",
+          "Pi reasoning output did not satisfy its JSON Schema contract (7 validation issues)",
+          "semantic_resolution_fallback"
+        ]
+      },
+      "workflowStatus": "completed",
+      "blockedReason": null,
+      "completed": true,
+      "errors": [],
+      "acquisitionDiagnostics": [
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "cninfo_ir_no_accepted_records"
+        },
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "Pi reasoning output did not satisfy its JSON Schema contract (4 validation issues)"
+        },
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "REASONING_EXECUTION_FAILED"
+        },
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "unsupported_exchange:SZ"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "usable",
+          "reason": "consensus_minimum_count_not_met"
+        }
+      ],
+      "selectionDiagnostics": [],
+      "reportId": "earnings-review-002487-2026-H1-c36f33c5-9c01-4efb-b704-8e651bbc3133",
+      "reportReloaded": true,
+      "reportMarkdownReloaded": true,
+      "reportSectionCount": 14,
+      "reportWorkflowRunId": "c36f33c5-9c01-4efb-b704-8e651bbc3133",
+      "reportSourceRefs": [],
+      "reportClaimRefs": [],
+      "reportSubjectRefs": [],
+      "reportSectionReferenceCount": 0,
+      "reportUnresolvedCanonicalRefs": [],
+      "reportCanonicalRefsResolveInRegistry": true,
+      "reportEvidenceLinks": [
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://static.cninfo.com.cn/finalpage/2026-08-22/1225489611.PDF",
+        "https://basic.10jqka.com.cn/002487/worth.html",
+        "https://basic.10jqka.com.cn/002487/worth.html",
+        "https://basic.10jqka.com.cn/002487/worth.html",
+        "https://basic.10jqka.com.cn/002487/worth.html",
+        "https://basic.10jqka.com.cn/002487/worth.html",
+        "https://basic.10jqka.com.cn/002487/worth.html",
+        "https://basic.10jqka.com.cn/002487/worth.html",
+        "https://basic.10jqka.com.cn/002487/worth.html",
+        "https://basic.10jqka.com.cn/002487/worth.html",
+        "https://basic.10jqka.com.cn/002487/worth.html",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://static.cninfo.com.cn/finalpage/2026-08-22/1225489611.PDF"
+      ],
+      "earningsSnapshotHasStructuredActual": true,
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 3252515191.59,
+          "unit": "CNY"
+        },
+        {
+          "metric": "net_profit",
+          "value": 600567001.92,
+          "unit": "CNY"
+        },
+        {
+          "metric": "gross_margin",
+          "value": 37.5254806411,
+          "unit": "percent"
+        },
+        {
+          "metric": "eps",
+          "value": 0.94,
+          "unit": "CNY_per_share"
+        },
+        {
+          "metric": "revenue_yoy",
+          "value": 14.479259590982041,
+          "unit": "percent"
+        },
+        {
+          "metric": "net_profit_yoy",
+          "value": 9.890222289984257,
+          "unit": "percent"
+        }
+      ],
+      "reasoning": {
+        "called": true,
+        "validated": false,
+        "applied": false,
+        "fallbackUsed": true
+      },
+      "providers": [
+        {
+          "provider": "cninfo",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 1
+        },
+        {
+          "provider": "akshare",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 1
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 10
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "providerAttempted": false,
+          "providerSucceeded": false,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 0
+        }
+      ],
+      "bundleId": "research-bundle-c36f33c5-9c01-4efb-b704-8e651bbc3133",
+      "bundleReloaded": true,
+      "bundleWorkflowRunId": "c36f33c5-9c01-4efb-b704-8e651bbc3133",
+      "canonicalEntityCount": 0,
+      "canonicalSourceCount": 0,
+      "canonicalClaimCount": 0,
+      "canonicalDelta": 0,
+      "knowledgeTreeUnchanged": true,
+      "knowledgeRevisionBefore": 0,
+      "knowledgeRevisionAfter": 0,
+      "rawRegistryPresentBefore": true,
+      "rawRegistryPresentAfter": true,
+      "rawRegistryExists": true,
+      "metricsSource": "reloaded ResearchReport Earnings Snapshot"
+    },
+    {
+      "target": {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SH",
+        "fiscalYear": 2025,
+        "period": "FY"
+      },
+      "runId": "5bc7601e-f9eb-44d9-9aca-78c1e9d7d4cd",
+      "dispatchStatus": "started",
+      "dispatchResolution": {
+        "source": "deterministic_fallback",
+        "attempts": 2,
+        "diagnostics": [
+          "Pi reasoning output did not satisfy its JSON Schema contract (7 validation issues)",
+          "Pi reasoning output did not satisfy its JSON Schema contract (7 validation issues)",
+          "semantic_resolution_fallback"
+        ]
+      },
+      "workflowStatus": "completed",
+      "blockedReason": null,
+      "completed": true,
+      "errors": [],
+      "acquisitionDiagnostics": [
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "cninfo_ir_no_accepted_records"
+        },
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "Pi reasoning output did not satisfy its JSON Schema contract (4 validation issues)"
+        },
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "REASONING_EXECUTION_FAILED"
+        },
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "unsupported_exchange:SH"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "automatic_expectations_unavailable"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "eps:eastmoney_akshare_eps_invalid:100:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:101:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:102:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:103:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:104:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:105:2028-盈利预测-收益|eastmoney_aksh"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "eps:EASTMONEY_LEGACY_REPORT_ROUTE_UNAVAILABLE"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "eps:eps_no_usable_estimates"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "eps:PRIMARY_NO_DATA|FALLBACK_1_NO_DATA|FALLBACK_2_UNSUPPORTED"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "net_profit:net_profit_no_usable_estimates"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "empty",
+          "reason": "net_profit:PRIMARY_NO_DATA"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "automatic_expectations_unavailable"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "eps:eastmoney_akshare_eps_invalid:100:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:101:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:102:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:103:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:104:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:105:2028-盈利预测-收益|eastmoney_aksh"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "eps:EASTMONEY_LEGACY_REPORT_ROUTE_UNAVAILABLE"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "eps:eps_no_usable_estimates"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "eps:PRIMARY_NO_DATA|FALLBACK_1_NO_DATA|FALLBACK_2_UNSUPPORTED"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "net_profit:net_profit_no_usable_estimates"
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "status": "empty",
+          "reason": "net_profit:PRIMARY_NO_DATA"
+        }
+      ],
+      "selectionDiagnostics": [],
+      "reportId": "earnings-review-600519-2025-FY-5bc7601e-f9eb-44d9-9aca-78c1e9d7d4cd",
+      "reportReloaded": true,
+      "reportMarkdownReloaded": true,
+      "reportSectionCount": 14,
+      "reportWorkflowRunId": "5bc7601e-f9eb-44d9-9aca-78c1e9d7d4cd",
+      "reportSourceRefs": [],
+      "reportClaimRefs": [],
+      "reportSubjectRefs": [],
+      "reportSectionReferenceCount": 0,
+      "reportUnresolvedCanonicalRefs": [],
+      "reportCanonicalRefsResolveInRegistry": true,
+      "reportEvidenceLinks": [
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF"
+      ],
+      "earningsSnapshotHasStructuredActual": true,
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 172054171890.91,
+          "unit": "CNY"
+        },
+        {
+          "metric": "net_profit",
+          "value": 82320067101.68,
+          "unit": "CNY"
+        },
+        {
+          "metric": "gross_margin",
+          "value": 91.1795516835,
+          "unit": "percent"
+        },
+        {
+          "metric": "eps",
+          "value": 65.66,
+          "unit": "CNY_per_share"
+        },
+        {
+          "metric": "revenue_yoy",
+          "value": -1.2000971769185347,
+          "unit": "percent"
+        },
+        {
+          "metric": "net_profit_yoy",
+          "value": -4.532254817158089,
+          "unit": "percent"
+        }
+      ],
+      "reasoning": {
+        "called": true,
+        "validated": false,
+        "applied": false,
+        "fallbackUsed": true
+      },
+      "providers": [
+        {
+          "provider": "cninfo",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 1
+        },
+        {
+          "provider": "akshare",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 1
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "providerAttempted": true,
+          "providerSucceeded": false,
+          "providerEmpty": true,
+          "providerFailed": false,
+          "usableSourceCount": 0
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "providerAttempted": true,
+          "providerSucceeded": false,
+          "providerEmpty": true,
+          "providerFailed": false,
+          "usableSourceCount": 0
+        }
+      ],
+      "bundleId": "research-bundle-5bc7601e-f9eb-44d9-9aca-78c1e9d7d4cd",
+      "bundleReloaded": true,
+      "bundleWorkflowRunId": "5bc7601e-f9eb-44d9-9aca-78c1e9d7d4cd",
+      "canonicalEntityCount": 0,
+      "canonicalSourceCount": 0,
+      "canonicalClaimCount": 0,
+      "canonicalDelta": 0,
+      "knowledgeTreeUnchanged": true,
+      "knowledgeRevisionBefore": 0,
+      "knowledgeRevisionAfter": 0,
+      "rawRegistryPresentBefore": true,
+      "rawRegistryPresentAfter": true,
+      "rawRegistryExists": true,
+      "metricsSource": "reloaded ResearchReport Earnings Snapshot"
+    },
+    {
+      "target": {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SH",
+        "fiscalYear": 2026,
+        "period": "H1"
+      },
+      "runId": "c9355e8d-8a1a-4499-9f6d-279be602d89f",
+      "dispatchStatus": "started",
+      "dispatchResolution": {
+        "source": "deterministic_fallback",
+        "attempts": 2,
+        "diagnostics": [
+          "Pi reasoning output did not satisfy its JSON Schema contract (7 validation issues)",
+          "Pi reasoning output did not satisfy its JSON Schema contract (7 validation issues)",
+          "semantic_resolution_fallback"
+        ]
+      },
+      "workflowStatus": "completed",
+      "blockedReason": null,
+      "completed": true,
+      "errors": [],
+      "acquisitionDiagnostics": [
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "cninfo_ir_no_accepted_records"
+        },
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "Pi reasoning output did not satisfy its JSON Schema contract (4 validation issues)"
+        },
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "REASONING_EXECUTION_FAILED"
+        },
+        {
+          "provider": "management-communication",
+          "status": "empty",
+          "reason": "unsupported_exchange:SH"
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "status": "usable",
+          "reason": "consensus_minimum_count_not_met"
+        }
+      ],
+      "selectionDiagnostics": [],
+      "reportId": "earnings-review-600519-2026-H1-c9355e8d-8a1a-4499-9f6d-279be602d89f",
+      "reportReloaded": true,
+      "reportMarkdownReloaded": true,
+      "reportSectionCount": 14,
+      "reportWorkflowRunId": "c9355e8d-8a1a-4499-9f6d-279be602d89f",
+      "reportSourceRefs": [],
+      "reportClaimRefs": [],
+      "reportSubjectRefs": [],
+      "reportSectionReferenceCount": 0,
+      "reportUnresolvedCanonicalRefs": [],
+      "reportCanonicalRefsResolveInRegistry": true,
+      "reportEvidenceLinks": [
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://static.cninfo.com.cn/finalpage/2026-08-15/1225475868.PDF",
+        "https://basic.10jqka.com.cn/600519/worth.html",
+        "https://basic.10jqka.com.cn/600519/worth.html",
+        "https://basic.10jqka.com.cn/600519/worth.html",
+        "https://basic.10jqka.com.cn/600519/worth.html",
+        "https://basic.10jqka.com.cn/600519/worth.html",
+        "https://basic.10jqka.com.cn/600519/worth.html",
+        "https://basic.10jqka.com.cn/600519/worth.html",
+        "https://basic.10jqka.com.cn/600519/worth.html",
+        "https://basic.10jqka.com.cn/600519/worth.html",
+        "https://basic.10jqka.com.cn/600519/worth.html",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://datacenter.eastmoney.com/securities/api/data/get",
+        "https://static.cninfo.com.cn/finalpage/2026-08-15/1225475868.PDF"
+      ],
+      "earningsSnapshotHasStructuredActual": true,
+      "metrics": [
+        {
+          "metric": "revenue",
+          "value": 92278072083.21,
+          "unit": "CNY",
+          "period": "2026-H1"
+        },
+        {
+          "metric": "net_profit",
+          "value": 44516880421.86,
+          "unit": "CNY",
+          "period": "2026-H1"
+        },
+        {
+          "metric": "gross_margin",
+          "value": 89.5552128279,
+          "unit": "percent",
+          "period": "2026-H1"
+        },
+        {
+          "metric": "eps",
+          "value": 35.57,
+          "unit": "CNY_per_share",
+          "period": "2026-H1"
+        }
+      ],
+      "reasoning": {
+        "called": true,
+        "validated": false,
+        "applied": false,
+        "fallbackUsed": true
+      },
+      "providers": [
+        {
+          "provider": "cninfo",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 1
+        },
+        {
+          "provider": "akshare",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 1
+        },
+        {
+          "provider": "ths-institution-forecast",
+          "providerAttempted": true,
+          "providerSucceeded": true,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 10
+        },
+        {
+          "provider": "eastmoney-individual-research-report",
+          "providerAttempted": false,
+          "providerSucceeded": false,
+          "providerEmpty": false,
+          "providerFailed": false,
+          "usableSourceCount": 0
+        }
+      ],
+      "bundleId": "research-bundle-c9355e8d-8a1a-4499-9f6d-279be602d89f",
+      "bundleReloaded": true,
+      "bundleWorkflowRunId": "c9355e8d-8a1a-4499-9f6d-279be602d89f",
+      "canonicalEntityCount": 0,
+      "canonicalSourceCount": 0,
+      "canonicalClaimCount": 0,
+      "canonicalDelta": 0,
+      "knowledgeTreeUnchanged": true,
+      "knowledgeRevisionBefore": 0,
+      "knowledgeRevisionAfter": 0,
+      "rawRegistryPresentBefore": true,
+      "rawRegistryPresentAfter": true,
+      "rawRegistryExists": true,
+      "metricsSource": "AKShare live financialData normalized with current Earnings financial normalization contract"
+    }
+  ],
+  "completedRunCount": 4,
+  "reportBundleReloadedRunCount": 4,
+  "allReportsAndBundlesReloaded": true,
+  "knowledgeCheckCount": 4,
+  "allKnowledgeUnchanged": true,
+  "reportReferenceCheckCount": 4,
+  "allReportCanonicalRefsResolve": true,
+  "secretsIncluded": false,
+  "rawBodiesIncluded": false
+}

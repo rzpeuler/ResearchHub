@@ -1,0 +1,279 @@
+{
+  "task": "RHL-EXEC-003-A-003",
+  "capturedAt": "2026-10-09T21:28:30.713Z",
+  "liveRun": true,
+  "productionPath": "ApplicationRuntime -> ResearchDispatchService.startAsync -> ResearchService -> EarningsReview DataResolver -> catalog/source policy -> acquisition plugins -> EarningsReview Skill",
+  "actualVsConsensusRealStatus": "ACTUAL_VS_CONSENSUS_REAL_DATA_GAP",
+  "isolatedKnowledgeBase": {
+    "schemaVersion": "0.4",
+    "beforeObjectCount": 0,
+    "afterObjectCount": 0,
+    "beforeDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "afterDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "unchanged": true
+  },
+  "dispatchBundleCount": 1,
+  "runs": [
+    {
+      "target": {
+        "symbol": "002487",
+        "name": "大金重工",
+        "exchange": "SZ",
+        "fiscalYear": 2025,
+        "period": "FY"
+      },
+      "dispatchStatus": "started",
+      "runId": "7be38602-8a38-4c98-97b6-c06ca3aa2c57",
+      "dispatchResolution": {
+        "source": "deterministic_fallback",
+        "attempts": 2,
+        "diagnostics": [
+          "entities[0].value must be a non-empty string of at most 500 characters",
+          "entities[0].confidence must be a finite number between 0 and 1",
+          "semantic_resolution_fallback"
+        ]
+      },
+      "execution": {
+        "status": "completed",
+        "blockedReason": null,
+        "errors": [],
+        "providerOutcomes": [
+          {
+            "provider": "cninfo",
+            "providerAttempted": true,
+            "providerSucceeded": true,
+            "providerEmpty": false,
+            "providerFailed": false,
+            "usableSourceCount": 1
+          },
+          {
+            "provider": "akshare",
+            "providerAttempted": true,
+            "providerSucceeded": true,
+            "providerEmpty": false,
+            "providerFailed": false,
+            "usableSourceCount": 1
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "providerAttempted": true,
+            "providerSucceeded": false,
+            "providerEmpty": true,
+            "providerFailed": false,
+            "usableSourceCount": 0
+          },
+          {
+            "provider": "eastmoney-individual-research-report",
+            "providerAttempted": true,
+            "providerSucceeded": false,
+            "providerEmpty": true,
+            "providerFailed": false,
+            "usableSourceCount": 0
+          }
+        ],
+        "diagnostics": [
+          {
+            "provider": "management-communication",
+            "status": "empty",
+            "reason": "cninfo_ir_no_accepted_records"
+          },
+          {
+            "provider": "management-communication",
+            "status": "empty",
+            "reason": "Pi reasoning execution timed out"
+          },
+          {
+            "provider": "management-communication",
+            "status": "empty",
+            "reason": "REASONING_EXECUTION_FAILED"
+          },
+          {
+            "provider": "management-communication",
+            "status": "empty",
+            "reason": "unsupported_exchange:SZ"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "kind": "structured_data",
+            "status": "empty",
+            "reason": "automatic_expectations_unavailable"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "kind": "structured_data",
+            "status": "empty",
+            "reason": "eps:eastmoney_akshare_eps_invalid:13:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:14:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:15:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:16:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:17:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:18:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:19:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:20:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:21:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:22:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:23:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:24:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:25:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:26:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:27:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:28:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:29:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:30:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:31:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:32:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:33:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:34:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:35:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:36:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:37:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:38:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:39:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:40:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:41:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:42:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:43:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:44:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:45:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:46:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:47:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:48:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:49:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:50:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:51:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:51:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:51:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:52:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:52:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:53:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:53:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:54:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:54:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:55:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:55:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:56:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:56:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:57:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:57:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:58:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:58:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:59:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:59:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:60:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:60:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:61:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:61:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:62:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:62:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:63:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:63:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:64:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:64:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:65:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:65:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:66:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:66:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:66:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:67:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:67:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:67:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:68:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:68:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:68:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:69:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:69:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:69:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:70:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:70:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:70:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:71:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:71:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:71:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:72:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:72:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:72:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:73:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:73:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:73:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:74:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:74:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:74:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:75:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:75:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:75:2028-盈利预测-收益"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "kind": "structured_data",
+            "status": "empty",
+            "reason": "eps:EASTMONEY_LEGACY_REPORT_ROUTE_UNAVAILABLE"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "kind": "structured_data",
+            "status": "empty",
+            "reason": "eps:eps_no_usable_estimates"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "kind": "structured_data",
+            "status": "empty",
+            "reason": "eps:PRIMARY_NO_DATA|FALLBACK_1_NO_DATA|FALLBACK_2_UNSUPPORTED"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "kind": "structured_data",
+            "status": "empty",
+            "reason": "net_profit:net_profit_no_usable_estimates"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "kind": "structured_data",
+            "status": "empty",
+            "reason": "net_profit:PRIMARY_NO_DATA"
+          },
+          {
+            "provider": "eastmoney-individual-research-report",
+            "kind": "structured_data",
+            "status": "empty",
+            "reason": "automatic_expectations_unavailable"
+          },
+          {
+            "provider": "eastmoney-individual-research-report",
+            "kind": "structured_data",
+            "status": "empty",
+            "reason": "eps:eastmoney_akshare_eps_invalid:13:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:14:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:15:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:16:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:17:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:18:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:19:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:20:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:21:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:22:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:23:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:24:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:25:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:26:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:27:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:28:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:29:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:30:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:31:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:32:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:33:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:34:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:35:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:36:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:37:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:38:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:39:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:40:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:41:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:42:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:43:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:44:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:45:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:46:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:47:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:48:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:49:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:50:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:51:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:51:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:51:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:52:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:52:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:53:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:53:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:54:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:54:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:55:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:55:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:56:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:56:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:57:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:57:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:58:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:58:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:59:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:59:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:60:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:60:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:61:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:61:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:62:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:62:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:63:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:63:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:64:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:64:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:65:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:65:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:66:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:66:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:66:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:67:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:67:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:67:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:68:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:68:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:68:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:69:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:69:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:69:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:70:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:70:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:70:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:71:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:71:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:71:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:72:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:72:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:72:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:73:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:73:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:73:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:74:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:74:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:74:2028-盈利预测-收益|eastmoney_akshare_eps_invalid:75:2026-盈利预测-收益|eastmoney_akshare_eps_invalid:75:2027-盈利预测-收益|eastmoney_akshare_eps_invalid:75:2028-盈利预测-收益"
+          },
+          {
+            "provider": "eastmoney-individual-research-report",
+            "kind": "structured_data",
+            "status": "empty",
+            "reason": "eps:EASTMONEY_LEGACY_REPORT_ROUTE_UNAVAILABLE"
+          },
+          {
+            "provider": "eastmoney-individual-research-report",
+            "kind": "structured_data",
+            "status": "empty",
+            "reason": "eps:eps_no_usable_estimates"
+          },
+          {
+            "provider": "eastmoney-individual-research-report",
+            "kind": "structured_data",
+            "status": "empty",
+            "reason": "eps:PRIMARY_NO_DATA|FALLBACK_1_NO_DATA|FALLBACK_2_UNSUPPORTED"
+          },
+          {
+            "provider": "eastmoney-individual-research-report",
+            "kind": "structured_data",
+            "status": "empty",
+            "reason": "net_profit:net_profit_no_usable_estimates"
+          },
+          {
+            "provider": "eastmoney-individual-research-report",
+            "kind": "structured_data",
+            "status": "empty",
+            "reason": "net_profit:PRIMARY_NO_DATA"
+          }
+        ],
+        "selectionDiagnostics": [],
+        "telemetry": {
+          "officialEvidenceStatus": "available",
+          "structuredFinancialEvidenceStatus": "available",
+          "expectationAcquisitionStatus": "unavailable",
+          "expectationEstimateCount": 0,
+          "expectationInstitutionCount": 0,
+          "expectationConsensusSnapshotCount": 0,
+          "actualConsensusComparisonCount": 0,
+          "estimateRevisionCount": 0,
+          "reasoning": {
+            "called": true,
+            "validated": false,
+            "applied": false,
+            "fallbackUsed": true,
+            "repairAttempts": 1,
+            "operation": "earnings_review_synthesis",
+            "model": "zhipu-openapi/glm-5.3-flash",
+            "diagnostic": "executor_reasoning_timeout; executor_reasoning_timeout",
+            "diagnostics": [
+              "executor_reasoning_timeout",
+              "executor_reasoning_timeout"
+            ]
+          }
+        },
+        "expectationAnalysis": null,
+        "financialQuality": null,
+        "report": {
+          "reportId": "earnings-review-002487-2025-FY-7be38602-8a38-4c98-97b6-c06ca3aa2c57"
+        },
+        "reportPath": "earnings-review-002487-2025-FY-7be38602-8a38-4c98-97b6-c06ca3aa2c57.md"
+      },
+      "bundle": {
+        "bundleId": "research-bundle-7be38602-8a38-4c98-97b6-c06ca3aa2c57",
+        "workflowRunId": "7be38602-8a38-4c98-97b6-c06ca3aa2c57",
+        "status": "completed",
+        "report": {
+          "reportId": "earnings-review-002487-2025-FY-7be38602-8a38-4c98-97b6-c06ca3aa2c57"
+        },
+        "reloadedFromStore": true
+      },
+      "reportReloaded": true,
+      "reportSectionCount": 14,
+      "reportEvidence": {
+        "reportId": "earnings-review-002487-2025-FY-7be38602-8a38-4c98-97b6-c06ca3aa2c57",
+        "generatedAt": "2026-10-09T21:28:30.703Z",
+        "asOf": "2026-10-09T21:12:04.426Z",
+        "verifiedSecurityIdentity": {
+          "symbol": "002487",
+          "exchange": "SZ",
+          "verifiedName": "大金重工",
+          "verificationSource": "akshare_security_directory",
+          "originAuthority": "S3_AGGREGATOR",
+          "verifiedAt": "2026-10-09T21:12:04.420Z",
+          "sourceId": "akshare-security-identity-directory",
+          "sourceUrl": "https://github.com/akfamily/akshare"
+        },
+        "sourceRefCount": 0,
+        "claimRefCount": 0,
+        "selectedSections": [
+          {
+            "title": "Earnings Snapshot",
+            "markdown": "Structured actuals returned for 002487 (2025-FY):\n- Revenue: 6,173,550,246.46 CNY (2025-FY; observed).\n- Net profit: 1,103,297,424.75 CNY (2025-FY; observed).\n- Gross margin: 31.1839 percent (2025-FY; observed).\n- EPS: 1.73 CNY/share (2025-FY; observed).\n\n#### Source and period provenance\n- Official filing: 2025年年度报告; issuer 大金重工; ticker 002487; period 2025-FY; announcement 1224997956; published 2026-03-05T16:00:00.000Z; retrieved 2026-10-09T21:21:24.292Z; publisher CNINFO; URL https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF.\n- Structured actuals: publisher EastMoney; retrieved by AKShare; retrieved 2026-10-09T21:21:25.608Z; published unavailable; value version UNVERIFIED (Aggregator financial numeric revision is not identified); period 2025-FY\n  - revenue: 6173550246.46 CNY (2025-FY)\n  - net_profit: 1103297424.75 CNY (2025-FY)\n  - gross_margin: 31.1839246732 percent (2025-FY)\n  - eps: 1.73 CNY_per_share (2025-FY)\n  - revenue_yoy: 63.336534205515015 percent (2025-FY)\n  - net_profit_yoy: 132.82463397880633 percent (2025-FY)\n  - gross_margin_delta_bps: 135.59611601999995 ratio (2025-FY)",
+            "evidenceLinks": [
+              "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF"
+            ]
+          },
+          {
+            "title": "Revenue / Profit Growth",
+            "markdown": "- Revenue YoY: 63.3365 percent (2025-FY; derived).\n- Net profit YoY: 132.8246 percent (2025-FY; derived).",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Margin Analysis",
+            "markdown": "- Gross margin: 31.1839 percent (2025-FY; observed).\n- Gross margin change vs prior-year period: 135.5961 bps (2025-FY; derived).",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Cash Flow / Working Capital",
+            "markdown": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Cash Flow / Working Capital. Operating cash flow and cash-conversion inputs are unavailable.\n\n### Deterministic financial-quality checks\n- DSO: unavailable\n- DIO: unavailable\n- DPO: unavailable\n- Cash Conversion Cycle: unavailable\n- CFO / Net Income: unavailable\n- FCF: unavailable\n- FCF / Net Income: unavailable\n- Unavailable components: unavailable (opening.receivables, current.receivables, opening.inventory, current.inventory, opening.payables, current.payables, current.cogs, cashConversionCycle, current.cashFromOperations, current.capex)",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Valuation Implications",
+            "markdown": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Valuation Implications. Consensus unavailable; no actual-versus-consensus or valuation conclusion is made.\n\nNo verified expectation finding mapped to a valuation input.",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Research Gaps / Monitoring",
+            "markdown": "Unavailable metrics for 002487: operating_cash_flow, operating_cash_flow_to_net_profit. Deterministic diagnostics: executor_reasoning_timeout; executor_reasoning_timeout.\n\n### Management communication monitoring\n- diagnostic: cninfo_ir_no_accepted_records\n- diagnostic: Pi reasoning execution timed out\n- diagnostic: REASONING_EXECUTION_FAILED\n- diagnostic: unsupported_exchange:SZ",
+            "evidenceLinks": [
+              "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "resultDigest": "6100eec0246b677925e13447124181202cc996ac227833479f37ec7b128b7411"
+}

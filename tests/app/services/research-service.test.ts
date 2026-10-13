@@ -4,14 +4,18 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createFreshKnowledgeBaseV04 } from '../../../knowledge/storage/create-v04.ts'
+import { KnowledgeBaseRegistry } from '../../../knowledge/registry/registry.ts'
+import { KnowledgeProductionGateway } from '../../../knowledge/production/gateway.ts'
 import type { ThemeScopeImpactChecker } from '../../../workflows/theme-scope-impact-check/post-write.ts'
 import type { ThemeScopeImpactWriteReceipt } from '../../../app/services/theme-scope-impact-service.ts'
 import { ResearchService } from '../../../app/services/research-service.ts'
+import { SecurityIdentityResolver } from '../../../app/services/security-identity-resolver.ts'
 import { writeResearchReport, type ResearchReport } from '../../../app/services/research-report.ts'
 import { WorkflowService } from '../../../app/services/workflow-service.ts'
 import type { ResearchAcquisitionPlugin, ResearchSourceCandidate, ResearchSignal, ResearchSignalStore } from '../../../plugins/research-acquisition/contracts.ts'
 import { OfficialDisclosureResearchPlugin, type OfficialDisclosureClient } from '../../../plugins/research-acquisition/official.ts'
 import { GdeltResearchPlugin } from '../../../plugins/research-acquisition/gdelt.ts'
+import { createSecurityIdentityDataResolver, type AkshareSecurityDirectoryClient } from '../../../plugins/research-acquisition/security-identity-data.ts'
 
 function fixtureEvidenceAdapter(route: 'cninfo' | 'gdelt', calls: { discovered: number; fetched: number; normalized: number }): Pick<ResearchAcquisitionPlugin, 'discover' | 'fetch' | 'normalize'> {
   const candidate: ResearchSourceCandidate = {
@@ -26,13 +30,20 @@ function fixtureEvidenceAdapter(route: 'cninfo' | 'gdelt', calls: { discovered: 
   }
 }
 
+async function seedCanonicalCompany(root: string, runId: string): Promise<void> {
+  const asOf = new Date().toISOString()
+  const handle = await new KnowledgeBaseRegistry().mount(root)
+  const result = await new KnowledgeProductionGateway().submit({ handle, producerType: 'fixture_identity', producerRunId: runId, schemaProfile: { schemaVersion: '0.4', storageFormatVersion: '1', requiresRawProvenance: true }, entity: { localKey: 'company', entityType: 'company', name: 'Fixture Company', aliases: ['600519'], semanticFields: { ticker: '600519', exchange: 'SH' } }, proposals: [], evidenceBindings: [], asOf, now: () => asOf })
+  assert.equal(result.status, 'committed')
+}
+
 class CapturingResearchSignalStore implements ResearchSignalStore {
   readonly providers: string[] = []
   async append(signal: ResearchSignal): Promise<void> { this.providers.push(signal.source.provider) }
   async listForCompany(): Promise<readonly ResearchSignal[]> { return [] }
 }
 
-test('Application Service exposes research_company through one Workflow path', async () => { const root = await mkdtemp(join(tmpdir(), 'researchhub-service-kb-')); const reports = await mkdtemp(join(tmpdir(), 'researchhub-service-reports-')); try { await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-service' }); const plugin: ResearchAcquisitionPlugin = { name: 'fixture-official', discover: async () => [], fetch: async (candidate) => ({ candidate, retrievedAt: new Date().toISOString(), content: '' }), normalize: async (source) => ({ candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: source.content, contentHash: 'a'.repeat(64), publisher: source.candidate.provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }) }; const workflowService = new WorkflowService(); const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [plugin], workflowService }); const started = service.startResearchCompany({ workflowRunId: 'service-run', symbol: '600519' }); const result = await started.completion; assert.equal(result.status, 'completed'); assert.equal(workflowService.getWorkflowStatus('service-run')?.status, 'completed'); assert.match(result.reportId ?? '', /600519/); assert.equal((await service.getResearchReport(result.reportId!)).reportId, result.reportId) } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) } })
+test('Application Service reports an explicit gap when a covered Company has no acquired evidence', async () => { const root = await mkdtemp(join(tmpdir(), 'researchhub-service-kb-')); const reports = await mkdtemp(join(tmpdir(), 'researchhub-service-reports-')); try { await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-service' }); await seedCanonicalCompany(root, 'service-company-identity'); const plugin: ResearchAcquisitionPlugin = { name: 'fixture-official', discover: async () => [], fetch: async (candidate) => ({ candidate, retrievedAt: new Date().toISOString(), content: '' }), normalize: async (source) => ({ candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: source.content, contentHash: 'a'.repeat(64), publisher: source.candidate.provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }) }; const workflowService = new WorkflowService(); const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [plugin], workflowService }); const started = service.startResearchCompany({ workflowRunId: 'service-run', symbol: '600519', name: 'Fixture Company', exchange: 'SH', writeKnowledge: false }); const result = await started.completion; assert.equal(result.status, 'blocked'); assert.equal(workflowService.getWorkflowStatus('service-run')?.status, 'blocked'); assert.match(result.errorSummary ?? '', /NO_COMPANY_RESEARCH_EVIDENCE/); assert.match(result.reportId ?? '', /600519/); assert.equal((await service.getResearchReport(result.reportId!)).reportId, result.reportId) } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) } })
 
 test('legacy ResearchService constructor routes explicit CNINFO and GDELT adapter instances through Data', async () => {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-legacy-evidence-kb-'))
@@ -44,6 +55,8 @@ test('legacy ResearchService constructor routes explicit CNINFO and GDELT adapte
     const cninfo = Object.assign(new OfficialDisclosureResearchPlugin({} as OfficialDisclosureClient), fixtureEvidenceAdapter('cninfo', calls.cninfo))
     const gdelt = Object.assign(new GdeltResearchPlugin(), fixtureEvidenceAdapter('gdelt', calls.gdelt))
     assert.equal(cninfo.name, 'official-disclosure-research-acquisition')
+    const directory = { async securityDirectory() { return [{ symbol: '600519', name: 'Fixture Company', exchange: 'SH' }] } } as unknown as AkshareSecurityDirectoryClient
+    const securityIdentityResolver = new SecurityIdentityResolver({ mountedKnowledgeBaseRoot: root, dataResolverFactory: ({ now, signal }) => createSecurityIdentityDataResolver({ akshare: directory, now, ...(signal ? { signal } : {}) }) })
     const service = new ResearchService({
       mountedKnowledgeBaseRoot: root,
       reportRoot: reports,
@@ -51,6 +64,7 @@ test('legacy ResearchService constructor routes explicit CNINFO and GDELT adapte
       acquisitionPlugins: [cninfo, gdelt],
       signalStore,
       workflowService: new WorkflowService(),
+      securityIdentityResolver,
     })
     const result = await service.startResearchCompany({ workflowRunId: 'legacy-evidence-run', symbol: '600519', name: 'Fixture Company', writeKnowledge: false }).completion
     assert.equal(result.status, 'completed')
@@ -71,18 +85,19 @@ test('Company Deep Research triggers scope impact only after its committed Write
   const receipts: ThemeScopeImpactWriteReceipt[] = []
   try {
     await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-company-impact' })
+    await seedCanonicalCompany(root, 'company-impact-identity')
     const plugin: ResearchAcquisitionPlugin = {
       name: 'fixture-official',
-      discover: async () => [{ candidateId: 'company-impact-source', kind: 'official_disclosure', tier: 1, title: 'Company fixture filing', provider: 'fixture', publishedAt: '2026-09-07T00:00:00.000Z', metadata: { companySymbol: '600519' } }],
+      discover: async () => [{ candidateId: 'company-impact-source', kind: 'official_disclosure', tier: 1, title: 'Company fixture filing', url: 'https://example.com/company-impact-source', provider: 'fixture', publishedAt: '2026-09-07T00:00:00.000Z', metadata: { companySymbol: '600519' } }],
       fetch: async (candidate) => ({ candidate, retrievedAt: '2026-09-08T00:00:00.000Z', content: 'The company reported stable revenue.', contentHash: 'b'.repeat(64) }),
-      normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, publisher: 'Fixture Official', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
+      normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: 'Fixture Official', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
     }
     const checker: ThemeScopeImpactChecker = { check: async (input) => {
       const receipt = input as ThemeScopeImpactWriteReceipt
       receipts.push(receipt)
       return { receiptKey: 'c'.repeat(64), knowledgeBaseId: receipt.knowledgeBaseId, baseRevision: receipt.baseRevision, committedRevision: receipt.committedRevision, status: 'ready', proposals: [], diagnostics: [] }
     } }
-    const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [plugin], workflowService: new WorkflowService(), themeScopeImpactChecker: checker })
+    const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [], researchEvidenceProviders: { cninfo: plugin }, workflowService: new WorkflowService(), themeScopeImpactChecker: checker })
     const result = await service.startResearchCompany({ workflowRunId: 'company-impact-run', symbol: '600519', name: 'Fixture Company' }).completion
     assert.equal(result.status, 'completed')
     assert.ok(result.committedIds.length > 0)

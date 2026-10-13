@@ -39,10 +39,52 @@ export class EarningsReviewSkill {
   constructor(private readonly now: () => string = () => new Date().toISOString(), private readonly executor?: ReasoningExecutor) {}
 
   fallback(input: EarningsReviewSkillInput, computation: EarningsComputation, reason?: string, options: { readonly repairAttempts?: number; readonly diagnostics?: readonly string[] } = {}): EarningsReviewSkillResult {
-    const unavailable = computation.unavailable.length ? `Unavailable metrics for ${input.company.symbol}: ${computation.unavailable.join(', ')}.` : `Verified current-period metrics for ${input.company.symbol} are available.`
+    const unavailable = computation.unavailable.length ? `Unavailable metrics for ${input.company.symbol}: ${computation.unavailable.join(', ')}.` : `Available normalized current-period metrics for ${input.company.symbol} are listed above; numeric value-version status is reported separately.`
     const diagnostics = options.diagnostics ?? (reason === undefined ? [] : ['semantic_reasoning_failed'])
     const safeReason = diagnostics.join('; ')
-    const sections = EARNINGS_REVIEW_SECTIONS.map((title) => ({ id: sectionId(title), title, markdown: title === 'Research Gaps / Monitoring' ? `${gap(title)} ${unavailable}${safeReason ? ` Deterministic diagnostics: ${safeReason}.` : ''}` : title === 'Valuation Implications' ? `${gap(title)} Consensus unavailable` : gap(title), sourceCandidateIds: [], assessmentRefs: [] }))
+    const current = computation.metrics.filter((metric) => metric.period === input.period.key)
+    const officialRefs = [...new Set(input.officialSources.map((source) => source.candidateId))]
+    const metricRefs = (names: readonly string[]) => [...new Set(names.flatMap((name) => computation.byMetric[name]?.sourceCandidateIds ?? []))]
+    const metricLine = (name: keyof typeof METRIC_LABELS) => {
+      const metric = computation.byMetric[name]
+      if (!metric) return undefined
+      const unit = metric.metric === 'gross_margin_delta_bps' ? 'bps' : metric.unit === 'CNY_per_share' ? 'CNY/share' : metric.unit
+      return `- ${METRIC_LABELS[name]}: ${formatMetricValue(metric.value)} ${unit} (${metric.period}; ${metric.calculation}).`
+    }
+    const lines = (names: readonly (keyof typeof METRIC_LABELS)[]) => names.map(metricLine).filter((line): line is string => line !== undefined)
+    const sectionContent: Partial<Record<(typeof EARNINGS_REVIEW_SECTIONS)[number], { readonly markdown: string; readonly refs: readonly string[] }>> = {
+      'Earnings Snapshot': {
+        markdown: current.length ? `Structured actuals returned for ${input.company.symbol} (${input.period.key}):\n${lines(['revenue', 'net_profit', 'gross_margin', 'operating_cash_flow', 'eps']).join('\n') || '- No supported core metrics.'}` : gap('Earnings Snapshot'),
+        refs: [...officialRefs, ...metricRefs(['revenue', 'net_profit', 'gross_margin', 'operating_cash_flow', 'eps'])],
+      },
+      'Revenue / Profit Growth': {
+        markdown: lines(['revenue_yoy', 'net_profit_yoy']).join('\n') || gap('Revenue / Profit Growth'),
+        refs: metricRefs(['revenue_yoy', 'net_profit_yoy']),
+      },
+      'Margin Analysis': {
+        markdown: lines(['gross_margin', 'gross_margin_delta_bps']).join('\n') || gap('Margin Analysis'),
+        refs: metricRefs(['gross_margin', 'gross_margin_delta_bps']),
+      },
+      'Cash Flow / Working Capital': {
+        markdown: lines(['operating_cash_flow', 'operating_cash_flow_to_net_profit']).join('\n') || `${gap('Cash Flow / Working Capital')} Operating cash flow and cash-conversion inputs are unavailable.`,
+        refs: metricRefs(['operating_cash_flow', 'operating_cash_flow_to_net_profit']),
+      },
+      'Earnings Quality': {
+        markdown: computation.byMetric.operating_cash_flow_to_net_profit
+          ? lines(['operating_cash_flow_to_net_profit']).join('\n')
+          : `${gap('Earnings Quality')} Cash conversion and accrual-quality inputs are incomplete; no earnings-quality conclusion is made.`,
+        refs: metricRefs(['operating_cash_flow_to_net_profit']),
+      },
+      'Valuation Implications': { markdown: `${gap('Valuation Implications')} Consensus unavailable; no actual-versus-consensus or valuation conclusion is made.`, refs: [] },
+      'Research Gaps / Monitoring': {
+        markdown: `${unavailable}${safeReason ? ` Deterministic diagnostics: ${safeReason}.` : ''}`,
+        refs: [...officialRefs, ...metricRefs(Object.keys(computation.byMetric))],
+      },
+    }
+    const sections = EARNINGS_REVIEW_SECTIONS.map((title) => {
+      const content = sectionContent[title]
+      return { id: sectionId(title), title, markdown: content?.markdown ?? gap(title), sourceCandidateIds: content?.refs ?? [], assessmentRefs: [] }
+    })
     const runtime = this.executor as unknown as { runtimeMetadata?: () => { requestedModel?: string } } | undefined
     const model = typeof runtime?.runtimeMetadata === 'function' ? runtime.runtimeMetadata().requestedModel : undefined
     return { sections, assessments: [], proposals: [], reasoning: { called: this.executor !== undefined, validated: false, applied: false, fallbackUsed: true, repairAttempts: options.repairAttempts ?? 0, operation: 'earnings_review_synthesis', ...(model === undefined ? {} : { model }), ...(diagnostics.length === 0 ? {} : { diagnostic: diagnostics.join('; ').slice(0, 300), diagnostics }) } }
@@ -93,6 +135,11 @@ export class EarningsReviewSkill {
 
 function sectionId(title: string): string { return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') }
 function gap(title: string): string { return `Research Gap / Unavailable: no bounded evidence supports a conclusion for ${title}.` }
+function formatMetricValue(value: number): string { return new Intl.NumberFormat('en-US', { maximumFractionDigits: 4, useGrouping: true }).format(value) }
+const METRIC_LABELS = {
+  revenue: 'Revenue', net_profit: 'Net profit', gross_margin: 'Gross margin', operating_cash_flow: 'Operating cash flow', eps: 'EPS',
+  revenue_yoy: 'Revenue YoY', net_profit_yoy: 'Net profit YoY', gross_margin_delta_bps: 'Gross margin change vs prior-year period', operating_cash_flow_to_net_profit: 'Operating cash flow / net profit',
+} as const
 
 function allowedSets(input: EarningsReviewSkillInput, computation: EarningsComputation): AllowedSets {
   const sourceCandidateIds = [...new Set([...input.officialSources.map((source) => source.candidateId), ...computation.metrics.flatMap((metric) => metric.sourceCandidateIds)])].sort()

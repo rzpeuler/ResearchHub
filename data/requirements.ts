@@ -108,6 +108,40 @@ export interface Phase3CommonRequirementContext {
   readonly asOfMode?: 'CURRENT_VALUE_ONLY' | 'HISTORICAL'
 }
 
+export interface SecurityIdentityRequirementContext {
+  readonly workflowId: 'company_research' | 'valuation' | 'earnings_review'
+  readonly requestedName?: string
+  readonly requestedSymbol?: string
+  readonly requestedExchange?: string
+  readonly asOf: string
+}
+
+/** Materialize a provider-neutral exact identity lookup through the normal Data contract. */
+export function materializeSecurityIdentityRequirement(context: SecurityIdentityRequirementContext): DataRequirement {
+  const requestedName = context.requestedName?.trim()
+  const requestedSymbol = context.requestedSymbol?.trim()
+  const requestedExchange = context.requestedExchange?.trim().toUpperCase()
+  const requirement: DataRequirement = {
+    id: `${context.workflowId}:security_identity_directory:${requestedSymbol ?? requestedName}`,
+    consumer: { workflow: context.workflowId },
+    subject: { ...(requestedSymbol ? { ticker: requestedSymbol } : {}) },
+    dataKind: 'evidence',
+    metricId: 'security_identity_directory',
+    securityIdentityQueryContext: {
+      ...(requestedName ? { requestedName } : {}),
+      ...(requestedSymbol ? { requestedSymbol } : {}),
+      ...(requestedExchange ? { requestedExchange } : {}),
+    },
+    asOf: context.asOf,
+    analysisAsOf: context.asOf,
+    determinismClass: 'SEMANTIC_QUALITATIVE',
+    required: true,
+    llmWebFallback: 'FORBIDDEN',
+  }
+  assertValidDataRequirement(requirement)
+  return requirement
+}
+
 /** Materialize only audited Company inputs; the requested period belongs to the consumer. */
 export function materializePhase3CommonRequirement(metricId: string, context: Phase3CommonRequirementContext): DataRequirement {
   const definition = COMMON_DATA_CATALOG.find((item) => item.metricId === metricId)

@@ -5,6 +5,8 @@ export type DocumentPluginErrorCode =
   | 'document_parser_unavailable'
   | 'document_parser_unsupported'
   | 'document_parser_environment_not_ready'
+  | 'document_parser_cancelled'
+  | 'document_parser_timeout'
   | 'document_parser_failed'
   | 'document_structure_invalid'
   | 'document_text_extraction_insufficient'

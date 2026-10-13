@@ -32,6 +32,23 @@ function validBundle(overrides: Partial<NonNullable<Parameters<typeof buildEarni
   return { sources: [source('estimate-a-source'), source('estimate-b-source')], estimates, consensusSnapshots: [consensus], ...overrides }
 }
 
+test('expectation report preserves available institution forecasts and explains period or result-cutoff gaps', () => {
+  const forecastSource = { ...source('estimate-a-source', '2026-09-01T00:00:00.000Z'), candidate: { ...source('estimate-a-source').candidate, url: 'https://example.test/forecast.pdf' } }
+  const forecast = estimate({ metric: 'eps', fiscalPeriod: '2026-FY', unit: 'CNY_per_share', value: 5.25, publishedAt: '2026-09-01T00:00:00.000Z' })
+  const bundle = { sources: [forecastSource], estimates: [forecast], consensusSnapshots: [] }
+  const analysis = buildEarningsExpectationAnalysis({ analysisAsOf: AS_OF, resultPublishedAt: RESULT, actualMetrics: actual(), expectations: bundle })
+  const sections = EARNINGS_REVIEW_SECTIONS.map((title) => ({ id: title.toLowerCase().replace(/\W+/gu, '-'), title, markdown: 'Research Gap / Unavailable: no bounded evidence supports this section.', sourceCandidateIds: [], assessmentRefs: [] }))
+  const enriched = enrichEarningsReviewSectionsWithExpectations(sections, analysis, { requestedFiscalPeriod: '2026-H1', analysisAsOf: AS_OF, resultPublishedAt: RESULT, mode: 'automatic', acquisitionStatus: 'partial', estimateCount: 1, institutionCount: 1, consensusSnapshotCount: 0, revisionLinkCount: 0, providerOutcomes: [{ provider: 'ths-institution-forecast', providerAttempted: true, providerSucceeded: true, providerEmpty: false, providerFailed: false, usableSourceCount: 1 }], diagnostics: [], bundle })
+  const snapshot = enriched.find((section) => section.title === 'Earnings Snapshot')!
+  assert.match(snapshot.markdown, /Requested actual period: 2026-H1/)
+  assert.match(snapshot.markdown, /official result cutoff 2026-08-30/)
+  assert.match(snapshot.markdown, /institution forecasts \(1\)/)
+  assert.match(snapshot.markdown, /eps 2026-FY 5\.25 CNY_per_share/)
+  assert.match(snapshot.markdown, /publisher fixture; retrieved by fixture at 2026-09-01T00:00:00\.000Z; URL https:\/\/example\.test\/forecast\.pdf/)
+  assert.match(snapshot.markdown, /No same-metric, same-unit, same-period, pre-result consensus qualified/)
+  assert.deepEqual(snapshot.sourceCandidateIds, ['estimate-a-source'])
+})
+
 class NoopExecutor implements ReasoningExecutor {
   capabilities() { return { maxContextTokens: 100_000, maxOutputTokens: 10_000, structuredOutputSupport: true, maxConcurrency: 1 } }
   async execute(request: ReasoningRequest): Promise<ReasoningResult> { return { operation: request.operation, operationId: 'w2-004-noop', output: {} } }
@@ -92,17 +109,19 @@ test('W2-004-FIX-001 an authoritative official cutoff overrides a later bundle f
   assert.equal(result.diagnostics.includes('resultPublishedAt_after_analysisAsOf'), false)
 })
 
-test('W2-004-FIX-001 live Workflow keeps a future fallback non-blocking and preserves Consensus unavailable', async () => {
-  const fixture = await liveFixture(false)
+test('W2-004-FIX-001 live Workflow uses the exact official cutoff instead of a future fallback timestamp', async () => {
+  const fixture = await liveFixture()
   try {
     const result = await runEarningsReview({ workflowRunId: 'w2-004-fix-001-live-future', handle: fixture.handle, company: { symbol: '600519', name: '贵州茅台', exchange: 'SSE' }, fiscalYear: 2026, period: 'H1', reportRoot: fixture.reports, acquisitionPlugins: [fixture.plugin], akshare: fixture.akshare, reasoningExecutor: new NoopExecutor(), now: () => AS_OF, expectations: validBundle({ resultPublishedAt: '2026-10-01T00:00:00.000Z' }) })
     assert.equal(result.status, 'completed')
-    assert.equal(result.telemetry.consensusStatus, 'unavailable')
-    assert.ok(['unavailable', 'partial'].includes(result.telemetry.expectationStatus))
-    assert.equal(result.expectationAnalysis?.actualVsConsensus.length, 0)
+    assert.equal(result.telemetry.officialEvidenceStatus, 'available')
+    assert.equal(result.telemetry.structuredFinancialEvidenceStatus, 'available')
+    assert.equal(result.telemetry.consensusStatus, 'available')
+    assert.equal(result.telemetry.expectationStatus, 'available')
+    assert.equal(result.expectationAnalysis?.actualVsConsensus.length, 1)
     assert.equal(result.expectationAnalysis?.actualVsPriorEstimate.length, 0)
     const report = await readFile(result.report!.outputPath, 'utf8')
-    assert.match(report, /Consensus unavailable/)
+    assert.match(report, /actual=120; PIT consensus=105/)
     assert.equal(result.sourceIds.some((id) => id.includes('estimate-a-source') || id.includes('estimate-b-source')), false)
   } finally { await fixture.close() }
 })

@@ -1,0 +1,390 @@
+{
+  "task": "RHL-EXEC-003-A-003",
+  "capturedAt": "2026-10-09T23:28:04.159Z",
+  "liveRun": true,
+  "productionPath": "ApplicationRuntime -> ResearchDispatchService.startAsync -> ResearchService -> EarningsReview DataResolver -> catalog/source policy -> acquisition plugins -> EarningsReview Skill",
+  "actualVsConsensusRealStatus": "ACTUAL_VS_CONSENSUS_REAL_DATA_GAP",
+  "isolatedKnowledgeBase": {
+    "schemaVersion": "0.4",
+    "beforeObjectCount": 0,
+    "afterObjectCount": 0,
+    "beforeDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "afterDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "unchanged": true
+  },
+  "dispatchBundleCount": 1,
+  "runs": [
+    {
+      "target": {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SH",
+        "fiscalYear": 2026,
+        "period": "H1"
+      },
+      "dispatchStatus": "started",
+      "runId": "5eb16527-53b5-40db-81ff-e1a7240cbeba",
+      "dispatchResolution": {
+        "source": "deterministic_fallback",
+        "attempts": 2,
+        "diagnostics": [
+          "entities[0].value must be a non-empty string of at most 500 characters",
+          "entities[0].confidence must be a finite number between 0 and 1",
+          "semantic_resolution_fallback"
+        ]
+      },
+      "dispatchFeedback": null,
+      "execution": {
+        "status": "completed",
+        "blockedReason": null,
+        "errors": [],
+        "providerOutcomes": [
+          {
+            "provider": "cninfo",
+            "providerAttempted": true,
+            "providerSucceeded": true,
+            "providerEmpty": false,
+            "providerFailed": false,
+            "usableSourceCount": 1
+          },
+          {
+            "provider": "akshare",
+            "providerAttempted": true,
+            "providerSucceeded": true,
+            "providerEmpty": false,
+            "providerFailed": false,
+            "usableSourceCount": 1
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "providerAttempted": true,
+            "providerSucceeded": true,
+            "providerEmpty": false,
+            "providerFailed": false,
+            "usableSourceCount": 10
+          },
+          {
+            "provider": "eastmoney-individual-research-report",
+            "providerAttempted": false,
+            "providerSucceeded": false,
+            "providerEmpty": false,
+            "providerFailed": false,
+            "usableSourceCount": 0
+          }
+        ],
+        "diagnostics": [
+          {
+            "provider": "management-communication",
+            "status": "empty",
+            "reason": "cninfo_ir_no_accepted_records"
+          },
+          {
+            "provider": "management-communication",
+            "status": "empty",
+            "reason": "Pi reasoning execution timed out"
+          },
+          {
+            "provider": "management-communication",
+            "status": "empty",
+            "reason": "REASONING_EXECUTION_FAILED"
+          },
+          {
+            "provider": "management-communication",
+            "status": "empty",
+            "reason": "unsupported_exchange:SH"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "kind": "structured_data",
+            "status": "usable",
+            "reason": "consensus_minimum_count_not_met"
+          }
+        ],
+        "selectionDiagnostics": [],
+        "telemetry": {
+          "officialEvidenceStatus": "available",
+          "structuredFinancialEvidenceStatus": "available",
+          "expectationAcquisitionStatus": "partial",
+          "expectationEstimateCount": 20,
+          "expectationInstitutionCount": 10,
+          "expectationConsensusSnapshotCount": 0,
+          "actualConsensusComparisonCount": 0,
+          "estimateRevisionCount": 0,
+          "reasoning": {
+            "called": true,
+            "validated": false,
+            "applied": false,
+            "fallbackUsed": true,
+            "repairAttempts": 1,
+            "operation": "earnings_review_synthesis",
+            "model": "zhipu-openapi/glm-5.3-flash",
+            "diagnostic": "executor_reasoning_timeout; executor_reasoning_timeout",
+            "diagnostics": [
+              "executor_reasoning_timeout",
+              "executor_reasoning_timeout"
+            ]
+          }
+        },
+        "expectationAnalysis": {
+          "consensusStatus": "unavailable",
+          "actualVsConsensus": [],
+          "actualVsPriorEstimate": [],
+          "estimateRevisions": [],
+          "guidanceRevisions": [],
+          "guidanceVsConsensus": [],
+          "segmentKpiDeltas": [],
+          "currentGuidance": [],
+          "diagnostics": []
+        },
+        "financialQuality": {
+          "period": "2026-H1",
+          "sourceCandidateId": "akshare-earnings-600519-2026-H1",
+          "workingCapital": {
+            "period": "2026-H1",
+            "unavailableFields": [
+              "opening.receivables",
+              "current.receivables",
+              "opening.inventory",
+              "current.inventory",
+              "opening.payables",
+              "current.payables",
+              "current.cogs",
+              "cashConversionCycle"
+            ],
+            "diagnostics": []
+          },
+          "accrualQuality": {
+            "period": "2026-H1",
+            "unavailableFields": [
+              "opening.totalAssets",
+              "current.totalAssets",
+              "current.cashFromOperations"
+            ],
+            "unavailableReason": "Required accrual-quality inputs are unavailable",
+            "diagnostics": []
+          },
+          "cashConversion": {
+            "period": "2026-H1",
+            "unavailableFields": [
+              "current.cashFromOperations",
+              "current.capex"
+            ],
+            "diagnostics": []
+          },
+          "revenueRecognition": {
+            "period": "2026-H1",
+            "thresholdUsed": 0.1,
+            "flags": [],
+            "unavailableComparisons": [
+              "receivables_growth",
+              "contract_assets_growth",
+              "cfo_growth",
+              "deferred_revenue_growth"
+            ],
+            "diagnostics": []
+          },
+          "diagnostics": []
+        },
+        "qualityGateStatus": "PASS_WITH_WARNINGS",
+        "report": {
+          "reportId": "earnings-review-600519-2026-H1-5eb16527-53b5-40db-81ff-e1a7240cbeba"
+        },
+        "reportPath": "earnings-review-600519-2026-H1-5eb16527-53b5-40db-81ff-e1a7240cbeba.md"
+      },
+      "bundle": {
+        "bundleId": "research-bundle-5eb16527-53b5-40db-81ff-e1a7240cbeba",
+        "workflowRunId": "5eb16527-53b5-40db-81ff-e1a7240cbeba",
+        "status": "completed",
+        "report": {
+          "reportId": "earnings-review-600519-2026-H1-5eb16527-53b5-40db-81ff-e1a7240cbeba"
+        },
+        "reloadedFromStore": true
+      },
+      "reportReloaded": true,
+      "reportMarkdownReloaded": true,
+      "reportSectionCount": 14,
+      "reportEvidence": {
+        "reportId": "earnings-review-600519-2026-H1-5eb16527-53b5-40db-81ff-e1a7240cbeba",
+        "generatedAt": "2026-10-09T23:28:04.148Z",
+        "asOf": "2026-10-09T23:16:57.702Z",
+        "verifiedSecurityIdentity": {
+          "symbol": "600519",
+          "exchange": "SH",
+          "verifiedName": "贵州茅台",
+          "verificationSource": "akshare_security_directory",
+          "originAuthority": "S3_AGGREGATOR",
+          "verifiedAt": "2026-10-09T23:16:57.696Z",
+          "sourceId": "akshare-security-identity-directory",
+          "sourceUrl": "https://github.com/akfamily/akshare"
+        },
+        "sourceRefCount": 0,
+        "claimRefCount": 0,
+        "reportMarkdownReloaded": true,
+        "actualMetrics": [
+          {
+            "metric": "revenue",
+            "value": 92278072083.21,
+            "unit": "CNY",
+            "period": "2026-H1"
+          },
+          {
+            "metric": "net_profit",
+            "value": 44516880421.86,
+            "unit": "CNY",
+            "period": "2026-H1"
+          },
+          {
+            "metric": "gross_margin",
+            "value": 89.5552128279,
+            "unit": "percent",
+            "period": "2026-H1"
+          },
+          {
+            "metric": "eps",
+            "value": 35.57,
+            "unit": "CNY_per_share",
+            "period": "2026-H1"
+          },
+          {
+            "metric": "revenue_yoy",
+            "value": 1.300099475568749,
+            "unit": "percent",
+            "period": "2026-H1"
+          },
+          {
+            "metric": "net_profit_yoy",
+            "value": -1.9515948550279467,
+            "unit": "percent",
+            "period": "2026-H1"
+          },
+          {
+            "metric": "gross_margin_delta_bps",
+            "value": -174.40966540000034,
+            "unit": "basis_points",
+            "period": "2026-H1"
+          }
+        ],
+        "selectedSections": [
+          {
+            "title": "Earnings Snapshot",
+            "markdown": "Structured actuals returned for 600519 (2026-H1):\n- Revenue: 92,278,072,083.21 CNY (2026-H1; observed).\n- Net profit: 44,516,880,421.86 CNY (2026-H1; observed).\n- Gross margin: 89.5552 percent (2026-H1; observed).\n- EPS: 35.57 CNY/share (2026-H1; observed).\n\n### Expectations source ladder and period qualification\nRequested actual period: 2026-H1; analysis asOf 2026-10-09T23:16:57.702Z; official result cutoff 2026-08-14T16:00:00.000Z.\nExpectation acquisition: mode automatic; status partial; estimates 20; institutions 10; consensus snapshots 0; revision links 0.\nSource attempt: ths-institution-forecast: attempted; usable data; usable sources 10\nSource attempt: eastmoney-individual-research-report: not attempted; no usable data; usable sources 0\nQualified actual-vs-consensus comparisons: 0. No same-metric, same-unit, same-period, pre-result consensus qualified; no surprise conclusion is made.\n### Available institution forecasts (20)\nths-org:财信证券 / ths-analyst:胡跃才: eps 2026-FY 66.48 CNY_per_share; published 2026-08-18T15:59:59.999Z; source ths-institution-e2d9d78a30d998bad72244f2ee4fa952f55b88919f5ac96e459d8737622a2687; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:诚通证券 / ths-analyst:陈文倩: eps 2026-FY 65.14 CNY_per_share; published 2026-09-18T15:59:59.999Z; source ths-institution-06ea290bbdc3fb6fa238e86e28c670cebfa0dc2643cbf484f4a1b6dc23072c2e; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:国海证券 / ths-analyst:刘旭德: eps 2026-FY 67.09 CNY_per_share; published 2026-08-23T15:59:59.999Z; source ths-institution-797c3f24a2b327b444b7a47f3826032ed90bcda0ff26d0ce35255deb5a4e7227; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:国投证券 / ths-analyst:蔡琪: eps 2026-FY 65.1 CNY_per_share; published 2026-08-18T15:59:59.999Z; source ths-institution-da98c35a356c3ac34055492a178dc73f3253d19038e656e9c21a3142df148473; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:华西证券 / ths-analyst:寇星: eps 2026-FY 65.31 CNY_per_share; published 2026-08-19T15:59:59.999Z; source ths-institution-8a8e0f57e6e4ee149cee5537656314ef7b48c6db2240a85dadde175b69b31d89; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:群益证券(香港) / ths-analyst:顾向君: eps 2026-FY 68.12 CNY_per_share; published 2026-08-18T15:59:59.999Z; source ths-institution-76cf6d31f2fd07538e01c70bf83f9a0b7e56e595c7f637a3a94c059096c18076; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:万联证券 / ths-analyst:陈雯: eps 2026-FY 68.95 CNY_per_share; published 2026-08-19T15:59:59.999Z; source ths-institution-291f464e50dc93c2385ab60cd91c6d721f8e8fe1a466c68a4fe5274a733020f5; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:野村东方国际证券 / ths-analyst:周悦琅: eps 2026-FY 66.95 CNY_per_share; published 2026-08-20T15:59:59.999Z; source ths-institution-301146bf3985e982be5847caf48525040bce145401fd7b5053757b14a915b0e8; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:浙商证券 / ths-analyst:张潇倩: eps 2026-FY 65.77 CNY_per_share; published 2026-08-24T15:59:59.999Z; source ths-institution-f2a7d6ea7193fe94e10b0c153a175a47fccbe7af97f2c68a8df6cb96582624dc; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:中银证券 / ths-analyst:邓天娇: eps 2026-FY 67.07 CNY_per_share; published 2026-08-21T15:59:59.999Z; source ths-institution-268887825eae21573b2197c34983d61a76a92277042baaaaa15fee15785ac562; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:财信证券 / ths-analyst:胡跃才: net_profit 2026-FY 83255000000 CNY_yuan; published 2026-08-18T15:59:59.999Z; source ths-institution-e2d9d78a30d998bad72244f2ee4fa952f55b88919f5ac96e459d8737622a2687; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:诚通证券 / ths-analyst:陈文倩: net_profit 2026-FY 81424000000 CNY_yuan; published 2026-09-18T15:59:59.999Z; source ths-institution-06ea290bbdc3fb6fa238e86e28c670cebfa0dc2643cbf484f4a1b6dc23072c2e; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:国海证券 / ths-analyst:刘旭德: net_profit 2026-FY 83869000000 CNY_yuan; published 2026-08-23T15:59:59.999Z; source ths-institution-797c3f24a2b327b444b7a47f3826032ed90bcda0ff26d0ce35255deb5a4e7227; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:国投证券 / ths-analyst:蔡琪: net_profit 2026-FY 81380000000 CNY_yuan; published 2026-08-18T15:59:59.999Z; source ths-institution-da98c35a356c3ac34055492a178dc73f3253d19038e656e9c21a3142df148473; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:华西证券 / ths-analyst:寇星: net_profit 2026-FY 81644000000 CNY_yuan; published 2026-08-19T15:59:59.999Z; source ths-institution-8a8e0f57e6e4ee149cee5537656314ef7b48c6db2240a85dadde175b69b31d89; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:群益证券(香港) / ths-analyst:顾向君: net_profit 2026-FY 85153000000 CNY_yuan; published 2026-08-18T15:59:59.999Z; source ths-institution-76cf6d31f2fd07538e01c70bf83f9a0b7e56e595c7f637a3a94c059096c18076; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:万联证券 / ths-analyst:陈雯: net_profit 2026-FY 86197000000 CNY_yuan; published 2026-08-19T15:59:59.999Z; source ths-institution-291f464e50dc93c2385ab60cd91c6d721f8e8fe1a466c68a4fe5274a733020f5; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:野村东方国际证券 / ths-analyst:周悦琅: net_profit 2026-FY 83750000000 CNY_yuan; published 2026-08-20T15:59:59.999Z; source ths-institution-301146bf3985e982be5847caf48525040bce145401fd7b5053757b14a915b0e8; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:浙商证券 / ths-analyst:张潇倩: net_profit 2026-FY 82358000000 CNY_yuan; published 2026-08-24T15:59:59.999Z; source ths-institution-f2a7d6ea7193fe94e10b0c153a175a47fccbe7af97f2c68a8df6cb96582624dc; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\nths-org:中银证券 / ths-analyst:邓天娇: net_profit 2026-FY 83837000000 CNY_yuan; published 2026-08-21T15:59:59.999Z; source ths-institution-268887825eae21573b2197c34983d61a76a92277042baaaaa15fee15785ac562; publisher Tonghuashun / 同花顺; retrieved by AKShare at 2026-10-09T23:28:04.141Z; URL https://basic.10jqka.com.cn/600519/worth.html\n### Consensus and revisions\nNo qualified consensus snapshot was available.\nEstimate revision results: 0; prior-estimate comparisons: 0.\n### Expectation diagnostics\n- consensus_minimum_count_not_met\n\n#### Source and period provenance\n- Official filing: 贵州茅台2026年半年度报告; issuer 贵州茅台; ticker 600519; fiscal year 2026; fiscal period 2026-H1; document type formal_filing; correction relation none recorded; announcement 1225475868; published 2026-08-14T16:00:00.000Z; retrieved 2026-10-09T23:22:59.558Z; publisher CNINFO; URL https://static.cninfo.com.cn/finalpage/2026-08-15/1225475868.PDF.\n- Structured actuals: publisher EastMoney; retrieved by AKShare; retrieved 2026-10-09T23:23:00.872Z; published unavailable; value version UNVERIFIED (Aggregator financial numeric revision is not identified); period 2026-H1\n  - revenue: 92278072083.21 CNY (2026-H1)\n  - net_profit: 44516880421.86 CNY (2026-H1)\n  - gross_margin: 89.5552128279 percent (2026-H1)\n  - eps: 35.57 CNY_per_share (2026-H1)\n  - revenue_yoy: 1.300099475568749 percent (2026-H1)\n  - net_profit_yoy: -1.9515948550279467 percent (2026-H1)\n  - gross_margin_delta_bps: -174.40966540000034 basis_points (2026-H1)",
+            "evidenceLinks": [
+              "https://static.cninfo.com.cn/finalpage/2026-08-15/1225475868.PDF",
+              "https://basic.10jqka.com.cn/600519/worth.html"
+            ]
+          },
+          {
+            "title": "Revenue / Profit Growth",
+            "markdown": "- Revenue YoY: 1.3001 percent (2026-H1; derived).\n- Net profit YoY: -1.9516 percent (2026-H1; derived).",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Segment Performance",
+            "markdown": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Segment Performance.",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Margin Analysis",
+            "markdown": "- Gross margin: 89.5552 percent (2026-H1; observed).\n- Gross margin change vs prior-year period: -174.4097 bps (2026-H1; derived).",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Cash Flow / Working Capital",
+            "markdown": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Cash Flow / Working Capital. Operating cash flow and cash-conversion inputs are unavailable.\n\n### Deterministic financial-quality checks\n- DSO: unavailable\n- DIO: unavailable\n- DPO: unavailable\n- Cash Conversion Cycle: unavailable\n- CFO / Net Income: unavailable\n- FCF: unavailable\n- FCF / Net Income: unavailable\n- Unavailable components: unavailable (opening.receivables, current.receivables, opening.inventory, current.inventory, opening.payables, current.payables, current.cogs, cashConversionCycle, current.cashFromOperations, current.capex)",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Earnings Quality",
+            "markdown": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Earnings Quality. Cash conversion and accrual-quality inputs are incomplete; no earnings-quality conclusion is made.\n\n### Deterministic financial-quality checks\n- Accrual ratio: unavailable\n- Revenue-recognition follow-up flags: none\n- Unavailable components: unavailable (opening.totalAssets, current.totalAssets, current.cashFromOperations, receivables_growth, contract_assets_growth, cfo_growth, deferred_revenue_growth)",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Management Guidance",
+            "markdown": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Management Guidance.",
+            "evidenceLinks": []
+          },
+          {
+            "title": "One-offs / Accounting Effects",
+            "markdown": "Research Gap / Unavailable: no bounded evidence supports a conclusion for One-offs / Accounting Effects.",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Changes vs Prior Research",
+            "markdown": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Changes vs Prior Research.",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Assumption Impact",
+            "markdown": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Assumption Impact.",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Thesis Impact",
+            "markdown": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Thesis Impact.\n\nNo expectation findings were available for Thesis filtering.",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Catalyst / Risk Changes",
+            "markdown": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Catalyst / Risk Changes.",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Valuation Implications",
+            "markdown": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Valuation Implications. Consensus unavailable; no actual-versus-consensus or valuation conclusion is made.\n\nNo verified expectation finding mapped to a valuation input.",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Research Gaps / Monitoring",
+            "markdown": "Unavailable metrics for 600519: operating_cash_flow, operating_cash_flow_to_net_profit. Deterministic diagnostics: executor_reasoning_timeout; executor_reasoning_timeout.\n\n### Management communication monitoring\n- diagnostic: cninfo_ir_no_accepted_records\n- diagnostic: Pi reasoning execution timed out\n- diagnostic: REASONING_EXECUTION_FAILED\n- diagnostic: unsupported_exchange:SH",
+            "evidenceLinks": [
+              "https://static.cninfo.com.cn/finalpage/2026-08-15/1225475868.PDF"
+            ]
+          }
+        ]
+      },
+      "acceptance": {
+        "identityVerified": true,
+        "officialFilingAttempted": true,
+        "officialFilingUsable": true,
+        "actualFinancialAttempted": true,
+        "actualMetricsUsable": true,
+        "numericVersionStatus": "UNAVAILABLE",
+        "expectationPrimaryAttempted": true,
+        "expectationFallbackAttempted": false,
+        "estimateCount": 20,
+        "institutionCount": 10,
+        "consensusSnapshotCount": 0,
+        "actualVsConsensusCount": 0,
+        "estimateRevisionCount": 0,
+        "forecastPeriods": [
+          "2026-FY"
+        ],
+        "financialQualityStatus": "PARTIAL",
+        "reasoningStatus": {
+          "called": true,
+          "validated": false,
+          "applied": false,
+          "fallbackUsed": true,
+          "repairAttempts": 1,
+          "operation": "earnings_review_synthesis",
+          "model": "zhipu-openapi/glm-5.3-flash",
+          "diagnostic": "executor_reasoning_timeout; executor_reasoning_timeout",
+          "diagnostics": [
+            "executor_reasoning_timeout",
+            "executor_reasoning_timeout"
+          ]
+        },
+        "qualityGateStatus": "PASS_WITH_WARNINGS",
+        "workflowStatus": "completed",
+        "reportPersisted": true,
+        "bundlePersisted": true,
+        "canonicalDelta": {
+          "beforeCount": 0,
+          "afterCount": 0,
+          "unchanged": true
+        }
+      }
+    }
+  ],
+  "resultDigest": "9c000c39ecb7fda4eaf9c513de5a0da51bfa8e9403afa19adb6988a396000e68"
+}

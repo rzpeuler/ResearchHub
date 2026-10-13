@@ -67,6 +67,7 @@ export type ResearchAcquisitionRequest =
       readonly industry?: never
       readonly asOf?: string
       readonly limitPerKind?: number
+      readonly filingPeriod?: { readonly fiscalYear: number; readonly fiscalPeriod: 'FY' | 'H1' | 'Q1' | 'Q3' }
     }
   | {
       /** Industry acquisition never carries a fabricated Company identity. */
@@ -84,12 +85,13 @@ export interface ResearchAcquisitionPlugin {
 }
 
 export type AcquisitionPayloadStatus = 'usable' | 'empty' | 'failed'
+export type ResearchAcquisitionDiagnosticStatus = AcquisitionPayloadStatus | 'unsupported'
 
 export interface ResearchAcquisitionDiagnostic {
   readonly provider: string
   readonly candidateId?: string
   readonly kind?: ResearchSourceKind
-  readonly status: AcquisitionPayloadStatus
+  readonly status: ResearchAcquisitionDiagnosticStatus
   readonly reason: string
 }
 

@@ -1,4 +1,4 @@
-import type { NormalizedResearchSource } from '../../plugins/research-acquisition/contracts.ts'
+import type { NormalizedResearchSource, ResearchProviderOutcome } from '../../plugins/research-acquisition/contracts.ts'
 import { actualMetricPointFromVerifiedMetric, buildEstimateRevisionBridge, compareActualVsConsensus, compareActualVsPriorEstimate } from '../../skills/earnings-review/expectations/actual-vs-expectation.ts'
 import { buildConsensusSnapshot } from '../../skills/earnings-review/expectations/consensus.ts'
 import { validateEstimatePoint, selectPriorEstimate } from '../../skills/earnings-review/expectations/matching.ts'
@@ -6,6 +6,7 @@ import { buildGuidanceRevisionBridge, compareGuidanceVsConsensus, normalizeGuida
 import { compareSegmentKpi, normalizeSegmentKpiPoint, validateSegmentKpiPoint } from '../../skills/earnings-review/expectations/segment-kpi.ts'
 import type { EarningsReviewSection } from '../../skills/earnings-review/contracts.ts'
 import type { ConsensusSnapshot, EstimatePoint, GuidanceRange, NumericDelta, NumericRevision, SegmentKpiDeltaInput } from '../../skills/earnings-review/expectations/contracts.ts'
+import type { EarningsReviewExpectationsBundle } from './contracts.ts'
 import type { EarningsExpectationAnalysis, EarningsExpectationIntegrationInput, SourcedActualExpectationComparison, SourcedEstimateRevision, SourcedGuidanceConsensusComparison, SourcedGuidanceRevision, SourcedSegmentKpiDelta } from './expectations-contracts.ts'
 
 const text = (value: unknown): value is string => typeof value === 'string' && value.trim() !== ''
@@ -14,6 +15,21 @@ const uniqueSorted = (values: readonly string[]): readonly string[] => [...new S
 const timestamp = (value: unknown): number | undefined => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? Date.parse(value) : undefined
 const sourceIds = (...sets: readonly (readonly string[])[]): readonly string[] => uniqueSorted(sets.flat())
 const key = (...values: readonly unknown[]): string => values.map((value) => String(value)).join('|')
+
+export interface EarningsExpectationReportContext {
+  readonly requestedFiscalPeriod: string
+  readonly analysisAsOf: string
+  readonly resultPublishedAt?: string
+  readonly mode: 'none' | 'caller' | 'automatic'
+  readonly acquisitionStatus: 'not_attempted' | 'available' | 'partial' | 'unavailable' | 'failed'
+  readonly estimateCount: number
+  readonly institutionCount: number
+  readonly consensusSnapshotCount: number
+  readonly revisionLinkCount: number
+  readonly providerOutcomes: readonly ResearchProviderOutcome[]
+  readonly diagnostics: readonly string[]
+  readonly bundle?: EarningsReviewExpectationsBundle
+}
 
 interface SourceRegistry { readonly usable: ReadonlyMap<string, NormalizedResearchSource>; readonly rejected: ReadonlySet<string>; readonly diagnostics: readonly string[] }
 
@@ -194,12 +210,21 @@ function renderSegment(item: SourcedSegmentKpiDelta): string {
   return renderParts([`${result.segmentKey} ${result.metric}`, field('currentPeriod', result.currentPeriod), field('currentValue', finiteText(result.currentValue)), field('priorPeriod', result.priorPeriod), renderNumericDelta('prior comparison', result.priorComparison), field('expectationPeriod', result.expectationPeriod), renderNumericDelta('expectation comparison', result.expectationComparison)])
 }
 
-export function enrichEarningsReviewSectionsWithExpectations(sections: readonly EarningsReviewSection[], analysis: EarningsExpectationAnalysis): readonly EarningsReviewSection[] {
+export function enrichEarningsReviewSectionsWithExpectations(sections: readonly EarningsReviewSection[], analysis: EarningsExpectationAnalysis, context?: EarningsExpectationReportContext): readonly EarningsReviewSection[] {
   const sourceIdsFor = (values: readonly { readonly sourceCandidateIds: readonly string[] }[]): readonly string[] => uniqueSorted(values.flatMap((value) => value.sourceCandidateIds))
   const actual = analysis.actualVsConsensus.map((item) => renderActualComparison(item, 'PIT consensus')); const prior = analysis.actualVsPriorEstimate.map((item) => renderActualComparison(item, 'selected prior estimate'))
   const revisions = analysis.estimateRevisions.map(renderEstimateRevision); const guidanceRevisionText = analysis.guidanceRevisions.map(renderGuidanceRevision); const guidanceText = analysis.currentGuidance.map(renderCurrentGuidance); const guidanceConsensusText = analysis.guidanceVsConsensus.map(renderGuidanceConsensus); const segments = analysis.segmentKpiDeltas.map(renderSegment)
+  const expectationReportLines = context === undefined ? [] : renderExpectationReport(context, analysis)
+  const expectationSourceIds = context?.bundle?.sources.map((source) => source.candidate.candidateId) ?? []
   const result = sections.map((section) => {
-    if (section.title === 'Earnings Snapshot' && (actual.length || prior.length)) return append(section, lines('Actual vs PIT consensus', actual) + (prior.length ? `\n\n${lines('Actual vs selected prior estimate', prior)}` : ''), sourceIdsFor([...analysis.actualVsConsensus, ...analysis.actualVsPriorEstimate]))
+    if (section.title === 'Earnings Snapshot') {
+      const additions = [
+        lines('Actual vs PIT consensus', actual),
+        prior.length ? lines('Actual vs selected prior estimate', prior) : '',
+        expectationReportLines.join('\n'),
+      ].filter((value) => value !== '')
+      if (additions.length > 0) return append(section, additions.join('\n\n'), [...sourceIdsFor([...analysis.actualVsConsensus, ...analysis.actualVsPriorEstimate]), ...expectationSourceIds])
+    }
     if (section.title === 'Changes vs Prior Research' && (revisions.length || guidanceRevisionText.length)) return append(section, lines('Estimate revisions', revisions) + (guidanceRevisionText.length ? `\n\n${lines('Guidance revisions', guidanceRevisionText)}` : ''), sourceIdsFor([...analysis.estimateRevisions, ...analysis.guidanceRevisions]))
     if (section.title === 'Management Guidance' && (guidanceText.length || guidanceRevisionText.length || guidanceConsensusText.length)) return append(section, lines('Current normalized Guidance', guidanceText) + (guidanceRevisionText.length ? `\n\n${lines('Guidance vs prior', guidanceRevisionText)}` : '') + (guidanceConsensusText.length ? `\n\n${lines('Guidance vs PIT consensus', guidanceConsensusText)}` : ''), sourceIdsFor([...analysis.guidanceRevisions, ...analysis.guidanceVsConsensus, ...analysis.currentGuidance.map((guidance) => ({ sourceCandidateIds: guidance.sourceCandidateIds }))]))
     if (section.title === 'Segment Performance' && segments.length) return append(section, lines('Deterministic Segment KPI comparisons', segments), sourceIdsFor(analysis.segmentKpiDeltas))
@@ -207,6 +232,41 @@ export function enrichEarningsReviewSectionsWithExpectations(sections: readonly 
     return section
   })
   return result.length === EARNINGS_REVIEW_SECTION_COUNT ? result : sections
+}
+
+function renderExpectationReport(context: EarningsExpectationReportContext, analysis: EarningsExpectationAnalysis): readonly string[] {
+  const sourceById = new Map((context.bundle?.sources ?? []).map((source) => [source.candidate.candidateId, source]))
+  const providerLines = context.providerOutcomes.map((outcome) => `${outcome.provider}: ${outcome.providerAttempted ? 'attempted' : 'not attempted'}; ${outcome.providerFailed ? 'failed' : outcome.providerEmpty ? 'empty' : outcome.providerSucceeded ? 'usable data' : 'no usable data'}; usable sources ${outcome.usableSourceCount}`)
+  const estimates = [...(context.bundle?.estimates ?? [])].sort((left, right) => `${left.fiscalPeriod}|${left.metric}|${left.institutionKey}|${left.publishedAt}|${left.estimateId}`.localeCompare(`${right.fiscalPeriod}|${right.metric}|${right.institutionKey}|${right.publishedAt}|${right.estimateId}`))
+  const estimateLines = estimates.map((estimate) => {
+    const refs = estimate.sourceCandidateIds.map((id) => {
+      const source = sourceById.get(id)
+      const url = source?.candidate.url
+      if (source === undefined) return id
+      const metadata = source.candidate.metadata ?? {}
+      const publisher = metadata.originPublisher ?? source.publisher
+      const retrievalProvider = metadata.retrievalProvider ?? source.candidate.provider
+      const verifiedUrl = url !== undefined && /^https:\/\//iu.test(url) ? url : 'unavailable'
+      return `${id}; publisher ${String(publisher)}; retrieved by ${String(retrievalProvider)} at ${source.retrievedAt}; URL ${verifiedUrl}`
+    }).join(', ')
+    return `${estimate.institutionKey}${estimate.analystKey ? ` / ${estimate.analystKey}` : ''}: ${estimate.metric} ${estimate.fiscalPeriod} ${estimate.value} ${estimate.unit}; published ${estimate.publishedAt}; source ${refs || 'unavailable'}`
+  })
+  const consensusLines = (context.bundle?.consensusSnapshots ?? []).map((snapshot) => `${snapshot.metric} ${snapshot.fiscalPeriod}: n=${snapshot.count}; mean ${snapshot.mean} ${snapshot.unit}; median ${snapshot.median}; low ${snapshot.low}; high ${snapshot.high}; asOf ${snapshot.asOf}`)
+  const eligibleCount = analysis.actualVsConsensus.length
+  const cutoff = context.resultPublishedAt ?? context.bundle?.resultPublishedAt
+  const header = [
+    `Requested actual period: ${context.requestedFiscalPeriod}; analysis asOf ${context.analysisAsOf}; official result cutoff ${cutoff ?? 'unavailable'}.`,
+    `Expectation acquisition: mode ${context.mode}; status ${context.acquisitionStatus}; estimates ${context.estimateCount}; institutions ${context.institutionCount}; consensus snapshots ${context.consensusSnapshotCount}; revision links ${context.revisionLinkCount}.`,
+    ...providerLines.map((line) => `Source attempt: ${line}`),
+    `Qualified actual-vs-consensus comparisons: ${eligibleCount}. ${eligibleCount === 0 ? 'No same-metric, same-unit, same-period, pre-result consensus qualified; no surprise conclusion is made.' : 'Only period- and cutoff-qualified comparisons are shown above.'}`,
+  ]
+  const diagnostics = context.diagnostics.slice(0, 24).map((item) => item.length > 600 ? `${item.slice(0, 600)}…` : item)
+  return [
+    `### Expectations source ladder and period qualification\n${header.join('\n')}`,
+    estimateLines.length > 0 ? `### Available institution forecasts (${estimateLines.length}${estimates.length > estimateLines.length ? ` of ${estimates.length}` : ''})\n${estimateLines.join('\n')}` : '### Available institution forecasts\nNo usable institution estimates were returned for this request.',
+    `### Consensus and revisions\n${consensusLines.length > 0 ? consensusLines.join('\n') : 'No qualified consensus snapshot was available.'}\nEstimate revision results: ${analysis.estimateRevisions.length}; prior-estimate comparisons: ${analysis.actualVsPriorEstimate.length}.`,
+    diagnostics.length > 0 ? `### Expectation diagnostics\n${diagnostics.map((item) => `- ${item}`).join('\n')}` : '',
+  ].filter(Boolean)
 }
 
 const EARNINGS_REVIEW_SECTION_COUNT = 14

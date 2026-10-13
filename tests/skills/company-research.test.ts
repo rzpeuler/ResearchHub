@@ -59,4 +59,45 @@ test('Company Skill receives all structured inputs with their acquisition proven
   assert.deepEqual(result.proposals, [], 'a proposal citing any context-only source is rejected even if it also cites durable evidence')
   assert.deepEqual(result.sections[0]?.proposalIds, [])
 })
+
+test('Company Research falls back to deterministic evidence when Pi synthesis times out', async () => {
+  const executor = { capabilities: () => ({}), execute: async () => { throw new Error('MODEL_TIMEOUT') } } as unknown as ReasoningExecutor
+  const result = await new CompanyResearchSkill(() => '2026-09-08T00:00:00.000Z', executor).synthesize({
+    company: { symbol: '600519', name: 'Fixture Co' },
+    asOf: '2026-09-08T00:00:00.000Z',
+    sources: [source],
+    profileData: { fields: [{ name: 'name', value: 'Fixture Co' }], pointInTimeStatus: 'CURRENT_VALUE_ONLY' },
+    financialData: [{ periodEnd: '2025-12-31', metrics: { revenue: 100, netProfit: 10 }, pointInTimeSafe: false, pointInTimeStatus: 'CURRENT_VALUE_ONLY' }],
+  })
+  assert.equal(result.sections.length, 19)
+  assert.match(result.sections.find((section) => section.title === 'Company Overview')!.markdown, /Fixture Co/)
+  assert.match(result.sections.find((section) => section.title === 'Company Overview')!.markdown, /Company profile data gap/)
+  assert.match(result.sections.find((section) => section.title === 'Revenue \/ Profit Drivers')!.markdown, /revenue: 100/)
+  assert.match(result.sections.find((section) => section.title === 'Industry Exposure')!.markdown, /Research gap:/)
+  assert.match(result.sections.find((section) => section.title === 'Valuation')!.markdown, /Market data gap/)
+  assert.ok(result.sections.find((section) => section.title === 'Business Model')!.markdown.startsWith('Research gap:'))
+})
+test('Company Skill uses acquired profile, financial, and market observations when semantic output is empty', async () => {
+  const structuredSources = [
+    ['profile', 'company_basic_profile'], ['financial', 'company_financial_history'], ['market', 'company_market_history'],
+  ].map(([kind, metricId]) => ({ ...source, candidate: { ...source.candidate, candidateId: `akshare-${kind}-600519`, kind: 'structured_data' as const, metadata: { dataProvenance: { metricId, pointInTimeStatus: 'CURRENT_VALUE_ONLY' } } } }))
+  const executor = { capabilities: () => ({}), execute: async () => ({ operation: 'company_research_synthesis', output: {} }) } as unknown as ReasoningExecutor
+  const result = await new CompanyResearchSkill(() => '2026-09-08T00:00:00.000Z', executor).synthesize({
+    company: { symbol: '600519', name: 'Fixture Co', exchange: 'SH' }, asOf: '2026-09-08T00:00:00.000Z', sources: structuredSources,
+    durableSourceCandidateIds: structuredSources.map((item) => item.candidate.candidateId),
+    profileData: { fields: [{ name: 'industry', value: 'beverages' }], pointInTimeStatus: 'CURRENT_VALUE_ONLY' },
+    financialData: [{ periodEnd: '2025-12-31', metrics: { revenue: 100, netProfit: 25 }, pointInTimeSafe: false, pointInTimeStatus: 'CURRENT_VALUE_ONLY' }],
+    marketData: [{ observedAt: '2026-09-07', close: 50, pointInTimeSafe: false, pointInTimeStatus: 'CURRENT_VALUE_ONLY' }],
+  })
+  const section = (title: string) => result.sections.find((item) => item.title === title)!
+  assert.match(section('Company Overview').markdown, /600519/)
+  assert.match(section('Company Overview').markdown, /beverages/)
+  assert.ok(section('Company Overview').sourceCandidateIds.includes('akshare-profile-600519'))
+  assert.match(section('Financial Quality').markdown, /revenue: 100; net profit: 25/)
+  assert.deepEqual(section('Financial Quality').sourceCandidateIds, ['akshare-financial-600519'])
+  assert.match(section('Valuation').markdown, /close 50/)
+  assert.match(section('Valuation').markdown, /no PE\/PB is calculated/)
+  assert.deepEqual(section('Valuation').sourceCandidateIds, ['akshare-market-600519'])
+  assert.match(section('Business Model').markdown, /^Research gap:/)
+})
 test('valuation utilities are deterministic and probability-weighted', () => { assert.deepEqual(relativeValuation({ metric: 10, peerMultiples: [20, 10, 15] }), { multiple: 15, impliedValue: 150, peerCount: 3 }); assert.equal(scenarioValuation([{ name: 'bull', earnings: 2, multiple: 10, probability: 0.5 }, { name: 'bear', earnings: 1, multiple: 10, probability: 0.5 }]).expectedValue, 15) })

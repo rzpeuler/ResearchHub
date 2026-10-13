@@ -3,6 +3,7 @@ import type { CompanyResearchFinancialObservation, CompanyResearchInput, Company
 
 export const COMPANY_RESEARCH_SECTIONS = ['Company Overview', 'Business Model', 'Business Segments', 'Revenue / Profit Drivers', 'Products', 'Technologies', 'Industry Exposure', 'Supply Chain', 'Competition', 'Financial Quality', 'Growth Drivers', 'Management / Capital Allocation', 'Catalysts', 'Risks', 'Valuation', 'Bull / Base / Bear', 'Variant Perception', 'Investment Thesis', 'Monitoring Checklist'] as const
 const LOCAL_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+export type CompanyResearchSynthesisMode = 'reasoning_executor' | 'deterministic_fallback'
 
 export class CompanyResearchSkill {
   constructor(private readonly now: () => string = () => new Date().toISOString(), private readonly executor?: ReasoningExecutor) {}
@@ -11,36 +12,67 @@ export class CompanyResearchSkill {
   run(input: CompanyResearchInput): CompanyResearchResult {
     const proposals: SemanticKnowledgeProposal[] = [{ proposalId: 'proposal-company', kind: 'entity', subjectKey: 'company', entityType: 'company', entityName: input.company.name ?? input.company.symbol }]
     const durableIds = new Set(input.durableSourceCandidateIds ?? [])
+    const profileSource = structuredSourceId(input, 'company_basic_profile', durableIds)
+    const financialSource = structuredSourceId(input, 'company_financial_history', durableIds)
+    const marketSource = structuredSourceId(input, 'company_market_history', durableIds)
+    const profileFields = input.profileData?.fields.filter((field) => !/^(name|company|companyname|symbol|ticker|code|stockcode|证券简称|证券代码|股票代码)$/i.test(field.name.trim())) ?? []
     const sections = COMPANY_RESEARCH_SECTIONS.map((title) => {
-      const relevant = input.sources.filter((source) => title === 'Company Overview' || source.content.toLowerCase().includes(title.split(' ')[0]!.toLowerCase())).slice(0, 3)
-      const text = relevant.length ? relevant.map((source) => `- ${durableIds.has(source.candidate.candidateId) ? '' : '[Context only; this source is not eligible for durable citation] '}${source.content.slice(0, 500)}`).join('\n') : gap(title)
-      return { id: sectionId(title), title, markdown: text, sourceCandidateIds: relevant.map((source) => source.candidate.candidateId).filter((id) => durableIds.has(id)), proposalIds: proposals.filter((proposal) => proposal.sourceCandidateIds?.some((id) => relevant.some((source) => source.candidate.candidateId === id))).map((proposal) => proposal.proposalId) }
+      if (title === 'Company Overview') {
+        const profile = profileFields.length ? `\n\n### Retrieved company profile\n${profileFields.slice(0, 20).map((field) => `- ${safeText(field.name)}: ${safeText(field.value)}`).join('\n')}\n\nProfile point-in-time status: ${input.profileData?.pointInTimeStatus ?? 'UNVERIFIED'}.` : '\n\nCompany profile data gap: no usable business profile fields were returned; no business facts are asserted.'
+        const context = input.sources.slice(0, 3)
+        const contextText = context.length ? `\n\n### Bounded evidence supplied to research\n${context.map((source) => `- ${durableIds.has(source.candidate.candidateId) ? '' : '[Context only; this source is not eligible for durable citation] '}${safeText(source.title)}: ${source.content.slice(0, 500)}`).join('\n')}` : ''
+        const sourceCandidateIds = [...new Set([...(profileSource ? [profileSource] : []), ...context.map((source) => source.candidate.candidateId).filter((id) => durableIds.has(id))])]
+        return { id: sectionId(title), title, markdown: `Verified security identity: ${safeText(input.company.name ?? input.company.symbol)} (${safeText(input.company.symbol)}, ${safeText(input.company.exchange ?? 'exchange unavailable')}).\n\nResearch cutoff: ${input.asOf}.${profile}${profile && profileSource ? `\n\nSource candidate: ${profileSource}.` : ''}${contextText}`, sourceCandidateIds, proposalIds: [] }
+      }
+      if ((title === 'Revenue / Profit Drivers' || title === 'Financial Quality') && input.financialData?.length) {
+        const rows = input.financialData.slice(0, 8).map((row) => `- Period end: ${row.periodEnd ?? 'unreported'}${row.publishedAt ? `; published: ${row.publishedAt}` : ''}; revenue: ${row.metrics.revenue ?? 'unreported'}; net profit: ${row.metrics.netProfit ?? 'unreported'}; gross margin: ${row.metrics.grossMargin ?? 'unreported'}; basic EPS: ${row.metrics.basicEps ?? 'unreported'}; point-in-time: ${row.pointInTimeStatus}.`).join('\n')
+        return { id: sectionId(title), title, markdown: `Retrieved structured financial observations (provider-reported values; units and historical value versions are not inferred):\n${rows}${financialSource ? `\n\nSource candidate: ${financialSource}.` : ''}`, sourceCandidateIds: financialSource ? [financialSource] : [], proposalIds: [] }
+      }
+      if (title === 'Industry Exposure') {
+        const industryFields = input.profileData?.fields.filter((field) => /industry|sector|所属行业|行业类别|行业名称|申万行业/i.test(field.name)) ?? []
+        if (industryFields.length) return { id: sectionId(title), title, markdown: `Provider-reported industry classification; no adjacent-industry inference is made:\n${industryFields.slice(0, 8).map((field) => `- ${safeText(field.name)}: ${safeText(field.value)}`).join('\n')}\nPoint-in-time status: ${input.profileData?.pointInTimeStatus ?? 'UNVERIFIED'}.${profileSource ? `\n\nSource candidate: ${profileSource}.` : ''}`, sourceCandidateIds: profileSource ? [profileSource] : [], proposalIds: [] }
+        return { id: sectionId(title), title, markdown: gap(title), sourceCandidateIds: [], proposalIds: [] }
+      }
+      if (title === 'Valuation' && input.marketData?.length) {
+        const rows = input.marketData.slice(-8).map((row) => `- ${row.observedAt}: close ${row.close ?? 'unreported'}; open ${row.open ?? 'unreported'}; high ${row.high ?? 'unreported'}; low ${row.low ?? 'unreported'}; volume ${row.volume ?? 'unreported'}; point-in-time: ${row.pointInTimeStatus}.`).join('\n')
+        return { id: sectionId(title), title, markdown: `Retrieved market observations only; no PE/PB is calculated here without an attributable earnings or book-value basis:\n${rows}${marketSource ? `\n\nSource candidate: ${marketSource}.` : ''}`, sourceCandidateIds: marketSource ? [marketSource] : [], proposalIds: [] }
+      }
+      if (title === 'Valuation') return { id: sectionId(title), title, markdown: 'Market data gap: no eligible market observations were returned; no current price, PE, or PB is asserted.', sourceCandidateIds: [], proposalIds: [] }
+      return { id: sectionId(title), title, markdown: gap(title), sourceCandidateIds: [], proposalIds: [] }
     })
     return finalizeResearch(input, { sections, proposals }, this.now())
   }
 
-  async synthesize(input: CompanyResearchInput): Promise<CompanyResearchResult> {
-    if (!this.executor) return this.run(input)
-    const response = await this.executor.execute({
-      operation: 'company_research_synthesis',
-      instruction: 'Synthesize the bounded company research into the exact local proposal contract. Use only supplied evidence and structured data. Treat sources with citationEligible false as context only; do not cite them or use them to support factual claims. Emit explicit gaps. Never emit canonical IDs, ChangeSets, storage refs, or mutation actions.',
-      input: {
-        company: input.company,
-        objective: `A-share company deep research for ${input.company.symbol}`,
-        asOf: input.asOf,
-        boundedSources: input.sources.slice(0, 20).map((source) => ({ candidateId: source.candidate.candidateId, kind: source.candidate.kind, tier: source.candidate.tier, title: source.title, provider: source.candidate.provider, publisher: source.publisher, publishedAt: source.candidate.publishedAt ?? null, provenance: source.candidate.metadata?.dataProvenance ? { ...source.candidate.metadata.dataProvenance, retrievedAt: source.retrievedAt, contentHash: source.contentHash } : null, citationEligible: input.durableSourceCandidateIds?.includes(source.candidate.candidateId) ?? false, content: source.content.slice(0, 1_200) })),
-        structuredProfileData: input.profileData ?? null,
-        structuredFinancialData: input.financialData ?? null,
-        structuredMarketData: input.marketData ?? null,
-        existingKnowledgeProjection: input.existingKnowledgeProjection ?? [],
-        methodology: 'Evidence-bounded fundamental company research with explicit uncertainty and deterministic valuation recomputation.',
-      },
-      outputContract: { sections: 'exactly 19 local sections with id,title,markdown,sourceCandidateIds,proposalIds', proposals: 'local entity/claim/relation proposals only', allowedClaimTypes: ['fact', 'forecast', 'viewpoint', 'trend', 'risk', 'assumption', 'thesis', 'catalyst'], links: 'proposal-local supports/dependsOn/contradicts links' },
-      metadata: { operationFamily: 'personal-research-v1', companySymbol: input.company.symbol },
-    })
-    const parsed = parseOutput(response.output)
-    const candidate = validateSynthesis(parsed, input)
-    return finalizeResearch(input, candidate, this.now())
+  async synthesize(input: CompanyResearchInput, onMode?: (mode: CompanyResearchSynthesisMode) => void): Promise<CompanyResearchResult> {
+    if (!this.executor) { onMode?.('deterministic_fallback'); return this.run(input) }
+    try {
+      const response = await this.executor.execute({
+        operation: 'company_research_synthesis',
+        instruction: 'Synthesize the bounded company research into the exact local proposal contract. Use only supplied evidence and structured data. Treat sources with citationEligible false as context only; do not cite them or use them to support factual claims. Emit explicit gaps. Never emit canonical IDs, ChangeSets, storage refs, or mutation actions.',
+        input: {
+          company: input.company,
+          objective: `A-share company deep research for ${input.company.symbol}`,
+          asOf: input.asOf,
+          boundedSources: input.sources.slice(0, 20).map((source) => ({ candidateId: source.candidate.candidateId, kind: source.candidate.kind, tier: source.candidate.tier, title: source.title, provider: source.candidate.provider, publisher: source.publisher, publishedAt: source.candidate.publishedAt ?? null, provenance: source.candidate.metadata?.dataProvenance ? { ...source.candidate.metadata.dataProvenance, retrievedAt: source.retrievedAt, contentHash: source.contentHash } : null, citationEligible: input.durableSourceCandidateIds?.includes(source.candidate.candidateId) ?? false, content: source.content.slice(0, 1_200) })),
+          structuredProfileData: input.profileData ?? null,
+          structuredFinancialData: input.financialData ?? null,
+          structuredMarketData: input.marketData ?? null,
+          existingKnowledgeProjection: input.existingKnowledgeProjection ?? [],
+          methodology: 'Evidence-bounded fundamental company research with explicit uncertainty and deterministic valuation recomputation.',
+        },
+        outputContract: { sections: 'exactly 19 local sections with id,title,markdown,sourceCandidateIds,proposalIds', proposals: 'local entity/claim/relation proposals only', allowedClaimTypes: ['fact', 'forecast', 'viewpoint', 'trend', 'risk', 'assumption', 'thesis', 'catalyst'], links: 'proposal-local supports/dependsOn/contradicts links' },
+        metadata: { operationFamily: 'personal-research-v1', companySymbol: input.company.symbol },
+      })
+      const parsed = parseOutput(response.output)
+      const candidate = validateSynthesis(parsed, input)
+      const hasSubstantiveOutput = candidate.sections.some((section) => !section.markdown.startsWith('Research gap: no bounded evidence was supplied'))
+      onMode?.(hasSubstantiveOutput ? 'reasoning_executor' : 'deterministic_fallback')
+      return finalizeResearch(input, hasSubstantiveOutput ? candidate : this.run(input), this.now())
+    } catch {
+      // Model timeouts and invalid semantic output fall back only to the deterministic, evidence-bounded baseline.
+      onMode?.('deterministic_fallback')
+      return this.run(input)
+    }
   }
 }
 
@@ -112,4 +144,8 @@ function finalizeResearch(input: CompanyResearchInput, partial: { sections: Comp
 }
 function sectionId(title: string): string { return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') }
 function gap(title: string): string { return `Research gap: no bounded evidence was supplied for ${title}; no conclusion is asserted.` }
+function structuredSourceId(input: CompanyResearchInput, metricId: string, durableIds: ReadonlySet<string>): string | undefined {
+  return input.sources.find((source) => durableIds.has(source.candidate.candidateId) && source.candidate.metadata?.dataProvenance && typeof source.candidate.metadata.dataProvenance === 'object' && (source.candidate.metadata.dataProvenance as Record<string, unknown>).metricId === metricId)?.candidate.candidateId
+}
+function safeText(value: string | number | boolean): string { return String(value).replace(/[\r\n]+/g, ' ').slice(0, 240) }
 function extractMetric(value: readonly CompanyResearchFinancialObservation[] | undefined): number | undefined { const candidate = value?.[0]?.metrics.metric; return typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 0 ? candidate : undefined }

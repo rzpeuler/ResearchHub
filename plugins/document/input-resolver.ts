@@ -22,9 +22,9 @@ export class DocumentInputResolver {
     this.parserId = options.parserId ?? process.env.RESEARCHHUB_DOCUMENT_PARSER
   }
 
-  async resolve(input: DocumentInputRef): Promise<ResolvedDocumentInput> {
+  async resolve(input: DocumentInputRef, options?: { readonly signal?: AbortSignal }): Promise<ResolvedDocumentInput> {
     const source = await this.acquire(input)
-    const document = await this.parse(source)
+    const document = await this.parse(source, options)
     return { rawBytes: source.bytes, originalFilename: source.filename || null, mediaType: source.mediaType, document }
   }
 
@@ -46,12 +46,14 @@ export class DocumentInputResolver {
     } catch (error) { throw new DocumentPluginError('document_read_failed', `document_read_failed: ${error instanceof Error ? error.message : String(error)}`) }
   }
 
-  async parse(source: AcquiredDocumentInput): Promise<ResolvedDocumentInput['document']> {
+  async parse(source: AcquiredDocumentInput, options?: { readonly signal?: AbortSignal }): Promise<ResolvedDocumentInput['document']> {
+    const signal = options?.signal
+    if (signal?.aborted) throw new DocumentPluginError('document_parser_cancelled', 'document_parser_cancelled: document parsing was cancelled')
     if (source.bytes.byteLength === 0) throw new DocumentPluginError('document_read_failed', 'document_read_failed: document is empty')
     const documentId = source.documentId ?? `document-${createHash('sha256').update(source.bytes).digest('hex').slice(0, 16)}`
     const parser = this.parserRegistry.select({ filename: source.filename, mediaType: source.mediaType }, this.parserId)
     try {
-      const document = await parser.parse({ bytes: Uint8Array.from(source.bytes), filename: source.filename, mediaType: source.mediaType, documentId })
+      const document = await parser.parse({ bytes: Uint8Array.from(source.bytes), filename: source.filename, mediaType: source.mediaType, documentId, ...(signal === undefined ? {} : { signal }) })
       if (!document.normalizedText.trim() && document.blocks.length > 0) throw new DocumentPluginError('document_text_extraction_insufficient', 'document_text_extraction_insufficient: parser returned no normalized text', parser.id)
       return document
     } catch (error) {

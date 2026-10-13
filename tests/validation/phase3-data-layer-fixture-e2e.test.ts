@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { readdir } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import test from 'node:test'
@@ -18,6 +20,8 @@ import { classifyPhase3ConsumerEvidence, countQualifiedPitSafeEvidenceDocuments 
 
 const NOW = '2026-09-10T00:00:00.000Z'
 const rights = { accessScope: 'public' as const, retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false }
+
+async function knowledgeTreeSnapshot(root: string): Promise<readonly string[]> { const entries: string[] = []; const visit = async (directory: string): Promise<void> => { for (const entry of await readdir(directory, { withFileTypes: true })) { const absolute = join(directory, entry.name); if (entry.isDirectory()) { entries.push(`dir:${absolute.slice(root.length)}`); await visit(absolute) } else if (entry.isFile()) entries.push(`file:${absolute.slice(root.length)}:${createHash('sha256').update(await readFile(absolute)).digest('hex')}`) } }; await visit(root); return entries.sort() }
 
 function candidate(candidateId: string, provider: 'cninfo' | 'gdelt', publishedAt?: string): ResearchSourceCandidate {
   return { candidateId, kind: provider === 'cninfo' ? 'official_disclosure' : 'news', tier: provider === 'cninfo' ? 1 : 3, title: `Fixture ${candidateId}`, provider, url: `https://example.test/${candidateId}`, ...(publishedAt ? { publishedAt } : {}), metadata: { companySymbol: '600519' } }
@@ -135,6 +139,28 @@ test('Thesis Red Team fixture E2E acquires through Data while preserving target 
       plugin('fixture-gdelt', [candidate('dated-news-context', 'gdelt', '2026-09-08T00:00:00.000Z')]),
     ]
     const signalValue = signal()
+    const readOnlyBefore = await knowledgeTreeSnapshot(kbRoot)
+    const readOnlyExecutor = new FixtureThesisExecutor(thesisRef)
+    const readOnlyResult = await runThesisRedTeam({
+      workflowRunId: 'phase3-thesis-e2e-readonly', handle: await registry.mount(kbRoot), company: { symbol: '600519', name: 'Fixture Company', exchange: 'SSE' }, thesisRef,
+      acquisitionPlugins: plugins, reportRoot, now: () => NOW, reasoningExecutor: readOnlyExecutor, writeKnowledge: false,
+      dailySignalStore: { appendMany: async () => ({ appended: 0, skipped: 0 }), listWindow: async () => [signalValue], getById: async () => signalValue },
+      dataResolverFactory: (context) => createCompanyResearchDataResolver({ company: context.company, officialDisclosure: plugins[0], gdelt: plugins[1], now: () => NOW, signal: context.signal }),
+    })
+    assert.equal(readOnlyResult.status, 'completed', readOnlyResult.errors.join('; '))
+    const readOnlyAfter = await knowledgeTreeSnapshot(kbRoot)
+    assert.deepEqual(readOnlyAfter, readOnlyBefore, 'read-only Thesis Red Team must preserve the entire Knowledge file tree')
+    assert.deepEqual(readOnlyResult.sourceIds, [])
+    assert.deepEqual(readOnlyResult.claimIds, [])
+    const readOnlyAssets = await readCanonicalV04Assets(kbRoot)
+    const readOnlyCanonical = new Set(readOnlyAssets.registry.map((item) => item.id))
+    assert.ok(readOnlyResult.report?.subjectRefs.every((ref) => readOnlyCanonical.has(ref)))
+    assert.ok(readOnlyResult.report?.sourceRefs.every((ref) => readOnlyCanonical.has(ref)))
+    assert.ok(readOnlyResult.report?.claimRefs.every((ref) => readOnlyCanonical.has(ref)))
+    for (const section of readOnlyResult.report?.sections ?? []) {
+      assert.ok((section.sourceRefs ?? []).every((ref) => readOnlyCanonical.has(ref)))
+      assert.ok((section.claimRefs ?? []).every((ref) => readOnlyCanonical.has(ref)))
+    }
     const reasoningExecutor = new FixtureThesisExecutor(thesisRef)
     const result = await runThesisRedTeam({
       workflowRunId: 'phase3-thesis-e2e-run', handle, company: { symbol: '600519', name: 'Fixture Company', exchange: 'SSE' }, thesisRef,
@@ -174,6 +200,14 @@ test('Thesis Red Team fixture E2E acquires through Data while preserving target 
     assert.equal(result.telemetry.durableAppliedProposalCount, 2)
     assert.ok(result.sourceIds.length >= 1)
     assert.ok(result.claimIds.length >= 1)
+    const authorizedCanonical = new Set(after.registry.map((item) => item.id))
+    assert.ok(result.report?.subjectRefs.every((ref) => authorizedCanonical.has(ref)))
+    assert.ok(result.report?.sourceRefs.every((ref) => authorizedCanonical.has(ref)))
+    assert.ok(result.report?.claimRefs.every((ref) => authorizedCanonical.has(ref)))
+    for (const section of result.report?.sections ?? []) {
+      assert.ok((section.sourceRefs ?? []).every((ref) => authorizedCanonical.has(ref)))
+      assert.ok((section.claimRefs ?? []).every((ref) => authorizedCanonical.has(ref)))
+    }
     const writtenSourceRefs = result.sourceIds
     const writtenClaims = after.objects.filter((item) => result.claimIds.includes(String(item.value.id)))
     assert.equal(writtenClaims.length, 2)
@@ -194,6 +228,7 @@ test('Thesis Red Team fixture E2E acquires through Data while preserving target 
     assert.equal(writtenSource.retrievedAt, NOW)
     assert.equal(after.objects.some((item) => item.kind === 'source' && ['unknown-date-official', 'irrelevant-office-document', 'dated-news-context', 'daily-signal-context'].some((candidateId) => JSON.stringify(item.value).includes(candidateId))), false)
     assert.deepEqual(result.providerOutcomes.map((item) => [item.provider, item.providerAttempted]), [['CNINFO', true], ['GDELT', true]])
+    await writeFile(join(process.cwd(), 'tests', 'validation', 'evidence', 'RHL-EXEC-003-A-004-FIX-003-thesis-references.json'), `${JSON.stringify({ taskId: 'RHL-EXEC-003-A-004-FIX-003', generatedAt: new Date().toISOString(), readOnly: { workflowRunId: readOnlyResult.workflowRunId, status: readOnlyResult.status, writeKnowledge: false, report: { subjectRefs: readOnlyResult.report?.subjectRefs ?? [], sourceRefs: readOnlyResult.report?.sourceRefs ?? [], claimRefs: readOnlyResult.report?.claimRefs ?? [], sections: (readOnlyResult.report?.sections ?? []).map((section) => ({ id: section.id, sourceRefs: section.sourceRefs ?? [], claimRefs: section.claimRefs ?? [] })), allReferencesResolve: true }, beforeTreeSha256: createHash('sha256').update(JSON.stringify(readOnlyBefore)).digest('hex'), afterTreeSha256: createHash('sha256').update(JSON.stringify(readOnlyAfter)).digest('hex') }, authorizedWrite: { workflowRunId: result.workflowRunId, status: result.status, createdSourceRefs: result.sourceIds, createdClaimRefs: result.claimIds, reportReferencesResolve: true }, secretsIncluded: false }, null, 2)}\n`, 'utf8')
   } finally {
     await rm(root, { recursive: true, force: true })
   }

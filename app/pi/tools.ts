@@ -15,6 +15,7 @@ import type { ResearchDispatchService } from '../services/research-dispatch-serv
 import type { ResourceLoader } from '@earendil-works/pi-coding-agent'
 import type { ThesisQueryService } from '../services/thesis-query-service.ts'
 import type { ThesisDecisionService } from '../services/thesis-decision-service.ts'
+import { defaultResearchContextPolicy, defaultResearchPersistencePolicy } from '../services/research-dispatch-contracts.ts'
 
 export interface ResearchHubRequestPolicy { readonly structuredKnowledge: boolean; readonly sourceLibrary: boolean; readonly writeKnowledge: boolean }
 export interface ResearchHubPolicyContext { current?: ResearchHubRequestPolicy }
@@ -55,9 +56,31 @@ function scopedReadService<T extends object>(service: T, policyContext: Research
 }
 
 function scopedResearchService<T extends object>(service: T | undefined, policyContext: ResearchHubPolicyContext | undefined): T | undefined {
-  if (service === undefined || policyContext === undefined) return service
+  if (service === undefined) return service
   const methods = new Set(['startResearchCompany', 'startIndustryResearch', 'startEarningsReview', 'startValuation', 'startEventResearch', 'startThesisRedTeam', 'startThesisLifecycleRefresh', 'startThesisLifecycleCreate'])
-  return new Proxy(service, { get(target, property, receiver) { const value = Reflect.get(target, property, receiver); if (typeof property !== 'string' || !methods.has(property) || typeof value !== 'function') return value; return (...args: unknown[]) => { const current = policyContext.current; if (current === undefined) return Reflect.apply(value, target, args); const input = args[0]; if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApplicationServiceError('invalid_input', 'Research tool input must be an object'); if (property === 'startThesisLifecycleRefresh') { if (current.structuredKnowledge === false) throw new ApplicationServiceError('conflict', 'Thesis lifecycle refresh is disabled for this ResearchRequest'); if (current.writeKnowledge === false) throw new ApplicationServiceError('conflict', 'Thesis lifecycle refresh is disabled when Knowledge writes are disabled for this ResearchRequest'); return Reflect.apply(value, target, args) } if (property === 'startThesisLifecycleCreate') { if (current.structuredKnowledge === false || current.writeKnowledge === false) throw new ApplicationServiceError('conflict', 'Thesis lifecycle CREATE is disabled for this ResearchRequest'); return Reflect.apply(value, target, args) } return Reflect.apply(value, target, [{ ...(input as Record<string, unknown>), writeKnowledge: current.writeKnowledge, useStructuredKnowledge: current.structuredKnowledge }, ...args.slice(1)]) } } })
+  return new Proxy(service, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver)
+      if (typeof property !== 'string' || !methods.has(property) || typeof value !== 'function') return value
+      return (...args: unknown[]) => {
+        const supplied = policyContext?.current
+        if (property === 'startThesisLifecycleRefresh' || property === 'startThesisLifecycleCreate') {
+          if (supplied?.writeKnowledge !== true || supplied.structuredKnowledge !== true) throw new ApplicationServiceError('conflict', `Thesis lifecycle ${property === 'startThesisLifecycleCreate' ? 'CREATE' : 'refresh'} requires explicit Knowledge-write authorization and structured Knowledge access`)
+          return Reflect.apply(value, target, args)
+        }
+        const defaultContext = defaultResearchContextPolicy()
+        const defaultPersistence = defaultResearchPersistencePolicy()
+        const current: ResearchHubRequestPolicy = {
+          structuredKnowledge: supplied?.structuredKnowledge ?? defaultContext.structuredKnowledge,
+          sourceLibrary: supplied?.sourceLibrary ?? defaultContext.sourceLibrary,
+          writeKnowledge: (supplied?.writeKnowledge ?? defaultPersistence.writeKnowledge) === true,
+        }
+        const input = args[0]
+        if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApplicationServiceError('invalid_input', 'Research tool input must be an object')
+        return Reflect.apply(value, target, [{ ...(input as Record<string, unknown>), writeKnowledge: current.writeKnowledge, useStructuredKnowledge: current.structuredKnowledge }, ...args.slice(1)])
+      }
+    },
+  })
 }
 
 function scopedDailyService<T extends object>(service: T | undefined, policyContext: ResearchHubPolicyContext | undefined): T | undefined {
@@ -129,7 +152,7 @@ export function createResearchHubTools(inputContext: ResearchHubPiToolContext): 
   if (context.researchService) {
     tools.push(defineTool({ name: 'create_thesis', label: 'Create Thesis', description: 'Create one canonical Thesis from explicitly selected existing company-scoped evidence through Thesis Formalize and Knowledge Production Gateway. This command writes canonical Knowledge.', promptSnippet: 'Create a canonical Thesis from existing admitted evidence', parameters: Type.Object({ workflowRunId: Type.String(), companyRef: Type.String(), thesisTitle: Type.String({ maxLength: 240 }), narrative: Type.String({ maxLength: 8000 }), evidenceRefs: Type.Array(Type.String(), { minItems: 1, maxItems: 40 }), asOf: Type.String() }), execute: async (_toolCallId, params, signal) => invoke(() => context.researchService!.startThesisLifecycleCreate({ workflowRunId: params.workflowRunId, companyRef: params.companyRef as `entity:${string}`, thesisTitle: params.thesisTitle, narrative: params.narrative, evidenceRefs: params.evidenceRefs as (`claim:${string}` | `observation:${string}`)[], asOf: params.asOf }, signal).completion, signal) }))
     tools.push(defineTool({ name: 'refresh_thesis', label: 'Refresh Thesis', description: 'Start the governed Thesis lifecycle REFRESH Workflow for an exact active Thesis.', promptSnippet: 'Refresh one active canonical Thesis', parameters: Type.Object({ thesisRef: Type.String(), asOf: Type.String(), evidenceRefs: Type.Optional(Type.Array(Type.String(), { maxItems: 80 })) }), execute: async (_toolCallId, params, signal) => invoke(() => context.researchService!.startThesisLifecycleRefresh({ thesisRef: params.thesisRef, asOf: params.asOf, ...(params.evidenceRefs === undefined ? {} : { evidenceRefs: params.evidenceRefs }) }, signal).completion, signal) }))
-    tools.push(defineTool({ name: 'research_company', label: 'Research company', description: 'Start bounded A-share Company Deep Research and return its linked Report and Knowledge outcome.', promptSnippet: 'Research an A-share company through the governed production Workflow', parameters: Type.Object({ workflowRunId: Type.String(), symbol: Type.String(), name: Type.Optional(Type.String()), exchange: Type.Optional(Type.String()), asOf: Type.Optional(Type.String()) }), execute: async (_toolCallId, params, signal) => invoke(() => context.researchService!.startResearchCompany(params as ResearchCompanyInput, signal).completion, signal) }))
+    tools.push(defineTool({ name: 'research_company', label: 'Research company', description: 'Start bounded A-share Company Deep Research and return its linked Report and Knowledge outcome.', promptSnippet: 'Research an A-share company through the governed production Workflow', parameters: Type.Object({ workflowRunId: Type.String(), symbol: Type.String(), name: Type.Optional(Type.String()), exchange: Type.Optional(Type.String()), asOf: Type.Optional(Type.String()), maxSources: Type.Optional(Type.Number()) }), execute: async (_toolCallId, params, signal) => invoke(() => context.researchService!.startResearchCompany(params as ResearchCompanyInput, signal).completion, signal) }))
     tools.push(defineTool({ name: 'research_industry', label: 'Research industry', description: 'Start bounded Industry Deep Research using configured public acquisition sources.', promptSnippet: 'Research an Industry through the governed production Workflow', parameters: Type.Object({ workflowRunId: Type.String(), name: Type.String(), aliases: Type.Optional(Type.Array(Type.String())), canonicalRef: Type.Optional(Type.String()), searchTerms: Type.Optional(Type.Array(Type.String())), asOf: Type.Optional(Type.String()), maxSources: Type.Optional(Type.Number()), maxEvidencePerModule: Type.Optional(Type.Number()) }), execute: async (_toolCallId, params, signal) => invoke(() => context.researchService!.startIndustryResearch(params as IndustryResearchInput, signal).completion, signal) }))
     tools.push(defineTool({ name: 'get_research_report', label: 'Get research report', description: 'Read one bounded persisted Research Report by report ID.', promptSnippet: 'Read a persisted Research Report', parameters: Type.Object({ reportId: Type.String() }), execute: async (_toolCallId, params) => invoke(() => context.researchService!.getResearchReport(params.reportId)) }))
     tools.push(defineTool({ name: 'review_earnings', label: 'Review earnings', description: 'Start an exact-period Earnings Review for an already-covered A-share company.', promptSnippet: 'Review a covered company earnings period', parameters: Type.Object({ workflowRunId: Type.String(), symbol: Type.String(), name: Type.Optional(Type.String()), exchange: Type.Optional(Type.String()), fiscalYear: Type.Number(), period: Type.String(), asOf: Type.Optional(Type.String()) }), execute: async (_toolCallId, params, signal) => invoke(() => context.researchService!.startEarningsReview(params as EarningsReviewInput, signal).completion, signal) }))

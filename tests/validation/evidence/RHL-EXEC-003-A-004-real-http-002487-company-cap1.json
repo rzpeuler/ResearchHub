@@ -1,0 +1,252 @@
+{
+  "taskId": "RHL-EXEC-003-A-004",
+  "generatedAt": "2026-10-10T21:19:28.205Z",
+  "execution": "ResearchRunPage HTTP API -> ResearchDispatchService explicit Workflow -> verified identity -> ResearchService -> Workflow -> real AKShare/CNINFO/GDELT providers -> DataResolver -> Skill -> ResearchReport/ResearchBundle",
+  "providerMode": "real provider / deterministic semantic fallback; Pi ModelRuntime tested separately",
+  "knowledgeBaseSchema": "0.4",
+  "targets": [
+    {
+      "symbol": "002487",
+      "exchange": "SZSE",
+      "name": "大金重工",
+      "fiscalRuns": [
+        {
+          "fiscalYear": 2025,
+          "period": "FY"
+        },
+        {
+          "fiscalYear": 2026,
+          "period": "H1"
+        }
+      ]
+    }
+  ],
+  "requestedOperation": "company",
+  "expectedRunCount": 1,
+  "runs": [
+    {
+      "target": {
+        "symbol": "002487",
+        "exchange": "SZSE",
+        "verifiedName": "大金重工",
+        "verificationSource": "akshare_security_directory",
+        "originAuthority": "S3_AGGREGATOR",
+        "verifiedAt": "2026-10-10T21:19:08.909Z",
+        "sourceId": "akshare-security-identity-directory",
+        "sourceUrl": "https://github.com/akfamily/akshare"
+      },
+      "operation": "company",
+      "label": "Company Research",
+      "request": {
+        "symbol": "002487",
+        "name": "大金重工",
+        "exchange": "SZSE",
+        "maxSources": 1
+      },
+      "runId": "d73ca28d-b685-409a-8e39-3268c5913430",
+      "httpStartStatus": 202,
+      "lifecycle": {
+        "status": "completed",
+        "executionStatus": "completed",
+        "terminalStatus": "completed",
+        "bundleStatus": "available",
+        "reportRef": "company-research-002487-d73ca28d-b685-409a-8e39-3268c5913430",
+        "bundleRef": "research-bundle-d73ca28d-b685-409a-8e39-3268c5913430",
+        "diagnostics": []
+      },
+      "providerOutcomes": [
+        {
+          "provider": "akshare",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": true,
+          "usableSourceCount": 1,
+          "diagnostics": []
+        },
+        {
+          "provider": "cninfo",
+          "attempted": true,
+          "succeeded": true,
+          "empty": false,
+          "failed": false,
+          "usableSourceCount": 1,
+          "diagnostics": []
+        },
+        {
+          "provider": "gdelt",
+          "attempted": true,
+          "succeeded": false,
+          "empty": false,
+          "failed": true,
+          "usableSourceCount": 0,
+          "diagnostics": []
+        }
+      ],
+      "providerClassification": "REAL_PROVIDER_COMPLETED",
+      "report": {
+        "reportId": "company-research-002487-d73ca28d-b685-409a-8e39-3268c5913430",
+        "reportType": "company_research",
+        "workflowRunId": "d73ca28d-b685-409a-8e39-3268c5913430",
+        "asOf": "2026-10-10T21:19:08.922Z",
+        "sections": [
+          {
+            "title": "Company Overview",
+            "substantive": true,
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://static.cninfo.com.cn/finalpage/2026-09-22/1225575461.PDF",
+              "https://quote.eastmoney.com/sz002487.html"
+            ]
+          },
+          {
+            "title": "Business Model",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Business Segments",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Revenue / Profit Drivers",
+            "substantive": true,
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://quote.eastmoney.com/sz002487.html"
+            ]
+          },
+          {
+            "title": "Products",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Technologies",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Industry Exposure",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Supply Chain",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Competition",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Financial Quality",
+            "substantive": true,
+            "sourceRefs": [],
+            "evidenceLinks": [
+              "https://quote.eastmoney.com/sz002487.html"
+            ]
+          },
+          {
+            "title": "Growth Drivers",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Management / Capital Allocation",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Catalysts",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Risks",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Valuation",
+            "substantive": true,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Bull / Base / Bear",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Variant Perception",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Investment Thesis",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          },
+          {
+            "title": "Monitoring Checklist",
+            "substantive": false,
+            "sourceRefs": [],
+            "evidenceLinks": []
+          }
+        ],
+        "evidenceLinkCount": 4,
+        "canonicalRefCount": 0,
+        "canonicalRefsResolve": true,
+        "reportReloaded": true
+      },
+      "domainOutcome": {
+        "blockedReason": null,
+        "errorSummary": null,
+        "diagnostics": [],
+        "acquisitionDiagnostics": []
+      },
+      "bundle": {
+        "bundleId": "research-bundle-d73ca28d-b685-409a-8e39-3268c5913430",
+        "workflowRunId": "d73ca28d-b685-409a-8e39-3268c5913430",
+        "reportId": "company-research-002487-d73ca28d-b685-409a-8e39-3268c5913430",
+        "status": "completed",
+        "reloaded": true,
+        "terminalStatus": "completed"
+      },
+      "readOnlyKnowledge": {
+        "unchanged": true,
+        "beforePathCount": 17,
+        "afterPathCount": 17,
+        "beforeDigest": "a8831039bbb0332d01647fc04b999087a522cd22738e18408fd667cbad05bfdd",
+        "afterDigest": "a8831039bbb0332d01647fc04b999087a522cd22738e18408fd667cbad05bfdd"
+      }
+    }
+  ],
+  "allRunsSynchronized": true,
+  "allReportsAndBundlesReconciled": true,
+  "atLeastOneCompletedCompanyValuationEarningsTriplet": false,
+  "allReadOnlyTreesUnchanged": true,
+  "finalKnowledgeTreeUnchanged": true,
+  "finalKnowledgeDigest": "a8831039bbb0332d01647fc04b999087a522cd22738e18408fd667cbad05bfdd",
+  "secretsIncluded": false,
+  "rawProviderBodiesIncluded": false,
+  "hiddenReasoningIncluded": false
+}

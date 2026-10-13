@@ -1,0 +1,202 @@
+{
+  "task": "RHL-EXEC-003-A-003",
+  "capturedAt": "2026-10-09T21:42:13.875Z",
+  "liveRun": true,
+  "productionPath": "ApplicationRuntime -> ResearchDispatchService.startAsync -> ResearchService -> EarningsReview DataResolver -> catalog/source policy -> acquisition plugins -> EarningsReview Skill",
+  "actualVsConsensusRealStatus": "ACTUAL_VS_CONSENSUS_REAL_DATA_GAP",
+  "isolatedKnowledgeBase": {
+    "schemaVersion": "0.4",
+    "beforeObjectCount": 0,
+    "afterObjectCount": 0,
+    "beforeDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "afterDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "unchanged": true
+  },
+  "dispatchBundleCount": 1,
+  "runs": [
+    {
+      "target": {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SH",
+        "fiscalYear": 2026,
+        "period": "H1"
+      },
+      "dispatchStatus": "started",
+      "runId": "35f96d4c-cf46-4a97-a3b9-3cba15ba089d",
+      "dispatchResolution": {
+        "source": "deterministic_fallback",
+        "attempts": 2,
+        "diagnostics": [
+          "entities[0].value must be a non-empty string of at most 500 characters",
+          "entities[0].confidence must be a finite number between 0 and 1",
+          "semantic_resolution_fallback"
+        ]
+      },
+      "dispatchFeedback": null,
+      "execution": {
+        "status": "completed",
+        "blockedReason": null,
+        "errors": [],
+        "providerOutcomes": [
+          {
+            "provider": "cninfo",
+            "providerAttempted": true,
+            "providerSucceeded": true,
+            "providerEmpty": false,
+            "providerFailed": false,
+            "usableSourceCount": 1
+          },
+          {
+            "provider": "akshare",
+            "providerAttempted": true,
+            "providerSucceeded": true,
+            "providerEmpty": false,
+            "providerFailed": false,
+            "usableSourceCount": 1
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "providerAttempted": true,
+            "providerSucceeded": true,
+            "providerEmpty": false,
+            "providerFailed": false,
+            "usableSourceCount": 10
+          },
+          {
+            "provider": "eastmoney-individual-research-report",
+            "providerAttempted": false,
+            "providerSucceeded": false,
+            "providerEmpty": false,
+            "providerFailed": false,
+            "usableSourceCount": 0
+          }
+        ],
+        "diagnostics": [
+          {
+            "provider": "management-communication",
+            "status": "empty",
+            "reason": "cninfo_ir_no_accepted_records"
+          },
+          {
+            "provider": "management-communication",
+            "status": "empty",
+            "reason": "Pi reasoning execution timed out"
+          },
+          {
+            "provider": "management-communication",
+            "status": "empty",
+            "reason": "REASONING_EXECUTION_FAILED"
+          },
+          {
+            "provider": "management-communication",
+            "status": "empty",
+            "reason": "unsupported_exchange:SH"
+          },
+          {
+            "provider": "ths-institution-forecast",
+            "kind": "structured_data",
+            "status": "usable",
+            "reason": "consensus_minimum_count_not_met"
+          }
+        ],
+        "selectionDiagnostics": [],
+        "telemetry": {
+          "officialEvidenceStatus": "available",
+          "structuredFinancialEvidenceStatus": "available",
+          "expectationAcquisitionStatus": "partial",
+          "expectationEstimateCount": 20,
+          "expectationInstitutionCount": 10,
+          "expectationConsensusSnapshotCount": 0,
+          "actualConsensusComparisonCount": 0,
+          "estimateRevisionCount": 0,
+          "reasoning": {
+            "called": true,
+            "validated": false,
+            "applied": false,
+            "fallbackUsed": true,
+            "repairAttempts": 1,
+            "operation": "earnings_review_synthesis",
+            "model": "zhipu-openapi/glm-5.3-flash",
+            "diagnostic": "executor_reasoning_timeout; executor_reasoning_timeout",
+            "diagnostics": [
+              "executor_reasoning_timeout",
+              "executor_reasoning_timeout"
+            ]
+          }
+        },
+        "expectationAnalysis": null,
+        "financialQuality": null,
+        "report": {
+          "reportId": "earnings-review-600519-2026-H1-35f96d4c-cf46-4a97-a3b9-3cba15ba089d"
+        },
+        "reportPath": "earnings-review-600519-2026-H1-35f96d4c-cf46-4a97-a3b9-3cba15ba089d.md"
+      },
+      "bundle": {
+        "bundleId": "research-bundle-35f96d4c-cf46-4a97-a3b9-3cba15ba089d",
+        "workflowRunId": "35f96d4c-cf46-4a97-a3b9-3cba15ba089d",
+        "status": "completed",
+        "report": {
+          "reportId": "earnings-review-600519-2026-H1-35f96d4c-cf46-4a97-a3b9-3cba15ba089d"
+        },
+        "reloadedFromStore": true
+      },
+      "reportReloaded": true,
+      "reportSectionCount": 14,
+      "reportEvidence": {
+        "reportId": "earnings-review-600519-2026-H1-35f96d4c-cf46-4a97-a3b9-3cba15ba089d",
+        "generatedAt": "2026-10-09T21:42:13.857Z",
+        "asOf": "2026-10-09T21:31:03.424Z",
+        "verifiedSecurityIdentity": {
+          "symbol": "600519",
+          "exchange": "SH",
+          "verifiedName": "贵州茅台",
+          "verificationSource": "akshare_security_directory",
+          "originAuthority": "S3_AGGREGATOR",
+          "verifiedAt": "2026-10-09T21:31:03.417Z",
+          "sourceId": "akshare-security-identity-directory",
+          "sourceUrl": "https://github.com/akfamily/akshare"
+        },
+        "sourceRefCount": 0,
+        "claimRefCount": 0,
+        "selectedSections": [
+          {
+            "title": "Earnings Snapshot",
+            "markdown": "Structured actuals returned for 600519 (2026-H1):\n- Revenue: 92,278,072,083.21 CNY (2026-H1; observed).\n- Net profit: 44,516,880,421.86 CNY (2026-H1; observed).\n- Gross margin: 89.5552 percent (2026-H1; observed).\n- EPS: 35.57 CNY/share (2026-H1; observed).\n\n#### Source and period provenance\n- Official filing: 贵州茅台2026年半年度报告; issuer 贵州茅台; ticker 600519; period 2026-H1; announcement 1225475868; published 2026-08-14T16:00:00.000Z; retrieved 2026-10-09T21:37:09.205Z; publisher CNINFO; URL https://static.cninfo.com.cn/finalpage/2026-08-15/1225475868.PDF.\n- Structured actuals: publisher EastMoney; retrieved by AKShare; retrieved 2026-10-09T21:37:10.462Z; published unavailable; value version UNVERIFIED (Aggregator financial numeric revision is not identified); period 2026-H1\n  - revenue: 92278072083.21 CNY (2026-H1)\n  - net_profit: 44516880421.86 CNY (2026-H1)\n  - gross_margin: 89.5552128279 percent (2026-H1)\n  - eps: 35.57 CNY_per_share (2026-H1)\n  - revenue_yoy: 1.300099475568749 percent (2026-H1)\n  - net_profit_yoy: -1.9515948550279467 percent (2026-H1)\n  - gross_margin_delta_bps: -174.40966540000034 ratio (2026-H1)",
+            "evidenceLinks": [
+              "https://static.cninfo.com.cn/finalpage/2026-08-15/1225475868.PDF"
+            ]
+          },
+          {
+            "title": "Revenue / Profit Growth",
+            "markdown": "- Revenue YoY: 1.3001 percent (2026-H1; derived).\n- Net profit YoY: -1.9516 percent (2026-H1; derived).",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Margin Analysis",
+            "markdown": "- Gross margin: 89.5552 percent (2026-H1; observed).\n- Gross margin change vs prior-year period: -174.4097 bps (2026-H1; derived).",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Cash Flow / Working Capital",
+            "markdown": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Cash Flow / Working Capital. Operating cash flow and cash-conversion inputs are unavailable.\n\n### Deterministic financial-quality checks\n- DSO: unavailable\n- DIO: unavailable\n- DPO: unavailable\n- Cash Conversion Cycle: unavailable\n- CFO / Net Income: unavailable\n- FCF: unavailable\n- FCF / Net Income: unavailable\n- Unavailable components: unavailable (opening.receivables, current.receivables, opening.inventory, current.inventory, opening.payables, current.payables, current.cogs, cashConversionCycle, current.cashFromOperations, current.capex)",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Valuation Implications",
+            "markdown": "Research Gap / Unavailable: no bounded evidence supports a conclusion for Valuation Implications. Consensus unavailable; no actual-versus-consensus or valuation conclusion is made.\n\nNo verified expectation finding mapped to a valuation input.",
+            "evidenceLinks": []
+          },
+          {
+            "title": "Research Gaps / Monitoring",
+            "markdown": "Unavailable metrics for 600519: operating_cash_flow, operating_cash_flow_to_net_profit. Deterministic diagnostics: executor_reasoning_timeout; executor_reasoning_timeout.\n\n### Management communication monitoring\n- diagnostic: cninfo_ir_no_accepted_records\n- diagnostic: Pi reasoning execution timed out\n- diagnostic: REASONING_EXECUTION_FAILED\n- diagnostic: unsupported_exchange:SH",
+            "evidenceLinks": [
+              "https://static.cninfo.com.cn/finalpage/2026-08-15/1225475868.PDF"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "resultDigest": "160cac84eb25d1d5adec59a4faa311a80e905db28d0263c755790cf47a01f5ff"
+}
