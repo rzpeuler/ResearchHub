@@ -1,0 +1,372 @@
+{
+  "taskId": "RHL-WF-PERSIST-001",
+  "browser": "Microsoft Edge headless via CDP",
+  "fixture": "isolated Company Research providers and Knowledge Base; model network disabled",
+  "runtimeProcesses": [
+    {
+      "phase": "complete-company-research",
+      "pid": 27516,
+      "runtimeOrigin": "http://127.0.0.1:59421",
+      "browserOrigin": "http://127.0.0.1:59422",
+      "exit": "graceful"
+    },
+    {
+      "phase": "terminal-recovery",
+      "pid": 35056,
+      "runtimeOrigin": "http://127.0.0.1:65493",
+      "browserOrigin": "http://127.0.0.1:65494",
+      "exit": "killed-for-next-crash-case"
+    },
+    {
+      "phase": "in-flight-company-research-crash",
+      "pid": 35056,
+      "runtimeOrigin": "http://127.0.0.1:65493",
+      "exit": "SIGKILL",
+      "runId": "ea0816a1-f3a8-4f38-82ef-bf5e51d240da"
+    },
+    {
+      "phase": "interrupted-recovery",
+      "pid": 17116,
+      "runtimeOrigin": "http://127.0.0.1:54630",
+      "browserOrigin": "http://127.0.0.1:54631",
+      "exit": "graceful"
+    }
+  ],
+  "checkpoints": [
+    {
+      "name": "selected Workflow UI submit and runtime association",
+      "selection": {
+        "selectedId": "company_research",
+        "selectedLabel": "公司深度研究"
+      },
+      "visible": "{\"activity\":[\"你 · 已提交请求\\n16:16\\n请对跨境通（002640）进行公司深度研究 UX004 1791879378460\\n复制消息\\n工作流 · 运行中 · workflow_started\\n7f30dd61-e635-4653-b7ae-5ca707b8d89d\\n执行中 981 ms\"],\"workflowCard\":\"已完成\\n公司深度研究\\n\\n跨境通\\n\\n运行耗时\\n0秒\\nRun ID\\n7f30dd61-e635-4653-b7ae-5ca707b8d89d\\n\\n当前/最近阶段：报告保存\\n\\nCompany research completed for 002640\\n\\n研究对象校验\\n已完成 · 0秒\\n已校验证券身份\\n数据获取\\n已完成 · 0秒\\n已处理 3 个可观察数据源\\n研究综合分析\\n已完成 · 0秒\\n研究综合分析已返回\\n证据质量门\\n已完成 · 0秒\\n证据质量门通过\\nKnowledge Gateway\\n已跳过 · 0秒\\n本次未授权 Knowledge 写入\\n研究报告生成\\n已完成 · 0秒\\n研究报告已生成\\n报告保存\\n已完成 · 0秒\\n研究报告已保存\\n数据源\\n结构化数据\\n已跳过\\n0秒\\n当前数据需求不支持该数据源\\n当前数据需求不支持该数据源\\n当前数据需求不支持该数据源\\n上市公司公告\\n失败\\n资料数：0\\n0秒\\n数据源调用失败\\n新闻资料\\n成功\\n资料数：1\\n0秒\\nWORKFLOW 内部 SKILL\\n公司研究综合分析\\n已完成\\n0秒\\n采用确定性证据基线完成综合分析\\n工作流已完成\\n\\nCompany research completed for 002640\\n\\n打开研究报告打开研究资料包\",\"subject\":\"跨境通\",\"runId\":\"7f30dd61-e635-4653-b7ae-5ca707b8d89d\"}"
+    },
+    {
+      "name": "full Company Research snapshot persisted before graceful Runtime shutdown",
+      "passed": true,
+      "schemaVersion": 1,
+      "observationRevision": 21,
+      "workflowStatus": "completed",
+      "stageCount": 7
+    },
+    {
+      "name": "second independent Runtime restores terminal Company Research over the existing HTTP API",
+      "passed": true,
+      "status": "completed",
+      "observationSource": "historical",
+      "stageCount": 7,
+      "executionsAfterRestart": 0,
+      "providerCallsAfterRestart": 0,
+      "knowledgeBaseSha256Unchanged": true
+    },
+    {
+      "name": "real Runtime restart restores historical Workflow in the browser",
+      "result": {
+        "api": {
+          "runId": "7f30dd61-e635-4653-b7ae-5ca707b8d89d",
+          "workflowType": "company_deep_research",
+          "objective": "Company research 002640",
+          "status": "completed",
+          "startedAt": "2026-10-13T08:16:18.640Z",
+          "updatedAt": "2026-10-13T08:16:18.769Z",
+          "observationRevision": 21,
+          "stages": [
+            {
+              "stageId": "identity_validation",
+              "label": "研究对象校验",
+              "status": "completed",
+              "startedAt": "2026-10-13T08:16:18.656Z",
+              "completedAt": "2026-10-13T08:16:18.665Z",
+              "durationMs": 9,
+              "summary": "已校验证券身份",
+              "diagnostics": []
+            },
+            {
+              "stageId": "data_acquisition",
+              "label": "数据获取",
+              "status": "completed",
+              "startedAt": "2026-10-13T08:16:18.672Z",
+              "completedAt": "2026-10-13T08:16:18.692Z",
+              "durationMs": 20,
+              "summary": "已处理 3 个可观察数据源",
+              "diagnostics": []
+            },
+            {
+              "stageId": "research_synthesis",
+              "label": "研究综合分析",
+              "status": "completed",
+              "startedAt": "2026-10-13T08:16:18.698Z",
+              "completedAt": "2026-10-13T08:16:18.714Z",
+              "durationMs": 16,
+              "summary": "研究综合分析已返回",
+              "diagnostics": []
+            },
+            {
+              "stageId": "quality_gate",
+              "label": "证据质量门",
+              "status": "completed",
+              "startedAt": "2026-10-13T08:16:18.718Z",
+              "completedAt": "2026-10-13T08:16:18.722Z",
+              "durationMs": 4,
+              "summary": "证据质量门通过",
+              "diagnostics": []
+            },
+            {
+              "stageId": "knowledge_gateway",
+              "label": "Knowledge Gateway",
+              "status": "skipped",
+              "startedAt": "2026-10-13T08:16:18.727Z",
+              "completedAt": "2026-10-13T08:16:18.731Z",
+              "durationMs": 4,
+              "summary": "本次未授权 Knowledge 写入",
+              "diagnostics": []
+            },
+            {
+              "stageId": "report_generation",
+              "label": "研究报告生成",
+              "status": "completed",
+              "startedAt": "2026-10-13T08:16:18.737Z",
+              "completedAt": "2026-10-13T08:16:18.742Z",
+              "durationMs": 5,
+              "summary": "研究报告已生成",
+              "diagnostics": []
+            },
+            {
+              "stageId": "report_persistence",
+              "label": "报告保存",
+              "status": "completed",
+              "startedAt": "2026-10-13T08:16:18.747Z",
+              "completedAt": "2026-10-13T08:16:18.753Z",
+              "durationMs": 6,
+              "summary": "研究报告已保存",
+              "diagnostics": []
+            }
+          ],
+          "providerObservations": [
+            {
+              "providerId": "akshare",
+              "label": "结构化数据",
+              "status": "skipped",
+              "startedAt": "2026-10-13T08:16:18.682Z",
+              "completedAt": "2026-10-13T08:16:18.683Z",
+              "durationMs": 1,
+              "diagnostics": [
+                "PROVIDER_UNSUPPORTED",
+                "PROVIDER_UNSUPPORTED",
+                "PROVIDER_UNSUPPORTED"
+              ]
+            },
+            {
+              "providerId": "cninfo",
+              "label": "上市公司公告",
+              "status": "failed",
+              "recordCount": 0,
+              "startedAt": "2026-10-13T08:16:18.682Z",
+              "completedAt": "2026-10-13T08:16:18.683Z",
+              "durationMs": 1,
+              "diagnostics": [
+                "PROVIDER_ATTEMPT_FAILED"
+              ]
+            },
+            {
+              "providerId": "gdelt",
+              "label": "新闻资料",
+              "status": "success",
+              "recordCount": 1,
+              "startedAt": "2026-10-13T08:16:18.683Z",
+              "completedAt": "2026-10-13T08:16:18.684Z",
+              "durationMs": 1,
+              "diagnostics": []
+            }
+          ],
+          "skillObservations": [
+            {
+              "skillId": "company_research_synthesis",
+              "label": "公司研究综合分析",
+              "status": "completed",
+              "startedAt": "2026-10-13T08:16:18.703Z",
+              "completedAt": "2026-10-13T08:16:18.709Z",
+              "durationMs": 6,
+              "summary": "采用确定性证据基线完成综合分析"
+            }
+          ],
+          "progressSummary": "Company research completed for 002640",
+          "executionResult": {
+            "runId": "7f30dd61-e635-4653-b7ae-5ca707b8d89d",
+            "workflowId": "company_research",
+            "executionStatus": "completed",
+            "terminalStatus": "completed",
+            "summary": "Company research completed for 002640",
+            "reportRef": "company-research-002640-7f30dd61-e635-4653-b7ae-5ca707b8d89d",
+            "bundleRef": "research-bundle-7f30dd61-e635-4653-b7ae-5ca707b8d89d",
+            "diagnostics": [],
+            "bundleStatus": "available"
+          },
+          "currentStageId": "report_persistence",
+          "currentStage": "报告保存",
+          "completedAt": "2026-10-13T08:16:18.758Z",
+          "observationSource": "historical",
+          "historyPersistence": {
+            "status": "saved",
+            "persistedRevision": 21
+          }
+        },
+        "card": {
+          "runId": "7f30dd61-e635-4653-b7ae-5ca707b8d89d",
+          "text": "已完成\n公司深度研究\n\n跨境通\n\n历史 Workflow 快照\n\n运行耗时\n0秒\nRun ID\n7f30dd61-e635-4653-b7ae-5ca707b8d89d\n\n当前/最近阶段：报告保存\n\nCompany research completed for 002640\n\n研究对象校验\n已完成 · 0秒\n已校验证券身份\n数据获取\n已完成 · 0秒\n已处理 3 个可观察数据源\n研究综合分析\n已完成 · 0秒\n研究综合分析已返回\n证据质量门\n已完成 · 0秒\n证据质量门通过\nKnowledge Gateway\n已跳过 · 0秒\n本次未授权 Knowledge 写入\n研究报告生成\n已完成 · 0秒\n研究报告已生成\n报告保存\n已完成 · 0秒\n研究报告已保存\n数据源\n结构化数据\n已跳过\n0秒\n当前数据需求不支持该数据源\n当前数据需求不支持该数据源\n当前数据需求不支持该数据源\n上市公司公告\n失败\n资料数：0\n0秒\n数据源调用失败\n新闻资料\n成功\n资料数：1\n0秒\nWORKFLOW 内部 SKILL\n公司研究综合分析\n已完成\n0秒\n采用确定性证据基线完成综合分析\n工作流已完成\n\nCompany research completed for 002640\n\n打开研究报告打开研究资料包",
+          "historical": true,
+          "recovery": false,
+          "stages": [
+            "研究对象校验\n已完成 · 0秒\n已校验证券身份",
+            "数据获取\n已完成 · 0秒\n已处理 3 个可观察数据源",
+            "研究综合分析\n已完成 · 0秒\n研究综合分析已返回",
+            "证据质量门\n已完成 · 0秒\n证据质量门通过",
+            "Knowledge Gateway\n已跳过 · 0秒\n本次未授权 Knowledge 写入",
+            "研究报告生成\n已完成 · 0秒\n研究报告已生成",
+            "报告保存\n已完成 · 0秒\n研究报告已保存"
+          ]
+        }
+      },
+      "passed": true
+    },
+    {
+      "name": "selected Workflow UI submit and runtime association",
+      "selection": {
+        "selectedId": "company_research",
+        "selectedLabel": "公司深度研究"
+      },
+      "visible": "{\"activity\":[\"你 · 已提交请求\\n16:16\\n请对跨境通（002640）进行公司深度研究 UX004 1791879383901\\n复制消息\\n工作流 · 运行中 · workflow_started\\nea0816a1-f3a8-4f38-82ef-bf5e51d240da\\n执行中 959 ms\"],\"workflowCard\":\"进行中\\n公司深度研究\\n\\n跨境通\\n\\n运行耗时\\n1秒\\nRun ID\\nea0816a1-f3a8-4f38-82ef-bf5e51d240da\\n\\n当前/最近阶段：数据获取\\n\\n数据获取\\n\\n研究对象校验\\n已完成 · 0秒\\n已校验证券身份\\n数据获取\\n进行中 · 0秒\\n取消工作流\",\"subject\":\"跨境通\",\"runId\":\"ea0816a1-f3a8-4f38-82ef-bf5e51d240da\"}"
+    },
+    {
+      "name": "third independent Runtime restores an in-flight run as interrupted without replay",
+      "passed": true,
+      "status": "interrupted",
+      "lastObservedStatus": "running",
+      "stage": {
+        "stageId": "data_acquisition",
+        "label": "数据获取",
+        "status": "interrupted",
+        "startedAt": "2026-10-13T08:16:24.120Z"
+      },
+      "replayedExecutions": 0,
+      "providerCallsAfterRestart": 0
+    },
+    {
+      "name": "real Runtime restart restores historical Workflow in the browser",
+      "result": {
+        "api": {
+          "runId": "ea0816a1-f3a8-4f38-82ef-bf5e51d240da",
+          "workflowType": "company_deep_research",
+          "objective": "Company research 002640",
+          "status": "interrupted",
+          "startedAt": "2026-10-13T08:16:24.084Z",
+          "updatedAt": "2026-10-13T08:16:24.120Z",
+          "observationRevision": 5,
+          "stages": [
+            {
+              "stageId": "identity_validation",
+              "label": "研究对象校验",
+              "status": "completed",
+              "startedAt": "2026-10-13T08:16:24.102Z",
+              "completedAt": "2026-10-13T08:16:24.109Z",
+              "durationMs": 7,
+              "summary": "已校验证券身份",
+              "diagnostics": []
+            },
+            {
+              "stageId": "data_acquisition",
+              "label": "数据获取",
+              "status": "interrupted",
+              "startedAt": "2026-10-13T08:16:24.120Z"
+            }
+          ],
+          "providerObservations": [],
+          "skillObservations": [],
+          "progressSummary": "数据获取",
+          "executionResult": {
+            "runId": "ea0816a1-f3a8-4f38-82ef-bf5e51d240da",
+            "workflowId": "company_research",
+            "executionStatus": "interrupted",
+            "summary": "company_deep_research is running",
+            "diagnostics": [],
+            "bundleStatus": "pending"
+          },
+          "currentStageId": "data_acquisition",
+          "currentStage": "数据获取",
+          "observationSource": "historical",
+          "recoveryState": {
+            "kind": "interrupted",
+            "lastObservedStatus": "running"
+          },
+          "historyPersistence": {
+            "status": "saved",
+            "persistedRevision": 5
+          }
+        },
+        "card": {
+          "runId": "ea0816a1-f3a8-4f38-82ef-bf5e51d240da",
+          "text": "已中断\n公司深度研究\n\n跨境通\n\n历史 Workflow 快照\n\nRuntime 重启时该 Workflow 处于运行状态；不会自动续跑。\n\n运行耗时\n0秒\nRun ID\nea0816a1-f3a8-4f38-82ef-bf5e51d240da\n\n当前/最近阶段：数据获取\n\n数据获取\n\n研究对象校验\n已完成 · 0秒\n已校验证券身份\n数据获取\n已中断 · 0秒\n工作流已中断\n\ncompany_deep_research is running\n\nRuntime 停止时该 Workflow 尚未完成；不会自动续跑。\n\n正在同步研究资料包…",
+          "historical": true,
+          "recovery": true,
+          "stages": [
+            "研究对象校验\n已完成 · 0秒\n已校验证券身份",
+            "数据获取\n已中断 · 0秒"
+          ]
+        }
+      },
+      "passed": true
+    }
+  ],
+  "completedRun": {
+    "runId": "7f30dd61-e635-4653-b7ae-5ca707b8d89d",
+    "workflowType": "company_deep_research",
+    "status": "completed",
+    "observationRevision": 21,
+    "stageIds": [
+      "identity_validation",
+      "data_acquisition",
+      "research_synthesis",
+      "quality_gate",
+      "knowledge_gateway",
+      "report_generation",
+      "report_persistence"
+    ],
+    "providerIds": [
+      "akshare",
+      "cninfo",
+      "gdelt"
+    ],
+    "skillIds": [
+      "company_research_synthesis"
+    ],
+    "executionResult": {
+      "runId": "7f30dd61-e635-4653-b7ae-5ca707b8d89d",
+      "workflowId": "company_research",
+      "executionStatus": "completed",
+      "terminalStatus": "completed",
+      "summary": "Company research completed for 002640",
+      "reportRef": "company-research-002640-7f30dd61-e635-4653-b7ae-5ca707b8d89d",
+      "bundleRef": "research-bundle-7f30dd61-e635-4653-b7ae-5ca707b8d89d",
+      "diagnostics": [],
+      "bundleStatus": "available"
+    },
+    "knowledgeBaseSha256": "5b5d0af2b1d636d3121e8b21c0556f0f6c6d107094029b2cc6dfe210274a2e75"
+  },
+  "inFlightRun": {
+    "runId": "ea0816a1-f3a8-4f38-82ef-bf5e51d240da",
+    "snapshotStatusBeforeCrash": "running",
+    "lastObservedStage": {
+      "stageId": "data_acquisition",
+      "label": "数据获取",
+      "status": "running",
+      "startedAt": "2026-10-13T08:16:24.120Z"
+    },
+    "observationRevision": 5
+  },
+  "knowledgeBase": {
+    "beforeResearchSha256": "5b5d0af2b1d636d3121e8b21c0556f0f6c6d107094029b2cc6dfe210274a2e75",
+    "afterCompletedResearchSha256": "5b5d0af2b1d636d3121e8b21c0556f0f6c6d107094029b2cc6dfe210274a2e75",
+    "afterCrashRecoverySha256": "5b5d0af2b1d636d3121e8b21c0556f0f6c6d107094029b2cc6dfe210274a2e75"
+  },
+  "completedAt": "2026-10-13T08:16:28.912Z"
+}

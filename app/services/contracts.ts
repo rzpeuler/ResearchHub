@@ -91,8 +91,8 @@ export interface KnowledgeDirectoryProjection {
   readonly technologies: KnowledgeDirectorySection
 }
 
-export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'completed_with_review' | 'blocked' | 'cancelled' | 'failed'
-export type TerminalWorkflowStatus = Exclude<WorkflowStatus, 'pending' | 'running'>
+export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'completed_with_review' | 'blocked' | 'cancelled' | 'failed' | 'interrupted'
+export type TerminalWorkflowStatus = Exclude<WorkflowStatus, 'pending' | 'running' | 'interrupted'>
 export type WorkflowBundleStatus = 'pending' | 'available' | 'failed' | 'unavailable'
 export interface WorkflowExecutionResultProjection {
   readonly runId: string
@@ -129,6 +129,10 @@ export interface WorkflowRunView {
   readonly reviewCount?: number
   readonly errorSummary?: string
   readonly executionResult?: WorkflowExecutionResultProjection
+  /** Read-path metadata; excluded from the durable snapshot payload. */
+  readonly observationSource?: 'live' | 'historical'
+  readonly recoveryState?: { readonly kind: 'interrupted'; readonly lastObservedStatus: 'pending' | 'running' }
+  readonly historyPersistence?: { readonly status: 'pending' | 'saved' | 'failed' | 'unavailable'; readonly persistedRevision?: number; readonly errorCode?: string }
 }
 export interface WorkflowCancelResult {
   readonly runId: string

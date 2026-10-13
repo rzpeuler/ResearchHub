@@ -103,9 +103,11 @@ test('UX-001 HTTP lifecycle persists a Company Research request, links its Workf
     }
     const firstDispatch = await post(first.info.origin, first.headers, '/api/research/dispatch', dispatchBody)
     assert.equal(firstDispatch.status, 202)
-    const firstRun = await firstDispatch.json() as { accepted: boolean; runId: string; workflow?: { runId: string; status: string } }
+    const firstRun = await firstDispatch.json() as { accepted: boolean; runId: string; workflow?: { runId: string; status: string; historyPersistence?: { status: string; persistedRevision?: number } } }
     assert.equal(firstRun.accepted, true); assert.ok(firstRun.runId); assert.equal(firstRun.workflow?.runId, firstRun.runId)
     assert.equal(runtime.workflowService.getWorkflowStatus(firstRun.runId)?.status, 'running')
+    assert.equal(firstRun.workflow?.historyPersistence?.status, 'saved', 'the 202 response confirms the running snapshot was durably written')
+    assert.ok((firstRun.workflow?.historyPersistence?.persistedRevision ?? 0) >= 1)
     assert.equal(startedInputs.length, 1)
     assert.equal(startedInputs[0]?.workflowRunId, firstRun.runId)
     assert.equal(startedInputs[0]?.symbol, '002640'); assert.equal(startedInputs[0]?.name, '跨境通'); assert.equal(startedInputs[0]?.writeKnowledge, false)
@@ -181,6 +183,9 @@ test('UX-001 HTTP lifecycle persists a Company Research request, links its Workf
 
     for (const release of releases) release()
     await Promise.all(completions)
+    await runtime.workflowService.flushPersistence()
+    const durableWorkflowFiles = await readdir(join(cwd, 'runtime-data', 'workflow-observations'))
+    assert.ok(durableWorkflowFiles.includes(`${secondRun.runId}.json`), `terminal Workflow snapshot was not persisted; files=${durableWorkflowFiles.join(',')}`)
     await server.close(); server = undefined
     await runtime.close(); runtime = undefined
 
@@ -203,8 +208,15 @@ test('UX-001 HTTP lifecycle persists a Company Research request, links its Workf
     await runtimeAfterRestart.sessionRuntime.switchConversation(conversationId)
     assert.equal(runtimeAfterRestart.sessionRuntime.getCurrentMessages().some((message) => message.role === 'user' && message.content === 'Pi transcript persistence check.'), true)
     assert.equal(runtimeAfterRestart.sessionRuntime.getCurrentMessages().some((message) => message.role === 'assistant' && message.content === 'Persisted Pi transcript response.'), true)
-    const missingOldRun = await fetch(`${restarted.info.origin}/api/workflows/${encodeURIComponent(secondRun.runId)}`, { headers: { origin: restarted.info.origin } })
-    assert.equal(missingOldRun.status, 404, 'Runtime restart does not fabricate active Workflow status')
+    const persistedWorkflow = await fetch(`${restarted.info.origin}/api/workflows/${encodeURIComponent(secondRun.runId)}`, { headers: { origin: restarted.info.origin } })
+    assert.equal(persistedWorkflow.status, 200, 'Runtime restart exposes the persisted Workflow observation through the existing endpoint')
+    const persistedWorkflowBody = await persistedWorkflow.json() as { status: string; observationSource: string; historyPersistence: { status: string }; stages: readonly unknown[] }
+    assert.equal(persistedWorkflowBody.status, 'completed')
+    assert.equal(persistedWorkflowBody.observationSource, 'historical')
+    assert.equal(persistedWorkflowBody.historyPersistence.status, 'saved')
+    assert.deepEqual(persistedWorkflowBody.stages, [], 'the fixture did not emit stage observations, so recovery does not invent stages')
+    const missingOldRun = await fetch(`${restarted.info.origin}/api/workflows/missing-run-id`, { headers: { origin: restarted.info.origin } })
+    assert.equal(missingOldRun.status, 404, 'Missing snapshots retain the existing not-found path')
     const interruptedReplay = await post(restarted.info.origin, restarted.headers, '/api/research/dispatch', { ...dispatchBody, operationId: operation2, query: `${requestText} 再次研究` })
     assert.equal(interruptedReplay.status, 200)
     assert.equal((await interruptedReplay.json() as { status: string }).status, 'completed')
