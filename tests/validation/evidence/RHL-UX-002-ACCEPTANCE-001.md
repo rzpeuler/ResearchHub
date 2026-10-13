@@ -1,6 +1,6 @@
 # RHL-UX-002 Acceptance Evidence
 
-- Status: `DECISION IMPLEMENTED / CTO ACCEPTANCE PENDING`
+- Status: `DECISION_IMPLEMENTED / CTO ACCEPTANCE PENDING`
 - Baseline: `a5d02c8cd87c527db5a39c6e88ed49014ca6dafe`
 - Branch: `codex/ux-002-realtime-agent-interaction`
 - Report: [RHL-UX-002 Implementation Report](../../../docs/engineering/reports/2026-10-12-rhl-ux-002-implementation.md)

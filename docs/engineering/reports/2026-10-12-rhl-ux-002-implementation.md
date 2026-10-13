@@ -1,6 +1,6 @@
 # RHL-UX-002 — Realtime Agent Interaction Implementation Report
 
-- Status: `DECISION IMPLEMENTED / CTO ACCEPTANCE PENDING`
+- Status: `DECISION_IMPLEMENTED / CTO ACCEPTANCE PENDING`
 - Baseline: `origin/main` at `a5d02c8cd87c527db5a39c6e88ed49014ca6dafe` (accepted UX-001).
 - Branch: `codex/ux-002-realtime-agent-interaction`.
 - Contract: [Realtime Agent Interaction Contract](../specs/2026-10-12-rhl-ux-002-realtime-agent-interaction.md).
@@ -81,4 +81,4 @@ Full Node outputs used in comparison: `%TEMP%\ux002-node-adr001-final.txt`, `%TE
 
 ## H. Git delivery
 
-The ADR-001 implementation, performance evidence, and regression result are committed on this branch. The delivery commit was pushed to `origin/codex/ux-002-realtime-agent-interaction`; local HEAD and the fetched remote branch were verified equal, and the worktree was clean at closeout. No PR merge or UX-003 work was performed; `origin/main` remains the UX-001 baseline.
+The ADR-001 implementation, performance evidence, and regression result are committed on this branch. The implementation branch was subsequently merged through PR #3 at `2594fe01b4f282bfb4680c21c9135d3b05ffc3a4`; this closeout did not perform or alter that merge. The status-alignment follow-up and this Git-state clarification are pushed on `codex/ux-002-realtime-agent-interaction`. UX-003 implementation was not performed as part of UX-002.
