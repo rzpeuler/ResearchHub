@@ -67,6 +67,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .session-pill, .rail-badge { padding: 4px 9px; border: 1px solid #33444f; border-radius: 999px; color: #7d919d; font-size: 10px; text-transform: capitalize; }
 .session-pill.live, .rail-badge { border-color: #37605b; color: #82d5c7; background: #17302e; }
 .messages { flex: 1; overflow: auto; padding: 34px clamp(34px, 8vw, 110px); }
+.conversation-timeline { position: relative; display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; }
+.conversation-timeline .messages { width: 100%; }
+.messages-content { min-width: 0; }
+.jump-to-latest { position: absolute; z-index: 3; bottom: 14px; left: 50%; min-height: 44px; padding: 9px 14px; transform: translateX(-50%); border: 1px solid #3c706a; border-radius: 999px; color: #d4f4ed; background: #17302e; box-shadow: 0 5px 20px rgba(0, 0, 0, .35); cursor: pointer; }
 .message { max-width: 760px; margin: 0 auto 27px; }
 .message.user { margin-left: auto; padding: 12px 15px; border: 1px solid #2c474d; border-radius: 12px 12px 3px 12px; background: #183039; }
 .message-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; color: #718895; font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
@@ -83,8 +87,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .streaming-message { padding-bottom: 8px; }
 .thinking-label { color: #8fd6ca; font-size: 10px; letter-spacing: 0; text-transform: none; }
 .cursor { display: inline-block; width: 6px; height: 17px; margin-left: 3px; vertical-align: -3px; background: #72d2c4; animation: blink 1s step-end infinite; }
-.tool-trace { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
-.tool-trace span { padding: 4px 7px; border: 1px solid #2b3a44; border-radius: 5px; background: #131e26; }
+.tool-trace { margin-top: 12px; }
+.tool-trace > summary { width: fit-content; color: #9cb2bd; font-size: 11px; cursor: pointer; }
+.tool-trace-items { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+.tool-trace-items span { padding: 4px 7px; border: 1px solid #2b3a44; border-radius: 5px; background: #131e26; }
 @keyframes blink { 50% { opacity: 0; } }
 .empty-conversation { display: grid; place-items: center; max-width: 420px; margin: 15vh auto; text-align: center; }
 .empty-orbit { display: grid; place-items: center; width: 45px; height: 45px; margin-bottom: 16px; border: 1px solid #3c706a; border-radius: 14px; color: #72d2c4; background: #17302e; font-size: 20px; }
@@ -208,6 +214,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .workflow-run-metrics code { overflow-wrap: anywhere; color: #94b6bd; font-size: 9px; }
 .workflow-current-stage, .workflow-progress-summary { margin: 10px 0; color: #b8c9d0; font-size: 10px; line-height: 1.5; }
 .workflow-stage-timeline { display: grid; gap: 0; margin: 14px 0; padding: 0; list-style: none; }
+.workflow-stage-timeline { max-height: min(36vh, 320px); overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.workflow-observations { max-height: 220px; overflow: auto; overscroll-behavior: contain; }
 .workflow-stage { position: relative; display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; min-height: 42px; padding-bottom: 12px; }
 .workflow-stage:not(:last-child)::before { position: absolute; top: 12px; bottom: -1px; left: 5px; width: 1px; background: #355057; content: ''; }
 .workflow-stage-marker { z-index: 1; width: 11px; height: 11px; margin-top: 2px; border: 2px solid #55737a; border-radius: 50%; background: #121e25; }
@@ -710,6 +718,7 @@ body { min-width: 0; }
 .conversation-rail { display: flex; flex-direction: column; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
 .conversation-list { min-height: 0; }
 .conversation-pane { height: 100%; overflow: hidden; }
+.conversation-timeline { flex: 1 1 auto; }
 .conversation-heading { flex: 0 0 auto; min-width: 0; }
 .conversation-heading h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .messages { flex: 1 1 auto; min-height: 0; overscroll-behavior: contain; scrollbar-gutter: stable; }
@@ -846,4 +855,122 @@ body { min-width: 0; }
   .composer-wrap { padding-top: 8px; padding-bottom: 8px; }
   .composer-wrap textarea { min-height: 50px; max-height: 13vh; }
   .attachment-review { max-height: 9vh; }
+}
+
+/* Responsive Research workspace and compact Workflow context drawer. */
+.workflow-panel-toggle { display: none; }
+.workflow-panel-close { display: none; }
+.context-drawer-dismiss { display: none; }
+.context-heading h2 { margin: 5px 0 0; color: #d4e0e7; font-size: 16px; }
+
+@media (max-width: 1060px) {
+  .workflow-panel-toggle {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 7px 10px;
+    border: 1px solid #344653;
+    border-radius: 7px;
+    color: #c6d5df;
+    background: #17232c;
+    font-size: 11px;
+  }
+
+  .workspace-grid:has(.context-rail.is-open) .context-drawer-dismiss {
+    position: fixed;
+    z-index: 29;
+    inset: 0;
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    padding: 0;
+    border: 0;
+    background: rgba(3, 8, 12, .58);
+    cursor: default;
+  }
+
+  .context-rail.is-open {
+    position: fixed;
+    z-index: 30;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    display: block;
+    width: min(360px, calc(100vw - 64px));
+    height: 100vh;
+    height: 100dvh;
+    padding: 20px 16px max(20px, env(safe-area-inset-bottom));
+    border-left: 1px solid #344953;
+    background: #101920;
+    box-shadow: -18px 0 42px rgba(0, 0, 0, .42);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+.context-rail.is-open .context-heading { gap: 10px; }
+  .workflow-panel-close { display: inline-flex; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; }
+}
+
+@media (min-width: 621px) and (max-width: 1060px) {
+  .workspace-grid { grid-template-columns: minmax(180px, 220px) minmax(0, 1fr); }
+  .conversation-rail { padding: 20px 12px; }
+  .conversation-heading { gap: 12px; padding-right: 18px; padding-left: 18px; }
+  .messages { padding-right: clamp(18px, 5vw, 54px); padding-left: clamp(18px, 5vw, 54px); }
+  .composer-wrap { padding-right: 16px; padding-left: 16px; }
+  .conversation-item { min-height: 44px; }
+}
+
+@media (max-width: 620px) {
+  .workflow-panel-toggle { min-height: 44px; }
+  .context-rail.is-open {
+    width: min(380px, calc(100vw - 56px));
+    padding: 16px 12px max(16px, env(safe-area-inset-bottom));
+  }
+  .conversation-rail { max-height: 148px; padding: 10px; }
+  .rail-heading h2 { font-size: 14px; }
+  .new-conversation { min-height: 44px; margin: 10px 0 12px; }
+  .conversation-list { gap: 4px; }
+  .conversation-item { min-height: 44px; padding: 8px; }
+  .conversation-heading { gap: 8px; padding-right: 10px; padding-left: 10px; }
+  .conversation-heading h1 { font-size: 14px; }
+  .session-pill { flex: 0 0 auto; padding: 5px 7px; }
+  .messages { padding-right: 10px; padding-left: 10px; }
+  .message { margin-bottom: 20px; }
+  .composer-wrap { padding-right: 9px; padding-left: 9px; }
+  .research-controls { padding: 8px; }
+  .research-controls select { min-height: 40px; }
+  .composer-wrap textarea { min-height: 56px; padding: 10px 11px; }
+  .composer-file-picker { min-height: 44px; }
+  .composer-actions { gap: 6px; }
+  .composer-actions button { min-height: 44px; padding: 8px 10px; }
+  .inline-error button { min-width: 44px; min-height: 44px; }
+}
+
+@media (max-width: 380px) {
+  .app-shell { grid-template-columns: 52px minmax(0, 1fr); }
+  .app-sidebar { width: 52px; padding-right: 3px; padding-left: 3px; }
+  .workspace-grid { width: 100%; }
+  .conversation-rail { padding-right: 8px; padding-left: 8px; }
+  .conversation-heading { align-items: flex-start; }
+  .conversation-heading .eyebrow { font-size: 8px; }
+  .session-pill { font-size: 9px; }
+  .research-controls { gap: 6px; }
+  .research-controls .check-field { min-height: 36px; }
+  .composer-footer { gap: 6px; }
+  .composer-actions { justify-content: stretch; }
+  .composer-actions button { flex: 1 1 auto; }
+  .context-rail.is-open { width: calc(100vw - 52px); }
+  .conversation-heading { flex-wrap: wrap; }
+  .conversation-heading > div { flex: 1 1 100%; }
+  .conversation-heading .session-pill { margin-left: auto; }
+}
+
+@media (pointer: coarse) {
+  .conversation-actions button, .history-filter, .conversation-rename button { min-height: 44px; }
+  .clear-history-search { min-width: 44px; min-height: 44px; }
 }
