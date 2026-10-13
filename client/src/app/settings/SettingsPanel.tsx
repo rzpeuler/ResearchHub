@@ -110,6 +110,17 @@ export function SettingsPanel(props: SettingsPanelProps): ReactElement {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [menuOpen, view, busy])
 
+  useEffect(() => {
+    if (!menuOpen) return
+    const closeOnOutsidePointer = (event: PointerEvent): void => {
+      const target = event.target
+      if (!(target instanceof Node) || menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return
+      setMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointer)
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
+  }, [menuOpen])
+
   function closeDialog(): void {
     if (busy) return
     setView(undefined)
