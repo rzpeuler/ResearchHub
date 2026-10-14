@@ -55,7 +55,7 @@ export function RequestExecution({ activity, client, onChanged, onOpenArtifact, 
   </section>
 }
 
-export function LinkedWorkflowPanel({ client, activities, streaming, onOpenArtifact, presentation = 'conversation' }: { client: RuntimeClient; activities: readonly ConversationActivity[]; streaming: boolean; onOpenArtifact?: OpenResearchArtifact; presentation?: 'conversation' | 'sidebar' }) {
+export function LinkedWorkflowPanel({ client, activities, streaming, onOpenArtifact, presentation = 'conversation', onRunUpdate, onStatusError, retryStatusSyncToken = 0 }: { client: RuntimeClient; activities: readonly ConversationActivity[]; streaming: boolean; onOpenArtifact?: OpenResearchArtifact; presentation?: 'conversation' | 'sidebar'; onRunUpdate?: (run: WorkflowRun) => void; onStatusError?: (runId: string, error?: string) => void; retryStatusSyncToken?: number }) {
   const { t } = useLanguage()
   const [runs, setRuns] = useState<Record<string, WorkflowRun>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -68,13 +68,13 @@ export function LinkedWorkflowPanel({ client, activities, streaming, onOpenArtif
     const synchronized = new Set<string>()
     const load = async () => { await Promise.all(key.split('|').filter(Boolean).map(async (runId) => {
       if (synchronized.has(runId)) return
-      try { const run = await client.workflow(runId); if (isWorkflowFinalResultSynchronized(run)) synchronized.add(runId); if (active && run.runId === runId) { setRuns((previous) => ({ ...previous, [runId]: run })); setErrors((previous) => ({ ...previous, [runId]: '' })) } }
-      catch (caught) { if (active) setErrors((previous) => ({ ...previous, [runId]: caught instanceof Error ? caught.message : 'Status unavailable' })) }
+      try { const run = await client.workflow(runId); if (isWorkflowFinalResultSynchronized(run)) synchronized.add(runId); if (active && run.runId === runId) { setRuns((previous) => ({ ...previous, [runId]: run })); setErrors((previous) => ({ ...previous, [runId]: '' })); onRunUpdate?.(run); onStatusError?.(runId) } }
+      catch (caught) { if (active) { const error = caught instanceof Error ? caught.message : 'Status unavailable'; setErrors((previous) => ({ ...previous, [runId]: error })); onStatusError?.(runId, error) } }
     })) }
     void load()
     const timer = window.setInterval(() => { setClock(Date.now()); void load() }, 1500)
     return () => { active = false; window.clearInterval(timer) }
-  }, [client, key])
+  }, [client, key, retryStatusSyncToken])
   const cancel = async (runId: string) => { setCanceling(runId); try { await client.cancelWorkflow(runId); const run = await client.workflow(runId); setRuns((previous) => ({ ...previous, [runId]: run })) } catch (caught) { setErrors((previous) => ({ ...previous, [runId]: caught instanceof Error ? caught.message : 'Cancellation unavailable' })) } finally { setCanceling('') } }
   const detached = !streaming && activities.some((activity) => activity.status === 'cancelled' && (activity.linkedWorkflows ?? []).some((link) => runs[link.runId] && !terminalWorkflowStatuses.has(runs[link.runId]!.status)))
   const labels = { discovery: t('发现来源', 'Source discovery'), download: t('下载', 'Download'), body_read: t('读取正文', 'Read body'), parsing: t('解析', 'Parse'), structured_data: t('结构化数据', 'Structured data') }
