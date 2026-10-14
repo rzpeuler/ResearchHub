@@ -53,4 +53,24 @@ describe('Research request execution projection', () => {
     expect(onOpenArtifact).toHaveBeenCalledWith('report', 'report-b', 'run-b')
   })
 
+  it('renders completed workflow evidence as an Agent message and keeps the sidebar compact', async () => {
+    const workflow = vi.fn(async (runId: string) => ({ runId, workflowType: 'company_research', objective: 'Write a company report', status: 'completed', startedAt: '2026-10-14T00:00:00Z', completedAt: '2026-10-14T00:06:12Z', updatedAt: '2026-10-14T00:06:12Z', currentStage: 'Report saved', stages: [{ stageId: 'acquisition', label: 'Data acquisition', status: 'completed', summary: 'Processed 3 observable sources' }], acquisitionActivities: [{ activityId: 'parse-1', providerId: 'cninfo', step: 'parsing', status: 'timeout', sourceTitle: 'Annual report', startedAt: '2026-10-14T00:01:00Z', completedAt: '2026-10-14T00:03:00Z', diagnosticCode: 'DOCUMENT_PARSE_TIMEOUT' }], executionResult: { runId, workflowId: 'company_research', executionStatus: 'completed', summary: 'Company research completed for 002384', reportRef: 'report-1', diagnostics: [], bundleStatus: 'unavailable' } } as WorkflowRun))
+    const linked = [{ runId: 'run-report', workflowRegistryId: 'company_research', subject: '东山精密' }]
+    const completed = { ...activity, status: 'completed' as const, requestText: '写一篇东山精密的报告', clarification: undefined, linkedWorkflows: linked }
+    const result = view(<ConversationTimeline conversationId="c1" messages={[]} activities={[completed]} optimisticRequests={[]} streaming={false} thinking={false} streamText="" toolEvents={[]} client={{ workflow } as unknown as RuntimeClient} />)
+    const agentMessage = await screen.findByRole('article', { name: 'Agent research execution result' })
+    expect(within(agentMessage).getByText('Data acquisition')).toBeTruthy()
+    expect(within(agentMessage).getByText(/Annual report · Timed out/)).toBeTruthy()
+    expect(within(agentMessage).getByText(/Company research completed for 002384/)).toBeTruthy()
+    const userMessage = result.container.querySelector('[data-activity-id="activity"]')!
+    expect(within(userMessage as HTMLElement).queryByText('Annual report')).toBeNull()
+
+    cleanup()
+    view(<LinkedWorkflowPanel client={{ workflow } as unknown as RuntimeClient} activities={[completed]} streaming={false} presentation="sidebar" />)
+    await screen.findByText(/Completed · Report saved/)
+    expect(screen.queryByText('Data acquisition')).toBeNull()
+    expect(screen.queryByText(/Annual report/)).toBeNull()
+    expect(screen.queryByText(/Company research completed for 002384/)).toBeNull()
+  })
+
 })

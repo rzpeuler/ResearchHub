@@ -91,7 +91,7 @@ describe('Homepage shell', () => {
     render(<App />)
     expect(await screen.findByTestId('workflow-historical-snapshot')).toBeTruthy()
     expect(screen.getByTestId('workflow-recovery-notice').textContent).toContain('will not resume automatically')
-    expect(screen.getByText('Interrupted')).toBeTruthy()
+    expect(screen.getAllByText('Interrupted').length).toBeGreaterThanOrEqual(1)
     expect(document.querySelector('[data-stage-id="company_profile"] .workflow-stage-status')?.textContent).toContain('Interrupted · 2m 0s')
     expect(screen.queryByText('Running')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Cancel Workflow' })).toBeNull()
