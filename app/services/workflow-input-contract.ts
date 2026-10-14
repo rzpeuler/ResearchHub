@@ -4,6 +4,8 @@ export interface WorkflowInputValidation {
   readonly valid: boolean
   readonly errors: readonly string[]
   readonly missingFields: readonly string[]
+  /** Safe dotted paths derived from AJV keys, never input values or rendered errors. */
+  readonly fieldPaths: readonly string[]
 }
 
 const ajv = new Ajv({ allErrors: true, strict: true, strictRequired: false })
@@ -19,6 +21,14 @@ function renderError(error: ErrorObject): string {
   if (error.keyword === 'required') return `${path}.${String(error.params.missingProperty)} is required`
   if (error.keyword === 'additionalProperties') return `${path}.${String(error.params.additionalProperty)} is not allowed by this Workflow input contract`
   return `${path} ${error.message ?? 'is invalid'}`
+}
+
+function validationFieldPath(error: ErrorObject): string | undefined {
+  const segments = error.instancePath.split('/').filter(Boolean).map((part) => part.replace(/~1/gu, '/').replace(/~0/gu, '~'))
+  if (error.keyword === 'required') segments.push(String(error.params.missingProperty))
+  if (error.keyword === 'additionalProperties') segments.push(String(error.params.additionalProperty))
+  if (!segments.every((part) => /^[A-Za-z0-9_-]{1,80}$/u.test(part))) return undefined
+  return segments.map((part, index) => /^\d+$/u.test(part) ? `[${part}]` : `${index === 0 ? '' : '.'}${part}`).join('')
 }
 
 export function validateWorkflowInputSchema(schema: Readonly<Record<string, unknown>>, input: unknown): WorkflowInputValidation {
@@ -39,7 +49,10 @@ export function validateWorkflowInputSchema(schema: Readonly<Record<string, unkn
     .map((error) => String(error.params.missingProperty))
     .concat((validate.errors ?? []).filter((error) => error.keyword === 'required' && error.instancePath !== '').map((error) => `${error.instancePath}/${String(error.params.missingProperty)}`))
     .sort()
-  return { valid: reportedIssues.every((error) => error.keyword === 'required'), errors, missingFields }
+  const invalidFields = reportedIssues.filter((error) => error.keyword !== 'required' && error.keyword !== 'if')
+  const pathIssues = invalidFields.length > 0 ? invalidFields : reportedIssues
+  const fieldPaths = [...new Set(pathIssues.map(validationFieldPath).filter((path): path is string => path !== undefined && path !== ''))]
+  return { valid: reportedIssues.every((error) => error.keyword === 'required'), errors, missingFields, fieldPaths }
 }
 
 export function assertWorkflowInputSchema(schema: Readonly<Record<string, unknown>>, requiredInputs: readonly string[], id: string): void {

@@ -9,7 +9,7 @@ import type { DataResolver } from '../../data/resolver.ts'
 import type { CompanyResearchDataPayload } from '../../plugins/research-acquisition/company-research-data.ts'
 import type { DataRequirement } from '../../data/contracts.ts'
 import type { VerifiedSecurityIdentity } from '../../data/security-identity-contracts.ts'
-import type { WorkflowObservationReporter } from '../observation-contracts.ts'
+import type { WorkflowAcquisitionActivity, WorkflowObservationReporter } from '../observation-contracts.ts'
 
 export interface CompanyDeepResearchResolverOptions {
   readonly company: ResearchCompanyIdentity
@@ -18,6 +18,8 @@ export interface CompanyDeepResearchResolverOptions {
   readonly now: () => string
   readonly signal?: AbortSignal
   readonly limitPerSource: number
+  readonly acquisitionDeadlineAt?: number
+  readonly onProgress?: (activity: WorkflowAcquisitionActivity) => Promise<void> | void
   readonly onCandidatesDiscovered: (event: { readonly provider: 'CNINFO' | 'GDELT'; readonly candidates: readonly ResearchSourceCandidate[]; readonly requirement: DataRequirement }) => Promise<void> | void
 }
 export type CompanyDeepResearchDataResolverFactory = (options: CompanyDeepResearchResolverOptions) => DataResolver<CompanyResearchDataPayload>

@@ -91,6 +91,8 @@ async function acquire(input: CompanyDeepResearchInput, company: CompanyDeepRese
   let consideredCandidateCount = 0
   const dataResolver: DataResolver<CompanyResearchDataPayload> = input.dataResolverFactory({
     company, asOf, asOfMode: input.asOf === undefined ? 'CURRENT_VALUE_ONLY' : 'HISTORICAL', now, signal: input.signal, limitPerSource: Math.min(10, limit),
+    acquisitionDeadlineAt: Date.now() + 10 * 60_000,
+    onProgress: input.observations?.acquisitionActivity,
     onCandidatesDiscovered: async ({ candidates }) => {
       if (!input.signalStore) return
       for (const candidate of candidates) {

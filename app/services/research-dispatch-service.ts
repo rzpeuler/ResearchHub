@@ -22,6 +22,8 @@ import { projectResearchExecutionResult } from './research-execution-result.ts'
 import type { ReviewService } from './review-service.ts'
 import type { SecurityIdentityResolver, VerifiedSecurityIdentity } from './security-identity-resolver.ts'
 import { createVerifiedSecurityIdentityHandoff, type VerifiedSecurityIdentityHandoff } from './verified-security-identity-handoff.ts'
+import type { ResearchDispatchClarification, ResearchDispatchAttemptCategory, ResearchDispatchAttemptError } from './research-dispatch-contracts.ts'
+export type { ResearchDispatchClarification, ResearchDispatchAttemptCategory, ResearchDispatchAttemptError } from './research-dispatch-contracts.ts'
 
 export interface ResearchSessionContext {
   readonly selectedSkills: readonly LoadedResearchSkill[]
@@ -49,7 +51,8 @@ export interface ResearchDispatchStart {
   readonly request: ResearchRequest
   readonly decision: ResearchDispatchDecision
   readonly summary: ResearchExecutionSummary
-  readonly status: 'started' | 'needs_input' | 'invalid_input' | 'unresolved_reference' | 'executor_unavailable' | 'free_research' | 'skill_plan'
+  readonly status: 'started' | 'needs_input' | 'needs_clarification' | 'invalid_input' | 'unresolved_reference' | 'executor_unavailable' | 'free_research' | 'skill_plan'
+  readonly clarification?: ResearchDispatchClarification
   readonly runId?: string
   readonly workflow?: WorkflowRunView
   readonly completion?: Promise<unknown>
@@ -73,6 +76,24 @@ export interface ResearchDispatchResolution {
   readonly source: 'reasoning_executor' | 'bounded_repair' | 'deterministic_fallback'
   readonly attempts: number
   readonly diagnostics: readonly string[]
+  readonly attemptErrors?: readonly ResearchDispatchAttemptError[]
+}
+
+class DispatchValidationError extends ApplicationServiceError {
+  constructor(readonly category: ResearchDispatchAttemptCategory, readonly fieldPaths: readonly string[]) { super('invalid_input', `DISPATCH_${category.toUpperCase()}_FAILED`) }
+}
+
+function dispatchAttemptError(error: unknown, stage: ResearchDispatchAttemptCategory, attempt: number): ResearchDispatchAttemptError {
+  if (error instanceof DispatchValidationError) return { attempt, category: error.category, code: error.message, fieldPaths: error.fieldPaths }
+  const stableCode = error !== null && typeof error === 'object' && 'code' in error ? (error as { code?: unknown }).code : undefined
+  const category: ResearchDispatchAttemptCategory = stableCode === 'reasoning_timeout' ? 'timeout'
+    : ['reasoning_schema_invalid', 'reasoning_output_invalid', 'reasoning_output_too_large', 'reasoning_structured_output_configuration_failed', 'reasoning_configuration_invalid', 'invalid_output'].includes(String(stableCode)) ? 'semantic_decision'
+    : stage
+  return { attempt, category, code: `DISPATCH_${category.toUpperCase()}_FAILED`, fieldPaths: [] }
+}
+
+class DispatchSemanticError extends Error {
+  constructor(readonly resolution: ResearchDispatchResolution, readonly category: string) { super('Research intent recognition failed after one repair attempt.') }
 }
 
 export interface WorkflowExecutionBindingContext {
@@ -129,6 +150,12 @@ function extractSymbol(query: string): { readonly symbol?: string; readonly name
   const match = query.match(/(?<!\d)(\d{6})(?:\.(SSE|SH|SZSE|SZ|BSE|BJ))?(?!\d)/iu)
   if (match === null) return {}
   return { symbol: match[1], ...(match[2] === undefined ? {} : { exchange: match[2].toUpperCase() }) }
+}
+
+function userNameBesideCode(query: string): string | undefined {
+  const match = query.match(/([\p{Script=Han}]{2,30})\s*[（(]?\s*\d{6}/u)?.[1]
+  const name = match?.replace(/^(?:请|帮我|写一篇|写一份|研究|分析|当前|关于|股票|公司)+/u, '')
+  return name && name.length >= 2 && !['股票', '公司', '证券'].includes(name) ? name : undefined
 }
 
 function extractFiscalYear(query: string): number | undefined {
@@ -269,11 +296,11 @@ const dispatchOutputContract = {
   properties: {
     mode: { type: 'string', enum: ['workflow', 'skill_plan', 'free_research'] },
     workflow: { type: 'object', required: ['id', 'confidence', 'arguments'], additionalProperties: false, properties: { id: { type: 'string' }, confidence: { type: 'number', minimum: 0, maximum: 1 }, arguments: { type: 'object', description: 'Must conform exactly to the selected Workflow inputSchema.' } }, description: 'Required only when mode is workflow.' },
-    skills: { type: 'array', description: 'Selected ResearchHub Research Skill IDs and purposes.' },
-    entities: { type: 'array', description: 'Resolved entities, without canonical IDs.' },
+    skills: { type: 'array', items: { type: 'object', required: ['id', 'purpose'], additionalProperties: false, properties: { id: { type: 'string' }, purpose: { type: 'string' } } }, description: 'Selected ResearchHub Research Skill IDs and purposes.' },
+    entities: { type: 'array', items: { type: 'object', required: ['type', 'value', 'confidence'], additionalProperties: false, properties: { type: { type: 'string' }, value: { type: 'string' }, confidence: { type: 'number', minimum: 0, maximum: 1 } } }, description: 'User-supplied company/security names or unresolved abbreviations; no invented identities.' },
     missingRequiredInputs: { type: 'array', items: { type: 'string' } },
-    contextPolicy: { type: 'object', required: ['structuredKnowledge', 'sourceLibrary'] },
-    persistencePolicy: { type: 'object', required: ['writeKnowledge'] },
+    contextPolicy: { type: 'object', required: ['structuredKnowledge', 'sourceLibrary'], additionalProperties: false, properties: { structuredKnowledge: { type: 'boolean' }, sourceLibrary: { type: 'boolean' } } },
+    persistencePolicy: { type: 'object', required: ['writeKnowledge'], additionalProperties: false, properties: { writeKnowledge: { type: 'boolean' } } },
     rationale: { type: 'string' },
   },
 } as const
@@ -393,7 +420,7 @@ function assertSemanticDecision(request: ResearchRequest, decision: ResearchDisp
     if (decision.skills.some((skill) => !isExecutableResearchSkill(skillRegistry, skill.id))) throw new ApplicationServiceError('invalid_input', `Semantic dispatch selected an unavailable Research Skill for Workflow ${decision.workflow.id}`)
     const definition = workflowRegistry.get(decision.workflow.id)!
     const inputValidation = validateWorkflowInputSchema(definition.inputSchema, decision.workflow.arguments)
-    if (!inputValidation.valid) throw new ApplicationServiceError('invalid_input', `Workflow ${definition.id} arguments violate its registered inputSchema: ${inputValidation.errors.filter((message) => !message.includes('is required')).join('; ')}`)
+    if (!inputValidation.valid) throw new DispatchValidationError('workflow_parameters', inputValidation.fieldPaths.map((path) => `workflow.arguments.${path}`))
   }
   if (decision.mode === 'skill_plan' && (decision.skills.length === 0 || decision.skills.some((skill) => !isExecutableResearchSkill(skillRegistry, skill.id)))) throw new ApplicationServiceError('invalid_input', 'Semantic dispatch selected an unavailable Research Skill')
   if (decision.mode === 'free_research' && decision.skills.length > 0) throw new ApplicationServiceError('invalid_input', 'Free Research cannot include selected Research Skills')
@@ -504,8 +531,9 @@ export class ResearchDispatchService {
     const properties = inputProperties(definition)
     const cutoff = requestedHistoricalCutoff(request.query)
     if (Object.hasOwn(properties, 'asOf')) {
+      if (containsExplicitHistoricalDate(request.query) && (cutoff === undefined || !Number.isFinite(Date.parse(cutoff)) || Date.parse(cutoff) >= Date.parse(runtimeTimestamp))) throw new DispatchValidationError('workflow_parameters', ['workflow.arguments.asOf'])
       if (cutoff !== undefined) args.asOf = cutoff
-      else if (Object.hasOwn(args, 'asOf')) throw new ApplicationServiceError('invalid_input', 'A historical asOf value must come from an explicit user-requested cutoff; Runtime time does not imply historical analysis')
+      else if (Object.hasOwn(args, 'asOf')) throw new DispatchValidationError('workflow_parameters', ['workflow.arguments.asOf'])
     }
     if (definition.id === 'thesis_lifecycle') {
       const formalization = asRecord(args.formalization)
@@ -518,7 +546,7 @@ export class ResearchDispatchService {
       if (refresh !== undefined && refresh.currentAsOf === undefined) args.refresh = { ...refresh, currentAsOf: runtimeTimestamp }
     }
     const validation = validateWorkflowInputSchema(definition.inputSchema, args)
-    if (!validation.valid) throw new ApplicationServiceError('invalid_input', `Workflow ${definition.id} arguments violate its registered inputSchema: ${validation.errors.filter((message) => !message.includes('is required')).join('; ')}`)
+    if (!validation.valid) throw new DispatchValidationError('workflow_parameters', validation.fieldPaths.map((path) => `workflow.arguments.${path}`))
     const missingRequiredInputs = normalizedMissingFields(definition, args)
     return validateResearchDispatchDecision({ ...decision, workflow: { ...decision.workflow, arguments: args }, missingRequiredInputs, rationale: decision.rationale })
   }
@@ -560,7 +588,7 @@ export class ResearchDispatchService {
     return this.startResolved({ ...resolved, decision: prepared, summary }, callerSignal, [], resolution)
   }
 
-  async startAsync(input: unknown, callerSignal?: AbortSignal, serverOwnedRunId?: string): Promise<ResearchDispatchStart> {
+  async startAsync(input: unknown, callerSignal?: AbortSignal, serverOwnedRunId?: string, correctedObjectQuery?: string): Promise<ResearchDispatchStart> {
     validateServerOwnedRunId(serverOwnedRunId)
     const request = normalizeResearchRequest(input)
     const selectedDefinition = request.mode.type === 'workflow' ? this.workflowRegistry.get(request.mode.workflowId) : this.bestWorkflow(request.query)
@@ -578,12 +606,131 @@ export class ResearchDispatchService {
         return { ...resolved, status: 'invalid_input', feedback, resolution: { source: 'deterministic_fallback', attempts: 0, diagnostics: [reason] } }
       }
     }
-    const resolved = await this.resolveAsync(input, callerSignal)
-    const verified = await this.verifyWorkflowReferences(resolved.request, resolved.decision)
+    let resolved: Awaited<ReturnType<ResearchDispatchService['resolveAsync']>>
+    try { resolved = await this.resolveAsync(input, callerSignal) } catch (error) {
+      if (!(error instanceof DispatchSemanticError)) throw error
+      const fallback = this.resolve(request)
+      const definition = selectedDefinition ?? this.workflowRegistry.get('company_research')!
+      const unavailable = error.category === 'model_call' || error.category === 'timeout'
+      return { ...fallback, status: unavailable ? 'executor_unavailable' : 'invalid_input', sourceLibraryHits: [], resolution: error.resolution,
+        feedback: feedbackFor(unavailable ? 'EXECUTOR_UNAVAILABLE' : 'INVALID_INPUT', definition, {}, error.resolution.diagnostics.join('; ')) }
+    }
+    const objectResolution = await this.resolveObjectClarification(resolved, callerSignal, correctedObjectQuery)
+    if (objectResolution?.clarification || objectResolution?.status === 'unresolved_reference') return objectResolution
+    if (objectResolution) resolved = { ...resolved, decision: objectResolution.decision, summary: objectResolution.summary }
+    const verified = await this.verifyWorkflowReferences(resolved.request, resolved.decision, callerSignal)
     if (verified.feedback !== undefined) return { ...resolved, status: verified.failureStatus ?? 'unresolved_reference', feedback: verified.feedback }
     const decision = verified.decision ?? resolved.decision
     const summary = this.summary(resolved.request, decision, decision.workflow === undefined ? undefined : this.workflowRegistry.get(decision.workflow.id))
-    return this.startResolved({ ...resolved, decision, summary }, callerSignal, resolved.sourceLibraryHits, resolved.resolution, verified.verifiedIdentity, serverOwnedRunId)
+    const started = this.startResolved({ ...resolved, decision, summary }, callerSignal, resolved.sourceLibraryHits, resolved.resolution, verified.verifiedIdentity, serverOwnedRunId)
+    if (started.status === 'needs_input') return this.clarificationResult(started, 'missing_input', started.feedback?.missingFields ?? [], started.feedback?.suggestedQuestion ?? '请补充研究信息。')
+    return started
+  }
+
+  private clarificationResult(original: ResearchDispatchStart, kind: ResearchDispatchClarification['kind'], missingFields: readonly string[], question: string, extra: Partial<ResearchDispatchClarification> = {}): ResearchDispatchStart {
+    return { ...original, status: 'needs_clarification', clarification: { confirmationId: randomUUID(), expiresAt: new Date(Date.parse(this.runtimeTimestamp()) + 15 * 60_000).toISOString(), kind, query: original.request.query, ...(original.decision.workflow ? { workflowId: original.decision.workflow.id } : {}), candidates: [], missingFields, question, ...extra } }
+  }
+
+  private async resolveObjectClarification(resolved: Awaited<ReturnType<ResearchDispatchService['resolveAsync']>>, signal?: AbortSignal, correctedObjectQuery?: string): Promise<ResearchDispatchStart | undefined> {
+    const resolver = this.options.securityIdentityResolver
+    const workflowId = resolved.decision.workflow?.id
+    if (!resolver || (workflowId !== undefined && !Object.hasOwn(inputProperties(this.workflowRegistry.get(workflowId)!), 'symbol'))) return undefined
+    const args = resolved.decision.workflow?.arguments ?? {}
+    const suppliedSymbol = extractSymbol(resolved.request.query).symbol
+    if (suppliedSymbol || typeof resolved.request.workflowArgumentContext?.arguments.symbol === 'string') return undefined
+    const entity = resolved.decision.entities.find((item) => /company|security|stock|公司|证券/iu.test(item.type))?.value
+    if (!workflowId && !entity && !/报告|研报|report/iu.test(resolved.request.query) && !/^[a-z]{2,30}$/iu.test(resolved.request.query.trim())) return undefined
+    const words = [...resolved.request.query.matchAll(/(?<![A-Za-z])([a-z]{2,30})(?![A-Za-z])/giu)].map((match) => match[1]!)
+    const abbreviation = entity && /^[a-z]{2,30}$/iu.test(entity) && resolved.request.query.toLowerCase().includes(entity.toLowerCase()) ? entity
+      : words.filter((word) => !['write', 'report', 'research', 'company', 'stock', 'please', 'for', 'the', 'on', 'about', 'of', 'as', 'valuation', 'earnings', 'review', 'sse', 'szse', 'bse', 'sh', 'sz', 'bj'].includes(word.toLowerCase())).at(-1)
+    const reportObject = resolved.request.query.match(/(?:写(?:一篇|一份)?|研究|分析)\s*(.+?)(?:的)?(?:报告|研报)\s*$/u)?.[1]?.replace(/的$/u, '').trim()
+    const userEntity = entity && resolved.request.query.includes(entity) ? entity : undefined
+    const objectQuery = correctedObjectQuery ?? abbreviation ?? reportObject ?? userEntity ?? entity ?? (typeof args.name === 'string' ? args.name : undefined) ?? (/^[\p{Script=Han}a-z]{2,30}$/iu.test(resolved.request.query) ? resolved.request.query : undefined)
+    if (!objectQuery) return undefined
+    const base: ResearchDispatchStart = { ...resolved, status: 'needs_clarification' }
+    let directory: Awaited<ReturnType<SecurityIdentityResolver['searchCandidates']>>
+    try { directory = await resolver.searchCandidates(objectQuery, signal) } catch (error) {
+      if (signal?.aborted) throw new ApplicationServiceError('cancelled', 'Object lookup cancelled')
+      // Legacy test/custom resolvers lacking a snapshot loader still use the exact gate.
+      if (error instanceof Error && error.message === 'SECURITY_DIRECTORY_LOADER_UNCONFIGURED' && !abbreviation && workflowId !== undefined) return undefined
+      const definition = this.workflowRegistry.get(workflowId ?? 'company_research')!
+      return { ...base, status: 'unresolved_reference', feedback: feedbackFor('UNRESOLVED_REFERENCE', definition, args, 'SECURITY_DIRECTORY_UNAVAILABLE: 当前可信证券目录不可用，无法确认研究对象。') }
+    }
+    if (directory.candidates.length === 0) return this.clarificationResult(base, 'security_selection', ['security'], '可信证券目录中没有匹配对象，请提供其他名称或证券代码。', { ...directory, query: objectQuery })
+    const exact = directory.candidates.length === 1 && ['exact_name', 'exact_code'].includes(directory.candidates[0]!.matchKind)
+    if (!exact) return this.clarificationResult(base, 'security_selection', ['security'], '请选择要研究的证券。', { ...directory, query: objectQuery })
+    const candidate = directory.candidates[0]!
+    if (!workflowId && !/报告|研报|report/iu.test(resolved.request.query) && resolved.request.query.trim().toLowerCase() !== objectQuery.trim().toLowerCase()) return undefined
+    const definition = this.workflowRegistry.get(workflowId ?? 'company_research')!
+    const decision: ResearchDispatchDecision = { ...resolved.decision, mode: 'workflow', workflow: { id: definition.id, confidence: resolved.decision.workflow?.confidence ?? 1, arguments: { ...args, name: candidate.name, symbol: candidate.symbol, exchange: candidate.exchange } } }
+    const updated = { ...base, decision, summary: this.summary(resolved.request, decision, definition) }
+    if (resolved.request.query.trim().toLowerCase() === objectQuery.trim().toLowerCase()) return this.clarificationResult(updated, 'research_goal', ['research_goal'], '希望研究该公司的哪些方面，或是否需要完整公司报告？')
+    return updated
+  }
+
+  async confirmAsync(original: ResearchDispatchStart, input: { readonly confirmationId: string; readonly candidateId?: string; readonly directoryVersion?: string; readonly clarificationText?: string }, signal?: AbortSignal, serverOwnedRunId?: string): Promise<ResearchDispatchStart> {
+    validateServerOwnedRunId(serverOwnedRunId)
+    const clarification = original.clarification
+    if (!clarification || clarification.confirmationId !== input.confirmationId) throw new ApplicationServiceError('invalid_input', 'Clarification confirmation is no longer current')
+    if (signal?.aborted) throw new ApplicationServiceError('cancelled', 'Clarification cancelled')
+    if (clarification.expiresAt && Date.parse(clarification.expiresAt) <= Date.parse(this.runtimeTimestamp())) {
+      const directory = clarification.kind === 'security_selection' && this.options.securityIdentityResolver
+        ? await this.options.securityIdentityResolver.searchCandidates(clarification.query, signal, true) : undefined
+      return this.clarificationResult(original, clarification.kind, clarification.missingFields, '此前的确认已过期，请重新确认。', { query: clarification.query, ...(directory ?? { candidates: clarification.candidates }), ...(clarification.workflowId ? { workflowId: clarification.workflowId } : {}) })
+    }
+    if (clarification.kind === 'security_selection') {
+      if (!input.candidateId && input.clarificationText?.trim()) {
+        const correctedObject = input.clarificationText.trim()
+        const correctedQuery = original.request.query.split(clarification.query).join(correctedObject)
+        const wasBareObject = original.request.query.trim().toLowerCase() === clarification.query.trim().toLowerCase()
+        return this.startAsync({ ...original.request, query: wasBareObject ? correctedObject : `${correctedQuery}\n用户更正研究对象：${correctedObject}` }, signal, serverOwnedRunId, correctedObject)
+      }
+      if (!this.options.securityIdentityResolver) throw new ApplicationServiceError('failed', 'Security directory unavailable')
+      const directory = await this.options.securityIdentityResolver.searchCandidates(clarification.query, signal, true)
+      if (directory.directoryVersion !== clarification.directoryVersion || input.directoryVersion !== clarification.directoryVersion) return this.clarificationResult(original, 'security_selection', ['security'], '证券目录已更新，请重新选择研究对象。', { ...directory, query: clarification.query })
+      const selected = directory.candidates.find((item) => item.candidateId === input.candidateId)
+      if (!selected) throw new ApplicationServiceError('invalid_input', 'Selected security is not in the verified candidate set')
+      const definition = this.workflowRegistry.get(clarification.workflowId ?? 'company_research')!
+      const args = { ...original.decision.workflow?.arguments, name: selected.name, symbol: selected.symbol, exchange: selected.exchange }
+      const decision: ResearchDispatchDecision = { ...original.decision, mode: 'workflow', workflow: { id: definition.id, confidence: 1, arguments: args } }
+      const selectedOriginal = { ...original, decision, summary: this.summary(original.request, decision, definition) }
+      if (original.request.query.trim().toLowerCase() === clarification.query.trim().toLowerCase() && !input.clarificationText?.trim()) return this.clarificationResult(selectedOriginal, 'research_goal', ['research_goal'], '希望研究该公司的哪些方面，或是否需要完整公司报告？')
+      return this.startConfirmed(selectedOriginal, input.clarificationText, signal, serverOwnedRunId)
+    }
+    if (!input.clarificationText?.trim()) throw new ApplicationServiceError('invalid_input', 'Clarification text is required')
+    return this.startConfirmed(original, input.clarificationText, signal, serverOwnedRunId)
+  }
+
+  private async startConfirmed(original: ResearchDispatchStart, text: string | undefined, signal?: AbortSignal, serverOwnedRunId?: string): Promise<ResearchDispatchStart> {
+    const workflow = original.decision.workflow
+    if (!workflow) return this.startAsync({ ...original.request, query: `${original.request.query}\n${text ?? ''}` }, signal, serverOwnedRunId)
+    if (original.clarification?.kind === 'research_goal' && text) {
+      const identity = workflow.arguments
+      const request: ResearchRequest = { ...original.request, query: `${original.request.query}\n已确认对象：${String(identity.name)} (${String(identity.symbol)}.${String(identity.exchange)})\n用户研究目标：${text}`, mode: { type: 'free_research' }, workflowArgumentContext: undefined }
+      let resolved: Awaited<ReturnType<ResearchDispatchService['resolveAsync']>>
+      try { resolved = await this.resolveAsync(request, signal) } catch (error) {
+        if (!(error instanceof DispatchSemanticError)) throw error
+        const unavailable = error.category === 'model_call' || error.category === 'timeout'
+        return { ...original, request, status: unavailable ? 'executor_unavailable' : 'invalid_input', clarification: undefined, resolution: error.resolution, feedback: feedbackFor(unavailable ? 'EXECUTOR_UNAVAILABLE' : 'INVALID_INPUT', this.workflowRegistry.get(workflow.id)!, {}, error.resolution.diagnostics.join('; ')) }
+      }
+      let decision = resolved.decision
+      const target = decision.workflow && this.workflowRegistry.get(decision.workflow.id)
+      if (target && Object.hasOwn(inputProperties(target), 'symbol')) decision = { ...decision, workflow: { ...decision.workflow!, arguments: { ...decision.workflow!.arguments, symbol: identity.symbol, name: identity.name, exchange: identity.exchange } } }
+      const verified = await this.verifyWorkflowReferences(request, decision, signal)
+      if (verified.feedback) return { ...resolved, status: verified.failureStatus ?? 'unresolved_reference', feedback: verified.feedback }
+      decision = verified.decision ?? decision
+      const result = this.startResolved({ request, decision, summary: this.summary(request, decision, target) }, signal, resolved.sourceLibraryHits, resolved.resolution, verified.verifiedIdentity, serverOwnedRunId)
+      return result.status === 'needs_input' ? this.clarificationResult(result, 'missing_input', result.feedback?.missingFields ?? [], result.feedback?.suggestedQuestion ?? '请补充研究信息。') : result
+    }
+    const request: ResearchRequest = { ...original.request, query: `${original.request.query}${text ? `\n用户补充：${text}` : ''}`, mode: { type: 'workflow', workflowId: workflow.id }, workflowArgumentContext: { workflowId: workflow.id, arguments: workflow.arguments } }
+    // Re-extract semantic fields only for a follow-up answer; a selected object alone reuses the original decision.
+    if (text) return this.startAsync(request, signal, serverOwnedRunId)
+    const decision = this.prepareDecisionArguments(request, original.decision, this.runtimeTimestamp())
+    const verified = await this.verifyWorkflowReferences(request, decision, signal)
+    if (verified.feedback) return { ...original, request, decision, status: verified.failureStatus ?? 'unresolved_reference', feedback: verified.feedback }
+    const finalDecision = verified.decision ?? decision
+    const result = this.startResolved({ request, decision: finalDecision, summary: this.summary(request, finalDecision, this.workflowRegistry.get(workflow.id)) }, signal, original.sourceLibraryHits ?? [], original.resolution ?? { source: 'reasoning_executor', attempts: 0, diagnostics: [] }, verified.verifiedIdentity, serverOwnedRunId)
+    return result.status === 'needs_input' ? this.clarificationResult(result, 'missing_input', result.feedback?.missingFields ?? [], result.feedback?.suggestedQuestion ?? '请补充研究信息。') : result
   }
 
   /** Starts a product-form-selected Workflow with its explicit validated fields, without a semantic routing round-trip. */
@@ -599,14 +746,14 @@ export class ResearchDispatchService {
     if (missingRequiredInputs.length > 0) throw new ApplicationServiceError('invalid_input', `Workflow ${definition.id} required inputs are missing: ${missingRequiredInputs.join(', ')}`)
     await this.validateSkillMethodologies(validateResearchDispatchDecision({ mode: 'workflow', workflow: { id: definition.id, confidence: 1, arguments: args }, skills: selectedSkillIds(this.skillRegistry, definition).map((id) => ({ id, purpose: this.skillRegistry.get(id)?.purpose ?? 'selected by the authoritative Workflow definition' })), entities: this.entities(request.query), missingRequiredInputs: [], contextPolicy: request.contextPolicy, persistencePolicy: request.persistencePolicy, rationale: 'The user selected this registered Workflow and supplied its bounded product form inputs.' }))
     const decision = validateResearchDispatchDecision({ mode: 'workflow', workflow: { id: definition.id, confidence: 1, arguments: args }, skills: selectedSkillIds(this.skillRegistry, definition).map((id) => ({ id, purpose: this.skillRegistry.get(id)?.purpose ?? 'selected by the authoritative Workflow definition' })), entities: this.entities(request.query), missingRequiredInputs: [], contextPolicy: request.contextPolicy, persistencePolicy: request.persistencePolicy, rationale: 'The user selected this registered Workflow and supplied its bounded product form inputs.' })
-    const verified = await this.verifyWorkflowReferences(request, decision)
+    const verified = await this.verifyWorkflowReferences(request, decision, callerSignal)
     if (verified.feedback !== undefined) return { request, decision, summary: this.summary(request, decision, definition), status: verified.failureStatus ?? 'unresolved_reference', feedback: verified.feedback, sourceLibraryHits: [], resolution: { source: 'deterministic_fallback', attempts: 0, diagnostics: [] } }
     const verifiedDecision = verified.decision ?? decision
     const summary = this.summary(request, verifiedDecision, definition)
     return this.startResolved({ request, decision: verifiedDecision, summary }, callerSignal, [], { source: 'deterministic_fallback', attempts: 0, diagnostics: ['explicit_product_workflow_selection'] }, verified.verifiedIdentity)
   }
 
-  private async verifyWorkflowReferences(request: ResearchRequest, decision: ResearchDispatchDecision): Promise<{ readonly decision?: ResearchDispatchDecision; readonly feedback?: ResearchDispatchFeedback; readonly failureStatus?: 'invalid_input'; readonly verifiedIdentity?: VerifiedSecurityIdentity }> {
+  private async verifyWorkflowReferences(request: ResearchRequest, decision: ResearchDispatchDecision, callerSignal?: AbortSignal): Promise<{ readonly decision?: ResearchDispatchDecision; readonly feedback?: ResearchDispatchFeedback; readonly failureStatus?: 'invalid_input'; readonly verifiedIdentity?: VerifiedSecurityIdentity }> {
     if (decision.mode !== 'workflow' || decision.workflow === undefined) return {}
     const definition = this.workflowRegistry.get(decision.workflow.id)
     if (definition === undefined) return {}
@@ -615,7 +762,8 @@ export class ResearchDispatchService {
     let trustedIdentity: Awaited<ReturnType<SecurityIdentityResolver['resolve']>> | undefined
     if (targetIdentityWorkflow && this.options.securityIdentityResolver !== undefined) {
       const extractedIdentity = extractSymbol(request.query)
-      const candidateName = typeof args.name === 'string' ? args.name : undefined
+      const userEntity = decision.entities.find((entity) => /company|security|公司|证券/iu.test(entity.type) && /\p{Script=Han}/u.test(entity.value) && request.query.includes(entity.value))?.value
+      const candidateName = userNameBesideCode(request.query) ?? userEntity ?? (typeof args.name === 'string' ? args.name : undefined)
       const candidateSymbol = extractedIdentity.symbol ?? (typeof args.symbol === 'string' ? args.symbol : undefined)
       const candidateExchange = extractedIdentity.exchange ?? (typeof args.exchange === 'string' ? args.exchange : undefined)
       const identityAsOf = typeof args.asOf === 'string' ? args.asOf : this.runtimeTimestamp()
@@ -628,7 +776,7 @@ export class ResearchDispatchService {
         historical: args.asOf !== undefined || containsExplicitHistoricalDate(request.query),
         query: request.query,
         allowKnowledgeLookup: request.contextPolicy.structuredKnowledge,
-      }, undefined)
+      }, callerSignal)
       if (trustedIdentity.status !== 'VERIFIED') {
         const reason = `${trustedIdentity.status}: ${trustedIdentity.reason} ${trustedIdentity.diagnostics.join(' ')}`.trim()
         const validationArgs = { ...args, ...(candidateSymbol === undefined ? {} : { symbol: candidateSymbol }) }
@@ -849,6 +997,7 @@ export class ResearchDispatchService {
     if (executor === undefined) throw new ApplicationServiceError('failed', 'Research dispatch semantic resolver is not configured')
     const explicit = request.mode.type === 'workflow'
     const diagnostics: string[] = []
+    const attemptErrors: ResearchDispatchAttemptError[] = []
     let previousOutput: unknown
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       if (callerSignal?.aborted) throw new ApplicationServiceError('cancelled', 'Research dispatch was cancelled during semantic resolution')
@@ -856,33 +1005,42 @@ export class ResearchDispatchService {
         operation: 'research_dispatch_resolution',
         instruction: explicit
           ? 'Extract arguments and entities for the user-selected Workflow. Never select or replace the Workflow; return mode workflow with the exact supplied workflow ID.'
-          : 'Resolve the user research intent. Prefer one registered Workflow when its intent is clear, otherwise select eligible Research Skills, otherwise use Free Research. Do not invent canonical IDs or change request policies.',
-        input: { query: request.query, requestedMode: request.mode, explicitWorkflow: explicitDefinition, workflows: explicit ? explicitDefinition === undefined ? [] : [explicitDefinition] : this.workflowRegistry.list(), researchSkills: this.skillRegistry.researchCandidates(), knowledgeSkillMetadata: this.skillRegistry.get('theme-framework') === undefined ? [] : [this.skillRegistry.get('theme-framework')], sourceLibraryHits, runtimeContext: { requestTimestamp: runtimeTimestamp, effectiveRuntimeClock: runtimeTimestamp, contextPolicy: request.contextPolicy, persistencePolicy: request.persistencePolicy, userControlsKnowledgeWrite: true }, ...(previousOutput === undefined ? {} : { previousOutput, repairDiagnostics: diagnostics.slice(-16) }) },
+          : 'Resolve the user research intent. Prefer one registered Workflow when its intent is clear, otherwise select eligible Research Skills, otherwise use Free Research. Do not invent canonical IDs or change request policies. A company report request selects company_research even with only a name or abbreviation. Preserve the exact user object in entities with type company. Missing symbol/exchange are resolved by the trusted directory later; never guess them. A bare security name/code/pinyin abbreviation selects company_research but includes research_goal in missingRequiredInputs. Only generate asOf when the user explicitly requests a historical cutoff.',
+        input: { query: request.query, requestedMode: request.mode, explicitWorkflow: explicitDefinition, workflows: explicit ? explicitDefinition === undefined ? [] : [explicitDefinition] : this.workflowRegistry.list(), researchSkills: this.skillRegistry.researchCandidates(), knowledgeSkillMetadata: this.skillRegistry.get('theme-framework') === undefined ? [] : [this.skillRegistry.get('theme-framework')], sourceLibraryHits, runtimeContext: { requestTimestamp: runtimeTimestamp, effectiveRuntimeClock: runtimeTimestamp, contextPolicy: request.contextPolicy, persistencePolicy: request.persistencePolicy, userControlsKnowledgeWrite: true }, ...(previousOutput === undefined ? {} : { previousOutput, repairDiagnostics: diagnostics.slice(-16), repairFieldPaths: attemptErrors.at(-1)?.fieldPaths ?? [] }) },
         outputContract: dispatchOutputContract,
         metadata: { operationFamily: 'research-dispatch', attempt: String(attempt) },
       }
+      let category: ResearchDispatchAttemptCategory = 'model_call'
       try {
         const result = await executor.execute(reasoningRequest)
+        category = 'semantic_decision'
         previousOutput = result.output
-        const decision = validateResearchDispatchDecision(result.output)
+        let output = result.output
+        if (typeof output === 'string') {
+          category = 'json_parse'
+          output = JSON.parse(output) as unknown
+          category = 'semantic_decision'
+        }
+        const decision = validateResearchDispatchDecision(output)
         assertSemanticDecision(request, decision, this.workflowRegistry, this.skillRegistry, explicit ? request.mode.workflowId : undefined)
         const definition = decision.workflow === undefined ? undefined : this.workflowRegistry.get(decision.workflow.id)
+        category = 'workflow_parameters'
         const prepared = this.prepareDecisionArguments(request, decision, runtimeTimestamp)
         const missing = prepared.mode === 'workflow' && prepared.workflow !== undefined ? normalizedMissingFields(definition!, prepared.workflow.arguments) : []
         const mappedSkills = decision.mode === 'workflow' && decision.workflow !== undefined && decision.skills.length === 0
           ? selectedSkillIds(this.skillRegistry, this.workflowRegistry.get(decision.workflow.id)!).map((id) => ({ id, purpose: this.skillRegistry.get(id)?.purpose ?? 'selected by the authoritative Workflow definition' }))
           : decision.skills
         const normalized = validateResearchDispatchDecision({ ...prepared, skills: mappedSkills, missingRequiredInputs: missing })
-        return { decision: normalized, resolution: { source: attempt === 1 ? 'reasoning_executor' : 'bounded_repair', attempts: attempt, diagnostics } }
+        return { decision: normalized, resolution: { source: attempt === 1 ? 'reasoning_executor' : 'bounded_repair', attempts: attempt, diagnostics, attemptErrors } }
       } catch (error) {
-        diagnostics.push(error instanceof Error ? error.message.slice(0, 240) : 'semantic_resolution_invalid')
+        if (callerSignal?.aborted) throw new ApplicationServiceError('cancelled', 'Research dispatch was cancelled')
+        const failure = dispatchAttemptError(error, category, attempt)
+        diagnostics.push(failure.code)
+        attemptErrors.push(failure)
         if (attempt === 2) break
       }
     }
-    const fallback = this.resolve(request)
-    let prepared = fallback.decision
-    try { prepared = this.prepareDecisionArguments(request, fallback.decision, runtimeTimestamp) } catch (error) { diagnostics.push(error instanceof Error ? error.message.slice(0, 240) : 'fallback_contract_invalid') }
-    return { decision: prepared, resolution: { source: 'deterministic_fallback', attempts: 2, diagnostics: [...diagnostics, 'semantic_resolution_fallback'] } }
+    throw new DispatchSemanticError({ source: 'bounded_repair', attempts: 2, diagnostics, attemptErrors }, attemptErrors.at(-1)?.category ?? 'model_call')
   }
 
   private reportIdFromResult(result: unknown): string | undefined {

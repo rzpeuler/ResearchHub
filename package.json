@@ -53,6 +53,7 @@
     "@napi-rs/keyring": "2.1.0",
     "@xyflow/react": "^12.11.6",
     "ajv": "8.17.1",
+    "pinyin-pro": "^3.29.5",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   }

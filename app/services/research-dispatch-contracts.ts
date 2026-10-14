@@ -28,6 +28,27 @@ export interface ResearchDispatchEntity {
   readonly confidence: number
 }
 
+export interface ResearchDispatchClarification {
+  readonly confirmationId: string
+  readonly expiresAt?: string
+  readonly kind: 'security_selection' | 'research_goal' | 'missing_input'
+  readonly query: string
+  readonly workflowId?: string
+  readonly candidates: readonly { readonly candidateId: string; readonly name: string; readonly symbol: string; readonly exchange: string; readonly matchKind: string }[]
+  readonly directoryTimestamp?: string
+  readonly directoryVersion?: string
+  readonly missingFields: readonly string[]
+  readonly question: string
+}
+
+export type ResearchDispatchAttemptCategory = 'model_call' | 'timeout' | 'json_parse' | 'semantic_decision' | 'workflow_parameters' | 'security_identity'
+export interface ResearchDispatchAttemptError {
+  readonly attempt: number
+  readonly category: ResearchDispatchAttemptCategory
+  readonly code: string
+  readonly fieldPaths: readonly string[]
+}
+
 export interface ResearchDispatchWorkflow {
   readonly id: string
   readonly confidence: number

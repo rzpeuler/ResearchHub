@@ -49,14 +49,7 @@ const CLIENT_MIME_TYPES: Readonly<Record<string, string>> = { '.css': 'text/css;
 
 function publicDispatchResolution(resolution: ResearchDispatchResolution | undefined): ResearchDispatchResolution | undefined {
   if (resolution === undefined) return undefined
-  const diagnostics = new Set<string>()
-  if (resolution.source === 'bounded_repair') diagnostics.add('invalid_semantic_output_repaired')
-  if (resolution.source === 'deterministic_fallback') {
-    if (resolution.diagnostics.includes('reasoning_executor_unconfigured')) diagnostics.add('reasoning_executor_unconfigured')
-    else diagnostics.add('semantic_output_rejected')
-    diagnostics.add('deterministic_fallback_used')
-  }
-  return { source: resolution.source, attempts: resolution.attempts, diagnostics: [...diagnostics] }
+  return { ...resolution, diagnostics: resolution.diagnostics.filter(code => /^[A-Za-z][A-Za-z0-9_.:-]{0,119}$/u.test(code)), ...(resolution.attemptErrors === undefined ? {} : { attemptErrors: resolution.attemptErrors.map(error => ({ ...error, ...(error.fieldPaths === undefined ? {} : { fieldPaths: error.fieldPaths.filter(path => /^[A-Za-z0-9_.\[\]-]{1,160}$/u.test(path)) }) })) }) }
 }
 const THESIS_CRITERION_PREVIEW_FIELDS = ['knowledgeBaseId', 'expectedKnowledgeBaseRevision', 'thesisRef', 'conditionId', 'revision', 'type', 'definitionVersion', 'definition', 'targetClaimRefs', 'origin', 'definitionHash', 'previewHash'] as const
 const DISABLED_MODEL_CAPABILITIES: ReasoningCapabilities = { maxContextTokens: 1, maxOutputTokens: 1, structuredOutputSupport: false, maxConcurrency: 1 }
@@ -329,6 +322,7 @@ export class ResearchHubRuntimeServer {
   private inFlightApiRequests = 0
   private modelSelectionError?: string
   private readonly modelLoginFlows = new ModelLoginFlowManager()
+  private readonly pendingDispatches = new Map<string, { readonly conversationId: string; readonly operationId: string; readonly controller: AbortController; readonly runId: string }>()
 
   constructor(options: ResearchHubRuntimeServerOptions) {
     this.options = options
@@ -1059,6 +1053,7 @@ export class ResearchHubRuntimeServer {
     if (method === 'GET' && path.startsWith('/api/research/bundles/by-run/')) { const service = this.runtime!.services.researchDispatchService; if (!service) throw new ApplicationServiceError('not_found', 'Research dispatch is not configured'); const bundle = await service.getBundleForRun(decodeSegment(path.split('/')[5] ?? '')); if (bundle === undefined) throw new ApplicationServiceError('not_found', 'ResearchBundle not found for Workflow run'); await this.sendJson(response, 200, bundle); return }
     if (method === 'GET' && path.startsWith('/api/research/bundles/')) { const service = this.runtime!.services.researchDispatchService; if (!service) throw new ApplicationServiceError('not_found', 'Research dispatch is not configured'); const bundle = await service.getBundle(decodeSegment(path.split('/')[4] ?? '')); if (bundle === undefined) throw new ApplicationServiceError('not_found', 'ResearchBundle not found'); await this.sendJson(response, 200, bundle); return }
     if (method === 'POST' && path === '/api/research/source-library/search') { const body = await this.readJson(request); const context = body.contextPolicy as { readonly sourceLibrary?: unknown } | undefined; if (context !== undefined && context.sourceLibrary !== true) { await this.sendJson(response, 200, { enabled: false, hits: [] }); return } if (!this.runtime!.mountedKnowledgeBaseRoot || !this.runtime!.services.sourceLibraryService) throw new ApplicationServiceError('no_kb_mounted', 'Source Library requires a mounted Knowledge Base'); const query = this.stringField(body, 'query', 2_000); const handle = await new KnowledgeBaseRegistry().mount(this.runtime!.mountedKnowledgeBaseRoot); const hits = await this.runtime!.services.sourceLibraryService.search(handle, { query, limit: body.limit === undefined ? undefined : this.optionalPositive(body, 'limit') }); await this.sendJson(response, 200, { enabled: true, hits }); return }
+    if (method === 'POST' && path === '/api/research/dispatch/confirm') { await this.dispatchResearch(request, response, true); return }
     if (method === 'POST' && path === '/api/research/dispatch') { await this.dispatchResearch(request, response); return }
     if (method === 'GET' && path.startsWith('/api/research-reports/')) { const reportId = decodeSegment(path.split('/')[3] ?? ''); const service = this.runtime!.researchService; if (!service) throw new ApplicationServiceError('not_found', 'Research Reports are not configured'); await this.sendJson(response, 200, await service.getResearchReport(reportId)); return }
     if (method === 'GET' && path === '/api/daily-briefs') { const service = this.runtime!.services.dailyIntelligenceService; if (!service) throw new ApplicationServiceError('not_found', 'Daily Intelligence is not configured'); await this.sendJson(response, 200, { briefs: await service.listBriefs(positiveInteger(url.searchParams.get('limit'))) }); return }
@@ -1094,7 +1089,7 @@ export class ResearchHubRuntimeServer {
     if (method === 'POST' && (path === '/api/conversations/prompt' || path === '/api/conversation/prompt')) { await this.acceptConversationCommand(request, response, 'prompt'); return }
     if (method === 'POST' && (path === '/api/conversations/steer' || path === '/api/conversation/steer')) { await this.acceptConversationCommand(request, response, 'steer'); return }
     if (method === 'POST' && (path === '/api/conversations/follow_up' || path === '/api/conversation/follow_up' || path === '/api/conversations/follow-up' || path === '/api/conversation/follow-up')) { await this.acceptConversationCommand(request, response, 'followUp'); return }
-    if (method === 'POST' && (path === '/api/conversations/abort' || path === '/api/conversation/abort')) { await this.runtime!.sessionRuntime.abort(); await this.sendJson(response, 200, { accepted: true, aborted: true, conversationId: this.sessionState().conversationId }); return }
+    if (method === 'POST' && (path === '/api/conversations/abort' || path === '/api/conversation/abort')) { const activeConversation = this.sessionState().conversationId; for (const pending of this.pendingDispatches.values()) if (pending.conversationId === activeConversation && this.runtime!.workflowService.getWorkflowStatus(pending.runId) === undefined) pending.controller.abort(); await this.runtime!.sessionRuntime.abort(); await this.sendJson(response, 200, { accepted: true, aborted: true, conversationId: this.sessionState().conversationId }); return }
     if (method === 'POST' && (path === '/api/attachments' || path === '/api/attachments/upload')) { const contentType = request.headers['content-type']; if (typeof contentType !== 'string') throw new ApplicationServiceError('invalid_input', 'multipart Content-Type is required'); const length = Number(request.headers['content-length']); if (Number.isFinite(length) && length > (this.attachmentService?.maxBytes ?? DEFAULT_MAX_ATTACHMENT_BYTES) + 1024 * 1024) throw new ApplicationServiceError('invalid_input', 'attachment request is too large'); const attachment = await this.attachmentService!.upload(request, contentType); await this.sendJson(response, 201, { attachment }); return }
     if (method === 'GET' && path.startsWith('/api/attachments/')) { const pieces = path.split('/'); const id = decodeSegment(pieces[3] ?? ''); if (pieces[4] === 'content') { await this.streamAttachment(response, id); return } await this.sendJson(response, 200, { attachment: await this.attachmentService!.getAttachment(id) }); return }
     if (method === 'POST' && (path === '/api/production/ingest' || path === '/api/production/ingest-document' || path === '/api/production/start-ingest' || path === '/api/workflows/ingest' || path === '/api/ingest-document' || path === '/api/ingestion')) { await this.startIngestion(request, response); return }
@@ -1497,10 +1492,16 @@ export class ResearchHubRuntimeServer {
     const service = this.runtime!.services.dailyIntelligenceService; if (!service) throw new ApplicationServiceError('failed', 'Daily Intelligence is not configured for this runtime'); const body = await this.readJson(request); this.ensureRunning(); const tradeDate = this.stringField(body, 'tradeDate', 10); const asOf = this.optionalString(body, 'asOf', 100); const forceRefresh = body.forceRefresh === undefined ? undefined : body.forceRefresh === true; const controller = new AbortController(); const started = service.startBrief({ workflowRunId: randomUUID(), briefType, tradeDate, asOf, forceRefresh }, controller.signal); this.trackBackground(started.completion, () => controller.abort()); await this.runtime!.workflowService.confirmPersistence(started.runId); await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) })
   }
 
-  private async dispatchResearch(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  private async dispatchResearch(request: IncomingMessage, response: ServerResponse, confirming = false): Promise<void> {
     const service: ResearchDispatchService | undefined = this.runtime!.services.researchDispatchService
     if (!service) throw new ApplicationServiceError('failed', 'Research dispatch is not configured for this runtime')
-    const body = await this.readJson(request)
+    let body = await this.readJson(request)
+    let confirmation: { confirmationId: string; candidateId?: string; directoryVersion?: string; clarificationText?: string } | undefined
+    let original: import('../services/research-dispatch-service.ts').ResearchDispatchStart | undefined
+    if (confirming) {
+      assertExactFields(body, ['conversationId','operationId','confirmationId'], ['candidateId','directoryVersion','clarificationText'], 'research confirmation')
+      confirmation = { confirmationId: this.stringField(body, 'confirmationId', 160), ...(body.candidateId === undefined ? {} : { candidateId: this.stringField(body, 'candidateId', 160) }), ...(body.directoryVersion === undefined ? {} : { directoryVersion: this.stringField(body, 'directoryVersion', 160) }), ...(body.clarificationText === undefined ? {} : { clarificationText: this.stringField(body, 'clarificationText', 50000) }) }
+    }
     this.ensureRunning()
     const controller = new AbortController()
     const conversationId = typeof body.conversationId === 'string' ? body.conversationId : undefined
@@ -1509,39 +1510,60 @@ export class ResearchHubRuntimeServer {
     let claimed = false
     let acceptedRequest: import('./conversation-state-store.ts').AcceptedConversationRequest | undefined
     {
-      if (conversationId === undefined || operationId === undefined || typeof body.query !== 'string') throw new ApplicationServiceError('invalid_input', 'conversationId, operationId, and query are required together')
+      if (conversationId === undefined || operationId === undefined || (!confirming && typeof body.query !== 'string')) throw new ApplicationServiceError('invalid_input', 'conversationId, operationId, and query are required together')
       await this.runtime!.sessionRuntime.getConversationSummary(conversationId)
       const mode = isRecord(body.mode) && body.mode.type === 'workflow' && typeof body.mode.workflowId === 'string' ? body.mode.workflowId : undefined
       const store = this.runtime!.sessionRuntime.conversationStateStore
       let state = await store.get(conversationId)
       acceptedRequest = state?.acceptedRequests.find((item) => item.operationId === operationId)
+      if (confirming) {
+        if (!acceptedRequest?.dispatchEnvelope) throw new ApplicationServiceError('conflict', 'No pending clarification for this operation')
+        if (acceptedRequest.lifecycle !== 'needs_clarification') {
+          if (acceptedRequest.confirmedClarificationId !== confirmation!.confirmationId) throw new ApplicationServiceError('conflict', 'Clarification belongs to a different operation or is expired')
+          await this.sendDispatchReplay(response, conversationId, acceptedRequest); return
+        }
+        original = acceptedRequest.dispatchEnvelope
+        body = { ...original.request, conversationId, operationId }
+        reservedRunId = randomUUID()
+        const claim = await store.claimClarification(conversationId, operationId, confirmation!.confirmationId, reservedRunId)
+        if (!claim.mayDispatch) { await this.sendDispatchReplay(response, conversationId, claim.state.acceptedRequests.find(item => item.operationId === operationId)!); return }
+        claimed = true
+      }
       if (acceptedRequest === undefined) {
-        const accepted = await store.acceptRequest(conversationId, { operationId, requestText: body.query, operation: 'prompt', ...(mode === undefined ? {} : { workflowRegistryId: mode }) })
+        const accepted = await store.acceptRequest(conversationId, { operationId, requestText: body.query as string, operation: 'prompt', ...(mode === undefined ? {} : { workflowRegistryId: mode }) })
         state = accepted.state; acceptedRequest = accepted.request
       }
-      if (acceptedRequest.requestText !== body.query || acceptedRequest.operation !== 'prompt' || acceptedRequest.acceptedWorkflowRegistryId !== mode) throw new ApplicationServiceError('conflict', 'operationId was accepted with a different dispatch payload')
-      if (acceptedRequest.lifecycle !== 'accepted') {
+      if (!confirming && (acceptedRequest.requestText !== body.query || acceptedRequest.operation !== 'prompt' || acceptedRequest.acceptedWorkflowRegistryId !== mode)) throw new ApplicationServiceError('conflict', 'operationId was accepted with a different dispatch payload')
+      if (!confirming && acceptedRequest.lifecycle !== 'accepted') {
         await this.sendDispatchReplay(response, conversationId, acceptedRequest)
         return
       }
-      reservedRunId = randomUUID()
-      const claim = await store.claimSubmission(conversationId, operationId, reservedRunId)
-      if (!claim.mayDispatch) {
-        const record = claim.state.acceptedRequests.find((item) => item.operationId === operationId)!
-        await this.sendDispatchReplay(response, conversationId, record)
-        return
+      if (!confirming) {
+        reservedRunId = randomUUID()
+        const claim = await store.claimSubmission(conversationId, operationId, reservedRunId)
+        if (!claim.mayDispatch) {
+          const record = claim.state.acceptedRequests.find((item) => item.operationId === operationId)!
+          await this.sendDispatchReplay(response, conversationId, record)
+          return
+        }
+        claimed = true
       }
-      claimed = true
     }
     let started: Awaited<ReturnType<ResearchDispatchService['startAsync']>>
+    const preparationKey = `${conversationId}:${operationId}`
+    this.pendingDispatches.set(preparationKey, { conversationId: conversationId!, operationId: operationId!, controller, runId: reservedRunId! })
     try {
-      started = await service.startAsync(body, controller.signal, reservedRunId)
+      started = confirming ? await service.confirmAsync(original!, confirmation!, controller.signal, reservedRunId) : await service.startAsync(body, controller.signal, reservedRunId)
     } catch (error) {
-      if (claimed) await this.runtime!.sessionRuntime.conversationStateStore.markDispatchFailed(conversationId!, operationId!, 'dispatch_failed').catch(() => undefined)
+      if (claimed) {
+        if (controller.signal.aborted) await this.runtime!.sessionRuntime.conversationStateStore.markPreparationCancelled(conversationId!, operationId!).catch(() => undefined)
+        else await this.runtime!.sessionRuntime.conversationStateStore.markDispatchFailed(conversationId!, operationId!, 'dispatch_failed').catch(() => undefined)
+      }
       throw error
-    }
+    } finally { this.pendingDispatches.delete(preparationKey) }
     if (claimed) {
       const store = this.runtime!.sessionRuntime.conversationStateStore
+      await store.recordDispatchEnvelope(conversationId!, operationId!, { ...started, resolution: publicDispatchResolution(started.resolution) })
       if (started.status === 'started' && started.runId !== undefined) {
         const workflowId = started.decision.workflow?.id ?? acceptedRequest?.workflowRegistryId ?? 'workflow'
         const workflow = this.runtime!.services.researchDispatchService?.listWorkflowDefinitions().find((definition) => definition.id === workflowId)
@@ -1565,6 +1587,9 @@ export class ResearchHubRuntimeServer {
           await store.markWorkflowStarted(conversationId!, operationId!, { workflowRegistryId: workflowId, workflowRunId: started.runId, ...(workflowSubject === undefined ? {} : { workflowSubject }), ...(titleCandidate === undefined ? {} : { titleCandidate }) })
         }
         catch { /* The durable submitting reservation makes every retry fail closed. */ }
+        await store.linkToolWorkflow(conversationId!, operationId!, { runId: started.runId, workflowRegistryId: workflowId })
+      } else if (started.status === 'needs_clarification') {
+        // The durable envelope carries the pending clarification until explicitly confirmed.
       } else if (started.status === 'free_research' || started.status === 'skill_plan') {
         await store.markReadyForChat(conversationId!, operationId!, started.status, started.runId)
       } else {
@@ -1577,6 +1602,7 @@ export class ResearchHubRuntimeServer {
         const workflow = this.runtime!.workflowService.getWorkflowStatus(started.runId)
         if (!workflow || !['completed', 'completed_with_review', 'blocked', 'failed', 'cancelled'].includes(workflow.status)) return
         await this.runtime!.sessionRuntime.conversationStateStore.completeWorkflowRequest(conversationId, operationId, workflow.status as 'completed' | 'completed_with_review' | 'blocked' | 'failed' | 'cancelled')
+        this.eventStream.publish({ eventId: `activity:${randomUUID()}`, conversationId, operationId, timestamp: new Date().toISOString(), type: 'activity.updated', summary: 'Activity updated' })
       }
       const completion = started.completion.then(async () => { await reconcileWorkflowTerminal() }, async (error: unknown) => { await reconcileWorkflowTerminal(); throw error })
       this.trackBackground(completion, () => {
@@ -1587,11 +1613,13 @@ export class ResearchHubRuntimeServer {
       })
     }
     if (started.status === 'started' && started.runId !== undefined) await this.runtime!.workflowService.confirmPersistence(started.runId)
+    if (conversationId && operationId) this.eventStream.publish({ eventId: `activity:${randomUUID()}`, conversationId, operationId, timestamp: new Date().toISOString(), type: 'activity.updated', summary: 'Activity updated' } satisfies ClientEvent)
     const workflow = started.runId === undefined ? started.workflow : this.runtime!.workflowService.getWorkflowStatus(started.runId)
-    await this.sendJson(response, started.status === 'started' ? 202 : 200, { accepted: started.status === 'started', status: started.status, request: started.request, decision: started.decision, summary: started.summary, ...(started.feedback === undefined ? {} : { feedback: started.feedback }), ...(started.resolution === undefined ? {} : { resolution: publicDispatchResolution(started.resolution) }), ...(started.runId === undefined ? {} : { runId: started.runId }), ...(workflow === undefined ? {} : { workflow }) })
+    await this.sendJson(response, started.status === 'started' ? 202 : 200, { accepted: started.status === 'started', status: started.status, request: started.request, decision: started.decision, summary: started.summary, ...(started.clarification === undefined ? {} : { clarification: started.clarification }), ...(started.feedback === undefined ? {} : { feedback: started.feedback }), ...(started.resolution === undefined ? {} : { resolution: publicDispatchResolution(started.resolution) }), ...(started.runId === undefined ? {} : { runId: started.runId }), ...(workflow === undefined ? {} : { workflow }) })
   }
 
   private async sendDispatchReplay(response: ServerResponse, conversationId: string, record: import('./conversation-state-store.ts').AcceptedConversationRequest): Promise<void> {
+    if (record.lifecycle === 'needs_clarification' && record.dispatchEnvelope !== undefined) { const envelope = record.dispatchEnvelope; await this.sendJson(response, 200, { accepted: false, status: 'needs_clarification', request: envelope.request, decision: envelope.decision, summary: envelope.summary, clarification: envelope.clarification, resolution: publicDispatchResolution(envelope.resolution), conversationId, operationId: record.operationId, replayed: true }); return }
     if (record.lifecycle === 'submitting' && record.reservedWorkflowRunId !== undefined) {
       const workflow = this.runtime!.workflowService.getWorkflowStatus(record.reservedWorkflowRunId)
       const registryId = record.workflowRegistryId ?? workflow?.workflowType

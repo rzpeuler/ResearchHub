@@ -272,8 +272,8 @@ test('semantic resolver uses the ReasoningExecutor boundary and repairs one inva
 
 test('semantic resolver cannot replace an explicit Workflow or policy', async () => {
   const service = new ResearchDispatchService({ reasoningExecutor: { capabilities: () => ({ maxContextTokens: 1000, maxOutputTokens: 1000, structuredOutputSupport: true, maxConcurrency: 1 }), execute: async (request) => ({ operation: request.operation, output: { mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: { symbol: '600519' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'attempted replacement' } }) } })
-  const resolved = await service.resolveAsync({ query: '请估值 600519', mode: { type: 'workflow', workflowId: 'valuation' }, contextPolicy: { structuredKnowledge: false, sourceLibrary: false }, persistencePolicy: { writeKnowledge: true } })
-  assert.equal(resolved.decision.workflow?.id, 'valuation'); assert.deepEqual(resolved.decision.contextPolicy, { structuredKnowledge: false, sourceLibrary: false }); assert.equal(resolved.resolution.source, 'deterministic_fallback')
+  const resolved = await service.startAsync({ query: '请估值 600519', mode: { type: 'workflow', workflowId: 'valuation' }, contextPolicy: { structuredKnowledge: false, sourceLibrary: false }, persistencePolicy: { writeKnowledge: true } })
+  assert.equal(resolved.status, 'invalid_input'); assert.deepEqual(resolved.request.contextPolicy, { structuredKnowledge: false, sourceLibrary: false }); assert.equal(resolved.resolution?.source, 'bounded_repair')
 })
 
 test('semantic Workflow decisions reject mapped but unavailable canonical Skills', async () => {
@@ -310,12 +310,11 @@ test('semantic Workflow decisions reject mapped but unavailable canonical Skills
         },
       },
     })
-    const resolved = await service.resolveAsync({ query: item.query, mode: { type: 'free_research' } })
+    const resolved = await service.startAsync({ query: item.query, mode: { type: 'free_research' } })
     assert.equal(calls, 2, item.workflowId)
-    assert.equal(resolved.resolution.source, 'deterministic_fallback', item.workflowId)
-    assert.equal(resolved.decision.workflow?.id, item.workflowId)
-    assert.equal(resolved.decision.skills.some((skill) => skill.id === item.unavailableSkill), false, item.workflowId)
-    assert.equal(resolved.decision.skills.every((skill) => { const definition = service.skillRegistry.get(skill.id); return definition?.kind === 'research' && definition.enabled === true && (definition.origin !== 'canonical' || definition.catalogStatus === 'IMPLEMENTED') }), true, item.workflowId)
+    assert.equal(resolved.status, 'invalid_input', item.workflowId)
+    assert.equal(resolved.resolution?.source, 'bounded_repair')
+    assert.equal(resolved.runId, undefined)
   }
 })
 
@@ -338,7 +337,7 @@ test('Workflow contract missing inputs return structured NEEDS_INPUT and never c
   const output = { mode: 'workflow', workflow: { id: 'earnings_review', confidence: 0.98, arguments: { symbol: '600519', name: '贵州茅台', fiscalYear: 2026 } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Annual report review.' }
   const service = new ResearchDispatchService({ reasoningExecutor: semanticExecutor(output), researchService: ({ startEarningsReview: () => { starts += 1; return { completion: Promise.resolve({ status: 'completed' }) } } } as never) })
   const result = await service.startAsync({ query: '研究贵州茅台 2026 年半年报', mode: { type: 'workflow', workflowId: 'earnings_review' } }, undefined, '86e59fd9-c800-4aa8-8ee3-bfbb95a65730')
-  assert.equal(result.status, 'needs_input')
+  assert.equal(result.status, 'needs_clarification')
   assert.equal(result.runId, undefined)
   assert.equal(starts, 0)
   assert.equal(result.feedback?.status, 'NEEDS_INPUT')
@@ -353,12 +352,12 @@ test('Registered Workflow argument schemas reject unknown fields and get one bou
   const calls: unknown[] = []
   const invalid = { mode: 'workflow', workflow: { id: 'earnings_review', confidence: 1, arguments: { symbol: '600519', fiscalYear: 2026, period: 'Q4', invented: 'value' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Invalid period and field.' }
   const service = new ResearchDispatchService({ reasoningExecutor: semanticExecutor(invalid, (request) => calls.push(request.input)) })
-  const result = await service.resolveAsync({ query: '研究 600519 2026 年半年报', mode: { type: 'workflow', workflowId: 'earnings_review' } })
+  const result = await service.startAsync({ query: '研究 600519 2026 年半年报', mode: { type: 'workflow', workflowId: 'earnings_review' } })
   assert.equal(calls.length, 2)
-  assert.equal(result.resolution.source, 'deterministic_fallback')
-  assert.ok(result.resolution.diagnostics.some((item) => item.includes('invented')))
-  assert.equal(result.decision.workflow?.arguments.invented, undefined)
-  assert.equal(result.decision.workflow?.arguments.period, 'H1')
+  assert.equal(result.status, 'invalid_input')
+  assert.equal(result.resolution?.source, 'bounded_repair')
+  assert.equal(result.resolution?.attemptErrors?.length, 2)
+  assert.equal(result.runId, undefined)
 })
 
 test('Valuation current and historical dispatch use injected time and Shanghai-local date cutoffs', async () => {
@@ -497,8 +496,8 @@ test('Unverified company identity and canonical references are returned as expli
   assert.match(company.feedback?.reason ?? '', /mounted Knowledge Base/)
   assert.equal(starts, 0)
   const thesis = await service.startAsync({ query: 'red team claim:invented', mode: { type: 'workflow', workflowId: 'thesis_red_team' } })
-  assert.equal(thesis.status, 'needs_input')
-  assert.deepEqual(thesis.feedback?.missingFields, ['symbol'])
+  assert.equal(thesis.status, 'invalid_input')
+  assert.equal(thesis.resolution?.attempts, 2)
   assert.equal(starts, 0)
 })
 
@@ -536,7 +535,7 @@ test('Test-only Workflow definitions validate new fields without a dispatch pars
 test('Thesis Lifecycle CREATE/REFRESH contracts and canonical Thesis refs are gated before execution', async () => {
   const missingService = new ResearchDispatchService({ reasoningExecutor: semanticExecutor({ mode: 'workflow', workflow: { id: 'thesis_lifecycle', confidence: 1, arguments: { mode: 'CREATE' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Create a thesis.' }) })
   const missing = await missingService.startAsync({ query: 'CREATE a thesis', mode: { type: 'workflow', workflowId: 'thesis_lifecycle' } })
-  assert.equal(missing.status, 'needs_input')
+  assert.equal(missing.status, 'needs_clarification')
   assert.deepEqual(missing.feedback?.missingFields, ['formalization'])
 
   const knowledgeBase = await identityKnowledgeBase()

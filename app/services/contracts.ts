@@ -7,7 +7,7 @@ import type { RawDocumentV04IncompleteExtractionUnit } from '../../workflows/raw
 import type { EarningsFinancialQualitySummary } from '../../skills/earnings-review/financial-quality/contracts.ts'
 import type { EarningsExpectationAnalysis } from '../../workflows/earnings-review/expectations-contracts.ts'
 import type { ResearchQualityGateStatus } from '../../workflows/research-quality-gate.ts'
-import type { WorkflowProviderObservation, WorkflowSkillObservation, WorkflowStageView } from '../../workflows/observation-contracts.ts'
+import type { WorkflowAcquisitionActivity, WorkflowProviderObservation, WorkflowSkillObservation, WorkflowStageView } from '../../workflows/observation-contracts.ts'
 export type { WorkflowDataAvailabilityStatus, WorkflowObservationReporter, WorkflowProviderObservation, WorkflowSkillObservation, WorkflowStageStatus, WorkflowStageView } from '../../workflows/observation-contracts.ts'
 
 export type ApplicationErrorCode = 'not_found' | 'invalid_input' | 'cancelled' | 'failed' | 'conflict' | 'executor_unavailable' | 'no_kb_mounted' | 'unauthorized_runtime_token'
@@ -125,6 +125,7 @@ export interface WorkflowRunView {
   /** Only stages reported by real producer boundaries are present; this is not a global stage template. */
   readonly stages: readonly WorkflowStageView[]
   readonly providerObservations: readonly WorkflowProviderObservation[]
+  readonly acquisitionActivities?: readonly WorkflowAcquisitionActivity[]
   readonly skillObservations: readonly WorkflowSkillObservation[]
   readonly reviewCount?: number
   readonly errorSummary?: string

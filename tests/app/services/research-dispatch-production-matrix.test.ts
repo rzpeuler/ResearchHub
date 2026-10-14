@@ -252,7 +252,7 @@ test('Daily Intelligence evening dispatch preserves the evening adapter input an
     reasoningExecutor: semanticExecutor('daily_intelligence', { briefType: 'evening', tradeDate: '2026-10-09' }),
     bundleStore: bundleStore as never, clock: () => new Date(NOW),
   })
-  const started = await service.startAsync({ query: 'Generate evening brief 2026-10-09', mode: { type: 'workflow', workflowId: 'daily_intelligence' } })
+  const started = await service.startAsync({ query: 'Generate evening brief 2026-10-09', mode: { type: 'workflow', workflowId: 'daily_intelligence' }, contextPolicy: { structuredKnowledge: true, sourceLibrary: false } })
   assert.equal(started.status, 'started')
   await started.completion
   assert.deepEqual({ briefType: adapterInput?.briefType, tradeDate: adapterInput?.tradeDate }, { briefType: 'evening', tradeDate: '2026-10-09' })

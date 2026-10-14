@@ -9,7 +9,7 @@ const MAX_SNAPSHOT_BYTES = 512 * 1024
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/u
 const SNAPSHOT_KEYS = ['schemaVersion', 'runId', 'observationRevision', 'persistedAt', 'workflow'] as const
 const WORKFLOW_REQUIRED_KEYS = ['runId', 'workflowType', 'objective', 'status', 'startedAt', 'updatedAt', 'observationRevision', 'stages', 'providerObservations', 'skillObservations'] as const
-const WORKFLOW_OPTIONAL_KEYS = ['currentStage', 'currentStageId', 'progressSummary', 'completedAt', 'reviewCount', 'errorSummary', 'executionResult'] as const
+const WORKFLOW_OPTIONAL_KEYS = ['currentStage', 'currentStageId', 'progressSummary', 'completedAt', 'reviewCount', 'errorSummary', 'executionResult', 'acquisitionActivities'] as const
 const STATUS_VALUES = ['pending', 'running', 'completed', 'completed_with_review', 'blocked', 'cancelled', 'failed'] as const
 const STAGE_STATUS_VALUES = ['pending', 'running', 'completed', 'skipped', 'failed', 'blocked', 'cancelled'] as const
 const PROVIDER_STATUS_VALUES = ['success', 'partial', 'unavailable', 'failed', 'skipped'] as const
@@ -216,6 +216,14 @@ function validateWorkflow(value: unknown, expectedRunId?: string): asserts value
   for (const skill of value.skillObservations) {
     if (!isRecord(skill) || !hasOnlyKeys(skill, ['skillId', 'label', 'status'], ['startedAt', 'completedAt', 'durationMs', 'summary']) || typeof skill.skillId !== 'string' || !safeObservationId(skill.skillId) || typeof skill.label !== 'string' || !SKILL_STATUS_VALUES.includes(skill.status as typeof SKILL_STATUS_VALUES[number]) || !optionalTimestamps(skill, ['startedAt', 'completedAt']) || (skill.durationMs !== undefined && (!Number.isSafeInteger(skill.durationMs) || (skill.durationMs as number) < 0)) || (skill.summary !== undefined && typeof skill.summary !== 'string')) throw invalid('workflow Skill observation is invalid')
   }
+  if (value.acquisitionActivities !== undefined) {
+    if (!Array.isArray(value.acquisitionActivities) || value.acquisitionActivities.length > 500) throw invalid('workflow acquisition collection is invalid')
+    const ids = new Set<string>()
+    for (const activity of value.acquisitionActivities) {
+      if (!isRecord(activity) || !hasOnlyKeys(activity, ['activityId','providerId','step','status','startedAt'], ['sourceTitle','completedAt','diagnosticCode']) || typeof activity.activityId !== 'string' || !safeObservationId(activity.activityId) || ids.has(activity.activityId) || typeof activity.providerId !== 'string' || !safeObservationId(activity.providerId) || !['discovery','download','body_read','parsing','structured_data'].includes(String(activity.step)) || !['running','completed','failed','timeout','cancelled'].includes(String(activity.status)) || !isTimestamp(activity.startedAt) || !optionalTimestamps(activity, ['completedAt']) || (activity.sourceTitle !== undefined && (typeof activity.sourceTitle !== 'string' || activity.sourceTitle.length > 240)) || (activity.diagnosticCode !== undefined && (typeof activity.diagnosticCode !== 'string' || !isSafeDiagnostic(activity.diagnosticCode)))) throw invalid('workflow acquisition activity is invalid')
+      ids.add(activity.activityId)
+    }
+  }
   if (value.executionResult !== undefined && !validateExecutionResult(value.executionResult, value.runId)) throw invalid('workflow execution result projection is invalid')
 }
 
@@ -245,6 +253,7 @@ function projectWorkflow(value: WorkflowRunView): WorkflowRunView {
     ...(workflow.errorSummary === undefined ? {} : { errorSummary: safeSnapshotText(workflow.errorSummary, 240, 'Workflow error details omitted for safety.') }),
     stages: workflow.stages.map((stage) => ({ ...stage, label: safeSnapshotText(stage.label, 240, 'Workflow stage'), ...(stage.summary === undefined ? {} : { summary: safeSnapshotText(stage.summary, 240, 'Workflow stage details omitted for safety.') }), ...(stage.diagnostics === undefined ? {} : { diagnostics: stage.diagnostics.filter(isSafeDiagnostic) }) })),
     providerObservations: workflow.providerObservations.map((provider) => ({ ...provider, label: safeSnapshotText(provider.label, 240, 'Workflow provider'), diagnostics: provider.diagnostics.filter(isSafeDiagnostic) })),
+    ...(workflow.acquisitionActivities === undefined ? {} : { acquisitionActivities: workflow.acquisitionActivities.map(activity => ({ ...activity, ...(activity.sourceTitle === undefined ? {} : { sourceTitle: safeSnapshotText(activity.sourceTitle, 240, 'Source') }) })) }),
     skillObservations: workflow.skillObservations.map((skill) => ({ ...skill, label: safeSnapshotText(skill.label, 240, 'Workflow skill'), ...(skill.summary === undefined ? {} : { summary: safeSnapshotText(skill.summary, 240, 'Workflow skill details omitted for safety.') }) })),
     ...(result === undefined ? {} : { executionResult: {
     ...result,

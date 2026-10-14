@@ -44,6 +44,8 @@ function normalizeClientEvent(event: unknown): ClientEvent {
       return { ...base, type: 'queue.updated', steeringCount: boundedCount(candidate.steeringCount), followUpCount: boundedCount(candidate.followUpCount) }
     case 'session.changed':
       return { ...base, type: 'session.changed', summary: 'Session changed' }
+    case 'activity.updated':
+      return { ...base, type: 'activity.updated', summary: 'Activity updated' }
     case 'thinking.status':
       return { ...base, type: 'thinking.status', summary: 'Thinking…' }
     case 'error': {

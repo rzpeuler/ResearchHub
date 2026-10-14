@@ -197,6 +197,7 @@ export class ResearchHubApplicationRuntime {
     const akshare = new AkshareDataAdapter()
     const securityIdentityResolver = options.securityIdentityResolver ?? new SecurityIdentityResolver({
       ...(mountedKnowledgeBaseRoot === undefined ? {} : { mountedKnowledgeBaseRoot }),
+      directoryLoader: signal => akshare.securityDirectory({ snapshot: true, signal }),
       dataResolverFactory: ({ now, signal }) => createSecurityIdentityDataResolver({ akshare, now, ...(signal ? { signal } : {}) }),
       ...(options.clock === undefined ? {} : { now: options.clock }),
     })

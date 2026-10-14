@@ -1000,3 +1000,14 @@ body { min-width: 0; }
 .app-sidebar.collapsed .sidebar-control { width: 48px; padding: 4px; }
 .app-sidebar.collapsed .sidebar-control select { width: 38px; padding: 5px 1px; font-size: 8px; }
 .app-sidebar.collapsed .sidebar-settings-button { width: 48px; padding-top: 8px; padding-bottom: 8px; }
+.request-execution { margin-top: 12px; color: var(--text-primary, inherit); font-size: 13px; }
+.clarification-card { padding: 12px; border: 1px solid var(--border, #d8d8d8); border-radius: 10px; }
+.security-candidates { display: grid; gap: 8px; }
+.security-candidates button { display: flex; flex-direction: column; align-items: flex-start; padding: 10px; text-align: left; }
+.security-candidates span, .linked-workflow-card small { display: block; font-size: 12px; overflow-wrap: anywhere; }
+.clarification-card nav { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+.clarification-card form { display: grid; gap: 10px; margin-top: 12px; }
+.clarification-card input { width: 100%; }
+.linked-workflow-panel { display: grid; gap: 12px; }
+.linked-workflow-card { padding: 12px; border: 1px solid var(--border, #d8d8d8); border-radius: 10px; font-size: 13px; overflow-wrap: anywhere; }
+.linked-workflow-card p { margin: 8px 0; }

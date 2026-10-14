@@ -1,5 +1,6 @@
 import { ApplicationServiceError, type TerminalWorkflowStatus, type WorkflowCancelResult, type WorkflowExecutionResultProjection, type WorkflowObservationReporter, type WorkflowProviderObservation, type WorkflowRunView, type WorkflowSkillObservation, type WorkflowStageStatus, type WorkflowStageView, type WorkflowStatus } from './contracts.ts'
 import { WorkflowObservationStore, WorkflowObservationStoreError } from '../runtime/workflow-observation-store.ts'
+import type { WorkflowAcquisitionActivity } from '../../workflows/observation-contracts.ts'
 
 interface RunRecord extends WorkflowRunView { readonly controller?: AbortController; readonly terminal: boolean }
 const TERMINAL = new Set<WorkflowStatus>(['completed', 'completed_with_review', 'blocked', 'cancelled', 'failed'])
@@ -33,6 +34,9 @@ function closeStages(stages: readonly WorkflowStageView[], status: WorkflowStatu
   return stages.map((stage) => stage.status === 'running'
     ? { ...stage, status: terminalStatus, completedAt, ...(observationDuration(stage.startedAt, completedAt) === undefined ? {} : { durationMs: observationDuration(stage.startedAt, completedAt) }) }
     : stage)
+}
+function closeAcquisition(activities: readonly WorkflowAcquisitionActivity[] | undefined, status: WorkflowStatus, completedAt: string): readonly WorkflowAcquisitionActivity[] | undefined {
+  return activities?.map((activity) => activity.status === 'running' ? { ...activity, status: status === 'cancelled' ? 'cancelled' : status === 'failed' || status === 'blocked' ? 'failed' : 'completed', completedAt } : activity)
 }
 function closeSkills(skills: readonly WorkflowSkillObservation[], status: WorkflowStatus, completedAt: string): readonly WorkflowSkillObservation[] {
   const terminalStatus: WorkflowSkillObservation['status'] = status === 'cancelled' ? 'cancelled' : status === 'failed' || status === 'blocked' ? 'failed' : 'completed'
@@ -76,6 +80,7 @@ export class WorkflowService {
 
   observationReporter(runId: string): WorkflowObservationReporter {
     return {
+      acquisitionActivity: async (activity) => { await this.confirmTransition(runId, this.setAcquisitionActivity(runId, activity)) },
       startStage: async (stageId, label, summary) => { await this.confirmTransition(runId, this.startStage(runId, stageId, label, summary)) },
       finishStage: async (stageId, status, details) => { await this.confirmTransition(runId, this.finishStage(runId, stageId, status, details)) },
       providerObservations: async (observations) => { await this.confirmTransition(runId, this.setProviderObservations(runId, observations)) },
@@ -134,7 +139,7 @@ export class WorkflowService {
     if (current.status === 'cancelled' || current.terminal) return this.view(current)
     if (status === 'failed') return this.markFailure(runId, details.errorSummary ?? details.summary ?? 'Workflow failed')
     const timestamp = now()
-    const next: RunRecord = { ...current, status, updatedAt: timestamp, completedAt: timestamp, stages: closeStages(current.stages, status, timestamp), skillObservations: closeSkills(current.skillObservations, status, timestamp), observationRevision: current.observationRevision + 1, terminal: true, ...(details.summary === undefined ? {} : { progressSummary: boundedObservationText(details.summary, 'Workflow finished') }), ...(details.reviewCount === undefined ? {} : { reviewCount: details.reviewCount }), ...(details.errorSummary === undefined ? {} : { errorSummary: safeFailureSummary(details.errorSummary) }) }
+    const next: RunRecord = { ...current, status, updatedAt: timestamp, completedAt: timestamp, stages: closeStages(current.stages, status, timestamp), acquisitionActivities: closeAcquisition(current.acquisitionActivities, status, timestamp), skillObservations: closeSkills(current.skillObservations, status, timestamp), observationRevision: current.observationRevision + 1, terminal: true, ...(details.summary === undefined ? {} : { progressSummary: boundedObservationText(details.summary, 'Workflow finished') }), ...(details.reviewCount === undefined ? {} : { reviewCount: details.reviewCount }), ...(details.errorSummary === undefined ? {} : { errorSummary: safeFailureSummary(details.errorSummary) }) }
     this.runs.set(runId, next)
     this.persist(next)
     return this.view(next)
@@ -145,7 +150,7 @@ export class WorkflowService {
     if (current.terminal && current.status !== 'cancelled') return this.view(current)
     if (status === 'failed') return this.markFailure(runId, details.errorSummary ?? details.summary ?? 'Workflow failed')
     const timestamp = now()
-    const next: RunRecord = { ...current, status, updatedAt: timestamp, completedAt: timestamp, stages: closeStages(current.stages, status, timestamp), skillObservations: closeSkills(current.skillObservations, status, timestamp), observationRevision: current.observationRevision + 1, terminal: true, ...(details.summary === undefined ? {} : { progressSummary: boundedObservationText(details.summary, 'Workflow finished') }), ...(details.reviewCount === undefined ? {} : { reviewCount: details.reviewCount }), ...(details.errorSummary === undefined ? {} : { errorSummary: safeFailureSummary(details.errorSummary) }) }
+    const next: RunRecord = { ...current, status, updatedAt: timestamp, completedAt: timestamp, stages: closeStages(current.stages, status, timestamp), acquisitionActivities: closeAcquisition(current.acquisitionActivities, status, timestamp), skillObservations: closeSkills(current.skillObservations, status, timestamp), observationRevision: current.observationRevision + 1, terminal: true, ...(details.summary === undefined ? {} : { progressSummary: boundedObservationText(details.summary, 'Workflow finished') }), ...(details.reviewCount === undefined ? {} : { reviewCount: details.reviewCount }), ...(details.errorSummary === undefined ? {} : { errorSummary: safeFailureSummary(details.errorSummary) }) }
     this.runs.set(runId, next)
     this.persist(next)
     return this.view(next)
@@ -154,7 +159,7 @@ export class WorkflowService {
     const current = this.require(runId)
     if (current.terminal) return this.view(current)
     const timestamp = now(); const message = safeFailureSummary(error)
-    const next: RunRecord = { ...current, status: 'failed', updatedAt: timestamp, completedAt: timestamp, stages: closeStages(current.stages, 'failed', timestamp), skillObservations: closeSkills(current.skillObservations, 'failed', timestamp), observationRevision: current.observationRevision + 1, terminal: true, errorSummary: message.slice(0, 500), progressSummary: 'Workflow failed' }
+    const next: RunRecord = { ...current, status: 'failed', updatedAt: timestamp, completedAt: timestamp, stages: closeStages(current.stages, 'failed', timestamp), acquisitionActivities: closeAcquisition(current.acquisitionActivities, 'failed', timestamp), skillObservations: closeSkills(current.skillObservations, 'failed', timestamp), observationRevision: current.observationRevision + 1, terminal: true, errorSummary: message.slice(0, 500), progressSummary: 'Workflow failed' }
     this.runs.set(runId, next); this.persist(next); return this.view(next)
   }
   getWorkflowStatus(runId: string): WorkflowRunView | undefined { const value = this.runs.get(runId); return value === undefined ? undefined : this.liveView(value) }
@@ -172,6 +177,7 @@ export class WorkflowService {
           ...workflow,
           status: 'interrupted',
           stages: workflow.stages.map((stage) => stage.status === 'running' ? { ...stage, status: 'interrupted' as const } : stage),
+          acquisitionActivities: workflow.acquisitionActivities?.map((activity) => activity.status === 'running' ? { ...activity, status: 'interrupted' as const } : activity),
           skillObservations: workflow.skillObservations.map((skill) => skill.status === 'running' ? { ...skill, status: 'interrupted' as const } : skill),
           ...(workflow.executionResult === undefined ? {} : { executionResult: { ...workflow.executionResult, executionStatus: 'interrupted' as const, terminalStatus: undefined } }),
           observationSource: 'historical',
@@ -278,6 +284,26 @@ export class WorkflowService {
     const next: RunRecord = { ...current, stages, currentStageId: stageId, currentStage: stage.label, progressSummary: stage.summary ?? stage.label, updatedAt: timestamp, observationRevision: current.observationRevision + 1 }
     this.runs.set(runId, next); this.persist(next); return this.view(next)
   }
+  setAcquisitionActivity(runId: string, activity: WorkflowAcquisitionActivity): WorkflowRunView {
+    const current = this.runs.get(runId)
+    if (!current) throw new ApplicationServiceError('not_found', 'Workflow run not found')
+    if (current.terminal) return this.view(current)
+    if (!safeObservationId.test(activity.activityId) || !safeObservationId.test(activity.providerId)
+      || !['discovery', 'download', 'body_read', 'parsing', 'structured_data'].includes(activity.step)
+      || !['running', 'completed', 'failed', 'timeout', 'cancelled', 'interrupted'].includes(activity.status)
+      || !Number.isFinite(Date.parse(activity.startedAt))) throw new ApplicationServiceError('invalid_input', 'Invalid acquisition activity')
+    const safe: WorkflowAcquisitionActivity = { ...activity,
+      ...(activity.sourceTitle === undefined ? {} : { sourceTitle: boundedObservationText(activity.sourceTitle, 'Research source') }),
+      ...(activity.diagnosticCode === undefined ? {} : { diagnosticCode: safeDiagnostic.test(activity.diagnosticCode) ? activity.diagnosticCode : 'PROVIDER_ATTEMPT_FAILED' }),
+    }
+    const activities = new Map((current.acquisitionActivities ?? []).map((entry) => [entry.activityId, entry]))
+    const previous = activities.get(safe.activityId)
+    if (previous && previous.status !== 'running') return this.view(current)
+    activities.set(safe.activityId, safe)
+    const next: RunRecord = { ...current, acquisitionActivities: [...activities.values()].slice(-500), updatedAt: now(), observationRevision: current.observationRevision + 1 }
+    this.runs.set(runId, next); this.persist(next)
+    return this.view(next)
+  }
   setProviderObservations(runId: string, observations: readonly WorkflowProviderObservation[]): WorkflowRunView {
     const current = this.require(runId); if (current.terminal) return this.view(current)
     const prior = new Map(current.providerObservations.map((item) => [item.providerId, item]))
@@ -342,7 +368,7 @@ export class WorkflowService {
     if (current.status === 'running') {
       current.controller?.abort()
       const timestamp = now()
-      const next: RunRecord = { ...current, status: 'cancelled', updatedAt: timestamp, completedAt: timestamp, stages: closeStages(current.stages, 'cancelled', timestamp), skillObservations: closeSkills(current.skillObservations, 'cancelled', timestamp), observationRevision: current.observationRevision + 1, terminal: true, progressSummary: 'Workflow cancelled' }
+      const next: RunRecord = { ...current, status: 'cancelled', updatedAt: timestamp, completedAt: timestamp, stages: closeStages(current.stages, 'cancelled', timestamp), acquisitionActivities: closeAcquisition(current.acquisitionActivities, 'cancelled', timestamp), skillObservations: closeSkills(current.skillObservations, 'cancelled', timestamp), observationRevision: current.observationRevision + 1, terminal: true, progressSummary: 'Workflow cancelled' }
       this.runs.set(runId, next)
       this.persist(next)
       return { runId, status: 'cancelled', cancelled: true, reason: 'cancelled' }

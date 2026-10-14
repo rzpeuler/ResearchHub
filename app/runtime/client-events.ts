@@ -12,6 +12,7 @@ export type ClientEvent =
   | ClientSessionEvent
   | ClientThinkingEvent
   | ClientErrorEvent
+  | (ClientEventBase & { readonly type: 'activity.updated'; readonly summary: 'Activity updated' })
 
 export interface ClientEventBase {
   readonly eventId: string
@@ -132,10 +133,13 @@ export class ClientEventAdapter {
   private sequence = 0
   private activeOperationId?: string
   private currentRunOperationId?: string
+  private abortRequested = false
   private readonly operationForUserMessage = new WeakMap<object, string>()
   private readonly pendingUserOperations: Array<{ readonly operationId: string }> = []
 
   constructor(private readonly onUserMessagePersisted?: (conversationId: string, operationId: string, piMessageId: string) => void) {}
+
+  markAbortRequested(): void { this.abortRequested = true }
 
   setActiveOperationId(operationId?: string): void {
     this.activeOperationId = operationId === undefined ? undefined : safeIdentifier(operationId, '') || undefined
@@ -149,6 +153,10 @@ export class ClientEventAdapter {
       const index = this.pendingUserOperations.indexOf(pending)
       if (index >= 0) this.pendingUserOperations.splice(index, 1)
     }
+  }
+
+  notifyActivity(conversationId: string, operationId: string): void {
+    this.emit({ eventId: `${conversationId}:${++this.sequence}`, conversationId, operationId, timestamp: now(), type: 'activity.updated', summary: 'Activity updated' })
   }
 
   subscribe(listener: ClientEventListener): () => void {
@@ -182,6 +190,7 @@ export class ClientEventAdapter {
     this.unbind()
     this.activeOperationId = undefined
     this.currentRunOperationId = undefined
+    this.abortRequested = false
     this.pendingUserOperations.length = 0
     const generation = this.bindingGeneration
     this.boundSession = session
@@ -204,6 +213,7 @@ export class ClientEventAdapter {
 
     switch (event.type) {
       case 'agent_start':
+        this.abortRequested = false
         this.emit({ ...base, type: 'agent.started', summary: 'Agent started' })
         return
       case 'agent_end': {
@@ -214,10 +224,11 @@ export class ClientEventAdapter {
           this.emit({ ...base, type: 'error', code: 'runtime_error', summary: 'Malformed agent event' })
           return
         }
-        const failure = assistantFailure(event.messages)
+        const failure = this.abortRequested ? 'aborted' : assistantFailure(event.messages)
         this.emit({ ...base, type: 'agent.completed', ...(failure ? { status: failure } : { status: 'completed' }), summary: failure ? `Agent ${failure}` : 'Agent completed' })
         if (failure) this.emit({ ...base, eventId: `${conversationId}:${++this.sequence}`, type: 'error', code: failure === 'aborted' ? 'agent_aborted' : 'agent_error', summary: failure === 'aborted' ? 'Agent request aborted' : 'Agent request failed' })
         this.currentRunOperationId = undefined
+    this.abortRequested = false
         return
       }
       case 'message_start': {
@@ -255,7 +266,7 @@ export class ClientEventAdapter {
         this.emit({ ...base, type: 'message.completed', role })
         const stopReason = (event.message as { readonly stopReason?: unknown }).stopReason
         if (role === 'assistant' && (stopReason === 'error' || stopReason === 'aborted')) {
-          const aborted = stopReason === 'aborted'
+          const aborted = this.abortRequested || stopReason === 'aborted'
           this.emit({ ...base, eventId: `${conversationId}:${++this.sequence}`, type: 'error', code: aborted ? 'agent_aborted' : 'agent_error', summary: aborted ? 'Agent request aborted' : 'Agent request failed' })
         }
         return

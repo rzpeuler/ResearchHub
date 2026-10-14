@@ -161,7 +161,11 @@ export class ResearchService {
   }
 
   private createCompanyDataResolverFactory(): (context: CompanyDeepResearchResolverOptions) => DataResolver<CompanyResearchDataPayload> {
-    return (context) => this.createResearchEvidenceResolver(context, context.onCandidatesDiscovered)
+    return (context) => createCompanyResearchDataResolver({ company: context.company, akshare: this.options.akshare,
+      officialDisclosure: this.options.researchEvidenceProviders?.cninfo ?? this.options.acquisitionPlugins.find((plugin) => plugin instanceof OfficialDisclosureResearchPlugin),
+      gdelt: this.options.researchEvidenceProviders?.gdelt ?? this.options.acquisitionPlugins.find((plugin) => plugin instanceof GdeltResearchPlugin),
+      now: context.now, signal: context.signal, limitPerSource: context.limitPerSource,
+      acquisitionDeadlineAt: context.acquisitionDeadlineAt, onProgress: context.onProgress, onCandidatesDiscovered: context.onCandidatesDiscovered })
   }
 
   private createEventDataResolverFactory(): (context: EventResearchDataResolverContext) => DataResolver<CompanyResearchDataPayload> {

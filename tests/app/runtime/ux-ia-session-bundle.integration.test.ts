@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { createResearchHubApplicationRuntime } from '../../../app/runtime/application-runtime.ts'
+import type { ReasoningExecutor } from '../../../plugins/reasoning/contracts.ts'
 import { ResearchHubRuntimeServer } from '../../../app/runtime/server.ts'
 
 test('Free Research Bundle remains owned by original conversation operation after completion and Runtime restart', async () => {
@@ -15,7 +16,8 @@ test('Free Research Bundle remains owned by original conversation operation afte
   const modelRuntime = await ModelRuntime.create({ authPath: join(agentDir, 'auth.json'), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false })
   const faux = fauxProvider({ provider: `ux-ia-session-${Date.now()}-${Math.random()}`, models: [{ id: 'fixture-model' }] })
   modelRuntime.registerNativeProvider(faux.provider)
-  const options = { cwd, agentDir, sessionDir, modelRuntime, model: faux.getModel() }
+  const reasoningExecutor: ReasoningExecutor = { capabilities: () => ({ maxContextTokens: 10000, maxOutputTokens: 1000, structuredOutputSupport: true, maxConcurrency: 1 }), async execute(request) { return { operation: request.operation, output: { mode: 'free_research', skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: false, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false }, rationale: 'Fixture request has no registered workflow' } } } }
+  const options = { cwd, agentDir, sessionDir, modelRuntime, model: faux.getModel(), reasoningExecutor }
   let runtime = await createResearchHubApplicationRuntime(options)
   let server = new ResearchHubRuntimeServer({ runtime, port: 0 })
   let info = await server.start()

@@ -4,6 +4,7 @@ import { SECURITY_IDENTITY_SOURCE_POLICIES } from '../../data/security-identity-
 import type { AkshareDataClient } from './akshare.ts'
 
 export interface SecurityDirectoryRequest {
+  readonly signal?: AbortSignal
   readonly symbol?: string
   readonly name?: string
   readonly exchange?: string
@@ -33,6 +34,7 @@ export function createSecurityIdentityDataResolver(options: SecurityIdentityData
     let data: unknown
     try {
       data = await directory.securityDirectory({
+        ...(options.signal ? { signal: options.signal } : {}),
         ...(query.requestedSymbol ? { symbol: query.requestedSymbol } : {}),
         ...(query.requestedName ? { name: query.requestedName } : {}),
         ...(query.requestedExchange ? { exchange: query.requestedExchange } : {}),

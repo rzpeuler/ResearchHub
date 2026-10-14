@@ -4,6 +4,7 @@ import { normalizeExchange } from '../../skills/knowledge-curation/identity/comp
 import { materializeSecurityIdentityRequirement } from '../../data/requirements.ts'
 import type { DataResolver } from '../../data/resolver.ts'
 import type { SecurityIdentityWorkflow, VerifiedSecurityIdentity } from '../../data/security-identity-contracts.ts'
+import { searchSecurityDirectory, type SecurityDirectorySearch } from './security-directory-search.ts'
 export type { SecurityIdentitySource, SecurityIdentityWorkflow, VerifiedSecurityIdentity } from '../../data/security-identity-contracts.ts'
 
 export interface SecurityIdentityCandidate {
@@ -25,6 +26,8 @@ interface DirectoryRow { readonly symbol: string; readonly name: string; readonl
 interface CanonicalCompany { readonly id: string; readonly ticker: string; readonly exchange: string; readonly name: string; readonly aliases: readonly string[]; readonly active: boolean; readonly value: Readonly<Record<string, unknown>> }
 
 export interface SecurityIdentityResolverOptions {
+  /** Full current A-share directory for candidate discovery; separate from exact identity validation. */
+  readonly directoryLoader?: (signal?: AbortSignal) => Promise<unknown>
   readonly mountedKnowledgeBaseRoot?: string
   readonly dataResolverFactory: (context: { readonly now: () => string; readonly signal?: AbortSignal }) => DataResolver<unknown>
   readonly now?: () => Date
@@ -34,6 +37,7 @@ export interface SecurityIdentityResolverOptions {
 
 /** Shared exact identity gate for Company Research, Valuation, and Earnings Review. */
 export class SecurityIdentityResolver {
+  private directory?: { rows: readonly DirectoryRow[]; timestamp: string; expiresAt: number }
   private readonly cache = new Map<string, { readonly expiresAt: number; readonly resolution: SecurityIdentityResolution }>()
   private readonly now: () => Date
   private readonly cacheTtlMs: number
@@ -43,6 +47,21 @@ export class SecurityIdentityResolver {
     this.now = options.now ?? (() => new Date())
     this.cacheTtlMs = Math.max(0, Math.min(300_000, options.cacheTtlMs ?? 300_000))
     this.cacheMaxEntries = Math.max(1, Math.min(128, options.cacheMaxEntries ?? 128))
+  }
+
+  async searchCandidates(query: string, signal?: AbortSignal, refresh = false): Promise<SecurityDirectorySearch> {
+    const now = this.now()
+    if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
+    if (refresh || !this.directory || this.directory.expiresAt <= now.getTime()) {
+      if (!this.options.directoryLoader) throw new Error('SECURITY_DIRECTORY_LOADER_UNCONFIGURED')
+      const data = await this.options.directoryLoader(signal)
+      if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
+      if (!Array.isArray(data) || data.length === 0) throw new Error('SECURITY_DIRECTORY_UNAVAILABLE')
+      const rows = data.map(parseDirectoryRow).filter((row): row is DirectoryRow => row !== undefined)
+      if (rows.length !== data.length) throw new Error('SECURITY_DIRECTORY_INVALID_ROWS')
+      this.directory = { rows, timestamp: now.toISOString(), expiresAt: now.getTime() + 300_000 }
+    }
+    return searchSecurityDirectory(this.directory.rows, query, this.directory.timestamp)
   }
 
   async resolve(candidate: SecurityIdentityCandidate, signal?: AbortSignal): Promise<SecurityIdentityResolution> {
@@ -179,7 +198,7 @@ function normalizeCandidate(candidate: SecurityIdentityCandidate): NormalizedCan
 
 function clean(value: string | undefined): string | undefined { const result = value?.normalize('NFKC').trim().replace(/\s+/gu, ' '); return result || undefined }
 function norm(value: string): string { return value.normalize('NFKC').replace(/[\s·•]/gu, '').toLocaleLowerCase('zh-CN') }
-function inferExchange(symbol: string): 'SH' | 'SZ' | 'BJ' | undefined { if (symbol.startsWith('6')) return 'SH'; if (symbol.startsWith('0') || symbol.startsWith('3')) return 'SZ'; if (symbol.startsWith('4') || symbol.startsWith('8')) return 'BJ'; return undefined }
+function inferExchange(symbol: string): 'SH' | 'SZ' | 'BJ' | undefined { if (symbol.startsWith('6')) return 'SH'; if (symbol.startsWith('0') || symbol.startsWith('3')) return 'SZ'; if (symbol.startsWith('4') || symbol.startsWith('8') || symbol.startsWith('9')) return 'BJ'; return undefined }
 
 function extractNameCandidate(query: string | undefined): string | undefined {
   if (!query) return undefined

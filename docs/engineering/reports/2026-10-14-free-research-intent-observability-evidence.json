@@ -1,0 +1,204 @@
+{
+  "baselineCommit": "9265566",
+  "node": {
+    "baselineFailures": 21,
+    "currentFailures": 21,
+    "newFailures": [],
+    "resolvedFailures": [],
+    "inheritedFailures": [
+      [
+        "tests/app/services/research-skill-architecture.test.ts",
+        "Workflow metadata composes canonical peers without registering composite Skill IDs"
+      ],
+      [
+        "tests/app/services/theme-workspace-projection.test.ts",
+        "Industry projection returns bounded facts, deterministic core views, publication-labeled dates, future catalysts and competition units"
+      ],
+      [
+        "tests/app/services/theme-workspace-projection.test.ts",
+        "Theme graph includes only human-confirmed scope refs, preserves direction, and never expands global edges"
+      ],
+      [
+        "tests/app/services/theme-workspace-projection.test.ts",
+        "company projection is readable through a canonical business exposure without adding a company graph node"
+      ],
+      [
+        "tests/app/services/theme-workspace-projection.test.ts",
+        "current restricted or expired source rights suppress company exposures and dependent competition data"
+      ],
+      [
+        "tests/app/services/theme-workspace-projection.test.ts",
+        "semantic section classification receives only readable facts and cannot block the base projection"
+      ],
+      [
+        "tests/app/services/theme-workspace-projection.test.ts",
+        "stale expected revision and a corrupt scope ledger fail closed"
+      ],
+      [
+        "tests/knowledge/production/competition-module-gateway.test.ts",
+        "ChangeSet validation rejects denied or missing Raw evidence listed by a competition Module"
+      ],
+      [
+        "tests/knowledge/production/competition-module-gateway.test.ts",
+        "Gateway blocks numeric Module cells that disagree with their canonical facts"
+      ],
+      [
+        "tests/knowledge/production/competition-module-gateway.test.ts",
+        "Gateway creates a competition Module and maps its local proposal ID"
+      ],
+      [
+        "tests/knowledge/production/competition-module-gateway.test.ts",
+        "Module blocks the whole submit when a cell reference cannot resolve"
+      ],
+      [
+        "tests/knowledge/production/competition-module-gateway.test.ts",
+        "Module blocks unusable Source evidence inherited from an existing business_exposure Relation"
+      ],
+      [
+        "tests/knowledge/production/competition-module-gateway.test.ts",
+        "Module blocks when the row Source payload is unusable"
+      ],
+      [
+        "tests/knowledge/production/competition-module-gateway.test.ts",
+        "Writer rejection does not report success or overwrite the prior Module"
+      ],
+      [
+        "tests/knowledge/production/competition-module-gateway.test.ts",
+        "different rows may retain different currencies and a changed column schema blocks for review"
+      ],
+      [
+        "tests/knowledge/production/competition-module-gateway.test.ts",
+        "evidence-backed cell update commits, and an unavailable update preserves the prior usable value"
+      ],
+      [
+        "tests/knowledge/production/competition-module-gateway.test.ts",
+        "new Claim provenance alone cannot justify a contradictory same-reference display value"
+      ],
+      [
+        "tests/knowledge/production/competition-module-gateway.test.ts",
+        "same Claim may support a canonical numeric display update after new provenance is admitted"
+      ],
+      [
+        "tests/knowledge/production/competition-module-gateway.test.ts",
+        "same Industry table replays idempotently with the same canonical Module ref"
+      ],
+      [
+        "tests/validation/codex-module-remaining-schema-deltas.test.ts",
+        "composition is source-immutable, deterministic and idempotent"
+      ],
+      [
+        "tests/validation/codex-production-industry-schema-compatibility.test.ts",
+        "FIX-015 offline evidence inputs preserve authoritative contracts and expected source sizes"
+      ]
+    ],
+    "currentPassed": 2275,
+    "currentTotal": 2296
+  },
+  "client": {
+    "baselineFailures": 5,
+    "currentFailures": 5,
+    "newFailures": [],
+    "resolvedFailures": [],
+    "currentPassed": 196,
+    "inheritedFailures": [
+      [
+        "client/src/App.test.tsx",
+        "Homepage shell keeps rename open after a version conflict and retries with the refreshed version"
+      ],
+      [
+        "client/src/App.test.tsx",
+        "Homepage shell moves archived conversations into the archive view and restores them to active history"
+      ],
+      [
+        "client/src/App.test.tsx",
+        "Homepage shell searches and filters server conversation titles and refreshes server-authoritative rename/archive state"
+      ],
+      [
+        "client/src/app/report-navigation.test.tsx",
+        "Report navigation and original conversation artifacts opens a no-report bundle from its durable original conversation Activity"
+      ],
+      [
+        "client/src/app/report-navigation.test.tsx",
+        "Report navigation and original conversation artifacts rejects another run returned to a conversation artifact request"
+      ]
+    ]
+  },
+  "live": {
+    "origin": "http://127.0.0.1:64200",
+    "provider": "openai-codex",
+    "model": "gpt-6-luna",
+    "nameRequest": {
+      "status": "started",
+      "resolution": {
+        "source": "reasoning_executor",
+        "attempts": 1,
+        "diagnostics": [],
+        "attemptErrors": []
+      },
+      "workflow": {
+        "id": "company_research",
+        "confidence": 0.99,
+        "arguments": {
+          "name": "东山精密",
+          "symbol": "002384",
+          "exchange": "SZ"
+        }
+      },
+      "runId": "95d20024-ced5-4b96-acf5-a92760b242ab"
+    },
+    "initialsRequest": {
+      "status": "needs_clarification",
+      "resolution": {
+        "source": "reasoning_executor",
+        "attempts": 1,
+        "diagnostics": [],
+        "attemptErrors": []
+      },
+      "clarification": {
+        "confirmationId": "c8c00040-dd8a-4b4b-9ed3-4a620ed385c3",
+        "expiresAt": "2026-10-14T09:54:19.345Z",
+        "kind": "security_selection",
+        "query": "dsjm",
+        "workflowId": "company_research",
+        "candidates": [
+          {
+            "symbol": "002384",
+            "name": "东山精密",
+            "exchange": "SZ",
+            "candidateId": "002384.SZ",
+            "matchKind": "pinyin_initials"
+          }
+        ],
+        "missingFields": [
+          "security"
+        ],
+        "question": "请选择要研究的证券。",
+        "directoryTimestamp": "2026-10-14T09:37:02.956Z",
+        "directoryVersion": "52698f1acdf9ccd6c099b7059c8dd8a71316845fa32013a00c214958d2fb0fc2"
+      }
+    },
+    "confirmedRunId": "dbee9e7d-2fb9-4743-9118-89cdccd7dbdf",
+    "confirmedStatus": "started",
+    "duplicateConfirmationSameRun": true,
+    "observedAcquisitionSteps": [
+      "body_read",
+      "discovery",
+      "download",
+      "parsing",
+      "structured_data"
+    ],
+    "runsCancelledAfterProgressInspection": true,
+    "writeKnowledge": false,
+    "knowledgeBaseRevisionBefore": 6,
+    "knowledgeBaseRevisionAfter": 6,
+    "completedReportVerified": false
+  },
+  "postLiveCorrections": [
+    "Workflow terminal notification refreshes request lifecycle over SSE",
+    "Native provider adapter no longer reports parsing as a duplicate active download"
+  ],
+  "focusedTestsAfterCorrections": {
+    "passed": 75,
+    "failed": 0
+  }
+}

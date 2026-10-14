@@ -1,6 +1,7 @@
 import type { ResearchAcquisitionPlugin, ResearchAcquisitionRequest, ResearchCompanyIdentity, ResearchFetchedSource, ResearchSourceCandidate, NormalizedResearchSource } from './contracts.ts'
 import { sha256 } from './hash.ts'
 import { DocumentInputResolver } from '../document/input-resolver.ts'
+import { acquisitionStep, type ResearchFetchOptions } from './deadlines.ts'
 
 const CNINFO_TOP_SEARCH_ENDPOINT = 'https://www.cninfo.com.cn/new/information/topSearch/query'
 const MAX_MANAGEMENT_COMMUNICATION_PAGES = 10
@@ -13,7 +14,7 @@ export interface OfficialDisclosureRecord { readonly title: string; readonly url
 export interface OfficialDisclosureDocument { readonly content: string; readonly bytes: Uint8Array; readonly mediaType: string }
 export interface AnnualReportPublicationRequest { readonly company: ResearchCompanyIdentity; readonly fiscalYear: number; readonly asOf?: string }
 export interface AnnualReportPublicationProof { readonly issuer: string; readonly fiscalYear: number; readonly reportTitle: string; readonly officialPublishedAt: string; readonly rawPublishedAt: string; readonly sourceUrl: string; readonly announcementId?: string; readonly originPublisher: 'CNINFO'; readonly originAuthority: 'S0_STATUTORY'; readonly retrievalProvider: 'CNINFO'; readonly retrievedAt: string }
-export interface OfficialDisclosureClient { list(request: ResearchAcquisitionRequest): Promise<readonly OfficialDisclosureRecord[]>; listManagementCommunication?(request: { readonly company: ResearchCompanyIdentity; readonly lookbackStartDate: string; readonly asOf: string }): Promise<readonly OfficialDisclosureRecord[]>; listIndustry?(request: Extract<ResearchAcquisitionRequest, { industry: unknown }>): Promise<readonly OfficialDisclosureRecord[]>; resolveAnnualReportPublication?(request: AnnualReportPublicationRequest): Promise<AnnualReportPublicationProof | undefined>; fetch(record: OfficialDisclosureRecord): Promise<string>; fetchDocument?(record: OfficialDisclosureRecord, signal?: AbortSignal): Promise<OfficialDisclosureDocument> }
+export interface OfficialDisclosureClient { list(request: ResearchAcquisitionRequest, signal?: AbortSignal): Promise<readonly OfficialDisclosureRecord[]>; listManagementCommunication?(request: { readonly company: ResearchCompanyIdentity; readonly lookbackStartDate: string; readonly asOf: string }): Promise<readonly OfficialDisclosureRecord[]>; listIndustry?(request: Extract<ResearchAcquisitionRequest, { industry: unknown }>): Promise<readonly OfficialDisclosureRecord[]>; resolveAnnualReportPublication?(request: AnnualReportPublicationRequest): Promise<AnnualReportPublicationProof | undefined>; fetch(record: OfficialDisclosureRecord): Promise<string>; fetchDocument?(record: OfficialDisclosureRecord, signal?: AbortSignal, options?: ResearchFetchOptions): Promise<OfficialDisclosureDocument> }
 export interface CninfoOfficialDisclosureClientOptions { readonly fetchImpl?: typeof fetch; readonly endpoint?: string; readonly pageSize?: number; readonly industryPageSize?: number; readonly timeoutMs?: number; readonly now?: () => string; readonly documentResolver?: Pick<DocumentInputResolver, 'parse'> }
 export class CninfoOfficialDisclosureClient implements OfficialDisclosureClient {
   private readonly fetchImpl: typeof fetch
@@ -25,12 +26,12 @@ export class CninfoOfficialDisclosureClient implements OfficialDisclosureClient 
   private readonly now: () => string
   private readonly documentResolver: Pick<DocumentInputResolver, 'parse'>
   constructor(options: CninfoOfficialDisclosureClientOptions = {}) { this.fetchImpl = options.fetchImpl ?? fetch; this.endpoint = options.endpoint ?? 'https://www.cninfo.com.cn/new/hisAnnouncement/query'; this.pageSize = Math.min(100, Math.max(1, options.pageSize ?? 20)); this.managementCommunicationPageSize = Math.min(MAX_MANAGEMENT_COMMUNICATION_PAGE_SIZE, this.pageSize); this.industryPageSize = Math.min(30, Math.max(1, options.industryPageSize ?? 10)); this.timeoutMs = Math.min(20_000, Math.max(1, options.timeoutMs ?? 15_000)); this.now = options.now ?? (() => new Date().toISOString()); this.documentResolver = options.documentResolver ?? new DocumentInputResolver() }
-  private async request(input: string, init: RequestInit = {}, signal?: AbortSignal): Promise<Response> { const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), this.timeoutMs); const onAbort = () => controller.abort(signal?.reason); if (signal?.aborted) onAbort(); else signal?.addEventListener('abort', onAbort, { once: true }); try { return await this.fetchImpl(input, { ...init, signal: controller.signal }) } finally { clearTimeout(timer); signal?.removeEventListener('abort', onAbort) } }
+  private async request(input: string, init: RequestInit = {}, signal?: AbortSignal): Promise<Response> { const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), this.timeoutMs); const onAbort = () => controller.abort(signal?.reason); if (signal?.aborted) onAbort(); else signal?.addEventListener('abort', onAbort, { once: true }); try { const response = await this.fetchImpl(input, { ...init, signal: controller.signal }); const bytes = await response.arrayBuffer(); return new Response(bytes, { status: response.status, statusText: response.statusText, headers: response.headers }) } finally { clearTimeout(timer); signal?.removeEventListener('abort', onAbort) } }
   private static record(row: unknown): OfficialDisclosureRecord | undefined { if (!row || typeof row !== 'object') return undefined; const value = row as Record<string, unknown>; const title = typeof value.announcementTitle === 'string' ? value.announcementTitle.replace(/<[^>]+>/g, '').trim() : typeof value.title === 'string' ? value.title.trim() : ''; const adjunctUrl = typeof value.adjunctUrl === 'string' ? value.adjunctUrl : ''; const url = adjunctUrl.startsWith('http') ? adjunctUrl : adjunctUrl ? `https://static.cninfo.com.cn/${adjunctUrl.replace(/^\/+/, '')}` : ''; const rawValue = value.announcementTime; const rawDate = typeof rawValue === 'number' ? String(rawValue) : typeof rawValue === 'string' ? rawValue : ''; let date: Date | undefined; if (typeof rawValue === 'number' || (typeof rawValue === 'string' && /^\d{10,13}$/.test(rawValue))) { const timestamp = Number(rawValue); if (Number.isFinite(timestamp)) date = new Date(timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp) } else if (typeof rawValue === 'string' && !Number.isNaN(Date.parse(rawValue))) date = new Date(rawValue); const parsedDate = date && !Number.isNaN(date.getTime()) ? date.toISOString() : ''; const announcementId = textValue(value.announcementId) ?? textValue(value.id) ?? textValue(value.adjunctId); const correctionOf = textValue(value.correctionOf) ?? textValue(value.correctsAnnouncementId); if (!title || !url || !parsedDate || !validCninfoUrl(url)) return undefined; return { title, url, publishedAt: parsedDate, rawPublishedAt: rawDate || parsedDate, ...(announcementId === undefined ? {} : { announcementId }), issuer: typeof value.secName === 'string' ? value.secName : undefined, ...(correctionOf === undefined ? {} : { correctionOf }) } }
-  async resolveOrganizationId(secCode: string): Promise<string> {
+  async resolveOrganizationId(secCode: string, signal?: AbortSignal): Promise<string> {
     if (!/^\d{6}$/.test(secCode)) throw new Error(`CNINFO_INVALID_SECURITY_CODE:${secCode}`)
     const form = new URLSearchParams({ keyWord: secCode, maxNum: '10' })
-    const response = await this.request(CNINFO_TOP_SEARCH_ENDPOINT, { method: 'POST', headers: cninfoHeaders(), body: form })
+    const response = await this.request(CNINFO_TOP_SEARCH_ENDPOINT, { method: 'POST', headers: cninfoHeaders(), body: form }, signal)
     if (!response.ok) throw new Error(`CNINFO topSearch request failed with HTTP ${response.status}`)
     const payload = await response.json() as unknown
     const rows = Array.isArray(payload) ? payload : []
@@ -39,10 +40,10 @@ export class CninfoOfficialDisclosureClient implements OfficialDisclosureClient 
     if (orgId === undefined) throw new Error(`CNINFO_ORG_ID_NOT_FOUND:${secCode}`)
     return orgId
   }
-  async list(request: ResearchAcquisitionRequest): Promise<readonly OfficialDisclosureRecord[]> {
+  async list(request: ResearchAcquisitionRequest, signal?: AbortSignal): Promise<readonly OfficialDisclosureRecord[]> {
     if ('industry' in request) return []
     const exchange = request.company.exchange?.toLowerCase(); const column = exchange === 'sse' || exchange === 'szse' ? exchange : request.company.symbol.startsWith('6') ? 'sse' : 'szse'
-    const stock = await this.companyStock(request.company.symbol)
+    const stock = await this.companyStock(request.company.symbol, signal)
     if (request.filingPeriod !== undefined && request.asOf !== undefined) {
       const { fiscalYear, fiscalPeriod } = request.filingPeriod
       const asOfDate = cninfoShanghaiCalendarDate(request.asOf)
@@ -56,12 +57,12 @@ export class CninfoOfficialDisclosureClient implements OfficialDisclosureClient 
       const periodEnd = rawEnd < periodStart ? periodStart : rawEnd
       const reportTitle = fiscalPeriod === 'FY' ? '年度报告' : fiscalPeriod === 'H1' ? '半年度报告' : fiscalPeriod === 'Q1' ? '第一季度报告' : '第三季度报告'
       const periodSearch = `${fiscalYear}年${reportTitle}`
-      const targeted = await this.queryAnnouncements({ stock, searchkey: periodSearch, pageNum: '1', pageSize: String(this.pageSize), tabName: 'fulltext', column, seDate: `${periodStart}~${periodEnd}` }, request.asOf, 4)
+      const targeted = await this.queryAnnouncements({ stock, searchkey: periodSearch, pageNum: '1', pageSize: String(this.pageSize), tabName: 'fulltext', column, seDate: `${periodStart}~${periodEnd}` }, request.asOf, 4, signal)
       if (targeted.length > 0) return targeted
     }
-    const exact = await this.queryAnnouncements({ stock, searchkey: '', pageNum: '1', pageSize: String(this.pageSize), tabName: 'fulltext', column }, request.asOf)
+    const exact = await this.queryAnnouncements({ stock, searchkey: '', pageNum: '1', pageSize: String(this.pageSize), tabName: 'fulltext', column }, request.asOf, 1, signal)
     if (exact.length > 0 || !request.company.name) return exact
-    return this.queryAnnouncements({ stock, searchkey: request.company.name, pageNum: '1', pageSize: String(this.pageSize), tabName: 'fulltext', column }, request.asOf)
+    return this.queryAnnouncements({ stock, searchkey: request.company.name, pageNum: '1', pageSize: String(this.pageSize), tabName: 'fulltext', column }, request.asOf, 1, signal)
   }
   async listManagementCommunication(request: { readonly company: ResearchCompanyIdentity; readonly lookbackStartDate: string; readonly asOf: string }): Promise<readonly OfficialDisclosureRecord[]> {
     const exchange = request.company.exchange?.toLowerCase(); const column = exchange === 'sse' || exchange === 'szse' ? exchange : request.company.symbol.startsWith('6') ? 'sse' : 'szse'
@@ -75,8 +76,8 @@ export class CninfoOfficialDisclosureClient implements OfficialDisclosureClient 
     }
     return [...records.values()].sort((left, right) => left.publishedAt.localeCompare(right.publishedAt) || left.url.localeCompare(right.url))
   }
-  private async companyStock(secCode: string): Promise<string> {
-    return `${secCode},${await this.resolveOrganizationId(secCode)}`
+  private async companyStock(secCode: string, signal?: AbortSignal): Promise<string> {
+    return `${secCode},${await this.resolveOrganizationId(secCode, signal)}`
   }
   async resolveAnnualReportPublication(request: AnnualReportPublicationRequest): Promise<AnnualReportPublicationProof | undefined> {
     if (!Number.isInteger(request.fiscalYear) || request.fiscalYear < 1990 || request.fiscalYear > 2100) throw new Error('CNINFO_INVALID_FISCAL_YEAR')
@@ -103,29 +104,37 @@ export class CninfoOfficialDisclosureClient implements OfficialDisclosureClient 
     if (record.content) return record.content
     return (await this.fetchDocument(record)).content
   }
-  async fetchDocument(record: OfficialDisclosureRecord, signal?: AbortSignal): Promise<OfficialDisclosureDocument> {
+  async fetchDocument(record: OfficialDisclosureRecord, signal?: AbortSignal, options?: ResearchFetchOptions): Promise<OfficialDisclosureDocument> {
     if (record.content) return { content: record.content, bytes: new TextEncoder().encode(record.content), mediaType: 'text/plain' }
     if (!validCninfoUrl(record.url)) throw new Error('CNINFO disclosure URL is outside the allowed domain')
-    const response = await this.request(record.url, { headers: { accept: 'text/html, application/pdf' } }, signal)
-    if (!response.ok) throw new Error(`CNINFO disclosure fetch failed with HTTP ${response.status}`)
-    const bytes = new Uint8Array(await response.arrayBuffer())
-    const mediaType = response.headers.get('content-type')?.split(';', 1)[0] ?? (record.url.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'text/html')
+    const id = `cninfo-${sha256(record.url).slice(0, 16)}`
+    const fetched = await acquisitionStep({ activityId: `${id}:download`, providerId: 'cninfo', step: 'download', sourceTitle: record.title,
+      signal, timeoutMs: options?.downloadTimeoutMs ?? this.timeoutMs, deadlineAt: options?.deadlineAt, onProgress: options?.onProgress }, async (requestSignal) => {
+      const response = await this.fetchImpl(record.url, { headers: { accept: 'text/html, application/pdf' }, signal: requestSignal })
+      if (!response.ok) throw new Error(`CNINFO disclosure fetch failed with HTTP ${response.status}`)
+      const bytes = await acquisitionStep({ activityId: `${id}:body`, providerId: 'cninfo', step: 'body_read', sourceTitle: record.title,
+        signal: requestSignal, timeoutMs: options?.downloadTimeoutMs ?? this.timeoutMs, onProgress: options?.onProgress }, async () => new Uint8Array(await response.arrayBuffer()))
+      return { bytes, mediaType: response.headers.get('content-type')?.split(';', 1)[0] ?? (record.url.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'text/html') }
+    })
+    const { bytes, mediaType } = fetched
     const filename = record.url.toLowerCase().endsWith('.pdf') ? 'cninfo-disclosure.pdf' : 'cninfo-disclosure.html'
-    const document = await this.documentResolver.parse({ bytes, filename, mediaType }, signal === undefined ? undefined : { signal })
+    const parse = (parseSignal: AbortSignal | undefined) => this.documentResolver.parse({ bytes, filename, mediaType }, parseSignal === undefined ? undefined : { signal: parseSignal })
+    const document = options?.parseTimeoutMs === undefined ? await parse(signal) : await acquisitionStep({ activityId: `${id}:parse`, providerId: 'cninfo', step: 'parsing', sourceTitle: record.title,
+      signal, timeoutMs: options.parseTimeoutMs, deadlineAt: options.deadlineAt, onProgress: options.onProgress }, parse)
     return { content: document.normalizedText, bytes, mediaType }
   }
-  private async queryAnnouncements(parameters: Record<string, string>, asOf?: string, maxPages = 1): Promise<readonly OfficialDisclosureRecord[]> {
+  private async queryAnnouncements(parameters: Record<string, string>, asOf?: string, maxPages = 1, signal?: AbortSignal): Promise<readonly OfficialDisclosureRecord[]> {
     const records = new Map<string, OfficialDisclosureRecord>()
     for (let pageNum = 1; pageNum <= maxPages; pageNum += 1) {
-      const page = await this.queryAnnouncementPage({ ...parameters, pageNum: String(pageNum) }, asOf)
+      const page = await this.queryAnnouncementPage({ ...parameters, pageNum: String(pageNum) }, asOf, signal)
       for (const record of page.records) records.set(record.url, record)
       if (page.rawCount === 0 || !page.hasMore) break
     }
     return [...records.values()]
   }
-  private async queryAnnouncementPage(parameters: Record<string, string>, asOf?: string): Promise<{ readonly records: readonly OfficialDisclosureRecord[]; readonly rawCount: number; readonly hasMore: boolean }> {
+  private async queryAnnouncementPage(parameters: Record<string, string>, asOf?: string, signal?: AbortSignal): Promise<{ readonly records: readonly OfficialDisclosureRecord[]; readonly rawCount: number; readonly hasMore: boolean }> {
     const form = new URLSearchParams(parameters)
-    const response = await this.request(this.endpoint, { method: 'POST', headers: cninfoHeaders(), body: form })
+    const response = await this.request(this.endpoint, { method: 'POST', headers: cninfoHeaders(), body: form }, signal)
     if (!response.ok) throw new Error(`CNINFO request failed with HTTP ${response.status}`)
     const payload = await response.json() as Record<string, unknown>
     const rows = Array.isArray(payload.announcements) ? payload.announcements : []
@@ -181,7 +190,7 @@ const validCninfoUrl = (value: unknown): value is string => { try { const url = 
 export class OfficialDisclosureResearchPlugin implements ResearchAcquisitionPlugin {
   readonly name = 'official-disclosure-research-acquisition'
   constructor(private readonly client: OfficialDisclosureClient, private readonly now: () => string = () => new Date().toISOString()) {}
-  async discover(request: ResearchAcquisitionRequest): Promise<readonly ResearchSourceCandidate[]> { const limit = Math.min(20, Math.max(0, request.limitPerKind ?? 5)); if (request.industry !== undefined) { if (!this.client.listIndustry) return []; return (await this.client.listIndustry(request)).slice(0, limit).map((record) => ({ candidateId: `official-${sha256(record.url).slice(0, 16)}`, kind: 'official_disclosure', tier: 1, title: record.title, url: record.url, provider: 'cninfo', publishedAt: record.publishedAt, metadata: { industryTarget: request.industry.name, sourceAccountRef: 'cninfo:official-industry-disclosure', issuer: record.issuer, ...(record.announcementId ? { announcementId: record.announcementId } : {}), ...(record.rawPublishedAt ? { rawPublishedAt: record.rawPublishedAt } : {}) } })) } const fiscalPeriod = request.filingPeriod; return (await this.client.list(request)).slice(0, limit).map((record) => ({ candidateId: `official-${sha256(record.url).slice(0, 16)}`, kind: 'official_disclosure', tier: 1, title: record.title, url: record.url, provider: 'cninfo', publishedAt: record.publishedAt, metadata: { companySymbol: request.company.symbol, exchange: request.company.exchange, sourceAccountRef: 'cninfo:official-disclosure', issuer: record.issuer, ...(fiscalPeriod === undefined ? {} : { fiscalYear: fiscalPeriod.fiscalYear, period: fiscalPeriod.fiscalPeriod, fiscalPeriod: `${fiscalPeriod.fiscalYear}-${fiscalPeriod.fiscalPeriod}` }), ...(record.announcementId ? { announcementId: record.announcementId } : {}), ...(record.rawPublishedAt ? { rawPublishedAt: record.rawPublishedAt } : {}), ...(record.correctionOf ? { correctionOf: record.correctionOf } : {}) } })) }
-  async fetch(candidate: ResearchSourceCandidate, signal?: AbortSignal): Promise<ResearchFetchedSource> { const metadata = candidate.metadata ?? {}; const record: OfficialDisclosureRecord = { title: candidate.title, url: candidate.url!, publishedAt: candidate.publishedAt ?? this.now(), ...(typeof metadata.announcementId === 'string' ? { announcementId: metadata.announcementId } : {}), ...(typeof metadata.rawPublishedAt === 'string' ? { rawPublishedAt: metadata.rawPublishedAt } : {}), ...(typeof metadata.issuer === 'string' ? { issuer: metadata.issuer } : {}), ...(typeof metadata.correctionOf === 'string' ? { correctionOf: metadata.correctionOf } : {}) }; const document = this.client.fetchDocument ? await this.client.fetchDocument(record, signal) : undefined; const content = document?.content ?? await this.client.fetch(record); return { candidate, retrievedAt: this.now(), content, contentHash: sha256(content), ...(document === undefined ? {} : { rawBytes: document.bytes, mediaType: document.mediaType }) } }
+  async discover(request: ResearchAcquisitionRequest, signal?: AbortSignal): Promise<readonly ResearchSourceCandidate[]> { const limit = Math.min(20, Math.max(0, request.limitPerKind ?? 5)); if (request.industry !== undefined) { if (!this.client.listIndustry) return []; return (await this.client.listIndustry(request)).slice(0, limit).map((record) => ({ candidateId: `official-${sha256(record.url).slice(0, 16)}`, kind: 'official_disclosure', tier: 1, title: record.title, url: record.url, provider: 'cninfo', publishedAt: record.publishedAt, metadata: { industryTarget: request.industry.name, sourceAccountRef: 'cninfo:official-industry-disclosure', issuer: record.issuer, ...(record.announcementId ? { announcementId: record.announcementId } : {}), ...(record.rawPublishedAt ? { rawPublishedAt: record.rawPublishedAt } : {}) } })) } const fiscalPeriod = request.filingPeriod; return (await this.client.list(request, signal)).slice(0, limit).map((record) => ({ candidateId: `official-${sha256(record.url).slice(0, 16)}`, kind: 'official_disclosure', tier: 1, title: record.title, url: record.url, provider: 'cninfo', publishedAt: record.publishedAt, metadata: { companySymbol: request.company.symbol, exchange: request.company.exchange, sourceAccountRef: 'cninfo:official-disclosure', issuer: record.issuer, ...(fiscalPeriod === undefined ? {} : { fiscalYear: fiscalPeriod.fiscalYear, period: fiscalPeriod.fiscalPeriod, fiscalPeriod: `${fiscalPeriod.fiscalYear}-${fiscalPeriod.fiscalPeriod}` }), ...(record.announcementId ? { announcementId: record.announcementId } : {}), ...(record.rawPublishedAt ? { rawPublishedAt: record.rawPublishedAt } : {}), ...(record.correctionOf ? { correctionOf: record.correctionOf } : {}) } })) }
+  async fetch(candidate: ResearchSourceCandidate, signal?: AbortSignal, options?: ResearchFetchOptions): Promise<ResearchFetchedSource> { const metadata = candidate.metadata ?? {}; const record: OfficialDisclosureRecord = { title: candidate.title, url: candidate.url!, publishedAt: candidate.publishedAt ?? this.now(), ...(typeof metadata.announcementId === 'string' ? { announcementId: metadata.announcementId } : {}), ...(typeof metadata.rawPublishedAt === 'string' ? { rawPublishedAt: metadata.rawPublishedAt } : {}), ...(typeof metadata.issuer === 'string' ? { issuer: metadata.issuer } : {}), ...(typeof metadata.correctionOf === 'string' ? { correctionOf: metadata.correctionOf } : {}) }; const document = this.client.fetchDocument ? await this.client.fetchDocument(record, signal, options) : undefined; const content = document?.content ?? await this.client.fetch(record); return { candidate, retrievedAt: this.now(), content, contentHash: sha256(content), ...(document === undefined ? {} : { rawBytes: document.bytes, mediaType: document.mediaType }) } }
   async normalize(source: ResearchFetchedSource): Promise<NormalizedResearchSource> { return { candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: source.content, contentHash: source.contentHash ?? sha256(source.content), ...(source.rawBytes === undefined ? {} : { rawBytes: Uint8Array.from(source.rawBytes) }), canonicalUrl: source.candidate.url, publisher: 'CNINFO', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } } }
 }

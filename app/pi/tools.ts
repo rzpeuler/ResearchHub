@@ -16,9 +16,38 @@ import type { ResourceLoader } from '@earendil-works/pi-coding-agent'
 import type { ThesisQueryService } from '../services/thesis-query-service.ts'
 import type { ThesisDecisionService } from '../services/thesis-decision-service.ts'
 import { defaultResearchContextPolicy, defaultResearchPersistencePolicy } from '../services/research-dispatch-contracts.ts'
+import { AsyncLocalStorage } from 'node:async_hooks'
 
 export interface ResearchHubRequestPolicy { readonly structuredKnowledge: boolean; readonly sourceLibrary: boolean; readonly writeKnowledge: boolean }
-export interface ResearchHubPolicyContext { current?: ResearchHubRequestPolicy }
+export interface ResearchHubPolicyContext {
+  current?: ResearchHubRequestPolicy
+  owner?: { readonly conversationId: string; readonly operationId: string }
+  onWorkflowStarted?: (owner: { readonly conversationId: string; readonly operationId: string }, linked: { readonly runId: string; readonly workflowRegistryId: string; readonly toolCallId: string }) => Promise<void>
+}
+const toolExecutionContext = new AsyncLocalStorage<{ readonly toolCallId: string; readonly owner?: ResearchHubPolicyContext['owner'] }>()
+const WORKFLOW_METHOD_IDS: Readonly<Record<string, string>> = { startResearchCompany: 'company_research', startIndustryResearch: 'industry_research', startEarningsReview: 'earnings_review', startValuation: 'valuation', startEventResearch: 'event_research', startThesisRedTeam: 'thesis_red_team', startThesisLifecycleRefresh: 'thesis_lifecycle', startThesisLifecycleCreate: 'thesis_lifecycle', startBrief: 'daily_intelligence', startIngestDocument: 'raw_document_knowledge_ingestion' }
+
+/** Pi cancellation stops waiting; the separately registered Workflow remains cancellable through WorkflowService. */
+function independentWorkflowStart(target: object, method: Function, args: unknown[], methodName: string, policyContext?: ResearchHubPolicyContext): unknown {
+  const signal = args[1] instanceof AbortSignal ? args[1] : undefined
+  if (signal?.aborted) throw new ApplicationServiceError('cancelled', 'Agent stopped before Workflow start')
+  const started = Reflect.apply(method, target, [args[0], undefined, ...args.slice(2)]) as { runId: string; completion: Promise<unknown> }
+  const execution = toolExecutionContext.getStore()
+  const linked = typeof started.runId === 'string' && execution?.owner && policyContext?.onWorkflowStarted
+    ? policyContext.onWorkflowStarted(execution.owner, { runId: started.runId, workflowRegistryId: WORKFLOW_METHOD_IDS[methodName] ?? methodName, toolCallId: execution.toolCallId })
+    : Promise.resolve()
+  const completion = Promise.resolve(linked).then(() => started.completion)
+  void completion.catch(() => undefined)
+  if (!signal) return { ...started, completion }
+  const waiting = new Promise<unknown>((resolve, reject) => {
+    const abort = () => { signal.removeEventListener('abort', abort); reject(new ApplicationServiceError('cancelled', 'Agent stopped; Workflow continues independently')) }
+    signal.addEventListener('abort', abort, { once: true })
+    if (signal.aborted) { abort(); return }
+    completion.then(value => { signal.removeEventListener('abort', abort); resolve(value) }, error => { signal.removeEventListener('abort', abort); reject(error) })
+  })
+  return { ...started, completion: waiting }
+}
+
 
 export interface ResearchHubPiToolContext {
   readonly knowledgeService: KnowledgeService
@@ -66,7 +95,7 @@ function scopedResearchService<T extends object>(service: T | undefined, policyC
         const supplied = policyContext?.current
         if (property === 'startThesisLifecycleRefresh' || property === 'startThesisLifecycleCreate') {
           if (supplied?.writeKnowledge !== true || supplied.structuredKnowledge !== true) throw new ApplicationServiceError('conflict', `Thesis lifecycle ${property === 'startThesisLifecycleCreate' ? 'CREATE' : 'refresh'} requires explicit Knowledge-write authorization and structured Knowledge access`)
-          return Reflect.apply(value, target, args)
+          return independentWorkflowStart(target, value, args, property, policyContext)
         }
         const defaultContext = defaultResearchContextPolicy()
         const defaultPersistence = defaultResearchPersistencePolicy()
@@ -77,29 +106,29 @@ function scopedResearchService<T extends object>(service: T | undefined, policyC
         }
         const input = args[0]
         if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApplicationServiceError('invalid_input', 'Research tool input must be an object')
-        return Reflect.apply(value, target, [{ ...(input as Record<string, unknown>), writeKnowledge: current.writeKnowledge, useStructuredKnowledge: current.structuredKnowledge }, ...args.slice(1)])
+        return independentWorkflowStart(target, value, [{ ...(input as Record<string, unknown>), writeKnowledge: current.writeKnowledge, useStructuredKnowledge: current.structuredKnowledge }, ...args.slice(1)], property, policyContext)
       }
     },
   })
 }
 
 function scopedDailyService<T extends object>(service: T | undefined, policyContext: ResearchHubPolicyContext | undefined): T | undefined {
-  if (service === undefined || policyContext === undefined) return service
-  return new Proxy(service, { get(target, property, receiver) { const value = Reflect.get(target, property, receiver); if (property !== 'startBrief' || typeof value !== 'function') return value; return (...args: unknown[]) => { const current = policyContext.current; if (current === undefined) return Reflect.apply(value, target, args); const input = args[0]; if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApplicationServiceError('invalid_input', 'Daily Brief input must be an object'); return Reflect.apply(value, target, [{ ...(input as Record<string, unknown>), writeKnowledge: current.writeKnowledge, useStructuredKnowledge: current.structuredKnowledge }, ...args.slice(1)]) } } })
+  if (service === undefined) return service
+  return new Proxy(service, { get(target, property, receiver) { const value = Reflect.get(target, property, receiver); if (property !== 'startBrief' || typeof value !== 'function') return value; return (...args: unknown[]) => { const current = policyContext?.current; if (current === undefined) return independentWorkflowStart(target, value, args, 'startBrief', policyContext); const input = args[0]; if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApplicationServiceError('invalid_input', 'Daily Brief input must be an object'); return independentWorkflowStart(target, value, [{ ...(input as Record<string, unknown>), writeKnowledge: current.writeKnowledge, useStructuredKnowledge: current.structuredKnowledge }, ...args.slice(1)], 'startBrief', policyContext) } } })
 }
 
 function scopedProductionService<T extends object>(service: T, policyContext: ResearchHubPolicyContext | undefined): T {
   if (policyContext === undefined) return service
-  return new Proxy(service, { get(target, property, receiver) { if (policyContext.current?.writeKnowledge === false && property === 'ingestDocument') return (() => { throw new ApplicationServiceError('conflict', 'Knowledge production is disabled for this ResearchRequest') }) as T[Extract<keyof T, string>]; return Reflect.get(target, property, receiver) } })
+  return new Proxy(service, { get(target, property, receiver) { if (policyContext.current?.writeKnowledge === false && (property === 'ingestDocument' || property === 'startIngestDocument')) return (() => { throw new ApplicationServiceError('conflict', 'Knowledge production is disabled for this ResearchRequest') }) as T[Extract<keyof T, string>]; return Reflect.get(target, property, receiver) } })
 }
 
 function scopedThesisDecisionService<T extends object>(service: T | undefined, policyContext: ResearchHubPolicyContext | undefined): T | undefined {
-  if (service === undefined || policyContext === undefined) return service
+  if (service === undefined) return service
   return new Proxy(service, { get(target, property, receiver) {
     const value = Reflect.get(target, property, receiver)
     if (property !== 'decide' || typeof value !== 'function') return value
     return (...args: unknown[]) => {
-      const current = policyContext.current
+      const current = policyContext?.current
       const input = args[0] as { readonly decision?: unknown } | undefined
       if (current?.structuredKnowledge === false) throw new ApplicationServiceError('conflict', 'Thesis decisions are disabled for this ResearchRequest')
       if (input?.decision === 'ACCEPT' && current?.writeKnowledge === false) throw new ApplicationServiceError('conflict', 'Knowledge writes are disabled for this ResearchRequest')
@@ -138,7 +167,10 @@ export function createResearchHubTools(inputContext: ResearchHubPiToolContext): 
   })
   const ingest = defineTool({
     name: 'ingest_document', label: 'Ingest document', description: 'Explicitly ingest text or an existing workspace file through the governed Knowledge Production Workflow.', promptSnippet: 'Ingest a document through Knowledge Production', parameters: Type.Object({ workflowRunId: Type.String(), text: Type.Optional(Type.String()), workspaceFile: Type.Optional(Type.String()), originalFilename: Type.Optional(Type.String()), mediaType: Type.Optional(Type.String()), instructions: Type.Optional(Type.String()), sourceMetadata: Type.Optional(Type.Object({ title: Type.Optional(Type.String()), institution: Type.Optional(Type.String()), author: Type.Optional(Type.String()), publishedAt: Type.Optional(Type.String()), sourceUrl: Type.Optional(Type.String()) })) }),
-    execute: async (_toolCallId, params, signal) => invoke(() => context.productionService.ingestDocument(params as IngestDocumentInput, signal), signal),
+    execute: async (_toolCallId, params, signal) => invoke(() => {
+      if (typeof context.productionService.startIngestDocument !== 'function') return context.productionService.ingestDocument(params as IngestDocumentInput, signal)
+      return (independentWorkflowStart(context.productionService, context.productionService.startIngestDocument, [params as IngestDocumentInput, signal], 'startIngestDocument', context.policyContext) as { completion: Promise<unknown> }).completion
+    }, signal),
   })
   const workflowStatus = defineTool({ name: 'get_workflow_status', label: 'Get Workflow status', description: 'Read authoritative application Workflow state.', promptSnippet: 'Inspect Workflow status', parameters: Type.Object({ runId: Type.String() }), execute: async (_toolCallId, params) => invoke(async () => { const result = context.workflowService.getWorkflowStatus(params.runId); if (!result) throw new ApplicationServiceError('not_found', `Workflow run not found: ${params.runId}`); return result }) })
   const cancel = defineTool({ name: 'cancel_workflow', label: 'Cancel Workflow', description: 'Request cancellation of an active Knowledge Production Workflow.', promptSnippet: 'Cancel an active Workflow', parameters: Type.Object({ runId: Type.String() }), execute: async (_toolCallId, params) => invoke(async () => context.workflowService.cancelWorkflow(params.runId)) })
@@ -221,5 +253,5 @@ export function createResearchHubTools(inputContext: ResearchHubPiToolContext): 
       }, signal),
     }))
   }
-  return tools
+  return tools.map(tool => ({ ...tool, execute: (toolCallId, params, signal, onUpdate, executionContext) => toolExecutionContext.run({ toolCallId, owner: context.policyContext?.owner }, () => tool.execute(toolCallId, params, signal, onUpdate, executionContext)) }))
 }

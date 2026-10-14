@@ -7,6 +7,9 @@ import { runResearchDataAcquisition } from '../../data/workflow.ts'
 import type { AkshareDataClient } from './akshare.ts'
 import type { NormalizedResearchSource, ResearchAcquisitionPlugin, ResearchCompanyIdentity } from './contracts.ts'
 import { validateUsableAcquisitionPayload } from './payload-validation.ts'
+import { acquisitionStep, type ResearchFetchOptions } from './deadlines.ts'
+import { OfficialDisclosureResearchPlugin } from './official.ts'
+import { GdeltResearchPlugin } from './gdelt.ts'
 
 export interface CompanyProfileSnapshot {
   readonly kind: 'profile'
@@ -58,14 +61,17 @@ export interface CompanyResearchDataResolverOptions {
   readonly now: () => string
   readonly signal?: AbortSignal
   readonly limitPerSource?: number
+  readonly acquisitionDeadlineAt?: number
+  readonly onProgress?: ResearchFetchOptions['onProgress']
   /** Compatibility seam for Company signal projection, after discovery and before fetch. */
   readonly onCandidatesDiscovered?: (event: { readonly provider: 'CNINFO' | 'GDELT'; readonly candidates: readonly NormalizedResearchSource['candidate'][]; readonly requirement: DataRequirement }) => Promise<void | readonly NormalizedResearchSource['candidate'][]> | void | readonly NormalizedResearchSource['candidate'][]
 }
 
 /** Explicit AKShare, CNINFO, and GDELT operation composition. */
 export function createCompanyResearchDataResolver(options: CompanyResearchDataResolverOptions): DataResolver<CompanyResearchDataPayload> {
-  const execute = async (requirement: DataRequirement, operationId: string): Promise<SourceExecutionResult<RawCompanyResearchDataPayload>> => {
+  const executeOperation = async (requirement: DataRequirement, operationId: string): Promise<SourceExecutionResult<RawCompanyResearchDataPayload>> => {
     if (options.signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
+    if (options.acquisitionDeadlineAt !== undefined && Date.now() >= options.acquisitionDeadlineAt) return { status: 'SOURCE_ERROR', diagnostic: 'ACQUISITION_BUDGET_EXCEEDED' }
     const symbol = requirement.subject.ticker
     if (!symbol) return { status: 'UNSUPPORTED', diagnostic: 'COMPANY_TICKER_REQUIRED' }
     const akshare = options.akshare
@@ -73,9 +79,10 @@ export function createCompanyResearchDataResolver(options: CompanyResearchDataRe
       if (!akshare) return { status: 'UNSUPPORTED', diagnostic: 'AKShare client is unavailable' }
       let raw: unknown
       try {
-        raw = operationId === 'akshare.companyBasic' ? await akshare.companyBasic({ symbol })
-          : operationId === 'akshare.financialData' ? await akshare.financialData({ symbol })
-            : await akshare.historicalMarketData({ symbol, ...(requirement.period?.start ? { startDate: requirement.period.start.slice(0, 10).replace(/-/g, '') } : {}), ...(requirement.period?.end ? { endDate: requirement.period.end.slice(0, 10).replace(/-/g, '') } : {}) })
+        raw = await acquisitionStep({ activityId: operationId.toLowerCase(), providerId: 'akshare', step: 'structured_data', signal: options.signal,
+          timeoutMs: 60_000, deadlineAt: options.acquisitionDeadlineAt, onProgress: options.onProgress }, async (signal) => operationId === 'akshare.companyBasic' ? akshare.companyBasic({ symbol, signal })
+          : operationId === 'akshare.financialData' ? akshare.financialData({ symbol, signal })
+            : akshare.historicalMarketData({ symbol, signal, ...(requirement.period?.start ? { startDate: requirement.period.start.slice(0, 10).replace(/-/g, '') } : {}), ...(requirement.period?.end ? { endDate: requirement.period.end.slice(0, 10).replace(/-/g, '') } : {}) }))
       } catch (error) {
         if (options.signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
         return { status: 'SOURCE_ERROR', diagnostic: boundedError(error) }
@@ -104,6 +111,16 @@ export function createCompanyResearchDataResolver(options: CompanyResearchDataRe
     }
     return { status: 'UNSUPPORTED', diagnostic: `UNKNOWN_COMPANY_RESEARCH_OPERATION:${operationId}` }
   }
+  const execute = async (requirement: DataRequirement, operationId: string) => {
+    const result = await executeOperation(requirement, operationId)
+    if (operationId.startsWith('akshare.') && result.status !== 'SUCCESS') {
+      const timestamp = options.now()
+      await options.onProgress?.({ activityId: `${operationId.toLowerCase()}:outcome`, providerId: 'akshare', step: 'structured_data',
+        status: result.diagnostic?.includes('TIMEOUT') || result.diagnostic?.includes('BUDGET_EXCEEDED') ? 'timeout' : 'failed', startedAt: timestamp, completedAt: timestamp,
+        diagnosticCode: result.diagnostic?.includes('BUDGET_EXCEEDED') ? 'ACQUISITION_BUDGET_EXCEEDED' : 'PROVIDER_NO_USABLE_DATA' })
+    }
+    return result
+  }
   return new DataResolver<CompanyResearchDataPayload>({
     policies: PHASE3_COMMON_SOURCE_POLICIES,
     now: options.now,
@@ -130,7 +147,8 @@ async function acquireDocuments(
   const company = requirement.subject.ticker === options.company.symbol ? options.company : { symbol: requirement.subject.ticker!, name: requirement.subject.companyId }
   let discovered: readonly NormalizedResearchSource['candidate'][]
   try {
-    discovered = await plugin.discover({ company, asOf: requirement.analysisAsOf ?? requirement.asOf, limitPerKind: Math.max(0, Math.min(20, options.limitPerSource ?? 6)) }, options.signal)
+    discovered = await acquisitionStep({ activityId: `${provider.toLowerCase()}:discovery`, providerId: provider.toLowerCase(), step: 'discovery',
+      signal: options.signal, timeoutMs: 30_000, deadlineAt: options.acquisitionDeadlineAt, onProgress: options.onProgress }, (signal) => plugin.discover({ company, asOf: requirement.analysisAsOf ?? requirement.asOf, limitPerKind: Math.max(0, Math.min(20, options.limitPerSource ?? 6)) }, signal))
   } catch (error) {
     if (options.signal?.aborted || (error instanceof Error && error.message === 'WORKFLOW_CANCELLED')) throw new Error('WORKFLOW_CANCELLED')
     return { status: 'SOURCE_ERROR', diagnostic: boundedError(error) }
@@ -150,16 +168,22 @@ async function acquireDocuments(
   if (rejected > 0) diagnostics.push(`consumer_pre_fetch_guard_rejected:${rejected}`)
   for (const candidate of eligible.slice(0, Math.max(0, Math.min(20, options.limitPerSource ?? 6)))) {
     if (options.signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
+    if (options.acquisitionDeadlineAt !== undefined && Date.now() >= options.acquisitionDeadlineAt) { diagnostics.push('ACQUISITION_BUDGET_EXCEEDED'); failed += 1; break }
     const candidateDate = candidate.publishedAt ?? (provider === 'GDELT' && candidate.snippet ? candidate.snippet : undefined)
     const dateStatus = qualifyResearchEvidenceDate(candidateDate, requirement)
     if (dateStatus === 'INVALID' || dateStatus === 'FUTURE' || dateStatus === 'OUTSIDE_PERIOD') { rejected += 1; diagnostics.push(`${candidate.candidateId}:${dateStatus}`); continue }
     try {
-      const fetchedSource = await plugin.fetch(candidate, options.signal)
+      const fetchOptions: ResearchFetchOptions | undefined = options.acquisitionDeadlineAt === undefined ? undefined : { downloadTimeoutMs: 30_000, parseTimeoutMs: 120_000, deadlineAt: options.acquisitionDeadlineAt, onProgress: options.onProgress }
+      const internalProgress = plugin instanceof OfficialDisclosureResearchPlugin || plugin instanceof GdeltResearchPlugin
+      // The outer limit also bounds custom adapters; production adapters separately report download/body/parse.
+      const fetchedSource = options.acquisitionDeadlineAt === undefined ? await plugin.fetch(candidate, options.signal) : await acquisitionStep({ activityId: `${candidate.candidateId}:fetch`, providerId: provider.toLowerCase(), step: 'download', sourceTitle: candidate.title,
+        signal: options.signal, timeoutMs: 150_000, deadlineAt: options.acquisitionDeadlineAt, onProgress: internalProgress ? undefined : options.onProgress }, (signal) => plugin.fetch(candidate, signal, fetchOptions))
       if (options.signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
       fetchSucceeded = true
       const fetchedValidation = validateUsableAcquisitionPayload(fetchedSource.content)
       if (fetchedValidation.status !== 'usable') { fetchedValidation.status === 'empty' ? empty += 1 : failed += 1; diagnostics.push(`${candidate.candidateId}:${fetchedValidation.reason}`); continue }
-      const normalized = await plugin.normalize(fetchedSource, options.signal)
+      const normalized = options.acquisitionDeadlineAt === undefined ? await plugin.normalize(fetchedSource, options.signal) : await acquisitionStep({ activityId: `${candidate.candidateId}:normalize`, providerId: provider.toLowerCase(), step: 'parsing', sourceTitle: candidate.title,
+        signal: options.signal, timeoutMs: 120_000, deadlineAt: options.acquisitionDeadlineAt, onProgress: internalProgress ? undefined : options.onProgress }, (signal) => plugin.normalize(fetchedSource, signal, fetchOptions))
       if (options.signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
       const normalizedValidation = validateUsableAcquisitionPayload(normalized.content)
       if (normalizedValidation.status !== 'usable') { normalizedValidation.status === 'empty' ? empty += 1 : failed += 1; diagnostics.push(`${candidate.candidateId}:${normalizedValidation.reason}`); continue }

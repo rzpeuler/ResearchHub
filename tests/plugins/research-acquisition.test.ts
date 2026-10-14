@@ -29,7 +29,7 @@ test('AKShare security directory performs bounded exact A-share lookup and norma
   assert.deepEqual(calls[0]!.args, ['security-directory', '002487.SZ', '', '大金重工', '3', 'SZ'])
   assert.match(calls[0]!.script, /stock_info_a_code_name\(\)/)
   assert.match(calls[0]!.script, /'symbol':code,'name':name,'exchange':exchange/)
-  assert.match(calls[0]!.script, /if len\(rows\)>limit: raise ValueError/)
+  assert.match(calls[0]!.script, /if limit and len\(rows\)>limit: raise ValueError/)
   assert.match(calls[0]!.script, /for _,row in rows\.iterrows\(\):/)
   assert.equal(calls[0]!.timeoutMs, 30_000)
   assert.equal(calls[0]!.script.includes('exchange official'), false)

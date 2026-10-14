@@ -18,7 +18,10 @@ const workflowRegistryId = 'company_research'
 
 class FixtureExecutor implements ReasoningExecutor {
   capabilities(): ReasoningCapabilities { return capabilities }
-  async execute(request: Parameters<ReasoningExecutor['execute']>[0]) { return { operation: request.operation, output: {} } as never }
+  async execute(request: Parameters<ReasoningExecutor['execute']>[0]) {
+    if (request.operation === 'research_dispatch_resolution') return { operation: request.operation, output: { mode: 'workflow', workflow: { id: 'company_research', confidence: 1, arguments: { symbol: '002640', name: '跨境通', exchange: 'SZ' } }, skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: true, sourceLibrary: true }, persistencePolicy: { writeKnowledge: false }, rationale: 'Explicit company fixture' } }
+    return { operation: request.operation, output: {} } as never
+  }
 }
 
 async function snapshotFiles(root: string): Promise<readonly (readonly [string, string])[]> {

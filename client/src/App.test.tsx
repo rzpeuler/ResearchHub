@@ -236,7 +236,7 @@ describe('Homepage shell', () => {
 
     expect(await screen.findByText('The fiscal period is required.')).toBeTruthy()
     expect(screen.getByText('Missing fields: period')).toBeTruthy()
-    expect(screen.getByText(/Resolved arguments:.*NVDA.*2026/)).toBeTruthy()
+    expect(screen.getByText(/Resolved scope:.*NVDA.*2026/)).toBeTruthy()
     expect(screen.getByText('Suggested question: Which quarter should I review?')).toBeTruthy()
     expect(screen.getByText('One bounded argument repair was used')).toBeTruthy()
     expect((screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).value).toBe('Review this quarter')
@@ -247,7 +247,7 @@ describe('Homepage shell', () => {
     fireEvent.change(composer, { target: { value: 'Q1' } })
     fireEvent.click(screen.getByRole('button', { name: /Send/ }))
     expect(await screen.findByText('Missing fields: fiscalYear')).toBeTruthy()
-    expect(screen.getByText(/Resolved arguments:.*NVDA.*2026.*Q1/)).toBeTruthy()
+    expect(screen.getByText(/Resolved scope:.*NVDA.*2026.*Q1/)).toBeTruthy()
     expect((screen.getByRole('combobox', { name: 'Workflow' }) as HTMLSelectElement).value).toBe('earnings_review')
     expect(dispatchRequests[1]).toMatchObject({ workflowArgumentContext: { workflowId: 'earnings_review', arguments: { symbol: 'NVDA', fiscalYear: 2026 } } })
     fireEvent.click(screen.getByRole('button', { name: /Send/ }))
@@ -1489,7 +1489,7 @@ describe('Homepage shell', () => {
     await screen.findByRole('heading', { level: 1, name: 'Research' })
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'Retry safely' } })
     fireEvent.click(screen.getByRole('button', { name: /Send/ }))
-    await screen.findByRole('alert')
+    await screen.findAllByRole('alert')
     const ledger = window.sessionStorage.getItem('researchhub.pendingConversationOperations.v1') ?? ''
     expect(ledger).not.toContain('Retry safely')
     first.unmount()

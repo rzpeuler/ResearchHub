@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { chmod, lstat, mkdir, open, readFile, readdir, rename, unlink } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
+import type { ResearchDispatchStart } from '../services/research-dispatch-service.ts'
 
-export const CONVERSATION_STATE_SCHEMA_VERSION = 2 as const
+export const CONVERSATION_STATE_SCHEMA_VERSION = 3 as const
 export const DEFAULT_CONVERSATION_TITLE = '新对话'
 
 const MAX_TITLE_CODE_POINTS = 200
@@ -30,7 +31,9 @@ const PII_TITLE_PATTERNS = [
 
 export type ConversationTitleSource = 'DEFAULT' | 'FIRST_MESSAGE' | 'WORKFLOW' | 'USER'
 export type ConversationRequestKind = 'chat' | 'workflow'
-export type AcceptedRequestLifecycle = 'accepted' | 'submitting' | 'ready_for_chat' | 'started' | 'completed' | 'cancelled' | 'not_started' | 'failed' | 'interrupted'
+export type AcceptedRequestLifecycle = 'accepted' | 'submitting' | 'needs_clarification' | 'ready_for_chat' | 'started' | 'completed' | 'cancelled' | 'not_started' | 'failed' | 'interrupted'
+export interface LinkedConversationWorkflow { readonly runId: string; readonly workflowRegistryId: string; readonly toolCallId?: string; readonly subject?: string }
+export interface ConversationToolActivity { readonly toolCallId: string; readonly name: string; readonly status: 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'; readonly summary?: string; readonly startedAt: string; readonly completedAt?: string }
 export type ConversationSubmissionOutcome =
   | { readonly kind: 'chat'; readonly outcome: 'started' }
   | { readonly kind: 'chat'; readonly outcome: 'completed' | 'cancelled' | 'failed'; readonly failureCode?: string }
@@ -60,6 +63,11 @@ export interface AcceptedConversationRequest {
   readonly dispatchStatus?: 'started' | 'needs_input' | 'invalid_input' | 'unresolved_reference' | 'executor_unavailable' | 'free_research' | 'skill_plan'
   readonly finishedAt?: string
   readonly piMessageId?: string
+  readonly linkedWorkflows?: readonly LinkedConversationWorkflow[]
+  readonly toolActivities?: readonly ConversationToolActivity[]
+  /** Internal normalized dispatch envelope. Source excerpts and raw tool results are never stored here. */
+  readonly dispatchEnvelope?: Omit<ResearchDispatchStart, 'completion' | 'sourceLibraryHits'>
+  readonly confirmedClarificationId?: string
 }
 
 export interface ConversationStateFlags {
@@ -383,7 +391,7 @@ export class ConversationStateStore {
       if (request.workflowSubject !== undefined && request.workflowSubject !== workflowSubject) throw conflict('Workflow candidate subject changed')
       if (request.workflowTitleCandidate !== undefined && request.workflowTitleCandidate !== titleCandidate) throw conflict('Workflow title candidate changed')
       if (request.workflowRegistryId === registryId && request.workflowSubject === workflowSubject && request.workflowTitleCandidate === titleCandidate) return request
-      return { ...request, workflowRegistryId: registryId, ...(workflowSubject === undefined ? {} : { workflowSubject }), ...(titleCandidate === undefined ? {} : { workflowTitleCandidate: titleCandidate }) }
+      return { ...request, kind: 'workflow', workflowRegistryId: registryId, ...(workflowSubject === undefined ? {} : { workflowSubject }), ...(titleCandidate === undefined ? {} : { workflowTitleCandidate: titleCandidate }) }
     })
   }
 
@@ -536,8 +544,9 @@ export class ConversationStateStore {
     for (const listed of states) {
       const changed = await this.serialized(listed.conversationId, async () => {
         const current = await this.read(listed.conversationId)
-        if (!current || !current.acceptedRequests.some((request) => request.lifecycle === 'submitting' || (request.lifecycle === 'started' && (request.outcome === 'workflow_started' || request.outcome === 'chat_started')))) return false
-        const acceptedRequests = current.acceptedRequests.map((request) => {
+        if (!current || !current.acceptedRequests.some((request) => request.lifecycle === 'submitting' || request.toolActivities?.some(activity => activity.status === 'running') || (request.lifecycle === 'started' && (request.outcome === 'workflow_started' || request.outcome === 'chat_started')))) return false
+        const acceptedRequests = current.acceptedRequests.map((original) => {
+          const request = { ...original, ...(original.toolActivities === undefined ? {} : { toolActivities: original.toolActivities.map(activity => activity.status === 'running' ? { ...activity, status: 'interrupted' as const, completedAt: this.timestamp() } : activity) }) }
           if (request.lifecycle === 'submitting') return { ...request, lifecycle: 'interrupted' as const, finishedAt: this.timestamp() }
           if (request.lifecycle === 'started' && (request.outcome === 'workflow_started' || request.outcome === 'chat_started')) {
             const { outcome: _outcome, ...interrupted } = request
@@ -563,6 +572,62 @@ export class ConversationStateStore {
       const changed = update(cloneState(current))
       if (JSON.stringify(current) === JSON.stringify(changed)) return cloneState(current)
       return this.commitUpdate(current, changed, allowUserRename)
+    })
+  }
+
+  async markPreparationCancelled(conversationId: string, operationId: string): Promise<ConversationState> {
+    return this.updateRequest(normalizeConversationId(conversationId), normalizeOperationId(operationId), request => {
+      if (request.lifecycle !== 'submitting') return request
+      const { reservedWorkflowRunId: _reserved, ...rest } = request
+      return { ...rest, lifecycle: 'not_started', outcome: 'not_started', outcomeReasonCode: 'cancelled', finishedAt: this.timestamp() }
+    })
+  }
+
+  async recordDispatchEnvelope(conversationId: string, operationId: string, envelope: ResearchDispatchStart): Promise<ConversationState> {
+    const { completion: _completion, sourceLibraryHits: _hits, ...serializable } = envelope
+    assertSafeEnvelope(serializable)
+    return this.updateRequest(normalizeConversationId(conversationId), normalizeOperationId(operationId), (request) => {
+      if (request.lifecycle !== 'submitting') throw conflict('dispatch result requires a submitting request')
+      return { ...request, dispatchEnvelope: serializable, ...(envelope.status === 'needs_clarification' ? { lifecycle: 'needs_clarification' as const } : {}) }
+    })
+  }
+
+  async claimClarification(conversationId: string, operationId: string, confirmationId: string, reservedRunId: string): Promise<BeginConversationDispatchResult> {
+    let mayDispatch = false
+    const state = await this.updateRequest(normalizeConversationId(conversationId), normalizeOperationId(operationId), (request) => {
+      if (request.lifecycle !== 'needs_clarification') return request
+      if (request.dispatchEnvelope?.clarification?.confirmationId !== confirmationId) throw conflict('clarification is expired or does not belong to this request')
+      mayDispatch = true
+      return { ...request, lifecycle: 'submitting', confirmedClarificationId: confirmationId, reservedWorkflowRunId: normalizeReservedRunId(reservedRunId) }
+    })
+    return { state, mayDispatch }
+  }
+
+  async linkToolWorkflow(conversationId: string, operationId: string, linked: LinkedConversationWorkflow): Promise<ConversationState> {
+    workflowId(linked.runId, 'runId'); workflowId(linked.workflowRegistryId, 'workflowRegistryId')
+    if (linked.toolCallId !== undefined) normalizePiMessageId(linked.toolCallId)
+    return this.updateRequest(normalizeConversationId(conversationId), normalizeOperationId(operationId), (request) => {
+      const previous = request.linkedWorkflows ?? []
+      const duplicate = previous.find((entry) => entry.runId === linked.runId)
+      if (duplicate !== undefined) {
+        if (duplicate.workflowRegistryId !== linked.workflowRegistryId || duplicate.toolCallId !== linked.toolCallId) throw conflict('Workflow association cannot change')
+        return request
+      }
+      if (previous.length >= 100) throw capacity('too many associated workflows')
+      return { ...request, linkedWorkflows: [...previous, linked] }
+    })
+  }
+
+  async recordToolActivity(conversationId: string, operationId: string, activity: Omit<ConversationToolActivity, 'startedAt'> & { readonly startedAt?: string }): Promise<ConversationState> {
+    normalizePiMessageId(activity.toolCallId); workflowId(activity.name, 'name')
+    return this.updateRequest(normalizeConversationId(conversationId), normalizeOperationId(operationId), (request) => {
+      const activities = [...(request.toolActivities ?? [])]
+      const index = activities.findIndex((entry) => entry.toolCallId === activity.toolCallId)
+      const previous = index < 0 ? undefined : activities[index]
+      if (previous && previous.status !== 'running' && activity.status === 'running') return request
+      const next = { ...previous, ...activity, startedAt: previous?.startedAt ?? activity.startedAt ?? this.timestamp() }
+      if (index < 0) { if (activities.length >= 1000) throw capacity('too many tool activities'); activities.push(next) } else activities[index] = next
+      return { ...request, toolActivities: activities }
     })
   }
 
@@ -640,6 +705,10 @@ export class ConversationStateStore {
       let value: unknown
       try { value = JSON.parse(text) as unknown } catch (error) { throw corrupt(`sidecar JSON is corrupt: ${id}`, error) }
       if (!plainObject(value)) throw corrupt(`sidecar must contain an object: ${id}`)
+      if (value.schemaVersion === 2) {
+        value.schemaVersion = 3
+        if (Array.isArray(value.acceptedRequests)) for (const request of value.acceptedRequests) if (plainObject(request) && typeof request.workflowRunId === 'string' && typeof request.workflowRegistryId === 'string') request.linkedWorkflows = [{ runId: request.workflowRunId, workflowRegistryId: request.workflowRegistryId }]
+      }
       if (value.schemaVersion !== CONVERSATION_STATE_SCHEMA_VERSION) throw new ConversationStateStoreError('unsupported_version', `unsupported conversation sidecar version: ${String(value.schemaVersion)}`)
       validateState(value, id)
       return value
@@ -724,7 +793,7 @@ function validateState(value: unknown, expectedId: string): asserts value is Con
 
 function validateRequest(value: unknown): asserts value is AcceptedConversationRequest {
   if (!plainObject(value)) throw corrupt('accepted request record must be an object')
-  exactKeys(value, ['kind', 'operation', 'operationId', 'requestDigest', 'requestText', 'acceptedAt', 'acceptedWorkflowRegistryId', 'workflowRegistryId', 'workflowRunId', 'researchBundleRunId', 'reservedWorkflowRunId', 'workflowSubject', 'workflowTitleCandidate', 'lifecycle', 'dispatchAttemptedAt', 'startedAt', 'failureCode', 'outcome', 'outcomeReasonCode', 'dispatchStatus', 'finishedAt', 'piMessageId'], ['kind', 'operation', 'operationId', 'requestDigest', 'requestText', 'acceptedAt', 'lifecycle'])
+  exactKeys(value, ['kind', 'operation', 'operationId', 'requestDigest', 'requestText', 'acceptedAt', 'acceptedWorkflowRegistryId', 'workflowRegistryId', 'workflowRunId', 'researchBundleRunId', 'reservedWorkflowRunId', 'workflowSubject', 'workflowTitleCandidate', 'lifecycle', 'dispatchAttemptedAt', 'startedAt', 'failureCode', 'outcome', 'outcomeReasonCode', 'dispatchStatus', 'finishedAt', 'piMessageId', 'linkedWorkflows', 'toolActivities', 'dispatchEnvelope', 'confirmedClarificationId'], ['kind', 'operation', 'operationId', 'requestDigest', 'requestText', 'acceptedAt', 'lifecycle'])
   if (value.kind !== 'chat' && value.kind !== 'workflow') throw corrupt('accepted request kind is invalid')
   if (!['prompt', 'steer', 'follow_up'].includes(String(value.operation))) throw corrupt('accepted request operation is invalid')
   try { normalizeOperationId(value.operationId) } catch (error) { throw corrupt('accepted operationId is invalid', error) }
@@ -742,14 +811,24 @@ function validateRequest(value: unknown): asserts value is AcceptedConversationR
   if (value.reservedWorkflowRunId !== undefined) { try { normalizeReservedRunId(value.reservedWorkflowRunId) } catch (error) { throw corrupt('reservedWorkflowRunId is invalid', error) } }
   if (value.workflowSubject !== undefined) { try { if (normalizeConversationTitle(value.workflowSubject) !== value.workflowSubject) throw corrupt('workflowSubject is not normalized') } catch (error) { if (error instanceof ConversationStateStoreError && error.code === 'corrupt') throw error; throw corrupt('workflowSubject is invalid', error) } }
   if (value.workflowTitleCandidate !== undefined) { try { if (normalizeConversationTitle(value.workflowTitleCandidate) !== value.workflowTitleCandidate) throw corrupt('workflowTitleCandidate is not normalized') } catch (error) { if (error instanceof ConversationStateStoreError && error.code === 'corrupt') throw error; throw corrupt('workflowTitleCandidate is invalid', error) } }
-  if (!['accepted', 'submitting', 'ready_for_chat', 'started', 'completed', 'cancelled', 'not_started', 'failed', 'interrupted'].includes(String(value.lifecycle))) throw corrupt('accepted request lifecycle is invalid')
+  if (!['accepted', 'submitting', 'needs_clarification', 'ready_for_chat', 'started', 'completed', 'cancelled', 'not_started', 'failed', 'interrupted'].includes(String(value.lifecycle))) throw corrupt('accepted request lifecycle is invalid')
   for (const field of ['acceptedAt', 'dispatchAttemptedAt', 'startedAt', 'finishedAt'] as const) if (value[field] !== undefined) checkedTimestamp(value[field], field)
   if (value.failureCode !== undefined) { try { validateFailureCode(value.failureCode) } catch (error) { throw corrupt('failureCode is invalid', error) } }
   if (value.outcome !== undefined && !['chat_started', 'chat_completed', 'chat_cancelled', 'workflow_started', 'workflow_completed', 'workflow_blocked', 'workflow_failed', 'workflow_cancelled', 'not_started'].includes(String(value.outcome))) throw corrupt('accepted request outcome is invalid')
   if (value.outcomeReasonCode !== undefined) { try { validateFailureCode(value.outcomeReasonCode) } catch (error) { throw corrupt('outcomeReasonCode is invalid', error) } }
   if (value.dispatchStatus !== undefined && !['started', 'needs_input', 'invalid_input', 'unresolved_reference', 'executor_unavailable', 'free_research', 'skill_plan'].includes(String(value.dispatchStatus))) throw corrupt('dispatchStatus is invalid')
   if (value.piMessageId !== undefined) { try { normalizePiMessageId(value.piMessageId) } catch (error) { throw corrupt('piMessageId is invalid', error) } }
+  if (value.dispatchEnvelope !== undefined) { if (!plainObject(value.dispatchEnvelope)) throw corrupt('dispatch envelope is invalid'); assertSafeEnvelope(value.dispatchEnvelope) }
+  if (value.linkedWorkflows !== undefined) {
+    if (!Array.isArray(value.linkedWorkflows) || value.linkedWorkflows.length > 100) throw corrupt('workflow associations are invalid')
+    for (const item of value.linkedWorkflows) { if (!plainObject(item)) throw corrupt('workflow association is invalid'); exactKeys(item, ['runId','workflowRegistryId','toolCallId','subject'], ['runId','workflowRegistryId']); workflowId(item.runId, 'runId'); workflowId(item.workflowRegistryId, 'workflowRegistryId'); if (item.toolCallId !== undefined) normalizePiMessageId(item.toolCallId); if (item.subject !== undefined && (typeof item.subject !== 'string' || item.subject.length > 240 || SECRET_PATTERNS.some(pattern => pattern.test(item.subject as string)))) throw corrupt('workflow subject is invalid') }
+  }
+  if (value.toolActivities !== undefined) {
+    if (!Array.isArray(value.toolActivities) || value.toolActivities.length > 1000) throw corrupt('tool activities are invalid')
+    for (const item of value.toolActivities) { if (!plainObject(item)) throw corrupt('tool activity is invalid'); exactKeys(item,['toolCallId','name','status','summary','startedAt','completedAt'],['toolCallId','name','status','startedAt']); normalizePiMessageId(item.toolCallId); workflowId(item.name,'name'); if (!['running','completed','failed','cancelled','interrupted'].includes(String(item.status))) throw corrupt('tool status is invalid'); checkedTimestamp(item.startedAt,'startedAt'); if (item.completedAt !== undefined) checkedTimestamp(item.completedAt,'completedAt'); if (item.summary !== undefined && (typeof item.summary !== 'string' || item.summary.length > 240 || SECRET_PATTERNS.some(pattern => pattern.test(item.summary as string)))) throw corrupt('tool summary is invalid') }
+  }
   const state = value.lifecycle as AcceptedRequestLifecycle
+  if (state === 'needs_clarification' && (!plainObject(value.dispatchEnvelope) || !plainObject(value.dispatchEnvelope.clarification) || value.workflowRunId !== undefined || value.startedAt !== undefined)) throw corrupt('clarification state is invalid')
   if (state === 'accepted' && (value.dispatchAttemptedAt !== undefined || value.workflowRunId !== undefined || value.reservedWorkflowRunId !== undefined || value.workflowSubject !== undefined || value.workflowTitleCandidate !== undefined || value.startedAt !== undefined || value.failureCode !== undefined || value.outcome !== undefined || value.outcomeReasonCode !== undefined || value.dispatchStatus !== undefined || value.finishedAt !== undefined)) throw corrupt('accepted request has invalid lifecycle fields')
   if (state === 'submitting' && (value.dispatchAttemptedAt === undefined || value.workflowRunId !== undefined || value.startedAt !== undefined || value.failureCode !== undefined || value.outcome !== undefined || value.outcomeReasonCode !== undefined || value.finishedAt !== undefined)) throw corrupt('submitting request has invalid lifecycle fields')
   if (state === 'ready_for_chat' && (value.operation !== 'prompt' || value.dispatchAttemptedAt === undefined || value.workflowRunId !== undefined || value.reservedWorkflowRunId !== undefined || value.startedAt !== undefined || value.failureCode !== undefined || value.outcome !== undefined || value.outcomeReasonCode !== undefined || !['free_research', 'skill_plan'].includes(String(value.dispatchStatus)) || value.finishedAt !== undefined)) throw corrupt('ready_for_chat request has invalid lifecycle fields')
@@ -814,3 +893,8 @@ function corrupt(message: string, cause?: unknown): ConversationStateStoreError 
 function io(message: string, cause: unknown): ConversationStateStoreError { return new ConversationStateStoreError('io', message, { cause }) }
 function capacity(message: string): ConversationStateStoreError { return new ConversationStateStoreError('capacity', message) }
 function isNotFound(error: unknown): boolean { return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT' }
+
+function assertSafeEnvelope(value: unknown): void {
+  const text = JSON.stringify(value)
+  if (text.length > 1000000 || SECRET_PATTERNS.some(pattern => pattern.test(text))) throw invalid('dispatch envelope is oversized or contains credentials')
+}

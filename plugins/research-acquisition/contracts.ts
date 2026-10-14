@@ -1,3 +1,4 @@
+import type { ResearchFetchOptions } from './deadlines.ts'
 export type ResearchSourceKind = 'official_disclosure' | 'structured_data' | 'news' | 'rss' | 'web_article'
 export type ResearchSourceTier = 1 | 2 | 3 | 4 | 5
 
@@ -80,8 +81,8 @@ export type ResearchAcquisitionRequest =
 export interface ResearchAcquisitionPlugin {
   readonly name: string
   discover(request: ResearchAcquisitionRequest, signal?: AbortSignal): Promise<readonly ResearchSourceCandidate[]>
-  fetch(candidate: ResearchSourceCandidate, signal?: AbortSignal): Promise<ResearchFetchedSource>
-  normalize(source: ResearchFetchedSource, signal?: AbortSignal): Promise<NormalizedResearchSource>
+  fetch(candidate: ResearchSourceCandidate, signal?: AbortSignal, options?: ResearchFetchOptions): Promise<ResearchFetchedSource>
+  normalize(source: ResearchFetchedSource, signal?: AbortSignal, options?: ResearchFetchOptions): Promise<NormalizedResearchSource>
 }
 
 export type AcquisitionPayloadStatus = 'usable' | 'empty' | 'failed'

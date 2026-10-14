@@ -49,6 +49,19 @@ test('writes an atomic versioned snapshot and reads it by runId', async () => {
   } finally { await f.close() }
 })
 
+test('acquisition observations persist safely with stable ids and reject duplicate or oversized collections', async () => {
+  const f = await fixture()
+  try {
+    const acquisition = { activityId: 'cninfo-download-1', providerId: 'cninfo', step: 'download' as const, status: 'running' as const, startedAt: timestamp, sourceTitle: 'Annual report' }
+    await f.store.write({ ...workflow(), acquisitionActivities: [acquisition] })
+    assert.deepEqual((await f.store.read('observation-run-1'))?.workflow.acquisitionActivities, [acquisition])
+    await expectStoreError(() => f.store.write({ ...workflow('duplicate'), acquisitionActivities: [acquisition, acquisition] }), 'invalid_input')
+    await expectStoreError(() => f.store.write({ ...workflow('oversized'), acquisitionActivities: Array.from({ length: 501 }, (_, index) => ({ ...acquisition, activityId: `download-${index}` })) }), 'invalid_input')
+    await f.store.write({ ...workflow('safety'), acquisitionActivities: [{ ...acquisition, sourceTitle: 'Bearer TOP_SECRET_VALUE' }] })
+    assert.equal((await f.store.read('safety'))?.workflow.acquisitionActivities?.[0]?.sourceTitle, 'Source')
+  } finally { await f.close() }
+})
+
 test('rejects unsafe run IDs and traversal before constructing a snapshot path', async () => {
   const f = await fixture()
   try {

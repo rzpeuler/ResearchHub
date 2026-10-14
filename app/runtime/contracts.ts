@@ -24,6 +24,7 @@ import type { ThemeFrameworkService } from '../services/theme-framework-service.
 import type { ThemeScopeImpactService } from '../services/theme-scope-impact-service.ts'
 import type { DataSourceAdministrationService } from '../services/data-source-administration-contracts.ts'
 import type { DataSourceOnboardingService } from '../services/data-source-onboarding-store.ts'
+import type { LinkedConversationWorkflow, ConversationToolActivity, AcceptedConversationRequest } from './conversation-state-store.ts'
 import type { SecurityIdentityResolver } from '../services/security-identity-resolver.ts'
 
 export interface SafeConversationSummary {
@@ -44,7 +45,7 @@ export interface SafeConversationActivity {
   readonly operationId: string
   readonly kind: 'accepted_request'
   readonly operation: 'prompt' | 'steer' | 'follow_up'
-  readonly status: 'accepted' | 'submitting' | 'ready_for_chat' | 'started' | 'completed' | 'cancelled' | 'not_started' | 'failed' | 'interrupted'
+  readonly status: 'accepted' | 'submitting' | 'needs_clarification' | 'ready_for_chat' | 'started' | 'completed' | 'cancelled' | 'not_started' | 'failed' | 'interrupted'
   readonly outcome?: 'chat_started' | 'chat_completed' | 'chat_cancelled' | 'workflow_started' | 'workflow_completed' | 'workflow_blocked' | 'workflow_failed' | 'workflow_cancelled' | 'not_started'
   readonly requestText: string
   readonly createdAt: string
@@ -57,6 +58,13 @@ export interface SafeConversationActivity {
   readonly startedAt?: string
   readonly finishedAt?: string
   readonly piMessageId?: string
+  readonly failureCode?: string
+  readonly linkedWorkflows?: readonly LinkedConversationWorkflow[]
+  readonly toolActivities?: readonly ConversationToolActivity[]
+  readonly clarification?: NonNullable<AcceptedConversationRequest['dispatchEnvelope']>['clarification']
+  readonly resolution?: NonNullable<AcceptedConversationRequest['dispatchEnvelope']>['resolution']
+  readonly dispatchStatus?: string
+  readonly dispatchFeedback?: NonNullable<AcceptedConversationRequest['dispatchEnvelope']>['feedback']
 }
 
 export interface SafeConversationMessage {
