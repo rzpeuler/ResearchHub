@@ -1774,7 +1774,8 @@ describe('Homepage shell', () => {
     fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), { target: { value: 'Research 002640' } })
     fireEvent.click(screen.getByRole('button', { name: /Send/ }))
 
-    expect(await screen.findByText(/Workflow · Running · workflow_started/)).toBeTruthy()
+    expect(await screen.findByText(/Workflow · Running/)).toBeTruthy()
+    expect(screen.queryByText(/Workflow · Running · workflow_started/)).toBeNull()
     expect(screen.getAllByText('accepted-run').length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('ResearchHub runtime operation failed')).toBeNull()
     expect((screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).value).toBe('')
