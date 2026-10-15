@@ -53,6 +53,10 @@ const skillRoot = resolve(fileURLToPath(new URL('../../skills/', import.meta.url
 const pathFor = (id: string): string => join(skillRoot, id, 'SKILL.md')
 
 const EXECUTION_CLASS_BY_ID: Readonly<Partial<Record<string, ResearchSkillExecutionClass>>> = {
+  company_history_strategy: 'SEMANTIC_EXECUTABLE',
+  management_governance_analysis: 'SEMANTIC_EXECUTABLE',
+  product_technology_analysis: 'SEMANTIC_EXECUTABLE',
+  company_risk_analysis: 'SEMANTIC_EXECUTABLE',
   business_model_map: 'SEMANTIC_EXECUTABLE',
   business_driver_analysis: 'DETERMINISTIC_EXECUTABLE',
   unit_economics: 'DETERMINISTIC_EXECUTABLE',
@@ -78,6 +82,10 @@ const EXECUTION_CLASS_BY_ID: Readonly<Partial<Record<string, ResearchSkillExecut
 }
 
 const RUNTIME_BINDING_BY_ID: Readonly<Partial<Record<string, string>>> = {
+  company_history_strategy: 'skills/company-research/methods.ts:executeCompanyResearchMethod (company_history_strategy)',
+  management_governance_analysis: 'skills/company-research/methods.ts:executeCompanyResearchMethod (management_governance_analysis)',
+  product_technology_analysis: 'skills/company-research/methods.ts:executeCompanyResearchMethod (product_technology_analysis)',
+  company_risk_analysis: 'skills/company-research/methods.ts:executeCompanyResearchMethod (company_risk_analysis)',
   business_model_map: 'ResearchDispatchService session boundary: methodology + bounded captured result',
   business_driver_analysis: 'skills/business_driver_analysis/calculations.ts:calculateBusinessDriverAnalysis',
   unit_economics: 'skills/unit_economics/calculations.ts:calculateUnitEconomics',
@@ -125,6 +133,12 @@ const entry = (
 ): ResearchSkillCatalogEntry => ({ canonicalSkillId, domain, purpose, invocationMatch, inputs, produces, status, runtimeRegistered, currentSource, currentOwner, migrationAction, notes, executionClass: EXECUTION_CLASS_BY_ID[canonicalSkillId], runtimeBinding: RUNTIME_BINDING_BY_ID[canonicalSkillId], requirementCoverage: REQUIREMENT_COVERAGE_BY_ID[canonicalSkillId] ?? 'NONE', dataRequirements: [] })
 
 const RESEARCH_SKILL_CATALOG_ENTRIES: readonly ResearchSkillCatalogEntry[] = [
+  ...[
+    ['company_history_strategy', 'Explain company history, strategic transitions and attributable outcomes.', 'Company history and strategy questions.'],
+    ['management_governance_analysis', 'Assess management background, control, governance and incentives.', 'Management biography and governance questions.'],
+    ['product_technology_analysis', 'Analyze product differentiation, technology and commercialization.', 'Product and technology competitiveness questions.'],
+    ['company_risk_analysis', 'Assess company-specific risk transmission and monitoring signals.', 'Company risk, counter-evidence and invalidation questions.'],
+  ].map(([id, purpose, match]) => entry(id!, 'Company Economics', purpose!, match!, ['company identity', 'bounded full-text evidence with locations', 'asOf'], ['Chinese analysis', 'evidence-bound findings', 'limitations', 'risks'], 'IMPLEMENTED', true, `skills/${id}/SKILL.md`, 'Company Research Workflow', 'Execute peer atomic semantic method.', 'No acquisition, canonical write or peer Skill invocation.')),
   entry('document_change_analysis', 'Evidence', 'Identify attributable changes between two documents.', 'Use only when two comparable, attributable document versions are supplied; do not infer changes from one document.', ['prior document', 'current document', 'asOf', 'source refs'], ['change set', 'unchanged regions', 'gaps'], 'PLANNED', false, 'None', 'Future Wave', 'Implement a point-in-time document-diff method.', 'No runtime registration.'),
   entry('business_model_map', 'Company Economics', 'Explain how a company makes money and how its segments fit together.', 'Use for how-the-company-makes-money questions; do not use for consolidated driver attribution or unit economics.', ['company identity', 'segments/products', 'source refs', 'asOf'], ['business model map', 'segment relationships', 'source refs'], 'IMPLEMENTED', true, 'Company Research Business Model section', 'Company Research Workflow', 'Register the extracted bounded methodology.', 'The standalone contract preserves the existing evidence-only section boundary.'),
   entry('business_driver_analysis', 'Company Economics', 'Attribute consolidated revenue and profit changes to supplied business drivers.', 'Use for volume/price/mix/segment driver questions; do not use for a generic business model description.', ['period-aligned financials', 'segment/KPI data', 'source refs'], ['driver decomposition', 'contribution diagnostics', 'gaps'], 'IMPLEMENTED', true, 'skills/business_driver_analysis/calculations.ts', 'Company Research Workflow', 'Register the independently callable deterministic driver implementation.', 'Code owns period alignment, supported multiplicative pairs, additive contributions, and residuals.'),

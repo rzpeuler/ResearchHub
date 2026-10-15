@@ -12,6 +12,8 @@ function safeBridgeError(error: unknown): Error {
   return new Error(`AKSHARE_BRIDGE_${code}${detail ? `:${detail}` : ''}`)
 }
 export interface AkshareDataRequest { readonly symbol: string; readonly startDate?: string; readonly endDate?: string; readonly signal?: AbortSignal }
+// Statement acquisition is optional for custom/legacy clients.
+export interface AkshareDataClient { financialStatements?(request: AkshareDataRequest): Promise<unknown> }
 export interface AkshareSecurityDirectoryRequest { readonly symbol?: string; readonly name?: string; readonly exchange?: string; readonly limit?: number; readonly snapshot?: boolean; readonly signal?: AbortSignal }
 export interface AkshareSecurityDirectoryEntry { readonly symbol: string; readonly name: string; readonly exchange: 'SH' | 'SZ' | 'BJ' }
 export type AksharePeerComparisonFamily = 'growth' | 'valuation' | 'dupont' | 'scale'
@@ -30,6 +32,20 @@ elif kind=='financial':
     market_symbol=symbol if symbol.endswith(('.SH','.SZ')) else symbol + ('.SH' if symbol.startswith('6') else '.SZ')
     # EastMoney's XSMLL field is Sales Gross Margin (%); preserve its unit at the adapter boundary.
     value=ak.stock_financial_analysis_indicator_em(symbol=market_symbol).rename(columns={'REPORT_DATE':'report_date','NOTICE_DATE':'publication_date','EPSJB':'basic_eps','TOTALOPERATEREVE':'operating_revenue','PARENTNETPROFIT':'net_profit','XSMLL':'gross_margin_percent'})
+elif kind=='financial-statements':
+    code=symbol.split('.')[0]
+    market_symbol=('SH' if code.startswith('6') else 'SZ')+code
+    frames=[ak.stock_profit_sheet_by_report_em(symbol=market_symbol),ak.stock_balance_sheet_by_report_em(symbol=market_symbol),ak.stock_cash_flow_sheet_by_report_em(symbol=market_symbol)]
+    fields=['REPORT_DATE','NOTICE_DATE','TOTAL_OPERATE_INCOME','PARENT_NETPROFIT','OPERATE_PROFIT','OPERATE_COST','RESEARCH_EXPENSE','TOTAL_ASSETS','TOTAL_LIABILITIES','TOTAL_PARENT_EQUITY','MONETARYFUNDS','ACCOUNTS_RECE','ACCOUNTS_PAYABLE','INVENTORY','NETCASH_OPERATE','CONSTRUCT_LONG_ASSET','SHORT_LOAN','LONG_LOAN','BOND_PAYABLE','NONCURRENT_LIAB_1YEAR']
+    rows={}
+    for frame in frames:
+        for _,row in frame.iterrows():
+            key=str(row.get('REPORT_DATE',''))
+            item=rows.setdefault(key,{'REPORT_DATE':key,'unit':'CNY','currency':'CNY','period_basis':'YTD'})
+            for field in fields:
+                if field in row and row[field] is not None: item[field]=row[field]
+    import pandas as pd
+    value=pd.DataFrame(list(rows.values()))
 elif kind=='valuation-financial':
     market_symbol=symbol if symbol.endswith(('.SH','.SZ')) else symbol + ('.SH' if symbol.startswith('6') else '.SZ')
     value=ak.stock_financial_analysis_indicator_em(symbol=market_symbol).rename(columns={'REPORT_DATE':'report_date','NOTICE_DATE':'aggregator_notice_date','EPSJB':'eps_jb','BPS':'bvps'})
@@ -87,6 +103,7 @@ export class AkshareDataAdapter implements AkshareDataClient {
   constructor(options: AkshareClientOptions = {}) { this.timeoutMs = options.timeoutMs ?? 60_000; this.onCall = options.onCall; this.runner = options.runner ?? (async (script, args, timeoutMs = this.timeoutMs, signal) => (await execFileAsync(options.pythonCommand ?? 'python', ['-c', script, ...args], { timeout: timeoutMs, maxBuffer: 8_000_000, signal, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } })).stdout) }
   companyBasic(request: AkshareDataRequest): Promise<unknown> { return this.run('basic', request) }
   financialData(request: AkshareDataRequest): Promise<unknown> { return this.run('financial', request) }
+  financialStatements(request: AkshareDataRequest): Promise<unknown> { return this.run('financial-statements', request) }
   valuationFinancialIndicators(request: AkshareDataRequest): Promise<unknown> { return this.run('valuation-financial', request) }
   historicalMarketData(request: AkshareDataRequest): Promise<unknown> { return this.run('market', request) }
   historicalMarketDataTencent(request: AkshareDataRequest): Promise<unknown> { return this.run('market-tencent', request) }

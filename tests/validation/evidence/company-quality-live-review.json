@@ -1,0 +1,1425 @@
+{
+  "formatVersion": 1,
+  "latestRound": "round6",
+  "acceptance": "NOT_ACCEPTED",
+  "rounds": [
+    {
+      "generatedAt": "2026-10-14T20:16:04.1061496Z",
+      "executionClass": "real Runtime/API with configured openai-codex/gpt-6-luna; disposable KB; no fixture providers",
+      "round": "round4",
+      "acceptance": "NOT_ACCEPTED",
+      "cases": [
+        {
+          "symbol": "002594",
+          "runId": "b4e9289d-1acf-42ff-9300-c5c72b669490",
+          "reportId": "company-research-002594-b4e9289d-1acf-42ff-9300-c5c72b669490",
+          "reportPath": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-acceptance\\round4\\002594-report.json",
+          "reportSha256": "b44d44becc10f1647f019cbd5e18e84ba28ccf85fc69fa55c65ba87f286b14a7",
+          "passed": false,
+          "coreCoverage": {
+            "completed": 7,
+            "required": 16
+          },
+          "knowledgeIntegrityMode": "disposable_write",
+          "knowledgeUnchanged": true,
+          "methodExecutions": [
+            {
+              "skillId": "company_history_strategy",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "business_model_map",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "product_technology_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "比亚迪产品竞争力的核心逻辑是汽车电动化与垂直整合能力向多品牌汽车、储能及电子制造延伸；刀片电池、闪充和整车智能构成技术迭代主线。研发投入和产业化进展提供支持，但定量性能优势、外部对标与各业务盈利贡献不足，护城河判断应保持审慎。"
+            },
+            {
+              "skillId": "business_driver_analysis",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "financial_quality_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "2026年上半年收入同比下降而净利润降幅更大；经营现金流覆盖净利润，但低于资本开支，且应收与存货增长显著快于收入。现金转化并非单向恶化：应计比率为负、CFO/净利较高；但存货占用和投资支出需持续观察。"
+            },
+            {
+              "skillId": "market_structure_analysis",
+              "status": "complete",
+              "attempts": 2,
+              "summary": "市场结构可定性界定：比亚迪核心暴露于新能源汽车整车及相关产品，另涉动力电池、电子、光伏储能和轨道交通；各市场边界迥异，不应合并为单一TAM。现有材料支持产业链、地域拓展、需求驱动及风险分析，但缺乏同边界可比的货币规模，故不报TAM。",
+              "errorCode": "REFERENCE_ERROR"
+            },
+            {
+              "skillId": "competitive_market_map",
+              "status": "complete",
+              "attempts": 2,
+              "summary": "比亚迪在中国新能源乘用车市场与吉利、长安等存在实际产品替代竞争；特斯拉及智能化方案也构成不同维度的替代压力。其垂直整合、多品牌及规模化普及构成潜在优势，但价格战、竞品迭代与智能化能力追赶是最强反证。资料不足以可靠比较竞品成本、渠道及同口径销量份额，故不作排名或份额推断。",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "management_governance_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "现有年报及半年报足以判断比亚迪治理的核心特征：创始人王传福兼任董事长与总裁，战略与日常经营权集中；创始团队持股且有独立董事及内部控制制度，形成制衡框架，但独立监督有效性和利益冲突处置仍需持续核验。披露未提供完整持股控制链、激励兑现结果及可归因经营指标，不能据此断言管理能力或承诺兑现。"
+            },
+            {
+              "skillId": "capital_allocation_review",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "company_risk_analysis",
+              "status": "complete",
+              "attempts": 2,
+              "summary": "比亚迪的核心风险集中在新能源汽车竞争加剧与销量/产品竞争力、成本和盈利承压的相互放大；现有材料同时显示经营现金流为正、研发及上游布局等缓冲。结论若竞争优势维持、库存和应收周转改善且政策与成本冲击可控则较稳；若盈利、现金转化和周转持续恶化，风险判断上升。",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            }
+          ],
+          "semanticReviewExecuted": false
+        },
+        {
+          "symbol": "002384",
+          "runId": "483e073b-5fa7-4255-b650-af23147e2287",
+          "reportId": "company-research-002384-483e073b-5fa7-4255-b650-af23147e2287",
+          "reportPath": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-acceptance\\round4\\002384-report.json",
+          "reportSha256": "003294fcc088775ac715352c4422ff648a15750fd42e7b0a66b7c079c7528f4e",
+          "passed": false,
+          "coreCoverage": {
+            "completed": 15,
+            "required": 16
+          },
+          "knowledgeIntegrityMode": "disposable_write",
+          "knowledgeUnchanged": true,
+          "methodExecutions": [
+            {
+              "skillId": "company_history_strategy",
+              "status": "complete",
+              "attempts": 2,
+              "summary": "东山精密的战略路径是由钣金制造起步，经上市后产业升级及跨国并购，扩展为电子电路、精密组件、显示及汽车相关业务；近期再以光模块和AI PCB押注算力硬件。多元化降低单一终端依赖，但并购整合、重资本投入及新业务兑现构成主要风险。",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "business_model_map",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "东山精密的核心模式是面向企业客户的认证准入、按客户订单采购与制造并直销交付，收入来自定制电子器件销售；传统消费电子和汽车部件构成经营底盘，光模块及AI PCB为新增长方向。披露支持客户、产品和渠道判断，但未提供定价公式、具体确认时点及各业务分部财务拆分，不能进一步量化单项盈利贡献。"
+            },
+            {
+              "skillId": "product_technology_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "公司产品组合覆盖电子电路、光模块（含光芯片）、精密组件及光电显示，优势主张集中于AI算力产品协同、客户共研和规模制造；官方材料显示部分光芯片已量产、部分高速芯片仍在研发，AI PCB及新产能处于持续迭代/扩产阶段。证据支持技术布局与商业化并存，但不足以独立验证相对性能、客户认证覆盖和护城河强度。"
+            },
+            {
+              "skillId": "business_driver_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "已披露增长显示强劲收入与利润改善，但量价归因仍不完整：2026年上半年产品结构明显转向精密组件与新增光模块，净利增速高于收入、毛利率提升；并购并表、产能释放及高端产品组合均可能参与，现有资料无法拆分各自贡献。需结合分产品销量/ASP、分部毛利、并表范围和回款跟踪验证。"
+            },
+            {
+              "skillId": "financial_quality_analysis",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "market_structure_analysis",
+              "status": "complete",
+              "attempts": 2,
+              "summary": "市场结构结论：东山精密不宜用单一“电子制造”市场描述，应按PCB（含FPC、高端多层/HDI）、光模块及光芯片、精密组件、显示模组等产品分别界定；已给材料足以说明产业角色和AI相关需求变化，但只有全球PCB整体市场具备带出处的规模数据，不能当作公司可服务TAM，也不能与光模块等市场相加。",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "competitive_market_map",
+              "status": "complete",
+              "attempts": 2,
+              "summary": "东山精密在PCB领域存在可追溯的实际同类竞争者名单，但现有材料主要是报告目录及公司自述，缺少竞品具体产品、客户、成本和渠道对照。可确认竞争范围，不能据此判定排名、份额或可持续优势。",
+              "errorCode": "FORMAT_ERROR"
+            },
+            {
+              "skillId": "management_governance_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "管理层由实际控制人袁永刚任董事长、袁永峰任总经理，兼具长期内部经营经历与控制权集中；有利于决策连续性，但需关注权力制衡与关联利益监督。董事会含独立董事，薪酬由股东会/董事会分层决定；报告期无股权激励。履历和治理信息足以回答核心问题，但承诺兑现及经营结果的可归因证据不足。"
+            },
+            {
+              "skillId": "capital_allocation_review",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "company_risk_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "公司风险分析表明，客户集中、技术/准入迭代、贸易政策和扩张资本占用是首要可追踪风险；2026年上半年利润改善构成反证，但应收、存货、资本开支及负债增速更快，且现金流弱于利润，不能据利润单期反弹消除风险。"
+            }
+          ],
+          "semanticReviewExecuted": false
+        }
+      ],
+      "manualReview": {
+        "002594": [
+          "Company history, business model, growth drivers and capital allocation did not pass source-grounded numeric verification.",
+          "Competition now contains specific Geely and Changan product routes, cost mechanisms, comparability limits and strongest counterevidence.",
+          "Final synthesis degraded; missing core analysis cannot be treated as high-quality research."
+        ],
+        "002384": [
+          "Financial quality and capital allocation failed numeric/provenance validation; independent semantic review was not executed.",
+          "Named PCB peers appear, but peer evidence is predominantly commercial industry-report table of contents. Product, manufacturing and customer overlap comparisons remain substantively unresearched.",
+          "Investment thesis and monitoring checklist explain cash conversion, capex, acquisition attribution, falsification conditions and observation triggers."
+        ]
+      }
+    },
+    {
+      "round": "round5",
+      "generatedAt": "2026-10-15T01:23:32.877Z",
+      "executionClass": "real Runtime/API and configured Pi model; no fixture providers",
+      "acceptance": "NOT_ACCEPTED",
+      "cases": [
+        {
+          "symbol": "002594",
+          "runId": "14d12163-1d0d-42ba-a5ec-3d862184c96b",
+          "status": "blocked",
+          "reportId": "company-research-002594-14d12163-1d0d-42ba-a5ec-3d862184c96b",
+          "researchQuality": {
+            "passed": false,
+            "status": "incomplete",
+            "coreCoverage": {
+              "completed": 10,
+              "required": 16
+            },
+            "issues": [
+              "METHOD_NOT_COMPLETED:product_technology_analysis:failed",
+              "METHOD_NOT_COMPLETED:business_driver_analysis:failed",
+              "METHOD_NOT_COMPLETED:financial_quality_analysis:failed",
+              "METHOD_NOT_COMPLETED:capital_allocation_review:failed",
+              "METHOD_NOT_COMPLETED:product_technology_analysis:failed",
+              "METHOD_NO_RESEARCH_ANSWER:product_technology_analysis",
+              "METHOD_NOT_COMPLETED:business_driver_analysis:failed",
+              "METHOD_NO_RESEARCH_ANSWER:business_driver_analysis",
+              "METHOD_NOT_COMPLETED:financial_quality_analysis:failed",
+              "METHOD_NO_RESEARCH_ANSWER:financial_quality_analysis",
+              "METHOD_NOT_COMPLETED:capital_allocation_review:failed",
+              "METHOD_NO_RESEARCH_ANSWER:capital_allocation_review",
+              "revenue-profit-drivers:RESEARCH_GAP",
+              "revenue-profit-drivers:NO_ATTRIBUTABLE_EVIDENCE",
+              "products:RESEARCH_GAP",
+              "products:NO_ATTRIBUTABLE_EVIDENCE",
+              "technologies:RESEARCH_GAP",
+              "technologies:NO_ATTRIBUTABLE_EVIDENCE",
+              "financial-quality:RESEARCH_GAP",
+              "financial-quality:NO_ATTRIBUTABLE_EVIDENCE",
+              "growth-drivers:RESEARCH_GAP",
+              "growth-drivers:NO_ATTRIBUTABLE_EVIDENCE",
+              "catalysts:RESEARCH_GAP",
+              "catalysts:NO_ATTRIBUTABLE_EVIDENCE"
+            ],
+            "sectionChecks": [
+              {
+                "sectionId": "company-overview",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "business-model",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "business-segments",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "revenue-profit-drivers",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "products",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "technologies",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "industry-exposure",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "supply-chain",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "competition",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "financial-quality",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "growth-drivers",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "management-capital-allocation",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "catalysts",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "risks",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "investment-thesis",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "monitoring-checklist",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              }
+            ]
+          },
+          "knowledgeIntegrityMode": "disposable_write",
+          "knowledgeUnchanged": true,
+          "reportPath": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-acceptance\\round5\\002594-report.json",
+          "reportSha256": "8e526b8ecd58b84bb40f86ded8e31b5962c71850a62aa200af91b692e65d22c5",
+          "analysisPath": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-acceptance\\round5\\002594-analysis.json",
+          "analysisSha256": "a21e455b4a9ab9021ed9e1303b5f956e2dc98e44afeb98ae54a97fded0414f0b",
+          "methodExecutions": [
+            {
+              "skillId": "company_history_strategy",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "证据支持比亚迪由二次充电电池起步，经锂电池、消费电子供应链切入汽车，再以新能源全产业链、乘用车多品牌和智能化及全球化推动转型。战略兑现可见于2024收入与汽车业务增长，但现有材料不足以将增长单独归因于具体战略；后续应验证海外、本地化、智能化变现及现金与库存变化。"
+            },
+            {
+              "skillId": "business_model_map",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "比亚迪是多业务、制造与技术整合型集团，收入主要由汽车及相关产品、手机部件与组装构成；集团披露的主营还涵盖电池、光伏及电子解决方案。现有证据足以识别产品和收入构成，但不足以逐项确认具体付款方、定价公式、交付条件及收入确认节点，故这些不以行业惯例推定。"
+            },
+            {
+              "skillId": "product_technology_analysis",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "FORMAT_ERROR"
+            },
+            {
+              "skillId": "business_driver_analysis",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "financial_quality_analysis",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "market_structure_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "已界定比亚迪主要市场的边界、产业链位置、需求驱动及监管变化。材料不足以形成口径可比的TAM；因此不以公司收入、销量或不同业务市场相加代替行业规模。"
+            },
+            {
+              "skillId": "competitive_market_map",
+              "status": "complete",
+              "attempts": 2,
+              "summary": "证据支持将比亚迪与吉利、长安等中国新能源乘用车厂商视为同一购买场景的竞争者，并可比较产品组合、技术和规模化路径；但客户重叠、价格成本和渠道对照不完整，故不构造市场份额排名或完整同口径竞品矩阵。",
+              "errorCode": "FORMAT_ERROR"
+            },
+            {
+              "skillId": "management_governance_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "证据支持比亚迪创始人王传福兼任董事长、执行董事及总裁，职责覆盖营运和业务策略；治理兼有独立董事及内控制度，但创始人权力集中构成监督挑战。报告未提供足够的股权比例、激励条款和履约结果，无法据此确认利益绑定或承诺兑现。"
+            },
+            {
+              "skillId": "capital_allocation_review",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "company_risk_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "截至所给2026年半年报，风险重心是行业竞争/需求冲击与成本、政策传导；财务上利润同比下滑、存货和应收增加，而经营现金流改善提供反证。公司自述的风险缓释措施与衍生品套保有帮助但不消除风险。若竞争力、回款、库存周转、利润率及政策支持保持稳定，风险判断可下修；若进一步恶化则结论失效。"
+            }
+          ],
+          "sections": [
+            {
+              "id": "company-overview",
+              "characters": 4083,
+              "locatedEvidenceCount": 48
+            },
+            {
+              "id": "business-model",
+              "characters": 1557,
+              "locatedEvidenceCount": 13
+            },
+            {
+              "id": "business-segments",
+              "characters": 1913,
+              "locatedEvidenceCount": 19
+            },
+            {
+              "id": "revenue-profit-drivers",
+              "characters": 66,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "products",
+              "characters": 50,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "technologies",
+              "characters": 54,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "industry-exposure",
+              "characters": 2333,
+              "locatedEvidenceCount": 23
+            },
+            {
+              "id": "supply-chain",
+              "characters": 938,
+              "locatedEvidenceCount": 6
+            },
+            {
+              "id": "competition",
+              "characters": 1994,
+              "locatedEvidenceCount": 16
+            },
+            {
+              "id": "financial-quality",
+              "characters": 59,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "growth-drivers",
+              "characters": 56,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "management-capital-allocation",
+              "characters": 2589,
+              "locatedEvidenceCount": 31
+            },
+            {
+              "id": "catalysts",
+              "characters": 51,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "risks",
+              "characters": 2692,
+              "locatedEvidenceCount": 29
+            },
+            {
+              "id": "valuation",
+              "characters": 101,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "bull-base-bear",
+              "characters": 103,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "variant-perception",
+              "characters": 109,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "investment-thesis",
+              "characters": 965,
+              "locatedEvidenceCount": 10
+            },
+            {
+              "id": "monitoring-checklist",
+              "characters": 1121,
+              "locatedEvidenceCount": 7
+            }
+          ],
+          "sourceAdvice": [],
+          "manualReview": {
+            "symbol": "002594",
+            "runId": "14d12163-1d0d-42ba-a5ec-3d862184c96b",
+            "reviewStatus": "final_report_reviewed",
+            "acceptance": "NOT_ACCEPTED",
+            "findings": [
+              {
+                "severity": "material",
+                "sectionId": "company-overview",
+                "issue": "Incomplete explanation of different founding and legal-registration dates",
+                "evidence": "History packet: official-f7c8d23d2829a5e8@paragraph:3216 explicitly states registration in February 1995; current prose only compares website November 1994 founding with June 2002 share-company reorganization.",
+                "requiredAction": "Disclose all supplied relevant date scopes without replacing actual source text with Hermes or remembered dates."
+              },
+              {
+                "severity": "citation",
+                "sectionId": "supply-chain",
+                "issue": "R&D expense 233.07亿元 and capex 447.03亿元 appear in the final paragraph without their precise financial-source inline citation",
+                "evidence": "Both facts have akshare-financial-002594@paragraph:1 in method findings, but the financial locator is absent from this published section's text.",
+                "requiredAction": "Bind the financial assertions to their existing exact evidence locator."
+              },
+              {
+                "severity": "engineering_blocker",
+                "sectionId": "financial-quality",
+                "issue": "Both semantic attempts rejected amounts with a declared common unit",
+                "evidence": "Both attemptOutputs declare all amounts in 人民币亿元 before comparing 2026H1 and 2025H1 revenue, profit, operating cash flow and capex. Bare amounts 3,448.15, 123.25, 373.35 and 447.03 were rejected despite explicit akshare-financial-002594@paragraph:1 citations and supplied deterministic tables.",
+                "requiredAction": "Verify unit-scope handling against these actual artifacts; preserve rejection of genuinely ungrounded amounts."
+              },
+              {
+                "severity": "material",
+                "sectionId": "business-segments",
+                "issue": "Confirmed false absence claim for product gross margins and customer concentration",
+                "evidence": "2025 annual report official-f7c8d23d2829a5e8: paragraph851 electronics gross margin6.29%; paragraph855 automobile gross margin20.49%; paragraph917 top-five customer sales145648095000CNY; paragraph918 concentration18.12%.",
+                "requiredAction": "Use the complete acquired report to answer the analysis question and give exact locators; do not report these fields as unavailable."
+              },
+              {
+                "severity": "material",
+                "sectionId": "management-capital-allocation",
+                "issue": "Confirmed false absence claim for attributable ownership and employee incentive disclosures",
+                "evidence": "Same 2025 annual report paragraph6998 and10025 Wang Chuanfu ownership17.06%; paragraphs3834-3867 distinguish no director stock-option awards from employee shareholding plans, including the2022 and2024 plans.",
+                "requiredAction": "Discuss dated ownership and actual incentive scope; preserve date/current-term uncertainty without inventing disclosure absence."
+              },
+              {
+                "severity": "material",
+                "sectionId": "financial-quality",
+                "issue": "Rejected draft falsely says capitalized R&D amount is unavailable",
+                "evidence": "Same acquired 2025 annual report paragraph2246 capitalized R&D5463274000CNY versus966219000CNY, paragraph2247 capitalization rate8.61% versus1.78%; draft only cites accounting policy.",
+                "requiredAction": "Read the quantitative disclosure and distinguish annual2025 figures from half-year2026 scope; do not use a policy-only excerpt to declare the amount missing."
+              }
+            ],
+            "positiveObservations": [
+              "History provides strategic transitions, economic mechanisms, counterexplanations and monitoring rather than only a timeline.",
+              "Business model distinguishes automobile and electronics revenue, compares 2024/2025 and avoids treating battery/solar as separately disclosed income segments.",
+              "Rejected financial draft distinguishes cumulative half-year cash flows from balance-sheet dates and separates year-on-year comparisons from changes since year end; cash conversion is discussed together with capex and working-capital counterevidence."
+            ],
+            "coreCoverage": {
+              "completed": 10,
+              "required": 16
+            },
+            "reportPath": "C:/Users/Administrator/Desktop/ResearchHub/runtime-data/company-quality-acceptance/round5/002594-report.json",
+            "citationIntegrity": {
+              "inlineOccurrences": 258,
+              "unresolved": [],
+              "check": "Exact candidate plus nonempty one-based source line; entailment manually reviewed separately"
+            }
+          }
+        },
+        {
+          "symbol": "002384",
+          "runId": "f82bd9e2-8266-411a-ba23-50ac33084bef",
+          "status": "blocked",
+          "reportId": "company-research-002384-f82bd9e2-8266-411a-ba23-50ac33084bef",
+          "researchQuality": {
+            "passed": false,
+            "status": "incomplete",
+            "coreCoverage": {
+              "completed": 7,
+              "required": 16
+            },
+            "issues": [
+              "SYNTHESIS_DEGRADED",
+              "METHOD_NOT_COMPLETED:product_technology_analysis:failed",
+              "METHOD_NOT_COMPLETED:business_driver_analysis:failed",
+              "METHOD_NOT_COMPLETED:financial_quality_analysis:failed",
+              "METHOD_NOT_COMPLETED:competitive_market_map:failed",
+              "METHOD_NOT_COMPLETED:product_technology_analysis:failed",
+              "METHOD_NO_RESEARCH_ANSWER:product_technology_analysis",
+              "METHOD_NOT_COMPLETED:business_driver_analysis:failed",
+              "METHOD_NO_RESEARCH_ANSWER:business_driver_analysis",
+              "METHOD_NOT_COMPLETED:financial_quality_analysis:failed",
+              "METHOD_NO_RESEARCH_ANSWER:financial_quality_analysis",
+              "METHOD_NOT_COMPLETED:competitive_market_map:failed",
+              "METHOD_NO_RESEARCH_ANSWER:competitive_market_map",
+              "revenue-profit-drivers:RESEARCH_GAP",
+              "revenue-profit-drivers:NO_ATTRIBUTABLE_EVIDENCE",
+              "products:RESEARCH_GAP",
+              "products:NO_ATTRIBUTABLE_EVIDENCE",
+              "technologies:RESEARCH_GAP",
+              "technologies:NO_ATTRIBUTABLE_EVIDENCE",
+              "competition:RESEARCH_GAP",
+              "competition:NO_ATTRIBUTABLE_EVIDENCE",
+              "financial-quality:RESEARCH_GAP",
+              "financial-quality:NO_ATTRIBUTABLE_EVIDENCE",
+              "growth-drivers:RESEARCH_GAP",
+              "growth-drivers:NO_ATTRIBUTABLE_EVIDENCE",
+              "catalysts:RESEARCH_GAP",
+              "catalysts:NO_ATTRIBUTABLE_EVIDENCE",
+              "investment-thesis:RESEARCH_GAP",
+              "investment-thesis:NO_ATTRIBUTABLE_EVIDENCE",
+              "monitoring-checklist:RESEARCH_GAP",
+              "monitoring-checklist:NO_ATTRIBUTABLE_EVIDENCE"
+            ],
+            "sectionChecks": [
+              {
+                "sectionId": "company-overview",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "business-model",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "business-segments",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "revenue-profit-drivers",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "products",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "technologies",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "industry-exposure",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "supply-chain",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "competition",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "financial-quality",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "growth-drivers",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "management-capital-allocation",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "catalysts",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "risks",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "investment-thesis",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "monitoring-checklist",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              }
+            ]
+          },
+          "knowledgeIntegrityMode": "disposable_write",
+          "knowledgeUnchanged": true,
+          "reportPath": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-acceptance\\round5\\002384-report.json",
+          "reportSha256": "7829e69b68841ff932b18bc1dcc169336dd3335b04dce677c903499707750ab3",
+          "analysisPath": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-acceptance\\round5\\002384-analysis.json",
+          "analysisSha256": "3ee6a9965af33cd0ff418a34ea89d3bd8d8cf836017da45bfb79be89ad403340",
+          "methodExecutions": [
+            {
+              "skillId": "company_history_strategy",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "东山精密的战略路径可概括为从精密制造基础出发，借并购扩展FPC、PCB及全球客户与产能，再转向汽车零部件及AI相关高端PCB、光模块。其收入基础因多业务拓宽而增强，但目前AI赛道投资和跨国并购的回报兑现尚待验证；扩产、整合及融资对现金流和负债形成更高要求。"
+            },
+            {
+              "skillId": "business_model_map",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "东山精密以认证准入后的企业直销为核心，出售定制化电子制造器件及组件；收入随客户采购交付形成，但现有材料未能完整核实合同定价、控制权转移条款及分部收入利润。传统电子电路、精密组件、光电显示与汽车业务构成经营底盘，光模块（含光芯片）及AI PCB是扩展方向。关键约束是客户集中、定制生产的供应链依赖、扩产投入及回款/营运资金压力。"
+            },
+            {
+              "skillId": "product_technology_analysis",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "business_driver_analysis",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "financial_quality_analysis",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "market_structure_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "东山精密处于多条电子制造产业链的中游，宜按PCB、光模块/光芯片、精密组件及显示模组分别界定，不将其行业规模相加。披露支持全球PCB和光模块的特定口径规模，但不足以计算公司TAM；市场结构分析可定性完成。"
+            },
+            {
+              "skillId": "competitive_market_map",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "management_governance_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "现有年报与半年报足以勾勒东山精密的核心管理分工、家族控制、董事会安排和激励现状。创始控制人与经营职责集中有利于决策执行，但也带来权力制衡与关联利益监督要求。履历和披露尚不足以验证管理能力或承诺兑现；资本配置回报亦无法归因。"
+            },
+            {
+              "skillId": "capital_allocation_review",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "东山精密资本配置呈现“持续研发、扩产与收购整合并行，经营现金支撑但外部融资参与加深”的特征。2025年投资活动净流出扩大、筹资净流入转正；2026年上半年资本开支高于经营现金流，流动性与杠杆成为重要约束。公司披露扩产进度及技术布局，但缺少项目投入明细、归因增量回报和明确回报门槛，因此不能据此判断研发或资本开支已创造价值。"
+            },
+            {
+              "skillId": "company_risk_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "风险研究结论：截至2026年中报，最核心的公司特定风险是客户集中、技术/客户导入迭代、国际贸易与汇率敞口，以及扩张背景下现金转化和杠杆承压。公司披露多元业务、客户协同、研发和套保等缓释措施，但其有效性尚不能由现有材料充分验证。若客户结构持续分散、现金流追上利润增长、资本开支回报兑现且贸易/汇兑影响可控，风险判断可下修；反之应上修。治理及竞争者定量对照证据不足，相关判断保持有限。"
+            }
+          ],
+          "sections": [
+            {
+              "id": "company-overview",
+              "characters": 3096,
+              "locatedEvidenceCount": 18
+            },
+            {
+              "id": "business-model",
+              "characters": 1047,
+              "locatedEvidenceCount": 8
+            },
+            {
+              "id": "business-segments",
+              "characters": 1646,
+              "locatedEvidenceCount": 15
+            },
+            {
+              "id": "revenue-profit-drivers",
+              "characters": 66,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "products",
+              "characters": 50,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "technologies",
+              "characters": 54,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "industry-exposure",
+              "characters": 2358,
+              "locatedEvidenceCount": 23
+            },
+            {
+              "id": "supply-chain",
+              "characters": 1278,
+              "locatedEvidenceCount": 9
+            },
+            {
+              "id": "competition",
+              "characters": 53,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "financial-quality",
+              "characters": 59,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "growth-drivers",
+              "characters": 56,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "management-capital-allocation",
+              "characters": 5482,
+              "locatedEvidenceCount": 55
+            },
+            {
+              "id": "catalysts",
+              "characters": 51,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "risks",
+              "characters": 1880,
+              "locatedEvidenceCount": 15
+            },
+            {
+              "id": "valuation",
+              "characters": 51,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "bull-base-bear",
+              "characters": 60,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "variant-perception",
+              "characters": 60,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "investment-thesis",
+              "characters": 59,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "monitoring-checklist",
+              "characters": 62,
+              "locatedEvidenceCount": 0
+            }
+          ],
+          "sourceAdvice": [],
+          "manualReview": {
+            "symbol": "002384",
+            "runId": "f82bd9e2-8266-411a-ba23-50ac33084bef",
+            "reviewStatus": "final_report_reviewed",
+            "acceptance": "NOT_ACCEPTED",
+            "coreCoverage": {
+              "completed": 7,
+              "required": 16
+            },
+            "reportPath": "C:/Users/Administrator/Desktop/ResearchHub/runtime-data/company-quality-acceptance/round5/002384-report.json",
+            "findings": [
+              {
+                "severity": "material",
+                "sectionId": "business-model",
+                "issue": "False absence claim for revenue recognition: report cites only heading and declares recognition terms unavailable",
+                "evidence": "official-296fff2b2889c26f@paragraph:3929-3932 immediately following cited heading3928 disclose point-in-time sales, domestic delivery and acceptance, export customs/bill-of-lading and right-to-payment conditions."
+              },
+              {
+                "severity": "material",
+                "sectionId": "business-segments",
+                "issue": "Missing disclosed segment economics replaced by consolidated totals and false absence claims",
+                "evidence": "Same2026H1 report paragraphs774-777 contain product revenues and comparable growth;797-800 gross margins: circuits18.80%, precision components12.13%, optical modules39.33%, display5.89%;781 export revenue share83.20%;802-803 domestic/export margins9.76%/22.25%. Segment net-profit attribution may be unavailable, but disclosed revenue/gross margin is available."
+              },
+              {
+                "severity": "material",
+                "sectionId": "management-capital-allocation",
+                "issue": "Capital allocation omits major current acquisitions and falsely says consideration/funding unavailable",
+                "evidence": "official-39e591fa149e4543@8686-8693 provides Source Photonics equity maximum6.29USD100m, ESOP maximum0.58USD100m, acquisition loans+own funds, and GMD transaction context;8704 discloses GMD merger cost509852353.60CNY and Source Photonics4358975888.59CNY. Published capital discussion mainly uses historicalMFLEX and progress statements."
+              },
+              {
+                "severity": "comparability",
+                "sectionId": "supply-chain",
+                "issue": "Gross-margin improvement inferred from FY2025 versus H1FY2026 rather than same-period comparison",
+                "evidence": "Published table compares FY2025 gross margin14.09% with2026H1 20.15% and describes improvement, without a seasonality limitation; supplied2025H1 comparator13.59% supports properH1-to-H1 comparison."
+              },
+              {
+                "severity": "engineering_blocker",
+                "sectionId": "financial-quality",
+                "issue": "Declared-common-unit table amounts rejected as unsupported numbers",
+                "evidence": "Both driver attempts reject product revenue125.30/65.81/53.51/27.23; financial second attempt rejects277.98/169.55/29.57/7.58/etc despite supplied source and deterministic values. First financial attempt exceeded24finding contract; competitor failed on source-article2019date anchors."
+              }
+            ],
+            "positiveObservations": [
+              "Core customer certification, customization, purchasing and supplier-change mechanisms are explained with causal implications.",
+              "Governance distinguishes company assertions from independent proof and family control from accusations.",
+              "Capital and risk passages explain funding gaps and residual risk rather than equating growth with value, but critical available acquisition data is omitted."
+            ],
+            "citationIntegrity": {
+              "inlineOccurrences": 191,
+              "unresolved": [],
+              "check": "Exact candidate plus nonempty one-based source line; entailment manually reviewed separately"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "round": "round6",
+      "generatedAt": "2026-10-15T06:00:39.774Z",
+      "executionClass": "real Runtime/API and configured Pi model; no fixture providers",
+      "acceptance": "NOT_ACCEPTED",
+      "cases": [
+        {
+          "symbol": "002594",
+          "runId": "2cc26d57-c184-43b1-8be5-343c6f0ab62c",
+          "status": "blocked",
+          "reportId": "company-research-002594-2cc26d57-c184-43b1-8be5-343c6f0ab62c",
+          "researchQuality": {
+            "passed": false,
+            "status": "incomplete",
+            "coreCoverage": {
+              "completed": 6,
+              "required": 16
+            },
+            "issues": [
+              "SYNTHESIS_DEGRADED",
+              "METHOD_NOT_COMPLETED:company_history_strategy:failed",
+              "METHOD_NOT_COMPLETED:product_technology_analysis:failed",
+              "METHOD_NOT_COMPLETED:financial_quality_analysis:failed",
+              "METHOD_NOT_COMPLETED:market_structure_analysis:failed",
+              "METHOD_NOT_COMPLETED:competitive_market_map:failed",
+              "METHOD_NOT_COMPLETED:management_governance_analysis:failed",
+              "METHOD_NOT_COMPLETED:capital_allocation_review:failed",
+              "METHOD_NOT_COMPLETED:company_risk_analysis:failed",
+              "METHOD_NOT_COMPLETED:company_history_strategy:failed",
+              "METHOD_NO_RESEARCH_ANSWER:company_history_strategy",
+              "METHOD_SUMMARY_WITHOUT_LOCATED_EVIDENCE:company_history_strategy",
+              "METHOD_NOT_COMPLETED:product_technology_analysis:failed",
+              "METHOD_NO_RESEARCH_ANSWER:product_technology_analysis",
+              "METHOD_SUMMARY_WITHOUT_LOCATED_EVIDENCE:product_technology_analysis",
+              "METHOD_NOT_COMPLETED:financial_quality_analysis:failed",
+              "METHOD_NO_RESEARCH_ANSWER:financial_quality_analysis",
+              "METHOD_SUMMARY_WITHOUT_LOCATED_EVIDENCE:financial_quality_analysis",
+              "METHOD_NOT_COMPLETED:market_structure_analysis:failed",
+              "METHOD_NO_RESEARCH_ANSWER:market_structure_analysis",
+              "METHOD_SUMMARY_WITHOUT_LOCATED_EVIDENCE:market_structure_analysis",
+              "METHOD_NOT_COMPLETED:competitive_market_map:failed",
+              "METHOD_NO_RESEARCH_ANSWER:competitive_market_map",
+              "METHOD_SUMMARY_WITHOUT_LOCATED_EVIDENCE:competitive_market_map",
+              "METHOD_NOT_COMPLETED:management_governance_analysis:failed",
+              "METHOD_NO_RESEARCH_ANSWER:management_governance_analysis",
+              "METHOD_SUMMARY_WITHOUT_LOCATED_EVIDENCE:management_governance_analysis",
+              "METHOD_NOT_COMPLETED:capital_allocation_review:failed",
+              "METHOD_NO_RESEARCH_ANSWER:capital_allocation_review",
+              "METHOD_SUMMARY_WITHOUT_LOCATED_EVIDENCE:capital_allocation_review",
+              "METHOD_NOT_COMPLETED:company_risk_analysis:failed",
+              "METHOD_NO_RESEARCH_ANSWER:company_risk_analysis",
+              "METHOD_SUMMARY_WITHOUT_LOCATED_EVIDENCE:company_risk_analysis",
+              "METHOD_RISKS_NOT_EXPLAINED",
+              "company-overview:RESEARCH_GAP",
+              "company-overview:NO_ATTRIBUTABLE_EVIDENCE",
+              "products:RESEARCH_GAP",
+              "products:NO_ATTRIBUTABLE_EVIDENCE",
+              "technologies:RESEARCH_GAP",
+              "technologies:NO_ATTRIBUTABLE_EVIDENCE",
+              "industry-exposure:RESEARCH_GAP",
+              "industry-exposure:NO_ATTRIBUTABLE_EVIDENCE",
+              "competition:RESEARCH_GAP",
+              "competition:NO_ATTRIBUTABLE_EVIDENCE",
+              "financial-quality:RESEARCH_GAP",
+              "financial-quality:NO_ATTRIBUTABLE_EVIDENCE",
+              "management-capital-allocation:RESEARCH_GAP",
+              "management-capital-allocation:NO_ATTRIBUTABLE_EVIDENCE",
+              "risks:RESEARCH_GAP",
+              "risks:NO_ATTRIBUTABLE_EVIDENCE",
+              "investment-thesis:RESEARCH_GAP",
+              "investment-thesis:NO_ATTRIBUTABLE_EVIDENCE",
+              "monitoring-checklist:RESEARCH_GAP",
+              "monitoring-checklist:NO_ATTRIBUTABLE_EVIDENCE"
+            ],
+            "sectionChecks": [
+              {
+                "sectionId": "company-overview",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "business-model",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "business-segments",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "revenue-profit-drivers",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "products",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "technologies",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "industry-exposure",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "supply-chain",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "competition",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "financial-quality",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "growth-drivers",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "management-capital-allocation",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "catalysts",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "risks",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "investment-thesis",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "monitoring-checklist",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              }
+            ]
+          },
+          "knowledgeIntegrityMode": "disposable_write",
+          "knowledgeUnchanged": true,
+          "terminalReason": "RATE_LIMIT_OR_QUOTA",
+          "reportPath": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-acceptance\\round6\\002594-report.json",
+          "reportSha256": "e9fd486d650c200db3ec4e811f011878407e2735e4e9250e8524b8c5a9c39e54",
+          "analysisPath": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-acceptance\\round6\\002594-analysis.json",
+          "analysisSha256": "b83caf1d35ca6494af121a5b2d983dfc0f5fa4bc61498d57dd741480ea213db7",
+          "methodExecutions": [
+            {
+              "skillId": "company_history_strategy",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "business_model_map",
+              "status": "complete",
+              "attempts": 2,
+              "summary": "比亚迪以整车、手机部件与组装、电池及光伏等产品向终端消费者和企业客户销售，主要按合同商品对价变现，交付并由客户接受、取得控制权时确认商品收入。汽车相关业务规模最大，但具体分部客户身份、渠道收入拆分、单品定价机制及分部利润未在所给材料中完整披露；垂直整合与规模化有协同潜力，也伴随高投入和库存风险。",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "product_technology_analysis",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "business_driver_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "收入变化可按合并及分部披露作方向性解释，但现有量价资料不足以完成销量、售价、组合的定量拆解。2026年上半年收入与利润同比下降，汽车业务收入回落；毛利率改善而净利率下降，显示成本率之外仍有费用或其他损益因素待核。2025全年收入微增、利润下滑；增长条件主要是汽车需求与海外拓展，以及电子/算力相关业务兑现，须以销量、分部收入毛利、成本和现金指标跟踪。"
+            },
+            {
+              "skillId": "financial_quality_analysis",
+              "status": "failed",
+              "attempts": 1,
+              "summary": "",
+              "errorCode": "RATE_LIMIT_OR_QUOTA"
+            },
+            {
+              "skillId": "market_structure_analysis",
+              "status": "failed",
+              "attempts": 1,
+              "summary": "",
+              "errorCode": "RATE_LIMIT_OR_QUOTA"
+            },
+            {
+              "skillId": "competitive_market_map",
+              "status": "failed",
+              "attempts": 0,
+              "summary": "",
+              "errorCode": "RATE_LIMIT_OR_QUOTA"
+            },
+            {
+              "skillId": "management_governance_analysis",
+              "status": "failed",
+              "attempts": 0,
+              "summary": "",
+              "errorCode": "RATE_LIMIT_OR_QUOTA"
+            },
+            {
+              "skillId": "capital_allocation_review",
+              "status": "failed",
+              "attempts": 0,
+              "summary": "",
+              "errorCode": "RATE_LIMIT_OR_QUOTA"
+            },
+            {
+              "skillId": "company_risk_analysis",
+              "status": "failed",
+              "attempts": 0,
+              "summary": "",
+              "errorCode": "RATE_LIMIT_OR_QUOTA"
+            }
+          ],
+          "sections": [
+            {
+              "id": "company-overview",
+              "characters": 58,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "business-model",
+              "characters": 1593,
+              "locatedEvidenceCount": 15
+            },
+            {
+              "id": "business-segments",
+              "characters": 1841,
+              "locatedEvidenceCount": 15
+            },
+            {
+              "id": "revenue-profit-drivers",
+              "characters": 2738,
+              "locatedEvidenceCount": 23
+            },
+            {
+              "id": "products",
+              "characters": 50,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "technologies",
+              "characters": 54,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "industry-exposure",
+              "characters": 59,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "supply-chain",
+              "characters": 1491,
+              "locatedEvidenceCount": 15
+            },
+            {
+              "id": "competition",
+              "characters": 53,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "financial-quality",
+              "characters": 59,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "growth-drivers",
+              "characters": 1620,
+              "locatedEvidenceCount": 17
+            },
+            {
+              "id": "management-capital-allocation",
+              "characters": 73,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "catalysts",
+              "characters": 1530,
+              "locatedEvidenceCount": 13
+            },
+            {
+              "id": "risks",
+              "characters": 47,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "valuation",
+              "characters": 51,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "bull-base-bear",
+              "characters": 60,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "variant-perception",
+              "characters": 60,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "investment-thesis",
+              "characters": 59,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "monitoring-checklist",
+              "characters": 62,
+              "locatedEvidenceCount": 0
+            }
+          ],
+          "sourceAdvice": [],
+          "manualReview": {
+            "symbol": "002594",
+            "runId": "2cc26d57-c184-43b1-8be5-343c6f0ab62c",
+            "status": "blocked",
+            "acceptance": "NOT_ACCEPTED",
+            "coreCoverage": {
+              "completed": 6,
+              "required": 16
+            },
+            "independentSemanticReviewExecuted": false,
+            "canonicalWriteVerified": false,
+            "knowledgeUnchanged": true,
+            "terminalReason": "RATE_LIMIT_OR_QUOTA",
+            "findings": [
+              {
+                "severity": "external_blocker",
+                "issue": "Financial and market methods hit the configured model usage limit; competition, management, capital and risk were not invoked. This is not evidence those research questions were answered."
+              },
+              {
+                "severity": "method_failure",
+                "sectionId": "company-overview",
+                "issue": "History exhausted two attempts: excessive findings first, then an ungrounded 2002 legal-reorganization claim. No validated published history remains; the 1994/1995/2002 date distinction is not accepted."
+              },
+              {
+                "severity": "method_failure",
+                "sectionId": "products",
+                "issue": "Both product attempts failed on the 2025 year in the patent-count claim. Product and technology coverage remains incomplete; supplied source years must be precisely attributable."
+              },
+              {
+                "severity": "false_missing_claim",
+                "sectionId": "business-segments",
+                "issue": "Published business text still says channels including direct sale, dealer and export cannot be quantified. The already acquired 2025 annual report discloses direct sale45.67% and dealer54.33% at official-f7c8d23d2829a5e8@paragraph:829-830, and overseas revenue38.65% at827. Regional revenue does not equal automobile exports, and channel commission may be unavailable, but the blanket absence claim is too broad."
+              },
+              {
+                "severity": "causal_overreach",
+                "sectionId": "revenue-profit-drivers",
+                "issue": "The report infers a favorable unit-cost/product-mix signal from automotive costs falling faster than revenue. That proves a lower aggregate cost-to-revenue ratio, not lower unit costs; quantity and product mix are explicitly unavailable. Retain the margin observation and avoid attributing unit-cost direction without volume/cost decomposition."
+              },
+              {
+                "severity": "false_missing_claim",
+                "sectionId": "revenue-profit-drivers",
+                "issue": "Confirmed false volume absence claim: cited heading369 is immediately followed by numeric rows370 passenger-car production4479392, sales4545423, sales revenue541917643000CNY and371 commercial-vehicle production57964, sales57013, revenue11780683000CNY. Unit row372 is also cited. The original source contains volume values; capacity label is explicitly defined as production and must not be used for utilization."
+              }
+            ],
+            "positiveObservations": [
+              "Round5 false absence claims for product gross margins and customer concentration are partly repaired: the business section now compares 2024/2025 automotive and electronics revenues and gross margins, and reports top-customer and supplier shares.",
+              "Growth-driver discussion distinguishes geographic revenue from vehicle exports and differentiates annual R&D investment from half-year R&D expenses.",
+              "Business-driver text uses same-half-year product comparisons, includes disclosed R&D capitalization, and separates gross-margin observations from unsupported net-profit attribution."
+            ]
+          }
+        },
+        {
+          "symbol": "002384",
+          "status": "not_started",
+          "reason": "RATE_LIMIT_OR_QUOTA"
+        }
+      ]
+    }
+  ]
+}

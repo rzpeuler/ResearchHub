@@ -101,7 +101,7 @@ test('Wave 4 Skills expose honest semantic or deterministic runtime classificati
   }
   assert.equal(typeof registry.get('expectation_gap')?.runtimeExecutor, 'function')
   const counts = CANONICAL_RESEARCH_SKILL_CATALOG.reduce<Record<string, number>>((out, item) => { out[item.status] = (out[item.status] ?? 0) + 1; return out }, {})
-  assert.deepEqual({ IMPLEMENTED: counts.IMPLEMENTED ?? 0, PARTIAL: counts.PARTIAL ?? 0, PLANNED: counts.PLANNED ?? 0 }, { IMPLEMENTED: 22, PARTIAL: 0, PLANNED: 4 })
+  assert.deepEqual({ IMPLEMENTED: counts.IMPLEMENTED ?? 0, PARTIAL: counts.PARTIAL ?? 0, PLANNED: counts.PLANNED ?? 0 }, { IMPLEMENTED: 26, PARTIAL: 0, PLANNED: 4 })
   assert.equal(registry.get('thesis_refresh')?.runtimeBinding?.includes('executeThesisRefresh'), true)
 })
 

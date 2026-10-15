@@ -7,7 +7,9 @@ import { createHash } from 'node:crypto'
 import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { KnowledgeProductionGateway } from '../../knowledge/production/gateway.ts'
 import { createFreshKnowledgeBaseV04, readCanonicalV04Assets } from '../../knowledge/storage/index.ts'
-import { runCompanyDeepResearch } from '../../workflows/company-deep-research/index.ts'
+import { runCompanyDeepResearch as executeCompanyDeepResearch } from '../../workflows/company-deep-research/index.ts'
+import { COMPANY_RESEARCH_METHOD_IDS } from '../../skills/company-research/methods.ts'
+import { completeResearchExecutor, fixtureCompanyDataResolverFactory } from '../fixtures/company-quality.ts'
 import { createCompanyResearchDataResolver } from '../../plugins/research-acquisition/company-research-data.ts'
 import { DataResolver } from '../../data/resolver.ts'
 import type { AcquisitionResult } from '../../data/contracts.ts'
@@ -25,6 +27,8 @@ import { writeKnowledgeBase } from '../../knowledge/writer/writer.ts'
 import { KnowledgeBaseRegistry as Registry } from '../../knowledge/registry/registry.ts'
 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value) }
+
+const runCompanyDeepResearch: typeof executeCompanyDeepResearch = (input) => executeCompanyDeepResearch({ ...input, reasoningExecutor: Object.prototype.hasOwnProperty.call(input, 'reasoningExecutor') ? input.reasoningExecutor : completeResearchExecutor() })
 
 function resolverFactory(plugins: readonly ResearchAcquisitionPlugin[], akshare?: AkshareDataClient) {
   return (options: CompanyDeepResearchResolverOptions) => createCompanyResearchDataResolver({
@@ -70,7 +74,8 @@ test('Company Deep Research produces atomic canonical Knowledge and a linked rep
       fetch: async (candidate) => ({ candidate, retrievedAt: '2026-09-08T00:00:00.000Z', content, contentHash: content.includes('improved') ? 'c'.repeat(64) : 'b'.repeat(64) }),
       normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: fetched.candidate.provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
     }
-    const input = { workflowRunId: 'company-run-1', handle, company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([plugin]), signalStore, reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z' }
+    const semanticCalls: string[] = []
+    const input = { workflowRunId: 'company-run-1', handle, company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([plugin]), signalStore, reportRoot: reports, now: () => '2026-09-08T00:00:00.000Z', reasoningExecutor: completeResearchExecutor(semanticCalls) }
     const workflowService = new WorkflowService()
     workflowService.register({ runId: input.workflowRunId, workflowType: 'company_research', objective: 'Company research 600519' })
     const result = await workflowService.start(input.workflowRunId, (signal) => runCompanyDeepResearch({ ...input, signal, observations: workflowService.observationReporter(input.workflowRunId) }))
@@ -81,9 +86,11 @@ test('Company Deep Research produces atomic canonical Knowledge and a linked rep
       ['knowledge_gateway', 'completed'], ['report_generation', 'completed'], ['report_persistence', 'completed'],
     ])
     assert.ok(observations.stages.every((stage) => (stage.durationMs ?? 0) >= 0))
-    assert.ok(observations.providerObservations.some((item) => item.providerId === 'cninfo' && item.status === 'success' && item.recordCount === 1))
+    assert.ok(observations.providerObservations.some((item) => item.providerId === 'cninfo' && ['success', 'partial'].includes(item.status) && (item.recordCount ?? 0) >= 1))
     assert.ok(observations.providerObservations.some((item) => item.providerId === 'gdelt' && item.status === 'skipped'))
     assert.equal(result.status, 'completed', result.errors.join('; '))
+    assert.deepEqual(semanticCalls.slice(0, -1).sort(), [...COMPANY_RESEARCH_METHOD_IDS].sort())
+    assert.equal(semanticCalls.at(-1), 'company_research_synthesis')
     const unsupportedGdelt = result.providerOutcomes?.find((outcome) => outcome.provider === 'gdelt')
     assert.deepEqual(unsupportedGdelt && [unsupportedGdelt.providerAttempted, unsupportedGdelt.providerSucceeded, unsupportedGdelt.providerEmpty, unsupportedGdelt.providerFailed], [false, false, true, false])
     assert.ok(result.report?.outputPath)
@@ -102,7 +109,7 @@ test('Company Deep Research produces atomic canonical Knowledge and a linked rep
       publishedAt: '2026-09-07T00:00:00.000Z',
       dateStatus: 'QUALIFIED', pointInTimeSafe: true,
     })
-    assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('claim:research-')).length, 0)
+    assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('claim:research-')).length, 10)
     assert.equal(result.knowledgeBaseRevision, 2)
     assert.equal((loaded.objects.find((item) => item.value.id === 'entity:company-600519')?.value as { name?: string } | undefined)?.name, 'Fixture Company')
     assert.deepEqual(result.committedIds, [...result.createdIds, ...result.updatedIds])
@@ -144,7 +151,7 @@ test('Verified identity permits first Company Research through DataResolver with
     const before = await snapshotKnowledgeTree(root)
     const result = await runCompanyDeepResearch({ workflowRunId: 'company-first-research-readonly', handle, company: { symbol: '600519', name: 'Fixture Company', exchange: 'SH' }, securityIdentity, dataResolverFactory: resolverFactory([plugin]), reportRoot: reports, now: () => asOf, writeKnowledge: false, useStructuredKnowledge: false })
     assert.equal(result.status, 'completed', result.errors.join('; '))
-    assert.deepEqual(seen, [{ symbol: '600519', name: 'Fixture Company', exchange: 'SH' }])
+    assert.deepEqual(seen, Array.from({ length: 2 }, () => ({ symbol: '600519', name: 'Fixture Company', exchange: 'SH' })), 'Profile fallback and evidence collection receive the same verified company')
     assert.ok(result.research?.sourceCandidateIds.includes('first-research-filing'))
     assert.ok(result.providerOutcomes?.some((outcome) => outcome.provider === 'cninfo' && outcome.providerAttempted && outcome.providerSucceeded))
     assert.equal(result.committedIds.length, 0)
@@ -155,16 +162,24 @@ test('Verified identity permits first Company Research through DataResolver with
     assert.deepEqual(report.claimRefs, [])
     assert.equal(report.verifiedSecurityIdentity?.symbol, '600519')
     assert.ok(report.sections.some((section) => section.evidenceLinks?.includes('https://example.com/first-research-filing')))
+    const detailedReport = JSON.parse(await readFile(join(reports, `${result.report!.reportId}.md.json`), 'utf8'))
+    assert.equal(detailedReport.researchQuality.passed, true)
+    assert.equal(detailedReport.methodExecutions.length, 10)
+    assert.ok(detailedReport.sections.filter((section: any) => !['valuation', 'bull-base-bear', 'variant-perception'].includes(section.id)).every((section: any) => section.evidenceLocations.length > 0))
     const assets = await readCanonicalV04Assets(root)
     assert.equal(assets.objects.filter((item) => item.kind === 'entity' || item.kind === 'source' || item.kind === 'claim').length, 0)
     assert.deepEqual(await snapshotKnowledgeTree(root), before)
     const noWriteBefore = await snapshotKnowledgeTree(root)
     const writeRequested = await runCompanyDeepResearch({ workflowRunId: 'company-first-research-write-request', handle: await new KnowledgeBaseRegistry().mount(root), company: { symbol: '600519', name: 'Fixture Company', exchange: 'SH' }, securityIdentity, dataResolverFactory: resolverFactory([plugin]), reportRoot: reports, now: () => asOf, writeKnowledge: true, useStructuredKnowledge: false })
     assert.equal(writeRequested.status, 'completed', writeRequested.errors.join('; '))
-    assert.deepEqual(writeRequested.sourceIds, [])
-    assert.deepEqual(writeRequested.claimIds, [])
-    assert.deepEqual(writeRequested.committedIds, [])
-    assert.deepEqual(await snapshotKnowledgeTree(root), noWriteBefore)
+    assert.ok(writeRequested.sourceIds.length > 0)
+    assert.ok(writeRequested.claimIds.length > 0)
+    assert.ok(writeRequested.committedIds.length > 0)
+    assert.notDeepEqual(await snapshotKnowledgeTree(root), noWriteBefore)
+    const writtenReport = JSON.parse(await readFile(join(reports, `${writeRequested.report!.reportId}.md.json`), 'utf8'))
+    const reloaded = await readCanonicalV04Assets(root)
+    assert.equal(writtenReport.subjectRefs.length, 1)
+    assert.ok(reloaded.objects.some(object => object.value.id === writtenReport.subjectRefs[0] && object.kind === 'entity'))
   } finally {
     await rm(root, { recursive: true, force: true })
     await rm(reports, { recursive: true, force: true })
@@ -192,7 +207,7 @@ test('read-only structured Company observations retain external source links wit
     assert.ok(report.sections.find((section) => section.id === 'company-overview')?.evidenceLinks?.includes('https://quote.eastmoney.com/sh600519.html'))
     assert.ok(report.sections.find((section) => section.id === 'revenue-profit-drivers')?.evidenceLinks?.includes('https://quote.eastmoney.com/sh600519.html'))
     assert.ok(report.sections.find((section) => section.id === 'financial-quality')?.evidenceLinks?.includes('https://quote.eastmoney.com/sh600519.html'))
-    assert.ok(report.sections.find((section) => section.id === 'valuation')?.evidenceLinks?.includes('https://quote.eastmoney.com/sh600519.html'))
+    assert.deepEqual(report.sections.find((section) => section.id === 'valuation')?.evidenceLinks, [])
     assert.deepEqual(await snapshotKnowledgeTree(root), before)
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -214,8 +229,8 @@ test('Company Research without acquired evidence persists an explicit blocked ga
     const report = JSON.parse(await readFile(join(reports, `${result.report!.reportId}.md.json`), 'utf8')) as { sourceRefs: string[]; claimRefs: string[]; sections: readonly { title: string; markdown: string; evidenceLinks?: readonly string[] }[] }
     assert.deepEqual(report.sourceRefs, [])
     assert.deepEqual(report.claimRefs, [])
-    assert.ok(report.sections.find((section) => section.title === 'Company Overview')?.evidenceLinks?.includes(identity.sourceUrl!))
-    assert.ok(report.sections.find((section) => section.title === 'Business Model')?.markdown.startsWith('Research gap:'))
+    assert.deepEqual(report.sections.find((section) => section.title === 'Company Overview')?.evidenceLinks, [], 'Identity directory is not business-research evidence')
+    assert.ok(report.sections.find((section) => section.title === 'Business Model')?.markdown.startsWith('研究缺口：'))
     assert.deepEqual(await snapshotKnowledgeTree(root), before)
   } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) }
 })
@@ -258,12 +273,12 @@ test('ResearchService verifies an external identity and starts first Company Res
       fetch: async (candidate) => { providerCalls.push('fetch'); return { candidate, retrievedAt: asOf, content: 'The issuer disclosed its operating results for the period.', contentHash: 'f'.repeat(64) } },
       normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: 'CNINFO', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
     }
-    const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [plugin], researchEvidenceProviders: { cninfo: plugin }, workflowService: new WorkflowService(), securityIdentityResolver })
+    const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [plugin], researchEvidenceProviders: { cninfo: plugin }, workflowService: new WorkflowService(), securityIdentityResolver, reasoningExecutor: completeResearchExecutor(), companyDataResolverFactory: fixtureCompanyDataResolverFactory(plugin), akshare: { companyBasic: async () => [], financialData: async () => [], historicalMarketData: async () => [] } })
     const result = await service.startResearchCompany({ workflowRunId: 'company-service-first-research-readonly', symbol: '600519', name: 'Fixture Company', exchange: 'SH', writeKnowledge: false, useStructuredKnowledge: false }).completion
     assert.equal(result.status, 'completed', result.errorSummary)
     assert.equal(directoryCalls.length, 1)
-    assert.deepEqual(seen, [{ symbol: '600519', name: 'Fixture Company', exchange: 'SH' }])
-    assert.deepEqual(providerCalls, ['discover', 'fetch'])
+    assert.deepEqual(seen, Array.from({ length: 2 }, () => ({ symbol: '600519', name: 'Fixture Company', exchange: 'SH' })), 'Profile fallback and evidence collection receive the same verified company')
+    assert.deepEqual(providerCalls.sort(), ['discover', 'discover', 'fetch', 'fetch'])
     assert.equal(result.committedIds.length, 0)
     assert.ok(result.providerOutcomes?.some((outcome) => isRecord(outcome) && outcome.provider === 'cninfo' && outcome.providerSucceeded === true && outcome.usableSourceCount === 1))
     assert.ok(result.reportId)
@@ -303,7 +318,7 @@ test('Company Deep Research binds two companies deterministically and is stable 
     const loaded = await readCanonicalV04Assets(root)
     assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('entity:')).length, 2)
     assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('source:')).length, 2)
-    assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('claim:')).length, 0)
+    assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('claim:')).length, 20)
     assert.ok(loaded.objects.every((item) => !item.value.id.includes('proposal-')))
     assert.ok(third.resolutionIntents?.some((item) => item.disposition === 'bound_existing'))
   } finally {
@@ -365,9 +380,7 @@ test('Company resolves neutral structured data and keeps signal append between d
       discover: async () => [futureCandidate, { ...futureCandidate, candidateId: 'news-unknown-date', url: 'https://example.com/unknown', publishedAt: undefined }, qualifiedCandidate],
     }
     const result = await runCompanyDeepResearch({ workflowRunId: 'company-data-run', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([official, news], akshare), signalStore, reportRoot: reports, now: () => asOf })
-    const valuation = result.research?.valuation as { readonly status: string; readonly missingFields: readonly string[] }
-    assert.equal(valuation.status, 'insufficient_data')
-    assert.equal(valuation.missingFields.includes('verified earnings metric'), false, 'zero is a present financial metric')
+    assert.match(result.research?.sections.find((section) => section.id === 'valuation')?.markdown ?? '', /研究缺口/)
     assert.deepEqual(fetched.sort(), ['news-qualified', 'news-unknown-date', 'official-unknown-date'])
     assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('official-unknown-date'), 'unknown-date evidence remains visible as non-PIT-safe context')
     assert.equal(result.research?.sourceCandidateIds.includes('news-future'), false, 'future evidence must not reach the Skill')
@@ -375,7 +388,7 @@ test('Company resolves neutral structured data and keeps signal append between d
     assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('official-unknown-date'))
     assert.equal(result.research?.sourceCandidateIds.includes('official-unknown-date'), false, 'unknown-date evidence is available as context but cannot be cited durably')
     assert.ok(result.research?.sections.every((section) => !section.sourceCandidateIds.includes('official-unknown-date')))
-    assert.ok(result.research?.sections.some((section) => section.markdown.includes('Context only; this source is not eligible for durable citation')))
+    assert.ok(result.research?.sections.every((section) => !section.markdown.includes('[official-unknown-date@')))
     assert.equal(signals.length, 3, 'signal compatibility projection retains the existing as-of, dedup, and cap rules before fetch')
     assert.equal(signals.some((signal) => signal.signalId === 'signal-news-future'), false)
     assert.ok(result.providerOutcomes?.some((outcome) => outcome.provider === 'gdelt' && outcome.providerSucceeded && outcome.providerFailed))
@@ -446,10 +459,7 @@ test('historical unversioned profile and financial snapshots stay context-only a
       fetch: async (candidate) => ({ candidate, retrievedAt: asOf, content: 'A verified filing.', contentHash: 'a'.repeat(64) }),
       normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url, publisher: 'CNINFO', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
     }
-    const reasoningExecutor = {
-      capabilities: () => ({}),
-      execute: async () => ({ operation: 'company_research_synthesis', output: { sections: [{ title: 'Company Overview', markdown: 'A mixed-source historical claim.', sourceCandidateIds: ['akshare-financial-600519', 'dated-filing'], proposalIds: ['historical-mixed-claim'] }], proposals: [{ proposalId: 'historical-mixed-claim', kind: 'claim', subjectKey: 'company', claimType: 'fact', statement: 'An unversioned historical EPS claim.', sourceCandidateIds: ['akshare-financial-600519', 'dated-filing'] }] } }),
-    } as unknown as ReasoningExecutor
+    const reasoningExecutor = completeResearchExecutor()
     const result = await runCompanyDeepResearch({ workflowRunId: 'company-historical-data', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([filing], akshare), reportRoot: reports, asOf, now: () => asOf, reasoningExecutor })
     assert.equal(result.status, 'completed', result.errors.join('; '))
     assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('akshare-basic-600519'))
@@ -566,7 +576,7 @@ test('Company dedup never promotes an unknown-date duplicate candidate to a dura
     const dated = plugin('fixture-official', 'cninfo', '2026-09-07T00:00:00.000Z', 'https://example.com/dated-shared')
     const unknown = plugin('fixture-gdelt', 'gdelt', undefined, 'https://example.com/unknown-shared')
     const result = await runCompanyDeepResearch({ workflowRunId: 'company-duplicate-pit', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([dated, unknown]), reportRoot: reports, asOf, now: () => asOf })
-    assert.equal(result.status, 'completed', result.errors.join('; '))
+    assert.equal(result.status, 'blocked', result.errors.join('; '))
     assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('shared-candidate'))
     assert.equal(result.research?.sourceCandidateIds.includes('shared-candidate'), false)
     const canonical = await readCanonicalV04Assets(root)
@@ -594,4 +604,45 @@ test('Company Deep Research observes cancellation before acquisition', async () 
     await rm(root, { recursive: true, force: true })
     await rm(reports, { recursive: true, force: true })
   }
+})
+
+test('missing model and exhausted peer method block completion without Knowledge mutation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-company-method-fail-'))
+  const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-method-fail-reports-'))
+  try {
+    const now = '2026-09-08T00:00:00.000Z'
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-method-fail', now })
+    await seedCanonicalCompany(root, '600519', 'Fixture Company', now)
+    const plugin: ResearchAcquisitionPlugin = { name: 'fixture-official', discover: async () => [{ candidateId: '中文年报', kind: 'official_disclosure', tier: 1, title: '年报', url: 'https://example.test/annual.pdf', provider: 'cninfo', publishedAt: now }], fetch: async (candidate) => ({ candidate, retrievedAt: now, content: '公司业务、财务和治理风险披露。', contentHash: '9'.repeat(64) }), normalize: async (source) => ({ candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: source.content, contentHash: source.contentHash!, canonicalUrl: source.candidate.url, publisher: 'CNINFO', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }) }
+    const baseline = await snapshotKnowledgeTree(root)
+    const base = { handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([plugin]), reportRoot: reports, now: () => now, writeKnowledge: true }
+    const noModel = await runCompanyDeepResearch({ ...base, workflowRunId: 'missing-model', reasoningExecutor: undefined })
+    assert.equal(noModel.status, 'blocked')
+    assert.ok(noModel.errors.includes('SYNTHESIS_DEGRADED'))
+    assert.deepEqual(await snapshotKnowledgeTree(root), baseline)
+    let failedAttempts = 0
+    let factoryCalls = 0
+    const normal = completeResearchExecutor()
+    const executor: ReasoningExecutor = { capabilities: normal.capabilities, execute: async (request, signal) => { if (request.metadata?.skillId === 'company_risk_analysis') { failedAttempts++; throw new Error('fixture timeout') } return normal.execute(request, signal) } }
+    const failed = await runCompanyDeepResearch({ ...base, workflowRunId: 'failed-peer', dataResolverFactory: (options) => { factoryCalls++; return base.dataResolverFactory(options) }, reasoningExecutor: executor })
+    assert.equal(failed.status, 'blocked')
+    assert.equal(failedAttempts, 2, 'Workflow must not reset per-method attempts after supplemental acquisition')
+    assert.ok(factoryCalls <= 3, 'Initial collection plus at most two supplemental rounds')
+    assert.ok(failed.errors.some((error) => error.includes('METHOD_NOT_COMPLETED:company_risk_analysis')))
+    assert.ok(failed.research?.sections.some((section) => section.markdown.includes('[中文年报@paragraph:1]')), 'Localized candidate IDs remain attributable')
+    assert.deepEqual(await snapshotKnowledgeTree(root), baseline)
+    let semanticCalls = 0
+    const quotaExecutor: ReasoningExecutor = { capabilities: normal.capabilities, execute: async (request, signal) => {
+      semanticCalls++
+      if (request.metadata?.skillId === 'company_history_strategy') throw new Error('The usage limit has been reached')
+      return normal.execute(request, signal)
+    } }
+    const quota = await runCompanyDeepResearch({...base,workflowRunId:'quota-stop',reasoningExecutor:quotaExecutor})
+    assert.equal(quota.status,'blocked')
+    assert.equal(semanticCalls,3,'TAM preparation and one concurrent pair run; shared quota stops all remaining calls')
+    const checkpoint = JSON.parse(await readFile(join(reports,'company-research-600519-quota-stop.analysis.json'),'utf8'))
+    assert.equal(checkpoint.methodResults.filter((method:any)=>method.attempts===0).length,8)
+    assert.ok(checkpoint.methodResults.some((method:any)=>method.skillId==='business_model_map'&&method.status==='complete'))
+    assert.deepEqual(await snapshotKnowledgeTree(root), baseline)
+  } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) }
 })

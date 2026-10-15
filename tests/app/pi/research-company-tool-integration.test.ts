@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { completeResearchExecutor, fixtureCompanyDataResolverFactory } from '../../fixtures/company-quality.ts'
+import { verifyCompanyResearchKnowledge } from '../../../scripts/company-quality-knowledge-verification.ts'
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -65,8 +67,7 @@ test('Pi research_company Application Tool completes the real ResearchService Wo
       normalize: async (source) => ({ candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: source.content, contentHash: source.contentHash!, canonicalUrl: source.candidate.url, publisher: 'CNINFO fixture', rights }),
     }
     const workflowService = new WorkflowService()
-    const companySections = ['Company Overview', 'Business Model', 'Business Segments', 'Revenue / Profit Drivers', 'Products', 'Technologies', 'Industry Exposure', 'Supply Chain', 'Competition', 'Financial Quality', 'Growth Drivers', 'Management / Capital Allocation', 'Catalysts', 'Risks', 'Valuation', 'Bull / Base / Bear', 'Variant Perception', 'Investment Thesis', 'Monitoring Checklist']
-    const reasoningExecutor = { capabilities: () => ({ maxContextTokens: 32_000, maxOutputTokens: 4_000, structuredOutputSupport: true, maxConcurrency: 1 }), execute: async (request: { operation: string }) => ({ operation: request.operation, output: { sections: companySections.map((title) => ({ id: title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), title, markdown: `Fixture evidence review for ${title}.`, sourceCandidateIds: ['pi-company-filing'], proposalIds: title === 'Company Overview' ? ['revenue-proposal', 'risk-proposal'] : [] })), proposals: [{ proposalId: 'revenue-proposal', kind: 'claim', subjectKey: 'company', claimType: 'fact', statement: 'FY2025 revenue was 100 CNY in the controlled fixture.', sourceCandidateIds: ['pi-company-filing'] }, { proposalId: 'risk-proposal', kind: 'claim', subjectKey: 'company', claimType: 'risk', statement: 'The controlled fixture identifies a concentration risk.', sourceCandidateIds: ['pi-company-filing'] }] } }) }
+    const reasoningExecutor = completeResearchExecutor()
     const researchService = new ResearchService({
       mountedKnowledgeBaseRoot: root,
       reportRoot: reports,
@@ -76,6 +77,7 @@ test('Pi research_company Application Tool completes the real ResearchService Wo
       workflowService,
       securityIdentityResolver: identityResolver,
       reasoningExecutor: reasoningExecutor as never,
+      companyDataResolverFactory: fixtureCompanyDataResolverFactory(cninfo, undefined, akshare),
     })
     const tools = createResearchHubTools({
       knowledgeService: {} as never,
@@ -126,25 +128,29 @@ test('Pi research_company Application Tool completes the real ResearchService Wo
     assert.ok(authorizedResult.reportId)
     assert.ok((authorizedResult.committedIds?.length ?? 0) > 0)
     const persisted = await readCanonicalV04Assets(root)
-    assert.ok(persisted.objects.some((item) => item.kind === 'claim' && (item.value as { statement?: string }).statement === 'FY2025 revenue was 100 CNY in the controlled fixture.'))
+    assert.ok(persisted.objects.some((item) => item.kind === 'claim' && (item.value as { statement?: string }).statement === '600519 business_model_map 研究判断。'))
     const authorizedReport = await researchService.getResearchReport(authorizedResult.reportId!)
     const registeredRefs = new Set(persisted.registry.map((entry) => entry.id))
     const reportRefs = [...authorizedReport.subjectRefs, ...authorizedReport.sourceRefs, ...authorizedReport.claimRefs]
     assert.ok(reportRefs.every((ref) => registeredRefs.has(ref)), 'authorized report references must resolve through the persisted registry')
+    const rawBackedVerification = await verifyCompanyResearchKnowledge(root, authorizedReport, '600519')
+    assert.ok(rawBackedVerification.verifiedRaw.length > 0)
+    assert.ok(rawBackedVerification.verifiedRaw.every((item) => item.valid && item.sizeBytes > 0))
     const evidenceDirectory = join(process.cwd(), 'tests', 'validation', 'evidence')
     await mkdir(evidenceDirectory, { recursive: true })
-    await writeFile(join(evidenceDirectory, 'RHL-EXEC-003-A-004-FIX-001-pi-default-deny.json'), `${JSON.stringify({
+    await writeFile(join(evidenceDirectory, 'company-quality-pi-default-deny.json'), `${JSON.stringify({
       taskId: 'RHL-EXEC-003-A-004-FIX-001',
       generatedAt: AS_OF,
       execution: 'Pi research_company Application Tool -> ResearchService -> Company Research Workflow -> DataResolver -> Acquisition Plugin -> Skill -> Gateway/Writer when explicitly authorized',
       knowledgeBaseSchema: '0.4',
       existingCompanyRef: 'entity:company-600519',
-      modelGeneratedProposalIds: ['revenue-proposal', 'risk-proposal'],
+      modelGeneratedProposalIds: authorizedReport.claimRefs,
       defaultPolicy: { writeKnowledge: false, workflowStatus: result.status, reportId: result.reportId, sourceRefs: report.sourceRefs, claimRefs: report.claimRefs, beforeTreeSha256: beforeSha256, afterTreeSha256: defaultReadonlySha256 },
       explicitReadOnlyPolicy: { writeKnowledge: false, reportId: readonlyResult.reportId ?? null, beforeTreeSha256: beforeSha256, afterTreeSha256: explicitReadonlySha256 },
       explicitlyAuthorizedPolicy: { writeKnowledge: true, workflowStatus: authorizedResult.status, reportId: authorizedReport.reportId, committedIds: authorizedResult.committedIds, registryResolvedReportRefs: reportRefs },
       httpSessionPolicyInputs: { omitted: false, explicitReadOnly: false, explicitAuthorized: true, followUpDuringAuthorizedPrompt: 'conflict', subsequentOrdinaryPrompt: false },
       secretsIncluded: false,
+      rawBackedVerification,
     }, null, 2)}\n`, 'utf8')
   } finally {
     await rm(root, { recursive: true, force: true })

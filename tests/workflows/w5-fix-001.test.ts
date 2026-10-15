@@ -44,7 +44,7 @@ test('FIX-001 valuation crosscheck reports incompatible comparable basis and una
 test('FIX-001 keeps comps_valuation deterministic and preserves the catalog count', () => {
   assert.equal(CANONICAL_RESEARCH_SKILL_CATALOG.find((item) => item.canonicalSkillId === 'comps_valuation')?.executionClass, 'DETERMINISTIC_EXECUTABLE')
   const counts = CANONICAL_RESEARCH_SKILL_CATALOG.reduce<Record<string, number>>((out, item) => { out[item.status] = (out[item.status] ?? 0) + 1; return out }, {})
-  assert.deepEqual(counts, { IMPLEMENTED: 22, PLANNED: 4 })
+  assert.deepEqual(counts, { IMPLEMENTED: 26, PLANNED: 4 })
 })
 
 function thesisInput(expectationStatus: 'MATERIAL_GAP' | 'NO_MATERIAL_GAP') {

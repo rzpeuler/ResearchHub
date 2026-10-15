@@ -2,6 +2,20 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { CninfoOfficialDisclosureClient, OfficialDisclosureResearchPlugin, cninfoShanghaiCalendarDate } from '../../../plugins/research-acquisition/official.ts'
 
+test('company research targets complete Chinese annuals and interim instead of transactional announcements', async () => {
+  const searches: string[] = []
+  const client = new CninfoOfficialDisclosureClient({ fetchImpl: async (input, init) => {
+    if (String(input).includes('topSearch')) return new Response(JSON.stringify([{ code: '002594', orgId: 'org' }]))
+    const form = init?.body as URLSearchParams
+    searches.push(form.get('searchkey') ?? '')
+    const rows = form.has('category') ? ['2025年年度报告', 'H股公告（2025年年报）', '2024年年度报告', '2025年年度报告摘要', '关于召开2024年年度报告说明会的公告'] : form.get('searchkey') === '2026年半年度报告' ? ['2026年半年度报告英文版', '2026年半年度报告'] : ['投资者关系活动记录表']
+    return new Response(JSON.stringify({ announcements: rows.map((title, i) => ({ announcementTitle: title, adjunctUrl: `/${encodeURIComponent(title)}.PDF`, announcementTime: Date.parse('2026-08-29T00:00:00Z') + i })), hasMore: false }))
+  } })
+  const records = await client.list({ company: { symbol: '002594' }, asOf: '2026-10-14T00:00:00Z', researchPurpose: 'company_research' })
+  assert.deepEqual(records.map((record) => record.title), ['2025年年度报告', '2024年年度报告', '2026年半年度报告', '投资者关系活动记录表'])
+  assert.equal(searches.filter((term) => term === '').length, 2)
+})
+
 test('CNINFO PDF fetch preserves bytes and obtains normalized text only through the Document seam', async () => {
   const bytes = Uint8Array.from([37, 80, 68, 70, 45, 49, 46, 55])
   let parsedBytes: Uint8Array | undefined

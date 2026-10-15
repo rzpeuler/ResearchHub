@@ -1011,3 +1011,21 @@ body { min-width: 0; }
 .linked-workflow-panel { display: grid; gap: 12px; }
 .linked-workflow-card { padding: 12px; border: 1px solid var(--border, #d8d8d8); border-radius: 10px; font-size: 13px; overflow-wrap: anywhere; }
 .linked-workflow-card p { margin: 8px 0; }
+.research-report-quality { margin: 20px 0; padding: 16px; border: 1px solid #2b3d4b; border-radius: 8px; background: #15232c; }
+.research-report-quality.passed { border-left: 4px solid #27844b; }
+.research-report-quality.incomplete { border-left: 4px solid #ae6b1c; }
+.research-report-markdown { line-height: 1.85; overflow-wrap: anywhere; }
+.research-report-markdown p { white-space: pre-line; }
+.research-report-markdown h4 { margin: 20px 0 10px; }
+.research-report-markdown pre { white-space: pre-wrap; padding: 12px; background: #172731; border-radius: 6px; }
+.research-report-table-scroll { overflow-x: auto; margin: 16px 0; }
+.research-report-table-scroll table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.research-report-table-scroll th, .research-report-table-scroll td { border: 1px solid #2b3d4b; padding: 10px 12px; text-align: left; vertical-align: top; min-width: 90px; }
+.research-report-table-scroll th { background: #1b2c38; font-weight: 600; }
+.research-report-citation { display: inline-block; margin: 0 3px; font-size: .8em; }
+.research-report-unresolved { color: #9db0be; font-size: .85em; }
+.research-report-evidence-list { margin: 18px 0; }
+.research-report-evidence { margin: 8px 0; padding: 10px 12px; border: 1px solid #2b3d4b; border-radius: 6px; scroll-margin-top: 24px; }
+.research-report-evidence summary, .research-report-quality summary { cursor: pointer; }
+.research-report-evidence blockquote { margin: 12px 0; padding-left: 12px; border-left: 3px solid #52697a; white-space: pre-wrap; overflow-wrap: anywhere; }
+.research-report-markdown a, .research-report-evidence a { color: #80d8ca; }

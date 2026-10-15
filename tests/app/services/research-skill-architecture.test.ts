@@ -9,9 +9,9 @@ import { ResearchDispatchService } from '../../../app/services/research-dispatch
 import { calculateForwardDcf } from '../../../skills/valuation/calculations/dcf.ts'
 import { calculateBusinessDriverAnalysis } from '../../../skills/business_driver_analysis/calculations.ts'
 
-test('canonical catalog has exactly 26 unique statuses and runtime is a strict implemented subset', () => {
-  assert.equal(CANONICAL_RESEARCH_SKILL_CATALOG.length, 26)
-  assert.equal(new Set(CANONICAL_RESEARCH_SKILL_CATALOG.map((item) => item.canonicalSkillId)).size, 26)
+test('canonical catalog has exactly 30 unique statuses and runtime is a strict implemented subset', () => {
+  assert.equal(CANONICAL_RESEARCH_SKILL_CATALOG.length, 30)
+  assert.equal(new Set(CANONICAL_RESEARCH_SKILL_CATALOG.map((item) => item.canonicalSkillId)).size, 30)
   assert.equal(CANONICAL_RESEARCH_SKILL_CATALOG.every((item) => ['IMPLEMENTED', 'PARTIAL', 'PLANNED'].includes(item.status)), true)
   const registry = createResearchSkillRegistry()
   const catalog = new Map(CANONICAL_RESEARCH_SKILL_CATALOG.map((item) => [item.canonicalSkillId, item]))
@@ -33,8 +33,8 @@ test('runtime registration has an explicit execution classification and determin
   const registry = createResearchSkillRegistry()
   const runtime = registry.canonicalResearchCandidates()
   const counts = CANONICAL_RESEARCH_SKILL_CATALOG.reduce<Record<string, number>>((result, item) => { result[item.status] = (result[item.status] ?? 0) + 1; return result }, {})
-  assert.deepEqual({ IMPLEMENTED: counts.IMPLEMENTED ?? 0, PARTIAL: counts.PARTIAL ?? 0, PLANNED: counts.PLANNED ?? 0 }, { IMPLEMENTED: 22, PARTIAL: 0, PLANNED: 4 })
-  assert.deepEqual(runtime.map((item) => item.id), ['business_driver_analysis', 'business_model_map', 'capital_allocation_review', 'catalyst_map', 'competitive_market_map', 'comps_valuation', 'consensus_expectations_analysis', 'dcf_valuation', 'earnings_variance_analysis', 'estimate_revision_analysis', 'expectation_gap', 'financial_quality_analysis', 'guidance_analysis', 'industry_supply_demand_cycle', 'management_execution', 'market_structure_analysis', 'reverse_dcf_expectation_decode', 'scenario_valuation', 'thesis_formalize', 'thesis_red_team', 'thesis_refresh', 'unit_economics'])
+  assert.deepEqual({ IMPLEMENTED: counts.IMPLEMENTED ?? 0, PARTIAL: counts.PARTIAL ?? 0, PLANNED: counts.PLANNED ?? 0 }, { IMPLEMENTED: 26, PARTIAL: 0, PLANNED: 4 })
+  assert.deepEqual(runtime.map((item) => item.id), ['business_driver_analysis', 'business_model_map', 'capital_allocation_review', 'catalyst_map', 'company_history_strategy', 'company_risk_analysis', 'competitive_market_map', 'comps_valuation', 'consensus_expectations_analysis', 'dcf_valuation', 'earnings_variance_analysis', 'estimate_revision_analysis', 'expectation_gap', 'financial_quality_analysis', 'guidance_analysis', 'industry_supply_demand_cycle', 'management_execution', 'management_governance_analysis', 'market_structure_analysis', 'product_technology_analysis', 'reverse_dcf_expectation_decode', 'scenario_valuation', 'thesis_formalize', 'thesis_red_team', 'thesis_refresh', 'unit_economics'])
   assert.equal(runtime.every((item) => item.executionClass !== undefined && item.runtimeBinding), true)
   assert.equal(runtime.filter((item) => item.executionClass === 'DETERMINISTIC_EXECUTABLE').every((item) => typeof item.runtimeExecutor === 'function'), true)
   assert.equal(runtime.filter((item) => item.executionClass === 'SEMANTIC_EXECUTABLE').every((item) => item.id !== 'comps_valuation' && item.runtimeExecutor === undefined), true)

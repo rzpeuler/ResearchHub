@@ -1,0 +1,124 @@
+{
+  "taskId": "RHL-EXEC-003-A-004-FIX-001",
+  "generatedAt": "2026-10-09T08:00:00.000Z",
+  "execution": "Pi research_company Application Tool -> ResearchService -> Company Research Workflow -> DataResolver -> Acquisition Plugin -> Skill -> Gateway/Writer when explicitly authorized",
+  "knowledgeBaseSchema": "0.4",
+  "existingCompanyRef": "entity:company-600519",
+  "modelGeneratedProposalIds": [
+    "claim:research-5df594d98cb4c35a",
+    "claim:research-00adacc6e05775c6",
+    "claim:research-e0235d1a22509e5f",
+    "claim:research-f5e5ba01b0b10191",
+    "claim:research-68b5afebf924153c",
+    "claim:research-04c7c7c6862752d6",
+    "claim:research-c6e2787fada25839",
+    "claim:research-ee48b7fd1b45d335",
+    "claim:research-40aa0b4ea807029b",
+    "claim:research-4b555bbe19f04d45",
+    "claim:research-12084a4c8c693400"
+  ],
+  "defaultPolicy": {
+    "writeKnowledge": false,
+    "workflowStatus": "completed",
+    "reportId": "company-research-600519-pi-company-tool-run",
+    "sourceRefs": [],
+    "claimRefs": [],
+    "beforeTreeSha256": "8f382097fa1352c31b256288a739fd121318bfec2e54e30a58ac1ea7f07ea887",
+    "afterTreeSha256": "8f382097fa1352c31b256288a739fd121318bfec2e54e30a58ac1ea7f07ea887"
+  },
+  "explicitReadOnlyPolicy": {
+    "writeKnowledge": false,
+    "reportId": "company-research-600519-pi-company-tool-readonly",
+    "beforeTreeSha256": "8f382097fa1352c31b256288a739fd121318bfec2e54e30a58ac1ea7f07ea887",
+    "afterTreeSha256": "8f382097fa1352c31b256288a739fd121318bfec2e54e30a58ac1ea7f07ea887"
+  },
+  "explicitlyAuthorizedPolicy": {
+    "writeKnowledge": true,
+    "workflowStatus": "completed",
+    "reportId": "company-research-600519-pi-company-tool-authorized",
+    "committedIds": [
+      "source:research-56e2e76ac69cc71c",
+      "source:research-2d44f65a78a1b0d9",
+      "source:research-9bfaef1d8358176f",
+      "claim:research-5df594d98cb4c35a",
+      "claim:research-00adacc6e05775c6",
+      "claim:research-e0235d1a22509e5f",
+      "claim:research-f5e5ba01b0b10191",
+      "claim:research-68b5afebf924153c",
+      "claim:research-04c7c7c6862752d6",
+      "claim:research-c6e2787fada25839",
+      "claim:research-ee48b7fd1b45d335",
+      "claim:research-40aa0b4ea807029b",
+      "claim:research-4b555bbe19f04d45",
+      "claim:research-12084a4c8c693400"
+    ],
+    "registryResolvedReportRefs": [
+      "entity:company-600519",
+      "source:research-56e2e76ac69cc71c",
+      "source:research-2d44f65a78a1b0d9",
+      "source:research-9bfaef1d8358176f",
+      "claim:research-5df594d98cb4c35a",
+      "claim:research-00adacc6e05775c6",
+      "claim:research-e0235d1a22509e5f",
+      "claim:research-f5e5ba01b0b10191",
+      "claim:research-68b5afebf924153c",
+      "claim:research-04c7c7c6862752d6",
+      "claim:research-c6e2787fada25839",
+      "claim:research-ee48b7fd1b45d335",
+      "claim:research-40aa0b4ea807029b",
+      "claim:research-4b555bbe19f04d45",
+      "claim:research-12084a4c8c693400"
+    ]
+  },
+  "httpSessionPolicyInputs": {
+    "omitted": false,
+    "explicitReadOnly": false,
+    "explicitAuthorized": true,
+    "followUpDuringAuthorizedPrompt": "conflict",
+    "subsequentOrdinaryPrompt": false
+  },
+  "secretsIncluded": false,
+  "rawBackedVerification": {
+    "knowledgeBaseId": "kb-pi-company-tool",
+    "revision": 2,
+    "registryReferences": [
+      "entity:company-600519",
+      "source:research-56e2e76ac69cc71c",
+      "source:research-2d44f65a78a1b0d9",
+      "source:research-9bfaef1d8358176f",
+      "claim:research-5df594d98cb4c35a",
+      "claim:research-00adacc6e05775c6",
+      "claim:research-e0235d1a22509e5f",
+      "claim:research-f5e5ba01b0b10191",
+      "claim:research-68b5afebf924153c",
+      "claim:research-04c7c7c6862752d6",
+      "claim:research-c6e2787fada25839",
+      "claim:research-ee48b7fd1b45d335",
+      "claim:research-40aa0b4ea807029b",
+      "claim:research-4b555bbe19f04d45",
+      "claim:research-12084a4c8c693400"
+    ],
+    "sourceCount": 3,
+    "claimCount": 11,
+    "verifiedRaw": [
+      {
+        "rawRef": "raw-sha256-657d34aae83d44fa73a8baf444fbc9fb946a07e6d344dbf0de2d8bd99c6fda2f",
+        "contentHash": "sha256:657d34aae83d44fa73a8baf444fbc9fb946a07e6d344dbf0de2d8bd99c6fda2f",
+        "sizeBytes": 58,
+        "valid": true
+      },
+      {
+        "rawRef": "raw-sha256-aa687f01896597fcbcbd89543ab170a72cc1c4f96a52b482f7618c675a076eb4",
+        "contentHash": "sha256:aa687f01896597fcbcbd89543ab170a72cc1c4f96a52b482f7618c675a076eb4",
+        "sizeBytes": 159,
+        "valid": true
+      },
+      {
+        "rawRef": "raw-sha256-c199f08e0b6c865c6b44ece6fd0a3d4bb4973d3cad677e9ff89a17a67850279a",
+        "contentHash": "sha256:c199f08e0b6c865c6b44ece6fd0a3d4bb4973d3cad677e9ff89a17a67850279a",
+        "sizeBytes": 480,
+        "valid": true
+      }
+    ]
+  }
+}

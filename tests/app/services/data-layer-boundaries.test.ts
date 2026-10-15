@@ -181,6 +181,8 @@ function isConcreteWorkflowPluginDependency(specifier: string): boolean {
       '/plugins/research-acquisition/hash.ts',
       '/plugins/research-acquisition/payload-validation.ts',
       '/plugins/reasoning/contracts.ts',
+      // Generic semantic-operation errors carry failure classes, with no host or acquisition capability.
+      '/plugins/reasoning/errors.ts',
       '/plugins/daily-intelligence/contracts.ts',
       '/plugins/document/contracts.ts',
     ]

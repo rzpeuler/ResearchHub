@@ -1,5 +1,8 @@
 import type { AcquisitionResult, DataRequirement, SourceExecutionResult } from '../../data/contracts.ts'
-import { PHASE3_COMMON_SOURCE_POLICIES } from '../../data/company-research-policies.ts'
+import type { CompanyFinancialObservation, CompanyFinancialHistory } from '../../data/company-research-contracts.ts'
+export type { CompanyFinancialObservation, CompanyFinancialHistory } from '../../data/company-research-contracts.ts'
+import { PHASE3_COMMON_SOURCE_POLICIES, COMPANY_PUBLIC_WEB_CANDIDATE, COMPANY_OFFICIAL_FINANCIAL_CANDIDATE } from '../../data/company-research-policies.ts'
+import { extractOfficialAnnualFinancials } from './company-official-financial.ts'
 import { DataResolver } from '../../data/resolver.ts'
 import { dailyCloseAvailableAt } from '../../data/point-in-time.ts'
 import { finalizeResearchEvidence, qualifyResearchEvidenceDate, type ResearchEvidenceBatch, type ResearchEvidenceInput, type UnqualifiedResearchEvidenceBatch } from '../../data/research-evidence.ts'
@@ -10,24 +13,16 @@ import { validateUsableAcquisitionPayload } from './payload-validation.ts'
 import { acquisitionStep, type ResearchFetchOptions } from './deadlines.ts'
 import { OfficialDisclosureResearchPlugin } from './official.ts'
 import { GdeltResearchPlugin } from './gdelt.ts'
+const COMPANY_DEBT_FIELDS = [
+  ['shortTermBorrowings', 'short_term_borrowings', 'SHORT_LOAN'],
+  ['longTermBorrowings', 'long_term_borrowings', 'LONG_LOAN'],
+  ['bondsPayable', 'bonds_payable', 'BOND_PAYABLE'],
+  ['currentPortionLongTermDebt', 'current_portion_long_term_debt', 'NONCURRENT_LIAB_1YEAR'],
+] as const
 
 export interface CompanyProfileSnapshot {
   readonly kind: 'profile'
   readonly fields: readonly { readonly name: string; readonly value: string | number | boolean }[]
-  readonly retrievedAt: string
-  readonly pointInTimeStatus: 'CURRENT_VALUE_ONLY' | 'UNVERIFIED'
-}
-
-export interface CompanyFinancialObservation {
-  readonly periodEnd?: string
-  readonly publishedAt?: string
-  readonly metrics: Readonly<{ revenue?: number; netProfit?: number; grossMargin?: number; basicEps?: number; metric?: number }>
-  readonly pointInTimeSafe: boolean
-  readonly pointInTimeStatus: 'CURRENT_VALUE_ONLY' | 'UNVERIFIED'
-}
-export interface CompanyFinancialHistory {
-  readonly kind: 'financial'
-  readonly rows: readonly CompanyFinancialObservation[]
   readonly retrievedAt: string
   readonly pointInTimeStatus: 'CURRENT_VALUE_ONLY' | 'UNVERIFIED'
 }
@@ -58,6 +53,8 @@ export interface CompanyResearchDataResolverOptions {
   readonly akshare?: AkshareDataClient
   readonly officialDisclosure?: ResearchAcquisitionPlugin
   readonly gdelt?: ResearchAcquisitionPlugin
+  readonly publicWeb?: ResearchAcquisitionPlugin
+  readonly evidenceSearchTerms?: readonly string[]
   readonly now: () => string
   readonly signal?: AbortSignal
   readonly limitPerSource?: number
@@ -69,20 +66,23 @@ export interface CompanyResearchDataResolverOptions {
 
 /** Explicit AKShare, CNINFO, and GDELT operation composition. */
 export function createCompanyResearchDataResolver(options: CompanyResearchDataResolverOptions): DataResolver<CompanyResearchDataPayload> {
+  const policies = PHASE3_COMMON_SOURCE_POLICIES.map((policy) => options.publicWeb && policy.requirementMatch.workflow === 'company-deep-research' && policy.requirementMatch.metricId === 'company_research_evidence' ? { ...policy, candidates: [...policy.candidates, COMPANY_PUBLIC_WEB_CANDIDATE] } : options.officialDisclosure && policy.requirementMatch.workflow === 'company-deep-research' && policy.requirementMatch.metricId === 'company_financial_history' ? { ...policy, candidates: [...policy.candidates, COMPANY_OFFICIAL_FINANCIAL_CANDIDATE] } : policy)
   const executeOperation = async (requirement: DataRequirement, operationId: string): Promise<SourceExecutionResult<RawCompanyResearchDataPayload>> => {
     if (options.signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
     if (options.acquisitionDeadlineAt !== undefined && Date.now() >= options.acquisitionDeadlineAt) return { status: 'SOURCE_ERROR', diagnostic: 'ACQUISITION_BUDGET_EXCEEDED' }
     const symbol = requirement.subject.ticker
     if (!symbol) return { status: 'UNSUPPORTED', diagnostic: 'COMPANY_TICKER_REQUIRED' }
     const akshare = options.akshare
-    if (operationId === 'akshare.companyBasic' || operationId === 'akshare.financialData' || operationId === 'akshare.historicalMarketData') {
+    if (operationId === 'akshare.companyBasic' || operationId === 'akshare.financialData' || operationId === 'akshare.financialStatements' || operationId === 'akshare.historicalMarketData' || operationId === 'akshare.historicalMarketDataTencent') {
       if (!akshare) return { status: 'UNSUPPORTED', diagnostic: 'AKShare client is unavailable' }
+      if (operationId.endsWith('Tencent') && !akshare.historicalMarketDataTencent) return { status: 'UNSUPPORTED', diagnostic: 'Tencent market adapter is unavailable' }
+      if (operationId === 'akshare.financialStatements' && !akshare.financialStatements) return { status: 'UNSUPPORTED', diagnostic: 'Financial statements adapter unavailable' }
       let raw: unknown
       try {
         raw = await acquisitionStep({ activityId: operationId.toLowerCase(), providerId: 'akshare', step: 'structured_data', signal: options.signal,
           timeoutMs: 60_000, deadlineAt: options.acquisitionDeadlineAt, onProgress: options.onProgress }, async (signal) => operationId === 'akshare.companyBasic' ? akshare.companyBasic({ symbol, signal })
-          : operationId === 'akshare.financialData' ? akshare.financialData({ symbol, signal })
-            : akshare.historicalMarketData({ symbol, signal, ...(requirement.period?.start ? { startDate: requirement.period.start.slice(0, 10).replace(/-/g, '') } : {}), ...(requirement.period?.end ? { endDate: requirement.period.end.slice(0, 10).replace(/-/g, '') } : {}) }))
+          : operationId === 'akshare.financialData' ? akshare.financialData({ symbol, signal }) : operationId === 'akshare.financialStatements' ? akshare.financialStatements!({ symbol, signal })
+            : (operationId.endsWith('Tencent') ? akshare.historicalMarketDataTencent!({ symbol, signal, ...(requirement.period?.start ? { startDate: requirement.period.start.slice(0, 10).replace(/-/g, '') } : {}), ...(requirement.period?.end ? { endDate: requirement.period.end.slice(0, 10).replace(/-/g, '') } : {}) }) : akshare.historicalMarketData({ symbol, signal, ...(requirement.period?.start ? { startDate: requirement.period.start.slice(0, 10).replace(/-/g, '') } : {}), ...(requirement.period?.end ? { endDate: requirement.period.end.slice(0, 10).replace(/-/g, '') } : {}) })))
       } catch (error) {
         if (options.signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
         return { status: 'SOURCE_ERROR', diagnostic: boundedError(error) }
@@ -91,14 +91,38 @@ export function createCompanyResearchDataResolver(options: CompanyResearchDataRe
       const validation = validateUsableAcquisitionPayload(raw)
       if (validation.status !== 'usable') return { status: validation.status === 'empty' ? 'NO_DATA' : 'SOURCE_ERROR', diagnostic: validation.reason }
       const retrievedAt = options.now()
-      const rows = dataRows(raw)
+      let rows = dataRows(raw)
+      if (operationId === 'akshare.financialData' && akshare.financialStatements && requirement.consumer.workflow === 'company-deep-research') {
+        try {
+          const statementRows = dataRows(await acquisitionStep({ activityId: 'akshare.financialstatements', providerId: 'akshare', step: 'structured_data', signal: options.signal, timeoutMs: 60_000, deadlineAt: options.acquisitionDeadlineAt, onProgress: options.onProgress }, (signal) => akshare.financialStatements!({ symbol, signal })))
+          const byDate = new Map(statementRows.map((row) => [normalizeProviderDate(row.REPORT_DATE ?? row.report_date, true), row]))
+          rows = rows.map((row) => {
+            const statement = byDate.get(normalizeProviderDate(row.REPORT_DATE ?? row.report_date, true))
+            const indicatorRevenue = numeric(row.operating_revenue ?? row.TOTALOPERATEREVE)
+            const statementRevenue = numeric(statement?.TOTAL_OPERATE_INCOME)
+            const sourceConflicts = indicatorRevenue !== undefined && statementRevenue !== undefined && indicatorRevenue !== statementRevenue ? [{ metric: 'revenue', indicatorValue: indicatorRevenue, statementValue: statementRevenue }] : []
+            const indicatorProfit = numeric(row.net_profit ?? row.PARENTNETPROFIT)
+            const statementProfit = numeric(statement?.PARENT_NETPROFIT)
+            if (indicatorProfit !== undefined && statementProfit !== undefined && indicatorProfit !== statementProfit) sourceConflicts.push({ metric: 'netProfit', indicatorValue: indicatorProfit, statementValue: statementProfit })
+            for (const [metric, alias, field] of COMPANY_DEBT_FIELDS) {
+              const indicatorValue = numeric(row[metric] ?? row[alias] ?? row[field])
+              const statementValue = numeric(statement?.[field])
+              if (indicatorValue !== undefined && statementValue !== undefined && indicatorValue !== statementValue) sourceConflicts.push({ metric, indicatorValue, statementValue })
+            }
+            return { ...statement, ...row, sourceConflicts }
+          })
+        } catch (error) {
+          if (options.signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
+          await options.onProgress?.({ activityId: 'akshare.financialstatements:outcome', providerId: 'akshare', step: 'structured_data', status: 'failed', startedAt: options.now(), completedAt: options.now(), diagnosticCode: boundedError(error) })
+        }
+      }
       if (rows.length === 0) return { status: 'NO_DATA', diagnostic: 'AKShare returned no structured rows' }
       const data = operationId === 'akshare.companyBasic' ? normalizeProfile(rows, retrievedAt, requirement.asOfMode)
-        : operationId === 'akshare.financialData' ? normalizeFinancial(rows, requirement, retrievedAt)
+        : operationId === 'akshare.financialData' || operationId === 'akshare.financialStatements' ? normalizeFinancial(rows, requirement, retrievedAt)
           : normalizeMarket(rows, requirement, retrievedAt)
       if (data.kind !== 'profile' && data.rows.length === 0) return { status: 'NO_DATA', diagnostic: 'No eligible structured observations' }
       if (data.kind === 'profile' && data.fields.length === 0) return { status: 'NO_DATA', diagnostic: 'No usable company profile fields' }
-      const source = { retrievalProvider: 'AKShare', originPublisher: 'EastMoney', sourceUrl: eastmoneyCompanyUrl(options.company), retrievedAt,
+      const source = { retrievalProvider: 'AKShare', originPublisher: operationId.endsWith('Tencent') ? 'Tencent' : 'EastMoney', sourceUrl: operationId.endsWith('Tencent') ? `https://gu.qq.com/${symbol.startsWith('6') ? 'sh' : 'sz'}${symbol}/zs` : eastmoneyCompanyUrl(options.company), retrievedAt,
         ...(data.kind === 'market' && requirement.asOfMode === 'HISTORICAL' && data.rows.at(-1) ? { observedAt: data.rows.at(-1)!.observedAt, observationAvailableAt: dailyCloseAvailableAt(data.rows.at(-1)!.observedAt) } : {}),
         ...(data.kind === 'market' && requirement.asOfMode !== 'HISTORICAL' ? { valueVersion: { status: 'UNVERIFIED', reason: 'Current market snapshot has no historical value-version proof' } as const } : {}),
         ...(data.kind === 'financial' ? { valueVersion: { status: 'UNVERIFIED', reason: 'Historical financial value version is not identified' } as const } : {}) }
@@ -108,6 +132,15 @@ export function createCompanyResearchDataResolver(options: CompanyResearchDataRe
       const plugin = operationId.startsWith('cninfo.') ? options.officialDisclosure : options.gdelt
       if (!plugin) return { status: 'UNSUPPORTED', diagnostic: `${operationId} plugin is unavailable` }
       return acquireDocuments(plugin, operationId.startsWith('cninfo.') ? 'CNINFO' : 'GDELT', requirement, options)
+    }
+    if (operationId === 'publicWeb.discoverFetchNormalizeCompanyEvidence') return options.publicWeb ? acquireDocuments(options.publicWeb, 'PUBLIC_WEB', requirement, options) : { status: 'UNSUPPORTED', diagnostic: 'Public web adapter unavailable' }
+    if (operationId === 'cninfo.companyFinancialHistory') {
+      if (!options.officialDisclosure) return { status: 'UNSUPPORTED', diagnostic: 'Official statements plugin unavailable' }
+      const result = await acquireDocuments(options.officialDisclosure, 'CNINFO', requirement, options)
+      if (result.status !== 'SUCCESS' || result.data?.kind !== 'evidence') return { status: 'SOURCE_ERROR', diagnostic: 'OFFICIAL_FINANCIAL_DOCUMENT_ACQUISITION_FAILED' }
+      const rows = result.data.documents.flatMap((document) => extractOfficialAnnualFinancials(document.record)).map((row) => ({ ...row, pointInTimeStatus: requirement.asOfMode === 'CURRENT_VALUE_ONLY' ? 'CURRENT_VALUE_ONLY' as const : 'UNVERIFIED' as const }))
+      if (!rows.length) return { status: 'NO_DATA', diagnostic: 'OFFICIAL_ANNUAL_FINANCIAL_TABLE_NOT_VERIFIABLE' }
+      return { status: 'SUCCESS', data: { kind: 'financial', rows, retrievedAt: options.now(), pointInTimeStatus: requirement.asOfMode === 'CURRENT_VALUE_ONLY' ? 'CURRENT_VALUE_ONLY' : 'UNVERIFIED' }, source: { retrievalProvider: 'CNINFO', originPublisher: 'CNINFO', sourceUrl: result.data.documents.find((document) => extractOfficialAnnualFinancials(document.record).length)?.record.canonicalUrl, retrievedAt: options.now(), valueVersion: { status: 'UNVERIFIED', reason: 'Annual report numeric fallback is not a historical value-version proof' } } }
     }
     return { status: 'UNSUPPORTED', diagnostic: `UNKNOWN_COMPANY_RESEARCH_OPERATION:${operationId}` }
   }
@@ -122,14 +155,14 @@ export function createCompanyResearchDataResolver(options: CompanyResearchDataRe
     return result
   }
   return new DataResolver<CompanyResearchDataPayload>({
-    policies: PHASE3_COMMON_SOURCE_POLICIES,
+    policies,
     now: options.now,
     signal: options.signal,
     // resolveAcquisition below is the sole execution path for these explicit operations.
     executor: async () => ({ status: 'UNSUPPORTED', diagnostic: 'Use the explicit Company research acquisition path' }),
     resolveAcquisition: async (requirement): Promise<AcquisitionResult<CompanyResearchDataPayload>> => {
       const acquired = await runResearchDataAcquisition<RawCompanyResearchDataPayload>({
-        requirement, policies: PHASE3_COMMON_SOURCE_POLICIES, now: options.now, signal: options.signal,
+        requirement, policies, now: options.now, signal: options.signal,
         executor: (item, candidate) => execute(item, candidate.operationId),
       })
       if (requirement.metricId !== 'company_research_evidence') return acquired as AcquisitionResult<CompanyResearchDataPayload>
@@ -140,7 +173,7 @@ export function createCompanyResearchDataResolver(options: CompanyResearchDataRe
 
 async function acquireDocuments(
   plugin: ResearchAcquisitionPlugin,
-  provider: 'CNINFO' | 'GDELT',
+  provider: 'CNINFO' | 'GDELT' | 'PUBLIC_WEB',
   requirement: DataRequirement,
   options: CompanyResearchDataResolverOptions,
 ): Promise<SourceExecutionResult<RawCompanyResearchDataPayload>> {
@@ -148,13 +181,13 @@ async function acquireDocuments(
   let discovered: readonly NormalizedResearchSource['candidate'][]
   try {
     discovered = await acquisitionStep({ activityId: `${provider.toLowerCase()}:discovery`, providerId: provider.toLowerCase(), step: 'discovery',
-      signal: options.signal, timeoutMs: 30_000, deadlineAt: options.acquisitionDeadlineAt, onProgress: options.onProgress }, (signal) => plugin.discover({ company, asOf: requirement.analysisAsOf ?? requirement.asOf, limitPerKind: Math.max(0, Math.min(20, options.limitPerSource ?? 6)) }, signal))
+      signal: options.signal, timeoutMs: 60_000, deadlineAt: options.acquisitionDeadlineAt, onProgress: options.onProgress }, (signal) => plugin.discover({ company, asOf: requirement.analysisAsOf ?? requirement.asOf, limitPerKind: Math.max(0, Math.min(20, options.limitPerSource ?? 6)), ...(requirement.consumer.workflow === 'company-deep-research' ? { researchPurpose: 'company_research' as const, searchTerms: options.evidenceSearchTerms } : {}) }, signal))
   } catch (error) {
     if (options.signal?.aborted || (error instanceof Error && error.message === 'WORKFLOW_CANCELLED')) throw new Error('WORKFLOW_CANCELLED')
     return { status: 'SOURCE_ERROR', diagnostic: boundedError(error) }
   }
   if (options.signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
-  const selected = await options.onCandidatesDiscovered?.({ provider, candidates: discovered, requirement })
+  const selected = provider === 'PUBLIC_WEB' ? undefined : await options.onCandidatesDiscovered?.({ provider, candidates: discovered, requirement })
   if (options.signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
   const originalCandidates = new Set(discovered)
   const eligible = selected === undefined ? discovered : selected.filter((candidate) => originalCandidates.has(candidate))
@@ -188,7 +221,7 @@ async function acquireDocuments(
       const normalizedValidation = validateUsableAcquisitionPayload(normalized.content)
       if (normalizedValidation.status !== 'usable') { normalizedValidation.status === 'empty' ? empty += 1 : failed += 1; diagnostics.push(`${candidate.candidateId}:${normalizedValidation.reason}`); continue }
       fetched += 1
-      const originPublisher = provider === 'CNINFO' ? 'CNINFO' : reliableOriginalPublisher(candidate)
+      const originPublisher = provider === 'CNINFO' ? 'CNINFO' : provider === 'PUBLIC_WEB' ? normalized.publisher : reliableOriginalPublisher(candidate)
       documents.push({ record: normalized, publishedAt: candidate.publishedAt, retrievedAt: normalized.retrievedAt, sourceUrl: normalized.canonicalUrl ?? candidate.url, contentHash: normalized.contentHash, retrievalProvider: provider, ...(originPublisher ? { originPublisher } : {}) })
     } catch (error) {
       if (options.signal?.aborted || (error instanceof Error && error.message === 'WORKFLOW_CANCELLED')) throw new Error('WORKFLOW_CANCELLED')
@@ -241,9 +274,14 @@ function normalizeFinancial(rows: readonly Record<string, unknown>[], requiremen
     const publishedAt = normalizeProviderDate(row.publication_date ?? row.NOTICE_DATE ?? row.publicationDate)
     if (publishedAt && !['QUALIFIED', 'UNKNOWN'].includes(qualifyResearchEvidenceDate(publishedAt, requirement))) continue
     if (periodEnd && !['QUALIFIED', 'UNKNOWN'].includes(qualifyResearchEvidenceDate(periodEnd, requirement))) continue
-    const metrics = { revenue: numeric(row.operating_revenue ?? row.TOTALOPERATEREVE), netProfit: numeric(row.net_profit ?? row.PARENTNETPROFIT), grossMargin: numeric(row.gross_margin ?? row.XSMLL), basicEps: numeric(row.basic_eps ?? row.EPSJB), metric: numeric(row.metric ?? row.value) }
+    const metrics = { revenue: numeric(row.operating_revenue ?? row.TOTALOPERATEREVE ?? row.TOTAL_OPERATE_INCOME), netProfit: numeric(row.net_profit ?? row.PARENTNETPROFIT ?? row.PARENT_NETPROFIT), grossMargin: numeric(row.gross_margin_percent ?? row.gross_margin ?? row.XSMLL), basicEps: numeric(row.basic_eps ?? row.EPSJB), metric: numeric(row.metric ?? row.value),
+      operatingCashFlow: numeric(row.operating_cash_flow ?? row.NETCASH_OPERATE), capex: numeric(row.capex ?? row.CONSTRUCT_LONG_ASSET), assets: numeric(row.total_assets ?? row.TOTAL_ASSETS), liabilities: numeric(row.total_liabilities ?? row.TOTAL_LIABILITIES), equity: numeric(row.equity ?? row.TOTAL_PARENT_EQUITY), cash: numeric(row.cash ?? row.MONETARYFUNDS), receivables: numeric(row.receivables ?? row.ACCOUNTS_RECE), inventory: numeric(row.inventory ?? row.INVENTORY), payables: numeric(row.payables ?? row.ACCOUNTS_PAYABLE), cogs: numeric(row.cogs ?? row.OPERATE_COST), researchDevelopment: numeric(row.research_development ?? row.RESEARCH_EXPENSE), operatingProfit: numeric(row.operating_profit ?? row.OPERATE_PROFIT),
+      shortTermBorrowings: numeric(row.shortTermBorrowings ?? row.short_term_borrowings ?? row.SHORT_LOAN), longTermBorrowings: numeric(row.longTermBorrowings ?? row.long_term_borrowings ?? row.LONG_LOAN), bondsPayable: numeric(row.bondsPayable ?? row.bonds_payable ?? row.BOND_PAYABLE), currentPortionLongTermDebt: numeric(row.currentPortionLongTermDebt ?? row.current_portion_long_term_debt ?? row.NONCURRENT_LIAB_1YEAR) }
     if (Object.values(metrics).every((value) => value === undefined)) continue
-    observations.push({ ...(periodEnd ? { periodEnd } : {}), ...(publishedAt ? { publishedAt } : {}), metrics, pointInTimeSafe: false, pointInTimeStatus: requirement.asOfMode === 'CURRENT_VALUE_ONLY' ? 'CURRENT_VALUE_ONLY' : 'UNVERIFIED' })
+    const basis = row.period_basis === 'QUARTER' ? 'QUARTER' as const : row.period_basis === 'YTD' || row.REPORT_DATE !== undefined || row.operating_revenue !== undefined ? 'YTD' as const : 'UNKNOWN' as const
+    const knownYuan = row.TOTALOPERATEREVE !== undefined || row.operating_revenue !== undefined
+    const metricMetadata = Object.fromEntries(Object.entries(metrics).filter(([, value]) => value !== undefined).map(([key]) => [key, { unit: key === 'grossMargin' ? 'percent' : key === 'basicEps' ? 'CNY/share' : text(row.unit) ?? (knownYuan ? 'CNY' : 'UNKNOWN'), currency: text(row.currency) ?? (knownYuan || key === 'basicEps' ? 'CNY' : 'UNKNOWN'), basis: ['assets', 'liabilities', 'equity', 'cash', 'receivables', 'inventory', 'payables', ...COMPANY_DEBT_FIELDS.map(([metric]) => metric)].includes(key) ? 'POINT_IN_TIME' as const : basis }]))
+    observations.push({ ...(periodEnd ? { periodEnd } : {}), ...(publishedAt ? { publishedAt } : {}), metrics, metricMetadata, ...(Array.isArray(row.sourceConflicts) ? { sourceConflicts: row.sourceConflicts as NonNullable<CompanyFinancialObservation['sourceConflicts']> } : {}), pointInTimeSafe: false, pointInTimeStatus: requirement.asOfMode === 'CURRENT_VALUE_ONLY' ? 'CURRENT_VALUE_ONLY' : 'UNVERIFIED' })
   }
   return { kind: 'financial', rows: observations, retrievedAt, pointInTimeStatus: requirement.asOfMode === 'CURRENT_VALUE_ONLY' ? 'CURRENT_VALUE_ONLY' : 'UNVERIFIED' }
 }

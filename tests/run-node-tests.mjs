@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const ownedTestRoots = ['tests/app', 'tests/knowledge', 'tests/plugins', 'tests/skills', 'tests/workflows', 'tests/validation']
+const ownedTestRoots = ['tests/app', 'tests/data', 'tests/knowledge', 'tests/plugins', 'tests/skills', 'tests/workflows', 'tests/validation']
 
 export async function discoverTests(root, excludedDirectories = []) {
   const excluded = new Set(excludedDirectories.map((directory) => resolve(directory)))

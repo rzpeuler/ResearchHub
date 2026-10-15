@@ -40,7 +40,7 @@ async function makeRuntimeFixture() {
   const modelRuntime = await ModelRuntime.create({ authPath: join(agentDir, 'auth.json'), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false })
   const faux = fauxProvider({ provider: `researchhub-runtime-slice-c-${Date.now()}-${Math.random()}`, models: [{ id: 'fixture-model' }] })
   modelRuntime.registerNativeProvider(faux.provider)
-  const runtime = await createResearchHubApplicationRuntime({ cwd, agentDir, sessionDir, modelRuntime, model: faux.getModel(), reasoningExecutor: new FixtureExecutor() })
+  const runtime = await createResearchHubApplicationRuntime({ cwd, agentDir, sessionDir, modelRuntime, model: faux.getModel(), reasoningExecutor: new FixtureExecutor(), startDailyScheduler: false })
   return { root, cwd, agentDir, sessionDir, modelRuntime, runtime, faux }
 }
 
@@ -539,7 +539,7 @@ test('Slice C SSE registers before heartbeat and releases the slot when a client
     await first.body?.cancel(); await new Promise((resolve) => setTimeout(resolve, 25))
     third = await fetch(`${info.origin}/api/events`, { headers }); assert.equal(third.status, 200)
   } finally {
-    await first?.body?.cancel(); await third?.body?.cancel(); await server.close(); await rm(fixture.root, { recursive: true, force: true })
+    await first?.body?.cancel(); await third?.body?.cancel(); await server.close(); await fixture.runtime.close(); await rm(fixture.root, { recursive: true, force: true })
   }
 })
 

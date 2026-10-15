@@ -19,6 +19,7 @@ export interface CompanyDeepResearchResolverOptions {
   readonly signal?: AbortSignal
   readonly limitPerSource: number
   readonly acquisitionDeadlineAt?: number
+  readonly evidenceSearchTerms?: readonly string[]
   readonly onProgress?: (activity: WorkflowAcquisitionActivity) => Promise<void> | void
   readonly onCandidatesDiscovered: (event: { readonly provider: 'CNINFO' | 'GDELT'; readonly candidates: readonly ResearchSourceCandidate[]; readonly requirement: DataRequirement }) => Promise<void> | void
 }

@@ -32,6 +32,10 @@ def main() -> int:
         return 1
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
     try:
+        payload = extract_text_first(source)
+        if payload is not None:
+            print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+            return 0
         from docling.datamodel.base_models import InputFormat
         from docling.datamodel.pipeline_options import PdfPipelineOptions
         from docling.document_converter import DocumentConverter, PdfFormatOption
@@ -52,6 +56,62 @@ def main() -> int:
         return 1
     print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
     return 0
+
+
+def extract_text_first(source: Path, pdfium: Any = None) -> dict[str, Any] | None:
+    """Fast extraction for readable born-digital pages, within the same Docling plugin.
+
+    Mixed/scanned documents fall through to the existing layout pipeline. No text
+    is interpreted as reconstructed table cells on this path.
+    """
+    if os.environ.get("RESEARCHHUB_DOCLING_TEXT_FIRST") != "1" or os.environ.get("RESEARCHHUB_DOCLING_FORCE_LAYOUT") == "1":
+        return None
+    try:
+        if pdfium is None:
+            import pypdfium2 as pdfium
+        pdf = pdfium.PdfDocument(str(source))
+        pages: list[str] = []
+        try:
+            for index in range(len(pdf)):
+                page = pdf[index]
+                try:
+                    text_page = page.get_textpage()
+                    try:
+                        pages.append(clean_block(text_page.get_text_range()))
+                    finally:
+                        text_page.close()
+                finally:
+                    page.close()
+        finally:
+            pdf.close()
+    except Exception:
+        return None
+    return adapt_text_pages(pages)
+
+
+def adapt_text_pages(pages: list[str]) -> dict[str, Any] | None:
+    if not pages or sum(len(text) >= 80 for text in pages) / len(pages) < 0.8:
+        return None
+    total = sum(len(text) for text in pages)
+    if total < max(200, len(pages) * 200) or sum(text.count("\ufffd") for text in pages) / total > 0.02:
+        return None
+    sections: list[dict[str, Any]] = []
+    blocks: list[dict[str, Any]] = []
+    for page, text in enumerate(pages, start=1):
+        if not text:
+            continue
+        section = {"sectionId": f"page-{page:04d}", "title": f"第{page}页", "level": 1, "parentSectionRef": None, "blockRefs": [], "pageStart": page, "pageEnd": page}
+        sections.append(section)
+        add_block(page, "paragraph", text, page, section, [], blocks)
+        blocks[-1]["locator"]["parserItemRef"] = f"pdfium-text-page-{page}"
+    return {
+        "parser": {"id": "docling-local", "version": importlib.metadata.version("docling")},
+        "normalizedText": "\n\n".join(f"[第{block['page']}页]\n{block['text']}" for block in blocks),
+        "sections": sections, "blocks": blocks,
+        "metadata": {"pageCount": len(pages), "extractionMode": "born_digital_text", "layoutReconstructed": False},
+        "stats": {"pageCount": len(pages), "tableCount": 0, "headingCount": 0, "listCount": 0, "captionCount": 0},
+        "warnings": ["Born-digital PDF text extracted per page; table cell structure and visual layout are not reconstructed. Scanned or text-poor pages use the Docling layout path."],
+    }
 
 
 def adapt_document(document: Any) -> dict[str, Any]:

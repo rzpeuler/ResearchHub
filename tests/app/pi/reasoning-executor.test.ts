@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import type { Api, AssistantMessage, Context, Model } from '@earendil-works/pi-ai'
+import type { Api, AssistantMessage, Context, Model, JsonObject } from '@earendil-works/pi-ai'
 import { PiReasoningExecutor } from '../../../plugins/reasoning/pi/executor.ts'
 import { ReasoningExecutorError } from '../../../plugins/reasoning/errors.ts'
 
@@ -152,6 +152,59 @@ test('Pi Skill and project context do not leak into Workflow semantic calls', as
   await executor.execute({ operation: 'extractKnowledge', instruction: 'extract fixture', input: { value: 'only-request-input' }, outputContract: { type: 'object' } })
   assert.doesNotMatch(received, /AGENTS\.md|Pi Skill|SKILL\.md|project context/i)
   assert.match(received, /only-request-input/)
+})
+
+const resultSchema = { type: 'object', additionalProperties: false, required: ['answer', 'findings'], properties: { answer: { type: 'string' }, findings: { type: 'array', items: { type: 'string' } } } }
+function resultToolMessage(name: string, argumentsValue: JsonObject, count = 1): AssistantMessage {
+  return { ...assistantMessage(''), content: Array.from({ length: count }, (_, index) => ({ type: 'toolCall' as const, id: `result-${index}`, name, arguments: argumentsValue })), stopReason: 'toolUse' }
+}
+
+test('scoped schema tool output sends exact contract with strict-prefer sampling and serializes result arguments', async () => {
+  const value = { answer: 'Evidence-backed answer', findings: ['Finding one'] }
+  const executor = new PiReasoningExecutor({ capabilities, schemaToolOutput: true, completion: async (_model, context, options) => {
+    assert.equal(context.tools?.length, 1)
+    assert.equal(context.tools?.[0]?.name, 'submit_research_result')
+    assert.deepEqual(context.tools?.[0]?.parameters, resultSchema)
+    assert.deepEqual(context.tools?.[0]?.constrainedSampling, { type: 'json_schema', strict: 'prefer' })
+    assert.match(context.systemPrompt ?? '', /submit_research_result exactly once/)
+    assert.equal(options.outputContract, resultSchema)
+    return resultToolMessage('submit_research_result', value)
+  } })
+  const result = await executor.execute({ operation: 'company_research_method', instruction: 'Return evidence analysis', input: {}, outputContract: resultSchema })
+  assert.deepEqual(result.output, value)
+  assert.equal(result.rawOutput, JSON.stringify(value))
+})
+
+test('schema result transport rejects unknown and multiple tools instead of executing them', async () => {
+  for (const response of [resultToolMessage('write_file', { answer: 'No mutation', findings: [] }), resultToolMessage('submit_research_result', { answer: 'Repeated result', findings: [] }, 2)]) {
+    const executor = new PiReasoningExecutor({ capabilities, schemaToolOutput: true, completion: async () => response })
+    await assert.rejects(() => executor.execute({ operation: 'company_research_method', instruction: 'Return evidence analysis', input: {}, outputContract: resultSchema }), (error: unknown) => error instanceof ReasoningExecutorError && error.code === 'reasoning_output_invalid' && /unexpected structured result tool/.test(error.message))
+  }
+})
+
+test('schema tool arguments are locally validated with actionable missing-field diagnostics for repair', async () => {
+  const invalidEvents: { rawOutput: string; reason: string }[] = []
+  const executor = new PiReasoningExecutor({ capabilities, schemaToolOutput: true, completion: async () => resultToolMessage('submit_research_result', { findings: [] }), onInvalidOutput: (event) => { invalidEvents.push(event) } })
+  await assert.rejects(() => executor.execute({ operation: 'company_research_method', instruction: 'Return evidence analysis', input: {}, outputContract: resultSchema }), (error: unknown) => error instanceof ReasoningExecutorError && error.code === 'reasoning_output_invalid' && /required property.*answer/.test(error.message))
+  assert.equal(invalidEvents.length, 1)
+  assert.equal(invalidEvents[0]?.rawOutput, '{"findings":[]}')
+  assert.match(invalidEvents[0]?.reason ?? '', /answer/)
+  const wrongType = new PiReasoningExecutor({ capabilities, schemaToolOutput: true, completion: async () => resultToolMessage('submit_research_result', { answer: 'Answer', findings: 'Not an array' }) })
+  await assert.rejects(() => wrongType.execute({ operation: 'company_research_method', instruction: 'Return evidence analysis', input: {}, outputContract: resultSchema }), (error: unknown) => error instanceof ReasoningExecutorError && error.code === 'reasoning_output_invalid' && /\/findings.*array/.test(error.message))
+})
+
+test('disabled scoped tool output keeps legacy text JSON and does not attach transport tools', async () => {
+  const executor = new PiReasoningExecutor({ capabilities, schemaToolOutput: false, completion: async (_model, context) => { assert.equal(context.tools, undefined); return '{"answer":"Legacy JSON","findings":[]}' } })
+  const result = await executor.execute({ operation: 'extractKnowledge', instruction: 'Legacy execution', input: {}, outputContract: resultSchema })
+  assert.deepEqual(result.output, { answer: 'Legacy JSON', findings: [] })
+})
+
+test('scoped transport unwraps a valid schema wrapper and retains prose-contract compatibility', async () => {
+  const wrapper = { format: 'json', root: 'object', additionalProperties: false, schema: resultSchema }
+  const wrapped = new PiReasoningExecutor({ capabilities, schemaToolOutput: true, completion: async (_model, context) => { assert.deepEqual(context.tools?.[0]?.parameters, resultSchema); return resultToolMessage('submit_research_result', { answer: 'Wrapped', findings: [] }) } })
+  assert.deepEqual((await wrapped.execute({ operation: 'company_research_method', instruction: 'Wrapped result', input: {}, outputContract: wrapper })).output, { answer: 'Wrapped', findings: [] })
+  const prose = new PiReasoningExecutor({ capabilities, schemaToolOutput: true, completion: async (_model, context) => { assert.equal(context.tools, undefined); return '{"legacy":true}' } })
+  assert.deepEqual((await prose.execute({ operation: 'extractKnowledge', instruction: 'Legacy prose contract', input: {}, outputContract: { sections: 'Nineteen sections' } })).output, { legacy: true })
 })
 
 function assistantMessage(text: string): AssistantMessage {

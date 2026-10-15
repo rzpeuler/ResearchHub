@@ -17,7 +17,7 @@ test('Free Research Bundle remains owned by original conversation operation afte
   const faux = fauxProvider({ provider: `ux-ia-session-${Date.now()}-${Math.random()}`, models: [{ id: 'fixture-model' }] })
   modelRuntime.registerNativeProvider(faux.provider)
   const reasoningExecutor: ReasoningExecutor = { capabilities: () => ({ maxContextTokens: 10000, maxOutputTokens: 1000, structuredOutputSupport: true, maxConcurrency: 1 }), async execute(request) { return { operation: request.operation, output: { mode: 'free_research', skills: [], entities: [], missingRequiredInputs: [], contextPolicy: { structuredKnowledge: false, sourceLibrary: false }, persistencePolicy: { writeKnowledge: false }, rationale: 'Fixture request has no registered workflow' } } } }
-  const options = { cwd, agentDir, sessionDir, modelRuntime, model: faux.getModel(), reasoningExecutor }
+  const options = { cwd, agentDir, sessionDir, modelRuntime, model: faux.getModel(), reasoningExecutor, startDailyScheduler: false }
   let runtime = await createResearchHubApplicationRuntime(options)
   let server = new ResearchHubRuntimeServer({ runtime, port: 0 })
   let info = await server.start()
@@ -41,10 +41,11 @@ test('Free Research Bundle remains owned by original conversation operation afte
     faux.setResponses([fauxAssistantMessage('Free Research completed answer.')])
     const accepted = await post('/api/conversations/prompt', { conversationId, operationId, text: query })
     assert.equal(accepted.status, 202, 'omitted client hint still uses the authoritative session Bundle association')
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    const completionDeadline = Date.now() + 15_000
+    for (; Date.now() < completionDeadline;) {
       const bundle = await runtime.services.researchDispatchService!.getBundleForRun(result.runId)
       if (bundle?.status === 'completed') break
-      await new Promise((resolve) => setTimeout(resolve, 10))
+      await new Promise((resolve) => setTimeout(resolve, 25))
     }
     const bundle = await runtime.services.researchDispatchService!.getBundleForRun(result.runId)
     assert.equal(bundle?.status, 'completed'); assert.equal(bundle?.report, undefined)

@@ -101,6 +101,10 @@ export interface ResearchServiceOptions {
   readonly workflowService: WorkflowService
   readonly cwd?: string
   readonly reasoningExecutor?: ReasoningExecutor
+  readonly companyReasoningExecutor?: ReasoningExecutor
+  readonly companyOfficialDisclosure?: ResearchAcquisitionPlugin
+  readonly companyPublicWeb?: ResearchAcquisitionPlugin
+  readonly companyDataResolverFactory?: (context: CompanyDeepResearchResolverOptions) => DataResolver<CompanyResearchDataPayload>
   readonly managementCommunicationSources?: ManagementCommunicationAcquisitionSources
   readonly industryReasoningExecutorFactory?: () => Promise<ReasoningExecutor>
   readonly industryDataResolverFactory?: IndustryDataResolverFactory
@@ -161,9 +165,11 @@ export class ResearchService {
   }
 
   private createCompanyDataResolverFactory(): (context: CompanyDeepResearchResolverOptions) => DataResolver<CompanyResearchDataPayload> {
+    if (this.options.companyDataResolverFactory) return this.options.companyDataResolverFactory
     return (context) => createCompanyResearchDataResolver({ company: context.company, akshare: this.options.akshare,
-      officialDisclosure: this.options.researchEvidenceProviders?.cninfo ?? this.options.acquisitionPlugins.find((plugin) => plugin instanceof OfficialDisclosureResearchPlugin),
+      officialDisclosure: this.options.companyOfficialDisclosure ?? this.options.researchEvidenceProviders?.cninfo ?? this.options.acquisitionPlugins.find((plugin) => plugin instanceof OfficialDisclosureResearchPlugin),
       gdelt: this.options.researchEvidenceProviders?.gdelt ?? this.options.acquisitionPlugins.find((plugin) => plugin instanceof GdeltResearchPlugin),
+      ...(this.options.companyPublicWeb ? {publicWeb:this.options.companyPublicWeb} : {}),
       now: context.now, signal: context.signal, limitPerSource: context.limitPerSource,
       acquisitionDeadlineAt: context.acquisitionDeadlineAt, onProgress: context.onProgress, onCandidatesDiscovered: context.onCandidatesDiscovered })
   }
@@ -294,7 +300,7 @@ export class ResearchService {
           signal: combined.signal,
           signalStore: this.options.signalStore,
           maxSources: input.maxSources,
-          reasoningExecutor: withSourceLibraryContext(this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge,
+          reasoningExecutor: withSourceLibraryContext(this.options.companyReasoningExecutor ?? this.options.reasoningExecutor, input.sourceLibraryContext), writeKnowledge: input.writeKnowledge, useStructuredKnowledge: input.useStructuredKnowledge,
           observations,
         })
         if (result.status === 'completed') {

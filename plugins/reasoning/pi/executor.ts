@@ -60,6 +60,9 @@ export interface PiReasoningExecutorOptions {
   readonly runtimeMetadata?: Omit<PiReasoningRuntimeMetadata, 'provider'>
   readonly timeoutMs?: number
   readonly maxOutputChars?: number
+  /** Serialize one result through a constrained tool call; no tool is executed. */
+  readonly schemaToolOutput?: boolean
+  readonly onInvalidOutput?: (event: { readonly operation: ReasoningOperation; readonly operationId: string; readonly rawOutput: string; readonly reason: string }) => Promise<void> | void
 }
 
 export class PiReasoningExecutor implements ReasoningExecutor {
@@ -71,6 +74,8 @@ export class PiReasoningExecutor implements ReasoningExecutor {
   private readonly runtimeMetadataValue?: Omit<PiReasoningRuntimeMetadata, 'provider'>
   private readonly timeoutMs: number
   private readonly maxOutputChars: number
+  private readonly schemaToolOutput: boolean
+  private readonly onInvalidOutput?: PiReasoningExecutorOptions['onInvalidOutput']
   private runtimePromise?: Promise<PiModelRuntime>
   private modelPromise?: Promise<Model<Api> | undefined>
   private resolvedModel?: Model<Api>
@@ -83,6 +88,8 @@ export class PiReasoningExecutor implements ReasoningExecutor {
     this.runtimeMetadataValue = options.runtimeMetadata
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
     this.maxOutputChars = options.maxOutputChars ?? DEFAULT_OUTPUT_LIMIT
+    this.schemaToolOutput = options.schemaToolOutput ?? false
+    this.onInvalidOutput = options.onInvalidOutput
 
     if (!Number.isSafeInteger(this.timeoutMs) || this.timeoutMs <= 0) invalid('timeoutMs must be a positive safe integer')
     if (!Number.isSafeInteger(this.maxOutputChars) || this.maxOutputChars <= 0) invalid('maxOutputChars must be a positive safe integer')
@@ -126,6 +133,11 @@ export class PiReasoningExecutor implements ReasoningExecutor {
       }
 
       const context = buildContext(request, operationId, started)
+      const schema = this.schemaToolOutput ? jsonSchemaFromContract(request.outputContract) : undefined
+      if (schema) {
+        context.tools = [{ name: 'submit_research_result', description: 'Return the complete JSON research result. This serializes a result only and performs no action.', parameters: schema as unknown as NonNullable<Context['tools']>[number]['parameters'], constrainedSampling: { type: 'json_schema', strict: 'prefer' } }]
+        context.systemPrompt += '\nReturn the result by calling submit_research_result exactly once. Do not output prose or call any other tool.'
+      }
       const metadata = {
         ...(request.metadata ?? {}),
         operation: request.operation,
@@ -138,15 +150,21 @@ export class PiReasoningExecutor implements ReasoningExecutor {
         operationId,
         outputContract: request.outputContract,
       }, request.operation, operationId, externalSignal)
-      const rawOutput = extractRawOutput(response, request.operation, operationId)
+      const rawOutput = extractRawOutput(response, request.operation, operationId, schema !== undefined)
       if (Buffer.byteLength(rawOutput, 'utf8') > this.maxOutputChars) {
         throw new ReasoningExecutorError('reasoning_output_too_large', 'Pi reasoning output exceeded the configured limit', {
           operation: request.operation,
           operationId,
         })
       }
-      const output = parseJsonOutput(rawOutput, request.operation, operationId)
-      validateOutputContract(output, request.outputContract, request.operation, operationId)
+      let output: unknown
+      try {
+        output = parseJsonOutput(rawOutput, request.operation, operationId)
+        validateOutputContract(output, request.outputContract, request.operation, operationId)
+      } catch (error) {
+        await this.onInvalidOutput?.({ operation: request.operation, operationId, rawOutput, reason: error instanceof Error ? error.message : String(error) })
+        throw error
+      }
       return { operation: request.operation, operationId, output, rawOutput, durationMs: Date.now() - started }
     } catch (error) {
       if (error instanceof ReasoningExecutorError) throw error
@@ -256,7 +274,7 @@ function buildContext(request: ReasoningRequest, operationId: string, timestamp:
   }
 }
 
-function extractRawOutput(response: PiCompletionResult, operation: ReasoningOperation, operationId: string): string {
+function extractRawOutput(response: PiCompletionResult, operation: ReasoningOperation, operationId: string, schemaToolOutput = false): string {
   if (typeof response === 'string') {
     if (response.trim() === '') invalidOutput('Pi returned an empty completion', operation, operationId)
     return response
@@ -264,6 +282,13 @@ function extractRawOutput(response: PiCompletionResult, operation: ReasoningOper
   if (!isAssistantMessage(response)) invalidOutput('Pi returned an unsupported completion result', operation, operationId)
   if (isAssistantError(response)) {
     throw new ReasoningExecutorError('reasoning_execution_failed', response.errorMessage ?? 'Pi returned an error response', { operation, operationId })
+  }
+  if (schemaToolOutput) {
+    const calls = response.content.filter(part => part.type === 'toolCall')
+    if (calls.length) {
+      if (calls.length !== 1 || calls[0]!.name !== 'submit_research_result') invalidOutput('Pi returned an unexpected structured result tool', operation, operationId)
+      return JSON.stringify(calls[0]!.arguments)
+    }
   }
   const text = response.content.filter((part): part is { type: 'text'; text: string } => part.type === 'text').map((part) => part.text).join('')
   if (text.trim() === '') invalidOutput('Pi returned no text completion', operation, operationId)
@@ -297,7 +322,8 @@ function validateOutputContract(output: unknown, outputContract: unknown, operat
     const validator: ValidateFunction = outputSchemaValidator.compile(schema)
     if (validator(output)) return
     const issueCount = validator.errors?.length ?? 1
-    throw new ReasoningExecutorError('reasoning_output_invalid', `Pi reasoning output did not satisfy its JSON Schema contract (${issueCount} validation issue${issueCount === 1 ? '' : 's'})`, { operation, operationId })
+    const issues = (validator.errors ?? []).slice(0, 12).map(issue => `${issue.instancePath || '/'}: ${issue.message ?? issue.keyword}${issue.keyword === 'required' ? ` (${String(issue.params.missingProperty)})` : issue.keyword === 'additionalProperties' ? ` (${String(issue.params.additionalProperty)})` : ''}`).join('; ')
+    throw new ReasoningExecutorError('reasoning_output_invalid', `Pi reasoning output did not satisfy its JSON Schema contract (${issueCount} validation issue${issueCount === 1 ? '' : 's'}): ${issues}`, { operation, operationId })
   } catch (error) {
     if (error instanceof ReasoningExecutorError) throw error
     throw new ReasoningExecutorError('reasoning_configuration_invalid', 'Pi reasoning output contract is not a supported JSON Schema', { operation, operationId, cause: error })

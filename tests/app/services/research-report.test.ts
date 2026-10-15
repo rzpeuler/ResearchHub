@@ -3,7 +3,17 @@ import test from 'node:test'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { readResearchReport, writeResearchReport, type ResearchReport } from '../../../app/services/research-report.ts'
+import { readResearchReport, writeResearchReport, validateResearchReport, renderResearchReport, type ResearchReport } from '../../../app/services/research-report.ts'
+import { evaluateCompanyResearchContent } from '../../../workflows/company-deep-research/content-quality.ts'
+
+test('company report preserves optional quality and evidence locations without canonical writes', () => {
+  const report: ResearchReport = { reportId: 'quality-report', reportType: 'company_research', subjectRefs: ['entity:company-test'], generatedAt: '2026-09-08T00:00:00Z', asOf: '2026-09-08T00:00:00Z', workflowRunId: 'quality-run', knowledgeBaseRevision: 0, sourceRefs: [], claimRefs: [], methodology: 'Evidence-bounded research', researchQuality: evaluateCompanyResearchContent({ sections: [] }), methodExecutions: [{ skillId: 'company_history_strategy', status: 'complete', attempts: 1 }], sections: [{ id: 'company-overview', title: 'Company Overview', markdown: '公司成立与业务转型分析。', evidenceLinks: ['https://example.test/annual.pdf'], evidenceLocations: [{ sourceCandidateId: 'annual', url: 'https://example.test/annual.pdf', locator: 'paragraph:22', excerpt: '业务转型披露' }] }], outputPath: 'quality-report.md' }
+  assert.equal(validateResearchReport(report).sourceRefs.length, 0)
+  assert.match(renderResearchReport(report), /公司概况与发展历程/)
+  assert.match(renderResearchReport(report), /paragraph:22/)
+  assert.match(renderResearchReport(report), /研究完成度：未完成/)
+  assert.throws(() => validateResearchReport({ ...report, methodExecutions: [{ skillId: 'method', status: 'complete', attempts: 3 }] }), /methodExecutions/)
+})
 
 test('ResearchReport writes Markdown plus validated metadata', async () => { const root = await mkdtemp(join(tmpdir(), 'researchhub-report-')); try { const report: ResearchReport = { reportId: 'report-test', reportType: 'company_research', subjectRefs: ['entity:company-test'], generatedAt: '2026-09-08T00:00:00.000Z', asOf: '2026-09-08T00:00:00.000Z', workflowRunId: 'run-test', knowledgeBaseRevision: 1, sourceRefs: ['source:test'], claimRefs: ['claim:test'], methodology: 'fixture', sections: [{ id: 'overview', title: 'Company Overview', markdown: 'Evidence-backed overview.', sourceRefs: ['source:test'], claimRefs: ['claim:test'] }], outputPath: 'report-test.md' }; const output = await writeResearchReport(report, root); assert.match(await readFile(output, 'utf8'), /Company Overview/); assert.equal((await readResearchReport(`${output}.json`)).reportId, 'report-test') } finally { await rm(root, { recursive: true, force: true }) } })
 

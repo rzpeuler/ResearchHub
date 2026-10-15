@@ -44,6 +44,19 @@ export class CninfoOfficialDisclosureClient implements OfficialDisclosureClient 
     if ('industry' in request) return []
     const exchange = request.company.exchange?.toLowerCase(); const column = exchange === 'sse' || exchange === 'szse' ? exchange : request.company.symbol.startsWith('6') ? 'sse' : 'szse'
     const stock = await this.companyStock(request.company.symbol, signal)
+    if (request.researchPurpose === 'company_research' && request.filingPeriod === undefined) {
+      const asOf = request.asOf ?? this.now()
+      const year = Number(cninfoShanghaiCalendarDate(asOf).slice(0, 4))
+      const records = new Map<string, OfficialDisclosureRecord>()
+      // Older complete annuals remain important for trends; interim must never displace annual.
+      for (const searchkey of [`${year - 1}年年度报告`, `${year - 2}年年度报告`, `${year}年半年度报告`, '投资者关系活动记录']) {
+        const annualYear = searchkey.endsWith('年年度报告') ? Number(searchkey.slice(0, 4)) : undefined
+        const matches = await this.queryAnnouncements({ stock, searchkey: annualYear ? '' : searchkey, ...(annualYear ? { category: CNINFO_ANNUAL_REPORT_CATEGORY } : {}), pageNum: '1', pageSize: String(this.pageSize), tabName: 'fulltext', column, seDate: `${annualYear ? annualYear + 1 : year - 2}-01-01~${cninfoShanghaiCalendarDate(asOf)}` }, asOf, 2, signal)
+        const selected = matches.filter((record) => !/摘要|英文|English|取消|提示性|H股|说明会|征集|公告：/i.test(record.title) && (annualYear ? isCninfoAnnualReportBodyTitle(record.title, annualYear) : record.title.includes(searchkey))).sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)).slice(0, searchkey === '投资者关系活动记录' ? 2 : 1)
+        for (const record of selected) records.set(record.url, record)
+      }
+      if (records.size > 0) return [...records.values()]
+    }
     if (request.filingPeriod !== undefined && request.asOf !== undefined) {
       const { fiscalYear, fiscalPeriod } = request.filingPeriod
       const asOfDate = cninfoShanghaiCalendarDate(request.asOf)

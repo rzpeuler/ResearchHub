@@ -3,6 +3,7 @@ export const REASONING_OPERATIONS = [
   'extractKnowledge',
   'resolveSemanticCase',
   'company_research_synthesis',
+  'company_research_method',
   'daily_signal_enrichment',
   'daily_change_assessment',
   'daily_brief_synthesis',

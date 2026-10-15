@@ -13,6 +13,8 @@ export interface DoclingDocumentParserOptions {
   readonly bridgePath?: string
   readonly artifactsPath?: string
   readonly timeoutMs?: number
+  /** Company research may opt in; ingestion/layout consumers retain their existing default. */
+  readonly textFirst?: boolean
 }
 
 interface BridgePayload {
@@ -31,12 +33,14 @@ export class DoclingDocumentParser implements DocumentParser {
   private readonly bridgePath: string
   private readonly artifactsPath: string
   private readonly timeoutMs: number
+  private readonly textFirst: boolean
 
   constructor(options: DoclingDocumentParserOptions = {}) {
     this.pythonExecutable = options.pythonExecutable ?? process.env.RESEARCHHUB_PYTHON_EXECUTABLE ?? resolve(process.cwd(), '.researchhub-document-parser', process.platform === 'win32' ? 'venv/Scripts/python.exe' : 'venv/bin/python')
     this.bridgePath = options.bridgePath ?? process.env.RESEARCHHUB_DOCLING_BRIDGE ?? resolve(dirname(fileURLToPath(import.meta.url)), 'bridge/docling_bridge.py')
     this.artifactsPath = options.artifactsPath ?? process.env.RESEARCHHUB_DOCLING_ARTIFACTS_PATH ?? resolve(process.cwd(), '.researchhub-document-parser/models')
     this.timeoutMs = Math.max(1_000, options.timeoutMs ?? 10 * 60_000)
+    this.textFirst = options.textFirst ?? false
   }
 
   supports(input: Pick<DocumentParserInput, 'filename' | 'mediaType'>): boolean { return input.mediaType === 'application/pdf' || input.filename.toLowerCase().endsWith('.pdf') }
@@ -47,7 +51,7 @@ export class DoclingDocumentParser implements DocumentParser {
     const sourcePath = resolve(directory, input.filename.toLowerCase().endsWith('.pdf') ? 'document.pdf' : 'document.bin')
     try {
       await writeFile(sourcePath, input.bytes)
-      const output = await runBridge(this.pythonExecutable, this.bridgePath, sourcePath, this.artifactsPath, input.signal, this.timeoutMs)
+      const output = await runBridge(this.pythonExecutable, this.bridgePath, sourcePath, this.artifactsPath, input.signal, this.timeoutMs, this.textFirst)
       return normalizeBridgeResult(output, input, this.id)
     } catch (error) {
       if (error instanceof DocumentPluginError) throw error
@@ -56,10 +60,10 @@ export class DoclingDocumentParser implements DocumentParser {
   }
 }
 
-function runBridge(pythonExecutable: string, bridgePath: string, sourcePath: string, artifactsPath: string, signal?: AbortSignal, timeoutMs = 10 * 60_000): Promise<string> {
+function runBridge(pythonExecutable: string, bridgePath: string, sourcePath: string, artifactsPath: string, signal?: AbortSignal, timeoutMs = 10 * 60_000, textFirst = false): Promise<string> {
   if (signal?.aborted) return Promise.reject(new DocumentPluginError('document_parser_cancelled', 'document_parser_cancelled: document parsing was cancelled', 'docling-local'))
   return new Promise((resolveOutput, reject) => {
-    const child = spawn(pythonExecutable, [bridgePath, sourcePath], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: process.platform !== 'win32', env: { ...process.env, RESEARCHHUB_DOCLING_ARTIFACTS_PATH: artifactsPath, HF_HUB_OFFLINE: process.env.HF_HUB_OFFLINE ?? '1' } })
+    const child = spawn(pythonExecutable, [bridgePath, sourcePath], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: process.platform !== 'win32', env: { ...process.env, RESEARCHHUB_DOCLING_ARTIFACTS_PATH: artifactsPath, RESEARCHHUB_DOCLING_TEXT_FIRST: textFirst ? '1' : '0', HF_HUB_OFFLINE: process.env.HF_HUB_OFFLINE ?? '1' } })
     let stdout = ''; let stderr = ''
     let stopReason: 'cancelled' | 'timeout' | undefined
     let settled = false

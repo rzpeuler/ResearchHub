@@ -69,6 +69,8 @@ export type ResearchAcquisitionRequest =
       readonly asOf?: string
       readonly limitPerKind?: number
       readonly filingPeriod?: { readonly fiscalYear: number; readonly fiscalPeriod: 'FY' | 'H1' | 'Q1' | 'Q3' }
+      readonly researchPurpose?: 'company_research'
+      readonly searchTerms?: readonly string[]
     }
   | {
       /** Industry acquisition never carries a fabricated Company identity. */

@@ -47,7 +47,7 @@ test('four audited Common identities and exact FIRST_VALID/COLLECT_DIVERSE polic
     const requirement = materializePhase3CommonRequirement(metricId, { ...context, workflowId: 'company-deep-research' })
     const matched = resolveSourcePolicy(requirement, PHASE3_COMMON_SOURCE_POLICIES)
     assert.equal(matched.policy?.selectionMode, 'FIRST_VALID')
-    assert.equal(matched.policy?.candidates.length, 1)
+    assert.equal(matched.policy?.candidates.length, metricId === 'company_basic_profile' ? 1 : 2)
   }
   assert.throws(() => materializePhase3CommonRequirement('company_basic_profile', context), /COMMON_DATA_CONSUMER_MISMATCH/)
   assert.throws(() => materializePhase3CommonRequirement('company_market_history', { ...context, workflowId: 'company-deep-research', period: undefined }), /COMMON_DATA_MARKET_PERIOD_REQUIRED/)
@@ -269,4 +269,64 @@ test('cancellation stops source attempts before they continue', async () => {
   await assert.rejects(() => createCompanyResearchDataResolver({ company, officialDisclosure: official, gdelt: news, now, signal: controller.signal }).resolveOne(req()), /WORKFLOW_CANCELLED/)
   assert.deepEqual(official.calls, [])
   assert.deepEqual(news.calls, [])
+})
+
+test('company market failures retain original attempt and use Tencent with its publisher', async () => {
+  const akshare: AkshareDataClient = { companyBasic: async () => [], financialData: async () => [], historicalMarketData: async () => { throw new Error('PRIMARY_OFFLINE') }, historicalMarketDataTencent: async () => [{ date: '2026-10-07', close: 7 }] }
+  const requirement = materializePhase3CommonRequirement('company_market_history', { ...context, workflowId: 'company-deep-research', asOfMode: 'HISTORICAL' })
+  const result = await createCompanyResearchDataResolver({ company, akshare, now }).resolveOne(requirement)
+  assert.deepEqual(result.attempts.map((attempt) => attempt.status), ['SOURCE_ERROR', 'SUCCESS'])
+  assert.equal(result.source?.originPublisher, 'Tencent')
+  assert.equal(result.quality.pointInTimeSafe, true)
+})
+
+test('company statements enrich indicators without overwriting revenue and preserve cumulative basis', async () => {
+  const akshare: AkshareDataClient = { companyBasic: async () => [], historicalMarketData: async () => [], financialData: async () => [{ report_date: '2025-12-31', operating_revenue: 100, gross_margin_percent: 20 }], financialStatements: async () => [{ REPORT_DATE: '2025-12-31', TOTAL_OPERATE_INCOME: 101, NETCASH_OPERATE: 33, TOTAL_ASSETS: 200, OPERATE_COST: 75, ACCOUNTS_PAYABLE: 20, unit: 'CNY', currency: 'CNY', period_basis: 'YTD' }] }
+  const requirement = materializePhase3CommonRequirement('company_financial_history', { ...context, period: undefined, workflowId: 'company-deep-research', asOfMode: 'CURRENT_VALUE_ONLY' })
+  const result = await createCompanyResearchDataResolver({ company, akshare, now }).resolveOne(requirement)
+  assert.equal(result.value?.kind, 'financial')
+  if (result.value?.kind === 'financial') {
+    assert.equal(result.value.rows[0]?.metrics.revenue, 100)
+    assert.equal(result.value.rows[0]?.metrics.operatingCashFlow, 33)
+    assert.equal(result.value.rows[0]?.metrics.grossMargin, 20)
+    assert.deepEqual(result.value.rows[0]?.metricMetadata?.assets, { unit: 'CNY', currency: 'CNY', basis: 'POINT_IN_TIME' })
+    assert.equal(result.value.rows[0]?.metricMetadata?.operatingCashFlow?.basis, 'YTD')
+    assert.equal(result.value.rows[0]?.metrics.cogs, 75)
+    assert.equal(result.value.rows[0]?.metrics.payables, 20)
+    assert.deepEqual(result.value.rows[0]?.metricMetadata?.payables, { unit: 'CNY', currency: 'CNY', basis: 'POINT_IN_TIME' })
+    assert.deepEqual(result.value.rows[0]?.metricMetadata?.cogs, { unit: 'CNY', currency: 'CNY', basis: 'YTD' })
+    assert.deepEqual(result.value.rows[0]?.sourceConflicts, [{ metric: 'revenue', indicatorValue: 100, statementValue: 101 }])
+  }
+})
+
+test('public body route is company-only, has host publisher, and unknown date stays unverified', async () => {
+  const page = { ...candidate('public-web', 'page'), metadata: { originalPublisher: 'company.example' } }
+  const publicWeb = plugin('public-web', [page], { publisher: 'company.example' })
+  const resolver = createCompanyResearchDataResolver({ company, officialDisclosure: plugin('cninfo', []), gdelt: plugin('gdelt', []), publicWeb, now })
+  const result = await resolver.resolveOne(materializePhase3CommonRequirement('company_research_evidence', { ...context, period: undefined, workflowId: 'company-deep-research', asOfMode: 'CURRENT_VALUE_ONLY' }))
+  assert.equal(evidence(result)[0]?.provenance.originPublisher, 'company.example')
+  assert.equal(evidence(result)[0]?.pointInTimeSafe, false)
+  assert.equal(evidence(result)[0]?.dateStatus, 'UNKNOWN')
+  publicWeb.calls.length = 0
+  await resolver.resolveOne(req())
+  assert.deepEqual(publicWeb.calls, [])
+})
+test('debt statement components retain CNY stock basis, missing bonds and explicit source conflicts', async () => {
+  const akshare: AkshareDataClient = {
+    companyBasic: async () => [], historicalMarketData: async () => [],
+    financialData: async () => [{ report_date: '2025-12-31', operating_revenue: 100, long_term_borrowings: 60 }],
+    financialStatements: async () => [{ REPORT_DATE: '2025-12-31', SHORT_LOAN: 40, LONG_LOAN: 63.75, BOND_PAYABLE: null, NONCURRENT_LIAB_1YEAR: 12, currency: 'CNY', unit: 'CNY', period_basis: 'YTD' }],
+  }
+  const requirement = materializePhase3CommonRequirement('company_financial_history', { ...context, period: undefined, workflowId: 'company-deep-research', asOfMode: 'CURRENT_VALUE_ONLY' })
+  const result = await createCompanyResearchDataResolver({ company, akshare, now }).resolveOne(requirement)
+  assert.equal(result.value?.kind, 'financial')
+  if (result.value?.kind !== 'financial') return
+  const row = result.value.rows[0]!
+  assert.equal(row.metrics.shortTermBorrowings, 40)
+  assert.equal(row.metrics.longTermBorrowings, 60)
+  assert.equal(row.metrics.bondsPayable, undefined)
+  assert.equal(row.metrics.currentPortionLongTermDebt, 12)
+  for (const key of ['shortTermBorrowings', 'longTermBorrowings', 'currentPortionLongTermDebt']) assert.deepEqual(row.metricMetadata?.[key], { unit: 'CNY', currency: 'CNY', basis: 'POINT_IN_TIME' })
+  assert.equal(row.metricMetadata?.bondsPayable, undefined)
+  assert.deepEqual(row.sourceConflicts, [{ metric: 'longTermBorrowings', indicatorValue: 60, statementValue: 63.75 }])
 })

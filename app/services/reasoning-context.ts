@@ -12,7 +12,7 @@ export function withSourceLibraryContext(executor: ReasoningExecutor | undefined
   const candidate = executor as ReasoningExecutor & { runtimeMetadata?: () => unknown }
   const wrapped: ReasoningExecutor & { runtimeMetadata?: () => unknown } = {
     capabilities: () => executor.capabilities(),
-    execute: async (request: ReasoningRequest): Promise<ReasoningResult> => executor.execute({ ...request, input: inject(request.input, hits), metadata: { ...(request.metadata ?? {}), sourceLibraryHitCount: String(hits.length) } }),
+    execute: async (request: ReasoningRequest, signal?: AbortSignal): Promise<ReasoningResult> => executor.execute({ ...request, input: inject(request.input, hits), metadata: { ...(request.metadata ?? {}), sourceLibraryHitCount: String(hits.length) } }, signal),
   }
   if (typeof candidate.runtimeMetadata === 'function') wrapped.runtimeMetadata = () => candidate.runtimeMetadata!()
   return wrapped

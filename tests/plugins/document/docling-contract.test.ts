@@ -17,6 +17,20 @@ test('Docling bridge output normalizes headings, tables, captions, pages, and st
   assert.equal(result.blocks[1]?.structuredContent?.kind, 'table')
   assert.equal(result.blocks[2]?.type, 'caption')
   assert.equal(result.stats.pageCount, 2)
+  assert.equal(result.metadata.parserMetadata?.textFirst, '0')
+})
+
+test('Docling text-first is explicit per invocation and never enabled by the process environment', async () => {
+  const previous = process.env.RESEARCHHUB_DOCLING_TEXT_FIRST
+  process.env.RESEARCHHUB_DOCLING_TEXT_FIRST = '1'
+  const bridgePath = fileURLToPath(new URL('./fixtures/structured-bridge-fixture.py', import.meta.url))
+  const input = { bytes: new Uint8Array([37, 80, 68, 70]), filename: 'fixture.pdf', mediaType: 'application/pdf' }
+  try {
+    const defaultResult = await new DoclingDocumentParser({ bridgePath, pythonExecutable: 'python', artifactsPath: 'fixture-artifacts' }).parse(input)
+    const companyResult = await new DoclingDocumentParser({ bridgePath, pythonExecutable: 'python', artifactsPath: 'fixture-artifacts', textFirst: true }).parse(input)
+    assert.equal(defaultResult.metadata.parserMetadata?.textFirst, '0')
+    assert.equal(companyResult.metadata.parserMetadata?.textFirst, '1')
+  } finally { if (previous === undefined) delete process.env.RESEARCHHUB_DOCLING_TEXT_FIRST; else process.env.RESEARCHHUB_DOCLING_TEXT_FIRST = previous }
 })
 
 test('selected Docling parser reports explicit environment-not-ready errors', async () => {

@@ -15,7 +15,9 @@ import { WorkflowService } from '../../../app/services/workflow-service.ts'
 import type { ResearchAcquisitionPlugin, ResearchSourceCandidate, ResearchSignal, ResearchSignalStore } from '../../../plugins/research-acquisition/contracts.ts'
 import { OfficialDisclosureResearchPlugin, type OfficialDisclosureClient } from '../../../plugins/research-acquisition/official.ts'
 import { GdeltResearchPlugin } from '../../../plugins/research-acquisition/gdelt.ts'
+import { CompanyPublicWebPlugin } from '../../../plugins/research-acquisition/company-public-web.ts'
 import { createSecurityIdentityDataResolver, type AkshareSecurityDirectoryClient } from '../../../plugins/research-acquisition/security-identity-data.ts'
+import { completeResearchExecutor, fixtureCompanyDataResolverFactory } from '../../fixtures/company-quality.ts'
 
 function fixtureEvidenceAdapter(route: 'cninfo' | 'gdelt', calls: { discovered: number; fetched: number; normalized: number }): Pick<ResearchAcquisitionPlugin, 'discover' | 'fetch' | 'normalize'> {
   const candidate: ResearchSourceCandidate = {
@@ -43,7 +45,7 @@ class CapturingResearchSignalStore implements ResearchSignalStore {
   async listForCompany(): Promise<readonly ResearchSignal[]> { return [] }
 }
 
-test('Application Service reports an explicit gap when a covered Company has no acquired evidence', async () => { const root = await mkdtemp(join(tmpdir(), 'researchhub-service-kb-')); const reports = await mkdtemp(join(tmpdir(), 'researchhub-service-reports-')); try { await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-service' }); await seedCanonicalCompany(root, 'service-company-identity'); const plugin: ResearchAcquisitionPlugin = { name: 'fixture-official', discover: async () => [], fetch: async (candidate) => ({ candidate, retrievedAt: new Date().toISOString(), content: '' }), normalize: async (source) => ({ candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: source.content, contentHash: 'a'.repeat(64), publisher: source.candidate.provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }) }; const workflowService = new WorkflowService(); const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [plugin], workflowService }); const started = service.startResearchCompany({ workflowRunId: 'service-run', symbol: '600519', name: 'Fixture Company', exchange: 'SH', writeKnowledge: false }); const result = await started.completion; assert.equal(result.status, 'blocked'); assert.equal(workflowService.getWorkflowStatus('service-run')?.status, 'blocked'); assert.match(result.errorSummary ?? '', /NO_COMPANY_RESEARCH_EVIDENCE/); assert.match(result.reportId ?? '', /600519/); assert.equal((await service.getResearchReport(result.reportId!)).reportId, result.reportId) } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) } })
+test('Application Service reports an explicit gap when a covered Company has no acquired evidence', async () => { const root = await mkdtemp(join(tmpdir(), 'researchhub-service-kb-')); const reports = await mkdtemp(join(tmpdir(), 'researchhub-service-reports-')); try { await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-service' }); await seedCanonicalCompany(root, 'service-company-identity'); const plugin: ResearchAcquisitionPlugin = { name: 'fixture-official', discover: async () => [], fetch: async (candidate) => ({ candidate, retrievedAt: new Date().toISOString(), content: '' }), normalize: async (source) => ({ candidate: source.candidate, retrievedAt: source.retrievedAt, title: source.candidate.title, content: source.content, contentHash: 'a'.repeat(64), publisher: source.candidate.provider, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }) }; const workflowService = new WorkflowService(); const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [plugin], workflowService, companyDataResolverFactory: fixtureCompanyDataResolverFactory(plugin) }); const started = service.startResearchCompany({ workflowRunId: 'service-run', symbol: '600519', name: 'Fixture Company', exchange: 'SH', writeKnowledge: false }); const result = await started.completion; assert.equal(result.status, 'blocked'); assert.equal(workflowService.getWorkflowStatus('service-run')?.status, 'blocked'); assert.match(result.errorSummary ?? '', /NO_COMPANY_RESEARCH_EVIDENCE/); assert.match(result.reportId ?? '', /600519/); assert.equal((await service.getResearchReport(result.reportId!)).reportId, result.reportId) } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) } })
 
 test('legacy ResearchService constructor routes explicit CNINFO and GDELT adapter instances through Data', async () => {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-legacy-evidence-kb-'))
@@ -54,6 +56,7 @@ test('legacy ResearchService constructor routes explicit CNINFO and GDELT adapte
     await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-legacy-evidence' })
     const cninfo = Object.assign(new OfficialDisclosureResearchPlugin({} as OfficialDisclosureClient), fixtureEvidenceAdapter('cninfo', calls.cninfo))
     const gdelt = Object.assign(new GdeltResearchPlugin(), fixtureEvidenceAdapter('gdelt', calls.gdelt))
+    const publicWeb = Object.assign(new CompanyPublicWebPlugin(), { discover: async () => [], fetch: async () => { throw new Error('Empty fixture must not fetch') } })
     assert.equal(cninfo.name, 'official-disclosure-research-acquisition')
     const directory = { async securityDirectory() { return [{ symbol: '600519', name: 'Fixture Company', exchange: 'SH' }] } } as unknown as AkshareSecurityDirectoryClient
     const securityIdentityResolver = new SecurityIdentityResolver({ mountedKnowledgeBaseRoot: root, dataResolverFactory: ({ now, signal }) => createSecurityIdentityDataResolver({ akshare: directory, now, ...(signal ? { signal } : {}) }) })
@@ -61,17 +64,17 @@ test('legacy ResearchService constructor routes explicit CNINFO and GDELT adapte
       mountedKnowledgeBaseRoot: root,
       reportRoot: reports,
       // This is the pre-Phase-3 constructor shape; no researchEvidenceProviders option.
-      acquisitionPlugins: [cninfo, gdelt],
+      acquisitionPlugins: [cninfo, gdelt, publicWeb],
       signalStore,
       workflowService: new WorkflowService(),
       securityIdentityResolver,
     })
     const result = await service.startResearchCompany({ workflowRunId: 'legacy-evidence-run', symbol: '600519', name: 'Fixture Company', writeKnowledge: false }).completion
-    assert.equal(result.status, 'completed')
-    assert.deepEqual(calls, {
-      cninfo: { discovered: 1, fetched: 1, normalized: 1 },
-      gdelt: { discovered: 1, fetched: 1, normalized: 1 },
-    })
+    assert.equal(result.status, 'blocked', 'Evidence alone cannot complete Company Research without a model')
+    assert.match(result.errorSummary ?? '', /SYNTHESIS_DEGRADED/)
+    assert.ok(calls.cninfo.discovered >= 2 && calls.cninfo.discovered <= 6, 'Initial profile fallback plus at most two supplemental rounds')
+    assert.ok(calls.gdelt.discovered >= 1 && calls.gdelt.discovered <= 3)
+    for (const counters of Object.values(calls)) { assert.equal(counters.fetched, counters.discovered); assert.equal(counters.normalized, counters.fetched) }
     assert.deepEqual(new Set(signalStore.providers), new Set(['cninfo', 'gdelt']))
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -97,7 +100,7 @@ test('Company Deep Research triggers scope impact only after its committed Write
       receipts.push(receipt)
       return { receiptKey: 'c'.repeat(64), knowledgeBaseId: receipt.knowledgeBaseId, baseRevision: receipt.baseRevision, committedRevision: receipt.committedRevision, status: 'ready', proposals: [], diagnostics: [] }
     } }
-    const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [], researchEvidenceProviders: { cninfo: plugin }, workflowService: new WorkflowService(), themeScopeImpactChecker: checker })
+    const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [], researchEvidenceProviders: { cninfo: plugin }, workflowService: new WorkflowService(), themeScopeImpactChecker: checker, reasoningExecutor: completeResearchExecutor(), companyDataResolverFactory: fixtureCompanyDataResolverFactory(plugin) })
     const result = await service.startResearchCompany({ workflowRunId: 'company-impact-run', symbol: '600519', name: 'Fixture Company' }).completion
     assert.equal(result.status, 'completed')
     assert.ok(result.committedIds.length > 0)

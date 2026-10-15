@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import type { CompanyMethodExecution, CompanyResearchQuality } from '../../workflows/company-deep-research/content-quality.ts'
 
-export interface ResearchReportSection { readonly id: string; readonly title: string; readonly markdown: string; readonly sourceRefs?: readonly string[]; readonly claimRefs?: readonly string[]; readonly relationRefs?: readonly string[]; readonly signalRefs?: readonly string[]; readonly evidenceLinks?: readonly string[] }
+export interface ResearchReportSection { readonly id: string; readonly title: string; readonly markdown: string; readonly sourceRefs?: readonly string[]; readonly claimRefs?: readonly string[]; readonly relationRefs?: readonly string[]; readonly signalRefs?: readonly string[]; readonly evidenceLinks?: readonly string[]; readonly evidenceLocations?: readonly { readonly sourceCandidateId?: string; readonly url?: string; readonly locator: string; readonly excerpt?: string }[] }
 export interface VerifiedSecurityIdentityReportMetadata {
   readonly symbol: string
   readonly exchange: 'SH' | 'SZ' | 'BJ'
@@ -24,6 +25,8 @@ export interface ResearchReport {
   readonly sourceRefs: readonly string[]
   readonly claimRefs: readonly string[]
   readonly methodology: string
+  readonly researchQuality?: CompanyResearchQuality
+  readonly methodExecutions?: readonly CompanyMethodExecution[]
   readonly verifiedSecurityIdentity?: VerifiedSecurityIdentityReportMetadata
   readonly sections: readonly ResearchReportSection[]
   readonly outputPath: string
@@ -65,11 +68,17 @@ export function validateResearchReport(report: ResearchReport): ResearchReport {
   if (!report.sourceRefs || report.sourceRefs.some((item: string) => !/^source:[^\s]+$/.test(item))) throw new TypeError('sourceRefs must contain Source references')
   if (!report.claimRefs || report.claimRefs.some((item: string) => !/^claim:[^\s]+$/.test(item))) throw new TypeError('claimRefs must contain Claim references')
   if (typeof report.methodology !== 'string' || report.methodology.trim() === '') throw new TypeError('methodology is required')
+  if (report.researchQuality !== undefined && (typeof report.researchQuality.passed !== 'boolean' || !['complete', 'incomplete'].includes(report.researchQuality.status) || report.researchQuality.passed !== (report.researchQuality.status === 'complete') || !Array.isArray(report.researchQuality.issues) || !Array.isArray(report.researchQuality.sectionChecks) || !Number.isInteger(report.researchQuality.coreCoverage?.completed) || !Number.isInteger(report.researchQuality.coreCoverage?.required) || report.researchQuality.coreCoverage.completed < 0 || report.researchQuality.coreCoverage.completed > report.researchQuality.coreCoverage.required)) throw new TypeError('researchQuality metadata is invalid')
+  if (report.researchQuality !== undefined && (report.researchQuality.issues.some((item) => typeof item !== 'string' || !item.trim()) || report.researchQuality.sectionChecks.some((item) => !item || !safeId.test(item.sectionId) || typeof item.core !== 'boolean' || typeof item.passed !== 'boolean' || !Array.isArray(item.reasons) || item.reasons.some((reason) => typeof reason !== 'string' || !reason.trim()) || item.passed !== (item.reasons.length === 0)) || (report.researchQuality.passed && (report.researchQuality.issues.length > 0 || report.researchQuality.coreCoverage.completed !== report.researchQuality.coreCoverage.required)))) throw new TypeError('researchQuality checks are inconsistent')
+  const semanticReview = report.researchQuality?.semanticReview
+  if (semanticReview !== undefined && (typeof semanticReview.passed !== 'boolean' || !['passed', 'failed', 'cancelled'].includes(semanticReview.status) || semanticReview.passed !== (semanticReview.status === 'passed') || !Number.isInteger(semanticReview.attempts) || semanticReview.attempts < 0 || semanticReview.attempts > 2 || !Array.isArray(semanticReview.sectionChecks) || !Array.isArray(semanticReview.issues) || !Array.isArray(semanticReview.diagnostics) || (semanticReview.passed && (semanticReview.issues.length !== 0 || semanticReview.sectionChecks.length !== 16)))) throw new TypeError('researchQuality semantic review is invalid')
+  if (report.methodExecutions !== undefined && (!Array.isArray(report.methodExecutions) || report.methodExecutions.some((item) => typeof item.skillId !== 'string' || !safeId.test(item.skillId) || !['complete', 'completed', 'incomplete', 'insufficient_evidence', 'failed', 'cancelled'].includes(item.status) || !Number.isInteger(item.attempts) || item.attempts < 0 || item.attempts > 2))) throw new TypeError('methodExecutions metadata is invalid')
   if (!report.sections || report.sections.length === 0 || report.sections.some((section: ResearchReportSection) => !safeId.test(section.id) || section.title.trim() === '' || section.markdown.trim() === '')) throw new TypeError('sections must contain non-empty Markdown sections')
   if (report.sections.some((section: ResearchReportSection) => (section.sourceRefs ?? []).some((item: string) => !/^source:[^\s]+$/.test(item)) || (section.claimRefs ?? []).some((item: string) => !/^claim:[^\s]+$/.test(item)))) throw new TypeError('section references must be canonical Source/Claim references')
   if (report.sections.some((section: ResearchReportSection) => (section.relationRefs ?? []).some((item: string) => !/^relation:[^\s]+$/.test(item)))) throw new TypeError('section relationRefs must be canonical Relation references')
   if (report.sections.some((section: ResearchReportSection) => (section.signalRefs ?? []).some((item: string) => !safeId.test(item)))) throw new TypeError('signalRefs must contain safe ResearchSignal references')
   if (externalEvidenceReportTypes.has(report.reportType) && report.sections.some((section: ResearchReportSection) => (section.evidenceLinks ?? []).some((item: string) => typeof item !== 'string' || !/^https:\/\//i.test(item)))) throw new TypeError('report evidenceLinks must be HTTPS URLs')
+  if (report.sections.some((section) => (section.evidenceLocations ?? []).some((item) => typeof item.locator !== 'string' || !item.locator.trim() || (item.url !== undefined && !/^https:\/\//i.test(item.url))))) throw new TypeError('report evidenceLocations require a locator and HTTPS URL when supplied')
   if (typeof report.outputPath !== 'string' || report.outputPath.trim() === '' || isAbsolute(report.outputPath) || report.outputPath.split(/[\\/]+/).includes('..')) throw new TypeError('outputPath must be a safe relative file path')
   return report
 }
@@ -93,10 +102,13 @@ export function summarizeResearchReport(report: ResearchReport): ResearchReportS
 
 export function renderResearchReport(report: ResearchReport): string {
   const title = report.reportType === 'daily_brief' ? 'Daily Intelligence Brief' : report.reportType === 'earnings_review' ? 'Earnings Review' : report.reportType === 'valuation' ? 'Valuation' : report.reportType === 'event_research' ? 'Event Research' : report.reportType === 'thesis_red_team' ? 'Thesis Red Team' : report.reportType === 'industry_research' ? 'Industry Research' : report.reportType === 'thesis_lifecycle' ? 'Thesis Lifecycle' : 'Company Research'
-  const lines = [`# ${title}`, '', `- Report: ${report.reportId}`, `- As of: ${report.asOf}`, `- Knowledge revision: ${report.knowledgeBaseRevision}`, '', `Methodology: ${report.methodology}`, '']
-  for (const section of report.sections) { lines.push(`## ${section.title}`, '', section.markdown.trim(), ''); if (section.sourceRefs?.length) lines.push(`Sources: ${section.sourceRefs.join(', ')}`, ''); if (section.relationRefs?.length) lines.push(`Relations: ${section.relationRefs.join(', ')}`, ''); if (section.claimRefs?.length) lines.push(`Claims: ${section.claimRefs.join(', ')}`, ''); if (externalEvidenceReportTypes.has(report.reportType) && section.evidenceLinks?.length) lines.push('External evidence:', ...section.evidenceLinks.map((url) => `- <${url}>`), '') }
+  const company = report.reportType === 'company_research'
+  const lines = [`# ${company ? `${report.verifiedSecurityIdentity?.verifiedName ?? ''}公司研究报告` : title}`, '', `- Report: ${report.reportId}`, `- As of: ${report.asOf}`, `- Knowledge revision: ${report.knowledgeBaseRevision}`, '', `Methodology: ${report.methodology}`, '']
+  if (report.researchQuality) lines.push(`研究完成度：${report.researchQuality.passed ? '通过' : '未完成'}（核心覆盖 ${report.researchQuality.coreCoverage.completed}/${report.researchQuality.coreCoverage.required}）`, '', ...(report.researchQuality.issues.length ? ['研究缺口：', ...report.researchQuality.issues.map((item) => `- ${item}`), ''] : []))
+  for (const section of report.sections) { lines.push(`## ${company ? COMPANY_SECTION_TITLES[section.id] ?? section.title : section.title}`, '', section.markdown.trim(), ''); if (section.sourceRefs?.length) lines.push(`Sources: ${section.sourceRefs.join(', ')}`, ''); if (section.relationRefs?.length) lines.push(`Relations: ${section.relationRefs.join(', ')}`, ''); if (section.claimRefs?.length) lines.push(`Claims: ${section.claimRefs.join(', ')}`, ''); if (externalEvidenceReportTypes.has(report.reportType) && section.evidenceLinks?.length) lines.push('External evidence:', ...section.evidenceLinks.map((url) => `- <${url}>`), ''); if (section.evidenceLocations?.length) lines.push('证据定位：', ...section.evidenceLocations.map((item) => `- ${item.sourceCandidateId ?? ''} ${item.url ? `[原文](${item.url})` : ''} ${item.locator}${item.excerpt ? `：${item.excerpt}` : ''}`), '') }
   return `${lines.join('\n').trim()}\n`
 }
+const COMPANY_SECTION_TITLES: Readonly<Record<string, string>> = { 'company-overview': '公司概况与发展历程', 'business-model': '商业模式', 'business-segments': '业务分部', 'revenue-profit-drivers': '收入与利润驱动', products: '产品与服务', technologies: '技术与壁垒', 'industry-exposure': '行业与市场空间', 'supply-chain': '供应链', competition: '竞争格局', 'financial-quality': '财务质量', 'growth-drivers': '增长驱动', 'management-capital-allocation': '管理层、治理与资本配置', catalysts: '催化因素', risks: '风险', valuation: '估值', 'bull-base-bear': '乐观、基准与悲观情景', 'variant-perception': '预期差', 'investment-thesis': '研究结论', 'monitoring-checklist': '跟踪清单' }
 
 export async function writeResearchReport(report: ResearchReport, reportRoot: string): Promise<string> {
   validateResearchReport(report)
