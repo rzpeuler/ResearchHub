@@ -59,6 +59,9 @@ test('numeric grounding distinguishes shorthand decline from a positive level de
 })
 
 test('decrease direction ends at comma or completed number and never negates a reporting year', () => {
+  assert.equal(validateCompanyNumericGrounding({markdown:'简化自由现金流为负73.68亿元。',sources:[],preparedAnalysis:{freeCashFlow:-7368000000}}).status,'grounded')
+  assert.equal(validateCompanyNumericGrounding({markdown:'简化自由现金流为负73.68亿元。',sources:[],preparedAnalysis:{freeCashFlow:7368000000}}).status,'unsupported_numbers')
+  assert.equal(validateCompanyNumericGrounding({markdown:'负债73.68亿元。',sources:[],preparedAnalysis:{liabilities:7368000000}}).status,'grounded')
   const preparedAnalysis = {growth:-7.1,revenue:100,netProfit:20}
   const trustedText = ['2025年', '2026-10-15']
   for (const markdown of ['2025年收入小幅增长而归母净利润下降，2026年上半年。', '利润下降2026年重新核对。', '利润下降7.1%而收入100、净利润20。', '利润下降，收入100。']) {
@@ -80,6 +83,9 @@ test('unitless table amounts follow deterministic financial display calculations
 })
 
 test('publication year context is admitted only from the cited source verified metadata', () => {
+  const official = {...source,title:'年度报告',content:'行业面临竞争者追赶。',candidate:{...source.candidate,publishedAt:'2025-04-15T00:00:00Z'}}
+  assert.equal(validateCompanyNumericGrounding({markdown:'年报发布于2025年。[filing-2025-003@paragraph:1]',sources:[official]}).status,'grounded')
+  assert.equal(validateCompanyNumericGrounding({markdown:'年报发布于2024年。[filing-2025-003@paragraph:1]',sources:[official]}).status,'unsupported_numbers')
   const article = {...source,title:'行业文章',content:'沪电股份专注于企业通讯板。',candidate:{...source.candidate,metadata:{observedPublicationDate:'2019-08-19',historicalSourceContext:{observedYear:2019,basis:'fetched_html_publication_meta'}}}}
   assert.equal(validateCompanyNumericGrounding({markdown:'2019年行业文章说明业务。[filing-2025-003@paragraph:1]',sources:[article]}).status,'grounded')
   assert.equal(validateCompanyNumericGrounding({markdown:'2018年行业文章说明业务。[filing-2025-003@paragraph:1]',sources:[article]}).status,'unsupported_numbers')
@@ -107,10 +113,64 @@ test('bare financial cells inherit only this table explicit column or immediatel
 })
 
 test('declared monetary table unit does not scale percentage, days, multiples, dates or header years', () => {
+  const spacedPercent='| 指标 | 金额（亿元） |\n|---|---:|\n| 利润率 | 12.5 % |'
+  assert.equal(validateCompanyNumericGrounding({markdown:spacedPercent,sources:[],preparedAnalysis:{ratio:12.5}}).status,'grounded')
+  assert.equal(validateCompanyNumericGrounding({markdown:spacedPercent,sources:[],preparedAnalysis:{money:1250000000}}).status,'unsupported_numbers','explicit spaced percent cannot borrow a monetary amount')
   const markdown='**比较（人民币亿元）**\n| 产品 | 本期收入 | 收入同比 | 天数 | 倍数 | 日期 |\n|---|---:|---:|---:|---:|---|\n| A | 125.30 | 10 | 30 | 2 | 2026年 |'
   assert.equal(validateCompanyNumericGrounding({markdown,sources:[],preparedAnalysis:{revenue:12530120000,growth:10,days:30,multiple:2},trustedText:['2026年']}).status,'grounded')
   const wrong='**比较（人民币亿元）**\n| 产品 | 收入同比 | 天数 | 倍数 | 日期 |\n|---|---:|---:|---:|---|\n| A | 125.30 | 125.30 | 125.30 | 2026年 |'
   assert.equal(validateCompanyNumericGrounding({markdown:wrong,sources:[],preparedAnalysis:{revenue:12530120000},trustedText:['2026年']}).diagnostics.length,3)
   const explicitRow='| 指标 | 本期 | 收入同比 | 现金转化率 |\n|---|---:|---:|---:|\n| 收入（亿元） | 125.30 | 10 | 2 |'
   assert.equal(validateCompanyNumericGrounding({markdown:explicitRow,sources:[],preparedAnalysis:{revenue:12530120000,growth:10,ratio:2}}).status,'grounded')
+})
+
+test('currency in the table header never scales its reporting years but applies to monetary data rows', () => {
+  const markdown='| 指标（亿元） | 2026上半年 | 2025上半年 | 同比 |\n|---|---:|---:|---:|\n| 收入 | 277.98 | 169.55 | 63.95% |'
+  const preparedAnalysis={currentRevenue:27798000000,priorRevenue:16955000000,growth:63.95}
+  assert.equal(validateCompanyNumericGrounding({markdown,sources:[],preparedAnalysis,trustedText:['2026年','2025年']}).status,'grounded')
+  const wrongYear=validateCompanyNumericGrounding({markdown:markdown.replace('2026上半年','2031上半年'),sources:[],preparedAnalysis,trustedText:['2026年','2025年']})
+  assert.deepEqual(wrongYear.diagnostics.map(item=>item.token),['2031'])
+  assert.equal(validateCompanyNumericGrounding({markdown:markdown.replace('亿元','万元'),sources:[],preparedAnalysis,trustedText:['2026年','2025年']}).status,'unsupported_numbers')
+})
+
+test('explicit mixed income and percentage table cells scale only their first monetary amount', () => {
+  const article={...source,content:'电子电路收入25,620,292,915.99元，毛利率17.59%；本期收入12,530,120,000元，毛利率18.80%。'}
+  const prefix='**分部经营对照（人民币亿元；毛利率）**\n'
+  const header='| 产品 | 2025全年收入/毛利率 |\n|---|---:|\n'
+  const markdown=prefix+header+'| 电子电路 | 256.20 / 17.59% |\n[filing-2025-003@paragraph:1]'
+  assert.equal(validateCompanyNumericGrounding({markdown,sources:[article],trustedText:['2025年']}).status,'grounded')
+  const product='| 产品 | 2026上半年收入（亿元）及毛利率 |\n|---|---:|\n| 电路 | 125.30；18.80% |\n[filing-2025-003@paragraph:1]'
+  assert.equal(validateCompanyNumericGrounding({markdown:product,sources:[article],trustedText:['2026年']}).status,'grounded')
+  assert.equal(validateCompanyNumericGrounding({markdown:markdown.replace('256.20 / 17.59%','17.59 / 256.20%'),sources:[article],trustedText:['2025年']}).status,'unsupported_numbers','money and percentage cannot swap roles')
+  assert.equal(validateCompanyNumericGrounding({markdown:markdown.replace('256.20 / 17.59%','256.20 / 18.80亿元'),sources:[article],trustedText:['2025年']}).status,'unsupported_numbers')
+  assert.equal(validateCompanyNumericGrounding({markdown:markdown.replace('人民币亿元','人民币万元'),sources:[article],trustedText:['2025年']}).status,'unsupported_numbers')
+  assert.equal(validateCompanyNumericGrounding({markdown:markdown.replace(prefix,''),sources:[article],trustedText:['2025年']}).status,'unsupported_numbers','mixed percentages do not imply a monetary unit')
+  const detached=prefix+header+'| 其他 | 无数据 |\n\n另一张表不继承前表单位。\n\n'+header+'| 电子电路 | 256.20 / 17.59% |\n[filing-2025-003@paragraph:1]'
+  assert.equal(validateCompanyNumericGrounding({markdown:detached,sources:[article],trustedText:['2025年']}).status,'unsupported_numbers')
+})
+
+test('explicit trailing monetary unit covers a pure enumerated list without leaking to adjacent clauses or percentages', () => {
+  const article={...source,content:'电子电路12,530,120,000元，毛利率18.80%。\n精密组件6,581,120,000元，毛利率12.13%。\n光模块5,351,120,000元，毛利率39.33%。\n显示模组2,723,120,000元，毛利率5.89%。'}
+  const refs=[1,2,3,4].map(n=>`[filing-2025-003@paragraph:${n}]`).join(' ')
+  const markdown=`收入分别为125.30、65.81、53.51、27.23亿元；对应毛利率分别为18.80%、12.13%、39.33%、5.89%。${refs}`
+  assert.equal(validateCompanyNumericGrounding({markdown,sources:[article]}).status,'grounded')
+  assert.equal(validateCompanyNumericGrounding({markdown:markdown.replace('亿元','万元'),sources:[article]}).status,'unsupported_numbers')
+  assert.equal(validateCompanyNumericGrounding({markdown:markdown.replace('125.30','135.30'),sources:[article]}).status,'unsupported_numbers')
+  assert.equal(validateCompanyNumericGrounding({markdown:markdown.replace('125.30、65.81','125.30%；收入65.81'),sources:[article]}).status,'unsupported_numbers','unit cannot cross a percentage or new clause')
+  assert.equal(validateCompanyNumericGrounding({markdown:markdown.replace('[filing-2025-003@paragraph:2]',''),sources:[article]}).status,'unsupported_numbers','each amount still requires the corresponding cited source row')
+})
+
+test('an explicit shared decrease direction applies across a conjunction-only numeric list', () => {
+  const article={...source,content:'汽车毛利率20.49%，同比变化-1.82%；电子毛利率6.29%，同比变化-2.06%。'}
+  const markdown='毛利率分别下降1.82和2.06个百分点。[filing-2025-003@paragraph:1]'
+  assert.equal(validateCompanyNumericGrounding({markdown,sources:[article]}).status,'grounded')
+  assert.equal(validateCompanyNumericGrounding({markdown:markdown.replace('下降','增长'),sources:[article]}).status,'unsupported_numbers')
+  assert.equal(validateCompanyNumericGrounding({markdown:markdown.replace('1.82和2.06','1.82%；收入2.06'),sources:[article]}).status,'unsupported_numbers','direction cannot leak past a completed percentage or new clause')
+  assert.equal(validateCompanyNumericGrounding({markdown:markdown.replace('下降1.82和2.06','下降1.82而收入2.06'),sources:[article]}).status,'unsupported_numbers','a new metric is not a shared-direction list')
+})
+
+test('split research capitalization ratio requires the cited numeric continuation, not only its label', () => {
+  const article={...source,content:'资本化研发投入占研发投入\n的比例 1.78% 0.86% 0.92%'}
+  assert.equal(validateCompanyNumericGrounding({markdown:'资本化研发投入比例1.78%。[filing-2025-003@paragraph:1]',sources:[article]}).status,'unsupported_numbers')
+  assert.equal(validateCompanyNumericGrounding({markdown:'资本化研发投入比例1.78%。[filing-2025-003@paragraph:1] [filing-2025-003@paragraph:2]',sources:[article]}).status,'grounded')
 })

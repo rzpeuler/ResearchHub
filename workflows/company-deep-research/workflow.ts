@@ -238,8 +238,14 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     const now = input.now ?? (() => new Date().toISOString())
     const asOf = input.asOf ?? now()
     await input.observations?.startStage('data_acquisition', '数据获取')
-    const acquisitionDeadlineAt = Date.now() + 10 * 60_000
-    let acquired = await acquire(input, company, asOf, acquisitionDeadlineAt)
+    const acquisitionBudgetLimitMs = 10 * 60_000
+    let acquisitionRemainingMs = acquisitionBudgetLimitMs
+    const acquireWithinBudget = async (terms?:readonly string[], previous?:AcquiredResearch) => {
+      const startedAt = Date.now()
+      try { return await acquire(input,company,asOf,startedAt+acquisitionRemainingMs,terms,previous) }
+      finally { acquisitionRemainingMs=Math.max(0,acquisitionRemainingMs-Math.max(0,Date.now()-startedAt)) }
+    }
+    let acquired = await acquireWithinBudget()
     const sourceConflicts: {round:number;candidateId:string;retainedSource:NormalizedResearchSource;incomingSource:NormalizedResearchSource}[] = []
     abortIfNeeded(input.signal)
     await input.observations?.finishStage('data_acquisition', 'completed', { summary: `已处理 ${acquired.providerOutcomes.length} 个可观察数据源` })
@@ -248,6 +254,7 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     await input.observations?.startStage('research_synthesis', '研究综合分析')
     let synthesisMode: string | undefined
     let synthesisDiagnostics: readonly string[] = []
+    const synthesisAttemptOutputs: {attempt:number;output:unknown;allowedCitations:readonly string[]}[] = []
     let methodResults: CompanyResearchMethodResult[] = []
     let semanticExecutionBlock: 'RATE_LIMIT_OR_QUOTA' | 'AUTHENTICATION_OR_ACCOUNT' | undefined
     let reviewedResearch: CompanyResearchResult | undefined
@@ -262,6 +269,7 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       methodResults = appendFinancialSummary(methodResults, researchInput)
       await input.observations?.startSkill('company_research_synthesis', '公司研究综合分析')
       const assembled = await assembleCompanyResearch({...researchInput,qualityFeedback:semanticReview?.issues ?? []}, methodResults, semanticExecutionBlock ? undefined : input.reasoningExecutor, now, 2-synthesisAttempts)
+      synthesisAttemptOutputs.push(...assembled.synthesisAttemptOutputs.map(output=>({...output,attempt:synthesisAttempts+output.attempt})))
       synthesisAttempts += assembled.synthesisAttempts
       synthesisMode = assembled.synthesisMode
       synthesisDiagnostics = [...synthesisDiagnostics,...assembled.synthesisDiagnostics]
@@ -276,7 +284,7 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       semanticExecutionBlock = result.diagnostics.find(diagnostic => diagnostic.code === 'RATE_LIMIT_OR_QUOTA' || diagnostic.code === 'AUTHENTICATION_OR_ACCOUNT')?.code as typeof semanticExecutionBlock
       if (result.status === 'cancelled') throw new Error('WORKFLOW_CANCELLED')
       await input.observations?.finishSkill('content_quality_review', result.passed ? 'completed' : 'failed', result.passed ? '核心研究问题、依据及风险路径通过独立审查' : result.issues.join(';'))
-      const merged = {...result,attempts:reviewAttempts,diagnostics:[...semanticReview?.diagnostics ?? [],...result.diagnostics.map(diagnostic=>({...diagnostic,attempt:previousAttempts+diagnostic.attempt}))]}
+      const merged = {...result,attempts:reviewAttempts,attemptOutputs:[...semanticReview?.attemptOutputs ?? [],...result.attemptOutputs?.map(output=>({...output,attempt:previousAttempts+output.attempt})) ?? []],diagnostics:[...semanticReview?.diagnostics ?? [],...result.diagnostics.map(diagnostic=>({...diagnostic,attempt:previousAttempts+diagnostic.attempt}))]}
       qualityReviewHistory.push({review:merged,sections:research.sections})
       return merged
     }
@@ -332,10 +340,10 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
         if (reviewAttempts >= 2 || synthesisAttempts >= 2 || revisionTargets.some(id => (methodResults.find(method => method.skillId === id)?.attempts ?? 2) >= 2)) break
       }
       const needsSupplement = incomplete.some(method => method.attempts < 2) || !!semanticReview && !semanticReview.passed && reviewAttempts < 2 && synthesisAttempts < 2
-      if (!needsSupplement || round === 2 || !input.reasoningExecutor || Date.now() >= acquisitionDeadlineAt) break
+      if (!needsSupplement || round === 2 || !input.reasoningExecutor || acquisitionRemainingMs <= 0) break
       const gapMethods = [...new Set([...incomplete.map(method => method.skillId),...revisionTargets])]
       const terms = [...new Set([...gapMethods.map(id => COMPANY_METHOD_METHODOLOGY[id].terms[0]!),...gapMethods.flatMap(id => COMPANY_METHOD_METHODOLOGY[id].terms)])].slice(0, 12)
-      const supplemental = await acquire(input, company, asOf, acquisitionDeadlineAt, terms, acquired)
+      const supplemental = await acquireWithinBudget(terms, acquired)
       const retained = new Map(acquired.sources.map(source => [source.candidate.candidateId, source]))
       const addedIds: string[] = []
       const conflictDiagnostics: ResearchAcquisitionDiagnostic[] = []
@@ -375,9 +383,10 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       }
       contentQuality = mergeCompanySemanticQuality(structuralContentQuality,semanticReview)
     }
+    if (acquisitionRemainingMs <= 0) contentQuality = {...contentQuality,passed:false,status:'incomplete',issues:[...contentQuality.issues,'ACQUISITION_BUDGET_EXHAUSTED']}
     const methodExecutions = methodResults.map(method => ({skillId:method.skillId,status:method.status,attempts:method.attempts,summary:method.answer.slice(0,300),...(method.diagnostics.at(-1)?{errorCode:method.diagnostics.at(-1)!.code}:{})}))
     await mkdir(resolve(input.reportRoot), {recursive:true})
-    await writeFile(resolve(input.reportRoot, `company-research-${company.symbol.toLowerCase()}-${input.workflowRunId}.analysis.json`), JSON.stringify({asOf,company,methodResults,contentQuality,synthesisMode,synthesisDiagnostics,synthesisAttempts,reviewAttempts,qualityReviewHistory,sourceConflicts,preparedAnalysis:researchInput.preparedAnalysis,sourceDiagnostics:acquired.diagnostics,sourceAttempts:acquired.sourceAttempts,sourceAdvice:assessCompanySourceHealth(acquired.sourceAttempts),sourceSummaries:acquired.sources.map(source=>({candidateId:source.candidate.candidateId,title:source.title,url:source.canonicalUrl,publishedAt:source.candidate.publishedAt,contentHash:source.contentHash,content:source.content}))},null,2),'utf8')
+    await writeFile(resolve(input.reportRoot, `company-research-${company.symbol.toLowerCase()}-${input.workflowRunId}.analysis.json`), JSON.stringify({asOf,company,methodResults,contentQuality,synthesisMode,synthesisDiagnostics,synthesisAttemptOutputs,synthesisAttempts,reviewAttempts,qualityReviewHistory,acquisitionBudget:{limitMs:acquisitionBudgetLimitMs,spentMs:acquisitionBudgetLimitMs-acquisitionRemainingMs,remainingMs:acquisitionRemainingMs},sourceConflicts,preparedAnalysis:researchInput.preparedAnalysis,sourceDiagnostics:acquired.diagnostics,sourceAttempts:acquired.sourceAttempts,sourceAdvice:assessCompanySourceHealth(acquired.sourceAttempts),sourceSummaries:acquired.sources.map(source=>({candidateId:source.candidate.candidateId,title:source.title,url:source.canonicalUrl,publishedAt:source.candidate.publishedAt,contentHash:source.contentHash,content:source.content}))},null,2),'utf8')
     const noAcquiredEvidence = acquired.sources.length === 0
     await input.observations?.finishStage('quality_gate', qualityGate.eligibleForGateway && !noAcquiredEvidence && contentQuality.passed ? 'completed' : 'blocked', { summary: contentQuality.passed ? '证据与研究内容质量门已验收' : '公司研究核心内容未完成，未进入 Knowledge Gateway', diagnostics: [...(noAcquiredEvidence ? ['NO_COMPANY_RESEARCH_EVIDENCE'] : qualityGate.diagnostics.filter((item) => item.severity === 'ERROR').map((item) => item.code)),...contentQuality.issues] })
     if (!qualityGate.eligibleForGateway || noAcquiredEvidence || !contentQuality.passed) {

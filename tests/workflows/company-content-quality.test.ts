@@ -8,6 +8,13 @@ test('fallback cannot pass through content gate', () => { assert.equal(evaluateC
 test('observations duplicated as financial analysis fail independently of citations', () => { const value = sections(); value[9] = { ...value[9]!, markdown: 'Retrieved structured financial observations (provider-reported values): revenue 10' }; assert.ok(evaluateCompanyResearchContent({ sections: value }).issues.includes('financial-quality:OBSERVATIONS_WITHOUT_ANALYSIS')) })
 test('optional valuation gaps do not block core completion', () => { assert.equal(evaluateCompanyResearchContent({ sections: [...sections(), { id: 'valuation', markdown: '研究缺口：无法获取估值基础', sourceCandidateIds: [] }] }).passed, true) })
 test('failed selected method blocks completion', () => { assert.equal(evaluateCompanyResearchContent({ sections: sections(), methodExecutions: [{ skillId: 'business_model_map', status: 'failed', attempts: 2, errorCode: 'TIMEOUT' }] }).passed, false) })
+test('a shared section is not counted complete when one required owning method failed', () => {
+  const failed:CompanyResearchMethodResult={skillId:'capital_allocation_review',status:'failed',attempts:2,answer:'',markdown:'',sections:[],findings:[],sourceCandidateIds:[],limitations:['尚未完成资本配置'],risks:[],diagnostics:[]}
+  const quality=evaluateCompanyResearchContent({sections:sections(),methodResults:[failed]})
+  assert.equal(quality.passed,false)
+  assert.equal(quality.coreCoverage.completed,15)
+  assert.ok(quality.sectionChecks.find(check=>check.sectionId==='management-capital-allocation')!.reasons.includes('OWNER_METHOD_NOT_COMPLETED:capital_allocation_review'))
+})
 
 test('content gate accepts independent actual summary and section locations but rejects unsupplied locators', () => {
   const method: CompanyResearchMethodResult = { skillId: 'company_history_strategy', status: 'complete', attempts: 1, answer: '公司业务演变。', markdown: '概括发展阶段。[annual-report@paragraph:2]', sections: [{ id: 'company-overview', markdown: '分析战略转折。[annual-report@paragraph:3]' }], findings: [{ text: '公司业务演变。', kind: 'fact', evidence: [{ sourceCandidateId: 'annual-report', location: 'paragraph:1' }] }], sourceCandidateIds: ['annual-report'], limitations: [], risks: [], diagnostics: [], executionEvidence: [{ sourceCandidateId: 'annual-report', title: '年度报告', publisher: 'Company', excerpts: [1, 2, 3].map((row) => ({ sourceCandidateId: 'annual-report', location: `paragraph:${row}`, text: '公司业务演变与战略转折。' })) }] }

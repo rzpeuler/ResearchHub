@@ -19,6 +19,7 @@ export interface CompanySemanticQuality {
   readonly issues: readonly string[]
   readonly diagnostics: readonly { readonly code: string; readonly message: string; readonly attempt: number }[]
   readonly attempts: number
+  readonly attemptOutputs?: readonly { readonly attempt: number; readonly output: unknown }[]
 }
 export type CompanySemanticQualityResult = CompanySemanticQuality
 export interface CompanySemanticQualityInput extends CompanyResearchInput {
@@ -56,7 +57,8 @@ export const COMPANY_SEMANTIC_QUALITY_SCHEMA = {
 /** Independent Workflow review of substantive coverage and evidence entailment; formatting/number guards remain separate. */
 export async function reviewCompanyResearchSemantics(input: CompanySemanticQualityInput): Promise<CompanySemanticQuality> {
   const diagnostics: { code: string; message: string; attempt: number }[] = []
-  const fail = (issue: string, attempts = 0, status: CompanySemanticQuality['status'] = 'failed'): CompanySemanticQuality => ({ passed: false, status, sectionChecks: [], issues: [issue], diagnostics, attempts })
+  const attemptOutputs: {attempt:number;output:unknown}[] = []
+  const fail = (issue: string, attempts = 0, status: CompanySemanticQuality['status'] = 'failed'): CompanySemanticQuality => ({ passed: false, status, sectionChecks: [], issues: [issue], diagnostics, attempts, attemptOutputs })
   if (input.signal?.aborted) return fail('SEMANTIC_QUALITY_CANCELLED', 0, 'cancelled')
   if (!input.reasoningExecutor) return fail('SEMANTIC_QUALITY_EXECUTOR_UNAVAILABLE')
   const sections = COMPANY_CORE_SECTION_IDS.map((id) => input.sections.find((section) => section.id === id))
@@ -78,7 +80,7 @@ export async function reviewCompanyResearchSemantics(input: CompanySemanticQuali
   const actualSources = new Set(input.sources.map((source) => source.candidate.candidateId))
   const eligibleIds = (input.reportSourceCandidateIds ?? input.durableSourceCandidateIds ?? []).filter((id) => actualSources.has(id))
   // Independently inspect available but uncited evidence before accepting claims of missing material.
-  const gapCheckEvidence = selectCompanyEvidence(input.sources, eligibleIds, ['分行业', '分产品', '收入构成', '前五大客户', '前五名客户', '前五客户', '客户集中度', '专业背景', '主要工作经历', '管理层履历', '共同注册', '注册成立', '成立日期'], { purpose: 'business_model_map', maxCharacters: 6000, maxSources: 8 }).map((packet) => {
+  const gapCheckEvidence = selectCompanyEvidence(input.sources, eligibleIds, ['分行业', '分产品', '毛利率', '收入构成', '前五大客户', '前五名客户', '前五客户', '客户集中度', '专业背景', '主要工作经历', '管理层履历', '员工持股计划', '现金分红', '股份回购', '股本变动', '研发资本化', '共同注册', '注册成立', '成立日期'], { purpose: 'company_content_review', maxCharacters: 12000, maxSources: 8 }).map((packet) => {
     const source = sourceMap.get(packet.sourceCandidateId)!
     const provenance = source.candidate.metadata?.dataProvenance as Record<string, unknown> | undefined
     return { ...packet, retrievedAt: source.retrievedAt, dateStatus: provenance?.dateStatus ?? null, pointInTimeStatus: provenance?.pointInTimeStatus ?? null, pointInTimeSafe: provenance?.pointInTimeSafe ?? null }
@@ -86,14 +88,15 @@ export async function reviewCompanyResearchSemantics(input: CompanySemanticQuali
   for (let attempt = 1; attempt <= (input.maxAttempts ?? 2); attempt++) {
     if (input.signal?.aborted) return fail('SEMANTIC_QUALITY_CANCELLED', attempt - 1, 'cancelled')
     try {
-      const response = await input.reasoningExecutor.execute({ operation: 'company_research_synthesis', instruction: '独立审查公司研报实质质量，不改写报告、不调用其他Skill。只逐条审查指定16个核心章节，输出与示例相同字段形状的完整JSON，示例true只是字段类型说明，必须独立核验每项，不可默认通过；估值/三情景/预期差缺口不阻塞首次覆盖。不能因字数、段落数量或引用存在就判通过。questionAnswered检查rubric主要问题是否被实质回答；evidenceSupportsConclusion逐项核对关键论点与引用原文是否相符、范围和时间是否一致、推断是否有支撑，不能只检查链接。gapCheckEvidence来自同一研究实际可引用来源的独立限额检索，专用于核查“未提供分部收入、客户集中度、管理履历”等缺口是否虚假；若已有相应证据却宣称没有，必须指出具体段落及缺口对分析的影响并判相关问题/依据不通过。这些未引用证据只可用来拒绝虚假缺口，不可直接替报告补写结论或使未引用论点自动通过；尊重其发布日期、历史口径及PIT限制。竞争章节只有厂商名单或商业报告目录、无实际产品/技术/客户等可比信息，不算完成竞争分析。numericReproducible核对金额/百分比/期间/单位/累计与单季、公式及已给代码计算结果；未经输入计算的新增数值不能放行。风险节riskTransmission检查公司特定触发条件、影响路径、观察信号、缓解及残余风险；其他15节riskTransmission固定true。主要问题已回答时，补充比率、全部人物履历、独立技术验证、目标价或TAM缺数可保留具体限制，不因此否定整节。无关键数字时numericReproducible=true。所有true时reasons=[]；有任何false时reasons中文指出具体问题、错误论点/引用及影响，不能笼统写质量不足。资料不足、事实冲突未交代或原文不支持关键结论必须false，不猜测外部事实。', input: { company: input.company, asOf: input.asOf, requiredCoreSectionIds: COMPANY_CORE_SECTION_IDS, rubric, sections, methods: (input.methodResults ?? []).map((method) => ({ skillId: method.skillId, status: method.status, answer: method.answer, findings: method.findings, limitations: method.limitations, risks: method.risks })), preparedAnalysis: input.preparedAnalysis ?? null, citedParagraphs: [...citedParagraphs.values()], gapCheckEvidence, outputExample, repairErrors: diagnostics.slice(-1) }, outputContract: COMPANY_SEMANTIC_QUALITY_SCHEMA, metadata: { operationFamily: 'company-research-quality', stage: 'content_quality_review', companySymbol: input.company.symbol } }, input.signal)
+      const response = await input.reasoningExecutor.execute({ operation: 'company_research_synthesis', instruction: '独立审查公司研报实质质量，不改写报告、不调用其他Skill。只逐条审查指定16个核心章节，输出与示例相同字段形状的完整JSON，示例true只是字段类型说明，必须独立核验每项，不可默认通过；估值/三情景/预期差缺口不阻塞首次覆盖。不能因字数、段落数量或引用存在就判通过。questionAnswered检查rubric主要问题是否被实质回答；evidenceSupportsConclusion逐项核对关键论点与引用原文是否相符、范围和时间是否一致、推断是否有支撑，不能只检查链接。gapCheckEvidence来自同一研究实际可引用来源的独立限额检索，专用于核查“未提供分部收入、客户集中度、管理履历”等缺口是否虚假；若已有相应证据却宣称没有，必须指出具体段落及缺口对分析的影响并判相关问题/依据不通过。这些未引用证据只可用来拒绝虚假缺口，不可直接替报告补写结论或使未引用论点自动通过；尊重其发布日期、历史口径及PIT限制。竞争章节只有厂商名单或商业报告目录、无实际产品/技术/客户等可比信息，不算完成竞争分析。numericReproducible核对金额/百分比/期间/单位/累计与单季、公式及已给代码计算结果；逐列核对表头与数据，产量不能借用销量、研发费用不能借用研发投入、匿名客户姓名未披露不等于其销售比例未披露。未经输入计算的新增数值不能放行。风险节riskTransmission检查公司特定触发条件、影响路径、观察信号、缓解及残余风险；其他15节riskTransmission固定true。主要问题已回答时，补充比率、全部人物履历、独立技术验证、目标价或TAM缺数可保留具体限制，不因此否定整节。无关键数字时numericReproducible=true。所有true时reasons=[]；有任何false时reasons中文指出具体问题、错误论点/引用及影响，不能笼统写质量不足。资料不足、事实冲突未交代或原文不支持关键结论必须false，不猜测外部事实。', input: { company: input.company, asOf: input.asOf, requiredCoreSectionIds: COMPANY_CORE_SECTION_IDS, rubric, sections, methods: (input.methodResults ?? []).map((method) => ({ skillId: method.skillId, status: method.status, answer: method.answer, findings: method.findings, limitations: method.limitations, risks: method.risks })), preparedAnalysis: input.preparedAnalysis ?? null, citedParagraphs: [...citedParagraphs.values()], gapCheckEvidence, outputExample, repairErrors: diagnostics.slice(-1), repairPreviousOutput:attemptOutputs.at(-1)?.output ?? null }, outputContract: COMPANY_SEMANTIC_QUALITY_SCHEMA, metadata: { operationFamily: 'company-research-quality', stage: 'content_quality_review', companySymbol: input.company.symbol } }, input.signal)
+      attemptOutputs.push({attempt,output:response.output})
       if (input.signal?.aborted) return fail('SEMANTIC_QUALITY_CANCELLED', attempt, 'cancelled')
       const sectionChecks = validateCompanySemanticQualityOutput(response.output)
       const issues = sectionChecks.flatMap((check) => {
         const failed = ['questionAnswered', 'evidenceSupportsConclusion', 'numericReproducible', 'riskTransmission'].filter((key) => !check[key as keyof CompanySemanticSectionCheck])
         return failed.length ? [`${check.sectionId}:${failed.join(',')}:${check.reasons.join('; ')}`] : []
       })
-      return { passed: issues.length === 0, status: issues.length ? 'failed' : 'passed', sectionChecks, issues, diagnostics, attempts: attempt }
+      return { passed: issues.length === 0, status: issues.length ? 'failed' : 'passed', sectionChecks, issues, diagnostics, attempts: attempt, attemptOutputs }
     } catch (error) {
       if (input.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) return fail('SEMANTIC_QUALITY_CANCELLED', attempt, 'cancelled')
       const message = error instanceof Error ? error.message : String(error)

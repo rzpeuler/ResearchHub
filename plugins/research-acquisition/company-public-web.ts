@@ -103,7 +103,7 @@ export class CompanyPublicWebPlugin implements ResearchAcquisitionPlugin {
     }
     return url
   }
-  private async download(raw: string, signal?: AbortSignal): Promise<{ bytes: Uint8Array; url: string; mediaType: string }> {
+  private async download(raw: string, signal?: AbortSignal): Promise<{ bytes: Uint8Array; url: string; mediaType: string; contentType: string }> {
     let url = raw
     for (let redirects = 0; redirects <= 4; redirects += 1) {
       const checked = await this.publicUrl(url, signal)
@@ -137,7 +137,8 @@ export class CompanyPublicWebPlugin implements ResearchAcquisitionPlugin {
         const target = new TextDecoder().decode(bytes).match(/window\.location\.replace\(\s*["']([^"']+)["']\s*\)/)?.[1]
         if (target) { url = xmlText(target); continue }
       }
-      return { bytes, url: checked.href, mediaType: response.headers.get('content-type')?.split(';')[0] ?? 'text/html' }
+      const contentType=response.headers.get('content-type') ?? 'text/html'
+      return { bytes, url: checked.href, mediaType: contentType.split(';')[0]!, contentType }
     }
     throw new Error('PUBLIC_WEB_REDIRECT_LIMIT')
   }
@@ -252,12 +253,12 @@ export class CompanyPublicWebPlugin implements ResearchAcquisitionPlugin {
   async fetch(candidate: ResearchSourceCandidate, signal?: AbortSignal, options?: ResearchFetchOptions): Promise<ResearchFetchedSource> {
     if (!candidate.url) throw new Error('PUBLIC_WEB_URL_REQUIRED')
     const downloaded = await acquisitionStep({ activityId: `${candidate.candidateId}:download`, providerId: 'public-web', step: 'download', sourceTitle: candidate.title, signal, timeoutMs: options?.downloadTimeoutMs ?? 30_000, deadlineAt: options?.deadlineAt, onProgress: options?.onProgress }, (requestSignal) => this.download(candidate.url!, requestSignal))
-    return { candidate: { ...candidate, url: downloaded.url }, retrievedAt: this.now(), content: new TextDecoder().decode(downloaded.bytes), rawBytes: downloaded.bytes, mediaType: downloaded.mediaType }
+    return { candidate: { ...candidate, url: downloaded.url }, retrievedAt: this.now(), content: downloaded.mediaType.includes('html') ? decodeCompanyPublicHtml(downloaded.bytes,downloaded.contentType) : new TextDecoder().decode(downloaded.bytes), rawBytes: downloaded.bytes, mediaType: downloaded.mediaType }
   }
   async normalize(source: ResearchFetchedSource, signal?: AbortSignal): Promise<NormalizedResearchSource> {
     const bytes = source.rawBytes ?? new TextEncoder().encode(source.content)
     const mediaType = source.mediaType ?? 'text/html'
-    const document = await this.resolver.parse({ bytes, filename: mediaType.includes('pdf') ? 'company-public.pdf' : 'company-public.html', mediaType }, signal ? { signal } : undefined)
+    const document = await this.resolver.parse({ bytes: mediaType.includes('html') ? new TextEncoder().encode(source.content) : bytes, filename: mediaType.includes('pdf') ? 'company-public.pdf' : 'company-public.html', mediaType }, signal ? { signal } : undefined)
     if (document.normalizedText.trim().length < 120) throw new Error('PUBLIC_WEB_BODY_INSUFFICIENT')
     if (isPaidResearchCatalog(document.normalizedText)) throw new Error('PUBLIC_WEB_PAID_RESEARCH_CATALOG_NO_SUBSTANTIVE_BODY')
     const companyName = source.candidate.metadata?.companyName
@@ -319,4 +320,24 @@ function publicAddress(address: string): boolean {
   if (address.includes(':')) return !/^(::|fc|fd|fe[89ab]|ff|2001:db8:)/i.test(address) && !address.toLowerCase().includes('ffff:')
   const parts = address.split('.').map(Number)
   return parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255) && ![0, 10, 127].includes(parts[0]!) && !(parts[0] === 169 && parts[1] === 254) && !(parts[0] === 172 && parts[1]! >= 16 && parts[1]! <= 31) && !(parts[0] === 192 && (parts[1] === 168 || parts[1] === 0)) && !(parts[0] === 198 && (parts[1] === 18 || parts[1] === 19 || parts[1] === 51)) && !(parts[0] === 203 && parts[1] === 0 && parts[2] === 113) && !(parts[0] === 100 && parts[1]! >= 64 && parts[1]! <= 127) && parts[0]! < 224
+}
+
+
+/** Decode HTML for parsing while original downloaded bytes remain the Raw provenance. */
+export function decodeCompanyPublicHtml(bytes: Uint8Array, contentType: string): string {
+  const header = /charset\s*=\s*["']?([^;\s"']+)/i.exec(contentType)?.[1]
+  const prefix = new TextDecoder('windows-1252').decode(bytes.subarray(0,8192))
+  let meta: string | undefined
+  for (const tag of prefix.matchAll(/<meta\b[^>]*>/gi)) {
+    // Consume complete attribute values, so a description mentioning "charset=gbk"
+    // cannot become an encoding declaration for an otherwise UTF-8 page.
+    const attributes = new Map([...tag[0].matchAll(/([a-zA-Z][\w:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>]+))/g)].map(attribute => [attribute[1]!.toLowerCase(), attribute[2] ?? attribute[3] ?? attribute[4] ?? '']))
+    meta = attributes.get('charset')?.trim() || ((attributes.get('http-equiv') ?? '').trim().toLowerCase() === 'content-type' ? /charset\s*=\s*["']?([^;\s"']+)/i.exec(attributes.get('content') ?? '')?.[1] : undefined)
+    if (meta) break
+  }
+  const declared=(header ?? meta ?? 'utf-8').toLowerCase()
+  const encoding=({utf8:'utf-8','utf-8':'utf-8',gbk:'gb18030',gb2312:'gb18030',gb18030:'gb18030'} as Record<string,string>)[declared]
+  if(!encoding) throw new Error(`PUBLIC_WEB_UNSUPPORTED_CHARSET:${declared.slice(0,40)}`)
+  try { return new TextDecoder(encoding,{fatal:true}).decode(bytes) }
+  catch { throw new Error(`PUBLIC_WEB_INVALID_TEXT_ENCODING:${encoding}`) }
 }

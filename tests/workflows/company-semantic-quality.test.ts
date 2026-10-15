@@ -50,7 +50,7 @@ test('independent gap check includes eligible uncited late evidence within its o
     assert.equal(packets[0].pointInTimeSafe, true)
     assert.equal(packets[0].pointInTimeStatus, 'within_cutoff')
     const excerpts = packets.flatMap((packet: any) => packet.excerpts)
-    assert.ok(excerpts.reduce((sum: number, excerpt: any) => sum + excerpt.text.length, 0) <= 6000)
+    assert.ok(excerpts.reduce((sum: number, excerpt: any) => sum + excerpt.text.length, 0) <= 12000)
     assert.ok(excerpts.some((excerpt: any) => excerpt.location === 'paragraph:602' && excerpt.text.includes('分产品收入构成')))
     assert.ok(excerpts.some((excerpt: any) => excerpt.location === 'paragraph:603' && excerpt.text.includes('前五大客户')))
     assert.ok(excerpts.some((excerpt: any) => excerpt.location === 'paragraph:604' && excerpt.text.includes('管理层履历')))
@@ -63,10 +63,11 @@ test('independent gap check includes eligible uncited late evidence within its o
 
 test('semantic review format repair is bounded to two calls and does not treat malformed checks as passing', async () => {
   let calls = 0
-  const result = await reviewCompanyResearchSemantics({ ...input, reasoningExecutor: executor(async () => { calls++; return calls === 1 ? { sectionChecks: output.sectionChecks.slice(0, 15) } : output }) })
+  const result = await reviewCompanyResearchSemantics({ ...input, reasoningExecutor: executor(async (request) => { calls++; if(calls===2) assert.equal(request.input.repairPreviousOutput.sectionChecks.length,15); return calls === 1 ? { sectionChecks: output.sectionChecks.slice(0, 15) } : output }) })
   assert.equal(result.passed, true)
   assert.equal(result.attempts, 2)
   assert.equal(result.diagnostics[0]?.code, 'FORMAT_ERROR')
+  assert.equal(result.attemptOutputs?.length,2)
   const failed = await reviewCompanyResearchSemantics({ ...input, reasoningExecutor: executor(async () => 'malformed') })
   assert.equal(failed.passed, false)
   assert.equal(failed.attempts, 2)

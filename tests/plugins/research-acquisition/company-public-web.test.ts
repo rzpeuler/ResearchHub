@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { CompanyPublicWebPlugin } from '../../../plugins/research-acquisition/company-public-web.ts'
+import { CompanyPublicWebPlugin, decodeCompanyPublicHtml } from '../../../plugins/research-acquisition/company-public-web.ts'
 import type { ResearchSourceCandidate } from '../../../plugins/research-acquisition/contracts.ts'
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -227,4 +227,27 @@ test('historical title and actual publication metadata warn about period without
   assert.equal((titleOnly.candidate.metadata?.historicalSourceContext as { basis: string }).basis, 'explicit_title_year')
   const noDate = await plugin.normalize({ candidate, content: '正文介绍2019年创立的公司及2024年产品。'.repeat(30), retrievedAt: '2026-10-15T00:00:00Z', mediaType: 'text/plain' })
   assert.equal(noDate.candidate.metadata?.historicalSourceContext, undefined)
+})
+
+
+test('HTML charset decoding supports explicit GBK bytes, header precedence and original Raw provenance', async () => {
+  const ascii=new TextEncoder()
+  const opening=ascii.encode('<html><meta charset="gbk"><body>')
+  const closing=ascii.encode('</body></html>')
+  const body=Uint8Array.from(Array.from({length:100},()=>[0xd6,0xd0,0xce,0xc4]).flat())
+  const bytes=new Uint8Array([...opening,...body,...closing])
+  assert.match(decodeCompanyPublicHtml(bytes,'text/html'),/中文/)
+  assert.match(decodeCompanyPublicHtml(bytes,'text/html; charset=GB2312'),/中文/)
+  assert.throws(()=>decodeCompanyPublicHtml(bytes,'text/html; charset=utf-8'),/INVALID_TEXT_ENCODING/,'HTTP charset takes precedence over HTML meta')
+  assert.throws(()=>decodeCompanyPublicHtml(bytes,'text/html; charset=utf-7'),/UNSUPPORTED_CHARSET/)
+  assert.equal(decodeCompanyPublicHtml(ascii.encode('中文网页'),'text/html'),'中文网页')
+  assert.equal(decodeCompanyPublicHtml(ascii.encode('<meta name="description" content="Old documentation mentions charset=gbk">中文网页'),'text/html'),'<meta name="description" content="Old documentation mentions charset=gbk">中文网页')
+  const legacyHttpEquiv = new Uint8Array([...ascii.encode('<meta content="text/html; charset=GB2312" http-equiv="Content-Type"><p>'),...body,...ascii.encode('</p>')])
+  assert.match(decodeCompanyPublicHtml(legacyHttpEquiv,'text/html'),/中文/)
+  const plugin=new CompanyPublicWebPlugin({resolveHost,fetchImpl:async()=>new Response(bytes,{headers:{'content-type':'text/html; charset=gbk'}})})
+  const fetched=await plugin.fetch(candidate)
+  assert.match(fetched.content,/中文/)
+  const normalized=await plugin.normalize(fetched)
+  assert.ok(normalized.content.includes('中文'.repeat(80)))
+  assert.deepEqual(normalized.rawBytes,bytes,'Raw archive retains original GBK bytes, not transcoded parser input')
 })

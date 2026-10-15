@@ -30,10 +30,16 @@ function numericTokens(text: string): NumericToken[] {
 }
 function directionBefore(text: string, index: number): -1 | 1 {
   const before = text.slice(Math.max(0, index - 24), index).split(/[。；;，,\n|]/).at(-1) ?? ''
+  if (/(?<!非|正)负\s*$/.test(before)) return -1
   if (/(?:下降|减少|下滑|降)(?:至|到)\s*(?:约|大约)?\s*$/.test(before)) return 1
   const direction = [...before.matchAll(/下降|减少|下滑|净流出|净减少|增长|增加|上升|净流入|降(?=\s*$)/g)].at(-1)
   // A completed amount/percentage ends the direction's scope, even without punctuation.
-  if (direction && /\d/.test(before.slice(direction.index! + direction[0].length))) return 1
+  if (direction && /\d/.test(before.slice(direction.index! + direction[0].length))) {
+    const remaining = before.slice(direction.index! + direction[0].length)
+    // A conjunction-only numeric list still shares its explicit direction:
+    // "分别下降1.82和2.06个百分点". Completed units or new prose end it.
+    if (!/^\s*(?:约)?-?[\d,，]+(?:\.\d+)?(?:\s*(?:和|及|、)\s*-?[\d,，]+(?:\.\d+)?)*\s*(?:和|及|、)\s*$/.test(remaining)) return 1
+  }
   return direction && /下降|减少|下滑|净流出|净减少|^降$/.test(direction[0]) ? -1 : 1
 }
 function normalizeChineseDates(text: string): string {
@@ -51,8 +57,7 @@ function trustedNumbers(value: unknown, output: number[], seen = new Set<object>
 function citedPublicationYears(source: NormalizedResearchSource): readonly string[] {
   const metadata = source.candidate.metadata
   const years: string[] = []
-  const date = metadata?.observedPublicationDate
-  if (typeof date === 'string' && /^((?:19|20)\d{2})-(\d{2})-(\d{2})(?:$|T| )/.test(date)) {
+  for (const date of [source.candidate.publishedAt, metadata?.observedPublicationDate]) if (typeof date === 'string' && /^((?:19|20)\d{2})-(\d{2})-(\d{2})(?:$|T| )/.test(date)) {
     const day = date.slice(0, 10)
     const timestamp = Date.parse(`${day}T00:00:00Z`)
     if (Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === day && Number.isFinite(Date.parse(date))) years.push(day.slice(0, 4))
@@ -71,6 +76,10 @@ function declaredTableUnit(text: string, token: NumericToken): string | null | u
   const end = text.indexOf('\n', token.index)
   const line = text.slice(start, end < 0 ? undefined : end)
   if (!/^\s*\|/.test(line)) return undefined
+  const separatorPattern = /^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$/
+  const nextLine = end < 0 ? '' : text.slice(end + 1).split('\n')[0] ?? ''
+  // A unit-bearing label in the header describes data cells, never its period labels.
+  if (separatorPattern.test(nextLine)) return null
   const column = text.slice(start, token.index).split('|').length - 2
   if (column < 1) return undefined
   const before = text.slice(0, start).split('\n')
@@ -78,17 +87,26 @@ function declaredTableUnit(text: string, token: NumericToken): string | null | u
   while (headerIndex >= 0 && /^\s*\|/.test(before[headerIndex]!)) headerIndex -= 1
   const header = before[headerIndex + 1]
   const separator = before[headerIndex + 2]
-  if (!header || !separator || !/^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$/.test(separator)) return undefined
+  if (!header || !separator || !separatorPattern.test(separator)) return undefined
   const cells = header.split('|').slice(1, -1).map(cell => cell.trim())
   const label = cells[column] ?? ''
   const rowLabel = line.split('|')[1] ?? ''
   const monetary = /收入|利润|现金|资产|负债|借款|债券|支出|费用|金额|资本开支|研发投入|应收|存货|余额|成本|revenue|income|cash|amount/i
   const nonMonetary = /同比|环比|增长|增速|占比|比重|率|比例|百分|百分点|[%％]|倍数|天数|日期|数量|销量|产量|单价|每股|EPS/i
-  const after = text.slice(token.index + token.token.length, token.index + token.token.length + 12)
-  if (nonMonetary.test(label) || /^[%％]|^个?百分点|^[倍天年月日]/.test(after)) return null
+  const after = text.slice(token.index + token.token.length, token.index + token.token.length + 12).trimStart()
+  const cellStart = line.lastIndexOf('|', token.index - start) + 1
+  const cellEnd = line.indexOf('|', token.index - start)
+  const beforeInCell = line.slice(cellStart, token.index - start)
+  const afterInCell = line.slice(token.index - start + token.token.length, cellEnd < 0 ? undefined : cellEnd)
+  // "收入/毛利率" may explicitly contain one monetary amount followed by a percentage.
+  // Only its first bare amount inherits currency; the percent component never does.
+  const mixedAmount = monetary.test(label) && !beforeInCell.trim() && /^\s*(?:\/|[；;])\s*[-+]?[\d,，]+(?:\.\d+)?\s*[%％](?:\s*\*?\s*)$/.test(afterInCell)
+  if (nonMonetary.test(label) && !mixedAmount || /^[%％]|^个?百分点|^[倍天年月日]/.test(after)) return null
   if (!monetary.test(label) && !(monetary.test(rowLabel) && /^(?:本期|上期|期末|期初|(?:19|20)\d{2}(?:年|[-/\d年月日上中下半季度末初\s])*)$/.test(label))) return undefined
   const ownUnit = label.match(/[（(]\s*(?:人民币\s*)?(亿元|万元|元)\s*[）)]/)?.[1]
   if (ownUnit) return ownUnit
+  const headerUnit = cells[0]?.match(/[（(]\s*(?:人民币\s*)?(亿元|万元|元)\s*[）)]/)?.[1]
+  if (headerUnit) return headerUnit
   let contextIndex = headerIndex
   while (contextIndex >= 0 && !before[contextIndex]!.trim()) contextIndex -= 1
   const declaration = before[contextIndex] ?? ''
@@ -121,13 +139,16 @@ export function validateCompanyNumericGrounding(input: NumericGroundingInput): {
     // Fixed editorial cadence/ordinal labels are instructions, not observed company quantities.
     const context = normalizedMarkdown.slice(Math.max(0, candidate.index - 35), candidate.index + candidate.token.length + 45)
     const before = normalizedMarkdown.slice(Math.max(0, candidate.index - 8), candidate.index)
-    const after = normalizedMarkdown.slice(candidate.index + candidate.token.length, candidate.index + candidate.token.length + 15)
+    const after = normalizedMarkdown.slice(candidate.index + candidate.token.length, candidate.index + candidate.token.length + 15).trimStart()
     if (/第\s*$/.test(before) && /^[阶段项条节类次]/.test(after)) continue
     if (/^[、.：:)]/.test(after) && /(?:^|\n|\|)\s*$/.test(before)) continue
     if (/^[次个月周天日季度年]/.test(after) && /每|频率|监控|观察|建议/.test(context) && candidate.rawValue <= 12 && !candidate.magnitude) continue
     // A paired amount in one table cell may share an explicit trailing monetary unit (373 / 447亿元).
     const tailInCell = normalizedMarkdown.slice(candidate.index + candidate.token.length).split(/[|\n]/)[0]?.slice(0, 45) ?? ''
-    const sharedUnit = !candidate.magnitude && /^\s*\/\s*-?[\d,，.]+\s*(亿元|万元|万亿|亿|万)(?:元)?\s*$/.exec(tailInCell)?.[1]
+    const sharedUnit = !candidate.magnitude ? /^\s*\/\s*-?[\d,，.]+\s*(亿元|万元|万亿|亿|万)(?:元)?\s*$/.exec(tailInCell)?.[1]
+      // A pure numeric enumeration can state its monetary unit once after the last item.
+      // Intervening prose, percentage markers or a new clause terminate that scope.
+      ?? /^\s*(?:、\s*-?[\d,，]+(?:\.\d+)?\s*)+(亿元|万元|万亿|亿|万)(?:元)?(?=\s*(?:[；;。。，,）)]|$))/.exec(tailInCell)?.[1] : undefined
     const rowStart = normalizedMarkdown.lastIndexOf('\n', candidate.index) + 1
     const rowPrefix = normalizedMarkdown.slice(rowStart, candidate.index)
     const explicitRowUnit = /^\s*\|[^|]*[（(](亿元|万元|元)[）)]\s*\|/.exec(rowPrefix)?.[1]

@@ -16,6 +16,15 @@ const source: NormalizedResearchSource = {
 }
 const output = { status: 'complete', answer: '公司历史有证据支持。', markdown: '公司经历业务转型。[filing-1@paragraph:251]', sections: [{ id: 'company-overview', markdown: '公司经历业务转型。[filing-1@paragraph:251]' }], findings: [{ text: '公司经历业务转型。', kind: 'fact', evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:251' }] }], limitations: [], risks: [] }
 const executor = (run: (request: unknown, signal?: AbortSignal) => Promise<unknown>): ReasoningExecutor => ({ capabilities: () => ({ maxContextTokens: 10000, maxOutputTokens: 4000, structuredOutputSupport: true, maxConcurrency: 2 }), execute: async (request, signal) => ({ operation: request.operation, output: await run(request, signal) }) })
+test('governance selection retains remuneration table values and employee-plan implementation beyond generic biography headings', () => {
+  const filing={...source,content:[...Array.from({length:300},()=> '董事会日常治理情况。'),'公司报告期内董事和高级管理人员报酬情况','单位：万元','姓名 性别 职务 从公司获得的','税前报酬总额','是否在关联方获取报酬','董事甲 男 董事长 813.90 否',...Array.from({length:25},()=> '其他一般描述。'),'员工持股计划中授予的股票进行第三期解锁并兑现奖金。'].join('\n')}
+  const packet=selectCompanyEvidence([filing],['filing-1'],['董事','治理','报酬','激励'],{purpose:'management_governance_analysis'})[0]!
+  const text=packet.excerpts.map(excerpt=>excerpt.text).join('\n')
+  assert.match(text,/董事甲 男 董事长 813\.90 否/)
+  assert.match(text,/单位：万元/)
+  assert.match(text,/第三期解锁并兑现奖金/)
+  assert.ok(packet.excerpts.length<=72)
+})
 
 test('date context binds supplied adjacent split dates and dated monetary continuations without lending unrelated years', () => {
   const content = '共同注册成立有限公司，于二\n零零二年六月十一日变更为股份有限公司。\n截至二零二五年末，累计研发投入2400亿\n元，全球累计申请专利超7.1万件。'
@@ -33,6 +42,18 @@ test('date context binds supplied adjacent split dates and dated monetary contin
   const bound = bindCompanyMethodEvidenceContext({ ...output, findings: [{ text: '截至2025年末申请专利超7.1万件。', kind: 'fact', evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:4' }] }] } as ReturnType<typeof validateCompanyMethodOutput>, [packet])
   assert.ok(bound.findings[0]!.evidence.some((ref) => ref.location === 'paragraph:3'))
   assert.equal(check(`截至2025年末申请专利超7.1万件。 ${bound.findings[0]!.evidence.map((ref) => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')}`).status, 'grounded')
+})
+
+test('an unclosed PDF parenthesis binds only its actual supplied adjacent matching closing row', () => {
+  const packet = { sourceCandidateId: 'filing-1', title: '年报', publisher: 'Company', excerpts: [
+    { sourceCandidateId: 'filing-1', location: 'paragraph:8', text: '股份收购对价不超过6.29亿美元；ESOP（Employee Stock' },
+    { sourceCandidateId: 'filing-1', location: 'paragraph:9', text: 'Option Program，员工期权激励计划，包含在收购方案中）权益收购对价不超过0.58亿美元。' },
+  ] }
+  assert.deepEqual(withCompanyEvidenceDateContext(packet).excerpts[0]!.contextLocations, ['paragraph:9'])
+  assert.equal(withCompanyEvidenceDateContext({ ...packet, excerpts: packet.excerpts.slice(0, 1) }).excerpts[0]!.contextLocations, undefined)
+  assert.equal(withCompanyEvidenceDateContext({ ...packet, excerpts: [packet.excerpts[0]!, { ...packet.excerpts[1]!, location: 'paragraph:10' }] }).excerpts[0]!.contextLocations, undefined)
+  assert.equal(withCompanyEvidenceDateContext({ ...packet, excerpts: [packet.excerpts[0]!, { ...packet.excerpts[1]!, text: '独立事项，权益收购对价不超过0.58亿美元。' }] }).excerpts[0]!.contextLocations, undefined)
+  assert.equal(withCompanyEvidenceDateContext({ ...packet, excerpts: [{ ...packet.excerpts[0]!, text: '已完整闭合（ESOP）。' }, packet.excerpts[1]!] }).excerpts[0]!.contextLocations, undefined)
 })
 
 test('summary and sections may cite distinct supplied locations from findings, but never unknown locations', async () => {
@@ -117,6 +138,47 @@ test('company method format repair succeeds without degrading to a baseline', as
   assert.ok(result.attemptOutputs?.every(item => item.executionEvidence?.some(packet => packet.excerpts.length > 0)))
   assert.equal(result.attemptOutputs?.[0]?.output, 'invalid JSON')
   assert.deepEqual(result.sections.map((section) => section.id), ['company-overview'])
+})
+
+test('numeric repair receives the actual prior draft and all bounded failing fields instead of regenerating blindly', async () => {
+  const history = { ...source, content: '公司成立与战略转型，完成业务演变。' }
+  const ref = { sourceCandidateId: 'filing-1', location: 'paragraph:1' }
+  const broken = { ...output, answer: '公司增长345.67%。', markdown: '公司增长234.56%。[filing-1@paragraph:1]', sections: [{ id: 'company-overview', markdown: '公司增长123.45%。[filing-1@paragraph:1]' }], findings: [{ text: '公司增长456.78%。', kind: 'fact', evidence: [ref] }], limitations: ['补充资料有限。'] }
+  const fixed = { ...broken, answer: '公司发生业务转型。', markdown: '公司发生业务转型。[filing-1@paragraph:1]', sections: [{ id: 'company-overview', markdown: '公司发生业务转型。[filing-1@paragraph:1]' }], findings: [{ text: '公司发生业务转型。', kind: 'fact', evidence: [ref] }] }
+  let calls = 0
+  const result = await executeCompanyResearchMethod({ skillId: 'company_history_strategy', company: { symbol: '002594' }, asOf: '2026-10-14', sources: [history], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async (request) => {
+    const requestInput = (request as any).input
+    calls++
+    if (calls === 1) { assert.equal('repairPreviousOutput' in requestInput, false); return broken }
+    assert.equal(requestInput.repairPreviousOutput, broken)
+    assert.deepEqual(new Set(requestInput.repairNumericIssues.map((issue: any) => issue.id)), new Set(['company-overview', 'method-summary', 'method-answer', 'finding-1']))
+    assert.deepEqual(requestInput.repairTargets.map((target: any) => target.fieldPath), ['sections[0].markdown', 'markdown', 'answer', 'findings[0].text'])
+    assert.equal(requestInput.repairTargets[0].originalText, broken.sections[0]!.markdown)
+    assert.equal(requestInput.repairTargets[3].originalText, broken.findings[0]!.text)
+    assert.equal(requestInput.repairTargets[3].issues[0].token, '456.78')
+    for (const token of ['123.45', '234.56', '345.67', '456.78']) assert.ok(requestInput.repairErrors[0].message.includes(token))
+    assert.match(requestInput.repairInstruction, /逐字保留未报错/)
+    assert.match(requestInput.repairInstruction, /不得新增其他数字或主张/)
+    assert.match(requestInput.repairInstruction, /每个数值各写明完整单位/)
+    assert.match(requestInput.repairInstruction, /不能靠删掉整张表或专业分析/)
+    return fixed
+  }) })
+  assert.equal(result.status, 'complete')
+  assert.equal(result.attempts, 2)
+  assert.equal(calls, 2)
+  assert.deepEqual(result.limitations, broken.limitations)
+})
+
+test('a call that returned no raw output never fabricates a previous repair draft', async () => {
+  const history = { ...source, content: source.content.replace('核心产品业务收入及客户模式。', '核心产品业务收入及客户模式，战略转型历史。') }
+  let calls = 0
+  const result = await executeCompanyResearchMethod({ skillId: 'company_history_strategy', company: { symbol: '002594' }, asOf: '2026-10-14', sources: [history], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async (request) => {
+    if (++calls === 1) throw new Error('temporary provider call failed')
+    assert.equal('repairPreviousOutput' in (request as any).input, false)
+    return output
+  }) })
+  assert.equal(result.status, 'complete')
+  assert.equal(result.attempts, 2)
 })
 
 test('method input retains raw periods and code calculations without duplicating the raw financial table', async () => {
@@ -250,6 +312,8 @@ test('purpose query families retain late split financial tables and governance e
   insert(1100, ['公司研发投入情况', '2025 年 2024 年 变动比例', '研发投入金额（元） 63,441,379,000.00 54,160,964,000.00 17.13%', '研发投入资本化的金额（元） 5,463,274,000.00 966,219,000.00 465.43%', '资本化研发投入占研发投入的比例 8.61% 1.78% 6.83%'])
   insert(1250, ['单位：元', '2025 年 2024 年', '在建工程 48,293,781,000.00 19,954,343,000.00'])
   insert(1400, ['管理层主要工作经历', '董事长毕业后从事材料研究，曾任制造公司总经理，现任本公司董事长。', '股东持股比例', '第一大股东持股比例为17.06%。'])
+  insert(1450, ['主要股东', '甲某 境内自然人 16.53% 302,781,254', '乙某 境内自然人 13.51% 247,526,917'])
+  insert(1470, ['上述股东关联关系或一致行动的说明', '上述股东甲某、乙某系兄弟，二人为公司的实际控制人。'])
   const filing = { ...source, content: lines.join('\n') }
   const financial = selectCompanyEvidence([filing], ['filing-1'], ['主营业务', '研发', '投资'], { purpose: 'financial_quality_analysis', maxCharacters: 3000 })[0]!
   for (const index of [601, 602, 608, 609, 610, 611, 902, 903, 1102, 1104, 1105, 1251, 1252, 1253]) assert.ok(financial.excerpts.some((row) => row.location === `paragraph:${index}`), `missing exact late table row ${index}`)
@@ -257,7 +321,11 @@ test('purpose query families retain late split financial tables and governance e
   assert.ok(financial.excerpts.reduce((sum, row) => sum + row.text.length, 0) <= 3000)
   const management = selectCompanyEvidence([filing], ['filing-1'], ['董事', '研发'], { purpose: 'management_governance_analysis', maxCharacters: 3000 })[0]!
   assert.ok(management.excerpts.some((row) => row.location === 'paragraph:1402' && row.text.includes('材料研究')))
-  assert.ok(management.excerpts.some((row) => row.location === 'paragraph:1404' && row.text.includes('17.06%')))
+  assert.ok(management.excerpts.some((row) => row.location === 'paragraph:1452' && row.text.includes('16.53%')))
+  assert.ok(management.excerpts.some((row) => row.location === 'paragraph:1453' && row.text.includes('13.51%')))
+  assert.ok(management.excerpts.some((row) => row.location === 'paragraph:1472' && row.text.includes('兄弟')))
+  const product = selectCompanyEvidence([filing], ['filing-1'], ['产品', '研发'], { purpose: 'product_technology_analysis', maxCharacters: 3000 })[0]!
+  assert.ok(product.excerpts.some((row) => row.location === 'paragraph:611' && row.text.includes('31.03%')))
 })
 
 test('business and capital evidence preserves actual revenue recognition and current acquisition cost spans', () => {

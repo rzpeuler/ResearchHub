@@ -15,7 +15,7 @@ const optionalGaps: Record<string, string> = {
 const schema = {type:'object',additionalProperties:false,required:['sections'],properties:{sections:{type:'array',minItems:5,maxItems:5,items:{type:'object',additionalProperties:false,required:['id','markdown','sourceCandidateIds'],properties:{id:{type:'string',enum:finalIds},markdown:{type:'string',minLength:1,maxLength:8000},sourceCandidateIds:{type:'array',items:{type:'string'}}}}}}} as const
 
 /** Final synthesis assembles conclusions from peer results; it never runs peer Skills. */
-export async function assembleCompanyResearch(input: CompanyResearchInput, methods: readonly CompanyResearchMethodResult[], executor: ReasoningExecutor | undefined, now: () => string, maxAttempts: number = 2): Promise<CompanyResearchResult & { synthesisMode: string; synthesisDiagnostics: readonly string[]; synthesisAttempts: number }> {
+export async function assembleCompanyResearch(input: CompanyResearchInput, methods: readonly CompanyResearchMethodResult[], executor: ReasoningExecutor | undefined, now: () => string, maxAttempts: number = 2): Promise<CompanyResearchResult & { synthesisMode: string; synthesisDiagnostics: readonly string[]; synthesisAttempts: number; synthesisAttemptOutputs: readonly {attempt:number;output:unknown;allowedCitations:readonly string[]}[] }> {
   if (!Number.isInteger(maxAttempts) || maxAttempts < 0 || maxAttempts > 2) throw new Error('Invalid synthesis attempt budget')
   const diagnostics: string[] = []
   const sections = COMPANY_RESEARCH_SECTIONS.map(title => {
@@ -25,24 +25,26 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
   })
   const available=methods.filter(method=>method.status==='complete')
   const allowed=new Set(input.reportSourceCandidateIds ?? input.durableSourceCandidateIds ?? [])
+  const locations=new Set(available.flatMap(method=>method.findings.flatMap(f=>f.evidence.map(e=>`${e.sourceCandidateId}@${e.location}`))))
+  for (const method of available) {
+    const supplied = new Set([...(method.executionEvidence ?? []), ...(method.deterministicEvidence ?? [])].flatMap(packet => packet.excerpts.map(excerpt => `${packet.sourceCandidateId}@${excerpt.location}`)))
+    for (const text of [method.markdown, ...method.sections.map(section => section.markdown)]) for (const match of text.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)) if (supplied.has(match[1]!)) locations.add(match[1]!)
+  }
+  const synthesisAttemptOutputs:{attempt:number;output:unknown;allowedCitations:readonly string[]}[]=[]
   let synthesisMode='deterministic_fallback'
   let synthesisAttempts=0
   if(executor && available.length) for(let attempt=1;attempt<=maxAttempts;attempt++) {
     synthesisAttempts=attempt
     if(input.signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
     try {
-      const response=await executor.execute({operation:'company_research_synthesis',instruction:'用中文整合已完成的独立研究方法，只输出指定五节。investment-thesis 给出核心判断、支持证据、最强反证和失效条件；monitoring-checklist 给出指标、观察频率、触发条件和论点关联。每个主要判断使用提供方法中的 [sourceCandidateId@paragraph:N] 引用。不可重新编造基础事实或计算数值。估值、情景和预期差仅当材料包含可复算输入时分析，否则明确缺失输入、已尝试来源、影响。不要把无一致预期说成不存在预期差。',input:{company:input.company,asOf:input.asOf,methods:available.map(method=>({skillId:method.skillId,answer:method.answer,markdown:method.markdown,sections:method.sections,findings:method.findings,limitations:method.limitations,risks:method.risks,sourceCandidateIds:method.sourceCandidateIds})),preparedAnalysis:input.preparedAnalysis,requiredSectionIds:finalIds,qualityFeedback:input.qualityFeedback ?? [],repair:attempt>1?diagnostics.at(-1):null},outputContract:schema,metadata:{operationFamily:'company-research-quality'}},input.signal)
+      const response=await executor.execute({operation:'company_research_synthesis',instruction:'用中文整合已完成的独立研究方法，只输出指定五节。investment-thesis 给出核心判断、支持证据、最强反证和失效条件；monitoring-checklist 给出指标、观察频率、触发条件和论点关联。每个主要判断使用提供方法中的 [sourceCandidateId@paragraph:N] 引用。不可重新编造基础事实或计算数值。估值、情景和预期差仅当材料包含可复算输入时分析，否则明确缺失输入、已尝试来源、影响。不要把无一致预期说成不存在预期差。',input:{company:input.company,asOf:input.asOf,methods:available.map(method=>({skillId:method.skillId,answer:method.answer,markdown:method.markdown,sections:method.sections,findings:method.findings,limitations:method.limitations,risks:method.risks,sourceCandidateIds:method.sourceCandidateIds})),preparedAnalysis:input.preparedAnalysis,requiredSectionIds:finalIds,allowedCitations:[...locations],qualityFeedback:input.qualityFeedback ?? [],repair:attempt>1?diagnostics.at(-1):null,repairPreviousOutput:attempt>1?synthesisAttemptOutputs.at(-1)?.output:null,repairInstruction:attempt>1?'保留上一输出中未报错的章节及主张，只修复具体错误字段的引用或数字；不新增其他数字或论点。完整输出合同JSON。':null},outputContract:schema,metadata:{operationFamily:'company-research-quality'}},input.signal)
+      synthesisAttemptOutputs.push({attempt,output:response.output,allowedCitations:[...locations]})
       const value=(typeof response.output==='string'?JSON.parse(response.output):response.output) as {sections?: {id:string;markdown:string;sourceCandidateIds:string[]}[]}
       if(!Array.isArray(value.sections)||value.sections.length!==5||new Set(value.sections.map(s=>s.id)).size!==5) throw new Error('FORMAT_ERROR: final section set must be exact')
-      const locations=new Set(available.flatMap(method=>method.findings.flatMap(f=>f.evidence.map(e=>`${e.sourceCandidateId}@${e.location}`))))
-      for (const method of available) {
-        const supplied = new Set([...(method.executionEvidence ?? []), ...(method.deterministicEvidence ?? [])].flatMap(packet => packet.excerpts.map(excerpt => `${packet.sourceCandidateId}@${excerpt.location}`)))
-        for (const text of [method.markdown, ...method.sections.map(section => section.markdown)]) for (const match of text.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)) if (supplied.has(match[1]!)) locations.add(match[1]!)
-      }
       const validated: {id:string;markdown:string;sourceCandidateIds:string[]}[]=[]
       for(const section of value.sections) {
         if(!finalIds.includes(section.id)||typeof section.markdown!=='string'||!section.markdown.trim()||!Array.isArray(section.sourceCandidateIds)||section.sourceCandidateIds.some(id=>!allowed.has(id))) throw new Error('REFERENCE_ERROR: final section contract or source invalid')
-        for(const match of section.markdown.matchAll(/\[([^\]\s]+@[^\]]+)\]/g)) if(!locations.has(match[1]!)) throw new Error('REFERENCE_ERROR: final synthesis locator unavailable')
+        for(const match of section.markdown.matchAll(/\[([^\]\s]+@[^\]]+)\]/g)) if(!locations.has(match[1]!)) throw new Error(`REFERENCE_ERROR: final synthesis locator unavailable: ${match[1]}; copy an exact citation from the supplied method results`)
         if(['investment-thesis','monitoring-checklist'].includes(section.id)&&(!section.sourceCandidateIds.length||![...section.markdown.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].length)) throw new Error('REFERENCE_ERROR: conclusion requires located evidence')
         const citationIds=[...new Set([...section.markdown.matchAll(/\[([^\]\s]+)@paragraph:\d+\]/g)].map(match=>match[1]!))]
         if(citationIds.some(id=>!section.sourceCandidateIds.includes(id))) throw new Error('REFERENCE_ERROR: citation source absent from section attribution')
@@ -66,5 +68,5 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
     proposals.push({proposalId,kind:'claim',subjectKey:'company',claimType:finding.kind==='fact'?'fact':finding.kind==='assumption'?'assumption':'viewpoint',statement:finding.text,sourceCandidateIds:refs})
     for(const section of sections) if(method.sections.some(s=>s.id===section.id)) section.proposalIds.push(proposalId)
   }
-  return {company:input.company,generatedAt:now(),asOf:input.asOf,sections,proposals,sourceCandidateIds:[...durable],contextOnlySourceCandidateIds:input.sources.filter(s=>!durable.has(s.candidate.candidateId)).map(s=>s.candidate.candidateId),synthesisMode,synthesisDiagnostics:diagnostics,synthesisAttempts}
+  return {company:input.company,generatedAt:now(),asOf:input.asOf,sections,proposals,sourceCandidateIds:[...durable],contextOnlySourceCandidateIds:input.sources.filter(s=>!durable.has(s.candidate.candidateId)).map(s=>s.candidate.candidateId),synthesisMode,synthesisDiagnostics:diagnostics,synthesisAttempts,synthesisAttemptOutputs}
 }

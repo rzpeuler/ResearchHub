@@ -13,6 +13,11 @@ test('invalid final section cannot leak a partially accepted synthesis into repo
   let calls = 0
   const executor: ReasoningExecutor = { capabilities, execute: async (request) => {
     calls++
+    if(calls===2) {
+      const repair=request.input as {repairPreviousOutput:unknown;repairInstruction:string}
+      assert.match(JSON.stringify(repair.repairPreviousOutput),/无引用的跟踪结论/)
+      assert.match(repair.repairInstruction,/保留/)
+    }
     return { operation: request.operation, output: { sections: ids.map((id) => ({ id, markdown: id === 'monitoring-checklist' ? '无引用的跟踪结论' : '部分拒绝内容 [annual@paragraph:1]', sourceCandidateIds: ['annual'] })) } }
   } }
   const result = await assembleCompanyResearch(input, [method], executor, () => input.asOf)
@@ -26,6 +31,10 @@ test('final synthesis cannot cite an allowed source missing from actual method f
   const result = await assembleCompanyResearch({ ...input, reportSourceCandidateIds: ['annual', 'other'] }, [method], executor, () => input.asOf)
   assert.equal(result.synthesisMode, 'deterministic_fallback')
   assert.ok(result.synthesisDiagnostics.every((code) => code.includes('REFERENCE_ERROR')))
+  assert.equal(result.synthesisAttemptOutputs.length, 2)
+  assert.match(result.synthesisDiagnostics[0]!,/other@paragraph:1/)
+  assert.ok(JSON.stringify(result.synthesisAttemptOutputs[0]!.output).includes('other@paragraph:1'))
+  assert.deepEqual(result.synthesisAttemptOutputs[0]!.allowedCitations,['annual@paragraph:1'])
 })
 
 test('unsupported optional valuation numbers are replaced by explicit basis gaps', async () => {

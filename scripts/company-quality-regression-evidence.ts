@@ -30,5 +30,9 @@ async function compare(baselinePath: string, currentPath: string, client: boolea
 const node = await compare(option('--baseline-node'), option('--current-node'), false)
 const client = await compare(option('--baseline-client'), option('--current-client'), true)
 const output = option('--output'); await mkdir(dirname(output), { recursive: true })
-await writeFile(output, `${JSON.stringify({ generatedAt: new Date().toISOString(), comparisonKey: ['filePath', 'testTitle'], node, client, newRegressionCount: node.addedFailures.length + client.addedFailures.length }, null, 2)}\n`)
+let previous: { generatedAt?: string; node?: {currentSha256?:string}; client?:unknown; comparisonHistory?:Record<string,unknown> } | undefined
+try { previous=JSON.parse(await readFile(output,'utf8')) } catch(error) { if((error as NodeJS.ErrnoException).code!=='ENOENT') throw error }
+const comparisonHistory={...previous?.comparisonHistory}
+if(previous?.node?.currentSha256 && previous.node.currentSha256!==node.currentSha256) comparisonHistory[`node_${previous.node.currentSha256.slice(0,12)}`]={generatedAt:previous.generatedAt,node:previous.node,client:previous.client}
+await writeFile(output, `${JSON.stringify({ generatedAt: new Date().toISOString(), comparisonKey: ['filePath', 'testTitle'], node, client, newRegressionCount: node.addedFailures.length + client.addedFailures.length, ...(Object.keys(comparisonHistory).length?{comparisonHistory}:{}) }, null, 2)}\n`)
 console.log(JSON.stringify({ output, node: { baseline: node.baselineFailures.length, current: node.currentFailures.length, added: node.addedFailures, removed: node.removedFailures }, client: { baseline: client.baselineFailures.length, current: client.currentFailures.length, added: client.addedFailures, removed: client.removedFailures } }))

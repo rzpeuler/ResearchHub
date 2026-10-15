@@ -25,7 +25,8 @@ export interface CompanyEvidencePacket {
 export function selectCompanyEvidence(sources: readonly NormalizedResearchSource[], eligibleIds: readonly string[], terms: readonly string[], options: { maxSources?: number; maxExcerptsPerSource?: number; maxCharacters?: number; purpose?: string } = {}): CompanyEvidencePacket[] {
   const eligible = new Set(eligibleIds)
   const maxSources = options.maxSources ?? 16
-  const maxExcerpts = options.maxExcerptsPerSource ?? 72
+  const maxExcerpts = options.maxExcerptsPerSource ?? (options.purpose === 'company_content_review' ? 120 : 72)
+  const maxCriticalExcerpts = options.maxExcerptsPerSource ?? (options.purpose === 'capital_allocation_review' ? 96 : maxExcerpts)
   const maxCharacters = options.maxCharacters ?? 32_000
   const ranked = sources.filter((source) => eligible.has(source.candidate.candidateId)).map((source, sourceOrder) => {
     const paragraphs = source.content.split(/\r?\n/).map((text, index) => ({ text: text.trim(), index })).filter(({ text }) => text.length > 0)
@@ -51,13 +52,14 @@ export function selectCompanyEvidence(sources: readonly NormalizedResearchSource
     // Keep real table labels, headers and adjacent value rows together, including PDF line wraps.
     const criticalBundles = (PURPOSE_QUERY_FAMILIES[options.purpose ?? ''] ?? []).flatMap((family, familyIndex) => {
       const candidates = scores.filter((row) => family.test(row.text) && !/\.{3,}|…{2,}/.test(row.text)).sort((a, b) => {
+        const quantitative = (row: typeof a) => (family === CUSTOMERS || family === SUPPLIERS) ? /\d[\d,.，]*%/.test(row.text) ? 6 : /\d[\d,.，]+/.test(row.text) ? 4 : 0 : family === EMPLOYEE_PLAN && /(?:\d+[、.]\s*)?员工持股计划的实施情况/.test(row.text) ? 5 : family === SHARE_ACTION && /报告期内.*(?:回购股份|增发股份).*\d/.test(row.text) ? 6 : family === DIVIDEND ? /每\s*10\s*股|(?:人民币|现金红利).*\d/.test(row.text) ? 6 : /(?:\d{4}\s*年度|本年度|报告期).*(?:不派发|派发|现金分红)/.test(row.text) ? 4 : 0 : family === FINANCING && /\d.*(?:亿美元|港元)/.test(row.text) ? 6 : 0
         const grossMargin = (row: typeof a) => family === SEGMENT && scores.some((prior) => prior.index < row.index && prior.index >= row.index - 25 && /毛利率/.test(prior.text)) ? /^分产品$/.test(row.text) ? 2 : 1 : 0
-        const specificity = (row: typeof a) => family === OWNERSHIP ? /\d[\d.]*%/.test(row.text) && /第一大股东|实际控制人|控股股东/.test(row.text) ? 3 : /\d[\d.]*%/.test(row.text) ? 1 : 0 : family === OPERATING_SUMMARY && /同比(?:增长|下降|减少)?$/.test(row.text) ? 1 : family === REVENUE_RECOGNITION && /收入确认.*具体方法/.test(row.text) ? 3 : family === ACQUISITION && /^合并成本\s+\S/.test(row.text) ? 3 : family === VOLUME && /(?:产量|生产量).*(?:销量|销售量).*收入/.test(row.text) ? 3 : 0
-        return grossMargin(b) - grossMargin(a) || specificity(b) - specificity(a) || a.index - b.index
+        const specificity = (row: typeof a) => family === OWNERSHIP ? /(?:境内|境外)自然人\s+\d[\d.]*%/.test(row.text) ? 4 : /\d[\d.]*%/.test(row.text) && /第一大股东|实际控制人|控股股东/.test(row.text) ? 3 : /\d[\d.]*%/.test(row.text) ? 1 : 0 : family === RELATIONSHIP && /父子|之子|兄长|兄弟|夫妻/.test(row.text) ? 3 : family === OPERATING_SUMMARY && /同比(?:增长|下降|减少)?$/.test(row.text) ? 1 : family === REVENUE_RECOGNITION && /收入确认.*具体方法/.test(row.text) ? 3 : family === ACQUISITION && /^合并成本\s+\S/.test(row.text) ? 3 : family === VOLUME && /(?:产量|生产量).*(?:销量|销售量).*收入/.test(row.text) ? 3 : 0
+        return quantitative(b) - quantitative(a) || grossMargin(b) - grossMargin(a) || specificity(b) - specificity(a) || a.index - b.index
       })
       return candidates.slice(0, 2).map((anchor) => {
-        const before = family === OPERATING_SUMMARY ? [] : scores.filter((row) => row.index < anchor.index).slice(family === ACQUISITION ? -10 : -4)
-        const after = scores.filter((row) => row.index >= anchor.index).slice(0, family === ACQUISITION ? 19 : family === REVENUE_RECOGNITION || family === CHANNELS ? 8 : /^(?:分产品|分行业)$/.test(anchor.text) ? 13 : 5)
+        const before = family === OPERATING_SUMMARY ? [] : scores.filter((row) => row.index < anchor.index).slice(family === ACQUISITION ? -10 : family === EMPLOYEE_PLAN || family === SHARE_ACTION ? -1 : family === CUSTOMERS || family === SUPPLIERS || family === RESEARCH ? -2 : -4)
+        const after = scores.filter((row) => row.index >= anchor.index).slice(0, family === EMPLOYEE_PLAN ? 20 : family === ACQUISITION ? 19 : family === REMUNERATION ? 14 : family === CUSTOMERS || family === SUPPLIERS ? 11 : family === RESEARCH ? 10 : family === SHARE_ACTION ? 6 : family === REVENUE_RECOGNITION || family === CHANNELS ? 8 : /^(?:分产品|分行业)$/.test(anchor.text) ? 13 : 5)
         const tableHeader = family === SEGMENT ? scores.filter((row) => row.index < anchor.index && row.index >= anchor.index - 25 && /营业收入.*营业成本.*毛利率/.test(row.text)).at(-1) : undefined
         const headers = tableHeader ? scores.filter((row) => row.index >= tableHeader.index - 1 && row.index < anchor.index && row.index <= tableHeader.index + 5) : []
         return { family: familyIndex, indices: [...new Set([...headers, ...before, ...after].map((row) => row.index))] }
@@ -91,7 +93,7 @@ export function selectCompanyEvidence(sources: readonly NormalizedResearchSource
       const year = scores.filter((candidate) => candidate.index < index && candidate.index >= index - 12 && /^(19|20)\d{2}$/.test(candidate.text)).at(-1)
       if (year) { selected.add(year.index); contexts.set(index, [...new Set([...contexts.get(index) ?? [], year.index])]) }
     }
-    const excerpts = (best.length ? scores.filter(({ index }) => selected.has(index)) : scores.slice(0, 2)).map(({ text, index }) => {
+    const excerpts = (best.length || criticalBundles.length ? scores.filter(({ index }) => selected.has(index)) : scores.slice(0, 2)).map(({ text, index }) => {
       const hit = terms.map((term) => text.toLowerCase().indexOf(term.toLowerCase())).filter((offset) => offset >= 0).sort((a, b) => a - b)[0] ?? 0
       const start = text.length > 2400 ? Math.max(0, hit - 400) : 0
       return { sourceCandidateId: source.candidate.candidateId, location: `paragraph:${index + 1}`, text: text.slice(start, start + 2400), ...(contexts.has(index) ? { contextLocations: contexts.get(index)!.map((context) => `paragraph:${context + 1}`) } : {}) }
@@ -137,7 +139,7 @@ export function selectCompanyEvidence(sources: readonly NormalizedResearchSource
         const context = rows.flatMap((row) => (row.contextLocations ?? []).flatMap((location) => { const provided = byLocation.get(location); return provided ? [provided] : [] }))
         return [...new Map([...context, ...rows].map((row) => [row.location, row])).values()]
       })
-      const bundle = candidates.find((rows) => admitted.size + rows.filter((row) => !admitted.has(row.location)).length <= maxExcerpts && rows.reduce((sum, row) => sum + (admitted.has(row.location) ? 0 : row.text.length), 0) <= allowance)
+      const bundle = candidates.find((rows) => admitted.size + rows.filter((row) => !admitted.has(row.location)).length <= maxCriticalExcerpts && rows.reduce((sum, row) => sum + (admitted.has(row.location) ? 0 : row.text.length), 0) <= allowance)
       if (!bundle) continue
       const cost = bundle.reduce((sum, row) => sum + (admitted.has(row.location) ? 0 : row.text.length), 0)
       if (cost > Math.min(sourceBudget, remaining, allowance)) continue
@@ -184,16 +186,48 @@ export function selectCompanyEvidence(sources: readonly NormalizedResearchSource
   })
 }
 
-/** Bind only actual supplied adjacent PDF continuation rows, never a document-wide year pool. */
+/** Bind only syntactically verified, actual supplied adjacent PDF continuation rows. */
 export function withCompanyEvidenceDateContext(packet: CompanyEvidencePacket): CompanyEvidencePacket {
   const rows = new Map(packet.excerpts.map((row) => [Number(row.location.split(':')[1]), row]))
   return { ...packet, excerpts: packet.excerpts.map((row) => {
     const previous = rows.get(Number(row.location.split(':')[1]) - 1)
-    if (!previous) return row
-    const splitYear = splitCompanyYear(previous.text, row.text)
-    const datedContinuation = /截至(?:[一二三四五六七八九零〇○]{4}|(?:19|20)\d{2})年(?:末|底|\d{1,2}月)/.test(previous.text) && /[亿万千百]$/.test(previous.text) && /^元[，,、。]/.test(row.text)
-    return splitYear || datedContinuation ? { ...row, contextLocations: [...new Set([...row.contextLocations ?? [], previous.location])] } : row
+    const next = rows.get(Number(row.location.split(':')[1]) + 1)
+    const contexts = [...row.contextLocations ?? []]
+    if (previous) {
+      const splitYear = splitCompanyYear(previous.text, row.text)
+      const datedContinuation = /截至(?:[一二三四五六七八九零〇○]{4}|(?:19|20)\d{2})年(?:末|底|\d{1,2}月)/.test(previous.text) && /[亿万千百]$/.test(previous.text) && /^元[，,、。]/.test(row.text)
+      if (splitYear || datedContinuation) contexts.push(previous.location)
+    }
+    if (next && (closesSuppliedParenthesis(row.text, next.text) || closesFinancialYoYClause(row.text, next.text))) contexts.push(next.location)
+    return contexts.length ? { ...row, contextLocations: [...new Set(contexts)] } : row
   }) }
+}
+
+function closesFinancialYoYClause(current: string, next: string): boolean {
+  const clause = current.split(/[。！？]/).at(-1) ?? ''
+  const unfinished = /(?:^|[，,；;])同比(增长|上升|下降|减少|下滑)?\s*$/.exec(clause)
+  if (!unfinished || !/收入|利润|现金流|研发|销量|产量|营业额|费用|成本/.test(clause) || !/\d/.test(clause)) return false
+  const continuation = /^(增长|上升|下降|减少|下滑)?\s*-?\d+(?:\.\d+)?\s*[%％](?=[，,；;。\s]|$)/.exec(next)
+  if (!continuation) return false
+  // No metric label may intervene; a stated direction cannot flip at the line break.
+  if (!unfinished[1]) return Boolean(continuation[1])
+  return !continuation[1] || unfinished[1] === continuation[1]
+}
+
+function closesSuppliedParenthesis(current: string, next: string): boolean {
+  const open: string[] = []
+  for (const char of current) {
+    if (char === '(' || char === '（') open.push(char)
+    else if (char === ')' || char === '）') {
+      if (open.at(-1) !== (char === ')' ? '(' : '（')) return false
+      open.pop()
+    }
+  }
+  if (open.length !== 1) return false
+  const close = open[0] === '(' ? ')' : '）'
+  const end = next.indexOf(close)
+  // A bounded unfinished parenthetical must close on this supplied immediate next row.
+  return end >= 0 && end < 180 && !/[()（）。！？；;]/.test(next.slice(0, end))
 }
 
 function splitCompanyYear(previous: string, current: string): string | undefined {
@@ -234,21 +268,30 @@ const SEGMENT = /^(?:分产品|分行业)$|分(?:产品|行业).*毛利|(?:产�
 const CUSTOMERS = /前\s*[五5]\s*(?:名|大)?客户.*(?:合计|比例|集中)|客户集中度/
 const SUPPLIERS = /前\s*[五5]\s*(?:名|大)?供应商.*(?:合计|比例|集中)/
 const RESEARCH = /研发投入资本化|资本化研发投入|研发投入金额|研发投入占营业收入/
-const OWNERSHIP = /持股比例|控股股东.*持股|实际控制人.*持股/
+const OWNERSHIP = /持股比例|控股股东.*持股|实际控制人.*持股|(?:境内|境外)自然人\s+\d[\d.]*%/
+const RELATIONSHIP = /股东关联关系|一致行动.*说明|(?:兄弟|父子|之子|兄长|夫妻).*(?:实际控制人|股东)|实际控制人.*(?:兄弟|父子|夫妻)/
 const BIOGRAPHY = /专业背景|主要工作经历|管理层履历|董事长.*(?:出生|毕业|曾任)|(?:现任|曾任).*(?:董事长|总经理)/
+const REMUNERATION = /报告期内.*(?:董事|高管|高级管理).*报酬情况|税前报酬总额/
 const CONSTRUCTION = /在建工程/
 const OPERATING_SUMMARY = /实现收入.*同比/
 const REVENUE_RECOGNITION = /收入确认.*(?:具体|方法)|内销.*(?:确认|收入)|外销.*(?:确认|收入)|客户接受|控制权转移/
 const ACQUISITION = /合并成本|股份收购对价|股权收购对价|购买日.*支付|支付及待支付?现金|收购对价/
 const CHANNELS = /^分地区$|^分销售模式$|直销.*经销/
 const VOLUME = /(?:产量|生产量).*(?:销量|销售量)|主要产品.*产销|产销情况/
+const EMPLOYEE_PLAN = /员工持股计划.*(?:授予|解锁|实施)|报告期内全部有效的员工持股计划情况|股权激励.*(?:授予|行权|条件)/
+const SHARE_ACTION = /报告期内.*(?:回购股份|增发股份).*\d.*股|(?:股份回购|回购股份|增发股份).*(?:金额|数量)/
+const DIVIDEND = /(?:现金分红|现金红利|现金股利).*(?:\d|金额|比例)|利润分配.*(?:方案|实施)|(?:年度|报告期).*不派发现金红利|每\s*10\s*股.*(?:派|分)|分红.*实施/
+const FINANCING = /配售.*(?:亿美元|港元|资金|股份)|(?:亿美元|港元).*配售|融资.*(?:发行|配售)|发行.*(?:债券|募集资金)/
+const REGISTRATION = /共同注册成立|成立日期|(?:公司|本公司).*改制|股份公司.*成立/
 const PURPOSE_QUERY_FAMILIES: Readonly<Record<string, readonly RegExp[]>> = {
   company_history_strategy: [/共同注册成立/, /成立日期|(?:公司|本公司).*改制|股份公司.*成立/],
   business_model_map: [SEGMENT, CHANNELS, CUSTOMERS, SUPPLIERS, REVENUE_RECOGNITION],
   business_driver_analysis: [VOLUME, SEGMENT, CHANNELS, CUSTOMERS, RESEARCH],
   financial_quality_analysis: [SEGMENT, CUSTOMERS, RESEARCH, CONSTRUCTION],
-  capital_allocation_review: [ACQUISITION, RESEARCH, CONSTRUCTION, OPERATING_SUMMARY, OWNERSHIP, /现金分红.*(?:金额|比例)|股份回购.*(?:金额|数量)/],
-  management_governance_analysis: [BIOGRAPHY, OWNERSHIP, /股权激励.*(?:授予|行权|条件)/],
-  product_technology_analysis: [RESEARCH, /主要研发项目|研发项目名称/],
-  company_risk_analysis: [CUSTOMERS, SUPPLIERS, RESEARCH, /偿债能力|有息负债/],
+  capital_allocation_review: [SHARE_ACTION, DIVIDEND, FINANCING, ACQUISITION, RESEARCH, CONSTRUCTION, OPERATING_SUMMARY, OWNERSHIP],
+  management_governance_analysis: [EMPLOYEE_PLAN, BIOGRAPHY, OWNERSHIP, RELATIONSHIP, REMUNERATION],
+  product_technology_analysis: [SEGMENT, RESEARCH, /主要研发项目|研发项目名称/],
+  company_risk_analysis: [CUSTOMERS, SEGMENT, SUPPLIERS, RESEARCH, /偿债能力|有息负债/],
+  market_structure_analysis: [CUSTOMERS, SUPPLIERS, SEGMENT],
+  company_content_review: [CUSTOMERS, EMPLOYEE_PLAN, SHARE_ACTION, DIVIDEND, SEGMENT, SUPPLIERS, RESEARCH, OWNERSHIP, BIOGRAPHY, REGISTRATION, FINANCING],
 }

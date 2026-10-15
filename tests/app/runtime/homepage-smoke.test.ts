@@ -9,6 +9,8 @@ import { createResearchHubApplicationRuntime } from '../../../app/runtime/applic
 import { ResearchHubRuntimeServer } from '../../../app/runtime/server.ts'
 import { createFreshKnowledgeBaseV04 } from '../../../knowledge/storage/create-v04.ts'
 import type { ReasoningCapabilities, ReasoningExecutor } from '../../../plugins/reasoning/contracts.ts'
+import { SecurityIdentityResolver } from '../../../app/services/security-identity-resolver.ts'
+import { createSecurityIdentityDataResolver, type AkshareSecurityDirectoryClient } from '../../../plugins/research-acquisition/security-identity-data.ts'
 
 const capabilities: ReasoningCapabilities = { maxContextTokens: 100_000, maxOutputTokens: 10_000, structuredOutputSupport: true, maxConcurrency: 4 }
 class FixtureExecutor implements ReasoningExecutor {
@@ -40,7 +42,11 @@ test('Homepage local smoke: bootstrap, prompt SSE, upload, and explicit producti
   const modelRuntime = await ModelRuntime.create({ authPath: join(agentDir, 'auth.json'), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false }); const faux = fauxProvider({ provider: `researchhub-homepage-${Date.now()}-${Math.random()}`, models: [{ id: 'fixture-model' }] }); modelRuntime.registerNativeProvider(faux.provider)
   let controlledWorkflowService: { register(input: { readonly runId: string; readonly workflowType: string; readonly objective: string }): unknown; start<T extends { readonly status: 'completed' | 'completed_with_review' | 'blocked' | 'cancelled' | 'failed' }>(runId: string, operation: (signal: AbortSignal) => Promise<T>): Promise<T> } | undefined
   const researchService = { startEarningsReview(input: { readonly workflowRunId: string }) { const workflow = controlledWorkflowService!; workflow.register({ runId: input.workflowRunId, workflowType: 'earnings_review', objective: 'Controlled Earnings Review fixture' }); return { runId: input.workflowRunId, completion: workflow.start(input.workflowRunId, async () => ({ status: 'blocked' as const, summary: 'Required filing source is unavailable.', blockedReason: 'EARNINGS_SOURCE_UNAVAILABLE' })) } } }
-  const runtime = await createResearchHubApplicationRuntime({ cwd, agentDir, sessionDir, mountedKnowledgeBaseRoot: kb, workspaceRoot: workspace, modelRuntime, model: faux.getModel(), reasoningExecutor: new FixtureExecutor(), researchService: researchService as never }); controlledWorkflowService = runtime.workflowService; const server = new ResearchHubRuntimeServer({ runtime, clientRoot: join(root, 'missing-client'), port: 0 })
+  // This smoke checks local routing/UI transport, not availability of the live security directory.
+  const securityRows = [{symbol:'600519',name:'贵州茅台',exchange:'SH'}]
+  const directory = { async securityDirectory() { return securityRows } } as unknown as AkshareSecurityDirectoryClient
+  const securityIdentityResolver = new SecurityIdentityResolver({mountedKnowledgeBaseRoot:kb,directoryLoader:async()=>securityRows,dataResolverFactory:({now,signal})=>createSecurityIdentityDataResolver({akshare:directory,now,signal})})
+  const runtime = await createResearchHubApplicationRuntime({ cwd, agentDir, sessionDir, mountedKnowledgeBaseRoot: kb, workspaceRoot: workspace, modelRuntime, model: faux.getModel(), reasoningExecutor: new FixtureExecutor(), securityIdentityResolver, researchService: researchService as never }); controlledWorkflowService = runtime.workflowService; const server = new ResearchHubRuntimeServer({ runtime, clientRoot: join(root, 'missing-client'), port: 0 })
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
   try {
     const info = await server.start(); const readHeaders = { origin: info.origin }; const mutationHeaders = { origin: info.origin, 'x-researchhub-runtime-token': info.runtimeToken, 'content-type': 'application/json' }; const conversationId = runtime.sessionRuntime.getCurrentState().conversationId

@@ -27,7 +27,7 @@ async function fingerprint(root: string): Promise<Record<string, string>> {
   await visit(root); return result
 }
 
-async function fixture(mode: 'repair' | 'malformed' | 'still_insufficient', options: {structured?: 'late_all'|'profile_present';conflict?: boolean;extraLocator?: boolean} = {}) {
+async function fixture(mode: 'repair' | 'malformed' | 'still_insufficient', options: {structured?: 'late_all'|'profile_present';conflict?: boolean;extraLocator?: boolean;onFirstMethod?:()=>void;onFirstAcquisitionCompleted?:()=>void} = {}) {
   const root = await mkdtemp(join(tmpdir(), 'company-quality-loop-kb-'))
   const reports = await mkdtemp(join(tmpdir(), 'company-quality-loop-reports-'))
   try {
@@ -74,6 +74,7 @@ async function fixture(mode: 'repair' | 'malformed' | 'still_insufficient', opti
       if (request.operation === 'company_research_method') {
         const id = request.metadata!.skillId as string
         calls.set(id, (calls.get(id) ?? 0) + 1)
+        if(id==='company_history_strategy' && calls.get(id)===1) options.onFirstMethod?.()
         if (id === 'financial_quality_analysis' && calls.get(id) === 1) originalFinancialEvidence = JSON.parse(JSON.stringify((request.input as any).evidence))
         const response = await base.execute(request, signal)
         if (id === 'company_history_strategy' && calls.get(id) === 2) {
@@ -97,18 +98,19 @@ async function fixture(mode: 'repair' | 'malformed' | 'still_insufficient', opti
       if (request.operation === 'company_research_synthesis') synthesisCalls++
       return base.execute(request, signal)
     } }
-    const result = await runCompanyDeepResearch({ workflowRunId: `quality-loop-${mode}`, handle: await new KnowledgeBaseRegistry().mount(root), company: { symbol: '600519', name: 'Fixture Company', exchange: 'SH' }, writeKnowledge: false, reportRoot: reports, now: () => asOf, dataResolverFactory: context => { acquisitions++;const resolver=baseFactory(context);const resolve=resolver.resolve.bind(resolver);resolver.resolve=async requirements=>{requirementsByRound.push(requirements.map(({metricId,period})=>({metricId,period})));return resolve(requirements)};return resolver }, reasoningExecutor })
+    const result = await runCompanyDeepResearch({ workflowRunId: `quality-loop-${mode}`, handle: await new KnowledgeBaseRegistry().mount(root), company: { symbol: '600519', name: 'Fixture Company', exchange: 'SH' }, writeKnowledge: false, reportRoot: reports, now: () => asOf, dataResolverFactory: context => { acquisitions++;const resolver=baseFactory(context);const resolve=resolver.resolve.bind(resolver);resolver.resolve=async requirements=>{requirementsByRound.push(requirements.map(({metricId,period})=>({metricId,period})));const result=await resolve(requirements);if(acquisitions===1) options.onFirstAcquisitionCompleted?.();return result};return resolver }, reasoningExecutor })
     assert.deepEqual(await fingerprint(root), before, 'Readonly semantic repair preserves every KB file')
     assert.ok(discoveries >= 1)
     assert.ok(acquisitions <= 3, 'Initial acquisition plus at most two supplemental rounds')
     assert.ok(reviewCalls <= 2, 'Review repair shares the two-attempt semantic budget')
     assert.ok(synthesisCalls <= 2, 'Final synthesis does not reset its operation budget')
     const analysis = JSON.parse(await readFile(join(reports, `company-research-600519-quality-loop-${mode}.analysis.json`), 'utf8'))
-    for (const id of COMPANY_RESEARCH_METHOD_IDS) assert.equal(calls.get(id), id === 'company_history_strategy' && mode !== 'malformed' ? 2 : 1, `Only history receives the remaining method attempt: ${id}; ${JSON.stringify(analysis.methodResults.find((method: any) => method.skillId === id)?.diagnostics)}`)
+    for (const id of COMPANY_RESEARCH_METHOD_IDS) assert.equal(calls.get(id), id === 'company_history_strategy' && mode !== 'malformed' && !options.onFirstAcquisitionCompleted ? 2 : 1, `Only history receives the remaining method attempt: ${id}; ${JSON.stringify(analysis.methodResults.find((method: any) => method.skillId === id)?.diagnostics)}`)
     assert.ok(result.report, result.errors.join(';'))
     const report = JSON.parse(await readFile(`${result.report.outputPath}.json`, 'utf8'))
     assert.equal(analysis.reviewAttempts, reviewCalls)
     assert.equal(analysis.synthesisAttempts, synthesisCalls)
+    if(options.onFirstMethod) assert.ok(analysis.acquisitionBudget.spentMs<600000,'Semantic execution time cannot consume the acquisition-only budget')
     if (options.structured) {
       const financialMethod = analysis.methodResults.find((method:any) => method.skillId === 'financial_quality_analysis')
       assert.deepEqual(financialMethod.executionEvidence, originalFinancialEvidence, 'Supplemental deterministic summary preserves the semantic operation original input evidence')
@@ -120,7 +122,7 @@ async function fixture(mode: 'repair' | 'malformed' | 'still_insufficient', opti
       assert.equal(summaryEvidence.excerpts[0].text, actualSource.content.split(/\r?\n/)[0])
       assert.ok(!financialMethod.executionEvidence.some((packet:any) => packet.sourceCandidateId === summaryEvidence.sourceCandidateId), 'Late financial source was not supplied to the earlier semantic operation')
     }
-    if (mode !== 'malformed') {
+    if (mode !== 'malformed' && !options.onFirstAcquisitionCompleted) {
       assert.deepEqual(analysis.methodResults.find((method: any) => method.skillId === 'company_history_strategy').attemptOutputs.map((attempt: any) => attempt.attempt), [1, 2])
       assert.equal(analysis.qualityReviewHistory.length, 2, JSON.stringify({status:result.status,errors:result.errors,contentQuality:analysis.contentQuality,synthesisDiagnostics:analysis.synthesisDiagnostics,methods:analysis.methodResults.map((item:any)=>({id:item.skillId,status:item.status,diagnostics:item.diagnostics}))}))
       assert.equal(analysis.qualityReviewHistory[0].review.passed, false, 'Preserve initial substantive rejection in diagnostic history')
@@ -195,4 +197,28 @@ test('persistent substantive history gap cannot reset method or review budgets a
   assert.equal(acquisitions, 2)
   assert.equal(report.researchQuality.semanticReview.attempts, 2)
   assert.equal(report.methodExecutions.find((method: any) => method.skillId === 'company_history_strategy').attempts, 2)
+})
+test('long semantic work does not exhaust the shared acquisition-only budget before a required supplement',async context=>{
+  const actualNow=Date.now
+  let semanticElapsedMs=0
+  context.mock.method(Date,'now',()=>actualNow()+semanticElapsedMs)
+  const {result,acquisitions,reviewCalls}=await fixture('repair',{onFirstMethod:()=>{semanticElapsedMs=11*60_000}})
+  assert.equal(result.status,'completed')
+  assert.equal(acquisitions,2)
+  assert.equal(reviewCalls,2)
+})
+
+
+test('exhausted acquisition budget preserves diagnostics and cannot mark otherwise populated research complete',async context=>{
+  const actualNow=Date.now
+  let acquisitionElapsedMs=0
+  context.mock.method(Date,'now',()=>actualNow()+acquisitionElapsedMs)
+  const {result,report,analysis,acquisitions,reviewCalls}=await fixture('repair',{onFirstAcquisitionCompleted:()=>{acquisitionElapsedMs=11*60_000}})
+  assert.equal(result.status,'blocked')
+  assert.equal(report.researchQuality.passed,false)
+  assert.ok(report.researchQuality.issues.includes('ACQUISITION_BUDGET_EXHAUSTED'))
+  assert.equal(analysis.acquisitionBudget.remainingMs,0)
+  assert.equal(analysis.acquisitionBudget.spentMs,600000)
+  assert.equal(acquisitions,1)
+  assert.equal(reviewCalls,1)
 })

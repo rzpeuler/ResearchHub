@@ -1,5 +1,6 @@
 /** Content completion is separate from source admissibility and canonical persistence. */
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
+import { COMPANY_METHOD_SECTION_IDS } from '../../skills/company-research/methods.ts'
 import type { CompanySemanticQualityResult } from './semantic-quality.ts'
 export interface CompanyMethodExecution {
   readonly skillId: string
@@ -51,6 +52,7 @@ export function evaluateCompanyResearchContent(input: { readonly sections: reado
   const sectionChecks = COMPANY_CORE_SECTION_IDS.map((id) => {
     const section = byId.get(id)
     const reasons: string[] = []
+    for (const method of input.methodResults ?? []) if (COMPANY_METHOD_SECTION_IDS[method.skillId].includes(id) && method.status !== 'complete') reasons.push(`OWNER_METHOD_NOT_COMPLETED:${method.skillId}`)
     if (!section) reasons.push('MISSING_SECTION')
     else {
       const text = section.markdown.trim()
