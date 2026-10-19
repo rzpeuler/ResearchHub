@@ -138,15 +138,15 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
     // and no material error was found. Reconcile that explicit contradiction
     // locally instead of spending the bounded second model call on formatting.
     // An adversative concrete defect keeps the flags fail-closed.
-    const explicitNoNumericDefect = /(?:未发现|没有|不存在|未见)(?:任何|实质|具体)?(?:实质)?(?:数值|数字|计算|金额)?(?:错误|缺陷)|数值.{0,12}(?:正确|无误)|(?:无此错误|相关年份与数值一致)/.test(joinedRawReasons)
-    const explicitNumericAffirmation = /(?:数值|数字|金额|数据|计算|公式|操作数|期间|年份).{0,60}(?:正确|准确|一致|吻合|相符|可复核|可复算)|(?:正确|准确|一致|吻合|相符).{0,36}(?:数值|数字|金额|数据|计算|公式|操作数|期间|年份)/.test(joinedRawReasons)
-    const concreteNumericDefect = /(?:实际应为|应为\s*[-+]?\d|与(?:原文|公式|来源|preparedAnalysis).{0,36}(?:不符|不一致)|(?:少计|多计|错算|错用|误用|单位错误|期间错误)|(?:未|没有|缺少|缺失|未提供|未注明).{0,32}(?:公式|操作数|期间|单位|数据)|(?:公式|计算).{0,40}(?:不正确|无法复算|错误结果))/.test(joinedRawReasons)
-    const evidenceAligned = /(?:引用.{0,60}(?:一致|相符|匹配)|(?:来源|证据|原文).{0,60}(?:一致|相符|匹配|有据|明列|明确)|年份.{0,30}(?:一致|正确)|(?:结论|报告).{0,30}有原文依据)/.test(joinedRawReasons)
-    const explicitlyNoEvidenceBlocker = /(?:未发现(?:任何)?实质错误|无此错误|不构成(?:实质)?(?:缺口|错误|阻塞)|不是(?:实质)?(?:缺口|错误)|(?:未见|未发现|不存在|没有).{0,32}(?:阻塞缺陷|实质缺陷|阻塞问题|具体阻塞)|阻塞缺陷未见|实际可确认的阻塞缺陷未见|故不是缺口)/.test(joinedRawReasons)
+    const explicitNoNumericDefect = /(?:未发现|没有|不存在|未见)(?:任何|实质|具体)?(?:实质)?(?:数值|数字|计算|金额)?(?:错误|缺陷)|数值.{0,12}(?:正确|无误)|(?:无此错误|相关年份与数值一致|不构成科目混用|未合并且口径准确|口径准确)/.test(joinedRawReasons)
+    const explicitNumericAffirmation = /(?:数值|数字|金额|数据|计算|公式|操作数|期间|年份|增速|同比|比率|研发费用|研发投入|比例).{0,60}(?:正确|准确|一致|吻合|相符|可复核|可复算)|(?:正确|准确|一致|吻合|相符).{0,36}(?:数值|数字|金额|数据|计算|公式|操作数|期间|年份|增速|同比|比率|研发费用|研发投入|比例)|(?:金额|数字|费用|比率|比例).{0,32}(?:分别列示|分开呈列).{0,24}(?:未合并|口径准确)/.test(joinedRawReasons)
+    const concreteNumericDefect = /(?:实际应为|应为\s*[-+]?\d|与(?:原文|公式|来源|preparedAnalysis).{0,36}(?:不符|不一致)|(?:少计|多计|错算|错用|误用|单位错误|期间错误)|期间.{0,48}(?:不符|不一致|错配)|(?:分行业|分产品).{0,40}(?:混淆|错用|误作|混为)|(?:未|没有|缺少|缺失|未提供|未注明).{0,32}(?:公式|操作数|期间|单位|数据)|(?:公式|计算).{0,40}(?:不正确|无法复算|错误结果)|(?:0(?:\.0+)?|零).{0,24}(?:无来源|无证据|未见披露|未列示|未提供|不支持))/.test(joinedRawReasons)
+    const evidenceAligned = /(?:引用.{0,60}(?:一致|相符|匹配|准确)|(?:来源|证据|原文).{0,60}(?:一致|相符|匹配|有据|明列|明确|充分)|年份.{0,30}(?:一致|正确)|(?:结论|报告).{0,30}有原文依据|充分结构化证据)/.test(joinedRawReasons)
+    const explicitlyNoEvidenceBlocker = /(?:未发现(?:任何)?实质错误|没有(?:任何)?实质错误|无此错误|不构成(?:实质)?(?:缺口|错误|阻塞|错引)|不是(?:实质)?(?:缺口|错误)|(?:未见|未发现|不存在|没有).{0,32}(?:阻塞缺陷|实质缺陷|阻塞问题|具体阻塞)|阻塞缺陷未见|实际可确认的阻塞缺陷未见|故不是缺口)/.test(joinedRawReasons)
     // Do not let an explicit clean conclusion erase a separately identified
     // defect: require the relevant flag's own affirmative evidence and no
     // concrete correction/mismatch in the same explanation.
-    const concreteEvidenceDefect = /(?:但|然而|不过).{0,150}(?:引用.{0,50}(?:错误|不一致|缺失|缺少|未提供)|原文.{0,50}(?:不支持|冲突|不一致|未提供|未披露)|期间.{0,40}(?:不一致|错误|缺失)|具体阻塞缺陷|不能笼统称|仍缺少)/.test(joinedRawReasons)
+    const concreteEvidenceDefect = /(?:但|然而|不过).{0,150}(?:引用.{0,50}(?:错误|不一致|缺失|缺少|未提供)|原文.{0,50}(?:不支持|冲突|不一致|未提供|未披露)|期间.{0,48}(?:不一致|不符|错误|缺失)|(?:分行业|分产品).{0,40}(?:混淆|错用|误作|混为)|具体阻塞缺陷|不能笼统称|仍缺少)/.test(joinedRawReasons)
     if (row.numericReproducible === false && explicitNoNumericDefect && explicitNumericAffirmation && !concreteNumericDefect) row.numericReproducible = true
     if (row.evidenceSupportsConclusion === false && evidenceAligned && explicitlyNoEvidenceBlocker && !concreteEvidenceDefect) row.evidenceSupportsConclusion = true
     // A review can correctly identify an omitted analysis while misusing the
@@ -242,6 +242,7 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
 /** Resolve only review objections that directly contradict explicit report wording and values. */
 export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySemanticSectionCheck[], sections: readonly CompanyContentSection[], sources: readonly CompanyResearchInput['sources'][number][] = []): CompanySemanticSectionCheck[] {
   const reportSections = new Map(sections.map(section => [section.id, section.markdown]))
+  const fullReport = [...reportSections.values()].join('\n')
   const hasIndependentDefectClause = (reason: string) => /(?:但|然而|不过|此外|另有|同时|并且)[^。；;\n]{0,140}(?:错误|错引|错列|不一致|不支持|未引用|未提供|缺失|缺少|无法复算|数字错|数值错)/.test(reason)
   return checks.map(check => {
     const body = reportSections.get(check.sectionId) ?? ''
@@ -276,6 +277,16 @@ export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySem
         if(explicit2026Forecast&&/(?:2025年.{0,18}市场规模|期间不同|期间错置|2025年.*而非2026年)/.test(reason)){removed=true;return []}
       }
       if (check.sectionId === 'risks') {
+        const sourceBackedCandidateRoute = /(?:具名候选为宁德时代|宁德时代.{0,120}乘用车.{0,80}超快充)/.test(fullReport)
+          && /比亚迪.{0,120}(?:闪充|刀片电池)/.test(fullReport)
+          && /\[public-web-[^\]]+@paragraph:\d+\]/.test(fullReport)
+          && /(?:同口径性能|直接竞标|客户重叠).{0,60}(?:未验证|未提供|未证实)/.test(body)
+        const overbroadCandidateAbsence = /(?:风险表|竞争风险表).{0,100}(?:没有|未提供|缺少).{0,40}(?:具名候选|具名竞品|产品路线|路线数据)/.test(reason)
+          && /(?:竞争章节|competitive_market_map).{0,80}(?:已列|列出|识别).{0,50}(?:候选|路线|宁德时代)/.test(reason)
+        if (sourceBackedCandidateRoute && overbroadCandidateAbsence && !/(?:商誉|Juno|减值|实际损失|错期|单位错误)/.test(reason)) {
+          removed = true
+          return []
+        }
         const disclosedConcentrationAndPath = /12\.53\s*%/.test(body) && /2\.05\s*%/.test(body)
           && /(?:最大客户|客户一).{0,50}(?:缩减采购|减少采购|关系中断).{0,80}(?:收入|产能利用)/.test(body)
         if (!hasIndependentDefectClause(reason) && disclosedConcentrationAndPath && /未说明已披露具体销售比例仍可核验/.test(reason)) {

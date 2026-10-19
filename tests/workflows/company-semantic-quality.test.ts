@@ -225,6 +225,44 @@ test('R161 keeps the same-row driver omission unanswered without misclassifying 
   assert.equal(retained.numericReproducible,false)
 })
 
+test('R162 clears only explicit no-error financial and allocation verdicts, reconciles cited competitor routes, and retains real defects',()=>{
+  const financialReason='报告称“营业收入下降、营业利润下降、净利润下降”，又在另一处用“收入、利润和现金流方向并列”；方向结论有充分结构化证据且净利润已标注归属未明，不构成错引。阻塞错误在完整年度表中把2025-12-31营业利润写作401.85亿元、2024-12-31写504.86亿元，同比-20.40%，数字可复算；没有实质错误。周转天数计算均引用结构化来源paragraph:1并提供准确操作数、公式和181天，计算可复核；无阻塞错误。'
+  const allocationReasons=[
+    '资本配置表将结构化半年报的研发费用233.07亿元与公司半年报研发投入约289亿元明确区分；但研发费用同比-21.25%正确且标明为结构化口径，年度研发投入金额也单独列示，不构成科目混用。',
+    '员工持股计划的实际参与人数21,417、持股22,501,479股与计划上限2.5万人分别列示，口径准确。资本配售美元与港元净募资分开呈列，未合并。',
+  ]
+  const junoReason='风险表称“2026年半年报披露Juno Newco商誉原值人民币千元4,361,657”，引文所示单位行人民币千元确实支持该金额；但正文又写减值准备人民币千元0并称“该标的减值准备表未列示金额”。报告摘录未提供Juno减值准备金额行，且paragraph:4823只是表标题，故0无来源支撑，影响商誉余额/减值描述准确性。'
+  const candidateReason='竞争风险表称“材料没有同口径竞品业绩、产品路线或市场份额数据”，但同一报告的竞争章节及competitive_market_map已列宁德时代乘用车超快充路线与比亚迪闪充路线；报告后段虽又作候选交叉说明，前述句仍与已完成方法结果矛盾，影响风险矩阵的竞争证据边界。'
+  const mixedPeriod='本节称“2024年年报”分产品/分地区/分行业收入毛利表，但引用段落属于2026年半年报；影响是期间标签与实际引用不符。'
+  const segmentMix='本节将“分行业”表中日用电子器件制造业、交通运输设备及电气制造业的毛利率变化表述为产品类别表现；来源paragraph:731已转入分产品表，而paragraph:728/730为分行业行，该混淆影响分部利润驱动归因。'
+  const review={sectionChecks:output.sectionChecks.map(check=>{
+    if(check.sectionId==='financial-quality') return {...check,evidenceSupportsConclusion:false,reasons:[financialReason]}
+    if(check.sectionId==='management-capital-allocation') return {...check,numericReproducible:false,reasons:allocationReasons}
+    if(check.sectionId==='risks') return {...check,evidenceSupportsConclusion:false,numericReproducible:false,reasons:[junoReason,candidateReason]}
+    if(check.sectionId==='revenue-profit-drivers') return {...check,evidenceSupportsConclusion:false,numericReproducible:false,reasons:[mixedPeriod,segmentMix]}
+    return check
+  })}
+  const validated=validateCompanySemanticQualityOutput(review)
+  const financial=validated.find(check=>check.sectionId==='financial-quality')!
+  assert.equal(financial.evidenceSupportsConclusion,true,'explicitly sourced and recalculable statements with no material error are not blockers')
+  const allocation=validated.find(check=>check.sectionId==='management-capital-allocation')!
+  assert.equal(allocation.numericReproducible,true,'correctly distinguished figures and units are not numeric failures')
+
+  const riskBody='# 风险\n竞争风险表称“材料没有同口径竞品业绩、产品路线或市场份额数据”。跨方法核实的具名候选为宁德时代：宁德时代将乘用车列为解决方案，动力电池技术方向包含超快充。[public-web-0c309ea1e077c959@paragraph:249] 比亚迪披露第二代刀片电池和闪充技术。[official-c19c34dd239b2e9c@paragraph:337] 同类产品和路线存在技术方向重叠。直接竞标、客户重叠及同口径性能、价格、成本或份额仍未验证。'
+  const sections=COMPANY_CORE_SECTION_IDS.map(id=>({id,markdown:id==='risks'?riskBody:''}))
+  const reconciled=reconcileKnownReviewerFalsePositives(validated,sections)
+  const risks=reconciled.find(check=>check.sectionId==='risks')!
+  assert.equal(risks.evidenceSupportsConclusion,false,'Juno zero without a cited value remains an evidence blocker')
+  assert.equal(risks.numericReproducible,false,'the unsupported Juno zero must not be waived by the unrelated competitor wording')
+  assert.equal(risks.reasons.length,1)
+  assert.match(risks.reasons[0]!,/0无来源支撑/)
+  assert.doesNotMatch(risks.reasons.join(';'),/competitive_market_map已列/)
+
+  const revenue=validated.find(check=>check.sectionId==='revenue-profit-drivers')!
+  assert.equal(revenue.evidenceSupportsConclusion,false,'real annual/interim period mismatch remains blocking')
+  assert.equal(revenue.numericReproducible,false,'industry/product table misclassification remains blocking')
+})
+
 
 test('self-contradictory numeric rejection is repaired within the same two review calls rather than treated as substantive failure', async () => {
   const contradictory={sectionChecks:output.sectionChecks.map(check=>check.sectionId==='financial-quality'?{...check,numericReproducible:false,reasons:['同比与资产负债比率均可复算；此处数字无实质错误。']}:check)}
