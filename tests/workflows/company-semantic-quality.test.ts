@@ -206,6 +206,25 @@ test('R160 clears only explicit industry and financial self-contradictions and r
   assert.match(mAndA.reasons.join(';'),/不能笼统称无并购行动/)
 })
 
+test('R161 keeps the same-row driver omission unanswered without misclassifying aligned evidence or omitted calculations',()=>{
+  const attempt2='“收入结构摘要”中披露汽车类收入648,645,636,000元，占80.68%，电子类155,236,528,000元，占19.31%，均有对应年报产品表引用；因此该节主要回答了收入利润驱动，且关键产品数据可复核。但段落把2026上半年合并收入3,448.15亿元下降7.1282%、营业利润147.44亿元下降21.2395%、净利润123.25亿元下降20.5352%作为结构化合并值，准确引用financial source paragraph:1，数值、期间及合并范围一致。这里未发现结构化财务引用错误。真正阻塞项是rubric要求同一分产品行已同时披露收入增速与成本增速时呈现方向和差额；本节只写电子产品毛利率变化-2.67%、汽车产品毛利率变化+1.98%，未说明同表电子收入+0.96%而成本+3.88%、汽车收入-8.98%而成本-11.24%及方向差，削弱对成本链路的实质回答。'
+  const attempt3='“分行业 半年报分行业表中，交通运输设备及电气制造业收入为人民币275,341,358,000.00元，同比下降8.98%；日用电子器件制造业收入为人民币69,404,994,000.00元，同比增加0.96%”及其分产品复述，引用行与官方表一致。但本节把官方分产品表中的毛利率同比变化-2.67%、+1.98%当作成本链路分析，却遗漏同一分产品表明确列示的电子收入增0.96%、成本增3.88%，以及汽车收入降8.98%、成本降11.24%；因此未满足呈现收入/成本方向及差额的rubric要求，削弱关键驱动解释。报告未列上述增速差，不存在可核算的错误派生数值；其他合并财务数字可复核。'
+  for(const reason of [attempt2,attempt3]){
+    const review={sectionChecks:output.sectionChecks.map(check=>check.sectionId==='revenue-profit-drivers'?{...check,questionAnswered:false,evidenceSupportsConclusion:false,numericReproducible:false,reasons:[reason]}:check)}
+    const drivers=validateCompanySemanticQualityOutput(review).find(check=>check.sectionId==='revenue-profit-drivers')!
+    assert.equal(drivers.questionAnswered,false,'the omitted same-row revenue/cost analysis remains a substantive coverage failure')
+    assert.equal(drivers.evidenceSupportsConclusion,true,'correctly cited rows remain evidence-supported despite incomplete analysis')
+    assert.equal(drivers.numericReproducible,true,'omitted calculations are not erroneous derived values')
+    assert.match(drivers.reasons.join(';'),/收入.{0,24}成本|方向和差额/,'preserve the specific missing-analysis blocker')
+  }
+
+  const wrongLocator='将交通运输设备及电气制造业称为收入下降8.98%属错期/范围错误：现有引用只显示电子分行业行，实际汽车行业对应段落702–703缺失，影响对分部收入变化的准确归因。'
+  const broken={sectionChecks:output.sectionChecks.map(check=>check.sectionId==='revenue-profit-drivers'?{...check,questionAnswered:false,evidenceSupportsConclusion:false,numericReproducible:false,reasons:[wrongLocator]}:check)}
+  const retained=validateCompanySemanticQualityOutput(broken).find(check=>check.sectionId==='revenue-profit-drivers')!
+  assert.equal(retained.evidenceSupportsConclusion,false,'a wrong locator/scope claim remains a real evidence defect')
+  assert.equal(retained.numericReproducible,false)
+})
+
 
 test('self-contradictory numeric rejection is repaired within the same two review calls rather than treated as substantive failure', async () => {
   const contradictory={sectionChecks:output.sectionChecks.map(check=>check.sectionId==='financial-quality'?{...check,numericReproducible:false,reasons:['同比与资产负债比率均可复算；此处数字无实质错误。']}:check)}

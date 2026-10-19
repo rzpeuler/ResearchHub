@@ -149,6 +149,16 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
     const concreteEvidenceDefect = /(?:但|然而|不过).{0,150}(?:引用.{0,50}(?:错误|不一致|缺失|缺少|未提供)|原文.{0,50}(?:不支持|冲突|不一致|未提供|未披露)|期间.{0,40}(?:不一致|错误|缺失)|具体阻塞缺陷|不能笼统称|仍缺少)/.test(joinedRawReasons)
     if (row.numericReproducible === false && explicitNoNumericDefect && explicitNumericAffirmation && !concreteNumericDefect) row.numericReproducible = true
     if (row.evidenceSupportsConclusion === false && evidenceAligned && explicitlyNoEvidenceBlocker && !concreteEvidenceDefect) row.evidenceSupportsConclusion = true
+    // A review can correctly identify an omitted analysis while misusing the
+    // evidence/numeric flags for it. Keep that substantive unanswered finding,
+    // but classify the already-cited, explicitly aligned facts separately.
+    const sameRowAnalysisOmission = /(?:真正阻塞项|核心遗漏|关键遗漏).{0,260}(?:(?:同一|同表|对应).{0,24}(?:分产品|收入|成本)|收入.{0,36}成本).{0,120}(?:未说明|未列|未呈现|遗漏|缺少|未给出).{0,100}(?:收入|成本|增速|方向|差额|变化|对比)/.test(joinedRawReasons)
+      || /(?:未说明|未列|未呈现|遗漏).{0,100}(?:同一分产品行|收入.{0,24}成本).{0,100}(?:方向|差额|增速)/.test(joinedRawReasons)
+    const hasSpecificLocatorOrScopeDefect = /(?:错期|范围错误|错引|错列|引用定位不足|引文.{0,48}(?:缺失|不完整|不足)|对应来源.{0,48}(?:缺失|错误|不一致)|具体行.{0,48}(?:引用|定位).{0,24}(?:缺失|不足|错误))/.test(joinedRawReasons)
+    if (sameRowAnalysisOmission && !hasSpecificLocatorOrScopeDefect && !concreteNumericDefect) {
+      if (row.evidenceSupportsConclusion === false && evidenceAligned) row.evidenceSupportsConclusion = true
+      if (row.numericReproducible === false && explicitNumericAffirmation) row.numericReproducible = true
+    }
     if (row.evidenceSupportsConclusion === true && row.numericReproducible === true
       && (explicitNoNumericDefect || explicitlyNoEvidenceBlocker)) row.reasons = []
     const nonBlockingOnly = rawReasons.length > 0 && rawReasons.every((reason) => {
@@ -210,7 +220,8 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
     const affirmsEvidence = /(?:证据口径相符|引用.{0,45}(?:确实|一致|相符|匹配)|表格确实.{0,45}披露|已在报告中引用并分析|没有把已披露资料说成缺失|没有实质证据错误|未发现具体错误|未发现说明中的实质错误|材料限制属实)/.test(reasons)
     const affirmsRiskPath = /(?:风险传导.{0,24}(?:完整|有描述|已覆盖)|触发.{0,40}影响.{0,40}监控.{0,40}(?:缓解|缓释).{0,24}(?:覆盖|有描述|完整)|风险.{0,30}(?:观察信号|监控).{0,24}(?:缓释|缓解).{0,20}有描述)/.test(reasons)
     const explicitlyRejectsOwnFailureFlag = /(?:拒绝false判定|需拒绝false判定|false理由不能成立|没有可成立的false理由|false旗标应为true|不可复核旗标应为true|false.{0,16}应为true|不应判为false|不能判为false|不应判为证据不支持|不能据此判(?:为)?false|不能说(?:没有|未提供|未发现|不存在)|不应判错|不能据此判错|不能据此认定(?:关键论点|结论|判断|数字|数据)?错误|本项不应判错|没有阻塞问题|现有证据不足以支持此节为false|(?:该)?旗标(?:判断)?应通过|(?:整体|按规则)应通过而非设false|缺口陈述准确.{0,36}(?:未发现|没有)(?:虚假缺口|实质错误|数值错误)|未发现(?:不支持的)?关键风险传导或数字错误|未发现实质数值错误|未发现(?:具体)?(?:关键)?数字错误)/i.test(reasons)
-    if (explicitlyRejectsOwnFailureFlag && (row.evidenceSupportsConclusion === false || row.numericReproducible === false || row.questionAnswered === false || row.riskTransmission === false)) throw new Error(`FORMAT: Contradictory verdict for ${row.sectionId}; its reason explicitly rejects the false flag. On retry, set the corresponding flag true and remove that non-blocking concern, or state a separate concrete defect for the false flag.`)
+    if (explicitlyRejectsOwnFailureFlag && (row.evidenceSupportsConclusion === false || row.numericReproducible === false || row.questionAnswered === false || row.riskTransmission === false)
+      && !(sameRowAnalysisOmission && row.questionAnswered === false && row.evidenceSupportsConclusion === true && row.numericReproducible === true)) throw new Error(`FORMAT: Contradictory verdict for ${row.sectionId}; its reason explicitly rejects the false flag. On retry, set the corresponding flag true and remove that non-blocking concern, or state a separate concrete defect for the false flag.`)
     if (row.numericReproducible === false && (explicitlyNonBlocking || /(?:不应判数字错误|属于正确推断|不能据此判错|不构成数字错误)/.test(reasons) || /(?:数字无实质错误|未见计算错误|未发现数值错误|不存在数值错误|数字.*(?:正确|无误)|数字无误|数值.*正确|计算结果正确|计算无误|本身正确|实际差额为.{0,20}(?:正确|\d)|实际结果为.{0,20}(?:正确|\d)|数值.{0,20}正确.{0,30}(?:故|因此).{0,16}(?:不构成错误|不能判错))/.test(reasons) && !hasNumericReproducibilityCounterevidence)) throw new Error(`FORMAT: Contradictory numeric rejection for ${row.sectionId}; reasons affirm the numbers without identifying a concrete numeric defect. On retry, set numericReproducible=true and reserve any real coverage/evidence defect for its corresponding flag, or state the exact numeric error with contrary source evidence.`)
     if (row.numericReproducible === false && affirmsNumbers && !hasNumericReproducibilityCounterevidence) throw new Error(`FORMAT: Contradictory numeric rejection for ${row.sectionId}; the reason calls figures directly disclosed or reproducible without identifying a concrete numeric defect. On retry, set the corresponding flag true and reserve any real coverage/evidence defect for its corresponding flag, or state the exact numeric error with contrary source evidence.`)
     if (row.questionAnswered === false && /(?:(?:主要问题|核心问题|核心增长条件|财务质量实质问题|章节问题).{0,24}已(?:充分|实质)?回答|核心已回答)/.test(reasons) && !hasConcreteCounterevidence) throw new Error(`FORMAT: Contradictory unanswered verdict for ${row.sectionId}; reasons affirm the section answered without identifying a concrete coverage gap.`)
