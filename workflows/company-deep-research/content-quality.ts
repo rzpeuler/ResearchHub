@@ -62,7 +62,9 @@ export function findKnownCompetitorDenials(input: { readonly sections: readonly 
   const competitiveText = `${competitive.answer}\n${competitive.markdown}\n${competitive.sections.map(section => section.markdown).join('\n')}\n${competitive.findings.map(finding => finding.text).join('\n')}`
   const candidatePattern = /([\u3400-\u9fff]{2,8}|[A-Za-z][A-Za-z0-9&.+-]{1,23})是(?:有(?:材料|证据)支持的)?(?:具名竞争者|候选对手|候选竞争者)/g
   // Narrative connectives such as “故仅是候选竞争者” do not name an entity.
-  const candidates = [...new Set([...competitiveText.matchAll(candidatePattern)].map(match => match[1]!).filter(name => !/^(?:故仅|因此|所以|仅|本公司|公司|其|双方|两者)$/.test(name)))]
+  const candidates = [...new Set([...competitiveText.matchAll(candidatePattern)]
+    .map(match => match[1]!.replace(/^(?:因此|所以|故仅|仅凭|基于此|本报告认为)/u, ''))
+    .filter(name => name.length >= 2 && !/^(?:仅|本公司|公司|其|双方|两者)$/.test(name)))]
   if (!candidates.length) return []
   const denial = /(?:未发现(?:可用于)?具名(?:竞品|竞争者|对手)[^。；\n]{0,18}(?:材料|资料|信息)|(?:没有|未提供|未发现|缺少|无)(?:任何|具名)(?:竞品|竞争者|对手)(?=[、，,；。及和]|$)|无具名(?:竞品|竞争者|对手)(?=[、，,；。及和]|$)|(?:没有|未提供|缺少|无)[^。；\n]{0,20}具名(?:竞品|竞争者|对手)[^。；\n]{0,32}(?:可比|比较|路线|产品))/g
   const issues: { sectionId: string; candidate: string }[] = []
@@ -73,7 +75,8 @@ export function findKnownCompetitorDenials(input: { readonly sections: readonly 
       const end = endCandidates.length ? Math.min(...endCandidates) : section.markdown.length
       const denialClause = section.markdown.slice(start, end)
       // Missing comparable measurements is narrower than denying a named peer.
-      if (/具名(?:竞品|竞争者|对手)(?:的)?同口径(?:比较|性能|成本|价格)/.test(denialClause)) continue
+      if (/具名(?:竞品|竞争者|对手)(?:的)?(?:同口径)?(?:比较|可比(?:资料|数据)?|性能|成本|价格|路线)/.test(denialClause)
+        && /(?:缺少|没有|未提供|未披露|无法|不能|不足)/.test(denialClause)) continue
       // A candidate mentioned elsewhere in a long chapter does not cure a
       // separate sentence that falsely says no named competitor was found.
       for (const candidate of candidates) {
@@ -740,9 +743,26 @@ export function reconcileCompanyDriverFinancialReferences<T extends CompanyConte
 
 /** Render the authoritative financial table as a contiguous Markdown table after semantic drafting. */
 export function reconcileCompanyFinancialSummaryTable<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly markdown?: string }): readonly T[] {
-  const section = input.sections.find(item => item.id === 'financial-quality')
   const table = input.markdown?.trim()
-  if (!section || !table) return input.sections
+  if (!table) return input.sections
+  const driverComparison = extractCompanyDriverComparisonTable(table)
+  let sections = input.sections
+  const driver = sections.find(item => item.id === 'revenue-profit-drivers')
+  if (driver && driverComparison && !driver.markdown.includes('结构化合并财务同期间对照')) {
+    const lines = driver.markdown.split(/\r?\n/)
+    const heading = lines.findIndex(line => /^##\s*可比期间主要方向(?:\s|\||$)/u.test(line))
+    if (heading >= 0) {
+      let end = heading + 1
+      while (end < lines.length && (!lines[end]!.trim() || /^\s*\|/.test(lines[end]!))) end += 1
+      const existingRows = lines.slice(heading, end).filter(line => /^\s*\|/.test(line) && !/^\s*\|?\s*:?-{3,}[-:|\s]*\|?\s*$/.test(line))
+      if (existingRows.length < 2) {
+        const repaired = [...lines.slice(0, heading), '## 可比期间主要方向', '', driverComparison, '', ...lines.slice(end)].join('\n').replace(/\n{3,}/g, '\n\n').trim()
+        sections = sections.map(item => item.id === driver.id ? { ...item, markdown: repaired } : item)
+      }
+    }
+  }
+  const section = sections.find(item => item.id === 'financial-quality')
+  if (!section) return sections
   const lines = section.markdown.split(/\r?\n/)
   const retained: string[] = []
   for (let index = 0; index < lines.length; index += 1) {
@@ -802,9 +822,36 @@ export function reconcileCompanyFinancialSummaryTable<T extends CompanyContentSe
   const existing = body.indexOf(marker)
   const cleanBody = existing >= 0 ? body.slice(0,existing).trimEnd() : body
   const markdown = `${cleanBody}${cleanBody?'\n\n':''}${table}`
-  if (markdown === section.markdown) return input.sections
+  if (markdown === section.markdown) return sections
   const repaired = {...section,markdown}
-  return input.sections.map(item => item.id===section.id?repaired:item)
+  return sections.map(item => item.id===section.id?repaired:item)
+}
+
+function extractCompanyDriverComparisonTable(markdown: string): string | undefined {
+  const lines = markdown.split(/\r?\n/)
+  const headerIndex = lines.findIndex(line => /^\s*\|\s*指标与口径\s*\|.*\|\s*同比公式及变化\s*\|\s*$/.test(line))
+  if (headerIndex < 0) return undefined
+  const tableLines: string[] = []
+  for (let index = headerIndex; index < lines.length && /^\s*\|/.test(lines[index]!); index += 1) tableLines.push(lines[index]!)
+  if (tableLines.length < 3) return undefined
+  const wanted = /\|\s*(?:营业收入|营业利润|净利润(?:（结构化字段；归母属性未注明）)?|经营现金净流量)（年初至期末累计）\s*\|/u
+  const selected = tableLines.slice(2).filter(line => wanted.test(line))
+  if (!selected.some(line => line.includes('营业收入')) || !selected.some(line => line.includes('营业利润')) || !selected.some(line => line.includes('经营现金净流量'))) return undefined
+  const sourceRef = markdown.match(/\[([A-Za-z0-9._-]+@paragraph:\d+)\]/)?.[0]
+  const rows = selected.map(line => {
+    if (!sourceRef) return line
+    const cells = line.split('|')
+    const last = cells.length - 2
+    cells[last] = ` ${cells[last]!.trim()} ${sourceRef} `
+    return cells.join('|')
+  })
+  return [
+    `结构化合并财务同期间对照（人民币亿元；流量为年初至期末累计，净利润字段归属以接口为限）${sourceRef ?? ''}`,
+    '',
+    tableLines[0]!,
+    tableLines[1]!,
+    ...rows,
+  ].join('\n')
 }
 
 /** Bind period-sensitive synthesis back to unique method tables and located source rows. */
