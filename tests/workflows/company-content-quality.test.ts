@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyIndustryExposureTableCitations, reconcileCompanyNumericMovementVerbs, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
+import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyIndustryExposureTableCitations, reconcileCompanyNumericMovementVerbs, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyInterimIndustryProductComparison, reconcileCompanyRAndDCapitalizationRatioSpread, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 import { reconcileCompanyProductCategoryEconomics } from '../../workflows/company-deep-research/content-quality.ts'
 
@@ -2004,4 +2004,79 @@ test('incomplete synthesis diagnosis fills empty core conclusions with the speci
   assert.equal(fixed[2]!.markdown, '已完成的风险分析。')
   const incomplete = ensureCompanyIncompleteSynthesisSections(input, 'methods_incomplete')
   assert.match(incomplete[0]!.markdown, /至少一个原子研究方法未完成/)
+})
+
+test('BYD revenue claim restores a reported product growth rate from its exact official row', () => {
+  const excerpts=[
+    {location:'paragraph:805',text:'（1）营业收入构成'},
+    {location:'paragraph:806',text:'单位：元'},
+    {location:'paragraph:807',text:'2025 年 2024 年'},
+    {location:'paragraph:809',text:'金额 占营业收入'},
+    {location:'paragraph:810',text:'比重 金额 占营业收入比重'},
+    {location:'paragraph:818',text:'分产品'},
+    {location:'paragraph:821',text:'汽车、汽车相关'},
+    {location:'paragraph:822',text:'产品及其他产品 648,645,636,000.00 80.68% 617,381,935,000.00 79.45% 5.06%'},
+    {location:'paragraph:833',text:'单位：元'},
+    {location:'paragraph:834',text:'营业收入 营业成本 毛利率 营业收入比上'},
+    {location:'paragraph:835',text:'年同期增减'},
+    {location:'paragraph:836',text:'营业成本比上'},
+    {location:'paragraph:837',text:'年同期增减'},
+    {location:'paragraph:838',text:'毛利率比上'},
+    {location:'paragraph:839',text:'年同期增减'},
+    {location:'paragraph:845',text:'分产品'},
+    {location:'paragraph:852',text:'汽车、汽车相关产品及其他产品'},
+    {location:'paragraph:855',text:'648,645,636,000.00 515,762,940,000.00 20.49% 5.06% 7.53% -1.82%'}
+  ]
+  const method:CompanyResearchMethodResult={skillId:'business_driver_analysis',status:'complete',attempts:1,answer:'产品收入增长。',markdown:'',sections:[],findings:[],sourceCandidateIds:['official-annual'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'official-annual',title:'2025年年度报告',publisher:'CNINFO',excerpts:excerpts.map(item=>({...item,sourceCandidateId:'official-annual'}))}]}
+  const input=[{id:'revenue-profit-drivers',markdown:'年度分产品表中，汽车、汽车相关产品及其他产品648,645,636,000.00[official-annual@paragraph:822]收入增长，但成本增速更快。\n### 毛利与成本链路\n毛利率承压。',sourceCandidateIds:['official-annual']}]
+  const fixed=reconcileCompanyProductRevenueCostGrowth({sections:input,methodResults:[method]})[0]!
+  assert.match(fixed.markdown,/汽车、汽车相关产品及其他产品648,645,636,000\.00\[official-annual@paragraph:822\]收入同比增长5\.06%/)
+  assert.match(fixed.markdown,/official-annual@paragraph:821/)
+})
+
+test('interim industry and product revenue rates are labeled by their separate table dimensions and remain idempotent',()=>{
+  const excerpts=[
+    {location:'paragraph:691',text:'营业收入构成'},{location:'paragraph:692',text:'单位：元'},{location:'paragraph:693',text:'本报告期 上年同期'},{location:'paragraph:694',text:'同比增减'},
+    {location:'paragraph:699',text:'分行业'},{location:'paragraph:700',text:'日用电子器件制'},{location:'paragraph:701',text:'造业 69,404,994,000.00 20.13% 68,743,903,000.00 18.51% 0.96%'},
+    {location:'paragraph:702',text:'交通运输设备及'},{location:'paragraph:703',text:'电气制造业 275,341,358,000.00 79.85% 302,506,271,000.00 81.48% -8.98%'},
+    {location:'paragraph:705',text:'分产品'},{location:'paragraph:706',text:'电子及其他产品 69,404,994,000.00 20.13% 68,743,903,000.00 18.51% 0.96%'},
+    {location:'paragraph:707',text:'汽车、汽车相关'},{location:'paragraph:708',text:'产品及其他产品 275,341,358,000.00 79.85% 302,506,271,000.00 81.48% -8.98%'}
+  ]
+  const method:CompanyResearchMethodResult={skillId:'business_driver_analysis',status:'complete',attempts:1,answer:'两个分类表已提取。',markdown:'',sections:[],findings:[],sourceCandidateIds:['official-interim'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'official-interim',title:'2026年半年度报告',publisher:'CNINFO',excerpts:excerpts.map(item=>({...item,sourceCandidateId:'official-interim'}))}]}
+  const input=[{id:'revenue-profit-drivers',markdown:'半年报分行业表显示，交通运输设备及电气制造业收入同比下降，日用电子器件制造业收入小幅增加；分产品表中汽车类标签另有变化。',sourceCandidateIds:['official-interim']}]
+  const result=reconcileCompanyInterimIndustryProductComparison({sections:input,methodResults:[method]})
+  const markdown=result[0]!.markdown
+  assert.match(markdown,/分行业表为日用电子器件制造业收入同比增长0\.96%；交通运输设备及电气制造业收入同比下降8\.98%/)
+  assert.match(markdown,/分产品表为电子及其他产品收入同比增长0\.96%；汽车、汽车相关产品及其他产品收入同比下降8\.98%/)
+  for(const paragraph of [693,694,699,701,702,703,705,706,707,708])assert.match(markdown,new RegExp(`\\[official-interim@paragraph:${paragraph}\\]`))
+  assert.equal(reconcileCompanyInterimIndustryProductComparison({sections:result,methodResults:[method]})[0]!.markdown,markdown)
+  const incomplete={...method,executionEvidence:[{...method.executionEvidence![0]!,excerpts:excerpts.filter(item=>item.location!=='paragraph:705').map(item=>({...item,sourceCandidateId:'official-interim'}))}]}
+  assert.equal(reconcileCompanyInterimIndustryProductComparison({sections:input,methodResults:[incomplete]})[0]!.markdown,input[0]!.markdown,'missing product-table heading must not trigger a category comparison')
+})
+
+test('R&D capitalization reconciliation separates issuer change column from the calculated percentage-point spread',()=>{
+  const excerpts=[
+    {location:'paragraph:2229',text:'2025 年 2024 年 变动比例'},
+    {location:'paragraph:2243',text:'2025 年 2024 年 变动比例'},
+    {location:'paragraph:2246',text:'研发投入资本化的金额（元） 5,463,274,000.00 966,219,000.00 465.43%'},
+    {location:'paragraph:2247',text:'资本化研发投入占研发投入的比例 8.61% 1.78% 6.83%'}
+  ]
+  const method:CompanyResearchMethodResult={skillId:'capital_allocation_review',status:'complete',attempts:1,answer:'研发资本化情况。',markdown:'',sections:[],findings:[],sourceCandidateIds:['official-annual'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'official-annual',title:'2025年年度报告',publisher:'CNINFO',excerpts:excerpts.map(item=>({...item,sourceCandidateId:'official-annual'}))}]}
+  const input=[{id:'management-capital-allocation',markdown:'| 研发资本化率 | 2025年8.61%、2024年1.78%，原表变动比例6.83% |',sourceCandidateIds:['official-annual']}]
+  const fixed=reconcileCompanyRAndDCapitalizationRatioSpread({sections:input,methodResults:[method]})
+  assert.match(fixed[0]!.markdown,/列披露6\.83%；按比例水平相减，8\.61%−1\.78%＝6\.83个百分点/)
+  assert.match(fixed[0]!.markdown,/official-annual@paragraph:2243/)
+  assert.match(fixed[0]!.markdown,/official-annual@paragraph:2247/)
+  assert.equal(reconcileCompanyRAndDCapitalizationRatioSpread({sections:fixed,methodResults:[method]})[0]!.markdown,fixed[0]!.markdown)
+  const missingHeader={...method,executionEvidence:[{...method.executionEvidence![0]!,excerpts:excerpts.filter(item=>item.location!=='paragraph:2243').map(item=>({...item,sourceCandidateId:'official-annual'}))}]}
+  assert.equal(reconcileCompanyRAndDCapitalizationRatioSpread({sections:input,methodResults:[missingHeader]})[0]!.markdown,input[0]!.markdown,'missing adjacent year/change header must withhold arithmetic')
+})
+
+test('competitor carryover repairs the known malformed BYD sentence once and stays stable on the second pass',()=>{
+  const method:CompanyResearchMethodResult={skillId:'competitive_market_map',status:'complete',attempts:1,answer:'候选路线有限比较。',markdown:'',sections:[],findings:[{text:'吉利银河E8为纯电路线候选；客户重叠和同口径胜负未验证。',kind:'fact',evidence:[{sourceCandidateId:'public-web-geely',location:'paragraph:2'}]}],sourceCandidateIds:['public-web-geely'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'public-web-geely',title:'吉利银河E8 官方车型与配置',publisher:'Geely',evidenceScope:'peer_company',excerpts:[{sourceCandidateId:'public-web-geely',location:'paragraph:1',text:'吉利银河E8'},{sourceCandidateId:'public-web-geely',location:'paragraph:2',text:'吉利银河E8披露纯电平台及SiC电驱。'}]}]}
+  const corrupt='竞争方法已核实的具名候选为：吉利银河E8为纯电路线候选；客户重叠和同口径胜负未验证。[public-web-geely@paragraph:2]；不能据此断言存在真实竞争关系先或成本领先。'
+  const first=reconcileCompanyCompetitorEvidence({sections:[{id:'technologies',markdown:corrupt,sourceCandidateIds:['public-web-geely']}],methodResults:[method]})
+  assert.match(first[0]!.markdown,/不能据此断言存在已证实的直接竞争关系或成本领先/)
+  assert.doesNotMatch(first[0]!.markdown,/关系先或/)
+  assert.equal(reconcileCompanyCompetitorEvidence({sections:first,methodResults:[method]})[0]!.markdown,first[0]!.markdown)
 })

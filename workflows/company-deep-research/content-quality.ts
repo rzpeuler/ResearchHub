@@ -159,10 +159,14 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
     industryDenial.lastIndex = 0
     broadCandidateDenial.lastIndex = 0
     let markdown = section.markdown
+    const repairedCompetitorSentence = markdown.replace(/不能据此断言存在真实竞争关系先或成本领先/g, '不能据此断言存在已证实的直接竞争关系或成本领先')
+    if (repairedCompetitorSentence !== markdown) changed = true
+    markdown = repairedCompetitorSentence
     const scopeMatches = (offset: number): boolean => {
       const start = markdown.lastIndexOf('\n', offset) + 1
       const end = markdown.indexOf('\n', offset)
       const line = markdown.slice(start, end < 0 ? undefined : end)
+      if (line.includes('竞争方法已核实的具名候选为') || line.includes('不能据此断言存在真实竞争关系')) return false
       return !(automotiveCandidate && /^\s*\|/.test(line) && /手机|电子器件|手机部件|光伏|轨道交通/.test(line) && !/汽车|乘用车|纯电|插混|车型/.test(line))
     }
     if (/宁德时代|CATL/.test(candidateName) && candidateCitations.includes('@paragraph:35')) {
@@ -261,6 +265,7 @@ export function reconcileCompanyProductRevenueCostGrowth<T extends CompanyConten
   // both periods in separate tables, and PDF selection can omit a section
   // label such as 分地区.
   const currentProductRevenue = new Map<string, Map<string, number>>()
+  const currentProductRevenueGrowth = new Map<string, Map<string, { readonly amount: number; readonly growth: string; readonly rowParagraph: number; readonly labelParagraph?: number }>>()
   for (const packet of packets) {
     const rows = packet.excerpts.map(item => ({ ...item, paragraph: paragraphOf({ candidateId: item.sourceCandidateId, location: item.location, text: item.text }) }))
     for (const row of rows) {
@@ -271,7 +276,7 @@ export function reconcileCompanyProductRevenueCostGrowth<T extends CompanyConten
         : undefined
       const match = label ?? splitLabel
       if (!match || !row.paragraph) continue
-      const priorRows = rows.filter(item => item.paragraph < row.paragraph && item.paragraph >= row.paragraph - 16)
+      const priorRows = rows.filter(item => item.paragraph < row.paragraph && item.paragraph >= row.paragraph - 24)
       const latestSegment = priorRows.filter(item => /^分(?:产品|行业|地区|销售模式|销售渠道)$/.test(item.text.trim())).sort((a, b) => b.paragraph - a.paragraph)[0]
       const hasCompositionContext = priorRows.some(item => /营业收入构成/.test(item.text))
       const joinedCompositionHeaders = priorRows.map(item => item.text).join('').replace(/\s+/g, '')
@@ -284,6 +289,12 @@ export function reconcileCompanyProductRevenueCostGrowth<T extends CompanyConten
       const values = currentProductRevenue.get(packet.sourceCandidateId) ?? new Map<string, number>()
       values.set(match[1]!.replace(/\s+/g, ''), amount)
       currentProductRevenue.set(packet.sourceCandidateId, values)
+      const disclosedGrowth = row.text.trim().match(/(-?[\d.]+)%\s*$/)?.[1]
+      if (disclosedGrowth) {
+        const growthValues = currentProductRevenueGrowth.get(packet.sourceCandidateId) ?? new Map<string, { readonly amount: number; readonly growth: string; readonly rowParagraph: number; readonly labelParagraph?: number }>()
+        growthValues.set(match[1]!.replace(/\s+/g, ''), { amount, growth: disclosedGrowth, rowParagraph: row.paragraph, labelParagraph: splitLabel ? prior!.paragraph : undefined })
+        currentProductRevenueGrowth.set(packet.sourceCandidateId, growthValues)
+      }
     }
   }
   // Product rows may be named products (电子电路产品), modules (光电显示模组),
@@ -291,7 +302,7 @@ export function reconcileCompanyProductRevenueCostGrowth<T extends CompanyConten
   // exact split header and nearest 分产品 section bound accepted labels.
   const rowPattern = /^([\u3400-\u9fffA-Za-z0-9（）()·、，\- ]{2,30}?)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)\s+([\d.]+)%\s+(-?[\d.]+)%\s+(-?[\d.]+)%\s+(-?[\d.]+)%\s*$/
   const statements: string[] = []
-  const correctedClaims: { readonly period: string; readonly revenueGrowth: string; readonly costGrowth: string; readonly marginChange: string }[] = []
+  const correctedClaims: { readonly period: string; readonly product: string; readonly revenueAmount: string; readonly revenueGrowth: string; readonly costGrowth: string; readonly marginChange: string }[] = []
   const sourceIds = new Set<string>()
   for (const row of excerpts) {
     const rowParagraph = paragraphOf(row)
@@ -360,25 +371,116 @@ export function reconcileCompanyProductRevenueCostGrowth<T extends CompanyConten
     const statement = `${period} ${product}同一报告期营业收入${revenueDirection}，营业成本${costDirection}；两项同比增速的算术差为${revenueOperand}−${costOperand}＝${spread.toFixed(2)}个百分点（${comparison}）。该差值不是毛利率变动，不能单独推出毛利率方向或单位成本变化；同表另列毛利率比上年同期增减${marginChangeText}%。价格、效率及规模的具体贡献未披露。${citations}`
     if (statements.includes(statement) || section.markdown.includes(statement)) continue
     statements.push(statement)
-    correctedClaims.push({ period, revenueGrowth: revenueGrowthText, costGrowth: costGrowthText, marginChange: marginChangeText })
+    correctedClaims.push({ period, product, revenueAmount: match[2]!, revenueGrowth: revenueGrowthText, costGrowth: costGrowthText, marginChange: marginChangeText })
     sourceIds.add(candidateName)
   }
+  const escaped = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  let revenueCompositionMarkdown = interimBoundMarkdown
+  for (const [candidateId, products] of currentProductRevenueGrowth) {
+    for (const [product, value] of products) {
+      const amount = escaped(Number(value.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+      const claim = new RegExp(`(${escaped(product)}\\s*${amount}(?:\\[[^\\]]+\\])?)收入增长`, 'g')
+      if (claim.test(revenueCompositionMarkdown)) {
+        claim.lastIndex = 0
+        revenueCompositionMarkdown = revenueCompositionMarkdown.replace(claim, `$1收入同比增长${Number(value.growth).toFixed(2)}%[${candidateId}@paragraph:${value.labelParagraph ?? value.rowParagraph}]`)
+        sourceIds.add(candidateId)
+      }
+    }
+  }
   if (!statements.length) {
-    if (interimBoundMarkdown === section.markdown) return input.sections
-    const updated = { ...section, markdown: interimBoundMarkdown }
+    if (revenueCompositionMarkdown === section.markdown) return input.sections
+    const updated = { ...section, markdown: revenueCompositionMarkdown, sourceCandidateIds: [...new Set([...(section.sourceCandidateIds ?? []), ...sourceIds])] }
     return input.sections.map(item => item.id === section.id ? updated : item)
   }
   const marker = /(?=\n\s*###\s+毛利与成本链路)/
   const insertion = `\n\n${statements.join('\n\n')}\n`
-  let markdownBase = interimBoundMarkdown
-  const escaped = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  let markdownBase = revenueCompositionMarkdown
   for (const claim of correctedClaims) {
     const staleLine = new RegExp(`^.*${escaped(claim.period)}[^\\n]*${escaped(claim.revenueGrowth)}%[^\\n]*${escaped(claim.costGrowth)}%[^\\n]*${escaped(claim.marginChange)}%[^\\n]*$`, 'gm')
     markdownBase = markdownBase.replace(staleLine, line => /^\s*\|/.test(line) ? line : '')
+    const amount = escaped(Number(claim.revenueAmount.replaceAll(',', '')).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+    const productRevenueClaim = new RegExp(`(${escaped(claim.product)}\\s*${amount}(?:\\[[^\\]]+\\])?)收入增长`, 'g')
+    markdownBase = markdownBase.replace(productRevenueClaim, `$1收入同比增长${Number(claim.revenueGrowth).toFixed(2)}%`)
   }
   const markdown = marker.test(markdownBase) ? markdownBase.replace(marker, insertion) : `${markdownBase}${insertion}`
   const repaired = { ...section, markdown, sourceCandidateIds: [...new Set([...(section.sourceCandidateIds ?? []), ...sourceIds])] }
   return input.sections.map(item => item.id === section.id ? repaired : item.id===growthSection?.id?{...item,markdown:statements.reduce((body,statement)=>body.includes(statement)?body:`${body.trim()}\n\n${statement}`,item.markdown),sourceCandidateIds:[...new Set([...(item.sourceCandidateIds??[]),...sourceIds])]} : item)
+}
+
+/** Clarify that interim industry and product revenue tables are separate classification dimensions. */
+export function reconcileCompanyInterimIndustryProductComparison<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly T[] {
+  const section = input.sections.find(item => item.id === 'revenue-profit-drivers')
+  const method = input.methodResults.find(item => item.skillId === 'business_driver_analysis' && item.status === 'complete')
+  if (!section || !method) return input.sections
+  const marker = '半年报分行业与分产品口径核对：'
+  if (section.markdown.includes(marker)) return input.sections
+  for (const packet of [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []]) {
+    if (!/半年度报告|半年报/.test(packet.title) || !packet.sourceCandidateId.startsWith('official-')) continue
+    const rows = packet.excerpts.map(item => ({ ...item, paragraph: Number(item.location.match(/^paragraph:(\d+)$/)?.[1] ?? 0) })).filter(item => item.paragraph > 0).sort((a,b) => a.paragraph-b.paragraph)
+    const markers = rows.filter(item => ['分行业','分产品'].includes(item.text.trim()))
+    const findTables = (name: '分行业'|'分产品') => markers.filter(item => item.text.trim() === name).map(header => {
+      const prior = rows.filter(item => item.paragraph < header.paragraph && item.paragraph >= header.paragraph-20)
+      const periodHeader = prior.filter(item => /本报告期/.test(item.text) && /上年同期/.test(item.text)).sort((a,b)=>b.paragraph-a.paragraph)[0]
+      const unitHeader = prior.filter(item => /^单位\s*[：:]\s*元$/.test(item.text.trim())).sort((a,b)=>b.paragraph-a.paragraph)[0]
+      const comparisonHeader = prior.filter(item => /同比增减/.test(item.text)).sort((a,b)=>b.paragraph-a.paragraph)[0]
+      const compositionHeading = prior.filter(item => /营业收入构成/.test(item.text)).sort((a,b)=>b.paragraph-a.paragraph)[0]
+      const hasPeriod = Boolean(periodHeader && unitHeader && comparisonHeader && compositionHeading)
+      const nextMarker = rows.filter(item => item.paragraph > header.paragraph && /^分(?:行业|产品|地区|销售模式|销售渠道)$/.test(item.text.trim())).sort((a,b)=>a.paragraph-b.paragraph)[0]
+      const endParagraph = Math.min(header.paragraph+16, nextMarker?.paragraph ?? Number.POSITIVE_INFINITY)
+      const following = rows.filter(item => item.paragraph > header.paragraph && item.paragraph <= endParagraph)
+      const entries = following.flatMap(row => {
+        if (!/[\d,]+\.\d+/.test(row.text) || !/-?[\d.]+%\s*$/.test(row.text.trim())) return []
+        const previous = rows.find(item => item.paragraph === row.paragraph-1)
+        const previousIsLabel = Boolean(previous && !/[\d%％]/.test(previous.text) && !/^分(?:行业|产品|地区|销售模式|销售渠道)$/.test(previous.text.trim()))
+        const combined = `${previousIsLabel ? previous!.text.trim() : ''}${row.text.trim()}`
+        const label = combined.match(/^([\u3400-\u9fffA-Za-z0-9（）()·、，\- ]{2,40}?)\s+[\d,]+(?:\.\d+)?\s+/)?.[1]?.replace(/\s+/g,'')
+        const growth = combined.match(/(-?[\d.]+)%\s*$/)?.[1]
+        if (!label || !growth) return []
+        return [{ label, growth, refs: [...(previousIsLabel ? [previous!] : []), row].map(item => `[${item.sourceCandidateId}@${item.location}]`) }]
+      })
+      return { header, hasPeriod, periodHeader, unitHeader, comparisonHeader, compositionHeading, entries }
+    }).filter(table => table.hasPeriod && table.entries.length >= 2)
+    const industry = findTables('分行业')
+    const product = findTables('分产品')
+    if (industry.length !== 1 || product.length !== 1) continue
+    const industryTable = industry[0]!
+    const productTable = product[0]!
+    if (new Set(industryTable.entries.map(item=>item.label)).size !== industryTable.entries.length || new Set(productTable.entries.map(item=>item.label)).size !== productTable.entries.length) continue
+    const displayRows = (entries: typeof industryTable.entries) => entries.map(item=>`${item.label}收入同比${Number(item.growth)<0?'下降':'增长'}${Math.abs(Number(item.growth)).toFixed(2)}%`).join('；')
+    const period = packet.title.match(/((?:19|20)\d{2})年/)?.[1]
+    if (!period) continue
+    const citations = [...new Set([industryTable.header, productTable.header, industryTable.periodHeader!, industryTable.unitHeader!, industryTable.comparisonHeader!, industryTable.compositionHeading!].map(item=>`[${item.sourceCandidateId}@${item.location}]`).concat(industryTable.entries.flatMap(item=>item.refs), productTable.entries.flatMap(item=>item.refs)))].join(' ')
+    const statement = `${marker}${period}年上半年两张表的分类维度不同：分行业表为${displayRows(industryTable.entries)}；分产品表为${displayRows(productTable.entries)}。即使同比数值相同，也不能将行业分类与产品分类视为同一统计口径或互相替代。${citations}`
+    const updated = { ...section, markdown: `${section.markdown.trim()}\n\n${statement}`, sourceCandidateIds: [...new Set([...(section.sourceCandidateIds ?? []), packet.sourceCandidateId])] }
+    return input.sections.map(item => item.id === section.id ? updated : item)
+  }
+  return input.sections
+}
+
+/** Explain the percentage-point change in annual R&D capitalization ratios without rewriting the issuer's raw change column. */
+export function reconcileCompanyRAndDCapitalizationRatioSpread<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly T[] {
+  const section = input.sections.find(item => item.id === 'management-capital-allocation')
+  const method = input.methodResults.find(item => item.skillId === 'capital_allocation_review' && item.status === 'complete')
+  if (!section || !method || /按(?:两期|比例水平)相减/.test(section.markdown)) return input.sections
+  for (const packet of [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []]) {
+    if (!/年度报告/.test(packet.title) || !packet.sourceCandidateId.startsWith('official-')) continue
+    const rows = packet.excerpts.map(item => ({ ...item, paragraph: Number(item.location.match(/^paragraph:(\d+)$/)?.[1] ?? 0) })).filter(item => item.paragraph > 0)
+    const disclosure = rows.filter(item => /资本化研发投入占研发投入的比例/.test(item.text))
+    if (disclosure.length !== 1) continue
+    const row = disclosure[0]!
+    const match = row.text.match(/资本化研发投入占研发投入的比例\s+([\d.]+)%\s+([\d.]+)%\s+(-?[\d.]+)%?\s*$/)
+    if (!match) continue
+    const earlier = rows.filter(item => item.paragraph < row.paragraph && item.paragraph >= row.paragraph-24)
+    const header = earlier.filter(item => /2025\s*年/.test(item.text) && /2024\s*年/.test(item.text) && /变动比例/.test(item.text)).sort((a,b)=>b.paragraph-a.paragraph)[0]
+    if (!header || row.paragraph-header.paragraph > 10) continue
+    const current = Number(match[1]), prior = Number(match[2]), reported = Number(match[3])
+    if (![current,prior,reported].every(Number.isFinite)) continue
+    const difference = Number((current-prior).toFixed(2))
+    const note = `年报原表列示资本化研发投入占研发投入比例为${current.toFixed(2)}%（2025年）、${prior.toFixed(2)}%（2024年），并在“变动比例”列披露${reported.toFixed(2)}%；按比例水平相减，${current.toFixed(2)}%−${prior.toFixed(2)}%＝${difference.toFixed(2)}个百分点。原表披露值沿用其列名和单位，百分点差是本报告按两期比例水平计算的结果；资本化比例上升本身不能证明研发效率、项目成果或会计判断合理性改善。[${packet.sourceCandidateId}@${header.location}] [${packet.sourceCandidateId}@${row.location}]`
+    const updated = { ...section, markdown: `${section.markdown.trim()}\n\n${note}`, sourceCandidateIds: [...new Set([...(section.sourceCandidateIds ?? []), packet.sourceCandidateId])] }
+    return input.sections.map(item => item.id === section.id ? updated : item)
+  }
+  return input.sections
 }
 
 /** Carry disclosed product revenue mix into the products chapter only when the full annual-report table context is present. */
