@@ -68,7 +68,7 @@ function repairCompanyRiskMatrixFormat<T>(output: T): { output: T; repairs: stri
           && /商誉/.test(row[0]!)
           && !/非商誉/.test(row[0]!)
           && /商誉(?:原值|减值准备)|减值准备/.test(row[4]!)
-          && /(?:未提供|无法|不能|尚未|残余风险|仍可能)/.test(row[5]!)) {
+          && /(?:未提供|未披露|无法|不能|尚未|残余风险|仍可能)/.test(row[5]!)) {
           repaired = [...row.slice(0, 4), `${row[4]}；${row[5]}`]
           repairs.push(`risks line ${rowIndex + 1}: merged explicit goodwill disclosure into residual-risk cell`)
         } else if (row.length === 4) {
