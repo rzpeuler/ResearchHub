@@ -430,7 +430,14 @@ function bindExactCompanyTableRows<T extends { readonly findings: readonly Compa
         const fullLabel = (splitLabel ? prior + rowLabel : rowLabel).replace(/\s+/g, '')
         if (fullLabel.length < 4 || !text.replace(/\s+/g, '').includes(fullLabel)) continue
         const rowValues = new Set(numberTokens(row))
-        if ([...claimNumbers].filter(token => rowValues.has(token)).length < 2) continue
+        // A complete classification and exact row label make a single
+        // disclosed margin-change value unique. Requiring two numeric tokens
+        // here prevented that safe case from receiving its supplied data-row
+        // citation, even though the same-source table headers were already
+        // cited. Keep the two-value threshold when the claim contains multiple
+        // numbers so a merely adjacent segment row cannot be borrowed.
+        const requiredNumberMatches = Math.min(2, claimNumbers.size)
+        if (requiredNumberMatches === 0 || [...claimNumbers].filter(token => rowValues.has(token)).length < requiredNumberMatches) continue
         let markerIndex = -1
         for (let cursor = index - 1; cursor >= Math.max(0, index - 30); cursor--) {
           if (paragraphs[cursor]!.trim() === classification) { markerIndex = cursor; break }
