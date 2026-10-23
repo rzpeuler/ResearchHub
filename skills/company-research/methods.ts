@@ -1,4 +1,4 @@
-import { validateCompanyResearchMarkdownTables } from './markdown-tables.ts'
+import { mergeExcessTrailingMarkdownTableCells, validateCompanyResearchMarkdownTables } from './markdown-tables.ts'
 import type { ReasoningExecutor, ReasoningRequest } from '../../plugins/reasoning/contracts.ts'
 import { ReasoningExecutorError, summarizeReasoningFailure } from '../../plugins/reasoning/errors.ts'
 import type { CompanyResearchInput } from './contracts.ts'
@@ -7,6 +7,25 @@ import { validateCompanyNumericGrounding, companyPreparedFinancialDateText } fro
 import { repairCompanyMethodCitations, repairCompanyParagraphCollisionCitations, repairCompanyTrailingSourceIdTypo, repairPreparedAnalysisSourceReferences, repairUnavailableCompanyMethodCitations, type CompanyCitationRepair } from './citation-repair.ts'
 
 type NormalizedResearchSource = Parameters<typeof selectCompanyEvidence>[0][number]
+
+/** Join one extra trailing table cell into the final declared capital-allocation column without dropping text or citations. */
+function repairExcessTrailingCellsInMethodOutput<T>(output: T): T {
+  let raw: unknown = output
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')) } catch { return output }
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return output
+  const copy = structuredClone(raw) as Record<string, unknown>
+  const repairText = (value: unknown) => typeof value === 'string' ? mergeExcessTrailingMarkdownTableCells(value) : value
+  if ('markdown' in copy) copy.markdown = repairText(copy.markdown)
+  if (Array.isArray(copy.sections)) copy.sections = copy.sections.map(section => section && typeof section === 'object' && !Array.isArray(section)
+    ? { ...section, markdown: repairText((section as Record<string, unknown>).markdown) }
+    : section)
+  if (Array.isArray(copy.findings)) copy.findings = copy.findings.map(finding => finding && typeof finding === 'object' && !Array.isArray(finding)
+    ? { ...finding, text: repairText((finding as Record<string, unknown>).text) }
+    : finding)
+  return copy as T
+}
 
 /** Drop only a whole, uncited-by-any-valid-source paragraph whose sole inline
  * references are absent from this method's evidence packet. This is a
@@ -890,7 +909,10 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
       const unsupportedClaimCleanup = input.skillId === 'business_model_map'
         ? removeUnsupportedMethodCitationParagraphs(postCanonicalCollisionRepair.output, packets)
         : { output: postCanonicalCollisionRepair.output, removed: 0 }
-      const bounded = bindCompanyMethodEvidenceContext(validateCompanyMethodOutput(unsupportedClaimCleanup.output, packets, COMPANY_METHOD_SECTION_IDS[input.skillId]), packets)
+      const allocationTableRepair = input.skillId === 'capital_allocation_review'
+        ? repairExcessTrailingCellsInMethodOutput(unsupportedClaimCleanup.output)
+        : unsupportedClaimCleanup.output
+      const bounded = bindCompanyMethodEvidenceContext(validateCompanyMethodOutput(allocationTableRepair, packets, COMPANY_METHOD_SECTION_IDS[input.skillId]), packets)
       const repaired = repairCompanyMethodCitations(bounded, packets, input)
       citationRepairs.push(...repaired.repairs.map((repair) => ({ ...repair, attempt })))
       const yearBound = bindCompanyAnswerYearEvidence(repaired.output, input.sources, packets, input.preparedAnalysis, input.company.symbol, input.asOf)
