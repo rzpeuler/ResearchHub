@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
-import { assembleCompanyResearch, normalizeCompanySynthesisCitations, repairCompanyResearchMarkdownTables, validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
+import { assembleCompanyResearch, normalizeCompanySynthesisCitations, repairCompanyFinalSynthesisTable, repairCompanyResearchMarkdownTables, validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
 import { mergeExcessTrailingMarkdownTableCells } from '../../skills/company-research/markdown-tables.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
@@ -20,6 +20,18 @@ test('Markdown table validation rejects extra cells and embedded heading rows', 
   assert.match(validateCompanyResearchMarkdownTables('| 指标 | 判断 |\n| --- | --- |\n| 客户集中 | 需持续跟踪 | 意外内容 |')[0]!, /row at line 3 has 3 cells; expected 2/)
   assert.match(validateCompanyResearchMarkdownTables('| 指标 | 判断 |\n| --- | --- |\n| ## 竞争风险 | 需持续跟踪 |')[0]!, /heading markup embedded/)
   assert.match(validateCompanyResearchMarkdownTables('| 指标 | ## 判断 |\n| --- | --- |\n| 客户集中 | 需持续跟踪 |')[0]!, /heading markup embedded in table header/)
+})
+
+test('final synthesis repairs only a cited missing monitoring cell and a trailing orphan pipe',()=>{
+  const source='| 指标/观察项 | 观察频率 | 触发条件/核验信号 | 论点关联与证据 |\n|---|---|---|---|\n| 分行业收入 | 定期报告 | 收入同比变化。[official@paragraph:716] |\n| 毛利率 | 半年报 | 继续观察。[official@paragraph:717] |已证实信号。|\n|'
+  const fixed=repairCompanyFinalSynthesisTable('monitoring-checklist',source)
+  assert.equal(fixed.repairs.length,2)
+  assert.match(fixed.markdown,/继续观察。\[official@paragraph:717\] \|已证实信号。\|/)
+  assert.equal(fixed.markdown.split('\n').some(line=>line.trim()==='|'),false)
+  assert.deepEqual(validateCompanyResearchMarkdownTables(fixed.markdown),[])
+  assert.equal(repairCompanyFinalSynthesisTable('investment-thesis',source).markdown,source)
+  const uncited='| 指标/观察项 | 观察频率 | 触发条件/核验信号 | 论点关联与证据 |\n|---|---|---|---|\n| 项目 | 定期 | 观察信号 |'
+  assert.equal(repairCompanyFinalSynthesisTable('monitoring-checklist',uncited).markdown,uncited)
 })
 
 test('table repair removes one empty customer-table header and detaches a trailing prose paragraph', () => {
@@ -630,6 +642,23 @@ test('final synthesis rejects malformed table structure and accepts a repaired a
   assert.match(result.synthesisDiagnostics[0]!, /FORMAT_ERROR: TABLE_ERROR: row at line 3 has 3 cells; expected 2/)
   assert.match(result.sections.find(section => section.id === 'investment-thesis')!.markdown, /\| 客户集中 \| 需跟踪 \|/)
   assert.doesNotMatch(result.sections.find(section => section.id === 'investment-thesis')!.markdown, /合并进来的标题/)
+})
+
+test('final synthesis deterministically closes a cited four-column monitoring row before consuming a model retry',async()=>{
+  let calls=0
+  const executor:ReasoningExecutor={capabilities,execute:async request=>{
+    calls++
+    return {operation:request.operation,output:{sections:ids.map(id=>({id,markdown:id==='monitoring-checklist'
+      ?'| 指标/观察项 | 观察频率 | 触发条件/核验信号 | 论点关联与证据 |\n|---|---|---|---|\n| 客户集中度 | 定期报告 | 核验前五客户占比。[annual@paragraph:1] |\n|'
+      :'有证据支持的结论 [annual@paragraph:1]',sourceCandidateIds:['annual']}))}}
+  }}
+  const result=await assembleCompanyResearch(input,[method],executor,()=>input.asOf)
+  const monitoring=result.sections.find(section=>section.id==='monitoring-checklist')!.markdown
+  assert.equal(calls,1)
+  assert.equal(result.synthesisMode,'reasoning_executor',JSON.stringify(result.synthesisDiagnostics))
+  assert.ok(result.synthesisDiagnostics.some(item=>item.includes('MONITORING_ROW_FINAL_CELL_RESTORED')))
+  assert.deepEqual(validateCompanyResearchMarkdownTables(monitoring),[])
+  assert.match(monitoring,/核验前五客户占比。\[annual@paragraph:1\] \| 用于核验该观察项对报告核心论点的兑现/)
 })
 
 test('final synthesis accepts supplied Chinese-bracket citations and validates the resolved locator', async () => {

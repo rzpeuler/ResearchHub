@@ -47,6 +47,40 @@ export function validateCompanyResearchSectionTables(sections: readonly { readon
   return sections.flatMap(section => validateCompanyResearchMarkdownTables(section.markdown).map(error => `${section.id}: ${error}`))
 }
 
+/** Repair only the known four-column monitoring-table omissions without inventing evidence. */
+export function repairCompanyFinalSynthesisTable(sectionId: string, markdown: string): { readonly markdown: string; readonly repairs: readonly string[] } {
+  if (sectionId !== 'monitoring-checklist') return { markdown, repairs: [] }
+  const lines = markdown.split(/\r?\n/)
+  const repairs: string[] = []
+  const cells = (line: string): string[] => {
+    let value = line.trim()
+    if (value.startsWith('|')) value = value.slice(1)
+    if (value.endsWith('|') && !value.endsWith('\\|')) value = value.slice(0, -1)
+    return value.split(/(?<!\\)\|/u).map(cell => cell.trim())
+  }
+  const expectedHeader = ['指标/观察项', '观察频率', '触发条件/核验信号', '论点关联与证据']
+  for (let headerIndex = 0; headerIndex < lines.length; headerIndex++) {
+    if (JSON.stringify(cells(lines[headerIndex]!)) !== JSON.stringify(expectedHeader)) continue
+    let separatorIndex = headerIndex + 1
+    while (separatorIndex < lines.length && !lines[separatorIndex]!.trim()) separatorIndex++
+    if (separatorIndex >= lines.length || cells(lines[separatorIndex]!).length !== expectedHeader.length || !cells(lines[separatorIndex]!).every(cell => /^:?-{3,}:?$/u.test(cell))) continue
+    for (let rowIndex = separatorIndex + 1; rowIndex < lines.length && /^\s*\|/.test(lines[rowIndex]!); rowIndex++) {
+      const row = cells(lines[rowIndex]!)
+      if (row.length === expectedHeader.length - 1 && row[2]?.includes('@paragraph:')) {
+        row.push('用于核验该观察项对报告核心论点的兑现；本格不新增事实判断。')
+        lines[rowIndex] = `| ${row.join(' | ')} |`
+        repairs.push(`MONITORING_ROW_FINAL_CELL_RESTORED: line ${rowIndex + 1}`)
+      } else if (row.length === 1 && row[0] === '' && lines.slice(rowIndex + 1).every(line => !line.trim())) {
+        lines.splice(rowIndex, 1)
+        repairs.push(`MONITORING_ORPHAN_PIPE_REMOVED: line ${rowIndex + 1}`)
+        break
+      }
+    }
+    break
+  }
+  return { markdown: repairs.length ? lines.join('\n') : markdown, repairs }
+}
+
 export function repairCompanyResearchMarkdownTables(markdown: string): { readonly markdown: string; readonly repairs: readonly string[]; readonly diagnostics: readonly string[] } {
   const lines = markdown.split(/\r?\n/)
   const repairs: string[] = []
@@ -1668,14 +1702,16 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
       for(const section of value.sections) {
         if(!finalIds.includes(section.id)||typeof section.markdown!=='string'||!section.markdown.trim()||!Array.isArray(section.sourceCandidateIds)) throw new Error('REFERENCE_ERROR: final section contract invalid')
         const normalizedMarkdown=normalizeCompanySynthesisCitations(section.markdown)
-        const tableErrors = validateCompanyResearchMarkdownTables(normalizedMarkdown)
+        const finalTableRepair=repairCompanyFinalSynthesisTable(section.id,normalizedMarkdown)
+        if(finalTableRepair.repairs.length)diagnostics.push(`${attempt}:DETERMINISTIC_TABLE_REPAIR:${finalTableRepair.repairs.join(',')}`)
+        const tableErrors = validateCompanyResearchMarkdownTables(finalTableRepair.markdown)
         if (tableErrors.length) throw new Error(`FORMAT_ERROR: ${tableErrors.join('; ')}`)
-        for(const match of normalizedMarkdown.matchAll(/\[([^\]\s]+@[^\]]+)\]/g)) if(!locations.has(match[1]!)) throw new Error(`REFERENCE_ERROR: final synthesis locator unavailable: ${match[1]}; copy an exact citation from the supplied method results`)
+        for(const match of finalTableRepair.markdown.matchAll(/\[([^\]\s]+@[^\]]+)\]/g)) if(!locations.has(match[1]!)) throw new Error(`REFERENCE_ERROR: final synthesis locator unavailable: ${match[1]}; copy an exact citation from the supplied method results`)
         if(['investment-thesis','monitoring-checklist'].includes(section.id)&&![...normalizedMarkdown.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].length) throw new Error('REFERENCE_ERROR: conclusion requires located evidence')
-        const citationIds=[...new Set([...normalizedMarkdown.matchAll(/\[([^\]\s]+)@paragraph:\d+\]/g)].map(match=>match[1]!))]
+        const citationIds=[...new Set([...finalTableRepair.markdown.matchAll(/\[([^\]\s]+)@paragraph:\d+\]/g)].map(match=>match[1]!))]
         if(citationIds.some(id=>!allowed.has(id))) throw new Error('REFERENCE_ERROR: cited source is not allowed for this report')
         const optional= !['investment-thesis','monitoring-checklist'].includes(section.id)
-        let sectionMarkdown=normalizedMarkdown.trim()
+        let sectionMarkdown=finalTableRepair.markdown.trim()
         sectionMarkdown=repairSynthesisSubjectCitations(sectionMarkdown,available,locations)
         if (!optional) {
           const validate=()=>validateCompanyNumericGrounding({markdown:sectionMarkdown,sources:input.sources,evidenceContexts:validationEvidenceContexts,preparedAnalysis:input.preparedAnalysis,trustedText:[input.company.symbol,input.asOf,...companyCitedSplitDateText(sectionMarkdown,available.flatMap(method=>method.executionEvidence ?? [])),...companyPreparedFinancialDateText(input.preparedAnalysis)]})
