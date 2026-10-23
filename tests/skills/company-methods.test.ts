@@ -1042,6 +1042,37 @@ test('risk numeric retry discovers the exact same-report annual goodwill total r
   assert.ok(!result.sections[0]!.markdown.includes('[half-year@'), result.sections[0]!.markdown)
 })
 
+test('risk numeric retry strips 千元 and supplies the matching goodwill row as a citation candidate', async () => {
+  const annualLines = Array.from({ length: 7662 }, (_, index) => `年报经营情况第${index + 1}段。`)
+  annualLines[7659] = '（1）商誉原值合计'
+  annualLines[7660] = '单位：人民币千元'
+  annualLines[7661] = '合计 4,437,242 - - 4,437,242'
+  annualLines[7662] = 'Juno Newco 商誉原值 4,361,657千元 - - 4,361,657千元'
+  const annual = { ...source, title: '2025年年度报告', content: annualLines.join('\n') }
+  const broken = {
+    status: 'complete', answer: '商誉估值风险需要监控。', markdown: '商誉风险来自资产组预测兑现情况。',
+    sections: [{ id: 'risks', markdown: 'Juno Newco商誉原值为4,361,657千元。[filing-1@paragraph:9999]' }],
+    findings: [{ text: 'Juno Newco商誉原值需要结合资产组预测持续评估。', kind: 'inference', evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:9999' }] }],
+    limitations: [], risks: ['预测未兑现可能降低资产组可收回金额。'],
+  }
+  const fixed = {
+    ...broken,
+    sections: [{ id: 'risks', markdown: 'Juno Newco商誉原值为4,361,657千元。[filing-1@paragraph:7662] [filing-1@paragraph:7661]' }],
+    findings: [{ text: 'Juno Newco商誉原值需要结合资产组预测持续评估。', kind: 'inference', evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:7662' }] }],
+  }
+  let calls = 0
+  const result = await executeCompanyResearchMethod({ skillId: 'company_risk_analysis', company: { symbol: '002384' }, asOf: '2026-10-17', sources: [annual], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async request => {
+    if (++calls === 1) return broken
+    const input = (request as any).input
+    const riskTarget = input.repairTargets.find((target: any) => target.id === 'risks')
+    assert.ok(riskTarget.candidateExcerpts.some((excerpt: any) => excerpt.sourceCandidateId === 'filing-1' && excerpt.location === 'paragraph:7663' && excerpt.text.includes('4,361,657')), JSON.stringify(riskTarget.candidateExcerpts))
+    return fixed
+  }) })
+  assert.equal(calls, 2, JSON.stringify({ status: result.status, diagnostics: result.diagnostics }))
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  assert.ok(result.sections[0]!.markdown.includes('[filing-1@paragraph:7663]'), result.sections[0]!.markdown)
+})
+
 test('risk numeric retry does not preserve a positive goodwill increase from a negative source movement', async () => {
   const annual = { ...source, title:'2025年年度报告', content:[
     '商誉原值',
