@@ -1668,3 +1668,26 @@ test('R75 human-readable structured-financial citation normalizes only to an exa
     assert.equal(validateCompanyNumericGrounding({ markdown: untrusted.output.sections[0]!.markdown, sources: [financialSource], evidenceContexts: [financialPacket], preparedAnalysis }).status, 'unsupported_numbers')
   }
 })
+
+test('financial-quality duplicate segment-margin prose reuses only its unique cited source-table row', () => {
+  const candidateId='official-half'
+  const lines=['单位：元','营业收入 营业成本 毛利率','营业收入比上年同期增减','营业成本比上年同期增减','毛利率比上年同期增减','分行业','计算机、通信和','其他电子','27,347,867,868.08 21,929,134,042.30 19.81% 63.21% 51.01% 6.48%']
+  const half={candidate:{candidateId},title:'2026年半年度报告',content:lines.join('\n')} as CompanyResearchInput['sources'][number]
+  const excerpts=lines.map((text,index)=>({sourceCandidateId:candidateId,location:`paragraph:${index+1}`,text,...(index===8?{contextLocations:lines.slice(0,8).map((_,contextIndex)=>`paragraph:${contextIndex+1}`)}:{})}))
+  const halfPacket:CompanyEvidencePacket={sourceCandidateId:candidateId,title:half.title,publisher:'CNINFO',excerpts}
+  const claim='半年报分行业表列示：计算机、通信和其他电子毛利率19.81%，同比上升6.48%。这里的6.48%沿用原表变化列显示单位，不改称百分点。'
+  const tableRow='| 计算机、通信和其他电子毛利率19.81%，同比上升6.48% | [official-half@paragraph:1] [official-half@paragraph:2] [official-half@paragraph:3] [official-half@paragraph:4] [official-half@paragraph:5] [official-half@paragraph:6] [official-half@paragraph:7] [official-half@paragraph:8] [official-half@paragraph:9] |'
+  const draft={findings:[],markdown:`## 分行业及分产品\n\n${tableRow}`,sections:[{id:'financial-quality',markdown:claim}]}
+  const result=repairCompanyMethodCitations(draft,[halfPacket],{...input,company:{symbol:'002384'},sources:[half]})
+  const repaired=result.output.sections[0]!.markdown
+  assert.match(repaired,/毛利率19\.81%，同比上升6\.48%[^\n]*\[official-half@paragraph:9\]/)
+  assert.match(repaired,/原表变化列沿用百分比单位/)
+  assert.doesNotMatch(repaired,/这里的6\.48%/)
+  assert.ok(result.repairs.some(repair=>repair.reason.includes('unique, already cited source-table row')))
+  assert.equal(validateCompanyNumericGrounding({markdown:repaired,sources:[half],evidenceContexts:[halfPacket]}).status,'grounded')
+
+  const ambiguousMarkdown=`${tableRow}\n${tableRow.replace('计算机、通信和其他电子','其他电子行业')}`
+  const ambiguous=repairCompanyMethodCitations({...draft,markdown:ambiguousMarkdown},[halfPacket],{...input,company:{symbol:'002384'},sources:[half]})
+  assert.equal(ambiguous.output.sections[0]!.markdown,claim,'duplicate source-table candidates must not be selected by order')
+  assert.equal(ambiguous.repairs.filter(repair=>repair.sectionId==='financial-quality').length,0)
+})
