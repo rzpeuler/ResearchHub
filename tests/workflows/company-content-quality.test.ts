@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyNumericMovementVerbs, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
+import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyNumericMovementVerbs, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 
 test('classification repair restores a uniquely sourced industry label and adds its exact row citation', () => {
@@ -701,6 +701,36 @@ test('product revenue share reconciliation requires complete annual table contex
   assert.ok(fixed[0]!.sourceCandidateIds?.includes('annual'))
   const incomplete=reconcileCompanyProductRevenueShares({sections,methodResults:[{...method,executionEvidence:[{...method.executionEvidence![0]!,excerpts:excerpts.filter(item=>item.location!=='paragraph:866').map(item=>({...item,sourceCandidateId:'annual'}))}]}]})
   assert.equal(incomplete[0]!.markdown,sections[0]!.markdown)
+})
+
+test('interim product mix reconciliation adds reported current-period revenue shares only from a complete official table', () => {
+  const excerpts = [
+    { location: 'paragraph:764', text: '营业收入构成' },
+    { location: 'paragraph:765', text: '单位：元' },
+    { location: 'paragraph:766', text: '本报告期 上年同期' },
+    { location: 'paragraph:767', text: '同比增减' },
+    { location: 'paragraph:768', text: '金额 占营业收入比重 金额 占营业收入比重' },
+    { location: 'paragraph:773', text: '分产品' },
+    { location: 'paragraph:774', text: '电子电路产品 12,529,627,775.53 45.07% 11,059,315,884.89 65.23% 13.29%' },
+    { location: 'paragraph:775', text: '精密组件产品 6,580,692,901.95 23.67% 2,361,835,859.44 13.93% 178.63%' },
+    { location: 'paragraph:776', text: '光模块 5,350,999,299.05 19.25%' },
+    { location: 'paragraph:777', text: '光电显示模组 2,723,476,776.77 9.80% 3,048,999,533.55 17.98% -10.68%' },
+    { location: 'paragraph:778', text: '其他 612,887,219.58 2.20% 485,012,621.01 2.86% 26.37%' },
+    { location: 'paragraph:779', text: '分地区' },
+  ]
+  const method: CompanyResearchMethodResult = { skillId: 'business_model_map', status: 'complete', attempts: 1, answer: '分产品收入有差异。', markdown: '主营产品包括电子电路和光模块。', sections: [], findings: [], sourceCandidateIds: ['interim'], limitations: [], risks: [], diagnostics: [], executionEvidence: [{ sourceCandidateId: 'interim', title: '2026年半年度报告', publisher: 'Company', excerpts: excerpts.map(item => ({ ...item, sourceCandidateId: 'interim' })) }] }
+  const sections = [{ id: 'products', markdown: '### 产品矩阵\n\n未列当期占比。', sourceCandidateIds: [] as string[] }]
+  const fixed = reconcileCompanyInterimProductRevenueShares({ sections, methodResults: [method] })[0]!
+  assert.match(fixed.markdown, /最新半年度报告披露的分产品收入占比（2026年上半年累计）/)
+  assert.match(fixed.markdown, /电子电路产品 \| 12,529,627,775\.53 \[interim@paragraph:774\] \| 45\.07% \[interim@paragraph:774\]/)
+  assert.match(fixed.markdown, /光模块 \| 5,350,999,299\.05 \[interim@paragraph:776\] \| 19\.25% \[interim@paragraph:776\]/)
+  assert.match(fixed.markdown, /\[interim@paragraph:764\]/)
+  assert.match(fixed.markdown, /\[interim@paragraph:768\]/)
+  assert.match(fixed.markdown, /占比为半年报披露值；产品收入构成不等同于利润贡献/)
+  assert.ok(fixed.sourceCandidateIds?.includes('interim'))
+  const incompleteMethod = { ...method, executionEvidence: [{ ...method.executionEvidence![0]!, excerpts: excerpts.filter(item => item.location !== 'paragraph:768').map(item => ({ ...item, sourceCandidateId: 'interim' })) }] }
+  const incomplete = reconcileCompanyInterimProductRevenueShares({ sections, methodResults: [incompleteMethod] })
+  assert.equal(incomplete[0]!.markdown, sections[0]!.markdown)
 })
 
 test('final financial section carries exact net-profit growth calculation at the opening with its source', () => {
