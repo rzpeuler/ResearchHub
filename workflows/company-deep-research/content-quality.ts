@@ -1847,6 +1847,89 @@ export function reconcileCompanySegmentRowCitations<T extends CompanyContentSect
   return changed?input.sections.map(item=>item.id===section.id?{...item,markdown}:item):input.sections
 }
 
+/** Preserve the source table's industry/product dimension when synthesis labels repeated rows. */
+export function reconcileCompanyDriverClassificationLabels<T extends CompanyContentSection>(input:{readonly sections:readonly T[];readonly methodResults:readonly CompanyResearchMethodResult[]}):readonly T[]{
+  const methods=input.methodResults.filter(method=>method.skillId==='business_driver_analysis'&&method.status==='complete')
+  if(!methods.length)return input.sections
+  type Row={label:string;refs:readonly string[]}
+  const bySource=new Map<string,{industry:Map<string,Row[]>;product:Map<string,Row[]>}>()
+  for(const method of methods)for(const packet of [...method.executionEvidence??[],...method.deterministicEvidence??[]]){
+    const excerpts=[...packet.excerpts].sort((a,b)=>Number(a.location.slice(10))-Number(b.location.slice(10)))
+    let dimension:'industry'|'product'|undefined
+    let dimensionLocation:string|undefined
+    let pending:{text:string;location:string}|undefined
+    const maps=bySource.get(packet.sourceCandidateId)??{industry:new Map<string,Row[]>(),product:new Map<string,Row[]>()}
+    for(const excerpt of excerpts){
+      const marker=/^\s*分行业\s*$/.test(excerpt.text)?'industry':/^\s*分产品\s*$/.test(excerpt.text)?'product':undefined
+      if(marker){dimension=marker;dimensionLocation=excerpt.location;pending=undefined;continue}
+      if(!dimension)continue
+      const numeric=/([\d,]+(?:\.\d+)?)/.exec(excerpt.text)
+      if(!numeric){if(excerpt.text.trim()&&!/^(?:单位|营业收入|营业成本|毛利率|比上年同期|同期增减|项目)/.test(excerpt.text.trim()))pending={text:[pending?.text,excerpt.text.trim()].filter(Boolean).join(''),location:excerpt.location};continue}
+      const current=excerpt.text.slice(0,numeric.index).trim()
+      const label=`${pending?.text??''}${current}`.replace(/[|\s]/g,'')
+      const pendingLocation=pending?.location
+      pending=undefined
+      if(label.length<3||label.length>40||/^(?:单位|营业收入|营业成本|毛利率|比上年同期|同期增减)/.test(label))continue
+      const amount=Number(numeric[1]!.replaceAll(',',''))
+      if(!Number.isFinite(amount))continue
+      const key=String(Math.round(amount))
+      const rows=maps[dimension].get(key)??[]
+      const row={label,refs:[...(dimensionLocation?[`${packet.sourceCandidateId}@${dimensionLocation}`]:[]),...(pendingLocation?[`${packet.sourceCandidateId}@${pendingLocation}`]:[]),`${packet.sourceCandidateId}@${excerpt.location}`]}
+      if(!rows.some(item=>item.label===label))rows.push(row)
+      maps[dimension].set(key,rows)
+    }
+    bySource.set(packet.sourceCandidateId,maps)
+  }
+  let changed=false
+  const sections=input.sections.map(section=>{
+    if(!['revenue-profit-drivers','growth-drivers','catalysts','business-segments'].includes(section.id))return section
+    let markdown=section.markdown
+    const lines=markdown.split('\n').map(line=>{
+      const markers=[...line.matchAll(/分行业|分产品/g)]
+      if(!markers.length)return line
+      let result=''
+      let cursor=0
+      for(let i=0;i<markers.length;i++){
+        const marker=markers[i]!
+        const dimension=marker[0]==='分行业'?'industry':'product'
+        const start=marker.index!+marker[0].length
+        const end=markers[i+1]?.index??line.length
+        const clause=line.slice(start,end).replace(/^收入表中[，,]\s*/,'')
+        const claim=/(?:^|[，,；])\s*([\u3400-\u9fffA-Za-z0-9·（）()、]{2,40}?)(?:本报告期|本期)?收入\s*([\d,]+(?:\.\d+)?)\s*(亿元|万元|元)/g
+        const repaired=clause.replace(claim,(full,rawLabel:string,rawAmount:string,unit:string)=>{
+          const label=rawLabel.replace(/(?:本报告期|本期|营业)$/,'').trim()
+          const value=Number(rawAmount.replaceAll(',',''))*({元:1,万元:1e4,亿元:1e8}[unit as '元'|'万元'|'亿元'])
+          if(!Number.isFinite(value))return full
+          const key=String(Math.round(value))
+          let correction:Row|undefined
+          const citedIds=new Set([...line.matchAll(/\[([^\]]+@paragraph:\d+)\]/g)].map(ref=>ref[1]!.split('@paragraph:')[0]!))
+          for(const sourceId of citedIds){
+            const sourceRows=bySource.get(sourceId)
+            if(!sourceRows)continue
+            const expected=sourceRows[dimension].get(key)??[]
+            const other=sourceRows[dimension==='industry'?'product':'industry'].get(key)??[]
+            if(expected.length===1&&other.some(row=>row.label===label)&&expected[0]!.label!==label){
+              if(correction&&correction.label!==expected[0]!.label)return full
+              correction=expected[0]
+            }
+          }
+          if(!correction)return full
+          changed=true
+          const refs=correction.refs.map(ref=>`[${ref}]`).filter(ref=>!line.includes(ref)).join(' ')
+          const separator=/^[，,；]/.exec(full)?.[0]??''
+          return `${separator}${correction.label}收入${rawAmount}${unit}${refs?` ${refs}`:''}`
+        })
+        result+=line.slice(cursor,start)+repaired
+        cursor=end
+      }
+      return result+line.slice(cursor)
+    })
+    markdown=lines.join('\n')
+    return markdown===section.markdown?section:{...section,markdown}
+  })
+  return changed?sections:input.sections
+}
+
 /** Attach the exact disclosed product-revenue row to every repeated amount in report prose and tables. */
 export function reconcileCompanyProductRevenueRowCitations<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly T[] {
   const targetIds = new Set(['products', 'growth-drivers', 'business-segments', 'revenue-profit-drivers'])
