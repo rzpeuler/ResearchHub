@@ -633,6 +633,23 @@ function bindExactCompanyTableRows<T extends { readonly findings: readonly Compa
   return changed ? { ...output, findings } : output
 }
 
+/** Paragraph locators belong in evidence arrays, never in finding prose. */
+function removeNarrativeParagraphLocatorClauses<T extends { readonly findings: readonly CompanyMethodFinding[] }>(output: T): T {
+  let changed = false
+  const findings = output.findings.map(finding => {
+    const text = finding.text.split(/(?<=[，,；;。])/u)
+      .filter(clause => !/(?<!@)paragraph:\d+|段落\s*\d+/iu.test(clause))
+      .join('')
+      .replace(/\s{2,}/g, ' ')
+      .replace(/\s+([，,；;。])/g, '$1')
+      .trim()
+    if (text === finding.text) return finding
+    changed = true
+    return { ...finding, text }
+  })
+  return changed ? { ...output, findings } : output
+}
+
 /**
  * Bind a business-driver finding to a uniquely identified split product row
  * when the model cited the table headers and product marker but omitted the
@@ -1200,11 +1217,14 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
       const repaired = repairCompanyMethodCitations(bounded, packets, input)
       citationRepairs.push(...repaired.repairs.map((repair) => ({ ...repair, attempt })))
       const yearBound = bindCompanyAnswerYearEvidence(repaired.output, input.sources, packets, input.preparedAnalysis, input.company.symbol, input.asOf)
-      const parsed = input.skillId === 'business_driver_analysis'
+      const rowBound = input.skillId === 'business_driver_analysis'
         ? repairCompanySegmentFindingLabels(bindExactSplitProductDriverFinding(bindExactCompanyTableRows(yearBound, packets, input.sources), packets, input.sources), packets, input.sources)
         : input.skillId === 'market_structure_analysis'
           ? bindExactCompanyTableRows(yearBound, packets, input.sources, true)
         : yearBound
+      const parsed = removeNarrativeParagraphLocatorClauses(input.skillId === 'financial_quality_analysis'
+        ? bindExactCompanyTableRows(rowBound, packets, input.sources, true)
+        : rowBound)
       if (input.skillId === 'capital_allocation_review') {
         const preserved = preserveExactDividendFindingReferences(parsed, packets)
         citationRepairs.push(...preserved.repairs.map((repair) => ({ ...repair, attempt })))
