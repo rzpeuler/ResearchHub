@@ -1073,6 +1073,39 @@ test('risk numeric retry strips 千元 and supplies the matching goodwill row as
   assert.ok(result.sections[0]!.markdown.includes('[filing-1@paragraph:7663]'), result.sections[0]!.markdown)
 })
 
+test('financial-quality findings bind an exact split industry row and remove paragraph locators from prose', async () => {
+  const annualLines = Array.from({ length: 734 }, (_, index) => `经营情况第${index + 1}段。`)
+  annualLines[715] = '单位：元'
+  annualLines[716] = '营业收入 营业成本 毛利率'
+  annualLines[717] = '营业收入'
+  annualLines[718] = '比上年同期'
+  annualLines[719] = '期增减'
+  annualLines[720] = '营业成本'
+  annualLines[721] = '比上年同期'
+  annualLines[722] = '期增减'
+  annualLines[723] = '毛利率比'
+  annualLines[724] = '上年同期'
+  annualLines[725] = '增减'
+  annualLines[726] = '分行业'
+  annualLines[727] = '日用电子器件制造业 69,404,994,000.00 65,907,931,000.00 5.04% 0.96% 3.88% -2.67%'
+  annualLines[728] = '交通运输设备及电气制'
+  annualLines[729] = '造业 275,341,358,000.00 213,863,297,000.00 22.33% -8.98% -11.24% 1.98%'
+  const annual = { ...source, title: '2026年半年度报告', content: annualLines.join('\n') }
+  const headerRefs = [716, 717, 724, 725, 726, 727].map(location => ({ sourceCandidateId: 'filing-1', location: `paragraph:${location}` }))
+  const output = {
+    status: 'complete', answer: '分行业毛利率表现存在差异。', markdown: '分行业数据需要结合完整行标签和可比口径阅读。',
+    sections: [{ id: 'financial-quality', markdown: '分行业表列示交通运输设备及电气制造业毛利率22.33%，同比上升1.98%。[filing-1@paragraph:716] [filing-1@paragraph:717] [filing-1@paragraph:724] [filing-1@paragraph:725] [filing-1@paragraph:726] [filing-1@paragraph:727] [filing-1@paragraph:729] [filing-1@paragraph:730]' }],
+    findings: [{ text: '事实：半年报分行业表列示：交通运输设备及电气制造业毛利率22.33%，同比上升1.98%。行业标签由paragraph:729与paragraph:730两行组成，数据行为paragraph:730；毛利率变动单位沿用原表的%。', kind: 'fact', evidence: headerRefs }],
+    limitations: [], risks: [],
+  }
+  const result = await executeCompanyResearchMethod({ skillId: 'financial_quality_analysis', company: { symbol: '002594' }, asOf: '2026-10-23', sources: [annual], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async () => output) })
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  const finding = result.findings[0]!
+  assert.doesNotMatch(finding.text, /(?:paragraph:\d+|段落\s*\d+)/i)
+  assert.ok(finding.evidence.some(ref => ref.sourceCandidateId === 'filing-1' && ref.location === 'paragraph:729'))
+  assert.ok(finding.evidence.some(ref => ref.sourceCandidateId === 'filing-1' && ref.location === 'paragraph:730'))
+})
+
 test('risk numeric retry does not preserve a positive goodwill increase from a negative source movement', async () => {
   const annual = { ...source, title:'2025年年度报告', content:[
     '商誉原值',
