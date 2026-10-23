@@ -15,6 +15,76 @@ type MethodOutput = { readonly findings: readonly CompanyMethodFinding[]; readon
 const strip = (text: string) => text.replace(/\[[^\]\s]+@[^\]]+\]/g, '')
 const numbers = (text: string) => [...strip(text).matchAll(/(?<![\w.])-?\d+(?:[,，]\d{3})*(?:\.\d+)?/g)].map((match) => match[0].replace(/[,，]/g, ''))
 
+/** Normalize only an exact prepared FCF row to wording the numeric parser reads unambiguously. */
+function normalizePreparedSimpleFcfFormula(text: string, evidencePackets: readonly CompanyEvidencePacket[], input: CompanyResearchInput, additionalRefs: readonly CompanyMethodEvidenceRef[] = []): string {
+  const financial = input.preparedAnalysis && typeof input.preparedAnalysis === 'object' && !Array.isArray(input.preparedAnalysis)
+    ? (input.preparedAnalysis as Record<string, unknown>).financial
+    : undefined
+  const rows = financial && typeof financial === 'object' && !Array.isArray(financial)
+    ? (financial as Record<string, unknown>).simpleFreeCashFlow
+    : undefined
+  if (!Array.isArray(rows)) return text
+  let result = text
+  for (const raw of rows) {
+    if (!raw || typeof raw !== 'object') continue
+    const row = raw as Record<string, unknown>
+    const formula = row.formula
+    const period = row.period
+    const basis = row.basis
+    const unit = row.displayUnit
+    const displayOperatingCashFlow = row.displayOperatingCashFlow
+    const displayCapex = row.displayCapex
+    const displayValue = row.displayValue
+    const sourceCandidateIds = Array.isArray(row.sourceCandidateIds) ? row.sourceCandidateIds.filter((id): id is string => typeof id === 'string') : []
+    if (typeof formula !== 'string' || typeof period !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(period) || basis !== 'YTD'
+      || typeof unit !== 'string' || !['元', '千元', '万元', '百万元', '亿元', '万亿'].includes(unit)
+      || typeof displayOperatingCashFlow !== 'string' || typeof displayCapex !== 'string' || typeof displayValue !== 'string'
+      || !sourceCandidateIds.length || !sourceCandidateIds.every(id => input.sources.some(source => source.candidate.candidateId === id))) continue
+    const operating = Number(displayOperatingCashFlow.replace(/,/g, ''))
+    const capex = Number(displayCapex.replace(/,/g, ''))
+    const value = Number(displayValue.replace(/,/g, ''))
+    const decimals = displayValue.split('.')[1]?.length ?? 0
+    if (![operating, capex, value].every(Number.isFinite) || operating < 0 || capex < 0
+      || Number((operating - capex).toFixed(decimals)) !== value
+      || formula !== `${displayOperatingCashFlow}${unit}−${displayCapex}${unit}＝${displayValue}${unit}`) continue
+    const year = period.slice(0, 4)
+    const month = Number(period.slice(5, 7))
+    const periodLabel = month === 6 ? new RegExp(`${year}年(?:上半年|1\\s*[-—至]\\s*6月|1月至6月)`)
+      : month === 3 ? new RegExp(`${year}年(?:一季度|第一季度|1\\s*季度)`)
+        : month === 9 ? new RegExp(`${year}年(?:前三季度|前三季|1\\s*[-—至]\\s*9月|1月至9月)`)
+          : month === 12 ? new RegExp(`${year}(?:年(?:全年|全年度|度)?|年度|全年|全年度)`)
+            : undefined
+    if (!periodLabel) continue
+    const escaped = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const operandPattern = new RegExp(`${escaped(displayOperatingCashFlow)}\\s*${escaped(unit)}\\s*[−-]\\s*${escaped(displayCapex)}\\s*${escaped(unit)}`)
+    const resultMagnitude = Math.abs(value).toFixed(decimals)
+    const resultPattern = value < 0
+      ? new RegExp(`(?:-|−|负)\\s*${escaped(resultMagnitude)}\\s*${escaped(unit)}`)
+      : new RegExp(`${escaped(resultMagnitude)}\\s*${escaped(unit)}`)
+    result = result.split(/(?<=\n)/).map(line => {
+      if (!/简化自由现金流/.test(line) || !periodLabel.test(line) || !operandPattern.test(line) || !resultPattern.test(line)) return line
+      const citationIds = [
+        ...[...line.matchAll(/\[([^\]\s]+)@paragraph:(\d+)\]/g)].map(match => ({ id: match[1]!, location: `paragraph:${match[2]}` })),
+        ...additionalRefs.map(ref => ({ id: ref.sourceCandidateId, location: ref.location })),
+      ]
+      const sourcesVerified = sourceCandidateIds.every(id => citationIds.some(ref =>
+        ref.id === id && evidencePackets.some(packet =>
+          packet.sourceCandidateId === id && packet.excerpts.some(excerpt => excerpt.location === ref.location),
+        ),
+      ))
+      if (!sourcesVerified) return line
+      let normalized = line.replace(new RegExp(operandPattern.source, 'g'), `${displayOperatingCashFlow}${unit}减${displayCapex}${unit}`)
+      if (value < 0) {
+        const normalizedResults = normalized.replace(new RegExp(resultPattern.source, 'g'), `负${resultMagnitude}${unit}`)
+        if (normalizedResults === normalized) return line
+        normalized = normalizedResults
+      }
+      return normalized
+    }).join('')
+  }
+  return result
+}
+
 /**
  * Reuse a cited exact financial-table row only for a duplicate segment-margin
  * statement in the financial-quality section. The normal numeric validator
@@ -1503,9 +1573,9 @@ export function repairCompanyMethodCitations<T extends MethodOutput>(output: T, 
   })
   output = {
     ...output,
-    markdown: normalizeHumanReadableParagraphCitations(output.markdown, 'method-summary'),
-    sections: output.sections.map(section => ({ ...section, markdown: normalizeHumanReadableParagraphCitations(section.markdown, section.id) })),
-    findings: output.findings.map((finding, index) => ({ ...finding, text: normalizeHumanReadableParagraphCitations(finding.text, `finding-${index + 1}`) })),
+    markdown: normalizePreparedSimpleFcfFormula(normalizeHumanReadableParagraphCitations(output.markdown, 'method-summary'), evidencePackets, input),
+    sections: output.sections.map(section => ({ ...section, markdown: normalizePreparedSimpleFcfFormula(normalizeHumanReadableParagraphCitations(section.markdown, section.id), evidencePackets, input) })),
+    findings: output.findings.map((finding, index) => ({ ...finding, text: normalizePreparedSimpleFcfFormula(normalizeHumanReadableParagraphCitations(finding.text, `finding-${index + 1}`), evidencePackets, input, finding.evidence) })),
   } as T
   const outputReferencedSources = new Set([
     ...[output.markdown, ...output.sections.map((section) => section.markdown)].flatMap((text) => [...text.matchAll(/\[([^\]\s]+)@paragraph:\d+\]/g)].map((match) => match[1]!)),
