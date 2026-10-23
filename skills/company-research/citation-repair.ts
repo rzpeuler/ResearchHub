@@ -15,6 +15,69 @@ type MethodOutput = { readonly findings: readonly CompanyMethodFinding[]; readon
 const strip = (text: string) => text.replace(/\[[^\]\s]+@[^\]]+\]/g, '')
 const numbers = (text: string) => [...strip(text).matchAll(/(?<![\w.])-?\d+(?:[,，]\d{3})*(?:\.\d+)?/g)].map((match) => match[0].replace(/[,，]/g, ''))
 
+/**
+ * Reuse a cited exact financial-table row only for a duplicate segment-margin
+ * statement in the financial-quality section. The normal numeric validator
+ * still checks every copied locator against the actual source text and row.
+ */
+function reinforceFinancialQualityMarginCitations(markdown: string, sections: readonly { id: string; markdown: string }[], packets: readonly CompanyEvidencePacket[], sources: CompanyResearchInput['sources']): { readonly sections: readonly { id: string; markdown: string }[]; readonly repairs: readonly CompanyCitationRepair[] } {
+  const rowCandidates = markdown.split(/\r?\n/).filter(line => /^\s*\|/.test(line) && /\[[^\]\s]+@paragraph:\d+\]/.test(line))
+  const commonChineseRun = (left: string, right: string): number => {
+    const a = left.replace(/[^\u3400-\u9fff]/g, '')
+    const b = right.replace(/[^\u3400-\u9fff]/g, '')
+    let best = 0
+    const previous = Array<number>(b.length + 1).fill(0)
+    for (let i = 0; i < a.length; i++) {
+      const current = Array<number>(b.length + 1).fill(0)
+      for (let j = 0; j < b.length; j++) if (a[i] === b[j]) {
+        current[j + 1] = previous[j]! + 1
+        best = Math.max(best, current[j + 1]!)
+      }
+      previous.splice(0, previous.length, ...current)
+    }
+    return best
+  }
+  const repairs: CompanyCitationRepair[] = []
+  const updated = sections.map(section => {
+    if (section.id !== 'financial-quality') return section
+    let text = section.markdown
+    const chunks = text.split(/(?<=[。；;])/)
+    for (const chunk of chunks) {
+      if (!/毛利率/.test(chunk) || !/分(?:行业|产品)/.test(chunk) || !numbers(chunk).length || /\[[^\]\s]+@paragraph:\d+\]/.test(chunk)) continue
+      const values = new Set(numbers(chunk))
+      const matches = rowCandidates.filter(row => {
+        const rowValues = new Set(numbers(row))
+        if (![...values].every(value => rowValues.has(value))) return false
+        if (commonChineseRun(chunk, row) < 6) return false
+        const refs = [...row.matchAll(/\[([^\]\s]+)@(paragraph:\d+)\]/g)]
+        return refs.length > 0 && refs.every(match => packets.some(packet => packet.sourceCandidateId === match[1] && packet.excerpts.some(excerpt => excerpt.location === match[2])))
+      })
+      if (matches.length !== 1) continue
+      const refs = [...matches[0]!.matchAll(/\[([^\]\s]+)@(paragraph:\d+)\]/g)].map(match => ({ sourceCandidateId: match[1]!, location: match[2]! }))
+      const grounded = validateCompanyNumericGrounding({ markdown: `${chunk} ${refs.map(ref => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')}`, sources, evidenceContexts: packets })
+      if (grounded.status !== 'grounded') continue
+      const offset = text.indexOf(chunk)
+      if (offset < 0) continue
+      const insertion = chunk.search(/[。；;]$/)
+      const at = insertion >= 0 ? insertion : chunk.length
+      const updatedChunk = `${chunk.slice(0, at).trimEnd()} ${refs.map(ref => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')}${chunk.slice(at)}`
+      text = `${text.slice(0, offset)}${updatedChunk}${text.slice(offset + chunk.length)}`
+      repairs.push({ sectionId: section.id, inputText: chunk, originalReferences: [], addedReferences: refs, reason: 'A duplicate segment-margin statement was linked to its unique, already cited source-table row; numeric grounding revalidated the exact source row, classification, period context, unit, and displayed change before adding the locators.' })
+    }
+    // Keep a separate unit explanation from reasserting the numeric change
+    // without its row citation; the immediately preceding claim carries it.
+    text = text.replace(/(?:这里的)?\d+(?:[,，]\d{3})*(?:\.\d+)?\s*[%％]\s*沿用原表变化列(?:显示)?单位/g, match => {
+      const value = numbers(match)[0]
+      const citedMarginClaim = value && text.split(/(?<=[。；;])/).some(chunk => /毛利率/.test(chunk) && chunk.includes(value) && /\[[^\]\s]+@paragraph:\d+\]/.test(chunk))
+      return citedMarginClaim
+        ? '原表变化列沿用百分比单位'
+        : match
+    })
+    return text === section.markdown ? section : { ...section, markdown: text }
+  })
+  return { sections: updated, repairs }
+}
+
 /** Repair a narrowly recognizable malformed source ID only when its exact supplied paragraph resolves uniquely. */
 export function repairCompanyTrailingSourceIdTypo<T>(output: T, packets: readonly CompanyEvidencePacket[], input: CompanyResearchInput): { readonly output: T; readonly repairs: readonly CompanyCitationRepair[] } {
   let raw: unknown = output
@@ -1467,7 +1530,9 @@ export function repairCompanyMethodCitations<T extends MethodOutput>(output: T, 
   })
   const correctedMarkdown = repairExactAnnualProductRevenueRows(output.markdown, evidencePackets, input)
   if (correctedMarkdown.added.length) repairs.push({ inputText: output.markdown, originalReferences: [...output.markdown.matchAll(/\[([^\]\s]+)@(paragraph:\d+)\]/g)].map(match => ({ sourceCandidateId: match[1]!, location: match[2]! })), addedReferences: correctedMarkdown.added, reason: 'The exact annual product-revenue row was matched to a supplied report excerpt. Existing citations establish the product table headers and a uniquely labeled, value-matched product row, disambiguating an identical row in another classification.' })
-  if (correctedSections.some((section, index) => section.markdown !== output.sections[index]!.markdown) || correctedMarkdown.text !== output.markdown) output = { ...output, sections: correctedSections, markdown: correctedMarkdown.text } as T
+  const reinforced = reinforceFinancialQualityMarginCitations(correctedMarkdown.text, correctedSections, evidencePackets, input.sources)
+  repairs.push(...reinforced.repairs)
+  if (reinforced.sections.some((section, index) => section.markdown !== output.sections[index]!.markdown) || correctedMarkdown.text !== output.markdown) output = { ...output, sections: reinforced.sections, markdown: correctedMarkdown.text } as T
   const grounded = (text: string, refs: readonly CompanyMethodEvidenceRef[]) => validateCompanyNumericGrounding({ markdown: `${text} ${refs.map((ref) => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')}`, sources: packetSources, evidenceContexts: evidencePackets, preparedAnalysis: input.preparedAnalysis, trustedText: [input.company.symbol, input.asOf] }).status === 'grounded'
   const findings = output.findings.map((finding, findingIndex) => {
     const locatorCleanedText = removeBoundLocatorMarkers(finding.text, finding.evidence)
