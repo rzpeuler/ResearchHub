@@ -78,6 +78,15 @@ test('numeric flag stays separate from a correct-calculation statement and a cit
   assert.equal(risks.evidenceSupportsConclusion, false, 'a missing row header remains a real citation blocker')
 })
 
+test('a mixed financial verdict keeps real disclosure and comparison gaps without rejecting its correct formulas',()=>{
+  const reason='正文称2026年上半年收入、营业利润、净利润和合并毛利率均上行，结构化财务来源确认该方向；但另称“研发资本化金额的本期半年报证据未提供”是有界缺口。真正阻塞是把“研发费用结构化半年累计值上升”列为事实却未列明可比两个数/变化率；更重要，现金转化比及应计代理用结构化净利润字段计算并提示归属未注明，公式正确。'
+  const input={sectionChecks:output.sectionChecks.map(check=>check.sectionId==='financial-quality'?{...check,questionAnswered:false,evidenceSupportsConclusion:false,numericReproducible:false,reasons:[reason]}:check)}
+  const financial=validateCompanySemanticQualityOutput(input).find(check=>check.sectionId==='financial-quality')!
+  assert.equal(financial.questionAnswered,false)
+  assert.equal(financial.evidenceSupportsConclusion,false)
+  assert.equal(financial.numericReproducible,false)
+})
+
 test('independent gap check includes eligible uncited late evidence within its own budget and rejects false gaps', async () => {
   const lateSource = {
     ...source,

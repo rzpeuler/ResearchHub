@@ -20,7 +20,7 @@ import { COMPANY_RESEARCH_METHOD_IDS, COMPANY_METHOD_SECTION_IDS, COMPANY_METHOD
 import type { CompanyResearchInput } from '../../skills/company-research/contracts.ts'
 import { insertCompanyFinancialOpeningSummary, prepareCompanyFinancialAnalysis, renderCompanyFinancialTable } from './financial-analysis.ts'
 import { assembleCompanyResearch, repairCompanyResearchMarkdownTables, validateCompanyResearchSectionTables } from './assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, mergeCompanySemanticQuality, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyIndustryForecastPeriods, reconcileCompanyLeverageFormula, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyFinancialSummaryTable, reconcileCompanyPreparedAnalysisFacts, reconcileCompanyPlacementFacts } from './content-quality.ts'
+import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, mergeCompanySemanticQuality, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyIndustryForecastPeriods, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyFinancialSummaryTable, reconcileCompanyPreparedAnalysisFacts, reconcileCompanyPlacementFacts } from './content-quality.ts'
 import { prepareCompanyMarketSizing } from './market-sizing.ts'
 import { assessCompanySourceHealth, type CompanySourceAttemptTrace } from '../../data/company-source-health.ts'
 import { reviewCompanyResearchSemantics } from './semantic-quality.ts'
@@ -204,10 +204,33 @@ function appendFinancialSummary(methods: CompanyResearchMethodResult[], research
 function appendCompanyOfficialContextEvidence(methods: CompanyResearchMethodResult[], researchInput: CompanyResearchInput): CompanyResearchMethodResult[] {
   const packets = new Map<string, NonNullable<CompanyResearchMethodResult['deterministicEvidence']>[number]>()
   const riskContextCandidates: { publishedAt: string; packet: NonNullable<CompanyResearchMethodResult['deterministicEvidence']>[number] }[] = []
+  const nonRecurringCandidates: { publishedAt: string; packet: NonNullable<CompanyResearchMethodResult['deterministicEvidence']>[number] }[] = []
   for (const source of researchInput.sources) {
     if (source.candidate.kind !== 'official_disclosure') continue
     const lines = source.content.split(/\r?\n/)
     const base = { sourceCandidateId: source.candidate.candidateId, title: source.title, url: source.canonicalUrl ?? source.candidate.url, publisher: source.publisher, publishedAt: source.candidate.publishedAt }
+    if (/半年(?:度)?报告/.test(source.title)) {
+      const nonRecurringHeading = lines.findIndex(line => /非经常性损益项目及金额/.test(line))
+      const nonRecurringTotal = nonRecurringHeading < 0 ? -1 : lines.findIndex((line,index) => index > nonRecurringHeading && index <= nonRecurringHeading + 24 && /^合计\s+[-−]?[\d,]+(?:\.\d+)?(?:\s|$)/.test(line.trim()))
+      if (nonRecurringHeading >= 0 && nonRecurringTotal > nonRecurringHeading) {
+        const excerpts = lines.slice(nonRecurringHeading, nonRecurringTotal + 1).flatMap((text,index) => {
+          const line = text.trim()
+          return line ? [{ sourceCandidateId: base.sourceCandidateId, location: `paragraph:${nonRecurringHeading + index + 1}`, text: line }] : []
+        })
+        const developmentRow = lines.findIndex(line => /^开发支出\s+[\d,]+(?:\.\d+)?\s+[\d,]+(?:\.\d+)?\s*$/.test(line.trim()))
+        if (developmentRow >= 0) {
+          const developmentHeader = lines.map((line,index) => ({line,index})).filter(item => item.index < developmentRow && item.index >= developmentRow - 64 && /项目\s+期末余额\s+期初余额/.test(item.line)).at(-1)?.index
+          const developmentUnit = developmentHeader === undefined ? undefined : lines.map((line,index) => ({line,index})).filter(item => item.index < developmentHeader && item.index >= developmentHeader - 4 && /^单位\s*[：:]\s*元$/.test(item.line.trim())).at(-1)?.index
+          const developmentStatement = developmentHeader === undefined ? undefined : lines.map((line,index) => ({line,index})).filter(item => item.index < developmentHeader && item.index >= developmentHeader - 12 && /合并资产负债表/.test(item.line)).at(-1)?.index
+          for (const index of [developmentStatement, developmentUnit, developmentHeader, developmentRow]) {
+            if (index === undefined) continue
+            const line = lines[index]?.trim()
+            if (line && !excerpts.some(excerpt => excerpt.location === `paragraph:${index + 1}`)) excerpts.push({ sourceCandidateId: base.sourceCandidateId, location: `paragraph:${index + 1}`, text: line })
+          }
+        }
+        if (excerpts.length) nonRecurringCandidates.push({ publishedAt: source.candidate.publishedAt ?? '', packet: { ...base, excerpts } })
+      }
+    }
     if (/年度报告/.test(source.title)) {
       const goodwillRow = lines.findIndex(line => /^索尔思光电\s+[\d,]+(?:\.\d+)?\s+-?[\d,]+(?:\.\d+)?\s+[\d,]+(?:\.\d+)?\s*$/.test(line.trim()))
       const goodwillHeader = goodwillRow < 0 ? -1 : lines.map((line,index) => ({line,index})).filter(item => item.index < goodwillRow && item.index >= goodwillRow-24 && /被投资单位名称或形成商誉的事项/.test(item.line)).at(-1)?.index ?? -1
@@ -247,6 +270,8 @@ function appendCompanyOfficialContextEvidence(methods: CompanyResearchMethodResu
   }
   const latestRiskContext = riskContextCandidates.sort((a,b) => b.publishedAt.localeCompare(a.publishedAt))[0]?.packet
   if (latestRiskContext) packets.set('company_risk_analysis',latestRiskContext)
+  const latestNonRecurringContext = nonRecurringCandidates.sort((a,b) => b.publishedAt.localeCompare(a.publishedAt))[0]?.packet
+  if (latestNonRecurringContext) packets.set('financial_quality_analysis',latestNonRecurringContext)
   return methods.map(method => {
     const packet = packets.get(method.skillId)
     if (!packet || method.status !== 'complete') return method
@@ -552,7 +577,8 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       const classificationLabels = reconcileCompanyDriverClassificationLabels({sections:rowCitations,methodResults})
       const growthReferences = reconcileCompanyProductGrowthReferences({ sections: classificationLabels, methodResults })
       const industryPeriods = reconcileCompanyIndustryForecastPeriods({ sections: growthReferences, methodResults })
-      const preparedFacts = reconcileCompanyPreparedAnalysisFacts({ sections: industryPeriods, methodResults, preparedAnalysis: researchInput.preparedAnalysis, sources: researchInput.sources })
+      const nonRecurringDisclosure = reconcileCompanyNonRecurringDisclosure({sections:industryPeriods,sources:researchInput.sources})
+      const preparedFacts = reconcileCompanyPreparedAnalysisFacts({ sections: nonRecurringDisclosure, methodResults, preparedAnalysis: researchInput.preparedAnalysis, sources: researchInput.sources })
       const placementFacts = reconcileCompanyPlacementFacts({ sections: preparedFacts, methodResults })
       const technologyReferences = reconcileCompanyTechnologyProgressReferences({ sections: placementFacts, methodResults })
       const productMix = reconcileCompanyProductRevenueShares({ sections: technologyReferences, methodResults })
@@ -781,7 +807,8 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     const classificationLabels = reconcileCompanyDriverClassificationLabels({sections:rowCitations,methodResults})
     const growthCitations = reconcileCompanyProductGrowthReferences({ sections: classificationLabels, methodResults })
     const industryPeriods = reconcileCompanyIndustryForecastPeriods({ sections: growthCitations, methodResults })
-    const preparedFacts = reconcileCompanyPreparedAnalysisFacts({ sections: industryPeriods, methodResults, preparedAnalysis: researchInput.preparedAnalysis, sources: researchInput.sources })
+    const nonRecurringDisclosure = reconcileCompanyNonRecurringDisclosure({sections:industryPeriods,sources:researchInput.sources})
+    const preparedFacts = reconcileCompanyPreparedAnalysisFacts({ sections: nonRecurringDisclosure, methodResults, preparedAnalysis: researchInput.preparedAnalysis, sources: researchInput.sources })
     const placementFacts = reconcileCompanyPlacementFacts({ sections: preparedFacts, methodResults })
     const technologyReferences = reconcileCompanyTechnologyProgressReferences({ sections: placementFacts, methodResults })
     const productMix = reconcileCompanyProductRevenueShares({ sections: technologyReferences, methodResults })
