@@ -7,6 +7,17 @@ import { prepareCompanyFinancialAnalysis } from '../../workflows/company-deep-re
 
 const source = { candidate: { candidateId: 'filing-2025-003', kind: 'official_disclosure', tier: 1, provider: 'fixture', title: '财报' }, title: '财报', content: '2025年收入 30,396,400,000 元，研发 2 亿元。\n未引用段落收入 999 亿元。' } as NormalizedResearchSource
 
+test('Chinese official product-page price ranges retain their explicit currency symbol', () => {
+  const candidateId = 'public-web-byd-model-page'
+  const productPage = {
+    candidate: { candidateId, kind: 'public_web', tier: 2, provider: 'public_web', title: '比亚迪车型页面' },
+    title: '比亚迪车型页面', content: '海豹07DM-i ¥139,800 - ¥195,800 立即订购',
+  } as NormalizedResearchSource
+  const markdown = `海豹07 DM-i页面标价¥139,800—¥195,800，页面提供订购入口。[${candidateId}@paragraph:1]`
+  const result = validateCompanyNumericGrounding({ markdown, sources: [productPage] })
+  assert.equal(result.status, 'grounded', JSON.stringify(result.diagnostics))
+})
+
 test('prepared financial growth percentages remain grounded when a cited structured source supports the calculation', () => {
   const preparedAnalysis = { financial: { growth: [{ metric: 'receivables', currentPeriod: '2026-06-30', priorPeriod: '2025-06-30', unit: 'CNY', basis: 'POINT_IN_TIME', growthPercent: 15.547626223152694, sourceCandidateIds: ['financial'] }] } }
   const formula = '应收账款期末余额同比增速15.5476%，比较期间为2025-06-30至2026-06-30。[financial@paragraph:1]'
