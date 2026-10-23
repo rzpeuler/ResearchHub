@@ -73,6 +73,22 @@ test('COLLECT_DIVERSE attempts CNINFO and GDELT and retains document-level autho
   assert.equal(docs.every((document) => document.pointInTimeSafe), true)
 })
 
+test('company evidence discovery receives Workflow search terms, including named peer requests', async () => {
+  const terms = ['Example Company 年报', 'peer:Example Competitor']
+  let seenTerms: readonly string[] | undefined
+  const publicWeb: ResearchAcquisitionPlugin = {
+    name: 'company-public-web-fixture',
+    async discover(request) { if (request.company) seenTerms = request.searchTerms; return [] },
+    async fetch() { throw new Error('no candidates expected') },
+    async normalize() { throw new Error('no candidates expected') },
+  }
+  const requirement = materializePhase3CommonRequirement('company_research_evidence', {
+    workflowId: 'company-deep-research', ticker: company.symbol, companyId: company.name, asOf: AS_OF,
+  })
+  await createCompanyResearchDataResolver({ company, publicWeb, evidenceSearchTerms: terms, now }).resolveOne(requirement)
+  assert.deepEqual(seenTerms, terms)
+})
+
 test('one provider failure and partial fetch do not hide another source outcome', async () => {
   const official = plugin('cninfo', [], { failDiscover: true })
   const news = plugin('gdelt', [candidate('gdelt', 'good', '2026-10-07T12:00:00.000Z'), candidate('gdelt', 'bad', '2026-10-07T12:00:00.000Z')], { failFetch: 'bad' })

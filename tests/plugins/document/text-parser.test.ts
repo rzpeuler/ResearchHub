@@ -45,6 +45,14 @@ test('HTML inline tags do not split a paragraph', async () => {
   assert.equal(document.blocks[0]?.text, 'Text before emphasis and after.')
 })
 
+test('malformed repeated script tags do not trigger quadratic HTML cleanup', async () => {
+  const malformed = `<p>Readable content</p>${'<script>x'.repeat(20_000)}`
+  const document = await parser.parse({ bytes: bytes(malformed), filename: 'malformed.html', mediaType: 'text/html' })
+
+  assert.equal(document.blocks.length, 1)
+  assert.equal(document.blocks[0]?.text, 'Readable content')
+})
+
 test('plain text paragraph behavior is unchanged', async () => {
   const document = await parser.parse({ bytes: bytes('First line\nsecond line\n\nThird paragraph'), filename: 'note.txt', mediaType: 'text/plain' })
 

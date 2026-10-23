@@ -170,6 +170,7 @@ export class ResearchService {
       officialDisclosure: this.options.companyOfficialDisclosure ?? this.options.researchEvidenceProviders?.cninfo ?? this.options.acquisitionPlugins.find((plugin) => plugin instanceof OfficialDisclosureResearchPlugin),
       gdelt: this.options.researchEvidenceProviders?.gdelt ?? this.options.acquisitionPlugins.find((plugin) => plugin instanceof GdeltResearchPlugin),
       ...(this.options.companyPublicWeb ? {publicWeb:this.options.companyPublicWeb} : {}),
+      evidenceSearchTerms: context.evidenceSearchTerms,
       now: context.now, signal: context.signal, limitPerSource: context.limitPerSource,
       acquisitionDeadlineAt: context.acquisitionDeadlineAt, onProgress: context.onProgress, onCandidatesDiscovered: context.onCandidatesDiscovered })
   }

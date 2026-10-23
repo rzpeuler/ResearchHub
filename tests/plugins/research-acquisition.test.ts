@@ -46,6 +46,15 @@ test('AKShare security directory rejects malformed provider identity rows', asyn
   const adapter = new AkshareDataAdapter({ runner: async () => '[{"symbol":"002487","name":"大金重工","exchange":"SH"}]' })
   await assert.rejects(adapter.securityDirectory!({ symbol: '002487' }), /exchange does not match the ticker prefix/)
 })
+test('security identity acquisition preserves a bounded AKShare bridge failure cause', async () => {
+  const { createSecurityIdentityDataResolver } = await import('../../plugins/research-acquisition/security-identity-data.ts')
+  const { materializeSecurityIdentityRequirement } = await import('../../data/requirements.ts')
+  const resolver = createSecurityIdentityDataResolver({ now: () => '2026-10-16T00:00:00.000Z', akshare: { securityDirectory: async () => { throw new Error('AKSHARE_BRIDGE_EXIT_1:ValueError: Length mismatch') } } as never })
+  const requirement = materializeSecurityIdentityRequirement({ workflowId: 'company_research', requestedSymbol: '002594', requestedName: '比亚迪', requestedExchange: 'SZ', asOf: '2026-10-16T00:00:00.000Z' })
+  const result = await resolver.resolveOne(requirement)
+  assert.equal(result.status, 'UNAVAILABLE')
+  assert.match(JSON.stringify(result.attempts), /AKSHARE_SECURITY_DIRECTORY_FAILED:AKSHARE_BRIDGE_EXIT_1:ValueError: Length mismatch/)
+})
 test('AKShare expectations adapter exposes observed THS and EastMoney routes', async () => { const { AkshareDataAdapter } = await import('../../plugins/research-acquisition/akshare.ts'); const calls: Array<{ script: string; args: string[] }> = []; const adapter = new AkshareDataAdapter({ runner: async (script, args) => { calls.push({ script, args: [...args] }); return '[]' } }); await adapter.profitForecastThs({ symbol: '600519', indicator: '业绩预测详表-机构' }); await adapter.researchReportEm({ symbol: '600519' }); await adapter.profitForecastEm({ symbol: '600519' }); assert.deepEqual(calls.map((call) => call.args), [['ths-profit-forecast', '600519', '', '', '业绩预测详表-机构'], ['em-research-report', '600519', '', ''], ['em-profit-forecast', '600519', '', '']]); assert.match(calls[0]!.script, /stock_profit_forecast_ths/); assert.match(calls[1]!.script, /stock_research_report_em/); assert.match(calls[2]!.script, /stock_profit_forecast_em/) })
 
 test('CNINFO management communication query sends bounded historical seDate and finds older IR records', async () => {

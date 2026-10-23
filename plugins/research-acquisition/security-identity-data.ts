@@ -41,7 +41,14 @@ export function createSecurityIdentityDataResolver(options: SecurityIdentityData
       })
     } catch (error) {
       if (options.signal?.aborted || (error instanceof Error && error.message === 'WORKFLOW_CANCELLED')) throw new Error('WORKFLOW_CANCELLED')
-      return { status: 'SOURCE_ERROR', diagnostic: `AKSHARE_SECURITY_DIRECTORY_FAILED:${error instanceof Error ? error.name : 'unknown error'}` }
+      // The AKShare adapter already converts bridge failures into bounded,
+      // credential-free messages. Preserve that actionable source cause here
+      // instead of reducing every timeout/provider error to the class "Error".
+      const bridgeMessage = error instanceof Error && error.message.startsWith('AKSHARE_BRIDGE_') ? error.message : undefined
+      const reason = bridgeMessage
+        ? bridgeMessage.replace(/https?:\/\/[^\s]+/gi, '[url]').replace(/(token|password|secret|authorization)\s*[:=]\s*\S+/gi, '$1=[redacted]').replace(/[\r\n\t]+/g, ' ').slice(0, 220)
+        : error instanceof Error ? error.name : 'unknown error'
+      return { status: 'SOURCE_ERROR', diagnostic: `AKSHARE_SECURITY_DIRECTORY_FAILED:${reason}` }
     }
     if (options.signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
     if (!Array.isArray(data)) return { status: 'PARSE_ERROR', diagnostic: 'AKSHARE_SECURITY_DIRECTORY_RETURNED_INVALID_ROWS' }

@@ -4,6 +4,10 @@ import { DocumentInputResolver } from '../document/input-resolver.ts'
 import { acquisitionStep, type ResearchFetchOptions } from './deadlines.ts'
 
 const CNINFO_TOP_SEARCH_ENDPOINT = 'https://www.cninfo.com.cn/new/information/topSearch/query'
+const CNINFO_TOP_SEARCH_RETRYABLE_STATUSES = new Set([429, 502, 503, 504])
+const CNINFO_TOP_SEARCH_MAX_RETRIES = 1
+const CNINFO_TOP_SEARCH_MAX_RETRY_AFTER_MS = 5_000
+const CNINFO_TOP_SEARCH_DEFAULT_RETRY_DELAY_MS = 250
 const MAX_MANAGEMENT_COMMUNICATION_PAGES = 10
 const MAX_MANAGEMENT_COMMUNICATION_PAGE_SIZE = 30
 const MAX_ANNUAL_REPORT_PAGES = 6
@@ -31,7 +35,7 @@ export class CninfoOfficialDisclosureClient implements OfficialDisclosureClient 
   async resolveOrganizationId(secCode: string, signal?: AbortSignal): Promise<string> {
     if (!/^\d{6}$/.test(secCode)) throw new Error(`CNINFO_INVALID_SECURITY_CODE:${secCode}`)
     const form = new URLSearchParams({ keyWord: secCode, maxNum: '10' })
-    const response = await this.request(CNINFO_TOP_SEARCH_ENDPOINT, { method: 'POST', headers: cninfoHeaders(), body: form }, signal)
+    const response = await this.requestTopSearch(CNINFO_TOP_SEARCH_ENDPOINT, { method: 'POST', headers: cninfoHeaders(), body: form }, signal)
     if (!response.ok) throw new Error(`CNINFO topSearch request failed with HTTP ${response.status}`)
     const payload = await response.json() as unknown
     const rows = Array.isArray(payload) ? payload : []
@@ -39,6 +43,20 @@ export class CninfoOfficialDisclosureClient implements OfficialDisclosureClient 
     const orgId = exact === undefined ? undefined : textValue((exact as Record<string, unknown>).orgId)
     if (orgId === undefined) throw new Error(`CNINFO_ORG_ID_NOT_FOUND:${secCode}`)
     return orgId
+  }
+  private async requestTopSearch(input: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
+    const failedAttempts: string[] = []
+    for (let attempt = 1; attempt <= CNINFO_TOP_SEARCH_MAX_RETRIES + 1; attempt += 1) {
+      if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
+      const response = await this.request(input, init, signal)
+      if (!CNINFO_TOP_SEARCH_RETRYABLE_STATUSES.has(response.status)) return response
+      failedAttempts.push(`${attempt}:HTTP_${response.status}`)
+      if (attempt > CNINFO_TOP_SEARCH_MAX_RETRIES) {
+        throw new Error(`CNINFO topSearch request failed with HTTP ${response.status} after ${attempt} attempts; attempts=${failedAttempts.join(',')}`)
+      }
+      await abortableDelay(retryAfterDelayMs(response.headers.get('retry-after'), Date.now()), signal)
+    }
+    throw new Error(`CNINFO topSearch retry loop exhausted; attempts=${failedAttempts.join(',')}`)
   }
   async list(request: ResearchAcquisitionRequest, signal?: AbortSignal): Promise<readonly OfficialDisclosureRecord[]> {
     if ('industry' in request) return []
@@ -165,6 +183,31 @@ export class CninfoOfficialDisclosureClient implements OfficialDisclosureClient 
   }
 }
 function cninfoHeaders(): HeadersInit { return { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded', 'user-agent': 'ResearchHub/PersonalResearchV1' } }
+function retryAfterDelayMs(value: string | null, now: number): number {
+  if (value === null) return CNINFO_TOP_SEARCH_DEFAULT_RETRY_DELAY_MS
+  const seconds = Number(value.trim())
+  const requestedMs = Number.isFinite(seconds) && seconds >= 0
+    ? seconds * 1_000
+    : Number.isNaN(Date.parse(value)) ? CNINFO_TOP_SEARCH_DEFAULT_RETRY_DELAY_MS : Math.max(0, Date.parse(value) - now)
+  return Math.min(CNINFO_TOP_SEARCH_MAX_RETRY_AFTER_MS, requestedMs)
+}
+function abortableDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(new Error('WORKFLOW_CANCELLED'))
+  if (delayMs <= 0) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, delayMs)
+    const onAbort = () => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+      reject(new Error('WORKFLOW_CANCELLED'))
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    if (signal?.aborted) onAbort()
+  })
+}
 function isExactSecurityMatch(value: unknown, secCode: string): value is Record<string, unknown> { if (!value || typeof value !== 'object' || Array.isArray(value)) return false; const row = value as Record<string, unknown>; return textValue(row.code) === secCode || textValue(row.secCode) === secCode }
 function textValue(value: unknown): string | undefined { if (typeof value === 'string' && value.trim() !== '') return value.trim(); if (typeof value === 'number' && Number.isFinite(value)) return String(value); return undefined }
 function numberValue(value: unknown): number { const number = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN; return Number.isFinite(number) ? number : Number.NaN }

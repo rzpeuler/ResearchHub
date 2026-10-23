@@ -163,6 +163,7 @@ export class PiReasoningExecutor implements ReasoningExecutor {
         validateOutputContract(output, request.outputContract, request.operation, operationId)
       } catch (error) {
         await this.onInvalidOutput?.({ operation: request.operation, operationId, rawOutput, reason: error instanceof Error ? error.message : String(error) })
+        if (error instanceof ReasoningExecutorError && error.code === 'reasoning_output_invalid') throw new ReasoningExecutorError(error.code, error.message, { operation: error.operation, operationId: error.operationId, rawOutput, cause: error })
         throw error
       }
       return { operation: request.operation, operationId, output, rawOutput, durationMs: Date.now() - started }

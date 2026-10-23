@@ -8,9 +8,14 @@ import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { KnowledgeProductionGateway } from '../../knowledge/production/gateway.ts'
 import { createFreshKnowledgeBaseV04, readCanonicalV04Assets } from '../../knowledge/storage/index.ts'
 import { runCompanyDeepResearch as executeCompanyDeepResearch } from '../../workflows/company-deep-research/index.ts'
-import { COMPANY_RESEARCH_METHOD_IDS } from '../../skills/company-research/methods.ts'
+import { addCompanyMethodEvidenceInstructions, applyCompanyResearchTableDiagnostics, initialCompanyResearchSearchTerms, mergeCompanyMethodRevisionResult } from '../../workflows/company-deep-research/workflow.ts'
+import { COMPANY_RESEARCH_METHOD_IDS, type CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
+import { COMPANY_CORE_SECTION_IDS } from '../../workflows/company-deep-research/content-quality.ts'
+import { mergeCompanySemanticQuality } from '../../workflows/company-deep-research/content-quality.ts'
+import { validateCompanyResearchSectionTables } from '../../workflows/company-deep-research/assembly.ts'
 import { completeResearchExecutor, fixtureCompanyDataResolverFactory } from '../fixtures/company-quality.ts'
 import { createCompanyResearchDataResolver } from '../../plugins/research-acquisition/company-research-data.ts'
+import { materializePhase3CommonRequirement } from '../../data/requirements.ts'
 import { DataResolver } from '../../data/resolver.ts'
 import type { AcquisitionResult } from '../../data/contracts.ts'
 import type { CompanyResearchDataPayload } from '../../plugins/research-acquisition/company-research-data.ts'
@@ -29,6 +34,108 @@ import { KnowledgeBaseRegistry as Registry } from '../../knowledge/registry/regi
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value) }
 
 const runCompanyDeepResearch: typeof executeCompanyDeepResearch = (input) => executeCompanyDeepResearch({ ...input, reasoningExecutor: Object.prototype.hasOwnProperty.call(input, 'reasoningExecutor') ? input.reasoningExecutor : completeResearchExecutor() })
+
+test('initial company research acquisition prioritizes target filings and business evidence before peer searches', () => {
+  const terms = initialCompanyResearchSearchTerms({ symbol: '002594', name: '比亚迪' })
+  assert.deepEqual(terms.slice(0, 4), ['比亚迪 年报 半年报 业绩报告', '比亚迪 主营业务 产品 技术', '比亚迪 行业 市场规模 竞争', '比亚迪 管理层 战略 投资者关系'])
+  assert.ok(terms.includes('peer:吉利汽车'))
+  assert.ok(terms.includes('peer:宁德时代'))
+})
+
+test('risk method instructions require exact table total rows and local unit/header citations', () => {
+  const methodology = 'Analyze the disclosed company risks.'
+  const risk = addCompanyMethodEvidenceInstructions('company_risk_analysis', methodology)
+  assert.ok(risk.startsWith(methodology))
+  assert.match(risk, /汇总行有该数字时，必须引用汇总行/)
+  assert.match(risk, /同时引用本次输入实际提供的对应表头和单位行/)
+  assert.match(risk, /不得把相邻表格的表头、期间或单位借给本行/)
+  assert.match(risk, /各操作数均逐项引用/)
+  assert.equal(addCompanyMethodEvidenceInstructions('financial_quality_analysis', methodology), methodology)
+})
+
+test('failed review-only method revision retains the prior validated result and its failure trace', () => {
+  const previous: CompanyResearchMethodResult = {
+    skillId: 'company_history_strategy', status: 'complete', attempts: 1,
+    answer: 'validated answer', markdown: 'validated section [annual@paragraph:1]',
+    sections: [{ id: 'company-overview', markdown: 'validated section [annual@paragraph:1]' }],
+    findings: [{ text: 'validated fact', kind: 'fact', evidence: [{ sourceCandidateId: 'annual', location: 'paragraph:1' }] }],
+    sourceCandidateIds: ['annual'], limitations: [], risks: [],
+    diagnostics: [], attemptOutputs: [{ attempt: 1, output: { accepted: true } }],
+  }
+  const failedRevision: CompanyResearchMethodResult = {
+    ...previous, status: 'failed', attempts: 1, answer: '', markdown: '', sections: [], findings: [],
+    diagnostics: [{ code: 'REFERENCE_ERROR', message: 'unknown locator', attempt: 1 }],
+    attemptOutputs: [{ attempt: 1, output: { accepted: false } }],
+  }
+  const retained = mergeCompanyMethodRevisionResult(previous, failedRevision, { preserveCompletedOnReviewFailure: true })
+  assert.equal(retained.status, 'complete')
+  assert.equal(retained.markdown, previous.markdown)
+  assert.equal(retained.attempts, 2)
+  assert.deepEqual(retained.attemptOutputs?.map(item => item.output), [{ accepted: true }, { accepted: false }])
+  assert.ok(retained.diagnostics.some(item => item.code === 'REFERENCE_ERROR'))
+  assert.ok(retained.diagnostics.some(item => item.code === 'REVIEW_REVISION_FAILED_PRIOR_COMPLETED_RESULT_RETAINED'))
+
+  const refreshRequired = { ...previous, diagnostics: [{ code: 'EVIDENCE_REFRESH_REQUIRED', message: 'new annual report', attempt: 1 }] }
+  const notRetained = mergeCompanyMethodRevisionResult(refreshRequired, failedRevision, { preserveCompletedOnReviewFailure: true })
+  assert.equal(notRetained.status, 'failed')
+  assert.equal(notRetained.markdown, '')
+  assert.equal(mergeCompanyMethodRevisionResult(previous, failedRevision, { preserveCompletedOnReviewFailure: false }).status, 'failed')
+})
+
+test('ResearchService forwards Workflow peer search terms into the default public-web resolver', async () => {
+  const terms = ['BYD 年报', 'peer:吉利汽车', 'peer:特斯拉']
+  let seenTerms: readonly string[] | undefined
+  const publicWeb: ResearchAcquisitionPlugin = {
+    name: 'company-public-web-fixture',
+    async discover(request) { if (request.company) seenTerms = request.searchTerms; return [] },
+    async fetch() { throw new Error('no candidates expected') },
+    async normalize() { throw new Error('no candidates expected') },
+  }
+  const service = new ResearchService({ mountedKnowledgeBaseRoot: '.', acquisitionPlugins: [], companyPublicWeb: publicWeb, workflowService: new WorkflowService() })
+  const resolverFactory = (service as unknown as { createCompanyDataResolverFactory(): (context: CompanyDeepResearchResolverOptions) => DataResolver<CompanyResearchDataPayload> }).createCompanyDataResolverFactory()
+  const resolver = resolverFactory({
+    company: { symbol: '002594', name: '比亚迪' }, asOf: '2026-10-08T12:00:00.000Z', asOfMode: 'CURRENT_VALUE_ONLY', now: () => '2026-10-08T12:00:00.000Z',
+    limitPerSource: 10, evidenceSearchTerms: terms, onCandidatesDiscovered: () => undefined,
+  })
+  const requirement = materializePhase3CommonRequirement('company_research_evidence', {
+    workflowId: 'company-deep-research', ticker: '002594', companyId: '比亚迪', asOf: '2026-10-08T12:00:00.000Z',
+  })
+  await resolver.resolveOne(requirement)
+  assert.deepEqual(seenTerms, terms)
+})
+
+test('a transient CNINFO failure is retried before semantic methods consume their call budget', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'researchhub-company-primary-retry-'))
+  const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-primary-retry-reports-'))
+  try {
+    await createFreshKnowledgeBaseV04(root, { knowledgeBaseId: 'kb-company-primary-retry', now: '2026-09-08T00:00:00.000Z' })
+    await seedCanonicalCompany(root, '600519', 'Fixture Company')
+    const candidate: ResearchSourceCandidate = { candidateId: 'official-primary-retry', kind: 'official_disclosure', tier: 1, title: '2025年度报告', url: 'https://example.com/2025-report', provider: 'cninfo', publishedAt: '2026-09-01T00:00:00.000Z', metadata: { companySymbol: '600519' } }
+    let discoveries = 0
+    const official: ResearchAcquisitionPlugin = {
+      name: 'fixture-cninfo',
+      discover: async () => { discoveries++; return [candidate] },
+      fetch: async (found) => {
+        if (discoveries === 1) throw new Error('HTTP 504')
+        return { candidate: found, retrievedAt: '2026-09-08T00:00:00.000Z', content: 'Fixture Company 2025年度报告：主营业务稳定，产品覆盖多个细分市场。', contentHash: 'd'.repeat(64) }
+      },
+      normalize: async (fetched) => ({ candidate: fetched.candidate, retrievedAt: fetched.retrievedAt, title: fetched.candidate.title, content: fetched.content, contentHash: fetched.contentHash!, canonicalUrl: fetched.candidate.url!, publisher: 'Fixture Exchange', rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false } }),
+    }
+    const observed: string[] = []
+    const delegate = completeResearchExecutor()
+    const reasoningExecutor: ReasoningExecutor = { ...delegate, execute: async (request, signal) => {
+      if (request.operation === 'company_research_method' && request.input && typeof request.input === 'object') {
+        const evidence = (request.input as { evidence?: readonly { sourceCandidateId: string }[] }).evidence ?? []
+        observed.push(...evidence.map(item => item.sourceCandidateId))
+      }
+      return delegate.execute(request, signal)
+    } }
+    const result = await runCompanyDeepResearch({ workflowRunId: 'company-primary-report-retry', handle: await new KnowledgeBaseRegistry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: options => createCompanyResearchDataResolver({ ...options, officialDisclosure: official }), reportRoot: reports, asOf: '2026-09-08T00:00:00.000Z', now: () => '2026-09-08T00:00:00.000Z', writeKnowledge: false, useStructuredKnowledge: false, reasoningExecutor })
+    assert.ok(discoveries >= 2, 'expected one bounded pre-method CNINFO retry')
+    assert.ok(observed.includes('official-primary-retry'), 'official report must be available to methods before semantic calls')
+    assert.equal(result.status, 'completed')
+  } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) }
+})
 
 function resolverFactory(plugins: readonly ResearchAcquisitionPlugin[], akshare?: AkshareDataClient) {
   return (options: CompanyDeepResearchResolverOptions) => createCompanyResearchDataResolver({
@@ -128,6 +235,29 @@ test('Company Deep Research produces atomic canonical Knowledge and a linked rep
     await rm(root, { recursive: true, force: true })
     await rm(reports, { recursive: true, force: true })
   }
+})
+
+test('Workflow table gate is applied after an otherwise passing semantic quality merge', () => {
+  const structural = { passed: true, status: 'complete' as const, coreCoverage: { completed: 16, required: 16 }, issues: [], sectionChecks: [] }
+  const semantic = { passed: true, status: 'passed' as const, issues: [], sectionChecks: [], diagnostics: [], attempts: 1 }
+  const merged = mergeCompanySemanticQuality(structural, semantic)
+  assert.equal(merged.passed, true, 'fixture represents a report that passed both content reviews')
+  const gated = applyCompanyResearchTableDiagnostics(merged, ['industry-exposure: TABLE_ERROR: heading markup embedded in table header at line 2'])
+  assert.equal(gated.passed, false)
+  assert.equal(gated.status, 'incomplete')
+  assert.ok(gated.issues.some(issue => issue.includes('REPORT_industry-exposure: TABLE_ERROR')))
+})
+
+test('repaired method table stays visible in diagnostics but does not fail the final report gate', () => {
+  const malformedMethod = [{ id: 'industry-exposure', markdown: '| ## 行业标题 | 公司关系 |\n| --- | --- |\n| PCB | 背景 |' }]
+  const finalReconciled = [{ id: 'industry-exposure', markdown: '行业范围说明。\n\n| 行业 | 公司关系 |\n| --- | --- |\n| PCB | 背景 |' }]
+  const methodTableDiagnostics = validateCompanyResearchSectionTables(malformedMethod)
+  const finalReportDiagnostics = validateCompanyResearchSectionTables(finalReconciled)
+  assert.ok(methodTableDiagnostics.some(issue => issue.includes('heading markup embedded in table header')))
+  assert.deepEqual(finalReportDiagnostics, [])
+  const semanticPass = { passed: true, status: 'complete' as const, issues: [], coreCoverage: { completed: 16, required: 16 }, sectionChecks: [] }
+  assert.equal(applyCompanyResearchTableDiagnostics(semanticPass, finalReportDiagnostics).passed, true)
+  assert.ok(methodTableDiagnostics.length, 'the pre-reconciliation failure remains available for audit')
 })
 
 test('Verified identity permits first Company Research through DataResolver without canonical writes', async () => {
@@ -643,6 +773,23 @@ test('missing model and exhausted peer method block completion without Knowledge
     const checkpoint = JSON.parse(await readFile(join(reports,'company-research-600519-quota-stop.analysis.json'),'utf8'))
     assert.equal(checkpoint.methodResults.filter((method:any)=>method.attempts===0).length,8)
     assert.ok(checkpoint.methodResults.some((method:any)=>method.skillId==='business_model_map'&&method.status==='complete'))
+    let synthesisCalls = 0
+    const reviewThenQuotaExecutor: ReasoningExecutor = { capabilities: normal.capabilities, execute: async (request, signal) => {
+      if (request.metadata?.stage === 'content_quality_review') return { operation: request.operation, output: { sectionChecks: COMPANY_CORE_SECTION_IDS.map(sectionId => ({ sectionId, questionAnswered: true, evidenceSupportsConclusion: sectionId !== 'investment-thesis', numericReproducible: true, riskTransmission: true, reasons: sectionId === 'investment-thesis' ? ['fixture requires a bounded synthesis revision'] : [] })) } }
+      if (request.operation === 'company_research_synthesis' && ++synthesisCalls > 1) throw new Error('RATE_LIMIT_OR_QUOTA: The usage limit has been reached')
+      return normal.execute(request, signal)
+    } }
+    const retained = await runCompanyDeepResearch({...base,workflowRunId:'review-quota-retain',reasoningExecutor:reviewThenQuotaExecutor})
+    assert.equal(retained.status,'blocked')
+    assert.ok(synthesisCalls >= 2,'the bounded synthesis retry must be attempted')
+    const retainedThesis = retained.research?.sections.find((section:any)=>section.id==='investment-thesis')?.markdown ?? ''
+    const retainedMonitoring = retained.research?.sections.find((section:any)=>section.id==='monitoring-checklist')?.markdown ?? ''
+    assert.match(retainedThesis,/核心判断|证据支持|研究结论/)
+    assert.match(retainedMonitoring,/跟踪|指标/)
+    assert.match(retainedThesis,/研究未完成/,'Unresolved prior citations must be replaced by an explicit incomplete diagnostic rather than retained as conclusions')
+    const retainedAnalysis = JSON.parse(await readFile(join(reports,'company-research-600519-review-quota-retain.analysis.json'),'utf8'))
+    assert.equal(retainedAnalysis.synthesisSnapshotStatus,'not_retained_evidence_changed')
+    assert.equal(retainedAnalysis.contentQuality.passed,false,'retaining structurally validated prose must not override failed semantic review or quota exhaustion')
     assert.deepEqual(await snapshotKnowledgeTree(root), baseline)
   } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) }
 })

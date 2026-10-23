@@ -223,3 +223,21 @@ function assistantMessage(text: string): AssistantMessage {
 function fixtureModel(): Model<Api> {
   return { id: 'fixture-model', name: 'Fixture Model', provider: 'fixture', api: 'fixture-api', baseUrl: 'fixture://model', reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 8_000, maxTokens: 500 } as unknown as Model<Api>
 }
+
+
+test('Pi parse and schema failures retain bounded rejected raw output and the existing diagnostic callback',async()=>{
+  for(const rawOutput of ['not-json','{"other":true}']){
+    const observed:unknown[]=[]
+    const executor=new PiReasoningExecutor({capabilities,completion:async()=>rawOutput,onInvalidOutput:event=>{observed.push(event)}})
+    await assert.rejects(()=>executor.execute({operation:'company_research_method',instruction:'Return exact contract',input:{},outputContract:{type:'object',required:['ok'],properties:{ok:{type:'boolean'}},additionalProperties:false}}),(error:unknown)=>{
+      assert.ok(error instanceof ReasoningExecutorError)
+      assert.equal(error.code,'reasoning_output_invalid')
+      assert.equal(error.rawOutput,rawOutput)
+      assert.equal(error.operation,'company_research_method')
+      assert.ok(error.operationId)
+      return true
+    })
+    assert.equal(observed.length,1)
+    assert.equal((observed[0] as any).rawOutput,rawOutput)
+  }
+})

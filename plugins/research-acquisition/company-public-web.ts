@@ -20,6 +20,105 @@ export interface CompanyPublicWebOptions {
 }
 export interface PublicDnsProof { readonly Status: number; readonly Answer?: readonly { readonly type: number; readonly data: string }[] }
 interface CachedPublicCandidate { readonly companySymbol: string; readonly companyName: string; readonly title: string; readonly url: string; readonly discoveryTerms: readonly string[]; readonly discoveredAt: string; readonly bodyHash: string }
+interface PeerSearchProfile {
+  readonly aliases: readonly string[]
+  readonly ticker?: string
+  readonly productTerms: string
+  /** Generic report/disclosure vocabulary, combined with each official domain below. */
+  readonly annualReportTerms?: readonly string[]
+  /** Issuer IR and exchange/regulator disclosure hosts used only to focus discovery. */
+  readonly officialDomains?: readonly string[]
+  /** Bounded, product-specific queries; still discovery only until the page body is fetched. */
+  readonly productPageQueries?: readonly string[]
+  /** Exact official product pages that SERPs may omit in favor of a brand homepage. */
+  readonly productPageSeeds?: readonly { readonly title: string; readonly url: string }[]
+}
+interface CompanyResearchProfile {
+  readonly aliases: readonly string[]
+  readonly officialDomains: readonly string[]
+  readonly curatedUrlSeeds: readonly { readonly label: string; readonly url: string; readonly scope: 'company' | 'industry_context'; readonly priority: 'core' | 'supplemental'; readonly topics?: readonly string[] }[]
+  readonly focusQueries: readonly { readonly label: string; readonly query: string }[]
+  readonly industryQueries: readonly { readonly label: string; readonly query: string; readonly topics: readonly string[] }[]
+}
+interface PeerDiagnostic { readonly peerCompanyName: string; readonly engine: string; readonly query: string; readonly stage: 'discovered' | 'identity-rejected' | 'fetched' | 'normalized' | 'rejected' | 'search-failed'; readonly candidateId?: string; readonly title?: string; readonly url?: string; readonly resultCount?: number; readonly reason?: string; readonly history?: readonly PeerDiagnostic[] }
+
+// The workflow supplies canonical peer names. These bounded public identities add
+// common legal names, tickers and English names to discovery without treating SERP
+// text as evidence. Final identity verification always uses the fetched body.
+const PEER_SEARCH_PROFILES: Readonly<Record<string, PeerSearchProfile>> = {
+  '鹏鼎控股': { aliases: ['鹏鼎控股股份有限公司', 'Avary Holding'], ticker: '002938', productTerms: 'FPC 柔性电路板 产品 客户 产能 年报', annualReportTerms: ['年度报告 中期报告', '投资者关系 定期报告'], officialDomains: ['avaryholding.com', 'cninfo.com.cn'] },
+  '中际旭创': { aliases: ['中际旭创股份有限公司', 'InnoLight'], ticker: '300308', productTerms: '光模块 800G 1.6T 产品 客户 产能 年报', annualReportTerms: ['年度报告 中期报告', '投资者关系 定期报告'], officialDomains: ['innolight.com', 'cninfo.com.cn'] },
+  '吉利汽车': {
+    aliases: ['Geely Automobile Holdings', 'Geely Auto', '吉利银河'],
+    ticker: '0175.HK',
+    productTerms: 'automobile sales new energy vehicles annual report',
+    annualReportTerms: ['annual report interim report', 'investor relations filings'],
+    officialDomains: ['geelyauto.com.hk', 'hkexnews.hk', 'geely.com'],
+    productPageQueries: [
+      'site:galaxy.geely.com/E8 吉利银河E8 车型 官方指导价 配置 参数',
+      'site:galaxy.geely.com 吉利银河 新能源车型 售价 配置 官方车型',
+    ],
+    productPageSeeds: [
+      { title: '吉利银河E8 官方车型与配置', url: 'https://galaxy.geely.com/E8' },
+    ],
+  },
+  '特斯拉': { aliases: ['Tesla'], ticker: 'TSLA', productTerms: '汽车 产品 销量 年报', annualReportTerms: ['annual report quarterly report', 'investor relations filings'], officialDomains: ['ir.tesla.com', 'sec.gov'] },
+  '宁德时代': { aliases: ['宁德时代新能源科技股份有限公司', 'CATL'], ticker: '300750', productTerms: '动力电池 装机量 市占率 产品 2025年报', annualReportTerms: ['2025年度报告 annual report', '投资者关系 定期报告'], officialDomains: ['catl.com', 'cninfo.com.cn'] },
+}
+
+// Focused, reproducible public discovery for issuers where broad SERPs tend to
+// return only homepages. These queries nominate URLs only; fetched page bodies
+// remain the sole evidence. Keep market context separately scoped so it cannot
+// be mistaken for company-specific disclosure.
+const COMPANY_RESEARCH_PROFILES: Readonly<Record<string, CompanyResearchProfile>> = {
+  '002594': {
+    aliases: ['比亚迪股份有限公司', 'BYD'],
+    officialDomains: ['byd.com', 'bydglobal.com'],
+    curatedUrlSeeds: [
+      // These bounded first-party pages cover the portfolio, a dated model-level
+      // price/specification example, and commercialization evidence. The workflow
+      // still has to evaluate each fetched body; page presence is not a finding.
+      { label: 'products_models', url: 'https://www.byd.com/cn/dynasty-home/models', scope: 'company', priority: 'core' },
+      { label: 'model_price_launch', url: 'https://www.byd.com/cn/ocean-home/models/haibao/haibao-07-dm-i', scope: 'company', priority: 'core' },
+      { label: 'sales_delivery', url: 'https://www.byd.com/cn/detail630', scope: 'company', priority: 'core' },
+      { label: 'china_nev_market', url: 'https://www.miit.gov.cn/jgsj/zbys/qcgy/art/2026/art_4c5ed7009d21485da32b2a01abcf2819.html', scope: 'industry_context', priority: 'core', topics: ['新能源汽车', '产销'] },
+      { label: 'technology', url: 'https://www.byd.com/cn/brand-center/leading-in-technology-markets', scope: 'company', priority: 'supplemental' },
+      { label: 'global_ev_market', url: 'https://iea.blob.core.windows.net/assets/beae65ce-6b6d-4a8b-b67a-c591093756be/GEVO2026_LaunchWebinarSlides.pdf', scope: 'industry_context', priority: 'supplemental', topics: ['electric car', 'sales', 'China'] },
+      { label: 'history_strategy', url: 'https://www.byd.com/en/about-byd', scope: 'company', priority: 'supplemental' },
+    ],
+    focusQueries: [
+      { label: 'products_models', query: 'site:byd.com/cn/ 比亚迪 王朝 海洋 腾势 仰望 方程豹 车型列表 官方车型' },
+      { label: 'vehicle_launch_pricing', query: 'site:byd.com/cn/news/ 比亚迪 新车型 上市 售价 预售 车型 官方' },
+      { label: 'vehicle_sales_delivery', query: 'site:byd.com/cn/news/ 比亚迪 新能源汽车 销量 交付 海外 国内 车型' },
+      { label: 'technology', query: 'site:byd.com/cn/ 比亚迪 刀片电池 e平台 技术创新 官方' },
+      { label: 'commercialization', query: 'site:byd.com/cn/news/ 比亚迪 新能源汽车 销量 海外 产能' },
+      { label: 'history_strategy', query: 'site:byd.com/en/about-byd BYD company history founded technology new energy vehicle' },
+    ],
+    industryQueries: [
+      { label: 'china_nev_market', query: 'site:miit.gov.cn 2025年12月汽车工业经济运行情况 新能源汽车 产销', topics: ['新能源汽车', '产销'] },
+      { label: 'global_ev_market', query: 'site:iea.org/reports/global-ev-outlook-2026 trends in electric cars 2025 sales 2026 outlook China', topics: ['electric car', 'sales', 'China'] },
+    ],
+  },
+}
+
+const INDUSTRY_CONTEXT_HOSTS = new Set(['caam.org.cn', 'iea.org', 'iea.blob.core.windows.net', 'cpcaauto.com', 'gov.cn', 'miit.gov.cn', 'stats.gov.cn'])
+const PUBLIC_WEB_MAX_BYTES = 12_000_000
+function isIndustryContextHost(hostname: string): boolean { return [...INDUSTRY_CONTEXT_HOSTS].some(domain => hostname === domain || hostname.endsWith(`.${domain}`)) }
+
+function peerSearchProfile(name: string): PeerSearchProfile {
+  return PEER_SEARCH_PROFILES[name] ?? { aliases: [], productTerms: '年报 产品 收入 客户 产能' }
+}
+
+function peerQueries(peerCompanyName: string, profile: PeerSearchProfile): readonly string[] {
+  const identities = [...new Set([peerCompanyName, ...(profile.ticker ? [profile.ticker] : []), ...profile.aliases])].slice(0, 4)
+  const identityQueries = identities.map(identity => `"${identity}" ${peerCompanyName === identity ? '' : `"${peerCompanyName}" `}${profile.productTerms}`)
+  const primaryQueries = (profile.officialDomains ?? []).flatMap(domain =>
+    (profile.annualReportTerms ?? ['annual report', 'interim report', 'filings investor relations']).map((reportTerms) =>
+      `"${peerCompanyName}" ${profile.ticker ?? ''} ${reportTerms} site:${domain}`.replace(/\s+/g, ' ').trim(),
+    ),
+  )
+  return [...new Set([...primaryQueries, ...identityQueries, ...(profile.productPageQueries ?? [])])]
+}
 
 /** Public search is discovery only. The fetched page body, never its search snippet, is evidence. */
 export class CompanyPublicWebPlugin implements ResearchAcquisitionPlugin {
@@ -67,6 +166,8 @@ export class CompanyPublicWebPlugin implements ResearchAcquisitionPlugin {
     } catch { return [] }
   }
   private async cacheNormalizedCandidate(source: ResearchFetchedSource, hash: string): Promise<void> {
+    if (source.candidate.metadata?.researchSubject === 'peer_company') return
+    if (source.candidate.metadata?.researchScope === 'industry_context') return
     const symbol = source.candidate.metadata?.companySymbol
     const name = source.candidate.metadata?.companyName
     const url = source.candidate.url
@@ -118,6 +219,8 @@ export class CompanyPublicWebPlugin implements ResearchAcquisitionPlugin {
         continue
       }
       if (!response.ok) throw new Error(`PUBLIC_WEB_HTTP_${response.status}`)
+      const declaredLength = Number(response.headers.get('content-length'))
+      if (Number.isFinite(declaredLength) && declaredLength > PUBLIC_WEB_MAX_BYTES) throw new Error('PUBLIC_WEB_BODY_TOO_LARGE')
       const reader = response.body?.getReader()
       const chunks: Uint8Array[] = []
       let length = 0
@@ -125,7 +228,7 @@ export class CompanyPublicWebPlugin implements ResearchAcquisitionPlugin {
         const chunk = await reader.read()
         if (chunk.done) break
         length += chunk.value.length
-        if (length > 12_000_000) { await reader.cancel(); throw new Error('PUBLIC_WEB_BODY_TOO_LARGE') }
+        if (length > PUBLIC_WEB_MAX_BYTES) { await reader.cancel(); throw new Error('PUBLIC_WEB_BODY_TOO_LARGE') }
         chunks.push(chunk.value)
       }
       const bytes = new Uint8Array(length)
@@ -145,47 +248,139 @@ export class CompanyPublicWebPlugin implements ResearchAcquisitionPlugin {
   async discover(request: ResearchAcquisitionRequest, signal?: AbortSignal): Promise<readonly ResearchSourceCandidate[]> {
     if (!request.company || request.researchPurpose !== 'company_research') return []
     const company = request.company.name ?? request.company.symbol
-    const terms = (request.searchTerms?.length ? request.searchTerms : ['公司 产品 技术 主营业务', '行业 竞争对手 市场规模', '投资者关系 年报']).slice(0, 4)
+    const companyProfile = COMPANY_RESEARCH_PROFILES[request.company.symbol]
+    const requestedTerms = request.searchTerms?.length ? request.searchTerms : ['公司 产品 技术 主营业务', '行业 竞争对手 市场规模', '投资者关系 年报']
+    const peerNames = [...new Set(requestedTerms.filter((term) => term.startsWith('peer:')).map((term) => term.slice('peer:'.length).trim()).filter(Boolean))].slice(0, 2)
+    const terms = requestedTerms.filter((term) => !term.startsWith('peer:')).slice(0, Math.max(1, 4 - peerNames.length))
     const candidates = new Map<string, ResearchSourceCandidate>()
     const diagnostics: string[] = []
-    const addCandidate = (title: string, url: string, description: string, term: string, queryText: string, engine: string) => {
+    const peerDiagnostics: PeerDiagnostic[] = []
+    for (const peerCompanyName of peerNames) {
+      const profile = peerSearchProfile(peerCompanyName)
+      const peerIdentityTerms = [...new Set([peerCompanyName, ...profile.aliases, ...(profile.ticker ? [profile.ticker] : [])])]
+      for (const seed of profile.productPageSeeds ?? []) {
+        let hostname = ''
+        try { hostname = new URL(seed.url).hostname.toLowerCase() } catch { continue }
+        const trustedHost = (profile.officialDomains ?? []).some(domain => hostname === domain || hostname.endsWith(`.${domain}`))
+        if (!trustedHost || !seed.url.startsWith('https://')) continue
+        candidates.set(seed.url, {
+          candidateId: `public-web-${sha256(seed.url).slice(0, 16)}`,
+          kind: 'web_article', tier: 3, title: seed.title, url: seed.url, provider: 'public-web',
+          metadata: {
+            companySymbol: request.company.symbol,
+            companyName: request.company.name,
+            researchSubject: 'peer_company',
+            peerCompanyName,
+            peerIdentityTerms,
+            focusedPeerProduct: true,
+            curatedPeerProductSeed: true,
+            originalPublisher: hostname,
+            discoveryQuery: `curated-peer-product:${peerCompanyName}`,
+            discoveryEngine: 'curated-official-url',
+            discoveryTerms: [`peer:${peerCompanyName}`],
+            discoveredAt: this.now(),
+          },
+        })
+      }
+    }
+    for (const [seedOrder, seed] of (companyProfile?.curatedUrlSeeds ?? []).entries()) {
+      let hostname = ''
+      try { hostname = new URL(seed.url).hostname.toLowerCase() } catch { continue }
+      const companyHost = Boolean(companyProfile?.officialDomains.some(domain => hostname === domain || hostname.endsWith(`.${domain}`)))
+      if ((seed.scope === 'company' && !companyHost) || (seed.scope === 'industry_context' && !isIndustryContextHost(hostname))) continue
+      const candidateId = `public-web-${sha256(seed.url).slice(0, 16)}`
+      candidates.set(seed.url, {
+        candidateId, kind: 'web_article', tier: 3, title: `${company} ${seed.label} page`, url: seed.url, provider: 'public-web',
+        metadata: { companySymbol: request.company.symbol, companyName: request.company.name, originalPublisher: hostname, researchScope: seed.scope, ...(seed.topics ? { contextTopics: seed.topics } : {}), ...(companyHost ? { officialCompanyHost: true } : {}), curatedUrlSeed: true, curatedSeedOrder: seedOrder, curatedSeedPriority: seed.priority, focusedResearchQuery: seed.label, discoveryTerms: [`focus:${seed.label}`], discoveredAt: this.now() },
+      })
+    }
+    const addCandidate = (title: string, url: string, description: string, term: string, queryText: string, engine: string, peerCompanyName?: string, peerAliases: readonly string[] = [], scope: 'company' | 'industry_context' = 'company', contextTopics: readonly string[] = []) => {
       if (!title || !/^https:\/\//i.test(url)) return
-      if (!`${title} ${url} ${description}`.includes(company) && !`${title} ${url} ${description}`.includes(request.company!.symbol)) return
+      const candidateIdentity = `${title} ${url} ${description}`
+      const matchedIdentity = peerCompanyName ? [peerCompanyName, ...peerAliases].find(identity => identity && candidateIdentity.toLocaleLowerCase().includes(identity.toLocaleLowerCase())) : undefined
+      if (peerCompanyName && !matchedIdentity) {
+        peerDiagnostics.push({ peerCompanyName, engine, query: queryText, stage: 'identity-rejected', title: title.slice(0, 300), url: url.slice(0, 1000), reason: 'SERP_TITLE_URL_DESCRIPTION_MISSING_PEER_IDENTITY' })
+        return
+      }
+      let hostname = ''
+      try { hostname = new URL(url).hostname.toLowerCase() } catch { return }
+      const officialCompanyHost = Boolean(companyProfile?.officialDomains.some(domain => hostname === domain || hostname.endsWith(`.${domain}`)))
+      if (!peerCompanyName && scope === 'company' && !candidateIdentity.includes(company) && !candidateIdentity.includes(request.company!.symbol) && !officialCompanyHost) return
+      if (scope === 'industry_context') {
+        const topicalMatch = contextTopics.filter(topic => candidateIdentity.toLocaleLowerCase().includes(topic.toLocaleLowerCase())).length
+        if (!isIndustryContextHost(hostname) || topicalMatch < Math.min(1, contextTopics.length)) return
+      }
       const previous = candidates.get(url)
       const discoveryTerms = [...new Set([...(previous?.metadata?.discoveryTerms as string[] | undefined ?? []), term])]
-      candidates.set(url, { candidateId: `public-web-${sha256(url).slice(0, 16)}`, kind: 'web_article', tier: 3, title, url, provider: 'public-web', metadata: { companySymbol: request.company!.symbol, companyName: request.company!.name, originalPublisher: new URL(url).hostname, discoveryQuery: queryText, discoveryEngine: engine, discoveryTerms, discoveredAt: this.now() } })
+      const candidateId = `public-web-${sha256(url).slice(0, 16)}`
+      const peerIdentityTerms = peerCompanyName ? [...new Set([peerCompanyName, ...peerAliases])] : undefined
+      const peerProfile = peerCompanyName ? peerSearchProfile(peerCompanyName) : undefined
+      const focusedPeerProduct = Boolean(peerProfile?.productPageQueries?.includes(queryText))
+      const candidatePeerDiagnostics = peerCompanyName ? [
+        ...(previous?.metadata?.peerAcquisitionDiagnostics as PeerDiagnostic[] | undefined ?? []),
+        { peerCompanyName, engine, query: queryText, stage: 'discovered' as const, candidateId, title: title.slice(0, 300), url: url.slice(0, 1000), resultCount: 1 },
+      ] : undefined
+      candidates.set(url, { candidateId, kind: 'web_article', tier: 3, title, url, provider: 'public-web', metadata: { ...previous?.metadata, companySymbol: request.company!.symbol, companyName: request.company!.name, ...(peerCompanyName ? { researchSubject: 'peer_company', peerCompanyName, peerIdentityTerms, ...(focusedPeerProduct || previous?.metadata?.focusedPeerProduct === true ? { focusedPeerProduct: true } : {}), peerAcquisitionDiagnostics: candidatePeerDiagnostics } : {}), ...(scope === 'industry_context' ? { researchScope: scope, contextTopics } : {}), ...(officialCompanyHost ? { officialCompanyHost: true } : {}), originalPublisher: hostname, discoveryQuery: queryText, discoveryEngine: engine, discoveryTerms, ...(term.startsWith('focus:') ? { focusedResearchQuery: term.slice('focus:'.length) } : {}), discoveredAt: this.now() } })
     }
-    const queries = terms.flatMap((term) => [
+    const queries: { term: string; text: string; peerCompanyName?: string; peerAliases?: readonly string[] }[] = terms.flatMap((term) => [
       { term, text: `"${company}" ${term.slice(0, 120)}` },
       { term, text: `"${company}" ${request.company!.symbol} ${term.slice(0, 120)}` },
     ])
-    const searchResults = await Promise.all(queries.map(async ({ term, text: queryText }) => {
+    for (const peerCompanyName of peerNames) {
+      const profile = peerSearchProfile(peerCompanyName)
+      const peerAliases = [...new Set([peerCompanyName, ...profile.aliases, ...(profile.ticker ? [profile.ticker] : [])])]
+      for (const text of peerQueries(peerCompanyName, profile)) queries.push({ term: `peer:${peerCompanyName}`, text, peerCompanyName, peerAliases })
+    }
+    for (const focus of companyProfile?.focusQueries ?? []) queries.push({ term: `focus:${focus.label}`, text: focus.query })
+    const industryQueries = (companyProfile?.industryQueries ?? []).map((entry) => ({ term: `focus:${entry.label}`, text: entry.query, scope: 'industry_context' as const, contextTopics: entry.topics }))
+    for (const entry of industryQueries) queries.push({ term: entry.term, text: entry.text })
+    const searchResults = await Promise.all(queries.map(async ({ term, text: queryText, peerCompanyName, peerAliases }) => {
       if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED')
       try {
         const query = new URL('https://www.bing.com/search')
         query.searchParams.set('q', queryText)
         query.searchParams.set('format', 'rss')
         const body = await acquisitionStep({ activityId: `public-web:search:${sha256(queryText).slice(0, 8)}`, providerId: 'public-web', step: 'discovery', signal, timeoutMs: 12_000 }, (requestSignal) => this.download(query.href, requestSignal))
-        return { term, queryText, xml: new TextDecoder().decode(body.bytes), error: undefined }
-      } catch (error) { if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED'); return { term, queryText, xml: '', error: String(error) } }
+        return { term, queryText, peerCompanyName, peerAliases, xml: new TextDecoder().decode(body.bytes), error: undefined }
+      } catch (error) { if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED'); return { term, queryText, peerCompanyName, peerAliases, xml: '', error: String(error) } }
     }))
-    for (const { term, queryText, xml, error } of searchResults) {
-      if (error) { diagnostics.push(error); continue }
+    for (const { term, queryText, peerCompanyName, peerAliases, xml, error } of searchResults) {
+      if (error) {
+        diagnostics.push(error)
+        if (peerCompanyName) peerDiagnostics.push({ peerCompanyName, engine: 'Bing', query: queryText, stage: 'search-failed', reason: error.slice(0, 500) })
+        continue
+      }
+      let resultCount = 0
         for (const item of xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)) {
+          resultCount += 1
           const title = xmlText(item[1]!.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? '')
           const url = xmlText(item[1]!.match(/<link>([\s\S]*?)<\/link>/i)?.[1] ?? '')
           const description = xmlText(item[1]!.match(/<description>([\s\S]*?)<\/description>/i)?.[1] ?? '').replace(/<[^>]*>/g, ' ')
           // Broad Chinese search can split a company name into an unrelated geographic term.
           // Discovery snippets may identify a candidate; they never become report evidence.
-          addCandidate(title, url, description, term, queryText, 'Bing')
+          const focusedCompanyQuery = (companyProfile?.focusQueries ?? []).some(focus => term === `focus:${focus.label}`)
+          if (focusedCompanyQuery) {
+            let hostname = ''
+            try { hostname = new URL(url).hostname.toLowerCase() } catch { continue }
+            if (!companyProfile?.officialDomains.some(domain => hostname === domain || hostname.endsWith(`.${domain}`))) continue
+          }
+          const industry = industryQueries.find(entry => entry.term === term && entry.text === queryText)
+          addCandidate(title, url, description, term, queryText, 'Bing', peerCompanyName, peerAliases, industry ? 'industry_context' : 'company', industry?.contextTopics)
         }
+      if (peerCompanyName) peerDiagnostics.push({ peerCompanyName, engine: 'Bing', query: queryText, stage: 'discovered', resultCount })
     }
     // Free public fallback for industry/competition: quote-heavy or off-topic RSS cannot
     // displace actual article candidates. Search snippets still remain discovery-only.
-    const fallbackTerms = terms.filter((term) => /行业|竞争|市场|industry|competi/i.test(term)).slice(0, 2)
-    // A generic market-size query often finds report catalogs. Use the spare query
-    // slot to seek actual products/applications and competitor discussion instead.
-    if (fallbackTerms.length === 1 && !fallbackTerms[0]!.includes('竞争对手 产品 应用')) fallbackTerms.push('竞争对手 产品 应用')
+    const fallbackTerms = [...new Set(terms.filter((term) => /行业|竞争|市场|industry|competi/i.test(term)))].slice(0, 2)
+    // Gap retries often pass atomic terms ("竞争", "份额", "优势") and can
+    // otherwise spend both public-search slots on near-duplicate broad queries.
+    // Reserve one bounded slot for sourced competitor/product/customer evidence;
+    // only fetched page bodies can later enter a research packet.
+    if (fallbackTerms.some((term) => /竞争|competi/i.test(term))) {
+      const targeted = '竞争对手 产品 应用 客户 技术 成本 对比'
+      if (!fallbackTerms.includes(targeted)) fallbackTerms.unshift(targeted)
+      fallbackTerms.length = Math.min(fallbackTerms.length, 2)
+    } else if (fallbackTerms.length === 1 && !fallbackTerms[0]!.includes('竞争对手 产品 应用')) fallbackTerms.push('竞争对手 产品 应用')
     const fallbackResults = await Promise.all(fallbackTerms.map(async (term) => {
       const queryText = `"${company}" ${term.slice(0, 120)}`
       try {
@@ -206,6 +401,41 @@ export class CompanyPublicWebPlugin implements ResearchAcquisitionPlugin {
           addCandidate(title, new URL(xmlText(href), 'https://www.sogou.com').href, description, term, queryText, 'Sogou')
         } catch { /* Invalid search links never become candidates. */ }
       }
+    }
+    // A second public search engine is a bounded fallback for named peers.
+    // Search snippets only nominate candidates; normalize() still requires
+    // the fetched article body to contain the exact peer identity.
+    const peerFallbackQueries = peerNames.flatMap(peerCompanyName => {
+      const profile = peerSearchProfile(peerCompanyName)
+      const peerAliases = [...new Set([peerCompanyName, ...profile.aliases, ...(profile.ticker ? [profile.ticker] : [])])]
+      return peerQueries(peerCompanyName, profile).map(queryText => ({ peerCompanyName, peerAliases, term: `peer:${peerCompanyName}`, queryText }))
+    })
+    const peerFallbackResults = await Promise.all(peerFallbackQueries.map(async ({ peerCompanyName, peerAliases, term, queryText }) => {
+      try {
+        const endpoint = new URL('https://www.sogou.com/web')
+        endpoint.searchParams.set('query', queryText)
+        const body = await acquisitionStep({ activityId: `public-web:sogou-peer:${sha256(queryText).slice(0, 8)}`, providerId: 'public-web', step: 'discovery', signal, timeoutMs: 12_000 }, (requestSignal) => this.download(endpoint.href, requestSignal))
+        return { peerCompanyName, peerAliases, term, queryText, html: new TextDecoder().decode(body.bytes), error: undefined }
+      } catch (error) { if (signal?.aborted) throw new Error('WORKFLOW_CANCELLED'); return { peerCompanyName, peerAliases, term, queryText, html: '', error: String(error) } }
+    }))
+    for (const { peerCompanyName, peerAliases, term, queryText, html, error } of peerFallbackResults) {
+      if (error) {
+        diagnostics.push(error)
+        peerDiagnostics.push({ peerCompanyName, engine: 'Sogou', query: queryText, stage: 'search-failed', reason: error.slice(0, 500) })
+        continue
+      }
+      let resultCount = 0
+      for (const result of html.matchAll(/<h3\b[^>]*>([\s\S]*?)<\/h3>/gi)) {
+        resultCount += 1
+        const href = result[1]!.match(/href=["']([^"']+)["']/)?.[1]
+        if (!href) continue
+        try {
+          const title = xmlText(result[1]!.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim()
+          const description = xmlText(html.slice(result.index! + result[0].length, result.index! + result[0].length + 2200).split(/<h3\b/i)[0]!.replace(/<[^>]*>/g, ' '))
+          addCandidate(title, new URL(xmlText(href), 'https://www.sogou.com').href, description, term, queryText, 'Sogou', peerCompanyName, peerAliases)
+        } catch (error) { peerDiagnostics.push({ peerCompanyName, engine: 'Sogou', query: queryText, stage: 'identity-rejected', title: xmlText(result[1]!.replace(/<[^>]*>/g, '')).slice(0, 300), reason: `INVALID_SEARCH_RESULT_URL:${String(error).slice(0, 200)}` }) }
+      }
+      peerDiagnostics.push({ peerCompanyName, engine: 'Sogou', query: queryText, stage: 'discovered', resultCount })
     }
     const liveCount = [...candidates.values()].filter(candidate => candidateResearchRank(candidate) < 10).length
     const cachedCandidates = await this.readCachedCandidates(request.company.symbol, request.company.name ?? '')
@@ -246,31 +476,94 @@ export class CompanyPublicWebPlugin implements ResearchAcquisitionPlugin {
     }
     // Preserve a research-topic opportunity, then retry previously body-validated URLs
     // before spending the remaining budget on additional unvalidated search headlines.
-    const ordered = [...diverse, ...directoryPages.slice(0, 2), ...all.filter(candidate => candidate.metadata?.cachedDiscovery === true), ...directoryPages.slice(2), ...all]
+    const peerCandidates = all.filter(candidate => candidate.metadata?.researchSubject === 'peer_company')
+    const peerCoverage = peerNames.flatMap(name => peerCandidates.find(candidate => candidate.metadata?.peerCompanyName === name) ?? [])
+    const peerCoverageIds = new Set(peerCoverage.map(candidate => candidate.candidateId))
+    const curatedCandidates = all.filter(candidate => candidate.metadata?.curatedUrlSeed === true).sort((a, b) => Number(a.metadata?.curatedSeedOrder) - Number(b.metadata?.curatedSeedOrder))
+    const coreCuratedCandidates = curatedCandidates.filter(candidate => candidate.metadata?.curatedSeedPriority === 'core')
+    const supplementalCuratedCandidates = curatedCandidates.filter(candidate => candidate.metadata?.curatedSeedPriority !== 'core')
+    const focusedCandidates = all.filter(candidate => candidate.metadata?.curatedUrlSeed !== true && typeof candidate.metadata?.focusedResearchQuery === 'string')
+    const focusedByQuery = new Map<string, ResearchSourceCandidate>()
+    for (const candidate of focusedCandidates) {
+      const label = String(candidate.metadata?.focusedResearchQuery)
+      if (!focusedByQuery.has(label)) focusedByQuery.set(label, candidate)
+    }
+    const focusedFirst = [...focusedByQuery.values()]
+    const focusedRemainder = focusedCandidates.filter(candidate => !focusedFirst.includes(candidate))
+    // Keep the capped evidence mix useful for company research: portfolio/model
+    // evidence, a dated model price, company sales/launch disclosure and market
+    // context are curated first; named peers retain their own slots. At larger
+    // budgets, focused catalogue/launch/delivery results precede general context.
+    const companyProductLabels = new Set(['products_models', 'vehicle_launch_pricing', 'vehicle_sales_delivery'])
+    const focusedProductCandidates = focusedFirst.filter(candidate => companyProductLabels.has(String(candidate.metadata?.focusedResearchQuery ?? '')))
+    const otherFocusedCandidates = focusedFirst.filter(candidate => !focusedProductCandidates.includes(candidate))
+    const ordered = [...coreCuratedCandidates, ...peerCoverage, ...peerCandidates.filter(candidate => !peerCoverageIds.has(candidate.candidateId)), ...focusedProductCandidates, ...supplementalCuratedCandidates, ...otherFocusedCandidates, ...diverse, ...focusedRemainder, ...directoryPages.slice(0, 2), ...all.filter(candidate => candidate.metadata?.cachedDiscovery === true), ...directoryPages.slice(2), ...all]
     const unique = new Set<string>()
-    return ordered.filter(candidate => { if (unique.has(candidate.candidateId)) return false; unique.add(candidate.candidateId); return true }).slice(0, Math.min(request.limitPerKind ?? 6, 20))
+    const selectedCandidates = ordered.filter(candidate => { if (unique.has(candidate.candidateId)) return false; unique.add(candidate.candidateId); return true }).slice(0, Math.min(request.limitPerKind ?? 6, 20))
+    if (!selectedCandidates.length && peerNames.length) throw new Error(`PUBLIC_WEB_PEER_DISCOVERY_EMPTY:${JSON.stringify(peerDiagnostics.slice(0, 100))}`)
+    return selectedCandidates.map(candidate => {
+      const peerName = candidate.metadata?.researchSubject === 'peer_company' && typeof candidate.metadata.peerCompanyName === 'string' ? candidate.metadata.peerCompanyName : undefined
+      const audit = peerName ? peerDiagnostics.filter(item => item.peerCompanyName === peerName) : peerDiagnostics
+      return { ...candidate, metadata: { ...candidate.metadata, peerAcquisitionDiagnostics: [...((candidate.metadata?.peerAcquisitionDiagnostics as PeerDiagnostic[] | undefined) ?? []), ...audit].slice(0, 100) } }
+    })
   }
   async fetch(candidate: ResearchSourceCandidate, signal?: AbortSignal, options?: ResearchFetchOptions): Promise<ResearchFetchedSource> {
     if (!candidate.url) throw new Error('PUBLIC_WEB_URL_REQUIRED')
-    const downloaded = await acquisitionStep({ activityId: `${candidate.candidateId}:download`, providerId: 'public-web', step: 'download', sourceTitle: candidate.title, signal, timeoutMs: options?.downloadTimeoutMs ?? 30_000, deadlineAt: options?.deadlineAt, onProgress: options?.onProgress }, (requestSignal) => this.download(candidate.url!, requestSignal))
-    return { candidate: { ...candidate, url: downloaded.url }, retrievedAt: this.now(), content: downloaded.mediaType.includes('html') ? decodeCompanyPublicHtml(downloaded.bytes,downloaded.contentType) : new TextDecoder().decode(downloaded.bytes), rawBytes: downloaded.bytes, mediaType: downloaded.mediaType }
+    try {
+      const downloaded = await acquisitionStep({ activityId: `${candidate.candidateId}:download`, providerId: 'public-web', step: 'download', sourceTitle: candidate.title, signal, timeoutMs: options?.downloadTimeoutMs ?? 30_000, deadlineAt: options?.deadlineAt, onProgress: options?.onProgress }, (requestSignal) => this.download(candidate.url!, requestSignal))
+      const peerCandidate = candidate.metadata?.researchSubject === 'peer_company'
+      const fetchedCandidate = peerCandidate ? withPeerDiagnostic({ ...candidate, url: downloaded.url }, { peerCompanyName: String(candidate.metadata?.peerCompanyName ?? ''), engine: String(candidate.metadata?.discoveryEngine ?? 'unknown'), query: String(candidate.metadata?.discoveryQuery ?? ''), stage: 'fetched', candidateId: candidate.candidateId, title: candidate.title.slice(0, 300), url: downloaded.url.slice(0, 1000) }) : { ...candidate, url: downloaded.url }
+      return { candidate: fetchedCandidate, retrievedAt: this.now(), content: downloaded.mediaType.includes('html') ? decodeCompanyPublicHtml(downloaded.bytes,downloaded.contentType) : new TextDecoder().decode(downloaded.bytes), rawBytes: downloaded.bytes, mediaType: downloaded.mediaType }
+    } catch (error) {
+      if (candidate.metadata?.researchSubject !== 'peer_company' || (error instanceof Error && error.message === 'WORKFLOW_CANCELLED')) throw error
+      throw peerStageError(candidate, 'rejected', error)
+    }
   }
   async normalize(source: ResearchFetchedSource, signal?: AbortSignal): Promise<NormalizedResearchSource> {
     const bytes = source.rawBytes ?? new TextEncoder().encode(source.content)
     const mediaType = source.mediaType ?? 'text/html'
-    const document = await this.resolver.parse({ bytes: mediaType.includes('html') ? new TextEncoder().encode(source.content) : bytes, filename: mediaType.includes('pdf') ? 'company-public.pdf' : 'company-public.html', mediaType }, signal ? { signal } : undefined)
-    if (document.normalizedText.trim().length < 120) throw new Error('PUBLIC_WEB_BODY_INSUFFICIENT')
-    if (isPaidResearchCatalog(document.normalizedText)) throw new Error('PUBLIC_WEB_PAID_RESEARCH_CATALOG_NO_SUBSTANTIVE_BODY')
+    const peerCandidate = source.candidate.metadata?.researchSubject === 'peer_company'
+    let document: Awaited<ReturnType<DocumentInputResolver['parse']>>
+    try { document = await this.resolver.parse({ bytes: mediaType.includes('html') ? new TextEncoder().encode(source.content) : bytes, filename: mediaType.includes('pdf') ? 'company-public.pdf' : 'company-public.html', mediaType }, signal ? { signal } : undefined) }
+    catch (error) { if (peerCandidate && !(error instanceof Error && error.message === 'WORKFLOW_CANCELLED')) throw peerStageError(source.candidate, 'rejected', error); throw error }
+    if (document.normalizedText.trim().length < 120) throw peerCandidate ? peerStageError(source.candidate, 'rejected', new Error('PUBLIC_WEB_BODY_INSUFFICIENT')) : new Error('PUBLIC_WEB_BODY_INSUFFICIENT')
+    if (isPaidResearchCatalog(document.normalizedText)) throw peerCandidate ? peerStageError(source.candidate, 'rejected', new Error('PUBLIC_WEB_PAID_RESEARCH_CATALOG_NO_SUBSTANTIVE_BODY')) : new Error('PUBLIC_WEB_PAID_RESEARCH_CATALOG_NO_SUBSTANTIVE_BODY')
     const companyName = source.candidate.metadata?.companyName
     const companySymbol = source.candidate.metadata?.companySymbol
-    if (typeof companyName === 'string' && companyName && !document.normalizedText.includes(companyName) && !(typeof companySymbol === 'string' && companySymbol && document.normalizedText.includes(companySymbol))) throw new Error('PUBLIC_WEB_BODY_COMPANY_MISMATCH')
+    const peerCompanyName = peerCandidate ? source.candidate.metadata?.peerCompanyName : undefined
+    const researchScope = source.candidate.metadata?.researchScope
+    if (researchScope === 'industry_context') {
+      let hostname = ''
+      try { hostname = new URL(source.candidate.url ?? '').hostname.toLowerCase() } catch { throw new Error('PUBLIC_WEB_INDUSTRY_CONTEXT_HOST_INVALID') }
+      const topics = Array.isArray(source.candidate.metadata?.contextTopics) ? source.candidate.metadata.contextTopics.filter((topic): topic is string => typeof topic === 'string' && topic.length > 1) : []
+      const matchedTopics = topics.filter(topic => document.normalizedText.toLocaleLowerCase().includes(topic.toLocaleLowerCase())).length
+      if (!isIndustryContextHost(hostname) || topics.length < 2 || matchedTopics < Math.min(2, topics.length)) throw new Error('PUBLIC_WEB_INDUSTRY_CONTEXT_BODY_MISMATCH')
+    } else if (typeof peerCompanyName === 'string' && peerCompanyName) {
+      const identityTerms = Array.isArray(source.candidate.metadata?.peerIdentityTerms) ? source.candidate.metadata.peerIdentityTerms.filter((term): term is string => typeof term === 'string' && term.length > 1) : [peerCompanyName]
+      if (!identityTerms.some(identity => document.normalizedText.toLocaleLowerCase().includes(identity.toLocaleLowerCase()))) throw peerStageError(source.candidate, 'rejected', new Error('PUBLIC_WEB_BODY_PEER_MISMATCH'))
+    } else if (typeof companyName === 'string' && companyName && !document.normalizedText.includes(companyName) && !(typeof companySymbol === 'string' && companySymbol && document.normalizedText.includes(companySymbol)) && !(companyProfileIdentityTerms(companySymbol).some(identity => document.normalizedText.toLocaleLowerCase().includes(identity.toLocaleLowerCase())))) throw new Error('PUBLIC_WEB_BODY_COMPANY_MISMATCH')
     // Search-result dates are intentionally not treated as publication dates.
     const contentHash = sha256(document.normalizedText)
-    let candidate = { ...source.candidate, metadata: { ...source.candidate.metadata, ...historicalContext(source.candidate.title, source.content, source.retrievedAt) } }
+    const focusedPeerProduct = source.candidate.metadata?.focusedPeerProduct === true
+      && hasPeerProductBodyEvidence(document.normalizedText, source.candidate.title)
+    let candidate: ResearchSourceCandidate = { ...source.candidate, metadata: { ...source.candidate.metadata, ...(source.candidate.metadata?.focusedPeerProduct === true && !focusedPeerProduct ? { focusedPeerProduct: undefined } : {}), ...historicalContext(source.candidate.title, source.content, source.retrievedAt) } }
+    if (peerCandidate) candidate = withPeerDiagnostic(candidate, { peerCompanyName: String(peerCompanyName ?? ''), engine: String(source.candidate.metadata?.discoveryEngine ?? 'unknown'), query: String(source.candidate.metadata?.discoveryQuery ?? ''), stage: 'normalized', candidateId: source.candidate.candidateId, title: source.candidate.title.slice(0, 300), url: (source.candidate.url ?? '').slice(0, 1000) })
     try { await this.cacheNormalizedCandidate(source, contentHash) } catch { candidate = { ...candidate, metadata: { ...candidate.metadata, candidateCacheDiagnostic: 'PUBLIC_WEB_CANDIDATE_CACHE_WRITE_FAILED' } } }
     return { candidate, title: source.candidate.title, retrievedAt: source.retrievedAt, content: document.normalizedText, canonicalUrl: source.candidate.url, contentHash, rawBytes: bytes, mediaType, publisher: new URL(source.candidate.url!).hostname,
       rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false, policyBasis: 'personal_noncommercial_research' } }
   }
+}
+function companyProfileIdentityTerms(symbol: unknown): readonly string[] {
+  return typeof symbol === 'string' ? COMPANY_RESEARCH_PROFILES[symbol]?.aliases ?? [] : []
+}
+function withPeerDiagnostic(candidate: ResearchSourceCandidate, diagnostic: PeerDiagnostic): ResearchSourceCandidate {
+  const current = Array.isArray(candidate.metadata?.peerAcquisitionDiagnostics) ? candidate.metadata.peerAcquisitionDiagnostics as PeerDiagnostic[] : []
+  return { ...candidate, metadata: { ...candidate.metadata, peerAcquisitionDiagnostics: [...current, diagnostic].slice(0, 100) } }
+}
+function peerStageError(candidate: ResearchSourceCandidate, stage: 'rejected', error: unknown): Error {
+  const history = Array.isArray(candidate.metadata?.peerAcquisitionDiagnostics) ? (candidate.metadata.peerAcquisitionDiagnostics as PeerDiagnostic[]).slice(-20) : []
+  const diagnostic: PeerDiagnostic = { peerCompanyName: String(candidate.metadata?.peerCompanyName ?? ''), engine: String(candidate.metadata?.discoveryEngine ?? 'unknown'), query: String(candidate.metadata?.discoveryQuery ?? ''), stage, candidateId: candidate.candidateId, title: candidate.title.slice(0, 300), url: (candidate.url ?? '').slice(0, 1000), reason: (error instanceof Error ? error.message : String(error)).slice(0, 500), history }
+  return new Error(`PUBLIC_WEB_PEER_ACQUISITION_DIAGNOSTIC:${JSON.stringify(diagnostic)}`)
 }
 function safePublicUrlSyntax(raw: string): boolean {
   try { const url = new URL(raw); return url.protocol === 'https:' && !url.username && !url.password && (!url.port || url.port === '443') && url.hostname !== 'localhost' && !url.hostname.endsWith('.local') && !isIP(url.hostname.replace(/^\[|\]$/g, '')) } catch { return false }
@@ -298,9 +591,26 @@ function candidateResearchRank(candidate: ResearchSourceCandidate): number {
   // A sales title is a discovery hint, never a factual finding or a permanent source ban.
   if (/报告目录|订购|购买报告|全球与中国.*(?:研究报告|预测分析报告)|20\d{2}[-—至]20\d{2}.*(?:报告|市场)/.test(candidate.title)) return 20
   if (/股票行情|行情走势|最新价格|股吧|估值新的股价|价值洼地/.test(candidate.title)) return 10
+  if (candidate.metadata?.researchSubject === 'peer_company' && candidate.metadata?.focusedPeerProduct === true && isConfiguredOfficialPeerHost(candidate)) return -1
+  if (candidate.metadata?.researchSubject === 'peer_company' && isConfiguredOfficialPeerHost(candidate)) return 0
   if (candidate.metadata?.cachedDiscovery === true) return 0
   if (/对比|比较|特色|竞争格局|竞争力|内忧外患|产品|技术|业务|创新|FPC|官方/.test(candidate.title)) return 0
   return candidate.metadata?.discoveryEngine === 'Sogou' ? 1 : 2
+}
+function isConfiguredOfficialPeerHost(candidate: ResearchSourceCandidate): boolean {
+  const peerName = candidate.metadata?.peerCompanyName
+  if (typeof peerName !== 'string' || !candidate.url) return false
+  let hostname: string
+  try { hostname = new URL(candidate.url).hostname.toLowerCase() } catch { return false }
+  return (peerSearchProfile(peerName).officialDomains ?? []).some(domain => hostname === domain || hostname.endsWith(`.${domain}`))
+}
+function hasPeerProductBodyEvidence(text: string, title: string): boolean {
+  const modelTerms = [...title.matchAll(/(?:银河s*)?E8|Galaxy\s*E8/gi)].map(match => match[0])
+  if (!modelTerms.length) return false
+  const paragraphs = text.split(/\r?\n/).map(row => row.trim()).filter(Boolean)
+  const modelRows = paragraphs.flatMap((row, index) => /(?:银河\s*E8|Galaxy\s*E8)/i.test(row) ? [index] : [])
+  return modelRows.some(index => paragraphs.slice(Math.max(0, index - 1), Math.min(paragraphs.length, index + 5)).join(' ').length > 0
+    && /(?:指导价|售价|价格|纯电续航|续航里程|CLTC|配置|参数|\bkWh\b|\bkm\b)/i.test(paragraphs.slice(Math.max(0, index - 1), Math.min(paragraphs.length, index + 5)).join(' ')))
 }
 function isPaidResearchCatalog(text: string): boolean {
   const sales = /订购|购买报告|报告(?:价格|售价)|(?:完整|全文)报告.{0,20}(?:收费|购买|付费)|(?:图表略|内容部分有删减).{0,50}(?:官网|完整)|免费售后服务|咨询客服/.test(text)

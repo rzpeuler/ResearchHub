@@ -38,8 +38,8 @@
     "reportId": "company-research-600519-pi-company-tool-authorized",
     "committedIds": [
       "source:research-56e2e76ac69cc71c",
-      "source:research-2d44f65a78a1b0d9",
-      "source:research-9bfaef1d8358176f",
+      "source:research-9775c95045aeb42a",
+      "source:research-66a2a375d713988f",
       "claim:research-5df594d98cb4c35a",
       "claim:research-00adacc6e05775c6",
       "claim:research-e0235d1a22509e5f",
@@ -55,8 +55,8 @@
     "registryResolvedReportRefs": [
       "entity:company-600519",
       "source:research-56e2e76ac69cc71c",
-      "source:research-2d44f65a78a1b0d9",
-      "source:research-9bfaef1d8358176f",
+      "source:research-9775c95045aeb42a",
+      "source:research-66a2a375d713988f",
       "claim:research-5df594d98cb4c35a",
       "claim:research-00adacc6e05775c6",
       "claim:research-e0235d1a22509e5f",
@@ -84,8 +84,8 @@
     "registryReferences": [
       "entity:company-600519",
       "source:research-56e2e76ac69cc71c",
-      "source:research-2d44f65a78a1b0d9",
-      "source:research-9bfaef1d8358176f",
+      "source:research-9775c95045aeb42a",
+      "source:research-66a2a375d713988f",
       "claim:research-5df594d98cb4c35a",
       "claim:research-00adacc6e05775c6",
       "claim:research-e0235d1a22509e5f",
@@ -108,14 +108,14 @@
         "valid": true
       },
       {
-        "rawRef": "raw-sha256-aa687f01896597fcbcbd89543ab170a72cc1c4f96a52b482f7618c675a076eb4",
-        "contentHash": "sha256:aa687f01896597fcbcbd89543ab170a72cc1c4f96a52b482f7618c675a076eb4",
+        "rawRef": "raw-sha256-9afe8eaa1194bf46989b02e0502a4fe41b0492471947c72202649347a384b4eb",
+        "contentHash": "sha256:9afe8eaa1194bf46989b02e0502a4fe41b0492471947c72202649347a384b4eb",
         "sizeBytes": 159,
         "valid": true
       },
       {
-        "rawRef": "raw-sha256-c199f08e0b6c865c6b44ece6fd0a3d4bb4973d3cad677e9ff89a17a67850279a",
-        "contentHash": "sha256:c199f08e0b6c865c6b44ece6fd0a3d4bb4973d3cad677e9ff89a17a67850279a",
+        "rawRef": "raw-sha256-37c817f78247c3c38ca300b08b0e05e399f97bbd80c6e5a5e3e662ac94e54e4b",
+        "contentHash": "sha256:37c817f78247c3c38ca300b08b0e05e399f97bbd80c6e5a5e3e662ac94e54e4b",
         "sizeBytes": 480,
         "valid": true
       }

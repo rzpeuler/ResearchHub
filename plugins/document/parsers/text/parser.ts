@@ -5,17 +5,68 @@ import type { DocumentBlock, DocumentParser, DocumentParserInput, DocumentSectio
 
 type MutableSection = Omit<DocumentSection, 'blockRefs'> & { blockRefs: string[] }
 
-const HTML_BLOCK_BOUNDARY_TAGS = 'p|div|section|article|li|tr|h[1-6]|br'
+const HTML_BLOCK_BOUNDARY_TAGS = new Set(['p', 'div', 'section', 'article', 'li', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'br'])
 
 function normalizeHtmlText(value: string): string {
-  return value
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' ')
-    .replace(new RegExp(`<\\s*\\/?\\s*(?:${HTML_BLOCK_BOUNDARY_TAGS})\\b[^>]*>`, 'gi'), '\n\n')
-    .replace(/<[^>]+>/g, ' ')
+  // Scan tags once instead of using a lazy script/style regex. Public pages can
+  // contain malformed, repeated opening tags; the old expression backtracked
+  // quadratically and could block the event loop past acquisition deadlines.
+  const lower = value.toLowerCase()
+  const output: string[] = []
+  let cursor = 0
+  while (cursor < value.length) {
+    const start = value.indexOf('<', cursor)
+    if (start < 0) { output.push(value.slice(cursor)); break }
+    output.push(value.slice(cursor, start))
+    if (value.startsWith('<!--', start)) {
+      const end = value.indexOf('-->', start + 4)
+      cursor = end < 0 ? value.length : end + 3
+      continue
+    }
+    let nameStart = start + 1
+    if (value[nameStart] === '/') nameStart++
+    while (nameStart < value.length && /\s/.test(value[nameStart]!)) nameStart++
+    let nameEnd = nameStart
+    while (nameEnd < value.length && /[a-z\d:-]/i.test(value[nameEnd]!)) nameEnd++
+    if (nameEnd === nameStart) { output.push('<'); cursor = start + 1; continue }
+    const tag = lower.slice(nameStart, nameEnd)
+    const closing = value[start + 1] === '/'
+    const tagEnd = findHtmlTagEnd(value, nameEnd)
+    if (tagEnd < 0) { output.push(value.slice(start)); break }
+    output.push(HTML_BLOCK_BOUNDARY_TAGS.has(tag) ? '\n\n' : ' ')
+    cursor = tagEnd + 1
+    if (!closing && (tag === 'script' || tag === 'style')) {
+      const close = findHtmlClosingTag(lower, `</${tag}`, cursor)
+      if (close < 0) { cursor = value.length; continue }
+      const closeEnd = findHtmlTagEnd(value, close + tag.length + 2)
+      cursor = closeEnd < 0 ? value.length : closeEnd + 1
+    }
+  }
+  return output.join('')
     .replace(/[ \t]+/g, ' ')
     .replace(/ *\n */g, '\n')
     .replace(/\n{3,}/g, '\n\n')
+}
+
+function findHtmlTagEnd(value: string, from: number): number {
+  let quote = ''
+  for (let index = from; index < value.length; index++) {
+    const char = value[index]!
+    if (quote) { if (char === quote) quote = ''; continue }
+    if (char === '"' || char === "'") quote = char
+    else if (char === '>') return index
+  }
+  return -1
+}
+
+function findHtmlClosingTag(lower: string, needle: string, from: number): number {
+  let index = from
+  while ((index = lower.indexOf(needle, index)) >= 0) {
+    const next = lower[index + needle.length]
+    if (next === undefined || next === '>' || next === '/' || /\s/.test(next)) return index
+    index += needle.length
+  }
+  return -1
 }
 
 export class PlainTextDocumentParser implements DocumentParser {

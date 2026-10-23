@@ -83,6 +83,63 @@ test('CNINFO topSearch rejects wrong-code rows and missing orgId', async () => {
   }
 })
 
+test('CNINFO topSearch retries one transient failure with Retry-After and still requires an exact security-code match', async () => {
+  const requests: string[] = []
+  const responses = [
+    new Response('temporarily unavailable', { status: 504, headers: { 'retry-after': '0' } }),
+    new Response(JSON.stringify([{ code: '000001', orgId: 'wrong-org' }, { code: '600519', orgId: 'gssh0600519' }]), { status: 200 }),
+  ]
+  const client = new CninfoOfficialDisclosureClient({ fetchImpl: async (_input, init) => {
+    requests.push(String(init?.body))
+    return responses.shift()!
+  } })
+
+  assert.equal(await client.resolveOrganizationId('600519'), 'gssh0600519')
+  assert.equal(requests.length, 2)
+  assert.equal(requests.every((body) => body.includes('keyWord=600519')), true)
+})
+
+test('CNINFO topSearch retries only once and retains both transient failure diagnostics', async () => {
+  let requests = 0
+  const client = new CninfoOfficialDisclosureClient({ fetchImpl: async () => {
+    requests += 1
+    return new Response('gateway timeout', { status: 504, headers: { 'retry-after': '0' } })
+  } })
+
+  await assert.rejects(() => client.resolveOrganizationId('002384'), (error: unknown) => {
+    assert.match(String(error), /HTTP 504 after 2 attempts/)
+    assert.match(String(error), /attempts=1:HTTP_504,2:HTTP_504/)
+    return true
+  })
+  assert.equal(requests, 2)
+})
+
+test('CNINFO topSearch cancellation during Retry-After prevents the retry request', async () => {
+  const controller = new AbortController()
+  let requests = 0
+  const client = new CninfoOfficialDisclosureClient({ fetchImpl: async () => {
+    requests += 1
+    return new Response('rate limited', { status: 429, headers: { 'retry-after': '2' } })
+  } })
+  const abortTimer = setTimeout(() => controller.abort(), 10)
+  try {
+    await assert.rejects(() => client.resolveOrganizationId('002384', controller.signal), /WORKFLOW_CANCELLED/)
+  } finally {
+    clearTimeout(abortTimer)
+  }
+  assert.equal(requests, 1)
+})
+
+test('CNINFO topSearch does not retry non-transient HTTP failures', async () => {
+  let requests = 0
+  const client = new CninfoOfficialDisclosureClient({ fetchImpl: async () => {
+    requests += 1
+    return new Response('bad request', { status: 400 })
+  } })
+  await assert.rejects(() => client.resolveOrganizationId('002384'), /CNINFO topSearch request failed with HTTP 400/)
+  assert.equal(requests, 1)
+})
+
 test('CNINFO research candidates preserve an explicit correction-to-announcement relation', async () => {
   const client = new CninfoOfficialDisclosureClient({ fetchImpl: async (input) => String(input).includes('/topSearch/')
     ? new Response(JSON.stringify([{ code: '600519', orgId: 'gssh0600519', zwjc: '贵州茅台' }]), { status: 200 })

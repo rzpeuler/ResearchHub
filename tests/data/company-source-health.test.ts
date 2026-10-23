@@ -6,6 +6,16 @@ const replacement: CompanySourceAttemptTrace = { ...failure, sourceId: 'fallback
 test('one failure cannot recommend replacing a source', () => {
   assert.deepEqual(assessCompanySourceHealth([failure, replacement]), [])
 })
+test('R85-style one-off source failures and a partially successful web route do not count as repeated failure', () => {
+  const trace: CompanySourceAttemptTrace[] = [
+    { metricId: 'company_basic_profile', sourceId: 'akshare-company_basic_profile', status: 'SOURCE_ERROR', diagnostic: 'ProxyError', validated: false },
+    { metricId: 'company_market_history', sourceId: 'akshare-company_market_history', status: 'SOURCE_ERROR', diagnostic: 'ProxyError', validated: false },
+    { metricId: 'company_market_history', sourceId: 'tencent-company-market-history', status: 'SOURCE_ERROR', diagnostic: 'adapter error', validated: false },
+    { metricId: 'company_research_evidence', sourceId: 'gdelt-company-research-evidence', status: 'SOURCE_ERROR', diagnostic: 'fetch failed', validated: false },
+    { metricId: 'company_research_evidence', sourceId: 'public-web-company-research-evidence', status: 'SUCCESS', validated: true, diagnostic: undefined },
+  ]
+  assert.deepEqual(assessCompanySourceHealth(trace), [])
+})
 test('repeated failures plus later validated alternative recommends run-local replacement', () => {
   const advice = assessCompanySourceHealth([failure, { ...failure, round: 1 }, replacement])
   assert.deepEqual(advice, [{ metricId: failure.metricId, requirementId: failure.requirementId, sourceId: 'primary', status: 'replacement_recommended', failureCount: 2, latestDiagnostic: 'HTTP_503', replacementSourceId: 'fallback' }])
