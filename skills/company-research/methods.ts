@@ -376,21 +376,25 @@ function bindExactCompanyTableRows<T extends { readonly findings: readonly Compa
   output: T,
   packets: readonly CompanyEvidencePacket[],
   sources: readonly NormalizedResearchSource[],
+  allowExactSplitClassificationRepair = false,
 ): T {
   const sourceMap = new Map(sources.map(source => [source.candidate.candidateId, source]))
   let changed = false
   const findings = output.findings.map(finding => {
     const text = finding.text
     if (!/毛利率|营业收入|营业成本/.test(text)) return finding
+    const classification = /分行业|行业分类/.test(text) ? '分行业' : /分产品|产品分类/.test(text) ? '分产品' : undefined
+    if (!classification) return finding
     for (const packet of packets) {
       const refs = new Set(finding.evidence.filter(ref => ref.sourceCandidateId === packet.sourceCandidateId).map(ref => ref.location))
       const source = sourceMap.get(packet.sourceCandidateId)
       if (!source) continue
       const citedExcerpts = packet.excerpts.filter(row => refs.has(row.location)).map(row => row.text).join(' ')
       // Complete a table citation only when the finding already cites that
-      // same source's industry and metric headers; never borrow a matching
+      // same source's segment and metric headers; never borrow a matching
       // numeric cell from another table or document.
-      if (!/分行业/.test(citedExcerpts) || !/毛利率/.test(citedExcerpts) || !/增减/.test(citedExcerpts)) continue
+      const hasClassificationCitation = citedExcerpts.includes(classification)
+      if ((!hasClassificationCitation && !allowExactSplitClassificationRepair) || !/毛利率/.test(citedExcerpts) || !/增减/.test(citedExcerpts)) continue
       const paragraphs = source.content.split(/\r?\n/)
       const supplied = new Map(packet.excerpts.map(row => [row.location, row.text]))
       // Match magnitude here; the ordinary numeric validator below still
@@ -408,10 +412,17 @@ function bindExactCompanyTableRows<T extends { readonly findings: readonly Compa
         if (fullLabel.length < 4 || !text.replace(/\s+/g, '').includes(fullLabel)) continue
         const rowValues = new Set(numberTokens(row))
         if ([...claimNumbers].filter(token => rowValues.has(token)).length < 2) continue
+        let markerIndex = -1
+        for (let cursor = index - 1; cursor >= Math.max(0, index - 30); cursor--) {
+          if (paragraphs[cursor]!.trim() === classification) { markerIndex = cursor; break }
+        }
+        if (markerIndex < 0) continue
+        const markerLocation = `paragraph:${markerIndex + 1}`
+        if (supplied.get(markerLocation)?.trim() !== classification) continue
         const rowLocation = `paragraph:${index + 1}`
         const priorLocation = `paragraph:${index}`
         if (supplied.get(rowLocation)?.trim() !== row) continue
-        candidates.push({ label: fullLabel, refs: [...(splitLabel && supplied.get(priorLocation)?.trim() === prior ? [priorLocation] : []), rowLocation] })
+        candidates.push({ label: fullLabel, refs: [...(!refs.has(markerLocation) ? [markerLocation] : []), ...(splitLabel && supplied.get(priorLocation)?.trim() === prior ? [priorLocation] : []), rowLocation] })
       }
       const labelCounts = new Map<string, number>()
       for (const candidate of candidates) labelCounts.set(candidate.label, (labelCounts.get(candidate.label) ?? 0) + 1)
@@ -880,6 +891,8 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
       const yearBound = bindCompanyAnswerYearEvidence(repaired.output, input.sources, packets, input.preparedAnalysis, input.company.symbol, input.asOf)
       const parsed = input.skillId === 'business_driver_analysis'
         ? repairCompanySegmentFindingLabels(bindExactCompanyTableRows(yearBound, packets, input.sources), packets, input.sources)
+        : input.skillId === 'market_structure_analysis'
+          ? bindExactCompanyTableRows(yearBound, packets, input.sources, true)
         : yearBound
       if (input.skillId === 'capital_allocation_review') {
         const preserved = preserveExactDividendFindingReferences(parsed, packets)

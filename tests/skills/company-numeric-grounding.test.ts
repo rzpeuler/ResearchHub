@@ -12,7 +12,7 @@ test('Chinese official product-page price ranges retain their explicit currency 
   const productPage = {
     candidate: { candidateId, kind: 'public_web', tier: 2, provider: 'public_web', title: '比亚迪车型页面' },
     title: '比亚迪车型页面', content: '海豹07DM-i ¥139,800 - ¥195,800 立即订购',
-  } as NormalizedResearchSource
+  } as unknown as NormalizedResearchSource
   const markdown = `海豹07 DM-i页面标价¥139,800—¥195,800，页面提供订购入口。[${candidateId}@paragraph:1]`
   const result = validateCompanyNumericGrounding({ markdown, sources: [productPage] })
   assert.equal(result.status, 'grounded', JSON.stringify(result.diagnostics))
@@ -234,6 +234,8 @@ test('consolidated gross-margin comparisons require the exact prepared ratio row
   assert.equal(validateCompanyNumericGrounding({ markdown: r172CurrentFirst, ...r171Options }).status, 'grounded', 'current-first headers bind their own exact cells, including the optional percent label')
   const qualifiedMarginLabel = r172CurrentFirst.replace('合并毛利率（%）', '合并毛利率（半年累计，%）')
   assert.equal(validateCompanyNumericGrounding({ markdown: qualifiedMarginLabel, ...r171Options }).status, 'grounded', 'period qualifiers in a structured margin row label do not break exact source and period binding')
+  const inlineMarginHeader = r172CurrentFirst.replace('\n\n| 指标 |', `\n\n结构化期间数据如下。[${candidateId}@paragraph:1] | 指标 |`)
+  assert.equal(validateCompanyNumericGrounding({ markdown: inlineMarginHeader, ...r171Options }).status, 'grounded', 'an inline prose prefix before the table header does not hide the exact period columns')
   const r173CandidateId = 'akshare-financial-002594'
   const r173PreparedAnalysis = { ...preparedAnalysis, financial: { ...preparedAnalysis.financial, ratioChanges: [{ ...preparedAnalysis.financial.ratioChanges[0]!, sourceCandidateIds: [r173CandidateId] }] } }
   const r173Options = { sources: [financial], preparedAnalysis: r173PreparedAnalysis, trustedText: ['2025-06-30', '2026-06-30'] }

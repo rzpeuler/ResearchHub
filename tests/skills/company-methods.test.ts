@@ -1043,6 +1043,31 @@ test('market-structure prompt binds split margin values to their own period and 
   assert.match(instruction, /不能拿同值的另一分类行替代/)
 })
 
+test('market-structure findings gain the exact same-source product classification and split value-row citations', async () => {
+  const lines = [
+    '单位：元', '营业收入', '营业成本', '毛利率', '营业收入比上年同期增减', '营业成本比上年同期增减', '毛利率比上年同期增减',
+    '分产品', '汽车、相关产品及', '其他产品 275,341,358,000.00 213,863,297,000.00 22.33% -8.98% -11.24% 1.98%',
+  ]
+  const candidateId = 'official-product-table'
+  const filing = { ...source, candidate: { ...source.candidate, candidateId }, title: '2026年半年度报告', content: lines.join('\n') }
+  const initiallyCited = [1, 2, 3, 4, 5, 6, 7, 9].map(paragraph => ({ sourceCandidateId: candidateId, location: `paragraph:${paragraph}` }))
+  const findingText = '2026年半年度报告产品分类“汽车、相关产品及其他产品”的营业收入为275,341,358,000.00元、营业成本为213,863,297,000.00元、毛利率为22.33%，毛利率比上年同期增减为1.98%。'
+  const result = await executeCompanyResearchMethod({
+    skillId: 'market_structure_analysis', company: { symbol: '002594' }, asOf: '2026-10-23',
+    sources: [filing], durableSourceCandidateIds: [candidateId],
+    reasoningExecutor: executor(async () => ({
+      ...output, answer: '产品分类及其财务披露应按原表口径理解。',
+      markdown: `产品分类及其财务披露应按原表口径理解。[${candidateId}@paragraph:1]`,
+      sections: [{ id: 'industry-exposure', markdown: `产品分类及其财务披露应按原表口径理解。[${candidateId}@paragraph:1]` }],
+      findings: [{ text: findingText, kind: 'fact', evidence: initiallyCited }],
+    })),
+  })
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  const addedLocations = new Set(result.findings[0]!.evidence.filter(ref => ref.sourceCandidateId === candidateId).map(ref => ref.location))
+  assert.ok(addedLocations.has('paragraph:8'), 'the same table’s split-product marker is cited')
+  assert.ok(addedLocations.has('paragraph:10'), 'the exact cited numeric continuation is added')
+})
+
 test('financial period-column numeric retry distinguishes prior balance from unsupported change', async () => {
   const paragraphs = Array.from({ length: 768 }, (_, index) => `年报一般经营说明第${index + 1}段。`)
   paragraphs[760] = '单位：元'
