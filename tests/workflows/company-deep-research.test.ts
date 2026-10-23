@@ -49,6 +49,8 @@ test('risk method instructions require exact table total rows and local unit/hea
   assert.match(risk, /汇总行有该数字时，必须引用汇总行/)
   assert.match(risk, /同时引用本次输入实际提供的对应表头和单位行/)
   assert.match(risk, /不得把相邻表格的表头、期间或单位借给本行/)
+  assert.match(risk, /风险矩阵固定使用五列/)
+  assert.match(risk, /每个风险数据行必须恰有五格/)
   assert.match(risk, /各操作数均逐项引用/)
   assert.equal(addCompanyMethodEvidenceInstructions('financial_quality_analysis', methodology), methodology)
 })
