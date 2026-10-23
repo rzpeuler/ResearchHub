@@ -22,6 +22,29 @@ test('Markdown table validation rejects extra cells and embedded heading rows', 
   assert.match(validateCompanyResearchMarkdownTables('| 指标 | ## 判断 |\n| --- | --- |\n| 客户集中 | 需持续跟踪 |')[0]!, /heading markup embedded in table header/)
 })
 
+test('table repair removes one empty customer-table header and detaches a trailing prose paragraph', () => {
+  const malformed = [
+    '### 供应链、客户依赖与规模约束',
+    '| 供应商口径 | 披露值 |',
+    '|---|---:|',
+    '| 前五名合计采购金额 | 5,737,450,383.42元[annual@paragraph:978] |',
+    '| 第一名占年度采购总额 | 5.58%[annual@paragraph:983] |',
+    '',
+    '| | 客户口径 | 披露值 |',
+    '|---|---:|',
+    '| 前五名客户占年度销售额 | 64.33%[annual@paragraph:965] |',
+    '| 第一名占年度销售额 | 46.46%[annual@paragraph:969] | **供应链与价值形成。** 客户集中会影响订单和收入；客户身份、产品映射及切换成本未披露。[annual@paragraph:1321]',
+  ].join('\n')
+  const repaired = repairCompanyResearchMarkdownTables(malformed)
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.ok(repaired.repairs.some(item => item.startsWith('TABLE_EMPTY_LEADING_HEADER_CELL_REMOVED')))
+  assert.ok(repaired.repairs.some(item => item.startsWith('TABLE_TRAILING_NARRATIVE_MOVED')))
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.match(repaired.markdown, /\| 客户口径 \| 披露值 \|\n\|---\|---:\|/)
+  assert.match(repaired.markdown, /\| 第一名占年度销售额 \| 46\.46%\[annual@paragraph:969\] \|\n\n\*\*供应链与价值形成。\*\*/)
+  assert.match(repaired.markdown, /客户身份、产品映射及切换成本未披露。\[annual@paragraph:1321\]/)
+})
+
 test('capital-allocation table shape repair joins one excess trailing cell without dropping evidence', () => {
   const malformed='| 配置事项 | 规模与期间 | 目的与结果 | 评价及限制 |\n|---|---|---|---|\n| 研发投入 | 2025年投入人民币金额。[annual@paragraph:1526] | 公司披露研发方向。[annual@paragraph:606] | 原表变动比例13.02%。[annual@paragraph:1527] | 投资回报仍待验证。'
   const repaired=mergeExcessTrailingMarkdownTableCells(malformed)
