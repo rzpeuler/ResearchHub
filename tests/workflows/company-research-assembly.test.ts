@@ -530,8 +530,14 @@ test('normal nineteen-section assembly surfaces malformed tables from atomic met
 
 test('final synthesis rejects malformed table structure and accepts a repaired attempt', async () => {
   let calls = 0
-  const executor: ReasoningExecutor = { capabilities, execute: async () => {
+  const executor: ReasoningExecutor = { capabilities, execute: async (request) => {
     calls++
+    if (calls === 2) {
+      const retry = request.input as { repairInstruction: string }
+      assert.match(retry.repairInstruction, /每个数据行必须与该表头列数完全一致/)
+      assert.match(retry.repairInstruction, /指标\/观察项、观察频率、触发条件\/核验信号、论点关联与证据/)
+      assert.match(retry.repairInstruction, /改用有引用的普通段落/)
+    }
     const malformed = '| 指标 | 判断 |\n| --- | --- |\n| 客户集中 | 需跟踪 | 合并进来的标题 |\n\n有证据支持的结论 [annual@paragraph:1]'
     const repaired = '| 指标 | 判断 |\n| --- | --- |\n| 客户集中 | 需跟踪 |\n\n有证据支持的结论 [annual@paragraph:1]'
     return { operation: 'company_research_synthesis', output: { sections: ids.map(id => ({ id, markdown: id === 'investment-thesis' ? calls === 1 ? malformed : repaired : '有证据支持的结论 [annual@paragraph:1]', sourceCandidateIds: ['annual'] })) } }
