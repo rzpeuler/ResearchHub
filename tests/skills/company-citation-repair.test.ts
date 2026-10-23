@@ -1691,3 +1691,27 @@ test('financial-quality duplicate segment-margin prose reuses only its unique ci
   assert.equal(ambiguous.output.sections[0]!.markdown,claim,'duplicate source-table candidates must not be selected by order')
   assert.equal(ambiguous.repairs.filter(repair=>repair.sectionId==='financial-quality').length,0)
 })
+
+test('financial-quality normalizes only an exact prepared simple-FCF formula before numeric grounding', () => {
+  const candidateId='akshare-financial-002384'
+  const formula='23.84亿元−52.53亿元＝-28.69亿元'
+  const text=`2026年上半年累计简化自由现金流：${formula}。[${candidateId}@paragraph:1]`
+  const financialSource={candidate:{candidateId},title:'structured financial data',content:'{"kind":"financial"}'} as CompanyResearchInput['sources'][number]
+  const financialPacket:CompanyEvidencePacket={sourceCandidateId:candidateId,title:financialSource.title,publisher:'AKShare',excerpts:[{sourceCandidateId:candidateId,location:'paragraph:1',text:financialSource.content}]}
+  const preparedAnalysis={financial:{simpleFreeCashFlow:[{period:'2026-06-30',basis:'YTD',unit:'CNY',operatingCashFlow:2_384_000_000,capex:5_253_000_000,value:-2_869_000_000,displayUnit:'亿元',displayOperatingCashFlow:'23.84',displayCapex:'52.53',displayValue:'-28.69',formula,sourceCandidateIds:[candidateId]}]}}
+  const tableRow=`| 简化自由现金流 | 2026年上半年累计；23.84亿元−52.53亿元 | -28.69亿元 | [${candidateId}@paragraph:1]`
+  const draft={findings:[{text,kind:'fact' as const,evidence:[{sourceCandidateId:candidateId,location:'paragraph:1'}]}],markdown:`${text}\n${tableRow}`,sections:[{id:'financial-quality',markdown:`## 现金流\n${text}\n${tableRow}`} ]}
+  const result=repairCompanyMethodCitations(draft,[financialPacket],{...input,sources:[financialSource],preparedAnalysis})
+  const canonical=`23.84亿元减52.53亿元＝负28.69亿元`
+  assert.ok(result.output.markdown.split(/\r?\n/).every(line=>!line.includes('亿元−') || !line.includes('简化自由现金流')))
+  assert.ok(result.output.markdown.includes('23.84亿元减52.53亿元'))
+  assert.ok(result.output.sections[0]!.markdown.includes(canonical))
+  assert.ok(result.output.sections[0]!.markdown.includes('负28.69亿元'))
+  assert.ok(result.output.findings[0]!.text.includes(canonical))
+  for(const markdown of [result.output.markdown,result.output.sections[0]!.markdown,result.output.findings[0]!.text]) assert.equal(validateCompanyNumericGrounding({markdown,sources:[financialSource],evidenceContexts:[financialPacket],preparedAnalysis,trustedText:['002384','2026-10-23','2026-06-30']}).status,'grounded')
+
+  const wrongPeriodText=text.replace('2026年上半年','2025年上半年')
+  const unbound={...draft,findings:[{...draft.findings[0]!,text:wrongPeriodText}],markdown:`${wrongPeriodText}\n2025年上半年${tableRow.replace('2026年上半年','')}`,sections:[{id:'financial-quality',markdown:`## 现金流\n${wrongPeriodText}\n2025年上半年${tableRow.replace('2026年上半年','')}`} ]}
+  const rejected=repairCompanyMethodCitations(unbound,[financialPacket],{...input,sources:[financialSource],preparedAnalysis})
+  assert.ok(rejected.output.markdown.includes(formula),'wrong period must not receive deterministic formula normalization')
+})
