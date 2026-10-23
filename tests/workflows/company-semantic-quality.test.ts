@@ -660,6 +660,50 @@ test('reviewer may retain an evidence blocker for an explicitly unlabelled annua
   assert.equal(validateCompanySemanticQualityOutput({ sectionChecks: periodScopeGap }).find(check => check.sectionId === 'revenue-profit-drivers')!.evidenceSupportsConclusion, false)
 })
 
+test('R194 review period objection is cleared only when the report and cited annual paragraphs show the correct 2026-2030 forecast',()=>{
+  const lines=Array.from({length:559},()=> '披露正文')
+  lines[557]='2025年全球服务器及存储领域的市场规模为 4130 亿美元。'
+  lines[558]='2026 至 2030 年复合增长率为 6%，2030 年市场规模将达 6300 亿美元。'
+  const annual={candidate:{candidateId:'annual-period'},title:'2025年年度报告',content:lines.join('\n')} as NormalizedResearchSource
+  const body='全球服务器及存储市场为相邻市场：2025年基期4130亿美元；公司报告所述预测为2026至2030年复合增长率6%，2030年6300亿美元。[annual-period@paragraph:557] [annual-period@paragraph:558] [annual-period@paragraph:559]'
+  const report=sections.map(section=>section.id==='industry-exposure'?{...section,markdown:body}:section)
+  const falseChecks=output.sectionChecks.map(check=>check.sectionId==='industry-exposure'
+    ?{...check,evidenceSupportsConclusion:false,numericReproducible:false,reasons:['全球服务器市场段落将预测期写为2025年至2030年复合增长率6%；来源原文明确2026至2030年，报告错置预测起始年，影响时间边界。']}
+    :check)
+  const fixed=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseChecks}),report,[annual]).find(check=>check.sectionId==='industry-exposure')!
+  assert.equal(fixed.evidenceSupportsConclusion,true)
+  assert.equal(fixed.numericReproducible,true)
+  assert.deepEqual(fixed.reasons,[])
+  const wrongBody=body.replace('2026至2030年','2025至2030年')
+  const wrong=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseChecks}),report.map(section=>section.id==='industry-exposure'?{...section,markdown:wrongBody}:section),[annual]).find(check=>check.sectionId==='industry-exposure')!
+  assert.equal(wrong.evidenceSupportsConclusion,false)
+})
+
+test('R194 employee-plan review false positive is dismissed only when the report and filing both preserve the employee-count label and its limitation',()=>{
+  const filingLines=Array.from({length:1404},()=> '披露正文')
+  filingLines[1386]='全部有效的员工持股计划情况'
+  filingLines[1392]='员工人数'
+  filingLines[1401]='核心技术（业务）骨干'
+  filingLines[1402]='150 3,048,701 无 0.17%'
+  const filing={candidate:{candidateId:'employee-filing',publishedAt:'2026-08-22'},title:'2026年半年度报告',content:filingLines.join('\n')} as NormalizedResearchSource
+  const body='员工持股计划表“员工人数”列披露150人，不能推断为实际人数；人数上限在可用披露中未见，持股数也不等于实际参与人数。[employee-filing@paragraph:1393] [employee-filing@paragraph:1402]'
+  const report=[...COMPANY_CORE_SECTION_IDS.map(id=>({id,markdown:id==='monitoring-checklist'?body:`${id} 正常分析。`}))]
+  const falseChecks=output.sectionChecks.map(check=>check.sectionId==='monitoring-checklist'
+    ?{...check,evidenceSupportsConclusion:false,numericReproducible:false,reasons:['治理监控行重复写持股数；真正问题是把2026年半年报员工持股人数150人当作计划实际参与人数并据此要求核验人数上限，员工人数与实际参与人数混淆。']}
+    :check)
+  const reconciled=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseChecks}),report,[filing])
+  const accepted=reconciled.find(check=>check.sectionId==='monitoring-checklist')!
+  assert.equal(accepted.evidenceSupportsConclusion,true)
+  assert.equal(accepted.numericReproducible,true)
+  assert.deepEqual(accepted.reasons,[])
+  const ambiguous=report.map(section=>section.id==='monitoring-checklist'?{...section,markdown:'员工人数列列示150人。[employee-filing@paragraph:1393] [employee-filing@paragraph:1402]'}:section)
+  const stillBlocked=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseChecks}),ambiguous,[filing]).find(check=>check.sectionId==='monitoring-checklist')!
+  assert.equal(stillBlocked.evidenceSupportsConclusion,false)
+  const unrelatedCitation=report.map(section=>section.id==='monitoring-checklist'?{...section,markdown:body.replace('employee-filing@paragraph:1402','employee-filing@paragraph:1387')}:section)
+  const unrelatedStillBlocked=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseChecks}),unrelatedCitation,[filing]).find(check=>check.sectionId==='monitoring-checklist')!
+  assert.equal(unrelatedStillBlocked.evidenceSupportsConclusion,false)
+})
+
 test('a concrete citation defect does not turn explicitly correct amounts into a numeric failure',()=>{
   const sectionChecks=COMPANY_CORE_SECTION_IDS.map(sectionId=>({sectionId,questionAnswered:true,evidenceSupportsConclusion:sectionId==='technologies'?false:true,numericReproducible:sectionId==='technologies'?false:true,riskTransmission:true,reasons:sectionId==='technologies'?['金额正确，但引用列表把研发活动表与利润表定位混杂，呈现区分仍较难复核。']:[]}))
   const checks=validateCompanySemanticQualityOutput({sectionChecks})

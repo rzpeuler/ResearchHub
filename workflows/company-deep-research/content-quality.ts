@@ -523,6 +523,63 @@ export function reconcileCompanyFinancialGrowthFormula<T extends CompanyContentS
   return input.sections.map(item=>item.id===section.id?repaired:item)
 }
 
+/** Put a complete same-period annual trend and its counterevidence in the financial chapter opening. */
+export function reconcileCompanyAnnualFinancialCounterevidence<T extends CompanyContentSection>(input: {
+  readonly sections: readonly T[]
+  readonly methodResults: readonly CompanyResearchMethodResult[]
+  readonly preparedAnalysis?: unknown
+}): readonly T[] {
+  const section=input.sections.find(item=>item.id==='financial-quality')
+  const method=input.methodResults.find(item=>item.skillId==='financial_quality_analysis'&&item.status==='complete')
+  const root=input.preparedAnalysis&&typeof input.preparedAnalysis==='object'?input.preparedAnalysis as {financial?:{table?:readonly {period?:string;metrics?:Readonly<Record<string,number>>;metadata?:Readonly<Record<string,{unit?:string;currency?:string;basis?:string}>>;conflicts?:readonly {metric:string}[]}[]}}:undefined
+  const rows=root?.financial?.table
+  if(!section||!method||!rows)return input.sections
+  const current=[...rows].filter(row=>/^\d{4}-12-31$/.test(row.period??'')).sort((a,b)=>b.period!.localeCompare(a.period!))[0]
+  if(!current)return input.sections
+  const priorYear=Number(current.period!.slice(0,4))-1
+  const prior=rows.find(row=>row.period===`${priorYear}-12-31`)
+  if(!prior)return input.sections
+  const metrics=['revenue','operatingProfit','netProfit'] as const
+  const valid=metrics.every(metric=>{
+    const left=current.metrics?.[metric],right=prior.metrics?.[metric]
+    return typeof left==='number'&&Number.isFinite(left)&&typeof right==='number'&&Number.isFinite(right)&&right!==0
+      &&[current,prior].every(row=>row.metadata?.[metric]?.unit==='CNY'&&row.metadata[metric]?.currency==='CNY'&&row.metadata[metric]?.basis==='YTD'&&!row.conflicts?.some(conflict=>conflict.metric===metric))
+  })
+  if(!valid||section.markdown.includes(`年度财务反证（${priorYear}—${current.period!.slice(0,4)}年`))return input.sections
+  const packets=[...method.executionEvidence??[],...method.deterministicEvidence??[]]
+  const backed=packets.flatMap(packet=>packet.excerpts.filter(excerpt=>excerpt.location==='paragraph:1').map(excerpt=>({packet,excerpt}))).find(({excerpt})=>{
+    try{
+      const parsed=JSON.parse(excerpt.text) as {kind?:string;rows?:readonly {periodEnd?:string;metrics?:Readonly<Record<string,number>>;metricMetadata?:Readonly<Record<string,{unit?:string;currency?:string;basis?:string}>>}[]}
+      const sourceCurrent=parsed.rows?.find(row=>row.periodEnd===current.period)
+      const sourcePrior=parsed.rows?.find(row=>row.periodEnd===prior.period)
+      return parsed.kind==='financial'&&!!sourceCurrent&&!!sourcePrior&&metrics.every(metric=>sourceCurrent.metrics?.[metric]===current.metrics?.[metric]&&sourcePrior.metrics?.[metric]===prior.metrics?.[metric]&&sourceCurrent.metricMetadata?.[metric]?.unit==='CNY'&&sourcePrior.metricMetadata?.[metric]?.unit==='CNY'&&sourceCurrent.metricMetadata?.[metric]?.currency==='CNY'&&sourcePrior.metricMetadata?.[metric]?.currency==='CNY'&&sourceCurrent.metricMetadata?.[metric]?.basis==='YTD'&&sourcePrior.metricMetadata?.[metric]?.basis==='YTD')
+    }catch{return false}
+  })
+  if(!backed)return input.sections
+  const fmt=(value:number)=>value.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
+  const comparison=(metric:typeof metrics[number],label:string)=>{
+    const oldValue=prior.metrics![metric]!,newValue=current.metrics![metric]!
+    const change=(newValue-oldValue)/Math.abs(oldValue)*100
+    return `${label}：${fmt(oldValue)}元至${fmt(newValue)}元；同比＝(${fmt(newValue)}−${fmt(oldValue)})÷abs(${fmt(oldValue)})×100%＝${change<0?'−':''}${Math.abs(change).toFixed(2)}%`
+  }
+  const direction=(metric:typeof metrics[number])=>current.metrics![metric]!>prior.metrics![metric]!?'增长':current.metrics![metric]!<prior.metrics![metric]!?'下降':'持平'
+  const revenueOperatingConclusion=direction('revenue')===direction('operatingProfit')
+    ?`营业收入与营业利润均${direction('revenue')}，两者方向一致。`
+    :`营业收入${direction('revenue')}而营业利润${direction('operatingProfit')}，两者方向不一致，收入变化未同步反映为营业利润同向变化。`
+  const cite=`[${backed.packet.sourceCandidateId}@${backed.excerpt.location}]`
+  const statement=`**年度财务反证（${priorYear}—${current.period!.slice(0,4)}年，结构化财务序列、全年累计、同期对同期）：**${comparison('revenue','营业收入')}；${comparison('operatingProfit','营业利润')}；${comparison('netProfit','结构化净利润，归属口径未注明')}。变动方向分别为：营业收入${direction('revenue')}、营业利润${direction('operatingProfit')}、结构化净利润${direction('netProfit')}。${revenueOperatingConclusion}净利润字段不据此表述为归母净利润。${cite}`
+  const heading=section.markdown.match(/^(#{1,2}\s+[^\n]+)(?:\n|$)/)
+  const markdown=heading?section.markdown.replace(heading[0],`${heading[1]}\n\n${statement}\n`):`${statement}\n\n${section.markdown}`
+  const ids=[...new Set([...(section.sourceCandidateIds??[]),backed.packet.sourceCandidateId])]
+  const driver=input.sections.find(item=>item.id==='revenue-profit-drivers')
+  let driverMarkdown=driver?.markdown??''
+  if(driver&&!driverMarkdown.includes(`年度财务反证（${priorYear}—${current.period!.slice(0,4)}年`)){
+    const heading=driverMarkdown.match(/^(#{1,2}\s+[^\n]+)(?:\n|$)/)
+    driverMarkdown=heading?driverMarkdown.replace(heading[0],`${heading[1]}\n\n${statement}\n`):`${statement}\n\n${driverMarkdown}`
+  }
+  return input.sections.map(item=>item.id===section.id?{...item,markdown,sourceCandidateIds:ids}:item.id==='revenue-profit-drivers'&&driver?{...item,markdown:driverMarkdown,sourceCandidateIds:[...new Set([...(item.sourceCandidateIds??[]),backed.packet.sourceCandidateId])]}:item)
+}
+
 /** Replace an unlabeled structured margin with a reproducible statutory consolidated-income-statement calculation. */
 export function reconcileCompanyConsolidatedGrossMargin<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly T[] {
   let section = input.sections.find(item => item.id === 'financial-quality')
@@ -589,7 +646,17 @@ export function reconcileCompanyConsolidatedGrossMargin<T extends CompanyContent
       .replace(/毛利率水平上升/g,'毛利率按合并利润表营业收入与营业成本复算')
     if (!markdown.includes('合并毛利率（按合并利润表复算；年初至期末累计）')) markdown = `${statement}\n\n${markdown.trim()}`
     const repaired = {...section,markdown,sourceCandidateIds:[...new Set([...(section.sourceCandidateIds??[]),packet.sourceCandidateId])]}
-    return input.sections.map(item => item.id === section.id ? repaired : item)
+    const driver=input.sections.find(item=>item.id==='revenue-profit-drivers')
+    let driverMarkdown=driver?.markdown??''
+    if(driver){
+      const unscoped=/合并毛利率（年初至期末累计）[^。\n]*。?(?:\s*\[[^\]]+\])?/g
+      if(unscoped.test(driverMarkdown)){unscoped.lastIndex=0;driverMarkdown=driverMarkdown.replace(unscoped,statement)}
+      else if(!driverMarkdown.includes('合并毛利率（按合并利润表复算；年初至期末累计）')){
+        const heading=driverMarkdown.match(/^(#{1,2}\s+[^\n]+)(?:\n|$)/)
+        driverMarkdown=heading?driverMarkdown.replace(heading[0],`${heading[1]}\n\n${statement}\n`):`${statement}\n\n${driverMarkdown}`
+      }
+    }
+    return input.sections.map(item => item.id === section.id ? repaired : item.id==='revenue-profit-drivers'&&driver ? {...item,markdown:driverMarkdown,sourceCandidateIds:[...new Set([...(item.sourceCandidateIds??[]),packet.sourceCandidateId])]} : item)
   }
   return structuredRowCorrected ? input.sections.map(item => item.id === section.id ? section : item) : input.sections
 }
@@ -1407,7 +1474,7 @@ export function reconcileCompanyRiskBoundaries<T extends CompanyContentSection>(
 }
 
 /** Reconcile cross-section facts and limitations so synthesized prose cannot deny evidence retained elsewhere in the report. */
-export function reconcileCompanyCrossSectionBoundaries<T extends CompanyContentSection>(input:{readonly sections:readonly T[];readonly methodResults:readonly CompanyResearchMethodResult[]}):readonly T[]{
+export function reconcileCompanyCrossSectionBoundaries<T extends CompanyContentSection>(input:{readonly sections:readonly T[];readonly methodResults:readonly CompanyResearchMethodResult[];readonly sources?:readonly {readonly candidate:{readonly candidateId:string;readonly publishedAt?:string};readonly title:string;readonly content:string}[]}):readonly T[]{
   let sections=[...input.sections]
   const update=(id:string,transform:(markdown:string)=>string)=>{
     sections=sections.map(section=>section.id===id?{...section,markdown:transform(section.markdown)}:section)
@@ -1482,7 +1549,7 @@ export function reconcileCompanyCrossSectionBoundaries<T extends CompanyContentS
     return fixed
   })
   update('revenue-profit-drivers',markdown=>markdown.replace(/收入扩张及分产品毛利结构有关/g,'分产品收入与毛利率变化仅提供业务层面的观察线索；由于缺少可勾稽至合并利润变化的量化桥，不能据此将其认定为合并利润变化的原因'))
-  update('risks',markdown=>markdown.replace(/MFLEX资产组.{0,100}?预测收入复合增长率\s*0\.10%/g,'MFLEX资产组在2025年年度减值测试中的五年预测期收入复合增长率假设为0.10%（模型假设，不是已实现收入增速）'))
+  update('risks',markdown=>markdown.replace(/MFLEX资产组.{0,140}?预测(?:期)?收入复合增长率\s*0\.10%/g,'MFLEX资产组减值测试摘录出现0.10%，但当前分栏文本未能将该值可靠对应到预测期收入增长假设，故不将其作为收入增速；相关假设数值与敏感性仍待核对。'))
   const qualifyTargetWording=(markdown:string)=>{
     let fixed=markdown.replace(/目标为设备商集采/g,'公司披露的开发目标是拓展主流设备商集采中标份额（目标，不代表已中标或已实现市场份额）')
     if(!fixed.includes('[official-39e591fa149e4543@paragraph:1294]'))fixed=fixed.replaceAll('[official-39e591fa149e4543@paragraph:1293]','[official-39e591fa149e4543@paragraph:1293] [official-39e591fa149e4543@paragraph:1294]')
@@ -1499,7 +1566,83 @@ export function reconcileCompanyCrossSectionBoundaries<T extends CompanyContentS
   if(catalysts){
     update('catalysts',markdown=>markdown.replace(/资料没有逐项披露这些节点的后续时间表。/g,'资料没有逐项披露这些节点的后续时间表，因此以下属于待验证的观察里程碑而非公司承诺：继续跟踪200G PAM4 EML量产向订单和交付的转化、400G PAM4 EML从研发进入客户验证/量产的阶段变化，以及共封装光学研发节点；相关产品收入、认证、良率与交付仍需后续披露验证。'))
   }
-  return sections
+  const latestEvidenceYear=input.methodResults.flatMap(method=>[...method.executionEvidence??[],...method.deterministicEvidence??[]]).map(packet=>Number(packet.title.match(/20\d{2}/)?.[0]??0)).filter(year=>year>0).sort((a,b)=>b-a)[0]
+  for(const source of input.sources??[]){
+    const rawDate=source.candidate.publishedAt?.match(/(20\d{2})/)?.[1]
+      ??source.content.match(/\b(20\d{2})[-/.]\d{1,2}[-/.]\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?\s*(?:来源|source)/i)?.[1]
+    const publicationYear=Number(rawDate??0)
+    if(!publicationYear||!latestEvidenceYear||publicationYear>=latestEvidenceYear)continue
+    for(const id of ['competition','technologies']){
+      const target=sections.find(section=>section.id===id)
+      if(!target||!target.markdown.includes(`${source.candidate.candidateId}@paragraph:`)||target.markdown.includes(`该竞争线索来自发表于${publicationYear}年`))continue
+      const citation=target.markdown.match(/\[([^\]\s]+@paragraph:\d+)\]/g)?.find(ref=>ref.startsWith(`[${source.candidate.candidateId}@`))
+      if(!citation)continue
+      update(id,markdown=>`${markdown.trim()}\n\n**时效限制：**该竞争线索来自发表于${publicationYear}年的历史公开资料，仅用于识别历史候选，不代表当前竞争能力或现时市场地位；当前竞争条件仍需较新的公司披露或可比资料验证。${citation}`)
+    }
+  }
+  return reconcileCompanyProductMatrixFromMethod({sections,methodResults:input.methodResults})
+}
+
+/** Replace a malformed synthesized product matrix with the already validated atomic-method matrix. */
+export function reconcileCompanyProductMatrixFromMethod<T extends CompanyContentSection>(input:{readonly sections:readonly T[];readonly methodResults:readonly CompanyResearchMethodResult[]}):readonly T[]{
+  const reportSection=input.sections.find(section=>section.id==='products')
+  const methodResults=input.methodResults??[]
+  const method=methodResults.find(item=>item.skillId==='product_technology_analysis'&&item.status==='complete')
+  const methodSection=method?.sections?.find(section=>section.id==='products')
+  if(!reportSection||!method||!methodSection)return input.sections
+  const productLabels=['电子电路产品','光电显示模组','精密组件产品','光模块']
+  const methodLines=methodSection.markdown.split(/\r?\n/)
+  // Some semantic executors collapse headings and the first table header onto
+  // one line. Locate the table header within the line and normalize only that
+  // boundary; the source-backed rows below remain verbatim.
+  const methodHeader=methodLines.findIndex(line=>line.includes('| 产品类别 |')&&/产品收入、成本及毛利/.test(line))
+  if(methodHeader<0)return input.sections
+  const headerOffset=methodLines[methodHeader]!.indexOf('| 产品类别 |')
+  const normalizedHeader=methodLines[methodHeader]!.slice(headerOffset).trim()
+  let methodEnd=methodHeader+1
+  while(methodEnd<methodLines.length&&/^\s*\|/.test(methodLines[methodEnd]!))methodEnd++
+  let table=[normalizedHeader,...methodLines.slice(methodHeader+1,methodEnd)]
+  if(table.length!==6||productLabels.some(label=>!table.some(line=>line.startsWith(`| ${label} |`))))return input.sections
+  const businessMethod=methodResults.find(item=>item.skillId==='business_model_map'&&item.status==='complete')
+  const shareMap=new Map<string,{share:string;ref:string}>()
+  for(const packet of [...businessMethod?.executionEvidence??[],...businessMethod?.deterministicEvidence??[]]){
+    if(!/2025\s*年年度报告/.test(packet.title))continue
+    const rows=packet.excerpts.map(excerpt=>({...excerpt,paragraph:Number(excerpt.location.match(/^paragraph:(\d+)$/)?.[1]??0)}))
+    for(const row of rows){
+      const previous=rows.find(item=>item.paragraph===row.paragraph-1)
+      const continuation=Boolean(previous&&previous.text.trim()&&!/[\d%％]/.test(previous.text)&&!/^分(?:产品|行业|地区|销售模式|销售渠道)$/.test(previous.text.trim()))
+      const effective=continuation?`${previous!.text.trim()}${row.text.trim()}`:row.text.trim()
+      const match=effective.match(/^(电子电路产品|光电显示模组|精密组件产品|光模块)\s+([\d,]+\.\d{2})\s+([\d.]+)%/)
+      if(!match)continue
+      const preceding=rows.filter(item=>item.paragraph>row.paragraph-20&&item.paragraph<row.paragraph)
+      const productHeader=preceding.some(item=>/^分产品$/.test(item.text.trim()))
+      const unit=preceding.some(item=>/^单位\s*[：:]\s*元$/.test(item.text.trim()))
+      const yearHeader=preceding.some(item=>/2025\s*年/.test(item.text))
+      const shareHeader=preceding.map(item=>item.text).join('').replace(/\s+/g,'').includes('金额占营业收入比重金额占营业收入比重')
+      const tableTitle=preceding.some(item=>/营业收入构成/.test(item.text))
+      if(productHeader&&unit&&yearHeader&&shareHeader&&tableTitle)shareMap.set(match[1]!,{share:match[3]!,ref:`${packet.sourceCandidateId}@${row.location}`})
+    }
+  }
+  const repairedRows=table.slice(2).map(line=>{
+    const cells=line.split('|').slice(1,-1).map(cell=>cell.trim())
+    if(cells.length!==5||!cells[3]!.includes('2025年收入')||!cells[3]!.includes('营业成本')||!cells[3]!.includes('毛利率'))return undefined
+    const share=shareMap.get(cells[0]??'')
+    if(share&&!cells[3]!.includes(`占营业收入${share.share}%`))cells[3]=`${cells[3]}；2025年占营业收入${share.share}% [${share.ref}]`
+    return `| ${cells.join(' | ')} |`
+  })
+  if(repairedRows.length!==4||repairedRows.some(row=>!row))return input.sections
+  table=[...table.slice(0,2),...repairedRows as string[]]
+  const reportLines=reportSection.markdown.split(/\r?\n/)
+  const matrixHeading=reportLines.findIndex(line=>/^#{2,4}\s*产品矩阵\s*$/.test(line))
+  if(matrixHeading<0)return input.sections
+  const reportHeader=reportLines.findIndex((line,index)=>index>matrixHeading&&index<matrixHeading+8&&/^\|\s*产品类别\s*\|/.test(line))
+  if(reportHeader<0)return input.sections
+  let reportEnd=reportHeader
+  while(reportEnd<reportLines.length&&/^\s*\|/.test(reportLines[reportEnd]!))reportEnd++
+  const finalLines=[...reportLines.slice(0,reportHeader),...table,...reportLines.slice(reportEnd)]
+  const markdown=finalLines.join('\n').replace(/\n{3,}/g,'\n\n')
+  if(markdown===reportSection.markdown)return input.sections
+  return input.sections.map(section=>section.id===reportSection.id?{...section,markdown,sourceCandidateIds:[...new Set([...(section.sourceCandidateIds??[]),...method.sourceCandidateIds,...(businessMethod?.sourceCandidateIds??[])])]}:section)
 }
 
 /** Exclude scope-incompatible proxies and qualify consolidated cash comparisons around acquisition effects. */

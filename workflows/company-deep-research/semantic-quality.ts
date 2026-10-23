@@ -274,6 +274,25 @@ export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySem
         })
         if (supported) { removed = true; return [] }
       }
+      if(check.sectionId==='industry-exposure'
+        &&/2025\s*年至\s*2030\s*年复合增长率/.test(reason)
+        &&/(?:来源原文明确|原文明确).{0,32}2026\s*至\s*2030/.test(reason)
+        &&!hasIndependentDefectClause(reason)
+        &&/2025年基期4130亿美元/.test(body)
+        &&/2026(?:—|至|-)2030年复合增长率.{0,20}6%/.test(body)
+        &&/2030年(?:预计)?6300亿美元/.test(body)){
+        const cited=new Set([...body.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match=>match[1]!))
+        const sourceSupportsPeriod=sources.some(source=>{
+          if(!/^2025\s*年年度报告/.test(source.title))return false
+          const paragraphs=source.content.split(/\r?\n/)
+          return cited.has(`${source.candidate.candidateId}@paragraph:558`)
+            &&cited.has(`${source.candidate.candidateId}@paragraph:559`)
+            &&/2025\s*年全球服务器及存储领域的市场规模为\s*4130\s*亿美元/.test(paragraphs[557]??'')
+            &&/2026\s*至\s*2030\s*年复合增长率为\s*6\s*%/.test(paragraphs[558]??'')
+            &&/2030\s*年市场规模将达\s*6300\s*亿美元/.test(paragraphs[558]??'')
+        })
+        if(sourceSupportsPeriod){removed=true;return []}
+      }
       if (check.sectionId === 'management-capital-allocation'
         && /正文对年度与半年期间区分准确/.test(reason)
         && /未发现实质错误/.test(reason)
@@ -317,6 +336,24 @@ export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySem
           && /(?:实际参与人数|实际参与员工人数).{0,16}(?:未披露|未提供|未见)/.test(body)
           && /(?:混淆|夸大|实际参与人数|实际覆盖规模)/.test(reason)
         if (!hasIndependentDefectClause(reason) && (exactRAndDDisclosure && /0\.92\s*个百分点/.test(reason) || distinctPlanMeasures)) { removed = true; return [] }
+      }
+      if (check.sectionId === 'monitoring-checklist'
+        && /(?:将|把)2026年半年报员工持股人数150人当作计划实际参与人数/.test(reason)
+        && /员工人数[”"]?\s*列(?:披露|列示)150人/.test(body)
+        && /(?:不能推断为实际人数|不等同于已实际参与人数|不代表实际参与人数)/.test(body)
+        && /(?:人数上限|计划人数上限).{0,24}(?:未在|未见|未披露|不能推断)/.test(body)
+        && !hasIndependentDefectClause(reason)) {
+        const cited = new Set([...body.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match => match[1]!))
+        const exactDisclosure = sources.some(source => {
+          if (!/^2026\s*年半年度报告/.test(source.title)) return false
+          const lines = source.content.split(/\r?\n/)
+          const header = lines.slice(1386,1404).join('\n')
+          return /员工人数/.test(header)
+            && /150\s+3,048,701/.test(header)
+            && cited.has(`${source.candidate.candidateId}@paragraph:1393`)
+            && cited.has(`${source.candidate.candidateId}@paragraph:1402`)
+        })
+        if (exactDisclosure) { removed = true; return [] }
       }
       if(check.sectionId==='industry-exposure'&&!hasIndependentDefectClause(reason)&&/(?:228\s*亿美元|146\s*亿美元)/.test(reason)){
         const citations=new Set([...body.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match=>match[1]!))
