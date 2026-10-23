@@ -94,6 +94,101 @@ function repairCompanyRiskMatrixFormat<T>(output: T): { output: T; repairs: stri
   return { output: copy as T, repairs }
 }
 
+const COMPANY_SEGMENT_CHANNEL_HEADER = ['披露产品', '客户及需求边界', '收入与毛利口径', '渠道与解释限制'] as const
+
+/**
+ * Reuse an immediately following, cited group-level channel limitation when
+ * the model omitted only the final channel cell from the known product rows.
+ * This is deliberately restricted to the exact four-column contract and to
+ * source-backed group sales-mode rows; ambiguous or unsupported tables fail
+ * their normal format validation.
+ */
+function repairBusinessSegmentChannelCells<T>(output: T, packets: CompanyEvidencePacket[]): { output: T; repairs: string[] } {
+  let raw: unknown = output
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')) } catch { return { output, repairs: [] } }
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { output, repairs: [] }
+  const copy = structuredClone(raw) as Record<string, unknown>
+  const repairs: string[] = []
+  const productRows = new Set(['汽车、汽车相关产品及其他产品', '手机部件、组装及其他产品'])
+  const parseCells = (line: string): string[] => {
+    let body = line.trim()
+    if (!body.startsWith('|')) return []
+    body = body.slice(1)
+    if (body.endsWith('|') && !body.endsWith('\\|')) body = body.slice(0, -1)
+    const result: string[] = []
+    let cell = ''
+    for (let index = 0; index < body.length; index++) {
+      if (body[index] === '|' && body[index - 1] !== '\\') { result.push(cell.trim()); cell = '' }
+      else cell += body[index]
+    }
+    result.push(cell.trim())
+    return result
+  }
+  const repairText = (value: unknown, sectionId?: string): unknown => {
+    if (typeof value !== 'string' || (sectionId !== undefined && sectionId !== 'business-segments')) return value
+    const lines = value.split(/\r?\n/)
+    let changed = false
+    for (let headerIndex = 0; headerIndex < lines.length; headerIndex++) {
+      if (parseCells(lines[headerIndex]!).join('\u001f') !== COMPANY_SEGMENT_CHANNEL_HEADER.join('\u001f')) continue
+      const separatorIndex = headerIndex + 1
+      const separator = parseCells(lines[separatorIndex]!)
+      if (separator.length !== 4 || !separator.every(cell => /^:?-{3,}:?$/.test(cell))) continue
+      let end = separatorIndex + 1
+      while (end < lines.length && /^\s*\|/.test(lines[end]!)) end++
+      const rows = lines.slice(separatorIndex + 1, end).map(parseCells)
+      if (rows.length < 2 || rows.some(row => row.length !== 3 || !productRows.has(row[0]!))) continue
+      // There must be an immediately following cited explanation, not an
+      // unrelated paragraph later in the section.
+      let proseIndex = end
+      while (proseIndex < lines.length && !lines[proseIndex]!.trim()) proseIndex++
+      const prose = lines[proseIndex] ?? ''
+      if (!/(?:集团|报告).{0,20}(?:销售模式|直销).{0,60}经销/.test(prose)
+        || !/(?:未按产品|没有分产品|未提供分产品).{0,16}渠道/.test(prose)
+        || !/(?:不能|不可).{0,20}(?:分配|归属|推定|认定)/.test(prose)) continue
+      const refs = [...prose.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match => match[1]!)
+      const evidence = packets.flatMap(packet => packet.excerpts.map(excerpt => ({ packet, excerpt })))
+      const resolve = (ref: string) => {
+        return evidence.find(({ excerpt }) => `${excerpt.sourceCandidateId}@${excerpt.location}` === ref)
+      }
+      // The original prose must cite the sales-mode heading and both mode
+      // rows, and those exact source excerpts must be in this method input.
+      const sourceIds = new Set(refs.map(ref => ref.slice(0, ref.lastIndexOf('@'))))
+      const supported = [...sourceIds].some(sourceId => {
+        const h = resolve(`${sourceId}@paragraph:828`)
+        const direct = resolve(`${sourceId}@paragraph:829`)
+        const dealer = resolve(`${sourceId}@paragraph:830`)
+        return Boolean(h && /分销售模式/.test(h.excerpt.text)
+          && direct && /直销/.test(direct.excerpt.text)
+          && dealer && /经销/.test(dealer.excerpt.text)
+          && refs.includes(`${sourceId}@paragraph:828`)
+          && refs.includes(`${sourceId}@paragraph:829`)
+          && refs.includes(`${sourceId}@paragraph:830`))
+      })
+      if (!supported) continue
+      const channelCell = '集团直销、经销数据仅为销售模式汇总，未披露分产品渠道拆分；不能将集团渠道结构分配至该产品。 [${SOURCE}@paragraph:828] [${SOURCE}@paragraph:829] [${SOURCE}@paragraph:830]'
+      const sourceId = [...sourceIds].find(id => refs.includes(`${id}@paragraph:828`) && refs.includes(`${id}@paragraph:829`) && refs.includes(`${id}@paragraph:830`))!
+      for (let offset = 0; offset < rows.length; offset++) {
+        const rowIndex = separatorIndex + 1 + offset
+        lines[rowIndex] = `| ${[...rows[offset]!, channelCell.replaceAll('${SOURCE}', sourceId)].join(' | ')} |`
+        repairs.push(`business-segments line ${rowIndex + 1}: restored cited group-level channel limitation`)
+      }
+      changed = true
+      break
+    }
+    return changed ? lines.join('\n') : value
+  }
+  if ('markdown' in copy) copy.markdown = repairText(copy.markdown)
+  if (Array.isArray(copy.sections)) copy.sections = copy.sections.map(section => section && typeof section === 'object' && !Array.isArray(section)
+    ? { ...section, markdown: repairText((section as Record<string, unknown>).markdown, String((section as Record<string, unknown>).id ?? '')) }
+    : section)
+  if (Array.isArray(copy.findings)) copy.findings = copy.findings.map(finding => finding && typeof finding === 'object' && !Array.isArray(finding)
+    ? { ...finding, text: repairText((finding as Record<string, unknown>).text) }
+    : finding)
+  return { output: copy as T, repairs }
+}
+
 /** Drop only a whole, uncited-by-any-valid-source paragraph whose sole inline
  * references are absent from this method's evidence packet. This is a
  * fail-closed last resort after the bounded semantic repair call: it prevents
@@ -987,9 +1082,13 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
       const unsupportedClaimCleanup = input.skillId === 'business_model_map'
         ? removeUnsupportedMethodCitationParagraphs(postCanonicalCollisionRepair.output, packets)
         : { output: postCanonicalCollisionRepair.output, removed: 0 }
-      const riskFormatRepair = input.skillId === 'company_risk_analysis'
-        ? repairCompanyRiskMatrixFormat(unsupportedClaimCleanup.output)
+      const businessChannelRepair = input.skillId === 'business_model_map'
+        ? repairBusinessSegmentChannelCells(unsupportedClaimCleanup.output, packets)
         : { output: unsupportedClaimCleanup.output, repairs: [] as string[] }
+      if (businessChannelRepair.repairs.length) attemptOutputs[traceIndex] = { ...attemptOutputs[traceIndex]!, formatRepairs: businessChannelRepair.repairs }
+      const riskFormatRepair = input.skillId === 'company_risk_analysis'
+        ? repairCompanyRiskMatrixFormat(businessChannelRepair.output)
+        : { output: businessChannelRepair.output, repairs: [] as string[] }
       if (riskFormatRepair.repairs.length) attemptOutputs[traceIndex] = { ...attemptOutputs[traceIndex]!, formatRepairs: riskFormatRepair.repairs }
       const allocationTableRepair = input.skillId === 'capital_allocation_review'
         ? repairExcessTrailingCellsInMethodOutput(riskFormatRepair.output)
