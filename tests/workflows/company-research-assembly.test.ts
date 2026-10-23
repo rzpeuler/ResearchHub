@@ -642,6 +642,29 @@ test('table repair reattaches the cited adjacent-market header after intervening
   assert.match(repaired.markdown, /这些预测不代表公司份额或收入预测。\[scope@paragraph:3\]/)
 })
 
+test('table repair reattaches the industry-scale header only when the following cited paragraph supports its rows', () => {
+  const header = '| 市场边界 | 期间 | 数值及单位 | 来源与可比边界 |'
+  const rows = `| 中国新能源汽车全年销量，历史行业销量，不是金额规模 | 2024全年 | 1,286.6万辆 | 比亚迪年报转述的行业统计；销量不能代表公司可服务市场或TAM。 |
+| 全球AI服务器市场规模，AI基础设施相邻市场 | 2025年 | 1,672亿美元 | 年报转述的市场预测；不是比亚迪可服务市场。 |
+| 全球数据中心液冷市场规模，AI基础设施相邻市场 | 2025年 | 28.4亿美元 | 年报转述的市场预测；不等于公司产品可服务市场。 |`
+  const supported = `${header}\n公司垂直整合跨越多个环节，简单相加会重复计算，不能据此构造TAM。[web@paragraph:115]\n\n### 行业规模背景\n|---|---|---|---|\n${rows}\n上述数据分别来自行业统计及年报转述，口径均不等同于公司TAM。[annual@paragraph:18] [annual@paragraph:448] [annual@paragraph:450]`
+  const repaired = repairCompanyResearchMarkdownTables(supported)
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_ADJACENT_MARKET_HEADER_REATTACHED')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.match(repaired.markdown, /公司垂直整合跨越多个环节，简单相加会重复计算，不能据此构造TAM。\[web@paragraph:115\]\n\n### 行业规模背景\n\| 市场边界 \| 期间 \| 数值及单位 \| 来源与可比边界 \|\n\|---\|---\|---\|---\|\n\| 中国新能源汽车/)
+  assert.match(repaired.markdown, /上述数据分别来自行业统计及年报转述，口径均不等同于公司TAM。\[annual@paragraph:18\] \[annual@paragraph:448\] \[annual@paragraph:450\]/)
+
+  const actualReportVariant = supported.replace(header, '| 市场边界与统计性质 | 期间 | 数值及单位 | 来源与可比边界 |')
+  const actualRepaired = repairCompanyResearchMarkdownTables(actualReportVariant)
+  assert.ok(actualRepaired.repairs.some(repair => repair.startsWith('TABLE_ADJACENT_MARKET_HEADER_REATTACHED')))
+  assert.deepEqual(validateCompanyResearchMarkdownTables(actualRepaired.markdown), [])
+
+  const unsupported = repairCompanyResearchMarkdownTables(supported.replace('[annual@paragraph:448] [annual@paragraph:450]', '[annual@paragraph:448]'))
+  assert.deepEqual(unsupported.repairs, [])
+  assert.ok(validateCompanyResearchMarkdownTables(unsupported.markdown).some(issue => issue.includes('separator')))
+})
+
 test('normal nineteen-section assembly surfaces malformed tables from atomic method sections', async () => {
   const industryMethod: CompanyResearchMethodResult = {
     ...method,
