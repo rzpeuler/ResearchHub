@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyNumericMovementVerbs, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
+import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyNumericMovementVerbs, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 
 test('classification repair restores a uniquely sourced industry label and adds its exact row citation', () => {
@@ -1741,6 +1741,40 @@ test('R194 financial opening adds only source-matched same-period annual directi
   const conflicted={...table[1]!,conflicts:[{metric:'operatingProfit'}]}
   const withheld=reconcileCompanyAnnualFinancialCounterevidence({sections:[{id:'financial-quality',markdown:'# 财务质量分析\n\n半年收入增长。'}],methodResults:[method],preparedAnalysis:{financial:{table:[table[0],conflicted]}}})[0]!.markdown
   assert.doesNotMatch(withheld,/2024—2025年/)
+})
+
+test('prepared interim financial summary reconciles every same-period direction even when annual analysis already exists',()=>{
+  const growth=[
+    ['revenue',63.9482],['operatingProfit',264.4783],['netProfit',290.0891],['operatingCashFlow',-4.6490],
+  ].map(([metric,growthPercent])=>({metric,currentPeriod:'2026-06-30',priorPeriod:'2025-06-30',unit:'CNY',currency:'CNY',basis:'YTD',growthPercent,sourceCandidateIds:['akshare-financial-test']}))
+  const priorSummary='结构化财务摘要显示，收入与净利润增长明显。财务表及确定性同比公式表明，收入与净利润增长明显，但经营现金净流量同比下降。'
+  const sections:{id:string;markdown:string;sourceCandidateIds?:string[]}[]=[{id:'financial-quality',markdown:'# 财务质量分析\n\n已有年度反证。'},{id:'revenue-profit-drivers',markdown:`## 收入与利润驱动\n\n${priorSummary}`}]
+  const fixed=reconcileCompanyInterimFinancialSummary({sections,preparedAnalysis:{financial:{growth}}})
+  const result=fixed.find(section=>section.id==='revenue-profit-drivers')!
+  assert.match(result.markdown,/营业收入增长63\.95%、营业利润增长264\.48%、结构化净利润增长290\.09%，经营现金净流量下降4\.65%/)
+  assert.match(result.markdown,/利润表增长与现金转化方向不同/)
+  assert.ok(result.sourceCandidateIds?.includes('akshare-financial-test'))
+  const mismatched=growth.map((item,index)=>index===3?{...item,sourceCandidateIds:['other-source']}:item)
+  assert.equal(reconcileCompanyInterimFinancialSummary({sections,preparedAnalysis:{financial:{growth:mismatched}}})[1]!.markdown,sections[1]!.markdown)
+})
+
+test('R195 cross-section cleanup cites the exact industry margin row, scopes the optical claim, and avoids duplicated risk caveats',()=>{
+  const driver:CompanyResearchMethodResult={skillId:'business_driver_analysis',status:'complete',attempts:1,answer:'',markdown:'',sections:[],findings:[],sourceCandidateIds:['annual'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'annual',title:'2025年年度报告',publisher:'Issuer',excerpts:[{sourceCandidateId:'annual',location:'paragraph:894',text:'和其他电子 39,643,732,616.04 34,153,971,460.65 13.85% 8.67% 8.83% -0.12%'}]}]}
+  const competition:CompanyResearchMethodResult={skillId:'competitive_market_map',status:'complete',attempts:1,answer:'',markdown:'',sections:[{id:'competition',markdown:'PCB应用候选：鹏鼎控股涉及柔性电路产品。[peer@paragraph:1]'}],findings:[],sourceCandidateIds:['peer'],limitations:[],risks:[],diagnostics:[]}
+  const productEvidence:CompanyResearchMethodResult={skillId:'product_technology_analysis',status:'complete',attempts:1,answer:'',markdown:'',sections:[],findings:[],sourceCandidateIds:['interim'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'interim',title:'2026年半年度报告',publisher:'Issuer',excerpts:[{sourceCandidateId:'interim',location:'paragraph:1',text:'分产品'}]}]}
+  const sections=[
+    {id:'industry-exposure',markdown:'2025年分行业的“计算机、通信和其他电子”营业收入39,643,732,616.04元，毛利率13.85%；这是行业行，不是产品行。'},
+    {id:'competition',markdown:competition.sections[0]!.markdown},
+    {id:'products',markdown:'公司称其数据中心光模块面向AI基础设施 [interim@paragraph:356]。'},
+    {id:'risks',markdown:'披露未给出具名竞争对手、可比产品性能、市场份额或认证成功率，无法验证相对竞争位置与技术领先幅度；公司所述措施不等于已实现商业化成果。'},
+  ]
+  const fixed=reconcileCompanyCrossSectionBoundaries({sections,methodResults:[driver,competition,productEvidence]})
+  const industry=fixed.find(section=>section.id==='industry-exposure')!.markdown
+  assert.match(industry,/\[annual@paragraph:894\]/)
+  assert.match(fixed.find(section=>section.id==='products')!.markdown,/未由独立客户验证或第三方测试验证/)
+  const risk=reconcileCompanyRiskBoundaries({sections:fixed,methodResults:[competition]}).find(section=>section.id==='risks')!.markdown
+  assert.match(risk,/竞争章节列有PCB应用场景候选/)
+  assert.equal([...risk.matchAll(/公司所述措施不等于已实现商业化成果/g)].length,1)
 })
 
 test('R194 MFLEX repair withholds a percentage whose split PDF row cannot bind it to the revenue-growth column',()=>{
