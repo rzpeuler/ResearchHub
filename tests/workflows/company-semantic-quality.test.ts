@@ -507,6 +507,19 @@ test('reviewer explicitly saying a scoped gap is accurate and should not be judg
   assert.deepEqual(industry.reasons, [])
 })
 
+test('reviewer may identify a concrete broad-gap defect while confirming a separate specific gap is accurate', () => {
+  const review = { sectionChecks: output.sectionChecks.map(check => check.sectionId === 'management-capital-allocation'
+    ? {
+        ...check,
+        evidenceSupportsConclusion: false,
+        reasons: ['公司已披露商誉减值测试和员工持股计划执行结果，但报告仍称资本配置/持股执行结果资料未提供，缺口范围过宽，影响对配置目的与结果的评价；刘学亮个人履历和职责未见对应证据，不构成虚假缺口。'],
+      }
+    : check) }
+  const management = validateCompanySemanticQualityOutput(review).find(check => check.sectionId === 'management-capital-allocation')!
+  assert.equal(management.evidenceSupportsConclusion, false)
+  assert.match(management.reasons.join(' '), /缺口范围过宽/)
+})
+
 test('a generally positive phrase cannot auto-clear a concrete missing company catalyst', () => {
   const review = { sectionChecks: output.sectionChecks.map(check => check.sectionId === 'catalysts'
     ? { ...check, evidenceSupportsConclusion: false, reasons: ['总体讨论已充分，但未提供公司产品商业化阶段和下一步可观察条件。'] }
