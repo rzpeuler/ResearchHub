@@ -871,6 +871,30 @@ test('company risk matrix applies and records only explicit, lossless goodwill a
   assert.deepEqual(wrongHeader.attemptOutputs?.map(attempt => attempt.formatRepairs ?? []), [[], []])
 })
 
+test('company risk matrix merges a separately disclosed goodwill cell with a residual risk marked as undisclosed', async () => {
+  const filing = { ...source, content: '2025年年报披露商誉原值合计人民币4,437,242千元，Juno Newco商誉原值人民币4,361,657千元；商誉减值准备合计人民币9,671千元，此为准备余额而非当期减值损失。公司称相关资产组可收回金额高于账面价值。资产组表将Juno Newco归入手机部件分部；年报未披露具体安全边际金额或预测误差，预测失守风险仍需跟踪。' }
+  const ref = '[filing-1@paragraph:1]'
+  const header = '| 风险类别 | 触发条件与影响路径 | 可监控指标 | 缓解因素 | 残余风险 |\n|---|---|---|---|---|'
+  const row = `| 财务／商誉 | 预测失守可能造成减值并影响资产和利润 ${ref} | 现金流、预测兑现度及资产组余量 | 年报称可收回金额高于账面价值 ${ref} | 年报披露商誉原值合计人民币4,437,242千元 ${ref} | 资产组表将Juno Newco归入手机部件分部，未披露具体安全边际金额或预测误差，预测失守风险仍需跟踪 ${ref} |`
+  const repairedRow = `| 财务／商誉 | 预测失守可能造成减值并影响资产和利润 ${ref} | 现金流、预测兑现度及资产组余量 | 年报称可收回金额高于账面价值 ${ref} | 年报披露商誉原值合计人民币4,437,242千元 ${ref}；资产组表将Juno Newco归入手机部件分部，未披露具体安全边际金额或预测误差，预测失守风险仍需跟踪 ${ref} |`
+  const makeOutput = (table: string) => ({
+    ...output,
+    answer: `公司存在商誉减值风险。${ref}`,
+    markdown: `公司存在商誉减值风险。${ref}`,
+    sections: [{ id: 'risks', markdown: `${header}\n${table}` }],
+    findings: [{ text: '商誉减值风险需要跟踪。', kind: 'inference', evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:1' }] }],
+    risks: [`安全边际未披露，预测失守风险仍需跟踪。${ref}`],
+  })
+  const result = await executeCompanyResearchMethod({ skillId: 'company_risk_analysis', company: { symbol: '002594' }, asOf: '2026-10-24', sources: [filing], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async () => makeOutput(row)) })
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  assert.equal(result.attempts, 1)
+  assert.deepEqual(result.attemptOutputs?.[0]?.formatRepairs, [
+    'risks line 3: merged explicit goodwill disclosure into residual-risk cell',
+  ])
+  assert.equal(result.sections.find(section => section.id === 'risks')?.markdown, `${header}\n${repairedRow}`)
+  assert.equal((result.sections.find(section => section.id === 'risks')?.markdown.match(/\[filing-1@paragraph:1\]/g) ?? []).length, 4)
+})
+
 test('company method format repair succeeds without degrading to a baseline', async () => {
   const history = { ...source, content: source.content.replace('核心产品业务收入及客户模式。', '核心产品业务收入及客户模式，战略转型历史。') }
   let attempts = 0
