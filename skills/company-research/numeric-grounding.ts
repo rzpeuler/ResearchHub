@@ -1163,7 +1163,13 @@ function consolidatedGrossMarginDiagnostics(markdown: string, prepared: unknown)
     let tableStart = tableLineIndex
     while (tableStart > 0 && /^\s*\|/.test(tableLines[tableStart - 1]!)) tableStart -= 1
     const separatorIndex = tableLineIndex < 0 ? -1 : tableLines.slice(tableStart, tableLineIndex).findIndex(line => /^\s*\|\s*:?-{3,}/.test(line)) + tableStart
-    const headerLine = separatorIndex > tableStart ? tableLines[separatorIndex - 1]! : ''
+    const rawHeaderLine = separatorIndex > 0 ? tableLines[separatorIndex - 1]! : ''
+    // Citation/paragraph repair can join prose and the first table header on
+    // one physical line. Recover only the Markdown-table suffix immediately
+    // before the separator; period binding below still requires unique exact
+    // column matches and matching numeric cells.
+    const headerPipe = /^\s*\|/.test(rawHeaderLine) ? 0 : rawHeaderLine.indexOf('|')
+    const headerLine = headerPipe >= 0 ? rawHeaderLine.slice(headerPipe) : ''
     const tableCells = tableLineIndex < 0 ? [] : tableLines[tableLineIndex]!.split('|').slice(1, -1).map(cell => cell.trim())
     const headerCells = headerLine.split('|').slice(1, -1).map(cell => cell.trim())
     const exactPreparedRow = preparedRows.some(row => {
