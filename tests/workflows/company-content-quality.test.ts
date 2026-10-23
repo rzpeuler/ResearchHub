@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyNumericMovementVerbs, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
+import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyNumericMovementVerbs, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 
 test('classification repair restores a uniquely sourced industry label and adds its exact row citation', () => {
@@ -1681,6 +1681,83 @@ test('customer concentration comparison check handles the reverse contradictory 
 test('R145 competitor denial for PV/other business does not contradict the sourced passenger-car candidate', () => {
   const competitor: CompanyResearchMethodResult = { skillId: 'competitive_market_map', status: 'complete', attempts: 1, answer: '吉利是乘用车新能源整车市场的候选对手。', markdown: '吉利是乘用车候选对手。', sections: [], findings: [{ text: '吉利是乘用车新能源整车市场候选对手。', kind: 'fact', evidence: [{ sourceCandidateId: 'annual-report', location: 'paragraph:1' }] }], sourceCandidateIds: ['annual-report'], limitations: [], risks: [], diagnostics: [] }
   assert.deepEqual(findKnownCompetitorDenials({ sections: [{ id: 'competition', markdown: '光伏和储能业务没有具名竞争者及同口径数据，不能比较。' }], methodResults: [competitor] }), [])
+})
+
+test('R194 product synthesis repair replaces a malformed matrix with validated method rows and exact annual revenue shares',()=>{
+  const products=[
+    ['电子电路产品','25,620,292,915.99','21,113,572,455.81','17.59%','3.30%'],
+    ['光电显示模组','5,985,629,058.48','5,675,456,101.15','5.18%','-6.03%'],
+    ['精密组件产品','5,930,242,495.99','5,383,316,361.13','9.22%','30.61%'],
+    ['光模块','1,435,534,921.96','908,137,144.50','36.74%',''],
+  ] as const
+  const methodRows=products.map(([name,revenue,cost,margin,growth])=>`| ${name} | 公司披露的产品用途 | 公司披露的产品方向 | 2025年收入${revenue}元、营业成本${cost}元、毛利率${margin}；${growth?`营业收入同比增减${growth}。`:'未提供同比值。'} [annual-product@paragraph:896] | 已形成产品收入；缺少客户级持续性证据。 |`).join('\n')
+  const method:CompanyResearchMethodResult={skillId:'product_technology_analysis',status:'complete',attempts:1,answer:'',markdown:'',sections:[{id:'products',markdown:`### 产品矩阵\n| 产品类别 | 应用或定位 | 技术路线与差异 | 产品收入、成本及毛利 | 商业化阶段与替代比较 |\n|---|---|---|---|---|\n${methodRows}`}],findings:[],sourceCandidateIds:['annual-product'],limitations:[],risks:[],diagnostics:[]}
+  const business:CompanyResearchMethodResult={skillId:'business_model_map',status:'complete',attempts:1,answer:'',markdown:'',sections:[],findings:[],sourceCandidateIds:['annual-mix'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'annual-mix',title:'2025年年度报告',publisher:'Issuer',excerpts:[
+    {sourceCandidateId:'annual-mix',location:'paragraph:860',text:'营业收入构成'},
+    {sourceCandidateId:'annual-mix',location:'paragraph:861',text:'单位：元'},
+    {sourceCandidateId:'annual-mix',location:'paragraph:862',text:'2025年营业收入构成'},
+    {sourceCandidateId:'annual-mix',location:'paragraph:863',text:'金额 占营业收入比重 金额 占营业收入比重'},
+    {sourceCandidateId:'annual-mix',location:'paragraph:872',text:'分产品'},
+    ...products.map(([name,revenue],index)=>({sourceCandidateId:'annual-mix',location:`paragraph:${873+index}`,text:`${name} ${revenue} ${['63.85','14.92','14.78','3.58'][index]}% 0.00 0.00% 0.00%`}))
+  ]}]}
+  const final=`### 产品矩阵\n\n| 产品类别 | 应用或定位 | 技术路线与差异 | 产品收入、成本及毛利 | 商业化阶段与替代比较 |\n|---|---|---|---|---|\n| 电子电路产品 | PCB | 高阶HDI | 不能据此断言直接竞争或相对优势59%；金额未列 | 已形成分部收入 |\n| 光电显示模组 | 显示 | 未披露 | 空 | 已形成分部收入 |\n| 精密组件产品 | 组件 | 未披露 | 空 | 已形成分部收入 |\n| 光模块 | 光模块 | 未披露 | 空 | 已形成分部收入 |\n\n#### 年报披露的产品收入结构（2025年）`
+  const fixed=reconcileCompanyProductMatrixFromMethod({sections:[{id:'products',markdown:final}],methodResults:[method,business]})[0]!.markdown
+  assert.doesNotMatch(fixed,/相对优势\s*59%/)
+  assert.match(fixed,/2025年占营业收入63\.85%\s*\[annual-mix@paragraph:873\]/)
+  assert.match(fixed,/25,620,292,915\.99元、营业成本21,113,572,455\.81元、毛利率17\.59%/)
+  const table=fixed.split('### 产品矩阵')[1]!.split('#### 年报披露')[0]!.split(/\r?\n/).filter(line=>line.startsWith('|'))
+  assert.equal(table.length,6)
+  assert.ok(table.slice(2).every(line=>line.split('|').length===7),'each repaired matrix row has five cells')
+})
+
+test('R194 financial opening adds only source-matched same-period annual direction counterevidence',()=>{
+  const values={
+    '2024-12-31':{revenue:36770374347.58,operatingProfit:1479602468.51,netProfit:1085641847.89},
+    '2025-12-31':{revenue:40124858839.52,operatingProfit:1268880792.11,netProfit:1386066705.56},
+  }
+  const metadata=Object.fromEntries(['revenue','operatingProfit','netProfit'].map(metric=>[metric,{unit:'CNY',currency:'CNY',basis:'YTD'}]))
+  const table=Object.entries(values).map(([period,metrics])=>({period,metrics,metadata,conflicts:[]}))
+  const sourceRows=Object.entries(values).map(([period,metrics])=>({periodEnd:period,metrics,metricMetadata:metadata}))
+  const method:CompanyResearchMethodResult={skillId:'financial_quality_analysis',status:'complete',attempts:1,answer:'',markdown:'',sections:[],findings:[],sourceCandidateIds:['akshare-financial-test'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'akshare-financial-test',title:'Financial history',publisher:'Provider',excerpts:[{sourceCandidateId:'akshare-financial-test',location:'paragraph:1',text:JSON.stringify({kind:'financial',rows:sourceRows})}]}]}
+  const sections=[{id:'financial-quality',markdown:'# 财务质量分析\n\n半年收入增长。'},{id:'revenue-profit-drivers',markdown:'## 收入与利润驱动\n\n半年产品增长。'}]
+  const fixed=reconcileCompanyAnnualFinancialCounterevidence({sections,methodResults:[method],preparedAnalysis:{financial:{table}}})
+  const result=fixed.find(section=>section.id==='financial-quality')!.markdown
+  assert.match(result,/2024—2025年/)
+  assert.match(result,/营业收入：36,770,374,347\.58元至40,124,858,839\.52元/)
+  assert.match(result,/营业利润：1,479,602,468\.51元至1,268,880,792\.11元/)
+  assert.match(result,/同比＝\(1,268,880,792\.11−1,479,602,468\.51\)÷abs\(1,479,602,468\.51\)×100%＝−14\.24%/)
+  assert.match(result,/\[akshare-financial-test@paragraph:1\]/)
+  assert.match(fixed.find(section=>section.id==='revenue-profit-drivers')!.markdown,/年度财务反证（2024—2025年/)
+  const invertedValues={
+    '2024-12-31':values['2025-12-31'],
+    '2025-12-31':values['2024-12-31'],
+  }
+  const invertedRows=Object.entries(invertedValues).map(([period,metrics])=>({periodEnd:period,metrics,metricMetadata:metadata}))
+  const invertedMethod={...method,executionEvidence:[{...method.executionEvidence![0]!,excerpts:[{...method.executionEvidence![0]!.excerpts[0]!,text:JSON.stringify({kind:'financial',rows:invertedRows})}]}]}
+  const inverted=reconcileCompanyAnnualFinancialCounterevidence({sections,methodResults:[invertedMethod],preparedAnalysis:{financial:{table:Object.entries(invertedValues).map(([period,metrics])=>({period,metrics,metadata,conflicts:[]}))}}}).find(section=>section.id==='financial-quality')!.markdown
+  assert.match(inverted,/变动方向分别为：营业收入下降、营业利润增长、结构化净利润下降/)
+  assert.match(inverted,/营业收入下降而营业利润增长/)
+  assert.doesNotMatch(inverted,/收入与净利润增长而营业利润下降/)
+  const conflicted={...table[1]!,conflicts:[{metric:'operatingProfit'}]}
+  const withheld=reconcileCompanyAnnualFinancialCounterevidence({sections:[{id:'financial-quality',markdown:'# 财务质量分析\n\n半年收入增长。'}],methodResults:[method],preparedAnalysis:{financial:{table:[table[0],conflicted]}}})[0]!.markdown
+  assert.doesNotMatch(withheld,/2024—2025年/)
+})
+
+test('R194 MFLEX repair withholds a percentage whose split PDF row cannot bind it to the revenue-growth column',()=>{
+  const risk='MFLEX资产组预测期收入复合增长率0.10%、毛利率17.00%，折现率10.62%。[annual@paragraph:7695]'
+  const fixed=reconcileCompanyCrossSectionBoundaries({sections:[{id:'risks',markdown:risk}],methodResults:[]})[0]!.markdown
+  assert.doesNotMatch(fixed,/预测期收入复合增长率0\.10%/)
+  assert.match(fixed,/未能将该值可靠对应到预测期收入增长假设/)
+  assert.match(fixed,/\[annual@paragraph:7695\]/)
+})
+
+test('old public competitor evidence is explicitly labeled as historical wherever it is cited',()=>{
+  const method:CompanyResearchMethodResult={skillId:'competitive_market_map',status:'complete',attempts:1,answer:'历史候选。',markdown:'',sections:[],findings:[],sourceCandidateIds:['public-peer'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'public-peer',title:'2026年半年度报告及竞争证据',publisher:'Web',excerpts:[{sourceCandidateId:'public-peer',location:'paragraph:214',text:'候选技术路线。'}]}]}
+  const sections=[{id:'competition',markdown:'鹏鼎汽车电池板FPC可作为历史候选。[public-peer@paragraph:214]'},{id:'technologies',markdown:'路线比较提及鹏鼎。[public-peer@paragraph:214]'}]
+  const oldSource={candidate:{candidateId:'public-peer'},title:'媒体历史报道',content:'2021-10-25 16:13:26 来源: 媒体\n汽车电池板FPC。'}
+  const latest={candidate:{candidateId:'annual-current'},title:'2026年半年度报告',content:'公司最新披露。'}
+  const fixed=reconcileCompanyCrossSectionBoundaries({sections,methodResults:[method],sources:[oldSource,latest]})
+  for(const section of fixed){assert.match(section.markdown,/发表于2021年的历史公开资料/);assert.match(section.markdown,/不代表当前竞争能力/)}
 })
 
 
