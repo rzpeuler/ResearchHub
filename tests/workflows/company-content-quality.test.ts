@@ -1,8 +1,26 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
+import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
+
+test('classification repair restores a uniquely sourced industry label and adds its exact row citation', () => {
+  const method:CompanyResearchMethodResult={skillId:'business_driver_analysis',status:'complete',attempts:1,answer:'',markdown:'',sections:[],findings:[],sourceCandidateIds:['annual'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'annual',title:'2026年半年度报告',publisher:'Issuer',excerpts:[
+    {sourceCandidateId:'annual',location:'paragraph:1',text:'单位：元'},
+    {sourceCandidateId:'annual',location:'paragraph:2',text:'分行业'},
+    {sourceCandidateId:'annual',location:'paragraph:3',text:'行业甲 100.00 80.00'},
+    {sourceCandidateId:'annual',location:'paragraph:4',text:'分产品'},
+    {sourceCandidateId:'annual',location:'paragraph:5',text:'产品乙 100.00 80.00'},
+  ]}]}
+  const original='半年报分行业收入表中，行业甲本期收入100元；产品乙收入100元。[annual@paragraph:4] [annual@paragraph:5]'
+  const input=[{id:'revenue-profit-drivers',markdown:original,sourceCandidateIds:['annual']}]
+  const result=reconcileCompanyDriverClassificationLabels({sections:input,methodResults:[method]})
+  assert.match(result[0]!.markdown,/行业甲本期收入100元；行业甲收入100元/)
+  assert.match(result[0]!.markdown,/\[annual@paragraph:2\]/)
+  assert.match(result[0]!.markdown,/\[annual@paragraph:3\]/)
+  assert.equal(reconcileCompanyDriverClassificationLabels({sections:result,methodResults:[method]})[0]!.markdown,result[0]!.markdown)
+})
+
 const sections = () => COMPANY_CORE_SECTION_IDS.map((id) => ({ id, markdown: id === 'industry-exposure'
   ? '公司产品对应服务器PCB细分市场，行业预测显示需求增长；但缺少公司可服务市场边界和份额，因此不能据行业总量推算公司TAM。[annual-report@paragraph:1]'
   : id === 'competition'
