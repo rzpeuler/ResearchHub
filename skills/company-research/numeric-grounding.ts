@@ -1149,7 +1149,11 @@ function consolidatedGrossMarginDiagnostics(markdown: string, prepared: unknown)
     if (percentValues.length < 2 && pointValue === undefined) continue
     const citedIds = new Set([...paragraph.matchAll(/\[([^\]\s]+)@paragraph:\d+\]/g)].map(item => item[1]!))
     const sectionCitedIds = new Set([...markdown.matchAll(/\[([^\]\s]+)@paragraph:\d+\]/g)].map(item => item[1]!))
-    const tableRow = /^\s*\|\s*(?:结构化)?合并毛利率(?:\s*[（(][%％][）)])?\s*\|/m.test(paragraph)
+    // Provider rows may include the period basis in the metric label, e.g.
+    // “合并毛利率（半年累计，%）”. Keep the binding limited to a single
+    // parenthetical qualifier containing the percent unit so unrelated
+    // consolidated-margin mentions cannot turn a paragraph into a table row.
+    const tableRow = /^\s*\|\s*(?:结构化)?合并毛利率(?:\s*[（(][^（）()]{0,24}[%％][^（）()]*[）)])?\s*\|/m.test(paragraph)
     const tableRowIndex = tableRow ? markdown.indexOf(paragraph) : -1
     const tableLines = markdown.split('\n')
     const tableLineIndex = tableRowIndex < 0 ? -1 : markdown.slice(0, tableRowIndex).split('\n').length - 1
