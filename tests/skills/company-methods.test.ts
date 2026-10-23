@@ -527,6 +527,37 @@ test('business-driver finding with one margin value gets its exact same-source d
   assert.ok(result.findings[0]!.evidence.some(ref => ref.location === 'paragraph:7'), 'the exact row containing -2.67% is attached to this finding')
 })
 
+test('single-value industry findings bind distinct exact rows, including a split transport label', async () => {
+  const lines = Array.from({ length: 10 }, () => '一般披露事项。')
+  const rows = new Map<number, string>([
+    [1, '单位：元'], [2, '营业收入 营业成本 毛利率'], [3, '营业收入比上年同期增减'],
+    [4, '营业成本比上年同期增减'], [5, '毛利率比上年同期增减'], [6, '分行业'],
+    [7, '日用电子器件制造业 69,404,994,000.00 65,907,931,000.00 5.04% 0.96% 3.88% -2.67%'],
+    [8, '交通运输设备及电气制'], [9, '造业 275,341,358,000.00 213,863,297,000.00 22.33% -8.98% -11.24% 1.98%'],
+  ])
+  for (const [paragraph, text] of rows) lines[paragraph - 1] = text
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: 'split-industry-margin' }, title: '2026年半年度报告', content: lines.join('\n') }
+  const sharedHeaders = [1, 2, 3, 4, 5, 6].map(paragraph => ({ sourceCandidateId: 'split-industry-margin', location: `paragraph:${paragraph}` }))
+  const draft = {
+    status: 'complete', answer: '分行业毛利率表现不一，量价归因仍有边界。', markdown: '分行业毛利率方向可作线索，单位成本不可由总额直接推断。',
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: '毛利率变化需结合收入、成本与经营范围解释。[split-industry-margin@paragraph:7]' },
+      { id: 'growth-drivers', markdown: '后续应跟踪相同分行业口径下的收入和成本变化。[split-industry-margin@paragraph:9]' },
+      { id: 'catalysts', markdown: '现有材料没有足够量价数据支持定量增长催化判断。[split-industry-margin@paragraph:7]' },
+    ],
+    findings: [
+      { text: '2026年上半年分行业区段日用电子器件制造业毛利率比上年同期增减为-2.67%。', kind: 'fact', evidence: sharedHeaders },
+      { text: '2026年上半年分行业区段交通运输设备及电气制造业毛利率比上年同期增减为1.98%。', kind: 'fact', evidence: sharedHeaders },
+    ],
+    limitations: [], risks: [],
+  }
+  const result = await executeCompanyResearchMethod({ company: { symbol: '002594', name: '比亚迪', exchange: 'SZ' }, asOf: '2026-10-23', sources: [filing], reportSourceCandidateIds: ['split-industry-margin'], skillId: 'business_driver_analysis', reasoningExecutor: executor(async () => draft), maxAttempts: 1 })
+  assert.equal(result.status, 'complete', JSON.stringify({ findings: result.findings, diagnostics: result.diagnostics }))
+  assert.ok(result.findings[0]!.evidence.some(ref => ref.location === 'paragraph:7'), 'the electronic-industry value binds only to its exact data row')
+  assert.ok(result.findings[1]!.evidence.some(ref => ref.location === 'paragraph:8'), 'the transport finding cites the split industry label')
+  assert.ok(result.findings[1]!.evidence.some(ref => ref.location === 'paragraph:9'), 'the transport finding cites its matching numeric continuation')
+})
+
 test('history evidence retains early founding event and adjacent year beyond recent strategic releases', () => {
   const timeline = { ...source, content: `2026\n发布智能化战略\n2025\n发布新平台\n${'导航菜单\n'.repeat(80)}1994\n\n公司在深圳成立，以充电电池起步。\n2003\n\n进入汽车行业。` }
   const packets = selectCompanyEvidence([timeline], ['filing-1'], ['战略', '成立', '历史'], { purpose: 'company_history_strategy' })
