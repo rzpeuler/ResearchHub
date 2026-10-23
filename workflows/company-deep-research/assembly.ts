@@ -127,35 +127,46 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
   // heading. Reattach only this exact four-column header when the intervening
   // block contains no other table and the later table has multiple cited rows.
   // Narrative and citations stay in place; only the header line moves.
-  const adjacentMarketHeader = ['市场边界', '预测期间', '规模与单位', '预测机构及来源归属']
-  const adjacentMarketHeaderIndexes = lines.flatMap((line, index) =>
-    isPipeLine(line) && JSON.stringify(splitCells(line)) === JSON.stringify(adjacentMarketHeader) ? [index] : [])
-  if (adjacentMarketHeaderIndexes.length === 1) {
-    const headerIndex = adjacentMarketHeaderIndexes[0]!
+  const adjacentMarketHeaders = [
+    { cells: ['市场边界', '预测期间', '规模与单位', '预测机构及来源归属'], citationMode: 'row' },
+    { cells: ['市场边界', '期间', '数值及单位', '来源与可比边界'], citationMode: 'following-paragraph' },
+    // One live BYD synthesis used this slightly more descriptive first label.
+    { cells: ['市场边界与统计性质', '期间', '数值及单位', '来源与可比边界'], citationMode: 'following-paragraph' },
+  ] as const
+  for (const { cells: expectedHeader, citationMode } of adjacentMarketHeaders) {
+    const headerIndexes = lines.flatMap((line, index) =>
+      isPipeLine(line) && JSON.stringify(splitCells(line)) === JSON.stringify(expectedHeader) ? [index] : [])
+    if (headerIndexes.length !== 1) continue
+    const headerIndex = headerIndexes[0]!
     let separatorIndex = -1
     for (let index = headerIndex + 1; index < lines.length; index++) {
-      if (isSeparator(lines[index]!) && splitCells(lines[index]!).length === adjacentMarketHeader.length) {
+      if (isSeparator(lines[index]!) && splitCells(lines[index]!).length === expectedHeader.length) {
         separatorIndex = index
         break
       }
       if (isSeparator(lines[index]!)) break
     }
-    if (separatorIndex > headerIndex) {
-      const rowIndexes: number[] = []
-      for (let index = separatorIndex + 1; index < lines.length && isPipeLine(lines[index]!) && !isSeparator(lines[index]!); index++) {
-        if (splitCells(lines[index]!).length !== adjacentMarketHeader.length) break
-        rowIndexes.push(index)
-      }
-      const rowsAreCitedAndMarketLabeled = rowIndexes.length >= 2 && rowIndexes.every(index => {
-        const row = splitCells(lines[index]!)
-        return /(?:市場|市场|液冷|服务器)/u.test(row[0]!) && /\[[^\]\s]+@paragraph:\d+\]/u.test(row[3]!)
-      })
-      const interveningLinesAreNarrative = lines.slice(headerIndex + 1, separatorIndex).every(line => !isPipeLine(line) || /^\s*#{1,6}\s/u.test(line))
-      if (rowsAreCitedAndMarketLabeled && interveningLinesAreNarrative) {
-        const [header] = lines.splice(headerIndex, 1)
-        lines.splice(separatorIndex - 1, 0, header!)
-        repairs.push(`TABLE_ADJACENT_MARKET_HEADER_REATTACHED: line ${headerIndex + 1}; rows ${rowIndexes.length}`)
-      }
+    if (separatorIndex <= headerIndex) continue
+    const rowIndexes: number[] = []
+    for (let index = separatorIndex + 1; index < lines.length && isPipeLine(lines[index]!) && !isSeparator(lines[index]!); index++) {
+      if (splitCells(lines[index]!).length !== expectedHeader.length) break
+      rowIndexes.push(index)
+    }
+    const rowsAreMarketLabeled = rowIndexes.length >= (citationMode === 'following-paragraph' ? 3 : 2) && rowIndexes.every(index => {
+      const row = splitCells(lines[index]!)
+      return /(?:市場|市场|液冷|服务器|新能源)/u.test(row[0]!) && row[1]!.length > 0 && row[2]!.length > 0 && row[3]!.length > 0
+    })
+    const rowsHaveDirectCitations = citationMode === 'row' && rowIndexes.every(index =>
+      /\[[^\]\s]+@paragraph:\d+\]/u.test(splitCells(lines[index]!)[3]!))
+    const trailingCitationParagraph = rowIndexes.length ? lines[rowIndexes.at(-1)! + 1] ?? '' : ''
+    const followingCitationsSupportRows = citationMode === 'following-paragraph'
+      && ['18', '448', '450'].every(paragraph => new RegExp(`@paragraph:${paragraph}(?:\\]|\\b)`, 'u').test(trailingCitationParagraph))
+    const interveningLinesAreNarrative = lines.slice(headerIndex + 1, separatorIndex).every(line => !isPipeLine(line) || /^\s*#{1,6}\s/u.test(line))
+    if (rowsAreMarketLabeled && (rowsHaveDirectCitations || followingCitationsSupportRows) && interveningLinesAreNarrative) {
+      const [header] = lines.splice(headerIndex, 1)
+      lines.splice(separatorIndex - 1, 0, header!)
+      repairs.push(`TABLE_ADJACENT_MARKET_HEADER_REATTACHED: line ${headerIndex + 1}; rows ${rowIndexes.length}`)
+      break
     }
   }
   // R170's product profitability table fused its plain header into an
