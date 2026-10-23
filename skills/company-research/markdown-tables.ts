@@ -55,3 +55,43 @@ export function validateCompanyResearchMarkdownTables(markdown: string): string[
   }
   return errors
 }
+
+/**
+ * Losslessly repair a table row that has exactly one extra trailing cell by
+ * joining that cell into the declared final column. Rows with missing or
+ * multiple extra cells remain untouched and continue to fail validation.
+ */
+export function mergeExcessTrailingMarkdownTableCells(markdown: string): string {
+  const lines = markdown.split(/\r?\n/)
+  const cells = (line: string): string[] => {
+    let value = line.trim()
+    if (value.startsWith('|')) value = value.slice(1)
+    if (value.endsWith('|') && !value.endsWith('\\|')) value = value.slice(0, -1)
+    const result: string[] = []
+    let current = ''
+    for (let index = 0; index < value.length; index++) {
+      const char = value[index]!
+      if (char === '|' && value[index - 1] !== '\\') { result.push(current.trim()); current = '' }
+      else current += char
+    }
+    result.push(current.trim())
+    return result
+  }
+  const separator = (line: string) => line.includes('|') && cells(line).every(cell => /^:?-{3,}:?$/.test(cell))
+  let changed = false
+  for (let index = 1; index < lines.length; index++) {
+    if (!separator(lines[index]!)) continue
+    let headerIndex = index - 1
+    while (headerIndex >= 0 && !lines[headerIndex]!.trim()) headerIndex--
+    if (headerIndex < 0 || !lines[headerIndex]!.includes('|')) continue
+    const width = cells(lines[index]!).length
+    for (let rowIndex = index + 1; rowIndex < lines.length && lines[rowIndex]!.includes('|') && !separator(lines[rowIndex]!); rowIndex++) {
+      const row = cells(lines[rowIndex]!)
+      if (row.length !== width + 1) continue
+      const merged = [...row.slice(0, width - 1), `${row[width - 1]}；${row[width]}`]
+      lines[rowIndex] = `| ${merged.join(' | ')} |`
+      changed = true
+    }
+  }
+  return changed ? lines.join('\n') : markdown
+}

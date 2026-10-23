@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 import { assembleCompanyResearch, normalizeCompanySynthesisCitations, repairCompanyResearchMarkdownTables, validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
+import { mergeExcessTrailingMarkdownTableCells } from '../../skills/company-research/markdown-tables.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 
@@ -19,6 +20,19 @@ test('Markdown table validation rejects extra cells and embedded heading rows', 
   assert.match(validateCompanyResearchMarkdownTables('| 指标 | 判断 |\n| --- | --- |\n| 客户集中 | 需持续跟踪 | 意外内容 |')[0]!, /row at line 3 has 3 cells; expected 2/)
   assert.match(validateCompanyResearchMarkdownTables('| 指标 | 判断 |\n| --- | --- |\n| ## 竞争风险 | 需持续跟踪 |')[0]!, /heading markup embedded/)
   assert.match(validateCompanyResearchMarkdownTables('| 指标 | ## 判断 |\n| --- | --- |\n| 客户集中 | 需持续跟踪 |')[0]!, /heading markup embedded in table header/)
+})
+
+test('capital-allocation table shape repair joins one excess trailing cell without dropping evidence', () => {
+  const malformed='| 配置事项 | 规模与期间 | 目的与结果 | 评价及限制 |\n|---|---|---|---|\n| 研发投入 | 2025年投入人民币金额。[annual@paragraph:1526] | 公司披露研发方向。[annual@paragraph:606] | 原表变动比例13.02%。[annual@paragraph:1527] | 投资回报仍待验证。'
+  const repaired=mergeExcessTrailingMarkdownTableCells(malformed)
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired),[])
+  assert.match(repaired,/原表变动比例13\.02%[^\n]*；投资回报仍待验证/)
+  assert.match(repaired,/\[annual@paragraph:1526\]/)
+  assert.match(repaired,/\[annual@paragraph:606\]/)
+  const missing='| 配置事项 | 规模与期间 | 目的与结果 | 评价及限制 |\n|---|---|---|---|\n| 研发投入 | 2025年投入 | 公司披露方向 |'
+  assert.ok(validateCompanyResearchMarkdownTables(mergeExcessTrailingMarkdownTableCells(missing)).length>0,'missing cells remain blocked')
+  const multiple='| 配置事项 | 规模与期间 | 目的与结果 | 评价及限制 |\n|---|---|---|---|\n| 研发投入 | 2025年投入 | 公司披露方向 | 评价 | 限制 | 额外单元格 |'
+  assert.ok(validateCompanyResearchMarkdownTables(mergeExcessTrailingMarkdownTableCells(multiple)).length>0,'multiple excess cells remain blocked')
 })
 
 test('R175 Markdown table validation rejects an empty table shell without inventing rows', () => {
