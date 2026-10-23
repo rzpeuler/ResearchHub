@@ -614,6 +614,67 @@ test('malformed atomic product tables use the remaining format retry and never p
   assert.equal(exhausted.sections.length, 0, 'no malformed section is accepted as a completed method result')
 })
 
+test('business segment format repair fills only a missing channel cell from adjacent cited group-level disclosure', async () => {
+  const lines = Array.from({ length: 830 }, () => '一般披露事项。')
+  lines[827] = '分销售模式'
+  lines[828] = '直销 销售收入'
+  lines[829] = '经销 销售收入'
+  const filing = { ...source, content: lines.join('\n') }
+  const ref = (paragraph: number) => `[filing-1@paragraph:${paragraph}]`
+  const header = '| 披露产品 | 客户及需求边界 | 收入与毛利口径 | 渠道与解释限制 |\n|---|---|---|---|'
+  const channelProse = `报告按集团销售模式披露直销与经销，但未提供分产品渠道拆分，不能将集团结构分配给单一产品。${ref(828)} ${ref(829)} ${ref(830)}`
+  const malformed = `${header}\n| 汽车、汽车相关产品及其他产品 | 具体采购者未披露 | 产品收入与毛利率详见相应披露。 |\n| 手机部件、组装及其他产品 | 客户身份未披露 | 产品收入与毛利率详见相应披露。 |\n\n${channelProse}`
+  const methodOutput = {
+    status: 'complete', answer: `公司按产品披露收入与毛利，渠道限制见年报。${ref(828)}`,
+    markdown: `公司按产品披露收入与毛利，渠道限制见年报。${ref(828)}`,
+    sections: [
+      { id: 'business-model', markdown: `产品收入及毛利分别披露。${ref(828)}` },
+      { id: 'business-segments', markdown: malformed },
+      { id: 'supply-chain', markdown: `年报披露集团直销与经销模式。${ref(829)} ${ref(830)}` },
+    ],
+    findings: [{ text: '公司按产品披露收入，并以集团口径披露销售模式。', kind: 'fact', evidence: [828, 829, 830].map(paragraph => ({ sourceCandidateId: 'filing-1', location: `paragraph:${paragraph}` })) }],
+    limitations: [], risks: [],
+  }
+  const result = await executeCompanyResearchMethod({ skillId: 'business_model_map', company: { symbol: '002594' }, asOf: '2026-10-23', sources: [filing], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async () => methodOutput) })
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  const repaired = result.sections.find(section => section.id === 'business-segments')!.markdown
+  assert.equal((repaired.match(/集团直销、经销数据仅为销售模式汇总/g) ?? []).length, 2)
+  assert.match(repaired, /不能将集团渠道结构分配至该产品。 \[filing-1@paragraph:828\] \[filing-1@paragraph:829\] \[filing-1@paragraph:830\]/)
+  assert.match(repaired, /汽车、汽车相关产品及其他产品 \| 具体采购者未披露 \| 产品收入与毛利率详见相应披露。 \|/)
+  assert.match(repaired, /手机部件、组装及其他产品 \| 客户身份未披露 \| 产品收入与毛利率详见相应披露。 \|/)
+  assert.ok(result.attemptOutputs?.[0]?.formatRepairs?.length === 2)
+})
+
+test('business segment channel-cell repair fails closed without the adjacent limitation or exact schema', async () => {
+  const lines = Array.from({ length: 830 }, () => '一般披露事项。')
+  lines[827] = '分销售模式'
+  lines[828] = '直销 销售收入'
+  lines[829] = '经销 销售收入'
+  const filing = { ...source, content: lines.join('\n') }
+  const ref = '[filing-1@paragraph:828] [filing-1@paragraph:829] [filing-1@paragraph:830]'
+  const exactHeader = '| 披露产品 | 客户及需求边界 | 收入与毛利口径 | 渠道与解释限制 |\n|---|---|---|---|'
+  const shortRows = '| 汽车、汽车相关产品及其他产品 | 采购者未披露 | 收入与毛利见披露 |\n| 手机部件、组装及其他产品 | 客户未披露 | 收入与毛利见披露 |'
+  const makeOutput = (header: string, prose: string) => ({
+    status: 'complete', answer: `公司披露产品业务。${ref}`, markdown: `公司披露产品业务。${ref}`,
+    sections: [
+      { id: 'business-model', markdown: `公司披露产品业务。${ref}` },
+      { id: 'business-segments', markdown: `${header}\n${shortRows}\n\n${prose}` },
+      { id: 'supply-chain', markdown: `销售模式见年报。${ref}` },
+    ],
+    findings: [{ text: '公司披露产品业务。', kind: 'fact', evidence: [828, 829, 830].map(paragraph => ({ sourceCandidateId: 'filing-1', location: `paragraph:${paragraph}` })) }],
+    limitations: [], risks: [],
+  })
+  const unsupportedProse = `报告披露直销与经销，但未提供分产品渠道拆分，不能将集团结构分配给单一产品。${ref}`
+  for (const draft of [
+    makeOutput(exactHeader, `报告披露直销与经销，具体渠道安排未说明。${ref}`),
+    makeOutput(exactHeader.replace('披露产品', '产品'), unsupportedProse),
+  ]) {
+    const result = await executeCompanyResearchMethod({ skillId: 'business_model_map', company: { symbol: '002594' }, asOf: '2026-10-23', sources: [filing], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async () => draft) })
+    assert.notEqual(result.status, 'complete', JSON.stringify(result.diagnostics))
+    assert.ok(result.diagnostics.some(diagnostic => diagnostic.code === 'FORMAT_ERROR'))
+  }
+})
+
 test('malformed risk matrix retry names the exact five-column contract and preserves row content', async () => {
   const filing = { ...source, content: '公司披露客户、技术与商誉相关风险。' }
   const ref = '[filing-1@paragraph:1]'
