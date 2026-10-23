@@ -1618,6 +1618,22 @@ export function reconcileCompanyEmployeePlanEvidence<T extends CompanyContentSec
   return input.sections
 }
 
+/** Replace a stale employee-plan participation gap when the same research packet includes the later official count. */
+export function reconcileCompanyEmployeePlanMonitoringEvidence<T extends CompanyContentSection>(input:{readonly sections:readonly T[];readonly methodResults:readonly CompanyResearchMethodResult[]}):readonly T[]{
+  const monitoring=input.sections.find(section=>section.id==='monitoring-checklist')
+  if(!monitoring)return input.sections
+  const packets=input.methodResults.filter(method=>['management_governance_analysis','capital_allocation_review'].includes(method.skillId)&&method.status==='complete').flatMap(method=>[...method.executionEvidence??[],...method.deterministicEvidence??[]])
+  const packet=packets.find(item=>/2026年半年度报告/.test(item.title)
+    && item.excerpts.some(excerpt=>excerpt.location==='paragraph:1154'&&/2025\s*年员工持股计划/.test(excerpt.text))
+    && item.excerpts.some(excerpt=>excerpt.location==='paragraph:1159'&&/21,417\s+22,501,479/.test(excerpt.text)))
+  if(!packet||!monitoring.markdown.includes('实际参与人数材料未明确'))return input.sections
+  const corrected='2026年半年报在2025年员工持股计划项下列示员工人数21,417人、持股22,501,479股；该人数不等于实际认购或期末持有人数。 ['+packet.sourceCandidateId+'@paragraph:1154] ['+packet.sourceCandidateId+'@paragraph:1159]'
+  const markdown=monitoring.markdown.replace(/2025年计划上限不超过2\.5万名员工，实际参与人数材料未明确；/g,'2025年计划上限不超过2.5万名员工；'+corrected+' ')
+    .replace(/实际参与人数材料未明确/g,corrected)
+    .replace(/2026半年报列计划参与21,417人、持有22,501,479股；人员上限、购入股数与期末持股分别按披露口径核验。/,'人数上限、累计购入股数与期末持股属于不同口径，应分别按对应表头核验。')
+  return markdown===monitoring.markdown?input.sections:input.sections.map(section=>section.id===monitoring.id?{...section,markdown,sourceCandidateIds:[...new Set([...(section.sourceCandidateIds??[]),packet.sourceCandidateId])]}:section)
+}
+
 /** Replace an unsupported ownership-data gap with source-located controller holding disclosures. */
 export function reconcileCompanyControlOwnerHoldings<T extends CompanyContentSection>(input:{readonly sections:readonly T[];readonly methodResults:readonly CompanyResearchMethodResult[]}):readonly T[]{
   const section=input.sections.find(item=>item.id==='management-capital-allocation')
@@ -1991,6 +2007,14 @@ export function reconcileCompanyIndustryForecastPeriods<T extends CompanyContent
   let sourceCandidateIds = [...(section.sourceCandidateIds ?? [])]
   for (const packet of packets) {
     const candidateId = packet.sourceCandidateId
+    const aiServer = excerpts.find(item=>item.candidateId===candidateId&&item.location==='paragraph:448')
+    const liquidCooling = excerpts.find(item=>item.candidateId===candidateId&&item.location==='paragraph:450')
+    const historicalMarketRefs=[`${candidateId}@paragraph:448`,`${candidateId}@paragraph:450`]
+    if(aiServer&&liquidCooling&&/(?:2025|二零二五)/.test(aiServer.text)&&/1,672/.test(aiServer.text)&&/(?:2025|二零二五)/.test(liquidCooling.text)&&/28\.4/.test(liquidCooling.text)
+      && historicalMarketRefs.every(ref=>cited.has(ref))&&/AI服务器市场/.test(markdown)&&/数据中心液冷市场/.test(markdown)){
+      markdown=markdown.replace(/比亚迪2024年年报转述AI服务器及数据中心液冷预测：/,'比亚迪2024年年报转述的历史预测（目标年份为2025年）：')
+      markdown=markdown.replace(/不能据此推算比亚迪公司TAM或收入。/,'本轮未核实该预测对应的2025年实际市场规模，不将历史预测当作当前市场规模，也不能据此推算比亚迪公司TAM或收入。')
+    }
     const server = excerpts.find(item => item.candidateId === candidateId && item.location === 'paragraph:558')
     const serverFollowup = excerpts.find(item => item.candidateId === candidateId && item.location === 'paragraph:559')
     const serverPcb = excerpts.find(item => item.candidateId === candidateId && item.location === 'paragraph:560')
@@ -2446,7 +2470,7 @@ export function reconcileCompanySegmentRowCitations<T extends CompanyContentSect
 
 /** Preserve the source table's industry/product dimension when synthesis labels repeated rows. */
 export function reconcileCompanyDriverClassificationLabels<T extends CompanyContentSection>(input:{readonly sections:readonly T[];readonly methodResults:readonly CompanyResearchMethodResult[]}):readonly T[]{
-  const methods=input.methodResults.filter(method=>method.skillId==='business_driver_analysis'&&method.status==='complete')
+  const methods=input.methodResults.filter(method=>['business_driver_analysis','business_model_map','product_technology_analysis'].includes(method.skillId)&&method.status==='complete')
   if(!methods.length)return input.sections
   type Row={label:string;refs:readonly string[]}
   const bySource=new Map<string,{industry:Map<string,Row[]>;product:Map<string,Row[]>}>()
@@ -2472,7 +2496,9 @@ export function reconcileCompanyDriverClassificationLabels<T extends CompanyCont
       const key=String(Math.round(amount))
       const rows=maps[dimension].get(key)??[]
       const row={label,refs:[...(dimensionLocation?[`${packet.sourceCandidateId}@${dimensionLocation}`]:[]),...(pendingLocation?[`${packet.sourceCandidateId}@${pendingLocation}`]:[]),`${packet.sourceCandidateId}@${excerpt.location}`]}
-      if(!rows.some(item=>item.label===label))rows.push(row)
+      const existingIndex=rows.findIndex(item=>item.label===label)
+      if(existingIndex<0)rows.push(row)
+      else rows[existingIndex]={...rows[existingIndex]!,refs:[...new Set([...rows[existingIndex]!.refs,...row.refs])]}
       maps[dimension].set(key,rows)
     }
     bySource.set(packet.sourceCandidateId,maps)
@@ -2481,7 +2507,25 @@ export function reconcileCompanyDriverClassificationLabels<T extends CompanyCont
   const sections=input.sections.map(section=>{
     if(!['revenue-profit-drivers','growth-drivers','catalysts','business-segments'].includes(section.id))return section
     let markdown=section.markdown
-    const lines=markdown.split('\n').map(line=>{
+    const lines=markdown.split('\n').map(originalLine=>{
+      let line=originalLine
+      if(/年报中的分行业数据是年度口径/.test(line)){
+        const amountMatch=/([\d,]+(?:\.\d+)?)(?=营业收入)/.exec(line.replace(/\[[^\]]+\]/g,''))
+        const amountKey=amountMatch?String(Math.round(Number(amountMatch[1]!.replaceAll(',','')))):undefined
+        const citedIds=new Set([...line.matchAll(/\[([^\]]+@paragraph:\d+)\]/g)].map(ref=>ref[1]!.split('@paragraph:')[0]!))
+        if(amountKey)for(const sourceId of citedIds){
+          const sourceRows=bySource.get(sourceId)
+          const industry=sourceRows?.industry.get(amountKey)??[]
+          const product=sourceRows?.product.get(amountKey)??[]
+          if(industry.length!==1||product.length!==1||industry[0]!.label===product[0]!.label)continue
+          const correction=`年报分行业表将该行列为“${industry[0]!.label}”，分产品表将其列为“${product[0]!.label}”；两表收入金额相同，但分类维度不同，不能互换。以下收入、成本和毛利率数据按分产品口径表述。`
+          line=line.replace(/年报中的分行业数据是年度口径，不可改称半年数据。/,correction)
+          const refs=[...industry[0]!.refs,...product[0]!.refs].map(ref=>`[${ref}]`).filter(ref=>!line.includes(ref))
+          if(refs.length)line+=` ${refs.join(' ')}`
+          changed=true
+          break
+        }
+      }
       const markers=[...line.matchAll(/分行业|分产品/g)]
       if(!markers.length)return line
       let result=''

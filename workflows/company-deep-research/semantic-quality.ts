@@ -138,14 +138,14 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
     // and no material error was found. Reconcile that explicit contradiction
     // locally instead of spending the bounded second model call on formatting.
     // An adversative concrete defect keeps the flags fail-closed.
-    const explicitNoNumericDefect = /(?:未发现|没有|不存在|未见)(?:任何|实质|具体)?(?:实质)?(?:数值|数字|计算|金额)?(?:错误|缺陷|错引|错算)|无实质(?:数值|数字|计算|金额)错引|无阻塞数值(?:错误|缺陷)|数值.{0,12}(?:正确|无误)|(?:无此错误|相关年份与数值一致|不构成科目混用|未合并且口径准确|口径准确)|未见错|(?:公式|计算结果).{0,24}(?:吻合|正确|一致).{0,24}(?:故|因此|所以)(?:无|不存在|不构成)(?:实质)?(?:数值|数字|计算)?(?:错误|缺陷)|(?:故|因此|所以)(?:无|不存在)(?:实质)?(?:数值|数字|计算)错误|不存在实质错接/.test(joinedRawReasons)
-    const explicitNumericAffirmation = /(?:数值|数字|金额|数据|计算|公式|操作数|期间|年份|增速|同比|比率|研发费用|研发投入|比例).{0,60}(?:正确|准确|一致|吻合|相符|可核|可复核|可复算)|(?:正确|准确|一致|吻合|相符).{0,36}(?:数值|数字|金额|数据|计算|公式|操作数|期间|年份|增速|同比|比率|研发费用|研发投入|比例)|(?:金额|数字|费用|比率|比例).{0,32}(?:分别列示|分开呈列).{0,24}(?:未合并|口径准确)/.test(joinedRawReasons)
+    const explicitNoNumericDefect = /(?:未发现|没有|不存在|未见)(?:任何|实质|具体)?(?:实质)?(?:数值|数字|计算|金额)?(?:错误|缺陷|错引|错算)|(?:数字|数值|计算|金额).{0,12}无实质错误|无实质(?:数值|数字|计算|金额)错引|无阻塞数值(?:错误|缺陷)|数值.{0,12}(?:正确|无误)|(?:无此错误|相关年份与数值一致|不构成科目混用|未合并且口径准确|口径准确)|未见错|(?:公式|计算结果).{0,24}(?:吻合|正确|一致).{0,24}(?:故|因此|所以)(?:无|不存在|不构成)(?:实质)?(?:数值|数字|计算)?(?:错误|缺陷)|(?:故|因此|所以)(?:无|不存在)(?:实质)?(?:数值|数字|计算)错误|不存在实质错接/.test(joinedRawReasons)
+    const explicitNumericAffirmation = /(?:数值|数字|金额|数据|计算|公式|操作数|期间|年份|增速|同比|比率|研发费用|研发投入|比例).{0,60}(?:正确|准确|一致|吻合|相符|可核|可复核|可复算)|(?:正确|准确|一致|吻合|相符).{0,36}(?:数值|数字|金额|数据|计算|公式|操作数|期间|年份|增速|同比|比率|研发费用|研发投入|比例)|(?:复算|计算结果|公式).{0,28}(?:吻合|正确|一致|可复核|可复算)|(?:金额|数字|费用|比率|比例).{0,32}(?:分别列示|分开呈列).{0,24}(?:未合并|口径准确)/.test(joinedRawReasons)
     // A reviewer may phrase a retracted suspicion as a question (“应为11.65天？...=11.65”);
     // suppress only that exact expected value when the same clause immediately
     // recomputes to it. Explicit unit/period/mismatch defects remain visible.
     const questionedAndRecomputedValue = /应为\s*([+-]?\d[\d,，]*(?:\.\d+)?)\s*(?:天|日|元|万元|亿元|%|％|个百分点)?[?？][^。；;]{0,100}=\s*\1(?![\d.])/g
     const numericDefectText = joinedRawReasons.replace(questionedAndRecomputedValue, '')
-    const concreteNumericDefect = /(?:实际应为|应为\s*[-+]?\d|与(?:原文|公式|来源|preparedAnalysis).{0,36}(?:不符|不一致)|(?:少计|多计|错算|错用|误用|单位错误|期间错误)|期间.{0,48}(?:不符|不一致|错配)|(?:分行业|分产品).{0,40}(?:混淆|错用|误作|混为)|(?:未|没有|缺少|缺失|未提供|未注明).{0,32}(?:公式|操作数|期间|单位|数据)|(?:公式|计算).{0,40}(?:不正确|无法复算|错误结果)|(?:0(?:\.0+)?|零).{0,24}(?:无来源|无证据|未见披露|未列示|未提供|不支持))/.test(numericDefectText)
+    const concreteNumericDefect = /(?:实际应为|应为\s*[-+]?\d|与(?:原文|公式|来源|preparedAnalysis).{0,36}(?:不符|不一致)|(?:少计|多计|错算|错用|误用|单位错误|期间错误)|期间.{0,48}(?:不符|不一致|错配)|(?:分行业|分产品).{0,40}(?:混淆|错用|误作|混为)|(?:未|没有|缺少|缺失|未提供|未注明|未列明).{0,32}(?:公式|操作数|期间|单位|数据)|(?:公式|计算).{0,40}(?:不正确|无法复算|错误结果)|(?:0(?:\.0+)?|零).{0,24}(?:无来源|无证据|未见披露|未列示|未提供|不支持))/.test(numericDefectText)
     const evidenceAligned = /(?:引用.{0,60}(?:一致|相符|匹配|准确)|(?:来源|证据|原文).{0,60}(?:一致|相符|匹配|有据|明列|明确|充分)|年份.{0,30}(?:一致|正确)|(?:结论|报告).{0,30}有原文依据|充分结构化证据)/.test(joinedRawReasons)
     const explicitlyNoEvidenceBlocker = /(?:未发现(?:任何)?实质错误|没有(?:任何)?实质错误|无此错误|不构成(?:实质)?(?:缺口|错误|阻塞|错引)|不是(?:实质)?(?:缺口|错误)|(?:未见|未发现|不存在|没有).{0,32}(?:阻塞缺陷|实质缺陷|阻塞问题|具体阻塞)|阻塞缺陷未见|实际可确认的阻塞缺陷未见|故不是缺口)/.test(joinedRawReasons)
     // Do not let an explicit clean conclusion erase a separately identified
@@ -157,14 +157,19 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
       && /(?:引用值|原始值|来源值).{0,24}(?:准确|正确|吻合)/.test(joinedRawReasons)
       && /(?:(?:单位|表头|定位|引用).{0,48}(?:缺少|未提供|需绑定|应绑定|尚未绑定)|(?:缺少|未提供|需绑定|应绑定|尚未绑定).{0,48}(?:单位|表头|定位|引用))/.test(joinedRawReasons)
     if (row.numericReproducible === false && correctConversionWithCitationScopeGap && !concreteNumericDefect) row.numericReproducible = true
-    if (row.evidenceSupportsConclusion === false && evidenceAligned && explicitlyNoEvidenceBlocker && !concreteEvidenceDefect) row.evidenceSupportsConclusion = true
+    const preparedAnalysisExplicitlyConfirms = /preparedAnalysis.{0,60}(?:支持|吻合|一致)/.test(joinedRawReasons) && /未发现(?:任何)?实质错误/.test(joinedRawReasons)
+    if (row.evidenceSupportsConclusion === false && (evidenceAligned || preparedAnalysisExplicitlyConfirms) && explicitlyNoEvidenceBlocker && !concreteEvidenceDefect) row.evidenceSupportsConclusion = true
     // A review can correctly identify an omitted analysis while misusing the
     // evidence/numeric flags for it. Keep that substantive unanswered finding,
     // but classify the already-cited, explicitly aligned facts separately.
+    const hasExplicitReproducibilityGap = (/(?:未(?:列出|展示|显示|明确列出|列明|给出|提供|附)|需补明|缺少|缺失|没有列出|未附).{0,48}(?:两期|两项|两个数|可比(?:数值|金额|期间)|期间|操作数|分子|分母|公式|计算过程|基期|变化率).{0,96}(?:无法|不能|影响读者|影响.{0,20}(?:判断|复核)|导致无法|使得.{0,20}(?:无法|不能)|使.{0,20}(?:无法|不能)|未核清|限制)/.test(joinedRawReasons)
+      || /未列明.{0,32}(?:可比两个数|两个数|两期(?:金额|数值)?|变化率).{0,80}(?:影响|限制|无法|不能|未核清)/.test(joinedRawReasons)
+      || /(?:真正阻塞是|实质问题是).{0,180}(?:未(?:列出|列明|提供|展示)|缺少|缺失).{0,32}(?:可比两个数|两个数|变化率|操作数|计算过程|公式)/.test(joinedRawReasons))
+      && !/(?:无需|不需要|不必|不影响|并不影响|仍可|可以直接).{0,24}(?:复算|复核)/.test(joinedRawReasons)
     const sameRowAnalysisOmission = /(?:真正阻塞项|核心遗漏|关键遗漏).{0,260}(?:(?:同一|同表|对应).{0,24}(?:分产品|收入|成本)|收入.{0,36}成本).{0,120}(?:未说明|未列|未呈现|遗漏|缺少|未给出).{0,100}(?:收入|成本|增速|方向|差额|变化|对比)/.test(joinedRawReasons)
       || /(?:未说明|未列|未呈现|遗漏).{0,100}(?:同一分产品行|收入.{0,24}成本).{0,100}(?:方向|差额|增速)/.test(joinedRawReasons)
     const hasSpecificLocatorOrScopeDefect = /(?:错期|范围错误|错引|错列|引用定位不足|引文.{0,48}(?:缺失|不完整|不足)|对应来源.{0,48}(?:缺失|错误|不一致)|具体行.{0,48}(?:引用|定位).{0,24}(?:缺失|不足|错误))/.test(joinedRawReasons)
-    if (sameRowAnalysisOmission && !hasSpecificLocatorOrScopeDefect && !concreteNumericDefect) {
+    if (sameRowAnalysisOmission && !hasSpecificLocatorOrScopeDefect && !concreteNumericDefect && !hasExplicitReproducibilityGap) {
       if (row.evidenceSupportsConclusion === false && evidenceAligned) row.evidenceSupportsConclusion = true
       if (row.numericReproducible === false && explicitNumericAffirmation) row.numericReproducible = true
     }
@@ -198,14 +203,17 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
     // reproducibility check when the report omits its periods, operands, or
     // formula. Treat only an explicit missing-input + review-impact statement
     // as a concrete defect; agreement alone remains contradictory below.
-    const hasExplicitReproducibilityGap = (/(?:未(?:列出|展示|显示|明确列出|列明|给出|提供|附)|需补明|缺少|缺失|没有列出|未附).{0,48}(?:两期|两项|两个数|可比(?:数值|金额|期间)|期间|操作数|分子|分母|公式|计算过程|基期|变化率).{0,96}(?:无法|不能|影响读者|影响.{0,20}(?:判断|复核)|导致无法|使得.{0,20}(?:无法|不能)|使.{0,20}(?:无法|不能)|未核清|限制)/.test(reasons)
-      || /未列明.{0,32}(?:可比两个数|两个数|两期(?:金额|数值)?|变化率).{0,80}(?:影响|限制|无法|不能|未核清)/.test(reasons))
-      && !/(?:无需|不需要|不必|不影响|并不影响|仍可|可以直接).{0,24}(?:复算|复核)/.test(reasons)
-    const hasConcreteCounterevidence = /(?:(?:但|然而|不过|更重要|真正阻塞是|实质问题是).{0,220}(?:应为|错误|不一致|冲突|不支持|未提供|未列明|缺少|没有|不能证明|未核清|归属未注明|无法|不严谨|错列|错用|口径不符|未明确|未标明|未注明)|(?:引用|来源|原文).{0,160}(?:实际|对应).{0,100}(?:完整行|表头|产品名|名称).{0,60}(?:不一致|冲突|错误|不同|范围不准确|误导)|与.{1,100}(?:不一致|冲突)|(?:错误|问题)在于|表头.{0,40}实际为|未提供.{0,60}(?:因此|所以|故)|缺少.{0,60}(?:因此|所以|导致)|(?:年度与半年|年度及半年|年度和半年|跨期).{0,48}(?:混读|混淆|未明确|未标明)|未(?:明确|标明|注明).{0,60}(?:不同期间|期间边界|年度与半年|年度和半年).{0,40}(?:混读|混淆|并置|比较|误导)|(?:只说明|仅说明).{0,80}(?:不能证明|不支持|未核清).{0,80}(?:限制|影响|缺口|判断))/.test(reasons)
-    const hasNumericReproducibilityCounterevidence = hasConcreteCounterevidence || hasExplicitReproducibilityGap
+    const hasConcreteCounterevidence = /(?:(?:但|然而|不过|更重要|真正阻塞是|实质问题是).{0,220}(?:应为|错误|不一致|冲突|不支持|未提供|未列明|未列出|未在.{0,12}列出|缺少|没有|不能证明|未核清|归属未注明|无法|不严谨|错列|错用|口径不符|未明确|未标明|未注明)|(?:引用|来源|原文).{0,160}(?:实际|对应).{0,100}(?:完整行|表头|产品名|名称).{0,60}(?:不一致|冲突|错误|不同|范围不准确|误导)|与.{1,100}(?:不一致|冲突)|(?:错误|问题)在于|表头.{0,40}实际为|未提供.{0,60}(?:因此|所以|故)|缺少.{0,60}(?:因此|所以|导致)|(?:年度与半年|年度及半年|年度和半年|跨期).{0,48}(?:混读|混淆|未明确|未标明)|未(?:明确|标明|注明).{0,60}(?:不同期间|期间边界|年度与半年|年度和半年).{0,40}(?:混读|混淆|并置|比较|误导)|(?:只说明|仅说明).{0,80}(?:不能证明|不支持|未核清).{0,80}(?:限制|影响|缺口|判断))/.test(reasons)
+    // Keep numeric reproduction separate from an unrelated evidence/coverage
+    // defect in another clause. Formula, operand, unit, period, and arithmetic
+    // mismatches remain numeric blockers; row classification and missing
+    // business context belong to evidence/coverage review.
+    const hasNumericReproducibilityCounterevidence = hasExplicitReproducibilityGap
+      || /(?:实际应为|应为\s*[-+]?\d|与(?:原文|公式|来源|preparedAnalysis).{0,36}(?:不符|不一致)|(?:少计|多计|错算|单位错误|期间错误|期间错配)|期间.{0,48}(?:不符|不一致|错配)|(?:公式|计算).{0,40}(?:不正确|无法复算|错误结果)|无法确认.{0,24}(?:范围|单位|期间|数值|计算|口径)|(?:原文|来源).{0,24}没有该科目.{0,24}(?:范围|单位|期间|数值|计算|口径))/.test(reasons)
     const explicitlyNonBlocking = /(?:判为false无依据|调整为通过|不构成实质性不支持|不构成实质性错误|不构成不可复算理由|不构成反证|此理由不支持判false|没有具体阻塞证据|主要结论均有支持|未发现关键数值错误|数据准确)/i.test(reasons)
-    const affirmsNumbers = /(?:事实方向正确|直接披露事实|无需重算|可复算|数字.{0,20}(?:正确|无误)|金额.{0,20}(?:正确|无误)|(?:数据|数字|数值).{0,30}准确|未发现(?:具体)?(?:关键)?(?:数字|数值|计算)?错误|未发现说明中的实质错误|其余.{0,24}(?:金额|数字|比例).{0,20}可核验)/.test(reasons)
+    const affirmsNumbers = /(?:事实方向正确|直接披露事实|无需重算|可复算|算术.{0,36}(?:正确|吻合|可复核)|计算.{0,36}(?:正确|吻合|可复核|可核验)|数字.{0,20}(?:正确|无误)|金额.{0,20}(?:正确|无误)|(?:数据|数字|数值).{0,30}准确|未发现(?:具体)?(?:关键)?(?:数字|数值|计算)?错误|未发现说明中的实质错误|其余.{0,24}(?:金额|数字|比例).{0,20}可核验)/.test(reasons)
     const explicitNumericError = /(?:错误数字|计算错误|公式结果错误|实际应为|数值应为|金额应为|单位应为|错算|公式不正确|运算错误|数字有误|数值有误)/.test(reasons)
+    if (row.numericReproducible === false && affirmsNumbers && hasConcreteCounterevidence && !hasNumericReproducibilityCounterevidence && !explicitNumericError) row.numericReproducible = true
     // Reviewers sometimes put a directly identified table/citation coverage gap
     // in the numeric flag even while explicitly confirming that the figures are
     // reproducible. Keep that blocker on its evidence flag. Do not auto-clear a
@@ -232,7 +240,7 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
     const explicitlyRejectsOwnFailureFlag = /(?:拒绝false判定|需拒绝false判定|false理由不能成立|没有可成立的false理由|false旗标应为true|不可复核旗标应为true|false.{0,16}应为true|不应判为false|不能判为false|不应判为证据不支持|不能据此判(?:为)?false|不能说(?:没有|未提供|未发现|不存在)|不应判错|不能据此判错|不能据此认定(?:关键论点|结论|判断|数字|数据)?错误|本项不应判错|没有阻塞问题|现有证据不足以支持此节为false|(?:该)?旗标(?:判断)?应通过|(?:整体|按规则)应通过而非设false|缺口陈述准确.{0,36}(?:未发现|没有)(?:虚假缺口|实质错误|数值错误)|未发现(?:不支持的)?关键风险传导或数字错误|未发现实质数值错误|未发现(?:具体)?(?:关键)?数字错误)/i.test(reasons)
     if (explicitlyRejectsOwnFailureFlag && (row.evidenceSupportsConclusion === false || row.numericReproducible === false || row.questionAnswered === false || row.riskTransmission === false)
       && !(sameRowAnalysisOmission && row.questionAnswered === false && row.evidenceSupportsConclusion === true && row.numericReproducible === true)) throw new Error(`FORMAT: Contradictory verdict for ${row.sectionId}; its reason explicitly rejects the false flag. On retry, set the corresponding flag true and remove that non-blocking concern, or state a separate concrete defect for the false flag.`)
-    if (row.numericReproducible === false && (explicitlyNonBlocking || /(?:不应判数字错误|属于正确推断|不能据此判错|不构成数字错误)/.test(reasons) || /(?:数字无实质错误|未见计算错误|未发现数值错误|不存在数值错误|数字.*(?:正确|无误)|数字无误|数值.*正确|计算结果正确|计算无误|本身正确|实际差额为.{0,20}(?:正确|\d)|实际结果为.{0,20}(?:正确|\d)|数值.{0,20}正确.{0,30}(?:故|因此).{0,16}(?:不构成错误|不能判错))/.test(reasons) && !hasNumericReproducibilityCounterevidence)) throw new Error(`FORMAT: Contradictory numeric rejection for ${row.sectionId}; reasons affirm the numbers without identifying a concrete numeric defect. On retry, set numericReproducible=true and reserve any real coverage/evidence defect for its corresponding flag, or state the exact numeric error with contrary source evidence.`)
+    if (row.numericReproducible === false && (explicitlyNonBlocking || /(?:不应判数字错误|属于正确推断|不能据此判错|不构成数字错误)/.test(reasons) || /(?:数字无实质错误|未见计算错误|未发现数值错误|不存在数值错误|数字.*(?:正确|无误)|数字无误|数值.*正确|计算结果正确|计算无误|本身正确|实际差额为.{0,20}(?:正确|\d)|实际结果为.{0,20}(?:正确|\d)|数值.{0,20}正确.{0,30}(?:故|因此).{0,16}(?:不构成错误|不能判错))/.test(reasons)) && !hasNumericReproducibilityCounterevidence) throw new Error(`FORMAT: Contradictory numeric rejection for ${row.sectionId}; reasons affirm the numbers without identifying a concrete numeric defect. On retry, set numericReproducible=true and reserve any real coverage/evidence defect for its corresponding flag, or state the exact numeric error with contrary source evidence.`)
     if (row.numericReproducible === false && affirmsNumbers && !hasNumericReproducibilityCounterevidence) throw new Error(`FORMAT: Contradictory numeric rejection for ${row.sectionId}; the reason calls figures directly disclosed or reproducible without identifying a concrete numeric defect. On retry, set the corresponding flag true and reserve any real coverage/evidence defect for its corresponding flag, or state the exact numeric error with contrary source evidence.`)
     if (row.questionAnswered === false && /(?:(?:主要问题|核心问题|核心增长条件|财务质量实质问题|章节问题).{0,24}已(?:充分|实质)?回答|核心已回答)/.test(reasons) && !hasConcreteCounterevidence) throw new Error(`FORMAT: Contradictory unanswered verdict for ${row.sectionId}; reasons affirm the section answered without identifying a concrete coverage gap.`)
     if (row.evidenceSupportsConclusion === false && /(?:准确陈述|不构成虚假缺口|不是虚假缺口|并非虚假缺口)/.test(reasons) && !hasConcreteCounterevidence) throw new Error(`FORMAT: Contradictory evidence rejection for ${row.sectionId}; reasons explicitly confirm that the flagged absence is accurate.`)

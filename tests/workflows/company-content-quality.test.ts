@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyIndustryExposureTableCitations, reconcileCompanyNumericMovementVerbs, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyInterimIndustryProductComparison, reconcileCompanyRAndDCapitalizationRatioSpread, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
+import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyEmployeePlanMonitoringEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyIndustryExposureTableCitations, reconcileCompanyNumericMovementVerbs, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyInterimIndustryProductComparison, reconcileCompanyRAndDCapitalizationRatioSpread, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 import { reconcileCompanyProductCategoryEconomics } from '../../workflows/company-deep-research/content-quality.ts'
 
@@ -69,11 +69,60 @@ test('classification repair restores a uniquely sourced industry label and adds 
   assert.equal(reconcileCompanyDriverClassificationLabels({sections:result,methodResults:[method]})[0]!.markdown,result[0]!.markdown)
 })
 
+test('annual driver prose distinguishes same-value industry and product rows',()=>{
+  const method:CompanyResearchMethodResult={skillId:'business_driver_analysis',status:'complete',attempts:1,answer:'',markdown:'',sections:[],findings:[],sourceCandidateIds:['annual'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'annual',title:'2025年年度报告',publisher:'Issuer',excerpts:[
+    {sourceCandidateId:'annual',location:'paragraph:812',text:'分行业'},
+    {sourceCandidateId:'annual',location:'paragraph:816',text:'交通运输设备及电气制造业 648,645,636,000.00 80.68% 617,381,935,000.00 79.45% 5.06%'},
+    {sourceCandidateId:'annual',location:'paragraph:818',text:'分产品'},
+    {sourceCandidateId:'annual',location:'paragraph:821',text:'汽车、汽车相关'},
+    {sourceCandidateId:'annual',location:'paragraph:822',text:'产品及其他产品 648,645,636,000.00 80.68% 617,381,935,000.00 79.45% 5.06%'},
+    {sourceCandidateId:'annual',location:'paragraph:840',text:'分行业'},
+    {sourceCandidateId:'annual',location:'paragraph:843',text:'交通运输设备'},
+    {sourceCandidateId:'annual',location:'paragraph:844',text:'及电气制造业 648,645,636,000.00 515,762,940,000.00 20.49% 5.06% 7.53% -1.82%'}
+  ]}]}
+  const sections=[{id:'revenue-profit-drivers',markdown:'年报中的分行业数据是年度口径，不可改称半年数据。2025年，汽车、汽车相关产品及其他产品648,645,636,000.00营业收入同比增长5.06%、营业成本同比增长7.53%。[annual@paragraph:822]',sourceCandidateIds:['annual']}]
+  const fixed=reconcileCompanyDriverClassificationLabels({sections,methodResults:[method]})[0]!.markdown
+  assert.match(fixed,/分行业表将该行列为“交通运输设备及电气制造业”/)
+  assert.match(fixed,/分产品表将其列为“汽车、汽车相关产品及其他产品”/)
+  assert.match(fixed,/分类维度不同，不能互换/)
+  assert.match(fixed,/annual@paragraph:844/)
+  assert.match(fixed,/annual@paragraph:822/)
+  assert.equal(reconcileCompanyDriverClassificationLabels({sections:[{...sections[0]!,markdown:fixed}],methodResults:[method]})[0]!.markdown,fixed)
+})
+
 const sections = () => COMPANY_CORE_SECTION_IDS.map((id) => ({ id, markdown: id === 'industry-exposure'
   ? '公司产品对应服务器PCB细分市场，行业预测显示需求增长；但缺少公司可服务市场边界和份额，因此不能据行业总量推算公司TAM。[annual-report@paragraph:1]'
   : id === 'competition'
     ? '与中际旭创相比，公司披露光模块产品路线和客户类型，但没有同口径成本和份额数据，因此无法判断竞争胜负。[annual-report@paragraph:1]'
     : `对 ${id} 的分析：披露事实支持经营机制判断，同时存在执行风险。`, sourceCandidateIds: ['annual-report'] }))
+
+
+test('2025 market figures transcribed from an older annual report remain labeled as historical forecasts',()=>{
+  const method={skillId:'market_structure_analysis',status:'complete',executionEvidence:[{sourceCandidateId:'annual',title:'2024年年度报告',publisher:'Issuer',excerpts:[
+    {sourceCandidateId:'annual',location:'paragraph:448',text:'Market Insights预测，二零二五年全球 AI 服务器市场规模达 1,672 亿美元。'},
+    {sourceCandidateId:'annual',location:'paragraph:450',text:'MarketsandMarkets 预计，二零二五年全球数据中心液冷市场规模将达 28.4 亿美元。'}
+  ]}]} as unknown as CompanyResearchMethodResult
+  const sections=[{id:'industry-exposure',markdown:'比亚迪2024年年报转述AI服务器及数据中心液冷预测：Market Insights预测2025年全球AI服务器市场规模为1672亿美元；MarketsandMarkets预计2025年全球数据中心液冷市场规模为28.4亿美元。不能据此推算比亚迪公司TAM或收入。[annual@paragraph:448] [annual@paragraph:450]',sourceCandidateIds:['annual']}]
+  const fixed=reconcileCompanyIndustryForecastPeriods({sections,methodResults:[method]})[0]!.markdown
+  assert.match(fixed,/历史预测（目标年份为2025年）/)
+  assert.match(fixed,/本轮未核实该预测对应的2025年实际市场规模/)
+  assert.match(fixed,/不能据此推算比亚迪公司TAM或收入/)
+})
+
+test('employee plan monitoring removes a stale participation gap when the later official report gives the plan count',()=>{
+  const method={skillId:'management_governance_analysis',status:'complete',executionEvidence:[{sourceCandidateId:'official-interim',title:'2026年半年度报告',publisher:'Issuer',excerpts:[
+    {sourceCandidateId:'official-interim',location:'paragraph:1154',text:'2025 年员工持股计划：'},
+    {sourceCandidateId:'official-interim',location:'paragraph:1159',text:'21,417 22,501,479 无 0.2468%'}
+  ]}]} as unknown as CompanyResearchMethodResult
+  const sections=[{id:'monitoring-checklist',markdown:'2025年计划上限不超过2.5万名员工，实际参与人数材料未明确；截至2025年累计购入10,714,990股。2026半年报列计划参与21,417人、持有22,501,479股。',sourceCandidateIds:[] as string[]},{id:'management-capital-allocation',markdown:'治理披露。'}]
+  const fixed=reconcileCompanyEmployeePlanMonitoringEvidence({sections,methodResults:[method]})[0]!
+  assert.doesNotMatch(fixed.markdown,/实际参与人数材料未明确/)
+  assert.match(fixed.markdown,/列示员工人数21,417人、持股22,501,479股/)
+  assert.match(fixed.markdown,/不等于实际认购或期末持有人数/)
+  assert.match(fixed.markdown,/official-interim@paragraph:1154/)
+  assert.match(fixed.markdown,/official-interim@paragraph:1159/)
+})
+
 test('domain quality gate rejects cited market and competition gap-only sections', () => {
   const value = sections()
   const market = COMPANY_CORE_SECTION_IDS.indexOf('industry-exposure')

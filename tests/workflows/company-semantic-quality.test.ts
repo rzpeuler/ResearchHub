@@ -287,19 +287,19 @@ test('R162 clears only explicit no-error financial and allocation verdicts, reco
 })
 
 
-test('self-contradictory numeric rejection is repaired within the same two review calls rather than treated as substantive failure', async () => {
+test('a pure numeric confirmation repairs its false flag without a redundant semantic retry', async () => {
   const contradictory={sectionChecks:output.sectionChecks.map(check=>check.sectionId==='financial-quality'?{...check,numericReproducible:false,reasons:['同比与资产负债比率均可复算；此处数字无实质错误。']}:check)}
   let calls=0
-  const result=await reviewCompanyResearchSemantics({...input,reasoningExecutor:executor(async request=>{
+  const result=await reviewCompanyResearchSemantics({...input,reasoningExecutor:executor(async()=>{
     calls++
-    if(calls===2){assert.match(request.input.repairErrors[0].message,/Contradictory numeric rejection/);assert.match(request.input.repairErrors[0].message,/set numericReproducible=true/);assert.deepEqual(request.input.repairPreviousOutput,contradictory)}
     return calls===1?contradictory:output
   })})
   assert.equal(result.passed,true)
-  assert.equal(result.attempts,2)
-  assert.equal(result.attemptOutputs?.length,2)
-  assert.equal(result.diagnostics[0]?.code,'FORMAT_ERROR')
-  assert.throws(()=>validateCompanySemanticQualityOutput(contradictory),/Contradictory numeric rejection/)
+  assert.equal(result.attempts,1)
+  assert.equal(result.attemptOutputs?.length,1)
+  const repaired = validateCompanySemanticQualityOutput(contradictory).find(check => check.sectionId === 'financial-quality')!
+  assert.equal(repaired.numericReproducible,true)
+  assert.deepEqual(repaired.reasons,[])
   const realError={sectionChecks:output.sectionChecks.map(check=>check.sectionId==='financial-quality'?{...check,numericReproducible:false,reasons:['未见计算错误，但引用原文没有该科目，无法确认范围和单位。']}:check)}
   assert.equal(validateCompanySemanticQualityOutput(realError).find(check=>check.sectionId==='financial-quality')!.numericReproducible,false,'a concrete remaining evidence problem is not automatically waived')
 })
@@ -878,4 +878,62 @@ test('semantic review retries verdicts that call rejected content disclosed, rep
   assert.equal(calls, 2)
   assert.equal(result.passed, true)
   assert.equal(result.attempts, 2)
+})
+
+test('R174 pure confirmations repair false financial-quality and growth-driver flags without retaining blockers', () => {
+  const confirmed = output.sectionChecks.map(check => {
+    if (check.sectionId === 'financial-quality') return {
+      ...check,
+      evidenceSupportsConclusion: false,
+      numericReproducible: false,
+      reasons: ['资产负债率来源及期间一致，公式与数值可复算；经营现金流同比结果与preparedAnalysis吻合，未发现实质错误。'],
+    }
+    if (check.sectionId === 'growth-drivers') return {
+      ...check,
+      evidenceSupportsConclusion: false,
+      numericReproducible: false,
+      reasons: ['合并毛利率变化有preparedAnalysis支持；净利率变动复算吻合，未发现实质错误。'],
+    }
+    return check
+  })
+
+  const validated = validateCompanySemanticQualityOutput({ sectionChecks: confirmed })
+  for (const sectionId of ['financial-quality', 'growth-drivers']) {
+    const check = validated.find(item => item.sectionId === sectionId)!
+    assert.equal(check.evidenceSupportsConclusion, true, `${sectionId}: evidence confirmation should correct the false flag`)
+    assert.equal(check.numericReproducible, true, `${sectionId}: numeric confirmation should correct the false flag`)
+    assert.deepEqual(check.reasons, [], `${sectionId}: confirmation-only text is not a blocker`)
+  }
+})
+
+test('R174 mixed monitoring explanation keeps the concrete missing-count evidence blocker but passes confirmed arithmetic', () => {
+  const mixed = output.sectionChecks.map(check => check.sectionId === 'monitoring-checklist'
+    ? {
+      ...check,
+      evidenceSupportsConclusion: false,
+      numericReproducible: false,
+      reasons: ['2025年汽车产品营业收入同比5.06%、成本同比7.53%，算术差-2.47个百分点正确，原表毛利率变动-1.82%准确沿用；但计划实际参与人数未在本节列出，影响激励覆盖监控。'],
+    }
+    : check)
+
+  const check = validateCompanySemanticQualityOutput({ sectionChecks: mixed }).find(item => item.sectionId === 'monitoring-checklist')!
+  assert.equal(check.numericReproducible, true, 'the unrelated evidence gap cannot make the reproduced arithmetic fail')
+  assert.equal(check.evidenceSupportsConclusion, false, 'a concrete missing-count assertion remains fail-closed for evidence review')
+  assert.match(check.reasons.join(' '), /实际参与人数未在本节列出/)
+})
+
+test('R174 correct numeric confirmation does not mask an independently stated product-versus-industry misclassification', () => {
+  const mixed = output.sectionChecks.map(check => check.sectionId === 'revenue-profit-drivers'
+    ? {
+      ...check,
+      evidenceSupportsConclusion: false,
+      numericReproducible: false,
+      reasons: ['收入金额及同比计算可核验；但正文把分产品收入行错列为分行业数据，导致行业与产品驱动分类不一致。'],
+    }
+    : check)
+
+  const check = validateCompanySemanticQualityOutput({ sectionChecks: mixed }).find(item => item.sectionId === 'revenue-profit-drivers')!
+  assert.equal(check.numericReproducible, true, 'the stated arithmetic remains reproducible')
+  assert.equal(check.evidenceSupportsConclusion, false, 'the row-dimension misclassification remains an evidence blocker')
+  assert.match(check.reasons.join(' '), /错列为分行业/)
 })
