@@ -947,10 +947,27 @@ test('prepared simple FCF accepts an explicit unit inside its matching cumulativ
   const row={period:'2026-06-30',basis:'YTD',unit:'CNY',operatingCashFlow:2000000000,capex:4869000000,value:-2869000000,displayUnit:'亿元',displayOperatingCashFlow:'20.00',displayCapex:'48.69',displayValue:'-28.69',formula:'20.00亿元−48.69亿元＝-28.69亿元',sourceCandidateIds:[candidateId]}
   const preparedAnalysis={financial:{simpleFreeCashFlow:[row]}}
   const table='| 指标 | 结果 | 说明 |\n| --- | --- | --- |\n| 简化自由现金流 | 2026年上半年累计，人民币亿元：-28.69 | — | [dongshan-fcf-financial@paragraph:1]'
-  assert.equal(validateCompanyNumericGrounding({markdown:table,sources:[financialSource],preparedAnalysis}).status,'grounded')
+  const grounded=validateCompanyNumericGrounding({markdown:table,sources:[financialSource],preparedAnalysis})
+  assert.equal(grounded.status,'grounded',JSON.stringify(grounded.diagnostics))
   assert.equal(validateCompanyNumericGrounding({markdown:table.replace('2026年上半年','2025年上半年'),sources:[financialSource],preparedAnalysis}).status,'unsupported_numbers','the unit in a value cell cannot bypass its prepared period')
   assert.equal(validateCompanyNumericGrounding({markdown:table.replace('人民币亿元','人民币万元'),sources:[financialSource],preparedAnalysis}).status,'unsupported_numbers','the explicit value-cell unit must match the prepared display unit')
   assert.equal(validateCompanyNumericGrounding({markdown:table.replace('dongshan-fcf-financial','other-financial'),sources:[financialSource,otherSource],preparedAnalysis}).status,'unsupported_numbers','a different cited source cannot license the prepared value-cell result')
+})
+
+test('prepared simple FCF table grounds its displayed cash-flow operands and result only for the exact source period and unit',()=>{
+  const candidateId='company-fcf-table-source'
+  const financialSource={...source,candidate:{...source.candidate,candidateId},content:'{"kind":"financial","rows":[] }'}
+  const rows=[
+    {period:'2025-12-31',basis:'YTD',unit:'CNY',operatingCashFlow:5307141746.99,capex:4383254216.35,value:923887530.64,displayUnit:'亿元',displayOperatingCashFlow:'53.07',displayCapex:'43.83',displayValue:'9.24',formula:'53.07亿元−43.83亿元＝9.24亿元',sourceCandidateIds:[candidateId]},
+    {period:'2026-06-30',basis:'YTD',unit:'CNY',operatingCashFlow:2383887276.1,capex:5253357960.45,value:-2869470684.35,displayUnit:'亿元',displayOperatingCashFlow:'23.84',displayCapex:'52.53',displayValue:'-28.69',formula:'23.84亿元−52.53亿元＝-28.69亿元',sourceCandidateIds:[candidateId]},
+  ]
+  const preparedAnalysis={financial:{simpleFreeCashFlow:rows}}
+  const table='表内金额单位为人民币亿元。\n| 期间 | 经营现金流（人民币亿元） | 资本开支（人民币亿元） | 简化自由现金流（人民币亿元） | 公式 |\n|---|---:|---:|---:|---|\n| 2025全年 | 53.07 [company-fcf-table-source@paragraph:1] | 43.83 [company-fcf-table-source@paragraph:1] | 9.24 [company-fcf-table-source@paragraph:1] | 53.07亿元−43.83亿元＝9.24亿元 [company-fcf-table-source@paragraph:1] |\n| 2026年上半年累计 | 23.84 [company-fcf-table-source@paragraph:1] | 52.53 [company-fcf-table-source@paragraph:1] | 负28.69 [company-fcf-table-source@paragraph:1] | 23.84亿元−52.53亿元＝负28.69亿元 [company-fcf-table-source@paragraph:1] |'
+  const trustedText=['2025-12-31','2026-06-30']
+  const grounded=validateCompanyNumericGrounding({markdown:table,sources:[financialSource],preparedAnalysis,trustedText})
+  assert.equal(grounded.status,'grounded',JSON.stringify(grounded.diagnostics))
+  assert.equal(validateCompanyNumericGrounding({markdown:table.replace('52.53','52.54'),sources:[financialSource],preparedAnalysis,trustedText}).status,'unsupported_numbers','a changed calculator operand must not inherit the prepared period/source result')
+  assert.equal(validateCompanyNumericGrounding({markdown:table.replace('2025全年','2024全年'),sources:[financialSource],preparedAnalysis,trustedText}).status,'unsupported_numbers','the annual operand and result cannot be borrowed across periods')
 })
 
 test('prepared FCF values in comparison tables bind each signed result to its own period column',()=>{
