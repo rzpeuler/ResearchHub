@@ -44,8 +44,10 @@ export function normalizeCompanySynthesisCitations(markdown: string): string {
   // Synthesis models sometimes put exact source locators in prose-style
   // parentheses. Normalize only paragraph locators inside those delimiters;
   // the later allow-list check still rejects unsupported source/location pairs.
-  return delimited.replace(/([（(])([^（）()]*@paragraph:\d+[^（）()]*)[）)]/g, (_match, open: string, contents: string) =>
-    `${open}${contents.replace(/([A-Za-z0-9_.-]+@paragraph:\d+)/g, '[$1]')}${open === '（' ? '）' : ')'}`)
+  const normalizeInside = (contents: string) => contents.replace(/([A-Za-z0-9_.-]+@paragraph:\d+)/g, '[$1]')
+  return delimited
+    .replace(/（([^（）]*@paragraph:\d+[^（）]*)）/g, (_match, contents: string) => `（${normalizeInside(contents)}）`)
+    .replace(/\(([^()]*@paragraph:\d+[^()]*)\)/g, (_match, contents: string) => `(${normalizeInside(contents)})`)
 }
 
 export function validateCompanyResearchSectionTables(sections: readonly { readonly id: string; readonly markdown: string }[]): string[] {
