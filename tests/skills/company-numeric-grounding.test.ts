@@ -1563,3 +1563,34 @@ test('cited annual R&D money and ratio keep their own units when stated together
   assert.equal(validateCompanyNumericGrounding({markdown:correctClaim.replace('541.61亿元','541.62亿元'),sources:[filing]}).status,'unsupported_numbers','a monetary value outside the report rounding tolerance remains rejected')
   assert.equal(validateCompanyNumericGrounding({markdown:correctClaim.replace('6.97%','6.98%'),sources:[filing]}).status,'unsupported_numbers','a ratio outside the source row remains rejected')
 })
+
+test('Dongshan FCF formula and signed result stay in their own Markdown cells for colon and semicolon wording', () => {
+  const candidateId = 'akshare-financial-002384'
+  const financialSource = {...source, candidate:{...source.candidate,candidateId}, content:'{"kind":"financial","rows":[]}'}
+  const row = {period:'2026-06-30',basis:'YTD',unit:'CNY',operatingCashFlow:2383887276.1,capex:5253357960.45,value:-2869470684.35,displayUnit:'亿元',displayOperatingCashFlow:'23.84',displayCapex:'52.53',displayValue:'-28.69',formula:'23.84亿元−52.53亿元＝-28.69亿元',sourceCandidateIds:[candidateId]}
+  const preparedAnalysis = {financial:{simpleFreeCashFlow:[row]}}
+  const otherSource = {...financialSource,candidate:{...financialSource.candidate,candidateId:'unrelated-financial'}}
+  for (const punctuation of ['：','；']) for (const operator of ['−','-']) for (const sign of ['-','−']) {
+    const table = `| 指标 | 期间、口径与公式 | 结果 |\n|---|---|---:|\n| 简化自由现金流 | 2026年上半年累计${punctuation}23.84亿元${operator}52.53亿元 | ${sign}28.69亿元 | [${candidateId}@paragraph:1]`
+    const check = (markdown: string) => validateCompanyNumericGrounding({markdown,sources:[financialSource,otherSource],preparedAnalysis,trustedText:companyPreparedFinancialDateText(preparedAnalysis)})
+    const result = check(table)
+    assert.equal(result.status,'grounded',`${punctuation}/${operator}/${sign}: ${JSON.stringify(result.diagnostics)}`)
+    assert.equal(check(table.replace(`${sign}28.69亿元`,'28.69亿元')).status,'unsupported_numbers','a positive result must not inherit the negative prepared FCF')
+    assert.equal(check(table.replace('2026年上半年','2025年上半年')).status,'unsupported_numbers','the exact prepared period is still required')
+    assert.equal(check(table.replaceAll('亿元','万元')).status,'unsupported_numbers','a different monetary scale must remain unsupported')
+    assert.equal(check(table.replace(`[${candidateId}@paragraph:1]`,'[unrelated-financial@paragraph:1]')).status,'unsupported_numbers','an unrelated source cannot license prepared operands or result')
+    assert.equal(check(table.replace('52.53亿元','52.54亿元')).status,'unsupported_numbers','an incorrect operand is not repaired by recognizing subtraction')
+    const separatedOperand = table.replace(`${operator}52.53亿元`, `| ${sign}52.53亿元`)
+    const rejected = check(separatedOperand)
+    assert.ok(rejected.diagnostics.some(issue => /52\.53/.test(issue.token)), 'a unary negative at the next cell start cannot borrow the prior cell operand')
+  }
+})
+
+test('Markdown cell-start negative amounts remain unary even when a later cell contains an equation', () => {
+  const negativeSource = {...source,content:'资本支出52.53亿元，简化现金差额-28.69亿元。'}
+  for (const sign of ['-','−']) {
+    const markdown = `| 指标 | 资本支出 | 说明 |\n|---|---:|---|\n| 现金流 | ${sign}52.53亿元 | 23.84亿元＝23.84亿元 | [filing-2025-003@paragraph:1]`
+    const result = validateCompanyNumericGrounding({markdown,sources:[negativeSource]})
+    assert.ok(result.diagnostics.some(issue=>issue.token==='-52.53亿元'),JSON.stringify(result.diagnostics))
+  }
+})

@@ -34,9 +34,16 @@ const multipliers: Readonly<Record<string, number>> = { 万亿: 1e12, 亿元: 1e
 const monetaryScales: Readonly<Record<string, number>> = { 元: 1, 千元: 1e3, 万元: 1e4, 百万元: 1e6, 亿元: 1e8, 万亿: 1e12, 亿: 1e8, 万: 1e4 }
 
 function numericTokens(text: string): NumericToken[] {
+  // Arithmetic context never crosses a Markdown cell (or a line). In
+  // particular, a negative result in the next cell is not a second operand.
+  const arithmeticContext = (original: string, offset: number, width: number, afterWidth = width) => {
+    const start = Math.max(original.lastIndexOf('|', offset - 1), original.lastIndexOf('\n', offset - 1)) + 1
+    const boundaries = [original.indexOf('|', offset + 1), original.indexOf('\n', offset + 1)].filter(index => index >= 0)
+    const end = Math.min(original.length, ...boundaries)
+    return { before: original.slice(Math.max(start, offset - width), offset), after: original.slice(offset + 1, Math.min(end, offset + afterWidth)) }
+  }
   const unitBearingFormulaOperator = (original: string, offset: number): boolean => {
-    const before = original.slice(Math.max(0, offset - 100), offset)
-    const after = original.slice(offset + 1, offset + 48)
+    const { before, after } = arithmeticContext(original, offset, 100, 48)
     const formula = before.slice(Math.max(before.lastIndexOf('。'), before.lastIndexOf('；'), before.lastIndexOf(';'), before.lastIndexOf('\n')) + 1)
     const unit = '(?:天|万亿|亿元|百万元|万元|元)'
     const hasPriorEquation = /[=＝]/.test(formula) && new RegExp(`\\d+(?:\\.\\d+)?\\s*${unit}[+＋]\\s*\\d+(?:\\.\\d+)?\\s*${unit}$`).test(before)
@@ -57,7 +64,15 @@ function numericTokens(text: string): NumericToken[] {
     const parenthesizedArithmetic = /[（(][^()]{0,80}$/.test(before)
       && new RegExp(`^\\d+(?:[,，]\\d{3})*(?:\\.\\d+)?\\s*${unit}[）)]\\s*(?:÷|/|×|\\*|=|＝)`).test(after)
     const textualFormula = !/[=＝]\s*$/.test(before) && /(?:公式|自由现金流|简化现金流|FCF).{0,55}\d[\d,，]*(?:\.\d+)?\s*(?:万亿|亿元|百万元|万元|元|天).{0,30}$/.test(formula) && /^\d+(?:\.\d+)?\s*(?:万亿|亿元|百万元|万元|元|天)/.test(after)
-    return new RegExp(`${unit}$`).test(before) && (hasPriorEquation || hasFollowingEquation || narrativeCalculation || parenthesizedArithmetic) || hasLabeledFollowingEquation || textualFormula
+    // A table may put A−B in one cell and its result in the next. The
+    // complete unit-bearing pair is mathematical subtraction even when a
+    // semicolon separated it from the row's FCF label. Unary cell-start
+    // negatives cannot match the required left operand.
+    const tableLine = original.slice(original.lastIndexOf('\n', offset - 1) + 1, original.indexOf('\n', offset) < 0 ? undefined : original.indexOf('\n', offset))
+    const completeTablePair = /^\s*\|/.test(tableLine)
+      && new RegExp(`\\d+(?:[,，]\\d{3})*(?:\\.\\d+)?\\s*${unit}\\s*$`).test(before)
+      && new RegExp(`^\\d+(?:[,，]\\d{3})*(?:\\.\\d+)?\\s*${unit}\\s*$`).test(after)
+    return completeTablePair || new RegExp(`${unit}$`).test(before) && (hasPriorEquation || hasFollowingEquation || narrativeCalculation || parenthesizedArithmetic) || hasLabeledFollowingEquation || textualFormula
   }
   // Normalize the common mathematical minus glyph without changing UTF-16 offsets.
   // Do not let a punctuation separator after an ISO date join its final day
@@ -76,7 +91,8 @@ function numericTokens(text: string): NumericToken[] {
   // separator, not a negative year operand (e.g. 2026-06-30收入−2025-06-30收入).
   text = text.replace(/((?:19|20)\d{2}-\d{2}-\d{2}[^−\-；;。！？\n|]{0,64})[−-](?=(?:19|20)\d{2}-\d{2}-\d{2})/g, '$1 ')
   text = text.replace(/-(?=\d)/g, (sign, offset, original: string) => {
-    const before = original.slice(Math.max(0, offset - 8), offset)
+    const { before, after } = arithmeticContext(original, offset, 8, 55)
+    if (!before.trim()) return sign
     if (/(?:=|＝|等于)\s*(?:人民币|RMB|CNY)\s*$/.test(before)) return sign
     // A minus after an explicit result cue is the result sign, not an operator.
     if (/(?:计算为|结果为|等于|＝|即|得)\s*$/.test(before)) return sign
@@ -86,7 +102,6 @@ function numericTokens(text: string): NumericToken[] {
     // Model prose sometimes inserts an account label between formula operands
     // ("373亿元经营现金流−447亿元资本开支＝-74亿元"). The following
     // labeled amount before an equality is still a positive operand.
-    const after = original.slice(offset + 1, offset + 55)
     if (/^\d+(?:[,，]\d{3})*(?:\.\d+)?\s*(?:亿元|万元|元)\s*[\u3400-\u9fff]{0,16}\s*[=＝]/.test(after)) return ' '
     if (/[%％]$/.test(before)) return ' '
     return unitBearingFormulaOperator(original, offset) ? ' ' : sign
