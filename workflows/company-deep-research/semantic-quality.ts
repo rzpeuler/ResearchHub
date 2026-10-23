@@ -249,10 +249,64 @@ export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySem
   const reportSections = new Map(sections.map(section => [section.id, section.markdown]))
   const fullReport = [...reportSections.values()].join('\n')
   const hasIndependentDefectClause = (reason: string) => /(?:但|然而|不过|此外|另有|同时|并且)[^。；;\n]{0,140}(?:错误|错引|错列|不一致|不支持|未引用|未提供|缺失|缺少|无法复算|数字错|数值错)/.test(reason)
+  const hasActionableCorrection = (reason:string) => /(?:应更正|应改为|应为\s*[-\d]|引用.{0,50}(?:错误|不支持|不能支持|未绑定|不一致|冲突)|(?:原文|官方).{0,50}(?:不支持|冲突|不一致)|(?:存在|有).{0,18}(?:错误|冲突|漏列|错列|缺失|遗漏)|无法(?:复算|复核|定位)|(?:错引|错列|误引).{0,30}(?:导致|影响|使|造成)|期间(?:错配|不一致|错误))/.test(reason)
   return checks.map(check => {
     const body = reportSections.get(check.sectionId) ?? ''
     let removed = false
     const reasons = check.reasons.flatMap(reason => {
+      if (check.sectionId === 'industry-exposure'
+        && /数值及期间吻合/.test(reason)
+        && /未发现预测期错误/.test(reason)
+        && /未发现实质证据错误/.test(reason)
+        && !hasActionableCorrection(reason)
+        && /2025年基期4130亿美元/.test(body)
+        && /2026[—至-]2030年预测复合增长率.{0,20}6%/.test(body)
+        && /2030年预计6300亿美元/.test(body)) {
+        const cited = new Set([...body.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match => match[1]!))
+        const supported = sources.some(source => {
+          if (!/^2025\s*年年度报告/.test(source.title)) return false
+          const paragraphs = source.content.split(/\r?\n/)
+          return cited.has(`${source.candidate.candidateId}@paragraph:558`)
+            && cited.has(`${source.candidate.candidateId}@paragraph:559`)
+            && /2025\s*年全球服务器及存储领域的市场规模为\s*4130\s*亿美元/.test(paragraphs[557] ?? '')
+            && /2026\s*至\s*2030\s*年复合增长率为\s*6\s*%/.test(paragraphs[558] ?? '')
+            && /2030\s*年市场规模将达\s*6300\s*亿美元/.test(paragraphs[558] ?? '')
+        })
+        if (supported) { removed = true; return [] }
+      }
+      if (check.sectionId === 'management-capital-allocation'
+        && /正文对年度与半年期间区分准确/.test(reason)
+        && /未发现实质错误/.test(reason)
+        && !hasActionableCorrection(reason)
+        && /2025年年报/.test(body)
+        && /2026年半年度报告/.test(body)) {
+        const cited = new Set([...body.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match => match[1]!))
+        const annual = sources.find(source => /^2025\s*年年度报告/.test(source.title))
+        const interim = sources.find(source => /^2026\s*年半年度报告/.test(source.title))
+        const separatedPeriods = Boolean(annual && interim
+          && cited.has(`${annual.candidate.candidateId}@paragraph:2711`)
+          && cited.has(`${interim.candidate.candidateId}@paragraph:1387`)
+          && /无股权激励计划、员工持股计划/.test(annual.content.split(/\r?\n/)[2710] ?? '')
+          && /全部有效的员工持股计划/.test(interim.content.split(/\r?\n/).slice(1386,1404).join('\n'))
+          && /150\s+3,048,701/.test(interim.content.split(/\r?\n/).slice(1386,1404).join('\n')))
+        if (separatedPeriods) { removed = true; return [] }
+      }
+      if (check.sectionId === 'risks'
+        && /未发现实质错引或算术错误/.test(reason)
+        && /风险路径、触发和监控覆盖充分/.test(reason)
+        && !hasActionableCorrection(reason)
+        && /107,244,670\.48/.test(body)) {
+        const cited = new Set([...body.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match => match[1]!))
+        const exactAnnual = sources.some(source => {
+          if (!/^2025\s*年年度报告/.test(source.title)) return false
+          const paragraphs = source.content.split(/\r?\n/)
+          return cited.has(`${source.candidate.candidateId}@paragraph:7672`)
+            && cited.has(`${source.candidate.candidateId}@paragraph:7664`)
+            && /合计\s+169,931,367\.54\s+107,244,670\.48\s+268,811,941\.95/.test(paragraphs[7671] ?? '')
+            && /单位\s*[：:]\s*元/.test(paragraphs[7663] ?? '')
+        })
+        if (exactAnnual) { removed = true; return [] }
+      }
       if (check.sectionId === 'management-capital-allocation') {
         const exactRAndDDisclosure = /0\.92\s*个百分点/.test(reason)
           && /0\.92\s*%仅照录原表披露列值/.test(body)

@@ -547,6 +547,47 @@ test('semantic review reconciliation removes only customer-ratio claims contradi
   assert.match(risks.reasons[0]!, /更关键的是竞争与政策证据仍不足/)
 })
 
+test('R186 cited period-aligned industry, employee-plan, and goodwill facts clear only explicit reviewer self-contradictions',()=>{
+  const annualLines=Array.from({length:7672},()=> '')
+  annualLines[557]='2025 年全球服务器及存储领域的市场规模为 4130 亿美元，同比大幅增长 42%；预计'
+  annualLines[558]='2026 至 2030 年复合增长率为 6%，2030 年市场规模将达 6300 亿美元。'
+  annualLines[2710]='公司报告期无股权激励计划、员工持股计划或其他员工激励措施及其实施情况。'
+  annualLines[7663]='单位：元'
+  annualLines[7671]='合计 169,931,367.54 107,244,670.48 268,811,941.95'
+  const interimLines=Array.from({length:1404},()=> '')
+  interimLines[1386]='报告期内全部有效的员工持股计划情况'
+  interimLines[1400]='150 3,048,701 无 0.17%'
+  const annual={candidate:{candidateId:'annual'},title:'2025年年度报告',content:annualLines.join('\n')} as NormalizedResearchSource
+  const interim={candidate:{candidateId:'interim'},title:'2026年半年度报告',content:interimLines.join('\n')} as NormalizedResearchSource
+  const reasons={
+    'industry-exposure':'报告把2025年规模4130亿美元与2026—2030年预测及2030年6300亿美元分开列示，数值及期间吻合，未发现预测期错误。未发现实质证据错误；唯一局限为预测机构未明确。',
+    'management-capital-allocation':'2025年年报无计划与2026年半年报披露有效计划的表述均有官方依据；正文对年度与半年期间区分准确，未发现实质错误。',
+    risks:'商誉减值合计计提107,244,670.48元与年报段落7664、7672匹配；未发现实质错引或算术错误，且风险路径、触发和监控覆盖充分。',
+  }
+  const changed=output.sectionChecks.map(check=>{
+    if(check.sectionId==='industry-exposure')return {...check,evidenceSupportsConclusion:false,reasons:[reasons['industry-exposure']]}
+    if(check.sectionId==='management-capital-allocation')return {...check,evidenceSupportsConclusion:false,reasons:[reasons['management-capital-allocation']]}
+    if(check.sectionId==='risks')return {...check,evidenceSupportsConclusion:false,reasons:[reasons.risks]}
+    return check
+  })
+  const report=sections.map(section=>{
+    if(section.id==='industry-exposure')return {...section,markdown:'2025年基期4130亿美元；2026—2030年预测复合增长率6%，2030年预计6300亿美元。[annual@paragraph:558] [annual@paragraph:559]'}
+    if(section.id==='management-capital-allocation')return {...section,markdown:'2025年年报称当年未实施员工持股计划。[annual@paragraph:2711] 2026年半年度报告披露报告期内有效员工持股计划，150人、3,048,701股。[interim@paragraph:1387]'}
+    if(section.id==='risks')return {...section,markdown:'年报商誉减值准备单位为元，合计本期计提107,244,670.48元。[annual@paragraph:7664] [annual@paragraph:7672]'}
+    return section
+  })
+  const fixed=reconcileKnownReviewerFalsePositives(changed,report,[annual,interim])
+  for(const id of ['industry-exposure','management-capital-allocation','risks']){
+    const check=fixed.find(item=>item.sectionId===id)!
+    assert.equal(check.evidenceSupportsConclusion,true,id)
+    assert.deepEqual(check.reasons,[],id)
+  }
+  const mixedRisk=changed.map(check=>check.sectionId==='risks'?{...check,reasons:['年报商誉计提合计107,244,670.48元匹配，未发现实质错引或算术错误；但引用7660对资产组与经营分部的映射不能完整支持，影响减值风险归属。']}:check)
+  const preserved=reconcileKnownReviewerFalsePositives(mixedRisk,report,[annual,interim]).find(check=>check.sectionId==='risks')!
+  assert.equal(preserved.evidenceSupportsConclusion,false)
+  assert.match(preserved.reasons[0]!,/不能完整支持/)
+})
+
 test('R16 reviewer contradictions about equal values and explicitly non-blocking issues trigger bounded review repair', () => {
   const cases = [
     { sectionId: 'supply-chain', key: 'evidenceSupportsConclusion', reason: '供应商最大单一占比存在不一致：正文称9.74%，而同列数据为9.74%，该数值本身正确；客户集中度已回答，故不构成实质性不支持。' },

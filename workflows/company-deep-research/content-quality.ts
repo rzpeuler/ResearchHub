@@ -1599,6 +1599,61 @@ export function reconcileCompanyIndustryForecastPeriods<T extends CompanyContent
   return input.sections.map(item => item.id === section.id ? repaired : item)
 }
 
+/** Reproduce the income/cost growth-rate spread from one complete official industry row. */
+export function reconcileCompanyIndustryGrowthSpread<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly T[] {
+  const section = input.sections.find(item => item.id === 'revenue-profit-drivers')
+  if (!section || /#### 分行业增速差额复算|分行业收入与成本同比增速之差可复算/.test(section.markdown)) return input.sections
+  const packets = input.methodResults.flatMap(method => [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []])
+  const candidates = packets.flatMap(packet => {
+    if (!/半年度报告/.test(packet.title)) return []
+    const rows = packet.excerpts.map(excerpt => ({...excerpt, paragraph:Number(/^paragraph:(\d+)$/.exec(excerpt.location)?.[1] ?? 0)}))
+    return rows.flatMap(row => {
+      const match = row.text.trim().match(/^[\d,]+\.\d{2}\s+[\d,]+\.\d{2}\s+[\d.]+%\s+([\d.]+)%\s+([\d.]+)%\s+([-−]?[\d.]+)%$/)
+      if (!match || !row.paragraph) return []
+      const preceding = rows.filter(item => item.paragraph < row.paragraph && item.paragraph >= row.paragraph - 12)
+      const industry = preceding.find(item => item.text.trim() === '分行业')
+      const joinedHeaders = preceding.map(item => item.text).join('').replace(/\s+/g,'')
+      const completeHeader = /单位[：:]元/.test(joinedHeaders)
+        && /营业收入营业成本毛利率/.test(joinedHeaders)
+        && /营业收入比上.{0,12}年同期增减/.test(joinedHeaders)
+        && /营业成本比上.{0,12}年同期增减/.test(joinedHeaders)
+        && /毛利率比上.{0,12}年同期增减/.test(joinedHeaders)
+      if (!industry || !completeHeader) return []
+      const revenueGrowth = Number(match[1])
+      const costGrowth = Number(match[2])
+      const marginChange = match[3]!
+      const refs=[...preceding,row].map(item=>`[${packet.sourceCandidateId}@${item.location}]`)
+      return [{packet, row, revenueGrowth, costGrowth, marginChange, refs}]
+    })
+  })
+  const uniqueCandidates=[...new Map(candidates.map(candidate=>[`${candidate.packet.sourceCandidateId}:${candidate.row.location}`,candidate])).values()]
+  if (uniqueCandidates.length !== 1) return input.sections
+  const evidence = uniqueCandidates[0]!
+  const spread = evidence.revenueGrowth - evidence.costGrowth
+  const text = `2026年上半年分行业收入与成本同比增速差额可复算：${evidence.revenueGrowth.toFixed(2)}%−${evidence.costGrowth.toFixed(2)}%＝${spread.toFixed(2)}个百分点。该差额只是两项增速的算术差，不等于毛利率变动；原表另列毛利率同比增减${evidence.marginChange}%，沿用原表单位，二者不应互换。${evidence.refs.join(' ')}`
+  const markdown = `${section.markdown.trim()}\n\n#### 分行业增速差额复算\n${text}`
+  return input.sections.map(item => item.id === section.id ? {...item, markdown, sourceCandidateIds:[...new Set([...(item.sourceCandidateIds ?? []), evidence.packet.sourceCandidateId])]} : item)
+}
+
+/** Correct directional verbs only when both operands appear in the same sentence with a common unit. */
+export function reconcileCompanyNumericMovementVerbs<T extends CompanyContentSection>(sections: readonly T[]): readonly T[] {
+  let changed = false
+  const repaired = sections.map(section => {
+    if (!['revenue-profit-drivers','growth-drivers','financial-quality','business-segments','products'].includes(section.id)) return section
+    const markdown = section.markdown.replace(/(-?\d[\d,]*(?:\.\d+)?)\s*(亿元|元|%|天)\s*(降至|升至)\s*(-?\d[\d,]*(?:\.\d+)?)\s*\2/g, (whole, fromText:string, _unit:string, verb:string, toText:string) => {
+      const from = Number(fromText.replace(/,/g,''))
+      const to = Number(toText.replace(/,/g,''))
+      if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return whole
+      const expected = to > from ? '升至' : '降至'
+      return verb === expected ? whole : whole.replace(verb, expected)
+    })
+    if (markdown === section.markdown) return section
+    changed = true
+    return {...section, markdown}
+  })
+  return changed ? repaired : sections
+}
+
 /** Replace an unsupported claim that interim non-recurring items are undisclosed with the located official table. */
 export function reconcileCompanyNonRecurringDisclosure<T extends CompanyContentSection>(input: {
   readonly sections: readonly T[]
@@ -2032,7 +2087,7 @@ export function reconcileCompanyDriverClassificationLabels<T extends CompanyCont
 /** Attach the exact disclosed product-revenue row to every repeated amount in report prose and tables. */
 export function reconcileCompanyProductRevenueRowCitations<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly T[] {
   const targetIds = new Set(['products', 'growth-drivers', 'business-segments', 'revenue-profit-drivers'])
-  const methods = input.methodResults.filter(method => ['business_model_map', 'business_driver_analysis'].includes(method.skillId) && method.status === 'complete')
+  const methods = input.methodResults.filter(method => ['business_model_map', 'business_driver_analysis', 'product_technology_analysis'].includes(method.skillId) && method.status === 'complete')
   if (!methods.length) return input.sections
   const replacements = new Map<string, string>()
   const allPackets = methods.flatMap(method => [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []])
@@ -2067,7 +2122,7 @@ export function reconcileCompanyProductRevenueRowCitations<T extends CompanyCont
     let changed = false
     const markdown = section.markdown.split('\n').map(line => {
       const cells = line.split('|').map(cell => cell.trim())
-      if (!/^分产品$/.test(cells[1] ?? '') && !/^(?:汽车、|手机部件|电子|光电|精密|其他)/.test(cells[1] ?? '')) return line
+      if (!/^分产品$/.test(cells[1] ?? '') && !/^(?:汽车、|手机部件|电子|光电|精密|光模块|其他)/.test(cells[1] ?? '')) return line
       const numericValues = [...line.matchAll(/(?<![\d.,])[\d,]+\.\d{2}(?![\d.,])/g)].map(match => match[0]!)
       if (!numericValues.length) return line
       const exactRows = latestAnnualPackets.flatMap(packet => packet.excerpts.filter(item => numericValues.some(value => item.text.includes(value)) && /\d[\d,]*\.\d{2}/.test(item.text)).map(item => ({ packet, item })))
@@ -2079,7 +2134,14 @@ export function reconcileCompanyProductRevenueRowCitations<T extends CompanyCont
       }
       for (const { packet, item } of exactRows) {
         const ref = `[${packet.sourceCandidateId}@${item.location}]`
-        if (!repaired.includes(ref)) repaired = `${repaired} ${ref}`
+        if (repaired.includes(ref)) continue
+        const sourceValue = numericValues.filter(value => item.text.includes(value)).at(-1)
+        if (!sourceValue) continue
+        const cells = repaired.split('|')
+        const cellIndex = cells.findIndex((cell,index) => index > 0 && index < cells.length - 1 && cell.includes(sourceValue))
+        if (cellIndex < 0) continue
+        cells[cellIndex] = `${cells[cellIndex]!.trimEnd()} ${ref}`
+        repaired = cells.join('|')
       }
       if (repaired !== line) changed = true
       return repaired
@@ -2128,9 +2190,63 @@ export function reconcileCompanyProductRevenueRowCitations<T extends CompanyCont
     }).join('\n')
     return changed ? { ...section, markdown } : section
   })
-  if (!replacements.size) return reconcileCompanyGeographicRevenueReferences({ sections: productScopeCleanedSections, methodResults: input.methodResults })
+  // Row-level product facts must keep their locators inside the Markdown cell.
+  // A citation after the closing pipe is visually nearby but structurally
+  // outside the table and cannot be resolved as provenance for that row.
+  const inlineProductRowCitations = productScopeCleanedSections.map(section => {
+    if (!targetIds.has(section.id)) return section
+    let changed = false
+    const markdown = section.markdown.split('\n').map(line => {
+      if (!/^\s*\|/.test(line) || !/\d/.test(line)) return line
+      let cells = line.split('|')
+      const tail = cells.at(-1)?.trim() ?? ''
+      if (!/\|\s*$/.test(line) && /^(?:\[[^\]]+@paragraph:\d+\]\s*)+$/.test(tail)) {
+        cells.pop()
+        cells.push('')
+      }
+      if (cells.length < 4) return line
+      const label = cells[1]?.trim()
+      if (!label || /^(?:指标|项目|产品|产品名称|分产品|合计)$/.test(label)) return line
+      const monetary = [...line.matchAll(/(?<![\d.,])\d{1,3}(?:,\d{3})+\.\d{2}(?![\d.,])/g)].map(match => match[0]!)
+      const percentages = [...line.matchAll(/(?<![\d.])\d+(?:\.\d+)?\s*[%％]/g)].map(match => match[0]!.replace(/\s/g, ''))
+      if (!monetary.length) return line
+      const candidates = allPackets.flatMap(packet => {
+        if (!/(?:年度报告|半年度报告)/.test(packet.title)) return []
+        const excerpts = packet.excerpts.map(item => ({ ...item, paragraph: Number(/^paragraph:(\d+)$/.exec(item.location)?.[1] ?? 0) }))
+        return excerpts.flatMap(item => {
+          const text = item.text.trim()
+          if (!item.paragraph || !text.startsWith(`${label} `) || !monetary.every(value => text.includes(value))) return []
+          if (percentages.some(value => !text.replace(/\s/g, '').includes(value))) return []
+          const preceding = excerpts.filter(excerpt => excerpt.paragraph < item.paragraph && excerpt.paragraph >= item.paragraph - 24)
+          const classification = preceding.filter(excerpt => /^分(?:产品|行业|地区|销售模式|销售渠道)$/.test(excerpt.text.trim())).sort((a,b) => b.paragraph - a.paragraph)[0]
+          const productSection = classification?.text.trim() === '分产品'
+            && !preceding.some(excerpt => excerpt.paragraph > classification.paragraph && /^分(?:行业|地区|销售模式|销售渠道)$/.test(excerpt.text.trim()))
+          const compositionHeader = preceding.some(excerpt => /金额.*占营业收入比重.*金额.*占营业收入比重/.test(excerpt.text.replace(/\s+/g,'')))
+          const revenueComposition = preceding.some(excerpt => /营业收入构成/.test(excerpt.text)) && compositionHeader
+          if (!productSection && !revenueComposition) return []
+          return [{ packet, item }]
+        })
+      })
+      const unique = [...new Map(candidates.map(candidate => [`${candidate.packet.sourceCandidateId}:${candidate.item.location}`, candidate])).values()]
+      if (!unique.length) return line
+      let repaired = line
+      for (const {packet,item} of unique) {
+        const ref = `[${packet.sourceCandidateId}@${item.location}]`
+        if (repaired.includes(ref)) continue
+        const currentCells = repaired.split('|')
+        const bestIndex = currentCells.map((cell,index) => ({cell,index})).filter(({cell,index}) => index > 0 && index < currentCells.length - 1 && monetary.some(value => cell.includes(value))).at(-1)?.index
+        if (bestIndex === undefined) continue
+        currentCells[bestIndex] = `${currentCells[bestIndex]!.trimEnd()} ${ref}`
+        repaired = currentCells.join('|')
+      }
+      if (repaired !== line) changed = true
+      return repaired
+    }).join('\n')
+    return changed ? { ...section, markdown } : section
+  })
+  if (!replacements.size) return reconcileCompanyGeographicRevenueReferences({ sections: inlineProductRowCitations, methodResults: input.methodResults })
   let changed = false
-  const sections = productScopeCleanedSections.map(section => {
+  const sections = inlineProductRowCitations.map(section => {
     if (!targetIds.has(section.id)) return section
     let markdown = section.markdown
     for (const encoded of replacements.values()) {
@@ -2163,7 +2279,7 @@ export function reconcileCompanyProductRevenueRowCitations<T extends CompanyCont
     changed = true
     return { ...section, markdown }
   })
-  return reconcileCompanyGeographicRevenueReferences({ sections: changed ? sections : input.sections, methodResults: input.methodResults })
+  return reconcileCompanyGeographicRevenueReferences({ sections: changed ? sections : inlineProductRowCitations, methodResults: input.methodResults })
 }
 
 /** Attach exact official geographic revenue rows to a matching qualitative claim. */

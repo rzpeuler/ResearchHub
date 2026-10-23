@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
+import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyNumericMovementVerbs, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 
 test('classification repair restores a uniquely sourced industry label and adds its exact row citation', () => {
@@ -1176,6 +1176,67 @@ test('industry forecast explicitly separates the 2025 base value from the 2026-2
   const row='| 全球服务器及存储市场 | 2025年4130亿美元；2030年预计6300亿美元；2026—2030年复合增长率6% | 年报转述 | 不是公司TAM。[annual@paragraph:558] [annual@paragraph:559] |'
   const fixed=reconcileCompanyIndustryForecastPeriods({sections:[{id:'industry-exposure',markdown:`## 行业规模背景\n| 市场边界 | 预测值 | 预测机构及归属 | 可比性说明 |\n|---|---|---|---|\n${row}`}],methodResults:[method]})[0]!
   assert.match(fixed.markdown,/2025年基期4130亿美元；2026—2030年预测复合增长率6%，2030年预计6300亿美元。来源未提供2026年基期金额，因此不补算该数值/)
+})
+
+test('official industry row gets a reproducible revenue-cost growth spread distinct from gross-margin change',()=>{
+  const excerpts=[
+    {sourceCandidateId:'interim',location:'paragraph:784',text:'单位：元'},
+    {sourceCandidateId:'interim',location:'paragraph:785',text:'营业收入 营业成本 毛利率'},
+    {sourceCandidateId:'interim',location:'paragraph:786',text:'营业收入比上'},
+    {sourceCandidateId:'interim',location:'paragraph:787',text:'年同期增减'},
+    {sourceCandidateId:'interim',location:'paragraph:788',text:'营业成本比上'},
+    {sourceCandidateId:'interim',location:'paragraph:789',text:'年同期增减'},
+    {sourceCandidateId:'interim',location:'paragraph:790',text:'毛利率比上'},
+    {sourceCandidateId:'interim',location:'paragraph:791',text:'年同期增减'},
+    {sourceCandidateId:'interim',location:'paragraph:792',text:'分行业'},
+    {sourceCandidateId:'interim',location:'paragraph:793',text:'计算机、通信和'},
+    {sourceCandidateId:'interim',location:'paragraph:794',text:'其他电子'},
+    {sourceCandidateId:'interim',location:'paragraph:795',text:'27,347,867,868.08 21,929,134,042.30 19.81% 63.21% 51.01% 6.48%'},
+  ]
+  const method={skillId:'business_driver_analysis',status:'complete',executionEvidence:[{sourceCandidateId:'interim',title:'2026年半年度报告',publisher:'CNINFO',excerpts}]} as unknown as CompanyResearchMethodResult
+  const sections=[{id:'revenue-profit-drivers',markdown:'分行业表显示收入增速高于成本增速，毛利率同比增减为正。[interim@paragraph:795]'}]
+  const fixed=reconcileCompanyIndustryGrowthSpread({sections,methodResults:[method]})[0]!
+  assert.match(fixed.markdown,/63\.21%−51\.01%＝12\.20个百分点/)
+  assert.match(fixed.markdown,/不等于毛利率变动/)
+  assert.match(fixed.markdown,/毛利率同比增减6\.48%，沿用原表单位/)
+  for(const paragraph of [784,785,786,787,788,789,790,791,792,793,794,795])assert.match(fixed.markdown,new RegExp(`\\[interim@paragraph:${paragraph}\\]`))
+  assert.equal(reconcileCompanyIndustryGrowthSpread({sections:[fixed],methodResults:[method]})[0]!.markdown,fixed.markdown)
+})
+
+test('direction words follow the sign of same-unit numeric movement',()=>{
+  const fixed=reconcileCompanyNumericMovementVerbs([
+    {id:'growth-drivers',markdown:'半年收入169.55亿元降至277.98亿元；现金流25.00亿元升至23.84亿元；净利率由4.47%降至10.64%。'},
+    {id:'risks',markdown:'该风险段落不修改。'},
+  ])
+  assert.match(fixed[0]!.markdown,/169\.55亿元升至277\.98亿元/)
+  assert.match(fixed[0]!.markdown,/25\.00亿元降至23\.84亿元/)
+  assert.match(fixed[0]!.markdown,/由4\.47%升至10\.64%/)
+  assert.equal(fixed[1]!.markdown,'该风险段落不修改。')
+})
+
+test('exact annual product rows attach their source locator inside the matching Markdown data cell',()=>{
+  const packet={sourceCandidateId:'annual',title:'2025年年度报告',publisher:'CNINFO',excerpts:[
+    {sourceCandidateId:'annual',location:'paragraph:862',text:'营业收入构成'},
+    {sourceCandidateId:'annual',location:'paragraph:863',text:'单位：元'},
+    {sourceCandidateId:'annual',location:'paragraph:864',text:'2025 年 2024 年'},
+    {sourceCandidateId:'annual',location:'paragraph:865',text:'同比增减'},
+    {sourceCandidateId:'annual',location:'paragraph:866',text:'金额 占营业收入比重 金额 占营业收入比重'},
+    {sourceCandidateId:'annual',location:'paragraph:876',text:'光模块 1,435,534,921.96 3.58%'},
+    {sourceCandidateId:'annual',location:'paragraph:895',text:'分产品'},
+    {sourceCandidateId:'annual',location:'paragraph:896',text:'营业收入 营业成本 毛利率'},
+    {sourceCandidateId:'annual',location:'paragraph:899',text:'光模块 1,435,534,921.96 908,137,144.50 36.74%'},
+  ]}
+  const method={skillId:'business_model_map',status:'complete',executionEvidence:[packet]} as unknown as CompanyResearchMethodResult
+  const sections=[
+    {id:'business-segments',markdown:'| 产品 | 2025营业收入（元） | 2025占比 | 2024营业收入（元） | 2024占比 |\n|---|---:|---:|---:|---:|\n| 光模块 | 1,435,534,921.96 | 3.58% | 未列示 | 未列示 |'},
+    {id:'products',markdown:'| 产品 | 经营与技术信息 | 规格 | 收入、成本与毛利 | 竞争边界 |\n|---|---|---|---|---|\n| 光模块 | 公司披露产品 | 400G/800G | 2025年收入1,435,534,921.96元、成本908,137,144.50元、毛利率36.74% | 同口径数据缺失 |'},
+  ]
+  const fixed=reconcileCompanyProductRevenueRowCitations({sections,methodResults:[method]})
+  const segmentRow=fixed.find(item=>item.id==='business-segments')!.markdown.split('\n')[2]!
+  const productRow=fixed.find(item=>item.id==='products')!.markdown.split('\n')[2]!
+  assert.match(segmentRow,/\|\s*1,435,534,921\.96[^|]*\[annual@paragraph:876\]\s*\|/)
+  assert.match(productRow,/36\.74%[^|]*\[annual@paragraph:899\][^|]*\|/)
+  assert.doesNotMatch(productRow,/\|\s*\[annual@paragraph:899\]/)
 })
 
 test('financial quality replaces the unsupported interim non-recurring-loss absence with the official statement and keeps development spending scoped',()=>{
