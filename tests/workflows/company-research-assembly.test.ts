@@ -790,6 +790,26 @@ test('numeric synthesis repair adds the unique omitted paragraph for a split opt
   assert.match(result.sections.find(section=>section.id==='investment-thesis')!.markdown,/\[annual@paragraph:1\]/)
 })
 
+test('numeric synthesis repair resolves a unique authorized specification outside compact method excerpts', async () => {
+  const annual={candidate:{candidateId:'annual' as const,kind:'official_disclosure' as const,tier:1 as const,provider:'fixture',title:'年报'},retrievedAt:'2026-10-14',title:'年报',publisher:'公司',contentHash:'fixture',content:'自研100GPAM4EML芯片在\n400G及800G光模块累计使用，200GPAM4EML芯片已进入量产。',rights:{accessScope:'public' as const,retentionAllowed:true,aiProcessingAllowed:true,derivativeKnowledgeAllowed:true,redistributionAllowed:false}}
+  const sourcedMethod:CompanyResearchMethodResult={...method,findings:[{text:'披露100G PAM4 EML技术规格。',kind:'fact',evidence:[{sourceCandidateId:'annual',location:'paragraph:1'},{sourceCandidateId:'annual',location:'paragraph:2'}]}],executionEvidence:[{sourceCandidateId:'annual',title:'年报',publisher:'公司',excerpts:[{sourceCandidateId:'annual',location:'paragraph:2',text:'400G及800G光模块累计使用，200GPAM4EML芯片已进入量产。'}]}]}
+  const claim='100G PAM4 EML用于模块，200G PAM4 EML进入量产。[annual@paragraph:2]'
+  const executor:ReasoningExecutor={capabilities,execute:async request=>({operation:request.operation,output:{sections:ids.map(id=>({id,markdown:id==='investment-thesis'?claim:'有证据支持的定性判断。[annual@paragraph:2]',sourceCandidateIds:['annual']}))}})}
+  const result=await assembleCompanyResearch({...input,sources:[annual]},[sourcedMethod],executor,()=>input.asOf)
+  assert.equal(result.synthesisMode,'reasoning_executor',JSON.stringify(result.synthesisDiagnostics))
+  assert.match(result.sections.find(section=>section.id==='investment-thesis')!.markdown,/\[annual@paragraph:1\]/)
+})
+
+test('numeric synthesis repair leaves an authorized specification citation unresolved when its source row is ambiguous', async () => {
+  const annual={candidate:{candidateId:'annual' as const,kind:'official_disclosure' as const,tier:1 as const,provider:'fixture',title:'年报'},retrievedAt:'2026-10-14',title:'年报',publisher:'公司',contentHash:'fixture',content:'自研100GPAM4EML芯片在\n400G及800G光模块累计使用，200GPAM4EML芯片已进入量产。\n另一处披露100GPAM4EML芯片规格。',rights:{accessScope:'public' as const,retentionAllowed:true,aiProcessingAllowed:true,derivativeKnowledgeAllowed:true,redistributionAllowed:false}}
+  const sourcedMethod:CompanyResearchMethodResult={...method,findings:[{text:'披露100G PAM4 EML技术规格。',kind:'fact',evidence:[{sourceCandidateId:'annual',location:'paragraph:1'},{sourceCandidateId:'annual',location:'paragraph:2'},{sourceCandidateId:'annual',location:'paragraph:3'}]}],executionEvidence:[{sourceCandidateId:'annual',title:'年报',publisher:'公司',excerpts:[{sourceCandidateId:'annual',location:'paragraph:2',text:'400G及800G光模块累计使用，200GPAM4EML芯片已进入量产。'}]}]}
+  const claim='100G PAM4 EML用于模块，200G PAM4 EML进入量产。[annual@paragraph:2]'
+  const executor:ReasoningExecutor={capabilities,execute:async request=>({operation:request.operation,output:{sections:ids.map(id=>({id,markdown:id==='investment-thesis'?claim:'有证据支持的定性判断。[annual@paragraph:2]',sourceCandidateIds:['annual']}))}})}
+  const result=await assembleCompanyResearch({...input,sources:[annual]},[sourcedMethod],executor,()=>input.asOf)
+  assert.equal(result.synthesisMode,'deterministic_fallback')
+  assert.ok(result.synthesisDiagnostics.some(diagnostic=>diagnostic.includes('NUMERIC_GROUNDING_ERROR')))
+})
+
 test('numeric synthesis repair adds the unique same-source Juno Newco goodwill original-value row', async () => {
   const sourceLines=Array<string>(7024).fill('')
   sourceLines[7023]='除特别说明外，金额均以人民币千元为单位表示。'
