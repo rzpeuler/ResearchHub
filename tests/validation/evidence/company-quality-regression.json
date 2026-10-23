@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-10-23T05:14:06.427329+00:00",
+  "generatedAt": "2026-10-23T05:21:20.861286+00:00",
   "comparisonKey": [
     "filePath",
     "testTitle"
   ],
   "node": {
     "baselineLog": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-baseline-node.log",
-    "currentLog": "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r177-node-tap.log",
+    "currentLog": "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r178-node-tap.log",
     "baselineSha256": "406ba5be0dfba3d5e29438b7cf632338702abe5b31098eb355934275b08d5f02",
-    "currentSha256": "5eeda307eb9004d5dc590a623596f57fd93f16b00ab6aea958d895880c60d198",
+    "currentSha256": "cfe6d6feb6e23c449e5dd59ceda7ff7ab78ff3bae485216d5f392229b8df3c43",
     "baselineFailures": [
       {
         "filePath": "tests/app/services/research-skill-architecture.test.ts",
@@ -270,24 +270,24 @@
     "addedFailures": [],
     "removedFailures": [],
     "reportedTotals": [
-      "tests 2972",
-      "pass 2951",
+      "tests 2973",
+      "pass 2952",
       "fail 21"
     ],
     "summary": {
-      "total": 2972,
-      "passed": 2951,
+      "total": 2973,
+      "passed": 2952,
       "failed": 21,
       "newFailureCount": 0,
       "removedFailureCount": 0
     },
     "fileHashes": {
-      "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r177-node-tap.log": "5eeda307eb9004d5dc590a623596f57fd93f16b00ab6aea958d895880c60d198"
+      "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r178-node-tap.log": "cfe6d6feb6e23c449e5dd59ceda7ff7ab78ff3bae485216d5f392229b8df3c43"
     }
   },
   "client": {
     "baselineLog": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-baseline-client.log",
-    "currentLog": "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r177-client-tests.log",
+    "currentLog": "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r178-client-tests.log",
     "baselineSha256": "929cbb160200b2ff27201ff7767728da5bc6a2fbe5272e5f96f024022f5bacb1",
     "currentSha256": "bbf5bae6386ad199d3a1d11e284f61a3010b64f6f396dcffafaae2af0ced12eb",
     "baselineFailures": [
@@ -383,8 +383,8 @@
       "removedFailureCount": 0
     },
     "fileHashes": {
-      "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r177-client-tests.log": "bbf5bae6386ad199d3a1d11e284f61a3010b64f6f396dcffafaae2af0ced12eb",
-      "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r177-client-results.json": "5ae0dd1e25da337baae29223c657dc658b47cc54b077f78b4617cf6d46ba83c4"
+      "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r178-client-tests.log": "bbf5bae6386ad199d3a1d11e284f61a3010b64f6f396dcffafaae2af0ced12eb",
+      "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r178-client-results.json": "5ae0dd1e25da337baae29223c657dc658b47cc54b077f78b4617cf6d46ba83c4"
     }
   },
   "newRegressionCount": 0,
@@ -5645,6 +5645,412 @@
         "fileHashes": {
           "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r177-client-tests.log": "bbf5bae6386ad199d3a1d11e284f61a3010b64f6f396dcffafaae2af0ced12eb",
           "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r177-client-results.json": "5ae0dd1e25da337baae29223c657dc658b47cc54b077f78b4617cf6d46ba83c4"
+        }
+      }
+    },
+    "r178_full_regression": {
+      "phase": "r178_full_regression",
+      "generatedAt": "2026-10-23T05:21:20.861286+00:00",
+      "comparisonArtifact": "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r178-regression-comparison.json",
+      "comparisonArtifactSha256": "bd384a96c12b1dc0e4b879349d6e65f634c4f484be7cc754b18fa3a71ab87688",
+      "checks": {
+        "typecheck": {
+          "path": "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r178-typecheck.log",
+          "sha256": "e5046545a3a9fcc0cf6950c9402c78a2b227f07a6a658d2a0c1fbc5f4a194da0",
+          "exitCode": 0
+        },
+        "clientTypecheck": {
+          "path": "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r178-client-typecheck.log",
+          "sha256": "eb57b2c01c9900bab000b136214da05438159cd3a3917bb35f0629e5d81d331e",
+          "exitCode": 0
+        },
+        "clientBuild": {
+          "path": "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r178-client-build.log",
+          "sha256": "21eb8d7b2d59be6d8b77e1b336832fb933f4e198c6bb7690500a4ee17bea4f97",
+          "exitCode": 0
+        }
+      },
+      "node": {
+        "baselineLog": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-baseline-node.log",
+        "currentLog": "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r178-node-tap.log",
+        "baselineSha256": "406ba5be0dfba3d5e29438b7cf632338702abe5b31098eb355934275b08d5f02",
+        "currentSha256": "cfe6d6feb6e23c449e5dd59ceda7ff7ab78ff3bae485216d5f392229b8df3c43",
+        "baselineFailures": [
+          {
+            "filePath": "tests/app/services/research-skill-architecture.test.ts",
+            "testTitle": "Workflow metadata composes canonical peers without registering composite Skill IDs"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "company projection is readable through a canonical business exposure without adding a company graph node"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "current restricted or expired source rights suppress company exposures and dependent competition data"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "Industry projection returns bounded facts, deterministic core views, publication-labeled dates, future catalysts and competition units"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "semantic section classification receives only readable facts and cannot block the base projection"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "stale expected revision and a corrupt scope ledger fail closed"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "Theme graph includes only human-confirmed scope refs, preserves direction, and never expands global edges"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "ChangeSet validation rejects denied or missing Raw evidence listed by a competition Module"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "different rows may retain different currencies and a changed column schema blocks for review"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "evidence-backed cell update commits, and an unavailable update preserves the prior usable value"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Gateway blocks numeric Module cells that disagree with their canonical facts"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Gateway creates a competition Module and maps its local proposal ID"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Module blocks the whole submit when a cell reference cannot resolve"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Module blocks unusable Source evidence inherited from an existing business_exposure Relation"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Module blocks when the row Source payload is unusable"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "new Claim provenance alone cannot justify a contradictory same-reference display value"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "same Claim may support a canonical numeric display update after new provenance is admitted"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "same Industry table replays idempotently with the same canonical Module ref"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Writer rejection does not report success or overwrite the prior Module"
+          },
+          {
+            "filePath": "tests/validation/codex-module-remaining-schema-deltas.test.ts",
+            "testTitle": "composition is source-immutable, deterministic and idempotent"
+          },
+          {
+            "filePath": "tests/validation/codex-production-industry-schema-compatibility.test.ts",
+            "testTitle": "FIX-015 offline evidence inputs preserve authoritative contracts and expected source sizes"
+          }
+        ],
+        "currentFailures": [
+          {
+            "filePath": "tests/app/services/research-skill-architecture.test.ts",
+            "testTitle": "Workflow metadata composes canonical peers without registering composite Skill IDs"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "Industry projection returns bounded facts, deterministic core views, publication-labeled dates, future catalysts and competition units"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "Theme graph includes only human-confirmed scope refs, preserves direction, and never expands global edges"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "company projection is readable through a canonical business exposure without adding a company graph node"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "current restricted or expired source rights suppress company exposures and dependent competition data"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "semantic section classification receives only readable facts and cannot block the base projection"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "stale expected revision and a corrupt scope ledger fail closed"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "ChangeSet validation rejects denied or missing Raw evidence listed by a competition Module"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Gateway blocks numeric Module cells that disagree with their canonical facts"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Gateway creates a competition Module and maps its local proposal ID"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Module blocks the whole submit when a cell reference cannot resolve"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Module blocks unusable Source evidence inherited from an existing business_exposure Relation"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Module blocks when the row Source payload is unusable"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Writer rejection does not report success or overwrite the prior Module"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "different rows may retain different currencies and a changed column schema blocks for review"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "evidence-backed cell update commits, and an unavailable update preserves the prior usable value"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "new Claim provenance alone cannot justify a contradictory same-reference display value"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "same Claim may support a canonical numeric display update after new provenance is admitted"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "same Industry table replays idempotently with the same canonical Module ref"
+          },
+          {
+            "filePath": "tests/validation/codex-module-remaining-schema-deltas.test.ts",
+            "testTitle": "composition is source-immutable, deterministic and idempotent"
+          },
+          {
+            "filePath": "tests/validation/codex-production-industry-schema-compatibility.test.ts",
+            "testTitle": "FIX-015 offline evidence inputs preserve authoritative contracts and expected source sizes"
+          }
+        ],
+        "inheritedFailures": [
+          {
+            "filePath": "tests/app/services/research-skill-architecture.test.ts",
+            "testTitle": "Workflow metadata composes canonical peers without registering composite Skill IDs"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "Industry projection returns bounded facts, deterministic core views, publication-labeled dates, future catalysts and competition units"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "Theme graph includes only human-confirmed scope refs, preserves direction, and never expands global edges"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "company projection is readable through a canonical business exposure without adding a company graph node"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "current restricted or expired source rights suppress company exposures and dependent competition data"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "semantic section classification receives only readable facts and cannot block the base projection"
+          },
+          {
+            "filePath": "tests/app/services/theme-workspace-projection.test.ts",
+            "testTitle": "stale expected revision and a corrupt scope ledger fail closed"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "ChangeSet validation rejects denied or missing Raw evidence listed by a competition Module"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Gateway blocks numeric Module cells that disagree with their canonical facts"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Gateway creates a competition Module and maps its local proposal ID"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Module blocks the whole submit when a cell reference cannot resolve"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Module blocks unusable Source evidence inherited from an existing business_exposure Relation"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Module blocks when the row Source payload is unusable"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "Writer rejection does not report success or overwrite the prior Module"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "different rows may retain different currencies and a changed column schema blocks for review"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "evidence-backed cell update commits, and an unavailable update preserves the prior usable value"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "new Claim provenance alone cannot justify a contradictory same-reference display value"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "same Claim may support a canonical numeric display update after new provenance is admitted"
+          },
+          {
+            "filePath": "tests/knowledge/production/competition-module-gateway.test.ts",
+            "testTitle": "same Industry table replays idempotently with the same canonical Module ref"
+          },
+          {
+            "filePath": "tests/validation/codex-module-remaining-schema-deltas.test.ts",
+            "testTitle": "composition is source-immutable, deterministic and idempotent"
+          },
+          {
+            "filePath": "tests/validation/codex-production-industry-schema-compatibility.test.ts",
+            "testTitle": "FIX-015 offline evidence inputs preserve authoritative contracts and expected source sizes"
+          }
+        ],
+        "addedFailures": [],
+        "removedFailures": [],
+        "reportedTotals": [
+          "tests 2973",
+          "pass 2952",
+          "fail 21"
+        ],
+        "summary": {
+          "total": 2973,
+          "passed": 2952,
+          "failed": 21,
+          "newFailureCount": 0,
+          "removedFailureCount": 0
+        },
+        "fileHashes": {
+          "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r178-node-tap.log": "cfe6d6feb6e23c449e5dd59ceda7ff7ab78ff3bae485216d5f392229b8df3c43"
+        }
+      },
+      "client": {
+        "baselineLog": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-baseline-client.log",
+        "currentLog": "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r178-client-tests.log",
+        "baselineSha256": "929cbb160200b2ff27201ff7767728da5bc6a2fbe5272e5f96f024022f5bacb1",
+        "currentSha256": "bbf5bae6386ad199d3a1d11e284f61a3010b64f6f396dcffafaae2af0ced12eb",
+        "baselineFailures": [
+          {
+            "filePath": "src/App.test.tsx",
+            "testTitle": "Homepage shell > keeps rename open after a version conflict and retries with the refreshed version"
+          },
+          {
+            "filePath": "src/App.test.tsx",
+            "testTitle": "Homepage shell > moves archived conversations into the archive view and restores them to active history"
+          },
+          {
+            "filePath": "src/App.test.tsx",
+            "testTitle": "Homepage shell > reuses the same operation ID after reload when dispatch response is lost and shows workflow-only activity text"
+          },
+          {
+            "filePath": "src/App.test.tsx",
+            "testTitle": "Homepage shell > searches and filters server conversation titles and refreshes server-authoritative rename/archive state"
+          },
+          {
+            "filePath": "src/app/report-navigation.test.tsx",
+            "testTitle": "Report navigation and original conversation artifacts > opens a no-report bundle from its durable original conversation Activity"
+          },
+          {
+            "filePath": "src/app/report-navigation.test.tsx",
+            "testTitle": "Report navigation and original conversation artifacts > rejects another run returned to a conversation artifact request"
+          }
+        ],
+        "currentFailures": [
+          {
+            "filePath": "src/App.test.tsx",
+            "testTitle": "Homepage shell > keeps rename open after a version conflict and retries with the refreshed version"
+          },
+          {
+            "filePath": "src/App.test.tsx",
+            "testTitle": "Homepage shell > moves archived conversations into the archive view and restores them to active history"
+          },
+          {
+            "filePath": "src/App.test.tsx",
+            "testTitle": "Homepage shell > reuses the same operation ID after reload when dispatch response is lost and shows workflow-only activity text"
+          },
+          {
+            "filePath": "src/App.test.tsx",
+            "testTitle": "Homepage shell > searches and filters server conversation titles and refreshes server-authoritative rename/archive state"
+          },
+          {
+            "filePath": "src/app/report-navigation.test.tsx",
+            "testTitle": "Report navigation and original conversation artifacts > opens a no-report bundle from its durable original conversation Activity"
+          },
+          {
+            "filePath": "src/app/report-navigation.test.tsx",
+            "testTitle": "Report navigation and original conversation artifacts > rejects another run returned to a conversation artifact request"
+          }
+        ],
+        "inheritedFailures": [
+          {
+            "filePath": "src/App.test.tsx",
+            "testTitle": "Homepage shell > keeps rename open after a version conflict and retries with the refreshed version"
+          },
+          {
+            "filePath": "src/App.test.tsx",
+            "testTitle": "Homepage shell > moves archived conversations into the archive view and restores them to active history"
+          },
+          {
+            "filePath": "src/App.test.tsx",
+            "testTitle": "Homepage shell > reuses the same operation ID after reload when dispatch response is lost and shows workflow-only activity text"
+          },
+          {
+            "filePath": "src/App.test.tsx",
+            "testTitle": "Homepage shell > searches and filters server conversation titles and refreshes server-authoritative rename/archive state"
+          },
+          {
+            "filePath": "src/app/report-navigation.test.tsx",
+            "testTitle": "Report navigation and original conversation artifacts > opens a no-report bundle from its durable original conversation Activity"
+          },
+          {
+            "filePath": "src/app/report-navigation.test.tsx",
+            "testTitle": "Report navigation and original conversation artifacts > rejects another run returned to a conversation artifact request"
+          }
+        ],
+        "addedFailures": [],
+        "removedFailures": [],
+        "reportedTotals": [
+          "tests 210",
+          "pass 204",
+          "fail 6"
+        ],
+        "summary": {
+          "total": 210,
+          "passed": 204,
+          "failed": 6,
+          "newFailureCount": 0,
+          "removedFailureCount": 0
+        },
+        "fileHashes": {
+          "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r178-client-tests.log": "bbf5bae6386ad199d3a1d11e284f61a3010b64f6f396dcffafaae2af0ced12eb",
+          "C:\\Users\\Administrator\\Desktop\\ResearchHub_worktrees\\COMPANY_QUALITY\\runtime-data\\r178-client-results.json": "5ae0dd1e25da337baae29223c657dc658b47cc54b077f78b4617cf6d46ba83c4"
         }
       }
     }
