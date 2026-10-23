@@ -649,6 +649,39 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     separatorIndex = adjustedSeparator + rows.length + 1
   }
 
+  // A capital-allocation response may append the next table's four-column
+  // header as a same-width final row of the R&D table, then separate it from
+  // the capital-expenditure table with prose and a subsection heading. Move
+  // only the explicit action/period header to the uniquely matching table.
+  for (let separatorIndex = 1; separatorIndex < lines.length; separatorIndex++) {
+    if (!isSeparator(lines[separatorIndex]!)) continue
+    const width = splitCells(lines[separatorIndex]!).length
+    if (width !== 4) continue
+    let previous = separatorIndex - 1
+    while (previous >= 0 && !lines[previous]!.trim()) previous--
+    if (previous >= 0 && isPipeLine(lines[previous]!)) continue
+    const rows: string[][] = []
+    for (let index = separatorIndex + 1; index < lines.length && isPipeLine(lines[index]!) && !isSeparator(lines[index]!); index++) rows.push(splitCells(lines[index]!))
+    if (rows.length < 2 || rows.some(row => row.length !== width)) continue
+    const capexHeading = lines.findIndex((line, index) => index < separatorIndex && /^\s*#{2,5}\s+资本开支与流动性\s*$/u.test(line))
+    const allocationHeading = lines.findIndex((line, index) => index < capexHeading && /^\s*#{2,5}\s+资本配置台账与评价\s*$/u.test(line))
+    if (capexHeading < 0 || allocationHeading < 0) continue
+    const candidates: number[] = []
+    for (let index = allocationHeading + 1; index < capexHeading; index++) {
+      if (!isPipeLine(lines[index]!) || isSeparator(lines[index]!)) continue
+      const cells = splitCells(lines[index]!)
+      if (cells.length !== width || cells.some(cell => !cell)) continue
+      if (/行动与期间/u.test(cells[0]!) && /(?:金额|指标)/u.test(cells[1]!) && /(?:资金覆盖|目的)/u.test(cells[2]!) && /(?:结果|限制)/u.test(cells[3]!)) candidates.push(index)
+    }
+    if (candidates.length !== 1) continue
+    const [headerIndex] = candidates
+    const [header] = lines.splice(headerIndex, 1)
+    const adjustedSeparator = separatorIndex - 1
+    lines.splice(adjustedSeparator, 0, header!)
+    repairs.push(`TABLE_CAPITAL_EXPENDITURE_HEADER_REATTACHED: line ${headerIndex + 1}->${adjustedSeparator + 1}; width ${width}`)
+    separatorIndex = adjustedSeparator + rows.length + 1
+  }
+
   // Missing cells are not a structural fusion: their position and intended
   // meaning cannot be inferred from table width alone. Keep them for the
   // ordinary table gate and semantic revision; never insert evidence-gap
