@@ -201,7 +201,7 @@ function appendFinancialSummary(methods: CompanyResearchMethodResult[], research
 }
 
 /** Add adjacent split-table rows needed to preserve source headers and continuation values. */
-function appendCompanyOfficialContextEvidence(methods: CompanyResearchMethodResult[], researchInput: CompanyResearchInput): CompanyResearchMethodResult[] {
+export function appendCompanyOfficialContextEvidence(methods: CompanyResearchMethodResult[], researchInput: CompanyResearchInput): CompanyResearchMethodResult[] {
   const packets = new Map<string, NonNullable<CompanyResearchMethodResult['deterministicEvidence']>[number]>()
   const riskContextCandidates: { publishedAt: string; packet: NonNullable<CompanyResearchMethodResult['deterministicEvidence']>[number] }[] = []
   const nonRecurringCandidates: { publishedAt: string; packet: NonNullable<CompanyResearchMethodResult['deterministicEvidence']>[number] }[] = []
@@ -261,8 +261,9 @@ function appendCompanyOfficialContextEvidence(methods: CompanyResearchMethodResu
     if (/半年度报告/.test(source.title)) {
       const employeeIndex = lines.findIndex(line => /^150\s+3,048,701\s+无\s+0\.17%/.test(line.trim()))
       if (employeeIndex >= 0) {
+        const planAccountIndex = lines.findIndex((line,index) => /回购证券账户中的\s*$/.test(line.trim()) && /3,048,701\s*股过户至\s*2026\s*年员工持股计划证券账户/.test(lines[index + 1]?.trim() ?? ''))
         const headerIndexes = lines.map((line, index) => ({ line, index })).filter(({ line, index }) => index < employeeIndex && index >= employeeIndex - 16 && /员工人|^数$|总数（股）|有效的员工持股计划情况|核心技术（业务）骨干|不包括公司董事/.test(line.trim())).map(item => item.index)
-        const selected = [...new Set([...headerIndexes, employeeIndex - 2, employeeIndex - 1, employeeIndex])].filter(index => index >= 0 && Boolean(lines[index]?.trim())).sort((a,b)=>a-b)
+        const selected = [...new Set([...headerIndexes, employeeIndex - 2, employeeIndex - 1, employeeIndex, ...(planAccountIndex >= 0 ? [planAccountIndex, planAccountIndex + 1] : [])])].filter(index => index >= 0 && Boolean(lines[index]?.trim())).sort((a,b)=>a-b)
         const excerpts = selected.map(index => ({ sourceCandidateId: base.sourceCandidateId, location: `paragraph:${index + 1}`, text: lines[index]!.trim() }))
         packets.set('management_governance_analysis', { ...base, excerpts })
       }

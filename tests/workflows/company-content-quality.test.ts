@@ -831,6 +831,23 @@ test('employee plan reconciliation preserves ambiguous row values without claimi
   for(const paragraph of [1402,1403,1404])assert.match(fixed[0]!.markdown,new RegExp(`\\[interim@paragraph:${paragraph}\\]`))
 })
 
+test('employee plan reconciliation uses the late annual-report note to preserve the disclosed plan year',()=>{
+  const method={skillId:'management_governance_analysis',status:'complete',executionEvidence:[{sourceCandidateId:'interim',title:'2026年半年度报告',excerpts:[
+    {sourceCandidateId:'interim',location:'paragraph:1402',text:'公司及子公司核心技术（业务）骨干'},
+    {sourceCandidateId:'interim',location:'paragraph:1403',text:'（不包括公司董事、高级管理人员）'},
+    {sourceCandidateId:'interim',location:'paragraph:1404',text:'150 3,048,701 无 0.17%'},
+    {sourceCandidateId:'interim',location:'paragraph:6008',text:'其他说明，包括本期增减变动情况、变动原因说明：公司于 2026 年 3 月 9 日以非交易过户方式将回购证券账户中的'},
+    {sourceCandidateId:'interim',location:'paragraph:6009',text:'3,048,701 股过户至 2026 年员工持股计划证券账户。'}
+  ]}]} as unknown as CompanyResearchMethodResult
+  const gap='半年度报告显示员工持股计划实施状态为适用，披露核心技术（业务）骨干范围及持股数据，但本次摘录不含计划完整名称和年份；因此不能据此判断该计划与上述已出售计划之间的延续、替代或新增关系。此处缺口仅限计划身份及其与旧计划的衔接，并不否定已披露的员工持股信息。'
+  const fixed=reconcileCompanyEmployeePlanEvidence({sections:[{id:'management-capital-allocation',markdown:gap,sourceCandidateIds:['interim']}],methodResults:[method]})[0]!
+  assert.match(fixed.markdown,/2026年3月9日回购证券账户中的3,048,701股过户至“2026年员工持股计划证券账户”/)
+  assert.match(fixed.markdown,/正式计划全称及其与此前已出售计划之间的延续、替代或新增关系/)
+  assert.match(fixed.markdown,/\[interim@paragraph:6008\]/)
+  assert.match(fixed.markdown,/\[interim@paragraph:6009\]/)
+  assert.doesNotMatch(fixed.markdown,/本次摘录不含计划完整名称和年份/)
+})
+
 test('R161 keeps employee-plan terms and execution rows bound to their named plan years',()=>{
   const annualExcerpts=[
     {sourceCandidateId:'annual',location:'paragraph:3060',text:'2025年员工持股计划涉及不超过2.5万名员工，资金总额不超过41亿元，计划分三期解锁。'},
