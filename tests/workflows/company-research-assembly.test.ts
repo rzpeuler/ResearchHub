@@ -34,6 +34,20 @@ test('final synthesis repairs only a cited missing monitoring cell and a trailin
   assert.equal(repairCompanyFinalSynthesisTable('monitoring-checklist',uncited).markdown,uncited)
 })
 
+test('final synthesis merges only the split evidence and thesis cells in a five-cell monitoring row',()=>{
+  const source='| 指标/观察项 | 观察频率 | 触发条件/核验信号 | 论点关联与证据 |\n|---|---|---|---|\n| 半年累计收入与利润 | 每期定期报告 | 收入或利润继续下滑时复核 | 收入同比-7.1%。[financial@paragraph:1] | 盈利修复是核心论点必要条件。 |'
+  const fixed=repairCompanyFinalSynthesisTable('monitoring-checklist',source)
+  assert.deepEqual(fixed.repairs,['MONITORING_EVIDENCE_AND_THESIS_CELLS_MERGED: line 3'])
+  assert.match(fixed.markdown,/收入同比-7\.1%。\[financial@paragraph:1\]；盈利修复是核心论点必要条件。 \|/)
+  assert.deepEqual(validateCompanyResearchMarkdownTables(fixed.markdown),[])
+  const uncited='| 指标/观察项 | 观察频率 | 触发条件/核验信号 | 论点关联与证据 |\n|---|---|---|---|\n| 项目 | 每期 | 复核 | 无引用的说明 | 无引用结论 |'
+  assert.equal(repairCompanyFinalSynthesisTable('monitoring-checklist',uncited).markdown,uncited)
+  const tooMany='| 指标/观察项 | 观察频率 | 触发条件/核验信号 | 论点关联与证据 |\n|---|---|---|---|\n| 项目 | 每期 | 复核 | 证据。[financial@paragraph:1] | 额外列一 | 额外列二 |'
+  assert.equal(repairCompanyFinalSynthesisTable('monitoring-checklist',tooMany).markdown,tooMany)
+  const unrelatedExtra='| 指标/观察项 | 观察频率 | 触发条件/核验信号 | 论点关联与证据 |\n|---|---|---|---|\n| 项目 | 每期 | 复核 | 证据。[financial@paragraph:1] | 红色 |'
+  assert.equal(repairCompanyFinalSynthesisTable('monitoring-checklist',unrelatedExtra).markdown,unrelatedExtra)
+})
+
 test('final synthesis removes an exact output sentinel attached to a monitoring table row',()=>{
   const source='| 指标/观察项 | 观察频率 | 触发条件/核验信号 | 论点关联与证据 |\n|---|---|---|---|\n| 员工持股 | 定期报告 | 核验计划执行。[official@paragraph:1159] | 检验激励安排的实施情况 |<\/markdown>'
   const fixed=repairCompanyFinalSynthesisTable('monitoring-checklist',source)
