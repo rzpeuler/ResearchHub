@@ -53,6 +53,44 @@ test('does not repair a trailing source-ID typo when its exact paragraph is abse
   assert.equal(ambiguous.repairs.length, 0)
 })
 
+test('repairs the BYD official source-ID suffix typo only with one exact source and paragraph match', () => {
+  const candidateId = 'official-c19c34dd239b2e9c'
+  const malformedId = 'official-c19c34dd239b2e9de'
+  const content = Array.from({ length: 720 }, () => '')
+  const claim = '分行业毛利率比上年同期增加1.98个百分点。'
+  content[719] = claim
+  const official = { ...source, candidate: { ...source.candidate, candidateId }, title: '2026年半年度报告', content: content.join('\n') } as CompanyResearchInput['sources'][number]
+  const exactPacket: CompanyEvidencePacket = {
+    sourceCandidateId: candidateId,
+    title: official.title,
+    publisher: 'CNINFO',
+    excerpts: [{ sourceCandidateId: candidateId, location: 'paragraph:720', text: claim }],
+  }
+  const draft = {
+    findings: [{ text: claim, kind: 'fact' as const, evidence: [{ sourceCandidateId: malformedId, location: 'paragraph:720' }] }],
+    markdown: `${claim}[${malformedId}@paragraph:720]`,
+    sections: [{ id: 'revenue-profit-drivers', markdown: `${claim}[${malformedId}@paragraph:720]` }],
+  }
+  const repaired = repairCompanyTrailingSourceIdTypo(draft, [exactPacket], { ...input, sources: [official] })
+  assert.equal(repaired.output.markdown, `${claim}[${candidateId}@paragraph:720]`)
+  assert.equal(repaired.output.sections[0]!.markdown, `${claim}[${candidateId}@paragraph:720]`)
+  assert.deepEqual(repaired.output.findings[0]!.evidence, [{ sourceCandidateId: candidateId, location: 'paragraph:720' }])
+  assert.equal(repaired.repairs.length, 1)
+  assert.equal(repaired.repairs[0]!.inputText, `${malformedId}@paragraph:720`)
+
+  const alternativeId = 'official-c19c34dd239b2e9e'
+  const alternativeSource = { ...official, candidate: { ...official.candidate, candidateId: alternativeId } }
+  const alternativePacket = { ...exactPacket, sourceCandidateId: alternativeId, excerpts: exactPacket.excerpts.map(excerpt => ({ ...excerpt, sourceCandidateId: alternativeId })) }
+  const ambiguous = repairCompanyTrailingSourceIdTypo(draft, [exactPacket, alternativePacket], { ...input, sources: [official, alternativeSource] })
+  assert.equal(ambiguous.output.markdown, draft.markdown)
+  assert.equal(ambiguous.repairs.length, 0, 'two official source IDs match the narrowly allowed suffix shape')
+
+  const mismatchedTextPacket = { ...exactPacket, excerpts: [{ ...exactPacket.excerpts[0]!, text: '来源摘录与原报告第720段不一致。' }] }
+  const mismatchedText = repairCompanyTrailingSourceIdTypo(draft, [mismatchedTextPacket], { ...input, sources: [official] })
+  assert.equal(mismatchedText.output.markdown, draft.markdown)
+  assert.equal(mismatchedText.repairs.length, 0, 'source text and packet excerpt must match exactly')
+})
+
 test('repairs a final-character source-ID substitution only against the unique exact supplied paragraph', () => {
   const candidateId = 'official-c19c34dd239b2e9c'
   const malformedId = 'official-c19c34dd239b2e9e'

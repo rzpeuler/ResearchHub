@@ -160,6 +160,15 @@ export function repairCompanyTrailingSourceIdTypo<T>(output: T, packets: readonl
   const byTypo = new Map<string, CompanyMethodEvidenceRef[]>()
   const packetIds = [...new Set(packets.map(packet => packet.sourceCandidateId))]
   const isKnownTypo = (malformedId: string, candidateId: string): boolean => {
+    // Some official IDs are emitted with one extra terminal character while
+    // the provider also substitutes the canonical final character. Restrict
+    // this case to the exact official-ID prefix and a two- or three-character
+    // tail; source uniqueness and exact locator text are checked in resolve().
+    const canonicalPrefix = candidateId.slice(0, -1)
+    const malformedTailLength = malformedId.length - canonicalPrefix.length
+    if (malformedId.startsWith('official-') && candidateId.startsWith('official-')
+      && malformedId.startsWith(canonicalPrefix)
+      && malformedTailLength >= 2 && malformedTailLength <= 3) return true
     if (malformedId.length === candidateId.length + 1 && malformedId.startsWith(candidateId)) return true
     // Some providers replace the final character instead of appending an
     // extra one. Keep this repair deliberately limited to one terminal
@@ -239,7 +248,7 @@ export function repairCompanyTrailingSourceIdTypo<T>(output: T, packets: readonl
     const [sourceCandidateId, location] = key.split('@')
     const corrected = [...new Map(additions.map(ref => [`${ref.sourceCandidateId}@${ref.location}`, ref])).values()]
     if (corrected.length !== 1) continue
-    repairs.push({ inputText: key, originalReferences: [{ sourceCandidateId: sourceCandidateId!, location: location! }], addedReferences: corrected, reason: 'The malformed source ID matched a narrowly recognized trailing-character or repeated-tail pattern; the exact paragraph text matched its unique source document line and supplied packet excerpt.' })
+    repairs.push({ inputText: key, originalReferences: [{ sourceCandidateId: sourceCandidateId!, location: location! }], addedReferences: corrected, reason: 'The malformed source ID matched a narrowly recognized official-ID suffix pattern; the exact paragraph text matched its unique source document line and supplied packet excerpt.' })
   }
   return { output: { ...value, markdown, sections, findings } as T, repairs }
 }
