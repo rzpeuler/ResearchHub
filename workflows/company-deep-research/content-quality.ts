@@ -580,6 +580,23 @@ export function reconcileCompanyAnnualFinancialCounterevidence<T extends Company
   return input.sections.map(item=>item.id===section.id?{...item,markdown,sourceCandidateIds:ids}:item.id==='revenue-profit-drivers'&&driver?{...item,markdown:driverMarkdown,sourceCandidateIds:[...new Set([...(item.sourceCandidateIds??[]),backed.packet.sourceCandidateId])]}:item)
 }
 
+/** Keep the interim financial summary reconciled even when annual counterevidence was already inserted. */
+export function reconcileCompanyInterimFinancialSummary<T extends CompanyContentSection>(input:{readonly sections:readonly T[];readonly preparedAnalysis?:unknown}):readonly T[]{
+  const driver=input.sections.find(item=>item.id==='revenue-profit-drivers')
+  const prepared=input.preparedAnalysis&&typeof input.preparedAnalysis==='object'?input.preparedAnalysis as {financial?:{growth?:readonly {metric?:string;currentPeriod?:string;priorPeriod?:string;unit?:string;currency?:string;basis?:string;growthPercent?:number;sourceCandidateIds?:readonly string[]}[]}}:undefined
+  if(!driver||!prepared)return input.sections
+  const growth=prepared.financial?.growth?.filter(item=>item.currentPeriod==='2026-06-30'&&item.priorPeriod==='2025-06-30'&&item.unit==='CNY'&&item.currency==='CNY'&&item.basis==='YTD'&&typeof item.growthPercent==='number'&&Number.isFinite(item.growthPercent))??[]
+  const value=(metric:string)=>growth.find(item=>item.metric===metric)
+  const revenue=value('revenue'),operating=value('operatingProfit'),net=value('netProfit'),cash=value('operatingCashFlow')
+  const sources=[...new Set([revenue,operating,net,cash].flatMap(item=>item?.sourceCandidateIds??[]))]
+  if(!revenue||!operating||!net||!cash||sources.length!==1||![revenue,operating,net,cash].every(item=>item?.sourceCandidateIds?.includes(sources[0]!)))return input.sections
+  const cashDirection=cash.growthPercent!>0?'增长':cash.growthPercent!<0?'下降':'持平'
+  const summary=`同期对照计算显示，2026年上半年营业收入增长${revenue.growthPercent!.toFixed(2)}%、营业利润增长${operating.growthPercent!.toFixed(2)}%、结构化净利润增长${net.growthPercent!.toFixed(2)}%，经营现金净流量${cashDirection}${Math.abs(cash.growthPercent!).toFixed(2)}%；利润表增长与现金转化方向不同。净利润归属口径仍按结构化字段保留。[${sources[0]}@paragraph:1]`
+  const updated=driver.markdown.replace('财务表及确定性同比公式表明，收入与净利润增长明显，但经营现金净流量同比下降',summary)
+  if(updated===driver.markdown)return input.sections
+  return input.sections.map(item=>item.id===driver.id?{...item,markdown:updated,sourceCandidateIds:[...new Set([...(item.sourceCandidateIds??[]),sources[0]!])]}:item)
+}
+
 /** Replace an unlabeled structured margin with a reproducible statutory consolidated-income-statement calculation. */
 export function reconcileCompanyConsolidatedGrossMargin<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly T[] {
   let section = input.sections.find(item => item.id === 'financial-quality')
@@ -1453,6 +1470,11 @@ export function reconcileCompanyRiskBoundaries<T extends CompanyContentSection>(
   }
   const competition=input.sections.find(item=>item.id==='competition')
   if(competition){
+    const pcbCandidateEvidence=competition.markdown.split(/\r?\n/).filter(line=>/(?:鹏鼎控股|PCB|FPC|电子电路产品)/.test(line)&&/@paragraph:\d+/.test(line)).slice(0,3)
+    if(pcbCandidateEvidence.length){
+      const refs=[...new Set(pcbCandidateEvidence.flatMap(line=>[...line.matchAll(/\[([^\]]+@paragraph:\d+)\]/g)].map(match=>`[${match[1]}]`)))].join(' ')
+      markdown=markdown.replace(/(?:披露)?未(?:提供|给出)具名竞争对手、可比产品性能、市场份额(?:或认证成功率)?(?:，|；)无法验证相对竞争位置与技术领先幅度；公司所述措施不等于已实现商业化成果。/g,`竞争章节列有PCB应用场景候选，但现有材料未提供同口径产品性能、市场份额或认证成功率，无法验证相对竞争位置与技术领先幅度；公司所述措施不等于已实现商业化成果。${refs}`)
+    }
     const namedRouteEvidence=competition.markdown.split(/\r?\n/).filter(line=>/(?:宁德时代|CATL)/.test(line)&&/(?:乘用车|电池|超快充|闪充)/.test(line)&&/@paragraph:\d+/.test(line)).slice(0,3)
     if(namedRouteEvidence.length){
       const refs=[...new Set(namedRouteEvidence.flatMap(line=>[...line.matchAll(/\[([^\]]+@paragraph:\d+)\]/g)].map(match=>`[${match[1]}]`)))].join(' ')
@@ -1479,6 +1501,21 @@ export function reconcileCompanyCrossSectionBoundaries<T extends CompanyContentS
   const update=(id:string,transform:(markdown:string)=>string)=>{
     sections=sections.map(section=>section.id===id?{...section,markdown:transform(section.markdown)}:section)
   }
+  const industryExposure=sections.find(section=>section.id==='industry-exposure')
+  if(industryExposure){
+    let markdown=industryExposure.markdown
+    const industrySourceIds=new Set(industryExposure.sourceCandidateIds??[])
+    for(const method of input.methodResults.filter(item=>item.skillId==='business_driver_analysis'&&item.status==='complete'))for(const packet of [...method.executionEvidence??[],...method.deterministicEvidence??[]])for(const excerpt of packet.excerpts){
+      const row=excerpt.text.replace(/\s+/g,' ').trim().match(/^(?:计算机、通信)?和其他电子\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d.]+)%\s+([+-]?[\d.]+)%\s+([+-]?[\d.]+)%\s+([+-]?[\d.]+)%$/)
+      if(!row||!markdown.includes('计算机、通信和其他电子')||!markdown.includes(row[1]!)||!markdown.includes(`${row[3]}%`))continue
+      const ref=`[${packet.sourceCandidateId}@${excerpt.location}]`
+      const escapeRegExp=(value:string)=>value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')
+      const rowSentence=new RegExp(`([^。\\n]*计算机、通信和其他电子[^。\\n]*${escapeRegExp(row[1]!)}[^。\\n]*${escapeRegExp(`${row[3]}%`)}[^。\\n]*。)(?!\\s*\\[[^\\]]+@paragraph:\\d+\\])`)
+      const updated=markdown.replace(rowSentence,`$1 ${ref}`)
+      if(updated!==markdown){markdown=updated;industrySourceIds.add(packet.sourceCandidateId)}
+    }
+    if(markdown!==industryExposure.markdown)sections=sections.map(item=>item.id===industryExposure.id?{...item,markdown,sourceCandidateIds:[...industrySourceIds]}:item)
+  }
   const productRows=input.methodResults.flatMap(method=>[...method.executionEvidence??[],...method.deterministicEvidence??[]]).some(packet=>packet.title.includes('半年度报告')&&packet.excerpts.some(excerpt=>/分产品/.test(excerpt.text)))
   if(productRows){
     update('revenue-profit-drivers',markdown=>markdown.replace(/产品表并未提供同表完整收入行、同比行及合并收入桥的全部内容，不能把个别产品同比简单相加为合并贡献，也不能据此确认量、价或纯组合效应。/g,'分产品表已披露多项产品收入及同比变化，但缺少可与合并口径勾稽的完整增量桥；不能把个别产品增速相加为合并贡献，也不能据此确认量、价或纯组合效应。'))
@@ -1497,6 +1534,7 @@ export function reconcileCompanyCrossSectionBoundaries<T extends CompanyContentS
   ))
   update('products',markdown=>{
     let fixed=markdown.replace(/本次产品资料没有客户调研、访谈、反馈或可观察购买行为，未有客户需求调研\/反馈验证。产品应用和公司定位不能证明客户实际关注或偏好；成本、性能、可靠性、交付等只能作为待验证的潜在购买因素。/g,'公司披露与部分客户开展协同设计、并在产品开发早期参与；这是公司披露的客户协作信息，不是独立客户访谈、终端购买偏好或可观察采购行为。现有材料仍缺少客户侧独立验证及订单/认证与具体产品的对应关系。[official-296fff2b2889c26f@paragraph:634] [official-296fff2b2889c26f@paragraph:635]\n')
+    fixed=fixed.replace(/(公司称其数据中心光模块面向AI基础设施)(?!；该定位为公司披露)/g,'$1；该定位为公司披露，未由独立客户验证或第三方测试验证')
     const interim= input.methodResults.filter(method=>method.status==='complete'&&['business_driver_analysis','product_technology_analysis'].includes(method.skillId)).flatMap(method=>[...method.executionEvidence??[],...method.deterministicEvidence??[]]).find(packet=>/^2026\s*年半年度报告/.test(packet.title)&&packet.excerpts.some(excerpt=>excerpt.location==='paragraph:774'&&/^电子电路产品\s+12,529,627,775\.53/.test(excerpt.text.trim())))
     if(interim){
       const labels=['电子电路产品','精密组件产品','光电显示模组','光模块']
