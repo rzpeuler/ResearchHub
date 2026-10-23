@@ -1066,6 +1066,8 @@ test('risk numeric retry strips 千元 and supplies the matching goodwill row as
     const input = (request as any).input
     const riskTarget = input.repairTargets.find((target: any) => target.id === 'risks')
     assert.ok(riskTarget.candidateExcerpts.some((excerpt: any) => excerpt.sourceCandidateId === 'filing-1' && excerpt.location === 'paragraph:7663' && excerpt.text.includes('4,361,657')), JSON.stringify(riskTarget.candidateExcerpts))
+    assert.deepEqual(input.repairPreviousOutput, broken, 'candidate rows are hints and must not be attached to the draft automatically')
+    assert.equal(riskTarget.originalText, broken.sections[0]!.markdown)
     return fixed
   }) })
   assert.equal(calls, 2, JSON.stringify({ status: result.status, diagnostics: result.diagnostics }))

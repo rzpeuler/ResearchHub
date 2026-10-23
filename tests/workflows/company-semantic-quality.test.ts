@@ -937,3 +937,59 @@ test('R174 correct numeric confirmation does not mask an independently stated pr
   assert.equal(check.evidenceSupportsConclusion, false, 'the row-dimension misclassification remains an evidence blocker')
   assert.match(check.reasons.join(' '), /错列为分行业/)
 })
+
+test('BYD supply-chain exact inline formula citations override only the false section-end citation objection', () => {
+  const financial = { ...source, candidate: { ...source.candidate, candidateId: 'akshare-financial-002594' }, title: '结构化财务数据', content: '营业收入 344815421000；期初应收 37004685000；期末应收 50126342000；存货 189990772000；应付 176356021000；营业成本 279826859000。' }
+  const formulaBody = 'DSO：期初应收与期末应收平均值÷收入×181天＝22.87天[akshare-financial-002594@paragraph:1]；DIO：期初存货与期末存货平均值÷营业成本×181天＝106.21天[akshare-financial-002594@paragraph:1]；DPO：期初应付与期末应付平均值÷营业成本×181天＝117.43天[akshare-financial-002594@paragraph:1]；CCC：DSO＋DIO−DPO＝11.65天[akshare-financial-002594@paragraph:1]。'
+  const reviewReason = 'DSO/DIO/DPO/CCC各项数值均能由结构化财务段落1复核，故数值本身无误；但关键周转数字段没有精确source@paragraph绑定，现有引文仅位于章节末尾，影响逐项定位与证据追踪。'
+  const checks = output.sectionChecks.map(check => check.sectionId === 'supply-chain' ? { ...check, evidenceSupportsConclusion: false, reasons: [reviewReason] } : check)
+  const report = sections.map(section => section.id === 'supply-chain' ? { ...section, markdown: formulaBody } : section)
+  const fixed = reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({ sectionChecks: checks }), report, [financial]).find(check => check.sectionId === 'supply-chain')!
+  assert.equal(fixed.evidenceSupportsConclusion, true)
+  assert.equal(fixed.numericReproducible, true)
+  assert.deepEqual(fixed.reasons, [])
+
+  const missingOneInlineCitation = formulaBody.replace('CCC：DSO＋DIO−DPO＝11.65天[akshare-financial-002594@paragraph:1]', 'CCC：DSO＋DIO−DPO＝11.65天')
+  const stillBlocked = reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({ sectionChecks: checks }), sections.map(section => section.id === 'supply-chain' ? { ...section, markdown: missingOneInlineCitation } : section), [financial]).find(check => check.sectionId === 'supply-chain')!
+  assert.equal(stillBlocked.evidenceSupportsConclusion, false)
+  assert.match(stillBlocked.reasons.join(' '), /仅位于章节末尾/)
+})
+
+test('BYD explicit revenue-driver self-retraction clears its false flags but preserves independent defects', () => {
+  const citedSource = { ...source, content: '境内收入同比下降30.68%；海外收入同比增长33.92%；财务方向与报告表述一致。' }
+  const body = '境内收入同比下降30.68%，海外收入同比增长33.92%；收入与利润方向按报告期引用核对。[filing@paragraph:1]'
+  const reason = '本节引用的区域方向及财务方向准确，未发现能支撑false的具体反证，需纠正旗标。'
+  const checks = output.sectionChecks.map(check => check.sectionId === 'revenue-profit-drivers' ? { ...check, evidenceSupportsConclusion: false, numericReproducible: false, reasons: [reason] } : check)
+  const report = sections.map(section => section.id === 'revenue-profit-drivers' ? { ...section, markdown: body } : section)
+  const fixed = reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({ sectionChecks: checks }), report, [citedSource]).find(check => check.sectionId === 'revenue-profit-drivers')!
+  assert.equal(fixed.evidenceSupportsConclusion, true)
+  assert.equal(fixed.numericReproducible, true)
+  assert.deepEqual(fixed.reasons, [])
+
+  const mixed = checks.map(check => check.sectionId === 'revenue-profit-drivers' ? { ...check, reasons: [reason, '但分产品分类错列为分行业，导致结论口径不一致。'] } : check)
+  const remainsBlocked = reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({ sectionChecks: mixed }), report, [citedSource]).find(check => check.sectionId === 'revenue-profit-drivers')!
+  assert.equal(remainsBlocked.evidenceSupportsConclusion, false)
+  assert.equal(remainsBlocked.numericReproducible, false)
+  assert.match(remainsBlocked.reasons.join(' '), /分类错列/)
+
+  const contrarySource = { ...citedSource, content: '境内收入同比增长30.68%；海外收入同比下降33.92%；财务方向与报告表述不一致。' }
+  const mismatchedEvidence = reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({ sectionChecks: checks }), report, [contrarySource]).find(check => check.sectionId === 'revenue-profit-drivers')!
+  assert.equal(mismatchedEvidence.evidenceSupportsConclusion, false, 'self-retraction cannot override cited source values that do not support the report')
+  assert.match(mismatchedEvidence.reasons.join(' '), /未发现能支撑false的具体反证/)
+})
+
+test('BYD correct derived R&D percentage-point difference clears numeric false positive only when the report distinguishes the source percent', () => {
+  const annual = { ...source, content: '资本化研发投入占研发投入的比例 8.61% 1.78% 6.83%' }
+  const body = '原表变动比例为6.83%；按比例水平相减，8.61%−1.78%＝6.83个百分点。原表列示的变动比例沿用%单位，百分点差为本报告另行计算。[filing@paragraph:1]'
+  const reason = '原表变动列单位为%而非百分点；8.61%−1.78%=6.83个百分点，数学结果正确，且该计算本身是正确的衍生百分点差。'
+  const checks = output.sectionChecks.map(check => check.sectionId === 'management-capital-allocation' ? { ...check, numericReproducible: false, reasons: [reason] } : check)
+  const report = sections.map(section => section.id === 'management-capital-allocation' ? { ...section, markdown: body } : section)
+  const fixed = reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({ sectionChecks: checks }), report, [annual]).find(check => check.sectionId === 'management-capital-allocation')!
+  assert.equal(fixed.numericReproducible, true)
+  assert.deepEqual(fixed.reasons, [])
+
+  const mislabeled = body.replace('原表变动比例为6.83%；', '原表披露的6.83%就是百分点差；')
+  const stillBlocked = reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({ sectionChecks: checks }), sections.map(section => section.id === 'management-capital-allocation' ? { ...section, markdown: mislabeled } : section), [annual]).find(check => check.sectionId === 'management-capital-allocation')!
+  assert.equal(stillBlocked.numericReproducible, false)
+  assert.match(stillBlocked.reasons.join(' '), /原表变动列单位/)
+})
