@@ -864,6 +864,31 @@ test('unsupported optional valuation numbers are replaced by explicit basis gaps
   assert.equal(result.synthesisMode, 'reasoning_executor')
   for (const section of result.sections.filter((section) => ['valuation', 'bull-base-bear', 'variant-perception'].includes(section.id))) { assert.match(section.markdown, /^研究缺口/); assert.ok(!section.markdown.includes('9999')); assert.deepEqual(section.sourceCandidateIds, []) }
 })
+
+test('unsupported locator in a discarded optional valuation draft does not exhaust synthesis retries', async () => {
+  let calls = 0
+  const executor: ReasoningExecutor = { capabilities, execute: async (request) => {
+    calls++
+    return { operation: request.operation, output: { sections: ids.map((id) => ({
+      id,
+      markdown: id === 'valuation'
+        ? '2024年中国新能源汽车销量为1,286.6万辆。[official-f6274e510499a654@paragraph:18]'
+        : '定性研究结论 [annual@paragraph:1]',
+      sourceCandidateIds: ['annual'],
+    })) } }
+  } }
+  const result = await assembleCompanyResearch(input, [method], executor, () => input.asOf)
+  assert.equal(calls, 1)
+  assert.equal(result.synthesisMode, 'reasoning_executor')
+  assert.deepEqual(result.synthesisDiagnostics, [])
+  const valuation = result.sections.find((section) => section.id === 'valuation')!
+  assert.match(valuation.markdown, /^研究缺口/)
+  assert.ok(!valuation.markdown.includes('1,286.6'))
+  assert.ok(!valuation.markdown.includes('official-f6274e510499a654@paragraph:18'))
+  assert.deepEqual(valuation.sourceCandidateIds, [])
+  assert.match(result.sections.find((section) => section.id === 'investment-thesis')!.markdown, /annual@paragraph:1/)
+})
+
 test('final synthesis can reuse a validated section locator absent from concise findings', async () => {
   const contextualMethod: CompanyResearchMethodResult = { ...method, sections: [{id:'company-overview',markdown:'注册与重组口径不同 [annual@paragraph:2]'}], executionEvidence:[{sourceCandidateId:'annual',title:'年报',publisher:'公司',excerpts:[{sourceCandidateId:'annual',location:'paragraph:1',text:'历史披露'},{sourceCandidateId:'annual',location:'paragraph:2',text:'注册与重组口径不同'}]}] }
   const executor:ReasoningExecutor={capabilities,execute:async request=>({operation:request.operation,output:{sections:ids.map(id=>({id,markdown:'注册与重组口径应分别监控 [annual@paragraph:2]',sourceCandidateIds:['annual']}))}})}
