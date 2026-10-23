@@ -140,7 +140,10 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
       candidateCitations = [...new Set([`${technologyClaim.sourceCandidateId}@${passengerSolution.location}`, `${technologyClaim.sourceCandidateId}@${technologyClaim.location}`, ...evidence.map(({ref})=>`${ref.sourceCandidateId}@${ref.location}`)])].map(ref=>`[${ref}]`).join(' ')
     }
   }
-  const scopedDenial = /(?:本节)?(?:产品|技术)?(?:\/(?:产品|技术))?(?:资料|材料|证据)[^。；;\n]{0,18}(?:没有|未提供|未发现|缺少|无)(?:任何|具名)?(?:竞品|竞争者|竞争对手)[^。；;\n]{0,40}(?:同口径|直接|性能|成本|比较|对比)?[^。；;\n]{0,24}/g
+  // Keep this match inside one Markdown cell. A prior version allowed `|`
+  // in the wildcards, so a denial in a table's comparison cell consumed the
+  // following commercial-economics cell delimiter during replacement.
+  const scopedDenial = /(?:本节)?(?:产品|技术)?(?:\/(?:产品|技术))?(?:资料|材料|证据)[^。；;|\n]{0,18}(?:没有|未提供|未发现|缺少|无)(?:任何|具名)?(?:竞品|竞争者|竞争对手)[^。；;|\n]{0,40}(?:同口径|直接|性能|成本|比较|对比)?[^。；;|\n]{0,24}/g
   const industryDenial = /(?:缺少|未提供|没有)[^。；;\n]{0,60}(?:可比公司|具体竞品)[^。；;\n]{0,50}(?:无法|不能)[^。；;\n]{0,12}(?:具名)?竞争对比|(?:竞争分析(?:同样)?[^。；;\n]{0,16})?(?:缺乏|缺少|未提供)[^。；;\n]{0,36}(?:可具名比较对象|具名比较对象)[^。；;\n]{0,100}(?:不能宣称|无法|不能)[^。；;\n]{0,50}/g
   // The competitive method establishes only a sourced candidate and its
   // described product route. Carry that narrow fact into synthesis chapters

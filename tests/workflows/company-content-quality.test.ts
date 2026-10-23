@@ -1517,6 +1517,32 @@ test('R174 competitor carryover selects the located peer rather than the target 
   assert.match(repairedIndustry[0]!.markdown,/具名产品路线候选已由竞争方法核实/)
   assert.match(repairedIndustry[0]!.markdown,/\[public-web-peer@paragraph:1\]/)
 })
+test('R174 competitor carryover rewrites a product-table denial without consuming the next cell delimiter', () => {
+  const method: CompanyResearchMethodResult = {
+    skillId: 'competitive_market_map', status: 'complete', attempts: 1,
+    answer: '吉利银河E8是乘用车具名候选路线对照，实际竞争关系仍未验证。', markdown: '已核实公开路线。', sections: [],
+    findings: [{ text: '吉利银河E8披露800V平台及SiC电驱，是乘用车具名候选路线对照；实际竞争关系未验证。', kind: 'fact', evidence: [{ sourceCandidateId: 'public-web-geely', location: 'paragraph:2' }] }],
+    sourceCandidateIds: ['public-web-geely'], limitations: [], risks: [], diagnostics: [],
+    executionEvidence: [{ sourceCandidateId: 'public-web-geely', title: '吉利银河E8 官方车型资料', publisher: 'Geely', evidenceScope: 'peer_company', excerpts: [
+      { sourceCandidateId: 'public-web-geely', location: 'paragraph:1', text: '吉利银河E8' },
+      { sourceCandidateId: 'public-web-geely', location: 'paragraph:2', text: '吉利银河E8披露800V平台及SiC电驱。' },
+    ] }],
+  }
+  const header = '| 产品/业务 | 应用或公司定位 | 技术路线 | 差异及替代分析 | 商业化阶段与披露经济性 |\n|---|---|---|---|---|'
+  const originalRow = '| 乘用车：纯电与插混 | 新能源汽车业务 | 纯电平台与补能 | 本节产品资料未提供具名竞品的同口径比较，无法判断成本或性能领先 | 公司称相关技术已规模化应用；产品级收入、成本及利润未披露 [official-report@paragraph:165] [official-report@paragraph:166] |'
+  const products = { id: 'products', markdown: `${header}\n${originalRow}`, sourceCandidateIds: ['official-report'] }
+  const rewritten = reconcileCompanyCompetitorEvidence({ sections: [products], methodResults: [method] })[0]!
+  const row = rewritten.markdown.split('\n').find(line => line.startsWith('| 乘用车：'))!
+  assert.equal(row.split(/(?<!\\)\|/u).length - 2, 5, 'competitor replacement stays within the comparison cell')
+  assert.deepEqual(validateCompanyResearchMarkdownTables(rewritten.markdown), [])
+  assert.match(row, /竞争方法已核实的具名候选为：吉利银河E8/)
+  assert.match(row, /\| 公司称相关技术已规模化应用；产品级收入、成本及利润未披露 \[official-report@paragraph:165\] \[official-report@paragraph:166\] \|$/)
+
+  const unrelatedPhoneRow = '| 手机部件 | 消费电子 | 结构件 | 本节产品资料未提供具名竞品的同口径比较。 | 产品级利润未披露 [official-report@paragraph:358] |'
+  const phone = reconcileCompanyCompetitorEvidence({ sections: [{ id: 'products', markdown: `${header}\n${unrelatedPhoneRow}`, sourceCandidateIds: ['official-report'] }], methodResults: [method] })[0]!
+  assert.equal(phone.markdown.split('\n').find(line => line.startsWith('| 手机部件 |')), unrelatedPhoneRow, 'an automotive candidate leaves an unrelated product row untouched')
+  assert.deepEqual(validateCompanyResearchMarkdownTables(phone.markdown), [])
+})
 test('cross-method check rejects a customer-concentration denial when a report table with percentages is already supplied', () => {
   const method: CompanyResearchMethodResult = { skillId: 'company_risk_analysis', status: 'complete', attempts: 1, answer: '前五名客户比例已披露。', markdown: '客户集中度见报告。', sections: [{ id: 'risks', markdown: '客户风险。' }], findings: [{ text: '前五名客户销售占比已披露。', kind: 'fact', evidence: [{ sourceCandidateId: 'annual-report', location: 'paragraph:2' }] }], sourceCandidateIds: ['annual-report'], limitations: [], risks: [], diagnostics: [], executionEvidence: [{ sourceCandidateId: 'annual-report', title: '2025年年度报告', publisher: 'Company', excerpts: [{ sourceCandidateId: 'annual-report', location: 'paragraph:2', text: '前五名客户合计销售金额占年度销售总额比例 18.12%' }, { sourceCandidateId: 'annual-report', location: 'paragraph:3', text: '1 第一名 12.53%' }] }] }
   assert.deepEqual(findKnownCustomerConcentrationDenials({ sections: [{ id: 'risks', markdown: '风险矩阵称没有前五大客户比例和最大客户数据。' }], methodResults: [method] }), [{ sectionId: 'risks', metric: 'customer_concentration' }])
