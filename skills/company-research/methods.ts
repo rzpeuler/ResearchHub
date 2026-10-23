@@ -722,7 +722,7 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
   const methodology = input.skillId === 'management_governance_analysis'
     ? { ...baseMethodology, questions: `${baseMethodology.questions} 若证据包含实际控制人兼任、内部控制体系/审计或关联交易制度的原文，必须在治理分析中准确报告并引用；只可将制衡效果、审议与回避执行、整改及继任安排等未披露细节列为缺口，不能称治理基本资料未提供。所有股东持股比例、员工持股数字和管理人员增持数字必须在含数字的同一句句末紧邻引用；每位股东的数字须引用相应持有人名称行及对应比例数据行，PDF拆行时两行都要引用，段末汇总引文或其他Finding的引文不能替代本句引用。` }
     : input.skillId === 'financial_quality_analysis'
-      ? { ...baseMethodology, questions: `${baseMethodology.questions} 不得使用不带期间的“盈利改善”“利润改善”或“毛利改善”总括不同指标；开篇需分别列明收入、营业利润、净利润、毛利率和经营现金流方向及各自期间。若利润指标变化方向不一，须并列差异，不得以净利润增长替代营业利润或现金转化趋势。` }
+      ? { ...baseMethodology, questions: `${baseMethodology.questions} 不得使用不带期间的“盈利改善”“利润改善”或“毛利改善”总括不同指标；开篇需分别列明收入、营业利润、净利润、毛利率和经营现金流方向及各自期间。若利润指标变化方向不一，须并列差异，不得以净利润增长替代营业利润或现金转化趋势。不要在本方法输出中生成简化自由现金流的表格、金额或公式；Workflow会在方法通过后自动附上来源绑定的确定性现金流及资本支出计算。可以定性分析经营现金流是否覆盖资本开支，但不要重复计算器金额。` }
       : baseMethodology
   const eligibleIds = input.reportSourceCandidateIds ?? input.durableSourceCandidateIds ?? []
   const needsStructuredFinancialEvidence = ['business_model_map','business_driver_analysis','financial_quality_analysis','market_structure_analysis','capital_allocation_review','company_risk_analysis'].includes(input.skillId)
@@ -770,7 +770,7 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
     try {
       const reasoningRequest: ReasoningRequest = {
         operation: 'company_research_method',
-          instruction: `${outputShapeInstruction} ${citationInventoryInstruction} 执行单个原子研究方法 ${input.skillId}，不调用其他方法。只依据本次输入的正文和结构化数据，使用中文，区分事实、推断、假设和预测；逐项回答本方法问题：${methodology.questions}。每个 owned section 必须是可直接发布的实质分析，展开问题、证据、解释、比较、反证及限制；findings 精选6–12项关键论点，避免冗余。answer 与 markdown 仅作定性总结，不新增数字。任何金额、比例、数量和年份必须由其精确引用的原文行或 preparedAnalysis 确定性结果支持；sourceCandidateId 与 paragraph 必须作为同一证据配对原样复制，严禁猜测、拼接或借用另一份材料的段落号。每个引用要同时核对证据对象的文档标题、sourceCandidateId和paragraph；相似报告、重复段落号或相同数字均不能作为跨文档替换依据。正文不得以“paragraph:123”或“段落123”形式描述证据位置，位置只允许用合同规定的方括号引用。表格每一数据行都引用自身数据行，并为独立期间、单位或表头补上实际供给的对应定位；金额单位必须写在该表列标题或数值单元格中，不能依赖表外段落解释单位。跨行数字须分别引用。PDF表头可能拆为多个相邻段落，例如指标名、上年同期、增减列分别成行；提取百分点变化时须同时引用数据行和从指标名到变化列标签的完整表头片段，不能只引含“毛利率”的第一行或只含“增减”的最后一行。分行业或分产品标签若与数字拆行，同一finding必须引用标签行与匹配的数字续行，不能引用相邻业务行。历史报道的发表时间与其统计期间分开。代码派生的增速、百分点、现金流差或单位换算须使用 preparedAnalysis 给出的结果，并在所属章节列出原计算数、单位和公式，不得自行心算大数或混用累计/单季口径。若说明某数字不能转换或解释为另一单位，不要重复该数字并搭配被否定的错误单位，直接说明不可转换的口径和原因。无证据的市场份额、人员履历、预测、TAM及竞争比较不得编造；缺少关键证据时明确写出缺口和影响。竞争分析有具名竞品证据时须比较实际公司/产品/路线及可比维度；材料不足时具体说明缺少何种比较输入。风险分析必须输出公司特定的触发条件、影响路径、监控指标、缓解因素和残余风险。不得把相邻行、章节摘要或模型记忆当作证据。`,
+          instruction: `${outputShapeInstruction} ${citationInventoryInstruction} 执行单个原子研究方法 ${input.skillId}，不调用其他方法。只依据本次输入的正文和结构化数据，使用中文，区分事实、推断、假设和预测；逐项回答本方法问题：${methodology.questions}。每个 owned section 必须是可直接发布的实质分析，展开问题、证据、解释、比较、反证及限制；findings 精选6–12项关键论点，避免冗余。answer 与 markdown 仅作定性总结，不新增数字。任何金额、比例、数量和年份必须由其精确引用的原文行或 preparedAnalysis 确定性结果支持；sourceCandidateId 与 paragraph 必须作为同一证据配对原样复制，严禁猜测、拼接或借用另一份材料的段落号。每个引用要同时核对证据对象的文档标题、sourceCandidateId和paragraph；相似报告、重复段落号或相同数字均不能作为跨文档替换依据。正文不得以“paragraph:123”或“段落123”形式描述证据位置，位置只允许用合同规定的方括号引用。表格每一数据行都引用自身数据行，并为独立期间、单位或表头补上实际供给的对应定位；金额单位必须写在该表列标题或数值单元格中，不能依赖表外段落解释单位。跨行数字须分别引用。PDF表头可能拆为多个相邻段落，例如指标名、上年同期、增减列分别成行；提取百分点变化时须同时引用数据行和从指标名到变化列标签的完整表头片段，不能只引含“毛利率”的第一行或只含“增减”的最后一行。分行业或分产品标签若与数字拆行，同一finding必须引用标签行与匹配的数字续行，不能引用相邻业务行。历史报道的发表时间与其统计期间分开。代码派生的增速、百分点${input.skillId === 'financial_quality_analysis' ? '或单位换算' : '、现金流差或单位换算'}须使用 preparedAnalysis 给出的结果，并在所属章节列出原计算数、单位和公式，不得自行心算大数或混用累计/单季口径。若说明某数字不能转换或解释为另一单位，不要重复该数字并搭配被否定的错误单位，直接说明不可转换的口径和原因。无证据的市场份额、人员履历、预测、TAM及竞争比较不得编造；缺少关键证据时明确写出缺口和影响。竞争分析有具名竞品证据时须比较实际公司/产品/路线及可比维度；材料不足时具体说明缺少何种比较输入。风险分析必须输出公司特定的触发条件、影响路径、监控指标、缓解因素和残余风险。不得把相邻行、章节摘要或模型记忆当作证据。`,
         input: {
           company: input.company, asOf: input.asOf, outputExample, canonicalMethodology: input.methodology ?? null,
           ownedSectionIds: COMPANY_METHOD_SECTION_IDS[input.skillId], evidence: packets,
@@ -789,9 +789,11 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
         outputContract: companyMethodOutputSchema(input.skillId, packets),
         metadata: { operationFamily: 'personal-research-v1', skillId: input.skillId, companySymbol: input.company.symbol }
       }
-      const periodSpecificCashFlowInstruction = input.skillId === 'financial_quality_analysis' || input.skillId === 'company_risk_analysis'
-        ? ' 使用 preparedAnalysis 中的自由现金流及其组成项时，必须在同一行或同一句写出精确期间（如2026年上半年累计）、金额单位和计算公式；财务表格的简化自由现金流行也必须在行标签或该行单元中重复“2026年上半年累计”，不得依赖同时写“累计/期末”的混合表头推定期间；缺少期间标签的本期/半年累计数字不满足证据口径。'
-        : ''
+      const periodSpecificCashFlowInstruction = input.skillId === 'financial_quality_analysis'
+        ? ' 简化自由现金流表格、金额和公式由Workflow在方法完成后附入；本方法输出不得重复这些计算结果。对现金流是否覆盖资本开支作定性分析即可。'
+        : input.skillId === 'company_risk_analysis'
+          ? ' 使用 preparedAnalysis 中的自由现金流及其组成项时，必须在同一行或同一句写出精确期间（如2026年上半年累计）、金额单位和计算公式；财务表格的简化自由现金流行也必须在行标签或该行单元中重复“2026年上半年累计”，不得依赖同时写“累计/期末”的混合表头推定期间；缺少期间标签的本期/半年累计数字不满足证据口径。'
+          : ''
       const workingCapitalCalculationInstruction = input.skillId === 'financial_quality_analysis'
         ? ' DSO、DIO、DPO与现金转换周期只能逐项照录preparedAnalysis.financial.workingCapitalCalculations中存在的结果，并在对应句或表中给出该对象提供的完整计算公式、操作数、单位、期间和天数；缺少某个计算对象时只保留其他有效指标，不得凭原始余额或记忆估算周转天数。'
         : ''

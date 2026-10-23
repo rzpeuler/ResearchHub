@@ -52,6 +52,15 @@ export function repairCompanyFinalSynthesisTable(sectionId: string, markdown: st
   if (sectionId !== 'monitoring-checklist') return { markdown, repairs: [] }
   const lines = markdown.split(/\r?\n/)
   const repairs: string[] = []
+  // The structured-output adapter can leave a closing sentinel attached to
+  // the final GFM pipe. Strip only that exact suffix before counting cells.
+  for (let index = 0; index < lines.length; index++) {
+    const repaired = lines[index]!.replace(/(\|)\s*<\/(?:table|markdown)>\s*$/iu, '$1')
+    if (repaired !== lines[index]) {
+      lines[index] = repaired
+      repairs.push(`MONITORING_OUTPUT_SENTINEL_REMOVED: line ${index + 1}`)
+    }
+  }
   const cells = (line: string): string[] => {
     let value = line.trim()
     if (value.startsWith('|')) value = value.slice(1)
