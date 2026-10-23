@@ -79,6 +79,13 @@ export function repairCompanyFinalSynthesisTable(sectionId: string, markdown: st
         row.push('用于核验该观察项对报告核心论点的兑现；本格不新增事实判断。')
         lines[rowIndex] = `| ${row.join(' | ')} |`
         repairs.push(`MONITORING_ROW_FINAL_CELL_RESTORED: line ${rowIndex + 1}`)
+      } else if (row.length === expectedHeader.length + 1 && row[3]?.includes('@paragraph:') && row[4]?.length && /(?:论点|核心|必要条件|检验|关联|关注|限定|支持|影响|监测|监控|跟踪|观察|核验|兑现|反证|失效|风险|判断)/u.test(row[4])) {
+        // Some models emit the evidence and thesis linkage as separate cells,
+        // despite the four-column contract combining them in the last column.
+        // Preserve both verbatim and join only this exact, citation-backed shape.
+        row.splice(3, 2, `${row[3]}；${row[4]}`)
+        lines[rowIndex] = `| ${row.join(' | ')} |`
+        repairs.push(`MONITORING_EVIDENCE_AND_THESIS_CELLS_MERGED: line ${rowIndex + 1}`)
       } else if (row.length === 1 && row[0] === '' && lines.slice(rowIndex + 1).every(line => !line.trim())) {
         lines.splice(rowIndex, 1)
         repairs.push(`MONITORING_ORPHAN_PIPE_REMOVED: line ${rowIndex + 1}`)
