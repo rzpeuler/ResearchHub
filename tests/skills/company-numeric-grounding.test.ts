@@ -776,6 +776,8 @@ test('industry margin changes bind to the exact named row, final margin column, 
 
   assert.equal(check('2026年上半年交通运输设备及电气制造业毛利率同比上升1.98%', refs).status, 'grounded')
   assert.equal(check('2026年上半年交通运输设备及电气制造业毛利率同比上升1.98个百分点', refs).status, 'unsupported_numbers')
+  assert.equal(check('2026年半年度报告分行业分类中，交通运输设备及电气制造业毛利率为22.33%，毛利率比上年同期增减为1.98%；后者是原表百分比变动，不表示毛利率水平上升1.98个百分点', refs).status, 'grounded', 'a cited percentage followed by an explicitly denied percentage-point interpretation is not a second unit claim')
+  assert.equal(check('2026年上半年交通运输设备及电气制造业毛利率同比上升1.98个百分点；原表1.98%不表示该百分点变化', refs).status, 'unsupported_numbers', 'a disclaimed value must not erase an earlier asserted wrong-unit claim')
   assert.equal(check('2026年上半年交通运输设备及电气制造业毛利率同比下降1.98个百分点', refs).status, 'unsupported_numbers', 'the claim direction must agree with the cited row sign')
   assert.equal(check('2026年上半年交通运输设备及电气制造业毛利率同比上升8.98个百分点', refs).status, 'unsupported_numbers', 'revenue growth in the same row cannot be reused as margin change')
   assert.equal(check('2026年上半年交通运输设备及电气制造业毛利率同比下降2.67个百分点', refs).status, 'unsupported_numbers', 'the same metric from another industry row cannot be borrowed')

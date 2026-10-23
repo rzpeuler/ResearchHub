@@ -822,6 +822,12 @@ export function validateCompanyNumericGrounding(input: NumericGroundingInput): {
     const context = normalizedMarkdown.slice(Math.max(0, candidate.index - 35), candidate.index + candidate.token.length + 45)
     const before = normalizedMarkdown.slice(Math.max(0, candidate.index - 8), candidate.index)
     const after = normalizedMarkdown.slice(candidate.index + candidate.token.length, candidate.index + candidate.token.length + 15).trimStart()
+    const precedingNegation = normalizedMarkdown.slice(Math.max(0, candidate.index - 60), candidate.index)
+    // Explicitly rejected counterfactual quantities (for example, “1.98%
+    // does not represent a 1.98 percentage-point increase”) are not numeric
+    // claims. Skip only the value immediately governed by a bounded negation;
+    // an earlier asserted value in the same sentence is still checked.
+    if (/(?:不表示|不等于|不代表|并非|不是|不得称为|不能称为|不应称为|不应改称|不能改称|不得改写为|不应写为|不能写为|不能表述为)[^。；;\n]{0,36}$/.test(precedingNegation)) continue
     if (/第\s*$/.test(before) && /^[阶段项条节类次]/.test(after)) continue
     if (/^[、.：:)]/.test(after) && /(?:^|\n|\|)\s*$/.test(before)) continue
     if (/^[次个月周天日季度年]/.test(after) && /每|频率|监控|观察|建议/.test(context) && candidate.rawValue <= 12 && !candidate.magnitude) continue
