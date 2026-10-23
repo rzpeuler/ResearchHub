@@ -138,7 +138,7 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
     }
   }
   const scopedDenial = /(?:本节)?(?:产品|技术)?(?:\/(?:产品|技术))?(?:资料|材料|证据)[^。；;\n]{0,18}(?:没有|未提供|未发现|缺少|无)(?:任何|具名)?(?:竞品|竞争者|竞争对手)[^。；;\n]{0,40}(?:同口径|直接|性能|成本|比较|对比)?[^。；;\n]{0,24}/g
-  const industryDenial = /(?:缺少|未提供|没有)[^。；;\n]{0,60}(?:可比公司|具体竞品)[^。；;\n]{0,50}(?:无法|不能)[^。；;\n]{0,12}(?:具名)?竞争对比/g
+  const industryDenial = /(?:缺少|未提供|没有)[^。；;\n]{0,60}(?:可比公司|具体竞品)[^。；;\n]{0,50}(?:无法|不能)[^。；;\n]{0,12}(?:具名)?竞争对比|(?:竞争分析(?:同样)?[^。；;\n]{0,16})?(?:缺乏|缺少|未提供)[^。；;\n]{0,36}(?:可具名比较对象|具名比较对象)[^。；;\n]{0,100}(?:不能宣称|无法|不能)[^。；;\n]{0,50}/g
   // The competitive method establishes only a sourced candidate and its
   // described product route. Carry that narrow fact into synthesis chapters
   // that otherwise turn a missing like-for-like comparison into a claim that
@@ -1554,6 +1554,7 @@ export function reconcileCompanyIndustryForecastPeriods<T extends CompanyContent
     if (server && serverFollowup && /2025\s*年全球服务器及存储领域/.test(server.text) && /2026\s*至\s*2030\s*年/.test(serverFollowup.text) && /2030\s*年市场规模将达\s*6300\s*亿美元/.test(serverFollowup.text)
       && [`${candidateId}@paragraph:558`, `${candidateId}@paragraph:559`].every(ref => cited.has(ref)) && /服务器及存储市场/.test(markdown)) {
       markdown = markdown.replace(/预测期末预测规模\s*6300\s*亿美元/, '2030年预测规模6300亿美元').replace(/预测复合增速\s*6\s*[%％]/, '2026至2030年复合增速6%')
+      markdown = markdown.replace(/2025年4130亿美元[；;]\s*2030年预计6300亿美元[；;]\s*2026[—至-]2030年复合增长率6\s*[%％]/g, '2025年基期4130亿美元；2026—2030年预测复合增长率6%，2030年预计6300亿美元。来源未提供2026年基期金额，因此不补算该数值')
     }
     if (server && serverFollowup && serverPcb && /2025\s*年全球服务器及存储领域/.test(server.text) && /2025\s*年服务器及存储相关PCB产/.test(serverFollowup.text) && /值约为\s*160\s*亿美元/.test(serverPcb.text) && /2025\s*至\s*2029\s*年复合增长率预计为\s*13\s*%/.test(serverPcb.text)) {
       const terminalRow=`| 全球服务器及存储终端市场 | 2025年4130亿美元，同比增长42%；2026—2030年复合增长率预计6%，2030年6300亿美元 | 年报转述；所引段落未明确预测机构。[${candidateId}@paragraph:558] [${candidateId}@paragraph:559] | 终端设备市场，不是相关PCB产值，也不是公司可服务市场或TAM。 |`
@@ -1596,6 +1597,57 @@ export function reconcileCompanyIndustryForecastPeriods<T extends CompanyContent
   if (markdown === section.markdown) return input.sections
   const repaired = { ...section, markdown, sourceCandidateIds }
   return input.sections.map(item => item.id === section.id ? repaired : item)
+}
+
+/** Replace an unsupported claim that interim non-recurring items are undisclosed with the located official table. */
+export function reconcileCompanyNonRecurringDisclosure<T extends CompanyContentSection>(input: {
+  readonly sections: readonly T[]
+  readonly sources: readonly { readonly candidate: { readonly candidateId: string; readonly publishedAt?: string; readonly kind?: string }; readonly title: string; readonly content: string }[]
+}): readonly T[] {
+  const section = input.sections.find(item => item.id === 'financial-quality')
+  if (!section) return input.sections
+  const candidates = input.sources.flatMap(source => {
+    if (!/^20\d{2}\s*年半年度报告/.test(source.title)) return []
+    const lines = source.content.split(/\r?\n/)
+    const heading = lines.findIndex(line => /非经常性损益项目及金额/.test(line))
+    if (heading < 0) return []
+    const total = lines.findIndex((line,index) => index > heading && index <= heading + 28 && /^合计\s+[-−]?[\d,]+(?:\.\d+)?(?:\s|$)/.test(line.trim()))
+    if (total < 0) return []
+    const applicable = lines.findIndex((line,index) => index > heading && index < total && /适用/.test(line) && /不适用/.test(line))
+    const unit = lines.findIndex((line,index) => index > heading && index < total && /^单位\s*[：:]\s*元$/.test(line.trim()))
+    const header = lines.findIndex((line,index) => index > heading && index < total && /^项目\s+金额\s+说明$/.test(line.trim()))
+    const totalMatch = lines[total]!.trim().match(/^合计\s+([-−]?[\d,]+(?:\.\d+)?)/)
+    const development = lines.findIndex(line => /^开发支出\s+[\d,]+(?:\.\d+)?\s+[\d,]+(?:\.\d+)?\s*$/.test(line.trim()))
+    const developmentMatch = development < 0 ? undefined : lines[development]!.trim().match(/^开发支出\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)/)
+    const developmentHeader = development < 0 ? -1 : lines.map((line,index) => ({line,index})).filter(item => item.index < development && item.index >= development - 64 && /项目\s+期末余额\s+期初余额/.test(item.line)).at(-1)?.index ?? -1
+    const developmentUnit = developmentHeader < 0 ? -1 : lines.map((line,index) => ({line,index})).filter(item => item.index < developmentHeader && item.index >= developmentHeader - 4 && /^单位\s*[：:]\s*元$/.test(item.line.trim())).at(-1)?.index ?? -1
+    const developmentStatement = developmentHeader < 0 ? -1 : lines.map((line,index) => ({line,index})).filter(item => item.index < developmentHeader && item.index >= developmentHeader - 12 && /合并资产负债表/.test(item.line)).at(-1)?.index ?? -1
+    if (applicable < 0 || unit < 0 || header < 0 || !totalMatch) return []
+    const refs = [heading, applicable, unit, header, total, ...(developmentMatch && developmentHeader >= 0 && developmentUnit >= 0 && developmentStatement >= 0 ? [developmentStatement, developmentUnit, developmentHeader, development] : [])]
+      .map(index => `[${source.candidate.candidateId}@paragraph:${index + 1}]`)
+    const developmentText = developmentMatch && developmentHeader >= 0 && developmentUnit >= 0 && developmentStatement >= 0
+      ? `半年报合并资产负债表另列“开发支出”期末余额${developmentMatch[1]}元、期初余额${developmentMatch[2]}元；这是资产负债表余额，不等于当期资本化研发投入，材料未说明该余额与当期研发费用的项目级勾稽。`
+      : ''
+    return [{ publishedAt: source.candidate.publishedAt ?? '', candidateId: source.candidate.candidateId, total: totalMatch[1]!, refs, developmentText }]
+  }).sort((left,right) => right.publishedAt.localeCompare(left.publishedAt))
+  const evidence = candidates[0]
+  if (!evidence) return input.sections
+  let markdown = section.markdown
+  const refs = [...new Set(evidence.refs)].join(' ')
+  const nonRecurringText = `半年报已将非经常性损益项目及金额标注为“适用”，表列合计${evidence.total}元；非经常性损益并非未披露。本报告将其纳入利润质量判断，但表列合计不等同于经常性盈利能力，仍需结合处置、补助、公允价值变动及税费项目解读。${refs}`
+  const developmentText = evidence.developmentText || '本次半年报证据没有提供与研发费用可直接勾稽的资本化研发投入金额；年度报告数字不能替代半年数据。'
+  // Replace the whole sentence that contains the stale absence claim. Replacing
+  // only the matching clause left conjunctions such as “也” dangling and could
+  // produce a contradictory sentence after the official evidence was added.
+  const staleAbsence = /[^。\n]*(?:本轮材料没有足以归因本期半年利润变化的明确非经常损益拆分|没有半年报研发资本化金额的直接披露行；年度报告数字不能替代半年数据)[^。\n]*。/g
+  const containsStaleAbsence = /本轮材料没有足以归因本期半年利润变化的明确非经常损益拆分|没有半年报研发资本化金额的直接披露行；年度报告数字不能替代半年数据/.test(markdown)
+  markdown = markdown.replace(staleAbsence, `${nonRecurringText} ${developmentText}`)
+  if (containsStaleAbsence) markdown = markdown.replace(/故不能判断本期利润变化有多少来自一次性项目，或研发资本化是否改变利润与现金关系。/g, '')
+  markdown = markdown.replace(/故不能判断本期利润变化有多少来自一次性项目，或研发资本化是否改变利润与现金关系。/g, '非经常性损益明细可用于分析本期利润变化，但不据此将全部相关金额视为可持续经营收益。')
+  markdown = markdown.replace(/应补充核对半年报非经常损益附注、研发费用化\/资本化明细及相关会计政策。/g, '后续仍应跟踪开发支出的项目归属、资本化条件及后续摊销或减值。')
+  if (markdown === section.markdown) return input.sections
+  const sourceCandidateIds = [...new Set([...(section.sourceCandidateIds ?? []), evidence.candidateId])]
+  return input.sections.map(item => item.id === section.id ? { ...item, markdown, sourceCandidateIds } : item)
 }
 
 /** Restore exact cross-method BYD figures in synthesis when a section contradicts its already-prepared evidence. */

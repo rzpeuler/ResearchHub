@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
+import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 
 test('classification repair restores a uniquely sourced industry label and adds its exact row citation', () => {
@@ -1166,6 +1166,42 @@ test('industry forecast reconciliation adds the available related-PCB forecast w
   assert.deepEqual(validateCompanyResearchMarkdownTables(once),[])
   const twice=reconcileCompanyIndustryForecastPeriods({sections:[{...sections[0]!,markdown:once}],methodResults:[method]})[0]!.markdown
   assert.equal(twice.match(/服务器及存储相关PCB产值/g)?.length,1)
+})
+
+test('industry forecast explicitly separates the 2025 base value from the 2026-2030 forecast period',()=>{
+  const method={skillId:'market_structure_analysis',status:'complete',sourceCandidateIds:['annual'],executionEvidence:[{sourceCandidateId:'annual',title:'2025年年度报告',publisher:'Company',excerpts:[
+    {sourceCandidateId:'annual',location:'paragraph:558',text:'2025年全球服务器及存储领域市场规模为4130亿美元，同比42%。'},
+    {sourceCandidateId:'annual',location:'paragraph:559',text:'预计2026至2030年复合增长率为6%，2030年市场规模将达6300亿美元。'},
+  ]}]} as unknown as CompanyResearchMethodResult
+  const row='| 全球服务器及存储市场 | 2025年4130亿美元；2030年预计6300亿美元；2026—2030年复合增长率6% | 年报转述 | 不是公司TAM。[annual@paragraph:558] [annual@paragraph:559] |'
+  const fixed=reconcileCompanyIndustryForecastPeriods({sections:[{id:'industry-exposure',markdown:`## 行业规模背景\n| 市场边界 | 预测值 | 预测机构及归属 | 可比性说明 |\n|---|---|---|---|\n${row}`}],methodResults:[method]})[0]!
+  assert.match(fixed.markdown,/2025年基期4130亿美元；2026—2030年预测复合增长率6%，2030年预计6300亿美元。来源未提供2026年基期金额，因此不补算该数值/)
+})
+
+test('financial quality replaces the unsupported interim non-recurring-loss absence with the official statement and keeps development spending scoped',()=>{
+  const content=[
+    '六、非经常性损益项目及金额','适用 □不适用','单位：元','项目 金额 说明',
+    '非流动性资产处置损益 -6,925,770.36','计入当期损益的政府补助 115,191,692.39','合计 477,317,288.78',
+    '3、合并资产负债表','单位：元','项目 期末余额 期初余额','开发支出 45,633,398.23 41,694,639.16',
+  ].join('\n')
+  const input=[{id:'financial-quality',sourceCandidateIds:['akshare'],markdown:'一次性项目及研发资本化方面，本轮材料没有足以归因本期半年利润变化的明确非经常损益拆分，也没有半年报研发资本化金额的直接披露行；年度报告数字不能替代半年数据。故不能判断本期利润变化有多少来自一次性项目，或研发资本化是否改变利润与现金关系。应补充核对半年报非经常损益附注、研发费用化/资本化明细及相关会计政策。'}]
+  const fixed=reconcileCompanyNonRecurringDisclosure({sections:input,sources:[{candidate:{candidateId:'interim',kind:'official_disclosure',publishedAt:'2026-08-22'},title:'2026年半年度报告',content}]})[0]!
+  assert.doesNotMatch(fixed.markdown,/本轮材料没有足以归因本期半年利润变化的明确非经常损益拆分/)
+  assert.match(fixed.markdown,/非经常性损益项目及金额标注为“适用”/)
+  assert.match(fixed.markdown,/合计477,317,288\.78元/)
+  assert.match(fixed.markdown,/“开发支出”期末余额45,633,398\.23元、期初余额41,694,639\.16元/)
+  assert.match(fixed.markdown,/不等于当期资本化研发投入/)
+  for(const paragraph of [1,2,3,4,7,8,9,10,11]) assert.match(fixed.markdown,new RegExp(`\\[interim@paragraph:${paragraph}\\]`))
+})
+
+test('industry denial of any named comparator is narrowed when the competitive method has a cited candidate',()=>{
+  const candidate:CompanyResearchMethodResult={skillId:'competitive_market_map',status:'complete',attempts:1,answer:'鹏鼎控股是汽车FPC具名候选。',markdown:'鹏鼎控股是候选。',sections:[],findings:[{text:'鹏鼎控股是汽车FPC具名候选，其公开资料披露应用于汽车电池板。',kind:'fact',evidence:[{sourceCandidateId:'public-web-peer',location:'paragraph:1'}]}],sourceCandidateIds:['public-web-peer'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'public-web-peer',title:'鹏鼎控股汽车FPC产品资料',publisher:'公开资料',excerpts:[{sourceCandidateId:'public-web-peer',location:'paragraph:1',text:'鹏鼎控股披露其产品包含应用于汽车电池板的FPC。'}]}]}
+  const section={id:'industry-exposure',markdown:'竞争分析同样缺乏可具名比较对象及其产品规格、价格、产能、份额和客户认证材料，不能宣称排名、领先幅度或份额。'}
+  const fixed=reconcileCompanyCompetitorEvidence({sections:[section],methodResults:[candidate]})[0]!
+  assert.doesNotMatch(fixed.markdown,/缺乏可具名比较对象/)
+  assert.match(fixed.markdown,/鹏鼎控股/)
+  assert.match(fixed.markdown,/同口径性能成本及市场份额仍未验证/)
+  assert.match(fixed.markdown,/\[public-web-peer@paragraph:1\]/)
 })
 
 test('cross-method check rejects the observed Dongshan and BYD report contradictions verbatim', () => {

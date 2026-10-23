@@ -611,6 +611,44 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     separatorIndex = adjustedSeparator + followingRows.length + 1
   }
 
+  // When the company/market-boundary table and the industry-forecast table
+  // have the same width, a generic orphan-header repair cannot distinguish
+  // the displaced forecast header from the preceding table's final row. The
+  // explicit forecast heading and row labels provide that missing context.
+  for (let separatorIndex = 1; separatorIndex < lines.length; separatorIndex++) {
+    if (!isSeparator(lines[separatorIndex]!)) continue
+    let previous = separatorIndex - 1
+    while (previous >= 0 && !lines[previous]!.trim()) previous--
+    if (previous >= 0 && isPipeLine(lines[previous]!)) continue
+    let forecastHeading = -1
+    for (let index = 0; index < separatorIndex; index++) if (/^\s*#{2,4}\s+行业规模背景\s*$/u.test(lines[index]!)) forecastHeading = index
+    if (forecastHeading < 0) continue
+    const width = splitCells(lines[separatorIndex]!).length
+    const rows: string[][] = []
+    for (let index = separatorIndex + 1; index < lines.length && isPipeLine(lines[index]!) && !isSeparator(lines[index]!); index++) rows.push(splitCells(lines[index]!))
+    if (rows.length < 2 || rows.some(row => row.length !== width)) continue
+    const candidates: number[] = []
+    for (let index = 0; index < forecastHeading; index++) {
+      if (!isPipeLine(lines[index]!) || isSeparator(lines[index]!)) continue
+      const cells = splitCells(lines[index]!)
+      if (cells.length !== width || cells.some(cell => !cell || /\d/u.test(cell))) continue
+      if (!cells.some(cell => /市场边界/u.test(cell))
+        || !cells.some(cell => /(?:预测值|规模|预测规模)/u.test(cell))
+        || !cells.some(cell => /(?:预测机构|机构及归属|来源归属)/u.test(cell))
+        || !cells.some(cell => /(?:可比性|解释限制|可比性说明)/u.test(cell))) continue
+      if (lines.slice(index + 1, forecastHeading).some(line => isPipeLine(line))) continue
+      candidates.push(index)
+    }
+    if (candidates.length !== 1) continue
+    const headerIndex = candidates[0]!
+    const header = lines[headerIndex]!
+    lines.splice(headerIndex, 1)
+    const adjustedSeparator = separatorIndex - 1
+    lines.splice(adjustedSeparator, 0, header)
+    repairs.push(`TABLE_INDUSTRY_FORECAST_HEADER_REATTACHED: line ${headerIndex + 1}->${adjustedSeparator + 1}; width ${width}`)
+    separatorIndex = adjustedSeparator + rows.length + 1
+  }
+
   // Missing cells are not a structural fusion: their position and intended
   // meaning cannot be inferred from table width alone. Keep them for the
   // ordinary table gate and semantic revision; never insert evidence-gap

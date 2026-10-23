@@ -472,6 +472,29 @@ test('R147 reattaches a displaced industry-scale header to its uniquely matching
   assert.deepEqual([...repaired.markdown.matchAll(/\[[^\]]+@paragraph:\d+\]/g)].map(match => match[0]), before)
 })
 
+test('same-width industry forecast header is moved past narrative to the table under its heading', () => {
+  const fixture = `| 市场/分类 | 产品边界与产业链位置 | 地区、客户与期间边界 | 证据及限制 |
+|---|---|---|---|
+| PCB | 板件制造 | 未按客户细分 | 公司披露 |
+| 光模块 | 高速连接 | 全球预测 | 不等于TAM |
+| 市场边界 | 预测值 | 预测机构及归属 | 可比性说明 |
+
+公司经营端按客户订单组织生产，且未交叉披露产品、终端和地区。[annual@paragraph:1]
+
+### 行业规模背景
+
+以下行业数字仅为背景，不代表公司TAM。
+|---|---|---|---|
+| 全球PCB市场 | 2026年958亿美元 | Prismark转述 | 仅为PCB市场。[annual@paragraph:2] |
+| 全球服务器及存储市场 | 2025年4130亿美元；2030年6300亿美元 | 年报转述 | 不是公司TAM。[annual@paragraph:3] |
+| 全球数通光模块 | 2026年228亿美元 | LightCounting转述 | 相邻市场。[annual@paragraph:4] |`
+  const repaired = repairCompanyResearchMarkdownTables(fixture)
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_INDUSTRY_FORECAST_HEADER_REATTACHED')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.match(repaired.markdown, /### 行业规模背景\n\n以下行业数字仅为背景，不代表公司TAM。\n\| 市场边界 \| 预测值 \| 预测机构及归属 \| 可比性说明 \|\n\|---\|---\|---\|---\|/)
+})
+
 test('table repair splits an inline section heading from the next table while retaining cited table header context', () => {
   const businessSegments = `## 业务分部与收入切片 年报产品分类说明。[scope@paragraph:1] | 分产品 | 2025年营业收入（元） | 占营业收入比重 | 2025年产品毛利率 | [filing@paragraph:845]
 |---|---:|---:|---:|
