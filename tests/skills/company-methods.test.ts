@@ -1818,6 +1818,7 @@ test('product method accepts enumerated evidence gaps but rejects positive prefe
   const explicitNonUpgradeResult=await executeCompanyResearchMethod({skillId:'product_technology_analysis',company:{symbol:'002594'},asOf:'2026-10-14',sources:[filing],durableSourceCandidateIds:['filing-1'],reasoningExecutor:executor(async()=>explicitNonUpgradeOutput)})
   assert.equal(explicitNonUpgradeResult.status,'complete','an explicit non-upgrade statement is a denial, not a positive customer preference claim')
   for (const explicitGap of [
+    '客户对安全、能耗、成本或方案选择的实际偏好不能由产品规格和公司定位替代。相关因素仅可作为待验证分析假设。',
     '客户对能耗、成本、可靠性或产品路线的偏好只能作为待验证分析假设，而非客户事实',
     '客户实际需求偏好亦未获调研、访谈、反馈或购买行为验证',
     '现有材料不足以证明是实际客户关注或偏好',
@@ -1849,6 +1850,7 @@ test('product method does not let a nearby negative customer-preference clause m
     '消费者偏好安全，但公司定位并非独立客户偏好事实',
     '公司竞争优势已验证，但产品扩产不等于已验证的竞争优势',
     '消费者偏好安全，但现有产品资料不足以验证实际客户偏好或具名竞品的同口径优劣',
+    '客户对安全、能耗、成本或方案选择的实际偏好不能由产品规格和公司定位替代，但客户更偏好安全；相关因素仅可作为待验证分析假设',
   ]
   for (const claim of launderingClaims) {
     const candidate={...output,answer:claim,markdown:claim,sections:[

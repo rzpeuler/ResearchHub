@@ -727,10 +727,26 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     while (headerIndex >= 0 && !lines[headerIndex]!.trim()) headerIndex--
     if (headerIndex < 0 || !isPipeLine(lines[headerIndex]!)) continue
     const headerCells = splitCells(lines[headerIndex]!)
-    const width = headerCells.length
-    if (width < 2 || headerCells.some(cell => /^#{1,6}\s/u.test(cell))) continue
     const rowIndexes: number[] = []
     for (let rowIndex = separatorIndex + 1; rowIndex < lines.length && isPipeLine(lines[rowIndex]!) && !isSeparator(lines[rowIndex]!); rowIndex++) rowIndexes.push(rowIndex)
+    const separatorWidth = splitCells(lines[separatorIndex]!).length
+    // A synthesis can emit a blank first header cell ("| | Label | Value |")
+    // while its separator and data rows are two-column tables. Repair that
+    // mismatch only when every peer row has the separator width except the
+    // final row, whose sole extra cell is clearly a prose paragraph appended
+    // after its closing pipe.
+    const rowCells = rowIndexes.map(rowIndex => splitCells(lines[rowIndex]!))
+    const trailingNarrativeRow = rowIndexes.length > 0
+      && rowCells.every((cells, index) => cells.length === separatorWidth
+        || (index === rowCells.length - 1 && cells.length === separatorWidth + 1 && narrativeTail(cells.slice(separatorWidth).join(' '))))
+      && rowCells.at(-1)?.length === separatorWidth + 1
+    if (headerCells.length === separatorWidth + 1 && headerCells[0] === '' && headerCells.slice(1).every(Boolean) && trailingNarrativeRow) {
+      headerCells.shift()
+      lines[headerIndex] = renderRow(headerCells)
+      repairs.push(`TABLE_EMPTY_LEADING_HEADER_CELL_REMOVED: line ${headerIndex + 1}`)
+    }
+    const width = headerCells.length
+    if (width < 2 || headerCells.some(cell => /^#{1,6}\s/u.test(cell))) continue
     const tails = new Map<number, string>()
     const headingTails = new Map<number, string[]>()
     for (const rowIndex of rowIndexes) {
@@ -771,7 +787,7 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     if (tails.size) {
       const lastRow = rowIndexes.at(-1)!
       const tailLines = [...tails.values(), ...[...headingTails.values()].flat()]
-      lines.splice(lastRow + 1, 0, ...tailLines)
+      lines.splice(lastRow + 1, 0, '', ...tailLines)
       separatorIndex += tailLines.length
     } else if (headingTails.size) {
       const lastRow = rowIndexes.at(-1)!
