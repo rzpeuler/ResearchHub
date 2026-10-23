@@ -20,7 +20,7 @@ import { COMPANY_RESEARCH_METHOD_IDS, COMPANY_METHOD_SECTION_IDS, COMPANY_METHOD
 import type { CompanyResearchInput } from '../../skills/company-research/contracts.ts'
 import { insertCompanyFinancialOpeningSummary, prepareCompanyFinancialAnalysis, renderCompanyFinancialTable } from './financial-analysis.ts'
 import { assembleCompanyResearch, repairCompanyResearchMarkdownTables, validateCompanyResearchSectionTables } from './assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, mergeCompanySemanticQuality, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyIndustryForecastPeriods, reconcileCompanyLeverageFormula, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyFinancialSummaryTable, reconcileCompanyPreparedAnalysisFacts, reconcileCompanyPlacementFacts } from './content-quality.ts'
+import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, mergeCompanySemanticQuality, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyIndustryForecastPeriods, reconcileCompanyLeverageFormula, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyFinancialSummaryTable, reconcileCompanyPreparedAnalysisFacts, reconcileCompanyPlacementFacts } from './content-quality.ts'
 import { prepareCompanyMarketSizing } from './market-sizing.ts'
 import { assessCompanySourceHealth, type CompanySourceAttemptTrace } from '../../data/company-source-health.ts'
 import { reviewCompanyResearchSemantics } from './semantic-quality.ts'
@@ -203,11 +203,25 @@ function appendFinancialSummary(methods: CompanyResearchMethodResult[], research
 /** Add adjacent split-table rows needed to preserve source headers and continuation values. */
 function appendCompanyOfficialContextEvidence(methods: CompanyResearchMethodResult[], researchInput: CompanyResearchInput): CompanyResearchMethodResult[] {
   const packets = new Map<string, NonNullable<CompanyResearchMethodResult['deterministicEvidence']>[number]>()
+  const riskContextCandidates: { publishedAt: string; packet: NonNullable<CompanyResearchMethodResult['deterministicEvidence']>[number] }[] = []
   for (const source of researchInput.sources) {
     if (source.candidate.kind !== 'official_disclosure') continue
     const lines = source.content.split(/\r?\n/)
     const base = { sourceCandidateId: source.candidate.candidateId, title: source.title, url: source.canonicalUrl ?? source.candidate.url, publisher: source.publisher, publishedAt: source.candidate.publishedAt }
     if (/年度报告/.test(source.title)) {
+      const goodwillRow = lines.findIndex(line => /^索尔思光电\s+[\d,]+(?:\.\d+)?\s+-?[\d,]+(?:\.\d+)?\s+[\d,]+(?:\.\d+)?\s*$/.test(line.trim()))
+      const goodwillHeader = goodwillRow < 0 ? -1 : lines.map((line,index) => ({line,index})).filter(item => item.index < goodwillRow && item.index >= goodwillRow-24 && /被投资单位名称或形成商誉的事项/.test(item.line)).at(-1)?.index ?? -1
+      const goodwillUnit = goodwillHeader < 0 ? -1 : lines.map((line,index) => ({line,index})).filter(item => item.index < goodwillHeader && item.index >= goodwillHeader-8 && /^单位\s*[：:]\s*元$/.test(item.line.trim())).at(-1)?.index ?? -1
+      const recoveryRow = lines.findIndex(line => /^MFLEX\s*公司\s+[\d,]+(?:\.\d+)?\s+[\d,]+(?:\.\d+)?/.test(line.trim()))
+      const recoveryHeader = recoveryRow < 0 ? -1 : lines.map((line,index) => ({line,index})).filter(item => item.index < recoveryRow && item.index >= recoveryRow-16 && /账面价值\s+可收回金额/.test(item.line)).at(-1)?.index ?? -1
+      const recoveryUnit = recoveryHeader < 0 ? -1 : lines.map((line,index) => ({line,index})).filter(item => item.index < recoveryHeader && item.index >= recoveryHeader-8 && /^单位\s*[：:]\s*元$/.test(item.line.trim())).at(-1)?.index ?? -1
+      if (goodwillRow >= 0 && goodwillHeader >= 0 && goodwillUnit >= 0 && recoveryRow >= 0 && recoveryHeader >= 0 && recoveryUnit >= 0) {
+        let nextAsset = lines.findIndex((line,index) => index > recoveryRow && /^(?:Multek|牧东|苏州艾福|索尔思)\s*公司?\s+[\d,]+(?:\.\d+)?/.test(line.trim()))
+        if (nextAsset < 0 || nextAsset > recoveryRow+12) nextAsset = recoveryRow+12
+        const indexes = new Set<number>([...Array.from({length:goodwillRow-goodwillUnit+1},(_,offset)=>goodwillUnit+offset),...Array.from({length:Math.max(1,nextAsset-recoveryUnit)},(_,offset)=>recoveryUnit+offset)])
+        const excerpts = [...indexes].filter(index => index>=0 && Boolean(lines[index]?.trim())).map(index => ({sourceCandidateId:base.sourceCandidateId,location:`paragraph:${index+1}`,text:lines[index]!.trim()}))
+        if (excerpts.length) riskContextCandidates.push({publishedAt:source.candidate.publishedAt ?? '',packet:{...base,excerpts}})
+      }
       const serverIndex = lines.findIndex(line => /2025\s*年全球服务器及存储领域市场规模/.test(line))
       if (serverIndex >= 0) {
         const excerpts = [serverIndex, serverIndex + 1, serverIndex + 2].filter(index => Boolean(lines[index]?.trim())).map(index => ({ sourceCandidateId: base.sourceCandidateId, location: `paragraph:${index + 1}`, text: lines[index]!.trim() }))
@@ -231,6 +245,8 @@ function appendCompanyOfficialContextEvidence(methods: CompanyResearchMethodResu
       }
     }
   }
+  const latestRiskContext = riskContextCandidates.sort((a,b) => b.publishedAt.localeCompare(a.publishedAt))[0]?.packet
+  if (latestRiskContext) packets.set('company_risk_analysis',latestRiskContext)
   return methods.map(method => {
     const packet = packets.get(method.skillId)
     if (!packet || method.status !== 'complete') return method
@@ -547,7 +563,8 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       const consolidatedMargin = reconcileCompanyConsolidatedGrossMargin({ sections: financialFormula, methodResults })
       const financialBoundaries = reconcileCompanyFinancialScopeLimitations({ sections: consolidatedMargin, methodResults })
       const revenueDrivers = reconcileCompanyProductRevenueDrivers({ sections: financialBoundaries, methodResults })
-      const linkedFinancial = reconcileCompanyDriverFinancialReferences({ sections: revenueDrivers, methodResults })
+      const supportedProductGrowth = reconcileCompanyUnsupportedProductGrowth({ sections: revenueDrivers, methodResults })
+      const linkedFinancial = reconcileCompanyDriverFinancialReferences({ sections: supportedProductGrowth, methodResults })
       const employeePlan = reconcileCompanyEmployeePlanEvidence({ sections: linkedFinancial, methodResults })
       const ownerHoldings = reconcileCompanyControlOwnerHoldings({ sections: employeePlan, methodResults })
       const financialHistoryRows = (researchInput.preparedAnalysis as {financial?:{table?:readonly {period?:string;metrics?:Readonly<Record<string,unknown>>;metadata?:Readonly<Record<string,{unit?:string;currency?:string;basis?:string}>>;conflicts?:readonly {metric:string}[]}[]}}|undefined)?.financial?.table
@@ -775,7 +792,8 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     const consolidatedMargin = reconcileCompanyConsolidatedGrossMargin({ sections: financialFormula, methodResults })
     const financialBoundaries = reconcileCompanyFinancialScopeLimitations({ sections: consolidatedMargin, methodResults })
     const revenueDrivers = reconcileCompanyProductRevenueDrivers({ sections: financialBoundaries, methodResults })
-    const linkedFinancial = reconcileCompanyDriverFinancialReferences({ sections: revenueDrivers, methodResults })
+    const supportedProductGrowth = reconcileCompanyUnsupportedProductGrowth({ sections: revenueDrivers, methodResults })
+    const linkedFinancial = reconcileCompanyDriverFinancialReferences({ sections: supportedProductGrowth, methodResults })
     const employeePlan = reconcileCompanyEmployeePlanEvidence({ sections: linkedFinancial, methodResults })
     const ownerHoldings = reconcileCompanyControlOwnerHoldings({ sections: employeePlan, methodResults })
     const financialHistoryRows = (researchInput.preparedAnalysis as {financial?:{table?:readonly {period?:string;metrics?:Readonly<Record<string,unknown>>;metadata?:Readonly<Record<string,{unit?:string;currency?:string;basis?:string}>>;conflicts?:readonly {metric:string}[]}[]}}|undefined)?.financial?.table
