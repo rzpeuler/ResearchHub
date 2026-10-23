@@ -101,7 +101,10 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
   // that it is its own competitor. Cross-method carryover therefore requires a
   // third-party public-web source that names the candidate in the located text.
   const externallyLocated = competitive.findings.flatMap(finding => finding.evidence.flatMap(ref => {
-    if (!/候选|具名竞争者|竞争对手/.test(finding.text)) return []
+    // Some valid competitive-method findings describe a scoped route comparison
+    // without using the literal word “候选”. The public-web locator and packet
+    // checks below still have to identify the named third-party company.
+    if (!/(?:候选|具名竞争者|竞争对手|路线对照)/.test(finding.text)) return []
     if (!ref.sourceCandidateId.startsWith('public-web-')) return []
     const packet = packets.find(item => item.sourceCandidateId === ref.sourceCandidateId)
     const excerpt = packet?.excerpts.find(item => item.location === ref.location)
@@ -2483,7 +2486,7 @@ export function reconcileCompanyProductRevenueRowCitations<T extends CompanyCont
     }).join('\n')
     return changed ? { ...section, markdown } : section
   })
-  if (!replacements.size) return reconcileCompanyGeographicRevenueReferences({ sections: inlineProductRowCitations, methodResults: input.methodResults })
+  if (!replacements.size) return reconcileCompanyIndustryExposureTableCitations({ sections: reconcileCompanyGeographicRevenueReferences({ sections: inlineProductRowCitations, methodResults: input.methodResults }), methodResults: input.methodResults })
   let changed = false
   const sections = inlineProductRowCitations.map(section => {
     if (!targetIds.has(section.id)) return section
@@ -2518,7 +2521,141 @@ export function reconcileCompanyProductRevenueRowCitations<T extends CompanyCont
     changed = true
     return { ...section, markdown }
   })
-  return reconcileCompanyGeographicRevenueReferences({ sections: changed ? sections : inlineProductRowCitations, methodResults: input.methodResults })
+  return reconcileCompanyIndustryExposureTableCitations({ sections: reconcileCompanyGeographicRevenueReferences({ sections: changed ? sections : inlineProductRowCitations, methodResults: input.methodResults }), methodResults: input.methodResults })
+}
+
+type CompanyIndustryExposureTableRow = {
+  readonly year: string
+  readonly reportPeriod: 'annual' | 'interim'
+  readonly dimension: 'industry' | 'product'
+  readonly label: string
+  readonly references: readonly string[]
+}
+
+const normalizeCompanySegmentLabel = (value: string) => value.replace(/[\s\u3000、，,。；;：:（）()【】\[\]·]/g, '')
+
+/**
+ * Rebind industry-exposure table citations to the exact period, classification,
+ * split label, numeric row and column-header excerpts that support each row.
+ * The same values often appear under both 分行业 and 分产品, so amount-only
+ * matching is deliberately insufficient.
+ */
+export function reconcileCompanyIndustryExposureTableCitations<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly T[] {
+  const section = input.sections.find(item => item.id === 'industry-exposure')
+  if (!section) return input.sections
+  const packets = input.methodResults
+    .filter(method => ['business_model_map', 'business_driver_analysis'].includes(method.skillId) && method.status === 'complete')
+    .flatMap(method => [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []])
+    .filter(packet => /(?:\d{4})年(?:年度报告|半年度报告)/.test(packet.title))
+  if (!packets.length) return input.sections
+
+  const parsedRows: CompanyIndustryExposureTableRow[] = []
+  for (const packet of packets) {
+    const title = packet.title.match(/((?:19|20)\d{2})年(年度|半年度)报告/)
+    if (!title) continue
+    const year = title[1]!
+    const reportPeriod = title[2] === '年度' ? 'annual' : 'interim'
+    const excerpts = packet.excerpts
+      .map(excerpt => ({ excerpt, paragraph: Number(/^paragraph:(\d+)$/.exec(excerpt.location)?.[1] ?? 0) }))
+      .filter(item => item.paragraph > 0)
+      .sort((a, b) => a.paragraph - b.paragraph)
+    const anchors = excerpts.filter(item => /占公司营业收入或营业利润\s*10%以上的行业、产品/.test(item.excerpt.text.replace(/\s/g, '')))
+    const tableStart = anchors.at(-1)?.paragraph
+    if (tableStart === undefined) continue
+    const scoped = excerpts.filter(item => item.paragraph >= tableStart && item.paragraph <= tableStart + 40)
+    let dimension: 'industry' | 'product' | undefined
+    let dimensionLocation: string | undefined
+    let pendingLabels: { text: string; location: string }[] = []
+    const tableRows: CompanyIndustryExposureTableRow[] = []
+    for (const item of scoped) {
+      const text = item.excerpt.text.trim()
+      const marker = /^分行业$/.test(text) ? 'industry' : /^分产品$/.test(text) ? 'product' : undefined
+      if (marker) {
+        dimension = marker
+        dimensionLocation = item.excerpt.location
+        pendingLabels = []
+        // Keep only column headings belonging to this table block. The unit is
+        // attached below from the same anchored block, independent of marker.
+        continue
+      }
+      if (!dimension) continue
+      if (/^分(?:地区|销售模式|销售渠道)$/.test(text)) {
+        dimension = undefined
+        dimensionLocation = undefined
+        pendingLabels = []
+        continue
+      }
+      const numericMatches = [...text.matchAll(/(?<![\d.,])\d[\d,]*(?:\.\d+)?\s*%?|(?<![\d.,])\d+(?:\.\d+)?\s*%/g)]
+      const hasRowShape = (text.match(/\d[\d,]*\.\d{2}/g)?.length ?? 0) >= 2 && (text.match(/\d+(?:\.\d+)?\s*%/g)?.length ?? 0) >= 4
+      if (!hasRowShape) {
+        if (!/^(?:单位\s*[：:]|营业收入|营业成本|毛利率|年同期增减|同期增减|占公司营业收入|\(?\d+\)?\s*[.、])/.test(text) && !/^(?:报告期|项目)$/.test(text)) {
+          pendingLabels.push({ text, location: item.excerpt.location })
+        }
+        continue
+      }
+      const firstNumber = numericMatches[0]?.index ?? text.search(/\d/)
+      const currentLabel = text.slice(0, firstNumber).trim()
+      const label = [...pendingLabels.map(entry => entry.text), currentLabel].filter(Boolean).join('').replace(/\s+/g, '')
+      const labelRefs = [...pendingLabels.map(entry => entry.location), item.excerpt.location]
+      pendingLabels = []
+      if (!label || !dimensionLocation) continue
+
+      const headerRefs = scoped
+        .filter(header => header.paragraph > tableStart && header.paragraph < item.paragraph)
+        .filter(header => /营业收入|营业成本|毛利率|上年同期|同比增减|同期增减|比上年同|期增减|^增减$/.test(header.excerpt.text.trim()))
+        .map(header => header.excerpt.location)
+      const headerText = scoped
+        .filter(header => header.paragraph > tableStart && header.paragraph < item.paragraph)
+        .filter(header => /营业收入|营业成本|毛利率|上年同期|同比增减|同期增减|比上年同|期增减|^增减$/.test(header.excerpt.text.trim()))
+        .map(header => header.excerpt.text.replace(/\s/g, '')).join('')
+      const hasCompleteColumns = /营业收入/.test(headerText) && /营业成本/.test(headerText) && /毛利率/.test(headerText)
+        && /(?:营业收入|收入).{0,24}(?:上年同期|同期).{0,12}(?:增减|变化)/.test(headerText + '营业收入比上年同期增减')
+        && /(?:营业成本|成本).{0,24}(?:上年同期|同期).{0,12}(?:增减|变化)/.test(headerText + '营业成本比上年同期增减')
+        && /毛利率.{0,24}(?:上年同期|同期).{0,12}(?:增减|变化)/.test(headerText + '毛利率比上年同期增减')
+      const unit = scoped.filter(candidate => candidate.paragraph < item.paragraph && /^单位\s*[：:]\s*元$/.test(candidate.excerpt.text.trim())).at(-1)
+      if (!hasCompleteColumns || !unit) continue
+      const refs = [...new Set([unit.excerpt.location, ...headerRefs, dimensionLocation, ...labelRefs])]
+        .sort((a, b) => Number(a.slice(10)) - Number(b.slice(10)))
+        .map(location => `${packet.sourceCandidateId}@${location}`)
+      tableRows.push({ year, reportPeriod, dimension, label, references: refs })
+    }
+    parsedRows.push(...tableRows)
+  }
+
+  let changed = false
+  let activeInterimYear: string | undefined
+  const markdown = section.markdown.split(/\r?\n/).map(line => {
+    if (!/^\s*\|/.test(line)) return line
+    const cells = line.split('|')
+    const first = cells[1]?.trim() ?? ''
+    const interimHeader = first.match(/^(\d{4})年半年度报告分类$/)
+    if (interimHeader) {
+      activeInterimYear = interimHeader[1]
+      return line
+    }
+    const row = first.match(/^(?:(\d{4})年度[，,]\s*)?(分行业|分产品)[：:]\s*(.+)$/)
+    if (!row) return line
+    const dimension = row[2] === '分行业' ? 'industry' : 'product'
+    const label = normalizeCompanySegmentLabel(row[3]!)
+    const year = row[1] ?? activeInterimYear
+    const reportPeriod = row[1] ? 'annual' : 'interim'
+    if (!year) return line
+    const candidates = parsedRows.filter(candidate => candidate.year === year && candidate.reportPeriod === reportPeriod
+      && candidate.dimension === dimension && normalizeCompanySegmentLabel(candidate.label) === label)
+    if (candidates.length !== 1) return line
+    const refs = candidates[0]!.references.map(reference => `[${reference}]`)
+    const cleaned = line.replace(/\s*\[[^\]]+@paragraph:\d+\]/g, '')
+    const cleanCells = cleaned.split('|')
+    const lastCellIndex = cleanCells.length - 2
+    if (lastCellIndex < 1) return line
+    const existingNonParagraphCitations = [...cleanCells[lastCellIndex]!.matchAll(/\[[^\]]+\]/g)].map(match => match[0]!)
+    const content = cleanCells[lastCellIndex]!.replace(/\s*\[[^\]]+\]/g, '').trimEnd()
+    cleanCells[lastCellIndex] = `${content} ${[...new Set([...existingNonParagraphCitations, ...refs])].join(' ')}`
+    const repaired = cleanCells.join('|')
+    if (repaired !== line) changed = true
+    return repaired
+  }).join('\n')
+  return changed ? input.sections.map(item => item.id === section.id ? { ...item, markdown } : item) : input.sections
 }
 
 /** Attach exact official geographic revenue rows to a matching qualitative claim. */
