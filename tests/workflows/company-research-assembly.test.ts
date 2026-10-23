@@ -15,6 +15,10 @@ test('Chinese presentation brackets normalize to exact square-bracket source loc
   assert.equal(normalizeCompanySynthesisCitations('事实〔annual@paragraph:1〕与另一项【half@paragraph:2】'), '事实[annual@paragraph:1]与另一项[half@paragraph:2]')
 })
 
+test('exact paragraph locators in prose parentheses normalize without changing their references', () => {
+  assert.equal(normalizeCompanySynthesisCitations('证据（annual@paragraph:1）及多项（annual@paragraph:1；half@paragraph:2）'), '证据（[annual@paragraph:1]）及多项（[annual@paragraph:1]；[half@paragraph:2]）')
+})
+
 test('Markdown table validation rejects extra cells and embedded heading rows', () => {
   assert.deepEqual(validateCompanyResearchMarkdownTables('| 指标 | 判断 |\n| --- | --- |\n| 客户集中 | 需持续跟踪 |'), [])
   assert.match(validateCompanyResearchMarkdownTables('| 指标 | 判断 |\n| --- | --- |\n| 客户集中 | 需持续跟踪 | 意外内容 |')[0]!, /row at line 3 has 3 cells; expected 2/)
