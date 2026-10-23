@@ -753,6 +753,29 @@ test('final numeric grounding uses only exact supplied table context for units a
   assert.equal(wrongLevel.synthesisMode,'deterministic_fallback')
   assert.ok(wrongLevel.synthesisDiagnostics.some(diagnostic=>diagnostic.includes('NUMERIC_GROUNDING_ERROR')))
 })
+
+test('numeric synthesis preserves a cited row unit when later table rows reuse it as context', async () => {
+  const lines=['单位：元','本报告期 上年同期','营业收入','27,347,867,868.08','成本 21,929,134,042.30']
+  const source={candidate:{candidateId:'half',kind:'official_disclosure' as const,tier:1 as const,provider:'fixture',title:'2026年半年度报告'},retrievedAt:'2026-10-23',title:'2026年半年度报告',publisher:'公司',contentHash:'fixture',content:lines.join('\n'),rights:{accessScope:'public' as const,retentionAllowed:true,aiProcessingAllowed:true,derivativeKnowledgeAllowed:true,redistributionAllowed:false}}
+  const excerpt=(location:number,contextLocations:number[]=[])=>( {sourceCandidateId:'half',location:`paragraph:${location}`,text:lines[location-1]!,...(contextLocations.length?{contextLocations:contextLocations.map(number=>`paragraph:${number}`)}:{})} )
+  const packet={sourceCandidateId:'half',title:source.title,publisher:'公司',excerpts:[excerpt(1),excerpt(2),excerpt(3),excerpt(4,[1,2,3]),excerpt(5,[1,4])]}
+  const evidence=[{sourceCandidateId:'half',location:'paragraph:4'},{sourceCandidateId:'half',location:'paragraph:5'}]
+  const first:CompanyResearchMethodResult={...method,skillId:'business_model_map',findings:[{text:'披露营业收入行。',kind:'fact',evidence}],executionEvidence:[packet]}
+  // A later method may supply the same row with less context; the union must
+  // retain the exact source unit and header already supplied by the first.
+  const secondPacket={...packet,excerpts:[excerpt(4,[2,3,5]),excerpt(5,[4])]}
+  const second:CompanyResearchMethodResult={...method,skillId:'financial_quality_analysis',findings:[{text:'披露收入及成本行。',kind:'fact',evidence}],executionEvidence:[secondPacket]}
+  const claim='2026年上半年营业收入27,347,867,868.08元。[half@paragraph:4]'
+  const executor:ReasoningExecutor={capabilities,execute:async request=>{
+    const payload=request.input as {allowedEvidence:Array<{sourceCandidateId:string;location:string;contextLocations?:readonly string[]}>}
+    assert.deepEqual(payload.allowedEvidence.find(item=>item.sourceCandidateId==='half'&&item.location==='paragraph:4')?.contextLocations,['paragraph:1','paragraph:2','paragraph:3','paragraph:5'])
+    return {operation:request.operation,output:{sections:ids.map(id=>({id,markdown:id==='investment-thesis'?claim:`该方法结果需持续观察。[half@paragraph:4]`,sourceCandidateIds:['half']}))}}
+  }}
+  const result=await assembleCompanyResearch({...input,sources:[source],reportSourceCandidateIds:['half'],durableSourceCandidateIds:['half']},[first,second],executor,()=>input.asOf)
+  assert.equal(result.synthesisMode,'reasoning_executor',JSON.stringify(result.synthesisDiagnostics))
+  assert.match(result.sections.find(section=>section.id==='investment-thesis')!.markdown,/27,347,867,868\.08元/)
+})
+
 test('unsupported numbers in core final conclusions block synthesis rather than enter a completed report', async () => {
   const executor:ReasoningExecutor={capabilities,execute:async request=>({operation:request.operation,output:{sections:ids.map(id=>({id,markdown:'确认收入 9999 元 [annual@paragraph:1]',sourceCandidateIds:['annual']}))}})}
   const result=await assembleCompanyResearch(input,[method],executor,()=>input.asOf)

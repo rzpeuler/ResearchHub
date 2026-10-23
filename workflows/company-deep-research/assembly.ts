@@ -1527,9 +1527,26 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
   const sourceById = new Map(input.sources.map(source => [source.candidate.candidateId, source]))
   const excerptByLocation = new Map<string, { sourceCandidateId: string; location: string; title: string; text: string; contextLocations?: readonly string[] }>()
   for (const method of available) for (const packet of [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []]) {
+    const source = sourceById.get(packet.sourceCandidateId)
+    const supplied = new Map(packet.excerpts.map(excerpt => [excerpt.location, excerpt]))
+    const lineAt = (location: string): string | undefined => {
+      const paragraph = Number(/^paragraph:(\d+)$/.exec(location)?.[1])
+      return source && Number.isInteger(paragraph) && paragraph > 0 ? source.content.split(/\r?\n/)[paragraph - 1] : undefined
+    }
     for (const excerpt of packet.excerpts) {
       const ref = `${packet.sourceCandidateId}@${excerpt.location}`
-      if (locations.has(ref)) excerptByLocation.set(ref, { sourceCandidateId: packet.sourceCandidateId, location: excerpt.location, title: packet.title, text: excerpt.text.slice(0, 1200), ...(excerpt.contextLocations?.length ? { contextLocations: excerpt.contextLocations } : {}) })
+      if (!locations.has(ref)) continue
+      const text = excerpt.text.slice(0, 1200)
+      const existing = excerptByLocation.get(ref)
+      const exactSourceRow = lineAt(excerpt.location) === excerpt.text
+      const contextual = exactSourceRow ? (excerpt.contextLocations ?? []).filter(location => {
+        const context = supplied.get(location)
+        return context !== undefined && lineAt(location) === context.text
+      }) : excerpt.contextLocations ?? []
+      const mergedContextual = existing?.text === text && exactSourceRow
+        ? [...new Set([...(existing.contextLocations ?? []), ...contextual])]
+        : contextual
+      excerptByLocation.set(ref, { sourceCandidateId: packet.sourceCandidateId, location: excerpt.location, title: packet.title, text, ...(mergedContextual.length ? { contextLocations: mergedContextual } : {}) })
     }
   }
   for (const ref of locations) {
@@ -1583,10 +1600,27 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
         return context !== undefined && lineAt(location) === context.text
       })
       const entries = validationEvidenceBySource.get(packet.sourceCandidateId) ?? new Map()
-      entries.set(excerpt.location, { location: excerpt.location, text: excerpt.text, ...(contextual.length ? { contextLocations: contextual } : {}) })
+      const existing = entries.get(excerpt.location)
+      // Several methods may supply the same exact source row with different
+      // bounded table context. Preserve the union of those verified context
+      // locations instead of letting the last method erase a unit/header
+      // needed to interpret an otherwise exact cited amount.
+      const mergedContextual = [...new Set([...(existing?.contextLocations ?? []), ...contextual])]
+      entries.set(excerpt.location, { location: excerpt.location, text: excerpt.text, ...(mergedContextual.length ? { contextLocations: mergedContextual } : {}) })
       for (const location of contextual) {
         const context = supplied.get(location)!
-        entries.set(location, { location, text: context.text })
+        const existingContext = entries.get(location)
+        // A later table row may cite this row as context. Keep its own
+        // verified context metadata when adding it as a bare context line.
+        // This matters when that row declares the unit used by the numeric
+        // grounding check.
+        if (!existingContext || existingContext.text === context.text) {
+          entries.set(location, {
+            location,
+            text: context.text,
+            ...(existingContext?.contextLocations?.length ? { contextLocations: existingContext.contextLocations } : {}),
+          })
+        }
       }
       validationEvidenceBySource.set(packet.sourceCandidateId, entries)
     }

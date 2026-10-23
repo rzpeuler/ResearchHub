@@ -532,11 +532,24 @@ export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySem
         const exactDisclosure = sources.some(source => {
           if (!/^2026\s*年半年度报告/.test(source.title)) return false
           const lines = source.content.split(/\r?\n/)
-          const header = lines.slice(1386,1404).join('\n')
-          return /员工人数/.test(header)
-            && /150\s+3,048,701/.test(header)
-            && cited.has(`${source.candidate.candidateId}@paragraph:1393`)
-            && cited.has(`${source.candidate.candidateId}@paragraph:1402`)
+          const valueIndex = lines.findIndex(line => /^\s*150\s+3,048,701\s+无\s+0\.17%\s*$/.test(line))
+          if (valueIndex < 0) return false
+          const start = Math.max(0, valueIndex - 16)
+          const tableContext = lines.slice(start, valueIndex + 1).join('\n')
+          if (!/有效的员工持股计划情况/.test(tableContext)) return false
+          let headerIndexes = lines.map((line, index) => ({ line: line.trim(), index }))
+            .filter(item => item.index >= start && item.index < valueIndex && /员工人数/.test(item.line))
+            .map(item => item.index)
+          if (!headerIndexes.length) {
+            headerIndexes = lines.map((line, index) => ({ line: line.trim(), index }))
+              .filter(item => item.index >= start && item.index + 1 < valueIndex && item.line === '员工人' && lines[item.index + 1]!.trim() === '数')
+              .flatMap(item => [item.index, item.index + 1])
+          }
+          if (!headerIndexes.length) return false
+          const candidateId = source.candidate.candidateId
+          const requiredHeaderRefs = headerIndexes.map(index => `${candidateId}@paragraph:${index + 1}`)
+          const valueRef = `${candidateId}@paragraph:${valueIndex + 1}`
+          return requiredHeaderRefs.every(ref => cited.has(ref)) && cited.has(valueRef)
         })
         if (exactDisclosure) { removed = true; return [] }
       }
