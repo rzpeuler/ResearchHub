@@ -304,6 +304,51 @@ test('self-contradictory numeric rejection is repaired within the same two revie
   assert.equal(validateCompanySemanticQualityOutput(realError).find(check=>check.sectionId==='financial-quality')!.numericReproducible,false,'a concrete remaining evidence problem is not automatically waived')
 })
 
+test('BYD reviewer self-corrections clear only the numeric false flag and retain separate defects', () => {
+  const selfCorrected = [
+    {
+      sectionId: 'revenue-profit-drivers',
+      reason: '年度收入同比使用的结构化年度数与官方数据吻合，金额、期间、公式可复核，未见错。',
+    },
+    {
+      sectionId: 'financial-quality',
+      reason: '“CCC＝DSO 22.87天＋DIO 106.21天−DPO 117.43天＝11.65天”计算错误：依正文列示的已四舍五入操作数应为11.65天？22.87+106.21−117.43=11.65，公式吻合，故无数字错误。',
+    },
+    {
+      sectionId: 'monitoring-checklist',
+      reason: '分产品收入与毛利率监控行并列收入表与毛利率指标；报告另引毛利率表，且数值与列头可核，故不存在实质错接。',
+    },
+  ] as const
+  for (const item of selfCorrected) {
+    const candidate = { sectionChecks: output.sectionChecks.map(check => check.sectionId === item.sectionId
+      ? { ...check, numericReproducible: false, reasons: [item.reason] }
+      : check) }
+    const normalized = validateCompanySemanticQualityOutput(candidate).find(check => check.sectionId === item.sectionId)!
+    assert.equal(normalized.numericReproducible, true, `${item.sectionId}: explicit correction should reconcile the numeric flag`)
+    assert.deepEqual(normalized.reasons, [], `${item.sectionId}: all flags pass, so no contradictory-only reason remains`)
+  }
+
+  const actualUnitError = { sectionChecks: output.sectionChecks.map(check => check.sectionId === 'financial-quality'
+    ? { ...check, numericReproducible: false, reasons: ['CCC公式吻合，但单位错误：报告把天写成月，影响周期解释。'] }
+    : check) }
+  assert.equal(validateCompanySemanticQualityOutput(actualUnitError).find(check => check.sectionId === 'financial-quality')!.numericReproducible, false,
+    'a concrete unit mismatch must remain blocking despite a correct formula')
+
+  const separateMissingOperands = { sectionChecks: output.sectionChecks.map(check => check.sectionId === 'financial-quality'
+    ? { ...check, numericReproducible: false, reasons: ['公式结果正确；另有一项派生比率未列两期操作数，无法复算。'] }
+    : check) }
+  assert.equal(validateCompanySemanticQualityOutput(separateMissingOperands).find(check => check.sectionId === 'financial-quality')!.numericReproducible, false,
+    'a separate missing-operands defect must not be erased by an unrelated correct figure')
+
+  const unanswered = { sectionChecks: output.sectionChecks.map(check => check.sectionId === 'financial-quality'
+    ? { ...check, questionAnswered: false, numericReproducible: false, reasons: [selfCorrected[1].reason] }
+    : check) }
+  const retained = validateCompanySemanticQualityOutput(unanswered).find(check => check.sectionId === 'financial-quality')!
+  assert.equal(retained.numericReproducible, true)
+  assert.equal(retained.questionAnswered, false)
+  assert.equal(retained.reasons.length, 1, 'numeric reconciliation must not clear a separate unanswered-section flag')
+})
+
 test('R78 reviewer text that concludes a section should pass is retried instead of accepted as a failed verdict',()=>{
   const contradictory={sectionChecks:output.sectionChecks.map(check=>check.sectionId==='financial-quality'?{...check,questionAnswered:false,evidenceSupportsConclusion:false,numericReproducible:false,reasons:['表中DSO公式可复算且结果正确；其余指标也正确。故没有明确的关键数字错误，主要问题均已回答，按规则应通过而非设false。']}:check)}
   assert.throws(()=>validateCompanySemanticQualityOutput(contradictory),/Contradictory verdict/)

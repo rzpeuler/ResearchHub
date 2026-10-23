@@ -138,9 +138,14 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
     // and no material error was found. Reconcile that explicit contradiction
     // locally instead of spending the bounded second model call on formatting.
     // An adversative concrete defect keeps the flags fail-closed.
-    const explicitNoNumericDefect = /(?:未发现|没有|不存在|未见)(?:任何|实质|具体)?(?:实质)?(?:数值|数字|计算|金额)?(?:错误|缺陷|错引|错算)|无实质(?:数值|数字|计算|金额)错引|无阻塞数值(?:错误|缺陷)|数值.{0,12}(?:正确|无误)|(?:无此错误|相关年份与数值一致|不构成科目混用|未合并且口径准确|口径准确)/.test(joinedRawReasons)
-    const explicitNumericAffirmation = /(?:数值|数字|金额|数据|计算|公式|操作数|期间|年份|增速|同比|比率|研发费用|研发投入|比例).{0,60}(?:正确|准确|一致|吻合|相符|可复核|可复算)|(?:正确|准确|一致|吻合|相符).{0,36}(?:数值|数字|金额|数据|计算|公式|操作数|期间|年份|增速|同比|比率|研发费用|研发投入|比例)|(?:金额|数字|费用|比率|比例).{0,32}(?:分别列示|分开呈列).{0,24}(?:未合并|口径准确)/.test(joinedRawReasons)
-    const concreteNumericDefect = /(?:实际应为|应为\s*[-+]?\d|与(?:原文|公式|来源|preparedAnalysis).{0,36}(?:不符|不一致)|(?:少计|多计|错算|错用|误用|单位错误|期间错误)|期间.{0,48}(?:不符|不一致|错配)|(?:分行业|分产品).{0,40}(?:混淆|错用|误作|混为)|(?:未|没有|缺少|缺失|未提供|未注明).{0,32}(?:公式|操作数|期间|单位|数据)|(?:公式|计算).{0,40}(?:不正确|无法复算|错误结果)|(?:0(?:\.0+)?|零).{0,24}(?:无来源|无证据|未见披露|未列示|未提供|不支持))/.test(joinedRawReasons)
+    const explicitNoNumericDefect = /(?:未发现|没有|不存在|未见)(?:任何|实质|具体)?(?:实质)?(?:数值|数字|计算|金额)?(?:错误|缺陷|错引|错算)|无实质(?:数值|数字|计算|金额)错引|无阻塞数值(?:错误|缺陷)|数值.{0,12}(?:正确|无误)|(?:无此错误|相关年份与数值一致|不构成科目混用|未合并且口径准确|口径准确)|未见错|(?:公式|计算结果).{0,24}(?:吻合|正确|一致).{0,24}(?:故|因此|所以)(?:无|不存在|不构成)(?:实质)?(?:数值|数字|计算)?(?:错误|缺陷)|(?:故|因此|所以)(?:无|不存在)(?:实质)?(?:数值|数字|计算)错误|不存在实质错接/.test(joinedRawReasons)
+    const explicitNumericAffirmation = /(?:数值|数字|金额|数据|计算|公式|操作数|期间|年份|增速|同比|比率|研发费用|研发投入|比例).{0,60}(?:正确|准确|一致|吻合|相符|可核|可复核|可复算)|(?:正确|准确|一致|吻合|相符).{0,36}(?:数值|数字|金额|数据|计算|公式|操作数|期间|年份|增速|同比|比率|研发费用|研发投入|比例)|(?:金额|数字|费用|比率|比例).{0,32}(?:分别列示|分开呈列).{0,24}(?:未合并|口径准确)/.test(joinedRawReasons)
+    // A reviewer may phrase a retracted suspicion as a question (“应为11.65天？...=11.65”);
+    // suppress only that exact expected value when the same clause immediately
+    // recomputes to it. Explicit unit/period/mismatch defects remain visible.
+    const questionedAndRecomputedValue = /应为\s*([+-]?\d[\d,，]*(?:\.\d+)?)\s*(?:天|日|元|万元|亿元|%|％|个百分点)?[?？][^。；;]{0,100}=\s*\1(?![\d.])/g
+    const numericDefectText = joinedRawReasons.replace(questionedAndRecomputedValue, '')
+    const concreteNumericDefect = /(?:实际应为|应为\s*[-+]?\d|与(?:原文|公式|来源|preparedAnalysis).{0,36}(?:不符|不一致)|(?:少计|多计|错算|错用|误用|单位错误|期间错误)|期间.{0,48}(?:不符|不一致|错配)|(?:分行业|分产品).{0,40}(?:混淆|错用|误作|混为)|(?:未|没有|缺少|缺失|未提供|未注明).{0,32}(?:公式|操作数|期间|单位|数据)|(?:公式|计算).{0,40}(?:不正确|无法复算|错误结果)|(?:0(?:\.0+)?|零).{0,24}(?:无来源|无证据|未见披露|未列示|未提供|不支持))/.test(numericDefectText)
     const evidenceAligned = /(?:引用.{0,60}(?:一致|相符|匹配|准确)|(?:来源|证据|原文).{0,60}(?:一致|相符|匹配|有据|明列|明确|充分)|年份.{0,30}(?:一致|正确)|(?:结论|报告).{0,30}有原文依据|充分结构化证据)/.test(joinedRawReasons)
     const explicitlyNoEvidenceBlocker = /(?:未发现(?:任何)?实质错误|没有(?:任何)?实质错误|无此错误|不构成(?:实质)?(?:缺口|错误|阻塞|错引)|不是(?:实质)?(?:缺口|错误)|(?:未见|未发现|不存在|没有).{0,32}(?:阻塞缺陷|实质缺陷|阻塞问题|具体阻塞)|阻塞缺陷未见|实际可确认的阻塞缺陷未见|故不是缺口)/.test(joinedRawReasons)
     // Do not let an explicit clean conclusion erase a separately identified
@@ -163,7 +168,7 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
       if (row.evidenceSupportsConclusion === false && evidenceAligned) row.evidenceSupportsConclusion = true
       if (row.numericReproducible === false && explicitNumericAffirmation) row.numericReproducible = true
     }
-    if (row.evidenceSupportsConclusion === true && row.numericReproducible === true
+    if (row.questionAnswered === true && row.evidenceSupportsConclusion === true && row.numericReproducible === true && row.riskTransmission === true
       && (explicitNoNumericDefect || explicitlyNoEvidenceBlocker)) row.reasons = []
     const nonBlockingOnly = rawReasons.length > 0 && rawReasons.every((reason) => {
       const explicitlyClears = /(?:不构成缺口扩大问题|总体讨论已充分|符合原单位要求.{0,24}数值可核|数值可核.{0,24}事实正确|数字未发现实质错误|数值及来源一致.{0,20}无实质错误|没有把标的列错置|风险传导与估值边界已说明|无需判错|故不据此判错|现有证据不足以支持此节为false.{0,20}该旗标判断应通过)/.test(reason)
