@@ -1806,6 +1806,16 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
       const validated: {id:string;markdown:string;sourceCandidateIds:string[]}[]=[]
       for(const section of value.sections) {
         if(!finalIds.includes(section.id)||typeof section.markdown!=='string'||!section.markdown.trim()||!Array.isArray(section.sourceCandidateIds)) throw new Error('REFERENCE_ERROR: final section contract invalid')
+        // These three sections are always replaced with deterministic, bounded
+        // gap text below. Do not validate citations or claims in model drafts
+        // that will never be published; otherwise an irrelevant guessed
+        // locator can exhaust synthesis retries while the final artifact would
+        // contain only the safe fixed gap. Core thesis and monitoring sections
+        // still pass through every citation and numeric guard.
+        if (optionalGaps[section.id] !== undefined) {
+          validated.push({id:section.id,markdown:optionalGaps[section.id]!,sourceCandidateIds:[]})
+          continue
+        }
         const normalizedMarkdown=normalizeCompanySynthesisCitations(section.markdown)
         const finalTableRepair=repairCompanyFinalSynthesisTable(section.id,normalizedMarkdown)
         if(finalTableRepair.repairs.length)diagnostics.push(`${attempt}:DETERMINISTIC_TABLE_REPAIR:${finalTableRepair.repairs.join(',')}`)

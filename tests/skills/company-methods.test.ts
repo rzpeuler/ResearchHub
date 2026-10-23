@@ -2178,6 +2178,7 @@ test('product method accepts enumerated evidence gaps but rejects positive prefe
     '因而产品用途和公司定位不能被当作实际客户偏好事实',
     '本节不据此作客户偏好或产品级盈利判断',
     '现有产品资料不足以验证实际客户偏好或具名竞品的同口径优劣',
+    '本次材料未提供明确客户需求调研、消费者反馈或可观察购买行为来验证安全、能耗、价格、车型选择等因素；这些只能作为待验证分析假设，不能作为客户事实。',
     '本次资料没有消费者调研、客户访谈或反馈、可观察购买行为，也没有公司明确披露的具体客户偏好结论。因此，安全、性能、能耗、成本或车型选择等只能作为待验证的潜在采购因素，不能写成实际客户关注事实。',
   ]) {
     const gapOutput={...unsupported,answer:explicitGap,markdown:explicitGap,sections:unsupported.sections.map(section=>section.id==='products'?{...section,markdown:`${explicitGap}。[filing-1@paragraph:1]`}:section),findings:[{text:explicitGap,kind:'assumption' as const,evidence:[{sourceCandidateId:'filing-1',location:'paragraph:1'}]}]}
@@ -2193,6 +2194,7 @@ test('product method accepts enumerated evidence gaps but rejects positive prefe
 test('product method does not let a nearby negative customer-preference clause mask a positive preference claim', async () => {
   const filing={...source,content:'公司新能源汽车产品覆盖乘用车和商用车。'}
   const launderingClaims=[
+    '本次材料未提供明确客户需求调研、消费者反馈或可观察购买行为来验证安全、能耗、价格、车型选择等因素，但消费者偏好安全；相关因素只能作为待验证假设。',
     '客户偏好尚未验证但消费者偏好安全',
     '客户偏好研究尚未开展但消费者偏好安全',
     '公司未提供客户偏好研究但消费者偏好安全',
@@ -2370,6 +2372,67 @@ test('reference retry identifies the exact invalid document locator and forbids 
   assert.equal(result.status, 'insufficient_evidence', JSON.stringify(result.diagnostics))
   assert.equal(result.attempts, 2)
   assert.ok(!result.sections.some(section => section.markdown.includes('电子产品收入增长8.8%')), 'the unsupported original growth claim is removed rather than rebound to the other report')
+})
+
+test('market-structure repairs a wrong annual-report locator only when an exact quote maps to one supplied paragraph', async () => {
+  const makeAnnual = (candidateId: string, year: string, target: string) => {
+    const lines = Array.from({ length: 40 }, (_, index) => `一般年度披露第${index + 1}段。`)
+    lines[31] = target
+    return { ...source, candidate: { ...source.candidate, candidateId, title: `${year}年年度报告` }, title: `${year}年年度报告`, content: lines.join('\n') }
+  }
+  const annual2025 = makeAnnual('annual-2025', '2025', '中国汽车工业电动化和智能化变革带来机遇，也有利于促进世界汽车产业升级和“双碳”目标。')
+  const annual2024 = makeAnnual('annual-2024', '2024', '董事会会议和金融资产管理情况。')
+  let calls = 0
+  const wrongLocator = {
+    ...output,
+    answer: '年报提及“双碳”目标，行业政策仍需跟踪。[annual-2024@paragraph:32]',
+    markdown: '年报提及“双碳”目标，行业政策仍需跟踪。[annual-2024@paragraph:32]',
+    sections: [{ id: 'industry-exposure', markdown: '年报提及“双碳”目标，行业政策仍需跟踪。[annual-2024@paragraph:32]' }],
+    findings: [{ text: '年报提及“双碳”目标。', kind: 'fact', evidence: [{ sourceCandidateId: 'annual-2024', location: 'paragraph:32' }] }],
+  }
+  const result = await executeCompanyResearchMethod({
+    skillId: 'market_structure_analysis', company: { symbol: '002594' }, asOf: '2026-10-23',
+    sources: [annual2024, annual2025], durableSourceCandidateIds: ['annual-2024', 'annual-2025'],
+    reasoningExecutor: executor(async request => {
+      calls++
+      const actual = request as any
+      if (calls === 1) throw new ReasoningExecutorError('reasoning_output_invalid', 'JSON Schema contract: findings, limitations, and risks are required')
+      assert.ok(actual.input.evidence.some((packet: any) => packet.sourceCandidateId === 'annual-2025' && packet.excerpts.some((row: any) => row.location === 'paragraph:32' && row.text.includes('“双碳”目标'))), 'the replacement paragraph must have been supplied to this method')
+      return wrongLocator
+    }),
+  })
+  assert.equal(calls, 2, 'the deterministic repair stays within the existing two-attempt method budget')
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  assert.equal(result.attempts, 2)
+  assert.ok(result.sections[0]!.markdown.includes('[annual-2025@paragraph:32]'))
+  assert.ok(result.findings[0]!.evidence.some(ref => ref.sourceCandidateId === 'annual-2025' && ref.location === 'paragraph:32'))
+  assert.ok((result.citationRepairs ?? []).some(repair => repair.originalReferences.some(ref => ref.sourceCandidateId === 'annual-2024' && ref.location === 'paragraph:32') && repair.addedReferences.some(ref => ref.sourceCandidateId === 'annual-2025' && ref.location === 'paragraph:32')))
+})
+
+test('market-structure leaves an unavailable locator untouched when its quoted anchor matches multiple supplied paragraphs', async () => {
+  const makeAnnual = (candidateId: string, target: string) => {
+    const lines = Array.from({ length: 40 }, (_, index) => `一般年度披露第${index + 1}段。`)
+    lines[31] = target
+    return { ...source, candidate: { ...source.candidate, candidateId, title: `${candidateId} 年度报告` }, title: `${candidateId} 年度报告`, content: lines.join('\n') }
+  }
+  const annual2024 = makeAnnual('annual-2024', '董事会会议和金融资产管理情况。')
+  const annual2025a = makeAnnual('annual-2025-a', '中国汽车工业电动化和智能化变革带来机遇，也有利于促进世界汽车产业升级和“双碳”目标。')
+  const annual2025b = makeAnnual('annual-2025-b', '行业电动化和智能化发展带来“双碳”目标相关机遇。')
+  const outputWithWrongLocator = {
+    ...output,
+    answer: '年报提及“双碳”目标。[annual-2024@paragraph:32]',
+    markdown: '年报提及“双碳”目标。[annual-2024@paragraph:32]',
+    sections: [{ id: 'industry-exposure', markdown: '年报提及“双碳”目标。[annual-2024@paragraph:32]' }],
+    findings: [{ text: '年报提及“双碳”目标。', kind: 'fact', evidence: [{ sourceCandidateId: 'annual-2024', location: 'paragraph:32' }] }],
+  }
+  const result = await executeCompanyResearchMethod({
+    skillId: 'market_structure_analysis', company: { symbol: '002594' }, asOf: '2026-10-23',
+    sources: [annual2024, annual2025a, annual2025b], durableSourceCandidateIds: ['annual-2024', 'annual-2025-a', 'annual-2025-b'],
+    reasoningExecutor: executor(async () => outputWithWrongLocator),
+  })
+  assert.equal(result.status, 'failed', 'ambiguous source mapping must still fail closed')
+  assert.ok(result.diagnostics.some(diagnostic => diagnostic.code === 'REFERENCE_ERROR'))
+  assert.equal((result.citationRepairs ?? []).length, 0)
 })
 
 

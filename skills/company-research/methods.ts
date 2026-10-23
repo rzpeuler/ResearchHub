@@ -896,6 +896,11 @@ function productCustomerNeedEvidenceIssue(result: Pick<ReturnType<typeof validat
     // affirmative preference claims elsewhere still fail closed.
     const scopedCustomerPreferenceLimits = /(?:未提供|缺少|缺乏|没有|未见)[^。；;，,|\n]{0,20}(?:足以|可用于)?(?:确认|验证|证明|识别|评估)[^。；;，,|\n]{0,16}(?:实际|真实)?(?:客户|用户|消费者|购车者)[^。；;，,|\n]{0,10}(?:偏好|需求|关注)[^。；;，,|\n]{0,8}(?:的)?(?:调研|调查|研究|问卷|访谈|反馈|材料|证据)|(?:没有|未见|未披露|未提供)(?:公司)?明确披露的具体客户偏好(?:结论|事实|信息)|(?:公司宣称|公司宣传|产品规格|产品定位)[^。；;，,|\n]{0,16}(?:与|和)[^。；;，,|\n]{0,10}(?:实际|真实)?(?:客户|用户|消费者|购车者)?[^。；;，,|\n]{0,10}(?:偏好|需求|关注)[^。；;，,|\n]{0,8}(?:应|须|需要|必须)?(?:分别看待|严格区分|不能混为一谈)|(?:该)?(?:公司|产品)?定位[^。；;，,|\n]{0,18}(?:与|和)[^。；;，,|\n]{0,12}(?:客户|用户|消费者)[^。；;，,|\n]{0,20}(?:实测)?(?:需求|购买)?[^。；;，,|\n]{0,12}(?:偏好)?[^。；;，,|\n]{0,12}(?:是)?(?:不同|处于不同)(?:的)?证据层级|(?:公司陈述|公司宣称|产品用途|产品定位)[^。；;，,|\n]{0,24}(?:与|和)[^。；;，,|\n]{0,12}(?:实际|真实)?(?:客户|用户|消费者)?(?:偏好|需求|关注)[^。；;，,|\n]{0,12}(?:应|须|需要|必须)?(?:分别看待|严格区分|不能混为一谈)/g
     for (const denial of claim.matchAll(scopedCustomerPreferenceLimits)) spans.push({ start: denial.index ?? 0, end: (denial.index ?? 0) + denial[0].length })
+    // Explicit negative evidence statements can still contain the detector's
+    // target terms (for example “消费者反馈…验证安全/能耗因素”). Remove only
+    // that bounded research-gap clause; a separate affirmative claim remains.
+    const explicitResearchInputGap = /(?:本次|本节|现有)?(?:材料|资料|证据)[^。；;，,|\n]{0,16}(?:未提供|缺少|缺乏|没有)[^。；;，,|\n]{0,40}(?:客户需求调研|消费者反馈|客户访谈|购买行为|调研|调查|访谈|反馈)[^。；;，,|\n]{0,48}(?:来|以|用于)?验证[^。；;，,|\n]{0,56}(?:安全|动力|能耗|价格|成本|车型选择|购买因素)/g
+    for (const denial of claim.matchAll(explicitResearchInputGap)) spans.push({ start: denial.index ?? 0, end: (denial.index ?? 0) + denial[0].length })
     // Company-reported product scope, R&D progress, or claimed technical
     // effects may be explicitly distinguished from customer preferences and
     // independent validation. Remove only that bounded disclaimer clause;
@@ -1005,6 +1010,82 @@ function referenceClaimTerms(text: string): Set<string> {
   }
   for (const term of text.toLowerCase().match(/[a-z]{3,}/g) ?? []) terms.add(term)
   return terms
+}
+
+/**
+ * Repair only an unavailable source/paragraph pair whose quoted phrase occurs
+ * in exactly one excerpt already supplied to this method. This handles a
+ * source-id/paragraph mix-up without accepting the unavailable citation or
+ * borrowing a merely adjacent/equal-numbered paragraph.
+ */
+function repairUniqueQuotedSuppliedCitations<T>(
+  raw: T,
+  packets: readonly CompanyEvidencePacket[],
+  knownSources: readonly NormalizedResearchSource[],
+): { output: T; repairs: CompanyCitationRepair[] } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { output: raw, repairs: [] }
+  const value = raw as Record<string, unknown>
+  const knownIds = new Set(knownSources.map(source => source.candidate.candidateId))
+  const available = new Set(packets.flatMap(packet => packet.excerpts.map(excerpt => `${packet.sourceCandidateId}@${excerpt.location}`)))
+  const outputTexts = [value.answer, value.markdown,
+    ...(Array.isArray(value.sections) ? value.sections.map(section => section && typeof section === 'object' ? (section as Record<string, unknown>).markdown : undefined) : []),
+    ...(Array.isArray(value.findings) ? value.findings.map(finding => finding && typeof finding === 'object' ? (finding as Record<string, unknown>).text : undefined) : []),
+  ].filter((text): text is string => typeof text === 'string')
+  const invalidReferences = new Set(outputTexts.flatMap(text => [...text.matchAll(/\[([^\]\s]+)@(paragraph:\d+)\]/g)].map(match => `${match[1]}@${match[2]}`)).filter(reference => !available.has(reference)))
+  const replacements = new Map<string, CompanyMethodEvidenceRef>()
+  const repairs: CompanyCitationRepair[] = []
+  for (const reference of invalidReferences) {
+    const separator = reference.lastIndexOf('@')
+    const sourceCandidateId = reference.slice(0, separator)
+    const location = reference.slice(separator + 1)
+    if (!knownIds.has(sourceCandidateId)) continue
+    const claim = extractCitationBearingClaim(outputTexts, reference)
+    const quotedAnchors = [...claim.matchAll(/[“「『\"]([^“”「」『』\"]{2,24})[”」』\"]/g)]
+      .map(match => match[1]!.replace(/\s+/g, ' ').trim())
+      .filter(anchor => /[\u3400-\u9fff]{2,}|[a-zA-Z]{3,}/.test(anchor))
+    if (!quotedAnchors.length) continue
+    let candidates: Array<{ sourceCandidateId: string; location: string; text: string }> | undefined
+    for (const anchor of quotedAnchors) {
+      const matched = packets.flatMap(packet => packet.excerpts
+        .filter(excerpt => excerpt.text.replace(/\s+/g, ' ').includes(anchor))
+        .map(excerpt => ({ sourceCandidateId: packet.sourceCandidateId, location: excerpt.location, text: excerpt.text })))
+      const keys = new Set(matched.map(item => `${item.sourceCandidateId}@${item.location}`))
+      if (!candidates) candidates = matched
+      else candidates = candidates.filter(item => keys.has(`${item.sourceCandidateId}@${item.location}`))
+    }
+    const unique = [...new Map((candidates ?? []).map(item => [`${item.sourceCandidateId}@${item.location}`, item])).values()]
+    if (unique.length !== 1) continue
+    const candidate = unique[0]!
+    const source = knownSources.find(item => item.candidate.candidateId === candidate.sourceCandidateId)
+    const claimYears = [...claim.matchAll(/\b(?:19|20)\d{2}\b/g)].map(match => match[0])
+    const titleYears: string[] = source?.title.match(/\b(?:19|20)\d{2}\b/g) ?? []
+    if (claimYears.length && titleYears.length && claimYears.some(year => !titleYears.includes(year))) continue
+    const replacement = { sourceCandidateId: candidate.sourceCandidateId, location: candidate.location }
+    replacements.set(reference, replacement)
+    repairs.push({ inputText: claim.slice(0, 1200), originalReferences: [{ sourceCandidateId, location }], addedReferences: [replacement], reason: 'The unavailable source/paragraph pair was replaced only because its quoted phrase matched exactly one excerpt supplied to this method; the exact supplied source and locator were retained.' })
+  }
+  if (!replacements.size) return { output: raw, repairs: [] }
+  const replaceText = (text: string): string => text.replace(/\[([^\]\s]+)@(paragraph:\d+)\]/g, (literal, sourceId: string, paragraph: string) => {
+    const mapped = replacements.get(`${sourceId}@${paragraph}`)
+    return mapped ? `[${mapped.sourceCandidateId}@${mapped.location}]` : literal
+  })
+  const copy: Record<string, unknown> = { ...value }
+  for (const key of ['answer', 'markdown'] as const) if (typeof copy[key] === 'string') copy[key] = replaceText(copy[key] as string)
+  if (Array.isArray(copy.sections)) copy.sections = copy.sections.map(section => section && typeof section === 'object' && typeof (section as Record<string, unknown>).markdown === 'string'
+    ? { ...(section as Record<string, unknown>), markdown: replaceText((section as Record<string, unknown>).markdown as string) }
+    : section)
+  if (Array.isArray(copy.findings)) copy.findings = copy.findings.map(finding => {
+    if (!finding || typeof finding !== 'object' || Array.isArray(finding)) return finding
+    const row = finding as Record<string, unknown>
+    const evidence = Array.isArray(row.evidence) ? row.evidence.map(reference => {
+      if (!reference || typeof reference !== 'object' || Array.isArray(reference)) return reference
+      const ref = reference as Record<string, unknown>
+      const mapped = typeof ref.sourceCandidateId === 'string' && typeof ref.location === 'string' ? replacements.get(`${ref.sourceCandidateId}@${ref.location}`) : undefined
+      return mapped ? { ...ref, ...mapped } : reference
+    }) : row.evidence
+    return { ...row, ...(typeof row.text === 'string' ? { text: replaceText(row.text) } : {}), evidence }
+  })
+  return { output: copy as T, repairs }
 }
 
 /** Pure semantic adapter: no acquisition, persistence, or invocation of peer Skills. */
@@ -1213,7 +1294,11 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
       const allocationTableRepair = input.skillId === 'capital_allocation_review'
         ? repairExcessTrailingCellsInMethodOutput(riskFormatRepair.output)
         : riskFormatRepair.output
-      const bounded = bindCompanyMethodEvidenceContext(validateCompanyMethodOutput(allocationTableRepair, packets, COMPANY_METHOD_SECTION_IDS[input.skillId]), packets)
+      const exactQuotedCitationRepair = input.skillId === 'market_structure_analysis'
+        ? repairUniqueQuotedSuppliedCitations(allocationTableRepair, packets, input.sources)
+        : { output: allocationTableRepair, repairs: [] as CompanyCitationRepair[] }
+      citationRepairs.push(...exactQuotedCitationRepair.repairs.map((repair) => ({ ...repair, attempt })))
+      const bounded = bindCompanyMethodEvidenceContext(validateCompanyMethodOutput(exactQuotedCitationRepair.output, packets, COMPANY_METHOD_SECTION_IDS[input.skillId]), packets)
       const repaired = repairCompanyMethodCitations(bounded, packets, input)
       citationRepairs.push(...repaired.repairs.map((repair) => ({ ...repair, attempt })))
       const yearBound = bindCompanyAnswerYearEvidence(repaired.output, input.sources, packets, input.preparedAnalysis, input.company.symbol, input.asOf)
