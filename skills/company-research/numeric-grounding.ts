@@ -1251,7 +1251,23 @@ function consolidatedGrossMarginDiagnostics(markdown: string, prepared: unknown)
         }
         const rowPrior = cellNumber(tableCells[priorColumn])
         const rowCurrent = cellNumber(tableCells[currentColumn])
-        if (!hasOrderedPeriods || !displayMatches(prior, rowPrior) || !displayMatches(current, rowCurrent)) return false
+        const hasPeriodColumns = hasOrderedPeriods && displayMatches(prior, rowPrior) && displayMatches(current, rowCurrent)
+        // A compact table may place both explicit ISO periods and their values
+        // in one comparison cell (for example, “2026-06-30为18.85%，
+        // 2025-06-30为18.01%”). Accept this only when each prepared period is
+        // uniquely paired with its exact prepared value in that same cell;
+        // years elsewhere in the row or section cannot satisfy the binding.
+        const comparisonCell = tableCells.length === 2 ? tableCells[1] ?? '' : ''
+        const labeledPeriodValues = [...comparisonCell.matchAll(/(?<!\d)(\d{4}-\d{2}-\d{2})\s*(?:为|[:：=＝])\s*([+-]?\d[\d,，]*(?:\.\d+)?)\s*[%％]/g)]
+          .map(match => ({ period: match[1]!, value: Number(match[2]!.replace(/[,，]/g, '')) }))
+        const matchesLabeledPeriod = (period: string, expected: number): boolean => {
+          const matches = labeledPeriodValues.filter(item => item.period === period)
+          return matches.length === 1 && displayMatches(expected, matches[0]!.value)
+        }
+        const hasExplicitPeriodValues = currentPeriod !== priorPeriod
+          && matchesLabeledPeriod(currentPeriod, current)
+          && matchesLabeledPeriod(priorPeriod, prior)
+        if (!hasPeriodColumns && !hasExplicitPeriodValues) return false
       }
       return pointValue === undefined || displayMatches(calculated, pointValue)
         || typeof row.displayChangePercentagePoints === 'number' && displayMatches(row.displayChangePercentagePoints, pointValue)

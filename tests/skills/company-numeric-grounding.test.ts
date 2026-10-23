@@ -223,6 +223,11 @@ test('consolidated gross-margin comparisons require the exact prepared ratio row
   assert.equal(validateCompanyNumericGrounding({ markdown: table, sources: [financial], preparedAnalysis }).status, 'unsupported_numbers', 'an uncited table cannot borrow a prepared comparison')
   assert.equal(validateCompanyNumericGrounding({ markdown: section.replace('2025年上半年累计', '2024年上半年累计'), sources: [financial], preparedAnalysis }).status, 'unsupported_numbers', 'a different table period cannot borrow the prepared ratio')
 
+  const compactComparisonTable = `| 指标 | 可比期间方向与公式 |\n|---|---|\n| 合并毛利率 | 2026-06-30为18.85%，2025-06-30为18.01%；约上升0.84个百分点（18.85%−18.01%）。[${candidateId}@paragraph:1] |`
+  assert.equal(validateCompanyNumericGrounding({ markdown: compactComparisonTable, sources: [financial], preparedAnalysis, trustedText: ['2025-06-30', '2026-06-30'] }).status, 'grounded', 'one comparison cell may bind both values only when each exact ISO period labels its prepared value')
+  assert.equal(validateCompanyNumericGrounding({ markdown: compactComparisonTable.replace('2026-06-30为18.85%', '2025-06-30为18.85%'), sources: [financial], preparedAnalysis, trustedText: ['2025-06-30', '2026-06-30'] }).status, 'unsupported_numbers', 'a duplicated period label cannot bind both prepared values')
+  assert.equal(validateCompanyNumericGrounding({ markdown: compactComparisonTable.replace('18.85%', '19.85%'), sources: [financial], preparedAnalysis, trustedText: ['2025-06-30', '2026-06-30'] }).status, 'unsupported_numbers', 'a period-labeled value must match the exact prepared value')
+
   const r171Table = `结构化财务摘要显示，合并毛利率由18.01%升至18.85%，差额为18.85%−18.01%＝约0.84个百分点（2025-06-30至2026-06-30，合并毛利率；结构化确定性比率变化）。[${candidateId}@paragraph:1]\n\n| 指标 | 2025年上半年累计 | 2026年上半年累计 | 代码同比结果 |\n|---|---:|---:|---:|\n| 营业收入（人民币亿元） | 3,712.81 | 3,448.15 | — |\n| 营业利润（人民币亿元） | 187.20 | 147.44 | — |\n| 结构化净利润（归母属性未注明；人民币亿元） | 155.11 | 123.25 | — |\n| 经营现金净流量（人民币亿元） | 318.33 | 373.35 | — |\n| 合并毛利率 | 18.01% | 18.85% | 18.85%−18.01%＝约0.84个百分点 |\n\n分行业表仅显示两个业务板块毛利率变化，不能替代合并毛利率，也不足以解释合并利润下降。`
   const r171Options = { sources: [financial], preparedAnalysis, trustedText: ['2025-06-30', '2026-06-30'] }
   const r171Result = validateCompanyNumericGrounding({ markdown: r171Table, ...r171Options })
