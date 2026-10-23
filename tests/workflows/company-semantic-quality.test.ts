@@ -906,6 +906,44 @@ test('R174 pure confirmations repair false financial-quality and growth-driver f
   }
 })
 
+test('company review keeps supported management figures separate from a real risk-matrix coverage gap', () => {
+  const checks = output.sectionChecks.map(check => {
+    if (check.sectionId === 'management-capital-allocation') return {
+      ...check,
+      evidenceSupportsConclusion: false,
+      numericReproducible: false,
+      reasons: [
+        '报告准确区分2025员工持股计划人数上限（年报段落3060）与半年报参与人数/持股数（段落1159）；也限定刘学亮履历和职责缺口，没有把管理层整体称为缺失。',
+        '资本化比例8.61%与1.78%的百分点差6.83由报告明确给出公式；原表变动比例按原单位使用。研发投入率6.97%与7.89%等原表数字均准确列示。没有关键数字错误。',
+      ],
+    }
+    if (check.sectionId === 'risks') return {
+      ...check,
+      evidenceSupportsConclusion: false,
+      numericReproducible: false,
+      riskTransmission: false,
+      reasons: [
+        '“当前材料不足以确认具体竞品及可比维度”与其他已完成竞争方法及本报告竞争章节已给出的吉利银河E8候选路线不一致；风险矩阵未把具名候选路线纳入具体风险行，仅在末尾补充，影响竞争触发条件与监控的完整性。',
+        '公司客户占比、商誉金额及财务指标均已有相应官方/结构化来源，报告未称其缺失；列出的客户静态占比并未被当作实际损失。',
+        '风险传导已给出收入/利润、客户/利用率、存货/资金占用、商誉/资产利润等路径及观察指标、缓解和残余风险；竞争行称资料不足虽可限定，但具体具名候选遗漏需修正。',
+      ],
+    }
+    return check
+  })
+  const validated = validateCompanySemanticQualityOutput({ sectionChecks: checks })
+  const management = validated.find(check => check.sectionId === 'management-capital-allocation')!
+  assert.equal(management.evidenceSupportsConclusion, true)
+  assert.equal(management.numericReproducible, true)
+  assert.deepEqual(management.reasons, [])
+
+  const risks = validated.find(check => check.sectionId === 'risks')!
+  assert.equal(risks.questionAnswered, true)
+  assert.equal(risks.evidenceSupportsConclusion, false)
+  assert.equal(risks.numericReproducible, true, 'risk-path omission does not make otherwise supported values unreproducible')
+  assert.equal(risks.riskTransmission, false, 'the specific omitted competitor route still leaves this risk row incomplete')
+  assert.match(risks.reasons.join(' '), /具体具名候选遗漏需修正/)
+})
+
 test('R174 mixed monitoring explanation keeps the concrete missing-count evidence blocker but passes confirmed arithmetic', () => {
   const mixed = output.sectionChecks.map(check => check.sectionId === 'monitoring-checklist'
     ? {
