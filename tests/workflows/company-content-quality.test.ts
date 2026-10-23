@@ -443,6 +443,22 @@ test('R104 reconciles broad competitor denials in overview, products, and risks 
   assert.equal(result[3]!.markdown, sections[3]!.markdown)
 })
 
+test('cross-method reconciliation catches the compact phrase no comparable competitor', () => {
+  const candidate: CompanyResearchMethodResult = {
+    skillId: 'competitive_market_map', status: 'complete', attempts: 1,
+    answer: '鹏鼎控股是具名候选。', markdown: '已识别鹏鼎控股的PCB产品材料。',
+    sections: [{ id: 'competition', markdown: '鹏鼎控股为候选对象。' }],
+    findings: [{ text: '鹏鼎控股披露FPC产品与应用，是具名候选，直接竞争关系未验证。', kind: 'fact', evidence: [{ sourceCandidateId: 'public-web-peer', location: 'paragraph:1' }] }],
+    sourceCandidateIds: ['public-web-peer'], limitations: [], risks: [], diagnostics: [],
+    executionEvidence: [{ sourceCandidateId: 'public-web-peer', title: '竞品产品资料', publisher: '公开资料', excerpts: [{ sourceCandidateId: 'public-web-peer', location: 'paragraph:1', text: '鹏鼎控股披露FPC产品用于汽车电池板。' }] }],
+  }
+  const sections = [{ id: 'company-overview', markdown: '现有材料也没有可比竞品的产品、路线和经营数据。', sourceCandidateIds: ['annual'] }]
+  const result = reconcileCompanyCompetitorEvidence({ sections, methodResults: [candidate] })
+  assert.match(result[0]!.markdown, /鹏鼎控股披露FPC产品与应用/)
+  assert.match(result[0]!.markdown, /直接竞标、客户重叠/)
+  assert.doesNotMatch(result[0]!.markdown, /没有可比竞品/)
+})
+
 test('R104 does not reconcile competitor gaps without a complete located finding and matching excerpt', () => {
   const incomplete: CompanyResearchMethodResult = {
     skillId: 'competitive_market_map', status: 'insufficient_evidence', attempts: 1,

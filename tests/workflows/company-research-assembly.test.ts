@@ -517,6 +517,29 @@ test('reattaches the real R189 industry forecast header using the disclosed inst
   assert.match(repaired.markdown, /### 行业规模背景\n下列数字[^\n]+\n\| 市场边界 \| 预测值与期间 \| 机构与归属 \| 可比性说明 \|\n\|---\|---\|---\|---\|/)
 })
 
+test('reattaches a displaced capital-expenditure header without keeping it as an R&D data row', () => {
+  const fixture = `## 管理层、治理与资本配置
+### 资本配置台账与评价
+### 研发
+| 行动 | 金额 | 目的 | 评价 |
+|---|---|---|---|
+| 年度研发投入 | 2025年金额 | 技术研发 | 尚未验证回报 |
+| 最新累计研发费用 | 半年度金额 | 口径不同 | 不作趋势判断 |
+| 行动与期间 | 金额/指标 | 目的与资金覆盖 | 后续结果及限制 |
+研发项目没有单独披露商业化回报。[annual@paragraph:10]
+
+### 资本开支与流动性
+|---|---|---|---|
+| 2026年上半年累计资本开支 | 购建长期资产52.53亿元 | 经营现金23.84亿元 | 简化差额为负，不年化。[annual@paragraph:11] |
+| 扩产建设 | 在建工程期末45.14亿元 | 光模块和AI PCB扩产 | 未披露利用率。[annual@paragraph:12] |`
+  const repaired = repairCompanyResearchMarkdownTables(fixture)
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_CAPITAL_EXPENDITURE_HEADER_REATTACHED')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.match(repaired.markdown, /### 资本开支与流动性\n\| 行动与期间 \| 金额\/指标 \| 目的与资金覆盖 \| 后续结果及限制 \|\n\|---\|---\|---\|---\|/)
+  assert.doesNotMatch(repaired.markdown.split('### 资本开支与流动性')[0]!, /\| 行动与期间 \| 金额\/指标 \|/)
+})
+
 test('table repair splits an inline section heading from the next table while retaining cited table header context', () => {
   const businessSegments = `## 业务分部与收入切片 年报产品分类说明。[scope@paragraph:1] | 分产品 | 2025年营业收入（元） | 占营业收入比重 | 2025年产品毛利率 | [filing@paragraph:845]
 |---|---:|---:|---:|

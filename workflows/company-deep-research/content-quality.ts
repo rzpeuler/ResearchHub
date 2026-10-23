@@ -143,7 +143,7 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
   // described product route. Carry that narrow fact into synthesis chapters
   // that otherwise turn a missing like-for-like comparison into a claim that
   // no named candidate exists. Never infer customer overlap or actual rivalry.
-  const broadCandidateDenial = /(?:没有|未提供|未发现|缺少|缺乏|暂缺|未识别|尚无|无)(?:可直接比较的|可比的|任何)?(?:具名)?(?:竞品|竞争者|竞争对手|对手|候选(?:竞品|竞争者|对手)?)(?:[^。；;\n|]{0,45})/g
+  const broadCandidateDenial = /(?:没有|未提供|未发现|缺少|缺乏|暂缺|未识别|尚无|无)(?:可直接比较的|可比(?:的)?|任何)?(?:具名)?(?:竞品|竞争者|竞争对手|对手|候选(?:竞品|竞争者|对手)?)(?:[^。；;\n|]{0,45})/g
   const scopedCandidateGap = `竞争方法已核实的具名候选为：${candidateFinding}${candidateCitations}；但直接竞标、客户重叠、市场份额及同口径胜负仍未验证，不能据此断言存在真实竞争关系`
   const automotiveCandidate = /汽车|乘用车|纯电|插混|车型/.test(candidateFinding)
   let changed = false
