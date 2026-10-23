@@ -755,7 +755,20 @@ export function validateCompanyNumericGrounding(input: NumericGroundingInput): {
       && formula.includes(String(row.displayCapex ?? ''))
       && formula.includes(String(row.displayValue))
       && formula.includes(displayUnit as string)
-    if (citedAndAvailableSources && consistent) simpleFreeCashFlowDisplayValues.push({ value: displayValue, displayValue: row.displayValue as string, period, basis, displayUnit: displayUnit as string })
+    if (citedAndAvailableSources && consistent) {
+      simpleFreeCashFlowDisplayValues.push({ value: displayValue, displayValue: row.displayValue as string, period, basis, displayUnit: displayUnit as string })
+      // A deterministic FCF table reports the two calculator operands beside
+      // its result. Admit those rounded display values only from the same
+      // internally consistent row, cited structured source, exact period,
+      // cumulative basis, and declared display unit.
+      for (const [display, amount] of [[row.displayOperatingCashFlow, operatingCashFlow], [row.displayCapex, capex]] as const) {
+        if (typeof display !== 'string' || typeof amount !== 'number' || !Number.isFinite(amount)) continue
+        const operandValue = Number(display.replace(/,/g, ''))
+        const tolerance = 0.5 * 10 ** -(display.split('.')[1]?.length ?? 0) * scale!
+        if (!Number.isFinite(operandValue) || Math.abs(operandValue * scale! - amount) > Math.max(Math.abs(amount) * 1e-10, tolerance)) continue
+        simpleFreeCashFlowDisplayValues.push({ value: operandValue, displayValue: display, period, basis, displayUnit: displayUnit as string })
+      }
+    }
   }
   const markdown = input.markdown
     .replace(/\[[^\]\s]+@[^\]]+\]/g, '')
