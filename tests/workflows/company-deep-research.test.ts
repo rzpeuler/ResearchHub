@@ -8,7 +8,7 @@ import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { KnowledgeProductionGateway } from '../../knowledge/production/gateway.ts'
 import { createFreshKnowledgeBaseV04, readCanonicalV04Assets } from '../../knowledge/storage/index.ts'
 import { runCompanyDeepResearch as executeCompanyDeepResearch } from '../../workflows/company-deep-research/index.ts'
-import { addCompanyMethodEvidenceInstructions, applyCompanyResearchTableDiagnostics, initialCompanyResearchSearchTerms, mergeCompanyMethodRevisionResult } from '../../workflows/company-deep-research/workflow.ts'
+import { addCompanyMethodEvidenceInstructions, appendCompanyOfficialContextEvidence, applyCompanyResearchTableDiagnostics, initialCompanyResearchSearchTerms, mergeCompanyMethodRevisionResult } from '../../workflows/company-deep-research/workflow.ts'
 import { COMPANY_RESEARCH_METHOD_IDS, type CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 import { COMPANY_CORE_SECTION_IDS } from '../../workflows/company-deep-research/content-quality.ts'
 import { mergeCompanySemanticQuality } from '../../workflows/company-deep-research/content-quality.ts'
@@ -32,6 +32,24 @@ import { writeKnowledgeBase } from '../../knowledge/writer/writer.ts'
 import { KnowledgeBaseRegistry as Registry } from '../../knowledge/registry/registry.ts'
 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value) }
+
+test('late employee-plan transfer note is routed into governance method evidence with exact paragraph locators',()=>{
+  const lines=Array.from({length:6009},()=> '')
+  lines[1390]='报告期内全部有效的员工持股计划情况'
+  lines[1391]='员工人数'
+  lines[1401]='公司及子公司核心技术（业务）骨干'
+  lines[1402]='（不包括公司董事、高级管理人员）'
+  lines[1403]='150 3,048,701 无 0.17%'
+  lines[6007]='其他说明，包括本期增减变动情况、变动原因说明：公司于 2026 年 3 月 9 日以非交易过户方式将回购证券账户中的'
+  lines[6008]='3,048,701 股过户至 2026 年员工持股计划证券账户。'
+  const source={candidate:{candidateId:'interim',kind:'official_disclosure',publishedAt:'2026-08-22'},title:'2026年半年度报告',content:lines.join('\n')}
+  const method={skillId:'management_governance_analysis',status:'complete',attempts:1,answer:'',markdown:'',sections:[],findings:[],sourceCandidateIds:[],limitations:[],risks:[],diagnostics:[]} as unknown as CompanyResearchMethodResult
+  const [routed]=appendCompanyOfficialContextEvidence([method],{sources:[source]} as never)
+  const packet=routed!.deterministicEvidence?.find(item=>item.sourceCandidateId==='interim')
+  assert.ok(packet)
+  assert.ok(packet.excerpts.some(item=>item.location==='paragraph:6008'&&/回购证券账户中的/.test(item.text)))
+  assert.ok(packet.excerpts.some(item=>item.location==='paragraph:6009'&&/2026\s*年员工持股计划证券账户/.test(item.text)))
+})
 
 const runCompanyDeepResearch: typeof executeCompanyDeepResearch = (input) => executeCompanyDeepResearch({ ...input, reasoningExecutor: Object.prototype.hasOwnProperty.call(input, 'reasoningExecutor') ? input.reasoningExecutor : completeResearchExecutor() })
 

@@ -1391,13 +1391,18 @@ export function reconcileCompanyEmployeePlanEvidence<T extends CompanyContentSec
     const context=rows.find(item=>item.paragraph===people.paragraph+1&&/不包括公司董事、高级管理人员/.test(item.text))
     const values=rows.find(item=>item.paragraph===(context?.paragraph??people.paragraph)+1&&/^\s*150\s+3,048,701\s+无\s+0\.17%\s*$/.test(item.text))
     if(!context||!values)continue
+    const planAccount=rows.find(item=>/3,048,701\s*股过户至\s*2026\s*年员工持股计划证券账户/.test(item.text))
+    const planAccountDate=planAccount?rows.find(item=>item.paragraph===planAccount.paragraph-1&&/回购证券账户中的\s*$/.test(item.text.trim())):undefined
+    const datedPlanAccount=planAccount&&planAccountDate?{date:planAccountDate,account:planAccount}:undefined
     const countHeader=rows.filter(item=>item.paragraph<people.paragraph&&item.paragraph>=people.paragraph-12).sort((a,b)=>a.paragraph-b.paragraph).map(item=>item.text).join(' ').replace(/\s+/g,' ')
     const hasCountHeader=/员工人\s*数/.test(countHeader)
     const headerRows=hasCountHeader?rows.filter(item=>item.paragraph<people.paragraph&&item.paragraph>=people.paragraph-12&&/员工人|数/.test(item.text)):[]
     const refs=[...new Set([people,context,...headerRows,values].map(item=>`[${packet.sourceCandidateId}@${item.location}]`))]
     const countWording=hasCountHeader?'员工人数列披露150人':'同一数据行列示150；当前可用摘录未提供能确认“150”是员工人数还是人数上限的完整列标题或定义，因此不据此量化实际覆盖人数'
-    const statement=`员工持股计划披露对象为公司及子公司核心技术（业务）骨干，不包括董事及高级管理人员；${countWording}，并列示持有股票3,048,701股、占总股本0.17%。表格披露的持股数不等于个人认购或期末持有人数；激励有效性仍需跟踪计划条款及后续持有变化。${refs.join(' ')}`
-    const chronology=section.markdown.replace(/激励安排有阶段变化：[\s\S]*?绩效下降。/,'2025年度年报所称报告期无员工持股计划，描述的是2025年度情况；2026年半年度报告随后披露新一期员工持股计划，不能把上一年度结论延伸为当前状态。')
+    const yearStatement=datedPlanAccount?`半年报附注披露，2026年3月9日回购证券账户中的3,048,701股过户至“2026年员工持股计划证券账户”，因此计划年份可辨；但现有材料仍未明确正式计划全称及其与此前已出售计划之间的延续、替代或新增关系。[${packet.sourceCandidateId}@${datedPlanAccount.date.location}] [${packet.sourceCandidateId}@${datedPlanAccount.account.location}]`:'半年度报告显示员工持股计划实施状态为适用，但本次摘录未提供计划年份及与此前已出售计划之间的延续、替代或新增关系；该限制不否定已披露的员工持股信息。'
+    const statement=`员工持股计划披露对象为公司及子公司核心技术（业务）骨干，不包括董事及高级管理人员；${countWording}，并列示持有股票3,048,701股、占总股本0.17%。表格披露的持股数不等于个人认购或期末持有人数；激励有效性仍需跟踪计划条款及后续持有变化。${refs.join(' ')}${datedPlanAccount?` ${yearStatement}`:''}`
+    const chronology=section.markdown.replace(/半年度报告显示员工持股计划实施状态为适用，披露核心技术（业务）骨干范围及持股数据，但本次摘录不含计划完整名称和年份；因此不能据此判断该计划与上述已出售计划之间的延续、替代或新增关系。此处缺口仅限计划身份及其与旧计划的衔接，并不否定已披露的员工持股信息。/g,datedPlanAccount?yearStatement:'半年度报告显示员工持股计划实施状态为适用，披露核心技术（业务）骨干范围及持股数据，但本次摘录不含计划年份及其与已出售计划之间的衔接信息。此处限制仅针对关系和正式全称，不影响已披露的持股数据。')
+      .replace(/激励安排有阶段变化：[\s\S]*?绩效下降。/,'2025年度年报所称报告期无员工持股计划，描述的是2025年度情况；2026年半年度报告随后披露新一期员工持股计划，不能把上一年度结论延伸为当前状态。')
     const cleaned=chronology.replace(/(?:实际)?参与人数\s*150\s*人/g,'表格同行列示数值150（其是否代表实际参与人数或人数上限未能由所供表头确认）')
       .replace(/(?:报告期)?计划覆盖\s*150\s*人/g,'员工人数列披露150人（不等同于已实际参与人数）')
       .replace(/这量化了覆盖人数与股份规模/g,'该行可定位披露的股份规模，但不能确认覆盖人数')
