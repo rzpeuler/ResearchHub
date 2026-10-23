@@ -261,6 +261,18 @@ export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySem
     let removed = false
     const reasons = check.reasons.flatMap(reason => {
       if(check.sectionId==='products'
+        &&/905\s*km/.test(reason)
+        &&/(?:paragraph:337|段落337|p337)/.test(reason)
+        &&/(?:不含|未见|不支持)[^；;。]{0,32}(?:续航|905\s*km)/.test(reason)){
+        const citation=/海豹08[^\n]{0,220}905\s*km/.test(body)?[...body.matchAll(/\[([^\]\s]+)@paragraph:337\]/g)][0]:undefined
+        const source=citation?sources.find(item=>item.candidate.candidateId===citation[1]):undefined
+        const citedText=source?.content.split(/\r?\n/)[336]??''
+        if(citation&&citedText.includes('905km纯电续航')&&/海豹08[^\n]{0,220}905\s*km/.test(body)){
+          const corrected=reason.replace(/(?:[；;]\s*)?表中[^；;。]{0,180}905\s*km[^；;。]{0,180}(?:[；;]\s*该产品规格引用不支持结论，数值不可复核。?)?/,'').trim()
+          if(corrected!==reason){removed=true;return corrected?[corrected]:[]}
+        }
+      }
+      if(check.sectionId==='products'
         &&/数据中心光模块面向AI基础设施/.test(reason)
         &&/引用paragraph 356相符/.test(reason)
         &&/明确限制独立验证/.test(reason)
