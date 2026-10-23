@@ -1014,7 +1014,7 @@ function reconcileCrossMethodCompetitionContext(input: CompanyResearchInput, sec
   }
 }
 
-function repairSynthesisNumericCitations(text: string, issues: readonly NumericGroundingDiagnostic[], methods: readonly CompanyResearchMethodResult[], allowedLocations: ReadonlySet<string>): string {
+function repairSynthesisNumericCitations(text: string, issues: readonly NumericGroundingDiagnostic[], methods: readonly CompanyResearchMethodResult[], sources: CompanyResearchInput['sources'], allowedLocations: ReadonlySet<string>): string {
   let repaired = text
   for (const issue of issues) {
     const token = issue.token.match(/-?[\d,，]+(?:\.\d+)?/)?.[0]
@@ -1145,11 +1145,11 @@ function repairSynthesisNumericCitations(text: string, issues: readonly NumericG
       const technology = new RegExp(`(?<![\\d.])${escapedToken}\\s*(G|T)(?:bps)?(?=$|[^A-Za-z0-9])(?:\\s*PAM4)?(?:\\s*EML)?`, 'i').exec(issueText)
       if (technology) {
         const unit = technology[1]!.toUpperCase()
+        const exact = new RegExp(`(?<![\\d.])${amount}(?:\\s*)${unit}(?:bps)?(?=(?:PAM4|EML)|$|[^A-Za-z0-9])(?:\\s*PAM4)?(?:\\s*EML)?`, 'i')
         const candidates = new Set<string>()
         const adjacentCandidates = new Set<string>()
         for (const method of methods) for (const packet of [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []]) {
           const excerpts = packet.excerpts.filter(excerpt => allowedLocations.has(`${packet.sourceCandidateId}@${excerpt.location}`))
-          const exact = new RegExp(`(?<![\\d.])${amount}(?:\\s*)${unit}(?:bps)?(?=(?:PAM4|EML)|$|[^A-Za-z0-9])(?:\\s*PAM4)?(?:\\s*EML)?`, 'i')
           for (const excerpt of excerpts) {
             const paragraph = Number(/^paragraph:(\d+)$/.exec(excerpt.location)?.[1])
             if (!Number.isInteger(paragraph) || paragraph < 1) continue
@@ -1161,6 +1161,20 @@ function repairSynthesisNumericCitations(text: string, issues: readonly NumericG
             if (!exact.test(excerpt.text) && exact.test(adjacent.map(candidate => candidate.text).join(' '))) {
               for (const candidate of adjacent) adjacentCandidates.add(`${packet.sourceCandidateId}@${candidate.location}`)
             }
+          }
+        }
+        // An exact locator can be authorized by a validated finding even when
+        // that paragraph was not retained in the compact method excerpt packet.
+        // Resolve it from the already-acquired source body only when the same
+        // unique, exact technology identifier is present at that allowed row.
+        for (const source of sources) {
+          const prefix = `${source.candidate.candidateId}@paragraph:`
+          for (const ref of allowedLocations) {
+            if (!ref.startsWith(prefix)) continue
+            const paragraph = Number(ref.slice(prefix.length))
+            if (!Number.isInteger(paragraph) || paragraph < 1) continue
+            const line = source.content.split(/\r?\n/)[paragraph - 1]
+            if (line && exact.test(line)) candidates.add(ref)
           }
         }
         if (!candidates.size) for (const candidate of adjacentCandidates) candidates.add(candidate)
@@ -1617,7 +1631,7 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
           const validate=()=>validateCompanyNumericGrounding({markdown:sectionMarkdown,sources:input.sources,evidenceContexts:validationEvidenceContexts,preparedAnalysis:input.preparedAnalysis,trustedText:[input.company.symbol,input.asOf,...companyCitedSplitDateText(sectionMarkdown,available.flatMap(method=>method.executionEvidence ?? [])),...companyPreparedFinancialDateText(input.preparedAnalysis)]})
           let grounding=validate()
           if(grounding.status!=='grounded') {
-            sectionMarkdown=repairSynthesisNumericCitations(sectionMarkdown,grounding.diagnostics,available,locations)
+            sectionMarkdown=repairSynthesisNumericCitations(sectionMarkdown,grounding.diagnostics,available,input.sources,locations)
             grounding=validate()
           }
           if(grounding.status!=='grounded') {numericRepairIssues=grounding.diagnostics;throw new Error(`NUMERIC_GROUNDING_ERROR:${grounding.diagnostics.map(d=>d.token).join(',')}`)}
