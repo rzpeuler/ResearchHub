@@ -686,7 +686,7 @@ test('R194 employee-plan review false positive is dismissed only when the report
   filingLines[1401]='核心技术（业务）骨干'
   filingLines[1402]='150 3,048,701 无 0.17%'
   const filing={candidate:{candidateId:'employee-filing',publishedAt:'2026-08-22'},title:'2026年半年度报告',content:filingLines.join('\n')} as NormalizedResearchSource
-  const body='员工持股计划表“员工人数”列披露150人，不能推断为实际人数；人数上限在可用披露中未见，持股数也不等于实际参与人数。[employee-filing@paragraph:1393] [employee-filing@paragraph:1402]'
+  const body='员工持股计划表“员工人数”列披露150人，不能推断为实际人数；人数上限在可用披露中未见，持股数也不等于实际参与人数。[employee-filing@paragraph:1393] [employee-filing@paragraph:1403]'
   const report=[...COMPANY_CORE_SECTION_IDS.map(id=>({id,markdown:id==='monitoring-checklist'?body:`${id} 正常分析。`}))]
   const falseChecks=output.sectionChecks.map(check=>check.sectionId==='monitoring-checklist'
     ?{...check,evidenceSupportsConclusion:false,numericReproducible:false,reasons:['治理监控行重复写持股数；真正问题是把2026年半年报员工持股人数150人当作计划实际参与人数并据此要求核验人数上限，员工人数与实际参与人数混淆。']}
@@ -696,10 +696,24 @@ test('R194 employee-plan review false positive is dismissed only when the report
   assert.equal(accepted.evidenceSupportsConclusion,true)
   assert.equal(accepted.numericReproducible,true)
   assert.deepEqual(accepted.reasons,[])
+  const unrelatedValueCitation=report.map(section=>section.id==='monitoring-checklist'?{...section,markdown:body.replace('paragraph:1403','paragraph:1402')}:section)
+  const remainsBlocked=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseChecks}),unrelatedValueCitation,[filing]).find(check=>check.sectionId==='monitoring-checklist')!
+  assert.equal(remainsBlocked.evidenceSupportsConclusion,false,'the value citation must point to the paragraph that actually contains 150 and the share count')
+  const unrelatedHeaderCitation=report.map(section=>section.id==='monitoring-checklist'?{...section,markdown:body.replace('paragraph:1393','paragraph:1392')}:section)
+  const missingHeader=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseChecks}),unrelatedHeaderCitation,[filing]).find(check=>check.sectionId==='monitoring-checklist')!
+  assert.equal(missingHeader.evidenceSupportsConclusion,false,'the header citation must point to the paragraph that actually labels employee count')
+  const splitHeaderLines=filingLines.slice()
+  splitHeaderLines[1392]='员工人'
+  splitHeaderLines[1393]='数'
+  const splitHeaderFiling={...filing,content:splitHeaderLines.join('\n')}
+  const splitHeaderBody=body.replace('paragraph:1393]','paragraph:1393] [employee-filing@paragraph:1394]')
+  const splitHeaderReport=report.map(section=>section.id==='monitoring-checklist'?{...section,markdown:splitHeaderBody}:section)
+  const splitHeaderAccepted=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseChecks}),splitHeaderReport,[splitHeaderFiling]).find(check=>check.sectionId==='monitoring-checklist')!
+  assert.equal(splitHeaderAccepted.evidenceSupportsConclusion,true,'both split header fragments and the value row must be cited')
   const ambiguous=report.map(section=>section.id==='monitoring-checklist'?{...section,markdown:'员工人数列列示150人。[employee-filing@paragraph:1393] [employee-filing@paragraph:1402]'}:section)
   const stillBlocked=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseChecks}),ambiguous,[filing]).find(check=>check.sectionId==='monitoring-checklist')!
   assert.equal(stillBlocked.evidenceSupportsConclusion,false)
-  const unrelatedCitation=report.map(section=>section.id==='monitoring-checklist'?{...section,markdown:body.replace('employee-filing@paragraph:1402','employee-filing@paragraph:1387')}:section)
+  const unrelatedCitation=report.map(section=>section.id==='monitoring-checklist'?{...section,markdown:body.replace('employee-filing@paragraph:1403','employee-filing@paragraph:1387')}:section)
   const unrelatedStillBlocked=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseChecks}),unrelatedCitation,[filing]).find(check=>check.sectionId==='monitoring-checklist')!
   assert.equal(unrelatedStillBlocked.evidenceSupportsConclusion,false)
 })

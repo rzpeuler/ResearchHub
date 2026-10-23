@@ -1741,6 +1741,20 @@ test('R194 financial opening adds only source-matched same-period annual directi
   const conflicted={...table[1]!,conflicts:[{metric:'operatingProfit'}]}
   const withheld=reconcileCompanyAnnualFinancialCounterevidence({sections:[{id:'financial-quality',markdown:'# 财务质量分析\n\n半年收入增长。'}],methodResults:[method],preparedAnalysis:{financial:{table:[table[0],conflicted]}}})[0]!.markdown
   assert.doesNotMatch(withheld,/2024—2025年/)
+
+  const reversedValues={
+    '2024-12-31':{revenue:40124858839.52,operatingProfit:1268880792.11,netProfit:1085641847.89},
+    '2025-12-31':{revenue:36770374347.58,operatingProfit:1479602468.51,netProfit:1085641847.89},
+  }
+  const reversedTable=Object.entries(reversedValues).map(([period,metrics])=>({period,metrics,metadata,conflicts:[]}))
+  const reversedSourceRows=Object.entries(reversedValues).map(([periodEnd,metrics])=>({periodEnd,metrics,metricMetadata:metadata}))
+  const reversedMethod={...method,executionEvidence:[{...method.executionEvidence![0]!,excerpts:[{...method.executionEvidence![0]!.excerpts[0]!,text:JSON.stringify({kind:'financial',rows:reversedSourceRows})}]}]}
+  const reversed=reconcileCompanyAnnualFinancialCounterevidence({sections,methodResults:[reversedMethod],preparedAnalysis:{financial:{table:reversedTable}}})[0]!.markdown
+  assert.match(reversed,/营业收入下降/)
+  assert.match(reversed,/营业利润增长/)
+  assert.match(reversed,/结构化净利润持平/)
+  assert.match(reversed,/营业收入下降而营业利润增长/)
+  assert.doesNotMatch(reversed,/收入与净利润增长而营业利润下降/)
 })
 
 test('prepared interim financial summary reconciles every same-period direction even when annual analysis already exists',()=>{
