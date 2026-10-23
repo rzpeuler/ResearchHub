@@ -478,6 +478,27 @@ export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySem
         })
         if(sourceSupportsPeriod){removed=true;return []}
       }
+      if (check.sectionId === 'industry-exposure'
+        && /预测期(?:年份)?[^。；;\n]{0,80}(?:原文|年报)[^。；;\n]{0,40}(?:一致|吻合|明确|支持)/.test(reason)
+        && /市场规模(?:数字|数值)[^。；;\n]{0,32}(?:均|都)[^。；;\n]{0,40}(?:原文支持|与原文(?:一致|吻合|对应))/.test(reason)
+        && !hasActionableCorrection(reason)
+        && !hasIndependentDefectClause(reason)
+        && /2026年[^。\n]{0,48}958\s*亿美元/.test(body)
+        && /2026[至—-]2029年[^。\n]{0,64}(?:复合增长率|CAGR)[^。\n]{0,20}7(?:\.0+)?\s*%/.test(body)
+        && /2029年[^。\n]{0,40}1160\s*亿美元/.test(body)) {
+        const cited = new Set([...body.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match => match[1]!))
+        const supported = sources.some(source => {
+          if (!/^2025\s*年年度报告/.test(source.title)) return false
+          const sourceId = source.candidate.candidateId
+          const citedForecastParagraphs = [556, 557].map(paragraph => cited.has(`${sourceId}@paragraph:${paragraph}`)
+            ? source.content.split(/\r?\n/)[paragraph - 1] ?? ''
+            : '').join(' ')
+          return /2026\s*年[^。\n]{0,72}958\s*亿美元/.test(citedForecastParagraphs)
+            && /2026\s*至\s*2029\s*年[^。\n]{0,80}7(?:\.0+)?\s*%/.test(citedForecastParagraphs)
+            && /2029\s*年[^。\n]{0,48}1160\s*亿美元/.test(citedForecastParagraphs)
+        })
+        if (supported) { removed = true; return [] }
+      }
       if (check.sectionId === 'management-capital-allocation'
         && /正文对年度与半年期间区分准确/.test(reason)
         && /未发现实质错误/.test(reason)
@@ -510,6 +531,43 @@ export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySem
             && /单位\s*[：:]\s*元/.test(paragraphs[7663] ?? '')
         })
         if (exactAnnual) { removed = true; return [] }
+      }
+      if (check.sectionId === 'risks'
+        && /(?:商誉(?:原值)?(?:数值|金额).{0,60}(?:与|在).{0,40}(?:年报|原文|表行).{0,24}(?:对应|相符|匹配)|(?:年报|原文).{0,40}商誉(?:原值)?(?:数值|金额).{0,32}(?:对应|相符|匹配))/.test(reason)
+        && /(?:负(?:数|向)?(?:变动|本期减少)|本期减少.{0,24}负数)[^。；;\n]{0,80}(?:不是|并非|不等于|不代表).{0,24}(?:本期|当期)减值/.test(reason)
+        && !hasActionableCorrection(reason)
+        && !hasIndependentDefectClause(reason)
+        && /索尔思光电/.test(body)
+        && /商誉合计期末金额\s*5,038,071,303\.96元/.test(body)
+        && /索尔思(?:光电)?\s*2,799,030,096\.91元/.test(body)
+        && /变动列为负\s*26,063,415\.57元/.test(body)
+        && /账面余额变动，不应直接称为当期减值损失/.test(body)) {
+        const cited = new Set([...body.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match => match[1]!))
+        const exactAnnualOriginalGoodwillRow = sources.some(source => {
+          if (!/^2025\s*年年度报告/.test(source.title)) return false
+          const lines = source.content.split(/\r?\n/)
+          const rowIndex = lines.findIndex(line => /^\s*索尔思光电\s+2,825,093,512\.48\s+-26,063,415\.57\s+2,799,030,096\.91\s*$/.test(line))
+          const totalIndex = lines.findIndex(line => /^\s*合计\s+2,289,543,588\.01\s+2,825,093,512\.48\s+-26,063,415\.57\s+50,502,380\.96\s+5,038,071,303\.96\s*$/.test(line))
+          if (rowIndex < 0 || totalIndex < 0) return false
+          const context = lines.slice(Math.max(0, rowIndex - 20), rowIndex).join('\n')
+          const unitIndex = lines.findIndex((line, index) => index >= Math.max(0, rowIndex - 20) && index < rowIndex && /单位\s*[：:]\s*元/.test(line))
+          const rowRef = `${source.candidate.candidateId}@paragraph:${rowIndex + 1}`
+          const unitRef = unitIndex >= 0 ? `${source.candidate.candidateId}@paragraph:${unitIndex + 1}` : ''
+          const totalRef = `${source.candidate.candidateId}@paragraph:${totalIndex + 1}`
+          return /商誉账面原值|商誉原值/.test(context)
+            && /单位\s*[：:]\s*元/.test(context)
+            && /期初余额/.test(context)
+            && /本期减少/.test(context)
+            && /期末余额/.test(context)
+            && totalIndex > rowIndex
+            && unitIndex >= 0
+            && /索尔思光电\s+2,825,093,512\.48\s+-26,063,415\.57\s+2,799,030,096\.91/.test(lines[rowIndex] ?? '')
+            && /合计\s+2,289,543,588\.01\s+2,825,093,512\.48\s+-26,063,415\.57\s+50,502,380\.96\s+5,038,071,303\.96/.test(lines[totalIndex] ?? '')
+            && cited.has(rowRef)
+            && cited.has(unitRef)
+            && cited.has(totalRef)
+        })
+        if (exactAnnualOriginalGoodwillRow) { removed = true; return [] }
       }
       if (check.sectionId === 'management-capital-allocation') {
         const exactRAndDDisclosure = /0\.92\s*个百分点/.test(reason)

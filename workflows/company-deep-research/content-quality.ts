@@ -451,6 +451,59 @@ export function reconcileCompanyProductRevenueShares<T extends CompanyContentSec
   return input.sections.map(item=>item.id===section.id?repaired:item)
 }
 
+/** Carry a fully evidenced interim product-revenue mix into the products chapter. */
+export function reconcileCompanyInterimProductRevenueShares<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly T[] {
+  const section = input.sections.find(item => item.id === 'products')
+  const method = input.methodResults.find(item => item.skillId === 'business_model_map' && item.status === 'complete')
+  if (!section || !method) return input.sections
+  const entries: { year: string; sourceCandidateId: string; label: string; amount: string; share: string; location: string; headerRefs: string[] }[] = []
+  for (const packet of [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []]) {
+    const report = packet.title.match(/((?:19|20)\d{2})\s*年半年度报告/)
+    if (!report) continue
+    const year = report[1]!
+    const rows = packet.excerpts.map(item => ({ ...item, paragraph: Number(item.location.match(/^paragraph:(\d+)$/)?.[1] ?? 0) }))
+    for (const row of rows) {
+      const match = row.text.trim().match(/^([\u3400-\u9fffA-Za-z0-9（）()·、，\- ]{2,30}?)\s+([\d,]+(?:\.\d+)?)\s+([\d.]+)%(?:\s+[\d,]+(?:\.\d+)?\s+[\d.]+%\s+-?[\d.]+%)?\s*$/)
+      if (!match || !row.paragraph) continue
+      const preceding = rows.filter(item => item.paragraph > row.paragraph - 20 && item.paragraph < row.paragraph)
+      const segmentHeader = preceding.filter(item => /^分(?:产品|行业|地区|销售模式|销售渠道)$/.test(item.text.trim())).sort((a,b)=>b.paragraph-a.paragraph)[0]
+      const productHeader = segmentHeader?.text.trim() === '分产品' ? segmentHeader : undefined
+      const tableTitle = preceding.find(item => /营业收入构成/.test(item.text))
+      const unit = preceding.filter(item => /^单位\s*[：:]\s*元$/.test(item.text.trim())).sort((a,b)=>b.paragraph-a.paragraph)[0]
+      const currentPeriod = preceding.some(item => /本报告期/.test(item.text))
+      const priorPeriod = preceding.some(item => /上年同期/.test(item.text))
+      const shareHeader = preceding.some(item => item.text.replace(/\s+/g,'').includes('金额占营业收入比重金额占营业收入比重'))
+      if (!productHeader || !tableTitle || !unit || !currentPeriod || !priorPeriod || !shareHeader || productHeader.paragraph < row.paragraph - 10) continue
+      const headerRefs = [...new Set([tableTitle, unit, ...preceding.filter(item => /本报告期|上年同期|同比增减|金额\s+占营业收入比重/.test(item.text)), productHeader].map(item => `${packet.sourceCandidateId}@${item.location}`))]
+      entries.push({ year, sourceCandidateId: packet.sourceCandidateId, label: match[1]!.trim(), amount: match[2]!, share: match[3]!, location: row.location, headerRefs })
+    }
+  }
+  if (!entries.length) return input.sections
+  const latestYear = entries.map(item => item.year).sort().at(-1)!
+  const bySource = new Map<string, typeof entries>()
+  for (const entry of entries.filter(item => item.year === latestYear)) {
+    const rows = bySource.get(entry.sourceCandidateId) ?? []
+    rows.push(entry)
+    bySource.set(entry.sourceCandidateId, rows)
+  }
+  const coreProducts = ['电子电路产品', '精密组件产品', '光模块', '光电显示模组']
+  const complete = [...bySource.entries()].find(([, rows]) => coreProducts.every(label => rows.some(row => row.label === label)))
+  if (!complete) return input.sections
+  const [sourceCandidateId, rows] = complete
+  const selected = rows.filter(row => [...coreProducts, '其他', '其他产品'].includes(row.label))
+  const marker = `#### 最新半年度报告披露的分产品收入占比（${latestYear}年上半年累计）`
+  const citedHeaders = [...new Set(selected.flatMap(row => row.headerRefs))].map(ref => `[${ref}]`).join(' ')
+  const lines = [marker, citedHeaders, '', '| 产品类别 | 本期营业收入（元） | 占公司营业收入比重 |', '|---|---:|---:|', ...selected.map(row => `| ${row.label} | ${row.amount} [${sourceCandidateId}@${row.location}] | ${row.share}% [${sourceCandidateId}@${row.location}] |`), '', '占比为半年报披露值；产品收入构成不等同于利润贡献，金额占比之和可能受四舍五入影响。']
+  const block = lines.join('\n')
+  const existingStart = section.markdown.indexOf(marker)
+  const nextHeading = existingStart < 0 ? -1 : section.markdown.indexOf('\n#### ', existingStart + marker.length)
+  const markdown = existingStart >= 0
+    ? `${section.markdown.slice(0, existingStart)}${block}${section.markdown.slice(nextHeading < 0 ? section.markdown.length : nextHeading)}`
+    : `${section.markdown.trim()}\n\n${block}`
+  const repaired = { ...section, markdown, sourceCandidateIds: [...new Set([...(section.sourceCandidateIds ?? []), sourceCandidateId])] }
+  return input.sections.map(item => item.id === section.id ? repaired : item)
+}
+
 /** Reconcile two annual-report descriptions of the same March 2025 H-share placement. */
 export function reconcileCompanyPlacementFacts<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly T[] {
   const section = input.sections.find(item => item.id === 'management-capital-allocation')

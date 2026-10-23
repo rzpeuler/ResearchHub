@@ -588,6 +588,62 @@ test('R186 cited period-aligned industry, employee-plan, and goodwill facts clea
   assert.match(preserved.reasons[0]!,/不能完整支持/)
 })
 
+test('R196 industry forecast self-contradiction clears only when cited annual paragraphs 556-557 support 2026-2029 forecast',()=>{
+  const lines=Array.from({length:7662},()=> '其他年报内容')
+  lines[555]='Prismark 预测，2026 年全球 PCB 市场规模将达 958 亿美元，同比增长 13%；2026 至 2029 年间，行业'
+  lines[556]='产值年复合增长率约为 7%，到 2029 年有望超过 1160 亿美元。'
+  const annual={candidate:{candidateId:'annual-forecast'},title:'2025年年度报告',content:lines.join('\n')} as NormalizedResearchSource
+  const body='全球PCB市场预测：2026年规模958亿美元；预测区间2026至2029年，复合增长率约7%，到2029年有望超过1160亿美元，仅作行业背景。[annual-forecast@paragraph:556] [annual-forecast@paragraph:557]'
+  const falseReview=output.sectionChecks.map(check=>check.sectionId==='industry-exposure'
+    ?{...check,evidenceSupportsConclusion:false,reasons:['预测期年份（2026至2029年）与年报原文一致，2026及2029年市场规模数字、预测期CAGR均有原文支持，但仍将evidenceSupportsConclusion置为false。']}
+    :check)
+  const report=sections.map(section=>section.id==='industry-exposure'?{...section,markdown:body}:section)
+  const fixed=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseReview}),report,[annual]).find(check=>check.sectionId==='industry-exposure')!
+  assert.equal(fixed.evidenceSupportsConclusion,true)
+  assert.deepEqual(fixed.reasons,[])
+
+  const missingSecondCitation=report.map(section=>section.id==='industry-exposure'?{...section,markdown:body.replace(' [annual-forecast@paragraph:557]','')}:section)
+  const wrongCitation=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseReview}),missingSecondCitation,[annual]).find(check=>check.sectionId==='industry-exposure')!
+  assert.equal(wrongCitation.evidenceSupportsConclusion,false,'both exact cited annual paragraphs must support the period and figures')
+  const wrongFigure=report.map(section=>section.id==='industry-exposure'?{...section,markdown:body.replace('1160亿美元','1161亿美元')}:section)
+  const wrongForecast=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseReview}),wrongFigure,[annual]).find(check=>check.sectionId==='industry-exposure')!
+  assert.equal(wrongForecast.evidenceSupportsConclusion,false)
+  const mixedReview=falseReview.map(check=>check.sectionId==='industry-exposure'?{...check,reasons:['预测期年份（2026至2029年）与年报原文一致，2026及2029年市场规模数字、预测期CAGR均有原文支持；此外存在具体缺失：报告未列公司市场份额，影响竞争地位判断。']}:check)
+  const mixed=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:mixedReview}),report,[annual]).find(check=>check.sectionId==='industry-exposure')!
+  assert.equal(mixed.evidenceSupportsConclusion,false,'a separate actionable omission must remain blocking')
+})
+
+test('R196 goodwill reconciliation clears only when report wording and cited annual row, unit, and total reconcile',()=>{
+  const lines=Array.from({length:7662},()=> '其他年报内容')
+  lines[7645]='（1）商誉账面原值'
+  lines[7646]='单位：元'
+  lines[7647]='被投资单位名称或形成商誉的事项 期初余额 本期增加 本期减少 期末余额'
+  lines[7648]='企业合并形成的 外币报表折算 处置 其他'
+  lines[7659]='索尔思光电 2,825,093,512.48 -26,063,415.57 2,799,030,096.91'
+  lines[7660]='Aranda 公司 50,502,380.96 50,502,380.96'
+  lines[7661]='合计 2,289,543,588.01 2,825,093,512.48 -26,063,415.57 50,502,380.96 5,038,071,303.96'
+  const annual={candidate:{candidateId:'annual-goodwill'},title:'2025年年度报告',content:lines.join('\n')} as NormalizedResearchSource
+  const body='年报披露商誉合计期末金额5,038,071,303.96元；索尔思光电2,799,030,096.91元、变动列为负26,063,415.57元。该账面余额变动，不应直接称为当期减值损失。[annual-goodwill@paragraph:7647] [annual-goodwill@paragraph:7660] [annual-goodwill@paragraph:7662]'
+  const falseReview=output.sectionChecks.map(check=>check.sectionId==='risks'
+    ?{...check,evidenceSupportsConclusion:false,numericReproducible:false,reasons:['年报商誉数值与商誉原值表行对应，合计数亦与期末余额一致；负向变动明确不是当期减值，仍将evidenceSupportsConclusion和numericReproducible置为false。']}
+    :check)
+  const report=sections.map(section=>section.id==='risks'?{...section,markdown:body}:section)
+  const fixed=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseReview}),report,[annual]).find(check=>check.sectionId==='risks')!
+  assert.equal(fixed.evidenceSupportsConclusion,true)
+  assert.equal(fixed.numericReproducible,true)
+  assert.deepEqual(fixed.reasons,[])
+
+  const wrongRow=report.map(section=>section.id==='risks'?{...section,markdown:body.replace('paragraph:7660','paragraph:7661')}:section)
+  const badLocator=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseReview}),wrongRow,[annual]).find(check=>check.sectionId==='risks')!
+  assert.equal(badLocator.evidenceSupportsConclusion,false)
+  const wrongAmount=report.map(section=>section.id==='risks'?{...section,markdown:body.replace('26,063,415.57','26,063,415.75')}:section)
+  const badValue=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:falseReview}),wrongAmount,[annual]).find(check=>check.sectionId==='risks')!
+  assert.equal(badValue.numericReproducible,false)
+  const mixedReview=falseReview.map(check=>check.sectionId==='risks'?{...check,reasons:['年报商誉原值数值与年报表行对应；负向变动明确不是当期减值，但另有风险归属不支持具体风险传导的缺陷。']}:check)
+  const mixed=reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({sectionChecks:mixedReview}),report,[annual]).find(check=>check.sectionId==='risks')!
+  assert.equal(mixed.evidenceSupportsConclusion,false,'a separate risk-attribution defect must remain blocking')
+})
+
 test('R16 reviewer contradictions about equal values and explicitly non-blocking issues trigger bounded review repair', () => {
   const cases = [
     { sectionId: 'supply-chain', key: 'evidenceSupportsConclusion', reason: '供应商最大单一占比存在不一致：正文称9.74%，而同列数据为9.74%，该数值本身正确；客户集中度已回答，故不构成实质性不支持。' },
