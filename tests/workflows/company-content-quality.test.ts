@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyNumericMovementVerbs, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
+import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyIndustryExposureTableCitations, reconcileCompanyNumericMovementVerbs, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 
 test('classification repair restores a uniquely sourced industry label and adds its exact row citation', () => {
@@ -399,6 +399,24 @@ test('CATL route carryover cites the separate passenger-car solution heading wit
   assert.match(result.markdown,/该页面未将这些性能表述单独限定于乘用车/)
   assert.match(result.markdown,/\[public-web-catl@paragraph:35\]/)
   assert.doesNotMatch(result.markdown,/官网明确涉及乘用车动力电池/)
+})
+
+test('cross-method reconciliation carries a scoped BYD peer route comparison into industry exposure', () => {
+  const candidate: CompanyResearchMethodResult = {
+    skillId: 'competitive_market_map', status: 'complete', attempts: 1,
+    answer: '比亚迪与吉利银河E8可作有限纯电快充路线对照。',
+    markdown: '仅比较公开路线信息。', sections: [],
+    findings: [{ text: '比亚迪与吉利银河E8可作有限纯电快充路线对照。', kind: 'inference', evidence: [{ sourceCandidateId: 'public-web-geely-peer', location: 'paragraph:42' }] }],
+    sourceCandidateIds: ['public-web-geely-peer'], limitations: [], risks: [], diagnostics: [],
+    executionEvidence: [{ sourceCandidateId: 'public-web-geely-peer', title: '吉利银河E8纯电快充路线公开资料', publisher: '第三方公开资料', excerpts: [{ sourceCandidateId: 'public-web-geely-peer', location: 'paragraph:42', text: '吉利银河E8支持纯电快充路线。' }] }],
+  }
+  const sections = [{ id: 'industry-exposure', markdown: '缺少可比公司或具体竞品产品、路线、客户覆盖和市占数据，无法作具名竞争对比。', sourceCandidateIds: ['annual'] }]
+  const result = reconcileCompanyCompetitorEvidence({ sections, methodResults: [candidate] })[0]!
+  assert.match(result.markdown, /比亚迪与吉利银河E8可作有限纯电快充路线对照/)
+  assert.match(result.markdown, /\[public-web-geely-peer@paragraph:42\]/)
+  assert.match(result.markdown, /实际采购重叠、直接竞标、同口径性能成本及市场份额仍未验证/)
+  assert.doesNotMatch(result.markdown, /无法作具名竞争对比/)
+  assert.ok(result.sourceCandidateIds?.includes('public-web-geely-peer'))
 })
 
 test('competitor reconciliation recognizes attributed candidate wording and repairs product, technology, and industry context', () => {
@@ -1594,6 +1612,54 @@ test('product table citations discard byte-identical industry rows when an exact
   const fixed=reconcileCompanyProductRevenueRowCitations({sections:[{id:'products',markdown:line}],methodResults:[method]})[0]!
   assert.doesNotMatch(fixed.markdown,/annual@paragraph:(?:840|842)\]/)
   for(const paragraph of [833,834,850,851])assert.match(fixed.markdown,new RegExp(`\\[annual@paragraph:${paragraph}\\]`))
+})
+
+test('industry-exposure table citations bind split annual labels to the matching classification, row and columns',()=>{
+  const source='official-annual'
+  const excerpt=(paragraph:number,text:string)=>({sourceCandidateId:source,location:`paragraph:${paragraph}`,text})
+  const packet={sourceCandidateId:source,title:'2025年年度报告',publisher:'CNINFO',excerpts:[
+    excerpt(831,'（2） 占公司营业收入或营业利润 10%以上的行业、产品、地区、销售模式的情况'),
+    excerpt(833,'单位：元'),excerpt(834,'营业收入 营业成本 毛利率 营业收入比上'),excerpt(835,'年同期增减'),
+    excerpt(836,'营业成本比上'),excerpt(837,'年同期增减'),excerpt(838,'毛利率比上'),excerpt(839,'年同期增减'),
+    excerpt(840,'分行业'),excerpt(841,'日用电子器件'),excerpt(842,'制造业 155,236,528,000.00 145,473,989,000.00 6.29% -2.74% -0.56% -2.06%'),
+    excerpt(843,'交通运输设备'),excerpt(844,'及电气制造业 648,645,636,000.00 515,762,940,000.00 20.49% 5.06% 7.53% -1.82%'),
+    excerpt(845,'分产品'),excerpt(850,'手机部件、组'),excerpt(851,'装及其他产品 155,236,528,000.00 145,473,989,000.00 6.29% -2.74% -0.56% -2.06%'),
+    excerpt(852,'汽车、汽车相'),excerpt(853,'关产品及其他'),excerpt(854,'产品'),excerpt(855,'648,645,636,000.00 515,762,940,000.00 20.49% 5.06% 7.53% -1.82%'),
+  ]}
+  const method={skillId:'business_driver_analysis',status:'complete',executionEvidence:[packet]} as unknown as CompanyResearchMethodResult
+  const industry='| 2025年度，分行业：日用电子器件制造业 | 155,236,528,000.00 | 145,473,989,000.00 | 6.29% | -2.74% | -0.56% | -2.06% [official-annual@paragraph:845] [official-annual@paragraph:850] [official-annual@paragraph:851] [official-annual@paragraph:843] |'
+  const product='| 2025年度，分产品：手机部件、组装及其他产品 | 155,236,528,000.00 | 145,473,989,000.00 | 6.29% | -2.74% | -0.56% | -2.06% [official-annual@paragraph:840] [official-annual@paragraph:841] [official-annual@paragraph:842] [official-annual@paragraph:843] |'
+  const fixed=reconcileCompanyProductRevenueRowCitations({sections:[{id:'industry-exposure',markdown:`${industry}\n${product}`}],methodResults:[method]})[0]!.markdown.split('\n')
+  const industryLine=fixed[0]!,productLine=fixed[1]!
+  for(const paragraph of [833,834,835,836,837,838,839,840,841,842])assert.ok(industryLine.includes(`[${source}@paragraph:${paragraph}]`),`industry row missing paragraph ${paragraph}`)
+  for(const paragraph of [843,844,845,850,851,855])assert.ok(!industryLine.includes(`[${source}@paragraph:${paragraph}]`),`industry row must not cite adjacent/product paragraph ${paragraph}`)
+  for(const paragraph of [833,834,835,836,837,838,839,845,850,851])assert.ok(productLine.includes(`[${source}@paragraph:${paragraph}]`),`product row missing paragraph ${paragraph}`)
+  for(const paragraph of [840,841,842,843,844,855])assert.ok(!productLine.includes(`[${source}@paragraph:${paragraph}]`),`product row must not cite industry/adjacent paragraph ${paragraph}`)
+  assert.equal(reconcileCompanyIndustryExposureTableCitations({sections:[{id:'industry-exposure',markdown:fixed.join('\n')}],methodResults:[method]})[0]!.markdown,fixed.join('\n'))
+})
+
+test('industry-exposure rows inherit the half-year period from the preceding table header',()=>{
+  const source='official-interim'
+  const excerpt=(paragraph:number,text:string)=>({sourceCandidateId:source,location:`paragraph:${paragraph}`,text})
+  const packet={sourceCandidateId:source,title:'2026年半年度报告',publisher:'CNINFO',excerpts:[
+    excerpt(714,'占公司营业收入或营业利润 10%以上的行业、产品或地区情况'),excerpt(716,'单位：元'),
+    excerpt(717,'营业收入 营业成本 毛利率'),excerpt(718,'营业收入'),excerpt(719,'比上年同'),excerpt(720,'期增减'),
+    excerpt(721,'营业成本'),excerpt(722,'比上年同'),excerpt(723,'期增减'),excerpt(724,'毛利率比'),excerpt(725,'上年同期'),excerpt(726,'增减'),
+    excerpt(727,'分行业'),excerpt(728,'日用电子器件制造业 69,404,994,000.00 65,907,931,000.00 5.04% 0.96% 3.88% -2.67%'),
+    excerpt(729,'交通运输设备及电气制'),excerpt(730,'造业 275,341,358,000.00 213,863,297,000.00 22.33% -8.98% -11.24% 1.98%'),
+    excerpt(731,'分产品'),excerpt(732,'电子及其他产品 69,404,994,000.00 65,907,931,000.00 5.04% 0.96% 3.88% -2.67%'),
+    excerpt(733,'汽车、汽车相关产品及'),excerpt(734,'其他产品 275,341,358,000.00 213,863,297,000.00 22.33% -8.98% -11.24% 1.98%'),
+  ]}
+  const method={skillId:'business_driver_analysis',status:'complete',executionEvidence:[packet]} as unknown as CompanyResearchMethodResult
+  const industry=`| 2026年半年度报告分类 | 营业收入（元） | 营业成本（元） | 毛利率 | 收入同比 | 成本同比 | 毛利率同比 |
+| 分行业：交通运输设备及电气制造业 | 275,341,358,000.00 | 213,863,297,000.00 | 22.33% | -8.98% | -11.24% | 1.98% [official-interim@paragraph:731] [official-interim@paragraph:732] |`
+  const product='| 分产品：汽车、汽车相关产品及其他产品 | 275,341,358,000.00 | 213,863,297,000.00 | 22.33% | -8.98% | -11.24% | 1.98% [official-interim@paragraph:727] [official-interim@paragraph:729] [official-interim@paragraph:730] |'
+  const fixed=reconcileCompanyProductRevenueRowCitations({sections:[{id:'industry-exposure',markdown:`${industry}\n${product}`}],methodResults:[method]})[0]!.markdown.split('\n')
+  const industryLine=fixed[1]!,productLine=fixed[2]!
+  for(const paragraph of [716,717,718,719,720,721,722,723,724,725,726,727,729,730])assert.ok(industryLine.includes(`[${source}@paragraph:${paragraph}]`),`interim industry row missing paragraph ${paragraph}`)
+  for(const paragraph of [731,732,733,734])assert.ok(!industryLine.includes(`[${source}@paragraph:${paragraph}]`),`interim industry row must not cite product paragraph ${paragraph}`)
+  for(const paragraph of [716,717,718,719,720,721,722,723,724,725,726,731,733,734])assert.ok(productLine.includes(`[${source}@paragraph:${paragraph}]`),`interim product row missing paragraph ${paragraph}`)
+  for(const paragraph of [727,728,729,730])assert.ok(!productLine.includes(`[${source}@paragraph:${paragraph}]`),`interim product row must not cite industry paragraph ${paragraph}`)
 })
 
 
