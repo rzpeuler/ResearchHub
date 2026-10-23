@@ -1089,6 +1089,8 @@ test('financial-quality prompt requires numeric findings to carry their own exac
   assert.match(actualInstruction,/单位行、从“营业收入\/营业成本\/毛利率”到毛利率同比增减列的全部拆分表头段、分行业标题/)
   assert.match(actualInstruction,/不能只依赖excerpt的contextLocations代替finding自身的引用/)
   assert.match(actualInstruction,/不要重复该数字并搭配被否定的错误单位/)
+  assert.match(actualInstruction,/不要在本方法输出中生成简化自由现金流的表格、金额或公式/)
+  assert.match(actualInstruction,/Workflow会在方法通过后自动附上来源绑定的确定性现金流及资本支出计算/)
 })
 
 test('market-structure prompt binds split margin values to their own period and industry or product rows', async () => {

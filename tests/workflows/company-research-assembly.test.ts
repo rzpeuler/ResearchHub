@@ -34,6 +34,15 @@ test('final synthesis repairs only a cited missing monitoring cell and a trailin
   assert.equal(repairCompanyFinalSynthesisTable('monitoring-checklist',uncited).markdown,uncited)
 })
 
+test('final synthesis removes an exact output sentinel attached to a monitoring table row',()=>{
+  const source='| 指标/观察项 | 观察频率 | 触发条件/核验信号 | 论点关联与证据 |\n|---|---|---|---|\n| 员工持股 | 定期报告 | 核验计划执行。[official@paragraph:1159] | 检验激励安排的实施情况 |<\/markdown>'
+  const fixed=repairCompanyFinalSynthesisTable('monitoring-checklist',source)
+  assert.deepEqual(fixed.repairs,['MONITORING_OUTPUT_SENTINEL_REMOVED: line 3'])
+  assert.ok(fixed.markdown.endsWith('|'))
+  assert.deepEqual(validateCompanyResearchMarkdownTables(fixed.markdown),[])
+  assert.equal(repairCompanyFinalSynthesisTable('investment-thesis',source).markdown,source)
+})
+
 test('table repair removes one empty customer-table header and detaches a trailing prose paragraph', () => {
   const malformed = [
     '### 供应链、客户依赖与规模约束',
