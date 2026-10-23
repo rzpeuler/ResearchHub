@@ -234,6 +234,8 @@ test('consolidated gross-margin comparisons require the exact prepared ratio row
   assert.equal(validateCompanyNumericGrounding({ markdown: r172CurrentFirst, ...r171Options }).status, 'grounded', 'current-first headers bind their own exact cells, including the optional percent label')
   const qualifiedMarginLabel = r172CurrentFirst.replace('合并毛利率（%）', '合并毛利率（半年累计，%）')
   assert.equal(validateCompanyNumericGrounding({ markdown: qualifiedMarginLabel, ...r171Options }).status, 'grounded', 'period qualifiers in a structured margin row label do not break exact source and period binding')
+  const ytdMarginLabel = r172CurrentFirst.replace('合并毛利率（%）', '合并毛利率（YTD）')
+  assert.equal(validateCompanyNumericGrounding({ markdown: ytdMarginLabel, ...r171Options }).status, 'grounded', 'an explicit YTD row label uses its exact cited structured periods even without repeating the source locator on the data row')
   const inlineMarginHeader = r172CurrentFirst.replace('\n\n| 指标 |', `\n\n结构化期间数据如下。[${candidateId}@paragraph:1] | 指标 |`)
   assert.equal(validateCompanyNumericGrounding({ markdown: inlineMarginHeader, ...r171Options }).status, 'grounded', 'an inline prose prefix before the table header does not hide the exact period columns')
   const r173CandidateId = 'akshare-financial-002594'
