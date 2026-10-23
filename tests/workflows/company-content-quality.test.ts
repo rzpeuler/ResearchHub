@@ -252,6 +252,21 @@ test('final financial table removes an empty date-header placeholder and preserv
   assert.match(fixed[0]!.markdown,/\| 营业收入 \| 277\.98 \| 169\.55 \|/)
   assert.equal(fixed[0]!.markdown.match(/确定性财务摘要/g)?.length,1)
 })
+
+test('driver chapter replaces an empty comparative placeholder with sourced consolidated movement rows', () => {
+  const driver = { id: 'revenue-profit-drivers', markdown: '## 收入与利润驱动\n\n## 可比期间主要方向 | 指标 | 2025-06-30累计 | 2026-06-30累计 | 同比变化 |\n\n后续需要联系分产品表现解释方向。' }
+  const finance = { id: 'financial-quality', markdown: '财务分析。' }
+  const comparison = `同期口径复核（人民币亿元）。[akshare-financial-002384@paragraph:1]\n\n| 指标与口径 | 上年同期 | 本期 | 同比公式及变化 |\n|---|---:|---:|---|\n| 营业收入（年初至期末累计） | 169.55 | 277.98 | 63.95% |\n| 营业利润（年初至期末累计） | 15.00 | 28.00 | 86.67% |\n| 净利润（结构化字段；归母属性未注明）（年初至期末累计） | 5.60 | 8.00 | 42.86% |\n| 经营现金净流量（年初至期末累计） | 20.89 | 23.84 | 14.12% |\n| 购建长期资产现金支出（年初至期末累计） | 16.44 | 52.53 | 219.52% |`
+  const fixed = reconcileCompanyFinancialSummaryTable({ sections: [driver, finance], markdown: comparison })
+  const result = fixed.find(section => section.id === 'revenue-profit-drivers')!.markdown
+  assert.match(result, /\| 营业收入（年初至期末累计） \| 169\.55 \| 277\.98 \| 63\.95% \[akshare-financial-002384@paragraph:1\] \|/)
+  assert.match(result, /\| 营业利润（年初至期末累计）/)
+  assert.match(result, /\| 经营现金净流量（年初至期末累计）/)
+  assert.doesNotMatch(result, /购建长期资产现金支出（年初至期末累计）/)
+  assert.match(result, /后续需要联系分产品表现解释方向/)
+  const again = reconcileCompanyFinancialSummaryTable({ sections: fixed, markdown: comparison })
+  assert.equal(again.find(section => section.id === 'revenue-profit-drivers')!.markdown.match(/结构化合并财务同期间对照/g)?.length, 1)
+})
 test('financial summary drops a conflicting dated header when the complete deterministic table follows',()=>{
   const sections=[{id:'financial-quality',markdown:'## 趋势\n| 指标 | 2026-06-30本期 | 2025-06-30上年同期 | 同比 |\n| 指标与口径 | 2025年上半年累计 | 2026年上半年累计 | 同比变化 |\n|---|---:|---:|---:|\n| 合并毛利率 | 18.01% | 18.85% | +0.84个百分点 |'}]
   const fixed=reconcileCompanyFinancialSummaryTable({sections,markdown:'确定性财务摘要。'})[0]!
@@ -337,6 +352,13 @@ test('cross-method check rejects blanket competitor absence after a named candid
   assert.deepEqual(findKnownCompetitorDenials({ sections: value, methodResults: [{ ...competitor, answer: '需要按客户场景比较产品路线。' }] }), [])
   value[risk] = { ...value[risk]!, markdown: '风险矩阵称无具名竞品、市场份额、路线或可比性能证据。' }
   assert.deepEqual(findKnownCompetitorDenials({ sections: value, methodResults: [competitor] }), [{ sectionId: 'risks', candidate: '吉利' }])
+})
+
+test('cross-method competitor detection strips Chinese narrative connectives and allows a scoped comparable-data gap', () => {
+  const competitor: CompanyResearchMethodResult = { skillId: 'competitive_market_map', status: 'complete', attempts: 1, answer: '因此中际旭创是候选对手。', markdown: '因此中际旭创是候选对手。', sections: [], findings: [], sourceCandidateIds: [], limitations: [], risks: [], diagnostics: [] }
+  const denial = [{ id: 'business-model', markdown: '公司未披露价格条款，也缺少具名竞争者的可比资料，因此不能判断议价优势。' }]
+  assert.deepEqual(findKnownCompetitorDenials({ sections: denial, methodResults: [competitor] }), [])
+  assert.deepEqual(findKnownCompetitorDenials({ sections: [{ id: 'competition', markdown: '本节没有具名竞品，无法判断竞争位势。' }], methodResults: [competitor] }), [{ sectionId: 'competition', candidate: '中际旭创' }])
 })
 
 test('product and technology chapters carry an exact cited cross-method candidate while retaining scoped comparison gaps', () => {
