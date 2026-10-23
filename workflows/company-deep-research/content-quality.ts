@@ -457,6 +457,87 @@ export function reconcileCompanyProductRevenueShares<T extends CompanyContentSec
   return input.sections.map(item=>item.id===section.id?repaired:item)
 }
 
+/** Carry paired, source-complete annual product-category revenue and margin rows into product analysis. */
+export function reconcileCompanyProductCategoryEconomics<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly T[] {
+  const section = input.sections.find(item => item.id === 'products')
+  if (!section) return input.sections
+  const completed = input.methodResults.filter(method => method.status === 'complete')
+  const collect = (skillIds: readonly string[]) => completed.filter(method => skillIds.includes(method.skillId))
+    .flatMap(method => [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []])
+  type Excerpt = { sourceCandidateId: string; location: string; text: string; paragraph: number }
+  type Revenue = { label: string; amount: string; share: string; year: string; source: string; refs: string[] }
+  type Margin = { label: string; margin: string; year: string; source: string; refs: string[] }
+  const revenues: Revenue[] = []
+  const margins: Margin[] = []
+  for (const packet of collect(['business_model_map', 'business_driver_analysis'])) {
+    const year = packet.title.match(/((?:19|20)\d{2})\s*年年度报告/)?.[1]
+    if (!year) continue
+    const rows: Excerpt[] = packet.excerpts.map(item => ({ ...item, paragraph: Number(item.location.match(/^paragraph:(\d+)$/)?.[1] ?? 0) })).filter(item => item.paragraph > 0)
+    for (const row of rows) {
+      const match = row.text.trim().match(/^(.+?)\s+([\d,]+(?:\.\d+)?)\s+([\d.]+)%\s+[\d,]+(?:\.\d+)?\s+[\d.]+%\s+-?[\d.]+%\s*$/)
+      if (!match) continue
+      const previous = rows.find(item => item.paragraph === row.paragraph - 1)
+      const hasSplitLabel = Boolean(previous && !/[\d%％]/.test(previous.text) && !/^分(?:产品|行业|地区|销售模式|销售渠道)$/.test(previous.text.trim()))
+      const label = `${hasSplitLabel ? previous!.text.trim() : ''}${match[1]!.trim()}`
+      const preceding = rows.filter(item => item.paragraph < row.paragraph && item.paragraph >= row.paragraph - 20)
+      const segment = preceding.filter(item => /^分(?:产品|行业|地区|销售模式|销售渠道)$/.test(item.text.trim())).sort((a,b)=>b.paragraph-a.paragraph)[0]
+      const title = preceding.find(item => /营业收入构成/.test(item.text))
+      const unit = preceding.filter(item => /^单位\s*[：:]\s*元$/.test(item.text.trim())).sort((a,b)=>b.paragraph-a.paragraph)[0]
+      const period = preceding.find(item => new RegExp(`${year}\\s*年`).test(item.text))
+      const shareHeaders = preceding.filter(item => /金额|占营业收入|比重/.test(item.text))
+      if (segment?.text.trim() !== '分产品' || !title || !unit || !period || !label.includes('产品')
+        || !preceding.map(item=>item.text).join('').replace(/\s+/g,'').includes('金额占营业收入比重金额占营业收入比重')) continue
+      const refs = [...new Set([title,unit,period,...shareHeaders,segment,...(hasSplitLabel?[previous!]:[]),row].map(item=>`${packet.sourceCandidateId}@${item.location}`))]
+      revenues.push({ label, amount: match[2]!, share: match[3]!, year, source: packet.sourceCandidateId, refs })
+    }
+  }
+  for (const packet of collect(['product_technology_analysis'])) {
+    const year = packet.title.match(/((?:19|20)\d{2})\s*年年度报告/)?.[1]
+    if (!year) continue
+    const rows: Excerpt[] = packet.excerpts.map(item => ({ ...item, paragraph: Number(item.location.match(/^paragraph:(\d+)$/)?.[1] ?? 0) })).filter(item => item.paragraph > 0)
+    for (const row of rows) {
+      const match = row.text.trim().match(/^(.*?)\s*([\d,]+(?:\.\d+)?)\s+[\d,]+(?:\.\d+)?\s+([\d.]+)%\s+-?[\d.]+%\s+-?[\d.]+%\s+-?[\d.]+%\s*$/)
+      if (!match) continue
+      const preceding = rows.filter(item => item.paragraph < row.paragraph && item.paragraph >= row.paragraph - 30)
+      const segment = preceding.filter(item => /^分(?:产品|行业|地区|销售模式|销售渠道)$/.test(item.text.trim())).sort((a,b)=>b.paragraph-a.paragraph)[0]
+      if (segment?.text.trim() !== '分产品') continue
+      const unit = preceding.filter(item => /^单位\s*[：:]\s*元$/.test(item.text.trim())).sort((a,b)=>b.paragraph-a.paragraph)[0]
+      const headerRows = preceding.filter(item => unit && item.paragraph > unit.paragraph && item.paragraph < segment.paragraph && /营业收入|营业成本|毛利率|同期增减/.test(item.text))
+      const headersText = headerRows.map(item=>item.text).join(' ')
+      if (!unit || !/营业收入\s+营业成本\s+毛利率/.test(headersText)
+        || !['营业收入比上','营业成本比上','毛利率比上'].every(header=>headerRows.some(item=>item.text.includes(header)))
+        || !headerRows.some(item=>/年同期增减/.test(item.text))) continue
+      const labelParts = preceding.filter(item=>item.paragraph>segment.paragraph&&!/[\d%％]/.test(item.text)&&item.text.trim()&&!/^\[第\d+页\]$/.test(item.text.trim())).slice(-3)
+      const label = `${labelParts.map(item=>item.text.trim()).join('')}${match[1]!.trim()}`
+      if (!label.includes('产品')) continue
+      const refs = [...new Set([unit,...headerRows,segment,...labelParts,row].map(item=>`${packet.sourceCandidateId}@${item.location}`))]
+      margins.push({ label, margin: match[3]!, year, source: packet.sourceCandidateId, refs })
+    }
+  }
+  const years = [...new Set(revenues.map(item=>item.year).filter(year=>margins.some(item=>item.year===year)))].sort()
+  const year = years.at(-1)
+  if (!year) return input.sections
+  const paired = revenues.filter(item=>item.year===year).flatMap(revenue=>{
+    const margin=margins.find(item=>item.year===year&&item.label.replace(/\s+/g,'')===revenue.label.replace(/\s+/g,''))
+    return margin?[{revenue,margin}]:[]
+  })
+  if(paired.length<2)return input.sections
+  const marker=`#### 年报分产品分类收入与毛利率（${year}年度）`
+  const cite=(refs:readonly string[])=>[...new Set(refs)].map(ref=>`[${ref}]`).join(' ')
+  const block=[marker,'','| 产品分类 | 营业收入（元） | 占营业收入 | 毛利率 | 来源定位 |','|---|---:|---:|---:|---|',
+    ...paired.map(({revenue,margin})=>`| ${revenue.label} | ${revenue.amount} | ${revenue.share}% | ${margin.margin}% | ${cite([...revenue.refs,...margin.refs])} |`),'',
+    '以上为年报宽口径分产品分类数据，可比较业务组合规模与分类毛利率；不代表具体车型、型号或技术的单品收入及毛利。年报未披露单品级收入成本表，故单品经济性仍属具体缺口。'].join('\n')
+  let markdown=section.markdown
+  const start=markdown.indexOf(marker)
+  if(start>=0){const end=markdown.indexOf('\n#### ',start+marker.length);markdown=`${markdown.slice(0,start)}${block}${end<0?'':markdown.slice(end)}`}
+  else markdown=`${markdown.trim()}\n\n${block}`
+  markdown=markdown.replace(/公司披露的宽泛分部显示[^。]*。产品分类与收入、成本、毛利率的完整对应行及表头定位不足以支持在本节列出产品级金额或毛利率，因此不推算、不将分部数字冒充单品数据。产品级盈利差异仍待补充同口径产品明细。/g,
+    '年报已按宽口径分产品披露收入与毛利率；上述分类可用于产品组合比较，但不能识别具体车型、型号或技术的盈利贡献。单品级收入、成本与毛利仍未披露。')
+  const sourceCandidateIds=[...new Set([...paired.flatMap(item=>[item.revenue.source,item.margin.source]),...(section.sourceCandidateIds??[])])]
+  const updated={...section,markdown,sourceCandidateIds}
+  return input.sections.map(item=>item.id===section.id?updated:item)
+}
+
 /** Carry a fully evidenced interim product-revenue mix into the products chapter. */
 export function reconcileCompanyInterimProductRevenueShares<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly T[] {
   const section = input.sections.find(item => item.id === 'products')
@@ -1502,6 +1583,21 @@ export function reconcileCompanyRiskBoundaries<T extends CompanyContentSection>(
   const additionalSourceIds = new Set<string>()
   markdown=markdown.replace(/若第一名缩减采购，影响可能显著，但静态销售占比不等于实际损失。/g,'若第一名缩减采购，收入及产能利用率可能承压，但实际影响取决于客户产品映射、订单替代性和固定成本吸收；静态销售占比不能量化收入、利润或现金损失。')
   const concentrationPackets=(input.methodResults??[]).flatMap(method=>[...method.executionEvidence??[],...method.deterministicEvidence??[]]).filter(packet=>/年度报告/.test(packet.title))
+  const goodwillPacket=concentrationPackets.find(packet=>/2025\s*年年度报告/.test(packet.title)&&packet.excerpts.some(excerpt=>/^paragraph:\d+$/.test(excerpt.location)&&/Juno Newco\s+4,361,657\s+-\s+-\s+4,361,657/.test(excerpt.text)))
+  if(goodwillPacket){
+    const unit=goodwillPacket.excerpts.find(excerpt=>/^paragraph:\d+$/.test(excerpt.location)&&/除有特别说明外，均以人民币千元为单位表示/.test(excerpt.text))
+    const title=goodwillPacket.excerpts.find(excerpt=>/^paragraph:\d+$/.test(excerpt.location)&&/商誉原值/.test(excerpt.text))
+    const columns=goodwillPacket.excerpts.find(excerpt=>/^paragraph:\d+$/.test(excerpt.location)&&/年初余额\s+本年增加\s+本年减少\s+年末余额/.test(excerpt.text))
+    const row=goodwillPacket.excerpts.find(excerpt=>/^paragraph:\d+$/.test(excerpt.location)&&/Juno Newco\s+4,361,657\s+-\s+-\s+4,361,657/.test(excerpt.text))
+    if(unit&&title&&columns&&row){
+      const refs=[unit,title,columns,row].map(excerpt=>`[${goodwillPacket.sourceCandidateId}@${excerpt.location}]`).join(' ')
+      const amount='Juno Newco商誉原值人民币4,361,657千元'
+      if(markdown.includes(amount)){
+        markdown=markdown.replaceAll(amount,`Juno Newco年末商誉原值人民币4,361,657千元（年初余额亦为4,361,657千元） ${refs}`)
+        additionalSourceIds.add(goodwillPacket.sourceCandidateId)
+      }
+    }
+  }
   const concentration=concentrationPackets.map(packet=>{
     const topFive=packet.excerpts.find(excerpt=>excerpt.location==='paragraph:965'&&/前五名客户/.test(excerpt.text))
     const first=packet.excerpts.find(excerpt=>excerpt.location==='paragraph:969'&&/第一名/.test(excerpt.text))

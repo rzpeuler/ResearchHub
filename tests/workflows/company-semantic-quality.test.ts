@@ -840,6 +840,26 @@ test('a concrete citation defect does not turn explicitly correct amounts into a
   assert.equal(reconciled.find(check=>check.sectionId==='technologies')!.evidenceSupportsConclusion,false)
 })
 
+test('reviewer cannot reject a vehicle specification when its exact cited official paragraph states the number',()=>{
+  const sourceId='byd-official'
+  const citedLine='海豹08售价19.69万元-23.99万元，并披露905km纯电续航。'
+  const sourceLines=Array.from({length:337},(_,index)=>index===336?citedLine:'')
+  const official={candidate:{candidateId:sourceId,publishedAt:'2026-07-08'},title:'BYD official product page',content:sourceLines.join('\n')} as NormalizedResearchSource
+  const body=`| 海豹08 | 售价19.69万元-23.99万元及905km纯电续航。[${sourceId}@paragraph:337] |`
+  const reason='表中“海豹08”称公司披露纯电续航905km，但来源段落337只支持售价、定位及宣传描述，不含该续航数值；该产品规格引用不支持结论，数值不可复核。'
+  const checks=output.sectionChecks.map(check=>check.sectionId==='products'?{...check,evidenceSupportsConclusion:false,numericReproducible:false,reasons:[reason]}:check)
+  const report=sections.map(section=>section.id==='products'?{...section,markdown:body}:section)
+  const fixed=reconcileKnownReviewerFalsePositives(checks,report,[official]).find(check=>check.sectionId==='products')!
+  assert.equal(fixed.evidenceSupportsConclusion,true)
+  assert.equal(fixed.numericReproducible,true)
+  assert.deepEqual(fixed.reasons,[])
+
+  const unsupported={...official,content:Array.from({length:337},(_,index)=>index===336?'海豹08售价19.69万元-23.99万元。':'').join('\n')}
+  const stillBlocked=reconcileKnownReviewerFalsePositives(checks,report,[unsupported]).find(check=>check.sectionId==='products')!
+  assert.equal(stillBlocked.numericReproducible,false)
+  assert.match(stillBlocked.reasons.join(' '),/905km/)
+})
+
 test('semantic review retries verdicts that call rejected content disclosed, reproducible, or adequately analyzed', async () => {
   const contradictory = { sectionChecks: output.sectionChecks.map((check) => {
     if (check.sectionId === 'revenue-profit-drivers') return { ...check, evidenceSupportsConclusion: false, reasons: ['事实方向正确，但可能由非经营项目影响；资料不足，边界适当，无实质证据错误。'] }

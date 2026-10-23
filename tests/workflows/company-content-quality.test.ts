@@ -3,6 +3,54 @@ import test from 'node:test'
 import { validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
 import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyIndustryExposureTableCitations, reconcileCompanyNumericMovementVerbs, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
+import { reconcileCompanyProductCategoryEconomics } from '../../workflows/company-deep-research/content-quality.ts'
+
+test('product analysis carries paired annual category revenue and margin rows, never adjacent industry rows',()=>{
+  const annual='official-annual'
+  const ex=(paragraph:number,text:string)=>({sourceCandidateId:annual,location:`paragraph:${paragraph}`,text})
+  const revenue={sourceCandidateId:annual,title:'2025年年度报告',publisher:'Issuer',excerpts:[
+    ex(805,'（1） 营业收入构成'),ex(806,'单位：元'),ex(807,'2025 年 2024 年'),ex(809,'金额 占营业收入'),ex(810,'比重 金额 占营业收入比重'),
+    ex(812,'分行业'),ex(814,'造业 155,236,528,000.00 19.31% 159,608,576,000.00 20.54% -2.74%'),
+    ex(818,'分产品'),ex(819,'手机部件、组装'),ex(820,'及其他产品 155,236,528,000.00 19.31% 159,608,576,000.00 20.54% -2.74%'),
+    ex(821,'汽车、汽车相关'),ex(822,'产品及其他产品 648,645,636,000.00 80.68% 617,381,935,000.00 79.45% 5.06%'),
+  ]}
+  const margin={sourceCandidateId:annual,title:'2025年年度报告',publisher:'Issuer',excerpts:[
+    ex(833,'单位：元'),ex(834,'营业收入 营业成本 毛利率 营业收入比上'),ex(835,'年同期增减'),ex(836,'营业成本比上'),ex(837,'年同期增减'),ex(838,'毛利率比上'),ex(839,'年同期增减'),
+    ex(840,'分行业'),ex(842,'制造业 155,236,528,000.00 145,473,989,000.00 6.29% -2.74% -0.56% -2.06%'),
+    ex(845,'分产品'),ex(850,'手机部件、组'),ex(851,'装及其他产品 155,236,528,000.00 145,473,989,000.00 6.29% -2.74% -0.56% -2.06%'),
+    ex(852,'汽车、汽车相'),ex(853,'关产品及其他'),ex(854,'产品'),ex(855,'648,645,636,000.00 515,762,940,000.00 20.49% 5.06% 7.53% -1.82%'),
+  ]}
+  const methods=[
+    {skillId:'business_model_map',status:'complete',executionEvidence:[revenue]},
+    {skillId:'product_technology_analysis',status:'complete',executionEvidence:[margin]},
+  ] as unknown as CompanyResearchMethodResult[]
+  const sections=[{id:'products',markdown:'产品组合分析。公司披露的宽泛分部显示汽车相关产品与手机部件、组装及其他产品的毛利率不同，但不能据此识别具体车型、型号或技术的盈利贡献。产品分类与收入、成本、毛利率的完整对应行及表头定位不足以支持在本节列出产品级金额或毛利率，因此不推算、不将分部数字冒充单品数据。产品级盈利差异仍待补充同口径产品明细。'}]
+  const fixed=reconcileCompanyProductCategoryEconomics({sections,methodResults:methods})[0]!
+  assert.doesNotMatch(fixed.markdown,/完整对应行及表头定位不足以支持/)
+  assert.match(fixed.markdown,/产品分类收入与毛利率（2025年度）/)
+  assert.match(fixed.markdown,/手机部件、组装及其他产品 \| 155,236,528,000\.00 \| 19\.31% \| 6\.29%/)
+  assert.match(fixed.markdown,/汽车、汽车相关产品及其他产品 \| 648,645,636,000\.00 \| 80\.68% \| 20\.49%/)
+  assert.match(fixed.markdown,/annual@paragraph:845/)
+  assert.match(fixed.markdown,/annual@paragraph:851/)
+  assert.match(fixed.markdown,/annual@paragraph:855/)
+  const wrongIndustry={...margin,excerpts:margin.excerpts.map(item=>item.location==='paragraph:845'?{...item,text:'分行业'}:item)}
+  const rejected=reconcileCompanyProductCategoryEconomics({sections,methodResults:[methods[0]!,{...methods[1]!,executionEvidence:[wrongIndustry]}]})[0]!
+  assert.doesNotMatch(rejected.markdown,/年报分产品分类收入与毛利率/)
+})
+
+test('risk goodwill value binds the annual note unit, original-value title, column labels, and Juno row',()=>{
+  const packet={sourceCandidateId:'official-annual',title:'2025年年度报告',publisher:'Issuer',excerpts:[
+    {sourceCandidateId:'official-annual',location:'paragraph:7024',text:'本公司记账本位币和编制本财务报表所采用的货币均为人民币，除有特别说明外，均以人民币千元为单位表示。'},
+    {sourceCandidateId:'official-annual',location:'paragraph:8535',text:'19、商誉'},
+    {sourceCandidateId:'official-annual',location:'paragraph:8536',text:'（1） 商誉原值'},
+    {sourceCandidateId:'official-annual',location:'paragraph:8537',text:'年初余额 本年增加 本年减少 年末余额'},
+    {sourceCandidateId:'official-annual',location:'paragraph:8542',text:'Juno Newco 4,361,657 - - 4,361,657'},
+  ]}
+  const method={skillId:'company_risk_analysis',status:'complete',executionEvidence:[packet]} as unknown as CompanyResearchMethodResult
+  const fixed=reconcileCompanyRiskBoundaries({sections:[{id:'risks',markdown:'| 财务：商誉敏感性 | 年报披露Juno Newco商誉原值人民币4,361,657千元。 |'}],methodResults:[method]})[0]!
+  assert.match(fixed.markdown,/年末商誉原值人民币4,361,657千元/)
+  for(const paragraph of [7024,8536,8537,8542])assert.match(fixed.markdown,new RegExp(`official-annual@paragraph:${paragraph}`))
+})
 
 test('classification repair restores a uniquely sourced industry label and adds its exact row citation', () => {
   const method:CompanyResearchMethodResult={skillId:'business_driver_analysis',status:'complete',attempts:1,answer:'',markdown:'',sections:[],findings:[],sourceCandidateIds:['annual'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'annual',title:'2026年半年度报告',publisher:'Issuer',excerpts:[
