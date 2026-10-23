@@ -495,6 +495,28 @@ test('same-width industry forecast header is moved past narrative to the table u
   assert.match(repaired.markdown, /### 行业规模背景\n\n以下行业数字仅为背景，不代表公司TAM。\n\| 市场边界 \| 预测值 \| 预测机构及归属 \| 可比性说明 \|\n\|---\|---\|---\|---\|/)
 })
 
+test('reattaches the real R189 industry forecast header using the disclosed institution conjunction', () => {
+  const fixture = `### 市场边界与价值链
+| 市场/链条 | 产品与地域边界 | 客户及需求场景 | 公司价值链位置与边界限制 |
+|---|---|---|---|
+| PCB | 板件制造 | 电子设备 | 部件制造 |
+| 光模块 | 数通与电信 | 数据中心 | 部件制造 |
+| 市场边界 | 预测值与期间 | 机构与归属 | 可比性说明 |
+上述客户用途和产业链边界是结构性归纳，并非订单分配。[annual@paragraph:454]
+
+### 行业规模背景
+下列数字均为行业背景，不是公司TAM。[annual@paragraph:556]
+|---|---|---|---|
+| 全球PCB产业产值 | 2026年958亿美元 | Prismark预测，由公司年报转述 | 不代表公司可服务市场。[annual@paragraph:557] |
+| 全球数通光模块 | 2026年228亿美元 | LightCounting预测，由公司年报转述 | 不代表公司可获取份额。[annual@paragraph:574] |
+| 全球电信光模块 | 2026年53亿美元 | LightCounting预测，由公司年报转述 | 与PCB市场不相加。[annual@paragraph:576] |`
+  const repaired = repairCompanyResearchMarkdownTables(fixture)
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_INDUSTRY_FORECAST_HEADER_REATTACHED')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.match(repaired.markdown, /### 行业规模背景\n下列数字[^\n]+\n\| 市场边界 \| 预测值与期间 \| 机构与归属 \| 可比性说明 \|\n\|---\|---\|---\|---\|/)
+})
+
 test('table repair splits an inline section heading from the next table while retaining cited table header context', () => {
   const businessSegments = `## 业务分部与收入切片 年报产品分类说明。[scope@paragraph:1] | 分产品 | 2025年营业收入（元） | 占营业收入比重 | 2025年产品毛利率 | [filing@paragraph:845]
 |---|---:|---:|---:|

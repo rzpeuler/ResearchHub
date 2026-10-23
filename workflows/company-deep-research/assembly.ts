@@ -634,7 +634,7 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
       if (cells.length !== width || cells.some(cell => !cell || /\d/u.test(cell))) continue
       if (!cells.some(cell => /市场边界/u.test(cell))
         || !cells.some(cell => /(?:预测值|规模|预测规模)/u.test(cell))
-        || !cells.some(cell => /(?:预测机构|机构及归属|来源归属)/u.test(cell))
+        || !cells.some(cell => /(?:预测机构|机构(?:及|与)归属|来源归属)/u.test(cell))
         || !cells.some(cell => /(?:可比性|解释限制|可比性说明)/u.test(cell))) continue
       if (lines.slice(index + 1, forecastHeading).some(line => isPipeLine(line))) continue
       candidates.push(index)
