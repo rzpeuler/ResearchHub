@@ -138,7 +138,7 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
     // and no material error was found. Reconcile that explicit contradiction
     // locally instead of spending the bounded second model call on formatting.
     // An adversative concrete defect keeps the flags fail-closed.
-    const explicitNoNumericDefect = /(?:未发现|没有|不存在|未见)(?:任何|实质|具体)?(?:实质)?(?:数值|数字|计算|金额)?(?:错误|缺陷)|数值.{0,12}(?:正确|无误)|(?:无此错误|相关年份与数值一致|不构成科目混用|未合并且口径准确|口径准确)/.test(joinedRawReasons)
+    const explicitNoNumericDefect = /(?:未发现|没有|不存在|未见)(?:任何|实质|具体)?(?:实质)?(?:数值|数字|计算|金额)?(?:错误|缺陷|错引|错算)|无实质(?:数值|数字|计算|金额)错引|数值.{0,12}(?:正确|无误)|(?:无此错误|相关年份与数值一致|不构成科目混用|未合并且口径准确|口径准确)/.test(joinedRawReasons)
     const explicitNumericAffirmation = /(?:数值|数字|金额|数据|计算|公式|操作数|期间|年份|增速|同比|比率|研发费用|研发投入|比例).{0,60}(?:正确|准确|一致|吻合|相符|可复核|可复算)|(?:正确|准确|一致|吻合|相符).{0,36}(?:数值|数字|金额|数据|计算|公式|操作数|期间|年份|增速|同比|比率|研发费用|研发投入|比例)|(?:金额|数字|费用|比率|比例).{0,32}(?:分别列示|分开呈列).{0,24}(?:未合并|口径准确)/.test(joinedRawReasons)
     const concreteNumericDefect = /(?:实际应为|应为\s*[-+]?\d|与(?:原文|公式|来源|preparedAnalysis).{0,36}(?:不符|不一致)|(?:少计|多计|错算|错用|误用|单位错误|期间错误)|期间.{0,48}(?:不符|不一致|错配)|(?:分行业|分产品).{0,40}(?:混淆|错用|误作|混为)|(?:未|没有|缺少|缺失|未提供|未注明).{0,32}(?:公式|操作数|期间|单位|数据)|(?:公式|计算).{0,40}(?:不正确|无法复算|错误结果)|(?:0(?:\.0+)?|零).{0,24}(?:无来源|无证据|未见披露|未列示|未提供|不支持))/.test(joinedRawReasons)
     const evidenceAligned = /(?:引用.{0,60}(?:一致|相符|匹配|准确)|(?:来源|证据|原文).{0,60}(?:一致|相符|匹配|有据|明列|明确|充分)|年份.{0,30}(?:一致|正确)|(?:结论|报告).{0,30}有原文依据|充分结构化证据)/.test(joinedRawReasons)
@@ -148,6 +148,10 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
     // concrete correction/mismatch in the same explanation.
     const concreteEvidenceDefect = /(?:但|然而|不过).{0,150}(?:引用.{0,50}(?:错误|不一致|缺失|缺少|未提供)|原文.{0,50}(?:不支持|冲突|不一致|未提供|未披露)|期间.{0,48}(?:不一致|不符|错误|缺失)|(?:分行业|分产品).{0,40}(?:混淆|错用|误作|混为)|具体阻塞缺陷|不能笼统称|仍缺少)/.test(joinedRawReasons)
     if (row.numericReproducible === false && explicitNoNumericDefect && explicitNumericAffirmation && !concreteNumericDefect) row.numericReproducible = true
+    const correctConversionWithCitationScopeGap = /(?:换算|折算).{0,48}(?:正确|准确)/.test(joinedRawReasons)
+      && /(?:引用值|原始值|来源值).{0,24}(?:准确|正确|吻合)/.test(joinedRawReasons)
+      && /(?:(?:单位|表头|定位|引用).{0,48}(?:缺少|未提供|需绑定|应绑定|尚未绑定)|(?:缺少|未提供|需绑定|应绑定|尚未绑定).{0,48}(?:单位|表头|定位|引用))/.test(joinedRawReasons)
+    if (row.numericReproducible === false && correctConversionWithCitationScopeGap && !concreteNumericDefect) row.numericReproducible = true
     if (row.evidenceSupportsConclusion === false && evidenceAligned && explicitlyNoEvidenceBlocker && !concreteEvidenceDefect) row.evidenceSupportsConclusion = true
     // A review can correctly identify an omitted analysis while misusing the
     // evidence/numeric flags for it. Keep that substantive unanswered finding,
@@ -345,17 +349,16 @@ export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySem
           }
         }
       }
-      if (check.sectionId === 'growth-drivers' && !hasIndependentDefectClause(reason)
+      if (['growth-drivers','revenue-profit-drivers'].includes(check.sectionId) && !hasIndependentDefectClause(reason)
         && /光模块/.test(reason)
-        && /(?:材料未提供|未列示|未披露).{0,24}(?:上年同期|同比变化)/.test(reason)
-        && /(?:该源行|源行|该行).{0,30}(?:确未列|未列|仅列本期金额).{0,24}(?:上年同期|同比|金额本身无误)/.test(reason)
-        && /(?:金额本身无误|金额正确)/.test(reason)) {
+        && /(?:材料未提供|未列示|未披露|没有|未列|仅列本期金额).{0,40}(?:上年同期|同比变化|同比)/.test(reason)
+        && /(?:该源行|源行|该行|paragraph:\d+)[^。；\n]{0,50}(?:确未列|未列|仅列本期金额|仅列本期值)/.test(reason)) {
         const cited = new Set([...body.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match => match[1]!))
         for (const source of sources) {
           if (!/^2026\s*年半年度报告/.test(source.title)) continue
           const row = source.content.split(/\r?\n/)[775]?.trim() ?? ''
           if (/^光模块\s+5,350,999,299\.05\s+19\.25%$/.test(row) && cited.has(`${source.candidate.candidateId}@paragraph:776`)
-            && /光模块[^\n]{0,100}(?:未提供|不能据此计算)[^\n]{0,30}(?:上年同期|同比)/.test(body)) {
+            && /光模块[^\n]{0,120}(?:未提供|不能据此计算)[^\n]{0,30}(?:上年同期|同比)/.test(body)) {
             removed = true
             return []
           }

@@ -64,6 +64,20 @@ test('semantic review retries when a numeric failure reason expressly says the f
   assert.match(result.diagnostics[0]?.message ?? '', /Contradictory numeric rejection/)
 })
 
+test('numeric flag stays separate from a correct-calculation statement and a citation-scope concern', () => {
+  const financialReason = '“资本开支同比增加”相关计算本身复算正确，但年报年度方向摘要列出的收入、营业利润、净利润、经营现金流均有公式和操作数；无实质数值错引。合并毛利率及净利率公式、单位和同期比较与结构化财务源相符。'
+  const riskReason = '索尔思光电金额换算值沿用亿元属正确，但应绑定完整单位和表头；现引用值准确，未造成实质误导。'
+  const checks = validateCompanySemanticQualityOutput({ sectionChecks: output.sectionChecks.map(check =>
+    check.sectionId === 'financial-quality' ? { ...check, numericReproducible: false, reasons: [financialReason] }
+      : check.sectionId === 'risks' ? { ...check, evidenceSupportsConclusion: false, numericReproducible: false, reasons: [riskReason] }
+        : check
+  ) })
+  assert.equal(checks.find(check => check.sectionId === 'financial-quality')!.numericReproducible, true)
+  const risks = checks.find(check => check.sectionId === 'risks')!
+  assert.equal(risks.numericReproducible, true)
+  assert.equal(risks.evidenceSupportsConclusion, false, 'a missing row header remains a real citation blocker')
+})
+
 test('independent gap check includes eligible uncited late evidence within its own budget and rejects false gaps', async () => {
   const lateSource = {
     ...source,

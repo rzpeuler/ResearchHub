@@ -2183,6 +2183,43 @@ export function reconcileCompanyProductGrowthReferences<T extends CompanyContent
   return input.sections.map(item => item.id === section.id ? updated : item)
 }
 
+/** Qualify product-growth claims when the located interim product row has no comparable-period values. */
+export function reconcileCompanyUnsupportedProductGrowth<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly T[] {
+  const section = input.sections.find(item => item.id === 'revenue-profit-drivers')
+  const method = input.methodResults.find(item => item.skillId === 'business_driver_analysis' && item.status === 'complete')
+  if (!section || !method) return input.sections
+  let markdown = section.markdown
+  const sourceIds = new Set(section.sourceCandidateIds ?? [])
+  for (const packet of [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []]) {
+    if (!/^20\d{2}\s*年半年度报告/.test(packet.title)) continue
+    const rows = packet.excerpts.map(item => ({ ...item, paragraph: Number(item.location.match(/^paragraph:(\d+)$/)?.[1] ?? 0) }))
+    const sectionHeader = rows.filter(item => item.text.trim() === '分产品').sort((a,b) => b.paragraph-a.paragraph)[0]
+    const unit = rows.filter(item => /^单位\s*[：:]\s*元$/.test(item.text.trim())).sort((a,b) => b.paragraph-a.paragraph)[0]
+    const periodHeader = rows.filter(item => /本报告期\s+上年同期/.test(item.text)).sort((a,b) => a.paragraph-b.paragraph)[0]
+    const comparisonHeader = rows.filter(item => /同比增减/.test(item.text)).sort((a,b) => a.paragraph-b.paragraph)[0]
+    const shareHeader = rows.filter(item => /金额\s+占营业收入比重/.test(item.text)).sort((a,b) => a.paragraph-b.paragraph)[0]
+    if (!sectionHeader || !unit || !periodHeader || !comparisonHeader || !shareHeader) continue
+    for (const row of rows) {
+      if (row.paragraph <= sectionHeader.paragraph) continue
+      const currentOnly = row.text.trim().match(/^([\u3400-\u9fffA-Za-z0-9（）()·、，\- ]{2,30}?)\s+([\d,]+(?:\.\d+)?)\s+([\d.]+)%\s*$/u)
+      if (!currentOnly) continue
+      const label = currentOnly[1]!.trim()
+      const fullComparisonExists = rows.some(item => item.text.trim().startsWith(`${label} `) && /\s[\d.]+%\s+-?[\d.]+%\s*$/.test(item.text.trim()))
+      if (fullComparisonExists) continue
+      const claim = new RegExp(`${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:产品)?(?:收入)?(?:同比)?(?:增长|上升|提升)`, 'gu')
+      if (!claim.test(markdown)) continue
+      claim.lastIndex = 0
+      const amount = Number(currentOnly[2]!.replaceAll(',', ''))
+      const amountText = Number.isFinite(amount) ? amount.toLocaleString('zh-CN', { maximumFractionDigits: 2 }) : currentOnly[2]!
+      const refs = [unit, periodHeader, comparisonHeader, shareHeader, sectionHeader, row].map(item => `[${packet.sourceCandidateId}@${item.location}]`).join(' ')
+      markdown = markdown.replace(claim, `${label}本期收入${amountText}元、占营业收入${currentOnly[3]}%，但该行未提供上年同期值或同比，不据此判断增长方向 ${refs}`)
+      sourceIds.add(packet.sourceCandidateId)
+    }
+  }
+  if (markdown === section.markdown) return input.sections
+  return input.sections.map(item => item.id === section.id ? { ...item, markdown, sourceCandidateIds: [...sourceIds] } : item)
+}
+
 export function findKnownCustomerConcentrationDenials(input: { readonly sections: readonly CompanyContentSection[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly { readonly sectionId: string; readonly metric: string }[] {
   const disclosed = input.methodResults.some(method => [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []].some(packet => {
     const excerpts = packet.excerpts.map(excerpt => excerpt.text)

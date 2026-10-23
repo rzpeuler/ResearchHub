@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
+import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 
 test('classification repair restores a uniquely sourced industry label and adds its exact row citation', () => {
@@ -734,6 +734,25 @@ test('product revenue driver reconciliation reports exact period values and does
   assert.match(fixed[0]!.markdown,/分产品表已披露各业务收入规模及部分同比变化/)
   assert.doesNotMatch(fixed[0]!.markdown,/收入变化全部保留为未归因残差/)
   for(const paragraph of [765,766,768,773,775,776])assert.match(fixed[0]!.markdown,new RegExp(`\\[interim@paragraph:${paragraph}\\]`))
+})
+
+test('revenue and profit drivers withdraw a product-growth claim when the official row has no comparable period', () => {
+  const excerpts = [
+    {sourceCandidateId:'interim',location:'paragraph:764',text:'营业收入构成'},
+    {sourceCandidateId:'interim',location:'paragraph:765',text:'单位：元'},
+    {sourceCandidateId:'interim',location:'paragraph:766',text:'本报告期 上年同期'},
+    {sourceCandidateId:'interim',location:'paragraph:767',text:'同比增减'},
+    {sourceCandidateId:'interim',location:'paragraph:768',text:'金额 占营业收入比重 金额 占营业收入比重'},
+    {sourceCandidateId:'interim',location:'paragraph:773',text:'分产品'},
+    {sourceCandidateId:'interim',location:'paragraph:776',text:'光模块 5,350,999,299.05 19.25%'},
+  ]
+  const method:CompanyResearchMethodResult={skillId:'business_driver_analysis',status:'complete',attempts:1,answer:'',markdown:'',sections:[],findings:[],sourceCandidateIds:['interim'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'interim',title:'2026年半年度报告',publisher:'Company',excerpts}]}
+  const input=[{id:'revenue-profit-drivers',markdown:'2026年半年度报告的分产品收入构成显示，精密组件产品、光模块增长，而光电显示模组下降。[interim@paragraph:776]'}]
+  const fixed=reconcileCompanyUnsupportedProductGrowth({sections:input,methodResults:[method]})[0]!
+  assert.doesNotMatch(fixed.markdown,/光模块增长/)
+  assert.match(fixed.markdown,/光模块本期收入5,350,999,299.05元、占营业收入19.25%/)
+  assert.match(fixed.markdown,/该行未提供上年同期值或同比，不据此判断增长方向/)
+  for(const paragraph of [765,766,767,768,773,776])assert.match(fixed.markdown,new RegExp(`\\[interim@paragraph:${paragraph}\\]`))
 })
 
 test('product customer chapter carries company-wide disclosed concentration without product mapping claims',()=>{
