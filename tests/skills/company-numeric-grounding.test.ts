@@ -221,6 +221,8 @@ test('consolidated gross-margin comparisons require the exact prepared ratio row
 
   const r172CurrentFirst = `合并口径毛利率由2025-06-30的18.01%升至2026-06-30的18.85%，差额为+0.84个百分点。[${candidateId}@paragraph:1]\n\n| 指标 | 2026年上半年累计 | 2025年上半年累计 | 可比变化 |\n|---|---:|---:|---:|\n| 合并毛利率（%） | 18.85% | 18.01% | 约+0.84个百分点 |`
   assert.equal(validateCompanyNumericGrounding({ markdown: r172CurrentFirst, ...r171Options }).status, 'grounded', 'current-first headers bind their own exact cells, including the optional percent label')
+  const qualifiedMarginLabel = r172CurrentFirst.replace('合并毛利率（%）', '合并毛利率（半年累计，%）')
+  assert.equal(validateCompanyNumericGrounding({ markdown: qualifiedMarginLabel, ...r171Options }).status, 'grounded', 'period qualifiers in a structured margin row label do not break exact source and period binding')
   const r173CandidateId = 'akshare-financial-002594'
   const r173PreparedAnalysis = { ...preparedAnalysis, financial: { ...preparedAnalysis.financial, ratioChanges: [{ ...preparedAnalysis.financial.ratioChanges[0]!, sourceCandidateIds: [r173CandidateId] }] } }
   const r173Options = { sources: [financial], preparedAnalysis: r173PreparedAnalysis, trustedText: ['2025-06-30', '2026-06-30'] }
