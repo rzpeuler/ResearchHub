@@ -349,6 +349,22 @@ test('BYD reviewer self-corrections clear only the numeric false flag and retain
   assert.equal(retained.reasons.length, 1, 'numeric reconciliation must not clear a separate unanswered-section flag')
 })
 
+test('a reproducible balance calculation does not become a numeric failure when the defect is period-scope wording', () => {
+  const reason = '本节称资产负债表余额变化均只能称较上年末，但又报告结构化历史序列2025-06-30至2026-06-30余额同比及公式；这与其所谓均只能较上年末相矛盾，影响是掩盖独立结构化同日同比序列的有效比较基期。另简化自由现金流＝373.35−447.03＝−73.68亿元与同节结构化值及preparedAnalysis相符，本身可复算，不作为反对理由。'
+  const outputWithScopeDefect = { sectionChecks: output.sectionChecks.map(check => check.sectionId === 'financial-quality'
+    ? { ...check, evidenceSupportsConclusion: false, numericReproducible: false, reasons: [reason] }
+    : check) }
+  const checked = validateCompanySemanticQualityOutput(outputWithScopeDefect).find(check => check.sectionId === 'financial-quality')!
+  assert.equal(checked.evidenceSupportsConclusion, false, 'the period-scope contradiction remains a real evidence blocker')
+  assert.equal(checked.numericReproducible, true, 'the explicitly reproducible formula is not a numeric defect')
+  assert.deepEqual(checked.reasons, [reason], 'the real evidence reason remains attached')
+  const withFormulaError = { sectionChecks: output.sectionChecks.map(check => check.sectionId === 'financial-quality'
+    ? { ...check, evidenceSupportsConclusion: false, numericReproducible: false, reasons: [`${reason}另有一项公式计算错误，实际应为-73.69亿元。`] }
+    : check) }
+  assert.equal(validateCompanySemanticQualityOutput(withFormulaError).find(check => check.sectionId === 'financial-quality')!.numericReproducible, false,
+    'an explicit additional formula error stays blocking despite a separate correct formula')
+})
+
 test('R78 reviewer text that concludes a section should pass is retried instead of accepted as a failed verdict',()=>{
   const contradictory={sectionChecks:output.sectionChecks.map(check=>check.sectionId==='financial-quality'?{...check,questionAnswered:false,evidenceSupportsConclusion:false,numericReproducible:false,reasons:['表中DSO公式可复算且结果正确；其余指标也正确。故没有明确的关键数字错误，主要问题均已回答，按规则应通过而非设false。']}:check)}
   assert.throws(()=>validateCompanySemanticQualityOutput(contradictory),/Contradictory verdict/)

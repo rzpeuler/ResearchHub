@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyEmployeePlanMonitoringEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyIndustryExposureTableCitations, reconcileCompanyNumericMovementVerbs, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyInterimIndustryProductComparison, reconcileCompanyRAndDCapitalizationRatioSpread, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
+import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, findCustomerConcentrationComparisonContradictions, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyEmployeePlanMonitoringEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyFinancialSummaryTable, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyIndustryExposureTableCitations, reconcileCompanyNumericMovementVerbs, reconcileCompanyGeographicRevenueInterpretation, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyInterimIndustryProductComparison, reconcileCompanyRAndDCapitalizationRatioSpread, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductTableSectionReferences, reconcileCompanyProductMatrixFromMethod, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyPreparedAnalysisFacts } from '../../workflows/company-deep-research/content-quality.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 import { reconcileCompanyProductCategoryEconomics } from '../../workflows/company-deep-research/content-quality.ts'
 
@@ -282,6 +282,21 @@ test('period reconciler leaves segment synthesis untouched when the located tabl
   assert.equal(incomplete[0]!.markdown,section.markdown)
   const conflicting=reconcileCompanyFinancialPeriodScope({sections:[section],methodResults:[makeMethod('电子组件业 50.00 40.00 20.00% 5.00% 4.00% 0.50%',true)]})
   assert.equal(conflicting[0]!.markdown,section.markdown)
+})
+test('period reconciler scopes report-native balance comparisons separately from a structured same-date series',()=>{
+  const financial:CompanyResearchMethodResult={skillId:'financial_quality_analysis',status:'complete',attempts:1,answer:'',markdown:'',sections:[{id:'financial-quality',markdown:'| 指标 | 2025-06-30期末 | 2026-06-30期末 | 同比 |\n|---|---:|---:|---:|\n| 应收账款（人民币亿元） | 10.00 | 12.00 | 20.00% |'}],findings:[],sourceCandidateIds:['structured'],limitations:[],risks:[],diagnostics:[]}
+  const source={id:'financial-quality',markdown:'半年报资产负债表比较列为“本报告期末／上年末”，故只能描述为较上年末变化：短期借款下降。结构化历史序列另显示总负债同比增加。\n\n| 指标 | 本期 | 上年同期 | 同比 |\n|---|---:|---:|---:|\n| 应收账款（人民币亿元） | 10.00 | 12.00 | 20.00% |'}
+  const fixed=reconcileCompanyFinancialPeriodScope({sections:[source],methodResults:[financial]})[0]!
+  assert.match(fixed.markdown,/半年报原表的资产负债表比较列为“本报告期末／上年末”；以下项目仅按该原表口径描述为较上年末变化/)
+  assert.match(fixed.markdown,/结构化历史序列另显示总负债同比增加/)
+})
+test('geographic revenue wording states that mix improvement did not offset consolidated decline',()=>{
+  const original='海外收入是结构上的支撑项：半年度报告分地区表显示境外收入增长、占比提升；但同期境内收入下降，合计收入仍下降。[official-half@paragraph:710]'
+  const sections=[{id:'growth-drivers',markdown:original},{id:'financial-quality',markdown:'保留财务章节。'}]
+  const fixed=reconcileCompanyGeographicRevenueInterpretation(sections)
+  assert.match(fixed[0]!.markdown,/境外收入增长、占比提升改善了收入地区结构，但未抵消同期境内收入下降及合并收入下滑。\[official-half@paragraph:710\]/)
+  assert.equal(fixed[1]!.markdown,'保留财务章节。')
+  assert.equal(reconcileCompanyGeographicRevenueInterpretation(fixed),fixed,'the exact phrasing repair is idempotent')
 })
 test('driver comparison links to the completed financial table and keeps industry margin separate',()=>{
   const method:CompanyResearchMethodResult={skillId:'financial_quality_analysis',status:'complete',attempts:1,answer:'财务。',markdown:'',sections:[],findings:[],sourceCandidateIds:['official-interim'],limitations:[],risks:[],diagnostics:[],deterministicEvidence:[{sourceCandidateId:'official-interim',title:'2026年半年度报告',publisher:'CNINFO',excerpts:[
@@ -1672,6 +1687,10 @@ test('R174 competitor carryover selects the located peer rather than the target 
   const repairedIndustry = reconcileCompanyCompetitorEvidence({sections:[{id:'industry-exposure',markdown:industryDenial,sourceCandidateIds:[]}],methodResults:[method]})
   assert.match(repairedIndustry[0]!.markdown,/具名产品路线候选已由竞争方法核实/)
   assert.match(repairedIndustry[0]!.markdown,/\[public-web-peer@paragraph:1\]/)
+  const broadIndustryDenial = '现有材料无具名汽车或电子制造竞争者及同口径产品、地域、价格、销量、产能或毛利率比较。'
+  const repairedBroadIndustry = reconcileCompanyCompetitorEvidence({sections:[{id:'industry-exposure',markdown:broadIndustryDenial,sourceCandidateIds:[]}],methodResults:[method]})
+  assert.match(repairedBroadIndustry[0]!.markdown,/竞争方法已核实的具名候选为：吉利银河E8/)
+  assert.doesNotMatch(repairedBroadIndustry[0]!.markdown,/无具名汽车或电子制造竞争者/)
 })
 test('R174 competitor carryover rewrites a product-table denial without consuming the next cell delimiter', () => {
   const method: CompanyResearchMethodResult = {

@@ -149,7 +149,7 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
   // described product route. Carry that narrow fact into synthesis chapters
   // that otherwise turn a missing like-for-like comparison into a claim that
   // no named candidate exists. Never infer customer overlap or actual rivalry.
-  const broadCandidateDenial = /(?:没有|未提供|未发现|缺少|缺乏|暂缺|未识别|尚无|无)(?:可直接比较的|可比(?:的)?|任何)?(?:具名)?(?:竞品|竞争者|竞争对手|对手|候选(?:竞品|竞争者|对手)?)(?:[^。；;\n|]{0,45})/g
+  const broadCandidateDenial = /(?:没有|未提供|未发现|缺少|缺乏|暂缺|未识别|尚无|无)(?:可直接比较的|可比(?:的)?|任何)?(?:具名)?(?:[^。；;\n|]{0,12})(?:竞品|竞争者|竞争对手|对手|候选(?:竞品|竞争者|对手)?)(?:[^。；;\n|]{0,45})/g
   const scopedCandidateGap = `竞争方法已核实的具名候选为：${candidateFinding}${candidateCitations}；但直接竞标、客户重叠、市场份额及同口径胜负仍未验证，不能据此断言存在真实竞争关系`
   const automotiveCandidate = /汽车|乘用车|纯电|插混|车型/.test(candidateFinding)
   let changed = false
@@ -1324,7 +1324,7 @@ export function reconcileCompanyFinancialPeriodScope<T extends CompanyContentSec
         const finalHeader=lines[header]!.split('|').map(value=>value.trim()).filter(Boolean)
         const currentPeriod=methodPeriodTable!.periods.reduce((a,b)=>a.date>b.date?a:b)
         const priorPeriod=methodPeriodTable!.periods.reduce((a,b)=>a.date<b.date?a:b)
-        const currentSuffix=currentPeriod.suffix||'期间值'
+        const currentSuffix= currentPeriod.suffix||'期间值'
         const priorSuffix=priorPeriod.suffix||currentSuffix
         let swapped=0
         for(let index=header+2;index<lines.length&&/^\s*\|/.test(lines[index]??'');index++){
@@ -1343,6 +1343,8 @@ export function reconcileCompanyFinancialPeriodScope<T extends CompanyContentSec
           markdown=lines.join('\n')
         }
       }
+      const balanceScopeClarification = markdown.replace(/半年报资产负债表比较列为“本报告期末／上年末”，故只能描述为较上年末变化：/g, '半年报原表的资产负债表比较列为“本报告期末／上年末”；以下项目仅按该原表口径描述为较上年末变化：')
+      if (balanceScopeClarification !== markdown) { markdown = balanceScopeClarification; anyChanged = true }
       const annualRows=financialMethodText.matchAll(/(?:结构化\s*)?(?:净利润|netProfit)[^。\n]{0,80}(?:归母属性未注明|归属未注明)[^。\n]{0,80}?(?:增长|下降)\s*([\d.]+)%/g)
       const annualStructured=[...annualRows].map(match=>({rate:match[1]!,index:match.index??0,lead:financialMethodText.slice(Math.max(0,(match.index??0)-180),match.index)})).find(item=>item.lead.includes('12-31')&&item.lead.includes('年度'))
       const annualReport=packets.filter(packet=>/((?:19|20)\d{2})\s*年年度报告/.test(packet.title)).map(packet=>{
@@ -2117,6 +2119,20 @@ export function reconcileCompanyNumericMovementVerbs<T extends CompanyContentSec
     if (markdown === section.markdown) return section
     changed = true
     return {...section, markdown}
+  })
+  return changed ? repaired : sections
+}
+
+/** Clarify that geographic mix growth did not offset the disclosed consolidated revenue decline. */
+export function reconcileCompanyGeographicRevenueInterpretation<T extends CompanyContentSection>(sections: readonly T[]): readonly T[] {
+  let changed = false
+  const repaired = sections.map(section => {
+    if (section.id !== 'growth-drivers') return section
+    const original = '海外收入是结构上的支撑项：半年度报告分地区表显示境外收入增长、占比提升；但同期境内收入下降，合计收入仍下降。'
+    const clarified = '境外收入增长、占比提升改善了收入地区结构，但未抵消同期境内收入下降及合并收入下滑。'
+    if (!section.markdown.includes(original)) return section
+    changed = true
+    return { ...section, markdown: section.markdown.replace(original, clarified) }
   })
   return changed ? repaired : sections
 }

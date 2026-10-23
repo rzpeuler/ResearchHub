@@ -247,7 +247,9 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
     const numericInterpretationDefect = /(?:可复算|可复核|计算结果.{0,12}正确|算术.{0,12}可复核|公式.{0,12}可复算)/.test(reasons)
       && /(?:不等于|不能据此称为|不能称为|解释与目标指标不相符|不是分产品|而非分产品|分地区.{0,30}不是产品|易误作公司整体|口径判断|被作为产品驱动)/.test(reasons)
       && !/(?:错误数字|计算错误|公式结果错误|实际应为|数值应为|单位应为|错算)/.test(reasons)
-    if (row.numericReproducible === false && numericInterpretationDefect) row.numericReproducible = true
+    const reproduciblePeriodScopeDefect = /(?:只能称|只能表述为|僅能称|均只能称).{0,100}(?:较上年末|期末变化).{0,180}(?:结构化历史序列|同比|同日比较).{0,100}(?:矛盾|不一致|冲突)/.test(reasons)
+      || /(?:结构化历史序列|同日同比|余额同比).{0,120}(?:矛盾|不一致|冲突).{0,180}(?:本身可复算|公式.{0,12}正确|数值.{0,12}正确)/.test(reasons)
+    if (row.numericReproducible === false && (numericInterpretationDefect || reproduciblePeriodScopeDefect) && !hasNumericReproducibilityCounterevidence && !explicitNumericError) row.numericReproducible = true
     const affirmsEvidence = /(?:证据口径相符|引用.{0,45}(?:确实|一致|相符|匹配)|表格确实.{0,45}披露|已在报告中引用并分析|没有把已披露资料说成缺失|没有实质证据错误|未发现具体错误|未发现说明中的实质错误|材料限制属实)/.test(reasons)
     const describesOnlyPartialRiskCoverage = /风险传导部分.{0,32}(?:覆盖|涉及)|风险传导.{0,24}已覆盖其余/.test(reasons)
     const affirmsRiskPath = !describesOnlyPartialRiskCoverage && /(?:风险传导.{0,24}(?:完整|有描述|已覆盖)|触发.{0,40}影响.{0,40}监控.{0,40}(?:缓解|缓释).{0,24}(?:覆盖|有描述|完整)|风险.{0,30}(?:观察信号|监控).{0,24}(?:缓释|缓解).{0,20}有描述)/.test(reasons)
