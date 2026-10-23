@@ -643,6 +643,47 @@ test('malformed risk matrix retry names the exact five-column contract and prese
   assert.equal(result.sections.find(section => section.id === 'risks')?.markdown, repairedTable)
 })
 
+test('company risk matrix applies and records only explicit, lossless goodwill and residual-risk cell repairs', async () => {
+  const filing = { ...source, content: '公司披露商誉原值及相关风险。' }
+  const ref = '[filing-1@paragraph:1]'
+  const header = '| 风险类别 | 触发条件与影响路径 | 可监控指标 | 缓解因素 | 残余风险 |\n|---|---|---|---|---|'
+  const goodwillRow = `| 商誉与估值 | 预测偏差可能导致减值 ${ref} | 现金流与折现率 | 公司披露资产组测试 ${ref} | 商誉原值合计 ${ref} | 未提供完整账面价值，无法量化减值情景 ${ref} |`
+  const mergedMitigationRow = `| 治理与关键人 | 权力集中可能增加关键人依赖 ${ref} | 继任安排 | 公司披露内部控制体系 ${ref}；残余风险：执行效果和继任安排缺少直接证据 ${ref} |`
+  const repairedGoodwillRow = `| 商誉与估值 | 预测偏差可能导致减值 ${ref} | 现金流与折现率 | 公司披露资产组测试 ${ref} | 商誉原值合计 ${ref}；未提供完整账面价值，无法量化减值情景 ${ref} |`
+  const repairedGovernanceRow = `| 治理与关键人 | 权力集中可能增加关键人依赖 ${ref} | 继任安排 | 公司披露内部控制体系 ${ref} | 残余风险：执行效果和继任安排缺少直接证据 ${ref} |`
+  const makeOutput = (table: string, tableHeader = header) => ({ ...output, answer: `公司存在相关风险。${ref}`, markdown: `公司存在相关风险。${ref}`, sections: [{ id: 'risks', markdown: `${tableHeader}\n${table}` }], findings: [{ text: `公司披露商誉与治理风险。`, kind: 'fact', evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:1' }] }], risks: [`公司存在需跟踪的风险。${ref}`] })
+  const result = await executeCompanyResearchMethod({ skillId: 'company_risk_analysis', company: { symbol: '002594' }, asOf: '2026-10-14', sources: [filing], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async () => makeOutput(`${goodwillRow}\n${mergedMitigationRow}`)) })
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  assert.equal(result.attempts, 1)
+  assert.deepEqual(result.attemptOutputs?.[0]?.formatRepairs, [
+    'risks line 3: merged explicit goodwill disclosure into residual-risk cell',
+    'risks line 4: split explicitly labeled residual-risk text into fifth cell',
+  ])
+  const repaired = result.sections.find(section => section.id === 'risks')?.markdown
+  assert.ok(repaired?.includes(repairedGoodwillRow))
+  assert.ok(repaired?.includes(repairedGovernanceRow))
+  for (const token of ['商誉原值合计', '[filing-1@paragraph:1]', '未提供完整账面价值', '执行效果和继任安排']) assert.ok(repaired?.includes(token), `repair preserves ${token}`)
+
+  const ambiguousRows = [
+    `| 非商誉经营风险 | 可能导致经营波动 ${ref} | 经营指标 | 已披露缓释 ${ref} | 商誉原值 ${ref} | 未提供敏感度 ${ref} |`,
+    `| 商誉与估值 | 预测偏差可能导致减值 ${ref} | 现金流 | 已披露测试 ${ref} | 账面价值资料 ${ref} | 尚待补充资料 ${ref} |`,
+    `| 治理与关键人 | 权力集中可能增加依赖 ${ref} | 继任 | 公司披露内控 ${ref}；执行效果尚待核验 ${ref} |`,
+  ]
+  for (const row of ambiguousRows) {
+    let calls = 0
+    const blocked = await executeCompanyResearchMethod({ skillId: 'company_risk_analysis', company: { symbol: '002594' }, asOf: '2026-10-14', sources: [filing], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async () => { calls++; return makeOutput(row) }) })
+    assert.equal(calls, 2)
+    assert.notEqual(blocked.status, 'complete')
+    assert.deepEqual(blocked.attemptOutputs?.map(attempt => attempt.formatRepairs ?? []), [[], []])
+  }
+  const changedHeader = header.replace('残余风险', '其他事项')
+  let calls = 0
+  const wrongHeader = await executeCompanyResearchMethod({ skillId: 'company_risk_analysis', company: { symbol: '002594' }, asOf: '2026-10-14', sources: [filing], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async () => { calls++; return makeOutput(goodwillRow, changedHeader) }) })
+  assert.equal(calls, 2)
+  assert.notEqual(wrongHeader.status, 'complete')
+  assert.deepEqual(wrongHeader.attemptOutputs?.map(attempt => attempt.formatRepairs ?? []), [[], []])
+})
+
 test('company method format repair succeeds without degrading to a baseline', async () => {
   const history = { ...source, content: source.content.replace('核心产品业务收入及客户模式。', '核心产品业务收入及客户模式，战略转型历史。') }
   let attempts = 0

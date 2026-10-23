@@ -27,6 +27,73 @@ function repairExcessTrailingCellsInMethodOutput<T>(output: T): T {
   return copy as T
 }
 
+const COMPANY_RISK_MATRIX_HEADER = ['风险类别', '触发条件与影响路径', '可监控指标', '缓解因素', '残余风险'] as const
+
+/** Repair only two unambiguous risk-matrix formatting mistakes, retaining every cell's text and citations. */
+function repairCompanyRiskMatrixFormat<T>(output: T): { output: T; repairs: string[] } {
+  let raw: unknown = output
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')) } catch { return { output, repairs: [] } }
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { output, repairs: [] }
+  const copy = structuredClone(raw) as Record<string, unknown>
+  const repairs: string[] = []
+  const repairText = (value: unknown, sectionId?: string): unknown => {
+    if (typeof value !== 'string' || (sectionId !== undefined && sectionId !== 'risks')) return value
+    const lines = value.split(/\r?\n/)
+    const cells = (line: string): string[] => {
+      let body = line.trim()
+      if (!body.startsWith('|')) return []
+      body = body.slice(1)
+      if (body.endsWith('|') && !body.endsWith('\\|')) body = body.slice(0, -1)
+      const result: string[] = []
+      let current = ''
+      for (let index = 0; index < body.length; index++) {
+        if (body[index] === '|' && body[index - 1] !== '\\') { result.push(current.trim()); current = '' }
+        else current += body[index]
+      }
+      result.push(current.trim())
+      return result
+    }
+    const isRiskHeader = (row: string[]) => row.length === 5 && row.every((cell, index) => cell === COMPANY_RISK_MATRIX_HEADER[index])
+    let changed = false
+    for (let index = 1; index < lines.length; index++) {
+      const separator = cells(lines[index]!)
+      if (separator.length !== 5 || !separator.every(cell => /^:?-{3,}:?$/.test(cell))) continue
+      if (!isRiskHeader(cells(lines[index - 1]!))) continue
+      for (let rowIndex = index + 1; rowIndex < lines.length && /^\s*\|/.test(lines[rowIndex]!); rowIndex++) {
+        const row = cells(lines[rowIndex]!)
+        let repaired: string[] | undefined
+        if (row.length === 6
+          && /商誉/.test(row[0]!)
+          && !/非商誉/.test(row[0]!)
+          && /商誉(?:原值|减值准备)|减值准备/.test(row[4]!)
+          && /(?:未提供|无法|不能|尚未|残余风险|仍可能)/.test(row[5]!)) {
+          repaired = [...row.slice(0, 4), `${row[4]}；${row[5]}`]
+          repairs.push(`risks line ${rowIndex + 1}: merged explicit goodwill disclosure into residual-risk cell`)
+        } else if (row.length === 4) {
+          const split = /^(.*?)(?:；|;)\s*(残余风险\s*[:：]?\s*.+)$/u.exec(row[3]!)
+          if (split && /(?:缓释|公司披露|已披露|制度|措施|控制)/.test(split[1]!)) {
+            repaired = [...row.slice(0, 3), split[1]!.trim(), split[2]!.trim()]
+            repairs.push(`risks line ${rowIndex + 1}: split explicitly labeled residual-risk text into fifth cell`)
+          }
+        }
+        if (repaired) {
+          lines[rowIndex] = `| ${repaired.join(' | ')} |`
+          changed = true
+        }
+      }
+      index += 1
+    }
+    return changed ? lines.join('\n') : value
+  }
+  if ('markdown' in copy) copy.markdown = repairText(copy.markdown)
+  if (Array.isArray(copy.sections)) copy.sections = copy.sections.map(section => section && typeof section === 'object' && !Array.isArray(section)
+    ? { ...section, markdown: repairText((section as Record<string, unknown>).markdown, (section as Record<string, unknown>).id as string | undefined) }
+    : section)
+  return { output: copy as T, repairs }
+}
+
 /** Drop only a whole, uncited-by-any-valid-source paragraph whose sole inline
  * references are absent from this method's evidence packet. This is a
  * fail-closed last resort after the bounded semantic repair call: it prevents
@@ -89,6 +156,8 @@ export interface CompanyMethodAttemptTrace {
   readonly reasoningInstruction?: string
   readonly executionEvidence?: readonly CompanyEvidencePacket[]
   readonly preparedAnalysis?: unknown
+  /** Deterministic, semantics-preserving formatting repairs applied before validation. */
+  readonly formatRepairs?: readonly string[]
 }
 export interface CompanyResearchMethodResult {
   readonly skillId: CompanyResearchMethodId
@@ -918,9 +987,13 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
       const unsupportedClaimCleanup = input.skillId === 'business_model_map'
         ? removeUnsupportedMethodCitationParagraphs(postCanonicalCollisionRepair.output, packets)
         : { output: postCanonicalCollisionRepair.output, removed: 0 }
+      const riskFormatRepair = input.skillId === 'company_risk_analysis'
+        ? repairCompanyRiskMatrixFormat(unsupportedClaimCleanup.output)
+        : { output: unsupportedClaimCleanup.output, repairs: [] as string[] }
+      if (riskFormatRepair.repairs.length) attemptOutputs[traceIndex] = { ...attemptOutputs[traceIndex]!, formatRepairs: riskFormatRepair.repairs }
       const allocationTableRepair = input.skillId === 'capital_allocation_review'
-        ? repairExcessTrailingCellsInMethodOutput(unsupportedClaimCleanup.output)
-        : unsupportedClaimCleanup.output
+        ? repairExcessTrailingCellsInMethodOutput(riskFormatRepair.output)
+        : riskFormatRepair.output
       const bounded = bindCompanyMethodEvidenceContext(validateCompanyMethodOutput(allocationTableRepair, packets, COMPANY_METHOD_SECTION_IDS[input.skillId]), packets)
       const repaired = repairCompanyMethodCitations(bounded, packets, input)
       citationRepairs.push(...repaired.repairs.map((repair) => ({ ...repair, attempt })))

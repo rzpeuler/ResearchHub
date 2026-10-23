@@ -621,6 +621,27 @@ test('table repair splits an inline section heading from the next table while re
   assert.match(repairedIndustry.markdown, /轨道交通 \| 城市交通 \| 城市项目 \| 不等于汽车市场 \|\n## 行业规模背景\n\| 市场 \| 期间 \| 规模 \| 归属 \|/)
 })
 
+test('table repair reattaches the cited adjacent-market header after intervening industry narrative', () => {
+  const fixture = `| 市场边界 | 预测期间 | 规模与单位 | 预测机构及来源归属 |
+上述市场之间产品边界不同，不应相加为一个TAM。[scope@paragraph:1]
+
+### 需求与行业规模背景
+中国新能源汽车销量增长，但该数据不等于公司可服务市场。[industry@paragraph:2]
+**相邻市场预测（仅作AI基础设施背景）**
+|---|---|---|---|
+| 全球AI服务器市场 | 二零二五年 | 1,672亿美元 | Market Insights预测；属于AI基础设施，不是汽车市场。[annual@paragraph:448] |
+| 全球数据中心液冷市场 | 二零二五年 | 28.4亿美元 | MarketsandMarkets预测；不等于公司液冷产品可服务市场。[annual@paragraph:450] |
+这些预测不代表公司份额或收入预测。[scope@paragraph:3]`
+
+  const repaired = repairCompanyResearchMarkdownTables(fixture)
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_ADJACENT_MARKET_HEADER_REATTACHED')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.match(repaired.markdown, /上述市场之间产品边界不同，不应相加为一个TAM。\[scope@paragraph:1\]\n\n### 需求与行业规模背景/)
+  assert.match(repaired.markdown, /\*\*相邻市场预测（仅作AI基础设施背景）\*\*\n\| 市场边界 \| 预测期间 \| 规模与单位 \| 预测机构及来源归属 \|\n\|---\|---\|---\|---\|\n\| 全球AI服务器市场/)
+  assert.match(repaired.markdown, /这些预测不代表公司份额或收入预测。\[scope@paragraph:3\]/)
+})
+
 test('normal nineteen-section assembly surfaces malformed tables from atomic method sections', async () => {
   const industryMethod: CompanyResearchMethodResult = {
     ...method,
