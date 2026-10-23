@@ -558,6 +558,35 @@ test('malformed atomic product tables use the remaining format retry and never p
   assert.equal(exhausted.sections.length, 0, 'no malformed section is accepted as a completed method result')
 })
 
+test('malformed risk matrix retry names the exact five-column contract and preserves row content', async () => {
+  const filing = { ...source, content: '公司披露客户、技术与商誉相关风险。' }
+  const ref = '[filing-1@paragraph:1]'
+  const header = '| 风险类别 | 触发条件与影响路径 | 可监控指标 | 缓解因素 | 残余风险 |\n|---|---|---|---|---|'
+  const broken = `${header}\n| 并购风险 | 假设未兑现时可能减值 ${ref} | 现金流与减值准备 | 已披露资产组口径 ${ref} | 估值假设背景 ${ref} | 安全边际尚不可量化 ${ref} |`
+  const repairedTable = `${header}\n| 并购风险 | 假设未兑现时可能减值 ${ref} | 现金流与减值准备 | 已披露资产组口径 ${ref}；估值假设背景 ${ref} | 安全边际尚不可量化 ${ref} |`
+  const makeOutput = (table: string) => ({
+    status: 'complete', answer: `公司披露相关风险。${ref}`, markdown: `公司披露相关风险。${ref}`,
+    sections: [{ id: 'risks', markdown: table }],
+    findings: [{ text: '公司披露客户、技术与商誉相关风险。', kind: 'fact', evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:1' }] }],
+    limitations: [], risks: [`相关假设仍需跟踪。${ref}`],
+  })
+  let calls = 0
+  let retryRequest: any
+  const result = await executeCompanyResearchMethod({ skillId: 'company_risk_analysis', company: { symbol: '002384' }, asOf: '2026-10-14', sources: [filing], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async request => {
+    calls++
+    if (calls === 2) retryRequest = request
+    return makeOutput(calls === 1 ? broken : repairedTable)
+  }) })
+  assert.equal(calls, 2)
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  assert.match(retryRequest.instruction, /必须使用五列/)
+  assert.match(retryRequest.instruction, /row at line 3 has 6 cells; expected 5/)
+  assert.match(retryRequest.instruction, /不得丢弃事实、数字或引用/)
+  assert.match(retryRequest.input.repairInstruction, /必须使用五列/)
+  assert.match(result.diagnostics[0]?.message ?? '', /row at line 3 has 6 cells; expected 5/)
+  assert.equal(result.sections.find(section => section.id === 'risks')?.markdown, repairedTable)
+})
+
 test('company method format repair succeeds without degrading to a baseline', async () => {
   const history = { ...source, content: source.content.replace('核心产品业务收入及客户模式。', '核心产品业务收入及客户模式，战略转型历史。') }
   let attempts = 0

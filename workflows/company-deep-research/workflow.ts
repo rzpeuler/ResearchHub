@@ -87,7 +87,7 @@ export function buildCompanySynthesisReviewFeedback(checks: readonly { sectionId
 /** Keep table-derived risk figures attached to the exact disclosure row that carries them. */
 export function addCompanyMethodEvidenceInstructions(skillId: string, methodology: string): string {
   if (skillId !== 'company_risk_analysis') return methodology
-  return `${methodology}\n\nWorkflow 数值引用约束：风险表格中的每个披露金额、比例和汇总值，必须在同一风险单元格或句子中引用直接列出该数字的原始数据行；汇总行有该数字时，必须引用汇总行，不能只引用单位行或组成部分行来代替。表格的科目/列含义不在数据行中时，同时引用本次输入实际提供的对应表头和单位行。不得把相邻表格的表头、期间或单位借给本行；找不到唯一对应行时删除该数字并说明缺口。只有报告明确给出计算关系且各操作数均逐项引用时，才可用组成项计算并表述汇总值。引用仅能使用本次 evidence excerpts 中的精确 sourceCandidateId 与 paragraph 定位。`
+  return `${methodology}\n\nWorkflow 风险矩阵结构约束：风险矩阵固定使用五列，表头依次为“风险类别｜触发条件与影响路径｜可监控指标｜缓解因素｜残余风险”，每个风险数据行必须恰有五格，不能增加、删除或合并表头列。风险、监控指标、缓解披露及剩余证据限制分别放入对应单元格；同一单元格内有多项事实时用中文分号连接并保留各自引用。\n\nWorkflow 数值引用约束：风险表格中的每个披露金额、比例和汇总值，必须在同一风险单元格或句子中引用直接列出该数字的原始数据行；汇总行有该数字时，必须引用汇总行，不能只引用单位行或组成部分行来代替。表格的科目/列含义在数据行中不清楚时，同时引用本次输入实际提供的对应表头和单位行。不得把相邻表格的表头、期间或单位借给本行；找不到唯一对应行时删除该数字并说明缺口。只有报告明确给出计算关系且各操作数均逐项引用时，才可用组成项计算并表述汇总值。引用仅能使用本次 evidence excerpts 中的精确 sourceCandidateId 与 paragraph 定位。`
 }
 
 /** Keep a validated method result when a review-only revision fails validation. */
