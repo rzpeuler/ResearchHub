@@ -502,6 +502,77 @@ test('business-driver repair corrects a uniquely matched product row mislabeled 
   assert.match(result.sections.find(section=>section.id==='revenue-profit-drivers')!.markdown,/半年报分产品表中，汽车、汽车相关产品及其他产品毛利率/)
 })
 
+test('business-driver finding binds the unique split product margin row and drops the wrong industry marker', async () => {
+  const lines = Array.from({ length: 740 }, () => '一般披露事项。')
+  const rows = new Map<number, string>([
+    [716, '单位：元'], [717, '营业收入 营业成本 毛利率'], [718, '营业收入'], [719, '比上年同'], [720, '期增减'],
+    [721, '营业成本'], [722, '比上年同'], [723, '期增减'], [724, '毛利率比'], [725, '上年同期'], [726, '增减'],
+    [727, '分行业'], [728, '日用电子器件制造业 69,404,994,000.00 65,907,931,000.00 5.04% 0.96% 3.88% -2.67%'],
+    [729, '交通运输设备及电气制'], [730, '造业 275,341,358,000.00 213,863,297,000.00 22.33% -8.98% -11.24% 1.98%'],
+    [731, '分产品'], [732, '电子及其他产品 69,404,994,000.00 65,907,931,000.00 5.04% 0.96% 3.88% -2.67%'],
+    [733, '汽车、汽车相关产品及'], [734, '其他产品 275,341,358,000.00 213,863,297,000.00 22.33% -8.98% -11.24% 1.98%'],
+  ])
+  for (const [paragraph, text] of rows) lines[paragraph - 1] = text
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: 'driver-split-product' }, title: '2026年半年度报告', content: lines.join('\n') }
+  const claim = '汽车、汽车相关产品及其他产品毛利率比上年同期增减为1.98%。'
+  const citations = [716, 717, 718, 719, 720, 721, 722, 723, 724, 725, 726, 731]
+    .map(location => ({ sourceCandidateId: 'driver-split-product', location: `paragraph:${location}` }))
+  const draft = {
+    status: 'complete', answer: '分部变化可用于观察，量价归因仍有边界。', markdown: '公司披露的分部变化不能替代量价拆分。',
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: '收入、成本与毛利率方向应结合业务范围解释。[driver-split-product@paragraph:716]' },
+      { id: 'growth-drivers', markdown: '缺少同口径销量与价格输入，不能量化量价贡献。[driver-split-product@paragraph:716]' },
+      { id: 'catalysts', markdown: '后续跟踪分部收入与毛利率变化。[driver-split-product@paragraph:716]' },
+    ],
+    findings: [{ text: claim, kind: 'fact', evidence: citations }], limitations: [], risks: [],
+  }
+  const result = await executeCompanyResearchMethod({
+    company: { symbol: '002594', name: '比亚迪', exchange: 'SZ' }, asOf: '2026-10-23', sources: [filing],
+    reportSourceCandidateIds: ['driver-split-product'], skillId: 'business_driver_analysis', maxAttempts: 1,
+    reasoningExecutor: executor(async () => draft),
+  })
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  const evidence = result.findings[0]!.evidence
+  assert.ok(evidence.some(ref => ref.location === 'paragraph:731'), 'retains the matching product table marker')
+  assert.ok(evidence.some(ref => ref.location === 'paragraph:733'), 'adds the exact split product label')
+  assert.ok(evidence.some(ref => ref.location === 'paragraph:734'), 'adds the exact matching numeric continuation')
+  assert.ok(!evidence.some(ref => ref.location === 'paragraph:727'), 'does not leave the conflicting industry marker attached')
+})
+
+test('business-driver split-product row repair requires the product marker in the finding citations', async () => {
+  const lines = Array.from({ length: 740 }, () => '一般披露事项。')
+  const rows = new Map<number, string>([
+    [716, '单位：元'], [717, '营业收入 营业成本 毛利率'], [718, '营业收入'], [719, '比上年同'], [720, '期增减'],
+    [721, '营业成本'], [722, '比上年同'], [723, '期增减'], [724, '毛利率比'], [725, '上年同期'], [726, '增减'],
+    [727, '分行业'], [728, '日用电子器件制造业 69,404,994,000.00 65,907,931,000.00 5.04% 0.96% 3.88% -2.67%'],
+    [731, '分产品'], [732, '电子及其他产品 69,404,994,000.00 65,907,931,000.00 5.04% 0.96% 3.88% -2.67%'],
+    [733, '汽车、汽车相关产品及'], [734, '其他产品 275,341,358,000.00 213,863,297,000.00 22.33% -8.98% -11.24% 1.98%'],
+  ])
+  for (const [paragraph, text] of rows) lines[paragraph - 1] = text
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: 'driver-split-product-negative' }, title: '2026年半年度报告', content: lines.join('\n') }
+  const claim = '汽车、汽车相关产品及其他产品毛利率比上年同期增减为1.98%。'
+  const citations = [716, 717, 718, 719, 720, 721, 722, 723, 724, 725, 726, 727]
+    .map(location => ({ sourceCandidateId: 'driver-split-product-negative', location: `paragraph:${location}` }))
+  const draft = {
+    status: 'complete', answer: '分部变化可用于观察，量价归因仍有边界。', markdown: '公司披露的分部变化不能替代量价拆分。',
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: '收入、成本与毛利率方向应结合业务范围解释。[driver-split-product-negative@paragraph:716]' },
+      { id: 'growth-drivers', markdown: '缺少同口径销量与价格输入，不能量化量价贡献。[driver-split-product-negative@paragraph:716]' },
+      { id: 'catalysts', markdown: '后续跟踪分部收入与毛利率变化。[driver-split-product-negative@paragraph:716]' },
+    ],
+    findings: [{ text: claim, kind: 'fact', evidence: citations }], limitations: [], risks: [],
+  }
+  const result = await executeCompanyResearchMethod({
+    company: { symbol: '002594', name: '比亚迪', exchange: 'SZ' }, asOf: '2026-10-23', sources: [filing],
+    reportSourceCandidateIds: ['driver-split-product-negative'], skillId: 'business_driver_analysis', maxAttempts: 1,
+    reasoningExecutor: executor(async () => draft),
+  })
+  assert.equal(result.status, 'failed')
+  assert.ok(result.diagnostics.some(diagnostic => diagnostic.code === 'NUMERIC_GROUNDING_ERROR'))
+  const attempt = result.attemptOutputs?.[0]?.output as any
+  assert.ok(!attempt.findings[0].evidence.some((ref: any) => ref.location === 'paragraph:734'), 'does not infer a product row from an uncited product marker')
+})
+
 test('business-driver finding with one margin value gets its exact same-source data row citation', async () => {
   const lines = Array.from({ length: 12 }, () => '一般披露事项。')
   const rows = new Map<number, string>([

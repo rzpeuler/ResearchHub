@@ -630,6 +630,89 @@ function bindExactCompanyTableRows<T extends { readonly findings: readonly Compa
   return changed ? { ...output, findings } : output
 }
 
+/**
+ * Bind a business-driver finding to a uniquely identified split product row
+ * when the model cited the table headers and product marker but omitted the
+ * product label/data continuation. This is intentionally narrower than
+ * general numeric citation repair: exact product label, reported percentage,
+ * table family, supplied excerpt locations, and same-source headers must all
+ * agree. The ordinary grounding validator still decides whether the number is
+ * supported after repair.
+ */
+function bindExactSplitProductDriverFinding<T extends { readonly findings: readonly CompanyMethodFinding[] }>(
+  output: T,
+  packets: readonly CompanyEvidencePacket[],
+  sources: readonly NormalizedResearchSource[],
+): T {
+  const sourceById = new Map(sources.map(source => [source.candidate.candidateId, source]))
+  let changed = false
+  const findings = output.findings.map(finding => {
+    if (!/毛利率/.test(finding.text) || !/汽车、汽车相关产品及其他产品/.test(finding.text)) return finding
+    const claim = finding.text.replace(/\s+/g, '')
+    const percentTokens = [...finding.text.matchAll(/(?<![\d.,])[-−]?\d[\d,]*(?:\.\d+)?\s*[%％]/g)]
+      .map(match => match[0]!.replace(/[,\s％−]/g, '').replace('%', '').replace('-', ''))
+    if (!percentTokens.length) return finding
+    const matched: Array<{ sourceCandidateId: string; labelLocation: string; rowLocation: string; markerLocation: string }> = []
+    const citedBySource = new Map<string, Set<string>>()
+    for (const ref of finding.evidence) citedBySource.set(ref.sourceCandidateId, new Set([...(citedBySource.get(ref.sourceCandidateId) ?? []), ref.location]))
+    for (const [sourceCandidateId, citedLocations] of citedBySource) {
+      const source = sourceById.get(sourceCandidateId)
+      const packet = packets.find(item => item.sourceCandidateId === sourceCandidateId)
+      if (!source || !packet) continue
+      if (!/20\d{2}/.test(source.title) || !/(?:半年度|中期|年度|季度)/.test(source.title)) continue
+      const supplied = new Map(packet.excerpts.map(excerpt => [excerpt.location, excerpt.text.trim()]))
+      const citedText = [...citedLocations].map(location => supplied.get(location) ?? '').join(' ')
+      // Require the actual split header, unit, and product-class marker to be
+      // among this finding's own citations before completing its row evidence.
+      if (!/单位\s*[:：]\s*元/.test(citedText)
+        || !/营业收入/.test(citedText) || !/营业成本/.test(citedText)
+        || !/毛利率/.test(citedText) || !/增减/.test(citedText)
+        || ![...citedLocations].some(location => supplied.get(location) === '分产品')) continue
+      const paragraphs = source.content.split(/\r?\n/)
+      for (let index = 1; index < paragraphs.length; index++) {
+        const row = paragraphs[index]!.trim()
+        const prior = paragraphs[index - 1]!.trim()
+        if (!row || !prior || !/%/.test(row) || /\d/.test(prior)) continue
+        const rowLabel = row.split(/\s+(?=[-−]?\d)/u)[0]?.trim() ?? ''
+        if (!rowLabel) continue
+        const exactLabel = `${prior}${rowLabel}`.replace(/\s+/g, '')
+        if (exactLabel !== '汽车、汽车相关产品及其他产品' || !claim.includes(exactLabel)) continue
+        const rowNumbers = [...row.matchAll(/(?<![\d.,])[-−]?\d[\d,]*(?:\.\d+)?\s*[%％]/g)]
+          .map(match => match[0]!.replace(/[,\s％−]/g, '').replace('%', '').replace('-', ''))
+        if (!percentTokens.every(token => rowNumbers.includes(token))) continue
+        let markerIndex = -1
+        for (let cursor = index - 1; cursor >= Math.max(0, index - 30); cursor--) {
+          if (/^分(?:行业|产品|地区|销售模式|销售渠道)\s*$/.test(paragraphs[cursor]!.trim())) { markerIndex = cursor; break }
+        }
+        if (markerIndex < 0 || paragraphs[markerIndex]!.trim() !== '分产品') continue
+        const markerLocation = `paragraph:${markerIndex + 1}`
+        const labelLocation = `paragraph:${index}`
+        const rowLocation = `paragraph:${index + 1}`
+        if (supplied.get(markerLocation) !== '分产品' || supplied.get(labelLocation) !== prior || supplied.get(rowLocation) !== row) continue
+        matched.push({ sourceCandidateId, markerLocation, labelLocation, rowLocation })
+      }
+    }
+    const unique = [...new Map(matched.map(item => [`${item.sourceCandidateId}|${item.markerLocation}|${item.labelLocation}|${item.rowLocation}`, item])).values()]
+    if (unique.length !== 1) return finding
+    const row = unique[0]!
+    const additions = [row.labelLocation, row.rowLocation]
+      .filter(location => !finding.evidence.some(ref => ref.sourceCandidateId === row.sourceCandidateId && ref.location === location))
+      .map(location => ({ sourceCandidateId: row.sourceCandidateId, location }))
+    if (!additions.length) return finding
+    changed = true
+    // A nearby industry marker is the wrong table family for this explicitly
+    // named product finding; remove only that classification locator.
+    const evidence = finding.evidence.filter(ref => !(ref.sourceCandidateId === row.sourceCandidateId && suppliedClassificationIsIndustry(packets, ref)))
+    return { ...finding, evidence: [...evidence, ...additions] }
+  })
+  return changed ? { ...output, findings } : output
+}
+
+function suppliedClassificationIsIndustry(packets: readonly CompanyEvidencePacket[], ref: CompanyMethodEvidenceRef): boolean {
+  return packets.find(packet => packet.sourceCandidateId === ref.sourceCandidateId)?.excerpts
+    .some(excerpt => excerpt.location === ref.location && excerpt.text.trim() === '分行业') ?? false
+}
+
 /** Repair a misclassified segment claim only when its percentages identify one exact supplied table row. */
 function repairCompanySegmentFindingLabels<T extends {
   readonly findings: readonly CompanyMethodFinding[]
@@ -1098,7 +1181,7 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
       citationRepairs.push(...repaired.repairs.map((repair) => ({ ...repair, attempt })))
       const yearBound = bindCompanyAnswerYearEvidence(repaired.output, input.sources, packets, input.preparedAnalysis, input.company.symbol, input.asOf)
       const parsed = input.skillId === 'business_driver_analysis'
-        ? repairCompanySegmentFindingLabels(bindExactCompanyTableRows(yearBound, packets, input.sources), packets, input.sources)
+        ? repairCompanySegmentFindingLabels(bindExactSplitProductDriverFinding(bindExactCompanyTableRows(yearBound, packets, input.sources), packets, input.sources), packets, input.sources)
         : input.skillId === 'market_structure_analysis'
           ? bindExactCompanyTableRows(yearBound, packets, input.sources, true)
         : yearBound
