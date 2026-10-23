@@ -440,7 +440,10 @@ function applyOnlyNumericRepairTargets(previous: unknown, next: unknown, targets
 }
 
 function numericTokenForCandidateSearch(token: string): string {
-  return token.trim().replace(/(?:人民币)?(?:亿元|万元|元|个百分点|%|倍|万股|股)$/u, '')
+  // Align suffix handling with numeric-grounding.ts so a bounded retry can
+  // find the source row for values displayed in 千元 (and the other declared
+  // monetary scales).
+  return token.trim().replace(/(?:人民币)?(?:万亿元|亿元|百万元|千元|万元|元|个百分点|%|倍|万股|股)$/u, '')
 }
 
 /**
@@ -1248,7 +1251,7 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
           const searchToken = numericTokenForCandidateSearch(token)
           const escaped = searchToken.replaceAll('.', '\\.')
           const technicalIdentifier = text.includes(`${token}G`)
-          const pattern = new RegExp(`(?<![\d.,-])${escaped}${technicalIdentifier ? 'G' : ''}(?![\d.,])`)
+          const pattern = new RegExp(`(?<![\\d.,-])${escaped}${technicalIdentifier ? 'G' : ''}(?![\\d.,])`)
           const candidates = [...packets].sort((a,b)=>Number(referencedSources.has(b.sourceCandidateId))-Number(referencedSources.has(a.sourceCandidateId))).flatMap(packet => packet.excerpts.filter(excerpt => pattern.test(excerpt.text))).slice(0,3)
           return candidates.flatMap(excerpt => {
             if (candidateExcerptCount >= 24 || candidateExcerptBudget < 40) return []
