@@ -631,6 +631,41 @@ test('numeric-only method retry applies only targeted fields and discards unrela
   assert.equal(result.sections.some(section => section.markdown.includes('official-unknown')), false)
 })
 
+test('business-driver retry after citation failure accepts corrected citation and numeric repair together', async () => {
+  const filing = { ...source, content: '公司营业收入同比增长10%。公司业务增长仍需结合经营兑现判断。' }
+  const original = {
+    status: 'complete', answer: '增长判断需要持续跟踪。', markdown: '收入增长仍需观察。[filing-1@paragraph:1]',
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: '收入同比增长999.99%。[filing-1@paragraph:1]' },
+      { id: 'growth-drivers', markdown: '业务扩张是潜在驱动。[official-unknown@paragraph:1]' },
+      { id: 'catalysts', markdown: '后续观察经营兑现。[filing-1@paragraph:1]' },
+    ],
+    findings: [{ text: '收入同比增长999.99%。', kind: 'fact' as const, evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:1' }] }], limitations: [], risks: [],
+  }
+  const corrected = {
+    ...original,
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: '公司披露收入同比增长10.00%。[filing-1@paragraph:1]' },
+      { id: 'growth-drivers', markdown: '业务扩张是潜在驱动，仍需观察经营兑现。[filing-1@paragraph:1]' },
+      original.sections[2],
+    ],
+    findings: [{ text: '公司披露收入同比增长10.00%。', kind: 'fact' as const, evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:1' }] }],
+  }
+  let calls = 0
+  const result = await executeCompanyResearchMethod({ skillId: 'business_driver_analysis', company: { symbol: '002384' }, asOf: '2026-10-17', sources: [filing], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async request => {
+    calls++
+    if (calls === 1) return original
+    const requestInput = (request as any).input
+    assert.equal(requestInput.repairErrors[0].code, 'REFERENCE_ERROR')
+    assert.ok(requestInput.repairNumericIssues.length > 0, JSON.stringify(requestInput.repairNumericIssues))
+    return corrected
+  }) })
+  assert.equal(calls, 2)
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  assert.equal(result.sections.find(section => section.id === 'growth-drivers')?.markdown, corrected.sections[1]!.markdown)
+  assert.equal(result.sections.some(section => section.markdown.includes('official-unknown')), false)
+})
+
 test('numeric-only retry carries a corrected exact source id without importing unrelated prose changes', async () => {
   const filing = { ...source, content: '公司业务仍需跟踪经营兑现。公司披露扩产计划。' }
   const original = {
@@ -1760,6 +1795,7 @@ test('product method accepts enumerated evidence gaps but rejects positive prefe
     '公司将产品定位于AI基础设施场景，是公司定位而非独立客户偏好事实',
     '产品用途和公司关于客户要求的说法不能升级为独立客户偏好事实',
     '公司策略陈述不证明采购客户的真实偏好或订单承诺',
+    '因而产品用途和公司定位不能被当作实际客户偏好事实',
     '本节不据此作客户偏好或产品级盈利判断',
     '现有产品资料不足以验证实际客户偏好或具名竞品的同口径优劣',
     '本次资料没有消费者调研、客户访谈或反馈、可观察购买行为，也没有公司明确披露的具体客户偏好结论。因此，安全、性能、能耗、成本或车型选择等只能作为待验证的潜在采购因素，不能写成实际客户关注事实。',
