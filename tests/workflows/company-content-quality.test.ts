@@ -1538,6 +1538,65 @@ test('R137 prepared-analysis reconciliation fails closed when the bound source e
   const result=reconcileCompanyPreparedAnalysisFacts({sections:value,methodResults:[market,financial],preparedAnalysis:{marketSizing:{calculations:{status:'calculated',value:1286.6,unit:'万辆',formula:'2024年中国新能源汽车全年销量',evidence:[{sourceCandidateId:'official',location:'paragraph:18'}]}},financial:{workingCapitalCalculations:[{metric:'CCC',period:'2026-06-30',daysInPeriod:181,value:11.65,formula:'DSO 22.87天＋DIO 106.21天−DPO 117.43天＝11.65天',sourceCandidateIds:['financial']}]}}})
   assert.deepEqual(result,value)
 })
+test('prepared facts fill business segments from a complete annual product table and restore swapped product-mix periods',()=>{
+  const sourceCandidateId='official-f7c8d23d2829a5e8'
+  const excerpt=(paragraph:number,text:string)=>({sourceCandidateId,location:`paragraph:${paragraph}`,text})
+  const packet={sourceCandidateId,title:'2025年年度报告',publisher:'CNINFO',excerpts:[
+    excerpt(805,'（1）营业收入构成'),excerpt(806,'单位：元'),excerpt(807,'2025 年 2024 年'),
+    excerpt(809,'金额 占营业收入'),excerpt(810,'比重 金额 占营业收入比重'),excerpt(818,'分产品'),
+    excerpt(819,'手机部件、组装'),excerpt(820,'及其他产品 155,236,528,000.00 19.31% 159,608,576,000.00 20.54% -2.74%'),
+    excerpt(821,'汽车、汽车相关'),excerpt(822,'产品及其他产品 648,645,636,000.00 80.68% 617,381,935,000.00 79.45% 5.06%'),
+    excerpt(823,'其他 82,794,000.00 0.01% 111,944,000.00 0.01% -26.04%'),
+  ]}
+  const method:CompanyResearchMethodResult={
+    skillId:'business_model_map',status:'complete',attempts:1,answer:'收入结构。',markdown:'',sections:[{id:'business-model',markdown:[
+      '| 产品类别 | 2025年收入（元） | 占营业收入 | 2024年收入（元） | 占营业收入 |','|---|---:|---:|---:|---:|',
+      '| 手机部件、组装及其他产品 | 155,236,528,000.00 | 19.31% | 159,608,576,000.00 | 20.54% |',
+      '| 汽车、汽车相关产品及其他产品 | 648,645,636,000.00 | 80.68% | 617,381,935,000.00 | 79.45% |',
+      '| 其他 | 82,794,000.00 | 0.01% | 111,944,000.00 | 0.01% [official-f7c8d23d2829a5e8@paragraph:823] |',
+    ].join('\n')}],findings:[
+      {text:'2025年汽车、汽车相关产品及其他产品占比80.68%。',kind:'fact',evidence:[{sourceCandidateId,location:'paragraph:822'}]},
+      {text:'2025年手机部件、组装及其他产品占比19.31%。',kind:'fact',evidence:[{sourceCandidateId,location:'paragraph:820'}]},
+    ],sourceCandidateIds:[sourceCandidateId],limitations:[],risks:[],diagnostics:[],executionEvidence:[packet],
+  }
+  const wrongModelTable=[
+    '| 产品类别 | 2025年收入（元） | 占营业收入 | 2024年收入（元） | 占营业收入 |','|---|---:|---:|---:|---:|',
+    '| 其他 | 111,944,000.00 | 0.01% | 82,794,000.00 | 0.01% [official-f7c8d23d2829a5e8@paragraph:823] |',
+  ].join('\n')
+  const sections=[{id:'business-model',markdown:wrongModelTable,sourceCandidateIds:[sourceCandidateId]},{id:'business-segments',markdown:'按产品披露，汽车和手机业务为主要收入来源。',sourceCandidateIds:[]}]
+  const fixed=reconcileCompanyPreparedAnalysisFacts({sections,methodResults:[method]})
+  const businessModel=fixed.find(item=>item.id==='business-model')!
+  assert.match(businessModel.markdown,/\| 其他 \| 82,794,000\.00 \[official-f7c8d23d2829a5e8@paragraph:823\] \| 0\.01% \[official-f7c8d23d2829a5e8@paragraph:823\] \| 111,944,000\.00 \[official-f7c8d23d2829a5e8@paragraph:823\] \| 0\.01% \[official-f7c8d23d2829a5e8@paragraph:823\] \|/)
+  const segments=fixed.find(item=>item.id==='business-segments')!
+  for(const claim of [
+    '2025年手机部件、组装及其他产品收入155,236,528,000.00元，占营业收入19.31%',
+    '2025年汽车、汽车相关产品及其他产品收入648,645,636,000.00元，占营业收入80.68%',
+    '2025年其他收入82,794,000.00元，占营业收入0.01%',
+  ])assert.ok(segments.markdown.includes(claim),`business segments omitted ${claim}`)
+  for(const paragraph of [805,806,807,809,810,818,819,820,821,822,823])assert.ok(segments.markdown.includes(`[${sourceCandidateId}@paragraph:${paragraph}]`),`business segments missing exact table provenance p${paragraph}`)
+  assert.ok(segments.sourceCandidateIds?.includes(sourceCandidateId))
+  assert.equal(reconcileCompanyPreparedAnalysisFacts({sections:fixed,methodResults:[method]}).find(item=>item.id==='business-segments')!.markdown,segments.markdown,'source-bound section repair is idempotent')
+})
+
+test('annual product mix repair fails closed when the source row is missing or conflicting',()=>{
+  const sourceCandidateId='official-f7c8d23d2829a5e8'
+  const excerpt=(paragraph:number,text:string)=>({sourceCandidateId,location:`paragraph:${paragraph}`,text})
+  const buildPacket=(otherRow:string,location=823)=>({sourceCandidateId,title:'2025年年度报告',publisher:'CNINFO',excerpts:[
+    excerpt(805,'（1）营业收入构成'),excerpt(806,'单位：元'),excerpt(807,'2025 年 2024 年'),excerpt(809,'金额 占营业收入'),excerpt(810,'比重 金额 占营业收入比重'),excerpt(818,'分产品'),excerpt(location,otherRow),
+  ]})
+  const modelMarkdown='| 产品类别 | 2025年收入（元） | 占营业收入 | 2024年收入（元） | 占营业收入 |\n|---|---:|---:|---:|---:|\n| 其他 | 111,944,000.00 | 0.01% | 82,794,000.00 | 0.01% [official-f7c8d23d2829a5e8@paragraph:823] |'
+  const makeMethod=(packets:any[],sectionMarkdown=modelMarkdown):CompanyResearchMethodResult=>({skillId:'business_model_map',status:'complete',attempts:1,answer:'',markdown:'',sections:[{id:'business-model',markdown:sectionMarkdown}],findings:[],sourceCandidateIds:[sourceCandidateId],limitations:[],risks:[],diagnostics:[],executionEvidence:packets})
+  const sections=[{id:'business-model',markdown:modelMarkdown,sourceCandidateIds:[sourceCandidateId]},{id:'business-segments',markdown:'未披露分产品收入规模。',sourceCandidateIds:[]}]
+  const missing=reconcileCompanyPreparedAnalysisFacts({sections,methodResults:[makeMethod([buildPacket('其他 82,794,000.00 0.01%')])]})
+  assert.equal(missing.find(item=>item.id==='business-model')!.markdown,modelMarkdown)
+  assert.equal(missing.find(item=>item.id==='business-segments')!.markdown,'未披露分产品收入规模。')
+  const conflicting=reconcileCompanyPreparedAnalysisFacts({sections,methodResults:[makeMethod([
+    buildPacket('其他 82,794,000.00 0.01% 111,944,000.00 0.01% -26.04%',823),
+    { ...buildPacket('其他 83,000,000.00 0.01% 112,000,000.00 0.01% -25.89%',824), sourceCandidateId:'official-duplicate', excerpts:buildPacket('其他 83,000,000.00 0.01% 112,000,000.00 0.01% -25.89%',824).excerpts.map(item=>({...item,sourceCandidateId:'official-duplicate'})) },
+  ])]})
+  assert.equal(conflicting.find(item=>item.id==='business-model')!.markdown,modelMarkdown)
+  assert.equal(conflicting.find(item=>item.id==='business-segments')!.markdown,'未披露分产品收入规模。')
+})
 test('R138 pairs duplicate interim industry and product rows with their own headers before retaining product cost/margin',()=>{
   const driver:CompanyResearchMethodResult={skillId:'business_driver_analysis',status:'complete',attempts:1,answer:'分产品收入。',markdown:'',sections:[],findings:[],sourceCandidateIds:['official-c19c34dd239b2e9c'],limitations:[],risks:[],diagnostics:[],executionEvidence:[{sourceCandidateId:'official-c19c34dd239b2e9c',title:'2026年半年度报告',publisher:'CNINFO',excerpts:[
     {sourceCandidateId:'official-c19c34dd239b2e9c',location:'paragraph:727',text:'分行业'},

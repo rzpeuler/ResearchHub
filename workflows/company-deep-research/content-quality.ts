@@ -2172,6 +2172,114 @@ export function reconcileCompanyNonRecurringDisclosure<T extends CompanyContentS
   return input.sections.map(item => item.id === section.id ? { ...item, markdown, sourceCandidateIds } : item)
 }
 
+type AnnualProductRevenueEvidence = {
+  readonly year: string
+  readonly priorYear: string
+  readonly label: string
+  readonly amount: string
+  readonly share: string
+  readonly priorAmount: string
+  readonly priorShare: string
+  readonly sourceCandidateId: string
+  readonly rowLocation: string
+  readonly references: readonly string[]
+}
+
+/** Extract only complete, explicitly headed annual 分产品 rows from validated method evidence. */
+function collectAnnualProductRevenueEvidence(methods: readonly CompanyResearchMethodResult[]): AnnualProductRevenueEvidence[] {
+  const candidates: AnnualProductRevenueEvidence[] = []
+  for (const method of methods) {
+    if (method.skillId !== 'business_model_map' || method.status !== 'complete') continue
+    const packets = [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []]
+    for (const packet of packets) {
+      const year = packet.title.match(/((?:19|20)\d{2})\s*年年度报告/)?.[1]
+      if (!year) continue
+      const rows = packet.excerpts.map(item => ({
+        ...item,
+        paragraph: Number(/^paragraph:(\d+)$/.exec(item.location)?.[1] ?? 0),
+      })).filter(item => item.paragraph > 0).sort((left, right) => left.paragraph - right.paragraph)
+      for (const row of rows) {
+        const match = row.text.trim().match(/^(.+?)\s+([\d,]+\.\d{2})\s+([\d.]+)%\s+([\d,]+\.\d{2})\s+([\d.]+)%\s+-?[\d.]+%?\s*$/)
+        if (!match) continue
+        const preceding = rows.filter(item => item.paragraph < row.paragraph && item.paragraph >= row.paragraph - 20)
+        const marker = preceding.filter(item => /^分(?:产品|行业|地区|销售模式|销售渠道)$/.test(item.text.trim())).at(-1)
+        const unit = preceding.find(item => /^单位\s*[：:]\s*元$/.test(item.text.trim()))
+        const tableTitle = preceding.find(item => /营业收入构成/.test(item.text))
+        const headerText = preceding.map(item => item.text).join(' ')
+        const years = [...new Set([...headerText.matchAll(/((?:19|20)\d{2})\s*年/g)].map(item => item[1]!))]
+        const shareHeader = preceding.map(item => item.text).join('').replace(/\s+/g, '').includes('金额占营业收入比重金额占营业收入比重')
+        if (marker?.text.trim() !== '分产品' || !unit || !tableTitle || !shareHeader || years[0] !== year || !years[1]) continue
+        const previous = rows.find(item => item.paragraph === row.paragraph - 1)
+        const splitLabel = Boolean(previous && previous.text.trim() && !/[\d%％]/.test(previous.text) && !/^分(?:产品|行业|地区|销售模式|销售渠道)$/.test(previous.text.trim()))
+        const label = `${splitLabel ? previous!.text.trim() : ''}${match[1]!.trim()}`
+        if (!label || label.length > 48) continue
+        const references = [...new Set([tableTitle, unit, ...preceding.filter(item => new RegExp(`${year}\\s*年`).test(item.text) || new RegExp(`${years[1]}\\s*年`).test(item.text) || /金额|占营业收入比重/.test(item.text)), marker, ...(splitLabel ? [previous] : []), row]
+          .map(item => item && `${packet.sourceCandidateId}@${item.location}`).filter((item): item is string => Boolean(item)))]
+        candidates.push({
+          year, priorYear: years[1]!, label, amount: match[2]!, share: match[3]!, priorAmount: match[4]!, priorShare: match[5]!,
+          sourceCandidateId: packet.sourceCandidateId, rowLocation: row.location, references,
+        })
+      }
+    }
+  }
+  return [...new Map(candidates.map(item => [`${item.sourceCandidateId}@${item.rowLocation}|${item.label}`, item])).values()]
+}
+
+function uniqueLatestAnnualProductRevenueRows(methods: readonly CompanyResearchMethodResult[]): AnnualProductRevenueEvidence[] {
+  const rows = collectAnnualProductRevenueEvidence(methods)
+  const latestYear = rows.map(item => item.year).sort().at(-1)
+  if (!latestYear) return []
+  const latestRows = rows.filter(item => item.year === latestYear)
+  const labels = [...new Set(latestRows.map(item => item.label))]
+  return labels.flatMap(label => {
+    const matches = latestRows.filter(item => item.label === label)
+    return matches.length === 1 ? matches : []
+  })
+}
+
+/** Correct a reported product-mix row's period placement only when all source values are present and uniquely sourced. */
+function repairAnnualProductMixTable(markdown: string, rows: readonly AnnualProductRevenueEvidence[]): string {
+  if (!rows.length) return markdown
+  const lines = markdown.split('\n')
+  let activeYears: Array<string | undefined> | undefined
+  let changed = false
+  for (let index = 0; index < lines.length; index++) {
+    const cells = lines[index]!.split('|').map(cell => cell.trim())
+    if (cells.length < 6) continue
+    if (cells.slice(1, -1).some(cell => /(?:19|20)\d{2}\s*年/.test(cell))) {
+      const columns: Array<string | undefined> = []
+      let currentYear: string | undefined
+      for (const cell of cells.slice(2, -1)) {
+        const headerYear = cell.match(/((?:19|20)\d{2})\s*年/)?.[1]
+        if (headerYear) currentYear = headerYear
+        columns.push(currentYear)
+      }
+      activeYears = columns.length === 4 && new Set(columns).size === 2 ? columns : undefined
+      continue
+    }
+    if (!activeYears || /^[-: ]+$/.test(cells.slice(1, -1).join(''))) continue
+    const label = cells[1]
+    const fact = rows.find(item => item.label === label)
+    if (!fact || cells.length !== activeYears.length + 3) continue
+    const expected = new Map([[fact.year, [fact.amount, `${fact.share}%`]], [fact.priorYear, [fact.priorAmount, `${fact.priorShare}%`]]])
+    if (activeYears[0] !== fact.year && activeYears[0] !== fact.priorYear) continue
+    const sourceValues = [...expected.values()].flat()
+    const presentValues = cells.slice(2, -1).map(cell => cell.replace(/\[[^\]]+@paragraph:\d+\]/g, '').trim())
+    if (presentValues.length !== 4 || sourceValues.some(value => !presentValues.some(cell => cell.includes(value)))) continue
+    const repairedValues: string[] = []
+    for (let column = 0; column < activeYears.length; column += 2) {
+      const year = activeYears[column]
+      if (activeYears[column + 1] !== year) return markdown
+      const values = year ? expected.get(year) : undefined
+      if (!values) return markdown
+      for (const value of values) repairedValues.push(`${value} [${fact.sourceCandidateId}@${fact.rowLocation}]`)
+    }
+    const replacement = `| ${label} | ${repairedValues.join(' | ')} |`
+    if (replacement !== lines[index]) { lines[index] = replacement; changed = true }
+  }
+  return changed ? lines.join('\n') : markdown
+}
+
 /** Restore exact cross-method BYD figures in synthesis when a section contradicts its already-prepared evidence. */
 export function reconcileCompanyPreparedAnalysisFacts<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[]; readonly preparedAnalysis?: unknown; readonly sources?: readonly { readonly candidate: { readonly candidateId: string }; readonly title: string; readonly content: string }[] }): readonly T[] {
   const root = input.preparedAnalysis && typeof input.preparedAnalysis === 'object' ? input.preparedAnalysis as Record<string, unknown> : undefined
@@ -2211,6 +2319,24 @@ export function reconcileCompanyPreparedAnalysisFacts<T extends CompanyContentSe
         return `${markdown.trim()}\n\n#### ${latestYear}年产品收入规模\n${statement}。该比例为年报披露的产品收入结构，不代表客户集中度、利润贡献或未来增速。${refs}`
       })
     }
+    const annualRows = uniqueLatestAnnualProductRevenueRows(input.methodResults)
+    const modelMethodText = [businessMethod.markdown, businessMethod.answer, ...businessMethod.sections.map(item => item.markdown)].join('\n')
+    const methodBoundRows = annualRows.filter(row => modelMethodText.includes(row.label)
+      && modelMethodText.includes(row.amount) && modelMethodText.includes(row.priorAmount)
+      && modelMethodText.includes(`[${row.sourceCandidateId}@${row.rowLocation}]`))
+    if (methodBoundRows.length) {
+      patchSection('business-model', markdown => repairAnnualProductMixTable(markdown, methodBoundRows))
+    }
+    const supportedSegmentRows = annualRows.filter(row => row.references.includes(`${row.sourceCandidateId}@${row.rowLocation}`))
+    if (supportedSegmentRows.length) patchSection('business-segments', (markdown, ids) => {
+      const missing = supportedSegmentRows.filter(row => !(markdown.includes(row.label)
+        && markdown.includes(row.amount) && markdown.includes(`${row.share}%`)
+        && markdown.includes(`[${row.sourceCandidateId}@${row.rowLocation}]`)))
+      if (!missing.length) return markdown
+      const rows = missing.map(row => `${row.year}年${row.label}收入${row.amount}元，占营业收入${row.share}%；上年（${row.priorYear}年）收入${row.priorAmount}元，占比${row.priorShare}%。${row.references.map(ref => `[${ref}]`).join(' ')}`)
+      for (const row of missing) ids.add(row.sourceCandidateId)
+      return `${markdown.trim()}\n\n#### ${supportedSegmentRows[0]!.year}年分产品收入与上年对照\n${rows.join('\n')}`
+    })
   }
 
   const marketSizing = root?.marketSizing as Record<string, unknown> | undefined

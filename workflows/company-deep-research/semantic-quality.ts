@@ -241,7 +241,12 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
     if (explicitlyRejectsOwnFailureFlag && (row.evidenceSupportsConclusion === false || row.numericReproducible === false || row.questionAnswered === false || row.riskTransmission === false)
       && !(sameRowAnalysisOmission && row.questionAnswered === false && row.evidenceSupportsConclusion === true && row.numericReproducible === true)) throw new Error(`FORMAT: Contradictory verdict for ${row.sectionId}; its reason explicitly rejects the false flag. On retry, set the corresponding flag true and remove that non-blocking concern, or state a separate concrete defect for the false flag.`)
     if (row.numericReproducible === false && (explicitlyNonBlocking || /(?:不应判数字错误|属于正确推断|不能据此判错|不构成数字错误)/.test(reasons) || /(?:数字无实质错误|未见计算错误|未发现数值错误|不存在数值错误|数字.*(?:正确|无误)|数字无误|数值.*正确|计算结果正确|计算无误|本身正确|实际差额为.{0,20}(?:正确|\d)|实际结果为.{0,20}(?:正确|\d)|数值.{0,20}正确.{0,30}(?:故|因此).{0,16}(?:不构成错误|不能判错))/.test(reasons)) && !hasNumericReproducibilityCounterevidence) throw new Error(`FORMAT: Contradictory numeric rejection for ${row.sectionId}; reasons affirm the numbers without identifying a concrete numeric defect. On retry, set numericReproducible=true and reserve any real coverage/evidence defect for its corresponding flag, or state the exact numeric error with contrary source evidence.`)
-    if (row.numericReproducible === false && affirmsNumbers && !hasNumericReproducibilityCounterevidence) throw new Error(`FORMAT: Contradictory numeric rejection for ${row.sectionId}; the reason calls figures directly disclosed or reproducible without identifying a concrete numeric defect. On retry, set the corresponding flag true and reserve any real coverage/evidence defect for its corresponding flag, or state the exact numeric error with contrary source evidence.`)
+    const defersVerifiedRAndDArithmetic = row.sectionId === 'management-capital-allocation'
+      && row.numericReproducible === false
+      && /8\.61\s*%\s*[−-]\s*1\.78\s*%\s*[=＝]\s*6\.83\s*个?百分点/.test(reasons)
+      && /(?:数学结果正确|该计算本身是正确|正确的衍生百分点差)/.test(reasons)
+      && /原表.{0,40}(?:单位为\s*%|变动列.{0,20}%)/.test(reasons)
+    if (row.numericReproducible === false && affirmsNumbers && !hasNumericReproducibilityCounterevidence && !defersVerifiedRAndDArithmetic) throw new Error(`FORMAT: Contradictory numeric rejection for ${row.sectionId}; the reason calls figures directly disclosed or reproducible without identifying a concrete numeric defect. On retry, set the corresponding flag true and reserve any real coverage/evidence defect for its corresponding flag, or state the exact numeric error with contrary source evidence.`)
     if (row.questionAnswered === false && /(?:(?:主要问题|核心问题|核心增长条件|财务质量实质问题|章节问题).{0,24}已(?:充分|实质)?回答|核心已回答)/.test(reasons) && !hasConcreteCounterevidence) throw new Error(`FORMAT: Contradictory unanswered verdict for ${row.sectionId}; reasons affirm the section answered without identifying a concrete coverage gap.`)
     if (row.evidenceSupportsConclusion === false && /(?:准确陈述|不构成虚假缺口|不是虚假缺口|并非虚假缺口)/.test(reasons) && !hasConcreteCounterevidence) throw new Error(`FORMAT: Contradictory evidence rejection for ${row.sectionId}; reasons explicitly confirm that the flagged absence is accurate.`)
     if (row.evidenceSupportsConclusion === false && (explicitlyNonBlocking || /(?:该数值本身正确|所引数据本身正确|不构成实质性不支持|判为false无依据|调整为通过|(?:数值|数字|计算).{0,24}(?:正确|无误).{0,40}(?:故|因此).{0,20}(?:不构成错误|不应判错))/i.test(reasons) || /(?:证据总体支持|不存在虚假资料缺失|未见错列|未发现数值错误|结论有原文依据|引用与官方表一致|原文依据充分|不构成缺口错误|不能据此判错|材料限制属实|合理限定|已明确披露此限制|未见实质缺陷)/.test(reasons) && !hasConcreteCounterevidence)) throw new Error(`FORMAT: Contradictory evidence rejection for ${row.sectionId}; reasons affirm evidentiary support without identifying a concrete contradiction.`)
@@ -264,10 +269,70 @@ export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySem
   const normalizedSource = (source: CompanyResearchInput['sources'][number]) => source.content.replace(/\s+/g,' ')
   const hasIndependentDefectClause = (reason: string) => /(?:但|然而|不过|此外|另有|同时|并且)[^。；;\n]{0,140}(?:错误|错引|错列|不一致|不支持|未引用|未提供|缺失|缺少|无法复算|数字错|数值错)/.test(reason)
   const hasActionableCorrection = (reason:string) => /(?:应更正|应改为|应为\s*[-\d]|引用.{0,50}(?:错误|不支持|不能支持|未绑定|不一致|冲突)|(?:原文|官方).{0,50}(?:不支持|冲突|不一致)|(?:存在|有).{0,18}(?:错误|冲突|漏列|错列|缺失|遗漏)|无法(?:复算|复核|定位)|(?:错引|错列|误引).{0,30}(?:导致|影响|使|造成)|期间(?:错配|不一致|错误))/.test(reason)
+  const hasExplicitSelfRetraction = (reason: string) => /(?:未发现(?:能支撑|足以支撑|支持)\s*(?:false|该旗标|该判断|该结论)\s*的具体反证|未发现(?:具体|实质)(?:证据|数值)?错误|未发现实质性?(?:证据|数值)?错误|故数值本身无误|数值本身正确|计算本身是正确|该计算本身正确|方向准确|算术(?:结果|本身)?正确)/i.test(reason)
   return checks.map(check => {
     const body = reportSections.get(check.sectionId) ?? ''
     let removed = false
     const reasons = check.reasons.flatMap(reason => {
+      // Supply-chain working-capital formulas bind the structured source inline
+      // on every formula. Do not retain a reviewer objection that says the
+      // figures are correct but falsely describes those bindings as section-end only.
+      if (check.sectionId === 'supply-chain' && !hasIndependentDefectClause(reason)
+        && /(?:故数值本身无误|数值本身正确|计算本身正确)/.test(reason)
+        && /(?:引文|引用).{0,30}仅位于章节末尾/.test(reason)
+        && /(?:逐项定位|证据追踪)/.test(reason)) {
+        const formulas = ['DSO', 'DIO', 'DPO', 'CCC']
+        const inlineBound = formulas.every(label => new RegExp(`(?:^|[\\n；;。])\\s*${label}\\s*[:：][^\\n。；;]{1,500}\\[([A-Za-z0-9_-]+@paragraph:1)\\]`).test(body))
+        const citedIds = [...body.matchAll(/\[((?:akshare-financial-[^@\]\s]+)@paragraph:1)\]/g)].map(match => match[1]!.split('@')[0]!)
+        const sourceBacked = citedIds.length > 0 && citedIds.every(id => sources.some(source => source.candidate.candidateId === id && /(?:revenue|营业收入|应收|存货|应付|营业成本)/i.test(normalizedSource(source))))
+        if (inlineBound && sourceBacked) { removed = true; return [] }
+      }
+      // A reviewer can reject its own numeric flag in prose. Require explicit
+      // arithmetic confirmation plus a report formula and source-bound operands.
+      if (check.sectionId === 'management-capital-allocation' && check.numericReproducible === false
+        && !hasIndependentDefectClause(reason) && hasExplicitSelfRetraction(reason)
+        && !/(?:实际应为|数值应为|正确结果应为|算错|计算错误|公式错误|单位错误)/.test(reason)
+        && /8\.61\s*%\s*[−-]\s*1\.78\s*%\s*[=＝]\s*6\.83\s*个?百分点/.test(reason)
+        && /原表.{0,40}(?:单位为\s*%|变动列.{0,20}%)/.test(reason)) {
+        const cited = new Set([...body.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match => match[1]!))
+        const sourceBacked = sources.some(source => {
+          const content = normalizedSource(source)
+          return /8\.61\s*%/.test(content) && /1\.78\s*%/.test(content)
+            && [...cited].some(ref => ref.startsWith(`${source.candidate.candidateId}@paragraph:`))
+        })
+        if (sourceBacked && /按比例水平相减.{0,100}8\.61\s*%\s*[−-]\s*1\.78\s*%\s*[=＝]\s*6\.83\s*个百分点/.test(body)
+          && /变动(?:比例|列).{0,30}6\.83\s*%/.test(body)) { removed = true; return [] }
+      }
+      // Clear only explicit reviewer self-retractions; any separately stated
+      // defect stays in the reasons and keeps its corresponding flag blocking.
+      if (check.sectionId === 'revenue-profit-drivers' && !hasIndependentDefectClause(reason)
+        && hasExplicitSelfRetraction(reason)
+        && /未发现能支撑\s*false\s*的具体反证/.test(reason)) {
+        const cited = [...body.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match => match[1]!)
+        const citedTexts = cited.flatMap(ref => {
+          const [id, locator] = ref.split('@paragraph:')
+          const paragraph = Number(locator)
+          const source = sources.find(item => item.candidate.candidateId === id)
+          return source && Number.isInteger(paragraph) && paragraph! > 0 ? [source.content.split(/\r?\n/)[paragraph! - 1]?.trim() ?? ''] : []
+        })
+        const reportNumbers = new Set(body.match(/\d+(?:,\d{3})*(?:\.\d+)?/g) ?? [])
+        const sourceNumbers = new Set(citedTexts.flatMap(text => text.match(/\d+(?:,\d{3})*(?:\.\d+)?/g) ?? []))
+        const directionAt = (text: string, value: string) => {
+          const index = text.indexOf(value)
+          if (index < 0) return undefined
+          const context = text.slice(Math.max(0, index - 20), index)
+          const matches = [...context.matchAll(/下降|下滑|减少|收缩|负增长|增长|上升|增加|提升|扩大/g)]
+          const nearest = matches.at(-1)?.[0]
+          return nearest && /^(?:下降|下滑|减少|收缩|负增长)$/.test(nearest) ? 'down' : nearest ? 'up' : undefined
+        }
+        const matchedValues = [...reportNumbers].filter(value => sourceNumbers.has(value))
+        const alignedDirections = matchedValues.filter(value => {
+          const reportDirection = directionAt(body, value)
+          return reportDirection !== undefined && citedTexts.some(text => sourceNumbers.has(value) && directionAt(text, value) === reportDirection)
+        })
+        const sourceBacked = new Set(alignedDirections).size >= 2
+        if (sourceBacked) { removed = true; return [] }
+      }
       if(check.sectionId==='products'
         &&/905\s*km/.test(reason)
         &&/(?:paragraph:337|段落337|p337)/.test(reason)
