@@ -539,6 +539,61 @@ test('business-driver finding binds the unique split product margin row and drop
   assert.ok(!evidence.some(ref => ref.location === 'paragraph:727'), 'does not leave the conflicting industry marker attached')
 })
 
+test('business-driver segment repair preserves preceding exact-row citations and does not transfer them to the replacement sentence', async () => {
+  const interimLines = Array.from({ length: 740 }, () => '一般披露事项。')
+  const interimRows = new Map<number, string>([
+    [716, '单位：元'], [717, '营业收入 营业成本 毛利率'], [718, '营业收入'], [719, '比上年同'], [720, '期增减'],
+    [721, '营业成本'], [722, '比上年同'], [723, '期增减'], [724, '毛利率比'], [725, '上年同期'], [726, '增减'], [727, '分行业'],
+    [728, '日用电子器件制造业 69,404,994,000.00 65,907,931,000.00 5.04% 0.96% 3.88% -2.67%'],
+  ])
+  for (const [paragraph, text] of interimRows) interimLines[paragraph - 1] = text
+  const interimId = 'interim-industry-margin'
+  const interim = { ...source, candidate: { ...source.candidate, candidateId: interimId }, title: '2026年半年度报告', content: interimLines.join('\n') }
+
+  const annualLines = Array.from({ length: 15 }, () => '一般披露事项。')
+  const annualRows = new Map<number, string>([
+    [1, '单位：元'], [2, '营业收入 营业成本 毛利率'], [3, '营业收入比上年同期增减'], [4, '营业成本比上年同期增减'],
+    [5, '毛利率比上年同期增减'], [6, '分行业'], [7, '交通运输设备及电气制造业 100 90 18.00% 2.00% 3.00% -1.00%'],
+    [8, '分产品'], [9, '汽车、汽车相关产品及其他产品 100 90 20.49% 5.06% 7.53% -1.82%'],
+  ])
+  for (const [paragraph, text] of annualRows) annualLines[paragraph - 1] = text
+  const annualId = 'annual-product-margin'
+  const annual = { ...source, candidate: { ...source.candidate, candidateId: annualId }, title: '2025年年度报告', content: annualLines.join('\n') }
+
+  const interimRefs = [716, 717, 721, 722, 723, 724, 725, 726, 727, 728].map(paragraph => ({ sourceCandidateId: interimId, location: `paragraph:${paragraph}` }))
+  const interimSectionRefs = Array.from({ length: 13 }, (_, index) => ({ sourceCandidateId: interimId, location: `paragraph:${index + 716}` }))
+  const annualRefs = [1, 2, 3, 4, 5, 6, 7].map(paragraph => ({ sourceCandidateId: annualId, location: `paragraph:${paragraph}` }))
+  const interimClaim = '同一半年报分行业表中，日用电子器件制造业毛利率水平为5.04%，毛利率比上年同期增减为-2.67%；营业收入同比增加0.96%，营业成本同比增加3.88%。'
+  const mislabeledAnnualClaim = '2025年年度报告分行业表显示，交通运输设备及电气制造业毛利率水平为20.49%，毛利率比上年同期增减为-1.82%；营业收入同比增加5.06%，营业成本同比增加7.53%。'
+  const refs = (items: readonly { sourceCandidateId: string; location: string }[]) => items.map(ref => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')
+  const draft = {
+    status: 'complete', answer: '分行业毛利变化需结合期间和范围判断。', markdown: '公司披露的分部毛利变化仍需结合收入结构观察。',
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: `${interimClaim} ${refs(interimSectionRefs)}\n\n${mislabeledAnnualClaim} ${refs(annualRefs)}` },
+      { id: 'growth-drivers', markdown: `缺少同期间量价数据，不能量化收入贡献。[${interimId}@paragraph:728]` },
+      { id: 'catalysts', markdown: `继续观察公司特定商业化节点及后续兑现。[${annualId}@paragraph:9]` },
+    ],
+    findings: [
+      { text: interimClaim, kind: 'fact', evidence: interimRefs },
+      { text: mislabeledAnnualClaim, kind: 'fact', evidence: annualRefs },
+    ], limitations: [], risks: [],
+  }
+  const result = await executeCompanyResearchMethod({
+    company: { symbol: '002594', name: '比亚迪', exchange: 'SZ' }, asOf: '2026-10-24', sources: [interim, annual],
+    reportSourceCandidateIds: [interimId, annualId], skillId: 'business_driver_analysis', maxAttempts: 1,
+    reasoningExecutor: executor(async () => draft),
+  })
+  assert.equal(result.status, 'complete', JSON.stringify({ diagnostics: result.diagnostics, findings: result.findings }))
+  const section = result.sections.find(item => item.id === 'revenue-profit-drivers')!.markdown
+  const interimSentence = section.slice(section.indexOf(interimClaim), section.indexOf('2025年年度报告'))
+  const annualSentence = section.slice(section.indexOf('2025年年度报告'))
+  assert.match(interimSentence, new RegExp(`${interimId}@paragraph:728`), 'the exact same-row evidence remains attached to the interim-period claim')
+  const grounding = validateCompanyNumericGrounding({ markdown: interimSentence, sources: [interim, annual], evidenceContexts: result.executionEvidence })
+  assert.equal(grounding.status, 'grounded', JSON.stringify(grounding.diagnostics))
+  assert.doesNotMatch(annualSentence, new RegExp(`${interimId}@paragraph:728`), 'the preceding sentence’s row citation is not transferred to the repaired annual sentence')
+  assert.match(annualSentence, new RegExp(`${annualId}@paragraph:9`), 'the replacement sentence uses its own exact product-row evidence')
+})
+
 test('business-driver split-product row repair requires the product marker in the finding citations', async () => {
   const lines = Array.from({ length: 740 }, () => '一般披露事项。')
   const rows = new Map<number, string>([

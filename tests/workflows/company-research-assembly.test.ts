@@ -665,6 +665,34 @@ test('table repair reattaches the industry-scale header only when the following 
   assert.ok(validateCompanyResearchMarkdownTables(unsupported.markdown).some(issue => issue.includes('separator')))
 })
 
+test('table repair splits only an exact cited 7+1+7 financial row and next table header fusion', () => {
+  const columns = ['营业收入（元）', '营业成本（元）', '毛利率', '营业收入比上年同期增减', '营业成本比上年同期增减', '毛利率比上年同期增减']
+  const priorHeader = ['2024年度分行业分类', ...columns]
+  const productHeader = ['2024年度分产品分类', ...columns]
+  const priorRow = ['交通运输设备及电气制造业', '617,381,935,000.00', '479,660,859,000.00', '22.31%', '27.70%', '25.62%', '1.29% [annual@paragraph:720]']
+  const productRow = ['汽车、汽车相关产品及其他产品', '617,381,935,000.00', '479,660,859,000.00', '22.31%', '27.70%', '25.62%', '1.29% [annual@paragraph:725]']
+  const joined = `| ${[...priorRow, '2024年度分产品标签与匹配数据分别列示：[annual@paragraph:722] [annual@paragraph:723]', ...productHeader].join(' | ')} |
+|---|---|---|---|---|---|---|
+| ${productRow.join(' | ')} |`
+  const fixture = `| ${priorHeader.join(' | ')} |
+|---|---|---|---|---|---|---|
+${joined}`
+  const repaired = repairCompanyResearchMarkdownTables(fixture)
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_FINANCIAL_HEADER_DETACHED_FROM_PRIOR_ROW')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.match(repaired.markdown, /\| 交通运输设备及电气制造业 \| 617,381,935,000\.00 \| 479,660,859,000\.00 \| 22\.31% \| 27\.70% \| 25\.62% \| 1\.29% \[annual@paragraph:720\] \|\n2024年度分产品标签与匹配数据分别列示： ?\[annual@paragraph:722\] \[annual@paragraph:723\]\n\| 2024年度分产品分类 \|/)
+  assert.match(repaired.markdown, /\| 2024年度分产品分类 \| 营业收入（元） \| 营业成本（元） \| 毛利率 \| 营业收入比上年同期增减 \| 营业成本比上年同期增减 \| 毛利率比上年同期增减 \|\n\|---\|---\|---\|---\|---\|---\|---\|\n\| 汽车、汽车相关产品及其他产品/)
+
+  const malformedCitation = repairCompanyResearchMarkdownTables(fixture.replace('[annual@paragraph:722] [annual@paragraph:723]', '[missing-locator]'))
+  assert.ok(malformedCitation.repairs.every(repair => !repair.startsWith('TABLE_FINANCIAL_HEADER_DETACHED_FROM_PRIOR_ROW')))
+  assert.match(malformedCitation.markdown, /\[missing-locator\]/)
+  assert.ok(validateCompanyResearchMarkdownTables(malformedCitation.markdown).length > 0)
+  const wrongWidth = repairCompanyResearchMarkdownTables(fixture.replace('|---|---|---|---|---|---|---|\n| 汽车', '|---|---|---|---|---|---|\n| 汽车'))
+  assert.ok(wrongWidth.repairs.every(repair => !repair.startsWith('TABLE_FINANCIAL_HEADER_DETACHED_FROM_PRIOR_ROW')))
+  assert.ok(validateCompanyResearchMarkdownTables(wrongWidth.markdown).length > 0)
+})
+
 test('normal nineteen-section assembly surfaces malformed tables from atomic method sections', async () => {
   const industryMethod: CompanyResearchMethodResult = {
     ...method,

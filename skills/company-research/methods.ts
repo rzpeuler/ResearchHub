@@ -795,7 +795,24 @@ function repairCompanySegmentFindingLabels<T extends {
     return { ...finding, text, evidence: refs.map(location => ({ sourceCandidateId: candidate.sourceId, location })) }
   })
   if (!repairs.length) return output
-  const rewrite = (markdown: string) => markdown.split(/(?<=[。；\n])/u).map(sentence => {
+  const sentenceChunks = (markdown: string): string[] => {
+    const chunks = markdown.split(/(?<=[。；\n])/u)
+    const sentences: string[] = []
+    for (let chunk of chunks) {
+      // Citations are often placed after terminal punctuation. Attach a
+      // leading citation run to the preceding sentence before a repair so
+      // changing the next sentence cannot erase its neighbor's evidence.
+      while (sentences.length) {
+        const trailingCitations = /^\s*((?:\[[A-Za-z0-9._:-]+@paragraph:\d+\]\s*)+)/u.exec(chunk)
+        if (!trailingCitations) break
+        sentences[sentences.length - 1] += trailingCitations[0]
+        chunk = chunk.slice(trailingCitations[0].length)
+      }
+      if (chunk) sentences.push(chunk)
+    }
+    return sentences
+  }
+  const rewrite = (markdown: string) => sentenceChunks(markdown).map(sentence => {
     let result = sentence
     for (const repair of repairs) {
       if (!repair.oldLabel || !result.includes(repair.oldLabel) || !repair.signatures.some(token => result.includes(token))) continue

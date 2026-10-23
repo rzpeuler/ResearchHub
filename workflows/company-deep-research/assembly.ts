@@ -122,6 +122,48 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
   const separator = (width: number): string => `| ${Array.from({ length: width }, () => '---').join(' | ')} |`
   const isPipeLine = (line: string): boolean => line.includes('|') && !/^\s*```/.test(line)
   const isSeparator = (line: string): boolean => isPipeLine(line) && splitCells(line).every(value => /^:?-{3,}:?$/.test(value))
+  // A financial table can be fused onto the previous data row as exactly
+  // seven valid data cells, one cited explanatory cell, and seven cells for
+  // the next financial header. Detach only when both table widths, numeric
+  // row shape, header labels, following separator/data row, and locator syntax
+  // all agree. This keeps the explanatory paragraph and every citation.
+  const financialColumns = [
+    '营业收入（元）', '营业成本（元）', '毛利率',
+    '营业收入比上年同期增减', '营业成本比上年同期增减', '毛利率比上年同期增减',
+  ]
+  const amountCell = /^[\d,]+(?:\.\d+)?$/u
+  const percentCell = /^-?\d+(?:\.\d+)?%$/u
+  const locatedCitations = (value: string): string[] => [...value.matchAll(/\[([A-Za-z0-9._:-]+@paragraph:\d+)\]/gu)].map(match => match[1]!)
+  for (let rowIndex = 0; rowIndex + 2 < lines.length; rowIndex++) {
+    const cells = splitCells(lines[rowIndex]!)
+    if (cells.length !== 15 || !isSeparator(lines[rowIndex + 1]!) || splitCells(lines[rowIndex + 1]!).length !== 7) continue
+    const data = cells.slice(0, 7)
+    const note = cells[7]!
+    const nextHeader = cells.slice(8)
+    if (!/^20\d{2}(?:年度|年上半年)分(?:行业|产品)分类$/u.test(nextHeader[0]!)
+      || JSON.stringify(nextHeader.slice(1)) !== JSON.stringify(financialColumns)) continue
+    const finalPercent = data[6]!.replace(/\[[A-Za-z0-9._:-]+@paragraph:\d+\]/gu, '').trim()
+    if (!data[0] || !amountCell.test(data[1]!) || !amountCell.test(data[2]!)
+      || !data.slice(3, 6).every(value => percentCell.test(value!)) || !percentCell.test(finalPercent)) continue
+    const rowCitations = locatedCitations(data[6]!)
+    const noteCitations = locatedCitations(note)
+    const noteText = note.replace(/\[[A-Za-z0-9._:-]+@paragraph:\d+\]/gu, '').trim()
+    const followingRows: string[][] = []
+    for (let index = rowIndex + 2; index < lines.length && isPipeLine(lines[index]!) && !isSeparator(lines[index]!); index++) {
+      const followingCells = splitCells(lines[index]!)
+      if (followingCells.length !== 7) break
+      followingRows.push(followingCells)
+    }
+    const adjacentSourceIds = [...rowCitations, ...followingRows.flatMap(row => locatedCitations(row[6]!))].map(citation => citation.split('@')[0])
+    if (!rowCitations.length || !noteCitations.length || /@paragraph|\[[^\]]+\]/u.test(noteText)
+      || !/(?:表头|标签|匹配数据)/u.test(noteText)
+      || !/(?:营业收入|营业成本|毛利率|同比变化|列示|匹配数据)/u.test(noteText)
+      || !noteCitations.some(citation => adjacentSourceIds.includes(citation.split('@')[0]))) continue
+    if (!followingRows.length || !followingRows.some(row => row[0] && locatedCitations(row[6]!).length > 0)) continue
+    lines.splice(rowIndex, 1, renderRow(data), noteText + ' ' + noteCitations.map(citation => `[${citation}]`).join(' '), renderRow(nextHeader))
+    repairs.push(`TABLE_FINANCIAL_HEADER_DETACHED_FROM_PRIOR_ROW: line ${rowIndex + 1}; header ${nextHeader[0]}`)
+    rowIndex += 2
+  }
   // The industry method can emit the adjacent-market table header before its
   // boundary explanation, then place the separator and rows after a subsection
   // heading. Reattach only this exact four-column header when the intervening
