@@ -38,8 +38,8 @@
     "reportId": "company-research-600519-pi-company-tool-authorized",
     "committedIds": [
       "source:research-56e2e76ac69cc71c",
-      "source:research-9775c95045aeb42a",
-      "source:research-66a2a375d713988f",
+      "source:research-d31e3dd3b2259e54",
+      "source:research-c29d1fafaa352e08",
       "claim:research-5df594d98cb4c35a",
       "claim:research-00adacc6e05775c6",
       "claim:research-e0235d1a22509e5f",
@@ -55,8 +55,8 @@
     "registryResolvedReportRefs": [
       "entity:company-600519",
       "source:research-56e2e76ac69cc71c",
-      "source:research-9775c95045aeb42a",
-      "source:research-66a2a375d713988f",
+      "source:research-d31e3dd3b2259e54",
+      "source:research-c29d1fafaa352e08",
       "claim:research-5df594d98cb4c35a",
       "claim:research-00adacc6e05775c6",
       "claim:research-e0235d1a22509e5f",
@@ -84,8 +84,8 @@
     "registryReferences": [
       "entity:company-600519",
       "source:research-56e2e76ac69cc71c",
-      "source:research-9775c95045aeb42a",
-      "source:research-66a2a375d713988f",
+      "source:research-d31e3dd3b2259e54",
+      "source:research-c29d1fafaa352e08",
       "claim:research-5df594d98cb4c35a",
       "claim:research-00adacc6e05775c6",
       "claim:research-e0235d1a22509e5f",
@@ -108,14 +108,14 @@
         "valid": true
       },
       {
-        "rawRef": "raw-sha256-9afe8eaa1194bf46989b02e0502a4fe41b0492471947c72202649347a384b4eb",
-        "contentHash": "sha256:9afe8eaa1194bf46989b02e0502a4fe41b0492471947c72202649347a384b4eb",
+        "rawRef": "raw-sha256-e8d384e8593276094fe4a8d84abf34df9f66d24ed011e5a7c48b5adda8fe0639",
+        "contentHash": "sha256:e8d384e8593276094fe4a8d84abf34df9f66d24ed011e5a7c48b5adda8fe0639",
         "sizeBytes": 159,
         "valid": true
       },
       {
-        "rawRef": "raw-sha256-37c817f78247c3c38ca300b08b0e05e399f97bbd80c6e5a5e3e662ac94e54e4b",
-        "contentHash": "sha256:37c817f78247c3c38ca300b08b0e05e399f97bbd80c6e5a5e3e662ac94e54e4b",
+        "rawRef": "raw-sha256-cce519dffb693150db04dcd9b820d01afec347dcac537476c05959842652e01e",
+        "contentHash": "sha256:cce519dffb693150db04dcd9b820d01afec347dcac537476c05959842652e01e",
         "sizeBytes": 480,
         "valid": true
       }

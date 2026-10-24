@@ -839,7 +839,7 @@ export class ResearchHubRuntimeServer {
       if (!service) throw new ApplicationServiceError('no_kb_mounted', 'Theme Framework construction requires an active mounted Schema 0.4 Knowledge Base')
       const started = service.start({ workflowRunId, name, ...(definition === undefined ? {} : { definition }) })
       started.completion.catch(() => undefined)
-      await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) }); return
+      await this.runtime!.workflowService.confirmPersistence(started.runId); await this.sendJson(response, 202, { accepted: true, runId: started.runId, workflow: this.runtime!.workflowService.getWorkflowStatus(started.runId) }); return
     }
     if (/^\/api\/theme-framework\/runs\/[^/]+(?:\/(?:accept|reject|refresh))?$/.test(path)) {
       const pieces = path.split('/')

@@ -29,16 +29,16 @@
     "reportId": "company-research-600519-pi-company-tool-authorized",
     "committedIds": [
       "source:research-56e2e76ac69cc71c",
-      "source:research-9421ad7e29d0f0df",
-      "source:research-d9412bdfeb70c44b",
+      "source:research-b2c2d5bae25676ee",
+      "source:research-b5cd073b7070a143",
       "claim:research-72f92aa6697f7393",
       "claim:research-4274331af20ce202"
     ],
     "registryResolvedReportRefs": [
       "entity:company-600519",
       "source:research-56e2e76ac69cc71c",
-      "source:research-9421ad7e29d0f0df",
-      "source:research-d9412bdfeb70c44b",
+      "source:research-b2c2d5bae25676ee",
+      "source:research-b5cd073b7070a143",
       "claim:research-72f92aa6697f7393",
       "claim:research-4274331af20ce202"
     ]
