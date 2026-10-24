@@ -1,0 +1,66 @@
+{
+  "taskId": "RHL-EXEC-004-001",
+  "phase": "P0-A Docling pre-fix stage profile",
+  "generatedAt": "2026-10-11T08:42:00Z",
+  "baselineMain": "46c53a1a15845a44b28ccbbfc87e9c776c8a6842",
+  "runtime": {
+    "managedRootParserStatus": "READY",
+    "doclingVersion": "2.116.0",
+    "torchVersion": "2.14.0+cpu",
+    "workspaceDefaultParserStatus": "MANAGED_PYTHON_MISSING",
+    "ocrEnabled": false,
+    "tableStructureEnabled": true,
+    "offlineModelArtifactsConfigured": true
+  },
+  "instrumentedRepresentative": {
+    "ticker": "002487",
+    "fiscalPeriod": "2025-FY",
+    "announcementId": "1224997956",
+    "fileSizeBytes": 1842153,
+    "importMs": 5071,
+    "parserStartupMs": 52,
+    "conversionTimeoutMs": 150000,
+    "stageAtTimeout": "CONVERSION",
+    "normalizationStarted": false,
+    "status": "DOCUMENT_PARSER_TIMEOUT",
+    "structuredDocumentEmitted": false
+  },
+  "fullMatrixAttempts": [
+    {
+      "fiscalPeriod": "2025-FY",
+      "attempted": true,
+      "fileSizeBytes": 1842153,
+      "timeoutMs": 150000,
+      "ticker": "002487",
+      "completed": false
+    },
+    {
+      "fiscalPeriod": "2026-H1",
+      "attempted": true,
+      "fileSizeBytes": 1674105,
+      "timeoutMs": 150000,
+      "ticker": "002487",
+      "completed": false
+    },
+    {
+      "fiscalPeriod": "2025-FY",
+      "attempted": true,
+      "fileSizeBytes": 1082847,
+      "timeoutMs": 150000,
+      "ticker": "600519",
+      "completed": false
+    },
+    {
+      "fiscalPeriod": "2026-H1",
+      "attempted": true,
+      "fileSizeBytes": 832321,
+      "timeoutMs": 150000,
+      "ticker": "600519",
+      "completed": false
+    }
+  ],
+  "classification": "The conversion stage, not CNINFO discovery/download or parser setup, is the current measured blocker.",
+  "rawPdfStored": false,
+  "rawTextStored": false,
+  "credentialsStored": false
+}

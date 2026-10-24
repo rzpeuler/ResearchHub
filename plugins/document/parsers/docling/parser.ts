@@ -39,7 +39,7 @@ export class DoclingDocumentParser implements DocumentParser {
     this.pythonExecutable = options.pythonExecutable ?? process.env.RESEARCHHUB_PYTHON_EXECUTABLE ?? resolve(process.cwd(), '.researchhub-document-parser', process.platform === 'win32' ? 'venv/Scripts/python.exe' : 'venv/bin/python')
     this.bridgePath = options.bridgePath ?? process.env.RESEARCHHUB_DOCLING_BRIDGE ?? resolve(dirname(fileURLToPath(import.meta.url)), 'bridge/docling_bridge.py')
     this.artifactsPath = options.artifactsPath ?? process.env.RESEARCHHUB_DOCLING_ARTIFACTS_PATH ?? resolve(process.cwd(), '.researchhub-document-parser/models')
-    this.timeoutMs = Math.max(1_000, options.timeoutMs ?? 10 * 60_000)
+    this.timeoutMs = Math.max(1_000, Math.min(options.timeoutMs ?? 120_000, 120_000))
     this.textFirst = options.textFirst ?? false
   }
 
@@ -60,7 +60,7 @@ export class DoclingDocumentParser implements DocumentParser {
   }
 }
 
-function runBridge(pythonExecutable: string, bridgePath: string, sourcePath: string, artifactsPath: string, signal?: AbortSignal, timeoutMs = 10 * 60_000, textFirst = false): Promise<string> {
+function runBridge(pythonExecutable: string, bridgePath: string, sourcePath: string, artifactsPath: string, signal?: AbortSignal, timeoutMs = 120_000, textFirst = false): Promise<string> {
   if (signal?.aborted) return Promise.reject(new DocumentPluginError('document_parser_cancelled', 'document_parser_cancelled: document parsing was cancelled', 'docling-local'))
   return new Promise((resolveOutput, reject) => {
     const child = spawn(pythonExecutable, [bridgePath, sourcePath], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: process.platform !== 'win32', env: { ...process.env, RESEARCHHUB_DOCLING_ARTIFACTS_PATH: artifactsPath, RESEARCHHUB_DOCLING_TEXT_FIRST: textFirst ? '1' : '0', HF_HUB_OFFLINE: process.env.HF_HUB_OFFLINE ?? '1' } })

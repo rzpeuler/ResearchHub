@@ -73,6 +73,25 @@ function latestPublication(projection: EstimateProjectionResult): string | undef
   return projection.estimates.map((estimate) => estimate.publishedAt).sort().at(-1)
 }
 
+function officialFilingBodyGap(content: string, fiscalYear: number, period: EarningsPeriod): string | undefined {
+  const normalized = content.normalize('NFKC').replace(/\s+/g, '')
+  if (normalized.length < 1_500) return 'DOCUMENT_TEXT_INSUFFICIENT: official filing body has fewer than 1500 normalized characters'
+  if (!normalized.includes(`${fiscalYear}年`)) return `FILING_PERIOD_MISMATCH: body does not contain fiscal year ${fiscalYear}`
+  const periodTerms: Readonly<Record<EarningsPeriod, readonly string[]>> = {
+    FY: ['年度报告', '年度报告全文', '年报'], H1: ['半年度报告', '半年报', '中期报告'],
+    Q1: ['第一季度报告', '一季度报告', '一季报'], Q3: ['第三季度报告', '三季度报告', '三季报'],
+  }
+  if (!periodTerms[period].some((term) => normalized.includes(term))) return `FILING_PERIOD_MISMATCH: body does not identify ${fiscalYear}-${period}`
+  const statementGroups = [
+    ['资产负债表', '合并资产负债表'],
+    ['利润表', '合并利润表', '损益表'],
+    ['现金流量表', '合并现金流量表'],
+  ]
+  const present = statementGroups.filter((group) => group.some((term) => normalized.includes(term))).length
+  if (present < 2) return `DOCUMENT_TEXT_INSUFFICIENT: body contains only ${present}/3 financial statement sections`
+  return undefined
+}
+
 /** Explicit Plugin operations consumed only through Data-owned Common policies. */
 export function createEarningsDataResolver(options: EarningsDataCompositionOptions): DataResolver<EarningsDataPayload> {
   let financialPending: Promise<{ raw: unknown; normalized: NormalizedFinancialData; financialQualityData: NormalizedFinancialQualityData; retrievedAt: string; publishedAt?: string }> | undefined
@@ -111,6 +130,9 @@ export function createEarningsDataResolver(options: EarningsDataCompositionOptio
             const fetched = await plugin.fetch(item, options.signal)
             const payload = validateUsableAcquisitionPayload(fetched.content)
             if (payload.status !== 'usable') { diagnostics.push({ provider: item.provider, candidateId: item.candidateId, kind: item.kind, status: payload.status, reason: payload.reason }); continue }
+            const isPdf = fetched.mediaType?.toLowerCase() === 'application/pdf' || /\.pdf(?:$|[?#])/iu.test(item.url ?? '')
+            const bodyGap = isPdf ? officialFilingBodyGap(fetched.content, options.fiscalYear, options.period) : undefined
+            if (bodyGap) { diagnostics.push({ provider: item.provider, candidateId: item.candidateId, kind: item.kind, status: 'failed', reason: bodyGap }); continue }
             sources.push(await plugin.normalize(fetched, options.signal))
           } catch (error) {
             diagnostics.push({ provider: item.provider, candidateId: item.candidateId, kind: item.kind, status: 'failed', reason: error instanceof Error ? error.message : String(error) })

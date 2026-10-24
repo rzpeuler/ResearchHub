@@ -11,7 +11,7 @@ type Candidate = { executable: string; args: string[] }
 type CommandOptions = { cwd?: string; env?: Record<string, string | undefined>; timeoutMs?: number }
 type Result = { ok: boolean; stdout: string; stderr: string; timedOut?: boolean }
 type Execute = (executable: string, args: string[], options?: CommandOptions) => Promise<Result>
-const probePayload = (docling = true, torch = true, torchvision = true) => JSON.stringify({ version: '3.12.0', venv: true, pip: true, docling, doclingVersion: docling ? DOCLING_VERSION : null, torch, torchVersion: torch ? '2.14.0+cpu' : null, torchCuda: null, torchCudaAvailable: false, torchCpuOnly: torch, torchvision, torchvisionVersion: torchvision ? '0.29.0+cpu' : null })
+const probePayload = (docling = true, torch = true, torchvision = true) => JSON.stringify({ version: '3.12.0', venv: true, pip: true, docling, doclingVersion: docling ? DOCLING_VERSION : null, pypdf: true, pypdfVersion: '6.12.1', torch, torchVersion: torch ? '2.14.0+cpu' : null, torchCuda: null, torchCudaAvailable: false, torchCpuOnly: torch, torchvision, torchvisionVersion: torchvision ? '0.29.0+cpu' : null })
 
 async function fixture(options: { finalVenv?: boolean; finalModels?: boolean; finalDocling?: boolean } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'rhl-runtime-test-')); const runtime = join(root, '.researchhub-document-parser')
@@ -33,7 +33,7 @@ async function fixture(options: { finalVenv?: boolean; finalModels?: boolean; fi
 
 test('dependency is pinned, model families are fixed, and bootstrap uses a base candidate', async () => {
   const requirements = await (await import('node:fs/promises')).readFile('config/document-parser/requirements.txt', 'utf8')
-  assert.equal(requirements.trim(), `docling==${DOCLING_VERSION}`); assert.deepEqual(MODEL_FAMILIES, ['layout', 'tableformer'])
+  assert.deepEqual(requirements.trim().split(/\r?\n/).sort(), [`docling==${DOCLING_VERSION}`, 'pypdf==6.12.1'].sort()); assert.deepEqual(MODEL_FAMILIES, ['layout', 'tableformer'])
   const plan = bootstrapPlan('win32', { venv: 'managed-venv', models: 'managed-models' }, { executable: 'py', args: ['-3'], platform: 'win32' })
   assert.deepEqual(plan.venv, { executable: 'py', args: ['-3', '-m', 'venv', 'managed-venv'], systemSitePackages: false }); assert.deepEqual(bootstrapPlan('linux').models.args.slice(0, 3), ['models', 'download', 'layout']); assert.equal(bootstrapPlan('linux').models.args.includes('tableformer'), true)
 })

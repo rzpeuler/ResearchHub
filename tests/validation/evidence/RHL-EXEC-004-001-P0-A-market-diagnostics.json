@@ -1,0 +1,347 @@
+{
+  "taskId": "RHL-EXEC-004-001",
+  "phase": "P0-A pre-fix production-equivalent market diagnostics",
+  "generatedAt": "2026-10-11T08:26:58.985Z",
+  "baselineMain": "46c53a1a15845a44b28ccbbfc87e9c776c8a6842",
+  "runtimeContext": {
+    "node": "v24.16.0",
+    "python": {
+      "python": "3.12.10",
+      "akshare": "1.18.64",
+      "requests": "2.32.5"
+    },
+    "proxyEnvironment": [],
+    "pythonRequestsProxyRouting": {
+      "push2.eastmoney.com": {
+        "proxyConfigured": true,
+        "proxySchemes": [
+          "ftp",
+          "http",
+          "https"
+        ],
+        "proxyHostClass": "loopback",
+        "proxyPort": 7892,
+        "proxyCredentialsPresent": false
+      },
+      "push2his.eastmoney.com": {
+        "proxyConfigured": true,
+        "proxySchemes": [
+          "ftp",
+          "http",
+          "https"
+        ],
+        "proxyHostClass": "loopback",
+        "proxyPort": 7892,
+        "proxyCredentialsPresent": false
+      },
+      "web.ifzq.gtimg.cn": {
+        "proxyConfigured": true,
+        "proxySchemes": [
+          "ftp",
+          "http",
+          "https"
+        ],
+        "proxyHostClass": "loopback",
+        "proxyPort": 7892,
+        "proxyCredentialsPresent": false
+      },
+      "www.cninfo.com.cn": {
+        "proxyConfigured": true,
+        "proxySchemes": [
+          "ftp",
+          "http",
+          "https"
+        ],
+        "proxyHostClass": "loopback",
+        "proxyPort": 7892,
+        "proxyCredentialsPresent": false
+      },
+      "static.cninfo.com.cn": {
+        "proxyConfigured": true,
+        "proxySchemes": [
+          "ftp",
+          "http",
+          "https"
+        ],
+        "proxyHostClass": "loopback",
+        "proxyPort": 7892,
+        "proxyCredentialsPresent": false
+      }
+    },
+    "proxyValuesRecorded": false,
+    "dateRange": {
+      "start": "2026-09-11",
+      "end": "2026-10-11"
+    },
+    "asOf": "2026-10-11T08:26:36.629Z",
+    "calendar": {
+      "rowCount": 8797,
+      "firstDate": "1990-12-19",
+      "lastDate": "2026-12-31"
+    }
+  },
+  "operations": [
+    {
+      "provider": "AKShare/Sina",
+      "operationId": "akshare.tradingCalendar",
+      "ticker": "calendar",
+      "requestedDateRange": {
+        "start": "20260911",
+        "end": "20261011"
+      },
+      "startedAt": "2026-10-11T08:26:37.050Z",
+      "transportStatus": "SUCCEEDED",
+      "httpStatus": null,
+      "errorCategory": null,
+      "elapsedMs": 1573,
+      "rowCount": 8797,
+      "eligibleRowCount": null,
+      "latestPriceDate": null,
+      "retrievedAt": "2026-10-11T08:26:38.623Z",
+      "fallbackTriggered": false,
+      "fallbackSelected": false
+    },
+    {
+      "provider": "EastMoney",
+      "operationId": "akshare.companyBasic",
+      "ticker": "002487.SZ",
+      "requestedDateRange": {
+        "start": "",
+        "end": ""
+      },
+      "startedAt": "2026-10-11T08:26:38.640Z",
+      "transportStatus": "FAILED",
+      "httpStatus": null,
+      "errorCategory": "PROXY_ERROR",
+      "errorCode": "AKSHARE_BRIDGE_EXIT_1",
+      "errorMessage": "AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/get?fltt=2&invt=2&fields=f120%2Cf121%2Cf122%",
+      "elapsedMs": 1489,
+      "rowCount": 0,
+      "eligibleRowCount": null,
+      "latestPriceDate": null,
+      "retrievedAt": "2026-10-11T08:26:40.129Z",
+      "fallbackTriggered": false,
+      "fallbackSelected": false
+    },
+    {
+      "provider": "EastMoney",
+      "operationId": "akshare.historicalMarketData",
+      "ticker": "002487.SZ",
+      "requestedDateRange": {
+        "start": "20260911",
+        "end": "20261011"
+      },
+      "startedAt": "2026-10-11T08:26:40.129Z",
+      "transportStatus": "FAILED",
+      "httpStatus": null,
+      "errorCategory": "PROXY_ERROR",
+      "errorCode": "AKSHARE_BRIDGE_EXIT_1",
+      "errorMessage": "AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/kline/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%",
+      "elapsedMs": 1502,
+      "rowCount": 0,
+      "eligibleRowCount": 0,
+      "latestPriceDate": null,
+      "retrievedAt": "2026-10-11T08:26:41.631Z",
+      "fallbackTriggered": true,
+      "fallbackSelected": false
+    },
+    {
+      "provider": "Tencent",
+      "operationId": "akshare.historicalMarketDataTencent",
+      "ticker": "002487.SZ",
+      "requestedDateRange": {
+        "start": "20260911",
+        "end": "20261011"
+      },
+      "startedAt": "2026-10-11T08:26:41.631Z",
+      "transportStatus": "SUCCEEDED",
+      "httpStatus": null,
+      "errorCategory": null,
+      "elapsedMs": 1954,
+      "rowCount": 15,
+      "eligibleRowCount": 15,
+      "latestPriceDate": "2026-10-09",
+      "retrievedAt": "2026-10-11T08:26:43.584Z",
+      "fallbackTriggered": true,
+      "fallbackSelected": true
+    },
+    {
+      "provider": "ResearchHub Runtime DataResolver",
+      "operationId": "valuation_market_price",
+      "ticker": "002487.SZ",
+      "requestedDateRange": {
+        "start": "2026-10-11",
+        "end": "2026-10-11"
+      },
+      "transportStatus": "RESOLVED",
+      "errorCategory": null,
+      "elapsedMs": 5280,
+      "rowCount": 15,
+      "eligibleRowCount": 1,
+      "latestPriceDate": "2026-10-09",
+      "retrievedAt": "2026-10-11T08:26:47.043Z",
+      "fallbackTriggered": true,
+      "fallbackSelected": true,
+      "selectedPublisher": "Tencent",
+      "attempts": [
+        {
+          "sourceId": "akshare-historical-market-data",
+          "fallbackLevel": "PRIMARY",
+          "status": "SOURCE_ERROR",
+          "diagnostic": "VALUATION_MARKET_PROVIDER_SOURCE_ERROR:AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/kline/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%"
+        },
+        {
+          "sourceId": "akshare-tencent-historical-market-data",
+          "fallbackLevel": "FALLBACK_1",
+          "status": "SUCCESS",
+          "diagnostic": null
+        }
+      ],
+      "marketFreshness": {
+        "priceDate": "2026-10-09",
+        "analysisAsOf": "2026-10-11T08:26:36.629Z",
+        "completedSessionDates": [],
+        "maximumMissedSessions": 1,
+        "status": "FRESH",
+        "completedSessionsSincePrice": 0,
+        "calendarSource": "AKSHARE_SINA",
+        "calendarCoverage": {
+          "requestedStartDate": "2026-09-11",
+          "requestedEndDate": "2026-10-11",
+          "returnedStartDate": "1990-12-19",
+          "returnedEndDate": "2026-12-31"
+        }
+      },
+      "selectedClose": 43.75
+    },
+    {
+      "provider": "EastMoney",
+      "operationId": "akshare.companyBasic",
+      "ticker": "600519.SH",
+      "requestedDateRange": {
+        "start": "",
+        "end": ""
+      },
+      "startedAt": "2026-10-11T08:26:48.866Z",
+      "transportStatus": "FAILED",
+      "httpStatus": null,
+      "errorCategory": "PROXY_ERROR",
+      "errorCode": "AKSHARE_BRIDGE_EXIT_1",
+      "errorMessage": "AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/get?fltt=2&invt=2&fields=f120%2Cf121%2Cf122%",
+      "elapsedMs": 1569,
+      "rowCount": 0,
+      "eligibleRowCount": null,
+      "latestPriceDate": null,
+      "retrievedAt": "2026-10-11T08:26:50.435Z",
+      "fallbackTriggered": false,
+      "fallbackSelected": false
+    },
+    {
+      "provider": "EastMoney",
+      "operationId": "akshare.historicalMarketData",
+      "ticker": "600519.SH",
+      "requestedDateRange": {
+        "start": "20260911",
+        "end": "20261011"
+      },
+      "startedAt": "2026-10-11T08:26:50.435Z",
+      "transportStatus": "FAILED",
+      "httpStatus": null,
+      "errorCategory": "PROXY_ERROR",
+      "errorCode": "AKSHARE_BRIDGE_EXIT_1",
+      "errorMessage": "AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/kline/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%",
+      "elapsedMs": 1488,
+      "rowCount": 0,
+      "eligibleRowCount": 0,
+      "latestPriceDate": null,
+      "retrievedAt": "2026-10-11T08:26:51.923Z",
+      "fallbackTriggered": true,
+      "fallbackSelected": false
+    },
+    {
+      "provider": "Tencent",
+      "operationId": "akshare.historicalMarketDataTencent",
+      "ticker": "600519.SH",
+      "requestedDateRange": {
+        "start": "20260911",
+        "end": "20261011"
+      },
+      "startedAt": "2026-10-11T08:26:51.923Z",
+      "transportStatus": "SUCCEEDED",
+      "httpStatus": null,
+      "errorCategory": null,
+      "elapsedMs": 1972,
+      "rowCount": 15,
+      "eligibleRowCount": 15,
+      "latestPriceDate": "2026-10-09",
+      "retrievedAt": "2026-10-11T08:26:53.895Z",
+      "fallbackTriggered": true,
+      "fallbackSelected": true
+    },
+    {
+      "provider": "ResearchHub Runtime DataResolver",
+      "operationId": "valuation_market_price",
+      "ticker": "600519.SH",
+      "requestedDateRange": {
+        "start": "2026-10-11",
+        "end": "2026-10-11"
+      },
+      "transportStatus": "RESOLVED",
+      "errorCategory": null,
+      "elapsedMs": 5022,
+      "rowCount": 15,
+      "eligibleRowCount": 1,
+      "latestPriceDate": "2026-10-09",
+      "retrievedAt": "2026-10-11T08:26:57.409Z",
+      "fallbackTriggered": true,
+      "fallbackSelected": true,
+      "selectedPublisher": "Tencent",
+      "attempts": [
+        {
+          "sourceId": "akshare-historical-market-data",
+          "fallbackLevel": "PRIMARY",
+          "status": "SOURCE_ERROR",
+          "diagnostic": "VALUATION_MARKET_PROVIDER_SOURCE_ERROR:AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/kline/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%"
+        },
+        {
+          "sourceId": "akshare-tencent-historical-market-data",
+          "fallbackLevel": "FALLBACK_1",
+          "status": "SUCCESS",
+          "diagnostic": null
+        }
+      ],
+      "marketFreshness": {
+        "priceDate": "2026-10-09",
+        "analysisAsOf": "2026-10-11T08:26:36.629Z",
+        "completedSessionDates": [],
+        "maximumMissedSessions": 1,
+        "status": "FRESH",
+        "completedSessionsSincePrice": 0,
+        "calendarSource": "AKSHARE_SINA",
+        "calendarCoverage": {
+          "requestedStartDate": "2026-09-11",
+          "requestedEndDate": "2026-10-11",
+          "returnedStartDate": "1990-12-19",
+          "returnedEndDate": "2026-12-31"
+        }
+      },
+      "selectedClose": 1263
+    }
+  ],
+  "doclingRuntimeCheck": {
+    "status": "FAILED",
+    "error": {
+      "category": "SOURCE_ERROR",
+      "code": "SOURCE_ERROR",
+      "message": "Command failed: C:\\Program Files\\nodejs\\node.exe scripts/document-parser-runtime.mjs --check\n"
+    },
+    "stdout": "{\"status\":\"MANAGED_PYTHON_MISSING\",\"pythonReady\":false,\"dependencyReady\":false,\"artifactsReady\":false,\"bridgeReady\":false}",
+    "stderr": "",
+    "elapsedMs": 67
+  },
+  "evidenceIntegrity": {
+    "rawProviderPayloadsStored": false,
+    "apiCredentialsStored": false,
+    "proxyValuesStored": false
+  }
+}

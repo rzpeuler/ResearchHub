@@ -1,0 +1,191 @@
+{
+  "taskId": "RHL-EXEC-004-001",
+  "phase": "production pypdf-to-Docling parser path",
+  "generatedAt": "2026-10-11T09:11:17.483Z",
+  "pythonExecutableClass": "configured-managed-python",
+  "artifactsConfigured": true,
+  "runs": [
+    {
+      "ticker": "002487",
+      "fiscalPeriod": "2025-FY",
+      "title": "2025年年度报告",
+      "announcementId": "1224997956",
+      "officialUrl": "https://static.cninfo.com.cn/finalpage/2026-03-06/1224997956.PDF",
+      "publishedAt": "2026-03-05T16:00:00.000Z",
+      "discoveryMs": 296,
+      "downloadMs": 41,
+      "parseMs": 6462,
+      "status": "PARSED",
+      "parser": {
+        "id": "pypdf-text-only",
+        "version": "6.12.1"
+      },
+      "parserStats": {
+        "pageCount": 210,
+        "sectionCount": 210,
+        "blockCount": 210,
+        "normalizedCharacters": 434900,
+        "tableCount": 0,
+        "headingCount": 0,
+        "listCount": 0,
+        "captionCount": 0
+      },
+      "textHasPeriodMarker": true,
+      "statementMarkers": [
+        {
+          "term": "资产负债表",
+          "present": true
+        },
+        {
+          "term": "利润表",
+          "present": true
+        },
+        {
+          "term": "现金流量表",
+          "present": true
+        }
+      ],
+      "textCharacters": 172043,
+      "documentSha256": "be11f9d8a30b23c2b4710120a851f839820242785e50fd6193e44c168e005241",
+      "byteLength": 1842153,
+      "noTextPersisted": true
+    },
+    {
+      "ticker": "002487",
+      "fiscalPeriod": "2026-H1",
+      "title": "2026年半年度报告",
+      "announcementId": "1225489611",
+      "officialUrl": "https://static.cninfo.com.cn/finalpage/2026-08-22/1225489611.PDF",
+      "publishedAt": "2026-08-21T16:00:00.000Z",
+      "discoveryMs": 470,
+      "downloadMs": 62,
+      "parseMs": 6132,
+      "status": "PARSED",
+      "parser": {
+        "id": "pypdf-text-only",
+        "version": "6.12.1"
+      },
+      "parserStats": {
+        "pageCount": 179,
+        "sectionCount": 179,
+        "blockCount": 179,
+        "normalizedCharacters": 344631,
+        "tableCount": 0,
+        "headingCount": 0,
+        "listCount": 0,
+        "captionCount": 0
+      },
+      "textHasPeriodMarker": true,
+      "statementMarkers": [
+        {
+          "term": "资产负债表",
+          "present": true
+        },
+        {
+          "term": "利润表",
+          "present": true
+        },
+        {
+          "term": "现金流量表",
+          "present": true
+        }
+      ],
+      "textCharacters": 146222,
+      "documentSha256": "701996f63a1a518111882726ef5ac44b498431ad2b23e42489621c0f3adb81fc",
+      "byteLength": 1674105,
+      "noTextPersisted": true
+    },
+    {
+      "ticker": "600519",
+      "fiscalPeriod": "2025-FY",
+      "title": "贵州茅台2025年年度报告",
+      "announcementId": "1225114741",
+      "officialUrl": "https://static.cninfo.com.cn/finalpage/2026-04-17/1225114741.PDF",
+      "publishedAt": "2026-04-16T16:00:00.000Z",
+      "discoveryMs": 215,
+      "downloadMs": 84,
+      "parseMs": 5309,
+      "status": "PARSED",
+      "parser": {
+        "id": "pypdf-text-only",
+        "version": "6.12.1"
+      },
+      "parserStats": {
+        "pageCount": 143,
+        "sectionCount": 143,
+        "blockCount": 143,
+        "normalizedCharacters": 275102,
+        "tableCount": 0,
+        "headingCount": 0,
+        "listCount": 0,
+        "captionCount": 0
+      },
+      "textHasPeriodMarker": true,
+      "statementMarkers": [
+        {
+          "term": "资产负债表",
+          "present": true
+        },
+        {
+          "term": "利润表",
+          "present": true
+        },
+        {
+          "term": "现金流量表",
+          "present": true
+        }
+      ],
+      "textCharacters": 140790,
+      "documentSha256": "474905deeaf0f875fc0a1b097a626c0c7852c427faadc5d7fc7816cbf45ea288",
+      "byteLength": 1082847,
+      "noTextPersisted": true
+    },
+    {
+      "ticker": "600519",
+      "fiscalPeriod": "2026-H1",
+      "title": "贵州茅台2026年半年度报告",
+      "announcementId": "1225475868",
+      "officialUrl": "https://static.cninfo.com.cn/finalpage/2026-08-15/1225475868.PDF",
+      "publishedAt": "2026-08-14T16:00:00.000Z",
+      "discoveryMs": 242,
+      "downloadMs": 78,
+      "parseMs": 4116,
+      "status": "PARSED",
+      "parser": {
+        "id": "pypdf-text-only",
+        "version": "6.12.1"
+      },
+      "parserStats": {
+        "pageCount": 110,
+        "sectionCount": 110,
+        "blockCount": 110,
+        "normalizedCharacters": 219644,
+        "tableCount": 0,
+        "headingCount": 0,
+        "listCount": 0,
+        "captionCount": 0
+      },
+      "textHasPeriodMarker": true,
+      "statementMarkers": [
+        {
+          "term": "资产负债表",
+          "present": true
+        },
+        {
+          "term": "利润表",
+          "present": true
+        },
+        {
+          "term": "现金流量表",
+          "present": true
+        }
+      ],
+      "textCharacters": 107380,
+      "documentSha256": "0e10aa26be46b1cf3cd03f06e834c7fb98d5dd0d661b96f8fddd4af7e846a4f6",
+      "byteLength": 832321,
+      "noTextPersisted": true
+    }
+  ],
+  "secretsIncluded": false,
+  "rawPdfOrTextIncluded": false
+}

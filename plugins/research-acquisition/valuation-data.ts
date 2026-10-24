@@ -63,10 +63,19 @@ function marketProviderFailure(error: unknown): SourceExecutionResult<ValuationD
       ? 'RATE_LIMITED'
       : /403|401|forbidden|access denied/i.test(message)
         ? 'ACCESS_DENIED'
-        : /invalid json|json decode|parse error/i.test(message)
+          : /invalid json|json decode|parse error/i.test(message)
           ? 'PARSE_ERROR'
           : 'SOURCE_ERROR'
-  return { status, diagnostic: `VALUATION_MARKET_PROVIDER_${status}:${message.slice(0, 240)}` }
+  const category = /ProxyError|proxy error/i.test(message) ? 'PROXY_ERROR'
+    : /ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|NameResolutionError|Network is unreachable/i.test(message) ? 'DNS_NETWORK_CONNECTION'
+      : /\b(401|403)\b|forbidden|access denied/i.test(message) ? 'ACCESS_DENIED'
+        : /KeyError|AttributeError|unexpected keyword|no attribute|column/i.test(message) ? 'UPSTREAM_API_OR_SCHEMA_CHANGE'
+          : /AKSHARE_BRIDGE_/i.test(message) ? 'AKSHARE_BRIDGE_FAILURE'
+            : status === 'TIMEOUT' ? 'TIMEOUT'
+              : status === 'PARSE_ERROR' ? 'RESPONSE_PARSE_ERROR'
+                : status === 'RATE_LIMITED' ? 'RATE_LIMITED'
+                  : 'SOURCE_ERROR'
+  return { status, diagnostic: `VALUATION_MARKET_PROVIDER_${category}:${message.slice(0, 240)}` }
 }
 
 export function valuationPeerRows(value: unknown): readonly Record<string, unknown>[] {
