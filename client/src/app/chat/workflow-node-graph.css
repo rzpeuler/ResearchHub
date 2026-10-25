@@ -1,4 +1,4 @@
-.workflow-node-graph { margin: 12px 0 14px; padding: 10px 9px; border: 1px solid #263e45; border-radius: 8px; background: rgba(9, 19, 24, .56); }
+.workflow-node-graph { margin: 12px 0 14px; padding: 0; }
 .workflow-node-graph-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .workflow-node-graph-heading h4 { margin: 0; color: #9ab2b8; font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .workflow-node-graph-heading span { color: #658089; font-size: 8px; text-align: right; }
@@ -37,7 +37,7 @@
 .workflow-node-graph-note { padding-top: 8px; border-top: 1px solid #263d44; }
 
 @media (max-width: 540px) {
-  .workflow-node-graph { padding: 9px 8px; }
+  .workflow-node-graph { padding: 0; }
   .workflow-node-title-row { align-items: flex-start; }
   .workflow-node-title-row > span { max-width: 48%; text-align: right; }
 }

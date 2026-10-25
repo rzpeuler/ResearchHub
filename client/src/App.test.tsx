@@ -107,7 +107,12 @@ describe('Homepage shell', () => {
     expect(await screen.findByTestId('workflow-historical-snapshot')).toBeTruthy()
     expect(screen.getByTestId('workflow-recovery-notice').textContent).toContain('will not resume automatically')
     expect(screen.getAllByText('Interrupted').length).toBeGreaterThanOrEqual(1)
-    expect(document.querySelector('[data-stage-id="company_profile"] .workflow-stage-status')?.textContent).toContain('Interrupted · 2m 0s')
+    expect(document.querySelector('[data-node-id="company_profile"] .workflow-node-meta')?.textContent).toContain('2m 0s')
+    const contextRail = document.querySelector('.context-rail')!
+    expect(contextRail.querySelectorAll('.workflow-card')).toHaveLength(1)
+    expect(contextRail.querySelector('[aria-label="Message queue"]')).toBeNull()
+    expect(contextRail.querySelector('.linked-workflow-panel')).toBeNull()
+    expect(contextRail.textContent).not.toContain('history-run-1')
     expect(screen.queryByText('Running')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Cancel Workflow' })).toBeNull()
   })
@@ -161,7 +166,7 @@ describe('Homepage shell', () => {
     render(<App />)
     expect(await screen.findByTestId('workflow-interrupted')).toBeTruthy()
     expect(screen.getAllByText('公司深度研究').length).toBeGreaterThan(0)
-    expect(screen.getByText('reserved-run-1')).toBeTruthy()
+    expect(screen.getByTestId('workflow-interrupted').textContent).not.toContain('reserved-run-1')
     expect(screen.queryByText('Running')).toBeNull()
   })
 

@@ -82,7 +82,7 @@ describe('Research request execution projection', () => {
     view(<WorkflowProgressPanel {...props} />)
     const details = screen.getByTestId('workflow-progress-card')
     expect(within(details).getByText('6m 12s')).toBeTruthy()
-    expect(within(details).getByText('run-selected')).toBeTruthy()
+    expect(within(details).queryByText('run-selected')).toBeNull()
     expect(within(details).getByRole('alert').textContent).toContain('A safe diagnostic summary')
     expect(within(details).getByRole('button', { name: 'Open Research Report' })).toBeTruthy()
     expect(details.querySelector('.workflow-status')).toBeNull()
@@ -99,7 +99,8 @@ describe('Research request execution projection', () => {
   it('keeps running workflow details compact and provides synchronization retry and historical snapshot context', () => {
     const retry = vi.fn()
     const workflow: WorkflowRun = { runId: 'run-running', workflowType: 'company_research', objective: 'report', status: 'running', startedAt: new Date(Date.now() - 12_000).toISOString(), updatedAt: new Date().toISOString(), currentStage: 'Data acquisition', progressSummary: 'Reading company reports', observationSource: 'historical' }
-    const props: WorkflowProgressPanelProps = { workflow, workflowRunId: workflow.runId, activities: [], workflowDefinitions: [], workflowUnavailableRunId: '', workflowPollNotice: 'Workflow status synchronization failed.', workflowPollRetryable: true, retryWorkflowPolling: retry, verifiedWorkflowBundleId: '', openWorkflowReport: vi.fn(), openWorkflowBundle: vi.fn(), openWorkflowReview: vi.fn(), cancelWorkflow: vi.fn(), busy: false, onNavigate: vi.fn(), knowledgeBase: undefined, compact: true }
+    const cancelWorkflow = vi.fn()
+    const props: WorkflowProgressPanelProps = { workflow, workflowRunId: workflow.runId, activities: [], workflowDefinitions: [], workflowUnavailableRunId: '', workflowPollNotice: 'Workflow status synchronization failed.', workflowPollRetryable: true, retryWorkflowPolling: retry, verifiedWorkflowBundleId: '', openWorkflowReport: vi.fn(), openWorkflowBundle: vi.fn(), openWorkflowReview: vi.fn(), cancelWorkflow, busy: false, onNavigate: vi.fn(), knowledgeBase: undefined, compact: true }
     view(<WorkflowProgressPanel {...props} />)
     const details = screen.getByTestId('workflow-progress-card')
     expect(within(details).getByText('Historical Workflow snapshot')).toBeTruthy()
@@ -110,7 +111,8 @@ describe('Research request execution projection', () => {
     expect(within(details).getByTestId('workflow-node-graph')).toBeTruthy()
     expect(within(details).getByText('Data acquisition')).toBeTruthy()
     expect(within(details).queryByText('Reading company reports')).toBeNull()
-    expect(within(details).queryByRole('button', { name: 'Cancel Workflow' })).toBeNull()
+    fireEvent.click(within(details).getByRole('button', { name: 'Cancel Workflow' }))
+    expect(cancelWorkflow).toHaveBeenCalledWith('run-running')
   })
 
   it('shows a retry action when the first status snapshot cannot be loaded', () => {

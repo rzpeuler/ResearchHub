@@ -226,7 +226,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .workflow-progress-panel .workflow-card { margin-top: 0; }
 .workflow-card .workflow-subject { margin: 0 0 12px; color: #c5d7da; font-size: 11px; font-weight: 700; }
 .workflow-run-metrics { grid-template-columns: 76px minmax(0, 1fr) !important; margin: 10px 0 14px !important; }
-.workflow-run-metrics code { overflow-wrap: anywhere; color: #94b6bd; font-size: 9px; }
 .workflow-current-stage, .workflow-progress-summary { margin: 10px 0; color: #b8c9d0; font-size: 10px; line-height: 1.5; }
 .workflow-safe-error { margin: 10px 0; color: #edaa9d; font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
 .page-frame { min-height: calc(100vh - 68px); padding: clamp(48px, 9vh, 100px) clamp(36px, 9vw, 160px); background: radial-gradient(circle at 65% -20%, #23313c 0, transparent 44%), rgba(14, 22, 29, .54); }
