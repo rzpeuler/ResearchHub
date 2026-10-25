@@ -27,6 +27,7 @@ import { ConversationStateStoreError, normalizeConversationTitle } from './conve
 import { addModelConnection, listSafeModelConnectionStatus, loadModelConnections, saveModelProviderApiKey } from './model-connections.ts'
 import { addRegisteredKnowledgeBase, listRegisteredKnowledgeBases, removeRegisteredKnowledgeBase, validateKnowledgeBaseDirectory, type RegisteredKnowledgeBase } from './knowledge-registration.ts'
 import { getDataSourceCatalog } from '../services/data-source-catalog.ts'
+import { ResearchSkillDirectoryService } from '../services/research-skill-directory.ts'
 import { projectCommonDataCatalog, projectIndustryDataCatalog } from '../services/data-catalog-projection.ts'
 import { DataSourceAdministrationError } from '../services/data-source-administration.ts'
 import type { DataSourceOnboardingDraftInput } from '../services/data-source-onboarding-store.ts'
@@ -1049,6 +1050,17 @@ export class ResearchHubRuntimeServer {
     }
     if (method === 'GET' && path === '/api/research-reports') { const service = this.runtime!.researchService; if (!service) throw new ApplicationServiceError('not_found', 'Research Reports are not configured'); await this.sendJson(response, 200, { reports: await service.listResearchReports(positiveInteger(url.searchParams.get('limit'))) }); return }
     if (method === 'GET' && path === '/api/research/workflows') { await this.sendJson(response, 200, { workflows: this.runtime!.services.researchDispatchService?.listWorkflowDefinitions() ?? [] }); return }
+    if (method === 'GET' && path === '/api/research/skills') {
+      const registry = this.runtime!.services.researchDispatchService?.skillRegistry
+      await this.sendJson(response, 200, { skills: registry === undefined ? [] : new ResearchSkillDirectoryService(registry).list() }); return
+    }
+    if (method === 'GET' && /^\/api\/research\/skills\/[^/]+$/.test(path)) {
+      const registry = this.runtime!.services.researchDispatchService?.skillRegistry
+      if (registry === undefined) throw new ApplicationServiceError('not_found', 'Research Skill not found')
+      const skill = await new ResearchSkillDirectoryService(registry).get(decodeSegment(path.split('/')[4] ?? ''))
+      if (skill === undefined) throw new ApplicationServiceError('not_found', 'Research Skill not found')
+      await this.sendJson(response, 200, skill); return
+    }
     if (method === 'GET' && path === '/api/research/bundles') { const service = this.runtime!.services.researchDispatchService; if (!service) throw new ApplicationServiceError('not_found', 'Research dispatch is not configured'); await this.sendJson(response, 200, { bundles: await service.listBundles(positiveInteger(url.searchParams.get('limit'))) }); return }
     if (method === 'GET' && path.startsWith('/api/research/bundles/by-run/')) { const service = this.runtime!.services.researchDispatchService; if (!service) throw new ApplicationServiceError('not_found', 'Research dispatch is not configured'); const bundle = await service.getBundleForRun(decodeSegment(path.split('/')[5] ?? '')); if (bundle === undefined) throw new ApplicationServiceError('not_found', 'ResearchBundle not found for Workflow run'); await this.sendJson(response, 200, bundle); return }
     if (method === 'GET' && path.startsWith('/api/research/bundles/')) { const service = this.runtime!.services.researchDispatchService; if (!service) throw new ApplicationServiceError('not_found', 'Research dispatch is not configured'); const bundle = await service.getBundle(decodeSegment(path.split('/')[4] ?? '')); if (bundle === undefined) throw new ApplicationServiceError('not_found', 'ResearchBundle not found'); await this.sendJson(response, 200, bundle); return }

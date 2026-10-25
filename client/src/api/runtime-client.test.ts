@@ -5,6 +5,17 @@ function json(body: unknown, status = 200): Response { return new Response(JSON.
 const bootstrap = { runtime: { origin: 'http://127.0.0.1:1234', runtimeToken: 'a'.repeat(64) }, origin: 'http://127.0.0.1:1234', session: { conversationId: 'c1', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' }, conversations: [] }
 
 describe('RuntimeClient', () => {
+  it('reads safe atomic Research Skill directory and selected details', async () => {
+    const calls: string[] = []
+    const summary = { id: 'dcf_valuation', domain: 'Valuation', purpose: 'Calculate forward intrinsic value.', invocationMatch: 'Use for forward valuation.', inputs: ['FCFF forecast'], produces: ['DCF result'], executionClass: 'DETERMINISTIC_EXECUTABLE', origin: 'canonical' }
+    const detail = { ...summary, methodology: '# DCF valuation\n', dataRequirements: [] }
+    const client = new RuntimeClient(async (input, init) => { calls.push(`${init?.method ?? 'GET'} ${String(input)}`); return json(String(input) === '/api/research/skills' ? { skills: [summary] } : detail) })
+
+    await expect(client.listResearchSkills()).resolves.toEqual([summary])
+    await expect(client.getResearchSkill('dcf_valuation/unsafe')).resolves.toEqual(detail)
+    expect(calls).toEqual(['GET /api/research/skills', 'GET /api/research/skills/dcf_valuation%2Funsafe'])
+  })
+
   it('RuntimeClient reads the common catalog projection', async () => {
     const paths: string[] = []
     const methods: string[] = []

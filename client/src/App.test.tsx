@@ -51,6 +51,21 @@ describe('Homepage shell', () => {
   })
   afterEach(() => { cleanup(); window.sessionStorage.clear(); window.history.replaceState({}, '', '/'); globalThis.fetch = originalFetch; globalThis.EventSource = originalEventSource; Object.defineProperty(window, 'EventSource', { configurable: true, value: originalEventSource }) })
 
+  it('opens the Research Skills directory from the main navigation', async () => {
+    const skill = { id: 'business_driver_analysis', domain: 'Company Economics', purpose: 'Analyze business drivers.', invocationMatch: 'Use for driver questions.', inputs: ['period facts'], produces: ['driver result'], executionClass: 'DETERMINISTIC_EXECUTABLE', origin: 'canonical' }
+    mockV04UploadRuntime(async (input) => {
+      const path = String(input)
+      if (path === '/api/research/skills') return json({ skills: [skill] })
+      if (path === '/api/research/skills/business_driver_analysis') return json({ ...skill, methodology: '# Business driver analysis\n\nMethodology content.' })
+      return json({ code: 'not_found', error: 'not found' }, 404)
+    })
+    render(<App />)
+    fireEvent.click(await screen.findByRole('link', { name: 'Research Skills' }))
+    expect(await screen.findByRole('heading', { name: 'Business Driver Analysis' })).toBeTruthy()
+    expect(window.location.pathname).toBe('/skills')
+    expect(screen.getByText('Analyze business drivers.')).toBeTruthy()
+  })
+
   it('restores the active Run Research workflow after a page reload', async () => {
     const calls: string[] = []
     window.sessionStorage.setItem('researchhub.active-research-run-id', 'restored-run-1')

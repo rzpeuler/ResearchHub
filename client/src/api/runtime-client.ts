@@ -1,6 +1,10 @@
 import type { CommonDataCatalogProjection, IndustryDataCatalogProjection } from '../../../app/services/data-catalog-projection.ts'
 export type { CommonDataCatalogProjection, IndustryDataCatalogProjection } from '../../../app/services/data-catalog-projection.ts'
 
+export interface ResearchSkillSummary { readonly id: string; readonly domain?: string; readonly purpose: string; readonly invocationMatch: string; readonly inputs: readonly string[]; readonly produces: readonly string[]; readonly executionClass?: 'SEMANTIC_EXECUTABLE' | 'DETERMINISTIC_EXECUTABLE' | 'NOT_INDEPENDENTLY_EXECUTABLE'; readonly origin: 'canonical' | 'external' }
+export type ResearchSkillDataRequirement = { readonly id: string; readonly required: boolean; readonly dataKind: string; readonly determinismClass: string; readonly minimumAuthority?: string; readonly requiredFields?: readonly string[]; readonly requireValueVersionProof?: boolean } & ({ readonly kind: 'STATIC'; readonly metricId: string } | { readonly kind: 'DOMAIN'; readonly domain: 'industry'; readonly semanticRole: string; readonly metricFamily: string })
+export interface ResearchSkillDetail extends ResearchSkillSummary { readonly dataRequirements?: readonly ResearchSkillDataRequirement[]; readonly methodology: string }
+
 export type RuntimeErrorCode = 'invalid_input' | 'not_found' | 'cancelled' | 'failed' | 'conflict' | 'no_kb_mounted' | 'unauthorized_runtime_token'
 
 export interface RuntimeErrorBody { readonly code: RuntimeErrorCode | string; readonly error: string }
@@ -404,6 +408,8 @@ export class RuntimeClient {
   async getDataSourceCatalog(): Promise<DataSourceCatalogResponse> { return this.request('/api/data-sources/policies') }
   async getCommonDataCatalog(): Promise<CommonDataCatalogProjection> { return this.request('/api/data-sources/catalog/common') }
   async getIndustryDataCatalog(): Promise<IndustryDataCatalogProjection> { return this.request('/api/data-sources/catalog/industry') }
+  async listResearchSkills(): Promise<readonly ResearchSkillSummary[]> { return (await this.request<{ readonly skills: readonly ResearchSkillSummary[] }>('/api/research/skills')).skills }
+  async getResearchSkill(id: string): Promise<ResearchSkillDetail> { return this.request(`/api/research/skills/${encodeURIComponent(id)}`) }
   async listDataSourceIntegrations(): Promise<readonly DataSourceIntegrationView[]> { return (await this.request<{ readonly integrations: readonly DataSourceIntegrationView[] }>('/api/data-sources/integrations')).integrations }
   async saveDataSourceCredentials(integrationId: string, values: Readonly<Record<string, string>>): Promise<{ readonly saved: boolean }> { return this.mutate(`/api/data-sources/integrations/${encodeURIComponent(integrationId)}/credentials`, { values }) }
   async removeDataSourceCredentials(integrationId: string): Promise<{ readonly removed: boolean }> { return this.request(`/api/data-sources/integrations/${encodeURIComponent(integrationId)}/credentials`, { method: 'DELETE' }, true) }
