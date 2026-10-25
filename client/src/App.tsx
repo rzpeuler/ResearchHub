@@ -8,6 +8,7 @@ import { ResearchRunPage } from './app/run/ResearchRunPage'
 import { DataSourcesPage } from './app/data-sources/DataSourcesPage'
 import { ResearchSkillsPage } from './app/skills/ResearchSkillsPage'
 import { RequestExecution, LinkedWorkflowPanel, ResolutionDiagnostics, type OpenResearchArtifact } from './app/chat/RequestExecution'
+import { WorkflowNodeGraph } from './app/chat/WorkflowNodeGraph'
 import { CopyMessageButton } from './app/chat/CopyMessageButton'
 import { LanguageProvider, useLanguage } from './i18n'
 import { ReportAppendix } from './app/ReportAppendix'
@@ -787,9 +788,6 @@ export function WorkflowProgressPanel(props: WorkflowProgressPanelProps): ReactE
   const { t } = useLanguage()
   const [clock, setClock] = useState(Date.now())
   const workflow = props.workflow?.runId === props.workflowRunId ? props.workflow : undefined
-  const stages = workflow?.stages ?? []
-  const providers = workflow?.providerObservations ?? []
-  const skills = workflow?.skillObservations ?? []
   const activity = props.activities.filter((item) => item.workflowRunId === props.workflowRunId || (item.status === 'interrupted' && item.reservedWorkflowRunId === props.workflowRunId)).sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]
   const linkedWorkflow = props.activities.flatMap((item) => item.linkedWorkflows ?? []).find((item) => item.runId === props.workflowRunId)
   const registryId = workflow?.executionResult?.workflowId ?? activity?.workflowRegistryId ?? linkedWorkflow?.workflowRegistryId
@@ -828,18 +826,6 @@ export function WorkflowProgressPanel(props: WorkflowProgressPanelProps): ReactE
     const label = labels[status]
     return label ? t(label.zh, label.en) : t('状态未知', 'Unknown status')
   }
-  const diagnosticLabel = (code: string): string => {
-    const labels: Readonly<Record<string, { zh: string; en: string }>> = {
-      NO_COMPANY_RESEARCH_EVIDENCE: { zh: '未获取到可用公司研究资料', en: 'No usable company research evidence was acquired' },
-      COMPANY_RESEARCH_QUALITY_GATE_FAILED: { zh: '研究证据未通过质量门', en: 'Research evidence did not pass the quality gate' },
-      CANONICAL_REFERENCE_NOT_PERSISTED: { zh: 'Knowledge 引用持久化校验未通过', en: 'Knowledge reference persistence check failed' },
-      PROVIDER_ATTEMPT_FAILED: { zh: '数据源调用失败', en: 'Provider attempt failed' },
-      PROVIDER_NO_USABLE_DATA: { zh: '数据源未返回可用资料', en: 'Provider returned no usable data' },
-      PROVIDER_UNSUPPORTED: { zh: '当前数据需求不支持该数据源', en: 'Provider does not support this data requirement' },
-    }
-    const label = labels[code]
-    return label ? t(label.zh, label.en) : code
-  }
   const stageDuration = (stage: NonNullable<WorkflowRun['stages']>[number]): string => duration(stage.startedAt, stage.completedAt ?? (workflow?.status === 'interrupted' && stage.status === 'interrupted' ? workflow.updatedAt : undefined), stage.durationMs)
   return <section className="workflow-progress-panel" aria-label={t('工作流进度', 'Workflow progress')}>
     {!props.knowledgeBase ? <p className="muted">{t('未挂载知识库。', 'No Knowledge Base mounted.')}</p> : null}
@@ -857,9 +843,7 @@ export function WorkflowProgressPanel(props: WorkflowProgressPanelProps): ReactE
             <dl className="workflow-run-metrics"><dt>{t('运行耗时', 'Elapsed')}</dt><dd>{duration(workflow.startedAt, workflow.completedAt ?? (workflow.status === 'interrupted' ? workflow.updatedAt : undefined))}</dd><dt>{t('Run ID', 'Run ID')}</dt><dd><code>{workflow.runId}</code></dd></dl>
             {!props.compact && workflow.currentStage ? <p className="workflow-current-stage"><strong>{t('当前/最近阶段：', 'Current/last stage: ')}</strong>{workflow.currentStage}</p> : null}
             {!props.compact && workflow.progressSummary ? <p className="workflow-progress-summary">{workflow.progressSummary}</p> : null}
-            {!props.compact && (stages.length ? <ol className="workflow-stage-timeline" aria-label={t('实际执行阶段', 'Observed execution stages')}>{stages.map((stage) => <li key={stage.stageId} className={`workflow-stage workflow-stage-${stage.status}`} data-stage-id={stage.stageId}><span className="workflow-stage-marker" aria-hidden="true" /><div className="workflow-stage-content"><strong>{stage.label}</strong><span className="workflow-stage-status">{statusLabel(stage.status)} · {stageDuration(stage)}</span>{stage.summary ? <small>{stage.summary}</small> : null}{stage.diagnostics?.length ? <small>{stage.diagnostics.map(diagnosticLabel).join(' · ')}</small> : null}</div></li>)}</ol> : <p className="muted">{t('该 Workflow 尚未报告细分阶段；仅显示权威整体状态。', 'This Workflow has not reported detailed stages; only authoritative run status is available.')}</p>)}
-            {!props.compact && providers.length ? <section className="workflow-observations" aria-label={t('数据源状态', 'Provider status')}><h4>{t('数据源', 'Data sources')}</h4>{providers.map((provider) => <div className="workflow-observation-row" key={provider.providerId}><strong>{provider.label}</strong><span>{statusLabel(provider.status)}</span>{provider.recordCount !== undefined ? <small>{t('资料数：', 'Records: ')}{provider.recordCount}</small> : null}{provider.durationMs !== undefined ? <small>{duration(provider.startedAt, provider.completedAt, provider.durationMs)}</small> : null}{provider.diagnostics.map((code) => <small key={code}>{diagnosticLabel(code)}</small>)}</div>)}</section> : null}
-            {!props.compact && skills.length ? <section className="workflow-observations" aria-label={t('内部 Skill 状态', 'Workflow Skill status')}><h4>{t('Workflow 内部 Skill', 'Workflow Skills')}</h4>{skills.map((skill) => <div className="workflow-observation-row" key={skill.skillId}><strong>{skill.label}</strong><span>{statusLabel(skill.status)}</span>{skill.durationMs !== undefined ? <small>{duration(skill.startedAt, skill.completedAt, skill.durationMs)}</small> : null}{skill.summary ? <small>{skill.summary}</small> : null}</div>)}</section> : null}
+            <WorkflowNodeGraph workflow={workflow} statusLabel={statusLabel} stageDuration={stageDuration} duration={duration} />
             {safeErrorSummary(workflow.errorSummary) ? <p className="workflow-safe-error" role="alert">{safeErrorSummary(workflow.errorSummary)}</p> : null}
             {props.workflowPollNotice ? <p role="status">{props.workflowPollNotice}</p> : null}
             {props.workflowPollNotice && props.workflowPollRetryable ? <button type="button" className="secondary-action full" onClick={props.retryWorkflowPolling}>{t('重试状态同步', 'Retry synchronization')}</button> : null}
