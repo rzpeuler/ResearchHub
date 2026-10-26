@@ -1,14 +1,60 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
-import { assembleCompanyResearch, normalizeCompanySynthesisCitations, repairCompanyFinalSynthesisTable, repairCompanyResearchMarkdownTables, validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
+import { assembleCompanyResearch, buildSynthesisEvidenceLedger, normalizeCompanySynthesisCitations, repairCompanyFinalSynthesisTable, repairCompanyResearchMarkdownTables, validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
 import { mergeExcessTrailingMarkdownTableCells } from '../../skills/company-research/markdown-tables.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 
 const method: CompanyResearchMethodResult = { skillId: 'company_history_strategy', status: 'complete', answer: '历史披露支持分析', markdown: '历史披露 [annual@paragraph:1]', sections: [{ id: 'company-overview', markdown: '历史披露 [annual@paragraph:1]' }], findings: [{ text: '公司披露历史', kind: 'fact', evidence: [{ sourceCandidateId: 'annual', location: 'paragraph:1' }] }], limitations: [], risks: [], sourceCandidateIds: ['annual'], diagnostics: [], attempts: 1 }
 const input = { company: { symbol: '002594', name: '比亚迪', exchange: 'SZ' }, asOf: '2026-10-14T00:00:00Z', sources: [], reportSourceCandidateIds: ['annual'], durableSourceCandidateIds: ['annual'] }
-const ids = ['valuation', 'bull-base-bear', 'variant-perception', 'investment-thesis', 'monitoring-checklist']
+const ids = ['investment-thesis', 'monitoring-checklist']
+
+test('synthesis evidence ledger retains only complete findings bound to exact supplied source rows', () => {
+  const body = '历史披露原文。'
+  const source = {
+    candidate: { candidateId: 'annual', publishedAt: '2026-03-28', metadata: { dataProvenance: { pointInTimeStatus: 'within_cutoff', pointInTimeSafe: true } } },
+    content: body,
+    contentHash: 'source-hash',
+  } as any
+  const backed: CompanyResearchMethodResult = {
+    ...method,
+    executionEvidence: [{ sourceCandidateId: 'annual', title: '年报', publisher: '公司', excerpts: [{ sourceCandidateId: 'annual', location: 'paragraph:1', text: body }] }],
+  }
+  const unbacked: CompanyResearchMethodResult = { ...method, status: 'failed' }
+  const ledger = buildSynthesisEvidenceLedger({ methods: [backed, unbacked], sources: [source] })
+  assert.equal(ledger.length, 1)
+  assert.equal(ledger[0]?.ownerSkill, 'company_history_strategy')
+  assert.equal(ledger[0]?.kind, 'fact')
+  assert.deepEqual(ledger[0]?.sectionIds, ['company-overview'])
+  assert.deepEqual(ledger[0]?.evidence[0], {
+    sourceCandidateId: 'annual', contentHash: 'source-hash', location: 'paragraph:1', excerpt: body,
+    publishedAt: '2026-03-28', pointInTimeStatus: 'within_cutoff', pointInTimeSafe: true,
+  })
+  assert.deepEqual(buildSynthesisEvidenceLedger({ methods: [backed], sources: [source], conflictedSourceCandidateIds: ['annual'] }), [])
+  assert.deepEqual(buildSynthesisEvidenceLedger({ methods: [backed], sources: [{ ...source, content: 'changed source' }] }), [])
+})
+
+test('final synthesis requests only the two core sections and keeps optional gaps deterministic', async () => {
+  let requestPayload: { instruction: string; input: { requiredSectionIds: string[] }; outputContract: { properties: { sections: { minItems: number; maxItems: number; items: { properties: { markdown: { maxLength: number } } } } } } } | undefined
+  const executor: ReasoningExecutor = { capabilities, execute: async request => {
+    requestPayload = request as typeof requestPayload
+    return { operation: request.operation, output: { sections: ids.map(id => ({ id, markdown: `有证据支持的结论 [annual@paragraph:1]`, sourceCandidateIds: ['annual'] })) } }
+  } }
+  const result = await assembleCompanyResearch(input, [method], executor, () => input.asOf)
+  assert.equal(result.synthesisMode, 'reasoning_executor', JSON.stringify(result.synthesisDiagnostics))
+  assert.deepEqual(requestPayload?.input.requiredSectionIds, ids)
+  assert.equal(requestPayload?.outputContract.properties.sections.minItems, 2)
+  assert.equal(requestPayload?.outputContract.properties.sections.maxItems, 2)
+  assert.equal(requestPayload?.outputContract.properties.sections.items.properties.markdown.maxLength, 5000)
+  assert.match(requestPayload?.instruction ?? '', /最多8项/)
+  assert.match(requestPayload?.instruction ?? '', /不在这两节抄录数字/)
+  assert.doesNotMatch(requestPayload?.instruction ?? '', /吉利银河|银河E8/)
+  assert.equal(result.sections.length, 19)
+  for (const id of ['valuation', 'bull-base-bear', 'variant-perception']) {
+    assert.match(result.sections.find(section => section.id === id)?.markdown ?? '', /^研究缺口：/)
+  }
+})
 const capabilities = () => ({ maxContextTokens: 100000, maxOutputTokens: 16000, structuredOutputSupport: true, maxConcurrency: 1 })
 
 test('Chinese presentation brackets normalize to exact square-bracket source locators', () => {
@@ -24,6 +70,29 @@ test('Markdown table validation rejects extra cells and embedded heading rows', 
   assert.match(validateCompanyResearchMarkdownTables('| 指标 | 判断 |\n| --- | --- |\n| 客户集中 | 需持续跟踪 | 意外内容 |')[0]!, /row at line 3 has 3 cells; expected 2/)
   assert.match(validateCompanyResearchMarkdownTables('| 指标 | 判断 |\n| --- | --- |\n| ## 竞争风险 | 需持续跟踪 |')[0]!, /heading markup embedded/)
   assert.match(validateCompanyResearchMarkdownTables('| 指标 | ## 判断 |\n| --- | --- |\n| 客户集中 | 需持续跟踪 |')[0]!, /heading markup embedded in table header/)
+})
+
+test('table repair reattaches a standalone header across prose only when all following rows match its width', () => {
+  const source = [
+    '| 产品 | 收入 | 占比 |',
+    '|---|---:|---:|',
+    '| 电路产品 | 100 | 60% |',
+    '| 2025年度地区（金额单位：元） | 营业收入 | 占营业收入比重 |',
+    '',
+    '地区分类与产品分类不同，不能据此推断产品出口比例。',
+    '|---|---:|---:|',
+    '| 内销 | 40 | 40% |',
+    '| 外销 | 60 | 60% |',
+  ].join('\n')
+  const repaired = repairCompanyResearchMarkdownTables(source)
+  assert.match(repaired.markdown, /地区分类与产品分类不同，不能据此推断产品出口比例。\n\| 2025年度地区（金额单位：元） \| 营业收入 \| 占营业收入比重 \|\n\|---\|---:\|---:\|/)
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_HEADER_REATTACHED_AFTER_INTERVENING_PROSE')))
+
+  const unsupported = source.replace('| 外销 | 60 | 60% |', '| 外销 | 60 | 60% | extra |')
+  const unsupportedRepair = repairCompanyResearchMarkdownTables(unsupported)
+  assert.ok(!unsupportedRepair.repairs.some(repair => repair.startsWith('TABLE_HEADER_REATTACHED_AFTER_INTERVENING_PROSE')))
+  assert.ok(!unsupportedRepair.markdown.includes('产品出口比例。\n| 2025年度地区（金额单位：元） | 营业收入 | 占营业收入比重 |\n|---'))
 })
 
 test('final synthesis repairs only a cited missing monitoring cell and a trailing orphan pipe',()=>{

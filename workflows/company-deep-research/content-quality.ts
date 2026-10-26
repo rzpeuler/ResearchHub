@@ -28,22 +28,48 @@ export const COMPANY_CORE_SECTION_IDS = ['company-overview', 'business-model', '
 const gap = /^(?:Research gap:|Market data gap:|研究缺口[：:]|数据缺口[：:]|证据不足[：:]|no bounded evidence was supplied|无可用证据|未获取到.*(?:证据|资料))/i
 
 /** Fingerprint only the exact, still-resolvable evidence cited by a synthesis. */
-export function companySynthesisEvidenceFingerprint(input: { readonly sections: readonly CompanyContentSection[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): string | undefined {
+export function companySynthesisEvidenceFingerprint(input: { readonly sections: readonly CompanyContentSection[]; readonly methodResults: readonly CompanyResearchMethodResult[]; readonly sourceHashes?: ReadonlyMap<string, readonly string[]> }): string | undefined {
   const refs = [...new Set(input.sections.flatMap(section => [...section.markdown.matchAll(/\[([A-Za-z0-9_.-]+@paragraph:\d+)\]/g)].map(match => match[1]!)))].sort()
   if (!refs.length) return undefined
   const evidence = new Map<string, string>()
+  const findings = new Map<string, string[]>()
   for (const method of input.methodResults) {
     for (const packet of [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []]) {
       for (const excerpt of packet.excerpts) evidence.set(`${packet.sourceCandidateId}@${excerpt.location}`, `${packet.title}\n${excerpt.text}`)
     }
     for (const finding of method.findings) for (const ref of finding.evidence) {
       const key = `${ref.sourceCandidateId}@${ref.location}`
+      findings.set(key, [...findings.get(key) ?? [], `${method.skillId}:${finding.kind}:${finding.text}`])
       if (!evidence.has(key)) evidence.set(key, `finding:${finding.text}`)
     }
   }
-  const resolved = refs.map(ref => [ref, evidence.get(ref)] as const)
-  if (resolved.some(([, text]) => !text)) return undefined
+  const resolved = refs.map(ref => {
+    const sourceCandidateId = ref.slice(0, ref.indexOf('@'))
+    return [ref, input.sourceHashes?.get(sourceCandidateId) ?? [], evidence.get(ref), [...findings.get(ref) ?? []].sort()] as const
+  })
+  if (resolved.some(([, , text]) => !text)) return undefined
   return JSON.stringify(resolved)
+}
+
+export function compareCompanySynthesisEvidenceFingerprints(previous: string | undefined, current: string | undefined): { readonly matched: boolean; readonly unresolvedReferences: readonly string[]; readonly changedReferences: readonly { readonly reference: string; readonly sourceHashChanged: boolean; readonly excerptChanged: boolean; readonly methodFindingsChanged: boolean }[] } | undefined {
+  if (!previous) return undefined
+  type EvidenceRow = readonly [string, readonly string[], string, readonly string[]]
+  const oldRows = new Map((JSON.parse(previous) as EvidenceRow[]).map(row => [row[0], row]))
+  const newRows = new Map((current ? JSON.parse(current) as EvidenceRow[] : []).map(row => [row[0], row]))
+  const unresolvedReferences: string[] = []
+  const changedReferences: { reference: string; sourceHashChanged: boolean; excerptChanged: boolean; methodFindingsChanged: boolean }[] = []
+  for (const [reference, oldRow] of oldRows) {
+    const newRow = newRows.get(reference)
+    if (!newRow) {
+      unresolvedReferences.push(reference)
+      continue
+    }
+    const sourceHashChanged = JSON.stringify(oldRow[1]) !== JSON.stringify(newRow[1])
+    const excerptChanged = oldRow[2] !== newRow[2]
+    const methodFindingsChanged = JSON.stringify(oldRow[3]) !== JSON.stringify(newRow[3])
+    if (sourceHashChanged || excerptChanged || methodFindingsChanged) changedReferences.push({ reference, sourceHashChanged, excerptChanged, methodFindingsChanged })
+  }
+  return { matched: previous === current, unresolvedReferences, changedReferences }
 }
 
 export function ensureCompanyIncompleteSynthesisSections<T extends CompanyContentSection>(sections: readonly T[], reason: 'cited_evidence_unresolved' | 'methods_incomplete' | 'review_or_synthesis_blocked'): readonly T[] {

@@ -73,6 +73,16 @@ test('risk method instructions require exact table total rows and local unit/hea
   assert.equal(addCompanyMethodEvidenceInstructions('financial_quality_analysis', methodology), methodology)
 })
 
+test('market structure keeps industry and product classifications in their owner sections', () => {
+  const methodology = 'Analyze disclosed market structure.'
+  const market = addCompanyMethodEvidenceInstructions('market_structure_analysis', methodology)
+  assert.ok(market.startsWith(methodology))
+  assert.match(market, /只展示分行业原表行/)
+  assert.match(market, /分产品数据由 business-segments 负责/)
+  assert.match(market, /完整列头、分隔行和数据行紧邻排列/)
+  assert.equal(addCompanyMethodEvidenceInstructions('financial_quality_analysis', methodology), methodology)
+})
+
 test('failed review-only method revision retains the prior validated result and its failure trace', () => {
   const previous: CompanyResearchMethodResult = {
     skillId: 'company_history_strategy', status: 'complete', attempts: 1,
@@ -810,6 +820,22 @@ test('missing model and exhausted peer method block completion without Knowledge
     const retainedAnalysis = JSON.parse(await readFile(join(reports,'company-research-600519-review-quota-retain.analysis.json'),'utf8'))
     assert.equal(retainedAnalysis.synthesisSnapshotStatus,'not_retained_evidence_changed')
     assert.equal(retainedAnalysis.contentQuality.passed,false,'retaining structurally validated prose must not override failed semantic review or quota exhaustion')
+    assert.deepEqual(await snapshotKnowledgeTree(root), baseline)
+    let reviewCalls = 0
+    const sharedReviewBudgetExecutor: ReasoningExecutor = { capabilities: normal.capabilities, execute: async (request, signal) => {
+      if (request.metadata?.stage === 'content_quality_review') {
+        reviewCalls++
+        if (reviewCalls === 1) return { operation: request.operation, output: 'malformed reviewer output' }
+        return { operation: request.operation, output: { sectionChecks: COMPANY_CORE_SECTION_IDS.map(sectionId => ({ sectionId, questionAnswered: sectionId !== 'company-overview', evidenceSupportsConclusion: true, numericReproducible: true, riskTransmission: true, reasons: sectionId === 'company-overview' ? ['fixture requests bounded method correction'] : [] })) } }
+      }
+      return normal.execute(request, signal)
+    } }
+    const budgetBlocked = await runCompanyDeepResearch({...base,workflowRunId:'review-shared-budget',reasoningExecutor:sharedReviewBudgetExecutor})
+    assert.equal(budgetBlocked.status,'blocked')
+    assert.equal(reviewCalls,2,'content review has one shared two-call budget across both review rounds')
+    const budgetAnalysis = JSON.parse(await readFile(join(reports,'company-research-600519-review-shared-budget.analysis.json'),'utf8'))
+    assert.equal(budgetAnalysis.reviewAttempts,2)
+    assert.ok(budgetAnalysis.qualityReviewHistory.some((entry:any)=>entry.review.diagnostics.some((diagnostic:any)=>diagnostic.code==='SEMANTIC_REVIEW_BUDGET_EXHAUSTED')))
     assert.deepEqual(await snapshotKnowledgeTree(root), baseline)
   } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) }
 })

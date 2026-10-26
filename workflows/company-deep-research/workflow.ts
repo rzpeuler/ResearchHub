@@ -19,11 +19,11 @@ import { calculateCompanyIndustryExposureBridge, renderCompanyIndustryExposureBr
 import { COMPANY_RESEARCH_METHOD_IDS, COMPANY_METHOD_SECTION_IDS, COMPANY_METHOD_METHODOLOGY, executeCompanyResearchMethod, type CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 import type { CompanyResearchInput } from '../../skills/company-research/contracts.ts'
 import { insertCompanyFinancialOpeningSummary, prepareCompanyFinancialAnalysis, renderCompanyFinancialTable } from './financial-analysis.ts'
-import { assembleCompanyResearch, repairCompanyResearchMarkdownTables, validateCompanyResearchSectionTables } from './assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, mergeCompanySemanticQuality, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyEmployeePlanMonitoringEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyNumericMovementVerbs, reconcileCompanyGeographicRevenueInterpretation, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyInterimIndustryProductComparison, reconcileCompanyRAndDCapitalizationRatioSpread, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductCategoryEconomics, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyFinancialSummaryTable, reconcileCompanyPreparedAnalysisFacts, reconcileCompanyPlacementFacts } from './content-quality.ts'
+import { assembleCompanyResearch, buildSynthesisEvidenceLedger, repairCompanyResearchMarkdownTables, validateCompanyResearchSectionTables } from './assembly.ts'
+import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, compareCompanySynthesisEvidenceFingerprints, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, mergeCompanySemanticQuality, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyEmployeePlanMonitoringEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyNumericMovementVerbs, reconcileCompanyGeographicRevenueInterpretation, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyInterimIndustryProductComparison, reconcileCompanyRAndDCapitalizationRatioSpread, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductCategoryEconomics, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyFinancialSummaryTable, reconcileCompanyPreparedAnalysisFacts, reconcileCompanyPlacementFacts } from './content-quality.ts'
 import { prepareCompanyMarketSizing } from './market-sizing.ts'
 import { assessCompanySourceHealth, type CompanySourceAttemptTrace } from '../../data/company-source-health.ts'
-import { reviewCompanyResearchSemantics } from './semantic-quality.ts'
+import { reviewCompanyResearchSemantics, type CompanySemanticQuality } from './semantic-quality.ts'
 
 const safeId = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 const PEER_RESEARCH_TERMS: Readonly<Record<string, readonly string[]>> = {
@@ -86,6 +86,9 @@ export function buildCompanySynthesisReviewFeedback(checks: readonly { sectionId
 
 /** Keep table-derived risk figures attached to the exact disclosure row that carries them. */
 export function addCompanyMethodEvidenceInstructions(skillId: string, methodology: string): string {
+  if (skillId === 'market_structure_analysis') {
+    return `${methodology}\n\nWorkflow 分类展示约束：industry-exposure 中的公司财务分类数据只展示分行业原表行；分产品数据由 business-segments 负责，不能在同一表或同一数据序列重复列示。若允许证据同时提供分行业与分产品行，应保留完整分行业标签及其数据和精确引用，并用简短文字说明产品分类在 business-segments 单独呈现，不要重复数值。每个 Markdown 表必须把完整列头、分隔行和数据行紧邻排列；不得把表头留在前一表或夹在解释段落之前。市场预测只能作邻接市场背景，准确保留来源、期间和单位，不得将公司分类作为市场规模。`
+  }
   if (skillId !== 'company_risk_analysis') return methodology
   return `${methodology}\n\nWorkflow 风险矩阵结构约束：风险矩阵固定使用五列，表头依次为“风险类别｜触发条件与影响路径｜可监控指标｜缓解因素｜残余风险”，每个风险数据行必须恰有五格，不能增加、删除或合并表头列。风险、监控指标、缓解披露及剩余证据限制分别放入对应单元格；同一单元格内有多项事实时用中文分号连接并保留各自引用。\n\nWorkflow 数值引用约束：风险表格中的每个披露金额、比例和汇总值，必须在同一风险单元格或句子中引用直接列出该数字的原始数据行；汇总行有该数字时，必须引用汇总行，不能只引用单位行或组成部分行来代替。表格的科目/列含义在数据行中不清楚时，同时引用本次输入实际提供的对应表头和单位行。不得把相邻表格的表头、期间或单位借给本行；找不到唯一对应行时删除该数字并说明缺口。只有报告明确给出计算关系且各操作数均逐项引用时，才可用组成项计算并表述汇总值。引用仅能使用本次 evidence excerpts 中的精确 sourceCandidateId 与 paragraph 定位。`
 }
@@ -477,6 +480,16 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     // also useful for competition, but must not displace the target's annual
     // report, latest interim report, and product/business materials.
     const sourceConflicts: {round:number;candidateId:string;retainedSource:NormalizedResearchSource;incomingSource:NormalizedResearchSource}[] = []
+    const synthesisSourceHashes = () => {
+      const hashes = new Map<string, Set<string>>()
+      const add = (candidateId: string, contentHash: string) => hashes.set(candidateId, (hashes.get(candidateId) ?? new Set()).add(contentHash))
+      for (const source of acquired.sources) add(source.candidate.candidateId, source.contentHash)
+      for (const conflict of sourceConflicts) {
+        add(conflict.candidateId, conflict.retainedSource.contentHash)
+        add(conflict.candidateId, conflict.incomingSource.contentHash)
+      }
+      return new Map([...hashes].map(([candidateId, values]) => [candidateId, [...values].sort()] as const))
+    }
     const initialTerms = initialCompanyResearchSearchTerms(company)
     let acquired = await acquireWithinBudget(initialTerms)
     // A transient CNINFO outage must not consume every semantic call on generic
@@ -544,6 +557,9 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     let reviewedResearch: CompanyResearchResult | undefined
     let lastStructurallyAcceptedResearch: CompanyResearchResult | undefined
     let lastStructurallyAcceptedEvidenceFingerprint: string | undefined
+    let synthesisSnapshotEvidenceFingerprint: string | undefined
+    let synthesisCurrentEvidenceFingerprint: string | undefined
+    let synthesisSnapshotEvidenceAudit: ReturnType<typeof compareCompanySynthesisEvidenceFingerprints>
     let lastStructurallyAcceptedSynthesisMode: string | undefined
     let lastStructurallyAcceptedReview: Awaited<ReturnType<typeof reviewCompanyResearchSemantics>> | undefined
     let synthesisSnapshotStatus = 'not_captured'
@@ -562,10 +578,27 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       const synthesisReviewFeedback = semanticReview?.sectionChecks
         .filter(check => !check.questionAnswered || !check.evidenceSupportsConclusion || !check.numericReproducible || (check.sectionId === 'risks' && !check.riskTransmission))
       const targetedSynthesisFeedback = buildCompanySynthesisReviewFeedback(synthesisReviewFeedback ?? [])
-      // Each assembly is a bounded semantic operation (at most two calls,
-      // including format repair). A later review-driven revision is a new
-      // assembly operation and must be allowed to use its own bounded budget.
-      const assembled = await assembleCompanyResearch({...researchInput,qualityFeedback:targetedSynthesisFeedback}, methodResults, semanticExecutionBlock ? undefined : input.reasoningExecutor, now, 2)
+      const synthesisEvidenceLedger = buildSynthesisEvidenceLedger({
+        methods: methodResults,
+        sources: researchInput.sources,
+        conflictedSourceCandidateIds: sourceConflicts.map(conflict => conflict.candidateId),
+      })
+      const preparedAnalysis = researchInput.preparedAnalysis && typeof researchInput.preparedAnalysis === 'object'
+        ? researchInput.preparedAnalysis as Record<string, unknown>
+        : {}
+      const synthesisInput = {
+        ...researchInput,
+        qualityFeedback: targetedSynthesisFeedback,
+        preparedAnalysis: { ...preparedAnalysis, synthesisEvidenceLedger },
+      }
+      const remainingSynthesisAttempts = Math.max(0, 2 - synthesisAttempts)
+      const assembled = await assembleCompanyResearch(
+        synthesisInput,
+        methodResults,
+        semanticExecutionBlock || remainingSynthesisAttempts === 0 ? undefined : input.reasoningExecutor,
+        now,
+        remainingSynthesisAttempts,
+      )
       const normalizedSections = assembled.sections.map(section => {
         const repaired = repairCompanyResearchMarkdownTables(section.markdown)
         preReconciliationTableRepairs.push(...repaired.repairs.map(repair => `${section.id}: ${repair}`))
@@ -613,7 +646,8 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       synthesisAttemptOutputs.push(...assembled.synthesisAttemptOutputs.map(output=>({...output,attempt:synthesisAttempts+output.attempt})))
       synthesisAttempts += assembled.synthesisAttempts
       synthesisMode = assembled.synthesisMode
-      synthesisDiagnostics = [...synthesisDiagnostics,...assembled.synthesisDiagnostics]
+      synthesisDiagnostics = [...synthesisDiagnostics,...assembled.synthesisDiagnostics,
+        ...(remainingSynthesisAttempts === 0 && input.reasoningExecutor ? ['SYNTHESIS_ATTEMPT_BUDGET_EXHAUSTED'] : [])]
       synthesisTableDiagnostics = assembled.tableDiagnostics
       await input.observations?.finishSkill('company_research_synthesis', synthesisMode === 'reasoning_executor' ? 'completed' : 'failed', synthesisMode === 'reasoning_executor' ? '推理执行器综合分析已返回' : '综合未通过校验，保留已有方法结果及未完成诊断')
       return { ...assembled, sections: researchCapitalizationSections }
@@ -621,10 +655,12 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     const review = async (research: CompanyResearchResult) => {
       await input.observations?.startSkill('content_quality_review', '研究内容独立审查')
       const previousAttempts = reviewAttempts
-      // Each independent review operation has at most two attempts. Keep a
-      // second review operation available after the bounded repair round even
-      // when the first review needed its own format-repair attempt.
-      const modelResult = await reviewCompanyResearchSemantics({...researchInput,sections:research.sections,methodResults,reasoningExecutor:input.reasoningExecutor,maxAttempts:2})
+      const remainingAttempts = Math.max(0, 2 - reviewAttempts)
+      // The approval is two calls for content review across the entire Workflow,
+      // including format repair and any later review round.
+      const modelResult: CompanySemanticQuality = remainingAttempts > 0
+        ? await reviewCompanyResearchSemantics({...researchInput,sections:research.sections,methodResults,reasoningExecutor:input.reasoningExecutor,maxAttempts:remainingAttempts as 1 | 2})
+        : {passed:false,status:'failed',sectionChecks:[],issues:['SEMANTIC_REVIEW_BUDGET_EXHAUSTED'],diagnostics:[{code:'SEMANTIC_REVIEW_BUDGET_EXHAUSTED',message:'The shared two-call content-review budget was exhausted; no further reviewer call was made.',attempt:0}],attempts:0,attemptOutputs:[]}
       const crossMethodDenials = findKnownCompetitorDenials({sections:research.sections,methodResults})
       const crossMethodReasons = crossMethodDenials.map(issue => `${issue.sectionId}: CROSS_METHOD_COMPETITOR_DENIAL: competitive_market_map identified ${issue.candidate} as a named candidate, but this section denies named competitors without preserving that candidate or a scoped comparison gap.`)
       const customerDenials = findKnownCustomerConcentrationDenials({sections:research.sections,methodResults})
@@ -702,7 +738,8 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
         if (!structural.passed) break
         if (synthesisMode === 'reasoning_executor') {
           lastStructurallyAcceptedResearch = reviewedResearch
-          lastStructurallyAcceptedEvidenceFingerprint = companySynthesisEvidenceFingerprint({ sections: reviewedResearch.sections, methodResults })
+          lastStructurallyAcceptedEvidenceFingerprint = companySynthesisEvidenceFingerprint({ sections: reviewedResearch.sections, methodResults, sourceHashes: synthesisSourceHashes() })
+          synthesisSnapshotEvidenceFingerprint = lastStructurallyAcceptedEvidenceFingerprint ? sha256(lastStructurallyAcceptedEvidenceFingerprint) : undefined
           lastStructurallyAcceptedSynthesisMode = synthesisMode
           synthesisSnapshotStatus = 'captured'
         }
@@ -768,7 +805,9 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       researchInput = {...researchInput,profileData:acquired.profileData,financialData:acquired.financialData,marketData:acquired.marketData}
     }
     let research = reviewedResearch
-    const currentEvidenceFingerprint = lastStructurallyAcceptedResearch ? companySynthesisEvidenceFingerprint({ sections: lastStructurallyAcceptedResearch.sections, methodResults }) : undefined
+    const currentEvidenceFingerprint = lastStructurallyAcceptedResearch ? companySynthesisEvidenceFingerprint({ sections: lastStructurallyAcceptedResearch.sections, methodResults, sourceHashes: synthesisSourceHashes() }) : undefined
+    synthesisCurrentEvidenceFingerprint = currentEvidenceFingerprint ? sha256(currentEvidenceFingerprint) : undefined
+    synthesisSnapshotEvidenceAudit = compareCompanySynthesisEvidenceFingerprints(lastStructurallyAcceptedEvidenceFingerprint, currentEvidenceFingerprint)
     const lastSynthesisEvidenceStillValid = !!lastStructurallyAcceptedEvidenceFingerprint && lastStructurallyAcceptedEvidenceFingerprint === currentEvidenceFingerprint
     const allCurrentMethodsComplete = methodResults.every(method => method.status === 'complete')
     const lastThesis = lastStructurallyAcceptedResearch?.sections.find(section => section.id === 'investment-thesis')?.markdown ?? ''
@@ -791,6 +830,7 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     } else if (lastStructurallyAcceptedResearch && currentSynthesisWasDegraded) {
       synthesisSnapshotStatus = !lastSynthesisEvidenceStillValid ? 'not_retained_evidence_changed' : !allCurrentMethodsComplete ? 'not_retained_methods_incomplete' : 'not_retained_unknown'
       synthesisDiagnostics = [...synthesisDiagnostics, `PRIOR_SYNTHESIS_NOT_RETAINED:${!lastSynthesisEvidenceStillValid ? 'CITED_EVIDENCE_CHANGED_OR_UNRESOLVED' : !allCurrentMethodsComplete ? 'METHODS_INCOMPLETE' : 'NO_BLOCK_REASON'}`]
+      if (!lastSynthesisEvidenceStillValid && synthesisSnapshotEvidenceAudit) synthesisDiagnostics = [...synthesisDiagnostics, `PRIOR_SYNTHESIS_EVIDENCE_AUDIT:${JSON.stringify(synthesisSnapshotEvidenceAudit)}`]
     }
     research ??= await assemble()
     if (synthesisMode !== 'reasoning_executor') {
@@ -872,7 +912,7 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     if (acquisitionRemainingMs <= 0) contentQuality = {...contentQuality,passed:false,status:'incomplete',issues:[...contentQuality.issues,'ACQUISITION_BUDGET_EXHAUSTED']}
     const methodExecutions = methodResults.map(method => ({skillId:method.skillId,status:method.status,attempts:method.attempts,summary:method.answer.slice(0,300),...(method.diagnostics.at(-1)?{errorCode:method.diagnostics.at(-1)!.code}:{})}))
     await mkdir(resolve(input.reportRoot), {recursive:true})
-    await writeFile(resolve(input.reportRoot, `company-research-${company.symbol.toLowerCase()}-${input.workflowRunId}.analysis.json`), JSON.stringify({asOf,company,methodResults,contentQuality,synthesisMode,synthesisDiagnostics,synthesisSnapshotStatus,synthesisAttemptOutputs,synthesisAttempts,reviewAttempts,reviewRounds,qualityReviewHistory,tableRepairs:tableRepairRecords,tableRepairDiagnostics,tableDiagnostics:{methodSections:synthesisTableDiagnostics,finalReport:tableDiagnostics},acquisitionBudget:{limitMs:acquisitionBudgetLimitMs,spentMs:acquisitionBudgetLimitMs-acquisitionRemainingMs,remainingMs:acquisitionRemainingMs},sourceConflicts,preparedAnalysis:researchInput.preparedAnalysis,sourceDiagnostics:acquired.diagnostics,sourceAttempts:acquired.sourceAttempts,sourceAdvice:assessCompanySourceHealth(acquired.sourceAttempts),sourceSummaries:acquired.sources.map(source=>({candidateId:source.candidate.candidateId,title:source.title,url:source.canonicalUrl,publishedAt:source.candidate.publishedAt,contentHash:source.contentHash,content:source.content}))},null,2),'utf8')
+    await writeFile(resolve(input.reportRoot, `company-research-${company.symbol.toLowerCase()}-${input.workflowRunId}.analysis.json`), JSON.stringify({asOf,company,methodResults,contentQuality,synthesisMode,synthesisDiagnostics,synthesisSnapshotStatus,synthesisSnapshotEvidenceFingerprint,synthesisCurrentEvidenceFingerprint,synthesisSnapshotEvidenceAudit,synthesisAttemptOutputs,synthesisAttempts,reviewAttempts,reviewRounds,qualityReviewHistory,tableRepairs:tableRepairRecords,tableRepairDiagnostics,tableDiagnostics:{methodSections:synthesisTableDiagnostics,finalReport:tableDiagnostics},acquisitionBudget:{limitMs:acquisitionBudgetLimitMs,spentMs:acquisitionBudgetLimitMs-acquisitionRemainingMs,remainingMs:acquisitionRemainingMs},sourceConflicts,preparedAnalysis:researchInput.preparedAnalysis,sourceDiagnostics:acquired.diagnostics,sourceAttempts:acquired.sourceAttempts,sourceAdvice:assessCompanySourceHealth(acquired.sourceAttempts),sourceSummaries:acquired.sources.map(source=>({candidateId:source.candidate.candidateId,title:source.title,url:source.canonicalUrl,publishedAt:source.candidate.publishedAt,contentHash:source.contentHash,content:source.content}))},null,2),'utf8')
     const noAcquiredEvidence = acquired.sources.length === 0
     await input.observations?.finishStage('quality_gate', qualityGate.eligibleForGateway && !noAcquiredEvidence && contentQuality.passed ? 'completed' : 'blocked', { summary: contentQuality.passed ? '证据与研究内容质量门已验收' : '公司研究核心内容未完成，未进入 Knowledge Gateway', diagnostics: [...(noAcquiredEvidence ? ['NO_COMPANY_RESEARCH_EVIDENCE'] : qualityGate.diagnostics.filter((item) => item.severity === 'ERROR').map((item) => item.code)),...contentQuality.issues] })
     if (!qualityGate.eligibleForGateway || noAcquiredEvidence || !contentQuality.passed) {

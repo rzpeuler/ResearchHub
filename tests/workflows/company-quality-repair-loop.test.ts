@@ -125,7 +125,7 @@ async function fixture(mode: 'repair' | 'malformed' | 'still_insufficient' | 'ex
     assert.ok(discoveries >= 1)
     assert.ok(acquisitions <= 3, 'Initial acquisition plus at most two supplemental rounds')
     assert.ok(reviewCalls <= 4, 'At most two review operations each receive the bounded two-attempt semantic budget')
-    assert.ok(synthesisCalls <= 6, 'At most three bounded assembly rounds may each make two semantic attempts')
+    assert.ok(synthesisCalls <= 2, 'Final synthesis has a shared two-call budget across all review and acquisition rounds')
     const analysis = JSON.parse(await readFile(join(reports, `company-research-600519-quality-loop-${mode}.analysis.json`), 'utf8'))
     for (const id of COMPANY_RESEARCH_METHOD_IDS) assert.equal(calls.get(id), id === 'company_history_strategy' && mode !== 'malformed' && !options.onFirstAcquisitionCompleted ? 2 : 1, `Only history receives the remaining method attempt: ${id}; ${JSON.stringify(analysis.methodResults.find((method: any) => method.skillId === id)?.diagnostics)}`)
     assert.ok(result.report, result.errors.join(';'))
@@ -148,7 +148,7 @@ async function fixture(mode: 'repair' | 'malformed' | 'still_insufficient' | 'ex
       assert.deepEqual(analysis.methodResults.find((method: any) => method.skillId === 'company_history_strategy').attemptOutputs.map((attempt: any) => attempt.attempt), [1, 2])
       assert.equal(analysis.qualityReviewHistory.length, 2, JSON.stringify({status:result.status,errors:result.errors,contentQuality:analysis.contentQuality,synthesisDiagnostics:analysis.synthesisDiagnostics,methods:analysis.methodResults.map((item:any)=>({id:item.skillId,status:item.status,diagnostics:item.diagnostics}))}))
       assert.equal(analysis.qualityReviewHistory[0].review.passed, false, 'Preserve initial substantive rejection in diagnostic history')
-      assert.equal(analysis.qualityReviewHistory[1].review.passed, mode === 'repair' || mode === 'format_repair_then_substantive')
+      assert.equal(analysis.qualityReviewHistory[1].review.passed, mode === 'repair')
       assert.doesNotMatch(analysis.qualityReviewHistory[0].sections.find((section: any) => section.id === 'company-overview').markdown, /修订历史研究/)
       assert.match(analysis.qualityReviewHistory[1].sections.find((section: any) => section.id === 'company-overview').markdown, /修订历史研究/)
     }
@@ -181,16 +181,19 @@ test('an exhausted method owner does not block feedback repair through the remai
   assert.ok(analysis.qualityReviewHistory[1].sections.find((section: any) => section.id === 'company-overview').markdown)
 })
 
-test('format repair in the first review does not consume the final review reserved after method revision', async () => {
+test('format repair consumes the shared review budget and later review stays fail-closed', async () => {
   const { result, report, analysis, reviewCalls } = await fixture('format_repair_then_substantive')
-  assert.equal(result.status, 'completed', result.errors.join(';'))
-  assert.equal(report.researchQuality.passed, true)
-  assert.equal(reviewCalls, 3, 'Two attempts repair the first review; the second review independently verifies the revised report')
+  assert.equal(result.status, 'blocked', result.errors.join(';'))
+  assert.equal(report.researchQuality.passed, false)
+  assert.equal(reviewCalls, 2, 'Content review has a shared two-call budget across format repair and later review rounds')
   assert.equal(analysis.reviewRounds, 2)
-  assert.equal(analysis.reviewAttempts, 3)
+  assert.equal(analysis.reviewAttempts, 2)
   assert.equal(analysis.qualityReviewHistory.length, 2)
   assert.equal(analysis.qualityReviewHistory[0].review.passed, false)
-  assert.equal(analysis.qualityReviewHistory[1].review.passed, true)
+  assert.equal(analysis.qualityReviewHistory[1].review.attempts, 2, 'The persisted review retains both prior calls after budget exhaustion')
+  assert.equal(analysis.qualityReviewHistory[1].review.attemptOutputs.length, 2, 'No third model output is added after budget exhaustion')
+  assert.equal(analysis.qualityReviewHistory[1].review.passed, false)
+  assert.ok(analysis.qualityReviewHistory[1].review.issues.includes('SEMANTIC_REVIEW_BUDGET_EXHAUSTED'))
 })
 
 test('supplemental acquisition requests only missing structured fields, retains market period, and refreshes analysis inputs',async()=>{
