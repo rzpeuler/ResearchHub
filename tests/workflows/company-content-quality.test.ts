@@ -339,7 +339,7 @@ test('growth-driver reconciliation adds source-matched consolidated counterevide
   assert.match(growth, /结构化净利润字段（归属口径未注明）155\.10533亿元降至123\.25408亿元/)
   assert.match(growth, /经营现金净流量318\.33471亿元升至373\.34744亿元/)
   assert.match(growth, /合并毛利率由18\.01%升至18\.85%（\+0\.84个百分点）/)
-  assert.match(growth, /净利率按净利润÷收入复算由4\.18%降至3\.57%（−0\.60个百分点）/)
+  assert.match(growth, /净利率按净利润÷收入复算由4\.18%降至3\.57%（−0\.61个百分点）/)
   assert.ok(growth.includes(`[${source}@paragraph:1]`))
   assert.equal(reconcileCompanyDriverConsolidatedGrossMargin({ sections: result, methodResults: [method], preparedAnalysis })[1]!.markdown, growth, 'repeated reconciliation is idempotent')
 
@@ -2342,4 +2342,22 @@ test('competitor carryover repairs the known malformed BYD sentence once and sta
   assert.match(first[0]!.markdown,/不能据此断言存在已证实的直接竞争关系或成本领先/)
   assert.doesNotMatch(first[0]!.markdown,/关系先或/)
   assert.equal(reconcileCompanyCompetitorEvidence({sections:first,methodResults:[method]})[0]!.markdown,first[0]!.markdown)
+})
+
+test('annual product mix retains a source-backed residual other category and uses displayed net-margin operands',()=>{
+  const id='official-annual-residual-test'
+  const ex=(n:number,text:string)=>({sourceCandidateId:id,location:`paragraph:${n}`,text})
+  const packet={sourceCandidateId:id,title:'2025年年度报告',publisher:'CNINFO',excerpts:[
+    ex(805,'（1）营业收入构成'),ex(806,'单位：元'),ex(807,'2025年 2024年'),ex(809,'金额 占营业收入'),ex(810,'比重 金额 占营业收入比重'),
+    ex(811,'营业收入合计 803,964,958,000.00 100% 777,102,455,000.00 100%'),ex(818,'分产品'),
+    ex(819,'手机部件、组装'),ex(820,'及其他产品 155,236,528,000.00 19.31% 159,608,576,000.00 20.54% -2.74%'),
+    ex(821,'汽车、汽车相关'),ex(822,'产品及其他产品 648,645,636,000.00 80.68% 617,381,935,000.00 79.45% 5.06%'),
+    ex(823,'其他 82,794,000.00 0.01% 111,944,000.00 0.01% -26.04%'),
+  ]}
+  const method:CompanyResearchMethodResult={skillId:'business_model_map',status:'complete',attempts:1,answer:'',markdown:`2025年产品收入155,236,528,000.00元、648,645,636,000.00元及其他82,794,000.00元。[${id}@paragraph:820] [${id}@paragraph:822] [${id}@paragraph:823]`,sections:[],findings:[],sourceCandidateIds:[id],limitations:[],risks:[],diagnostics:[],executionEvidence:[packet]}
+  const sections=[{id:'business-model',markdown:`| 产品类别 | 2025年营业收入（元） | 占营业收入比重 | 对应产品毛利率 |\n|---|---:|---:|---:|\n| 手机部件、组装及其他产品 | 155,236,528,000.00 | 19.31% | 6.29%[${id}@paragraph:820] |\n| 汽车、汽车相关产品及其他产品 | 648,645,636,000.00 | 80.68% | 20.49%[${id}@paragraph:822] |`},{id:'business-segments',markdown:'已知产品边界。'}]
+  const result=reconcileCompanyPreparedAnalysisFacts({sections,methodResults:[method]})
+  const business=result.find(item=>item.id==='business-model')!.markdown
+  assert.match(business,/\| 其他（年报原表分类） \| 82,794,000\.00 \| 0\.01% \| 未单独披露 \|/)
+  assert.match(business,new RegExp(`\\[${id}@paragraph:823\\]`))
 })

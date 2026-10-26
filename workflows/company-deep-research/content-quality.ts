@@ -1032,7 +1032,11 @@ export function reconcileCompanyDriverConsolidatedGrossMargin<T extends CompanyC
     const grossChange = currentGross - priorGross
     const currentNetMargin = current.metrics!.netProfit! / current.metrics!.revenue! * 100
     const priorNetMargin = prior.metrics!.netProfit! / prior.metrics!.revenue! * 100
-    const netMarginChange = currentNetMargin - priorNetMargin
+    // Report the change on the same rounded ratio values shown in the output
+    // so the displayed subtraction can be reproduced. The full precision
+    // result is close, but rounding only after subtracting would differ by
+    // 0.01 percentage point from the two displayed operands.
+    const netMarginChange = Number((Number(currentNetMargin.toFixed(2)) - Number(priorNetMargin.toFixed(2))).toFixed(2))
     const cite = `[${financialPacket.packet.sourceCandidateId}@${financialPacket.excerpt.location}]`
     const periodLabel = currentPeriod?.endsWith('-06-30') ? '半年累计' : currentPeriod?.endsWith('-12-31') ? '全年累计' : '年初至期末累计'
     const counterevidence = `合并财务反证（${periodLabel}，同期对同期）：收入${revenue.prior}亿元降至${revenue.now}亿元，变动率＝(${revenue.now}−${revenue.prior})÷${revenue.prior}＝${revenue.change}；营业利润${operatingProfit.prior}亿元降至${operatingProfit.now}亿元，变动率＝(${operatingProfit.now}−${operatingProfit.prior})÷${operatingProfit.prior}＝${operatingProfit.change}；结构化净利润字段（归属口径未注明）${netProfit.prior}亿元降至${netProfit.now}亿元，变动率＝(${netProfit.now}−${netProfit.prior})÷${netProfit.prior}＝${netProfit.change}。反向看，经营现金净流量${operatingCashFlow.prior}亿元升至${operatingCashFlow.now}亿元，变动率＝(${operatingCashFlow.now}−${operatingCashFlow.prior})÷${operatingCashFlow.prior}＝${operatingCashFlow.change}；合并毛利率由${priorGross.toFixed(2)}%升至${currentGross.toFixed(2)}%（+${grossChange.toFixed(2)}个百分点），而净利率按净利润÷收入复算由${priorNetMargin.toFixed(2)}%降至${currentNetMargin.toFixed(2)}%（${netMarginChange < 0 ? '−' : '+'}${Math.abs(netMarginChange).toFixed(2)}个百分点）。这些合并方向与分行业/分产品差异并列说明收入结构变化未消除利润承压，也不能据单一分部表现归因合并变化；该对照不构成增长预测。${cite}`
@@ -2450,6 +2454,35 @@ export function reconcileCompanyPreparedAnalysisFacts<T extends CompanyContentSe
       && modelMethodText.includes(`[${row.sourceCandidateId}@${row.rowLocation}]`))
     if (methodBoundRows.length) {
       patchSection('business-model', markdown => repairAnnualProductMixTable(markdown, methodBoundRows))
+    }
+    // Preserve the explicitly reported residual product row when synthesis
+    // includes the two major product categories but drops the remainder.
+    // Bind it only from the same uniquely headed annual revenue-composition
+    // table and only into a matching four-column product-mix table.
+    const latestAnnualRowYear = annualRows.map(row => row.year).sort().at(-1)
+    const otherRows = annualRows.filter(row => row.label === '其他' && row.year === latestAnnualRowYear
+      && row.references.includes(`${row.sourceCandidateId}@${row.rowLocation}`))
+    if (otherRows.length === 1) {
+      const other = otherRows[0]!
+      const line = `| ${other.label}（年报原表分类） | ${other.amount} | ${other.share}% | 未单独披露 | ${other.references.map(ref => `[${ref}]`).join(' ')} |`
+      patchSection('business-model', markdown => {
+        const lines = markdown.split('\n')
+        for (let index = 0; index + 3 < lines.length; index++) {
+          if (!/^\|[^\n]*产品类别[^\n]*\|[^\n]*占营业收入比重[^\n]*\|/u.test(lines[index]!)) continue
+          if (!/^\|\s*:?-{2,}/u.test(lines[index + 1]!)) continue
+          const width = lines[index]!.split('|').length
+          if (width !== 6) continue
+          let end = index + 2
+          while (end < lines.length && /^\|/.test(lines[end]!)) end++
+          const rows = lines.slice(index + 2, end)
+          if (!rows.some(row => row.includes('汽车、汽车相关产品及其他产品') && row.includes(other.sourceCandidateId))
+            || !rows.some(row => row.includes('手机部件、组装及其他产品') && row.includes(other.sourceCandidateId))) continue
+          if (rows.some(row => /^\|\s*其他(?:\s|（)/u.test(row))) return markdown
+          lines.splice(end, 0, line)
+          return lines.join('\n')
+        }
+        return markdown
+      })
     }
     const supportedSegmentRows = annualRows.filter(row => row.references.includes(`${row.sourceCandidateId}@${row.rowLocation}`))
     if (supportedSegmentRows.length) patchSection('business-segments', (markdown, ids) => {
