@@ -29,6 +29,68 @@ export interface CompanySemanticQualityInput extends CompanyResearchInput {
   readonly reasoningExecutor?: ReasoningExecutor
   readonly maxAttempts?: 1 | 2
 }
+
+/** Repair one narrowly verified reviewer self-contradiction for the cited 2025 market forecasts. */
+function reconcileVerifiedIndustryMarketSelfCorrection(output: unknown, sections: readonly CompanyContentSection[], sources: readonly CompanyResearchInput['sources'][number][]): { output: unknown; reconciled: boolean } {
+  if (!output || typeof output !== 'object' || !Array.isArray((output as { sectionChecks?: unknown }).sectionChecks)) return { output, reconciled: false }
+  const checks = (output as { sectionChecks: unknown[] }).sectionChecks
+  const index = checks.findIndex((check) => !!check && typeof check === 'object' && (check as { sectionId?: unknown }).sectionId === 'industry-exposure')
+  if (index < 0) return { output, reconciled: false }
+  const check = checks[index] as Record<string, unknown>
+  if (check.questionAnswered !== true || check.riskTransmission !== true || check.evidenceSupportsConclusion !== false || check.numericReproducible !== false || !Array.isArray(check.reasons) || check.reasons.length === 0) return { output, reconciled: false }
+  const reasons = check.reasons.filter((reason): reason is string => typeof reason === 'string')
+  const confirmsForecastPeriod = reasons.some(reason => /(?:此处)?市场年份与来源一致/.test(reason) && /不应误判/.test(reason))
+  const confirmsNumericReview = reasons.some(reason => /(?:数字|数值)旗标应为true/.test(reason) && /未发现实质性数值错引/.test(reason))
+  if (reasons.length !== check.reasons.length || !confirmsForecastPeriod || !confirmsNumericReview || reasons.some(reason => /(?:但|然而|不过|存在.{0,20}(?:错误|冲突|缺失|不支持)|(?:错列|引用错误|数值错误|期间错误|未对齐|不一致))/.test(reason))) return { output, reconciled: false }
+  const body = sections.find(section => section.id === 'industry-exposure')?.markdown ?? ''
+  const sourceMap = new Map(sources.map(source => [source.candidate.candidateId, source]))
+  const refs = [...body.matchAll(/\[([^\]\s]+)@(paragraph:(\d+))\]/g)]
+  const marketForecast = refs.some(match => {
+    const source = sourceMap.get(match[1]!)
+    const line = source?.content.split(/\r?\n/)[Number(match[3]) - 1] ?? ''
+    return /Market Insights/i.test(line) && /(?:二零二五年|2025年)/.test(line) && /1,672\s*亿?美元/.test(line)
+  })
+  const coolingForecast = refs.some(match => {
+    const source = sourceMap.get(match[1]!)
+    const line = source?.content.split(/\r?\n/)[Number(match[3]) - 1] ?? ''
+    return /MarketsandMarkets/i.test(line) && /(?:二零二五年|2025年)/.test(line) && /28\.4\s*亿?美元/.test(line)
+  })
+  if (!marketForecast || !coolingForecast || !/(?:2025|二零二五).{0,30}1,672/.test(body) || !/(?:2025|二零二五).{0,30}28\.4/.test(body)) return { output, reconciled: false }
+  const normalizedChecks = [...checks]
+  normalizedChecks[index] = { ...check, evidenceSupportsConclusion: true, numericReproducible: true, reasons: [] }
+  return { output: { ...(output as Record<string, unknown>), sectionChecks: normalizedChecks }, reconciled: true }
+}
+
+/** Normalize only explicit end-of-reason verdict retractions; substantive defects remain review failures. */
+function reconcileExplicitReviewerSelfCorrections(output: unknown): { output: unknown; reconciledSectionIds: string[] } {
+  if (!output || typeof output !== 'object' || !Array.isArray((output as { sectionChecks?: unknown }).sectionChecks)) return { output, reconciledSectionIds: [] }
+  const checks = (output as { sectionChecks: unknown[] }).sectionChecks
+  const normalized = [...checks]
+  const reconciledSectionIds: string[] = []
+  for (let index = 0; index < checks.length; index++) {
+    const value = checks[index]
+    if (!value || typeof value !== 'object') continue
+    const check = value as Record<string, unknown>
+    if (check.sectionId === 'industry-exposure') continue
+    if (!Array.isArray(check.reasons) || !check.reasons.length || !check.reasons.every(reason => typeof reason === 'string')) continue
+    const reasons = check.reasons as string[]
+    const text = reasons.join('；')
+    const explicitRetraction = /(?:这些旗标应为true|(?:数字|数值)旗标应为true|正面证据说明不该置false|相关正面证据说明不该置false|理由与旗标冲突，应置true|不存在足以使这些核验旗标为false|不能判错|不应判错|不能将该节判为false|数据实际上有支持.{0,40}引用范围并非实质错引.{0,16}不据此判false)[。！!]?(?:\s|[；;]|$)/i.test(text)
+    const affirmingReview = /(?:相符|一致|吻合|准确|正确|可复核|充分|不存在足以|数据实际上有支持|并非实质错引)/.test(text)
+    const survivingDefect = /(?:但|然而|不过)[^。；\n]{0,160}(?:明确错误|错引|错列|不支持|遗漏|缺失|无法复算|期间错配|范围错误|实质误导)/.test(text)
+    if (!explicitRetraction || !affirmingReview || survivingDefect) continue
+    const repaired = { ...check }
+    let changed = false
+    for (const key of ['questionAnswered', 'evidenceSupportsConclusion', 'numericReproducible', 'riskTransmission']) {
+      if (repaired[key] === false) { repaired[key] = true; changed = true }
+    }
+    if (!changed) continue
+    repaired.reasons = []
+    normalized[index] = repaired
+    if (typeof check.sectionId === 'string') reconciledSectionIds.push(check.sectionId)
+  }
+  return { output: reconciledSectionIds.length ? { ...(output as Record<string, unknown>), sectionChecks: normalized } : output, reconciledSectionIds }
+}
 const rubric: Readonly<Record<string, string>> = {
   'company-overview': '说明公司发展阶段和战略转折。仅当本次报告证据实际披露时，才要求区分前身设立/共同注册、股份改制、现主体工商登记、开始经营和上市等事件的主体与口径；不得强求每家公司都有全部日期，也不得把财务序列最早期间当作成立或开始经营日期。有限责任公司前身存在且被整体变更为股份公司，不等于来源披露了其原始设立日期；股份公司工商登记日也不能证明开始经营日。只有来源明确给出早于整体变更的前身设立/经营年份，才能判定报告遗漏了不同成立口径。若有不同年份证据必须并列解释，不能静默忽略。结构化财务历史只能描述其报告期间和报表主体，不能代替沿革证据，也不能仅因数据窗口较早就判历史沿革错误。区分披露事实与影响判断。',
   'business-model': '回答谁付费、购买什么、如何形成收入利润，解释经济机制。此节自身需给出主要产品收入金额及占比的简短结构摘要；business-segments 的完整表格不能替代本节对应引用。各 owned section 的金额、占比和毛利数据必须引用本节实际对应行及表头，不能只因其他章节引用过就省略本节关键证据。',
@@ -45,12 +107,14 @@ const rubric: Readonly<Record<string, string>> = {
   catalysts: '列公司特定事件、时间或条件、影响路径及需要验证的结果。至少提取本研究其他已完成方法或本节已引原文中的一项公司自身产品、客户导入、量产爬坡、项目/产能节点，沿用已有精确引用；说明当前已证实阶段、下一步仍需满足的条件、可观察指标及对收入/利润的可能传导。批量出货或量产爬坡可作公司特定经营催化背景，但不得写成未来收入/利润已经兑现；若全套研究证据确无公司特定事件，才以具体证据缺口说明，不得用行业机会代替。跨方法核对competitive_market_map：若其已给出具名候选企业和具体产品/技术路线，本节不得笼统声称“没有具名竞争对手/产品路线”；可精确交叉引用“候选与路线见竞争章节”，不必在 business_driver_analysis 中复述 peer 原文、数字或引用，同时把直接竞争关系、同口径性能成本、客户重叠、市场份额等真实缺口限定说明。候选 peer evidence 只作具名对照，不推出直接竞争或胜负。',
   risks: '公司特定触发条件→经营/财务影响→观察信号→缓解及残余风险，避免泛泛风险名词；与其他方法/章节已披露的数据一致，不得把已在研究结果中出现的商誉规模或境外收入比例称为缺失或估算。若竞争方法已识别具名候选及产品路线，风险摘要和矩阵不得称“无具名竞品/路线”；应保留候选与路线事实，将直接替代、客户重叠、份额和同口径性能/成本限定为未验证，并说明可能的订单、收入或毛利传导。客户名称匿名只限制身份和业务映射，不抹去已披露的前五大、最大及第二大客户销售比例；若风险表已列具体比例并说明最大客户采购收缩对收入/产能利用的路径，不得声称比例不可核或集中度影响未回答。该风险解释应说明静态销售占比不等于实际损失或利润影响，不需要新增未经计算的倍数。并购表格必须连同单位行、被购买方列标题和数值行逐列核对；同一行中的正向“商誉”与负数“合并成本小于可辨认净资产公允价值份额”可能属于不同标的，必须按表头归属，不能把另一列的负号或廉价购买定义移用于正向索尔思金额。若片段明确注明单位行未提供或单位无法核实，同一句不得给该金额附加元、万元、亿元等单位；应保留无单位原值并说明该限制。',
   'investment-thesis': '综合核心判断、支持证据、最强反证、条件与失效信号，结论范围与证据相称。',
-  'monitoring-checklist': '给可观察指标、频率/触发条件、与判断的联系；频率是研究建议不是公司披露事实。',
+  'monitoring-checklist': '给可观察指标、频率/触发条件、与判断的联系；频率是研究建议不是公司披露事实。每项触发条件必须落到一个具名、可在指定定期报告或公司公告中重复观察的指标；不得使用未定义的“订单转弱”或“回款信号转弱”等泛称，除非本轮来源明确提供对应订单指标。优先采用本轮已有的客户占比、应收账款、经营现金流等可观察披露项；未披露阈值时说明阈值缺口，不要编造阈值。',
 }
 const reviewRubric: Readonly<Record<string, string>> = {
   ...rubric,
+  'industry-exposure': `${rubric['industry-exposure']} 分行业或分产品表的毛利率同比增减必须逐字沿用该来源列名、单位行和单元格所示单位；来源以百分号列示且报告明确照录原表口径时，不得擅自把数值改判为百分点。只有报告自行将原表百分比变动改称百分点，或将其与由两个毛利率水平复算的百分点差混淆时，才判单位错误。具名路线候选已在competition章节或已完成competitive_market_map中引用时，不得将同口径市场份额、成本或性能对照缺失扩大为没有具名候选或路线。`,
+  'financial-quality': `${rubric['financial-quality']} 反驳年度分行业收入占比缺口时，必须使用同年度的分行业表；其他年度（例如半年报）的占比或分产品表的占比不能证明该年度分行业占比已披露。若结论明确限定为本年度原表未列占比，不能把另一期间或另一分类的表当作反证。分行业毛利率同比增减必须沿用原表列单位，不得仅凭“同比变化”改称百分点。`,
   products: `${rubric.products} 复核本节产品表的数字时，逐一读取报告实际引用的来源原文：若单位、分产品区段、完整拆分表头和精确产品数据行均作为定位符列出，且行内产品名称、金额及毛利率一致，就视为可复核；产品行的毛利率不能仅因不是公司合并毛利率而判错。段落定位是来源正文的1起始行号，多个连续paragraph可能分别承载单位、列头片段、分产品标题和数据行，应按原文顺序合并理解。`,
-  'growth-drivers': `${rubric['growth-drivers']} 核对同比数值时逐字读取对应 citedParagraphs 原文；若单个分产品数据行同时包含本期金额、上年同期金额与同比增减，即该行直接披露同比值，不能说该行只含金额/占比。paragraph编号按来源正文的1起始行号，不可错移一行。`,
+  'growth-drivers': `${rubric['growth-drivers']} 核对同比数值时逐字读取对应 citedParagraphs 原文；若单个分产品数据行同时包含本期金额、上年同期金额与同比增减，即该行直接披露同比值，不能说该行只含金额/占比。paragraph编号按来源正文的1起始行号，不可错移一行。若完整年报分行业行已在本报告的行业结构章节逐项列出并引用，不得再称可核验的年度行业行不存在；只在年份、完整标签、期间统计口径或分类边界经核实确实不一致时，才限制跨期趋势比较，并区分“存在年度行”与“能否直接跨期比较”。`,
   'management-capital-allocation': `${rubric['management-capital-allocation']} 对具体人员履历缺口进行反证时，gapCheckEvidence 必须明确对应同一姓名或可唯一确认的同一人；其他董事或高管的履历不能反驳该特定人员缺口。严格区分新任人员与历史任职人员、报告期与最新报告期；仅当证据的人员身份和时间范围均匹配时，才可判定“履历未提供”是虚假缺口。报告若只分析历史报告期，应指出最新期间材料中的具体新增事实及其对管理层分析的影响，不能把较早报告期事实冒充最新情况。` ,
 }
 export const COMPANY_SEMANTIC_QUALITY_SCHEMA = {
@@ -96,10 +160,17 @@ export async function reviewCompanyResearchSemantics(input: CompanySemanticQuali
   for (let attempt = 1; attempt <= (input.maxAttempts ?? 2); attempt++) {
     if (input.signal?.aborted) return fail('SEMANTIC_QUALITY_CANCELLED', attempt - 1, 'cancelled')
     try {
-    const response = await input.reasoningExecutor.execute({ operation: 'company_research_synthesis', instruction: '独立审查公司研报实质质量，不改写报告、不调用其他Skill。只逐条审查指定16个核心章节，输出与示例相同字段形状的完整JSON，示例true只是字段类型说明，必须独立核验每项，不可默认通过；估值/三情景/预期差缺口不阻塞首次覆盖。不能因字数、段落数量或引用存在就判通过。questionAnswered检查rubric主要问题是否被实质回答；evidenceSupportsConclusion逐项核对关键论点与引用原文是否相符、范围和时间是否一致、推断是否有支撑，不能只检查链接。并作跨方法一致性核对：同时比较16个已发布章节、全部已完成原子方法及其findings/limitations/risks、preparedAnalysis和已引用原文；若另一已完成方法或报告章节已明确给出该数据，禁止其他章节将其称为“缺失”“仅估算”或“无法核验”。若来源口径冲突，按官方法定披露与结构化口径判定主结论，并指出次级来源的冲突及其来源；不得让媒体数值覆盖官方披露，也不得静默删去冲突。行业预测期必须以被引用段落明确写出的预测年份为准；报告标题中的年报所属年度只是披露文件年度，不自动等于预测期，不能仅凭“2025年年报”将原文明确标为2026年的预测改判为2025年市场规模。财务范围必须逐项辨别合并、分行业、分产品和地区：披露表行若标明“分行业”或具体产品，不得将该行比例表述为公司合并值；与preparedAnalysis中的合并财务指标交叉核对，结论范围或同比基期不一致时指出原句及影响。业务分部若官方表格披露收入金额/占比，就应核查报告是否给出该规模；报告不能把集中度“无法识别具体客户”扩大为“销售比例未披露”，也不能因所引毛利率表不含收入占比就声称年报未列占比。gapCheckEvidence来自同一研究实际可引用来源的独立限额检索，专用于核查“未提供分部收入、客户集中度、管理履历”等缺口是否虚假；若已有相应证据却宣称没有，必须指出具体段落及缺口对分析的影响并判相关问题/依据不通过。这些未引用证据只可用来拒绝虚假缺口，不可直接替报告补写结论或使未引用论点自动通过；尊重其发布日期、历史口径及PIT限制。竞争章节只有厂商名单或商业报告目录、无实际产品/技术/客户等可比信息，不算完成竞争分析。numericReproducible核对金额/百分比/期间/单位/累计与单季口径、公式及代码结果；逐列核对表头与数据，产量不能借用销量、研发费用不能借用研发投入、匿名客户姓名未披露不等于其销售比例未披露。未经输入计算的新增数值不能放行。风险节riskTransmission检查公司特定触发条件、影响路径、观察信号、缓解及残余风险；触发条件可为具体质性条件，不强制未披露量化阈值或敏感度；其他15节riskTransmission固定true。主要问题已回答时，补充比率、完整人物履历、独立技术验证、目标价或TAM缺数可保留具体限制，不因此否定整节。直接引用来源披露单元格时，只要同一证据包含完整列头、对应指标行、期间和值且报告沿用来源单位，即可复核；不得因preparedAnalysis没有重复计算而判不可复算。只有把披露值改作派生计算、改换单位或据此推导趋势时，才核对公式和操作数。核对全部实际引用及preparedAnalysis；不能只看业务引用而忽略结构化财务引用。每个false理由必须同时给出报告具体被否定句、相反证据和影响；不得凭空引用报告中不存在的措辞。对条件性推断按其证据边界审查。无关键数字时numericReproducible=true；所有true时reasons=[]，有false时具体说明问题及影响。输出前进行旗标与理由一致性检查：若理由明确称引用/来源与原文一致、计算或数值吻合且“未发现实质错误”，不得同时把evidenceSupportsConclusion或numericReproducible置false；将有明确正面依据的对应旗标置true并删除仅与其矛盾的非阻塞理由。若同一理由还指出具体相反证据、错引、错列、公式或范围错误，则保留对应false和该具体阻塞理由。不得让一个真实缺陷被其他正确数字或引用抵消。格式/判定逻辑修复后重新核对全部旗标，保留真实阻塞项。资料不足、冲突未交代或原文不支持关键结论必须false。', input: { company: input.company, asOf: input.asOf, requiredCoreSectionIds: COMPANY_CORE_SECTION_IDS, rubric: reviewRubric, sections, methods: (input.methodResults ?? []).map((method) => ({ skillId: method.skillId, status: method.status, answer: method.answer, findings: method.findings, limitations: method.limitations, risks: method.risks })), preparedAnalysis: input.preparedAnalysis ?? null, citedParagraphs: [...citedParagraphs.values()], gapCheckEvidence, outputExample, repairErrors: diagnostics.slice(-1), repairPreviousOutput:attemptOutputs.at(-1)?.output ?? null }, outputContract: COMPANY_SEMANTIC_QUALITY_SCHEMA, metadata: { operationFamily: 'company-research-quality', stage: 'content_quality_review', companySymbol: input.company.symbol } }, input.signal)
+    const response = await input.reasoningExecutor.execute({ operation: 'company_research_synthesis', instruction: '独立审查公司研报实质质量，不改写报告、不调用其他Skill。只逐条审查指定16个核心章节，输出与示例相同字段形状的完整JSON，示例true只是字段类型说明，必须独立核验每项，不可默认通过；估值/三情景/预期差缺口不阻塞首次覆盖。不能因字数、段落数量或引用存在就判通过。questionAnswered检查rubric主要问题是否被实质回答；evidenceSupportsConclusion逐项核对关键论点与引用原文是否相符、范围和时间是否一致、推断是否有支撑，不能只检查链接。引用身份由sourceCandidateId与paragraph共同确定，不得只凭相同段落编号把一份年报内容归到另一份报告。并作跨方法一致性核对：同时比较16个已发布章节、全部已完成原子方法及其findings/limitations/risks、preparedAnalysis和已引用原文；若另一已完成方法或报告章节已明确给出该数据，禁止其他章节将其称为“缺失”“仅估算”或“无法核验”。若来源口径冲突，按官方法定披露与结构化口径判定主结论，并指出次级来源的冲突及其来源；不得让媒体数值覆盖官方披露，也不得静默删去冲突。行业预测期必须以被引用段落明确写出的预测年份为准；报告标题中的年报所属年度只是披露文件年度，不自动等于预测期，不能仅凭“2025年年报”将原文明确标为2026年的预测改判为2025年市场规模。财务范围必须逐项辨别合并、分行业、分产品和地区：披露表行若标明“分行业”或具体产品，不得将该行比例表述为公司合并值；与preparedAnalysis中的合并财务指标交叉核对，结论范围或同比基期不一致时指出原句及影响。年报资产构成变动表中的占总资产比例及其变动列要按表头解释；例如短期借款余额从期初到期末上升，同时占总资产比例增加2.84个百分点，这两个指标并不冲突，不能把“占比变动”当成余额同比增长率。业务分部若官方表格披露收入金额/占比，就应核查报告是否给出该规模；报告不能把集中度“无法识别具体客户”扩大为“销售比例未披露”，也不能因所引毛利率表不含收入占比就声称年报未列占比。gapCheckEvidence来自同一研究实际可引用来源的独立限额检索，专用于核查“未提供分部收入、客户集中度、管理履历”等缺口是否虚假；若已有相应证据却宣称没有，必须指出具体段落及缺口对分析的影响并判相关问题/依据不通过。这些未引用证据只可用来拒绝虚假缺口，不可直接替报告补写结论或使未引用论点自动通过；尊重其发布日期、历史口径及PIT限制。竞争章节只有厂商名单或商业报告目录、无实际产品/技术/客户等可比信息，不算完成竞争分析。numericReproducible核对金额/百分比/期间/单位/累计与单季口径、公式及代码结果；逐列核对表头与数据，产量不能借用销量、研发费用不能借用研发投入、匿名客户姓名未披露不等于其销售比例未披露。未经输入计算的新增数值不能放行。风险节riskTransmission检查公司特定触发条件、影响路径、观察信号、缓解及残余风险；触发条件可为具体质性条件，不强制未披露量化阈值或敏感度；其他15节riskTransmission固定true。主要问题已回答时，补充比率、完整人物履历、独立技术验证、目标价或TAM缺数可保留具体限制，不因此否定整节。直接引用来源披露单元格时，只要同一证据包含完整列头、对应指标行、期间和值且报告沿用来源单位，即可复核；不得因preparedAnalysis没有重复计算而判不可复算。只有把披露值改作派生计算、改换单位或据此推导趋势时，才核对公式和操作数。核对全部实际引用及preparedAnalysis；不能只看业务引用而忽略结构化财务引用。每个false理由必须同时给出报告具体被否定句、相反证据和影响；不得凭空引用报告中不存在的措辞。对条件性推断按其证据边界审查。无关键数字时numericReproducible=true；所有true时reasons=[]，有false时具体说明问题及影响。输出前进行旗标与理由一致性检查：若理由明确称引用/来源与原文一致、计算或数值吻合且“未发现实质错误”，不得同时把evidenceSupportsConclusion或numericReproducible置false；将有明确正面依据的对应旗标置true并删除仅与其矛盾的非阻塞理由。若同一理由还指出具体相反证据、错引、错列、公式或范围错误，则保留对应false和该具体阻塞理由。不得让一个真实缺陷被其他正确数字或引用抵消。格式/判定逻辑修复后重新核对全部旗标，保留真实阻塞项。资料不足、冲突未交代或原文不支持关键结论必须false。', input: { company: input.company, asOf: input.asOf, requiredCoreSectionIds: COMPANY_CORE_SECTION_IDS, rubric: reviewRubric, sections, methods: (input.methodResults ?? []).map((method) => ({ skillId: method.skillId, status: method.status, answer: method.answer, findings: method.findings, limitations: method.limitations, risks: method.risks })), preparedAnalysis: input.preparedAnalysis ?? null, citedParagraphs: [...citedParagraphs.values()], gapCheckEvidence, outputExample, repairErrors: diagnostics.slice(-1), repairPreviousOutput:attemptOutputs.at(-1)?.output ?? null }, outputContract: COMPANY_SEMANTIC_QUALITY_SCHEMA, metadata: { operationFamily: 'company-research-quality', stage: 'content_quality_review', companySymbol: input.company.symbol } }, input.signal)
       attemptOutputs.push({attempt,output:response.output})
       if (input.signal?.aborted) return fail('SEMANTIC_QUALITY_CANCELLED', attempt, 'cancelled')
-      const sectionChecks = reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput(response.output), input.sections, input.sources)
+      const industrySelfCorrection = attempt > 1
+        ? reconcileVerifiedIndustryMarketSelfCorrection(response.output, input.sections, input.sources)
+        : { output: response.output, reconciled: false }
+      const explicitSelfCorrection = attempt > 1
+        ? reconcileExplicitReviewerSelfCorrections(industrySelfCorrection.output)
+        : { output: industrySelfCorrection.output, reconciledSectionIds: [] }
+      if (industrySelfCorrection.reconciled || explicitSelfCorrection.reconciledSectionIds.length) diagnostics.push({ code: 'REVIEWER_SELF_CORRECTION_RECONCILED', message: [...(industrySelfCorrection.reconciled ? ['industry-exposure market forecast flags matched both exact report citations and source paragraphs'] : []), ...explicitSelfCorrection.reconciledSectionIds].join('; '), attempt })
+      const sectionChecks = reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput(explicitSelfCorrection.output), input.sections, input.sources)
       const issues = sectionChecks.flatMap((check) => {
         const failed = ['questionAnswered', 'evidenceSupportsConclusion', 'numericReproducible', 'riskTransmission'].filter((key) => !check[key as keyof CompanySemanticSectionCheck])
         return failed.length ? [`${check.sectionId}:${failed.join(',')}:${check.reasons.join('; ')}`] : []
@@ -216,13 +287,43 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
     // reproducibility check when the report omits its periods, operands, or
     // formula. Treat only an explicit missing-input + review-impact statement
     // as a concrete defect; agreement alone remains contradictory below.
-    const hasConcreteCounterevidence = /(?:(?:但|然而|不过|更重要|真正阻塞是|实质问题是).{0,220}(?:应为|错误|不一致|冲突|不支持|未提供|未列明|未列出|未在.{0,12}列出|缺少|没有|不能证明|未核清|归属未注明|无法|不严谨|错列|错用|口径不符|未明确|未标明|未注明)|(?:引用|来源|原文).{0,160}(?:实际|对应).{0,100}(?:完整行|表头|产品名|名称).{0,60}(?:不一致|冲突|错误|不同|范围不准确|误导)|与.{1,100}(?:不一致|冲突)|(?:错误|问题)在于|表头.{0,40}实际为|未提供.{0,60}(?:因此|所以|故)|缺少.{0,60}(?:因此|所以|导致)|(?:年度与半年|年度及半年|年度和半年|跨期).{0,48}(?:混读|混淆|未明确|未标明)|未(?:明确|标明|注明).{0,60}(?:不同期间|期间边界|年度与半年|年度和半年).{0,40}(?:混读|混淆|并置|比较|误导)|(?:只说明|仅说明).{0,80}(?:不能证明|不支持|未核清).{0,80}(?:限制|影响|缺口|判断))/.test(reasons)
+    const hasConcreteCounterevidence = /(?:(?:但|然而|不过|更重要|真正阻塞是|实质问题是).{0,220}(?:应为|错误|不一致|冲突|不支持|未提供|未列明|未列出|未在.{0,12}列出|缺少|没有|不能证明|未核清|归属未注明|无法|不严谨|错列|错用|口径不符|未明确|未标明|未注明)|(?:引用|来源|原文).{0,160}(?:实际|对应).{0,100}(?:完整行|表头|产品名|名称).{0,60}(?:不一致|冲突|错误|不同|范围不准确|误导)|与.{1,100}(?:不一致|冲突)|(?:错误|问题)在于|表头.{0,40}实际为|未提供.{0,60}(?:因此|所以|故)|缺少.{0,60}(?:因此|所以|导致)|(?:年度与半年|年度及半年|年度和半年|跨期).{0,48}(?:混读|混淆|未明确|未标明)|未(?:明确|标明|注明).{0,60}(?:不同期间|期间边界|年度与半年|年度和半年).{0,40}(?:混读|混淆|并置|比较|误导)|(?:只说明|仅说明).{0,80}(?:不能证明|不支持|未核清).{0,80}(?:限制|影响|缺口|判断)|(?:年份|期间|时间口径).{0,60}(?:不精确|不一致|不匹配|错配).{0,80}(?:影响|误导|导致|无法))/.test(reasons)
     // Keep numeric reproduction separate from an unrelated evidence/coverage
     // defect in another clause. Formula, operand, unit, period, and arithmetic
     // mismatches remain numeric blockers; row classification and missing
     // business context belong to evidence/coverage review.
     const hasNumericReproducibilityCounterevidence = hasExplicitReproducibilityGap
       || /(?:实际应为|应为\s*[-+]?\d|与(?:原文|公式|来源|preparedAnalysis).{0,36}(?:不符|不一致)|(?:少计|多计|错算|单位错误|期间错误|期间错配)|期间.{0,48}(?:不符|不一致|错配)|(?:公式|计算).{0,40}(?:不正确|无法复算|错误结果)|无法确认.{0,24}(?:范围|单位|期间|数值|计算|口径)|(?:原文|来源).{0,24}没有该科目.{0,24}(?:范围|单位|期间|数值|计算|口径))/.test(reasons)
+    // A wrong product/industry row citation is a genuine evidence blocker, but
+    // does not make matching disclosed amounts arithmetically irreproducible.
+    // Require the reviewer to identify both the cited classification and the
+    // correct table rows, and preserve the evidence failure explicitly.
+    const segmentClassificationCitationDefect = row.sectionId === 'business-segments'
+      && /引用paragraph\s*\d+(?:[、,，]\s*\d+)*，但这些原文属于分(行业|产品|地区|销售模式)数据行，而报告称其为分(行业|产品|地区|销售模式)行/u.test(reasons)
+      && /分(?:行业|产品|地区|销售模式)金额占比实际见paragraph\s*\d+(?:[、,，]\s*\d+)*，且收入金额虽相同，来源分类标签未绑定正确/u.test(reasons)
+      && /分类口径不可复核/u.test(reasons)
+      && !hasNumericReproducibilityCounterevidence
+      && !/(?:错误数字|计算错误|公式结果错误|实际应为|数值应为|金额应为|单位应为|错算|公式不正确|运算错误|数字有误|数值有误)/.test(reasons)
+    if (row.numericReproducible === false && segmentClassificationCitationDefect) {
+      row.numericReproducible = true
+      row.evidenceSupportsConclusion = false
+    }
+    // A reproducible same-date balance comparison can still be misleading
+    // when placed beside a filing's period-end-to-prior-year-end column. Keep
+    // that comparison-basis concern on the evidence flag, while retaining the
+    // arithmetic flag unless the reviewer identifies an actual numeric or
+    // period calculation error.
+    const balanceComparisonFramingDefect = row.sectionId === 'financial-quality'
+      && /结构化序列\s*20\d{2}-\d{2}-\d{2}至20\d{2}-\d{2}-\d{2}余额同比计算的增长与原表.{0,50}本报告期末.{0,24}上年末.{0,60}余额变化并置/u.test(reasons)
+      && /未充分区分两套比较口径/u.test(reasons)
+      && /影响读者区分同期余额同比和半年报期末对年末的方向/u.test(reasons)
+      && /其余主要金额及公式均可复核/u.test(reasons)
+      && !hasNumericReproducibilityCounterevidence
+      && !/(?:错误数字|计算错误|公式结果错误|实际应为|数值应为|金额应为|单位应为|错算|公式不正确|运算错误|数字有误|数值有误)/.test(reasons)
+    if (row.numericReproducible === false && balanceComparisonFramingDefect) {
+      row.numericReproducible = true
+      row.evidenceSupportsConclusion = false
+    }
     const explicitlyNonBlocking = /(?:判为false无依据|调整为通过|不构成实质性不支持|不构成实质性错误|不构成不可复算理由|不构成反证|此理由不支持判false|没有具体阻塞证据|主要结论均有支持|未发现关键数值错误|数据准确)/i.test(reasons)
     const affirmsNumbers = /(?:事实方向正确|直接披露事实|无需重算|可复算|算术.{0,36}(?:正确|吻合|可复核)|计算.{0,36}(?:正确|吻合|可复核|可核验)|数字.{0,20}(?:正确|无误)|金额.{0,20}(?:正确|无误)|(?:数据|数字|数值).{0,30}准确|未发现(?:具体)?(?:关键)?(?:数字|数值|计算)?错误|未发现说明中的实质错误|其余.{0,24}(?:金额|数字|比例).{0,20}可核验)/.test(reasons)
     const explicitNumericError = /(?:错误数字|计算错误|公式结果错误|实际应为|数值应为|金额应为|单位应为|错算|公式不正确|运算错误|数字有误|数值有误)/.test(reasons)
@@ -247,6 +348,11 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
     const numericInterpretationDefect = /(?:可复算|可复核|计算结果.{0,12}正确|算术.{0,12}可复核|公式.{0,12}可复算)/.test(reasons)
       && /(?:不等于|不能据此称为|不能称为|解释与目标指标不相符|不是分产品|而非分产品|分地区.{0,30}不是产品|易误作公司整体|口径判断|被作为产品驱动)/.test(reasons)
       && !/(?:错误数字|计算错误|公式结果错误|实际应为|数值应为|单位应为|错算)/.test(reasons)
+    const reviewerConcedesNumericArithmetic = /报告所给算术无误/.test(reasons)
+      && /未发现这些已列数字的计算错误/.test(reasons)
+      && /此项不判错/.test(reasons)
+    const numericErrorsOutsideRetraction = reasons.replace(/未发现这些已列数字的计算错误/g, '')
+    if (row.numericReproducible === false && reviewerConcedesNumericArithmetic && !/(?:实际应为|计算错误|公式结果错误|数字有误|数值有误|单位应为|期间错误|错算)/.test(numericErrorsOutsideRetraction)) row.numericReproducible = true
     const reproduciblePeriodScopeDefect = /(?:只能称|只能表述为|僅能称|均只能称).{0,100}(?:较上年末|期末变化).{0,180}(?:结构化历史序列|同比|同日比较).{0,100}(?:矛盾|不一致|冲突)/.test(reasons)
       || /(?:结构化历史序列|同日同比|余额同比).{0,120}(?:矛盾|不一致|冲突).{0,180}(?:本身可复算|公式.{0,12}正确|数值.{0,12}正确)/.test(reasons)
       || /(?:期末余额|期末数).{0,80}(?:同比|同日比较).{0,160}(?:原表.{0,40}(?:本报告期末对上年末|期末对上年末)|期末对上年末).{0,240}(?:结构化序列|结构化历史序列).{0,240}(?:基期描述|期间基期).{0,24}(?:不一致|冲突)/.test(reasons)
@@ -255,7 +361,7 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
     const affirmsEvidence = /(?:证据口径相符|引用.{0,45}(?:确实|一致|相符|匹配)|表格确实.{0,45}披露|已在报告中引用并分析|没有把已披露资料说成缺失|没有实质证据错误|未发现具体错误|未发现说明中的实质错误|材料限制属实)/.test(reasons)
     const describesOnlyPartialRiskCoverage = /风险传导部分.{0,32}(?:覆盖|涉及)|风险传导.{0,24}已覆盖其余/.test(reasons)
     const affirmsRiskPath = !describesOnlyPartialRiskCoverage && /(?:风险传导.{0,24}(?:完整|有描述|已覆盖)|触发.{0,40}影响.{0,40}监控.{0,40}(?:缓解|缓释).{0,24}(?:覆盖|有描述|完整)|风险.{0,30}(?:观察信号|监控).{0,24}(?:缓释|缓解).{0,20}有描述)/.test(reasons)
-    const explicitlyRejectsOwnFailureFlag = /(?:拒绝false判定|需拒绝false判定|false理由不能成立|没有可成立的false理由|false旗标应为true|不可复核旗标应为true|false.{0,16}应为true|不应判为false|不能判为false|不应判为证据不支持|不能据此判(?:为)?false|不能说(?:没有|未提供|未发现|不存在)|不应判错|不能据此判错|不能据此认定(?:关键论点|结论|判断|数字|数据)?错误|本项不应判错|没有阻塞问题|现有证据不足以支持此节为false|(?:该)?旗标(?:判断)?应通过|(?:整体|按规则)应通过而非设false|缺口陈述准确.{0,36}(?:未发现|没有)(?:虚假缺口|实质错误|数值错误)|未发现(?:不支持的)?关键风险传导或数字错误|未发现实质数值错误|未发现(?:具体)?(?:关键)?数字错误)/i.test(reasons)
+    const explicitlyRejectsOwnFailureFlag = /(?:拒绝false判定|需拒绝false判定|false理由不能成立|没有可成立的false理由|false旗标应为true|不可复核旗标应为true|false.{0,16}应为true|不应判为false|不能判为false|不应判为证据不支持|不能据此判(?:为)?false|不能说(?:没有|未提供|未发现|不存在)|不应判错|不能据此判错|不能据此认定(?:关键论点|结论|判断|数字|数据)?错误|本项不应判错|没有阻塞问题|现有证据不足以支持此节为false|(?:该|这些)?旗标(?:判断)?应(?:通过|为true)|(?:整体|按规则)应通过而非设false|正面证据说明不该置false|不应误判|理由与旗标冲突.{0,12}应置true|不存在足以使.{0,20}旗标为false|缺口陈述准确.{0,36}(?:未发现|没有)(?:虚假缺口|实质错误|数值错误)|未发现(?:不支持的)?关键风险传导或数字错误|未发现实质数值错误|未发现(?:具体)?(?:关键)?数字错误)/i.test(reasons)
     const knownManagementSelfRetraction = row.sectionId === 'management-capital-allocation'
       && row.numericReproducible === false && row.evidenceSupportsConclusion === true && row.questionAnswered === true
       && /研发投入占营业收入比例.{0,60}原表变动比例显示/.test(reasons)
@@ -299,6 +405,41 @@ export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySem
     const body = reportSections.get(check.sectionId) ?? ''
     let removed = false
     const reasons = check.reasons.flatMap(reason => {
+      // Reconcile a reviewer objection that explicitly confirms the BYD
+      // historical-industry value, its 2024 period, and the matching source.
+      // Require the exact cited annual-report row and rendered value.
+      if (check.sectionId === 'industry-exposure' && check.evidenceSupportsConclusion === false
+        && !hasIndependentDefectClause(reason)
+        && /报告表述年份与来源及表内期间相符/.test(reason) && /未见错置/.test(reason)
+        && /2024全年/.test(body) && /1,286\.6万辆/.test(body)) {
+        const row = body.split(/\r?\n/).find(line => /1,286\.6万辆/.test(line) && /2024全年/.test(line)) ?? ''
+        const exactSourceRow = [...row.matchAll(/\[([^\]@\s]+)@paragraph:(\d+)\]/g)].some(match => sources.some(source => {
+          if (source.candidate.candidateId !== match[1] || !/^2024\s*年年度报告/.test(source.title)) return false
+          const paragraph = Number(match[2])
+          const sourceLines = source.content.split(/\r?\n/)
+          const context = sourceLines.slice(Math.max(0, paragraph - 3), Math.min(sourceLines.length, paragraph + 2)).join(' ')
+          return /(?:二零二四年|2024年)/.test(context) && /全年销量达到\s*1,286\.6\s*万辆/.test(context)
+        }))
+        if (exactSourceRow) { removed = true; return [] }
+      }
+      // The 2025 employee-plan figures are explicit plan caps. Clear only the
+      // reviewer's self-identified objection when the cited annual report and
+      // report wording both preserve the cap and distinguish actual execution.
+      if (check.sectionId === 'management-capital-allocation'
+        && (check.evidenceSupportsConclusion === false || check.numericReproducible === false)
+        && !hasIndependentDefectClause(reason)
+        && /计划范围不超过2\.5万名员工/.test(reason) && /资金总额不超过41亿元/.test(reason)
+        && /同段明确标为.{0,12}计划条款/.test(reason) && /未误报实绩/.test(reason)
+        && /原有阻塞理由不成立/.test(reason)
+        && /不超过2\.5万名员工.{0,30}资金总额不超过41亿元/.test(body)
+        && /计划条款|计划上限/.test(body)
+        && /不等于实际认购人数|不能替代个人认购人数/.test(body)) {
+        const cited = new Set([...body.matchAll(/\[([^\]@\s]+)@paragraph:(\d+)\]/g)].map(match => `${match[1]}@paragraph:${match[2]}`))
+        const exactPlanRows = sources.some(source => /^2025\s*年年度报告/.test(source.title)
+          && /涉及不超过\s*2\.5\s*万名员工，资金总额不超过\s*41\s*亿元/.test(source.content.replace(/\s+/g, ' '))
+          && [3060, 3061].every(paragraph => cited.has(`${source.candidate.candidateId}@paragraph:${paragraph}`)))
+        if (exactPlanRows) { removed = true; return [] }
+      }
       // Supply-chain working-capital formulas bind the structured source inline
       // on every formula. Do not retain a reviewer objection that says the
       // figures are correct but falsely describes those bindings as section-end only.

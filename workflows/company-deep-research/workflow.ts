@@ -20,7 +20,7 @@ import { COMPANY_RESEARCH_METHOD_IDS, COMPANY_METHOD_SECTION_IDS, COMPANY_METHOD
 import type { CompanyResearchInput } from '../../skills/company-research/contracts.ts'
 import { insertCompanyFinancialOpeningSummary, prepareCompanyFinancialAnalysis, renderCompanyFinancialTable } from './financial-analysis.ts'
 import { assembleCompanyResearch, buildSynthesisEvidenceLedger, repairCompanyResearchMarkdownTables, validateCompanyResearchSectionTables } from './assembly.ts'
-import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, compareCompanySynthesisEvidenceFingerprints, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, mergeCompanySemanticQuality, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyEmployeePlanMonitoringEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, reconcileCompanyNumericMovementVerbs, reconcileCompanyGeographicRevenueInterpretation, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyInterimIndustryProductComparison, reconcileCompanyRAndDCapitalizationRatioSpread, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductCategoryEconomics, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyFinancialSummaryTable, reconcileCompanyPreparedAnalysisFacts, reconcileCompanyPlacementFacts } from './content-quality.ts'
+import { COMPANY_CORE_SECTION_IDS, companySynthesisEvidenceFingerprint, compareCompanySynthesisEvidenceFingerprints, ensureCompanyIncompleteSynthesisSections, evaluateCompanyResearchContent, findKnownCompetitorDenials, findKnownCustomerConcentrationDenials, mergeCompanySemanticQuality, reconcileCompanyCompetitorEvidence, reconcileCompanyControlOwnerHoldings, reconcileCompanyCrossSectionBoundaries, reconcileCompanyDriverClassificationLabels, reconcileCompanyDriverFinancialReferences, reconcileCompanyEmployeePlanEvidence, reconcileCompanyEmployeePlanMonitoringEvidence, reconcileCompanyFinancialGrowthFormula, reconcileCompanyAnnualFinancialCounterevidence, reconcileCompanyInterimFinancialSummary, reconcileCompanyFinancialPeriodScope, reconcileCompanyFinancialScopeLimitations, reconcileCompanyIndustryForecastPeriods, reconcileCompanyIndustryGrowthSpread, repairCompanyIndustryExposureRowsFromMethod, reconcileCompanyNumericMovementVerbs, reconcileCompanyGeographicRevenueInterpretation, reconcileCompanyNonRecurringDisclosure, reconcileCompanyLeverageFormula, reconcileCompanyProductCustomerConcentration, reconcileCompanyProductGrowthReferences, reconcileCompanyProductProductionGrowth, reconcileCompanyProductRevenueCostGrowth, reconcileCompanyInterimIndustryProductComparison, reconcileCompanyRAndDCapitalizationRatioSpread, reconcileCompanyProductRevenueDrivers, reconcileCompanyUnsupportedProductGrowth, reconcileCompanyProductRevenueRowCitations, reconcileCompanyProductRevenueShares, reconcileCompanyInterimProductRevenueShares, reconcileCompanyProductCategoryEconomics, reconcileCompanyProductTableSectionReferences, reconcileCompanyRiskBoundaries, reconcileCompanySegmentRowCitations, reconcileCompanyTechnologyProgressReferences, reconcileCompanyAnnualGrossMargin, reconcileCompanyConsolidatedGrossMargin, reconcileCompanyDriverConsolidatedGrossMargin, reconcileCompanyFinancialSummaryTable, reconcileCompanyPreparedAnalysisFacts, reconcileCompanyPlacementFacts } from './content-quality.ts'
 import { prepareCompanyMarketSizing } from './market-sizing.ts'
 import { assessCompanySourceHealth, type CompanySourceAttemptTrace } from '../../data/company-source-health.ts'
 import { reviewCompanyResearchSemantics, type CompanySemanticQuality } from './semantic-quality.ts'
@@ -41,14 +41,20 @@ export function applyCompanyResearchTableDiagnostics<T extends { passed: boolean
 export function buildCompanyMethodReviewFeedback(skillId: string, checks: readonly { sectionId: string; reasons: readonly string[] }[]): string[] {
   return checks.filter(check => check.reasons.length).map(check => {
     const reason = check.reasons.join('；')
+    if (skillId === 'company_risk_analysis' && check.sectionId === 'risks' && /(?:竞品|竞争者|对手|横向数据)/.test(reason)) {
+      return `${check.sectionId}: 若已完成的竞争章节列出具名候选及其产品路线，风险章节不得称“没有具名竞品/路线”或“具名竞品未提供”。只指出本方法允许证据和报告中尚未验证的直接采购重叠、同口径成本性能比较、市场份额或竞争结果；可指向竞争章节说明已识别的候选，不复制其他方法未提供的数字、主张或引用。`
+    }
     if (/(?:竞争|竞品|竞争者|对手|市场份额)/.test(reason) && skillId !== 'competitive_market_map') {
       return `${check.sectionId}: 删除或改写本节任何关于报告整体“没有具名竞品、候选或产品路线”的绝对缺口。不要引入其他方法的公司名称、产品路线、数字或引用；明确写成“具名候选与已披露产品路线见竞争章节；本方法输入未提供直接竞争关系、客户重叠、市场份额及同口径成本/性能证据，故本节不判断相对竞争地位”。本方法只陈述其输入能支持的范围。`
     }
     if (skillId === 'business_driver_analysis' && ['revenue-profit-drivers', 'growth-drivers'].includes(check.sectionId)) {
-      return `${check.sectionId}: 先逐行复核本方法本轮允许证据中的分行业、分产品及分地区表，将可核验的收入金额、占比、收入与成本增速、毛利率及原列名分别列为已知；只有实际未提供的指标才列为缺口。行业标签跨段时核对完整表头、标签及数值续行，不得因缺少量价或分部利润而否定已给出的收入行。将已知收入变化与尚不能拆分的销量、价格、组合、分部利润分开。比较成本与收入增速时先写清有序操作数和差额方向，不能把负增速大小关系或带符号差额写反。每个数值仅引用本方法输入中直接支持它的精确配对；无法确认行、单位或期间时保留该项缺口，不采用审查意见给出的数值或定位。`
+      return `${check.sectionId}: 先逐行复核本方法本轮允许证据中的分行业、分产品及分地区表，将可核验的收入金额、占比、收入与成本增速、毛利率及原列名分别列为已知；半年报“营业收入构成”分产品表若已列本期占比，必须在收入结构中逐项列出具名产品、占比和精确行级引用，不得再称分部收入占比未披露。只有实际未提供的指标才列为缺口。行业标签跨段时核对完整表头、标签及数值续行，不得因缺少量价或分部利润而否定已给出的收入行。将已知收入变化与尚不能拆分的销量、价格、组合、分部利润分开。比较成本与收入增速时先写清有序操作数和差额方向，不能把负增速大小关系或带符号差额写反。每个数值仅引用本方法输入中直接支持它的精确配对；无法确认行、单位或期间时保留该项缺口，不采用审查意见给出的数值或定位。`
     }
     if (['capital_allocation_review', 'management_governance_analysis'].includes(skillId) && check.sectionId === 'management-capital-allocation') {
-      return `${check.sectionId}: 复核本方法本轮允许证据中的历史收购、并表、回购和员工持股行动，按行动发生期间、授权、实施、完成及后续结果分别建账。若材料仅证明行动存在或已实施，就保留该事实及精确引用；不能因缺少交易对价、回购价格或增量回报而写成没有行动或没有任何实施资料。历史行动不得冒充本期新增投入，员工持股购买不得直接称注销回购。实际未提供的对价、回报和可比口径仍逐项列为缺口，不用审查意见中的行动细节、数值或引用补齐。`
+      return `${check.sectionId}: 复核本方法本轮允许证据中的历史收购、并表、回购和员工持股行动，按行动发生期间、授权、实施、完成及后续结果分别建账。员工持股计划若披露完整名称、年份、适用对象或人员范围及人数，必须照证据分别写明并引用原文；不能再把已列明的计划期间、名称或参与范围称为未披露。参与人数如仅为计划覆盖或认购人数，不得改称实际持有人数。若材料仅证明行动存在或已实施，就保留该事实及精确引用；不能因缺少交易对价、回购价格或增量回报而写成没有行动或没有任何实施资料。历史行动不得冒充本期新增投入，员工持股购买不得直接称注销回购。实际未提供的对价、回报和可比口径仍逐项列为缺口，不用审查意见中的行动细节、数值或引用补齐。`
+    }
+    if (skillId === 'product_technology_analysis' && check.sectionId === 'technologies') {
+      return `${check.sectionId}: 回到本方法允许证据及已通过校验的finding，区分公司披露的研发路线、累计使用、进入量产或应用进展，与独立性能验证、稳定良率、客户采用及可归因盈利。已披露的商业化阶段事实必须保留并准确引用；只把独立验证、持续规模化、经济回报或因果归因列为缺口，不得将这些缺口扩大成没有商业转化证据，也不得采用审查意见中的数字或定位。`
     }
     if (skillId === 'business_driver_analysis' && /(?:爬坡|扩产|催化|量产|订单)/.test(reason)) {
       return `${check.sectionId}: 不要把缺少量化订单、利用率或未来收入预测扩大写成完全没有经营进度。区分公司披露的项目进展与可核验的量化兑现；只引用本方法输入中实际提供的原文，未提供时说明本方法证据缺口。`
@@ -70,12 +76,13 @@ export function buildCompanySynthesisReviewFeedback(checks: readonly { sectionId
   const feedback: string[] = []
   if (failed.has('revenue-profit-drivers')) feedback.push('revenue-profit-drivers: 分开呈现公司合计、分行业/分产品和分地区原表已披露的收入变化；逐行核对完整标签、表头及数值续行，不因没有量价或分部利润而把可核验的收入、成本或毛利率行称为未提供。只有扣除已披露分类后仍无法解释的部分，才称“未归因残差”，并把残差范围限定为量价、组合或分部利润无法拆分。对同一行成本与收入增速，按允许证据中的实际数值写明谁高、有序操作数、带符号方向差及公式；合并毛利率仅在preparedAnalysis确有同口径本期/上年同期值时列出两个操作数和百分点差公式。每个数值按其原表行分别附精确引用，不将不同口径共挂一组引用。')
   if (failed.has('growth-drivers')) feedback.push('growth-drivers: 核对有效方法结果和允许证据中的分行业及分产品收入金额、占比和可比增速；若已提供，先列出这些已知事实及行级引用，再说明销量、价格、组合或分部利润仍不能拆分及其对增长判断的影响。不得将缺少细分归因扩写为没有收入规模或结构资料；没有直接证据的指标仍保留缺口，不借用独立审查中的数字或定位。')
-  if (failed.has('management-capital-allocation')) feedback.push('management-capital-allocation: 逐项核对允许证据及有效方法结果中的收购、并表、回购和员工持股行动，保留可核验的历史行动、实施或完成事实及精确引用；区分历史与本期、授权与实际执行、员工持股购买与注销回购。对价、价格、增量回报或门槛缺失只限制相应经济评价，不能据此否认行动存在；不从审查意见补造行动、数字或引用。')
+  if (failed.has('management-capital-allocation')) feedback.push('management-capital-allocation: 逐项核对允许证据及有效方法结果中的收购、并表、回购和员工持股行动，保留可核验的历史行动、实施或完成事实及精确引用。员工持股计划如有完整名称、年份、对象范围及人数，必须按来源分别写明；不得把已列明的计划名称、年份或参与范围称为未披露，也不得把计划覆盖/认购人数改称实际持有人数。区分历史与本期、授权与实际执行、员工持股购买与注销回购。对价、价格、增量回报或门槛缺失只限制相应经济评价，不能据此否认行动存在；不从审查意见补造行动、数字或引用。')
   if (failed.has('monitoring-checklist')) feedback.push('monitoring-checklist: 对每个待补指标先核对有效方法结果和允许证据，区分已披露的历史累计购买或持有数量、截止日期、实施状态与尚未披露的后续增减、价格和收益。可核验的累计数作为带截止日期及精确引用的监控基线；缺失项仅写未来更新或仍缺的指标，不把已给出的累计行写成未提供。不得将不同计划或截止时点相加，也不得采用审查意见中的数值、计划名称或引用。')
   if (failed.has('business-model')) feedback.push('business-model: 收入构成表的产品、销售模式、地区及毛利率必须分属各自原表；金额/占比表与毛利率表分开引用。表格每个产品数据行应直接引用对应的完整产品行，禁止用一组跨多行的重复引用替代行级来源。')
   if (failed.has('products')) feedback.push('products: 不得无比较基准地称某产品毛利率“较高/更高”；若作相对判断，写清比较对象、期间和同口径两个数值并各引对应行，否则只陈述该产品的披露水平。产品金额、成本、毛利率及变化值分别引用精确的分产品行；不得引用分行业行替代。')
   if (failed.has('industry-exposure')) feedback.push('industry-exposure: 严格区分分行业、分产品、分地区表及其完整分类标签；描述公司产品收入分类时只引用“分产品”原表及正确产品行，描述行业暴露时只引用分行业行。不可依据相邻段落编号推断定位，也不可把行业行写作产品行。')
-  if (failed.has('catalysts') || failed.has('risks')) feedback.push('catalysts/risks: 与具名竞品和产品路线有关的证据缺口必须限于直接竞争/竞标、客户重叠、市场份额及同口径性能成本比较；若竞争方法已识别公司和路线，应保留该候选及路线，不得称没有具名候选、路线或任何可比资料。')
+  if (failed.has('catalysts') || failed.has('risks')) feedback.push('catalysts/risks: 与具名竞品和产品路线有关的证据缺口必须限于直接竞争/竞标、客户重叠、市场份额及同口径性能成本比较；若竞争方法已识别公司和路线，应保留该候选及路线，不得称没有具名候选、路线或任何可比资料。风险章节应引用/指向竞争章节已识别的候选，并只说明尚未验证的重叠、份额和同口径表现，不得把缺少这些验证写成没有候选。')
+  if (failed.has('technologies')) feedback.push('technologies: 保留允许证据和已完成产品技术方法实际披露的研发路线、累计使用、进入量产或应用进展，并准确引用；把独立性能验证、稳定规模化和可归因经济回报分别限制为未证实范围，不能把缺少验证扩大成没有商业转化进展。')
   for (const check of checks) {
     if (!check.reasons.length) continue
     if (['revenue-profit-drivers', 'growth-drivers', 'management-capital-allocation', 'monitoring-checklist', 'business-model', 'products', 'industry-exposure', 'catalysts', 'risks'].includes(check.sectionId)) continue
@@ -581,6 +588,7 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       const synthesisEvidenceLedger = buildSynthesisEvidenceLedger({
         methods: methodResults,
         sources: researchInput.sources,
+        allowedSourceCandidateIds: researchInput.reportSourceCandidateIds ?? researchInput.durableSourceCandidateIds,
         conflictedSourceCandidateIds: sourceConflicts.map(conflict => conflict.candidateId),
       })
       const preparedAnalysis = researchInput.preparedAnalysis && typeof researchInput.preparedAnalysis === 'object'
@@ -598,6 +606,7 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
         semanticExecutionBlock || remainingSynthesisAttempts === 0 ? undefined : input.reasoningExecutor,
         now,
         remainingSynthesisAttempts,
+        { conflictedSourceCandidateIds: sourceConflicts.map(conflict => conflict.candidateId) },
       )
       const normalizedSections = assembled.sections.map(section => {
         const repaired = repairCompanyResearchMarkdownTables(section.markdown)
@@ -845,7 +854,8 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       preReconciliationTableRepairs.push(...repaired.repairs.map(repair => `${section.id}: ${repair}`))
       return { ...section, markdown: repaired.markdown }
     })
-    const reconciledSections = reconcileCompanyCompetitorEvidence({ sections: normalizedFinalSections, methodResults })
+    const industryRowsRepaired = repairCompanyIndustryExposureRowsFromMethod({ sections: normalizedFinalSections, methodResults })
+    const reconciledSections = reconcileCompanyCompetitorEvidence({ sections: industryRowsRepaired, methodResults })
     const productCitations = reconcileCompanyProductTableSectionReferences({ sections: reconciledSections, methodResults })
     const segmentCitations = reconcileCompanySegmentRowCitations({ sections: productCitations, methodResults })
     const rowCitations = reconcileCompanyProductRevenueRowCitations({ sections: segmentCitations, methodResults })

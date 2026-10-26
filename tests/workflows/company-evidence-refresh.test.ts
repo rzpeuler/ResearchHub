@@ -78,7 +78,11 @@ test('new accepted statutory annual report refreshes every stale complete method
 
 test('same candidate conflict cannot promote a new report or refresh unrelated completed methods', async () => {
   const {result,analysis,calls} = await runScenario('conflict')
-  assert.equal(result.status,'completed',result.errors.join(';'))
+  // The conflicted candidate is the only official source used by this fixture.
+  // Since synthesis may not refill method citations from raw source text, the
+  // report must remain blocked rather than reusing evidence whose body changed.
+  assert.equal(result.status,'blocked',result.errors.join(';'))
+  assert.match(result.errors.join(';'),/SYNTHESIS_DEGRADED/)
   assert.equal(analysis.sourceConflicts.length,1)
   assert.equal(calls.length,11)
   assert.ok(analysis.methodResults.every(method=>!method.diagnostics.some(d=>d.code.startsWith('EVIDENCE_REFRESH'))))

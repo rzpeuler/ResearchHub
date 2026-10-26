@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "latestRound": "R175-byd",
+  "latestRound": "2026-10-27-p0-readonly-repair-33",
   "acceptance": "NOT_ACCEPTED",
   "rounds": [
     {
@@ -10996,6 +10996,684 @@
               "evidenceLocations": 36
             }
           ]
+        }
+      ]
+    },
+    {
+      "round": "2026-10-27-p0-readonly-repair-33",
+      "generatedAt": "2026-10-26T20:20:12.900Z",
+      "executionClass": "real Runtime/API and configured Pi model; no fixture providers",
+      "acceptance": "NOT_ACCEPTED",
+      "cases": [
+        {
+          "symbol": "002594",
+          "runId": "d2128c29-d278-4517-a793-ffc624075a9e",
+          "status": "blocked",
+          "reportId": "company-research-002594-d2128c29-d278-4517-a793-ffc624075a9e",
+          "researchQuality": {
+            "passed": false,
+            "status": "incomplete",
+            "coreCoverage": {
+              "completed": 13,
+              "required": 16
+            },
+            "issues": [
+              "METHOD_NOT_COMPLETED:business_driver_analysis:failed",
+              "METHOD_NOT_COMPLETED:business_driver_analysis:failed",
+              "METHOD_NO_RESEARCH_ANSWER:business_driver_analysis",
+              "METHOD_SUMMARY_WITHOUT_LOCATED_EVIDENCE:business_driver_analysis",
+              "revenue-profit-drivers:OWNER_METHOD_NOT_COMPLETED:business_driver_analysis",
+              "growth-drivers:OWNER_METHOD_NOT_COMPLETED:business_driver_analysis",
+              "growth-drivers:RESEARCH_GAP",
+              "catalysts:OWNER_METHOD_NOT_COMPLETED:business_driver_analysis",
+              "catalysts:RESEARCH_GAP",
+              "catalysts:NO_ATTRIBUTABLE_EVIDENCE"
+            ],
+            "sectionChecks": [
+              {
+                "sectionId": "company-overview",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "business-model",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "business-segments",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "revenue-profit-drivers",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "OWNER_METHOD_NOT_COMPLETED:business_driver_analysis"
+                ]
+              },
+              {
+                "sectionId": "products",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "technologies",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "industry-exposure",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "supply-chain",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "competition",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "financial-quality",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "growth-drivers",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "OWNER_METHOD_NOT_COMPLETED:business_driver_analysis",
+                  "RESEARCH_GAP"
+                ]
+              },
+              {
+                "sectionId": "management-capital-allocation",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "catalysts",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "OWNER_METHOD_NOT_COMPLETED:business_driver_analysis",
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "risks",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "investment-thesis",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "monitoring-checklist",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              }
+            ]
+          },
+          "knowledgeIntegrityMode": "readonly",
+          "knowledgeUnchanged": true,
+          "reportPath": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-acceptance\\2026-10-27-p0-readonly-repair-33\\002594-report.json",
+          "reportSha256": "c7f8a5a4c9ea4cf649b5103e92969962a0a7a082f24e343912181371958ef440",
+          "analysisPath": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-acceptance\\2026-10-27-p0-readonly-repair-33\\002594-analysis.json",
+          "analysisSha256": "d06e5a87030fa170803b765b5cbe9f786bae6b592e2f60a8d788d67008b10376",
+          "methodExecutions": [
+            {
+              "skillId": "company_history_strategy",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "比亚迪的发展路径体现为从电池与电子制造积累，逐步扩展至新能源汽车，并进一步叠加智能化、全球化和多品牌布局。其优势延续自技术与制造能力的长期积累；但现有材料不能充分识别早期业务转折、并购贡献或战略对经营结果的独立因果影响。"
+            },
+            {
+              "skillId": "product_technology_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "比亚迪产品组合横跨汽车、动力及储能电池、消费电池、电子部件与算力基础设施；披露显示汽车及相关产品规模和毛利率高于手机部件类，但不同业务标签及口径限制了产品级归因。技术方面，公司披露了电动化、补能和智能化的研发与应用路线；关键性能数据主要来自公司自述，独立验证和具名竞品同口径比较不足。"
+            },
+            {
+              "skillId": "business_driver_analysis",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "REFERENCE_ERROR"
+            },
+            {
+              "skillId": "financial_quality_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "截至最新半年累计期间，收入、营业利润与结构化净利润均同比下降，合并毛利率略升；经营现金流同比增加，现金表现与利润方向分化。营运资金占用、尤其存货扩张值得持续核验，经营现金流尚不足以覆盖资本开支。负债与借款结构有所扩张，资本化研发亦需跟踪；现有材料不足以判断分部驱动、债务到期压力或投资回报。"
+            },
+            {
+              "skillId": "market_structure_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "比亚迪覆盖汽车及相关产品、电子器件等不同市场，不能合并为单一可比市场。中国新能源汽车需求仍在扩张，海外拓展提供额外需求来源；但现有材料只支持行业销量及公司分部收入分析，不足以确定各业务的完整产品、客户、区域边界或公司级TAM。"
+            },
+            {
+              "skillId": "competitive_market_map",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "现有材料支持对乘用车新能源家庭轿车场景作有限比较：比亚迪海豹08与吉利银河E8均为具名轿车产品，且可比较补能与动力技术路线；但缺少同价位版本、测试条件、成交价格、客户重叠及销量等同口径证据，不能据此判断胜负或推及公司整体竞争地位。比亚迪其他业务线缺乏具名、可比的对手输入。"
+            },
+            {
+              "skillId": "management_governance_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "比亚迪管理与治理呈现创始人集中领导、经营策略与日常营运由董事长兼总裁统筹的结构；现有披露同时显示董事会监督、内部控制和关联交易制度，以及员工持股与高管增持安排。新任副总裁已披露任命信息，但履历与个人职责细分有限。激励设计与长期经营目标有一定关联，实际利益协调、制衡执行和承诺兑现仍需持续核验。"
+            },
+            {
+              "skillId": "capital_allocation_review",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "比亚迪持续将资本投向研发与产能扩张，并通过股权融资、经营现金流和借款等渠道支持发展，同时实施股东分红及员工持股安排。现有材料可确认投入、融资与部分执行结果，但不足以把后续经营表现归因于具体项目或证明投入达到回报门槛；资本配置判断应保持审慎。"
+            },
+            {
+              "skillId": "company_risk_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "比亚迪的主要关注点是汽车主业阶段性承压、营运资金余额增长快于收入、投资现金支出超过经营现金流，以及治理集中和商誉估值对预测假设的敏感性。客户披露显示存在较大单一客户，但客户匿名且业务归属未明；竞争与政策风险缺乏足够公司特定的对手和政策影响证据。当前判断是风险可监控但并非已证实的损失，若收入和利润修复、营运资金背离收敛、投资现金回收改善，判断可缓和。"
+            },
+            {
+              "skillId": "business_model_map",
+              "status": "complete",
+              "attempts": 2,
+              "summary": "比亚迪以多元制造产品面向企业客户与消费者，通过直销和经销等渠道销售，按合同交易价格并在商品交付、客户接受时确认收入。汽车及相关产品为最大收入来源，电子业务亦具重要规模；垂直整合和多业务协同可能带来供应链与技术优势，但产品盈利、客户身份及业务映射仍有披露边界。"
+            }
+          ],
+          "sections": [
+            {
+              "id": "company-overview",
+              "characters": 2733,
+              "locatedEvidenceCount": 22
+            },
+            {
+              "id": "business-model",
+              "characters": 6400,
+              "locatedEvidenceCount": 50
+            },
+            {
+              "id": "business-segments",
+              "characters": 5816,
+              "locatedEvidenceCount": 40
+            },
+            {
+              "id": "revenue-profit-drivers",
+              "characters": 960,
+              "locatedEvidenceCount": 1
+            },
+            {
+              "id": "products",
+              "characters": 8722,
+              "locatedEvidenceCount": 66
+            },
+            {
+              "id": "technologies",
+              "characters": 3685,
+              "locatedEvidenceCount": 31
+            },
+            {
+              "id": "industry-exposure",
+              "characters": 7908,
+              "locatedEvidenceCount": 58
+            },
+            {
+              "id": "supply-chain",
+              "characters": 4057,
+              "locatedEvidenceCount": 17
+            },
+            {
+              "id": "competition",
+              "characters": 2466,
+              "locatedEvidenceCount": 17
+            },
+            {
+              "id": "financial-quality",
+              "characters": 8255,
+              "locatedEvidenceCount": 10
+            },
+            {
+              "id": "growth-drivers",
+              "characters": 561,
+              "locatedEvidenceCount": 1
+            },
+            {
+              "id": "management-capital-allocation",
+              "characters": 9904,
+              "locatedEvidenceCount": 90
+            },
+            {
+              "id": "catalysts",
+              "characters": 51,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "risks",
+              "characters": 5057,
+              "locatedEvidenceCount": 35
+            },
+            {
+              "id": "valuation",
+              "characters": 101,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "bull-base-bear",
+              "characters": 103,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "variant-perception",
+              "characters": 109,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "investment-thesis",
+              "characters": 2829,
+              "locatedEvidenceCount": 46
+            },
+            {
+              "id": "monitoring-checklist",
+              "characters": 2520,
+              "locatedEvidenceCount": 39
+            }
+          ],
+          "sourceAdvice": [
+            {
+              "metricId": "company_basic_profile",
+              "sourceId": "akshare-company_basic_profile",
+              "status": "repeated_failure",
+              "failureCount": 2,
+              "latestDiagnostic": "AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/get?fltt=2&invt=2&fields=f120%2Cf121%2Cf122%"
+            },
+            {
+              "metricId": "company_market_history",
+              "sourceId": "akshare-company_market_history",
+              "status": "repeated_failure",
+              "failureCount": 2,
+              "latestDiagnostic": "AKSHARE_BRIDGE_EXIT_1:requests.exceptions.ProxyError: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/kline/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%"
+            },
+            {
+              "metricId": "company_market_history",
+              "sourceId": "tencent-company-market-history",
+              "status": "repeated_failure",
+              "failureCount": 2,
+              "latestDiagnostic": "AKSHARE_BRIDGE_EXIT_1:AttributeError: 'NoneType' object has no attribute 'replace'"
+            },
+            {
+              "metricId": "company_research_evidence",
+              "sourceId": "gdelt-company-research-evidence",
+              "status": "replacement_recommended",
+              "failureCount": 2,
+              "latestDiagnostic": "fetch failed",
+              "replacementSourceId": "public-web-company-research-evidence"
+            }
+          ],
+          "manualReview": {
+            "symbol": "002594",
+            "runId": "d2128c29-d278-4517-a793-ffc624075a9e",
+            "acceptance": "NOT_ACCEPTED",
+            "reviewStatus": "BLOCKED",
+            "thesisChecklistReview": {
+              "conditionalCoreView": "present",
+              "supportingEvidence": "present_and_located",
+              "strongestCounterevidence": "customer_concentration_and_cash_investment_pressure",
+              "invalidationCondition": "present",
+              "monitoringIndicatorsAndTriggers": "present",
+              "numericBaselineAndPeriod": "partially_present"
+            },
+            "blockingIssues": [
+              "business_driver_analysis failed both attempts with a method-supplied locator error at official-c19c34dd239b2e9b2e9c@paragraph:719",
+              "revenue-profit-drivers, growth-drivers, and catalysts remain blocked; quality is incomplete at 13/16",
+              "Hermes BYD report artifact was not present in the inspected workspace, so side-by-side review was unavailable"
+            ],
+            "readOnlyKnowledgeUnchanged": true
+          }
+        },
+        {
+          "symbol": "002384",
+          "runId": "1c2013e7-4504-4676-b3f5-9a1a1a3a4513",
+          "status": "blocked",
+          "reportId": "company-research-002384-1c2013e7-4504-4676-b3f5-9a1a1a3a4513",
+          "researchQuality": {
+            "passed": false,
+            "status": "incomplete",
+            "coreCoverage": {
+              "completed": 13,
+              "required": 16
+            },
+            "issues": [
+              "METHOD_NOT_COMPLETED:business_driver_analysis:failed",
+              "METHOD_NOT_COMPLETED:business_driver_analysis:failed",
+              "METHOD_NO_RESEARCH_ANSWER:business_driver_analysis",
+              "METHOD_SUMMARY_WITHOUT_LOCATED_EVIDENCE:business_driver_analysis",
+              "revenue-profit-drivers:OWNER_METHOD_NOT_COMPLETED:business_driver_analysis",
+              "growth-drivers:OWNER_METHOD_NOT_COMPLETED:business_driver_analysis",
+              "growth-drivers:RESEARCH_GAP",
+              "catalysts:OWNER_METHOD_NOT_COMPLETED:business_driver_analysis",
+              "catalysts:RESEARCH_GAP",
+              "catalysts:NO_ATTRIBUTABLE_EVIDENCE"
+            ],
+            "sectionChecks": [
+              {
+                "sectionId": "company-overview",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "business-model",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "business-segments",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "revenue-profit-drivers",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "OWNER_METHOD_NOT_COMPLETED:business_driver_analysis"
+                ]
+              },
+              {
+                "sectionId": "products",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "technologies",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "industry-exposure",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "supply-chain",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "competition",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "financial-quality",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "growth-drivers",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "OWNER_METHOD_NOT_COMPLETED:business_driver_analysis",
+                  "RESEARCH_GAP"
+                ]
+              },
+              {
+                "sectionId": "management-capital-allocation",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "catalysts",
+                "core": true,
+                "passed": false,
+                "reasons": [
+                  "OWNER_METHOD_NOT_COMPLETED:business_driver_analysis",
+                  "RESEARCH_GAP",
+                  "NO_ATTRIBUTABLE_EVIDENCE"
+                ]
+              },
+              {
+                "sectionId": "risks",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "investment-thesis",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              },
+              {
+                "sectionId": "monitoring-checklist",
+                "core": true,
+                "passed": true,
+                "reasons": []
+              }
+            ]
+          },
+          "knowledgeIntegrityMode": "readonly",
+          "knowledgeUnchanged": true,
+          "reportPath": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-acceptance\\2026-10-27-p0-readonly-repair-33\\002384-report.json",
+          "reportSha256": "86d33bf54cbbca72a9eca8753adbf568a11fca0488f6a7be005a3629e99ce623",
+          "analysisPath": "C:\\Users\\Administrator\\Desktop\\ResearchHub\\runtime-data\\company-quality-acceptance\\2026-10-27-p0-readonly-repair-33\\002384-analysis.json",
+          "analysisSha256": "34b025719419aaa7b7f3723dc870eec9c2030f08de5edec4d1cb02d63dc23a79",
+          "methodExecutions": [
+            {
+              "skillId": "company_history_strategy",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "东山精密的可证沿革从有限责任公司整体变更为股份公司及随后上市展开；材料未提供有限责任公司最初设立日期。上市后，公司由精密制造及电子电路基础，逐步拓展至多元产品、全球化运营，并在近期将资源进一步集中于AI相关PCB与光模块，同时通过收购扩充汽车及光通信能力。战略方向清晰，但收购整合和新增产能的持续回报仍待验证。"
+            },
+            {
+              "skillId": "business_model_map",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "东山精密以电子电路、精密组件、光模块及光电显示模组等产品面向客户销售，披露销售模式为直销，内外销均在客户取得产品控制权的交付节点确认收入。收入结构向电子电路倾斜，而光模块披露的产品毛利率较高；客户集中度是重要约束。供应链采购来源分散于多家匿名供应商，但其具体品类、议价与付款条件未披露。"
+            },
+            {
+              "skillId": "product_technology_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "公司产品组合正由电子电路、精密组件与显示模组延伸至光模块及光芯片；产品间收入规模和毛利表现差异明显。技术材料显示部分光芯片已进入量产、光模块已有批量应用，但规模化盈利、客户认证和持续交付仍需持续验证。"
+            },
+            {
+              "skillId": "business_driver_analysis",
+              "status": "failed",
+              "attempts": 2,
+              "summary": "",
+              "errorCode": "NUMERIC_GROUNDING_ERROR"
+            },
+            {
+              "skillId": "financial_quality_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "最近可比半年累计期间，收入与营业利润上升，结构化净利润（归母属性未注明）上升，毛利率提高；经营现金流则小幅下降。应收及存货增长快于收入，且经营现金流不足以覆盖资本开支，显示扩张期现金转化承压。债务及资本投入增加，投资回报与账龄、库龄资料不足，结论应保持审慎。"
+            },
+            {
+              "skillId": "market_structure_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "东山精密横跨电子电路、精密组件、显示模组及光模块等制造环节，不能用单一终端市场概括。现有材料支持界定全球PCB及数通光模块的行业背景，也显示AI数据中心与高端PCB需求成为增长驱动；但这些行业预测并非公司可服务市场或公司TAM。客户、具体产品边界、区域覆盖和市场份额资料不足，无法得出公司级TAM。"
+            },
+            {
+              "skillId": "competitive_market_map",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "现有资料可在AI数据中心高速光模块细分市场作有限比较：东山精密已布局含光芯片的光模块，中际旭创披露高速光互连产品及面向云计算、AI基础设施的应用，存在产品与采购场景重叠。但双方客户交集、性能、成本、定价、渠道和同口径规模数据不足，不能据此判断竞争胜负或全公司竞争地位。电子电路、显示模组和精密组件等业务缺少具名、可比对手；竞争优势持续性及其反证仍待验证。"
+            },
+            {
+              "skillId": "management_governance_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "治理呈现出创始人家族控制与职业管理层分工并存的格局；董事会换届及副总经理聘任已披露，内部控制体系亦有年度自评。核心观察是控制权集中、独立董事更替和员工持股激励变化带来的监督与利益一致性问题；现有材料不足以判断新任人员履职表现、关联事项回避执行及投资回报兑现。"
+            },
+            {
+              "skillId": "capital_allocation_review",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "公司将资金同时投向技术研发、产能扩充与业务收购，并以借款、经营现金及历史股权融资支撑扩张；回购与分红则体现不同阶段的股东回报取舍。近期资本开支需求上升、经营现金覆盖偏紧，且收购与研发的可归因回报和回报门槛未充分呈现，因此价值创造判断仍不确定。"
+            },
+            {
+              "skillId": "company_risk_analysis",
+              "status": "complete",
+              "attempts": 1,
+              "summary": "东山精密的风险重点是客户依赖、快速扩张下营运资金与资本开支压力，以及并购资产的减值敏感性。公司披露的业务布局、客户拓展和内控安排提供缓释，但不足以消除单一大客户、技术迭代、跨国整合及治理执行风险。若客户结构改善、投资转化为稳定现金回报且商誉测试假设持续实现，风险判断可下调；反之则需上调。"
+            }
+          ],
+          "sections": [
+            {
+              "id": "company-overview",
+              "characters": 2143,
+              "locatedEvidenceCount": 19
+            },
+            {
+              "id": "business-model",
+              "characters": 6796,
+              "locatedEvidenceCount": 44
+            },
+            {
+              "id": "business-segments",
+              "characters": 5558,
+              "locatedEvidenceCount": 36
+            },
+            {
+              "id": "revenue-profit-drivers",
+              "characters": 2344,
+              "locatedEvidenceCount": 17
+            },
+            {
+              "id": "products",
+              "characters": 8265,
+              "locatedEvidenceCount": 64
+            },
+            {
+              "id": "technologies",
+              "characters": 3765,
+              "locatedEvidenceCount": 32
+            },
+            {
+              "id": "industry-exposure",
+              "characters": 8367,
+              "locatedEvidenceCount": 48
+            },
+            {
+              "id": "supply-chain",
+              "characters": 2305,
+              "locatedEvidenceCount": 23
+            },
+            {
+              "id": "competition",
+              "characters": 3643,
+              "locatedEvidenceCount": 24
+            },
+            {
+              "id": "financial-quality",
+              "characters": 12882,
+              "locatedEvidenceCount": 49
+            },
+            {
+              "id": "growth-drivers",
+              "characters": 1862,
+              "locatedEvidenceCount": 9
+            },
+            {
+              "id": "management-capital-allocation",
+              "characters": 10587,
+              "locatedEvidenceCount": 105
+            },
+            {
+              "id": "catalysts",
+              "characters": 51,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "risks",
+              "characters": 6490,
+              "locatedEvidenceCount": 54
+            },
+            {
+              "id": "valuation",
+              "characters": 101,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "bull-base-bear",
+              "characters": 103,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "variant-perception",
+              "characters": 109,
+              "locatedEvidenceCount": 0
+            },
+            {
+              "id": "investment-thesis",
+              "characters": 1581,
+              "locatedEvidenceCount": 21
+            },
+            {
+              "id": "monitoring-checklist",
+              "characters": 2725,
+              "locatedEvidenceCount": 37
+            }
+          ],
+          "sourceAdvice": [],
+          "manualReview": {
+            "symbol": "002384",
+            "runId": "1c2013e7-4504-4676-b3f5-9a1a1a3a4513",
+            "acceptance": "NOT_ACCEPTED",
+            "reviewStatus": "BLOCKED",
+            "thesisChecklistReview": {
+              "conditionalCoreView": "present",
+              "supportingEvidence": "present_and_located",
+              "strongestCounterevidence": "customer_concentration_and_cash_investment_pressure",
+              "invalidationCondition": "present",
+              "monitoringIndicatorsAndTriggers": "present",
+              "numericBaselineAndPeriod": "present_in_checklist"
+            },
+            "blockingIssues": [
+              "business_driver_analysis failed both attempts: first product classification table context at official-296fff2b2889c26f@paragraph:359, retry industry classification table context at official-39e591fa149e4543@paragraph:876",
+              "revenue-profit-drivers, growth-drivers, and catalysts remain blocked; quality is incomplete at 13/16",
+              "The full report is blocked despite the thesis and checklist sections passing"
+            ],
+            "readOnlyKnowledgeUnchanged": true
+          }
         }
       ]
     }

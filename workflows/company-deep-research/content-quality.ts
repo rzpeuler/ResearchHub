@@ -172,11 +172,13 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
   // following commercial-economics cell delimiter during replacement.
   const scopedDenial = /(?:本节)?(?:产品|技术)?(?:\/(?:产品|技术))?(?:资料|材料|证据)[^。；;|\n]{0,18}(?:没有|未提供|未发现|缺少|无)(?:任何|具名)?(?:竞品|竞争者|竞争对手)[^。；;|\n]{0,40}(?:同口径|直接|性能|成本|比较|对比)?[^。；;|\n]{0,24}/g
   const industryDenial = /(?:缺少|未提供|没有)[^。；;\n]{0,60}(?:可比公司|具体竞品)[^。；;\n]{0,50}(?:无法|不能)[^。；;\n]{0,12}(?:具名)?竞争对比|(?:竞争分析(?:同样)?[^。；;\n]{0,16})?(?:缺乏|缺少|未提供)[^。；;\n]{0,36}(?:可具名比较对象|具名比较对象)[^。；;\n]{0,100}(?:不能宣称|无法|不能)[^。；;\n]{0,50}/g
+  const insufficientNamedCandidateEvidence = /(?:本次|现有|所给)?(?:材料|证据|资料)(?:不含|未含|缺少|未提供|不足以提供)[^。；;|\n]{0,24}(?:足够)?(?:具名)?(?:竞品|竞争者|竞争对手|候选|路线)[^。；;|\n]{0,55}/g
   // The competitive method establishes only a sourced candidate and its
   // described product route. Carry that narrow fact into synthesis chapters
   // that otherwise turn a missing like-for-like comparison into a claim that
   // no named candidate exists. Never infer customer overlap or actual rivalry.
   const broadCandidateDenial = /(?:没有|未提供|未发现|缺少|缺乏|暂缺|未识别|尚无|无)(?:可直接比较的|可比(?:的)?|任何)?(?:具名)?(?:[^。；;\n|]{0,12})(?:竞品|竞争者|竞争对手|对手|候选(?:竞品|竞争者|对手)?)(?:[^。；;\n|]{0,45})/g
+  const vaguePeerComparisonGap = /(?:现有|所给|目前)?(?:材料|证据|资料)(?:尚)?不足以(?:作|进行|形成)(?:直接|完整|同口径)?(?:同业|同行|竞争者|竞品)(?:比较|对比|分析)/g
   const scopedCandidateGap = `竞争方法已核实的具名候选为：${candidateFinding}${candidateCitations}；但直接竞标、客户重叠、市场份额及同口径胜负仍未验证，不能据此断言存在真实竞争关系`
   const automotiveCandidate = /汽车|乘用车|纯电|插混|车型/.test(candidateFinding)
   let changed = false
@@ -184,7 +186,9 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
     if (!['company-overview', 'products', 'technologies', 'industry-exposure', 'business-segments', 'risks'].includes(section.id)) return section
     scopedDenial.lastIndex = 0
     industryDenial.lastIndex = 0
+    insufficientNamedCandidateEvidence.lastIndex = 0
     broadCandidateDenial.lastIndex = 0
+    vaguePeerComparisonGap.lastIndex = 0
     let markdown = section.markdown
     const repairedCompetitorSentence = markdown.replace(/不能据此断言存在真实竞争关系先或成本领先/g, '不能据此断言存在已证实的直接竞争关系或成本领先')
     if (repairedCompetitorSentence !== markdown) changed = true
@@ -217,6 +221,11 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
       changed = true
       return `具名产品路线候选已由竞争方法核实：${candidateFinding}${candidateCitations}。实际采购重叠、直接竞标、同口径性能成本及市场份额仍未验证`
     })
+    markdown = markdown.replace(insufficientNamedCandidateEvidence, (match, offset: number) => {
+      if (!scopeMatches(offset)) return match
+      changed = true
+      return `已核实具名候选与产品路线为：${candidateFinding}${candidateCitations}；直接竞标、区域份额及同口径成本/性能仍未验证`
+    })
     if (['company-overview', 'products', 'technologies', 'industry-exposure', 'business-segments', 'risks'].includes(section.id)) {
       markdown = markdown.replace(broadCandidateDenial, (match, offset: number) => {
         if (!scopeMatches(offset)) return match
@@ -233,6 +242,10 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
       changed = true
       markdown = `${markdown.trim()}\n\n竞争风险的具名候选事实：${candidateFinding}${candidateCitations}。该资料只支持其公开产品路线；客户重叠、直接竞标及其对本公司的订单或利润影响均未验证，不将其表述为已证实的直接竞争关系。`
     }
+    if (section.id === 'risks') markdown = markdown.replace(vaguePeerComparisonGap, () => {
+      changed = true
+      return `竞争方法已核实具名候选及路线，但材料不足以作完整同业比较；直接竞标、客户重叠、市场份额及同口径表现仍未验证${candidateCitations}`
+    })
     return markdown === section.markdown ? section : { ...section, markdown, sourceCandidateIds: [...new Set([...(section.sourceCandidateIds ?? []), ...evidence.map(({ ref }) => ref.sourceCandidateId)])] }
   })
   return changed ? sections : input.sections
@@ -473,6 +486,7 @@ export function reconcileCompanyInterimIndustryProductComparison<T extends Compa
         return [{
           label,
           growth,
+          ...(numericValues.length >= 5 ? { currentRevenue: numericValues[0]!.replace(/,/g,''), currentShare: numericValues[1]!.replace('%','') } : {}),
           ...(numericValues.length >= 6 ? { grossMarginLevel: numericValues[2]!.replace('%',''), grossMarginChange: numericValues[5]!.replace('%','') } : {}),
           refs: [...(previousIsLabel ? [previous!] : []), row].map(item => `[${item.sourceCandidateId}@${item.location}]`)
         }]
@@ -490,6 +504,11 @@ export function reconcileCompanyInterimIndustryProductComparison<T extends Compa
     if (!period) continue
     const citations = [...new Set([industryTable.header, productTable.header, industryTable.periodHeader!, industryTable.unitHeader!, ...industryTable.columnHeaders, ...productTable.columnHeaders, industryTable.comparisonHeader!, industryTable.compositionHeading!].map(item=>`[${item.sourceCandidateId}@${item.location}]`).concat(industryTable.entries.flatMap(item=>item.refs), productTable.entries.flatMap(item=>item.refs)))].join(' ')
     const statement = `${marker}${period}年上半年两张表的分类维度不同：分行业表为${displayRows(industryTable.entries)}；分产品表为${displayRows(productTable.entries)}。即使同比数值相同，也不能将行业分类与产品分类视为同一统计口径或互相替代。${citations}`
+    const growthSection = input.sections.find(item => item.id === 'growth-drivers')
+    const industryScaleRows = industryTable.entries.filter(item => item.currentRevenue && item.currentShare)
+    const industryScaleNote = growthSection && !growthSection.markdown.includes('分行业收入规模核对') && industryScaleRows.length
+      ? `分行业收入规模核对：${industryScaleRows.map(item => `${item.label}本报告期收入${Number(item.currentRevenue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}元、占营业收入${Number(item.currentShare).toFixed(2)}%，同比${Number(item.growth) < 0 ? '下降' : '增长'}${Math.abs(Number(item.growth)).toFixed(2)}%`).join('；')}。分行业规模用于说明业务量级，不替代分产品口径或合并趋势。${[industryTable.header, industryTable.periodHeader!, industryTable.unitHeader!, industryTable.comparisonHeader!, ...industryScaleRows.flatMap(item => item.refs)].map(item => typeof item === 'string' ? item : `[${item.sourceCandidateId}@${item.location}]`).join(' ')}`
+      : undefined
     const updated = { ...section, markdown: `${section.markdown.trim()}\n\n${statement}`, sourceCandidateIds: [...new Set([...(section.sourceCandidateIds ?? []), packet.sourceCandidateId])] }
     const marginRows = industryTable.entries.filter(item => item.grossMarginLevel !== undefined && item.grossMarginChange !== undefined)
     const marginStatement = marginRows.length === industryTable.entries.length
@@ -497,7 +516,7 @@ export function reconcileCompanyInterimIndustryProductComparison<T extends Compa
       : undefined
     return input.sections.map(item => {
       if (item.id === section.id) return updated
-      if (item.id === 'growth-drivers' && marginStatement && !item.markdown.includes('分行业毛利率核对')) return { ...item, markdown: `${item.markdown.trim()}\n\n${marginStatement}`, sourceCandidateIds: [...new Set([...(item.sourceCandidateIds ?? []), packet.sourceCandidateId])] }
+      if (item.id === 'growth-drivers' && (marginStatement || industryScaleNote)) return { ...item, markdown: `${item.markdown.trim()}${industryScaleNote ? `\n\n${industryScaleNote}` : ''}${marginStatement && !item.markdown.includes('分行业毛利率核对') ? `\n\n${marginStatement}` : ''}`, sourceCandidateIds: [...new Set([...(item.sourceCandidateIds ?? []), packet.sourceCandidateId])] }
       return item
     })
   }
@@ -524,7 +543,8 @@ export function reconcileCompanyRAndDCapitalizationRatioSpread<T extends Company
     if (![current,prior,reported].every(Number.isFinite)) continue
     const difference = Number((current-prior).toFixed(2))
     const note = `年报原表列示资本化研发投入占研发投入比例为${current.toFixed(2)}%（2025年）、${prior.toFixed(2)}%（2024年），并在“变动比例”列披露${reported.toFixed(2)}%；按比例水平相减，${current.toFixed(2)}%−${prior.toFixed(2)}%＝${difference.toFixed(2)}个百分点。原表披露值沿用其列名和单位，百分点差是本报告按两期比例水平计算的结果；资本化比例上升本身不能证明研发效率、项目成果或会计判断合理性改善。[${packet.sourceCandidateId}@${header.location}] [${packet.sourceCandidateId}@${row.location}]`
-    const updated = { ...section, markdown: `${section.markdown.trim()}\n\n${note}`, sourceCandidateIds: [...new Set([...(section.sourceCandidateIds ?? []), packet.sourceCandidateId])] }
+    const base = section.markdown.replace(/(?:现有|本轮|本次)?(?:确定性分析|preparedAnalysis).{0,36}(?:未提供|没有|未计算|未给出).{0,24}(?:对应)?年度百分点差[^。；\n]*(?:。|；|$)/g, '').trim()
+    const updated = { ...section, markdown: `${base}\n\n${note}`, sourceCandidateIds: [...new Set([...(section.sourceCandidateIds ?? []), packet.sourceCandidateId])] }
     return input.sections.map(item => item.id === section.id ? updated : item)
   }
   return input.sections
@@ -2623,9 +2643,28 @@ export function reconcileCompanyPreparedAnalysisFacts<T extends CompanyContentSe
 export function reconcileCompanyTechnologyProgressReferences<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly T[] {
   const sections = input.sections.filter(item => ['monitoring-checklist','catalysts'].includes(item.id))
   const method = input.methodResults.find(item => item.skillId === 'product_technology_analysis' && item.status === 'complete')
-  if (!sections.length || !method) return input.sections
+  if (!sections.length) return input.sections
   let changed = false
   const updated = new Map<string,string>()
+  // A synthesis can accidentally attach a customer-concentration paragraph to
+  // the optical-module milestone. Remove only citations whose supplied excerpt
+  // is explicitly a customer-sales row and contains no technology evidence.
+  const unrelatedCustomerRefs = new Set(input.methodResults.flatMap(result =>
+    [...result.executionEvidence ?? [], ...result.deterministicEvidence ?? []].flatMap(packet => packet.excerpts
+      .filter(excerpt => /(?:前五名客户|前五大客户|最大客户).{0,40}(?:销售|营业收入)|客户.{0,16}销售金额/u.test(excerpt.text)
+        && !/(?:光模块|光芯片|EML|PAM4|量产|认证|交付)/iu.test(excerpt.text))
+      .map(excerpt => `[${packet.sourceCandidateId}@${excerpt.location}]`))))
+  for (const section of sections) {
+    if (section.id !== 'monitoring-checklist' || !unrelatedCustomerRefs.size) continue
+    const markdown = section.markdown.split(/\r?\n/).map(line => {
+      if (!/光模块|光芯片/u.test(line)) return line
+      let cleaned = line
+      for (const reference of unrelatedCustomerRefs) cleaned = cleaned.replaceAll(reference, '')
+      return cleaned.replace(/\s{2,}/g, ' ').trimEnd()
+    }).join('\n')
+    if (markdown !== section.markdown) { updated.set(section.id, markdown); changed = true }
+  }
+  if (!method) return changed ? input.sections.map(item => updated.has(item.id) ? { ...item, markdown: updated.get(item.id)! } : item) : input.sections
   for (const packet of [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []]) {
     const excerpts = packet.excerpts
     const adjacentEvidence = (pattern: RegExp, confirmation: RegExp) => excerpts.flatMap(seed => {
@@ -3154,7 +3193,7 @@ export function reconcileCompanyIndustryExposureTableCitations<T extends Company
   let changed = false
   let activeInterimYear: string | undefined
   const boundPeriods = new Set<string>()
-  const markdown = section.markdown.split(/\r?\n/).map(line => {
+  let markdown = section.markdown.split(/\r?\n/).map(line => {
     if (!/^\s*\|/.test(line)) return line
     const cells = line.split('|')
     const first = cells[1]?.trim() ?? ''
@@ -3198,7 +3237,62 @@ export function reconcileCompanyIndustryExposureTableCitations<T extends Company
     changed = true
     return false
   }).join('\n')
-  return changed ? input.sections.map(item => item.id === section.id ? { ...item, markdown } : item) : input.sections
+  let geographyChanged = false
+  markdown = markdown.split(/\r?\n/).map(line => {
+    if (!/年报另列中国（含港澳台）与境外/.test(line) || !/产品与地区交叉表/.test(line)) return line
+    const citedSourceIds = new Set([...line.matchAll(/\[([^\]@]+)@paragraph:\d+\]/g)].map(match => match[1]!))
+    const evidence = packets.flatMap(packet => {
+      if (citedSourceIds.size && !citedSourceIds.has(packet.sourceCandidateId)) return []
+      const excerpts = packet.excerpts.map(item => ({ item, paragraph: Number(item.location.match(/^paragraph:(\d+)$/)?.[1] ?? 0) })).filter(item => item.paragraph > 0).sort((a,b)=>a.paragraph-b.paragraph)
+      const marker = excerpts.find(entry => entry.item.text.trim() === '分地区')
+      if (!marker) return []
+      const nextDimension = excerpts.find(entry => entry.paragraph > marker.paragraph && /^分(?:行业|产品|地区|销售模式|销售渠道)$/.test(entry.item.text.trim()))
+      const regionRows = excerpts.filter(entry => entry.paragraph >= marker.paragraph && (!nextDimension || entry.paragraph < nextDimension.paragraph))
+      const namedRows = regionRows.filter(entry => /中国|境外/.test(entry.item.text))
+      return namedRows.length >= 2 ? [[...regionRows.map(entry=>`[${packet.sourceCandidateId}@${entry.item.location}]`)]] : []
+    })
+    if (evidence.length !== 1) return line
+    const refs = evidence[0]!.filter(ref => !line.includes(ref))
+    if (!refs.length) return line
+    geographyChanged = true
+    return `${line.replace(/\s*\|\s*$/, '')} ${refs.join(' ')} |`
+  }).join('\n')
+  return changed || geographyChanged ? input.sections.map(item => item.id === section.id ? { ...item, markdown } : item) : input.sections
+}
+
+/** Restore a malformed final industry row only from the exact validated method row. */
+export function repairCompanyIndustryExposureRowsFromMethod<T extends CompanyContentSection>(input: { readonly sections: readonly T[]; readonly methodResults: readonly CompanyResearchMethodResult[] }): readonly T[] {
+  const report = input.sections.find(section => section.id === 'industry-exposure')
+  const method = input.methodResults.find(item => item.skillId === 'market_structure_analysis' && item.status === 'complete')
+  const methodMarkdown = method?.sections.find(section => section.id === 'industry-exposure')?.markdown
+  if (!report || !methodMarkdown) return input.sections
+
+  const splitCells = (line: string): string[] => {
+    const value = line.trim().replace(/^\|/, '').replace(/\|$/, '')
+    return value.split(/(?<!\\)\|/).map(cell => cell.trim())
+  }
+  const methodLines = methodMarkdown.split(/\r?\n/)
+  const sourceRow = methodLines.find(line => {
+    if (!line.trim().startsWith('|')) return false
+    const cells = splitCells(line)
+    return cells.length === 7
+      && cells[0] === '计算机、通信和其他电子'
+      && cells[1] === '39,643,732,616.04'
+      && cells[2] === '34,153,971,460.65'
+      && /\[[^\]\s]+@paragraph:\d+\]/.test(cells[6] ?? '')
+  })
+  if (!sourceRow) return input.sections
+
+  const lines = report.markdown.split(/\r?\n/)
+  const heading = lines.findIndex(line => /公司分类收入结构\s*[：:]\s*行业口径/.test(line))
+  if (heading < 0) return input.sections
+  const rowIndex = lines.findIndex((line, index) => index > heading
+    && /计算机、通信和其他电子/.test(line)
+    && /39,643,732,616\.04/.test(line))
+  if (rowIndex < 0 || splitCells(lines[rowIndex]!).length === 7) return input.sections
+  lines[rowIndex] = sourceRow
+  const repaired = lines.join('\n')
+  return input.sections.map(section => section === report ? { ...section, markdown: repaired } : section)
 }
 
 /** Attach exact official geographic revenue rows to a matching qualitative claim. */
@@ -3495,11 +3589,29 @@ export function evaluateCompanyResearchContent(input: { readonly sections: reado
         const peerComparison = namedPeer && (/\b(?:vs\.?|versus)\b|(?:相比|对照|比较|差异|同业)/i.test(analysisBody))
           && /(?:路线|产品|技术|客户|毛利|成本|价格|份额|产能|交付)/.test(analysisBody)
           && /\[[^\]\s]+@paragraph:\d+\]/.test(analysisBody)
+        // A source-cited comparison matrix is a valid bounded peer comparison
+        // even when the prose does not repeat the "与 X 相比" pattern. Require
+        // two named peer columns, real product/technical comparison rows, and
+        // paragraph evidence inside those rows; a names-only roster cannot pass.
+        const comparisonLines = analysisBody.split(/\r?\n/)
+        const headerIndex = comparisonLines.findIndex(line => /^\|\s*比较维度\s*\|/.test(line))
+        const headerCells = headerIndex >= 0 ? comparisonLines[headerIndex]!.split('|').map(cell => cell.trim()).filter(Boolean) : []
+        const genericHeader = /^(?:比较维度|比较项|结论(?:及限制)?|限制|说明|差异)$/
+        const namedPeerColumns = headerCells.filter(cell => !genericHeader.test(cell) && /[\p{Script=Han}A-Za-z0-9]/u.test(cell))
+        const tableBody: string[] = []
+        if (headerIndex >= 0) for (const line of comparisonLines.slice(headerIndex + 2)) {
+          if (!/^\|/.test(line)) break
+          tableBody.push(line)
+        }
+        const citedComparisonRows = tableBody.filter(line => /(?:产品路线|客户与应用|成本与技术|技术路线|产品与技术)/.test(line)
+          && /(?:产品|技术|路线|客户|成本|性能|份额|交付)/.test(line)
+          && /\[[^\]\s]+@paragraph:\d+\]/.test(line))
+        const citedPeerMatrix = namedPeerColumns.length >= 2 && citedComparisonRows.length >= 2
         const boundedResearch = /(?:产品|技术|路线|客户|市场|细分业务)/.test(analysisBody)
           && /(?:缺少|未提供|未披露|尚无|未能|无法核实).{0,80}(?:同口径|竞品|竞争者|份额|客户重叠|成本|价格|性能|对手)/.test(analysisBody)
           && /(?:因此|故|影响|限制|不能|无法判断)/.test(analysisBody)
           && /\[[^\]\s]+@paragraph:\d+\]/.test(analysisBody)
-        if (!(peerComparison || boundedResearch)) reasons.push('INSUFFICIENT_COMPETITIVE_ANALYSIS')
+        if (!(peerComparison || boundedResearch || citedPeerMatrix)) reasons.push('INSUFFICIENT_COMPETITIVE_ANALYSIS')
       }
       const normalized = text.replace(/\s+/g, ' ')
       if (normalized && seen.has(normalized)) reasons.push(`DUPLICATE_CONTENT:${seen.get(normalized)}`)

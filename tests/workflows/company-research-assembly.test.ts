@@ -6,8 +6,8 @@ import { mergeExcessTrailingMarkdownTableCells } from '../../skills/company-rese
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 
-const method: CompanyResearchMethodResult = { skillId: 'company_history_strategy', status: 'complete', answer: '历史披露支持分析', markdown: '历史披露 [annual@paragraph:1]', sections: [{ id: 'company-overview', markdown: '历史披露 [annual@paragraph:1]' }], findings: [{ text: '公司披露历史', kind: 'fact', evidence: [{ sourceCandidateId: 'annual', location: 'paragraph:1' }] }], limitations: [], risks: [], sourceCandidateIds: ['annual'], diagnostics: [], attempts: 1 }
-const input = { company: { symbol: '002594', name: '比亚迪', exchange: 'SZ' }, asOf: '2026-10-14T00:00:00Z', sources: [], reportSourceCandidateIds: ['annual'], durableSourceCandidateIds: ['annual'] }
+const method: CompanyResearchMethodResult = { skillId: 'company_history_strategy', status: 'complete', answer: '历史披露支持分析', markdown: '历史披露 [annual@paragraph:1]', sections: [{ id: 'company-overview', markdown: '历史披露 [annual@paragraph:1]' }], findings: [{ text: '公司披露历史', kind: 'fact', evidence: [{ sourceCandidateId: 'annual', location: 'paragraph:1' }] }], limitations: [], risks: [], sourceCandidateIds: ['annual'], diagnostics: [], attempts: 1, executionEvidence: [{ sourceCandidateId: 'annual', title: '年报', publisher: '公司', excerpts: [{ sourceCandidateId: 'annual', location: 'paragraph:1', text: '历史披露' }] }] }
+const input = { company: { symbol: '002594', name: '比亚迪', exchange: 'SZ' }, asOf: '2026-10-14T00:00:00Z', sources: [{ candidate: { candidateId: 'annual' }, title: '年报', content: '历史披露' } as any], reportSourceCandidateIds: ['annual'], durableSourceCandidateIds: ['annual'] }
 const ids = ['investment-thesis', 'monitoring-checklist']
 
 test('synthesis evidence ledger retains only complete findings bound to exact supplied source rows', () => {
@@ -33,6 +33,34 @@ test('synthesis evidence ledger retains only complete findings bound to exact su
   })
   assert.deepEqual(buildSynthesisEvidenceLedger({ methods: [backed], sources: [source], conflictedSourceCandidateIds: ['annual'] }), [])
   assert.deepEqual(buildSynthesisEvidenceLedger({ methods: [backed], sources: [{ ...source, content: 'changed source' }] }), [])
+  assert.deepEqual(buildSynthesisEvidenceLedger({ methods: [backed], sources: [source], allowedSourceCandidateIds: ['other'] }), [])
+})
+
+test('synthesis citation handoff rejects findings without exact eligible method-supplied source rows', async () => {
+  const source = { candidate: { candidateId: 'annual' }, title: '年报', content: '历史披露' } as any
+  const cases: { name: string; method: CompanyResearchMethodResult; reportIds?: string[]; conflicts?: string[] }[] = [
+    { name: 'finding-only locator', method: { ...method, executionEvidence: undefined } },
+    { name: 'mismatched supplied excerpt', method: { ...method, executionEvidence: [{ sourceCandidateId: 'annual', title: '年报', publisher: '公司', excerpts: [{ sourceCandidateId: 'annual', location: 'paragraph:1', text: '错配正文' }] }] } },
+    { name: 'source not eligible for the report', method, reportIds: ['other'] },
+    { name: 'conflicted source', method, conflicts: ['annual'] },
+  ]
+  for (const item of cases) {
+    const requests: { allowedCitations: string[]; allowedEvidence: unknown[] }[] = []
+    const executor: ReasoningExecutor = { capabilities, execute: async request => {
+      const payload = request.input as { allowedCitations: string[]; allowedEvidence: unknown[] }
+      requests.push(payload)
+      return { operation: request.operation, output: { sections: ids.map(id => ({ id, markdown: `结论 [annual@paragraph:1]`, sourceCandidateIds: ['annual'] })) } }
+    } }
+    const result = await assembleCompanyResearch(
+      { ...input, sources: [source], ...(item.reportIds ? { reportSourceCandidateIds: item.reportIds } : {}) },
+      [item.method], executor, () => input.asOf, 1, { conflictedSourceCandidateIds: item.conflicts },
+    )
+    assert.equal(requests.length, 1, item.name)
+    assert.deepEqual(requests[0]?.allowedCitations, [], item.name)
+    assert.deepEqual(requests[0]?.allowedEvidence, [], item.name)
+    assert.equal(result.synthesisMode, 'deterministic_fallback', item.name)
+    assert.match(result.synthesisDiagnostics[0] ?? '', /REFERENCE_ERROR/, item.name)
+  }
 })
 
 test('final synthesis requests only the two core sections and keeps optional gaps deterministic', async () => {
@@ -178,6 +206,28 @@ test('capital-allocation table shape repair joins one excess trailing cell witho
   assert.ok(validateCompanyResearchMarkdownTables(mergeExcessTrailingMarkdownTableCells(multiple)).length>0,'multiple excess cells remain blocked')
 })
 
+test('industry table repair separates exact repeated header fused after cited narrative', () => {
+  const repeated = '| 期间与分类（分行业） | 营业收入（元） | 营业成本（元） | 毛利率 | 营业收入比上年同期增减 | 营业成本比上年同期增减 | 毛利率比上年同期增减 |'
+  const malformed = [
+    '| 市场边界 | 期间 | 规模 | 来源及适用性 |',
+    '|---|---|---:|---|',
+    `| 全球液冷市场 | 2025年 | 28.4亿美元 | 年报转述。[annual@paragraph:450] | | 上述行业预测与历史销量定义不同，不能据此推断公司份额。[annual@paragraph:448] ${repeated}`,
+    '|---|---:|---:|---:|---:|---:|---:|',
+    '| 2025年：电子器件 | 155 | 145 | 6.29% | -2.74% | -0.56% | -2.06% [annual@paragraph:842] |',
+    `| 2025年：汽车相关 | 648 | 515 | 20.49% | 5.06% | 7.53% | -1.82% [annual@paragraph:844] | | ${repeated.slice(2)}`,
+    '|---|---:|---:|---:|---:|---:|---:|',
+    '| 2026年上半年：电子器件 | 69 | 65 | 5.04% | 0.96% | 3.88% | -2.67% [interim@paragraph:728] |',
+    '| 2026年上半年：汽车相关 | 275 | 213 | 22.33% | -8.98% | -11.24% | 1.98% [interim@paragraph:729] |',
+  ].join('\n')
+  const repaired = mergeExcessTrailingMarkdownTableCells(malformed)
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired), [])
+  assert.match(repaired, /\[annual@paragraph:450\] \|\n上述行业预测与历史销量定义不同，不能据此推断公司份额。\[annual@paragraph:448\]\n\| 期间与分类（分行业） \|/)
+  assert.match(repaired, /\[annual@paragraph:844\] \|\n\n\| 期间与分类（分行业） \|/)
+  assert.equal(repaired.split(repeated).length - 1, 2, 'both distinct tables retain their complete headers')
+  const ambiguous = malformed.replace('上述行业预测与历史销量定义不同，不能据此推断公司份额。', '另一张表需要进一步核对。')
+  assert.ok(validateCompanyResearchMarkdownTables(mergeExcessTrailingMarkdownTableCells(ambiguous)).length > 0)
+})
+
 test('R175 Markdown table validation rejects an empty table shell without inventing rows', () => {
   const header = '| 期间及口径 | 营业收入（人民币亿元） | 营业成本（人民币亿元） | 毛利率 | 变化说明 |'
   const separator = '|---|---:|---:|---:|---|'
@@ -289,6 +339,27 @@ test('R160 separates the explicit industry-background title from a verified five
   const wrongWidth=repairCompanyResearchMarkdownTables(fixture.replace('行业规模背景 市场边界 年份及指标 规模 机构与归属 可比性说明','行业规模背景 市场边界 规模'))
   assert.ok(!wrongWidth.repairs.some(item=>item.startsWith('TABLE_INDUSTRY_TITLE_HEADER_PROMOTED')))
   assert.doesNotMatch(wrongWidth.markdown,/^## 行业规模背景$/m)
+})
+
+test('market-size table repair reattaches only a unique cited three-column header', () => {
+  const fixture = [
+    '| 市场边界 | 规模/预测期间 | 机构、转述归属及适用限制 |',
+    '',
+    '下列数据仅作行业背景，不代表公司可服务市场。',
+    '',
+    '## 行业规模背景',
+    '',
+    '|---|---|---|',
+    '| 全球PCB产值 | 2026年958亿美元；2029年超过1160亿美元 | 公司年报转述 [annual@paragraph:556] [annual@paragraph:557] |',
+    '| 全球数通光模块 | 2026年228亿美元 | 公司年报转述 [annual@paragraph:574] |',
+  ].join('\n')
+  const repaired = repairCompanyResearchMarkdownTables(fixture)
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.match(repaired.markdown, /下列数据仅作行业背景，不代表公司可服务市场。\n\n## 行业规模背景\n\n\| 市场边界 \| 规模\/预测期间 \| 机构、转述归属及适用限制 \|\n\|---\|---\|---\|/)
+  assert.ok(repaired.repairs.some(item => item.startsWith('TABLE_MARKET_SIZE_HEADER_REATTACHED')))
+  const ambiguous = repairCompanyResearchMarkdownTables(fixture.replace('[annual@paragraph:574]', '[missing-locator]'))
+  assert.ok(!ambiguous.repairs.some(item => item.startsWith('TABLE_MARKET_SIZE_HEADER_REATTACHED')))
 })
 
 test('R161 restores the known four-column financing header beneath its explicit section title',()=>{
@@ -565,8 +636,8 @@ test('R143 repairs heading and displaced-header fusions only when section widths
     assert.deepEqual([...repaired.markdown.matchAll(locator)].map(match => match[0]), before, `${section.id} locator order survives`)
     assert.ok(repaired.repairs.length > 0, `${section.id} records a deterministic repair`)
   }
-  const displaced = sections.find(section => section.id === 'revenue-profit-drivers')!
-  const repairedDisplaced = repairCompanyResearchMarkdownTables(displaced.markdown)
+  const displaced = `## 收入与利润驱动 收入下降、利润承压。[fin1@paragraph:1] | 口径与报告表头 | 本报告期收入 | 上年同期收入 | 同比变化 |\n说明文字保留原位置。[fin2@paragraph:2]\n|---|---|---|---|\n| 2026年上半年 | 90 | 100 | -10% |\n| 2025年上半年 | 100 | 95 | 5% |`
+  const repairedDisplaced = repairCompanyResearchMarkdownTables(displaced)
   assert.ok(repairedDisplaced.repairs.some(repair => repair.startsWith('TABLE_EMBEDDED_HEADER_MOVED')))
   assert.ok(repairedDisplaced.markdown.includes('| 口径与报告表头 | 本报告期收入 | 上年同期收入 | 同比变化 |'))
 
@@ -621,7 +692,7 @@ test('market matrix preserves an exact orphan PCB label outside a complete four-
 })
 
 test('R144 removes only an orphan separator whose following rows have inconsistent widths', () => {
-  const fallback = `### 商业模式与收入来源\n| 产品收入类别 | 本期收入 | 占比 |\n|---|---:|---:|\n| 手机部件 | 155 | 19% |\n| 汽车相关 | 648 | 81% |\n表头口径说明及收入分类边界。[p0@paragraph:1] 谁有付款方 购买内容 收入机制\n|---|---|---|\n| 客户身份未披露 | 汽车及电子产品 | 商品销售对价 |\n| 直销或经销买方 | 渠道收入 | 未披露合同细节 | 收入确认政策按商品控制权转移。[p1@paragraph:2]\n| 销售方式 | 本期收入 | 占比 |\n|---|---:|---:|\n| 直销 | 367 | 46% |\n| 经销 | 436 | 54% |`
+  const fallback = `### 商业模式与收入来源\n| 产品收入类别 | 本期收入 | 占比 |\n|---|---:|---:|\n| 手机部件 | 155 | 19% |\n| 汽车相关 | 648 | 81% |\n表头口径说明及收入分类边界。[p0@paragraph:1] 谁有付款方 购买内容 收入机制\n|---|---|---|\n| 客户身份未在所给材料中具体说明 | 汽车及电子产品 | 商品销售对价 |\n| 直销或经销渠道的买方 | 渠道收入 | 未披露合同细节 | 收入确认政策按商品控制权转移。[p1@paragraph:2]\n| 销售方式 | 本期收入 | 占比 |\n|---|---:|---:|\n| 直销 | 367 | 46% |\n| 经销 | 436 | 54% |`
   const artifactPath = 'runtime-data/company-quality-acceptance/R144-byd/002594-report.json'
   let fixture = fallback
   if (existsSync(artifactPath)) {
@@ -643,7 +714,7 @@ test('R144 removes only an orphan separator whose following rows have inconsiste
 })
 
 test('R146 separates inline section headings from body text without touching tables or code fences', () => {
-  const fallback = `## 收入、利润与成本传导 ### 合并表现及归因边界 2026年半年报披露收入下降。[r1@paragraph:1] 后续贡献未能量化。 ### 分行业表的收入、成本与毛利率变化 行业成本增长快于收入。[r2@paragraph:2]\n\n| 指标 | 说明 |\n|---|---|\n| literal ## table cell | 该单元格保留 ## 标记 |\n\n\`\`\`md\n## literal code heading body\n\`\`\``
+  const fallback = `## 收入、利润与成本传导 ### 合并表现及归因边界 2026年半年度报告披露本报告期营业收入下降。[r1@paragraph:1] 后续贡献未能量化。 ### 分行业表的收入、成本与毛利率变化 行业成本增长快于收入。[r2@paragraph:2]\n\n| 指标 | 说明 |\n|---|---|\n| literal ## table cell | 该单元格保留 ## 标记 |\n\n\`\`\`md\n## literal code heading body\n\`\`\``
   const artifactPath = 'runtime-data/company-quality-acceptance/R146-byd/002594-report.json'
   let fixture = fallback
   if (existsSync(artifactPath)) {
@@ -660,7 +731,8 @@ test('R146 separates inline section headings from body text without touching tab
   assert.equal(fixture.replace(/\s/gu, ''), repaired.markdown.replace(/\s/gu, ''), 'normalization changes only whitespace boundaries')
   assert.match(repaired.markdown, /^## 收入、利润与成本传导$/m)
   assert.match(repaired.markdown, /^### 合并表现及归因边界$/m)
-  assert.match(repaired.markdown, /^2026年半年度报告披露本报告期营业收入/m)
+  const originalBody = fixture.match(/2026年[^#]+/u)?.[0]?.trim()
+  assert.ok(originalBody && repaired.markdown.includes(originalBody), 'body wording is retained exactly while heading whitespace is normalized')
   assert.match(repaired.markdown, /^### 分行业表的收入、成本与毛利率变化$/m)
   const protectedFixture = repairCompanyResearchMarkdownTables(fallback)
   assert.ok(protectedFixture.markdown.includes('| literal ## table cell | 该单元格保留 ## 标记 |'))
@@ -736,6 +808,28 @@ test('same-width industry forecast header is moved past narrative to the table u
   assert.match(repaired.markdown, /### 行业规模背景\n\n以下行业数字仅为背景，不代表公司TAM。\n\| 市场边界 \| 预测值 \| 预测机构及归属 \| 可比性说明 \|\n\|---\|---\|---\|---\|/)
 })
 
+test('same-width market scale header is moved out of the boundary table when its separator sits below the forecast heading', () => {
+  const fixture = `## 边界、客户与产业链
+| 市场/业务 | 产品边界 | 地域边界 | 客户边界 | 价值链与限制 |
+|---|---|---|---|---|
+| 汽车 | 整车与部件 | 全球 | 个人及商用 | 不将部件与整车相加 |
+| 电子 | 精密制造 | 全球 | 品牌客户 | 不等同终端设备市场 |
+| 市场边界 | 期间 | 规模与单位 | 来源及转述归属 | 可比性/适用限制 |
+
+时间边界：市场规模采用来源明确给出的统计期或预测期。
+
+## 行业规模背景
+
+|---|---|---|---|---|
+| 中国新能源汽车销量 | 2024全年 | 1,286.6万辆 | 年报转述统计 | 历史行业销量，不是公司TAM |
+| 全球AI服务器市场 | 2025预测 | 1,672亿美元 | 年报转述Market Insights | 相邻市场，不是公司TAM |`
+  const repaired = repairCompanyResearchMarkdownTables(fixture)
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_SAME_WIDTH_INDUSTRY_FORECAST_HEADER_REATTACHED')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.match(repaired.markdown, /## 行业规模背景\n\n\| 市场边界 \| 期间 \| 规模与单位 \| 来源及转述归属 \| 可比性\/适用限制 \|\n\|---\|---\|---\|---\|---\|/)
+})
+
 test('reattaches the real R189 industry forecast header using the disclosed institution conjunction', () => {
   const fixture = `### 市场边界与价值链
 | 市场/链条 | 产品与地域边界 | 客户及需求场景 | 公司价值链位置与边界限制 |
@@ -802,6 +896,18 @@ test('table repair splits an inline section heading from the next table while re
   assert.deepEqual(repairedIndustry.diagnostics, [])
   assert.deepEqual(validateCompanyResearchMarkdownTables(repairedIndustry.markdown), [])
   assert.match(repairedIndustry.markdown, /轨道交通 \| 城市交通 \| 城市项目 \| 不等于汽车市场 \|\n## 行业规模背景\n\| 市场 \| 期间 \| 规模 \| 归属 \|/)
+
+  const boldForecastHeading = `| 市场 | 产品边界 | 地域、客户及时间边界 | 产业链角色与需求证据 |
+|---|---|---|---|
+| 新能源汽车 | 车辆 | 中国年度销量 | 公司制造；不代表市场份额。 [annual@paragraph:18] |
+| 电子器件 | 手机部件 | 地域未披露 | 公司制造；终端用途未披露。 [annual@paragraph:718] | **行业规模背景**
+| 市场边界 | 期间 | 规模及单位 | 来源归属 | 适用边界 |
+|---|---|---|---|---|
+| 中国新能源汽车销量 | 2024全年 | 1,286.6万辆 | 年报转述 [annual@paragraph:18] | 不等于公司销量 |`
+  const repairedBoldForecast = repairCompanyResearchMarkdownTables(boldForecastHeading)
+  assert.deepEqual(repairedBoldForecast.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repairedBoldForecast.markdown), [])
+  assert.match(repairedBoldForecast.markdown, /电子器件 \| 手机部件 \| 地域未披露 \| 公司制造；终端用途未披露。 \[annual@paragraph:718\] \|\n## 行业规模背景\n\| 市场边界 \| 期间 \| 规模及单位 \| 来源归属 \| 适用边界 \|/)
 })
 
 test('table repair reattaches the cited adjacent-market header after intervening industry narrative', () => {
@@ -846,6 +952,39 @@ test('table repair reattaches the industry-scale header only when the following 
   const unsupported = repairCompanyResearchMarkdownTables(supported.replace('[annual@paragraph:448] [annual@paragraph:450]', '[annual@paragraph:448]'))
   assert.deepEqual(unsupported.repairs, [])
   assert.ok(validateCompanyResearchMarkdownTables(unsupported.markdown).some(issue => issue.includes('separator')))
+})
+
+test('table repair reattaches the cited 2026 interim industry-scale header variant', () => {
+  const fixture = `| 市场边界 | 期间 | 规模与单位 | 来源及转述归属 |
+边界解释仍保留在行业规模背景之前。[scope@paragraph:1]
+
+## 行业规模背景
+|---|---|---|---|
+| 全球PCB市场 | 2026 | 958亿美元 | Prismark预测，由年报转述；不是公司TAM。[annual@paragraph:556] |
+| 全球数据通信光模块市场 | 2026 | 228亿美元 | LightCounting预测，由年报转述；不是公司TAM。[annual@paragraph:574] |`
+
+  const repaired = repairCompanyResearchMarkdownTables(fixture)
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_ADJACENT_MARKET_HEADER_REATTACHED')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.match(repaired.markdown, /## 行业规模背景\n\| 市场边界 \| 期间 \| 规模与单位 \| 来源及转述归属 \|\n\|---\|---\|---\|---\|\n\| 全球PCB市场/)
+})
+
+test('table repair reattaches BYD five-column market-scale header', () => {
+  const header = '| 市场边界 | 期间 | 规模与单位 | 来源及转述归属 | 可比性说明 |'
+  const fixture = `${header}\n公司业务不构成单一可服务市场。[scope@paragraph:1]\n\n## 行业规模背景\n|---|---|---|---|---|\n| 全球AI服务器市场 | 2025年预测 | 1,672亿美元 | 年报转述行业预测。[annual@paragraph:448] | 相邻市场背景，不是公司TAM。 |\n| 全球数据中心液冷市场 | 2025年预测 | 28.4亿美元 | 年报转述行业预测。[annual@paragraph:450] | 不代表公司收入机会。 |`
+  const repaired = repairCompanyResearchMarkdownTables(fixture)
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_ADJACENT_MARKET_HEADER_REATTACHED')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+})
+
+test('table repair reattaches BYD five-column market-scale header with applicability limits', () => {
+  const fixture = '| 市场边界 | 期间 | 规模与单位 | 来源及转述归属 | 适用范围与限制 |\n说明文本。[scope@paragraph:1]\n\n### 行业规模背景\n|---|---|---|---|---|\n| 中国新能源汽车全年销量 | 2024全年 | 1,286.6万辆 | 年报转述统计。[annual@paragraph:18] | 历史销量，不是公司TAM。 |\n| 全球AI服务器市场 | 2025年预测 | 1,672亿美元 | 年报转述预测。[annual@paragraph:448] | 相邻市场背景。 |'
+  const repaired = repairCompanyResearchMarkdownTables(fixture)
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_ADJACENT_MARKET_HEADER_REATTACHED')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
 })
 
 test('table repair splits only an exact cited 7+1+7 financial row and next table header fusion', () => {
@@ -961,6 +1100,35 @@ test('final synthesis cannot cite an allowed source missing from actual method f
   assert.deepEqual(result.synthesisAttemptOutputs[0]!.allowedCitations,['annual@paragraph:1'])
 })
 
+test('final synthesis repairs only a uniquely truncated source ID for the same authorized paragraph', async () => {
+  const citedMethod: CompanyResearchMethodResult = {
+    ...method,
+    executionEvidence: [{ sourceCandidateId: 'annual', title: '年报', publisher: '公司', excerpts: [{ sourceCandidateId: 'annual', location: 'paragraph:1', text: '历史披露' }] }],
+  }
+  const executor: ReasoningExecutor = { capabilities, execute: async request => ({ operation: request.operation, output: { sections: ids.map(id => ({ id, markdown: `有证据支持的结论 [ann@paragraph:1]`, sourceCandidateIds: ['annual'] })) } }) }
+  const result = await assembleCompanyResearch(input, [citedMethod], executor, () => input.asOf)
+  assert.equal(result.synthesisMode, 'reasoning_executor', JSON.stringify(result.synthesisDiagnostics))
+  assert.equal(result.synthesisAttempts, 1)
+  assert.match(result.synthesisDiagnostics[0] ?? '', /UNIQUE_TRUNCATED_SOURCE_ID_REPAIR:ann@paragraph:1 -> annual@paragraph:1/)
+  assert.match(result.sections.find(section => section.id === 'investment-thesis')!.markdown, /\[annual@paragraph:1\]/)
+  assert.ok(!result.sections.some(section => section.markdown.includes('[ann@paragraph:1]')))
+})
+
+test('final synthesis leaves an ambiguous truncated source ID blocked', async () => {
+  const both = ['annual-first', 'annual-second']
+  const ambiguousMethod: CompanyResearchMethodResult = {
+    ...method,
+    sourceCandidateIds: both,
+    findings: [{ text: '公司披露历史', kind: 'fact', evidence: both.map(sourceCandidateId => ({ sourceCandidateId, location: 'paragraph:1' })) }],
+  }
+  const ambiguousInput = { ...input, reportSourceCandidateIds: both, durableSourceCandidateIds: both }
+  const executor: ReasoningExecutor = { capabilities, execute: async request => ({ operation: request.operation, output: { sections: ids.map(id => ({ id, markdown: `结论 [annual@paragraph:1]`, sourceCandidateIds: both })) } }) }
+  const result = await assembleCompanyResearch(ambiguousInput, [ambiguousMethod], executor, () => input.asOf)
+  assert.equal(result.synthesisMode, 'deterministic_fallback')
+  assert.ok(result.synthesisDiagnostics.every(diagnostic => diagnostic.includes('REFERENCE_ERROR')))
+  assert.ok(!result.synthesisDiagnostics.some(diagnostic => diagnostic.includes('UNIQUE_TRUNCATED_SOURCE_ID_REPAIR')))
+})
+
 test('final synthesis repair removes an unavailable locator and uses only an allowed citation', async () => {
   const badLocator = 'official-f6274e510499a654@paragraph:18'
   const unsupportedSentence = `现金流改善证明盈利质量已提升。[${badLocator}]`
@@ -1021,7 +1189,7 @@ test('final synthesis requires complete split margin headers and exact segment c
 test('final section source attribution is derived from cited authorized locations', async () => {
   const twoSourceMethod:CompanyResearchMethodResult={...method,sourceCandidateIds:['annual','half'],findings:[{text:'两份披露共同支持研究。',kind:'fact',evidence:[{sourceCandidateId:'annual',location:'paragraph:1'},{sourceCandidateId:'half',location:'paragraph:1'}]}],executionEvidence:[{sourceCandidateId:'annual',title:'年报',publisher:'公司',excerpts:[{sourceCandidateId:'annual',location:'paragraph:1',text:'年度经营披露。'}]},{sourceCandidateId:'half',title:'半年报',publisher:'公司',excerpts:[{sourceCandidateId:'half',location:'paragraph:1',text:'半年度经营披露。'}]}]}
   const executor:ReasoningExecutor={capabilities,execute:async request=>({operation:request.operation,output:{sections:ids.map(id=>({id,markdown:id==='investment-thesis'?'年度与半年度披露共同支持该定性判断。[annual@paragraph:1] [half@paragraph:1]':'有证据支持的定性判断。[annual@paragraph:1]',sourceCandidateIds:['annual']}))}})}
-  const result=await assembleCompanyResearch({...input,reportSourceCandidateIds:['annual','half']},[twoSourceMethod],executor,()=>input.asOf)
+  const result=await assembleCompanyResearch({...input,sources:[{candidate:{candidateId:'annual'},title:'年报',content:'年度经营披露。'},{candidate:{candidateId:'half'},title:'半年报',content:'半年度经营披露。'}] as any,reportSourceCandidateIds:['annual','half']},[twoSourceMethod],executor,()=>input.asOf)
   assert.equal(result.synthesisMode,'reasoning_executor',JSON.stringify(result.synthesisDiagnostics))
   assert.deepEqual(result.sections.find(section=>section.id==='investment-thesis')!.sourceCandidateIds,['annual','half'])
   assert.deepEqual(result.sections.find(section=>section.id==='monitoring-checklist')!.sourceCandidateIds,['annual'])
@@ -1061,12 +1229,12 @@ test('unsupported locator in a discarded optional valuation draft does not exhau
 test('final synthesis can reuse a validated section locator absent from concise findings', async () => {
   const contextualMethod: CompanyResearchMethodResult = { ...method, sections: [{id:'company-overview',markdown:'注册与重组口径不同 [annual@paragraph:2]'}], executionEvidence:[{sourceCandidateId:'annual',title:'年报',publisher:'公司',excerpts:[{sourceCandidateId:'annual',location:'paragraph:1',text:'历史披露'},{sourceCandidateId:'annual',location:'paragraph:2',text:'注册与重组口径不同'}]}] }
   const executor:ReasoningExecutor={capabilities,execute:async request=>({operation:request.operation,output:{sections:ids.map(id=>({id,markdown:'注册与重组口径应分别监控 [annual@paragraph:2]',sourceCandidateIds:['annual']}))}})}
-  const result=await assembleCompanyResearch(input,[contextualMethod],executor,()=>input.asOf)
+  const result=await assembleCompanyResearch({...input,sources:[{candidate:{candidateId:'annual'},title:'年报',content:'历史披露\n注册与重组口径不同'}] as any},[contextualMethod],executor,()=>input.asOf)
   assert.equal(result.synthesisMode,'reasoning_executor',JSON.stringify(result.synthesisDiagnostics))
   assert.match(result.sections.find(section=>section.id==='investment-thesis')!.markdown,/paragraph:2/)
   const invalid = { ...contextualMethod, sections: [{id:'company-overview',markdown:'未供给位置 [annual@paragraph:999]'}] }
   const invalidExecutor:ReasoningExecutor={capabilities,execute:async request=>({operation:request.operation,output:{sections:ids.map(id=>({id,markdown:'未供给位置 [annual@paragraph:999]',sourceCandidateIds:['annual']}))}})}
-  assert.equal((await assembleCompanyResearch(input,[invalid],invalidExecutor,()=>input.asOf)).synthesisMode,'deterministic_fallback')
+  assert.equal((await assembleCompanyResearch({...input,sources:[{candidate:{candidateId:'annual'},title:'年报',content:'历史披露\n注册与重组口径不同'}] as any},[invalid],invalidExecutor,()=>input.asOf)).synthesisMode,'deterministic_fallback')
 })
 test('final synthesis receives the exact text behind every allowed locator', async () => {
   const contextualMethod: CompanyResearchMethodResult = { ...method, executionEvidence:[{sourceCandidateId:'annual',title:'2025年年报',publisher:'公司',excerpts:[{sourceCandidateId:'annual',location:'paragraph:1',text:'2025年营业收入增长，汽车业务为主要收入来源。'}]}] }
@@ -1078,7 +1246,7 @@ test('final synthesis receives the exact text behind every allowed locator', asy
     checked=true
     return {operation:request.operation,output:{sections:ids.map(id=>({id,markdown:'汽车业务是主要收入来源 [annual@paragraph:1]',sourceCandidateIds:['annual']}))}}
   }}
-  const result=await assembleCompanyResearch(input,[contextualMethod],executor,()=>input.asOf)
+  const result=await assembleCompanyResearch({...input,sources:[{candidate:{candidateId:'annual'},title:'2025年年报',content:'2025年营业收入增长，汽车业务为主要收入来源。'}] as any},[contextualMethod],executor,()=>input.asOf)
   assert.equal(checked,true)
   assert.equal(result.synthesisMode,'reasoning_executor')
 })
@@ -1138,20 +1306,18 @@ test('unsupported numbers in core final conclusions block synthesis rather than 
   assert.ok(result.synthesisDiagnostics.every(d=>d.includes('NUMERIC_GROUNDING_ERROR')))
 })
 
-test('numeric synthesis repair gets an exact cited-row candidate and replaces a mismatched source locator', async () => {
+test('numeric synthesis reconciles a mismatched locator to the exact supplied cited row', async () => {
   const annual={candidate:{candidateId:'annual',kind:'official_disclosure' as const,tier:1 as const,provider:'fixture',title:'年报'},retrievedAt:'2026-10-14',title:'年报',publisher:'公司',contentHash:'fixture',content:'单位：元\n第一名客户销售占比46.46%',rights:{accessScope:'public' as const,retentionAllowed:true,aiProcessingAllowed:true,derivativeKnowledgeAllowed:true,redistributionAllowed:false}}
-  const sourcedMethod:CompanyResearchMethodResult={...method,findings:[{text:'年度第一名客户销售占比46.46%',kind:'fact',evidence:[{sourceCandidateId:'annual',location:'paragraph:1'},{sourceCandidateId:'annual',location:'paragraph:2'}]}],sections:[{id:'company-overview',markdown:'客户表[annual@paragraph:1] [annual@paragraph:2]'}]}
+  const sourcedMethod:CompanyResearchMethodResult={...method,findings:[{text:'年度第一名客户销售占比46.46%',kind:'fact',evidence:[{sourceCandidateId:'annual',location:'paragraph:1'},{sourceCandidateId:'annual',location:'paragraph:2'}]}],sections:[{id:'company-overview',markdown:'客户表[annual@paragraph:1] [annual@paragraph:2]'}],executionEvidence:[{sourceCandidateId:'annual',title:'年报',publisher:'公司',excerpts:[{sourceCandidateId:'annual',location:'paragraph:1',text:'单位：元'},{sourceCandidateId:'annual',location:'paragraph:2',text:'第一名客户销售占比46.46%'}]}]}
   let calls=0
   const executor:ReasoningExecutor={capabilities,execute:async request=>{
     calls++
-    if(calls===2){const repair=request.input as {repair:string;repairInstruction:string};assert.match(repair.repair,/annual@paragraph:2.*46\.46/);assert.match(repair.repair,/失败语句.*客户集中度46\.46%/);assert.match(repair.repairInstruction,/科目\/期间/);assert.match(repair.repairInstruction,/每个数字必须紧邻其直接支持的精确行定位/)}
     return {operation:request.operation,output:{sections:ids.map(id=>({id,markdown:id==='investment-thesis'?`客户集中度46.46%。[annual@paragraph:${calls===1?'1':'2'}]`:'有证据的定性结论。[annual@paragraph:1]',sourceCandidateIds:['annual']}))}}
   }}
   const result=await assembleCompanyResearch({...input,sources:[annual]},[sourcedMethod],executor,()=>input.asOf)
-  assert.equal(calls,2)
+  assert.equal(calls,1)
   assert.equal(result.synthesisMode,'reasoning_executor',JSON.stringify(result.synthesisDiagnostics))
   assert.match(result.sections.find(section=>section.id==='investment-thesis')!.markdown,/annual@paragraph:2/)
-  assert.match(result.synthesisDiagnostics[0]!,/同数字的已供给原文候选/)
 })
 
 test('numeric synthesis repair adds the unique omitted paragraph for a split optical-chip specification', async () => {
@@ -1168,14 +1334,14 @@ test('numeric synthesis repair adds the unique omitted paragraph for a split opt
   assert.match(result.sections.find(section=>section.id==='investment-thesis')!.markdown,/\[annual@paragraph:1\]/)
 })
 
-test('numeric synthesis repair resolves a unique authorized specification outside compact method excerpts', async () => {
+test('numeric synthesis repair cannot recover a source row omitted from compact method evidence', async () => {
   const annual={candidate:{candidateId:'annual' as const,kind:'official_disclosure' as const,tier:1 as const,provider:'fixture',title:'年报'},retrievedAt:'2026-10-14',title:'年报',publisher:'公司',contentHash:'fixture',content:'自研100GPAM4EML芯片在\n400G及800G光模块累计使用，200GPAM4EML芯片已进入量产。',rights:{accessScope:'public' as const,retentionAllowed:true,aiProcessingAllowed:true,derivativeKnowledgeAllowed:true,redistributionAllowed:false}}
   const sourcedMethod:CompanyResearchMethodResult={...method,findings:[{text:'披露100G PAM4 EML技术规格。',kind:'fact',evidence:[{sourceCandidateId:'annual',location:'paragraph:1'},{sourceCandidateId:'annual',location:'paragraph:2'}]}],executionEvidence:[{sourceCandidateId:'annual',title:'年报',publisher:'公司',excerpts:[{sourceCandidateId:'annual',location:'paragraph:2',text:'400G及800G光模块累计使用，200GPAM4EML芯片已进入量产。'}]}]}
   const claim='100G PAM4 EML用于模块，200G PAM4 EML进入量产。[annual@paragraph:2]'
   const executor:ReasoningExecutor={capabilities,execute:async request=>({operation:request.operation,output:{sections:ids.map(id=>({id,markdown:id==='investment-thesis'?claim:'有证据支持的定性判断。[annual@paragraph:2]',sourceCandidateIds:['annual']}))}})}
   const result=await assembleCompanyResearch({...input,sources:[annual]},[sourcedMethod],executor,()=>input.asOf)
-  assert.equal(result.synthesisMode,'reasoning_executor',JSON.stringify(result.synthesisDiagnostics))
-  assert.match(result.sections.find(section=>section.id==='investment-thesis')!.markdown,/\[annual@paragraph:1\]/)
+  assert.equal(result.synthesisMode,'deterministic_fallback',JSON.stringify(result.synthesisDiagnostics))
+  assert.ok(result.synthesisDiagnostics.some(diagnostic=>diagnostic.includes('NUMERIC_GROUNDING_ERROR')))
 })
 
 test('numeric synthesis repair leaves an authorized specification citation unresolved when its source row is ambiguous', async () => {
@@ -1266,7 +1432,7 @@ test('assembled risk section replaces a false no-named-competitor claim with a s
   const annual={candidate:{candidateId:'annual' as const,kind:'official_disclosure' as const,tier:1 as const,provider:'fixture',title:'年报'},retrievedAt:'2026-10-14',title:'年报',publisher:'公司',contentHash:'fixture',content:'公司披露经营风险。',rights:{accessScope:'public' as const,retentionAllowed:true,aiProcessingAllowed:true,derivativeKnowledgeAllowed:true,redistributionAllowed:false}}
   const peer={candidate:{candidateId:'peer' as const,kind:'web_article' as const,tier:3 as const,provider:'fixture',title:'InnoLight产品页'},retrievedAt:'2026-10-14',title:'InnoLight产品页',publisher:'InnoLight',contentHash:'fixture',content:'InnoLight公开了数据中心互联光模块产品。',rights:annual.rights}
   const history:CompanyResearchMethodResult={...method,executionEvidence:[{sourceCandidateId:'annual',title:annual.title,publisher:'公司',excerpts:[{sourceCandidateId:'annual',location:'paragraph:1',text:annual.content}]}]}
-  const risk:CompanyResearchMethodResult={...method,skillId:'company_risk_analysis',sections:[{id:'risks',markdown:'现有材料没有具名竞品及同口径性能、价格或市场份额数据，无法判断相对竞争位置。[annual@paragraph:1]'}],executionEvidence:[{sourceCandidateId:'annual',title:annual.title,publisher:'公司',excerpts:[{sourceCandidateId:'annual',location:'paragraph:1',text:annual.content}]}]}
+  const risk:CompanyResearchMethodResult={...method,skillId:'company_risk_analysis',sections:[{id:'risks',markdown:'现有材料没有具名竞争对手及同口径性能、价格或市场份额数据，无法判断相对竞争位置。[annual@paragraph:1]'}],executionEvidence:[{sourceCandidateId:'annual',title:annual.title,publisher:'公司',excerpts:[{sourceCandidateId:'annual',location:'paragraph:1',text:annual.content}]}]}
   const competition:CompanyResearchMethodResult={...method,skillId:'competitive_market_map',sourceCandidateIds:['peer'],findings:[{text:'InnoLight公开了数据中心互联光模块产品。',kind:'fact',evidence:[{sourceCandidateId:'peer',location:'paragraph:1'}]}],sections:[{id:'competition',markdown:'InnoLight公开了数据中心互联光模块产品。[peer@paragraph:1]'}],executionEvidence:[{sourceCandidateId:'peer',title:peer.title,publisher:'InnoLight',excerpts:[{sourceCandidateId:'peer',location:'paragraph:1',text:peer.content}]}]}
   const executor:ReasoningExecutor={capabilities,execute:async request=>({operation:request.operation,output:{sections:ids.map(id=>({id,markdown:`有证据支持的结论 [annual@paragraph:1]`,sourceCandidateIds:['annual']}))}})}
   const result=await assembleCompanyResearch({...input,company:{...input.company,name:'测试公司'},sources:[annual,peer],reportSourceCandidateIds:['annual','peer']},[history,risk,competition],executor,()=>input.asOf)
@@ -1410,8 +1576,9 @@ test('subtraction from a comparable year label does not create a negative-year n
 test('final synthesis preserves verified split-line dates only when both supplied paragraphs are cited', async () => {
   const datedMethod:CompanyResearchMethodResult={...method,executionEvidence:[{sourceCandidateId:'annual',title:'年报',publisher:'公司',excerpts:[{sourceCandidateId:'annual',location:'paragraph:1',text:'公司于二'},{sourceCandidateId:'annual',location:'paragraph:2',text:'零零二年六月十一日变更。'}]}],sections:[{id:'company-overview',markdown:'2002年变更 [annual@paragraph:1] [annual@paragraph:2]'}]}
   const executor=(both:boolean):ReasoningExecutor=>({capabilities,execute:async request=>({operation:request.operation,output:{sections:ids.map(id=>({id,markdown:`2002年变更影响历史口径 [annual@paragraph:1]${both?' [annual@paragraph:2]':''}`,sourceCandidateIds:['annual']}))}})})
-  assert.equal((await assembleCompanyResearch(input,[datedMethod],executor(true),()=>input.asOf)).synthesisMode,'reasoning_executor')
-  assert.equal((await assembleCompanyResearch(input,[datedMethod],executor(false),()=>input.asOf)).synthesisMode,'deterministic_fallback')
+  const datedInput={...input,sources:[{candidate:{candidateId:'annual'},title:'年报',content:'公司于二\n零零二年六月十一日变更。'}] as any}
+  assert.equal((await assembleCompanyResearch(datedInput,[datedMethod],executor(true),()=>input.asOf)).synthesisMode,'reasoning_executor')
+  assert.equal((await assembleCompanyResearch(datedInput,[datedMethod],executor(false),()=>input.asOf)).synthesisMode,'deterministic_fallback')
 })
 
 test('R146 product disclosures bind values to exact annual product rows and cite the prior-year annual rows', async () => {
@@ -1440,7 +1607,13 @@ test('R146 product disclosures bind values to exact annual product rows and cite
     ],
   }
   const executor: ReasoningExecutor = { capabilities, execute: async request => ({ operation: request.operation, output: { sections: ids.map(id => ({ id, markdown: '有证据支持的判断。[annual-2025@paragraph:833]', sourceCandidateIds: ['annual-2025'] })) } }) }
-  const result = await assembleCompanyResearch({ ...input, reportSourceCandidateIds: ['annual-2025','annual-2024'] }, [productMethod], executor, () => input.asOf)
+  const sources = (['2025','2024'] as const).map(year => {
+    const rows = evidence.filter(item => item.sourceCandidateId === `annual-${year}`)
+    const lines = Array.from({ length: Math.max(...rows.map(item => Number(item.location.slice('paragraph:'.length)))) }, () => '')
+    for (const row of rows) lines[Number(row.location.slice('paragraph:'.length)) - 1] = row.text
+    return { candidate: { candidateId: `annual-${year}` }, title: `${year}年年度报告`, content: lines.join('\n') }
+  })
+  const result = await assembleCompanyResearch({ ...input, sources: sources as any, reportSourceCandidateIds: ['annual-2025','annual-2024'] }, [productMethod], executor, () => input.asOf)
   const markdown = result.sections.find(section => section.id === 'products')!.markdown
   const phoneRow = markdown.split('\n').find(line => line.includes('155,236,528,000元'))!
   assert.match(phoneRow, /\[annual-2025@paragraph:850\].*\[annual-2025@paragraph:851\]/)
@@ -1494,7 +1667,14 @@ test('R147 product citation reconciliation derives issuer labels and annual peri
     executionEvidence: methodsEvidence,
   }
   const executor: ReasoningExecutor = { capabilities, execute: async request => ({ operation: request.operation, output: { sections: ids.map(id => ({ id, markdown: '有证据支持的判断。[annual-2023@paragraph:1]', sourceCandidateIds: ['annual-2023'] })) } }) }
-  const result = await assembleCompanyResearch({ ...input, company: { symbol: '600000', name: '示例科技', exchange: 'SH' }, reportSourceCandidateIds: ['annual-2022','annual-2023'] }, [productMethod], executor, () => input.asOf)
+  const sources = (['annual-2022','annual-2023'] as const).map(candidateId => {
+    const rows = sourceRows.filter(row => row[0] === candidateId)
+    const lines = Array.from({ length: Math.max(...rows.map(row => row[2])) }, () => '')
+    for (const [, , paragraph, text] of rows) lines[paragraph - 1] = text
+    const year = candidateId.slice('annual-'.length)
+    return { candidate: { candidateId }, title: `${year}年年度报告`, content: lines.join('\n') }
+  })
+  const result = await assembleCompanyResearch({ ...input, sources: sources as any, company: { symbol: '600000', name: '示例科技', exchange: 'SH' }, reportSourceCandidateIds: ['annual-2022','annual-2023'] }, [productMethod], executor, () => input.asOf)
   const markdown = result.sections.find(section => section.id === 'products')!.markdown
   assert.match(markdown.split('\n').find(line => line.includes('12,345,678元'))!, /\[annual-2023@paragraph:3\]/)
   assert.match(markdown.split('\n').find(line => line.includes('2022年年报的产品名称'))!, /\[annual-2022@paragraph:11\].*\[annual-2022@paragraph:12\]/)
@@ -1515,4 +1695,26 @@ test('R147 product row repair refuses values found only under an industry headin
   const executor: ReasoningExecutor = { capabilities, execute: async request => ({ operation: request.operation, output: { sections: ids.map(id => ({ id, markdown: '有证据支持的判断。[annual-2023@paragraph:1]', sourceCandidateIds: ['annual-2023'] })) } }) }
   const result = await assembleCompanyResearch({ ...input, reportSourceCandidateIds: ['annual-2023'] }, [productMethod], executor, () => input.asOf)
   assert.equal(result.sections.find(section => section.id === 'products')!.markdown, claim)
+})
+
+test('product lifecycle evidence is ordered before unrelated feature evidence in a product row', async () => {
+  const productMarkdown = '| 海豹08 | 公司页面称续航与售价信息。[product-page@paragraph:337] 报道称为下线车型。[product-news@paragraph:331] |'
+  const productMethod: CompanyResearchMethodResult = {
+    ...method,
+    sections: [{ id: 'products', markdown: productMarkdown }],
+    findings: [{ text: '车型信息与下线进度。', kind: 'fact', evidence: [
+      { sourceCandidateId: 'product-page', location: 'paragraph:337' },
+      { sourceCandidateId: 'product-news', location: 'paragraph:331' },
+    ] }],
+    executionEvidence: [
+      { sourceCandidateId: 'product-page', title: '产品页', publisher: '公司', excerpts: [{ sourceCandidateId: 'product-page', location: 'paragraph:337', text: '海豹08车型定位、售价和配置。' }] },
+      { sourceCandidateId: 'product-news', title: '下线报道', publisher: '媒体', excerpts: [{ sourceCandidateId: 'product-news', location: 'paragraph:331', text: '海豹08下线。' }] },
+    ],
+  }
+  const executor: ReasoningExecutor = { capabilities, execute: async request => ({ operation: request.operation, output: { sections: ids.map(id => ({ id, markdown: '有证据支持的判断。[product-page@paragraph:337]', sourceCandidateIds: ['product-page'] })) } }) }
+  const result = await assembleCompanyResearch({ ...input, sources: [
+    { candidate: { candidateId: 'product-page' }, title: '产品页', content: `${'\n'.repeat(336)}海豹08车型定位、售价和配置。` },
+    { candidate: { candidateId: 'product-news' }, title: '下线报道', content: `${'\n'.repeat(330)}海豹08下线。` },
+  ] as any, reportSourceCandidateIds: ['product-page', 'product-news'] }, [productMethod], executor, () => input.asOf)
+  assert.match(result.sections.find(section => section.id === 'products')!.markdown, /\[product-news@paragraph:331\].*\[product-page@paragraph:337\]/)
 })

@@ -33,12 +33,79 @@ test('independent semantic review sends actual cited paragraphs and evaluates ex
     assert.match(request.input.rubric.risks, /被购买方列标题和数值行逐列核对/)
     assert.match(request.input.rubric['industry-exposure'], /不能因此省略行业规模背景/)
     assert.match(request.input.rubric['industry-exposure'], /跨方法核对competitive_market_map/)
+    assert.match(request.input.rubric['monitoring-checklist'], /不得使用未定义的“订单转弱”或“回款信号转弱”/)
+    assert.match(request.input.rubric['monitoring-checklist'], /每项触发条件必须落到一个具名、可在指定定期报告或公司公告中重复观察的指标/)
     assert.match(request.input.rubric.catalysts, /competitive_market_map/)
     assert.match(request.input.rubric.catalysts, /不得笼统声称“没有具名竞争对手\/产品路线”/)
     return output
   }) })
   assert.equal(result.passed, true)
   assert.equal(result.sectionChecks.length, 16)
+})
+
+test('semantic review clears only source-verified 2024 industry-period and employee-plan-cap self-contradictions', () => {
+  const annualLines = Array.from({ length: 3061 }, () => '一般披露。')
+  annualLines[17] = '二零二四年中国新能源汽车全年销量达到1,286.6万辆。'
+  annualLines[3059] = '2025年员工持股计划涉及不超过2.5万名员工，资金总额不超过41亿元，计划分三期解锁，业绩考核要求为每年营业收入同比增长不低于10%。'
+  annualLines[3060] = '截止2025年5月23日，本员工持股计划已通过二级市场集中竞价累计买入公司A股股票10,714,990股。'
+  const annual = { ...source, candidate: { ...source.candidate, candidateId: 'annual-plan-report' }, title: '2025年年度报告', content: annualLines.join('\n') } as NormalizedResearchSource
+  const priorLines = Array.from({ length: 18 }, () => '一般披露。')
+  priorLines[17] = '二零二四年中国新能源汽车全年销量达到1,286.6万辆。'
+  const prior = { ...source, candidate: { ...source.candidate, candidateId: 'annual-2024-report' }, title: '2024年年度报告', content: priorLines.join('\n') } as NormalizedResearchSource
+  const report = sections.map(section => section.id === 'industry-exposure'
+    ? { ...section, markdown: '| 中国新能源汽车全年销量（历史行业销量，非公司TAM） | 2024全年 | 1,286.6万辆 | 来源 [annual-2024-report@paragraph:18] |' }
+    : section.id === 'management-capital-allocation'
+      ? { ...section, markdown: '2025年计划条款涉及不超过2.5万名员工、资金总额不超过41亿元；这些是计划上限，不等于实际认购人数。[annual-plan-report@paragraph:3060] [annual-plan-report@paragraph:3061]' }
+      : section)
+  const review = output.sectionChecks.map(check => check.sectionId === 'industry-exposure'
+    ? { ...check, evidenceSupportsConclusion: false, reasons: ['该行虽标注2024年，但明确引用的2024年报原文明确为“二零二四年…全年销量达到1,286.6万辆”；报告表述年份与来源及表内期间相符，未见错置。'] }
+    : check.sectionId === 'management-capital-allocation'
+      ? { ...check, evidenceSupportsConclusion: false, numericReproducible: false, reasons: ['“2025年计划范围不超过2.5万名员工、资金总额不超过41亿元”确实是计划上限，并非执行实际人数或资金；同段明确标为“计划条款”且其后限定计划披露口径，未误报实绩，原有阻塞理由不成立。'] }
+      : check)
+  const reconciled = reconcileKnownReviewerFalsePositives(review as any, report as any, [prior, annual])
+  assert.equal(reconciled.find(check => check.sectionId === 'industry-exposure')?.evidenceSupportsConclusion, true)
+  assert.equal(reconciled.find(check => check.sectionId === 'management-capital-allocation')?.numericReproducible, true)
+  assert.deepEqual(reconciled.find(check => check.sectionId === 'industry-exposure')?.reasons, [])
+  const wrongPeriod = reconcileKnownReviewerFalsePositives(review as any, report.map(section => section.id === 'industry-exposure' ? { ...section, markdown: section.markdown.replace('2024全年', '2025全年') } : section) as any, [prior, annual])
+  assert.equal(wrongPeriod.find(check => check.sectionId === 'industry-exposure')?.evidenceSupportsConclusion, false)
+})
+
+test('semantic review reconciles only a self-correcting industry verdict backed by both exact forecast citations', async () => {
+  const lines = Array.from({ length: 450 }, () => '公司披露经营情况。')
+  lines[447] = 'Market Insights 预测，二零二五年全球 AI 服务器市场规模达 1,672 亿美元，按年增长 30.6%。'
+  lines[449] = 'MarketsandMarkets 预计，二零二五年全球数据中心液冷市场规模将达 28.4 亿美元，同比增长 44.9%。'
+  const marketSource = { ...source, content: lines.join('\n') } as NormalizedResearchSource
+  const body = '行业规模背景：2025年全球AI服务器市场规模1,672亿美元；2025年数据中心液冷市场规模28.4亿美元。[filing@paragraph:448][filing@paragraph:450]'
+  const report = sections.map(section => section.id === 'industry-exposure' ? { ...section, markdown: body } : section)
+  const selfCorrected = { sectionChecks: output.sectionChecks.map(check => check.sectionId === 'industry-exposure' ? { ...check, evidenceSupportsConclusion: false, numericReproducible: false, reasons: ['此处市场年份与来源一致，不应误判。', '分行业数字按来源行列头复核，未发现实质性数值错引，数字旗标应为true。'] } : check) }
+  let fixedCalls = 0
+  const fixed = await reviewCompanyResearchSemantics({ ...input, sources: [marketSource], sections: report, reasoningExecutor: executor(async () => { fixedCalls++; return selfCorrected }) })
+  assert.equal(fixed.passed, true, JSON.stringify(fixed))
+  assert.equal(fixedCalls, 2, 'the first contradictory review still receives its bounded repair call')
+  assert.equal(fixed.attempts, 2)
+  assert.equal(fixed.diagnostics.some(item => item.code === 'REVIEWER_SELF_CORRECTION_RECONCILED'), true)
+  const missingExactCitation = await reviewCompanyResearchSemantics({ ...input, sources: [marketSource], sections: report.map(section => section.id === 'industry-exposure' ? { ...section, markdown: body.replace('paragraph:450', 'paragraph:449') } : section), reasoningExecutor: executor(async () => selfCorrected) })
+  assert.equal(missingExactCitation.passed, false)
+  assert.equal(missingExactCitation.diagnostics.some(item => item.code === 'REVIEWER_SELF_CORRECTION_RECONCILED'), false)
+})
+
+test('semantic review repairs an explicit final self-correction but keeps a concrete cited-row defect blocked', async () => {
+  const malformed = { sectionChecks: output.sectionChecks.slice(0, 15) }
+  const selfCorrected = { sectionChecks: output.sectionChecks.map(check => check.sectionId === 'growth-drivers'
+    ? { ...check, evidenceSupportsConclusion: false, numericReproducible: false, reasons: ['引用来源及2025预测数值相符，未发现实质错误，理由与旗标冲突，应置true。'] }
+    : check) }
+  let calls = 0
+  const fixed = await reviewCompanyResearchSemantics({ ...input, reasoningExecutor: executor(async () => { calls++; return calls === 1 ? malformed : selfCorrected }) })
+  assert.equal(fixed.passed, true)
+  assert.equal(calls, 2)
+  assert.equal(fixed.diagnostics.some(item => item.code === 'REVIEWER_SELF_CORRECTION_RECONCILED'), true)
+  const concreteDefect = { sectionChecks: output.sectionChecks.map(check => check.sectionId === 'growth-drivers'
+    ? { ...check, evidenceSupportsConclusion: false, numericReproducible: false, reasons: ['但引用paragraph:2错列，预测期间错误；其余证据相符，理由与旗标冲突，应置true。'] }
+    : check) }
+  let blockedCalls = 0
+  const blocked = await reviewCompanyResearchSemantics({ ...input, reasoningExecutor: executor(async () => { blockedCalls++; return blockedCalls === 1 ? malformed : concreteDefect }) })
+  assert.equal(blocked.passed, false)
+  assert.equal(blocked.diagnostics.some(item => item.code === 'REVIEWER_SELF_CORRECTION_RECONCILED'), false)
 })
 
 test('semantic review rejects cited but unsupported conclusions and missing risk transmission despite complete prose', async () => {
@@ -835,6 +902,13 @@ test('reviewer may retain an evidence blocker for an explicitly unlabelled annua
   assert.equal(validateCompanySemanticQualityOutput({ sectionChecks: periodScopeGap }).find(check => check.sectionId === 'revenue-profit-drivers')!.evidenceSupportsConclusion, false)
 })
 
+test('reviewer period mismatch remains concrete when an unrelated absence is accurate', () => {
+  const periodMismatch = output.sectionChecks.map(check => check.sectionId === 'industry-exposure'
+    ? { ...check, evidenceSupportsConclusion: false, reasons: ['原文paragraph:559写2030年市场规模将达6300亿美元，但报告将该终点数值标成2026—2030年期间规模，年份不精确并影响时间口径核对；同一行关于预测机构未明确的限制与方法finding一致，不是虚假缺口。'] }
+    : check)
+  assert.equal(validateCompanySemanticQualityOutput({ sectionChecks: periodMismatch }).find(check => check.sectionId === 'industry-exposure')!.evidenceSupportsConclusion, false)
+})
+
 test('R194 review period objection is cleared only when the report and cited annual paragraphs show the correct 2026-2030 forecast',()=>{
   const lines=Array.from({length:559},()=> '披露正文')
   lines[557]='2025年全球服务器及存储领域的市场规模为 4130 亿美元。'
@@ -1077,6 +1151,15 @@ test('BYD explicit revenue-driver self-retraction clears its false flags but pre
   assert.match(mismatchedEvidence.reasons.join(' '), /未发现能支撑false的具体反证/)
 })
 
+test('numeric review flag is normalized when the reviewer explicitly retracts the calculation error', () => {
+  const reason = '报告未给两个输入数值的派生公式引用之外的完整数值行；更关键的是电子电路产品收入、成本增速之差报告所给算术无误。未发现这些已列数字的计算错误，表格原文支持操作数；此项不判错，原因应收窄。'
+  const checks = output.sectionChecks.map(check => check.sectionId === 'revenue-profit-drivers'
+    ? { ...check, numericReproducible: false, reasons: [reason] }
+    : check)
+  const validated = validateCompanySemanticQualityOutput({ sectionChecks: checks })
+  assert.equal(validated.find(check => check.sectionId === 'revenue-profit-drivers')!.numericReproducible, true)
+})
+
 test('BYD correct derived R&D percentage-point difference clears numeric false positive only when the report distinguishes the source percent', () => {
   const annual = { ...source, content: '资本化研发投入占研发投入的比例 8.61% 1.78% 6.83%' }
   const body = '原表变动比例为6.83%；按比例水平相减，8.61%−1.78%＝6.83个百分点。原表列示的变动比例沿用%单位，百分点差为本报告另行计算。[filing@paragraph:1]'
@@ -1124,4 +1207,41 @@ test('financial-quality period-basis mismatch keeps evidence blocked while class
   assert.equal(financial.evidenceSupportsConclusion, false)
   assert.equal(financial.numericReproducible, true)
   assert.match(financial.reasons.join(' '), /期间基期描述不一致/)
+})
+
+test('R30 product-versus-industry mislabel keeps the evidence blocker but normalizes the matching disclosed amounts', () => {
+  const reason = '表中产品收入及占比金额引用paragraph 816、814、817，但这些原文属于分行业数据行，而报告称其为分产品行；分产品金额占比实际见paragraph 820、822、823，且收入金额虽相同，来源分类标签未绑定正确，导致分部分类口径不可复核。'
+  const checks = output.sectionChecks.map(check => check.sectionId === 'business-segments'
+    ? { ...check, evidenceSupportsConclusion: true, numericReproducible: false, reasons: [reason] }
+    : check)
+  const normalized = validateCompanySemanticQualityOutput({ sectionChecks: checks }).find(check => check.sectionId === 'business-segments')!
+  assert.equal(normalized.numericReproducible, true, 'the figures match the disclosed product rows; the wrong row classification is not an arithmetic failure')
+  assert.equal(normalized.evidenceSupportsConclusion, false, 'industry rows do not support a product-segment claim')
+  assert.match(normalized.reasons.join(' '), /来源分类标签未绑定正确/)
+
+  const wrongValueReason = `${reason} 但产品行收入金额实际应为155,000,000,000元而非155,236,528,000元，报告数值错误。`
+  const wrongValue = validateCompanySemanticQualityOutput({ sectionChecks: checks.map(check => check.sectionId === 'business-segments' ? { ...check, numericReproducible: false, reasons: [wrongValueReason] } : check) }).find(check => check.sectionId === 'business-segments')!
+  assert.equal(wrongValue.numericReproducible, false, 'an explicit contrary amount remains a numeric blocker')
+  assert.equal(wrongValue.evidenceSupportsConclusion, false)
+})
+
+test('R30 financial-quality comparison framing stays an evidence blocker while reproducible amounts pass numeric review', () => {
+  const reason = '“半年末短期借款略低于上年末”与结构化数据、半年报paragraph 776吻合；但将借款余额变化限定为上年末比较。主要阻塞是正文的周转指标均可复算，但把结构化序列2025-06-30至2026-06-30余额同比计算的增长与原表“本报告期末／上年末”余额变化并置，未充分区分两套比较口径；影响读者区分同期余额同比和半年报期末对年末的方向。其余主要金额及公式均可复核。'
+  const checks = output.sectionChecks.map(check => check.sectionId === 'financial-quality'
+    ? { ...check, evidenceSupportsConclusion: false, numericReproducible: false, reasons: [reason] }
+    : check)
+  const normalized = validateCompanySemanticQualityOutput({ sectionChecks: checks }).find(check => check.sectionId === 'financial-quality')!
+  assert.equal(normalized.numericReproducible, true, 'the same-date balance arithmetic remains reproducible')
+  assert.equal(normalized.evidenceSupportsConclusion, false, 'the mixed comparison frames still fail evidentiary interpretation')
+  assert.match(normalized.reasons.join(' '), /未充分区分两套比较口径/)
+
+  const wrongPeriodReason = `${reason} 但该行期间实际应为2025年同期而非上年末，期间错误，导致计算比较基期不符。`
+  const wrongPeriod = validateCompanySemanticQualityOutput({ sectionChecks: checks.map(check => check.sectionId === 'financial-quality' ? { ...check, numericReproducible: false, reasons: [wrongPeriodReason] } : check) }).find(check => check.sectionId === 'financial-quality')!
+  assert.equal(wrongPeriod.numericReproducible, false, 'an explicitly wrong calculation period remains numeric-blocking')
+  assert.equal(wrongPeriod.evidenceSupportsConclusion, false)
+
+  const wrongValueReason = `${reason} 但资产负债率实际应为72.00%，公式结果错误。`
+  const wrongValue = validateCompanySemanticQualityOutput({ sectionChecks: checks.map(check => check.sectionId === 'financial-quality' ? { ...check, numericReproducible: false, reasons: [wrongValueReason] } : check) }).find(check => check.sectionId === 'financial-quality')!
+  assert.equal(wrongValue.numericReproducible, false, 'an explicit wrong formula result remains numeric-blocking')
+  assert.equal(wrongValue.evidenceSupportsConclusion, false)
 })

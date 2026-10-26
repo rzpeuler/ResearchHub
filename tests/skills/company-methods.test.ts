@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { selectCompanyEvidence, companyCitedSplitDateText, withCompanyEvidenceDateContext } from '../../skills/company-research/evidence.ts'
 import { validateCompanyNumericGrounding } from '../../skills/company-research/numeric-grounding.ts'
-import { bindCompanyMethodEvidenceContext, calculateCompanyTam, companyMethodOutputSchema, COMPANY_METHOD_METHODOLOGY, executeCompanyResearchMethod, validateCompanyMethodOutput } from '../../skills/company-research/methods.ts'
+import { bindCompanyMethodEvidenceContext, bindExactBusinessDriverProductRevenueRows, calculateCompanyTam, companyMethodOutputSchema, COMPANY_METHOD_METHODOLOGY, executeCompanyResearchMethod, validateCompanyMethodOutput } from '../../skills/company-research/methods.ts'
 import { Ajv } from 'ajv'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
 import type { NormalizedResearchSource } from '../../plugins/research-acquisition/contracts.ts'
@@ -108,7 +108,7 @@ test('history answer years reuse only one independently grounded finding with ex
     findings: [{ text: '公司前身于1995年共同注册，2002年整体变更为股份公司；另有报道指1994年创立，但该报道口径不能替代法定主体沿革。', kind: 'fact', evidence: refs }],
   }
   const result = await executeCompanyResearchMethod({ skillId: 'company_history_strategy', company: { symbol: '002594' }, asOf: '2026-10-14', sources: [history], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async () => numericHistoryOutput) })
-  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  assert.equal(result.status, 'complete', JSON.stringify({ diagnostics: result.diagnostics, attempts: result.attemptOutputs?.map(item => ({ output: item.output, evidence: item.executionEvidence })) }))
   assert.match(result.answer, /\[filing-1@paragraph:1\]/)
   assert.match(result.answer, /\[filing-1@paragraph:2\]/)
   assert.match(result.answer, /\[filing-1@paragraph:3\]/)
@@ -236,6 +236,7 @@ test('company history distinguishes predecessor, incorporation, listing, and the
   assert.match(question, /不能用结构化财务数据代替沿革证据/)
   assert.match(COMPANY_METHOD_METHODOLOGY.market_structure_analysis.questions, /列名为“同比增减（%）”/)
   assert.match(COMPANY_METHOD_METHODOLOGY.market_structure_analysis.questions, /相邻而非直接可比市场/)
+  assert.match(COMPANY_METHOD_METHODOLOGY.market_structure_analysis.questions, /每个Markdown表格必须以完整列标题行紧邻其分隔线/)
   assert.match(COMPANY_METHOD_METHODOLOGY.financial_quality_analysis.questions, /不得称“上年同期”或余额同比/)
   assert.match(COMPANY_METHOD_METHODOLOGY.company_risk_analysis.questions, /禁止称“未提供治理结构或内控意见”/)
   assert.match(COMPANY_METHOD_METHODOLOGY.company_risk_analysis.questions, /不得对其他客户比例求和、做心算差值/)
@@ -247,6 +248,10 @@ test('company history distinguishes predecessor, incorporation, listing, and the
   assert.match(COMPANY_METHOD_METHODOLOGY.company_history_strategy.questions, /“共同注册成立”前身企业/)
   assert.match(COMPANY_METHOD_METHODOLOGY.company_history_strategy.questions, /不得再称前身首次设立年份未披露/)
   assert.match(COMPANY_METHOD_METHODOLOGY.business_driver_analysis.questions, /任何包含数字的finding都要在该finding自身引用数据行/)
+  assert.match(COMPANY_METHOD_METHODOLOGY.business_driver_analysis.questions, /统一写为“65\.81亿元”这类数值在前、单位在后的格式/)
+  assert.match(COMPANY_METHOD_METHODOLOGY.business_driver_analysis.questions, /不得用分部收入除以集团收入自行计算/)
+  assert.match(COMPANY_METHOD_METHODOLOGY.business_driver_analysis.questions, /产品\/行业分类标签必须与紧邻的数据行及该表的单位、期间和列头绑定/)
+  assert.match(COMPANY_METHOD_METHODOLOGY.business_driver_analysis.questions, /严格除以100,000,000/)
 })
 
 test('history and product skills require dated, source-bound milestones and concrete official catalog examples', async () => {
@@ -665,6 +670,52 @@ test('business-driver finding with one margin value gets its exact same-source d
   assert.ok(result.findings[0]!.evidence.some(ref => ref.location === 'paragraph:7'), 'the exact row containing -2.67% is attached to this finding')
 })
 
+test('business-driver revenue table keeps annual industry rows and rejects product rows under an industry label', async () => {
+  const id = 'annual-segment-classification'
+  const lines = [
+    '单位：元', '2025年', '营业收入构成', '金额 占营业收入', '分行业',
+    '制造业 100 20%', '其他行业 400 80%', '分产品', '新能源汽车 100 20%', '其他产品 400 80%',
+    '单位：元', '2025年', '营业收入 营业成本 毛利率', '分行业', '制造业 100 80 20%', '分产品', '新能源汽车 100 80 20%',
+  ]
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: id }, title: '2025年年度报告', content: lines.join('\n') }
+  const packets = selectCompanyEvidence([filing], [id], ['收入', '成本', '毛利率', '占比'], { purpose: 'business_driver_analysis' })
+  const excerptLocations = new Set(packets[0]?.excerpts.map(row => row.location) ?? [])
+  for (const paragraph of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]) {
+    assert.ok(excerptLocations.has(`paragraph:${paragraph}`), `complete annual table context includes paragraph ${paragraph}`)
+  }
+  const refs = (paragraphs: number[]) => paragraphs.map(paragraph => ({ sourceCandidateId: id, location: `paragraph:${paragraph}` }))
+  const makeDraft = (claim: string, citations: number[]) => ({
+    status: 'complete', answer: '分部收入变化仍需结合集团表现判断。', markdown: '分部披露提供结构线索。',
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: `${claim} ${citations.map(paragraph => `[${id}@paragraph:${paragraph}]`).join(' ')}` },
+      { id: 'growth-drivers', markdown: `应跟踪同口径收入与利润变化。[${id}@paragraph:6]` },
+      { id: 'catalysts', markdown: `现有年报未提供未来量价目标。[${id}@paragraph:6]` },
+    ],
+    findings: [{ text: claim, kind: 'fact', evidence: refs(citations) }], limitations: [], risks: [],
+  })
+  const industryClaim = '2025年分行业收入构成中，制造业收入100元，占比20%。'
+  const valid = await executeCompanyResearchMethod({
+    company: { symbol: '123456', name: '测试公司', exchange: 'SZ' }, asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: [id],
+    skillId: 'business_driver_analysis', maxAttempts: 1, reasoningExecutor: executor(async () => makeDraft(industryClaim, [1, 2, 3, 4, 5, 6])),
+  })
+  assert.equal(valid.status, 'complete', JSON.stringify(valid.diagnostics))
+
+  const productClaim = '2025年分产品收入构成中，新能源汽车收入100元，占比20%。'
+  const productValid = await executeCompanyResearchMethod({
+    company: { symbol: '123456', name: '测试公司', exchange: 'SZ' }, asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: [id],
+    skillId: 'business_driver_analysis', maxAttempts: 1, reasoningExecutor: executor(async () => makeDraft(productClaim, [1, 2, 3, 4, 8, 9])),
+  })
+  assert.equal(productValid.status, 'complete', JSON.stringify(productValid.diagnostics))
+
+  const mislabeled = await executeCompanyResearchMethod({
+    company: { symbol: '123456', name: '测试公司', exchange: 'SZ' }, asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: [id],
+    skillId: 'business_driver_analysis', maxAttempts: 1,
+    reasoningExecutor: executor(async () => makeDraft(industryClaim, [1, 2, 3, 4, 8, 9, 10])),
+  })
+  assert.equal(mislabeled.status, 'failed')
+  assert.ok(mislabeled.diagnostics.some(diagnostic => diagnostic.message.includes('conflicting or incomplete table context')))
+})
+
 test('single-value industry findings bind distinct exact rows, including a split transport label', async () => {
   const lines = Array.from({ length: 10 }, () => '一般披露事项。')
   const rows = new Map<number, string>([
@@ -837,6 +888,7 @@ test('malformed risk matrix retry names the exact five-column contract and prese
   assert.match(retryRequest.instruction, /必须使用五列/)
   assert.match(retryRequest.instruction, /row at line 3 has 6 cells; expected 5/)
   assert.match(retryRequest.instruction, /不得丢弃事实、数字或引用/)
+  assert.match(retryRequest.instruction, /第五、六格分别是残余风险推断和证据限制/)
   assert.match(retryRequest.input.repairInstruction, /必须使用五列/)
   assert.match(result.diagnostics[0]?.message ?? '', /row at line 3 has 6 cells; expected 5/)
   assert.equal(result.sections.find(section => section.id === 'risks')?.markdown, repairedTable)
@@ -978,6 +1030,75 @@ test('numeric-only method retry applies only targeted fields and discards unrela
   assert.equal(result.sections.find(section => section.id === 'growth-drivers')?.markdown, retried.sections[1]!.markdown)
   assert.equal(result.sections.find(section => section.id === 'catalysts')?.markdown, original.sections[2]!.markdown)
   assert.equal(result.sections.some(section => section.markdown.includes('official-unknown')), false)
+})
+
+test('business-driver numeric retry explicitly permits removing a number without exact row support', async () => {
+  const filing = { ...source, content: '公司披露业务扩张和产能建设，产品交付仍需跟踪。' }
+  const ref = { sourceCandidateId: 'filing-1', location: 'paragraph:1' }
+  const original = {
+    status: 'complete', answer: '业务扩张仍需持续核验。', markdown: '相关业务事实仍待验证。',
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: '2025年度分产品收入占比为14.78%。[filing-1@paragraph:1]' },
+      { id: 'growth-drivers', markdown: '经营增长需结合产能与交付观察。[filing-1@paragraph:1]' },
+      { id: 'catalysts', markdown: '公司披露了产能建设进度。[filing-1@paragraph:1]' },
+    ],
+    findings: [{ text: '2025年度分产品收入占比为14.78%。', kind: 'fact', evidence: [ref] }], limitations: [], risks: [],
+  }
+  const repaired = {
+    ...original,
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: '本次证据未提供可核验的年度分产品收入占比。[filing-1@paragraph:1]' },
+      original.sections[1], original.sections[2],
+    ],
+    findings: [{ text: '本次证据未提供可核验的年度分产品收入占比。', kind: 'inference', evidence: [ref] }],
+    limitations: ['年度分产品收入占比未能在本次精确证据行中核实。'],
+  }
+  let calls = 0
+  const result = await executeCompanyResearchMethod({ skillId: 'business_driver_analysis', company: { symbol: '002384' }, asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async request => {
+    calls++
+    if (calls === 1) return original
+    const input = (request as any).input
+    assert.equal(input.repairErrors[0].code, 'NUMERIC_GROUNDING_ERROR')
+    assert.match(input.repairInstruction, /业务驱动数值定向修复/)
+    assert.match(input.repairInstruction, /只从对应句和重复finding删除该数字/)
+    return repaired
+  }) })
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  assert.equal(result.attempts, 2)
+  assert.equal(calls, 2)
+  assert.doesNotMatch(result.sections.find(section => section.id === 'revenue-profit-drivers')!.markdown, /14\.78/)
+})
+
+test('business-driver revenue table rows receive only their exact supplied product-row citation', async () => {
+  const rows = [
+    '2026年半年度报告',
+    '单位：元',
+    '营业收入构成',
+    '营业收入（本报告期） 占营业收入比例 营业收入（上年同期） 占营业收入比例 同比增减',
+    '电子电路产品 12,529,627,775.53 45.07% 11,059,315,884.89 65.23% 13.29%',
+  ]
+  const filing: NormalizedResearchSource = { ...source, candidate: { ...source.candidate, title: '2026年半年度报告' }, title: '2026年半年度报告', content: rows.join('\n') }
+  const packet = selectCompanyEvidence([filing], ['filing-1'], ['产品', '收入', '成本', '同比', '报告期'], { purpose: 'business_driver_analysis' })[0]!
+  const table = '| 分产品收入（人民币亿元） | 本报告期 | 占集团收入比重 | 上年同期 | 占集团收入比重 | 同比 |\n|---|---:|---:|---:|---:|---:|\n| 电子电路产品 | 125.30 | 45.07% | 110.59 | 65.23% | 13.29% [filing-1@paragraph:5] |'
+  const rebound = bindExactBusinessDriverProductRevenueRows({ sections: [{ id: 'revenue-profit-drivers', markdown: table }] }, [packet], [filing])
+  for (const paragraph of [2, 3, 4, 5]) assert.match(rebound.sections[0]!.markdown, new RegExp(`\\[filing-1@paragraph:${paragraph}\\]`))
+  const grounded = validateCompanyNumericGrounding({ markdown: rebound.sections[0]!.markdown, sources: [filing], evidenceContexts: [packet], trustedText: ['002384', '2026-10-27'] })
+  assert.equal(grounded.status, 'grounded', JSON.stringify(grounded.diagnostics))
+  const result = await executeCompanyResearchMethod({
+    skillId: 'business_driver_analysis', company: { symbol: '002384' }, asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: ['filing-1'],
+    reasoningExecutor: executor(async () => ({
+      status: 'complete', answer: '产品收入结构存在变化。', markdown: '产品结构变化仍需结合整体经营判断。',
+      sections: [
+        { id: 'revenue-profit-drivers', markdown: table },
+        { id: 'growth-drivers', markdown: '产品结构变化不能直接解释集团利润。[filing-1@paragraph:5]' },
+        { id: 'catalysts', markdown: '后续交付仍需观察。[filing-1@paragraph:5]' },
+      ],
+      findings: [{ text: '电子电路产品收入及成本表现需结合集团变化观察。', kind: 'inference', evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:5' }] }],
+      limitations: [], risks: [],
+    })),
+  })
+  assert.equal(result.status, 'complete', JSON.stringify({ diagnostics: result.diagnostics, attempts: result.attemptOutputs?.map(item => item.output) }))
+  assert.match(result.sections.find(section => section.id === 'revenue-profit-drivers')!.markdown, /\| 电子电路产品 \| 125\.30亿元 \| 45\.07% \| 110\.59亿元 \| 65\.23% \| 13\.29% \[filing-1@paragraph:5\] \[filing-1@paragraph:4\] \[filing-1@paragraph:2\] \[filing-1@paragraph:3\] \|/)
 })
 
 test('business-driver retry after citation failure accepts corrected citation and numeric repair together', async () => {
@@ -1196,6 +1317,7 @@ test('reference repair reports independent numeric defects in the same bounded r
   let calls = 0
   const result = await executeCompanyResearchMethod({ skillId: 'company_risk_analysis', company: { symbol: '002594' }, asOf: '2026-10-14', sources: [history], reportSourceCandidateIds: ['filing-1'], preparedAnalysis, reasoningExecutor: executor(async request => {
     calls++
+    assert.match((request as any).instruction, /同一风险矩阵行\/单元格必须紧邻说明/)
     if (calls === 1) return broken
     const input = (request as any).input
     assert.equal(input.repairErrors[0].code, 'REFERENCE_ERROR')
@@ -1471,7 +1593,10 @@ test('financial-quality prompt requires numeric findings to carry their own exac
   assert.match(actualInstruction,/结构化期末数据计算，不是半年报原表“本报告期末／上年末”的直接同比披露/)
   assert.match(actualInstruction,/同一合并指标具备两个可比期间/)
   assert.match(actualInstruction,/毛利率\/净利率水平及派生差额保留两位小数/)
-  assert.match(actualInstruction,/半年报分行业表列示：<官方完整行业行名>/)
+  assert.match(actualInstruction,/不能用已四舍五入到两位小数的亿元操作数展示四位小数增长率/)
+  assert.match(actualInstruction,/分行业表：<官方完整行业行名>毛利率同比下降\/上升X%/)
+  assert.match(actualInstruction,/不能与合并毛利率比较放在同一段/)
+  assert.match(actualInstruction,/CCC公式中的减项必须明确标记为正数DPO/)
   assert.match(actualInstruction,/单位行、从“营业收入\/营业成本\/毛利率”到毛利率同比增减列的全部拆分表头段、分行业标题/)
   assert.match(actualInstruction,/不能只依赖excerpt的contextLocations代替finding自身的引用/)
   assert.match(actualInstruction,/不要重复该数字并搭配被否定的错误单位/)
@@ -1492,7 +1617,9 @@ test('market-structure prompt binds split margin values to their own period and 
   assert.match(instruction, /市场结构分析引用定期报告中的分行业或分产品毛利率时/)
   assert.match(instruction, /完整分类标签、匹配的数值行、单位和从营业收入\/营业成本\/毛利率指标至同比增减列的完整表头/)
   assert.match(instruction, /引用的报告期间必须与句中期间和来源标题一致/)
+  assert.match(instruction, /跨年度并列分行业收入时/)
   assert.match(instruction, /不能拿同值的另一分类行替代/)
+  assert.match(instruction, /若competitive_market_map已列出具名候选公司或产品路线/)
 })
 
 test('market-structure findings gain the exact same-source product classification and split value-row citations', async () => {
@@ -1518,6 +1645,38 @@ test('market-structure findings gain the exact same-source product classificatio
   const addedLocations = new Set(result.findings[0]!.evidence.filter(ref => ref.sourceCandidateId === candidateId).map(ref => ref.location))
   assert.ok(addedLocations.has('paragraph:8'), 'the same table’s split-product marker is cited')
   assert.ok(addedLocations.has('paragraph:10'), 'the exact cited numeric continuation is added')
+})
+
+test('market-structure binds combined annual margin claims to each year-specific split industry row', async () => {
+  const makeFiling = (candidateId: string, title: string, revenue: string, margin: string, marginChange: string) => {
+    const lines = [
+      '单位：元', '营业收入 营业成本 毛利率', '营业收入比上年同期增减',
+      '营业成本比上年同期增减', '毛利率比上年同期增减', '分行业',
+      '日用电子器件', `制造业 ${revenue} 146,289,389,000.00 ${margin} 34.60% 35.05% ${marginChange}`,
+    ]
+    return { ...source, candidate: { ...source.candidate, candidateId }, title, content: lines.join('\n') }
+  }
+  const annual2024 = makeFiling('industry-2024', '2024年年度报告', '159,608,576,000.00', '8.34%', '-0.30%')
+  const annual2025 = makeFiling('industry-2025', '2025年年度报告', '155,236,528,000.00', '6.29%', '-2.06%')
+  const findingText = '2024年度日用电子器件制造业毛利率为8.34%，毛利率比上年同期增减为-0.30%；2025年度日用电子器件制造业毛利率为6.29%，毛利率比上年同期增减为-2.06%。'
+  const initialEvidence = ['industry-2024', 'industry-2025'].flatMap(candidateId => [1, 2, 3, 4, 5, 6].map(paragraph => ({ sourceCandidateId: candidateId, location: `paragraph:${paragraph}` })))
+  const result = await executeCompanyResearchMethod({
+    skillId: 'market_structure_analysis', company: { symbol: '002594' }, asOf: '2026-10-23',
+    sources: [annual2024, annual2025], durableSourceCandidateIds: ['industry-2024', 'industry-2025'],
+    reasoningExecutor: executor(async () => ({ ...output,
+      answer: '电子行业分类毛利率承压，年度披露应按各自原表口径理解。',
+      markdown: '电子行业分类毛利率承压，年度披露应按各自原表口径理解。[industry-2024@paragraph:2]',
+      sections: [{ id: 'industry-exposure', markdown: '电子行业分类毛利率承压，年度披露应按各自原表口径理解。[industry-2024@paragraph:2]' }],
+      findings: [{ text: findingText, kind: 'fact', evidence: initialEvidence }],
+    })),
+  })
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  const refs = new Set(result.findings[0]!.evidence.map(ref => `${ref.sourceCandidateId}@${ref.location}`))
+  for (const candidateId of ['industry-2024', 'industry-2025']) {
+    for (const paragraph of [1, 2, 3, 4, 5, 6, 7, 8]) assert.ok(refs.has(`${candidateId}@paragraph:${paragraph}`), `${candidateId} exact context paragraph ${paragraph}`)
+  }
+  const supplied = new Set((result.attemptOutputs![0]!.reasoningInput as any).evidence.flatMap((packet: any) => packet.excerpts.map((excerpt: any) => `${packet.sourceCandidateId}@${excerpt.location}`)) as string[])
+  for (const ref of refs) assert.ok(supplied.has(ref), `added citation must be present in this method's supplied evidence: ${ref}`)
 })
 
 test('financial period-column numeric retry distinguishes prior balance from unsupported change', async () => {
@@ -1890,7 +2049,7 @@ test('product customer-demand repair keeps bounded evidence gaps complete but le
 
 test('product method accepts an explicit customer-preference evidence gap without accepting a positive preference claim', async () => {
   const filing={...source,content:'公司新能源汽车产品覆盖乘用车和商用车，产品矩阵面向多元应用场景。'}
-  const qualified={...output,answer:'客户偏好与竞品对比证据有限，故不作推断。',markdown:'公司披露新能源汽车产品覆盖乘用车和商用车。[filing-1@paragraph:1]',sections:[{id:'products',markdown:'客户偏好与竞品对比证据有限，故不作推断。[filing-1@paragraph:1]'},{id:'technologies',markdown:'公司披露新能源汽车产品覆盖乘用车和商用车。[filing-1@paragraph:1]'}],findings:[{text:'客户偏好与竞品对比证据有限，故不作推断。',kind:'assumption' as const,evidence:[{sourceCandidateId:'filing-1',location:'paragraph:1'}]}]}
+  const qualified={...output,answer:'客户偏好与竞品对比证据有限，故不作推断。',markdown:'公司披露新能源汽车产品覆盖乘用车和商用车。[filing-1@paragraph:1]',sections:[{id:'products',markdown:'具体客户和终端偏好未披露；客户偏好与竞品对比证据有限，故不作推断。[filing-1@paragraph:1]'},{id:'technologies',markdown:'公司披露新能源汽车产品覆盖乘用车和商用车。[filing-1@paragraph:1]'}],findings:[{text:'客户偏好与竞品对比证据有限，故不作推断。',kind:'assumption' as const,evidence:[{sourceCandidateId:'filing-1',location:'paragraph:1'}]}]}
   let calls=0
   let repairErrors: unknown
   const result=await executeCompanyResearchMethod({skillId:'product_technology_analysis',company:{symbol:'002594'},asOf:'2026-10-14',sources:[filing],durableSourceCandidateIds:['filing-1'],reasoningExecutor:executor(async request=>{calls++;repairErrors=(request as any).input.repairErrors;return qualified})})
@@ -2673,6 +2832,30 @@ test('business packet retains a separate annual revenue-composition table and it
 })
 
 
+test('business-driver evidence keeps annual product revenue labels, rows, and table context together', () => {
+  const lines = Array.from({ length: 900 }, () => '一般披露事项。')
+  const rows = new Map<number, string>([
+    [805, '（1） 营业收入构成'], [806, '单位：元'], [807, '2025 年 2024 年'],
+    [808, '同比增减'], [809, '金额 占营业收入比重 金额 占营业收入比重'],
+    [810, '营业收入合计 803,964,958,000.00 100% 777,102,900,000.00 100% 3.45%'],
+    [811, '分行业'], [812, '制造业 803,964,958,000.00 100% 777,102,900,000.00 100% 3.45%'],
+    [817, '分产品'], [818, '电子及其他产品 1,500,000,000.00 0.19% 1,400,000,000.00 0.18% 7.14%'],
+    [819, '手机部件、组'], [820, '及其他产品 155,236,528,000.00 19.31% 159,608,576,000.00 20.54% -2.74%'],
+    [821, '汽车、汽车相关'], [822, '产品及其他产品 648,645,636,000.00 80.68% 617,381,935,000.00 79.45% 5.06%'],
+    [823, '其他 82,794,000.00 0.01% 111,944,000.00 0.01% -26.04%'],
+    [833, '单位：元'], [834, '营业收入 营业成本 毛利率'], [835, '分行业'],
+    [836, '日用电子器件制造业 155,236,528,000.00 145,000,000,000.00 6.29%'],
+  ])
+  for (const [paragraph, text] of rows) lines[paragraph - 1] = text
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: 'byd-driver-revenue-composition' }, title: '2025年度报告', content: lines.join('\n') }
+  const packet = selectCompanyEvidence([filing], ['byd-driver-revenue-composition'], ['收入', '成本', '毛利率', '分产品'], { purpose: 'business_driver_analysis' })[0]!
+  const supplied = new Set(packet.excerpts.map(row => Number(row.location.slice('paragraph:'.length))))
+  for (const paragraph of [805, 806, 807, 809, 817, 819, 820, 821, 822, 823]) assert.ok(supplied.has(paragraph), `preserves revenue table context and row ${paragraph}`)
+  const productRow = packet.excerpts.find(row => row.location === 'paragraph:820')!
+  assert.ok(productRow.contextLocations?.includes('paragraph:819'), 'the split product label is bound to the matching revenue row')
+  assert.ok(!productRow.contextLocations?.includes('paragraph:836'), 'a same-amount margin row cannot replace the product revenue label')
+})
+
 test('business model preserves disclosed customer concentration ratios while leaving anonymous identity and segment mapping as gaps', async () => {
   const lines = Array.from({length:1000},()=> '一般披露事项。')
   const place=(start:number,rows:string[])=>rows.forEach((row,index)=>{lines[start-1+index]=row})
@@ -2795,8 +2978,10 @@ test('capital allocation prompt separates annual R&D investment from interim R&D
     assert.match((request as any).instruction, /严禁用“paragraph:8686—paragraph:8689”或任何起止段落范围/)
     assert.match((request as any).instruction, /拆行并购金额（如ESOP对价）必须引用实际包含该金额与单位的续行/)
     assert.match((request as any).instruction, /不得把年度研发投入与半年度研发费用并列成趋势/)
+    assert.match((request as any).instruction, /本方法的章节、摘要、answer和findings均不得重复任何简化自由现金流数值或自行列公式/)
     assert.match((request as any).instruction, /按原表列名和显示单位照录为披露事实/)
     assert.match((request as any).instruction, /禁止手工相减、心算或把原表单元改称百分点/)
+    assert.match((request as any).instruction, /员工持股计划必须区分员工适用范围\/计划人数、实际参与人数、计划股票数量/)
     return response
   }) })
   assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
@@ -2839,9 +3024,9 @@ test('capital allocation numeric retry directs exact paragraph citations and for
       assert.match((request as any).input.repairInstruction,/资本配置数值定向修复/)
       assert.match((request as any).input.repairInstruction,/不得使用paragraph起止范围或长破折号表示定位/)
       assert.match((request as any).input.repairInstruction,/持股\/增发股数段不能代替每股净资产影响的实际金额行/)
-      assert.match((request as any).input.repairInstruction,/简化自由现金流等确定性计算只能按preparedAnalysis中同期间、同单位的financial\.simpleFreeCashFlow字段原样报告/)
-      assert.match((request as any).input.repairInstruction,/必须完整列出字段的两个操作数、运算符、结果和单位/)
-      assert.match((request as any).input.repairInstruction,/字段未提供或口径不匹配时删除计算结果并写明缺口/)
+      assert.match((request as any).input.repairInstruction,/简化自由现金流由Workflow独立确定性加入报告/)
+      assert.match((request as any).input.repairInstruction,/均须删除简化自由现金流数值和自行列出的现金流减资本开支公式/)
+      assert.match((request as any).input.repairInstruction,/不因该删除而写成披露缺口/)
       assert.match((request as any).input.repairInstruction,/多标的并购成本表中，按表头、金额行和各标的合计逐项绑定/)
       assert.match((request as any).input.repairInstruction,/findings须为每项自身带齐同一组逐段引用/)
     }
@@ -2949,6 +3134,20 @@ test('business-model method binds a duplicated margin to the exact split product
   assert.equal(result.status,'complete',JSON.stringify(result.diagnostics))
   assert.match(result.findings[0]!.text,/“手机部件、组装及其他产品”产品类别毛利率6\.29%/)
   for(const paragraph of [833,834,839,845,850,851])assert.ok(result.findings[0]!.evidence.some(ref=>ref.location===`paragraph:${paragraph}`),`missing exact product context row ${paragraph}`)
+})
+
+test('business-model margin binding adds only the exact product row for an omitted sourced percentage', async()=>{
+  const rows=['2024年年度报告','分产品','触控面板及液','晶显示模组 6,369,925,398.02 6,158,426,707.63 3.32% 31.02% 28.95% 1.55%','精密组件产品 4,540,319,354.27 3,890,907,978.08 14.30% 9.08% 4.70% 3.59%']
+  const filing={...source,title:'2024年年度报告',candidate:{...source.candidate,candidateId:'filing-margin'},content:rows.join('\n')}
+  const response={...output,answer:'产品分类毛利率存在差异。',markdown:'毛利率按产品分类观察。 [filing-margin@paragraph:2] [filing-margin@paragraph:3]',sections:[
+    {id:'business-model',markdown:'触控面板及液晶显示模组毛利率3.32%、精密组件产品毛利率14.30%。 [filing-margin@paragraph:2] [filing-margin@paragraph:3]'},
+    {id:'business-segments',markdown:'产品分类收入与利润口径不同。 [filing-margin@paragraph:2]'},
+    {id:'supply-chain',markdown:'采购集中度与客户集中度分别观察。 [filing-margin@paragraph:2]'},
+  ],findings:[{text:'产品毛利率存在差异。',kind:'fact',evidence:[{sourceCandidateId:'filing-margin',location:'paragraph:3'}]}]}
+  const result=await executeCompanyResearchMethod({skillId:'business_model_map',company:{symbol:'002384'},asOf:'2026-10-26',sources:[filing],durableSourceCandidateIds:['filing-margin'],reasoningExecutor:executor(async()=>response)})
+  assert.equal(result.status,'complete',JSON.stringify(result.diagnostics))
+  assert.match(result.sections.find(section=>section.id==='business-model')!.markdown,/精密组件产品毛利率14\.30%/)
+  assert.ok(result.sections.find(section=>section.id==='business-model')!.markdown.includes('[filing-margin@paragraph:5]'))
 })
 
 test('competitive method reserves eligible peer-company web pages in its evidence packet', async()=>{

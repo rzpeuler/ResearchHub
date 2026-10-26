@@ -153,7 +153,7 @@ function renderFinancialTable(input: CompanyResearchInput, calculated: ReturnTyp
   const displayAmount = (metric: string, period: string | undefined) => numericDisplayAmounts.find(item => item.metric === metric && item.period === period)?.value
   const format = (value: number) => value.toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})
   const formatPrecise = (value: number) => value.toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:8})
-  const preciseAnnualAmount = (metric: (typeof metrics)[number][0], period: string | undefined): number | undefined => {
+  const preciseAmount = (metric: (typeof metrics)[number][0], period: string | undefined): number | undefined => {
     const row=all.find(item=>item.periodEnd===period)
     const value=row?.metrics[metric]
     const meta=row?.metricMetadata?.[metric]
@@ -167,20 +167,21 @@ function renderFinancialTable(input: CompanyResearchInput, calculated: ReturnTyp
   const scopeNotes: string[] = []
   const comparisons = (['revenue','operatingProfit','netProfit','operatingCashFlow','capex','researchDevelopment','receivables','inventory','liabilities'] as const).flatMap(metric => {
     const growth = calculated.growth.find(item => item.metric === metric)
-    const current = displayAmount(metric, latest.periodEnd), previous = displayAmount(metric, prior)
-    if (!growth || current === undefined || previous === undefined) return []
+    const current = preciseAmount(metric, latest.periodEnd), previous = preciseAmount(metric, prior)
+    if (!growth || current === undefined || previous === undefined || previous === 0) return []
     const label = metrics.find(item => item[0] === metric)![1]
-    // Avoid Markdown table delimiter pipes in formula cells. `abs()` makes the
-    // denominator rule explicit while keeping the four-column table intact.
-    const formula = `(${format(current)}−${format(previous)})÷abs(${format(previous)})×100%`
-    return [`| ${label}（${growth.basis === 'POINT_IN_TIME' ? '期末余额' : '年初至期末累计'}） | ${format(previous)} | ${format(current)} | ${formula}＝${formatRate(growth.growthPercent)}% |`]
+    // Keep displayed period cells concise but make the formula reproduce the
+    // calculator result from source precision, rather than from rounded cells.
+    // `abs()` makes the denominator rule explicit in the four-column table.
+    const formula = `(${formatPrecise(current)}−${formatPrecise(previous)})÷abs(${formatPrecise(previous)})×100%≈${formatRate(growth.growthPercent)}%`
+    return [`| ${label}（${growth.basis === 'POINT_IN_TIME' ? '期末余额' : '年初至期末累计'}） | ${format(previous)} | ${format(current)} | ${formula} |`]
   })
-  if (comparisons.length) scopeNotes.push(`同期口径复核（人民币亿元）：下表同比仅比较 ${prior} 与 ${latest.periodEnd}，不以并列展示的上年年末余额为同比基期；累计流量也不是单季度。每行列出由精确期间值计算的公式和结果。${reference}\n\n| 指标与口径 | 上年同期 ${prior} | 本期 ${latest.periodEnd} | 同比公式及变化 |\n|---|---:|---:|---|\n${comparisons.join('\n')}\n\n余额同比与收入累计同比的增长差仅用于营运资金风险筛查；二者属于不同指标，不能把余额视为累计流量，也不能单凭背离认定回款恶化或收入失实。`)
+  if (comparisons.length) scopeNotes.push(`同期口径复核（人民币亿元）：下表期间金额列四舍五入至两位小数；同比公式使用同一结构化来源的未四舍五入原始金额换算为亿元，并显示足够小数以复核结果。同比仅比较 ${prior} 与 ${latest.periodEnd}，不以并列展示的上年年末余额为同比基期；累计流量也不是单季度。${reference}\n\n| 指标与口径 | 上年同期 ${prior} | 本期 ${latest.periodEnd} | 同比公式及变化 |\n|---|---:|---:|---|\n${comparisons.join('\n')}\n\n余额同比与收入累计同比的增长差仅用于营运资金风险筛查；二者属于不同指标，不能把余额视为累计流量，也不能单凭背离认定回款恶化或收入失实。`)
   const annualCurrentPeriod = all.filter(row=>row.periodEnd!.endsWith('-12-31')).map(row=>row.periodEnd!).sort().at(-1)
   const annualPriorPeriod = annualCurrentPeriod?.replace(/^\d{4}/,year=>String(Number(year)-1))
   const annualRows = annualCurrentPeriod && annualPriorPeriod ? (['revenue','operatingProfit','netProfit','operatingCashFlow'] as const).flatMap(metric=>{
     const growth=calculated.annualGrowth.find(item=>item.metric===metric&&item.currentPeriod===annualCurrentPeriod&&item.priorPeriod===annualPriorPeriod)
-    const currentValue=preciseAnnualAmount(metric,annualCurrentPeriod),priorValue=preciseAnnualAmount(metric,annualPriorPeriod)
+    const currentValue=preciseAmount(metric,annualCurrentPeriod),priorValue=preciseAmount(metric,annualPriorPeriod)
     if(!growth||currentValue===undefined||priorValue===undefined)return []
     const label=metrics.find(item=>item[0]===metric)![1]
     const formula=`(${formatPrecise(currentValue)}−${formatPrecise(priorValue)})÷abs(${formatPrecise(priorValue)})×100%＝${formatRate(growth.growthPercent)}%`
