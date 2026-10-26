@@ -1494,6 +1494,7 @@ describe('Homepage shell', () => {
       if (path === '/api/settings') return json({ revision: 1, model: {}, models: [], knowledgeBases: [] })
       if (path === '/api/conversations/current') return json({ conversationId: 'c1', name: 'Research', isStreaming: false, isIdle: true, pendingMessageCount: 0, thinkingLevel: 'off' })
       if (path === '/api/conversations/messages') return json({ conversationId: 'c1', messages: [{ role: 'user', piMessageId: 'pi-user-1', operationId: 'unrelated-operation', content: 'Retry safely', timestamp: '2026-01-01T10:00:00.000Z' }, { role: 'assistant', content: 'Prior answer', timestamp: '2026-01-01T10:01:00.000Z' }], activities: activityRows.map((activity) => activity.activityId === 'a1' ? { ...activity, piMessageId: 'pi-user-1' } : activity) })
+      if (path === '/api/workflows/wf-1') return json({ runId: 'wf-1', workflowType: 'company_research', objective: 'report', status: 'completed', startedAt: '2026-01-01T10:01:30.000Z', completedAt: '2026-01-01T10:02:00.000Z', updatedAt: '2026-01-01T10:02:00.000Z', stages: [] })
       if (path === '/api/conversations' || path.startsWith('/api/conversations?')) return json({ conversations: [summary] })
       if (path === '/api/conversations/requests/accept') { acceptIds.push((JSON.parse(String(init?.body)) as { operationId: string }).operationId); return json({ accepted: true, status: 'accepted' }) }
       if (path === '/api/research/dispatch') {
@@ -1522,8 +1523,9 @@ describe('Homepage shell', () => {
     expect(dispatchIds[1]).toBe(dispatchIds[0])
     await screen.findByText('Workflow only request')
     const timeline = screen.getByRole('region', { name: 'Conversation timeline' })
-    const visibleRows = Array.from(timeline.querySelectorAll('.message-body')).map((node) => node.textContent)
+    const visibleRows = Array.from(timeline.querySelectorAll('.message:not(.workflow-result-message) .message-body')).map((node) => node.textContent)
     expect(visibleRows).toEqual(['Retry safely', 'Prior answer', 'Workflow started request', 'Workflow only request', 'Retry safely', 'Retry safely'])
+    expect(timeline.querySelectorAll('.workflow-result-message .linked-workflow-card')).toHaveLength(1)
     expect(timeline.querySelectorAll('[data-activity-id="a1"]')).toHaveLength(1)
     expect(timeline.querySelectorAll('.message.user:not(.activity-request)')).toHaveLength(0)
     expect(timeline.querySelector('[data-activity-id="a4"] .message-body')?.textContent).toBe('Retry safely')
