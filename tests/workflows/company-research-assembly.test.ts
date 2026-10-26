@@ -703,6 +703,16 @@ test('R148 restores the exact industry citation table header when synthesis leav
   assert.ok(validateCompanyResearchMarkdownTables(unknown.markdown).length>0)
 })
 
+test('R149 restores the fixed four-column industry size header only for its exact three-row summary',()=>{
+  const fixture=`中国新能源汽车销量提供历史行业规模背景；AI服务器和数据中心液冷为邻接市场，不与公司收入相加。\n|---|---|---|---|\n| 中国新能源汽车全年销量 | 2024年 | 1,286.6万辆 | 历史行业销量 |\n| 全球AI服务器市场 | 2025年 | 1,672亿美元 | 年报转述预测 |\n| 全球数据中心液冷市场 | 2025年 | 28.4亿美元 | 年报转述预测 |`
+  const repaired=repairCompanyResearchMarkdownTables(fixture)
+  assert.ok(repaired.repairs.some(item=>item.startsWith('TABLE_INDUSTRY_SIZE_HEADER_RESTORED')))
+  assert.match(repaired.markdown,/\| 市场背景指标 \| 期间 \| 报告数值 \| 来源、边界及限制 \|\n\|---\|---\|---\|---\|/)
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown),[])
+  const unknown=repairCompanyResearchMarkdownTables(`|---|---|---|---|\n| 市场A | 2025 | 10 | 来源 |`)
+  assert.ok(validateCompanyResearchMarkdownTables(unknown.markdown).length>0)
+})
+
 test('same-width industry forecast header is moved past narrative to the table under its heading', () => {
   const fixture = `| 市场/分类 | 产品边界与产业链位置 | 地区、客户与期间边界 | 证据及限制 |
 |---|---|---|---|

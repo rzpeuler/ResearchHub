@@ -1177,6 +1177,18 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     normalizedLines[index] = '| 适用报告与期间 | 完整表头（单位：元；末列原单位为%） | 分类标签及匹配数据行 |'
     repairs.push(`TABLE_INDUSTRY_EVIDENCE_HEADER_RESTORED: line ${index + 1}`)
   }
+  // Restore the fixed four-column industry-size header only for the known
+  // three-row China EV / AI server / data-center cooling summary. Its preceding
+  // paragraph explains scope but is not itself a Markdown table header.
+  for (let index = 0; index + 3 < normalizedLines.length; index++) {
+    if (!isSeparator(normalizedLines[index]!) || splitCells(normalizedLines[index]!).length !== 4
+      || !/^\|\s*中国新能源汽车全年销量\s*\|/u.test(normalizedLines[index + 1]!)
+      || !/^\|\s*全球AI服务器市场\s*\|/u.test(normalizedLines[index + 2]!)
+      || !/^\|\s*全球数据中心液冷市场\s*\|/u.test(normalizedLines[index + 3]!)) continue
+    normalizedLines.splice(index, 0, '| 市场背景指标 | 期间 | 报告数值 | 来源、边界及限制 |')
+    repairs.push(`TABLE_INDUSTRY_SIZE_HEADER_RESTORED: line ${index + 1}`)
+    index++
+  }
   // Run this narrow repair after the generic embedded-header passes. Those
   // passes can otherwise reinterpret the exact locator header before it is
   // detached from the seven-column industry row.
