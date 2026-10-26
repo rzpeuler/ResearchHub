@@ -1213,6 +1213,14 @@ test('risk matrix uses researched competitor candidates without claiming verifie
   assert.match(fixed[0]!.markdown,/竞争章节已识别中际旭创等具名对照及光模块\/EML产品路线/)
   assert.match(fixed[0]!.markdown,/直接竞争关系、可比市场份额和成本\/毛利数据尚未证实/)
   assert.match(fixed[0]!.markdown,/\[industry@paragraph:55\]/)
+  const bydSections=[
+    {id:'risks',markdown:'| 竞争风险 | 现有材料不能证实具体竞争对手或技术路线已构成某项冲击，现有材料未提供可比数据。 |'},
+    {id:'competition',markdown:'吉利银河E8披露800V高压平台及SiC油冷电驱路线。[public-web-geely@paragraph:2]'}
+  ]
+  const bydFixed=reconcileCompanyRiskBoundaries({sections:bydSections})
+  assert.match(bydFixed[0]!.markdown,/竞争方法已识别吉利银河E8及其高压平台、SiC油冷电驱路线/)
+  assert.match(bydFixed[0]!.markdown,/直接替代、客户重叠、份额和同口径胜负仍未验证/)
+  assert.match(bydFixed[0]!.markdown,/\[public-web-geely@paragraph:2\]/)
 })
 
 test('cross-section reconciliation removes false evidence gaps, scopes customer evidence, and balances financial summary',()=>{
@@ -1542,6 +1550,19 @@ test('R137 prepared-analysis reconciliation restores exact BYD segment revenue, 
   const repeated=reconcileCompanyPreparedAnalysisFacts({sections:prepared,methodResults:[business,market,financial],preparedAnalysis:{marketSizing:{calculations:{status:'calculated',value:1286.6,unit:'万辆',formula:'2024年中国新能源汽车全年销量(1286.6 万辆)',marketBoundary:'2024年中国新能源汽车全年销量（历史行业销量规模，不代表比亚迪可服务市场或公司TAM）',asOf:'2024-12-31',evidence:[{sourceCandidateId:'official-f6274e510499a654',location:'paragraph:18'}]}},financial:{workingCapitalCalculations:[]}},sources:[annualSource]})
   assert.equal(repeated.find(item=>item.id==='business-segments')!.markdown.match(/#### 2025年产品收入规模/g)?.length,1)
 })
+test('prepared-analysis reconciliation replaces a false R&D expense evidence gap with the located half-year structured fact',()=>{
+  const financial:CompanyResearchMethodResult={
+    skillId:'financial_quality_analysis',status:'complete',attempts:1,answer:'研发费用为结构化半年累计数据。',markdown:'',sections:[],findings:[],sourceCandidateIds:['akshare-financial-002594'],limitations:[],risks:[],diagnostics:[],
+    executionEvidence:[{sourceCandidateId:'akshare-financial-002594',title:'Company financial history',publisher:'EastMoney',excerpts:[{sourceCandidateId:'akshare-financial-002594',location:'paragraph:1',text:JSON.stringify({kind:'financial',rows:[{periodEnd:'2026-06-30',metrics:{researchDevelopment:23307152000}}]})}]}]
+  }
+  const sections:{id:string;markdown:string;sourceCandidateIds?:string[]}[]=[{id:'technologies',markdown:'研发投入金额与研发费用不是同一指标；本次证据没有对应期间的研发费用原表行，故不作合并或趋势比较。'}]
+  const fixed=reconcileCompanyPreparedAnalysisFacts({sections,methodResults:[financial],preparedAnalysis:{financial:{table:[{period:'2026-06-30',metrics:{researchDevelopment:23307152000},metadata:{researchDevelopment:{basis:'YTD'}}}]}}})[0]!
+  assert.match(fixed.markdown,/结构化财务序列另列2026年上半年研发费用/)
+  assert.match(fixed.markdown,/与年报“研发投入金额”并非同一口径/)
+  assert.match(fixed.markdown,/\[akshare-financial-002594@paragraph:1\]/)
+  assert.doesNotMatch(fixed.markdown,/本次证据没有对应期间的研发费用原表行/)
+  assert.ok(fixed.sourceCandidateIds?.includes('akshare-financial-002594'))
+})
 test('R137 prepared-analysis reconciliation fails closed when the bound source excerpt or calculation is absent',()=>{
   const value=[
     {id:'business-segments',markdown:'无业务数据。',sourceCandidateIds:[]},
@@ -1679,6 +1700,13 @@ test('R174 competitor carryover selects the located peer rather than the target 
   const phoneResult=reconcileCompanyCompetitorEvidence({sections:[{id:'products',markdown:phone,sourceCandidateIds:[]}],methodResults:[method]})
   assert.equal(phoneResult[0]!.markdown.split('\n')[0],phone,'a car candidate must not be injected into a phone business row')
   assert.equal(reconcileCompanyCompetitorEvidence({sections:phoneResult,methodResults:[method]})[0]!.markdown,phoneResult[0]!.markdown)
+  const nonAutomotiveRows='| 产品/业务 | 比较 |\n|---|---|\n| 储能电池 | 本节未提供具名竞品的同口径比较。 |\n| 消费电池/手机部件 | 本节未提供具名竞品的同口径比较。 |\n| AI算力基础设施 | 本节未提供具名竞品的同口径比较。 |\n| 乘用车 | 本节未提供具名竞品的同口径比较。 |'
+  const nonAutomotiveFixed=reconcileCompanyCompetitorEvidence({sections:[{id:'products',markdown:nonAutomotiveRows,sourceCandidateIds:[]}],methodResults:[method]})[0]!.markdown
+  for(const label of ['储能电池','消费电池/手机部件','AI算力基础设施']){
+    const row=nonAutomotiveFixed.split('\n').find(line=>line.startsWith(`| ${label} |`))!
+    assert.doesNotMatch(row,/吉利银河E8/)
+  }
+  assert.match(nonAutomotiveFixed.split('\n').find(line=>line.startsWith('| 乘用车 |'))!,/吉利银河E8/)
   const riskDenial = '没有具名竞品及其可比产品、技术路线、价格、成本或份额的证据，故不作排名。'
   const repairedRisk = reconcileCompanyCompetitorEvidence({sections:[{id:'risks',markdown:riskDenial,sourceCandidateIds:[]}],methodResults:[method]})
   assert.match(repairedRisk[0]!.markdown,/吉利银河E8披露/)
@@ -1837,6 +1865,15 @@ test('industry-exposure table citations bind split annual labels to the matching
   for(const paragraph of [833,834,835,836,837,838,839,845,850,851])assert.ok(productLine.includes(`[${source}@paragraph:${paragraph}]`),`product row missing paragraph ${paragraph}`)
   for(const paragraph of [840,841,842,843,844,855])assert.ok(!productLine.includes(`[${source}@paragraph:${paragraph}]`),`product row must not cite industry/adjacent paragraph ${paragraph}`)
   assert.equal(reconcileCompanyIndustryExposureTableCitations({sections:[{id:'industry-exposure',markdown:fixed.join('\n')}],methodResults:[method]})[0]!.markdown,fixed.join('\n'))
+  const displayed=`| 分行业及期间 | 营业收入（元） | 营业成本（元） | 毛利率 | 收入同比 | 成本同比 | 毛利率同比 |
+|---|---:|---:|---:|---:|---:|---:|
+| 日用电子器件制造业（2025年度） | 155,236,528,000.00 | 145,473,989,000.00 | 6.29% | -2.74% | -0.56% | -2.06% |
+2025年度表头与单位：[stale-2024-report@paragraph:17]`
+  const displayedFixed=reconcileCompanyIndustryExposureTableCitations({sections:[{id:'industry-exposure',markdown:displayed}],methodResults:[method]})[0]!.markdown
+  const displayedRow=displayedFixed.split('\n').find(line=>line.startsWith('| 日用电子器件制造业'))!
+  for(const paragraph of [833,834,835,836,837,838,839,840,841,842])assert.ok(displayedRow.includes(`[${source}@paragraph:${paragraph}]`),`period-labelled row missing paragraph ${paragraph}`)
+  assert.doesNotMatch(displayedRow,/stale-2024-report/)
+  assert.doesNotMatch(displayedFixed,/2025年度表头与单位/)
 })
 
 test('industry-exposure rows inherit the half-year period from the preceding table header',()=>{
@@ -2126,11 +2163,28 @@ test('prepared interim financial summary reconciles every same-period direction 
   const sections:{id:string;markdown:string;sourceCandidateIds?:string[]}[]=[{id:'financial-quality',markdown:'# 财务质量分析\n\n已有年度反证。'},{id:'revenue-profit-drivers',markdown:`## 收入与利润驱动\n\n${priorSummary}`}]
   const fixed=reconcileCompanyInterimFinancialSummary({sections,preparedAnalysis:{financial:{growth}}})
   const result=fixed.find(section=>section.id==='revenue-profit-drivers')!
-  assert.match(result.markdown,/营业收入增长63\.95%、营业利润增长264\.48%、结构化净利润增长290\.09%，经营现金净流量下降4\.65%/)
-  assert.match(result.markdown,/利润表增长与现金转化方向不同/)
+  assert.match(result.markdown,/营业收入增长63\.9482%、营业利润增长264\.4783%、结构化净利润增长290\.0891%，经营现金净流量下降4\.6490%/)
+  assert.match(result.markdown,/利润表与经营现金流方向不同/)
   assert.ok(result.sourceCandidateIds?.includes('akshare-financial-test'))
   const mismatched=growth.map((item,index)=>index===3?{...item,sourceCandidateIds:['other-source']}:item)
   assert.equal(reconcileCompanyInterimFinancialSummary({sections,preparedAnalysis:{financial:{growth:mismatched}}})[1]!.markdown,sections[1]!.markdown)
+})
+
+test('interim financial opening summary shows the actual negative directions, exact changes and same-period margin levels',()=>{
+  const growth=[
+    ['revenue',-7.1282],['operatingProfit',-21.2395],['netProfit',-20.5352],['operatingCashFlow',17.2814],
+  ].map(([metric,growthPercent])=>({metric,currentPeriod:'2026-06-30',priorPeriod:'2025-06-30',unit:'CNY',currency:'CNY',basis:'YTD',growthPercent,sourceCandidateIds:['akshare-financial-byd']}))
+  const metadata={grossMargin:{unit:'percent',currency:'UNKNOWN',basis:'YTD'}}
+  const table=[
+    {period:'2025-06-30',metrics:{grossMargin:18.01},metadata},
+    {period:'2026-06-30',metrics:{grossMargin:18.85},metadata},
+  ]
+  const sections=[{id:'revenue-profit-drivers',markdown:'## 收入与利润驱动\n\n**同期间财务方向并列：**营业收入、营业利润和净利润均下降。',sourceCandidateIds:[]}]
+  const fixed=reconcileCompanyInterimFinancialSummary({sections,preparedAnalysis:{financial:{growth,table}}})[0]!
+  assert.match(fixed.markdown,/同期对照计算显示（2025-06-30至2026-06-30，均为YTD）：营业收入下降7\.1282%、营业利润下降21\.2395%、结构化净利润下降20\.5352%，经营现金净流量增长17\.2814%/)
+  assert.match(fixed.markdown,/合并毛利率18\.01%升至18\.85%（\+0\.84个百分点）/)
+  assert.match(fixed.markdown,/\[akshare-financial-byd@paragraph:1\]/)
+  assert.ok(fixed.markdown.indexOf('同期对照计算显示')<fixed.markdown.indexOf('同期间财务方向并列'))
 })
 
 test('R195 cross-section cleanup cites the exact industry margin row, scopes the optical claim, and avoids duplicated risk caveats',()=>{
@@ -2226,6 +2280,28 @@ test('interim industry and product revenue rates are labeled by their separate t
   assert.equal(reconcileCompanyInterimIndustryProductComparison({sections:result,methodResults:[method]})[0]!.markdown,markdown)
   const incomplete={...method,executionEvidence:[{...method.executionEvidence![0]!,excerpts:excerpts.filter(item=>item.location!=='paragraph:705').map(item=>({...item,sourceCandidateId:'official-interim'}))}]}
   assert.equal(reconcileCompanyInterimIndustryProductComparison({sections:input,methodResults:[incomplete]})[0]!.markdown,input[0]!.markdown,'missing product-table heading must not trigger a category comparison')
+})
+
+test('interim comparison carries exact industry gross-margin levels and issuer change units into growth drivers',()=>{
+  const source='official-margin-interim'
+  const excerpt=(paragraph:number,text:string)=>({sourceCandidateId:source,location:`paragraph:${paragraph}`,text})
+  const packet={sourceCandidateId:source,title:'2026年半年度报告',publisher:'CNINFO',excerpts:[
+    excerpt(714,'占公司营业收入或营业利润 10%以上的行业、产品情况'),excerpt(715,'单位：元'),excerpt(716,'本报告期 上年同期'),
+    excerpt(717,'营业收入 营业成本 毛利率'),excerpt(718,'营业收入比上年同期增减'),excerpt(719,'同比增减'),
+    excerpt(721,'营业成本比上年同期增减'),excerpt(722,'同比增减'),excerpt(724,'毛利率比上年同期增减'),excerpt(725,'同比增减'),
+    excerpt(727,'分行业'),excerpt(728,'日用电子器件制造业 69,404,994,000.00 65,907,931,000.00 5.04% 0.96% 3.88% -2.67%'),
+    excerpt(729,'交通运输设备及电气'),excerpt(730,'制造业 275,341,358,000.00 213,863,297,000.00 22.33% -8.98% -11.24% 1.98%'),
+    excerpt(731,'分产品'),excerpt(732,'电子及其他产品 69,404,994,000.00 65,907,931,000.00 5.04% 0.96% 3.88% -2.67%'),
+    excerpt(733,'汽车、汽车相关'),excerpt(734,'产品及其他产品 275,341,358,000.00 213,863,297,000.00 22.33% -8.98% -11.24% 1.98%')
+  ]}
+  const method:CompanyResearchMethodResult={skillId:'business_driver_analysis',status:'complete',attempts:1,answer:'分类表数据。',markdown:'',sections:[],findings:[],sourceCandidateIds:[source],limitations:[],risks:[],diagnostics:[],executionEvidence:[packet]}
+  const sections=[{id:'revenue-profit-drivers',markdown:'收入来源有差异。',sourceCandidateIds:[]},{id:'growth-drivers',markdown:'跟踪分行业与分产品变化。',sourceCandidateIds:[]}]
+  const fixed=reconcileCompanyInterimIndustryProductComparison({sections,methodResults:[method]})
+  const growth=fixed.find(item=>item.id==='growth-drivers')!.markdown
+  assert.match(growth,/日用电子器件制造业毛利率水平5\.04%，原表“毛利率比上年同期增减”列为-2\.67%/)
+  assert.match(growth,/交通运输设备及电气制造业毛利率水平22\.33%，原表“毛利率比上年同期增减”列为1\.98%/)
+  assert.match(growth,/原表变动单位为%，不改写为百分点/)
+  for(const paragraph of [716,717,724,725,727,728,729,730])assert.ok(growth.includes(`[${source}@paragraph:${paragraph}]`))
 })
 
 test('R&D capitalization reconciliation separates issuer change column from the calculated percentage-point spread',()=>{

@@ -1047,3 +1047,36 @@ test('BYD correct derived R&D percentage-point difference clears numeric false p
   assert.equal(stillBlocked.numericReproducible, false)
   assert.match(stillBlocked.reasons.join(' '), /原表变动列单位/)
 })
+
+test('Dongshan source-backed R&D and employee-plan facts clear a numeric false positive without hiding real evidence gaps', () => {
+  const filing = { ...source, content: '研发投入占营业收入比例为3.57%、3.45%，原表变动比例显示0.12%。员工持股计划披露对象为核心技术（业务）骨干；员工人数列披露150人，持有股票3,048,701股，占总股本0.17%。' }
+  const body = '研发投入占营业收入比例为3.57%、3.45%；原表变动比例显示0.12%，没有改称百分点。[filing@paragraph:1] 员工持股计划披露对象为核心技术（业务）骨干，员工人数列披露150人，持有股票3,048,701股，占总股本0.17%。[filing@paragraph:1]'
+  const reasons = [
+    '“研发投入占营业收入比例为3.57%、3.45%；原表变动比例显示0.12%”直接沿用官方原表paragraph:1，且明确没有改称百分点；该值可复核，不应判错。',
+    '“员工持股计划披露对象……员工人数列披露150人，并列示持有股票3,048,701股、占总股本0.17%”对应半年报paragraph:1，可复核；报告没有把人数上限误写为实际参与人数。'
+  ]
+  const checks = output.sectionChecks.map(check => check.sectionId === 'management-capital-allocation'
+    ? { ...check, numericReproducible: false, reasons }
+    : check)
+  const report = sections.map(section => section.id === 'management-capital-allocation' ? { ...section, markdown: body } : section)
+  const validated = validateCompanySemanticQualityOutput({ sectionChecks: checks })
+  const fixed = reconcileKnownReviewerFalsePositives(validated, report, [filing]).find(check => check.sectionId === 'management-capital-allocation')!
+  assert.equal(fixed.numericReproducible, true)
+  assert.deepEqual(fixed.reasons, [])
+
+  const unsupported = reconcileKnownReviewerFalsePositives(validated, report, [{ ...filing, content: '未提及相关数据。' }]).find(check => check.sectionId === 'management-capital-allocation')!
+  assert.equal(unsupported.numericReproducible, false)
+  assert.equal(unsupported.reasons.length, 2)
+})
+
+test('financial-quality period-basis mismatch keeps evidence blocked while classifying the comparison arithmetic as reproducible', () => {
+  const reason = '“应收账款期末余额同比增长76.5716%”与“存货期末余额同比增长78.1743%”将结构化期末余额序列比较称为同比；官方半年报明确原表比较口径为本报告期末对上年末。虽然报告随后又限定前述为结构化序列计算，仍把余额称同比并与累计收入比较，造成期间基期描述不一致，影响营运资金背离结论的口径。'
+  const checks = output.sectionChecks.map(check => check.sectionId === 'financial-quality'
+    ? { ...check, evidenceSupportsConclusion: false, numericReproducible: false, reasons: [reason] }
+    : check)
+  const validated = validateCompanySemanticQualityOutput({ sectionChecks: checks })
+  const financial = validated.find(check => check.sectionId === 'financial-quality')!
+  assert.equal(financial.evidenceSupportsConclusion, false)
+  assert.equal(financial.numericReproducible, true)
+  assert.match(financial.reasons.join(' '), /期间基期描述不一致/)
+})

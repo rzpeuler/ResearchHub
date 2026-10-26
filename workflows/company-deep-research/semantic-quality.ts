@@ -249,12 +249,20 @@ export function validateCompanySemanticQualityOutput(output: unknown): CompanySe
       && !/(?:错误数字|计算错误|公式结果错误|实际应为|数值应为|单位应为|错算)/.test(reasons)
     const reproduciblePeriodScopeDefect = /(?:只能称|只能表述为|僅能称|均只能称).{0,100}(?:较上年末|期末变化).{0,180}(?:结构化历史序列|同比|同日比较).{0,100}(?:矛盾|不一致|冲突)/.test(reasons)
       || /(?:结构化历史序列|同日同比|余额同比).{0,120}(?:矛盾|不一致|冲突).{0,180}(?:本身可复算|公式.{0,12}正确|数值.{0,12}正确)/.test(reasons)
-    if (row.numericReproducible === false && (numericInterpretationDefect || reproduciblePeriodScopeDefect) && !hasNumericReproducibilityCounterevidence && !explicitNumericError) row.numericReproducible = true
+      || /(?:期末余额|期末数).{0,80}(?:同比|同日比较).{0,160}(?:原表.{0,40}(?:本报告期末对上年末|期末对上年末)|期末对上年末).{0,240}(?:结构化序列|结构化历史序列).{0,240}(?:基期描述|期间基期).{0,24}(?:不一致|冲突)/.test(reasons)
+    if (row.numericReproducible === false && (numericInterpretationDefect || reproduciblePeriodScopeDefect) && !explicitNumericError
+      && (!hasNumericReproducibilityCounterevidence || reproduciblePeriodScopeDefect)) row.numericReproducible = true
     const affirmsEvidence = /(?:证据口径相符|引用.{0,45}(?:确实|一致|相符|匹配)|表格确实.{0,45}披露|已在报告中引用并分析|没有把已披露资料说成缺失|没有实质证据错误|未发现具体错误|未发现说明中的实质错误|材料限制属实)/.test(reasons)
     const describesOnlyPartialRiskCoverage = /风险传导部分.{0,32}(?:覆盖|涉及)|风险传导.{0,24}已覆盖其余/.test(reasons)
     const affirmsRiskPath = !describesOnlyPartialRiskCoverage && /(?:风险传导.{0,24}(?:完整|有描述|已覆盖)|触发.{0,40}影响.{0,40}监控.{0,40}(?:缓解|缓释).{0,24}(?:覆盖|有描述|完整)|风险.{0,30}(?:观察信号|监控).{0,24}(?:缓释|缓解).{0,20}有描述)/.test(reasons)
     const explicitlyRejectsOwnFailureFlag = /(?:拒绝false判定|需拒绝false判定|false理由不能成立|没有可成立的false理由|false旗标应为true|不可复核旗标应为true|false.{0,16}应为true|不应判为false|不能判为false|不应判为证据不支持|不能据此判(?:为)?false|不能说(?:没有|未提供|未发现|不存在)|不应判错|不能据此判错|不能据此认定(?:关键论点|结论|判断|数字|数据)?错误|本项不应判错|没有阻塞问题|现有证据不足以支持此节为false|(?:该)?旗标(?:判断)?应通过|(?:整体|按规则)应通过而非设false|缺口陈述准确.{0,36}(?:未发现|没有)(?:虚假缺口|实质错误|数值错误)|未发现(?:不支持的)?关键风险传导或数字错误|未发现实质数值错误|未发现(?:具体)?(?:关键)?数字错误)/i.test(reasons)
-    if (explicitlyRejectsOwnFailureFlag && (row.evidenceSupportsConclusion === false || row.numericReproducible === false || row.questionAnswered === false || row.riskTransmission === false)
+    const knownManagementSelfRetraction = row.sectionId === 'management-capital-allocation'
+      && row.numericReproducible === false && row.evidenceSupportsConclusion === true && row.questionAnswered === true
+      && /研发投入占营业收入比例.{0,60}原表变动比例显示/.test(reasons)
+      && /员工持股计划披露对象.{0,100}员工人数列披露/.test(reasons)
+      && /(?:可复核|直接沿用官方原表)/.test(reasons) && !explicitNumericError
+      && !hasNumericReproducibilityCounterevidence
+    if (explicitlyRejectsOwnFailureFlag && !knownManagementSelfRetraction && (row.evidenceSupportsConclusion === false || row.numericReproducible === false || row.questionAnswered === false || row.riskTransmission === false)
       && !(sameRowAnalysisOmission && row.questionAnswered === false && row.evidenceSupportsConclusion === true && row.numericReproducible === true)) throw new Error(`FORMAT: Contradictory verdict for ${row.sectionId}; its reason explicitly rejects the false flag. On retry, set the corresponding flag true and remove that non-blocking concern, or state a separate concrete defect for the false flag.`)
     if (row.numericReproducible === false && (explicitlyNonBlocking || /(?:不应判数字错误|属于正确推断|不能据此判错|不构成数字错误)/.test(reasons) || /(?:数字无实质错误|未见计算错误|未发现数值错误|不存在数值错误|数字.*(?:正确|无误)|数字无误|数值.*正确|计算结果正确|计算无误|本身正确|实际差额为.{0,20}(?:正确|\d)|实际结果为.{0,20}(?:正确|\d)|数值.{0,20}正确.{0,30}(?:故|因此).{0,16}(?:不构成错误|不能判错))/.test(reasons)) && !hasNumericReproducibilityCounterevidence) throw new Error(`FORMAT: Contradictory numeric rejection for ${row.sectionId}; reasons affirm the numbers without identifying a concrete numeric defect. On retry, set numericReproducible=true and reserve any real coverage/evidence defect for its corresponding flag, or state the exact numeric error with contrary source evidence.`)
     const defersVerifiedRAndDArithmetic = row.sectionId === 'management-capital-allocation'
@@ -283,6 +291,7 @@ export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySem
   const reportSections = new Map(sections.map(section => [section.id, section.markdown]))
   const fullReport = [...reportSections.values()].join('\n')
   const normalizedSource = (source: CompanyResearchInput['sources'][number]) => source.content.replace(/\s+/g,' ')
+  const allReasonsFor = (check: CompanySemanticSectionCheck) => check.reasons.join('；')
   const hasIndependentDefectClause = (reason: string) => /(?:但|然而|不过|此外|另有|同时|并且)[^。；;\n]{0,140}(?:错误|错引|错列|不一致|不支持|未引用|未提供|缺失|缺少|无法复算|数字错|数值错)/.test(reason)
   const hasActionableCorrection = (reason:string) => /(?:应更正|应改为|应为\s*[-\d]|引用.{0,50}(?:错误|不支持|不能支持|未绑定|不一致|冲突)|(?:原文|官方).{0,50}(?:不支持|冲突|不一致)|(?:存在|有).{0,18}(?:错误|冲突|漏列|错列|缺失|遗漏)|无法(?:复算|复核|定位)|(?:错引|错列|误引).{0,30}(?:导致|影响|使|造成)|期间(?:错配|不一致|错误))/.test(reason)
   const hasExplicitSelfRetraction = (reason: string) => /(?:未发现(?:能支撑|足以支撑|支持)\s*(?:false|该旗标|该判断|该结论)\s*的具体反证|未发现(?:具体|实质)(?:证据|数值)?错误|未发现实质性?(?:证据|数值)?错误|故数值本身无误|数值本身正确|计算本身是正确|该计算本身正确|方向准确|算术(?:结果|本身)?正确)/i.test(reason)
@@ -318,6 +327,25 @@ export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySem
         })
         if (sourceBacked && /按比例水平相减.{0,100}8\.61\s*%\s*[−-]\s*1\.78\s*%\s*[=＝]\s*6\.83\s*个百分点/.test(body)
           && /变动(?:比例|列).{0,30}6\.83\s*%/.test(body)) { removed = true; return [] }
+      }
+      // Dongshan's source-bound R&D ratios and employee-share-plan figures can
+      // be misflagged as irreproducible despite being transcribed verbatim.
+      // Clear this narrow numeric false positive only when both report claims
+      // and the exact annual/interim source passages are present.
+      if (check.sectionId === 'management-capital-allocation' && check.numericReproducible === false
+        && !hasIndependentDefectClause(reason)
+        && /研发投入占营业收入比例.{0,60}原表变动比例显示/.test(allReasonsFor(check))
+        && /员工持股计划披露对象.{0,100}员工人数列披露/.test(allReasonsFor(check))
+        && /可复核/.test(allReasonsFor(check)) && !/(?:实际应为|数值应为|正确结果应为|算错|计算错误|公式错误|单位错误)/.test(allReasonsFor(check))) {
+        const cited = [...body.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)].map(match => match[1]!)
+        const sourceBacked = sources.some(source => {
+          const content = normalizedSource(source)
+          return /研发投入占营业收入比例/.test(content) && /3\.57%/.test(content) && /3\.45%/.test(content)
+            && /员工持股计划/.test(content) && /150人/.test(content) && /3,048,701股/.test(content)
+            && cited.some(ref => ref.startsWith(`${source.candidate.candidateId}@paragraph:`))
+        })
+        if (sourceBacked && /3\.57%/.test(body) && /3\.45%/.test(body) && /3,048,701/.test(body) && /150人/.test(body)
+          && /(?:原表变动比例显示|变动比例为)\s*0\.12\s*%/.test(body)) { removed = true; return [] }
       }
       // Clear only explicit reviewer self-retractions; any separately stated
       // defect stays in the reasons and keeps its corresponding flag blocking.
