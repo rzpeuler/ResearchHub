@@ -2686,6 +2686,8 @@ test('business model preserves disclosed customer concentration ratios while lea
   const result=await executeCompanyResearchMethod({skillId:'business_model_map',company:{symbol:'002594'},asOf:'2026-10-14',sources:[filing],durableSourceCandidateIds:['filing-1'],reasoningExecutor:executor(async request=>{
     const actual=request as any
     assert.match(actual.instruction,/不得因客户名称匿名而称集中度比例未披露或不可验证/)
+    assert.match(actual.instruction,/最新完整年度产品收入构成表的全部产品分类行（包括“其他”行）/)
+    assert.match(actual.instruction,/不代表公司合并毛利率/)
     assert.match(actual.instruction,/客户匿名、客户所属产品\/分部未披露/)
     assert.match(actual.instruction,/客户与供应商字段必须各自引用对应客户表或供应商表的摘要行、明细表头、单位\/期间和数值行/)
     assert.match(actual.instruction,/不得借用相邻营业成本构成、分产品收入\/毛利表或其他业务表的表头、单位和期间/)
