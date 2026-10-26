@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
-import { assembleCompanyResearch, buildSynthesisEvidenceLedger, normalizeCompanySynthesisCitations, repairCompanyFinalSynthesisTable, repairCompanyResearchMarkdownTables, validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
+import { assembleCompanyResearch, buildSynthesisEvidenceLedger, normalizeCompanyRevenueCostSpreadWording, normalizeCompanySynthesisCitations, repairCompanyFinalSynthesisTable, repairCompanyResearchMarkdownTables, validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
 import { mergeExcessTrailingMarkdownTableCells } from '../../skills/company-research/markdown-tables.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
@@ -63,6 +63,18 @@ test('Chinese presentation brackets normalize to exact square-bracket source loc
 
 test('exact paragraph locators in prose parentheses normalize without changing their references', () => {
   assert.equal(normalizeCompanySynthesisCitations('证据（annual@paragraph:1）及多项（annual@paragraph:1；half@paragraph:2）'), '证据（[annual@paragraph:1]）及多项（[annual@paragraph:1]；[half@paragraph:2]）')
+})
+
+test('revenue-cost growth wording removes only a cited, arithmetically matching positive duplicate spread', () => {
+  for (const [revenue, cost, spread] of [['8.67', '8.83', '0.16'], ['3.30', '4.25', '0.95'], ['30.61', '38.36', '7.75']]) {
+    const source = `成本增速高于收入${spread}个百分点（${revenue}%−${cost}%＝−${spread}个百分点）[annual@paragraph:8]。`
+    assert.equal(normalizeCompanyRevenueCostSpreadWording(source), `成本增速高于收入（${revenue}%−${cost}%＝−${spread}个百分点）[annual@paragraph:8]。`)
+  }
+  const mismatch = '成本增速高于收入0.16个百分点（8.67%−8.83%＝−0.95个百分点）[annual@paragraph:8]。'
+  const reversed = '成本增速高于收入0.16个百分点（8.83%−8.67%＝−0.16个百分点）[annual@paragraph:8]。'
+  const uncited = '成本增速高于收入0.16个百分点（8.67%−8.83%＝−0.16个百分点）。'
+  const unrelated = '成本增速高于收入0.16个百分点；收入增速为8.67%，成本增速为8.83%（8.67%−8.83%＝−0.16个百分点）[annual@paragraph:8]。'
+  for (const value of [mismatch, reversed, uncited, unrelated]) assert.equal(normalizeCompanyRevenueCostSpreadWording(value), value)
 })
 
 test('Markdown table validation rejects extra cells and embedded heading rows', () => {

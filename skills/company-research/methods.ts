@@ -1200,7 +1200,7 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
         ? '资本配置数值定向修复：逐条读取repairNumericIssues、tableRows和evidence候选中的金额/指标行；不得使用paragraph起止范围或长破折号表示定位。每个金额或每股影响值都必须直接引用含该数值的精确段落，指标/方向与数值拆在连续PDF段落时须逐段引用；持股/增发股数段不能代替每股净资产影响的实际金额行，净资产影响行也不能代替每股收益金额续行。简化自由现金流等确定性计算只能按preparedAnalysis中同期间、同单位的financial.simpleFreeCashFlow字段原样报告；若写出计算，必须完整列出字段的两个操作数、运算符、结果和单位，等式结果须与displayValue一致，并引用该行sourceCandidateIds对应的实际供给来源。不得把模型心算或结构化原始金额换算冒充preparedAnalysis字段；字段未提供或口径不匹配时删除计算结果并写明缺口。多标的并购成本表中，按表头、金额行和各标的合计逐项绑定，禁止把同一单项金额复制到多个标的；如PDF文本抽取未保留空白单元格而列位置不清，必须引用并核对来源披露的标的合计及合并成本确定方法，交叉核对不能唯一确认归属时删除该金额并写明列位缺口。findings须为每项自身带齐同一组逐段引用，不能依赖章节正文引用。只保留可由本次evidence和表头/续行共同核实的数字；核实失败则从章节与findings同时删去该数字，并将缺口及影响放入limitations，不得改币种、单位或期间。'
         : ''
       const businessModelNumericRetry = input.skillId === 'business_model_map' && diagnostics.at(-1)?.code === 'NUMERIC_GROUNDING_ERROR'
-        ? '商业模式数值定向修复：逐项读取repairNumericIssues及candidateExcerpts，核对来源标题、表头、单位、期间和数值行。每个错误数字所在句必须直接引用包含该数字的对应行；毛利率须引用本产品毛利率行，单一客户/供应商金额或占比须引用其明细行，不能用摘要合计行、其他产品行或别处的引用代替。若数字在另一句、表格、摘要或finding中重复出现，该处也必须重新引用对应行。保留已核实分析；找不到精确行的数字应删除并说明缺口，不得推算或新增未经核验数字。'
+        ? '商业模式数值定向修复：逐项读取repairNumericIssues、repairTargets及candidateExcerpts，核对来源标题、表头、单位、期间和数值行。每个错误数字所在句必须直接引用包含该数字的对应行；尤其 business-segments 若重复 business-model 的收入金额或占比，必须在该分部行自身引用对应产品收入数值行及所需单位/期间表头；引用毛利率行不能替代收入数值行。毛利率须引用本产品毛利率行，单一客户/供应商金额或占比须引用其明细行，不能用摘要合计行、其他产品行或别处的引用代替。若数字在另一句、表格、摘要或finding中重复出现，该处也必须重新引用对应行。只修复repairTargets列出的字段，逐字保留未报错的完整sections、findings和其他字段；找不到精确行的数字应从该字段删除并说明缺口，不得推算或新增未经核验数字。'
         : ''
       const productTechnologyNumericRetry = input.skillId === 'product_technology_analysis' && diagnostics.at(-1)?.code === 'NUMERIC_GROUNDING_ERROR'
         ? '产品与技术数值定向修复：逐条读取repairNumericIssues及tableRows，定位同一产品、同一期间和同一单位的原表数值行。每个跨年金额和毛利率分别引用其对应年度报告的精确行及单位/期间表头；不能以年报标题、分产品表头或相邻产品行代替数值行。不得以当前收入和同比增速反推并保留未直接披露的前期金额；若前期原表行确实存在，则引用该原行，若本次evidence未提供则删除前期金额并仅保留来源直接披露的同比百分比。分产品毛利率同比变化照录百分号，不转为百分点。修复数值时逐字保留其他有效段落与两个ownedSectionIds章节。'
@@ -1263,7 +1263,7 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
       if (input.signal?.aborted) return empty('cancelled', attempt)
       const currentInput = requestSnapshot.input && typeof requestSnapshot.input === 'object' && !Array.isArray(requestSnapshot.input) ? requestSnapshot.input as Record<string, unknown> : {}
       const previousOutput = attemptOutputs[traceIndex - 1]?.output
-      const boundedNumericOutput = input.skillId === 'business_driver_analysis' && attempt > 1 && diagnostics.at(-1)?.code === 'NUMERIC_GROUNDING_ERROR' && Array.isArray(currentInput.repairNumericIssues) && currentInput.repairNumericIssues.length
+      const boundedNumericOutput = ['business_driver_analysis', 'business_model_map'].includes(input.skillId) && attempt > 1 && diagnostics.at(-1)?.code === 'NUMERIC_GROUNDING_ERROR' && Array.isArray(currentInput.repairNumericIssues) && currentInput.repairNumericIssues.length
         ? applyOnlyNumericRepairTargets(previousOutput, response.output, currentInput.repairTargets, new Set(packets.flatMap(packet => packet.excerpts.map(excerpt => `${packet.sourceCandidateId}@${excerpt.location}`))))
         : response.output
       const trailingSourceIdRepair = repairCompanyTrailingSourceIdTypo(boundedNumericOutput, packets, input)

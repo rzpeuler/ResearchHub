@@ -105,6 +105,25 @@ function sentenceContainingCitation(output: unknown, citation: string | undefine
   return undefined
 }
 
+/** Remove a duplicate positive spread only when the cited sentence proves its signed arithmetic. */
+export function normalizeCompanyRevenueCostSpreadWording(markdown: string): string {
+  const formula = /成本增速高于收入\s*([\d,]+(?:\.\d+)?)\s*个百分点[^。；\n]{0,80}?([\d,]+(?:\.\d+)?)%\s*[−-]\s*([\d,]+(?:\.\d+)?)%\s*[＝=]\s*[−-]\s*([\d,]+(?:\.\d+)?)\s*个百分点/gu
+  return markdown.replace(formula, (whole, statedMagnitude: string, revenueRate: string, costRate: string, formulaMagnitude: string, offset: number, source: string) => {
+    const sentenceStart = Math.max(source.lastIndexOf('。', offset), source.lastIndexOf('；', offset), source.lastIndexOf('\n', offset)) + 1
+    const sentenceEndCandidates = ['。', '；', '\n'].map(mark => source.indexOf(mark, offset)).filter(index => index >= 0)
+    const sentenceEnd = sentenceEndCandidates.length ? Math.min(...sentenceEndCandidates) : source.length
+    const sentence = source.slice(sentenceStart, sentenceEnd)
+    if (!/\[[A-Za-z0-9_.-]+@paragraph:\d+\]/.test(sentence)) return whole
+    const stated = Number(statedMagnitude.replaceAll(',', ''))
+    const revenue = Number(revenueRate.replaceAll(',', ''))
+    const cost = Number(costRate.replaceAll(',', ''))
+    const calculated = Number(formulaMagnitude.replaceAll(',', ''))
+    if (!Number.isFinite(stated) || !Number.isFinite(revenue) || !Number.isFinite(cost) || !Number.isFinite(calculated)
+      || cost <= revenue || Math.abs(stated - calculated) > 0.005 || Math.abs((cost - revenue) - calculated) > 0.005) return whole
+    return whole.replace(/成本增速高于收入\s*[\d,]+(?:\.\d+)?\s*个百分点/u, '成本增速高于收入')
+  })
+}
+
 export function normalizeCompanySynthesisCitations(markdown: string): string {
   const delimited = markdown.replace(/[〔【［]([^\s〔〕【】［］]+@paragraph:\d+)[〕】］]/g, '[$1]')
   // Synthesis models sometimes put exact source locators in prose-style
@@ -1930,6 +1949,7 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
         const optional= !['investment-thesis','monitoring-checklist'].includes(section.id)
         let sectionMarkdown=finalTableRepair.markdown.trim()
         sectionMarkdown=repairSynthesisSubjectCitations(sectionMarkdown,available,locations)
+        sectionMarkdown=normalizeCompanyRevenueCostSpreadWording(sectionMarkdown)
         if (!optional) {
           const validate=()=>validateCompanyNumericGrounding({markdown:sectionMarkdown,sources:input.sources,evidenceContexts:validationEvidenceContexts,preparedAnalysis:input.preparedAnalysis,trustedText:[input.company.symbol,input.asOf,...companyCitedSplitDateText(sectionMarkdown,available.flatMap(method=>method.executionEvidence ?? [])),...companyPreparedFinancialDateText(input.preparedAnalysis)]})
           let grounding=validate()

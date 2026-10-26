@@ -1942,6 +1942,46 @@ test('R145 risk summary names quantified customer concentration as a risk when e
   assert.ok(fixed.markdown.includes('[official-f7c8d23d2829a5e8@paragraph:922]'))
 })
 
+test('risk reconciliation preserves the exact MFLEX goodwill assumptions and fixes the employee-plan end-period claim', () => {
+  const sourceId = 'annual-2025'
+  const excerpts = [
+    { sourceCandidateId: sourceId, location: 'paragraph:7693', text: 'MFLEX 公司 11,592,132,267.05 19,400,000,000.00 5 年' },
+    { sourceCandidateId: sourceId, location: 'paragraph:7694', text: '收入复合增长率' },
+    { sourceCandidateId: sourceId, location: 'paragraph:7695', text: '0.10%，毛利率' },
+    { sourceCandidateId: sourceId, location: 'paragraph:7696', text: '17.00%。' },
+    { sourceCandidateId: sourceId, location: 'paragraph:7697', text: '稳定期收入增长' },
+    { sourceCandidateId: sourceId, location: 'paragraph:7698', text: '率 0%，毛利率' },
+    { sourceCandidateId: sourceId, location: 'paragraph:7699', text: '17.11%。' },
+    { sourceCandidateId: sourceId, location: 'paragraph:7700', text: '税前折现率 10.62%、以' },
+    { sourceCandidateId: sourceId, location: 'paragraph:7701', text: '加权平均资本成本' },
+    { sourceCandidateId: sourceId, location: 'paragraph:7702', text: '（wacc）为基础经调整' },
+    { sourceCandidateId: sourceId, location: 'paragraph:7703', text: '后确定。' },
+  ]
+  const riskMethod = { skillId: 'company_risk_analysis', status: 'complete', executionEvidence: [{ sourceCandidateId: sourceId, title: '2025年年度报告', publisher: 'Company', excerpts }] } as unknown as CompanyResearchMethodResult
+  const risk = '年报列明MFLEX资产组减值测试摘录出现0.10%，但当前分栏文本未能将该值可靠对应到预测期收入增长假设，故不将其作为收入增速；相关假设数值与敏感性仍待核对。、毛利率17.00%，稳定期收入增长率0%，毛利率17.11%，税前折现率10.62%。'
+  const fixedRisk = reconcileCompanyRiskBoundaries({ sections: [{ id: 'risks', markdown: risk }], methodResults: [riskMethod] })[0]!.markdown
+  assert.match(fixedRisk, /预测期收入复合增长率为0\.10%、毛利率为17\.00%/)
+  assert.doesNotMatch(fixedRisk, /未能将该值可靠对应/)
+  for (const location of ['7693', '7694', '7695', '7696']) assert.ok(fixedRisk.includes(`[${sourceId}@paragraph:${location}]`))
+
+  const halfId = 'interim-2026'
+  const lines = [
+    { sourceCandidateId: halfId, location: 'paragraph:1389', text: '员工人数' },
+    { sourceCandidateId: halfId, location: 'paragraph:1391', text: '公司及子公司核心技术（业务）骨干' },
+    { sourceCandidateId: halfId, location: 'paragraph:1392', text: '不包括公司董事、高级管理人员' },
+    { sourceCandidateId: halfId, location: 'paragraph:1393', text: '150 3,048,701 无 0.17%' },
+    { sourceCandidateId: halfId, location: 'paragraph:6008', text: '回购证券账户中的' },
+    { sourceCandidateId: halfId, location: 'paragraph:6009', text: '3,048,701股过户至2026年员工持股计划证券账户' },
+  ]
+  const planMethod = { skillId: 'management_governance_analysis', status: 'complete', executionEvidence: [{ sourceCandidateId: halfId, title: '2026年半年度报告', publisher: 'Company', excerpts: lines }] } as unknown as CompanyResearchMethodResult
+  const checklist = '员工人数列列示150人，累计购入3,048,701股、期末持有3,048,701股。'
+  const fixedChecklist = reconcileCompanyEmployeePlanEvidence({ sections: [{ id: 'management-capital-allocation', markdown: '' }, { id: 'monitoring-checklist', markdown: checklist }], methodResults: [planMethod] }).find(section => section.id === 'monitoring-checklist')!.markdown
+  assert.match(fixedChecklist, /计划表列示持股3,048,701股/)
+  assert.match(fixedChecklist, /未证明期末仍持有同数/)
+  assert.ok(fixedChecklist.includes(`[${halfId}@paragraph:6009]`))
+  assert.doesNotMatch(fixedChecklist, /期末持有3,048,701股/)
+})
+
 test('R169 content gate rejects customer concentration comparisons contradicted by cited official ratios', () => {
   const source = 'official-f7c8d23d2829a5e8'
   const packet = { sourceCandidateId: source, title: '2025年年度报告', publisher: 'CNINFO', excerpts: [

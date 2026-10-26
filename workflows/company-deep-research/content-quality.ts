@@ -1628,18 +1628,19 @@ export function reconcileCompanyEmployeePlanEvidence<T extends CompanyContentSec
     const sectionBody=existingHeading>=0?cleaned.slice(0,existingHeading).trimEnd():cleaned.trim()
     const repaired={...section,markdown:`${sectionBody}${sectionBody?'\n\n':''}${employeeHeading}\n${statement}`,sourceCandidateIds:[...new Set([...(section.sourceCandidateIds??[]),packet.sourceCandidateId])]}
     const sections=input.sections.map(item=>item.id===section.id?repaired:item)
-    const monitoringRefs=[...new Set([people,context,...headerRows,values].map(item=>`[${packet.sourceCandidateId}@${item.location}]`))].join(' ')
+    const monitoringRefs=[...new Set([people,context,...headerRows,values,...(datedPlanAccount?[datedPlanAccount.date,datedPlanAccount.account]:[])].map(item=>`[${packet.sourceCandidateId}@${item.location}]`))].join(' ')
     return sections.map(item=>item.id==='monitoring-checklist'?{...item,markdown:item.markdown
       .replace(/(?:实际)?参与人数\s*150\s*人/g,'员工持股计划表“员工人数”列列示150人，持有股票总数3,048,701股、占总股本0.17%')
       .replace(/表格同行列示数值150[\s\S]{0,240}?不以其他列替代。/g,'员工持股计划有效表列示员工人数150人、持有股票总数3,048,701股、占总股本0.17%；150为员工人数列，不能改称人数上限，也不据此推断实际认购或期末持有人数。')
       .replace(/证据包未给可核验的计划人数上限或截至期末持有数，不以其他列替代。/g,'计划人数上限未在该表单列；表列持股数量按原表口径引用。')
       .replace(/参与对象上限\s*150\s*人/g,'“员工人数”列列示150人')
       .replace(/员工持股人数上限\s*150\s*人/g,'“员工人数”列列示150人')
+      .replace(/(?:累计购入|累计买入)\s*3,048,701\s*股[，,、；; ]*期末持有\s*3,048,701\s*股/g,'计划表列示持股3,048,701股；附注仅证明该数股份于2026年3月9日过户至计划账户，现有资料未证明期末仍持有同数')
       .replace(/150\s*人为人数上限而非实际人数[，,、;； ]*股数不等于参与人数/g,'“员工人数”列列示150人；该字段不直接代表实际认购或期末持有人数，持有股票总数为3,048,701股')
       .replace(/150\s*人为(?:员工持股计划)?(?:参与对象|员工持股)?人数上限(?:而非实际人数)?/g,'“员工人数”列列示150人；该字段不直接代表实际认购或期末持有人数')
       .replace(/实际参与人数(?:在所给披露中)?(?:未明确|未披露|未知)/g,'该字段不直接代表实际认购或期末持有人数')
       .replace(/参与和期末持有/g,'计划适用范围、员工人数及后续持有')
-      .split(/\r?\n/).map(line=>line.includes('150为员工人数列')||line.includes('“员工人数”列列示150人')
+      .split(/\r?\n/).map(line=>/150为员工人数列|员工人数.{0,10}列示150人|计划表列示持股3,048,701股/.test(line)
         ?(!line.includes(`[${packet.sourceCandidateId}@paragraph:1393]`)?`${line} ${monitoringRefs}`:line)
         :line).join('\n')}:item)
   }
@@ -1743,6 +1744,18 @@ export function reconcileCompanyRiskBoundaries<T extends CompanyContentSection>(
         additionalSourceIds.add(goodwillPacket.sourceCandidateId)
       }
     }
+  }
+  const mflexPacket=concentrationPackets.find(packet=>/2025\s*年年度报告/.test(packet.title)
+    && packet.excerpts.some(excerpt=>excerpt.location==='paragraph:7693'&&/^MFLEX 公司\s+/.test(excerpt.text))
+    && packet.excerpts.some(excerpt=>excerpt.location==='paragraph:7694'&&/收入复合增长率/.test(excerpt.text))
+    && packet.excerpts.some(excerpt=>excerpt.location==='paragraph:7695'&&/0\.10%.*毛利率/.test(excerpt.text))
+    && packet.excerpts.some(excerpt=>excerpt.location==='paragraph:7696'&&/17\.00%/.test(excerpt.text))
+    && ['paragraph:7697','paragraph:7698','paragraph:7699','paragraph:7700','paragraph:7701','paragraph:7702','paragraph:7703'].every(location=>packet.excerpts.some(excerpt=>excerpt.location===location)))
+  if(mflexPacket){
+    const refs=['paragraph:7693','paragraph:7694','paragraph:7695','paragraph:7696','paragraph:7697','paragraph:7698','paragraph:7699','paragraph:7700','paragraph:7701','paragraph:7702','paragraph:7703'].map(location=>`[${mflexPacket.sourceCandidateId}@${location}]`).join(' ')
+    const prior=markdown
+    markdown=markdown.replace(/年报列明MFLEX资产组减值测试摘录出现0\.10%，但当前分栏文本未能将该值可靠对应到预测期收入增长假设，故不将其作为收入增速；相关假设数值与敏感性仍待核对。、毛利率17\.00%，稳定期收入增长率0%，毛利率17\.11%，税前折现率10\.62%。/g,`年报列明MFLEX资产组预测期收入复合增长率为0.10%、毛利率为17.00%；稳定期收入增长率为0%、毛利率为17.11%，税前折现率为10.62%。${refs}`)
+    if(markdown!==prior)additionalSourceIds.add(mflexPacket.sourceCandidateId)
   }
   const concentration=concentrationPackets.map(packet=>{
     const topFive=packet.excerpts.find(excerpt=>excerpt.location==='paragraph:965'&&/前五名客户/.test(excerpt.text))
