@@ -111,6 +111,18 @@ test('management packets preserve the reported participant and ending-share rows
   for (const row of [1138, 1139, 1154, 1158, 1159]) assert.ok(packet.excerpts.some(excerpt => excerpt.location === `paragraph:${row}`), `management packet missing employee-plan paragraph:${row}`)
 })
 
+test('management and capital-allocation packets preserve split HKSCC name and holding rows together', () => {
+  const rows = Array.from({ length: 2300 }, (_, index) => `常规披露${index + 1}，股东及治理背景材料。`)
+  rows[2229] = 'HKSCC NOMINEES'
+  rows[2230] = 'LIMITED'
+  rows[2231] = '境外法人 40.38% 3,681,498,007'
+  const filing = { ...source, title: '2026年半年度报告', content: rows.join('\n') }
+  for (const purpose of ['management_governance_analysis', 'capital_allocation_review']) {
+    const packet = selectCompanyEvidence([filing], ['annual'], ['前十大股东', 'HKSCC NOMINEES', '持股比例'], { purpose })[0]!
+    for (const row of [2230, 2231, 2232]) assert.ok(packet.excerpts.some(excerpt => excerpt.location === `paragraph:${row}`), `${purpose} missing split shareholder paragraph:${row}`)
+  }
+})
+
 test('management packets preserve the current-period named director and executive appointment rows', () => {
   const rows = Array.from({ length: 1500 }, (_, index) => `常规披露${index + 1}`)
   rows[1373] = '一、公司董事、高级管理人员变动情况'

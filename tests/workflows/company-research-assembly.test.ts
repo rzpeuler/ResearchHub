@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
-import { assembleCompanyResearch, buildSynthesisEvidenceLedger, normalizeCompanyRevenueCostSpreadWording, normalizeCompanySynthesisCitations, repairCompanyFinalSynthesisTable, repairCompanyResearchMarkdownTables, validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
+import { assembleCompanyResearch, bindExact2025BydProductMarginSynthesisCitations, buildSynthesisEvidenceLedger, normalizeCompanyRevenueCostSpreadWording, normalizeCompanySynthesisCitations, repairCompanyFinalSynthesisTable, repairCompanyResearchMarkdownTables, validateCompanyResearchMarkdownTables } from '../../workflows/company-deep-research/assembly.ts'
 import { mergeExcessTrailingMarkdownTableCells } from '../../skills/company-research/markdown-tables.ts'
 import type { CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 import type { ReasoningExecutor } from '../../plugins/reasoning/contracts.ts'
@@ -452,6 +452,27 @@ test('R170 restores fused BYD product-margin and capital-allocation tables witho
   assert.ok(ambiguous.diagnostics.length > 0 || validateCompanyResearchMarkdownTables(ambiguous.markdown).length > 0)
 })
 
+test('synthesis binds each split 2025 BYD product margin and change to its exact product label and row', () => {
+  const sourceCandidateId = 'official-annual'
+  const rows = [
+    ['paragraph:833', '单位：元'], ['paragraph:834', '营业收入 营业成本 毛利率 营业收入比上'],
+    ['paragraph:835', '年同期增减'], ['paragraph:836', '营业成本比上'], ['paragraph:837', '年同期增减'],
+    ['paragraph:838', '毛利率比上'], ['paragraph:839', '年同期增减'], ['paragraph:845', '分产品'],
+    ['paragraph:850', '手机部件、组'], ['paragraph:851', '装及其他产品 155,236,528,000.00 145,473,989,000.00 6.29% -2.74% -0.56% -2.06%'],
+    ['paragraph:852', '汽车、汽车相'], ['paragraph:853', '关产品及其他'], ['paragraph:854', '产品'],
+    ['paragraph:855', '648,645,636,000.00 515,762,940,000.00 20.49% 5.06% 7.53% -1.82%'],
+  ] as const
+  const packet = { sourceCandidateId, title: '2025年年度报告', excerpts: rows.map(([location, text]) => ({ location, text })) }
+  const method = { skillId: 'business_model_map', executionEvidence: [packet], deterministicEvidence: [] } as unknown as CompanyResearchMethodResult
+  const input = '2025年度分产品毛利率分别为20.49%和6.29%，表列毛利率同比变化分别为-1.82%和-2.06%（沿用原表百分比口径）'
+  const repaired = bindExact2025BydProductMarginSynthesisCitations(input, [method], new Set(rows.map(([location]) => `${sourceCandidateId}@${location}`)))
+  assert.match(repaired, /“汽车、汽车相关产品及其他产品”毛利率为20\.49%\[official-annual@paragraph:833\].*official-annual@paragraph:855/u)
+  assert.match(repaired, /“手机部件、组装及其他产品”毛利率为6\.29%\[official-annual@paragraph:833\].*official-annual@paragraph:850.*official-annual@paragraph:851/u)
+  assert.match(repaired, /毛利率比上年同期增减/u)
+  assert.ok(!repaired.includes('20.49%和6.29%'))
+  assert.equal(bindExact2025BydProductMarginSynthesisCitations(input, [method], new Set()), input, 'missing evidence keeps the original claim untouched for the numeric gate to reject')
+})
+
 test('R173 detaches a uniquely sized table header appended after explanatory prose', () => {
   const fixture = `## 分行业与分产品经营数据 年度报告表头单位为元，按原表披露营业收入、营业成本、毛利率及各自同比变动；变化列保留原单位。[annual@paragraph:833] | 分类 | 营业收入（元） | 营业成本（元） | 毛利率 | 收入同比 | 成本同比 | 毛利率同比（%） |
 |---|---:|---:|---:|---:|---:|---:|
@@ -554,6 +575,49 @@ test('R143 repairs heading and displaced-header fusions only when section widths
   assert.ok(validateCompanyResearchMarkdownTables(ambiguous.markdown).length > 0)
   const unproven = repairCompanyResearchMarkdownTables(`## Narrative ## Heading explanatory text | A | B | C |\n|---|---|\n| x | y | z | unexpected |`)
   assert.ok(!unproven.repairs.some(repair => repair.startsWith('TABLE_EMBEDDED_HEADER_MOVED')))
+})
+
+test('business-model repair moves cited prose out of the exact product table header separator gap', () => {
+  const source = `### 商业模式与变现\n| 产品/业务 | 客户类型与购买决策 | 定价、交付与收入机制 | 成本及利润观察 |\n\n产品分类说明及客户决策边界。[bm1@paragraph:11] [bm1@paragraph:12]\n\n|---|---|---|---|\n| 汽车 | 客户类型按车型区分 | 整车销售 | 成本受原材料影响 [bm1@paragraph:13] |\n| 电子产品 | 终端品牌与制造商 | 零部件销售 | 利润随产品组合变化 [bm1@paragraph:14] |`
+  const before = [...source.matchAll(/\[[^\]]+\]/g)].map(match => match[0])
+  const repaired = repairCompanyResearchMarkdownTables(source)
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_BUSINESS_MODEL_NARRATIVE_MOVED_AFTER_TABLE')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.deepEqual([...repaired.markdown.matchAll(/\[[^\]]+\]/g)].map(match => match[0]).sort(), before.sort(), 'all citations survive the prose relocation')
+  assert.ok(repaired.markdown.indexOf('|---|---|---|---|') < repaired.markdown.indexOf('产品分类说明及客户决策边界'))
+  assert.ok(repaired.markdown.indexOf('产品分类说明及客户决策边界') > repaired.markdown.indexOf('| 电子产品 |'))
+
+  const ambiguous = repairCompanyResearchMarkdownTables(`### 未知表格\n| A | B | C | D |\n\n普通说明文字和引用。[x@paragraph:1]\n\n|---|---|---|---|\n| 1 | 2 | 3 | 4 |`)
+  assert.ok(!ambiguous.repairs.some(repair => repair.startsWith('TABLE_BUSINESS_MODEL_NARRATIVE_MOVED_AFTER_TABLE')))
+  assert.ok(validateCompanyResearchMarkdownTables(ambiguous.markdown).length > 0, 'unknown table remains malformed and fail-closed')
+
+  const partial = repairCompanyResearchMarkdownTables(`| 产品/业务 | 客户类型与购买决策 | 定价、交付与收入机制 | 成本及利润观察 |\n\n产品分类说明及客户决策边界。[bm1@paragraph:11]\n\n|---|---|---|---|\n| 汽车 | 个人客户 | 整车销售 | 成本受原材料影响 |\n| 电子产品 | 品牌客户 | 零部件销售 | 成本与毛利变化 | unexpected cell |`)
+  assert.ok(!partial.repairs.some(repair => repair.startsWith('TABLE_BUSINESS_MODEL_NARRATIVE_MOVED_AFTER_TABLE')), JSON.stringify(partial))
+})
+
+test('industry repair splits the exact fused two-column report-locator header after a seven-column row',()=>{
+  const source='official-report'
+  const row=`| 2025年：交通运输设备及电气制造业 | 648,645,636,000.00 | 515,762,940,000.00 | 20.49% | 5.06% | 7.53% | -1.82% [${source}@paragraph:843] [${source}@paragraph:844] [${source}@paragraph:833] [${source}@paragraph:839] | | 报告及单位 | 完整分类表头定位 |`
+  const input=`| 报告期/分类 | 收入 | 成本 | 毛利率 | 收入同比 | 成本同比 | 毛利率同比 |\n|---|---:|---:|---:|---:|---:|---:|\n${row}\n|---|---|\n| 2025年年报；人民币元，同比列为% | [${source}@paragraph:833] [${source}@paragraph:839] |`
+  const repaired=repairCompanyResearchMarkdownTables(input)
+  assert.ok(repaired.repairs.some(item=>item.startsWith('TABLE_EMBEDDED_REFERENCE_HEADER_SPLIT')))
+  assert.deepEqual(repaired.diagnostics,[])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown),[])
+  for(const ref of [`${source}@paragraph:843`,`${source}@paragraph:844`,`${source}@paragraph:833`,`${source}@paragraph:839`])assert.ok(repaired.markdown.includes(`[${ref}]`))
+})
+
+test('market matrix preserves an exact orphan PCB label outside a complete four-column table',()=>{
+  const input=`| 市场 | 产品边界与排除项 | 地域、客户与时间边界 | 产业链位置与需求因素 |
+|---|---|---|---|
+| PCB/电子电路
+| 数通光模块 | 全球数通光模块为数据通信细分市场。[peer@paragraph:1] | 全球预测，年份见报告。[peer@paragraph:2] | AI算力投资为需求因素。[peer@paragraph:3] |`
+  const repaired=repairCompanyResearchMarkdownTables(input)
+  assert.ok(repaired.repairs.some(item=>item.startsWith('TABLE_MARKET_MATRIX_ORPHAN_LABEL_MOVED_TO_PROSE')))
+  assert.match(repaired.markdown,/PCB\/电子电路\n\n\| 市场 \| 产品边界与排除项/u)
+  assert.ok(repaired.markdown.includes('| 数通光模块 | 全球数通光模块为数据通信细分市场。[peer@paragraph:1]'))
+  assert.deepEqual(repaired.diagnostics,[])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown),[])
 })
 
 test('R144 removes only an orphan separator whose following rows have inconsistent widths', () => {

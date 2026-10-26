@@ -262,6 +262,19 @@ export function selectCompanyEvidence(sources: readonly NormalizedResearchSource
         break
       }
     }
+    // Keep split HKSCC legal-name rows with the shareholder row that carries
+    // its nominee classification, percentage and share count. The percentage
+    // alone cannot establish which holder the row describes.
+    if (options.purpose === 'management_governance_analysis' || options.purpose === 'capital_allocation_review') {
+      const family = (PURPOSE_QUERY_FAMILIES[options.purpose] ?? []).indexOf(TOP_SHAREHOLDER_TABLE)
+      const nomineeNames = scores.filter(row => /^HKSCC\s+NOMINEES$/i.test(row.text.trim()))
+      const nomineeBundles = nomineeNames.flatMap(anchor => {
+        const limited = scores.find(row => row.index === anchor.index + 1 && /^LIMITED$/i.test(row.text.trim()))
+        const holding = scores.find(row => row.index === anchor.index + 2 && /^境外法人\s+[\d.]+%\s+[\d,]+$/.test(row.text.trim()))
+        return limited && holding ? [{ family, indices: [anchor.index, limited.index, holding.index] }] : []
+      })
+      criticalBundles.unshift(...nomineeBundles)
+    }
     // Reserve primary-source research answers independently of generic report keyword
     // volume. A company introduction and a technical specification can be short and
     // otherwise lose to thousands of annual-report matches. These are exact source

@@ -87,10 +87,11 @@ export function findKnownCompetitorDenials(input: { readonly sections: readonly 
   if (!competitive) return []
   const competitiveText = `${competitive.answer}\n${competitive.markdown}\n${competitive.sections.map(section => section.markdown).join('\n')}\n${competitive.findings.map(finding => finding.text).join('\n')}`
   const candidatePattern = /([\u3400-\u9fff]{2,8}|[A-Za-z][A-Za-z0-9&.+-]{1,23})是(?:有(?:材料|证据)支持的)?(?:具名竞争者|候选对手|候选竞争者)/g
+  const nonEntityCandidateLabels = new Set(['最强反证', '最强反例', '反证', '候选路线', '竞争比较', '竞争分析'])
   // Narrative connectives such as “故仅是候选竞争者” do not name an entity.
   const candidates = [...new Set([...competitiveText.matchAll(candidatePattern)]
     .map(match => match[1]!.replace(/^(?:因此|所以|故仅|仅凭|基于此|本报告认为)/u, ''))
-    .filter(name => name.length >= 2 && !/^(?:仅|本公司|公司|其|双方|两者)$/.test(name)))]
+    .filter(name => name.length >= 2 && !nonEntityCandidateLabels.has(name) && !/^(?:仅|本公司|公司|其|双方|两者)$/.test(name)))]
   if (!candidates.length) return []
   const denial = /(?:未发现(?:可用于)?具名(?:竞品|竞争者|对手)[^。；\n]{0,18}(?:材料|资料|信息)|(?:没有|未提供|未发现|缺少|无)(?:任何|具名)(?:竞品|竞争者|对手)(?=[、，,；。及和]|$)|无具名(?:竞品|竞争者|对手)(?=[、，,；。及和]|$)|(?:没有|未提供|缺少|无)[^。；\n]{0,20}具名(?:竞品|竞争者|对手)[^。；\n]{0,32}(?:可比|比较|路线|产品))/g
   const issues: { sectionId: string; candidate: string }[] = []
@@ -130,7 +131,7 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
     // Some valid competitive-method findings describe a scoped route comparison
     // without using the literal word “候选”. The public-web locator and packet
     // checks below still have to identify the named third-party company.
-    if (!/(?:候选|具名竞争者|竞争对手|路线对照)/.test(finding.text)) return []
+    if (!/(?:候选|具名竞争者|竞争对手|路线对照|具名对照)/.test(finding.text)) return []
     if (!ref.sourceCandidateId.startsWith('public-web-')) return []
     const packet = packets.find(item => item.sourceCandidateId === ref.sourceCandidateId)
     const excerpt = packet?.excerpts.find(item => item.location === ref.location)
@@ -1623,10 +1624,11 @@ export function reconcileCompanyEmployeePlanEvidence<T extends CompanyContentSec
   if(!section)return input.sections
   const allPackets=input.methodResults.filter(item=>['management_governance_analysis','capital_allocation_review'].includes(item.skillId)&&item.status==='complete').flatMap(method=>[...method.executionEvidence??[],...method.deterministicEvidence??[]])
   const annualPlan=allPackets.find(packet=>/2025年年度报告/.test(packet.title)&&packet.excerpts.some(item=>item.location==='paragraph:3060'&&/不超过\s*2\.5\s*万名员工/.test(item.text))&&packet.excerpts.some(item=>item.location==='paragraph:3061'&&/每年营业收入同比上一年度增长不低于\s*10%/.test(item.text)))
-  const interimPlan=allPackets.find(packet=>/2026年半年度报告/.test(packet.title)&&packet.excerpts.some(item=>item.location==='paragraph:1145'&&/2024\s*年员工持股计划/.test(item.text))&&packet.excerpts.some(item=>item.location==='paragraph:1154'&&/2025\s*年员工持股计划/.test(item.text))&&packet.excerpts.some(item=>item.location==='paragraph:1159'&&/21,417\s+22,501,479/.test(item.text)))
+  const interimPlan=allPackets.find(packet=>/2026年半年度报告/.test(packet.title)&&packet.excerpts.some(item=>item.location==='paragraph:1139'&&/员工人数\s+持有的股票总数/.test(item.text))&&packet.excerpts.some(item=>item.location==='paragraph:1140'&&/变更情况/.test(item.text))&&packet.excerpts.some(item=>item.location==='paragraph:1154'&&/2025\s*年员工持股计划/.test(item.text))&&packet.excerpts.some(item=>item.location==='paragraph:1159'&&/21,417\s+22,501,479/.test(item.text)))
   if(annualPlan&&interimPlan){
-    const correction=`2025年计划条款：年报披露该计划涉及不超过2.5万名员工、资金总额不超过41亿元、分三期解锁，考核要求为考核期内每年营业收入同比上一年度增长不低于10%。2026年半年报将2024年计划与2025年计划分列；21,417与22,501,479股这一行明确位于2025年计划项下，不能与2024年计划数据混并。人数、累计买入股数及期末持股字段各有不同口径，不能由一行推断实际认购或业绩兑现。[${annualPlan.sourceCandidateId}@paragraph:3060] [${annualPlan.sourceCandidateId}@paragraph:3061] [${interimPlan.sourceCandidateId}@paragraph:1145] [${interimPlan.sourceCandidateId}@paragraph:1154] [${interimPlan.sourceCandidateId}@paragraph:1159]`
-    const markdown=section.markdown.replace(/2025年员工持股计划设定营业收入增长考核并分期解锁，半年度报告披露计划参与规模和持股数据；收入条件不能替代利润、现金回报或股东价值检验。/g,correction)
+    const correction=`2025年计划条款：年报披露该计划涉及不超过2.5万名员工、资金总额不超过41亿元、分三期解锁，考核要求为考核期内每年营业收入同比上一年度增长不低于10%。2026年半年报在“2025年员工持股计划”项下列示员工人数21,417人、持有股票总数22,501,479股；该表列员工人数不等于实际认购人数，也不能据此确认个人期末持有或业绩兑现。[${annualPlan.sourceCandidateId}@paragraph:3060] [${annualPlan.sourceCandidateId}@paragraph:3061] [${interimPlan.sourceCandidateId}@paragraph:1139] [${interimPlan.sourceCandidateId}@paragraph:1140] [${interimPlan.sourceCandidateId}@paragraph:1154] [${interimPlan.sourceCandidateId}@paragraph:1159]`
+    let markdown=section.markdown.replace(/2025年员工持股计划设定营业收入增长考核并分期解锁，半年度报告披露计划参与规模和持股数据；收入条件不能替代利润、现金回报或股东价值检验。/g,correction)
+    if(/2025年员工持股计划/.test(markdown)&&!markdown.includes('22,501,479'))markdown=markdown.replace(/(2025年员工持股计划[^。]*。)/,`$1 ${correction}`)
     if(markdown!==section.markdown){
       const repaired={...section,markdown,sourceCandidateIds:[...new Set([...(section.sourceCandidateIds??[]),annualPlan.sourceCandidateId,interimPlan.sourceCandidateId])]}
       return input.sections.map(item=>item.id===section.id?repaired:item)
@@ -1685,12 +1687,15 @@ export function reconcileCompanyEmployeePlanMonitoringEvidence<T extends Company
   if(!monitoring)return input.sections
   const packets=input.methodResults.filter(method=>['management_governance_analysis','capital_allocation_review'].includes(method.skillId)&&method.status==='complete').flatMap(method=>[...method.executionEvidence??[],...method.deterministicEvidence??[]])
   const packet=packets.find(item=>/2026年半年度报告/.test(item.title)
+    && item.excerpts.some(excerpt=>excerpt.location==='paragraph:1139'&&/员工人数\s+持有的股票总数/.test(excerpt.text))
+    && item.excerpts.some(excerpt=>excerpt.location==='paragraph:1140'&&/变更情况/.test(excerpt.text))
     && item.excerpts.some(excerpt=>excerpt.location==='paragraph:1154'&&/2025\s*年员工持股计划/.test(excerpt.text))
     && item.excerpts.some(excerpt=>excerpt.location==='paragraph:1159'&&/21,417\s+22,501,479/.test(excerpt.text)))
-  if(!packet||!monitoring.markdown.includes('实际参与人数材料未明确'))return input.sections
-  const corrected='2026年半年报在2025年员工持股计划项下列示员工人数21,417人、持股22,501,479股；该人数不等于实际认购或期末持有人数。 ['+packet.sourceCandidateId+'@paragraph:1154] ['+packet.sourceCandidateId+'@paragraph:1159]'
+  if(!packet||!/实际参与人数材料未明确|实际参与人数及期末持有数未在所引行披露/.test(monitoring.markdown))return input.sections
+  const corrected='2026年半年报在2025年员工持股计划项下列示员工人数21,417人、持有股票总数22,501,479股；员工人数不等于实际认购人数，也不能据此确认个人期末持有。 ['+packet.sourceCandidateId+'@paragraph:1139] ['+packet.sourceCandidateId+'@paragraph:1140] ['+packet.sourceCandidateId+'@paragraph:1154] ['+packet.sourceCandidateId+'@paragraph:1159]'
   const markdown=monitoring.markdown.replace(/2025年计划上限不超过2\.5万名员工，实际参与人数材料未明确；/g,'2025年计划上限不超过2.5万名员工；'+corrected+' ')
     .replace(/实际参与人数材料未明确/g,corrected)
+    .replace(/实际参与人数及期末持有数未在所引行披露/g,corrected)
     .replace(/2026半年报列计划参与21,417人、持有22,501,479股；人员上限、购入股数与期末持股分别按披露口径核验。/,'人数上限、累计购入股数与期末持股属于不同口径，应分别按对应表头核验。')
   return markdown===monitoring.markdown?input.sections:input.sections.map(section=>section.id===monitoring.id?{...section,markdown,sourceCandidateIds:[...new Set([...(section.sourceCandidateIds??[]),packet.sourceCandidateId])]}:section)
 }

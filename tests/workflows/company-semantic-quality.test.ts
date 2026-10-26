@@ -621,6 +621,51 @@ test('semantic review reconciliation removes only customer-ratio claims contradi
   assert.match(risks.reasons[0]!, /更关键的是竞争与政策证据仍不足/)
 })
 
+test('reviewer year-label objection clears only when every annual industry row matches its cited report year', () => {
+  const annual2024 = { candidate: { candidateId: 'annual24' }, title: '2024年年度报告', content: '日用电子器件制造业 159,608,576,000.00\n交通运输设备及电气制造业 617,381,935,000.00' } as NormalizedResearchSource
+  const annual2025 = { candidate: { candidateId: 'annual25' }, title: '2025年年度报告', content: '日用电子器件制造业 155,236,528,000.00\n交通运输设备及电气制造业 648,645,636,000.00' } as NormalizedResearchSource
+  const body = `| 报告期间 | 分行业分类 | 营业收入 |
+|---|---|---:|
+| 2024年度 | 日用电子器件制造业 | 159,608,576,000.00 [annual24@paragraph:1] |
+| 2024年度 | 交通运输设备及电气制造业 | 617,381,935,000.00 [annual24@paragraph:2] |
+| 2025年度 | 日用电子器件制造业 | 155,236,528,000.00 [annual25@paragraph:1] |
+| 2025年度 | 交通运输设备及电气制造业 | 648,645,636,000.00 [annual25@paragraph:2] |`
+  const reason = '表中2024年度分行业行取自2024年报，却标为2025年度；年份错列使年度趋势失真。'
+  const checks = output.sectionChecks.map(check => check.sectionId === 'industry-exposure' ? { ...check, numericReproducible: false, reasons: [reason] } : check)
+  const report = sections.map(section => section.id === 'industry-exposure' ? { ...section, markdown: body } : section)
+  const fixed = reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({ sectionChecks: checks }), report, [annual2024, annual2025]).find(check => check.sectionId === 'industry-exposure')!
+  assert.equal(fixed.numericReproducible, true)
+  assert.deepEqual(fixed.reasons, [])
+  const mislabeled = reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({ sectionChecks: checks }), report.map(section => section.id === 'industry-exposure' ? { ...section, markdown: body.replace('| 2024年度 | 日用电子器件制造业', '| 2025年度 | 日用电子器件制造业') } : section), [annual2024, annual2025]).find(check => check.sectionId === 'industry-exposure')!
+  assert.equal(mislabeled.numericReproducible, false)
+  assert.match(mislabeled.reasons.join(' '), /年份错列/)
+})
+
+test('reviewer industry/product-label objection clears only when distinct cited source rows match each classification', () => {
+  const sourceLines = Array.from({ length: 734 }, () => '')
+  sourceLines[698] = '分行业'
+  sourceLines[699] = '日用电子器件制'
+  sourceLines[700] = '造业 69,404,994,000.00'
+  sourceLines[701] = '交通运输设备及'
+  sourceLines[702] = '电气制造业 275,341,358,000.00'
+  sourceLines[704] = '分产品'
+  sourceLines[705] = '电子及其他产品 69,404,994,000.00'
+  sourceLines[706] = '汽车、汽车相关'
+  sourceLines[707] = '产品及其他产品 275,341,358,000.00'
+  const interim = { candidate: { candidateId: 'interim26' }, title: '2026年半年度报告', content: sourceLines.join('\n') } as NormalizedResearchSource
+  const body = '2026年半年度报告的营业收入构成表以本报告期为期间。分行业表中，“日用电子器件制造业”收入为69,404,994,000.00元、同比0.96%；“交通运输设备及电气制造业”收入为275,341,358,000.00元、同比-8.98%。相应表头、单位及行分别见原报告定位。[interim26@paragraph:701] [interim26@paragraph:703] 分产品表另列“电子及其他产品”收入69,404,994,000.00元、同比0.96%；“汽车、汽车相关产品及其他产品”收入275,341,358,000.00元、同比-8.98%。[interim26@paragraph:706] [interim26@paragraph:708]'
+  const reason = '半年表分别按分行业及分产品披露收入，但本节对电子产品将行业标签与产品标签相互套用；相同数字使结论归属不可靠。'
+  const checks = output.sectionChecks.map(check => check.sectionId === 'revenue-profit-drivers' ? { ...check, numericReproducible: false, reasons: [reason] } : check)
+  const report = sections.map(section => section.id === 'revenue-profit-drivers' ? { ...section, markdown: body } : section)
+  const fixed = reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({ sectionChecks: checks }), report, [interim]).find(check => check.sectionId === 'revenue-profit-drivers')!
+  assert.equal(fixed.numericReproducible, true)
+  assert.deepEqual(fixed.reasons, [])
+  const wrong = body.replace('分行业表中，“日用电子器件制造业”', '分行业表中，“电子及其他产品”')
+  const remainsBlocked = reconcileKnownReviewerFalsePositives(validateCompanySemanticQualityOutput({ sectionChecks: checks }), report.map(section => section.id === 'revenue-profit-drivers' ? { ...section, markdown: wrong } : section), [interim]).find(check => check.sectionId === 'revenue-profit-drivers')!
+  assert.equal(remainsBlocked.numericReproducible, false)
+  assert.match(remainsBlocked.reasons.join(' '), /行业标签与产品标签相互套用/)
+})
+
 test('R186 cited period-aligned industry, employee-plan, and goodwill facts clear only explicit reviewer self-contradictions',()=>{
   const annualLines=Array.from({length:7672},()=> '')
   annualLines[557]='2025 年全球服务器及存储领域的市场规模为 4130 亿美元，同比大幅增长 42%；预计'

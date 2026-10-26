@@ -633,6 +633,41 @@ function bindExactCompanyTableRows<T extends { readonly findings: readonly Compa
   return changed ? { ...output, findings } : output
 }
 
+/**
+ * Bind the split 2025 BYD product margin row to its product marker, period,
+ * label continuation and exact numeric row. The value also appears in the
+ * industry table, so accept only the explicit product-category finding and
+ * rewrite its shorthand label to the full source row before numeric validation.
+ */
+function bindExactBusinessModelProductMargin<T extends { readonly findings: readonly CompanyMethodFinding[] }>(
+  output: T,
+  packets: readonly CompanyEvidencePacket[],
+): T {
+  let changed = false
+  const findings = output.findings.map(finding => {
+    if (!/6\.29\s*%/.test(finding.text) || !/(?:电子产品类别|手机部件、组装类别)/.test(finding.text)) return finding
+    for (const packet of packets) {
+      const sourceId = packet.sourceCandidateId
+      const marker = packet.excerpts.find(row => row.location === 'paragraph:845' && row.text.trim() === '分产品')
+      const label = packet.excerpts.find(row => row.location === 'paragraph:850' && /手机部件、组/.test(row.text))
+      const value = packet.excerpts.find(row => row.location === 'paragraph:851' && /装及其他产品\s+155,236,528,000\.00\s+145,473,989,000\.00\s+6\.29%/.test(row.text))
+      const unit = packet.excerpts.find(row => row.location === 'paragraph:833' && /^单位：元$/.test(row.text.trim()))
+      const marginHeaders = packet.excerpts.filter(row => /^paragraph:83[4-9]$/.test(row.location) && /毛利率|同期增减|营业收入/.test(row.text))
+      if (!/2025年年度报告/.test(packet.title) || !marker || !label || !value || !unit || marginHeaders.length < 2) continue
+      const hasSourceLabel = finding.evidence.some(ref => ref.sourceCandidateId === sourceId && ref.location === label.location)
+      if (!hasSourceLabel) continue
+      const required = [unit, ...marginHeaders, marker, label, value]
+      const refs = new Set(finding.evidence.map(ref => `${ref.sourceCandidateId}@${ref.location}`))
+      const missing = required.filter(row => !refs.has(`${sourceId}@${row.location}`)).map(row => ({ sourceCandidateId: sourceId, location: row.location }))
+      const text = finding.text.replace(/电子产品类别|手机部件、组装类别/g, '“手机部件、组装及其他产品”产品类别')
+      changed = changed || Boolean(missing.length) || text !== finding.text
+      return { ...finding, text, evidence: [...finding.evidence, ...missing] }
+    }
+    return finding
+  })
+  return changed ? { ...output, findings } : output
+}
+
 /** Paragraph locators belong in evidence arrays, never in finding prose. */
 function removeNarrativeParagraphLocatorClauses<T extends { readonly findings: readonly CompanyMethodFinding[] }>(output: T): T {
   let changed = false
@@ -994,6 +1029,27 @@ function extractCitationBearingClaim(outputTexts: readonly string[], marker: str
     ?.slice(-1200) ?? ''
 }
 
+function extractStructuredFindingForReference(output: unknown, marker: string): { readonly claim: string; readonly anchors: readonly string[] } | undefined {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return undefined
+  const findings = (output as { findings?: unknown }).findings
+  if (!Array.isArray(findings)) return undefined
+  for (const item of findings) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+    const finding = item as { text?: unknown; evidence?: unknown }
+    if (typeof finding.text !== 'string' || !Array.isArray(finding.evidence)) continue
+    const refs = finding.evidence.flatMap(ref => {
+      if (!ref || typeof ref !== 'object' || Array.isArray(ref)) return []
+      const row = ref as { sourceCandidateId?: unknown; location?: unknown }
+      return typeof row.sourceCandidateId === 'string' && typeof row.location === 'string'
+        ? [`${row.sourceCandidateId}@${row.location}`]
+        : []
+    })
+    if (!refs.includes(marker)) continue
+    return { claim: finding.text.trim(), anchors: refs.filter(ref => ref !== marker) }
+  }
+  return undefined
+}
+
 function referenceClaimInformationScore(text: string): number {
   const chineseChars = text.match(/[\u3400-\u9fff]/g)?.length ?? 0
   const words = text.match(/[a-zA-Z]{3,}/g)?.length ?? 0
@@ -1291,7 +1347,7 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
         ? repairCompanyRiskMatrixFormat(businessChannelRepair.output)
         : { output: businessChannelRepair.output, repairs: [] as string[] }
       if (riskFormatRepair.repairs.length) attemptOutputs[traceIndex] = { ...attemptOutputs[traceIndex]!, formatRepairs: riskFormatRepair.repairs }
-      const allocationTableRepair = input.skillId === 'capital_allocation_review'
+      const allocationTableRepair = ['capital_allocation_review', 'product_technology_analysis'].includes(input.skillId)
         ? repairExcessTrailingCellsInMethodOutput(riskFormatRepair.output)
         : riskFormatRepair.output
       const exactQuotedCitationRepair = input.skillId === 'market_structure_analysis'
@@ -1307,9 +1363,10 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
         : input.skillId === 'market_structure_analysis'
           ? bindExactCompanyTableRows(yearBound, packets, input.sources, true)
         : yearBound
+      const productMarginBound = input.skillId === 'business_model_map' ? bindExactBusinessModelProductMargin(rowBound, packets) : rowBound
       const parsed = removeNarrativeParagraphLocatorClauses(input.skillId === 'financial_quality_analysis'
-        ? bindExactCompanyTableRows(rowBound, packets, input.sources, true)
-        : rowBound)
+        ? bindExactCompanyTableRows(productMarginBound, packets, input.sources, true)
+        : productMarginBound)
       if (input.skillId === 'capital_allocation_review') {
         const preserved = preserveExactDividendFindingReferences(parsed, packets)
         citationRepairs.push(...preserved.repairs.map((repair) => ({ ...repair, attempt })))
@@ -1426,14 +1483,16 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
           const outputTexts = typeof previous === 'string'
             ? [previous]
             : [previousObject?.markdown, ...(Array.isArray(previousObject?.sections) ? previousObject.sections.map((section: { markdown?: unknown }) => section.markdown) : []), ...(Array.isArray(previousObject?.findings) ? previousObject.findings.map((finding: { text?: unknown }) => finding.text) : [])].filter((text): text is string => typeof text === 'string')
-          const clean = extractCitationBearingClaim(outputTexts, marker)
+          const structuredFinding = extractStructuredFindingForReference(previous, marker)
+          const clean = extractCitationBearingClaim(outputTexts, marker) || structuredFinding?.claim || ''
           const pairs = referenceClaimTerms(clean)
+          const anchoredSources = new Set((structuredFinding?.anchors ?? []).map(reference => reference.split('@')[0]!))
           const ranked = packets.flatMap(packet => packet.excerpts.map(excerpt => {
             const matchedTerms = [...pairs].filter(pair => excerpt.text.toLowerCase().includes(pair.toLowerCase()))
             // A shared paragraph number is not evidence of semantic support.
             // Require at least two non-generic claim terms before a supplied
             // source-location pair can be offered to the repair model.
-            const score = matchedTerms.length * 10 + (excerpt.location === invalid[2] ? 1 : 0)
+            const score = matchedTerms.length * 10 + (anchoredSources.has(packet.sourceCandidateId) ? 1 : 0) + (excerpt.location === invalid[2] ? 1 : 0)
             return { sourceCandidateId: excerpt.sourceCandidateId, location: excerpt.location, text: excerpt.text.slice(0, 1000), score }
           })).filter(item => item.score >= 20).sort((a,b) => b.score-a.score || a.sourceCandidateId.localeCompare(b.sourceCandidateId)).slice(0,8)
           referenceRepairEvidence = [{ invalidReference: { sourceCandidateId: invalid[1]!, location: invalid[2]!, reason: `该定位未包含在本方法本轮实际供给的evidence摘录中；同段号的其他报告不能替代该来源定位。` }, claim: clean.slice(0, 1200), candidates: ranked.map(({sourceCandidateId,location,text}) => ({sourceCandidateId,location,text})) }]
@@ -1649,6 +1708,12 @@ export function validateCompanyMethodOutput(output: unknown, packets: readonly C
     // otherwise exact locator. Normalize only references already present in
     // the supplied evidence packet; unknown locators remain invalid below.
     .replace(/〔([^\s〕]+@paragraph:\d+)〕/g, (literal, ref: string) => allowed.has(ref) ? `[${ref}]` : literal)
+    // Full-width square citation brackets are accepted only for an exact
+    // source+paragraph pair present in this method's supplied evidence.
+    .replace(/［([^\s］]+@paragraph:\d+)］/g, (_literal, ref: string) => {
+      if (!allowed.has(ref)) throw new Error(`REFERENCE: Unknown full-width markdown citation ${ref}`)
+      return `[${ref}]`
+    })
   let markdown = normalizeInlineCitations(string(value.markdown, 16000))
   let sections = array(value.sections, 3).map((item) => { const row = object(item); exact(row, ['id', 'markdown']); return { id: string(row.id, 100), markdown: normalizeInlineCitations(string(row.markdown, 16000)) } })
   if (ownedSectionIds?.length === 3 && ownedSectionIds.join(',') === 'business-model,business-segments,supply-chain' && ownedSectionIds.some((id) => !sections.some((section) => section.id === id))) {

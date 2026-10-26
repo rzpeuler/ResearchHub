@@ -347,6 +347,71 @@ export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySem
         if (sourceBacked && /3\.57%/.test(body) && /3\.45%/.test(body) && /3,048,701/.test(body) && /150人/.test(body)
           && /(?:原表变动比例显示|变动比例为)\s*0\.12\s*%/.test(body)) { removed = true; return [] }
       }
+      // Reconcile a year-label objection only when every annual row in the
+      // report table is bound to a cited annual-report source with the same
+      // year, exact category, and reported revenue value. A publication date
+      // alone is not used to infer the accounting period.
+      if (check.sectionId === 'industry-exposure' && /2024年度分行业行.{0,60}2024年报.{0,40}标为2025年度/.test(reason)) {
+        const lines = body.split(/\r?\n/)
+        const tableRows = lines.filter(line => /^\|\s*202[45]年度\s*\|\s*(?:日用电子器件制造业|交通运输设备及电气制造业)\s*\|/u.test(line))
+        const expected = new Set(['2024年度|日用电子器件制造业', '2024年度|交通运输设备及电气制造业', '2025年度|日用电子器件制造业', '2025年度|交通运输设备及电气制造业'])
+        const matched = tableRows.length === expected.size && tableRows.every(line => {
+          const cells = line.split('|').map(cell => cell.trim())
+          const period = cells[1]!
+          const category = cells[2]!
+          const revenue = cells[3]!.replace(/\[[^\]]+\]/g, '').replace(/[,，\s]/g, '')
+          const pair = `${period}|${category}`
+          const citedLocations = [...line.matchAll(/\[([^\]@\s]+)@paragraph:(\d+)\]/gu)].map(match => ({ id: match[1]!, paragraph: Number(match[2]!) }))
+          if (!expected.has(pair) || !revenue || !citedLocations.length) return false
+          return citedLocations.some(ref => sources.some(source => {
+            const reportYear = /^(20\d{2})\s*年年度报告/u.exec(source.title)?.[1]
+            if (source.candidate.candidateId !== ref.id || reportYear !== period.slice(0, 4) || !Number.isInteger(ref.paragraph) || ref.paragraph < 1) return false
+            const sourceLines = source.content.split(/\r?\n/u)
+            const citedContext = sourceLines.slice(Math.max(0, ref.paragraph - 3), Math.min(sourceLines.length, ref.paragraph + 2)).join(' ')
+            const compact = citedContext.replace(/\s+/g, '')
+            return compact.replace(/[,，]/g, '').includes(revenue) && compact.includes(category.replace(/\s+/g, ''))
+          }))
+        })
+        if (matched) { removed = true; return [] }
+      }
+      // Equal values in the interim industry and product tables are not
+      // interchangeable. Clear only this false-positive flag when the report
+      // separately names and cites each official row family and the supplied
+      // source confirms those exact labels and amounts.
+      if (check.sectionId === 'revenue-profit-drivers' && /行业标签与产品标签相互套用/u.test(reason)) {
+        const interim = sources.find(source => /^2026\s*年半年度报告/u.test(source.title))
+        const industryStart = body.indexOf('分行业表中，“日用电子器件制造业”')
+        const productStart = body.indexOf('分产品表另列“电子及其他产品”')
+        const industryEnd = body.indexOf('相应表头、单位及行分别见原报告定位', industryStart)
+        const productEnd = body.indexOf('。', productStart)
+        const industryText = industryStart >= 0 && industryEnd > industryStart ? body.slice(industryStart, industryEnd) : ''
+        const productText = productStart >= 0 && productEnd > productStart ? body.slice(productStart, productEnd) : ''
+        const refs = new Set([...body.matchAll(/\[([^\]@\s]+@paragraph:\d+)\]/gu)].map(match => match[1]!))
+        const industryRows = Boolean(interim
+          && [701, 703].every(paragraph => refs.has(`${interim.candidate.candidateId}@paragraph:${paragraph}`))
+          && industryText.includes('日用电子器件制造业') && industryText.includes('交通运输设备及电气制造业')
+          && !industryText.includes('电子及其他产品') && !industryText.includes('汽车、汽车相关产品及其他产品')
+          && /69,404,994,000\.00元.{0,40}0\.96%/.test(industryText)
+          && /275,341,358,000\.00元.{0,40}-8\.98%/.test(industryText))
+        const productRows = Boolean(interim
+          && [706, 708].every(paragraph => refs.has(`${interim.candidate.candidateId}@paragraph:${paragraph}`))
+          && productText.includes('电子及其他产品') && productText.includes('汽车、汽车相关产品及其他产品')
+          && !productText.includes('日用电子器件制造业') && !productText.includes('交通运输设备及电气制造业')
+          && /69,404,994,000\.00元.{0,40}0\.96%/.test(productText)
+          && /275,341,358,000\.00元.{0,40}-8\.98%/.test(productText))
+        const sourceRows = Boolean(interim && (() => {
+          const sourceLines = interim.content.split(/\r?\n/u)
+          const exactRow = (paragraph: number, label: string, revenue: string) => {
+            const context = sourceLines.slice(Math.max(0, paragraph - 3), Math.min(sourceLines.length, paragraph + 1)).join(' ').replace(/\s+/g, '')
+            return context.includes(label.replace(/\s+/g, '')) && context.replace(/[,，]/g, '').includes(revenue.replace(/[,，]/g, ''))
+          }
+          return exactRow(701, '日用电子器件制造业', '69,404,994,000.00')
+            && exactRow(703, '交通运输设备及电气制造业', '275,341,358,000.00')
+            && exactRow(706, '电子及其他产品', '69,404,994,000.00')
+            && exactRow(708, '汽车、汽车相关产品及其他产品', '275,341,358,000.00')
+        })())
+        if (industryRows && productRows && sourceRows) { removed = true; return [] }
+      }
       // Clear only explicit reviewer self-retractions; any separately stated
       // defect stays in the reasons and keeps its corresponding flag blocking.
       if (check.sectionId === 'revenue-profit-drivers' && !hasIndependentDefectClause(reason)

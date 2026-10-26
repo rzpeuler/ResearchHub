@@ -175,6 +175,18 @@ test('Chinese citation brackets normalize only exact supplied locators to inline
   assert.throws(() => validateCompanyMethodOutput(unknown, [packet]), /Each complete owned section requires an inline citation/)
 })
 
+test('full-width square citation brackets normalize only exact supplied locators', () => {
+  const packet = { sourceCandidateId: 'filing-1', title: '年报', publisher: 'Company', excerpts: [{ sourceCandidateId: 'filing-1', location: 'paragraph:251', text: '公司经历业务转型。' }] }
+  const fullWidth = { ...output, markdown: '公司经历业务转型。［filing-1@paragraph:251］', sections: [{ id: 'company-overview', markdown: '公司经历业务转型。［filing-1@paragraph:251］' }] }
+  const normalized = validateCompanyMethodOutput(fullWidth, [packet])
+  assert.equal(normalized.markdown, '公司经历业务转型。[filing-1@paragraph:251]')
+  assert.equal(normalized.sections[0]!.markdown, normalized.markdown)
+  const unknown = { ...fullWidth, markdown: '公司经历业务转型。［filing-1@paragraph:999］', sections: [{ id: 'company-overview', markdown: '公司经历业务转型。［filing-1@paragraph:999］' }] }
+  assert.throws(() => validateCompanyMethodOutput(unknown, [packet]), /Unknown full-width markdown citation/)
+  const mixed = { ...fullWidth, markdown: '公司经历业务转型。[filing-1@paragraph:251] ［filing-1@paragraph:999］', sections: [{ id: 'company-overview', markdown: '公司经历业务转型。[filing-1@paragraph:251] ［filing-1@paragraph:999］' }] }
+  assert.throws(() => validateCompanyMethodOutput(mixed, [packet]), /Unknown full-width markdown citation/)
+})
+
 test('grouped exact paragraph locators normalize to separate supplied inline citations', () => {
   const packet = { sourceCandidateId: 'filing-1', title: '年报', publisher: 'Company', excerpts: [
     { sourceCandidateId: 'filing-1', location: 'paragraph:251', text: '公司经历业务转型。' },
@@ -2511,6 +2523,38 @@ test('reference retry extracts the cited Markdown table row and excludes same-nu
   assert.ok(result.diagnostics.some(diagnostic => diagnostic.code === 'REFERENCE_ERROR'))
 })
 
+test('reference retry extracts a structured finding claim when its invalid locator appears only in finding evidence', async () => {
+  const sourceId = 'official-c19c34dd239b2e9c'
+  const malformedId = 'official-c19c34dd239b2e9cb2e9c'
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: sourceId, metadata: undefined }, title: '2026年半年度报告', content: [
+    '单位：元',
+    '日用电子器件制造业营业收入同比增长5.04%，营业成本同比增长3.88%，毛利率下降2.67%。',
+    '其他业务情况。',
+  ].join('\n') }
+  const broken = {
+    status: 'complete', answer: '行业毛利率变化待核验。',
+    markdown: `日用电子器件制造业毛利率下降2.67%。[${sourceId}@paragraph:2]`,
+    sections: [{ id: 'competition', markdown: `日用电子器件制造业营业收入增长5.04%、成本增长3.88%，毛利率下降2.67%。[${sourceId}@paragraph:2]` }],
+    findings: [{ text: '2026年上半年日用电子器件制造业营业成本同比增长3.88%，毛利率下降2.67%。', kind: 'fact', evidence: [{ sourceCandidateId: malformedId, location: 'paragraph:1' }] }],
+    limitations: [], risks: [],
+  }
+  let calls = 0
+  const result = await executeCompanyResearchMethod({ skillId: 'competitive_market_map', company: { symbol: '002594' }, asOf: '2026-10-26', sources: [filing], durableSourceCandidateIds: [sourceId], reasoningExecutor: executor(async request => {
+    calls++
+    if (calls === 1) return broken
+    const repair = (request as any).input.repairReferenceEvidence[0]
+    assert.match(repair.claim, /日用电子器件制造业.*营业成本同比增长3\.88%/)
+    assert.ok(repair.candidates.some((candidate: any) => candidate.sourceCandidateId === sourceId && candidate.location === 'paragraph:2' && candidate.text.includes('营业成本同比增长3.88%')))
+    assert.ok(!repair.candidates.some((candidate: any) => candidate.sourceCandidateId === sourceId && candidate.location === 'paragraph:1'), 'the unit-only line is not offered as a semantic replacement')
+    return {
+      ...broken,
+      findings: [{ ...broken.findings[0]!, evidence: [{ sourceCandidateId: sourceId, location: 'paragraph:2' }] }],
+    }
+  }) })
+  assert.equal(calls, 2, JSON.stringify(result))
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+})
+
 test('R144 BYD competitive evidence reserves battery, storage, and photovoltaic rows and repairs to the explicit citation inventory', async () => {
   const sourceId = 'official-f6274e510499a654'
   const catlId = 'catl-profile'
@@ -2855,6 +2899,54 @@ test('technical identifier citations are deterministically repaired from the exa
   assert.equal(calls,1)
   assert.ok(result.sections.every(section=>section.markdown.includes('[filing-1@paragraph:3]')))
   assert.ok(result.citationRepairs?.some(repair=>repair.addedReferences.some(ref=>ref.location==='paragraph:3')))
+})
+
+test('product method merges one unsupported trailing table cell into the final declared column', async()=>{
+  const filing={...source,content:'公司披露汽车电子产品应用及相关技术路线。'}
+  const ref='[filing-1@paragraph:1]'
+  const row=`| 汽车电子 | 车载应用 ${ref} | 公司披露相关技术 ${ref} | 已有产品销售 ${ref} | 未提供型号级客户验证 ${ref} | 直接竞品比较仍缺数据 ${ref} |`
+  const response={...output,answer:'公司披露汽车电子产品及技术路线。',markdown:`公司披露汽车电子产品。 ${ref}`,sections:[
+    {id:'products',markdown:`## 产品与商业化\n\n| 产品 | 应用 | 技术 | 商业化 | 比较限制 |\n|---|---|---|---|---|\n${row}\n\n未提供客户调研或购买行为证据，不能推断实际偏好。 ${ref}`},
+    {id:'technologies',markdown:`## 技术路线\n\n公司披露相关技术路线。 ${ref}`},
+  ],findings:[{text:'公司披露汽车电子产品及相关技术路线。',kind:'fact',evidence:[{sourceCandidateId:'filing-1',location:'paragraph:1'}]}]}
+  let calls=0
+  const result=await executeCompanyResearchMethod({skillId:'product_technology_analysis',company:{symbol:'002384'},asOf:'2026-10-26',sources:[filing],durableSourceCandidateIds:['filing-1'],reasoningExecutor:executor(async()=>{calls++;return response})})
+  assert.equal(calls,1)
+  assert.equal(result.status,'complete',JSON.stringify(result.diagnostics))
+  assert.ok(!result.diagnostics.some(item=>/malformed Markdown tables/.test(item.message)))
+  assert.ok(result.sections[0]!.markdown.includes('未提供型号级客户验证'))
+  assert.ok(result.sections[0]!.markdown.includes('直接竞品比较仍缺数据'))
+})
+
+test('business-model method binds a duplicated margin to the exact split product row', async()=>{
+  const rows=Array.from({length:855},(_,index)=>`常规年报披露${index+1}`)
+  rows[806]='2025年 2024年'
+  rows[832]='单位：元'
+  rows[833]='营业收入 营业成本 毛利率 营业收入比上'
+  rows[834]='年同期增减'
+  rows[835]='营业成本比上'
+  rows[836]='同期增减'
+  rows[837]='毛利率比上'
+  rows[838]='年同期增减'
+  rows[839]='分行业'
+  rows[841]='日用电子器件制造业 155,236,528,000.00 145,473,989,000.00 6.29% -2.74% -0.56% -2.06%'
+  rows[844]='分产品'
+  rows[849]='手机部件、组'
+  rows[850]='装及其他产品 155,236,528,000.00 145,473,989,000.00 6.29% -2.74% -0.56% -2.06%'
+  const filing={...source,title:'2025年年度报告',content:rows.join('\n')}
+  const marginFinding={text:'2025年度手机部件、组装类别毛利率6.29%。',kind:'fact',evidence:[
+    ...Array.from({length:7},(_,index)=>({sourceCandidateId:'filing-1',location:`paragraph:${834+index}`})),
+    {sourceCandidateId:'filing-1',location:'paragraph:850'},
+  ]}
+  const response={...output,answer:'分产品毛利率已披露。',markdown:'分产品毛利率已披露。[filing-1@paragraph:851]',sections:[
+    {id:'business-model',markdown:'公司商品销售收入按披露确认。[filing-1@paragraph:851]'},
+    {id:'business-segments',markdown:'分产品收入与毛利口径需区分。[filing-1@paragraph:851]'},
+    {id:'supply-chain',markdown:'供应链材料已提供。[filing-1@paragraph:851]'},
+  ],findings:[marginFinding]}
+  const result=await executeCompanyResearchMethod({skillId:'business_model_map',company:{symbol:'002594'},asOf:'2026-10-26',sources:[filing],durableSourceCandidateIds:['filing-1'],reasoningExecutor:executor(async()=>response)})
+  assert.equal(result.status,'complete',JSON.stringify(result.diagnostics))
+  assert.match(result.findings[0]!.text,/“手机部件、组装及其他产品”产品类别毛利率6\.29%/)
+  for(const paragraph of [833,834,839,845,850,851])assert.ok(result.findings[0]!.evidence.some(ref=>ref.location===`paragraph:${paragraph}`),`missing exact product context row ${paragraph}`)
 })
 
 test('competitive method reserves eligible peer-company web pages in its evidence packet', async()=>{

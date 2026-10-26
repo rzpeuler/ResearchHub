@@ -111,14 +111,17 @@ test('2025 market figures transcribed from an older annual report remain labeled
 
 test('employee plan monitoring removes a stale participation gap when the later official report gives the plan count',()=>{
   const method={skillId:'management_governance_analysis',status:'complete',executionEvidence:[{sourceCandidateId:'official-interim',title:'2026年半年度报告',publisher:'Issuer',excerpts:[
+    {sourceCandidateId:'official-interim',location:'paragraph:1139',text:'员工的范围 员工人数 持有的股票总数'},
+    {sourceCandidateId:'official-interim',location:'paragraph:1140',text:'（股） 变更情况 占上市公司股本'},
     {sourceCandidateId:'official-interim',location:'paragraph:1154',text:'2025 年员工持股计划：'},
     {sourceCandidateId:'official-interim',location:'paragraph:1159',text:'21,417 22,501,479 无 0.2468%'}
   ]}]} as unknown as CompanyResearchMethodResult
   const sections=[{id:'monitoring-checklist',markdown:'2025年计划上限不超过2.5万名员工，实际参与人数材料未明确；截至2025年累计购入10,714,990股。2026半年报列计划参与21,417人、持有22,501,479股。',sourceCandidateIds:[] as string[]},{id:'management-capital-allocation',markdown:'治理披露。'}]
   const fixed=reconcileCompanyEmployeePlanMonitoringEvidence({sections,methodResults:[method]})[0]!
   assert.doesNotMatch(fixed.markdown,/实际参与人数材料未明确/)
-  assert.match(fixed.markdown,/列示员工人数21,417人、持股22,501,479股/)
-  assert.match(fixed.markdown,/不等于实际认购或期末持有人数/)
+  assert.match(fixed.markdown,/列示员工人数21,417人、持有股票总数22,501,479股/)
+  assert.match(fixed.markdown,/不等于实际认购人数，也不能据此确认个人期末持有/)
+  assert.match(fixed.markdown,/official-interim@paragraph:1139/)
   assert.match(fixed.markdown,/official-interim@paragraph:1154/)
   assert.match(fixed.markdown,/official-interim@paragraph:1159/)
 })
@@ -464,6 +467,8 @@ test('cross-method check rejects blanket competitor absence after a named candid
   assert.deepEqual(findKnownCompetitorDenials({ sections: value, methodResults: [{ ...competitor, answer: '需要按客户场景比较产品路线。' }] }), [])
   value[risk] = { ...value[risk]!, markdown: '风险矩阵称无具名竞品、市场份额、路线或可比性能证据。' }
   assert.deepEqual(findKnownCompetitorDenials({ sections: value, methodResults: [competitor] }), [{ sectionId: 'risks', candidate: '吉利' }])
+  const falseLabel: CompanyResearchMethodResult = { ...competitor, answer: '最强反证是候选对手也展示快充主张。', markdown: '', sections: [], findings: [{ text: '最强反证是候选对手也展示快充主张。', kind: 'inference', evidence: [{ sourceCandidateId: 'annual-report', location: 'paragraph:1' }] }] }
+  assert.deepEqual(findKnownCompetitorDenials({ sections: [{ id: 'competition', markdown: '其他业务没有具名竞品，仍需补充同口径材料。' }], methodResults: [falseLabel] }), [], 'a discourse label is not a named competitor')
 })
 
 test('cross-method competitor detection strips Chinese narrative connectives and allows a scoped comparable-data gap', () => {
@@ -984,7 +989,8 @@ test('R161 keeps employee-plan terms and execution rows bound to their named pla
     {sourceCandidateId:'annual',location:'paragraph:3061',text:'考核要求为考核期内每年营业收入同比上一年度增长不低于10%。'}
   ]
   const interimExcerpts=[
-    {sourceCandidateId:'interim',location:'paragraph:1145',text:'2024年员工持股计划：'},
+    {sourceCandidateId:'interim',location:'paragraph:1139',text:'员工的范围 员工人数 持有的股票总数'},
+    {sourceCandidateId:'interim',location:'paragraph:1140',text:'（股） 变更情况 占上市公司股本'},
     {sourceCandidateId:'interim',location:'paragraph:1154',text:'2025年员工持股计划：'},
     {sourceCandidateId:'interim',location:'paragraph:1159',text:'21,417 22,501,479 无 0.2468%'}
   ]
@@ -994,10 +1000,10 @@ test('R161 keeps employee-plan terms and execution rows bound to their named pla
   ]} as unknown as CompanyResearchMethodResult
   const sections=[{id:'management-capital-allocation',sourceCandidateIds:[] as string[],markdown:'2025年员工持股计划设定营业收入增长考核并分期解锁，半年度报告披露计划参与规模和持股数据；收入条件不能替代利润、现金回报或股东价值检验。'}]
   const fixed=reconcileCompanyEmployeePlanEvidence({sections,methodResults:[method]})[0]!
-  assert.match(fixed.markdown,/2026年半年报将2024年计划与2025年计划分列/)
-  assert.match(fixed.markdown,/21,417与22,501,479股这一行明确位于2025年计划项下/)
+  assert.match(fixed.markdown,/2026年半年报在“2025年员工持股计划”项下列示员工人数21,417人、持有股票总数22,501,479股/)
+  assert.match(fixed.markdown,/员工人数不等于实际认购人数/)
   assert.doesNotMatch(fixed.markdown,/计划参与规模和持股数据/)
-  for(const ref of ['annual@paragraph:3060','annual@paragraph:3061','interim@paragraph:1145','interim@paragraph:1154','interim@paragraph:1159'])assert.ok(fixed.markdown.includes(`[${ref}]`))
+  for(const ref of ['annual@paragraph:3060','annual@paragraph:3061','interim@paragraph:1139','interim@paragraph:1140','interim@paragraph:1154','interim@paragraph:1159'])assert.ok(fixed.markdown.includes(`[${ref}]`))
 })
 
 test('employee plan reconciliation scopes an annual no-plan statement to its period and preserves the later plan',()=>{
@@ -1719,6 +1725,13 @@ test('R174 competitor carryover selects the located peer rather than the target 
   const repairedBroadIndustry = reconcileCompanyCompetitorEvidence({sections:[{id:'industry-exposure',markdown:broadIndustryDenial,sourceCandidateIds:[]}],methodResults:[method]})
   assert.match(repairedBroadIndustry[0]!.markdown,/竞争方法已核实的具名候选为：吉利银河E8/)
   assert.doesNotMatch(repairedBroadIndustry[0]!.markdown,/无具名汽车或电子制造竞争者/)
+
+  const comparisonOnlyFinding={...method,findings:[{text:'事实：吉利银河E8官方资料披露800V平台、SiC油冷电驱及充电相关宣传，构成纯电乘用车补能路线的具名对照；并无统一测试对比。',kind:'fact' as const,evidence:[{sourceCandidateId:'public-web-peer',location:'paragraph:2'}]}]}
+  const scopedIndustryGap='未提供具名竞争者及可比产品路线、地区和客户层级资料，不能作竞争排名或份额判断。'
+  const scopedIndustryFixed=reconcileCompanyCompetitorEvidence({sections:[{id:'industry-exposure',markdown:scopedIndustryGap,sourceCandidateIds:[]}],methodResults:[comparisonOnlyFinding]})[0]!.markdown
+  assert.match(scopedIndustryFixed,/吉利银河E8/)
+  assert.doesNotMatch(scopedIndustryFixed,/未提供具名竞争者及可比产品路线/)
+  assert.match(scopedIndustryFixed,/客户重叠|同口径|竞争关系/)
 })
 test('R174 competitor carryover rewrites a product-table denial without consuming the next cell delimiter', () => {
   const method: CompanyResearchMethodResult = {

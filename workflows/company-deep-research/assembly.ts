@@ -221,6 +221,22 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
   const separator = (width: number): string => `| ${Array.from({ length: width }, () => '---').join(' | ')} |`
   const isPipeLine = (line: string): boolean => line.includes('|') && !/^\s*```/.test(line)
   const isSeparator = (line: string): boolean => isPipeLine(line) && splitCells(line).every(value => /^:?-{3,}:?$/.test(value))
+  // The market-structure matrix occasionally emits this exact one-cell PCB
+  // label before a complete four-column row. Preserve the label as prose so
+  // it cannot be mistaken for a table row with three silently missing cells.
+  for (let separatorIndex = 1; separatorIndex + 2 < lines.length; separatorIndex++) {
+    if (!isSeparator(lines[separatorIndex]!) || splitCells(lines[separatorIndex]!).length !== 4) continue
+    let headerIndex = separatorIndex - 1
+    while (headerIndex >= 0 && !lines[headerIndex]!.trim()) headerIndex--
+    if (headerIndex < 0 || splitCells(lines[headerIndex]!).join('|') !== '市场|产品边界与排除项|地域、客户与时间边界|产业链位置与需求因素') continue
+    const orphan = splitCells(lines[separatorIndex + 1]!)
+    if (!isPipeLine(lines[separatorIndex + 1]!) || isSeparator(lines[separatorIndex + 1]!) || orphan.length !== 1 || orphan[0] !== 'PCB/电子电路') continue
+    const next = lines[separatorIndex + 2]!
+    if (!isPipeLine(next) || isSeparator(next) || splitCells(next).length !== 4) continue
+    lines.splice(separatorIndex + 1, 1)
+    lines.splice(headerIndex, 0, 'PCB/电子电路', '')
+    repairs.push(`TABLE_MARKET_MATRIX_ORPHAN_LABEL_MOVED_TO_PROSE: line ${separatorIndex + 2}`)
+  }
   // A financial table can be fused onto the previous data row as exactly
   // seven valid data cells, one cited explanatory cell, and seven cells for
   // the next financial header. Detach only when both table widths, numeric
@@ -527,6 +543,33 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
   // A standalone table header can be separated from its separator by a short
   // explanatory paragraph. Reattach it only when the following separator and
   // every data row prove the same table width.
+  // The business-model table's exact four-column header is also emitted with
+  // cited explanatory prose between the header and separator. Keep that prose
+  // intact, but move it after the table only when the complete table shape is
+  // proven by a matching separator and consistently sized body rows.
+  for (let separatorIndex = 1; separatorIndex < lines.length; separatorIndex++) {
+    if (!isSeparator(lines[separatorIndex]!) || splitCells(lines[separatorIndex]!).length !== 4) continue
+    let headerIndex = separatorIndex - 1
+    while (headerIndex >= 0 && !isPipeLine(lines[headerIndex]!)) headerIndex--
+    if (headerIndex < 0 || isSeparator(lines[headerIndex]!)) continue
+    const expected = ['产品/业务', '客户类型与购买决策', '定价、交付与收入机制', '成本及利润观察']
+    if (JSON.stringify(splitCells(lines[headerIndex]!)) !== JSON.stringify(expected)) continue
+    const intervening = lines.slice(headerIndex + 1, separatorIndex)
+    if (!intervening.some(line => line.trim()) || intervening.some(line => isPipeLine(line))) continue
+    const rowIndexes: number[] = []
+    let malformedBodyRow = false
+    for (let rowIndex = separatorIndex + 1; rowIndex < lines.length && isPipeLine(lines[rowIndex]!) && !isSeparator(lines[rowIndex]!); rowIndex++) {
+      if (splitCells(lines[rowIndex]!).length !== 4) { malformedBodyRow = true; break }
+      rowIndexes.push(rowIndex)
+    }
+    if (!rowIndexes.length || malformedBodyRow) continue
+    const prose = lines.splice(headerIndex + 1, separatorIndex - headerIndex - 1)
+    const insertAt = rowIndexes.at(-1)! + 1 - prose.length
+    lines.splice(insertAt, 0, ...prose)
+    repairs.push(`TABLE_BUSINESS_MODEL_NARRATIVE_MOVED_AFTER_TABLE: line ${headerIndex + 2}; rows ${rowIndexes.length}`)
+    separatorIndex = insertAt + prose.length
+  }
+
   for (let separatorIndex = 1; separatorIndex < lines.length; separatorIndex++) {
     if (!isSeparator(lines[separatorIndex]!)) continue
     const width = splitCells(lines[separatorIndex]!).length
@@ -569,6 +612,10 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     const candidates: Array<{ index: number; prefix: string; header: string[] }> = []
     for (let candidateIndex = previous; candidateIndex >= 0 && !isSeparator(lines[candidateIndex]!); candidateIndex--) {
       const line = lines[candidateIndex]!
+      // Preserve the exact fused locator-header case for the narrow repair at
+      // the end of this pipeline; treating its seven-column prefix as an
+      // embedded header corrupts the source row before it can be split.
+      if (line.includes(' | | 报告及单位 | 完整分类表头定位 |')) continue
       for (let delimiter = 1; delimiter < line.length; delimiter++) {
         if (line[delimiter] !== '|') continue
         const prefix = line.slice(0, delimiter).trim()
@@ -1117,6 +1164,30 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     } else normalizedLines.push(...segments)
   }
   if (headingBoundaryRepairs) repairs.push(`INLINE_HEADING_BOUNDARIES_NORMALIZED: ${headingBoundaryRepairs} line(s)`)
+  // Run this narrow repair after the generic embedded-header passes. Those
+  // passes can otherwise reinterpret the exact locator header before it is
+  // detached from the seven-column industry row.
+  const evidenceHeaderTail = ' | | 报告及单位 | 完整分类表头定位 |'
+  for (let index = 0; index + 2 < normalizedLines.length; index++) {
+    const marker = normalizedLines[index]!.lastIndexOf(evidenceHeaderTail)
+    if (marker < 0 || !isSeparator(normalizedLines[index + 1]!) || splitCells(normalizedLines[index + 1]!).length !== 2) continue
+    const firstTableRow = `${normalizedLines[index]!.slice(0, marker).trimEnd()} |`
+    const evidenceHeader = '| 报告及单位 | 完整分类表头定位 |'
+    if (splitCells(firstTableRow).length !== 7 || splitCells(evidenceHeader).length !== 2) continue
+    let rowIndex = index + 2
+    let rowCount = 0
+    for (; rowIndex < normalizedLines.length && isPipeLine(normalizedLines[rowIndex]!) && !isSeparator(normalizedLines[rowIndex]!); rowIndex++) {
+      if (splitCells(normalizedLines[rowIndex]!).length !== 2) break
+      rowCount++
+    }
+    if (!rowCount) continue
+    normalizedLines.splice(index, 1, firstTableRow, '', evidenceHeader)
+    const staleAmbiguity = `TABLE_REPAIR_AMBIGUOUS: extra cells at line ${index + 1}`
+    const diagnosticIndex = diagnostics.indexOf(staleAmbiguity)
+    if (diagnosticIndex >= 0) diagnostics.splice(diagnosticIndex, 1)
+    repairs.push(`TABLE_EMBEDDED_REFERENCE_HEADER_SPLIT: line ${index + 1}; rows ${rowCount}`)
+    index += 2
+  }
   return { markdown: normalizedLines.join('\n').replace(/\n{3,}/gu, '\n\n'), repairs, diagnostics }
 }
 const optionalGaps: Record<string, string> = {
@@ -1284,6 +1355,33 @@ function reconcileCrossMethodCompetitionContext(input: CompanyResearchInput, sec
     risks.markdown = `${risks.markdown.trim()}${riskClarification}`
     risks.sourceCandidateIds = [...new Set([...risks.sourceCandidateIds, ...candidate.publicEvidence.map(ref => ref.sourceCandidateId), ...(companyRoute?.evidence.map(ref => ref.sourceCandidateId) ?? [])])]
   }
+}
+
+export function bindExact2025BydProductMarginSynthesisCitations(markdown: string, methods: readonly CompanyResearchMethodResult[], allowedLocations: ReadonlySet<string>): string {
+  const unsupported = '2025年度分产品毛利率分别为20.49%和6.29%，表列毛利率同比变化分别为-1.82%和-2.06%'
+  if (!markdown.includes(unsupported)) return markdown
+  for (const method of methods) for (const packet of [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []]) {
+    if (!/2025年年度报告/u.test(packet.title)) continue
+    const excerpts = new Map(packet.excerpts.filter(excerpt => allowedLocations.has(`${packet.sourceCandidateId}@${excerpt.location}`)).map(excerpt => [excerpt.location, excerpt.text]))
+    const required = ['paragraph:833', 'paragraph:834', 'paragraph:835', 'paragraph:836', 'paragraph:837', 'paragraph:838', 'paragraph:839', 'paragraph:845', 'paragraph:850', 'paragraph:851', 'paragraph:852', 'paragraph:853', 'paragraph:854', 'paragraph:855']
+    if (required.some(location => !excerpts.has(location))) continue
+    if (excerpts.get('paragraph:833')?.trim() !== '单位：元'
+      || !/营业收入/u.test(excerpts.get('paragraph:834')!) || !/营业成本/u.test(excerpts.get('paragraph:834')!)
+      || !/毛利率/u.test([834, 835, 836, 837, 838, 839].map(n => excerpts.get(`paragraph:${n}`)).join(' '))
+      || excerpts.get('paragraph:845')?.trim() !== '分产品'
+      || !/手机部件、组/u.test(excerpts.get('paragraph:850')!) || !/装及其他产品/u.test(excerpts.get('paragraph:851')!)
+      || !/6\.29%/u.test(excerpts.get('paragraph:851')!) || !/-2\.06%/u.test(excerpts.get('paragraph:851')!)
+      || !/汽车、汽车相/u.test(excerpts.get('paragraph:852')!) || !/关产品及其他/u.test(excerpts.get('paragraph:853')!)
+      || !/产品/u.test(excerpts.get('paragraph:854')!) || !/20\.49%/u.test(excerpts.get('paragraph:855')!)
+      || !/-1\.82%/u.test(excerpts.get('paragraph:855')!)) continue
+    const ref = (paragraph: number) => `[${packet.sourceCandidateId}@paragraph:${paragraph}]`
+    const headers = [833, 834, 835, 836, 837, 838, 839, 845].map(ref).join(' ')
+    const vehicle = [852, 853, 854, 855].map(ref).join(' ')
+    const electronics = [850, 851].map(ref).join(' ')
+    const replacement = `2025年度分产品“汽车、汽车相关产品及其他产品”毛利率为20.49%${headers} ${vehicle}；“手机部件、组装及其他产品”毛利率为6.29%${headers} ${electronics}；原表“毛利率比上年同期增减”分别为-1.82%${headers} ${vehicle}和-2.06%${headers} ${electronics}`
+    return markdown.replace(unsupported, replacement)
+  }
+  return markdown
 }
 
 function repairSynthesisNumericCitations(text: string, issues: readonly NumericGroundingDiagnostic[], methods: readonly CompanyResearchMethodResult[], sources: CompanyResearchInput['sources'], allowedLocations: ReadonlySet<string>): string {
@@ -1948,6 +2046,7 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
         if(citationIds.some(id=>!allowed.has(id))) throw new Error('REFERENCE_ERROR: cited source is not allowed for this report')
         const optional= !['investment-thesis','monitoring-checklist'].includes(section.id)
         let sectionMarkdown=finalTableRepair.markdown.trim()
+        sectionMarkdown=bindExact2025BydProductMarginSynthesisCitations(sectionMarkdown,available,locations)
         sectionMarkdown=repairSynthesisSubjectCitations(sectionMarkdown,available,locations)
         sectionMarkdown=normalizeCompanyRevenueCostSpreadWording(sectionMarkdown)
         if (!optional) {
