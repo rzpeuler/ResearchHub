@@ -693,6 +693,16 @@ test('R147 reattaches a displaced industry-scale header to its uniquely matching
   assert.deepEqual([...repaired.markdown.matchAll(/\[[^\]]+@paragraph:\d+\]/g)].map(match => match[0]), before)
 })
 
+test('R148 restores the exact industry citation table header when synthesis leaves a prose header above a separator',()=>{
+  const fixture=`适用报告与期间 完整表头（单位：元；末列原单位为%） 分类标签及匹配数据行\n|---|---|---|\n| 2025年年度报告，2025年度 | 单位与表头定位 | 分类标签与数据行定位 |`
+  const repaired=repairCompanyResearchMarkdownTables(fixture)
+  assert.ok(repaired.repairs.some(item=>item.startsWith('TABLE_INDUSTRY_EVIDENCE_HEADER_RESTORED')))
+  assert.match(repaired.markdown,/\| 适用报告与期间 \| 完整表头（单位：元；末列原单位为%） \| 分类标签及匹配数据行 \|\n\|---\|---\|---\|/)
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown),[])
+  const unknown=repairCompanyResearchMarkdownTables(`Unknown header\n|---|---|---|\n| 2025年年度报告 | A | B |`)
+  assert.ok(validateCompanyResearchMarkdownTables(unknown.markdown).length>0)
+})
+
 test('same-width industry forecast header is moved past narrative to the table under its heading', () => {
   const fixture = `| 市场/分类 | 产品边界与产业链位置 | 地区、客户与期间边界 | 证据及限制 |
 |---|---|---|---|

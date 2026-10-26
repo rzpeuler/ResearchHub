@@ -1164,6 +1164,19 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     } else normalizedLines.push(...segments)
   }
   if (headingBoundaryRepairs) repairs.push(`INLINE_HEADING_BOUNDARIES_NORMALIZED: ${headingBoundaryRepairs} line(s)`)
+  // A synthesis may serialize the exact industry-citation table header as
+  // plain text while retaining its three-column Markdown separator and rows.
+  // Restore only this fixed header when the following rows carry annual
+  // report-period labels; unknown header/separator pairs remain fail-closed.
+  const industryEvidenceHeader = '适用报告与期间 完整表头（单位：元；末列原单位为%） 分类标签及匹配数据行'
+  for (let index = 0; index + 2 < normalizedLines.length; index++) {
+    if (normalizedLines[index]!.trim() !== industryEvidenceHeader
+      || !isSeparator(normalizedLines[index + 1]!)
+      || splitCells(normalizedLines[index + 1]!).length !== 3
+      || !/^\|\s*20\d{2}年年度报告/u.test(normalizedLines[index + 2]!)) continue
+    normalizedLines[index] = '| 适用报告与期间 | 完整表头（单位：元；末列原单位为%） | 分类标签及匹配数据行 |'
+    repairs.push(`TABLE_INDUSTRY_EVIDENCE_HEADER_RESTORED: line ${index + 1}`)
+  }
   // Run this narrow repair after the generic embedded-header passes. Those
   // passes can otherwise reinterpret the exact locator header before it is
   // detached from the seven-column industry row.
