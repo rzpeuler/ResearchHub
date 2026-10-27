@@ -11,6 +11,7 @@
 - Publication date and retrieval-time content hash do not, by themselves, prove that a returned numeric value was available on that publication date. The estimate adapters currently retain a Tonghuashun institution row or EastMoney report record and project point values, while the enclosing acquisition source omits verified value-version evidence (`plugins/research-acquisition/earnings-expectations-ths.ts`, `earnings-expectation-source-eastmoney.ts`, `earnings-data.ts`). A source adapter must establish a stable report/version basis before marking a point verified.
 - Scenario valuation already has deterministic arithmetic and monotonicity checks (`skills/valuation/financials.ts`, `skills/valuation/contracts.ts`). It does not prove the assumptions: the current plan contract accepts growth rates and target multiples with allowed source IDs, while the model design validator proves shape/reference membership, not economic grounding (`skills/valuation/skill.ts`).
 - The current live reports have no sourced target-year sales, margin, or cash-flow driver plan, and no qualified peer multiple set. The existing source probe has PIT-safe current quotes and filing-backed FY2025 EPS for both companies. The reports remain blocked on Bull/Base/Bear and Variant Perception; see `docs/engineering/reports/2026-10-27-company-research-p0-19-gate1.md` and `tests/validation/evidence/company-research-p0-19-gate1-probes.json`.
+- A read-only inspection of four existing EastMoney candidate PDFs matched each PDF to its report candidate and forecast observation. Three report covers explicitly identify diluted EPS (two BYD, one Dongshan); a second Dongshan report does not state its EPS basis. Printed report dates precede the provider candidate's `publishedAt` by one to five days. See `tests/validation/evidence/company-research-p0-19-estimate-pdf-version-probes.json`. This establishes a plausible proof path for those exact observations, but the runtime adapters do not yet retain that document-level binding, so current estimate points remain unqualified.
 
 ## Proposed smallest interface change
 
@@ -41,7 +42,7 @@ The type belongs at the estimate observation boundary, not only on the enclosing
 3. `availableAt` is supported by the source's publication/version evidence, is no later than the report `asOf`, and is retained independently from `retrievedAt`.
 4. Source correction or replacement is detectable; ambiguous or mutable current-value rows remain `UNVERIFIED`.
 
-The first implementation must test whether the existing EastMoney report identifier/document and Tonghuashun dated institution record meet these rules. If either route cannot prove a point's version, keep that point unqualified. Do not add a provider or paid source under this proposal.
+The EastMoney feasibility probe found matched, dateable report documents for selected points, but runtime point binding and correction detection are not implemented. The first implementation must preserve that binding and test correction behavior; it must also test whether Tonghuashun dated institution records meet these rules. If a route cannot prove a point's version, keep that point unqualified. Do not add a provider or paid source under this proposal.
 
 ## Bounded scenario method using existing inputs
 
