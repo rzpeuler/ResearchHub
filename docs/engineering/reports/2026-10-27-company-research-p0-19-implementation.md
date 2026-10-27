@@ -204,3 +204,12 @@ P0-19 remains incomplete: both live reports are blocked, and independent semanti
 - Validation: `node --import tsx --test tests/skills/company-methods.test.ts` passed 143/143; `node --import tsx --test tests/workflows/company-research-assembly.test.ts` passed 100/100; `npm run typecheck` passed; `git diff --check` passed. These are focused regression results; a fresh root-Runtime BYD/Dongshan pair is still required to verify the updates in generated reports.
 
 P0-19 remains incomplete pending fresh live runs, all 19 checks, independent semantic acceptance, sourced scenario/forecast-vintage evidence, and Hermes comparison.
+
+### Post-`502a5c8` root-Runtime live pair (2026-10-27)
+
+- BYD run `a5db8105-1fae-479b-b7ac-a0699c0105bd` and Dongshan run `ec43cec3-da90-4d8b-bf28-1738ada9da89` used the root Runtime/API at `502a5c82224eeef80b9753eba0df59a7ae8bd79f`, saved runtime configuration, disposable Knowledge Bases, and read-only persistence (`writeKnowledge=false`). Both reports were generated and ended `blocked`.
+- BYD passed 14/19 core section checks. `company_risk_analysis` and `risks` passed, including source-bound goodwill evidence; the remaining blockers include `business_driver_analysis` failure and sourced scenario / forecast-vintage gaps. Dongshan passed 17/19: the displaced business-model header and incomplete industry table defects no longer appear as failed section checks or `TABLE_ERROR`; `bull-base-bear` and `variant-perception` remain blocked by evidence and unverified value-version gaps.
+- Both runs recorded `reviewAttempts=0` and `reviewRounds=0`; independent semantic acceptance remains outstanding. The three tracked integrity files in each disposable Knowledge Base have identical before/after SHA-256 values.
+- Run IDs, all 19 section outcomes, ten method states/attempt counts, quality issues, review counters, and KB hashes are recorded in `tests/validation/evidence/company-research-p0-19-post-502a5c8-live-pair.json`. Raw reports, sidecars, provider bodies, runtime logs, and temporary Knowledge data remain local.
+
+P0-19 remains incomplete: both live reports are blocked, and independent semantic acceptance, sourced scenario/forecast-vintage evidence, and Hermes comparison remain outstanding.
