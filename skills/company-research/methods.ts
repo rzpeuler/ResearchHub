@@ -12,9 +12,17 @@ type NormalizedResearchSource = Parameters<typeof selectCompanyEvidence>[0][numb
 function businessDriverSegmentClassificationIssue(markdown: string, packets: readonly CompanyEvidencePacket[], sources: readonly NormalizedResearchSource[]): string | undefined {
   const sourceById = new Map(sources.map(source => [source.candidate.candidateId, source]))
   for (const line of markdown.split(/\r?\n/)) {
+    const firstNumber = line.search(/\d/u)
+    if (firstNumber < 0 || !/营业收入|收入|占比|贡献/u.test(line)) continue
+    // A paragraph may state a regional row and later mention a product metric
+    // as a comparison or monitoring item. That later term must not relabel the
+    // earlier row. Keep the narrower industry/product guard focused on an
+    // actual industry/product table claim.
+    const classificationPrefix = line.slice(0, firstNumber)
+    if (/分地区/u.test(classificationPrefix) && !/分(?:行业|产品)/u.test(classificationPrefix)) continue
     const asksIndustry = /分行业/u.test(line)
     const asksProduct = /分产品/u.test(line)
-    if (asksIndustry === asksProduct || !/营业收入|收入|占比|贡献/u.test(line) || !/\d/u.test(line)) continue
+    if (asksIndustry === asksProduct) continue
     const requested = asksIndustry ? '分行业' : '分产品'
     const refs = [...line.matchAll(/\[([^\]@\s]+)@(paragraph:[1-9]\d*)\]/gu)].map(match => ({ sourceId: match[1]!, location: match[2]! }))
     for (const packet of packets) {
@@ -1613,7 +1621,7 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
       for (const item of [...parsed.sections, { id: 'method-summary', markdown: parsed.markdown }, { id: 'method-answer', markdown: parsed.answer }, ...attributableFindings]) {
         if (input.skillId === 'business_driver_analysis') {
           const classificationIssue = businessDriverSegmentClassificationIssue(item.markdown, packets, input.sources)
-          if (classificationIssue) throw new Error(`${item.id}: ${classificationIssue}`)
+          if (classificationIssue) throw new Error(`NUMERIC: item=${item.id}: ${classificationIssue.replace(/^NUMERIC:\s*/u, '')}`)
         }
         const numeric = validateCompanyNumericGrounding({ markdown: item.markdown, sources: input.sources, evidenceContexts: packets, preparedAnalysis: input.preparedAnalysis, trustedText: [input.company.symbol, input.asOf, ...companyCitedSplitDateText(item.markdown, packets), ...companyPreparedFinancialDateText(input.preparedAnalysis)] })
         for (const issue of numeric.diagnostics) if (numericRepairIssues.length < 12) numericRepairIssues.push({ id: item.id, token: issue.token.slice(0, 24), context: issue.context.replace(/\s+/g, ' ').slice(0, 32) })

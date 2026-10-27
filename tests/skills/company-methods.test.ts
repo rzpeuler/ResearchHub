@@ -826,7 +826,33 @@ test('business-driver classification ignores a pure two-year header but still va
     skillId: 'business_driver_analysis', maxAttempts: 1, reasoningExecutor: executor(async () => uncitedMarker),
   })
   assert.equal(rejected.status, 'failed')
-  assert.ok(rejected.diagnostics.some(diagnostic => diagnostic.message.includes('classification marker') && diagnostic.message.includes('markerCited=false')), JSON.stringify(rejected.diagnostics))
+  assert.ok(rejected.diagnostics.some(diagnostic => diagnostic.code === 'NUMERIC_GROUNDING_ERROR' && diagnostic.message.includes('classification marker') && diagnostic.message.includes('markerCited=false') && diagnostic.message.includes('item=revenue-profit-drivers')), JSON.stringify(rejected.diagnostics))
+})
+
+test('business-driver geography row is not relabeled by a later product-monitoring reference in the same paragraph', async () => {
+  const id = 'geography-row-product-monitoring-reference'
+  const lines = ['单位：元', '2025 年 2024 年', '分地区', '境外收入 100 20% 50 10%', '分产品', '汽车相关产品 400 80% 450 90%']
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: id }, title: '2025年年度报告', content: lines.join('\n') }
+  const citation = (paragraph: number) => `[${id}@paragraph:${paragraph}]`
+  const rowEvidence = `${citation(3)} ${citation(4)}`
+  const regionalClaim = `半年报分地区表列示境外收入100元、占比20%，上年为50元、占比10%。${rowEvidence}`
+  const mixedParagraph = `半年报分地区表列示境外收入100元、占比20%，上年为50元、占比10%；后续可观察汽车相关分产品收入是否同步变化。${rowEvidence}`
+  const result = await executeCompanyResearchMethod({
+    company: { symbol: '002594', name: '比亚迪', exchange: 'SZ' }, asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: [id],
+    skillId: 'business_driver_analysis', maxAttempts: 1,
+    reasoningExecutor: executor(async () => ({
+      status: 'complete', answer: `地区趋势及后续产品观察项仍需分开解释。${citation(4)}`,
+      markdown: `地区趋势及后续产品观察项仍需分开解释。${citation(4)}`,
+      sections: [
+        { id: 'revenue-profit-drivers', markdown: regionalClaim },
+        { id: 'growth-drivers', markdown: mixedParagraph },
+        { id: 'catalysts', markdown: `后续分别核对地区收入与汽车相关产品收入。${citation(4)}` },
+      ],
+      findings: [{ text: '事实：地区收入为100元、占比20%；后续跟踪汽车相关产品收入。', kind: 'fact', evidence: [{ sourceCandidateId: id, location: 'paragraph:3' }, { sourceCandidateId: id, location: 'paragraph:4' }] }],
+      limitations: [], risks: [],
+    })),
+  })
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
 })
 
 test('single-value industry findings bind distinct exact rows, including a split transport label', async () => {
