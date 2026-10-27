@@ -29,6 +29,16 @@
           "pointInTimeSafe": false,
           "reason": "Aggregator historical numeric revision is not identified"
         },
+        "filingBackedFy2025BasicEps": {
+          "status": "AVAILABLE",
+          "value": 3.58,
+          "unit": "CNY/share",
+          "sourceCandidateId": "official-f7c8d23d2829a5e8",
+          "location": "paragraph:231",
+          "filingSection": "主要会计数据和财务指标",
+          "publicationDate": "2026-03-27",
+          "directlyDisclosed": true
+        },
         "fy2025Bvps": {
           "status": "AVAILABLE",
           "periodEnd": "2025-12-31",
@@ -56,8 +66,11 @@
         "provider": "Tonghuashun / THS",
         "eps": { "status": "AVAILABLE", "pointInTimeSafe": true, "estimatePointCount": 10, "publicationDateRange": ["2026-09-10", "2026-10-17"] },
         "netProfit": { "status": "AVAILABLE", "pointInTimeSafe": true, "estimatePointCount": 10, "publicationDateRange": ["2026-09-10", "2026-10-17"] },
-        "consensusCoverageQualified": false,
-        "reason": "Returned points were not validated as a coverage-defined, deduplicated consensus snapshot"
+        "consensusCoverageQualified": true,
+        "consensusSnapshotsBuilt": 2,
+        "selectedInstitutionsPerMetric": 10,
+        "unitCountPerMetric": 1,
+        "reason": "Existing consensus builder selected the latest point-in-time estimate per institution; both EPS and net-profit snapshots met the minimum count of two with one common unit"
       },
       "issuerGuidance": {
         "status": "NOT_ESTABLISHED",
@@ -87,6 +100,16 @@
           "pointInTimeSafe": false,
           "reason": "Aggregator historical numeric revision is not identified"
         },
+        "filingBackedFy2025BasicEps": {
+          "status": "AVAILABLE",
+          "value": 0.79,
+          "unit": "CNY/share",
+          "sourceCandidateId": "official-39e591fa149e4543",
+          "location": "paragraph:233",
+          "filingSection": "主要会计数据和财务指标",
+          "publicationDate": "2026-04-21",
+          "directlyDisclosed": true
+        },
         "fy2025Bvps": {
           "status": "AVAILABLE",
           "periodEnd": "2025-12-31",
@@ -114,8 +137,11 @@
         "provider": "Tonghuashun / THS",
         "eps": { "status": "AVAILABLE", "pointInTimeSafe": true, "estimatePointCount": 6, "publicationDateRange": ["2026-04-27", "2026-08-28"] },
         "netProfit": { "status": "AVAILABLE", "pointInTimeSafe": true, "estimatePointCount": 6, "publicationDateRange": ["2026-04-27", "2026-08-28"] },
-        "consensusCoverageQualified": false,
-        "reason": "Returned points were not validated as a coverage-defined, deduplicated consensus snapshot"
+        "consensusCoverageQualified": true,
+        "consensusSnapshotsBuilt": 2,
+        "selectedInstitutionsPerMetric": 6,
+        "unitCountPerMetric": 1,
+        "reason": "Existing consensus builder selected the latest point-in-time estimate per institution; both EPS and net-profit snapshots met the minimum count of two with one common unit"
       },
       "issuerGuidance": {
         "status": "NOT_ESTABLISHED",
