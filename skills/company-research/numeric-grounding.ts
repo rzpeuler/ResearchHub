@@ -571,6 +571,12 @@ export function validateCompanyNumericGrounding(input: NumericGroundingInput): {
       const contextualCurrencyUnit = unitText ? /万亿|亿元|百万元|万元|千元|元/.exec(unitText)?.[0] : undefined
       const currencyScale = remunerationRow ? undefined : localUnit ? monetaryScales[localUnit] : contextualCurrencyUnit ? monetaryScales[contextualCurrencyUnit] : citedCustomerSupplierUnit ? monetaryScales[citedCustomerSupplierUnit] : globalScale
       const rawTokens = numericTokens(text).filter((token) => !token.technologyUnit)
+      // Some official PDF rows place the unit in the metric label rather than
+      // after each value, e.g. "研发投入占营业收入比例（%） 4.56 23.71".
+      // Bind those bare row values to percent only when the same cited row
+      // explicitly declares a percentage unit. Explicit "个百分点" values
+      // remain distinct and are not reclassified.
+      const declaredPercentMetric = /(?:比例|占比|比重|毛利率|净利率|资产负债率|负债率|收益率|增长率|变动率|周转率)\s*[（(]\s*[%％]\s*[）)]/.exec(text)
       const tokens = rawTokens.map(token => {
         const isReportingYear = !token.magnitude && /(?:19|20)\d{2}\s*(?:年|年度)/.test(text.slice(token.index, token.index + token.token.length + 4))
         const afterToken = text.slice(token.index + token.token.length).trimStart()
@@ -581,7 +587,10 @@ export function validateCompanyNumericGrounding(input: NumericGroundingInput): {
         }) && /^(?:乘用车|商用车)\s+[\d,，]+\s+[\d,，]+\s+[\d,，]+\s+[\d,，]+(?:\.\d+)?\s*$/.test(text)
         const vehicleAmountIndex = vehicleSalesHeader ? rawTokens.at(-1)?.index : undefined
         const vehicleCountCell = vehicleSalesHeader && token.index !== vehicleAmountIndex
-        return { ...token, ...(token.currencyScale === undefined && currencyScale !== undefined && !token.rateUnit && !isReportingYear && !isExplicitCount && !vehicleCountCell ? {currencyScale, value: token.rawValue * currencyScale} : {}), sourceCandidateId: candidateId }
+        const declaredRateUnit = !token.rateUnit && declaredPercentMetric && token.index > declaredPercentMetric.index
+          ? 'percent' as const
+          : undefined
+        return { ...token, ...(declaredRateUnit ? { rateUnit: declaredRateUnit } : {}), ...(token.currencyScale === undefined && currencyScale !== undefined && !token.rateUnit && !isReportingYear && !isExplicitCount && !vehicleCountCell ? {currencyScale, value: token.rawValue * currencyScale} : {}), sourceCandidateId: candidateId }
       })
       // A margin-change column can report its change as a raw percent cell.
       // Preserve the source's displayed unit; do not silently reinterpret it

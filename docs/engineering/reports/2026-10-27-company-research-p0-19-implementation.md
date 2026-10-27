@@ -28,6 +28,10 @@ Commands run from the repository root:
 | `npm run client:build` | Passed; Vite reports the existing 743 kB main JS chunk size warning |
 | `git diff --check` | Passed |
 
+### Numeric unit-label regression (2026-10-27)
+
+The cited official-row parser now binds bare values to `%` when the same row's metric label explicitly declares `(%)`, while keeping `percentage_points` distinct. A focused synthetic filing-row test covers both the accepted percentage claim and a rejected percentage-point substitution. `node --import tsx --test tests/skills/company-numeric-grounding.test.ts` passed 115/115 tests. This fixture verifies numeric grounding behavior; it is not additional live-provider or report-acceptance evidence.
+
 The tests use labeled synthetic fixtures for resolver/provider and filing rows. They do not constitute live-provider or report acceptance evidence. Integration coverage confirms a run without quantitative resolver inputs remains `blocked`, leaves the three Workflow-owned sections as explicit gaps, performs only the existing single synthesis call, skips independent review, and leaves the Knowledge tree unchanged.
 
 ## Live read-only acceptance attempt (2026-10-27)

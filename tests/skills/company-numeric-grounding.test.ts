@@ -26,6 +26,26 @@ test('prepared financial growth percentages remain grounded when a cited structu
   assert.equal(validateCompanyNumericGrounding({ markdown: formula.replace('15.5476%', '99.99%'), ...options }).status, 'unsupported_numbers')
 })
 
+test('numeric grounding binds bare row values to a declared percent unit and keeps percentage points distinct', () => {
+  const candidateId = 'official-rd-ratio'
+  const filing = {
+    ...source,
+    candidate: { ...source.candidate, candidateId },
+    title: '年度报告',
+    content: '研发投入占营业收入比例（%） 4.56 23.71',
+  }
+  const valid = `本期研发投入占营业收入比例为4.56%，上期为23.71%。[${candidateId}@paragraph:1]`
+  const grounded = validateCompanyNumericGrounding({ markdown: valid, sources: [filing] })
+  assert.equal(grounded.status, 'grounded', JSON.stringify(grounded.diagnostics))
+
+  const wrongUnit = valid.replace('4.56%', '4.56个百分点')
+  assert.equal(
+    validateCompanyNumericGrounding({ markdown: wrongUnit, sources: [filing] }).status,
+    'unsupported_numbers',
+    'a source row that declares percent does not support percentage-point wording',
+  )
+})
+
 test('a balance-sheet change is grounded only from its exact cited row, current/prior header, and declared unit', () => {
   const candidateId = 'official-balance-sheet'
   const rows = new Map<number, string>([
