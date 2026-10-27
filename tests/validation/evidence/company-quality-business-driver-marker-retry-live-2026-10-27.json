@@ -1,0 +1,56 @@
+{
+  "taskId": "RHL-CQR-P0-19-CHANGE-001",
+  "executionClass": "real Runtime/API and configured Pi model; read-only; no fixture providers",
+  "model": {
+    "provider": "openai-codex",
+    "modelId": "gpt-6-luna"
+  },
+  "company": {
+    "name": "Dongshan Precision",
+    "symbol": "002384"
+  },
+  "sourceRevision": "c6b41ad",
+  "runId": "c861cc63-4599-411e-9ddf-18f4d3478587",
+  "reportId": "company-research-002384-c861cc63-4599-411e-9ddf-18f4d3478587",
+  "result": {
+    "status": "blocked",
+    "coreCoverage": {
+      "passed": 17,
+      "required": 19
+    },
+    "businessDriverMethod": "complete",
+    "revenueProfitDriversSection": "passed",
+    "findingLocators": [
+      "official-296fff2b2889c26f@paragraph:773",
+      "official-296fff2b2889c26f@paragraph:775",
+      "official-296fff2b2889c26f@paragraph:776"
+    ],
+    "remainingBlockedSections": {
+      "bull-base-bear": [
+        "RESEARCH_GAP",
+        "NO_ATTRIBUTABLE_EVIDENCE",
+        "WORKFLOW_SECTION_NO_LOCATED_EVIDENCE"
+      ],
+      "variant-perception": [
+        "RESEARCH_GAP",
+        "VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+      ]
+    }
+  },
+  "knowledgeIntegrity": {
+    "mode": "readonly",
+    "unchanged": true,
+    "beforeSha256": {
+      "manifest.yaml": "85c2392ea272fb61a25f58745263279385750b05c780a48de7c947f465923310",
+      "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    "afterSha256": {
+      "manifest.yaml": "85c2392ea272fb61a25f58745263279385750b05c780a48de7c947f465923310",
+      "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    }
+  },
+  "rawReportsOrProviderBodiesIncluded": false,
+  "p0AcceptanceComplete": false
+}
