@@ -51,16 +51,28 @@ export function extractFilingBasicEps(
       || !source.candidate.publishedAt
       || !Number.isFinite(cutoff)
       || Date.parse(source.candidate.publishedAt) > cutoff) return []
-    const lines = source.content.split(/\r?\n/u)
-    return lines.flatMap((line, index) => {
-      const marker = /基本每股收益/u.exec(line.normalize('NFKC'))
-      if (!marker) return []
-      const values = numberTokens(line.normalize('NFKC').slice(marker.index + marker[0].length))
-      const value = values[0]
-      return value !== undefined && value > 0
-        ? [{ source, value, location: `paragraph:${index + 1}`, rowText: line }]
-        : []
-    })
+    const lines = source.content.split(/\r?\n/u).map(line => line.normalize('NFKC'))
+    const rows: { source: NormalizedResearchSource; value: number; location: string; rowText: string }[] = []
+    const summaryHeading = /^[一二三四五六七八九十\d]+\s*[、.．]\s*主要会计数据和财务指标\s*$/u
+    const sectionStarts = lines.flatMap((line, index) => summaryHeading.test(line.trim()) ? [index] : [])
+    for (const sectionStart of sectionStarts) {
+      let sectionEnd = lines.length
+      for (let index = sectionStart + 1; index < lines.length; index++) {
+        if (/^[一二三四五六七八九十\d]+\s*[、.．]\s*\S/u.test(lines[index]!.trim())) { sectionEnd = index; break }
+      }
+      let latestHeader = -1
+      for (let index = sectionStart + 1; index < sectionEnd; index++) {
+        const line = lines[index]!.trim()
+        const years = [...line.matchAll(/(?:19|20)\s*\d{2}/gu)].map(match => Number(match[0].replace(/\s/gu, '')))
+        if (years.includes(fiscalYear) && years.some(year => year !== fiscalYear) && !/基本每股收益/u.test(line)) latestHeader = index
+        if (latestHeader < 0 || !/基本每股收益/u.test(line)) continue
+        const marker = /基本每股收益/u.exec(line)
+        if (!marker) continue
+        const value = numberTokens(line.slice(marker.index + marker[0].length))[0]
+        if (value !== undefined && value > 0) rows.push({ source, value, location: `paragraph:${index + 1}`, rowText: line })
+      }
+    }
+    return rows
   })
   return matches.length === 1 ? matches[0] : undefined
 }

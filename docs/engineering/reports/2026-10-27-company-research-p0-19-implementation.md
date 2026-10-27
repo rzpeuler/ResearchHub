@@ -13,6 +13,7 @@
 - Institution aliases are canonicalized and overlapping contributors are assigned once to the latest published estimate (same-date ties use the Tonghuashun row). The Variant Perception section compares provider-exclusive same-period/unit medians only when both have at least two eligible institutions. It explicitly labels forecast value-version status `UNVERIFIED` when historical revision proof is absent; otherwise it stays a gap.
 - The current deterministic scenario output uses the verified FY annual-report EPS and current unadjusted close for a reference PE, then applies the selected current FY consensus low/median/high EPS at the same PE. It does not assign probabilities. This is a bounded valuation sensitivity; an independent semantic review may still reject it if it does not establish operating-driver cases and counterevidence.
 - An exact supplied-citation inventory now reaches the `business_driver_analysis` method so it can repair a citation only to a locator that was actually supplied to that method. Existing source locator validation remains fail-closed.
+- The BYD live run exposed an ambiguous filing-EPS extraction: the FY2025 annual report repeats EPS in a later share-capital table. Extraction now requires the EPS row to appear under the numbered `主要会计数据和财务指标` section and after a year header containing the requested fiscal year plus a comparison year. Repeated eligible rows across official filings remain ambiguous and fail closed.
 
 ## Validation
 
@@ -29,9 +30,20 @@ Commands run from the repository root:
 
 The tests use labeled synthetic fixtures for resolver/provider and filing rows. They do not constitute live-provider or report acceptance evidence. Integration coverage confirms a run without quantitative resolver inputs remains `blocked`, leaves the three Workflow-owned sections as explicit gaps, performs only the existing single synthesis call, skips independent review, and leaves the Knowledge tree unchanged.
 
+## Live read-only acceptance attempt (2026-10-27)
+
+The root Runtime was run with the saved `openai-codex / gpt-6-luna` configuration, a disposable temporary Knowledge Base, and `writeKnowledge=false`. Both before/after Knowledge Base hashes matched. The reports and sidecars remain in local `runtime-data/company-quality-acceptance/2026-10-27-p0-19-post-integration/`; raw live source/report bodies are not committed.
+
+| Company | Run ID | Result | Research quality | Material findings |
+|---|---|---|---:|---|
+| BYD (`002594`) | `a5e8f1e8-b964-4f1f-8461-931b3a61eb04` | `blocked` | 12/19 | `product_technology_analysis` failed both attempts on unverified customer/performance inferences; `business_driver_analysis` failed both attempts because the industry classification marker and numeric row context conflicted. Filing EPS was present in the source but the pre-fix extractor found conflicting rows, leaving valuation and scenario sections blocked. |
+| Dongshan Precision (`002384`) | `fcfc76b7-ef7a-459a-9461-59f357c8fc8f` | `blocked` | 11/19 | `business_model_map` failed both attempts on unrecognized official-report locators; `business_driver_analysis` failed both attempts because the product classification marker and numeric row context conflicted. Valuation and scenario sections remained structurally incomplete. |
+
+The BYD run's annual report has a FY2025 summary EPS row under the main financial-data heading and a repeated EPS row in a later share-capital section. The committed extractor repair targets this context mismatch; the live runs above predate that repair, so its effect on real acceptance has not yet been established. The market-data provider recorded an EastMoney proxy error and a successful Tencent fallback. EPS, BVPS, annual-report publication-date, peer-candidate, and both EPS-source probes succeeded; historical consensus value versions remain unverified. `variant-perception` passed its structural check in both runs, but that does not satisfy the report-level or independent semantic acceptance gate.
+
 ## Remaining acceptance work
 
-- The existing Gate 1 report and read-only repair-34 runs predate this implementation; they do not prove the new Workflow integration. Run the current root Runtime read-only for BYD (`002594`) and Dongshan Precision, then review the persisted Report, analysis sidecar, provider diagnostics, source hashes, and Knowledge-base hashes.
+- The read-only runs above exercised the new Workflow integration but both were blocked. After the filing-EPS context repair, rerun at least BYD to establish whether its quantitative sections now populate; separately resolve the method-level locator, numeric-context, and semantic failures before acceptance.
 - The provider probes found matching FY EPS units and dates before the cutoff, but do not prove historical forecast value versions. Keep the visible `UNVERIFIED` qualification and fail closed for historical requests without version evidence.
 - The generated Bear/Base/Bull cases are a consensus-EPS and fixed-multiple sensitivity. The independent review must determine whether the supplied operating drivers, counterevidence, and link to monitoring are adequate; passing structural checks alone is not completion.
 - P0-19 remains incomplete until both real read-only reports pass all 19 required-section checks and the independent semantic gate. No completion claim is made by this implementation record.

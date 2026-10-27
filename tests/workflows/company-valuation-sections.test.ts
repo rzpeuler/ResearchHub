@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildCompanyValuationSections } from '../../workflows/company-deep-research/valuation-sections.ts'
+import { buildCompanyValuationSections, extractFilingBasicEps } from '../../workflows/company-deep-research/valuation-sections.ts'
 import type { CompanyReadOnlyAcquisition } from '../../workflows/company-deep-research/contracts.ts'
 
 const asOf = '2026-10-26T00:00:00.000Z'
 const filing = {
   candidate: { candidateId: 'annual-2025', kind: 'official_disclosure', title: '2025年年度报告', publishedAt: '2026-03-27T00:00:00.000Z' },
-  title: '2025年年度报告', content: '基本每股收益 3.58', contentHash: 'filing-hash', retrievedAt: asOf,
+  title: '2025年年度报告', content: '重要提示\n基本每股收益 99.00\n六、主要会计数据和财务指标\n2025 年 2024 年 本年比上年增减 2023 年\n基本每股收益（元/股） 3.58 4.61 -22.34% 3.44\n七、股本变动及股东情况\n基本每股收益（旧股） 11.12 基本每股收益（新股） 3.58', contentHash: 'filing-hash', retrievedAt: asOf,
 } as any
 const quote = {
   candidateId: 'quote-payload', kind: 'market', observation: { priceDate: '2026-10-26', close: 100 },
@@ -52,6 +52,12 @@ test('valuation builder populates all three workflow-owned sections from exact P
   assert.match(result.sections[2]!.markdown, /2 家重叠机构/)
 })
 
+test('filing EPS selects the unique FY row under the main summary heading and matching year header', () => {
+  const selected = extractFilingBasicEps([filing], 2025, asOf)
+  assert.equal(selected?.value, 3.58)
+  assert.equal(selected?.location, 'paragraph:5')
+})
+
 test('valuation builder fails closed when acquisition is absent or filing EPS is ambiguous', () => {
   const missing = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, sources: [filing] })
   assert.deepEqual(missing.sections.map(section => section.id), ['valuation', 'bull-base-bear', 'variant-perception'])
@@ -62,4 +68,10 @@ test('valuation builder fails closed when acquisition is absent or filing EPS is
   assert.match(ambiguous.sections[0]!.markdown, /研究缺口：/)
   assert.match(ambiguous.sections[1]!.markdown, /研究缺口：/)
   assert.ok(ambiguous.diagnostics.includes('VALUATION_FILING_BASIC_EPS_UNAVAILABLE_OR_AMBIGUOUS'))
+
+  const noYearHeader = { ...filing, content: '六、主要会计数据和财务指标\n基本每股收益 3.58' }
+  assert.equal(extractFilingBasicEps([noYearHeader], 2025, asOf), undefined)
+  const wrongYear = { ...filing, content: '六、主要会计数据和财务指标\n2024 年 2023 年\n基本每股收益 3.58' }
+  assert.equal(extractFilingBasicEps([wrongYear], 2025, asOf), undefined)
+  assert.equal(extractFilingBasicEps([filing, { ...filing, candidate: { ...filing.candidate, candidateId: 'annual-2025-copy' } }], 2025, asOf), undefined)
 })
