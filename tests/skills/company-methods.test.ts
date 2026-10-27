@@ -2602,6 +2602,39 @@ test('product method repairs unsupported customer preferences into an explicit u
   assert.equal(result.findings[0]!.kind,'assumption')
 })
 
+test('product method accepts bounded insufficient-promotion denials but rejects an adjacent affirmative preference', async () => {
+  const filing={...source,content:'公司披露产品组合覆盖多个应用领域。'}
+  const acceptedDenials=[
+    '不足以将公司产品定位提升为实际客户偏好事实。',
+    '不足以把产品用途或公司定位提升为实际客户偏好事实。',
+  ]
+  for(const text of acceptedDenials){
+    const accepted={...output,answer:'公司披露产品组合覆盖多个应用领域。',markdown:'公司产品定位不等于客户实际偏好。[filing-1@paragraph:1]',sections:[
+      {id:'products',markdown:'公司披露产品组合覆盖多个应用领域。[filing-1@paragraph:1]'},
+      {id:'technologies',markdown:'现有材料不足以将公司产品定位提升为实际客户偏好事实。[filing-1@paragraph:1]'},
+    ],findings:[{text,kind:'inference',evidence:[{sourceCandidateId:'filing-1',location:'paragraph:1'}]}]}
+    let calls=0
+    const result=await executeCompanyResearchMethod({skillId:'product_technology_analysis',company:{symbol:'002594'},asOf:'2026-10-14',sources:[filing],durableSourceCandidateIds:['filing-1'],reasoningExecutor:executor(async()=>{calls++;return accepted})})
+    assert.equal(calls,1,text)
+    assert.equal(result.status,'complete',`${text}: ${JSON.stringify(result.diagnostics)}`)
+  }
+
+  const affirmative='不足以把产品用途或公司定位提升为实际客户偏好事实；但客户更偏好安全。'
+  const stillUnsupported={...output,answer:'公司披露产品组合覆盖多个应用领域。',markdown:'公司披露产品组合覆盖多个应用领域。[filing-1@paragraph:1]',sections:[
+    {id:'products',markdown:`${affirmative} [filing-1@paragraph:1]`},
+    {id:'technologies',markdown:'公司披露产品组合覆盖多个应用领域。[filing-1@paragraph:1]'},
+  ],findings:[{text:affirmative,kind:'fact',evidence:[{sourceCandidateId:'filing-1',location:'paragraph:1'}]}]}
+  let calls=0
+  const rejected=await executeCompanyResearchMethod({skillId:'product_technology_analysis',company:{symbol:'002594'},asOf:'2026-10-14',sources:[filing],durableSourceCandidateIds:['filing-1'],reasoningExecutor:executor(async request=>{
+    calls++
+    if(calls===1)assert.match((request as any).input.repairErrors[0].message,/PRODUCT_CUSTOMER_NEEDS_UNVERIFIED/)
+    return stillUnsupported
+  })})
+  assert.equal(calls,2)
+  assert.equal(rejected.status,'failed',JSON.stringify(rejected.diagnostics))
+  assert.ok(rejected.diagnostics.some(diagnostic=>diagnostic.message.includes('PRODUCT_CUSTOMER_NEEDS_UNVERIFIED')),JSON.stringify(rejected.diagnostics))
+})
+
 test('product method does not classify customer concentration review as an unsupported customer-preference claim', async () => {
   const filing = { ...source, content: '公司披露核心产品覆盖多个应用领域，相关产品已进入批量交付阶段。' }
   const draft = {
