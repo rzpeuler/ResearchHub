@@ -172,17 +172,17 @@
         {
           "skillId": "product_technology_analysis",
           "status": "complete",
-          "attemptCount": 1
+          "attemptCount": 2
         },
         {
           "skillId": "business_driver_analysis",
           "status": "failed",
-          "attemptCount": 1
+          "attemptCount": 2
         },
         {
           "skillId": "financial_quality_analysis",
           "status": "complete",
-          "attemptCount": 1
+          "attemptCount": 2
         },
         {
           "skillId": "market_structure_analysis",
@@ -207,7 +207,7 @@
         {
           "skillId": "company_risk_analysis",
           "status": "complete",
-          "attemptCount": 1
+          "attemptCount": 2
         }
       ],
       "reviewAttempts": 0,
@@ -399,7 +399,7 @@
         {
           "skillId": "business_driver_analysis",
           "status": "complete",
-          "attemptCount": 1
+          "attemptCount": 2
         },
         {
           "skillId": "financial_quality_analysis",
