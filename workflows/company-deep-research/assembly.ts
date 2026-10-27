@@ -313,12 +313,23 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     // placing the separator and cited market rows after the boundary note.
     { cells: ['市场边界', '期间', '规模与单位', '来源及转述归属', '可比性说明'], citationMode: 'row' },
     { cells: ['市场边界', '期间', '规模与单位', '来源及转述归属', '适用范围与限制'], citationMode: 'row' },
+    // A BYD run used a company-named TAM relation as the fifth column. The
+    // rest of this header is stable; recognize the company-specific label
+    // only when the following rows independently prove the same table width.
+    { cells: ['市场边界', '期间', '规模与单位', '来源及转述归属', '__COMPANY_TAM_RELATION__'], citationMode: 'row' },
     // One live BYD synthesis used this slightly more descriptive first label.
     { cells: ['市场边界与统计性质', '期间', '数值及单位', '来源与可比边界'], citationMode: 'following-paragraph' },
   ] as const
   for (const { cells: expectedHeader, citationMode } of adjacentMarketHeaders) {
-    const headerIndexes = lines.flatMap((line, index) =>
-      isPipeLine(line) && JSON.stringify(splitCells(line)) === JSON.stringify(expectedHeader) ? [index] : [])
+    const headerIndexes = lines.flatMap((line, index) => {
+      if (!isPipeLine(line)) return []
+      const actual = splitCells(line)
+      const companyTamHeader = expectedHeader.at(-1) === '__COMPANY_TAM_RELATION__'
+        && actual.length === 5
+        && actual.slice(0, 4).every((cell, cellIndex) => cell === expectedHeader[cellIndex])
+        && /(?:TAM|可服务市场)/u.test(actual[4]!)
+      return JSON.stringify(actual) === JSON.stringify(expectedHeader) || companyTamHeader ? [index] : []
+    })
     if (headerIndexes.length !== 1) continue
     const headerIndex = headerIndexes[0]!
     let separatorIndex = -1

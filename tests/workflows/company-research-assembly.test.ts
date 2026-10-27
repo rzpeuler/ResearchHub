@@ -828,6 +828,30 @@ test('R147 reattaches a displaced industry-scale header to its uniquely matching
   assert.deepEqual([...repaired.markdown.matchAll(/\[[^\]]+@paragraph:\d+\]/g)].map(match => match[0]), before)
 })
 
+test('R149 reattaches the displaced five-column company-TAM market header without moving narrative', () => {
+  const fixture = `| 市场 | 产品边界 | 地域与客户 | 时间口径与限制 | 产业链角色 |
+|---|---|---|---|---|
+| 新能源汽车行业背景 | 整车销量，不等同公司TAM | 中国 | 2024全年 | 行业需求 |
+| 市场边界 | 期间 | 规模与单位 | 来源及转述归属 | 与某公司TAM的关系 |
+汽车行业需求有官方销量统计支撑，统计销量不是市场金额或公司可服务市场。[auto@paragraph:18]
+
+## 行业规模背景
+
+下列数字保留原市场边界，不相加。
+|---|---|---|---|---|
+| 中国新能源汽车全年销量 | 2024全年 | 1,286.6万辆 | 年报转述[byd@paragraph:18] | 历史行业背景，不是公司TAM |
+| 全球AI服务器市场 | 2025年预测 | 1,672亿美元 | 年报转述[byd@paragraph:448] | 相邻市场，不适用于汽车 |
+| 全球数据中心液冷市场 | 2025年预测 | 28.4亿美元 | 年报转述[byd@paragraph:450] | 相邻市场，不适用于汽车 |`
+  const before = [...fixture.matchAll(/\[[^\]]+@paragraph:\d+\]/g)].map(match => match[0])
+  const repaired = repairCompanyResearchMarkdownTables(fixture)
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_ADJACENT_MARKET_HEADER_REATTACHED')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.match(repaired.markdown, /与某公司TAM的关系 \|\n\|---\|---\|---\|---\|---\|\n\| 中国新能源汽车全年销量/)
+  assert.match(repaired.markdown, /汽车行业需求有官方销量统计支撑[\s\S]*?## 行业规模背景/)
+  assert.deepEqual([...repaired.markdown.matchAll(/\[[^\]]+@paragraph:\d+\]/g)].map(match => match[0]), before)
+})
+
 test('R148 restores the exact industry citation table header when synthesis leaves a prose header above a separator',()=>{
   const fixture=`适用报告与期间 完整表头（单位：元；末列原单位为%） 分类标签及匹配数据行\n|---|---|---|\n| 2025年年度报告，2025年度 | 单位与表头定位 | 分类标签与数据行定位 |`
   const repaired=repairCompanyResearchMarkdownTables(fixture)
