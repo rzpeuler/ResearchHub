@@ -1,0 +1,43 @@
+{
+  "evidenceType": "baseline-compared-regression-summary",
+  "capturedAt": "2026-10-28",
+  "sourceRevision": "dcfb144b0a81f0f3995bf1f64c9371e98c487ad5",
+  "baselineEvidence": "tests/validation/evidence/company-research-p0-19-full-regression-2026-10-27.json",
+  "node": {
+    "command": "npm run test:node",
+    "total": 3189,
+    "passed": 3168,
+    "failed": 21,
+    "baselineFailureIdentities": 21,
+    "addedFailureIdentities": 0,
+    "disappearedFailureIdentities": 0,
+    "comparisonKey": "(filePath,testTitle)",
+    "rawLog": "ignored local tmp/p0-19-node-dcfb144.log"
+  },
+  "client": {
+    "command": "npm run client:test",
+    "total": 223,
+    "passed": 218,
+    "failed": 5,
+    "baselineFailureIdentities": 5,
+    "addedFailureIdentities": 0,
+    "disappearedFailureIdentities": 0,
+    "comparisonKey": "(filePath,testTitle)",
+    "rawLog": "ignored local tmp/p0-19-client-dcfb144.log"
+  },
+  "typecheck": {
+    "command": "npm run typecheck",
+    "passed": true
+  },
+  "clientTypecheck": {
+    "command": "npm run client:typecheck",
+    "passed": true
+  },
+  "clientBuild": {
+    "command": "npm run client:build",
+    "passed": true,
+    "mainBundleBytes": 743020,
+    "advisory": "Existing main JavaScript chunk is larger than 500 kB"
+  },
+  "acceptance": "P0-19 incomplete; full regression and build do not substitute for the required live BYD and Dongshan 19-section acceptance"
+}
