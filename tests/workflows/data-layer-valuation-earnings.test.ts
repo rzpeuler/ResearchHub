@@ -238,3 +238,37 @@ test('Phase 2 materialization binds issuer and FY without requiring unrelated me
     workflowId: 'valuation', ticker: '600001', asOf: cutoff, required: true,
   }), /MARKET_PERIOD_REQUIRED/)
 })
+
+test('Company Research can materialize existing valuation and expectation metrics only through its matching policies', () => {
+  const companyMetrics = [
+    { metricId: 'valuation_market_price', period: { end: '2026-10-09' }, legacyWorkflow: 'valuation' },
+    { metricId: 'valuation_eps', period: { fiscalYear: 2025 }, legacyWorkflow: 'valuation' },
+    { metricId: 'valuation_bvps', period: { fiscalYear: 2025 }, legacyWorkflow: 'valuation' },
+    { metricId: 'valuation_annual_report_publication', period: { fiscalYear: 2025 }, legacyWorkflow: 'valuation' },
+    { metricId: 'valuation_peer_candidate_evidence', period: undefined, legacyWorkflow: 'valuation' },
+    { metricId: 'earnings_expectation_eps', period: { fiscalYear: 2026, fiscalPeriod: 'FY' }, legacyWorkflow: 'earnings-review' },
+    { metricId: 'earnings_expectation_net_profit', period: { fiscalYear: 2026, fiscalPeriod: 'FY' }, legacyWorkflow: 'earnings-review' },
+  ] as const
+  for (const item of companyMetrics) {
+    const definition = COMMON_DATA_CATALOG.find(entry => entry.metricId === item.metricId)!
+    assert.ok(definition.consumers.includes('company-deep-research'), item.metricId)
+    const requirement = materializePhase2CommonRequirement(item.metricId, {
+      workflowId: 'company-deep-research', ticker: '600001', companyId: 'Example Corp', asOf: cutoff,
+      ...(item.period ? { period: item.period } : {}), required: false,
+    })
+    const matched = resolveSourcePolicy(requirement, PHASE2_COMMON_SOURCE_POLICIES)
+    const companyPolicy = PHASE2_COMMON_SOURCE_POLICIES.find(policy => policy.policyId === matched.policy?.policyId)
+    const legacyPolicy = PHASE2_COMMON_SOURCE_POLICIES.find(policy => policy.requirementMatch.workflow === item.legacyWorkflow && policy.requirementMatch.metricId === item.metricId)
+    assert.equal(matched.status, 'MATCHED', item.metricId)
+    assert.equal(requirement.consumer.workflow, 'company-deep-research', item.metricId)
+    assert.equal(requirement.consumer.capability, legacyPolicy?.requirementMatch.capability, item.metricId)
+    assert.equal(companyPolicy?.requirementMatch.workflow, 'company-deep-research', item.metricId)
+    assert.equal(companyPolicy?.selectionMode, 'FIRST_VALID', item.metricId)
+    assert.deepEqual(companyPolicy?.candidates, legacyPolicy?.candidates, item.metricId)
+    const wrongWorkflow = item.legacyWorkflow === 'valuation' ? 'earnings-review' : 'valuation'
+    assert.throws(() => materializePhase2CommonRequirement(item.metricId, {
+      workflowId: wrongWorkflow, ticker: '600001', companyId: 'Example Corp', asOf: cutoff,
+      ...(item.period ? { period: item.period } : {}), required: false,
+    }), new RegExp(`COMMON_DATA_CONSUMER_MISMATCH:${item.metricId}:${wrongWorkflow}`), item.metricId)
+  }
+})
