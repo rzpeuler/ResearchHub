@@ -13,9 +13,12 @@ const idFor = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g,'-').
 const finalIds = ['investment-thesis','monitoring-checklist']
 
 export interface SynthesisEvidenceLedgerEntry {
-  readonly ownerSkill: CompanyResearchMethodResult['skillId']
+  readonly ownerSkill?: CompanyResearchMethodResult['skillId']
+  readonly ownerWorkflow?: 'valuation' | 'bull-base-bear' | 'variant-perception'
   readonly sectionIds: readonly string[]
   readonly kind: 'fact' | 'inference' | 'assumption'
+  readonly eligibility: 'verified' | 'blocked'
+  readonly blockers?: readonly string[]
   readonly text: string
   readonly evidence: readonly {
     readonly sourceCandidateId: string
@@ -32,6 +35,7 @@ export interface SynthesisEvidenceLedgerEntry {
 export function buildSynthesisEvidenceLedger(input: {
   readonly methods: readonly CompanyResearchMethodResult[]
   readonly sources: CompanyResearchInput['sources']
+  readonly workflowOwnedSections?: readonly { readonly id: string; readonly title: string; readonly markdown: string; readonly sourceCandidateIds: readonly string[] }[]
   readonly allowedSourceCandidateIds?: readonly string[]
   readonly conflictedSourceCandidateIds?: readonly string[]
   readonly maxEntries?: number
@@ -39,8 +43,12 @@ export function buildSynthesisEvidenceLedger(input: {
   const sources = new Map(input.sources.map(source => [source.candidate.candidateId, source]))
   const allowed = input.allowedSourceCandidateIds ? new Set(input.allowedSourceCandidateIds) : undefined
   const conflicted = new Set(input.conflictedSourceCandidateIds ?? [])
+  const maxEntries = input.maxEntries ?? 160
+  const workflowEntrySlots = Math.min(3, input.workflowOwnedSections?.length ?? 0)
+  const methodEntryLimit = Math.max(0, maxEntries - workflowEntrySlots)
   const entries: SynthesisEvidenceLedgerEntry[] = []
   for (const method of input.methods) {
+    if (entries.length >= methodEntryLimit) break
     if (method.status !== 'complete') continue
     const allowedRows = new Map<string, { excerpt: string; source: CompanyResearchInput['sources'][number] }>()
     for (const packet of [...method.executionEvidence ?? [], ...method.deterministicEvidence ?? []]) {
@@ -72,9 +80,78 @@ export function buildSynthesisEvidenceLedger(input: {
         }]
       })
       if (evidence.length !== finding.evidence.length) continue
-      entries.push({ ownerSkill: method.skillId, sectionIds, kind: finding.kind, text: finding.text.slice(0, 1600), evidence })
-      if (entries.length >= (input.maxEntries ?? 160)) return entries
+      entries.push({ ownerSkill: method.skillId, sectionIds, kind: finding.kind, eligibility: 'verified', text: finding.text.slice(0, 1600), evidence })
+      if (entries.length >= methodEntryLimit) break
     }
+  }
+  for (const section of input.workflowOwnedSections ?? []) {
+    if (entries.length >= maxEntries) break
+    if (!['valuation', 'bull-base-bear', 'variant-perception'].includes(section.id)) continue
+    const ownerWorkflow = section.id as 'valuation' | 'bull-base-bear' | 'variant-perception'
+    const hasUnverifiedStatus = /(?:UNVERIFIED|未核验|未验证|不构成符合\s*asOf\s*的预期差结论|无法同时确认|不可复核|not\s+qualified|unverified)/iu.test(section.markdown)
+    const hasExplicitGap = /^\s*研究缺口[:：]/u.test(section.markdown)
+    const hasScenarioContract = /Bear/iu.test(section.markdown)
+      && /Base/iu.test(section.markdown)
+      && /Bull/iu.test(section.markdown)
+      && /(?:敏感性|公式|计算)/u.test(section.markdown)
+    const unqualified = hasExplicitGap
+      || hasUnverifiedStatus
+      || section.id === 'bull-base-bear' && !hasScenarioContract
+    if (unqualified) {
+      entries.push({
+        ownerWorkflow,
+        sectionIds: [section.id],
+        kind: section.id === 'bull-base-bear' ? 'assumption' : 'inference',
+        eligibility: 'blocked',
+        blockers: [section.id === 'variant-perception' ? 'WORKFLOW_EXPECTATION_VERSION_UNVERIFIED' : 'WORKFLOW_SECTION_HAS_EXPLICIT_GAP'],
+        text: `${section.title} 未通过本轮资格门；不得作为结论或事实输入到投资论点或监控项。`,
+        evidence: [],
+      })
+      continue
+    }
+    const sourceIds = new Set(section.sourceCandidateIds)
+    const citationTokens = [...section.markdown.matchAll(/\[([^\]]*@[^\]]*)\]/gu)].map(match => match[1]!)
+    const references = [...new Set(citationTokens.filter(reference => /^[^\s@]+@paragraph:\d+$/u.test(reference)))]
+    const evidence = references.flatMap(reference => {
+      const parsed = /^(.+)@paragraph:(\d+)$/u.exec(reference)
+      if (!parsed) return []
+      const sourceCandidateId = parsed[1]!
+      if (!sourceIds.has(sourceCandidateId) || conflicted.has(sourceCandidateId) || allowed && !allowed.has(sourceCandidateId)) return []
+      const source = sources.get(sourceCandidateId)
+      const location = `paragraph:${parsed[2]}`
+      const excerpt = source?.content.split(/\r?\n/u)[Number(parsed[2]) - 1]
+      if (!source || !excerpt?.trim()) return []
+      const provenance = source.candidate.metadata?.dataProvenance as Record<string, unknown> | undefined
+      return [{
+        sourceCandidateId,
+        contentHash: source.contentHash || createHash('sha256').update(source.content, 'utf8').digest('hex'),
+        location,
+        excerpt: excerpt.slice(0, 1200),
+        ...(source.candidate.publishedAt ? { publishedAt: source.candidate.publishedAt } : {}),
+        ...(provenance?.pointInTimeStatus !== undefined ? { pointInTimeStatus: provenance.pointInTimeStatus } : {}),
+        ...(provenance?.pointInTimeSafe !== undefined ? { pointInTimeSafe: provenance.pointInTimeSafe } : {}),
+      }]
+    })
+    if (!references.length || references.length !== citationTokens.length || evidence.length !== references.length) {
+      entries.push({
+        ownerWorkflow,
+        sectionIds: [section.id],
+        kind: section.id === 'bull-base-bear' ? 'assumption' : 'inference',
+        eligibility: 'blocked',
+        blockers: ['WORKFLOW_SECTION_EVIDENCE_NOT_EXACTLY_RESOLVED'],
+        text: `${section.title} 的来源定位未能全部与本轮允许来源逐项匹配；不得将本节作为综合结论证据。`,
+        evidence: [],
+      })
+      continue
+    }
+    entries.push({
+      ownerWorkflow,
+      sectionIds: [section.id],
+      kind: section.id === 'bull-base-bear' ? 'assumption' : 'inference',
+      eligibility: 'verified',
+      text: section.markdown.slice(0, 4000),
+      evidence,
+    })
   }
   return entries
 }
@@ -2356,6 +2433,26 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
       })
     }
   }
+  const workflowLedger = buildSynthesisEvidenceLedger({
+    methods: [],
+    sources: input.sources,
+    workflowOwnedSections,
+    allowedSourceCandidateIds: [...allowed],
+    conflictedSourceCandidateIds: [...conflicted],
+  })
+  for (const entry of workflowLedger) {
+    if (entry.eligibility !== 'verified' || !entry.ownerWorkflow) continue
+    for (const ref of entry.evidence) {
+      const source = sourceById.get(ref.sourceCandidateId)
+      if (!source) continue
+      verifiedEvidenceByLocation.set(`${ref.sourceCandidateId}@${ref.location}`, {
+        sourceCandidateId: ref.sourceCandidateId,
+        location: ref.location,
+        title: source.title,
+        text: ref.excerpt,
+      })
+    }
+  }
   const locations = new Set<string>()
   for (const method of available) {
     for (const finding of method.findings) for (const ref of finding.evidence) {
@@ -2366,7 +2463,11 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
       for (const match of text.matchAll(/\[([^\]\s]+@paragraph:\d+)\]/g)) if (verifiedEvidenceByLocation.has(match[1]!)) locations.add(match[1]!)
     }
   }
-  // Synthesis may only cite exact rows that a completed method supplied and
+  for (const entry of workflowLedger) {
+    if (entry.eligibility !== 'verified' || !entry.ownerWorkflow) continue
+    for (const ref of entry.evidence) locations.add(`${ref.sourceCandidateId}@${ref.location}`)
+  }
+  // Synthesis may only cite exact rows that a completed method or qualified Workflow section supplied and
   // that still match an eligible, non-conflicted report source.
   const excerptByLocation = new Map<string, { sourceCandidateId: string; location: string; title: string; text: string; contextLocations?: readonly string[] }>()
   for (const ref of locations) {
@@ -2460,7 +2561,7 @@ export async function assembleCompanyResearch(input: CompanyResearchInput, metho
       : ''
   const crossMethodEvidenceInstruction = '最终风险与跟踪清单必须按已提供的证据包逐项整合跨方法事实：若任一已完成方法的 evidence/findings 含年度前五、最大或第二大客户销售比例，应分别写入相关风险/监控行并引用该方法实际提供的对应行；客户匿名仅限制身份、产品映射、合同和替代性，不能称比例未披露。若 evidence/findings 已具名某一竞争候选，仅可保留该候选及来源支持的车型/路线，并将其他未验证的同口径比较列为缺口；删除未在引用原文或竞争方法finding中具名的公司、车型和路线，不得用模型记忆补齐。方法本身的局部缺口不得覆盖其他方法已核验的输入。审查原因若承认某项数据正确或章节应通过，应将它从待修缺口中剔除，只修复其中明确指出且仍成立的具体错误。对 revenue-profit-drivers、growth-drivers、management-capital-allocation 和 monitoring-checklist，先逐项检索本轮有效方法结果、findings 及 allowedEvidence 中与该节对应的具体原表行；凡已有精确行和定位，必须把披露事实、期间、单位及其直接引用整合到相应论点或监控项，不得把事实遗漏再写成资料缺失。收入驱动须分别列出已披露的分行业/分产品收入金额与占比，缺少分部利润、量价拆解或型号贡献时仅将这些字段列为缺口。资本配置须纳入已披露的并购完成/并表事实、回购或员工计划购入与持有记录；只有原表未给出的对价、支付细节、参与人数或后续回报可继续列为缺口，不能因缺少这些字段而否认行动或交易事实。收入与毛利判断须逐行保留其完整分类标签、期间、单位和原文引用，并按数字校验要求呈现；不得把原表明确列出的行业/产品行称作未提供。产品分类毛利率的章节标题和同句不得使用“合并毛利率比较”或把分类指标包装为合并指标；若需说明其范围限制，写明“该数值为产品分类毛利率，不代表公司整体毛利率”。如需报告合并毛利率，另起句并仅引用preparedAnalysis中精确匹配的同口径比率及两个期间操作数。'
     try {
-      const response=await executor.execute({operation:'company_research_synthesis',instruction:'preparedAnalysis.synthesisEvidenceLedger仅包含完整方法的事实、推断或假设，且每条证据均逐项匹配本轮提供的原文、定位及来源哈希；优先用它核对跨方法事实。证据包外的历史材料、冲突来源和无效定位不属于账本，不得引用或升级为结论。每节须简洁并在5000字符内完整结束：investment-thesis最多5段、每段至多2句，涵盖核心判断、支持证据、最强反证和失效条件；所有核心判断及跟踪项均用定性事实表述，不在这两节抄录数字、百分比、日期或带数字的技术型号；把数值细节留在已完成方法章节，并以准确定位引用。monitoring-checklist最多8项，每项只保留一个指标、频率、触发信号及论点关联；避免重述方法正文和大段原表数据。 每项触发条件必须对应本轮来源明确提供、可在指定报告或公告中重复观察的具名指标；不得写泛称“订单转弱”或“回款信号转弱”，除非来源确实披露了相应订单指标。可用客户占比、应收账款或经营现金流等已披露指标替代，并将未披露阈值写为具体限制，不得编造阈值。不得输出未闭合表格、超长表格或用截断方式满足长度要求。'+crossMethodEvidenceInstruction+' 用中文整合已完成的独立研究方法，只输出investment-thesis与monitoring-checklist两节。每条qualityFeedback都是上一轮报告的必修缺口：逐条定位其章节，核对当前有效方法结果及allowedEvidence后修订，不得遗漏、泛化或仅在别章回应；若反馈与本轮完整方法结果或证据相矛盾，应保留有证据的事实并收窄具体缺口，无法核实则写明限制。客户表与供应商表须按各自小节、行标签、表头及数据行分别绑定，不得用营业成本构成等邻近表格的单位、期间或表头支持客户/供应商数据。治理与激励优先纳入最新可用定期报告，并将较早报告的未实施明确限定到其报告期。催化剂应衔接已披露指标和经营信号；可指出未披露量化阈值，但不得因此省略已有指标。风险章节须保留竞争方法识别的具名候选公司及产品/技术路线，只将直接竞标、客户重叠和同口径成本/性能比较列为待验证。investment-thesis 给出核心判断、支持证据、最强反证和失效条件；monitoring-checklist 给出指标、观察频率、触发条件和论点关联；若用表格，固定使用“指标/观察项｜观察频率｜触发条件/核验信号｜论点关联与证据”四列，每个数据行严格四格且引用置于支持该论点的单元格，不得合并列；若无法安全组织为四格，改用有证据引用的段落。所有历史数据必须标明具体报告期间；引用年报分行业数据时必须写明报告年度，不得以“公司分行业表”等未注明期间的表述呈现历史值。对余额与流量的增长比较必须分别标明期末余额期间和累计流量期间，明确称其为跨口径筛查，不暗示因果。allowedEvidence 中的 sourceCandidateId、location 和正文是一一对应的、唯一可用证据及定位符；引用时逐字复制 sourceCandidateId@location，不得按报告页码推算 paragraph，不得引用不在 allowedEvidence 中的定位符。综合论点须交叉核对所有方法的结论、已引用事实与反证，不可用“资料缺失”覆盖已完成方法中已有的具名公司、产品、销量、收入或履历信息。尤其风险矩阵须交叉核对competitive_market_map：若其中已识别具名候选及其有来源支持的产品或技术路线，不得写“无具名竞品、路线或可比性能证据”，应保留候选/路线并将直接替代、实际客户重叠、市场份额和同口径性能成本限定为未验证。客户集中风险若已列前五大、最大与第二大单项销售比例，并说明最大客户缩减采购→收入/产能利用的路径，不得再称客户比例不可核或风险影响未分析；明确匿名仅限制身份、业务映射、合同和替代性，静态销售占比不等于实际收入/利润损失。员工持股计划分别标明人数上限、实际参与人数（若披露）、累计购入股数及期末持有数；上限不可写成实际人数，实际购股股数不可写成参与人数，缺实际参与人数时须明确限定。相同产品、指标、期间和比较基期在同节或跨章节重复出现时，必须对照完全相同的原表行和已完成方法并统一数值方向；不得一处写成本同比增速低于收入、另一处又写成本扩张更快，除非期间、产品或口径确实不同且已明确解释。；产品技术方法所用证据包可能不含竞争方法专门取得的同业材料，若竞争方法已给出具名候选公司及产品/技术路线，综合时应在产品或竞争相关段落保留该候选并引用其对应原文，同时把直接竞争、客户重叠及同口径性能成本限制为未验证，不能笼统写“没有具名竞品”；若年报已披露主要管理人员姓名、职务或职责，不能笼统称“完整管理层分工缺失”；只可指出具体新任高管履历、具体职责分工或任职后绩效等确未披露的事项，并保留已披露事实。若欠缺的是同口径价格、成本或车型/产品贡献，也应具体限定缺项。若证据含行业预测，即使其市场边界与公司分部仅相邻而非直接可比，也须保留预测数值、年份、币种/单位和年报转述归属，并明确它仅是相邻行业背景、不能替代分部市场规模或公司TAM。资产负债表比较列标为“上年末”时，期末余额只能表述为较上年末；不得称“上年同期”或同比，只有preparedAnalysis提供同指标、同期间的同比结果时才另行报告。若已完成方法披露控制人兼任职务、内部控制或关联交易制度，风险综合必须保留这些事实，只讨论具体执行和制衡证据缺口，不得声称治理结构或内控资料缺失。年度研发变动原因栏标为“不适用”时，应明确说原表将原因说明标为不适用且没有具体解释，避免笼统称报告遗漏原因。涉及数值的每个句子都须在句末引用直接支持该指标和期间的证据，不能借同段其他数据的引用。年度报告“研发投入金额”和利润表/结构化摘要“研发费用”是不同指标与期间，必须分别标明，不得并列成趋势或据此推导费用增减；只有同指标、同期间口径才可比较。代码派生的增速差、百分点差、现金流差、周转天数或单位换算，必须在所属章节列出操作数、单位和公式；表格中的派生同比也必须显示本期值、可比期值及公式，不能只列计算结果；事实披露值不虚构公式。毛利率水平用%；毛利率同比变化严格沿用原表列名、单位行和数据单元显示的单位，列名或单元显示%时保留百分比口径，不得改称百分点。只有两个可比毛利率水平由代码计算其差额并列出操作数和公式时，才用百分点。引用PDF拆分表头中的分行业/分产品毛利率变化时，必须直接引用定义该变化列的完整表头片段（所有拆分定位段）、单位段、相应分行业/分产品区段标题，以及精确完整行标签和数值行；行标签跨段时，标签段与数值续行都须分别引用。只引用数值行、邻近表头文字或方法结论不足以证明毛利率变化口径；缺少任一所需定位时，删除该数值论点。涉及分行业或分产品表中的数值时，必须逐字保留披露表中的完整行标签（例如日用电子器件制造业），不得缩写成电子或用分行业/分产品泛称替代；若无法匹配唯一完整行，删除该数字论点。分行业和分产品表要分开陈述，禁止用“分行业/分产品”合并标签或将一张表的产品行称为行业行；代码给出的A−B增速差若为负，文字必须说A低于B，不能用绝对值写成A高于B。风险章节若任何已完成方法或allowedEvidence出现商誉、资产组、被购买方或减值表格，不得称年报商誉资料缺失；应核对单位、主体行、商誉原值与减值准备后解释资产价值、利润及现金流影响，无法计算时只限缩缺少的字段。若数值校验失败，依据repair中带有指标上下文及同数字原文候选的信息，逐项核对科目、期间、产品/行业标签和单位并替换为精确定位；一个句子涉及多个数值时，每个数字必须紧邻其直接支持的本行引用，不能把不同产品、行业、期间和单位的数字合并挂在同一个引用集合下，也不能拿同值的其他表行代替；找不到唯一匹配原文则删除该数值论点。估值、情景和预期差仅在材料提供可复算输入时分析，否则明确缺失输入、已尝试来源及影响；不得将没有一致预期表述为不存在预期差。',input:{company:input.company,asOf:input.asOf,methods:available.map(method=>({skillId:method.skillId,answer:method.answer,markdown:method.markdown,sections:method.sections,findings:method.findings,limitations:method.limitations,risks:method.risks,sourceCandidateIds:method.sourceCandidateIds})),preparedAnalysis:input.preparedAnalysis,requiredSectionIds:finalIds,allowedCitations:[...locations],allowedEvidence:[...excerptByLocation.values()],qualityFeedback:input.qualityFeedback ?? [],repair:attempt>1?[previousDiagnostic,locatorRepair].filter(Boolean).join('；'):null,repairPreviousOutput:attempt>1?synthesisAttemptOutputs.at(-1)?.output:null,repairInstruction:attempt>1?'先逐条处理qualityFeedback指出的章节缺口，再修复本轮具体错误。交叉核对完整方法结果与allowedEvidence，纳入较新报告已披露事实并保持客户/供应商各自证据范围；若feedback与当前证据冲突，保留证据支持内容并限缩缺口。保留未报错章节和主张。引用只能从本次allowedEvidence的原文中选择，必须原样复制它对应的sourceCandidateId@location，不要猜测段落编号。每句数值判断都必须引用直接支持该科目/期间的原文。数字错误只能通过repair候选的原文科目标签及其提供的单位/相邻上下文消除；每个数字必须紧邻其直接支持的精确行定位，不同产品、行业、期间和单位分别引用；不得因数字相同跨科目取证或将多个数字共用一个模糊引用。无法唯一核实则删除该数值判断。'+(locatorRepair?` ${locatorRepair}`:'')+' '+tableRepairInstruction+' 完整输出合同JSON。':null},outputContract:schema,metadata:{operationFamily:'company-research-quality'}},input.signal)
+      const response=await executor.execute({operation:'company_research_synthesis',instruction:'preparedAnalysis.synthesisEvidenceLedger包含完整方法的精确事实/推断及Workflow owned章节输入；只有eligibility=verified且每条证据均匹配本轮允许原文及来源哈希的条目可支持结论，eligibility=blocked条目仅为阻塞诊断，不得升级为结论或引用。证据包外的历史材料、冲突来源和无效定位不属于账本，不得引用或升级为结论。每节须简洁并在5000字符内完整结束：investment-thesis最多5段、每段至多2句，涵盖核心判断、支持证据、最强反证和失效条件；所有核心判断及跟踪项均用定性事实表述，不在这两节抄录数字、百分比、日期或带数字的技术型号；把数值细节留在已完成方法章节，并以准确定位引用。monitoring-checklist最多8项，每项只保留一个指标、频率、触发信号及论点关联；避免重述方法正文和大段原表数据。 每项触发条件必须对应本轮来源明确提供、可在指定报告或公告中重复观察的具名指标；不得写泛称“订单转弱”或“回款信号转弱”，除非来源确实披露了相应订单指标。可用客户占比、应收账款或经营现金流等已披露指标替代，并将未披露阈值写为具体限制，不得编造阈值。不得输出未闭合表格、超长表格或用截断方式满足长度要求。'+crossMethodEvidenceInstruction+' 用中文整合已完成的独立研究方法，只输出investment-thesis与monitoring-checklist两节。每条qualityFeedback都是上一轮报告的必修缺口：逐条定位其章节，核对当前有效方法结果及allowedEvidence后修订，不得遗漏、泛化或仅在别章回应；若反馈与本轮完整方法结果或证据相矛盾，应保留有证据的事实并收窄具体缺口，无法核实则写明限制。客户表与供应商表须按各自小节、行标签、表头及数据行分别绑定，不得用营业成本构成等邻近表格的单位、期间或表头支持客户/供应商数据。治理与激励优先纳入最新可用定期报告，并将较早报告的未实施明确限定到其报告期。催化剂应衔接已披露指标和经营信号；可指出未披露量化阈值，但不得因此省略已有指标。风险章节须保留竞争方法识别的具名候选公司及产品/技术路线，只将直接竞标、客户重叠和同口径成本/性能比较列为待验证。investment-thesis 给出核心判断、支持证据、最强反证和失效条件；monitoring-checklist 给出指标、观察频率、触发条件和论点关联；若用表格，固定使用“指标/观察项｜观察频率｜触发条件/核验信号｜论点关联与证据”四列，每个数据行严格四格且引用置于支持该论点的单元格，不得合并列；若无法安全组织为四格，改用有证据引用的段落。所有历史数据必须标明具体报告期间；引用年报分行业数据时必须写明报告年度，不得以“公司分行业表”等未注明期间的表述呈现历史值。对余额与流量的增长比较必须分别标明期末余额期间和累计流量期间，明确称其为跨口径筛查，不暗示因果。allowedEvidence 中的 sourceCandidateId、location 和正文是一一对应的、唯一可用证据及定位符；引用时逐字复制 sourceCandidateId@location，不得按报告页码推算 paragraph，不得引用不在 allowedEvidence 中的定位符。综合论点须交叉核对所有方法的结论、已引用事实与反证，不可用“资料缺失”覆盖已完成方法中已有的具名公司、产品、销量、收入或履历信息。尤其风险矩阵须交叉核对competitive_market_map：若其中已识别具名候选及其有来源支持的产品或技术路线，不得写“无具名竞品、路线或可比性能证据”，应保留候选/路线并将直接替代、实际客户重叠、市场份额和同口径性能成本限定为未验证。客户集中风险若已列前五大、最大与第二大单项销售比例，并说明最大客户缩减采购→收入/产能利用的路径，不得再称客户比例不可核或风险影响未分析；明确匿名仅限制身份、业务映射、合同和替代性，静态销售占比不等于实际收入/利润损失。员工持股计划分别标明人数上限、实际参与人数（若披露）、累计购入股数及期末持有数；上限不可写成实际人数，实际购股股数不可写成参与人数，缺实际参与人数时须明确限定。相同产品、指标、期间和比较基期在同节或跨章节重复出现时，必须对照完全相同的原表行和已完成方法并统一数值方向；不得一处写成本同比增速低于收入、另一处又写成本扩张更快，除非期间、产品或口径确实不同且已明确解释。；产品技术方法所用证据包可能不含竞争方法专门取得的同业材料，若竞争方法已给出具名候选公司及产品/技术路线，综合时应在产品或竞争相关段落保留该候选并引用其对应原文，同时把直接竞争、客户重叠及同口径性能成本限制为未验证，不能笼统写“没有具名竞品”；若年报已披露主要管理人员姓名、职务或职责，不能笼统称“完整管理层分工缺失”；只可指出具体新任高管履历、具体职责分工或任职后绩效等确未披露的事项，并保留已披露事实。若欠缺的是同口径价格、成本或车型/产品贡献，也应具体限定缺项。若证据含行业预测，即使其市场边界与公司分部仅相邻而非直接可比，也须保留预测数值、年份、币种/单位和年报转述归属，并明确它仅是相邻行业背景、不能替代分部市场规模或公司TAM。资产负债表比较列标为“上年末”时，期末余额只能表述为较上年末；不得称“上年同期”或同比，只有preparedAnalysis提供同指标、同期间的同比结果时才另行报告。若已完成方法披露控制人兼任职务、内部控制或关联交易制度，风险综合必须保留这些事实，只讨论具体执行和制衡证据缺口，不得声称治理结构或内控资料缺失。年度研发变动原因栏标为“不适用”时，应明确说原表将原因说明标为不适用且没有具体解释，避免笼统称报告遗漏原因。涉及数值的每个句子都须在句末引用直接支持该指标和期间的证据，不能借同段其他数据的引用。年度报告“研发投入金额”和利润表/结构化摘要“研发费用”是不同指标与期间，必须分别标明，不得并列成趋势或据此推导费用增减；只有同指标、同期间口径才可比较。代码派生的增速差、百分点差、现金流差、周转天数或单位换算，必须在所属章节列出操作数、单位和公式；表格中的派生同比也必须显示本期值、可比期值及公式，不能只列计算结果；事实披露值不虚构公式。毛利率水平用%；毛利率同比变化严格沿用原表列名、单位行和数据单元显示的单位，列名或单元显示%时保留百分比口径，不得改称百分点。只有两个可比毛利率水平由代码计算其差额并列出操作数和公式时，才用百分点。引用PDF拆分表头中的分行业/分产品毛利率变化时，必须直接引用定义该变化列的完整表头片段（所有拆分定位段）、单位段、相应分行业/分产品区段标题，以及精确完整行标签和数值行；行标签跨段时，标签段与数值续行都须分别引用。只引用数值行、邻近表头文字或方法结论不足以证明毛利率变化口径；缺少任一所需定位时，删除该数值论点。涉及分行业或分产品表中的数值时，必须逐字保留披露表中的完整行标签（例如日用电子器件制造业），不得缩写成电子或用分行业/分产品泛称替代；若无法匹配唯一完整行，删除该数字论点。分行业和分产品表要分开陈述，禁止用“分行业/分产品”合并标签或将一张表的产品行称为行业行；代码给出的A−B增速差若为负，文字必须说A低于B，不能用绝对值写成A高于B。风险章节若任何已完成方法或allowedEvidence出现商誉、资产组、被购买方或减值表格，不得称年报商誉资料缺失；应核对单位、主体行、商誉原值与减值准备后解释资产价值、利润及现金流影响，无法计算时只限缩缺少的字段。若数值校验失败，依据repair中带有指标上下文及同数字原文候选的信息，逐项核对科目、期间、产品/行业标签和单位并替换为精确定位；一个句子涉及多个数值时，每个数字必须紧邻其直接支持的本行引用，不能把不同产品、行业、期间和单位的数字合并挂在同一个引用集合下，也不能拿同值的其他表行代替；找不到唯一匹配原文则删除该数值论点。估值、情景和预期差仅在材料提供可复算输入时分析，否则明确缺失输入、已尝试来源及影响；不得将没有一致预期表述为不存在预期差。',input:{company:input.company,asOf:input.asOf,methods:available.map(method=>({skillId:method.skillId,answer:method.answer,markdown:method.markdown,sections:method.sections,findings:method.findings,limitations:method.limitations,risks:method.risks,sourceCandidateIds:method.sourceCandidateIds})),preparedAnalysis:input.preparedAnalysis,requiredSectionIds:finalIds,allowedCitations:[...locations],allowedEvidence:[...excerptByLocation.values()],qualityFeedback:input.qualityFeedback ?? [],repair:attempt>1?[previousDiagnostic,locatorRepair].filter(Boolean).join('；'):null,repairPreviousOutput:attempt>1?synthesisAttemptOutputs.at(-1)?.output:null,repairInstruction:attempt>1?'先逐条处理qualityFeedback指出的章节缺口，再修复本轮具体错误。交叉核对完整方法结果与allowedEvidence，纳入较新报告已披露事实并保持客户/供应商各自证据范围；若feedback与当前证据冲突，保留证据支持内容并限缩缺口。保留未报错章节和主张。引用只能从本次allowedEvidence的原文中选择，必须原样复制它对应的sourceCandidateId@location，不要猜测段落编号。每句数值判断都必须引用直接支持该科目/期间的原文。数字错误只能通过repair候选的原文科目标签及其提供的单位/相邻上下文消除；每个数字必须紧邻其直接支持的精确行定位，不同产品、行业、期间和单位分别引用；不得因数字相同跨科目取证或将多个数字共用一个模糊引用。无法唯一核实则删除该数值判断。'+(locatorRepair?` ${locatorRepair}`:'')+' '+tableRepairInstruction+' 完整输出合同JSON。':null},outputContract:schema,metadata:{operationFamily:'company-research-quality'}},input.signal)
       synthesisAttemptOutputs.push({attempt,output:response.output,allowedCitations:[...locations]})
       const value=(typeof response.output==='string'?JSON.parse(response.output):response.output) as {sections?: {id:string;markdown:string;sourceCandidateIds:string[]}[]}
       if(!Array.isArray(value.sections)||value.sections.length!==finalIds.length||new Set(value.sections.map(s=>s.id)).size!==finalIds.length) throw new Error('FORMAT_ERROR: final section set must be exact')

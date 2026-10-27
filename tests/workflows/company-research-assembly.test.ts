@@ -36,6 +36,60 @@ test('synthesis evidence ledger retains only complete findings bound to exact su
   assert.deepEqual(buildSynthesisEvidenceLedger({ methods: [backed], sources: [source], allowedSourceCandidateIds: ['other'] }), [])
 })
 
+test('synthesis evidence ledger carries exact workflow-owned conclusions and keeps blocked sections diagnostic-only', () => {
+  const source = { candidate: { candidateId: 'market', publishedAt: '2026-10-26' }, title: '未复权收盘价', content: '未复权收盘价原文。', contentHash: 'market-hash' } as any
+  const ledger = buildSynthesisEvidenceLedger({
+    methods: [],
+    sources: [source],
+    allowedSourceCandidateIds: ['market'],
+    workflowOwnedSections: [
+      { id: 'valuation', title: 'Valuation', markdown: '已复算的估值基准。[market@paragraph:1]', sourceCandidateIds: ['market'] },
+      { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: '研究缺口：没有可核验的目标年经营驱动假设。缺少输入9999。', sourceCandidateIds: [] },
+      { id: 'variant-perception', title: 'Variant Perception', markdown: '预测历史版本未核验，样本仅供复核。[market@paragraph:1]', sourceCandidateIds: ['market'] },
+    ],
+  })
+  assert.equal(ledger.length, 3)
+  assert.deepEqual(ledger[0], {
+    ownerWorkflow: 'valuation', sectionIds: ['valuation'], kind: 'inference', eligibility: 'verified',
+    text: '已复算的估值基准。[market@paragraph:1]',
+    evidence: [{ sourceCandidateId: 'market', contentHash: 'market-hash', location: 'paragraph:1', excerpt: '未复权收盘价原文。', publishedAt: '2026-10-26' }],
+  })
+  assert.equal(ledger[1]?.eligibility, 'blocked')
+  assert.ok(!ledger[1]?.text.includes('9999'))
+  assert.deepEqual(ledger[1]?.evidence, [])
+  assert.equal(ledger[2]?.eligibility, 'blocked')
+  assert.deepEqual(ledger[2]?.blockers, ['WORKFLOW_EXPECTATION_VERSION_UNVERIFIED'])
+  assert.deepEqual(buildSynthesisEvidenceLedger({
+    methods: [method], sources: [source], allowedSourceCandidateIds: ['market'], maxEntries: 2,
+    workflowOwnedSections: [
+      { id: 'valuation', title: 'Valuation', markdown: '已复算的估值基准。[market@paragraph:1]', sourceCandidateIds: ['market'] },
+      { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: '研究缺口：目标年情景输入不可用。', sourceCandidateIds: [] },
+      { id: 'variant-perception', title: 'Variant Perception', markdown: '研究缺口：预期面未核验。', sourceCandidateIds: [] },
+    ],
+  }).map(entry => entry.ownerWorkflow ?? 'atomic-method'), ['valuation', 'bull-base-bear'])
+  const unresolved = buildSynthesisEvidenceLedger({
+    methods: [], sources: [source], allowedSourceCandidateIds: ['market'],
+    workflowOwnedSections: [{ id: 'valuation', title: 'Valuation', markdown: '引用错误原文。[market@paragraph:2]', sourceCandidateIds: ['market'] }],
+  })
+  assert.equal(unresolved[0]?.eligibility, 'blocked')
+  assert.deepEqual(unresolved[0]?.blockers, ['WORKFLOW_SECTION_EVIDENCE_NOT_EXACTLY_RESOLVED'])
+  assert.deepEqual(unresolved[0]?.evidence, [])
+  for (const section of [
+    { id: 'valuation', title: 'Valuation', markdown: 'PIT valuation inputs are unverified; reference PE is not qualified. [market@paragraph:1]', sourceCandidateIds: ['market'] },
+    { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: 'Bear, Base, and Bull scenarios are unverified; sensitivity formula pending. [market@paragraph:1]', sourceCandidateIds: ['market'] },
+  ]) {
+    const entry = buildSynthesisEvidenceLedger({ methods: [], sources: [source], allowedSourceCandidateIds: ['market'], workflowOwnedSections: [section] })[0]
+    assert.equal(entry?.eligibility, 'blocked', section.id)
+    assert.deepEqual(entry?.evidence, [], section.id)
+  }
+  const malformedCitation = buildSynthesisEvidenceLedger({
+    methods: [], sources: [source], allowedSourceCandidateIds: ['market'],
+    workflowOwnedSections: [{ id: 'valuation', title: 'Valuation', markdown: 'Reference PE [market@paragraph:1] with an extra bad ref [market@page:1].', sourceCandidateIds: ['market'] }],
+  })[0]
+  assert.equal(malformedCitation?.eligibility, 'blocked')
+  assert.deepEqual(malformedCitation?.evidence, [])
+})
+
 test('synthesis citation handoff rejects findings without exact eligible method-supplied source rows', async () => {
   const source = { candidate: { candidateId: 'annual' }, title: '年报', content: '历史披露' } as any
   const cases: { name: string; method: CompanyResearchMethodResult; reportIds?: string[]; conflicts?: string[] }[] = [
@@ -77,6 +131,7 @@ test('final synthesis keeps all 19 stable report section ids while requesting on
   assert.equal(requestPayload?.outputContract.properties.sections.items.properties.markdown.maxLength, 5000)
   assert.match(requestPayload?.instruction ?? '', /最多8项/)
   assert.match(requestPayload?.instruction ?? '', /不在这两节抄录数字/)
+  assert.match(requestPayload?.instruction ?? '', /eligibility=blocked条目仅为阻塞诊断/)
   assert.doesNotMatch(requestPayload?.instruction ?? '', /吉利银河|银河E8/)
   assert.equal(result.sections.length, 19)
   assert.deepEqual(result.sections.map(section => section.id), [
@@ -85,6 +140,26 @@ test('final synthesis keeps all 19 stable report section ids while requesting on
   for (const id of ['valuation', 'bull-base-bear', 'variant-perception']) {
     assert.match(result.sections.find(section => section.id === id)?.markdown ?? '', /^研究缺口：/)
   }
+})
+
+test('final synthesis may cite exact qualified Workflow-owned valuation inputs', async () => {
+  const market = { candidate: { candidateId: 'market', kind: 'structured_data', tier: 2, title: 'PIT market close' }, title: 'PIT market close', content: '未复权收盘价原文。', contentHash: 'market-hash' } as any
+  const sources = [input.sources[0], market]
+  const workflowSections = [
+    { id: 'valuation', title: 'Valuation', markdown: '参考 PE 依据同日市场价格和年报 EPS 复算。[market@paragraph:1]', sourceCandidateIds: ['market'] },
+    { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: '研究缺口：没有具备来源的经营情景输入。', sourceCandidateIds: [] },
+    { id: 'variant-perception', title: 'Variant Perception', markdown: '研究缺口：两个预测面的历史版本资格未通过。', sourceCandidateIds: [] },
+  ] as const
+  let requestPayload: { input: { allowedCitations: string[]; allowedEvidence: { sourceCandidateId: string; location: string }[] } } | undefined
+  const executor: ReasoningExecutor = { capabilities, execute: async request => {
+    requestPayload = request as typeof requestPayload
+    return { operation: request.operation, output: { sections: ids.map(id => ({ id, markdown: `估值含义纳入论点 [market@paragraph:1]`, sourceCandidateIds: ['market'] })) } }
+  } }
+  const result = await assembleCompanyResearch({ ...input, sources, reportSourceCandidateIds: ['annual', 'market'] }, [method], executor, () => input.asOf, 1, {}, workflowSections)
+  assert.equal(result.synthesisMode, 'reasoning_executor', JSON.stringify(result.synthesisDiagnostics))
+  assert.ok(requestPayload?.input.allowedCitations.includes('market@paragraph:1'))
+  assert.ok(requestPayload?.input.allowedEvidence.some(ref => ref.sourceCandidateId === 'market' && ref.location === 'paragraph:1'))
+  assert.equal(result.sections.find(section => section.id === 'investment-thesis')?.markdown, '估值含义纳入论点 [market@paragraph:1]')
 })
 
 test('assembly preserves substantive supplied valuation, scenario, and variant sections', async () => {

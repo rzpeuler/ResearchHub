@@ -698,6 +698,7 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
       const synthesisEvidenceLedger = buildSynthesisEvidenceLedger({
         methods: methodResults,
         sources: researchInput.sources,
+        workflowOwnedSections: valuationSections,
         allowedSourceCandidateIds: researchInput.reportSourceCandidateIds ?? researchInput.durableSourceCandidateIds,
         conflictedSourceCandidateIds: sourceConflicts.map(conflict => conflict.candidateId),
       })
