@@ -43,6 +43,48 @@ test('independent semantic review sends actual cited paragraphs and evaluates al
   assert.equal(result.sectionChecks.length, 19)
 })
 
+test('semantic review ignores a false 2025-to-2025 period objection only when the report and cited financial source prove 2024-to-2025', () => {
+  const financial = {
+    ...source,
+    candidate: { ...source.candidate, candidateId: 'akshare-financial-period-pair', metadata: { dataProvenance: { metricId: 'company_financial_history' } } },
+    title: 'Company financial history',
+    content: JSON.stringify({ kind: 'financial', rows: [
+      { periodEnd: '2024-12-31', revenue: 777102455000 },
+      { periodEnd: '2025-12-31', revenue: 803964958000 },
+    ] }),
+  } as NormalizedResearchSource
+  const body = '年度财务反证（2024—2025年）：营业收入由777,102,455,000元升至803,964,958,000元；同比＝(803,964,958,000−777,102,455,000)÷777,102,455,000＝3.46%。[akshare-financial-period-pair@paragraph:1]'
+  const report = sections.map(section => section.id === 'revenue-profit-drivers' || section.id === 'financial-quality'
+    ? { ...section, markdown: body }
+    : section)
+  const reviewerReason = '年度财务段写“2025—2025年”并将777,102,455,000元列作起点；结构化财务序列及preparedAnalysis显示该值为2024年、803,964,958,000元为2025年。同比计算本身约3.46%正确，但期间标签错误，削弱年度比较表述。'
+  const checks = output.sectionChecks.map(check => ['revenue-profit-drivers', 'financial-quality'].includes(check.sectionId)
+    ? { ...check, evidenceSupportsConclusion: false, numericReproducible: false, reasons: [check.sectionId === 'financial-quality'
+      ? '年度财务段将比较期标成“2025—2025年”，但披露值及结构化数据实际对应2024—2025年；金额及同比复算无误，错误影响比较期间标注。报告对分行业毛利率变动沿用原表百分比口径，并另行披露合并毛利率水平差，未据此发现数值错误。'
+      : reviewerReason] }
+    : check)
+
+  const reconciled = reconcileKnownReviewerFalsePositives(checks as any, report as any, [financial])
+  for (const sectionId of ['revenue-profit-drivers', 'financial-quality']) {
+    const check = reconciled.find(item => item.sectionId === sectionId)!
+    assert.equal(check.evidenceSupportsConclusion, true)
+    assert.equal(check.numericReproducible, true)
+    assert.deepEqual(check.reasons, [])
+  }
+
+  const actuallyWrong = reconcileKnownReviewerFalsePositives(checks as any, report.map(section =>
+    section.id === 'financial-quality' ? { ...section, markdown: body.replace('2024—2025年', '2025—2025年') } : section,
+  ) as any, [financial])
+  assert.equal(actuallyWrong.find(item => item.sectionId === 'financial-quality')?.evidenceSupportsConclusion, false)
+  const missingSource = reconcileKnownReviewerFalsePositives(checks as any, report as any, [])
+  assert.equal(missingSource.find(item => item.sectionId === 'financial-quality')?.evidenceSupportsConclusion, false)
+  const separateBlocker = reconcileKnownReviewerFalsePositives(checks.map(check => check.sectionId === 'financial-quality'
+    ? { ...check, reasons: [check.reasons[0]!, '此外，缺少收入与成本增速的对应公式，导致该产品盈利变化无法复算。'] }
+    : check) as any, report as any, [financial])
+  assert.equal(separateBlocker.find(item => item.sectionId === 'financial-quality')?.evidenceSupportsConclusion, false)
+  assert.equal(separateBlocker.find(item => item.sectionId === 'financial-quality')?.reasons.length, 1)
+})
+
 test('semantic review clears only source-verified 2024 industry-period and employee-plan-cap self-contradictions', () => {
   const annualLines = Array.from({ length: 3061 }, () => '一般披露。')
   annualLines[17] = '二零二四年中国新能源汽车全年销量达到1,286.6万辆。'

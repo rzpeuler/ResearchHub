@@ -2,12 +2,27 @@
 
 **Task:** `RHL-CQR-P0-19-CHANGE-001`
 **Audit date:** 2026-10-27 (Asia/Shanghai)
-**Reference checkout:** `codex/company-research-p0-01-06` at `00cf506d0ba62b565311f376a51e88d5fdbabee5`
-**Status:** `COMPLETE_WITH_BLOCKING_GAPS — live existing-route probes and filing-backed EPS validation complete; BVPS, peer comparability, and a second Variant Perception surface remain unresolved`
+**Initial reference checkout:** `codex/company-research-p0-01-06` at `00cf506d0ba62b565311f376a51e88d5fdbabee5`
+**Re-audit checkout:** `codex/company-research-p0-01-06` at `030d29eb3dabb6461e7f7efd6adaacfe48e71265` plus the current semantic-review working-tree diff
+**Status:** `INTEGRATED_WITH_BLOCKING_GAPS — existing Company routes are wired and live; final report acceptance remains blocked by scenario-driver and Variant Perception evidence requirements`
 
 ## Scope and governing boundary
 
 The scope-change order makes all 19 stable report sections required. It supersedes the former 16-core completion rule. This audit does not treat existing catalogs, Skills, or provider policies as proof of data availability. All acceptance remains read-only against disposable Knowledge Bases. Existing Data Layer contracts and the flat Skill/Workflow architecture remain binding; no new provider, Data Layer public field, Knowledge schema, forecast-model Skill, or Knowledge write path is introduced by this audit.
+
+## Post-integration re-audit (2026-10-27)
+
+The original R33 ownership and route rows below describe the pre-integration state and are retained as historical audit evidence. They are superseded for current implementation status by this re-audit and `docs/engineering/reports/2026-10-27-company-research-p0-19-implementation.md`.
+
+| Requirement | Current implementation and saved-run evidence | Current gap |
+|---|---|---|
+| Company Workflow valuation inputs | `workflows/company-deep-research/workflow.ts` now resolves market close, aggregate EPS/BVPS, annual-report publication, peer candidates, and Company Research EPS/net-profit estimates through existing DataResolver routes. BYD and Dongshan saved runs returned market close and FY2026 EPS estimates; the BYD run records EastMoney proxy failure with successful Tencent fallback. | Aggregated FY2025 EPS/BVPS values remain `UNVERIFIED`; use issuer-filed basic EPS for the demonstrated PE path. Peer candidates lack dated comparable basis and are not eligible for Comps. |
+| Valuation basis | BYD's saved post-EPS-fix run uses Tencent's unadjusted 2026-10-26 close of CNY 82.40 and FY2025 filed basic EPS of CNY 3.58/share (`official-f7c8d23d2829a5e8@paragraph:231`), yielding a reproducible reference PE of 23.02x. Dongshan has a filed FY2025 basic EPS row of CNY 0.79/share (`official-39e591fa149e4543@paragraph:233`) and a returned market quote. | The PE path is a current-earnings reference, not a forward target price; BVPS and comparable-peer inputs remain unqualified. |
+| FY2026 consensus / Variant Perception | Both existing EPS source routes are wired and returned rows for the saved runs. The BYD report shows 9 Tonghuashun contributors (median 4.42) and 19 EastMoney contributors (median 5.21), same EPS unit and FY2026, with a computed 0.79 difference and two overlapping institutions. | The report does not yet show institution-level values and retained-source/deduplication detail needed to independently reproduce both medians. Historical value-version status remains `UNVERIFIED`; the difference is not yet eligible as a verified PIT expectation gap. |
+| Bull / Base / Bear | Existing deterministic PE calculation produces a low/median/high FY2026 EPS sensitivity at a fixed FY2025 PE, without scenario probabilities. | This is not a driver-based three-scenario model: sourced operating assumptions, counterevidence, scenario-specific conditions, and links to operating monitoring are absent. Do not accept as complete. |
+| 19-section report | The committed implementation requires all 19 stable sections and invokes the independent review across those IDs. The latest saved BYD run is `053565c3-b7d4-42b0-b005-fc1f907bbb89`; its report and sidecar remain local, and temporary Knowledge hashes match. | The run remains blocked. The independent review has substantive Bull/Base/Bear and Variant Perception findings; those findings cannot be cleared by section presence or static gaps. |
+
+The exact persisted BYD reviewer attempt also misread the annual revenue period as `2025—2025`; the saved report section and cited structured financial history instead show 2024-12-31 to 2025-12-31 with revenue 777,102,455,000 to 803,964,958,000 CNY. A new deterministic reconciliation test clears only this source-verifiable period false positive; it retains the true scenario and Variant Perception blockers. Replaying the saved response does not modify the persisted report and is not a new live acceptance run.
 
 ## Existing ownership and execution paths
 
@@ -41,7 +56,7 @@ The scope-change order makes all 19 stable report sections required. It supersed
 
 R33 saved provider outcomes, normalized source bodies, report sections, and method attempt diagnostics are under the ignored directory `runtime-data/company-quality-acceptance/2026-10-27-p0-readonly-repair-33/`. The tracked compact acceptance record is `tests/validation/evidence/company-quality-live-review.json`. Source publication dates in the R33 summaries are 2026-03-27 (BYD FY2025), 2026-04-21 (Dongshan FY2025), and 2026-08-28 / 2026-08-21 (the respective 2026 H1 reports). Structured historical actuals support reported results; they do not by themselves establish a forecast or a historical numeric value-version.
 
-## Feasible reuse versus unresolved capability
+## Initial Gate 1 feasibility reasoning (R33; historical pre-integration baseline)
 
 1. **No new Data Layer public field is required to probe the existing routes.** The catalog already contains the market price, EPS, BVPS, filing publication, peer evidence, and earnings-estimate requirements. The first implementation slice should materialize those existing requirements through Company Workflow's current resolver boundary, retain each resolved source/result in a typed run-local valuation evidence object, and reuse pure basis/scenario/expectation calculations.
 2. **The existing requirements are not yet declared for Company Research.** `COMMON_DATA_CATALOG` currently lists valuation metrics only for `valuation`, and estimate metrics only for `earnings-review`; `materializePhase2CommonRequirement` checks that consumer list and the matching policy's Workflow ID. A Company Research implementation cannot silently borrow those route identities. Gate 1 therefore records an internal consumer/policy wiring change as required; it must preserve each source policy and be covered for PIT, period, and fallback behavior. This is a routing-consumer addition, not a new metric ID or public data shape.
@@ -49,18 +64,19 @@ R33 saved provider outcomes, normalized source bodies, report sections, and meth
 4. **No basis means blocked.** A failed quote/estimate route must result in a per-section missing-field diagnostic with attempted provider/operation, period, and impact. A prose-only assumption or a fixed `optionalGaps` sentence cannot make any expanded section pass.
 5. **The P0 driver blockers remain separate from new-section availability.** BYD R33 attempt 2 failed on an unsupported, duplicated source-ID spelling for paragraph 719 in a method finding. Dongshan R33 failed on the driver classifier's exact classification-marker + numeric-row requirement at paragraph 359 (attempt 1) and paragraph 876 (attempt 2). These failures must be repaired without broadening allowed citations or bypassing the marker/row contract.
 
-## Gate 1 status and next evidence required
+## Gate 1 status and remaining acceptance evidence
 
-Gate 1 feasibility probing is **complete with blocking gaps**. The sanitized result is tracked at `tests/validation/evidence/company-research-p0-19-gate1-probes.json`; it contains provider status, counts, and two filing-backed EPS values with exact source locators, not source bodies. The existing DataResolver routes establish a current quote and FY2026 EPS/net-profit consensus for both issuers. The audited FY2025 annual reports independently establish basic EPS, but BVPS is unavailable as a directly disclosed row; dated comparable peers and a matching issuer guidance/own-research surface for Variant Perception are also unavailable. Thus the new evidence supports a current PE reference and a consensus baseline, but not yet a final three-scenario valuation or quantified variant gap.
+Gate 1 routing feasibility is **complete**, while P0-19 acceptance remains blocked. The historical pre-integration probe is tracked at `tests/validation/evidence/company-research-p0-19-gate1-probes.json`; current live input coverage and limitations are summarized above and in the implementation report. Both saved real-company runs remain blocked, so route availability does not establish completion.
 
-The next implementation/evidence work is to:
+Remaining work is to:
 
-- source a directly disclosed FY2025 BVPS row or fail closed on the PB method; retain filing-backed basic EPS citations instead of unversioned aggregate EPS;
-- qualify a same-date, same-basis peer set or remove the peer-comps path from the selected valuation method;
-- use the FY2026 consensus results already reproducibly built by the existing selector (10 BYD and 6 Dongshan institutions per metric, one unit per metric); retain exact estimate source refs and independently verify net-profit attribution scope;
-- identify a dated, same-period issuer guidance or other methodologically comparable second expectation surface for Variant Perception.
+- expose the exact provider/institution, FY, unit, value, and publication date for each retained expectation contributor so both medians and overlap handling can be recomputed;
+- qualify those expectation values for the report `asOf` cutoff; preserve `UNVERIFIED` and block the Variant Perception conclusion while value-version evidence is absent;
+- replace the consensus-extrema/fixed-PE sensitivity with three source-backed operating-driver cases and at least one reproducible sensitivity; do not invent management guidance or calibrated probabilities;
+- resolve the BYD and Dongshan method-level findings evidenced in their latest saved real runs without changing the citation rules or two-attempt limit;
+- rerun both reports through the root Runtime, review every section, preserve the readonly Knowledge hashes, and compare BYD with the current Hermes reference.
 
-Any accepted result must show request period and `asOf`, each configured provider attempt/fallback, normalized value and source/version metadata, exact citations, and a fail-closed reason when unavailable. No production Knowledge write is permitted. If the existing routes fail to return enough data, keep that report section blocked and do not expand schema or source access implicitly.
+Any accepted result must show request period and `asOf`, each configured provider attempt/fallback, normalized value and source/version metadata, exact citations, and a fail-closed reason when unavailable. No production Knowledge write is permitted. Existing source gaps remain blockers; the passing period-reconciliation test is not a live report acceptance result.
 
 ## References
 

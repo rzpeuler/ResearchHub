@@ -1,0 +1,36 @@
+{
+  "taskId": "RHL-CQR-P0-19-CHANGE-001",
+  "asOf": "2026-10-27",
+  "sourceRunId": "053565c3-b7d4-42b0-b005-fc1f907bbb89",
+  "reportId": "company-research-002594-053565c3-b7d4-42b0-b005-fc1f907bbb89",
+  "reviewAttempt": 2,
+  "replayType": "deterministic_saved_review_reconciliation",
+  "liveRerunPerformed": false,
+  "periodEvidence": {
+    "structuredSourceId": "akshare-financial-002594",
+    "contentHash": "0ebda24acb6f218e8a52956db1e941a549f65b0932cd6f3ec362a9792cea0a80",
+    "metric": "revenue",
+    "unit": "CNY",
+    "priorPeriod": "2024-12-31",
+    "priorValue": 777102455000,
+    "currentPeriod": "2025-12-31",
+    "currentValue": 803964958000,
+    "reportSections": ["revenue-profit-drivers", "financial-quality"]
+  },
+  "reconciliation": {
+    "falseReviewerPeriodClaim": "2025-2025",
+    "periodFlagsBefore": {"revenue-profit-drivers": false, "financial-quality": false},
+    "periodFlagsAfter": {"revenue-profit-drivers": true, "financial-quality": true},
+    "failureConditionsRetained": [
+      "bull-base-bear lacks sourced operating-driver assumptions and counterevidence",
+      "variant-perception contributor medians are not independently reproducible and value-version PIT remains UNVERIFIED"
+    ],
+    "overallReportStatus": "blocked"
+  },
+  "validation": {
+    "command": "node --import tsx --test tests/workflows/company-semantic-quality.test.ts",
+    "passed": 63,
+    "failed": 0
+  },
+  "sourceBodiesIncluded": false
+}

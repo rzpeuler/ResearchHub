@@ -408,6 +408,52 @@ export function reconcileKnownReviewerFalsePositives(checks: readonly CompanySem
     const body = reportSections.get(check.sectionId) ?? ''
     let removed = false
     const reasons = check.reasons.flatMap(reason => {
+      // A reviewer can misread a correctly labeled 2024-2025 comparison as
+      // 2025-2025. Clear only that exact period objection when the section's
+      // cited structured financial row contains both reported values and both
+      // matching period ends. If the report or source actually says otherwise,
+      // retain the blocking finding.
+      const periodOnlyObjection = reason.replace(/(?:年度财务段写[“"‘]?2025\s*[—–-]\s*2025年.{0,220}?削弱年度比较表述|年度财务段将比较期标成[“"‘]?2025\s*[—–-]\s*2025年.{0,220}?错误影响比较期间标注)[。]?/u, '')
+      if (['revenue-profit-drivers', 'financial-quality'].includes(check.sectionId)
+        && check.evidenceSupportsConclusion === false
+        && /(?:写|将比较期标成)[“"‘]?2025\s*[—–-]\s*2025年/u.test(reason)
+        && /(?:列作起点|该值为2024年|披露值及结构化数据实际对应2024\s*[—–-]\s*2025年)/u.test(reason)
+        && /2024.{0,60}2025/u.test(reason)
+        && /同比.{0,24}(?:正确|无误)/u.test(reason)
+        && !hasIndependentDefectClause(periodOnlyObjection)) {
+        const startValue = /将\s*([\d,，]+)元列作起点/u.exec(reason)?.[1]?.replace(/[,，]/g, '')
+        const endValue = /；[^；]{0,100}?([\d,，]+)元为2025年/u.exec(reason)?.[1]?.replace(/[,，]/g, '')
+        const references = [...body.matchAll(/\[([^\]@\s]+)@paragraph:1\]/gu)].map(match => match[1]!)
+        const exactStructuredPair = /2024\s*[—–-]\s*2025年/u.test(body)
+          && !/2025\s*[—–-]\s*2025年/u.test(body)
+          && sources.some(source => {
+            const metricId = (source.candidate.metadata as { dataProvenance?: { metricId?: unknown } } | undefined)?.dataProvenance?.metricId
+            if (!references.includes(source.candidate.candidateId)
+              || !(metricId === 'company_financial_history'
+                || source.candidate.candidateId.startsWith('akshare-financial-'))) return false
+            let parsed: unknown
+            try { parsed = JSON.parse(source.content) } catch { return false }
+            if (!parsed || typeof parsed !== 'object' || (parsed as { kind?: unknown }).kind !== 'financial'
+              || !Array.isArray((parsed as { rows?: unknown }).rows)) return false
+            const rows = (parsed as { rows: unknown[] }).rows
+            const revenueAt = (period: string) => {
+              const row = rows.find(item => !!item && typeof item === 'object'
+                && ((item as { periodEnd?: unknown }).periodEnd === period || (item as { period?: unknown }).period === period)) as { metrics?: { revenue?: unknown }; revenue?: unknown } | undefined
+              const value = row?.metrics?.revenue ?? row?.revenue
+              return typeof value === 'number' && Number.isFinite(value) ? String(value) : undefined
+            }
+            const priorRevenue = revenueAt('2024-12-31')
+            const currentRevenue = revenueAt('2025-12-31')
+            const reportNumbers = body.replace(/[,，]/g, '')
+            const sourceNumbers = source.content.replace(/[,，]/g, '')
+            return Boolean(priorRevenue && currentRevenue
+              && (!startValue || startValue === priorRevenue)
+              && (!endValue || endValue === currentRevenue)
+              && reportNumbers.includes(priorRevenue) && reportNumbers.includes(currentRevenue)
+              && sourceNumbers.includes(priorRevenue) && sourceNumbers.includes(currentRevenue))
+          })
+        if (exactStructuredPair) { removed = true; return [] }
+      }
       // Reconcile a reviewer objection that explicitly confirms the BYD
       // historical-industry value, its 2024 period, and the matching source.
       // Require the exact cited annual-report row and rendered value.
