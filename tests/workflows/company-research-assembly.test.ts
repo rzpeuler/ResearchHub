@@ -185,6 +185,18 @@ test('final thesis carries the verified reference PE meaning and exact valuation
   assert.doesNotMatch(thesis, /(?:22\.91|82\.01|3\.58)/u)
 })
 
+test('workflow-owned evidence accepts repeated exact citations while validating each unique locator once', () => {
+  const source = { candidate: { candidateId: 'market', publishedAt: '2026-10-26' }, title: 'PIT close', content: '未复权收盘价原文。', contentHash: 'market-hash' } as any
+  const ledger = buildSynthesisEvidenceLedger({
+    methods: [],
+    sources: [source],
+    allowedSourceCandidateIds: ['market'],
+    workflowOwnedSections: [{ id: 'valuation', title: 'Valuation', markdown: '收盘价 [market@paragraph:1]。敏感性仍引用同一输入 [market@paragraph:1]。', sourceCandidateIds: ['market'] }],
+  })
+  assert.equal(ledger[0]?.eligibility, 'verified')
+  assert.deepEqual(ledger[0]?.evidence.map(reference => `${reference.sourceCandidateId}@${reference.location}`), ['market@paragraph:1'])
+})
+
 test('assembly preserves substantive supplied valuation, scenario, and variant sections', async () => {
   const suppliedSections = [
     { id: 'valuation', markdown: '基于同一基准日和已核验盈利基础，估值区间为可复算结果。[annual@paragraph:1]' },

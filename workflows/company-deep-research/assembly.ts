@@ -132,7 +132,7 @@ export function buildSynthesisEvidenceLedger(input: {
         ...(provenance?.pointInTimeSafe !== undefined ? { pointInTimeSafe: provenance.pointInTimeSafe } : {}),
       }]
     })
-    if (!references.length || references.length !== citationTokens.length || evidence.length !== references.length) {
+    if (!references.length || references.length !== new Set(citationTokens).size || evidence.length !== references.length) {
       entries.push({
         ownerWorkflow,
         sectionIds: [section.id],
