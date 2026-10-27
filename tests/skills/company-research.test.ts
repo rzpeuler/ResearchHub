@@ -100,4 +100,23 @@ test('Company Skill uses acquired profile, financial, and market observations wh
   assert.deepEqual(section('Valuation').sourceCandidateIds, ['akshare-market-600519'])
   assert.match(section('Business Model').markdown, /^Research gap:/)
 })
-test('valuation utilities are deterministic and probability-weighted', () => { assert.deepEqual(relativeValuation({ metric: 10, peerMultiples: [20, 10, 15] }), { multiple: 15, impliedValue: 150, peerCount: 3 }); assert.equal(scenarioValuation([{ name: 'bull', earnings: 2, multiple: 10, probability: 0.5 }, { name: 'bear', earnings: 1, multiple: 10, probability: 0.5 }]).expectedValue, 15) })
+test('valuation utilities are deterministic and scenario calculations stay unweighted', () => {
+  assert.deepEqual(relativeValuation({ metric: 10, peerMultiples: [20, 10, 15] }), { multiple: 15, impliedValue: 150, peerCount: 3 })
+
+  const scenarios = scenarioValuation([
+    { name: 'bear', earnings: 1, multiple: 10 },
+    { name: 'base', earnings: 1.5, multiple: 10 },
+    { name: 'bull', earnings: 2, multiple: 10 },
+  ])
+  assert.deepEqual(scenarios, {
+    cases: [
+      { name: 'bear', earnings: 1, multiple: 10, value: 10 },
+      { name: 'base', earnings: 1.5, multiple: 10, value: 15 },
+      { name: 'bull', earnings: 2, multiple: 10, value: 20 },
+    ],
+  })
+  assert.throws(() => scenarioValuation([
+    { name: 'bear', earnings: 1, multiple: 10, probability: 0.5 } as never,
+    { name: 'bull', earnings: 2, multiple: 10, probability: 0.5 } as never,
+  ]), /probabilities are not supported/)
+})

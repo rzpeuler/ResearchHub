@@ -29,12 +29,17 @@ diagnostics, and evidence/source bindings.
 
 Validate exactly Bear/Base/Bull assumptions and horizon; calculate each target
 price and implied return in code; recompute all nine sensitivity cells; and
-report unavailable methods without substituting values.
+report unavailable methods without substituting values. This method does not
+calculate a probability-weighted expected value: report the scenarios without
+probabilities or a weighted expected value. A separate calibration-aware method
+would require sourced, independently calibrated probabilities; never assign
+equal default weights.
 
 ## Evidence Requirements
 
 Basis inputs and scenario assumptions must be attributable, finite, and aligned
-to the same point-in-time and fiscal horizon.
+to the same point-in-time and fiscal horizon. Any probability requires
+independent calibration evidence and an attributable source.
 
 ## Deterministic / Model Boundary
 
