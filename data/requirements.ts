@@ -199,7 +199,7 @@ export function materializePhase2CommonRequirement(metricId: string, context: Ph
     determinismClass: definition.dataKind === 'metric' || definition.dataKind === 'estimate' || definition.dataKind === 'timeseries' ? 'AUTHORITATIVE_NUMERIC' : definition.dataKind === 'document' && metricId === 'valuation_annual_report_publication' ? 'EVIDENCE_BACKED_NUMERIC' : 'SEMANTIC_QUALITATIVE',
     minimumAuthority: policy.candidates[0].originAuthority,
     required: context.required,
-    ...(context.historicalNumeric && definition.dataKind === 'metric' ? { requireValueVersionProof: true } : {}),
+    ...(context.historicalNumeric && ['metric', 'estimate'].includes(definition.dataKind) ? { requireValueVersionProof: true } : {}),
     llmWebFallback: 'FORBIDDEN',
   }
   assertValidDataRequirement(requirement)

@@ -125,16 +125,19 @@ test('Company Deep Research read-only resolver requirements retain exact IDs and
   assert.deepEqual(earningsRequirements.map((requirement) => requirement.metricId), ['earnings_expectation_eps', 'earnings_expectation_net_profit'])
   assert.ok(valuationRequirements.every((requirement) => requirement.consumer.workflow === 'company-deep-research' && requirement.asOfMode === 'HISTORICAL'))
   assert.ok(valuationRequirements.filter((requirement) => ['valuation_eps', 'valuation_bvps'].includes(requirement.metricId)).every((requirement) => requirement.requireValueVersionProof === true && requirement.period.fiscalYear === 2025))
-  assert.ok(earningsRequirements.every((requirement) => requirement.period.fiscalYear === 2026 && requirement.period.fiscalPeriod === '2026-FY' && requirement.asOfMode === 'HISTORICAL'))
+  assert.ok(earningsRequirements.every((requirement) => requirement.period.fiscalYear === 2026 && requirement.period.fiscalPeriod === '2026-FY' && requirement.asOfMode === 'HISTORICAL' && requirement.requireValueVersionProof === true))
   assert.equal(result?.valuationItems[0]?.value?.kind, 'fixture:valuation_market_price')
   assert.equal(result?.valuationItems[0]?.attempts[0]?.sourceId, 'fixture-route')
   assert.equal(result?.earningsExpectationItems[0]?.value?.kind, 'fixture:earnings_expectation_eps')
   let currentRequirements: readonly any[] = []
+  let currentEarningsRequirements: readonly any[] = []
   await acquireCompanyReadOnlyData({
     valuationDataResolverFactory: () => ({ ...resolver, async resolve(requirements: readonly any[]) { currentRequirements = requirements; return resolver.resolve(requirements) } } as unknown as DataResolver<any>),
+    earningsDataResolverFactory: () => ({ ...resolver, async resolve(requirements: readonly any[]) { currentEarningsRequirements = requirements; return resolver.resolve(requirements) } } as unknown as DataResolver<any>),
   }, { symbol: '600519', name: 'Fixture Company', exchange: 'SH' }, asOf, () => asOf)
   assert.ok(currentRequirements.every((requirement) => requirement.asOfMode === 'CURRENT_VALUE_ONLY'))
   assert.ok(currentRequirements.filter((requirement) => ['valuation_eps', 'valuation_bvps'].includes(requirement.metricId)).every((requirement) => requirement.requireValueVersionProof !== true))
+  assert.ok(currentEarningsRequirements.every((requirement) => requirement.asOfMode === 'CURRENT_VALUE_ONLY' && requirement.requireValueVersionProof !== true))
 })
 
 test('risk method instructions require exact table total rows and local unit/header citations', () => {

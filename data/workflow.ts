@@ -235,7 +235,7 @@ function evaluateExecution<T>(
   const industryNumeric = requirement.metricId?.startsWith('industry:') === true
     && ['metric', 'estimate', 'timeseries'].includes(requirement.dataKind)
     && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
-  const numericMetric = (requirement.dataKind === 'metric' || (industryNumeric && ['estimate', 'timeseries'].includes(requirement.dataKind))) && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
+  const numericMetric = requirement.determinismClass !== 'SEMANTIC_QUALITATIVE' && (requirement.dataKind === 'metric' || requirement.dataKind === 'estimate' || (industryNumeric && requirement.dataKind === 'timeseries'))
   if ((requirement.requireValueVersionProof || (industryNumeric && requirement.asOfMode === 'HISTORICAL')) && numericMetric && (valueVersion?.status !== 'VERIFIED' || publishedAt === undefined)) return { status: 'POINT_IN_TIME_INVALID', diagnostic: 'NO_ELIGIBLE_POINT_IN_TIME_DATA: numeric value version or publication unverified' }
   const source: AcquisitionSourceMetadata = {
     sourceId: candidate.sourceId,
@@ -272,12 +272,12 @@ function validMarketPeriodEnd(value: string): boolean {
 }
 
 function unavailableQuality(requirement: DataRequirement): AcquisitionResult<unknown>['quality'] {
-  const numericMetric = (requirement.dataKind === 'metric' || (requirement.dataKind === 'estimate' && requirement.metricId?.startsWith('industry:') === true) || (requirement.dataKind === 'timeseries' && requirement.metricId?.startsWith('industry:') === true)) && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
+  const numericMetric = requirement.determinismClass !== 'SEMANTIC_QUALITATIVE' && (requirement.dataKind === 'metric' || requirement.dataKind === 'estimate' || (requirement.dataKind === 'timeseries' && requirement.metricId?.startsWith('industry:') === true))
   return { pointInTimeSafe: false, complete: false, crossChecked: false, ...(numericMetric ? { valueVersionStatus: 'UNVERIFIED' as const, pitDiagnostic: 'NUMERIC_VALUE_VERSION_UNVERIFIED_OR_PUBLICATION_MISSING' } : {}) }
 }
 
 function acquisitionQuality<T>(requirement: DataRequirement, observations: readonly AcquisitionObservation<T>[], complete: boolean, crossChecked: boolean): AcquisitionResult<T>['quality'] {
-  const numericMetric = (requirement.dataKind === 'metric' || (requirement.dataKind === 'estimate' && requirement.metricId?.startsWith('industry:') === true) || (requirement.dataKind === 'timeseries' && requirement.metricId?.startsWith('industry:') === true)) && requirement.determinismClass !== 'SEMANTIC_QUALITATIVE'
+  const numericMetric = requirement.determinismClass !== 'SEMANTIC_QUALITATIVE' && (requirement.dataKind === 'metric' || requirement.dataKind === 'estimate' || (requirement.dataKind === 'timeseries' && requirement.metricId?.startsWith('industry:') === true))
   const versionVerified = numericMetric && observations.length > 0 && observations.every((observation) => observation.source.valueVersion?.status === 'VERIFIED')
   const temporalEvidence = observations.length > 0 && observations.every((observation) => requirement.dataKind === 'timeseries'
     ? observation.source.observedAt !== undefined && observation.source.observationAvailableAt !== undefined && requirement.period?.end !== undefined

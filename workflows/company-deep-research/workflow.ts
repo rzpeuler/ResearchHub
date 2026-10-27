@@ -348,7 +348,7 @@ export async function acquireCompanyReadOnlyData(
     ? { ...requirement, comparisonFamily: 'valuation' as const }
     : requirement)
   const earningsExpectationRequirements: DataRequirement[] = input.earningsDataResolverFactory ? (['earnings_expectation_eps', 'earnings_expectation_net_profit'] as const).map((metricId) => ({
-    ...materializePhase2CommonRequirement(metricId, { ...common, period: { fiscalYear: expectationTargetFiscalYear, fiscalPeriod: `${expectationTargetFiscalYear}-FY` } }),
+    ...materializePhase2CommonRequirement(metricId, { ...common, period: { fiscalYear: expectationTargetFiscalYear, fiscalPeriod: `${expectationTargetFiscalYear}-FY` }, ...(input.asOf === undefined ? {} : { historicalNumeric: true }) }),
     asOfMode,
   })) : []
   const resolveSafely = async <T>(resolve: (() => Promise<ResolvedDataBundle<T>>) | undefined): Promise<ReadOnlyResolverAttempt<T>> => {

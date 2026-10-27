@@ -54,6 +54,36 @@ test('missing numeric version proof stays PIT unsafe and strict historical reque
   assert.equal(lenient.quality.valueVersionStatus, 'UNVERIFIED')
 })
 
+test('numeric estimate snapshots report unverified value versions and historical requests require proof', async () => {
+  const estimateRequirement: DataRequirement = {
+    ...financialRequirement,
+    consumer: { workflow: 'company-deep-research' },
+    asOf: '2026-10-07T00:00:00.000Z',
+    analysisAsOf: '2026-10-07T00:00:00.000Z',
+    dataKind: 'estimate',
+    metricId: 'earnings_expectation_eps',
+    period: { fiscalYear: 2026, fiscalPeriod: '2026-FY' },
+    asOfMode: 'CURRENT_VALUE_ONLY',
+    requireValueVersionProof: false,
+  }
+  const estimatePolicy: SourcePolicy = {
+    policyId: 'estimate-current-snapshot',
+    requirementMatch: { workflow: 'company-deep-research', metricId: 'earnings_expectation_eps', dataKind: 'estimate' },
+    selectionMode: 'FIRST_VALID',
+    candidates: [{ sourceId: 'estimate-feed', fallbackLevel: 'PRIMARY', originAuthority: 'S3_AGGREGATOR', operationId: 'estimate.feed', supports: { dataKinds: ['estimate'], metricIds: ['earnings_expectation_eps'] } }],
+  }
+  const executor = async () => ({ status: 'SUCCESS' as const, data: { value: 4.2 }, source: { publishedAt: '2026-08-01T00:00:00.000Z', retrievedAt: '2026-10-07T00:00:00.000Z', valueVersion: { status: 'UNVERIFIED' as const, reason: 'Feed does not identify an archived revision.' } } })
+  const current = await runResearchDataAcquisition({ requirement: estimateRequirement, policies: [estimatePolicy], executor })
+  assert.equal(current.status, 'AVAILABLE')
+  assert.equal(current.quality.pointInTimeSafe, false)
+  assert.equal(current.quality.valueVersionStatus, 'UNVERIFIED')
+  assert.equal(current.quality.pitDiagnostic, 'NUMERIC_VALUE_VERSION_UNVERIFIED_OR_PUBLICATION_MISSING')
+
+  const historical = await runResearchDataAcquisition({ requirement: { ...estimateRequirement, asOfMode: 'HISTORICAL', requireValueVersionProof: true }, policies: [estimatePolicy], executor })
+  assert.equal(historical.status, 'UNAVAILABLE')
+  assert.ok(historical.attempts.every((attempt) => attempt.status === 'POINT_IN_TIME_INVALID'))
+})
+
 test('future publication and future numeric version remain ineligible', async () => {
   for (const source of [
     { publishedAt: '2025-04-01', valueVersion: { status: 'VERIFIED' as const, versionId: 'old', availableAt: '2024-04-01' } },
