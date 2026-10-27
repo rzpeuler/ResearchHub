@@ -835,6 +835,51 @@ function repairUniqueRiskGoodwillTotalReferences<T>(output: T, packets: readonly
     return candidates.length === 1 ? candidates[0]! : []
   }
 
+  const exactJunoNewcoReferencesFor = (claim: string, citedIds: readonly string[]): CompanyMethodEvidenceRef[] => {
+    const amountMatch = /Juno\s+Newco[^。；;\n]{0,80}?商誉原值[^。；;\n]{0,40}?([\d,，]+(?:\.\d+)?)\s*千元/iu.exec(claim)
+    if (!amountMatch) return []
+    const amount = Number(amountMatch[1]!.replace(/[,，]/gu, ''))
+    const claimYear = /((?:19|20)\d{2})年/u.exec(claim)?.[1]
+    const halfYearClaim = /半年报|半年度报告/u.test(claim)
+    const annualClaim = /年报|年度报告/u.test(claim) && !halfYearClaim
+    const candidates: CompanyMethodEvidenceRef[][] = []
+    for (const packet of packets.filter(item => citedIds.includes(item.sourceCandidateId))) {
+      if (claimYear && !packet.title.includes(claimYear)) continue
+      if (halfYearClaim && !/半年|半年度/u.test(packet.title)) continue
+      if (annualClaim && !/年报|年度/u.test(packet.title)) continue
+      const rows = packet.excerpts.filter(excerpt => {
+        const row = excerpt.text.trim()
+        const values = [...row.matchAll(/(?<![\d.])([\d,，]+(?:\.\d+)?)(?![\d.])/gu)].map(match => Number(match[1]!.replace(/[,，]/gu, '')))
+        return /^Juno\s+Newco\b/iu.test(row) && values.includes(amount)
+      })
+      for (const row of rows) {
+        const rowNumber = Number(/^paragraph:(\d+)$/u.exec(row.location)?.[1] ?? 0)
+        if (!Number.isInteger(rowNumber) || rowNumber < 1) continue
+        const prior = packet.excerpts.filter(excerpt => {
+          const paragraph = Number(/^paragraph:(\d+)$/u.exec(excerpt.location)?.[1] ?? 0)
+          return paragraph > 0 && paragraph < rowNumber && rowNumber - paragraph <= 12
+        })
+        const heading = prior.filter(excerpt => /商誉原值/u.test(excerpt.text) && !/商誉减值准备/u.test(excerpt.text))
+          .sort((left, right) => Number(right.location.slice('paragraph:'.length)) - Number(left.location.slice('paragraph:'.length)))[0]
+        const tableHeader = prior.filter(excerpt => /期初余额|年初余额/u.test(excerpt.text) && /期末余额|年末余额/u.test(excerpt.text))
+          .sort((left, right) => Number(right.location.slice('paragraph:'.length)) - Number(left.location.slice('paragraph:'.length)))[0]
+        if (!heading || !tableHeader || Number(heading.location.slice('paragraph:'.length)) > Number(tableHeader.location.slice('paragraph:'.length))) continue
+        const unitLocations = (row.contextLocations ?? []).filter(location => {
+          const unit = packet.excerpts.find(excerpt => excerpt.location === location)
+          return unit && /(?:均以|单位[:：])[^。\n]{0,30}人民币千元为单位表示|单位[:：]\s*人民币千元/u.test(unit.text)
+        })
+        if (unitLocations.length !== 1) continue
+        candidates.push([
+          { sourceCandidateId: packet.sourceCandidateId, location: row.location },
+          { sourceCandidateId: packet.sourceCandidateId, location: heading.location },
+          { sourceCandidateId: packet.sourceCandidateId, location: tableHeader.location },
+          { sourceCandidateId: packet.sourceCandidateId, location: unitLocations[0]! },
+        ])
+      }
+    }
+    return candidates.length === 1 ? candidates[0]! : []
+  }
+
   if (risks && typeof risks.markdown === 'string') {
     const lines = risks.markdown.split(/\r?\n/u)
     let changed = false
@@ -852,6 +897,22 @@ function repairUniqueRiskGoodwillTotalReferences<T>(output: T, packets: readonly
       repairs.push({ sectionId: 'risks', inputText: line, originalReferences: [], addedReferences: refs, reason: 'The risk row names the Juno Newco goodwill total; one exact 合计 row under the supplied 商誉原值 table and its attached RMB-thousands unit context uniquely match the displayed value.' })
     }
     if (changed) risks.markdown = lines.join('\n')
+
+    const junoLines = (typeof risks.markdown === 'string' ? risks.markdown : '').split(/\r?\n/u)
+    let junoChanged = false
+    for (let index = 0; index < junoLines.length; index++) {
+      const line = junoLines[index]!
+      const citedIds = [...new Set([...line.matchAll(/\[([^\]@\s]+)@paragraph:\d+\]/gu)].map(match => match[1]!))]
+      const refs = exactJunoNewcoReferencesFor(line, citedIds)
+      if (!refs.length || refs.every(ref => line.includes(`[${ref.sourceCandidateId}@${ref.location}]`))) continue
+      const additions = refs.filter(ref => !line.includes(`[${ref.sourceCandidateId}@${ref.location}]`))
+        .map(ref => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')
+      const pipe = line.lastIndexOf('|')
+      junoLines[index] = pipe > 0 ? `${line.slice(0, pipe).trimEnd()} ${additions} ${line.slice(pipe)}` : `${line} ${additions}`
+      junoChanged = true
+      repairs.push({ sectionId: 'risks', inputText: line, originalReferences: [], addedReferences: refs, reason: 'The Juno Newco amount matches one exact row in an already cited report; its 商誉原值 heading, balance columns, and attached RMB-thousands unit context were all supplied with that same report.' })
+    }
+    if (junoChanged) risks.markdown = junoLines.join('\n')
   }
 
   if (Array.isArray(value.findings)) {
@@ -860,12 +921,15 @@ function repairUniqueRiskGoodwillTotalReferences<T>(output: T, packets: readonly
       const citedIds = [...new Set((finding.evidence as Record<string, unknown>[])
         .flatMap(ref => typeof ref?.sourceCandidateId === 'string' ? [ref.sourceCandidateId] : []))]
       const refs = exactReferencesFor(finding.text, citedIds)
-      if (!refs.length) return finding
       const existing = new Set((finding.evidence as Record<string, unknown>[])
         .flatMap(ref => typeof ref?.sourceCandidateId === 'string' && typeof ref.location === 'string' ? [`${ref.sourceCandidateId}@${ref.location}`] : []))
-      const added = refs.filter(ref => !existing.has(`${ref.sourceCandidateId}@${ref.location}`))
+      const junoRefs = exactJunoNewcoReferencesFor(finding.text, citedIds)
+      const added = [...refs, ...junoRefs].filter((ref, index, all) => all.findIndex(candidate => candidate.sourceCandidateId === ref.sourceCandidateId && candidate.location === ref.location) === index)
+        .filter(ref => !existing.has(`${ref.sourceCandidateId}@${ref.location}`))
       if (!added.length) return finding
-      repairs.push({ findingIndex, inputText: finding.text, originalReferences: finding.evidence as CompanyMethodEvidenceRef[], addedReferences: added, reason: 'The finding names the Juno Newco goodwill total; one exact 合计 row under the supplied 商誉原值 table and its attached RMB-thousands unit context uniquely match the displayed value.' })
+      repairs.push({ findingIndex, inputText: finding.text, originalReferences: finding.evidence as CompanyMethodEvidenceRef[], addedReferences: added, reason: junoRefs.length
+        ? 'The Juno Newco amount matches one exact row in an already cited report; its 商誉原值 heading, balance columns, and attached RMB-thousands unit context were all supplied with that same report.'
+        : 'The finding names the Juno Newco goodwill total; one exact 合计 row under the supplied 商誉原值 table and its attached RMB-thousands unit context uniquely match the displayed value.' })
       return { ...finding, evidence: [...finding.evidence, ...added] }
     })
   }

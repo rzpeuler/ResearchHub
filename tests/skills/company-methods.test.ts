@@ -1790,6 +1790,51 @@ test('risk method binds a unique cited Juno Newco goodwill total to its exact to
   assert.ok(typeof blockedDraft === 'string' && !blockedDraft.includes('[annual-goodwill@paragraph:8543]'))
 })
 
+test('risk numeric grounding binds a Juno Newco goodwill finding to its exact same-report row and unit context', async () => {
+  const lines = Array.from({ length: 4861 }, (_, index) => `报告内容第${index + 1}段。`)
+  lines[3276] = '本公司记账本位币和编制本财务报表所采用的货币均为人民币，除有特别说明外，均以人民币千元为单位表示。'
+  lines[4814] = '（1）商誉原值'
+  lines[4815] = '期初余额 本期增加 本期减少 期末余额'
+  lines[4820] = 'Juno Newco 4,361,657 - - 4,361,657'
+  lines[4821] = '合计 4,437,242 - - 4,437,242'
+  lines[4822] = '（2）商誉减值准备'
+  lines[4826] = '合计 9,671 - - 9,671'
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: 'half-year-goodwill', title: '2026年半年度报告' }, title: '2026年半年度报告', content: lines.join('\n') }
+  const claim = '半年报披露商誉原值合计4,437,242千元、减值准备合计9,671千元；Juno Newco商誉原值4,361,657千元。'
+  const draft = {
+    status: 'complete', answer: '商誉减值风险需结合资产组预测持续监控。', markdown: '商誉减值风险需结合资产组预测持续监控。',
+    sections: [{ id: 'risks', markdown: `${claim}[half-year-goodwill@paragraph:4822] [half-year-goodwill@paragraph:4827]` }],
+    findings: [{ text: claim, kind: 'fact', evidence: [
+      { sourceCandidateId: 'half-year-goodwill', location: 'paragraph:4822' },
+      { sourceCandidateId: 'half-year-goodwill', location: 'paragraph:4827' },
+    ] }],
+    limitations: [], risks: ['资产组预测未兑现可能导致减值并影响资产与利润。'],
+  }
+  const result = await executeCompanyResearchMethod({ skillId: 'company_risk_analysis', company: { symbol: '002594' }, asOf: '2026-10-28', sources: [filing], reportSourceCandidateIds: ['half-year-goodwill'], maxAttempts: 1, reasoningExecutor: executor(async () => draft) })
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  const finding = result.findings[0]!
+  for (const location of ['paragraph:4821', 'paragraph:4822', 'paragraph:4815', 'paragraph:4816', 'paragraph:3277']) {
+    assert.ok(finding.evidence.some(ref => ref.location === location), `missing finding evidence ${location}: ${JSON.stringify(finding.evidence)}`)
+  }
+
+  const duplicate = { ...filing, candidate: { ...filing.candidate, candidateId: 'duplicate-half-year' } }
+  const ambiguousDraft = {
+    ...draft,
+    sections: [{ id: 'risks', markdown: `${claim}[half-year-goodwill@paragraph:4822] [half-year-goodwill@paragraph:4827] [duplicate-half-year@paragraph:4822] [duplicate-half-year@paragraph:4827]` }],
+    findings: [{ ...draft.findings[0]!, evidence: [
+      { sourceCandidateId: 'half-year-goodwill', location: 'paragraph:4822' },
+      { sourceCandidateId: 'half-year-goodwill', location: 'paragraph:4827' },
+      { sourceCandidateId: 'duplicate-half-year', location: 'paragraph:4822' },
+      { sourceCandidateId: 'duplicate-half-year', location: 'paragraph:4827' },
+    ] }],
+  }
+  const ambiguous = await executeCompanyResearchMethod({ skillId: 'company_risk_analysis', company: { symbol: '002594' }, asOf: '2026-10-28', sources: [filing, duplicate], reportSourceCandidateIds: ['half-year-goodwill', 'duplicate-half-year'], maxAttempts: 1, reasoningExecutor: executor(async () => ambiguousDraft) })
+  assert.equal(ambiguous.status, 'failed', 'duplicate same-value reports must remain ambiguous without the exact row citation')
+  assert.ok(ambiguous.diagnostics.some(diagnostic => diagnostic.code === 'NUMERIC_GROUNDING_ERROR'))
+  const ambiguousOutput = ambiguous.attemptOutputs?.[0]?.output as typeof ambiguousDraft
+  assert.ok(!ambiguousOutput.findings[0]!.evidence.some(ref => ref.location === 'paragraph:4821'))
+})
+
 test('risk retry surfaces an exact raw-yuan row for a rounded yi-yuan claim without treating it as proof', async () => {
   const lines = Array.from({ length: 7672 }, (_, index) => `年报经营情况第${index + 1}段。`)
   lines[7663] = '单位：元'
