@@ -849,7 +849,7 @@ test('business-driver splits a two-industry margin finding before exact row bind
   assert.ok(rejected.diagnostics.some(diagnostic => diagnostic.code === 'NUMERIC_GROUNDING_ERROR'), JSON.stringify(rejected.diagnostics))
 })
 
-test('business-driver separates product revenue composition from its margin table before exact row binding', async () => {
+test('business-driver preserves a unique margin row locator cited in the owning section for its structured finding', async () => {
   const id = 'product-revenue-and-margin-tables'
   const lines = [
     '2025年年度报告', '单位：元', '2025年 2024年', '同比增减', '金额 占营业收入比重 金额 占营业收入比重',
@@ -858,19 +858,22 @@ test('business-driver separates product revenue composition from its margin tabl
     '营业成本比上年同期增减', '毛利率比上年同期增减', '分产品',
     '精密组件产品 5,930,242,495.99 5,383,316,361.13 9.22% 30.61% 38.36% -5.08%',
   ]
+  const separatedTableGap = 60
+  lines.splice(7, 0, ...Array.from({ length: separatedTableGap }, () => '其他经营披露。'))
+  const marginHeaderParagraph = 14 + separatedTableGap
+  const marginRowParagraph = 16 + separatedTableGap
   const filing = { ...source, candidate: { ...source.candidate, candidateId: id }, title: '2025年年度报告', content: lines.join('\n') }
   const base = {
     status: 'complete', answer: '产品收入增长但毛利率承压。', markdown: '分产品收入与利润率需要分表核对。',
     sections: [
-      { id: 'revenue-profit-drivers', markdown: `产品收入结构和毛利率提供不同维度的经营信息。[${id}@paragraph:6]` },
+      { id: 'revenue-profit-drivers', markdown: `产品收入结构和毛利率提供不同维度的经营信息。[${id}@paragraph:6]\n2025年毛利表中精密组件产品毛利率比上年同期增减为-5.08%。[${id}@paragraph:${marginHeaderParagraph}] [${id}@paragraph:${marginRowParagraph - 1}] [${id}@paragraph:${marginRowParagraph}]` },
       { id: 'growth-drivers', markdown: `持续跟踪精密组件产品同口径收入与利润率。[${id}@paragraph:6]` },
       { id: 'catalysts', markdown: `现有披露未提供该产品未来量价目标。[${id}@paragraph:6]` },
     ],
-    findings: [{
-      text: '2025年分产品精密组件产品收入59.30亿元、占比14.78%；收入同比增减30.61%、营业成本同比增减38.36%、毛利率9.22%，毛利率比上年同期增减-5.08%。成本增长更快与毛利率承压并存。',
-      kind: 'fact' as const,
-      evidence: [2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15].map(paragraph => ({ sourceCandidateId: id, location: `paragraph:${paragraph}` })),
-    }],
+    findings: [
+      { text: '2025年分产品精密组件产品收入59.30亿元、占比14.78%。', kind: 'fact' as const, evidence: [2, 3, 4, 5, 6, 7].map(paragraph => ({ sourceCandidateId: id, location: `paragraph:${paragraph}` })) },
+      { text: '2025年分产品精密组件产品毛利率比上年同期增减为-5.08%。', kind: 'fact' as const, evidence: [10, 11, 12, 13, 14].map(paragraph => ({ sourceCandidateId: id, location: `paragraph:${paragraph}` })) },
+    ],
     limitations: [], risks: [],
   }
   const run = (valueFiling: typeof filing) => executeCompanyResearchMethod({
@@ -881,10 +884,12 @@ test('business-driver separates product revenue composition from its margin tabl
   const accepted = await run(filing)
   assert.equal(accepted.status, 'complete', JSON.stringify({ findings: accepted.findings, diagnostics: accepted.diagnostics }))
   assert.equal(accepted.findings.length, 2)
-  assert.ok(accepted.findings.some(finding => finding.text.includes('14.78%') && !finding.text.includes('38.36%') && finding.evidence.some(ref => ref.location === 'paragraph:7')))
-  assert.ok(accepted.findings.some(finding => finding.text.includes('38.36%') && finding.text.includes('-5.08%') && finding.evidence.some(ref => ref.location === 'paragraph:16')))
+  assert.ok(accepted.findings.some(finding => finding.text.includes('14.78%') && finding.evidence.some(ref => ref.location === 'paragraph:7')))
+  assert.ok(accepted.findings.some(finding => finding.text.includes('-5.08%') && finding.evidence.some(ref => ref.location === `paragraph:${marginRowParagraph}`)))
+  assert.ok(accepted.citationRepairs?.some(repair => repair.addedReferences.some(ref => ref.location === `paragraph:${marginRowParagraph}`)),
+    JSON.stringify(accepted.citationRepairs))
 
-  const mismatched = { ...filing, content: lines.map(line => line.replace('38.36%', '38.35%')).join('\n') }
+  const mismatched = { ...filing, content: lines.map(line => line.replace('-5.08%', '-5.07%')).join('\n') }
   const rejected = await run(mismatched)
   assert.equal(rejected.status, 'failed')
   assert.ok(rejected.diagnostics.some(diagnostic => diagnostic.code === 'NUMERIC_GROUNDING_ERROR'), JSON.stringify(rejected.diagnostics))
@@ -1347,25 +1352,29 @@ test('malformed risk matrix retry names the exact five-column contract and prese
 })
 
 test('company risk matrix applies and records only explicit, lossless goodwill and residual-risk cell repairs', async () => {
-  const filing = { ...source, content: '公司披露商誉原值及相关风险。' }
+  const filing = { ...source, content: '公司披露商誉原值及相关风险。MFLEX预测收入复合增长率0.10%、毛利率17.00%，稳定期毛利率17.11%，税前折现率10.62%；摘录未含其他资产组完整参数，无法量化未来减值。' }
   const ref = '[filing-1@paragraph:1]'
   const header = '| 风险类别 | 触发条件与影响路径 | 可监控指标 | 缓解因素 | 残余风险 |\n|---|---|---|---|---|'
   const goodwillRow = `| 商誉与估值 | 预测偏差可能导致减值 ${ref} | 现金流与折现率 | 公司披露资产组测试 ${ref} | 商誉原值合计 ${ref} | 未提供完整账面价值，无法量化减值情景 ${ref} |`
   const mergedMitigationRow = `| 治理与关键人 | 权力集中可能增加关键人依赖 ${ref} | 继任安排 | 公司披露内部控制体系 ${ref}；残余风险：执行效果和继任安排缺少直接证据 ${ref} |`
+  const goodwillAssumptionRow = `| 商誉与并购整合 | 若资产组现金流低于预测，可收回金额下降并可能减值 ${ref} | 实际经营表现、预测参数及减值准备 | 公司披露资产组测试及估值方法 ${ref} | MFLEX预测收入复合增长率0.10%、毛利率17.00%，稳定期毛利率17.11%，税前折现率10.62%；假设落空或折现率上升可能压低可收回金额 ${ref} | 摘录未含其他资产组完整参数，无法量化未来减值影响 ${ref} |`
   const repairedGoodwillRow = `| 商誉与估值 | 预测偏差可能导致减值 ${ref} | 现金流与折现率 | 公司披露资产组测试 ${ref} | 商誉原值合计 ${ref}；未提供完整账面价值，无法量化减值情景 ${ref} |`
   const repairedGovernanceRow = `| 治理与关键人 | 权力集中可能增加关键人依赖 ${ref} | 继任安排 | 公司披露内部控制体系 ${ref} | 残余风险：执行效果和继任安排缺少直接证据 ${ref} |`
+  const repairedGoodwillAssumptionRow = `| 商誉与并购整合 | 若资产组现金流低于预测，可收回金额下降并可能减值 ${ref} | 实际经营表现、预测参数及减值准备 | 公司披露资产组测试及估值方法 ${ref} | MFLEX预测收入复合增长率0.10%、毛利率17.00%，稳定期毛利率17.11%，税前折现率10.62%；假设落空或折现率上升可能压低可收回金额 ${ref}；摘录未含其他资产组完整参数，无法量化未来减值影响 ${ref} |`
   const makeOutput = (table: string, tableHeader = header) => ({ ...output, answer: `公司存在相关风险。${ref}`, markdown: `公司存在相关风险。${ref}`, sections: [{ id: 'risks', markdown: `${tableHeader}\n${table}` }], findings: [{ text: `公司披露商誉与治理风险。`, kind: 'fact', evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:1' }] }], risks: [`公司存在需跟踪的风险。${ref}`] })
-  const result = await executeCompanyResearchMethod({ skillId: 'company_risk_analysis', company: { symbol: '002594' }, asOf: '2026-10-14', sources: [filing], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async () => makeOutput(`${goodwillRow}\n${mergedMitigationRow}`)) })
+  const result = await executeCompanyResearchMethod({ skillId: 'company_risk_analysis', company: { symbol: '002594' }, asOf: '2026-10-14', sources: [filing], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async () => makeOutput(`${goodwillRow}\n${mergedMitigationRow}\n${goodwillAssumptionRow}`)) })
   assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
   assert.equal(result.attempts, 1)
   assert.deepEqual(result.attemptOutputs?.[0]?.formatRepairs, [
-    'risks line 3: merged explicit goodwill disclosure into residual-risk cell',
+    'risks line 3: merged supported goodwill valuation context and evidence limitation into residual-risk cell',
     'risks line 4: split explicitly labeled residual-risk text into fifth cell',
+    'risks line 5: merged supported goodwill valuation context and evidence limitation into residual-risk cell',
   ])
   const repaired = result.sections.find(section => section.id === 'risks')?.markdown
   assert.ok(repaired?.includes(repairedGoodwillRow))
   assert.ok(repaired?.includes(repairedGovernanceRow))
-  for (const token of ['商誉原值合计', '[filing-1@paragraph:1]', '未提供完整账面价值', '执行效果和继任安排']) assert.ok(repaired?.includes(token), `repair preserves ${token}`)
+  assert.ok(repaired?.includes(repairedGoodwillAssumptionRow))
+  for (const token of ['商誉原值合计', '[filing-1@paragraph:1]', '未提供完整账面价值', '执行效果和继任安排', '0.10%', '17.00%', '无法量化未来减值影响']) assert.ok(repaired?.includes(token), `repair preserves ${token}`)
 
   const ambiguousRows = [
     `| 非商誉经营风险 | 可能导致经营波动 ${ref} | 经营指标 | 已披露缓释 ${ref} | 商誉原值 ${ref} | 未提供敏感度 ${ref} |`,
@@ -1405,7 +1414,7 @@ test('company risk matrix merges a separately disclosed goodwill cell with a res
   assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
   assert.equal(result.attempts, 1)
   assert.deepEqual(result.attemptOutputs?.[0]?.formatRepairs, [
-    'risks line 3: merged explicit goodwill disclosure into residual-risk cell',
+    'risks line 3: merged supported goodwill valuation context and evidence limitation into residual-risk cell',
   ])
   assert.equal(result.sections.find(section => section.id === 'risks')?.markdown, `${header}\n${repairedRow}`)
   assert.equal((result.sections.find(section => section.id === 'risks')?.markdown.match(/\[filing-1@paragraph:1\]/g) ?? []).length, 4)

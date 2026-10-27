@@ -226,10 +226,13 @@ function repairCompanyRiskMatrixFormat<T>(output: T): { output: T; repairs: stri
         if (row.length === 6
           && /商誉/.test(row[0]!)
           && !/非商誉/.test(row[0]!)
-          && /商誉(?:原值|减值准备)|减值准备/.test(row[4]!)
-          && /(?:未提供|未披露|无法|不能|尚未|残余风险|仍可能)/.test(row[5]!)) {
+          && (/商誉(?:原值|减值准备)|减值准备/.test(row[4]!)
+            || (/(?:资产组|预测|假设|参数|增长率|毛利率|折现率|可收回金额)/.test(row[4]!)
+              && /(?:假设落空|可能.{0,24}(?:下降|压低|减值|影响|风险)|仍可能|风险传导)/.test(row[4]!)))
+          && /(?:未提供|未披露|无法|不能|尚未|残余风险|仍可能)/.test(row[5]!)
+          && /(?:未提供|未披露|无法|不能|尚未).{0,32}(?:量化|完整|具体|金额|参数|安全边际|敏感度|预测)/.test(row[5]!)) {
           repaired = [...row.slice(0, 4), `${row[4]}；${row[5]}`]
-          repairs.push(`risks line ${rowIndex + 1}: merged explicit goodwill disclosure into residual-risk cell`)
+          repairs.push(`risks line ${rowIndex + 1}: merged supported goodwill valuation context and evidence limitation into residual-risk cell`)
         } else if (row.length === 4) {
           const split = /^(.*?)(?:；|;)\s*(残余风险\s*[:：]?\s*.+)$/u.exec(row[3]!)
           if (split && /(?:缓释|公司披露|已披露|制度|措施|控制)/.test(split[1]!)) {
@@ -1898,6 +1901,11 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
         ? bindExactCompanyTableRows(productMarginBound, packets, input.sources, true)
         : productMarginBound)
       if (input.skillId === 'business_driver_analysis') Object.assign(parsed, bindExactBusinessDriverProductRevenueRows(parsed, packets, input.sources))
+      if (input.skillId === 'business_driver_analysis') {
+        const preserved = preserveExactBusinessDriverMarginFindingReferences(parsed, packets, input.sources)
+        citationRepairs.push(...preserved.repairs.map((repair) => ({ ...repair, attempt })))
+        Object.assign(parsed, preserved.output)
+      }
       if (input.skillId === 'capital_allocation_review') {
         const preserved = preserveExactDividendFindingReferences(parsed, packets)
         citationRepairs.push(...preserved.repairs.map((repair) => ({ ...repair, attempt })))
@@ -2200,6 +2208,71 @@ function preserveExactDividendFindingReferences(
       reason: 'Finding omitted its exact annual-dividend row citation; preserved only references from the same cited section row whose supplied excerpts contain the matching amount and dividend wording.',
     })
     return { ...finding, evidence: [...finding.evidence, ...additions] }
+  })
+  return repairs.length ? { output: { ...result, findings }, repairs } : { output: result, repairs }
+}
+
+/**
+ * Preserve the exact official product-margin row when a structured finding
+ * repeats a rate already stated and cited in its owning section, but omits
+ * that row from its own evidence list. The product label, rate, source, and
+ * locator must match one unique supplied excerpt.
+ */
+function preserveExactBusinessDriverMarginFindingReferences(
+  result: ReturnType<typeof validateCompanyMethodOutput>,
+  packets: readonly CompanyEvidencePacket[],
+  sources: readonly NormalizedResearchSource[],
+): { output: ReturnType<typeof validateCompanyMethodOutput>; repairs: CompanyCitationRepair[] } {
+  const sourceById = new Map(sources.map(source => [source.candidate.candidateId, source]))
+  const citedMarginRows = new Map<string, CompanyMethodEvidenceRef[]>()
+  const normalizeRate = (value: string) => value.replace(/[−％]/g, character => character === '−' ? '-' : '%').replace(/\s+/g, '')
+  const rateTokens = (value: string) => [...value.matchAll(/[-−]?\d[\d,，]*(?:\.\d+)?\s*[%％]/gu)].map(match => normalizeRate(match[0]!))
+  const section = result.sections.find(item => item.id === 'revenue-profit-drivers')
+  for (const line of section?.markdown.split(/\r?\n/) ?? []) {
+    if (!/毛利率比上年同期增减/u.test(line)) continue
+    const refs = [...line.matchAll(/\[([^\]@\s]+)@(paragraph:[1-9]\d*)\]/gu)].map(match => ({ sourceCandidateId: match[1]!, location: match[2]! }))
+    const lineRates = rateTokens(line)
+    if (!refs.length || !lineRates.length) continue
+    for (const packet of packets) {
+      const source = sourceById.get(packet.sourceCandidateId)
+      if (!source || source.title !== packet.title || !/(?:19|20)\d{2}年.*(?:年度|半年度)报告/u.test(packet.title)) continue
+      const sourceRefs = refs.filter(ref => ref.sourceCandidateId === packet.sourceCandidateId)
+      for (const ref of sourceRefs) {
+        const row = packet.excerpts.find(excerpt => excerpt.location === ref.location)?.text.trim()
+        if (!row) continue
+        const rowLabel = row.slice(0, row.search(/(?<![\d.,])-?\d/u)).trim()
+        const rowRates = rateTokens(row)
+        if (!rowLabel || !line.includes(rowLabel) || !rowRates.length) continue
+        for (const rate of rowRates) {
+          if (!lineRates.includes(rate)) continue
+          const key = `${rowLabel}\u001f${rate}`
+          citedMarginRows.set(key, [...(citedMarginRows.get(key) ?? []), { sourceCandidateId: packet.sourceCandidateId, location: ref.location }])
+        }
+      }
+    }
+  }
+
+  const repairs: CompanyCitationRepair[] = []
+  const findings = result.findings.map((finding, findingIndex) => {
+    if (!/毛利率比上年同期增减/u.test(finding.text)) return finding
+    const matching = [...citedMarginRows.entries()].filter(([key]) => {
+      const [label, rate] = key.split('\u001f')
+      return label && rate && finding.text.includes(label) && rateTokens(finding.text).includes(rate)
+    })
+    if (matching.length !== 1) return finding
+    const exactRows = [...new Map(matching[0]![1].map(ref => [`${ref.sourceCandidateId}@${ref.location}`, ref])).values()]
+    if (exactRows.length !== 1) return finding
+    const row = exactRows[0]!
+    if (finding.evidence.some(ref => ref.sourceCandidateId === row.sourceCandidateId && ref.location === row.location)
+      || finding.evidence.length >= 12) return finding
+    repairs.push({
+      findingIndex,
+      inputText: finding.text,
+      originalReferences: finding.evidence,
+      addedReferences: [row],
+      reason: 'Added the unique supplied official product-margin row already cited by the matching section sentence; product label, displayed rate, source and row locator matched exactly.',
+    })
+    return { ...finding, evidence: [...finding.evidence, row] }
   })
   return repairs.length ? { output: { ...result, findings }, repairs } : { output: result, repairs }
 }
