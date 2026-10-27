@@ -100,3 +100,12 @@ P0-19 remains incomplete pending reruns against the updated source, both reports
 - Compact tracked evidence is `tests/validation/evidence/company-quality-driver-row-repair-2026-10-27.json`. Synthetic row examples stay in the committed unit test; raw provider/report content, runtime logs, and disposable Knowledge data remain local.
 
 P0-19 remains incomplete. The BYD and Dongshan reports did not pass all required core checks and independent semantic acceptance; no Hermes side-by-side manual review is claimed.
+
+### Product classification marker binding on method retry (2026-10-27)
+
+- Dongshan's saved `business_driver_analysis` attempt cited the exact numeric product row at paragraph 775 but omitted the `分产品` classification marker at paragraph 773 from the finding itself. The section-level citation did not satisfy finding-level numeric evidence validation, so the validator remains unchanged and fail-closed.
+- Commit `c6b41ad` updates only the numeric retry instruction: each product or industry finding must cite its own exact classification marker and numeric row; a split product label must also be cited. The regression fixture covers a section with both markers where the finding omits the classification marker, verifies the first attempt is rejected, and verifies the bounded retry instruction names the missing finding-level context.
+- `node --import tsx --test tests/skills/company-methods.test.ts` passed 137/137; `npm run typecheck` and `git diff --check` passed. This is deterministic regression evidence, not a live-provider acceptance result.
+- A new root Runtime Dongshan read-only run was started against `c6b41ad` as run `c861cc63-4599-411e-9ddf-18f4d3478587`; its terminal outcome is not recorded here until the run finishes. Its full raw report, provider bodies, runtime logs, and disposable Knowledge data remain local.
+
+P0-19 remains incomplete pending both real reports passing all 19 checks and independent semantic acceptance.
