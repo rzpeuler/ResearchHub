@@ -240,6 +240,57 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
   const separator = (width: number): string => `| ${Array.from({ length: width }, () => '---').join(' | ')} |`
   const isPipeLine = (line: string): boolean => line.includes('|') && !/^\s*```/.test(line)
   const isSeparator = (line: string): boolean => isPipeLine(line) && splitCells(line).every(value => /^:?-{3,}:?$/.test(value))
+  // Some synthesis responses concatenate complete table rows on one physical
+  // line using the exact `| |` row boundary. Recover them only when an
+  // adjacent header and separator establish the width, every split piece has
+  // that width, and the reconstructed table passes the normal validator.
+  // A Markdown heading fused into the last cell is detached only when it
+  // begins a complete heading token after non-empty cell text.
+  for (let separatorIndex = 1; separatorIndex + 1 < lines.length; separatorIndex++) {
+    const headerIndex = separatorIndex - 1
+    const header = lines[headerIndex]!
+    const rule = lines[separatorIndex]!
+    const width = splitCells(header).length
+    if (!isPipeLine(header) || isSeparator(header) || !isSeparator(rule)
+      || splitCells(rule).length !== width || width < 2) continue
+    let rowIndex = separatorIndex + 1
+    for (; rowIndex < lines.length && isPipeLine(lines[rowIndex]!) && !isSeparator(lines[rowIndex]!); rowIndex++) {
+      const physicalLine = lines[rowIndex]!
+      if (!/\|\s+\|/u.test(physicalLine)) continue
+      const pieces = physicalLine.split(/\|\s+\|/u)
+      if (pieces.length < 2) continue
+      const rows: string[][] = []
+      let headingTail = ''
+      let valid = true
+      for (let pieceIndex = 0; pieceIndex < pieces.length; pieceIndex++) {
+        let piece = pieces[pieceIndex]!
+        if (pieceIndex === pieces.length - 1) {
+          const trailingHeading = piece.match(/(\|)\s+(#{1,6}\s+[^|]+)$/u)
+          if (trailingHeading) {
+            piece = piece.slice(0, trailingHeading.index! + trailingHeading[1]!.length)
+            headingTail = trailingHeading[2]!
+          }
+        }
+        const cells = splitCells(piece)
+        if (cells.length !== width) { valid = false; break }
+        if (pieceIndex === pieces.length - 1 && !headingTail) {
+          const finalCell = cells[width - 1]!
+          const heading = finalCell.match(/^(.*?)\s+(#{1,6}\s+.+)$/u)
+          if (heading && heading[1]!.trim()) {
+            cells[width - 1] = heading[1]!.trimEnd()
+            headingTail = heading[2]!
+          }
+        }
+        rows.push(cells)
+      }
+      if (!valid || rows.length < 2) continue
+      const candidateTable = [header, rule, ...rows.map(renderRow)].join('\n')
+      if (validateCompanyResearchMarkdownTables(candidateTable).length) continue
+      lines.splice(rowIndex, 1, ...rows.map(renderRow), ...(headingTail ? [headingTail] : []))
+      repairs.push(`TABLE_CONCATENATED_ROWS_SPLIT: line ${rowIndex + 1}; rows ${rows.length}${headingTail ? '; heading detached' : ''}`)
+      rowIndex += rows.length - 1 + (headingTail ? 1 : 0)
+    }
+  }
   // The market-structure matrix occasionally emits this exact one-cell PCB
   // label before a complete four-column row. Preserve the label as prose so
   // it cannot be mistaken for a table row with three silently missing cells.

@@ -741,6 +741,31 @@ test('industry repair splits the exact fused two-column report-locator header af
   for(const ref of [`${source}@paragraph:843`,`${source}@paragraph:844`,`${source}@paragraph:833`,`${source}@paragraph:839`])assert.ok(repaired.markdown.includes(`[${ref}]`))
 })
 
+test('table repair splits only uniquely sized concatenated rows and detaches a heading tail', () => {
+  const source = 'peer'
+  const input = `| 竞争维度 | 已披露情况 | 边界 | 来源 |\n|---|---|---|---|\n| 公司A | 路线A | 待核验 | 年报 [${source}@paragraph:1] | | 公司B | 路线B | 待核验 | 年报 [${source}@paragraph:2] | | 公司C | 路线C | 待核验 | 年报 [${source}@paragraph:3] ## 优势持续条件与最强反证\n说明文字保留在表格之后。`
+  const before = [...input.matchAll(/\[[^\]]+\]/gu)].map(match => match[0])
+  const repaired = repairCompanyResearchMarkdownTables(input)
+  assert.ok(repaired.repairs.some(item => item.startsWith('TABLE_CONCATENATED_ROWS_SPLIT')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.match(repaired.markdown, /\| 公司A \|[\s\S]*\n\| 公司B \|[\s\S]*\n\| 公司C \|/u)
+  assert.match(repaired.markdown, /\n## 优势持续条件与最强反证\n说明文字保留/u)
+  assert.deepEqual([...repaired.markdown.matchAll(/\[[^\]]+\]/gu)].map(match => match[0]), before)
+
+  const wrongWidth = `| A | B | C | D |\n|---|---|---|---|\n| 1 | 2 | 3 | 4 | | 5 | 6 | 7 | |`
+  const wrongWidthResult = repairCompanyResearchMarkdownTables(wrongWidth)
+  assert.equal(wrongWidthResult.markdown, wrongWidth)
+  assert.ok(!wrongWidthResult.repairs.some(item => item.startsWith('TABLE_CONCATENATED_ROWS_SPLIT')))
+  assert.ok(validateCompanyResearchMarkdownTables(wrongWidthResult.markdown).length > 0)
+
+  const ambiguousCell = `| A | B | C | D |\n|---|---|---|---|\n| 1 | literal | | text | 4 | | 5 | 6 | 7 | 8 |`
+  const ambiguousResult = repairCompanyResearchMarkdownTables(ambiguousCell)
+  assert.equal(ambiguousResult.markdown, ambiguousCell)
+  assert.ok(!ambiguousResult.repairs.some(item => item.startsWith('TABLE_CONCATENATED_ROWS_SPLIT')))
+  assert.ok(validateCompanyResearchMarkdownTables(ambiguousResult.markdown).length > 0)
+})
+
 test('market matrix preserves an exact orphan PCB label outside a complete four-column table',()=>{
   const input=`| 市场 | 产品边界与排除项 | 地域、客户与时间边界 | 产业链位置与需求因素 |
 |---|---|---|---|
