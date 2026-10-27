@@ -8,7 +8,7 @@ import { KnowledgeBaseRegistry } from '../../knowledge/registry/registry.ts'
 import { KnowledgeProductionGateway } from '../../knowledge/production/gateway.ts'
 import { createFreshKnowledgeBaseV04, readCanonicalV04Assets } from '../../knowledge/storage/index.ts'
 import { runCompanyDeepResearch as executeCompanyDeepResearch } from '../../workflows/company-deep-research/index.ts'
-import { addCompanyMethodEvidenceInstructions, appendCompanyOfficialContextEvidence, applyCompanyResearchTableDiagnostics, initialCompanyResearchSearchTerms, mergeCompanyMethodRevisionResult } from '../../workflows/company-deep-research/workflow.ts'
+import { acquireCompanyReadOnlyData, addCompanyMethodEvidenceInstructions, appendCompanyOfficialContextEvidence, applyCompanyResearchTableDiagnostics, initialCompanyResearchSearchTerms, mergeCompanyMethodRevisionResult } from '../../workflows/company-deep-research/workflow.ts'
 import { COMPANY_RESEARCH_METHOD_IDS, type CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
 import { COMPANY_CORE_SECTION_IDS } from '../../workflows/company-deep-research/content-quality.ts'
 import { mergeCompanySemanticQuality } from '../../workflows/company-deep-research/content-quality.ts'
@@ -58,6 +58,43 @@ test('initial company research acquisition prioritizes target filings and busine
   assert.deepEqual(terms.slice(0, 4), ['比亚迪 年报 半年报 业绩报告', '比亚迪 主营业务 产品 技术', '比亚迪 行业 市场规模 竞争', '比亚迪 管理层 战略 投资者关系'])
   assert.ok(terms.includes('peer:吉利汽车'))
   assert.ok(terms.includes('peer:宁德时代'))
+})
+
+test('Company Deep Research read-only resolver requirements retain exact IDs and fiscal/PIT context', async () => {
+  const asOf = '2026-09-08T00:00:00.000Z'
+  let valuationContext: any
+  let earningsContext: any
+  let valuationRequirements: readonly any[] = []
+  let earningsRequirements: readonly any[] = []
+  const resolver = { async resolve(requirements: readonly any[]) {
+    const items = requirements.map((requirement) => ({ requirementId: requirement.id, value: { kind: `fixture:${requirement.metricId}` }, attempts: [{ sourceId: 'fixture-route', status: 'SUCCESS' }], acquisition: { attempts: [{ sourceId: 'fixture-route', status: 'SUCCESS' }] } }))
+    return { items, requiredUnresolved: [], optionalUnresolved: [], completeness: 'COMPLETE' as const, seen: requirements }
+  } }
+  const result = await acquireCompanyReadOnlyData({
+    asOf,
+    valuationDataResolverFactory: (context) => { valuationContext = context; return { ...resolver, async resolve(requirements: readonly any[]) { valuationRequirements = requirements; return resolver.resolve(requirements) } } as unknown as DataResolver<any> },
+    earningsDataResolverFactory: (context) => { earningsContext = context; return { ...resolver, async resolve(requirements: readonly any[]) { earningsRequirements = requirements; return resolver.resolve(requirements) } } as unknown as DataResolver<any> },
+  }, { symbol: '600519', name: 'Fixture Company', exchange: 'SH' }, asOf, () => asOf)
+  assert.equal(result?.expectationTargetFiscalYear, 2026)
+  assert.equal(result?.valuationBasisFiscalYear, 2025)
+  assert.equal(valuationContext.valuationDate, asOf)
+  assert.equal(valuationContext.historicalAsOf, asOf)
+  assert.equal(earningsContext.fiscalYear, 2026)
+  assert.equal(earningsContext.period, 'FY')
+  assert.deepEqual(valuationRequirements.map((requirement) => requirement.metricId), ['valuation_market_price', 'valuation_eps', 'valuation_bvps', 'valuation_annual_report_publication', 'valuation_peer_candidate_evidence'])
+  assert.deepEqual(earningsRequirements.map((requirement) => requirement.metricId), ['earnings_expectation_eps', 'earnings_expectation_net_profit'])
+  assert.ok(valuationRequirements.every((requirement) => requirement.consumer.workflow === 'company-deep-research' && requirement.asOfMode === 'HISTORICAL'))
+  assert.ok(valuationRequirements.filter((requirement) => ['valuation_eps', 'valuation_bvps'].includes(requirement.metricId)).every((requirement) => requirement.requireValueVersionProof === true && requirement.period.fiscalYear === 2025))
+  assert.ok(earningsRequirements.every((requirement) => requirement.period.fiscalYear === 2026 && requirement.period.fiscalPeriod === '2026-FY' && requirement.asOfMode === 'HISTORICAL'))
+  assert.equal(result?.valuationItems[0]?.value?.kind, 'fixture:valuation_market_price')
+  assert.equal(result?.valuationItems[0]?.attempts[0]?.sourceId, 'fixture-route')
+  assert.equal(result?.earningsExpectationItems[0]?.value?.kind, 'fixture:earnings_expectation_eps')
+  let currentRequirements: readonly any[] = []
+  await acquireCompanyReadOnlyData({
+    valuationDataResolverFactory: () => ({ ...resolver, async resolve(requirements: readonly any[]) { currentRequirements = requirements; return resolver.resolve(requirements) } } as unknown as DataResolver<any>),
+  }, { symbol: '600519', name: 'Fixture Company', exchange: 'SH' }, asOf, () => asOf)
+  assert.ok(currentRequirements.every((requirement) => requirement.asOfMode === 'CURRENT_VALUE_ONLY'))
+  assert.ok(currentRequirements.filter((requirement) => ['valuation_eps', 'valuation_bvps'].includes(requirement.metricId)).every((requirement) => requirement.requireValueVersionProof !== true))
 })
 
 test('risk method instructions require exact table total rows and local unit/header citations', () => {

@@ -8,12 +8,16 @@ import type { CompanyResearchResult } from '../../skills/company-research/contra
 import type { NormalizedResearchSource, ResearchAcquisitionDiagnostic, ResearchProviderOutcome } from '../../plugins/research-acquisition/contracts.ts'
 import type { CompanyResearchDataPayload, CompanyResearchEvidenceBatch, CompanyProfileSnapshot, CompanyFinancialHistory, CompanyMarketHistory } from '../../plugins/research-acquisition/company-research-data.ts'
 import { sha256 } from '../../plugins/research-acquisition/hash.ts'
-import { materializePhase3CommonRequirement } from '../../data/requirements.ts'
+import { materializePhase2CommonRequirement, materializePhase3CommonRequirement } from '../../data/requirements.ts'
+import type { DataRequirement } from '../../data/contracts.ts'
 import { sourceWithDataEvidenceProvenance } from '../../data/research-evidence.ts'
-import type { DataResolver, ResolvedDataItem } from '../../data/resolver.ts'
+import type { DataResolver, ResolvedDataBundle, ResolvedDataItem } from '../../data/resolver.ts'
 import { normalizeCompanyCandidateIdentity, normalizeExchange } from '../../skills/knowledge-curation/identity/company-identity.ts'
 import { validateResearchReport, writeResearchReport, type ResearchReport } from '../../app/services/research-report.ts'
 import type { CompanyDeepResearchInput, CompanyDeepResearchResult } from './contracts.ts'
+import type { ValuationPeerRequirement } from '../../plugins/research-acquisition/valuation-data.ts'
+import type { ValuationDataPayload } from '../../plugins/research-acquisition/valuation-data.ts'
+import type { EarningsDataPayload } from '../../plugins/research-acquisition/earnings-data.ts'
 import { runResearchQualityGate } from '../research-quality-gate.ts'
 import { calculateCompanyIndustryExposureBridge, renderCompanyIndustryExposureBridge } from './industry-exposure-bridge.ts'
 import { COMPANY_RESEARCH_METHOD_IDS, COMPANY_METHOD_SECTION_IDS, COMPANY_METHOD_METHODOLOGY, executeCompanyResearchMethod, type CompanyResearchMethodResult } from '../../skills/company-research/methods.ts'
@@ -26,6 +30,20 @@ import { assessCompanySourceHealth, type CompanySourceAttemptTrace } from '../..
 import { reviewCompanyResearchSemantics, type CompanySemanticQuality } from './semantic-quality.ts'
 
 const safeId = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+interface CompanyReadOnlyAcquisition {
+  readonly expectationTargetFiscalYear: number
+  readonly valuationBasisFiscalYear: number
+  readonly valuationRequirements: readonly DataRequirement[]
+  readonly valuationItems: readonly ResolvedDataItem<ValuationDataPayload>[]
+  readonly earningsExpectationRequirements: readonly DataRequirement[]
+  readonly earningsExpectationItems: readonly ResolvedDataItem<EarningsDataPayload>[]
+  readonly valuationError?: string
+  readonly earningsExpectationError?: string
+}
+interface ReadOnlyResolverAttempt<T> {
+  readonly bundle?: ResolvedDataBundle<T>
+  readonly error?: string
+}
 const PEER_RESEARCH_TERMS: Readonly<Record<string, readonly string[]>> = {
   '002384': ['peer:鹏鼎控股', 'peer:中际旭创'],
   '002594': ['peer:吉利汽车', 'peer:宁德时代'],
@@ -317,6 +335,54 @@ function normalizeResearchCompany(company: CompanyDeepResearchInput['company']):
   return { symbol: String(fields.ticker ?? company.symbol), name: normalized.candidate.name, exchange }
 }
 
+export async function acquireCompanyReadOnlyData(
+  input: Pick<CompanyDeepResearchInput, 'valuationDataResolverFactory' | 'earningsDataResolverFactory' | 'asOf' | 'signal'>,
+  company: CompanyDeepResearchInput['company'],
+  asOf: string,
+  now: () => string,
+): Promise<CompanyReadOnlyAcquisition | undefined> {
+  if (!input.valuationDataResolverFactory && !input.earningsDataResolverFactory) return undefined
+  const expectationTargetFiscalYear = new Date(asOf).getUTCFullYear()
+  const valuationBasisFiscalYear = expectationTargetFiscalYear - 1
+  const asOfMode = input.asOf === undefined ? 'CURRENT_VALUE_ONLY' as const : 'HISTORICAL' as const
+  const common = { workflowId: 'company-deep-research', ticker: company.symbol, companyId: company.name, asOf, required: false }
+  const valuationRequirements: DataRequirement[] = input.valuationDataResolverFactory ? [
+    materializePhase2CommonRequirement('valuation_market_price', { ...common, period: { end: asOf.slice(0, 10) } }),
+    ...(['valuation_eps', 'valuation_bvps'] as const).map((metricId) => materializePhase2CommonRequirement(metricId, {
+      ...common, period: { fiscalYear: valuationBasisFiscalYear, fiscalPeriod: `${valuationBasisFiscalYear}-FY`, end: `${valuationBasisFiscalYear}-12-31` },
+      ...(input.asOf === undefined ? {} : { historicalNumeric: true }),
+    })),
+    materializePhase2CommonRequirement('valuation_annual_report_publication', { ...common, period: { fiscalYear: valuationBasisFiscalYear, fiscalPeriod: `${valuationBasisFiscalYear}-FY`, end: `${valuationBasisFiscalYear}-12-31` } }),
+    materializePhase2CommonRequirement('valuation_peer_candidate_evidence', { ...common }),
+  ].map((requirement) => ({ ...requirement, asOfMode })) : []
+  const typedValuationRequirements = valuationRequirements.map((requirement) => requirement.metricId === 'valuation_peer_candidate_evidence'
+    ? { ...requirement, comparisonFamily: 'valuation' as const }
+    : requirement)
+  const earningsExpectationRequirements: DataRequirement[] = input.earningsDataResolverFactory ? (['earnings_expectation_eps', 'earnings_expectation_net_profit'] as const).map((metricId) => ({
+    ...materializePhase2CommonRequirement(metricId, { ...common, period: { fiscalYear: expectationTargetFiscalYear, fiscalPeriod: `${expectationTargetFiscalYear}-FY` } }),
+    asOfMode,
+  })) : []
+  const resolveSafely = async <T>(resolve: (() => Promise<ResolvedDataBundle<T>>) | undefined): Promise<ReadOnlyResolverAttempt<T>> => {
+    if (!resolve) return {}
+    try { return { bundle: await resolve() } }
+    catch (error) { return { error: error instanceof Error ? error.message : String(error) } }
+  }
+  const [valuationResult, expectationResult] = await Promise.all([
+    resolveSafely(input.valuationDataResolverFactory ? () => input.valuationDataResolverFactory!({ company, valuationDate: asOf, ...(input.asOf === undefined ? {} : { historicalAsOf: input.asOf }), now, signal: input.signal }).resolve(typedValuationRequirements as readonly ValuationPeerRequirement[]) : undefined),
+    resolveSafely(input.earningsDataResolverFactory ? () => input.earningsDataResolverFactory!({ company, fiscalYear: expectationTargetFiscalYear, period: 'FY', asOf, now, signal: input.signal }).resolve(earningsExpectationRequirements) : undefined),
+  ])
+  return {
+    expectationTargetFiscalYear,
+    valuationBasisFiscalYear,
+    valuationRequirements: typedValuationRequirements,
+    valuationItems: valuationResult.bundle?.items ?? [],
+    earningsExpectationRequirements,
+    earningsExpectationItems: expectationResult.bundle?.items ?? [],
+    ...(valuationResult.error === undefined ? {} : { valuationError: valuationResult.error.slice(0, 300) }),
+    ...(expectationResult.error === undefined ? {} : { earningsExpectationError: expectationResult.error.slice(0, 300) }),
+  }
+}
+
 function resolvedValue<T extends CompanyResearchDataPayload>(item: ResolvedDataItem<CompanyResearchDataPayload>, kind: T['kind']): T | undefined {
   if (item.value?.kind === kind) return item.value as T
   for (const observation of item.acquisition.observations ?? []) if (observation.data.kind === kind) return observation.data as T
@@ -475,6 +541,9 @@ export async function runCompanyDeepResearch(input: CompanyDeepResearchInput): P
     }
     const now = input.now ?? (() => new Date().toISOString())
     const asOf = input.asOf ?? now()
+    const readOnlyAcquisition = await acquireCompanyReadOnlyData(input, company, asOf, now)
+    // Kept in local typed form for internal research assembly; never returned through the service result.
+    void readOnlyAcquisition
     await input.observations?.startStage('data_acquisition', '数据获取')
     const acquisitionBudgetLimitMs = 10 * 60_000
     let acquisitionRemainingMs = acquisitionBudgetLimitMs
