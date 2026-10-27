@@ -3239,6 +3239,49 @@ test('business-driver evidence keeps annual product revenue labels, rows, and ta
   assert.ok(!productRow.contextLocations?.includes('paragraph:836'), 'a same-amount margin row cannot replace the product revenue label')
 })
 
+test('business-driver numeric retry requires each finding to repeat its product marker citation', async () => {
+  const lines = Array.from({ length: 800 }, () => '一般披露事项。')
+  lines[763] = '（1）营业收入构成'
+  lines[764] = '单位：元'
+  lines[765] = '2026 年 2025 年'
+  lines[767] = '金额 占营业收入比重 金额 占营业收入比重 同比增减'
+  lines[772] = '分产品'
+  lines[774] = '精密组件产品 6,580,692,901.95 23.67% 2,361,835,859.44 13.93% 178.63%'
+  const filing = { ...source, title: '2026年半年度报告', content: lines.join('\n') }
+  const marker = { sourceCandidateId: 'filing-1', location: 'paragraph:773' }
+  const row = { sourceCandidateId: 'filing-1', location: 'paragraph:775' }
+  const markerCitation = '[filing-1@paragraph:773]'
+  const rowCitation = '[filing-1@paragraph:775]'
+  const broken = {
+    ...output,
+    status: 'complete',
+    answer: `分产品收入占比23.67%，同比增长178.63%。${markerCitation} ${rowCitation}`,
+    markdown: `分产品收入占比23.67%，同比增长178.63%。${markerCitation} ${rowCitation}`,
+    sections: ['revenue-profit-drivers', 'growth-drivers', 'catalysts'].map(id => ({ id, markdown: `分产品收入占比23.67%，同比增长178.63%。${markerCitation} ${rowCitation}` })),
+    findings: [{ text: '分产品收入占比23.67%，同比增长178.63%。', kind: 'fact', evidence: [row] }],
+  }
+  const repaired = {
+    ...broken,
+    findings: [{ text: '分产品收入占比23.67%，同比增长178.63%。', kind: 'fact', evidence: [marker, row] }],
+  }
+  let calls = 0
+  const result = await executeCompanyResearchMethod({
+    skillId: 'business_driver_analysis', company: { symbol: '002384' }, asOf: '2026-10-27',
+    sources: [filing], durableSourceCandidateIds: ['filing-1'],
+    reasoningExecutor: executor(async request => {
+      calls++
+      if (calls === 1) return broken
+      assert.match((request as any).input.repairInstruction, /每个被分类的数字论点都必须在该论点自身的finding\.evidence中同时引用精确分类标题/)
+      assert.match((request as any).input.repairErrors[0].message, /finding-1/)
+      return repaired
+    }),
+  })
+  assert.equal(calls, 2)
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  assert.ok(result.findings[0]!.evidence.some(ref => ref.location === 'paragraph:773'))
+  assert.ok(result.findings[0]!.evidence.some(ref => ref.location === 'paragraph:775'))
+})
+
 test('business model preserves disclosed customer concentration ratios while leaving anonymous identity and segment mapping as gaps', async () => {
   const lines = Array.from({length:1000},()=> '一般披露事项。')
   const place=(start:number,rows:string[])=>rows.forEach((row,index)=>{lines[start-1+index]=row})
