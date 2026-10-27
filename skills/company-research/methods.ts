@@ -581,6 +581,16 @@ function numericCandidateSearchMatch(text: string, token: string): RegExpExecArr
   const exactMatch = exactPattern.exec(text)
   if (exactMatch) return exactMatch
 
+  // A risk claim may omit the sign even though the supplied filing row is a
+  // signed decline (for example, the claim says 8.98% while the row says
+  // -8.98%). Surface the full signed token as a discovery hint; the numeric
+  // validator still decides whether the claim is supportable.
+  if (!/^[−-]/u.test(searchToken)) {
+    const signedPattern = new RegExp(`(?<![\\d.,])[-−]${escaped}(?![\\d.,])`)
+    const signedMatch = signedPattern.exec(text)
+    if (signedMatch) return signedMatch
+  }
+
   // A converted claim such as 2.69亿元 can be grounded only by a raw filing
   // value such as 268,811,941.95元. Surface that row as a retry hint while
   // leaving all citation, label, period, unit and rounding checks to the

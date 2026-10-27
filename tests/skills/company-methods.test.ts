@@ -2885,6 +2885,38 @@ test('reference retry extracts a structured finding claim when its invalid locat
   assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
 })
 
+test('reference retry surfaces signed product decline rows as hints without weakening numeric acceptance', async () => {
+  const paragraphs = Array.from({ length: 710 }, () => '一般披露事项。')
+  paragraphs[700] = '营业收入构成及分部经营数据。'
+  paragraphs[701] = '分行业'
+  paragraphs[702] = '汽车及相关制造业收入同比变化为-8.98%。'
+  paragraphs[706] = '分产品'
+  paragraphs[707] = '汽车、汽车相关产品及其他产品收入同比变化为-8.98%。'
+  const filing = { ...source, content: paragraphs.join('\n') }
+  const broken = {
+    status: 'complete', answer: '汽车相关产品收入下降8.98%。', markdown: '汽车相关产品收入下降8.98%。',
+    sections: [{ id: 'risks', markdown: '| 风险 | 触发与影响 | 监控指标 |\n|---|---|---|\n| 产品需求 | 汽车相关产品收入同比下降8.98%。[filing-1@paragraph:900] | 分产品收入 |' }],
+    findings: [{ text: '汽车相关产品收入同比下降8.98%。', kind: 'fact', evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:900' }] }],
+    limitations: [], risks: [],
+  }
+  let calls = 0
+  const result = await executeCompanyResearchMethod({ skillId: 'company_risk_analysis', company: { symbol: '002594' }, asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async request => {
+    calls++
+    if (calls === 1) return broken
+    const target = (request as any).input.repairTargets.find((item: any) => item.id === 'risks')
+    const candidates = target.candidateExcerpts
+    assert.ok(candidates.some((candidate: any) => candidate.location === 'paragraph:708' && candidate.text.includes('-8.98%')), JSON.stringify(candidates))
+    assert.ok(candidates.find((candidate: any) => candidate.location === 'paragraph:708')?.context?.some((row: any) => row.location === 'paragraph:707' && row.text.includes('分产品')), JSON.stringify(candidates))
+    assert.ok(candidates.some((candidate: any) => candidate.location === 'paragraph:703' && candidate.text.includes('-8.98%')), JSON.stringify(candidates))
+    // Candidate rows are hints only: repeating the unsupported output must
+    // remain a numeric/reference failure and cannot pass by discovery alone.
+    return broken
+  }) })
+  assert.equal(calls, 2)
+  assert.equal(result.status, 'failed', JSON.stringify(result.diagnostics))
+  assert.ok(result.diagnostics.some(diagnostic => diagnostic.code === 'NUMERIC_GROUNDING_ERROR' || diagnostic.code === 'REFERENCE_ERROR'))
+})
+
 test('business-driver method repairs an exact repeated-substring source ID across prose, owned sections, and finding evidence', async () => {
   const sourceId = 'official-c19c34dd239b2e9c'
   const malformedId = 'official-c19c34dd239b2e9b2e9c'
