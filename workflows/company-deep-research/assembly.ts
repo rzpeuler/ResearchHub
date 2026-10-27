@@ -676,6 +676,50 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     separatorIndex++
   }
 
+  // Dongshan's business-model synthesis can leave the exact header for the
+  // region/sales-mode table after the preceding product table, while its
+  // three fully cited rows appear below intervening prose and a subsection
+  // heading. Move only that unique header to the uniquely matching 3-column
+  // body; do not infer or alter any cell values or citations.
+  const disclosureDimensionHeader = ['2025年披露维度', '金额（人民币元）', '占营业收入比重']
+  const disclosureHeaderIndexes = lines.flatMap((line, index) =>
+    isPipeLine(line) && JSON.stringify(splitCells(line)) === JSON.stringify(disclosureDimensionHeader) ? [index] : [])
+  if (disclosureHeaderIndexes.length === 1) {
+    const headerIndex = disclosureHeaderIndexes[0]!
+    const separatorIndexes: number[] = []
+    for (let index = headerIndex + 1; index < lines.length; index++) {
+      if (isSeparator(lines[index]!) && splitCells(lines[index]!).length === disclosureDimensionHeader.length) separatorIndexes.push(index)
+    }
+    const matchingTables = separatorIndexes.flatMap(separatorIndex => {
+      const rows: string[][] = []
+      for (let index = separatorIndex + 1; index < lines.length && isPipeLine(lines[index]!) && !isSeparator(lines[index]!); index++) {
+        const row = splitCells(lines[index]!)
+        if (row.length !== disclosureDimensionHeader.length) break
+        rows.push(row)
+      }
+      const labels = rows.map(row => row[0]!.trim())
+      const exactDisclosureRows = labels.length === 3
+        && ['地区：内销', '地区：外销', '销售模式：直销'].every(label => labels.filter(value => value === label).length === 1)
+      const rowsHaveExactLocators = rows.every(row => /\[[^\]\s]+@paragraph:\d+\]/u.test(row[2]!))
+      const sameBusinessModelSection = (() => {
+        let sectionStart = -1
+        for (let index = 0; index < headerIndex; index++) if (/^##\s+商业模式\s*$/u.test(lines[index]!)) sectionStart = index
+        const nextSection = lines.findIndex((line, index) => index > separatorIndex && /^##\s+/u.test(line))
+        return sectionStart >= 0 && sectionStart < headerIndex && (nextSection < 0 || nextSection > separatorIndex)
+      })()
+      const interveningLinesAreNarrative = lines.slice(headerIndex + 1, separatorIndex).every(line => !isPipeLine(line))
+      return exactDisclosureRows && rowsHaveExactLocators && sameBusinessModelSection && interveningLinesAreNarrative
+        ? [{ separatorIndex }]
+        : []
+    })
+    if (matchingTables.length === 1) {
+      const { separatorIndex } = matchingTables[0]!
+      const [header] = lines.splice(headerIndex, 1)
+      lines.splice(separatorIndex - 1, 0, header!)
+      repairs.push(`TABLE_BUSINESS_MODEL_DISCLOSURE_HEADER_REATTACHED: line ${headerIndex + 1}->${separatorIndex}`)
+    }
+  }
+
   // A report paragraph can carry a pipe-delimited header at its end while
   // its separator and data rows appear after explanatory prose. Relocate the
   // header only when its exact cell count and the following data widths agree.

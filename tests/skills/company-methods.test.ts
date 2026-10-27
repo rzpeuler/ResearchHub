@@ -1684,6 +1684,46 @@ test('risk numeric retry strips 千元 and supplies the matching goodwill row as
   assert.ok(result.sections[0]!.markdown.includes('[filing-1@paragraph:7663]'), result.sections[0]!.markdown)
 })
 
+test('risk method binds a unique cited Juno Newco goodwill total to its exact total row and unit context', async () => {
+  const lines = Array.from({ length: 8548 }, (_, index) => `年报经营情况第${index + 1}段。`)
+  lines[7023] = '本公司记账本位币和编制本财务报表所采用的货币均为人民币，除有特别说明外，均以人民币千元为单位表示。'
+  lines[8535] = '（1）商誉原值'
+  lines[8536] = '年初余额 本年增加 本年减少 年末余额'
+  lines[8541] = 'Juno Newco 4,361,657 - - 4,361,657'
+  lines[8542] = '合计 4,437,242 - - 4,437,242'
+  lines[8543] = '（2） 商誉减值准备'
+  lines[8547] = '合计 9,671 - - 9,671'
+  const annual = { ...source, candidate: { ...source.candidate, candidateId: 'annual-goodwill' }, title: '2025年年度报告', content: lines.join('\n') }
+  const claim = '2025年年报披露Juno Newco商誉原值合计人民币4,437,242千元。'
+  const references = [
+    { sourceCandidateId: 'annual-goodwill', location: 'paragraph:8536' },
+    { sourceCandidateId: 'annual-goodwill', location: 'paragraph:8537' },
+    { sourceCandidateId: 'annual-goodwill', location: 'paragraph:8542' },
+  ]
+  const draft = {
+    status: 'complete', answer: '商誉风险需结合资产组预测持续监控。', markdown: '商誉风险需结合资产组预测持续监控。',
+    sections: [{ id: 'risks', markdown: `| 商誉风险 | 若预测兑现不足可能触发减值并影响资产与利润。${claim}${references.map(ref => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')} | 资产组现金流与预测假设 | 公司披露减值测试结果 | 安全边际及敏感性金额未披露 |` }],
+    findings: [{ text: claim, kind: 'fact', evidence: references }], limitations: ['未披露安全边际金额及关键参数敏感性。'], risks: ['预测现金流未兑现可能导致减值。'],
+  }
+  const result = await executeCompanyResearchMethod({ skillId: 'company_risk_analysis', company: { symbol: '002594', name: '比亚迪' }, asOf: '2026-10-27', sources: [annual], reportSourceCandidateIds: ['annual-goodwill'], maxAttempts: 1, reasoningExecutor: executor(async () => draft) })
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  const riskText = result.sections[0]!.markdown
+  assert.ok(riskText.includes('[annual-goodwill@paragraph:8543]'), riskText)
+  assert.ok(riskText.includes('[annual-goodwill@paragraph:7024]'), riskText)
+  assert.ok(result.findings[0]!.evidence.some(ref => ref.location === 'paragraph:8543'))
+  assert.ok(result.findings[0]!.evidence.some(ref => ref.location === 'paragraph:7024'))
+  assert.ok(result.citationRepairs?.some(repair => repair.reason.includes('exact 合计 row')))
+
+  const ambiguousLines = [...lines]
+  ambiguousLines[8543] = '合计 4,437,242 - - 4,437,242'
+  const ambiguousAnnual = { ...annual, content: ambiguousLines.join('\n') }
+  const blocked = await executeCompanyResearchMethod({ skillId: 'company_risk_analysis', company: { symbol: '002594', name: '比亚迪' }, asOf: '2026-10-27', sources: [ambiguousAnnual], reportSourceCandidateIds: ['annual-goodwill'], maxAttempts: 1, reasoningExecutor: executor(async () => draft) })
+  assert.equal(blocked.status, 'failed')
+  assert.ok(blocked.diagnostics.some(diagnostic => diagnostic.code === 'NUMERIC_GROUNDING_ERROR'))
+  const blockedDraft = (blocked.attemptOutputs?.[0]?.output as any)?.sections?.[0]?.markdown
+  assert.ok(typeof blockedDraft === 'string' && !blockedDraft.includes('[annual-goodwill@paragraph:8543]'))
+})
+
 test('risk retry surfaces an exact raw-yuan row for a rounded yi-yuan claim without treating it as proof', async () => {
   const lines = Array.from({ length: 7672 }, (_, index) => `年报经营情况第${index + 1}段。`)
   lines[7663] = '单位：元'

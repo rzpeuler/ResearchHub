@@ -743,6 +743,89 @@ function buildRiskNumericRetryPreservation(output: unknown, packets: readonly Co
   return `风险方法数值重试的引用保全清单（只含上一稿中可在本次同一原文定位核实的数字）：${[...preserved].slice(0, 32).join('；')}。逐项保留每个非错误风险表数值及其对应的原文行引用；修复缺引数字时，引用必须来自repairTargets中实际包含该数值且科目、期间、单位相符的同一数据行。candidateExcerpts.context仅供辨认表头/标签，不能引用其邻段代替数值行；禁止用p919、p928或任何相邻段落支持客户占比或其他数值，只有该段原文逐字包含该数值和对应行标签时才可引用。修复后逐数字复核整张风险表和findings，不能为补一个数字而丢掉其他已有效的数字引用。`
 }
 
+/** Attach a unique, already supplied goodwill-total row to the exact risk claim that names it. */
+function repairUniqueRiskGoodwillTotalReferences<T>(output: T, packets: readonly CompanyEvidencePacket[]): { output: T; repairs: CompanyCitationRepair[] } {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return { output, repairs: [] }
+  const value = output as Record<string, unknown>
+  const sections = Array.isArray(value.sections) ? value.sections as Record<string, unknown>[] : []
+  const risks = sections.find(section => section?.id === 'risks' && typeof section.markdown === 'string')
+  const repairs: CompanyCitationRepair[] = []
+
+  const exactReferencesFor = (claim: string, citedIds: readonly string[]): CompanyMethodEvidenceRef[] => {
+    const amountMatch = /商誉原值\s*合计[^。；;\n]{0,100}?([\d,，]+(?:\.\d+)?)\s*(?:千元|元|万元|百万元|亿元)/u.exec(claim)
+    if (!amountMatch || !/Juno\s+Newco/iu.test(claim)) return []
+    const amount = Number(amountMatch[1]!.replace(/[,，]/gu, ''))
+    const eligiblePackets = packets.filter(packet => citedIds.includes(packet.sourceCandidateId))
+    const candidates: CompanyMethodEvidenceRef[][] = []
+    for (const packet of eligiblePackets) {
+      const rows = packet.excerpts.filter(excerpt => {
+        const row = excerpt.text.trim()
+        const values = [...row.matchAll(/(?<![\d.])([\d,，]+(?:\.\d+)?)(?![\d.])/gu)].map(match => Number(match[1]!.replace(/[,，]/gu, '')))
+        return /^合计\s/u.test(row) && values.length >= 2 && values[0] === amount && values.at(-1) === amount
+      })
+      for (const row of rows) {
+        const rowNumber = Number(/^paragraph:(\d+)$/u.exec(row.location)?.[1] ?? 0)
+        if (!Number.isInteger(rowNumber) || rowNumber < 1) continue
+        const prior = packet.excerpts.filter(excerpt => {
+          const paragraph = Number(/^paragraph:(\d+)$/u.exec(excerpt.location)?.[1] ?? 0)
+          return paragraph > 0 && paragraph < rowNumber && rowNumber - paragraph <= 12
+        })
+        const heading = prior.filter(excerpt => /商誉原值/u.test(excerpt.text) && !/商誉减值准备/u.test(excerpt.text))
+          .sort((left, right) => Number(right.location.slice('paragraph:'.length)) - Number(left.location.slice('paragraph:'.length)))[0]
+        const tableHeader = prior.filter(excerpt => /年初余额/u.test(excerpt.text) && /年末余额/u.test(excerpt.text))
+          .sort((left, right) => Number(right.location.slice('paragraph:'.length)) - Number(left.location.slice('paragraph:'.length)))[0]
+        if (!heading || !tableHeader || Number(heading.location.slice('paragraph:'.length)) > Number(tableHeader.location.slice('paragraph:'.length))) continue
+        const unitLocations = (row.contextLocations ?? []).filter(location => {
+          const unit = packet.excerpts.find(excerpt => excerpt.location === location)
+          return unit && /(?:均以|单位[:：])[^。\n]{0,30}人民币千元为单位表示|单位[:：]\s*人民币千元/u.test(unit.text)
+        })
+        if (unitLocations.length !== 1) continue
+        candidates.push([
+          { sourceCandidateId: packet.sourceCandidateId, location: row.location },
+          { sourceCandidateId: packet.sourceCandidateId, location: unitLocations[0]! },
+        ])
+      }
+    }
+    return candidates.length === 1 ? candidates[0]! : []
+  }
+
+  if (risks && typeof risks.markdown === 'string') {
+    const lines = risks.markdown.split(/\r?\n/u)
+    let changed = false
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index]!
+      if (!/商誉原值\s*合计/u.test(line) || !/Juno\s+Newco/iu.test(line)) continue
+      const citedIds = [...new Set([...line.matchAll(/\[([^\]@\s]+)@paragraph:\d+\]/gu)].map(match => match[1]!))]
+      const refs = exactReferencesFor(line, citedIds)
+      if (!refs.length || refs.every(ref => line.includes(`[${ref.sourceCandidateId}@${ref.location}]`))) continue
+      const additions = refs.filter(ref => !line.includes(`[${ref.sourceCandidateId}@${ref.location}]`))
+        .map(ref => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')
+      const pipe = line.lastIndexOf('|')
+      lines[index] = pipe > 0 ? `${line.slice(0, pipe).trimEnd()} ${additions} ${line.slice(pipe)}` : `${line} ${additions}`
+      changed = true
+      repairs.push({ sectionId: 'risks', inputText: line, originalReferences: [], addedReferences: refs, reason: 'The risk row names the Juno Newco goodwill total; one exact 合计 row under the supplied 商誉原值 table and its attached RMB-thousands unit context uniquely match the displayed value.' })
+    }
+    if (changed) risks.markdown = lines.join('\n')
+  }
+
+  if (Array.isArray(value.findings)) {
+    value.findings = (value.findings as Record<string, unknown>[]).map((finding, findingIndex) => {
+      if (typeof finding?.text !== 'string' || !Array.isArray(finding.evidence)) return finding
+      const citedIds = [...new Set((finding.evidence as Record<string, unknown>[])
+        .flatMap(ref => typeof ref?.sourceCandidateId === 'string' ? [ref.sourceCandidateId] : []))]
+      const refs = exactReferencesFor(finding.text, citedIds)
+      if (!refs.length) return finding
+      const existing = new Set((finding.evidence as Record<string, unknown>[])
+        .flatMap(ref => typeof ref?.sourceCandidateId === 'string' && typeof ref.location === 'string' ? [`${ref.sourceCandidateId}@${ref.location}`] : []))
+      const added = refs.filter(ref => !existing.has(`${ref.sourceCandidateId}@${ref.location}`))
+      if (!added.length) return finding
+      repairs.push({ findingIndex, inputText: finding.text, originalReferences: finding.evidence as CompanyMethodEvidenceRef[], addedReferences: added, reason: 'The finding names the Juno Newco goodwill total; one exact 合计 row under the supplied 商誉原值 table and its attached RMB-thousands unit context uniquely match the displayed value.' })
+      return { ...finding, evidence: [...finding.evidence, ...added] }
+    })
+  }
+  return { output, repairs }
+}
+
 /** Separate revenue-composition and margin-table claims before exact row binding. */
 function splitMultiTableProductDriverFinding<T extends { readonly findings: readonly CompanyMethodFinding[] }>(output: T): T {
   let changed = false
@@ -1744,7 +1827,11 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
         ? repairUniqueQuotedSuppliedCitations(allocationTableRepair, packets, input.sources)
         : { output: allocationTableRepair, repairs: [] as CompanyCitationRepair[] }
       citationRepairs.push(...exactQuotedCitationRepair.repairs.map((repair) => ({ ...repair, attempt })))
-      const bounded = bindCompanyMethodEvidenceContext(validateCompanyMethodOutput(exactQuotedCitationRepair.output, packets, COMPANY_METHOD_SECTION_IDS[input.skillId]), packets)
+      const goodwillTotalReferenceRepair = input.skillId === 'company_risk_analysis'
+        ? repairUniqueRiskGoodwillTotalReferences(exactQuotedCitationRepair.output, packets)
+        : { output: exactQuotedCitationRepair.output, repairs: [] as CompanyCitationRepair[] }
+      citationRepairs.push(...goodwillTotalReferenceRepair.repairs.map((repair) => ({ ...repair, attempt })))
+      const bounded = bindCompanyMethodEvidenceContext(validateCompanyMethodOutput(goodwillTotalReferenceRepair.output, packets, COMPANY_METHOD_SECTION_IDS[input.skillId]), packets)
       const repaired = repairCompanyMethodCitations(bounded, packets, input)
       citationRepairs.push(...repaired.repairs.map((repair) => ({ ...repair, attempt })))
       const yearBound = bindCompanyAnswerYearEvidence(repaired.output, input.sources, packets, input.preparedAnalysis, input.company.symbol, input.asOf)

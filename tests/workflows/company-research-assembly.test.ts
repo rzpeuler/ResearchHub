@@ -852,6 +852,38 @@ test('R149 reattaches the displaced five-column company-TAM market header withou
   assert.deepEqual([...repaired.markdown.matchAll(/\[[^\]]+@paragraph:\d+\]/g)].map(match => match[0]), before)
 })
 
+test('R150 reattaches the unique Dongshan disclosure-dimension header to its cited sales rows', () => {
+  const fixture = `## 商业模式
+### 最新完整年度产品收入结构
+| 2025年产品分类 | 收入金额（人民币元） | 占营业收入比重 |
+|---|---:|---:|
+| 电子电路产品 | 25,620,292,915.99 | 63.85%[annual@paragraph:873] |
+| 光电显示模组 | 5,985,629,058.48 | 14.92%[annual@paragraph:874] |
+| 其他 | 1,153,159,447.10 | 2.87%[annual@paragraph:877] |
+| 2025年披露维度 | 金额（人民币元） | 占营业收入比重 |
+电子电路是最大产品收入类别。[annual@paragraph:873]
+
+### 客户、销售方式与收入确认
+公司按地区披露内销和外销，销售模式为直销；地区与销售模式是不同维度。[annual@paragraph:881]
+|---|---:|---:|
+| 地区：内销 | 7,459,672,435.12 | 18.59%[annual@paragraph:879] |
+| 地区：外销 | 32,665,186,404.40 | 81.41%[annual@paragraph:880] |
+| 销售模式：直销 | 40,124,858,839.52 | 100.00%[annual@paragraph:882] |
+
+## 业务分部`
+  const before = [...fixture.matchAll(/\[[^\]]+@paragraph:\d+\]/g)].map(match => match[0])
+  const repaired = repairCompanyResearchMarkdownTables(fixture)
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_BUSINESS_MODEL_DISCLOSURE_HEADER_REATTACHED')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.match(repaired.markdown, /客户、销售方式与收入确认\n公司按地区披露[\s\S]*?\n\| 2025年披露维度 \| 金额（人民币元） \| 占营业收入比重 \|\n\|---\|---:\|---:\|\n\| 地区：内销/)
+  assert.deepEqual([...repaired.markdown.matchAll(/\[[^\]]+@paragraph:\d+\]/g)].map(match => match[0]), before)
+
+  const ambiguous = repairCompanyResearchMarkdownTables(fixture.replace('销售模式：直销', '销售方式：直销'))
+  assert.ok(!ambiguous.repairs.some(repair => repair.startsWith('TABLE_BUSINESS_MODEL_DISCLOSURE_HEADER_REATTACHED')))
+  assert.ok(validateCompanyResearchMarkdownTables(ambiguous.markdown).some(issue => issue.includes('separator')))
+})
+
 test('R148 restores the exact industry citation table header when synthesis leaves a prose header above a separator',()=>{
   const fixture=`适用报告与期间 完整表头（单位：元；末列原单位为%） 分类标签及匹配数据行\n|---|---|---|\n| 2025年年度报告，2025年度 | 单位与表头定位 | 分类标签与数据行定位 |`
   const repaired=repairCompanyResearchMarkdownTables(fixture)
