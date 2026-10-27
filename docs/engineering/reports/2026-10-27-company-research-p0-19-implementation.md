@@ -287,3 +287,11 @@ P0-19 remains incomplete: no sourced operating scenario or verified estimate vin
 - Sanitized run IDs, all 19 section outcomes, ten method states/attempt counts, synthesis metadata, valuation-locator inclusion flags, report SHA-256 values, and before/after Knowledge hashes are recorded in `tests/validation/evidence/company-research-p0-19-post-510ec62-live-pair.json`. Raw reports, sidecars, provider payloads, and disposable Knowledge data remain local.
 
 P0-19 remains incomplete: source-grounded scenario inputs and verified estimate value versions are unavailable, independent semantic acceptance was not reached, and the required Hermes side-by-side review remains outstanding. No public Data contract or source expansion is included in this update.
+
+### Dongshan split-table citation repair replay at `f40d3c8` (2026-10-28)
+
+- Replayed the saved `business_driver_analysis` attempts from Dongshan run `e57da218-083a-4949-bbd0-f903a8fb41af` (input report revision `0dd5ea078d36237ce2e804abb2fe67a7e4e34b73`) through the `f40d3c8` citation repair and numeric-grounding code. This was an offline replay of saved method output; it made no model or Runtime call and did not modify the saved run.
+- The annual split-label finding (zero-based finding index 3) moved from `unsupported_numbers` to `grounded` on both attempts after adding only annual-report paragraphs 865, 866, 869, 870, 893, and 894. The interim split-label finding (index 4) was already grounded on attempt 1; on attempt 2 it moved from `unsupported_numbers` to `grounded` after adding half-year-report paragraphs 793–795. Source content hashes and per-attempt results are in `tests/validation/evidence/company-research-p0-19-dongshan-driver-citation-replay-f40d3c8.json`.
+- This demonstrates that the exact saved numerical claims can pass the existing validator when the omitted, supplied table context is restored. It does not establish a successful method result, fresh live report, 19/19 acceptance, or semantic review; the persisted report remains blocked. A root-Runtime rerun at a committed revision is still required.
+
+P0-19 remains incomplete pending fresh live BYD and Dongshan acceptance, source-backed operating scenarios, verified estimate value versions, independent semantic review, and Hermes comparison. No public Data contract or source expansion is included in this update.
