@@ -132,6 +132,8 @@ test('final synthesis keeps all 19 stable report section ids while requesting on
   assert.match(requestPayload?.instruction ?? '', /最多8项/)
   assert.match(requestPayload?.instruction ?? '', /不在这两节抄录数字/)
   assert.match(requestPayload?.instruction ?? '', /eligibility=blocked条目仅为阻塞诊断/)
+  assert.match(requestPayload?.instruction ?? '', /定性表述纳入该估值路径的经济含义及章节明示的限制/)
+  assert.match(requestPayload?.instruction ?? '', /monitoring-checklist只为verified的估值\/情景\/预期结论列出可重复观察的指标和触发条件/)
   assert.doesNotMatch(requestPayload?.instruction ?? '', /吉利银河|银河E8/)
   assert.equal(result.sections.length, 19)
   assert.deepEqual(result.sections.map(section => section.id), [
@@ -150,16 +152,37 @@ test('final synthesis may cite exact qualified Workflow-owned valuation inputs',
     { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: '研究缺口：没有具备来源的经营情景输入。', sourceCandidateIds: [] },
     { id: 'variant-perception', title: 'Variant Perception', markdown: '研究缺口：两个预测面的历史版本资格未通过。', sourceCandidateIds: [] },
   ] as const
-  let requestPayload: { input: { allowedCitations: string[]; allowedEvidence: { sourceCandidateId: string; location: string }[] } } | undefined
+  let requestPayload: { instruction: string; input: { allowedCitations: string[]; allowedEvidence: { sourceCandidateId: string; location: string }[] } } | undefined
   const executor: ReasoningExecutor = { capabilities, execute: async request => {
     requestPayload = request as typeof requestPayload
     return { operation: request.operation, output: { sections: ids.map(id => ({ id, markdown: `估值含义纳入论点 [market@paragraph:1]`, sourceCandidateIds: ['market'] })) } }
   } }
   const result = await assembleCompanyResearch({ ...input, sources, reportSourceCandidateIds: ['annual', 'market'] }, [method], executor, () => input.asOf, 1, {}, workflowSections)
   assert.equal(result.synthesisMode, 'reasoning_executor', JSON.stringify(result.synthesisDiagnostics))
+  assert.match(requestPayload?.instruction ?? '', /估值条目已verified，核心论点必须用定性表述/)
   assert.ok(requestPayload?.input.allowedCitations.includes('market@paragraph:1'))
   assert.ok(requestPayload?.input.allowedEvidence.some(ref => ref.sourceCandidateId === 'market' && ref.location === 'paragraph:1'))
   assert.equal(result.sections.find(section => section.id === 'investment-thesis')?.markdown, '估值含义纳入论点 [market@paragraph:1]')
+})
+
+test('final thesis carries the verified reference PE meaning and exact valuation input citations', async () => {
+  const market = { candidate: { candidateId: 'market', kind: 'structured_data', tier: 2, title: 'PIT market close' }, title: 'PIT market close', content: '未复权收盘价原文。', contentHash: 'market-hash' } as any
+  const sources = [input.sources[0], market]
+  const workflowSections = [
+    { id: 'valuation', title: 'Valuation', markdown: '截至估值日收盘价 [market@paragraph:1]。FY2025年报基本 EPS [annual@paragraph:1]，参考 PE 是历史盈利倍数，不构成目标价。', sourceCandidateIds: ['market', 'annual'] },
+    { id: 'bull-base-bear', title: 'Bull / Base / Bear', markdown: '研究缺口：没有具备来源的经营情景输入。', sourceCandidateIds: [] },
+    { id: 'variant-perception', title: 'Variant Perception', markdown: '研究缺口：预测历史版本未核验。', sourceCandidateIds: [] },
+  ] as const
+  const executor: ReasoningExecutor = { capabilities, execute: async request => ({
+    operation: request.operation,
+    output: { sections: ids.map(id => ({ id, markdown: `总体研究结论 [annual@paragraph:1]`, sourceCandidateIds: ['annual'] })) },
+  }) }
+  const result = await assembleCompanyResearch({ ...input, sources, reportSourceCandidateIds: ['annual', 'market'] }, [method], executor, () => input.asOf, 1, {}, workflowSections)
+  const thesis = result.sections.find(section => section.id === 'investment-thesis')?.markdown ?? ''
+  assert.match(thesis, /估值含义：本轮以估值日收盘价和已披露基本 EPS 得到的参考 PE 是历史盈利倍数，不是预测估值或目标价/)
+  assert.match(thesis, /\[market@paragraph:1\]/)
+  assert.match(thesis, /\[annual@paragraph:1\]/)
+  assert.doesNotMatch(thesis, /(?:22\.91|82\.01|3\.58)/u)
 })
 
 test('assembly preserves substantive supplied valuation, scenario, and variant sections', async () => {
