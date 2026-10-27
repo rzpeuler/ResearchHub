@@ -17,12 +17,13 @@ const expectationSource = (candidateId: string, provider: string, publisher: str
   title: candidateId, content: JSON.stringify({ candidateId }), contentHash: `${candidateId}-hash`, retrievedAt: asOf,
   publisher, rights: { accessScope: 'public', retentionAllowed: true, aiProcessingAllowed: true, derivativeKnowledgeAllowed: true, redistributionAllowed: false },
 } as any)
-const thsSources = [expectationSource('ths-1', 'Tonghuashun', '同花顺', 20), expectationSource('ths-2', 'Tonghuashun', '同花顺', 21), expectationSource('ths-3', 'Tonghuashun', '同花顺', 21)]
+const thsSources = [expectationSource('ths-1', 'Tonghuashun', '同花顺', 20), expectationSource('ths-2', 'Tonghuashun', '同花顺', 21), expectationSource('ths-3', 'Tonghuashun', '同花顺', 21), expectationSource('ths-future', 'Tonghuashun', '同花顺', 27)]
 const emSources = [expectationSource('eastmoney-1', 'EastMoney', 'EastMoney', 22), expectationSource('eastmoney-2', 'EastMoney', 'EastMoney', 21), expectationSource('eastmoney-3', 'EastMoney', 'EastMoney', 21)]
 const thsEstimates = [
   { estimateId: 'ths-e1', metric: 'eps', fiscalPeriod: '2026-FY', value: 4, unit: 'CNY_per_share', institutionKey: '东吴证券', publishedAt: '2026-10-20T00:00:00.000Z', sourceCandidateIds: ['ths-1'] },
   { estimateId: 'ths-e2', metric: 'eps', fiscalPeriod: '2026-FY', value: 5, unit: 'CNY_per_share', institutionKey: '华金证券', publishedAt: '2026-10-21T00:00:00.000Z', sourceCandidateIds: ['ths-2'] },
   { estimateId: 'ths-e3', metric: 'eps', fiscalPeriod: '2026-FY', value: 3.8, unit: 'CNY_per_share', institutionKey: '国信证券', publishedAt: '2026-10-21T00:00:00.000Z', sourceCandidateIds: ['ths-3'] },
+  { estimateId: 'ths-future-eps', metric: 'eps', fiscalPeriod: '2026-FY', value: 99, unit: 'CNY_per_share', institutionKey: '未来证券', publishedAt: '2026-10-27T00:00:00.000Z', sourceCandidateIds: ['ths-future'] },
 ]
 const emEstimates = [
   { estimateId: 'em-e1', metric: 'eps', fiscalPeriod: '2026-FY', value: 4.2, unit: 'CNY_per_share', institutionKey: '东吴证券', publishedAt: '2026-10-22T00:00:00.000Z', sourceCandidateIds: ['eastmoney-1'] },
@@ -50,6 +51,10 @@ test('valuation builder populates all three workflow-owned sections from exact P
   assert.match(result.sections[2]!.markdown, /EastMoney 去重归属样本 2 家/)
   assert.match(result.sections[2]!.markdown, /历史数值版本状态为 UNVERIFIED/)
   assert.match(result.sections[2]!.markdown, /2 家重叠机构/)
+  assert.match(result.sections[2]!.markdown, /同花顺 \| 华金证券 \| 2026-FY \| 5 CNY_per_share \| 2026-10-21T00:00:00\.000Z \| \[ths-2@paragraph:1\]/)
+  assert.match(result.sections[2]!.markdown, /EastMoney \| 中信证券 \| 2026-FY \| 5\.5 CNY_per_share \| 2026-10-21T00:00:00\.000Z \| \[eastmoney-3@paragraph:1\]/)
+  assert.equal((result.sections[2]!.markdown.match(/^\| (?:同花顺|EastMoney) \|/gmu) ?? []).length, 4, 'the published rows reproduce the 2 + 2 retained contributor samples')
+  assert.doesNotMatch(result.sections[2]!.markdown, /未来证券|99 CNY_per_share/, 'a forecast published after asOf is not added to the comparison table')
 })
 
 test('filing EPS selects the unique FY row under the main summary heading and matching year header', () => {

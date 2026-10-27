@@ -186,7 +186,9 @@ function dedupeContributors(surfaces: readonly ExpectationSurface[]): { readonly
       || Date.parse(estimate.publishedAt) === Date.parse(previous.estimate.publishedAt) && provider === 'Tonghuashun / 同花顺') winners.set(canonical, { provider, estimate })
   }
   const uniqueByProvider = new Map<ExpectationSurface['provider'], readonly EstimatePoint[]>()
-  for (const [provider, rows] of surfaceRows) uniqueByProvider.set(provider, [...rows.keys()].flatMap(key => winners.get(key)?.provider === provider ? [winners.get(key)!.estimate] : []))
+  for (const [provider, rows] of surfaceRows) uniqueByProvider.set(provider, [...rows.keys()].flatMap(key => winners.get(key)?.provider === provider
+    ? [{ ...winners.get(key)!.estimate, institutionKey: nameByKey.get(key) ?? key }]
+    : []))
   const overlaps = [...surfaceRows.values()].flatMap((rows, index, all) => [...rows.keys()].filter(key => all.slice(index + 1).some(other => other.has(key))))
   return {
     all: [...winners.values()].map(item => item.estimate),
@@ -314,6 +316,16 @@ export function buildCompanyValuationSections(input: {
       .filter((source, index, all) => all.findIndex(candidate => candidate.candidate.candidateId === source.candidate.candidateId) === index)
     const providerIds = new Set([...thsSurface.estimates, ...eastmoneySurface.estimates].flatMap(estimate => estimate.sourceCandidateIds))
     const citedSources = providerSources.filter(source => providerIds.has(source.candidate.candidateId))
+    const citedSourceIds = new Set(citedSources.map(source => source.candidate.candidateId))
+    const contributorRows = [thsSurface, eastmoneySurface].flatMap(item => item.estimates
+      .filter(estimate => estimate.sourceCandidateIds.some(id => citedSourceIds.has(id)))
+      .sort((left, right) => left.institutionKey < right.institutionKey ? -1 : left.institutionKey > right.institutionKey ? 1 : 0)
+      .map(estimate => {
+        const provider = item.surface.provider === 'Tonghuashun / 同花顺' ? '同花顺' : 'EastMoney'
+        const estimateCitations = citations(estimate.sourceCandidateIds.filter(id => citedSourceIds.has(id)))
+        return `| ${provider} | ${estimate.institutionKey} | ${estimate.fiscalPeriod} | ${String(estimate.value)} ${estimate.unit} | ${estimate.publishedAt} | ${estimateCitations} |`
+      }))
+    const contributorTable = `\n\n| 预期面 | 机构 | 财年 | EPS / 单位 | 发布日期 | 原始样本来源 |\n|---|---|---|---:|---|---|\n${contributorRows.join('\n')}`
     const versionEvidence = (expectationItem?.acquisition.observations ?? []).map(observation => observation.source.valueVersion)
     const versionStatus = versionEvidence.length > 0 && versionEvidence.every(evidence => evidence?.status === 'VERIFIED') ? 'VERIFIED' : 'UNVERIFIED'
     const dedupeNote = dedupedExpectations.overlaps.length
@@ -321,7 +333,7 @@ export function buildCompanyValuationSections(input: {
       : '两个渠道没有识别到重叠机构。'
     variantSection = {
       id: 'variant-perception', title: titles['variant-perception'],
-      markdown: `FY${input.acquisition.expectationTargetFiscalYear} EPS 的两个可比预期面均采用 ${thsSurface.snapshot.unit}，并按机构和发布时间截至 ${input.asOf.slice(0, 10)} 去重。同花顺去重归属样本 ${thsSurface.snapshot.count} 家，中位数为 ${thsSurface.snapshot.median}；EastMoney 去重归属样本 ${eastmoneySurface.snapshot.count} 家，中位数为 ${eastmoneySurface.snapshot.median} ${citations(citedSources.map(source => source.candidate.candidateId))}。按“EastMoney 中位数 − 同花顺中位数”计算的渠道差为 ${comparisonDelta.toFixed(2)} ${thsSurface.snapshot.unit}。${dedupeNote} 两个聚合渠道的历史数值版本状态为 ${versionStatus}；因此这只说明当前可见的可比预测差，不能证明历史版本在该日已存在，也不等同于公司指引、独立本方预测或市场定价偏差。`,
+      markdown: `FY${input.acquisition.expectationTargetFiscalYear} EPS 的两个可比预期面均采用 ${thsSurface.snapshot.unit}，并按机构和发布时间截至 ${input.asOf.slice(0, 10)} 去重。同花顺去重归属样本 ${thsSurface.snapshot.count} 家，中位数为 ${thsSurface.snapshot.median}；EastMoney 去重归属样本 ${eastmoneySurface.snapshot.count} 家，中位数为 ${eastmoneySurface.snapshot.median} ${citations(citedSources.map(source => source.candidate.candidateId))}。按“EastMoney 中位数 − 同花顺中位数”计算的渠道差为 ${comparisonDelta.toFixed(2)} ${thsSurface.snapshot.unit}。${dedupeNote} 下表逐项列出保留的机构预测、发布日期、期间、单位及原始样本引用，供复核样本数和中位数。两个聚合渠道的历史数值版本状态为 ${versionStatus}；因此这只说明当前可见的可比预测差，不能证明历史版本在该日已存在，也不等同于公司指引、独立本方预测或市场定价偏差。${contributorTable}`,
       sourceCandidateIds: citedSources.map(source => source.candidate.candidateId),
     }
   } else {

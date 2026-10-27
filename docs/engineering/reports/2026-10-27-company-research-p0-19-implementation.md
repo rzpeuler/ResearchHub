@@ -38,6 +38,10 @@ The tests use labeled synthetic fixtures for resolver/provider and filing rows. 
 
 The second persisted BYD reviewer response for run `053565c3-b7d4-42b0-b005-fc1f907bbb89` incorrectly described the 2024-12-31 to 2025-12-31 revenue comparison as `2025—2025`. A deterministic recheck of the cited `akshare-financial-002594` source (`contentHash=0ebda24acb6f218e8a52956db1e941a549f65b0932cd6f3ec362a9792cea0a80`) and the two report sections confirms 2024 revenue of CNY 777,102,455,000 and 2025 revenue of CNY 803,964,958,000. The new reconciliation clears only that period false positive when the cited structured source and both values match. It retains the independent semantic failures in Bull/Base/Bear and Variant Perception. This was a deterministic replay of saved run data; no new model call was made and the persisted report remains blocked. The sanitized replay record is `tests/validation/evidence/company-research-p0-19-review-period-reconciliation.json`. `node --import tsx --test tests/workflows/company-semantic-quality.test.ts` passed 63/63.
 
+### Variant contributor reproducibility (2026-10-27)
+
+The deterministic Variant Perception section now lists each retained institution's FY2026 EPS value and unit, publication timestamp, and exact source citation. Alias normalization and cross-provider overlap retention remain Workflow-owned and unchanged; `UNVERIFIED` value-version status remains visible. This makes the two displayed provider medians independently recomputable from the report while preserving the PIT blocker. `node --import tsx --test tests/workflows/company-valuation-sections.test.ts` passed 3/3 synthetic-input tests. The saved live BYD report predates this rendering change, so a root-Runtime rerun is still required.
+
 ## Live read-only acceptance attempt (2026-10-27)
 
 The root Runtime was run with the saved `openai-codex / gpt-6-luna` configuration, a disposable temporary Knowledge Base, and `writeKnowledge=false`. Both before/after Knowledge Base hashes matched. The reports and sidecars remain in local `runtime-data/company-quality-acceptance/2026-10-27-p0-19-post-integration/`; raw live source/report bodies are not committed.
