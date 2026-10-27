@@ -8,10 +8,36 @@ import { repairCompanyMethodCitations, repairCompanyParagraphCollisionCitations,
 
 type NormalizedResearchSource = Parameters<typeof selectCompanyEvidence>[0][number]
 
+function splitClaimSentences(line: string): string[] {
+  const claims: string[] = []
+  let start = 0
+  for (let index = 0; index < line.length; index++) {
+    if (!/[。！？!?]/u.test(line[index]!)) continue
+    let cursor = index + 1
+    while (cursor < line.length) {
+      while (/\s/u.test(line[cursor] ?? '')) cursor++
+      if (line[cursor] !== '[') break
+      const close = line.indexOf(']', cursor + 1)
+      if (close < 0 || !/^[^\]@\s]+@paragraph:[1-9]\d*$/u.test(line.slice(cursor + 1, close))) break
+      cursor = close + 1
+    }
+    claims.push(line.slice(start, cursor))
+    start = cursor
+    index = cursor - 1
+  }
+  if (start < line.length) claims.push(line.slice(start))
+  return claims
+}
+
 /** Fail closed when an explicitly classified driver claim cites a segment row from another table family. */
 function businessDriverSegmentClassificationIssue(markdown: string, packets: readonly CompanyEvidencePacket[], sources: readonly NormalizedResearchSource[]): string | undefined {
   const sourceById = new Map(sources.map(source => [source.candidate.candidateId, source]))
-  for (const line of markdown.split(/\r?\n/)) {
+  // Keep a nearby aggregate-data citation from being treated as support for a
+  // separately cited segment-table sentence in the same rendered paragraph.
+  // Chinese sentence terminators are safe boundaries here; ASCII decimal
+  // points remain inside numeric values.
+  const claimSentences = markdown.split(/\r?\n/).flatMap(splitClaimSentences)
+  for (const line of claimSentences) {
     const firstNumber = line.search(/\d/u)
     if (firstNumber < 0 || !/营业收入|收入|占比|贡献/u.test(line)) continue
     // A paragraph may state a regional row and later mention a product metric

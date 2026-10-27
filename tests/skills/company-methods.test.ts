@@ -855,6 +855,25 @@ test('business-driver geography row is not relabeled by a later product-monitori
   assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
 })
 
+test('business-driver classification scopes repeated aggregate numbers to the sentence citation, not a neighboring segment claim', async () => {
+  const filingId = 'official-segment-report'
+  const financialId = 'akshare-financial-002384'
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: filingId }, content: '分产品\n电子产品收入100元，占比20%。' }
+  const financial = { ...source, candidate: { ...source.candidate, candidateId: financialId, kind: 'structured_data' as const }, title: 'Company financial history', content: JSON.stringify({ kind: 'financial', rows: [{ periodEnd: '2026-06-30', metrics: { revenue: 100, netProfit: 20 } }] }) }
+  const claim = `2026年分产品表列示电子产品收入100元、占比20%。[${filingId}@paragraph:1] [${filingId}@paragraph:2] 同期合并财务口径已核对。[${financialId}@paragraph:1]`
+  const result = await executeCompanyResearchMethod({ skillId: 'business_driver_analysis', company: { symbol: '002384' }, asOf: '2026-10-27', sources: [filing, financial], reportSourceCandidateIds: [filingId, financialId], reasoningExecutor: executor(async () => ({
+    status: 'complete', answer: '分产品数据与合并财务结果分别核验。', markdown: '分产品数据与合并财务结果分别核验。',
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: claim },
+      { id: 'growth-drivers', markdown: claim },
+      { id: 'catalysts', markdown: `后续跟踪产品结构变化。[${filingId}@paragraph:1]` },
+    ],
+    findings: [{ text: '分产品表列示电子产品收入100元、占比20%。', kind: 'fact', evidence: [{ sourceCandidateId: filingId, location: 'paragraph:1' }, { sourceCandidateId: filingId, location: 'paragraph:2' }] }],
+    limitations: [], risks: [],
+  })) })
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+})
+
 test('single-value industry findings bind distinct exact rows, including a split transport label', async () => {
   const lines = Array.from({ length: 10 }, () => '一般披露事项。')
   const rows = new Map<number, string>([
