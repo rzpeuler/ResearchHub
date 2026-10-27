@@ -1,6 +1,7 @@
-import { useRef, type ReactNode } from 'react'
-import type { ResearchReport, ResearchReportEvidenceLocation } from '../api/runtime-client'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import type { ResearchReport } from '../api/runtime-client'
 import { useLanguage } from '../i18n'
+import { reportEvidenceEntries, reportEvidenceNavigationEvent, type ReportEvidenceEntry } from '../app/report-evidence'
 
 const titles: Readonly<Record<string, string>> = {
   'company-overview': '公司概况与战略沿革', 'business-model': '商业模式', 'business-segments': '业务分部', 'revenue-profit-drivers': '收入与利润驱动', products: '产品分析', technologies: '技术竞争力', 'industry-exposure': '行业与市场空间', 'supply-chain': '供应链', competition: '竞争格局', 'financial-quality': '财务质量', 'growth-drivers': '增长驱动', 'management-capital-allocation': '管理层、治理与资本配置', catalysts: '催化剂', risks: '风险分析', valuation: '估值', 'bull-base-bear': '乐观、基准与悲观情景', 'variant-perception': '预期差', 'investment-thesis': '研究结论与投资论点', 'monitoring-checklist': '监控清单',
@@ -55,19 +56,32 @@ function ReportMarkdown({ markdown, inline }: { markdown: string; inline: (text:
   return <>{blocks}</>
 }
 
-function ReportSection({ report, section, sectionIndex }: { report: ResearchReport; section: ResearchReport['sections'][number]; sectionIndex: number }) {
+type ReportPreferences = { citationsVisible: boolean; hiddenSectionIds: string[] }
+const defaultPreferences: ReportPreferences = { citationsVisible: false, hiddenSectionIds: [] }
+function preferencesKey(reportId: string): string { return `researchhub.report-body.preferences.v1:${reportId}` }
+function readPreferences(reportId: string): ReportPreferences {
+  try {
+    if (typeof window === 'undefined') return defaultPreferences
+    const raw = window.localStorage.getItem(preferencesKey(reportId))
+    if (!raw) return defaultPreferences
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return defaultPreferences
+    const value = parsed as Record<string, unknown>
+    return { citationsVisible: value.citationsVisible === true, hiddenSectionIds: Array.isArray(value.hiddenSectionIds) ? [...new Set(value.hiddenSectionIds.filter((id): id is string => typeof id === 'string'))] : [] }
+  } catch { return defaultPreferences }
+}
+
+function ReportSection({ report, section, sectionIndex, evidenceByKey, showCitations, onCitationClick }: { report: ResearchReport; section: ResearchReport['sections'][number]; sectionIndex: number; evidenceByKey: Map<string, ReportEvidenceEntry>; showCitations: boolean; onCitationClick: (id: string) => void }) {
   const { t } = useLanguage()
-  const detailRefs = useRef(new Map<string, HTMLDetailsElement>())
-  const locations = section.evidenceLocations ?? []
-  const anchor = (index: number) => `report-evidence-${encodeURIComponent(report.reportId)}-${sectionIndex}-${index}`
-  const find = (source: string, locator: string): number => locations.findIndex((location) => location.sourceCandidateId === source && location.locator === locator)
+  const anchor = `report-section-${encodeURIComponent(report.reportId)}-${sectionIndex}`
+  const find = (source: string, locator: string) => evidenceByKey.get(`${source}\u0000${locator}`)
   const inline = (text: string): ReactNode => {
     const result: ReactNode[] = []; let start = 0
     const pattern = /\[([^\]\s]+)@(paragraph:\d+)\]|\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|`([^`]+)`/g
     for (const match of text.matchAll(pattern)) {
       if (match.index! > start) result.push(text.slice(start, match.index))
       const key = `${match.index}-${result.length}`
-      if (match[1]) { const found = find(match[1], match[2]!); result.push(found >= 0 ? <a className="research-report-citation" key={key} href={`#${anchor(found)}`} onClick={() => { const detail = detailRefs.current.get(anchor(found)); if (detail) detail.open = true }}>{t('证据', 'Evidence')} {found + 1}</a> : <span className="research-report-unresolved" key={key} title={t('旧报告或缺少段落原文', 'Legacy report or excerpt unavailable')}>{match[0]}</span>) }
+      if (match[1]) { const found = find(match[1], match[2]!); result.push(showCitations && found ? <a className="research-report-citation" key={key} href={`#${found.id}`} onClick={(event) => { event.preventDefault(); onCitationClick(found.id) }}>{t('证据', 'Evidence')} {found.index}</a> : null) }
       else if (match[3]) { const url = safeReportUrl(match[4]); result.push(url ? <a key={key} href={url} target="_blank" rel="noopener noreferrer">{match[3]}</a> : <span key={key}>{match[3]}</span>) }
       else if (match[5]) result.push(<strong key={key}>{match[5]}</strong>)
       else result.push(<code key={key}>{match[6]}</code>)
@@ -76,16 +90,29 @@ function ReportSection({ report, section, sectionIndex }: { report: ResearchRepo
     if (start < text.length) result.push(text.slice(start))
     return result
   }
-  const evidence = (location: ResearchReportEvidenceLocation, index: number) => {
-    const url = safeReportUrl(location.url)
-    return <details className="research-report-evidence" id={anchor(index)} key={index} ref={(element) => { if (element) detailRefs.current.set(anchor(index), element); else detailRefs.current.delete(anchor(index)) }}><summary>{t('证据', 'Evidence')} {index + 1} · {location.locator}</summary><div><p className="muted">{location.sourceCandidateId}</p>{url ? <a href={url} target="_blank" rel="noopener noreferrer">{t('查看公开来源', 'Open public source')}</a> : null}<blockquote>{location.excerpt || t('此旧报告未保存段落原文。', 'This legacy report has no saved excerpt.')}</blockquote></div></details>
-  }
   const title = report.reportType === 'company_research' && titles[section.id] ? t(titles[section.id]!, section.title) : section.title
-  return <article className="brief-section research-report-section"><div className="brief-section-heading"><h3>{title}</h3><span>{section.id}</span></div><div className="research-report-markdown"><ReportMarkdown markdown={section.markdown} inline={inline} /></div>{locations.length ? <div className="research-report-evidence-list" aria-label={t('章节证据', 'Section evidence')}>{locations.map(evidence)}</div> : null}{section.sourceRefs?.length ? <small>{t('来源：', 'Sources: ')}{section.sourceRefs.join(', ')}</small> : null}{section.claimRefs?.length ? <small>{t('主张：', 'Claims: ')}{section.claimRefs.join(', ')}</small> : null}{section.relationRefs?.length ? <small>{t('关系：', 'Relations: ')}{section.relationRefs.join(', ')}</small> : null}</article>
+  return <details className="brief-section research-report-section" id={anchor} open><summary className="brief-section-heading"><h3>{title}</h3><span>{section.id}</span></summary><div className="research-report-section-content"><div className="research-report-markdown"><ReportMarkdown markdown={section.markdown} inline={inline} /></div>{section.sourceRefs?.length ? <small>{t('来源：', 'Sources: ')}{section.sourceRefs.join(', ')}</small> : null}{section.claimRefs?.length ? <small>{t('主张：', 'Claims: ')}{section.claimRefs.join(', ')}</small> : null}{section.relationRefs?.length ? <small>{t('关系：', 'Relations: ')}{section.relationRefs.join(', ')}</small> : null}</div></details>
 }
 
 export function ResearchReportBody({ report }: { report: ResearchReport }) {
+  return <ResearchReportBodyForReport key={report.reportId} report={report} />
+}
+
+function ResearchReportBodyForReport({ report }: { report: ResearchReport }) {
   const { t } = useLanguage()
+  const [preferences, setPreferences] = useState(() => readPreferences(report.reportId))
+  const sectionRefs = useRef(new Map<string, HTMLDetailsElement>())
+  useEffect(() => { try { if (typeof window !== 'undefined') window.localStorage.setItem(preferencesKey(report.reportId), JSON.stringify(preferences)) } catch { /* Storage may be disabled or full. */ } }, [report.reportId, preferences])
+  const evidenceEntries = reportEvidenceEntries(report)
+  const evidenceByKey = new Map(evidenceEntries.flatMap((entry) => entry.location.sourceCandidateId ? [[`${entry.location.sourceCandidateId}\u0000${entry.location.locator}`, entry] as const] : []))
+  const visibleSections = report.sections.map((section) => !preferences.hiddenSectionIds.includes(section.id))
+  const toggleHiddenSection = (id: string) => setPreferences((current) => ({ ...current, hiddenSectionIds: current.hiddenSectionIds.includes(id) ? current.hiddenSectionIds.filter((hidden) => hidden !== id) : [...current.hiddenSectionIds, id] }))
+  const scrollToSection = (id: string) => { const element = sectionRefs.current.get(id); if (element) { element.open = true; element.scrollIntoView?.({ behavior: 'smooth', block: 'start' }) } }
+  const navigateToEvidence = (evidenceId: string) => { window.dispatchEvent(new CustomEvent(reportEvidenceNavigationEvent, { detail: { reportId: report.reportId, evidenceId } })) }
   const quality = report.researchQuality
-  return <><section className={`research-report-quality ${quality?.passed ? 'passed' : 'incomplete'}`} aria-label={t('研究完成度', 'Research completion')}><strong>{quality ? quality.passed ? t('研究质量已通过', 'Research quality passed') : t('研究尚未完成', 'Research incomplete') : t('旧报告：未记录研究完成度', 'Legacy report: completion not recorded')}</strong>{quality ? <><p>{t('核心章节', 'Core sections')} {quality.coreCoverage.completed} / {quality.coreCoverage.required}</p>{quality.issues.length ? <details><summary>{t('查看未完成事项', 'View remaining issues')} · {quality.issues.length}</summary><ul>{quality.issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul></details> : null}</> : null}</section>{report.sections.map((section, sectionIndex) => <ReportSection key={section.id} report={report} section={section} sectionIndex={sectionIndex} />)}</>
+  return <div className="research-report-body"><section className={`research-report-quality ${quality?.passed ? 'passed' : 'incomplete'}`} aria-label={t('研究完成度', 'Research completion')}><strong>{quality ? quality.passed ? t('研究质量已通过', 'Research quality passed') : t('研究尚未完成', 'Research incomplete') : t('旧报告：未记录研究完成度', 'Legacy report: completion not recorded')}</strong>{quality ? <><p>{t('核心章节', 'Core sections')} {quality.coreCoverage.completed} / {quality.coreCoverage.required}</p>{quality.issues.length ? <details><summary>{t('查看未完成事项', 'View remaining issues')} · {quality.issues.length}</summary><ul>{quality.issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul></details> : null}</> : null}</section>
+    <div className="research-report-body-controls"><label><input type="checkbox" checked={preferences.citationsVisible} onChange={(event) => setPreferences((current) => ({ ...current, citationsVisible: event.target.checked }))} />{t('正文显示证据编号', 'Show inline evidence citations')}</label><details><summary>{t('管理章节显示', 'Manage visible chapters')}</summary><fieldset><legend>{t('显示的章节', 'Visible chapters')}</legend>{report.sections.map((section) => <label key={section.id}><input type="checkbox" checked={visibleSections[report.sections.indexOf(section)]} onChange={() => toggleHiddenSection(section.id)} />{titles[section.id] ? t(titles[section.id]!, section.title) : section.title}</label>)}</fieldset></details></div>
+    <nav className="research-report-section-locator" aria-label={t('章节定位', 'Chapter navigation')}>{report.sections.map((section, index) => visibleSections[index] ? <button type="button" key={`${section.id}-${index}`} aria-label={t(`定位到章节：${section.title}`, `Go to chapter: ${section.title}`)} title={section.title} onClick={() => scrollToSection(`report-section-${encodeURIComponent(report.reportId)}-${index}`)}>•</button> : null)}</nav>
+    {report.sections.map((section, sectionIndex) => visibleSections[sectionIndex] ? <div key={`${section.id}-${sectionIndex}`} ref={(element) => { const id = `report-section-${encodeURIComponent(report.reportId)}-${sectionIndex}`; if (element) sectionRefs.current.set(id, element.querySelector('details')!); else sectionRefs.current.delete(id) }}><ReportSection report={report} section={section} sectionIndex={sectionIndex} evidenceByKey={evidenceByKey} showCitations={preferences.citationsVisible} onCitationClick={navigateToEvidence} /></div> : null)}
+  </div>
 }

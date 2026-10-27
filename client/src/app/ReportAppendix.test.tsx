@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RuntimeClientError, type ResearchReport, type RuntimeClient, type WorkflowRun } from '../api/runtime-client'
 import { ReportAppendix } from './ReportAppendix'
 import { LanguageProvider } from '../i18n'
+import { reportEvidenceNavigationEvent } from './report-evidence'
 import type { ReactNode } from 'react'
 
 function render(node: ReactNode) { return renderBase(node, { wrapper: LanguageProvider }) }
@@ -25,6 +26,19 @@ function toggle(title: string, open = true) {
 afterEach(() => { cleanup(); localStorage.removeItem('researchhub.language') })
 
 describe('ReportAppendix', () => {
+  it('keeps report evidence in the collapsed appendix and opens the matching locator from a citation', async () => {
+    const reportWithEvidence = { ...report, sections: [{ id: 'summary', title: 'Summary', markdown: '[filing@paragraph:7]', evidenceLocations: [{ sourceCandidateId: 'filing', locator: 'paragraph:7', url: 'https://example.com/report.pdf', excerpt: 'Saved original paragraph.' }] }] }
+    render(<ReportAppendix report={reportWithEvidence} client={client().instance} />)
+    const appendix = screen.getByText('报告证据定位 · 1').closest('details') as HTMLDetailsElement
+    const evidence = screen.getByText('证据 1 · paragraph:7').closest('details') as HTMLDetailsElement
+    expect(appendix.open).toBe(false)
+    expect(evidence.open).toBe(false)
+    fireEvent(window, new CustomEvent(reportEvidenceNavigationEvent, { detail: { reportId: report.reportId, evidenceId: 'report-evidence-report-a-0' } }))
+    await waitFor(() => { expect(appendix.open).toBe(true); expect(evidence.open).toBe(true) })
+    expect(screen.getByText('Saved original paragraph.')).toBeTruthy()
+    expect(within(evidence).getByRole('link', { name: '查看公开来源' }).getAttribute('href')).toBe('https://example.com/report.pdf')
+  })
+
   it('loads independently on expansion, shows actual provenance without duplicating report refs, and renders historical observations', async () => {
     const api = client()
     render(<ReportAppendix report={report} client={api.instance} />)

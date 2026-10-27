@@ -43,6 +43,7 @@ export interface ResearchReportSummary {
   readonly claimCount: number
   readonly sectionCount: number
   readonly methodology: string
+  readonly verifiedName?: string
 }
 
 const safeId = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
@@ -97,6 +98,7 @@ export function summarizeResearchReport(report: ResearchReport): ResearchReportS
     claimCount: report.claimRefs.length,
     sectionCount: report.sections.length,
     methodology: report.methodology,
+    ...(report.verifiedSecurityIdentity?.verifiedName ? { verifiedName: report.verifiedSecurityIdentity.verifiedName } : {}),
   }
 }
 
