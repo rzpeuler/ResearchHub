@@ -736,12 +736,14 @@ test('business-driver revenue table keeps annual industry rows and rejects produ
   ]
   while (lines.length < 49) lines.push('公司经营情况按原披露口径理解。')
   lines.push('公司自研100GPAM4EML芯片已应用于400G及800G光模块，相关产品收入增长仍需观察。')
+  lines.push('2、精密组件产品生产量同比增长 32.92%，除四季度合并法国 GMD 集团外，由于部分生产基地的投产增加了产销量。')
   const filing = { ...source, candidate: { ...source.candidate, candidateId: id }, title: '2025年年度报告', content: lines.join('\n') }
   const packets = selectCompanyEvidence([filing], [id], ['收入', '成本', '毛利率', '占比', 'GPAM4'], { purpose: 'business_driver_analysis' })
   const excerptLocations = new Set(packets[0]?.excerpts.map(row => row.location) ?? [])
   for (const paragraph of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 50]) {
     assert.ok(excerptLocations.has(`paragraph:${paragraph}`), `complete annual table context includes paragraph ${paragraph}`)
   }
+  assert.ok(excerptLocations.has('paragraph:51'), 'numbered production commentary is supplied alongside the product table evidence')
   const refs = (paragraphs: number[]) => paragraphs.map(paragraph => ({ sourceCandidateId: id, location: `paragraph:${paragraph}` }))
   const makeDraft = (claim: string, citations: number[]) => ({
     status: 'complete', answer: '分部收入变化仍需结合集团表现判断。', markdown: '分部披露提供结构线索。',
@@ -765,6 +767,14 @@ test('business-driver revenue table keeps annual industry rows and rejects produ
     skillId: 'business_driver_analysis', maxAttempts: 1, reasoningExecutor: executor(async () => makeDraft(productClaim, [1, 2, 3, 4, 8, 9])),
   })
   assert.equal(productValid.status, 'complete', JSON.stringify(productValid.diagnostics))
+
+  const productWithNumberedNarrative = '2025年分产品收入构成中，新能源汽车收入100元，占比20%；另披露精密组件产品生产量同比增长32.92%，原因包括部分生产基地投产。[annual-segment-classification@paragraph:1]'
+  const productAndNarrativeValid = await executeCompanyResearchMethod({
+    company: { symbol: '123456', name: '测试公司', exchange: 'SZ' }, asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: [id],
+    skillId: 'business_driver_analysis', maxAttempts: 1,
+    reasoningExecutor: executor(async () => makeDraft(productWithNumberedNarrative, [1, 2, 3, 4, 8, 9, 51])),
+  })
+  assert.equal(productAndNarrativeValid.status, 'complete', JSON.stringify(productAndNarrativeValid.diagnostics))
 
   const productWithUnrelatedTechnicalCitation = await executeCompanyResearchMethod({
     company: { symbol: '123456', name: '测试公司', exchange: 'SZ' }, asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: [id],

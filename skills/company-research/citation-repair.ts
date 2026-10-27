@@ -1309,6 +1309,59 @@ export function repairUnavailableCompanyMethodCitations<T>(output: T, packets: r
     return { ...source, content: lines.join('\n') }
   })
   const repairs: CompanyCitationRepair[] = []
+  const repairAdjacentSourceLocatorCluster = (text: string, fieldPath: string): string => text.replace(/((?:\[[^\]\s]+@paragraph:\d+\]\s*){2,})/g, (literal, rawCluster: string, offset: number, whole: string) => {
+    const refs = [...rawCluster.matchAll(/\[([^@\]\s]+)@paragraph:(\d+)\]/g)].map(match => ({ sourceCandidateId: match[1]!, location: `paragraph:${match[2]}`, paragraph: Number(match[2]) }))
+    if (refs.length < 2 || !input.sources.some(source => source.candidate.candidateId === refs[0]!.sourceCandidateId)
+      || refs.some((ref, index) => index > 0 && (ref.sourceCandidateId !== refs[0]!.sourceCandidateId || ref.paragraph !== refs[index - 1]!.paragraph + 1))) return literal
+    if (refs.some(ref => allowed.has(`${ref.sourceCandidateId}@${ref.location}`))) return literal
+
+    const locatorSourceIds = refs.map(ref => new Set(packets
+      .filter(packet => packet.sourceCandidateId !== refs[0]!.sourceCandidateId
+        && input.sources.some(source => source.candidate.candidateId === packet.sourceCandidateId)
+        && packet.excerpts.some(excerpt => excerpt.location === ref.location))
+      .map(packet => packet.sourceCandidateId)))
+    const matchingSourceIds = [...locatorSourceIds[0]!].filter(sourceId => locatorSourceIds.every(ids => ids.has(sourceId)))
+    if (matchingSourceIds.length !== 1) return literal
+    const sourceCandidateId = matchingSourceIds[0]!
+    // Leave ordinary truncated-id completion to the existing strict-prefix repair.
+    if (sourceCandidateId.startsWith(refs[0]!.sourceCandidateId) || refs[0]!.sourceCandidateId.startsWith(sourceCandidateId)) return literal
+    if (packets.filter(packet => packet.sourceCandidateId === sourceCandidateId).length !== 1
+      || input.sources.filter(source => source.candidate.candidateId === sourceCandidateId).length !== 1) return literal
+    const packet = packets.find(candidate => candidate.sourceCandidateId === sourceCandidateId)
+    if (!packet) return literal
+
+    const claimStart = whole.lastIndexOf('\n', Math.max(0, offset - 1)) + 1
+    const before = whole.slice(claimStart, offset).trimEnd()
+    const withoutSentenceEnd = /[。！？；]$/.test(before) ? before.slice(0, -1) : before
+    const boundary = Math.max(withoutSentenceEnd.lastIndexOf('。'), withoutSentenceEnd.lastIndexOf('！'), withoutSentenceEnd.lastIndexOf('？'), withoutSentenceEnd.lastIndexOf('；'))
+    const claim = withoutSentenceEnd.slice(boundary + 1).trim()
+    if (!claim) return literal
+
+    const excerpts = refs.flatMap(ref => packet.excerpts.filter(excerpt => excerpt.location === ref.location))
+    if (excerpts.length !== refs.length) return literal
+    const semanticText = [packet.title, ...excerpts.map(excerpt => excerpt.text)].join(' ')
+    if (!meaningMatches(claim, semanticText)) return literal
+    const candidateRefs = refs.map(ref => ({ sourceCandidateId, location: ref.location }))
+    const grounded = validateCompanyNumericGrounding({
+      markdown: `${claim} ${candidateRefs.map(ref => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')}`,
+      sources: packetSources,
+      evidenceContexts: packets,
+      preparedAnalysis: input.preparedAnalysis,
+      trustedText: [input.company.symbol, input.asOf],
+    })
+    if (grounded.status !== 'grounded') return literal
+
+    const replacements = new Map(refs.map(ref => [`[${ref.sourceCandidateId}@${ref.location}]`, `[${sourceCandidateId}@${ref.location}]`]))
+    const repairedCluster = rawCluster.replace(/\[[^\]\s]+@paragraph:\d+\]/g, citation => replacements.get(citation) ?? citation)
+    repairs.push({
+      sectionId: fieldPath,
+      inputText: claim,
+      originalReferences: refs.map(ref => ({ sourceCandidateId: ref.sourceCandidateId, location: ref.location })),
+      addedReferences: candidateRefs,
+      reason: 'A consecutive cited paragraph cluster used a source id that supplied none of those locators. Every exact locator was present in one unique alternative source, and the combined supplied excerpts matched the claim and passed numeric grounding before the source ids were rebound.',
+    })
+    return repairedCluster
+  })
   const repairText = (text: string, sectionId: string, supportingRefs: readonly CompanyMethodEvidenceRef[] = []): string => text.replace(/\[([^\]\s]+)@(paragraph:\d+)\]/g, (literal, sourceCandidateId: string, location: string, offset: number, whole: string) => {
     if (allowed.has(`${sourceCandidateId}@${location}`)) return literal
     // Models occasionally truncate the final character of a long official
@@ -1451,11 +1504,11 @@ export function repairUnavailableCompanyMethodCitations<T>(output: T, packets: r
       : 'Unique supplied excerpt at the exact locator from a verified source and title independently matches the claim semantics and numeric grounding; repaired the source-locator pair together.' })
     return `[${replacement.sourceCandidateId}@${replacement.location}]`
   })
-  for (const key of ['markdown', 'answer'] as const) if (typeof copy[key] === 'string') copy[key] = repairText(copy[key] as string, key)
+  for (const key of ['markdown', 'answer'] as const) if (typeof copy[key] === 'string') copy[key] = repairText(repairAdjacentSourceLocatorCluster(copy[key] as string, key), key)
   if (Array.isArray(copy.sections)) copy.sections = copy.sections.map((item, index) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return item
     const row = item as Record<string, unknown>
-    return typeof row.markdown === 'string' ? { ...row, markdown: repairText(row.markdown, typeof row.id === 'string' ? row.id : `sections[${index}]`) } : item
+    return typeof row.markdown === 'string' ? { ...row, markdown: repairText(repairAdjacentSourceLocatorCluster(row.markdown, typeof row.id === 'string' ? row.id : `sections[${index}]`), typeof row.id === 'string' ? row.id : `sections[${index}]`) } : item
   })
   if (Array.isArray(copy.findings)) copy.findings = copy.findings.map((item, index) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return item

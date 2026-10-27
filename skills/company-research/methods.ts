@@ -32,7 +32,10 @@ function businessDriverSegmentClassificationIssue(markdown: string, packets: rea
         // Product and technology prose often contains digit-letter identifiers
         // such as 100G, 400G, or PAM4. They are not numeric table cells and must
         // not cause a distant classification marker to be treated as row context.
-        const rowNumbers = [...row.matchAll(/(?<![\p{L}\d.,])[-−]?\d[\d,，]*(?:\.\d+)?\s*[%％]?(?![\p{L}\d])/gu)].map(match => match[0]!.replace(/[\s,]/g, '').replace('−', '-'))
+        // Filing narrative may use numbered list prefixes (for example
+        // "2、...32.92%..."). The ordinal is not a second numeric table cell.
+        const rowContent = row.replace(/^\d+[、.．)]\s*/u, '')
+        const rowNumbers = [...rowContent.matchAll(/(?<![\p{L}\d.,])[-−]?\d[\d,，]*(?:\.\d+)?\s*[%％]?(?![\p{L}\d])/gu)].map(match => match[0]!.replace(/[\s,]/g, '').replace('−', '-'))
         if (rowNumbers.length < 2) continue
         if (!rowNumbers.some(value => claimNumbers.includes(value))) continue
         let markerParagraph = 0

@@ -164,6 +164,11 @@ function directionBefore(text: string, index: number): -1 | 1 {
   if (/年初余额[^。；;\n|]{0,30}本年增加[^。；;\n|]{0,20}本年减少[^。；;\n|]{0,20}年末余额[^。；;\n|]{0,30}[:：][^。；;\n|]*$/.test(clause)) return 1
   const before = clause.slice(-24).split(/[。；;，,\n|]/).at(-1) ?? ''
   if (/(?<!非|正)负(?:数)?\s*$/.test(before)) return -1
+  // A positive spread may be described after contrasting one growth rate
+  // with another that declined (for example, "收入增长与现金流下降之间的
+  // 增速背离为68.5972个百分点"). The decline describes one operand; once
+  // the clause names the divergence result, it no longer supplies that result's sign.
+  if (/背离(?:为|达|约为)\s*$/.test(before)) return 1
   if (/(?:下降|减少|下滑|降)(?:至|到)\s*(?:约|大约)?\s*$/.test(before)) return 1
   // A source table header such as “毛利率比上年同期增减” is a neutral
   // change-column label. Do not read its final “减” as a negative direction;

@@ -1235,6 +1235,45 @@ test('a colliding exact locator is disambiguated only by same-claim references t
   assert.match(crossSource.output.sections[0]!.markdown,new RegExp(`${typo}@paragraph:717`))
 })
 
+test('a consecutive cited paragraph cluster can be rebound only to one exact supplied source', () => {
+  const correctId = 'official-customer-risk-h1'
+  const wrongId = 'official-customer-risk-annual'
+  const paragraphs = new Map<number, string>([
+    [1320, '1、客户集中度风险'],
+    [1321, '公司客户资源较好，主要客户均为相关行业的国际国内知名企业，客户信誉良好，且公司与其建立了稳定的合作关系。'],
+    [1322, '但是公司前五大客户收入占比较高，如果主要客户的经营状况发生重大不利变化，将会对公司'],
+    [1323, '经营产生不利影响。公司将高度关注重点客户所处行业发展动向及客户信用状况，积极加大新产品、新客户开拓力度，减'],
+    [1324, '少因客户集中度较高对公司可能产生的不利影响。'],
+  ])
+  const lines = Array.from({ length: 1324 }, (_, index) => paragraphs.get(index + 1) ?? '')
+  const correctSource = { ...source, candidate: { ...source.candidate, candidateId: correctId }, title: '2026年半年度报告', content: lines.join('\n') }
+  const wrongSource = { ...source, candidate: { ...source.candidate, candidateId: wrongId }, title: '2025年年度报告', content: Array.from({ length: 1324 }, () => '其他披露内容。').join('\n') }
+  const excerpts = [...paragraphs].map(([paragraph, text]) => ({ sourceCandidateId: correctId, location: `paragraph:${paragraph}`, text }))
+  const correctPacket: CompanyEvidencePacket = { sourceCandidateId: correctId, title: correctSource.title!, publisher: '公司', excerpts }
+  const claim = '公司披露客户集中度风险：若主要客户经营状况重大不利变化可能影响经营，公司将关注客户信用并拓展新产品、新客户。'
+  const wrongCluster = [1320, 1321, 1322, 1323, 1324].map(paragraph => `[${wrongId}@paragraph:${paragraph}]`).join(' ')
+  const draft = { findings: [], markdown: `${claim} ${wrongCluster}`, sections: [{ id: 'business-model', markdown: `${claim} ${wrongCluster}` }] }
+  const options = { ...input, sources: [wrongSource, correctSource] }
+
+  const repaired = repairUnavailableCompanyMethodCitations(draft, [correctPacket], options)
+  assert.equal(repaired.repairs.length, 2, 'the same repair is recorded for the Markdown and section copies of the claim')
+  assert.match(repaired.output.sections[0]!.markdown, new RegExp(`${correctId}@paragraph:1320`))
+  assert.doesNotMatch(repaired.output.sections[0]!.markdown, new RegExp(`${wrongId}@paragraph:1320`))
+  const numeric = validateCompanyNumericGrounding({ markdown: repaired.output.sections[0]!.markdown, sources: [correctSource], evidenceContexts: [correctPacket] })
+  assert.equal(numeric.status, 'grounded', JSON.stringify(numeric.diagnostics))
+
+  const duplicatePacket: CompanyEvidencePacket = { ...correctPacket, sourceCandidateId: 'official-customer-risk-second', excerpts: excerpts.map(excerpt => ({ ...excerpt, sourceCandidateId: 'official-customer-risk-second' })) }
+  const ambiguous = repairUnavailableCompanyMethodCitations(draft, [correctPacket, duplicatePacket], { ...options, sources: [...options.sources, { ...correctSource, candidate: { ...correctSource.candidate, candidateId: 'official-customer-risk-second' }, title: '另一份报告' }] })
+  assert.equal(ambiguous.repairs.length, 0, 'the full locator cluster must identify one unique candidate source')
+  assert.match(ambiguous.output.sections[0]!.markdown, new RegExp(`${wrongId}@paragraph:1320`))
+
+  const unrelatedClaim = '公司公布新款手机上市日期并建立自动化产线。'
+  const unrelatedDraft = { ...draft, markdown: `${unrelatedClaim} ${wrongCluster}`, sections: [{ id: 'business-model', markdown: `${unrelatedClaim} ${wrongCluster}` }] }
+  const unrelated = repairUnavailableCompanyMethodCitations(unrelatedDraft, [correctPacket], options)
+  assert.equal(unrelated.repairs.length, 0, 'unique parallel locators do not repair a claim the supplied text does not support')
+  assert.match(unrelated.output.sections[0]!.markdown, new RegExp(`${wrongId}@paragraph:1320`))
+})
+
 test('inline citation repair can use an exact paragraph already cited by a finding in the same method',()=>{
   const researchSource={...source,content:'2024年研发投入541.61亿元。\n2025年研发投入634.41亿元。'}
   const researchPacket:CompanyEvidencePacket={...packet,excerpts:researchSource.content.split('\n').map((text,index)=>({sourceCandidateId:'filing',location:`paragraph:${index+1}`,text}))}

@@ -3645,8 +3645,12 @@ export function evaluateCompanyResearchContent(input: { readonly sections: reado
         if (id === 'bull-base-bear') {
           if (!/(?:Bear|悲观)/i.test(analysisBody) || !/(?:Base|基准)/i.test(analysisBody) || !/(?:Bull|乐观)/i.test(analysisBody)) reasons.push('SCENARIO_SET_INCOMPLETE')
           if (!/(?:敏感|Sensitivity|公式|计算|×|÷|=|＝)/i.test(analysisBody)) reasons.push('SCENARIO_CALCULATION_OR_SENSITIVITY_MISSING')
+          if (/(?:共识(?:EPS|每股收益).{0,80}(?:低值|极值|区间)|(?:低值|高值|中位数).{0,80}固定.{0,20}PE|EPS.{0,30}(?:固定|当前).{0,20}PE)/is.test(analysisBody)) reasons.push('SCENARIO_CONSENSUS_EXTREMA_FIXED_PE_SHORTCUT')
         }
-        if (id === 'variant-perception' && new Set(locatedCitations.map((citation) => citation.slice(0, citation.indexOf('@')))).size < 2) reasons.push('VARIANT_PERCEPTION_REQUIRES_TWO_ATTRIBUTABLE_SURFACES')
+        if (id === 'variant-perception') {
+          if (new Set(locatedCitations.map((citation) => citation.slice(0, citation.indexOf('@')))).size < 2) reasons.push('VARIANT_PERCEPTION_REQUIRES_TWO_ATTRIBUTABLE_SURFACES')
+          if (/(?:UNVERIFIED|未核验|未验证)/i.test(analysisBody)) reasons.push('VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED')
+        }
       }
       const normalized = text.replace(/\s+/g, ' ')
       if (normalized && seen.has(normalized)) reasons.push(`DUPLICATE_CONTENT:${seen.get(normalized)}`)

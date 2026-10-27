@@ -1,8 +1,7 @@
 import type { NormalizedResearchSource } from '../../plugins/research-acquisition/contracts.ts'
 import { sha256 } from '../../plugins/research-acquisition/hash.ts'
 import { buildConsensusSnapshot } from '../../skills/earnings-review/expectations/consensus.ts'
-import { calculateValuation, buildValuationBasis, methodEligibility } from '../../skills/valuation/financials.ts'
-import type { ValuationScenarioAssumption } from '../../skills/valuation/contracts.ts'
+import { buildValuationBasis, methodEligibility } from '../../skills/valuation/financials.ts'
 import { THS_EPS_UNIT } from '../../plugins/research-acquisition/earnings-expectations-ths.ts'
 import type { CompanyReadOnlyAcquisition } from './contracts.ts'
 import type { EstimatePoint } from '../../skills/earnings-review/expectations/contracts.ts'
@@ -197,7 +196,7 @@ function dedupeContributors(surfaces: readonly ExpectationSurface[]): { readonly
   }
 }
 
-/** Build report-owned PE and consensus scenarios from validated resolver results and issuer filing rows. */
+/** Build report-owned valuation basis and evidence-bounded expectation comparison from resolver results and issuer filing rows. */
 export function buildCompanyValuationSections(input: {
   readonly company: { readonly symbol: string; readonly name: string }
   readonly asOf: string
@@ -228,9 +227,6 @@ export function buildCompanyValuationSections(input: {
   const expectationItem = input.acquisition.earningsExpectationItems.find(item => item.metricId === 'earnings_expectation_eps')
   const dedupedExpectations = dedupeContributors(surfaces)
   const estimates = dedupedExpectations.all
-  const consensusResult = buildConsensusSnapshot({ estimates, metric: 'eps', fiscalPeriod: `${input.acquisition.expectationTargetFiscalYear}-FY`, asOf: input.asOf, minimumCount: 2 })
-  const consensus = consensusResult.snapshot?.unit === THS_EPS_UNIT ? consensusResult.snapshot : undefined
-  if (!consensus) diagnostics.push(`VALUATION_EPS_CONSENSUS_UNAVAILABLE:${consensusResult.diagnostics.join('|') || 'UNIT_MISMATCH'}`)
 
   const marketEvidenceSource = quote ? quoteSource({
     company: input.company,
@@ -243,16 +239,17 @@ export function buildCompanyValuationSections(input: {
     sourceUrl: quote.sourceUrl,
     retrievedAt: quote.retrievedAt,
   }) : undefined
-  const selectedEstimateIds = new Set(consensusResult.selectedEstimates.flatMap((estimate) => estimate.sourceCandidateIds))
-  const estimateSources = consensus ? surfaces.flatMap(surface => surface.sources).filter((source, index, all) => selectedEstimateIds.has(source.candidate.candidateId) && all.findIndex(candidate => candidate.candidate.candidateId === source.candidate.candidateId) === index) : []
+  const selectedEstimateIds = new Set(estimates.flatMap((estimate) => estimate.sourceCandidateIds))
+  const estimateSources = surfaces.flatMap(surface => surface.sources).filter((source, index, all) => selectedEstimateIds.has(source.candidate.candidateId) && all.findIndex(candidate => candidate.candidate.candidateId === source.candidate.candidateId) === index)
   const evidenceSources = [...(marketEvidenceSource ? [marketEvidenceSource] : []), ...estimateSources]
   const marketSourceId = marketEvidenceSource?.candidate.candidateId
   const epsSourceId = filingEps?.source.candidate.candidateId
   const baseSourceIds = [...new Set([marketSourceId, epsSourceId].filter((value): value is string => value !== undefined))]
 
   let valuationSection = gap('valuation', titles.valuation, '无法同时确认 PIT 收盘价与年度报告基本 EPS')
-  let scenarioSection = gap('bull-base-bear', titles['bull-base-bear'], '估值基础或 FY 共识预测未通过 point-in-time、来源和单位校验')
-  if (quote && filingEps && consensus && marketEvidenceSource) {
+  let scenarioSection = gap('bull-base-bear', titles['bull-base-bear'], '本轮没有来源支持的目标年经营驱动假设、统一财务口径及可复算敏感性参数；不使用共识EPS极值乘固定PE替代经营情景')
+  diagnostics.push('SCENARIO_OPERATING_DRIVER_PLAN_NOT_AVAILABLE')
+  if (quote && filingEps && marketEvidenceSource) {
     const reportDate = filingEps.source.candidate.publishedAt!.slice(0, 10)
     const market = { priceDate: quote.observation.priceDate, close: quote.observation.close }
     const basis = buildValuationBasis(market, { basisFiscalYear: basisYear, reportDate: `${basisYear}-12-31`, publicationDate: reportDate, eps: filingEps.value }, input.asOf.slice(0, 10), 'verified')
@@ -268,37 +265,6 @@ export function buildCompanyValuationSections(input: {
         sourceCandidateIds: [...baseSourceIds],
       }
 
-      const targets = [consensus.low, consensus.median, consensus.high]
-      const scenarioIds = ['bear', 'base', 'bull'] as const
-      const targetFiscalYear = Number(consensus.fiscalPeriod.slice(0, 4))
-      if (!Number.isInteger(targetFiscalYear) || targetFiscalYear < basisYear) {
-        diagnostics.push('VALUATION_CONSENSUS_FISCAL_YEAR_INVALID')
-      } else {
-      const scenarioSourceIds = [...new Set([...baseSourceIds, ...estimateSources.map((source) => source.candidate.candidateId)])]
-      const assumptions: ValuationScenarioAssumption[] = scenarioIds.map((scenarioId, index) => ({
-        scenarioId,
-        primaryMethod: 'PE',
-        targetFiscalYear,
-        growthRate: targets[index]! / filingEps.value - 1,
-        targetMultiple: currentPe,
-        rationale: `FY${consensus.fiscalPeriod} analyst consensus ${scenarioId === 'bear' ? 'low' : scenarioId === 'base' ? 'median' : 'high'} estimate; unchanged current FY${basisYear} PE multiple`,
-        sourceCandidateIds: scenarioSourceIds,
-        existingKnowledgeRefs: [],
-      }))
-      const plan = { primaryMethod: 'PE' as const, secondaryMethods: [] as const, targetFiscalYear, scenarios: assumptions }
-      try {
-        const result = calculateValuation(basis, plan, ['PE'])
-        const estimateRefs = citations(estimateSources.map((source) => source.candidate.candidateId))
-        const scenarioRows = result.scenarios.map((item) => `| ${item.scenarioId.toUpperCase()}（共识${item.scenarioId === 'bear' ? '低值' : item.scenarioId === 'base' ? '中位数' : '高值'}） | ${item.forecastMetric.toFixed(2)} CNY/share | ${item.targetMultiple.toFixed(2)}x（固定为当前 FY${basisYear} PE） | ${item.targetPrice.toFixed(2)} CNY/share | ${item.impliedReturnPct.toFixed(2)}% |`).join('\n')
-        scenarioSection = {
-          id: 'bull-base-bear', title: titles['bull-base-bear'],
-          markdown: `FY${consensus.fiscalPeriod} EPS 共识由 ${consensus.count} 家机构的最新 point-in-time 预测构成，单位为 ${consensus.unit}，区间为 ${consensus.low} 至 ${consensus.high}，中位数为 ${consensus.median} ${estimateRefs}。Bear/Base/Bull 分别采用共识低值、中位数和高值；不赋予概率，目标 PE 在三个情景中均固定为当前 FY${basisYear} 参考 PE。目标价由现有估值计算函数按“情景 EPS × 固定 PE”复算，结果如下：\n\n| 情景 | FY${consensus.fiscalPeriod} EPS | PE 假设 | 指示价格 | 相对当前收盘价变化 |\n|---|---:|---:|---:|---:|\n${scenarioRows}\n\n情景范围反映已选 FY 预测点和固定倍数条件，不是收益概率分布；若共识样本、报告期或倍数基准变化，结果需要重算。`,
-          sourceCandidateIds: [...new Set([...scenarioSourceIds])],
-        }
-      } catch (error) {
-        diagnostics.push(`VALUATION_SCENARIO_REJECTED:${error instanceof Error ? error.message : String(error)}`)
-      }
-      }
     } else diagnostics.push('VALUATION_PE_METHOD_NOT_ELIGIBLE')
   }
 
@@ -328,12 +294,16 @@ export function buildCompanyValuationSections(input: {
     const contributorTable = `\n\n| 预期面 | 机构 | 财年 | EPS / 单位 | 发布日期 | 原始样本来源 |\n|---|---|---|---:|---|---|\n${contributorRows.join('\n')}`
     const versionEvidence = (expectationItem?.acquisition.observations ?? []).map(observation => observation.source.valueVersion)
     const versionStatus = versionEvidence.length > 0 && versionEvidence.every(evidence => evidence?.status === 'VERIFIED') ? 'VERIFIED' : 'UNVERIFIED'
+    if (versionStatus !== 'VERIFIED') diagnostics.push('VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED')
+    const versionGap = versionStatus === 'VERIFIED'
+      ? ''
+      : '研究缺口：机构预测的历史数值版本未核验，以下样本差异仅用于复核当前可见数据，不构成符合asOf的预期差结论。\n\n'
     const dedupeNote = dedupedExpectations.overlaps.length
       ? `两个渠道存在 ${dedupedExpectations.overlaps.length} 家重叠机构；同一机构只保留截至 asOf 发布时间较新的唯一预测，平局固定优先同花顺。`
       : '两个渠道没有识别到重叠机构。'
     variantSection = {
       id: 'variant-perception', title: titles['variant-perception'],
-      markdown: `FY${input.acquisition.expectationTargetFiscalYear} EPS 的两个可比预期面均采用 ${thsSurface.snapshot.unit}，并按机构和发布时间截至 ${input.asOf.slice(0, 10)} 去重。同花顺去重归属样本 ${thsSurface.snapshot.count} 家，中位数为 ${thsSurface.snapshot.median}；EastMoney 去重归属样本 ${eastmoneySurface.snapshot.count} 家，中位数为 ${eastmoneySurface.snapshot.median} ${citations(citedSources.map(source => source.candidate.candidateId))}。按“EastMoney 中位数 − 同花顺中位数”计算的渠道差为 ${comparisonDelta.toFixed(2)} ${thsSurface.snapshot.unit}。${dedupeNote} 下表逐项列出保留的机构预测、发布日期、期间、单位及原始样本引用，供复核样本数和中位数。两个聚合渠道的历史数值版本状态为 ${versionStatus}；因此这只说明当前可见的可比预测差，不能证明历史版本在该日已存在，也不等同于公司指引、独立本方预测或市场定价偏差。${contributorTable}`,
+      markdown: `${versionGap}FY${input.acquisition.expectationTargetFiscalYear} EPS 的两个可比预期面均采用 ${thsSurface.snapshot.unit}，并按机构和发布时间截至 ${input.asOf.slice(0, 10)} 去重。同花顺去重归属样本 ${thsSurface.snapshot.count} 家，中位数为 ${thsSurface.snapshot.median}；EastMoney 去重归属样本 ${eastmoneySurface.snapshot.count} 家，中位数为 ${eastmoneySurface.snapshot.median} ${citations(citedSources.map(source => source.candidate.candidateId))}。按“EastMoney 中位数 − 同花顺中位数”计算的渠道差为 ${comparisonDelta.toFixed(2)} ${thsSurface.snapshot.unit}。${dedupeNote} 下表逐项列出保留的机构预测、发布日期、期间、单位及原始样本引用，供复核样本数和中位数。两个聚合渠道的历史数值版本状态为 ${versionStatus}；因此这只说明当前可见的可比预测差，不能证明历史版本在该日已存在，也不等同于公司指引、独立本方预测或市场定价偏差。${contributorTable}`,
       sourceCandidateIds: citedSources.map(source => source.candidate.candidateId),
     }
   } else {

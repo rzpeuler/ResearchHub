@@ -1198,6 +1198,20 @@ test('percentage-point grounding admits the explicit deterministic display value
   assert.equal(validateCompanyNumericGrounding({ markdown: formula.replace('14.2261', '14.2263'), sources: [financial], preparedAnalysis }).status, 'unsupported_numbers')
 })
 
+test('risk growth divergence reports a positive spread after describing one operand as declining', () => {
+  const financial = { ...source, candidate: { ...source.candidate, candidateId: 'financial' }, content: '结构化财务摘要；同比增速由代码计算。' }
+  const preparedAnalysis = { financial: { growthDivergences: [{
+    leftMetric: 'revenue', rightMetric: 'operatingCashFlow', unit: 'percentage_points',
+    currentPeriod: '2026-06-30', priorPeriod: '2025-06-30',
+    value: 68.5971982648607, displayValue: 68.5972, sourceCandidateIds: ['financial'],
+  }] } }
+  const claim = '2026年上半年累计收入增长与经营现金流下降之间的增速背离为68.5972个百分点。[financial@paragraph:1]'
+  const options = { sources: [financial], preparedAnalysis, trustedText: companyPreparedFinancialDateText(preparedAnalysis) }
+  assert.equal(validateCompanyNumericGrounding({ markdown: claim, ...options }).status, 'grounded')
+  assert.equal(validateCompanyNumericGrounding({ markdown: claim.replace('68.5972', '69.5972'), ...options }).status, 'unsupported_numbers')
+  assert.equal(validateCompanyNumericGrounding({ markdown: claim.replace('背离为68.5972', '背离为负68.5972'), ...options }).status, 'unsupported_numbers')
+})
+
 test('ratio-change grounding admits only its deterministic displayed-operand calculation', () => {
   const financial = { ...source, candidate: { ...source.candidate, candidateId: 'financial' }, content: '结构化财务数据列示两期合并净利率4.18%和3.57%及变化。' }
   const preparedAnalysis = { financial: { ratioChanges: [{ metric: 'netMarginPercent', changePercentagePoints: -0.6030786726100335, displayChangePercentagePoints: -0.61, sourceCandidateIds: ['financial'] }] } }

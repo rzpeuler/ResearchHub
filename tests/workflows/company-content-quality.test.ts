@@ -97,9 +97,9 @@ const sections = () => COMPANY_CORE_SECTION_IDS.map((id) => ({ id, markdown: id 
     : id === 'valuation'
       ? '截至2026-10-26收盘价为100 CNY/share；FY2025基本EPS为10 CNY/share；PE = 100 ÷ 10 = 10.0x。[annual-report@paragraph:1]'
       : id === 'bull-base-bear'
-        ? 'Bear/Base/Bull EPS分别取可比预测面低值、中位数和高值，三者均以同一当前PE计算：目标价 = EPS × PE。敏感性显示每股EPS变动1元、倍数不变时，目标价变动10元。[annual-report@paragraph:1]'
+        ? 'Bear 情景采用披露的出货量下降条件；Base 情景采用已披露的出货量与单位毛利；Bull 情景采用已披露的产品组合改善条件。敏感性按来源支持的单位毛利上下变化逐项重算经营贡献，不以共识 EPS 极值替代经营驱动。[annual-report@paragraph:1]'
         : id === 'variant-perception'
-          ? 'FY2026 EPS预期比较：研究面A为10元/股，研究面B为9元/股；来源日期与样本口径须逐项核验，差额为1元/股。[annual-report@paragraph:1] [consensus-report@paragraph:1]'
+          ? 'FY2026 EPS预期比较：研究面A为10元/股，研究面B为9元/股；历史数值版本状态为 VERIFIED，差额为1元/股。[annual-report@paragraph:1] [consensus-report@paragraph:1]'
     : `对 ${id} 的分析：披露事实支持经营机制判断，同时存在执行风险。`, sourceCandidateIds: id === 'variant-perception' ? ['annual-report', 'consensus-report'] : ['annual-report'] }))
 
 
@@ -460,6 +460,19 @@ test('variant perception fails when only one cited expectation surface is suppli
   value[index] = { ...value[index]!, markdown: 'FY2026 EPS共识为10元/股。[annual-report@paragraph:1]', sourceCandidateIds: ['annual-report'] }
   const quality = evaluateCompanyResearchContent({ sections: value })
   assert.ok(quality.sectionChecks.find(check => check.sectionId === 'variant-perception')?.reasons.includes('VARIANT_PERCEPTION_REQUIRES_TWO_ATTRIBUTABLE_SURFACES'))
+})
+
+test('unsupported consensus-extrema fixed-PE scenarios and unverified expectation vintages fail closed', () => {
+  const value = sections()
+  const scenarioIndex = COMPANY_CORE_SECTION_IDS.indexOf('bull-base-bear')
+  value[scenarioIndex] = { ...value[scenarioIndex]!, markdown: 'Bear/Base/Bull EPS分别取共识低值、中位数和高值，三者均以同一当前PE计算：目标价 = EPS × PE。敏感性已计算。[annual-report@paragraph:1]' }
+  const scenario = evaluateCompanyResearchContent({ sections: value }).sectionChecks.find(check => check.sectionId === 'bull-base-bear')
+  assert.ok(scenario?.reasons.includes('SCENARIO_CONSENSUS_EXTREMA_FIXED_PE_SHORTCUT'))
+
+  const variantIndex = COMPANY_CORE_SECTION_IDS.indexOf('variant-perception')
+  value[variantIndex] = { ...value[variantIndex]!, markdown: 'FY2026 EPS预期差异，历史数值版本 UNVERIFIED。[annual-report@paragraph:1] [consensus-report@paragraph:1]' }
+  const quality = evaluateCompanyResearchContent({ sections: value })
+  assert.ok(quality.sectionChecks.find(check => check.sectionId === 'variant-perception')?.reasons.includes('VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED'))
 })
 test('broad executive-division gap is rejected when the report already states executive roles, while a specific new-hire gap is retained', () => {
   const value = sections()

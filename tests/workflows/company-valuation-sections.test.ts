@@ -37,12 +37,13 @@ const acquisition = {
   earningsExpectationItems: [{ metricId: 'earnings_expectation_eps', status: 'PARTIAL', value: { kind: 'expectation', projection: { sources: thsSources, estimates: thsEstimates, institutions: [] } }, acquisition: { observations: [{ data: { kind: 'expectation', projection: { sources: emSources, estimates: emEstimates, institutions: [] } }, source: { valueVersion: { status: 'UNVERIFIED', reason: 'fixture does not prove historical revisions' } } }] } }],
 } as unknown as CompanyReadOnlyAcquisition
 
-test('valuation builder populates all three workflow-owned sections from exact PIT inputs', () => {
+test('valuation builder keeps reference valuation, blocks unsupported scenario math, and labels unverified forecast vintages', () => {
   const result = buildCompanyValuationSections({ company: { symbol: '002594', name: '比亚迪' }, asOf, acquisition, sources: [filing] })
   assert.deepEqual(result.sections.map(section => section.id), ['valuation', 'bull-base-bear', 'variant-perception'])
   assert.match(result.sections[0]!.markdown, /3\.58 CNY\/share/)
   assert.match(result.sections[0]!.markdown, /PE/)
-  assert.match(result.sections[1]!.markdown, /Bear\/Base\/Bull/)
+  assert.match(result.sections[1]!.markdown, /研究缺口：本轮没有来源支持的目标年经营驱动假设/)
+  assert.doesNotMatch(result.sections[1]!.markdown, /目标价|相对当前收盘价变化/)
   assert.ok(result.sections[0]!.sourceCandidateIds.includes('annual-2025'))
   assert.ok(result.sections[0]!.sourceCandidateIds.some(id => id.startsWith('company-valuation-market-')))
   assert.deepEqual([...result.reportSourceCandidateIds].sort(), ['annual-2025', 'eastmoney-1', 'eastmoney-3', 'ths-2', 'ths-3', result.sections[0]!.sourceCandidateIds.find(id => id.startsWith('company-valuation-market-'))!].sort())
@@ -50,6 +51,7 @@ test('valuation builder populates all three workflow-owned sections from exact P
   assert.match(result.sections[2]!.markdown, /同花顺去重归属样本 2 家/)
   assert.match(result.sections[2]!.markdown, /EastMoney 去重归属样本 2 家/)
   assert.match(result.sections[2]!.markdown, /历史数值版本状态为 UNVERIFIED/)
+  assert.match(result.sections[2]!.markdown, /^研究缺口：机构预测的历史数值版本未核验/)
   assert.match(result.sections[2]!.markdown, /2 家重叠机构/)
   assert.match(result.sections[2]!.markdown, /同花顺 \| 华金证券 \| 2026-FY \| 5 CNY_per_share \| 2026-10-21T00:00:00\.000Z \| \[ths-2@paragraph:1\]/)
   assert.match(result.sections[2]!.markdown, /EastMoney \| 中信证券 \| 2026-FY \| 5\.5 CNY_per_share \| 2026-10-21T00:00:00\.000Z \| \[eastmoney-3@paragraph:1\]/)
