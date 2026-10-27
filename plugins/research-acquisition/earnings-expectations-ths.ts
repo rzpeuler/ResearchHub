@@ -3,10 +3,11 @@ import { normalizeEastmoneyTimestamp } from './expectations/eastmoney-report.ts'
 import type { NormalizedResearchSource, ResearchCompanyIdentity, ResearchProviderOutcome } from './contracts.ts'
 import type { EstimatePoint } from '../../skills/earnings-review/expectations/contracts.ts'
 import type { EstimateProjectionResult } from './earnings-expectation-source-eastmoney.ts'
+import { EPS_PER_SHARE_UNIT } from '../../skills/earnings-review/expectations/contracts.ts'
 
 export const THS_INSTITUTION_FORECAST_INDICATOR = '业绩预测详表-机构' as const
 export const THS_PROVIDER = 'akshare-ths-institution-forecast' as const
-export const THS_EPS_UNIT = 'CNY_per_share' as const
+export const THS_EPS_UNIT = EPS_PER_SHARE_UNIT
 export const THS_NET_PROFIT_UNIT = 'CNY_yuan' as const
 
 type Dict = Record<string, unknown>

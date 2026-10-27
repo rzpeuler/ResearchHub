@@ -3,8 +3,9 @@ import type { NormalizedResearchSource, ResearchProviderOutcome } from './contra
 import type { EastmoneyReportAcquisitionResult, EastmoneyResearchReportRecord } from './expectations/contracts.ts'
 import { validateEstimatePoint } from '../../skills/earnings-review/expectations/matching.ts'
 import type { EstimatePoint } from '../../skills/earnings-review/expectations/contracts.ts'
+import { EPS_PER_SHARE_UNIT } from '../../skills/earnings-review/expectations/contracts.ts'
 
-export const EASTMONEY_EPS_UNIT = 'CNY_per_share' as const
+export const EASTMONEY_EPS_UNIT = EPS_PER_SHARE_UNIT
 
 export interface EstimateProjectionResult {
   readonly sources: readonly NormalizedResearchSource[]

@@ -157,8 +157,10 @@ const allowedWorkflowAcquisitionDependencies = new Map<string, ReadonlySet<strin
   ['app/services/research-service.ts', new Set([
     '../../plugins/research-acquisition/akshare.ts',
     '../../plugins/research-acquisition/company-research-data.ts',
+    '../../plugins/research-acquisition/earnings-data.ts',
     '../../plugins/research-acquisition/gdelt.ts',
     '../../plugins/research-acquisition/official.ts',
+    '../../plugins/research-acquisition/valuation-data.ts',
   ])],
   ['app/services/industry-data-resolver-factory.ts', new Set([
     '../../plugins/research-acquisition/industry-data-operations.ts',
@@ -214,8 +216,12 @@ const migratedAcquisitionWorkflowPaths = new Set([
 ])
 
 const allowedWorkflowDataTypeImports = new Map<string, ReadonlySet<string>>([
-  ['workflows/company-deep-research/contracts.ts', new Set(['../../plugins/research-acquisition/company-research-data.ts'])],
-  ['workflows/company-deep-research/workflow.ts', new Set(['../../plugins/research-acquisition/company-research-data.ts'])],
+  ['workflows/company-deep-research/contracts.ts', new Set([
+    '../../plugins/research-acquisition/company-research-data.ts',
+    '../../plugins/research-acquisition/earnings-data.ts',
+    '../../plugins/research-acquisition/valuation-data.ts',
+  ])],
+  ['workflows/company-deep-research/workflow.ts', new Set(['../../plugins/research-acquisition/company-research-data.ts', '../../plugins/research-acquisition/valuation-data.ts'])],
   ['workflows/event-research/contracts.ts', new Set(['../../plugins/research-acquisition/company-research-data.ts'])],
   ['workflows/industry-deep-research/contracts.ts', new Set(['../../plugins/research-acquisition/industry-data-operations.ts'])],
   ['app/services/industry-data-resolver.ts', new Set(['../../plugins/research-acquisition/industry-data-operations.ts'])],

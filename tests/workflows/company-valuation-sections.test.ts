@@ -34,7 +34,7 @@ const acquisition = {
   expectationTargetFiscalYear: 2026,
   valuationBasisFiscalYear: 2025,
   valuationItems: [{ metricId: 'valuation_market_price', status: 'AVAILABLE', value: quote, quality: { pointInTimeSafe: true } }],
-  earningsExpectationItems: [{ metricId: 'earnings_expectation_eps', status: 'PARTIAL', value: { kind: 'expectation', projection: { sources: thsSources, estimates: thsEstimates, institutions: [] } }, acquisition: { observations: [{ data: { kind: 'expectation', projection: { sources: emSources, estimates: emEstimates, institutions: [] } }, source: { valueVersion: { status: 'UNVERIFIED', reason: 'fixture does not prove historical revisions' } } }] } }],
+  earningsExpectationItems: [{ metricId: 'earnings_expectation_eps', status: 'PARTIAL', quality: { pointInTimeSafe: true, valueVersionStatus: 'UNVERIFIED' }, attempts: [{ sourceId: 'ths-institution-forecast', fallbackLevel: 'PRIMARY', status: 'SUCCESS' }, { sourceId: 'eastmoney-individual-research-report', fallbackLevel: 'FALLBACK_1', status: 'SUCCESS' }], value: { kind: 'expectation', projection: { sources: thsSources, estimates: thsEstimates, institutions: [] } }, acquisition: { observations: [{ data: { kind: 'expectation', projection: { sources: emSources, estimates: emEstimates, institutions: [] } }, source: { valueVersion: { status: 'UNVERIFIED', reason: 'fixture does not prove historical revisions' } } }] } }],
 } as unknown as CompanyReadOnlyAcquisition
 
 test('valuation builder keeps reference valuation, blocks unsupported scenario math, and labels unverified forecast vintages', () => {
@@ -42,7 +42,10 @@ test('valuation builder keeps reference valuation, blocks unsupported scenario m
   assert.deepEqual(result.sections.map(section => section.id), ['valuation', 'bull-base-bear', 'variant-perception'])
   assert.match(result.sections[0]!.markdown, /3\.58 CNY\/share/)
   assert.match(result.sections[0]!.markdown, /PE/)
+  assert.match(result.sections[0]!.markdown, /1\/3\.58 = 0\.28 倍/)
+  assert.match(result.sections[0]!.markdown, /−100\/3\.58² × 0\.01 = −0\.08 倍/)
   assert.match(result.sections[1]!.markdown, /研究缺口：本轮没有来源支持的目标年经营驱动假设/)
+  assert.match(result.sections[1]!.markdown, /earnings_expectation_eps=PARTIAL.*ths-institution-forecast\/PRIMARY:SUCCESS.*eastmoney-individual-research-report\/FALLBACK_1:SUCCESS/)
   assert.doesNotMatch(result.sections[1]!.markdown, /共识EPS极值|固定PE替代/)
   assert.doesNotMatch(result.sections[1]!.markdown, /目标价|相对当前收盘价变化/)
   assert.ok(result.sections[0]!.sourceCandidateIds.includes('annual-2025'))
@@ -51,8 +54,12 @@ test('valuation builder keeps reference valuation, blocks unsupported scenario m
   assert.equal(result.evidenceSources.length, 5)
   assert.match(result.sections[2]!.markdown, /同花顺去重归属样本 2 家/)
   assert.match(result.sections[2]!.markdown, /EastMoney 去重归属样本 2 家/)
+  assert.match(result.sections[2]!.markdown, /同花顺去重归属样本 2 家，中位数为 4\.40/)
+  assert.match(result.sections[2]!.markdown, /EastMoney 去重归属样本 2 家，中位数为 4\.85/)
+  assert.doesNotMatch(result.sections[2]!.markdown, /4\.8499999999999996|4\.3999999999999995/)
   assert.match(result.sections[2]!.markdown, /历史数值版本状态为 UNVERIFIED/)
   assert.match(result.sections[2]!.markdown, /^研究缺口：机构预测的历史数值版本未核验/)
+  assert.match(result.sections[2]!.markdown, /valueVersion=UNVERIFIED/)
   assert.match(result.sections[2]!.markdown, /2 家重叠机构/)
   assert.match(result.sections[2]!.markdown, /同花顺 \| 华金证券 \| 2026-FY \| 5 CNY_per_share \| 2026-10-21T00:00:00\.000Z \| \[ths-2@paragraph:1\]/)
   assert.match(result.sections[2]!.markdown, /EastMoney \| 中信证券 \| 2026-FY \| 5\.5 CNY_per_share \| 2026-10-21T00:00:00\.000Z \| \[eastmoney-3@paragraph:1\]/)

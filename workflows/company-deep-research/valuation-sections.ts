@@ -2,7 +2,7 @@ import type { NormalizedResearchSource } from '../../plugins/research-acquisitio
 import { sha256 } from '../../plugins/research-acquisition/hash.ts'
 import { buildConsensusSnapshot } from '../../skills/earnings-review/expectations/consensus.ts'
 import { buildValuationBasis, methodEligibility } from '../../skills/valuation/financials.ts'
-import { THS_EPS_UNIT } from '../../plugins/research-acquisition/earnings-expectations-ths.ts'
+import { EPS_PER_SHARE_UNIT } from '../../skills/earnings-review/expectations/contracts.ts'
 import type { CompanyReadOnlyAcquisition } from './contracts.ts'
 import type { EstimatePoint } from '../../skills/earnings-review/expectations/contracts.ts'
 
@@ -120,6 +120,17 @@ function citations(ids: readonly string[]): string {
   return [...new Set(ids)].map((id) => `[${id}@paragraph:1]`).join(' ')
 }
 
+function acquisitionAttemptSummary(items: readonly { readonly metricId?: string; readonly status: string; readonly quality?: { readonly pointInTimeSafe?: boolean; readonly valueVersionStatus?: string }; readonly attempts?: readonly { readonly sourceId: string; readonly fallbackLevel: string; readonly status: string }[] }[]): string {
+  if (!items.length) return '无估值/预期类采集条目'
+  return items.map((item) => {
+    const attemptItems = item.attempts ?? []
+    const attempts = attemptItems.length
+      ? attemptItems.map((attempt) => `${attempt.sourceId}/${attempt.fallbackLevel}:${attempt.status}`).join(', ')
+      : '无来源尝试记录'
+    return `${item.metricId ?? 'unknown'}=${item.status}(PIT=${item.quality?.pointInTimeSafe === true ? 'safe' : 'not-qualified'}, valueVersion=${item.quality?.valueVersionStatus ?? 'not-proven'}; ${attempts})`
+  }).join('；')
+}
+
 type ExpectationSurface = { readonly provider: 'Tonghuashun / 同花顺' | 'EastMoney'; readonly estimates: readonly EstimatePoint[]; readonly sources: readonly NormalizedResearchSource[] }
 
 function canonicalInstitutionName(value: string): string {
@@ -138,7 +149,7 @@ function expectationSurfaces(acquisition: CompanyReadOnlyAcquisition, targetFisc
     const sourceIds = new Set(sources.map(source => source.candidate.candidateId))
     const estimates = payload.projection.estimates.filter(estimate => estimate.metric === 'eps'
       && estimate.fiscalPeriod === `${targetFiscalYear}-FY`
-      && estimate.unit === THS_EPS_UNIT
+      && estimate.unit === EPS_PER_SHARE_UNIT
       && Number.isFinite(estimate.value)
       && Number.isFinite(Date.parse(estimate.publishedAt))
       && Date.parse(estimate.publishedAt) <= Date.parse(asOf)
@@ -212,6 +223,7 @@ export function buildCompanyValuationSections(input: {
   diagnostics.push(...input.acquisition.earningsExpectationItems.filter(item => item.status !== 'AVAILABLE').map(item => `EXPECTATION_ITEM_${item.metricId}_${item.status}`))
 
   const basisYear = input.acquisition.valuationBasisFiscalYear
+  const acquisitionAttempts = acquisitionAttemptSummary([...input.acquisition.valuationItems, ...input.acquisition.earningsExpectationItems])
   const quoteItem = input.acquisition.valuationItems.find((item) => item.metricId === 'valuation_market_price')
   const quote = quoteItem?.status === 'AVAILABLE' && quoteItem.value?.kind === 'market'
     && quoteItem.quality.pointInTimeSafe
@@ -247,7 +259,7 @@ export function buildCompanyValuationSections(input: {
   const baseSourceIds = [...new Set([marketSourceId, epsSourceId].filter((value): value is string => value !== undefined))]
 
   let valuationSection = gap('valuation', titles.valuation, '无法同时确认 PIT 收盘价与年度报告基本 EPS')
-  let scenarioSection = gap('bull-base-bear', titles['bull-base-bear'], '本轮没有来源支持的目标年经营驱动假设、统一财务口径及可复算敏感性参数；因此不建立三情景估值')
+  let scenarioSection = gap('bull-base-bear', titles['bull-base-bear'], `本轮没有来源支持的目标年经营驱动假设（销量/产品收入、经营利润率、现金流驱动及其 Bear/Base/Bull 区间），无法构成同财年、同方法的可复算敏感性。已尝试的估值/预期采集路线及资格状态：${acquisitionAttempts}。在获得合格经营假设前不建立三情景估值`)
   diagnostics.push('SCENARIO_OPERATING_DRIVER_PLAN_NOT_AVAILABLE')
   if (quote && filingEps && marketEvidenceSource) {
     const reportDate = filingEps.source.candidate.publishedAt!.slice(0, 10)
@@ -259,9 +271,11 @@ export function buildCompanyValuationSections(input: {
     if (peEligible && Number.isFinite(currentPe) && currentPe > 0) {
       const filedRef = `[${filingEps.source.candidate.candidateId}@${filingEps.location}]`
       const marketRef = citations([marketSourceId!])
+      const priceSensitivity = 1 / filingEps.value
+      const epsSensitivity = quote.observation.close / filingEps.value ** 2 * 0.01
       valuationSection = {
         id: 'valuation', title: titles.valuation,
-        markdown: `截至 ${quote.observation.priceDate}，${quote.originPublisher} 未复权收盘价为 ${quote.observation.close} CNY/share ${marketRef}。FY${basisYear} 年报基本 EPS 为 ${filingEps.value} CNY/share ${filedRef}，以收盘价除以该 EPS 得到参考 PE ${currentPe.toFixed(2)} 倍。当前数据未提供可确认的 FY${basisYear} BVPS，PB 不适用；同业候选缺少可复核的日期和统一估值口径，因此本节不采用可比公司倍数。参考 PE 是当前盈利基准下的倍数描述，不构成目标价或买卖建议。`,
+        markdown: `截至 ${quote.observation.priceDate}，${quote.originPublisher} 未复权收盘价为 ${quote.observation.close} CNY/share ${marketRef}。FY${basisYear} 年报基本 EPS 为 ${filingEps.value} CNY/share ${filedRef}，以收盘价除以该 EPS 得到参考 PE ${currentPe.toFixed(2)} 倍。基于同一价格与 EPS，参考 PE 按 P/E 计算：价格每变动 1 CNY/share 的局部 PE 变化为 1/EPS = 1/${filingEps.value} = ${priceSensitivity.toFixed(2)} 倍；EPS 每变动 0.01 CNY/share 的局部 PE 变化为 −P/EPS² × 0.01 = −${quote.observation.close}/${filingEps.value}² × 0.01 = −${epsSensitivity.toFixed(2)} 倍 ${marketRef} ${filedRef}。该局部敏感性只说明历史 PE 对输入的数学响应，不是未来盈利假设或目标价。当前数据未提供可确认的 FY${basisYear} BVPS，PB 不适用；同业候选缺少可复核的日期和统一估值口径，因此本节不采用可比公司倍数。参考 PE 是当前盈利基准下的倍数描述，不构成目标价或买卖建议。`,
         sourceCandidateIds: [...baseSourceIds],
       }
 
@@ -297,13 +311,13 @@ export function buildCompanyValuationSections(input: {
     if (versionStatus !== 'VERIFIED') diagnostics.push('VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED')
     const versionGap = versionStatus === 'VERIFIED'
       ? ''
-      : '研究缺口：机构预测的历史数值版本未核验，以下样本差异仅用于复核当前可见数据，不构成符合asOf的预期差结论。\n\n'
+      : `研究缺口：机构预测的历史数值版本未核验（本轮同花顺/EastMoney FY${input.acquisition.expectationTargetFiscalYear} EPS）；估计路由尝试及资格状态：${acquisitionAttemptSummary(input.acquisition.earningsExpectationItems)}。现有输出未提供可验证的公司指引或独立本方预测面。以下样本差异仅用于复核本轮可见数据，不构成符合 asOf 的预期差结论。\n\n`
     const dedupeNote = dedupedExpectations.overlaps.length
       ? `两个渠道存在 ${dedupedExpectations.overlaps.length} 家重叠机构；同一机构只保留截至 asOf 发布时间较新的唯一预测，平局固定优先同花顺。`
       : '两个渠道没有识别到重叠机构。'
     variantSection = {
       id: 'variant-perception', title: titles['variant-perception'],
-      markdown: `${versionGap}FY${input.acquisition.expectationTargetFiscalYear} EPS 的两个可比预期面均采用 ${thsSurface.snapshot.unit}，并按机构和发布时间截至 ${input.asOf.slice(0, 10)} 去重。同花顺去重归属样本 ${thsSurface.snapshot.count} 家，中位数为 ${thsSurface.snapshot.median}；EastMoney 去重归属样本 ${eastmoneySurface.snapshot.count} 家，中位数为 ${eastmoneySurface.snapshot.median} ${citations(citedSources.map(source => source.candidate.candidateId))}。按“EastMoney 中位数 − 同花顺中位数”计算的渠道差为 ${comparisonDelta.toFixed(2)} ${thsSurface.snapshot.unit}。${dedupeNote} 下表逐项列出保留的机构预测、发布日期、期间、单位及原始样本引用，供复核样本数和中位数。两个聚合渠道的历史数值版本状态为 ${versionStatus}；因此这只说明当前可见的可比预测差，不能证明历史版本在该日已存在，也不等同于公司指引、独立本方预测或市场定价偏差。${contributorTable}`,
+      markdown: `${versionGap}FY${input.acquisition.expectationTargetFiscalYear} EPS 的两个可比预期面均采用 ${thsSurface.snapshot.unit}，并按机构和发布时间截至 ${input.asOf.slice(0, 10)} 去重。同花顺去重归属样本 ${thsSurface.snapshot.count} 家，中位数为 ${thsSurface.snapshot.median.toFixed(2)}；EastMoney 去重归属样本 ${eastmoneySurface.snapshot.count} 家，中位数为 ${eastmoneySurface.snapshot.median.toFixed(2)} ${citations(citedSources.map(source => source.candidate.candidateId))}。按“EastMoney 中位数 − 同花顺中位数”计算的渠道差为 ${comparisonDelta.toFixed(2)} ${thsSurface.snapshot.unit}。${dedupeNote} 下表逐项列出保留的机构预测、发布日期、期间、单位及原始样本引用，供复核样本数和中位数。两个聚合渠道的历史数值版本状态为 ${versionStatus}；因此这只说明当前可见的可比预测差，不能证明历史版本在该日已存在，也不等同于公司指引、独立本方预测或市场定价偏差。${contributorTable}`,
       sourceCandidateIds: citedSources.map(source => source.candidate.candidateId),
     }
   } else {

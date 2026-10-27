@@ -241,7 +241,7 @@ test('a transient CNINFO failure is retried before semantic methods consume thei
     const result = await runCompanyDeepResearch({ workflowRunId: 'company-primary-report-retry', handle: await new KnowledgeBaseRegistry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: options => createCompanyResearchDataResolver({ ...options, officialDisclosure: official }), ...readOnlyValuationFixtures(asOf), reportRoot: reports, asOf, now: () => asOf, writeKnowledge: false, useStructuredKnowledge: false, reasoningExecutor })
     assert.ok(discoveries >= 2, 'expected one bounded pre-method CNINFO retry')
     assert.ok(observed.includes('official-primary-retry'), 'official report must be available to methods before semantic calls')
-    assert.equal(result.status, 'completed')
+    assert.equal(result.status, 'blocked', 'A recovered acquisition does not bypass the P0-19 content gate')
   } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) }
 })
 
@@ -273,7 +273,7 @@ async function seedCanonicalCompany(root: string, symbol: string, name: string, 
   assert.equal(result.status, 'committed')
 }
 
-test('Company Deep Research produces atomic canonical Knowledge and a linked report', async () => {
+test('Company Deep Research persists a blocked linked report without writing when P0-19 sections lack supported inputs', async () => {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-company-'))
   const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-reports-'))
   try {
@@ -296,50 +296,39 @@ test('Company Deep Research produces atomic canonical Knowledge and a linked rep
     workflowService.register({ runId: input.workflowRunId, workflowType: 'company_research', objective: 'Company research 600519' })
     const result = await workflowService.start(input.workflowRunId, (signal) => runCompanyDeepResearch({ ...input, signal, observations: workflowService.observationReporter(input.workflowRunId) }))
     const observations = workflowService.getWorkflowStatus(input.workflowRunId)!
-    assert.equal(observations.status, 'completed')
+    assert.equal(observations.status, 'blocked')
     assert.deepEqual(observations.stages.map((stage) => [stage.stageId, stage.status]), [
-      ['data_acquisition', 'completed'], ['research_synthesis', 'completed'], ['quality_gate', 'completed'],
-      ['knowledge_gateway', 'completed'], ['report_generation', 'completed'], ['report_persistence', 'completed'],
+      ['data_acquisition', 'completed'], ['research_synthesis', 'completed'], ['quality_gate', 'blocked'],
+      ['report_generation', 'completed'], ['report_persistence', 'completed'],
     ])
     assert.ok(observations.stages.every((stage) => (stage.durationMs ?? 0) >= 0))
     assert.ok(observations.providerObservations.some((item) => item.providerId === 'cninfo' && ['success', 'partial'].includes(item.status) && (item.recordCount ?? 0) >= 1))
     assert.ok(observations.providerObservations.some((item) => item.providerId === 'gdelt' && item.status === 'skipped'))
-    assert.equal(result.status, 'completed', result.errors.join('; '))
+    assert.equal(result.status, 'blocked', result.errors.join('; '))
     assert.deepEqual(semanticCalls.slice(0, -1).sort(), [...COMPANY_RESEARCH_METHOD_IDS].sort())
     assert.equal(semanticCalls.at(-1), 'company_research_synthesis')
     const unsupportedGdelt = result.providerOutcomes?.find((outcome) => outcome.provider === 'gdelt')
     assert.deepEqual(unsupportedGdelt && [unsupportedGdelt.providerAttempted, unsupportedGdelt.providerSucceeded, unsupportedGdelt.providerEmpty, unsupportedGdelt.providerFailed], [false, false, true, false])
     assert.ok(result.report?.outputPath)
-    assert.ok(result.committedIds.length >= 1)
-    assert.equal(signals.length, 1)
+    assert.deepEqual(result.committedIds, [], 'Blocked claims must not reach Gateway or Writer')
+    assert.equal(signals.length, 1, 'Acquisition signals remain observable even when the report is blocked before Knowledge writes')
     const loaded = await readCanonicalV04Assets(root)
     assert.ok(loaded.objects.some((item) => item.value.id === 'entity:company-600519'))
-    assert.ok(loaded.objects.some((item) => item.value.id.startsWith('source:research-')))
-    const canonicalSource = loaded.objects.find((item) => item.value.id === result.sourceIds[0])?.value as { provider?: string; publisher?: string; metadata?: { dataProvenance?: Record<string, unknown> } } | undefined
-    assert.ok(canonicalSource)
-    assert.equal(canonicalSource.provider, 'cninfo')
-    assert.equal(canonicalSource.publisher, 'CNINFO')
-    assert.deepEqual(canonicalSource.metadata?.dataProvenance, {
-      originAuthority: 'S0_STATUTORY', retrievalProvider: 'CNINFO', sourceUrl: 'https://example.com/filing',
-      sourceIdentity: 'url:https://example.com/filing',
-      publishedAt: '2026-09-07T00:00:00.000Z',
-      dateStatus: 'QUALIFIED', pointInTimeSafe: true,
-    })
-    assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('claim:research-')).length, 9)
-    assert.equal(result.knowledgeBaseRevision, 2)
+    assert.equal(loaded.objects.some((item) => item.value.id.startsWith('source:research-')), false)
+    assert.equal(loaded.objects.some((item) => item.value.id.startsWith('claim:research-')), false)
+    assert.equal(result.knowledgeBaseRevision, 1)
     assert.equal((loaded.objects.find((item) => item.value.id === 'entity:company-600519')?.value as { name?: string } | undefined)?.name, 'Fixture Company')
     assert.deepEqual(result.committedIds, [...result.createdIds, ...result.updatedIds])
 
     content = '2025年年度报告\n基本每股收益 3.58\nThe company reported improved revenue and profit.'
     const replay = await runCompanyDeepResearch({ ...input, workflowRunId: 'company-run-2', handle: await new KnowledgeBaseRegistry().mount(root) })
-    assert.equal(replay.status, 'completed')
-    assert.equal(replay.knowledgeBaseRevision, 3)
+    assert.equal(replay.status, 'blocked')
+    assert.equal(replay.knowledgeBaseRevision, 1)
     assert.deepEqual(replay.createdIds, [])
-    assert.ok(replay.updatedIds.includes(result.sourceIds[0]))
     assert.deepEqual(replay.committedIds, [...replay.createdIds, ...replay.updatedIds])
     const replayLoaded = await readCanonicalV04Assets(root)
-    assert.equal(replayLoaded.objects.filter((item) => item.value.id.startsWith('source:research-')).length, 1)
-    assert.equal(replay.sourceIds[0], result.sourceIds[0])
+    assert.equal(replayLoaded.objects.filter((item) => item.value.id.startsWith('source:research-')).length, 0)
+    assert.deepEqual(replay.sourceIds, [])
   } finally {
     await rm(root, { recursive: true, force: true })
     await rm(reports, { recursive: true, force: true })
@@ -389,7 +378,7 @@ test('Verified identity permits first Company Research through DataResolver with
     const handle = await new KnowledgeBaseRegistry().mount(root)
     const before = await snapshotKnowledgeTree(root)
     const result = await runCompanyDeepResearch({ workflowRunId: 'company-first-research-readonly', handle, company: { symbol: '600519', name: 'Fixture Company', exchange: 'SH' }, securityIdentity, dataResolverFactory: resolverFactory([plugin]), ...readOnlyValuationFixtures(asOf), reportRoot: reports, now: () => asOf, writeKnowledge: false, useStructuredKnowledge: false })
-    assert.equal(result.status, 'completed', result.errors.join('; '))
+    assert.equal(result.status, 'blocked', result.errors.join('; '))
     assert.deepEqual(seen, Array.from({ length: 2 }, () => ({ symbol: '600519', name: 'Fixture Company', exchange: 'SH' })), 'Profile fallback and evidence collection receive the same verified company')
     assert.ok(result.research?.sourceCandidateIds.includes('first-research-filing'))
     assert.ok(result.providerOutcomes?.some((outcome) => outcome.provider === 'cninfo' && outcome.providerAttempted && outcome.providerSucceeded))
@@ -402,7 +391,7 @@ test('Verified identity permits first Company Research through DataResolver with
     assert.equal(report.verifiedSecurityIdentity?.symbol, '600519')
     assert.ok(report.sections.some((section) => section.evidenceLinks?.includes('https://example.com/first-research-filing')))
     const detailedReport = JSON.parse(await readFile(join(reports, `${result.report!.reportId}.md.json`), 'utf8'))
-    assert.equal(detailedReport.researchQuality.passed, true)
+    assert.equal(detailedReport.researchQuality.passed, false)
     assert.equal(detailedReport.methodExecutions.length, 10)
     assert.ok(detailedReport.sections.filter((section: any) => !['valuation', 'bull-base-bear', 'variant-perception'].includes(section.id)).every((section: any) => section.evidenceLocations.length > 0))
     const assets = await readCanonicalV04Assets(root)
@@ -410,15 +399,15 @@ test('Verified identity permits first Company Research through DataResolver with
     assert.deepEqual(await snapshotKnowledgeTree(root), before)
     const noWriteBefore = await snapshotKnowledgeTree(root)
     const writeRequested = await runCompanyDeepResearch({ workflowRunId: 'company-first-research-write-request', handle: await new KnowledgeBaseRegistry().mount(root), company: { symbol: '600519', name: 'Fixture Company', exchange: 'SH' }, securityIdentity, dataResolverFactory: resolverFactory([plugin]), ...readOnlyValuationFixtures(asOf), reportRoot: reports, now: () => asOf, writeKnowledge: true, useStructuredKnowledge: false })
-    assert.equal(writeRequested.status, 'completed', writeRequested.errors.join('; '))
-    assert.ok(writeRequested.sourceIds.length > 0)
-    assert.ok(writeRequested.claimIds.length > 0)
-    assert.ok(writeRequested.committedIds.length > 0)
-    assert.notDeepEqual(await snapshotKnowledgeTree(root), noWriteBefore)
+    assert.equal(writeRequested.status, 'blocked', writeRequested.errors.join('; '))
+    assert.deepEqual(writeRequested.sourceIds, [])
+    assert.deepEqual(writeRequested.claimIds, [])
+    assert.deepEqual(writeRequested.committedIds, [])
+    assert.deepEqual(await snapshotKnowledgeTree(root), noWriteBefore, 'write authorization cannot bypass a failed P0-19 quality gate')
     const writtenReport = JSON.parse(await readFile(join(reports, `${writeRequested.report!.reportId}.md.json`), 'utf8'))
     const reloaded = await readCanonicalV04Assets(root)
-    assert.equal(writtenReport.subjectRefs.length, 1)
-    assert.ok(reloaded.objects.some(object => object.value.id === writtenReport.subjectRefs[0] && object.kind === 'entity'))
+    assert.deepEqual(writtenReport.subjectRefs, [])
+    assert.equal(reloaded.objects.some(object => object.kind === 'entity'), false, 'The blocked first run leaves identity and research Knowledge unbound')
   } finally {
     await rm(root, { recursive: true, force: true })
     await rm(reports, { recursive: true, force: true })
@@ -514,7 +503,7 @@ test('ResearchService verifies an external identity and starts first Company Res
     }
     const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [plugin], researchEvidenceProviders: { cninfo: plugin }, workflowService: new WorkflowService(), securityIdentityResolver, reasoningExecutor: completeResearchExecutor(), companyDataResolverFactory: fixtureCompanyDataResolverFactory(plugin), ...readOnlyValuationFixtures(asOf), akshare: { companyBasic: async () => [], financialData: async () => [], historicalMarketData: async () => [] } })
     const result = await service.startResearchCompany({ workflowRunId: 'company-service-first-research-readonly', symbol: '600519', name: 'Fixture Company', exchange: 'SH', writeKnowledge: false, useStructuredKnowledge: false }).completion
-    assert.equal(result.status, 'completed', result.errorSummary)
+    assert.equal(result.status, 'blocked', result.errorSummary)
     assert.equal(directoryCalls.length, 1)
     assert.deepEqual(seen, Array.from({ length: 2 }, () => ({ symbol: '600519', name: 'Fixture Company', exchange: 'SH' })), 'Profile fallback and evidence collection receive the same verified company')
     assert.deepEqual(providerCalls.sort(), ['discover', 'discover', 'fetch', 'fetch'])
@@ -532,7 +521,7 @@ test('ResearchService verifies an external identity and starts first Company Res
   }
 })
 
-test('Company Deep Research binds two companies deterministically and is stable on a third run', async () => {
+test('Company Deep Research keeps P0-19-blocked synthetic reports out of Gateway on repeated company runs', async () => {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-company-multi-'))
   const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-multi-reports-'))
   try {
@@ -550,18 +539,17 @@ test('Company Deep Research binds two companies deterministically and is stable 
     const first = await runCompanyDeepResearch({ workflowRunId: 'multi-600519-1', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Company A' }, dataResolverFactory: resolverFactory([plugin]), ...readOnly, reportRoot: reports, now: () => asOf })
     const second = await runCompanyDeepResearch({ workflowRunId: 'multi-000858-1', handle: await new Registry().mount(root), company: { symbol: '000858', name: 'Company B' }, dataResolverFactory: resolverFactory([plugin]), ...readOnly, reportRoot: reports, now: () => asOf })
     const third = await runCompanyDeepResearch({ workflowRunId: 'multi-600519-2', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Company A' }, dataResolverFactory: resolverFactory([plugin]), ...readOnly, reportRoot: reports, now: () => asOf })
-    assert.equal(first.status, 'completed', first.errors.join('; '))
-    assert.equal(second.status, 'completed', second.errors.join('; '))
-    assert.equal(third.status, 'completed', third.errors.join('; '))
-    assert.equal(first.knowledgeBaseRevision, 3)
-    assert.equal(second.knowledgeBaseRevision, 4)
-    assert.equal(third.knowledgeBaseRevision, 4)
+    assert.equal(first.status, 'blocked', first.errors.join('; '))
+    assert.equal(second.status, 'blocked', second.errors.join('; '))
+    assert.equal(third.status, 'blocked', third.errors.join('; '))
+    assert.equal(first.knowledgeBaseRevision, 2)
+    assert.equal(second.knowledgeBaseRevision, 2)
+    assert.equal(third.knowledgeBaseRevision, 2)
     const loaded = await readCanonicalV04Assets(root)
     assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('entity:')).length, 2)
-    assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('source:')).length, 2)
-    assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('claim:')).length, 18)
+    assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('source:')).length, 0)
+    assert.equal(loaded.objects.filter((item) => item.value.id.startsWith('claim:')).length, 0)
     assert.ok(loaded.objects.every((item) => !item.value.id.includes('proposal-')))
-    assert.ok(third.resolutionIntents?.some((item) => item.disposition === 'bound_existing'))
   } finally {
     await rm(root, { recursive: true, force: true })
     await rm(reports, { recursive: true, force: true })
@@ -701,7 +689,7 @@ test('historical unversioned profile and financial snapshots stay context-only a
     }
     const reasoningExecutor = completeResearchExecutor()
     const result = await runCompanyDeepResearch({ workflowRunId: 'company-historical-data', handle: await new Registry().mount(root), company: { symbol: '600519', name: 'Fixture Company' }, dataResolverFactory: resolverFactory([filing], akshare), ...readOnlyValuationFixtures(asOf), reportRoot: reports, asOf, now: () => asOf, reasoningExecutor })
-    assert.equal(result.status, 'completed', result.errors.join('; '))
+    assert.equal(result.status, 'blocked', result.errors.join('; '))
     assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('akshare-basic-600519'))
     assert.ok(result.research?.contextOnlySourceCandidateIds?.includes('akshare-financial-600519'))
     assert.ok(result.research?.sourceCandidateIds.includes('akshare-market-600519'))
@@ -710,12 +698,9 @@ test('historical unversioned profile and financial snapshots stay context-only a
     const sourceTitles = canonical.objects.filter((item) => item.kind === 'source').map((item) => (item.value as { title?: string }).title)
     assert.equal(sourceTitles.includes('Company basic profile'), false)
     assert.equal(sourceTitles.includes('Company financial history'), false)
-    assert.equal(sourceTitles.includes('Company market history'), true)
+    assert.equal(sourceTitles.includes('Company market history'), false, 'Blocked reports do not bind otherwise PIT-safe market observations')
     assert.equal(canonical.objects.some((item) => item.kind === 'claim' && 'statement' in item.value && item.value.statement === 'An unversioned historical EPS claim.'), false, 'a mixed-source proposal citing unversioned financial data must be rejected before Gateway')
-    const market = canonical.objects.find((item) => item.kind === 'source' && (item.value as { title?: string }).title === 'Company market history')?.value as { metadata?: { dataProvenance?: Record<string, unknown> } } | undefined
-    assert.equal(market?.metadata?.dataProvenance?.pointInTimeStatus, 'PIT_VERIFIED')
-    assert.equal(market?.metadata?.dataProvenance?.valueVersionStatus, 'UNVERIFIED')
-    assert.equal(market?.metadata?.dataProvenance?.retrievalProvider, 'AKShare')
+    assert.equal(canonical.objects.some((item) => item.kind === 'source' || item.kind === 'claim'), false)
   } finally {
     await rm(root, { recursive: true, force: true })
     await rm(reports, { recursive: true, force: true })

@@ -1628,6 +1628,10 @@ function AppContent(): ReactElement {
     const epoch = requestEpoch.current
     setReportsBusy(true); setError('')
     void client.listResearchReports(20).then(async (items) => {
+      // Show the persisted catalog as soon as it arrives. Resolving display
+      // identities may require one detail request per company report, and a
+      // slow detail endpoint must not hold the entire report page hostage.
+      if (epoch === requestEpoch.current) { setReports(items); setReportsBusy(false) }
       const enriched = await Promise.all(items.map(async (item) => {
         if (item.reportType !== 'company_research' || item.verifiedName?.trim()) return item
         try {

@@ -159,6 +159,7 @@ export function repairCompanyTrailingSourceIdTypo<T>(output: T, packets: readonl
   if (typeof value.markdown !== 'string' || !Array.isArray(value.sections) || !Array.isArray(value.findings)) return { output, repairs: [] }
   const repairs: CompanyCitationRepair[] = []
   const legacyRepairs = new Map<string, CompanyMethodEvidenceRef[]>()
+  const legacyFindingIndexes = new Map<string, number>()
   const packetIds = [...new Set(packets.map(packet => packet.sourceCandidateId))]
   const isKnownLegacyTypo = (malformedId: string, candidateId: string): boolean => {
     const canonicalPrefix = candidateId.slice(0, -1)
@@ -246,7 +247,11 @@ export function repairCompanyTrailingSourceIdTypo<T>(output: T, packets: readonl
     })
     if (findingRepairs.length) {
       const uniqueRepairs = [...new Map(findingRepairs.map(item => [`${item.original.sourceCandidateId}@${item.original.location}->${item.corrected.sourceCandidateId}@${item.corrected.location}`, item])).values()]
-      repairs.push({ findingIndex, inputText: String(finding.text ?? ''), originalReferences: uniqueRepairs.map(item => item.original), addedReferences: uniqueRepairs.map(item => item.corrected), reason: 'The finding source ID contains an exactly duplicated adjacent substring; one unique source and supplied paragraph exactly match the canonical source line.' })
+      for (const item of uniqueRepairs) {
+        const key = `${item.original.sourceCandidateId}@${item.original.location}`
+        legacyRepairs.set(key, [...(legacyRepairs.get(key) ?? []), item.corrected])
+        legacyFindingIndexes.set(key, findingIndex)
+      }
     }
     return {
       ...finding,
@@ -256,7 +261,7 @@ export function repairCompanyTrailingSourceIdTypo<T>(output: T, packets: readonl
   for (const [key, additions] of legacyRepairs) {
     const [sourceCandidateId, location] = key.split('@')
     const corrected = [...new Map(additions.map(ref => [`${ref.sourceCandidateId}@${ref.location}`, ref])).values()]
-    if (corrected.length === 1) repairs.push({ inputText: key, originalReferences: [{ sourceCandidateId: sourceCandidateId!, location: location! }], addedReferences: corrected, reason: 'The malformed source ID matched an existing narrow typo pattern; the exact paragraph text matched its unique source document line and supplied packet excerpt.' })
+    if (corrected.length === 1) repairs.push({ ...(legacyFindingIndexes.has(key) ? { findingIndex: legacyFindingIndexes.get(key)! } : {}), inputText: key, originalReferences: [{ sourceCandidateId: sourceCandidateId!, location: location! }], addedReferences: corrected, reason: 'The malformed source ID matched an existing narrow typo pattern; the exact paragraph text matched its unique source document line and supplied packet excerpt.' })
   }
   return { output: { ...value, markdown, sections, findings } as T, repairs }
 }

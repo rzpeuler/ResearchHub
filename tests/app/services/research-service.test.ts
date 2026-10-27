@@ -82,7 +82,7 @@ test('legacy ResearchService constructor routes explicit CNINFO and GDELT adapte
   }
 })
 
-test('Company Deep Research triggers scope impact only after its committed Writer log is verified', async () => {
+test('Company Deep Research does not trigger scope impact for P0-19-blocked runs that never reach Writer', async () => {
   const root = await mkdtemp(join(tmpdir(), 'researchhub-company-impact-kb-'))
   const reports = await mkdtemp(join(tmpdir(), 'researchhub-company-impact-reports-'))
   const receipts: ThemeScopeImpactWriteReceipt[] = []
@@ -102,17 +102,14 @@ test('Company Deep Research triggers scope impact only after its committed Write
     } }
     const service = new ResearchService({ mountedKnowledgeBaseRoot: root, reportRoot: reports, acquisitionPlugins: [], researchEvidenceProviders: { cninfo: plugin }, workflowService: new WorkflowService(), themeScopeImpactChecker: checker, reasoningExecutor: completeResearchExecutor(), companyDataResolverFactory: fixtureCompanyDataResolverFactory(plugin) })
     const result = await service.startResearchCompany({ workflowRunId: 'company-impact-run', symbol: '600519', name: 'Fixture Company' }).completion
-    assert.equal(result.status, 'completed')
-    assert.ok(result.committedIds.length > 0)
-    assert.equal(result.themeScopeImpact.status, 'ready')
-    assert.equal(receipts.length, 1)
-    assert.equal(receipts[0]?.writerRunId, 'company-impact-run')
-    assert.equal(receipts[0]?.knowledgeBaseId, 'kb-company-impact')
-    assert.deepEqual(new Set([...receipts[0]!.createdRefs, ...receipts[0]!.updatedRefs]), new Set(result.committedIds))
+    assert.equal(result.status, 'blocked', result.errorSummary)
+    assert.deepEqual(result.committedIds, [])
+    assert.equal(result.themeScopeImpact.status, 'not_triggered')
+    assert.equal(receipts.length, 0, 'A fail-closed report has no committed Writer receipt to verify')
     const withoutWrite = await service.startResearchCompany({ workflowRunId: 'company-impact-no-write', symbol: '600519', name: 'Fixture Company', writeKnowledge: false }).completion
-    assert.equal(withoutWrite.status, 'completed')
+    assert.equal(withoutWrite.status, 'blocked', withoutWrite.errorSummary)
     assert.equal(withoutWrite.themeScopeImpact.status, 'not_triggered')
-    assert.equal(receipts.length, 1)
+    assert.equal(receipts.length, 0)
   } finally { await rm(root, { recursive: true, force: true }); await rm(reports, { recursive: true, force: true }) }
 })
 

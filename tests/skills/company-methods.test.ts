@@ -37,13 +37,11 @@ test('repeated-substring source ID repair canonicalizes prose and finding citati
   assert.equal(result.output.markdown, `finding claim [${sourceId}@paragraph:719]`)
   assert.equal(result.output.sections[0]!.markdown, `section claim [${sourceId}@paragraph:719]`)
   assert.deepEqual(result.output.findings[0]!.evidence, [{ sourceCandidateId: sourceId, location: 'paragraph:719' }])
-  assert.equal(result.repairs.length, 2)
-  const proseRepair = result.repairs.find(repair => repair.findingIndex === undefined)!
-  assert.deepEqual(proseRepair.originalReferences, [{ sourceCandidateId: malformedId, location: 'paragraph:719' }])
-  assert.deepEqual(proseRepair.addedReferences, [{ sourceCandidateId: sourceId, location: 'paragraph:719' }])
-  const findingRepair = result.repairs.find(repair => repair.findingIndex === 0)!
-  assert.deepEqual(findingRepair.originalReferences, [{ sourceCandidateId: malformedId, location: 'paragraph:719' }])
-  assert.deepEqual(findingRepair.addedReferences, [{ sourceCandidateId: sourceId, location: 'paragraph:719' }])
+  assert.equal(result.repairs.length, 1, 'One source-ID correction is recorded even when it is normalized across markdown, section, and finding representations')
+  const repair = result.repairs[0]!
+  assert.equal(repair.findingIndex, 0)
+  assert.deepEqual(repair.originalReferences, [{ sourceCandidateId: malformedId, location: 'paragraph:719' }])
+  assert.deepEqual(repair.addedReferences, [{ sourceCandidateId: sourceId, location: 'paragraph:719' }])
 })
 
 test('repeated-substring source ID repair leaves ambiguous sources and missing supplied locators unchanged', () => {
