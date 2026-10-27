@@ -296,6 +296,12 @@ P0-19 remains incomplete: source-grounded scenario inputs and verified estimate 
 
 P0-19 remains incomplete pending fresh live BYD and Dongshan acceptance, source-backed operating scenarios, verified estimate value versions, independent semantic review, and Hermes comparison. No public Data contract or source expansion is included in this update.
 
+### Optical-module product-row citation handoff repair (2026-10-28)
+
+- Added a narrow deterministic repair for the `products` optical-module table row when numeric grounding rejects 400G/800G/1.6T technology identifiers. It can attach only supplied paragraphs from a source already cited by the method, and only when each excerpt contains the exact identifier with route-specific package or architecture terms. The final numeric-grounding validator must accept the repaired block. A 400G EML development-stage excerpt without package/architecture evidence cannot stand in for 400G module architecture.
+- Added positive and fail-closed tests for exact 400G package, 800G architecture, and 1.6T technology evidence; missing 400G package evidence; and a matching but otherwise uncited source. `node --import tsx --test tests/skills/company-citation-repair.test.ts` passed 73/73; `node --import tsx --test tests/skills/company-methods.test.ts` passed 147/147; `npm run typecheck` passed.
+- This verifies the citation repair in deterministic fixtures only. A fresh source-revision-bound root-Runtime BYD/Dongshan pair is still required before claiming any live method effect. P0-19 remains incomplete; no Data contract, Skill, evidence gate, or retry budget changed.
+
 ### Post-`c9976c8` root-checkout Runtime/API read-only pair (2026-10-28)
 
 - BYD run `af384ce6-9871-4364-943c-1c0e71772d57` and Dongshan run `a2ca0732-8001-48c4-a493-25c34e3e5f12` used source revision `c9976c831c73e72595c29037325815fc144d814a`, the saved `openai-codex / gpt-6-luna` selection, the real Runtime HTTP API from the root checkout, disposable Knowledge Bases, and `writeKnowledge=false`. Both reports ended `blocked`. The sanitized evidence is `tests/validation/evidence/company-research-p0-19-post-c9976c8-live-pair.json`; raw reports and sidecars remain local under ignored `runtime-data/`.

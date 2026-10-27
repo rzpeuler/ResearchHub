@@ -380,6 +380,45 @@ test('section numeric citation repair adds the unique supplied continuation for 
   assert.ok(result.repairs.some(repair=>repair.sectionId==='competition'&&repair.addedReferences.some(ref=>ref.location==='paragraph:2')))
 })
 
+test('product optical-module row repair cites only matching supplied specification paragraphs', () => {
+  const sourceId = 'official-interim-optical'
+  const content = [
+    '2026年半年度报告',
+    '公司数据中心光模块产品。',
+    '400G模块采用QSFP-DD、QSFP112及OSFP封装。',
+    '800G光模块支持DSP、LPO和LRO架构。',
+    '1.6T模块技术选项包括EML和InP PIC，采用OSFP封装。',
+    '公司称100G PAM4 EML已用于模块产品。',
+    '400G PAM4 EML仍处研发阶段，面向3.2T模块。',
+  ].join('\n')
+  const official = { ...source, candidate: { ...source.candidate, candidateId: sourceId }, title: '2026年半年度报告', content } as CompanyResearchInput['sources'][number]
+  const packetValue: CompanyEvidencePacket = {
+    sourceCandidateId: sourceId,
+    title: official.title!,
+    publisher: 'CNINFO',
+    excerpts: content.split('\n').map((text, index) => ({ sourceCandidateId: sourceId, location: `paragraph:${index + 1}`, text })),
+  }
+  const row = `| 光模块 | H1销售额见技术节：400G封装/架构选择、800G架构和1.6T芯片技术选项。 [${sourceId}@paragraph:2] |`
+  const draft = { findings: [], markdown: row, sections: [{ id: 'products', markdown: row }] }
+  const result = repairCompanyMethodCitations(draft, [packetValue], { ...input, sources: [official] })
+  const repaired = result.output.sections[0]!.markdown
+  assert.match(repaired, new RegExp(`${sourceId}@paragraph:3`))
+  assert.match(repaired, new RegExp(`${sourceId}@paragraph:4`))
+  assert.match(repaired, new RegExp(`${sourceId}@paragraph:5`))
+  assert.doesNotMatch(repaired, new RegExp(`${sourceId}@paragraph:7`), 'a 400G chip development statement cannot establish 400G module architecture')
+  assert.equal(validateCompanyNumericGrounding({ markdown: repaired, sources: [official], evidenceContexts: [packetValue] }).status, 'grounded')
+
+  const without400GPackage: CompanyEvidencePacket = { ...packetValue, excerpts: packetValue.excerpts.filter((excerpt) => excerpt.location !== 'paragraph:3') }
+  const rejected = repairCompanyMethodCitations(draft, [without400GPackage], { ...input, sources: [official] })
+  assert.doesNotMatch(rejected.output.sections[0]!.markdown, new RegExp(`${sourceId}@paragraph:7`))
+  assert.equal(validateCompanyNumericGrounding({ markdown: rejected.output.sections[0]!.markdown, sources: [official], evidenceContexts: [without400GPackage] }).status, 'unsupported_numbers')
+
+  const unrelatedSource = { ...official, candidate: { ...official.candidate, candidateId: 'official-unrelated' } }
+  const unrelatedPacket: CompanyEvidencePacket = { ...packetValue, sourceCandidateId: 'official-unrelated', excerpts: packetValue.excerpts.map((excerpt) => ({ ...excerpt, sourceCandidateId: 'official-unrelated' })) }
+  const excluded = repairCompanyMethodCitations(draft, [packetValue, unrelatedPacket], { ...input, sources: [official, unrelatedSource] })
+  assert.doesNotMatch(excluded.output.sections[0]!.markdown, /official-unrelated@paragraph:(?:3|4|5)/, 'an otherwise matching but uncited source cannot be introduced')
+})
+
 test('finding citation repair combines exact cited rows when one claim reports separate customer percentages', () => {
   const customerSource = { ...source, content: '公司主要销售客户情况\n前五名客户合计销售金额（元） 145,648,095,000.00\n前五名客户合计销售金额占年度销售总额比例 18.12%\n1 客户一 100,736,686,000.00 12.53%' }
   const customerPacket: CompanyEvidencePacket = { ...packet, excerpts: customerSource.content.split('\n').map((text, index) => ({ sourceCandidateId: 'filing', location: `paragraph:${index + 1}`, text })) }

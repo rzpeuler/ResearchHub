@@ -2184,6 +2184,52 @@ export function repairCompanyMethodCitations<T extends MethodOutput>(output: T, 
     // from an already cited source both matches the claim meaning and resolves
     // that exact diagnostic.
     const initialIssues = validateCompanyNumericGrounding({ markdown: repaired, sources: packetSources, evidenceContexts: evidencePackets, preparedAnalysis: input.preparedAnalysis, trustedText: [input.company.symbol, input.asOf] }).diagnostics
+    // Product rows sometimes point readers to a separate technology section,
+    // while their exact specifications are already supplied and cited by the
+    // same method. Repair only the optical-module row, only from an already
+    // referenced source, and only when the excerpt states the matching
+    // technology quantity together with its architecture/package context.
+    // In particular, a 400G chip-development statement cannot establish a
+    // 400G module package or architecture.
+    if (sectionId === 'products') {
+      const opticalRows = repaired.split('\n').filter((line) => /^\s*\|\s*光模块\s*\|/.test(line))
+      if (opticalRows.length === 1) {
+        const row = opticalRows[0]!
+        const rowIdentifiers = [...row.matchAll(/(\d+(?:\.\d+)?)\s*([GT])\b/gi)].map((match) => ({ identifier: `${match[1]}${match[2]}`.toUpperCase(), value: Number(match[1]) }))
+        const rowIssues = initialIssues.flatMap((issue) => {
+          const identifier = rowIdentifiers.find((item) => item.value === Math.abs(issue.value))
+          return identifier ? [{ issue, identifier: identifier.identifier }] : []
+        })
+        const candidates = new Map<string, CompanyMethodEvidenceRef>()
+        for (const { identifier } of rowIssues) {
+          const routeContext = identifier.startsWith('400G') ? /封装|QSFP|OSFP|架构/i
+            : identifier.startsWith('800G') ? /DSP|LPO|LRO|QSFP|OSFP|架构/i
+              : identifier.startsWith('1.6T') ? /EML|InP|PIC|OSFP/i
+                : undefined
+          if (!routeContext) continue
+          for (const packet of evidencePackets.filter((candidate) => referencedSources.has(candidate.sourceCandidateId))) for (const excerpt of packet.excerpts) {
+            const compactExcerpt = excerpt.text.replace(/\s+/g, '').toUpperCase()
+            if (!compactExcerpt.includes(identifier) || !routeContext.test(excerpt.text)) continue
+            const ref = { sourceCandidateId: packet.sourceCandidateId, location: excerpt.location }
+            if (!row.includes(`[${ref.sourceCandidateId}@${ref.location}]`)) candidates.set(`${ref.sourceCandidateId}@${ref.location}`, ref)
+          }
+        }
+        if (candidates.size) {
+          const additions = [...candidates.values()]
+          const groundedCandidate = `${repaired.trimEnd()} ${additions.map((ref) => `[${ref.sourceCandidateId}@${ref.location}]`).join(' ')}${block.endsWith('\n') ? '\n' : ''}`
+          const remaining = validateCompanyNumericGrounding({ markdown: groundedCandidate, sources: packetSources, evidenceContexts: evidencePackets, preparedAnalysis: input.preparedAnalysis, trustedText: [input.company.symbol, input.asOf] }).diagnostics
+          const repairedTechTokens = new Set(rowIssues.map(({ identifier }) => identifier))
+          const unresolvedTech = remaining.some((issue) => {
+            const identifier = rowIdentifiers.find((item) => item.value === Math.abs(issue.value))?.identifier
+            return identifier !== undefined && repairedTechTokens.has(identifier)
+          })
+          if (!unresolvedTech) {
+            repaired = groundedCandidate
+            repairs.push({ sectionId, inputText: row, originalReferences: [...block.matchAll(/\[([^\]\s]+)@(paragraph:\d+)\]/g)].map((match) => ({ sourceCandidateId: match[1]!, location: match[2]! })), addedReferences: additions, reason: 'Exact optical-module technology quantities were matched to supplied excerpts from a source already cited by this method. Each added excerpt includes the matching package or architecture context, and the existing numeric grounding validator accepted the repaired row.' })
+          }
+        }
+      }
+    }
     for (const issue of initialIssues) {
       const numericIndex = repaired.indexOf(issue.token)
       const beforeNumeric = repaired.slice(0, Math.max(0, numericIndex))
