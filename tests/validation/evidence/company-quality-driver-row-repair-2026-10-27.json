@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "taskId": "RHL-CQR-P0-19-CHANGE-001",
+  "capturedAt": "2026-10-27",
+  "sourceCommit": "136a0854619d78fe47dcfda6af79ba6ab0720e71",
+  "change": {
+    "summary": "Split multi-product revenue/share and margin findings into exact product-row claims before existing source binding and numeric validation.",
+    "syntheticRegression": {
+      "command": "node --import tsx --test tests/skills/company-methods.test.ts",
+      "result": "136/136 passed",
+      "coverage": "Three products split independently; exact cited values accepted and substituted margin value rejected."
+    }
+  },
+  "validation": {
+    "typecheck": "npm run typecheck: passed",
+    "clientTypecheck": "npm run client:typecheck: passed",
+    "clientBuild": "npm run client:build: passed; existing large-chunk advisory",
+    "nodeRegression": {
+      "command": "npm run test:node",
+      "result": "3159 tests; 3138 passed; 21 failed",
+      "baseline": "21 known failing identities",
+      "newFailureIdentities": 0,
+      "disappearedFailureIdentities": 0,
+      "note": "A first run concurrent with the live Runtime had one additional Free Research Bundle restart timing failure; the post-runtime rerun returned to the 21-failure baseline. One existing research-skill-architecture failure has a source-position-only difference."
+    }
+  },
+  "liveReadOnlyRuns": {
+    "model": "openai-codex/gpt-6-luna",
+    "writeAcceptance": false,
+    "cases": [
+      {
+        "symbol": "002594",
+        "runId": "112958bf-445f-4ca4-9522-1d7397dcbbe1",
+        "reportId": "company-research-002594-112958bf-445f-4ca4-9522-1d7397dcbbe1",
+        "status": "blocked",
+        "coreChecks": "16/19",
+        "driverMethod": "passed",
+        "blockers": [
+          "company_history_strategy insufficient evidence",
+          "Bull/Base/Bear has no attributable sourced operating assumptions",
+          "Variant Perception historical forecast value versions unverified"
+        ],
+        "knowledgeUnchanged": true
+      },
+      {
+        "symbol": "002384",
+        "runId": "997e7fc4-3a1a-4d79-997a-2d1ea1d9af32",
+        "reportId": "company-research-002384-997e7fc4-3a1a-4d79-997a-2d1ea1d9af32",
+        "status": "blocked",
+        "coreChecks": "14/19",
+        "driverMethod": "failed",
+        "driverAttempts": [
+          "Attempt 1 Pi reasoning execution timed out.",
+          "Attempt 2 failed numeric grounding because the annual-report product classification marker and matching numeric row context conflicted at paragraph 775."
+        ],
+        "blockers": [
+          "business_driver_analysis did not complete",
+          "Bull/Base/Bear has no attributable sourced operating assumptions",
+          "Variant Perception historical forecast value versions unverified"
+        ],
+        "industryExposure": "passed; malformed table from the older 323ccf5 run did not recur",
+        "knowledgeUnchanged": true
+      }
+    ],
+    "artifactDirectory": "runtime-data/company-quality-acceptance/2026-10-27-p0-19-post-136a085/",
+    "artifactPolicy": "Raw source bodies, full reports, runtime logs, credentials, and disposable Knowledge data are not committed."
+  },
+  "acceptance": {
+    "p0Status": "incomplete",
+    "reason": "Neither real report passed all required core checks and independent semantic review; no Hermes side-by-side manual review was performed."
+  }
+}
