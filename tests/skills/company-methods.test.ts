@@ -1052,6 +1052,45 @@ test('business-driver segment validation ignores structured financial JSON while
   assert.ok(missingOfficialMarker.diagnostics.some(diagnostic => diagnostic.code === 'NUMERIC_GROUNDING_ERROR' && diagnostic.message.includes('classification marker') && diagnostic.message.includes('markerCited=false')), JSON.stringify(missingOfficialMarker.diagnostics))
 })
 
+test('business-driver classification binds the exact industry row among duplicate-value product rows', async () => {
+  const id = 'byd-industry-product-margin-duplicate'
+  const lines = Array.from({ length: 734 }, (_, index) => `一般披露事项 ${index + 1}。`)
+  const rows: Record<number, string> = {
+    716: '单位：元', 717: '营业收入 营业成本 毛利率', 718: '营业收入', 719: '比上年同期增减', 720: '营业成本',
+    721: '比上年同期增减', 722: '毛利率比', 723: '上年同期', 724: '增减', 727: '分行业',
+    728: '日用电子器件制造业 69,404,994,000.00 65,907,931,000.00 5.04% 0.96% 3.88% -2.67%',
+    729: '交通运输设备及电气制', 730: '造业 275,341,358,000.00 213,863,297,000.00 22.33% -8.98% -11.24% 1.98%',
+    731: '分产品',
+    732: '电子及其他产品 69,404,994,000.00 65,907,931,000.00 5.04% 0.96% 3.88% -2.67%',
+    733: '汽车、汽车相关产品及', 734: '其他产品 275,341,358,000.00 213,863,297,000.00 22.33% -8.98% -11.24% 1.98%',
+  }
+  for (const [paragraph, text] of Object.entries(rows)) lines[Number(paragraph) - 1] = text
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: id }, title: '2026年半年度报告', content: lines.join('\n') }
+  const refs = (paragraphs: number[]) => paragraphs.map(paragraph => `[${id}@paragraph:${paragraph}]`).join(' ')
+  const claim = `2026年上半年分行业毛利表中，日用电子器件制造业毛利率比上年同期增减为-2.67%。`
+  const makeDraft = (evidenceParagraphs: number[]) => ({
+    status: 'complete', answer: `分行业毛利变化需按原表口径解读。${refs(evidenceParagraphs)}`,
+    markdown: `分行业毛利变化需按原表口径解读。${refs(evidenceParagraphs)}`,
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: `${claim}${refs(evidenceParagraphs)}` },
+      { id: 'growth-drivers', markdown: `后续应跟踪同口径行业收入及毛利变化。${refs([727, 728])}` },
+      { id: 'catalysts', markdown: `现有材料未提供足够证据量化增长催化。${refs([727, 728])}` },
+    ],
+    findings: [{ text: claim, kind: 'fact', evidence: evidenceParagraphs.map(location => ({ sourceCandidateId: id, location: `paragraph:${location}` })) }],
+    limitations: [], risks: [],
+  })
+  const run = (evidenceParagraphs: number[]) => executeCompanyResearchMethod({
+    skillId: 'business_driver_analysis', company: { symbol: '002594', name: '比亚迪', exchange: 'SZ' },
+    asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: [id], maxAttempts: 1,
+    reasoningExecutor: executor(async () => makeDraft(evidenceParagraphs)),
+  })
+
+  const exactAndDuplicate = await run([716, 717, 722, 723, 724, 727, 728, 732])
+  assert.equal(exactAndDuplicate.status, 'complete', JSON.stringify(exactAndDuplicate.diagnostics))
+  assert.match(exactAndDuplicate.findings[0]!.text, /分行业毛利表中，日用电子器件制造业/u)
+  assert.ok(exactAndDuplicate.findings[0]!.evidence.some(ref => ref.location === 'paragraph:728'), 'the exact industry label/value row must remain attributable')
+})
+
 test('single-value industry findings bind distinct exact rows, including a split transport label', async () => {
   const lines = Array.from({ length: 10 }, () => '一般披露事项。')
   const rows = new Map<number, string>([

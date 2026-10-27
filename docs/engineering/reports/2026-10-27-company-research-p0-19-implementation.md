@@ -120,6 +120,15 @@ P0-19 remains incomplete pending both real reports passing all 19 checks and ind
 
 P0-19 remains incomplete pending a root-Runtime rerun against this correction, full section review, and all other acceptance gates.
 
+### Duplicate industry/product values during exact segment-label repair (2026-10-27)
+
+- The BYD root Runtime run `7aa81f92-ab93-4cc8-9033-a81a308ddbca` against `816ecaa` exposed a confirmed classification repair defect. The H1 report repeats identical revenue, cost, margin, and change values in the industry row at paragraphs 727–728 and product row at 731–732. The source finding named the industry and cited its row, but `repairCompanySegmentFindingLabels` treated the duplicate product row as the sole incorrect-family candidate and rewrote the finding to product. The downstream classification validator correctly rejected the relabeled claim.
+- The repair now preserves a finding when its own cited evidence contains the exact supplied row, matching classification marker, and stated label for its named table family. Duplicate values in another family cannot replace that exact match. The existing numeric and citation validators still run. Regression `business-driver classification binds the exact industry row among duplicate-value product rows` uses a synthetic filing fixture; this fixture is embedded in `tests/skills/company-methods.test.ts` and is the only test data needed in the repository.
+- The regression also caught and fixed the distinction between natural wording such as `分行业毛利表` and the shorter `分行业表`. `node --import tsx --test tests/skills/company-methods.test.ts` passed 139/139; `npm run typecheck` and `git diff --check` passed.
+- A fresh root Runtime/API read-only pair against `816ecaa` remained blocked: BYD run `7aa81f92-ab93-4cc8-9033-a81a308ddbca` reached 12/19, with `business_driver_analysis` failing both attempts on the repeated-row family binding plus existing synthesis/scenario/forecast gaps; Dongshan run `104fd193-3c1a-45a9-aaf6-c60c6a71e3f6` reached 17/19, with the driver method completed and Bull/Base/Bear source inputs and forecast vintage verification still blocking. Both disposable Knowledge trees had unchanged manifest/assets/raw SHA-256 values. Sanitized details are tracked in `tests/validation/evidence/company-quality-duplicate-segment-row-2026-10-27.json`; raw reports, provider bodies, and disposable Knowledge data remain local.
+
+P0-19 remains incomplete. Neither live report passed all 19 required section checks and independent semantic review; no Hermes side-by-side manual review is claimed.
+
 ### Numeric-estimate PIT correction (2026-10-27)
 
 - Commit `923808d` classifies numeric estimates under the same current-snapshot PIT-quality reporting as other numeric data. An estimate may remain `AVAILABLE` for present-day inspection while reporting `valueVersionStatus=UNVERIFIED` and `pointInTimeSafe=false`; historical estimate requirements now require verified value-version proof, and Company Research applies that requirement only when the caller explicitly requests a historical `asOf`.

@@ -1111,6 +1111,47 @@ function repairCompanySegmentFindingLabels<T extends {
   const findings = output.findings.map(finding => {
     const percentTokens = [...finding.text.matchAll(/(?<![\d.,])[-−]?\d[\d,]*(?:\.\d+)?\s*[%％]/g)].map(match => match[0]!.replace(/\s/g, '').replace('％', '%').replace('−', '-'))
     if (!percentTokens.length) return finding
+    const statedTable = finding.text.match(/分(行业|产品|地区|销售模式)[^，,。；]{0,12}?表/u)
+    const statedLabel = finding.text.match(/(?:显示[，,]?|表中[，,]?|表[，,]?|中[，,]?)([^，,。；]{2,36}?)(?:的完整标签|的毛利率|毛利率|营业收入|收入同比|成本同比)/u)?.[1]?.trim()
+    // A filing can repeat the same values under adjacent industry and product
+    // tables. If this finding already cites a row and marker that match its
+    // stated family and label, do not reinterpret it from the duplicate row
+    // in the other family. The ordinary numeric and citation checks still run.
+    if (statedTable && statedLabel) {
+      const statedType = `分${statedTable[1]}`
+      const normalizedStatedLabel = statedLabel.replace(/\s+/g, '')
+      const cited = new Set(finding.evidence.map(ref => `${ref.sourceCandidateId}@${ref.location}`))
+      const exactClassificationEvidence = [...new Set(finding.evidence.map(ref => ref.sourceCandidateId))].some(sourceId => {
+        const source = sourceMap.get(sourceId)
+        const packet = packets.find(item => item.sourceCandidateId === sourceId)
+        if (!source || !packet) return false
+        const paragraphs = source.content.split(/\r?\n/)
+        const supplied = new Map(packet.excerpts.map(excerpt => [excerpt.location, excerpt.text.trim()]))
+        return paragraphs.some((rawRow, index) => {
+          const row = rawRow.trim()
+          const rowLocation = `paragraph:${index + 1}`
+          if (!row || supplied.get(rowLocation) !== row || !cited.has(`${sourceId}@${rowLocation}`)) return false
+          const rowPercents = [...row.matchAll(/(?<![\d.,])[-−]?\d[\d,]*(?:\.\d+)?\s*[%％]/gu)].map(match => match[0]!.replace(/\s/g, '').replace('％', '%').replace('−', '-'))
+          if (!percentTokens.every(token => rowPercents.includes(token))) return false
+          const rowLabel = row.split(/\s+(?=[\d,])/u)[0]?.trim() ?? ''
+          if (!rowLabel) return false
+          let start = index - 1
+          while (start >= 0 && index - start <= 4 && paragraphs[start]!.trim() && !/\d/.test(paragraphs[start]!.trim())
+            && !/^(?:单位|分行业|分产品|分地区|分销售模式|分销售渠道)$/.test(paragraphs[start]!.trim())
+            && !/营业收入|营业成本|毛利率|同期增减/.test(paragraphs[start]!.trim())) start--
+          const label = [...paragraphs.slice(start + 1, index).map(value => value.trim()).filter(Boolean), rowLabel].join('').replace(/\s+/g, '')
+          let markerIndex = -1
+          for (let cursor = index - 1; cursor >= Math.max(0, index - 30); cursor--) {
+            if (/^分(?:行业|产品|地区|销售模式|销售渠道)\s*$/.test(paragraphs[cursor]!.trim())) { markerIndex = cursor; break }
+          }
+          const markerLocation = markerIndex >= 0 ? `paragraph:${markerIndex + 1}` : ''
+          return markerIndex >= 0 && paragraphs[markerIndex]!.trim() === statedType
+            && cited.has(`${sourceId}@${markerLocation}`) && supplied.get(markerLocation) === statedType
+            && (label.includes(normalizedStatedLabel) || normalizedStatedLabel.includes(label))
+        })
+      })
+      if (exactClassificationEvidence) return finding
+    }
     const candidates: { sourceId: string; type: '分行业' | '分产品' | '分地区' | '分销售模式'; label: string; rowLocation: string; labelLocation?: string; rowText: string }[] = []
     for (const sourceId of new Set(finding.evidence.map(ref => ref.sourceCandidateId))) {
       const source = sourceMap.get(sourceId)
