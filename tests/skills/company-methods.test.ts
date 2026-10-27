@@ -792,6 +792,43 @@ test('business-driver revenue table keeps annual industry rows and rejects produ
   assert.ok(mislabeled.diagnostics.some(diagnostic => diagnostic.message.includes('conflicting or incomplete table context') && diagnostic.message.includes('sourceHash=')), JSON.stringify(mislabeled.diagnostics))
 })
 
+test('business-driver classification ignores a pure two-year header but still validates the classified data row', async () => {
+  const id = 'annual-two-year-industry-header'
+  const lines = [
+    '单位：元', '2025 年 2024 年', '营业收入构成', '营业收入 占营业收入', '分行业',
+    '制造业 100 20% 50 10%', '其他行业 400 80% 450 90%',
+  ]
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: id }, title: '2025年年度报告', content: lines.join('\n') }
+  const claim = '2025年分行业收入构成中，制造业营业收入100元、占比20%；2024年为50元、占比10%。'
+  const citation = (paragraph: number) => `[${id}@paragraph:${paragraph}]`
+  const draft = {
+    status: 'complete', answer: `两期分行业披露保持分类口径，趋势解释仍需核对合并范围。${citation(6)}`,
+    markdown: `两期分行业披露保持分类口径，趋势解释仍需核对合并范围。${citation(6)}`,
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: `${claim} ${[1, 2, 3, 4, 5, 6].map(citation).join(' ')}` },
+      { id: 'growth-drivers', markdown: `两期分类行可供跟踪，但不单独代表合并增长。${citation(6)}` },
+      { id: 'catalysts', markdown: `后续应核对公司披露的同口径分行业收入变化。${citation(6)}` },
+    ],
+    findings: [{ text: claim, kind: 'fact', evidence: [1, 2, 3, 4, 5, 6].map(paragraph => ({ sourceCandidateId: id, location: `paragraph:${paragraph}` })) }],
+    limitations: ['两期分类统计边界仍需结合年报说明核对。'], risks: [],
+  }
+  const result = await executeCompanyResearchMethod({
+    company: { symbol: '002384', name: '东山精密', exchange: 'SZ' }, asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: [id],
+    skillId: 'business_driver_analysis', maxAttempts: 1, reasoningExecutor: executor(async () => draft),
+  })
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+
+  const uncitedMarker = structuredClone(draft)
+  uncitedMarker.sections[0]!.markdown = `${claim} ${[1, 2, 3, 4, 6].map(citation).join(' ')}`
+  uncitedMarker.findings[0]!.evidence = [1, 2, 3, 4, 6].map(paragraph => ({ sourceCandidateId: id, location: `paragraph:${paragraph}` }))
+  const rejected = await executeCompanyResearchMethod({
+    company: { symbol: '002384', name: '东山精密', exchange: 'SZ' }, asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: [id],
+    skillId: 'business_driver_analysis', maxAttempts: 1, reasoningExecutor: executor(async () => uncitedMarker),
+  })
+  assert.equal(rejected.status, 'failed')
+  assert.ok(rejected.diagnostics.some(diagnostic => diagnostic.message.includes('classification marker') && diagnostic.message.includes('markerCited=false')), JSON.stringify(rejected.diagnostics))
+})
+
 test('single-value industry findings bind distinct exact rows, including a split transport label', async () => {
   const lines = Array.from({ length: 10 }, () => '一般披露事项。')
   const rows = new Map<number, string>([

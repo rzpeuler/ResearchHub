@@ -29,6 +29,10 @@ function businessDriverSegmentClassificationIssue(markdown: string, packets: rea
         const paragraph = Number(/^paragraph:(\d+)$/.exec(location)?.[1] ?? 0)
         const row = excerpts.get(location)
         if (!paragraph || !row) continue
+        // Annual reports may put the comparison periods on a separate line
+        // above the classification marker and numeric rows. A pure year
+        // header is table context, not a data row that needs its own marker.
+        if (/^(?:19|20)\d{2}\s*年(?:\s+(?:19|20)\d{2}\s*年)+$/u.test(row.normalize('NFKC').trim())) continue
         // Product and technology prose often contains digit-letter identifiers
         // such as 100G, 400G, or PAM4. They are not numeric table cells and must
         // not cause a distant classification marker to be treated as row context.
@@ -1609,7 +1613,7 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
       for (const item of [...parsed.sections, { id: 'method-summary', markdown: parsed.markdown }, { id: 'method-answer', markdown: parsed.answer }, ...attributableFindings]) {
         if (input.skillId === 'business_driver_analysis') {
           const classificationIssue = businessDriverSegmentClassificationIssue(item.markdown, packets, input.sources)
-          if (classificationIssue) throw new Error(classificationIssue)
+          if (classificationIssue) throw new Error(`${item.id}: ${classificationIssue}`)
         }
         const numeric = validateCompanyNumericGrounding({ markdown: item.markdown, sources: input.sources, evidenceContexts: packets, preparedAnalysis: input.preparedAnalysis, trustedText: [input.company.symbol, input.asOf, ...companyCitedSplitDateText(item.markdown, packets), ...companyPreparedFinancialDateText(input.preparedAnalysis)] })
         for (const issue of numeric.diagnostics) if (numericRepairIssues.length < 12) numericRepairIssues.push({ id: item.id, token: issue.token.slice(0, 24), context: issue.context.replace(/\s+/g, ' ').slice(0, 32) })
