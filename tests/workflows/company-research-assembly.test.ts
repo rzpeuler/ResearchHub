@@ -909,6 +909,41 @@ test('R150 reattaches the unique Dongshan disclosure-dimension header to its cit
   assert.ok(validateCompanyResearchMarkdownTables(ambiguous.markdown).some(issue => issue.includes('separator')))
 })
 
+test('R151 rejoins only the exact Dongshan seven-column industry row interleaved with its risk table', () => {
+  const fixture = `### 分行业公司披露（非行业规模）
+以下严格保留2025年年报分行业原表行。[official-39e591fa149e4543@paragraph:864]
+
+| 期间与分行业分类 | 营业收入（元） | 营业成本（元） | 毛利率 | 营业收入比上年同期增减（%） | 营业成本比上年同期增减（%） | 毛利率比上年同期增减（%） |
+|---|---:|---:|---:|---:|---:|---:|
+| 2025年度；计算机、通信和其他电子 | 39,643,732,616.04
+| 风险触发条件 | 影响路径 | 监控指标 | 披露的缓解因素 | 残余风险 |
+该宽口径分类不能替代PCB或光模块的独立市场规模。[official-39e591fa149e4543@paragraph:907]
+
+### 公司特定风险、监控与缓解
+
+| 34,153,971,460.65 | 13.85% | 8.67% | 8.83% | -0.12%[official-39e591fa149e4543@paragraph:892] [official-39e591fa149e4543@paragraph:893] [official-39e591fa149e4543@paragraph:894] [official-39e591fa149e4543@paragraph:885] [official-39e591fa149e4543@paragraph:886] [official-39e591fa149e4543@paragraph:887] [official-39e591fa149e4543@paragraph:888] [official-39e591fa149e4543@paragraph:889] [official-39e591fa149e4543@paragraph:890] [official-39e591fa149e4543@paragraph:891] [official-39e591fa149e4543@paragraph:864] |
+|---|---|---|---|---|
+| 主要客户经营显著不利或客户集中进一步加深 | 订单、收入或回款承压 | 客户集中度与信用 | 公司称将开拓新产品和新客户。[risk@paragraph:1322] | 客户替代效果未验证。 |
+| 技术更新快于公司研发制造能力 | 产品或技术被淘汰 | 研发进度与认证 | 公司称将跟踪技术趋势。[risk@paragraph:1325] | 商业化仍有不确定性。 |
+| 国际贸易政策或地缘环境变化 | 跨境交付或成本受扰 | 贸易政策及运营情况 | 公司称将优化全球布局。[risk@paragraph:1330] | 外部政策风险仍在。 |`
+  const citations = (value: string) => [...value.matchAll(/\[[^\]]+@paragraph:\d+\]/g)].map(match => match[0]).sort()
+  const beforeCitations = citations(fixture)
+  const repaired = repairCompanyResearchMarkdownTables(fixture)
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_DONGSHAN_INDUSTRY_ROW_REJOINED')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.match(repaired.markdown, /\| 2025年度；计算机、通信和其他电子 \| 39,643,732,616\.04 \| 34,153,971,460\.65 \| 13\.85% \| 8\.67% \| 8\.83% \| -0\.12%\[official-39e591fa149e4543@paragraph:892\]/)
+  assert.match(repaired.markdown, /该宽口径分类不能替代PCB或光模块的独立市场规模。\[official-39e591fa149e4543@paragraph:907\]\n\n### 公司特定风险、监控与缓解\n\n\| 风险触发条件 \| 影响路径 \| 监控指标 \| 披露的缓解因素 \| 残余风险 \|\n\|---\|---\|---\|---\|---\|\n\| 主要客户经营显著不利/)
+  assert.deepEqual(citations(repaired.markdown), beforeCitations, 'all citation locators are retained')
+
+  const missingCitation = repairCompanyResearchMarkdownTables(fixture.replace('[official-39e591fa149e4543@paragraph:894]', '[official-39e591fa149e4543@paragraph:999]'))
+  assert.ok(!missingCitation.repairs.some(repair => repair.startsWith('TABLE_DONGSHAN_INDUSTRY_ROW_REJOINED')))
+  assert.ok(validateCompanyResearchMarkdownTables(missingCitation.markdown).length > 0)
+
+  const duplicateAnchor = repairCompanyResearchMarkdownTables(fixture.replace('### 公司特定风险、监控与缓解', '### 公司特定风险、监控与缓解\n### 公司特定风险、监控与缓解'))
+  assert.ok(!duplicateAnchor.repairs.some(repair => repair.startsWith('TABLE_DONGSHAN_INDUSTRY_ROW_REJOINED')))
+})
+
 test('R148 restores the exact industry citation table header when synthesis leaves a prose header above a separator',()=>{
   const fixture=`适用报告与期间 完整表头（单位：元；末列原单位为%） 分类标签及匹配数据行\n|---|---|---|\n| 2025年年度报告，2025年度 | 单位与表头定位 | 分类标签与数据行定位 |`
   const repaired=repairCompanyResearchMarkdownTables(fixture)

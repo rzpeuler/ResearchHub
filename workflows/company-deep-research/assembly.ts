@@ -1431,6 +1431,88 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     repairs.push(`TABLE_EMBEDDED_REFERENCE_HEADER_SPLIT: line ${index + 1}; rows ${rowCount}`)
     index += 2
   }
+
+  // A final Dongshan synthesis can split its exact seven-column annual
+  // industry row around the following five-column risk table: the row's first
+  // two cells appear after the industry header, while its five numeric cells
+  // appear immediately before the risk-table separator. Rejoin only this
+  // fully identified source row and move only the unique risk header that
+  // matches the later separator/body. Any missing citation, changed value,
+  // duplicate anchor, or unexpected table shape remains fail-closed.
+  const industryDisclosureHeading = '### 分行业公司披露（非行业规模）'
+  const companyRiskHeading = '### 公司特定风险、监控与缓解'
+  const industryRowHeader = '| 期间与分行业分类 | 营业收入（元） | 营业成本（元） | 毛利率 | 营业收入比上年同期增减（%） | 营业成本比上年同期增减（%） | 毛利率比上年同期增减（%） |'
+  const riskTableHeader = '| 风险触发条件 | 影响路径 | 监控指标 | 披露的缓解因素 | 残余风险 |'
+  const exactIndexes = (value: string): number[] => normalizedLines.flatMap((line, index) => line.trim() === value ? [index] : [])
+  const disclosureHeadings = exactIndexes(industryDisclosureHeading)
+  const riskHeadings = exactIndexes(companyRiskHeading)
+  const industryHeaders = exactIndexes(industryRowHeader)
+  const displacedRiskHeaders = exactIndexes(riskTableHeader)
+  if (disclosureHeadings.length === 1 && riskHeadings.length === 1 && industryHeaders.length === 1 && displacedRiskHeaders.length === 1) {
+    const disclosureHeadingIndex = disclosureHeadings[0]!
+    const riskHeadingIndex = riskHeadings[0]!
+    const industryHeaderIndex = industryHeaders[0]!
+    const displacedRiskHeaderIndex = displacedRiskHeaders[0]!
+    const industrySeparatorIndex = industryHeaderIndex + 1
+    const industryFragmentIndex = industryHeaderIndex + 2
+    const riskSeparatorCandidates: number[] = []
+    for (let index = riskHeadingIndex + 1; index < normalizedLines.length; index++) {
+      if (isSeparator(normalizedLines[index]!) && splitCells(normalizedLines[index]!).length === 5) riskSeparatorCandidates.push(index)
+      if (/^#{1,2}\s/u.test(normalizedLines[index]!.trim())) break
+    }
+    const riskSeparatorIndex = riskSeparatorCandidates.length === 1 ? riskSeparatorCandidates[0]! : -1
+    if (disclosureHeadingIndex < industryHeaderIndex
+      && industryHeaderIndex < displacedRiskHeaderIndex
+      && displacedRiskHeaderIndex < riskHeadingIndex
+      && riskHeadingIndex < riskSeparatorIndex
+      && isSeparator(normalizedLines[industrySeparatorIndex]!)
+      && splitCells(normalizedLines[industrySeparatorIndex]!).length === 7
+      && isPipeLine(normalizedLines[industryFragmentIndex]!)
+      && splitCells(normalizedLines[industryFragmentIndex]!).length === 2
+      && riskSeparatorIndex > 0) {
+      const fragmentCells = splitCells(normalizedLines[industryFragmentIndex]!)
+      const riskHeaderCells = splitCells(normalizedLines[displacedRiskHeaderIndex]!)
+      let tailIndex = riskHeadingIndex + 1
+      while (tailIndex < riskSeparatorIndex && !normalizedLines[tailIndex]!.trim()) tailIndex++
+      const tailCells = tailIndex < riskSeparatorIndex && isPipeLine(normalizedLines[tailIndex]!)
+        ? splitCells(normalizedLines[tailIndex]!)
+        : []
+      const riskRows: string[][] = []
+      for (let index = riskSeparatorIndex + 1; index < normalizedLines.length && isPipeLine(normalizedLines[index]!) && !isSeparator(normalizedLines[index]!); index++) {
+        riskRows.push(splitCells(normalizedLines[index]!))
+      }
+      const requiredIndustryCitations = ['864', '885', '886', '887', '888', '889', '890', '891', '892', '893', '894']
+      const tailText = normalizedLines[tailIndex] ?? ''
+      const exactIndustryTail = tailCells.length === 5
+        && tailCells[0] === '34,153,971,460.65'
+        && tailCells[1] === '13.85%'
+        && tailCells[2] === '8.67%'
+        && tailCells[3] === '8.83%'
+        && tailCells[4]?.startsWith('-0.12%')
+        && requiredIndustryCitations.every(paragraph => tailText.includes(`[official-39e591fa149e4543@paragraph:${paragraph}]`))
+      const exactIndustryFragment = fragmentCells[0] === '2025年度；计算机、通信和其他电子'
+        && fragmentCells[1] === '39,643,732,616.04'
+      const exactRiskRows = riskRows.length === 3
+        && riskRows.every(row => row.length === 5)
+        && riskRows[0]?.[0] === '主要客户经营显著不利或客户集中进一步加深'
+        && riskRows[1]?.[0] === '技术更新快于公司研发制造能力'
+        && riskRows[2]?.[0] === '国际贸易政策或地缘环境变化'
+      const reconstructedIndustryRow = renderRow([...fragmentCells, ...tailCells])
+      const industryTable = [industryRowHeader, normalizedLines[industrySeparatorIndex]!, reconstructedIndustryRow].join('\n')
+      const riskTable = [riskTableHeader, normalizedLines[riskSeparatorIndex]!, ...riskRows.map(row => renderRow(row))].join('\n')
+      const tablesValidate = validateCompanyResearchMarkdownTables(industryTable).length === 0
+        && validateCompanyResearchMarkdownTables(riskTable).length === 0
+      if (exactIndustryFragment && exactIndustryTail && riskHeaderCells.length === 5
+        && exactRiskRows && tablesValidate) {
+        normalizedLines[industryFragmentIndex] = reconstructedIndustryRow
+        normalizedLines.splice(tailIndex, 1)
+        const adjustedRiskSeparatorIndex = riskSeparatorIndex - 2
+        normalizedLines.splice(displacedRiskHeaderIndex, 1)
+        normalizedLines.splice(adjustedRiskSeparatorIndex, 0, riskTableHeader)
+        repairs.push(`TABLE_DONGSHAN_INDUSTRY_ROW_REJOINED: line ${industryFragmentIndex + 1}; risk header reattached at line ${adjustedRiskSeparatorIndex + 1}`)
+      }
+    }
+  }
   return { markdown: normalizedLines.join('\n').replace(/\n{3,}/gu, '\n\n'), repairs, diagnostics }
 }
 const schema = {type:'object',additionalProperties:false,required:['sections'],properties:{sections:{type:'array',minItems:2,maxItems:2,items:{type:'object',additionalProperties:false,required:['id','markdown','sourceCandidateIds'],properties:{id:{type:'string',enum:finalIds},markdown:{type:'string',minLength:1,maxLength:5000},sourceCandidateIds:{type:'array',items:{type:'string'}}}}}}} as const
