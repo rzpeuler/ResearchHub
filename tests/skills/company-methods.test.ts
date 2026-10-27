@@ -420,6 +420,46 @@ test('company product pages and focused peer model pages route to their owning m
   assert.equal(marketPackets.some(packet => packet.sourceCandidateId === galaxyId), false, 'peer materials remain excluded from market analysis')
 })
 
+test('competitive numeric retry updates only the failed answer and preserves validated section citations', async () => {
+  const companyRoute = { ...source, candidate: { ...source.candidate, candidateId: 'company-route' }, title: '比亚迪技术资料', content: '比亚迪披露全域高压平台路线。' }
+  const peerRoute = { ...source, candidate: { ...source.candidate, candidateId: 'geely-route', kind: 'web_article' as const, tier: 3 as const, metadata: { researchSubject: 'peer_company', peerCompanyName: '吉利汽车' } }, title: '吉利银河E8车型资料', content: '吉利银河E8披露全栈800V平台。' }
+  const first = {
+    status: 'complete',
+    answer: '双方采用不同路线；吉利车型采用800V平台。',
+    markdown: '现有证据支持有边界的路线比较。',
+    sections: [{ id: 'competition', markdown: '比亚迪披露全域高压平台路线。[company-route@paragraph:1]\n吉利银河E8披露全栈800V平台。[geely-route@paragraph:1]' }],
+    findings: [
+      { text: '比亚迪披露全域高压平台路线。', kind: 'fact', evidence: [{ sourceCandidateId: 'company-route', location: 'paragraph:1' }] },
+      { text: '吉利银河E8披露全栈800V平台。', kind: 'fact', evidence: [{ sourceCandidateId: 'geely-route', location: 'paragraph:1' }] },
+    ],
+    limitations: [],
+    risks: [],
+  }
+  const retry = {
+    ...first,
+    answer: '双方资料支持有边界的高压平台路线比较。',
+    sections: [{ id: 'competition', markdown: '修订稿误引。[company-route@paragraph:999]' }],
+    findings: [{ text: '修订稿误引。', kind: 'fact', evidence: [{ sourceCandidateId: 'company-route', location: 'paragraph:999' }] }],
+  }
+  let calls = 0
+  const result = await executeCompanyResearchMethod({
+    skillId: 'competitive_market_map',
+    company: { symbol: '002594', name: '比亚迪', exchange: 'SZ' },
+    asOf: '2026-10-27',
+    sources: [companyRoute, peerRoute],
+    durableSourceCandidateIds: ['company-route', 'geely-route'],
+    reasoningExecutor: executor(async () => (++calls === 1 ? first : retry)),
+  })
+  assert.equal(calls, 2)
+  assert.equal(result.attempts, 2)
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  assert.equal(result.answer, retry.answer)
+  assert.equal(result.sections[0]?.markdown, first.sections[0]?.markdown)
+  assert.deepEqual(result.findings, first.findings)
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.code === 'NUMERIC_GROUNDING_ERROR'))
+  assert.ok(!JSON.stringify({ answer: result.answer, markdown: result.markdown, sections: result.sections, findings: result.findings }).includes('paragraph:999'))
+})
+
 test('company method repairs a malformed finding reference only from supplied evidence', async () => {
   let attempts = 0
   const history = { ...source, content: source.content.replace('核心产品业务收入及客户模式。', '公司历史经历业务转型。') }

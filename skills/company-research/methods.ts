@@ -1709,7 +1709,7 @@ export async function executeCompanyResearchMethod(input: ExecuteCompanyResearch
       if (input.signal?.aborted) return empty('cancelled', attempt)
       const currentInput = requestSnapshot.input && typeof requestSnapshot.input === 'object' && !Array.isArray(requestSnapshot.input) ? requestSnapshot.input as Record<string, unknown> : {}
       const previousOutput = attemptOutputs[traceIndex - 1]?.output
-      const boundedNumericOutput = ['business_driver_analysis', 'business_model_map'].includes(input.skillId) && attempt > 1 && diagnostics.at(-1)?.code === 'NUMERIC_GROUNDING_ERROR' && Array.isArray(currentInput.repairNumericIssues) && currentInput.repairNumericIssues.length
+      const boundedNumericOutput = ['business_driver_analysis', 'business_model_map', 'competitive_market_map'].includes(input.skillId) && attempt > 1 && diagnostics.at(-1)?.code === 'NUMERIC_GROUNDING_ERROR' && Array.isArray(currentInput.repairNumericIssues) && currentInput.repairNumericIssues.length
         ? applyOnlyNumericRepairTargets(previousOutput, response.output, currentInput.repairTargets, new Set(packets.flatMap(packet => packet.excerpts.map(excerpt => `${packet.sourceCandidateId}@${excerpt.location}`))))
         : response.output
       const trailingSourceIdRepair = repairCompanyTrailingSourceIdTypo(boundedNumericOutput, packets, input)
