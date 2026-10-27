@@ -563,9 +563,9 @@ test('product and technology chapters carry an exact cited cross-method candidat
   const reconciled = reconcileCompanyCompetitorEvidence({ sections, methodResults: [candidate] })
   assert.equal(reconciled.length, 2)
   for (const section of reconciled) {
-    assert.match(section.markdown, /中际旭创是有材料支持的具名竞争者/)
-    assert.match(section.markdown, /直接竞标、客户重叠及与公司产品同口径/)
-    assert.match(section.markdown, /\[public-web-peer-report@paragraph:3\]/)
+    assert.match(section.markdown, /具名候选及产品路线见“竞争格局”章节/)
+    assert.match(section.markdown, /直接竞标、客户重叠、市场份额或同口径成本\/性能胜负/u)
+    assert.doesNotMatch(section.markdown, /中际旭创是有材料支持的具名竞争者/)
     assert.ok(section.sourceCandidateIds?.includes('public-web-peer-report'))
   }
 })
@@ -581,9 +581,9 @@ test('CATL route carryover cites the separate passenger-car solution heading wit
     ]}]
   }
   const result=reconcileCompanyCompetitorEvidence({sections:[{id:'company-overview',markdown:'战略候选：宁德时代官网明确涉及乘用车动力电池，并宣传超快充、长寿命和高比能，构成动力电池场景的具名候选对照；现有材料不足以验证同一采购决策或完全可比性。[public-web-catl@paragraph:249]'}],methodResults:[candidate]})[0]!
-  assert.match(result.markdown,/将“乘用车”列为单独解决方案入口/)
-  assert.match(result.markdown,/该页面未将这些性能表述单独限定于乘用车/)
-  assert.match(result.markdown,/\[public-web-catl@paragraph:35\]/)
+  assert.match(result.markdown,/具名候选及产品路线见“竞争格局”章节/)
+  assert.doesNotMatch(result.markdown,/将“乘用车”列为单独解决方案入口/)
+  assert.doesNotMatch(result.markdown,/\[public-web-catl@paragraph:35\]/)
   assert.doesNotMatch(result.markdown,/官网明确涉及乘用车动力电池/)
 })
 
@@ -598,9 +598,9 @@ test('cross-method reconciliation carries a scoped BYD peer route comparison int
   }
   const sections = [{ id: 'industry-exposure', markdown: '缺少可比公司或具体竞品产品、路线、客户覆盖和市占数据，无法作具名竞争对比。', sourceCandidateIds: ['annual'] }]
   const result = reconcileCompanyCompetitorEvidence({ sections, methodResults: [candidate] })[0]!
-  assert.match(result.markdown, /比亚迪与吉利银河E8可作有限纯电快充路线对照/)
-  assert.match(result.markdown, /\[public-web-geely-peer@paragraph:42\]/)
-  assert.match(result.markdown, /实际采购重叠、直接竞标、同口径性能成本及市场份额仍未验证/)
+  assert.match(result.markdown, /具名候选及产品路线见“竞争格局”章节/)
+  assert.doesNotMatch(result.markdown, /比亚迪与吉利银河E8可作有限纯电快充路线对照/)
+  assert.match(result.markdown, /直接竞标、客户重叠、市场份额或同口径成本\/性能胜负/u)
   assert.doesNotMatch(result.markdown, /无法作具名竞争对比/)
   assert.ok(result.sourceCandidateIds?.includes('public-web-geely-peer'))
 })
@@ -617,7 +617,9 @@ test('competitor reconciliation recognizes attributed candidate wording and repa
     {id:'industry-exposure',markdown:'缺少可比公司或具体竞品产品、路线、客户覆盖和市占数据，无法作具名竞争对比。',sourceCandidateIds:['annual']},
   ]
   const result=reconcileCompanyCompetitorEvidence({sections,methodResults:[candidate]})
-  for(const section of result){assert.match(section.markdown,/中际旭创披露云计算及AI高速光互连产品路线/);assert.match(section.markdown,/实际客户重叠|客户重叠未证实/);assert.match(section.markdown,/\[public-web-peer@paragraph:26\]/)}
+  assert.doesNotMatch(result.find(section=>section.id==='products')!.markdown,/具名候选及产品路线见“竞争格局”章节/)
+  assert.match(result.find(section=>section.id==='industry-exposure')!.markdown,/具名候选及产品路线见“竞争格局”章节/)
+  for(const section of result)assert.doesNotMatch(section.markdown,/中际旭创披露云计算及AI高速光互连产品路线/)
   assert.match(result.find(section=>section.id==='products')!.markdown,/不能据此推断客户偏好/)
 })
 
@@ -638,10 +640,10 @@ test('R104 reconciles broad competitor denials in overview, products, and risks 
   ]
   const result = reconcileCompanyCompetitorEvidence({ sections, methodResults: [candidate] })
   for (const section of result.slice(0, 3)) {
-    assert.match(section.markdown, /中际旭创披露高速光互连产品路线/)
-    assert.match(section.markdown, /\[public-web-peer@paragraph:26\]/)
-    assert.match(section.markdown, /直接竞标、客户重叠/); assert.match(section.markdown, /市场份额|份额数据/); assert.match(section.markdown, /同口径胜负仍未验证|同口径的性能、成本、价格或份额数据/)
-    assert.match(section.markdown, /不能据此断言存在真实竞争关系|不据此断言直接竞争/)
+    assert.match(section.markdown, /具名候选及产品路线见“竞争格局”章节/)
+    assert.doesNotMatch(section.markdown, /中际旭创披露高速光互连产品路线/)
+    assert.match(section.markdown, /直接竞标、客户重叠/); assert.match(section.markdown, /市场份额/); assert.match(section.markdown, /同口径成本\/性能胜负/)
+    assert.match(section.markdown, /不能据此断言存在真实竞争关系|不据此断言直接竞争|本节现有证据未验证直接竞标/)
     assert.ok(section.sourceCandidateIds?.includes('public-web-peer'))
   }
   assert.equal(result[3]!.markdown, sections[3]!.markdown)
@@ -658,7 +660,7 @@ test('cross-method reconciliation catches the compact phrase no comparable compe
   }
   const sections = [{ id: 'company-overview', markdown: '现有材料也没有可比竞品的产品、路线和经营数据。', sourceCandidateIds: ['annual'] }]
   const result = reconcileCompanyCompetitorEvidence({ sections, methodResults: [candidate] })
-  assert.match(result[0]!.markdown, /鹏鼎控股披露FPC产品与应用/)
+  assert.match(result[0]!.markdown, /具名候选及产品路线见“竞争格局”章节/)
   assert.match(result[0]!.markdown, /直接竞标、客户重叠/)
   assert.doesNotMatch(result[0]!.markdown, /没有可比竞品/)
 })
@@ -690,10 +692,9 @@ test('cross-method competitor reconciliation recognizes Latin-script company nam
   ]
   const reconciled = reconcileCompanyCompetitorEvidence({ sections, methodResults: [candidate] })
   for (const section of reconciled) {
-    assert.match(section.markdown, /InnoLight是有证据支持的具名竞争者/)
-    assert.match(section.markdown, /\[public-web-peer@paragraph:101\]/)
-    assert.match(section.markdown, /直接竞标、客户重叠/)
-    assert.match(section.markdown, /不能据此断言存在真实竞争关系|不据此断言直接竞争/)
+    assert.match(section.markdown, /具名候选及产品路线见“竞争格局”章节/)
+    assert.doesNotMatch(section.markdown, /InnoLight是有证据支持的具名竞争者/)
+    assert.match(section.markdown, /直接竞标、客户重叠、市场份额或同口径成本\/性能胜负/u)
   }
   assert.deepEqual(findKnownCompetitorDenials({ sections: reconciled, methodResults: [candidate] }), [])
   assert.equal(reconcileCompanyCompetitorEvidence({ sections, methodResults: [{ ...candidate, executionEvidence: [] }] }), sections)
@@ -1276,11 +1277,11 @@ test('risk reconciliation removes unsupported zero impairment and preserves a na
     {id:'risks',markdown:'| 竞争 | 风险影响 | 指标 | 缓释 | 材料没有同口径竞品业绩、产品路线或市场份额数据，不能验证相对优势。 | Juno Newco商誉原值人民币千元4,361,657，减值准备人民币千元0（该标的减值准备表未列示金额）。[interim@paragraph:4821] [interim@paragraph:4823] |',sourceCandidateIds:['interim']}
   ]
   const fixed=reconcileCompanyRiskBoundaries({sections})[1]!
-  assert.match(fixed.markdown,/虽识别宁德时代乘用车电池超快充路线这一候选对照/)
-  assert.match(fixed.markdown,/仍缺少同口径竞品业绩、价格、成本、市场份额及客户重叠数据/)
+  assert.match(fixed.markdown,/竞争章节已列具名候选及产品路线/)
+  assert.match(fixed.markdown,/同口径业绩、价格、成本、市场份额和客户重叠仍未验证/)
   assert.doesNotMatch(fixed.markdown,/减值准备人民币千元\s*0/)
   assert.match(fixed.markdown,/减值准备金额未在当前摘录中确认/)
-  assert.match(fixed.markdown,/\[catl@paragraph:249\]/)
+  assert.doesNotMatch(fixed.markdown,/\[catl@paragraph:249\]/)
 })
 
 test('structured year-over-year monitoring growth is cited to the structured financial source, not the prior-year-end balance rows',()=>{
@@ -1306,17 +1307,17 @@ test('risk matrix uses researched competitor candidates without claiming verifie
     {id:'competition',markdown:'中际旭创是光模块行业具名对照，东山精密路线另有EML、DFB产品。[industry@paragraph:55]'}
   ]
   const fixed=reconcileCompanyRiskBoundaries({sections})
-  assert.match(fixed[0]!.markdown,/竞争章节已识别中际旭创等具名对照及光模块\/EML产品路线/)
+  assert.match(fixed[0]!.markdown,/竞争章节列有具名候选及产品路线/)
   assert.match(fixed[0]!.markdown,/直接竞争关系、可比市场份额和成本\/毛利数据尚未证实/)
-  assert.match(fixed[0]!.markdown,/\[industry@paragraph:55\]/)
+  assert.doesNotMatch(fixed[0]!.markdown,/\[industry@paragraph:55\]/)
   const bydSections=[
     {id:'risks',markdown:'| 竞争风险 | 现有材料不能证实具体竞争对手或技术路线已构成某项冲击，现有材料未提供可比数据。 |'},
     {id:'competition',markdown:'吉利银河E8披露800V高压平台及SiC油冷电驱路线。[public-web-geely@paragraph:2]'}
   ]
   const bydFixed=reconcileCompanyRiskBoundaries({sections:bydSections})
-  assert.match(bydFixed[0]!.markdown,/竞争方法已识别吉利银河E8及其高压平台、SiC油冷电驱路线/)
+  assert.match(bydFixed[0]!.markdown,/竞争章节列有具名候选及技术路线/)
   assert.match(bydFixed[0]!.markdown,/直接替代、客户重叠、份额和同口径胜负仍未验证/)
-  assert.match(bydFixed[0]!.markdown,/\[public-web-geely@paragraph:2\]/)
+  assert.doesNotMatch(bydFixed[0]!.markdown,/\[public-web-geely@paragraph:2\]/)
 })
 
 test('cross-section reconciliation removes false evidence gaps, scopes customer evidence, and balances financial summary',()=>{
@@ -1557,9 +1558,9 @@ test('industry denial of any named comparator is narrowed when the competitive m
   const section={id:'industry-exposure',markdown:'竞争分析同样缺乏可具名比较对象及其产品规格、价格、产能、份额和客户认证材料，不能宣称排名、领先幅度或份额。'}
   const fixed=reconcileCompanyCompetitorEvidence({sections:[section],methodResults:[candidate]})[0]!
   assert.doesNotMatch(fixed.markdown,/缺乏可具名比较对象/)
-  assert.match(fixed.markdown,/鹏鼎控股/)
-  assert.match(fixed.markdown,/同口径性能成本及市场份额仍未验证/)
-  assert.match(fixed.markdown,/\[public-web-peer@paragraph:1\]/)
+  assert.match(fixed.markdown,/具名候选及产品路线见“竞争格局”章节/)
+  assert.match(fixed.markdown,/直接竞标、客户重叠、市场份额或同口径成本\/性能胜负/u)
+  assert.doesNotMatch(fixed.markdown,/\[public-web-peer@paragraph:1\]/)
 })
 
 test('cross-method check rejects the observed Dongshan and BYD report contradictions verbatim', () => {
@@ -1604,6 +1605,7 @@ test('R137 prepared-analysis reconciliation restores exact BYD segment revenue, 
   const rawSections=[
     {id:'business-segments',markdown:'## 分部\n未提供具名竞品及同口径价格、毛利、份额或交付资料，无法做竞争比较。',sourceCandidateIds:['annual']},
     {id:'industry-exposure',markdown:'本轮供给材料中没有可核验的中国新能源汽车行业销量数字定位；上一版所引用的官方年报段落并未出现在本轮实际摘录中，故不保留该数字。公司级TAM边界仍无法建立。',sourceCandidateIds:['official-market']},
+    {id:'competition',markdown:'吉利公开品牌覆盖主流至豪华，并列有电池、电驱、辅助驾驶和智能座舱，属于乘用车候选对手；车型级重叠尚未证明。[public-web-geely@paragraph:95]',sourceCandidateIds:['public-web-geely']},
     {id:'supply-chain',markdown:'应收周转22.87天、存货周转106.21天、应付周转117.43天、现金转换周期11.65天。',sourceCandidateIds:['akshare-financial']}
   ]
   const annualSourceLines=Array.from({length:18},()=> '其他年报披露。')
@@ -1622,12 +1624,13 @@ test('R137 prepared-analysis reconciliation restores exact BYD segment revenue, 
   const segments=prepared.find(item=>item.id==='business-segments')!
   assert.match(segments.markdown,/汽车、汽车相关产品及其他产品收入648,645,636,000\.00元，占营业收入80\.68%/)
   assert.match(segments.markdown,/手机部件、组装及其他产品收入155,236,528,000\.00元，占营业收入19\.31%/)
-  assert.match(segments.markdown,/吉利公开品牌覆盖主流至豪华/)
-  assert.match(segments.markdown,/客户重叠|车型级重叠/)
+  assert.match(segments.markdown,/具名候选及产品路线见“竞争格局”章节/)
   assert.doesNotMatch(segments.markdown,/未提供具名竞品/)
   assert.ok(segments.sourceCandidateIds?.includes('annual'))
   assert.ok(segments.sourceCandidateIds?.includes('public-web-geely'))
-  for(const ref of ['annual@paragraph:821','annual@paragraph:822','annual@paragraph:819','annual@paragraph:820','public-web-geely@paragraph:95'])assert.ok(segments.markdown.includes(`[${ref}]`))
+  for(const ref of ['annual@paragraph:821','annual@paragraph:822','annual@paragraph:819','annual@paragraph:820'])assert.ok(segments.markdown.includes(`[${ref}]`))
+  assert.match(prepared.find(item=>item.id==='competition')!.markdown,/吉利公开品牌覆盖主流至豪华/)
+  assert.match(prepared.find(item=>item.id==='competition')!.markdown,/\[public-web-geely@paragraph:95\]/)
 
   const industry=prepared.find(item=>item.id==='industry-exposure')!
   assert.match(industry.markdown,/2024年中国新能源汽车全年销量为1,286\.6万辆/)
@@ -1781,7 +1784,7 @@ test('risk summary keeps a sourced peer route while narrowing the missing like-f
   const sections=[{id:'risks',markdown:'现有材料不足以作同业比较。'}]
   const fixed=reconcileCompanyCompetitorEvidence({sections,methodResults:[competitor]})[0]!
   assert.doesNotMatch(fixed.markdown,/现有材料不足以作同业比较/)
-  assert.match(fixed.markdown,/吉利银河E8/)
+  assert.match(fixed.markdown,/具名候选及产品路线见“竞争格局”章节/)
   assert.match(fixed.markdown,/直接竞标、客户重叠、市场份额及同口径表现仍未验证/)
 })
 
@@ -1801,9 +1804,9 @@ test('R174 competitor carryover selects the located peer rather than the target 
   }
   const raw=[{id:'technologies',markdown:'本节未提供具名竞品的同口径比较。[annual@paragraph:1]',sourceCandidateIds:['annual']}]
   const result=reconcileCompanyCompetitorEvidence({sections:raw,methodResults:[method]})
-  assert.match(result[0]!.markdown,/吉利银河E8披露/)
-  assert.match(result[0]!.markdown,/\[public-web-peer@paragraph:1\]/)
-  assert.match(result[0]!.markdown,/\[public-web-peer@paragraph:2\]/)
+  assert.match(result[0]!.markdown,/具名候选及产品路线见“竞争格局”章节/)
+  assert.doesNotMatch(result[0]!.markdown,/\[public-web-peer@paragraph:1\]/)
+  assert.doesNotMatch(result[0]!.markdown,/\[public-web-peer@paragraph:2\]/)
   assert.doesNotMatch(result[0]!.markdown,/候选.*比亚迪海豹/)
   assert.deepEqual(findKnownCompetitorDenials({sections:result,methodResults:[method]}),[])
   assert.deepEqual(findKnownCompetitorDenials({sections:[{id:'risks',markdown:'没有具名竞品。'}],methodResults:[method]}),[])
@@ -1817,30 +1820,31 @@ test('R174 competitor carryover selects the located peer rather than the target 
     const row=nonAutomotiveFixed.split('\n').find(line=>line.startsWith(`| ${label} |`))!
     assert.doesNotMatch(row,/吉利银河E8/)
   }
-  assert.match(nonAutomotiveFixed.split('\n').find(line=>line.startsWith('| 乘用车 |'))!,/吉利银河E8/)
+  assert.match(nonAutomotiveFixed.split('\n').find(line=>line.startsWith('| 乘用车 |'))!,/具名候选及产品路线见“竞争格局”章节/)
   const riskDenial = '没有具名竞品及其可比产品、技术路线、价格、成本或份额的证据，故不作排名。'
   const repairedRisk = reconcileCompanyCompetitorEvidence({sections:[{id:'risks',markdown:riskDenial,sourceCandidateIds:[]}],methodResults:[method]})
-  assert.match(repairedRisk[0]!.markdown,/吉利银河E8披露/)
+  assert.match(repairedRisk[0]!.markdown,/具名候选及产品路线见“竞争格局”章节/)
   assert.doesNotMatch(repairedRisk[0]!.markdown,/没有具名竞品/)
   const industryDenial = '缺少具体竞品同口径数据，无法进行具名竞争对比。'
   const repairedIndustry = reconcileCompanyCompetitorEvidence({sections:[{id:'industry-exposure',markdown:industryDenial,sourceCandidateIds:[]}],methodResults:[method]})
-  assert.match(repairedIndustry[0]!.markdown,/具名产品路线候选已由竞争方法核实/)
-  assert.match(repairedIndustry[0]!.markdown,/\[public-web-peer@paragraph:1\]/)
+  assert.match(repairedIndustry[0]!.markdown,/具名候选及产品路线见“竞争格局”章节/)
+  assert.doesNotMatch(repairedIndustry[0]!.markdown,/\[public-web-peer@paragraph:1\]/)
   const broadIndustryDenial = '现有材料无具名汽车或电子制造竞争者及同口径产品、地域、价格、销量、产能或毛利率比较。'
   const repairedBroadIndustry = reconcileCompanyCompetitorEvidence({sections:[{id:'industry-exposure',markdown:broadIndustryDenial,sourceCandidateIds:[]}],methodResults:[method]})
-  assert.match(repairedBroadIndustry[0]!.markdown,/竞争方法已核实的具名候选为：吉利银河E8/)
+  assert.match(repairedBroadIndustry[0]!.markdown,/具名候选及产品路线见“竞争格局”章节/)
   assert.doesNotMatch(repairedBroadIndustry[0]!.markdown,/无具名汽车或电子制造竞争者/)
 
   const insufficientEvidence='本次证据不含足够具名竞品、路线、区域份额或同口径成本/性能数据，无法进行可比竞争定位。'
   const repairedInsufficientEvidence=reconcileCompanyCompetitorEvidence({sections:[{id:'industry-exposure',markdown:insufficientEvidence,sourceCandidateIds:[]}],methodResults:[method]})
-  assert.match(repairedInsufficientEvidence[0]!.markdown,/已核实具名候选与产品路线为：吉利银河E8/)
-  assert.match(repairedInsufficientEvidence[0]!.markdown,/直接竞标、区域份额及同口径成本\/性能仍未验证/)
+  assert.match(repairedInsufficientEvidence[0]!.markdown,/具名候选及产品路线见“竞争格局”章节/)
+  assert.match(repairedInsufficientEvidence[0]!.markdown,/直接竞标、客户重叠、市场份额或同口径成本\/性能胜负/u)
+  assert.doesNotMatch(repairedInsufficientEvidence[0]!.markdown,/吉利银河E8披露/)
   assert.doesNotMatch(repairedInsufficientEvidence[0]!.markdown,/不含足够具名竞品/)
 
   const comparisonOnlyFinding={...method,findings:[{text:'事实：吉利银河E8官方资料披露800V平台、SiC油冷电驱及充电相关宣传，构成纯电乘用车补能路线的具名对照；并无统一测试对比。',kind:'fact' as const,evidence:[{sourceCandidateId:'public-web-peer',location:'paragraph:2'}]}]}
   const scopedIndustryGap='未提供具名竞争者及可比产品路线、地区和客户层级资料，不能作竞争排名或份额判断。'
   const scopedIndustryFixed=reconcileCompanyCompetitorEvidence({sections:[{id:'industry-exposure',markdown:scopedIndustryGap,sourceCandidateIds:[]}],methodResults:[comparisonOnlyFinding]})[0]!.markdown
-  assert.match(scopedIndustryFixed,/吉利银河E8/)
+  assert.match(scopedIndustryFixed,/具名候选及产品路线见“竞争格局”章节/)
   assert.doesNotMatch(scopedIndustryFixed,/未提供具名竞争者及可比产品路线/)
   assert.match(scopedIndustryFixed,/客户重叠|同口径|竞争关系/)
 })
@@ -1862,7 +1866,7 @@ test('R174 competitor carryover rewrites a product-table denial without consumin
   const row = rewritten.markdown.split('\n').find(line => line.startsWith('| 乘用车：'))!
   assert.equal(row.split(/(?<!\\)\|/u).length - 2, 5, 'competitor replacement stays within the comparison cell')
   assert.deepEqual(validateCompanyResearchMarkdownTables(rewritten.markdown), [])
-  assert.match(row, /竞争方法已核实的具名候选为：吉利银河E8/)
+  assert.match(row, /具名候选及产品路线见“竞争格局”章节/)
   assert.match(row, /\| 公司称相关技术已规模化应用；产品级收入、成本及利润未披露 \[official-report@paragraph:165\] \[official-report@paragraph:166\] \|$/)
 
   const unrelatedPhoneRow = '| 手机部件 | 消费电子 | 结构件 | 本节产品资料未提供具名竞品的同口径比较。 | 产品级利润未披露 [official-report@paragraph:358] |'
@@ -2351,7 +2355,7 @@ test('R195 cross-section cleanup cites the exact industry margin row, scopes the
   assert.match(industry,/\[annual@paragraph:894\]/)
   assert.match(fixed.find(section=>section.id==='products')!.markdown,/未由独立客户验证或第三方测试验证/)
   const risk=reconcileCompanyRiskBoundaries({sections:fixed,methodResults:[competition]}).find(section=>section.id==='risks')!.markdown
-  assert.match(risk,/竞争章节列有PCB应用场景候选/)
+  assert.match(risk,/竞争章节列出具名候选及产品路线/)
   assert.equal([...risk.matchAll(/公司所述措施不等于已实现商业化成果/g)].length,1)
 })
 

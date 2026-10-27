@@ -125,6 +125,10 @@ export function findKnownCompetitorDenials(input: { readonly sections: readonly 
       const endCandidates = ['。', '；', '\n'].map(mark => section.markdown.indexOf(mark, match.index)).filter(index => index >= 0)
       const end = endCandidates.length ? Math.min(...endCandidates) : section.markdown.length
       const denialClause = section.markdown.slice(start, end)
+      // Cross-chapter reviewers should point readers to the owner section,
+      // rather than duplicating peer claims in every synthesis chapter.
+      if (/具名候选及产品路线见[“"]?竞争格局[”"]?章节/u.test(denialClause)
+        && /直接竞标、客户重叠、市场份额/u.test(denialClause)) continue
       // Missing comparable measurements is narrower than denying a named peer.
       if (/具名(?:竞品|竞争者|对手)(?:的)?(?:同口径)?(?:比较|可比(?:资料|数据)?|性能|成本|价格|路线)/.test(denialClause)
         && /(?:缺少|没有|未提供|未披露|无法|不能|不足)/.test(denialClause)) continue
@@ -201,9 +205,9 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
   // described product route. Carry that narrow fact into synthesis chapters
   // that otherwise turn a missing like-for-like comparison into a claim that
   // no named candidate exists. Never infer customer overlap or actual rivalry.
-  const broadCandidateDenial = /(?:没有|未提供|未发现|缺少|缺乏|暂缺|未识别|尚无|无)(?:可直接比较的|可比(?:的)?|任何)?(?:具名)?(?:[^。；;\n|]{0,12})(?:竞品|竞争者|竞争对手|对手|候选(?:竞品|竞争者|对手)?)(?:[^。；;\n|]{0,45})/g
+  const broadCandidateDenial = /(?:[，,]\s*)?(?:也\s*)?(?:没有|未提供|未发现|缺少|缺乏|暂缺|未识别|尚无|无)(?:可直接比较的|可比(?:的)?|任何)?(?:具名)?(?:[^。；;\n|]{0,12})(?:竞品|竞争者|竞争对手|对手|候选(?:竞品|竞争者|对手)?)(?:[^。；;\n|]{0,45})/g
   const vaguePeerComparisonGap = /(?:现有|所给|目前)?(?:材料|证据|资料)(?:尚)?不足以(?:作|进行|形成)(?:直接|完整|同口径)?(?:同业|同行|竞争者|竞品)(?:比较|对比|分析)/g
-  const scopedCandidateGap = `竞争方法已核实的具名候选为：${candidateFinding}${candidateCitations}；但直接竞标、客户重叠、市场份额及同口径胜负仍未验证，不能据此断言存在真实竞争关系`
+  const scopedCandidateGap = '具名候选及产品路线见“竞争格局”章节；本节现有证据未验证直接竞标、客户重叠、市场份额或同口径成本/性能胜负'
   const automotiveCandidate = /汽车|乘用车|纯电|插混|车型/.test(candidateFinding)
   let changed = false
   const sections = input.sections.map(section => {
@@ -221,7 +225,7 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
       const start = markdown.lastIndexOf('\n', offset) + 1
       const end = markdown.indexOf('\n', offset)
       const line = markdown.slice(start, end < 0 ? undefined : end)
-      if (line.includes('竞争方法已核实的具名候选为') || line.includes('不能据此断言存在真实竞争关系')) return false
+      if (line.includes('具名候选及产品路线见“竞争格局”章节') || line.includes('不能据此断言存在真实竞争关系')) return false
       if (automotiveCandidate && /^\s*\|/.test(line)) {
         const rowLabel = line.split('|')[1]?.trim() ?? ''
         if (/手机|电子器件|手机部件|储能|消费电池|光伏|轨道交通|AI算力|数据中心/.test(rowLabel)
@@ -230,25 +234,24 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
       return true
     }
     if (/宁德时代|CATL/.test(candidateName) && candidateCitations.includes('@paragraph:35')) {
-      const preciseRoute = `${candidateFinding}${candidateCitations}`
-      const normalizedRoute = markdown.replace(/(?:宁德时代官网明确涉及乘用车动力电池[^。；\n]{0,120}|宁德时代官网[“”"']涉及乘用车动力电池[“”"'][^。；\n]{0,120}|宁德时代将乘用车列为解决方案[^。；\n]{0,140})/g, preciseRoute)
+      const normalizedRoute = markdown.replace(/宁德时代官网明确涉及乘用车动力电池[^。；\n]{0,140}；现有材料不足以验证同一采购决策或完全可比性/g, scopedCandidateGap)
       if (normalizedRoute !== markdown) changed = true
       markdown = normalizedRoute
     }
     markdown = markdown.replace(scopedDenial, (match, offset: number) => {
       if (!scopeMatches(offset)) return match
       changed = true
-      return `竞争方法已核实的具名候选为：${candidateFinding}${candidateCitations}。但本节仍缺少直接竞标、客户重叠及与公司产品同口径的性能、成本、价格或份额数据，故仅作有限候选比较，不据此断言直接竞争或相对优势`
+      return `${offset > 0 ? '；' : ''}${scopedCandidateGap}`
     })
     markdown = markdown.replace(industryDenial, (match, offset: number) => {
       if (!scopeMatches(offset)) return match
       changed = true
-      return `具名产品路线候选已由竞争方法核实：${candidateFinding}${candidateCitations}。实际采购重叠、直接竞标、同口径性能成本及市场份额仍未验证`
+      return scopedCandidateGap
     })
     markdown = markdown.replace(insufficientNamedCandidateEvidence, (match, offset: number) => {
       if (!scopeMatches(offset)) return match
       changed = true
-      return `已核实具名候选与产品路线为：${candidateFinding}${candidateCitations}；直接竞标、区域份额及同口径成本/性能仍未验证`
+      return scopedCandidateGap
     })
     if (['company-overview', 'products', 'technologies', 'industry-exposure', 'business-segments', 'risks'].includes(section.id)) {
       markdown = markdown.replace(broadCandidateDenial, (match, offset: number) => {
@@ -257,18 +260,13 @@ export function reconcileCompanyCompetitorEvidence<T extends CompanyContentSecti
         return scopedCandidateGap
       })
     }
-    const needsContext = ['products', 'technologies', 'industry-exposure'].includes(section.id) && !markdown.includes(candidateName)
-    if (needsContext) {
+    if (section.id === 'risks' && !markdown.includes('候选及产品路线见“竞争格局”章节') && !markdown.includes(candidateName)) {
       changed = true
-      markdown = `${markdown.trim()}\n\n跨方法核对：竞争方法已核实的具名候选及其产品路线为：${candidateFinding}${candidateCitations}。此候选不等于已证实直接竞标；实际客户重叠、同口径性能成本和份额仍未验证。`
-    }
-    if (section.id === 'risks' && !markdown.includes(candidateName)) {
-      changed = true
-      markdown = `${markdown.trim()}\n\n竞争风险的具名候选事实：${candidateFinding}${candidateCitations}。该资料只支持其公开产品路线；客户重叠、直接竞标及其对本公司的订单或利润影响均未验证，不将其表述为已证实的直接竞争关系。`
+      markdown = `${markdown.trim()}\n\n竞争风险边界：具名候选及产品路线见“竞争格局”章节；客户重叠、直接竞标、市场份额及同口径表现仍未验证，不将候选对照表述为已证实的直接竞争关系。`
     }
     if (section.id === 'risks') markdown = markdown.replace(vaguePeerComparisonGap, () => {
       changed = true
-      return `竞争方法已核实具名候选及路线，但材料不足以作完整同业比较；直接竞标、客户重叠、市场份额及同口径表现仍未验证${candidateCitations}`
+      return '具名候选及产品路线见“竞争格局”章节；材料不足以作完整同业比较，直接竞标、客户重叠、市场份额及同口径表现仍未验证'
     })
     return markdown === section.markdown ? section : { ...section, markdown, sourceCandidateIds: [...new Set([...(section.sourceCandidateIds ?? []), ...evidence.map(({ ref }) => ref.sourceCandidateId)])] }
   })
@@ -1876,24 +1874,20 @@ export function reconcileCompanyRiskBoundaries<T extends CompanyContentSection>(
   if(competition){
     const pcbCandidateEvidence=competition.markdown.split(/\r?\n/).filter(line=>/(?:鹏鼎控股|PCB|FPC|电子电路产品)/.test(line)&&/@paragraph:\d+/.test(line)).slice(0,3)
     if(pcbCandidateEvidence.length){
-      const refs=[...new Set(pcbCandidateEvidence.flatMap(line=>[...line.matchAll(/\[([^\]]+@paragraph:\d+)\]/g)].map(match=>`[${match[1]}]`)))].join(' ')
-      markdown=markdown.replace(/(?:披露)?未(?:提供|给出)具名竞争对手、可比产品性能、市场份额(?:或认证成功率)?(?:，|；)无法验证相对竞争位置与技术领先幅度；公司所述措施不等于已实现商业化成果。/g,`竞争章节列有PCB应用场景候选，但现有材料未提供同口径产品性能、市场份额或认证成功率，无法验证相对竞争位置与技术领先幅度；公司所述措施不等于已实现商业化成果。${refs}`)
+      markdown=markdown.replace(/(?:披露)?未(?:提供|给出)具名竞争对手、可比产品性能、市场份额(?:或认证成功率)?(?:，|；)无法验证相对竞争位置与技术领先幅度；公司所述措施不等于已实现商业化成果。/g,'竞争章节列出具名候选及产品路线；同口径产品性能、市场份额或认证成功率仍未验证，公司所述措施不等于已实现商业化成果。')
     }
     const namedRouteEvidence=competition.markdown.split(/\r?\n/).filter(line=>/(?:宁德时代|CATL)/.test(line)&&/(?:乘用车|电池|超快充|闪充)/.test(line)&&/@paragraph:\d+/.test(line)).slice(0,3)
     if(namedRouteEvidence.length){
-      const refs=[...new Set(namedRouteEvidence.flatMap(line=>[...line.matchAll(/\[([^\]]+@paragraph:\d+)\]/g)].map(match=>`[${match[1]}]`)))].join(' ')
-      markdown=markdown.replace(/(?:但)?材料没有同口径竞品业绩、产品路线或市场份额数据，不能验证相对优势。/g,`但现有材料虽识别宁德时代乘用车电池超快充路线这一候选对照，仍缺少同口径竞品业绩、价格、成本、市场份额及客户重叠数据；路线重叠不等于已证实直接竞争或相对优势。${refs}`)
+      markdown=markdown.replace(/(?:但)?材料没有同口径竞品业绩、产品路线或市场份额数据，不能验证相对优势。/g,'但竞争章节已列具名候选及产品路线；同口径业绩、价格、成本、市场份额和客户重叠仍未验证，不据此判断直接竞争或相对优势。')
     }
     const geelyRouteEvidence=competition.markdown.split(/\r?\n/).filter(line=>/吉利银河E8/.test(line)&&/(?:高压|SiC|油冷电驱)/.test(line)&&/@paragraph:\d+/.test(line)).slice(0,3)
     if(geelyRouteEvidence.length){
-      const refs=[...new Set(geelyRouteEvidence.flatMap(line=>[...line.matchAll(/\[([^\]]+@paragraph:\d+)\]/g)].map(match=>`[${match[1]}]`)))].join(' ')
-      markdown=markdown.replace(/现有材料不能证实具体竞争对手或技术路线已构成[^，。；|]{0,24}(?:冲击|风险)/g,`竞争方法已识别吉利银河E8及其高压平台、SiC油冷电驱路线；直接替代、客户重叠、份额和同口径胜负仍未验证${refs}`)
+      markdown=markdown.replace(/现有材料不能证实具体竞争对手或技术路线已构成[^，。；|]{0,24}(?:冲击|风险)/g,'竞争章节列有具名候选及技术路线；直接替代、客户重叠、份额和同口径胜负仍未验证')
       for(const line of geelyRouteEvidence)for(const match of line.matchAll(/\[([^\]]+)@paragraph:\d+\]/g))additionalSourceIds.add(match[1]!)
     }
     const competitorEvidence=competition.markdown.split(/\r?\n/).filter(line=>/(?:中际旭创|光模块|EML|DFB|PAM4)/.test(line)&&/@paragraph:\d+/.test(line)).slice(0,3)
     if(competitorEvidence.length){
-      const refs=[...new Set(competitorEvidence.flatMap(line=>[...line.matchAll(/\[([^\]]+@paragraph:\d+)\]/g)].map(match=>match[0])))].join(' ')
-      markdown=markdown.replace(/本次材料没有具名竞争者、产品路线、份额或可比成本\/毛利数据，不能判断竞争地位或量化竞争冲击。/g,`竞争章节已识别中际旭创等具名对照及光模块/EML产品路线，但直接竞争关系、可比市场份额和成本/毛利数据尚未证实，故不能据此量化竞争冲击或判定相对地位。${refs}`)
+      markdown=markdown.replace(/本次材料没有具名竞争者、产品路线、份额或可比成本\/毛利数据，不能判断竞争地位或量化竞争冲击。/g,'竞争章节列有具名候选及产品路线；直接竞争关系、可比市场份额和成本/毛利数据尚未证实，故不能据此量化竞争冲击或判定相对地位。')
     }
   }
   // A dash or an omitted impairment-table row is not an affirmative zero.

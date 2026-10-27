@@ -1671,15 +1671,10 @@ function evidenceCitations(evidence: NamedCompetitiveCandidate['publicEvidence']
   return [...new Set(evidence.map(ref => `[${ref.sourceCandidateId}@${ref.location}]`))].join(' ')
 }
 
-function findingCitations(finding: CompanyResearchMethodResult['findings'][number]): string {
-  return [...new Set(finding.evidence.map(ref => `[${ref.sourceCandidateId}@${ref.location}]`))].join(' ')
-}
-
 function repairSynthesisCompetitorDenials(text: string, candidate: NamedCompetitiveCandidate | undefined): string {
   if (!candidate) return text
-  const citations = evidenceCitations(candidate.publicEvidence)
   const denial = /(?:现有材料)?(?:没有|未提供|未发现|未披露|缺少|无)具名(?:竞品|竞争者|竞争对手|对手)[^。；\n|]*/g
-  return text.replace(denial, `跨方法核实的具名候选为${candidate.entity}：${candidate.finding.text}${citations}；本节未提供其余产品的同口径竞品数据，直接竞标、客户重叠及同口径性能、价格、成本或份额仍未验证`)
+  return text.replace(denial, '具名候选及产品路线见“竞争格局”章节；直接竞标、客户重叠、同口径性能/价格/成本及份额仍未验证')
 }
 
 function reconcileCrossMethodCompetitionContext(input: CompanyResearchInput, sections: { id: string; markdown: string; sourceCandidateIds: string[] }[], methods: readonly CompanyResearchMethodResult[], allowedLocations: ReadonlySet<string>): void {
@@ -1688,10 +1683,11 @@ function reconcileCrossMethodCompetitionContext(input: CompanyResearchInput, sec
   const citations = evidenceCitations(candidate.publicEvidence)
   const industry = sections.find(section => section.id === 'industry-exposure')
   const companyRoute = candidate.companyRoute
-  const routeText = companyRoute ? `公司侧路线：${companyRoute.text}${findingCitations(companyRoute)}。` : ''
-  const industrySentence = `竞争结构补充：公开来源支持的候选为${candidate.entity}；本轮竞争方法记录为“${candidate.finding.text}”${citations}。${routeText}候选和应用场景重叠不证明直接采购竞争、客户重叠、市场份额或双方属于同一可服务市场。`
-  if (industry && !industry.markdown.includes(candidate.entity)) {
-    industry.markdown = `${industry.markdown.trim()}\n\n${industrySentence}`
+  const industrySentence = '跨章节核对：具名候选及产品路线见“竞争格局”章节；候选或场景相邻不证明直接采购竞争、客户重叠、市场份额或双方属于同一可服务市场。'
+  if (industry) {
+    if (!industry.markdown.includes('具名候选及产品路线见“竞争格局”章节') && !industry.markdown.includes(candidate.entity)) {
+      industry.markdown = `${industry.markdown.trim()}\n\n${industrySentence}`
+    }
     industry.sourceCandidateIds = [...new Set([...industry.sourceCandidateIds, ...candidate.publicEvidence.map(ref => ref.sourceCandidateId), ...(companyRoute?.evidence.map(ref => ref.sourceCandidateId) ?? [])])]
   }
 
@@ -1712,9 +1708,11 @@ function reconcileCrossMethodCompetitionContext(input: CompanyResearchInput, sec
   }
 
   const risks = sections.find(section => section.id === 'risks')
-  if (risks && !risks.markdown.includes('候选识别不等于已证实直接竞品')) {
-    const riskClarification = `\n\n**竞争风险边界。** 竞争方法依据公开来源将${candidate.entity}列为候选；该方法的证据为${candidate.finding.text}${citations}。${routeText}候选识别不等于已证实直接竞品。现有材料尚不能确认双方实际客户或招投标重合、市场份额及同口径成本和性能，风险判断限于潜在订单、收入与毛利传导，影响程度未证实。`
-    risks.markdown = `${risks.markdown.trim()}${riskClarification}`
+  if (risks) {
+    if (!risks.markdown.includes('具名候选及产品路线见“竞争格局”章节') && !risks.markdown.includes(candidate.entity)) {
+      const riskClarification = '\n\n**竞争风险边界。** 具名候选及产品路线见“竞争格局”章节；候选识别不等于已证实直接竞品。现有材料尚不能确认双方实际客户或招投标重合、市场份额及同口径成本和性能，风险判断限于潜在订单、收入与毛利传导，影响程度未证实。'
+      risks.markdown = `${risks.markdown.trim()}${riskClarification}`
+    }
     risks.sourceCandidateIds = [...new Set([...risks.sourceCandidateIds, ...candidate.publicEvidence.map(ref => ref.sourceCandidateId), ...(companyRoute?.evidence.map(ref => ref.sourceCandidateId) ?? [])])]
   }
 }
