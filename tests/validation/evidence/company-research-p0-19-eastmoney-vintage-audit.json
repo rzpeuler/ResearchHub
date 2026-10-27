@@ -7,8 +7,8 @@
   "forecastValuesIncluded": false,
   "findings": {
     "periodMapping": "AKShare report projection uses explicit YYYY-prefixed forecast field names; inspected live rows expose 2026, 2027, and 2028 fields. Exact-report EastMoney Report API queries returned currentYear=2026 for the matched 2024 reports, consistent with those FY2026 labels. The inspected records do not demonstrate a fiscal-year parser defect.",
-    "publicationAndValueVintage": "A row's historical report date is present, but no archived numeric revision identifier or per-estimate valueVersion/EPS basis is present. The acquired current row cannot establish that its value equals the value originally published on that date.",
-    "qualification": "UNQUALIFIED_FOR_HISTORICAL_PIT_OR_VARIANT_COMPARISON"
+    "publicationAndValueVintage": "The acquired current row has no per-estimate valueVersion/EPS basis. Some exact report PDFs independently reproduce the acquired fiscal-period estimate and state diluted EPS; these remain candidate-only until the point-to-document proof is represented and enforced by the runtime.",
+    "qualification": "RUNTIME_VARIANT_ESTIMATES_UNQUALIFIED; EXACT_PDF_MATCHES_REMAIN_CANDIDATE_ONLY"
   },
   "exactReportApiCrossChecks": [
     {
@@ -70,6 +70,25 @@
       "analysisSnapshotAsOf": "2026-10-27 19:13:23 Asia/Shanghai",
       "observations": [
         {
+          "sourceCandidateId": "eastmoney-akshare-report-139de6c9bd8340e81a1cf2d2d199112144c31cb4479ee312d0fb7fd6199c9f4f",
+          "contentHash": "4c6093b533afce0a4ef876ba50c6d09c05f70923fe7fa1a0579c794537eb180e",
+          "reportPublishedDate": "2026-03-30",
+          "explicitForecastPeriodFields": [
+            "2026-盈利预测-收益",
+            "2027-盈利预测-收益",
+            "2028-盈利预测-收益"
+          ],
+          "valueVersionPresent": false,
+          "epsBasisPresent": false,
+          "pdfCrossCheck": {
+            "reportUrl": "https://pdf.dfcfw.com/pdf/H3_AP202603301820859917_1.pdf",
+            "exactFiscalYearEstimateMatched": true,
+            "epsBasis": "DILUTED",
+            "localPdfTextAndVisualInspection": true,
+            "runtimePointQualification": "CANDIDATE_ONLY"
+          }
+        },
+        {
           "sourceCandidateId": "eastmoney-akshare-report-3e64039ab3d76d232f7916ff84404c140c7f18eef1092cc521f17ff8a43cc309",
           "contentHash": "ac5507caa7893a19f8c2fb8adea473997e8c491fd8086f806b22a642a8e0c106",
           "reportPublishedDate": "2024-05-07",
@@ -105,6 +124,7 @@
   "limitations": [
     "The local ignored analysis sidecars contain raw provider rows and were not copied to the repository.",
     "This evidence does not determine whether the EastMoney/AKShare service has a documented archived-revision guarantee.",
-    "No forecast amount is recorded or accepted as a historical value-version point."
+    "The verified PDF match and basis are not currently attached to an EstimatePoint in the runtime; no estimate is accepted as a qualified historical value-version point by this audit.",
+    "No forecast amount is recorded in the committed evidence."
   ]
 }

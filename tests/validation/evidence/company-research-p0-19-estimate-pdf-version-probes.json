@@ -52,6 +52,17 @@
       "epsBasis": "UNSPECIFIED",
       "localPdfAndVisualInspection": true,
       "pointVersionQualification": "UNQUALIFIED_BASIS"
+    },
+    {
+      "company": "Dongshan Precision",
+      "sourceCandidateId": "eastmoney-akshare-report-139de6c9bd8340e81a1cf2d2d199112144c31cb4479ee312d0fb7fd6199c9f4f",
+      "reportUrl": "https://pdf.dfcfw.com/pdf/H3_AP202603301820859917_1.pdf",
+      "providerPublishedAt": "2026-03-30",
+      "reportDate": "2026-03-30",
+      "identityAndEstimateBinding": "MATCHED",
+      "epsBasis": "DILUTED",
+      "localPdfAndVisualInspection": true,
+      "pointVersionQualification": "CANDIDATE_ONLY"
     }
   ]
 }
