@@ -801,6 +801,69 @@ test('R144 removes only an orphan separator whose following rows have inconsiste
   assert.ok(validateCompanyResearchMarkdownTables(plausible.markdown).some(error => error.includes('no adjacent header row')), 'consistent unknown table remains fail-closed')
 })
 
+test('reattaches the unique M&A header only to its exact three-column acquisition table', () => {
+  const header = '| 行动 | 已有证据及目的 | 结果与判断限制 |'
+  const acquisitionRows = [
+    '| 收购法国GMD集团 | 公司披露拓展欧洲汽车零部件布局。[annual@paragraph:4] | 成交价与标的回报未提供。[annual@paragraph:5] |',
+    '| 收购索尔思光电 | 公司披露进入光模块领域。[annual@paragraph:6] | 缺少标的资本基数和增量现金流。[annual@paragraph:7] |',
+    '| 收购融资背景 | 年报说明短期借款变动与收购相关。[annual@paragraph:8] | 不能将全部借款归于单一标的。[annual@paragraph:9] |',
+    '| H股融资安排 | 年报记录董事会审议发行议案。[annual@paragraph:10] | 未证明发行完成或资金到账。[annual@paragraph:11] |',
+  ]
+  const fixture = [
+    '### 研发与资本开支',
+    '| 行动及期间 | 规模及披露 | 目的、资金与后续结果 |',
+    '|---|---|---|',
+    '| 购建长期资产现金支出；2026年上半年累计 | 人民币52.53亿元。[financial@paragraph:1] | 扩充光模块与AI PCB产能。[annual@paragraph:2] |',
+    header,
+    '年度研发比率须与结构化研发费用区分。[financial@paragraph:3]',
+    '### 并购与融资',
+    '|---|---|---|',
+    ...acquisitionRows,
+  ].join('\n')
+  const locator = /\[[A-Za-z0-9._:-]+@paragraph:\d+\]/gu
+  const beforeLocators = [...fixture.matchAll(locator)].map(match => match[0])
+  const repaired = repairCompanyResearchMarkdownTables(fixture)
+  assert.ok(repaired.repairs.some(repair => repair.startsWith('TABLE_MNA_HEADER_REATTACHED')))
+  assert.deepEqual(repaired.diagnostics, [])
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+  assert.match(repaired.markdown, /### 并购与融资\n\| 行动 \| 已有证据及目的 \| 结果与判断限制 \|\n\|---\|---\|---\|/)
+  assert.deepEqual([...repaired.markdown.matchAll(locator)].map(match => match[0]), beforeLocators, 'citation locators retain their exact order')
+  assert.equal(repaired.markdown.split(header).length - 1, 1, 'the unique header is moved, not duplicated')
+  for (const row of acquisitionRows) assert.ok(repaired.markdown.includes(row), `preserves acquisition row exactly: ${row}`)
+
+  const changedHeader = repairCompanyResearchMarkdownTables(fixture.replace('已有证据及目的', '已有证据及背景'))
+  assert.ok(!changedHeader.repairs.some(repair => repair.startsWith('TABLE_MNA_HEADER_REATTACHED')))
+  assert.ok(validateCompanyResearchMarkdownTables(changedHeader.markdown).some(error => error.includes('no adjacent header row')))
+
+  const changedRows = repairCompanyResearchMarkdownTables(fixture.replace('| H股融资安排 |', '| 其他融资安排 |'))
+  assert.ok(!changedRows.repairs.some(repair => repair.startsWith('TABLE_MNA_HEADER_REATTACHED')))
+  assert.ok(validateCompanyResearchMarkdownTables(changedRows.markdown).some(error => error.includes('no adjacent header row')))
+
+  const duplicateAnchor = repairCompanyResearchMarkdownTables(fixture.replace('### 并购与融资', '### 并购与融资\n### 并购与融资'))
+  assert.ok(!duplicateAnchor.repairs.some(repair => repair.startsWith('TABLE_MNA_HEADER_REATTACHED')))
+  assert.ok(validateCompanyResearchMarkdownTables(duplicateAnchor.markdown).some(error => error.includes('no adjacent header row')))
+})
+
+test('does not split a valid table row into the header of a later table', () => {
+  const industryRow = '| 分行业：电子；2025年度 | 396 | 341 | 13.85% | 8.67% | 8.83% | -0.12% |'
+  const markdown = [
+    '### 分行业公司披露',
+    '| 分类及报告期 | 营业收入 | 营业成本 | 毛利率 | 收入增减 | 成本增减 | 毛利率增减 |',
+    '|---|---:|---:|---:|---:|---:|---:|',
+    industryRow,
+    '### 后续分析',
+    '说明性文字。',
+    '| 指标 | 数值 | 期间 | 限制 |',
+    '|---|---|---|---|',
+    '| 指标A | 10 | 2025年度 | 仅作背景 |',
+  ].join('\n')
+
+  const repaired = repairCompanyResearchMarkdownTables(markdown)
+  assert.ok(repaired.markdown.includes(industryRow), 'all seven industry cells remain intact')
+  assert.ok(!repaired.repairs.some(repair => repair.startsWith('TABLE_EMBEDDED_HEADER_MOVED')))
+  assert.deepEqual(validateCompanyResearchMarkdownTables(repaired.markdown), [])
+})
+
 test('R146 separates inline section headings from body text without touching tables or code fences', () => {
   const fallback = `## 收入、利润与成本传导 ### 合并表现及归因边界 2026年半年度报告披露本报告期营业收入下降。[r1@paragraph:1] 后续贡献未能量化。 ### 分行业表的收入、成本与毛利率变化 行业成本增长快于收入。[r2@paragraph:2]\n\n| 指标 | 说明 |\n|---|---|\n| literal ## table cell | 该单元格保留 ## 标记 |\n\n\`\`\`md\n## literal code heading body\n\`\`\``
   const artifactPath = 'runtime-data/company-quality-acceptance/R146-byd/002594-report.json'

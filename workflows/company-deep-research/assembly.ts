@@ -791,6 +791,9 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
     const candidates: Array<{ index: number; prefix: string; header: string[] }> = []
     for (let candidateIndex = previous; candidateIndex >= 0 && !isSeparator(lines[candidateIndex]!); candidateIndex--) {
       const line = lines[candidateIndex]!
+      // A complete table row can contain enough trailing pipe-delimited cells
+      // to resemble the header for a later table. Never split a candidate
+      // whose prefix is itself a pipe row; doing so drops valid source cells.
       // Preserve the exact fused locator-header case for the narrow repair at
       // the end of this pipeline; treating its seven-column prefix as an
       // embedded header corrupts the source row before it can be split.
@@ -799,7 +802,7 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
         if (line[delimiter] !== '|') continue
         const prefix = line.slice(0, delimiter).trim()
         const headerLine = line.slice(delimiter).trim()
-        if (!prefix || !headerLine.endsWith('|')) continue
+        if (!prefix || /^\s*\|/u.test(prefix) || !headerLine.endsWith('|')) continue
         const header = splitCells(headerLine)
         if (header.length !== width || header.some(cell => !cell || /^#{1,6}\s/u.test(cell))) continue
         candidates.push({ index: candidateIndex, prefix, header })
@@ -1054,6 +1057,45 @@ export function repairCompanyResearchMarkdownTables(markdown: string): { readonl
       repairs.push(`TABLE_HEADER_HEADING_DETACHED: line ${headerIndex + 1}; separator width ${separatorWidth}->${headerWidth}`)
     } else repairs.push(`TABLE_HEADER_HEADING_DETACHED: line ${headerIndex + 1}`)
     index = adjustedSeparatorIndex
+  }
+
+  // Capital-allocation synthesis can move the exact M&A header ahead of the
+  // prior table's trailing explanatory paragraph. Reattach it only when the
+  // unique subsection, three-column separator, and all four exact acquisition
+  // row labels establish the destination; the header text and cited rows are
+  // moved verbatim, without inferring or changing any cell content.
+  const acquisitionHeading = '### 并购与融资'
+  const acquisitionHeader = ['行动', '已有证据及目的', '结果与判断限制']
+  const acquisitionLabels = ['收购法国GMD集团', '收购索尔思光电', '收购融资背景', 'H股融资安排']
+  const acquisitionHeadingIndexes = lines.flatMap((line, index) => line.trim() === acquisitionHeading ? [index] : [])
+  const acquisitionHeaderIndexes = lines.flatMap((line, index) =>
+    isPipeLine(line) && !isSeparator(line) && JSON.stringify(splitCells(line)) === JSON.stringify(acquisitionHeader) ? [index] : [])
+  if (acquisitionHeadingIndexes.length === 1 && acquisitionHeaderIndexes.length === 1) {
+    const headingIndex = acquisitionHeadingIndexes[0]!
+    const headerIndex = acquisitionHeaderIndexes[0]!
+    const matchingSeparators: number[] = []
+    for (let separatorIndex = headingIndex + 1; separatorIndex < lines.length; separatorIndex++) {
+      if (!isSeparator(lines[separatorIndex]!) || splitCells(lines[separatorIndex]!).length !== acquisitionHeader.length) continue
+      let previous = separatorIndex - 1
+      while (previous > headingIndex && !lines[previous]!.trim()) previous--
+      if (previous !== headingIndex) continue
+      const rows: string[][] = []
+      for (let rowIndex = separatorIndex + 1; rowIndex < lines.length && isPipeLine(lines[rowIndex]!) && !isSeparator(lines[rowIndex]!); rowIndex++) {
+        rows.push(splitCells(lines[rowIndex]!))
+      }
+      if (rows.length === acquisitionLabels.length
+        && rows.every((row, index) => row.length === acquisitionHeader.length && row[0] === acquisitionLabels[index])) {
+        matchingSeparators.push(separatorIndex)
+      }
+    }
+    if (headerIndex < headingIndex && matchingSeparators.length === 1) {
+      const separatorIndex = matchingSeparators[0]!
+      const headerLine = lines[headerIndex]!
+      lines.splice(headerIndex, 1)
+      const adjustedSeparatorIndex = separatorIndex - 1
+      lines.splice(adjustedSeparatorIndex, 0, headerLine)
+      repairs.push(`TABLE_MNA_HEADER_REATTACHED: line ${headerIndex + 1}->${adjustedSeparatorIndex + 1}; width ${acquisitionHeader.length}`)
+    }
   }
 
   // A semantic response can emit the next table's header directly after the
