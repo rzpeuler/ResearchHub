@@ -111,6 +111,19 @@ P0-19 remains incomplete. The BYD and Dongshan reports did not pass all required
 
 P0-19 remains incomplete pending both real reports passing all 19 checks and independent semantic acceptance.
 
+### Current-code 19-section gate regression recheck (2026-10-27)
+
+After the P0-19 evidence documentation update, the current checkout (`bd9aa3e`; no runtime code changes after `e2e0870`) reran four focused suites:
+
+| Command | Result |
+|---|---:|
+| `node --import tsx --test tests/workflows/company-valuation-sections.test.ts` | 3/3 passed |
+| `node --import tsx --test tests/workflows/company-content-quality.test.ts` | 147/147 passed |
+| `node --import tsx --test tests/workflows/company-semantic-quality.test.ts` | 63/63 passed |
+| `node --import tsx --test tests/workflows/company-research-assembly.test.ts` | 98/98 passed |
+
+These suites confirm the structural 19-section gate, fail-closed scenario and forecast-vintage handling, independent 19-section review contract, and assembly behavior on existing fixtures. They are regression evidence only: no providers or live Runtime were called, and they do not upgrade either company report beyond its saved blocked result.
+
 ### Structured financial JSON in segment findings (2026-10-27)
 
 - The root Runtime/API BYD run `56ce2426-5ce7-4d42-a7bb-b2eb67bd356b` on `f8953db0f2ba7a413f3c9f721a85ac09a35fd399` reproduced a false rejection in `business_driver_analysis`: a single finding cited the official H1 segment classification marker and numeric row, plus `akshare-financial-002594@paragraph:1` for aggregate multi-period financial fields. The segment-table heuristic treated the JSON paragraph's unrelated numeric cells as another segment row and demanded a classification marker from the JSON source.
