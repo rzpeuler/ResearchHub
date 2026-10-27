@@ -743,6 +743,34 @@ function splitMultiTableProductDriverFinding<T extends { readonly findings: read
   let changed = false
   const findings = output.findings.flatMap(finding => {
     const clauses = finding.text.split(/[；;]/u).map(clause => clause.trim()).filter(Boolean)
+    if (clauses.length >= 2 && /分产品/u.test(finding.text)) {
+      const year = finding.text.match(/20\d{2}年/u)?.[0]
+      const splitRows = clauses.map(clause => {
+        const margin = /毛利率比上年同期增减\s*为?([-−]?\d+(?:\.\d+)?\s*[%％])/u.exec(clause)
+        const label = /(?:^|[，,])\s*([^，,。；;]{2,32}?)\s*(?:营业)?收入/u.exec(clause)?.[1]?.trim()
+        if (!year || !margin || !label || !/(?:产品|模组|组件|电路|模块)/u.test(label) || !/占(?:营业收入)?/u.test(clause)) return undefined
+        const revenueText = clause.slice(0, margin.index).replace(/[，,;；\s]+$/u, '').trim()
+        if (!revenueText) return undefined
+        const marginTail = clause.slice(margin.index + margin[0].length).trim()
+        const marginText = `${year}分产品${label}毛利率比上年同期增减为${margin[1]}${marginTail}`
+        return [
+          { ...finding, text: revenueText },
+          { ...finding, text: marginText },
+        ]
+      })
+      if (splitRows.filter(Boolean).length >= 2) {
+        changed = true
+        return splitRows.flatMap((row, index) => {
+          if (row) return row
+          // Keep a trailing qualitative note on the final split claim without
+          // duplicating it across every product row.
+          const finalRow = [...splitRows].reverse().find(Boolean)!
+          if (index !== splitRows.length - 1) return [{ ...finding, text: clauses[index]! }]
+          finalRow[finalRow.length - 1] = { ...finalRow[finalRow.length - 1]!, text: `${finalRow[finalRow.length - 1]!.text} ${clauses[index]}` }
+          return []
+        })
+      }
+    }
     if (clauses.length !== 2) return [finding]
     const [revenueClause, marginClause] = clauses as [string, string]
     if (!/分产品/u.test(revenueClause) || !/收入/u.test(revenueClause) || !/占比/u.test(revenueClause)

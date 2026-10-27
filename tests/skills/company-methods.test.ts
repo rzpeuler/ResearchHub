@@ -813,6 +813,53 @@ test('business-driver separates product revenue composition from its margin tabl
   assert.ok(rejected.diagnostics.some(diagnostic => diagnostic.code === 'NUMERIC_GROUNDING_ERROR'), JSON.stringify(rejected.diagnostics))
 })
 
+test('business-driver splits each product revenue and margin claim in a multi-product finding', async () => {
+  const id = 'multi-product-revenue-margin-rows'
+  const lines = [
+    '单位：元', '2026年本报告期 上年同期', '同比增减', '金额 占营业收入比重 金额 占营业收入比重', '分产品',
+    '电子电路产品 12,529,627,775.53 45.07% 11,059,315,884.89 65.23% 13.29%',
+    '精密组件产品 6,580,692,901.95 23.67% 2,361,835,859.44 13.93% 178.63%',
+    '光电显示模组 2,723,476,776.77 9.80% 3,048,999,533.55 17.98% -10.68%',
+    '其他经营披露。', '其他经营披露。', '单位：元', '营业收入 营业成本 毛利率', '营业收入比上年同期增减',
+    '营业成本比上年同期增减', '毛利率比上年同期增减', '分产品',
+    '电子电路产品 12,529,627,775.53 10,174,431,182.90 18.80% 13.29% 11.58% 1.25%',
+    '精密组件产品 6,580,692,901.95 5,782,359,541.79 12.13% 178.63% 166.89% 3.86%',
+    '光电显示模组 2,723,476,776.77 2,563,023,488.98 5.89% -10.68% -11.53% 0.90%',
+  ]
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: id }, title: '2026年半年度报告', content: lines.join('\n') }
+  const base = {
+    status: 'complete', answer: '产品收入结构与毛利率变化分表核对。', markdown: '产品收入和毛利率按各自原表分别核验。',
+    sections: [
+      { id: 'revenue-profit-drivers', markdown: `分产品收入与毛利率变化提供经营线索。[${id}@paragraph:5]` },
+      { id: 'growth-drivers', markdown: `应跟踪同口径产品收入、成本与毛利率。[${id}@paragraph:5]` },
+      { id: 'catalysts', markdown: `当前披露不构成未来产品收入承诺。[${id}@paragraph:5]` },
+    ],
+    findings: [{
+      text: '2026年半年报分产品表中，电子电路产品收入12,529,627,775.53元、占45.07%，毛利率比上年同期增减1.25%；精密组件产品收入6,580,692,901.95元、占23.67%，毛利率比上年同期增减3.86%；光电显示模组收入2,723,476,776.77元、占9.80%，毛利率比上年同期增减0.90%。各产品行独立。',
+      kind: 'fact' as const,
+      evidence: [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14].map(paragraph => ({ sourceCandidateId: id, location: `paragraph:${paragraph}` })),
+    }],
+    limitations: [], risks: [],
+  }
+  const run = (valueFiling: typeof filing) => executeCompanyResearchMethod({
+    company: { symbol: '002384', name: '东山精密', exchange: 'SZ' }, asOf: '2026-10-27',
+    sources: [valueFiling], reportSourceCandidateIds: [id], skillId: 'business_driver_analysis', maxAttempts: 1,
+    reasoningExecutor: executor(async () => base),
+  })
+  const accepted = await run(filing)
+  assert.equal(accepted.status, 'complete', JSON.stringify({ findings: accepted.findings, diagnostics: accepted.diagnostics }))
+  assert.equal(accepted.findings.length, 6, JSON.stringify(accepted.findings.map(finding => ({ text: finding.text, refs: finding.evidence.map(ref => ref.location) }))))
+  assert.ok(accepted.findings.some(finding => finding.text.includes('电子电路产品收入') && finding.text.includes('45.07%') && finding.evidence.some(ref => ref.location === 'paragraph:6')))
+  assert.ok(accepted.findings.some(finding => finding.text.includes('电子电路产品毛利率') && finding.text.includes('1.25%') && finding.evidence.some(ref => ref.location === 'paragraph:17')))
+  assert.ok(accepted.findings.some(finding => finding.text.includes('精密组件产品毛利率') && finding.text.includes('3.86%') && finding.evidence.some(ref => ref.location === 'paragraph:18')))
+  assert.ok(accepted.findings.some(finding => finding.text.includes('光电显示模组毛利率') && finding.text.includes('0.90%') && finding.evidence.some(ref => ref.location === 'paragraph:19')))
+
+  const mismatched = { ...filing, content: lines.map(line => line.replace('3.86%', '3.85%')).join('\n') }
+  const rejected = await run(mismatched)
+  assert.equal(rejected.status, 'failed')
+  assert.ok(rejected.diagnostics.some(diagnostic => diagnostic.code === 'NUMERIC_GROUNDING_ERROR'), JSON.stringify(rejected.diagnostics))
+})
+
 test('business-driver revenue table keeps annual industry rows and rejects product rows under an industry label', async () => {
   const id = 'annual-segment-classification'
   const lines = [
