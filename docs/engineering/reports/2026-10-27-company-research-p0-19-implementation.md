@@ -110,3 +110,9 @@ P0-19 remains incomplete. The BYD and Dongshan reports did not pass all required
 - The disposable Knowledge tree remained unchanged; before/after SHA-256 values match for `manifest.yaml`, `registry/assets.yaml`, and `registry/raw.yaml`. A sanitized, compact record is committed at `tests/validation/evidence/company-quality-business-driver-marker-retry-live-2026-10-27.json`. Raw reports, provider bodies, runtime logs, and disposable Knowledge data remain local.
 
 P0-19 remains incomplete pending both real reports passing all 19 checks and independent semantic acceptance.
+
+### Numeric-estimate PIT correction (2026-10-27)
+
+- Commit `923808d` classifies numeric estimates under the same current-snapshot PIT-quality reporting as other numeric data. An estimate may remain `AVAILABLE` for present-day inspection while reporting `valueVersionStatus=UNVERIFIED` and `pointInTimeSafe=false`; historical estimate requirements now require verified value-version proof, and Company Research applies that requirement only when the caller explicitly requests a historical `asOf`.
+- Regressions cover current estimate availability/quality, historical rejection without value-version proof, and the Company Research requirement mode. `npm run typecheck` passed. `node --import tsx --test tests/workflows/earnings-data-resolver.test.ts tests/workflows/data-layer-foundation.test.ts tests/workflows/industry-deep-research/industry-observation-contract.test.ts tests/workflows/data-layer-valuation-earnings.test.ts tests/workflows/company-deep-research.test.ts` passed 88/88.
+- This changes qualification, not forecast availability. Existing live runs (`112958bf` BYD at `136a085`; `c861cc63` Dongshan at `c6b41ad`) predate `923808d`, so this commit has no live root-Runtime report result yet. Existing THS/EastMoney FY2026 rows remain `UNVERIFIED`; no Variant Perception conclusion or scenario valuation is promoted. Gate 4 and P0-19 remain incomplete.

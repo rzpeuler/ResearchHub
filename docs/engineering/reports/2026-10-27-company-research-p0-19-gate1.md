@@ -24,6 +24,12 @@ The original R33 ownership and route rows below describe the pre-integration sta
 
 The exact persisted BYD reviewer attempt also misread the annual revenue period as `2025—2025`; the saved report section and cited structured financial history instead show 2024-12-31 to 2025-12-31 with revenue 777,102,455,000 to 803,964,958,000 CNY. A new deterministic reconciliation test clears only this source-verifiable period false positive; it retains the true scenario and Variant Perception blockers. Replaying the saved response does not modify the persisted report and is not a new live acceptance run.
 
+## Forward operating evidence audit
+
+The saved official packets contain forward operating evidence, but not enough economics to produce a sourced financial scenario. BYD's H1 2026 filing (`official-c19c34dd239b2e9c`, content hash `c521306221e896b4cbfbdf18a84d18fadf409db5bea7a8d3ef70a08c4f366ca6`) states a year-end plan to build 20,000 domestic flash-charge stations and reports 7,018 built by June 30 (extracted source text around paragraphs 349–350); a later passage plans 6,000 overseas stations without a stated completion date (paragraphs 598–600). These physical rollout targets can inform qualitative operating monitoring, but the packet supplies no station unit economics, utilization, attributable vehicle sales, capex per station, or EPS conversion. The report must not turn them into FY2026 revenue or earnings assumptions.
+
+Dongshan's FY2025 annual report (`official-39e591fa149e4543`, hash `8009fc94cc5a754b4cf5c18132217ce704c216484c2922d74d92f7f008ba3330`, extracted paragraphs 753–755) and H1 2026 report (`official-296fff2b2889c26f`, hash `6500c4e7c05ab455ebbbfc5eba1fa7ede7a48d6be171c53c4edc87c4682f707a`, paragraphs 628–630) describe AI PCB / optical-module expansion projects proceeding to plan, capacity ramping, and supply scale increasing. They do not provide FY2026 capacity quantities, commissioning schedule, ASP, margin, revenue target, or issuer forecast. The H1 packet also has historical investment/capex evidence, which is not a future commitment. These facts support monitoring the disclosed ramp and customer qualification; they do not support a numeric scenario plan. The paragraph references here are extraction positions within the saved source packet; the live Company run has not yet demonstrated these passages as method-owned, report-allowed citations.
+
 ## Existing ownership and execution paths
 
 | Research output | Existing owner / implementation | Company Research integration found at audit | Gate 1 conclusion |
