@@ -111,6 +111,15 @@ P0-19 remains incomplete. The BYD and Dongshan reports did not pass all required
 
 P0-19 remains incomplete pending both real reports passing all 19 checks and independent semantic acceptance.
 
+### Structured financial JSON in segment findings (2026-10-27)
+
+- The root Runtime/API BYD run `56ce2426-5ce7-4d42-a7bb-b2eb67bd356b` on `f8953db0f2ba7a413f3c9f721a85ac09a35fd399` reproduced a false rejection in `business_driver_analysis`: a single finding cited the official H1 segment classification marker and numeric row, plus `akshare-financial-002594@paragraph:1` for aggregate multi-period financial fields. The segment-table heuristic treated the JSON paragraph's unrelated numeric cells as another segment row and demanded a classification marker from the JSON source.
+- The correction skips only `structured_data` candidates in that classification-marker heuristic. The structured citation remains in the finding and continues through the existing numeric-grounding and citation validators; official filing marker and row requirements remain unchanged.
+- Regression `business-driver segment validation ignores structured financial JSON while preserving official marker checks` covers a mixed finding with two periods and multiple financial metrics, accepts the fully supported official segment claim, and rejects the same claim when its official marker citation is removed.
+- `node --import tsx --test tests/skills/company-methods.test.ts` passed 138/138 and `npm run typecheck` passed. The live BYD report above predates this correction and remains blocked at 14/19; the regression and typecheck establish the code fix, not a new real-runtime acceptance. The test fixture is committed in `tests/skills/company-methods.test.ts`; raw runtime reports, normalized provider bodies, and disposable Knowledge data remain local.
+
+P0-19 remains incomplete pending a root-Runtime rerun against this correction, full section review, and all other acceptance gates.
+
 ### Numeric-estimate PIT correction (2026-10-27)
 
 - Commit `923808d` classifies numeric estimates under the same current-snapshot PIT-quality reporting as other numeric data. An estimate may remain `AVAILABLE` for present-day inspection while reporting `valueVersionStatus=UNVERIFIED` and `pointInTimeSafe=false`; historical estimate requirements now require verified value-version proof, and Company Research applies that requirement only when the caller explicitly requests a historical `asOf`.

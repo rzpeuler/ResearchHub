@@ -1007,6 +1007,51 @@ test('business-driver classification scopes repeated aggregate numbers to the se
   assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
 })
 
+test('business-driver segment validation ignores structured financial JSON while preserving official marker checks', async () => {
+  const filingId = 'official-byd-segment-report'
+  const financialId = 'akshare-financial-002594'
+  const filing = { ...source, candidate: { ...source.candidate, candidateId: filingId }, title: '2026年半年度报告', content: '分行业\n汽车制造业 100 20% 80 16%\n其他业务 400 80% 420 84%' }
+  const financial = {
+    ...source,
+    candidate: { ...source.candidate, candidateId: financialId, kind: 'structured_data' as const },
+    title: 'Company financial history',
+    content: JSON.stringify({ kind: 'financial', rows: [
+      { periodEnd: '2026-06-30', metrics: { revenue: 500, netProfit: 25, operatingCashFlow: 30 } },
+      { periodEnd: '2025-06-30', metrics: { revenue: 450, netProfit: 22, operatingCashFlow: 27 } },
+    ] }),
+  }
+  const financialRef = `[${financialId}@paragraph:1]`
+  const markerRef = `[${filingId}@paragraph:1]`
+  const rowRef = `[${filingId}@paragraph:2]`
+  const claim = `2026年上半年分行业表列示汽车制造业收入100、占比20%，上年同期收入80、占比16%。${markerRef} ${rowRef} 合并报表同期营业收入为500，归母净利润为25，经营活动现金流为30；上年同期分别为450、22和27。${financialRef}`
+  const makeDraft = (markdown: string) => ({
+    status: 'complete', answer: '分行业表现与合并财务数据分别核验。', markdown: '分行业表现与合并财务数据分别核验。',
+    sections: [
+      { id: 'revenue-profit-drivers', markdown },
+      { id: 'growth-drivers', markdown: `合并与分行业口径应分别跟踪。${markerRef} ${rowRef} ${financialRef}` },
+      { id: 'catalysts', markdown: `现有证据不足以量化增长催化。${markerRef} ${rowRef}` },
+    ],
+    findings: [{ text: '上半年分行业汽车制造业收入为100、占比20%。', kind: 'fact', evidence: [
+      { sourceCandidateId: filingId, location: 'paragraph:1' },
+      { sourceCandidateId: filingId, location: 'paragraph:2' },
+      { sourceCandidateId: financialId, location: 'paragraph:1' },
+    ] }],
+    limitations: [], risks: [],
+  })
+  const run = (markdown: string) => executeCompanyResearchMethod({
+    skillId: 'business_driver_analysis', company: { symbol: '002594', name: '比亚迪', exchange: 'SZ' },
+    asOf: '2026-10-27', sources: [filing, financial], reportSourceCandidateIds: [filingId, financialId],
+    maxAttempts: 1, reasoningExecutor: executor(async () => makeDraft(markdown)),
+  })
+
+  const accepted = await run(claim)
+  assert.equal(accepted.status, 'complete', JSON.stringify(accepted.diagnostics))
+
+  const missingOfficialMarker = await run(`2026年上半年分行业表列示汽车制造业收入100、占比20%，上年同期收入80、占比16%。${rowRef} 合并报表同期营业收入为500，归母净利润为25，经营活动现金流为30；上年同期分别为450、22和27。${financialRef}`)
+  assert.equal(missingOfficialMarker.status, 'failed')
+  assert.ok(missingOfficialMarker.diagnostics.some(diagnostic => diagnostic.code === 'NUMERIC_GROUNDING_ERROR' && diagnostic.message.includes('classification marker') && diagnostic.message.includes('markerCited=false')), JSON.stringify(missingOfficialMarker.diagnostics))
+})
+
 test('single-value industry findings bind distinct exact rows, including a split transport label', async () => {
   const lines = Array.from({ length: 10 }, () => '一般披露事项。')
   const rows = new Map<number, string>([

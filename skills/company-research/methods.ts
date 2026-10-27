@@ -54,6 +54,11 @@ function businessDriverSegmentClassificationIssue(markdown: string, packets: rea
     for (const packet of packets) {
       const source = sourceById.get(packet.sourceCandidateId)
       if (!source) continue
+      // Structured financial JSON paragraphs may contain many unrelated
+      // fields and periods. They remain available to numeric grounding, but
+      // only narrative filing rows participate in the segment-table marker
+      // heuristic below.
+      if (source.candidate.kind === 'structured_data') continue
       const citedLocations = new Set(refs.filter(ref => ref.sourceId === packet.sourceCandidateId).map(ref => ref.location))
       if (!citedLocations.size) continue
       const excerpts = new Map(packet.excerpts.map(excerpt => [excerpt.location, excerpt.text.trim()]))
