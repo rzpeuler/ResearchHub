@@ -80,8 +80,60 @@
       }
     ]
   },
+  "liveReadOnlyVerificationOnCommittedChange": {
+    "sourceCommit": "e2e087060193254d095f4a8aaabf105d7c022234",
+    "model": {
+      "provider": "openai-codex",
+      "modelId": "gpt-6-luna"
+    },
+    "knowledgeWrite": false,
+    "rawReportsProviderBodiesAndDisposableKnowledgeIncluded": false,
+    "independentReview": "Two read-only reviewer agents confirmed the section statuses, cited row context, remaining gaps, and unchanged Knowledge hashes. Both workflow sidecars have reviewAttempts=0; these post-run audits do not change the Workflow gate status.",
+    "cases": [
+      {
+        "symbol": "002594",
+        "runId": "71c2b462-e4db-4aac-b119-196f3aa23d2b",
+        "reportId": "company-research-002594-71c2b462-e4db-4aac-b119-196f3aa23d2b",
+        "status": "blocked",
+        "coreChecks": "16/19",
+        "businessDriverMethod": "complete; the industry-margin claim uses the 分行业 marker and paragraphs 727-730, not duplicate product rows 731-732",
+        "businessModel": "section passed and finalReport table diagnostics are empty; methodSections retains a table-format diagnostic",
+        "remainingBlockedSections": [
+          "competition: method failed both attempts and has no attributable evidence",
+          "bull-base-bear: no attributable located scenario evidence",
+          "variant-perception: forecast value vintage is unverified"
+        ],
+        "knowledgeUnchanged": true,
+        "knowledgeSha256": {
+          "manifest.yaml": "18534c2a493999eef0abf08d12f46a899eeb29016ae5f17d42fc3139ddca7377",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        }
+      },
+      {
+        "symbol": "002384",
+        "runId": "4f3ccce3-8854-4efc-9124-2e26c2c9d2f6",
+        "reportId": "company-research-002384-4f3ccce3-8854-4efc-9124-2e26c2c9d2f6",
+        "status": "blocked",
+        "coreChecks": "17/19",
+        "businessDriverMethod": "complete in one attempt without diagnostics; the final report supports the 3.86% precision-component margin change with table marker paragraph 796, table value row paragraph 798, and header/unit context paragraphs 784-791. No corresponding method finding specifically states 3.86%.",
+        "productTechnologyMethod": "complete in one attempt without diagnostics",
+        "businessModel": "section passed and finalReport table diagnostics are empty; the independent reviewer noted citations are not consistently inline for every table row",
+        "remainingBlockedSections": [
+          "bull-base-bear: no attributable located scenario evidence",
+          "variant-perception: forecast value vintage is unverified"
+        ],
+        "knowledgeUnchanged": true,
+        "knowledgeSha256": {
+          "manifest.yaml": "714fbf6cd2f527e0245336db446a43fde9238cc20883e3b527ee78564e284cc5",
+          "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+        }
+      }
+    ]
+  },
   "acceptance": {
     "p0Status": "incomplete",
-    "reason": "These live runs predate this code change. A fresh root-Runtime pair and independent semantic review are required; the scenario-source and historical forecast-version evidence gaps remain unresolved."
+    "reason": "The fresh committed-code pair and independent post-run audits still do not pass all 19 checks. Scenario assumptions lack attributable sources, historical forecast value vintages remain unverified, and Workflow semantic-review attempts are zero."
   }
 }
