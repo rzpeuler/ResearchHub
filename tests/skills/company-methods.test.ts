@@ -1455,6 +1455,63 @@ test('numeric repair receives the actual prior draft and all bounded failing fie
   assert.deepEqual((result.attemptOutputs?.[1]?.reasoningInput as any).repairTargets.map((target: any) => target.fieldPath), ['sections[0].markdown', 'markdown', 'answer', 'findings[0]'])
 })
 
+test('business-driver missing-section retry preserves revenue analysis and requests distinct growth and catalyst sections', async () => {
+  const lines = Array.from({ length: 252 }, (_, index) => `占位披露 ${index + 1}`)
+  lines[250] = '本期电子产品收入保持增长，集团合并收入仍然下降。'
+  lines[251] = '服务器产品已批量出货，液冷项目进入量产爬坡；后续交付仍待验证。'
+  const filing = { ...source, content: lines.join('\n') }
+  const ref = (paragraph: number) => ({ sourceCandidateId: 'filing-1', location: `paragraph:${paragraph}` })
+  const original = {
+    status: 'complete', answer: '收入变化仍需结合业务结构判断。', markdown: '收入驱动尚未完全归因。[filing-1@paragraph:251]',
+    sections: [{ id: 'revenue-profit-drivers', markdown: '本期电子产品收入保持增长，但集团合并收入仍然下降，现有材料不足以确认量价贡献。[filing-1@paragraph:251]' }],
+    findings: [
+      { text: '本期电子产品收入保持增长，但集团合并收入仍然下降。', kind: 'fact' as const, evidence: [ref(251)] },
+      { text: '服务器产品已批量出货，液冷项目进入量产爬坡，后续交付仍待验证。', kind: 'fact' as const, evidence: [ref(252)] },
+    ],
+    limitations: ['缺少同口径销量、价格及产品组合贡献数据。'], risks: [],
+  }
+  const repaired = {
+    ...original,
+    sections: [
+      original.sections[0],
+      { id: 'growth-drivers', markdown: '本期电子产品收入保持增长，但该变化未扭转集团收入下降；现有证据不足以把这一变化归因于销量、价格或产品组合。[filing-1@paragraph:251]' },
+      { id: 'catalysts', markdown: '服务器产品已批量出货，液冷项目进入量产爬坡。后续催化取决于交付持续性和项目爬坡兑现，可观察后续批量交付及量产进度；收入与利润传导尚未量化。[filing-1@paragraph:252]' },
+    ],
+  }
+  let calls = 0
+  const result = await executeCompanyResearchMethod({ skillId: 'business_driver_analysis', company: { symbol: '002594' }, asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async request => {
+    calls++
+    if (calls === 1) return original
+    const input = (request as any).input
+    assert.match(input.repairErrors[0].message, /missing=.*growth-drivers.*catalysts/)
+    assert.match(input.repairInstruction, /growth-drivers及catalysts章节/)
+    assert.match(input.repairInstruction, /已证实阶段、尚待验证的下一条件、可观察指标/)
+    assert.deepEqual(input.repairPreviousOutput.sections.map((section: any) => section.id), ['revenue-profit-drivers'])
+    return repaired
+  }) })
+  assert.equal(calls, 2)
+  assert.equal(result.attempts, 2)
+  assert.equal(result.status, 'complete', JSON.stringify(result.diagnostics))
+  assert.deepEqual(result.sections.map(section => section.id), ['revenue-profit-drivers', 'growth-drivers', 'catalysts'])
+  assert.equal(result.sections[0]!.markdown, original.sections[0]!.markdown)
+})
+
+test('business-driver missing-section retry remains blocked when required owned sections are still absent', async () => {
+  const filing = { ...source, content: '本期收入变化尚未完全归因。' }
+  const incomplete = {
+    status: 'complete', answer: '收入变化仍需跟踪。', markdown: '收入变化仍需跟踪。[filing-1@paragraph:1]',
+    sections: [{ id: 'revenue-profit-drivers', markdown: '收入变化仍需结合经营数据分析。[filing-1@paragraph:1]' }],
+    findings: [{ text: '收入变化仍需结合经营数据分析。', kind: 'inference' as const, evidence: [{ sourceCandidateId: 'filing-1', location: 'paragraph:1' }] }],
+    limitations: ['本次材料缺少可归因的经营数据。'], risks: [],
+  }
+  let calls = 0
+  const result = await executeCompanyResearchMethod({ skillId: 'business_driver_analysis', company: { symbol: '002384' }, asOf: '2026-10-27', sources: [filing], reportSourceCandidateIds: ['filing-1'], reasoningExecutor: executor(async () => { calls++; return incomplete }) })
+  assert.equal(calls, 2)
+  assert.equal(result.attempts, 2)
+  assert.equal(result.status, 'failed')
+  assert.match(result.diagnostics.at(-1)?.message ?? '', /missing=.*growth-drivers.*catalysts/)
+})
+
 test('numeric-only method retry applies only targeted fields and discards unrelated retry citation mutations', async () => {
   const filing = { ...source, content: '公司业务增长需要跟踪经营兑现。公司披露了扩产计划及经营风险。' }
   const ref = { sourceCandidateId: 'filing-1', location: 'paragraph:1' }
