@@ -1,0 +1,108 @@
+{
+  "evidenceType": "sanitized-company-risk-goodwill-row-repair",
+  "capturedAt": "2026-10-28",
+  "task": "RHL-CQR-P0-19-CHANGE-001",
+  "sourceRevision": "14f4d2a028ddbdcab6e369ef96cf36d503acc954",
+  "acceptance": "NOT_ACCEPTED",
+  "repair": {
+    "priorRunId": "88f73a4f-0b7b-4e9e-9f2f-e0751a88bf37",
+    "method": "company_risk_analysis",
+    "failingTarget": "finding-5",
+    "attemptsBeforeRepair": 2,
+    "diagnostic": "NUMERIC_GROUNDING_ERROR for a Juno Newco goodwill amount whose exact same-report row was supplied but not cited in the finding.",
+    "exactSourceReference": "official-c19c34dd239b2e9c@paragraph:4821",
+    "requiredContextReferences": [
+      "official-c19c34dd239b2e9c@paragraph:4815",
+      "official-c19c34dd239b2e9c@paragraph:4816",
+      "official-c19c34dd239b2e9c@paragraph:3277"
+    ],
+    "policy": "Attach the exact Juno Newco row, goodwill heading, balance columns, and supplied RMB-thousands context only when one unique candidate remains among sources already cited by that claim. Ambiguous rows remain blocked. No value or unit conversion is performed.",
+    "rawPriorRunArtifacts": "runtime-data/company-quality-acceptance/2026-10-28-p0-19-post-cbfb0b5/ (local, ignored)"
+  },
+  "validation": {
+    "redBeforeFix": "npx tsx --test --test-name-pattern=\"risk numeric grounding binds a Juno Newco goodwill finding\" tests/skills/company-methods.test.ts failed with NUMERIC_GROUNDING_ERROR.",
+    "focusedAfterFix": "3/3 risk goodwill citation tests passed, including the new exact-row case and duplicate-source fail-closed case.",
+    "companyMethods": {
+      "command": "npx tsx --test tests/skills/company-methods.test.ts",
+      "passed": 148,
+      "failed": 0
+    },
+    "companyNumericGrounding": {
+      "command": "npx tsx --test tests/skills/company-numeric-grounding.test.ts",
+      "passed": 117,
+      "failed": 0
+    },
+    "typecheck": "npm run typecheck passed"
+  },
+  "liveReadOnlyPair": {
+    "runtime": "root checkout Runtime/API",
+    "modelSelection": {
+      "provider": "openai-codex",
+      "modelId": "gpt-6-luna"
+    },
+    "writeAcceptance": false,
+    "knowledgeIntegrityMode": "readonly",
+    "cases": [
+      {
+        "symbol": "002594",
+        "runId": "82bcc425-d48d-4e55-bc45-111aa8c28ba4",
+        "reportId": "company-research-002594-82bcc425-d48d-4e55-bc45-111aa8c28ba4",
+        "reportSha256": "2867B270318B21E334C28246935326DAB19FA734C094253BB80637B2C32390C1",
+        "status": "blocked",
+        "coreSections": "17/19",
+        "methods": "10/10 complete",
+        "riskMethod": "complete in 1 attempt",
+        "failedSections": {
+          "bull-base-bear": [
+            "RESEARCH_GAP",
+            "NO_ATTRIBUTABLE_EVIDENCE",
+            "WORKFLOW_SECTION_NO_LOCATED_EVIDENCE"
+          ],
+          "variant-perception": [
+            "RESEARCH_GAP",
+            "VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+          ]
+        },
+        "semanticReviewAttempts": 0,
+        "semanticReviewRounds": 0,
+        "knowledgeUnchanged": true
+      },
+      {
+        "symbol": "002384",
+        "runId": "860916a8-4958-4d29-8da1-56ad5dd1c2c6",
+        "reportId": "company-research-002384-860916a8-4958-4d29-8da1-56ad5dd1c2c6",
+        "reportSha256": "6FA63686B889150551B42EAB66B3CE32F4246871F5A3D4BE99117D0E0D8917D4",
+        "status": "blocked",
+        "coreSections": "17/19",
+        "methods": "10/10 complete",
+        "riskMethod": "complete in 1 attempt",
+        "failedSections": {
+          "bull-base-bear": [
+            "RESEARCH_GAP",
+            "NO_ATTRIBUTABLE_EVIDENCE",
+            "WORKFLOW_SECTION_NO_LOCATED_EVIDENCE"
+          ],
+          "variant-perception": [
+            "RESEARCH_GAP",
+            "VARIANT_EXPECTATION_VALUE_VERSION_UNVERIFIED"
+          ]
+        },
+        "semanticReviewAttempts": 0,
+        "semanticReviewRounds": 0,
+        "knowledgeUnchanged": true
+      }
+    ],
+    "knowledgeHashes": {
+      "manifest.yaml": "face39bd8ec6d6548d1a998edc2583b6e8d6db7e9a4dbd0cb2f0e6b3f901d0c9",
+      "registry/assets.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "registry/raw.yaml": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    "rawReportsAndSidecars": "runtime-data/company-quality-acceptance/2026-10-28-p0-19-risk-row-fix/ (local, ignored)"
+  },
+  "limitations": [
+    "The new deterministic repair passed a targeted fixture matching the prior failure. This live pair did not reproduce the same Juno Newco finding text, so it does not independently prove the repaired locator path in a fresh model output.",
+    "Neither report passed full acceptance. Bull/Base/Bear lacks attributable source-grounded operating assumptions; Variant Perception lacks verified estimate value versions.",
+    "No independent semantic review ran because structural acceptance remained blocked.",
+    "No production Knowledge write occurred. Raw reports, sources, provider payloads, and disposable Knowledge data are excluded from this repository evidence."
+  ]
+}
